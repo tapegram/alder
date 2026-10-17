@@ -1,0 +1,13 @@
+module Membership
+
+import User
+import Org
+
+type MembershipId = brand Text
+
+-- The `via` table of the session's `org`: one `@ref` to the user table, one to the key's.
+table Membership {
+  id: MembershipId @id,
+  user: User.UserId @ref User @cascade,
+  org: Org.OrgId @ref Org @cascade,
+}

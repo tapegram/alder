@@ -39,8 +39,14 @@ type Result struct {
 	// rendered inside it; the checker has refused a control among its children), "status" or "alert" for
 	// an `<al-alert>` without `role` whose `variant` is a literal or absent (the role it gets).
 	Rendered map[*syntax.Element]string
-	Holes    int            // count of W0002 reported
-	U        *types.Unifier // for Apply on stored types
+	// Via, Silos and Choose are App's valid M15 declarations: each `via` session field's
+	// membership table ("Membership.Membership"), each silo key's tables in the order written
+	// ("Project.Project"), each `choose` key's page module. Nil when there are none.
+	Via    map[string]string
+	Silos  map[string][]string
+	Choose map[string]string
+	Holes  int            // count of W0002 reported
+	U      *types.Unifier // for Apply on stored types
 }
 
 // CtorInfo is a union constructor: the union it builds and its payload type (nil for none).
@@ -96,5 +102,6 @@ func (c *Checker) result() *Result {
 	}
 	r.Values, r.Decls, r.Tables, r.Forms, r.Caps = c.values, c.types, c.tables, c.forms, c.caps
 	r.Pages, r.Ctors, r.Session, r.AppMsg, r.U = c.pages, c.ctors, c.session, c.appMsg, c.u
+	r.Via, r.Silos, r.Choose = c.via, c.silos, c.choose
 	return r
 }

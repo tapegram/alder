@@ -1,0 +1,30 @@
+module Notes.Index
+
+import Note
+
+-- the user key: M11's `mine` family and the generic one, on one `@owner` table
+page "/notes" { } requires user
+
+type Model = { notes: List Note, n: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let notes <- Db.mine Note |> Db.all
+  let n <- Db.scoped Note |> Db.count
+  Query.succeed { notes: notes, n: n }
+}
+
+msg Add
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add _ -> {
+    let _ <- Db.insertMine Note { text: "a" }
+    let _ <- Db.insertScoped Note { text: "b" }
+    let _ <- Session.put (\s -> { s | org: Nothing })
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <html><body><button click={Add}>add</button></body></html>

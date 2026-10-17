@@ -1,0 +1,22 @@
+module App
+
+import User
+import Org
+import Seat
+
+session {
+  user: Maybe User.UserId via Membership,
+  org: Maybe Org.OrgId via Seat,
+  team: Maybe Org.OrgId via Nowhere,
+  name: Maybe Text via Membership,
+  role: User.Role = Reader,
+}
+
+login = Login
+
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>not found</p>

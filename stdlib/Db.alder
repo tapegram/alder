@@ -27,3 +27,16 @@ updateMine : Table t -> Id t -> (t -> t) -> Task Unit
 deleteMine : Table t -> Id t -> Task Unit
 -- the row is `Insert t` without the owner column, written as a record literal in the call; the owner is the session's user
 insertMine : Table t -> Insert t -> Task (Id t)
+-- The generic scoped operations (M15): a table with a `@partition k` column (`@owner` is
+-- `@partition user`), where the session's `k` is narrowed (a page that `requires k`)
+
+-- `Db.from t` keeping the rows of the session's partition (`col = session.k`)
+scoped : Table t -> Select t
+-- the row when it exists and is in the session's partition; otherwise Query.notFound
+getScoped : Table t -> Id t -> Query t
+-- one UPDATE with `id = ? AND col = ?`, never writing the partition column; no row changed is Task.notFound
+updateScoped : Table t -> Id t -> (t -> t) -> Task Unit
+-- one DELETE with `id = ? AND col = ?`; no row deleted is Task.notFound
+deleteScoped : Table t -> Id t -> Task Unit
+-- the row is `Insert t` without the partition column, written as a record literal in the call; the column is the session's key
+insertScoped : Table t -> Insert t -> Task (Id t)

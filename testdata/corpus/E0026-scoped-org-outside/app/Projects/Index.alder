@@ -1,0 +1,19 @@
+module Projects.Index
+
+import Project
+
+page "/projects" { } requires user, org
+
+type Model = { projects: List Project }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let projects <- recent |> Db.all
+  Query.succeed { projects: projects }
+}
+
+recent : Select Project
+recent = Db.scoped Project |> Db.limit 10
+
+view : Model -> Session -> Html Msg
+view model session = <p>x</p>

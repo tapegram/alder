@@ -1,0 +1,26 @@
+module Home
+
+import Project
+import Org
+
+page "/" { } requires user, org
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+msg Add { org: Org.OrgId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insertScoped Project { name: "a", org: p.org }
+    let row = { name: "b" }
+    let _ <- Db.insertScoped Project row
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>x</p>

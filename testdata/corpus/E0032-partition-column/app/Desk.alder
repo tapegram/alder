@@ -1,0 +1,11 @@
+module Desk
+
+import Org
+
+type DeskId = brand Text
+
+-- the session has no `nope`
+table Desk {
+  id: DeskId @id,
+  org: Org.OrgId @ref Org @partition nope,
+}

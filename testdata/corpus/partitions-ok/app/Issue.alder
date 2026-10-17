@@ -1,0 +1,14 @@
+module Issue
+
+import Org
+import Project
+
+type IssueId = brand Text
+
+-- In the same silo as Project, so it may point at it.
+table Issue {
+  id: IssueId @id,
+  title: Text,
+  project: Project.ProjectId @ref Project @cascade,
+  org: Org.OrgId @ref Org @partition org,
+}

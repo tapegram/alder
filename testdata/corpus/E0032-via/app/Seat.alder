@@ -1,0 +1,10 @@
+module Seat
+
+import Org
+
+type SeatId = brand Text
+
+table Seat {
+  id: SeatId @id,
+  org: Org.OrgId @ref Org,
+}

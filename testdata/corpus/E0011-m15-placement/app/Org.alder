@@ -1,0 +1,8 @@
+module Org
+
+type OrgId = brand Text
+
+table Org {
+  id: OrgId @id,
+  name: Text,
+}

@@ -1,0 +1,9 @@
+module Org
+
+type OrgId = brand Text
+
+-- An org is shared: the key's own table, read from every store (a cross-store read).
+table Org {
+  id: OrgId @id,
+  name: Text,
+}

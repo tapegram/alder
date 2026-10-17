@@ -1,0 +1,11 @@
+module AuditLog
+
+import Project
+
+type AuditLogId = brand Text
+
+-- shared: may not point into a silo
+table AuditLog {
+  id: AuditLogId @id,
+  project: Project.ProjectId @ref Project,
+}

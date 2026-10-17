@@ -1,0 +1,1 @@
+app/Project.alder:10:27 E0032 `@partition` needs a session: declare App's `session { … }` with the field `org`

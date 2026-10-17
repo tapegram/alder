@@ -614,6 +614,26 @@ func (l *lowerer) declareTypes() {
 			}
 		}
 	}
+	for k, t := range l.res.Via {
+		if l.out.Via == nil {
+			l.out.Via = map[string]*Table{}
+		}
+		l.out.Via[k] = l.tables[t]
+	}
+	for k, ts := range l.res.Silos {
+		if l.out.Silos == nil {
+			l.out.Silos = map[string][]*Table{}
+		}
+		for _, t := range ts {
+			l.out.Silos[k] = append(l.out.Silos[k], l.tables[t])
+		}
+	}
+	for k, pg := range l.res.Choose {
+		if l.out.Choose == nil {
+			l.out.Choose = map[string]*Page{}
+		}
+		l.out.Choose[k] = l.pages[pg]
+	}
 	for _, r := range refs {
 		cands := []string{r.m.Name}
 		for _, im := range r.m.Imports {

@@ -1,0 +1,12 @@
+module Project
+
+import Org
+
+type ProjectId = brand Text
+
+-- Partitioned by `org` and listed in App's `silo org`: one database per org.
+table Project {
+  id: ProjectId @id,
+  name: Text,
+  org: Org.OrgId @ref Org @partition org,
+}

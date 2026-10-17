@@ -1,0 +1,4 @@
+app/App.alder:8:27 E0032 `user` cannot be `via` a table: membership is checked against the signed-in user
+app/App.alder:9:24 E0032 `via Seat`: `Seat` needs exactly one `@ref User` column and one `@ref Org` column; it has 0 and 1
+app/App.alder:10:25 E0032 `via Nowhere`: there is no table `Nowhere`
+app/App.alder:11:20 E0032 `via Membership` needs `name` to be `Maybe` of a table's id (such as `Maybe Org.OrgId`), got `Maybe Text`

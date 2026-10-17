@@ -1,0 +1,33 @@
+module Orgs.Index
+
+import Membership
+import Org
+
+-- `choose org`'s page: it requires the user, not the org, and sets the org.
+page "/orgs" { } requires user
+
+type Model = { mine: List Membership }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let mine <- Db.from Membership |> Db.where (Membership.user.eq session.user) |> Db.all
+  Query.succeed { mine: mine }
+}
+
+msg Pick { org: Org.OrgId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Pick p -> {
+    let _ <- Session.put (\s -> { s | org: Just p.org })
+    Task.succeed (Redirect (Projects.Index {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html><body>
+    <ul>
+      {for m in model.mine -> <li><button click={Pick { org: m.org }}>pick</button></li>}
+    </ul>
+  </body></html>

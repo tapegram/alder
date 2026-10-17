@@ -1,0 +1,18 @@
+module Public
+
+import Project
+import Projects.Index
+
+page "/public" { id: Project.ProjectId } requires user
+
+type Model = { projects: List Project, one: Maybe Project }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let projects <- Projects.Index.all |> Db.all
+  let one <- Db.get Project params.id
+  Query.succeed { projects: projects, one: one }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>x</p>

@@ -62,14 +62,26 @@ type Checker struct {
 	// scopedReported the places E0026 was reported at
 	scopedUses     []scopedUse
 	scopedReported map[diag.Span]bool
-	// scopedDirect maps each value ("Module.name") of a `requires user` page module that uses a
-	// scoped operation itself (or another module's value that does) to the first such operation;
+	// scopedDirect maps each value ("Module.name") of a page module that uses a scoped
+	// operation itself (or another module's value that does, or an unscoped operation on a
+	// siloed table) to the operation per partition key it needs narrowed ("user" → "Db.mine");
 	// scopedEdges are its module-internal references (from, to); scopedUsing is their closure
-	// (propagateScoped). insertMineRows are the `Db.insertMine` references insertMineCall saw.
-	scopedDirect   map[string]string
-	scopedEdges    [][2]string
-	scopedUsing    map[string]string
-	insertMineRows map[*syntax.Var]bool
+	// (propagateScoped). insertRows are the scoped inserts insertScopedCall saw, by reference,
+	// and insertOps the op (“Db.insertMine”) of each row literal written in one.
+	scopedDirect map[string]map[string]string
+	scopedEdges  [][2]string
+	scopedUsing  map[string]map[string]string
+	insertRows   map[*syntax.Var]bool
+	insertOps    map[*syntax.RecordLit]string
+	// M15: hasSession says App declares `session`; via maps each valid `via` session field to
+	// its membership table ("Membership.Membership"), silos each silo key to its tables
+	// ("Project.Project"), siloOf each siloed table to its key, choose each `choose` key to
+	// its page.
+	hasSession bool
+	via        map[string]string
+	silos      map[string][]string
+	siloOf     map[string]string
+	choose     map[string]string
 
 	usesSessionPut bool // some module calls Session.put
 	opts           Options
@@ -196,7 +208,8 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 	if c.appMsg == nil {
 		c.appMsg = &types.Union{Module: "App", Name: "Msg"}
 	}
-	c.checkOwners() // `@owner` columns need App's session
+	c.checkOwners()         // `@owner` and `@partition` columns need App's session
+	c.checkPartitionDecls() // App's via and silo need every table's partition
 	for _, name := range prog.Order {
 		mc := c.ctx(prog.Modules[name])
 		if prog.IsPageModule(name) {
@@ -207,6 +220,7 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 	for _, name := range prog.Order {
 		c.ctx(prog.Modules[name]).defineFakes()
 	}
+	c.checkChoose() // App's choose needs the pages
 	c.checkPagePaths()
 	for _, m := range c.allModules() {
 		c.ctx(m).declareValues()

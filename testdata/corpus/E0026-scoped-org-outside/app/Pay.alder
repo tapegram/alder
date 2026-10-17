@@ -1,0 +1,11 @@
+module Pay
+
+import Project
+
+capability Pay {
+  count : Unit -> Task Int,
+}
+
+fake Pay {
+  count u = Task.succeed (List.length [Db.scoped Project])
+}

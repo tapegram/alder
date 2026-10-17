@@ -1,0 +1,11 @@
+module Team
+
+import Org
+
+type TeamId = brand Text
+
+-- not a `@ref`
+table Team {
+  id: TeamId @id,
+  name: Text @partition org,
+}

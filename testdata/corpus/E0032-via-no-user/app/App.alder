@@ -1,0 +1,15 @@
+module App
+
+import User
+import Org
+
+session { org: Maybe Org.OrgId via Membership }
+
+login = Login
+
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>not found</p>

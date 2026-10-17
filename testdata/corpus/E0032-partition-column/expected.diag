@@ -1,0 +1,6 @@
+app/Board.alder:10:42 E0032 a field takes one `@partition` (`@owner` is `@partition user`)
+app/Board.alder:11:32 E0032 a table has one partition column: `Board` marks `org` and `owner`
+app/Desk.alder:10:27 E0032 `@partition nope` needs a session field `nope` of type `Maybe Org.OrgId`
+app/Seat.alder:10:30 E0032 `@partition region` needs a session field `region` of type `Maybe Org.OrgId`
+app/Shelf.alder:9:38 E0032 a field takes one `@partition` (`@owner` is `@partition user`)
+app/Team.alder:10:14 E0032 `@partition org` must mark a `@ref` column; `name` is `Text` without `@ref`

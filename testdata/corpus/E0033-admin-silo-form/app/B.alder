@@ -1,0 +1,12 @@
+module B
+
+
+page "/b" { } requires user, role Admin, silo org
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> Html Msg
+view model session = <p>x</p>

@@ -290,7 +290,7 @@ func (mc *modCtx) reportHoles() {
 	}
 	mc.holes = nil
 	mc.c.checkDbTables()
-	mc.c.checkScopedTables()
+	mc.checkScopedTables()
 	mc.c.checkInferredDictKeys()
 }
 
@@ -644,11 +644,15 @@ func (mc *modCtx) checkRecordLit(x *syntax.RecordLit, rec *types.Record, env *en
 		if !ok {
 			if info, mine := c.insertRecordTable(rec); info != nil {
 				if _, isCol := info.Columns[fi.Name]; isCol {
+					op := c.insertOps[x]
+					if op == "" {
+						op = "Db.insertMine"
+					}
 					switch {
-					case mine && fi.Name == info.Owner:
-						c.errorf(diag.TypeMismatch, fi.Span, "`%s` is set by `Db.insertMine`", fi.Name)
+					case mine && fi.Name == info.PartCol:
+						c.errorf(diag.TypeMismatch, fi.Span, "`%s` is set by `%s`", fi.Name, op)
 					case mine:
-						c.errorf("E0501", fi.Span, "`Db.insertMine` never takes `%s`; it is generated", fi.Name)
+						c.errorf("E0501", fi.Span, "`%s` never takes `%s`; it is generated", op, fi.Name)
 					default:
 						c.errorf("E0501", fi.Span, "`Db.insert` never takes `%s`; it is generated", fi.Name)
 					}
@@ -962,7 +966,7 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 		if x.Ref.Module == "Session" && x.Ref.Name == "put" {
 			c.usesSessionPut = true
 		}
-		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Db" && scopedOps[x.Ref.Name] {
+		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Db" && scopedOps[x.Ref.Name] != "" {
 			return mc.inferScoped(x)
 		}
 		if x.Ref.Kind == syntax.RefValue {
@@ -1275,8 +1279,8 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 			}
 		}
 	}
-	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Db" && v.Ref.Name == "insertMine" {
-		if r := mc.insertMineCall(x, v, pipe, env, eff); r != nil {
+	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Db" && scopedOps[v.Ref.Name] == "insertScoped" {
+		if r := mc.insertScopedCall(x, v, pipe, env, eff); r != nil {
 			return r
 		}
 	}

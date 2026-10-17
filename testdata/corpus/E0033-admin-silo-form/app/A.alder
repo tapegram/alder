@@ -1,0 +1,13 @@
+module A
+
+import Org
+
+page "/a/{org}" { org: Org.OrgId } requires user, silo org
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> Html Msg
+view model session = <p>x</p>

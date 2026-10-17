@@ -1,0 +1,10 @@
+module Shelf
+
+import User
+
+type ShelfId = brand Text
+
+table Shelf {
+  id: ShelfId @id,
+  user: User.UserId @ref User @owner @partition user,
+}

@@ -1,0 +1,13 @@
+module Board
+
+import Org
+import Team
+
+type BoardId = brand Text
+
+-- in silo org: may not point into silo team
+table Board {
+  id: BoardId @id,
+  team: Team.TeamId @ref Team,
+  org: Org.OrgId @ref Org @partition org,
+}

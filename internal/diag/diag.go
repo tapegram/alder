@@ -118,6 +118,9 @@ const (
 	CustomElement  = "E0028" // a custom element, attribute or slot no manifest declares, or a manifest that does not parse
 	PagePath       = "E0029" // a `page "…"` path the router cannot serve: an empty segment, a space, a query, a quote…
 	DeployDecl     = "E0030" // a `deploy` declaration the deploy command cannot use: unknown target, missing field, bad floor, a secret in App…
+	WriteStores    = "E0031" // an update arm (or fake entry) whose Task writes to two stores: the shared store and a silo, or two silos
+	PartitionDecl  = "E0032" // a `@partition k`, a session field's `via T`, or a `choose k` the rules refuse
+	SiloDecl       = "E0033" // a `silo k { … }` the rules refuse (a table not partitioned by k, a `@ref` into a silo), or a page's `silo k` form
 	UnreachableArm = "E0310"
 	UnusedImport   = "W0001"
 	UnshownErrors  = "W0003"

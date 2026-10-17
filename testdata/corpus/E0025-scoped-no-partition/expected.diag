@@ -1,0 +1,2 @@
+app/Home.alder:12:16 E0025 `Todo` has no `@partition` column, so `Db.scoped Todo` has nothing to scope by
+app/Home.alder:13:12 E0025 `Project` is partitioned by `org`, not by the session's `user`: `Db.mine` is for `@owner` tables; write `Db.scoped Project`

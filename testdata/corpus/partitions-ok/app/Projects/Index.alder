@@ -1,0 +1,109 @@
+module Projects.Index
+
+import Org
+import Project
+import Issue
+import Label
+import User
+import Membership
+
+page "/projects" { } requires user, org
+
+type Model = { org: Text, projects: List Project, labels: Int }
+
+-- a helper of a `requires org` page module may use the scoped operations
+recent : Select Project
+recent = Db.scoped Project |> Db.limit 10
+
+-- writes Project and Issue: both in `silo org`, one store
+seed : Text -> Task Unit
+seed name = {
+  let id <- Db.insertScoped Project { name: name }
+  let _ <- Db.insertScoped Issue { title: "first", project: id }
+  Task.succeed ()
+}
+
+load : Params -> Session -> Query Model
+load params session = {
+  -- a cross-store read: Org is shared, the page's Task writes to the silo
+  let org <- Db.get Org session.org
+  let projects <- recent |> Db.all
+  let labels <- Db.scoped Label |> Db.count
+  Query.succeed { org: Maybe.withDefault "" (Maybe.map (\o -> o.name) org), projects: projects, labels: labels }
+}
+
+form NewProject = {
+  name: Text,
+}
+
+msg Add form NewProject
+msg Rename { id: Project.ProjectId }
+msg Remove { id: Project.ProjectId }
+msg Seed
+msg Both { id: Project.ProjectId }
+msg Tag
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insertScoped Project { name: p.form.name }
+    Task.succeed Rerender
+  },
+  Rename p -> {
+    let pr <- Db.getScoped Project p.id
+    let _ <- Db.updateScoped Project pr.id (\x -> { x | name: "renamed" })
+    Task.succeed Rerender
+  },
+  Remove p -> {
+    let _ <- p.id |> Db.deleteScoped Project
+    Task.succeed Rerender
+  },
+  Seed _ -> {
+    let _ <- Task.all (List.map seed ["a", "b"])
+    Task.succeed Rerender
+  },
+  -- reads the shared store (Org, Membership), writes the silo: one store
+  Both p -> {
+    let _ <- Db.get Org session.org
+    let n <- Db.from Membership |> Db.count
+    let _ <- Db.updateScoped Project p.id (\x -> { x | name: Text.fromInt n })
+    Task.succeed Rerender
+  },
+  -- a shared write (Label is partitioned but in no silo)
+  Tag _ -> {
+    let _ <- Db.insertScoped Label { name: "new" }
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html><body>
+    <h1>{model.org}</h1>
+    <form submit={Add}>
+      <Input field="name" label="Name" />
+      <Errors form />
+      <button>Add</button>
+    </form>
+    <ul>
+      {for p in model.projects ->
+        <li>
+          <span>{p.name}</span>
+          <button click={Rename { id: p.id }}>rename</button>
+          <button click={Remove { id: p.id }}>remove</button>
+          <button click={Both { id: p.id }}>both</button>
+        </li>}
+    </ul>
+    <button click={Seed}>seed</button>
+    <button click={Tag}>tag</button>
+  </body></html>
+
+test "an org's member sees its projects" = {
+  let me <- Db.insert User { name: "Me" }
+  let o <- Db.insert Org { name: "Acme" }
+  let _ <- Db.insert Membership { user: me, org: o }
+  let _ <- Db.insert Project { name: "p", org: o }
+  let _ <- Test.login { user: Just me, org: Just o }
+  let page <- Test.get (Projects.Index {})
+  Task.succeed (List.length page.model.projects == 1)
+}

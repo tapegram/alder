@@ -1,0 +1,12 @@
+module Label
+
+import Org
+
+type LabelId = brand Text
+
+-- Partitioned by `org` but in no silo: a predicate in the shared store.
+table Label {
+  id: LabelId @id,
+  name: Text,
+  org: Org.OrgId @ref Org @partition org,
+}

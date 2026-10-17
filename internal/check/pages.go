@@ -93,6 +93,9 @@ func (mc *modCtx) checkApp() {
 	} else {
 		mc.requireSig("notFound", html(types.Never), "`notFound` must have type `Html Never`")
 	}
+	if has["maintenance"] != nil { // optional (M15): what a silo whose database cannot be served answers
+		mc.requireSig("maintenance", html(types.Never), "`maintenance` must have type `Html Never`")
+	}
 	if len(c.appMsg.Constructors()) > 0 {
 		if has["update"] == nil {
 			c.errorf(diag.MissingDecl, mc.m.Span, "`App` declares messages but has no `update`")

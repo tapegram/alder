@@ -1,10 +1,13 @@
-// Declared rules (M11): `@owner` columns (E0024), the scoped Db operations (E0025, E0026, the
-// row of Db.insertMine) and a page's `requires user, role R` (E0027).
+// Declared rules (M11, generalised by M15): a table's partition — `@owner` (E0024) or
+// `@partition k` (E0032) —, the scoped Db operations (E0025, E0026, the row of the scoped
+// insert) and a page's `requires user, role R` (E0027). partitions.go holds M15's App
+// declarations (via, silo, choose) and requires rules; writeset.go the one-store analysis.
 package check
 
 import (
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 
 	"alder/internal/diag"
@@ -12,11 +15,20 @@ import (
 	"alder/internal/types"
 )
 
-// scopedOps are the Db functions scoped to the session's user through a table's `@owner`.
-var scopedOps = map[string]bool{"mine": true, "getMine": true, "updateMine": true, "deleteMine": true, "insertMine": true}
+// scopedOps are the scoped Db functions: M11's `mine` family (legal only on a table partitioned
+// by `user`, that is with `@owner` or `@partition user`) and M15's generic family (any
+// partition key), mapped to the generic name (the stdlib function's role).
+var scopedOps = map[string]string{
+	"mine": "scoped", "getMine": "getScoped", "updateMine": "updateScoped", "deleteMine": "deleteScoped", "insertMine": "insertScoped",
+	"scoped": "scoped", "getScoped": "getScoped", "updateScoped": "updateScoped", "deleteScoped": "deleteScoped", "insertScoped": "insertScoped",
+}
 
-// scopedUse is a scoped operation written in a body, with its instantiated type, for E0025
-// once the body's types are known (checkScopedTables).
+// mineOp reports whether name is one of M11's `mine` family.
+func mineOp(name string) bool { return scopedOps[name] != "" && scopedOps[name] != name }
+
+// scopedUse is a scoped operation written in a body, with its instantiated type, for E0025 and
+// (a generic one, whose key is its table's) E0026, once the body's types are known
+// (checkScopedTables).
 type scopedUse struct {
 	v *syntax.Var
 	t types.Type
@@ -25,8 +37,14 @@ type scopedUse struct {
 // sessionUser is the type of App's session field `user` with its `Maybe` removed (what a page
 // that `requires user` sees), and whether the session has the field.
 func (c *Checker) sessionUser() (types.Type, bool) {
+	return c.sessionKey("user")
+}
+
+// sessionKey is the type of App's session field k with its `Maybe` removed, and whether the
+// session has the field.
+func (c *Checker) sessionKey(k string) (types.Type, bool) {
 	for _, f := range c.session.Fields {
-		if f.Name == "user" {
+		if f.Name == k {
 			if inner, ok := maybeOf(f.Type); ok {
 				return inner, true
 			}
@@ -36,11 +54,18 @@ func (c *Checker) sessionUser() (types.Type, bool) {
 	return nil, false
 }
 
-// checkOwners validates every table's `@owner` (E0024) against App's session, once it is
-// defined, and records the owner column and Db.insertMine's row record in the table's info.
-// An `@owner` in error still names the column, so scoped uses of the table do not also report
-// E0025.
+// checkOwners validates every table's partition (E0024 for `@owner`, E0032 for `@partition k`)
+// against App's session, once it is defined, and records the partition and the scoped insert's
+// row record in the table's info. A partition in error still names its column, so scoped uses
+// of the table do not also report E0025.
 func (c *Checker) checkOwners() {
+	if app := c.prog.Modules["App"]; app != nil {
+		for _, d := range c.live(app) {
+			if _, ok := d.(*syntax.SessionDecl); ok {
+				c.hasSession = true
+			}
+		}
+	}
 	for _, name := range c.prog.Order {
 		m := c.prog.Modules[name]
 		for _, d := range c.live(m) {
@@ -58,19 +83,30 @@ func (c *Checker) checkOwner(m *syntax.Module, d *syntax.TableDecl) {
 	}
 	userT, hasUser := c.sessionUser()
 	var first *syntax.Field
+	firstKey, firstOwner := "", false
 	for _, f := range d.Fields {
 		for _, a := range f.Attrs {
-			if a.Name != "owner" {
+			if a.Name != "owner" && a.Name != "partition" {
 				continue
 			}
+			owner, key := a.Name == "owner", a.Arg
+			if owner {
+				key = "user"
+			}
 			switch {
-			case first == f:
+			case first == f && owner && firstOwner:
 				c.errorf(diag.OwnerColumn, a.Span, "a field takes one `@owner`")
-			case !hasUser:
+			case first == f:
+				c.errorf(diag.PartitionDecl, a.Span, "a field takes one `@partition` (`@owner` is `@partition user`)")
+			case owner && !hasUser:
 				c.errorf(diag.OwnerColumn, a.Span, "`@owner` needs a session with a `user` field: this app's session has none")
-			case first != nil && first != f:
+			case !owner && !c.hasSession:
+				c.errorf(diag.PartitionDecl, a.Span, "`@partition` needs a session: declare App's `session { … }` with the field `%s`", key)
+			case first != nil && owner && firstOwner:
 				c.errorf(diag.OwnerColumn, a.Span, "a table has one `@owner` column: `%s` marks `%s` and `%s`", d.Name, first.Name, f.Name)
-			case first == nil:
+			case first != nil:
+				c.errorf(diag.PartitionDecl, a.Span, "a table has one partition column: `%s` marks `%s` and `%s`", d.Name, first.Name, f.Name)
+			case owner:
 				ft := info.Columns[f.Name]
 				const msg = "`@owner` must mark a `@ref` column of the session's user type `%s`; `%s` is `%s`"
 				switch {
@@ -79,22 +115,47 @@ func (c *Checker) checkOwner(m *syntax.Module, d *syntax.TableDecl) {
 				case !hasAttr(f, "ref"):
 					c.errorf(diag.OwnerColumn, a.Span, msg+" without `@ref`", types.String(userT), f.Name, types.String(ft))
 				}
+			default:
+				ft := info.Columns[f.Name]
+				kt, hasKey := c.sessionKey(key)
+				_, isMaybe := c.fieldMaybe(key)
+				switch {
+				case types.IsErr(ft):
+				case !hasAttr(f, "ref"):
+					c.errorf(diag.PartitionDecl, a.Span, "`@partition %s` must mark a `@ref` column; `%s` is `%s` without `@ref`", key, f.Name, types.String(ft))
+				case !hasKey || !isMaybe || c.u.Unify(ft, kt) != nil:
+					c.errorf(diag.PartitionDecl, a.Span, "`@partition %s` needs a session field `%s` of type `Maybe %s`", key, key, types.String(ft))
+				}
 			}
 			if first == nil {
-				first = f
+				first, firstKey, firstOwner = f, key, owner
 			}
 		}
 	}
 	if first == nil {
 		return
 	}
-	info.Owner, info.PartKey, info.PartCol = first.Name, "user", first.Name
+	info.PartKey, info.PartCol = firstKey, first.Name
+	if firstKey == "user" {
+		info.Owner = first.Name
+	}
 	info.InsertScoped = &types.Record{Module: info.Module, Name: "InsertScoped " + info.Name}
 	for _, f := range info.Insert.Fields {
 		if f.Name != first.Name {
 			info.InsertScoped.Fields = append(info.InsertScoped.Fields, f)
 		}
 	}
+}
+
+// fieldMaybe is App's session field k's type and whether it is a `Maybe`.
+func (c *Checker) fieldMaybe(k string) (types.Type, bool) {
+	for _, f := range c.session.Fields {
+		if f.Name == k {
+			_, ok := maybeOf(f.Type)
+			return f.Type, ok
+		}
+	}
+	return nil, false
 }
 
 // checkRoles validates the `role R | S` clause of page pd (E0027) and records its roles in
@@ -155,26 +216,30 @@ func (mc *modCtx) checkRoles(pd *syntax.PageDecl, info *pageInfo) {
 }
 
 // inferScoped types a reference to a scoped operation `Db.<name>`: its stdlib signature, with
-// Db.insertMine's row `InsertMine t` (Insert t without the owner column). It reports E0026 when
-// the context is not one where `session.user` is narrowed, marks the value being checked as
-// using the operation (scopedRef), and notes the use for E0025.
+// the scoped insert's row `InsertScoped t` (Insert t without the partition column). For the
+// `mine` family (key `user`) it reports E0026 when the context is not one where `session.user`
+// is narrowed, and marks the value being checked as using the operation (scopedRef); a generic
+// operation's key is its table's, known once the body's types are (checkScopedTables). It notes
+// the use for E0025.
 func (mc *modCtx) inferScoped(x *syntax.Var) types.Type {
 	c := mc.c
 	op := "Db." + x.Ref.Name
-	if msg := mc.scopedRefusal("`" + op + "`"); msg != "" {
-		c.reportScoped(x.Span, msg)
-	} else {
-		mc.markScoped(op)
+	if mineOp(x.Ref.Name) {
+		if msg := mc.scopedRefusal("`"+op+"`", "user"); msg != "" {
+			c.reportScoped(x.Span, msg)
+		} else {
+			mc.markScoped("user", op)
+		}
 	}
-	if x.Ref.Name == "insertMine" && !c.insertMineRows[x] {
-		c.reportScoped(x.Span, "`Db.insertMine` takes its row as a record literal: write the record literal in the `Db.insertMine` call (its row is the table's `Insert` record without its `@owner` column)")
+	if scopedOps[x.Ref.Name] == "insertScoped" && !c.insertRows[x] {
+		c.reportScoped(x.Span, "`"+op+"` takes its row as a record literal: write the record literal in the `"+op+"` call (its row is the table's `Insert` record without its "+partitionColumnWords(x.Ref.Name)+")")
 	}
 	sig, ok := c.values[c.key("Db", x.Ref.Name)]
 	if !ok {
 		return types.Err
 	}
 	t := c.u.Instantiate(sig)
-	if fn, ok := t.(*types.Fun); ok && x.Ref.Name == "insertMine" && len(fn.Params) == 2 {
+	if fn, ok := t.(*types.Fun); ok && scopedOps[x.Ref.Name] == "insertScoped" && len(fn.Params) == 2 {
 		if app, ok := fn.Params[1].(*types.App); ok && app.Con == "Insert" {
 			t = &types.Fun{Params: []types.Type{fn.Params[0], &types.App{Con: "InsertScoped", Args: app.Args}}, Result: fn.Result}
 		}
@@ -183,7 +248,16 @@ func (mc *modCtx) inferScoped(x *syntax.Var) types.Type {
 	return t
 }
 
-// reportScoped reports E0026 (or the insertMine row error) once per place.
+// partitionColumnWords names a table's partition column in a message about op: M11's words for
+// the `mine` family.
+func partitionColumnWords(op string) string {
+	if mineOp(op) {
+		return "`@owner` column"
+	}
+	return "`@partition` column"
+}
+
+// reportScoped reports E0026 (or the scoped insert's row error) once per place.
 func (c *Checker) reportScoped(at diag.Span, msg string) {
 	if c.scopedReported == nil {
 		c.scopedReported = map[diag.Span]bool{}
@@ -199,43 +273,58 @@ func (c *Checker) reportScoped(at diag.Span, msg string) {
 	c.errorf(code, at, "%s", msg)
 }
 
-// scopedRefusal is E0026's message for subject (“`Db.mine`”, or “`Todos.Index.recent` uses
-// `Db.mine`, which”) used where mc is checking, "" when it may be used there: in a page module
-// whose page `requires user` (any of its values) or in a `test` (a test has a session, from
-// `Test.login` or `Session.put`; a scoped operation without a signed-in user fails when it
-// runs). A fake's entries may not: a fake has no session.
-func (mc *modCtx) scopedRefusal(subject string) string {
+// narrowed reports whether the session's field key is certainly there where mc is checking: in
+// a page module whose page `requires` key (any of its values), or takes it from its parameter
+// (`silo key`, the admin form), and in a `test` (a test has a session, from `Test.login` or
+// `Session.put`; a scoped operation without the field fails when it runs). Never in a fake.
+func (mc *modCtx) narrowed(key string) bool {
+	switch {
+	case mc.fake != "":
+		return false
+	case mc.inTest:
+		return true
+	}
+	return mc.page != nil && (slices.Contains(mc.page.Requires, key) || mc.page.Decl != nil && mc.page.Decl.Silo == key)
+}
+
+// scopedRefusal is E0026's message for subject (“`Db.mine`”, “`Db.scoped Project`”, or
+// “`Todos.Index.recent` uses `Db.mine`, which”) used where mc is checking, "" when it may be
+// used there (narrowed): a page module whose page `requires key`, or a test. A fake's entries may
+// not: a fake has no session.
+func (mc *modCtx) scopedRefusal(subject, key string) string {
 	switch {
 	case mc.fake != "":
 		return subject + " cannot be used in a fake: a fake has no session"
-	case mc.inTest:
-		return ""
-	case mc.page != nil && slices.Contains(mc.page.Requires, "user"):
+	case mc.narrowed(key):
 		return ""
 	case mc.page != nil:
-		return subject + " needs a page that `requires user`: `" + mc.m.Name + "` does not"
+		return subject + " needs a page that `requires " + key + "`: `" + mc.m.Name + "` does not"
 	}
-	return subject + " needs a page that `requires user`: `" + mc.m.Name + "` is not a page"
+	return subject + " needs a page that `requires " + key + "`: `" + mc.m.Name + "` is not a page"
 }
 
-// markScoped notes that the value being checked (outside tests) uses scoped operation op.
-func (mc *modCtx) markScoped(op string) {
+// markScoped notes that the value being checked (outside tests) uses operation op, which needs
+// the session's key narrowed.
+func (mc *modCtx) markScoped(key, op string) {
 	c := mc.c
 	if mc.value == "" || mc.inTest || mc.fake != "" {
 		return
 	}
 	k := c.key(mc.m.Name, mc.value)
 	if c.scopedDirect == nil {
-		c.scopedDirect = map[string]string{}
+		c.scopedDirect = map[string]map[string]string{}
 	}
-	if c.scopedDirect[k] == "" {
-		c.scopedDirect[k] = op
+	if c.scopedDirect[k] == nil {
+		c.scopedDirect[k] = map[string]string{}
+	}
+	if c.scopedDirect[k][key] == "" {
+		c.scopedDirect[k][key] = op
 	}
 }
 
 // scopedRef handles a reference x to a top-level value: within its module it is an edge for
 // propagateScoped; to another module's value that uses a scoped operation (scopedUsing), it is
-// E0026 where the operation could not be written itself, and marks the value being checked
+// E0026 where that operation's key is not narrowed, and marks the value being checked
 // otherwise (a `requires user` page module's value using another's).
 func (mc *modCtx) scopedRef(x *syntax.Var) {
 	c := mc.c
@@ -246,54 +335,79 @@ func (mc *modCtx) scopedRef(x *syntax.Var) {
 		}
 		return
 	}
-	op := c.scopedUsing[k]
-	if op == "" {
-		return
+	uses := c.scopedUsing[k]
+	keys := make([]string, 0, len(uses))
+	for key := range uses {
+		keys = append(keys, key)
 	}
-	if msg := mc.scopedRefusal("`" + k + "` uses `" + op + "`, which"); msg != "" {
-		c.reportScoped(x.Span, msg)
-		return
+	sort.Strings(keys)
+	for _, key := range keys {
+		op := uses[key]
+		if msg := mc.scopedRefusal("`"+k+"` uses `"+op+"`, which", key); msg != "" {
+			c.reportScoped(x.Span, msg)
+			return
+		}
 	}
-	mc.markScoped(op)
+	for _, key := range keys {
+		mc.markScoped(key, uses[key])
+	}
 }
 
 // propagateScoped recomputes scopedUsing, the values that use a scoped operation directly or
-// through values of their module: run after each module's bodies, so a module's importers
-// (checked after it) see its marks.
+// through values of their module (per key, the first operation): run after each module's
+// bodies, so a module's importers (checked after it) see its marks.
 func (c *Checker) propagateScoped() {
-	c.scopedUsing = map[string]string{}
-	for k, op := range c.scopedDirect {
-		c.scopedUsing[k] = op
+	c.scopedUsing = map[string]map[string]string{}
+	add := func(v, key, op string) bool {
+		if c.scopedUsing[v] == nil {
+			c.scopedUsing[v] = map[string]string{}
+		}
+		if c.scopedUsing[v][key] != "" {
+			return false
+		}
+		c.scopedUsing[v][key] = op
+		return true
+	}
+	for k, ops := range c.scopedDirect {
+		for key, op := range ops {
+			add(k, key, op)
+		}
 	}
 	for changed := true; changed; {
 		changed = false
 		for _, e := range c.scopedEdges {
-			if c.scopedUsing[e[0]] == "" && c.scopedUsing[e[1]] != "" {
-				c.scopedUsing[e[0]] = c.scopedUsing[e[1]]
-				changed = true
+			for key, op := range c.scopedUsing[e[1]] {
+				if add(e[0], key, op) {
+					changed = true
+				}
 			}
 		}
 	}
 }
 
-// insertMineCall handles `Db.insertMine T row`: a row written as a record literal in the call
-// takes the ordinary path (nil); any other row (a variable, a piped value, the call partially
-// applied) is reported, since the row's type is not one a program can write, and the call is
-// typed without it.
-func (mc *modCtx) insertMineCall(x *syntax.App, v *syntax.Var, pipe *pipeArg, env *env, eff effect) types.Type {
+// insertScopedCall handles `Db.insertMine T row` and `Db.insertScoped T row`: a row written as
+// a record literal in the call takes the ordinary path (nil); any other row (a variable, a piped
+// value, the call partially applied) is reported, since the row's type is not one a program can
+// write, and the call is typed without it.
+func (mc *modCtx) insertScopedCall(x *syntax.App, v *syntax.Var, pipe *pipeArg, env *env, eff effect) types.Type {
 	c := mc.c
-	if c.insertMineRows == nil {
-		c.insertMineRows = map[*syntax.Var]bool{}
+	if c.insertRows == nil {
+		c.insertRows = map[*syntax.Var]bool{}
 	}
-	c.insertMineRows[v] = true
-	if _, lit := argAt(x.Args, 1).(*syntax.RecordLit); lit && pipe == nil && len(x.Args) == 2 {
+	c.insertRows[v] = true
+	op := "Db." + v.Ref.Name
+	if lit, ok := argAt(x.Args, 1).(*syntax.RecordLit); ok && pipe == nil && len(x.Args) == 2 {
+		if c.insertOps == nil {
+			c.insertOps = map[*syntax.RecordLit]string{}
+		}
+		c.insertOps[lit] = op
 		return nil
 	}
-	table, owner := "T", "its `@owner` column"
+	table, col := "T", "its "+partitionColumnWords(v.Ref.Name)
 	if ct, ok := argAt(x.Args, 0).(*syntax.CtorRef); ok && ct.Ref.Kind == syntax.RefTable {
 		table = ct.Ref.Name
-		if info := c.tables[c.key(ct.Ref.Module, ct.Ref.Name)]; info != nil && info.Owner != "" {
-			owner = "`" + info.Owner + "`"
+		if info := c.tables[c.key(ct.Ref.Module, ct.Ref.Name)]; info != nil && info.PartCol != "" {
+			col = "`" + info.PartCol + "`"
 		}
 	}
 	at := x.Span
@@ -303,7 +417,7 @@ func (mc *modCtx) insertMineCall(x *syntax.App, v *syntax.Var, pipe *pipeArg, en
 	case pipe != nil:
 		at = pipe.span
 	}
-	c.reportScoped(at, fmt.Sprintf("`Db.insertMine` takes its row as a record literal: write the record literal in the `Db.insertMine` call (its row is `Insert %s` without %s)", table, owner))
+	c.reportScoped(at, fmt.Sprintf("`%s` takes its row as a record literal: write the record literal in the `%s` call (its row is `Insert %s` without %s)", op, op, table, col))
 	fn, ok := c.u.Apply(mc.infer(v, env, eff)).(*types.Fun)
 	if !ok {
 		for _, a := range x.Args {
@@ -335,32 +449,86 @@ func argAt(args []syntax.Expr, i int) syntax.Expr {
 	return nil
 }
 
-// checkScopedTables reports E0025 for each scoped operation of the body just checked whose
-// table has no `@owner` column.
-func (c *Checker) checkScopedTables() {
+// checkScopedTables ends a body's scoped checks, once its types are known: E0025 for each
+// scoped operation whose table has no partition (or, for the `mine` family, a partition by a key
+// other than `user`); E0026 for a generic scoped operation, and for an unscoped Db operation on a
+// siloed table, where the table's key is not narrowed (marking the value being checked
+// otherwise).
+func (mc *modCtx) checkScopedTables() {
+	c := mc.c
 	uses := c.scopedUses
 	c.scopedUses = nil
 	for _, u := range uses {
-		fn, ok := c.u.Apply(u.t).(*types.Fun)
-		if !ok || len(fn.Params) == 0 {
-			continue
-		}
-		app, ok := c.u.Apply(fn.Params[0]).(*types.App)
-		if !ok || app.Con != "Table" || len(app.Args) != 1 {
-			continue
-		}
-		rec, ok := app.Args[0].(*types.Record)
-		if !ok {
+		rec := tableArg(c, u.t)
+		if rec == nil {
 			continue // a type parameter or unknown table: checkDbTables reports it
 		}
-		if info := c.u.Table(rec); info != nil && info.Owner == "" {
-			c.errorf(diag.NoOwner, u.v.Span, "`%s` has no `@owner` column, so `Db.%s %s` has nothing to scope by", rec.Name, u.v.Ref.Name, rec.Name)
+		info := c.u.Table(rec)
+		if info == nil {
+			continue
+		}
+		name := u.v.Ref.Name
+		switch {
+		case info.PartKey == "" && mineOp(name):
+			c.errorf(diag.NoOwner, u.v.Span, "`%s` has no `@owner` column, so `Db.%s %s` has nothing to scope by", rec.Name, name, rec.Name)
+		case info.PartKey == "":
+			c.errorf(diag.NoOwner, u.v.Span, "`%s` has no `@partition` column, so `Db.%s %s` has nothing to scope by", rec.Name, name, rec.Name)
+		case mineOp(name) && info.PartKey != "user":
+			c.errorf(diag.NoOwner, u.v.Span, "`%s` is partitioned by `%s`, not by the session's `user`: `Db.%s` is for `@owner` tables; write `Db.%s %s`", rec.Name, info.PartKey, name, scopedOps[name], rec.Name)
+		case !mineOp(name):
+			subject := "`Db." + name + " " + rec.Name + "`"
+			if msg := mc.scopedRefusal(subject, info.PartKey); msg != "" {
+				c.reportScoped(u.v.Span, msg)
+			} else {
+				mc.markScoped(info.PartKey, "Db."+name+" "+rec.Name)
+			}
+		}
+	}
+	if len(c.siloOf) == 0 {
+		return
+	}
+	for _, e := range c.bodyExprs {
+		v, ok := e.(*syntax.Var)
+		if !ok || v.Ref.Kind != syntax.RefStd || v.Ref.Module != "Db" || scopedOps[v.Ref.Name] != "" {
+			continue
+		}
+		rec := tableArg(c, c.res.Types[e])
+		if rec == nil {
+			continue
+		}
+		key := c.siloOf[c.key(rec.Module, rec.Name)]
+		if key == "" {
+			continue
+		}
+		subject := "`Db." + v.Ref.Name + " " + rec.Name + "` (`" + rec.Name + "` lives in `silo " + key + "`)"
+		if msg := mc.scopedRefusal(subject, key); msg != "" {
+			c.reportScoped(v.Span, msg)
+		} else {
+			mc.markScoped(key, "Db."+v.Ref.Name+" "+rec.Name)
 		}
 	}
 }
 
-// insertRecordTable is the table whose insert record rec is — `Insert T`, or Db.insertMine's
-// `InsertMine T` (mine set) — or nil.
+// tableArg is the table record of a Db function type t's `Table t` parameter, nil when it has
+// none or its table is not known.
+func tableArg(c *Checker, t types.Type) *types.Record {
+	fn, ok := c.u.Apply(t).(*types.Fun)
+	if !ok {
+		return nil
+	}
+	for _, p := range fn.Params {
+		app, ok := c.u.Apply(p).(*types.App)
+		if !ok || app.Con != "Table" || len(app.Args) != 1 {
+			continue
+		}
+		rec, _ := c.u.Apply(app.Args[0]).(*types.Record)
+		return rec
+	}
+	return nil
+}
+
+// insertRecordTable is the table whose insert record rec is — `Insert T`, or the scoped
+// insert's `InsertScoped T` (mine set) — or nil.
 func (c *Checker) insertRecordTable(rec *types.Record) (info *types.TableInfo, mine bool) {
 	if rec.Anonymous {
 		return nil, false
@@ -374,11 +542,11 @@ func (c *Checker) insertRecordTable(rec *types.Record) (info *types.TableInfo, m
 	return nil, false
 }
 
-// recordLabel is how a message names record rec: its type, but Db.insertMine's row (whose type
-// a program never writes) as "Insert T` without `owner" (the message's backticks around it).
+// recordLabel is how a message names record rec: its type, but the scoped insert's row (whose
+// type a program never writes) as "Insert T` without `owner" (the message's backticks around it).
 func (c *Checker) recordLabel(rec *types.Record) string {
 	if info, mine := c.insertRecordTable(rec); mine && info != nil {
-		return "Insert " + info.Name + "` without `" + info.Owner
+		return "Insert " + info.Name + "` without `" + info.PartCol
 	}
 	return types.String(rec)
 }

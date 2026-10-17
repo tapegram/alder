@@ -1,0 +1,18 @@
+module Home
+
+import Todo
+import Project
+
+page "/" { } requires user, org
+
+type Model = { todos: List Todo, n: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let todos <- Db.scoped Todo |> Db.all
+  let n <- Db.mine Project |> Db.count
+  Query.succeed { todos: todos, n: n }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>x</p>

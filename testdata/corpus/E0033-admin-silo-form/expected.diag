@@ -1,0 +1,5 @@
+app/A.alder:5:51 E0033 `silo org` needs a role check: the page takes `org` from its parameter, which only the role check guards; write `requires user, role Admin, silo org`
+app/B.alder:4:42 E0033 `silo org` takes `org` from the page's parameter: add `org: Org.OrgId` to the page's parameters
+app/C.alder:4:58 E0033 the page's parameter `org` is `Text`; `silo org` needs `Org.OrgId`, the type of the session's `org`
+app/D.alder:5:68 E0033 `silo org` and `requires org` both name `org`: the admin form takes `org` from the page's parameter, not the session
+app/E.alder:4:60 E0033 `silo nope`: the session has no field `nope`

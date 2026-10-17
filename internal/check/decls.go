@@ -424,8 +424,8 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 				mc.checkRef(f, a, ft, fake)
 			case "renamed":
 				// checkTableAttrs reports a malformed or self-naming `@renamed`
-			case "owner":
-				// checkOwners validates it once App's session is known (E0024)
+			case "owner", "partition":
+				// checkOwners validates it once App's session is known (E0024, E0032)
 			case "unique", "cascade", "restrict":
 				// checkDeleteRules reports a delete rule without `@ref`, before it, or a second one
 			case "setNull":
@@ -821,7 +821,7 @@ func (mc *modCtx) definePage() {
 			c.errorf(diag.InvalidDecl, pd.Span, "path segment `{%s}` has no matching parameter", s)
 		}
 	}
-	if len(pd.Requires) > 0 {
+	if len(pd.Requires) > 0 || pd.Silo != "" {
 		info.Requires = pd.Requires
 		for i, req := range pd.Requires {
 			found := false
@@ -844,7 +844,7 @@ func (mc *modCtx) definePage() {
 				c.errorf(diag.InvalidDecl, sp, "`requires %s`: the session has no field `%s`", req, req)
 			}
 		}
-		info.Session = narrow(c.session, pd.Requires, mc.m.Name)
+		info.Session = narrow(c.session, mc.checkRequiresM15(pd, info), mc.m.Name)
 		mc.session = info.Session
 	}
 	if len(pd.Roles) > 0 {
@@ -1193,6 +1193,11 @@ func (mc *modCtx) declareValues() {
 		}
 		params := map[string]bool{}
 		c.values[c.key(mc.m.Name, vd.Name)] = mc.typeOf(vd.Sig, params)
+	}
+	if !mc.isApp && c.prog.Std[mc.m.Name] == nil {
+		for _, d := range mc.m.Decls {
+			c.m15Placement(d)
+		}
 	}
 	if mc.page != nil {
 		for _, need := range []string{"load", "view"} {

@@ -1,0 +1,12 @@
+module Board
+
+import Org
+import User
+
+type BoardId = brand Text
+
+table Board {
+  id: BoardId @id,
+  org: Org.OrgId @ref Org @partition org @partition org,
+  owner: User.UserId @ref User @owner,
+}

@@ -1,0 +1,27 @@
+module App
+
+import User
+import Org
+import Project
+import Pay
+
+session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Reader }
+
+login = Login
+
+choose org = Orgs
+msg Wipe { id: Project.ProjectId }
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Wipe p -> {
+    let _ <- Db.deleteScoped Project p.id
+    Task.succeed Rerender
+  },
+}
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>not found</p>

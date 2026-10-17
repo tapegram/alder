@@ -1,0 +1,10 @@
+module Note
+
+import User
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  owner: User.UserId @ref User @owner,
+}

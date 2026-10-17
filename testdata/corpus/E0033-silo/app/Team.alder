@@ -1,0 +1,10 @@
+module Team
+
+import Org
+
+type TeamId = brand Text
+
+table Team {
+  id: TeamId @id,
+  org: Org.OrgId @ref Org @partition team,
+}

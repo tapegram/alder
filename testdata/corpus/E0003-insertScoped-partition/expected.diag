@@ -1,0 +1,2 @@
+app/Home.alder:18:51 E0003 `org` is set by `Db.insertScoped`
+app/Home.alder:20:38 E0003 `Db.insertScoped` takes its row as a record literal: write the record literal in the `Db.insertScoped` call (its row is `Insert Project` without `org`)

@@ -1,0 +1,4 @@
+app/App.alder:10:8 E0032 `choose user`: the signed-in user is chosen by `login`; `choose` names the page for another key
+app/App.alder:11:8 E0032 `choose region`: the session has no field `region`
+app/App.alder:12:1 E0032 `choose org = Picker`: `Picker` `requires org` itself, so a request without `org` would be sent back to it
+app/App.alder:13:8 E0032 `choose org` is declared twice

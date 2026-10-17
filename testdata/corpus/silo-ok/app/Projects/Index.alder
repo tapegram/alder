@@ -1,0 +1,57 @@
+module Projects.Index
+
+import Org
+import Project
+import User
+import Membership
+
+page "/projects" { } requires user, org
+
+type Model = { org: Text, projects: List Project }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let org <- Db.get Org session.org
+  let projects <- Db.scoped Project |> Db.all
+  Query.succeed { org: Maybe.withDefault "" (Maybe.map (\o -> o.name) org), projects: projects }
+}
+
+form NewProject = {
+  name: Text,
+}
+
+msg Add form NewProject
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  -- reads the shared store (Org), writes the silo
+  Add p -> {
+    let _ <- Db.get Org session.org
+    let _ <- Db.insertScoped Project { name: p.form.name }
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html><body>
+    <h1>{model.org}</h1>
+    <form submit={Add}>
+      <Input field="name" label="Name" />
+      <Errors form />
+      <button>Add</button>
+    </form>
+    <ul>{for p in model.projects -> <li>{p.name}</li>}</ul>
+  </body></html>
+
+test "a member sees only their org's projects" = {
+  let me <- Db.insert User { name: "Me" }
+  let a <- Db.insert Org { name: "A" }
+  let b <- Db.insert Org { name: "B" }
+  let _ <- Db.insert Membership { user: me, org: a }
+  let _ <- Test.login { user: Just me, org: Just a }
+  let _ <- Test.get (Projects.Index {})
+  let _ <- Test.submit NewProject { name: "mine" }
+  let page <- Test.get (Projects.Index {})
+  Task.succeed (List.map (\p -> p.name) page.model.projects == ["mine"])
+}

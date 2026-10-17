@@ -1,0 +1,3 @@
+app/Orgs.alder:3:33 E0011 `requires` names `user` twice
+app/Orgs.alder:13:1 E0011 `silo` is only allowed in `App`
+app/Orgs.alder:15:1 E0011 `choose` is only allowed in `App`

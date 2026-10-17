@@ -1,0 +1,11 @@
+module Seat
+
+import Org
+
+type SeatId = brand Text
+
+-- the session's `region` is not `Maybe Org.OrgId`
+table Seat {
+  id: SeatId @id,
+  region: Org.OrgId @ref Org @partition region,
+}

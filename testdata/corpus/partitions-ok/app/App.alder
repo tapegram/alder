@@ -1,0 +1,35 @@
+module App
+
+import User
+import Org
+
+-- M15: the session's `org` is set only to an org the user is a member of (`via Membership`);
+-- `silo org` stores Project and Issue in one database per org; `choose org` is where a page
+-- that `requires org` sends a session without one.
+session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Reader }
+
+login = Login
+
+choose org = Orgs.Index
+
+silo org { Project, Issue }
+
+msg Leave
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Leave _ -> {
+    let _ <- Session.put (\s -> { s | org: Nothing })
+    Task.succeed (Redirect (Orgs.Index {}))
+  },
+}
+
+error : Error -> Html Never
+error err = <html><body><h1>error</h1></body></html>
+
+notFound : Html Never
+notFound = <html><body><h1>not found</h1></body></html>
+
+-- optional, like notFound: what a silo whose database cannot be served answers
+maintenance : Html Never
+maintenance = <html><body><h1>down for maintenance</h1></body></html>

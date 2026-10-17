@@ -1,0 +1,8 @@
+module Todo
+
+type TodoId = brand Text
+
+table Todo {
+  id: TodoId @id,
+  title: Text,
+}

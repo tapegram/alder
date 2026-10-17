@@ -1,0 +1,9 @@
+app/App.alder:11:21 E0033 `Note` is in `silo org` but is not partitioned by `org`
+app/App.alder:11:27 E0033 `Project` is listed twice in `silo org`
+app/App.alder:11:36 E0033 `silo org`: there is no table `Nowhere`
+app/App.alder:12:19 E0033 `Board` is in `silo org` and `silo team`: a table lives in one store
+app/App.alder:13:6 E0033 `silo org` is declared twice: list all its tables in one
+app/App.alder:14:6 E0033 `silo region`: session field `region` must be a `Maybe`
+app/App.alder:15:6 E0033 `silo nothing`: the session has no field `nothing`
+app/AuditLog.alder:10:30 E0033 `AuditLog.project` refers to `Project`, which lives in `silo org`: a shared table cannot point into a silo
+app/Board.alder:11:21 E0033 `Board.team` refers to `Team`, which lives in `silo team`: `Board` lives in `silo org`, and a table cannot point into another silo
