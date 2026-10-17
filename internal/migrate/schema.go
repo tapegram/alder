@@ -194,7 +194,7 @@ func SiloMove(old, new Schema) string {
 		}
 		n := short(t.Name)
 		if o.Silo == "" {
-			out = append(out, fmt.Sprintf("table %s moves into `silo %s`, but the migrations create it in the shared database, and a migration does not move its rows into a database per %s (book 8, \"Silos\"): in an app that holds no data yet, `alder new silo %s %s` declares it and says what it leaves behind; otherwise keep %s shared", n, t.Silo, t.Silo, t.Silo, n, n))
+			out = append(out, fmt.Sprintf("table %s moves into `silo %s`, but the migrations create it in the shared database, and a migration does not move its rows into a database per %s (book 8, \"Silos\"): when no database holds rows of it yet, `alder new silo %s %s --empty` declares it, writes the migration that creates it in the silos made before and says what it leaves behind; otherwise keep %s shared", n, t.Silo, t.Silo, t.Silo, n, n))
 			continue
 		}
 		out = append(out, fmt.Sprintf("table %s moves from %s to %s, and a migration does not move its rows between databases (book 8, \"Silos\"): keep it in `silo %s`", n, where(o.Silo), where(t.Silo), o.Silo))

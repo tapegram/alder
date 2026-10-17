@@ -473,19 +473,20 @@ func runNewAuthTo(args []string, stdout, stderr io.Writer) int {
 	}, stdout, stderr)
 }
 
-const newSiloUsage = "usage: alder new silo <key> <Table> … [--dir app] [--json] [--dry-run]"
+const newSiloUsage = "usage: alder new silo <key> <Table> … [--empty] [--dir app] [--json] [--dry-run]"
 
 // runNewSiloTo is `alder new silo`: App's `silo <key> { … }` (generate.NewSilo); a table that
-// migrations/ already create is marked in schema.json, and the note says what stays behind.
+// migrations/ already create is refused unless --empty, which marks it in schema.json and writes
+// the migration that creates it in the silos made before, and the note says what stays behind.
 func runNewSiloTo(args []string, stdout, stderr io.Writer) int {
-	g, err := parseGenArgs(args, nil, nil, nil)
+	g, err := parseGenArgs(args, nil, nil, []string{"empty"})
 	if err != nil || len(g.pos) < 1 {
 		return genUsage(stderr, newSiloUsage, err)
 	}
 	var notes []string
 	o := generate.Options{Migrate: func(string) ([]string, error) { return notes, nil }}
 	return runGenerator("alder new silo", g, o, func(p *generate.Program) ([]generate.Edit, error) {
-		edits, n, err := generate.NewSilo(p, g.pos[0], g.pos[1:])
+		edits, n, err := generate.NewSilo(p, g.pos[0], g.pos[1:], g.has("empty"))
 		notes = n
 		return edits, err
 	}, stdout, stderr)

@@ -1,6 +1,7 @@
 edited app/App.alder
+wrote migrations/0002_silo_org.sql
+!! Activity: migrations/ create it in the shared database; 0002_silo_org creates it in the silos made before, and DROPS DATA: rows a database holds of it stay in the shared database, unread, so its deploy needs --allow-data-loss (book 8, "Silos")
 edited migrations/schema.json
-!! Activity: migrations/ create it in the shared database; a database that already holds rows of it keeps them there, unread, and silos made before have no such table: declare a silo before the app holds data (book 8, "Silos")
 --- a/app/App.alder
 +++ b/app/App.alder
 @@ -14,7 +14,7 @@

@@ -165,7 +165,7 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 		if err != nil {
 			return res, err
 		}
-		if plan, err = MakePlan(filepath.Join(dir, "migrations"), live.Snapshot, live.Have, true); err != nil {
+		if plan, err = MakePlanApplied(filepath.Join(dir, "migrations"), live.Snapshot, live.Have, true, live.Migrations); err != nil {
 			return res, refuse("", "%v", err)
 		}
 	} else if plan, err = MakePlan(filepath.Join(dir, "migrations"), nil, false, false); err != nil {

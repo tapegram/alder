@@ -1,6 +1,7 @@
 package main
 
 import (
+	"alder/internal/deploy"
 	"bytes"
 	"encoding/json"
 	"flag"
@@ -201,7 +202,8 @@ var genCases = []genCase{
 
 	// M15: partitions and silos
 	{name: "fixture-silo-table", base: "fixture-silo", args: []string{"new", "table", "Note", "text:Text.NonEmpty", "project:Project.ProjectId@ref=Project@cascade", "org:Org.OrgId@ref=Org@partition=org", "--silo"}, test: true},
-	{name: "fixture-silo-silo", base: "fixture-silo", args: []string{"new", "silo", "org", "Activity"}},
+	{name: "fixture-silo-silo", base: "fixture-silo", args: []string{"new", "silo", "org", "Activity", "--empty"}},
+	{name: "fixture-silo-silo-not-empty", base: "fixture-silo", args: []string{"new", "silo", "org", "Activity"}, code: 1},
 	{name: "fixture-silo-silo-refused", base: "fixture-silo", args: []string{"new", "silo", "org", "Membership"}, code: 1},
 	{name: "fixture-silo-page-list", base: "fixture-silo", args: []string{"new", "page", "Projects.Index", "/projects", "--list", "Project", "--requires", "org"}, test: true},
 	{name: "fixture-silo-page-show", base: "fixture-silo", args: []string{"new", "page", "Issues.Show", "/issues", "--show", "Issue", "--requires", "org"}, test: true},
@@ -449,6 +451,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"fixture-silo", []string{"new", "silo", "org", "User"}, "", "alder new silo: `User` is not partitioned by `org`: it has no `@ref Org` column, and a required reference cannot be added to a table that may have rows; one with none yet is made again with it: `alder remove table User`, then `alder new table User … org:Org.OrgId@ref=Org@partition=org`"},
 		{"fixture-silo", []string{"new", "silo", "team", "Project"}, "", "alder new silo: `silo team`: the session has no field `team`; `alder edit session add-field team:<T>.<T>Id via <Membership>` adds one (book 6, \"Partitions\")"},
 		{"fixture-silo", []string{"new", "silo", "org", "Project"}, "", "alder new silo: `Project` is in `silo org` already"},
+		{"fixture-silo", []string{"new", "silo", "org", "Activity"}, "", "alder new silo: Activity: migrations/ create it in the shared database, so a database may hold rows of it: `silo org` would leave them there, unread (a migration does not move rows between databases). If no database holds rows of it yet, run this again with --empty: it also writes the migration that creates it in the silos made before, and the deploy that applies it needs --allow-data-loss (book 8, \"Silos\")"},
 		{"fixture-silo", []string{"new", "table", "Note", "text:Text", "--silo"}, "", "alder new table: --silo puts the table in the silo of its `@partition` key: give a field one, such as `org:Org.OrgId@ref=Org@partition=org`"},
 		{"fixture-silo", []string{"new", "table", "Note", "org:Org.OrgId@ref=Org@partition=1x"}, "", "alder new table: field `org`: `@partition=1x`: the key is a session field's name, such as `@partition=org`"},
 		{"fixture-silo", []string{"new", "page", "Teams", "/teams", "--requires", "team"}, "", "alder new page: `--requires team`: the session has no field `team`"},
@@ -932,6 +935,10 @@ func TestGenerate_E11Messages(t *testing.T) {
 func TestGenerate_SiloMove(t *testing.T) {
 	dir := genApp(t, "fixture-silo")
 	app := filepath.Join(dir, "app", "App.alder")
+	live, err := os.ReadFile(filepath.Join(dir, "migrations", "schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	b, err := os.ReadFile(app)
 	if err != nil {
 		t.Fatal(err)
@@ -944,7 +951,7 @@ func TestGenerate_SiloMove(t *testing.T) {
 	before := appFiles(t, dir)
 	var out, errb bytes.Buffer
 	code := runMigrateTo([]string{dir}, &out, &errb)
-	want := "alder migrate: table Activity moves into `silo org`, but the migrations create it in the shared database, and a migration does not move its rows into a database per org (book 8, \"Silos\"): in an app that holds no data yet, `alder new silo org Activity` declares it and says what it leaves behind; otherwise keep Activity shared\n"
+	want := "alder migrate: table Activity moves into `silo org`, but the migrations create it in the shared database, and a migration does not move its rows into a database per org (book 8, \"Silos\"): when no database holds rows of it yet, `alder new silo org Activity --empty` declares it, writes the migration that creates it in the silos made before and says what it leaves behind; otherwise keep Activity shared\n"
 	if code != 1 || out.String() != want {
 		t.Errorf("alder migrate of a hand-made move: exit %d\n%s%s\nwant:\n%s", code, out.String(), errb.String(), want)
 	}
@@ -952,11 +959,40 @@ func TestGenerate_SiloMove(t *testing.T) {
 		t.Errorf("the refused migration wrote %v", slices.Sorted(maps.Keys(ch)))
 	}
 	os.WriteFile(app, b, 0o644)
-	if code, out, errs := alderIn(t, dir, "", "new", "silo", "org", "Activity"); code != 0 || !strings.Contains(out, "edited migrations/schema.json\n!! Activity: migrations/ create it in the shared database") {
-		t.Fatalf("alder new silo: exit %d\n%s%s", code, out, errs)
+	before = appFiles(t, dir)
+	// the table may hold rows: refused, nothing written, unless --empty
+	if code, out, errs := alderIn(t, dir, "", "new", "silo", "org", "Activity"); code != 1 || !strings.Contains(errs, "run this again with --empty") {
+		t.Fatalf("alder new silo without --empty: exit %d\n%s%s", code, out, errs)
+	}
+	if ch := changedFiles(before, appFiles(t, dir)); len(ch) != 0 {
+		t.Errorf("the refused move wrote %v", slices.Sorted(maps.Keys(ch)))
+	}
+	if code, out, errs := alderIn(t, dir, "", "new", "silo", "org", "Activity", "--empty"); code != 0 || !strings.Contains(out, "wrote migrations/0002_silo_org.sql\n!! Activity: migrations/ create it in the shared database; 0002_silo_org creates it in the silos made before, and DROPS DATA") {
+		t.Fatalf("alder new silo --empty: exit %d\n%s%s", code, out, errs)
 	}
 	out.Reset()
-	if code := runMigrateTo([]string{dir}, &out, &errb); code != 0 || out.String() != "no changes since 0001_initial\n" {
+	if code := runMigrateTo([]string{dir}, &out, &errb); code != 0 || out.String() != "no changes since 0002_silo_org\n" {
 		t.Errorf("alder migrate after alder new silo: exit %d\n%s%s", code, out.String(), errb.String())
+	}
+	// the deploy plan against the database before the move (whose schema hash is the build's):
+	// the move is pending and DROPS DATA, so the deploy needs --allow-data-loss; once applied
+	// it is not
+	for _, applied := range [][]string{{"0001_initial"}, nil} {
+		plan, err := deploy.MakePlanApplied(filepath.Join(dir, "migrations"), live, true, true, applied)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d := plan.DropsData(); len(d) != 1 || !strings.HasPrefix(d[0], "0002_silo_org: shared rows of Activity: ") {
+			t.Errorf("applied %v: the plan's DROPS DATA: %q\n%s", applied, d, strings.Join(plan.Lines(), "\n"))
+		}
+	}
+	after, _ := os.ReadFile(filepath.Join(dir, "migrations", "schema.json"))
+	for _, c := range []struct {
+		live    []byte
+		applied []string
+	}{{live, []string{"0001_initial", "0002_silo_org"}}, {after, nil}} {
+		if plan, err := deploy.MakePlanApplied(filepath.Join(dir, "migrations"), c.live, true, true, c.applied); err != nil || len(plan.Migrations) != 0 {
+			t.Errorf("after the move: %v %v", plan.Lines(), err)
+		}
 	}
 }

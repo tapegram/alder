@@ -2,8 +2,10 @@ package db
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base32"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -117,7 +119,7 @@ type Stores struct {
 	reader *SQLite // a read-only connection to the shared file; nil in memory (shared itself)
 	cfg    StoresConfig
 	silos  map[string]*siloSchema // by key
-	hash   string                 // the app's schema hash
+	hash   string                 // what a silo's _alder_schema row records: siloHash of the app's schema and the silos
 	last   string                 // the app's last migration, "" for none
 	test   bool                   // NewTestStores
 	remote *Turso                 // silos on Turso (Dir is a libsql:// URL)
@@ -222,7 +224,7 @@ func newStores(shared *SQLite, cfg StoresConfig) (*Stores, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Stores{shared: shared, cfg: cfg, silos: map[string]*siloSchema{}, hash: sc.hash, open: map[string]*siloDB{}}
+	s := &Stores{shared: shared, cfg: cfg, silos: map[string]*siloSchema{}, hash: siloHash(short(sc.hash), cfg.Silos), open: map[string]*siloDB{}}
 	if IsRemote(cfg.Dir) {
 		tc := TursoConfigFromEnv()
 		if tc.Org == "" || tc.App == "" || tc.Token == "" {
@@ -241,6 +243,23 @@ func newStores(shared *SQLite, cfg StoresConfig) (*Stores, error) {
 		s.silos[si.Key] = ss
 	}
 	return s, nil
+}
+
+// siloHash is the hash a silo's _alder_schema row records (hex sha256): of the app's schema
+// hash as a migration file's header records it (appShort) and of the silos' membership (each
+// key's tables), so a build that moves a table into a silo — whose tables are unchanged, as is
+// the app's schema hash — does not find a silo made before the move up to date: the silo is
+// behind by the migration the move wrote (`alder new silo --empty`), which creates the table in
+// it. A migration's To is such a short hash, so a row that names no migration (M4) is matched
+// to the one that leads to it.
+func siloHash(appShort string, silos []Silo) string {
+	lines := []string{appShort}
+	for _, si := range silos {
+		lines = append(lines, "silo "+si.Key+": "+strings.Join(slices.Sorted(slices.Values(si.Tables)), ", "))
+	}
+	slices.Sort(lines[1:])
+	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
+	return hex.EncodeToString(sum[:])
 }
 
 func newSiloSchema(si Silo, byName map[string]TableDesc) (*siloSchema, error) {
@@ -667,7 +686,7 @@ func (s *Stores) inspect(ctx context.Context, q querier, ss *siloSchema, allowDa
 	}
 	at := -1
 	for i, m := range ms {
-		if m.Name == mig || mig == "" && m.To == short(hash) { // "": made before the app had migrations (M4)
+		if m.Name == mig || mig == "" && siloHash(m.To, s.cfg.Silos) == hash { // "": made before the app had migrations (M4)
 			at = i
 		}
 	}
@@ -677,7 +696,7 @@ func (s *Stores) inspect(ctx context.Context, q querier, ss *siloSchema, allowDa
 	case at < 0:
 		return plan{state: SiloFailed, detail: fmt.Sprintf("it was migrated to %q, which is not among this build's migrations: restore the file from version control", mig)}, nil
 	case at == len(ms)-1:
-		return plan{state: SiloFailed, detail: fmt.Sprintf("it is at the last migration (%s) but its schema hash %.12s is not the app's %.12s: the tables changed without `alder migrate`", mig, hash, s.hash)}, nil
+		return plan{state: SiloFailed, detail: fmt.Sprintf("it is at the last migration (%s) but its schema hash %.12s is not the app's %.12s: the tables, or the tables of the silos, changed without `alder migrate` (a table moved into a silo by hand: `alder new silo --empty` writes the migration of the move)", mig, hash, s.hash)}, nil
 	}
 	p := plan{state: SiloMigrating, pending: ms[at+1:]}
 	for _, m := range p.pending {
@@ -697,6 +716,9 @@ func (s *Stores) inspect(ctx context.Context, q querier, ss *siloSchema, allowDa
 // mentions reports whether a DROPS DATA line ("column Project.x", "table Project", "Project.n:
 // …") names a table of the silo.
 func (ss *siloSchema) mentions(line string) bool {
+	if strings.HasPrefix(line, "shared rows of ") { // a move into a silo: the shared database's rows
+		return false
+	}
 	for _, n := range ss.short {
 		if strings.Contains(line, "table "+n) || strings.Contains(line, n+".") {
 			return true
@@ -789,7 +811,7 @@ func (s *Stores) check(ctx context.Context, st *SQLite, ss *siloSchema, allowDat
 }
 
 var (
-	stmtTarget = regexp.MustCompile(`^(?:CREATE TABLE|ALTER TABLE|DROP TABLE(?: IF EXISTS)?|INSERT INTO|UPDATE|DELETE FROM)\s+"((?:[^"]|"")*)"`)
+	stmtTarget = regexp.MustCompile(`^(?:CREATE TABLE(?: IF NOT EXISTS)?|ALTER TABLE|DROP TABLE(?: IF EXISTS)?|INSERT INTO|UPDATE|DELETE FROM)\s+"((?:[^"]|"")*)"`)
 	indexOn    = regexp.MustCompile(`^CREATE (?:UNIQUE )?INDEX .* ON "((?:[^"]|"")*)"`)
 	dropIndex  = regexp.MustCompile(`^DROP INDEX(?: IF EXISTS)? "((?:[^"]|"")*)__[^"_]+"`)
 	references = regexp.MustCompile(` REFERENCES "((?:[^"]|"")*)"\("(?:[^"]|"")*"\)(?: ON DELETE (?:CASCADE|SET NULL))?`)

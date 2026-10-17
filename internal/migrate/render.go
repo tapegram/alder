@@ -1,6 +1,7 @@
 package migrate
 
 import (
+	"alder/rt/db"
 	"errors"
 	"fmt"
 	"os"
@@ -44,6 +45,35 @@ func Plan(old, new Schema, name string) (Migration, error) {
 		if err != nil {
 			return m, err
 		}
+		m.SQL = append(m.SQL, stmts...)
+	}
+	return m, nil
+}
+
+// SiloMigration is the migration `alder new silo <key> … --empty` writes for tables (qualified
+// names) that schema snap (the snapshot, already marked with the silo) has in the shared
+// database until now (book 8, "Silos"). It changes no table, so it runs from snap's hash to the
+// same hash: its statements are CREATE TABLE IF NOT EXISTS of each table and its indexes, which
+// the shared database already has (they do nothing there) and which create the table in every
+// silo made before the move (the runtime runs a migration's statements on a silo's own tables),
+// so those silos are behind until it runs, not served without the table. Each table's step
+// DROPS DATA: rows the shared database holds of it stay there, unread — a deploy of it needs
+// --allow-data-loss (the runtime's silo check leaves a line naming "shared rows of" out).
+func SiloMigration(snap Schema, key string, tables []string, name string) (Migration, error) {
+	m := Migration{Name: name}
+	h, err := snap.Hash()
+	if err != nil {
+		return m, err
+	}
+	m.FromHash, m.ToHash = h[:hashLen], h[:hashLen]
+	for _, n := range tables {
+		st := Step{Kind: IntoSilo, Table: db.SQLName(n), NewName: key,
+			DropsData: "shared rows of " + short(n) + ": it moves into silo " + key + ", and the rows the shared database holds of it stay there, unread"}
+		stmts, err := SQL(st, snap, snap)
+		if err != nil {
+			return m, err
+		}
+		m.Steps = append(m.Steps, st)
 		m.SQL = append(m.SQL, stmts...)
 	}
 	return m, nil

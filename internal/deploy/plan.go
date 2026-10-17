@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -93,6 +94,16 @@ func (p Plan) Lines() []string {
 // that cannot tell, known false). A live schema that none of the build's migrations leads to
 // is an error: the target runs a schema newer than the build (or one changed by hand).
 func MakePlan(migrationsDir string, live []byte, haveLive, known bool) (Plan, error) {
+	return MakePlanApplied(migrationsDir, live, haveLive, known, nil)
+}
+
+// MakePlanApplied is MakePlan knowing the names of the migrations the target applied (nil when
+// it does not say). A migration that changes no table — `alder new silo --empty`'s, which moves a
+// table into a silo (migrate.SiloMigration) — leads from a schema to the same one, so the live
+// schema's hash cannot place it: one at the end of the build's chain at the live hash is pending
+// when applied does not name it or, when applied is nil, when the build's snapshot puts in a silo
+// a table the live one does not (its DROPS DATA then needs --allow-data-loss).
+func MakePlanApplied(migrationsDir string, live []byte, haveLive, known bool, applied []string) (Plan, error) {
 	p := Plan{Known: known && haveLive, FirstDeploy: known && !haveLive, Migrations: []PlanMigration{}}
 	files, err := filepath.Glob(filepath.Join(migrationsDir, "*.sql"))
 	if err != nil {
@@ -154,6 +165,24 @@ func MakePlan(migrationsDir string, live []byte, haveLive, known bool) (Plan, er
 			if start < 0 {
 				return p, fmt.Errorf("the target's database is at schema %s, which none of this build's migrations leads to: the target runs a newer build's schema (or one changed outside migrations); deploy a build that has its migrations", p.Live)
 			}
+		}
+	}
+	if p.Known && start > 0 {
+		var liveSnap migrate.Schema
+		json.Unmarshal(live, &liveSnap)
+		moved := false
+		if snap, err := migrate.ReadSnapshot(snapPath); err == nil {
+			for _, t := range snap.Tables {
+				if t.Silo != "" && !slices.ContainsFunc(liveSnap.Tables, func(l migrate.Table) bool { return l.Name == t.Name && l.Silo == t.Silo }) {
+					moved = true
+				}
+			}
+		}
+		for start > 0 && all[start-1].from == all[start-1].to && all[start-1].to == p.Live {
+			if applied != nil && slices.Contains(applied, all[start-1].Name) || applied == nil && !moved {
+				break
+			}
+			start--
 		}
 	}
 	for _, m := range all[start:] {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -794,6 +795,86 @@ func TestStores_TestRunBindsOnFirstWrite(t *testing.T) {
 	}
 	if err := run("org", project); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// I1: a build that moves a table into a silo (`alder new silo org Note --empty`: the app's
+// tables unchanged, the move a migration of CREATE TABLE IF NOT EXISTS whose DROPS DATA line is
+// the shared database's) finds a silo made before the move behind — not ok without the table —
+// and not pending data loss; opening it creates the table there.
+func TestStores_MoveIntoSiloIsBehind(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	noteDesc := TableDesc{Name: "Note.Note", ID: "id", Columns: []Column{{Name: "id", Type: CText}, {Name: "org", Type: CText, Ref: "Org.Org", OnDelete: Cascade}}}
+	tables := []TableDesc{orgDesc, projDesc(projCols1), noteDesc}
+	by := map[string]TableDesc{}
+	var stmts []string
+	for _, d := range tables {
+		by[d.Name] = d
+	}
+	for _, d := range tables {
+		st, _ := createStmt(d, by)
+		stmts = append(stmts, st+";")
+	}
+	sc, _ := schemaOf(tables)
+	_, empty := hashSchema(nil)
+	idx := `CREATE INDEX IF NOT EXISTS "Note__Note__org" ON "Note__Note"("org");`
+	ms := []Migration{{Name: "0001_initial", From: short(empty), To: short(sc.hash), SQL: strings.Join(stmts, "\n") + "\n" + idx}}
+	cfg := func(v int) StoresConfig {
+		c := StoresConfig{Dir: dir, Tables: tables, Silos: []Silo{{Key: "org", Tables: []string{"Project.Project"}}}, Migrations: ms}
+		if v == 2 {
+			noteStmt, _ := createStmt(noteDesc, by)
+			c.Silos[0].Tables = append(c.Silos[0].Tables, "Note.Note")
+			c.Migrations = append(slices.Clone(ms), Migration{Name: "0002_silo_org", From: short(sc.hash), To: short(sc.hash),
+				SQL:       strings.Replace(noteStmt, "CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ", 1) + ";\n" + idx,
+				DropsData: []string{"shared rows of Note: it moves into silo org, and the rows the shared database holds of it stay there, unread"}})
+		}
+		return c
+	}
+	path := filepath.Join(dir, "app.db")
+	shared, _ := OpenSQLite(path)
+	defer shared.Close()
+	if _, err := shared.Migrate(ctx, tables, cfg(1).Migrations, false); err != nil {
+		t.Fatal(err)
+	}
+	s1, _ := OpenStores(shared, path, cfg(1))
+	if _, err := s1.silo(ctx, "org", "A"); err != nil {
+		t.Fatal(err)
+	}
+	s1.Close()
+	if s2, _ := newStores(nil, cfg(2)); s2.hash == s1.hash {
+		t.Fatal("the silo hash does not change with the silos' tables")
+	}
+	// the shared database: the move is DROPS DATA (refused without the flag), its statements no-ops
+	if _, err := shared.Migrate(ctx, tables, cfg(2).Migrations, false); !errors.Is(err, ErrDropsData) {
+		t.Fatalf("shared migrate without --allow-data-loss: %v", err)
+	}
+	os.Setenv(EnvAllowDataLoss, "1")
+	_, err := shared.Migrate(ctx, tables, cfg(2).Migrations, false)
+	os.Unsetenv(EnvAllowDataLoss)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2, _ := OpenStores(shared, path, cfg(2))
+	defer s2.Close()
+	p, _ := SiloPath(dir, "org", "A")
+	f, _ := OpenSQLite(p)
+	if st, detail, err := s2.check(ctx, f, s2.silos["org"], false, false); err != nil || st != SiloMigrating {
+		t.Fatalf("before opening: %s %q %v", st, detail, err)
+	}
+	f.Close()
+	d, err := s2.silo(ctx, "org", "A")
+	if err != nil || d.state != SiloOK {
+		t.Fatalf("open: %v", err)
+	}
+	if ok, err := tableExists(ctx, d.store.db, "Note__Note"); err != nil || !ok {
+		t.Fatalf("Note in A's database: %v %v", ok, err)
+	}
+	if _, m, _, _ := schemaRow(ctx, d.store.db); m != "0002_silo_org" {
+		t.Fatalf("row %q", m)
+	}
+	if _, err := d.store.db.ExecContext(ctx, `INSERT INTO "Note__Note" ("id", "org") VALUES ('n1', 'A')`); err != nil {
+		t.Fatalf("a Note in A's database: %v", err)
 	}
 }
 

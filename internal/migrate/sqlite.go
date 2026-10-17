@@ -55,6 +55,22 @@ func SQL(step Step, old, new Schema) ([]string, error) {
 		return []string{"DROP INDEX IF EXISTS " + quote(IndexName(step.Table, step.Column))}, nil
 	case Rebuild:
 		return rebuild(step, old, new)
+	case IntoSilo:
+		nt, err := newTable(step, new)
+		if err != nil {
+			return nil, err
+		}
+		st, err := db.CreateStmt(nt.Desc(), new.byName())
+		if err != nil {
+			return nil, err
+		}
+		out := []string{strings.Replace(st, "CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ", 1)}
+		for _, c := range nt.Columns {
+			if c.Ref != "" {
+				out = append(out, createIndex(step.Table, c.Name))
+			}
+		}
+		return out, nil
 	}
 	return nil, fmt.Errorf("migrate: unknown step kind %v", step.Kind)
 }

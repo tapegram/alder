@@ -18,12 +18,14 @@ import (
 // one that is not is refused, naming the column to mark or to add. A table already in a silo is
 // refused (a table lives in one store).
 //
-// A table that migrations/ already create lives in the shared database until now: its
-// schema.json entry is marked with the silo (the migration generator refuses a table that
-// changes store without that mark, book 8 "Silos"), and the notes say what stays behind: rows a
-// shared database holds of it are not moved, and silos made before have no such table. So a
-// silo is declared before the app holds data.
-func NewSilo(p *Program, key string, tables []string) ([]Edit, []string, error) {
+// A table that migrations/ already create lives in the shared database until now, and a
+// database may hold rows of it: it is refused unless empty (`--empty`: the person says no
+// database holds rows of it yet). Then its schema.json entry is marked with the silo (the
+// migration generator refuses a table that changes store without that mark, book 8 "Silos"), a
+// migration is written (migrate.SiloMigration: it creates the table in the silos made before,
+// which are behind until it runs, and DROPS DATA, so a deploy of it needs --allow-data-loss),
+// and the notes say what stays behind: rows a shared database holds of it are not moved.
+func NewSilo(p *Program, key string, tables []string, empty bool) ([]Edit, []string, error) {
 	app := p.Modules["App"]
 	if app == nil || p.Session == nil {
 		return nil, nil, Refusef("there is no module `App` with a `session`: a silo is keyed by a session field")
@@ -67,7 +69,7 @@ func NewSilo(p *Program, key string, tables []string) ([]Edit, []string, error) 
 	if err != nil {
 		return nil, nil, err
 	}
-	return siloEdits(p, app, e, key, tables)
+	return siloEdits(p, app, e, key, tables, empty)
 }
 
 // siloApp is App's source with `silo key { … }` written after the session (or the tables added
@@ -120,11 +122,13 @@ func partitionFix(t, kt *Table, key string) error {
 }
 
 // siloEdits are App's edit and, when migrations/schema.json has the tables (migrations create
-// them in the shared database), the snapshot's tables marked with the silo, with the notes that
-// say what that leaves behind.
-func siloEdits(p *Program, app *Module, e *srcEdit, key string, tables []string) ([]Edit, []string, error) {
+// them in the shared database), with empty, the snapshot's tables marked with the silo and the
+// migration that creates them in the silos made before, with the notes that say what that
+// leaves behind; without empty, the refusal.
+func siloEdits(p *Program, app *Module, e *srcEdit, key string, tables []string, empty bool) ([]Edit, []string, error) {
 	edits := []Edit{{Path: app.File, Body: e.result()}}
-	snap := filepath.Join(p.Dir, "migrations", "schema.json")
+	dir := filepath.Join(p.Dir, "migrations")
+	snap := filepath.Join(dir, "schema.json")
 	if _, err := os.Stat(snap); err != nil {
 		return edits, nil, nil
 	}
@@ -132,12 +136,13 @@ func siloEdits(p *Program, app *Module, e *srcEdit, key string, tables []string)
 	if err != nil {
 		return nil, nil, err
 	}
-	var moved []string
+	var moved, qualified []string
 	for i := range s.Tables {
 		for _, n := range tables {
 			if t := p.TableNamed(n); t != nil && s.Tables[i].Name == t.Module+"."+t.Name {
 				s.Tables[i].Silo = key
 				moved = append(moved, n)
+				qualified = append(qualified, s.Tables[i].Name)
 			}
 		}
 	}
@@ -145,12 +150,27 @@ func siloEdits(p *Program, app *Module, e *srcEdit, key string, tables []string)
 		return edits, nil, nil
 	}
 	slices.Sort(moved)
+	slices.Sort(qualified)
+	them := map[bool]string{true: "it", false: "them"}[len(moved) == 1]
+	if !empty {
+		return nil, nil, Refusef("%s: migrations/ create %s in the shared database, so a database may hold rows of %s: `silo %s` would leave them there, unread (a migration does not move rows between databases). If no database holds rows of %s yet, run this again with --empty: it also writes the migration that creates %s in the silos made before, and the deploy that applies it needs --allow-data-loss (book 8, \"Silos\")",
+			joinAnd(moved), them, them, key, them, them)
+	}
 	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return nil, nil, err
 	}
-	edits = append(edits, Edit{Path: "migrations/schema.json", Body: string(b) + "\n"})
-	notes := []string{fmt.Sprintf("!! %s: migrations/ create %s in the shared database; a database that already holds rows of %s keeps them there, unread, and silos made before have no such table: declare a silo before the app holds data (book 8, \"Silos\")",
-		joinAnd(moved), map[bool]string{true: "it", false: "them"}[len(moved) == 1], map[bool]string{true: "it", false: "them"}[len(moved) == 1])}
+	name, err := migrate.NextName(dir, "silo_"+key)
+	if err != nil {
+		return nil, nil, err
+	}
+	m, err := migrate.SiloMigration(s, key, qualified, name)
+	if err != nil {
+		return nil, nil, err
+	}
+	edits = append(edits, Edit{Path: "migrations/schema.json", Body: string(b) + "\n"},
+		Edit{Path: "migrations/" + name + ".sql", Create: true, Body: migrate.Render(m)})
+	notes := []string{fmt.Sprintf("!! %s: migrations/ create %s in the shared database; %s creates %s in the silos made before, and DROPS DATA: rows a database holds of %s stay in the shared database, unread, so its deploy needs --allow-data-loss (book 8, \"Silos\")",
+		joinAnd(moved), them, name, them, them)}
 	return edits, notes, nil
 }

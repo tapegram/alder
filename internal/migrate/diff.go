@@ -22,9 +22,10 @@ const (
 	AddIndex                     // CREATE INDEX IF NOT EXISTS "T__col" for a @ref column
 	DropIndex                    // DROP INDEX IF EXISTS "T__col"
 	Rebuild                      // SQLite's table rebuild: everything else (see SQL)
+	IntoSilo                     // a table moves into `silo NewName` (SiloMigration): CREATE TABLE IF NOT EXISTS
 )
 
-var stepKindNames = [...]string{"CreateTable", "DropTable", "RenameTable", "AddColumn", "DropColumn", "RenameColumn", "AddIndex", "DropIndex", "Rebuild"}
+var stepKindNames = [...]string{"CreateTable", "DropTable", "RenameTable", "AddColumn", "DropColumn", "RenameColumn", "AddIndex", "DropIndex", "Rebuild", "IntoSilo"}
 
 func (k StepKind) String() string {
 	if int(k) < len(stepKindNames) {
@@ -67,6 +68,8 @@ func (s Step) String() string {
 		return "drop index on " + t + "." + s.Column
 	case Rebuild:
 		return "rebuild table " + t + ": " + s.Reason
+	case IntoSilo:
+		return "move table " + t + " into silo " + s.NewName
 	}
 	return s.Kind.String() + " " + t
 }
