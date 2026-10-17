@@ -1,4 +1,4 @@
-/*! alder-ui v0.3.1 | Apache-2.0 | built by scripts/build.py from components/*.js; do not edit. */
+/*! alder-ui v0.3.3 | Apache-2.0 | built by scripts/build.py from components/*.js; do not edit. */
 
 // ---- components/al-shim.js ----
 {
@@ -87,7 +87,9 @@ customElements.get("al-menu") || customElements.define("al-menu", class extends 
 // (aria-selected, aria-controls, roving tabindex) built from the labels' text and
 // put before the panels (the radio labels are hidden; the radios stay and drive
 // the CSS), role="tabpanel" + id + aria-labelledby on each panel, click/arrows/
-// Home/End, `selected`, <al-tab name>, and al-select (detail.tab). Load as a module.
+// `selected`, <al-tab name>, and al-select (detail.tab); al-tabs-keys.js adds the click
+// and the arrow keys. A MutationObserver
+// rebuilds all of it, and the chosen tab, after a DOM patch (a morph) undoes it.
 let seq = 0;
 customElements.get("al-tabs") || customElements.define("al-tabs", class extends HTMLElement {
   sync() {
@@ -101,46 +103,65 @@ customElements.get("al-tabs") || customElements.define("al-tabs", class extends 
     this.rs[i].dispatchEvent(new Event("change", { bubbles: true }));
     this.list.children[i].focus();
   }
-  connectedCallback() {
-    if (this.list) return;
-    const n = ++seq, list = (this.list = document.createElement("div"));
+  build() {
+    const tabs = [...this.querySelectorAll(":scope > al-tab")].filter((t) => t.querySelector("input[type=radio]"));
+    const labels = tabs.map((t) => t.querySelector("input[type=radio]").closest("label"));
+    const panels = tabs.map((t) => t.querySelector(":scope > al-panel"));
+    if (this.list?.parentNode === this && labels.every((l) => l.hidden) && panels.every((p) => !p || p.id)) return;
+    const first = !this.list, list = document.createElement("div");
     list.setAttribute("role", "tablist");
-    this.rs = [];
-    this.querySelectorAll(":scope > al-tab").forEach((tab, i) => {
-      const radio = tab.querySelector("input[type=radio]"), panel = tab.querySelector(":scope > al-panel");
-      if (!radio) return;
+    this.rs = tabs.map((tab) => tab.querySelector("input[type=radio]"));
+    this.rs.forEach((radio, i) => {
+      const tab = tabs[i], panel = panels[i], b = list.appendChild(document.createElement("button"));
       if (!radio.name && tab.getAttribute("name")) radio.name = tab.getAttribute("name");
-      if (tab.hasAttribute("selected")) radio.checked = true;
-      const b = list.appendChild(document.createElement("button")), label = radio.closest("label");
-      Object.assign(b, { type: "button", id: `al-tabs-${n}-${i}`, textContent: label.textContent.trim() });
+      if (first ? tab.hasAttribute("selected") : this.at === i) radio.checked = true;
+      Object.assign(b, { type: "button", id: `al-tabs-${this.n}-${i}`, textContent: labels[i].textContent.trim() });
       b.setAttribute("role", "tab");
-      label.hidden = true;
-      if (panel) {
-        panel.id ||= `${b.id}-panel`;
-        panel.setAttribute("role", "tabpanel");
-        panel.setAttribute("aria-labelledby", b.id);
-        b.setAttribute("aria-controls", panel.id);
-      }
-      this.rs.push(radio);
+      labels[i].hidden = true;
+      if (!panel) return;
+      panel.id ||= `${b.id}-panel`;
+      panel.setAttribute("role", "tabpanel");
+      panel.setAttribute("aria-labelledby", b.id);
+      b.setAttribute("aria-controls", panel.id);
     });
-    this.prepend(list);
+    this.list?.remove();
+    this.prepend((this.list = list));
     this.sync();
-    list.addEventListener("click", (e) => {
-      const i = [...list.children].indexOf(e.target.closest("button"));
-      if (i >= 0) this.pick(i);
-    });
-    list.addEventListener("keydown", (e) => {
-      const i = [...list.children].indexOf(e.target), last = this.rs.length - 1;
-      const to = { ArrowRight: i < last ? i + 1 : 0, ArrowLeft: i > 0 ? i - 1 : last, Home: 0, End: last }[e.key];
-      if (to === undefined || i < 0) return;
-      e.preventDefault(), this.pick(to);
-    });
+  }
+  connectedCallback() {
+    if (this.n) return;
+    this.n = ++seq;
+    this.build();
+    this.at = this.rs.findIndex((r) => r.checked);
+    new MutationObserver(() => this.build()).observe(this, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "id"] });
     this.addEventListener("change", (e) => {
+      this.at = this.rs.indexOf(e.target);
       this.sync();
       const tab = e.target.closest("al-tab");
       if (tab) this.dispatchEvent(new CustomEvent("al-select", { bubbles: true, detail: { tab } }));
     });
   }
+});
+}
+
+// ---- components/al-tabs-keys.js ----
+{
+// Optional: the tab buttons al-tabs.js builds respond to a click and to the arrow
+// keys, Home and End (each picks the tab: it checks the radio, so al-select fires).
+// One listener on the document serves every <al-tabs>, rebuilt or not.
+document.addEventListener("click", (e) => {
+  const tabs = e.target.closest?.("al-tabs [role=tab]")?.closest("al-tabs");
+  const i = tabs ? [...tabs.list.children].indexOf(e.target.closest("[role=tab]")) : -1;
+  if (i >= 0) tabs.pick(i);
+});
+document.addEventListener("keydown", (e) => {
+  const tabs = e.target.closest?.("al-tabs [role=tab]")?.closest("al-tabs");
+  if (!tabs) return;
+  const i = [...tabs.list.children].indexOf(e.target), last = tabs.rs.length - 1;
+  const to = { ArrowRight: i < last ? i + 1 : 0, ArrowLeft: i > 0 ? i - 1 : last, Home: 0, End: last }[e.key];
+  if (to === undefined) return;
+  e.preventDefault();
+  tabs.pick(to);
 });
 }
 
@@ -213,17 +234,23 @@ customElements.get("al-toast") || customElements.define("al-toast", class extend
 // popover="hint" (the browser treats it as "manual" where "hint" is unknown;
 // the behaviour is the same), anchors it to the trigger, wires
 // aria-describedby, and shows it on hover and keyboard focus; Escape hides it.
+// The setup is re-applied each time it is shown, so a morph that drops the
+// attributes the script added (the server never writes them) does not break it.
 customElements.get("al-tooltip") || customElements.define("al-tooltip", class extends HTMLElement {
   connectedCallback() {
     const trigger = document.getElementById(this.getAttribute("for"));
     if (!trigger || this.wired) return;
     this.wired = true;
-    this.id ||= "al-tip-" + Math.random().toString(36).slice(2, 8);
-    this.hasAttribute("popover") || this.setAttribute("popover", "hint");
-    this.setAttribute("role", "tooltip");
-    this.setAttribute("anchor", trigger.id);
-    trigger.setAttribute("aria-describedby", this.id);
-    const show = () => this.matches(":popover-open") || this.showPopover();
+    const tid = "al-tip-" + Math.random().toString(36).slice(2, 8);
+    const wire = () => {
+      this.id ||= tid;
+      this.hasAttribute("popover") || this.setAttribute("popover", "hint");
+      this.setAttribute("role", "tooltip");
+      this.setAttribute("anchor", trigger.id);
+      trigger.setAttribute("aria-describedby", this.id);
+    };
+    wire();
+    const show = () => (wire(), this.matches(":popover-open") || this.showPopover());
     const hide = () => this.matches(":popover-open") && this.hidePopover();
     for (const [type, f] of [["pointerenter", show], ["focus", show], ["pointerleave", hide], ["blur", hide]]) trigger.addEventListener(type, f);
     trigger.addEventListener("keydown", (e) => e.key === "Escape" && hide());

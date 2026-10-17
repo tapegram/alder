@@ -35,7 +35,7 @@ box", explains why):
   styles that box by its tag name and attributes. Every element works
   with JavaScript off.
 
-The version Alder ships is **v0.3.1**: the compiler embeds a copy of
+The version Alder ships is **v0.3.3**: the compiler embeds a copy of
 the library's stylesheet, scripts (`al.js`) and manifest at that tag (`rt/al/VERSION`;
 "Where it lives", below).
 
@@ -953,8 +953,11 @@ tab, -1 on the others); the radio labels get `hidden`, so they leave the
 accessibility tree and the tab order, but the radios stay and still drive
 the CSS that shows the panel; each panel gets `role="tabpanel"`, an `id`
 (generated where you wrote none) and `aria-labelledby` naming its tab.
-A click, the arrow keys, Home and End check the hidden radio, so
-`al-select` fires as before. A screen reader announces it as a tab list
+A click, the arrow keys, Home and End (`al-tabs-keys.js`) check the
+hidden radio, so `al-select` fires as before. Every message of an Alder page
+morphs the body, which would undo all of this (the server writes none of it),
+so the script watches the element and rebuilds the tab list, the hidden
+labels and the panels' roles after a patch, keeping the tab the reader chose. A screen reader announces it as a tab list
 whose tabs are `Details` and `Comments`, the selected one marked, followed
 by the open tabpanel.
 

@@ -186,6 +186,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       return { list: list.getAttribute('role'), outside: root.querySelectorAll('input[role], label:not([hidden])').length, panelsInList: list.querySelectorAll('[role=tabpanel]').length, sel: tabs.map((t) => t.getAttribute('aria-selected')), idx: tabs.map((t) => t.tabIndex), linked: tabs.every((t, i) => panels[i] && t.getAttribute('aria-controls') === panels[i].id && panels[i].getAttribute('aria-labelledby') === t.id && t.id) };
     });
     check('tabs (Alder page): tablist, tab with aria-selected following the choice, tabpanel linked by id', aria.list === 'tablist' && aria.outside === 0 && aria.panelsInList === 0 && aria.sel.join() === 'false,true' && aria.idx.join() === '-1,0' && aria.linked, aria);
+    // a message that rerenders morphs the body: the enhanced tabs must survive it, the choice kept
+    await Promise.all([page.waitForResponse((r) => r.url().includes('/_m/Smoke')), page.click('al-button:has-text("Refresh")')]);
+    await sleep(300); // the patch is applied
+    const morphed = await page.evaluate(() => {
+      const root = document.querySelector('al-tabs'), tabs = [...root.querySelectorAll('[role=tablist] > button[role=tab]')];
+      return { lists: root.querySelectorAll('[role=tablist]').length, sel: tabs.map((t) => t.getAttribute('aria-selected')), hidden: [...root.querySelectorAll('label')].every((l) => l.hidden), shown: [...root.querySelectorAll('al-panel')].map((p) => p.checkVisibility()) };
+    });
+    check('tabs (Alder page): after a message rerenders the page, the tablist is back, the second tab still selected, the labels hidden', morphed.lists === 1 && morphed.sel.join() === 'false,true' && morphed.hidden && morphed.shown.join() === 'false,true', morphed);
     await page.focus('#save-help');
     await sleep(150);
     const tip = await page.evaluate(() => {
