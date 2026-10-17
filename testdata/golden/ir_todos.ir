@@ -1092,6 +1092,7 @@
 (app-msg Logout)
 (app-update App.update)
 (session App.Session)
+(deploy (env local script (script "./scripts/deploy-local.sh")) (proxy Caddy))
 (capability Auth.Login.Password
   (verify { email: Text, password: Text } -> Task (Maybe Text)))
 (fake Auth.Login.Password
