@@ -45,8 +45,11 @@ type Result struct {
 	Via    map[string]string
 	Silos  map[string][]string
 	Choose map[string]string
-	Holes  int            // count of W0002 reported
-	U      *types.Unifier // for Apply on stored types
+	// Arms are the arms of each `update` with their stores, from the one-store analysis
+	// (writeset.go), by page module ("App" for App's update).
+	Arms  map[string][]ArmStore
+	Holes int            // count of W0002 reported
+	U     *types.Unifier // for Apply on stored types
 }
 
 // CtorInfo is a union constructor: the union it builds and its payload type (nil for none).

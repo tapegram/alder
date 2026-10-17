@@ -1,0 +1,10 @@
+module Audit
+
+import AuditLog
+
+-- a helper in another module that writes the shared store
+log : Text -> Task Unit
+log text = {
+  let _ <- Db.insert AuditLog { text: text }
+  Task.succeed ()
+}

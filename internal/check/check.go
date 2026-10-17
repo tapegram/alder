@@ -234,6 +234,7 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 		c.ctx(prog.Modules[name]).checkBodies()
 		c.propagateScoped()
 	}
+	c.checkWriteSets() // one store per Task (E0031) needs every body checked
 	// App rules need every module's bodies checked first (Session.put usage)
 	if app := prog.Modules["App"]; app != nil && !prog.Failed["App"] {
 		c.ctx(app).checkApp()

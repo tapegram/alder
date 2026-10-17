@@ -1,0 +1,23 @@
+module Projects
+
+import Project
+import AuditLog
+
+page "/projects" { } requires user, org
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+msg Create
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = {
+  let _ <- Db.insertScoped Project { name: "p" }
+  let _ <- Db.insert AuditLog { text: "created" }
+  Task.succeed Rerender
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>x</p>

@@ -1,0 +1,11 @@
+module Board
+
+import Team
+
+type BoardId = brand Text
+
+table Board {
+  id: BoardId @id,
+  name: Text,
+  team: Team.TeamId @ref Team @partition team,
+}

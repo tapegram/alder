@@ -1,0 +1,8 @@
+module Team
+
+type TeamId = brand Text
+
+table Team {
+  id: TeamId @id,
+  name: Text,
+}

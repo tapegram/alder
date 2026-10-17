@@ -1,6 +1,7 @@
 package ir
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -74,4 +75,82 @@ func m11View(s string) string {
 func excerpt(s string, i int) string {
 	lo, hi := max(i-120, 0), min(i+120, len(s))
 	return s[lo:hi]
+}
+
+// TestIR_Partitions (M15): the corpus app partitions-ok lowers its partitions (org and user
+// keys), `via`, `silo`, `choose`, the admin form and the stores of its update arms. Its dump is
+// reviewed by hand in testdata/golden/ir_partitions.ir.
+func TestIR_Partitions(t *testing.T) {
+	p := lowerDir(t, "../../testdata/corpus/partitions-ok")
+	compareGolden(t, "../../testdata/golden/ir_partitions.ir", Dump(p))
+	parts := map[string]string{}
+	for _, tb := range p.Tables {
+		if tb.Partition != nil {
+			parts[tb.Name] = tb.Partition.Key + ":" + tb.Partition.Column
+		}
+	}
+	if fmt.Sprint(parts) != "map[Issue:org:org Label:org:org Note:user:owner Project:org:org]" {
+		t.Errorf("partitions: %v", parts)
+	}
+	if p.Via["org"] == nil || p.Via["org"].Name != "Membership" || len(p.Via) != 1 {
+		t.Errorf("via: %v", p.Via)
+	}
+	var silo []string
+	for _, tb := range p.Silos["org"] {
+		silo = append(silo, tb.Name)
+	}
+	if strings.Join(silo, " ") != "Project Issue" || len(p.Silos) != 1 {
+		t.Errorf("silos: %v", p.Silos)
+	}
+	if p.Choose["org"] == nil || p.Choose["org"].Module != "Orgs.Index" {
+		t.Errorf("choose: %v", p.Choose)
+	}
+	stores := map[string]string{}
+	for _, pg := range p.Pages {
+		if pg.Module == "Admin.Projects" && (pg.Silo != "org" || strings.Join(pg.Requires, ",") != "user") {
+			t.Errorf("admin form: requires %v silo %q", pg.Requires, pg.Silo)
+		}
+		for _, a := range pg.Arms {
+			stores[pg.Module+"."+a.Msg] = a.Store.String()
+		}
+	}
+	want := map[string]string{"Projects.Index.Add": "silo org", "Projects.Index.Seed": "silo org", "Projects.Index.Both": "silo org",
+		"Projects.Index.Tag": "shared", "Notes.Index.Add": "shared", "Orgs.Index.Pick": "shared", "Admin.Projects.Remove": "silo org"}
+	for k, w := range want {
+		if stores[k] != w {
+			t.Errorf("arm %s: store %q, want %q", k, stores[k], w)
+		}
+	}
+	if len(p.AppArms) != 1 || p.AppArms[0].Msg != "Leave" || p.AppArms[0].Store != StoreShared {
+		t.Errorf("App arms: %+v", p.AppArms)
+	}
+	seen := map[string]int{}
+	for _, m := range p.Modules {
+		for _, v := range m.Values {
+			var walk func(e Expr)
+			walk = func(e Expr) {
+				switch x := e.(type) {
+				case *DbScoped:
+					seen[x.Op+" "+x.Key]++
+				case *DbGetScoped:
+					seen[x.Op+" "+x.Key]++
+				case *DbUpdateScoped:
+					seen[x.Op+" "+x.Key]++
+				case *DbDeleteScoped:
+					seen[x.Op+" "+x.Key]++
+				case *DbInsertScoped:
+					seen[x.Op+" "+x.Key]++
+				}
+				for _, k := range Children(e) {
+					if k != nil {
+						walk(k)
+					}
+				}
+			}
+			walk(v.Body)
+		}
+	}
+	if fmt.Sprint(seen) != "map[Db.deleteScoped org:1 Db.getScoped org:2 Db.insertMine user:1 Db.insertScoped org:4 Db.insertScoped user:1 Db.mine user:1 Db.scoped org:3 Db.scoped user:1 Db.updateScoped org:2]" {
+		t.Errorf("scoped nodes: %v", seen)
+	}
 }

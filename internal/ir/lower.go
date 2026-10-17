@@ -628,6 +628,17 @@ func (l *lowerer) declareTypes() {
 			l.out.Silos[k] = append(l.out.Silos[k], l.tables[t])
 		}
 	}
+	for name, arms := range l.res.Arms {
+		out := make([]*Arm, len(arms))
+		for i, a := range arms {
+			out[i] = &Arm{Msg: a.Msg, Store: StoreSilo(a.Silo), Pos: posOf(a.Span)}
+		}
+		if name == "App" {
+			l.out.AppArms = out
+		} else if pg := l.pages[name]; pg != nil {
+			pg.Arms = out
+		}
+	}
 	for k, pg := range l.res.Choose {
 		if l.out.Choose == nil {
 			l.out.Choose = map[string]*Page{}

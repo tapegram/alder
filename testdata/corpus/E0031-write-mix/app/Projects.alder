@@ -1,0 +1,69 @@
+module Projects
+
+import Project
+import AuditLog
+import Audit
+import Board
+import Org
+
+page "/projects" { } requires user, org, team
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+-- a helper of this module: a shared write
+note : Text -> Task Unit
+note text = Audit.log text
+
+msg Create
+msg Helped
+msg Many
+msg Silos
+msg Reads
+msg Other
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  -- the spec's case: a silo write and a shared write in one Task
+  Create _ -> {
+    let _ <- Db.insertScoped Project { name: "p" }
+    let _ <- Db.insert AuditLog { text: "created p" }
+    Task.succeed Rerender
+  },
+  -- the shared write hides in a helper (of this module, then of another)
+  Helped _ -> {
+    let _ <- Db.insertScoped Project { name: "p" }
+    let _ <- note "created p"
+    Task.succeed Rerender
+  },
+  -- and in a Task.all over List.map
+  Many _ -> {
+    let _ <- Task.all (List.map (\t -> Audit.log t) ["a", "b"])
+    let _ <- Db.insertScoped Project { name: "p" }
+    Task.succeed Rerender
+  },
+  -- two silos
+  Silos _ -> {
+    let _ <- Db.insertScoped Project { name: "p" }
+    let _ <- Db.insertScoped Board { name: "b" }
+    Task.succeed Rerender
+  },
+  -- reads of the other stores are fine
+  Reads _ -> {
+    let _ <- Db.from AuditLog |> Db.all
+    let _ <- Db.scoped Board |> Db.all
+    let _ <- Db.get Org session.org
+    let _ <- Db.insertScoped Project { name: "p" }
+    Task.succeed Rerender
+  },
+  _ -> {
+    let _ <- Db.insert AuditLog { text: "other" }
+    let _ <- Db.insertScoped Board { name: "b" }
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>x</p>
