@@ -24,7 +24,8 @@ import (
 //     `alder deploy`", and nothing is migrated.
 //   - Ahead: the database at 0002, v1 serves the maintenance page (503) on every route and
 //     /_alder/health answers 503 "ahead: …".
-//   - Equal: v2 serves, and /_alder/health answers 200 with ALDER_BUILD.
+//   - Equal: v2 serves, and /_alder/health answers 200 with ALDER_BUILD; with the fake closed,
+//     503 {"db":"unreachable"} (no host, no driver error).
 //   - FileStillMigrates: v2 with a file ALDER_DB migrates it on start (M14 unchanged).
 func TestStartCheck_Binary(t *testing.T) {
 	needGoTool(t)
@@ -156,8 +157,11 @@ func TestStartCheck_Binary(t *testing.T) {
 		code, body := get(t, app, "/_alder/health")
 		var h map[string]string
 		json.Unmarshal([]byte(body), &h)
-		if code != 503 || h["build"] != "b1" || !strings.HasPrefix(h["db"], "ahead: ") || !strings.Contains(h["db"], "0002_") {
+		if code != 503 || h["build"] != "b1" || !strings.HasPrefix(h["db"], "ahead: a newer build migrated it (to 0002_") || !strings.HasSuffix(h["db"], ", which this build does not have)") {
 			t.Fatalf("health: %d %s", code, body)
+		}
+		if strings.Contains(body, d.Hostname) || strings.Contains(body, "libsql") || strings.Contains(body, f.URL) {
+			t.Fatalf("health names the database: %s", body)
 		}
 		if got := recorded(); !strings.HasPrefix(got, "0001_initial 0002_") {
 			t.Fatalf("recorded: %q", got)
@@ -171,6 +175,11 @@ func TestStartCheck_Binary(t *testing.T) {
 		}
 		if code, body := get(t, app, "/"); code != 200 || !strings.Contains(body, "home") {
 			t.Fatalf("home: %d\n%s", code, body)
+		}
+		// the database goes away: 503 "unreachable", and nothing of the driver's error
+		f.Close()
+		if code, body := get(t, app, "/_alder/health"); code != 503 || body != `{"build":"b2","db":"unreachable"}`+"\n" {
+			t.Fatalf("health with the database gone: %d %q", code, body)
 		}
 	})
 

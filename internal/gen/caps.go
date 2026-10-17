@@ -710,9 +710,10 @@ func Main(name string, withCaps, withSilos bool) []byte {
 // shuts the server down gracefully: requests in flight get 5 s to finish. ALDER_EXIT_ON_STDIN_EOF=1
 // (set by alder run) makes the app stop the same way when its standard input reaches EOF, so it
 // never outlives the dev server. GET /_alder/health answers {"build":"<ALDER_BUILD>","db":"ok"}
-// (200) when the database answers, else 503 with the error. With ALDER_DB=libsql://… (a database
-// on Turso) the app does not migrate on start: it exits 1 when the database is behind this
-// build (alder deploy migrates it) and serves the maintenance page when a newer build migrated it.
+// (200) when the database answers, else 503 "unreachable" (the error is logged). With
+// ALDER_DB=libsql://… (a database on Turso) the app does not migrate on start: it exits 1 when
+// the database is behind this build (alder deploy migrates it) and serves the maintenance page
+// when a newer build migrated it.
 //
 // Two arguments run a maintenance task instead of serving (alder deploy runs them at the
 // target, chapter 16): --migrate-only applies the pending migrations to ALDER_DB (each

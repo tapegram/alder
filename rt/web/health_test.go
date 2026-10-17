@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http/httptest"
@@ -47,15 +48,58 @@ func TestHealth_OK(t *testing.T) {
 	}
 }
 
-// A store that cannot answer SELECT 1 (its connection closed): 503 with the error.
+// flakyStore is a store whose SELECT 1 fails with err while err is set: a driver error naming
+// the database's host, as Turso's does.
+type flakyStore struct {
+	*db.SQLite
+	err error
+}
+
+func (f *flakyStore) Ping(ctx context.Context) error {
+	if f.err != nil {
+		return f.err
+	}
+	return f.SQLite.Ping(ctx)
+}
+
+// A store that cannot answer SELECT 1: 503 with the fixed category "unreachable", never the
+// driver's error (the route is public; the error names the host). The error is logged at warn
+// once when the checks start failing, and once more when they pass again — not on every check.
 func TestHealth_DBDown(t *testing.T) {
-	st := healthStore(t)
-	st.Close()
-	h := NewRouter(nil, testOpts(func(o *Options) { o.Store, o.Build = st, "b-1" }))
-	w := serve(h, httptest.NewRequest("GET", "/_alder/health", nil))
-	m := healthBody(t, w)
-	if w.Code != 503 || m["build"] != "b-1" || !strings.Contains(m["db"], "closed") {
-		t.Fatalf("%d %v", w.Code, m)
+	const host = "app-acme.turso.io"
+	st := &flakyStore{SQLite: healthStore(t), err: errors.New(`Post "https://` + host + `/v2/pipeline": dial tcp: connection refused`)}
+	var logs []string
+	h := NewRouter(nil, testOpts(func(o *Options) {
+		o.Store, o.Build = st, "b-1"
+		o.Log = func(level, msg string) { logs = append(logs, level+": "+msg) }
+	}))
+	for range 3 {
+		w := serve(h, httptest.NewRequest("GET", "/_alder/health", nil))
+		if m := healthBody(t, w); w.Code != 503 || m["build"] != "b-1" || m["db"] != "unreachable" {
+			t.Fatalf("%d %v", w.Code, m)
+		}
+		if b := w.Body.String(); strings.Contains(b, host) || strings.Contains(b, "https://") || strings.Contains(b, "refused") {
+			t.Fatalf("the body carries the driver's error: %s", b)
+		}
+	}
+	if len(logs) != 1 || !strings.HasPrefix(logs[0], "warn: ") || !strings.Contains(logs[0], host) {
+		t.Fatalf("logs while failing %q", logs)
+	}
+	st.err = nil
+	for range 2 {
+		if w := serve(h, httptest.NewRequest("GET", "/_alder/health", nil)); w.Code != 200 {
+			t.Fatalf("recovered: %d %s", w.Code, w.Body.String())
+		}
+	}
+	if len(logs) != 2 || logs[1] != "warn: health: the database answers again" {
+		t.Fatalf("logs after the recovery %q", logs)
+	}
+	// a closed connection is unreachable too
+	closed := healthStore(t)
+	closed.Close()
+	h = NewRouter(nil, testOpts(func(o *Options) { o.Store = closed }))
+	if m := healthBody(t, serve(h, httptest.NewRequest("GET", "/_alder/health", nil))); m["db"] != "unreachable" {
+		t.Fatalf("closed: %v", m)
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	rtpkg "alder/rt"
@@ -91,6 +92,10 @@ type router struct {
 	script http.Handler
 
 	bigCookie sync.Once // the oversized-cookie warning is logged once per router
+
+	// healthDown is whether the last health check failed its SELECT 1: the error is logged
+	// when it starts failing and the recovery when it answers again, not on every check
+	healthDown atomic.Bool
 }
 
 // sessionMaxAge is the session cookie's lifetime in seconds: 30 days from the time the session
@@ -188,7 +193,8 @@ type segment struct {
 // (datastar.Navigate), because the client's fetch would follow a 303 itself and leave the
 // address bar and history at the old URL.
 //
-// The router's only mutable state is a once-only warning: it is safe for concurrent requests.
+// The router's only mutable state is a once-only warning and the health check's last outcome
+// (an atomic): it is safe for concurrent requests.
 func NewRouter(routes []Route, opts Options) http.Handler {
 	rt := &router{opts: opts, key: opts.Secret, log: opts.Log, now: opts.Now, script: datastar.Handler()}
 	if rt.log == nil {
@@ -368,11 +374,15 @@ const HealthPath = alderPrefix + "health"
 const healthTimeout = 5 * time.Second
 
 // health answers HealthPath: 200 {"build":"<Options.Build>","db":"ok"} when the store answers
-// SELECT 1 (within healthTimeout), else 503 with the error's text as "db" — also when
-// Options.SharedMaintenance is set (its text). A platform's health check (Render's) sends it: a
-// build that cannot reach its database, or that a newer build's migrations left behind, is never
-// switched to. It is answered before anything else the router does: no session is read or set,
-// no CSRF check, no log line, no dev panel; never cached.
+// SELECT 1 (within healthTimeout), else 503 with "db": "unreachable" — a fixed category: the
+// route is public, and the driver's error names the database's host and the upstream's answer;
+// the error itself goes to the log at warn, once when the check starts failing (and a warn
+// line once it answers again), not on every check. When Options.SharedMaintenance is set, 503
+// with its text as "db" ("ahead: <detail>", the schema check's own sentence: migration names,
+// no host). A platform's health check (Render's) sends it: a build that cannot reach its
+// database, or that a newer build's migrations left behind, is never switched to. It is answered
+// before anything else the router does: no session is read or set, no CSRF check, no request
+// log line, no dev panel; never cached.
 func (rt *router) health(w http.ResponseWriter, r *http.Request) {
 	status, state := http.StatusOK, "ok"
 	if err := rt.opts.SharedMaintenance; err != nil {
@@ -381,7 +391,12 @@ func (rt *router) health(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), healthTimeout)
 		defer cancel()
 		if err := p.Ping(ctx); err != nil {
-			status, state = http.StatusServiceUnavailable, err.Error()
+			status, state = http.StatusServiceUnavailable, "unreachable"
+			if !rt.healthDown.Swap(true) {
+				rt.log("warn", "health: the database does not answer: "+err.Error())
+			}
+		} else if rt.healthDown.Swap(false) {
+			rt.log("warn", "health: the database answers again")
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
