@@ -346,6 +346,13 @@ func TestDeploySsh_CaddyDrainRestore(t *testing.T) {
 	if got := namesVia(t, public); got != "Ada" {
 		t.Errorf("through Caddy after the rollback: %q, want Ada (the copy from before the migration)", got)
 	}
+	// where lsof is: the only process with app.db open is the build rolled back to
+	if lsof := box.sh(t, fmt.Sprintf("command -v lsof >/dev/null && { lsof -t %s/db/app.db | sort -u | tr '\\n' ' '; echo; cat %s/builds/%s/pid; } || true", box.qr(), box.qr(), id1)); strings.TrimSpace(lsof) != "" {
+		lines := strings.Split(strings.TrimSpace(lsof), "\n")
+		if len(lines) != 2 || strings.TrimSpace(lines[0]) != strings.TrimSpace(lines[1]) {
+			t.Errorf("processes with app.db open (lsof -t), then %s's pid:\n%s", id1, lsof)
+		}
+	}
 	postVia(t, public, "Edsger")
 	if got := dbNames(t, box); got != "Ada,Edsger" {
 		t.Errorf("app.db holds %q, want Ada,Edsger: the build serving does not write the restored file", got)
