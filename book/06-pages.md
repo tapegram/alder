@@ -982,6 +982,14 @@ type ("`silo org` takes `org` from the page's parameter: add `org:
 Org.OrgId` to the page's parameters"). `alder new admin` writes these
 pages for the tables of a silo (chapter 15).
 
+The role is the only guard, so it must be a role only some users have.
+`requires user, role Admin, silo org` opens every org to an Admin; with
+`role Member | Admin`, where every signed-in user is a `Member` (the
+workspace's default role), it opens every org to every user, a
+non-member included, since the page takes the org from its address, not
+from a membership. The checker cannot tell a role everyone has from one
+few have: give the admin form a role that is granted, never a default.
+
 **Where the rules are kept.** Only where the key is narrowed: in a page
 module whose page `requires` it (or the admin form) and its helpers, and
 in tests, which run with the test's session. A fake has no session
@@ -1070,7 +1078,8 @@ notFound =
   cookie. Field types follow the same rules as form fields. `Session.put`
   (chapter 7) changes it; a `Task` that fails leaves it as it was.
 - `login` names the page to redirect to when `requires` fails.
-- `error` and `notFound` render failure pages.
+- `error` and `notFound` render failure pages; an app with a `silo` may
+  add `maintenance : Html Never`, the 503 page of a silo not served.
 - `msg` and `update` declare app-level messages (above). They are optional.
 
 ## Notices and in-flight state

@@ -266,7 +266,8 @@ A hole stops `alder test` (it refuses while one is left): run it last, after the
 alder new table <Name> <field>:<Type>[=default][@ref=T][@cascade|@restrict|@setNull][@owner][@partition=k][@unique] … [--silo]
   adds created/updated (Time @created/@updated) unless --no-timestamps (then `created:Time@created`);
   `org:Org.OrgId@ref=Org@partition=org`; --silo puts it in App's `silo org` (a table referring to a siloed one must)
-alder new silo <key> <T> …   App's `silo key { T, … }`; each T must be @partition key
+alder new silo <key> <T> … [--empty]   App's `silo key { T, … }`; each T must be @partition key;
+  a T migrations/ create needs --empty (no rows yet: it writes the move's migration)
 alder new page <Module> <path> [--list T | --show T [--by <unique col>] | --from T …] [--requires user|org] [--role R]
   --requires org writes `requires user, org`; --list/--show read an org-partitioned T with Db.scoped/getScoped
   a {x} in the path needs --param x:Type (load is then ?load); --show, --list and --from make their own

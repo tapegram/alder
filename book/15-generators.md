@@ -3703,7 +3703,7 @@ alder new page Orgs.Index /orgs --blank --requires user
 alder edit session add-field org:Org.OrgId via Membership --choose Orgs.Index
 alder new table Project name:Text.NonEmpty org:Org.OrgId@ref=Org@partition=org --no-timestamps
 alder new table Todo title:Text.NonEmpty done:Bool=False project:Project.ProjectId@ref=Project@cascade org:Org.OrgId@ref=Org@partition=org --no-timestamps
-alder new silo org Project Todo
+alder new silo org Project Todo --empty
 alder new page Projects.Index /projects --blank --requires org
 alder new page Projects.Show /projects --show Project --blank --requires org
 ```
@@ -3747,16 +3747,25 @@ there is). A table that is not partitioned by the key is refused, the
 sentence naming the fix: "`Membership` is not partitioned by `org`: mark
 its column `org` `@partition org` (`org: Org.OrgId @ref Org @partition
 org`), then run this again". The tables here have migrations already (each
-`alder new table` wrote one), so the command marks them in
-`migrations/schema.json` and prints what that means:
+`alder new table` wrote one), so a database may hold their rows, and
+without `--empty` the command refuses: "Project and Todo: migrations/
+create them in the shared database, so a database may hold rows of
+them: `silo org` would leave them there, unread (…). If no database
+holds rows of them yet, run this again with --empty". In a new app
+nothing holds rows yet, so `--empty` is true: the command marks the
+tables in `migrations/schema.json`, writes the migration of the move,
+and prints what that means:
 
 ```text
-!! Project and Todo: migrations/ create them in the shared database; a database that already holds rows of them keeps them there, unread, and silos made before have no such table: declare a silo before the app holds data (book 8, "Silos")
+wrote migrations/0006_silo_org.sql
+!! Project and Todo: migrations/ create them in the shared database; 0006_silo_org creates them in the silos made before, and DROPS DATA: rows a database holds of them stay in the shared database, unread, so its deploy needs --allow-data-loss (book 8, "Silos")
 ```
 
-In a new app nothing holds rows yet, so the note is only a warning; in
-a deployed one it is the reason `alder migrate` refuses the same change
-made by hand (chapter 8, "Moving a table into a silo").
+The migration changes no table; it creates the tables in any silo made
+before it, and its `DROPS DATA` line asks a deploy that applies it to a
+database with data for `--allow-data-loss` (a first deploy has none to
+lose). In a deployed app it is the reason `alder migrate` refuses the
+same change made by hand (chapter 8, "Moving a table into a silo").
 
 **`alder new page … --requires org`** writes `requires user, org` (a
 `via` key needs the user first), and its list, row and `--from` pages

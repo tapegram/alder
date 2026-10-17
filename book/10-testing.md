@@ -419,7 +419,20 @@ like the page's. Things to know:
   globex }) { orgs: [] } { user: ann, org: Nothing, role: Member })`
   gives `Err "Session.put org: no Membership for this user and org"`
   (`Orgs.Index "a non-member's switch is refused"`). `Test.login` itself
-  is refused the same way for an org the user is no member of.
+  is refused the same way for an org the user is no member of. Through
+  the browser the same refusal is an answer, not an error: a form that
+  sends it is `FormRejected [{ field: "", message: "You are not a member
+  of that workspace." }]`, and a message without a form is the
+  not-found page (a 404 in production, not a 500).
+- **One store per `Test.run`.** A `Test.run` runs its `Task` as a request
+  runs one, on one store: the first one it writes, or for `Test.run
+  (update msg model session)` of a page the store of `msg`'s arm, as the
+  request's route binds it. A `Test.run` whose `Task` writes the shared
+  database and a silo fails the test with the internal error production
+  answers 500 with ("Db.insert Project writes silo org in a Task on the
+  shared store (one store per Task)"). The test's own body is not one
+  request: it may set up rows in the shared database and in several
+  orgs' databases.
 - **The re-read.** Deleting the membership in the test body, then
   `Test.open`ing the page, shows the re-read idiom at work: the cookie
   still has the org, and the page answers `PageMissing` (`Projects.Index

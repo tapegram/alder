@@ -849,14 +849,32 @@ ones.
 
 A `Task` runs in one transaction, and a transaction is one database's.
 So **a `Task` writes to one store**: the shared database, or one silo.
-The checker works out what each arm of every `update` writes (the tables
-of its `Db.insert`, `Db.update` and `Db.delete` calls and their scoped
-forms, followed into every helper it uses, in any module, and into
-`Task.all`), and refuses an arm whose writes fall in two stores (E0031):
+The checker works out what each arm of every `update` writes, and
+refuses an arm whose writes fall in two stores (E0031):
 
 ```text
 `Create` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own message.
 ```
+
+What it counts is every mention of a write function — `Db.insert`,
+`Db.update`, `Db.delete` and their scoped forms — anywhere the arm can
+reach: in the arm, in every helper it mentions (in any module, a helper
+of a helper too), in a lambda, in a `Task.all` over a `List.map`. It
+does not matter whether the function is called where it is written:
+`let ins = Db.insert` and then `ins AuditLog { … }`, or a lambda that is
+handed `Db.insert` and applies it, write `AuditLog` all the same. The
+table is read from the type the function has at that mention (a `Db`
+function always names its table there: `Table t` is refused, E0003).
+The count errs on the side of too many: a helper that is mentioned and
+never called still counts.
+
+That is what the checker proves: an `update` arm it accepts mentions no
+write of a second store. It does not look at a `test`'s own Tasks, nor
+inside a capability's adapter (Go code). There the runtime holds the
+rule: a request's `Task` is bound to its arm's store before it runs, a
+`Test.run`'s to the store it writes first (to its arm's, for a page's
+`update`), and a write of another store fails the `Task` with an
+internal error: a 500 in production, a failed test under `alder test`.
 
 Reads may mix: an arm, or a `load`, may read the shared database and a
 silo, as the workspace's projects page reads its org's name (shared)
@@ -903,15 +921,20 @@ created by the same migrations, and they stay empty.
 ### The open-time check
 
 Each silo's file records the schema it is at: a table
-`_alder_schema` with one row, the fingerprint of the tables (as
-`_alder_meta` does for the shared database) and the name of the last
-migration applied. A deploy migrates the shared database at start-up
+`_alder_schema` with one row, a fingerprint of the tables (as
+`_alder_meta` does for the shared database) and of which tables live in
+which silo, and the name of the last migration applied. The silos'
+tables are in the fingerprint so that a table moved into a silo (below)
+makes every silo made before the move behind, not equal: equal would
+serve it without the table. A deploy migrates the shared database at start-up
 ("When the app starts", above), but not the thousands of silos: each is
 checked when the running app first opens it, and the answer is cached
 for the process. Three outcomes, besides a new file, which is created at
 the app's schema:
 
-1. **Equal**: the row is the app's. The silo is served.
+1. **Equal**: the row is the app's. The silo is served (when the row
+   names an earlier migration that changed none of the tables, the row
+   is brought to the last one's name).
 2. **Behind**: the row names an earlier migration of this app. The
    migrations after it are applied to the file then and there (only
    their statements on the silo's tables), checked as at start-up, and
@@ -945,14 +968,36 @@ a silo made before the change would lack the table. So `alder migrate`
 refuses a table that moves into a silo, out of one, or between two:
 
 ```text
-alder migrate: table Activity moves into `silo org`, but the migrations create it in the shared database, and a migration does not move its rows into a database per org (book 8, "Silos"): in an app that holds no data yet, `alder new silo org Activity` declares it and says what it leaves behind; otherwise keep Activity shared
+alder migrate: table Activity moves into `silo org`, but the migrations create it in the shared database, and a migration does not move its rows into a database per org (book 8, "Silos"): when no database holds rows of it yet, `alder new silo org Activity --empty` declares it, writes the migration that creates it in the silos made before and says what it leaves behind; otherwise keep Activity shared
 ```
 
 `migrations/schema.json` records each table's silo for that comparison
-(`"silo": "org"`). `alder new silo` (chapter 15) is the deliberate way:
-it writes the declaration, marks the tables in `schema.json`, and says
-what stays behind; it is for an app that has not been deployed yet,
-which is when a silo should be declared.
+(`"silo": "org"`). `alder new silo` (chapter 15) is the deliberate way,
+and for a table the migrations already create it asks you to say that
+no database holds its rows: without `--empty` it refuses. With it, it
+writes the declaration, marks the table in `schema.json`, and writes a
+migration of the move (`0002_silo_org.sql`):
+
+```sql
+-- alder migration 0002_silo_org
+-- from 1e805e781e3e
+-- to 1e805e781e3e
+-- step: move table Activity into silo org
+-- DROPS DATA: shared rows of Activity: it moves into silo org, and the rows the shared database holds of it stay there, unread
+
+CREATE TABLE IF NOT EXISTS "Activity__Activity" (…) STRICT;
+CREATE INDEX IF NOT EXISTS "Activity__Activity__org" ON "Activity__Activity"("org");
+```
+
+It changes no table, so it leads from the schema to the same schema.
+In the shared database, which has the table, its statements do nothing.
+In a silo made before the move, which is behind by it (the fingerprint
+above), they create the table when the silo is next opened. Its `DROPS
+DATA` line is the shared database's: rows it holds of the table stay
+there, never read again. So a deploy that applies it needs
+`--allow-data-loss` (chapter 16), which is the point: the deploy plan
+shows the move, and you say once more that nothing is lost. The line
+names no silo's data, so it does not stop a silo from migrating.
 
 ## Beyond CRUD
 

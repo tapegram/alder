@@ -248,7 +248,7 @@ holes (W0002) with their types among them.
 | `alder edit session add-field <name>:<Type>=<default>` | the field, at the end of `App`'s session; the default is required; session records written on one line elsewhere get the field with its default; written despite other breakage (`--strict` refuses) |
 | `alder edit session add-field org:Org.OrgId via Membership [--choose <Page>]` | a key (M15, chapter 6, "Partitions"): `org: Maybe Org.OrgId via Membership`, no default (a session starts without one), session records written on one line get `org: Nothing`; with `--choose`, `choose org = <Page>` after the session. Refused for a second `via` field, a table that is not the app's, a default |
 | `alder new table … org:Org.OrgId@ref=Org@partition=org [--silo]` | the field `org: Org.OrgId @ref Org @partition org`; the delete-rule tests sign in with the key. `--silo` puts the table in its key's `silo` in `App` (writing the declaration, or adding to it), as a table that refers to a siloed one must be |
-| `alder new silo <key> <Table> …` | `App`'s `silo <key> { … }` after the session (or the tables added to it); each table must be partitioned by the key (the refusal names the column to mark, or how to make the table again with one). A table migrations/ already create is marked `"silo"` in `schema.json`, and a `!!` line says what that leaves behind: a silo is declared before the app holds data (chapter 8, "Moving a table into a silo") |
+| `alder new silo <key> <Table> … [--empty]` | `App`'s `silo <key> { … }` after the session (or the tables added to it); each table must be partitioned by the key (the refusal names the column to mark, or how to make the table again with one). A table migrations/ already create (a database may hold its rows) is refused unless `--empty`, which says none does: then it is marked `"silo"` in `schema.json`, a migration of the move is written (`NNNN_silo_<key>.sql`: it creates the table in the silos made before and DROPS DATA, the shared rows left behind, so its deploy needs `--allow-data-loss`), and a `!!` line says so (chapter 8, "Moving a table into a silo") |
 | `alder new page … --requires org` | `requires user, org` (a `via` key needs the user first); `--list`/`--show`/`--from` read a table partitioned by the key with `Db.scoped`/`Db.getScoped`; the tests sign in as a member of a row of the key's table, show another org's row left out, and that a session without the key goes to `choose org`'s page. `alder new form` on such a page inserts with `Db.insertScoped` |
 | `alder new msg App <Name> [<field>:<Type> …]` | in `App`: `msg <Name>`, its arm of `update` (the hole `?<name>`; the `update` is created when `App` has none) and a test that calls `update` and ends in the hole `?expected`; no button, as a message of `App` is sent from any page |
 | `alder new form <Page> <Form> … --msg <M>` for a `msg M { … }` declared without a form | the message rewritten as `msg M { … } form <Form>`, the form in the view and a test of `Test.submit (M { … })`; the message's own button and its `pressing` test give way; refused when `M` has a form |
@@ -1016,9 +1016,10 @@ migration changes one database's tables and does not move rows between
 databases (chapter 8, "Moving a table into a silo"):
 ``table Activity moves into `silo org`, but the migrations create it in
 the shared database, and a migration does not move its rows into a
-database per org (book 8, "Silos"): in an app that holds no data yet,
-`alder new silo org Activity` declares it and says what it leaves
-behind; otherwise keep Activity shared``.
+database per org (book 8, "Silos"): when no database holds rows of it
+yet, `alder new silo org Activity --empty` declares it, writes the
+migration that creates it in the silos made before and says what it
+leaves behind; otherwise keep Activity shared``.
 
 Exit 0 when it wrote a migration or found no change. Exit 1 for check
 errors (printed as `alder check` prints them), for a change no migration

@@ -1183,8 +1183,14 @@ a deployed app, each running the current build's executable at the box
 | `alder silos prune <env> [--yes]` | lists the orphaned silos (their org's row was deleted, so nothing can reach them), asks, and removes their files (`--prune-silos`, which checks each again first) |
 | `alder restore <env> --silo org:<id> --to <time>` | rebuilds that one silo from its own backup stream and puts it in place; the file it replaces is kept beside it (`….before-restore-<time>`), and the build is restarted so no process keeps what it read |
 
-A typical session after a deploy whose migration dropped a column of a
-siloed table:
+`--allow-data-loss` on `alder deploy` covers the shared database only.
+So a deploy whose plan drops data, in an app with a silo, says where the
+rest goes before it asks for the flag: "hint: the app has silos:
+--allow-data-loss covers the shared database; a silo whose tables a
+pending migration drops data of waits in maintenance when it is opened,
+until `alder migrate silos production --allow-data-loss` (take a backup
+first; `alder status production` lists them)". A typical session after
+a deploy whose migration dropped a column of a siloed table:
 
 ```text
 $ alder status production

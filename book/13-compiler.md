@@ -1916,15 +1916,20 @@ admin form `silo k`), in a test, and, through a helper, wherever the
 helper's own use is legal (E0026). An unscoped operation on a siloed
 table is held to the same rule. After every body is checked, the
 **write-set analysis** (`internal/check/writeset.go`) collects, for each
-top-level value, the tables its `Db.insert`, `Db.update`, `Db.delete`
-and their scoped forms write, closes that over every value it refers to
-(a fixed point, so a helper of a helper counts), splits each `update`
-into its `match` arms, and gives each arm the store its writes fall in:
-the shared one, or `silo org`. An arm with two stores is E0031. It
-over-approximates (a helper counts if it is referred to, called or not)
-and never under-approximates. The answer is `Result.Arms`, which the IR
-keeps as `Page.Arms` (`(arms (Create silo org) (Remove silo org))` in
-`alder dump --ir`).
+top-level value, the tables its body writes: every mention of
+`Db.insert`, `Db.update`, `Db.delete` or a scoped form, called there or
+not (`let ins = Db.insert`, a lambda handed `Db.insert`), each with the
+table its type has at that mention — the analysis reads types, not
+spellings, so a write cannot hide behind a name. It closes that over
+every value the body refers to (a fixed point, so a helper of a helper
+counts), splits each `update` into its `match` arms, and gives each arm
+the store its writes fall in: the shared one, or `silo org`. An arm with
+two stores is E0031. It over-approximates (a helper counts if it is
+referred to, called or not) and never under-approximates. What it
+proves is about `update` arms (and fakes): a `test`'s own Tasks and an
+adapter's Go code are the runtime's to check, below. The answer is
+`Result.Arms`, which the IR keeps as `Page.Arms` (`(arms (Create silo
+org) (Remove silo org))` in `alder dump --ir`).
 
 **The Go.** The table's descriptor names its partition and its silo
 (`build/workspace/Project_alder.go`):
@@ -1961,13 +1966,22 @@ func store__Projects__Index(msg Projects__Index__Msg) string {
 ```
 
 and `db.Enter(rq.Env, store__Projects__Index(msg))` opens that org's
-database and makes it the store `eff.Run` begins the transaction on.
+database and makes it the store `eff.Run` begins the transaction on. The
+`return` at the end is the store of the `_` arm (the shared one when
+there is none), and every arm whose store differs from it has a `case`,
+the shared store's included: an explicit arm that writes the shared
+database beside a `_` arm on the org's silo answers `""`, not the
+silo.
 `via` is one function, the router's session check (`session__via` in
 `app__alder.go`), called whenever a `Session.put` changes the session:
 a user set to `Nothing` clears the `org`; an `org` that changed to `Just
 v` needs a `Membership` row for the user and `v`, read with `db.Member`
 inside the running `Task`'s transaction, or the step fails with
-"Session.put org: no Membership for this user and org".
+"Session.put org: no Membership for this user and org". That failure is
+marked (`eff.ErrFail`'s `NotMember`), so a message's route answers it
+as `Reject "You are not a member of that workspace."` on the form that
+sent it, and with the not-found page (404) for a message without a
+form, rather than the error page; `Test.run` sees the failure as it is.
 
 **A store per silo.** `rt/db/stores.go`'s `Stores` holds the shared
 database and the silos opened so far, by key and value. Every database
@@ -1979,14 +1993,17 @@ the step runs in its transaction. A read of the other store runs on a
 read-only connection outside the transaction (SQLite's `query_only`,
 and a Go wrapper that refuses a write), which is how a `load` reads an
 org's name and its projects in one go. A write to another store cannot
-happen in a program that checked; if gen ever emitted one, `route`
-refuses it as an internal error rather than write outside the `Task`.
+happen in an `update` arm that checked; one that reaches it anyway (a
+test's own `Task`, an adapter, a bug in gen) is refused by `route` as an
+internal error rather than written outside the `Task`.
 
 **Opening a silo.** The first request for an org opens its file
 (`openSilo`): the id must be an id, the org's row must exist in the
 shared database (one read), and then the open-time check of chapter 8
 runs in one `BEGIN IMMEDIATE` on the file: create it at the build's
-schema; serve it when its `_alder_schema` row is the build's; apply the
+schema; serve it when its `_alder_schema` row is the build's (`siloHash`:
+the app's schema hash and the tables of each silo, so a table moved
+into a silo leaves the silos made before it behind); apply the
 pending migrations (each statement whose target is a silo table, with
 references out of the silo removed) when it is behind, unless one drops
 data; refuse it when it is ahead. The outcome is cached per process. A
@@ -2008,8 +2025,14 @@ a deploy always signals the old process before it starts the new.
 **Tests.** `db.NewTestStores` gives each test a `:memory:` database per
 org it touches, made on first use, each with its transaction open for
 the whole test, and the test's savepoints (`Test.run`, each browser
-request) span all of them. A test's bound `Task` gets production's
-write checks, so a test cannot pass where production would fail.
+request) span all of them. A browser request's `Task` is bound by the
+same `db.Enter` as production's. A `Test.run`'s `Task` is bound too
+(`rtesting.Inner` sets `Env.Pending`): to the store its first write
+lands in, so a second store fails it as a request's would, or, for
+`Test.run (update msg model session)` of a page, to `store__M(msg)`'s
+store before it runs (`rtesting.InnerOn`), so a wrong arm store fails
+the test as it would fail the request. The test's own body is not
+bound: it may set up rows in the shared database and in several silos.
 
 ### The dev server
 
