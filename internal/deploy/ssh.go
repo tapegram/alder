@@ -148,14 +148,23 @@ func (s *Ssh) master(ctx context.Context) {
 }
 
 // sweepControl removes the control directories of earlier runs that were killed before Close
-// (SIGKILL: SIGINT and SIGTERM end a run through Close): those older than the masters'
-// ControlPersist, whose master has exited by then.
+// (SIGKILL: SIGINT and SIGTERM end a run through Close): those older than two hours whose
+// socket no longer answers (`ssh -O check`: a master of a run still going, `alder logs -f` for
+// hours say, keeps its directory). A master outlives its run by ControlPersist (10m) at most.
 func sweepControl() {
 	dirs, _ := filepath.Glob(filepath.Join(shortTemp(), "alder-ssh-*"))
 	for _, d := range dirs {
-		if fi, err := os.Stat(d); err == nil && fi.IsDir() && time.Since(fi.ModTime()) > 15*time.Minute {
-			os.RemoveAll(d)
+		fi, err := os.Stat(d)
+		if err != nil || !fi.IsDir() || time.Since(fi.ModTime()) < 2*time.Hour {
+			continue
 		}
+		ctl := filepath.Join(d, "c")
+		if _, err := os.Stat(ctl); err == nil {
+			if exec.Command("ssh", "-o", "ControlPath="+ctl, "-O", "check", "alder-sweep").Run() == nil {
+				continue // its master answers: in use
+			}
+		}
+		os.RemoveAll(d)
 	}
 }
 

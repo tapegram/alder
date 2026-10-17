@@ -4108,8 +4108,11 @@ sequence of chapter 16, written once: it calls a `deploy.Target`
 `Prune`, and decides by itself what to refuse and what to print. A
 target knows how to do each step at its kind of place and nothing about
 the order, so the rules (no upload before the plan is accepted, no switch
-before the health check, the previous build left serving on any
-failure) hold for every target because they live in one function. The
+before the health check, the previous build left serving on a failure)
+hold for every target because they live in one function. On the
+experimental Fly target the last rule holds only because it refuses a
+deploy with a pending migration (`MigrationRefuser`): its previous image,
+put back on a migrated database, would refuse to start. The
 engine's tests drive it with a fake target that records its calls.
 
 What a target can do beyond the core is a small optional interface the
@@ -4145,7 +4148,13 @@ standard input until alder closes it, so the lock lives exactly as long
 as the run's connection. Replacing the database (`RestoreBackup`,
 `Restore`) first stops every build that runs, cancelling the delayed
 stop of one still draining: a process that kept the old file open would
-go on serving it, renamed aside. The `Fly` target (`fly.go`)
+go on serving it, renamed aside. Three Caddy caveats follow from
+driving it only through the admin API (chapter 16, "Caddy"): the routes
+live in Caddy's running configuration, so a Caddy alder did not install
+(no `--resume` drop-in) forgets them when it restarts from its
+Caddyfile; a server of the box's own already on `:443` conflicts with
+the `alder` server at `Switch`; and the admin API on localhost answers
+every local user of the box. The `Fly` target (`fly.go`)
 does the same steps through Fly's Machines API with `net/http`, running
 its shell scripts in the machine through the API's `exec`, and `flyctl`
 for the image build, the public addresses and the secrets. The `Script`

@@ -663,7 +663,10 @@ the few seconds between the migration and the restore are in the kept
 file, if anything was written then.
 
 `alder logs` prints the last 100 lines of the current build's log, and
-`-f` follows it until you press Ctrl-C.
+`-f` follows it until you press Ctrl-C: it follows the **current**
+build, so after a deploy or rollback switches builds it goes on with
+the new current build's log (a line `--- alder logs: build <id> is
+current` marks the change).
 
 ## Backups and restore
 
@@ -1054,11 +1057,13 @@ environment is one machine, and a new build **replaces** the old one in
 place: the target swaps the machine's image, and Fly restarts it. The
 image's start script applies the migrations (`--migrate-only`) and then
 serves. There is a pause of a few seconds while the machine restarts
-(Fly's proxy holds the requests meanwhile), and there is no moment when
-both builds run. The guarantees are kept the other way round: a build
-whose migrations refuse, or that fails its health check (asked through
-the public address, `https://<app>.fly.dev/`, until the page names the
-build id), is replaced by the previous image again, and the refusal
+(whether Fly's proxy holds the requests meanwhile or answers with an
+error is unverified: the target has not run against Fly), and there is
+no moment when both builds run. The guarantees are kept the other way
+round: when no migration was pending (the only case the target accepts
+on an existing database), a build that fails its health check (asked
+through the public address, `https://<app>.fly.dev/`, until the page
+names the build id) is replaced by the previous image again, and the refusal
 says the previous build still serves. A rollback is the same swap to an
 older image. `alder logs` is `flyctl logs`; `alder restore` sends the
 database into the volume through the API and restarts the machine,
@@ -1124,8 +1129,12 @@ somewhere, runs `app --migrate-only` there, and starts `app` with
 `ALDER_DB`, `ALDER_ADDR`, `ALDER_STATIC` and `ALDER_SECRET` set (chapter
 11, "alder build"). Since the command cannot see what the script did,
 `status`, `rollback`, `logs` and `restore` (without `--out`) say they are
-not available for a `Script` target, and its plan lists every migration
-without refusing any.
+not available for a `Script` target. Its plan lists every migration (it
+cannot see which the target applied), and the plan itself refuses none;
+applying one is another matter: the app's `--migrate-only` refuses a
+DROPS DATA migration on a database with data unless
+`ALDER_ALLOW_DATA_LOSS=1`, which the script gets only with
+`--allow-data-loss`.
 
 ## SQLite in production
 

@@ -244,7 +244,9 @@ App may declare where it ships (book 16), once: `deploy { production: Ssh "u@hos
   path: "/srv/x" }, staging: Fly "ord" { app: "a" }, local: Script "./s.sh", floor: 0.9, checks: ["cmd"],
   requires: ["SMTP_URL"], backup: S3 "s3://b/p", keep: 5, proxy: None }`; names only, never a secret (E0030)
 alder deploy <env> [--dry-run] [--host h] [--allow-data-loss] [--unsafe-skip-tests]   the gate (check, build,
-  test, --mutate >= floor, checks) then plan and ship; alder status|logs|rollback|restore <env>; alder ci init
+  test, --mutate >= floor, checks) then plan and ship; alder status|logs <env>; alder rollback <env> [id]
+  [--restore-backup --yes]; alder restore <env> [--to t] [--out f] [--yes]; alder ci init (Fly: experimental,
+  refuses a deploy with a pending migration)
 
 """
 
