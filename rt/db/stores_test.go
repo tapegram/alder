@@ -386,7 +386,7 @@ func TestStores_OpenTimeOutcomes(t *testing.T) {
 	}
 	// the cached maintenance answer is checked again after `recheck`
 	s3.mu.Lock()
-	s3.open["org/old"].checked = time.Now().Add(-time.Minute)
+	s3.open["org/old"].checked = time.Now().Add(-2 * time.Minute)
 	s3.mu.Unlock()
 	if _, err := s3.silo(ctx, "org", "old"); err != nil {
 		t.Fatalf("after migrate silos: %v", err)
@@ -493,6 +493,116 @@ func TestMember_InsideTheTransaction(t *testing.T) {
 		return struct{}{}, nil
 	}))
 	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// I1: opening (and migrating) one silo holds up no other: B's open takes 2 s, A's — new or open
+// — is served meanwhile; a second request for B waits for the first.
+func TestStores_OpenIsolation(t *testing.T) {
+	dir := t.TempDir()
+	s := openApp(t, dir, 1)
+	ctx := context.Background()
+	if _, err := s.silo(ctx, "org", "A"); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	openHook = func(key, value string) {
+		if value == "B" {
+			close(started)
+			time.Sleep(2 * time.Second)
+		}
+	}
+	defer func() { openHook = nil }()
+	done := make(chan error, 2)
+	for range 2 {
+		go func() { _, err := s.silo(ctx, "org", "B"); done <- err }()
+	}
+	<-started
+	t0 := time.Now()
+	if _, err := s.silo(ctx, "org", "A"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.silo(ctx, "org", "C"); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(t0); d > 500*time.Millisecond {
+		t.Fatalf("A and C waited %s behind B's open", d)
+	}
+	for range 2 {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if d := time.Since(t0); d < time.Second {
+		t.Fatalf("B's second request did not wait for its open (%s)", d)
+	}
+}
+
+// M2: a silo unused for IdleClose is closed and opened again on next use.
+func TestStores_IdleClose(t *testing.T) {
+	dir := t.TempDir()
+	s := openApp(t, dir, 1)
+	s.cfg.IdleClose = time.Millisecond
+	ctx := context.Background()
+	d1, _ := s.silo(ctx, "org", "A")
+	time.Sleep(5 * time.Millisecond)
+	s.mu.Lock()
+	s.swept = time.Time{}
+	s.mu.Unlock()
+	d2, err := s.silo(ctx, "org", "A")
+	if err != nil || d1 == d2 {
+		t.Fatalf("not reopened: %v", err)
+	}
+}
+
+// M3: a draining process opens no silo, and a write to an open one whose schema row another
+// build changed answers the maintenance page.
+func TestStores_DrainRecheck(t *testing.T) {
+	dir := t.TempDir()
+	s := openApp(t, dir, 1)
+	ctx := context.Background()
+	if _, err := s.silo(ctx, "org", "A"); err != nil {
+		t.Fatal(err)
+	}
+	Drain()
+	defer s.draining.Store(false)
+	var me *MaintenanceError
+	if _, err := s.silo(ctx, "org", "new"); !errors.As(err, &me) || !strings.Contains(me.Detail, "shutting down") {
+		t.Fatalf("a new silo while draining: %v", err)
+	}
+	write := func() error {
+		env := siloEnv(s, "A")
+		Narrow(env, "org", "A")
+		if err := Enter(env, "org"); err != nil {
+			return err
+		}
+		_, err := eff.Run(env, eff.KTask, eff.Call("w", true, func(e *eff.Env) (string, error) {
+			return InsertScopedRow(e.Ctx, e.Store.(Store), TxOf(e), projT, []any{nil, "p", nil}, clock)
+		}))
+		return err
+	}
+	if err := write(); err != nil {
+		t.Fatalf("write while draining, schema unchanged: %v", err)
+	}
+	sqlFile(t, filepath.Join(dir, "silos", "org", "A.db"), `UPDATE "_alder_schema" SET "hash" = 'newer'`)
+	if err := write(); !errors.As(err, &me) || me.State != SiloAhead {
+		t.Fatalf("write after another build migrated it: %v", err)
+	}
+	if _, err := s.silo(ctx, "org", "A"); !errors.As(err, &me) {
+		t.Fatalf("the silo still served: %v", err)
+	}
+}
+
+// sqlFile runs stmt on the SQLite file path.
+func sqlFile(t *testing.T, path, stmt string) {
+	t.Helper()
+	f, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := f.db.Exec(stmt); err != nil {
 		t.Fatal(err)
 	}
 }
