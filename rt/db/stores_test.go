@@ -1,0 +1,498 @@
+package db
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"alder/rt/eff"
+)
+
+// The M15 silo fixture: Org is shared, Project lives in `silo org` (org @ref Org @partition org).
+
+type proj struct{ ID, Name, Org string }
+
+type orgSession struct{ org string } // "" is Nothing
+
+func projTable(cols []Column) *Table[proj] {
+	return &Table[proj]{
+		Name:    "Project.Project",
+		Columns: cols,
+		ID:      "id",
+		Encode:  func(r proj) []any { return []any{r.ID, r.Name, r.Org} },
+		Decode: func(v []any) (r proj, err error) {
+			r.ID, _ = v[0].(string)
+			for i, c := range cols {
+				if c.Name == "name" {
+					r.Name, _ = v[i].(string)
+				}
+				if c.Name == "org" {
+					r.Org, _ = v[i].(string)
+				}
+			}
+			return r, nil
+		},
+		ReadID: func(r proj) string { return r.ID },
+		SetID:  func(r proj, id string) proj { r.ID = id; return r },
+		Owner:  "org",
+		Key:    "org",
+		Silo:   "org",
+		User: func(s any) (string, bool) {
+			a, ok := s.(orgSession)
+			return a.org, ok && a.org != ""
+		},
+	}
+}
+
+var (
+	orgDesc   = TableDesc{Name: "Org.Org", ID: "id", Columns: []Column{{Name: "id", Type: CText}, {Name: "name", Type: CText}}}
+	projCols1 = []Column{{Name: "id", Type: CText}, {Name: "name", Type: CText}, {Name: "org", Type: CText, Ref: "Org.Org", OnDelete: Cascade}}
+	// v2 adds a column; v3 instead drops `name` (DROPS DATA)
+	projCols2 = append(append([]Column(nil), projCols1...), Column{Name: "note", Type: CText, Nullable: true})
+	projCols3 = []Column{{Name: "id", Type: CText}, {Name: "org", Type: CText, Ref: "Org.Org", OnDelete: Cascade}}
+	projT     = projTable(projCols1)
+	orgT      = &Table[proj]{Name: "Org.Org", Columns: orgDesc.Columns, ID: "id",
+		Encode: func(r proj) []any { return []any{r.ID, r.Name} },
+		Decode: func(v []any) (r proj, err error) { r.ID, _ = v[0].(string); r.Name, _ = v[1].(string); return r, nil },
+		ReadID: func(r proj) string { return r.ID }, SetID: func(r proj, id string) proj { r.ID = id; return r }}
+)
+
+func projDesc(cols []Column) TableDesc {
+	return TableDesc{Name: "Project.Project", ID: "id", Columns: cols}
+}
+
+// migrationsUpTo are the app's migrations: 0001 creates both tables (v1); 0002 is v2's (add
+// `note`) or v3's (drop `name`, DROPS DATA).
+func siloMigrations(t *testing.T, v int) []Migration {
+	t.Helper()
+	by := map[string]TableDesc{"Org.Org": orgDesc, "Project.Project": projDesc(projCols1)}
+	a, _ := createStmt(orgDesc, by)
+	b, _ := createStmt(projDesc(projCols1), by)
+	ms := []Migration{{Name: "0001_initial", SQL: a + ";\n" + b + ";\n" + `CREATE INDEX IF NOT EXISTS "Project__Project__org" ON "Project__Project"("org");`}}
+	hashOf := func(cols []Column) string {
+		sc, err := schemaOf([]TableDesc{orgDesc, projDesc(cols)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return short(sc.hash)
+	}
+	_, empty := hashSchema(nil)
+	ms[0].From, ms[0].To = short(empty), hashOf(projCols1)
+	defer func() {
+		if len(ms) == 2 {
+			ms[1].From, ms[1].To = ms[0].To, hashOf(map[int][]Column{2: projCols2, 3: projCols3}[v])
+		}
+	}()
+	switch v {
+	case 2:
+		ms = append(ms, Migration{Name: "0002_note", SQL: `ALTER TABLE "Project__Project" ADD COLUMN "note" TEXT;`})
+	case 3:
+		ms = append(ms, Migration{Name: "0003_drop_name", SQL: `ALTER TABLE "Project__Project" DROP COLUMN "name";`, DropsData: []string{"column Project.name"}})
+	}
+	return ms
+}
+
+func siloConfig(t *testing.T, dir string, v int) StoresConfig {
+	cols := map[int][]Column{1: projCols1, 2: projCols2, 3: projCols3}[v]
+	return StoresConfig{Dir: dir, Silos: []Silo{{Key: "org", Tables: []string{"Project.Project"}}},
+		Tables: []TableDesc{orgDesc, projDesc(cols)}, Migrations: siloMigrations(t, v)}
+}
+
+// openApp opens the shared store at dir/app.db, migrated to version v, and its Stores.
+func openApp(t *testing.T, dir string, v int) *Stores {
+	t.Helper()
+	cfg := siloConfig(t, dir, v)
+	path := filepath.Join(dir, "app.db")
+	shared, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { shared.Close() })
+	if _, err := shared.Migrate(context.Background(), cfg.Tables, cfg.Migrations, false); err != nil {
+		t.Fatal(err)
+	}
+	s, err := OpenStores(shared, path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
+func siloEnv(s *Stores, org string) *eff.Env {
+	return &eff.Env{Ctx: context.Background(), Store: s.Shared(), Stores: s, Session: orgSession{org}, Now: func() time.Time { return clock }}
+}
+
+func TestSiloPath_FilenameSafety(t *testing.T) {
+	p, err := SiloPath("/data", "org", "Ab3_-x")
+	if err != nil || p != filepath.Join("/data", "silos", "org", "Ab3_-x.db") {
+		t.Fatalf("got %q, %v", p, err)
+	}
+	for _, bad := range []string{"", ".", "..", "a/b", `a\b`, "a\x00b", "../etc", "x..y"} {
+		if _, err := SiloPath("/data", "org", bad); err == nil {
+			t.Errorf("value %q: no refusal", bad)
+		}
+	}
+	if _, err := SiloPath("/data", "../x", "a"); err == nil {
+		t.Error("key ../x: no refusal")
+	}
+}
+
+// Two orgs: each one's rows are in its own file, and a scoped read sees only its own.
+func TestStores_SiloPerValue(t *testing.T) {
+	dir := t.TempDir()
+	s := openApp(t, dir, 1)
+	ctx := context.Background()
+	for _, org := range []string{"A", "B"} {
+		if _, err := InsertRow(ctx, s.Shared(), nil, orgT, []any{nil, org}, clock); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert := func(org, name string) {
+		env := siloEnv(s, org)
+		Narrow(env, "org", org)
+		if err := Enter(env, "org"); err != nil {
+			t.Fatal(err)
+		}
+		task := eff.Call("Db.insertScoped Project", true, func(e *eff.Env) (string, error) {
+			return InsertScopedRow(e.Ctx, e.Store.(Store), TxOf(e), projT, []any{nil, name, nil}, clock)
+		})
+		if _, err := eff.Run(env, eff.KTask, task); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert("A", "pa")
+	insert("B", "pb")
+	for org, want := range map[string]string{"A": "pa", "B": "pb"} {
+		env := siloEnv(s, org)
+		rows, err := eff.RunQuery(env, eff.Q(eff.Call("Db.all", false, func(e *eff.Env) ([]proj, error) {
+			return All(e.Ctx, e.Store.(Store), TxOf(e), Scoped(projT))
+		})))
+		if err != nil || len(rows) != 1 || rows[0].Name != want {
+			t.Fatalf("org %s: %v %v", org, rows, err)
+		}
+	}
+	// the files: B's lacks A's row; the shared store has none
+	for org, other := range map[string]string{"A": "pb", "B": "pa"} {
+		f, err := OpenSQLite(filepath.Join(dir, "silos", "org", org+".db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := rawCount(t, f, `SELECT COUNT(*) FROM "Project__Project" WHERE "name" = '`+other+`'`); n != 0 {
+			t.Errorf("silo %s holds %s", org, other)
+		}
+		if n := rawCount(t, f, `SELECT COUNT(*) FROM "Project__Project"`); n != 1 {
+			t.Errorf("silo %s holds %d rows", org, n)
+		}
+		f.Close()
+	}
+	if n := rawCount(t, s.Shared(), `SELECT COUNT(*) FROM "Project__Project"`); n != 0 {
+		t.Errorf("the shared store holds %d projects", n)
+	}
+	// the _alder_schema row records the app's hash and last migration
+	f, _ := OpenSQLite(filepath.Join(dir, "silos", "org", "A.db"))
+	defer f.Close()
+	h, m, ok, err := schemaRow(ctx, f.db)
+	if !ok || err != nil || h != s.hash || m != "0001_initial" {
+		t.Fatalf("schema row %q %q %v %v", h, m, ok, err)
+	}
+	// the silo's Project has no REFERENCES into the shared Org
+	var stmt string
+	if err := f.db.QueryRow(`SELECT "sql" FROM sqlite_schema WHERE "name" = 'Project__Project'`).Scan(&stmt); err != nil || strings.Contains(stmt, "REFERENCES") {
+		t.Fatalf("silo table %q %v", stmt, err)
+	}
+}
+
+// A Task on silo A reads the shared store (Org) through a read-only connection outside its
+// transaction; a write through that connection fails, and so does a write to silo B.
+func TestStores_CrossStoreReadOnly(t *testing.T) {
+	dir := t.TempDir()
+	s := openApp(t, dir, 1)
+	ctx := context.Background()
+	orgID, _ := InsertRow(ctx, s.Shared(), nil, orgT, []any{nil, "Acme"}, clock)
+	env := siloEnv(s, "A")
+	Narrow(env, "org", "A")
+	if err := Enter(env, "org"); err != nil {
+		t.Fatal(err)
+	}
+	var name string
+	task := eff.Call("t", true, func(e *eff.Env) (struct{}, error) {
+		o, err := GetRow(e.Ctx, e.Store.(Store), TxOf(e), orgT, orgID)
+		if err != nil || !o.Ok {
+			return struct{}{}, errors.Join(errors.New("no org"), err)
+		}
+		name = o.Val.Name
+		_, err = InsertScopedRow(e.Ctx, e.Store.(Store), TxOf(e), projT, []any{nil, "p", nil}, clock)
+		return struct{}{}, err
+	})
+	if _, err := eff.Run(env, eff.KTask, task); err != nil || name != "Acme" {
+		t.Fatalf("%q %v", name, err)
+	}
+	// a write of the shared table from the silo's Task: refused
+	env = siloEnv(s, "A")
+	Narrow(env, "org", "A")
+	Enter(env, "org")
+	_, err := eff.Run(env, eff.KTask, eff.Call("w", true, func(e *eff.Env) (string, error) {
+		return InsertRow(e.Ctx, e.Store.(Store), TxOf(e), orgT, []any{nil, "x"}, clock)
+	}))
+	if !errors.Is(err, eff.ErrInternal) {
+		t.Fatalf("shared write from a silo Task: %v", err)
+	}
+	// the reader itself refuses a write, at the Go level and at SQLite's
+	ro := readOnly{s.reader, errReaderWrite}
+	if _, err := ro.Insert(ctx, nil, "Org.Org", orgDesc.Columns, "id", "", "", []any{nil, "x"}, clock); !errors.Is(err, eff.ErrInternal) {
+		t.Fatalf("Insert through the reader: %v", err)
+	}
+	if _, err := s.reader.db.Exec(`INSERT INTO "Org__Org" ("id", "name") VALUES ('z', 'z')`); err == nil || !strings.Contains(err.Error(), "readonly") {
+		t.Fatalf("raw write through the reader: %v", err)
+	}
+	// a row of another org from silo A's Task
+	env = siloEnv(s, "A")
+	Narrow(env, "org", "A")
+	Enter(env, "org")
+	_, err = eff.Run(env, eff.KTask, eff.Call("w", true, func(e *eff.Env) (string, error) {
+		return InsertRow(e.Ctx, e.Store.(Store), TxOf(e), projT, []any{nil, "x", "B"}, clock)
+	}))
+	var f *eff.ErrFail
+	if !errors.As(err, &f) || f.Msg != "Db.insert Project: the row's org is not this request's" {
+		t.Fatalf("a B row from A's Task: %v", err)
+	}
+}
+
+func TestStores_Cache(t *testing.T) {
+	dir := t.TempDir()
+	s := openApp(t, dir, 1)
+	ctx := context.Background()
+	d1, err := s.silo(ctx, "org", "A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d2, _ := s.silo(ctx, "org", "A")
+	if d1 != d2 {
+		t.Fatal("not cached")
+	}
+	if _, err := s.silo(ctx, "org", "../x"); err == nil {
+		t.Fatal("unsafe value opened")
+	}
+}
+
+// makeSilo creates silo org/value with app version v (one row), then closes everything.
+func makeSilo(t *testing.T, dir string, v int, value string) {
+	t.Helper()
+	cfg := siloConfig(t, dir, v)
+	st, err := newStores(nil, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, _ := SiloPath(dir, "org", value)
+	os.MkdirAll(filepath.Dir(p), 0o755)
+	f, err := OpenSQLite(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if state, _, err := st.check(context.Background(), f, st.silos["org"], false, true); err != nil || state != SiloOK {
+		t.Fatalf("%s %v", state, err)
+	}
+	f.register(st.silos["org"].descs)
+	if _, err := f.Insert(context.Background(), nil, "Project.Project", st.silos["org"].descs[0].Columns, "id", "", "", projVals(v), clock); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func projVals(v int) []any {
+	if v == 3 {
+		return []any{nil, value3}
+	}
+	if v == 2 {
+		return []any{nil, "p", value3, nil}
+	}
+	return []any{nil, "p", value3}
+}
+
+const value3 = "X"
+
+// The three open-time outcomes: behind (migrated on open), behind by a migration that drops data
+// (maintenance; the other org served), ahead (maintenance); and --migrate-silos/--silo-status.
+func TestStores_OpenTimeOutcomes(t *testing.T) {
+	dir := t.TempDir()
+	makeSilo(t, dir, 1, "behind")
+	makeSilo(t, dir, 3, "ahead")
+	// v2 serves: "behind" migrates on open, "ahead" (made by v3, whose 0002 v2 lacks) does not
+	s := openApp(t, dir, 2)
+	ctx := context.Background()
+	if _, err := s.silo(ctx, "org", "behind"); err != nil {
+		t.Fatalf("behind: %v", err)
+	}
+	var stmt string
+	f, _ := OpenSQLite(filepath.Join(dir, "silos", "org", "behind.db"))
+	f.db.QueryRow(`SELECT "sql" FROM sqlite_schema WHERE "name" = 'Project__Project'`).Scan(&stmt)
+	if !strings.Contains(stmt, `"note" TEXT`) {
+		t.Fatalf("not migrated: %s", stmt)
+	}
+	if _, m, _, _ := schemaRow(ctx, f.db); m != "0002_note" {
+		t.Fatalf("row %q", m)
+	}
+	f.Close()
+	_, err := s.silo(ctx, "org", "ahead")
+	var me *MaintenanceError
+	if !errors.As(err, &me) || me.State != SiloAhead || !strings.Contains(me.Detail, "alder restore <env> --silo org:<id>") {
+		t.Fatalf("ahead: %v", err)
+	}
+
+	// data loss: a v1 silo opened by v3 (0002 drops Project.name)
+	dir2 := t.TempDir()
+	makeSilo(t, dir2, 1, "old")
+	s3 := openApp(t, dir2, 3)
+	_, err = s3.silo(ctx, "org", "old")
+	if !errors.As(err, &me) || me.State != SiloDataLoss || !strings.Contains(me.Detail, "0003_drop_name: column Project.name") {
+		t.Fatalf("data loss: %v", err)
+	}
+	if _, err := s3.silo(ctx, "org", "fresh"); err != nil { // another org is served
+		t.Fatalf("fresh: %v", err)
+	}
+	// --silo-status lists them without changing anything
+	var out bytes.Buffer
+	if err := StatusSilos(ctx, siloConfig(t, dir2, 3), &out); err != nil {
+		t.Fatal(err)
+	}
+	var lines []SiloStatus
+	for _, l := range strings.Split(strings.TrimSpace(out.String()), "\n") {
+		var st SiloStatus
+		if err := json.Unmarshal([]byte(l), &st); err != nil {
+			t.Fatalf("%q: %v", l, err)
+		}
+		lines = append(lines, st)
+	}
+	if len(lines) != 2 || lines[0].ID != "fresh" || lines[0].State != SiloOK || lines[1].ID != "old" || lines[1].State != SiloDataLoss {
+		t.Fatalf("status: %s", out.String())
+	}
+	// --migrate-silos refuses without --allow-data-loss, applies with it
+	out.Reset()
+	if bad, err := MigrateSilos(ctx, siloConfig(t, dir2, 3), &out); err != nil || bad != 1 || !strings.Contains(out.String(), "org/old: pending-data-loss: ") {
+		t.Fatalf("%d %v %s", bad, err, out.String())
+	}
+	cfg := siloConfig(t, dir2, 3)
+	cfg.AllowDataLoss = true
+	out.Reset()
+	if bad, err := MigrateSilos(ctx, cfg, &out); err != nil || bad != 0 || !strings.Contains(out.String(), "org/old: migrated 0003_drop_name") {
+		t.Fatalf("%d %v %s", bad, err, out.String())
+	}
+	// the cached maintenance answer is checked again after `recheck`
+	s3.mu.Lock()
+	s3.open["org/old"].checked = time.Now().Add(-time.Minute)
+	s3.mu.Unlock()
+	if _, err := s3.silo(ctx, "org", "old"); err != nil {
+		t.Fatalf("after migrate silos: %v", err)
+	}
+	// the statuses of a directory mixing the three: behind (migrating), data loss, ahead
+	dir3 := t.TempDir()
+	makeSilo(t, dir3, 1, "b1")
+	makeSilo(t, dir3, 3, "c3")
+	out.Reset()
+	cfg2 := siloConfig(t, dir3, 2)
+	if err := StatusSilos(ctx, cfg2, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `{"key":"org","id":"b1","state":"migrating"}`) || !strings.Contains(out.String(), `"id":"c3","state":"ahead"`) {
+		t.Fatalf("status: %s", out.String())
+	}
+}
+
+// A test's stores: one in-memory database per silo value touched, each with the test's
+// transaction, and savepoints that span them (a failed step undoes its silo writes too).
+func TestStores_TestMode(t *testing.T) {
+	ctx := context.Background()
+	shared, _ := OpenSQLite(":memory:")
+	defer shared.Close()
+	cfg := siloConfig(t, "", 1)
+	if err := shared.Ensure(ctx, cfg.Tables, true); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewTestStores(shared, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	env := &eff.Env{Ctx: ctx, Store: TestStore{shared, s}, Stores: s, Session: orgSession{}, Now: func() time.Time { return clock }}
+	_, err = eff.Run(env, eff.KTask, eff.Call("test", true, func(e *eff.Env) (struct{}, error) {
+		st, tx := e.Store.(Store), TxOf(e)
+		// rows name their own silo
+		if _, err := InsertRow(e.Ctx, st, tx, projT, []any{nil, "a", "A"}, clock); err != nil {
+			return struct{}{}, err
+		}
+		sp := e.Store.(Savepointer)
+		if err := sp.Savepoint(e.Ctx, tx, "s1"); err != nil {
+			return struct{}{}, err
+		}
+		InsertRow(e.Ctx, st, tx, projT, []any{nil, "a2", "A"}, clock)
+		InsertRow(e.Ctx, st, tx, projT, []any{nil, "b", "B"}, clock) // B's transaction begins inside s1
+		if err := sp.RollbackTo(e.Ctx, tx, "s1"); err != nil {
+			return struct{}{}, err
+		}
+		if err := sp.Release(e.Ctx, tx, "s1"); err != nil {
+			return struct{}{}, err
+		}
+		e.Session = orgSession{"A"}
+		rows, err := All(e.Ctx, st, tx, Scoped(projT))
+		if err != nil || len(rows) != 1 || rows[0].Name != "a" {
+			return struct{}{}, errors.Join(errors.New("A"), err)
+		}
+		e.Session = orgSession{"B"}
+		n, err := CountRows(e.Ctx, st, tx, From(projT))
+		if err != nil || n != 0 {
+			return struct{}{}, errors.Join(errors.New("B"), err)
+		}
+		e.Session = orgSession{}
+		_, err = All(e.Ctx, st, tx, From(projT))
+		var f *eff.ErrFail
+		if !errors.As(err, &f) || f.Msg != "Db.all Project: `Project` lives in `silo org` and the session has no org" {
+			return struct{}{}, errors.Join(errors.New("no org"), err)
+		}
+		return struct{}{}, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.TestSilo("org", "A") == nil || s.TestSilo("org", "C") != nil {
+		t.Fatal("TestSilo")
+	}
+}
+
+// Member is `via`'s check, inside the Task's transaction: a membership deleted earlier in the
+// same Task is gone.
+func TestMember_InsideTheTransaction(t *testing.T) {
+	ctx := context.Background()
+	mem := &Table[proj]{Name: "Membership.Membership", ID: "id",
+		Columns: []Column{{Name: "id", Type: CText}, {Name: "user", Type: CText}, {Name: "org", Type: CText}},
+		Decode:  func(v []any) (proj, error) { return proj{}, nil }}
+	s, _ := OpenSQLite(":memory:")
+	defer s.Close()
+	if err := s.Ensure(ctx, []TableDesc{mem.Desc()}, true); err != nil {
+		t.Fatal(err)
+	}
+	id, _ := InsertRow(ctx, s, nil, mem, []any{nil, "u", "A"}, clock)
+	env := &eff.Env{Ctx: ctx, Store: s}
+	_, err := eff.Run(env, eff.KTask, eff.Call("t", true, func(e *eff.Env) (struct{}, error) {
+		ok, err := Member(e.Ctx, s, TxOf(e), mem, "user", "u", "org", "A")
+		if err != nil || !ok {
+			return struct{}{}, errors.Join(errors.New("before"), err)
+		}
+		if err := DeleteRow(e.Ctx, s, TxOf(e), mem, id); err != nil {
+			return struct{}{}, err
+		}
+		if ok, err := Member(e.Ctx, s, TxOf(e), mem, "user", "u", "org", "A"); err != nil || ok {
+			return struct{}{}, errors.Join(errors.New("after"), err)
+		}
+		return struct{}{}, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+}

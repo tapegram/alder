@@ -33,13 +33,27 @@ type SQLite struct {
 // OpenSQLite opens (creating if needed) the database at path. ":memory:"
 // is a private in-memory database; it is held on a single connection so
 // every query sees it.
-func OpenSQLite(path string) (*SQLite, error) {
+func OpenSQLite(path string) (*SQLite, error) { return openSQLite(path, false) }
+
+// OpenSQLiteReader opens the file database at path read-only (PRAGMA query_only: every write
+// statement fails with SQLite's "attempt to write a readonly database"). A Task of an app with
+// silos reads another store than its own through one (Stores), outside its transaction.
+func OpenSQLiteReader(path string) (*SQLite, error) {
+	if path == ":memory:" {
+		return nil, fmt.Errorf("db: a reader needs a file database")
+	}
+	return openSQLite(path, true)
+}
+
+func openSQLite(path string, reader bool) (*SQLite, error) {
 	if path == "" || strings.Contains(path, "?") {
 		return nil, fmt.Errorf("db: invalid SQLite path %q", path)
 	}
 	const common = "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 	dsn := path + "?" + common
-	if path != ":memory:" {
+	if reader {
+		dsn += "&_pragma=query_only(1)"
+	} else if path != ":memory:" {
 		dsn += "&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_txlock=immediate"
 		if os.Getenv("ALDER_BACKUP_URL") != "" {
 			// the backup shipper (rt/backup) checkpoints, right after copying the WAL's frames
@@ -740,7 +754,7 @@ func formatNumber() int {
 
 // appTables lists every table except SQLite's own, _alder_meta and _alder_migrations.
 func appTables(ctx context.Context, q querier) ([]string, error) {
-	rows, err := q.QueryContext(ctx, `SELECT "name" FROM sqlite_schema WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite\_%' ESCAPE '\' AND "name" NOT IN ('_alder_meta', '_alder_migrations') ORDER BY "name"`)
+	rows, err := q.QueryContext(ctx, `SELECT "name" FROM sqlite_schema WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite\_%' ESCAPE '\' AND "name" NOT IN ('_alder_meta', '_alder_migrations', '_alder_schema') ORDER BY "name"`)
 	if err != nil {
 		return nil, err
 	}

@@ -81,6 +81,12 @@ type Table[T any] struct {
 	// operations (Mine, GetMineRow, …) act for that user. Neither is part of the stored schema.
 	Owner string
 	User  func(session any) (string, bool)
+	// Key is the session field Owner is a partition by (`@partition org`: "org"; "" for
+	// `@owner`, the user), and User then reads that field. Silo is the `silo` key whose store
+	// holds the table ("" for the shared store): rt/db routes each step on it to the store of
+	// the key's value (route). Neither is part of the stored schema.
+	Key  string
+	Silo string
 }
 
 // TableDesc is a Table without its Go type, for Ensure.
@@ -113,7 +119,10 @@ type Select[T any] struct {
 	Table *Table[T]
 	// Mine (Db.mine) adds the condition `Owner = <the signed-in user>` when the select runs (All,
 	// First, CountRows: the user is the running effect's); SQL refuses to render it unresolved.
-	Mine   bool
+	Mine bool
+	// Op names the scoped operation Mine came from for the trace and its failures ("" is
+	// Db.mine; Db.scoped).
+	Op     string
 	Where  []Cond
 	Order  []Order
 	Limit  *int64

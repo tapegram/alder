@@ -91,35 +91,42 @@ func StoreFrom(ctx context.Context) Store {
 	}
 	st, _ := e.Store.(Store)
 	if st != nil && e.Kind == eff.KQuery {
-		return readOnly{st}
+		return readOnly{st, errQueryWrite}
 	}
 	return st
 }
 
-// readOnly is the Store StoreFrom gives during a Query: reads pass through
-// to the embedded Store, every write method fails.
-type readOnly struct{ Store }
-
-var errQueryWrite = fmt.Errorf("db: %w: write from a Query", eff.ErrInternal)
-
-func (readOnly) Begin(context.Context) (eff.Tx, error) { return nil, errQueryWrite }
-
-func (readOnly) Insert(context.Context, Tx, string, []Column, string, string, string, []any, time.Time) (string, error) {
-	return "", errQueryWrite
+// readOnly is the Store StoreFrom gives during a Query, and the one a step reading another
+// store than its Task's goes through (route: a read-only connection): reads pass through to
+// the embedded Store, every write method fails with err.
+type readOnly struct {
+	Store
+	err error
 }
 
-func (readOnly) Update(context.Context, Tx, string, []Column, string, string, string, []any, time.Time) error {
-	return errQueryWrite
+var (
+	errQueryWrite  = fmt.Errorf("db: %w: write from a Query", eff.ErrInternal)
+	errReaderWrite = fmt.Errorf("db: %w: write through a read-only connection to another store than the Task's", eff.ErrInternal)
+)
+
+func (r readOnly) Begin(context.Context) (eff.Tx, error) { return nil, r.err }
+
+func (r readOnly) Insert(context.Context, Tx, string, []Column, string, string, string, []any, time.Time) (string, error) {
+	return "", r.err
 }
 
-func (readOnly) Delete(context.Context, Tx, string, string, string) error { return errQueryWrite }
-
-func (readOnly) UpdateWhere(context.Context, Tx, string, []Column, string, string, string, string, any, []any, time.Time) (int64, error) {
-	return 0, errQueryWrite
+func (r readOnly) Update(context.Context, Tx, string, []Column, string, string, string, []any, time.Time) error {
+	return r.err
 }
 
-func (readOnly) DeleteWhere(context.Context, Tx, string, string, string, string, any) (int64, error) {
-	return 0, errQueryWrite
+func (r readOnly) Delete(context.Context, Tx, string, string, string) error { return r.err }
+
+func (r readOnly) UpdateWhere(context.Context, Tx, string, []Column, string, string, string, string, any, []any, time.Time) (int64, error) {
+	return 0, r.err
+}
+
+func (r readOnly) DeleteWhere(context.Context, Tx, string, string, string, string, any) (int64, error) {
+	return 0, r.err
 }
 
 // beginFailed is the Tx TxOf returns when beginning the transaction failed.
@@ -147,6 +154,15 @@ func NewID() string {
 
 // GetRow is Db.get.
 func GetRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string) (rt.Maybe[T], error) {
+	st, tx, err := route(ctx, st, tx, t, "Db.get", false, nil)
+	if err != nil {
+		return rt.Nothing[T](), err
+	}
+	return getRow(ctx, st, tx, t, id)
+}
+
+// getRow is GetRow on a store already routed to.
+func getRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string) (rt.Maybe[T], error) {
 	if err := txErr(tx); err != nil {
 		return rt.Nothing[T](), err
 	}
@@ -163,10 +179,14 @@ func GetRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string)
 
 // All is Db.all. No rows is an empty, non-nil slice.
 func All[T any](ctx context.Context, st Store, tx Tx, s Select[T]) ([]T, error) {
+	st, tx, err := route(ctx, st, tx, s.Table, "Db.all", false, nil)
+	if err != nil {
+		return nil, err
+	}
 	if err := txErr(tx); err != nil {
 		return nil, err
 	}
-	s, err := scoped(ctx, s)
+	s, err = scoped(ctx, s)
 	if err != nil {
 		return nil, err
 	}
@@ -206,10 +226,14 @@ func First[T any](ctx context.Context, st Store, tx Tx, s Select[T]) (rt.Maybe[T
 // CountRows is Db.count: the number of rows s yields (honouring its limit
 // and offset).
 func CountRows[T any](ctx context.Context, st Store, tx Tx, s Select[T]) (int64, error) {
+	st, tx, err := route(ctx, st, tx, s.Table, "Db.count", false, nil)
+	if err != nil {
+		return 0, err
+	}
 	if err := txErr(tx); err != nil {
 		return 0, err
 	}
-	s, err := scoped(ctx, s)
+	s, err = scoped(ctx, s)
 	if err != nil {
 		return 0, err
 	}
@@ -223,6 +247,10 @@ func CountRows[T any](ctx context.Context, st Store, tx Tx, s Select[T]) (int64,
 // InsertRow is Db.insert; vals is the Insert record's columns in Columns
 // order with nil at the id/created/updated positions. It returns the new id.
 func InsertRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], vals []any, now time.Time) (string, error) {
+	st, tx, err := route(ctx, st, tx, t, "Db.insert", true, vals)
+	if err != nil {
+		return "", err
+	}
 	if err := txErr(tx); err != nil {
 		return "", err
 	}
@@ -233,7 +261,11 @@ func InsertRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], vals []
 // @updated column set to now. A missing row, or an f that changes the id,
 // fails with *eff.ErrFail and writes nothing.
 func UpdateRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string, f func(T) T, now time.Time) error {
-	cur, err := GetRow(ctx, st, tx, t, id)
+	st, tx, err := route(ctx, st, tx, t, "Db.update", true, nil)
+	if err != nil {
+		return err
+	}
+	cur, err := getRow(ctx, st, tx, t, id)
 	if err != nil {
 		return err
 	}
@@ -249,34 +281,51 @@ func UpdateRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id stri
 
 // DeleteRow is Db.delete. Deleting a missing row is not an error.
 func DeleteRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string) error {
+	st, tx, err := route(ctx, st, tx, t, "Db.delete", true, nil)
+	if err != nil {
+		return err
+	}
 	if err := txErr(tx); err != nil {
 		return err
 	}
 	return st.Delete(ctx, tx, t.Name, t.ID, id)
 }
 
-// ---- the scoped operations (Db.mine, getMine, updateMine, deleteMine, insertMine)
+// ---- the scoped operations (Db.mine, getMine, updateMine, deleteMine, insertMine, and M15's
+// generic Db.scoped, getScoped, updateScoped, deleteScoped, insertScoped)
 //
-// A table with an `@owner` column has Table.Owner and Table.User set. The user each scoped
-// operation acts for is the ambient session's: Table.User of the Session of the Env running
-// with ctx (eff.EnvFrom) — in a served request the session cookie's, in a test the test's
-// (Test.login, Session.put). Without a signed-in user the operation fails with
-// "Db.mine Todo: no signed-in user" (an *eff.ErrFail), never an empty result. A row that is
-// not the user's answers as a missing one: eff.ErrNotFound (a 404 in a route; in a Task the
-// whole transaction rolls back, as for any not-found).
+// A table with an `@owner` or `@partition k` column has Table.Owner (the column), Table.Key (k;
+// "" for `@owner`, the user) and Table.User set. The value each scoped operation acts for is the
+// running effect's (eff.EnvFrom): its Keys[k] when the request's page narrowed k (`requires org`,
+// or the admin form's `silo org` parameter), else Table.User of its Session — in a served
+// request the session cookie's, in a test the test's (Test.login, Session.put). Without one the
+// operation fails with "Db.mine Todo: no signed-in user" ("Db.scoped Project: the session has no
+// org"), an *eff.ErrFail, never an empty result. A row that is not the value's answers as a
+// missing one: eff.ErrNotFound (a 404 in a route; in a Task the whole transaction rolls back, as
+// for any not-found).
 
-// owner is the signed-in user the scoped operation op ("Db.mine") on t acts for.
+// owner is the key value (the signed-in user for `@owner`) the scoped operation op ("Db.mine") on
+// t acts for.
 func owner[T any](ctx context.Context, t *Table[T], op string) (string, error) {
 	name := op + " " + shortName(t.Name)
 	if t.Owner == "" || t.User == nil {
 		return "", fmt.Errorf("db: %w: %s: the table has no owner column", eff.ErrInternal, name)
 	}
 	var session any
-	if e := eff.EnvFrom(ctx); e != nil {
+	e := eff.EnvFrom(ctx)
+	if e != nil {
 		session = e.Session
+		if t.Key != "" {
+			if v, ok := e.Keys[t.Key]; ok {
+				return v, nil
+			}
+		}
 	}
 	u, ok := t.User(session)
 	if !ok {
+		if t.Key != "" {
+			return "", &eff.ErrFail{Msg: name + ": the session has no " + t.Key}
+		}
 		return "", &eff.ErrFail{Msg: name + ": no signed-in user"}
 	}
 	return u, nil
@@ -287,19 +336,26 @@ func owner[T any](ctx context.Context, t *Table[T], op string) (string, error) {
 // the step `Db.mine T` in its trace.
 func Mine[T any](t *Table[T]) Select[T] { return Select[T]{Table: t, Mine: true} }
 
+// Scoped is Db.scoped: Mine for the table's own partition key (the trace notes `Db.scoped T`).
+func Scoped[T any](t *Table[T]) Select[T] { return Select[T]{Table: t, Mine: true, Op: "Db.scoped"} }
+
 // scoped is s with Mine's owner predicate, `owner = ?`, as its first condition.
 func scoped[T any](ctx context.Context, s Select[T]) (Select[T], error) {
 	if !s.Mine {
 		return s, nil
 	}
-	if e := eff.EnvFrom(ctx); e != nil {
-		e.Note("Db.mine " + shortName(s.Table.Name))
+	op := s.Op
+	if op == "" {
+		op = "Db.mine"
 	}
-	u, err := owner(ctx, s.Table, "Db.mine")
+	if e := eff.EnvFrom(ctx); e != nil {
+		e.Note(op + " " + shortName(s.Table.Name))
+	}
+	u, err := owner(ctx, s.Table, op)
 	if err != nil {
 		return s, err
 	}
-	s.Mine = false
+	s.Mine, s.Op = false, ""
 	s.Where = append([]Cond{CEq(s.Table.Owner, u)}, s.Where...)
 	return s, nil
 }
@@ -307,11 +363,24 @@ func scoped[T any](ctx context.Context, s Select[T]) (Select[T], error) {
 // GetMineRow is Db.getMine: row id when it is the signed-in user's, in one SELECT … WHERE id = ?
 // AND owner = ?; eff.ErrNotFound when it is missing or someone else's.
 func GetMineRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string) (T, error) {
+	return getScoped(ctx, st, tx, t, "Db.getMine", id)
+}
+
+// GetScopedRow is Db.getScoped: GetMineRow for the table's partition key.
+func GetScopedRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string) (T, error) {
+	return getScoped(ctx, st, tx, t, "Db.getScoped", id)
+}
+
+func getScoped[T any](ctx context.Context, st Store, tx Tx, t *Table[T], op, id string) (T, error) {
 	var zero T
+	st, tx, err := route(ctx, st, tx, t, op, false, nil)
+	if err != nil {
+		return zero, err
+	}
 	if err := txErr(tx); err != nil {
 		return zero, err
 	}
-	u, err := owner(ctx, t, "Db.getMine")
+	u, err := owner(ctx, t, op)
 	if err != nil {
 		return zero, err
 	}
@@ -338,10 +407,24 @@ func GetMineRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id str
 // someone else's, at either step, is eff.ErrNotFound and nothing is written. An f that changes
 // the id fails with *eff.ErrFail.
 func UpdateMineRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string, f func(T) T, now time.Time) error {
+	return updateScoped(ctx, st, tx, t, "Db.updateMine", id, f, now)
+}
+
+// UpdateScopedRow is Db.updateScoped: UpdateMineRow for the table's partition key (the
+// partition column is never written).
+func UpdateScopedRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string, f func(T) T, now time.Time) error {
+	return updateScoped(ctx, st, tx, t, "Db.updateScoped", id, f, now)
+}
+
+func updateScoped[T any](ctx context.Context, st Store, tx Tx, t *Table[T], op, id string, f func(T) T, now time.Time) error {
+	st, tx, err := route(ctx, st, tx, t, op, true, nil)
+	if err != nil {
+		return err
+	}
 	if err := txErr(tx); err != nil {
 		return err
 	}
-	u, err := owner(ctx, t, "Db.updateMine")
+	u, err := owner(ctx, t, op)
 	if err != nil {
 		return err
 	}
@@ -358,7 +441,7 @@ func UpdateMineRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id 
 	}
 	next := f(cur)
 	if t.ReadID(next) != id {
-		return &eff.ErrFail{Msg: fmt.Sprintf("Db.updateMine %s: update may not change the id", shortName(t.Name))}
+		return &eff.ErrFail{Msg: fmt.Sprintf("%s %s: update may not change the id", op, shortName(t.Name))}
 	}
 	all := t.Encode(next)
 	var cols []Column
@@ -381,10 +464,23 @@ func UpdateMineRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id 
 // DeleteMineRow is Db.deleteMine: one DELETE … WHERE id = ? AND owner = ?; no row deleted (missing,
 // or someone else's) is eff.ErrNotFound.
 func DeleteMineRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string) error {
+	return deleteScoped(ctx, st, tx, t, "Db.deleteMine", id)
+}
+
+// DeleteScopedRow is Db.deleteScoped: DeleteMineRow for the table's partition key.
+func DeleteScopedRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id string) error {
+	return deleteScoped(ctx, st, tx, t, "Db.deleteScoped", id)
+}
+
+func deleteScoped[T any](ctx context.Context, st Store, tx Tx, t *Table[T], op, id string) error {
+	st, tx, err := route(ctx, st, tx, t, op, true, nil)
+	if err != nil {
+		return err
+	}
 	if err := txErr(tx); err != nil {
 		return err
 	}
-	u, err := owner(ctx, t, "Db.deleteMine")
+	u, err := owner(ctx, t, op)
 	if err != nil {
 		return err
 	}
@@ -401,10 +497,19 @@ func DeleteMineRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id 
 // InsertMineRow is Db.insertMine: InsertRow with the owner column (nil in vals) filled with the
 // signed-in user.
 func InsertMineRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], vals []any, now time.Time) (string, error) {
+	return insertScoped(ctx, st, tx, t, "Db.insertMine", vals, now)
+}
+
+// InsertScopedRow is Db.insertScoped: InsertMineRow for the table's partition key.
+func InsertScopedRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], vals []any, now time.Time) (string, error) {
+	return insertScoped(ctx, st, tx, t, "Db.insertScoped", vals, now)
+}
+
+func insertScoped[T any](ctx context.Context, st Store, tx Tx, t *Table[T], op string, vals []any, now time.Time) (string, error) {
 	if err := txErr(tx); err != nil {
 		return "", err
 	}
-	u, err := owner(ctx, t, "Db.insertMine")
+	u, err := owner(ctx, t, op)
 	if err != nil {
 		return "", err
 	}
@@ -413,6 +518,13 @@ func InsertMineRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], val
 		if c.Name == t.Owner && i < len(vals) {
 			vals[i] = u
 		}
+	}
+	st, tx, err = route(ctx, st, tx, t, op, true, vals)
+	if err != nil {
+		return "", err
+	}
+	if err := txErr(tx); err != nil {
+		return "", err
 	}
 	return st.Insert(ctx, tx, t.Name, t.Columns, t.ID, t.Created, t.Updated, vals, now)
 }

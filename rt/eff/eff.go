@@ -177,6 +177,19 @@ type Env struct {
 	Kind       Kind                    // the kind of the effect Run is running (set by Run, restored when it returns)
 	Rec        *Recorder               // dev mode: per-request trace with timings (nil: none, no cost)
 	Within     *Within                 // nil: a Task begins its own transaction on Store; else it runs inside Within.Tx (Run)
+	// Stores is the app's stores when it declares a `silo` (a *db.Stores: rt/db routes each Db
+	// step to the store of its table), nil otherwise. Keys are the partition key values the
+	// request is narrowed to by its page (`requires org`: the session's; `silo org`: the page's
+	// parameter), read before the session by the scoped operations and the routing. SiloKey and
+	// SiloValue name the store Store is ("" for the shared one): db.Enter binds a Task to the
+	// store of its arm before Run begins its transaction there.
+	Stores             any
+	Keys               map[string]string
+	SiloKey, SiloValue string
+	// CheckSession, when set, is called by Session.put (and Test.login) with the session before
+	// and after: an app whose session has a `via` field checks the membership (a non-nil error
+	// fails the step, *ErrFail for a refusal).
+	CheckSession func(e *Env, old, new any) error
 
 	beginTx func() (Tx, error) // set by Run for a Task with a Store: begins Tx
 	active  bool               // Run is running (RunInner may run inside it); restored when it returns

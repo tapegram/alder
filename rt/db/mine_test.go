@@ -247,7 +247,7 @@ func TestStore_UpdateWhereDeleteWhere(t *testing.T) {
 		t.Fatal("the row is still there")
 	}
 	// a Query's store refuses both
-	ro := readOnly{s}
+	ro := readOnly{s, errQueryWrite}
 	if _, err := ro.UpdateWhere(ctx, nil, itemTable.Name, itemTable.Columns, "id", "", id, "owner", "ann", vals, clock); !errors.Is(err, eff.ErrInternal) {
 		t.Fatalf("UpdateWhere from a Query: %v", err)
 	}

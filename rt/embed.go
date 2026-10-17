@@ -19,7 +19,7 @@ import "embed"
 //go:embed backup/bucket.go backup/lock_other.go backup/lock_unix.go backup/restore.go backup/s3.go backup/ship.go backup/snapshot.go
 //go:embed al/al.go al/al.css al/al.js al/custom-elements.json al/VERSION
 //go:embed datastar/datastar.go datastar/datastar.js datastar/VERSION
-//go:embed db/encode.go db/migrate.go db/sqlite.go db/store.go db/table.go
+//go:embed db/encode.go db/migrate.go db/sqlite.go db/store.go db/stores.go db/table.go
 //go:embed eff/eff.go eff/run.go
 //go:embed html/diff.go html/html.go html/parse.go html/state.go
 //go:embed selector/selector.go
