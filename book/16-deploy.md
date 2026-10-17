@@ -777,6 +777,22 @@ on close is planned.
 
 ## The Fly target
 
+**Experimental.** The `Fly` target has run only against a fake of Fly's
+API in alder's own tests; it has never run against Fly itself. Every Fly
+deploy says so (`warning: the Fly target is experimental: it has never
+run against the real Fly API`), and until it is finished (milestone
+M15) it **refuses any deploy that would apply a migration to an
+existing database**:
+
+```text
+alder deploy: refused: Fly target: migrations are not supported yet; deploy a build with no pending migrations, or use Ssh (pending: 0002_add_mood; nothing was shipped)
+```
+
+The reason is at the end of this section. A first deploy, which creates
+the database from the migrations, is allowed: there is no data to lose
+and no earlier build to go back to. Nor does the Fly target have the
+`Ssh` target's deploy lock or `rollback --restore-backup` yet.
+
 `Fly "ord" { app: "blog-staging" }` deploys to [Fly.io](https://fly.io),
 which runs **OCI images** (container images) on its own machines close to
 a region. The target turns the artifact into one:
@@ -795,9 +811,11 @@ a region. The target turns the artifact into one:
   with `flyctl`, which is not on PATH: install it".
 - **The machine and the volume.** Everything else goes through Fly's
   Machines API over HTTP (`https://api.machines.dev/v1`), authenticated
-  with `FLY_API_TOKEN` (`fly tokens create deploy -a <app>`). The first
-  deploy creates the Fly app when it does not exist (in the organization
-  `FLY_ORG`, default `personal`), gives it public addresses (`flyctl ips
+  with `FLY_API_TOKEN`. A deploy token belongs to an app, so either
+  create the app first (`fly apps create blog-staging`, then `fly tokens
+  create deploy -a blog-staging`), or use an organization token (`fly
+  tokens create org`) and let the first deploy create the app (in the
+  organization `FLY_ORG`, default `personal`). It gives the app public addresses (`flyctl ips
   allocate-v4 --shared` and `allocate-v6`), and creates a 1 GB volume
   named `alder_data`, and one machine with the volume mounted at
   `/data`, serving ports 80 and 443 of `https://<app>.fly.dev`.
@@ -828,6 +846,24 @@ older image. `alder logs` is `flyctl logs`; `alder restore` sends the
 database into the volume through the API and restarts the machine,
 whose start script puts it in place. Old images stay in Fly's registry:
 pruning removes only their directories on the volume.
+
+Why migrations are refused for now: on Fly the migrations run in the new
+image's start script, on the one machine. If the new build then fails
+its health check, the target puts the previous image back, and that
+image's start script runs the runtime's start-up check on a database
+that has had a migration the previous build does not know: it refuses
+(chapter 8, "When the app starts"), and the machine stops. The site would
+be down until someone restored the copy by hand. The `Ssh` target avoids
+that because the old build keeps running beside the new one and the copy
+can be put back (`rollback --restore-backup`, and automatically after a
+deploy whose migrations dropped data). The Fly target will get the same
+when its start script can put `builds/<id>/backup.db` back on a revert
+and it has a lock and `--restore-backup`. Three more things a first real
+run must check: a large database's copy (`VACUUM INTO`) and `alder
+restore`'s upload (in pieces of 48 kB) both run through the Machines
+API's `exec`, which times out after 60 seconds; and the
+`--allow-data-loss` flag never reaches a Fly machine (no deploy that
+could use it gets that far).
 
 The target's unit tests run against a fake Machines API. A real deploy
 is a manual test, because it needs an account and costs a little:

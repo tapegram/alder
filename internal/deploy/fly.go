@@ -59,6 +59,13 @@ const flyVolume = "alder_data"
 // fails its health check (GET https://<app>.fly.dev/ until the page's alder-build meta is the
 // build id), is replaced by the previous image again. A rollback is the same swap to an older
 // image. Images stay in Fly's registry; Prune removes only their directories under /data/builds.
+//
+// EXPERIMENTAL: the target has run only against a fake Machines API and a fake flyctl
+// (fly_test.go), never against Fly itself. Until the M15 round makes it whole, it refuses a
+// deploy that would apply a migration to an existing database (RefusesMigrations: a build
+// that fails after its migrations is replaced by the previous image, whose start-time
+// migrate refuses the migrated database, so the machine stops), and it has no deploy lock
+// (Locker) and no `rollback --restore-backup` (BackupRestorer).
 type Fly struct {
 	App, Env  string // the Alder app and environment
 	Region    string
@@ -99,11 +106,20 @@ func NewFly(app, env string, t ir.Target, d *ir.Deploy) *Fly {
 	return f
 }
 
-// AllowDataLoss is told this run's --allow-data-loss (the engine's DataLossAllower): the
-// machine's configuration then carries ALDER_ALLOW_DATA_LOSS=1, without which the runtime's
-// --migrate-only refuses a migration that drops data. The next deploy without the flag writes the
-// configuration without it.
+// AllowDataLoss is told this run's --allow-data-loss (the engine's DataLossAllower). It changes
+// nothing yet: a Fly deploy never applies a migration to a database with data
+// (RefusesMigrations), so ALDER_ALLOW_DATA_LOSS never enters a machine's configuration, where
+// it would outlive the run.
 func (f *Fly) AllowDataLoss(allow bool) { f.allowLoss = allow }
+
+// FlyRefusal is the Fly target's refusal of a deploy with pending migrations (MigrationRefuser).
+const FlyRefusal = "Fly target: migrations are not supported yet; deploy a build with no pending migrations, or use Ssh"
+
+// RefusesMigrations is MigrationRefuser: see Fly.
+func (f *Fly) RefusesMigrations() string { return FlyRefusal }
+
+// FlyExperimental is the warning every Fly deploy prints.
+const FlyExperimental = "warning: the Fly target is experimental: it has never run against the real Fly API (chapter 16, \"The Fly target\")"
 
 // Describe is "Fly ord (app blog-staging)".
 func (f *Fly) Describe() string { return "Fly " + f.Region + " (app " + f.FlyApp + ")" }
@@ -294,8 +310,9 @@ func (f *Fly) Connect(ctx context.Context) (Platform, error) {
 	if f.conn {
 		return plat, nil
 	}
+	fmt.Fprintln(f.Warn, FlyExperimental)
 	if f.Token == "" {
-		return Platform{}, refuse("", "the Fly target needs %s in this environment (`fly tokens create deploy -a %s`); set it and deploy again", EnvFlyToken, f.FlyApp)
+		return Platform{}, refuse("", "the Fly target needs %s in this environment: create the app first (`fly apps create %s`) and a deploy token for it (`fly tokens create deploy -a %s`), or use an organization token (`fly tokens create org`) and let the first deploy create the app; set it and deploy again", EnvFlyToken, f.FlyApp, f.FlyApp)
 	}
 	if f.Flyctl == nil {
 		if _, err := flyctlPath(); err != nil {
@@ -693,9 +710,6 @@ func (f *Fly) config(id, volume string) flyConfig {
 	}
 	if f.BackupURL != "" {
 		env["ALDER_BACKUP_URL"] = f.BackupURL
-	}
-	if f.allowLoss {
-		env["ALDER_ALLOW_DATA_LOSS"] = "1"
 	}
 	return flyConfig{
 		Image:  f.image(id),

@@ -81,6 +81,14 @@ type Schema struct {
 // before Migrate.
 type DataLossAllower interface{ AllowDataLoss(bool) }
 
+// MigrationRefuser is a Target that cannot yet apply a migration to a database that has data
+// (the Fly target: a build that fails after its migrations would leave the app down). A deploy
+// whose plan has pending migrations against a live database is refused with the target's
+// sentence, before anything at the target changes; a first deploy (no database yet) is not.
+type MigrationRefuser interface {
+	RefusesMigrations() string
+}
+
 // Locker is a Target that serializes the runs that change it (deploy, rollback, restore): Lock
 // refuses (a *Refusal naming the holder) while another run holds it; unlock releases it.
 type Locker interface {

@@ -1049,6 +1049,11 @@ migration that drops data without `--allow-data-loss`, a failed health
 check), an unreachable target or a script that exits non-zero; 2 for a
 usage error, a missing declaration or environment.
 
+The `Fly` target is **experimental** (it has never run against Fly
+itself) and refuses a deploy that would apply a migration to an
+existing database: "Fly target: migrations are not supported yet;
+deploy a build with no pending migrations, or use Ssh".
+
 `alder status`, `rollback` and `logs` read the state at the target (exit
 2 for a `Script` environment, which keeps its own). `alder restore`
 rebuilds the database from the bucket at a time and puts it in place, or

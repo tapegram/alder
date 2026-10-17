@@ -175,6 +175,14 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 	for _, l := range plan.Lines() {
 		fmt.Fprintln(w, "  "+l)
 	}
+	if mr, ok := t.(MigrationRefuser); ok && plan.Known && len(plan.Migrations) > 0 {
+		var names []string
+		for _, m := range plan.Migrations {
+			names = append(names, m.Name)
+		}
+		res.Record = rec
+		return res, refuse("", "%s (pending: %s; nothing was shipped)", mr.RefusesMigrations(), strings.Join(names, ", "))
+	}
 	if drops := plan.DropsData(); len(drops) > 0 && !o.AllowDataLoss {
 		var b strings.Builder
 		for _, d := range drops {

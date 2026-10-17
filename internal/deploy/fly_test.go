@@ -234,9 +234,17 @@ func flyApp(t *testing.T) string {
 }
 
 // fakeApp is the executable of a build: variant makes each build's id its own; refuse makes
-// its --migrate-only refuse.
+// its --migrate-only refuse. Its database is the names of the migrations applied, one a line,
+// and it refuses, as the runtime does, a database that has had a migration the build does not
+// have (chapter 8): so a build put back after a newer one migrated stops at its start.
 func fakeApp(variant string, refuse bool) string {
-	mig := `[ -f "$ALDER_DB" ] || { echo "migrated 0001_initial"; echo db > "$ALDER_DB"; }`
+	mig := `touch "$ALDER_DB"
+  for m in $(cat "$ALDER_DB"); do
+    [ -f "$ALDER_APP_DIR/migrations/$m.sql" ] || { echo "alder: the database has had migration $m, which this build does not have"; exit 1; }
+  done
+  for f in "$ALDER_APP_DIR"/migrations/*.sql; do
+    m=$(basename "$f" .sql); grep -qx "$m" "$ALDER_DB" || { echo "$m" >> "$ALDER_DB"; echo "migrated $m"; }
+  done`
 	if refuse {
 		mig = `echo "alder: migration 0002 refused: the table Post has rows"; exit 1`
 	}
@@ -382,7 +390,7 @@ func TestFly_DeployLifecycle(t *testing.T) {
 	if err := Status(ctx, ff.target(env), &st); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Fly ord (app demo-staging)\n", "current  " + id3 + "\n", "  * " + id3 + "  ", "running", "never switched to", "database 3 bytes\n", "backup   "} {
+	for _, want := range []string{"Fly ord (app demo-staging)\n", "current  " + id3 + "\n", "  * " + id3 + "  ", "running", "never switched to", "database 13 bytes\n", "backup   "} {
 		if !strings.Contains(st.String(), want) {
 			t.Errorf("status: no %q in\n%s", want, st.String())
 		}
@@ -415,11 +423,12 @@ func TestFly_DeployLifecycle(t *testing.T) {
 
 	// restore: the start script puts the file in place, the old one beside it
 	local := filepath.Join(t.TempDir(), "restored.db")
-	os.WriteFile(local, bytes.Repeat([]byte("r"), restoreChunk*2+10), 0o600)
+	restored := bytes.Repeat([]byte("0001_initial\n"), (restoreChunk*2+10)/13+1) // more than two pieces, a database the image takes
+	os.WriteFile(local, restored, 0o600)
 	if _, err := ff.target(env).Restore(ctx, local); err != nil {
 		t.Fatal(err)
 	}
-	if got := readFile(t, filepath.Join(ff.data, "db", "app.db")); len(got) != restoreChunk*2+10 {
+	if got := readFile(t, filepath.Join(ff.data, "db", "app.db")); len(got) != len(restored) {
 		t.Errorf("restored database: %d bytes", len(got))
 	}
 	olds, _ := filepath.Glob(filepath.Join(ff.data, "db", "app.db.before-restore-*"))
@@ -443,16 +452,76 @@ func TestFly_DeployLifecycle(t *testing.T) {
 	}
 }
 
-// --allow-data-loss reaches the machine's --migrate-only as ALDER_ALLOW_DATA_LOSS=1, and only
-// on that deploy's configuration.
+// ALDER_ALLOW_DATA_LOSS never enters a machine's configuration (it would outlive the run): a
+// Fly deploy never applies a migration to a database with data.
 func TestFly_AllowDataLoss(t *testing.T) {
 	f := NewFly("demo", "staging", ir.Target{Kind: "fly", Region: "ord", App: "demo-staging"}, &ir.Deploy{})
-	if _, ok := f.config("0123456789abcdef", "vol_1").Env["ALDER_ALLOW_DATA_LOSS"]; ok {
-		t.Error("ALDER_ALLOW_DATA_LOSS without the flag")
+	for _, allow := range []bool{false, true} {
+		f.AllowDataLoss(allow)
+		if _, ok := f.config("0123456789abcdef", "vol_1").Env["ALDER_ALLOW_DATA_LOSS"]; ok {
+			t.Errorf("ALDER_ALLOW_DATA_LOSS in the machine's configuration (--allow-data-loss %v)", allow)
+		}
 	}
-	f.AllowDataLoss(true)
-	if f.config("0123456789abcdef", "vol_1").Env["ALDER_ALLOW_DATA_LOSS"] != "1" {
-		t.Error("no ALDER_ALLOW_DATA_LOSS with the flag")
+}
+
+// C2: a Fly deploy that would apply a migration to the live database is refused, with the
+// sentence, before anything is pushed (the first deploy, which creates the database, is not).
+// Why: the fake image models the runtime's refusal of a database with a migration the build
+// lacks, and the previous image put back on the migrated database stops at its start.
+func TestFly_RefusesMigrations(t *testing.T) {
+	ff := newFakeFly(t)
+	dir := flyApp(t)
+	env := map[string]string{"SMTP_URL": flySecretValue, "ALDER_SECRET": strings.Repeat("k", 32)}
+	ctx := context.Background()
+	var out bytes.Buffer
+	tg := ff.target(env)
+	tg.Warn = &out
+	res, err := Deploy(ctx, flyOptions(t, dir, &out, "one", false), GateResult{Check: "ok"}, tg, nil)
+	if err != nil {
+		t.Fatalf("first deploy: %v\n%s", err, out.String())
+	}
+	id1 := res.Record.Build
+	if !strings.Contains(out.String(), FlyExperimental+"\n") {
+		t.Errorf("no experimental warning:\n%s", out.String())
+	}
+	// a second migration
+	s1, s2 := schemas()
+	m2, err := migrate.Plan(s1, s2, "0002_drop_summary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(dir, "migrations", "0002_drop_summary.sql"), []byte(migrate.Render(m2)), 0o644)
+	migrate.WriteSnapshot(filepath.Join(dir, "migrations", "schema.json"), s2)
+	pushes, requests, flyctls := len(ff.images), len(ff.requests), len(ff.flyctl)
+	for _, allow := range []bool{false, true} {
+		out.Reset()
+		o := flyOptions(t, dir, &out, "two", false)
+		o.AllowDataLoss = allow
+		_, err = Deploy(ctx, o, GateResult{Check: "ok"}, ff.target(env), nil)
+		if err == nil || !strings.Contains(err.Error(), "refused: "+FlyRefusal+" (pending: 0002_drop_summary; nothing was shipped)") {
+			t.Fatalf("a migrating deploy (--allow-data-loss %v): %v\n%s", allow, err, out.String())
+		}
+	}
+	if len(ff.images) != pushes || ff.machine.build() != id1 || ff.machine.State != "started" {
+		t.Errorf("the refused deploy pushed or changed the machine: images %d → %d, machine %s (%s)", pushes, len(ff.images), ff.machine.build(), ff.machine.State)
+	}
+	for _, r := range ff.requests[requests:] { // reads only: GETs, and exec of the reading scripts
+		if !strings.HasPrefix(r, "GET ") && !strings.Contains(r, "/exec ") {
+			t.Errorf("the refused deploy sent %s", r)
+		}
+	}
+	for _, c := range ff.flyctl[flyctls:] {
+		if !strings.HasPrefix(c, "secrets list") {
+			t.Errorf("the refused deploy ran flyctl %s", c)
+		}
+	}
+	// the model: the database migrated past build one, build one's image stops at its start
+	os.WriteFile(filepath.Join(ff.data, "db", "app.db"), []byte("0001_initial\n0002_drop_summary\n"), 0o600)
+	ff.mu.Lock()
+	ff.boot()
+	ff.mu.Unlock()
+	if ff.machine.State != "stopped" || !strings.Contains(readFile(t, filepath.Join(ff.data, "builds", id1, "migrate.out")), "the database has had migration 0002_drop_summary, which this build does not have") {
+		t.Errorf("the previous image on a migrated database: %s\n%s", ff.machine.State, readFile(t, filepath.Join(ff.data, "builds", id1, "migrate.out")))
 	}
 }
 
