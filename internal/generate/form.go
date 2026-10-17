@@ -139,7 +139,7 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 		}
 	} else {
 		for _, t := range p.Tables {
-			if fieldsFit(t, rec.Fields, requiresUser) {
+			if fieldsFit(t, rec.Fields, pg.Keys) {
 				into = t
 				break
 			}
@@ -159,8 +159,11 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 			inits = append(inits, f.Name+": p.form."+f.Name)
 		}
 		op := "Db.insert"
-		if requiresUser && into.Owner != "" {
+		switch {
+		case into.PartKey == "user" && slices.Contains(pg.Keys, "user"):
 			op = "Db.insertMine"
+		case into.PartKey != "" && slices.Contains(pg.Keys, into.PartKey): // M15: the page's key fills the column
+			op = "Db.insertScoped"
 		}
 		arm = fmt.Sprintf("%s p -> {\n  let _ <- %s %s { %s }\n  Task.succeed (%s)\n},", msg, op, into.Name, strings.Join(inits, ", "), redirect)
 		if redirect == "Rerender" {
@@ -209,7 +212,7 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 	}
 
 	// the tests
-	tb := newTestBuilder(p, o.Page, imports)
+	tb := newTestBuilder(p, o.Page, imports).keyedFor(pg)
 	if requiresUser {
 		tb.login(roleOf(pg))
 	}
@@ -327,9 +330,10 @@ func hasRequiredParams(pg *Page) bool {
 }
 
 // fieldsFit reports whether a form with fields inserts a row of t: every field is a column of
-// t of the same type, and every column an insert must name is a field (but the `@owner` one,
-// when the page requires a user: Db.insertMine names it).
-func fieldsFit(t *Table, fields []types.Field, requiresUser bool) bool {
+// t of the same type, and every column an insert must name is a field (but the partition one,
+// `@owner` or `@partition k`, when the page requires its key: Db.insertMine and Db.insertScoped
+// name it).
+func fieldsFit(t *Table, fields []types.Field, keys []string) bool {
 	byName := map[string]types.Type{}
 	for _, f := range fields {
 		c := t.Column(f.Name)
@@ -339,7 +343,7 @@ func fieldsFit(t *Table, fields []types.Field, requiresUser bool) bool {
 		byName[f.Name] = f.Type
 	}
 	for _, c := range t.Columns {
-		if c.Required() && byName[c.Name] == nil && !(c.Owner && requiresUser) {
+		if c.Required() && byName[c.Name] == nil && !(c.Name == t.PartCol && slices.Contains(keys, t.PartKey)) {
 			return false
 		}
 	}

@@ -1,0 +1,14 @@
+edited app/App.alder
+edited migrations/schema.json
+!! Activity: migrations/ create it in the shared database; a database that already holds rows of it keeps them there, unread, and silos made before have no such table: declare a silo before the app holds data (book 8, "Silos")
+--- a/app/App.alder
++++ b/app/App.alder
+@@ -14,7 +14,7 @@
+ 
+ choose org = Orgs
+ 
+-silo org { Project, Issue }
++silo org { Project, Issue, Activity }
+ 
+ msg Logout
+ 

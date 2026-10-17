@@ -1,0 +1,221 @@
+{
+  "format": "1",
+  "tables": [
+    {
+      "name": "Activity.Activity",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "text",
+          "type": "Text"
+        },
+        {
+          "name": "org",
+          "type": "Text",
+          "ref": "Org.Org",
+          "onDelete": "cascade"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "Issue.Issue",
+      "id": "id",
+      "created": "created",
+      "silo": "org",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "title",
+          "type": "Text"
+        },
+        {
+          "name": "project",
+          "type": "Text",
+          "ref": "Project.Project",
+          "onDelete": "cascade"
+        },
+        {
+          "name": "org",
+          "type": "Text",
+          "ref": "Org.Org"
+        },
+        {
+          "name": "status",
+          "type": "Enum",
+          "enum": [
+            "Open",
+            "Closed"
+          ],
+          "default": "'Open'"
+        },
+        {
+          "name": "assignee",
+          "type": "Text",
+          "nullable": true,
+          "ref": "User.User"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "Membership.Membership",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "user",
+          "type": "Text",
+          "ref": "User.User",
+          "onDelete": "cascade"
+        },
+        {
+          "name": "org",
+          "type": "Text",
+          "ref": "Org.Org",
+          "onDelete": "cascade"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "Note.Note",
+      "id": "id",
+      "created": "created",
+      "updated": "updated",
+      "silo": "org",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "text",
+          "type": "Text"
+        },
+        {
+          "name": "project",
+          "type": "Text",
+          "ref": "Project.Project",
+          "onDelete": "cascade"
+        },
+        {
+          "name": "org",
+          "type": "Text",
+          "ref": "Org.Org"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        },
+        {
+          "name": "updated",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "Org.Org",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "name",
+          "type": "Text"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "Project.Project",
+      "id": "id",
+      "created": "created",
+      "silo": "org",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "name",
+          "type": "Text"
+        },
+        {
+          "name": "archived",
+          "type": "Bool",
+          "default": "0"
+        },
+        {
+          "name": "org",
+          "type": "Text",
+          "ref": "Org.Org"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "User.User",
+      "id": "id",
+      "created": "created",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "email",
+          "type": "Text",
+          "unique": true
+        },
+        {
+          "name": "name",
+          "type": "Text"
+        },
+        {
+          "name": "role",
+          "type": "Enum",
+          "enum": [
+            "Member",
+            "Admin"
+          ],
+          "default": "'Member'"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        }
+      ]
+    }
+  ]
+}

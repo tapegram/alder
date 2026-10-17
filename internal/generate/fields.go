@@ -13,7 +13,7 @@ import (
 //	name:Type[=default][@attr[=arg]]…
 //
 // such as `title:Text.NonEmpty`, `done:Bool=False`, `post:Post.PostId@ref=Post@cascade`,
-// `owner:User.UserId@ref=User@owner`, `"note:Maybe Text"` (a type with spaces is quoted for
+// `owner:User.UserId@ref=User@owner`, `org:Org.OrgId@ref=Org@partition=org` (M15), `"note:Maybe Text"` (a type with spaces is quoted for
 // the shell), `slug:Post.Slug@unique` and `body:Text@renamed=content`. The type is written as
 // it is written in the module the field goes into. The default is everything between the
 // first `=` after the type and the first `@` outside a string literal. An attribute's argument
@@ -34,6 +34,7 @@ type AttrSpec struct{ Name, Arg string }
 var knownAttrs = map[string]bool{
 	"id": false, "ref": true, "created": false, "updated": false, "unique": false,
 	"cascade": false, "restrict": false, "setNull": false, "renamed": true, "owner": false,
+	"partition": true,
 }
 
 // ParseField parses one field argument. table says whether attributes are allowed (a form's
@@ -94,9 +95,11 @@ func ParseField(arg string, table bool) (FieldSpec, error) {
 			takes, known := knownAttrs[an]
 			switch {
 			case !known:
-				return f, fmt.Errorf("field `%s`: `@%s` is not an attribute (they are @id, @ref=Table, @created, @updated, @unique, @cascade, @restrict, @setNull, @owner, @renamed=old)", name, an)
+				return f, fmt.Errorf("field `%s`: `@%s` is not an attribute (they are @id, @ref=Table, @created, @updated, @unique, @cascade, @restrict, @setNull, @owner, @partition=key, @renamed=old)", name, an)
 			case takes && (!hasArg || arg == ""):
-				return f, fmt.Errorf("field `%s`: `@%s` takes an argument: `@%s=%s`", name, an, an, map[string]string{"ref": "Table", "renamed": "old"}[an])
+				return f, fmt.Errorf("field `%s`: `@%s` takes an argument: `@%s=%s`", name, an, an, map[string]string{"ref": "Table", "renamed": "old", "partition": "key"}[an])
+			case an == "partition" && !IsLowerIdent(arg):
+				return f, fmt.Errorf("field `%s`: `@partition=%s`: the key is a session field's name, such as `@partition=org`", name, arg)
 			case !takes && hasArg:
 				return f, fmt.Errorf("field `%s`: `@%s` takes no argument", name, an)
 			case an == "ref" && !IsUpperIdent(arg):
@@ -139,6 +142,8 @@ func (a AttrSpec) Source() string {
 		return "@ref " + a.Arg
 	case "renamed":
 		return "@renamed " + quote(a.Arg)
+	case "partition":
+		return "@partition " + a.Arg
 	}
 	return "@" + a.Name
 }

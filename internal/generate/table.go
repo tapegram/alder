@@ -25,6 +25,9 @@ type TableData struct {
 // TableOptions are `alder new table`'s options.
 type TableOptions struct {
 	NoTimestamps bool // --no-timestamps: no `created`/`updated` pair
+	// Silo (--silo, M15): the table lives in the silo of its `@partition` key, which App's `silo
+	// key { … }` gets it in (or is written with). A table that refers to a siloed one must.
+	Silo bool
 }
 
 // NewTable generates `alder new table`: app/<Name>.alder with the table, its id brand, the
@@ -76,6 +79,29 @@ func NewTableWith(p *Program, name string, fields []FieldSpec, o TableOptions) (
 		d.Fields = append(d.Fields, f.Source())
 	}
 	d.Imports = imports.list()
+	var appEdit []Edit // --silo: App's `silo key { … }` with the table
+	if o.Silo {
+		key := ""
+		for _, f := range fields {
+			for _, a := range f.Attrs {
+				if a.Name == "partition" {
+					key = a.Arg
+				}
+			}
+		}
+		app := p.Modules["App"]
+		switch {
+		case key == "":
+			return nil, Refusef("--silo puts the table in the silo of its `@partition` key: give a field one, such as `org:Org.OrgId@ref=Org@partition=org`")
+		case app == nil:
+			return nil, Refusef("--silo writes `silo %s { … }` in `App`, and there is no module `App`", key)
+		}
+		e, err := siloApp(app, key, []string{name}, []string{Plural(strings.ToLower(Humanize(name)))})
+		if err != nil {
+			return nil, err
+		}
+		appEdit = []Edit{{Path: app.File, Body: e.result()}}
+	}
 	file := FileOf(name)
 	edit := func() Edit {
 		body := render("table.tmpl", d)
@@ -91,7 +117,7 @@ func NewTableWith(p *Program, name string, fields []FieldSpec, o TableOptions) (
 	}
 
 	// the tests of its delete rules, from the checked table
-	probe, err := Probe(p.Dir, []Edit{edit()})
+	probe, err := Probe(p.Dir, append([]Edit{edit()}, appEdit...))
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +128,7 @@ func NewTableWith(p *Program, name string, fields []FieldSpec, o TableOptions) (
 		d.Tests = deleteRuleTests(probe, t, imports)
 	}
 	d.Imports = imports.list()
-	return []Edit{edit()}, nil
+	return append([]Edit{edit()}, appEdit...), nil
 }
 
 // deleteRuleTests are the tests of t's references' delete rules (chapter 8): with `@cascade`,
@@ -112,12 +138,20 @@ func NewTableWith(p *Program, name string, fields []FieldSpec, o TableOptions) (
 // and its child.
 func deleteRuleTests(p *Program, t *Table, imports *importSet) []TestData {
 	var tests []TestData
+	keyed := t.PartKey != "" && t.PartKey != "user" && p.Session != nil && p.Session.User != nil && p.KeyTable(t.PartKey) != nil
 	for _, c := range t.Columns {
 		r := p.TableNamed(c.Ref)
 		if r == nil || r == t && !c.Maybe || (c.OnDelete != "cascade" && c.OnDelete != "restrict") {
 			continue
 		}
+		if keyed && c.Name == t.PartCol { // the key's row: in a silo (`alder new silo`) its delete is the shared database's, not the table's (book 8)
+			continue
+		}
 		tb := newTestBuilder(p, t.Module, imports)
+		if keyed { // signed in with the key, so the test reads the rows wherever they live (a silo too)
+			tb.silo = &siloCtx{key: t.PartKey, table: p.KeyTable(t.PartKey), member: true}
+			tb.login("")
+		}
 		target := tb.insertRow(r, "target", nil, false)
 		val := target
 		if c.Maybe {

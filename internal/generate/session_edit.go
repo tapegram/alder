@@ -16,14 +16,41 @@ import (
 // `alder edit table` does). An error in the session declaration itself (an unknown type, a
 // default of another type) refuses the edit (Edit.Guard): nothing is written.
 func EditSession(p *Program, op string, args []string) ([]Edit, error) {
-	if op != "add-field" || len(args) != 1 {
-		return nil, Refusef("`alder edit session` has one operation: `add-field <name>:<Type>=<default>`")
+	return EditSessionChoose(p, op, args, "")
+}
+
+// EditSessionChoose is EditSession with `alder edit session`'s --choose: a key field (`org:
+// Org.OrgId via Membership`, M15) is written `org: Maybe Org.OrgId via Membership` (a session
+// starts without one: no default), its membership table checked (one `@ref` to the user table,
+// one to the key's: the checker's E0032), and with choose (a page module) App gains `choose org
+// = <Page>`, the page a request without the key is sent to (book 6, "Partitions").
+func EditSessionChoose(p *Program, op string, args []string, choose string) ([]Edit, error) {
+	arg := strings.Join(args, " ")
+	via := ""
+	if head, m, ok := strings.Cut(arg, " via "); ok {
+		arg, via = strings.TrimSpace(head), strings.TrimSpace(m)
 	}
-	f, err := ParseField(args[0], false)
+	if op != "add-field" || arg == "" || len(args) != 1 && via == "" {
+		return nil, Refusef("`alder edit session` has one operation: `add-field <name>:<Type>=<default>` (or `add-field <name>:<T>.<T>Id via <Membership>` for a key)")
+	}
+	f, err := ParseField(arg, false)
 	if err != nil {
 		return nil, Refusef("%v", err)
 	}
-	if f.Default == "" {
+	if choose != "" && via == "" {
+		return nil, Refusef("--choose names the page that picks a `via` key: `add-field %s:<T>.<T>Id via <Membership> --choose %s`", f.Name, choose)
+	}
+	if via != "" {
+		if !IsUpperIdent(via) {
+			return nil, Refusef("`via %s`: a membership is a table, named by a capitalised identifier such as `Membership`", via)
+		}
+		if f.Default != "" {
+			return nil, Refusef("session field `%s` is a key with `via %s`: it takes no default (a session starts without one, and a Membership row is checked when it is set)", f.Name, via)
+		}
+		if !strings.HasPrefix(f.Type, "Maybe ") {
+			f.Type = "Maybe " + f.Type
+		}
+	} else if f.Default == "" {
 		return nil, Refusef("session field `%s` needs a default (`%s:%s=…`): a new visitor's session, and every session stored before the field existed, takes it", f.Name, f.Name, f.Type)
 	}
 	app := p.Modules["App"]
@@ -32,6 +59,20 @@ func EditSession(p *Program, op string, args []string) ([]Edit, error) {
 	}
 	if hasField(p.Session, f.Name) {
 		return nil, Refusef("the session already has a field `%s`", f.Name)
+	}
+	if via != "" {
+		if p.Session.User == nil {
+			return nil, Refusef("`%s` is `via %s`, a membership of the signed-in user, but the session has no `user`: `alder new auth` adds one", f.Name, via)
+		}
+		if p.TableNamed(via) == nil {
+			return nil, Refusef("`via %s`: `%s` is not a table of this app (its tables: %s)", via, via, tableNames(p))
+		}
+		for k := range p.Via {
+			return nil, Refusef("the session's `%s` is `via %s` already: one `via` field per session (for now)", k, p.Via[k])
+		}
+		if choose != "" && p.PageNamed(choose) == nil {
+			return nil, Refusef("--choose %s: `%s` is not a page of this app", choose, choose)
+		}
 	}
 	var sd *syntax.SessionDecl
 	for _, d := range app.Syntax.Decls {
@@ -44,6 +85,9 @@ func EditSession(p *Program, op string, args []string) ([]Edit, error) {
 	}
 	e := newSrcEdit(app.Source)
 	field := f.Source()
+	if via != "" {
+		field = f.Name + ": " + f.Type + " via " + via
+	}
 	if sd.Span.Start.Line == sd.Span.End.Line {
 		l := e.line(sd.Span.Start.Line)
 		open, close := strings.Index(l, "{"), sd.Span.End.Col-2
@@ -70,11 +114,18 @@ func EditSession(p *Program, op string, args []string) ([]Edit, error) {
 		}
 		e.insertBefore(end, ind+field+",")
 	}
+	if choose != "" { // after the session: `choose org = Orgs.Index`
+		e.insertBefore(sd.Span.End.Line+1, "\n-- a page that `requires "+f.Name+"` sends a session without one here, to pick one\nchoose "+f.Name+" = "+choose)
+	}
 	imports := newImports("App", p.Std)
 	typeImports(imports, f.Type, p)
 	addImports(e, app.Syntax, imports.list())
 	edits := []Edit{{Path: app.File, Body: e.result()}}
-	edits, err = completeSessionLiterals(p, edits, f.Name+": "+f.Default)
+	def := f.Default
+	if via != "" {
+		def = "Nothing"
+	}
+	edits, err = completeSessionLiterals(p, edits, f.Name+": "+def)
 	if err != nil {
 		return nil, err
 	}
@@ -98,10 +149,13 @@ func completeSessionLiterals(p *Program, edits []Edit, field string) ([]Edit, er
 	}
 	name, _, _ := strings.Cut(field, ":")
 	want := "record literal for `Session` is missing `" + name + "`"
+	missing := func(m string) bool { // or, for a field without a default (a key), the record's
+		return strings.HasPrefix(m, want) || strings.Contains(m, "record `App.Session` is missing field(s): "+name) && !strings.Contains(m, name+", ") && strings.HasSuffix(m, "field(s): "+name)
+	}
 	bodies := map[string]*srcEdit{}
 	var order []string
 	for _, d := range probe.Diags {
-		if d.Severity != "error" || !strings.HasPrefix(d.Message, want) || d.Span.Start.Line != d.Span.End.Line {
+		if d.Severity != "error" || !missing(d.Message) || d.Span.Start.Line != d.Span.End.Line {
 			continue
 		}
 		se := bodies[d.Span.File]

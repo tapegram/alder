@@ -33,6 +33,9 @@ func Plan(old, new Schema, name string) (Migration, error) {
 		return m, err
 	}
 	m.FromHash, m.ToHash = from[:hashLen], to[:hashLen]
+	if why := SiloMove(old, new); why != "" {
+		return m, errors.New(why)
+	}
 	if m.Steps, err = Diff(old, new); err != nil {
 		return m, err
 	}

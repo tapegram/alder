@@ -1,0 +1,18 @@
+edited app/App.alder
+wrote app/Note.alder
+wrote migrations/0002_create_note.sql
+  create table Note
+  add index on Note.org
+  add index on Note.project
+edited migrations/schema.json
+--- a/app/App.alder
++++ b/app/App.alder
+@@ -14,7 +14,7 @@
+ 
+ choose org = Orgs
+ 
+-silo org { Project, Issue }
++silo org { Project, Issue, Note }
+ 
+ msg Logout
+ 

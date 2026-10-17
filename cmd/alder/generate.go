@@ -269,7 +269,7 @@ func migrateCopyAs(dir, slug string) ([]string, error) {
 		return nil, &generate.Refusal{Msg: "the result does not check (the errors above): nothing was written", Diags: errs, Sources: buildkit.Sources(prog)}
 	}
 	var out, errb bytes.Buffer
-	if code := writeMigration(dir, migrate.FromProgram(p), slug, false, &out, &errb); code != 0 {
+	if code := writeMigration(dir, migrate.FromProgram(p).WithSilos(res.Silos), slug, false, &out, &errb); code != 0 {
 		msg := strings.TrimSpace(out.String() + errb.String())
 		var lines []string
 		for _, l := range strings.Split(msg, "\n") {
@@ -298,6 +298,7 @@ var newGenerators = map[string]func(args []string, stdout, stderr io.Writer) int
 	"type":       runNewTypeTo,
 	"decl":       runNewDeclTo,
 	"test":       runNewTestTo,
+	"silo":       runNewSiloTo,
 }
 
 // genUsage prints a generator's usage line and returns 2.
@@ -335,11 +336,11 @@ func runNewPageTo(args []string, stdout, stderr io.Writer) int {
 	return runGenerator("alder new page", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) { return generate.NewPage(p, o) }, stdout, stderr)
 }
 
-const newTableUsage = "usage: alder new table <Name> <field>:<Type>[=default][@attr[=arg]…] … [--no-timestamps] [--dir app] [--json] [--dry-run]"
+const newTableUsage = "usage: alder new table <Name> <field>:<Type>[=default][@attr[=arg]…] … [--no-timestamps] [--silo] [--dir app] [--json] [--dry-run]"
 
 // runNewTableTo is `alder new table`.
 func runNewTableTo(args []string, stdout, stderr io.Writer) int {
-	g, err := parseGenArgs(args, nil, nil, []string{"no-timestamps"})
+	g, err := parseGenArgs(args, nil, nil, []string{"no-timestamps", "silo"})
 	if err != nil || len(g.pos) < 1 {
 		return genUsage(stderr, newTableUsage, err)
 	}
@@ -348,7 +349,7 @@ func runNewTableTo(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return runGenerator("alder new table", g, generate.Options{Migrate: migrateCopy}, func(p *generate.Program) ([]generate.Edit, error) {
-		return generate.NewTableWith(p, g.pos[0], fields, generate.TableOptions{NoTimestamps: g.has("no-timestamps")})
+		return generate.NewTableWith(p, g.pos[0], fields, generate.TableOptions{NoTimestamps: g.has("no-timestamps"), Silo: g.has("silo")})
 	}, stdout, stderr)
 }
 
@@ -468,6 +469,24 @@ func runNewAuthTo(args []string, stdout, stderr io.Writer) int {
 	return runGenerator("alder new auth", g, o, func(p *generate.Program) ([]generate.Edit, error) {
 		edits, c, err := generate.NewAuth(p, generate.AuthOptions{Users: g.flag("users"), Role: g.flag("role"), To: g.flag("to")})
 		created = c
+		return edits, err
+	}, stdout, stderr)
+}
+
+const newSiloUsage = "usage: alder new silo <key> <Table> … [--dir app] [--json] [--dry-run]"
+
+// runNewSiloTo is `alder new silo`: App's `silo <key> { … }` (generate.NewSilo); a table that
+// migrations/ already create is marked in schema.json, and the note says what stays behind.
+func runNewSiloTo(args []string, stdout, stderr io.Writer) int {
+	g, err := parseGenArgs(args, nil, nil, nil)
+	if err != nil || len(g.pos) < 1 {
+		return genUsage(stderr, newSiloUsage, err)
+	}
+	var notes []string
+	o := generate.Options{Migrate: func(string) ([]string, error) { return notes, nil }}
+	return runGenerator("alder new silo", g, o, func(p *generate.Program) ([]generate.Edit, error) {
+		edits, n, err := generate.NewSilo(p, g.pos[0], g.pos[1:])
+		notes = n
 		return edits, err
 	}, stdout, stderr)
 }

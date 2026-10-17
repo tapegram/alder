@@ -1,0 +1,80 @@
+module Issues.Show
+
+import Issue
+import Layout
+import Org
+import Project
+import User
+
+page "/issues/{id}" { id: Issue.IssueId } requires user, org
+
+type Model = { row: Issue }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let row <- Db.getScoped Issue params.id
+  Query.succeed { row: row }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Issue">
+    <h1>Issue</h1>
+
+    <al-card>
+      <dl>
+        <dt>Id</dt>
+        <dd>{model.row.id}</dd>
+        <dt>Title</dt>
+        <dd>{model.row.title}</dd>
+        <dt>Project</dt>
+        <dd>{model.row.project}</dd>
+        <dt>Org</dt>
+        <dd>{model.row.org}</dd>
+        <dt>Status</dt>
+        <dd><al-badge>{match model.row.status { Open -> "Open", Closed -> "Closed" }}</al-badge></dd>
+        <dt>Assignee</dt>
+        <dd>{match model.row.assignee { Just v -> v, Nothing -> "" }}</dd>
+        <dt>Created</dt>
+        <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
+      </dl>
+    </al-card>
+  </Layout.Page>
+
+test "the page shows the row" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let _ <- Test.member me org
+  let _ <- Test.login { user: Just me, org: Just org }
+  let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
+  let issue1 <- Db.insert Issue { title: Text.NonEmpty "title-1", project: project1, org: org, assignee: Nothing }
+  let r <- Test.open (Issues.Show { id: issue1 })
+  Task.succeed ({ answer: r.answer, title: List.member "title-1" (Test.texts "dd" r.doc) } == { answer: Shown, title: True })
+}
+
+test "a missing row is not found" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let _ <- Test.member me org
+  let _ <- Test.login { user: Just me, org: Just org }
+  let r <- Test.open (Issues.Show { id: Issue.IssueId "missing" })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "a visitor is sent to log in" = {
+  let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org1 }
+  let issue1 <- Db.insert Issue { title: Text.NonEmpty "title-1", project: project1, org: org1, assignee: Nothing }
+  let r <- Test.open (Issues.Show { id: issue1 })
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "without an org the page sends you to choose one" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let _ <- Test.login { user: Just me, org: Nothing }
+  let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org1 }
+  let issue1 <- Db.insert Issue { title: Text.NonEmpty "title-1", project: project1, org: org1, assignee: Nothing }
+  let r <- Test.open (Issues.Show { id: issue1 })
+  Task.succeed (r.answer == Redirected (Orgs {}))
+}

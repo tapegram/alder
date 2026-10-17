@@ -871,3 +871,32 @@ func TestOwnerLeavesSchema(t *testing.T) {
 		t.Errorf("author: RenamedFrom %q, want owner", renamed)
 	}
 }
+
+// TestSiloMove (M15): a table that changes store between the snapshot and the app is refused by
+// Plan: into a silo, out of one, between two; a table that stays, or is new, is not.
+func TestSiloMove(t *testing.T) {
+	tbl := func(name, silo string) Table {
+		return Table{Name: name + "." + name, ID: "id", Silo: silo, Columns: []Column{text("id")}}
+	}
+	old := Schema{Format: "1", Tables: []Table{tbl("A", ""), tbl("B", "org"), tbl("C", "org"), tbl("D", "")}}
+	cur := Schema{Format: "1", Tables: []Table{tbl("A", "org"), tbl("B", ""), tbl("C", "team"), tbl("D", ""), tbl("E", "org")}}
+	got := SiloMove(old, cur)
+	for _, w := range []string{
+		"table A moves into `silo org`, but the migrations create it in the shared database",
+		"table B moves from `silo org` to the shared database, and a migration does not move its rows between databases (book 8, \"Silos\"): keep it in `silo org`",
+		"table C moves from `silo org` to `silo team`",
+	} {
+		if !strings.Contains(got, w) {
+			t.Errorf("SiloMove lacks %q:\n%s", w, got)
+		}
+	}
+	if strings.Contains(got, "table D") || strings.Contains(got, "table E") {
+		t.Errorf("SiloMove names a table that stays or is new:\n%s", got)
+	}
+	if _, err := Plan(old, cur, "x"); err == nil || err.Error() != got {
+		t.Errorf("Plan: %v", err)
+	}
+	if SiloMove(old, old) != "" {
+		t.Errorf("no move: %q", SiloMove(old, old))
+	}
+}

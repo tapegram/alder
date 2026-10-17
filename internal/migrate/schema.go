@@ -31,10 +31,14 @@ type Schema struct {
 
 // Table is one `table` declaration as stored.
 type Table struct {
-	Name        string   `json:"name"` // "Post.Post" (module-qualified, as db.TableDesc.Name)
-	ID          string   `json:"id"`
-	Created     string   `json:"created,omitempty"`
-	Updated     string   `json:"updated,omitempty"`
+	Name    string `json:"name"` // "Post.Post" (module-qualified, as db.TableDesc.Name)
+	ID      string `json:"id"`
+	Created string `json:"created,omitempty"`
+	Updated string `json:"updated,omitempty"`
+	// Silo is the key of the `silo` the table lives in (M15: a database per value), "" for the
+	// shared store. It changes no SQL; the migration generator refuses a table that moves
+	// between stores (Plan).
+	Silo        string   `json:"silo,omitempty"`
 	Columns     []Column `json:"columns"` // declaration order
 	RenamedFrom string   `json:"-"`       // from @renamed, module-qualified ("Article.Article"); never stored
 }
@@ -141,7 +145,61 @@ func FromProgram(p *ir.Program) Schema {
 		s.Tables = append(s.Tables, t)
 	}
 	slices.SortFunc(s.Tables, func(a, b Table) int { return strings.Compare(a.Name, b.Name) })
+	silos := map[string][]string{}
+	for k, ts := range p.Silos {
+		for _, tb := range ts {
+			if tb != nil {
+				silos[k] = append(silos[k], tb.Module+"."+tb.Name)
+			}
+		}
+	}
+	return s.WithSilos(silos)
+}
+
+// WithSilos is s with each table of silos (a key's module-qualified table names, as the
+// checker's Result.Silos) marked with its key.
+func (s Schema) WithSilos(silos map[string][]string) Schema {
+	s.Tables = slices.Clone(s.Tables)
+	for k, names := range silos {
+		for _, n := range names {
+			for i := range s.Tables {
+				if s.Tables[i].Name == n {
+					s.Tables[i].Silo = k
+				}
+			}
+		}
+	}
 	return s
+}
+
+// SiloMove is the migration generator's refusal of a table that changes store, "" for none: a
+// table the snapshot old has in the shared store (or a silo) that new puts in a silo (or the
+// shared store, or another silo). A migration changes one database's tables; it does not move
+// a table's rows from one database to others (book 8, "Silos").
+func SiloMove(old, new Schema) string {
+	where := func(silo string) string {
+		if silo == "" {
+			return "the shared database"
+		}
+		return "`silo " + silo + "`"
+	}
+	var out []string
+	for _, t := range new.Tables {
+		o := old.table(t.Name)
+		if o == nil && t.RenamedFrom != "" {
+			o = old.table(t.RenamedFrom)
+		}
+		if o == nil || o.Silo == t.Silo {
+			continue
+		}
+		n := short(t.Name)
+		if o.Silo == "" {
+			out = append(out, fmt.Sprintf("table %s moves into `silo %s`, but the migrations create it in the shared database, and a migration does not move its rows into a database per %s (book 8, \"Silos\"): in an app that holds no data yet, `alder new silo %s %s` declares it and says what it leaves behind; otherwise keep %s shared", n, t.Silo, t.Silo, t.Silo, n, n))
+			continue
+		}
+		out = append(out, fmt.Sprintf("table %s moves from %s to %s, and a migration does not move its rows between databases (book 8, \"Silos\"): keep it in `silo %s`", n, where(o.Silo), where(t.Silo), o.Silo))
+	}
+	return strings.Join(out, "\n")
 }
 
 // columnOf is the Type, Nullable and Enum of a column of (erased) type t: the storage mapping

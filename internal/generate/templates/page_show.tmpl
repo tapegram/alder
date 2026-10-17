@@ -11,7 +11,7 @@ load params session = {
     Nothing -> Query.notFound,
   }
 [[- else if .Mine]]
-  let row <- Db.getMine [[.T]] params.id
+  let row <- [[.Get]] [[.T]] params.id
   Query.succeed { row: row }
 [[- else]]
   let found <- Db.get [[.T]] params.id

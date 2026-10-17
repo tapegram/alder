@@ -121,7 +121,7 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]
 	}
 	// the test presses the button, then reads again what the arm may change: the row a
 	// parameter names (inserted for the test), else the page; what to compare is the author's
-	tb := newTestBuilder(p, page, imports)
+	tb := newTestBuilder(p, page, imports).keyedFor(pg)
 	if pg.Requires != "" {
 		tb.login(roleOf(pg))
 	}

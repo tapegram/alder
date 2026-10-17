@@ -199,6 +199,15 @@ var genCases = []genCase{
 	{name: "fixture-admin", base: "fixture", args: []string{"new", "admin"}, test: true},
 	{name: "fixture-silo-admin", base: "fixture-silo", args: []string{"new", "admin"}, test: true},
 
+	// M15: partitions and silos
+	{name: "fixture-silo-table", base: "fixture-silo", args: []string{"new", "table", "Note", "text:Text.NonEmpty", "project:Project.ProjectId@ref=Project@cascade", "org:Org.OrgId@ref=Org@partition=org", "--silo"}, test: true},
+	{name: "fixture-silo-silo", base: "fixture-silo", args: []string{"new", "silo", "org", "Activity"}},
+	{name: "fixture-silo-silo-refused", base: "fixture-silo", args: []string{"new", "silo", "org", "Membership"}, code: 1},
+	{name: "fixture-silo-page-list", base: "fixture-silo", args: []string{"new", "page", "Projects.Index", "/projects", "--list", "Project", "--requires", "org"}, test: true},
+	{name: "fixture-silo-page-show", base: "fixture-silo", args: []string{"new", "page", "Issues.Show", "/issues", "--show", "Issue", "--requires", "org"}, test: true},
+	{name: "fixture-silo-page-activity", base: "fixture-silo", args: []string{"new", "page", "Activities.Index", "/activity", "--list", "Activity", "--requires", "user,org"}, test: true},
+	{name: "fixture-edit-session-via", base: "fixture", args: []string{"edit", "session", "add-field", "post:Post.PostId", "via", "Comment", "--choose", "Home"}, test: true},
+
 	// M13: the commands of the agent's loop
 	{name: "auth", base: "scaffold", args: []string{"new", "auth"}, test: true},
 	{name: "type-union", base: "scaffold", args: []string{"new", "type", "Entry", "Mood = Happy | Sad"}, test: true},
@@ -365,7 +374,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "page", "About", "/about", "--list", "Post"}, "", "alder new page: `Post` is not a table of this app (its tables: Entry)"},
 		{"scaffold", []string{"new", "page", "About", "/about", "--list", "Entry", "--show", "Entry"}, "", "alder new page: choose one of --list, --show and --from: a page generated with --list shows one table's rows, --show one row, --from several tables"},
 		{"scaffold", []string{"new", "page", "About", "/about", "--requires", "user"}, "", "alder new page: `--requires user` needs a session with a `user` field (`session { user: Maybe User.UserId }` in `App`): this app's session has none"},
-		{"fixture", []string{"new", "page", "About", "/about", "--requires", "admin"}, "", "alder new page: `--requires admin`: a generated page can require `user`, the session's signed-in user"},
+		{"fixture", []string{"new", "page", "About", "/about", "--requires", "admin"}, "", "alder new page: `--requires admin`: the session has no field `admin` (a key is a session field: `alder edit session add-field admin:<T>.<T>Id via <Membership>`)"},
 		{"fixture", []string{"new", "page", "About", "/about", "--role", "Editor"}, "", "alder new page: `--role Editor`: `Editor` is not a constructor of the session's `role` type `User.Role` (Reader, Admin)"},
 		{"scaffold", []string{"new", "table", "Entry", "x:Int"}, "", "alder new table: module `Entry` exists (`app/Entry.alder`) and declares a table: a generator never overwrites a file; choose another table name"},
 		{"scaffold", []string{"new", "table", "Tag", "id:Int"}, "", "alder new table: field `id`: the generator writes the id, `id: TagId @id`; leave it out"},
@@ -435,6 +444,18 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"fill", "--decl", "Home.load", "-"}, "\x0crom params session -> Query.succeed { entries: [] }", "alder fill: standard input has the control character U+000C at line 1, column 1: a shell's `echo`"},
 		{"scaffold", []string{"fill", "Home.update.Submit", "-"}, "rom to -> rom", "alder fill: `alder fill` takes one expression; found more after it: `->` at line 1, column 8 of standard input (a lambda starts with `\\`: `\\a b -> …`)"},
 		{"scaffold", []string{"fill", "Home.update.Submit", "-"}, "Task.succeed Rerender", "alder fill: `Home.update.Submit` has no typed hole: a fill replaces a hole, and this arm has none; to rewrite it, give `alder fill --decl Home.update -` the whole `match msg { … }`"},
+		// M15: partitions and silos
+		{"fixture-silo", []string{"new", "silo", "org", "Membership"}, "", "alder new silo: `Membership` is not partitioned by `org`: mark its column `org` `@partition org` (`org: Org.OrgId @ref Org @partition org`), then run this again"},
+		{"fixture-silo", []string{"new", "silo", "org", "User"}, "", "alder new silo: `User` is not partitioned by `org`: it has no `@ref Org` column, and a required reference cannot be added to a table that may have rows; one with none yet is made again with it: `alder remove table User`, then `alder new table User … org:Org.OrgId@ref=Org@partition=org`"},
+		{"fixture-silo", []string{"new", "silo", "team", "Project"}, "", "alder new silo: `silo team`: the session has no field `team`; `alder edit session add-field team:<T>.<T>Id via <Membership>` adds one (book 6, \"Partitions\")"},
+		{"fixture-silo", []string{"new", "silo", "org", "Project"}, "", "alder new silo: `Project` is in `silo org` already"},
+		{"fixture-silo", []string{"new", "table", "Note", "text:Text", "--silo"}, "", "alder new table: --silo puts the table in the silo of its `@partition` key: give a field one, such as `org:Org.OrgId@ref=Org@partition=org`"},
+		{"fixture-silo", []string{"new", "table", "Note", "org:Org.OrgId@ref=Org@partition=1x"}, "", "alder new table: field `org`: `@partition=1x`: the key is a session field's name, such as `@partition=org`"},
+		{"fixture-silo", []string{"new", "page", "Teams", "/teams", "--requires", "team"}, "", "alder new page: `--requires team`: the session has no field `team`"},
+		{"fixture-silo", []string{"edit", "session", "add-field", "team:Org.OrgId", "via", "Membership"}, "", "alder edit session: the session's `org` is `via Membership` already: one `via` field per session (for now)"},
+		{"fixture", []string{"edit", "session", "add-field", "post:Post.PostId", "via", "Nope"}, "", "alder edit session: `via Nope`: `Nope` is not a table of this app"},
+		{"fixture", []string{"edit", "session", "add-field", "post:Post.PostId=Nothing", "via", "Comment"}, "", "alder edit session: session field `post` is a key with `via Comment`: it takes no default"},
+		{"fixture", []string{"edit", "session", "add-field", "theme:Text=\"x\"", "--choose", "Home"}, "", "alder edit session: --choose names the page that picks a `via` key"},
 	} {
 		dir := genApp(t, c.base)
 		before := appFiles(t, dir)
@@ -900,5 +921,42 @@ func TestGenerate_E11Messages(t *testing.T) {
 	}
 	if code, o := run("", "test"); code != 1 || !strings.Contains(o, "fill the hole): ") || !strings.Contains(o, "?expected : Bool") {
 		t.Errorf("alder test with holes: exit %d: %s", code, o)
+	}
+}
+
+// TestGenerate_SiloMove (M15, book 8 "Silos"): App edited by hand to put a table that
+// migrations/ create in the shared database into a silo: the migration generator refuses, as a
+// migration does not move rows between databases, and nothing is written. `alder new silo`
+// declares it instead, marking schema.json and saying what stays behind; `alder migrate` then has
+// nothing to do.
+func TestGenerate_SiloMove(t *testing.T) {
+	dir := genApp(t, "fixture-silo")
+	app := filepath.Join(dir, "app", "App.alder")
+	b, err := os.ReadFile(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved := strings.Replace(string(b), "silo org { Project, Issue }", "silo org { Project, Issue, Activity }", 1)
+	if moved == string(b) {
+		t.Fatal("the fixture's App has no `silo org { Project, Issue }`")
+	}
+	os.WriteFile(app, []byte(moved), 0o644)
+	before := appFiles(t, dir)
+	var out, errb bytes.Buffer
+	code := runMigrateTo([]string{dir}, &out, &errb)
+	want := "alder migrate: table Activity moves into `silo org`, but the migrations create it in the shared database, and a migration does not move its rows into a database per org (book 8, \"Silos\"): in an app that holds no data yet, `alder new silo org Activity` declares it and says what it leaves behind; otherwise keep Activity shared\n"
+	if code != 1 || out.String() != want {
+		t.Errorf("alder migrate of a hand-made move: exit %d\n%s%s\nwant:\n%s", code, out.String(), errb.String(), want)
+	}
+	if ch := changedFiles(before, appFiles(t, dir)); len(ch) != 0 {
+		t.Errorf("the refused migration wrote %v", slices.Sorted(maps.Keys(ch)))
+	}
+	os.WriteFile(app, b, 0o644)
+	if code, out, errs := alderIn(t, dir, "", "new", "silo", "org", "Activity"); code != 0 || !strings.Contains(out, "edited migrations/schema.json\n!! Activity: migrations/ create it in the shared database") {
+		t.Fatalf("alder new silo: exit %d\n%s%s", code, out, errs)
+	}
+	out.Reset()
+	if code := runMigrateTo([]string{dir}, &out, &errb); code != 0 || out.String() != "no changes since 0001_initial\n" {
+		t.Errorf("alder migrate after alder new silo: exit %d\n%s%s", code, out.String(), errb.String())
 	}
 }

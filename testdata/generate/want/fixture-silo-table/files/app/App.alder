@@ -1,0 +1,47 @@
+module App
+
+import Layout
+import Org
+import User
+
+-- The fixture of the admin of a silo (cmd/alder/admin_test.go): a session with a user, an org
+-- the user is a member of (`via Membership`), and a role copied from the user's row at login.
+-- Projects and issues live in a database per org; Activity is partitioned by org in the shared
+-- database.
+session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Member }
+
+login = Auth.Login
+
+choose org = Orgs
+
+silo org { Project, Issue, Note }
+
+msg Logout
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Logout p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing, role: Member })
+    Task.succeed (Redirect (Auth.Login {}))
+  },
+}
+
+error : Error -> Html Never
+error err =
+  <Layout.Page title="Error">
+    <h1>Something went wrong</h1>
+  </Layout.Page>
+
+notFound : Html Never
+notFound =
+  <Layout.Page title="Not found">
+    <h1>Not found</h1>
+  </Layout.Page>
+
+test "Logout clears the user and the role, and goes to log in" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", role: Admin }
+  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.get (Orgs {})
+  let r <- Test.click Logout
+  Task.succeed ({ answer: r.answer, user: r.session.user, role: r.session.role } == { answer: Redirected (Auth.Login {}), user: Nothing, role: Member })
+}

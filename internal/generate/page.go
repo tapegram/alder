@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"text/template"
 
@@ -43,7 +44,8 @@ type PageData struct {
 	T      string    // the table's record type as written here: "Post"
 	Select string    // the rows: "Db.from Post", or "Db.mine Post" on a `requires user` page of an `@owner` table
 	Order  string    // the column a list is ordered by, newest first
-	Mine   bool      // --show reads with Db.getMine
+	Mine   bool      // --show reads with Db.getMine (or Db.getScoped: Get)
+	Get    string    // Db.getMine or Db.getScoped
 	Cols   []ColData // the columns shown
 	Lists  []FromList
 	// LoadHole: `load` is the typed hole ?load (a page with path parameters, whose load reads
@@ -87,7 +89,7 @@ type PageOptions struct {
 	List     string   // --list T
 	Show     string   // --show T
 	From     []string // --from T …
-	Requires string   // --requires user
+	Requires string   // --requires user (or a key, `org`, or both: `user,org`)
 	Role     string   // --role R
 	// Blank: `Model` is `{ }` and `load` and `view` are the typed holes `?load` and `?view`,
 	// for `alder fill` (or `alder fill --decl`, which also replaces `Model`); with --show T the
@@ -195,18 +197,48 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	if kinds > 1 {
 		return nil, Refusef("choose one of --list, --show and --from: a page generated with --list shows one table's rows, --show one row, --from several tables")
 	}
+	// --requires: `user`, a key of the session (`org`, M15), or both; a key with `via` needs the
+	// user first (E0027), so it is written `requires user, org`
+	var keys []string
+	key := "" // the page's key other than user, "" for none
+	for _, k := range strings.FieldsFunc(o.Requires, func(r rune) bool { return r == ',' || r == ' ' }) {
+		if !slices.Contains(keys, k) {
+			keys = append(keys, k)
+		}
+		if k != "user" && k != key {
+			if key != "" {
+				return nil, Refusef("`--requires %s`: a generated page requires at most one key besides `user`", o.Requires)
+			}
+			key = k
+		}
+	}
 	if o.Role != "" {
 		if p.Session == nil || p.Session.User == nil || p.Session.Role == nil {
 			return nil, Refusef("`--role %s` needs a session with a `user` field and a `role` field whose type is a union (`session { user: Maybe User.UserId, role: User.Role = Reader }` in `App`): this app's session has %s", o.Role, missingSession(p))
 		}
-		o.Requires = "user"
+		if !slices.Contains(keys, "user") {
+			keys = append([]string{"user"}, keys...)
+		}
 	}
-	if o.Requires != "" && o.Requires != "user" {
-		return nil, Refusef("`--requires %s`: a generated page can require `user`, the session's signed-in user", o.Requires)
+	if key != "" {
+		f := p.SessionField(key)
+		if f == nil {
+			return nil, Refusef("`--requires %s`: the session has no field `%s` (a key is a session field: `alder edit session add-field %s:<T>.<T>Id via <Membership>`)", key, key, key)
+		}
+		if _, isMaybe := unMaybe(f.Type); !isMaybe {
+			return nil, Refusef("`--requires %s`: the session's `%s` is not a `Maybe`, so every session has one", key, key)
+		}
+		if p.Via[key] != "" && !slices.Contains(keys, "user") { // a membership is the user's
+			keys = append([]string{"user"}, keys...)
+		}
 	}
-	if o.Requires == "user" && (p.Session == nil || p.Session.User == nil) {
-		return nil, Refusef("`--requires user` needs a session with a `user` field (`session { user: Maybe User.UserId }` in `App`): this app's session has none")
+	if slices.Contains(keys, "user") {
+		if p.Session == nil || p.Session.User == nil {
+			return nil, Refusef("`--requires user` needs a session with a `user` field (`session { user: Maybe User.UserId }` in `App`): this app's session has none")
+		}
+		keys = append([]string{"user"}, slices.DeleteFunc(slices.Clone(keys), func(k string) bool { return k == "user" })...)
 	}
+	o.Requires = strings.Join(keys, ", ")
 	if o.Role != "" {
 		r := p.Session.Role
 		if !contains1(r.Ctors, o.Role) {
@@ -223,10 +255,14 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	imports := newImports(o.Module, p.Std)
 	d := PageData{Module: o.Module, Path: o.Path, Params: "{ }", Title: Title(o.Module)}
 	if o.Requires != "" {
-		d.Requires = " requires user"
+		d.Requires = " requires " + o.Requires
 		if o.Role != "" {
 			d.Requires += ", role " + o.Role
 		}
+	}
+	var kt *Table // the key's table: a test signs in with one of its rows as the key
+	if key != "" {
+		kt = p.KeyTable(key)
 	}
 	d.Open, d.Close = rootTags(p, d.Title, imports)
 	var paramPage *Page // the page with --param's parameters, checked: their types
@@ -258,11 +294,15 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	// newTest starts a test's builder, signed in as the page requires
 	newTest := func() *testBuilder {
 		tb := newTestBuilder(p, o.Module, imports)
+		if kt != nil { // signed in with the key: a row of its table (and, with `via`, a member of it)
+			tb.silo = &siloCtx{key: key, table: kt, member: true}
+		}
 		if o.Requires != "" {
 			tb.login(o.Role)
 		}
 		return tb
 	}
+	scoped := func(t *Table) bool { return t.PartKey != "" && slices.Contains(keys, t.PartKey) }
 	heading := fmt.Sprintf("Test.text \"h1\" r.doc } == { answer: Shown, heading: Just %s }", quote(d.Title))
 	tmpl := "page.tmpl"
 	var pageOf func(tb *testBuilder) string // the page value a test opens
@@ -306,23 +346,35 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		tmpl = "page_list.tmpl"
 		d.Params = "{ page: Int = 1 }"
 		d.T, d.Order = recordName(t, o.Module), t.OrderColumn()
-		d.Select = selectOf(t, o.Module, o.Requires != "")
+		d.Select = selectIn(t, o.Module, keys)
 		for _, c := range t.Columns {
 			if !c.ID {
 				d.Cols = append(d.Cols, ColData{Humanize(c.Name), cell(c, "row."+c.Name, imports)})
 			}
 		}
-		mine := o.Requires != "" && t.Owner != ""
+		mine := scoped(t)
 		pageOf = func(*testBuilder) string { return pageLit(o.Module, nil) }
 
-		// the rows, newest first (and, read with Db.mine, not another user's)
+		// the rows, newest first (and, read with Db.mine, not another user's; with Db.scoped,
+		// not another org's)
 		tb := newTest()
+		if mine && t.PartKey != "user" && kt != nil { // another org's row first: a test inserts it before signing in with one
+			tb = newTestBuilder(p, o.Module, imports)
+			tb.silo = &siloCtx{key: key, table: kt, member: true}
+			tb.keyRow()
+			other := tb.insertRow(kt, "other", nil, false)
+			tb.inOtherKey(other, func() { tb.insertRow(t, "_", map[string]string{t.PartCol: other}, false) })
+			tb.login(o.Role)
+		}
 		tb.insert(t, true)
 		tb.insert(t, true)
 		name := "the list shows the rows, newest first"
-		if mine {
+		switch {
+		case mine && t.PartKey == "user":
 			tb.insertRow(t, "", map[string]string{t.Owner: tb.otherUser()}, false)
 			name = "the list shows my rows, newest first"
+		case mine:
+			name = "the list shows this " + key + "'s rows, newest first"
 		}
 		tb.let("let page <- Test.get (%s)", pageLit(o.Module, nil))
 		result := fmt.Sprintf("List.map (\\row -> row.%s) page.model.rows == [%s]", t.IDField, strings.Join(tb.visible(t, mine), ", "))
@@ -334,7 +386,7 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		// 20 rows a page
 		tb = newTest()
 		tb.bulkInsert(t, 21, "")
-		if mine { // another user's rows are not counted either
+		if mine && t.PartKey == "user" { // another user's rows are not counted either
 			tb.bulkInsert(t, 20, tb.otherUser())
 		}
 		total := len(tb.visible(t, mine)) + tb.bulk[t.Module]
@@ -356,7 +408,11 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		d.Path = strings.TrimSuffix(o.Path, "/") + "/{id}"
 		importTypes(imports, t.IDType)
 		d.Params = "{ id: " + types.StringIn(t.IDType, o.Module) + " }"
-		d.T, d.Mine = recordName(t, o.Module), o.Requires != "" && t.Owner != ""
+		d.T, d.Mine = recordName(t, o.Module), scoped(t)
+		d.Get = "Db.getMine"
+		if d.Mine && t.PartKey != "user" {
+			d.Get = "Db.getScoped"
+		}
 		for _, c := range t.Columns {
 			d.Cols = append(d.Cols, ColData{Humanize(c.Name), cell(c, "model.row."+c.Name, imports)})
 		}
@@ -368,7 +424,7 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 				return nil, Refusef("`--by %s`: `%s` is not a `@unique` column of `%s` (a row is looked up by one; its unique columns: %s)", o.By, o.By, t.Name, uniqueColumns(t))
 			}
 			importTypes(imports, by.Type)
-			d.By, d.Select = o.By, selectOf(t, o.Module, o.Requires != "")
+			d.By, d.Select = o.By, selectIn(t, o.Module, keys)
 			d.Path = strings.TrimSuffix(o.Path, "/") + "/{" + o.By + "}"
 			d.Params = "{ " + o.By + ": " + by.TypeIn(o.Module) + " }"
 			param = func(tb *testBuilder, row string) string {
@@ -396,7 +452,7 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		tb.let("let r <- Test.open (%s)", pageLit(o.Module, []string{missing}))
 		d.Tests = append(d.Tests, TestData{Name: quote("a missing row is not found"), Lines: tb.lines, Result: "r.answer == PageMissing"})
 
-		if d.Mine { // read with Db.getMine: another user's row is not found either
+		if d.Mine && t.PartKey == "user" { // read with Db.getMine: another user's row is not found either
 			tb = newTest()
 			theirs := tb.insertRow(t, "", map[string]string{t.Owner: tb.otherUser()}, false)
 			tb.let("let r <- Test.open (%s)", pageLit(o.Module, []string{param(tb, theirs)}))
@@ -418,7 +474,7 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 			tables = append(tables, t)
 			imports.add(t.Module)
 			label := t.Label()
-			d.Lists = append(d.Lists, FromList{Field: Plural(LowerFirst(t.Name)), T: recordName(t, o.Module), Select: selectOf(t, o.Module, o.Requires != ""),
+			d.Lists = append(d.Lists, FromList{Field: Plural(LowerFirst(t.Name)), T: recordName(t, o.Module), Select: selectIn(t, o.Module, keys),
 				Title: Humanize(Plural(LowerFirst(t.Name))), Cell: cell(label, "row."+label.Name, imports)})
 		}
 		pageOf = func(*testBuilder) string { return pageLit(o.Module, nil) }
@@ -429,11 +485,11 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		for i, t := range tables {
 			field := d.Lists[i].Field
 			tb.insert(t, true)
-			if o.Requires != "" && t.Owner != "" {
+			if scoped(t) && t.PartKey == "user" {
 				tb.insertRow(t, "", map[string]string{t.Owner: tb.otherUser()}, false)
 			}
 			lhs = append(lhs, fmt.Sprintf("%s: Test.count \"#%s li\" page.doc", field, field))
-			rhs = append(rhs, fmt.Sprintf("%s: %d", field, len(tb.visible(t, o.Requires != "" && t.Owner != ""))))
+			rhs = append(rhs, fmt.Sprintf("%s: %d", field, len(tb.visible(t, scoped(t)))))
 		}
 		tb.let("let page <- Test.get (%s)", pageLit(o.Module, nil))
 		d.Tests = append(d.Tests, TestData{Name: quote("the page shows each table's rows"), Lines: tb.lines,
@@ -453,6 +509,12 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		tb := newTestBuilder(p, o.Module, imports)
 		tb.let("let r <- Test.open (%s)", pageOf(tb))
 		d.Tests = append(d.Tests, TestData{Name: quote("a visitor is sent to log in"), Lines: tb.lines, Result: "r.answer == Redirected (" + pageLit(p.Login, nil) + ")"})
+	}
+	if choose := p.Choose[key]; key != "" && choose != "" && slices.Contains(keys, "user") { // signed in without the key: its picker
+		tb := newTestBuilder(p, o.Module, imports)
+		tb.login(o.Role)
+		tb.let("let r <- Test.open (%s)", pageOf(tb))
+		d.Tests = append(d.Tests, TestData{Name: quote("without " + article(key) + " the page sends you to choose one"), Lines: tb.lines, Result: "r.answer == Redirected (" + pageLit(choose, nil) + ")"})
 	}
 	if o.Role != "" {
 		if other := otherRole(p, o.Role); other != "" {
@@ -527,6 +589,19 @@ func rootTags(p *Program, title string, imports *importSet) (string, string) {
 // recordName is table t's record type as written in module home: its name, there or in any
 // module importing its module, which is named after it.
 func recordName(t *Table, home string) string { return t.Name }
+
+// selectIn is how a page that requires keys reads t's rows: `Db.mine T` for a table partitioned
+// by `user`, `Db.scoped T` for one partitioned by another of them (chapter 6, "Partitions"),
+// else `Db.from T`.
+func selectIn(t *Table, home string, keys []string) string {
+	switch {
+	case t.PartKey == "" || !slices.Contains(keys, t.PartKey):
+		return "Db.from " + recordName(t, home)
+	case t.PartKey == "user":
+		return "Db.mine " + recordName(t, home)
+	}
+	return "Db.scoped " + recordName(t, home)
+}
 
 // selectOf is how a page reads t's rows: `Db.mine T` on a `requires user` page when t has an
 // `@owner` (chapter 6, "Rules"), else `Db.from T`.

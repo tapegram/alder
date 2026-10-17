@@ -349,6 +349,7 @@ func (r *Result) RenderText(refused bool) string {
 		}
 		return b.String()
 	}
+	noted := false
 	for _, f := range r.Files {
 		verb := map[bool]string{true: "wrote", false: "would write"}[r.Written]
 		switch f.Action {
@@ -362,6 +363,12 @@ func (r *Result) RenderText(refused bool) string {
 			for _, n := range r.Notes {
 				fmt.Fprintf(&b, "%s\n", n)
 			}
+			noted = true
+		}
+	}
+	if !noted { // notes without a migration (`alder new silo`'s)
+		for _, n := range r.Notes {
+			fmt.Fprintf(&b, "%s\n", n)
 		}
 	}
 	b.WriteString(r.Diff)
