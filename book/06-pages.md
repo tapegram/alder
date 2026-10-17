@@ -1309,3 +1309,14 @@ line naming the request. With `ALDER_DEV=1` (chapter 11), the error's text
 is added at the end of the page's `<body>` as an HTML comment, such as
 `<!-- error: Db.update Todo: no row with id "nope" -->`. Without it, the
 page never shows the text.
+
+### Deploying
+
+An app also says where it ships. A `deploy { … }` declaration in `App`
+names the environments (a server reached by SSH, a Fly app, or a script of
+your own) and what must hold before a build goes out: the least mutation
+score, the commands to run, the environment variables the target must
+provide. It is data that the `alder deploy` command reads; it adds no page,
+no route and no code to the running program, and it never holds a secret,
+only the names of the variables that do. Chapter 16 writes the declaration,
+the command and the gate in full.

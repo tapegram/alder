@@ -47,3 +47,8 @@ test "Logout makes the role Member" = {
   let out <- Test.click Logout
   Task.succeed ({ out: out.answer, role: out.session.role } == { out: Redirected (Auth.Login {}), role: Member })
 }
+
+-- Where `alder deploy` ships the app (book 16). `local` runs a script; nothing here is a secret.
+deploy {
+  local: Script "./scripts/deploy-local.sh",
+}

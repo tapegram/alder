@@ -32,3 +32,8 @@ notFound =
   <Layout.Page title="Not found">
     <h1>Not found</h1>
   </Layout.Page>
+
+-- Where `alder deploy` ships the app (book 16). `local` runs a script; nothing here is a secret.
+deploy {
+  local: Script "./scripts/deploy-local.sh",
+}
