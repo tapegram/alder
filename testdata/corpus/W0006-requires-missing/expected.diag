@@ -1,0 +1,1 @@
+app/App.alder:11:3 W0006 adapter `auth` reads `SMTP_URL`, which `deploy.requires` does not name

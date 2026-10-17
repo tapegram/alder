@@ -1,0 +1,13 @@
+module App
+
+error : Error -> Html Never
+error err = <h1>Something went wrong</h1>
+
+notFound : Html Never
+notFound = <h1>Not found</h1>
+
+deploy {
+  checks: ["./check"],
+  requires: ["SMTP_URL"],
+  production: Ssh "deploy@box" { domain: "sk_live_4eC39HqLyjWDarjtT1zdp7dc", path: "/srv/blog" },
+}

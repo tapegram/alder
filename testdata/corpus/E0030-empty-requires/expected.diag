@@ -1,0 +1,1 @@
+app/App.alder:10:26 E0030 a `requires` name is empty: name an environment variable such as "SMTP_URL"

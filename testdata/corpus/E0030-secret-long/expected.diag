@@ -1,0 +1,1 @@
+app/App.alder:10:12 E0030 a secret belongs in the environment, not in `App`: name it in `requires`

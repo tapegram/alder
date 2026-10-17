@@ -1,0 +1,5 @@
+module Other
+
+deploy {
+  local: Script "./a.sh",
+}

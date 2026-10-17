@@ -42,6 +42,9 @@ type Program struct {
 	// elements it declares, chapter 5), read by Load; nil when the file does not exist. The
 	// checker parses it (internal/elements).
 	ElementsManifest []byte
+	// AdapterEnv are the environment variables the app's adapter packages read (ScanAdapterEnv),
+	// read by Load; the checker compares them with `deploy.requires` (W0006).
+	AdapterEnv []EnvRead
 }
 
 // Load parses every .alder file under dir/app and adds the modules extra, parsed by the caller
@@ -83,6 +86,7 @@ func Load(dir string, std map[string]*syntax.Module, extra ...*syntax.Module) (*
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		ioErrs = append(ioErrs, err)
 	}
+	prog.AdapterEnv = ScanAdapterEnv(dir)
 	bag.Items = append(bag.Items, b2.Items...)
 	return prog, bag, ioErrs
 }

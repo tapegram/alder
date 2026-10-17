@@ -114,10 +114,12 @@ const (
 	RoleClause     = "E0027" // `requires … role R` without `user`, or without a session `role` union having R
 	CustomElement  = "E0028" // a custom element, attribute or slot no manifest declares, or a manifest that does not parse
 	PagePath       = "E0029" // a `page "…"` path the router cannot serve: an empty segment, a space, a query, a quote…
+	DeployDecl     = "E0030" // a `deploy` declaration the deploy command cannot use: unknown target, missing field, bad floor, a secret in App…
 	UnreachableArm = "E0310"
 	UnusedImport   = "W0001"
 	UnshownErrors  = "W0003"
 	PlainDefault   = "W0004"
+	UnnamedEnv     = "W0006" // an adapter reads an environment variable `deploy.requires` does not name
 	UnshownReject  = "W0005" // a message whose update may answer Reject, posted by a form without <Errors form />
 )
 
