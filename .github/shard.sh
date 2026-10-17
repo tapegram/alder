@@ -37,4 +37,4 @@ fi
 p=$(pattern "$k")
 if [ "$p" = '^()$' ]; then echo "shard $k of $n of $pkg is empty"; exit 0; fi
 echo "shard $k of $n of $pkg: $(shard "$k" | wc -l | tr -d ' ') tests"
-exec go test "$pkg" -count=1 -run "$p"
+exec go test "$pkg" -count=1 -timeout 30m -run "$p"

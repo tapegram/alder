@@ -1042,6 +1042,23 @@ A failure names the block's line, `book/03-syntax.md:120: E0003 …`, so a
 change to the language that leaves the book behind fails the build like
 any other test.
 
+### The compiler's own tests
+
+A change to the compiler is checked with `gofmt -l .`, `go vet ./...` (and
+`go vet -tags browser ./...`), and
+
+```
+go test ./... -count=1 -timeout 30m
+```
+
+The `-timeout 30m` matters: `cmd/alder`'s tests build and run whole apps,
+mutation runs included, and on a loaded machine the package takes longer
+than `go test`'s default limit of ten minutes, which then fails it with a
+panic that looks like a hang. CI passes the same flag to each of its
+shards (`.github/workflows/ci.yml`, `.github/shard.sh`). `-short` skips the
+slowest suites (the admin's mutation runs, the out-of-tree builds, the drill), for a
+quick pass while working; the gate runs them.
+
 ### The browser smoke test
 
 Everything above runs without a browser: an app's own tests drive its
@@ -1066,18 +1083,29 @@ Playwright (a browser-automation library for Node.js) with the script
 - a slow post (held back by the script for a second and a half) then a
   click on a link ends on the link's page, not the post's answer;
 - a link to a file under `/static/` is a plain document load;
+- the interactive elements written in an Alder page (`cmd/alder/testdata/browser/Smoke.alder`,
+  added to the copy of the blog the test serves): `<al-menu id popover>` opens
+  from its button with its roles, the arrow keys and Escape; `<al-popover
+  popover>` opens from `popovertarget`; choosing a tab shows its panel only; a
+  tooltip shows on focus; a `<dialog>` written inside `<al-dialog>` is one
+  dialog and opens as a modal;
 - in the admin, with the panel on: the Delete button opens a modal `al-dialog`
   with focus inside it, a body morph leaves it open and modal, Escape closes it
-  and gives focus back, and its confirm leads to the confirmation page;
+  and gives focus back; it shows the counts, "See the details" leads to the
+  confirmation page, and its Delete button deletes the row;
 - a 404 and a 500 (the dev database's table renamed under the running app)
   are morphed in with the panel answering not found and error, its tabs working;
 - the panel's History lists the tab's requests (newest first, at most 20, kept
   across a page load), a click reopens one, and Copy as curl copies the line;
 - a bulk delete's `Notice.with` shows a toast in the open region and it times
-  out;
+  out, and the panel after it is the delete's: its `DELETE`s, then "then GET
+  /admin/user", on the tab chosen before;
 - on 205 users, the admin's new-post form offers 50 authors and a search form;
   the search narrows the select, and a crafted post of an id outside it is
-  refused.
+  refused; the Edit page of a post whose author sorts after the 50 offers that
+  author first, chosen, and saving keeps it;
+- a message the server refuses (another user's email) leaves the focus on the
+  field, which the form's in-flight `inert` had taken away.
 
 It takes a few seconds. It needs `node` on the `PATH` and Playwright with
 its Chromium. Playwright is looked for in `$ALDER_PLAYWRIGHT_DIR`, else
@@ -1261,25 +1289,36 @@ carries a panel, `<al-devpanel>`, a one-line bar along the bottom: the
 request's method and path, how it was answered, the time and the number of SQL
 statements. A tab opens it. The panel is rendered after the page's body, in an
 element the body's morph leaves alone, and filled by its own patch on every
-answer, so it survives every navigation. Its tabs:
+answer, so it survives every navigation. Only the chosen tab's section is
+shown (the server renders the others `hidden`, Request first), and the panel
+remembers the tab chosen last, so the next answer opens on it again. Its tabs:
 
-- Request: the path, the form fields, the parameters, the decoded session and a
-  `curl` line, with a "Copy as curl" button that puts it on the clipboard. The
-  line carries a placeholder for the session cookie (`<your session cookie>`;
-  the real one is the browser's secret), the `Datastar-Request` header of a
-  partial update and the form fields as `--data-urlencode`.
+- Request: the path, the form fields, the parameters, the session (the record
+  the app stores, as JSON) and a `curl` line, with a "Copy as curl" button that
+  puts it on the clipboard. The line carries a placeholder for the session
+  cookie (`<your session cookie>`; the real one is the browser's secret), the
+  `Datastar-Request` header of a partial update and the form fields as
+  `--data-urlencode`. A field whose name says it holds a password, a secret or
+  a token is shown as `••••`, here, in the curl line and so in History.
 - Trace: the effect steps the request ran, in order, with their time; a
   capability call says whether an adapter or a fake answered it. It is the
   list `alder test` prints for a test.
-- SQL: each statement with its arguments and time. A statement that ran more
-  than once is flagged as a duplicate: the same select run per row is the
-  mark of a missing join or a query inside a loop.
-- Answer: rerender, redirect, not found, or an error with its text.
-- Patches: the events the answer sent (body, toast, panel).
+- SQL: each statement with its arguments, time and the rows it wrote or read.
+  A statement that ran more than once is flagged as a duplicate: the same
+  select run per row is the mark of a missing join or a query inside a loop.
+- Answer: page, rerender, redirect, not found, or an error with its text.
+- Patches: the events the answer sent (body, title, history, toast, panel).
 - History: the last 20 requests of this browser tab, newest first. The panel
   keeps them in the browser (`sessionStorage`, so a full page load keeps them
   too and another tab has its own); click one to read its Request, Trace, SQL,
   Answer and Patches as they were.
+
+A message that answers `Redirect` to a page of the app is answered with that
+page in the same response (chapter 6), and the panel shows both: the
+message's request, its steps and statements, then a line "then GET /…" and
+the page's own, and in the bar both answers ("redirect /admin/user, then
+page"). So the panel after a delete shows the `DELETE`s that ran, not only the
+list that followed.
 
 `/_dev` is the map of the running app, built from what the compiler knows and
 what the server knows: the pages (path, `requires`, roles, parameters, and the
@@ -1287,8 +1326,9 @@ messages each declares, with links to those that need no parameter), the
 tables (columns, the id, `@created`/`@updated`, unique columns, references and
 what deleting does to them, the owner), the capabilities and whether an
 adapter or a fake is wired, the session's fields, the migrations the database
-has, the routes and the build id. `ALDER_DEV_PANEL=0` turns the panel off. None of this exists in a production
-binary: no panel, no trace is recorded, and `/_dev` is a 404.
+has, the routes and the build id. `ALDER_DEV_PANEL=0` turns the panel off.
+None of this is served without `ALDER_DEV=1`: no panel, no trace is recorded,
+and `/_dev` is a 404.
 
 
 ## Diagnostics

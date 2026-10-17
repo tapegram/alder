@@ -707,7 +707,9 @@ A button that only toggles a popover can also use the older pair,
 ### Without JavaScript, and in older browsers
 
 Each element says below what it does with no script, but the rule is
-short. Dialog, popover, menu and tabs work natively. A tooltip is hidden,
+short. Dialog, popover, menu and tabs work natively: invoker commands,
+popovers and dialogs are the browser's own, so in the browsers below a
+`commandfor` button opens its dialog or popover with JavaScript off. A tooltip is hidden,
 so put the same text in the trigger's `title`. A toast falls back to an
 `<al-alert>` rendered in the page. The rest of this section is the browser
 line.
@@ -766,10 +768,11 @@ dialog closes, however it closed.
 ```html
 <al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
 <al-dialog id="delete-dialog" heading="Delete this comment?" dismissible>
-  <p>The next page shows what refers to it before anything is deleted.</p>
-  <div slot="actions">
-    <al-button variant="destructive" href="/admin/comment/3/delete">Review and delete</al-button>
-  </div>
+  <p>Nothing else refers to it.</p>
+  <form method="post" action="/comments/3/delete">
+    <al-button variant="destructive"><button type="submit">Delete</button></al-button>
+  </form>
+  <div slot="actions"><a href="/comments/3/delete">See the details</a></div>
 </al-dialog>
 ```
 
@@ -810,16 +813,19 @@ attribute the browser wrote when the dialog was shown (the server never
 writes it), so the renderer also writes `data-preserve-attr="open"` on the
 `<dialog>`, which tells Datastar to leave that attribute alone. A body
 update while the dialog is on screen then leaves it open and modal with
-focus inside it, as long as the element keeps its `id`. The one limit is that a *message* a dialog
-button posts cannot be answered into a different page: messages belong to
-the page that declares them (chapter 6), so the admin's confirm button is
-a link to the confirmation page (chapter 15).
+focus inside it, as long as the element keeps its `id`. A form in the
+dialog posts a message of the page the dialog is on: messages belong to
+the page that declares them (chapter 6), so the admin's Show page declares
+its own `Remove`, and its dialog shows the counts the confirmation page
+shows and posts it (chapter 15).
 
-Without JavaScript the dialog is not open, and the button that would
-open it does nothing, so give the user another way: a link to
-`href="#delete-dialog"` shows it (not as a modal: the dialog is shown by
-`:target`, and `#` hides it), and the admin also keeps a plain link to
-the confirmation page beside the button.
+Without JavaScript the button still opens the dialog, as a modal, in the
+browsers this tier supports (Chromium 135 and later, Safari 26, Firefox
+140): invoker commands are the browser's, not the script's. Only an older
+browser with the script off does nothing on the button; for it, a link to
+`href="#delete-dialog"` shows the dialog (not as a modal: it is shown by
+`:target`, and `#` hides it), or link to a page that does the same job, as
+the admin's "See the details" does.
 
 ### `al-popover`
 
@@ -848,6 +854,15 @@ It needs no script: the popover opens, closes on Escape or a click
 outside, and light-dismisses, with JavaScript off. In a browser without
 anchor positioning it appears at the default position.
 
+In an Alder view it is written exactly so: `popover`, `popovertarget`,
+`popovertargetaction`, `commandfor`, `command` and `closedby` are global
+HTML attributes, which the checker accepts on any element (chapter 5), and
+a bare `popover` is `popover="auto"`:
+
+```alder eval=<al-popover id="who" popover placement="bottom">Only people with the link.</al-popover>
+<al-popover id="who" popover placement="bottom">Only people with the link.</al-popover>
+```
+
 ### `al-menu`
 
 A popover of links or buttons. Open it with `<button commandfor="id"
@@ -871,6 +886,9 @@ Event: `al-select`, fired on the `<al-menu>` when an item is chosen
   <button type="button">Sign out</button>
 </al-menu>
 ```
+
+In an Alder view the links' `href`s are pages (`href={Posts.New {}}`), and
+the rest is written as above.
 
 With the script the menu gets `role="menu"` and `role="menuitem"` on the
 items, the arrow keys move between them, Home and End go to the first and
@@ -967,10 +985,13 @@ patch an `<al-toast variant="info" timeout="5000">` into the page's
 `<al-toasts>`, after the body update, so the toast survives the morph; the
 scaffold's guestbook does this for "Signed".
 
-Without JavaScript the region stays hidden, so a toast is never seen. A
-message whose notice must be read with the script off should also put an
-`<al-alert>` in the page; the `Notice` answer has no such fallback of its
-own.
+Without JavaScript the region stays hidden, so a toast is never seen.
+Alder covers the `Notice` answer itself: a request made without the
+script (a form posted with JavaScript off) gets its notice as an
+`<al-alert variant="info" role="status">` at the top of the page that
+answers it, the page itself on a `Rerender`, the next page on a
+`Redirect` (the text rides a signed cookie, `alder_notice`, for that one
+page).
 
 ### `al-toasts`
 
@@ -1033,9 +1054,10 @@ Slots: default.
 The content is a `<nav>`, then the `<section>`s.
 
 `al-tabs.js` switches the sections when a tab button is clicked and
-toggles `open` (clicking the selected tab again closes the panel). Without
-the script every section is shown while `open` is set. Alder emits the
-panel only under `ALDER_DEV=1`, never in a production build.
+toggles `open` (clicking the selected tab again closes the panel). Alder
+renders every section but the first `hidden`, so without the script the
+open panel shows the Request section. Alder emits the panel only under
+`ALDER_DEV=1`, and never without it.
 
 ## From another stack
 

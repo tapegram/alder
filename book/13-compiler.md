@@ -4075,15 +4075,24 @@ testing and M10 the embedded runtime (above). See the design spec,
 In developer mode the router gives each request's `eff.Env` a `Recorder`
 (`rt/eff`): `Run` adds a step (name, milliseconds, and "adapter" or "fake" for a
 capability's call) around every `Call`, and `rt/db` wraps its querier so each
-statement is added with its arguments, time and rows touched. A nil recorder
-costs nothing. After the answer the router renders the panel from it
+statement is added with its arguments, time and rows touched (a read's rows
+are counted by its caller once they are read, `Recorder.SetRows`). A nil
+recorder costs nothing. A redirect the router follows in the same answer
+(`follow`, chapter 6) serves the target page with the first request's
+recorder: the hop notes where its steps and statements begin
+(`tracker.hops`), the panel prints "then GET <url>" there, and each request
+keeps its own answer (`tracker.setAnswer`), so the panel stays the message's.
+After the answer the router renders the panel from it
 (`rt/web/devpanel.go`): inlined before `</body>` on a full document; on a
 Datastar answer the body patch carries an empty `<al-devpanel id="_alder_panel"
-data-ignore-morph>` (kept by the morph, with its open tab) and the panel's
+data-ignore-morph>` (kept by the morph, with its open state) and the panel's
 contents follow as one more `datastar-patch-elements` event, selector
 `#_alder_panel`, mode inner. The panel's script (`panelScript`, a constant of
 `rt/web/devpanel.go`) is written once, after the panel of a full document, and a
-morph leaves it running: a `MutationObserver` on the panel files each request
+morph leaves it running: it keeps the tab last chosen on the shell
+(`data-tab`) and, after each patch of the panel (whose sections but Request
+arrive `hidden`), shows that tab's section again; a `MutationObserver` on the
+panel files each request
 (its `data-rid`, bar line and sections) in `sessionStorage`, the last 20 of the
 tab, and lists them in the History tab; "Copy as curl" copies the line the
 server built (`curlLine`, with a `<your session cookie>` placeholder). `/_dev`
@@ -4093,7 +4102,7 @@ generator wrote into `Web()` (`internal/gen/devmap.go`: the pages with their
 path, `requires`, roles, parameters and messages, the tables with columns and
 attributes, the capability names, the session's fields), and what only the
 running server knows (the build id, the migrations the database has, how each
-capability is wired, the routes). A production binary never serves either:
+capability is wired, the routes). Neither is served without `ALDER_DEV=1`:
 `/_dev` is a 404 and no page carries the panel or its script (a test builds
 an example, runs it without `ALDER_DEV` and checks both). A `Noticed` answer is unwrapped by the generated route
 (`Nav.Unnotice`), the text kept on the request, and the toast patched after the

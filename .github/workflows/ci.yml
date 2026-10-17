@@ -134,10 +134,10 @@ jobs:
           .github/shard.sh 3 "$k"
       - name: go test ./internal/gen
         if: matrix.part == 'internal/gen'
-        run: go test ./internal/gen -count=1
+        run: go test ./internal/gen -count=1 -timeout 30m
       - name: go test (every other package, the book included)
         if: matrix.part == 'rest'
-        run: go test $(go list ./... | grep -v -e '^alder/cmd/alder$' -e '^alder/internal/gen$') -count=1
+        run: go test $(go list ./... | grep -v -e '^alder/cmd/alder$' -e '^alder/internal/gen$') -count=1 -timeout 30m
 
   examples:
     needs: warm

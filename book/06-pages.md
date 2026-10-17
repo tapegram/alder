@@ -840,13 +840,21 @@ runtime appends `<al-toast variant="info" timeout="5000">Saved</al-toast>` to
 the page's `<al-toasts>` region as an event of its own, so a later morph does
 not show it again. Put `<al-toasts>` in the layout, outside anything a
 message re-renders; a page without one gets a region the runtime adds to the
-body of the answer. Without JavaScript the toast is not shown (the region is
-hidden), so a notice is a courtesy, never the only way a user learns of an
-outcome. A browser test reads the toasts of a step as `r.notices`.
+body of the answer. Without JavaScript there is no toast (the region is
+hidden), so a request made without the script (a form posted with
+JavaScript off) gets its notice as an `<al-alert variant="info"
+role="status">` at the top of the page that answers it: the page itself on a
+`Rerender`, the next page on a `Redirect` (the text rides a cookie signed with
+the app's key, `alder_notice`, for that one page). A browser test reads the
+toasts of a step as `r.notices`.
 
 While a message is pending, the form (or the form around a `click` button)
 that sent it is `inert` and `aria-busy="true"`, and a two-pixel bar runs along
-the top of the page; both go when the answer arrives. A boosted link shows the
+the top of the page; both go when the answer arrives. An inert form loses the
+keyboard focus, so when the answer arrives the runtime puts it back on the
+field that had it (or the element that now carries its `id`), unless the
+focus has gone somewhere else meanwhile: a refused form leaves the cursor
+where the user was typing. A boosted link shows the
 bar too, and Back during a pending GET still ends on the page Back returned
 to. The bar is a rule the runtime puts in the head (`html[data-alder-pending]`),
 not part of the design library.
