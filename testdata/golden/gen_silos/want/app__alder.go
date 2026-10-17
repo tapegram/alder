@@ -58,6 +58,7 @@ var Tests = []rtesting.Case{
 	{Module: "Orgs", Name: "leaving the org clears it", Task: test__Orgs__4},
 	{Module: "Orgs", Name: "the picker lists the user's own memberships", Task: test__Orgs__5},
 	{Module: "Orgs", Name: "a visitor is sent to log in", Task: test__Orgs__6},
+	{Module: "Orgs", Name: "logging out clears the org", Task: test__Orgs__7},
 	{Module: "Projects.Index", Name: "a member sees only their org's projects", Task: test__Projects__Index__1},
 	{Module: "Projects.Index", Name: "rename and remove act on the org's own projects", Task: test__Projects__Index__2},
 	{Module: "Projects.Index", Name: "another org's project is not found", Task: test__Projects__Index__3},
@@ -97,10 +98,10 @@ var Mutants = []rtesting.Mutant{
 	{ID: 10, Module: "Notes.Index", Decl: "requires", Kind: "requires dropped", File: "app/Notes/Index.alder", Line: 7, Col: 19, Before: "requires user", After: "served without user (user = User.UserId \"mutant\")"},
 	{ID: 11, Module: "Notes.Index", Decl: "load", Kind: "scope dropped", File: "app/Notes/Index.alder", Line: 13, Col: 16, Before: "Db.mine Note", After: "Db.from Note"},
 	{ID: 12, Module: "Notes.Index", Decl: "update", Kind: "write replaced", File: "app/Notes/Index.alder", Line: 22, Col: 5, Before: "let _ <- Db.insertMine Note { text: \"a\" }", After: "let _ <- Task.succeed (Note.NoteId \"mutant\")"},
-	{ID: 13, Module: "Orgs", Decl: "requires", Kind: "requires dropped", File: "app/Orgs.alder", Line: 8, Col: 18, Before: "requires user", After: "served without user (user = User.UserId \"mutant\")"},
-	{ID: 14, Module: "Orgs", Decl: "load", Kind: "where dropped", File: "app/Orgs.alder", Line: 14, Col: 37, Before: "Db.where (Membership.user.eq session.user)", After: "the condition dropped"},
-	{ID: 15, Module: "Orgs", Decl: "update", Kind: "session put dropped", File: "app/Orgs.alder", Line: 24, Col: 5, Before: "let _ <- Session.put (\\s -> { s | org: Just p.org })", After: "let _ <- Task.succeed ()"},
-	{ID: 16, Module: "Orgs", Decl: "update", Kind: "redirect → rerender", File: "app/Orgs.alder", Line: 25, Col: 19, Before: "Redirect (Projects.Index {})", After: "Rerender"},
+	{ID: 13, Module: "Orgs", Decl: "requires", Kind: "requires dropped", File: "app/Orgs.alder", Line: 9, Col: 18, Before: "requires user", After: "served without user (user = User.UserId \"mutant\")"},
+	{ID: 14, Module: "Orgs", Decl: "load", Kind: "where dropped", File: "app/Orgs.alder", Line: 15, Col: 37, Before: "Db.where (Membership.user.eq session.user)", After: "the condition dropped"},
+	{ID: 15, Module: "Orgs", Decl: "update", Kind: "session put dropped", File: "app/Orgs.alder", Line: 25, Col: 5, Before: "let _ <- Session.put (\\s -> { s | org: Just p.org })", After: "let _ <- Task.succeed ()"},
+	{ID: 16, Module: "Orgs", Decl: "update", Kind: "redirect → rerender", File: "app/Orgs.alder", Line: 26, Col: 19, Before: "Redirect (Projects.Index {})", After: "Rerender"},
 	{ID: 17, Module: "Projects.Index", Decl: "seed", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 16, Col: 3, Before: "let _ <- Db.insertScoped Project { name: name }", After: "let _ <- Task.succeed (Project.ProjectId \"mutant\")"},
 	{ID: 18, Module: "Projects.Index", Decl: "load", Kind: "orderBy reversed", File: "app/Projects/Index.alder", Line: 24, Col: 40, Before: "Db.orderBy Project.name.asc", After: "Db.orderBy Project.name.desc"},
 	{ID: 19, Module: "Projects.Index", Decl: "load", Kind: "scope dropped", File: "app/Projects/Index.alder", Line: 25, Col: 17, Before: "Db.scoped Label", After: "Db.from Label"},
@@ -299,23 +300,23 @@ func session__name(ok bool, name string) any {
 
 // session__via is Session.put's membership check (web.Options.SessionCheck): a `via` field of
 // the session set to Just v, for a user, needs a row (user, v) of its membership table.
-func session__via(e *eff.Env, o, n any) error {
+func session__via(e *eff.Env, o, n any) (any, error) {
 	a, b := o.(App__Session), n.(App__Session)
+	if !b.User.Ok {
+		b.Org = rt.Maybe[string]{}
+	}
 	if b.Org.Ok && (!a.Org.Ok || a.Org.Val != b.Org.Val || a.User != b.User) {
 		if Mutant != 32 {
-			if !b.User.Ok {
-				return &eff.ErrFail{Msg: "Session.put org: no Membership for this user and org"}
-			}
 			ok, err := db.Member(e.Ctx, e.Store.(db.Store), db.TxOf(e), table__Membership__Membership, "user", b.User.Val, "org", b.Org.Val)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if !ok {
-				return &eff.ErrFail{Msg: "Session.put org: no Membership for this user and org"}
+				return nil, &eff.ErrFail{Msg: "Session.put org: no Membership for this user and org"}
 			}
 		}
 	}
-	return nil
+	return b, nil
 }
 
 // The selector literals of the tests' queries, parsed once (the checker has parsed them too).

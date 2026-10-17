@@ -3,6 +3,7 @@ module Orgs
 import Membership
 import Org
 import User
+import Project
 
 -- `choose org`'s page: it requires the user, not the org, and sets the org.
 page "/orgs" { } requires user
@@ -92,4 +93,15 @@ test "the picker lists the user's own memberships" = {
 test "a visitor is sent to log in" = {
   let r <- Test.open (Orgs {})
   Task.succeed (r.answer == Redirected (Login {}))
+}
+
+test "logging out clears the org" = {
+  let me <- Db.insert User { name: "Me" }
+  let a <- Db.insert Org { name: "A" }
+  let _ <- Test.member me a
+  let _ <- Test.login { user: Just me, org: Just a }
+  let r <- Test.run (Session.put (\s -> { s | user: Nothing }))
+  let back <- Test.run (Session.put (\s -> { s | user: Just me }))
+  let insert <- Test.run (Db.insertScoped Project.Project { name: "x" })
+  Task.succeed ({ out: r.value, back: back.value, insert: Result.map (\x -> ()) insert.value } == { out: Ok (), back: Ok (), insert: Err "Db.insertScoped Project: the session has no org" })
 }

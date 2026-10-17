@@ -658,7 +658,7 @@ func (s *Stores) inspect(ctx context.Context, q querier, ss *siloSchema, allowDa
 	}
 	at := -1
 	for i, m := range ms {
-		if m.Name == mig {
+		if m.Name == mig || mig == "" && m.To == short(hash) { // "": made before the app had migrations (M4)
 			at = i
 		}
 	}

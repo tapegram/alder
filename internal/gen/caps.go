@@ -541,7 +541,9 @@ func (g *gen) serveSilos(p *ir.Program, src string) string {
 // to Just v — changed, or with another user — names a row of its membership table for the
 // session's user, read inside the running Task's transaction on the shared store (db.Member);
 // else the step fails "Session.put org: no Membership for this user and org". Nothing is always
-// allowed. In a mutate build each field's `membership dropped` mutant skips its check.
+// allowed, and a session without a user has every `via` field cleared (logging out clears the
+// org: it returns the session to store). In a mutate build each field's `membership dropped`
+// mutant skips its check.
 func (g *gen) sessionVia(p *ir.Program) string {
 	if len(p.Via) == 0 {
 		return ""
@@ -551,23 +553,27 @@ func (g *gen) sessionVia(p *ir.Program) string {
 	b.WriteString(`
 // session__via is Session.put's membership check (web.Options.SessionCheck): a ` + "`via`" + ` field of
 // the session set to Just v, for a user, needs a row (user, v) of its membership table.
-func session__via(e *eff.Env, o, n any) error {
+func session__via(e *eff.Env, o, n any) (any, error) {
 	a, b := o.(` + app + `), n.(` + app + `)
 `)
+	for _, k := range slices.Sorted(maps.Keys(p.Via)) { // M1: no user, no membership: logging out clears the key
+		for _, fd := range p.Session.Fields {
+			if fd.Name == k {
+				fmt.Fprintf(&b, "\tif !b.%s.Ok {\n\t\tb.%s = %s{}\n\t}\n", Field("user"), Field(k), GoType(fd.Type))
+			}
+		}
+	}
 	for _, k := range slices.Sorted(maps.Keys(p.Via)) {
 		mt := p.Via[k]
 		ucol, kcol := g.memberCols(p, mt, k)
 		fk, fu := Field(k), Field("user")
 		msg := strconv.Quote("Session.put " + k + ": no " + mt.Name + " for this user and " + k)
-		check := fmt.Sprintf(`if !b.%[2]s.Ok {
-			return &eff.ErrFail{Msg: %[3]s}
-		}
-		ok, err := db.Member(e.Ctx, e.Store.(db.Store), db.TxOf(e), %[4]s, %[5]s, b.%[2]s.Val, %[6]s, b.%[1]s.Val)
+		check := fmt.Sprintf(`ok, err := db.Member(e.Ctx, e.Store.(db.Store), db.TxOf(e), %[4]s, %[5]s, b.%[2]s.Val, %[6]s, b.%[1]s.Val)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if !ok {
-			return &eff.ErrFail{Msg: %[3]s}
+			return nil, &eff.ErrFail{Msg: %[3]s}
 		}
 `, fk, fu, msg, tableName(mt.Module, mt.Name), strconv.Quote(ucol), strconv.Quote(kcol))
 		if id := g.membershipDropped(k); id != 0 {
@@ -575,7 +581,7 @@ func session__via(e *eff.Env, o, n any) error {
 		}
 		fmt.Fprintf(&b, "\tif b.%[1]s.Ok && (!a.%[1]s.Ok || a.%[1]s.Val != b.%[1]s.Val || a.%[2]s != b.%[2]s) {\n%[3]s\t}\n", fk, fu, check)
 	}
-	b.WriteString("\treturn nil\n}\n")
+	b.WriteString("\treturn b, nil\n}\n")
 	return b.String()
 }
 

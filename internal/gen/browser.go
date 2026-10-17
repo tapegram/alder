@@ -94,10 +94,10 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 			err := f.temp(c, "_err")
 			check := ""
 			if len(f.g.prog.Via) > 0 { // M15: a `via` field must name a membership (session__via)
-				sess := f.temp(c, "_s")
+				sess, ck := f.temp(c, "_s"), f.temp(c, "_ck")
 				check = sess + " := " + f.code(x.Session, c) + "\n" +
-					"if " + err + " := rtesting.CheckSession(" + env + ", " + sess + "); " + err + " != nil {\nreturn struct{}{}, " + err + "\n}\n" +
-					env + ".Session = " + sess + "\n"
+					ck + ", " + err + " := rtesting.CheckSession(" + env + ", " + sess + ")\nif " + err + " != nil {\nreturn struct{}{}, " + err + "\n}\n" +
+					env + ".Session = " + ck + "\n"
 			} else {
 				check = env + ".Session = " + f.code(x.Session, c) + "\n"
 			}

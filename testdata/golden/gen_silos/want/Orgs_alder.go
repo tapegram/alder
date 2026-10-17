@@ -110,78 +110,79 @@ func test__Orgs__1() eff.Task[bool] {
 			}, me, a), func(_ struct{}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.login", true, func(_e3 *eff.Env) (struct{}, error) {
 					_s5 := App__Session{User: rt.Just[string](me), Org: rt.Nothing[string](), Role: User__Role__Reader__}
-					if _err4 := rtesting.CheckSession(_e3, _s5); _err4 != nil {
+					_ck6, _err4 := rtesting.CheckSession(_e3, _s5)
+					if _err4 != nil {
 						return struct{}{}, _err4
 					}
-					_e3.Session = _s5
+					_e3.Session = _ck6
 					if _err4 := rtesting.BrowserOf(_e3).Login(_e3.Session); _err4 != nil {
 						return struct{}{}, _err4
 					}
 					return struct{}{}, nil
 				}), func(_ struct{}) eff.Task[bool] {
-					return eff.Bind(eff.Call("Test.get Orgs", true, func(_e6 *eff.Env) (struct {
+					return eff.Bind(eff.Call("Test.get Orgs", true, func(_e7 *eff.Env) (struct {
 						Model   Orgs__Model
 						Session App__Session
 						Doc     rtesting.Doc
 						Notices []string
 					}, error) {
-						_u8 := rt.PageURL(rt.Page{Path: "/orgs"})
-						_b9 := rtesting.BrowserOf(_e6)
-						_r10, _err11 := _b9.GetPage(_u8, "user")
-						if _err11 != nil {
-							var _z12 struct {
+						_u9 := rt.PageURL(rt.Page{Path: "/orgs"})
+						_b10 := rtesting.BrowserOf(_e7)
+						_r11, _err12 := _b10.GetPage(_u9, "user")
+						if _err12 != nil {
+							var _z13 struct {
 								Model   Orgs__Model
 								Session App__Session
 								Doc     rtesting.Doc
 								Notices []string
 							}
-							return _z12, _err11
+							return _z13, _err12
 						}
-						_m13, _err11 := rtesting.ModelOf[Orgs__Model](_u8, _r10)
-						if _err11 != nil {
-							var _z14 struct {
+						_m14, _err12 := rtesting.ModelOf[Orgs__Model](_u9, _r11)
+						if _err12 != nil {
+							var _z15 struct {
 								Model   Orgs__Model
 								Session App__Session
 								Doc     rtesting.Doc
 								Notices []string
 							}
-							return _z14, _err11
+							return _z15, _err12
 						}
 						return struct {
 							Model   Orgs__Model
 							Session App__Session
 							Doc     rtesting.Doc
 							Notices []string
-						}{Model: _m13, Session: rtesting.SessionOf[App__Session](_r10.Session), Doc: rtesting.DocOf(_r10.Doc), Notices: _r10.Notices}, nil
+						}{Model: _m14, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc), Notices: _r11.Notices}, nil
 					}), func(_ struct {
 						Model   Orgs__Model
 						Session App__Session
 						Doc     rtesting.Doc
 						Notices []string
 					}) eff.Task[bool] {
-						return eff.Bind(eff.Call("Test.click Orgs.Pick", true, func(_e15 *eff.Env) (struct {
+						return eff.Bind(eff.Call("Test.click Orgs.Pick", true, func(_e16 *eff.Env) (struct {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
 							Notices []string
 						}, error) {
-							_m16 := Orgs__PickParams{Org: a}
-							_r17, _err18 := rtesting.BrowserOf(_e15).ClickMsg(rt.MsgRef{Module: "Orgs", Msg: "Pick", Params: []rt.KV{{Key: "org", Value: _m16.Org}}}.URL(nil), rtesting.MsgName("Orgs.Pick", _m16))
-							if _err18 != nil {
-								var _z19 struct {
+							_m17 := Orgs__PickParams{Org: a}
+							_r18, _err19 := rtesting.BrowserOf(_e16).ClickMsg(rt.MsgRef{Module: "Orgs", Msg: "Pick", Params: []rt.KV{{Key: "org", Value: _m17.Org}}}.URL(nil), rtesting.MsgName("Orgs.Pick", _m17))
+							if _err19 != nil {
+								var _z20 struct {
 									Answer  rtesting.Answer
 									Session App__Session
 									Doc     rtesting.Doc
 									Notices []string
 								}
-								return _z19, _err18
+								return _z20, _err19
 							}
 							return struct {
 								Answer  rtesting.Answer
 								Session App__Session
 								Doc     rtesting.Doc
 								Notices []string
-							}{Answer: _r17.Answer, Session: rtesting.SessionOf[App__Session](_r17.Session), Doc: rtesting.DocOf(_r17.Doc), Notices: _r17.Notices}, nil
+							}{Answer: _r18.Answer, Session: rtesting.SessionOf[App__Session](_r18.Session), Doc: rtesting.DocOf(_r18.Doc), Notices: _r18.Notices}, nil
 						}), func(r struct {
 							Answer  rtesting.Answer
 							Session App__Session
@@ -214,65 +215,66 @@ func test__Orgs__2() eff.Task[bool] {
 				}, me, a), func(_ struct{}) eff.Task[bool] {
 					return eff.Bind(eff.Call("Test.login", true, func(_e4 *eff.Env) (struct{}, error) {
 						_s6 := App__Session{User: rt.Just[string](me), Org: rt.Just[string](a), Role: User__Role__Reader__}
-						if _err5 := rtesting.CheckSession(_e4, _s6); _err5 != nil {
+						_ck7, _err5 := rtesting.CheckSession(_e4, _s6)
+						if _err5 != nil {
 							return struct{}{}, _err5
 						}
-						_e4.Session = _s6
+						_e4.Session = _ck7
 						if _err5 := rtesting.BrowserOf(_e4).Login(_e4.Session); _err5 != nil {
 							return struct{}{}, _err5
 						}
 						return struct{}{}, nil
 					}), func(_ struct{}) eff.Task[bool] {
-						return eff.Bind(eff.Call("Test.run", true, func(_e7 *eff.Env) (struct {
+						return eff.Bind(eff.Call("Test.run", true, func(_e8 *eff.Env) (struct {
 							Value rt.Result[string, rt.Nav]
 							Trace []string
 						}, error) {
-							_v8, _msg9, _ok10, _tr11, _err12 := rtesting.Inner(_e7, Orgs__update(Orgs__Msg__Pick__(Orgs__PickParams{Org: b}), Orgs__Model{Mine: []Membership__Membership{}}, Orgs__Session{User: me, Org: rt.Just[string](a), Role: User__Role__Reader__}))
-							if _err12 != nil {
-								var _z14 struct {
+							_v9, _msg10, _ok11, _tr12, _err13 := rtesting.Inner(_e8, Orgs__update(Orgs__Msg__Pick__(Orgs__PickParams{Org: b}), Orgs__Model{Mine: []Membership__Membership{}}, Orgs__Session{User: me, Org: rt.Just[string](a), Role: User__Role__Reader__}))
+							if _err13 != nil {
+								var _z15 struct {
 									Value rt.Result[string, rt.Nav]
 									Trace []string
 								}
-								return _z14, _err12
+								return _z15, _err13
 							}
-							_r13 := struct {
+							_r14 := struct {
 								Value rt.Result[string, rt.Nav]
 								Trace []string
-							}{Trace: _tr11}
-							if _ok10 {
-								_r13.Value = rt.Ok[string, rt.Nav](_v8)
+							}{Trace: _tr12}
+							if _ok11 {
+								_r14.Value = rt.Ok[string, rt.Nav](_v9)
 							} else {
-								_r13.Value = rt.Err[string, rt.Nav](_msg9)
+								_r14.Value = rt.Err[string, rt.Nav](_msg10)
 							}
-							return _r13, nil
+							return _r14, nil
 						}), func(r struct {
 							Value rt.Result[string, rt.Nav]
 							Trace []string
 						}) eff.Task[bool] {
-							return eff.Bind(eff.Call("Test.run", true, func(_e15 *eff.Env) (struct {
+							return eff.Bind(eff.Call("Test.run", true, func(_e16 *eff.Env) (struct {
 								Value rt.Result[string, struct{}]
 								Trace []string
 							}, error) {
-								_v16, _msg17, _ok18, _tr19, _err20 := rtesting.Inner(_e15, std.SessionPut(func(s App__Session) App__Session {
+								_v17, _msg18, _ok19, _tr20, _err21 := rtesting.Inner(_e16, std.SessionPut(func(s App__Session) App__Session {
 									return App__Session{User: s.User, Org: rt.Just[string](b), Role: s.Role}
 								}))
-								if _err20 != nil {
-									var _z22 struct {
+								if _err21 != nil {
+									var _z23 struct {
 										Value rt.Result[string, struct{}]
 										Trace []string
 									}
-									return _z22, _err20
+									return _z23, _err21
 								}
-								_r21 := struct {
+								_r22 := struct {
 									Value rt.Result[string, struct{}]
 									Trace []string
-								}{Trace: _tr19}
-								if _ok18 {
-									_r21.Value = rt.Ok[string, struct{}](_v16)
+								}{Trace: _tr20}
+								if _ok19 {
+									_r22.Value = rt.Ok[string, struct{}](_v17)
 								} else {
-									_r21.Value = rt.Err[string, struct{}](_msg17)
+									_r22.Value = rt.Err[string, struct{}](_msg18)
 								}
-								return _r21, nil
+								return _r22, nil
 							}), func(put struct {
 								Value rt.Result[string, struct{}]
 								Trace []string
@@ -306,43 +308,44 @@ func test__Orgs__3() eff.Task[bool] {
 			}), func(m string) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.login", true, func(_e4 *eff.Env) (struct{}, error) {
 					_s6 := App__Session{User: rt.Just[string](me), Org: rt.Nothing[string](), Role: User__Role__Reader__}
-					if _err5 := rtesting.CheckSession(_e4, _s6); _err5 != nil {
+					_ck7, _err5 := rtesting.CheckSession(_e4, _s6)
+					if _err5 != nil {
 						return struct{}{}, _err5
 					}
-					_e4.Session = _s6
+					_e4.Session = _ck7
 					if _err5 := rtesting.BrowserOf(_e4).Login(_e4.Session); _err5 != nil {
 						return struct{}{}, _err5
 					}
 					return struct{}{}, nil
 				}), func(_ struct{}) eff.Task[bool] {
-					return eff.Bind(eff.Call("Test.run", true, func(_e7 *eff.Env) (struct {
+					return eff.Bind(eff.Call("Test.run", true, func(_e8 *eff.Env) (struct {
 						Value rt.Result[string, struct{}]
 						Trace []string
 					}, error) {
-						_v9, _msg10, _ok11, _tr12, _err13 := rtesting.Inner(_e7, eff.Bind(eff.Call("Db.delete Membership", true, func(_e8 *eff.Env) (struct{}, error) {
-							return struct{}{}, db.DeleteRow(_e8.Ctx, _e8.Store.(db.Store), db.TxOf(_e8), table__Membership__Membership, m)
+						_v10, _msg11, _ok12, _tr13, _err14 := rtesting.Inner(_e8, eff.Bind(eff.Call("Db.delete Membership", true, func(_e9 *eff.Env) (struct{}, error) {
+							return struct{}{}, db.DeleteRow(_e9.Ctx, _e9.Store.(db.Store), db.TxOf(_e9), table__Membership__Membership, m)
 						}), func(_ struct{}) eff.Task[struct{}] {
 							return std.SessionPut(func(s App__Session) App__Session {
 								return App__Session{User: s.User, Org: rt.Just[string](a), Role: s.Role}
 							})
 						}))
-						if _err13 != nil {
-							var _z15 struct {
+						if _err14 != nil {
+							var _z16 struct {
 								Value rt.Result[string, struct{}]
 								Trace []string
 							}
-							return _z15, _err13
+							return _z16, _err14
 						}
-						_r14 := struct {
+						_r15 := struct {
 							Value rt.Result[string, struct{}]
 							Trace []string
-						}{Trace: _tr12}
-						if _ok11 {
-							_r14.Value = rt.Ok[string, struct{}](_v9)
+						}{Trace: _tr13}
+						if _ok12 {
+							_r15.Value = rt.Ok[string, struct{}](_v10)
 						} else {
-							_r14.Value = rt.Err[string, struct{}](_msg10)
+							_r15.Value = rt.Err[string, struct{}](_msg11)
 						}
-						return _r14, nil
+						return _r15, nil
 					}), func(r struct {
 						Value rt.Result[string, struct{}]
 						Trace []string
@@ -369,77 +372,78 @@ func test__Orgs__4() eff.Task[bool] {
 			}, me, a), func(_ struct{}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.login", true, func(_e3 *eff.Env) (struct{}, error) {
 					_s5 := App__Session{User: rt.Just[string](me), Org: rt.Just[string](a), Role: User__Role__Reader__}
-					if _err4 := rtesting.CheckSession(_e3, _s5); _err4 != nil {
+					_ck6, _err4 := rtesting.CheckSession(_e3, _s5)
+					if _err4 != nil {
 						return struct{}{}, _err4
 					}
-					_e3.Session = _s5
+					_e3.Session = _ck6
 					if _err4 := rtesting.BrowserOf(_e3).Login(_e3.Session); _err4 != nil {
 						return struct{}{}, _err4
 					}
 					return struct{}{}, nil
 				}), func(_ struct{}) eff.Task[bool] {
-					return eff.Bind(eff.Call("Test.get Orgs", true, func(_e6 *eff.Env) (struct {
+					return eff.Bind(eff.Call("Test.get Orgs", true, func(_e7 *eff.Env) (struct {
 						Model   Orgs__Model
 						Session App__Session
 						Doc     rtesting.Doc
 						Notices []string
 					}, error) {
-						_u8 := rt.PageURL(rt.Page{Path: "/orgs"})
-						_b9 := rtesting.BrowserOf(_e6)
-						_r10, _err11 := _b9.GetPage(_u8, "user")
-						if _err11 != nil {
-							var _z12 struct {
+						_u9 := rt.PageURL(rt.Page{Path: "/orgs"})
+						_b10 := rtesting.BrowserOf(_e7)
+						_r11, _err12 := _b10.GetPage(_u9, "user")
+						if _err12 != nil {
+							var _z13 struct {
 								Model   Orgs__Model
 								Session App__Session
 								Doc     rtesting.Doc
 								Notices []string
 							}
-							return _z12, _err11
+							return _z13, _err12
 						}
-						_m13, _err11 := rtesting.ModelOf[Orgs__Model](_u8, _r10)
-						if _err11 != nil {
-							var _z14 struct {
+						_m14, _err12 := rtesting.ModelOf[Orgs__Model](_u9, _r11)
+						if _err12 != nil {
+							var _z15 struct {
 								Model   Orgs__Model
 								Session App__Session
 								Doc     rtesting.Doc
 								Notices []string
 							}
-							return _z14, _err11
+							return _z15, _err12
 						}
 						return struct {
 							Model   Orgs__Model
 							Session App__Session
 							Doc     rtesting.Doc
 							Notices []string
-						}{Model: _m13, Session: rtesting.SessionOf[App__Session](_r10.Session), Doc: rtesting.DocOf(_r10.Doc), Notices: _r10.Notices}, nil
+						}{Model: _m14, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc), Notices: _r11.Notices}, nil
 					}), func(_ struct {
 						Model   Orgs__Model
 						Session App__Session
 						Doc     rtesting.Doc
 						Notices []string
 					}) eff.Task[bool] {
-						return eff.Bind(eff.Call("Test.click App.Leave", true, func(_e15 *eff.Env) (struct {
+						return eff.Bind(eff.Call("Test.click App.Leave", true, func(_e16 *eff.Env) (struct {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
 							Notices []string
 						}, error) {
-							_r16, _err17 := rtesting.BrowserOf(_e15).ClickMsg(rt.MsgURL("App", "Leave"), rtesting.MsgName("App.Leave", nil))
-							if _err17 != nil {
-								var _z18 struct {
+							_r17, _err18 := rtesting.BrowserOf(_e16).ClickMsg(rt.MsgURL("App", "Leave"), rtesting.MsgName("App.Leave", nil))
+							if _err18 != nil {
+								var _z19 struct {
 									Answer  rtesting.Answer
 									Session App__Session
 									Doc     rtesting.Doc
 									Notices []string
 								}
-								return _z18, _err17
+								return _z19, _err18
 							}
 							return struct {
 								Answer  rtesting.Answer
 								Session App__Session
 								Doc     rtesting.Doc
 								Notices []string
-							}{Answer: _r16.Answer, Session: rtesting.SessionOf[App__Session](_r16.Session), Doc: rtesting.DocOf(_r16.Doc), Notices: _r16.Notices}, nil
+							}{Answer: _r17.Answer, Session: rtesting.SessionOf[App__Session](_r17.Session), Doc: rtesting.DocOf(_r17.Doc), Notices: _r17.Notices}, nil
 						}), func(r struct {
 							Answer  rtesting.Answer
 							Session App__Session
@@ -479,49 +483,50 @@ func test__Orgs__5() eff.Task[bool] {
 						}, them, b), func(_ struct{}) eff.Task[bool] {
 							return eff.Bind(eff.Call("Test.login", true, func(_e5 *eff.Env) (struct{}, error) {
 								_s7 := App__Session{User: rt.Just[string](me), Org: rt.Nothing[string](), Role: User__Role__Reader__}
-								if _err6 := rtesting.CheckSession(_e5, _s7); _err6 != nil {
+								_ck8, _err6 := rtesting.CheckSession(_e5, _s7)
+								if _err6 != nil {
 									return struct{}{}, _err6
 								}
-								_e5.Session = _s7
+								_e5.Session = _ck8
 								if _err6 := rtesting.BrowserOf(_e5).Login(_e5.Session); _err6 != nil {
 									return struct{}{}, _err6
 								}
 								return struct{}{}, nil
 							}), func(_ struct{}) eff.Task[bool] {
-								return eff.Bind(eff.Call("Test.get Orgs", true, func(_e8 *eff.Env) (struct {
+								return eff.Bind(eff.Call("Test.get Orgs", true, func(_e9 *eff.Env) (struct {
 									Model   Orgs__Model
 									Session App__Session
 									Doc     rtesting.Doc
 									Notices []string
 								}, error) {
-									_u10 := rt.PageURL(rt.Page{Path: "/orgs"})
-									_b11 := rtesting.BrowserOf(_e8)
-									_r12, _err13 := _b11.GetPage(_u10, "user")
-									if _err13 != nil {
-										var _z14 struct {
+									_u11 := rt.PageURL(rt.Page{Path: "/orgs"})
+									_b12 := rtesting.BrowserOf(_e9)
+									_r13, _err14 := _b12.GetPage(_u11, "user")
+									if _err14 != nil {
+										var _z15 struct {
 											Model   Orgs__Model
 											Session App__Session
 											Doc     rtesting.Doc
 											Notices []string
 										}
-										return _z14, _err13
+										return _z15, _err14
 									}
-									_m15, _err13 := rtesting.ModelOf[Orgs__Model](_u10, _r12)
-									if _err13 != nil {
-										var _z16 struct {
+									_m16, _err14 := rtesting.ModelOf[Orgs__Model](_u11, _r13)
+									if _err14 != nil {
+										var _z17 struct {
 											Model   Orgs__Model
 											Session App__Session
 											Doc     rtesting.Doc
 											Notices []string
 										}
-										return _z16, _err13
+										return _z17, _err14
 									}
 									return struct {
 										Model   Orgs__Model
 										Session App__Session
 										Doc     rtesting.Doc
 										Notices []string
-									}{Model: _m15, Session: rtesting.SessionOf[App__Session](_r12.Session), Doc: rtesting.DocOf(_r12.Doc), Notices: _r12.Notices}, nil
+									}{Model: _m16, Session: rtesting.SessionOf[App__Session](_r13.Session), Doc: rtesting.DocOf(_r13.Doc), Notices: _r13.Notices}, nil
 								}), func(page struct {
 									Model   Orgs__Model
 									Session App__Session
@@ -574,5 +579,133 @@ func test__Orgs__6() eff.Task[bool] {
 		Notices []string
 	}) eff.Task[bool] {
 		return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}))
+	})
+}
+
+// test__Orgs__7 is test "logging out clears the org" of module Orgs.
+func test__Orgs__7() eff.Task[bool] {
+	return eff.Bind(eff.Call("Db.insert User", true, func(_e1 *eff.Env) (string, error) {
+		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__User__User, insertvals__User__User(insert__User__User{Name: "Me"}), _e1.Now())
+	}), func(me string) eff.Task[bool] {
+		return eff.Bind(eff.Call("Db.insert Org", true, func(_e2 *eff.Env) (string, error) {
+			return db.InsertRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Org__Org, insertvals__Org__Org(insert__Org__Org{Name: "A"}), _e2.Now())
+		}), func(a string) eff.Task[bool] {
+			return eff.Bind(rtesting.Member(func(_e *eff.Env, _u, _k string) error {
+				_, err := db.InsertRow(_e.Ctx, _e.Store.(db.Store), db.TxOf(_e), table__Membership__Membership, []any{nil, _u, _k}, _e.Now())
+				return err
+			}, me, a), func(_ struct{}) eff.Task[bool] {
+				return eff.Bind(eff.Call("Test.login", true, func(_e3 *eff.Env) (struct{}, error) {
+					_s5 := App__Session{User: rt.Just[string](me), Org: rt.Just[string](a), Role: User__Role__Reader__}
+					_ck6, _err4 := rtesting.CheckSession(_e3, _s5)
+					if _err4 != nil {
+						return struct{}{}, _err4
+					}
+					_e3.Session = _ck6
+					if _err4 := rtesting.BrowserOf(_e3).Login(_e3.Session); _err4 != nil {
+						return struct{}{}, _err4
+					}
+					return struct{}{}, nil
+				}), func(_ struct{}) eff.Task[bool] {
+					return eff.Bind(eff.Call("Test.run", true, func(_e7 *eff.Env) (struct {
+						Value rt.Result[string, struct{}]
+						Trace []string
+					}, error) {
+						_v8, _msg9, _ok10, _tr11, _err12 := rtesting.Inner(_e7, std.SessionPut(func(s App__Session) App__Session {
+							return App__Session{User: rt.Nothing[string](), Org: s.Org, Role: s.Role}
+						}))
+						if _err12 != nil {
+							var _z14 struct {
+								Value rt.Result[string, struct{}]
+								Trace []string
+							}
+							return _z14, _err12
+						}
+						_r13 := struct {
+							Value rt.Result[string, struct{}]
+							Trace []string
+						}{Trace: _tr11}
+						if _ok10 {
+							_r13.Value = rt.Ok[string, struct{}](_v8)
+						} else {
+							_r13.Value = rt.Err[string, struct{}](_msg9)
+						}
+						return _r13, nil
+					}), func(r struct {
+						Value rt.Result[string, struct{}]
+						Trace []string
+					}) eff.Task[bool] {
+						return eff.Bind(eff.Call("Test.run", true, func(_e15 *eff.Env) (struct {
+							Value rt.Result[string, struct{}]
+							Trace []string
+						}, error) {
+							_v16, _msg17, _ok18, _tr19, _err20 := rtesting.Inner(_e15, std.SessionPut(func(s App__Session) App__Session {
+								return App__Session{User: rt.Just[string](me), Org: s.Org, Role: s.Role}
+							}))
+							if _err20 != nil {
+								var _z22 struct {
+									Value rt.Result[string, struct{}]
+									Trace []string
+								}
+								return _z22, _err20
+							}
+							_r21 := struct {
+								Value rt.Result[string, struct{}]
+								Trace []string
+							}{Trace: _tr19}
+							if _ok18 {
+								_r21.Value = rt.Ok[string, struct{}](_v16)
+							} else {
+								_r21.Value = rt.Err[string, struct{}](_msg17)
+							}
+							return _r21, nil
+						}), func(back struct {
+							Value rt.Result[string, struct{}]
+							Trace []string
+						}) eff.Task[bool] {
+							return eff.Bind(eff.Call("Test.run", true, func(_e23 *eff.Env) (struct {
+								Value rt.Result[string, string]
+								Trace []string
+							}, error) {
+								_v25, _msg26, _ok27, _tr28, _err29 := rtesting.Inner(_e23, eff.Call("Db.insertScoped Project", true, func(_e24 *eff.Env) (string, error) {
+									return db.InsertScopedRow(_e24.Ctx, _e24.Store.(db.Store), db.TxOf(_e24), table__Project__Project, insertminevals__Project__Project(insertmine__Project__Project{Name: "x"}), _e24.Now())
+								}))
+								if _err29 != nil {
+									var _z31 struct {
+										Value rt.Result[string, string]
+										Trace []string
+									}
+									return _z31, _err29
+								}
+								_r30 := struct {
+									Value rt.Result[string, string]
+									Trace []string
+								}{Trace: _tr28}
+								if _ok27 {
+									_r30.Value = rt.Ok[string, string](_v25)
+								} else {
+									_r30.Value = rt.Err[string, string](_msg26)
+								}
+								return _r30, nil
+							}), func(insert struct {
+								Value rt.Result[string, string]
+								Trace []string
+							}) eff.Task[bool] {
+								return eff.Pure(rtesting.Eq(struct {
+									Out    rt.Result[string, struct{}]
+									Back   rt.Result[string, struct{}]
+									Insert rt.Result[string, struct{}]
+								}{Out: r.Value, Back: back.Value, Insert: std.ResultMap(func(x string) struct{} {
+									return struct{}{}
+								}, insert.Value)}, struct {
+									Out    rt.Result[string, struct{}]
+									Back   rt.Result[string, struct{}]
+									Insert rt.Result[string, struct{}]
+								}{Out: rt.Ok[string, struct{}](struct{}{}), Back: rt.Ok[string, struct{}](struct{}{}), Insert: rt.Err[string, struct{}]("Db.insertScoped Project: the session has no org")}))
+							})
+						})
+					})
+				})
+			})
+		})
 	})
 }

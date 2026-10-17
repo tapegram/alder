@@ -325,9 +325,9 @@ func Member(insert func(e *eff.Env, user, key string) error, user, key string) e
 // CheckSession is Test.login's check of the session it signs in with, next (an app whose
 // session has a `via` field: the membership, as Session.put checks it): Env.CheckSession of the
 // test's session and next, nil when the app has none.
-func CheckSession(e *eff.Env, next any) error {
+func CheckSession(e *eff.Env, next any) (any, error) {
 	if e.CheckSession == nil {
-		return nil
+		return next, nil
 	}
 	return e.CheckSession(e, e.Session, next)
 }

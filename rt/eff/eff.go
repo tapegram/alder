@@ -192,7 +192,7 @@ type Env struct {
 	// CheckSession, when set, is called by Session.put (and Test.login) with the session before
 	// and after: an app whose session has a `via` field checks the membership (a non-nil error
 	// fails the step, *ErrFail for a refusal).
-	CheckSession func(e *Env, old, new any) error
+	CheckSession func(e *Env, old, new any) (any, error)
 
 	beginTx func() (Tx, error) // set by Run for a Task with a Store: begins Tx
 	active  bool               // Run is running (RunInner may run inside it); restored when it returns

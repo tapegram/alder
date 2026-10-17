@@ -63,7 +63,7 @@ type Options struct {
 	Stores *db.Stores
 	// SessionCheck is every request's eff.Env.CheckSession: an app whose session has a `via`
 	// field checks the membership of a Session.put (generated Web); nil otherwise.
-	SessionCheck func(e *eff.Env, old, new any) error
+	SessionCheck func(e *eff.Env, old, new any) (any, error)
 	// MaintenanceDoc is the document of a request on a silo that is not served (App.maintenance;
 	// nil: a default page), answered with status 503 (MaintenanceResponse).
 	MaintenanceDoc func() html.Node

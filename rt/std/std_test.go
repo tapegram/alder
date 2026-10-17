@@ -468,12 +468,14 @@ func TestEffects_SessionPut(t *testing.T) {
 // session: a refusal fails the step and the session stays as it was.
 func TestEffects_SessionPutChecked(t *testing.T) {
 	var seen []any
-	env := &eff.Env{Session: sess{Theme: "light"}, CheckSession: func(e *eff.Env, old, new any) error {
+	env := &eff.Env{Session: sess{Theme: "light"}, CheckSession: func(e *eff.Env, old, new any) (any, error) {
 		seen = append(seen, old, new)
 		if new.(sess).User.Ok {
-			return &eff.ErrFail{Msg: "Session.put org: no Membership for this user and org"}
+			return nil, &eff.ErrFail{Msg: "Session.put org: no Membership for this user and org"}
 		}
-		return nil
+		s := new.(sess)
+		s.Theme += "!" // the check may adjust the session it accepts (a logout clears a via key)
+		return s, nil
 	}}
 	if _, err := eff.Run(env, eff.KTask, SessionPut(func(s sess) sess { s.Theme = "dark"; return s })); err != nil {
 		t.Fatal(err)
@@ -482,8 +484,8 @@ func TestEffects_SessionPutChecked(t *testing.T) {
 	if f, ok := err.(*eff.ErrFail); !ok || f.Msg != "Session.put org: no Membership for this user and org" {
 		t.Fatalf("refused put: %v", err)
 	}
-	eq(t, "session", env.Session, sess{Theme: "dark"})
-	eq(t, "checked", seen, []any{sess{Theme: "light"}, sess{Theme: "dark"}, sess{Theme: "dark"}, sess{User: rt.Just("u"), Theme: "dark"}})
+	eq(t, "session", env.Session, sess{Theme: "dark!"})
+	eq(t, "checked", seen, []any{sess{Theme: "light"}, sess{Theme: "dark"}, sess{Theme: "dark!"}, sess{User: rt.Just("u"), Theme: "dark!"}})
 }
 
 func TestEffects_TimeNowUsesEnvClock(t *testing.T) {

@@ -220,19 +220,19 @@ func session__name(ok bool, name string) any {
 
 // session__via is Session.put's membership check (web.Options.SessionCheck): a `via` field of
 // the session set to Just v, for a user, needs a row (user, v) of its membership table.
-func session__via(e *eff.Env, o, n any) error {
+func session__via(e *eff.Env, o, n any) (any, error) {
 	a, b := o.(App__Session), n.(App__Session)
+	if !b.User.Ok {
+		b.Org = rt.Maybe[string]{}
+	}
 	if b.Org.Ok && (!a.Org.Ok || a.Org.Val != b.Org.Val || a.User != b.User) {
-		if !b.User.Ok {
-			return &eff.ErrFail{Msg: "Session.put org: no Membership for this user and org"}
-		}
 		ok, err := db.Member(e.Ctx, e.Store.(db.Store), db.TxOf(e), table__Membership__Membership, "user", b.User.Val, "org", b.Org.Val)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if !ok {
-			return &eff.ErrFail{Msg: "Session.put org: no Membership for this user and org"}
+			return nil, &eff.ErrFail{Msg: "Session.put org: no Membership for this user and org"}
 		}
 	}
-	return nil
+	return b, nil
 }

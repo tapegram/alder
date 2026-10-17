@@ -742,3 +742,28 @@ func TestStores_TestModeWriteChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// M4: a silo made before the app had migrations (its row names none) whose schema is where a
+// migration leads is behind from there, not failed.
+func TestStores_AdoptsMigrationless(t *testing.T) {
+	dir := t.TempDir()
+	cfg := siloConfig(t, dir, 1)
+	cfg.Migrations = nil
+	pre, _ := newStores(nil, cfg)
+	p, _ := SiloPath(dir, "org", "old")
+	os.MkdirAll(filepath.Dir(p), 0o755)
+	f, _ := OpenSQLite(p)
+	if st, _, err := pre.check(context.Background(), f, pre.silos["org"], false, true); err != nil || st != SiloOK {
+		t.Fatalf("%s %v", st, err)
+	}
+	f.Close()
+	s := openApp(t, dir, 2)
+	if _, err := s.silo(context.Background(), "org", "old"); err != nil {
+		t.Fatal(err)
+	}
+	f, _ = OpenSQLite(p)
+	defer f.Close()
+	if _, m, _, _ := schemaRow(context.Background(), f.db); m != "0002_note" {
+		t.Fatalf("row %q", m)
+	}
+}

@@ -97,50 +97,51 @@ func test__Admin__Projects__1() eff.Task[bool] {
 			}), func(_ string) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.login", true, func(_e4 *eff.Env) (struct{}, error) {
 					_s6 := App__Session{User: rt.Just[string](admin), Org: rt.Nothing[string](), Role: User__Role__Admin__}
-					if _err5 := rtesting.CheckSession(_e4, _s6); _err5 != nil {
+					_ck7, _err5 := rtesting.CheckSession(_e4, _s6)
+					if _err5 != nil {
 						return struct{}{}, _err5
 					}
-					_e4.Session = _s6
+					_e4.Session = _ck7
 					if _err5 := rtesting.BrowserOf(_e4).Login(_e4.Session); _err5 != nil {
 						return struct{}{}, _err5
 					}
 					return struct{}{}, nil
 				}), func(_ struct{}) eff.Task[bool] {
-					return eff.Bind(eff.Call("Test.get Admin.Projects", true, func(_e7 *eff.Env) (struct {
+					return eff.Bind(eff.Call("Test.get Admin.Projects", true, func(_e8 *eff.Env) (struct {
 						Model   Admin__Projects__Model
 						Session App__Session
 						Doc     rtesting.Doc
 						Notices []string
 					}, error) {
-						var _p8 Admin__Projects__Params = Admin__Projects__Params{Org: b}
-						_u9 := rt.PageURL(rt.Page{Path: rt.Concat("/admin/orgs/", rt.PathSegment(_p8.Org), "/projects")})
-						_b10 := rtesting.BrowserOf(_e7)
-						_r11, _err12 := _b10.GetPage(_u9, "user")
-						if _err12 != nil {
-							var _z13 struct {
+						var _p9 Admin__Projects__Params = Admin__Projects__Params{Org: b}
+						_u10 := rt.PageURL(rt.Page{Path: rt.Concat("/admin/orgs/", rt.PathSegment(_p9.Org), "/projects")})
+						_b11 := rtesting.BrowserOf(_e8)
+						_r12, _err13 := _b11.GetPage(_u10, "user")
+						if _err13 != nil {
+							var _z14 struct {
 								Model   Admin__Projects__Model
 								Session App__Session
 								Doc     rtesting.Doc
 								Notices []string
 							}
-							return _z13, _err12
+							return _z14, _err13
 						}
-						_m14, _err12 := rtesting.ModelOf[Admin__Projects__Model](_u9, _r11)
-						if _err12 != nil {
-							var _z15 struct {
+						_m15, _err13 := rtesting.ModelOf[Admin__Projects__Model](_u10, _r12)
+						if _err13 != nil {
+							var _z16 struct {
 								Model   Admin__Projects__Model
 								Session App__Session
 								Doc     rtesting.Doc
 								Notices []string
 							}
-							return _z15, _err12
+							return _z16, _err13
 						}
 						return struct {
 							Model   Admin__Projects__Model
 							Session App__Session
 							Doc     rtesting.Doc
 							Notices []string
-						}{Model: _m14, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc), Notices: _r11.Notices}, nil
+						}{Model: _m15, Session: rtesting.SessionOf[App__Session](_r12.Session), Doc: rtesting.DocOf(_r12.Doc), Notices: _r12.Notices}, nil
 					}), func(page struct {
 						Model   Admin__Projects__Model
 						Session App__Session
@@ -156,29 +157,29 @@ func test__Admin__Projects__1() eff.Task[bool] {
 								Doc     rtesting.Doc
 								Notices []string
 							}] {
-								return eff.Call("Test.click Admin.Projects.Remove", true, func(_e16 *eff.Env) (struct {
+								return eff.Call("Test.click Admin.Projects.Remove", true, func(_e17 *eff.Env) (struct {
 									Answer  rtesting.Answer
 									Session App__Session
 									Doc     rtesting.Doc
 									Notices []string
 								}, error) {
-									_m17 := Admin__Projects__RemoveParams{Id: id}
-									_r18, _err19 := rtesting.BrowserOf(_e16).ClickMsg(rt.MsgRef{Module: "Admin.Projects", Msg: "Remove", Params: []rt.KV{{Key: "id", Value: _m17.Id}}}.URL(nil), rtesting.MsgName("Admin.Projects.Remove", _m17))
-									if _err19 != nil {
-										var _z20 struct {
+									_m18 := Admin__Projects__RemoveParams{Id: id}
+									_r19, _err20 := rtesting.BrowserOf(_e17).ClickMsg(rt.MsgRef{Module: "Admin.Projects", Msg: "Remove", Params: []rt.KV{{Key: "id", Value: _m18.Id}}}.URL(nil), rtesting.MsgName("Admin.Projects.Remove", _m18))
+									if _err20 != nil {
+										var _z21 struct {
 											Answer  rtesting.Answer
 											Session App__Session
 											Doc     rtesting.Doc
 											Notices []string
 										}
-										return _z20, _err19
+										return _z21, _err20
 									}
 									return struct {
 										Answer  rtesting.Answer
 										Session App__Session
 										Doc     rtesting.Doc
 										Notices []string
-									}{Answer: _r18.Answer, Session: rtesting.SessionOf[App__Session](_r18.Session), Doc: rtesting.DocOf(_r18.Doc), Notices: _r18.Notices}, nil
+									}{Answer: _r19.Answer, Session: rtesting.SessionOf[App__Session](_r19.Session), Doc: rtesting.DocOf(_r19.Doc), Notices: _r19.Notices}, nil
 								})
 							}, ids)), func(_ []struct {
 								Answer  rtesting.Answer
@@ -186,41 +187,41 @@ func test__Admin__Projects__1() eff.Task[bool] {
 								Doc     rtesting.Doc
 								Notices []string
 							}) eff.Task[bool] {
-								return eff.Bind(eff.Call("Test.get Admin.Projects", true, func(_e21 *eff.Env) (struct {
+								return eff.Bind(eff.Call("Test.get Admin.Projects", true, func(_e22 *eff.Env) (struct {
 									Model   Admin__Projects__Model
 									Session App__Session
 									Doc     rtesting.Doc
 									Notices []string
 								}, error) {
-									var _p22 Admin__Projects__Params = Admin__Projects__Params{Org: b}
-									_u23 := rt.PageURL(rt.Page{Path: rt.Concat("/admin/orgs/", rt.PathSegment(_p22.Org), "/projects")})
-									_b24 := rtesting.BrowserOf(_e21)
-									_r25, _err26 := _b24.GetPage(_u23, "user")
-									if _err26 != nil {
-										var _z27 struct {
+									var _p23 Admin__Projects__Params = Admin__Projects__Params{Org: b}
+									_u24 := rt.PageURL(rt.Page{Path: rt.Concat("/admin/orgs/", rt.PathSegment(_p23.Org), "/projects")})
+									_b25 := rtesting.BrowserOf(_e22)
+									_r26, _err27 := _b25.GetPage(_u24, "user")
+									if _err27 != nil {
+										var _z28 struct {
 											Model   Admin__Projects__Model
 											Session App__Session
 											Doc     rtesting.Doc
 											Notices []string
 										}
-										return _z27, _err26
+										return _z28, _err27
 									}
-									_m28, _err26 := rtesting.ModelOf[Admin__Projects__Model](_u23, _r25)
-									if _err26 != nil {
-										var _z29 struct {
+									_m29, _err27 := rtesting.ModelOf[Admin__Projects__Model](_u24, _r26)
+									if _err27 != nil {
+										var _z30 struct {
 											Model   Admin__Projects__Model
 											Session App__Session
 											Doc     rtesting.Doc
 											Notices []string
 										}
-										return _z29, _err26
+										return _z30, _err27
 									}
 									return struct {
 										Model   Admin__Projects__Model
 										Session App__Session
 										Doc     rtesting.Doc
 										Notices []string
-									}{Model: _m28, Session: rtesting.SessionOf[App__Session](_r25.Session), Doc: rtesting.DocOf(_r25.Doc), Notices: _r25.Notices}, nil
+									}{Model: _m29, Session: rtesting.SessionOf[App__Session](_r26.Session), Doc: rtesting.DocOf(_r26.Doc), Notices: _r26.Notices}, nil
 								}), func(after struct {
 									Model   Admin__Projects__Model
 									Session App__Session
@@ -256,40 +257,41 @@ func test__Admin__Projects__2() eff.Task[bool] {
 		}), func(b string) eff.Task[bool] {
 			return eff.Bind(eff.Call("Test.login", true, func(_e3 *eff.Env) (struct{}, error) {
 				_s5 := App__Session{User: rt.Just[string](me), Org: rt.Nothing[string](), Role: User__Role__Reader__}
-				if _err4 := rtesting.CheckSession(_e3, _s5); _err4 != nil {
+				_ck6, _err4 := rtesting.CheckSession(_e3, _s5)
+				if _err4 != nil {
 					return struct{}{}, _err4
 				}
-				_e3.Session = _s5
+				_e3.Session = _ck6
 				if _err4 := rtesting.BrowserOf(_e3).Login(_e3.Session); _err4 != nil {
 					return struct{}{}, _err4
 				}
 				return struct{}{}, nil
 			}), func(_ struct{}) eff.Task[bool] {
-				return eff.Bind(eff.Call("Test.open Admin.Projects", true, func(_e6 *eff.Env) (struct {
+				return eff.Bind(eff.Call("Test.open Admin.Projects", true, func(_e7 *eff.Env) (struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
 					Notices []string
 				}, error) {
-					var _p7 Admin__Projects__Params = Admin__Projects__Params{Org: b}
-					_u8 := rt.PageURL(rt.Page{Path: rt.Concat("/admin/orgs/", rt.PathSegment(_p7.Org), "/projects")})
-					_b9 := rtesting.BrowserOf(_e6)
-					_r10, _err11 := _b9.Open(_u8)
-					if _err11 != nil {
-						var _z12 struct {
+					var _p8 Admin__Projects__Params = Admin__Projects__Params{Org: b}
+					_u9 := rt.PageURL(rt.Page{Path: rt.Concat("/admin/orgs/", rt.PathSegment(_p8.Org), "/projects")})
+					_b10 := rtesting.BrowserOf(_e7)
+					_r11, _err12 := _b10.Open(_u9)
+					if _err12 != nil {
+						var _z13 struct {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
 							Notices []string
 						}
-						return _z12, _err11
+						return _z13, _err12
 					}
 					return struct {
 						Answer  rtesting.Answer
 						Session App__Session
 						Doc     rtesting.Doc
 						Notices []string
-					}{Answer: _r10.Answer, Session: rtesting.SessionOf[App__Session](_r10.Session), Doc: rtesting.DocOf(_r10.Doc), Notices: _r10.Notices}, nil
+					}{Answer: _r11.Answer, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc), Notices: _r11.Notices}, nil
 				}), func(r struct {
 					Answer  rtesting.Answer
 					Session App__Session
