@@ -768,9 +768,14 @@ func formatNumber() int {
 	return n
 }
 
-// appTables lists every table except SQLite's own, _alder_meta and _alder_migrations.
+// internalTables are the runtime's own tables, which are not the app's (appTables, liveSchema):
+// the schema record, the migration log, a silo's schema row, the deploy lock and the deploy
+// tables of a shared database on Turso (EnsureDeployTables).
+const internalTables = `'_alder_meta', '_alder_migrations', '_alder_schema', '_alder_lock', '_alder_deploy_builds', '_alder_deploy_current'`
+
+// appTables lists every table except SQLite's own and the runtime's (internalTables).
 func appTables(ctx context.Context, q querier) ([]string, error) {
-	rows, err := q.QueryContext(ctx, `SELECT "name" FROM sqlite_schema WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite\_%' ESCAPE '\' AND "name" NOT IN ('_alder_meta', '_alder_migrations', '_alder_schema', '_alder_lock') ORDER BY "name"`)
+	rows, err := q.QueryContext(ctx, `SELECT "name" FROM sqlite_schema WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite\_%' ESCAPE '\' AND "name" NOT IN (`+internalTables+`) ORDER BY "name"`)
 	if err != nil {
 		return nil, err
 	}

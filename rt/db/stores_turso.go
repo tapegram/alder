@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -436,4 +437,94 @@ func ReleaseLock(ctx context.Context, st *SQLite, holder string) error {
 // _alder_meta exists).
 func HasAppTables(ctx context.Context, st *SQLite) (bool, error) {
 	return tableExists(ctx, st.db, "_alder_meta")
+}
+
+// ---- the deploy tables of a shared database on Turso (the Render target, chapter 16)
+
+// The deploy tables record a Render environment's builds in its shared database, where every
+// machine that deploys (a laptop, a CI runner) finds them: one row per build pushed (its
+// alder-deploy.json record, its migrations/schema.json and that schema's hash, its migrations'
+// names as a JSON list, and the point-in-time mark taken before it migrated), and the id of the
+// build serving. They are the runtime's tables, not the app's (internalTables): drift, adoption
+// and HasAppTables do not see them.
+const (
+	createDeployBuilds  = `CREATE TABLE IF NOT EXISTS "_alder_deploy_builds" ("id" TEXT PRIMARY KEY, "record" TEXT NOT NULL DEFAULT '', "schema" TEXT NOT NULL DEFAULT '', "schema_hash" TEXT NOT NULL DEFAULT '', "migrations" TEXT NOT NULL DEFAULT '[]', "pitr" TEXT NOT NULL DEFAULT '', "created" TEXT NOT NULL)`
+	createDeployCurrent = `CREATE TABLE IF NOT EXISTS "_alder_deploy_current" ("key" TEXT PRIMARY KEY CHECK ("key" = 'current'), "id" TEXT NOT NULL)`
+)
+
+// EnsureDeployTables creates st's deploy tables when they do not exist (the Render target, under
+// the deploy lock).
+func EnsureDeployTables(ctx context.Context, st *SQLite) error {
+	for _, stmt := range []string{createDeployBuilds, createDeployCurrent} {
+		if _, err := st.db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DeployRow is a row of _alder_deploy_builds: build ID's record (alder-deploy.json), its
+// schema.json and hash, its migrations' names as a JSON list ("[]" when empty), the
+// point-in-time mark before it migrated (Pitr, "" for none) and when it was pushed.
+type DeployRow struct {
+	ID, Record, Schema, SchemaHash, Migrations, Pitr string
+	Created                                          time.Time
+}
+
+// PutDeployRow inserts r, or replaces the row of its ID.
+func PutDeployRow(ctx context.Context, st *SQLite, r DeployRow) error {
+	if r.Migrations == "" {
+		r.Migrations = "[]"
+	}
+	_, err := st.db.ExecContext(ctx, `INSERT INTO "_alder_deploy_builds" ("id", "record", "schema", "schema_hash", "migrations", "pitr", "created") VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT ("id") DO UPDATE SET "record" = excluded."record", "schema" = excluded."schema", "schema_hash" = excluded."schema_hash", "migrations" = excluded."migrations", "pitr" = excluded."pitr", "created" = excluded."created"`,
+		r.ID, r.Record, r.Schema, r.SchemaHash, r.Migrations, r.Pitr, EncodeTime(r.Created))
+	return err
+}
+
+// DeployRows are st's build rows, newest first (by Created, then ID).
+func DeployRows(ctx context.Context, st *SQLite) ([]DeployRow, error) {
+	rows, err := st.db.QueryContext(ctx, `SELECT "id", "record", "schema", "schema_hash", "migrations", "pitr", "created" FROM "_alder_deploy_builds" ORDER BY "created" DESC, "id" DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DeployRow
+	for rows.Next() {
+		var r DeployRow
+		var created string
+		if err := rows.Scan(&r.ID, &r.Record, &r.Schema, &r.SchemaHash, &r.Migrations, &r.Pitr, &created); err != nil {
+			return nil, err
+		}
+		if r.Created, err = DecodeTime(created); err != nil {
+			return nil, fmt.Errorf("db: build %s's created time %q: %w", r.ID, created, err)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// DeleteDeployRows removes the rows of ids (an id without one is skipped).
+func DeleteDeployRows(ctx context.Context, st *SQLite, ids []string) error {
+	for _, id := range ids {
+		if _, err := st.db.ExecContext(ctx, `DELETE FROM "_alder_deploy_builds" WHERE "id" = ?`, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SetCurrent records id as the build serving.
+func SetCurrent(ctx context.Context, st *SQLite, id string) error {
+	_, err := st.db.ExecContext(ctx, `INSERT INTO "_alder_deploy_current" ("key", "id") VALUES ('current', ?) ON CONFLICT ("key") DO UPDATE SET "id" = excluded."id"`, id)
+	return err
+}
+
+// CurrentBuild is the id SetCurrent recorded, "" when none is.
+func CurrentBuild(ctx context.Context, st *SQLite) (string, error) {
+	var id string
+	err := st.db.QueryRowContext(ctx, `SELECT "id" FROM "_alder_deploy_current" WHERE "key" = 'current'`).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
 }

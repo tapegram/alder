@@ -880,7 +880,7 @@ func putMeta(ctx context.Context, q querier, schema, hash string) error {
 // and joined by "\n", and their hash: for a database made by Ensure or by migrations, what
 // schemaOf computes for its tables.
 func liveSchema(ctx context.Context, q querier) (string, string, error) {
-	rows, err := q.QueryContext(ctx, `SELECT "sql" FROM sqlite_schema WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite\_%' ESCAPE '\' AND "name" NOT IN ('_alder_meta', '_alder_migrations', '_alder_schema', '_alder_lock')`)
+	rows, err := q.QueryContext(ctx, `SELECT "sql" FROM sqlite_schema WHERE "type" = 'table' AND "name" NOT LIKE 'sqlite\_%' ESCAPE '\' AND "name" NOT IN (`+internalTables+`)`)
 	if err != nil {
 		return "", "", err
 	}

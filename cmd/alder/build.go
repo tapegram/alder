@@ -178,6 +178,10 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 		fmt.Fprintf(stderr, "alder build: %v\n", err)
 		return "", 2
 	}
+	if err := os.WriteFile(filepath.Join(out, "cmd", "tzdata_deploy.go"), gen.TzdataDeploy(), 0o644); err != nil {
+		fmt.Fprintf(stderr, "alder build: %v\n", err)
+		return "", 2
+	}
 	if vetOut, err := buildkit.GoCmd(out, "vet", "-mod=mod", "./..."); err != nil {
 		// the generated package first: when it does not vet, that is not the adapters' fault
 		if err := buildkit.VetApp(out, files, "."); err != nil {

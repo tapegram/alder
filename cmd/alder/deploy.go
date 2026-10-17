@@ -407,7 +407,8 @@ func (r *deployRunner) Mutate() (float64, int, int, string, bool) {
 
 // buildFor builds the app's executable from the generated module built (build/<app>, which
 // `alder build` just wrote) for platform p at path: a static binary (CGO off: the SQLite driver
-// is pure Go), cross-compiled when the target is another OS or architecture.
+// is pure Go), cross-compiled when the target is another OS or architecture, with the
+// alder_deploy tag (deployBuildArgs).
 func buildFor(built, app string, p deploy.Platform, path string) error {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -418,13 +419,20 @@ func buildFor(built, app string, p deploy.Platform, path string) error {
 		return err
 	}
 	defer os.RemoveAll(tmp)
-	cmd := exec.Command("go", "build", "-mod=mod", "-trimpath", "-o", abs, "./cmd")
+	cmd := exec.Command("go", deployBuildArgs(abs)...)
 	cmd.Dir = built
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod", "GOTMPDIR="+tmp, "CGO_ENABLED=0", "GOOS="+p.OS, "GOARCH="+p.Arch)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("go build of %s for %s failed: %v\n%s", app, p, err, out)
 	}
 	return nil
+}
+
+// deployBuildArgs are buildFor's go command's arguments for the executable at abs: the
+// alder_deploy tag compiles cmd/tzdata_deploy.go in, so the binary embeds the time zone
+// database (time/tzdata) that a minimal image (Render's) does not have.
+func deployBuildArgs(abs string) []string {
+	return []string{"build", "-mod=mod", "-trimpath", "-tags", "alder_deploy", "-o", abs, "./cmd"}
 }
 
 // localBinary is build id's executable for this machine: the artifact's own when the target

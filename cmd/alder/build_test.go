@@ -466,3 +466,28 @@ func TestBuild_DependencyDownload(t *testing.T) {
 		t.Fatalf("offline first test: exit %d\nstdout: %s\nstderr: %s", code, out.String(), errb.String())
 	}
 }
+
+// alder build writes cmd/tzdata_deploy.go: under the alder_deploy tag (a deploy's build,
+// buildFor) the binary embeds the time zone database, which a minimal image lacks.
+func TestBuild_TzdataDeployFile(t *testing.T) {
+	needGoTool(t)
+	dir := tempApp(t, "../../examples/todos", "todos")
+	if code, out, errs := runBuild(t, dir); code != 0 {
+		t.Fatalf("build: %d\n%s%s", code, out, errs)
+	}
+	b, err := os.ReadFile(filepath.Join("build", "todos", "cmd", "tzdata_deploy.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(b)
+	if first, _, _ := strings.Cut(src, "\n"); first != "//go:build alder_deploy" {
+		t.Fatalf("first line %q", first)
+	}
+	if !strings.Contains(src, "\nimport _ \"time/tzdata\"\n") || !strings.Contains(src, "\npackage main\n") {
+		t.Fatalf("tzdata_deploy.go:\n%s", src)
+	}
+	// the deploy build passes the tag
+	if args := strings.Join(deployBuildArgs("/x/app"), " "); !strings.Contains(args, "-tags alder_deploy") {
+		t.Fatalf("buildFor's go build: %s", args)
+	}
+}
