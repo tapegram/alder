@@ -1,0 +1,926 @@
+package deploy
+
+import (
+	"archive/tar"
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"alder/internal/ir"
+)
+
+// EnvSSHConfig names an ssh_config file every ssh the Ssh target runs reads (`ssh -F`): an
+// identity, a known-hosts file, a jump host. The tests point it at their own sshd.
+const EnvSSHConfig = "ALDER_SSH_CONFIG"
+
+// EnvSupervisor forces how the Ssh target runs a build: "process" (a background process with a
+// pid file) even where systemd is present. Without it, systemd is used when it runs on the host.
+const EnvSupervisor = "ALDER_DEPLOY_SUPERVISOR"
+
+// DefaultPublicPort is the port the app listens on with `proxy: None` when <path>/port does not
+// say another.
+const DefaultPublicPort = 8080
+
+// Ssh is the target `Ssh "user@host" { domain, path, user?, port? }`: a Linux box (or any Unix
+// with sh, tar and curl) reached with the system's ssh, its state under path:
+//
+//	<path>/builds/<id>/   app, static/, migrations/, alder-deploy.json, run, addr, log, pid,
+//	                      backup.db (the copy before its migrations), deployed.json
+//	<path>/current        the id of the build serving
+//	<path>/port           the port it serves on (with `proxy: None`, the public port: default 8080)
+//	<path>/env            NAME=value lines, written by the operator (mode 600); deploy only checks
+//	                      that the `requires` names are set, never reads a value
+//	<path>/db/app.db      the database (ALDER_DB), and db/schema.json, its schema snapshot
+//
+// A build runs under a systemd unit alder-<app>-<env>@<id>.service (a template: the old and the
+// new build run side by side during the switch) when systemd runs on the host, else as a
+// background process with a pid file; either way its output is builds/<id>/log. With `proxy:
+// Caddy` (the default) the domain is routed to the build's port through Caddy's admin API
+// (Caddy is installed with apt on Debian and Ubuntu when absent; automatic TLS); with `proxy:
+// None` the app itself listens on <path>/port.
+type Ssh struct {
+	App, Env  string
+	Dest      string // the ssh destination: user@host
+	Port      string // the ssh port ("" for ssh's default)
+	Root      string // <path>
+	Domain    string
+	Proxy     string // "Caddy" or "None"
+	BackupURL string
+	Warn      io.Writer // warnings (the environment file's mode, linger)
+
+	user string // the remote user, from Connect
+	host string
+	plat Platform
+	sup  string // "system", "user" (systemd) or "process"
+	conn bool
+}
+
+// NewSsh is environment env's Ssh target t of app, with the declaration's proxy and backup.
+func NewSsh(app, env string, t ir.Target, d *ir.Deploy) *Ssh {
+	dest := t.Host
+	if t.User != "" {
+		if _, h, ok := strings.Cut(dest, "@"); ok {
+			dest = h
+		}
+		dest = t.User + "@" + dest
+	}
+	s := &Ssh{App: app, Env: env, Dest: dest, Port: t.Port, Root: strings.TrimRight(t.Path, "/"), Domain: t.Domain, Proxy: d.Proxy, Warn: io.Discard}
+	if s.Proxy == "" {
+		s.Proxy = "Caddy"
+	}
+	if d.Backup != nil {
+		s.BackupURL = d.Backup.URL
+	}
+	return s
+}
+
+// Describe is "Ssh deploy@box:/srv/blog".
+func (s *Ssh) Describe() string { return "Ssh " + s.Dest + ":" + s.Root }
+
+// Identity is the remote user and host, for the record.
+func (s *Ssh) Identity() string { return s.user + "@" + s.host }
+
+// Close does nothing: every command is its own ssh.
+func (s *Ssh) Close() error { return nil }
+
+// unit is the systemd template unit's name, without ".service".
+func (s *Ssh) unit() string { return "alder-" + unitName(s.App) + "-" + unitName(s.Env) }
+
+var unitUnsafe = regexp.MustCompile(`[^A-Za-z0-9_-]+`)
+
+func unitName(s string) string { return unitUnsafe.ReplaceAllString(s, "-") }
+
+// q quotes s for the remote POSIX shell.
+func q(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
+// sshArgs are the arguments of every ssh before the remote command.
+func (s *Ssh) sshArgs() []string {
+	args := []string{"-o", "BatchMode=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4"}
+	if cfg := os.Getenv(EnvSSHConfig); cfg != "" {
+		args = append(args, "-F", cfg)
+	}
+	if s.Port != "" {
+		args = append(args, "-p", s.Port)
+	}
+	return append(args, s.Dest)
+}
+
+// RemoteError is a remote command that failed: ssh's exit 255 is the connection; any other code is the script's.
+type RemoteError struct {
+	Dest   string
+	Code   int
+	Stderr string
+}
+
+func (e *RemoteError) Error() string {
+	msg := strings.TrimSpace(e.Stderr)
+	if e.Code == 255 {
+		return fmt.Sprintf("cannot reach %s over SSH: %s (ssh uses your keys and ~/.ssh/config; %s may name another config file)", e.Dest, orNone(lastLines(msg, 5)), EnvSSHConfig)
+	}
+	return fmt.Sprintf("a command at %s failed (exit %d): %s", e.Dest, e.Code, orNone(lastLines(msg, 20)))
+}
+
+// run runs the shell script script at the target (`sh -s`, the script on standard input, after
+// the prelude: R is the root, helper functions) and returns its standard output.
+func (s *Ssh) run(ctx context.Context, script string) (string, error) {
+	var out, errb bytes.Buffer
+	if err := s.stream(ctx, script, &out, &errb); err != nil {
+		var re *RemoteError
+		if errors.As(err, &re) && re.Stderr == "" {
+			re.Stderr = errb.String()
+		}
+		return out.String(), err
+	}
+	return out.String(), nil
+}
+
+// stream is run with the script's output going to stdout and stderr as it comes.
+func (s *Ssh) stream(ctx context.Context, script string, stdout, stderr io.Writer) error {
+	var errb bytes.Buffer
+	cmd := exec.CommandContext(ctx, "ssh", append(s.sshArgs(), "sh -s")...)
+	cmd.Stdin = strings.NewReader(s.prelude() + script)
+	cmd.Stdout = stdout
+	cmd.Stderr = io.MultiWriter(stderr, &errb)
+	cmd.WaitDelay = 5 * time.Second
+	if err := cmd.Run(); err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			return &RemoteError{Dest: s.Dest, Code: ee.ExitCode(), Stderr: errb.String()}
+		}
+		return fmt.Errorf("running ssh: %w", err)
+	}
+	return nil
+}
+
+// prelude defines, for every script: R (the root), U (the unit), SUP (the supervisor), and
+// alive ID (whether build ID's process runs).
+func (s *Ssh) prelude() string {
+	return `R=` + q(s.Root) + `
+U=` + q(s.unit()) + `
+SUP=` + q(s.sup) + `
+SCTL="systemctl"; [ "$SUP" = user ] && SCTL="systemctl --user"
+alive() {
+  if [ "$SUP" = system ] || [ "$SUP" = user ]; then $SCTL is-active --quiet "$U@$1.service"; return; fi
+  p=$(cat "$R/builds/$1/pid" 2>/dev/null) || return 1
+  [ -n "$p" ] && kill -0 "$p" 2>/dev/null || return 1
+  if [ -r "/proc/$p/cmdline" ]; then tr '\0' ' ' < "/proc/$p/cmdline" | grep -q "builds/$1/"; fi
+}
+`
+}
+
+// Connect checks the connection and reads the user, the platform and the supervisor.
+func (s *Ssh) Connect(ctx context.Context) (Platform, error) {
+	if s.conn {
+		return s.plat, nil
+	}
+	out, err := s.run(ctx, `echo "user=$(id -un)"
+echo "host=$(hostname 2>/dev/null || uname -n)"
+echo "os=$(uname -s)"
+echo "arch=$(uname -m)"
+if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+  if [ "$(id -u)" = 0 ]; then echo "systemd=system"
+  elif systemctl --user show-environment >/dev/null 2>&1; then echo "systemd=user"; fi
+fi
+for c in curl tar; do command -v $c >/dev/null 2>&1 || echo "lack=$c"; done
+`)
+	if err != nil {
+		return Platform{}, err
+	}
+	kv := keyValues(out)
+	s.user, s.host = kv["user"], kv["host"]
+	if l := kv["lack"]; l != "" {
+		return Platform{}, fmt.Errorf("%s has no `%s` (the deploy needs sh, tar and curl there): install it and deploy again", s.Dest, l)
+	}
+	goos := map[string]string{"Linux": "linux", "Darwin": "darwin", "FreeBSD": "freebsd"}[kv["os"]]
+	goarch := map[string]string{"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}[kv["arch"]]
+	if goos == "" || goarch == "" {
+		return Platform{}, fmt.Errorf("%s runs %s on %s, which alder cannot build for yet (Linux or macOS on x86_64 or arm64)", s.Dest, kv["os"], kv["arch"])
+	}
+	s.plat = Platform{goos, goarch}
+	s.sup = "process"
+	if v := kv["systemd"]; v != "" && os.Getenv(EnvSupervisor) != "process" {
+		s.sup = v
+	}
+	s.conn = true
+	return s.plat, nil
+}
+
+// keyValues are the key=value lines of out (the last of each key wins).
+func keyValues(out string) map[string]string {
+	kv := map[string]string{}
+	for _, l := range strings.Split(out, "\n") {
+		if k, v, ok := strings.Cut(l, "="); ok {
+			kv[k] = v
+		}
+	}
+	return kv
+}
+
+// Requires checks <path>/env for each name: a line NAME=… with a non-empty value. No value is
+// read back: grep's exit status is all that crosses the connection.
+func (s *Ssh) Requires(ctx context.Context, names []string) ([]string, error) {
+	var b strings.Builder
+	b.WriteString(`[ -f "$R/env" ] && echo "mode=$(ls -l "$R/env" | cut -c1-10)"` + "\n")
+	for _, n := range names {
+		fmt.Fprintf(&b, "grep -Eq %s \"$R/env\" 2>/dev/null || echo missing=%s\n", q(`^(export[[:space:]]+)?`+n+`=([^[:space:]"']|"[^"]|'[^'])`), q(n))
+	}
+	out, err := s.run(ctx, b.String())
+	if err != nil {
+		return nil, err
+	}
+	var missing []string
+	for _, l := range strings.Split(out, "\n") {
+		if n, ok := strings.CutPrefix(l, "missing="); ok {
+			missing = append(missing, n)
+		}
+		if m, ok := strings.CutPrefix(l, "mode="); ok && len(m) == 10 && (m[4] != '-' || m[7] != '-') {
+			fmt.Fprintf(s.Warn, "warning: %s:%s/env is readable by others (%s): `chmod 600` it\n", s.Dest, s.Root, m)
+		}
+	}
+	return missing, nil
+}
+
+// Schema is db/schema.json and db/migrations (the snapshot and the migration names of the last
+// build that migrated the database), or the current build's own when the database predates
+// them; Have false without a database.
+func (s *Ssh) Schema(ctx context.Context) (Schema, error) {
+	out, err := s.run(ctx, `[ -f "$R/db/app.db" ] || { echo none; exit 0; }
+c=$(cat "$R/current" 2>/dev/null)
+echo db
+if [ -f "$R/db/migrations" ]; then cat "$R/db/migrations"; else ls "$R/builds/$c/migrations" 2>/dev/null | sed -n 's/\.sql$//p'; fi
+echo @@schema
+if [ -f "$R/db/schema.json" ]; then cat "$R/db/schema.json"
+elif [ -f "$R/builds/$c/migrations/schema.json" ]; then cat "$R/builds/$c/migrations/schema.json"
+else echo '{"tables": []}'; fi
+`)
+	if err != nil {
+		return Schema{}, err
+	}
+	return parseSchema(out, "db"), nil
+}
+
+// parseSchema reads the output of Schema's and BuildSchema's scripts: the marker line, the
+// migration names one per line, @@schema, the snapshot.
+func parseSchema(out, marker string) Schema {
+	first, rest, _ := strings.Cut(out, "\n")
+	if first != marker {
+		return Schema{}
+	}
+	names, snap, _ := strings.Cut(rest, "@@schema\n")
+	sc := Schema{Have: true, Snapshot: []byte(snap)}
+	for _, n := range strings.Fields(names) {
+		sc.Migrations = append(sc.Migrations, n)
+	}
+	return sc
+}
+
+// BuildSchema is builds/<id>/migrations/: schema.json and the files' names.
+func (s *Ssh) BuildSchema(ctx context.Context, id string) (Schema, error) {
+	out, err := s.run(ctx, `d="$R/builds/"`+q(id)+`/migrations; [ -f "$d/schema.json" ] || { echo none; exit 0; }
+echo yes
+ls "$d" | sed -n 's/\.sql$//p'
+echo @@schema
+cat "$d/schema.json"
+`)
+	if err != nil {
+		return Schema{}, err
+	}
+	return parseSchema(out, "yes"), nil
+}
+
+// Current is <path>/current.
+func (s *Ssh) Current(ctx context.Context) (string, error) {
+	out, err := s.run(ctx, `cat "$R/current" 2>/dev/null; exit 0`)
+	return strings.TrimSpace(out), err
+}
+
+var idRe = regexp.MustCompile(`^[0-9a-f]{16}$`)
+
+// Builds lists builds/, newest first, with each one's deployed.json and whether it runs.
+func (s *Ssh) Builds(ctx context.Context) ([]Build, error) {
+	out, err := s.run(ctx, `cd "$R/builds" 2>/dev/null || exit 0
+cur=$(cat "$R/current" 2>/dev/null)
+for d in */; do
+  d=${d%/}; [ -d "$d" ] || continue
+  run=no; alive "$d" && run=yes
+  echo "@@build $d $(date -r "$d" +%s 2>/dev/null || echo 0) $run"
+  cat "$d/deployed.json" 2>/dev/null
+done
+`)
+	if err != nil {
+		return nil, err
+	}
+	cur, _ := s.Current(ctx)
+	var builds []Build
+	for _, chunk := range strings.Split(out, "@@build ")[1:] {
+		head, body, _ := strings.Cut(chunk, "\n")
+		f := strings.Fields(head)
+		if len(f) != 3 || !idRe.MatchString(f[0]) {
+			continue
+		}
+		secs, _ := strconv.ParseInt(f[1], 10, 64)
+		b := Build{ID: f[0], Modified: time.Unix(secs, 0), Running: f[2] == "yes", Current: f[0] == cur}
+		if strings.TrimSpace(body) != "" {
+			var r Record
+			if json.Unmarshal([]byte(body), &r) == nil {
+				b.Record = &r
+			}
+		}
+		builds = append(builds, b)
+	}
+	sort.SliceStable(builds, func(i, j int) bool { return newer(builds[i], builds[j]) })
+	return builds, nil
+}
+
+// newer orders builds by their deploy time, then their directory's.
+func newer(a, b Build) bool {
+	ta, tb := a.Modified, b.Modified
+	if a.Record != nil && a.Record.When != nil {
+		ta = *a.Record.When
+	}
+	if b.Record != nil && b.Record.When != nil {
+		tb = *b.Record.When
+	}
+	if !ta.Equal(tb) {
+		return ta.After(tb)
+	}
+	return a.ID < b.ID
+}
+
+// Upload sends the artifact dir as builds/<id>/ (through builds/<id>.part, so a build directory
+// is never half written), with the build's run script, and creates db/.
+func (s *Ssh) Upload(ctx context.Context, dir, id string) error {
+	var tarball bytes.Buffer
+	if err := tarDir(&tarball, dir); err != nil {
+		return err
+	}
+	part := s.Root + "/builds/" + id + ".part"
+	cmd := exec.CommandContext(ctx, "ssh", append(s.sshArgs(), "rm -rf "+q(part)+" && mkdir -p "+q(part)+" && tar -xf - -C "+q(part))...)
+	cmd.Stdin = &tarball
+	var errb bytes.Buffer
+	cmd.Stderr = &errb
+	if err := cmd.Run(); err != nil {
+		code := -1
+		if ee, ok := err.(*exec.ExitError); ok {
+			code = ee.ExitCode()
+		}
+		return &RemoteError{Dest: s.Dest, Code: code, Stderr: errb.String()}
+	}
+	_, err := s.run(ctx, `set -e
+id=`+q(id)+`
+mkdir -p "$R/db"; chmod 700 "$R/db"
+if [ -d "$R/builds/$id" ]; then
+  if alive "$id"; then echo "build $id is running" >&2; exit 1; fi
+  rm -rf "$R/builds/$id"
+fi
+mv "$R/builds/$id.part" "$R/builds/$id"
+cat > "$R/builds/$id/run" <<'ALDER_RUN_EOF'
+`+s.runScript(id)+`ALDER_RUN_EOF
+chmod 755 "$R/builds/$id/run" "$R/builds/$id/app"
+echo 127.0.0.1:0 > "$R/builds/$id/addr"
+`)
+	return err
+}
+
+// runScript is builds/<id>/run: it reads the operator's environment file, points the app at the
+// database, its static files, its address and the backup location, and execs the binary with
+// its arguments. It holds no value of the environment file.
+func (s *Ssh) runScript(id string) string {
+	b := s.Root + "/builds/" + id
+	backup := ""
+	if s.BackupURL != "" {
+		backup = "export ALDER_BACKUP_URL=" + q(s.BackupURL) + "\n"
+	}
+	return `#!/bin/sh
+# Written by alder deploy: runs build ` + id + ` of ` + s.App + ` (environment ` + s.Env + `). The
+# variables come from ` + s.Root + `/env, which the operator writes; nothing here is a secret.
+set -e
+if [ -f ` + q(s.Root+"/env") + ` ]; then set -a; . ` + q(s.Root+"/env") + `; set +a; fi
+export ALDER_DB=` + q(s.Root+"/db/app.db") + `
+export ALDER_STATIC=` + q(b+"/static") + `
+export ALDER_ADDR="$(cat ` + q(b+"/addr") + ` 2>/dev/null || echo 127.0.0.1:0)"
+` + backup + `exec ` + q(b+"/app") + ` "$@"
+`
+}
+
+// tarDir writes dir as a tar stream (paths relative to dir; modes kept).
+func tarDir(w io.Writer, dir string) error {
+	tw := tar.NewWriter(w)
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil || rel == "." {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		h, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+		h.Name = filepath.ToSlash(rel)
+		h.Uname, h.Gname, h.Uid, h.Gid = "", "", 0, 0
+		if err := tw.WriteHeader(h); err != nil {
+			return err
+		}
+		if d.Type().IsRegular() {
+			f, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			_, err = io.Copy(tw, f)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return tw.Close()
+}
+
+// Backup copies the database into builds/<id>/backup.db with the new build's binary (VACUUM
+// INTO, beside the serving build), before any migration.
+func (s *Ssh) Backup(ctx context.Context, id string) (string, error) {
+	out, err := s.run(ctx, `id=`+q(id)+`
+[ -f "$R/db/app.db" ] || exit 0
+"$R/builds/$id/run" --backup-to "$R/builds/$id/backup.db" >&2 && echo "backup=builds/$id/backup.db"
+`)
+	if err != nil {
+		return "", err
+	}
+	return keyValues(out)["backup"], nil
+}
+
+// Migrate runs the new build's --migrate-only, and on success records its snapshot as
+// db/schema.json.
+func (s *Ssh) Migrate(ctx context.Context, id string) (string, error) {
+	out, err := s.run(ctx, `id=`+q(id)+`
+"$R/builds/$id/run" --migrate-only 2>&1 || exit 3
+if [ -f "$R/builds/$id/migrations/schema.json" ]; then
+  cp "$R/builds/$id/migrations/schema.json" "$R/db/schema.json.new" && mv "$R/db/schema.json.new" "$R/db/schema.json"
+  ls "$R/builds/$id/migrations" | sed -n 's/\.sql$//p' > "$R/db/migrations.new" && mv "$R/db/migrations.new" "$R/db/migrations"
+fi
+`)
+	var re *RemoteError
+	if errors.As(err, &re) && re.Code == 3 {
+		return out, errors.New("--migrate-only refused")
+	}
+	return out, err
+}
+
+// Start starts build id on a free port of 127.0.0.1.
+func (s *Ssh) Start(ctx context.Context, id string) (int, error) {
+	return s.start(ctx, id, "127.0.0.1:0")
+}
+
+// start starts build id listening on addr and waits (15 s at most) for its "listening on" line;
+// a build that exits first is an error with its log.
+func (s *Ssh) start(ctx context.Context, id, addr string) (int, error) {
+	launch := `nohup "$B/run" >> "$B/log" 2>&1 < /dev/null &
+echo $! > "$B/pid"
+`
+	if s.sup != "process" {
+		if err := s.installUnit(ctx); err != nil {
+			return 0, err
+		}
+		launch = `$SCTL reset-failed "$U@$id.service" >/dev/null 2>&1
+$SCTL start "$U@$id.service" || { echo exited; tail -n 40 "$B/log"; exit 0; }
+`
+	}
+	out, err := s.run(ctx, `id=`+q(id)+`
+B="$R/builds/$id"
+echo `+q(addr)+` > "$B/addr"
+touch "$B/log"
+off=$(wc -c < "$B/log" | tr -d ' ')
+echo "--- alder deploy: start $(date -u +%Y-%m-%dT%H:%M:%SZ) on `+addr+`" >> "$B/log"
+`+launch+`i=0
+while [ $i -lt 75 ]; do
+  port=$(tail -c +$((off + 1)) "$B/log" | sed -n 's/^listening on .*:\([0-9][0-9]*\)$/\1/p' | tail -n 1)
+  if [ -n "$port" ]; then
+    case "`+addr+`" in 127.0.0.1:0) echo "127.0.0.1:$port" > "$B/addr";; esac
+    echo "port=$port"; exit 0
+  fi
+  if ! alive "$id"; then sleep 0.3; echo exited; tail -c +$((off + 1)) "$B/log" | tail -n 40; exit 0; fi
+  sleep 0.2; i=$((i + 1))
+done
+echo timeout; tail -c +$((off + 1)) "$B/log" | tail -n 40
+`)
+	if err != nil {
+		return 0, err
+	}
+	first, rest, _ := strings.Cut(out, "\n")
+	if p, ok := strings.CutPrefix(first, "port="); ok {
+		return strconv.Atoi(strings.TrimSpace(p))
+	}
+	if first == "exited" {
+		return 0, fmt.Errorf("build %s exited at start; its log (builds/%s/log):\n%s", id, id, strings.TrimRight(rest, "\n"))
+	}
+	s.stop(ctx, id)
+	return 0, fmt.Errorf("build %s did not start listening within 15s; its log (builds/%s/log):\n%s", id, id, strings.TrimRight(rest, "\n"))
+}
+
+// installUnit writes the systemd template unit when it differs, and reloads systemd.
+func (s *Ssh) installUnit(ctx context.Context) error {
+	dir, wanted := "/etc/systemd/system", "multi-user.target"
+	if s.sup == "user" {
+		dir, wanted = `"$HOME/.config/systemd/user"`, "default.target"
+	} else {
+		dir = q(dir)
+	}
+	unit := `[Unit]
+Description=alder ` + s.App + ` ` + s.Env + ` (build %i)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=` + s.Root + `/builds/%i
+ExecStart=` + s.Root + `/builds/%i/run
+StandardOutput=append:` + s.Root + `/builds/%i/log
+StandardError=append:` + s.Root + `/builds/%i/log
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=40
+
+[Install]
+WantedBy=` + wanted + `
+`
+	out, err := s.run(ctx, `D=`+dir+`
+mkdir -p "$D"
+f="$D/$U@.service"
+cat > "$f.new" <<'ALDER_UNIT_EOF'
+`+unit+`ALDER_UNIT_EOF
+if cmp -s "$f.new" "$f"; then rm "$f.new"; else mv "$f.new" "$f"; $SCTL daemon-reload; fi
+if [ "$SUP" = user ] && [ "$(loginctl show-user "$(id -un)" -p Linger 2>/dev/null)" != "Linger=yes" ]; then
+  loginctl enable-linger "$(id -un)" 2>/dev/null || echo nolinger
+fi
+`)
+	if strings.Contains(out, "nolinger") {
+		fmt.Fprintf(s.Warn, "warning: user %s has no lingering systemd session: the app stops when the user logs out and does not start at boot; run `sudo loginctl enable-linger %s`\n", s.user, s.user)
+	}
+	return err
+}
+
+// Health waits until GET http://127.0.0.1:<port>/ (following redirects) is a page whose
+// alder-build meta names id.
+func (s *Ssh) Health(ctx context.Context, id string, port int, timeout time.Duration) error {
+	secs := int(timeout / time.Second)
+	if secs < 1 {
+		secs = 1
+	}
+	out, err := s.run(ctx, `id=`+q(id)+`
+end=$(( $(date +%s) + `+strconv.Itoa(secs)+` ))
+while :; do
+  if curl -sL --max-time 3 "http://127.0.0.1:`+strconv.Itoa(port)+`/" 2>/dev/null | grep -qF "name=\"alder-build\" content=\"$id\""; then echo ok; exit 0; fi
+  if ! alive "$id"; then echo exited; break; fi
+  if [ "$(date +%s)" -ge "$end" ]; then echo timeout; break; fi
+  sleep 1
+done
+tail -n 40 "$R/builds/$id/log"
+`)
+	if err != nil {
+		return err
+	}
+	first, rest, _ := strings.Cut(out, "\n")
+	switch first {
+	case "ok":
+		return nil
+	case "exited":
+		return fmt.Errorf("build %s exited before answering; its log (builds/%s/log):\n%s", id, id, strings.TrimRight(rest, "\n"))
+	}
+	return fmt.Errorf("build %s did not answer GET / with its build id within %ds; its log (builds/%s/log):\n%s", id, secs, id, strings.TrimRight(rest, "\n"))
+}
+
+// Switch routes the traffic to build id on port and makes it current: with Caddy, the
+// route's upstream; with `proxy: None`, the previous build is stopped and id restarted on the
+// public port (a moment without a listener), and when that fails the previous build is
+// started again.
+func (s *Ssh) Switch(ctx context.Context, id string, port int) error {
+	prev, err := s.Current(ctx)
+	if err != nil {
+		return err
+	}
+	if s.Proxy == "None" {
+		out, err := s.run(ctx, `p=$(cat "$R/port" 2>/dev/null | tr -d ' \n'); [ -n "$p" ] || { p=`+strconv.Itoa(DefaultPublicPort)+`; echo "$p" > "$R/port"; }; echo "$p"`)
+		if err != nil {
+			return err
+		}
+		public := strings.TrimSpace(out)
+		if prev != "" && prev != id {
+			if err := s.stop(ctx, prev); err != nil {
+				return err
+			}
+		}
+		if err := s.stop(ctx, id); err != nil {
+			return err
+		}
+		p, err := s.start(ctx, id, ":"+public)
+		if err == nil {
+			err = s.Health(ctx, id, p, 30*time.Second)
+		}
+		if err != nil {
+			s.stop(ctx, id)
+			if prev != "" && prev != id {
+				if _, perr := s.start(ctx, prev, ":"+public); perr != nil {
+					return fmt.Errorf("%v; and build %s did not start again: %v", err, prev, perr)
+				}
+				return fmt.Errorf("%v; build %s was started again on port %s", err, prev, public)
+			}
+			return err
+		}
+		port = p
+	} else if err := s.caddy(ctx, port); err != nil {
+		return err
+	}
+	enable := ""
+	if s.sup != "process" {
+		enable = `$SCTL enable "$U@$id.service" >/dev/null 2>&1 || true` + "\n"
+	}
+	_, err = s.run(ctx, `id=`+q(id)+`
+echo `+strconv.Itoa(port)+` > "$R/port.new" && mv "$R/port.new" "$R/port"
+echo "$id" > "$R/current.new" && mv "$R/current.new" "$R/current"
+`+enable)
+	return err
+}
+
+// caddy makes Caddy route the domain to 127.0.0.1:port: it installs Caddy on Debian or Ubuntu
+// when absent (refusing other systems with a sentence), then sets the route through the admin
+// API (localhost:2019), the route's @id naming the app and environment.
+func (s *Ssh) caddy(ctx context.Context, port int) error {
+	out, err := s.run(ctx, caddyEnsure)
+	if err != nil {
+		return err
+	}
+	kv := keyValues(out)
+	switch {
+	case kv["unsupported"] != "":
+		return refuse("", "Caddy is not installed on %s, and alder installs it on Debian and Ubuntu only (this is %s): install Caddy (https://caddyserver.com/docs/install) and deploy again, or write `proxy: None` and put your own proxy in front", s.Dest, kv["unsupported"])
+	case strings.Contains(out, "aptfailed"):
+		return refuse("", "installing Caddy with apt on %s failed: install it by hand (https://caddyserver.com/docs/install; apt needs root or passwordless sudo), or write `proxy: None`", s.Dest)
+	case strings.Contains(out, "noadmin"):
+		return refuse("", "Caddy on %s does not answer on its admin API (127.0.0.1:2019): start it (`systemctl start caddy`) and deploy again", s.Dest)
+	}
+	_, err = s.run(ctx, caddyRoute(s.unit(), s.Domain, port))
+	return err
+}
+
+// caddyEnsure installs Caddy when absent (Debian and Ubuntu) and waits for its admin API.
+const caddyEnsure = `SUDO=""; [ "$(id -u)" = 0 ] || SUDO="sudo -n"
+if ! command -v caddy >/dev/null 2>&1; then
+  ID=""; ID_LIKE=""; [ -r /etc/os-release ] && . /etc/os-release
+  case " $ID $ID_LIKE " in
+    *" debian "*|*" ubuntu "*) ;;
+    *) echo "unsupported=${ID:-an unknown system}"; exit 0;;
+  esac
+  { $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update -q && $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -q caddy; } >&2 || { echo aptfailed; exit 0; }
+  if [ -d /run/systemd/system ]; then
+    # keep the routes alder deploy sets through the admin API when Caddy restarts
+    $SUDO mkdir -p /etc/systemd/system/caddy.service.d
+    printf '[Service]\nExecStart=\nExecStart=/usr/bin/caddy run --environ --resume --config /etc/caddy/Caddyfile\n' | $SUDO tee /etc/systemd/system/caddy.service.d/alder.conf >/dev/null
+    $SUDO systemctl daemon-reload && $SUDO systemctl restart caddy
+  fi
+  echo installed=yes
+fi
+i=0
+until curl -s -o /dev/null http://127.0.0.1:2019/config/; do
+  i=$((i + 1)); [ $i -gt 20 ] && { echo noadmin; exit 0; }; sleep 0.5
+done
+echo ready=yes
+`
+
+// caddyRoute is the script that sets the route id (host domain → 127.0.0.1:port) in Caddy's
+// configuration: replaced when it exists, else added to the server "alder" (listening on :443,
+// so Caddy gets the domain's certificate), creating what is missing above it.
+func caddyRoute(id, domain string, port int) string {
+	route := CaddyRoute(id, domain, port)
+	server := `{"listen":[":443"],"routes":[` + route + `]}`
+	return `A=http://127.0.0.1:2019
+ID=` + q(id) + `
+ROUTE=` + q(route) + `
+SERVER=` + q(server) + `
+put() { curl -sf -X "$1" -H 'Content-Type: application/json' -d "$2" "$A$3" >/dev/null; }
+if curl -sf "$A/id/$ID" >/dev/null 2>&1; then put PATCH "$ROUTE" "/id/$ID"; exit; fi
+if [ "$(curl -s "$A/config/apps/http/servers/alder")" != null ]; then put POST "$ROUTE" /config/apps/http/servers/alder/routes; exit; fi
+if [ "$(curl -s "$A/config/apps/http")" != null ]; then put PUT "$SERVER" /config/apps/http/servers/alder; exit; fi
+if [ "$(curl -s "$A/config/apps")" != null ]; then put PUT "{\"servers\":{\"alder\":$SERVER}}" /config/apps/http; exit; fi
+put POST "{\"apps\":{\"http\":{\"servers\":{\"alder\":$SERVER}}}}" /load
+`
+}
+
+// CaddyRoute is the JSON of the route @id id: requests for domain go to 127.0.0.1:port.
+func CaddyRoute(id, domain string, port int) string {
+	r := map[string]any{
+		"@id":      id,
+		"match":    []any{map[string]any{"host": []string{domain}}},
+		"handle":   []any{map[string]any{"handler": "reverse_proxy", "upstreams": []any{map[string]any{"dial": "127.0.0.1:" + strconv.Itoa(port)}}}},
+		"terminal": true,
+	}
+	b, _ := json.Marshal(r)
+	return string(b)
+}
+
+// Stop stops build id: after drain in the background (builds/<id>/stop-later; the command
+// does not wait), or now.
+func (s *Ssh) Stop(ctx context.Context, id string, drain time.Duration) error {
+	if drain <= 0 {
+		return s.stop(ctx, id)
+	}
+	later := "#!/bin/sh\n" + s.prelude() + "id=" + q(id) + "\nB=\"$R/builds/$id\"\nsleep " + strconv.Itoa(int(drain/time.Second)) + "\n" + s.stopBody()
+	_, err := s.run(ctx, `id=`+q(id)+`
+B="$R/builds/$id"
+cat > "$B/stop-later" <<'ALDER_STOP_EOF'
+`+later+`ALDER_STOP_EOF
+chmod 755 "$B/stop-later"
+nohup "$B/stop-later" >/dev/null 2>&1 < /dev/null &
+`)
+	return err
+}
+
+// stop stops build id now.
+func (s *Ssh) stop(ctx context.Context, id string) error {
+	_, err := s.run(ctx, `id=`+q(id)+`
+B="$R/builds/$id"
+`+s.stopBody())
+	return err
+}
+
+// stopBody stops build $id ($B its directory): SIGTERM (the app lets its requests finish, 5 s
+// at most), then SIGKILL after 40 s; with systemd, the unit is stopped and disabled.
+func (s *Ssh) stopBody() string {
+	if s.sup != "process" {
+		return `$SCTL disable "$U@$id.service" >/dev/null 2>&1; $SCTL stop "$U@$id.service" >/dev/null 2>&1; exit 0` + "\n"
+	}
+	return `p=$(cat "$B/pid" 2>/dev/null) || exit 0
+alive "$id" || { rm -f "$B/pid"; exit 0; }
+kill -TERM "$p" 2>/dev/null
+i=0; while alive "$id" && [ $i -lt 200 ]; do sleep 0.2; i=$((i + 1)); done
+alive "$id" && kill -KILL "$p" 2>/dev/null
+rm -f "$B/pid"
+exit 0
+`
+}
+
+// Record writes builds/<id>/deployed.json.
+func (s *Ssh) Record(ctx context.Context, id string, rec []byte) error {
+	_, err := s.run(ctx, `cat > "$R/builds/"`+q(id)+`/deployed.json <<'ALDER_RECORD_EOF'
+`+string(rec)+`ALDER_RECORD_EOF
+`)
+	return err
+}
+
+// Prune removes the builds beyond the keep newest, except those in protect and those running.
+func (s *Ssh) Prune(ctx context.Context, keep int, protect []string) ([]string, error) {
+	builds, err := s.Builds(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var gone []string
+	for i, b := range builds {
+		if i < keep || b.Running || b.Current || contains(protect, b.ID) {
+			continue
+		}
+		gone = append(gone, b.ID)
+	}
+	if len(gone) == 0 {
+		return nil, nil
+	}
+	var sc strings.Builder
+	for _, id := range gone {
+		sc.WriteString(`rm -rf "$R/builds/"` + q(id) + "\n")
+	}
+	_, err = s.run(ctx, sc.String())
+	return gone, err
+}
+
+func contains(xs []string, x string) bool {
+	for _, y := range xs {
+		if y == x {
+			return true
+		}
+	}
+	return false
+}
+
+// Info reads the database's size, the shipper's last upload (db/app.db-backup.json, which the
+// runtime writes) and the newest pre-migration copy.
+func (s *Ssh) Info(ctx context.Context) (Info, error) {
+	out, err := s.run(ctx, `if [ -f "$R/db/app.db" ]; then
+  n=$(wc -c < "$R/db/app.db" | tr -d ' '); w=0; [ -f "$R/db/app.db-wal" ] && w=$(wc -c < "$R/db/app.db-wal" | tr -d ' ')
+  echo "db=$((n + w))"
+fi
+[ -f "$R/db/app.db-backup.json" ] && echo "shipped=$(tr -d '\n' < "$R/db/app.db-backup.json")"
+for f in "$R"/builds/*/backup.db; do [ -f "$f" ] && echo "copy=$(date -r "$f" +%s) builds/$(basename "$(dirname "$f")")/backup.db"; done
+exit 0
+`)
+	if err != nil {
+		return Info{}, err
+	}
+	var in Info
+	for _, l := range strings.Split(out, "\n") {
+		k, v, _ := strings.Cut(l, "=")
+		switch k {
+		case "db":
+			in.HaveDB = true
+			in.DBBytes, _ = strconv.ParseInt(v, 10, 64)
+		case "shipped":
+			var st struct {
+				Last time.Time `json:"last"`
+				URL  string    `json:"url"`
+			}
+			if json.Unmarshal([]byte(v), &st) == nil && st.Last.After(in.LastBackup) {
+				in.LastBackup, in.BackupFrom = st.Last, "streamed to "+st.URL
+			}
+		case "copy":
+			secs, path, _ := strings.Cut(v, " ")
+			n, _ := strconv.ParseInt(secs, 10, 64)
+			if t := time.Unix(n, 0); t.After(in.LastBackup) {
+				in.LastBackup, in.BackupFrom = t, path
+			}
+		}
+	}
+	return in, nil
+}
+
+// Logs tails the current build's log.
+func (s *Ssh) Logs(ctx context.Context, follow bool, w io.Writer) error {
+	if _, err := s.Connect(ctx); err != nil {
+		return err
+	}
+	f := ""
+	if follow {
+		f = " -f"
+	}
+	return s.stream(ctx, `c=$(cat "$R/current" 2>/dev/null) || { echo "not deployed yet" >&2; exit 1; }
+exec tail -n 100`+f+` "$R/builds/$c/log"
+`, w, io.Discard)
+}
+
+// Restore uploads the local database file db as db/app.db: the current build is stopped, the
+// old database files are kept beside it (app.db.before-restore-<time>, with its -wal and -shm),
+// and the build is started again on its port and health checked.
+func (s *Ssh) Restore(ctx context.Context, db string) error {
+	if _, err := s.Connect(ctx); err != nil {
+		return err
+	}
+	f, err := os.Open(db)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	dst := s.Root + "/db/app.db.restore"
+	cmd := exec.CommandContext(ctx, "ssh", append(s.sshArgs(), "mkdir -p "+q(s.Root+"/db")+" && cat > "+q(dst))...)
+	cmd.Stdin = f
+	var errb bytes.Buffer
+	cmd.Stderr = &errb
+	if err := cmd.Run(); err != nil {
+		return &RemoteError{Dest: s.Dest, Code: -1, Stderr: errb.String()}
+	}
+	cur, err := s.Current(ctx)
+	if err != nil {
+		return err
+	}
+	var addr string
+	if cur != "" {
+		out, err := s.run(ctx, `cat "$R/builds/"`+q(cur)+`/addr`)
+		if err != nil {
+			return err
+		}
+		addr = strings.TrimSpace(out)
+		if err := s.stop(ctx, cur); err != nil {
+			return err
+		}
+	}
+	if _, err := s.run(ctx, `set -e
+cd "$R/db"
+ts=$(date -u +%Y%m%dT%H%M%SZ)
+for x in "" -wal -shm; do [ -f "app.db$x" ] && mv "app.db$x" "app.db.before-restore-$ts$x"; done
+mv app.db.restore app.db
+rm -f schema.json migrations
+`); err != nil {
+		return err
+	}
+	if cur == "" {
+		return nil
+	}
+	port, err := s.start(ctx, cur, addr)
+	if err != nil {
+		return err
+	}
+	return s.Health(ctx, cur, port, DefaultHealthTimeout)
+}

@@ -151,11 +151,11 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 				desc, strings.Join(missing, ", "), map[bool]string{true: "it", false: "them"}[len(missing) == 1])
 		}
 		line(w, "requires", "ok", strings.Join(names, ", "))
-		live, ok, err := t.Schema(ctx)
+		live, err := t.Schema(ctx)
 		if err != nil {
 			return res, err
 		}
-		if plan, err = MakePlan(filepath.Join(dir, "migrations"), live, ok, true); err != nil {
+		if plan, err = MakePlan(filepath.Join(dir, "migrations"), live.Snapshot, live.Have, true); err != nil {
 			return res, refuse("", "%v", err)
 		}
 	} else if plan, err = MakePlan(filepath.Join(dir, "migrations"), nil, false, false); err != nil {
@@ -394,22 +394,32 @@ func Rollback(ctx context.Context, t Target, o RollbackOptions) (string, error) 
 		return "", refuse("", "build %s is already current", to)
 	}
 	fmt.Fprintf(w, "rollback %s → %s\n", current, to)
-	live, haveLive, err := t.Schema(ctx)
+	live, err := t.Schema(ctx)
 	if err != nil {
 		return "", err
 	}
-	own, haveOwn, err := t.BuildSchema(ctx, to)
+	own, err := t.BuildSchema(ctx, to)
 	if err != nil {
 		return "", err
 	}
-	if haveLive && (!haveOwn || SchemaHash(live) != SchemaHash(own)) {
-		tables := SchemaTables(own, live)
-		if !o.AllowSchemaMismatch {
-			line(w, "schema", "FAIL", "the live schema is newer than the build's")
-			return "", refuse("", "the live database's schema %s is not build %s's %s (changed tables: %s): that build would refuse to start on it, and rolling back never changes the data. Deploy a build with the schema you want, or pass --allow-schema-mismatch to try anyway",
-				SchemaHash(live), to, orNone(SchemaHash(own)), strings.Join(tables, ", "))
+	var lacks []string // migrations the database has had that the build does not have
+	for _, m := range live.Migrations {
+		if !slices.Contains(own.Migrations, m) {
+			lacks = append(lacks, m)
 		}
-		line(w, "schema", "MISMATCH", "--allow-schema-mismatch: changed tables "+strings.Join(tables, ", "))
+	}
+	if live.Have && (!own.Have || SchemaHash(live.Snapshot) != SchemaHash(own.Snapshot) || len(lacks) > 0) {
+		why := ""
+		if tables := SchemaTables(own.Snapshot, live.Snapshot); SchemaHash(live.Snapshot) != SchemaHash(own.Snapshot) {
+			why = fmt.Sprintf("the live database's schema %s is not build %s's %s (changed tables: %s)", SchemaHash(live.Snapshot), to, orNone(SchemaHash(own.Snapshot)), strings.Join(tables, ", "))
+		} else {
+			why = fmt.Sprintf("the live database has migrations build %s does not have (%s)", to, strings.Join(lacks, ", "))
+		}
+		if !o.AllowSchemaMismatch {
+			line(w, "schema", "FAIL", "the live database is newer than the build")
+			return "", refuse("", "%s: that build would refuse to start on it, and rolling back never changes the data. Deploy a build with the schema you want, or pass --allow-schema-mismatch to try anyway", why)
+		}
+		line(w, "schema", "MISMATCH", "--allow-schema-mismatch: "+why)
 	} else {
 		line(w, "schema", "ok", "the live schema is the build's")
 	}

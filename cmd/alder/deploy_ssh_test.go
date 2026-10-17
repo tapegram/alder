@@ -1,0 +1,523 @@
+package main
+
+import (
+	"bytes"
+	"crypto/rand"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net"
+	"os"
+	"os/exec"
+	"os/user"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+
+	"alder/internal/deploy"
+
+	_ "modernc.org/sqlite"
+)
+
+// The Ssh target's tests run against a box on this machine, one of two harnesses:
+//
+//   - go test -tags deploy ./cmd/alder: a Docker container built from testdata/deploy/Dockerfile
+//     (Debian, sshd, curl, a user `deploy`), started per test and removed after. CI's deploy job
+//     runs this. Without Docker the tests skip, saying so.
+//   - ALDER_DEPLOY_LOCAL=1 go test ./cmd/alder -run DeploySsh: a private sshd (the system's
+//     /usr/sbin/sshd, run as the current user on a free port of 127.0.0.1 with a host key and a
+//     client key made for the test, so nothing in ~/.ssh is used or changed) logging in to
+//     this machine as the current user, the target's <path> under a temporary directory.
+//
+// The untagged default suite has neither: it runs the same tests against a loopback box (an
+// `ssh` on PATH that runs the remote command here with sh: loopbackBox), so everything but the
+// SSH connection is exercised everywhere. The engine's order (RF1–RF4) is also covered by
+// internal/deploy's tests with a fake target, and the Script target end to end by
+// deploy_test.go.
+
+// dockerBox is set by deploy_docker_test.go under -tags deploy.
+var dockerBox bool
+
+// sshBox is a running box: ssh reaches it as host with the ssh_config config; root is a
+// directory there for the target's <path>; port is the public port its `proxy: None` app
+// listens on.
+type sshBox struct {
+	config, host, root string
+	port               int
+}
+
+// sh runs the shell command cmd at the box and returns its output.
+func (b *sshBox) sh(t *testing.T, cmd string) string {
+	t.Helper()
+	out, err := exec.Command("ssh", "-F", b.config, b.host, cmd).CombinedOutput()
+	if err != nil {
+		t.Fatalf("ssh %s: %v\n%s", cmd, err, out)
+	}
+	return string(out)
+}
+
+// serving is the build id in the page the box's public port serves ("" when nothing answers).
+func (b *sshBox) serving(t *testing.T) string {
+	t.Helper()
+	out, _ := exec.Command("ssh", "-F", b.config, b.host, fmt.Sprintf("curl -sL --max-time 5 http://127.0.0.1:%d/", b.port)).Output()
+	m := regexp.MustCompile(`name="alder-build" content="([0-9a-f]+)"`).FindSubmatch(out)
+	if m == nil {
+		return ""
+	}
+	return string(m[1])
+}
+
+// startBox starts the box for the test (see above), or skips.
+func startBox(t *testing.T) *sshBox {
+	t.Helper()
+	switch {
+	case os.Getenv("ALDER_DEPLOY_LOCAL") == "1":
+		return localBox(t)
+	case dockerBox:
+		return containerBox(t)
+	}
+	return loopbackBox(t)
+}
+
+// loopbackSSH stands in for ssh in the default suite: it drops ssh's options and the
+// destination and runs the remote command here with sh, so the Ssh target's scripts run as
+// they would at a box, without sshd.
+const loopbackSSH = `#!/bin/sh
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o|-F|-p|-i|-l) shift 2;;
+    -*) shift;;
+    *) break;;
+  esac
+done
+shift
+exec sh -c "$*"
+`
+
+// loopbackBox is the default suite's box: PATH starts with loopbackSSH as ssh, and the
+// target's <path> is a temporary directory. Everything but the SSH connection itself is
+// exercised: the remote scripts, the processes, the health check by build id.
+func loopbackBox(t *testing.T) *sshBox {
+	t.Helper()
+	for _, tool := range []string{"sh", "curl", "tar"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("the loopback box needs %s", tool)
+		}
+	}
+	bin := t.TempDir()
+	writeFile(t, filepath.Join(bin, "ssh"), loopbackSSH)
+	os.Chmod(filepath.Join(bin, "ssh"), 0o755)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	cfg := filepath.Join(bin, "ssh_config")
+	writeFile(t, cfg, "# the loopback box reads no configuration\n")
+	root := filepath.Join(evalSymlinks(t.TempDir()), "box")
+	killBuilds(t, root)
+	return &sshBox{config: cfg, host: "alder-test-box", root: root, port: freePort(t)}
+}
+
+// killBuilds stops, when the test ends, the builds started under root: they run as this
+// user's processes (a container's die with it).
+func killBuilds(t *testing.T, root string) {
+	t.Cleanup(func() {
+		pids, _ := filepath.Glob(filepath.Join(root, "builds", "*", "pid"))
+		for _, f := range pids {
+			if b, err := os.ReadFile(f); err == nil {
+				var pid int
+				if _, err := fmt.Sscan(string(b), &pid); err == nil && pid > 1 {
+					if p, err := os.FindProcess(pid); err == nil {
+						p.Kill()
+					}
+				}
+			}
+		}
+	})
+}
+
+// clientKey makes an ed25519 key pair in dir and returns the private key's path.
+func clientKey(t *testing.T, dir, name string) string {
+	t.Helper()
+	key := filepath.Join(dir, name)
+	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", key).CombinedOutput(); err != nil {
+		t.Skipf("ssh-keygen: %v %s", err, out)
+	}
+	return key
+}
+
+func freePort(t *testing.T) int {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
+}
+
+// writeSSHConfig writes the ssh_config of a box at 127.0.0.1:port as user with key.
+func writeSSHConfig(t *testing.T, dir string, port int, login, key string) string {
+	t.Helper()
+	cfg := filepath.Join(dir, "ssh_config")
+	writeFile(t, cfg, fmt.Sprintf(`Host alder-test-box
+  HostName 127.0.0.1
+  Port %d
+  User %s
+  IdentityFile %s
+  IdentitiesOnly yes
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  LogLevel ERROR
+`, port, login, key))
+	return cfg
+}
+
+// waitSSH waits for the box to accept a login.
+func waitSSH(t *testing.T, cfg string, logs func() string) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		out, err := exec.Command("ssh", "-F", cfg, "-o", "ConnectTimeout=3", "alder-test-box", "echo ok").CombinedOutput()
+		if err == nil && strings.TrimSpace(string(out)) == "ok" {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the box's sshd does not accept the test's key: %v %s\n%s", err, out, logs())
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+}
+
+func localBox(t *testing.T) *sshBox {
+	t.Helper()
+	sshd := "/usr/sbin/sshd"
+	if _, err := os.Stat(sshd); err != nil {
+		t.Skip("ALDER_DEPLOY_LOCAL=1 needs /usr/sbin/sshd")
+	}
+	u, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	host := clientKey(t, dir, "host_key")
+	key := clientKey(t, dir, "client_key")
+	pub, _ := os.ReadFile(key + ".pub")
+	writeFile(t, filepath.Join(dir, "authorized_keys"), string(pub))
+	port := freePort(t)
+	writeFile(t, filepath.Join(dir, "sshd_config"), fmt.Sprintf(`Port %d
+ListenAddress 127.0.0.1
+HostKey %s
+AuthorizedKeysFile %s
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+UsePAM no
+StrictModes no
+PidFile %s
+`, port, host, filepath.Join(dir, "authorized_keys"), filepath.Join(dir, "sshd.pid")))
+	var logs bytes.Buffer
+	cmd := exec.Command(sshd, "-D", "-e", "-f", filepath.Join(dir, "sshd_config"))
+	cmd.Stdout, cmd.Stderr = &logs, &logs
+	if err := cmd.Start(); err != nil {
+		t.Skipf("starting sshd: %v", err)
+	}
+	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait() })
+	cfg := writeSSHConfig(t, dir, port, u.Username, key)
+	waitSSH(t, cfg, logs.String)
+	root := filepath.Join(evalSymlinks(t.TempDir()), "box")
+	killBuilds(t, root)
+	return &sshBox{config: cfg, host: "alder-test-box", root: root, port: freePort(t)}
+}
+
+func containerBox(t *testing.T) *sshBox {
+	t.Helper()
+	if out, err := exec.Command("docker", "info").CombinedOutput(); err != nil {
+		t.Skipf("-tags deploy: Docker does not answer (%v), so the Ssh target's tests skip: %s", err, lastLine(string(out)))
+	}
+	const image = "alder-deploy-test-box"
+	if out, err := exec.Command("docker", "build", "-q", "-t", image, "testdata/deploy").CombinedOutput(); err != nil {
+		t.Fatalf("docker build: %v\n%s", err, out)
+	}
+	out, err := exec.Command("docker", "run", "-d", "--rm", "-p", "127.0.0.1::22", image).Output()
+	if err != nil {
+		t.Fatalf("docker run: %v", err)
+	}
+	id := strings.TrimSpace(string(out))
+	t.Cleanup(func() { exec.Command("docker", "rm", "-f", id).Run() })
+	out, err = exec.Command("docker", "port", id, "22").Output()
+	if err != nil {
+		t.Fatalf("docker port: %v", err)
+	}
+	var port int
+	if _, err := fmt.Sscanf(strings.Fields(string(out))[0][strings.LastIndex(strings.Fields(string(out))[0], ":")+1:], "%d", &port); err != nil {
+		t.Fatalf("docker port printed %q", out)
+	}
+	dir := t.TempDir()
+	key := clientKey(t, dir, "client_key")
+	pub, _ := os.ReadFile(key + ".pub")
+	in := exec.Command("docker", "exec", "-i", id, "sh", "-c", "mkdir -p /home/deploy/.ssh && cat > /home/deploy/.ssh/authorized_keys && chmod 700 /home/deploy/.ssh && chmod 600 /home/deploy/.ssh/authorized_keys && chown -R deploy /home/deploy/.ssh")
+	in.Stdin = bytes.NewReader(pub)
+	if out, err := in.CombinedOutput(); err != nil {
+		t.Fatalf("docker exec: %v %s", err, out)
+	}
+	cfg := writeSSHConfig(t, dir, port, "deploy", key)
+	waitSSH(t, cfg, func() string { out, _ := exec.Command("docker", "logs", id).CombinedOutput(); return string(out) })
+	return &sshBox{config: cfg, host: "alder-test-box", root: "/srv/alder-test", port: 18080}
+}
+
+func lastLine(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	return lines[len(lines)-1]
+}
+
+// sshScaffold is deployScaffold with an Ssh environment `production` pointing at box (`proxy:
+// None`, requires SMTP_URL, keep 3), and the knobs that keep the test short: no drain, a 20 s
+// health check, the process supervisor.
+func sshScaffold(t *testing.T, box *sshBox) string {
+	t.Helper()
+	dir := deployScaffold(t, fmt.Sprintf(`deploy {
+  production: Ssh %q { domain: "localhost", path: %q },
+  requires: ["SMTP_URL"],
+  proxy: None,
+  keep: 3,
+}`, box.host, box.root), nil)
+	t.Setenv(deploy.EnvSSHConfig, box.config)
+	t.Setenv(envDrain, "0")
+	t.Setenv(envHealthTimeout, "20s")
+	t.Setenv(deploy.EnvSupervisor, "process")
+	box.sh(t, fmt.Sprintf("mkdir -p %s && echo %d > %s/port", box.root, box.port, box.root))
+	return dir
+}
+
+// migrateDemo edits demo's Entry table with edit (old → new) and writes its migration.
+func migrateDemo(t *testing.T, old, new, name string) {
+	t.Helper()
+	b, err := os.ReadFile("demo/app/Entry.alder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), old) {
+		t.Fatalf("Entry.alder lacks %q", old)
+	}
+	writeFile(t, "demo/app/Entry.alder", strings.Replace(string(b), old, new, 1))
+	var out, errb bytes.Buffer
+	if code := runMigrateTo([]string{"demo", "--name", name}, &out, &errb); code != 0 {
+		t.Fatalf("alder migrate: %d %s %s", code, out.String(), errb.String())
+	}
+}
+
+// buildIDs are the ids the deploy output names in "deployed <id>".
+func deployedID(t *testing.T, out string) string {
+	t.Helper()
+	m := regexp.MustCompile(`deployed ([0-9a-f]{16}) to production`).FindStringSubmatch(out)
+	if m == nil {
+		t.Fatalf("no deployed line:\n%s", out)
+	}
+	return m[1]
+}
+
+// The Ssh target's life: RF4 (a missing `requires` name refused before any upload), a first
+// deploy, a view change and a rollback to the first build, a deploy with a migration (status
+// lists the builds), RF3 (a rollback to a build older than
+// the live schema refused, naming the table), RF1 (a migration that drops data refused, by
+// --dry-run too, and with --allow-data-loss the database copied before the migration), a
+// rollback that passes, RF2 (a build that exits at start: nothing switched, the old build
+// serving, the log in the refusal, its directory kept), logs, and no planted value anywhere
+// under builds/ or in any output.
+func TestDeploySsh_Lifecycle(t *testing.T) {
+	box := startBox(t)
+	dir := sshScaffold(t, box)
+	var rnd [8]byte
+	rand.Read(rnd[:])
+	planted := "planted-" + hex.EncodeToString(rnd[:])
+	var all strings.Builder // every output, searched for the planted value at the end
+	deployRun := func(args ...string) (int, string) {
+		t.Helper()
+		code, out, errs := runDeploy(t, append(args[:1:1], append([]string{dir}, args[1:]...)...)...)
+		all.WriteString(out + errs)
+		return code, out + errs
+	}
+
+	// RF4: SMTP_URL is not in the environment file: refused, nothing uploaded
+	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\n' > %s/env && chmod 600 %s/env", strings.Repeat("s", 32), box.root, box.root))
+	code, out := deployRun("production")
+	if code != 1 || !strings.Contains(out, "alder deploy: refused: the environment at Ssh alder-test-box:"+box.root+" does not set SMTP_URL: add it to its environment file") {
+		t.Fatalf("RF4: exit %d\n%s", code, out)
+	}
+	if ls := box.sh(t, "ls "+box.root); strings.Contains(ls, "builds") {
+		t.Errorf("RF4: a build was uploaded before the refusal: %s", ls)
+	}
+	box.sh(t, fmt.Sprintf("printf 'SMTP_URL=smtp://u:%s@mail\\n' >> %s/env", planted, box.root))
+
+	// the first deploy
+	code, out = deployRun("production")
+	if code != 0 {
+		t.Fatalf("first deploy: exit %d\n%s", code, out)
+	}
+	id1 := deployedID(t, out)
+	for _, want := range []string{"  requires ok  SMTP_URL, ALDER_SECRET\n", "first deploy: the database is created by every migration", "  upload   ok  builds/" + id1 + "/\n",
+		"  backup   ok  no database yet\n", "  migrate  ok  applied 0001_initial\n", "  health   ok  build " + id1 + " answers GET /\n", "  switch   ok  current → " + id1} {
+		if !strings.Contains(out, want) {
+			t.Errorf("first deploy: output lacks %q:\n%s", want, out)
+		}
+	}
+	if got := box.serving(t); got != id1 {
+		t.Fatalf("after the first deploy the box serves %q, want %s", got, id1)
+	}
+
+	// a deploy without a migration, and a rollback to the first build (the same schema)
+	appendTo(t, "demo/app/Home.alder", "\nversion : Int\nversion = 2\n")
+	code, out = deployRun("production")
+	if code != 0 {
+		t.Fatalf("deploy of a view change: exit %d\n%s", code, out)
+	}
+	id1b := deployedID(t, out)
+	if !strings.Contains(out, "no pending migration") || box.serving(t) != id1b {
+		t.Errorf("deploy of a view change:\n%s", out)
+	}
+	var so, se bytes.Buffer
+	if code := runRollbackTo([]string{"production", "--dir", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "  schema   ok  the live schema is the build's\n") || !strings.Contains(so.String(), "rolled back to "+id1) {
+		t.Fatalf("rollback to %s: exit %d\n%s\n%s", id1, code, so.String(), se.String())
+	}
+	if got := box.serving(t); got != id1 {
+		t.Errorf("after the rollback the box serves %q, want %s", got, id1)
+	}
+
+	// a second deploy with a migration
+	migrateDemo(t, "  message: Text.NonEmpty,\n", "  message: Text.NonEmpty,\n  mood: Maybe Text = Nothing,\n", "add_mood")
+	code, out = deployRun("production")
+	if code != 0 {
+		t.Fatalf("second deploy: exit %d\n%s", code, out)
+	}
+	id2 := deployedID(t, out)
+	if !strings.Contains(out, "  0002_add_mood\n    rebuild table Entry") || !strings.Contains(out, "  migrate  ok  applied 0002_add_mood\n") || !strings.Contains(out, "  backup   ok  builds/"+id2+"/backup.db\n") {
+		t.Errorf("second deploy:\n%s", out)
+	}
+	if got := box.serving(t); got != id2 {
+		t.Fatalf("after the second deploy the box serves %q, want %s", got, id2)
+	}
+	so.Reset()
+	se.Reset()
+	if code := runStatusTo([]string{"production", dir}, &so, &se); code != 0 {
+		t.Fatalf("status: %d %s", code, se.String())
+	}
+	all.WriteString(so.String() + se.String())
+	st := so.String()
+	if !strings.Contains(st, "current  "+id2+"\n") || !strings.Contains(st, "  * "+id2+"  ") || !strings.Contains(st, "    "+id1+"  ") ||
+		!strings.Contains(st, "migrated 0002_add_mood") || !strings.Contains(st, "database ") || !strings.Contains(st, "backup   ") {
+		t.Errorf("status:\n%s", st)
+	}
+
+	// RF3: rolling back to id1 (no mood) under the live schema (mood) is refused
+	so.Reset()
+	se.Reset()
+	if code := runRollbackTo([]string{"production", "--dir", dir}, &so, &se); code != 1 || !strings.Contains(se.String(), "(changed tables: Entry.Entry): that build would refuse to start on it") {
+		t.Errorf("RF3: exit %d\n%s\n%s", code, so.String(), se.String())
+	}
+	if got := box.serving(t); got != id2 {
+		t.Errorf("RF3: after the refused rollback the box serves %q, want %s", got, id2)
+	}
+
+	// RF1: dropping mood drops data: refused by --dry-run and by deploy, nothing uploaded
+	migrateDemo(t, "  mood: Maybe Text = Nothing,\n", "", "drop_mood")
+	before := box.sh(t, "ls "+box.root+"/builds")
+	for _, args := range [][]string{{"production", "--dry-run"}, {"production"}} {
+		code, out = deployRun(args...)
+		if code != 1 || !strings.Contains(out, "alder deploy: refused: the migration drops data\n  DROPS DATA: 0003_drop_mood: column Entry.mood\nrun again with --allow-data-loss") ||
+			!strings.Contains(out, "    DROPS DATA: column Entry.mood\n") {
+			t.Errorf("RF1 %v: exit %d\n%s", args, code, out)
+		}
+	}
+	if after := box.sh(t, "ls "+box.root+"/builds"); after != before {
+		t.Errorf("RF1: the refused deploys changed builds/: %q → %q", before, after)
+	}
+	code, out = deployRun("production", "--allow-data-loss")
+	if code != 0 {
+		t.Fatalf("RF1 with --allow-data-loss: exit %d\n%s", code, out)
+	}
+	id3 := deployedID(t, out)
+	// the copy was taken before the migration: it still has the column
+	backupFile := filepath.Join(t.TempDir(), "backup.db")
+	writeFile(t, backupFile, box.sh(t, "cat "+box.root+"/builds/"+id3+"/backup.db"))
+	conn, err := sql.Open("sqlite", backupFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ddl string
+	conn.QueryRow(`SELECT group_concat(sql, ';') FROM sqlite_master WHERE type = 'table'`).Scan(&ddl)
+	conn.Close()
+	if !strings.Contains(ddl, `"mood"`) {
+		t.Errorf("RF1: builds/%s/backup.db was not taken before the migration (its tables: %s)", id3, ddl)
+	}
+	var rec deploy.Record
+	if err := json.Unmarshal([]byte(box.sh(t, "cat "+box.root+"/builds/"+id3+"/deployed.json")), &rec); err != nil || !rec.AllowDataLoss || rec.Backup != "builds/"+id3+"/backup.db" ||
+		strings.Join(rec.Applied, ",") != "0003_drop_mood" || rec.Previous != id2 {
+		t.Errorf("RF1: deployed.json: %+v %v", rec, err)
+	}
+
+	// keep 3: the oldest build, id1, was pruned
+	if !strings.Contains(out, "  prune    ok  removed "+id1+" (keep 3)\n") || strings.Contains(box.sh(t, "ls "+box.root+"/builds"), id1) {
+		t.Errorf("prune:\n%s", out)
+	}
+	// RF3 again: id1b's schema is the live one again, but the database has had 0002 and 0003
+	so.Reset()
+	se.Reset()
+	if code := runRollbackTo([]string{"production", id1b, "--dir", dir}, &so, &se); code != 1 || !strings.Contains(se.String(), "the live database has migrations build "+id1b+" does not have (0002_add_mood, 0003_drop_mood)") {
+		t.Errorf("rollback to %s: exit %d\n%s\n%s", id1b, code, so.String(), se.String())
+	}
+
+	// RF2: a build whose adapter exits at start
+	writeFile(t, "demo/app/Clock.alder", "module Clock\n\ncapability Clock {\n  now : Task Int,\n}\n")
+	writeFile(t, "demo/adapters/clock/clock.go", `package clock
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"app"
+)
+
+func Clock() app.Cap__Clock__Clock {
+	if os.Getenv("ALDER_DB") != "" {
+		fmt.Fprintln(os.Stderr, "boom: the clock adapter cannot reach its time server")
+		os.Exit(1)
+	}
+	return clock{}
+}
+
+type clock struct{}
+
+func (clock) Now(context.Context) (int64, error) { return 0, nil }
+`)
+	code, out = deployRun("production", "--unsafe-skip-tests")
+	if code != 1 || !strings.Contains(out, "did not pass its health check: it was stopped and builds/") || !strings.Contains(out, "nothing was switched; build "+id3+" still serves") ||
+		!strings.Contains(out, "boom: the clock adapter cannot reach its time server") {
+		t.Errorf("RF2: exit %d\n%s", code, out)
+	}
+	if got := box.serving(t); got != id3 {
+		t.Errorf("RF2: the box serves %q, want %s", got, id3)
+	}
+	if cur := strings.TrimSpace(box.sh(t, "cat "+box.root+"/current")); cur != id3 {
+		t.Errorf("RF2: current is %s", cur)
+	}
+	if m := regexp.MustCompile(`builds/([0-9a-f]{16})/ is kept`).FindStringSubmatch(out); m == nil || !strings.Contains(box.sh(t, "ls "+box.root+"/builds"), m[1]) {
+		t.Errorf("RF2: the failed build's directory is not kept")
+	}
+
+	// logs
+	so.Reset()
+	se.Reset()
+	if code := runLogsTo([]string{"production", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "listening on") {
+		t.Errorf("logs: %d\n%s\n%s", code, so.String(), se.String())
+	}
+	all.WriteString(so.String())
+
+	// no planted value under builds/ nor in any output
+	if hits := box.sh(t, "grep -rl "+planted+" "+box.root+"/builds || true"); strings.TrimSpace(hits) != "" {
+		t.Errorf("the planted value is in %s", hits)
+	}
+	if strings.Contains(all.String(), planted) {
+		t.Error("the planted value is in the commands' output")
+	}
+}

@@ -22,12 +22,12 @@ type Target interface {
 	// Requires reports which of names the target's environment does not set (or sets empty).
 	// It never reads a value back.
 	Requires(ctx context.Context, names []string) (missing []string, err error)
-	// Schema is the live database's schema snapshot (schema.json); ok is false when the target
-	// has no database yet.
-	Schema(ctx context.Context) (snapshot []byte, ok bool, err error)
-	// BuildSchema is build id's own snapshot (its migrations/schema.json); ok false when the
-	// build has none (an app without migrations).
-	BuildSchema(ctx context.Context, id string) (snapshot []byte, ok bool, err error)
+	// Schema is the live database's schema: the snapshot (schema.json) of the last migration it
+	// took and the migrations applied to it. Have is false when the target has no database yet.
+	Schema(ctx context.Context) (Schema, error)
+	// BuildSchema is build id's own: its migrations/schema.json and migration files (Have false
+	// for an app without migrations).
+	BuildSchema(ctx context.Context, id string) (Schema, error)
 	// Current is the id of the build serving ("" before the first deploy).
 	Current(ctx context.Context) (string, error)
 	// Builds are the builds at the target, newest first.
@@ -63,6 +63,13 @@ type Target interface {
 	Restore(ctx context.Context, db string) error
 	// Close releases the connection.
 	Close() error
+}
+
+// Schema is a database's schema or a build's, as a target reports it.
+type Schema struct {
+	Have       bool
+	Snapshot   []byte   // schema.json
+	Migrations []string // the migration names ("0002_add_mood"), in order
 }
 
 // Platform is the GOOS and GOARCH the target runs.

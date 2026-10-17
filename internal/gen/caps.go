@@ -516,6 +516,12 @@ func Main(name string, withCaps bool) []byte {
 // shuts the server down gracefully: requests in flight get 5 s to finish. ALDER_EXIT_ON_STDIN_EOF=1
 // (set by alder run) makes the app stop the same way when its standard input reaches EOF, so it
 // never outlives the dev server.
+//
+// Two arguments run a maintenance task instead of serving (alder deploy runs them at the
+// target, chapter 16): --migrate-only applies the pending migrations to ALDER_DB (each
+// "migrated <name>" printed) and exits, 0 or 1 with the refusal, before the new build is
+// started; --backup-to FILE writes a consistent copy of ALDER_DB to FILE (VACUUM INTO) while
+// another process may be serving it.
 package main
 
 import (
@@ -531,10 +537,17 @@ import (
 	"syscall"
 	"time"
 
+	"alder/rt/backup"
+	"alder/rt/db"
+	"alder/rt/web"
 ` + imports + `)
 
 func main() {
 	dev := os.Getenv("ALDER_DEV") == "1"
+	dbPath := env("ALDER_DB", ` + strconv.Quote(name+".db") + `)
+	if len(os.Args) > 1 {
+		os.Exit(maintain(os.Args[1:], dbPath, dev))
+	}
 	static := os.Getenv("ALDER_STATIC")
 	if static == "" {
 		static = "static"
@@ -543,7 +556,7 @@ func main() {
 		}
 	}
 	h, err := app.Serve(` + caps + `, app.Options{
-		DB:        env("ALDER_DB", ` + strconv.Quote(name+".db") + `),
+		DB:        dbPath,
 		Dev:       dev,
 		Secret:    []byte(os.Getenv("ALDER_SECRET")),
 		StaticDir: static,
@@ -588,6 +601,43 @@ func main() {
 	if err := srv.Shutdown(grace); err != nil {
 		fmt.Fprintln(os.Stderr, "alder: shutting down:", err)
 	}
+}
+
+// maintain runs the maintenance task args name (see the package comment) on the database at
+// path and returns the exit code.
+func maintain(args []string, path string, dev bool) int {
+	ctx := context.Background()
+	switch {
+	case len(args) == 1 && args[0] == "--migrate-only":
+		if err := web.CheckSecret([]byte(os.Getenv("ALDER_SECRET")), dev); err != nil {
+			fmt.Fprintln(os.Stderr, "alder:", err)
+			return 1
+		}
+		store, err := db.OpenSQLite(path)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "alder:", err)
+			return 1
+		}
+		defer store.Close()
+		if len(app.Migrations) > 0 {
+			_, err = store.MigrateLog(ctx, app.Tables, app.Migrations, dev, func(msg string) { fmt.Println(msg) })
+		} else {
+			err = store.Ensure(ctx, app.Tables, dev)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "alder:", err)
+			return 1
+		}
+		return 0
+	case len(args) == 2 && args[0] == "--backup-to":
+		if err := backup.Snapshot(ctx, path, args[1]); err != nil {
+			fmt.Fprintln(os.Stderr, "alder:", err)
+			return 1
+		}
+		return 0
+	}
+	fmt.Fprintln(os.Stderr, "usage: "+filepath.Base(os.Args[0])+" [--migrate-only | --backup-to FILE]  (no argument: serve)")
+	return 2
 }
 
 // env is the environment variable name, or def when it is unset or empty.

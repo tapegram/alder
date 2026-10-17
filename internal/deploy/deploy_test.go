@@ -20,15 +20,17 @@ import (
 
 // fakeTarget records the calls the engine makes, in order, and answers from its fields.
 type fakeTarget struct {
-	calls    []string
-	missing  []string
-	live     []byte
-	builds   []Build
-	current  string
-	schemas  map[string][]byte
-	startErr error
-	health   error
-	records  map[string]Record
+	calls      []string
+	missing    []string
+	live       []byte
+	builds     []Build
+	current    string
+	schemas    map[string][]byte
+	startErr   error
+	health     error
+	records    map[string]Record
+	applied    []string            // the live database's migrations
+	migrations map[string][]string // each build's
 }
 
 func (f *fakeTarget) call(s string)    { f.calls = append(f.calls, s) }
@@ -41,13 +43,13 @@ func (f *fakeTarget) Requires(_ context.Context, names []string) ([]string, erro
 	f.call("requires " + strings.Join(names, ","))
 	return f.missing, nil
 }
-func (f *fakeTarget) Schema(context.Context) ([]byte, bool, error) {
+func (f *fakeTarget) Schema(context.Context) (Schema, error) {
 	f.call("schema")
-	return f.live, f.live != nil, nil
+	return Schema{Have: f.live != nil, Snapshot: f.live, Migrations: f.applied}, nil
 }
-func (f *fakeTarget) BuildSchema(_ context.Context, id string) ([]byte, bool, error) {
+func (f *fakeTarget) BuildSchema(_ context.Context, id string) (Schema, error) {
 	b, ok := f.schemas[id]
-	return b, ok, nil
+	return Schema{Have: ok, Snapshot: b, Migrations: f.migrations[id]}, nil
 }
 func (f *fakeTarget) Current(context.Context) (string, error)      { return f.current, nil }
 func (f *fakeTarget) Builds(context.Context) ([]Build, error)      { return f.builds, nil }
@@ -346,6 +348,16 @@ func TestRollback_SchemaMismatch(t *testing.T) {
 	f.schemas["1111111111111111"] = j2
 	if _, err := Rollback(context.Background(), f, RollbackOptions{Out: &out, Drain: -1}); err != nil {
 		t.Errorf("same schema: %v", err)
+	}
+	// the same schema reached by migrations the build does not have (a column added, then
+	// dropped): the runtime would refuse it, so the rollback does
+	f = mk()
+	f.schemas["1111111111111111"] = j2
+	f.applied = []string{"0001_initial", "0002_add", "0003_drop"}
+	f.migrations = map[string][]string{"1111111111111111": {"0001_initial"}}
+	if _, err := Rollback(context.Background(), f, RollbackOptions{Out: &out, Drain: -1}); err == nil ||
+		!strings.Contains(err.Error(), "refused: the live database has migrations build 1111111111111111 does not have (0002_add, 0003_drop): that build would refuse to start on it") {
+		t.Errorf("history: %v", err)
 	}
 }
 
