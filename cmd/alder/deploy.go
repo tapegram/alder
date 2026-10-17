@@ -209,6 +209,10 @@ func targetFor(app, env string, t ir.Target, d *ir.Deploy, dir string, stdout, s
 		s := deploy.NewSsh(app, env, t, d)
 		s.Warn = stdout
 		return s, nil, nil
+	case "fly":
+		f := deploy.NewFly(app, env, t, d)
+		f.Warn = stdout
+		return f, nil, nil
 	}
 	return nil, nil, fmt.Errorf("the %s target is not available in this alder yet", t.Kind)
 }
