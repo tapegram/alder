@@ -5,7 +5,8 @@
 #
 # `warm` runs first and caches the build; then, in parallel: `lint` (gofmt, vet, the Python
 # tests), `test` (go test in five parts: cmd/alder's tests in three shards, internal/gen, the
-# rest) and `examples` (check, build and test both example apps with the built binary).
+# rest), `examples` (check, build and test both example apps with the built binary) and
+# `deploy` (the Ssh target's tests against a Docker sshd: go test -tags deploy).
 #
 # Branch pushes and pull requests run on Linux only; pushes to main and tags also run `warm`,
 # `test` and `examples` on macOS (the `os` lists below), so a release is tested on both.
@@ -172,3 +173,32 @@ jobs:
       - name: examples/blog
         working-directory: examples/blog
         run: alder check . && alder build . && alder test .
+
+  # The Ssh target of `alder deploy` against a real sshd: cmd/alder's TestDeploySsh_* under
+  # -tags deploy start a container from cmd/alder/testdata/deploy/Dockerfile (Debian, sshd, curl,
+  # a user `deploy`) and deploy the scaffold to it over ssh (deploy_ssh_test.go). Without Docker
+  # they skip, saying so; the default suite runs the same tests against a loopback box.
+  deploy:
+    needs: warm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-
+      - name: Docker
+        run: docker info --format 'Docker {{.ServerVersion}}' || echo "::notice::Docker does not answer on this runner; the deploy tests skip"
+      - name: go vet -tags deploy
+        run: go vet -tags deploy ./cmd/alder
+      - name: go test -tags deploy (the Ssh target against a Docker sshd)
+        run: go test -tags deploy ./cmd/alder -run '^TestDeploySsh_' -count=1 -timeout 20m -v
