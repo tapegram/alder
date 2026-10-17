@@ -82,10 +82,11 @@ type Fly struct {
 	// MigrateTimeout bounds a new build's migrations at its start (10 minutes when 0).
 	MigrateTimeout time.Duration
 
-	exists   bool        // the Fly app exists
-	machine  *flyMachine // the environment's machine (nil before the first deploy)
-	requires []string    // the names Requires was asked, set as secrets by Upload
-	conn     bool
+	allowLoss bool        // this run's --allow-data-loss (AllowDataLoss)
+	exists    bool        // the Fly app exists
+	machine   *flyMachine // the environment's machine (nil before the first deploy)
+	requires  []string    // the names Requires was asked, set as secrets by Upload
+	conn      bool
 }
 
 // NewFly is environment env's Fly target t of app, with the declaration's backup.
@@ -97,6 +98,12 @@ func NewFly(app, env string, t ir.Target, d *ir.Deploy) *Fly {
 	}
 	return f
 }
+
+// AllowDataLoss is told this run's --allow-data-loss (the engine's DataLossAllower): the
+// machine's configuration then carries ALDER_ALLOW_DATA_LOSS=1, without which the runtime's
+// --migrate-only refuses a migration that drops data. The next deploy without the flag writes the
+// configuration without it.
+func (f *Fly) AllowDataLoss(allow bool) { f.allowLoss = allow }
 
 // Describe is "Fly ord (app blog-staging)".
 func (f *Fly) Describe() string { return "Fly " + f.Region + " (app " + f.FlyApp + ")" }
@@ -686,6 +693,9 @@ func (f *Fly) config(id, volume string) flyConfig {
 	}
 	if f.BackupURL != "" {
 		env["ALDER_BACKUP_URL"] = f.BackupURL
+	}
+	if f.allowLoss {
+		env["ALDER_ALLOW_DATA_LOSS"] = "1"
 	}
 	return flyConfig{
 		Image:  f.image(id),

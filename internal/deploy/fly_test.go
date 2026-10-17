@@ -443,6 +443,19 @@ func TestFly_DeployLifecycle(t *testing.T) {
 	}
 }
 
+// --allow-data-loss reaches the machine's --migrate-only as ALDER_ALLOW_DATA_LOSS=1, and only
+// on that deploy's configuration.
+func TestFly_AllowDataLoss(t *testing.T) {
+	f := NewFly("demo", "staging", ir.Target{Kind: "fly", Region: "ord", App: "demo-staging"}, &ir.Deploy{})
+	if _, ok := f.config("0123456789abcdef", "vol_1").Env["ALDER_ALLOW_DATA_LOSS"]; ok {
+		t.Error("ALDER_ALLOW_DATA_LOSS without the flag")
+	}
+	f.AllowDataLoss(true)
+	if f.config("0123456789abcdef", "vol_1").Env["ALDER_ALLOW_DATA_LOSS"] != "1" {
+		t.Error("no ALDER_ALLOW_DATA_LOSS with the flag")
+	}
+}
+
 // connected is f after Connect.
 func (f *Fly) connected(t *testing.T) *Fly {
 	t.Helper()
@@ -510,7 +523,10 @@ func TestFly_Scripts(t *testing.T) {
 		}
 	}
 	var auth string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { auth = r.Header.Get("Authorization"); http.NotFound(w, r) }))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = r.Header.Get("Authorization")
+		http.NotFound(w, r)
+	}))
 	defer srv.Close()
 	f := &Fly{API: srv.URL, Token: "FlyV1 fm2_abc", FlyApp: "x"}
 	f.call(context.Background(), "GET", "/apps/x", nil, nil)
