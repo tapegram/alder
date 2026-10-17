@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"alder/rt"
+	"alder/rt/db"
 	"alder/rt/web"
 
 	_ "modernc.org/sqlite"
@@ -109,18 +110,18 @@ func TestSilos_Binary(t *testing.T) {
 		t.Helper()
 		stage := t.TempDir()
 		os.MkdirAll(filepath.Join(stage, "silos", "org"), 0o755)
-		os.WriteFile(filepath.Join(stage, "silos", "org", id+".db"), nil, 0o644)
+		os.WriteFile(filepath.Join(stage, "silos", "org", db.SiloFileName(id)), nil, 0o644)
 		if code, out := maintainAt(filepath.Join(stage, "app.db"), bin, "--migrate-silos"); code != 0 || out != "org/"+id+": ok\n" {
 			t.Fatalf("making silo %s: %d %s", id, code, out)
 		}
-		if err := os.Rename(filepath.Join(stage, "silos", "org", id+".db"), filepath.Join(silos, id+".db")); err != nil {
+		if err := os.Rename(filepath.Join(stage, "silos", "org", db.SiloFileName(id)), filepath.Join(silos, db.SiloFileName(id))); err != nil {
 			t.Fatal(err)
 		}
 	}
 	makeSilo(v1, "loss")
 	makeSilo(v2, "behind")
 	makeSilo(v3, "ahead")
-	sqlExec(t, filepath.Join(silos, "ahead.db"), `UPDATE "_alder_schema" SET "hash" = 'f00d', "migration" = '9999_future'`)
+	sqlExec(t, filepath.Join(silos, db.SiloFileName("ahead")), `UPDATE "_alder_schema" SET "hash" = 'f00d', "migration" = '9999_future'`)
 
 	code, out := maintain(v3, "--silo-status")
 	want := []string{
@@ -175,10 +176,10 @@ func TestSilos_Binary(t *testing.T) {
 	if res, body := do("GET", "/projects", them, nil); res.StatusCode != 200 || strings.Contains(body, "mine") || !strings.Contains(body, "Org B") {
 		t.Fatalf("B's page: %d\n%s", res.StatusCode, body)
 	}
-	if n := sqlCount(t, filepath.Join(silos, "A.db"), `SELECT COUNT(*) FROM "Project__Project" WHERE "name" = 'Org A: mine'`); n != 1 {
+	if n := sqlCount(t, filepath.Join(silos, db.SiloFileName("A")), `SELECT COUNT(*) FROM "Project__Project" WHERE "name" = 'Org A: mine'`); n != 1 {
 		t.Fatalf("A's file holds %d", n)
 	}
-	if n := sqlCount(t, filepath.Join(silos, "B.db"), `SELECT COUNT(*) FROM "Project__Project"`); n != 0 {
+	if n := sqlCount(t, filepath.Join(silos, db.SiloFileName("B")), `SELECT COUNT(*) FROM "Project__Project"`); n != 0 {
 		t.Fatalf("B's file holds %d projects", n)
 	}
 	if n := sqlCount(t, appDB, `SELECT COUNT(*) FROM "Project__Project"`); n != 0 {
@@ -198,6 +199,16 @@ func TestSilos_Binary(t *testing.T) {
 			t.Fatalf("org %s: %d %q\n%s", org, res.StatusCode, res.Header.Get("Alder-Status"), body)
 		}
 	}
+	// a value that is no id, or no Org's: not-found, and no file is made
+	before, _ := os.ReadDir(silos)
+	for _, org := range []string{"-rf", "app", "nope", "a"} {
+		if res, body := do("GET", "/projects", siloSession{"me", org}, nil); res.StatusCode != http.StatusNotFound {
+			t.Fatalf("org %q: %d\n%s", org, res.StatusCode, body)
+		}
+	}
+	if after, _ := os.ReadDir(silos); len(after) != len(before) {
+		t.Fatalf("files made: %d → %d", len(before), len(after))
+	}
 	if code := app.stop(t, os.Interrupt); code != 0 {
 		t.Fatalf("exit %d\n%s", code, app.stderr.String())
 	}
@@ -213,6 +224,11 @@ func TestSilos_Binary(t *testing.T) {
 	_, out = maintain(v3, "--silo-status")
 	if strings.Count(out, `"state":"ok"`) != 4 || !strings.Contains(out, `"id":"ahead","state":"ahead"`) {
 		t.Fatalf("--silo-status after:\n%s", out)
+	}
+	// a silo whose Org is gone is listed orphaned
+	sqlExec(t, appDB, `DELETE FROM "Org__Org" WHERE "id" = 'behind'`)
+	if _, out := maintain(v3, "--silo-status"); !strings.Contains(out, `"id":"behind","state":"orphaned"`) {
+		t.Fatalf("--silo-status with an orphan:\n%s", out)
 	}
 	// the build before it sees the migrated silos as ahead
 	if _, out := maintain(v2, "--silo-status"); !strings.Contains(out, `"id":"A","state":"ahead"`) {

@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/base32"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -304,9 +305,8 @@ func SiloDir(path string) string {
 	return filepath.Dir(path)
 }
 
-// SiloPath is the file of silo key's value under dir: dir/silos/<key>/<value>.db. The value is
-// an id's text, which the id brand's rule keeps filename-safe; a value that is empty, ".", "..",
-// or holds "/", "\", ".." or NUL is refused all the same.
+// SiloPath is the file of silo key's value under dir: dir/silos/<key>/<SiloFileName(value)>. The
+// value must be an id (validID: NewID's alphabet, 1 to 64 characters); anything else is refused.
 func SiloPath(dir, key, value string) (string, error) {
 	if err := safeName(key); err != nil {
 		return "", fmt.Errorf("db: silo key %q: %v", key, err)
@@ -314,17 +314,44 @@ func SiloPath(dir, key, value string) (string, error) {
 	if err := safeName(value); err != nil {
 		return "", fmt.Errorf("db: silo %s value %q: %v", key, value, err)
 	}
-	return filepath.Join(dir, "silos", key, value+".db"), nil
+	return filepath.Join(dir, "silos", key, SiloFileName(value)), nil
 }
 
+// SiloFileName is the file name of the silo of id value: the id's text in base32hex (RFC 4648
+// §7), lowercase, without padding, then ".db". Ids are case-sensitive and a file system may not
+// be, so the id's own text is never the name ("a" and "A" are two silos, "a.db" and "A.db" one
+// file on macOS); the encoding is reversible (SiloValue), uses [0-9a-v] only, and a 64-character
+// id makes a 103-character name.
+func SiloFileName(value string) string {
+	return strings.ToLower(siloEnc.EncodeToString([]byte(value))) + ".db"
+}
+
+// SiloValue is the id a silo file name (SiloFileName's) stands for; false for any other name.
+func SiloValue(name string) (string, bool) {
+	enc, ok := strings.CutSuffix(name, ".db")
+	if !ok || enc != strings.ToLower(enc) {
+		return "", false
+	}
+	b, err := siloEnc.DecodeString(strings.ToUpper(enc))
+	if err != nil || !validID(string(b)) || SiloFileName(string(b)) != name {
+		return "", false
+	}
+	return string(b), true
+}
+
+var siloEnc = base32.HexEncoding.WithPadding(base32.NoPadding)
+
+// idPattern is NewID's alphabet (base64url) and the longest id a silo is opened for.
+var idPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// validID reports whether v can be the id of a silo's key row: 1 to 64 characters of NewID's
+// alphabet. A request for any other value is not-found, and no file is made for it.
+func validID(v string) bool { return idPattern.MatchString(v) }
+
+// safeName refuses a silo key or value that is not an id (validID).
 func safeName(v string) error {
-	switch {
-	case v == "":
-		return errors.New("empty")
-	case strings.ContainsAny(v, "/\\\x00"):
-		return errors.New("holds a path separator or NUL")
-	case v == "." || strings.Contains(v, ".."):
-		return errors.New(`holds ".."`)
+	if !validID(v) {
+		return errors.New("not an id: 1 to 64 letters, digits, _ or -")
 	}
 	return nil
 }
@@ -339,14 +366,26 @@ func (s *Stores) silo(ctx context.Context, key, value string) (*siloDB, error) {
 	if ss == nil {
 		return nil, fmt.Errorf("db: %w: no silo %q", eff.ErrInternal, key)
 	}
-	if err := safeName(value); err != nil {
-		return nil, &eff.ErrFail{Msg: fmt.Sprintf("silo %s: the value %q is not an id (%v)", key, value, err)}
+	if !validID(value) {
+		return nil, eff.ErrNotFound // no row has such an id: nothing to open, no file made
 	}
 	id := key + "/" + value
 	now := time.Now()
 	s.mu.Lock()
 	s.sweep(now)
 	d := s.open[id]
+	if d == nil { // first open: its key row must exist (one shared read), else not-found, no file
+		s.mu.Unlock()
+		ok, err := s.keyExists(ctx, key, value)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, eff.ErrNotFound
+		}
+		s.mu.Lock()
+		d = s.open[id]
+	}
 	if d != nil && isReady(d) && d.state != SiloOK && now.Sub(d.checked) > recheck {
 		delete(s.open, id) // a failed silo holds no connection (openSilo's fail closed it)
 		d = nil
@@ -378,6 +417,39 @@ func (s *Stores) silo(ctx context.Context, key, value string) (*siloDB, error) {
 		return nil, &MaintenanceError{Key: key, Value: value, State: d.state, Detail: d.detail}
 	}
 	return d, nil
+}
+
+// keyExists reports whether silo key's value has its key row (an Org of that id) in the shared
+// store, the table Silo.Ref names: read through the running effect's transaction when it is
+// the shared store's (a test's, or a Task on the shared store), else outside any.
+func (s *Stores) keyExists(ctx context.Context, key, value string) (bool, error) {
+	ref := ""
+	for _, si := range s.cfg.Silos {
+		if si.Key == key {
+			ref = si.Ref
+		}
+	}
+	if ref == "" || s.shared == nil {
+		return true, nil // generated before Silo.Ref: not checked
+	}
+	d, err := s.shared.desc(ref)
+	if err != nil {
+		return false, err
+	}
+	var q querier = recQ{s.shared.db}
+	if e := eff.EnvFrom(ctx); e != nil && e.Tx != nil && (s.test || e.SiloKey == "") {
+		if q, err = s.shared.on(e.Tx); err != nil {
+			return false, err
+		}
+	} else if s.reader != nil {
+		q = recQ{s.reader.db}
+	}
+	var one int
+	err = q.QueryRowContext(ctx, "SELECT 1 FROM "+quote(SQLName(ref))+" WHERE "+quote(d.ID)+" = ?", value).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // isReady reports whether d is opened and checked.
@@ -1001,7 +1073,9 @@ func SiloFiles(dir string, silos []Silo) ([]SiloFile, error) {
 		}
 		slices.Sort(paths)
 		for _, p := range paths {
-			out = append(out, SiloFile{Key: si.Key, Value: strings.TrimSuffix(filepath.Base(p), ".db"), Path: p})
+			if v, ok := SiloValue(filepath.Base(p)); ok { // another file is none of the app's
+				out = append(out, SiloFile{Key: si.Key, Value: v, Path: p})
+			}
 		}
 	}
 	return out, nil

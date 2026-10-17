@@ -276,6 +276,14 @@ func UpdateRow[T any](ctx context.Context, st Store, tx Tx, t *Table[T], id stri
 	if t.ReadID(next) != id {
 		return &eff.ErrFail{Msg: fmt.Sprintf("Db.update %s: update may not change the id", shortName(t.Name))}
 	}
+	if t.Silo != "" && t.Owner != "" { // a row stays in its silo: moving it is delete + insert
+		before, after := t.Encode(cur.Val), t.Encode(next)
+		for i, c := range t.Columns {
+			if c.Name == t.Owner && i < len(before) && i < len(after) && before[i] != after[i] {
+				return &eff.ErrFail{Msg: fmt.Sprintf("Db.update %s: a row cannot move to another %s (delete it and insert it there)", shortName(t.Name), t.Silo)}
+			}
+		}
+	}
 	return st.Update(ctx, tx, t.Name, t.Columns, t.ID, t.Updated, id, t.Encode(next), now)
 }
 

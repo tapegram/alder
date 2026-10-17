@@ -131,10 +131,10 @@ func siloEnv(s *Stores, org string) *eff.Env {
 
 func TestSiloPath_FilenameSafety(t *testing.T) {
 	p, err := SiloPath("/data", "org", "Ab3_-x")
-	if err != nil || p != filepath.Join("/data", "silos", "org", "Ab3_-x.db") {
+	if err != nil || p != filepath.Join("/data", "silos", "org", SiloFileName("Ab3_-x")) {
 		t.Fatalf("got %q, %v", p, err)
 	}
-	for _, bad := range []string{"", ".", "..", "a/b", `a\b`, "a\x00b", "../etc", "x..y"} {
+	for _, bad := range []string{"", ".", "..", "a/b", `a\b`, "a\x00b", "../etc", "x..y", "-rf " + strings.Repeat("x", 3), strings.Repeat("x", 65), "é"} {
 		if _, err := SiloPath("/data", "org", bad); err == nil {
 			t.Errorf("value %q: no refusal", bad)
 		}
@@ -180,7 +180,7 @@ func TestStores_SiloPerValue(t *testing.T) {
 	}
 	// the files: B's lacks A's row; the shared store has none
 	for org, other := range map[string]string{"A": "pb", "B": "pa"} {
-		f, err := OpenSQLite(filepath.Join(dir, "silos", "org", org+".db"))
+		f, err := OpenSQLite(filepath.Join(dir, "silos", "org", SiloFileName(org)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -196,7 +196,7 @@ func TestStores_SiloPerValue(t *testing.T) {
 		t.Errorf("the shared store holds %d projects", n)
 	}
 	// the _alder_schema row records the app's hash and last migration
-	f, _ := OpenSQLite(filepath.Join(dir, "silos", "org", "A.db"))
+	f, _ := OpenSQLite(filepath.Join(dir, "silos", "org", SiloFileName("A")))
 	defer f.Close()
 	h, m, ok, err := schemaRow(ctx, f.db)
 	if !ok || err != nil || h != s.hash || m != "0001_initial" {
@@ -331,7 +331,7 @@ func TestStores_OpenTimeOutcomes(t *testing.T) {
 		t.Fatalf("behind: %v", err)
 	}
 	var stmt string
-	f, _ := OpenSQLite(filepath.Join(dir, "silos", "org", "behind.db"))
+	f, _ := OpenSQLite(filepath.Join(dir, "silos", "org", SiloFileName("behind")))
 	f.db.QueryRow(`SELECT "sql" FROM sqlite_schema WHERE "name" = 'Project__Project'`).Scan(&stmt)
 	if !strings.Contains(stmt, `"note" TEXT`) {
 		t.Fatalf("not migrated: %s", stmt)
@@ -585,7 +585,7 @@ func TestStores_DrainRecheck(t *testing.T) {
 	if err := write(); err != nil {
 		t.Fatalf("write while draining, schema unchanged: %v", err)
 	}
-	sqlFile(t, filepath.Join(dir, "silos", "org", "A.db"), `UPDATE "_alder_schema" SET "hash" = 'newer'`)
+	sqlFile(t, filepath.Join(dir, "silos", "org", SiloFileName("A")), `UPDATE "_alder_schema" SET "hash" = 'newer'`)
 	if err := write(); !errors.As(err, &me) || me.State != SiloAhead {
 		t.Fatalf("write after another build migrated it: %v", err)
 	}
@@ -604,5 +604,89 @@ func sqlFile(t *testing.T, path, stmt string) {
 	defer f.Close()
 	if _, err := f.db.Exec(stmt); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// I2: ids are case-sensitive, file systems may not be: "a" and "A" are two files; a name is the
+// id in lowercase base32hex, read back by SiloValue.
+func TestSiloFileName(t *testing.T) {
+	a, A := SiloFileName("a"), SiloFileName("A")
+	if strings.EqualFold(a, A) || a != strings.ToLower(a) {
+		t.Fatalf("%q %q", a, A)
+	}
+	for _, id := range []string{"a", "A", "-rf", "app", "Zz_9-" + strings.Repeat("q", 59)} {
+		if v, ok := SiloValue(SiloFileName(id)); !ok || v != id {
+			t.Fatalf("%q: %q %v", id, v, ok)
+		}
+	}
+	for _, name := range []string{"A.db", "c4.DB", "x.db-wal", "c4", "zz.db"} {
+		if v, ok := SiloValue(name); ok {
+			t.Fatalf("%q read as %q", name, v)
+		}
+	}
+	dir := t.TempDir()
+	s := openApp(t, dir, 1)
+	ctx := context.Background()
+	for _, org := range []string{"a", "A"} {
+		if _, err := s.silo(ctx, "org", org); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files, _ := SiloFiles(dir, s.cfg.Silos)
+	if len(files) != 2 || files[0].Value != "A" || files[1].Value != "a" {
+		t.Fatalf("%+v", files)
+	}
+}
+
+// I2: a value that is not an id, or whose key row (its Org) does not exist, is not-found and
+// makes no file — the admin form's parameter included; an existing one opens.
+func TestStores_KeyRowExists(t *testing.T) {
+	dir := t.TempDir()
+	s := openApp(t, dir, 1)
+	s.cfg.Silos[0].Ref = "Org.Org"
+	ctx := context.Background()
+	id, _ := InsertRow(ctx, s.Shared(), nil, orgT, []any{nil, "Acme"}, clock)
+	for _, v := range []string{"-rf", "app", "nope", strings.Repeat("x", 65), "a/b"} {
+		if _, err := s.silo(ctx, "org", v); !errors.Is(err, eff.ErrNotFound) {
+			t.Fatalf("%q: %v", v, err)
+		}
+	}
+	if _, err := s.silo(ctx, "org", id); err != nil {
+		t.Fatal(err)
+	}
+	files, _ := SiloFiles(dir, s.cfg.Silos)
+	if len(files) != 1 || files[0].Value != id {
+		t.Fatalf("%+v", files)
+	}
+	// through a request: the admin form's parameter
+	env := siloEnv(s, "")
+	Narrow(env, "org", "nope")
+	if err := Enter(env, "org"); !errors.Is(err, eff.ErrNotFound) {
+		t.Fatalf("Enter: %v", err)
+	}
+}
+
+// I4: Db.update cannot move a siloed row to another key value.
+func TestUpdateRow_KeyColumnRefused(t *testing.T) {
+	dir := t.TempDir()
+	s := openApp(t, dir, 1)
+	env := siloEnv(s, "A")
+	Narrow(env, "org", "A")
+	if err := Enter(env, "org"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := eff.Run(env, eff.KTask, eff.Call("t", true, func(e *eff.Env) (struct{}, error) {
+		id, err := InsertScopedRow(e.Ctx, e.Store.(Store), TxOf(e), projT, []any{nil, "p", nil}, clock)
+		if err != nil {
+			return struct{}{}, err
+		}
+		if err := UpdateRow(e.Ctx, e.Store.(Store), TxOf(e), projT, id, func(p proj) proj { p.Name = "q"; return p }, clock); err != nil {
+			return struct{}{}, err
+		}
+		return struct{}{}, UpdateRow(e.Ctx, e.Store.(Store), TxOf(e), projT, id, func(p proj) proj { p.Org = "B"; return p }, clock)
+	}))
+	var f *eff.ErrFail
+	if !errors.As(err, &f) || f.Msg != "Db.update Project: a row cannot move to another org (delete it and insert it there)" {
+		t.Fatalf("%v", err)
 	}
 }
