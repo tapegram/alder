@@ -197,6 +197,7 @@ var commandTree = []cmdSpec{
 				}},
 		}},
 	{Name: "version", Summary: "print alder's version and the Go it was built with", Usage: commandUsages["version"]},
+	{Name: "lsp", Summary: "language server for editors, over stdio", Usage: commandUsages["lsp"]},
 	{Name: "explain", Summary: "explain a diagnostic code", Usage: commandUsages["explain"], Args: []string{"<code>"}},
 	{Name: "help", Summary: "print usage", Usage: commandUsages["help"],
 		Args:  []string{"[<command> [<generator>]]"},
