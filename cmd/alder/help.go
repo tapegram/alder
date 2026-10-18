@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"os"
 )
 
 // commandUsages are the usage lines `alder <command> --help` prints, by command; `alder new
@@ -27,6 +28,8 @@ var commandUsages = map[string]string{
 	"logs":     logsUsage,
 	"restore":  restoreUsage,
 	"ci":       ciUsage,
+	"silos":    silosUsage,
+	"help":     helpUsage,
 	"version":  "usage: alder version",
 	"explain":  "usage: alder explain <code>  (such as E0016)",
 }
@@ -34,13 +37,34 @@ var commandUsages = map[string]string{
 var newGeneratorUsages = map[string]string{
 	"page": newPageUsage, "table": newTableUsage, "form": newFormUsage, "msg": newMsgUsage,
 	"capability": newCapabilityUsage, "admin": newAdminUsage, "auth": newAuthUsage,
-	"type": newTypeUsage, "decl": newDeclUsage, "test": newTestUsage,
+	"type": newTypeUsage, "decl": newDeclUsage, "test": newTestUsage, "silo": newSiloUsage,
+}
+
+const helpUsage = "usage: alder help [<command> [<generator>]] [--json]"
+
+// wantsHelpJSON reports whether args (os.Args[1:]) are `alder help … --json`.
+func wantsHelpJSON(args []string) bool {
+	if len(args) == 0 || args[0] != "help" {
+		return false
+	}
+	for _, a := range args[1:] {
+		if a == "--json" {
+			return true
+		}
+	}
+	return false
 }
 
 // helpTo is `alder <command> … --help` (or -h): when args (os.Args[1:]) ask for help, it prints
 // the command's usage — the generator's for `alder new <generator> --help` — to w and reports
 // true (exit 0). An unknown command prints the overall usage.
 func helpTo(args []string, w io.Writer) bool {
+	if wantsHelpJSON(args) {
+		if err := writeHelpJSON(w); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		return true
+	}
 	asked := false
 	for _, a := range args[1:] {
 		if a == "--help" || a == "-help" || a == "-h" {

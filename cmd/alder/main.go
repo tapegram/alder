@@ -20,6 +20,13 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
+	if wantsHelpJSON(os.Args[1:]) {
+		if err := writeHelpJSON(os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		os.Exit(0)
+	}
 	if helpTo(os.Args[1:], os.Stdout) {
 		os.Exit(0)
 	}
