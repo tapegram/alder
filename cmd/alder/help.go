@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"os"
 )
 
 // commandUsages are the usage lines `alder <command> --help` prints, by command; `alder new
@@ -59,12 +58,6 @@ func wantsHelpJSON(args []string) bool {
 // the command's usage — the generator's for `alder new <generator> --help` — to w and reports
 // true (exit 0). An unknown command prints the overall usage.
 func helpTo(args []string, w io.Writer) bool {
-	if wantsHelpJSON(args) {
-		if err := writeHelpJSON(w); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-		}
-		return true
-	}
 	asked := false
 	for _, a := range args[1:] {
 		if a == "--help" || a == "-help" || a == "-h" {

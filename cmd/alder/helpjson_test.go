@@ -109,8 +109,11 @@ func TestHelpJSON_MatchesUsage(t *testing.T) {
 
 func TestHelpJSON_Output(t *testing.T) {
 	var out bytes.Buffer
-	if !helpTo([]string{"help", "--json"}, &out) {
-		t.Fatal("helpTo did not handle `help --json`")
+	if !wantsHelpJSON([]string{"help", "--json"}) {
+		t.Fatal("main would not route `help --json` to writeHelpJSON")
+	}
+	if err := writeHelpJSON(&out); err != nil {
+		t.Fatal(err)
 	}
 	var got struct {
 		Version  string            `json:"version"`
