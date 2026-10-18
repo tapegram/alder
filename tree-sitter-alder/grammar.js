@@ -62,6 +62,7 @@ const fieldAccessValues = ($, fieldAccess) => [
 // withBraces(true) does.
 const expressionRules = (prefix) => {
   const key = (name) => (!prefix ? name : name.startsWith('_') ? prefix + name : `${prefix}_${name}`);
+  // Every in-family reference must go through ref: a bare $.name silently uses the ordinary family.
   const ref = ($, name) => (!prefix || name.startsWith('_') ? $[key(name)] : alias($[key(name)], $[name]));
   const expr = ($) => ref($, '_expression');
   const binary = (precedence, operator) => ($) =>

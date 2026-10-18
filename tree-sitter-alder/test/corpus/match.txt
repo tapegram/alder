@@ -162,3 +162,90 @@ update msg session = match msg {
                         module: (constructor)
                         name: (constructor))
                       argument: (record))))))))))))
+
+================================================================================
+match subjects are full no-brace expressions
+================================================================================
+module M
+
+a1 = match a |> f {
+  _ -> 1,
+}
+
+a2 = match x == 1 {
+  True -> 1,
+  False -> 2,
+}
+
+a3 = match -1 {
+  _ -> 3,
+}
+
+a4 = match f \y -> y {
+  _ -> 4,
+}
+
+a5 = match if c then x else y {
+  _ -> 5,
+}
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (match_expr
+        subject: (pipe_expr
+          left: (identifier)
+          right: (identifier))
+        (arm
+          pattern: (wildcard)
+          body: (integer)))))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (match_expr
+        subject: (comparison_expr
+          left: (identifier)
+          right: (integer))
+        (arm
+          pattern: (boolean)
+          body: (integer))
+        (arm
+          pattern: (boolean)
+          body: (integer)))))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (match_expr
+        subject: (negative_number
+          (integer))
+        (arm
+          pattern: (wildcard)
+          body: (integer)))))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (match_expr
+        subject: (application
+          function: (identifier)
+          argument: (lambda
+            param: (identifier)
+            body: (identifier)))
+        (arm
+          pattern: (wildcard)
+          body: (integer)))))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (match_expr
+        subject: (if_expr
+          condition: (identifier)
+          consequence: (identifier)
+          alternative: (identifier))
+        (arm
+          pattern: (wildcard)
+          body: (integer))))))
