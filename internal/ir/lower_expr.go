@@ -218,7 +218,7 @@ func (l *lowerer) ctor(t types.Type, name string, arg Expr, lit *syntax.RecordLi
 	ct := u.ctorT(name)
 	pt := l.payloadType(t, name)
 	out := &Ctor{Typed: Typed{t}, Pos: at, U: u, Name: name}
-	if lit != nil {
+	if lit != nil && ct.Payload != nil { // `Poke {}` for `msg Poke { }`: no payload to build
 		arg = l.record(lit, ct.Payload, pt)
 	}
 	switch {

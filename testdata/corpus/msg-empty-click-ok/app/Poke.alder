@@ -1,0 +1,23 @@
+module Poke
+
+page "/poke" { }
+
+type Model = { n: Int }
+
+msg Poke { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 1 }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Poke _ -> Task.succeed Rerender,
+}
+
+-- `msg Poke { }` takes no parameters: `click={Poke}` and `click={Poke {}}` both send it.
+view : Model -> Session -> Html Msg
+view model session =
+  <div>
+    <button click={Poke}>Poke</button>
+    <button click={Poke {}}>Poke again</button>
+  </div>
