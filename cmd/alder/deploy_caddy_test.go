@@ -296,6 +296,9 @@ func runningBuilds(t *testing.T, s *deploy.Ssh) []string {
 // Caddy, leaves the restored file 600, and a build that refuses the restored file brings the
 // replaced database back, naming where the refused file is kept.
 func TestDeploySsh_CaddyDrainRestore(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a deploy end to end: real builds, app processes and drain windows")
+	}
 	box := startBox(t)
 	dir, public := sshScaffoldCaddy(t, box)
 	code, out, errs := runDeploy(t, "production", dir)

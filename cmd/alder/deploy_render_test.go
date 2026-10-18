@@ -131,6 +131,9 @@ var depLive = regexp.MustCompile(`Render deploy (dep-\w+) live \(1 instance\)`)
 // the service, the second rolls it, `status`, `rollback`, `logs` and `restore --to` read and move
 // it; no secret is in any output.
 func TestDeployRender_EndToEnd(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a deploy end to end: real builds, app processes and drain windows")
+	}
 	dir, f := renderApp(t, rdDecl)
 	var all []string
 	code, out, errs := runDeploy(t, "production", dir, "--unsafe-skip-tests", "--json")
@@ -265,6 +268,9 @@ func TestDeployRender_DryRun(t *testing.T) {
 // A Render environment with no `image` and no GitHub origin is refused with E0030's sentence;
 // with one, the image is ghcr.io/<owner>/<repo>.
 func TestDeployRender_DefaultImage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a deploy end to end: real builds, app processes and drain windows")
+	}
 	decl := strings.Replace(rdDecl, "  image: \"ghcr.io/tavish/blog\",\n", "", 1)
 	dir, f := renderApp(t, decl)
 	code, out, errs := runDeploy(t, "production", dir, "--unsafe-skip-tests")

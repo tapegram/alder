@@ -222,6 +222,9 @@ func TestDeploy_DryRun(t *testing.T) {
 // a declared check that exits non-zero (with its last lines), a typed hole, a check error. Each
 // exits 1, ships nothing and writes no artifact.
 func TestDeploy_GateRefusals(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a deploy end to end: real builds, app processes and drain windows")
+	}
 	weak := `module Calc
 
 clamp : Int -> Int
@@ -333,6 +336,9 @@ func TestDeploy_Usage(t *testing.T) {
 // --allow-data-loss; the binary's --migrate-only refuses it on a database that has data unless
 // that variable is set.
 func TestDeploy_ScriptDropsData(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a deploy end to end: real builds, app processes and drain windows")
+	}
 	dir := deployScaffold(t, `deploy { local: Script "./scripts/record.sh" }`, nil)
 	t.Setenv("ALDER_ALLOW_DATA_LOSS", "1") // the command's own environment must not leak it to the script
 	migrateDemo(t, "  message: Text.NonEmpty,\n", "  message: Text.NonEmpty,\n  mood: Maybe Text = Nothing,\n", "add_mood")
