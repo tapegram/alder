@@ -582,7 +582,7 @@ const (
 	AttrText   AttrKind = iota // Value is Text
 	AttrBool                   // Value is Bool: present when True (a bare attribute is Lit True)
 	AttrMaybe                  // Value is Maybe Text: present when Just
-	AttrHref                   // Value is a Page (PageRef or Url.external)
+	AttrHref                   // Value is a Page (PageRef or Url.external): an href, or a src given a page
 	AttrClick                  // Value is a message: a Ctor of a page's Msg union or App's
 	AttrSubmit                 // as AttrClick, on a <form>
 )

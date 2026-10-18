@@ -303,8 +303,11 @@ func (l *lowerer) attr(a *syntax.HtmlAttr) HAttr {
 	default:
 		switch t := v.Type().(type) {
 		case *types.Con:
-			if t.Name == "Bool" {
+			switch {
+			case t.Name == "Bool":
 				kind = AttrBool
+			case t.Name == "Page" && a.Name == "src": // `src={Url.external "…"}`: its URL
+				kind = AttrHref
 			}
 		case *types.Union:
 			kind = AttrMaybe // the checker allows only Text and Maybe Text here

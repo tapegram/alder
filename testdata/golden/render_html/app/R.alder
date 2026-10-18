@@ -34,3 +34,12 @@ inline =
     </script>
     <script type="application/json">{"a": 1}</script>
   </div>
+
+-- `src` takes a page value too: Url.external renders as its URL (a refused one as "#").
+external : Html Never
+external =
+  <div>
+    <script type="module" src={Url.external "https://cdn.example.com/x.js?v=1&b=2"}></script>
+    <img src={Url.external "javascript:alert(1)"} alt="no" />
+    <img src="/static/a.png" alt="a" />
+  </div>

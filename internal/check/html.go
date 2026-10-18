@@ -309,6 +309,8 @@ func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effe
 		mc.checkMessage(a.Value, m, env, eff)
 	case boolAttrs[a.Name]:
 		mc.check(a.Value, types.Bool, env, eff)
+	case a.Name == "src": // Text, or a page value: `Url.external "https://…"` (rendered as its URL)
+		mc.textAttrOr(a, env, eff, types.Page)
 	default:
 		mc.textAttr(a, env, eff)
 	}
@@ -316,12 +318,20 @@ func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effe
 
 // textAttr checks the value of an ordinary attribute: Text, or Maybe Text (omitted for Nothing).
 func (mc *modCtx) textAttr(a *syntax.HtmlAttr, env *env, eff effect) {
+	mc.textAttrOr(a, env, eff, nil)
+}
+
+// textAttrOr is textAttr that also accepts a value of type also (when not nil).
+func (mc *modCtx) textAttrOr(a *syntax.HtmlAttr, env *env, eff effect, also types.Type) {
 	c := mc.c
 	got := c.u.Apply(mc.infer(a.Value, env, eff))
 	if c.u.Check(got, types.Text) == nil {
 		return
 	}
 	if c.u.Check(got, mc.maybeOf(types.Text)) == nil {
+		return
+	}
+	if also != nil && c.u.Check(got, also) == nil {
 		return
 	}
 	d := mc.mismatch(a.Value.GetSpan(), got, types.Text)

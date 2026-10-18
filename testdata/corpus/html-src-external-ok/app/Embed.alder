@@ -1,0 +1,19 @@
+module Embed
+
+page "/embed" { }
+
+type Model = { cdn: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { cdn: "https://cdn.example.com" }
+
+-- `src` takes Text or a page value: `Url.external "…"` for another site.
+view : Model -> Session -> Html Msg
+view model session =
+  <main>
+    <script type="module" src={Url.external "https://cdn.example.com/x.js"}></script>
+    <img src={Url.external (model.cdn ++ "/a.png")} alt="a" />
+    <iframe src={Embed {}} title="self"></iframe>
+    <script src="/static/app.js"></script>
+    <img src={model.cdn ++ "/b.png"} alt="b" />
+  </main>

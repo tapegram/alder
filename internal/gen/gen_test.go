@@ -3494,7 +3494,7 @@ func TestGen_MutateNested(t *testing.T) {
 
 // renderGoldens are the values of testdata/golden/render_html's module R whose rendered HTML is
 // pinned, each in want/<value>.html (go test -run RenderGolden -update rewrites them).
-var renderGoldens = []string{"media", "inline"}
+var renderGoldens = []string{"media", "inline", "external"}
 
 // TestRenderGolden emits the render_html app, runs the generated code and compares each value's
 // html.Render with its golden: what a browser receives, byte for byte.

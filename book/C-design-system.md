@@ -741,8 +741,8 @@ Alder writes it into the build next to `al.css` and serves it at
 `/static/al/al.js`, with the same `ETag` and cache rules. It is optional:
 every section below says what is lost without it. `alder new`'s layout
 and both example apps link it. Write the `src` as a plain string, as
-above; `Url.external` is for the `href` of a link, and a `<script src>` is
-typed `Text`.
+above; a script on another site can be written `src={Url.external
+"https://…"}` too (chapter 5, "Attributes").
 
 ### `al-dialog`
 

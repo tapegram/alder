@@ -221,7 +221,7 @@ Date.fromText "2026-10-08"
 Html.unsafe : Text -> Html Never                -- unescaped markup; never for user text
 Html.none  : Html a                             -- renders nothing
 Html.text  : Text -> Html a
-Url.external : Text -> Page                     -- external link for href or Redirect
+Url.external : Text -> Page                     -- external URL for href, src or Redirect
 ```
 
 `Url.external` keeps a URL only when it is an absolute `http:` or `https:`

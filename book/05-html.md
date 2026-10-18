@@ -132,6 +132,7 @@ expression's type depends on the attribute:
 | most attributes (`class`, `id`, `value`, `placeholder`, ...) | `Text` |
 | boolean attributes (`disabled`, `checked`, `required`, `controls`, `muted`, ...) | `Bool` |
 | `href` | a page value (chapter 6) |
+| `src` | `Text`, or a page value: `src={Url.external "https://…"}` |
 | `click`, `submit` | a message value (chapter 6) |
 | any attribute | `Maybe Text`: omitted when `Nothing` |
 
