@@ -4314,9 +4314,11 @@ engine runs it and is done.
 
 **The health check by build id.** `Health` asks the new build for `/`,
 following redirects (a page that `requires user` answers `/` with the
-login page, which is a page of the same build), until the HTML contains
-`name="alder-build" content="<id>"`, or the build's process has exited,
-or the timeout passes. On the `Ssh` target that is `curl` in a loop at
+login page, which is a page of the same build), until the answer is a
+200 whose HTML contains `name="alder-build" content="<id>"`, or the
+build's process has exited, or the timeout passes. The 200 matters: a
+build started on a database that is ahead of it serves the maintenance
+page, which carries the same meta, with 503, and must not be switched to. On the `Ssh` target that is `curl` in a loop at
 the box, against the new build's own port; on Fly it is Go's HTTP client
 against the public address, which is the only way in. The id is the
 point: a check that only asked "does something answer on port 443?"

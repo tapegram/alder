@@ -604,7 +604,7 @@ func Rollback(ctx context.Context, t Target, o RollbackOptions) (string, error) 
 					restore = fmt.Sprintf("; or `alder rollback %s %s --restore-backup` puts back the copy of the data taken when that build was replaced (builds/%s/backup.db), losing every write since", o.Env, to, src)
 				}
 			}
-			return "", refuse("", "%s: that build would refuse to start on it, and rolling back never changes the data. Deploy a build with the schema you want, or pass --allow-schema-mismatch to try anyway%s", why, restore)
+			return "", refuse("", "%s: that build would refuse to start on it or serve only its maintenance page, and rolling back never changes the data. Deploy a build with the schema you want, or pass --allow-schema-mismatch to try anyway%s", why, restore)
 		}
 		line(w, "schema", "MISMATCH", "--allow-schema-mismatch: "+why)
 	} else {

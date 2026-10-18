@@ -38,13 +38,14 @@ type fakeFly struct {
 	secrets  map[string]string
 	ips      int
 	broken   map[string]bool // builds that never answer with their id
+	maint    map[string]bool // builds that answer with their maintenance page (503, their id in the meta)
 	requests []string        // every API request: method, path and body
 	flyctl   []string        // every flyctl command
 	api, pub *httptest.Server
 }
 
 func newFakeFly(t *testing.T) *fakeFly {
-	ff := &fakeFly{t: t, data: t.TempDir(), images: map[string]string{}, secrets: map[string]string{}, broken: map[string]bool{}}
+	ff := &fakeFly{t: t, data: t.TempDir(), images: map[string]string{}, secrets: map[string]string{}, broken: map[string]bool{}, maint: map[string]bool{}}
 	ff.api = httptest.NewServer(http.HandlerFunc(ff.serveAPI))
 	ff.pub = httptest.NewServer(http.HandlerFunc(ff.servePublic))
 	t.Cleanup(func() { ff.api.Close(); ff.pub.Close() })
@@ -67,6 +68,9 @@ func (ff *fakeFly) servePublic(w http.ResponseWriter, r *http.Request) {
 	if ff.machine == nil || ff.machine.State != "started" || ff.broken[ff.machine.build()] {
 		http.Error(w, "no machine answers", http.StatusBadGateway)
 		return
+	}
+	if ff.maint[ff.machine.build()] {
+		w.WriteHeader(http.StatusServiceUnavailable)
 	}
 	fmt.Fprintf(w, `<html><head><meta name="alder-build" content="%s"></head></html>`, ff.machine.build())
 }
@@ -404,6 +408,19 @@ func TestFly_DeployLifecycle(t *testing.T) {
 	}
 	if ff.machine.Config.Image != "registry.fly.io/demo-staging:"+id2 || strings.TrimSpace(readFile(t, filepath.Join(ff.data, "current"))) != id2 {
 		t.Errorf("after the rollback the machine runs %s", ff.machine.Config.Image)
+	}
+
+	// a rollback to a build that serves only its maintenance page (503, with its own id in the
+	// alder-build meta): the health check fails, and the previous image is put back
+	ff.mu.Lock()
+	ff.maint[id1] = true
+	ff.mu.Unlock()
+	rb.Reset()
+	if to, err := Rollback(ctx, ff.target(env), RollbackOptions{To: id1, Out: &rb, HealthTimeout: 200 * time.Millisecond, Drain: -1, AllowSchemaMismatch: true}); err == nil {
+		t.Fatalf("rollback to a build serving its maintenance page: switched to %q\n%s", to, rb.String())
+	}
+	if ff.machine.build() != id2 || strings.TrimSpace(readFile(t, filepath.Join(ff.data, "current"))) != id2 {
+		t.Errorf("after the refused rollback the machine runs %s, current %s", ff.machine.build(), readFile(t, filepath.Join(ff.data, "current")))
 	}
 
 	// a `requires` name neither here nor at Fly

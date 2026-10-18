@@ -160,8 +160,10 @@ executable. The runtime computes the same id for itself when it starts
 and puts it in every page it serves, as
 `<meta name="alder-build" content="…">` (chapter 13). That is how the
 health check knows it is talking to the new build and not to the old one
-still answering on the same machine: it asks for `/` until the page
-names the new id.
+still answering on the same machine: it asks for `/` until the answer
+is a 200 whose page names the new id. The status counts too: a build
+that finds its database ahead of it serves its maintenance page, which
+carries its id like every page, with 503.
 
 ### A transcript
 
@@ -561,7 +563,7 @@ after a deploy that added `mood`):
 $ alder rollback production                                  (recorded)
 rollback 46ea832c79966e56 → 339250fe1b936905
   schema   FAIL  the live database is newer than the build
-alder rollback: refused: the live database's schema 9c29f6e97d0b is not build 339250fe1b936905's 2e82b15d5f85 (changed tables: Entry.Entry): that build would refuse to start on it, and rolling back never changes the data. Deploy a build with the schema you want, or pass --allow-schema-mismatch to try anyway; or `alder rollback production 339250fe1b936905 --restore-backup` puts back the copy of the data taken when that build was replaced (builds/46ea832c79966e56/backup.db), losing every write since
+alder rollback: refused: the live database's schema 9c29f6e97d0b is not build 339250fe1b936905's 2e82b15d5f85 (changed tables: Entry.Entry): that build would refuse to start on it or serve only its maintenance page, and rolling back never changes the data. Deploy a build with the schema you want, or pass --allow-schema-mismatch to try anyway; or `alder rollback production 339250fe1b936905 --restore-backup` puts back the copy of the data taken when that build was replaced (builds/46ea832c79966e56/backup.db), losing every write since
 ```
 
 The refusal also catches the case the hashes cannot: a migration that

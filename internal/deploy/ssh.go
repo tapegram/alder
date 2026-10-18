@@ -855,8 +855,9 @@ fi
 	return err
 }
 
-// Health waits until GET http://127.0.0.1:<port>/ (following redirects) is a page whose
-// alder-build meta names id.
+// Health waits until GET http://127.0.0.1:<port>/ (following redirects) answers 200 with a
+// page whose alder-build meta names id. The status matters: a build started on a database
+// ahead of it serves its maintenance page, with its own build id in the meta, and 503.
 func (s *Ssh) Health(ctx context.Context, id string, port int, timeout time.Duration) error {
 	secs := int(timeout / time.Second)
 	if secs < 1 {
@@ -864,10 +865,19 @@ func (s *Ssh) Health(ctx context.Context, id string, port int, timeout time.Dura
 	}
 	out, err := s.run(ctx, `id=`+q(id)+`
 end=$(( $(date +%s) + `+strconv.Itoa(secs)+` ))
+seen=
 while :; do
-  if curl -sL --max-time 3 "http://127.0.0.1:`+strconv.Itoa(port)+`/" 2>/dev/null | grep -qF "name=\"alder-build\" content=\"$id\""; then echo ok; exit 0; fi
+  page=$(curl -sL --max-time 3 -w '\n%{http_code}' "http://127.0.0.1:`+strconv.Itoa(port)+`/" 2>/dev/null)
+  code=$(printf '%s\n' "$page" | tail -n 1)
+  if printf '%s\n' "$page" | grep -qF "name=\"alder-build\" content=\"$id\""; then
+    if [ "$code" = 200 ]; then echo ok; exit 0; fi
+    seen=$code
+  fi
   if ! alive "$id"; then echo exited; break; fi
-  if [ "$(date +%s)" -ge "$end" ]; then echo timeout; break; fi
+  if [ "$(date +%s)" -ge "$end" ]; then
+    if [ -n "$seen" ]; then echo "status $seen"; else echo timeout; fi
+    break
+  fi
   sleep 1
 done
 tail -n 40 "$R/builds/$id/log"
@@ -876,11 +886,13 @@ tail -n 40 "$R/builds/$id/log"
 		return err
 	}
 	first, rest, _ := strings.Cut(out, "\n")
-	switch first {
-	case "ok":
+	switch {
+	case first == "ok":
 		return nil
-	case "exited":
+	case first == "exited":
 		return fmt.Errorf("build %s exited before answering; its log (builds/%s/log):\n%s", id, id, strings.TrimRight(rest, "\n"))
+	case strings.HasPrefix(first, "status "):
+		return fmt.Errorf("build %s answers GET / with status %s, not 200, within %ds (a build on a database ahead of it serves its maintenance page); its log (builds/%s/log):\n%s", id, strings.TrimPrefix(first, "status "), secs, id, strings.TrimRight(rest, "\n"))
 	}
 	return fmt.Errorf("build %s did not answer GET / with its build id within %ds; its log (builds/%s/log):\n%s", id, secs, id, strings.TrimRight(rest, "\n"))
 }

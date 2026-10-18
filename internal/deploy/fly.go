@@ -877,7 +877,9 @@ func (f *Fly) Start(ctx context.Context, id string) (int, error) {
 	return FlyPort, nil
 }
 
-// Health waits until GET <public URL>/ is a page whose alder-build meta names id.
+// Health waits until GET <public URL>/ answers 200 with a page whose alder-build meta names
+// id. The status matters: a build started on a database ahead of it serves its maintenance
+// page, with its own build id in the meta, and 503.
 func (f *Fly) Health(ctx context.Context, id string, port int, timeout time.Duration) error {
 	client := f.HTTP
 	if client == nil {
@@ -885,6 +887,7 @@ func (f *Fly) Health(ctx context.Context, id string, port int, timeout time.Dura
 	}
 	want := []byte(`name="alder-build" content="` + id + `"`)
 	end := time.Now().Add(timeout)
+	seen := 0 // the status of the last answer naming id that was not a 200
 	for {
 		req, err := http.NewRequestWithContext(ctx, "GET", strings.TrimRight(f.PublicURL, "/")+"/", nil)
 		if err != nil {
@@ -894,10 +897,16 @@ func (f *Fly) Health(ctx context.Context, id string, port int, timeout time.Dura
 			b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 			resp.Body.Close()
 			if bytes.Contains(b, want) {
-				return nil
+				if resp.StatusCode == http.StatusOK {
+					return nil
+				}
+				seen = resp.StatusCode
 			}
 		}
 		if time.Now().After(end) {
+			if seen != 0 {
+				return fmt.Errorf("build %s answers GET %s/ with status %d, not 200, within %s (a build on a database ahead of it serves its maintenance page); its log (`alder logs %s`):\n%s", id, strings.TrimRight(f.PublicURL, "/"), seen, timeout, f.Env, f.recentLogs(ctx))
+			}
 			return fmt.Errorf("build %s did not answer GET %s/ with its build id within %s; its log (`alder logs %s`):\n%s", id, strings.TrimRight(f.PublicURL, "/"), timeout, f.Env, f.recentLogs(ctx))
 		}
 		select {

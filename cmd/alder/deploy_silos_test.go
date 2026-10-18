@@ -401,6 +401,21 @@ func TestDeployTurso_Lifecycle(t *testing.T) {
 		t.Fatal("B's database is still at Turso")
 	}
 
+	// rollback --allow-schema-mismatch to v1 on the database at 0002: v1 starts and serves only
+	// its maintenance page (503, with its own build id in the alder-build meta); the health check
+	// requires a 200, so it fails and v2 keeps serving
+	t.Setenv("ALDER_DEPLOY_HEALTH_TIMEOUT", "4s")
+	code, out = runCmd(t, runRollbackTo, "production", id1, "--dir", dir, "--allow-schema-mismatch", "--yes")
+	if code == 0 || !strings.Contains(out, "answers GET / with status 503") {
+		t.Fatalf("rollback --allow-schema-mismatch onto the maintenance page: %d\n%s", code, out)
+	}
+	if got := box.serving(t); got != id2 {
+		t.Fatalf("after the refused rollback the box serves %q, want %s", got, id2)
+	}
+	if st := statusOf(t, dir); !strings.Contains(st, id2) {
+		t.Fatalf("status after the refused rollback:\n%s", st)
+	}
+
 	// rollback --restore-backup: the shared database as it was before 0002 (Turso's point in
 	// time recorded in builds/<v2>/backup.pitr) becomes the app's; the replaced one is kept
 	code, out = runCmd(t, runRollbackTo, "production", id1, "--dir", dir, "--restore-backup", "--yes")
