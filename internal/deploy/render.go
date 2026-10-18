@@ -31,10 +31,11 @@ import (
 //
 // The step mapping: Connect finds the workspace and the service by name (and the shared
 // database's name in its ALDER_TURSO_DB); Lock creates the shared database when absent, takes
-// its lock and creates the deploy tables (R7); Upload builds and pushes the image and, for a
-// service that exists, merges the environment (R3) and scales; Backup records the point in
-// time; Migrate runs the build's migrations from this machine (Turso.Migrate); Start creates
-// the service (R2) or a deploy of <image>:<id> and waits until Render reports it live; Health
+// its lock and creates the deploy tables (R7); Upload builds and pushes the image; Backup
+// records the point in time; Migrate runs the build's migrations from this machine
+// (Turso.Migrate); Start creates the service (R2), or merges its environment (R3) and scales it
+// and creates a deploy of <image>:<id>, and waits until Render reports it live (nothing changes
+// at Render before Start); Health
 // waits until `instances` consecutive answers of /_alder/health carry the build; Switch records
 // it current.
 //
@@ -553,10 +554,8 @@ func (r *Render) withSchema(ctx context.Context, id string, row *db.DeployRow) e
 	return nil
 }
 
-// Upload builds build id's image from its artifact dir and pushes it as <image>:<id>; for a
-// service that exists, it merges the service's environment (R3: one PUT, only when something
-// changed; a deploy Render started for it that is not ours is cancelled) and scales it when
-// `instances` changed. A service that does not exist yet is created by Start (R2).
+// Upload builds build id's image from its artifact dir and pushes it as <image>:<id>. Nothing
+// changes at Render: Start sets the environment and scale (prepare) or creates the service (R2).
 func (r *Render) Upload(ctx context.Context, dir, id string) error {
 	img, err := BuildImage(dir, id)
 	if err != nil {
@@ -567,9 +566,14 @@ func (r *Render) Upload(ctx context.Context, dir, id string) error {
 	}
 	fmt.Fprintf(r.Out, "image pushed %s (%s)\n", r.ref(id), size(int64(len(img.Layer))))
 	r.dirs[id] = dir
-	if !r.have {
-		return nil
-	}
+	return nil
+}
+
+// prepare brings an existing service in line before build id's deploy: its environment merged
+// (R3: one PUT, only when something changed; a deploy Render started for it that is not ours is
+// cancelled) and its instance count when `instances` changed. Start calls it, after the
+// migrations, so a refusal before Start changes nothing at Render.
+func (r *Render) prepare(ctx context.Context, id string) error {
 	env, changed, err := r.mergedEnv(ctx)
 	if err != nil {
 		return err
@@ -730,7 +734,8 @@ func (r *Render) credential(ctx context.Context) (string, error) {
 }
 
 // Start rolls build id at Render: the service's creation when it does not exist yet (R2: its own
-// deploy is of <image>:<id>, after the migrations), else a deploy of <image>:<id>; then it waits
+// deploy is of <image>:<id>, after the migrations), else the environment and scale brought in
+// line (prepare) and a deploy of <image>:<id>; then it waits
 // until Render reports the deploy live. A deploy that fails is an error carrying its last 50 log
 // lines; Render keeps the previous build serving.
 func (r *Render) Start(ctx context.Context, id string) (int, error) {
@@ -755,6 +760,9 @@ func (r *Render) Start(ctx context.Context, id string) (int, error) {
 		r.svc, r.have, r.env, dep = svc, true, env, d
 		fmt.Fprintf(r.Out, "Render service %s created (%s)\n", r.Service, r.Address())
 	} else {
+		if err := r.prepare(ctx, id); err != nil {
+			return 0, err
+		}
 		d, err := r.API.CreateDeploy(ctx, r.svc.ID, r.ref(id))
 		if err != nil {
 			return 0, fmt.Errorf("deploying %s at Render: %w", r.ref(id), err)
@@ -802,8 +810,11 @@ func (r *Render) await(ctx context.Context, dep string) error {
 		case d.Failed():
 			return fmt.Errorf("Render deploy %s %s%s", dep, d.Status, r.logTail(ctx))
 		case time.Now().After(deadline):
-			r.API.CancelDeploy(ctx, r.svc.ID, dep)
-			return fmt.Errorf("Render deploy %s is still %s after %s (ALDER_DEPLOY_HEALTH_TIMEOUT): it was cancelled%s", dep, d.Status, r.rollTimeout(), r.logTail(ctx))
+			cancelled := "it was cancelled"
+			if err := r.API.CancelDeploy(ctx, r.svc.ID, dep); err != nil {
+				cancelled = "cancelling it failed (" + err.Error() + "): cancel it in Render's dashboard"
+			}
+			return fmt.Errorf("Render deploy %s is still %s after %s (ALDER_DEPLOY_HEALTH_TIMEOUT): %s%s", dep, d.Status, r.rollTimeout(), cancelled, r.logTail(ctx))
 		}
 		select {
 		case <-ctx.Done():

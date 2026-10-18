@@ -48,6 +48,7 @@ type renderRig struct {
 	dir, root string
 	n         int
 	instances int
+	refuse    bool // the next migration run refuses (exits 1) without applying anything
 	out       syncBuffer
 	texts     []string // errors, --json, other outputs
 	secrets   []string // extra values the test set (dashboard variables)
@@ -113,6 +114,10 @@ func (g *renderRig) target() *Render {
 // protocol) and returns a script printing "migrated <name>" for each, as --migrate-only does.
 func (g *renderRig) local(r *Render) func(ctx context.Context, id string) (string, error) {
 	return func(ctx context.Context, id string) (string, error) {
+		if g.refuse {
+			script := filepath.Join(g.t.TempDir(), "migrate")
+			return script, os.WriteFile(script, []byte("#!/bin/sh\necho 'refused: a sampled silo fails the plan'\nexit 1\n"), 0o755)
+		}
 		files, _ := filepath.Glob(filepath.Join(g.root, id, "migrations", "*.sql"))
 		st, err := r.DB.api().Open(ctx, r.DB.SharedName(), false)
 		if err != nil {
@@ -1060,5 +1065,58 @@ func TestRender_CancelsForeignDeploy(t *testing.T) {
 	}
 	if !strings.Contains(g.out.String(), "Render deploy "+foreign.ID+" (created) cancelled: not this build's\n") || g.current() != id {
 		t.Errorf("transcript:\n%s", g.out.String())
+	}
+}
+
+// A deploy refused at Migrate (after the image is pushed) changes nothing at Render, though the
+// service's environment (a new `requires` value) and its instance count would change: both are
+// set by Start, after the migrations.
+func TestRender_MigrateRefusalChangesNothingAtRender(t *testing.T) {
+	g := newRenderRig(t)
+	g.mustDeploy(g.target())
+	t.Setenv("SMTP_URL", "smtp://mailer:SECRETNEWPASS@mail.example")
+	g.secrets = append(g.secrets, "smtp://mailer:SECRETNEWPASS@mail.example")
+	g.instances, g.refuse = 2, true
+	nr := len(g.render.Requests())
+	res, err := g.deploy(g.target())
+	if err == nil || !strings.Contains(err.Error(), "migrations did not apply") {
+		t.Fatalf("err = %v\n%s", err, g.out.String())
+	}
+	if g.reg.Manifest("tavish/blog", res.Record.Build) == nil {
+		t.Errorf("the image was not pushed: the refusal came before Upload")
+	}
+	if n := nonGET(g.requests(nr)); len(n) != 0 {
+		t.Errorf("changed at Render before Start: %v", n)
+	}
+	if s := g.render.Service("blog"); envOf(s)["SMTP_URL"] != rSMTP || s.Instances != 1 {
+		t.Errorf("the service changed: %d instances", s.Instances)
+	}
+}
+
+// Render reports the deploy live but one instance never serves the build: the health check times
+// out, nothing is recorded current, and the error carries the last answer's body.
+func TestRender_HealthNeverServes(t *testing.T) {
+	g := newRenderRig(t)
+	g.instances = 2
+	id1 := g.mustDeploy(g.target())
+	g.render.DelaySwitch("blog", 1)
+	res, err := g.deploy(g.target(), func(o *Options) { o.HealthTimeout = 200 * time.Millisecond })
+	if err == nil {
+		t.Fatalf("deployed:\n%s", g.out.String())
+	}
+	if !strings.Contains(g.out.String(), " live (2 instances)\n") {
+		t.Errorf("Render did not report live:\n%s", g.out.String())
+	}
+	if !strings.Contains(err.Error(), `200 {"build":"`+id1+`","db":"ok"}`) || !strings.Contains(err.Error(), "did not answer with build "+res.Record.Build) {
+		t.Errorf("error: %v", err)
+	}
+	if g.current() != id1 {
+		t.Error("current changed")
+	}
+	builds, _ := g.connected().Builds(context.Background())
+	for _, b := range builds {
+		if b.ID == res.Record.Build && (b.Current || b.Record != nil) {
+			t.Errorf("recorded: %+v", b)
+		}
 	}
 }
