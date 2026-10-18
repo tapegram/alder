@@ -1,0 +1,11 @@
+module About
+
+page "/about" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> Html Never
+view model session = <h1>About</h1>

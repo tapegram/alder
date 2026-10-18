@@ -513,3 +513,21 @@ func TestResolve_ModuleQualifiedEntry(t *testing.T) {
 		}
 	}
 }
+
+// A folder or file name under app/ that is not a module segment has no matching module line: E0005
+// names the folder (or file) to rename, never an impossible `module pages.About`.
+func TestBadSegment(t *testing.T) {
+	cases := map[string]string{
+		"app/Todos/Index.alder":     "",
+		"app/pages/About.alder":     "the folder `pages` must be a module name, starting with an uppercase letter: rename it `Pages` and write `module Pages.About`",
+		"app/blog-posts/Show.alder": "the folder `blog-posts` must be a module name: an uppercase letter, then letters, digits and `_`: rename it `BlogPosts` and write `module BlogPosts.Show`",
+		"app/Pages/about.alder":     "the file name `about` must be a module name, starting with an uppercase letter: rename it `About.alder` and write `module Pages.About`",
+		"app/2024/Recap.alder":      "the folder `2024` must be a module name: an uppercase letter, then letters, digits and `_`: rename it",
+		"app/pages/sub/About.alder": "the folder `pages` must be a module name, starting with an uppercase letter: rename it `Pages` and write `module Pages.Sub.About`",
+	}
+	for file, want := range cases {
+		if got := badSegment(file, expectedName(file)); got != want {
+			t.Errorf("%s:\n got %q\nwant %q", file, got, want)
+		}
+	}
+}

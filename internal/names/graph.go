@@ -3,6 +3,7 @@ package names
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -126,7 +127,11 @@ func Build(mods []*syntax.Module, std map[string]*syntax.Module) (*Program, *dia
 		}
 		p.Modules[m.Name] = m
 		if want := expectedName(m.File); want != "" && want != m.Name {
-			bag.Error(diag.ModulePath, m.Span, "module `%s` is in file %s; expected `module %s`", m.Name, m.File, want)
+			if msg := badSegment(m.File, want); msg != "" {
+				bag.Error(diag.ModulePath, m.Span, "module `%s` is in file %s: %s", m.Name, m.File, msg)
+			} else {
+				bag.Error(diag.ModulePath, m.Span, "module `%s` is in file %s; expected `module %s`", m.Name, m.File, want)
+			}
 		}
 		for _, d := range m.Decls {
 			switch d := d.(type) {
@@ -152,6 +157,79 @@ func expectedName(file string) string {
 	}
 	rest := strings.TrimSuffix(file[i+4:], ".alder")
 	return strings.ReplaceAll(rest, "/", ".")
+}
+
+// badSegment explains a path under app/ that no module line could match: a folder (or the file's
+// name) that is not a module name segment, such as `app/pages/About.alder`, whose expected
+// `module pages.About` would itself be a parse error. It names the first such segment and the
+// rename that fixes it; "" when every segment is valid.
+func badSegment(file, want string) string {
+	segs := strings.Split(want, ".")
+	for i, seg := range segs {
+		if seg == "" || isModuleSegment(seg) {
+			continue
+		}
+		what, renamed := "the folder", ""
+		if i == len(segs)-1 {
+			what = "the file name"
+		}
+		fixed := segmentFor(seg)
+		if fixed != "" {
+			renamed = fixed
+			if i == len(segs)-1 {
+				renamed += ".alder"
+			}
+		}
+		rule := "a module name, starting with an uppercase letter"
+		if !isModuleSegment(strings.ToUpper(seg[:1]) + seg[1:]) {
+			rule = "a module name: an uppercase letter, then letters, digits and `_`"
+		}
+		if fixed == "" {
+			return fmt.Sprintf("%s `%s` must be %s: rename it", what, seg, rule)
+		}
+		fixedSegs := slices.Clone(segs)
+		fixedSegs[i] = fixed
+		for j := i + 1; j < len(fixedSegs); j++ {
+			if s := segmentFor(fixedSegs[j]); s != "" {
+				fixedSegs[j] = s
+			}
+		}
+		return fmt.Sprintf("%s `%s` must be %s: rename it `%s` and write `module %s`", what, seg, rule, renamed, strings.Join(fixedSegs, "."))
+	}
+	return ""
+}
+
+// isModuleSegment: an uppercase letter, then letters, digits and single underscores (the lexer's
+// upper-case identifier).
+func isModuleSegment(s string) bool {
+	if s == "" || s[0] < 'A' || s[0] > 'Z' || strings.Contains(s, "__") {
+		return false
+	}
+	for _, c := range []byte(s) {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// segmentFor suggests a module segment for a folder or file name: its runs of letters and digits,
+// each capitalised, joined (`pages` → `Pages`, `blog-posts` → `BlogPosts`); "" when there is none
+// that starts with a letter.
+func segmentFor(s string) string {
+	if isModuleSegment(s) {
+		return s
+	}
+	var b strings.Builder
+	for _, part := range strings.FieldsFunc(s, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9')
+	}) {
+		b.WriteString(strings.ToUpper(part[:1]) + part[1:])
+	}
+	if out := b.String(); isModuleSegment(out) {
+		return out
+	}
+	return ""
 }
 
 // ctorOwner is a module declaring a constructor, and the type it constructs.

@@ -1,0 +1,1 @@
+app/pages/About.alder:1:1 E0005 module `About` is in file app/pages/About.alder: the folder `pages` must be a module name, starting with an uppercase letter: rename it `Pages` and write `module Pages.About`
