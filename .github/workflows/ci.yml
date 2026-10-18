@@ -7,8 +7,9 @@
 # alder binary and go on PATH).
 #
 # `changes` runs first and says what the push touched, so a docs-only push does not run the
-# suite: `code` (anything but docs, the book, .superpowers and markdown files), `book`, and
-# `deploy` (the deploy code, the Dockerfile, this file). Scheduled, manual and tag runs have no
+# suite: `code` (anything but docs/, book/, .superpowers/, LICENSE and root-level markdown files;
+# book/15-generators.md counts too, a test reads it), `book`, and `deploy` (the deploy code, the
+# Dockerfile, this file). A docs-only push to main therefore runs no jobs; the nightly covers main. Scheduled, manual and tag runs have no
 # diff and count as changing everything. Then `warm` runs and caches the build; then, in
 # parallel: `lint` (gofmt, vet, the Python tests), `test` (go test in six parts:
 # cmd/alder's tests in four shards, internal/gen, the rest), `examples` (check, build and test
@@ -33,8 +34,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  # a branch's new push replaces its running CI; on main every commit gets its full run
+  # on main every commit has a group of its own, so no run replaces another (even a pending one);
+  # a branch's new push replaces its running CI
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
@@ -45,14 +47,20 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read # paths-filter lists a fork pull request's files through the API
     outputs:
-      code: ${{ steps.all.outputs.all == 'true' || steps.filter.outputs.code == 'true' || steps.filter.outputs.drill == 'true' }}
-      book: ${{ steps.all.outputs.all == 'true' || steps.filter.outputs.book == 'true' }}
-      deploy: ${{ steps.all.outputs.all == 'true' || github.ref == 'refs/heads/main' || steps.filter.outputs.deploy == 'true' }}
+      code: ${{ steps.all.outputs.all == 'true' || steps.filter.outputs.code == 'true' || steps.paths.outputs.drill == 'true' }}
+      book: ${{ steps.all.outputs.all == 'true' || steps.paths.outputs.book == 'true' }}
+      deploy: ${{ steps.all.outputs.all == 'true' || github.ref == 'refs/heads/main' || steps.paths.outputs.deploy == 'true' }}
     steps:
       - uses: actions/checkout@v4
       - id: all
         run: echo "all=${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}" >> "$GITHUB_OUTPUT"
+      # Two steps, because predicate-quantifier applies to every filter of a step: `code` needs
+      # `every` (all its patterns must hold, the negations included), the others need the default
+      # `some`.
       - id: filter
         if: steps.all.outputs.all != 'true'
         uses: dorny/paths-filter@v3
@@ -61,11 +69,16 @@ jobs:
           filters: |
             code:
               - '**'
+              - '!*.md'
               - '!docs/**'
               - '!book/**'
               - '!.superpowers/**'
-              - '!**/*.md'
               - '!LICENSE'
+      - id: paths
+        if: steps.all.outputs.all != 'true'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
             drill:
               - 'book/15-generators.md'
             book:

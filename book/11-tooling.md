@@ -1163,7 +1163,7 @@ mutation runs included, and on a loaded machine the package takes longer
 than `go test`'s default limit of ten minutes, which then fails it with a
 panic that looks like a hang. CI passes a like flag to each of its
 shards (`.github/workflows/ci.yml`, `.github/shard.sh`; 30 minutes for each
-job there; the mutation quality gates run nightly in a job of their own). `-short` skips the
+test part there; the mutation quality gates run nightly in a job of their own). `-short` skips the
 slowest suites (the admin's mutation runs, the out-of-tree builds, the drill), for a
 quick pass while working; the gate runs them.
 

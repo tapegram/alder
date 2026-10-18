@@ -47,4 +47,5 @@ p=$(pattern "$k")
 if [ "$p" = '^()$' ]; then echo "shard $k of $n of $pkg is empty"; exit 0; fi
 echo "shard $k of $n of $pkg: $(shard "$k" | wc -l | tr -d ' ') tests"
 shard "$k" | paste -sd' ' -
-exec go test "$pkg" -count=1 -timeout 40m -run "$p" "$@"
+# 28m: go test times out (with a goroutine dump) inside ci.yml's 30-minute job, not after it
+exec go test "$pkg" -count=1 -timeout 28m -run "$p" "$@"
