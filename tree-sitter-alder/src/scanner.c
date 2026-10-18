@@ -173,7 +173,8 @@ static bool scan_newline(TSLexer *lexer, bool recovering) {
 // newline whose next line starts in column 1 with anything but `<`, `{` or whitespace: element
 // content is indented in practice, and stopping there keeps an unclosed tag from turning the
 // rest of the file into text while code is being typed (the drift test shows no valid file
-// relies on column-1 text).
+// relies on column-1 text). Stopping there with no text read, it returns that newline as a
+// separator instead, so error recovery can resync on the column-1 line.
 static bool scan_html_text(TSLexer *lexer) {
   bool has_text = false;
   for (;;) {
@@ -196,8 +197,20 @@ static bool scan_html_text(TSLexer *lexer) {
       advance(lexer);
       int32_t first = lexer->lookahead;
       if (!lexer->eof(lexer) && !is_blank(first) && first != '\n' && first != '<' && first != '{') {
-        lexer->result_symbol = HTML_TEXT;
-        return has_text;
+        if (has_text) {
+          lexer->result_symbol = HTML_TEXT;
+          return true;
+        }
+        // Nothing read but the newline before a column-1 line: the element was left open. Return
+        // the newline as a separator, which no element state expects, so recovery pops back to
+        // source_file and resyncs on the declaration (TestRecovery's element case). Lexed as
+        // whitespace instead, it would leave recovery nothing to resync on, and the declaration's
+        // first line would be swallowed into the error. A declaration that starts with a name
+        // can still lose its first line: tree-sitter's error costs prefer skipping `name :` or
+        // `name =` to discarding the binding the element was left open in.
+        lexer->mark_end(lexer);
+        lexer->result_symbol = NEWLINE;
+        return true;
       }
       while (is_blank(lexer->lookahead)) advance(lexer);
       if (lexer->lookahead == '-') {
