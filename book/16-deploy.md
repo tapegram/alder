@@ -1226,7 +1226,9 @@ deployed e010d2cf9e89376f to production
 (`address` is the service's URL as Render reports it, since Render adds
 a suffix to a name that is taken; before the service exists, as in a
 `--dry-run`, it is `https://<service>.onrender.com (expected)`. The
-`--json` record carries it as `address`, for every kind of target.)
+`--json` record carries it as `address`, for every target that has
+one. With `--dry-run` a Render environment stops after the plan: nothing
+is created or changed at Render or in the registry.)
 
 ### Zero downtime, and what it asks of migrations
 
@@ -1236,8 +1238,9 @@ sends the old ones SIGTERM (with 30 seconds to finish). The `switch` and
 `stop` lines above are alder's bookkeeping; the engine's health check
 then asks the public address until `instances` consecutive answers name
 the new build, so every instance has rolled before the build is
-recorded as current. `ALDER_DEPLOY_HEALTH_TIMEOUT` (a Go duration, such
-as `10m`, the default) bounds both the roll and that check.
+recorded as current. The roll waits up to 10 minutes and that check up to
+60 seconds, the engine's default; `ALDER_DEPLOY_HEALTH_TIMEOUT` (a Go
+duration, such as `10m`) sets both.
 
 `/_alder/health`, which every build serves, answers `{"build":"<id>",
 "db":"ok"}`, or 503 when `db` is not `ok`: `unreachable`, or `ahead: …`
@@ -1605,7 +1608,7 @@ and for unusual setups:
 |---|---|
 | `ALDER_SSH_CONFIG` | an `ssh_config` file every `ssh` reads (`ssh -F`): an identity, a jump host, a known-hosts file |
 | `ALDER_DEPLOY_DRAIN` | how long the old build drains after the switch (default `30s`; `0` stops it at once) |
-| `ALDER_DEPLOY_HEALTH_TIMEOUT` | how long a new build has to pass its health check (default `60s`; `10m` for a Render roll; a Go duration) |
+| `ALDER_DEPLOY_HEALTH_TIMEOUT` | how long a new build has to pass its health check (default `60s`; for a Render roll, `10m` and then `60s` for the health check; a Go duration, which sets both) |
 | `ALDER_DEPLOY_SUPERVISOR` | `process` runs builds as background processes even where systemd runs |
 | `ALDER_DEPLOY_CADDY_ADMIN` | the `host:port` of Caddy's admin API at the box (default `127.0.0.1:2019`) |
 | `ALDER_BACKUP_URL` | at the box (the environment file): stream the database to a directory or bucket without a `backup` in the declaration |
