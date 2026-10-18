@@ -3490,3 +3490,54 @@ func TestGen_MutateNested(t *testing.T) {
 		t.Errorf("the mutate build took %v to vet", d)
 	}
 }
+
+// renderGoldens are the values of testdata/golden/render_html's module R whose rendered HTML is
+// pinned, each in want/<value>.html (go test -run RenderGolden -update rewrites them).
+var renderGoldens = []string{"media"}
+
+// TestRenderGolden emits the render_html app, runs the generated code and compares each value's
+// html.Render with its golden: what a browser receives, byte for byte.
+func TestRenderGolden(t *testing.T) {
+	dir := "../../testdata/golden/render_html"
+	out := t.TempDir()
+	var calls strings.Builder
+	for _, v := range renderGoldens {
+		fmt.Fprintf(&calls, "\twrite(%q, html.Render(R__%s))\n", filepath.Join(out, v+".html"), v)
+	}
+	runGo(t, emit(t, dir), `package app
+
+import (
+	"os"
+	"testing"
+
+	"alder/rt/html"
+)
+
+func TestRender(t *testing.T) {
+	write := func(path, s string) {
+		if err := os.WriteFile(path, []byte(s), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+`+calls.String()+`}
+`)
+	for _, v := range renderGoldens {
+		got, err := os.ReadFile(filepath.Join(out, v+".html"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		golden := filepath.Join(dir, "want", v+".html")
+		if *update {
+			if err := os.WriteFile(golden, got, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		want, err := os.ReadFile(golden)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != string(want) {
+			t.Errorf("%s renders\n%s\nwant\n%s", v, got, want)
+		}
+	}
+}

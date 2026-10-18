@@ -1,0 +1,18 @@
+module R
+
+-- Each value here is rendered by internal/gen's TestRenderGolden to want/<value>.html.
+
+looping : Bool
+looping = True
+
+media : Html Never
+media =
+  <div>
+    <video src="/static/intro.mp4" controls autoplay={False} muted loop={looping}>
+      <track src="/static/intro.vtt" kind="captions" default />
+    </video>
+    <iframe src="/static/embed.html" title="Embed" allowfullscreen={False}></iframe>
+    <script src="/static/app.js" async defer></script>
+    <ol reversed><li>b</li><li>a</li></ol>
+    <details open={False}><summary>More</summary></details>
+  </div>

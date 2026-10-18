@@ -1,0 +1,25 @@
+module Media
+
+page "/media" { }
+
+type Model = { looping: Bool }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { looping: True }
+
+view : Model -> Session -> Html Msg
+view model session =
+  <main inert={False}>
+    <video src="/static/intro.mp4" controls autoplay={False} muted loop={model.looping} playsinline>
+      <track src="/static/intro.vtt" kind="captions" default />
+    </video>
+    <audio src="/static/a.mp3" controls preload="none"></audio>
+    <iframe src="/static/embed.html" title="Embed" allowfullscreen></iframe>
+    <script src="/static/app.js" async defer></script>
+    <script src="/static/legacy.js" nomodule></script>
+    <ol reversed><li>two</li><li>one</li></ol>
+    <details open={model.looping}><summary>More</summary></details>
+    <div itemscope>x</div>
+    <form novalidate><button formnovalidate>Go</button></form>
+    <img src="/static/map.png" alt="map" ismap />
+  </main>

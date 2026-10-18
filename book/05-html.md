@@ -130,10 +130,19 @@ expression's type depends on the attribute:
 | Attribute | Type |
 |---|---|
 | most attributes (`class`, `id`, `value`, `placeholder`, ...) | `Text` |
-| boolean attributes (`disabled`, `checked`, `required`, `hidden`, ...) | `Bool` |
+| boolean attributes (`disabled`, `checked`, `required`, `controls`, `muted`, ...) | `Bool` |
 | `href` | a page value (chapter 6) |
 | `click`, `submit` | a message value (chapter 6) |
 | any attribute | `Maybe Text`: omitted when `Nothing` |
+
+A boolean attribute is written bare (`<video controls>`) or with a `Bool`
+(`autoplay={model.playing}`), and is rendered present or absent. The
+boolean attributes are the HTML standard's: `allowfullscreen`, `async`,
+`autofocus`, `autoplay`, `checked`, `controls`, `default`, `defer`,
+`disabled`, `formnovalidate`, `hidden`, `inert`, `ismap`, `itemscope`,
+`loop`, `multiple`, `muted`, `nomodule`, `novalidate`, `open`,
+`playsinline`, `readonly`, `required`, `reversed` and `selected` (and the
+rarer `alpha` and `shadowroot…` ones).
 
 `href` never takes a `Text`. Links to external sites use `<a href={Url.external "https://..."}>`.
 Event attributes are not HTML event names (`onclick`); they are `click` and

@@ -18,7 +18,15 @@ func init() {
 	}
 }
 
-var boolAttrs = map[string]bool{"disabled": true, "checked": true, "required": true, "hidden": true, "selected": true, "readonly": true, "autofocus": true, "multiple": true, "open": true}
+// boolAttrs are the HTML standard's boolean attributes (its attribute index): written bare or
+// `={Bool}`, rendered present or absent.
+var boolAttrs = map[string]bool{}
+
+func init() {
+	for _, a := range strings.Fields(`allowfullscreen alpha async autofocus autoplay checked controls default defer disabled formnovalidate hidden inert ismap itemscope loop multiple muted nomodule novalidate open playsinline readonly required reversed selected shadowrootclonable shadowrootdelegatesfocus shadowrootserializable`) {
+		boolAttrs[a] = true
+	}
+}
 
 func (mc *modCtx) checkHTML(e syntax.Expr, expected types.Type, env *env, eff effect) {
 	c := mc.c
