@@ -1,0 +1,1 @@
+{"architecture":"amd64","os":"linux","config":{"Entrypoint":["/app/app"],"Env":["ALDER_BUILD=fixture","ALDER_STATIC=/app/static","ALDER_ADDR=:10000"],"ExposedPorts":{"10000/tcp":{}},"WorkingDir":"/app"},"rootfs":{"type":"layers","diff_ids":["sha256:93ac43a195e36167e444f9ad56518aa9773e3c5fff08b958ffe05546239728a7"]}}
