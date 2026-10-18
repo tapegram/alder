@@ -3,6 +3,7 @@ package lsp
 import (
 	"encoding/json"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ func initializedNote(s *server, _ json.RawMessage) {
 	}
 	s.started = true
 	s.bg.Go(s.analyse)
+	s.schedule() // the first build: closed files' diagnostics, and a last good build before any didOpen
 	if s.o.Poll > 0 {
 		ch := make(chan watch.Change)
 		s.bg.Go(func() { watch.Watch(s.rootReal, s.o.Poll, s.stop, ch) })
@@ -83,12 +85,21 @@ func (s *server) analyse() {
 	}
 }
 
+// loadCheckedOverlay is buildkit.LoadCheckedOverlay; a test may replace it before a server starts.
+var loadCheckedOverlay = buildkit.LoadCheckedOverlay
+
 // rebuild checks the app with the open documents overlaid, as `alder check` does
 // (LoadCheckedOverlay, then AddSchemaDrift: Ruling R13), stores the analysis and publishes its
-// diagnostics. Analysis goroutine only.
+// diagnostics. A panic in the compiler is logged with its stack and the previous analyses stay,
+// so the server keeps serving. Analysis goroutine only.
 func (s *server) rebuild() {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(s.o.Log, "alder lsp: rebuild: internal error: %v\n%s", r, debug.Stack())
+		}
+	}()
 	over, vers := s.docs.snapshot()
-	prog, res, bag, ioErrs := buildkit.LoadCheckedOverlay(s.rootReal, over)
+	prog, res, bag, ioErrs := loadCheckedOverlay(s.rootReal, over)
 	if len(ioErrs) > 0 {
 		fmt.Fprintf(s.o.Log, "alder lsp: %v\n", ioErrs[0])
 		return

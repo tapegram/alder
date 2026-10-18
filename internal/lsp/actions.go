@@ -27,8 +27,22 @@ type codeAction struct {
 	Command     *command       `json:"command,omitempty"`
 }
 
+// workspaceEdit carries its edits as documentChanges, each naming the document version it was
+// computed from, so a client refuses an edit to a buffer that has changed since.
 type workspaceEdit struct {
-	Changes map[string][]TextEdit `json:"changes"`
+	DocumentChanges []textDocumentEdit `json:"documentChanges"`
+}
+
+type textDocumentEdit struct {
+	TextDocument versionedDocument `json:"textDocument"`
+	Edits        []TextEdit        `json:"edits"`
+}
+
+// versionedDocument is an OptionalVersionedTextDocumentIdentifier: Version is null for a file
+// that was not open when the build read it.
+type versionedDocument struct {
+	URI     string `json:"uri"`
+	Version *int   `json:"version"`
 }
 
 type command struct {
@@ -45,9 +59,11 @@ type generatorHere struct {
 }
 
 // codeActionReq answers textDocument/codeAction: the compiler's fixes for the diagnostics on the
-// range's lines (from the current build, so a parse error's fix counts too), then every
-// generator that applies at range.start in the last good build. A generator's action carries
-// the client command alder.generate (Ruling R8), which the server itself never runs.
+// range's lines (from the current build, so a parse error's fix counts too) whose lines are
+// unchanged since that build through the fix's end line, then every generator that applies at
+// range.start in the last good build when range.start's line is unchanged too (as hereAt). A
+// generator's action carries the client command alder.generate (Ruling R8), which the server
+// itself never runs.
 func codeActionReq(s *server, params json.RawMessage) (any, error) {
 	var p codeActionParams
 	if err := json.Unmarshal(params, &p); err != nil {
@@ -58,19 +74,23 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 	if !ok {
 		return out, nil
 	}
+	now := strings.Split(s.text(rel), "\n")
 	if a := s.current(); a != nil {
-		uri := s.uriOf(rel)
+		doc := versionedDocument{URI: s.uriOf(rel)}
+		if v, open := a.versions[rel]; open {
+			doc.Version = &v
+		}
 		for _, d := range a.diags {
 			if d.Span.File != rel || d.Fix == nil {
 				continue
 			}
 			ld := lspDiagnostic(d)
-			if !linesOverlap(ld.Range, p.Range) {
+			if !linesOverlap(ld.Range, p.Range) || !freshLines(a, rel, now, d.Fix.EndLine, true) {
 				continue
 			}
 			out = append(out, codeAction{
 				Title: "Fix: " + d.Message, Kind: "quickfix", Diagnostics: []Diagnostic{ld},
-				Edit: &workspaceEdit{Changes: map[string][]TextEdit{uri: {*ld.Data.Fix}}},
+				Edit: &workspaceEdit{DocumentChanges: []textDocumentEdit{{TextDocument: doc, Edits: []TextEdit{*ld.Data.Fix}}}},
 			})
 		}
 	}
@@ -79,8 +99,8 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 		return out, nil
 	}
 	a := s.lastGood()
-	if !s.fresh(a, rel, start.Line+1, false) {
-		return out, nil // a line above has changed since the last good build
+	if !freshLines(a, rel, now, start.Line+1, true) {
+		return out, nil // the line or one above it has changed since the last good build
 	}
 	ctx := hereCtx(a, rel, diag.Pos{Line: start.Line + 1, Col: start.Character + 1})
 	for _, spec := range generate.Specs() {

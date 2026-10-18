@@ -8,9 +8,12 @@ import (
 type action struct {
 	Title, Kind string
 	Edit        *struct {
-		Changes map[string][]struct {
-			Range   Range
-			NewText string
+		DocumentChanges []struct {
+			TextDocument struct {
+				URI     string
+				Version *int
+			}
+			Edits []TextEdit
 		}
 	}
 	Data *struct {
@@ -56,9 +59,45 @@ func TestCodeAction_ImportFix(t *testing.T) {
 	if len(acts) == 0 || acts[0].Kind != "quickfix" || !strings.HasPrefix(acts[0].Title, "Fix: ") || acts[0].Edit == nil {
 		t.Fatalf("actions %+v", acts)
 	}
-	edits := acts[0].Edit.Changes[c.uri("app/Posts/Index.alder")]
-	if len(edits) != 1 || edits[0].NewText != "import Layout\n" {
+	dc := acts[0].Edit.DocumentChanges
+	if len(dc) != 1 || dc[0].TextDocument.URI != c.uri("app/Posts/Index.alder") {
+		t.Fatalf("documentChanges %+v", dc)
+	}
+	// the version the build saw, so the client refuses the edit once the buffer is newer
+	if v := dc[0].TextDocument.Version; v == nil || *v != 1 {
+		t.Fatalf("version %v, want 1", v)
+	}
+	if edits := dc[0].Edits; len(edits) != 1 || edits[0].NewText != "import Layout\n" {
 		t.Fatalf("edit %+v", edits)
+	}
+}
+
+// TestCodeAction_FixStaleLine: once the fix's lines have changed since the build that found it
+// (the rebuild not done yet), the fix is not offered.
+func TestCodeAction_FixStaleLine(t *testing.T) {
+	c := start(t, blogCopy(t))
+	rel := "app/Posts/Index.alder"
+	text := strings.Replace(c.disk(rel), "import Layout\n", "", 1)
+	c.open(rel, text)
+	var fix *TextEdit
+	line := -1
+	for _, d := range c.diags(rel) {
+		if strings.Contains(d.Message, "Layout") && d.Data != nil && d.Data.Fix != nil {
+			fix, line = d.Data.Fix, d.Range.Start.Line
+			break
+		}
+	}
+	if fix == nil {
+		t.Fatal("no diagnostic with a fix for the missing import")
+	}
+	// the user types on the fix's end line; the server has the text, the build does not yet
+	lines := strings.Split(text, "\n")
+	lines[fix.Range.End.Line] += " -- typed"
+	c.srv.docs.put(&doc{URI: c.uri(rel), Rel: rel, Version: 2, Text: strings.Join(lines, "\n")})
+	for _, a := range actions(t, c, rel, line) {
+		if a.Kind == "quickfix" {
+			t.Fatalf("a fix for a changed line: %+v", a)
+		}
 	}
 }
 
@@ -125,6 +164,24 @@ func TestCodeAction_StaleAbove(t *testing.T) {
 	for _, a := range actions(t, c, "app/Posts/Index.alder", line) {
 		if a.Kind == "refactor" {
 			t.Fatalf("a generator below a changed line: %+v", a)
+		}
+	}
+}
+
+// TestCodeAction_StaleCursorLine: a change on the cursor's own line also hides the generators,
+// as hereAt does (inclusive freshness), so no prefill comes from text that has changed.
+func TestCodeAction_StaleCursorLine(t *testing.T) {
+	c := start(t, blogCopy(t))
+	rel := "app/Posts/Index.alder"
+	openClean(t, c, rel)
+	line := c.at(rel, "load params session =", 0).Line
+	c.change(rel, strings.Replace(c.disk(rel), "load params session =", "load params session = (", 1))
+	if ds := c.diags(rel); len(ds) == 0 || ds[0].Code != "E0001" {
+		t.Fatalf("want a parse error, got %+v", ds)
+	}
+	for _, a := range actions(t, c, rel, line) {
+		if a.Kind == "refactor" {
+			t.Fatalf("a generator on a changed line: %+v", a)
 		}
 	}
 }

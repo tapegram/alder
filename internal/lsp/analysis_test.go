@@ -4,9 +4,84 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"alder/internal/check"
+	"alder/internal/diag"
+	"alder/internal/names"
 )
+
+// lockedLog is a log a test reads while the server writes it.
+type lockedLog struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *lockedLog) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedLog) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
+
+// TestRebuild_PanicKeepsServing: a compiler panic on a buffer is logged; the server keeps the
+// previous build and answers the next change.
+func TestRebuild_PanicKeepsServing(t *testing.T) {
+	real := loadCheckedOverlay
+	loadCheckedOverlay = func(root string, over map[string][]byte) (*names.Program, *check.Result, *diag.Bag, []error) {
+		for _, b := range over {
+			if strings.Contains(string(b), "PANIC-HERE") {
+				panic("boom in the compiler")
+			}
+		}
+		return real(root, over)
+	}
+	t.Cleanup(func() { loadCheckedOverlay = real }) // after the server has stopped (Cleanup is LIFO)
+	log := &lockedLog{}
+	c := startWith(t, blogCopy(t), Options{Log: log})
+	rel := "app/Posts/Index.alder"
+	text := c.disk(rel)
+	c.open(rel, text)
+	c.diags(rel)
+	c.change(rel, text+"\n-- PANIC-HERE\n")
+	deadline := time.Now().Add(timeout)
+	for !strings.Contains(log.String(), "alder lsp: rebuild: internal error: boom in the compiler") {
+		if time.Now().After(deadline) {
+			t.Fatalf("no internal error logged: %q", log.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if a := c.srv.current(); a == nil || a.versions[rel] != 1 {
+		t.Fatalf("the previous build was not kept: %+v", a)
+	}
+	c.change(rel, strings.Replace(text, "perPage = 10", `perPage = "ten"`, 1))
+	if ds := c.diags(rel); len(ds) == 0 || ds[0].Code != "E0003" {
+		t.Fatalf("after the panic, want E0003, got %+v", ds)
+	}
+}
+
+// TestDiagnostics_ClosedBrokenAtStart: a file broken on disk is reported after initialized, before
+// any document is opened.
+func TestDiagnostics_ClosedBrokenAtStart(t *testing.T) {
+	root := blogCopy(t)
+	if err := os.WriteFile(filepath.Join(root, "app", "Post.alder"), []byte("module Post\n\nx = \n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := start(t, root)
+	if ds := c.waitPublished("app/Post.alder"); len(ds) == 0 {
+		t.Fatal("a broken closed file was not reported")
+	}
+	if c.srv.current() == nil {
+		t.Fatal("no build after initialized")
+	}
+}
 
 func TestDiagnostics_OverlayTypeError(t *testing.T) {
 	c := start(t, blogCopy(t))
