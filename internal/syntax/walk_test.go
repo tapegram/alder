@@ -4,7 +4,6 @@ package syntax
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -102,29 +101,42 @@ func TestDocOf(t *testing.T) {
 	}
 }
 
-// TestChildren_CoversEveryNode walks every example module and checks, by reflection, that every
-// node reachable through struct fields is returned by Children of its parent: a node type added
-// to ast.go later is covered without a change here.
-func TestChildren_CoversEveryNode(t *testing.T) {
+// TestChildren_SpansNest walks every example module and checks that each child with a non-empty
+// span lies within its parent's span (parents with an empty span are exempt).
+func TestChildren_SpansNest(t *testing.T) {
 	var files []string
-	filepath.WalkDir("../../examples", func(p string, d os.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && strings.HasSuffix(p, ".alder") && strings.Contains(p, "/app/") {
+	err := filepath.WalkDir("../../examples", func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.HasSuffix(p, ".alder") && strings.Contains(p, "/app/") {
 			files = append(files, p)
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(files) == 0 {
 		t.Fatal("no example files")
 	}
 	for _, f := range files {
-		src, _ := os.ReadFile(f)
-		m, _ := ParseFile(f, src)
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, ds := ParseFile(f, src)
+		if len(ds) > 0 {
+			t.Fatalf("%s: parse: %v", f, ds)
+		}
 		var visit func(n Spanned)
 		visit = func(n Spanned) {
-			kids := Children(n)
-			for _, k := range kids {
-				if reflect.ValueOf(k).IsNil() {
-					t.Fatalf("%s: nil child of %T", f, n)
+			ps := n.GetSpan()
+			for _, k := range Children(n) {
+				ks := k.GetSpan()
+				if ks.Start != ks.End && ps.Start != ps.End &&
+					(less(ks.Start, ps.Start) || less(ps.End, ks.End)) {
+					t.Errorf("%s: %T %v not within parent %T %v", f, k, ks, n, ps)
 				}
 				visit(k)
 			}
