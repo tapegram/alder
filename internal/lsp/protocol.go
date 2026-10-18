@@ -19,6 +19,19 @@ type Range struct {
 	End   Position `json:"end"`
 }
 
+type Location struct {
+	URI   string `json:"uri"`
+	Range Range  `json:"range"`
+}
+
+// textDocumentPositionParams are the params of hover and definition: a place in a document.
+type textDocumentPositionParams struct {
+	TextDocument struct {
+		URI string `json:"uri"`
+	} `json:"textDocument"`
+	Position Position `json:"position"`
+}
+
 type Diagnostic struct {
 	Range    Range           `json:"range"`
 	Severity int             `json:"severity"`

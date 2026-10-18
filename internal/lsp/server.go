@@ -41,7 +41,8 @@ var (
 		"textDocument/didClose":  didClose,
 	}
 	fastMethods = map[string]handler{
-		"textDocument/hover": func(*server, json.RawMessage) (any, error) { return nil, nil },
+		"textDocument/hover":      hoverReq,
+		"textDocument/definition": definitionReq,
 	}
 	slowMethods = map[string]handler{
 		"alder/preview": func(*server, json.RawMessage) (any, error) { return map[string]any{}, nil },
