@@ -1162,8 +1162,8 @@ The `-timeout 30m` matters: `cmd/alder`'s tests build and run whole apps,
 mutation runs included, and on a loaded machine the package takes longer
 than `go test`'s default limit of ten minutes, which then fails it with a
 panic that looks like a hang. CI passes a like flag to each of its
-shards (`.github/workflows/ci.yml`, `.github/shard.sh`; 40 minutes there,
-for the shard that holds the admin's longest mutation run). `-short` skips the
+shards (`.github/workflows/ci.yml`, `.github/shard.sh`; 30 minutes for each
+job there; the mutation quality gates run nightly in a job of their own). `-short` skips the
 slowest suites (the admin's mutation runs, the out-of-tree builds, the drill), for a
 quick pass while working; the gate runs them.
 
@@ -1380,8 +1380,9 @@ previous tag; pushes a Homebrew formula to `tapegram/homebrew-alder` (so
 for CI pipelines that run `alder test` and `alder build`. No `-ldflags`
 are passed: the go command records the tag as the module version when it
 builds at a clean tag, which is what `alder version` prints. CI
-(`.github/workflows/ci.yml`) runs on Linux for every branch push and also
-on macOS for `main` and tags, so every tag is tested on both.
+(`.github/workflows/ci.yml`) runs on Linux for every branch push that
+changes code or the book, and also on macOS for `main` and tags, so every
+tag is tested on both.
 
 Pushing the formula needs a token GitHub Actions does not have by
 default: before the first tag, create the repository secret

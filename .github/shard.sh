@@ -12,8 +12,7 @@
 # (measured; `go test -v` prints them), every other test weighs 1. The tests, heaviest first
 # (ties by name), each go to the lightest shard so far (ties: the lowest k). Deterministic, and a
 # new or renamed test lands in some shard without anyone editing a file; a new slow test is worth
-# a line in shard-weights. The heaviest test always lands in shard 0 (ci.yml gives that job the
-# longer timeout).
+# a line in shard-weights.
 set -euo pipefail
 n=$1 k=$2 pkg=${3:-./cmd/alder}
 shift $(( $# < 3 ? $# : 3 ))
