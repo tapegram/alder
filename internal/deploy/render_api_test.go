@@ -94,7 +94,7 @@ func TestRenderAPI_CreateService(t *testing.T) {
 	img := body["image"].(map[string]any)
 	if body["type"] != "web_service" || body["name"] != "shop" || body["ownerId"] != renderfake.OwnerID ||
 		img["imagePath"] != "ghcr.io/o/r:b1" || img["registryCredentialId"] != "rcr-1" || img["ownerId"] != renderfake.OwnerID ||
-		sd["plan"] != "starter" || sd["region"] != "oregon" || sd["numInstances"] != float64(2) ||
+		sd["plan"] != "starter" || sd["runtime"] != "image" || sd["region"] != "oregon" || sd["numInstances"] != float64(2) ||
 		sd["healthCheckPath"] != "/_alder/health" || sd["maxShutdownDelaySeconds"] != float64(30) {
 		t.Fatalf("body = %s", c.Body)
 	}
@@ -114,6 +114,34 @@ func TestRenderAPI_CreateService(t *testing.T) {
 	}
 	if len(st.Env) != 2 {
 		t.Fatalf("env = %v", st.Env)
+	}
+}
+
+// The create body names the runtime (`image`: Render requires it when there is no build
+// source) and leaves `plan` out when the declaration has none, so Render picks its default; the
+// fake refuses a body without the runtime or with an empty plan, as Render does.
+func TestRenderAPI_CreateServiceDefaultPlan(t *testing.T) {
+	a, f := newRenderAPI(t)
+	if _, _, err := a.CreateService(context.Background(), RenderCreate{
+		OwnerID: renderfake.OwnerID, Name: "shop", ImagePath: "ghcr.io/o/r:b1", Instances: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c := lastCall(t, f)
+	var body struct {
+		ServiceDetails map[string]any `json:"serviceDetails"`
+	}
+	if err := json.Unmarshal([]byte(c.Body), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.ServiceDetails["runtime"] != "image" {
+		t.Errorf("runtime = %v: %s", body.ServiceDetails["runtime"], c.Body)
+	}
+	if _, ok := body.ServiceDetails["plan"]; ok {
+		t.Errorf("plan sent when the declaration has none: %s", c.Body)
+	}
+	if st := f.Service("shop"); st == nil || st.Plan != "starter" {
+		t.Errorf("service = %+v", st)
 	}
 }
 

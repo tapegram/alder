@@ -504,15 +504,30 @@ func (s *Server) createService(w http.ResponseWriter, body []byte) {
 			ImagePath, OwnerID, RegistryCredentialID string
 		}
 		ServiceDetails struct {
-			Plan, Region, HealthCheckPath string
-			NumInstances                  int
-			MaxShutdownDelaySeconds       int
+			Runtime, Region, HealthCheckPath string
+			Plan                             *string
+			NumInstances                     int
+			MaxShutdownDelaySeconds          int
 		}
 		EnvVars []struct{ Key, Value string }
 	}
 	if err := json.Unmarshal(body, &in); err != nil || in.Name == "" || in.Type != "web_service" || in.Image.ImagePath == "" {
 		msg(w, 400, "invalid service")
 		return
+	}
+	// Like Render: a service without a build source needs its runtime, and a plan, when
+	// given, must be one of the plans (the empty string is not; leave it out for the default).
+	if in.ServiceDetails.Runtime != "image" {
+		msg(w, 400, "serviceDetails.runtime: must be one of docker, elixir, go, node, python, ruby, rust, image")
+		return
+	}
+	if in.ServiceDetails.Plan != nil && *in.ServiceDetails.Plan == "" {
+		msg(w, 400, "serviceDetails.plan: invalid plan")
+		return
+	}
+	plan := "starter"
+	if in.ServiceDetails.Plan != nil {
+		plan = *in.ServiceDetails.Plan
 	}
 	if s.byName(in.Name) != nil {
 		msg(w, 409, "service name already in use")
@@ -521,9 +536,6 @@ func (s *Server) createService(w http.ResponseWriter, body []byte) {
 	if in.ServiceDetails.NumInstances == 0 {
 		in.ServiceDetails.NumInstances = 1
 	}
-	if in.ServiceDetails.Plan == "" {
-		in.ServiceDetails.Plan = "starter"
-	}
 	if in.ServiceDetails.Region == "" {
 		in.ServiceDetails.Region = "oregon"
 	}
@@ -531,7 +543,7 @@ func (s *Server) createService(w http.ResponseWriter, body []byte) {
 	for _, e := range in.EnvVars {
 		env = append(env, Env{e.Key, e.Value})
 	}
-	v := s.newSvc(in.Name, in.OwnerID, in.ServiceDetails.Region, in.ServiceDetails.Plan, in.ServiceDetails.NumInstances, in.Image.RegistryCredentialID, env)
+	v := s.newSvc(in.Name, in.OwnerID, in.ServiceDetails.Region, plan, in.ServiceDetails.NumInstances, in.Image.RegistryCredentialID, env)
 	if in.ServiceDetails.HealthCheckPath != "" {
 		v.HealthCheckPath = in.ServiceDetails.HealthCheckPath
 	}

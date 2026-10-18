@@ -283,15 +283,19 @@ func (a *RenderAPI) CreateService(ctx context.Context, c RenderCreate) (RenderSe
 	if c.CredentialID != "" {
 		image["registryCredentialId"] = c.CredentialID
 	}
+	details := map[string]any{
+		"runtime": "image", "region": c.Region, "numInstances": c.Instances,
+		"healthCheckPath": "/_alder/health", "maxShutdownDelaySeconds": 30,
+		"envSpecificDetails": map[string]any{},
+	}
+	if c.Plan != "" { // none declared: Render's default plan (an empty string is not a plan)
+		details["plan"] = c.Plan
+	}
 	body := map[string]any{
 		"type": "web_service", "name": c.Name, "ownerId": c.OwnerID,
-		"image": image,
-		"serviceDetails": map[string]any{
-			"plan": c.Plan, "region": c.Region, "numInstances": c.Instances,
-			"healthCheckPath": "/_alder/health", "maxShutdownDelaySeconds": 30,
-			"envSpecificDetails": map[string]any{},
-		},
-		"envVars": envBody(c.Env),
+		"image":          image,
+		"serviceDetails": details,
+		"envVars":        envBody(c.Env),
 	}
 	var out struct {
 		Service  renderServiceJSON
