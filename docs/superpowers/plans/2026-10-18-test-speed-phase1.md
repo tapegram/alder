@@ -361,3 +361,21 @@ Copy the three setup steps verbatim from `lint`.
 - [ ] **Step 2: Push the branch and read CI** with `gh run watch` / `gh run view`. Then trigger the nightly path once on the branch: `gh workflow run ci.yml --ref test-speed-phase1`. Check all of these: green; per-shard times; the `mutation` job ran with `changes` reporting all=true; the deploy jobs ran (ci.yml changed); no job near its timeout.
 - [ ] **Step 3: A docs-only push skips the suite.** A small docs commit (e.g. this plan's results section) must run only `changes` (and `lint` / `test`/rest if it touches `book/`).
 - [ ] **Step 4: Write a results note** at the end of this plan: before and after times, local (-short, full, gates) and CI (branch push, nightly). Update memory (alder-test-time-followup). Then use superpowers:finishing-a-development-branch.
+
+---
+
+## Results (2026-10-18)
+
+| | before | after |
+|---|---:|---:|
+| local `go test ./...` (serial cmd/alder) | 1150 s | 511 s serial cmd/alder |
+| local `scripts/test.sh` (4 shards + rest) | — | 176 s |
+| local `scripts/test.sh -short` | — | 148 s |
+| mutation gates (`ALDER_MUTATION_GATES=1`, the five tests) | ~686 s | 73 s (TestAdmin_Columns 409 → 27 s) |
+| `alder test --mutate` on examples/todos | 8.9 s | 2.8 s (about 2 s of it the build) |
+| CI, branch push (run 39155256082) | 28–30 min, often red by timeout | 6.6 min, green |
+| CI, full nightly path incl. `mutation` (workflow_dispatch run 39154529043) | 28–30 min (Columns alone ~27 min) | 7.3 min, green; `mutation` job 2.8 min |
+
+Also fixed: TestDeploySsh_Lifecycle's flake. Its cause was deployed.json's `when` being cut to whole seconds, so a rollback and a deploy in the same second tied and prune broke the tie by id. It now keeps sub-second precision.
+
+Still deferred (Phase 2 candidates): scoped `--mutate --changed`, splitting TestAdmin_Columns (no longer needed at 27 s), the scratch package split (~1.4 s per eval), and making cmd/alder parallel-safe. The `-short` weights are balanced for the full run, which is why `-short` saves little.
