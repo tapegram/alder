@@ -707,7 +707,7 @@ func (r *Render) Backup(ctx context.Context, id string) (string, error) {
 		return "", err
 	}
 	next := r.DB.Now().UTC().Truncate(time.Second).Add(time.Second)
-	if d := time.Until(next); d > 0 && d <= time.Second {
+	if d := next.Sub(r.DB.Now()); d > 0 && d <= time.Second { // by the clock next came from
 		time.Sleep(d + 50*time.Millisecond)
 	}
 	at := next.Format(time.RFC3339)
