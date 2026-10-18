@@ -450,3 +450,17 @@ func TestParse_HoleSpan(t *testing.T) {
 		t.Errorf("span of ?count: %d:%d-%d:%d, want 4:9-4:15", sp.Start.Line, sp.Start.Col, sp.End.Line, sp.End.Col)
 	}
 }
+
+// A raw-text body ends at its closing tag in any case, as in HTML: `</Script>` and `</STYLE >`
+// close their elements, and the body before them is kept byte for byte.
+func TestParse_RawTextCloseAnyCase(t *testing.T) {
+	src := "module K\n\nv : Html a\nv = <div><script>if (a < b) { go() }</Script><style>p { x: y }</STYLE ><p>after</p></div>\n"
+	m, diags := ParseFile("k.alder", []byte(src))
+	if len(diags) != 0 {
+		t.Fatalf("unexpected diagnostics: %+v", diags)
+	}
+	want := `(el script (rawtext "if (a < b) { go() }")) (el style (rawtext "p { x: y }")) (el p (text "after"))`
+	if got := Dump(m); !strings.Contains(got, want) {
+		t.Fatalf("dump %s does not contain %s", got, want)
+	}
+}

@@ -23,5 +23,7 @@ view model session =
       -- not a comment: JavaScript's decrement
       const s = "{model.clip}" + `${clip}` + '<b>&amp;</b>';
     </script>
+    <script>window.ready = true;</Script>
+    <style>p { margin: 0 }</STYLE >
     <script type="application/json">{"a": 1, "b": [true]}</script>
   </main>

@@ -117,7 +117,7 @@ func (p *Parser) parseElement() *Element {
 				if !p.at(Gt) {
 					p.errorAt(p.tok, "expected `>`, got "+describe(p.tok))
 				}
-				if name != qual(el.Module, el.Tag) {
+				if name != qual(el.Module, el.Tag) && !(rawTextTags[el.Tag] && el.Module == "" && strings.EqualFold(name, el.Tag)) { // `</Script>` closes a script, as in HTML
 					msg := "closing tag </" + name + "> does not match <" + qual(el.Module, el.Tag) + ">"
 					if rawTextTags[name] {
 						// most likely a `</script>` inside a script's string ended the script early:
