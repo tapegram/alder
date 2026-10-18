@@ -803,6 +803,9 @@ func Status(ctx context.Context, t Target, w io.Writer) error {
 	default:
 		fmt.Fprintf(w, "backup   %s (%s)\n", info.LastBackup.UTC().Format(time.RFC3339), info.BackupFrom)
 	}
+	for _, l := range info.Lines {
+		fmt.Fprintln(w, l)
+	}
 	if ss, ok := t.(SiloStatuser); ok && current != "" {
 		lines, err := ss.SiloStatus(ctx)
 		if err != nil {

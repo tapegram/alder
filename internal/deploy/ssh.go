@@ -133,7 +133,7 @@ func (s *Ssh) tursoInit(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s.DB.setShared(keyValues(out)["ALDER_TURSO_DB"])
+	s.DB.SetShared(keyValues(out)["ALDER_TURSO_DB"])
 	s.dbRead = true
 	return nil
 }

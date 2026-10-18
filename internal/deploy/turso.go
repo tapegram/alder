@@ -92,11 +92,25 @@ func (t *Turso) Describe() string { return "Turso " + t.Org + "/" + t.App }
 // SharedName is the shared database's current name.
 func (t *Turso) SharedName() string { return t.shared }
 
-// setShared takes the shared database's name from the box's turso.env ("" keeps App).
-func (t *Turso) setShared(name string) {
+// SetShared takes the shared database's name from where the environment records it (an Ssh
+// box's turso.env, a Render service's ALDER_TURSO_DB); "" keeps App.
+func (t *Turso) SetShared(name string) {
 	if name != "" {
 		t.shared = name
 	}
+}
+
+// Host is the shared database's host name at Turso; an error when it does not exist (Preflight
+// creates it).
+func (t *Turso) Host(ctx context.Context) (string, error) {
+	d, ok, err := t.sharedDB(ctx)
+	if err != nil {
+		return "", err
+	}
+	if !ok || d.Hostname == "" {
+		return "", fmt.Errorf("Turso has no database %s (the preflight creates it)", t.shared)
+	}
+	return d.Hostname, nil
 }
 
 // tokenSet refuses a deploy from a machine without TURSO_API_TOKEN.

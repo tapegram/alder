@@ -135,6 +135,9 @@ type Info struct {
 	// upload (zero: never).
 	StreamTo string
 	Shipped  time.Time
+	// Lines are the target's own lines for `alder status`, printed after the backup's (the
+	// Render service's URL, instances and live deploy).
+	Lines []string
 }
 
 // StreamChecker is a Target that can tell whether its environment turns the streamed backup on

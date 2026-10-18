@@ -181,7 +181,7 @@ else rm -f schema.json migrations; fi
 `); err != nil {
 		return Restored{}, err
 	}
-	s.DB.setShared(cp.Name)
+	s.DB.SetShared(cp.Name)
 	undo := func(ctx context.Context) error {
 		if err := s.stopAll(ctx); err != nil {
 			return err
@@ -189,7 +189,7 @@ else rm -f schema.json migrations; fi
 		if err := s.unswapTurso(ctx, "rollback", ts); err != nil {
 			return err
 		}
-		s.DB.setShared(old)
+		s.DB.SetShared(old)
 		_, err := s.run(ctx, `ts=`+q(ts)+`
 cd "$R/db"
 for f in schema.json migrations; do if [ -f "$f.before-rollback-$ts" ]; then mv "$f.before-rollback-$ts" "$f"; fi; done
@@ -228,7 +228,7 @@ func (s *Ssh) RestorePointInTime(ctx context.Context, at time.Time, w io.Writer)
 	if err != nil {
 		return "", err
 	}
-	s.DB.setShared(cp.Name)
+	s.DB.SetShared(cp.Name)
 	kept := "the database " + old + " at Turso (db/turso.env.before-restore-" + ts + " names it)"
 	if cur == "" {
 		return kept, nil
@@ -238,7 +238,7 @@ func (s *Ssh) RestorePointInTime(ctx context.Context, at time.Time, w io.Writer)
 		if uerr := s.unswapTurso(ctx, "restore", ts); uerr != nil {
 			return kept, refuse(err.Error(), "build %s did not pass its health check on the copy, and putting the database %s back failed (%v): restore db/turso.env.before-restore-%s as db/turso.env by hand and run `alder deploy`", cur, old, uerr, ts)
 		}
-		s.DB.setShared(old)
+		s.DB.SetShared(old)
 		if serr := s.serveAgain(ctx, cur); serr != nil {
 			return kept, refuse(err.Error(), "build %s did not pass its health check on the copy %s: the database %s is the app's again, but build %s did not start on it (%v): run `alder deploy`", cur, cp.Name, old, cur, serr)
 		}
