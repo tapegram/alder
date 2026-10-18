@@ -18,34 +18,19 @@ const regenUsage = "usage: alder regen admin [--module Admin] [--path /admin] [-
 // dropped breaks them in the regions regen rewrites, and what it writes is checked. With
 // --json, the object also has "skipped" (the pages not recreated) and "upToDate".
 func runRegenTo(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 || args[0] != "admin" {
+	s, rest := generate.Select("regen", args, generate.Specs())
+	if s == nil {
 		fmt.Fprintln(stderr, regenUsage)
 		return 2
 	}
-	g, err := parseGenArgs(args[1:], []string{"module", "path"}, nil, []string{"all"})
-	if err != nil || len(g.pos) != 0 {
-		return genUsage(stderr, regenUsage, err)
-	}
-	o := generate.AdminOptions{Module: g.flag("module"), Path: g.flag("path")}
-	skipped := []string{}
-	nothing := false
-	under := generate.AdminDir(o.Module)
-	load := func(dir string) (*generate.Program, error) { return generate.LoadExcept(dir, under) }
-	code := runGeneratorWith("alder regen admin", g, generate.Options{}, load, func(p *generate.Program) ([]generate.Edit, error) {
-		edits, sk, err := generate.RegenAdmin(p, o, g.has("all"))
-		if sk != nil {
-			skipped = sk
+	var res *generate.Result
+	var cli generate.CLIFlags
+	code := runSpecWith(s, rest, regenUsage, func(r *generate.Result, c generate.CLIFlags) { res, cli = r, c }, stdout, stderr)
+	if code == 0 && !cli.JSON && res != nil {
+		for _, sk := range res.Skipped {
+			fmt.Fprintf(stdout, "not recreated %s (deleted; --all writes it again)\n", sk)
 		}
-		if err == nil && len(edits) == 0 {
-			nothing = true
-		}
-		return edits, err
-	}, func(out *genJSON) { out.Skipped, out.UpToDate = &skipped, &nothing }, stdout, stderr)
-	if code == 0 && !g.json {
-		for _, s := range skipped {
-			fmt.Fprintf(stdout, "not recreated %s (deleted; --all writes it again)\n", s)
-		}
-		if nothing {
+		if res.UpToDate {
 			fmt.Fprintln(stdout, "nothing to do: the admin is up to date")
 		}
 	}

@@ -71,13 +71,8 @@ type genJSON struct {
 	Imports *[]string `json:"imports,omitempty"`
 }
 
-// runGenerator ends every generator: it applies edits (computed by gen, from the loaded app)
-// with o, then reports. cmd names the command in messages ("alder new page").
-func runGenerator(cmd string, g genArgs, o generate.Options, gen func(p *generate.Program) ([]generate.Edit, error), stdout, stderr io.Writer) (code int) {
-	return runGeneratorWith(cmd, g, o, nil, gen, nil, stdout, stderr)
-}
-
-// runGeneratorWith is runGenerator with the app loaded by load (nil: generate.Load, or
+// runGeneratorWith ends every generator: it applies edits (computed by gen, from the loaded app)
+// with o, then reports. cmd names the command in messages ("alder new page"). The app is loaded by load (nil: generate.Load, or
 // LoadWithErrors for o.WriteDespiteErrors), and --json's object completed by extra (nil for
 // none) before it is written.
 func runGeneratorWith(cmd string, g genArgs, o generate.Options, load func(dir string) (*generate.Program, error), gen func(p *generate.Program) ([]generate.Edit, error), extra func(*genJSON), stdout, stderr io.Writer) (code int) {
@@ -183,11 +178,6 @@ func writeJSON(w io.Writer, v any) {
 	enc.Encode(v)
 }
 
-// migrateCopyNamed is migrateCopyAs for slug, as an Options.Migrate (edit uses it).
-func migrateCopyNamed(slug string) func(dir string) ([]string, error) {
-	return func(dir string) ([]string, error) { return migrateCopyAs(dir, slug) }
-}
-
 // migrateCopyAs is the generators' migration writer: `alder migrate`'s generator (writeMigration)
 // run on the copy of the app in dir, its tables read from their declarations alone
 // (ir.LowerTables), so a table edit that breaks code elsewhere still gets its migration. A
@@ -277,7 +267,13 @@ func migrateFor(dir, slug string) ([]string, error) { return migrateCopyAs(dir, 
 
 // runSpec is a generator command: argv parsed by its Spec, run, and reported as
 // runGeneratorWith reports.
-func runSpec(s *generate.Spec, argv []string, usage string, stdout, stderr io.Writer) (code int) {
+func runSpec(s *generate.Spec, argv []string, usage string, stdout, stderr io.Writer) int {
+	return runSpecWith(s, argv, usage, nil, stdout, stderr)
+}
+
+// runSpecWith is runSpec that also hands seen (when not nil) the Result and the parsed common
+// flags once the Spec has run.
+func runSpecWith(s *generate.Spec, argv []string, usage string, seen func(*generate.Result, generate.CLIFlags), stdout, stderr io.Writer) (code int) {
 	sets, cli, err := generate.ParseArgs(s, argv)
 	if errors.Is(err, generate.ErrArity) {
 		return genUsage(stderr, usage, nil)
@@ -294,11 +290,26 @@ func runSpec(s *generate.Spec, argv []string, usage string, stdout, stderr io.Wr
 		}
 	}()
 	res, err := s.Run(sets, generate.App{Dir: g.dir, Migrate: migrateFor}, g.dry)
+	if seen != nil {
+		seen(res, cli)
+	}
 	return genReport(cmd, g, res, err, specExtra(s, res), stdout, stderr)
 }
 
 // specExtra adds a Spec's own JSON fields (regen admin's skipped and upToDate); nil for others.
-func specExtra(s *generate.Spec, res *generate.Result) func(*genJSON) { return nil } // Task 6 fills this in
+func specExtra(s *generate.Spec, res *generate.Result) func(*genJSON) {
+	if s.ID != "regen admin" {
+		return nil
+	}
+	skipped, upToDate := []string{}, false
+	if res != nil {
+		upToDate = res.UpToDate
+		if res.Skipped != nil {
+			skipped = res.Skipped
+		}
+	}
+	return func(out *genJSON) { out.Skipped, out.UpToDate = &skipped, &upToDate }
+}
 
 // newGenerator is the Spec of `alder new <kind>`, or nil when kind is an app name.
 func newGenerator(kind string) *generate.Spec { return generate.SpecByID("new " + kind) }

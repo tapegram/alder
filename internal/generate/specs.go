@@ -1,5 +1,7 @@
 package generate
 
+import "strings"
+
 // The generators as Specs: the one description `alder help --json`, the CLI's argument parsing
 // and the language server all read. Value and Summary strings are the CLI's help text.
 
@@ -65,6 +67,9 @@ func SpecByID(id string) *Spec {
 
 func init() {
 	specs = append(specs, newSpecs()...)
+	specs = append(specs, editSpecs()...)
+	specs = append(specs, removeSpecs()...)
+	specs = append(specs, regenSpecs()...)
 }
 
 func newSpecs() []*Spec {
@@ -250,4 +255,135 @@ func newSpecs() []*Spec {
 			},
 		},
 	}
+}
+
+// editTableSlug names the migration after the edit, whatever its steps (a rebuild is still
+// add_<field>); "" lets the migration writer derive it.
+func editTableSlug(s Sets) string {
+	args := s.All("args")
+	switch op := s.One("op"); {
+	case op == "add-field" && len(args) == 1:
+		name, _, _ := strings.Cut(args[0], ":")
+		return "add_" + Snake(name)
+	case op == "rename-field" && len(args) == 2:
+		return "rename_" + Snake(args[0])
+	case op == "drop-field" && len(args) == 1:
+		return "drop_" + Snake(args[0])
+	}
+	return ""
+}
+
+func editSpecs() []*Spec {
+	return []*Spec{
+		{
+			ID: "edit table", Summary: "add, rename or drop a field (and write the migration)",
+			Args: []Field{
+				{Name: "table", Kind: ArgTable, Required: true, Value: "<T>"},
+				{Name: "op", Kind: ArgChoice, Required: true, Choices: []string{"add-field", "rename-field", "drop-field"}, Value: "add-field|rename-field|drop-field"},
+				{Name: "args", Kind: ArgText, Variadic: true, Value: "…"}, // not Required: EditTable refuses a missing argument itself
+			},
+			Flags: []Field{{Name: "strict", Kind: ArgBool, Summary: "refuse a change that breaks code"}},
+			Run: func(s Sets, app App, dry bool) (*Result, error) {
+				o := Options{Migrate: app.migrate(editTableSlug(s)), WriteDespiteErrors: !s.Has("strict")}
+				return runEdits(app, dry, o, nil, func(p *Program) ([]Edit, error) { return EditTable(p, s.One("table"), s.One("op"), s.All("args")) })
+			},
+		},
+		{
+			ID: "edit page", Summary: "add a page parameter",
+			Args: []Field{
+				{Name: "page", Kind: ArgPage, Required: true, Value: "<Page module>"},
+				{Name: "op", Kind: ArgChoice, Required: true, Choices: []string{"add-param"}, Value: "add-param"},
+				{Name: "field", Kind: ArgFieldList, Required: true, Value: "<name>:<Type>[=default]"},
+			},
+			Run: func(s Sets, app App, dry bool) (*Result, error) {
+				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return EditPage(p, s.One("page"), s.One("op"), s.All("field")) })
+			},
+		},
+		{
+			ID: "edit decl", Summary: "add a component prop",
+			Args: []Field{
+				{Name: "address", Kind: ArgDecl, Required: true, Value: "<Module>.<Name>"},
+				{Name: "op", Kind: ArgChoice, Required: true, Choices: []string{"add-prop"}, Value: "add-prop"},
+				{Name: "field", Kind: ArgFieldList, Required: true, Value: "<name>:<Type>=<default>"},
+			},
+			Run: func(s Sets, app App, dry bool) (*Result, error) {
+				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return EditDecl(p, s.One("address"), s.One("op"), s.All("field")) })
+			},
+		},
+		{
+			ID: "edit auth", Summary: "change where sign-in leads",
+			Flags: []Field{{Name: "to", Kind: ArgPage, Value: "Page", Summary: "the page after sign-in"}},
+			Run: func(s Sets, app App, dry bool) (*Result, error) {
+				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return EditAuth(p, s.One("to")) })
+			},
+		},
+		{
+			ID: "edit session", Summary: "add a session field",
+			Args: []Field{
+				{Name: "op", Kind: ArgChoice, Required: true, Choices: []string{"add-field"}, Value: "add-field"},
+				{Name: "field", Kind: ArgText, Required: true, Variadic: true, Value: "<name>:<Type>=<default> | <key>:<T>.<T>Id via <Membership>"},
+			},
+			Flags: []Field{
+				{Name: "choose", Kind: ArgPage, Value: "Page", Summary: "the page that chooses the key"},
+				{Name: "strict", Kind: ArgBool, Summary: "refuse a change that breaks code"},
+			},
+			Run: func(s Sets, app App, dry bool) (*Result, error) {
+				// the session literals the new field breaks (a test's `{ user: me }`) are the to-do
+				// list, as a table edit's are; --strict refuses instead
+				return runEdits(app, dry, Options{WriteDespiteErrors: !s.Has("strict")}, nil, func(p *Program) ([]Edit, error) {
+					return EditSessionChoose(p, s.One("op"), s.All("field"), s.One("choose"))
+				})
+			},
+		},
+	}
+}
+
+func removeSpecs() []*Spec {
+	return []*Spec{
+		{
+			ID: "remove page", Summary: "remove a page module",
+			Args: []Field{{Name: "page", Kind: ArgPage, Required: true, Value: "<Page module>"}},
+			Run: func(s Sets, app App, dry bool) (*Result, error) {
+				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return RemovePage(p, s.One("page")) })
+			},
+		},
+		{
+			ID: "remove table", Summary: "remove a table (and write the migration)",
+			Args: []Field{{Name: "table", Kind: ArgTable, Required: true, Value: "<T>"}},
+			Run: func(s Sets, app App, dry bool) (*Result, error) {
+				o := Options{Migrate: app.migrate("drop_" + Snake(s.One("table")))}
+				return runEdits(app, dry, o, nil, func(p *Program) ([]Edit, error) { return RemoveTable(p, s.One("table")) })
+			},
+		},
+	}
+}
+
+func regenSpecs() []*Spec {
+	return []*Spec{{
+		ID: "regen admin", Summary: "the admin pages",
+		Flags: []Field{
+			{Name: "module", Kind: ArgModule, Value: "Admin", Summary: "the admin's module prefix"},
+			{Name: "path", Kind: ArgRoute, Value: "/admin", Summary: "the admin's path prefix"},
+			{Name: "all", Kind: ArgBool, Summary: "recreate the admin pages the author deleted"},
+		},
+		Run: func(s Sets, app App, dry bool) (*Result, error) {
+			o := AdminOptions{Module: s.One("module"), Path: s.One("path")}
+			skipped, nothing := []string{}, false
+			load := func(dir string) (*Program, error) { return LoadExcept(dir, AdminDir(o.Module)) }
+			res, err := runEdits(app, dry, Options{}, load, func(p *Program) ([]Edit, error) {
+				edits, sk, err := RegenAdmin(p, o, s.Has("all"))
+				if sk != nil {
+					skipped = sk
+				}
+				if err == nil && len(edits) == 0 {
+					nothing = true
+				}
+				return edits, err
+			})
+			if res != nil {
+				res.Skipped, res.UpToDate = skipped, nothing
+			}
+			return res, err
+		},
+	}}
 }

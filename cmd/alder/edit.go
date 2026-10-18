@@ -2,80 +2,35 @@ package main
 
 import (
 	"io"
-	"strings"
 
 	"alder/internal/generate"
 )
 
 const editUsage = "usage: alder edit table <T> add-field <field>:<Type>[=default][@attr…] | rename-field <old> <new> | drop-field <field>  [--strict] [--dir app] [--json] [--dry-run]\n       alder edit page <Page module> add-param <name>:<Type>[=default] [--dir app] [--json] [--dry-run]\n       alder edit decl <Module>.<Name> add-prop <name>:<Type>=<default> [--dir app] [--json] [--dry-run]\n       alder edit auth --to <Page> [--dir app] [--json] [--dry-run]\n       alder edit session add-field <name>:<Type>=<default> | add-field <key>:<T>.<T>Id via <Membership> [--choose <Page>]  [--strict] [--dir app] [--json] [--dry-run]"
 
-// runEditTo is `alder edit page` (generate.EditPage), `alder edit session`
-// (generate.EditSession) and `alder edit table`: the table's declaration edited (generate.EditTable), its
-// migration written by `alder migrate`'s generator (migrateCopyAs), and the copy checked. The
-// code the change breaks (an insert that lacks the new field, a use of a dropped one) is printed
-// as the copy's diagnostics, and the edit is still written: the diagnostics are the to-do list.
-// With --strict a change that breaks anything is refused instead, and nothing is written.
-func runEditTo(args []string, stdout, stderr io.Writer) int {
-	g, err := parseGenArgs(args, []string{"to", "choose"}, nil, []string{"strict"})
-	if err == nil && len(g.pos) == 4 && g.pos[0] == "page" && !g.has("strict") {
-		return runGenerator("alder edit page", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
-			return generate.EditPage(p, g.pos[1], g.pos[2], g.pos[3:])
-		}, stdout, stderr)
-	}
-	if err == nil && len(g.pos) == 4 && g.pos[0] == "decl" && !g.has("strict") {
-		return runGenerator("alder edit decl", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
-			return generate.EditDecl(p, g.pos[1], g.pos[2], g.pos[3:])
-		}, stdout, stderr)
-	}
-	if err == nil && len(g.pos) == 1 && g.pos[0] == "auth" {
-		return runGenerator("alder edit auth", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
-			return generate.EditAuth(p, g.flag("to"))
-		}, stdout, stderr)
-	}
-	if err == nil && len(g.pos) >= 3 && g.pos[0] == "session" {
-		// the session literals the new field breaks (a test's `{ user: me }`) are the to-do list,
-		// as a table edit's are; --strict refuses instead
-		return runGenerator("alder edit session", g, generate.Options{WriteDespiteErrors: !g.has("strict")}, func(p *generate.Program) ([]generate.Edit, error) {
-			return generate.EditSessionChoose(p, g.pos[1], g.pos[2:], g.flag("choose"))
-		}, stdout, stderr)
-	}
-	if err != nil || len(g.pos) < 3 || g.pos[0] != "table" {
-		return genUsage(stderr, editUsage, err)
-	}
-	// the migration is named after the edit, whatever its steps (a rebuild is still add_<field>)
-	slug := ""
-	switch {
-	case g.pos[2] == "add-field" && len(g.pos) == 4:
-		name, _, _ := strings.Cut(g.pos[3], ":")
-		slug = "add_" + generate.Snake(name)
-	case g.pos[2] == "rename-field" && len(g.pos) == 5:
-		slug = "rename_" + generate.Snake(g.pos[3])
-	case g.pos[2] == "drop-field" && len(g.pos) == 4:
-		slug = "drop_" + generate.Snake(g.pos[3])
-	}
-	o := generate.Options{Migrate: migrateCopyNamed(slug), WriteDespiteErrors: !g.has("strict")}
-	return runGenerator("alder edit table", g, o, func(p *generate.Program) ([]generate.Edit, error) {
-		return generate.EditTable(p, g.pos[1], g.pos[2], g.pos[3:])
-	}, stdout, stderr)
-}
-
 const removeUsage = "usage: alder remove page <Page module> | alder remove table <T>  [--dir app] [--json] [--dry-run]"
 
-// runRemoveTo is `alder remove page` (generate.RemovePage: the page's file) and `alder remove
-// table` (generate.RemoveTable: the declaration, or its module's file, and the migration that
-// drops the table). Each refuses what something else still names, listing the uses.
+// runGroup is `alder edit|remove <sub> …`: the subcommand's Spec, or the group's usage.
+// (In help --json the group node has no Usage of its own flags: each subcommand node carries
+// its Args and Flags, and the group's usage line is the text printed here.)
+func runGroup(group, usage string, args []string, stdout, stderr io.Writer) int {
+	s, rest := generate.Select(group, args, generate.Specs())
+	if s == nil {
+		return genUsage(stderr, usage, nil)
+	}
+	return runSpec(s, rest, usage, stdout, stderr)
+}
+
+// runEditTo is `alder edit table|page|decl|auth|session`. A table edit writes its migration
+// (named after the edit) and prints the code it breaks as the copy's diagnostics, still
+// writing the edit; --strict refuses instead. Each subcommand takes only its own flags.
+func runEditTo(args []string, stdout, stderr io.Writer) int {
+	return runGroup("edit", editUsage, args, stdout, stderr)
+}
+
+// runRemoveTo is `alder remove page` (the page's file) and `alder remove table` (the
+// declaration, or its module's file, and the migration that drops the table). Each refuses what
+// something else still names, listing the uses.
 func runRemoveTo(args []string, stdout, stderr io.Writer) int {
-	g, err := parseGenArgs(args, nil, nil, nil)
-	if err != nil || len(g.pos) != 2 || (g.pos[0] != "page" && g.pos[0] != "table") {
-		return genUsage(stderr, removeUsage, err)
-	}
-	if g.pos[0] == "page" {
-		return runGenerator("alder remove page", g, generate.Options{}, func(p *generate.Program) ([]generate.Edit, error) {
-			return generate.RemovePage(p, g.pos[1])
-		}, stdout, stderr)
-	}
-	o := generate.Options{Migrate: migrateCopyNamed("drop_" + generate.Snake(g.pos[1]))}
-	return runGenerator("alder remove table", g, o, func(p *generate.Program) ([]generate.Edit, error) {
-		return generate.RemoveTable(p, g.pos[1])
-	}, stdout, stderr)
+	return runGroup("remove", removeUsage, args, stdout, stderr)
 }

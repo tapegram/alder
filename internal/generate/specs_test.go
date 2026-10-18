@@ -50,3 +50,28 @@ func TestSpecs_FieldParseErrorIsRefusal(t *testing.T) {
 		t.Fatalf("want a *Refusal, got %T %v", err, err)
 	}
 }
+
+func TestSpecs_AllIDs(t *testing.T) {
+	want := "new page,new table,new form,new msg,new capability,new admin,new auth,new type,new decl,new test,new silo," +
+		"edit table,edit page,edit decl,edit auth,edit session,remove page,remove table,regen admin"
+	var ids []string
+	for _, s := range Specs() {
+		ids = append(ids, s.ID)
+	}
+	if strings.Join(ids, ",") != want {
+		t.Fatalf("ids = %v", ids)
+	}
+}
+
+func TestSpecs_EditTableSlug(t *testing.T) {
+	cases := map[string]Sets{
+		"add_title_text": {"table": {"Post"}, "op": {"add-field"}, "args": {"titleText:Text"}},
+		"rename_title":   {"table": {"Post"}, "op": {"rename-field"}, "args": {"title", "heading"}},
+		"drop_title":     {"table": {"Post"}, "op": {"drop-field"}, "args": {"title"}},
+	}
+	for want, sets := range cases {
+		if got := editTableSlug(sets); got != want {
+			t.Errorf("%v: slug %q, want %q", sets, got, want)
+		}
+	}
+}
