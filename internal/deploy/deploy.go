@@ -329,7 +329,7 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 		fmt.Fprintf(w, "started %s again on %s\n", id, o.Env)
 		return res, nil
 	}
-	now := o.Now().UTC().Truncate(time.Second)
+	now := o.Now().UTC() // the clock's full precision: newer orders builds by it, and a whole second ties
 	rec.When, rec.Previous, rec.Port = &now, current, port
 	rec.By = "local " + o.User
 	if who, ok := t.(identity); ok {
@@ -490,6 +490,7 @@ type RollbackOptions struct {
 	Drain         time.Duration
 	HealthTimeout time.Duration
 	Out           io.Writer
+	Now           func() time.Time // the clock the rewritten record's When is read from (nil: time.Now)
 }
 
 // ErrNotConfirmed is Rollback's answer when RollbackOptions.Confirm said no: nothing changed.
@@ -502,6 +503,9 @@ var ErrNotConfirmed = errors.New("not confirmed: nothing was changed (pass --yes
 // AllowSchemaMismatch.
 func Rollback(ctx context.Context, t Target, o RollbackOptions) (string, error) {
 	w := o.Out
+	if o.Now == nil {
+		o.Now = time.Now
+	}
 	if o.Drain == 0 {
 		o.Drain = DefaultDrain
 	} else if o.Drain < 0 {
@@ -632,7 +636,7 @@ func Rollback(ctx context.Context, t Target, o RollbackOptions) (string, error) 
 		return "", fmt.Errorf("switching to build %s: %w", to, err)
 	}
 	line(w, "switch", "ok", fmt.Sprintf("current → %s (port %d)", to, port))
-	recordRollback(ctx, t, *target, current, port, "", w)
+	recordRollback(ctx, t, *target, current, port, "", o.Now(), w)
 	if current != "" {
 		stopPrevious(ctx, t, current, o.Drain, w)
 	}
@@ -642,9 +646,9 @@ func Rollback(ctx context.Context, t Target, o RollbackOptions) (string, error) 
 
 // recordRollback rewrites the deployed.json of build b, now current again: when, by whom, the
 // build it replaced, and the copy of the data that was put back (if any).
-func recordRollback(ctx context.Context, t Target, b Build, previous string, port int, restored string, w io.Writer) {
+func recordRollback(ctx context.Context, t Target, b Build, previous string, port int, restored string, when time.Time, w io.Writer) {
 	rec := *b.Record
-	now := time.Now().UTC().Truncate(time.Second)
+	now := when.UTC() // full precision, as a deploy's: a rollback a moment after a deploy is newer
 	rec.When, rec.Previous, rec.Port, rec.RolledBack, rec.RestoredFrom = &now, previous, port, true, restored
 	rec.By = "local " + os.Getenv("USER")
 	if who, ok := t.(identity); ok {
@@ -743,7 +747,7 @@ func rollbackWithBackup(ctx context.Context, t Target, o RollbackOptions, builds
 		return "", back(fmt.Errorf("switching to build %s: %w", to.ID, err))
 	}
 	line(w, "switch", "ok", fmt.Sprintf("current → %s (port %d)", to.ID, port))
-	recordRollback(ctx, t, to, current, port, from, w)
+	recordRollback(ctx, t, to, current, port, from, o.Now(), w)
 	fmt.Fprintf(w, "rolled back to %s with the data of %s\n", to.ID, r.Taken.UTC().Format(time.RFC3339))
 	return to.ID, nil
 }

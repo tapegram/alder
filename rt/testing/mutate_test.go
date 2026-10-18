@@ -338,3 +338,22 @@ func TestMutate_Continuation(t *testing.T) {
 		t.Fatal("a test's status line read as a mutant's")
 	}
 }
+
+func TestOwnModuleFirst(t *testing.T) {
+	cases := []Case{{Module: "A", Name: "a1"}, {Module: "B", Name: "b1"}, {Module: "A", Name: "a2"}, {Module: "B", Name: "b2"}}
+	var got []string
+	for _, c := range ownModuleFirst(cases, "B") {
+		got = append(got, c.Module+"."+c.Name)
+	}
+	if want := "B.b1 B.b2 A.a1 A.a2"; strings.Join(got, " ") != want {
+		t.Errorf("ownModuleFirst(…, B) = %v, want %s", got, want)
+	}
+	// a module with no cases: the suite order, every case kept
+	got = nil
+	for _, c := range ownModuleFirst(cases, "C") {
+		got = append(got, c.Module+"."+c.Name)
+	}
+	if want := "A.a1 B.b1 A.a2 B.b2"; strings.Join(got, " ") != want {
+		t.Errorf("ownModuleFirst(…, C) = %v, want %s", got, want)
+	}
+}

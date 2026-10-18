@@ -377,6 +377,9 @@ func deployedID(t *testing.T, out string) string {
 // serving, the log in the refusal, its directory kept), logs, and no planted value anywhere
 // under builds/ or in any output.
 func TestDeploySsh_Lifecycle(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a deploy end to end: real builds, app processes and drain windows")
+	}
 	box := startBox(t)
 	dir := sshScaffold(t, box)
 	var rnd [8]byte
@@ -587,6 +590,9 @@ func (clock) Now(context.Context) (int64, error) { return 0, nil }
 // directory; `alder restore` from that copy puts the database back at the box (entries posted
 // since are gone, the previous file kept beside it) and the build serves it again.
 func TestDeploySsh_BackupRestore(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a deploy end to end: real builds, app processes and drain windows")
+	}
 	box := startBox(t)
 	dir := sshScaffold(t, box)
 	bucket := box.root + "/bucket"
@@ -695,6 +701,9 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 // that build is current again, and starting it again (what the rollback does) reuses the
 // running process and cancels the delayed stop.
 func TestDeploySsh_DrainRollback(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a deploy end to end: real builds, app processes and drain windows")
+	}
 	box := startBox(t)
 	dir := sshScaffold(t, box)
 	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\n' > %s/env", strings.Repeat("s", 32), box.qr()))
@@ -812,6 +821,9 @@ func TestDeploySsh_DrainRollback(t *testing.T) {
 // (the serving build restarts on it), and across an earlier migration it brings back the first
 // build with its data from before that migration.
 func TestDeploySsh_RestoreBackup(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a deploy end to end: real builds, app processes and drain windows")
+	}
 	box := startBox(t)
 	dir := sshScaffold(t, box)
 	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\n' > %s/env", strings.Repeat("s", 32), box.qr()))
@@ -882,6 +894,9 @@ func TestDeploySsh_RestoreBackup(t *testing.T) {
 // match, so the deploy puts this run's pre-migration copy back at once and starts the previous
 // build on it. The site serves the old build, with the dropped column back, and takes writes.
 func TestDeploySsh_DropsDataAutoRestore(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a deploy end to end: real builds, app processes and drain windows")
+	}
 	box := startBox(t)
 	dir := sshScaffold(t, box)
 	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\n' > %s/env", strings.Repeat("s", 32), box.qr()))

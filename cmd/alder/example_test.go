@@ -190,7 +190,8 @@ func TestExample_Blog(t *testing.T) {
 // The mutation scores examples/todos/README.md and examples/blog/README.md record (`alder test
 // --mutate`, rounded down to two decimals: the blog's is 317 / 323 = 0.981) and their numbers of
 // mutants: a change to an example that lets a mutant survive which its tests used to kill, or
-// that changes the mutants made of it, fails TestExample_*.
+// that changes the mutants made of it, fails TestExample_*, when the mutation quality gates run
+// (nightly in CI, or with ALDER_MUTATION_GATES=1: see gates_test.go).
 const (
 	todosMutationScore     = 0.99
 	blogMutationScore      = 0.98
@@ -201,9 +202,14 @@ const (
 )
 
 // mutationAtLeast runs `alder test --mutate --json dir` and fails t when the score is below min
-// or the number of mutants that ran is not mutants.
+// or the number of mutants that ran is not mutants. It is a mutation quality gate, so it only
+// logs unless the gates run (the tests that call it test more than the mutation).
 func mutationAtLeast(t *testing.T, dir string, min float64, mutants int) {
 	t.Helper()
+	if !mutationGates() {
+		t.Logf("alder test --mutate %s: skipped, a mutation quality gate (%s=1 runs it)", dir, mutationGatesEnv)
+		return
+	}
 	code, out, errs := runTest(t, dir, "--mutate", "--json")
 	if code != 0 {
 		t.Fatalf("alder test --mutate %s: exit %d\nout: %s\nerr: %s", dir, code, out, errs)
@@ -225,8 +231,10 @@ func mutationAtLeast(t *testing.T, dir string, min float64, mutants int) {
 }
 
 // TestExample_TodosMutation: examples/todos keeps the mutation score its README records (every
-// mutant killed), measured on a copy so the build lands in a temporary directory.
+// mutant killed), measured on a copy so the build lands in a temporary directory. A mutation
+// quality gate: it runs nightly in CI, or with ALDER_MUTATION_GATES=1.
 func TestExample_TodosMutation(t *testing.T) {
+	mutationGate(t)
 	needGoTool(t)
 	inTemp(t)
 	copyDir(t, todosDir(t), "todos")

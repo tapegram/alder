@@ -126,6 +126,9 @@ func runCmd(t *testing.T, f func([]string, io.Writer, io.Writer) int, args ...st
 // the silo's table leaves the silo `pending (data loss)` (maintenance for that org) until
 // `alder migrate silos --allow-data-loss`.
 func TestDeploySsh_Silos(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a deploy end to end: real builds, app processes and drain windows")
+	}
 	box := startBox(t)
 	dir := siloDeployApp(t, box, fmt.Sprintf(`deploy {
   production: Ssh %q { domain: "localhost", path: %q },
@@ -280,6 +283,9 @@ func TestDeploySsh_SiloBound(t *testing.T) {
 // point-in-time copy); `rollback --restore-backup` makes a copy of the shared database as it
 // was before the migration the app's; an orphaned silo's database is pruned.
 func TestDeployTurso_Lifecycle(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a deploy end to end: real builds, app processes and drain windows")
+	}
 	box := startBox(t)
 	f := tursofake.New(t, "acme")
 	dir := siloDeployApp(t, box, fmt.Sprintf(`deploy {

@@ -241,7 +241,28 @@ func runMutants(cases []Case, o Options, r mutantRun) (map[int]MutantOutcome, bo
 	return outcomes, false, nil
 }
 
-// runMutant runs cases against mutant m, stopping at the first that fails.
+// ownModuleFirst returns cases with module's own first, each part in suite order. The case that
+// kills a mutant is in the mutant's own module for 95% of mutants (measured on the examples,
+// 2026-10-18), and it sat halfway down the suite on average, so this makes a killed mutant stop
+// about 8.5× sooner. A survivor still runs every case, and each case starts from a fresh
+// database, so whether a mutant is killed does not depend on the order: only which case is
+// named as its killer (By) can change.
+func ownModuleFirst(cases []Case, module string) []Case {
+	out := make([]Case, 0, len(cases))
+	for _, c := range cases {
+		if c.Module == module {
+			out = append(out, c)
+		}
+	}
+	for _, c := range cases {
+		if c.Module != module {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// runMutant runs cases against mutant m, its own module's first, stopping at the first that fails.
 func runMutant(m Mutant, cases []Case, o Options, r mutantRun) (oc MutantOutcome, timedOut bool, err error) {
 	oc = MutantOutcome{ID: m.ID}
 	*mutation.active = m.ID
@@ -253,7 +274,7 @@ func runMutant(m Mutant, cases []Case, o Options, r mutantRun) (oc MutantOutcome
 	o.Deadline = time.Now().Add(limit)
 	timer := time.NewTimer(limit)
 	defer timer.Stop()
-	for _, c := range cases {
+	for _, c := range ownModuleFirst(cases, m.Module) {
 		if r.status != "" {
 			if err := os.WriteFile(r.status, []byte(MutantStatus(m.ID, c.Module, c.Name)), 0o644); err != nil {
 				return oc, false, err

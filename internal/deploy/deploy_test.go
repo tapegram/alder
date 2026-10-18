@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -573,5 +574,56 @@ func TestStatus_NeverShipped(t *testing.T) {
 		if !strings.HasSuffix(out.String(), c.want) {
 			t.Errorf("status:\n%s\nwant the end\n%s", out.String(), c.want)
 		}
+	}
+}
+
+// A deploy and a rollback in the same second (TestDeploySsh_Lifecycle on a fast runner: id1b
+// deployed, then id1 rolled back to) order as they happened: the rolled-back build is the newer,
+// so keep 3 prunes the deploy before it. Recorded at whole seconds, the two tied and the id
+// broke the tie, so a rolled-back build whose id sorted after the other's was pruned instead.
+func TestBuildOrder_SameSecond(t *testing.T) {
+	base := time.Date(2026, 10, 18, 15, 0, 0, 0, time.UTC)
+	at := func(d time.Duration) func() time.Time { return func() time.Time { return base.Add(d) } }
+	// the deploy at .200 (its id is the binary's: the build list below gives it a lower one)
+	dir, _ := appWithDrop(t)
+	var out bytes.Buffer
+	o := options(t, dir, &out)
+	o.Now = at(200 * time.Millisecond)
+	f := &fakeTarget{}
+	res, err := Deploy(context.Background(), o, GateResult{Check: "ok"}, f, nil)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	deployed := f.records[res.Record.Build]
+	// the rollback at .700 to the build that served before it, whose id sorts after it
+	const early, back, mid, cur = "0000000000000001", "cccccccccccccccc", "4444444444444444", "5555555555555555"
+	hour := base.Add(-time.Hour)
+	_, s2 := schemas()
+	j2, _ := json.Marshal(s2)
+	g := &fakeTarget{live: j2, current: "2222222222222222",
+		builds:  []Build{{ID: "2222222222222222", Record: &deployed}, {ID: back, Record: &Record{When: &hour}}},
+		schemas: map[string][]byte{"2222222222222222": j2, back: j2}}
+	if to, err := Rollback(context.Background(), g, RollbackOptions{To: back, Out: &out, Drain: -1, Now: at(700 * time.Millisecond)}); err != nil || to != back {
+		t.Fatalf("rollback: %s %v\n%s", to, err, out.String())
+	}
+	rolled := g.records[back]
+	later, latest := base.Add(5*time.Second), base.Add(9*time.Second)
+	builds := []Build{
+		{ID: early, Record: &Record{When: &hour}},
+		{ID: "2222222222222222", Record: &deployed},
+		{ID: back, Record: &rolled},
+		{ID: mid, Record: &Record{When: &later}},
+		{ID: cur, Record: &Record{When: &latest}, Current: true},
+	}
+	sort.SliceStable(builds, func(i, j int) bool { return newer(builds[i], builds[j]) })
+	var ids []string
+	for _, b := range builds {
+		ids = append(ids, b.ID)
+	}
+	if got, want := strings.Join(ids, ","), strings.Join([]string{cur, mid, back, "2222222222222222", early}, ","); got != want {
+		t.Errorf("newest first:\n%s\nwant\n%s", got, want)
+	}
+	if got := strings.Join(PrunePlan(builds, 3, []string{cur}), ","); got != early+",2222222222222222" {
+		t.Errorf("keep 3 removes %s, want %s,2222222222222222", got, early)
 	}
 }

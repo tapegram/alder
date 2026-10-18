@@ -518,7 +518,12 @@ exit 0
 	return builds, nil
 }
 
-// newer orders builds by their deploy time, then their directory's.
+// newer orders builds by their deploy time (deployed.json's when: the last deploy or rollback that
+// made the build current, at the deploying clock's full precision), else, for a build never
+// switched to, its directory's mtime (whole seconds); equal times, then, by id, the lower id the
+// newer. The order is total, so Prune and Rollback's default target are the same on every run;
+// the id is a hash, not an age, so it decides only between times that really tie: records
+// written before when kept sub-second precision (whole seconds) and failed builds.
 func newer(a, b Build) bool {
 	ta, tb := a.Modified, b.Modified
 	if a.Record != nil && a.Record.When != nil {

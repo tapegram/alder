@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Splits one package's tests across CI jobs (.github/workflows/ci.yml).
 #
-#   .github/shard.sh N K [pkg]       run shard K (0..N-1) of pkg's tests (default ./cmd/alder)
+#   .github/shard.sh N K [pkg [go test flags...]]   run shard K (0..N-1) of pkg's tests (default
+#                                    ./cmd/alder); the flags go to go test after the shard's -run and
+#                                    -timeout, so a later -run or -timeout of theirs wins (the last
+#                                    value counts)
 #   .github/shard.sh N check [pkg]   assert the N shards' -run patterns together select every
 #                                    test exactly once (go test -list with each shard's pattern)
 #
@@ -9,10 +12,10 @@
 # (measured; `go test -v` prints them), every other test weighs 1. The tests, heaviest first
 # (ties by name), each go to the lightest shard so far (ties: the lowest k). Deterministic, and a
 # new or renamed test lands in some shard without anyone editing a file; a new slow test is worth
-# a line in shard-weights. The heaviest test always lands in shard 0 (ci.yml gives that job the
-# longer timeout).
+# a line in shard-weights.
 set -euo pipefail
 n=$1 k=$2 pkg=${3:-./cmd/alder}
+shift $(( $# < 3 ? $# : 3 ))
 
 list() { go test "$pkg" -list "$1" | grep -E '^(Test|Example|Fuzz)' || true; }
 
@@ -44,4 +47,5 @@ p=$(pattern "$k")
 if [ "$p" = '^()$' ]; then echo "shard $k of $n of $pkg is empty"; exit 0; fi
 echo "shard $k of $n of $pkg: $(shard "$k" | wc -l | tr -d ' ') tests"
 shard "$k" | paste -sd' ' -
-exec go test "$pkg" -count=1 -timeout 40m -run "$p"
+# 28m: go test times out (with a goroutine dump) inside ci.yml's 30-minute job, not after it
+exec go test "$pkg" -count=1 -timeout 28m -run "$p" "$@"

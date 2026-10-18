@@ -164,6 +164,7 @@ func TestAdmin_DryRunJSON(t *testing.T) {
 // requires a user: a rerender ends at the login page too).
 func TestAdmin_Mutate(t *testing.T) {
 	needGoTool(t)
+	mutationGate(t)
 	if testing.Short() {
 		t.Skip("runs every mutant of the fixture's admin")
 	}
@@ -522,6 +523,7 @@ test "the list counts each post's words" = {
 // with its Comment), which refuse the Post's delete too. The app checks, its tests pass, and they kill the admin's mutants.
 func TestAdmin_Columns(t *testing.T) {
 	needGoTool(t)
+	mutationGate(t)
 	if testing.Short() {
 		t.Skip("runs every mutant")
 	}
