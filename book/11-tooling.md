@@ -483,8 +483,9 @@ Chapter 13, section 9, reads them.
 app in `dir` (default `.`) the way `alder build` does, starts the
 executable, and then watches your files. Every time you save, it builds
 again and reloads the page in your browser. If the new code has an error,
-the error appears at the top of the page and in the terminal, and the app
-you had before keeps running until you fix it.
+the error appears in the browser (a strip across the top of the viewport and
+the dev panel's Errors tab, below) and in the terminal, and the app you had
+before keeps running until you fix it.
 
 ```
 $ go run ./cmd/alder run examples/todos
@@ -560,8 +561,10 @@ app serves under `alder run` gets two extra elements right after
 <div id="_alder_errors" data-ignore-morph></div><div data-init="@get('/_dev/reload?b=afcb2a7d-1', {openWhenHidden: true})"></div>
 ```
 
-The first is an empty box for errors; `data-ignore-morph` keeps an error
-in it when your app updates the page. The second opens a connection to
+The first is an empty box the dev server fills when a build fails; its
+content is positioned out of the page's flow (the strip is fixed to the top
+of the viewport), so an error moves nothing, and `data-ignore-morph` keeps
+it there when your app updates the page. The second opens a connection to
 the dev server's `/_dev/reload` as soon as Datastar starts (`data-init`
 runs its expression once, when Datastar sets the element up) and keeps it
 open, even while the tab is in the background (`openWhenHidden`).
@@ -570,8 +573,9 @@ and a restarted `alder run` picks new hex digits). Over that connection
 the dev server sends:
 
 1. **The errors.** When `alder check` or the build fails, the box is
-   filled with the same text the terminal shows, in a `<pre>`. A page
-   opened while there is an error gets the error as soon as it connects.
+   filled with the strip and the list of errors that the panel's Errors tab
+   shows (below). A page opened while there is an error gets them as soon as
+   it connects.
 2. **Clear.** After a good build, the box is emptied.
 3. **Reload.** Then the page reloads itself, and you see the new app.
 
@@ -583,8 +587,9 @@ whole time, and a browser keeps at most six connections open to one
 address over plain HTTP, so with six tabs open, requests from a seventh
 (and the others' own clicks) wait; close the tabs you don't need.
 
-If a check fails, you see something like this at the top of the page
-(and on stderr), and the old app goes on serving:
+If a check fails, the terminal shows this (the browser shows the same
+diagnostics, one block each, as described below), and the old app goes on
+serving:
 
 ```
 app/Layout.alder:10:15: error[E0003]: expected Text, Html or List Html in `{…}`, got Int
@@ -593,17 +598,27 @@ app/Layout.alder:10:15: error[E0003]: expected Text, Html or List Html in `{…}
   fix: Text.fromInt (1)
 ```
 
-The error box has no styling yet: it is plain preformatted text above your
-page. Fix the file and save; the box clears and the page reloads.
+In the browser the failure is out of your page's way, and the page you see is
+still the last good build. A thin strip fixed to the top of the viewport says
+`Build failed: 1 error. The page is the last good build.` with a "Show errors"
+button; the dev panel (below) gets an **Errors** tab, first in its list and
+there only while there are errors, with a count badge, and opens on it. Each
+diagnostic is a block of its own: `file:line:col` and the code (`E0003`), the
+message, and the source line with its caret, in the panel's monospace. They
+come from the checker's structured output, the same records `alder check
+--json` prints (file, line, column, code, message), with the source line
+read from your file; a build failure or a crash has no such structure, so
+its text is shown as one block, counted as one error. Fix the file and save:
+the strip and the tab go away and the page reloads.
 
 If the new app does not start (it exits, or doesn't print `listening on`
 within 10 seconds), the last 40 lines it printed on stderr go to the
-error box and the old app is kept. If the app stops while it runs (it
-crashes), the box says `alder run: the app exited (…); save a source
+Errors tab and the old app is kept. If the app stops while it runs (it
+crashes), the list says `alder run: the app exited (…); save a source
 file to rebuild it`, with the last 40 lines the app printed on stderr,
 and until the next good build the dev server answers every request with
-502 (Bad Gateway) and a page that shows the error and reloads itself
-once the app is back. The same page, saying `alder run: the app is
+502 (Bad Gateway) and a page that is that same list, styled, in the light
+or dark colors of your system, which reloads itself once the app is back. The same page, saying `alder run: the app is
 building…`, is what you get if you open the address before the first
 build is done. Everything the app prints goes to `alder run`'s stderr.
 
@@ -1380,12 +1395,21 @@ its `alder version` prints `devel+<commit>`.
 `alder run` serves the app in developer mode (`ALDER_DEV=1`). Every page then
 carries a panel, `<al-devpanel>`, a one-line bar along the bottom: the
 request's method and path, how it was answered, the time and the number of SQL
-statements. A tab opens it. The panel is rendered after the page's body, in an
+statements. A tab opens it. Only developer mode has the panel, and the strip
+and the Errors tab below: a production build contains none of their markup,
+script or style. The panel is rendered after the page's body, in an
 element the body's morph leaves alone, and filled by its own patch on every
 answer, so it survives every navigation. Only the chosen tab's section is
 shown (the server renders the others `hidden`, Request first), and the panel
 remembers the tab chosen last, so the next answer opens on it again. Its tabs:
 
+- Errors: first in the list, and there only while the last build failed: a
+  badge counts the errors (`Errors 2`) and each is listed as `file:line:col`,
+  its code and message, and the source line with the caret. A failed build
+  opens the panel on this tab, unless you have minimised the panel (then its
+  corner tab shows the badge); the strip's "Show errors" button opens it
+  too. A good build removes the tab. With `ALDER_DEV_PANEL=0` there is no
+  panel, and the button shows the list as a sheet along the bottom instead.
 - Request: the path, the form fields, the parameters, the session (the record
   the app stores, as JSON) and a `curl` line, with a "Copy as curl" button that
   puts it on the clipboard. The line carries a placeholder for the session
@@ -1411,6 +1435,22 @@ remembers the tab chosen last, so the next answer opens on it again. Its tabs:
   keeps them in the browser (`sessionStorage`, so a full page load keeps them
   too and another tab has its own); click one to read its Request, Trace, SQL,
   Answer and Patches as they were.
+
+The panel is yours to arrange, like the Django debug toolbar:
+
+- **Resize.** Drag the panel's top edge (a thin handle, shown while it is
+  open; the arrow keys work on it too) to set the height of the open tab, from
+  120 px up to 80% of the window.
+- **Minimise.** The `–` button at its right end, a click on the tab, or
+  `Ctrl+Shift+D` collapses the panel to a small tab in the bottom-right corner,
+  showing the last request's time and the error badge. The tab is out of the
+  page's flow, so it reserves no space at the bottom of the page. Click it, or
+  press `Ctrl+Shift+D` again, to bring the panel back.
+- **Remembered.** Open or minimised, the height and the tab you last chose
+  are kept per browser in `localStorage`, so a reload or another tab starts as
+  you left it (a navigation of the app keeps them anyway: the panel is not
+  morphed). When the browser refuses storage (a private window, say), the panel
+  works as ever and simply forgets on reload.
 
 A message that answers `Redirect` to a page of the app is answered with that
 page in the same response (chapter 6), and the panel shows both: the
