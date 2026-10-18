@@ -45,9 +45,11 @@ var (
 		"textDocument/definition": definitionReq,
 		"textDocument/references": referencesReq,
 		"textDocument/completion": completionReq,
+		"textDocument/codeAction": codeActionReq,
 	}
 	slowMethods = map[string]handler{
-		"alder/preview": func(*server, json.RawMessage) (any, error) { return map[string]any{}, nil },
+		"alder/preview":            func(*server, json.RawMessage) (any, error) { return map[string]any{}, nil },
+		"workspace/executeCommand": executeCommandReq,
 	}
 )
 
