@@ -1,6 +1,8 @@
 package main
 
 import (
+	"io"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,5 +77,36 @@ func TestErrorsHTML_TextFallback(t *testing.T) {
 	}
 	if errorsHTML(errState{}) != "" {
 		t.Errorf("no error, no content")
+	}
+}
+
+// A diagnostic's file, message and excerpt come from the user's files: the strip, the list (which
+// the panel's Errors tab copies) and the 502 page show them escaped, never as markup.
+func TestErrorsHTML_Escapes(t *testing.T) {
+	st := errState{kind: "check", diags: []diagItem{{
+		Code: "E0003", File: "app/<img src=x>.alder", Line: 1, Col: 1,
+		Message: `bad <b onclick="x">`, Excerpt: "<script>alert(1)</script>\n^",
+	}}}
+	check := func(where, h string) {
+		t.Helper()
+		for _, bad := range []string{"<script>alert", "<img src=x>", `<b onclick`} {
+			if strings.Contains(h, bad) {
+				t.Errorf("%s: unescaped %q in:\n%s", where, bad, h)
+			}
+		}
+		for _, want := range []string{"&lt;script&gt;alert(1)&lt;/script&gt;", "app/&lt;img src=x&gt;.alder:1:1", "bad &lt;b onclick=&#34;x&#34;&gt;"} {
+			if !strings.Contains(h, want) {
+				t.Errorf("%s: missing %q in:\n%s", where, want, h)
+			}
+		}
+	}
+	check("strip and panel list", errorsHTML(st))
+	check("patch event", string(overlayEvent(st)))
+	w := httptest.NewRecorder()
+	newDevServer(".", "app", "localhost:0", io.Discard, io.Discard).unavailable(w, st, "g-1")
+	check("502 page", w.Body.String())
+	// the text fallback is escaped too
+	if h := errorsHTML(errState{kind: "build", text: "<script>alert(1)</script>"}); strings.Contains(h, "<script>alert") {
+		t.Errorf("text fallback unescaped: %s", h)
 	}
 }

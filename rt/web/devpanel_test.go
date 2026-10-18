@@ -2,6 +2,8 @@ package web
 
 import (
 	"net/http"
+	"os"
+	"regexp"
 
 	"alder/rt/eff"
 	"net/http/httptest"
@@ -292,20 +294,31 @@ func TestNoticeOnlyForPageGET(t *testing.T) {
 	}
 }
 
-// Production output carries nothing of the panel, the strip or their script and style: the page
-// is exactly what the app rendered.
-func TestProductionPageHasNoDevUI(t *testing.T) {
-	route := one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil, false) })
+// prodPages renders, with dev mode off, a full page and a Datastar body patch of the same route,
+// with the build id (the one nondeterministic part: the alder-build meta and the Alder-Build
+// value) replaced by BUILD.
+func prodPages(t *testing.T) string {
+	t.Helper()
 	t.Setenv("ALDER_DEV", "")
-	prod := serve(NewRouter(route, testOpts(func(o *Options) { o.Dev = false })), httptest.NewRequest("GET", "/x", nil)).Body.String()
-	t.Setenv("ALDER_DEV", "1")
-	dev := serve(NewRouter(route, testOpts(func(o *Options) { o.Dev = true })), httptest.NewRequest("GET", "/x", nil)).Body.String()
-	if strings.Contains(prod, "_alder_ui") || strings.Contains(prod, "_alder_errors") || strings.Contains(prod, "_alder_panel") || strings.Contains(prod, "al-devpanel") {
-		t.Fatalf("production page carries dev UI:\n%s", prod)
+	route := one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil, false) })
+	h := NewRouter(route, testOpts(func(o *Options) { o.Dev = false }))
+	full := serve(h, httptest.NewRequest("GET", "/x", nil)).Body.String()
+	req := httptest.NewRequest("GET", "/x", nil)
+	req.Header.Set("Datastar-Request", "true")
+	patch := serve(h, req).Body.String()
+	out := "== full page\n" + full + "\n== datastar request\n" + patch + "\n"
+	return regexp.MustCompile(`name="alder-build" content="[0-9a-f]+"`).ReplaceAllString(out, `name="alder-build" content="BUILD"`)
+}
+
+// Production output is byte for byte what it was before the dev panel's Errors tab, strip,
+// resizing and minimising: testdata/production_page.golden was generated from the commit before
+// them (168ad442), with the build id normalised to BUILD.
+func TestProductionPageHasNoDevUI(t *testing.T) {
+	want, err := os.ReadFile("testdata/production_page.golden")
+	if err != nil {
+		t.Fatal(err)
 	}
-	// the dev page is the production page plus the panel, its script and its style, nothing else
-	i, j := strings.Index(dev, "<al-devpanel"), strings.LastIndex(dev, "</script>")+len("</script>")
-	if i < 0 || j < i || dev[:i]+dev[j:] != prod {
-		t.Fatalf("dev page minus the panel differs from production:\ndev:  %q\nprod: %q", dev, prod)
+	if got := prodPages(t); got != string(want) {
+		t.Fatalf("production output changed:\ngot:  %q\nwant: %q", got, want)
 	}
 }
