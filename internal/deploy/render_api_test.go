@@ -5,9 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"alder/internal/renderfake"
 )
@@ -391,5 +395,120 @@ func TestNewRenderAPI(t *testing.T) {
 	t.Setenv("ALDER_RENDER_API", "http://127.0.0.1:1/")
 	if NewRenderAPI().Base != "http://127.0.0.1:1" {
 		t.Fatal("base not trimmed")
+	}
+}
+
+func TestRenderAPI_Tail(t *testing.T) {
+	a, f := newRenderAPI(t)
+	t0 := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	var lines []renderfake.LogLine
+	for i := 0; i < 10; i++ {
+		lines = append(lines, renderfake.LogLine{Time: t0.Add(time.Duration(i) * time.Second), Instance: "i-1", Message: fmt.Sprintf("line %d", i)})
+	}
+	f.Logs(lines...)
+	got, err := a.Tail(context.Background(), renderfake.OwnerID, "srv-1", 3)
+	if err != nil || len(got) != 3 || got[0].Message != "line 7" || got[1].Message != "line 8" || got[2].Message != "line 9" {
+		t.Fatalf("tail = %+v, %v", got, err)
+	}
+	c := lastCall(t, f)
+	if c.Query.Get("direction") != "backward" || c.Query.Get("startTime") != "" || c.Query.Get("limit") != "3" {
+		t.Fatalf("call = %+v", c)
+	}
+}
+
+// stubRender serves canned bodies by request path+query-free path, for malformed answers.
+func stubRender(t *testing.T, h func(w http.ResponseWriter, r *http.Request)) *RenderAPI {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(h))
+	t.Cleanup(srv.Close)
+	return &RenderAPI{Base: srv.URL, Key: testRenderKey}
+}
+
+func TestRenderAPI_MalformedPages(t *testing.T) {
+	ctx := context.Background()
+	full := func(item string) string { // a full page of 100 owners, last one carrying `item`
+		var b []string
+		for i := 0; i < 99; i++ {
+			b = append(b, fmt.Sprintf(`{"cursor":"c%d","owner":{"id":"o%d"}}`, i, i))
+		}
+		return "[" + strings.Join(append(b, item), ",") + "]"
+	}
+	for name, body := range map[string]string{
+		"full page without cursor":  full(`{"owner":{"id":"x"}}`),
+		"empty cursor":              full(`{"cursor":"","owner":{"id":"x"}}`),
+		"item without its key":      `[{"cursor":"c0"}]`,
+		"item that does not decode": `[{"cursor":"c0","owner":"nope"}]`,
+	} {
+		a := stubRender(t, func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, body) })
+		if owners, err := a.Owners(ctx); err == nil || !strings.Contains(err.Error(), "bad response") {
+			t.Errorf("%s: owners=%d err=%v", name, len(owners), err)
+		}
+	}
+	// the env-var list feeds a replace-all PUT: a bad item is an error, never a skipped variable
+	a := stubRender(t, func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `[{"cursor":"c0","envVar":{"key":"A","value":"1"}},{"cursor":"c1"}]`)
+	})
+	if env, err := a.EnvVars(ctx, "srv-1"); err == nil {
+		t.Errorf("env = %v, want an error", env)
+	}
+}
+
+func TestRenderAPI_PagingPastFirstPage(t *testing.T) {
+	ctx := context.Background()
+	// 100 owners then 1 more: both pages are read.
+	a := stubRender(t, func(w http.ResponseWriter, r *http.Request) {
+		var b []string
+		if r.URL.Query().Get("cursor") == "" {
+			for i := 0; i < 100; i++ {
+				b = append(b, fmt.Sprintf(`{"cursor":"c%d","owner":{"id":"o%d"}}`, i, i))
+			}
+		} else if r.URL.Query().Get("cursor") == "c99" {
+			b = append(b, `{"cursor":"c100","owner":{"id":"o100"}}`)
+		}
+		io.WriteString(w, "["+strings.Join(b, ",")+"]")
+	})
+	owners, err := a.Owners(ctx)
+	if err != nil || len(owners) != 101 || owners[100].ID != "o100" {
+		t.Fatalf("owners = %d, %v", len(owners), err)
+	}
+	// a service past the first page of 20
+	b, f := newRenderAPI(t)
+	for i := 0; i < 25; i++ {
+		f.AddService(fmt.Sprintf("shop-%02d", i), "img:b1", 1)
+	}
+	f.AddService("shop", "img:b2", 1)
+	svc, ok, err := b.ServiceByName(ctx, "shop")
+	if err != nil || !ok || svc.ImagePath != "img:b2" {
+		t.Fatalf("svc = %+v ok=%v err=%v", svc, ok, err)
+	}
+	var withCursor int
+	for _, c := range f.Calls() {
+		if c.Query.Get("cursor") != "" {
+			withCursor++
+		}
+	}
+	if withCursor == 0 {
+		t.Fatal("never followed a cursor")
+	}
+}
+
+func TestRenderAPI_ErrorRedactsBeforeTruncating(t *testing.T) {
+	key := testRenderKey
+	// the key straddles byte 500; a multi-byte rune sits at the cut as well
+	msg := strings.Repeat("a", 490) + key + strings.Repeat("é", 50)
+	a := stubRender(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		json.NewEncoder(w).Encode(map[string]string{"message": msg})
+	})
+	_, err := a.Owners(context.Background())
+	var ae *RenderAPIError
+	if !errors.As(err, &ae) {
+		t.Fatal(err)
+	}
+	if strings.Contains(ae.Message, key) || strings.Contains(ae.Message, key[:10]) {
+		t.Fatalf("key leaked: %q", ae.Message)
+	}
+	if !utf8.ValidString(ae.Message) || !strings.HasSuffix(ae.Message, "...") {
+		t.Fatalf("message = %q", ae.Message)
 	}
 }

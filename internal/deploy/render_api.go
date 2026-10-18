@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // RenderAPI is a client for the slice of Render's public REST API (https://api-docs.render.com)
@@ -139,18 +140,24 @@ func (a *RenderAPI) errMessage(body []byte) string {
 	if json.Unmarshal(body, &m) == nil && m.Message != "" {
 		s = m.Message
 	}
+	s = a.redact(s) // before cutting, so a key straddling the cut cannot survive
 	if len(s) > 500 {
-		s = s[:500] + "..."
+		cut := 500
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+		s = s[:cut] + "..."
 	}
 	if s == "" {
 		s = "(no message)"
 	}
-	return a.redact(s)
+	return s
 }
 
 // pages walks a cursor-paged list ([{cursor, <key>: item}]) calling fn on each item until fn
-// returns true or the list ends.
-func (a *RenderAPI) pages(ctx context.Context, path string, q url.Values, key string, limit int, fn func(json.RawMessage) bool) error {
+// returns true or the list ends. A malformed page is an error: a short read must never pass for
+// the whole list (the env-var list feeds a replace-all PUT).
+func (a *RenderAPI) pages(ctx context.Context, path string, q url.Values, key string, limit int, fn func(json.RawMessage) (bool, error)) error {
 	cursor := ""
 	for {
 		qq := url.Values{}
@@ -165,16 +172,23 @@ func (a *RenderAPI) pages(ctx context.Context, path string, q url.Values, key st
 		if err := a.do(ctx, "GET", path, qq, nil, &items); err != nil {
 			return err
 		}
-		for _, it := range items {
-			if fn(it[key]) {
+		for i, it := range items {
+			raw, ok := it[key]
+			if !ok || len(raw) == 0 || string(raw) == "null" {
+				return fmt.Errorf("Render API GET %s: bad response: item %d has no %q", path, i, key)
+			}
+			if stop, err := fn(raw); err != nil {
+				return fmt.Errorf("Render API GET %s: bad response: %w", path, err)
+			} else if stop {
 				return nil
 			}
 		}
 		if len(items) < limit {
 			return nil
 		}
+		cursor = ""
 		if err := json.Unmarshal(items[len(items)-1]["cursor"], &cursor); err != nil || cursor == "" {
-			return nil
+			return fmt.Errorf("Render API GET %s: bad response: a full page has no cursor", path)
 		}
 	}
 }
@@ -185,12 +199,13 @@ type RenderOwner struct{ ID, Name, Type string }
 // Owners lists the workspaces the key can see.
 func (a *RenderAPI) Owners(ctx context.Context) ([]RenderOwner, error) {
 	var out []RenderOwner
-	err := a.pages(ctx, "/owners", nil, "owner", 100, func(r json.RawMessage) bool {
+	err := a.pages(ctx, "/owners", nil, "owner", 100, func(r json.RawMessage) (bool, error) {
 		var o RenderOwner
-		if json.Unmarshal(r, &o) == nil {
-			out = append(out, o)
+		if err := json.Unmarshal(r, &o); err != nil {
+			return false, err
 		}
-		return false
+		out = append(out, o)
+		return false, nil
 	})
 	return out, err
 }
@@ -222,12 +237,15 @@ func (a *RenderAPI) ServiceByName(ctx context.Context, name string) (RenderServi
 	var found RenderService
 	var ok bool
 	q := url.Values{"name": {name}, "type": {"web_service"}}
-	err := a.pages(ctx, "/services", q, "service", 20, func(r json.RawMessage) bool {
+	err := a.pages(ctx, "/services", q, "service", 20, func(r json.RawMessage) (bool, error) {
 		var j renderServiceJSON
-		if json.Unmarshal(r, &j) == nil && j.Name == name {
+		if err := json.Unmarshal(r, &j); err != nil {
+			return false, err
+		}
+		if j.Name == name {
 			found, ok = j.service(), true
 		}
-		return ok
+		return ok, nil
 	})
 	return found, ok, err
 }
@@ -288,12 +306,13 @@ func (a *RenderAPI) CreateService(ctx context.Context, c RenderCreate) (RenderSe
 // EnvVars is the service's environment, values included.
 func (a *RenderAPI) EnvVars(ctx context.Context, serviceID string) ([]RenderEnv, error) {
 	var out []RenderEnv
-	err := a.pages(ctx, "/services/"+url.PathEscape(serviceID)+"/env-vars", nil, "envVar", 100, func(r json.RawMessage) bool {
+	err := a.pages(ctx, "/services/"+url.PathEscape(serviceID)+"/env-vars", nil, "envVar", 100, func(r json.RawMessage) (bool, error) {
 		var e renderEnvJSON
-		if json.Unmarshal(r, &e) == nil {
-			out = append(out, RenderEnv{e.Key, e.Value})
+		if err := json.Unmarshal(r, &e); err != nil {
+			return false, err
 		}
-		return false
+		out = append(out, RenderEnv{e.Key, e.Value})
+		return false, nil
 	})
 	return out, err
 }
@@ -311,12 +330,15 @@ func (a *RenderAPI) Scale(ctx context.Context, serviceID string, n int) error {
 // Credential finds a registry credential by exact name.
 func (a *RenderAPI) Credential(ctx context.Context, name string) (string, bool, error) {
 	var id string
-	err := a.pages(ctx, "/registrycredentials", url.Values{"name": {name}}, "registryCredential", 20, func(r json.RawMessage) bool {
+	err := a.pages(ctx, "/registrycredentials", url.Values{"name": {name}}, "registryCredential", 20, func(r json.RawMessage) (bool, error) {
 		var c struct{ ID, Name string }
-		if json.Unmarshal(r, &c) == nil && c.Name == name {
+		if err := json.Unmarshal(r, &c); err != nil {
+			return false, err
+		}
+		if c.Name == name {
 			id = c.ID
 		}
-		return id != ""
+		return id != "", nil
 	})
 	return id, id != "", err
 }
@@ -406,9 +428,26 @@ type RenderLog struct {
 }
 
 // Logs reads up to limit lines oldest first from start (zero: Render's default window), and
-// returns the start time for the next call.
+// returns the start time for the next call. It pages forward; Tail gives the most recent lines.
 func (a *RenderAPI) Logs(ctx context.Context, ownerID, resource string, limit int, start time.Time) ([]RenderLog, time.Time, error) {
-	q := url.Values{"ownerId": {ownerID}, "resource": {resource}, "limit": {strconv.Itoa(limit)}, "direction": {"forward"}}
+	logs, next, err := a.logs(ctx, ownerID, resource, limit, start, "forward")
+	if next.IsZero() {
+		next = start
+	}
+	return logs, next, err
+}
+
+// Tail returns the most recent n lines, oldest first.
+func (a *RenderAPI) Tail(ctx context.Context, ownerID, resource string, n int) ([]RenderLog, error) {
+	logs, _, err := a.logs(ctx, ownerID, resource, n, time.Time{}, "backward")
+	for i, j := 0, len(logs)-1; i < j; i, j = i+1, j-1 {
+		logs[i], logs[j] = logs[j], logs[i]
+	}
+	return logs, err
+}
+
+func (a *RenderAPI) logs(ctx context.Context, ownerID, resource string, limit int, start time.Time, dir string) ([]RenderLog, time.Time, error) {
+	q := url.Values{"ownerId": {ownerID}, "resource": {resource}, "limit": {strconv.Itoa(limit)}, "direction": {dir}}
 	if !start.IsZero() {
 		q.Set("startTime", start.UTC().Format(time.RFC3339Nano))
 	}
@@ -421,7 +460,7 @@ func (a *RenderAPI) Logs(ctx context.Context, ownerID, resource string, limit in
 		}
 	}
 	if err := a.do(ctx, "GET", "/logs", q, nil, &out); err != nil {
-		return nil, start, err
+		return nil, time.Time{}, err
 	}
 	logs := make([]RenderLog, len(out.Logs))
 	for i, l := range out.Logs {
@@ -432,7 +471,7 @@ func (a *RenderAPI) Logs(ctx context.Context, ownerID, resource string, limit in
 			}
 		}
 	}
-	next := start
+	var next time.Time
 	if out.NextStartTime != nil {
 		next = *out.NextStartTime
 	}
