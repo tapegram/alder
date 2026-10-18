@@ -1588,6 +1588,147 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | W0005 | a form posting a page's message whose arm of `update` can answer `Reject`, but without `<Errors form />` to show the text: "`Submit` can answer `Reject`, but this form has no `<Errors form />`: the user never sees the rejection text" (chapter 10, "`Test.submitRaw`: input the types forbid") | — |
 | W0006 | an adapter package reads (through `os.Getenv` or `os.LookupEnv` with a literal name) an environment variable that `deploy.requires` does not name (chapter 16): "adapter `auth` reads `SMTP_URL`, which `deploy.requires` does not name"; the runtime's own `ALDER_…` variables are never reported, and a name in `requires` that no adapter reads is fine | name it in `requires` |
 
+## Editor support
+
+An editor that knows Alder tells you about a mistake while you type it,
+shows the type of a name when you point at it, jumps to where a name is
+declared, completes what you start, and lists the compiler's fixes and the
+generators as menu entries. Every one of those answers comes from the
+compiler itself; the editor does not parse Alder.
+
+The program that sits between the two is a **language server**. A language
+server is a separate process that an editor starts and talks to, in a
+standard protocol (the Language Server Protocol, LSP). The editor says
+"this file is open, and it now reads like this", or "what is at line 22,
+column 3?"; the server answers in the editor's own vocabulary:
+diagnostics, hover text, locations, completion items. Because the protocol
+is standard, one server serves every editor that speaks it, and the server
+needs to know nothing about how the editor draws things.
+
+Alder's server is `alder lsp`. It reads requests on standard input, writes
+answers on standard output, and runs until the editor closes the pipe. You
+never start it by hand: the editor does, once per project (the directory
+with `app/` in it), and every `.alder` file of the project shares that one
+server. Chapter 13, section 10, shows how it works inside.
+
+### What you get
+
+The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
+
+- **Diagnostics while you type.** Each change to the buffer, saved or not,
+  is checked as `alder check` would check it a moment after you stop
+  typing, and the errors and warnings appear on their lines with the
+  compiler's own message and code. A typed hole (W0002) is shown as a hint,
+  not a warning. The buffer's text replaces the file's; everything else is
+  read from disk.
+- **Hover** (`K` in Neovim). On `lastPage` it shows the signature and the
+  comment above the declaration:
+
+  ```text
+  lastPage : Int
+
+  lastPage bounds `page`, so `(page - 1) * perPage` cannot overflow.
+  ```
+
+  On a local such as `q` it shows its type, on a hole `?count` the type the
+  hole must have, on a module name in an `import` the file and how many
+  declarations the module has, and on a standard HTML tag or attribute its
+  description.
+- **Go to definition.** On a use of `lastPage` it jumps to `lastPage : Int`;
+  on a local, to the `let` or the parameter that binds it; on the `title` of
+  `post.title` to the field in `app/Post.alder`. Neovim's own key for it is
+  `<C-]>`, and many configurations also map `gd` to it. A name from the
+  standard library (`Text.trim`) has no file to jump to, so the server
+  answers nothing; hover still shows its signature.
+- **References** (`grr`). Every use of a declaration across the whole
+  program, in every module.
+- **Completion.** After `Text.` the functions and types of module `Text`;
+  after `params.` the fields of `Params` (`page` and `q`); after `<` the
+  standard HTML tags, after `</` the tag to close, and inside a tag its
+  attributes; after `import ` the modules; on a hole, the names in scope,
+  those whose type fits the hole first. Completion works on the line you
+  are typing even though that line does not parse yet (chapter 13, section
+  10). Neovim shows the items through your completion plugin (blink.cmp,
+  nvim-cmp), through its own `<C-x><C-o>`, or after you call
+  `vim.lsp.completion.enable(true, client.id, buf, { autotrigger = true })`
+  from an `LspAttach` autocommand.
+- **Code actions** (`<leader>aa`, or Neovim's own `gra`). The menu lists the
+  compiler's fix for a diagnostic on the cursor's line, such as ``Fix:
+  module `Post` is not imported`` (the same fix that `alder check --json`
+  carries, "Diagnostics" above), and then the generators that apply where
+  the cursor is. On `Posts.Index`, a page, those are `new form`, `new msg`,
+  `new decl`, `new test`, `edit page` and `remove page`, each with the page
+  already filled in: `new msg (page = Posts.Index)`. Choosing one asks for
+  the rest of its fields (a name, say), shows the diff it would make, and
+  applies it when you press `<CR>`.
+
+### Generators in the editor
+
+The generators (above, "The generators") run the same code in the editor as
+on the command line. What differs is where the result goes. The command line
+writes files. The editor's generator computes the change on a copy of your
+app, checks the copy, and hands the editor the new text of every file it
+touches; the editor puts that text into **buffers**. Nothing is on disk
+until you save: `:w` for one file, `:wall` for all of them. Each buffer can be undone with `u`, and the preview you see before `<CR>` is
+the diff of that copy.
+
+A file the generator creates, `app/Posts/Delete.alder` say, arrives as an
+unsaved buffer, and its directory is made on the first `:w`. The one thing
+the editor asks before doing is deleting a file (`remove page`, `remove
+table`): a buffer edit cannot express a deletion, and undo cannot bring a
+deleted file back.
+
+Two consequences look odd the first time.
+
+First, the generator works from your buffers, not from the files on disk,
+so it sees an edit you have not saved. And if you edit one of the files it
+is about to change between the preview and `<CR>`, nothing is applied:
+`alder: <path> changed since planning; nothing applied`.
+
+Second, a generator that adds a table also writes its migration, and the
+checker reads `migrations/` from disk, not from buffers. Until you `:wall`,
+the table exists in your buffer and the migration does not, so the server
+shows E0019, "the schema changed since migration …". It is the diagnostic
+`alder check` would print for that state, and saving the migration makes it
+go away.
+
+`alder fill` stays a command-line tool, and it is what an agent uses. The
+editor needs no command for holes, because a hole is just text: put the
+cursor on `?delete`, hover to see the type it must have, ask for completion
+(the names whose type fits come first), and type the expression. The server
+shows the hole as a hint until the line checks.
+
+### Setting up Neovim
+
+You need Neovim 0.11 or newer and alder.nvim:
+
+```text
+{ 'tapegram/alder.nvim', lazy = false, dependencies = { 'nvim-treesitter/nvim-treesitter' }, opts = {} }
+```
+
+(chapter 1, "Editor support", has the prerequisites). The plugin starts
+`alder lsp` for the first `.alder` buffer of a project and attaches the
+project's other buffers to that server. `:checkhealth alder` says what is
+running, and if the server stops the plugin says `alder lsp stopped —
+:checkhealth alder`. With `opts.lsp = false` the plugin runs without a
+server, as before: `alder check` on save.
+
+The plugin adds these keys to `.alder` buffers; each can be set to `false`
+in `opts.keys`, and with which-key, `<leader>a` is the group "alder":
+
+| Key | What it does |
+|---|---|
+| `<leader>aa` | the code actions at the cursor: fixes first, then generators |
+| `<leader>ac` | the open buffers' diagnostics into the quickfix list |
+| `<leader>ae` | `alder explain` for the diagnostic under the cursor |
+| `<leader>ar` | `alder run` |
+
+`:AlderGenerate [id]` asks which of all the generators to run, those that
+apply at the cursor first. The plugin's README lists the options and the
+rest of its commands. If you set `ALDER_LSP_LOG=/some/file` in Neovim's
+environment, the server writes every message it receives and sends to that
+file; the transcripts in chapter 13, section 10, were recorded that way.
+
 ## Holes
 
 `?name` is a typed hole. The program compiles with holes, and `alder check`
@@ -1602,8 +1743,10 @@ error, so that a script reads "holes left" rather than "build failed" (the exit 
 0, as for any warning; `--json` carries each W0002 as an object and no summary).
 
 `alder fill --list` lists every hole with its module, declaration and
-type, and `alder fill` fills one (above, "The generators"). Listing the
-values in scope that could fill a hole is planned.
+type, and `alder fill` fills one (above, "The generators"). In an
+editor, hover on a hole shows the type it must have, and completion on it
+lists the names in scope, those whose type fits first (below, "Editor
+support"). A command that lists them is planned.
 
 ## Queries
 
@@ -1617,6 +1760,10 @@ alder query msgs Todos.Index                     every msg of a page
 alder query uses TodoId                          every use of a name
 alder query capabilities                         every capability and whether it is implemented
 ```
+
+The language server answers the same kinds of question for an editor: hover
+is the type at a position, and references are the uses of a name (above,
+"Editor support").
 
 ## Formatting
 

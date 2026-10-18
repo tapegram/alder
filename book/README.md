@@ -22,9 +22,9 @@ changes, this book changes first.
 | [8. Database](08-database.md) | Tables, reads, writes, how tables are stored, migrations, and silos: a database per org (`silo org { … }`), one store per `Task`, the open-time check |
 | [9. Standard library](09-stdlib.md) | Module-by-module reference |
 | [10. Testing](10-testing.md) | Tests, effect tests, fakes of capabilities, tests through an in-memory browser, mutation testing, `alder test` |
-| [11. Tooling](11-tooling.md) | The compiler and its outputs |
+| [11. Tooling](11-tooling.md) | The compiler and its outputs; editor support through `alder lsp` |
 | [12. Design rationale](12-rationale.md) | Why each decision was made, with experiment results |
-| [13. How the compiler works](13-compiler.md) | Lexer to generated Go, with one small program followed through every stage |
+| [13. How the compiler works](13-compiler.md) | Lexer to generated Go, with one small program followed through every stage; then the language server: framing, overlays, snapshots, completion and dry runs |
 | [14. A second app](14-second-app.md) | The blog example: a relation, an owned table and a role in the session, a capability in `load`, pages and search; then the workspace example: orgs, memberships, and a database per org |
 | [15. Generators and the admin](15-generators.md) | Building an app from the command line: `alder new page/table/form/msg/capability`, `alder edit table`, filling typed holes with `alder fill`, and `alder new admin`, a generated admin of every table that `alder regen admin` keeps up to date through owned regions; every transcript verified |
 | [16. Deploying](16-deploy.md) | The `deploy` declaration and `alder deploy`: the fixed gate, the migration plan and the data-loss rule, the `Ssh`, `Fly`, `Render` and `Script` targets, `status`, `rollback` and `logs`, the streamed backup and `restore`, `alder ci init` and a pull request's preview, SQLite in production; the `Script` transcript verified |
