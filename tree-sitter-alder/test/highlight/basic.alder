@@ -1,0 +1,11 @@
+module Demo
+-- <- keyword
+
+view : Int -> Html Never
+-- <- function
+--     ^ type
+
+view n = <p class="x">{n}</p>
+--        ^ tag
+--          ^ attribute
+--                ^ string

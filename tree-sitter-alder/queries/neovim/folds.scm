@@ -1,0 +1,16 @@
+[
+  (value_decl)
+  (type_decl)
+  (table_decl)
+  (capability_decl)
+  (fake_decl)
+  (session_decl)
+  (deploy_decl)
+  (test_decl)
+  (form_decl)
+  (block)
+  (match_expr)
+  (element)
+  (record)
+  (list)
+] @fold

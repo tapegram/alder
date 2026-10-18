@@ -475,3 +475,31 @@ func TestTSScript_RefusesOtherVersion(t *testing.T) {
 		t.Fatalf("ts.sh generate refusal does not name the pinned version:\n%s", out)
 	}
 }
+
+// TestQueriesCompile runs every query file over a real module, so a query naming a node or
+// field the grammar does not have fails here rather than in the editor. Neovim-only predicates
+// and directives are not evaluated by the CLI, which is fine: the plugin tests load the
+// queries in Neovim (alder.nvim tests/filetype_spec.lua).
+func TestQueriesCompile(t *testing.T) {
+	cli := tsCLI(t)
+	queries, _ := filepath.Glob("queries/neovim/*.scm")
+	want := map[string]bool{"highlights": true, "locals": true, "indents": true, "folds": true, "injections": true, "textobjects": true}
+	for _, q := range queries {
+		delete(want, strings.TrimSuffix(filepath.Base(q), ".scm"))
+	}
+	if len(want) > 0 {
+		t.Fatalf("missing query files in queries/neovim: %v", want)
+	}
+	queries = append(queries, "queries/highlights.scm")
+	sample, err := filepath.Abs("../examples/blog/app/App.alder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range queries {
+		args := append([]string{"query", "-q"}, libArgs(t, cli)...)
+		cmd := exec.Command(cli, append(args, q, sample)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Errorf("%s: %v\n%s", q, err, out)
+		}
+	}
+}
