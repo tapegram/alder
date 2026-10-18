@@ -2169,7 +2169,8 @@ mutant. If the plain run itself runs out of time, the message says
 selects no test ends with `no test matches -run: nothing can kill a
 mutant`. Mutants run one after another, each with a fresh database
 per test; the to-do app's 154 take a few seconds once the build is made,
-because each mutant stops at the first test that fails.
+because each mutant stops at the first test that fails, and the tests of
+the mutant's own module run first, where the killing test almost always is.
 
 `--json` prints the per-test objects as usual, then one object listing
 every mutant, then one with the totals. A mutant's object has its `id`,
