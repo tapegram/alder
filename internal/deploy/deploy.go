@@ -267,7 +267,11 @@ func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (
 		if err := t.Upload(ctx, dir, id); err != nil {
 			return res, err
 		}
-		line(w, "upload", "ok", "builds/"+id+"/")
+		label := "builds/" + id + "/"
+		if l, ok := t.(UploadLabeler); ok {
+			label = l.UploadLabel(id)
+		}
+		line(w, "upload", "ok", label)
 		backup, err := t.Backup(ctx, id)
 		if err != nil {
 			return res, fmt.Errorf("the backup before migrating: %w", err)

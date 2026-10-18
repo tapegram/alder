@@ -611,6 +611,23 @@ func TestRender_UpdateFailed(t *testing.T) {
 	}
 }
 
+// The roll is bounded by RollTimeout (the command's ALDER_DEPLOY_HEALTH_TIMEOUT, the one source
+// for every target): a deploy that never goes live is cancelled and the error says so.
+func TestRender_RollTimeout(t *testing.T) {
+	g := newRenderRig(t)
+	id1 := g.mustDeploy(g.target())
+	g.render.Script("update_in_progress")
+	r := g.target()
+	r.RollTimeout = 100 * time.Millisecond
+	_, err := g.deploy(r)
+	if err == nil || !strings.Contains(err.Error(), "still update_in_progress after 100ms") || !strings.Contains(err.Error(), "cancelled") {
+		t.Fatalf("error: %v", err)
+	}
+	if g.current() != id1 {
+		t.Error("current changed")
+	}
+}
+
 // Review Focus 3: a deploy that fails at Render after a data-dropping migration: the engine's
 // restoreAfterDrop makes exactly one point-in-time copy and one env-var PUT naming it; the
 // previous build serves again on the copy; the error carries Render's log lines; and the next
@@ -806,6 +823,63 @@ func TestRender_RollbackRestoreBackup(t *testing.T) {
 		t.Fatalf("locked out after the restore: %v", err)
 	}
 	unlock()
+}
+
+// RestorePointInTime: the copy becomes the service's database and the current build rolls onto
+// it; when that roll fails the replaced database is put back (one more PUT) and the lock is not
+// left behind.
+func TestRender_RestorePointInTime(t *testing.T) {
+	g := newRenderRig(t)
+	ctx := context.Background()
+	id1 := g.mustDeploy(g.target())
+	time.Sleep(1100 * time.Millisecond)
+	at := time.Now().UTC().Truncate(time.Second)
+	time.Sleep(1100 * time.Millisecond)
+
+	r := g.connected()
+	unlock, err := r.Lock(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nr := len(g.render.Requests())
+	kept, err := r.RestorePointInTime(ctx, at, &g.out)
+	g.keep(kept, err)
+	unlock()
+	if err != nil || !strings.Contains(kept, "the database blog at Turso") {
+		t.Fatalf("%q %v", kept, err)
+	}
+	cps := copies(g.turso.Names())
+	if len(cps) != 1 {
+		t.Fatalf("copies: %v", g.turso.Names())
+	}
+	reqs := g.requests(nr)
+	if n := count(reqs, "PUT /services/"); n != 1 {
+		t.Errorf("%d env-var PUTs: %v", n, nonGET(reqs))
+	}
+	if count(reqs, "POST /services/") < 1 {
+		t.Errorf("the current build was not rolled onto the copy: %v", nonGET(reqs))
+	}
+	if cur := g.current(); cur != id1 {
+		t.Errorf("current %q in the copy", cur)
+	}
+
+	// a roll that fails brings the replaced database back
+	g2 := g.connected()
+	unlock, err = g2.Lock(ctx)
+	if err != nil {
+		t.Fatalf("locked out after the restore: %v", err)
+	}
+	defer unlock()
+	g.render.Script("update_in_progress", "update_failed")
+	time.Sleep(1100 * time.Millisecond) // the copy's name carries the second
+	_, err = g2.RestorePointInTime(ctx, time.Now().UTC(), &g.out)
+	g.keep("", err)
+	if err == nil || !strings.Contains(err.Error(), "is the service's again") {
+		t.Fatalf("error: %v", err)
+	}
+	if got := g2.DB.SharedName(); got != cps[0] {
+		t.Errorf("shared database %q, want %q (the one before the failed restore)", got, cps[0])
+	}
 }
 
 // The lock held by another run (a row of the shared database's _alder_lock): refused naming

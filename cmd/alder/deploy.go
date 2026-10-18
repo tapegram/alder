@@ -185,10 +185,53 @@ func runDeployTo(args []string, stdout, stderr io.Writer) (code int) {
 	if err != nil {
 		return deployFailed(err, fail)
 	}
+	if rd, ok := t.(*deploy.Render); ok {
+		// where the service is (R6): Render's own URL once it exists, else the expected one
+		mark := ""
+		if rd.AddressExpected() {
+			mark = " (expected)"
+		}
+		fmt.Fprintf(progress, "address  %s%s\n", rd.Address(), mark)
+	}
 	if jsonOut {
-		writeJSONIndented(stdout, res.Record)
+		writeDeployJSON(stdout, res.Record, deployAddress(tgt, t))
 	}
 	return 0
+}
+
+// deployJSON is what `alder deploy --json` prints: the deploy record and the address the
+// environment is served at.
+type deployJSON struct {
+	deploy.Record
+	Address string `json:"address,omitempty"`
+}
+
+// writeDeployJSON writes the record with address (omitted when empty: a Script's environment has
+// none).
+func writeDeployJSON(w io.Writer, rec deploy.Record, address string) {
+	writeJSONIndented(w, deployJSON{Record: rec, Address: address})
+}
+
+// deployAddress is the address environment target t (tg, its deploy.Target) is served at: an Ssh
+// environment's `https://<domain>` (none for a wildcard domain without a --host), a Fly app's
+// `https://<app>.fly.dev`, a Render service's URL (Render's own once the service exists, else
+// the expected `https://<service>.onrender.com`). A Script has none.
+func deployAddress(t ir.Target, tg deploy.Target) string {
+	switch t.Kind {
+	case "ssh":
+		if t.Domain == "" || strings.HasPrefix(t.Domain, "*") {
+			return ""
+		}
+		return "https://" + t.Domain
+	case "fly":
+		return "https://" + t.App + ".fly.dev"
+	case "render":
+		if rd, ok := tg.(*deploy.Render); ok {
+			return rd.Address()
+		}
+		return "https://" + t.Service + ".onrender.com"
+	}
+	return ""
 }
 
 // deployFailed reports a deploy's error: a refusal's text as it is, anything else (the target
@@ -224,6 +267,8 @@ func describeTarget(t ir.Target) string {
 		return fmt.Sprintf("Ssh %s:%s", t.Host, t.Path)
 	case "fly":
 		return fmt.Sprintf("Fly %s (app %s)", t.Region, t.App)
+	case "render":
+		return fmt.Sprintf("Render %s (service %s)", t.Region, t.Service)
 	case "script":
 		return "Script " + t.ScriptPath
 	}
@@ -255,6 +300,20 @@ func targetFor(r *deployRunner, env string, t ir.Target, dir string, stdout, std
 		f := deploy.NewFly(app, env, t, d)
 		f.Warn = stdout
 		return f, nil, nil
+	case "render":
+		img, err := imagePath(dir, d)
+		if err != nil {
+			return nil, nil, err
+		}
+		rd := deploy.NewRender(app, env, t, d, img)
+		rd.Out = stdout
+		rd.Artifact = func(id string) string { return filepath.Join("build", app, "deploy", id) }
+		rd.RollTimeout = durationEnv(envHealthTimeout, 0) // the one source of the timeout, as for the other targets
+		if rd.DB != nil {
+			rd.DB.Silos = r.silos
+			rd.DB.Local = func(ctx context.Context, id string) (string, error) { return localBinary(app, id) }
+		}
+		return rd, nil, nil
 	}
 	return nil, nil, fmt.Errorf("the %s target is not available in this alder yet", t.Kind)
 }
@@ -264,12 +323,15 @@ func targetFor(r *deployRunner, env string, t ir.Target, dir string, stdout, std
 // pull request). A host of a wildcard domain must match it. An Ssh target keeps each host's
 // state apart: under <path>/<host>, as environment <env>-<host> (its own systemd unit and Caddy
 // route), so one pull request's deploy never replaces another's. A Script target gets the host
-// in ALDER_HOST. A Fly environment's host is its app's (<app>.fly.dev): --host is refused.
+// in ALDER_HOST. A Fly environment's host is its app's (<app>.fly.dev) and a Render environment's
+// its service's: --host is refused for both.
 func withHost(env string, t ir.Target, host string) (ir.Target, error) {
 	if !hostChars.MatchString(host) || strings.HasPrefix(host, "-") || strings.HasPrefix(host, ".") {
 		return t, fmt.Errorf("bad --host %q: give a host name such as 42.preview.example.com (letters, digits, `.` and `-`, as a declared domain)", host)
 	}
 	switch t.Kind {
+	case "render":
+		return t, fmt.Errorf("--host does not apply to environment %s: the address is the service's: https://%s.onrender.com", env, t.Service)
 	case "fly":
 		return t, fmt.Errorf("--host does not apply to environment %s: a Fly environment is served at its app's address (%s.fly.dev)", env, t.App)
 	case "ssh":
@@ -747,11 +809,11 @@ func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 		if !ok || !slices.Contains(r.silos, siloKey) || siloValue == "" {
 			return fail(2, "bad --silo %q: write <key>:<id> with one of the app's silo keys (%s)", silo, strings.Join(r.silos, ", "))
 		}
-		if tgt.Kind != "ssh" && out == "" {
-			return fail(2, "--silo restores a silo at an Ssh environment; write it to a file with --out")
+		if tgt.Kind != "ssh" && tgt.Kind != "render" && out == "" {
+			return fail(2, "--silo restores a silo at an Ssh or Render environment; write it to a file with --out")
 		}
 	}
-	if tgt.Kind == "ssh" && tgt.Database != nil {
+	if tgt.Kind == "render" || tgt.Kind == "ssh" && tgt.Database != nil {
 		return restoreTurso(r, pos[0], tgt, dir, siloKey, siloValue, from, toText, to, out, yes, stdout, stderr)
 	}
 	if from == "" {
@@ -845,6 +907,15 @@ func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// pitTarget is a target whose database is on Turso and is restored to a point in time: an Ssh
+// environment (db/turso.env) or a Render service (its environment variables).
+type pitTarget interface {
+	deploy.Target
+	deploy.Locker
+	RestorePointInTime(ctx context.Context, at time.Time, w io.Writer) (string, error)
+	RestoreSilo(ctx context.Context, key, value, file string, at time.Time, w io.Writer) (string, error)
+}
+
 // restoreTurso is `alder restore <env> [--silo key:id] --to <time>` for an environment whose
 // database is on Turso: Turso's point-in-time recovery, not a stream. The shared database is
 // copied as it was then and becomes the app's (the replaced one kept at Turso); a silo's
@@ -865,8 +936,15 @@ func restoreTurso(r *deployRunner, env string, tgt ir.Target, dir, siloKey, silo
 		return fail(2, "%v", err)
 	}
 	defer t.Close()
-	s := t.(*deploy.Ssh)
-	what := "the database " + s.DB.Describe()
+	var s pitTarget
+	var dbName string
+	switch x := t.(type) {
+	case *deploy.Ssh:
+		s, dbName = x, x.DB.Describe()
+	case *deploy.Render:
+		s, dbName = x, x.DB.Describe()
+	}
+	what := "the database " + dbName
 	if siloKey != "" {
 		what = "silo " + siloKey + "/" + siloValue + "'s database"
 	}

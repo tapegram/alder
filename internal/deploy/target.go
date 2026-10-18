@@ -146,3 +146,9 @@ type Info struct {
 type StreamChecker interface {
 	StreamsBackup(ctx context.Context) (bool, error)
 }
+
+// UploadLabeler is a Target whose `upload` transcript line names something other than a build
+// directory under builds/ (Render: the image). The line keeps Ssh's wording for a target without it.
+type UploadLabeler interface {
+	UploadLabel(id string) string
+}

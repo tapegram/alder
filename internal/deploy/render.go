@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -42,8 +41,8 @@ import (
 // The environment it reads on this machine (never in App): RENDER_API_KEY and ALDER_RENDER_API
 // (RenderAPI), ALDER_REGISTRY_TOKEN and ALDER_REGISTRY_USER (the push and Render's registry
 // credential), TURSO_API_TOKEN (Turso), RENDER_OWNER_ID (the workspace, when the key reaches
-// several), ALDER_DEPLOY_HEALTH_TIMEOUT (how long Render may take to roll, 10 minutes by default)
-// and the `requires` names. No value of the service's environment is ever printed.
+// several) and the `requires` names. How long Render may take to roll is RollTimeout (the command
+// reads ALDER_DEPLOY_HEALTH_TIMEOUT once for every target). No value of the service's environment is ever printed.
 type Render struct {
 	Env, AppName, Region, Service, Plan, Image string
 	Instances                                  int
@@ -53,9 +52,12 @@ type Render struct {
 	// Artifact is the local directory of build id's artifact (build/<app>/deploy/<id>); a build
 	// whose directory is absent (a fresh checkout) is read from its builds row instead.
 	Artifact func(id string) string
-	// Getenv reads this machine's environment (the `requires` values, RENDER_OWNER_ID,
-	// ALDER_DEPLOY_HEALTH_TIMEOUT).
+	// Getenv reads this machine's environment (the `requires` values, RENDER_OWNER_ID).
 	Getenv func(string) string
+	// RollTimeout is how long a deploy may take to go live before it is cancelled (0: 10
+	// minutes). The command sets it from ALDER_DEPLOY_HEALTH_TIMEOUT, as it does the health
+	// timeout of the other targets.
+	RollTimeout time.Duration
 	// Required are the declaration's `requires` names, whose values set here go to the service.
 	Required []string
 	// Out receives the transcript lines of the steps ("image pushed …", "Render deploy … live",
@@ -775,14 +777,12 @@ func (r *Render) Start(ctx context.Context, id string) (int, error) {
 	return RenderPort, r.await(ctx, dep)
 }
 
-// rollTimeout is ALDER_DEPLOY_HEALTH_TIMEOUT (a duration, or seconds), 10 minutes by default.
+// rollTimeout is how long Render may take to roll a deploy: RollTimeout, which the command sets
+// from ALDER_DEPLOY_HEALTH_TIMEOUT (the one place that variable is read, for every target), 10
+// minutes by default.
 func (r *Render) rollTimeout() time.Duration {
-	v := r.Getenv("ALDER_DEPLOY_HEALTH_TIMEOUT")
-	if d, err := time.ParseDuration(v); err == nil && d > 0 {
-		return d
-	}
-	if n, err := strconv.Atoi(v); err == nil && n > 0 {
-		return time.Duration(n) * time.Second
+	if r.RollTimeout > 0 {
+		return r.RollTimeout
 	}
 	return 10 * time.Minute
 }
@@ -978,6 +978,12 @@ func (r *Render) Info(ctx context.Context) (Info, error) {
 // Render's log stream as they come, until ctx ends.
 func (r *Render) Logs(ctx context.Context, follow bool, w io.Writer) error {
 	if !r.have {
+		// `alder logs` has not connected (status and the deploys do): look for the service
+		if _, err := r.Connect(ctx); err != nil {
+			return err
+		}
+	}
+	if !r.have {
 		return refuse("", "the service %s does not exist at Render yet: deploy first", r.Service)
 	}
 	if !follow {
@@ -1123,4 +1129,100 @@ func (r *Render) adopt(ctx context.Context, from *db.SQLite, rows []db.DeployRow
 		keep = true
 	}
 	return nil
+}
+
+// UploadLabel is what the transcript's `upload` line names: the image, not a box directory.
+func (r *Render) UploadLabel(id string) string { return "image " + r.ref(id) }
+
+// roll starts build id again at Render (a deploy of its image) and waits until every instance
+// serves it: after a restore, so no instance keeps the database it had open.
+func (r *Render) roll(ctx context.Context, id string) error {
+	port, err := r.Start(ctx, id)
+	if err != nil {
+		return err
+	}
+	return r.Health(ctx, id, port, r.rollTimeout())
+}
+
+// RestorePointInTime is `alder restore <env> --to <time>`: a copy of the shared database as it
+// was then (Turso's point-in-time recovery) becomes the service's database (one env-var PUT of
+// ALDER_DB and ALDER_TURSO_DB; the builds rows and this run's lock move to the copy), and the
+// current build is rolled onto it, health checked. A build that refuses the copy brings the
+// replaced database back. It returns where the replaced one is kept.
+func (r *Render) RestorePointInTime(ctx context.Context, at time.Time, w io.Writer) (string, error) {
+	if !r.have {
+		return "", refuse("", "the service %s does not exist at Render yet: deploy first", r.Service)
+	}
+	rows, _, st, err := r.rows(ctx)
+	if err != nil {
+		return "", err
+	}
+	if st == nil {
+		return "", refuse("", "Turso has no database %s: there is nothing to restore", r.DB.SharedName())
+	}
+	old := r.DB.SharedName()
+	cp, err := r.DB.CopyAt(ctx, old, at)
+	if err != nil {
+		return "", err
+	}
+	fmt.Fprintf(w, "copied %s as it was at %s → %s\n", old, at.UTC().Format(time.RFC3339), cp.Name)
+	if err := r.adopt(ctx, st, rows, cp.Name); err != nil {
+		return "", fmt.Errorf("preparing the copy %s: %w", cp.Name, err)
+	}
+	prev := r.env
+	env, _, _ := overlay(prev, map[string]string{"ALDER_DB": "libsql://" + cp.Hostname, db.EnvTursoDB: cp.Name})
+	if err := r.API.PutEnvVars(ctx, r.svc.ID, env); err != nil {
+		return "", fmt.Errorf("pointing the service %s at the copy %s: %w", r.Service, cp.Name, err)
+	}
+	r.env = env
+	r.DB.SetShared(cp.Name)
+	kept := "the database " + old + " at Turso"
+	cur, err := r.Current(ctx)
+	if err != nil {
+		return kept, err
+	}
+	if cur == "" {
+		return kept, nil
+	}
+	if err := r.roll(ctx, cur); err != nil {
+		if uerr := r.API.PutEnvVars(ctx, r.svc.ID, prev); uerr != nil {
+			return kept, refuse(err.Error(), "build %s did not serve on the copy %s, and putting the database %s back failed (%v): set ALDER_DB and ALDER_TURSO_DB of the service %s back to %s by hand and run `alder deploy`", cur, cp.Name, old, uerr, r.Service, old)
+		}
+		r.env = prev
+		r.DB.SetShared(old)
+		if rerr := r.roll(ctx, cur); rerr != nil {
+			return kept, refuse(err.Error(), "build %s did not serve on the copy %s: the database %s is the service's again, but build %s did not roll onto it (%v): run `alder deploy`", cur, cp.Name, old, cur, rerr)
+		}
+		return kept, refuse(err.Error(), "build %s did not serve on the copy %s (kept at Turso): the database %s is the service's again and build %s serves", cur, cp.Name, old, cur)
+	}
+	return kept, nil
+}
+
+// RestoreSilo is `alder restore <env> --silo key:value --to <time>`: the silo's database put
+// back as it was (Turso.RestoreChild), then the current build rolled again so no instance keeps
+// what it read of the old one. file is unused (a silo is at Turso). It returns where the replaced
+// database is kept.
+func (r *Render) RestoreSilo(ctx context.Context, key, value, file string, at time.Time, w io.Writer) (string, error) {
+	if _, err := db.SiloPath("/", key, value); err != nil {
+		return "", refuse("", "%s:%s is not a silo (write --silo <key>:<id>)", key, value)
+	}
+	if !r.have {
+		return "", refuse("", "the service %s does not exist at Render yet: deploy first", r.Service)
+	}
+	cur, err := r.Current(ctx)
+	if err != nil {
+		return "", err
+	}
+	kept, err := r.DB.RestoreChild(ctx, key, value, at, w)
+	if err != nil {
+		return kept, err
+	}
+	kept = "the database " + kept + " at Turso"
+	if cur == "" {
+		return kept, nil
+	}
+	if err := r.roll(ctx, cur); err != nil {
+		return kept, refuse(err.Error(), "the silo %s:%s was restored, but build %s did not roll again: run `alder deploy` (the replaced database is %s)", key, value, cur, kept)
+	}
+	return kept, nil
 }
