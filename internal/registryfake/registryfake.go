@@ -26,6 +26,9 @@ type Options struct {
 	// ManifestStatus, when not zero, is the status every manifest PUT answers, with the body
 	// "denied: <status>" (a registry refusing the push).
 	ManifestStatus int
+	// EchoAuth makes the ManifestStatus body also echo the Authorization header received and
+	// the bearer the fake issues, as a careless registry might.
+	EchoAuth bool
 }
 
 // Server is a running fake.
@@ -45,8 +48,8 @@ type Server struct {
 	n         int
 }
 
-// bearer is the token the exchange hands out.
-const bearer = "fake-registry-bearer"
+// Bearer is the token the exchange hands out.
+const Bearer = "fake-registry-bearer"
 
 // New starts a fake and stops it when t ends.
 func New(t testing.TB, opt Options) *Server {
@@ -101,7 +104,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	path := r.URL.Path
 	if path == "/v2/" || path == "/v2" {
-		if s.opt.RequireAuth && r.Header.Get("Authorization") != "Bearer "+bearer {
+		if s.opt.RequireAuth && r.Header.Get("Authorization") != "Bearer "+Bearer {
 			s.challenge(w)
 			return
 		}
@@ -112,7 +115,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if s.opt.RequireAuth && r.Header.Get("Authorization") != "Bearer "+bearer {
+	if s.opt.RequireAuth && r.Header.Get("Authorization") != "Bearer "+Bearer {
 		s.challenge(w)
 		return
 	}
@@ -160,7 +163,7 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"errors":[{"code":"UNAUTHORIZED"}]}`, http.StatusUnauthorized)
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]string{"token": bearer})
+	json.NewEncoder(w).Encode(map[string]string{"token": Bearer})
 }
 
 func (s *Server) upload(w http.ResponseWriter, r *http.Request, rest string, body []byte) {
@@ -201,7 +204,11 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, rest string, b
 		return
 	}
 	if s.opt.ManifestStatus != 0 {
-		http.Error(w, fmt.Sprintf("denied: %d", s.opt.ManifestStatus), s.opt.ManifestStatus)
+		msg := fmt.Sprintf("denied: %d", s.opt.ManifestStatus)
+		if s.opt.EchoAuth {
+			msg += " authorization=" + r.Header.Get("Authorization") + " bearer=" + Bearer
+		}
+		http.Error(w, msg, s.opt.ManifestStatus)
 		return
 	}
 	var m struct {

@@ -32,7 +32,14 @@ func TestImage_Deterministic(t *testing.T) {
 		t.Fatal(err)
 	}
 	later := time.Now().Add(48 * time.Hour)
-	filepath.Walk(dir, func(p string, _ os.FileInfo, _ error) error { return os.Chtimes(p, later, later) })
+	if err := filepath.Walk(dir, func(p string, _ os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		return os.Chtimes(p, later, later)
+	}); err != nil {
+		t.Fatal(err)
+	}
 	b, err := BuildImage(dir, "abc123")
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +47,10 @@ func TestImage_Deterministic(t *testing.T) {
 	if a.Digest != b.Digest || a.LayerDigest != b.LayerDigest {
 		t.Errorf("digests differ: %s vs %s", a.Digest, b.Digest)
 	}
-	c, _ := BuildImage(dir, "other")
+	c, err := BuildImage(dir, "other")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if c.Digest == a.Digest || c.LayerDigest != a.LayerDigest {
 		t.Errorf("the build id should change the config and manifest only")
 	}
@@ -54,7 +64,9 @@ func TestImage_Golden(t *testing.T) {
 	for name, got := range map[string][]byte{"manifest.golden.json": img.Manifest, "config.golden.json": img.Config} {
 		path := filepath.Join("testdata/oci", name)
 		if os.Getenv("UPDATE_GOLDEN") != "" {
-			os.WriteFile(path, append(got, '\n'), 0o644)
+			if err := os.WriteFile(path, append(got, '\n'), 0o644); err != nil {
+				t.Fatal(err)
+			}
 		}
 		want, err := os.ReadFile(path)
 		if err != nil {
@@ -235,7 +247,7 @@ func TestPush_Retry503(t *testing.T) {
 
 func TestPush_ErrorHidesToken(t *testing.T) {
 	fastRetry(t)
-	f := registryfake.New(t, registryfake.Options{User: "tavish", Token: "s3cret-token", ManifestStatus: 401})
+	f := registryfake.New(t, registryfake.Options{User: "tavish", Token: "s3cret-token", RequireAuth: true, ManifestStatus: 401, EchoAuth: true})
 	img, _ := BuildImage(ociArtifact, "one")
 	err := testRegistry(f, "s3cret-token").Push(context.Background(), img, "one")
 	if err == nil {
@@ -244,8 +256,11 @@ func TestPush_ErrorHidesToken(t *testing.T) {
 	if !strings.Contains(err.Error(), "401") || !strings.Contains(err.Error(), "denied: 401") {
 		t.Errorf("error %q", err)
 	}
-	if strings.Contains(err.Error(), "s3cret-token") {
-		t.Errorf("error carries the token: %q", err)
+	if !strings.Contains(err.Error(), "authorization=") {
+		t.Errorf("the denial body was not echoed, the test proves nothing: %q", err)
+	}
+	if strings.Contains(err.Error(), "s3cret-token") || strings.Contains(err.Error(), registryfake.Bearer) {
+		t.Errorf("error carries the token or the bearer: %q", err)
 	}
 }
 
