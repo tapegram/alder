@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"html"
 	"io"
-	"io/fs"
-	"maps"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -27,6 +25,7 @@ import (
 	"alder/rt/datastar"
 
 	"alder/internal/buildkit"
+	"alder/internal/watch"
 )
 
 // runRunTo is `alder run [dir]`: a development server for the app in dir. It builds the app
@@ -71,11 +70,11 @@ func runRunTo(args []string, stdout, stderr io.Writer, stop <-chan struct{}) int
 	}()
 
 	var wg sync.WaitGroup
-	changed := make(chan change)
+	changed := make(chan watch.Change)
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		watch(dir, 300*time.Millisecond, d.done, changed)
+		watch.Watch(dir, 300*time.Millisecond, d.done, changed)
 	}()
 	go func() {
 		defer wg.Done()
@@ -344,7 +343,7 @@ func (d *devServer) report(text string, st errState) {
 // work is the worker: it builds the app, then rebuilds it (or, for a change to static files
 // only, reloads the browsers) for each change, until done closes. Changes reported while a
 // rebuild runs are merged into one.
-func (d *devServer) work(changed <-chan change) {
+func (d *devServer) work(changed <-chan watch.Change) {
 	fmt.Fprintf(d.stderr, "alder run: building %s\n", d.app)
 	d.rebuild()
 	d.mu.Lock()
@@ -354,7 +353,7 @@ func (d *devServer) work(changed <-chan change) {
 		fmt.Fprintf(d.stderr, "alder run: dev server on %s; the app starts once it builds\n", d.addr)
 	}
 	for {
-		var k change
+		var k watch.Change
 		select {
 		case <-d.done:
 			return
@@ -369,7 +368,7 @@ func (d *devServer) work(changed <-chan change) {
 				break merge
 			}
 		}
-		if k&sourceChange != 0 {
+		if k&watch.SourceChange != 0 {
 			fmt.Fprintf(d.stderr, "alder run: rebuilding %s\n", d.app)
 			d.rebuild()
 		} else {
@@ -562,129 +561,6 @@ func (c *child) stop() {
 		_ = c.cmd.Process.Kill()
 		<-c.exited
 	}
-}
-
-// change is what the watcher saw change: sources (a rebuild), static files (a reload), or both.
-type change int
-
-const (
-	sourceChange change = 1 << iota // app/**/*.alder, adapters/** or migrations/ (*.sql, schema.json)
-	staticChange                    // static/**
-)
-
-// stamp is what the watcher compares of a file.
-type stamp struct {
-	mod  time.Time
-	size int64
-}
-
-// watch polls dir every interval until stop closes: the files app/**/*.alder, adapters/**,
-// migrations/*.sql, migrations/schema.json and static/**. A file added, removed or modified is a change; the changes are coalesced and
-// sent on changed once a poll finds nothing new after a poll that did, so a burst of saves is
-// one change.
-func watch(dir string, interval time.Duration, stop <-chan struct{}, changed chan<- change) {
-	prev := snapshot(dir)
-	var pending change
-	t := time.NewTicker(interval)
-	defer t.Stop()
-	for {
-		select {
-		case <-stop:
-			return
-		case <-t.C:
-		}
-		cur := snapshot(dir)
-		if k := diff(prev, cur); k != 0 {
-			pending |= k
-			prev = cur
-			continue
-		}
-		if pending != 0 {
-			select {
-			case changed <- pending:
-			case <-stop:
-				return
-			}
-			pending = 0
-		}
-	}
-}
-
-// editorNoise reports whether name, a file or directory under adapters/, is an editor's or the
-// system's, not the user's Go: a name starting with '.' (.x.go.swp, .DS_Store, .#x.go, .git),
-// ending in '~', ".swp" or ".swx", or of the form #…#. A change to one does not rebuild.
-func editorNoise(name string) bool {
-	return strings.HasPrefix(name, ".") || strings.HasSuffix(name, "~") || strings.HasSuffix(name, ".swp") ||
-		strings.HasSuffix(name, ".swx") || (len(name) > 1 && strings.HasPrefix(name, "#") && strings.HasSuffix(name, "#"))
-}
-
-// snapshot stamps the watched files of dir, keyed by path (relative to dir, slash-separated):
-// app/**/*.alder, every file under static/, migrations/*.sql and schema.json, and the files
-// under adapters/ but editor noise (editorNoise) and symbolic links, which the build does not
-// copy.
-func snapshot(dir string) map[string]stamp {
-	files := map[string]stamp{}
-	add := func(path string, d fs.DirEntry) {
-		if info, err := d.Info(); err == nil {
-			if rel, err := filepath.Rel(dir, path); err == nil {
-				files[filepath.ToSlash(rel)] = stamp{info.ModTime(), info.Size()}
-			}
-		}
-	}
-	for _, sub := range []string{"app", "adapters", "static"} {
-		_ = filepath.WalkDir(filepath.Join(dir, sub), func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return nil // vanished meanwhile, or unreadable: skipped
-			}
-			if sub == "adapters" && path != filepath.Join(dir, sub) {
-				if editorNoise(d.Name()) {
-					if d.IsDir() {
-						return filepath.SkipDir
-					}
-					return nil
-				}
-				if d.Type()&fs.ModeSymlink != 0 {
-					return nil
-				}
-			}
-			if !d.IsDir() && (sub != "app" || strings.HasSuffix(path, ".alder")) {
-				add(path, d)
-			}
-			return nil
-		})
-	}
-	entries, _ := os.ReadDir(filepath.Join(dir, "migrations"))
-	for _, e := range entries {
-		if !e.IsDir() && (strings.HasSuffix(e.Name(), ".sql") || e.Name() == "schema.json") {
-			add(filepath.Join(dir, "migrations", e.Name()), e)
-		}
-	}
-	return files
-}
-
-// diff is the kinds of the files that differ between two snapshots.
-func diff(a, b map[string]stamp) change {
-	if maps.Equal(a, b) {
-		return 0
-	}
-	var k change
-	kind := func(path string) change {
-		if strings.HasPrefix(path, "static/") {
-			return staticChange
-		}
-		return sourceChange
-	}
-	for p, s := range a {
-		if t, ok := b[p]; !ok || t != s {
-			k |= kind(p)
-		}
-	}
-	for p := range b {
-		if _, ok := a[p]; !ok {
-			k |= kind(p)
-		}
-	}
-	return k
 }
 
 // lockedWriter serialises the writes of several goroutines to w.

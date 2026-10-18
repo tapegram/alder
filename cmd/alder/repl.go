@@ -19,6 +19,7 @@ import (
 	"alder/internal/scratch"
 	"alder/internal/snippets"
 	"alder/internal/types"
+	"alder/internal/watch"
 )
 
 // replUsage is the usage line of `alder repl`.
@@ -55,10 +56,10 @@ type repl struct {
 	vet                    bool   // vet the next build (the first, and the first after a reload)
 	stdout, stderr         io.Writer
 	interrupt              <-chan struct{}
-	terminate              <-chan struct{}  // closed on SIGTERM or SIGHUP
-	seen                   map[string]stamp // the app's files as the session was last checked against
-	appDiags               string           // the app's errors as last printed ("" while it checks)
-	warned                 string           // the last build's warning of unwired capabilities, as printed
+	terminate              <-chan struct{}        // closed on SIGTERM or SIGHUP
+	seen                   map[string]watch.Stamp // the app's files as the session was last checked against
+	appDiags               string                 // the app's errors as last printed ("" while it checks)
+	warned                 string                 // the last build's warning of unwired capabilities, as printed
 }
 
 // runReplTo is `alder repl [dir] [--module Name]`: a read-eval-print loop over a persistent
@@ -124,7 +125,7 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 	}
 	r := &repl{dir: dir, modName: modName, appBuild: filepath.Join("build", filepath.Base(abs)),
 		vet: true, stdout: stdout, stderr: stderr, interrupt: interrupt, terminate: terminate}
-	r.seen = snapshot(dir)
+	r.seen = watch.Snapshot(dir)
 	checked, _ := r.check(nil)
 	if exists := (*scratch.ModuleExistsError)(nil); errors.As(checked.Err, &exists) {
 		if named {
@@ -152,8 +153,8 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 
 	stop := make(chan struct{})
 	defer close(stop)
-	changed := make(chan change)
-	go watch(dir, 300*time.Millisecond, stop, changed)
+	changed := make(chan watch.Change)
+	go watch.Watch(dir, 300*time.Millisecond, stop, changed)
 	lines := replLines(stdin, stop)
 
 	lineNo, at := 0, 0
@@ -819,7 +820,7 @@ func (r *repl) printDiag(checked scratch.Checked, d diag.Diagnostic, e replEntry
 // kept as it is. The next build is vetted.
 func (r *repl) reload(header string) {
 	r.vet = true
-	r.seen = snapshot(r.dir)
+	r.seen = watch.Snapshot(r.dir)
 	base, _ := r.check(nil)
 	if base.Err != nil {
 		fmt.Fprintf(r.stderr, "alder repl: %v\n", base.Err)
@@ -858,7 +859,7 @@ func (r *repl) reload(header string) {
 // checks differs from what it was last checked against (a :reload since, or static/ alone).
 // atPrompt: the prompt is showing, so the notice starts a new line.
 func (r *repl) autoReload(atPrompt bool) {
-	if diff(r.seen, snapshot(r.dir))&sourceChange == 0 {
+	if watch.Diff(r.seen, watch.Snapshot(r.dir))&watch.SourceChange == 0 {
 		return
 	}
 	if atPrompt {
