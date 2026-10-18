@@ -1,0 +1,182 @@
+================================================================================
+precedence: |> lowest, ?? below ||, then && comparison + *
+================================================================================
+
+module M
+
+x = a |> f ?? b || c && d == e + f * g
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (pipe_expr
+        left: (identifier)
+        right: (default_expr
+          left: (identifier)
+          right: (or_expr
+            left: (identifier)
+            right: (and_expr
+              left: (identifier)
+              right: (comparison_expr
+                left: (identifier)
+                right: (additive_expr
+                  left: (identifier)
+                  right: (multiplicative_expr
+                    left: (identifier)
+                    right: (identifier)))))))))))
+
+================================================================================
+?? is right-associative
+================================================================================
+
+module M
+
+y = a ?? b ?? c
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (default_expr
+        left: (identifier)
+        right: (default_expr
+          left: (identifier)
+          right: (identifier))))))
+
+================================================================================
+application, qualified names and field access
+================================================================================
+
+module M
+
+z = Post.slug.eq slug
+w = Todo.TodoId "x"
+u = f a b
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (application
+        function: (field_access
+          value: (qualified_name
+            module: (constructor)
+            name: (identifier))
+          field: (identifier))
+        argument: (identifier))))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (application
+        function: (qualified_name
+          module: (constructor)
+          name: (constructor))
+        argument: (string))))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (application
+        function: (identifier)
+        argument: (identifier)
+        argument: (identifier)))))
+
+================================================================================
+lambda, if, lists, negative numbers, holes, unit
+================================================================================
+
+module M
+
+a = List.map (\t -> t.id) xs
+b = if done then 1 else 2 + 3
+c = [1, -1, ?count]
+d = Task.succeed ()
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (application
+        function: (qualified_name
+          module: (constructor)
+          name: (identifier))
+        argument: (parenthesized_expression
+          (lambda
+            param: (identifier)
+            body: (field_access
+              value: (identifier)
+              field: (identifier))))
+        argument: (identifier))))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (if_expr
+        condition: (identifier)
+        consequence: (integer)
+        alternative: (additive_expr
+          left: (integer)
+          right: (integer)))))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (list
+        (integer)
+        (negative_number
+          (integer))
+        (hole))))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (application
+        function: (qualified_name
+          module: (constructor)
+          name: (identifier))
+        argument: (unit)))))
+
+================================================================================
+keywords that are column-1 only are names elsewhere
+================================================================================
+
+module M
+
+update msg form = match msg {
+  _ -> form,
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      params: (parameters
+        (identifier)
+        (identifier))
+      body: (match_expr
+        subject: (identifier)
+        (arm
+          pattern: (wildcard)
+          body: (identifier))))))

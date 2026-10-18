@@ -1,0 +1,86 @@
+================================================================================
+module, import, signature and binding
+================================================================================
+
+module Auth.Login
+
+import User
+
+x : Int
+x = 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)
+      (constructor)))
+  (import_decl
+    module: (module_name
+      (constructor)))
+  (value_decl
+    signature: (signature
+      name: (identifier)
+      type: (type_name
+        (constructor)))
+    binding: (binding
+      name: (identifier)
+      body: (integer))))
+
+================================================================================
+a component is an uppercase value with parameters
+================================================================================
+
+module Ui
+
+Card props = props
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (constructor)
+      params: (parameters
+        (identifier))
+      body: (identifier))))
+
+================================================================================
+function types and type application
+================================================================================
+
+module M
+
+bySlug : Slug -> Query (Maybe Post)
+bySlug slug = slug
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    signature: (signature
+      name: (identifier)
+      type: (type_arrow
+        parameter: (type_name
+          (constructor))
+        result: (type_app
+          constructor: (type_name
+            (constructor))
+          argument: (parenthesized_type
+            (type_app
+              constructor: (type_name
+                (constructor))
+              argument: (type_name
+                (constructor)))))))
+    binding: (binding
+      name: (identifier)
+      params: (parameters
+        (identifier))
+      body: (identifier))))

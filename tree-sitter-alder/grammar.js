@@ -1,0 +1,494 @@
+// tree-sitter-alder/grammar.js
+//
+// A second, independent description of Alder's syntax. It mirrors internal/syntax (the Go
+// parser), not book/A-grammar.md. Newlines, HTML text, raw text and strings come from
+// src/scanner.c, which ports the Go lexer's rules. Policy: accept everything the compiler
+// accepts, perhaps a little more; diagnostics are the compiler's job.
+
+const PREC = {
+  body: -1, // lambda and if/else bodies swallow everything to their right
+  pipe: 1, // |>
+  default: 2, // ??  right-associative, looser than || (parser_expr.go parseDefault)
+  or: 3, // ||
+  and: 4, // &&
+  compare: 5, // == != < <= > >=  (non-associative in the compiler; accepted left here)
+  add: 6, // + - ++
+  mul: 7, // * / %
+  app: 8, // f a b
+  postfix: 9, // x.field
+};
+
+const sep1 = (rule, separator) => seq(rule, repeat(seq(separator, rule)));
+const commaSep1 = (rule) => seq(sep1(rule, ','), optional(','));
+const commaSep = (rule) => optional(commaSep1(rule));
+
+// Keywords that the Go parser accepts as deploy field names (`requires:` and the rest).
+const TRUE_KEYWORDS = ['brand', 'where', 'let', 'match', 'if', 'then', 'else', 'for', 'in', 'requires'];
+
+module.exports = grammar({
+  name: 'alder',
+
+  word: ($) => $.identifier,
+
+  externals: ($) => [
+    $._newline, // scanner.c scan_newline: a separator, not emitted before an operator-led line
+    $.string, // scanner.c scan_string: one token including its {…} interpolations
+    $.html_text, // scanner.c scan_html_text: element text up to `<`+letter, `{` or a comment line
+    $.raw_text, // scanner.c scan_raw_text: <script>/<style> bodies
+    $._raw_tag_name, // scanner.c scan_raw_tag_name: `script` or `style` right after `<`
+    $._error_sentinel, // never in a rule: valid only during error recovery
+  ],
+
+  extras: ($) => [/[ \t\r\n]/, $.comment],
+
+  conflicts: ($) => [
+    // `x : T` NEWLINE `x = …` is one value declaration; in a signature file the next line may
+    // be another signature. Both stay alive until the token after the name (`:` or not).
+    [$.value_decl],
+  ],
+
+  rules: {
+    source_file: ($) =>
+      seq(optional($._newline), $.module_decl, repeat(seq($._newline, $._item)), optional($._newline)),
+
+    _item: ($) => choice($.import_decl, $._declaration),
+
+    module_decl: ($) => seq('module', field('name', $.module_name)),
+    import_decl: ($) => seq('import', field('module', $.module_name)),
+
+    // Module, type and component names: dotted uppercase segments (`Auth.Login`).
+    module_name: ($) => seq($.constructor, repeat(seq('.', $.constructor))),
+
+    _declaration: ($) =>
+      choice(
+        $.value_decl,
+        $.type_decl,
+        $.page_decl,
+        $.msg_decl,
+        $.form_decl,
+        $.table_decl,
+        $.capability_decl,
+        $.fake_decl,
+        $.session_decl,
+        $.login_decl,
+        $.test_decl,
+        $.deploy_decl,
+        $.silo_decl,
+        $.choose_decl,
+      ),
+
+    // ---- values -------------------------------------------------------------------------
+
+    value_decl: ($) =>
+      choice(
+        prec.dynamic(1, seq(field('signature', $.signature), $._newline, field('binding', $.binding))),
+        field('signature', $.signature),
+        field('binding', $.binding),
+      ),
+
+    signature: ($) => seq(field('name', $._signature_name), ':', field('type', $._type)),
+
+    binding: ($) =>
+      seq(field('name', $._value_name), optional(field('params', $.parameters)), '=', field('body', $._expression)),
+
+    parameters: ($) => repeat1($.identifier),
+
+    // Components are uppercase values.
+    _value_name: ($) => choice($.identifier, $.constructor),
+    // Stdlib signature files name values after keywords (`fake : …`, `login : …`); the Go
+    // parser reads them as values only when `:` follows (parser.go peekIsColon), never in a
+    // binding, so `login = Page` stays a login declaration.
+    _signature_name: ($) => choice($._value_name, alias(choice('where', 'fake', 'login'), $.identifier)),
+
+    // ---- types --------------------------------------------------------------------------
+
+    type_decl: ($) =>
+      seq(
+        'type',
+        field('name', $.constructor),
+        repeat(field('param', alias($.identifier, $.type_var))),
+        optional(seq('=', field('body', choice($.brand_type, $.record_type, $.union_type)))),
+      ),
+
+    union_type: ($) => seq(optional('|'), sep1($.variant, '|')),
+    variant: ($) => prec.right(seq(field('name', $.constructor), optional(field('argument', $._type_atom)))),
+
+    brand_type: ($) =>
+      prec.right(seq('brand', field('base', $.constructor), optional(seq('where', field('check', $._expression))))),
+
+    _type: ($) => choice($.type_arrow, $._type_term),
+    type_arrow: ($) => prec.right(seq(field('parameter', $._type_term), '->', field('result', $._type))),
+    _type_term: ($) => choice($.type_app, $._type_atom),
+    type_app: ($) => prec.left(seq(field('constructor', $.type_name), repeat1(field('argument', $._type_atom)))),
+    _type_atom: ($) =>
+      choice($.type_name, alias($.identifier, $.type_var), $.record_type, $.unit_type, $.parenthesized_type),
+    type_name: ($) => prec.left(seq($.constructor, repeat(seq('.', $.constructor)))),
+    unit_type: ($) => seq('(', ')'),
+    parenthesized_type: ($) => seq('(', $._type, ')'),
+
+    record_type: ($) => seq('{', commaSep($.field_decl), '}'),
+
+    // One field shape for records, forms, tables, capabilities and the session: `via` is legal
+    // only in the session and attributes only in tables, which the compiler checks.
+    field_decl: ($) =>
+      seq(
+        field('name', $.identifier),
+        ':',
+        field('type', $._type),
+        optional(seq('via', field('via', $.constructor))),
+        optional(seq('=', field('default', $._expression))),
+        repeat(field('attribute', $.field_attribute)),
+      ),
+
+    // @id @created @unique @owner @cascade … ; @ref T ; @partition key ; @renamed "old"
+    field_attribute: ($) =>
+      prec.right(
+        seq('@', field('name', $.identifier), optional(field('argument', choice($.type_name, $.identifier, $.string)))),
+      ),
+
+    // ---- declarations -------------------------------------------------------------------
+
+    page_decl: ($) =>
+      seq('page', field('path', $.string), field('params', $.record_type), optional(field('requires', $.requires_clause))),
+
+    requires_clause: ($) =>
+      seq('requires', sep1(choice(alias($.identifier, $.session_key), $.role_clause, $.silo_clause), ',')),
+    role_clause: ($) => seq('role', sep1(field('role', $.constructor), '|')),
+    silo_clause: ($) => seq('silo', field('key', $.identifier)),
+
+    msg_decl: ($) =>
+      seq(
+        'msg',
+        field('name', $.constructor),
+        optional(field('params', $.record_type)),
+        optional(seq('form', field('form', $.constructor))),
+      ),
+
+    form_decl: ($) => seq('form', field('name', $.constructor), '=', field('fields', $.record_type)),
+
+    table_decl: ($) =>
+      seq('table', field('name', $.constructor), repeat(field('attribute', $.field_attribute)), field('fields', $.record_type)),
+
+    capability_decl: ($) => seq('capability', field('name', $.constructor), field('entries', $.record_type)),
+
+    fake_decl: ($) => seq('fake', field('name', $.constructor), field('body', $.fake_body)),
+    fake_body: ($) => seq('{', repeat(choice($._newline, $.table_decl, $.fake_entry)), '}'),
+    fake_entry: ($) =>
+      seq(field('name', $.identifier), optional(field('params', $.parameters)), '=', field('body', $._expression)),
+
+    session_decl: ($) => seq('session', field('fields', $.record_type)),
+
+    login_decl: ($) => seq('login', '=', field('page', $.module_name)),
+
+    test_decl: ($) => seq('test', field('name', $.string), '=', field('body', $._expression)),
+
+    deploy_decl: ($) => seq('deploy', field('body', $.deploy_record)),
+    deploy_record: ($) => seq('{', commaSep($.deploy_field), '}'),
+    deploy_field: ($) =>
+      seq(
+        field('name', choice($.identifier, alias(choice(...TRUE_KEYWORDS), $.identifier))),
+        ':',
+        field('value', $._deploy_value),
+      ),
+    _deploy_value: ($) => choice($.string, $.integer, $.float, $.negative_number, $.deploy_list, $.deploy_target),
+    deploy_list: ($) => seq('[', commaSep($._deploy_value), ']'),
+    deploy_target: ($) =>
+      prec.right(
+        seq(field('kind', $.constructor), optional(field('argument', $.string)), optional(field('options', $.deploy_record))),
+      ),
+
+    silo_decl: ($) => seq('silo', field('key', $.identifier), '{', commaSep(field('table', $.constructor)), '}'),
+
+    choose_decl: ($) => seq('choose', field('key', $.identifier), '=', field('page', $.module_name)),
+
+    // ---- expressions --------------------------------------------------------------------
+
+    _expression: ($) =>
+      choice(
+        $.pipe_expr,
+        $.default_expr,
+        $.or_expr,
+        $.and_expr,
+        $.comparison_expr,
+        $.additive_expr,
+        $.multiplicative_expr,
+        $.application,
+        $._term,
+      ),
+
+    pipe_expr: ($) => prec.left(PREC.pipe, seq(field('left', $._expression), '|>', field('right', $._expression))),
+    default_expr: ($) => prec.right(PREC.default, seq(field('left', $._expression), '??', field('right', $._expression))),
+    or_expr: ($) => prec.left(PREC.or, seq(field('left', $._expression), '||', field('right', $._expression))),
+    and_expr: ($) => prec.left(PREC.and, seq(field('left', $._expression), '&&', field('right', $._expression))),
+    comparison_expr: ($) =>
+      prec.left(
+        PREC.compare,
+        seq(field('left', $._expression), choice('==', '!=', '<', '<=', '>', '>='), field('right', $._expression)),
+      ),
+    additive_expr: ($) =>
+      prec.left(PREC.add, seq(field('left', $._expression), choice('+', '-', '++'), field('right', $._expression))),
+    multiplicative_expr: ($) =>
+      prec.left(PREC.mul, seq(field('left', $._expression), choice('*', '/', '%'), field('right', $._expression))),
+
+    // Arguments sit on the function's line: a newline ends the application wherever the
+    // grammar expects a separator (scanner.c). `if`, `match`, elements and negative numbers
+    // are not arguments; a lambda is, and its body runs to the end.
+    application: ($) =>
+      prec.left(PREC.app, seq(field('function', $._simple), repeat1(field('argument', $._argument)))),
+
+    _term: ($) => choice($._argument, $.negative_number, $.if_expr, $.match_expr, $._html),
+    _argument: ($) => choice($._simple, $.lambda, $.record, $.record_update, $.block),
+    _simple: ($) =>
+      choice(
+        $.identifier,
+        $.constructor,
+        $.qualified_name,
+        $.field_access,
+        $.integer,
+        $.float,
+        $.string,
+        $.boolean,
+        $.unit,
+        $.hole,
+        $.list,
+        $.parenthesized_expression,
+      ),
+
+    // `Db.from`, `Todo.TodoId`, `A.B.c`: a module segment then a value or constructor.
+    qualified_name: ($) =>
+      prec.right(
+        seq(field('module', $.constructor), '.', field('name', choice($.identifier, $.constructor, $.qualified_name))),
+      ),
+
+    // `post.title`, `Post.slug.eq`, `(f x).y`; never on a bare constructor.
+    field_access: ($) =>
+      prec(
+        PREC.postfix,
+        seq(
+          field(
+            'value',
+            choice(
+              $.identifier,
+              $.qualified_name,
+              $.field_access,
+              $.parenthesized_expression,
+              $.record,
+              $.record_update,
+              $.block,
+              $.hole,
+            ),
+          ),
+          '.',
+          field('field', $.identifier),
+        ),
+      ),
+
+    lambda: ($) => prec.right(PREC.body, seq('\\', repeat(field('param', $.identifier)), '->', field('body', $._expression))),
+
+    if_expr: ($) =>
+      prec.right(
+        PREC.body,
+        seq(
+          'if',
+          field('condition', $._expression),
+          'then',
+          field('consequence', $._expression),
+          'else',
+          field('alternative', $._expression),
+        ),
+      ),
+
+    // The subject takes no record argument, so `match f x {` opens the arms (the Go parser's
+    // noBrace rule).
+    match_expr: ($) => seq('match', field('subject', $._subject), '{', commaSep($.arm), '}'),
+    _subject: ($) => choice($._simple, alias($._subject_application, $.application)),
+    _subject_application: ($) =>
+      prec.left(
+        PREC.app,
+        seq(field('function', $._simple), repeat1(field('argument', choice($._subject_argument, $.lambda)))),
+      ),
+    // A subject argument never starts with `{` (canStartArg under noBrace), not even as the
+    // record of a field access: `match f x {` must leave `{` to the arms.
+    _subject_argument: ($) =>
+      choice(
+        $.identifier,
+        $.constructor,
+        $.qualified_name,
+        alias($._subject_field_access, $.field_access),
+        $.integer,
+        $.float,
+        $.string,
+        $.boolean,
+        $.unit,
+        $.hole,
+        $.list,
+        $.parenthesized_expression,
+      ),
+    _subject_field_access: ($) =>
+      prec(
+        PREC.postfix,
+        seq(
+          field(
+            'value',
+            choice(
+              $.identifier,
+              $.qualified_name,
+              alias($._subject_field_access, $.field_access),
+              $.parenthesized_expression,
+              $.hole,
+            ),
+          ),
+          '.',
+          field('field', $.identifier),
+        ),
+      ),
+    arm: ($) => seq(field('pattern', $._pattern), '->', field('body', $._expression)),
+
+    record: ($) => seq('{', commaSep($.field_init), '}'),
+    field_init: ($) => seq(field('name', $.identifier), ':', field('value', $._expression)),
+    record_update: ($) => seq('{', field('record', $._expression), '|', commaSep1($.field_init), '}'),
+
+    block: ($) => seq('{', repeat(choice($.let_stmt, $.bind_stmt)), field('result', $._expression), '}'),
+    let_stmt: ($) =>
+      seq(
+        'let',
+        field('name', choice($.identifier, $.wildcard)),
+        optional(seq(':', field('type', $._type))),
+        '=',
+        field('value', $._expression),
+        $._newline,
+      ),
+    bind_stmt: ($) =>
+      seq(
+        'let',
+        field('name', choice($.identifier, $.wildcard)),
+        optional(seq(':', field('type', $._type))),
+        '<-',
+        field('value', $._expression),
+        $._newline,
+      ),
+
+    list: ($) => seq('[', commaSep($._expression), ']'),
+    parenthesized_expression: ($) => seq('(', $._expression, ')'),
+    unit: ($) => seq('(', ')'),
+
+    negative_number: ($) => seq('-', choice($.integer, $.float)),
+    integer: ($) => /[0-9]+/,
+    float: ($) => /[0-9]+\.[0-9]+/,
+    boolean: ($) => choice('True', 'False'),
+    hole: ($) => /\?[a-zA-Z0-9_]*/,
+
+    identifier: ($) => /[a-z][a-zA-Z0-9_]*|_[a-zA-Z0-9_]+/,
+    constructor: ($) => /[A-Z][a-zA-Z0-9_]*/,
+
+    // ---- patterns -----------------------------------------------------------------------
+
+    _pattern: ($) =>
+      choice(
+        $.wildcard,
+        $.identifier,
+        $.integer,
+        $.negative_number,
+        $.string,
+        $.boolean,
+        $.constructor_pattern,
+        $.record_pattern,
+        $.list_pattern,
+        $.parenthesized_pattern,
+      ),
+    wildcard: ($) => '_',
+    constructor_pattern: ($) =>
+      prec.right(seq(field('constructor', $.constructor), optional(field('argument', $._pattern_argument)))),
+    _pattern_argument: ($) =>
+      choice(
+        $.wildcard,
+        $.identifier,
+        $.integer,
+        $.string,
+        $.boolean,
+        alias($._bare_constructor_pattern, $.constructor_pattern),
+        $.record_pattern,
+        $.parenthesized_pattern,
+      ),
+    _bare_constructor_pattern: ($) => field('constructor', $.constructor),
+    record_pattern: ($) => seq('{', commaSep($.field_pattern), '}'),
+    field_pattern: ($) => seq(field('name', $.identifier), ':', field('pattern', $._pattern)),
+    list_pattern: ($) =>
+      seq(
+        '[',
+        optional(choice(seq(sep1($._pattern, ','), optional(seq(',', optional($.rest_pattern)))), $.rest_pattern)),
+        ']',
+      ),
+    rest_pattern: ($) => seq('..', field('name', $.identifier)),
+    parenthesized_pattern: ($) => seq('(', $._pattern, ')'),
+
+    // ---- HTML ---------------------------------------------------------------------------
+
+    _html: ($) => choice($.element, $.self_closing_element, $.raw_element),
+
+    element: ($) => seq(field('open', $.start_tag), repeat($._html_child), field('close', $.end_tag)),
+    start_tag: ($) => seq('<', field('tag', $._tag_name), repeat($.attribute), '>'),
+    end_tag: ($) => seq('</', field('tag', $._tag_name), '>'),
+    self_closing_element: ($) => seq('<', field('tag', $._tag_name), repeat($.attribute), '/', '>'),
+
+    raw_element: ($) =>
+      choice(
+        seq(
+          '<',
+          field('tag', alias($._raw_tag_name, $.tag_name)),
+          repeat($.attribute),
+          '>',
+          optional($.raw_text),
+          '</',
+          field('close', $._tag_name),
+          '>',
+        ),
+        seq('<', field('tag', alias($._raw_tag_name, $.tag_name)), repeat($.attribute), '/', '>'),
+      ),
+
+    // Lowercase names may contain `-` (custom elements) and may be keywords (`<table>`,
+    // `<form>`): this token is not the word token, so keywords are never extracted from it.
+    _tag_name: ($) => choice(alias($._html_name, $.tag_name), alias($.module_name, $.component_name)),
+    _html_name: ($) => /[a-z][a-zA-Z0-9_-]*/,
+
+    attribute: ($) =>
+      seq(
+        field('name', alias($._html_name, $.attribute_name)),
+        optional(seq('=', field('value', choice($.string, $.interpolation)))),
+      ),
+
+    _html_child: ($) => choice($.html_text, $._html, $.interpolation, $.html_for, $.html_if, $.html_match),
+
+    interpolation: ($) => seq('{', field('expression', $._expression), '}'),
+
+    // `for`, `if` and `match` are special only as the first token inside a content brace.
+    html_for: ($) =>
+      seq(
+        '{',
+        'for',
+        field('binder', $.identifier),
+        'in',
+        field('items', $._expression),
+        '->',
+        field('body', $._expression),
+        '}',
+      ),
+    html_if: ($) =>
+      prec(
+        1,
+        seq(
+          '{',
+          'if',
+          field('condition', $._expression),
+          'then',
+          field('consequence', $._expression),
+          'else',
+          field('alternative', $._expression),
+          '}',
+        ),
+      ),
+    html_match: ($) => prec(1, seq('{', 'match', field('subject', $._subject), '{', commaSep($.arm), '}', '}')),
+
+    comment: ($) => token(seq('--', /.*/)),
+  },
+});

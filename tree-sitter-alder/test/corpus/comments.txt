@@ -1,0 +1,29 @@
+================================================================================
+comments before the module, after code and between declarations
+================================================================================
+
+-- a header
+module M
+
+a = 1 -- trailing
+
+-- between
+b = 2
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (comment)
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (integer)))
+  (comment)
+  (comment)
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (integer))))

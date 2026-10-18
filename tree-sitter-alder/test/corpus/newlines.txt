@@ -1,0 +1,152 @@
+================================================================================
+a newline ends an application
+================================================================================
+
+module M
+
+a = f x
+b = g
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (application
+        function: (identifier)
+        argument: (identifier))))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (identifier))))
+
+================================================================================
+an operator at the start of a line continues the expression
+================================================================================
+
+module M
+
+both n =
+  n > 0
+    && n < 10
+    || n == 20
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      params: (parameters
+        (identifier))
+      body: (or_expr
+        left: (and_expr
+          left: (comparison_expr
+            left: (identifier)
+            right: (integer))
+          right: (comparison_expr
+            left: (identifier)
+            right: (integer)))
+        right: (comparison_expr
+          left: (identifier)
+          right: (integer))))))
+
+================================================================================
+continuation across blank and comment lines; a pipe chain
+================================================================================
+
+module M
+
+total xs =
+  xs
+
+    -- keep the evens
+    |> List.filter isEven
+    |> List.sum
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      params: (parameters
+        (identifier))
+      body: (pipe_expr
+        left: (pipe_expr
+          left: (identifier)
+          (comment)
+          right: (application
+            function: (qualified_name
+              module: (constructor)
+              name: (identifier))
+            argument: (identifier)))
+        right: (qualified_name
+          module: (constructor)
+          name: (identifier))))))
+
+================================================================================
+a line starting with < and a letter is not a comparison
+================================================================================
+
+module M
+
+v = {
+  let n = 1
+  <p>hi</p>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (block
+        (let_stmt
+          name: (identifier)
+          value: (integer))
+        result: (element
+          open: (start_tag
+            tag: (tag_name))
+          (html_text)
+          close: (end_tag
+            tag: (tag_name)))))))
+
+================================================================================
+a line starting with < and a space is a comparison
+================================================================================
+
+module M
+
+small n =
+  n
+    < 10
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      params: (parameters
+        (identifier))
+      body: (comparison_expr
+        left: (identifier)
+        right: (integer)))))

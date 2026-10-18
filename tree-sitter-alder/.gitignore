@@ -1,0 +1,9 @@
+# outputs of `tree-sitter build` and nvim-treesitter's compile step (it compiles in place when
+# alder.nvim's `path` points at this checkout)
+parser.so
+*.so
+*.dylib
+*.dll
+*.wasm
+*.o
+log.html

@@ -1,0 +1,21 @@
+{
+  "grammars": [
+    {
+      "name": "alder",
+      "camelcase": "Alder",
+      "title": "Alder",
+      "scope": "source.alder",
+      "path": ".",
+      "file-types": ["alder"],
+      "highlights": "queries/highlights.scm",
+      "injection-regex": "^alder$"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "Apache-2.0",
+    "description": "Alder grammar for tree-sitter",
+    "links": { "repository": "https://github.com/tapegram/alder" }
+  },
+  "bindings": { "c": false, "go": false, "node": false, "python": false, "rust": false, "swift": false }
+}

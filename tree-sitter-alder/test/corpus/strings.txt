@@ -1,0 +1,37 @@
+================================================================================
+interpolations with nested strings and braces are one token
+================================================================================
+
+module M
+
+s = "a {f "-" x} b {{ n: 1 }.n} \" \{ done"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (string))))
+
+================================================================================
+a lone } and -- inside a string are text
+================================================================================
+
+module M
+
+t = "} -- not a comment"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (string))))
