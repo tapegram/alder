@@ -612,7 +612,7 @@ goes in place, mode 600, with the target build's schema records; the
 build is started fresh on it, health checked and switched to. If it
 fails its health check on the copy, everything is undone: the kept
 database goes back and the build that served before starts again. The
-rollback is recorded in the build's `deployed.json` (`rolledBack`,
+rollback is recorded in the build's `deployed.json` (`rollback`,
 `restoredFrom`). `--restore-backup` works onto the current build too:
 that is the way back from a deploy that failed after its migrations.
 

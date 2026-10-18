@@ -9,15 +9,17 @@
 # `changes` runs first and says what the push touched, so a docs-only push does not run the
 # suite: `code` (anything but docs/, book/, .superpowers/, LICENSE and root-level markdown files;
 # book/15-generators.md counts too, a test reads it), `book`, and `deploy` (the deploy code, the
-# Dockerfile, this file). A docs-only push to main therefore runs no jobs; the nightly covers main. Scheduled, manual and tag runs have no
-# diff and count as changing everything. Then `warm` runs and caches the build; then, in
-# parallel: `lint` (gofmt, vet, the Python tests), `test` (go test in six parts:
+# Dockerfile, this file). The diff is against the previous commit on main, and against the merge
+# base with the default branch for a branch's pushes (paths-filter's behaviour). A docs-only push
+# to main therefore runs no jobs but `changes`; the nightly covers main. Scheduled, manual and tag
+# runs have no diff and count as changing everything. Then `warm` runs and caches the build; then,
+# in parallel: `lint` (gofmt, vet, the Python tests), `test` (go test in six parts:
 # cmd/alder's tests in four shards, internal/gen, the rest), `examples` (check, build and test
 # both example apps with the built binary), `deploy` (the Ssh target's tests against a Docker
 # sshd: go test -tags deploy) and `deploy-systemd` (the default production path: systemd units
 # and a real Caddy, on the runner's own VM); the two deploy jobs run on main, tags, the nightly
 # run and when a deploy path changed. `mutation` (the mutation quality gates, too slow for every
-# push) runs nightly at 03:00 New York time, on a manual run and on tags.
+# push) runs nightly at 07:00 UTC, on a manual run and on tags.
 #
 # Branch pushes run on Linux only; pushes to main and tags also run `warm`, `test` and
 # `examples` on macOS (the `os` lists below), so a release is tested on both.
@@ -27,7 +29,7 @@ on:
   push:
   pull_request:
   schedule:
-    - cron: "0 7 * * *" # 03:00 New York (EDT): the nightly run, with the mutation gates
+    - cron: "0 7 * * *" # 07:00 UTC (03:00 New York in summer, 02:00 in winter): the nightly run, with the mutation gates
   workflow_dispatch:
 
 permissions:
@@ -209,10 +211,10 @@ jobs:
           .github/shard.sh 4 "$k"
       - name: go test ./internal/gen
         if: matrix.part == 'internal/gen' && needs.changes.outputs.code == 'true'
-        run: go test ./internal/gen -count=1 -timeout 30m
+        run: go test ./internal/gen -count=1 -timeout 28m
       - name: go test (every other package, the book included)
         if: matrix.part == 'rest'
-        run: go test $(go list ./... | grep -v -e '^alder/cmd/alder$' -e '^alder/internal/gen$') -count=1 -timeout 30m
+        run: go test $(go list ./... | grep -v -e '^alder/cmd/alder$' -e '^alder/internal/gen$') -count=1 -timeout 28m
 
   examples:
     needs: [changes, warm]

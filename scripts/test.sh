@@ -11,6 +11,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 n=${ALDER_TEST_SHARDS:-4}
+case $n in
+  ''|*[!0-9]*|0) echo "ALDER_TEST_SHARDS must be a positive integer, got '$n'" >&2; exit 2 ;;
+esac
 logs=$(mktemp -d "${TMPDIR:-/tmp}/alder-test.XXXXXX")
 start=$SECONDS
 

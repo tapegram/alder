@@ -1159,13 +1159,29 @@ go test ./... -count=1 -timeout 30m
 ```
 
 The `-timeout 30m` matters: `cmd/alder`'s tests build and run whole apps,
-mutation runs included, and on a loaded machine the package takes longer
-than `go test`'s default limit of ten minutes, which then fails it with a
-panic that looks like a hang. CI passes a like flag to each of its
-shards (`.github/workflows/ci.yml`, `.github/shard.sh`; 30 minutes for each
-test part there; the mutation quality gates run nightly in a job of their own). `-short` skips the
-slowest suites (the admin's mutation runs, the out-of-tree builds, the drill), for a
-quick pass while working; the gate runs them.
+and on a loaded machine the package takes longer than `go test`'s default
+limit of ten minutes, which then fails it with a panic that looks like a
+hang. CI passes a like flag to each of its test parts (`.github/workflows/ci.yml`,
+`.github/shard.sh`; 28 minutes for each, inside a job of 30).
+
+That command runs everything except the mutation quality gates, the tests
+that mutate an example app or the admin and demand that no mutant survive
+(`TestAdmin_Columns`, `TestAdmin_Mutate`, `TestExample_TodosMutation`, and the
+mutation half of `TestExample_Blog` and `TestExample_Workspace`). They take
+the longest of all, so they run only with `ALDER_MUTATION_GATES=1`
+(`cmd/alder/gates_test.go`). CI runs them in a job of its own, `mutation`,
+every night (07:00 UTC), on a manual run and on a tag. `-short` skips the
+slowest of the rest as well: the out-of-tree builds, the drill and the twelve
+deploy end to ends.
+
+The suite is slow to run in one piece, so `scripts/test.sh [go test flags]`
+runs it as CI does, in parallel: `cmd/alder` in four shards and every other
+package in a fifth part, each logging to a file, with the tail of any
+failing part printed at the end. `ALDER_TEST_SHARDS` changes the number of
+shards (more is slower on a laptop, since each shard's builds already use
+every core). On the author's machine the full suite takes about three
+minutes this way, `scripts/test.sh -short` about two and a half, where the
+old serial run took nineteen.
 
 ### The browser smoke test
 
@@ -1382,7 +1398,9 @@ are passed: the go command records the tag as the module version when it
 builds at a clean tag, which is what `alder version` prints. CI
 (`.github/workflows/ci.yml`) runs on Linux for every branch push that
 changes code or the book, and also on macOS for `main` and tags, so every
-tag is tested on both.
+tag is tested on both. A green push on `main` no longer includes the
+mutation gates, so before tagging, check that the latest nightly run of CI
+(the one with the gates) is green, or start one by hand.
 
 Pushing the formula needs a token GitHub Actions does not have by
 default: before the first tag, create the repository secret
