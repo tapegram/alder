@@ -67,8 +67,9 @@ listPat     = "[" "]" | "[" lname {"," lname} ["," ".." lname] "]" ;
 block       = "{" {stmt NL} expr "}" ;
 stmt        = "let" lname [":" type] ("=" | "<-") expr ;
 
-html        = element | selfClosing ;
+html        = element | rawElement | selfClosing ;
 element     = "<" tag {hattr} ">" {hchild} "</" tag ">" ;
+rawElement  = "<" ("script" | "style") {hattr} ">" rawtext "</" ("script" | "style") ">" ;
 selfClosing = "<" tag {hattr} "/>" ;
 tag         = lname | uname | ModName "." uname ;
 hattr       = hname "=" (string | "{" expr "}") | hname ;
@@ -88,3 +89,6 @@ Lexical: `lname` is `[a-z_][A-Za-z0-9_]*` other than `_` alone, `uname` is
 segment of a `ModName` ends with `_`: the compiler uses `__` to join the
 parts of the names it generates (chapter 13). An `hname` (an HTML tag or
 attribute name such as `data-x__y`) may contain `__`. Comments run from `--` to end of line.
+A `rawtext` is every character up to the element's closing tag, kept as
+written: no `{ … }`, tags or comments; it may not contain `</script` or
+`</style` in any case (chapter 5, "Scripts and styles").
