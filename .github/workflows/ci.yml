@@ -231,6 +231,8 @@ jobs:
   # TestCorpus and TestGenerated check under `go test ./tree-sitter-alder` (the `test` job's
   # `rest` part); they stay here as a fast, separate signal.
   grammar:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     name: grammar (corpus, highlights, regeneration)
     runs-on: ubuntu-latest
     timeout-minutes: 10
