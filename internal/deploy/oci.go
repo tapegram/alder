@@ -406,6 +406,25 @@ func (r *Registry) pushBlob(ctx context.Context, digest string, data []byte) err
 	return nil
 }
 
+// sameOrigin reports whether u is on base's scheme, host and port, a default port (:443 on
+// https, :80 on http) the same as none. Credentials go only there: never to another host, and
+// never over http unless the registry itself is served over http.
+func sameOrigin(u, base *url.URL) bool {
+	port := func(v *url.URL) string {
+		if p := v.Port(); p != "" {
+			return p
+		}
+		switch strings.ToLower(v.Scheme) {
+		case "https":
+			return "443"
+		case "http":
+			return "80"
+		}
+		return ""
+	}
+	return strings.EqualFold(u.Scheme, base.Scheme) && strings.EqualFold(u.Hostname(), base.Hostname()) && port(u) == port(base)
+}
+
 // do sends one request with the bearer token (or Basic credentials when the registry asked for
 // them and the token exchange was not needed), retrying 5xx and 429.
 func (r *Registry) do(ctx context.Context, method, u string, body []byte, contentType string) (*http.Response, []byte, error) {
@@ -418,7 +437,7 @@ func (r *Registry) doAuth(ctx context.Context, method, u string, body []byte, co
 		return nil, nil, err
 	}
 	base, _ := url.Parse(r.base())
-	sameHost := target.Host == base.Host
+	sameHost := sameOrigin(target, base)
 	wait := retryWait
 	for attempt := 1; ; attempt++ {
 		var rd io.Reader

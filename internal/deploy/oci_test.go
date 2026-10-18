@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -273,5 +274,47 @@ func TestPush_Anonymous(t *testing.T) {
 	}
 	if got := f.TokenAuths(); len(got) != 1 || got[0] != "anonymous" {
 		t.Errorf("token exchanges %v", got)
+	}
+}
+
+// authRecorder answers every request with 201 and records its Authorization header by URL.
+type authRecorder struct{ auth map[string]string }
+
+func (a *authRecorder) RoundTrip(req *http.Request) (*http.Response, error) {
+	a.auth[req.URL.String()] = req.Header.Get("Authorization")
+	return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader("")), Header: http.Header{}, Request: req}, nil
+}
+
+// The bearer goes only to the registry's own origin: an http:// Location on the same host gets
+// none (it would travel in plaintext), and the same host with its default port spelled out
+// (:443 on https) gets it.
+func TestRegistry_BearerScope(t *testing.T) {
+	rec := &authRecorder{auth: map[string]string{}}
+	r := &Registry{Host: "ghcr.test", Repo: "o/r", Client: &http.Client{Transport: rec}, bearer: "BEARER-xyz"}
+	for u, want := range map[string]string{
+		"https://ghcr.test/v2/o/r/blobs/uploads/1":     "Bearer BEARER-xyz",
+		"https://ghcr.test:443/v2/o/r/blobs/uploads/2": "Bearer BEARER-xyz",
+		"http://ghcr.test/v2/o/r/blobs/uploads/3":      "",
+		"http://ghcr.test:443/v2/o/r/blobs/uploads/4":  "",
+		"https://ghcr.test:8443/v2/o/r/blobs/upload/5": "",
+		"https://blobs.test/v2/o/r/blobs/uploads/6":    "",
+	} {
+		if _, _, err := r.do(context.Background(), http.MethodPut, u, []byte("x"), ""); err != nil {
+			t.Fatal(err)
+		}
+		if got := rec.auth[u]; got != want {
+			t.Errorf("%s: Authorization %q, want %q", u, got, want)
+		}
+	}
+	// a registry served over http (a local one, or the tests' fake): the bearer goes to it, with
+	// or without its default port spelled out
+	r.Base = "http://reg.test"
+	for _, u := range []string{"http://reg.test/v2/x", "http://reg.test:80/v2/y"} {
+		if _, _, err := r.do(context.Background(), http.MethodPut, u, []byte("x"), ""); err != nil {
+			t.Fatal(err)
+		}
+		if got := rec.auth[u]; got != "Bearer BEARER-xyz" {
+			t.Errorf("%s: Authorization %q", u, got)
+		}
 	}
 }
