@@ -1017,3 +1017,99 @@ func (r *Render) Logs(ctx context.Context, follow bool, w io.Writer) error {
 func (r *Render) Restore(ctx context.Context, file string) (string, error) {
 	return "", refuse("", "the database of %s is at Turso: it is restored to a point in time (`alder restore <env> --to <time>`), not from a file", r.Describe())
 }
+
+// RestoreBackup is BackupRestorer: the shared database as it was at the point in time build src's
+// row records (before src's migrations) is copied (Turso's point-in-time recovery) and made the
+// service's (one env-var PUT of ALDER_DB and ALDER_TURSO_DB); the builds rows and this run's lock
+// move to the copy. It starts nothing: the engine's Start of build to rolls the service onto it.
+// Undo puts the replaced database's variables back.
+func (r *Render) RestoreBackup(ctx context.Context, to, src string) (Restored, error) {
+	if !r.have {
+		return Restored{}, refuse("", "the service %s does not exist at Render", r.Service)
+	}
+	rows, _, st, err := r.rows(ctx)
+	if err != nil {
+		return Restored{}, err
+	}
+	row, _ := rowOf(rows, src)
+	p, ok := parsePitr(row.Pitr)
+	if st == nil || !ok {
+		return Restored{}, refuse("", "build %s's row records no point in time: none was taken before its migrations", src)
+	}
+	old := r.DB.SharedName()
+	cp, err := r.DB.CopyAt(ctx, p.db, p.at)
+	if err != nil {
+		return Restored{}, err
+	}
+	if err := r.adopt(ctx, st, rows, cp.Name); err != nil {
+		return Restored{}, fmt.Errorf("preparing the copy %s: %w", cp.Name, err)
+	}
+	prev := r.env
+	env, _, _ := overlay(prev, map[string]string{"ALDER_DB": "libsql://" + cp.Hostname, db.EnvTursoDB: cp.Name})
+	if err := r.API.PutEnvVars(ctx, r.svc.ID, env); err != nil {
+		return Restored{}, fmt.Errorf("pointing the service %s at the copy %s: %w", r.Service, cp.Name, err)
+	}
+	r.env = env
+	r.DB.SetShared(cp.Name)
+	undo := func(ctx context.Context) error {
+		if err := r.API.PutEnvVars(ctx, r.svc.ID, prev); err != nil {
+			return err
+		}
+		r.env = prev
+		r.DB.SetShared(old)
+		return nil
+	}
+	return Restored{From: "Turso point in time " + p.at.UTC().Format(time.RFC3339) + " of " + p.db, Taken: p.at, Kept: old, Undo: undo}, nil
+}
+
+// adopt prepares the copy name to be the app's database: the builds rows and the current
+// pointer of the database it replaces (from) are written into it (the copy holds them as they
+// were at its point in time), and this run's deploy lock is taken in it, any lock row it was
+// copied with dropped (the copy is new: no run holds it).
+func (r *Render) adopt(ctx context.Context, from *db.SQLite, rows []db.DeployRow, name string) error {
+	cp, err := r.DB.api().Open(ctx, name, false)
+	if err != nil {
+		return err
+	}
+	keep := false
+	defer func() {
+		if !keep {
+			cp.Close()
+		}
+	}()
+	if err := db.EnsureDeployTables(ctx, cp); err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if err := db.PutDeployRow(ctx, cp, row); err != nil {
+			return err
+		}
+	}
+	cur, err := db.CurrentBuild(ctx, from)
+	if err != nil {
+		return err
+	}
+	if cur != "" {
+		if err := db.SetCurrent(ctx, cp, cur); err != nil {
+			return err
+		}
+	}
+	if holder := r.DB.holder; holder != "" && r.DB.lock != nil {
+		db.ExecRaw(ctx, cp, `DELETE FROM "_alder_lock"`) // absent before any lock: nothing to drop
+		held, err := db.TakeLock(ctx, cp, holder, 2*time.Hour, r.DB.Now())
+		if err != nil {
+			return err
+		}
+		if held != "" {
+			return fmt.Errorf("its deploy lock is held by %s", held)
+		}
+		r.unlocks = append(r.unlocks, func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			db.ReleaseLock(ctx, cp, holder)
+			cp.Close()
+		})
+		keep = true
+	}
+	return nil
+}

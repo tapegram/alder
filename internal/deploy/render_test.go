@@ -606,6 +606,203 @@ func TestRender_UpdateFailed(t *testing.T) {
 	}
 }
 
+// Review Focus 3: a deploy that fails at Render after a data-dropping migration: the engine's
+// restoreAfterDrop makes exactly one point-in-time copy and one env-var PUT naming it; the
+// previous build serves again on the copy; the error carries Render's log lines; and the next
+// run is not locked out.
+func TestRender_UpdateFailedAfterDropRestores(t *testing.T) {
+	g := newRenderRig(t)
+	ctx := context.Background()
+	id1 := g.mustDeploy(g.target())
+	addDrop(t, g.dir)
+	g.render.Logs(renderLogLines...)
+	g.render.Script("update_in_progress", "update_failed")
+	nr := len(g.render.Requests())
+	_, err := g.deploy(g.target(), allowLoss)
+	if err == nil {
+		t.Fatal("deployed")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "was put back automatically and build "+id1+" serves again") || !strings.Contains(msg, "[srv-a1] boom: the mail server is unreachable") {
+		t.Fatalf("error: %s\n%s", msg, g.out.String())
+	}
+	cps := copies(g.turso.Names())
+	if len(cps) != 1 {
+		t.Fatalf("copies %v", g.turso.Names())
+	}
+	if got := migrationsIn(t, g.turso, cps[0]); got != "0001_initial" {
+		t.Errorf("the copy holds %s: not the database before the migration", got)
+	}
+	if got := migrationsIn(t, g.turso, "blog"); got != "0001_initial,0002_drop_summary" {
+		t.Errorf("the replaced database holds %s", got)
+	}
+	r := g.connected()
+	cp, _, err := r.DB.api().Database(ctx, cps[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	reqs := g.requests(nr)
+	if n := count(reqs, "PUT /services/"); n != 1 {
+		t.Errorf("%d env-var PUTs: %v", n, nonGET(reqs))
+	}
+	for _, c := range g.render.Calls() {
+		if c.Method == "PUT" && !strings.Contains(c.Body, `"libsql://`+cp.Hostname+`"`) {
+			t.Errorf("the PUT does not name the copy's host")
+		}
+	}
+	if env := envOf(g.render.Service("blog")); env["ALDER_TURSO_DB"] != cps[0] || env["ALDER_DB"] != "libsql://"+cp.Hostname {
+		t.Errorf("service database %q", env["ALDER_TURSO_DB"])
+	}
+	if r.DB.SharedName() != cps[0] {
+		t.Errorf("a new run reads the database %s", r.DB.SharedName())
+	}
+	if cur, _ := r.Current(ctx); cur != id1 {
+		t.Errorf("current %q", cur)
+	}
+	unlock, err := r.Lock(ctx)
+	if err != nil {
+		t.Fatalf("the next run is locked out: %v", err)
+	}
+	unlock()
+}
+
+// Rollback: the build before the current one is deployed again by its tag, health checked and
+// made current; its record says it was rolled back to.
+func TestRender_Rollback(t *testing.T) {
+	g := newRenderRig(t)
+	id1 := g.mustDeploy(g.target())
+	g.mustDeploy(g.target())
+	nr := len(g.render.Requests())
+	to, err := Rollback(context.Background(), g.target(), RollbackOptions{Env: "production", Out: &g.out, Drain: -1, HealthTimeout: 10 * time.Second})
+	g.keep(to, err)
+	if err != nil || to != id1 {
+		t.Fatalf("%q %v\n%s", to, err, g.out.String())
+	}
+	assertRolledTo(t, g, nr, id1)
+}
+
+func assertRolledTo(t *testing.T, g *renderRig, nr int, id string) {
+	t.Helper()
+	reqs := g.requests(nr)
+	if n := count(reqs, "POST /services/"); n != 1 {
+		t.Errorf("POSTs: %v", nonGET(reqs))
+	}
+	found := false
+	for _, c := range g.render.Calls() {
+		if c.Method == "POST" && strings.HasSuffix(c.Path, "/deploys") && strings.Contains(c.Body, `"imageUrl":"`+rImage+":"+id+`"`) {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no deploy of %s:%s", rImage, id)
+	}
+	if g.current() != id {
+		t.Errorf("current is not %s", id)
+	}
+	builds, _ := g.connected().Builds(context.Background())
+	for _, b := range builds {
+		if b.ID == id && (b.Record == nil || !b.Record.RolledBack) {
+			t.Errorf("record of %s: %+v", id, b.Record)
+		}
+	}
+}
+
+// Review Focus 4: a rollback from a machine without the old build's artifact (a fresh CI
+// checkout) reads the build's schema from its builds row: the schema rule refuses a build older
+// than the live database, and a build with the live schema is deployed again by its tag.
+func TestRender_RollbackWithoutLocalArtifact(t *testing.T) {
+	g := newRenderRig(t)
+	ctx := context.Background()
+	id1 := g.mustDeploy(g.target())
+	id2 := g.mustDeploy(g.target())
+	addDrop(t, g.dir)
+	g.mustDeploy(g.target(), allowLoss)
+	if err := os.RemoveAll(g.root); err != nil {
+		t.Fatal(err)
+	}
+	r := g.connected()
+	sc, err := r.BuildSchema(ctx, id1)
+	s1, _ := schemas()
+	want, _ := json.Marshal(s1)
+	if err != nil || !sc.Have || strings.Join(sc.Migrations, ",") != "0001_initial" || SchemaHash(sc.Snapshot) != SchemaHash(want) {
+		t.Fatalf("build schema from the row: %+v %v", sc, err)
+	}
+	nr := len(g.render.Requests())
+	_, err = Rollback(ctx, g.target(), RollbackOptions{To: id1, Env: "production", Out: &g.out, Drain: -1})
+	g.keep(nil, err)
+	if err == nil || !strings.Contains(err.Error(), "the live database's schema") || !strings.Contains(err.Error(), "is not build "+id1+"'s") {
+		t.Fatalf("err = %v", err)
+	}
+	if n := nonGET(g.requests(nr)); len(n) != 0 {
+		t.Errorf("the refused rollback changed Render: %v", n)
+	}
+	// a build with the live schema: deploy one more without the drop's artifact, then roll back to it
+	_, err = Rollback(ctx, g.target(), RollbackOptions{To: id2, Env: "production", Out: &g.out, Drain: -1, AllowSchemaMismatch: true, HealthTimeout: 10 * time.Second})
+	g.keep(nil, err)
+	if err != nil {
+		t.Fatalf("rollback: %v\n%s", err, g.out.String())
+	}
+	assertRolledTo(t, g, nr, id2)
+}
+
+// rollback --restore-backup: exactly one point-in-time copy (at the time recorded before the
+// later build migrated) and exactly one env-var PUT naming the copy's host.
+func TestRender_RollbackRestoreBackup(t *testing.T) {
+	g := newRenderRig(t)
+	ctx := context.Background()
+	id1 := g.mustDeploy(g.target())
+	addDrop(t, g.dir)
+	id2 := g.mustDeploy(g.target(), allowLoss)
+	nr := len(g.render.Requests())
+	to, err := Rollback(ctx, g.target(), RollbackOptions{To: id1, RestoreBackup: true, Env: "production", Out: &g.out, Drain: -1, HealthTimeout: 10 * time.Second})
+	g.keep(to, err)
+	if err != nil || to != id1 {
+		t.Fatalf("%q %v\n%s", to, err, g.out.String())
+	}
+	cps := copies(g.turso.Names())
+	if len(cps) != 1 {
+		t.Fatalf("copies: %v", g.turso.Names())
+	}
+	if got := migrationsIn(t, g.turso, cps[0]); got != "0001_initial" {
+		t.Errorf("the copy holds %s", got)
+	}
+	r := g.connected()
+	cp, _, _ := r.DB.api().Database(ctx, cps[0])
+	reqs := g.requests(nr)
+	if n := count(reqs, "PUT /services/"); n != 1 {
+		t.Errorf("%d env-var PUTs: %v", n, nonGET(reqs))
+	}
+	for _, c := range g.render.Calls() {
+		if c.Method == "PUT" && !strings.Contains(c.Body, `"libsql://`+cp.Hostname+`"`) {
+			t.Error("the PUT does not name the copy's host")
+		}
+	}
+	if cur, _ := r.Current(ctx); cur != id1 {
+		t.Errorf("current %q", cur)
+	}
+	// the copy holds the builds rows of the database it replaced (as they were when it was
+	// replaced, not at the point in time): id2's record and mark stay
+	builds, _ := r.Builds(ctx)
+	seen := 0
+	for _, b := range builds {
+		if b.ID == id1 && (b.Record == nil || b.Record.RestoredFrom == "") {
+			t.Errorf("record: %+v", b.Record)
+		}
+		if b.ID == id2 && (b.Record == nil || b.BackupOf != id1) {
+			t.Errorf("build %s lost its row in the copy: %+v", id2, b)
+		}
+		seen++
+	}
+	if seen != 2 {
+		t.Errorf("%d builds", seen)
+	}
+	unlock, err := r.Lock(ctx)
+	if err != nil {
+		t.Fatalf("locked out after the restore: %v", err)
+	}
+	unlock()
+}
+
 // The lock held by another run (a row of the shared database's _alder_lock): refused naming
 // the holder, with nothing at Render but Connect's reads and nothing pushed.
 func TestRender_LockHeld(t *testing.T) {
@@ -684,6 +881,53 @@ func TestRender_DryRun(t *testing.T) {
 	}
 }
 
+// Every output of every scenario is free of the secrets (each rig checks its own when its test
+// ends); this one runs them in sequence in one environment, Status and Logs included, and checks
+// that the check itself sees a leak.
+func TestRender_NoSecretsInOutput(t *testing.T) {
+	g := newRenderRig(t)
+	ctx := context.Background()
+	g.render.Logs(renderLogLines...)
+	id1 := g.mustDeploy(g.target())
+	g.mustDeploy(g.target())
+	g.render.Script("update_in_progress", "update_failed")
+	g.deploy(g.target())
+	addDrop(t, g.dir)
+	g.deploy(g.target(), dryRun, allowLoss)
+	g.mustDeploy(g.target(), allowLoss)
+	to, err := Rollback(ctx, g.target(), RollbackOptions{To: id1, RestoreBackup: true, Env: "production", Out: &g.out, Drain: -1})
+	g.keep(to, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st bytes.Buffer
+	if err := Status(ctx, g.connected(), &st); err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	if err := g.connected().Logs(ctx, false, &logs); err != nil {
+		t.Fatal(err)
+	}
+	g.texts = append(g.texts, st.String(), logs.String())
+	_, err = g.connected().Restore(ctx, "/tmp/app.db")
+	g.keep(nil, err)
+	t.Setenv("SMTP_URL", "")
+	g.render.Fail429Once()
+	_, err = g.deploy(g.target())
+	g.keep(nil, err)
+
+	vals := g.secretValues()
+	if len(vals) != 6 {
+		t.Fatalf("%d secret values (the service's ALDER_SECRET missing?)", len(vals))
+	}
+	if l := leaks(g.everything(), vals); len(l) != 0 {
+		t.Errorf("leaked: %v", l)
+	}
+	if l := leaks(g.everything()+"x"+vals[5]+"x", vals); !slices.Equal(l, []int{5}) {
+		t.Errorf("the check misses a leak: %v", l)
+	}
+}
+
 // Status: the current build, the builds, Turso's size, the point-in-time backup, and the
 // service's URL, instance count and live deploy (Info.Lines).
 func TestRender_Status(t *testing.T) {
@@ -699,6 +943,76 @@ func TestRender_Status(t *testing.T) {
 		if !strings.Contains(out, l) {
 			t.Errorf("status lacks %q:\n%s", l, out)
 		}
+	}
+}
+
+// Logs: the last lines, "[instance] message".
+func TestRender_Logs(t *testing.T) {
+	g := newRenderRig(t)
+	g.mustDeploy(g.target())
+	g.render.Logs(renderLogLines...)
+	var w bytes.Buffer
+	if err := g.connected().Logs(context.Background(), false, &w); err != nil {
+		t.Fatal(err)
+	}
+	g.texts = append(g.texts, w.String())
+	if w.String() != "[srv-a1] listening on :10000\n[srv-a1] boom: the mail server is unreachable\n" {
+		t.Errorf("logs:\n%s", w.String())
+	}
+	var q string
+	for _, c := range g.render.Calls() {
+		if c.Path == "/logs" {
+			q = c.Query.Get("limit")
+		}
+	}
+	if q != "100" {
+		t.Errorf("limit %q", q)
+	}
+}
+
+// Logs -f: the websocket's frames are printed as they come, until ctx ends (a clean end).
+func TestRender_LogsFollow(t *testing.T) {
+	g := newRenderRig(t)
+	g.mustDeploy(g.target())
+	g.render.Logs(renderLogLines...)
+	r := g.connected()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var w syncBuffer
+	done := make(chan error, 1)
+	go func() { done <- r.Logs(ctx, true, &w) }()
+	want := "[srv-a1] listening on :10000\n[srv-a1] boom: the mail server is unreachable\n"
+	deadline := time.Now().Add(5 * time.Second)
+	for w.String() != want && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("returned before ctx ended: %v", err)
+	default:
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("follow ended with %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("follow did not end with ctx")
+	}
+	if w.String() != want {
+		t.Errorf("frames:\n%s", w.String())
+	}
+	g.texts = append(g.texts, w.String())
+}
+
+// A file restore is refused: the data is at Turso, restored to a point in time.
+func TestRender_RestoreFileRefused(t *testing.T) {
+	g := newRenderRig(t)
+	_, err := g.target().Restore(context.Background(), "/tmp/app.db")
+	var r *Refusal
+	if !errors.As(err, &r) || !strings.Contains(err.Error(), "restored to a point in time") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
