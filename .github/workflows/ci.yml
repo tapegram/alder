@@ -131,6 +131,11 @@ jobs:
             ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-
+      # the tests' go builds use a cache of their own (internal/testgocache), which on a laptop
+      # keeps them out of the user's; a runner is discarded after the job, so they use the one
+      # just restored, warm
+      - name: the tests' go cache is the restored one
+        run: echo "ALDER_TEST_GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
       - name: every cmd/alder test is in exactly one shard
         if: matrix.part == 'cmd/alder 0/3'
         run: .github/shard.sh 3 check
@@ -204,6 +209,11 @@ jobs:
             ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-
+      # the tests' go builds use a cache of their own (internal/testgocache), which on a laptop
+      # keeps them out of the user's; a runner is discarded after the job, so they use the one
+      # just restored, warm
+      - name: the tests' go cache is the restored one
+        run: echo "ALDER_TEST_GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
       # Docker is part of this job: without it the job fails, unless the pull request carries the
       # label no-docker (then the tests skip, saying so)
       - name: Docker
@@ -245,6 +255,11 @@ jobs:
             ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-
+      # the tests' go builds use a cache of their own (internal/testgocache), which on a laptop
+      # keeps them out of the user's; a runner is discarded after the job, so they use the one
+      # just restored, warm
+      - name: the tests' go cache is the restored one
+        run: echo "ALDER_TEST_GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
       - name: sshd, and a key root accepts from 127.0.0.1
         run: |
           sudo apt-get update -q

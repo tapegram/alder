@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"alder/internal/snippets"
+	"alder/internal/testgocache"
 )
 
 // The verifier compiles every ```alder block of the book with the real `alder` binary, built
@@ -69,6 +70,12 @@ func exampleApp(ex string) string {
 }
 
 func TestMain(m *testing.M) {
+	// the go builds below go into a cache of their own, not the user's (internal/testgocache)
+	release, err := testgocache.Setup()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 	dir, err := os.MkdirTemp("", "alder-book-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -77,6 +84,7 @@ func TestMain(m *testing.M) {
 	tmpRoot = dir
 	code := m.Run()
 	os.RemoveAll(dir)
+	release()
 	os.Exit(code)
 }
 
