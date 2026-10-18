@@ -3576,3 +3576,23 @@ func TestGen_RawTextIsLiteral(t *testing.T) {
 		}
 	}
 }
+
+// Emitting a chain of lets takes time polynomial in its length: whether a let is emitted (its
+// name used in its body) is decided once per let, not again by every count that reaches it
+// (which was 2^k: 26 lets took 11s).
+func TestGen_LetChainLinear(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("module M\n\nf : Int -> Int\nf x = {\n  let a0 = x + 1\n")
+	for i := 1; i < 40; i++ {
+		fmt.Fprintf(&b, "  let a%d = a%d + 1\n", i, i-1)
+	}
+	b.WriteString("  a39\n}\n")
+	done := make(chan map[string][]byte, 1)
+	go func() { done <- emitSource(t, map[string]string{"M.alder": b.String()}) }()
+	select {
+	case files := <-done:
+		contains(t, files["M_alder.go"], "a39 := a38 + 1")
+	case <-time.After(3 * time.Second):
+		t.Fatal("emitting a chain of 40 lets took over 3s")
+	}
+}

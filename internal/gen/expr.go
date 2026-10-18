@@ -49,6 +49,8 @@ type fn struct {
 	jumps map[*ir.Match]map[int]string
 	// share is the decision-tree nodes a match shares between branches (share.go)
 	share sharing
+	// lets records which lets are emitted (letEmitted), for every count over this value's IR
+	lets map[*ir.Let]bool
 }
 
 // temp declares a fresh temporary in s ("_a1", "_u2", …) and returns its Go name.
@@ -156,7 +158,7 @@ func (f *fn) retK(w *strings.Builder, e ir.Expr, s *scope, k func(ir.Expr, *scop
 	}
 	switch x := e.(type) {
 	case *ir.Let:
-		if x.Name == "_" || uses(x.Body, x.Name) == 0 {
+		if !f.letEmitted(x) {
 			f.retK(w, x.Body, s, k)
 			return
 		}

@@ -195,7 +195,7 @@ func (f *fn) analyseShared(root *ir.Match) {
 		for _, u := range places {
 			for _, st := range u[a+1:] {
 				for _, name := range st.bound() {
-					ok = ok && uses(e, name) == 0
+					ok = ok && f.uses(e, name) == 0
 				}
 			}
 		}

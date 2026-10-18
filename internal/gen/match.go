@@ -182,19 +182,19 @@ func (f *fn) caseBody(w *strings.Builder, x *ir.Match, c ir.Case, subj string, s
 			break
 		}
 		v, ok := l.Value.(*ir.Var)
-		if !ok || v.Kind != ir.VarLocal || uses(x.Subject, l.Name) > 0 {
+		if !ok || v.Kind != ir.VarLocal || f.uses(x.Subject, l.Name) > 0 {
 			break
 		}
-		if access[v.Name] != "" && uses(c.Body, v.Name) == 1 {
+		if access[v.Name] != "" && f.uses(c.Body, v.Name) == 1 {
 			folded[v.Name] = true
 		}
-		if l.Name != "_" && uses(l.Body, l.Name) > 0 {
+		if l.Name != "_" && f.uses(l.Body, l.Name) > 0 {
 			renames = append(renames, rename{l.Name, v.Name})
 		}
 		body = l.Body
 	}
 	for _, b := range c.Binds {
-		if !folded[b.Name] && uses(c.Body, b.Name) > 0 {
+		if !folded[b.Name] && f.uses(c.Body, b.Name) > 0 {
 			fmt.Fprintf(w, "%s := %s\n", s.declare(b.Name), access[b.Name])
 		}
 	}

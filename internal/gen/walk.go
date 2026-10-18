@@ -7,7 +7,31 @@ import "alder/internal/ir"
 // uses counts the free occurrences of local name in e that the emitted Go contains: a Let whose
 // own name its body never uses is not emitted (expr.go), so its value's occurrences do not count
 // (else a match binding used only there would be declared and unused).
-func uses(e ir.Expr, name string) int { return (&usesOf{name: name}).count(e) }
+func (f *fn) uses(e ir.Expr, name string) int {
+	return (&usesOf{name: name, lets: f.letCache()}).count(e)
+}
+
+// letCache is f's record of which lets are emitted, shared by every count over f's IR.
+func (f *fn) letCache() map[*ir.Let]bool {
+	if f.lets == nil {
+		f.lets = map[*ir.Let]bool{}
+	}
+	return f.lets
+}
+
+// letEmitted reports whether x is emitted: its name is not `_` and its body uses it.
+func (f *fn) letEmitted(x *ir.Let) bool { return letEmitted(x, f.letCache()) }
+
+// letEmitted decides x once per cache: a count that reaches a let asks the cache, so a chain of
+// k lets is counted in time polynomial in k, not 2^k.
+func letEmitted(x *ir.Let, lets map[*ir.Let]bool) bool {
+	if on, ok := lets[x]; ok {
+		return on
+	}
+	on := x.Name != "_" && (&usesOf{name: x.Name, lets: lets}).count(x.Body) > 0
+	lets[x] = on
+	return on
+}
 
 // usesOf counts the free occurrences of name. A decision tree shares nodes (share.go): a
 // shared node's count is computed once and counted at each place (memo), so counting takes
@@ -15,6 +39,7 @@ func uses(e ir.Expr, name string) int { return (&usesOf{name: name}).count(e) }
 type usesOf struct {
 	name string
 	memo map[ir.Expr]int
+	lets map[*ir.Let]bool // whether each let is emitted (letEmitted)
 }
 
 func (u *usesOf) count(e ir.Expr) int {
@@ -44,7 +69,7 @@ func (u *usesOf) node(e ir.Expr) int {
 		return 0
 	case *ir.Let:
 		n := 0
-		if x.Name != "_" && uses(x.Body, x.Name) > 0 { // else the let is not emitted (expr.go)
+		if letEmitted(x, u.lets) { // else the let is not emitted (expr.go)
 			n = u.count(x.Value)
 		}
 		if x.Name != name {
