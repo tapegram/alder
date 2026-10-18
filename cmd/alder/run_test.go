@@ -444,7 +444,10 @@ func TestRun_ErrorThenFixReloads(t *testing.T) {
 	edit(t, r.dir, "app/Todo.alder", "|> List.length\n", "|> List.length |> Text.length\n")
 	seen := waitFor(t, events, "selector #_alder_errors", 60*time.Second)
 	overlay := seen[len(seen)-1]
-	for _, want := range []string{"data: mode inner", `data: elements <pre class="_alder-errors">`, "E0003", "Todo.alder", "(\\t -&gt; not t.done)"} {
+	// the strip, then each diagnostic structured: file:line:col, the code, the message, the excerpt and its caret
+	for _, want := range []string{"data: mode inner", `<div class="_alder-strip" role="alert">`, "Build failed: 1 error. The page is the last good build.",
+		`data-count="1"`, `<code class="_alder-at">app/Todo.alder:35:19</code>`, `<b class="_alder-code">E0003</b>`, "expected Text, got Int",
+		"(\\t -&gt; not t.done)", "^^^^^^^^"} {
 		if !strings.Contains(overlay, want) {
 			t.Fatalf("overlay lacks %q:\n%s", want, overlay)
 		}
@@ -492,8 +495,11 @@ func TestRun_BuildFailureKeepsOld(t *testing.T) {
 		t.Fatal(err)
 	}
 	seen := waitFor(t, events, "selector #_alder_errors", 60*time.Second)
-	if overlay := seen[len(seen)-1]; !strings.Contains(overlay, "is missing adapters for 1 capability:") {
-		t.Fatalf("overlay lacks the missing-adapters message:\n%s", overlay)
+	// a build failure has no diagnostics: its text is one block, counted as one error
+	for _, want := range []string{"is missing adapters for 1 capability:", "Build failed: 1 error. The page is the last good build.", `data-count="1"`} {
+		if overlay := seen[len(seen)-1]; !strings.Contains(overlay, want) {
+			t.Fatalf("overlay lacks %q:\n%s", want, overlay)
+		}
 	}
 	if body := get(t, r.base+"/login"); !strings.Contains(body, `type="password"`) {
 		t.Fatalf("the old child does not serve /login:\n%s", body)
@@ -518,7 +524,7 @@ func TestRun_StartupCrashKeepsOld(t *testing.T) {
 	edit(t, r.dir, "app/Layout.alder", `<main>`, `<main class="edited">`)
 	seen := waitFor(t, events, "selector #_alder_errors", 120*time.Second)
 	overlay := seen[len(seen)-1]
-	for _, want := range []string{"alder run: the app did not start (exit status 1):", "data: elements alder: "} {
+	for _, want := range []string{"alder run: the app did not start (exit status 1):", "Build failed: 1 error.", "alder: "} {
 		if !strings.Contains(overlay, want) {
 			t.Fatalf("overlay lacks %q:\n%s", want, overlay)
 		}
@@ -547,7 +553,8 @@ func TestRun_RuntimeCrashThenRecovers(t *testing.T) {
 		t.Fatalf("overlay lacks the crash message:\n%s", overlay)
 	}
 	body := getStatus(t, r.base+"/login", http.StatusBadGateway)
-	for _, want := range []string{`<div id="_alder_errors" data-ignore-morph><pre class="_alder-errors">alder run: the app exited (signal: killed)`, "/_alder/datastar-v1.0.0.js"} {
+	// no app at all: the same list is the whole page, styled (data-page), without the strip's text
+	for _, want := range []string{`<div id="_alder_errors" data-ignore-morph data-page>`, `<div class="_alder-errs" data-count="1"`, "alder run: the app exited (signal: killed)", "<h1", "/_alder/datastar-v1.0.0.js"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the 502 page lacks %q:\n%s", want, body)
 		}

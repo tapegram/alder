@@ -133,8 +133,8 @@ func displayAddr(a net.Addr) string {
 // Lifecycle: runRunTo listens, then starts two goroutines, the watcher (watch) and the worker
 // (work). The worker builds the app once at once and then once per change the watcher reports;
 // it is the only caller of rebuild, so rebuilds never overlap. A rebuild runs `alder check`
-// (errors → the overlay, the old child keeps serving), then buildApp (errors → the overlay),
-// then starts the new executable as a child on a free port (startChild; if it does not come up,
+// (errors → the strip and the dev panel's Errors tab, structured; the old child keeps serving),
+// then buildApp (errors → the same, as text), then starts the new executable as a child on a free port (startChild; if it does not come up,
 // its stderr → the overlay, the old child keeps serving), swaps the proxy over to it, stops the
 // old child, clears the overlay and tells every browser to reload. The first child that comes
 // up is announced on stdout (`dev server on <addr> → app on <child addr>`). A child that exits
@@ -167,7 +167,7 @@ type devServer struct {
 	mu        sync.Mutex
 	child     *child                   // the current child; nil before the first good build or after it exited
 	clients   map[chan []byte]struct{} // /_dev/reload subscribers
-	lastErr   string                   // the overlay's text: the last check/build/crash message, "" after a good build
+	errs      errState                 // what the strip and the Errors tab show: the last check/build/crash failure; the zero value after a good build
 	gen       string                   // the generation of the last child that came up (kept after it exits); "" before the first
 	announced bool                     // the stdout line has been printed
 }
@@ -190,7 +190,7 @@ func newDevServer(dir, app, addr string, stdout, stderr io.Writer) *devServer {
 			d.mu.Lock()
 			gen := d.gen
 			d.mu.Unlock()
-			d.unavailable(w, fmt.Sprintf("alder run: the app is not answering: %v", err), gen)
+			d.unavailable(w, errState{kind: "crash", text: fmt.Sprintf("alder run: the app is not answering: %v", err)}, gen)
 		},
 	}
 	return d
@@ -202,39 +202,45 @@ func (d *devServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.mu.Lock()
-	c, msg, gen := d.child, d.lastErr, d.gen
+	c, st, gen := d.child, d.errs, d.gen
 	d.mu.Unlock()
 	if c == nil {
 		if r.URL.Path == datastar.ScriptPath { // the 502 page needs it to subscribe
 			datastar.Handler().ServeHTTP(w, r)
 			return
 		}
-		if msg == "" {
-			msg = "alder run: the app is building…"
+		if st.kind == "" {
+			st = errState{kind: "building", text: "alder run: the app is building…"}
 		}
-		d.unavailable(w, msg, gen)
+		d.unavailable(w, st, gen)
 		return
 	}
 	target := &url.URL{Scheme: "http", Host: c.addr}
 	d.proxy.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), targetKey{}, target)))
 }
 
-// unavailable answers 502 with a page that shows msg in the overlay and subscribes to the
-// reloads as of generation gen (the subscriber the router injects, rt/web reloadTags), so the
-// browser reloads by itself once a new app is up.
-func (d *devServer) unavailable(w http.ResponseWriter, msg, gen string) {
+// unavailable answers 502 with a page that is the list of errors st, styled (the same list the
+// dev panel's Errors tab shows), and subscribes to the reloads as of generation gen (the
+// subscriber the router injects, rt/web reloadTags), so the browser reloads by itself once a new
+// app is up.
+func (d *devServer) unavailable(w http.ResponseWriter, st errState, gen string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusBadGateway)
+	title := map[string]string{"check": "Build failed", "build": "Build failed", "crash": "The app exited"}[st.kind]
+	if title == "" {
+		title = "alder run"
+	}
 	fmt.Fprintf(w, `<!doctype html>
-<html><head><meta charset="utf-8"><title>alder run</title><script type="module" src="%s"></script></head><body><div id="_alder_errors" data-ignore-morph>%s</div><div data-init="@get('/_dev/reload?b=%s', {openWhenHidden: true})"></div></body></html>
-`, datastar.ScriptPath, overlayHTML(msg), url.QueryEscape(gen))
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>alder run</title><style>%s</style><script type="module" src="%s"></script></head><body><main><h1>%s</h1><div id="_alder_errors" data-ignore-morph data-page>%s</div></main><div data-init="@get('/_dev/reload?b=%s', {openWhenHidden: true})"></div></body></html>
+`, pageCSS, datastar.ScriptPath, html.EscapeString(title), errorsHTML(st), url.QueryEscape(gen))
 }
 
-// overlayHTML is the overlay's content for msg: msg escaped in a <pre class="_alder-errors">.
-func overlayHTML(msg string) string {
-	return `<pre class="_alder-errors">` + html.EscapeString(strings.TrimRight(msg, "\n")) + `</pre>`
-}
+// pageCSS styles the 502 page: tokens with fallbacks, as al.css is not served while no app runs.
+const pageCSS = `:root{color-scheme:light dark;--background:#fff;--foreground:#0b1220;--muted:#f1f5f9;--border:#e2e8f0;--destructive:#b91c1c}` +
+	`@media(prefers-color-scheme:dark){:root{--background:#0b1220;--foreground:#f8fafc;--muted:#1e293b;--border:#334155;--destructive:#f87171}}` +
+	`body{margin:0;background:var(--background);color:var(--foreground);font:14px/1.5 system-ui,sans-serif}` +
+	`main{max-inline-size:60rem;margin:0 auto;padding:2rem 1rem}h1{margin:0 0 1rem;font-size:1.1rem;font-weight:600}`
 
 // The events on /_dev/reload.
 var (
@@ -242,8 +248,8 @@ var (
 	reloadEvent = datastar.PatchEvent("body", "append", `<script data-effect="el.remove()">location.reload()</script>`)
 )
 
-func overlayEvent(msg string) []byte {
-	return datastar.PatchEvent("#_alder_errors", "inner", overlayHTML(msg))
+func overlayEvent(st errState) []byte {
+	return datastar.PatchEvent("#_alder_errors", "inner", errorsHTML(st))
 }
 
 // serveReload is /_dev/reload?b=<gen>: an event stream that starts with the comment ": ready",
@@ -259,7 +265,7 @@ func (d *devServer) serveReload(w http.ResponseWriter, r *http.Request) {
 	ch := make(chan []byte, 16)
 	d.mu.Lock()
 	d.clients[ch] = struct{}{}
-	msg, stale := d.lastErr, r.URL.Query().Get("b") != d.gen
+	st, stale := d.errs, r.URL.Query().Get("b") != d.gen
 	d.mu.Unlock()
 	defer func() {
 		d.mu.Lock()
@@ -280,8 +286,8 @@ func (d *devServer) serveReload(w http.ResponseWriter, r *http.Request) {
 		if !send(reloadEvent) {
 			return
 		}
-	case msg != "":
-		if !send(overlayEvent(msg)) {
+	case st.kind != "":
+		if !send(overlayEvent(st)) {
 			return
 		}
 	}
@@ -317,14 +323,22 @@ func (d *devServer) broadcast(events ...[]byte) {
 	}
 }
 
-// fail reports msg: on stderr, as the overlay of every open page and of pages opened later.
+// fail reports the text msg of a failed build or start: on stderr, and as the strip and the
+// Errors tab of every open page and of pages opened later.
 func (d *devServer) fail(msg string) {
-	msg = strings.TrimRight(msg, "\n") + "\n"
-	fmt.Fprint(d.stderr, msg)
+	d.report(msg, errState{kind: "build", text: msg})
+}
+
+// report prints text on stderr and shows st: the strip and the Errors tab of every open page
+// and of pages opened later.
+func (d *devServer) report(text string, st errState) {
+	text = strings.TrimRight(text, "\n") + "\n"
+	fmt.Fprint(d.stderr, text)
+	st.text = text
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.lastErr = msg
-	d.broadcast(overlayEvent(msg))
+	d.errs = st
+	d.broadcast(overlayEvent(st))
 }
 
 // work is the worker: it builds the app, then rebuilds it (or, for a change to static files
@@ -378,7 +392,15 @@ func (d *devServer) work(changed <-chan change) {
 func (d *devServer) rebuild() {
 	var out bytes.Buffer
 	if code := runCheckTo([]string{d.dir}, &out, &out); code != 0 {
-		d.fail(out.String())
+		// the checker's structured output (what `alder check --json` prints), run again for the
+		// failure only; a failure without diagnostics (a load error) stays text
+		var js bytes.Buffer
+		runCheckTo([]string{"--json", d.dir}, &js, io.Discard)
+		if ds := parseDiags(d.dir, js.String()); len(ds) > 0 {
+			d.report(out.String(), errState{kind: "check", diags: ds})
+		} else {
+			d.fail(out.String())
+		}
 		return
 	}
 	d.stderr.Write(out.Bytes()) // warnings
@@ -417,7 +439,7 @@ func (d *devServer) rebuild() {
 		old.stop()
 	}
 	d.mu.Lock()
-	d.lastErr = ""
+	d.errs = errState{}
 	d.broadcast(clearEvent, reloadEvent) // the clear first
 	d.mu.Unlock()
 }
@@ -439,7 +461,8 @@ func (d *devServer) monitor(c *child) {
 		d.child = nil
 	}
 	d.mu.Unlock()
-	d.fail(fmt.Sprintf("alder run: the app exited (%v); save a source file to rebuild it\n%s", c.cmd.ProcessState, lastLines(c.stderr.String(), overlayLines)))
+	msg := fmt.Sprintf("alder run: the app exited (%v); save a source file to rebuild it\n%s", c.cmd.ProcessState, lastLines(c.stderr.String(), overlayLines))
+	d.report(msg, errState{kind: "crash"})
 }
 
 // overlayLines is how many of a child's last stderr lines a crash report shows.

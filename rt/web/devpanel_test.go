@@ -19,9 +19,10 @@ func TestDevPanel(t *testing.T) {
 	}{
 		{dev: true, want: []string{"<al-devpanel", "aria-controls=\"_alder_tab_trace\"", "_alder_tab_sql"}},
 		{dev: true, want: []string{"aria-controls=\"_alder_tab_history\"", "data-copy=\"curl -X GET &#39;http://", "Cookie: alder_session=&lt;your session cookie&gt;", "data-rid=", "sessionStorage"}},
+		{dev: true, want: []string{`id="_alder_ui"`, "_alder_tab_errors", "data-open-errors", "data-ms"}},
 		{dev: true, ds: true, want: []string{"data: selector #_alder_panel", "data: mode inner", "data-ignore-morph"}},
 		{dev: true, off: true, not: []string{"al-devpanel"}},
-		{dev: false, not: []string{"al-devpanel", "_alder_tab", "sessionStorage", "_alder_hist"}},
+		{dev: false, not: []string{"al-devpanel", "_alder_tab", "sessionStorage", "_alder_hist", "_alder_ui", "_alder_errors", "data-ms", "localStorage"}},
 	} {
 		if tc.off {
 			t.Setenv("ALDER_DEV_PANEL", "0")
@@ -288,5 +289,23 @@ func TestNoticeOnlyForPageGET(t *testing.T) {
 	w := cookie("/list", "GET", false)
 	if !strings.Contains(w.Body.String(), "hello") || !strings.Contains(w.Header().Get("Set-Cookie"), NoticeCookie+"=;") {
 		t.Errorf("the page GET did not show and clear the notice: %s", w.Body.String())
+	}
+}
+
+// Production output carries nothing of the panel, the strip or their script and style: the page
+// is exactly what the app rendered.
+func TestProductionPageHasNoDevUI(t *testing.T) {
+	route := one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil, false) })
+	t.Setenv("ALDER_DEV", "")
+	prod := serve(NewRouter(route, testOpts(func(o *Options) { o.Dev = false })), httptest.NewRequest("GET", "/x", nil)).Body.String()
+	t.Setenv("ALDER_DEV", "1")
+	dev := serve(NewRouter(route, testOpts(func(o *Options) { o.Dev = true })), httptest.NewRequest("GET", "/x", nil)).Body.String()
+	if strings.Contains(prod, "_alder_ui") || strings.Contains(prod, "_alder_errors") || strings.Contains(prod, "_alder_panel") || strings.Contains(prod, "al-devpanel") {
+		t.Fatalf("production page carries dev UI:\n%s", prod)
+	}
+	// the dev page is the production page plus the panel, its script and its style, nothing else
+	i, j := strings.Index(dev, "<al-devpanel"), strings.LastIndex(dev, "</script>")+len("</script>")
+	if i < 0 || j < i || dev[:i]+dev[j:] != prod {
+		t.Fatalf("dev page minus the panel differs from production:\ndev:  %q\nprod: %q", dev, prod)
 	}
 }

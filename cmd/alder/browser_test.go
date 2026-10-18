@@ -37,46 +37,7 @@ import (
 // Chromium is Playwright's own (`npx playwright install chromium`). Without them the test is
 // skipped, saying why.
 func TestBrowser_BoostedNavigation(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is not on PATH")
-	}
-	dir := playwrightDir(t)
-	nodePath := filepath.Join(dir, "node_modules")
-	if _, err := os.Stat(filepath.Join(nodePath, "playwright")); err != nil {
-		if os.Getenv("ALDER_BROWSER_INSTALL") != "1" {
-			t.Skip("Playwright is not installed in " + dir + ": set ALDER_BROWSER_INSTALL=1 to install it there with npm")
-		}
-		npm, err := exec.LookPath("npm")
-		if err != nil {
-			t.Skip("Playwright is not installed in " + dir + " and npm is not on PATH")
-		}
-		pkg, err := os.ReadFile(filepath.Join("testdata", "browser", "package.json"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, "package.json"), pkg, 0o644); err != nil {
-			t.Fatal(err)
-		}
-		cmd := exec.Command(npm, "install", "--no-audit", "--no-fund")
-		cmd.Dir = dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Skipf("installing Playwright into %s failed: %v\n%s", dir, err, out)
-		}
-	}
-	env := append(os.Environ(), "NODE_PATH="+nodePath)
-	probe := exec.Command(node, "-e", `process.stdout.write(require('playwright').chromium.executablePath())`)
-	probe.Env = env
-	exe, err := probe.Output()
-	if err != nil {
-		t.Skipf("Playwright does not load from %s: %v", nodePath, err)
-	}
-	if _, err := os.Stat(string(exe)); err != nil {
-		t.Skipf("Playwright's Chromium is not installed (%s): run `NODE_PATH=%s npx playwright install chromium`", exe, nodePath)
-	}
+	node, env := playwrightEnv(t)
 	script, err := filepath.Abs(filepath.Join("testdata", "browser", "smoke.cjs"))
 	if err != nil {
 		t.Fatal(err)
@@ -124,4 +85,53 @@ func playwrightDir(t *testing.T) string {
 		t.Skip("no home directory for the Playwright cache: set ALDER_PLAYWRIGHT_DIR")
 	}
 	return filepath.Join(home, ".cache", "alder-playwright")
+}
+
+// playwrightEnv finds node and Playwright with its Chromium (installing Playwright when
+// ALDER_BROWSER_INSTALL=1), or skips the test, saying why. env is the environment to run a
+// Playwright script with.
+func playwrightEnv(t *testing.T) (node string, env []string) {
+	t.Helper()
+	var err error
+	node, err = exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not on PATH")
+	}
+	dir := playwrightDir(t)
+	nodePath := filepath.Join(dir, "node_modules")
+	if _, err := os.Stat(filepath.Join(nodePath, "playwright")); err != nil {
+		if os.Getenv("ALDER_BROWSER_INSTALL") != "1" {
+			t.Skip("Playwright is not installed in " + dir + ": set ALDER_BROWSER_INSTALL=1 to install it there with npm")
+		}
+		npm, err := exec.LookPath("npm")
+		if err != nil {
+			t.Skip("Playwright is not installed in " + dir + " and npm is not on PATH")
+		}
+		pkg, err := os.ReadFile(filepath.Join("testdata", "browser", "package.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "package.json"), pkg, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(npm, "install", "--no-audit", "--no-fund")
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Skipf("installing Playwright into %s failed: %v\n%s", dir, err, out)
+		}
+	}
+	env = append(os.Environ(), "NODE_PATH="+nodePath)
+	probe := exec.Command(node, "-e", `process.stdout.write(require('playwright').chromium.executablePath())`)
+	probe.Env = env
+	exe, err := probe.Output()
+	if err != nil {
+		t.Skipf("Playwright does not load from %s: %v", nodePath, err)
+	}
+	if _, err := os.Stat(string(exe)); err != nil {
+		t.Skipf("Playwright's Chromium is not installed (%s): run `NODE_PATH=%s npx playwright install chromium`", exe, nodePath)
+	}
+	return node, env
 }

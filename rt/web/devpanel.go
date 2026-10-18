@@ -71,7 +71,7 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 		answer += ", then " + h.answer
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, `<nav data-rid="%d"><span data-bar>%s %s</span> <span>%s</span> <span>%.1f ms</span> <span>%d SQL</span>`,
+	fmt.Fprintf(&b, `<nav data-rid="%d"><span data-bar>%s %s</span> <span>%s</span> <span data-ms>%.1f ms</span> <span>%d SQL</span>`,
 		tw.start.UnixNano(), esc(r.Method), esc(r.URL.Path), esc(answer), ms, len(sqls))
 	tabs := []string{"Request", "Trace", "SQL", "Answer", "Patches", "History"}
 	for i, t := range tabs {
@@ -280,7 +280,7 @@ func (rt *router) inlinePanel(w http.ResponseWriter, page string, status int) st
 	if !ok || !rt.panelOn() {
 		return page
 	}
-	return endOfBody(page, `<al-devpanel id="`+datastar.PanelID+`" data-ignore-morph>`+rt.panelInner(tw, status)+`</al-devpanel>`+panelScript)
+	return endOfBody(page, `<al-devpanel id="`+datastar.PanelID+`" data-ignore-morph>`+rt.panelInner(tw, status)+`</al-devpanel>`+panelScript+panelUI)
 }
 
 // shellBody adds to a body patch the panel's element (dev) and, when a Noticed answer has a toast
