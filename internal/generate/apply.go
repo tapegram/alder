@@ -65,13 +65,18 @@ type Result struct {
 	Holes       []Hole   // the typed holes in the files the command changed
 	Notes       []string // the migration's steps, when Migrate wrote one
 	Sources     map[string][]string
-	Written     bool // the files were written into the app
+	Written     bool     // the files were written into the app
+	Skipped     []string // regen admin: the pages not recreated
+	UpToDate    bool     // regen admin: whether there was nothing to do
 }
 
 // FileChange is one file Apply writes: Action is "created", "edited" or "removed".
 type FileChange struct {
 	Path   string `json:"path"`
 	Action string `json:"action"`
+	// Before is the file's text in the app as copied (nil when created); After is its text in the
+	// copy (nil when removed). Neither is serialised.
+	Before, After *string `json:"-"`
 }
 
 // HasErrors reports whether the copy had errors.
@@ -181,15 +186,17 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 			return err
 		}
 		before, berr := os.ReadFile(filepath.Join(appDir, filepath.FromSlash(rel)))
+		after := string(now)
 		switch {
 		case berr != nil:
-			res.Files = append(res.Files, FileChange{rel, "created"})
+			res.Files = append(res.Files, FileChange{Path: rel, Action: "created", After: &after})
 			changed[rel] = true
 			if o.DryRun { // what would be written, in full
 				res.Diff += strings.Replace(UnifiedDiff(rel, "", string(now)), "--- a/"+rel+"\n", "--- /dev/null\n", 1)
 			}
 		case !bytes.Equal(before, now):
-			res.Files = append(res.Files, FileChange{rel, "edited"})
+			was := string(copied[rel])
+			res.Files = append(res.Files, FileChange{Path: rel, Action: "edited", Before: &was, After: &after})
 			changed[rel] = true
 			if strings.HasPrefix(rel, "app/") {
 				res.Diff += UnifiedDiff(rel, string(before), string(now))
@@ -202,7 +209,8 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 	}
 	for _, e := range edits {
 		if e.Delete {
-			res.Files = append(res.Files, FileChange{e.Path, "removed"})
+			was := string(copied[e.Path])
+			res.Files = append(res.Files, FileChange{Path: e.Path, Action: "removed", Before: &was})
 			changed[e.Path] = true
 		}
 	}
