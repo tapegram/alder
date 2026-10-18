@@ -119,6 +119,11 @@ func (s *server) lastGood() *analysis { return s.good.Load() }
 // Completion asks with inclusive false, since the cursor's line is the one being typed; hover,
 // definition and references with true.
 func (s *server) fresh(a *analysis, rel string, line int, inclusive bool) bool {
+	return freshLines(a, rel, strings.Split(s.text(rel), "\n"), line, inclusive)
+}
+
+// freshLines is fresh against now, rel's current lines, which the caller read once.
+func freshLines(a *analysis, rel string, now []string, line int, inclusive bool) bool {
 	if a == nil {
 		return false
 	}
@@ -126,7 +131,6 @@ func (s *server) fresh(a *analysis, rel string, line int, inclusive bool) bool {
 	if !ok {
 		return false
 	}
-	now := strings.Split(s.text(rel), "\n")
 	last := line - 1
 	if inclusive {
 		last = line

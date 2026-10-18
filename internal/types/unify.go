@@ -42,6 +42,23 @@ func (u *Unifier) Table(r *Record) *TableInfo {
 	return u.tables[r.Module+"."+r.Name]
 }
 
+// Clone is a copy of u that unifies on its own: its substitution and table records are copied
+// and its variable counter carries on from u's, so nothing done on the clone changes u, and its
+// fresh variables never collide with u's.
+func (u *Unifier) Clone() *Unifier {
+	c := &Unifier{Subst: make(Subst, len(u.Subst)), next: u.next}
+	for id, t := range u.Subst {
+		c.Subst[id] = t
+	}
+	if u.tables != nil {
+		c.tables = make(map[string]*TableInfo, len(u.tables))
+		for k, v := range u.tables {
+			c.tables[k] = v
+		}
+	}
+	return c
+}
+
 func (u *Unifier) Fresh() *Var {
 	u.next++
 	return &Var{ID: u.next}

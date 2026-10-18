@@ -44,6 +44,7 @@ var (
 		"textDocument/hover":      hoverReq,
 		"textDocument/definition": definitionReq,
 		"textDocument/references": referencesReq,
+		"textDocument/completion": completionReq,
 	}
 	slowMethods = map[string]handler{
 		"alder/preview": func(*server, json.RawMessage) (any, error) { return map[string]any{}, nil },
