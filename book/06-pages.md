@@ -1563,7 +1563,7 @@ page never shows the text.
 ### Deploying
 
 An app also says where it ships. A `deploy { … }` declaration in `App`
-names the environments (a server reached by SSH, a Fly app, or a script of
+names the environments (a server reached by SSH, a Fly or Render app, or a script of
 your own) and what must hold before a build goes out: the least mutation
 score, the commands to run, the environment variables the target must
 provide. It is data that the `alder deploy` command reads; it adds no page,

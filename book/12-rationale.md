@@ -800,7 +800,7 @@ is a warning (W0006). An agent changing the app sees the declaration in
 the same files, in the same language, with the same error messages. The
 alternative, a CI file per provider, is a second language with no
 checker, which is exactly what Alder exists to remove. The targets
-(`Ssh`, `Fly`, later `Turso` and a hosted Alder target) are built into
+(`Ssh`, `Fly`, `Render`, later a hosted Alder target) are built into
 the compiler behind one interface, so each one gets the same gate, plan,
 health check and record; `Script "./deploy.sh"` is the hatch for
 everything else, and gets the gate and the artifact too.
@@ -847,6 +847,8 @@ the build still serving is already failing its writes. And the CI
 workflow runs the whole gate once more in each deploy job: slower than
 trusting an earlier job, but a deploy that trusts nothing is the
 point.
+
+A PaaS deploys an image it is handed, and a file database and a stateless service do not mix, so the `Render` target keeps its data in Turso and has no disk mode (chapter 16, "The Render target").
 
 ## Experiments
 

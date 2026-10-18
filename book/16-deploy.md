@@ -27,7 +27,7 @@ step (with a transcript `go test ./book` runs, and a recorded session
 against a real server), what the gate refuses and why, `status`,
 `rollback` and `logs`, backups and `restore`, the workflow `alder ci
 init` writes for GitHub, the preview environment of a pull request, the
-`Fly` target, the `Script` escape hatch, and what running SQLite in
+`Fly` and `Render` targets, the `Script` escape hatch, and what running SQLite in
 production means. Chapter 12 explains why it is designed this way;
 chapter 13 how the code does it.
 
@@ -61,6 +61,7 @@ The other fields are settings of every environment.
 |---|---|
 | `<env>: Ssh "user@host" { domain, path, user?, port? }` | a Linux server reached with your SSH key; the app's state lives under `path`; `domain` is the name the proxy serves with automatic TLS; `user` and `port` override the SSH user and port (an `Int`) |
 | `<env>: Fly "region" { app }` | a Fly.io app in a region: one machine and a volume for the database (see "The Fly target") |
+| `<env>: Render "region" { service, database, instances?, plan? }` | a Render web service running an image alder pushes, its data in a Turso `database` (see "The Render target") |
 | `<env>: Script "./path"` | your own script, handed the finished build (see "The Script hatch") |
 | `floor: 0.95` | the least mutation score a build may have (`0` to `1`); without it, the score of the build deployed last, `0` before any |
 | `checks: ["cmd", …]` | shell commands run from the app's root after the tests; each must exit 0 |
@@ -1099,6 +1100,251 @@ FLY_API_TOKEN=… ALDER_FLY_APP=alder-test-you go test -tags fly ./cmd/alder -ru
 It deploys the scaffold twice, checks the public address serves each
 build, rolls back, and leaves the app for `fly apps destroy`.
 
+## The Render target
+
+**Experimental.** The `Render` target has run only against fakes of
+Render's API, of a registry and of Turso in alder's own tests; it has
+never run against a real Render account. The transcript below is from
+those fakes, and the real-account round (a manual test, at the end of
+this section) replaces it.
+
+[Render](https://render.com) runs **an image it is handed** as a web
+service, on as many instances as you ask for, and rolls a new image in
+beside the old one. A service there keeps nothing between deploys, so a
+`Render` environment keeps its data in a Turso database (above), and
+that is the only shape it has:
+
+```alder fragment
+deploy {
+  production: Render "oregon" {
+    service:   "blog",
+    database:  Turso "my-org" { app: "blog" },
+    instances: 2,
+    plan:      "starter",
+  },
+  preview: Render "oregon" {
+    service:  "blog-preview",
+    database: Turso "my-org" { app: "blog-preview" },
+  },
+  image:    "ghcr.io/tavish/blog",
+  requires: ["SMTP_URL"],
+}
+```
+
+`Render "oregon"` is one of Render's regions (`oregon`, `ohio`,
+`virginia`, `frankfurt`, `singapore`). `service` is the name of the
+service in your Render workspace; the first deploy creates it.
+`database` is required (E0030 says so: "a Render service keeps nothing
+between deploys"), and two environments that share an `app` share data,
+so the preview has its own. `instances` is how many copies run (default
+1), `plan` is passed to Render as given (`starter`, `standard`,
+`1c-2g`, …; unset leaves Render's default). `image` is the registry path
+every Render environment pushes to, tagged with the build id, without a
+tag or a credential in it. Left out, it is `ghcr.io/<owner>/<repo>` from
+the `origin` remote of the git repository above the app (a GitHub
+remote); with no such remote the command refuses with E0030 and says
+what to write. `backup: S3` does not apply to a Render environment,
+since Turso's point-in-time recovery is its backup, and `--host` is
+refused: the address is the service's.
+
+### What the command reads
+
+Four things on the machine that deploys (a laptop or the CI runner),
+never in `App`:
+
+| Variable | Used for |
+|---|---|
+| `RENDER_API_KEY` | Render's REST API |
+| `TURSO_API_TOKEN` | Turso's platform API, the migrations and the lock, as for an `Ssh` environment with a `Turso` database; the running service gets it too, to mint each silo's token |
+| `ALDER_REGISTRY_TOKEN` (and `ALDER_REGISTRY_USER`, default the first part of `image`) | the image push, and Render's credential to pull it |
+| the `requires` names, and `ALDER_SECRET` | set as the service's environment variables; `ALDER_SECRET` is made once and kept on the service |
+
+The rule of the chapter holds: none of them is in `App`, in the image,
+in a record, in `--json` or in an error. The service's environment
+variables are **merged**, not replaced (Render's call replaces the whole
+set): a variable you set in the dashboard stays, a `requires` name unset
+here but already at the service counts as set, and the values are never
+printed. The variables and the instance count are set just before the
+roll, so a refusal earlier (a missing name, a migration the gate stops)
+has changed nothing at Render.
+
+### A transcript
+
+Against the test fakes (`TestDeployRender_EndToEnd`); the real-account
+transcript replaces it after the real round. The first deploy creates
+the registry credential and the service, so the roll is the service's
+own first deploy:
+
+```text
+$ alder deploy production --unsafe-skip-tests
+alder deploy production → Render oregon (service blog)
+gate
+  check    ok
+  build    ok
+  test     SKIPPED  --unsafe-skip-tests: no tests, no mutation score, no checks
+artifact build/demo/deploy/a5c229befa496d47 (linux/amd64)
+target
+  requires ok  SMTP_URL, ALDER_SECRET
+plan
+  first deploy: the database is created by every migration
+  0001_initial
+    create table Entry
+ship
+image pushed ghcr.io/tavish/blog:a5c229befa496d47 (12.0 MB)
+  upload   ok  image ghcr.io/tavish/blog:a5c229befa496d47
+  backup   ok  no database yet
+  migrate  ok  applied 0001_initial
+registry credential alder-tavish/blog created (GITHUB)
+Render service blog created (http://127.0.0.1:62327/svc/blog)
+Render deploy dep-0000000003 live (1 instance)
+  start    ok  port 443
+health: 1/1 instances serve a5c229befa496d47
+  health   ok  build a5c229befa496d47 answers GET /
+  switch   ok  current → a5c229befa496d47 (port 443)
+deployed a5c229befa496d47 to production
+address  http://127.0.0.1:62327/svc/blog
+```
+
+After an edit, the second deploy pushes and rolls, and the backup is a
+Turso point in time:
+
+```text
+ship
+image pushed ghcr.io/tavish/blog:e010d2cf9e89376f (12.0 MB)
+  upload   ok  image ghcr.io/tavish/blog:e010d2cf9e89376f
+  backup   ok  Turso point in time 2026-10-18T00:44:42Z of blog
+  migrate  ok  nothing to apply
+Render deploy dep-0000000004 live (1 instance)
+  start    ok  port 443
+health: 1/1 instances serve e010d2cf9e89376f
+  health   ok  build e010d2cf9e89376f answers GET /
+  switch   ok  current → e010d2cf9e89376f (port 443)
+  stop     ok  build a5c229befa496d47
+deployed e010d2cf9e89376f to production
+```
+
+(`address` is the service's URL as Render reports it, since Render adds
+a suffix to a name that is taken; before the service exists, as in a
+`--dry-run`, it is `https://<service>.onrender.com (expected)`. The
+`--json` record carries it as `address`, for every kind of target.)
+
+### Zero downtime, and what it asks of migrations
+
+Render does the roll. It starts the new instances beside the old, asks
+them `/_alder/health` until they are healthy, switches the traffic and
+sends the old ones SIGTERM (with 30 seconds to finish). The `switch` and
+`stop` lines above are alder's bookkeeping; the engine's health check
+then asks the public address until `instances` consecutive answers name
+the new build, so every instance has rolled before the build is
+recorded as current. `ALDER_DEPLOY_HEALTH_TIMEOUT` (a Go duration, such
+as `10m`, the default) bounds both the roll and that check.
+
+`/_alder/health`, which every build serves, answers `{"build":"<id>",
+"db":"ok"}`, or 503 when `db` is not `ok`: `unreachable`, or `ahead: …`
+for a database migrated past this build. A build never migrates a
+remote database when it starts (several instances would race). Behind
+the database, it exits with "the database is behind this build: run
+`alder deploy`", which fails Render's deploy while the old instances
+keep serving; ahead of it, it serves the maintenance page.
+
+What that asks of migrations: the migrations run **first**, from the
+deploying machine, and the old build keeps serving **on the new schema**
+until the roll completes. That is why the gate's DROPS DATA rule
+(above, "Migrations and the data-loss rule") is the guard, and why it is
+not optional here: a migration that renames or drops a column the old
+build still reads makes the old instances fail for as long as the roll
+takes. Add the new column in one deploy, and drop the old one in the
+next.
+
+### Instances, rollback and restore
+
+`instances: 2` makes Render run two copies, and the health check waits
+for both; a changed count is set just before the roll. Because the store
+is Turso, not a file, any number of instances is allowed; this is the
+one target with that field.
+
+State lives where the data does: the builds, their records, the pointer
+to the current build and the lock are rows of the shared Turso database
+(`_alder_deploy_builds`, `_alder_deploy_current` and `_alder_lock`), so a
+laptop and a CI runner agree, and a runner that never had the old
+artifact can still plan and roll back from the stored schema. Nothing is
+recorded as current until Render reports the deploy `live` and the
+health check has seen the build.
+
+`alder status` adds the service's URL, its instances, the live deploy and
+its age. `alder rollback <env> [id]` deploys the older image by its tag
+and polls, under the same schema rule as any rollback; `--restore-backup`
+copies the database as it was at the time recorded for the next build,
+and sets the new `ALDER_DB` in one call before the roll. `alder restore
+<env> --to <time>` (with `--silo` for one org) is the Turso restore
+above, with that call in place of `turso.env`. All of them are rolls, so
+none takes the site down. `alder logs <env>` prints the service's last
+lines, `[instance] message`; with `-f` it streams, over Render's log
+websocket (a small RFC 6455 client in alder, no dependency), until you
+stop it.
+
+### The registry, and the one token
+
+The artifact becomes a one-layer OCI image on `scratch`: the executable,
+`static/`, `migrations/` and `alder-deploy.json`, and nothing else, no
+shell and no package. alder builds and pushes it itself, with the
+registry's HTTP API and no Docker, so the same artifact always gives the
+same image digest. Render runs `linux/amd64`, and the artifact is
+cross-built for it. Two things a bare image lacks are supplied: a CA
+bundle (Mozilla's, vendored in alder) at `/etc/ssl/certs/ca-certificates.crt`
+for the adapters' TLS, and the time zone database, compiled into the
+executable of a deploy build. (alder takes no module beyond the
+standard library and the SQLite driver, so the image carries the bundle
+rather than a Go package of roots.)
+
+One token does two jobs: `ALDER_REGISTRY_TOKEN` pushes the image and is
+also what Render stores as its **registry credential**, found or made
+by name on each deploy (`alder-<image path>`; the registry kind comes
+from the host: `ghcr.io`, Docker Hub, GitLab, Google Artifact Registry
+and ECR are known). Render pulls with it for as long as the service
+lives, so it must be a long-lived personal access token (for GHCR, a
+classic token with `read:packages` and `write:packages`), not a
+per-run one. With no token set the push is anonymous and no credential
+is made: that works only for a public image. Images stay in the
+registry (pruning removes only the records `keep` counts).
+
+### CI
+
+`alder ci init` writes the same three jobs for a Render environment,
+with no SSH step. The header comment lists the repository secrets
+(`RENDER_API_KEY`, `TURSO_API_TOKEN`, `ALDER_REGISTRY_TOKEN` and the
+`requires` names), the job has `permissions: packages: write`, and
+`ALDER_REGISTRY_TOKEN` falls back to `github.token`. The run token can
+push a GHCR image under the repository's owner but cannot stand in as
+Render's credential, since it dies with the run: set a personal access
+token once as the `ALDER_REGISTRY_TOKEN` secret, or keep the image
+public. The pull request's preview runs `alder deploy preview --json`
+and comments the `address` from it (no `--host`), and every pull request
+deploys to the one preview service, so the last push wins. The first
+deploy creates the Render service; the dashboard is for looking.
+
+### Why no disk mode
+
+A Render persistent disk would put SQLite in a file, but Render stops
+the instance that holds a disk before the new one starts, so no shape of
+it is zero-downtime. A stateless service on a remote database is the
+shape a platform that deploys images can roll without a pause.
+
+### The manual test
+
+The unit and end-to-end tests run against fakes. The real round is
+manual, because it needs three accounts and costs a little:
+
+```text
+ALDER_RENDER_REAL=1 RENDER_API_KEY=… TURSO_API_TOKEN=… ALDER_TURSO_ORG=acme \
+  ALDER_RENDER_IMAGE=ghcr.io/you/alder-m16 ALDER_REGISTRY_TOKEN=… \
+  go test -tags render ./cmd/alder -run TestRenderReal -v -timeout 60m
+```
+
+It deploys the scaffold twice to a service and a Turso database named
+`alder-m16-<random>`, reads `status`, rolls back, reads the logs, and
+deletes nothing: it prints the commands that remove what it made.
+
 ## The Script hatch
 
 `Script "./deploy.sh"` is for everything alder does not ship to itself:
@@ -1359,12 +1605,15 @@ and for unusual setups:
 |---|---|
 | `ALDER_SSH_CONFIG` | an `ssh_config` file every `ssh` reads (`ssh -F`): an identity, a jump host, a known-hosts file |
 | `ALDER_DEPLOY_DRAIN` | how long the old build drains after the switch (default `30s`; `0` stops it at once) |
-| `ALDER_DEPLOY_HEALTH_TIMEOUT` | how long a new build has to pass its health check (default `60s`) |
+| `ALDER_DEPLOY_HEALTH_TIMEOUT` | how long a new build has to pass its health check (default `60s`; `10m` for a Render roll; a Go duration) |
 | `ALDER_DEPLOY_SUPERVISOR` | `process` runs builds as background processes even where systemd runs |
 | `ALDER_DEPLOY_CADDY_ADMIN` | the `host:port` of Caddy's admin API at the box (default `127.0.0.1:2019`) |
 | `ALDER_BACKUP_URL` | at the box (the environment file): stream the database to a directory or bucket without a `backup` in the declaration |
 | `ALDER_BACKUP_INTERVAL` | how often the runtime ships the database (default `10s`) |
 | `ALDER_ALLOW_DATA_LOSS` | read by the app's executable, never set by you: `1` lets `--migrate-only` apply a DROPS DATA migration; `alder deploy` sets it for one run with `--allow-data-loss` |
+| `RENDER_API_KEY` | the Render target's API key (the Render REST API) |
+| `ALDER_REGISTRY_TOKEN`, `ALDER_REGISTRY_USER` | the Render target's registry token (the image push and Render's pull credential) and user (default the first part of `image`) |
+| `ALDER_RENDER_API` | Render's API address (default `https://api.render.com/v1`; alder's tests point it at the fake) |
 | `FLY_API_TOKEN`, `FLY_ORG` | the Fly target's token, and the organization a new Fly app is created in |
 | `TURSO_API_TOKEN` | here and at the box: the Turso platform API's token (a `database: Turso` environment) |
 | `ALDER_TURSO_API` | the platform API's address (default `https://api.turso.tech`; alder's tests point it at the fake, whose databases are then reached over plain HTTP) |
@@ -1383,7 +1632,8 @@ again a silo it found not servable.
 ## What is not there yet
 
 The `Fly` target is experimental: it refuses migrating deploys and has
-no lock and no `--restore-backup`. A preview is not
+no lock and no `--restore-backup`. The `Render` target is experimental too:
+it has run only against fakes until the manual `-tags render` round. A preview is not
 removed when its pull request closes. Wildcard certificates need a DNS
 challenge alder does not configure. A build run as a plain process
 (no systemd) is not restarted when it crashes. Only GitHub Actions has
