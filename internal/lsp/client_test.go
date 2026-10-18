@@ -22,7 +22,8 @@ const timeout = 5 * time.Second
 type client struct {
 	t          *testing.T
 	w          *io.PipeWriter
-	mu         sync.Mutex // guards the fields below, and serialises writes to w
+	wmu        sync.Mutex // serialises writes to w; held only by send
+	mu         sync.Mutex // guards the fields below; never held across a pipe write
 	nextID     int
 	waits      map[int]chan *message
 	notes      chan *message // notifications other than publishDiagnostics
@@ -135,8 +136,8 @@ func (c *client) send(v any) {
 		c.t.Errorf("marshal: %v", err)
 		return
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
 	if _, err := io.WriteString(c.w, "Content-Length: "+strconv.Itoa(len(b))+"\r\n\r\n"+string(b)); err != nil {
 		c.t.Errorf("write: %v", err)
 	}
