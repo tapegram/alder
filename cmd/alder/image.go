@@ -2,7 +2,7 @@ package main
 
 import (
 	"bufio"
-	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,22 +12,67 @@ import (
 )
 
 // errNoImage is E0030's sentence for a Render environment with no registry path to push to.
-const errNoImage = "E0030 name the registry path: `image: \"ghcr.io/<owner>/<app>\"` (App's `deploy` writes no `image`, and the `origin` remote of %s is not a GitHub repository)"
+const errNoImage = "E0030 name the registry path: `image: \"ghcr.io/<owner>/<app>\"` (App's `deploy` writes no `image`, and %s)"
 
 // imagePath is the registry path the Render environments of d push to (R5): d's `image`, else
-// ghcr.io/<owner>/<repo> from the GitHub `origin` remote in <dir>/.git/config (read as a file: no
-// git binary), lowercased. With neither it refuses with E0030's sentence. The checker stays free
-// of git; the commands that need the path (deploy, status, rollback, logs, restore, ci init) ask
-// here.
+// ghcr.io/<owner>/<repo> from the GitHub `origin` remote of the git repository at or above dir
+// (its config read as a file: no git binary), lowercased. With neither it refuses with E0030's
+// sentence. The checker stays free of git; the commands that need the path (deploy, status,
+// rollback, logs, restore, ci init) ask here.
 func imagePath(dir string, d *ir.Deploy) (string, error) {
 	if d != nil && d.Image != "" {
 		return d.Image, nil
 	}
-	cfg := filepath.Join(dir, ".git", "config")
+	cfg := gitConfigAbove(dir)
+	if cfg == "" {
+		return "", fmt.Errorf(errNoImage, "there is no git repository above "+dir)
+	}
 	if p, ok := githubImage(originURL(cfg)); ok {
 		return p, nil
 	}
-	return "", errors.New(strings.Replace(errNoImage, "%s", cfg, 1))
+	return "", fmt.Errorf(errNoImage, "the `origin` remote in "+cfg+" is not a GitHub repository")
+}
+
+// gitConfigAbove is the config file of the repository at or above dir: the first `.git` found
+// walking up. A `.git` directory holds it; a `.git` file (worktree, submodule) says
+// `gitdir: <path>` (relative to the file), whose `commondir` file, when present, names the
+// directory with the config. "" when no `.git` is found up to the root.
+func gitConfigAbove(dir string) string {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return ""
+	}
+	for d := abs; ; d = filepath.Dir(d) {
+		g := filepath.Join(d, ".git")
+		if fi, err := os.Stat(g); err == nil {
+			if fi.IsDir() {
+				return filepath.Join(g, "config")
+			}
+			b, err := os.ReadFile(g)
+			if err != nil {
+				return ""
+			}
+			rest, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir:")
+			if !ok {
+				return ""
+			}
+			gd := strings.TrimSpace(rest)
+			if !filepath.IsAbs(gd) {
+				gd = filepath.Join(d, gd)
+			}
+			if c, err := os.ReadFile(filepath.Join(gd, "commondir")); err == nil {
+				cd := strings.TrimSpace(string(c))
+				if !filepath.IsAbs(cd) {
+					cd = filepath.Join(gd, cd)
+				}
+				gd = cd
+			}
+			return filepath.Join(gd, "config")
+		}
+		if filepath.Dir(d) == d {
+			return ""
+		}
+	}
 }
 
 // originURL is the url of remote "origin" in the git config file at path ("" when there is none).

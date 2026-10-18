@@ -275,9 +275,12 @@ func TestDeployRender_DefaultImage(t *testing.T) {
 		t.Errorf("status: exit %d\n%s", code, o)
 	}
 	writeFile(t, dir+"/.git/config", "[remote \"origin\"]\n\turl = git@github.com:Tavish/Blog.git\n")
-	code, out, errs = runDeploy(t, "production", dir, "--unsafe-skip-tests", "--dry-run")
-	if code != 0 {
+	code, out, errs = runDeploy(t, "production", dir, "--unsafe-skip-tests")
+	id := regexp.MustCompile(`deployed ([0-9a-f]{16}) to production`).FindStringSubmatch(out)
+	if code != 0 || id == nil || !strings.Contains(out, "image pushed ghcr.io/tavish/blog:"+id[1]) {
 		t.Fatalf("exit %d\n%s%s", code, out, errs)
 	}
-	_ = f
+	if f.reg.Manifest("tavish/blog", id[1]) == nil {
+		t.Errorf("no manifest at tavish/blog:%s; registry saw %v", id[1], f.reg.Requests())
+	}
 }

@@ -53,3 +53,60 @@ func TestImagePath(t *testing.T) {
 		})
 	}
 }
+
+// The repository is the first `.git` at or above the app: a subdirectory of a repository, a
+// worktree's `.git` file (its gitdir's commondir holds the config), and no repository at all.
+func TestImagePath_Repository(t *testing.T) {
+	const cfg = "[remote \"origin\"]\n\turl = git@github.com:Tavish/Blog.git\n"
+	mk := func(p, body string) {
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Run("subdirectory", func(t *testing.T) {
+		root := t.TempDir()
+		mk(filepath.Join(root, ".git", "config"), cfg)
+		app := filepath.Join(root, "apps", "blog")
+		os.MkdirAll(app, 0o755)
+		if got, err := imagePath(app, &ir.Deploy{}); err != nil || got != "ghcr.io/tavish/blog" {
+			t.Fatalf("%q %v", got, err)
+		}
+	})
+	t.Run("worktree with commondir", func(t *testing.T) {
+		root := t.TempDir()
+		mk(filepath.Join(root, "main", ".git", "config"), cfg)
+		mk(filepath.Join(root, "main", ".git", "worktrees", "wt", "commondir"), "../..\n")
+		mk(filepath.Join(root, "wt", ".git"), "gitdir: "+filepath.Join(root, "main", ".git", "worktrees", "wt")+"\n")
+		app := filepath.Join(root, "wt", "app")
+		os.MkdirAll(app, 0o755)
+		if got, err := imagePath(app, &ir.Deploy{}); err != nil || got != "ghcr.io/tavish/blog" {
+			t.Fatalf("%q %v", got, err)
+		}
+	})
+	t.Run("relative gitdir without commondir", func(t *testing.T) {
+		root := t.TempDir()
+		mk(filepath.Join(root, "gits", "sub", "config"), cfg)
+		mk(filepath.Join(root, "sub", ".git"), "gitdir: ../gits/sub\n")
+		if got, err := imagePath(filepath.Join(root, "sub"), &ir.Deploy{}); err != nil || got != "ghcr.io/tavish/blog" {
+			t.Fatalf("%q %v", got, err)
+		}
+	})
+	t.Run("no repository", func(t *testing.T) {
+		app := t.TempDir()
+		_, err := imagePath(app, &ir.Deploy{})
+		if err == nil || !strings.HasPrefix(err.Error(), "E0030 name the registry path: `image: \"ghcr.io/<owner>/<app>\"`") || !strings.Contains(err.Error(), "no git repository above "+app) {
+			t.Fatalf("%v", err)
+		}
+	})
+	t.Run("names the config read", func(t *testing.T) {
+		root := t.TempDir()
+		mk(filepath.Join(root, ".git", "config"), "[remote \"origin\"]\n\turl = git@gitlab.com:t/b.git\n")
+		app := filepath.Join(root, "x")
+		os.MkdirAll(app, 0o755)
+		_, err := imagePath(app, &ir.Deploy{})
+		if err == nil || !strings.Contains(err.Error(), filepath.Join(root, ".git", "config")) {
+			t.Fatalf("%v", err)
+		}
+	})
+}
