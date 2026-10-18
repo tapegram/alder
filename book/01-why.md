@@ -154,6 +154,27 @@ Go keeps the download in its module cache, so every later build, of any
 app, is offline. Without network access that first build stops with an
 error that says what it needed (chapter 11).
 
+### Editor support
+
+Neovim gets highlighting, indentation, folds and `alder check` diagnostics on save from
+[alder.nvim](https://github.com/tapegram/alder.nvim), and the generators run inside the
+editor with a preview of the diff. It needs Neovim 0.11, nvim-treesitter's `main` branch and
+the `tree-sitter` CLI:
+
+```
+brew install tree-sitter-cli
+```
+
+With lazy.nvim:
+
+```
+{ 'tapegram/alder.nvim', lazy = false, dependencies = { 'nvim-treesitter/nvim-treesitter' }, opts = {} }
+```
+
+then `:TSInstall alder` inside Neovim. The grammar the editor uses lives in this repository
+(`tree-sitter-alder/`) and is tested against the compiler's own parser, so the two cannot
+drift apart.
+
 ## Your first app
 
 `alder new` writes a small, complete app to start from, a guestbook,

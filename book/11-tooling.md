@@ -114,16 +114,20 @@ alder logs <env>     the current build's log (-f: follow it)
 alder restore <env>  rebuild the database from the streamed backup (--silo org:<id>: one silo)
 alder silos prune <env>  remove the silos whose key's row is gone (orphans)
 alder ci init        write .github/workflows/alder.yml from the declaration
-alder fmt            rewrite every file in canonical format
 alder dump <path>    print a file's tokens, AST, or an app's IR
 alder explain <id>   explain a diagnostic code
 alder version        print alder's version and the Go it was built with
+alder help [cmd]     print usage (`alder help <command>` is `alder <command> --help`)
+alder help --json    print the command tree (commands, subcommands, arguments and flags,
+                     each with a one-line summary) as JSON; editors build completion from it
 ```
 
 Every command takes `--help` (or `-h`): `alder <command> --help` prints
 its usage line and exits 0, and `alder new <kind> --help` the
 generator's (`alder new page --help`); `alder help <command>` does the
 same.
+
+`alder help --json` prints the command tree (commands, subcommands, arguments and flags, each with a one-line summary) as JSON; editors build completion from it. In Neovim, alder.nvim runs every generator with a preview of its diff (chapter 1, Editor support).
 
 ### `alder new`
 
