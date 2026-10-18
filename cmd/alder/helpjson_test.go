@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -142,5 +143,22 @@ func TestHelp_SiloAndSilosHaveUsage(t *testing.T) {
 		if strings.Contains(out.String(), "usage: alder new <name> |") {
 			t.Errorf("%v printed the general usage instead of its own:\n%s", args, out.String())
 		}
+	}
+}
+
+// TestHelpJSON_Golden pins `alder help --json` byte for byte: the generator nodes are rendered
+// from generate.Specs (M6b) and must not change what alder.nvim and agents read.
+func TestHelpJSON_Golden(t *testing.T) {
+	var out bytes.Buffer
+	writeHelpJSON(&out)
+	want, err := os.ReadFile("../../testdata/help.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := out.Bytes()
+	// the version varies by build; compare everything else
+	re := regexp.MustCompile(`"version":"[^"]*"`)
+	if !bytes.Equal(re.ReplaceAll(got, nil), re.ReplaceAll(want, nil)) {
+		t.Fatalf("help --json changed:\n got %s\nwant %s", got, want)
 	}
 }

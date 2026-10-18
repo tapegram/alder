@@ -38,59 +38,8 @@ type genArgs struct {
 // `--list=T`); multi, those that take every argument up to the next flag (`--from A B`);
 // boolean flags besides --json and --dry-run are in bools. An unknown flag is an error.
 func parseGenArgs(args []string, valued, multi, bools []string) (genArgs, error) {
-	g := genArgs{dir: ".", flags: map[string][]string{}}
-	is := func(set []string, name string) bool {
-		for _, s := range set {
-			if s == name {
-				return true
-			}
-		}
-		return false
-	}
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if a == "-" || !strings.HasPrefix(a, "-") {
-			g.pos = append(g.pos, a)
-			continue
-		}
-		name, val, hasVal := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(a, "-"), "-"), "=")
-		switch {
-		case name == "json" && !hasVal:
-			g.json = true
-		case name == "dry-run" && !hasVal:
-			g.dry = true
-		case is(bools, name) && !hasVal:
-			g.flags[name] = append(g.flags[name], "")
-		case name == "dir" || is(valued, name):
-			if !hasVal {
-				if i+1 >= len(args) {
-					return g, fmt.Errorf("--%s needs a value", name)
-				}
-				i++
-				val = args[i]
-			}
-			if name == "dir" {
-				g.dir = val
-			} else {
-				g.flags[name] = append(g.flags[name], val)
-			}
-		case is(multi, name):
-			if hasVal {
-				g.flags[name] = append(g.flags[name], val)
-			}
-			// up to the next flag, or a path (`--from Post Tag /dash`)
-			for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") && !strings.HasPrefix(args[i+1], "/") {
-				i++
-				g.flags[name] = append(g.flags[name], args[i])
-			}
-			if len(g.flags[name]) == 0 {
-				return g, fmt.Errorf("--%s needs at least one value", name)
-			}
-		default:
-			return g, fmt.Errorf("unknown flag %s", a)
-		}
-	}
-	return g, nil
+	pos, flags, cli, err := generate.ScanArgs(args, valued, multi, bools)
+	return genArgs{dir: cli.Dir, json: cli.JSON, dry: cli.DryRun, pos: pos, flags: flags}, err
 }
 
 // flag is the last value of flag name, or "".
