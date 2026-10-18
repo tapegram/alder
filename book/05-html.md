@@ -168,6 +168,40 @@ details.
 
 `data-*` and `aria-*` attributes take `Text`.
 
+## Scripts and styles
+
+JavaScript and CSS belong in files under `static/`, loaded with
+`<script type="module" src="/static/app.js"></script>` and
+`<link rel="stylesheet" href="/static/app.css" />`. A short one can be
+written inline. The body of a `<script>` or `<style>` is raw text, as in
+HTML: everything up to the closing tag is JavaScript or CSS, sent exactly as
+written. `{`, `<`, `&&` and quotes in it are not Alder, and a line starting
+with `--` is not a comment:
+
+```alder eval=<script>if (a < b && ok) { go("{x}") }</script>
+<script>if (a < b && ok) { go("{x}") }</script>
+```
+
+So no Alder value can reach the text of a script or a stylesheet, and none
+can be spliced into it: `{model.name}` in a body is those characters, not
+the name. Data reaches a script through `data-*` attributes, which are
+escaped like any other attribute, and the script reads them
+(`el.dataset.clip`):
+
+```alder
+<div id="player" data-clip={model.clip}>
+  <script>
+    const clip = document.getElementById("player").dataset.clip;
+  </script>
+</div>
+```
+
+A body may not contain `</script` or `</style`, in any case: the browser
+ends the element at the first one. Split it inside a string (`"<\/script>"`)
+or move the code to a file. A body that is one `{ … }` holding a string or a
+name (`<script>{model.code}</script>`) is refused as the interpolation it
+looks like.
+
 ## Components
 
 A component is a function from a record to `Html`, named with an

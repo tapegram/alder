@@ -27,7 +27,7 @@ func goldenNodes() map[string]Node {
 	)
 	page := El("html", []Attr{A("lang", "en")},
 		El("head", nil, El("meta", []Attr{A("charset", "utf-8")}), El("title", nil, Text("To-dos & more")),
-			El("style", nil, Raw("a > b { color: red } p:before { content: \"<x>\" }")),
+			El("style", nil, RawText("a > b { color: red } p:before { content: \"<x>\" }")),
 			El("script", []Attr{A("type", "module"), A("src", "/_alder/datastar.js")})),
 		El("body", nil,
 			El("h1", []Attr{A("id", "top"), A("title", `a"b<c'd`)}, Text("x < y & z é — ok")),

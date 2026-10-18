@@ -12,7 +12,7 @@ import (
 func (l *lowerer) htmlNode(e syntax.Expr) Expr {
 	switch x := e.(type) {
 	case *syntax.HtmlText:
-		return &HText{Typed: Typed{l.typeOf(x)}, Text: x.Text}
+		return &HText{Typed: Typed{l.typeOf(x)}, Text: x.Text, Raw: x.Raw}
 	case *syntax.Element:
 		return l.element(x)
 	case *syntax.HtmlExpr:

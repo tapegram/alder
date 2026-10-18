@@ -861,6 +861,17 @@ expression `{"a < b"}` are emitted unescaped too:
 If the emitter escaped and then the runtime escaped again, `&` would come
 out as `&amp;amp;`. One place does it, so it happens exactly once.
 
+The body of a `<script>` or `<style>` is the one text that is never
+escaped: `&&` escaped to `&amp;&amp;` would break the JavaScript. The parser
+reads it as raw text (`(rawtext "…")` in `alder dump`), byte for byte up to
+the closing tag, and the emitter writes it as `html.RawText("…")`, always
+with a Go string literal. The renderer writes a `RawText` unescaped only
+as a direct child of `<script>` or `<style>`, and only if it holds no
+`</script` or `</style`; it drops every other child of those two elements
+(a `Text`, an `Html.unsafe`, an element). So no Alder value can be spliced
+into script or style text, even if some future path put one there.
+`testdata/golden/render_html/` pins the rendered bytes.
+
 ## 8. The runtime
 
 The generated code is short because most of the work is in the runtime: Go
@@ -4621,5 +4632,6 @@ the emitter writes into `Todos__Index_alder.go`: it copies the fields and wraps
 5. **Why only `Html.unsafe`?** `html.Raw` writes its text unescaped. Find
    every place generated code can reach it (start from `Html.unsafe` in
    `internal/gen/stdcall.go`, then `rt/std/html.go`). Explain why the
-   emitter never calls `html.Raw` itself, and what would break if literal
-   text in a view were emitted as `html.Raw`.
+   emitter never calls `html.Raw` itself, what would break if literal
+   text in a view were emitted as `html.Raw`, and why a `<script>` body is
+   `html.RawText` and not `html.Raw`.

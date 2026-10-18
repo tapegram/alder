@@ -306,6 +306,27 @@ func (l *Lexer) ScanText() Token {
 	return l.record(l.tok(Text, string(l.src[off:l.pos]), line, col, off))
 }
 
+// ScanRawText reads the body of a raw-text element (`<script>`, `<style>`): every byte up to its
+// closing tag, written `</script` (the tag in lower case) then `>`, a space or `/`, or to the end
+// of the source. Nothing in it is Alder: no `{…}`, no tags, no comments. A `</SCRIPT` (or a
+// `</style` inside a script) is kept in the body, which the parser then refuses.
+func (l *Lexer) ScanRawText(tag string) Token {
+	line, col, off := l.line, l.col, l.pos
+	end := len(l.src)
+	for i := off; i < len(l.src); i++ {
+		if l.src[i] == '<' && strings.HasPrefix(string(l.src[i:min(len(l.src), i+len(tag)+3)]), "</"+tag) {
+			if j := i + 2 + len(tag); j == len(l.src) || strings.IndexByte("> \t\r\n/", l.src[j]) >= 0 {
+				end = i
+				break
+			}
+		}
+	}
+	for l.pos < end {
+		l.advance()
+	}
+	return l.record(l.tok(Text, string(l.src[off:end]), line, col, off))
+}
+
 func isTagStart(c byte) bool { return isLower(c) || isUpper(c) || c == '/' || c == '!' }
 
 // scanString scans a string literal's body starting at i, just after the opening quote. It returns

@@ -528,6 +528,9 @@ func (d *dumper) expr(e Expr) *sx {
 		items := []*sx{atom("comp"), atom(x.Fn.Module + "." + x.Fn.Name), d.expr(x.Props)}
 		return list(2, append(items, d.exprs(x.Children)...)...)
 	case *HText:
+		if x.Raw {
+			return atoms("hrawtext", strconv.Quote(x.Text))
+		}
 		return atoms("htext", strconv.Quote(x.Text))
 	case *HExpr:
 		return list(2, atom("hexpr"), atom([]string{"text", "html", "list"}[x.Kind]), d.expr(x.Expr))

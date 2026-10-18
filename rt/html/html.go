@@ -21,6 +21,7 @@ const (
 	kElem
 	kText
 	kRaw
+	kRawText
 	kFrag
 	kCtrl
 )
@@ -29,7 +30,7 @@ const (
 type Node struct {
 	kind     kind
 	tag      string   // kElem
-	text     string   // kText, kRaw
+	text     string   // kText, kRaw, kRawText
 	attrs    []Attr   // kElem
 	children []Node   // kElem, kFrag
 	control  *Control // kCtrl
@@ -81,6 +82,23 @@ func Text(s string) Node { return Node{kind: kText, text: s} }
 
 // Raw is unescaped markup. Only Html.unsafe produces it.
 func Raw(s string) Node { return Node{kind: kRaw, text: s} }
+
+// RawText is the body of a <script> or <style> as the source wrote it. The generator writes it
+// only with a Go string literal, from the parser's raw-text body, so it never holds an Alder
+// value. It renders unescaped only as a direct child of <script> or <style>, and only when it
+// holds neither `</script` nor `</style` in any case (the parser refuses those); anywhere else it
+// is ordinary, escaped text.
+func RawText(s string) Node { return Node{kind: kRawText, text: s} }
+
+// rawTextElems are HTML's raw-text elements. Their only content is RawText: no Alder value
+// (Text, Html.unsafe's Raw, an element or a fragment) is ever spliced into script or style text.
+var rawTextElems = map[string]bool{"script": true, "style": true}
+
+// rawTextOK: s may be written unescaped inside a raw-text element without ending it early.
+func rawTextOK(s string) bool {
+	low := strings.ToLower(s)
+	return !strings.Contains(low, "</script") && !strings.Contains(low, "</style")
+}
 
 // Nodes is a fragment: its children render in place, with no wrapper.
 func Nodes(ns ...Node) Node { return Node{kind: kFrag, children: ns} }
@@ -168,6 +186,8 @@ func (r *renderer) render(n Node) {
 		b.WriteString(escape(n.text))
 	case kRaw:
 		b.WriteString(n.text)
+	case kRawText:
+		b.WriteString(escape(n.text)) // outside <script> and <style>: text
 	case kFrag:
 		for _, c := range n.children {
 			r.render(c)
@@ -198,6 +218,12 @@ func (r *renderer) render(n Node) {
 			return
 		}
 		for _, c := range n.children {
+			if rawTextElems[n.tag] {
+				if c.kind == kRawText && rawTextOK(c.text) {
+					b.WriteString(c.text)
+				}
+				continue
+			}
 			r.render(c)
 		}
 		b.WriteString("</")

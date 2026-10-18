@@ -16,3 +16,21 @@ media =
     <ol reversed><li>b</li><li>a</li></ol>
     <details open={False}><summary>More</summary></details>
   </div>
+
+-- The bodies are raw text, byte for byte: `{`, `<`, `&&`, quotes and `--` are not Alder.
+clip : Text
+clip = "a\"</script><b>&"
+
+inline : Html Never
+inline =
+  <div data-clip={clip}>
+    <style>
+      .player > video { width: 100%; } a[href^="/"]::after { content: "<→>"; }
+    </style>
+    <script>
+      if (1 < 2 && true) { console.log("hi {there}"); }
+      -- JavaScript's decrement, not an Alder comment
+      const s = "{clip}" + `${s}` + '<b>&amp;</b>';
+    </script>
+    <script type="application/json">{"a": 1}</script>
+  </div>

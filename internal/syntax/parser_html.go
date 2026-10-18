@@ -1,7 +1,11 @@
 // internal/syntax/parser_html.go
 package syntax
 
-import "strings"
+import (
+	"strings"
+
+	"alder/internal/diag"
+)
 
 // parseHTML is entered with p.tok == Lt at expression start. It consumes the whole element
 // and leaves p.tok on the first token after it.
@@ -72,6 +76,9 @@ func (p *Parser) parseElement() *Element {
 		return el
 	}
 	p.lx.SetHTMLTag(false)
+	if el.Module == "" && rawTextTags[el.Tag] {
+		p.rawText(el)
+	}
 	// children: raw text until `<` or `{`. p.tok is the last consumed delimiter, with no lookahead lexed.
 	for {
 		p.addText(el, p.lx.ScanText())
@@ -110,7 +117,14 @@ func (p *Parser) parseElement() *Element {
 					p.errorAt(p.tok, "expected `>`, got "+describe(p.tok))
 				}
 				if name != qual(el.Module, el.Tag) {
-					p.errorAt(saveTok, "closing tag </"+name+"> does not match <"+qual(el.Module, el.Tag)+">")
+					msg := "closing tag </" + name + "> does not match <" + qual(el.Module, el.Tag) + ">"
+					if rawTextTags[name] {
+						// most likely a `</script>` inside a script's string ended the script early:
+						// skip this tag, so the elements around it still close where they should
+						p.errorAt(saveTok, msg+": "+rawCloseRule(name))
+						continue
+					}
+					p.errorAt(saveTok, msg)
 				}
 				el.Span = p.spanFrom(start)
 				return el
@@ -119,6 +133,97 @@ func (p *Parser) parseElement() *Element {
 			el.Children = append(el.Children, p.parseElement())
 		}
 	}
+}
+
+// rawTextTags are HTML's raw-text elements: their body is text, not markup or Alder.
+var rawTextTags = map[string]bool{"script": true, "style": true}
+
+// rawText reads the body of a `<script>` or `<style>` (p.tok on the start tag's `>`): the source's
+// bytes up to the closing tag, as one raw HtmlText, kept byte for byte. Nothing in it is Alder, so
+// no Alder value can reach script or style text; data reaches a script through `data-*`
+// attributes. The body may not contain `</script` or `</style` in any case (the browser would
+// end the element there), and a body that is one `{ … }` holding an Alder string or name is
+// refused as the interpolation it looks like. It returns with the lexer on the closing tag's
+// `<`, where parseElement's loop reads the closing tag.
+func (p *Parser) rawText(el *Element) {
+	tx := p.lx.ScanRawText(el.Tag)
+	if tx.Text == "" {
+		return
+	}
+	t := &HtmlText{Text: tx.Text, Raw: true}
+	t.Span = diag.Span{File: p.file, Start: p.posOf(tx), End: rawPos(tx, len(tx.Text))}
+	el.Children = append(el.Children, t)
+	low := strings.ToLower(tx.Text)
+	for _, bad := range []string{"</script", "</style"} {
+		if i := strings.Index(low, bad); i >= 0 {
+			p.rawError(tx, i, len(bad), "the body contains `"+tx.Text[i:i+len(bad)]+"`: "+rawCloseRule(el.Tag))
+			return
+		}
+	}
+	if looksInterpolated(tx.Text) {
+		i := strings.IndexByte(tx.Text, '{')
+		p.rawError(tx, i, len(strings.TrimSpace(tx.Text)), "the body is raw text, not Alder: `{ … }` here is not an expression and would be sent as written; "+map[string]string{
+			"script": "write the JavaScript itself, and pass Alder values through a `data-*` attribute (`data-clip={model.clip}`), which is escaped",
+			"style":  "write the CSS itself, and set Alder values through an element's `class` or `style` attribute",
+		}[el.Tag])
+	}
+}
+
+// rawCloseRule explains why a raw-text body may not contain a closing tag.
+func rawCloseRule(tag string) string {
+	return "a <" + tag + "> body is raw text up to its first `</" + tag + "`, so it may not contain `</script` or `</style` in any case; split the text in a string (`\"<\\/" + tag + ">\"`), or move the " + map[string]string{"script": "script", "style": "stylesheet"}[tag] + " to a file in `static/`"
+}
+
+// rawError reports a parse error over n bytes at byte i of the raw text token tx.
+func (p *Parser) rawError(tx Token, i, n int, msg string) {
+	if len(p.ctx) > 0 {
+		msg = "in " + p.ctx[len(p.ctx)-1] + ": " + msg
+	}
+	p.diags = append(p.diags, diag.Diagnostic{Code: diag.ParseError, Severity: "error", Message: msg,
+		Span: diag.Span{File: p.file, Start: rawPos(tx, i), End: rawPos(tx, i+n)}})
+}
+
+// rawPos is the position of byte i of the raw text token tx.
+func rawPos(tx Token, i int) diag.Pos {
+	pos := diag.Pos{Line: tx.Line, Col: tx.Col}
+	for _, c := range []byte(tx.Text[:i]) {
+		if c == '\n' {
+			pos.Line, pos.Col = pos.Line+1, 1
+		} else {
+			pos.Col++
+		}
+	}
+	return pos
+}
+
+// looksInterpolated: the whole body, spaces aside, is one `{ … }` holding an Alder string
+// literal or a name (`{"…"}`, `{model.clip}`): Alder interpolation, which a raw-text body does
+// not have. As JavaScript it would be a block doing nothing, and as CSS it is not a rule. A JSON
+// body (`{"a": 1}`) is not one.
+func looksInterpolated(body string) bool {
+	b := strings.TrimSpace(body)
+	if len(b) < 2 || b[0] != '{' || b[len(b)-1] != '}' {
+		return false
+	}
+	in := strings.TrimSpace(b[1 : len(b)-1])
+	if strings.HasPrefix(in, "\"") {
+		j, ok := scanString([]byte(in), 1)
+		return ok && j == len(in)
+	}
+	if in == "" {
+		return false
+	}
+	for _, seg := range strings.Split(in, ".") {
+		if seg == "" || !(isLower(seg[0]) || isUpper(seg[0]) || seg[0] == '_') {
+			return false
+		}
+		for _, c := range []byte(seg) {
+			if !(isLower(c) || isUpper(c) || isDigit(c) || c == '_') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // addText applies the JSX whitespace rule to one raw text run (the text between two nodes) and

@@ -31,3 +31,8 @@ in chapter 12. Each is a compile error.
     with `_`; in a page module or `App`, `Params`, `Msg`, `Session` and
     `<Msg>Params` are taken by the compiler (E0012), and in any module a
     Prelude type's name (`form Query`) is too (E0012).
+14. A `<script>` or `<style>` body may not contain `</script` or `</style`,
+    nor be one `{ … }` (`<script>{model.code}</script>`) (E0001): the body
+    is raw text, not Alder, so `{x}` in it is never a value. Pass data
+    through a `data-*` attribute (`<div data-clip={model.clip}>`) and read
+    it from the script.

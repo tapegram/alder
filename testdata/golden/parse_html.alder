@@ -20,4 +20,8 @@ view model session =
     </ul>
     <p class="n">{Text.fromInt n} open, a < b</p>
     <br />
+    <style>p > a { color: red }</style>
+    <script>
+      if (a < b && c) { go("{x}") }
+    </script>
   </Layout.Page>

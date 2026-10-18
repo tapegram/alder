@@ -615,6 +615,7 @@ type Comp struct {
 type HText struct {
 	Typed
 	Text string
+	Raw  bool // the body of a <script> or <style>: rendered unescaped (html.RawText)
 }
 
 type HExprKind int

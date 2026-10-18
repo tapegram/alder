@@ -97,7 +97,7 @@ func Parse(s string) (Node, error) {
 					end = len(p.in) - p.pos
 				}
 				if end > 0 {
-					el.children = []Node{Raw(p.in[p.pos : p.pos+end])}
+					el.children = []Node{RawText(p.in[p.pos : p.pos+end])}
 				}
 				p.pos += end
 				if gt := strings.IndexByte(p.in[p.pos:], '>'); gt >= 0 {
@@ -290,7 +290,7 @@ func normalize(ns []Node) []Node {
 				return
 			}
 			out = append(out, n)
-		case kRaw:
+		case kRaw, kRawText:
 			out = append(out, n)
 		case kElem:
 			if n.tag == "button" && clickMsg(n.attrs) != nil {

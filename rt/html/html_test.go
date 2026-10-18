@@ -190,3 +190,31 @@ func TestHTML_Offered(t *testing.T) {
 		}
 	}
 }
+
+// The body of a <script> or <style> is the source's literal text (RawText, which only the
+// generator writes, from the parser's raw body), rendered unescaped. Nothing else is ever spliced
+// into script or style text: an Alder value (Text, or Html.unsafe's Raw), an element, a fragment
+// or a RawText holding a closing tag is dropped. Outside <script> and <style>, RawText is text.
+func TestHTML_RawTextElements(t *testing.T) {
+	body := "\n  if (1 < 2 && s != \"&amp;\") { x('<b>') }\n"
+	cases := []struct {
+		n    Node
+		want string
+	}{
+		{El("script", nil, RawText(body)), "<script>" + body + "</script>"},
+		{El("style", nil, RawText("a > b { content: \"<x>\" }")), `<style>a > b { content: "<x>" }</style>`},
+		{El("script", []Attr{A("data-clip", `"</script><b>`)}, RawText("go()")), `<script data-clip="&#34;&lt;/script&gt;&lt;b&gt;">go()</script>`},
+		{El("script", nil, Text("alert(1)")), "<script></script>"},
+		{El("script", nil, Raw("alert(1)")), "<script></script>"},
+		{El("style", nil, Nodes(RawText("a{}")), El("b", nil)), "<style></style>"},
+		{El("script", nil, RawText("x = '</script><b>'")), "<script></script>"},
+		{El("script", nil, RawText("x = '</STYLE '")), "<script></script>"},
+		{El("style", nil, RawText("p{}</Style>")), "<style></style>"},
+		{El("p", nil, RawText("a < b")), "<p>a &lt; b</p>"},
+	}
+	for _, c := range cases {
+		if got := Render(c.n); got != c.want {
+			t.Errorf("got  %s\nwant %s", got, c.want)
+		}
+	}
+}

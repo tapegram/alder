@@ -362,6 +362,9 @@ type HtmlAttr struct {
 type HtmlText struct {
 	Node
 	Text string
+	// Raw marks the body of a `<script>` or `<style>`: the source's bytes up to the closing tag,
+	// kept as written (no whitespace rule) and rendered unescaped.
+	Raw bool
 }
 type HtmlExpr struct {
 	Node

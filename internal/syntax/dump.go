@@ -317,6 +317,10 @@ func dump(sb *strings.Builder, n any) {
 		dumpList(sb, x.Children)
 		sb.WriteByte(')')
 	case *HtmlText:
+		if x.Raw {
+			fmt.Fprintf(sb, "(rawtext %q)", x.Text)
+			break
+		}
 		fmt.Fprintf(sb, "(text %q)", x.Text)
 	case *HtmlExpr:
 		sb.WriteString("(expr ")

@@ -1,0 +1,27 @@
+module Player
+
+page "/player" { }
+
+type Model = { clip: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { clip: "intro" }
+
+-- The bodies of <script> and <style> are raw text: `{`, `<`, `&&` and quotes are JavaScript
+-- and CSS, not Alder. Data reaches the script through a data-* attribute.
+view : Model -> Session -> Html Msg
+view model session =
+  <main>
+    <style>
+      .player > video { width: 100%; } a[href^="/"]::after { content: "<→>"; }
+    </style>
+    <video id="player" data-clip={model.clip} controls></video>
+    <script>
+      if (1 < 2 && true) { console.log("hi"); }
+      const v = document.getElementById('player');
+      const clip = v.dataset.clip;
+      -- not a comment: JavaScript's decrement
+      const s = "{model.clip}" + `${clip}` + '<b>&amp;</b>';
+    </script>
+    <script type="application/json">{"a": 1, "b": [true]}</script>
+  </main>

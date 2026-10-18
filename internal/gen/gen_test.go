@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -3493,7 +3494,7 @@ func TestGen_MutateNested(t *testing.T) {
 
 // renderGoldens are the values of testdata/golden/render_html's module R whose rendered HTML is
 // pinned, each in want/<value>.html (go test -run RenderGolden -update rewrites them).
-var renderGoldens = []string{"media"}
+var renderGoldens = []string{"media", "inline"}
 
 // TestRenderGolden emits the render_html app, runs the generated code and compares each value's
 // html.Render with its golden: what a browser receives, byte for byte.
@@ -3521,6 +3522,7 @@ func TestRender(t *testing.T) {
 	}
 `+calls.String()+`}
 `)
+	all := ""
 	for _, v := range renderGoldens {
 		got, err := os.ReadFile(filepath.Join(out, v+".html"))
 		if err != nil {
@@ -3538,6 +3540,39 @@ func TestRender(t *testing.T) {
 		}
 		if string(got) != string(want) {
 			t.Errorf("%s renders\n%s\nwant\n%s", v, got, want)
+		}
+		all += string(got)
+	}
+	// every <script> and <style> body reaches the page byte for byte as the source wrote it
+	src, err := os.ReadFile(filepath.Join(dir, "app", "R.alder"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bodies := regexp.MustCompile(`(?s)<(script|style)[^>]*>(.*?)</(?:script|style)>`).FindAllSubmatch(src, -1)
+	if len(bodies) < 3 {
+		t.Fatalf("only %d raw-text bodies in R.alder", len(bodies))
+	}
+	for _, b := range bodies {
+		if len(b[2]) > 0 && !strings.Contains(all, string(b[0])) {
+			t.Errorf("<%s> body not rendered byte for byte:\n%s", b[1], b[0])
+		}
+	}
+}
+
+// A <script> or <style> body is emitted as html.RawText of a Go string literal and nothing else:
+// no Alder value can be spliced into script or style text (rt/html renders only RawText there).
+func TestGen_RawTextIsLiteral(t *testing.T) {
+	files := emit(t, "../../testdata/golden/render_html")
+	src := string(files["R_alder.go"])
+	uses := regexp.MustCompile(`html\.RawText\(`).FindAllStringIndex(src, -1)
+	if len(uses) < 3 {
+		t.Fatalf("only %d html.RawText in R_alder.go:\n%s", len(uses), src)
+	}
+	for _, u := range uses {
+		rest := src[u[1]:]
+		lit, err := strconv.QuotedPrefix(rest)
+		if err != nil || !strings.HasPrefix(rest[len(lit):], ")") {
+			t.Errorf("html.RawText takes something other than one string literal: %.60s", rest)
 		}
 	}
 }

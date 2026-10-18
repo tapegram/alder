@@ -12,6 +12,7 @@ import (
 //
 //	Elem     html.El("tag", []html.Attr{…}, children...)  (nil for no attributes)
 //	HText    html.Text("…")              raw: rt/html escapes once, when rendering
+//	         html.RawText("…")           a <script>/<style> body (Raw): a literal, never escaped
 //	HExpr    html.Text(e) for Text, e for Html, html.Nodes(e...) for List (Html a)
 //	HFor     html.Nodes(std.ListMap(func(x T) html.Node { … }, list)...)
 //	HIf      an immediately-invoked closure with a Go if (ret mode)
@@ -44,6 +45,9 @@ func (f *fn) html(e ir.Expr, s *scope) string {
 	case *ir.Elem:
 		return "html.El(" + strconv.Quote(x.Tag) + ", " + f.attrs(x.Attrs, s) + f.nodeArgs(x.Children, s)
 	case *ir.HText:
+		if x.Raw { // a <script> or <style> body: a literal, never an Alder value (rt/html.RawText)
+			return "html.RawText(" + strconv.Quote(x.Text) + ")"
+		}
 		return "html.Text(" + strconv.Quote(x.Text) + ")"
 	case *ir.HExpr:
 		switch x.Kind {
