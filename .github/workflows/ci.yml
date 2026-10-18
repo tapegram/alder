@@ -131,6 +131,8 @@ jobs:
             ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-
+      - name: tree-sitter CLI (the grammar's drift test needs it; no job skips it)
+        run: .github/install-tree-sitter.sh
       - name: every cmd/alder test is in exactly one shard
         if: matrix.part == 'cmd/alder 0/3'
         run: .github/shard.sh 3 check
@@ -145,6 +147,24 @@ jobs:
       - name: go test (every other package, the book included)
         if: matrix.part == 'rest'
         run: go test $(go list ./... | grep -v -e '^alder/cmd/alder$' -e '^alder/internal/gen$') -count=1 -timeout 30m
+
+  # The tree-sitter grammar (tree-sitter-alder/). The corpus and regeneration steps repeat what
+  # TestCorpus and TestGenerated check under `go test ./tree-sitter-alder` (the `test` job's
+  # `rest` part); they stay here as a fast, separate signal.
+  grammar:
+    name: grammar (corpus, highlights, regeneration)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: tree-sitter CLI
+        run: .github/install-tree-sitter.sh
+      - name: corpus and highlight tests
+        run: scripts/ts.sh test
+      - name: the committed parser is the generated one
+        run: |
+          scripts/ts.sh generate
+          git diff --exit-code tree-sitter-alder/src
 
   examples:
     needs: warm
