@@ -1,0 +1,125 @@
+================================================================================
+block with bind, typed let and a result
+================================================================================
+
+module M
+
+b = {
+  let x <- f
+  let y : Int = 1
+  Task.succeed x
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (block
+        (bind_stmt
+          name: (identifier)
+          value: (identifier))
+        (let_stmt
+          name: (identifier)
+          type: (type_name
+            (constructor))
+          value: (integer))
+        result: (application
+          function: (qualified_name
+            module: (constructor)
+            name: (identifier))
+          argument: (identifier))))))
+
+================================================================================
+record literal, empty record, record update, one-expression block
+================================================================================
+
+module M
+
+r = { a: 1, b: x, }
+e = Projects.Index {}
+u = Session.put (\s -> { s | user: Nothing, role: Member })
+o = { x }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (record
+        (field_init
+          name: (identifier)
+          value: (integer))
+        (field_init
+          name: (identifier)
+          value: (identifier)))))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (application
+        function: (qualified_name
+          module: (constructor)
+          name: (constructor))
+        argument: (record))))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (application
+        function: (qualified_name
+          module: (constructor)
+          name: (identifier))
+        argument: (parenthesized_expression
+          (lambda
+            param: (identifier)
+            body: (record_update
+              record: (identifier)
+              (field_init
+                name: (identifier)
+                value: (constructor))
+              (field_init
+                name: (identifier)
+                value: (constructor))))))))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (block
+        result: (identifier)))))
+
+================================================================================
+a let value continues on an operator-led line
+================================================================================
+
+module M
+
+t = {
+  let n = xs
+    |> List.length
+  n
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (block
+        (let_stmt
+          name: (identifier)
+          value: (pipe_expr
+            left: (identifier)
+            right: (qualified_name
+              module: (constructor)
+              name: (identifier))))
+        result: (identifier)))))

@@ -1,0 +1,164 @@
+================================================================================
+patterns: constructor with argument, nested, list with rest, record, wildcard
+================================================================================
+
+module M
+
+m = match msg {
+  Logout p -> 1,
+  Just (Ok x) -> 2,
+  Just Nothing -> 3,
+  [a, ..rest] -> 4,
+  { id: i } -> 5,
+  -1 -> 6,
+  _ -> 7,
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (match_expr
+        subject: (identifier)
+        (arm
+          pattern: (constructor_pattern
+            constructor: (constructor)
+            argument: (identifier))
+          body: (integer))
+        (arm
+          pattern: (constructor_pattern
+            constructor: (constructor)
+            argument: (parenthesized_pattern
+              (constructor_pattern
+                constructor: (constructor)
+                argument: (identifier))))
+          body: (integer))
+        (arm
+          pattern: (constructor_pattern
+            constructor: (constructor)
+            argument: (constructor_pattern
+              constructor: (constructor)))
+          body: (integer))
+        (arm
+          pattern: (list_pattern
+            (identifier)
+            (rest_pattern
+              name: (identifier)))
+          body: (integer))
+        (arm
+          pattern: (record_pattern
+            (field_pattern
+              name: (identifier)
+              pattern: (identifier)))
+          body: (integer))
+        (arm
+          pattern: (negative_number
+            (integer))
+          body: (integer))
+        (arm
+          pattern: (wildcard)
+          body: (integer))))))
+
+================================================================================
+the subject of match takes arguments but no record
+================================================================================
+
+module M
+
+n = match Dict.get k d {
+  Nothing -> 0,
+  Just v -> v,
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (match_expr
+        subject: (application
+          function: (qualified_name
+            module: (constructor)
+            name: (identifier))
+          argument: (identifier)
+          argument: (identifier))
+        (arm
+          pattern: (constructor_pattern
+            constructor: (constructor))
+          body: (integer))
+        (arm
+          pattern: (constructor_pattern
+            constructor: (constructor)
+            argument: (identifier))
+          body: (identifier))))))
+
+================================================================================
+arm bodies may be blocks
+================================================================================
+
+module M
+
+update msg session = match msg {
+  -- logging out clears the user
+  Logout p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing })
+    Task.succeed (Redirect (Auth.Login {}))
+  },
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      params: (parameters
+        (identifier)
+        (identifier))
+      body: (match_expr
+        subject: (identifier)
+        (comment)
+        (arm
+          pattern: (constructor_pattern
+            constructor: (constructor)
+            argument: (identifier))
+          body: (block
+            (bind_stmt
+              name: (wildcard)
+              value: (application
+                function: (qualified_name
+                  module: (constructor)
+                  name: (identifier))
+                argument: (parenthesized_expression
+                  (lambda
+                    param: (identifier)
+                    body: (record_update
+                      record: (identifier)
+                      (field_init
+                        name: (identifier)
+                        value: (constructor)))))))
+            result: (application
+              function: (qualified_name
+                module: (constructor)
+                name: (identifier))
+              argument: (parenthesized_expression
+                (application
+                  function: (constructor)
+                  argument: (parenthesized_expression
+                    (application
+                      function: (qualified_name
+                        module: (constructor)
+                        name: (constructor))
+                      argument: (record))))))))))))

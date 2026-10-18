@@ -25,6 +25,113 @@ const commaSep = (rule) => optional(commaSep1(rule));
 // Keywords that the Go parser accepts as deploy field names (`requires:` and the rest).
 const TRUE_KEYWORDS = ['brand', 'where', 'let', 'match', 'if', 'then', 'else', 'for', 'in', 'requires'];
 
+// The atoms of `_simple` and their no-brace twin `_subject_simple`, from one list so the two
+// cannot drift apart. `fieldAccess` is the field-access rule of the family.
+const simpleAtoms = ($, fieldAccess) => [
+  $.identifier,
+  $.constructor,
+  $.qualified_name,
+  fieldAccess,
+  $.integer,
+  $.float,
+  $.string,
+  $.boolean,
+  $.unit,
+  $.hole,
+  $.list,
+  $.parenthesized_expression,
+];
+
+// What a field access may be taken of, apart from `{…}` (records, updates, blocks), which only
+// the ordinary family allows.
+const fieldAccessValues = ($, fieldAccess) => [
+  $.identifier,
+  $.qualified_name,
+  fieldAccess,
+  $.parenthesized_expression,
+  $.hole,
+];
+
+// Expression rules come in two families built from this one definition. The ordinary family
+// (prefix '') is used everywhere but a match subject. There the Go parser sets noBrace
+// (parser_expr.go withBraces, canStartArg): an application argument never starts with `{`, so
+// `match f x {` leaves `{` to the arms, while the subject is otherwise any expression
+// (`match a |> f {`, `match -1 {`, `match if c then x else y {`). The '_subject' family's rules
+// are hidden (`_subject_pipe_expr`) and aliased to the ordinary names, so both build the same
+// trees. Parentheses, lists, braces and arms go back to the ordinary family, as
+// withBraces(true) does.
+const expressionRules = (prefix) => {
+  const key = (name) => (!prefix ? name : name.startsWith('_') ? prefix + name : `${prefix}_${name}`);
+  const ref = ($, name) => (!prefix || name.startsWith('_') ? $[key(name)] : alias($[key(name)], $[name]));
+  const expr = ($) => ref($, '_expression');
+  const binary = (precedence, operator) => ($) =>
+    precedence(seq(field('left', expr($)), operator, field('right', expr($))));
+  return {
+    [key('_expression')]: ($) =>
+      choice(
+        ...[
+          'pipe_expr',
+          'default_expr',
+          'or_expr',
+          'and_expr',
+          'comparison_expr',
+          'additive_expr',
+          'multiplicative_expr',
+          'application',
+          '_term',
+        ].map((name) => ref($, name)),
+      ),
+
+    [key('pipe_expr')]: binary((r) => prec.left(PREC.pipe, r), '|>'),
+    [key('default_expr')]: binary((r) => prec.right(PREC.default, r), '??'),
+    [key('or_expr')]: binary((r) => prec.left(PREC.or, r), '||'),
+    [key('and_expr')]: binary((r) => prec.left(PREC.and, r), '&&'),
+    [key('comparison_expr')]: binary((r) => prec.left(PREC.compare, r), choice('==', '!=', '<', '<=', '>', '>=')),
+    [key('additive_expr')]: binary((r) => prec.left(PREC.add, r), choice('+', '-', '++')),
+    [key('multiplicative_expr')]: binary((r) => prec.left(PREC.mul, r), choice('*', '/', '%')),
+
+    // Arguments sit on the function's line: a newline ends the application wherever the
+    // grammar expects a separator (scanner.c). `if`, `match`, elements and negative numbers
+    // are not arguments; a lambda is, and its body runs to the end.
+    [key('application')]: ($) =>
+      prec.left(PREC.app, seq(field('function', $._simple), repeat1(field('argument', ref($, '_argument'))))),
+
+    // A term may start with `{` in both families; only arguments differ.
+    [key('_term')]: ($) =>
+      choice(
+        $._simple,
+        ref($, 'lambda'),
+        $.record,
+        $.record_update,
+        $.block,
+        $.negative_number,
+        ref($, 'if_expr'),
+        $.match_expr,
+        $._html,
+      ),
+    [key('_argument')]: ($) =>
+      prefix
+        ? choice($._subject_simple, ref($, 'lambda'))
+        : choice($._simple, $.lambda, $.record, $.record_update, $.block),
+
+    [key('lambda')]: ($) =>
+      prec.right(PREC.body, seq('\\', repeat(field('param', $.identifier)), '->', field('body', expr($)))),
+
+    [key('if_expr')]: ($) =>
+      prec.right(
+        PREC.body,
+        seq(
+          'if',
+          field('condition', expr($)),
+          'then',
+          field('consequence', expr($)),
+          'else',
+          field('alternative', expr($)),
+        ),
+      ),
+  };
+};
+
 module.exports = grammar({
   name: 'alder',
 
@@ -203,56 +310,13 @@ module.exports = grammar({
 
     // ---- expressions --------------------------------------------------------------------
 
-    _expression: ($) =>
-      choice(
-        $.pipe_expr,
-        $.default_expr,
-        $.or_expr,
-        $.and_expr,
-        $.comparison_expr,
-        $.additive_expr,
-        $.multiplicative_expr,
-        $.application,
-        $._term,
-      ),
+    ...expressionRules(''),
+    ...expressionRules('_subject'),
 
-    pipe_expr: ($) => prec.left(PREC.pipe, seq(field('left', $._expression), '|>', field('right', $._expression))),
-    default_expr: ($) => prec.right(PREC.default, seq(field('left', $._expression), '??', field('right', $._expression))),
-    or_expr: ($) => prec.left(PREC.or, seq(field('left', $._expression), '||', field('right', $._expression))),
-    and_expr: ($) => prec.left(PREC.and, seq(field('left', $._expression), '&&', field('right', $._expression))),
-    comparison_expr: ($) =>
-      prec.left(
-        PREC.compare,
-        seq(field('left', $._expression), choice('==', '!=', '<', '<=', '>', '>='), field('right', $._expression)),
-      ),
-    additive_expr: ($) =>
-      prec.left(PREC.add, seq(field('left', $._expression), choice('+', '-', '++'), field('right', $._expression))),
-    multiplicative_expr: ($) =>
-      prec.left(PREC.mul, seq(field('left', $._expression), choice('*', '/', '%'), field('right', $._expression))),
-
-    // Arguments sit on the function's line: a newline ends the application wherever the
-    // grammar expects a separator (scanner.c). `if`, `match`, elements and negative numbers
-    // are not arguments; a lambda is, and its body runs to the end.
-    application: ($) =>
-      prec.left(PREC.app, seq(field('function', $._simple), repeat1(field('argument', $._argument)))),
-
-    _term: ($) => choice($._argument, $.negative_number, $.if_expr, $.match_expr, $._html),
-    _argument: ($) => choice($._simple, $.lambda, $.record, $.record_update, $.block),
-    _simple: ($) =>
-      choice(
-        $.identifier,
-        $.constructor,
-        $.qualified_name,
-        $.field_access,
-        $.integer,
-        $.float,
-        $.string,
-        $.boolean,
-        $.unit,
-        $.hole,
-        $.list,
-        $.parenthesized_expression,
-      ),
+    _simple: ($) => choice(...simpleAtoms($, $.field_access)),
+    // A no-brace argument never starts with `{` (canStartArg under noBrace), not even as the
+    // record of a field access: `match f x {` must leave `{` to the arms.
+    _subject_simple: ($) => choice(...simpleAtoms($, alias($._subject_field_access, $.field_access))),
 
     // `Db.from`, `Todo.TodoId`, `A.B.c`: a module segment then a value or constructor.
     qualified_name: ($) =>
@@ -265,83 +329,23 @@ module.exports = grammar({
       prec(
         PREC.postfix,
         seq(
-          field(
-            'value',
-            choice(
-              $.identifier,
-              $.qualified_name,
-              $.field_access,
-              $.parenthesized_expression,
-              $.record,
-              $.record_update,
-              $.block,
-              $.hole,
-            ),
-          ),
+          field('value', choice(...fieldAccessValues($, $.field_access), $.record, $.record_update, $.block)),
           '.',
           field('field', $.identifier),
         ),
-      ),
-
-    lambda: ($) => prec.right(PREC.body, seq('\\', repeat(field('param', $.identifier)), '->', field('body', $._expression))),
-
-    if_expr: ($) =>
-      prec.right(
-        PREC.body,
-        seq(
-          'if',
-          field('condition', $._expression),
-          'then',
-          field('consequence', $._expression),
-          'else',
-          field('alternative', $._expression),
-        ),
-      ),
-
-    // The subject takes no record argument, so `match f x {` opens the arms (the Go parser's
-    // noBrace rule).
-    match_expr: ($) => seq('match', field('subject', $._subject), '{', commaSep($.arm), '}'),
-    _subject: ($) => choice($._simple, alias($._subject_application, $.application)),
-    _subject_application: ($) =>
-      prec.left(
-        PREC.app,
-        seq(field('function', $._simple), repeat1(field('argument', choice($._subject_argument, $.lambda)))),
-      ),
-    // A subject argument never starts with `{` (canStartArg under noBrace), not even as the
-    // record of a field access: `match f x {` must leave `{` to the arms.
-    _subject_argument: ($) =>
-      choice(
-        $.identifier,
-        $.constructor,
-        $.qualified_name,
-        alias($._subject_field_access, $.field_access),
-        $.integer,
-        $.float,
-        $.string,
-        $.boolean,
-        $.unit,
-        $.hole,
-        $.list,
-        $.parenthesized_expression,
       ),
     _subject_field_access: ($) =>
       prec(
         PREC.postfix,
         seq(
-          field(
-            'value',
-            choice(
-              $.identifier,
-              $.qualified_name,
-              alias($._subject_field_access, $.field_access),
-              $.parenthesized_expression,
-              $.hole,
-            ),
-          ),
+          field('value', choice(...fieldAccessValues($, alias($._subject_field_access, $.field_access)))),
           '.',
           field('field', $.identifier),
         ),
       ),
+
+    // The subject is a no-brace expression, so `match f x {` opens the arms.
+    match_expr: ($) => seq('match', field('subject', $._subject_expression), '{', commaSep($.arm), '}'),
     arm: ($) => seq(field('pattern', $._pattern), '->', field('body', $._expression)),
 
     record: ($) => seq('{', commaSep($.field_init), '}'),
@@ -487,7 +491,7 @@ module.exports = grammar({
           '}',
         ),
       ),
-    html_match: ($) => prec(1, seq('{', 'match', field('subject', $._subject), '{', commaSep($.arm), '}', '}')),
+    html_match: ($) => prec(1, seq('{', 'match', field('subject', $._subject_expression), '{', commaSep($.arm), '}', '}')),
 
     comment: ($) => token(seq('--', /.*/)),
   },

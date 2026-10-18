@@ -3723,7 +3723,19 @@
         "required": true,
         "types": [
           {
+            "type": "additive_expr",
+            "named": true
+          },
+          {
+            "type": "and_expr",
+            "named": true
+          },
+          {
             "type": "application",
+            "named": true
+          },
+          {
+            "type": "block",
             "named": true
           },
           {
@@ -3731,7 +3743,19 @@
             "named": true
           },
           {
+            "type": "comparison_expr",
+            "named": true
+          },
+          {
             "type": "constructor",
+            "named": true
+          },
+          {
+            "type": "default_expr",
+            "named": true
+          },
+          {
+            "type": "element",
             "named": true
           },
           {
@@ -3751,7 +3775,15 @@
             "named": true
           },
           {
+            "type": "if_expr",
+            "named": true
+          },
+          {
             "type": "integer",
+            "named": true
+          },
+          {
+            "type": "lambda",
             "named": true
           },
           {
@@ -3759,11 +3791,47 @@
             "named": true
           },
           {
+            "type": "match_expr",
+            "named": true
+          },
+          {
+            "type": "multiplicative_expr",
+            "named": true
+          },
+          {
+            "type": "negative_number",
+            "named": true
+          },
+          {
+            "type": "or_expr",
+            "named": true
+          },
+          {
             "type": "parenthesized_expression",
             "named": true
           },
           {
+            "type": "pipe_expr",
+            "named": true
+          },
+          {
             "type": "qualified_name",
+            "named": true
+          },
+          {
+            "type": "raw_element",
+            "named": true
+          },
+          {
+            "type": "record",
+            "named": true
+          },
+          {
+            "type": "record_update",
+            "named": true
+          },
+          {
+            "type": "self_closing_element",
             "named": true
           },
           {
@@ -4853,7 +4921,19 @@
         "required": true,
         "types": [
           {
+            "type": "additive_expr",
+            "named": true
+          },
+          {
+            "type": "and_expr",
+            "named": true
+          },
+          {
             "type": "application",
+            "named": true
+          },
+          {
+            "type": "block",
             "named": true
           },
           {
@@ -4861,7 +4941,19 @@
             "named": true
           },
           {
+            "type": "comparison_expr",
+            "named": true
+          },
+          {
             "type": "constructor",
+            "named": true
+          },
+          {
+            "type": "default_expr",
+            "named": true
+          },
+          {
+            "type": "element",
             "named": true
           },
           {
@@ -4881,7 +4973,15 @@
             "named": true
           },
           {
+            "type": "if_expr",
+            "named": true
+          },
+          {
             "type": "integer",
+            "named": true
+          },
+          {
+            "type": "lambda",
             "named": true
           },
           {
@@ -4889,11 +4989,47 @@
             "named": true
           },
           {
+            "type": "match_expr",
+            "named": true
+          },
+          {
+            "type": "multiplicative_expr",
+            "named": true
+          },
+          {
+            "type": "negative_number",
+            "named": true
+          },
+          {
+            "type": "or_expr",
+            "named": true
+          },
+          {
             "type": "parenthesized_expression",
             "named": true
           },
           {
+            "type": "pipe_expr",
+            "named": true
+          },
+          {
             "type": "qualified_name",
+            "named": true
+          },
+          {
+            "type": "raw_element",
+            "named": true
+          },
+          {
+            "type": "record",
+            "named": true
+          },
+          {
+            "type": "record_update",
+            "named": true
+          },
+          {
+            "type": "self_closing_element",
             "named": true
           },
           {
