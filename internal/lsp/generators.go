@@ -187,12 +187,16 @@ func text(p *string) string {
 	return *p
 }
 
-// diffCounts are the added and removed lines of the unified diff from before to after.
+// diffCounts are the added and removed lines of the unified diff from before to after. Only its
+// first two lines are the `---`/`+++` header: a removed Alder comment (`-- note`) is `--- note`.
 func diffCounts(path string, before, after *string) (added, removed int) {
 	d := generate.UnifiedDiff(path, text(before), text(after))
-	for _, l := range strings.Split(d, "\n") {
+	if d == "" {
+		return 0, 0
+	}
+	lines := strings.Split(d, "\n")
+	for _, l := range lines[min(2, len(lines)):] {
 		switch {
-		case strings.HasPrefix(l, "+++ "), strings.HasPrefix(l, "--- "):
 		case strings.HasPrefix(l, "+"):
 			added++
 		case strings.HasPrefix(l, "-"):
