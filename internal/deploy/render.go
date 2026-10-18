@@ -580,6 +580,9 @@ func (r *Render) prepare(ctx context.Context, id string) error {
 	if _, err := r.credential(ctx); err != nil {
 		return err
 	}
+	if err := r.refreshEnv(ctx); err != nil {
+		return err
+	}
 	env, changed, err := r.mergedEnv(ctx)
 	if err != nil {
 		return err
@@ -601,6 +604,18 @@ func (r *Render) prepare(ctx context.Context, id string) error {
 		fmt.Fprintf(r.Out, "service %s scaled %d → %d instances\n", r.Service, r.svc.NumInstances, r.Instances)
 		r.svc.NumInstances = r.Instances
 	}
+	return nil
+}
+
+// refreshEnv re-reads the service's environment just before a PUT replaces it: Connect read it
+// minutes earlier (the gate, the push and the migrations ran since), and a variable set in the
+// dashboard in between must not be dropped by the replace-all PUT.
+func (r *Render) refreshEnv(ctx context.Context) error {
+	env, err := r.API.EnvVars(ctx, r.svc.ID)
+	if err != nil {
+		return fmt.Errorf("reading the environment of the service %s: %w", r.Service, err)
+	}
+	r.env = env
 	return nil
 }
 
@@ -1074,6 +1089,9 @@ func (r *Render) RestoreBackup(ctx context.Context, to, src string) (Restored, e
 	if err := r.adopt(ctx, st, rows, cp.Name); err != nil {
 		return Restored{}, fmt.Errorf("preparing the copy %s: %w", cp.Name, err)
 	}
+	if err := r.refreshEnv(ctx); err != nil {
+		return Restored{}, err
+	}
 	prev := r.env
 	env, _, _ := overlay(prev, map[string]string{"ALDER_DB": "libsql://" + cp.Hostname, db.EnvTursoDB: cp.Name})
 	if err := r.API.PutEnvVars(ctx, r.svc.ID, env); err != nil {
@@ -1181,6 +1199,9 @@ func (r *Render) RestorePointInTime(ctx context.Context, at time.Time, w io.Writ
 	fmt.Fprintf(w, "copied %s as it was at %s → %s\n", old, at.UTC().Format(time.RFC3339), cp.Name)
 	if err := r.adopt(ctx, st, rows, cp.Name); err != nil {
 		return "", fmt.Errorf("preparing the copy %s: %w", cp.Name, err)
+	}
+	if err := r.refreshEnv(ctx); err != nil {
+		return "", err
 	}
 	prev := r.env
 	env, _, _ := overlay(prev, map[string]string{"ALDER_DB": "libsql://" + cp.Hostname, db.EnvTursoDB: cp.Name})

@@ -204,6 +204,23 @@ func (s *Server) Credentials() []Credential {
 	return append([]Credential(nil), s.creds...)
 }
 
+// SetEnv sets the service's variable key to value, as the dashboard does (no deploy).
+func (s *Server) SetEnv(name, key, value string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v := s.byName(name)
+	if v == nil {
+		return
+	}
+	for i := range v.Env {
+		if v.Env[i].Key == key {
+			v.Env[i].Value = value
+			return
+		}
+	}
+	v.Env = append(v.Env, Env{key, value})
+}
+
 // InstancesServe makes every instance of the service run image at once.
 func (s *Server) InstancesServe(name, image string) {
 	s.mu.Lock()

@@ -538,6 +538,31 @@ func TestRender_EnvMergeKeepsDashboardVars(t *testing.T) {
 	}
 }
 
+// A variable set or changed in the dashboard while the deploy runs (after Connect read the
+// environment, before Start's PUT: the gate, the push and the migrations take minutes) survives:
+// the merge is laid over the environment as it is just before the PUT.
+func TestRender_EnvMergeKeepsLateDashboardChange(t *testing.T) {
+	g := newRenderRig(t)
+	old, changed, late := "dashboard-OLD-value", "dashboard-CHANGED-value", "dashboard-LATE-value"
+	g.secrets = append(g.secrets, old, changed, late)
+	g.render.AddService("blog", rImage+":0000000000000000", 1, renderfake.Env{Key: "OTHER_VAR", Value: old})
+	id := g.mustDeploy(g.target(), func(o *Options) {
+		bin := o.Binary
+		o.Binary = func(p Platform, path string) error { // after Connect, before Start
+			g.render.SetEnv("blog", "OTHER_VAR", changed)
+			g.render.SetEnv("blog", "LATE_VAR", late)
+			return bin(p, path)
+		}
+	})
+	env := envOf(g.render.Service("blog"))
+	if env["OTHER_VAR"] != changed || env["LATE_VAR"] != late || env["ALDER_TURSO_DB"] != "blog" || env["SMTP_URL"] != rSMTP {
+		t.Errorf("the merge lost the dashboard's change: OTHER_VAR changed %v, LATE_VAR kept %v", env["OTHER_VAR"] == changed, env["LATE_VAR"] == late)
+	}
+	if g.current() != id {
+		t.Error("not current")
+	}
+}
+
 // A `requires` name unset on this machine and at the service is the refusal, before anything
 // changes at Render.
 func TestRender_RequiresMissing(t *testing.T) {
