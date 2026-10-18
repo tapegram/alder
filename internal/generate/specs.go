@@ -70,6 +70,14 @@ func init() {
 	specs = append(specs, editSpecs()...)
 	specs = append(specs, removeSpecs()...)
 	specs = append(specs, regenSpecs()...)
+	for id, h := range map[string]func(HereCtx) *Match{
+		"new msg": inPage, "new form": inPage, "edit page": inPage, "remove page": inPage,
+		"edit table": onTable, "remove table": onTable,
+		"edit decl": onDecl,
+		"new decl":  inModule, "new test": inModule,
+	} {
+		SpecByID(id).Here = h
+	}
 }
 
 func newSpecs() []*Spec {

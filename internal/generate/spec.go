@@ -69,14 +69,6 @@ type App struct {
 	Migrate func(dir, slug string) ([]string, error) // slug "" = migrateCopy's default name
 }
 
-// HereCtx and Match are filled in by the cursor-context work (Task 8).
-type HereCtx struct{}
-
-type Match struct {
-	Sets map[string]string
-	Why  string
-}
-
 // Spec describes one generator command: its ID ("new page"), its arguments and flags, and
 // how to run it.
 type Spec struct {
