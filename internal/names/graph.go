@@ -159,50 +159,77 @@ func expectedName(file string) string {
 	return strings.ReplaceAll(rest, "/", ".")
 }
 
-// badSegment explains a path under app/ that no module line could match: a folder (or the file's
-// name) that is not a module name segment, such as `app/pages/About.alder`, whose expected
-// `module pages.About` would itself be a parse error. It names the first such segment and the
-// rename that fixes it; "" when every segment is valid.
+// badSegment explains a path under app/ that no module line could match: folders (or the file's
+// name) that are not module name segments, such as `app/pages/About.alder`, whose expected
+// `module pages.About` would itself be a parse error. It names every such segment, the rename
+// of each, and the module line to write after them; when some segment has no rename it can
+// suggest (`2024`), it only says they must be renamed, so it never suggests an impossible
+// module. "" when every segment is valid.
 func badSegment(file, want string) string {
 	segs := strings.Split(want, ".")
+	var names, renames []string
+	folders, upperOnly, suggest := 0, true, true
+	fixed := slices.Clone(segs)
 	for i, seg := range segs {
 		if seg == "" || isModuleSegment(seg) {
 			continue
 		}
-		what, renamed := "the folder", ""
-		if i == len(segs)-1 {
-			what = "the file name"
+		last := i == len(segs)-1
+		if !last {
+			folders++
 		}
-		fixed := segmentFor(seg)
-		if fixed != "" {
-			renamed = fixed
-			if i == len(segs)-1 {
-				renamed += ".alder"
-			}
+		names = append(names, "`"+seg+"`")
+		upperOnly = upperOnly && isModuleSegment(strings.ToUpper(seg[:1])+seg[1:])
+		f := segmentFor(seg)
+		if f == "" {
+			suggest = false
+			continue
 		}
-		rule := "a module name, starting with an uppercase letter"
-		if !isModuleSegment(strings.ToUpper(seg[:1]) + seg[1:]) {
-			rule = "a module name: an uppercase letter, then letters, digits and `_`"
+		fixed[i] = f
+		if last {
+			f += ".alder"
 		}
-		if fixed == "" {
-			return fmt.Sprintf("%s `%s` must be %s: rename it", what, seg, rule)
-		}
-		fixedSegs := slices.Clone(segs)
-		fixedSegs[i] = fixed
-		for j := i + 1; j < len(fixedSegs); j++ {
-			if s := segmentFor(fixedSegs[j]); s != "" {
-				fixedSegs[j] = s
-			}
-		}
-		return fmt.Sprintf("%s `%s` must be %s: rename it `%s` and write `module %s`", what, seg, rule, renamed, strings.Join(fixedSegs, "."))
+		renames = append(renames, "`"+f+"`")
 	}
-	return ""
+	if len(names) == 0 {
+		return ""
+	}
+	n := len(names)
+	var what string
+	switch {
+	case folders == n:
+		what = map[bool]string{true: "the folder ", false: "the folders "}[n == 1] + list(names)
+	case folders == 0:
+		what = "the file name " + names[0]
+	default:
+		what = map[bool]string{true: "the folder ", false: "the folders "}[folders == 1] + list(names[:folders]) + " and the file name " + names[folders]
+	}
+	be, it := "must be a module name", "it"
+	if n > 1 {
+		be, it = "must be module names", "them"
+	}
+	rule := be + ", starting with an uppercase letter"
+	if !upperOnly {
+		rule = be + ": an uppercase letter, then letters, digits and `_`, not ending in `_`"
+	}
+	if !suggest {
+		return fmt.Sprintf("%s %s: rename %s", what, rule, it)
+	}
+	return fmt.Sprintf("%s %s: rename %s %s and write `module %s`", what, rule, it, list(renames), strings.Join(fixed, "."))
 }
 
-// isModuleSegment: an uppercase letter, then letters, digits and single underscores (the lexer's
-// upper-case identifier).
+// list joins items as prose: "a", "a and b", "a, b and c".
+func list(items []string) string {
+	if len(items) == 1 {
+		return items[0]
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
+}
+
+// isModuleSegment: an uppercase letter, then letters, digits and single underscores, not ending
+// in `_` (the lexer's upper-case identifier, as a module name segment: A-grammar).
 func isModuleSegment(s string) bool {
-	if s == "" || s[0] < 'A' || s[0] > 'Z' || strings.Contains(s, "__") {
+	if s == "" || s[0] < 'A' || s[0] > 'Z' || strings.Contains(s, "__") || strings.HasSuffix(s, "_") {
 		return false
 	}
 	for _, c := range []byte(s) {
@@ -214,8 +241,8 @@ func isModuleSegment(s string) bool {
 }
 
 // segmentFor suggests a module segment for a folder or file name: its runs of letters and digits,
-// each capitalised, joined (`pages` → `Pages`, `blog-posts` → `BlogPosts`); "" when there is none
-// that starts with a letter.
+// each capitalised, joined (`pages` → `Pages`, `blog-posts` → `BlogPosts`, `Foo_` → `Foo`); ""
+// when there is none that starts with a letter.
 func segmentFor(s string) string {
 	if isModuleSegment(s) {
 		return s

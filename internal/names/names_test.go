@@ -520,14 +520,27 @@ func TestBadSegment(t *testing.T) {
 	cases := map[string]string{
 		"app/Todos/Index.alder":     "",
 		"app/pages/About.alder":     "the folder `pages` must be a module name, starting with an uppercase letter: rename it `Pages` and write `module Pages.About`",
-		"app/blog-posts/Show.alder": "the folder `blog-posts` must be a module name: an uppercase letter, then letters, digits and `_`: rename it `BlogPosts` and write `module BlogPosts.Show`",
+		"app/blog-posts/Show.alder": "the folder `blog-posts` must be a module name: an uppercase letter, then letters, digits and `_`, not ending in `_`: rename it `BlogPosts` and write `module BlogPosts.Show`",
 		"app/Pages/about.alder":     "the file name `about` must be a module name, starting with an uppercase letter: rename it `About.alder` and write `module Pages.About`",
-		"app/2024/Recap.alder":      "the folder `2024` must be a module name: an uppercase letter, then letters, digits and `_`: rename it",
-		"app/pages/sub/About.alder": "the folder `pages` must be a module name, starting with an uppercase letter: rename it `Pages` and write `module Pages.Sub.About`",
+		"app/2024/Recap.alder":      "the folder `2024` must be a module name: an uppercase letter, then letters, digits and `_`, not ending in `_`: rename it",
+		"app/pages/sub/About.alder": "the folders `pages` and `sub` must be module names, starting with an uppercase letter: rename them `Pages` and `Sub` and write `module Pages.Sub.About`",
+		"app/Foo_/X.alder":          "the folder `Foo_` must be a module name: an uppercase letter, then letters, digits and `_`, not ending in `_`: rename it `Foo` and write `module Foo.X`",
+		"app/pages/about.alder":     "the folder `pages` and the file name `about` must be module names, starting with an uppercase letter: rename them `Pages` and `About.alder` and write `module Pages.About`",
+		"app/pages/2024/X.alder":    "the folders `pages` and `2024` must be module names: an uppercase letter, then letters, digits and `_`, not ending in `_`: rename them",
+		"app/A__b/X.alder":          "the folder `A__b` must be a module name: an uppercase letter, then letters, digits and `_`, not ending in `_`: rename it `AB` and write `module AB.X`",
 	}
 	for file, want := range cases {
-		if got := badSegment(file, expectedName(file)); got != want {
+		got := badSegment(file, expectedName(file))
+		if got != want {
 			t.Errorf("%s:\n got %q\nwant %q", file, got, want)
+		}
+		// a suggested module line is always a module name (never an impossible one)
+		if _, line, ok := strings.Cut(got, "write `module "); ok {
+			for _, seg := range strings.Split(strings.TrimSuffix(line, "`"), ".") {
+				if !isModuleSegment(seg) {
+					t.Errorf("%s: suggests an impossible module: %s", file, got)
+				}
+			}
 		}
 	}
 }
