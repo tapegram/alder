@@ -46,9 +46,11 @@ var (
 		"textDocument/references": referencesReq,
 		"textDocument/completion": completionReq,
 		"textDocument/codeAction": codeActionReq,
+		"alder/generators":        generatorsReq,
 	}
 	slowMethods = map[string]handler{
-		"alder/preview":            func(*server, json.RawMessage) (any, error) { return map[string]any{}, nil },
+		"alder/preview":            previewReq,
+		"alder/plan":               planReq,
 		"workspace/executeCommand": executeCommandReq,
 	}
 )
@@ -192,7 +194,8 @@ func (s *server) cancel(id json.RawMessage) {
 }
 
 // handle answers one request on a worker: cancelled when $/cancelRequest named it, or when it is
-// an alder/preview a newer one has superseded; otherwise its handler's answer.
+// an alder/preview a newer one has superseded (before it ran or while it ran, so an older diff
+// never follows a newer one); otherwise its handler's answer.
 func (s *server) handle(m *message) {
 	key := idKey(*m.ID)
 	if _, ok := s.cancelled.LoadAndDelete(key); ok {
@@ -212,6 +215,9 @@ func (s *server) handle(m *message) {
 		return
 	}
 	result, err := s.run(m.Method, h, m.Params)
+	if m.Method == "alder/preview" && s.latestPreview.Load() != any(key) {
+		err = &rpcError{codeCancelled, "superseded by a newer preview"} // one arrived while it ran
+	}
 	s.reply(m.ID, result, err)
 }
 
