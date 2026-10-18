@@ -1178,9 +1178,14 @@ stays fast: `$TMPDIR/alder-test-gocache` (`/tmp/alder-test-gocache` when
 `TMPDIR` is unset), or the absolute path in `ALDER_TEST_GOCACHE`. Before
 the tests start, a cache over 10 GiB (`ALDER_TEST_GOCACHE_MAX_GB` changes
 the cap) is wiped, unless another test binary is using it at that moment.
-To clear it by hand, `rm -rf "${TMPDIR:-/tmp}/alder-test-gocache"`. CI
-sets `ALDER_TEST_GOCACHE` to the go command's own cache, since a runner is
-thrown away after each job (`internal/testgocache`).
+Where `/tmp` is held in memory (tmpfs, on many Linux systems), lower the
+cap or set `ALDER_TEST_GOCACHE` to a directory on disk. To clear it by
+hand, `rm -rf "${TMPDIR:-/tmp}/alder-test-gocache"`. CI sets
+`ALDER_TEST_GOCACHE` to the go command's own cache, since a runner is
+thrown away after each job, and the cap to 1000: only test binaries take
+the cache's lock, so a cache that the outer `go test` builds from at the
+same time must never be over the cap, or a wipe would pull it from under
+that command (`internal/testgocache`).
 
 ### The browser smoke test
 

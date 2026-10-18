@@ -21,7 +21,9 @@
 // cache (<cache>.lock) for as long as it runs, and a wipe takes the lock exclusively, without
 // waiting: when another binary is using the cache, the wipe is left to a later run. A binary
 // that starts during a wipe waits for it. Without flock (not unix) the wipe is best effort;
-// see lock_other.go.
+// see lock_other.go. Only test binaries take the lock: a $ALDER_TEST_GOCACHE that a go command
+// outside the tests uses at the same time (the outer go test's own cache, as in CI) needs a cap
+// high enough never to be reached, or a wipe can pull it from under that command.
 //
 // To clear the cache by hand, remove the directory, on unix
 // rm -rf "${TMPDIR:-/tmp}/alder-test-gocache" (not "$(go env GOCACHE)", which in a shell is
@@ -78,7 +80,7 @@ func Setup() (release func(), err error) {
 		if err != nil || !(gb > 0) {
 			return nil, fmt.Errorf("%s=%s: want a positive number of gigabytes", MaxEnv, s)
 		}
-		limit = max(1, int64(gb*(1<<30)))
+		limit = max(1, int64(min(gb, 1<<32)*(1<<30))) // at most 2^62 bytes: no float-to-int overflow
 	}
 	release, err = prepare(dir, limit)
 	if err != nil {

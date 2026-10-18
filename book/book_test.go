@@ -73,7 +73,7 @@ func TestMain(m *testing.M) {
 	// the go builds below go into a cache of their own, not the user's (internal/testgocache)
 	release, err := testgocache.Setup()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, "testgocache:", err)
 		os.Exit(2)
 	}
 	dir, err := os.MkdirTemp("", "alder-book-")

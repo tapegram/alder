@@ -184,3 +184,20 @@ func TestSetup_BadSettings(t *testing.T) {
 		}
 	}
 }
+
+// A huge cap is clamped, not overflowed into a tiny one that wipes on every run.
+func TestSetup_HugeCapKeepsCache(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "cache")
+	t.Setenv("GOCACHE", "")
+	t.Setenv(DirEnv, dir)
+	t.Setenv(MaxEnv, "1e300")
+	fill(t, dir, 600, 600)
+	release, err := Setup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if got := entries(t, dir); len(got) != 2 {
+		t.Fatalf("%s=1e300: entries %v, want both kept", MaxEnv, got)
+	}
+}
