@@ -55,9 +55,24 @@ type Program struct {
 // (Program.ElementsManifest). I/O failures (unreadable directory or file) are returned
 // separately as ioErrs; the caller must not check a program that failed to load.
 func Load(dir string, std map[string]*syntax.Module, extra ...*syntax.Module) (*Program, *diag.Bag, []error) {
+	return LoadOverlay(dir, std, nil, extra...)
+}
+
+// LoadOverlay is Load with the files of overlay read from memory instead of disk: an editor's
+// unsaved buffers. Keys are paths relative to dir, slash-separated ("app/Posts/Index.alder"); a
+// key that is not an .alder file under app/ is ignored. An overlay file the directory does not
+// have (a new, unsaved buffer) is added after the directory's files, in path order.
+func LoadOverlay(dir string, std map[string]*syntax.Module, overlay map[string][]byte, extra ...*syntax.Module) (*Program, *diag.Bag, []error) {
 	var ioErrs []error
 	bag := &diag.Bag{}
 	var mods []*syntax.Module
+	seen := map[string]bool{}
+	parse := func(rel string, src []byte) {
+		m, ds := syntax.ParseFile(rel, src)
+		bag.Items = append(bag.Items, ds...)
+		mods = append(mods, m)
+		seen[rel] = true
+	}
 	root := filepath.Join(dir, "app")
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -67,17 +82,30 @@ func Load(dir string, std map[string]*syntax.Module, extra ...*syntax.Module) (*
 		if d.IsDir() || !strings.HasSuffix(path, ".alder") {
 			return nil
 		}
+		r, _ := filepath.Rel(dir, path)
+		rel := filepath.ToSlash(r)
+		if src, ok := overlay[rel]; ok {
+			parse(rel, src)
+			return nil
+		}
 		src, err := os.ReadFile(path)
 		if err != nil {
 			ioErrs = append(ioErrs, err)
 			return nil
 		}
-		rel, _ := filepath.Rel(dir, path)
-		m, ds := syntax.ParseFile(filepath.ToSlash(rel), src)
-		bag.Items = append(bag.Items, ds...)
-		mods = append(mods, m)
+		parse(rel, src)
 		return nil
 	})
+	var added []string
+	for rel := range overlay {
+		if !seen[rel] && strings.HasPrefix(rel, "app/") && strings.HasSuffix(rel, ".alder") {
+			added = append(added, rel)
+		}
+	}
+	slices.Sort(added)
+	for _, rel := range added {
+		parse(rel, overlay[rel])
+	}
 	parseFailed := bag.HasErrors()
 	mods = append(mods, extra...)
 	prog, b2 := Build(mods, std)
