@@ -136,14 +136,9 @@ expression's type depends on the attribute:
 | `click`, `submit` | a message value (chapter 6) |
 | any attribute | `Maybe Text`: omitted when `Nothing` |
 
-A boolean attribute is written bare (`<video controls>`) or with a `Bool`
-(`autoplay={model.playing}`), and is rendered present or absent. The
-boolean attributes are the HTML standard's: `allowfullscreen`, `async`,
-`autofocus`, `autoplay`, `checked`, `controls`, `default`, `defer`,
-`disabled`, `formnovalidate`, `hidden`, `inert`, `ismap`, `itemscope`,
-`loop`, `multiple`, `muted`, `nomodule`, `novalidate`, `open`,
-`playsinline`, `readonly`, `required`, `reversed` and `selected` (and the
-rarer `alpha` and `shadowroot…` ones).
+A boolean attribute (HTML's: `controls`, `muted`, `async`, `defer`, …) is
+written bare (`<video controls>`) or with a `Bool`, rendered present or
+absent.
 
 `href` never takes a `Text`. Links to external sites use `<a href={Url.external "https://..."}>`.
 Event attributes are not HTML event names (`onclick`); they are `click` and
@@ -171,37 +166,20 @@ details.
 
 ## Scripts and styles
 
-JavaScript and CSS belong in files under `static/`, loaded with
-`<script type="module" src="/static/app.js"></script>` and
-`<link rel="stylesheet" href="/static/app.css" />`. A short one can be
-written inline. The body of a `<script>` or `<style>` is raw text, as in
-HTML: everything up to the closing tag is JavaScript or CSS, sent exactly as
-written. `{`, `<`, `&&` and quotes in it are not Alder, and a line starting
-with `--` is not a comment:
+Scripts and styles belong in `static/`, but may be inline. The body of a
+`<script>` or `<style>` is raw text, as in HTML: sent exactly as written.
+`{`, `<`, `&&`, quotes and `--` in it are not Alder, so `{model.name}` there
+is those characters, and no Alder value can be spliced into a script or a
+stylesheet:
 
 ```alder eval=<script>if (a < b && ok) { go("{x}") }</script>
 <script>if (a < b && ok) { go("{x}") }</script>
 ```
 
-So no Alder value can reach the text of a script or a stylesheet, and none
-can be spliced into it: `{model.name}` in a body is those characters, not
-the name. Data reaches a script through `data-*` attributes, which are
-escaped like any other attribute, and the script reads them
-(`el.dataset.clip`):
-
-```alder
-<div id="player" data-clip={model.clip}>
-  <script>
-    const clip = document.getElementById("player").dataset.clip;
-  </script>
-</div>
-```
-
-A body may not contain `</script` or `</style`, in any case: the browser
-ends the element at the first one. Split it inside a string (`"<\/script>"`)
-or move the code to a file. A body that is one `{ … }` holding a string or a
-name (`<script>{model.code}</script>`) is refused as the interpolation it
-looks like.
+Data reaches a script through an escaped `data-*` attribute
+(`<div id="p" data-clip={model.clip}>`, read as `p.dataset.clip`). A body
+may not contain `</script` or `</style` in any case (split it:
+`"<\/script>"`), nor be one `{ … }` holding a string or a name (E0001).
 
 ## Components
 
