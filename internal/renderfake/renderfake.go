@@ -490,6 +490,8 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request, body []byte) {
 		s.serviceRoute(w, r, v, p[2:], body)
 	case len(p) == 1 && p[0] == "registrycredentials":
 		s.credentials(w, r, body)
+	case len(p) == 2 && p[0] == "registrycredentials" && m == "PATCH":
+		s.updateCredential(w, p[1], body)
 	case m == "GET" && len(p) == 1 && p[0] == "logs":
 		s.logsList(w, r)
 	default:
@@ -654,6 +656,23 @@ func (s *Server) credentials(w http.ResponseWriter, r *http.Request, body []byte
 	c := Credential{ID: s.id("rcr"), Name: in.Name, Registry: in.Registry, Username: in.Username, Token: in.AuthToken, OwnerID: in.OwnerID}
 	s.creds = append(s.creds, c)
 	jsonOut(w, 200, map[string]any{"id": c.ID, "name": c.Name, "registry": c.Registry, "username": c.Username})
+}
+
+// updateCredential is PATCH /registrycredentials/{id}: like Render, every field is required.
+func (s *Server) updateCredential(w http.ResponseWriter, id string, body []byte) {
+	var in struct{ Name, Registry, Username, AuthToken string }
+	if json.Unmarshal(body, &in) != nil || in.Name == "" || in.Registry == "" || in.Username == "" || in.AuthToken == "" {
+		msg(w, 400, "invalid registry credential")
+		return
+	}
+	for i := range s.creds {
+		if c := &s.creds[i]; c.ID == id {
+			c.Name, c.Registry, c.Username, c.Token = in.Name, in.Registry, in.Username, in.AuthToken
+			jsonOut(w, 200, map[string]any{"id": c.ID, "name": c.Name, "registry": c.Registry, "username": c.Username, "updatedAt": ts(time.Now())})
+			return
+		}
+	}
+	msg(w, 404, "registry credential not found")
 }
 
 func logJSON(l LogLine, resource string) map[string]any {

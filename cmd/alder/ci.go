@@ -304,7 +304,7 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 	}
 	if len(renderEnvs) > 0 {
 		w("#\n")
-		para("The job's own token (`github.token`) stands in when ALDER_REGISTRY_TOKEN is not set: it can push a GHCR image under the repository's owner, but Render's registry credential needs a long-lived personal access token with `read:packages`. A personal access token set once as ALDER_REGISTRY_TOKEN is simplest; the run token alone works only for a public image.")
+		para("ALDER_REGISTRY_TOKEN must be a personal access token with `read:packages` and `write:packages`, not the job's own token (`github.token`): alder pushes the image with it and keeps Render's registry credential set to it, and Render pulls the image with that credential on every deploy and every restart, long after a run's token has expired.")
 		w("#\n")
 		para("The first deploy creates the Render service (`alder deploy` does it, from App's `deploy`), so Render's dashboard is for looking.")
 	}
@@ -376,11 +376,7 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 		if len(env) > 0 {
 			w("        env:\n")
 			for _, n := range env {
-				if n == "ALDER_REGISTRY_TOKEN" {
-					w("          %s: ${{ secrets.%s || github.token }}\n", n, n)
-				} else {
-					w("          %s: ${{ secrets.%s }}\n", n, n)
-				}
+				w("          %s: ${{ secrets.%s }}\n", n, n)
 			}
 		}
 		if c.fromJSON {

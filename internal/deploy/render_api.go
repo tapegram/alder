@@ -357,6 +357,15 @@ func (a *RenderAPI) CreateCredential(ctx context.Context, ownerID, name, registr
 	return out.ID, err
 }
 
+// UpdateCredential replaces the values of registry credential id (PATCH
+// /registrycredentials/{id}; Render requires every field). A service using it pulls with the
+// new values from its next deploy.
+func (a *RenderAPI) UpdateCredential(ctx context.Context, id, name, registry, user, token string) error {
+	return a.do(ctx, "PATCH", "/registrycredentials/"+url.PathEscape(id), nil, map[string]string{
+		"name": name, "registry": registry, "username": user, "authToken": token,
+	}, nil)
+}
+
 // RenderDeploy is a deploy. Status is Render's: created, queued, build_in_progress,
 // update_in_progress, live, deactivated, build_failed, update_failed, pre_deploy_in_progress,
 // pre_deploy_failed, canceled.

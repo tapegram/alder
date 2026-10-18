@@ -12,10 +12,10 @@
 #   SMTP_URL              named in App's `requires`; production and preview read it here
 #   ALDER_SECRET          the session key (16 bytes or more) of production and preview
 #
-# The job's own token (`github.token`) stands in when ALDER_REGISTRY_TOKEN is not set: it can
-# push a GHCR image under the repository's owner, but Render's registry credential needs a
-# long-lived personal access token with `read:packages`. A personal access token set once as
-# ALDER_REGISTRY_TOKEN is simplest; the run token alone works only for a public image.
+# ALDER_REGISTRY_TOKEN must be a personal access token with `read:packages` and
+# `write:packages`, not the job's own token (`github.token`): alder pushes the image with it and
+# keeps Render's registry credential set to it, and Render pulls the image with that credential
+# on every deploy and every restart, long after a run's token has expired.
 #
 # The first deploy creates the Render service (`alder deploy` does it, from App's `deploy`), so
 # Render's dashboard is for looking.
@@ -83,7 +83,7 @@ jobs:
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           TURSO_API_TOKEN: ${{ secrets.TURSO_API_TOKEN }}
-          ALDER_REGISTRY_TOKEN: ${{ secrets.ALDER_REGISTRY_TOKEN || github.token }}
+          ALDER_REGISTRY_TOKEN: ${{ secrets.ALDER_REGISTRY_TOKEN }}
           SMTP_URL: ${{ secrets.SMTP_URL }}
           ALDER_SECRET: ${{ secrets.ALDER_SECRET }}
         run: |
@@ -125,7 +125,7 @@ jobs:
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           TURSO_API_TOKEN: ${{ secrets.TURSO_API_TOKEN }}
-          ALDER_REGISTRY_TOKEN: ${{ secrets.ALDER_REGISTRY_TOKEN || github.token }}
+          ALDER_REGISTRY_TOKEN: ${{ secrets.ALDER_REGISTRY_TOKEN }}
           SMTP_URL: ${{ secrets.SMTP_URL }}
           ALDER_SECRET: ${{ secrets.ALDER_SECRET }}
         run: alder deploy production

@@ -226,6 +226,30 @@ func TestRenderAPI_Credentials(t *testing.T) {
 	}
 }
 
+// UpdateCredential replaces a credential's values: PATCH /registrycredentials/{id} with the name,
+// the registry, the user and the token, all of which Render requires.
+func TestRenderAPI_UpdateCredential(t *testing.T) {
+	a, f := newRenderAPI(t)
+	ctx := context.Background()
+	id, err := a.CreateCredential(ctx, renderfake.OwnerID, "alder-o/r", "GITHUB", "o", "tok-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.UpdateCredential(ctx, id, "alder-o/r", "GITHUB", "o", "tok-b"); err != nil {
+		t.Fatal(err)
+	}
+	c := lastCall(t, f)
+	if c.Method != "PATCH" || c.Path != "/registrycredentials/"+id || c.Body != `{"authToken":"tok-b","name":"alder-o/r","registry":"GITHUB","username":"o"}` {
+		t.Fatalf("call = %+v", c)
+	}
+	if cs := f.Credentials(); len(cs) != 1 || cs[0].Token != "tok-b" || cs[0].ID != id {
+		t.Fatalf("credentials = %+v", cs)
+	}
+	if err := a.UpdateCredential(ctx, "rcr-nope", "alder-o/r", "GITHUB", "o", "tok-b"); err == nil {
+		t.Fatal("updating a credential that does not exist succeeded")
+	}
+}
+
 func TestRenderAPI_Deploys(t *testing.T) {
 	a, f := newRenderAPI(t)
 	ctx := context.Background()

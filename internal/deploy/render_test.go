@@ -351,6 +351,37 @@ func migrationsIn(t *testing.T, f *tursofake.Server, name string) string {
 // The first deploy: the registry credential, the image pushed, the service created (R2) with
 // the health path, instances, region, plan and the whole environment, Render live, health 1/1,
 // the build current and one builds row.
+// A changed ALDER_REGISTRY_TOKEN reaches Render's registry credential: the first deploy creates
+// it with token A; the next, with token B (a new PAT, or a rotated one), updates the same
+// credential (found by name, updated by id) instead of leaving A, which Render would go on
+// pulling with on every restart. No token value is printed.
+func TestRender_CredentialTokenUpdated(t *testing.T) {
+	g := newRenderRig(t)
+	g.mustDeploy(g.target())
+	creds := g.render.Credentials()
+	if len(creds) != 1 || creds[0].Token != rRegToken {
+		t.Fatalf("after the first deploy: %d credentials", len(creds))
+	}
+	const tokenB = "ghp_SECRETREG_rotated_9z8y7x"
+	g.secrets = append(g.secrets, tokenB)
+	regB := registryfake.New(t, registryfake.Options{User: "tavish", Token: tokenB, RequireAuth: true})
+	t.Setenv("ALDER_REGISTRY_TOKEN", tokenB)
+	t.Setenv("ALDER_REGISTRY_BASE", regB.URL)
+	from := len(g.render.Requests())
+	g.mustDeploy(g.target())
+	creds = g.render.Credentials()
+	if len(creds) != 1 || creds[0].Token != tokenB || creds[0].Name != "alder-tavish/blog" || creds[0].Registry != "GITHUB" || creds[0].Username != "tavish" {
+		t.Errorf("after the second deploy: %d credentials, token B held: %v", len(creds), len(creds) == 1 && creds[0].Token == tokenB)
+	}
+	reqs := g.requests(from)
+	if count(reqs, "PATCH /registrycredentials/"+creds[0].ID) != 1 || count(reqs, "POST /registrycredentials") != 0 {
+		t.Errorf("render requests: %v", nonGET(reqs))
+	}
+	if !strings.Contains(g.out.String(), "registry credential alder-tavish/blog updated\n") {
+		t.Errorf("transcript:\n%s", g.out.String())
+	}
+}
+
 func TestRender_FirstDeploy(t *testing.T) {
 	g := newRenderRig(t)
 	r := g.target()

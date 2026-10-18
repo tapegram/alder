@@ -1303,11 +1303,13 @@ standard library and the SQLite driver, so the image carries the bundle
 rather than a Go package of roots.)
 
 One token does two jobs: `ALDER_REGISTRY_TOKEN` pushes the image and is
-also what Render stores as its **registry credential**, found or made
-by name on each deploy (`alder-<image path>`; the registry kind comes
+also what Render stores as its **registry credential**, made by name
+on the first deploy (`alder-<image path>`; the registry kind comes
 from the host: `ghcr.io`, Docker Hub, GitLab, Google Artifact Registry
-and ECR are known). Render pulls with it for as long as the service
-lives, so it must be a long-lived personal access token (for GHCR, a
+and ECR are known) and, on every later deploy, found by that name and
+updated with the deploy's token (`registry credential … updated`), so
+a new or rotated token reaches Render before the deploy it pulls for.
+Render pulls with it for as long as the service lives, so it must be a long-lived personal access token (for GHCR, a
 classic token with `read:packages` and `write:packages`), not a
 per-run one. With no token set the push is anonymous and no credential
 is made: that works only for a public image. Images stay in the
@@ -1318,12 +1320,14 @@ registry (pruning removes only the records `keep` counts).
 `alder ci init` writes the same three jobs for a Render environment,
 with no SSH step. The header comment lists the repository secrets
 (`RENDER_API_KEY`, `TURSO_API_TOKEN`, `ALDER_REGISTRY_TOKEN` and the
-`requires` names), the job has `permissions: packages: write`, and
-`ALDER_REGISTRY_TOKEN` falls back to `github.token`. The run token can
-push a GHCR image under the repository's owner but cannot stand in as
-Render's credential, since it dies with the run: set a personal access
-token once as the `ALDER_REGISTRY_TOKEN` secret, or keep the image
-public. The pull request's preview runs `alder deploy preview --json`
+`requires` names), the job has `permissions: packages: write`, and the
+deploy step reads `ALDER_REGISTRY_TOKEN` from the secret alone, with no
+fallback to the run's `github.token`. The run token could push a GHCR
+image, but alder stores the token as Render's credential, and Render
+pulls with it on every deploy and every restart, long after the run and
+its token have ended. So the header comment asks for a personal access
+token with `read:packages` and `write:packages`: set it once as the
+`ALDER_REGISTRY_TOKEN` secret before the first deploy. The pull request's preview runs `alder deploy preview --json`
 and comments the `address` from it (no `--host`), and every pull request
 deploys to the one preview service, so the last push wins. The first
 deploy creates the Render service; the dashboard is for looking.

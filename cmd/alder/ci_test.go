@@ -239,10 +239,10 @@ func TestCiInit_RenderOnly(t *testing.T) {
 	y := string(b)
 	for _, want := range []string{
 		"#   RENDER_API_KEY        ", "#   TURSO_API_TOKEN       ", "#   ALDER_REGISTRY_TOKEN  ", "#   SMTP_URL              ", "#   ALDER_SECRET          ",
-		"personal access token set once as\n# ALDER_REGISTRY_TOKEN is simplest; the run token alone works only for a public image.",
+		"# ALDER_REGISTRY_TOKEN must be a personal access token with `read:packages` and\n# `write:packages`, not the job's own token",
 		"The first deploy creates the Render service",
 		"      packages: write\n",
-		"          ALDER_REGISTRY_TOKEN: ${{ secrets.ALDER_REGISTRY_TOKEN || github.token }}\n",
+		"          ALDER_REGISTRY_TOKEN: ${{ secrets.ALDER_REGISTRY_TOKEN }}\n",
 		"          alder deploy preview --json > \"$RUNNER_TEMP/deploy.json\"\n",
 		"          ADDRESS: ${{ steps.deploy.outputs.address }}\n",
 		"        run: alder deploy production\n",
@@ -251,9 +251,11 @@ func TestCiInit_RenderOnly(t *testing.T) {
 			t.Errorf("render-only.yml lacks %q", want)
 		}
 	}
-	for _, not := range []string{"SSH", "--host", "HOST"} {
+	// no run token for the registry: Render pulls with the credential on every restart, long
+	// after a run's token has expired
+	for _, not := range []string{"SSH", "--host", "HOST", "|| github.token", "public image"} {
 		if strings.Contains(y, not) {
-			t.Errorf("render-only.yml has %q: a Render job has no SSH step and no --host", not)
+			t.Errorf("render-only.yml has %q: a Render job has no SSH step, no --host and no run token for the registry", not)
 		}
 	}
 }

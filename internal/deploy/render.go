@@ -571,11 +571,15 @@ func (r *Render) Upload(ctx context.Context, dir, id string) error {
 	return nil
 }
 
-// prepare brings an existing service in line before build id's deploy: its environment merged
+// prepare brings an existing service in line before build id's deploy: its registry credential
+// updated with this run's token (credential), its environment merged
 // (R3: one PUT, only when something changed; a deploy Render started for it that is not ours is
 // cancelled) and its instance count when `instances` changed. Start calls it, after the
 // migrations, so a refusal before Start changes nothing at Render.
 func (r *Render) prepare(ctx context.Context, id string) error {
+	if _, err := r.credential(ctx); err != nil {
+		return err
+	}
 	env, changed, err := r.mergedEnv(ctx)
 	if err != nil {
 		return err
@@ -713,20 +717,29 @@ func (r *Render) Migrate(ctx context.Context, id string) (string, error) {
 	return out, serr
 }
 
-// credential is the id of Render's credential for the registry, made from ALDER_REGISTRY_TOKEN
-// on the first deploy of the image (found by name later); "" without a token (a public image).
+// credential is the id of Render's credential for the registry, holding ALDER_REGISTRY_TOKEN:
+// made on the first deploy of the image, and on every later deploy found by name and updated
+// with the token of this run, so a new or rotated token reaches Render, which pulls the image
+// with it on every restart; "" without a token (a public image).
 func (r *Render) credential(ctx context.Context) (string, error) {
 	if r.Reg.Token == "" {
 		return "", nil
 	}
 	name := "alder-" + strings.TrimPrefix(r.Image, r.imageHost+"/")
-	id, ok, err := r.API.Credential(ctx, name)
-	if err != nil || ok {
-		return id, err
-	}
 	kind, known := ir.RegistryKind(r.imageHost)
 	if !known {
 		return "", refuse("", "Render has no registry kind for %s (it takes ghcr.io, docker.io, registry.gitlab.com, *.pkg.dev and *.amazonaws.com)", r.imageHost)
+	}
+	id, ok, err := r.API.Credential(ctx, name)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		if err := r.API.UpdateCredential(ctx, id, name, kind, r.Reg.User, r.Reg.Token); err != nil {
+			return "", fmt.Errorf("updating Render's registry credential %s: %w", name, err)
+		}
+		fmt.Fprintf(r.Out, "registry credential %s updated\n", name)
+		return id, nil
 	}
 	if id, err = r.API.CreateCredential(ctx, r.owner, name, kind, r.Reg.User, r.Reg.Token); err != nil {
 		return "", fmt.Errorf("creating Render's registry credential %s: %w", name, err)
