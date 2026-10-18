@@ -110,8 +110,25 @@ func TestComplete_HoleRanksFittingNames(t *testing.T) {
 	if !strings.HasPrefix(got["perPage"].SortText, "0") || !strings.HasPrefix(got["q"].SortText, "1") {
 		t.Fatalf("perPage (Int) not ranked before q (Text): %q %q", got["perPage"].SortText, got["q"].SortText)
 	}
-	if r := got["perPage"].TextEdit.Range; r.End.Character-r.Start.Character != 1 {
-		t.Fatalf("the edit must replace the hole's name: %+v", r)
+	hole := c.at("app/Posts/Index.alder", "?n", 0)
+	if it := got["perPage"]; it.TextEdit.Range != (Range{Start: hole, End: Position{hole.Line, hole.Character + 2}}) || it.TextEdit.NewText != "perPage" {
+		t.Fatalf("the edit must replace the whole hole, `?` included: %+v", it.TextEdit)
+	}
+	// with the cursor between `?` and its name, the edit still covers the whole hole
+	mid := complete(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "?n", 1))
+	if r := labels(mid)["perPage"].TextEdit.Range; r.Start != hole || r.End.Character != hole.Character+2 {
+		t.Fatalf("mid-hole range %+v", r)
+	}
+}
+
+// A `?` typed on a new line (no hole in the build yet) is replaced too.
+func TestComplete_TypedHoleReplacesQuestionMark(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	p := typing(t, c, "app/Posts/Index.alder", afterQ, "  let z = ?pa")
+	it, ok := labels(complete(t, c, "app/Posts/Index.alder", p))["params"]
+	if !ok || it.TextEdit.Range.Start.Character != p.Character-3 || it.TextEdit.Range.End != p {
+		t.Fatalf("params: %+v at %+v", it, p)
 	}
 }
 

@@ -433,7 +433,8 @@ func (cx *completion) tags() ([]completionItem, bool) {
 }
 
 // hole: after `?name`, or with the cursor in a hole of the build, the names in scope, those
-// whose type fits the hole's first (sortText 0…), then the others (1…).
+// whose type fits the hole's first (sortText 0…), then the others (1…). The edit replaces the
+// whole hole, `?` included, so picking a name fills it.
 func (cx *completion) hole() ([]completionItem, bool) {
 	g := reHole.FindStringSubmatch(cx.prefix)
 	h := cx.holeAt()
@@ -442,7 +443,7 @@ func (cx *completion) hole() ([]completionItem, bool) {
 	}
 	n := len(reWord.FindString(cx.prefix))
 	if g != nil {
-		n = len(g[1])
+		n = len(g[0]) // the `?` too: picking a name fills the hole
 	}
 	if !cx.fresh {
 		return nil, true
@@ -456,6 +457,9 @@ func (cx *completion) hole() ([]completionItem, bool) {
 		it.SortText = "1" + it.Label
 		if want != nil && cx.fits(it.Label, want) {
 			it.SortText = "0" + it.Label
+		}
+		if h != nil && h.Span.Start.Line == cx.pos.Line && h.Span.End.Line == cx.pos.Line {
+			it.TextEdit.Range = Range{Start: Position{cx.line, h.Span.Start.Col - 1}, End: Position{cx.line, max(h.Span.End.Col-1, cx.col)}}
 		}
 		out = append(out, it)
 	}
