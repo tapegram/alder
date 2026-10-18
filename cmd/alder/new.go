@@ -34,8 +34,8 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 		}
 	}()
 	if len(args) > 0 {
-		if run, ok := newGenerators[args[0]]; ok {
-			return run(args[1:], stdout, stderr)
+		if s := newGenerator(args[0]); s != nil {
+			return runSpec(s, args[1:], specUsage[s.ID], stdout, stderr)
 		}
 	}
 	bare := false
@@ -58,7 +58,7 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 	}
 	dir := filepath.Clean(args[0])
 	name := filepath.Base(dir)
-	if _, ok := newGenerators[name]; ok {
+	if newGenerator(name) != nil {
 		fmt.Fprintf(stderr, "alder new: `%s` names a generator (`alder new %s …`), so it cannot name an app: choose another name\n", name, name)
 		return 1
 	}

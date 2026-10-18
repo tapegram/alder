@@ -11,7 +11,7 @@ const editUsage = "usage: alder edit table <T> add-field <field>:<Type>[=default
 
 // runEditTo is `alder edit page` (generate.EditPage), `alder edit session`
 // (generate.EditSession) and `alder edit table`: the table's declaration edited (generate.EditTable), its
-// migration written by `alder migrate`'s generator (migrateCopy), and the copy checked. The
+// migration written by `alder migrate`'s generator (migrateCopyAs), and the copy checked. The
 // code the change breaks (an insert that lacks the new field, a use of a dropped one) is printed
 // as the copy's diagnostics, and the edit is still written: the diagnostics are the to-do list.
 // With --strict a change that breaks anything is refused instead, and nothing is written.
