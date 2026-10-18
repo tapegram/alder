@@ -1,0 +1,51 @@
+module M
+
+-- A match binding used only by a `let` whose own name is never used: the let is not emitted, so
+-- neither may the binding be (Go rejects a declared and unused variable).
+
+type Shape = Circle Float | Rect { w: Float, h: Float }
+
+msg Pick { id: Text, n: Int }
+msg Clear
+
+page "/m" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 1 }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Pick p -> {
+    let unused = p.id
+    Task.succeed Rerender
+  },
+  Clear _ -> Task.succeed Rerender,
+}
+
+label : Maybe Int -> Text
+label m = match m {
+  Just n -> {
+    let a = n + 1
+    let b = a
+    "some"
+  },
+  Nothing -> "none",
+}
+
+area : Shape -> Float
+area s = match s {
+  Circle r -> {
+    let q = r
+    1.0
+  },
+  Rect r -> {
+    let w = r.w
+    let r = 2.0
+    r
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <button click={Clear}>{label (Just model.n)}</button>

@@ -4,7 +4,9 @@ import "alder/internal/ir"
 
 // Walking the IR: free-variable counts and subexpressions, over every node kind (HTML included).
 
-// uses counts the free occurrences of local name in e.
+// uses counts the free occurrences of local name in e that the emitted Go contains: a Let whose
+// own name its body never uses is not emitted (expr.go), so its value's occurrences do not count
+// (else a match binding used only there would be declared and unused).
 func uses(e ir.Expr, name string) int { return (&usesOf{name: name}).count(e) }
 
 // usesOf counts the free occurrences of name. A decision tree shares nodes (share.go): a
@@ -41,7 +43,10 @@ func (u *usesOf) node(e ir.Expr) int {
 		}
 		return 0
 	case *ir.Let:
-		n := u.count(x.Value)
+		n := 0
+		if x.Name != "_" && uses(x.Body, x.Name) > 0 { // else the let is not emitted (expr.go)
+			n = u.count(x.Value)
+		}
 		if x.Name != name {
 			n += u.count(x.Body)
 		}
