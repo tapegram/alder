@@ -68,9 +68,14 @@ func parserLib(t *testing.T, cli string) string {
 		if libErr != nil {
 			return
 		}
+		dir, err := filepath.Abs(".")
+		if err != nil {
+			libErr = err
+			return
+		}
 		so := filepath.Join(libDir, "alder.so")
 		cmd := exec.Command(cli, "build", "-o", so)
-		cmd.Dir = grammarDir(t)
+		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			libErr = fmt.Errorf("tree-sitter build: %v\n%s", err, out)
 			return
@@ -85,6 +90,7 @@ func parserLib(t *testing.T, cli string) string {
 
 // libArgs are the flags that make `tree-sitter query` and `tree-sitter parse` use parserLib.
 func libArgs(t *testing.T, cli string) []string {
+	t.Helper()
 	return []string{"-l", parserLib(t, cli), "--lang-name", "alder"}
 }
 
@@ -232,6 +238,19 @@ type capture struct {
 // queryDecls runs test/drift.scm over the files and returns each file's captures in source order.
 func queryDecls(t *testing.T, cli, paths string) map[string][]decl {
 	t.Helper()
+	res := map[string][]decl{}
+	for f, cs := range queryCaptures(t, cli, paths) {
+		for _, c := range cs {
+			res[f] = append(res[f], c.d)
+		}
+	}
+	return res
+}
+
+// queryCaptures runs test/drift.scm over the files and returns each file's captures, with
+// their positions, in source order.
+func queryCaptures(t *testing.T, cli, paths string) map[string][]capture {
+	t.Helper()
 	args := append([]string{"query"}, libArgs(t, cli)...)
 	args = append(args, filepath.Join(grammarDir(t), "test", "drift.scm"), "--paths", paths)
 	cmd := exec.Command(cli, args...)
@@ -264,19 +283,15 @@ func queryDecls(t *testing.T, cli, paths string) map[string][]decl {
 		}
 		caps[file] = append(caps[file], capture{row, col, decl{m[1], name}})
 	}
-	res := map[string][]decl{}
-	for f, cs := range caps {
+	for _, cs := range caps {
 		sort.SliceStable(cs, func(i, j int) bool {
 			if cs[i].row != cs[j].row {
 				return cs[i].row < cs[j].row
 			}
 			return cs[i].col < cs[j].col
 		})
-		for _, c := range cs {
-			res[f] = append(res[f], c.d)
-		}
 	}
-	return res
+	return caps
 }
 
 func split(ds []decl) (imports, rest []decl) {
@@ -343,20 +358,25 @@ func TestDrift(t *testing.T) {
 }
 
 // TestRecovery: code being typed (an unterminated string, an unclosed element, a dangling
-// let) leaves the next column-1 declaration parsed as a declaration.
+// let) leaves the next column-1 declaration parsed as a declaration, whole: the capture must
+// start on the declaration's first line, so a value_decl that lost its signature (and starts
+// at its binding) does not count.
 func TestRecovery(t *testing.T) {
 	cli := tsCLI(t)
 	dir := t.TempDir()
-	after := decl{"value", "after"}
+	after := capture{d: decl{"value", "after"}}
+	at := func(c capture, row int) capture { c.row = row; return c }
 	cases := map[string]struct {
 		src  string
-		want decl
+		want capture // the declaration's capture and the 0-based row of its first line
 	}{
-		"string.alder":  {"module M\n\na = \"unterminated\n\nafter : Int\nafter = 1\n", after},
-		"element.alder": {"module M\n\nview m =\n  <div>\n    <p>hello\n\nafter : Int\nafter = 1\n", after},
-		"let.alder":     {"module M\n\nb = {\n  let x =\n}\n\nafter : Int\nafter = 1\n", after},
-		// scan_html_text returns the newline before the column-1 line as a separator.
-		"element-type.alder": {"module M\n\nview m =\n  <div>\n    <p>hello\n\ntype T = A | B\n", decl{"type", "T"}},
+		"string.alder":  {"module M\n\na = \"unterminated\n\nafter : Int\nafter = 1\n", at(after, 4)},
+		"element.alder": {"module M\n\nview m =\n  <div>\n    <p>hello\n\nafter : Int\nafter = 1\n", at(after, 6)},
+		"let.alder":     {"module M\n\nb = {\n  let x =\n}\n\nafter : Int\nafter = 1\n", at(after, 6)},
+		// An element left open before a column-1 line ends there (scanner.c scan_html_text).
+		"element-binding.alder":  {"module M\n\nview m =\n  <div>\n    <p>hello\n\nafter = 1\n", at(after, 6)},
+		"element-adjacent.alder": {"module M\n\nview m =\n  <div>\n    <p>hello\nafter : Int\nafter = 1\n", at(after, 5)},
+		"element-type.alder":     {"module M\n\nview m =\n  <div>\n    <p>hello\n\ntype T = A | B\n", at(capture{d: decl{"type", "T"}}, 6)},
 	}
 	var paths []string
 	for name, c := range cases {
@@ -371,17 +391,18 @@ func TestRecovery(t *testing.T) {
 	if err := os.WriteFile(list, []byte(strings.Join(paths, "\n")+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got := queryDecls(t, cli, list)
+	got := queryCaptures(t, cli, list)
 	for _, p := range paths {
 		want := cases[filepath.Base(p)].want
 		found := false
-		for _, d := range got[p] {
-			if d == want {
+		for _, c := range got[p] {
+			if c.row == want.row && c.d == want.d {
 				found = true
 			}
 		}
 		if !found {
-			t.Errorf("%s: the declaration after the broken one (%v) is lost; captures: %v", filepath.Base(p), want, got[p])
+			t.Errorf("%s: the declaration after the broken one (%v on line %d) is lost or incomplete; captures: %v",
+				filepath.Base(p), want.d, want.row+1, got[p])
 		}
 	}
 }

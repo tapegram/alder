@@ -144,6 +144,7 @@ module.exports = grammar({
     $.html_text, // scanner.c scan_html_text: element text up to `<`+letter, `{` or a comment line
     $.raw_text, // scanner.c scan_raw_text: <script>/<style> bodies
     $._raw_tag_name, // scanner.c scan_raw_tag_name: `script` or `style` right after `<`
+    $._implicit_end_tag, // scanner.c scan_html_text: zero width, closes an element left open before a column-1 line
     $._error_sentinel, // never in a rule: valid only during error recovery
   ],
 
@@ -431,7 +432,15 @@ module.exports = grammar({
 
     _html: ($) => choice($.element, $.self_closing_element, $.raw_element),
 
-    element: ($) => seq(field('open', $.start_tag), repeat($._html_child), field('close', $.end_tag)),
+    // An element left open before a column-1 line (code being typed) ends there, so the
+    // declaration on that line still parses as one (scanner.c scan_html_text). The compiler
+    // rejects such code; the tree accepts a little more.
+    element: ($) =>
+      seq(
+        field('open', $.start_tag),
+        repeat($._html_child),
+        choice(field('close', $.end_tag), $._implicit_end_tag),
+      ),
     start_tag: ($) => seq('<', field('tag', $._tag_name), repeat($.attribute), '>'),
     end_tag: ($) => seq('</', field('tag', $._tag_name), '>'),
     self_closing_element: ($) => seq('<', field('tag', $._tag_name), repeat($.attribute), '/', '>'),

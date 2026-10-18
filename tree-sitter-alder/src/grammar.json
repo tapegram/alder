@@ -4018,12 +4018,21 @@
           }
         },
         {
-          "type": "FIELD",
-          "name": "close",
-          "content": {
-            "type": "SYMBOL",
-            "name": "end_tag"
-          }
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "close",
+              "content": {
+                "type": "SYMBOL",
+                "name": "end_tag"
+              }
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_implicit_end_tag"
+            }
+          ]
         }
       ]
     },
@@ -4582,6 +4591,10 @@
     {
       "type": "SYMBOL",
       "name": "_raw_tag_name"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_implicit_end_tag"
     },
     {
       "type": "SYMBOL",

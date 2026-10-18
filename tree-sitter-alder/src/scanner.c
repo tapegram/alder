@@ -15,6 +15,7 @@ enum TokenType {
   HTML_TEXT,
   RAW_TEXT,
   RAW_TAG_NAME,
+  IMPLICIT_END_TAG,
   ERROR_SENTINEL,
 };
 
@@ -169,13 +170,19 @@ static bool scan_newline(TSLexer *lexer, bool recovering) {
 
 // scan_html_text reads element content up to `{`, a `<` followed by a letter, `/` or `!`, or
 // EOF. It stops before a newline whose next non-blank line starts with `--` (a comment inside
-// markup, parser_html.go addText) so the comment is lexed as a comment. It also stops before a
-// newline whose next line starts in column 1 with anything but `<`, `{` or whitespace: element
-// content is indented in practice, and stopping there keeps an unclosed tag from turning the
-// rest of the file into text while code is being typed (the drift test shows no valid file
-// relies on column-1 text). Stopping there with no text read, it returns that newline as a
-// separator instead, so error recovery can resync on the column-1 line.
-static bool scan_html_text(TSLexer *lexer) {
+// markup, parser_html.go addText) so the comment is lexed as a comment, at any column: Go's
+// ScanText has no column rule. It also stops before a newline whose next line starts in column 1
+// with anything but `<`, `{`, `--` or whitespace: element content is indented in practice, and
+// stopping there keeps an unclosed tag from turning the rest of the file into text while code is
+// being typed (the drift test shows no valid file relies on column-1 text).
+//
+// Stopping there with no text read, the element was left open: it returns a zero-width
+// implicit end tag, once per open element, so the open binding completes and the newline then
+// separates the column-1 declaration. Error recovery cannot do this: with the elements left
+// open, tree-sitter's error costs prefer skipping a name-led declaration's first tokens
+// (`after :`, `after =`) into an ERROR and taking the rest as the binding's body over discarding
+// the binding. The Go parser rejects this code (the compiler reports it); the tree accepts it.
+static bool scan_html_text(TSLexer *lexer, const bool *valid) {
   bool has_text = false;
   for (;;) {
     if (lexer->eof(lexer)) break;
@@ -196,22 +203,7 @@ static bool scan_html_text(TSLexer *lexer) {
       lexer->mark_end(lexer);
       advance(lexer);
       int32_t first = lexer->lookahead;
-      if (!lexer->eof(lexer) && !is_blank(first) && first != '\n' && first != '<' && first != '{') {
-        if (has_text) {
-          lexer->result_symbol = HTML_TEXT;
-          return true;
-        }
-        // Nothing read but the newline before a column-1 line: the element was left open. Return
-        // the newline as a separator, which no element state expects, so recovery pops back to
-        // source_file and resyncs on the declaration (TestRecovery's element case). Lexed as
-        // whitespace instead, it would leave recovery nothing to resync on, and the declaration's
-        // first line would be swallowed into the error. A declaration that starts with a name
-        // can still lose its first line: tree-sitter's error costs prefer skipping `name :` or
-        // `name =` to discarding the binding the element was left open in.
-        lexer->mark_end(lexer);
-        lexer->result_symbol = NEWLINE;
-        return true;
-      }
+      bool column1 = !lexer->eof(lexer) && !is_blank(first) && first != '\n' && first != '<' && first != '{';
       while (is_blank(lexer->lookahead)) advance(lexer);
       if (lexer->lookahead == '-') {
         advance(lexer);
@@ -219,6 +211,15 @@ static bool scan_html_text(TSLexer *lexer) {
           lexer->result_symbol = HTML_TEXT;
           return has_text;
         }
+      }
+      if (column1) {
+        if (has_text) {
+          lexer->result_symbol = HTML_TEXT;
+          return true;
+        }
+        if (!valid[IMPLICIT_END_TAG]) return false;
+        lexer->result_symbol = IMPLICIT_END_TAG;  // zero width: mark_end is before the newline
+        return true;
       }
       has_text = true;
       continue;
@@ -297,7 +298,7 @@ bool tree_sitter_alder_external_scanner_scan(void *payload, TSLexer *lexer, cons
   // never during error recovery, where they would swallow code.
   if (!recovering) {
     if (valid[RAW_TEXT]) return scan_raw_text(lexer);
-    if (valid[HTML_TEXT]) return scan_html_text(lexer);
+    if (valid[HTML_TEXT]) return scan_html_text(lexer, valid);
     if (valid[RAW_TAG_NAME] && lexer->lookahead >= 'a' && lexer->lookahead <= 'z') {
       return scan_raw_tag_name(lexer);
     }

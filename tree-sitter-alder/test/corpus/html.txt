@@ -223,3 +223,41 @@ note =
         (html_text)
         close: (end_tag
           tag: (tag_name))))))
+
+================================================================================
+a comment line at column 1 inside markup
+================================================================================
+
+module M
+
+view m =
+  <div>
+-- note
+    <p>hi</p>
+  </div>
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      params: (parameters
+        (identifier))
+      body: (element
+        open: (start_tag
+          tag: (tag_name))
+        (comment)
+        (html_text)
+        (element
+          open: (start_tag
+            tag: (tag_name))
+          (html_text)
+          close: (end_tag
+            tag: (tag_name)))
+        (html_text)
+        close: (end_tag
+          tag: (tag_name))))))
