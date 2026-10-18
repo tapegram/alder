@@ -1,0 +1,131 @@
+# Written by `alder ci init` (book chapter 16). The pipeline is alder's own commands: what
+# runs here runs the same from a laptop.
+#
+#   pull request   alder check; alder test --mutate; alder deploy preview, and a comment with
+#                  its address
+#   push to main   alder check; alder test --mutate; alder deploy production
+#
+# Repository secrets (Settings > Secrets and variables > Actions):
+#   RENDER_API_KEY        a Render API key of the workspace that owns the service
+#   TURSO_API_TOKEN       a Turso API token of the organization acme: turso auth api-tokens mint alder-ci
+#   ALDER_REGISTRY_TOKEN  a personal access token with read:packages and write:packages (see below)
+#   SMTP_URL              named in App's `requires`; production and preview read it here
+#   ALDER_SECRET          the session key (16 bytes or more) of production and preview
+#
+# The job's own token (`github.token`) stands in when ALDER_REGISTRY_TOKEN is not set: it can
+# push a GHCR image under the repository's owner, but Render's registry credential needs a
+# long-lived personal access token with `read:packages`. A personal access token set once as
+# ALDER_REGISTRY_TOKEN is simplest; the run token alone works only for a public image.
+#
+# The first deploy creates the Render service (`alder deploy` does it, from App's `deploy`), so
+# Render's dashboard is for looking.
+#
+# Every pull request deploys to the one Render service blog-preview: the last push wins.
+# A preview stays up after its pull request is closed: remove it by hand for now.
+#
+# No `floor` is declared: `alder deploy` holds the score to the last deploy's.
+name: alder
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  ALDER_VERSION: v0.3.0
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+      - name: Install alder
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$ALDER_VERSION" --repo tapegram/alder --pattern 'alder_*_linux_amd64.tar.gz' --output "$RUNNER_TEMP/alder.tar.gz"
+          tar -xzf "$RUNNER_TEMP/alder.tar.gz" -C "$RUNNER_TEMP" alder
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - run: alder check
+      - run: alder test --mutate
+
+  preview:
+    # a pull request from a fork gets no secrets: it is checked, not deployed
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      pull-requests: write
+    concurrency:
+      group: preview-${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+      - name: Install alder
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$ALDER_VERSION" --repo tapegram/alder --pattern 'alder_*_linux_amd64.tar.gz' --output "$RUNNER_TEMP/alder.tar.gz"
+          tar -xzf "$RUNNER_TEMP/alder.tar.gz" -C "$RUNNER_TEMP" alder
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: alder deploy preview
+        id: deploy
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          TURSO_API_TOKEN: ${{ secrets.TURSO_API_TOKEN }}
+          ALDER_REGISTRY_TOKEN: ${{ secrets.ALDER_REGISTRY_TOKEN || github.token }}
+          SMTP_URL: ${{ secrets.SMTP_URL }}
+          ALDER_SECRET: ${{ secrets.ALDER_SECRET }}
+        run: |
+          alder deploy preview --json > "$RUNNER_TEMP/deploy.json"
+          echo "address=$(jq -r .address "$RUNNER_TEMP/deploy.json")" >> "$GITHUB_OUTPUT"
+      - name: Comment the address
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          ADDRESS: ${{ steps.deploy.outputs.address }}
+        run: |
+          body="Preview of $SHA: $ADDRESS"
+          gh pr comment "$PR" --edit-last --body "$body" || gh pr comment "$PR" --body "$body"
+
+  production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+      - name: Install alder
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$ALDER_VERSION" --repo tapegram/alder --pattern 'alder_*_linux_amd64.tar.gz' --output "$RUNNER_TEMP/alder.tar.gz"
+          tar -xzf "$RUNNER_TEMP/alder.tar.gz" -C "$RUNNER_TEMP" alder
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: alder deploy production
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          TURSO_API_TOKEN: ${{ secrets.TURSO_API_TOKEN }}
+          ALDER_REGISTRY_TOKEN: ${{ secrets.ALDER_REGISTRY_TOKEN || github.token }}
+          SMTP_URL: ${{ secrets.SMTP_URL }}
+          ALDER_SECRET: ${{ secrets.ALDER_SECRET }}
+        run: alder deploy production

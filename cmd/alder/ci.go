@@ -65,6 +65,12 @@ func runCiTo(args []string, stdout, stderr io.Writer) int {
 	if errs > 0 {
 		return fail("the app does not check (the workflow is made from App's `deploy`): fix it first\n%s", strings.TrimRight(out, "\n"))
 	}
+	if r.decl != nil && hasRender(r.decl) {
+		// the workflow pushes an image: it needs a registry path, here or from the GitHub origin (R5)
+		if _, err := imagePath(dir, r.decl); err != nil {
+			return fail("%v", err)
+		}
+	}
 	path := filepath.Join(dir, filepath.FromSlash(ciWorkflowPath))
 	if _, err := os.Stat(path); err == nil && !force {
 		return fail("%s exists: remove it, or pass --force to replace it", ciWorkflowPath)
@@ -133,6 +139,9 @@ type ciDeploy struct {
 	host   string // the pull request's host for a preview (a shell expression of $PR)
 	url    string // the address the preview comment names
 	values []string
+	// fromJSON: the address is not known when the file is written (a Render service's URL), so
+	// the deploy step prints it with --json and the comment step reads it from there.
+	fromJSON bool
 }
 
 // ciWorkflow is the GitHub Actions workflow of declaration d (nil: none), installing alder
@@ -158,6 +167,8 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 				preview.url = "https://$HOST"
 			case "fly":
 				preview.url = "https://" + t.App + ".fly.dev"
+			case "render":
+				preview.url, preview.fromJSON = "$ADDRESS", true
 			case "script":
 				preview.host = "pr-${{ github.event.pull_request.number }}"
 			}
@@ -175,7 +186,7 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 		}
 		wf.Secrets = append(wf.Secrets, ciSecret{name, what})
 	}
-	var sshHosts, boxEnv, flyApps []string
+	var sshHosts, boxEnv, flyApps, renderEnvs, tursoOrgs []string
 	valueEnvs := map[string][]string{} // a value the job reads -> the environments that read it
 	var valueNames []string
 	for _, c := range []*ciDeploy{production, preview} {
@@ -195,9 +206,15 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 				sshHosts = append(sshHosts, host)
 			}
 			boxEnv = append(boxEnv, c.env)
-		case "fly", "script":
+		case "fly", "script", "render":
 			if c.t.Kind == "fly" && !slices.Contains(flyApps, c.t.App) {
 				flyApps = append(flyApps, c.t.App)
+			}
+			if c.t.Kind == "render" {
+				renderEnvs = append(renderEnvs, c.env)
+				if db := c.t.Database; db != nil && !slices.Contains(tursoOrgs, db.Org) {
+					tursoOrgs = append(tursoOrgs, db.Org)
+				}
 			}
 			c.values = append(append([]string{}, d.Requires...), deploy.SecretName)
 			for _, n := range c.values {
@@ -214,6 +231,11 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 		add("FLY_API_TOKEN", "a deploy token of the Fly app "+flyApps[0]+": fly tokens create deploy -a "+flyApps[0])
 	default:
 		add("FLY_API_TOKEN", "a token that deploys the Fly apps "+strings.Join(flyApps, " and ")+": fly tokens create org")
+	}
+	if len(renderEnvs) > 0 {
+		add("RENDER_API_KEY", "a Render API key of the workspace that owns the service")
+		add("TURSO_API_TOKEN", "a Turso API token of the organization "+strings.Join(tursoOrgs, " and ")+": turso auth api-tokens mint alder-ci")
+		add("ALDER_REGISTRY_TOKEN", "a personal access token with read:packages and write:packages (see below)")
 	}
 	if len(sshHosts) > 0 {
 		var bare []string
@@ -280,9 +302,17 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 		w("#\n")
 		para(fmt.Sprintf("Not repository secrets: %s of %s live in the box's environment file (<path>/env, NAME=value lines); `alder deploy` checks that they are set there.", strings.Join(names, ", "), strings.Join(boxEnv, " and ")))
 	}
+	if len(renderEnvs) > 0 {
+		w("#\n")
+		para("The job's own token (`github.token`) stands in when ALDER_REGISTRY_TOKEN is not set: it can push a GHCR image under the repository's owner, but Render's registry credential needs a long-lived personal access token with `read:packages`. A personal access token set once as ALDER_REGISTRY_TOKEN is simplest; the run token alone works only for a public image.")
+		w("#\n")
+		para("The first deploy creates the Render service (`alder deploy` does it, from App's `deploy`), so Render's dashboard is for looking.")
+	}
 	if preview != nil {
 		w("#\n")
 		switch preview.t.Kind {
+		case "render":
+			para("Every pull request deploys to the one Render service " + preview.t.Service + ": the last push wins. ")
 		case "fly":
 			para("Every pull request deploys to the one Fly app " + preview.t.App + ": the last push wins. ")
 		case "ssh":
@@ -332,18 +362,33 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 	}
 	deployStep := func(c *ciDeploy) {
 		w("      - name: alder deploy %s\n", c.env)
+		if c.fromJSON {
+			w("        id: deploy\n")
+		}
 		var env []string
-		if c.t.Kind == "fly" {
+		switch c.t.Kind {
+		case "fly":
 			env = append(env, "FLY_API_TOKEN")
+		case "render":
+			env = append(env, "RENDER_API_KEY", "TURSO_API_TOKEN", "ALDER_REGISTRY_TOKEN")
 		}
 		env = append(env, c.values...)
 		if len(env) > 0 {
 			w("        env:\n")
 			for _, n := range env {
-				w("          %s: ${{ secrets.%s }}\n", n, n)
+				if n == "ALDER_REGISTRY_TOKEN" {
+					w("          %s: ${{ secrets.%s || github.token }}\n", n, n)
+				} else {
+					w("          %s: ${{ secrets.%s }}\n", n, n)
+				}
 			}
 		}
-		if c.host != "" {
+		if c.fromJSON {
+			// progress goes to stderr, the record to stdout: the address is the record's
+			w("        run: |\n")
+			w("          alder deploy %s --json > \"$RUNNER_TEMP/deploy.json\"\n", c.env)
+			w("          echo \"address=$(jq -r .address \"$RUNNER_TEMP/deploy.json\")\" >> \"$GITHUB_OUTPUT\"\n")
+		} else if c.host != "" {
 			w("        run: alder deploy %s --host \"$HOST\"\n", c.env)
 		} else {
 			w("        run: alder deploy %s\n", c.env)
@@ -360,7 +405,11 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 		w("    # a pull request from a fork gets no secrets: it is checked, not deployed\n")
 		w("    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository\n")
 		w("    needs: check\n    runs-on: ubuntu-latest\n")
-		w("    permissions:\n      contents: read\n      pull-requests: write\n")
+		w("    permissions:\n      contents: read\n")
+		if preview.t.Kind == "render" {
+			w("      packages: write\n")
+		}
+		w("      pull-requests: write\n")
 		w("    concurrency:\n      group: preview-${{ github.event.pull_request.number }}\n")
 		if preview.host != "" {
 			w("    env:\n      HOST: %s\n", preview.host)
@@ -368,7 +417,11 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 		setup(preview)
 		deployStep(preview)
 		if preview.url != "" {
-			w("      - name: Comment the address\n        env:\n          GH_TOKEN: ${{ github.token }}\n          PR: ${{ github.event.pull_request.number }}\n          SHA: ${{ github.event.pull_request.head.sha }}\n        run: |\n")
+			w("      - name: Comment the address\n        env:\n          GH_TOKEN: ${{ github.token }}\n          PR: ${{ github.event.pull_request.number }}\n          SHA: ${{ github.event.pull_request.head.sha }}\n")
+			if preview.fromJSON {
+				w("          ADDRESS: ${{ steps.deploy.outputs.address }}\n")
+			}
+			w("        run: |\n")
 			w("          body=\"Preview of $SHA: %s\"\n", preview.url)
 			w("          gh pr comment \"$PR\" --edit-last --body \"$body\" || gh pr comment \"$PR\" --body \"$body\"\n")
 		}
@@ -377,6 +430,9 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 		w("\n  production:\n")
 		w("    if: github.event_name == 'push' && github.ref == 'refs/heads/main'\n")
 		w("    needs: check\n    runs-on: ubuntu-latest\n")
+		if production.t.Kind == "render" {
+			w("    permissions:\n      contents: read\n      packages: write\n")
+		}
 		w("    concurrency:\n      group: production\n      cancel-in-progress: false\n")
 		setup(production)
 		deployStep(production)
@@ -405,4 +461,14 @@ func commentWrap(text, prefix string, width int) string {
 	}
 	b.WriteString(line + "\n")
 	return b.String()
+}
+
+// hasRender reports whether any of d's environments is a Render service.
+func hasRender(d *ir.Deploy) bool {
+	for _, t := range d.Envs {
+		if t.Kind == "render" {
+			return true
+		}
+	}
+	return false
 }

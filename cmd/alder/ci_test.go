@@ -37,6 +37,16 @@ func TestCi_Golden(t *testing.T) {
 		// the examples' declaration: a Script environment named local, so nothing is deployed;
 		// written by a development build, which installs the latest release
 		{"script", &ir.Deploy{Envs: map[string]ir.Target{"local": {Kind: "script", ScriptPath: "./scripts/deploy-local.sh"}}}, "devel+71c46e8abcde"},
+		// Render for both: no SSH step, the registry token, the Turso and Render secrets
+		{"render-only", &ir.Deploy{Envs: map[string]ir.Target{
+			"production": {Kind: "render", Region: "oregon", Service: "blog", Plan: "starter", Instances: 2, Database: &ir.Database{Kind: "turso", Org: "acme", App: "blog"}},
+			"preview":    {Kind: "render", Region: "oregon", Service: "blog-preview", Database: &ir.Database{Kind: "turso", Org: "acme", App: "blog-preview"}},
+		}, Image: "ghcr.io/tavish/blog", Requires: []string{"SMTP_URL"}}, "v0.3.0"},
+		// production at Render, the previews on the box: the SSH step only where it is needed
+		{"mixed", &ir.Deploy{Envs: map[string]ir.Target{
+			"production": {Kind: "render", Region: "oregon", Service: "blog", Database: &ir.Database{Kind: "turso", Org: "acme", App: "blog"}},
+			"preview":    ssh("*.preview.example.com", "/srv/blog-preview"),
+		}, Image: "ghcr.io/tavish/blog", Floor: 0.9, FloorSet: true, Requires: []string{"SMTP_URL"}}, "v0.3.0"},
 		{"none", nil, "v0.1.0"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -216,5 +226,69 @@ func TestCi_NonWildcardPreview(t *testing.T) {
 	}
 	if !strings.Contains(wf.YAML, "# The preview domain preview.example.com is not a wildcard") {
 		t.Errorf("the file does not say so:\n%s", wf.YAML)
+	}
+}
+
+// The Render jobs have no SSH step; they push an image (`packages: write`, the registry token
+// falling back to the run's) and read the preview's address from `alder deploy preview --json`.
+func TestCiInit_RenderOnly(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "ci", "render-only.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	y := string(b)
+	for _, want := range []string{
+		"#   RENDER_API_KEY        ", "#   TURSO_API_TOKEN       ", "#   ALDER_REGISTRY_TOKEN  ", "#   SMTP_URL              ", "#   ALDER_SECRET          ",
+		"personal access token set once as\n# ALDER_REGISTRY_TOKEN is simplest; the run token alone works only for a public image.",
+		"The first deploy creates the Render service",
+		"      packages: write\n",
+		"          ALDER_REGISTRY_TOKEN: ${{ secrets.ALDER_REGISTRY_TOKEN || github.token }}\n",
+		"          alder deploy preview --json > \"$RUNNER_TEMP/deploy.json\"\n",
+		"          ADDRESS: ${{ steps.deploy.outputs.address }}\n",
+		"        run: alder deploy production\n",
+	} {
+		if !strings.Contains(y, want) {
+			t.Errorf("render-only.yml lacks %q", want)
+		}
+	}
+	for _, not := range []string{"SSH", "--host", "HOST"} {
+		if strings.Contains(y, not) {
+			t.Errorf("render-only.yml has %q: a Render job has no SSH step and no --host", not)
+		}
+	}
+}
+
+// Production at Render and previews on a box: the SSH step only in the job that deploys to the box.
+func TestCiInit_Mixed(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "ci", "mixed.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	y := string(b)
+	prod := y[strings.Index(y, "\n  production:"):]
+	prev := y[strings.Index(y, "\n  preview:"):strings.Index(y, "\n  production:")]
+	if strings.Contains(prod, "SSH key") || !strings.Contains(prev, "SSH key") || strings.Contains(prev, "packages: write") || !strings.Contains(prod, "packages: write") {
+		t.Errorf("mixed.yml:\n%s", y)
+	}
+	if !strings.Contains(prev, "alder deploy preview --host \"$HOST\"") || strings.Contains(prod, "--host") {
+		t.Errorf("--host is for the box's preview only:\n%s", y)
+	}
+}
+
+// `alder ci init` pushes an image: a Render environment with no `image` and no GitHub origin is
+// refused (R5); with an origin it writes the file.
+func TestCiInit_RenderImage(t *testing.T) {
+	dir := deployScaffold(t, `deploy {
+  production: Render "oregon" { service: "blog", database: Turso "acme" { app: "blog" } },
+}`, nil)
+	var out, errb strings.Builder
+	if code := runCiTo([]string{"init", dir}, &out, &errb); code != 2 || !strings.Contains(errb.String(), "E0030 name the registry path") {
+		t.Fatalf("exit %d\n%s%s", code, out.String(), errb.String())
+	}
+	writeFile(t, filepath.Join(dir, ".git", "config"), "[remote \"origin\"]\n\turl = https://github.com/Tavish/Blog\n")
+	out.Reset()
+	errb.Reset()
+	if code := runCiTo([]string{"init", dir}, &out, &errb); code != 0 || !strings.Contains(out.String(), "repository secrets it needs: RENDER_API_KEY, TURSO_API_TOKEN, ALDER_REGISTRY_TOKEN, ") {
+		t.Fatalf("exit %d\n%s%s", code, out.String(), errb.String())
 	}
 }
