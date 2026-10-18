@@ -2,6 +2,7 @@
 package syntax
 
 import (
+	"encoding/json"
 	"strings"
 
 	"alder/internal/diag"
@@ -142,8 +143,8 @@ var rawTextTags = map[string]bool{"script": true, "style": true}
 // bytes up to the closing tag, as one raw HtmlText, kept byte for byte. Nothing in it is Alder, so
 // no Alder value can reach script or style text; data reaches a script through `data-*`
 // attributes. The body may not contain `</script` or `</style` in any case (the browser would
-// end the element there), and a body that is one `{ … }` holding an Alder string or name is
-// refused as the interpolation it looks like. It returns with the lexer on the closing tag's
+// end the element there), and a body that is wholly one `{ … }` and not JSON is refused as the
+// interpolation it looks like (looksInterpolated). It returns with the lexer on the closing tag's
 // `<`, where parseElement's loop reads the closing tag.
 func (p *Parser) rawText(el *Element) {
 	tx := p.lx.ScanRawText(el.Tag)
@@ -160,7 +161,7 @@ func (p *Parser) rawText(el *Element) {
 			return
 		}
 	}
-	if looksInterpolated(tx.Text) {
+	if looksInterpolated(el, tx.Text) {
 		i := strings.IndexByte(tx.Text, '{')
 		p.rawError(tx, i, len(strings.TrimSpace(tx.Text)), "the body is raw text, not Alder: `{ … }` here is not an expression and would be sent as written; "+map[string]string{
 			"script": "write the JavaScript itself, and pass Alder values through a `data-*` attribute (`data-clip={model.clip}`), which is escaped",
@@ -196,31 +197,20 @@ func rawPos(tx Token, i int) diag.Pos {
 	return pos
 }
 
-// looksInterpolated: the whole body, spaces aside, is one `{ … }` holding an Alder string
-// literal or a name (`{"…"}`, `{model.clip}`): Alder interpolation, which a raw-text body does
-// not have. As JavaScript it would be a block doing nothing, and as CSS it is not a rule. A JSON
-// body (`{"a": 1}`) is not one.
-func looksInterpolated(body string) bool {
+// looksInterpolated: the whole body, spaces aside, is one `{ … }` (it starts with `{` and ends
+// with `}`) and is not JSON: Alder interpolation (`{Json.encode model.data}`, `{a ++ b}`), which a
+// raw-text body does not have. As JavaScript it would be a block, and as CSS it is not a rule. A
+// JSON body (`{"a": 1}`, a data island) and any body of a `type="application/json"` script are
+// not refused.
+func looksInterpolated(el *Element, body string) bool {
 	b := strings.TrimSpace(body)
-	if len(b) < 2 || b[0] != '{' || b[len(b)-1] != '}' {
+	if len(b) < 2 || b[0] != '{' || b[len(b)-1] != '}' || json.Valid([]byte(b)) {
 		return false
 	}
-	in := strings.TrimSpace(b[1 : len(b)-1])
-	if strings.HasPrefix(in, "\"") {
-		j, ok := scanString([]byte(in), 1)
-		return ok && j == len(in)
-	}
-	if in == "" {
-		return false
-	}
-	for _, seg := range strings.Split(in, ".") {
-		if seg == "" || !(isLower(seg[0]) || isUpper(seg[0]) || seg[0] == '_') {
+	for _, a := range el.Attrs {
+		if lit, ok := a.Value.(*StrLit); ok && a.Name == "type" && len(lit.Parts) == 1 && lit.Parts[0].Expr == nil &&
+			strings.EqualFold(strings.TrimSpace(lit.Parts[0].Text), "application/json") {
 			return false
-		}
-		for _, c := range []byte(seg) {
-			if !(isLower(c) || isUpper(c) || isDigit(c) || c == '_') {
-				return false
-			}
 		}
 	}
 	return true

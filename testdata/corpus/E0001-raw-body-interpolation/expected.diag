@@ -1,0 +1,3 @@
+app/Index.alder:15:13 E0001 in <script>: the body is raw text, not Alder: `{ … }` here is not an expression and would be sent as written; write the JavaScript itself, and pass Alder values through a `data-*` attribute (`data-clip={model.clip}`), which is escaped
+app/Index.alder:17:7 E0001 in <script>: the body is raw text, not Alder: `{ … }` here is not an expression and would be sent as written; write the JavaScript itself, and pass Alder values through a `data-*` attribute (`data-clip={model.clip}`), which is escaped
+app/Index.alder:19:12 E0001 in <style>: the body is raw text, not Alder: `{ … }` here is not an expression and would be sent as written; write the CSS itself, and set Alder values through an element's `class` or `style` attribute

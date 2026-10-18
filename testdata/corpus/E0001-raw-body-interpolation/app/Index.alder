@@ -1,0 +1,22 @@
+module Index
+
+page "/" { }
+
+type Model = { data: Text, a: Text, b: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { data: "", a: "", b: "" }
+
+-- A body that is wholly one `{ … }` and not JSON is refused: it is Alder interpolation, which a
+-- raw-text body does not have.
+view : Model -> Session -> Html Msg
+view model session =
+  <main>
+    <script>{Json.encode model.data}</script>
+    <script>
+      {model.a ++ model.b}
+    </script>
+    <style>{Theme.css model}</style>
+    <script>{"a": 1}</script>
+    <script type="application/json">{not: "strict JSON", but: typed}</script>
+  </main>

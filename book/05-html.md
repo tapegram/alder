@@ -179,7 +179,7 @@ stylesheet:
 Data reaches a script through an escaped `data-*` attribute
 (`<div id="p" data-clip={model.clip}>`, read as `p.dataset.clip`). A body
 may not contain `</script` or `</style` in any case (split it:
-`"<\/script>"`), nor be one `{ … }` holding a string or a name (E0001).
+`"<\/script>"`), nor be wholly one `{ … }` that is not JSON (E0001).
 
 ## Components
 
