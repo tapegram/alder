@@ -20,11 +20,22 @@ type Range struct {
 }
 
 type Diagnostic struct {
-	Range    Range  `json:"range"`
-	Severity int    `json:"severity"`
-	Code     string `json:"code"`
-	Source   string `json:"source"`
-	Message  string `json:"message"`
+	Range    Range           `json:"range"`
+	Severity int             `json:"severity"`
+	Code     string          `json:"code"`
+	Source   string          `json:"source"`
+	Message  string          `json:"message"`
+	Data     *diagnosticData `json:"data,omitempty"`
+}
+
+// diagnosticData carries the compiler's fix for a diagnostic, for the quick-fix code action.
+type diagnosticData struct {
+	Fix *TextEdit `json:"fix,omitempty"`
+}
+
+type TextEdit struct {
+	Range   Range  `json:"range"`
+	NewText string `json:"newText"`
 }
 
 type publishDiagnosticsParams struct {

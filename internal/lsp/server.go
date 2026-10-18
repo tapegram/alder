@@ -35,7 +35,10 @@ type handler func(s *server, params json.RawMessage) (any, error)
 // order on one worker, slow requests on another. They are only read once a server runs.
 var (
 	notifications = map[string]func(*server, json.RawMessage){
-		"initialized": func(*server, json.RawMessage) {},
+		"initialized":            initializedNote,
+		"textDocument/didOpen":   didOpen,
+		"textDocument/didChange": didChange,
+		"textDocument/didClose":  didClose,
 	}
 	fastMethods = map[string]handler{
 		"textDocument/hover": func(*server, json.RawMessage) (any, error) { return nil, nil },
@@ -58,9 +61,19 @@ type server struct {
 	cancelled     sync.Map     // idKey → struct{}: requests to answer cancelled
 	latestPreview atomic.Value // the idKey of the newest alder/preview
 
+	docs      docs                     // the open documents
+	cur, good atomic.Pointer[analysis] // current(), lastGood()
+	tokens    chan struct{}            // schedule's: one place, a rebuild pending
+	stop      chan struct{}            // closed when serve returns: stops the analysis and the poller
+	bg        sync.WaitGroup           // the analysis goroutine and the poller
+
 	// reader goroutine only
 	initialized bool
+	started     bool // initialized has started the analysis goroutine
 	shutdown    bool
+
+	// analysis goroutine only
+	reported map[string]bool // the files the last publish gave diagnostics
 }
 
 // Serve runs a language server reading requests from r and writing to w. It returns nil at
@@ -74,11 +87,17 @@ func newServer(w io.Writer, o Options) *server {
 		o.Log = io.Discard
 	}
 	return &server{o: o, c: &conn{w: w, wire: o.Wire},
-		fast: make(chan *message, queueLen), slow: make(chan *message, queueLen)}
+		fast: make(chan *message, queueLen), slow: make(chan *message, queueLen),
+		tokens: make(chan struct{}, 1), stop: make(chan struct{})}
 }
 
-// serve is the reader loop. When it returns, the workers have answered every queued request.
+// serve is the reader loop. When it returns, the workers have answered every queued request and
+// the analysis goroutine and the poller have stopped.
 func (s *server) serve(r io.Reader) error {
+	defer func() {
+		close(s.stop)
+		s.bg.Wait()
+	}()
 	var wg sync.WaitGroup
 	for _, ch := range []chan *message{s.fast, s.slow} {
 		wg.Go(func() {

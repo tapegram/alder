@@ -32,7 +32,10 @@ type client struct {
 	texts      map[string]string // the text of each open document, by rel
 	uriRel     map[string]string // rel by the URI it was opened under
 	published  map[string][]publishDiagnosticsParams
-	publishing chan struct{} // closed (and replaced) at every publishDiagnostics
+	pubSeq     map[string][]int // the sequence number of each of published's entries
+	pubs       int              // how many publishDiagnostics have arrived
+	mark       int              // pubs when the last document notification was sent
+	publishing chan struct{}    // closed (and replaced) at every publishDiagnostics
 
 	srv        *server
 	initResult map[string]any
@@ -44,16 +47,25 @@ type client struct {
 // The server is stopped (its input closed) when the test ends.
 func start(t *testing.T, root string) *client {
 	t.Helper()
+	return startWith(t, root, Options{})
+}
+
+// startWith is start with the server's options (Log is the test log when it is nil).
+func startWith(t *testing.T, root string, o Options) *client {
+	t.Helper()
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	c := &client{
 		t: t, w: inW, root: root,
 		waits: map[int]chan *message{}, notes: make(chan *message, 1024),
 		vers: map[string]int{}, texts: map[string]string{}, uriRel: map[string]string{},
-		published: map[string][]publishDiagnosticsParams{}, publishing: make(chan struct{}),
+		published: map[string][]publishDiagnosticsParams{}, pubSeq: map[string][]int{}, publishing: make(chan struct{}),
 		done: make(chan struct{}),
 	}
-	c.srv = newServer(outW, Options{Log: testLog{t}})
+	if o.Log == nil {
+		o.Log = testLog{t}
+	}
+	c.srv = newServer(outW, o)
 	go func() {
 		c.serveErr = c.srv.serve(inR)
 		inR.Close() // later writes fail instead of blocking
@@ -109,6 +121,8 @@ func (c *client) read(r io.Reader) {
 			c.mu.Lock()
 			rel := c.relOf(p.URI)
 			c.published[rel] = append(c.published[rel], p)
+			c.pubs++
+			c.pubSeq[rel] = append(c.pubSeq[rel], c.pubs)
 			close(c.publishing)
 			c.publishing = make(chan struct{})
 			c.mu.Unlock()
@@ -198,9 +212,14 @@ func (c *client) uri(rel string) string {
 
 // open sends didOpen for rel, version 1.
 func (c *client) open(rel, text string) {
-	uri := c.uri(rel)
+	c.openURI(c.uri(rel), rel, text)
+}
+
+// openURI sends didOpen for rel, version 1, under uri (another spelling of its path).
+func (c *client) openURI(uri, rel, text string) {
 	c.mu.Lock()
 	c.vers[rel], c.texts[rel], c.uriRel[uri] = 1, text, rel
+	c.mark = c.pubs
 	c.mu.Unlock()
 	c.notify("textDocument/didOpen", map[string]any{"textDocument": map[string]any{
 		"uri": uri, "languageId": "alder", "version": 1, "text": text}})
@@ -212,9 +231,16 @@ func (c *client) change(rel, text string) {
 	c.vers[rel]++
 	c.texts[rel] = text
 	v := c.vers[rel]
+	uri := c.uri(rel)
+	for u, r := range c.uriRel {
+		if r == rel {
+			uri = u
+		}
+	}
+	c.mark = c.pubs
 	c.mu.Unlock()
 	c.notify("textDocument/didChange", map[string]any{
-		"textDocument":   map[string]any{"uri": c.uri(rel), "version": v},
+		"textDocument":   map[string]any{"uri": uri, "version": v},
 		"contentChanges": []map[string]any{{"text": text}}})
 }
 
@@ -243,6 +269,39 @@ func (c *client) diags(rel string) []Diagnostic {
 			return nil
 		}
 	}
+}
+
+// waitPublished waits for the first publish of rel's diagnostics, whatever its version, that
+// arrived after the last document notification the client sent, and returns its list.
+func (c *client) waitPublished(rel string) []Diagnostic {
+	c.t.Helper()
+	deadline := time.After(timeout)
+	for {
+		c.mu.Lock()
+		mark, pubs, seqs, signal := c.mark, c.published[rel], c.pubSeq[rel], c.publishing
+		c.mu.Unlock()
+		for i, seq := range seqs {
+			if seq > mark {
+				return pubs[i].Diagnostics
+			}
+		}
+		select {
+		case <-signal:
+		case <-deadline:
+			c.t.Fatalf("no diagnostics published for %s in %v", rel, timeout)
+			return nil
+		}
+	}
+}
+
+// disk is the text of rel on disk, under the root.
+func (c *client) disk(rel string) string {
+	c.t.Helper()
+	b, err := os.ReadFile(filepath.Join(c.root, rel))
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	return string(b)
 }
 
 // at is the position of needle's first occurrence in rel's open text, plus off bytes.
