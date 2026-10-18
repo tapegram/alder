@@ -182,3 +182,29 @@ func TestHover_BindingSites(t *testing.T) {
 		}
 	}
 }
+
+// TestDefinition_StaleTarget: when the file a definition lands in has unsaved lines inserted
+// above the declaration since the last good build (here a broken buffer), definition answers
+// nothing rather than the old place; a module still goes to its start.
+func TestDefinition_StaleTarget(t *testing.T) {
+	c := start(t, blogCopy(t))
+	f := "app/Posts/Index.alder"
+	openClean(t, c, f)
+	for _, other := range []string{"app/User.alder", "app/Post.alder"} {
+		text := c.disk(other)
+		i := strings.Index(text, "\n") + 1
+		c.open(other, text[:i]+"\n\nbroken = \"oops\n"+text[i:])
+		c.diags(other)
+	}
+	for _, tc := range []struct {
+		needle string
+		off    int
+	}{{"Author\n", 0}, {"post.slug", len("post.")}} {
+		if locs := definitionAt(t, c, f, c.at(f, tc.needle, tc.off)); len(locs) != 0 {
+			t.Errorf("definition at %q into a stale file: %+v", tc.needle, locs)
+		}
+	}
+	if locs := definitionAt(t, c, f, c.at(f, "import User", len("import "))); len(locs) != 1 || locs[0].Range != (Range{}) {
+		t.Errorf("module definition %+v", locs)
+	}
+}

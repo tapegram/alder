@@ -26,9 +26,21 @@ func definitionReq(s *server, params json.RawMessage) (any, error) {
 		return locs, nil
 	}
 	if file, sp, ok := definition(a, m, path, pos); ok {
-		locs = append(locs, Location{URI: s.uriOf(file), Range: spanRange(sp)})
+		if loc, ok := s.location(a, file, sp); ok {
+			locs = append(locs, loc)
+		}
 	}
 	return locs, nil
+}
+
+// location is sp in file as an LSP location, when a's view of file still holds through sp's
+// end line; false when file has changed above it since a was built, so the place would be
+// wrong (Ruling R11). A zero span is the file's start, which always holds.
+func (s *server) location(a *analysis, file string, sp diag.Span) (Location, bool) {
+	if !s.fresh(a, file, sp.End.Line, true) {
+		return Location{}, false
+	}
+	return Location{URI: s.uriOf(file), Range: spanRange(sp)}, true
 }
 
 // definition is the file and span of the declaration of what the cursor names: a field of a
@@ -47,7 +59,7 @@ func definition(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.P
 		return "", diag.Span{}, false
 	case ref.Kind == syntax.RefNone:
 		if mod := a.prog.Modules[ref.Module]; mod != nil {
-			return mod.File, diag.Span{Start: diag.Pos{Line: 1, Col: 1}, End: diag.Pos{Line: 1, Col: 1}}, true
+			return mod.File, diag.Span{}, true // the file's start: 0:0
 		}
 		return "", diag.Span{}, false
 	}
