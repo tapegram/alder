@@ -137,8 +137,8 @@ const errorsCSS = `._alder-strip{position:fixed;inset:0 0 auto 0;z-index:2147483
 	`._alder-errs{display:block;font:12px/1.5 var(--al-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);color:var(--foreground,inherit)}` +
 	`._alder-errs ._alder-diag{margin:0 0 .75rem;padding:.5rem .75rem;border-left:3px solid var(--destructive,#b91c1c);border-radius:0 4px 4px 0;background:var(--muted,rgba(127,127,127,.12))}` +
 	`._alder-errs ._alder-loc{display:flex;gap:.75rem;align-items:baseline}` +
-	`._alder-errs ._alder-at{font-weight:600}` +
-	`._alder-errs ._alder-code{color:var(--destructive,#b91c1c)}` +
+	`._alder-errs ._alder-at{font:inherit;font-weight:600}` +
+	`._alder-errs ._alder-code{color:color-mix(in srgb,var(--destructive,#b91c1c) 60%,var(--foreground,#000))}` +
 	`._alder-errs ._alder-msg{margin:.25rem 0}` +
 	`._alder-errs pre{margin:.25rem 0 0;padding:0;background:transparent;white-space:pre;overflow:auto;font:inherit}` +
 	`#_alder_errors ._alder-errs{display:none}` +

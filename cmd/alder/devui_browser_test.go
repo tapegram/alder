@@ -62,3 +62,12 @@ func TestBrowser_ErrorsInPanel(t *testing.T) {
 	script := browserScript(t, "errors.cjs")
 	runBrowserScript(t, script, startRun(t))
 }
+
+// The dev panel's top edge resizes it (120 px up to 80% of the viewport), a button or
+// Ctrl+Shift+D minimises it to a small tab that reserves no space, and its state is remembered
+// (localStorage) across a morph and a reload; with storage unavailable it still works.
+func TestBrowser_PanelResizeAndMinimise(t *testing.T) {
+	playwrightEnv(t)
+	script := browserScript(t, "panel.cjs")
+	runBrowserScript(t, script, startRun(t))
+}
