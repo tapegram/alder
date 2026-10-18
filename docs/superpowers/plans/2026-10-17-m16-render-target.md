@@ -251,6 +251,17 @@ The user, building an app by hand, hit these; they asked for them to be folded i
 - [ ] **Fix 4: earlier ledgered compiler bugs.** Reproduce each in a corpus or scratch case first; fix the ones that still fail, each with a regression test; record "already fixed" with the reproduction for the others: (a) a `Refresh _ ->` arm crashes `alder check`; (b) `msg Poke { }` used as a `click` crashes; (c) an unused binding in a match arm fails `go vet` on the generated code; (d) `src={Url.external "…"}` on `<script>` is refused or mis-rendered.
 - [ ] **Gate and commits:** one commit per fix (`check: …`), then the gate from Global Constraints (all tests, the three examples and their scores, `go test ./book`).
 
+### Task 10: Dev-tool friction: compile errors in the dev panel; a resizable, dismissable panel (added 2026-10-17 at the user's request)
+
+The user, running `alder run`: compile errors are printed as an unstyled `<pre>` at the top of the page, inside the page's own flow (`cmd/alder/run.go` `overlayHTML`, patched into `#_alder_errors` from `rt/web/router.go:1115`); and the dev panel can be neither resized nor dismissed ("like the django debug toolbar").
+
+**Files:** `cmd/alder/run.go` (the error events), `rt/web/devpanel.go` and `rt/web/router.go` (the panel and the errors container), `rt/al/al.js` / the panel's styles (alder-ui), browser tests under `-tags browser`, `book/11-tooling.md` (the dev panel section).
+
+- [ ] **Errors in the panel.** RULING: errors leave the page's flow. (a) The dev panel gains an **Errors** tab, first in the list, shown only while there are errors, with a count badge; a failed build opens the panel to it. (b) A thin fixed strip at the top of the viewport (position fixed, no layout shift): "Build failed: N errors. The page is the last good build." with a button that opens the tab; it goes away on the next good build. (c) Each diagnostic is rendered structured, not as one text block: `file:line:col`, the code (E0002) and its message, the source excerpt with the caret, in the panel's monospace style. The dev server keeps diagnostics structured (from the checker's structured output, as `alder check --json` produces), and falls back to a text block for build failures and crashes. (d) When no app is running at all (the 502 page), the same list is the whole page, styled. Tests: the dev server's existing run tests extended (a failing build patches the tab and the strip, a good build clears both); a browser test that the page's layout does not move when the strip appears.
+- [ ] **Resize and dismiss.** The panel's top edge is a drag handle (height clamped between 120 px and 80% of the viewport). A minimise button collapses it to a small tab in the bottom-right corner showing the last request's time and the error badge; clicking the tab restores it. `Ctrl+Shift+D` toggles. The state (open or minimised, height, last tab) is remembered per browser in `localStorage`, every access in try/catch, and the panel works when storage is unavailable. When minimised it reserves no space at the page's bottom. Browser tests: resize, minimise, restore, and the state surviving a reload.
+- [ ] **Book.** Chapter 11's dev panel section describes the Errors tab, the strip, resizing and minimising; screenshots are not needed.
+- [ ] **Gate and commits:** `go test ./cmd/alder -run Run`, `go test -tags browser ./...`, the full gate; one commit per bullet.
+
 ---
 
 ## Self-review notes
