@@ -1,0 +1,225 @@
+================================================================================
+element with attributes, for, if, interpolation and a self-closing custom element
+================================================================================
+
+module M
+
+view m =
+  <ul id="todos">
+    {for t in m.todos ->
+      <li class={if t.done then "done" else "open"}>{t.title}</li>}
+    <al-input field="title" />
+  </ul>
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      params: (parameters
+        (identifier))
+      body: (element
+        open: (start_tag
+          tag: (tag_name)
+          (attribute
+            name: (attribute_name)
+            value: (string)))
+        (html_text)
+        (html_for
+          binder: (identifier)
+          items: (field_access
+            value: (identifier)
+            field: (identifier))
+          body: (element
+            open: (start_tag
+              tag: (tag_name)
+              (attribute
+                name: (attribute_name)
+                value: (interpolation
+                  expression: (if_expr
+                    condition: (field_access
+                      value: (identifier)
+                      field: (identifier))
+                    consequence: (string)
+                    alternative: (string)))))
+            (interpolation
+              expression: (field_access
+                value: (identifier)
+                field: (identifier)))
+            close: (end_tag
+              tag: (tag_name))))
+        (html_text)
+        (self_closing_element
+          tag: (tag_name)
+          (attribute
+            name: (attribute_name)
+            value: (string)))
+        (html_text)
+        close: (end_tag
+          tag: (tag_name))))))
+
+================================================================================
+components, keyword tag names, boolean attributes, if and match children
+================================================================================
+
+module M
+
+layout m =
+  <Layout.Page title={m.title}>
+    <form submit={Add}><Errors form /></form>
+    {if m.empty then <p>none</p> else Html.none}
+    {match m.filter {
+      All -> <b>all</b>,
+      _ -> Html.none,
+    }}
+  </Layout.Page>
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      params: (parameters
+        (identifier))
+      body: (element
+        open: (start_tag
+          tag: (component_name
+            (constructor)
+            (constructor))
+          (attribute
+            name: (attribute_name)
+            value: (interpolation
+              expression: (field_access
+                value: (identifier)
+                field: (identifier)))))
+        (html_text)
+        (element
+          open: (start_tag
+            tag: (tag_name)
+            (attribute
+              name: (attribute_name)
+              value: (interpolation
+                expression: (constructor))))
+          (self_closing_element
+            tag: (component_name
+              (constructor))
+            (attribute
+              name: (attribute_name)))
+          close: (end_tag
+            tag: (tag_name)))
+        (html_text)
+        (html_if
+          condition: (field_access
+            value: (identifier)
+            field: (identifier))
+          consequence: (element
+            open: (start_tag
+              tag: (tag_name))
+            (html_text)
+            close: (end_tag
+              tag: (tag_name)))
+          alternative: (qualified_name
+            module: (constructor)
+            name: (identifier)))
+        (html_text)
+        (html_match
+          subject: (field_access
+            value: (identifier)
+            field: (identifier))
+          (arm
+            pattern: (constructor_pattern
+              constructor: (constructor))
+            body: (element
+              open: (start_tag
+                tag: (tag_name))
+              (html_text)
+              close: (end_tag
+                tag: (tag_name))))
+          (arm
+            pattern: (wildcard)
+            body: (qualified_name
+              module: (constructor)
+              name: (identifier))))
+        (html_text)
+        close: (end_tag
+          tag: (component_name
+            (constructor)
+            (constructor)))))))
+
+================================================================================
+raw script and style bodies; a mixed-case closer
+================================================================================
+
+module M
+
+player =
+  <div>
+    <style>.p > video { width: 100%; } a::after { content: "<→>"; }</style>
+    <script>if (1 < 2 && true) { go("</div>"); }</Script>
+  </div>
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (element
+        open: (start_tag
+          tag: (tag_name))
+        (html_text)
+        (raw_element
+          tag: (tag_name)
+          (raw_text)
+          close: (tag_name))
+        (html_text)
+        (raw_element
+          tag: (tag_name)
+          (raw_text)
+          close: (component_name
+            (constructor)))
+        (html_text)
+        close: (end_tag
+          tag: (tag_name))))))
+
+================================================================================
+a comment line inside markup text
+================================================================================
+
+module M
+
+note =
+  <p>
+    hello
+    -- a note
+    world
+  </p>
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (element
+        open: (start_tag
+          tag: (tag_name))
+        (html_text)
+        (comment)
+        (html_text)
+        close: (end_tag
+          tag: (tag_name))))))
