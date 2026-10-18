@@ -1,0 +1,345 @@
+================================================================================
+types: brand with where, union with a payload, record, opaque
+================================================================================
+
+module M
+
+type Slug = brand Text where (\s -> isSlug s)
+type Filter = All | Active | Done (List Int)
+type Model = { title: Text, n: Int }
+type Status
+  = Open
+  | Closed
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (type_decl
+    name: (constructor)
+    body: (brand_type
+      base: (constructor)
+      check: (parenthesized_expression
+        (lambda
+          param: (identifier)
+          body: (application
+            function: (identifier)
+            argument: (identifier))))))
+  (type_decl
+    name: (constructor)
+    body: (union_type
+      (variant
+        name: (constructor))
+      (variant
+        name: (constructor))
+      (variant
+        name: (constructor)
+        argument: (parenthesized_type
+          (type_app
+            constructor: (type_name
+              (constructor))
+            argument: (type_name
+              (constructor)))))))
+  (type_decl
+    name: (constructor)
+    body: (record_type
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor)))
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor)))))
+  (type_decl
+    name: (constructor)
+    body: (union_type
+      (variant
+        name: (constructor))
+      (variant
+        name: (constructor)))))
+
+================================================================================
+table with attributes, defaults and a renamed table
+================================================================================
+
+module Post
+
+table Post @renamed "Article" {
+  id: PostId @id,
+  author: User.UserId @ref User @owner,
+  org: Org.OrgId @ref Org @cascade @partition org,
+  published: Bool = False,
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (table_decl
+    name: (constructor)
+    attribute: (field_attribute
+      name: (identifier)
+      argument: (string))
+    fields: (record_type
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor))
+        attribute: (field_attribute
+          name: (identifier)))
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor)
+          (constructor))
+        attribute: (field_attribute
+          name: (identifier)
+          argument: (type_name
+            (constructor)))
+        attribute: (field_attribute
+          name: (identifier)))
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor)
+          (constructor))
+        attribute: (field_attribute
+          name: (identifier)
+          argument: (type_name
+            (constructor)))
+        attribute: (field_attribute
+          name: (identifier))
+        attribute: (field_attribute
+          name: (identifier)
+          argument: (identifier)))
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor))
+        default: (boolean)))))
+
+================================================================================
+page with requires, msg, form
+================================================================================
+
+module Write.Edit
+
+page "/write/{id}" { id: Post.PostId } requires user, role Author | Admin, silo org
+
+msg Add form NewTodo
+msg Toggle { id: Todo.TodoId }
+form NewTodo = { title: Text.NonEmpty }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)
+      (constructor)))
+  (page_decl
+    path: (string)
+    params: (record_type
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor)
+          (constructor))))
+    requires: (requires_clause
+      (session_key)
+      (role_clause
+        role: (constructor)
+        role: (constructor))
+      (silo_clause
+        key: (identifier))))
+  (msg_decl
+    name: (constructor)
+    form: (constructor))
+  (msg_decl
+    name: (constructor)
+    params: (record_type
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor)
+          (constructor)))))
+  (form_decl
+    name: (constructor)
+    fields: (record_type
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor)
+          (constructor))))))
+
+================================================================================
+capability and its fake with a table
+================================================================================
+
+module Markdown
+
+capability Markdown {
+  render : Text -> Query (Html Never),
+}
+
+fake Markdown {
+  table Seen { id: SeenId @id }
+  render text = Query.succeed (Html.text text)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (capability_decl
+    name: (constructor)
+    entries: (record_type
+      (field_decl
+        name: (identifier)
+        type: (type_arrow
+          parameter: (type_name
+            (constructor))
+          result: (type_app
+            constructor: (type_name
+              (constructor))
+            argument: (parenthesized_type
+              (type_app
+                constructor: (type_name
+                  (constructor))
+                argument: (type_name
+                  (constructor)))))))))
+  (fake_decl
+    name: (constructor)
+    body: (fake_body
+      (table_decl
+        name: (constructor)
+        fields: (record_type
+          (field_decl
+            name: (identifier)
+            type: (type_name
+              (constructor))
+            attribute: (field_attribute
+              name: (identifier)))))
+      (fake_entry
+        name: (identifier)
+        params: (parameters
+          (identifier))
+        body: (application
+          function: (qualified_name
+            module: (constructor)
+            name: (identifier))
+          argument: (parenthesized_expression
+            (application
+              function: (qualified_name
+                module: (constructor)
+                name: (identifier))
+              argument: (identifier))))))))
+
+================================================================================
+session, login, choose, silo, deploy, test
+================================================================================
+
+module App
+
+session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: Role = Member }
+
+login = Auth.Login
+
+choose org = Orgs.Index
+
+silo org { Project, Todo }
+
+deploy {
+  production: Ssh "deploy@box" { domain: "d", path: "/srv" },
+  floor: 0.95,
+  checks: ["./x"],
+  requires: ["SMTP_URL"],
+  proxy: None,
+}
+
+test "one is one" = 1 == 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (session_decl
+    fields: (record_type
+      (field_decl
+        name: (identifier)
+        type: (type_app
+          constructor: (type_name
+            (constructor))
+          argument: (type_name
+            (constructor)
+            (constructor))))
+      (field_decl
+        name: (identifier)
+        type: (type_app
+          constructor: (type_name
+            (constructor))
+          argument: (type_name
+            (constructor)
+            (constructor)))
+        via: (constructor))
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor))
+        default: (constructor))))
+  (login_decl
+    page: (module_name
+      (constructor)
+      (constructor)))
+  (choose_decl
+    key: (identifier)
+    page: (module_name
+      (constructor)
+      (constructor)))
+  (silo_decl
+    key: (identifier)
+    table: (constructor)
+    table: (constructor))
+  (deploy_decl
+    body: (deploy_record
+      (deploy_field
+        name: (identifier)
+        value: (deploy_target
+          kind: (constructor)
+          argument: (string)
+          options: (deploy_record
+            (deploy_field
+              name: (identifier)
+              value: (string))
+            (deploy_field
+              name: (identifier)
+              value: (string)))))
+      (deploy_field
+        name: (identifier)
+        value: (float))
+      (deploy_field
+        name: (identifier)
+        value: (deploy_list
+          (string)))
+      (deploy_field
+        name: (identifier)
+        value: (deploy_list
+          (string)))
+      (deploy_field
+        name: (identifier)
+        value: (deploy_target
+          kind: (constructor)))))
+  (test_decl
+    name: (string)
+    body: (comparison_expr
+      left: (integer)
+      right: (integer))))

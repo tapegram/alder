@@ -1,0 +1,78 @@
+================================================================================
+signature files: no bodies, opaque types, values named after keywords
+================================================================================
+
+module Test
+
+type Query a
+run : Task a -> Task { value: Result Text a, trace: List Text }
+where : Bool -> Int
+fake : Capability -> Task Unit
+login : Session -> Task Unit
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (type_decl
+    name: (constructor)
+    param: (type_var))
+  (value_decl
+    signature: (signature
+      name: (identifier)
+      type: (type_arrow
+        parameter: (type_app
+          constructor: (type_name
+            (constructor))
+          argument: (type_var))
+        result: (type_app
+          constructor: (type_name
+            (constructor))
+          argument: (record_type
+            (field_decl
+              name: (identifier)
+              type: (type_app
+                constructor: (type_name
+                  (constructor))
+                argument: (type_name
+                  (constructor))
+                argument: (type_var)))
+            (field_decl
+              name: (identifier)
+              type: (type_app
+                constructor: (type_name
+                  (constructor))
+                argument: (type_name
+                  (constructor)))))))))
+  (value_decl
+    signature: (signature
+      name: (identifier)
+      type: (type_arrow
+        parameter: (type_name
+          (constructor))
+        result: (type_name
+          (constructor)))))
+  (value_decl
+    signature: (signature
+      name: (identifier)
+      type: (type_arrow
+        parameter: (type_name
+          (constructor))
+        result: (type_app
+          constructor: (type_name
+            (constructor))
+          argument: (type_name
+            (constructor))))))
+  (value_decl
+    signature: (signature
+      name: (identifier)
+      type: (type_arrow
+        parameter: (type_name
+          (constructor))
+        result: (type_app
+          constructor: (type_name
+            (constructor))
+          argument: (type_name
+            (constructor)))))))
