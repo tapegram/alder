@@ -1167,6 +1167,26 @@ for the shard that holds the admin's longest mutation run). `-short` skips the
 slowest suites (the admin's mutation runs, the out-of-tree builds, the drill), for a
 quick pass while working; the gate runs them.
 
+Those tests compile many Go programs, and each run's are new. The go
+command keeps every compiled package in its build cache (`go env
+GOCACHE`) until it has gone unused for five days, with no size limit, so
+through your own cache a few days of test runs would fill hundreds of
+gigabytes. The packages whose tests run the go command (`cmd/alder`,
+`internal/gen`, `internal/buildkit`, `internal/scratch` and `book`) point
+it instead at a cache of their own, shared by every run so a warm run
+stays fast: `$TMPDIR/alder-test-gocache` (`/tmp/alder-test-gocache` when
+`TMPDIR` is unset), or the absolute path in `ALDER_TEST_GOCACHE`. Before
+the tests start, a cache over 10 GiB (`ALDER_TEST_GOCACHE_MAX_GB` changes
+the cap) is wiped, unless another test binary is using it at that moment.
+Where `/tmp` is held in memory (tmpfs, on many Linux systems), lower the
+cap or set `ALDER_TEST_GOCACHE` to a directory on disk. To clear it by
+hand, `rm -rf "${TMPDIR:-/tmp}/alder-test-gocache"`. CI sets
+`ALDER_TEST_GOCACHE` to the go command's own cache, since a runner is
+thrown away after each job, and the cap to 1000: only test binaries take
+the cache's lock, so a cache that the outer `go test` builds from at the
+same time must never be over the cap, or a wipe would pull it from under
+that command (`internal/testgocache`).
+
 ### The browser smoke test
 
 Everything above runs without a browser: an app's own tests drive its

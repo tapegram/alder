@@ -133,6 +133,15 @@ jobs:
           restore-keys: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-
       - name: tree-sitter CLI (the grammar's drift test needs it; no job skips it)
         run: .github/install-tree-sitter.sh
+      # the tests' go builds use a cache of their own (internal/testgocache), which on a laptop
+      # keeps them out of the user's; a runner is discarded after the job, so they use the one
+      # just restored, warm. The outer go test builds from that cache too, without the tests'
+      # lock, so the cap is raised: a wipe must never pull it from under go test (GitHub's cache
+      # eviction bounds it)
+      - name: the tests' go cache is the restored one
+        run: |
+          echo "ALDER_TEST_GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "ALDER_TEST_GOCACHE_MAX_GB=1000" >> "$GITHUB_ENV"
       - name: every cmd/alder test is in exactly one shard
         if: matrix.part == 'cmd/alder 0/3'
         run: .github/shard.sh 3 check
@@ -224,6 +233,15 @@ jobs:
             ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-
+      # the tests' go builds use a cache of their own (internal/testgocache), which on a laptop
+      # keeps them out of the user's; a runner is discarded after the job, so they use the one
+      # just restored, warm. The outer go test builds from that cache too, without the tests'
+      # lock, so the cap is raised: a wipe must never pull it from under go test (GitHub's cache
+      # eviction bounds it)
+      - name: the tests' go cache is the restored one
+        run: |
+          echo "ALDER_TEST_GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "ALDER_TEST_GOCACHE_MAX_GB=1000" >> "$GITHUB_ENV"
       # Docker is part of this job: without it the job fails, unless the pull request carries the
       # label no-docker (then the tests skip, saying so)
       - name: Docker
@@ -265,6 +283,15 @@ jobs:
             ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}-
+      # the tests' go builds use a cache of their own (internal/testgocache), which on a laptop
+      # keeps them out of the user's; a runner is discarded after the job, so they use the one
+      # just restored, warm. The outer go test builds from that cache too, without the tests'
+      # lock, so the cap is raised: a wipe must never pull it from under go test (GitHub's cache
+      # eviction bounds it)
+      - name: the tests' go cache is the restored one
+        run: |
+          echo "ALDER_TEST_GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "ALDER_TEST_GOCACHE_MAX_GB=1000" >> "$GITHUB_ENV"
       - name: sshd, and a key root accepts from 127.0.0.1
         run: |
           sudo apt-get update -q
