@@ -208,3 +208,21 @@ func TestDefinition_StaleTarget(t *testing.T) {
 		t.Errorf("module definition %+v", locs)
 	}
 }
+
+func TestHover_Tag(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "<div class", 1))
+	if !strings.Contains(got, "`<div>`") || !strings.Contains(got, "generic block container") {
+		t.Fatalf("hover %q", got)
+	}
+}
+
+func TestHover_Attr(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", `rel="prev"`, 0))
+	if !strings.Contains(got, "`rel` — how the linked resource relates") {
+		t.Fatalf("hover %q", got)
+	}
+}

@@ -6,25 +6,29 @@ import (
 	"strings"
 
 	"alder/internal/diag"
+	"alder/internal/markup"
 	"alder/internal/syntax"
 	"alder/internal/types"
 )
 
+// htmlTags and boolAttrs are derived from the markup manifest. boolAttrs are the HTML standard's
+// boolean attributes: written bare or `={Bool}`, rendered present or absent.
 var htmlTags = map[string]bool{}
-
-func init() {
-	for _, t := range strings.Fields(`a abbr address article aside audio b bdi bdo blockquote body br button canvas caption cite code col colgroup data datalist dd del details dfn dialog div dl dt em embed fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 head header hgroup hr html i iframe img input ins kbd label legend li link main map mark menu meta meter nav noscript object ol optgroup option output p picture pre progress q rp rt ruby s samp script section select slot small source span strong style sub summary sup table tbody td template textarea tfoot th thead time title tr track u ul var video wbr`) {
-		htmlTags[t] = true
-	}
-}
-
-// boolAttrs are the HTML standard's boolean attributes (its attribute index): written bare or
-// `={Bool}`, rendered present or absent.
 var boolAttrs = map[string]bool{}
 
 func init() {
-	for _, a := range strings.Fields(`allowfullscreen alpha async autofocus autoplay checked controls default defer disabled formnovalidate hidden inert ismap itemscope loop multiple muted nomodule novalidate open playsinline readonly required reversed selected shadowrootclonable shadowrootdelegatesfocus shadowrootserializable`) {
-		boolAttrs[a] = true
+	for _, t := range markup.HTML.Tags {
+		htmlTags[t.Name] = true
+		for _, a := range t.Attrs {
+			if a.Boolean {
+				boolAttrs[a.Name] = true
+			}
+		}
+	}
+	for _, a := range markup.HTML.Global {
+		if a.Boolean {
+			boolAttrs[a.Name] = true
+		}
 	}
 }
 

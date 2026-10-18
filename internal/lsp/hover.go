@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"alder/internal/diag"
+	"alder/internal/markup"
 	"alder/internal/syntax"
 	"alder/internal/types"
 )
@@ -47,7 +48,7 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 		}
 		return ""
 	case *syntax.HtmlAttr, *syntax.Element:
-		if h := markupHover(n); h != "" {
+		if h := markupHover(path); h != "" {
 			return h
 		}
 	}
@@ -83,8 +84,27 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 	return ""
 }
 
-// markupHover is the hover of an element or an attribute (Task 14); "" until then.
-func markupHover(syntax.Spanned) string { return "" }
+// markupHover is the hover of an element or an attribute named by the last node of path: the
+// manifest's description of a built-in tag or attribute, "" for a component, a custom element or
+// a name the manifest does not know.
+func markupHover(path []syntax.Spanned) string {
+	switch n := path[len(path)-1].(type) {
+	case *syntax.Element:
+		if t := markup.HTML.Tag(n.Tag); t != nil && n.Ref.Kind != syntax.RefComponent {
+			return "`<" + t.Name + ">` — " + t.Description
+		}
+	case *syntax.HtmlAttr:
+		for i := len(path) - 2; i >= 0; i-- {
+			if el, ok := path[i].(*syntax.Element); ok {
+				if a := markup.HTML.Attr(el.Tag, n.Name); a != nil {
+					return "`" + a.Name + "` — " + a.Description
+				}
+				break
+			}
+		}
+	}
+	return ""
+}
 
 // declDoc is the doc comment above the declaration of ref, in its app or stdlib module.
 func declDoc(a *analysis, ref syntax.Ref) string {
