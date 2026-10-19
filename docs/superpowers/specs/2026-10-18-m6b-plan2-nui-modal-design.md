@@ -147,7 +147,7 @@ have no nui dependency and are unit-tested; the modal itself is smoke-tested.
 ### 3.6 Review (`review.lua`, `<C-o>`)
 
 - Sends `alder/plan`; on `plan.error` the review still opens, showing the error and
-  diagnostics in the notes pane with the footer `✗ cannot apply · q close`.
+  diagnostics in the notes pane with the footer `✗ cannot apply · q back`.
 - A second Layout, 90%×80%: notes pane on top (holes `? name : type`, `imports`,
   `migration`, diagnostics; height `min(#notes, 6) + 2`, not focusable), then files 30% /
   diff 70%. `review.model(plan)` (pure) builds the notes and, per file, the unified diff via
