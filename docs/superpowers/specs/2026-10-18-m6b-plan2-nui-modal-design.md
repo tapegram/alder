@@ -36,7 +36,8 @@ Decisions taken while brainstorming (2026-10-18):
 `install nui.nvim for the generator UI`; `:Alder <words>` (the CLI, writes to disk) stays the
 escape hatch. `:checkhealth alder` reports whether nui is found.
 
-**Removed.** `flow.lua`, `actions.lua`, the `alder://preview` scratch buffer,
+**Removed.** `flow.lua`, `actions.lua`, the plan-1 flow's use of the `alder://preview` scratch buffer (`:Alder <words>`, the CLI, still
+shows its result there; amended during execution),
 `:AlderActions`, the `actions` key. `apply.lua` stays as it is: it is the contract the modal
 ends in (plan → `before`-guard → buffer edits, removal is the only disk write).
 
@@ -83,8 +84,8 @@ have no nui dependency and are unit-tested; the modal itself is smoke-tested.
 - Render: one line per item, `id` then the summary in `Comment`; a `── here ──` virtual
   line above the first here item and `── all ──` above the first other item; `cursorline`.
 - `picker.filter(items, query)` → `vim.fn.matchfuzzy` on `id .. " " .. summary`; an empty
-  query returns all. Typing in the search line re-renders the list and keeps the selection if
-  it survived, else selects the first row.
+  query returns all. Typing in the search line re-renders the list and selects the first row
+  (durandal's behaviour, not the surviving selection; amended during execution).
 - `<Down>/<C-n>`, `<Up>/<C-p>` move the selection; moving calls `select(id)`: the form is
   rebuilt from the item's `sets` and a preview is requested. Search maps are `{"i","n"}`,
   buffer-local, `nowait`.
@@ -100,8 +101,12 @@ have no nui dependency and are unit-tested; the modal itself is smoke-tested.
   through them, `<Tab>` or `<CR>` commits the current option into the line.
 - Bool fields (kind `bool`): rendered `[x] <name>` / `[ ] <name>`; `<Space>` in normal mode
   toggles; the line is not editable. The initial state comes from the field's `value`
-  (`"true"`/`"false"`, see §4.3).
-- Only the focused line is modifiable, and only in insert mode. A `TextChanged` whose
+  (`"true"`/`"false"`, see §4.3); a value of `""` renders unchecked. An untouched bool whose
+  source is `"default"` is not sent, so the server re-decides it on each request (see
+  `Field.DefaultUnless`, §4.3); a toggled bool is sent `"true"`/`"false"` (amended during
+  execution).
+- The form buffer is modifiable as a whole, with a line-count guard (not only the focused
+  line; amended during execution). A `TextChanged` whose
   changedtick equals the one recorded at render is ignored (durandal's tick trick); a
   line-count change re-renders from state; `o`, `O`, `dd`, `J`, `p`, `P` are no-ops and
   `<BS>` at column 0 is swallowed (expr map returning the replaced keycode).
@@ -149,8 +154,9 @@ have no nui dependency and are unit-tested; the modal itself is smoke-tested.
   `vim.diff(before or "", after or "", {result_type = "unified", ctxlen = 3})`; the diff pane
   is `filetype = "diff"`.
 - `j`/`k` switch file (a `CursorMoved` autocmd re-renders the diff), `<Tab>` swaps panes,
-  `<CR>` applies (same path as §3.5), `q`/`<Esc>` return to the form modal, which was hidden
-  — not closed — while the review was open (its state and `sets` survive).
+  `<CR>` applies (same path as §3.5), `q`/`<Esc>` return to the form modal, which stays
+  underneath: the review opens as an overlay (zindex 60) over the form modal rather than
+  hiding it (amended during execution); its state and `sets` survive either way.
 - Title text doubles as the hint: ` <id>  <CR> apply · Esc back `.
 
 ## 4. alder (Go)
@@ -234,15 +240,18 @@ have no nui dependency and are unit-tested; the modal itself is smoke-tested.
   The exact text is fixed when the template is written against the checker (comment syntax
   inside markup, `Redirect` argument form, the page's own module name for the redirect); the
   generated page must check clean, and so must the page after every `example` part is
-  deleted (which is the minimal page). The generated test, if the template emits one,
-  covers `Bump`.
+  deleted (which is the minimal page). The generated page carries a test that
+  presses `Bump` (amended during execution).
 - `help --json`: the flag appears like every other; `testdata/help.json` regenerated; book
   chapter 13 §10 gets one sentence on `--example`.
 - Editor default on: `new page` is never a here-item (it creates a module), so the default
   rides on the `Field`: a new `Field.Default string` is the value `generate.Form` starts a
   field with when neither the cursor (`here`) nor the user (`you`) set it, with
   `FieldState.source = "default"`; only the editor calls `Form`, so the CLI default stays off
-  and agents get the minimal page. `FieldState.value` for a bool flag is `"true"`/`"false"`
+  and agents get the minimal page. A new `Field.DefaultUnless []string` names the flags that
+  switch the default off (for `example`: `--blank`, `--list`, `--show`, `--from`, `--param`):
+  the editor default must not start a combination the generator refuses, so `Form` drops the
+  default when one of them is set (amended during execution). `FieldState.value` for a bool flag is `"true"`/`"false"`
   (today's `ArgBool` validation in `here.go` accepts both); `help --json` does not show
   `Default`.
 - Comments stay outside markup (a `-- example:` line inside `<Layout.Page>` would be text);
