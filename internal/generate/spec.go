@@ -46,6 +46,10 @@ type Field struct {
 	// the field: "true" for a bool flag the form should start checked. Only Form applies it;
 	// the CLI's default is always unset, so agents get the minimal result.
 	Default string
+	// DefaultUnless names fields that cancel Default: Form applies Default only when none of
+	// them has a value (a bool counts as set unless "false" or ""), so an editor does not start
+	// a combination the generator refuses.
+	DefaultUnless []string
 	Value   string // help --json: an arg's display ("<Module>") or a flag's placeholder ("T")
 	Summary string // help --json: a flag's summary
 }

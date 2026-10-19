@@ -83,7 +83,7 @@ func Form(s *Spec, here *Match, you map[string]string, p *Program) ([]FieldState
 	}
 	for _, fs := range [][]Field{s.Args, s.Flags} {
 		for _, f := range fs {
-			if _, set := values[f.Name]; !set && f.Default != "" {
+			if _, set := values[f.Name]; !set && f.Default != "" && !anySet(values, f.DefaultUnless) {
 				values[f.Name], source[f.Name] = f.Default, "default"
 			}
 		}
@@ -106,6 +106,19 @@ func Form(s *Spec, here *Match, you map[string]string, p *Program) ([]FieldState
 		add(f, true)
 	}
 	return out, SetsOf(s, values), ready
+}
+
+// anySet reports whether one of the named fields has a value in values: a bool counts only when
+// it is not "false", any other kind when it is not blank.
+func anySet(values map[string]string, names []string) bool {
+	for _, n := range names {
+		v := strings.TrimSpace(values[n])
+		if v == "" || v == "false" {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // SetsOf turns form text into Sets: a Variadic field or a Greedy flag is split into words, a

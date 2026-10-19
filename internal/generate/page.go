@@ -516,6 +516,15 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		tb := newTest()
 		tb.let("let r <- Test.open (%s)", pageOf(tb))
 		d.Tests = append(d.Tests, TestData{Name: quote("the page is shown"), Lines: tb.lines, Result: "{ answer: r.answer, heading: " + heading})
+		if o.Example { // the example's loop: press Bump, the redirect carries the new count
+			tb = newTest()
+			tb.let("let _ <- Test.get (%s)", pageOf(tb))
+			tb.let("let r <- Test.click (Bump { by: 1 })")
+			tb.let("let after <- Test.open (%s { count: 1 })", o.Module)
+			d.Tests = append(d.Tests, TestData{Name: quote("pressing Bump counts one"), Lines: tb.lines,
+				Result:  "{ answer: r.answer, count: Test.text \"#count\" after.doc } == { answer: Redirected (" + o.Module + " { count: 1 }), count: Just \"Count: 1\" }",
+				Comment: []string{"example: delete this test with the rest of the example."}})
+		}
 	}
 
 	// who may not see the page: a visitor is sent to log in; a user of another role gets a 404

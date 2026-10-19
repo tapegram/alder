@@ -6,24 +6,29 @@ page "/about" { count: Int = 0 }
 
 -- example: a page keeps state in its parameters (or the session, or a table), never in Model
 -- between requests: `load` rebuilds Model on every request. Delete every part marked
--- `example` when you have seen how they fit together (the `count` parameter above is one).
+-- `example` when you have seen how they fit together, and the `count` parameter in the
+-- `page` line above; what is left is the plain page.
 
+-- example: delete the field `count: Int`, leaving `type Model = { }`.
 type Model = { count: Int }
 
+-- example: in `load`, delete `count: params.count`, leaving `Query.succeed { }`.
 load : Params -> Session -> Query Model
 load params session = Query.succeed { count: params.count }
 
 -- example: a message carries a record; the view sends it from `click`.
 msg Bump { by: Int }
 
+-- example: delete `update` whole; a plain page has none.
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
-  -- example: `update` answers with a Nav: Redirect to the same page with the new count
+  -- `update` answers with a Nav: Redirect to the same page with the new count
   -- (Rerender would run `load` again with the old parameters), or Reject with an error.
   Bump p -> Task.succeed (Redirect (About { count: model.count + p.by })),
 }
 
--- example: the view shows the state and sends a message from a button.
+-- example: in `view`, delete the `<p id="count">` and `<al-button>` lines: they show the
+-- state and send a message from a button.
 view : Model -> Session -> Html Msg
 view model session =
   <Layout.Page title="About">
@@ -35,4 +40,12 @@ view model session =
 test "the page is shown" = {
   let r <- Test.open (About {})
   Task.succeed ({ answer: r.answer, heading: Test.text "h1" r.doc } == { answer: Shown, heading: Just "About" })
+}
+
+-- example: delete this test with the rest of the example.
+test "pressing Bump counts one" = {
+  let _ <- Test.get (About {})
+  let r <- Test.click (Bump { by: 1 })
+  let after <- Test.open (About { count: 1 })
+  Task.succeed ({ answer: r.answer, count: Test.text "#count" after.doc } == { answer: Redirected (About { count: 1 }), count: Just "Count: 1" })
 }
