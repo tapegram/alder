@@ -3,10 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"alder/internal/generate"
 )
 
 // usageFlagRE finds flags in a usage string: `--json`, `-run`, `[--list T | --show T`, `|--ast`.
@@ -20,8 +23,8 @@ func usageFlags(u string) []string {
 	return sortedKeys(set)
 }
 
-// specFlags is a node's flags plus those of its subcommands that have no usage of their own.
-func specFlags(c cmdSpec) []string {
+// nodeFlags is a node's flags plus those of its subcommands that have no usage of their own.
+func nodeFlags(c cmdSpec) []string {
 	set := map[string]bool{}
 	var add func(c cmdSpec)
 	add = func(c cmdSpec) {
@@ -93,7 +96,7 @@ func TestHelpJSON_MatchesUsage(t *testing.T) {
 			}
 		}
 		if c.Usage != "" {
-			got, want := strings.Join(specFlags(c), " "), strings.Join(usageFlags(c.Usage), " ")
+			got, want := strings.Join(nodeFlags(c), " "), strings.Join(usageFlags(c.Usage), " ")
 			if got != want {
 				t.Errorf("%s: flags in commandTree [%s] differ from its usage text [%s]", path, got, want)
 			}
@@ -141,6 +144,47 @@ func TestHelp_SiloAndSilosHaveUsage(t *testing.T) {
 		}
 		if strings.Contains(out.String(), "usage: alder new <name> |") {
 			t.Errorf("%v printed the general usage instead of its own:\n%s", args, out.String())
+		}
+	}
+}
+
+// TestHelpJSON_Golden pins `alder help --json` byte for byte: the generator nodes are rendered
+// from generate.Specs (M6b) and must not change what alder.nvim and agents read.
+func TestHelpJSON_Golden(t *testing.T) {
+	var out bytes.Buffer
+	writeHelpJSON(&out)
+	want, err := os.ReadFile("../../testdata/help.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := out.Bytes()
+	// the version varies by build; compare everything else
+	re := regexp.MustCompile(`"version":"[^"]*"`)
+	if !bytes.Equal(re.ReplaceAll(got, nil), re.ReplaceAll(want, nil)) {
+		t.Fatalf("help --json changed:\n got %s\nwant %s", got, want)
+	}
+}
+
+// TestHelpJSON_FromSpecs: every generator node in the tree is a Spec's, so a flag added to a
+// Spec reaches help --json (and, through the usage pin, the usage text).
+func TestHelpJSON_FromSpecs(t *testing.T) {
+	for _, s := range generate.Specs() {
+		group, sub, _ := strings.Cut(s.ID, " ")
+		var node *cmdSpec
+		for i := range commandTree {
+			if commandTree[i].Name == group {
+				for j := range commandTree[i].Subcommands {
+					if commandTree[i].Subcommands[j].Name == sub {
+						node = &commandTree[i].Subcommands[j]
+					}
+				}
+			}
+		}
+		if node == nil {
+			t.Fatalf("%s: not in commandTree", s.ID)
+		}
+		if node.Summary != s.Summary {
+			t.Errorf("%s: summary %q, spec %q", s.ID, node.Summary, s.Summary)
 		}
 	}
 }

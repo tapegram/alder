@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -98,5 +99,22 @@ func TestCLI_HoleSpanJSON(t *testing.T) {
 	want := `{"code":"W0002","severity":"warning","file":"app/X.alder","line":4,"col":9,"endLine":4,"endCol":15,"message":"hole ?count has type Int"}`
 	if code != 0 || strings.TrimSpace(out) != want {
 		t.Errorf("exit %d\n%s\nwant\n%s", code, out, want)
+	}
+}
+
+// TestLsp_InitializeOverStdio: `alder lsp` answers initialize on stdout and stops at exit.
+func TestLsp_InitializeOverStdio(t *testing.T) {
+	frame := func(body string) string { return fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(body), body) }
+	in := frame(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`) +
+		frame(`{"jsonrpc":"2.0","method":"exit"}`)
+	var out, errb bytes.Buffer
+	if code := runLspTo(nil, strings.NewReader(in), &out, &errb); code != 0 {
+		t.Fatalf("code %d: %s", code, errb.String())
+	}
+	if !strings.Contains(out.String(), `"positionEncoding":"utf-8"`) {
+		t.Fatalf("out %s", out.String())
+	}
+	if code := runLspTo([]string{"x"}, strings.NewReader(""), &out, &errb); code != 2 || !strings.Contains(errb.String(), "usage: alder lsp") {
+		t.Fatalf("an argument: exit %d, %s", code, errb.String())
 	}
 }

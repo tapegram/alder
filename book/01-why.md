@@ -175,6 +175,10 @@ then `:TSInstall alder` inside Neovim. The grammar the editor uses lives in this
 (`tree-sitter-alder/`) and is tested against the compiler's own parser, so the two cannot
 drift apart.
 
+With the plugin, Neovim also runs `alder lsp`, Alder's language server: diagnostics as you type,
+hover, go to definition, references, completion and code actions. Chapter 11, "Editor support",
+describes what you get, and chapter 13, section 10, how the server works.
+
 ## Your first app
 
 `alder new` writes a small, complete app to start from, a guestbook,

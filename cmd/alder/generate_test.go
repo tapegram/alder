@@ -577,6 +577,15 @@ func TestGenerate_DryRun(t *testing.T) {
 }
 
 // TestGenerate_Args: --show takes a path with or without its `/{id}`; --from's tables may come
+// TestGenerate_EditFlagsPerSubcommand: each edit subcommand accepts only its own flags (M6b R5).
+func TestGenerate_EditFlagsPerSubcommand(t *testing.T) {
+	dir := genApp(t, "fixture")
+	code, _, stderr := alderIn(t, dir, "", "edit", "page", "Home", "add-param", "n:Int=1", "--to", "X")
+	if code != 2 || !strings.Contains(stderr, "unknown flag --to") || !strings.Contains(stderr, editUsage) {
+		t.Fatalf("code %d stderr %q", code, stderr)
+	}
+}
+
 // before the path.
 func TestGenerate_Args(t *testing.T) {
 	dir := genApp(t, "scaffold")

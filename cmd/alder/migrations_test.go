@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"alder/internal/buildkit"
+	"alder/internal/watch"
 	_ "alder/rt/db" // the sqlite driver
 )
 
@@ -136,15 +137,15 @@ test "pure" = 1 + 1 == 2
 func TestWatch_Migrations(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "migrations"), 0o755)
-	before := snapshot(dir)
+	before := watch.Snapshot(dir)
 	os.WriteFile(filepath.Join(dir, "migrations", "0001_initial.sql"), []byte("-- alder migration 0001_initial\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "migrations", "schema.json"), []byte("{}"), 0o644)
 	os.WriteFile(filepath.Join(dir, "migrations", "notes.txt"), []byte("x"), 0o644)
-	after := snapshot(dir)
+	after := watch.Snapshot(dir)
 	if _, ok := after["migrations/0001_initial.sql"]; !ok || len(after) != 2 {
 		t.Fatalf("snapshot %v", after)
 	}
-	if k := diff(before, after); k != sourceChange {
+	if k := watch.Diff(before, after); k != watch.SourceChange {
 		t.Fatalf("diff = %v, want a source change", k)
 	}
 }
@@ -204,17 +205,17 @@ func TestWatch_AdaptersNoise(t *testing.T) {
 	mail := filepath.Join(dir, "adapters", "mail")
 	os.MkdirAll(filepath.Join(mail, ".git"), 0o755)
 	os.WriteFile(filepath.Join(mail, "mail.go"), []byte("package mail\n"), 0o644)
-	before := snapshot(dir)
+	before := watch.Snapshot(dir)
 	for _, name := range []string{".mail.go.swp", ".mail.go.swx", "mail.go.swp", "mail.go~", "#mail.go#", ".#mail.go", ".DS_Store", ".git/index"} {
 		os.WriteFile(filepath.Join(mail, name), []byte("x"), 0o644)
 	}
 	os.Symlink(filepath.Join(mail, "mail.go"), filepath.Join(mail, "link.go"))
-	after := snapshot(dir)
-	if k := diff(before, after); k != 0 || len(after) != 1 {
+	after := watch.Snapshot(dir)
+	if k := watch.Diff(before, after); k != 0 || len(after) != 1 {
 		t.Fatalf("diff = %v, snapshot %v", k, after)
 	}
 	os.WriteFile(filepath.Join(mail, "send.go"), []byte("package mail\n"), 0o644)
-	if k := diff(before, snapshot(dir)); k != sourceChange {
+	if k := watch.Diff(before, watch.Snapshot(dir)); k != watch.SourceChange {
 		t.Fatalf("a new Go file: diff = %v", k)
 	}
 }

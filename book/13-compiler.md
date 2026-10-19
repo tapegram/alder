@@ -4615,7 +4615,746 @@ app's session, the call goes through `widen__Todos__Index__Session`, which
 the emitter writes into `Todos__Index_alder.go`: it copies the fields and wraps
 `user` back in `rt.Just`.
 
-## 10. Exercises
+## 10. The language server
+
+The stages so far run once: `alder check` reads the files, checks them and
+exits. An editor wants the same answers all day, about files that are half
+written, a keystroke after each change. `alder lsp` (`internal/lsp`, started
+by `cmd/alder/lsp.go`) is the compiler kept running for that. It adds no
+new rules about Alder. It runs the stages you have read about on the text in
+the editor and translates their answers (a span, a type, a declaration) into
+the editor's protocol. Chapter 11, "Editor support", is the user's view;
+this section is the inside.
+
+The transcripts below are real. They were recorded by running Neovim 0.12.5
+with alder.nvim on a copy of `examples/blog`, with `ALDER_LSP_LOG` set to a
+file: `alder lsp` copies every message it receives (`->`) and sends (`<-`)
+to that file, one JSON object per line. Long values are trimmed, and
+each cut is marked `…`; whole messages are left out only where the text
+says so; and the directory the copy lived in is written `…`. Nothing else is changed:
+the lines are the log's, byte for byte, apart from those cuts. (Two
+sessions are quoted, each a fresh run on a fresh copy of the blog, so
+the ids start again at 1 in each.)
+
+### The wire
+
+An editor and a server talk over two pipes, the server's standard input and
+standard output. A pipe is a stream of bytes with no message boundaries, so
+the protocol has to say where one message ends. It borrows HTTP's way: a
+header, a blank line, then a body whose length the header gave.
+
+```text
+Content-Length: 445\r\n
+\r\n
+{"id":1,"jsonrpc":"2.0","result":{"capabilities":{"codeActionProvider":{"codeActionKinds":["quickfix","refactor"]},"completionProvider":{"triggerCharacters":[".","\u003c","?"]},"definitionProvider":true,"executeCommandProvider":{"commands":["alder.explain"]},"hoverProvider":true,"positionEncoding":"utf-8","referencesProvider":true,"textDocumentSync":{"change":1,"openClose":true}},"serverInfo":{"name":"alder","version":"devel+7747fd1d9993"}}}
+```
+
+That is the server's answer to `initialize`, the first request. The log
+holds only the bodies; the header is what `conn.send` writes in front of
+one, and 445 is the length of this body in bytes (bytes, not characters,
+which matters as soon as a message has an `é` in it). The body is JSON. (The
+`\u003c` is Go's JSON encoder writing `<`, which it escapes by default; it
+means the same character.) `readMessage` in
+`internal/lsp/jsonrpc.go` is the reading side:
+
+```go
+func readMessage(r *bufio.Reader) (*message, error) {
+	h, err := textproto.NewReader(r).ReadMIMEHeader()
+	if err != nil {
+		return nil, err
+	}
+	n, err := strconv.Atoi(h.Get("Content-Length"))
+	if err != nil || n < 0 {
+		return nil, fmt.Errorf("bad Content-Length %q", h.Get("Content-Length"))
+	}
+	body := make([]byte, n)
+	if _, err := io.ReadFull(r, body); err != nil {
+		return nil, err
+	}
+	var m message
+	if err := json.Unmarshal(body, &m); err != nil {
+		return &message{Error: &rpcError{codeParse, err.Error()}}, nil
+	}
+	return &m, nil
+}
+```
+
+It reads the header lines with Go's MIME header reader (the same format as
+HTTP's), takes the one header it cares about, `Content-Length`, reads exactly
+that many bytes, and decodes them. A body that is not JSON becomes a
+message that carries a parse error, so the server can answer it and read on.
+A broken header is an error that ends the loop: after it the server no
+longer knows where messages start, and cannot recover.
+
+The body is **JSON-RPC 2.0**, three kinds of message in one struct:
+
+```go
+type message struct {
+	JSONRPC string           `json:"jsonrpc"`
+	ID      *json.RawMessage `json:"id,omitempty"`
+	Method  string           `json:"method,omitempty"`
+	Params  json.RawMessage  `json:"params,omitempty"`
+	Result  json.RawMessage  `json:"result,omitempty"`
+	Error   *rpcError        `json:"error,omitempty"`
+}
+```
+
+A **request** has an `id` and a `method`; the receiver must answer it with a
+**response** carrying the same `id` and either a `result` or an `error`. A
+**notification** has a `method` and no `id`: "this file changed" needs no
+answer. The `id` lets a client have several requests in flight and match
+answers to them as they come in any order. The server keeps the id as the
+JSON text it arrived in (`idKey`), so the number 1 and the string "1" stay
+different ids.
+
+The beginning of a session, from the log. The request, with the editor's
+capabilities cut:
+
+```text
+-> {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":3560,"clientInfo":{"version":"0.12.5","name":"Neovim"},"rootPath":"…/blog","rootUri":"file://…/blog","workDoneToken":"1","trace":"off","workspaceFolders":[{"uri":"file://…/blog","name":"…/blog"}],"capabilities":…}}
+<- {"id":1,"jsonrpc":"2.0","result":{"capabilities":{"codeActionProvider":{"codeActionKinds":["quickfix","refactor"]},"completionProvider":{"triggerCharacters":[".","\u003c","?"]},"definitionProvider":true,"executeCommandProvider":{"commands":["alder.explain"]},"hoverProvider":true,"positionEncoding":"utf-8","referencesProvider":true,"textDocumentSync":{"change":1,"openClose":true}},"serverInfo":{"name":"alder","version":"devel+7747fd1d9993"}}}
+-> {"jsonrpc":"2.0","method":"initialized","params":{}}
+-> {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"languageId":"alder","text":"module Posts.Index\n\nimport Post\n…","uri":"file://…/blog/app/Posts/Index.alder","version":0}}}
+<- {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file://…/blog/app/Posts/Index.alder","version":0,"diagnostics":[]}}
+```
+
+`initialize` tells the server where the project is (`rootUri`), and the
+server tells the client what it can do (`capabilities`): hover, definition,
+references, completion after the three characters `.`, `<` and `?`, code
+actions of two kinds, one command. `textDocumentSync: {change: 1}` asks the
+client to send the **whole** text of a file at each change, not a patch:
+Alder files are small, and a patch applied to a wrong base would corrupt the
+server's copy for good. After `initialized` the editor opens the file with
+`didOpen` and sends its entire text, and the server, which has now built the
+app, publishes the file's diagnostics (none). Two messages in that exchange
+are the reason for two of the server's rules, which the next paragraphs
+explain: `"positionEncoding":"utf-8"` and the whole `text` in `didOpen`.
+
+**Why utf-8 positions.** An LSP position is a line and a character offset in
+that line, both counted from 0. The protocol's historical unit for the
+offset is the UTF-16 code unit, a unit that nothing in Alder uses. The
+compiler counts lines from 1 and columns from 1 in **bytes** of the UTF-8
+file (`diag.Pos`), the unit Go strings index by. Since LSP 3.17 a server can
+announce a different unit, so `alder lsp` announces UTF-8 bytes, and the
+conversion is `line-1` and `col-1`, both ways:
+
+```go
+func lspRange(line, col, endLine, endCol int) Range {
+	pos := func(l, c int) Position { return Position{Line: max(l-1, 0), Character: max(c-1, 0)} }
+	return Range{Start: pos(line, col), End: pos(endLine, endCol)}
+}
+```
+
+The alternative is converting to and from UTF-16 on every position, and a
+line like `"hé {name}"` is where such a conversion goes wrong. With bytes
+there is no conversion to get wrong. (A client that can only count UTF-16
+units is not served; Neovim speaks UTF-8.)
+
+### The overlay
+
+A language server must check what is in the editor, not what is on disk. The
+file you are typing in has not been saved, and the other files may have
+changes of their own in other buffers. The server keeps every open document
+in memory (`docs` in `internal/lsp/docs.go`): `didOpen` and `didChange` put
+the whole text there, `didClose` takes it out, and the file on disk applies
+again.
+
+The compiler, though, reads files. `names.Load` (section 4) walks `app/`,
+reads every `.alder` file and parses it. It does take a list of extra
+modules, parsed by the caller from memory, and that is how `alder eval` and
+the REPL add the scratch module that holds your expression. That hook does not work for an editor, because
+extra modules are **added** to the directory's under the duplicate rule: an
+extra `Posts.Index` next to the file `app/Posts/Index.alder` is two
+definitions of `Posts.Index`, E0009. What an editor needs is to **replace**
+the file. `names.LoadOverlay` does that:
+
+```go
+		r, _ := filepath.Rel(dir, path)
+		rel := filepath.ToSlash(r)
+		if src, ok := overlay[rel]; ok {
+			parse(rel, src)
+			return nil
+		}
+		src, err := os.ReadFile(path)
+```
+
+`overlay` maps a path relative to the project ("app/Posts/Index.alder") to
+the text to use. The walk visits each file on disk; when the overlay has a
+text for it, it parses that and never reads the disk. An overlay file that
+the walk did not find (a new buffer, not saved yet) is added after the
+others, in path order. `names.Load` is `LoadOverlay` with a nil overlay, so
+the compiler and the server run the same code, and
+`buildkit.LoadCheckedOverlay` is `LoadChecked` with an overlay, which
+`alder check` calls with none.
+
+A URI the editor sends (`file:///…/blog/app/Posts/Index.alder`) must become
+that relative path, and it must not escape the project. `server.rel` in
+`docs.go` resolves symbolic links on both sides first, because macOS's
+`/tmp` is a link to `/private/tmp` and a root the editor spelled one way
+would otherwise never match a file it spelled the other way, and it refuses
+any path that does not stay inside the root.
+
+### Snapshots and the last good build
+
+An editor sends a change on nearly every keystroke. Checking the whole app
+is fast (chapter 11 calls `alder check` a matter of milliseconds), but not
+free, so checking on each keystroke would waste most of its work, and
+checking on the goroutine that reads messages would stop the server from
+reading while it checked. The server splits the work between goroutines
+(Go's lightweight threads: functions that run at the same time as the code that started them):
+
+- the **reader** reads messages, one at a time, and applies document
+  notifications at once, in the order they arrive. A `didChange` replaces
+  the text and asks for a rebuild, which costs one send on a channel;
+- the **analysis goroutine** builds the program, 150 milliseconds after the
+  last change;
+- two **workers** answer requests: a fast one for hover, definition,
+  references, completion, code actions and the generator list, and a slow one
+  for the generator dry runs (below), so that a dry run never makes a hover
+  wait.
+
+Asking for a rebuild is deliberately weak:
+
+```go
+func (s *server) schedule() {
+	select {
+	case s.tokens <- struct{}{}:
+	default:
+	}
+}
+```
+
+`tokens` is a channel with room for one value. If it is empty, the send puts
+a token in. If a token is already waiting, the `default` branch does
+nothing: a rebuild is already due, and it will see this change too. Ten
+keystrokes before the analysis goroutine wakes are one rebuild. `analyse`
+then sleeps `Debounce` (150 ms, set in `cmd/alder/lsp.go`), swallows the
+tokens that arrived meanwhile, and calls `rebuild`: typing a word is one
+build, not five.
+
+The editor is not the only thing that changes files. A poller (`internal/watch`,
+the same one `alder run` uses) looks at the project's files on disk every 300
+ms and asks for a rebuild when one changes, so a `git checkout` or a generator
+run in a terminal shows up without a keystroke.
+
+`rebuild` takes a snapshot of the documents, builds the app with them
+overlaid, and stores the result:
+
+```go
+	over, vers := s.docs.snapshot()
+	prog, res, bag, ioErrs := buildkit.LoadCheckedOverlay(s.rootReal, over)
+	…
+	buildkit.AddSchemaDrift(s.rootReal, prog, res, bag)
+	a := &analysis{prog: prog, res: res, diags: bag.Items, versions: vers, lines: map[string][]string{}}
+	…
+	s.cur.Store(a)
+	if res != nil {
+		s.good.Store(a)
+	}
+	s.publish(a)
+```
+
+(`AddSchemaDrift` adds E0019, the migrations check, so the diagnostics are
+those of `alder check`.) An `analysis` holds the program, the type
+checker's result, the diagnostics, the version of every document it was
+built from, and the text of every module as the build read it (`lines`).
+Nobody changes it after `Store`. It is a **snapshot**, and a snapshot can be
+read by any number of goroutines without a lock; `cur` and `good` are
+`atomic.Pointer`s, so a worker picking the current snapshot never sees half
+of a new one. A request that arrives during a rebuild answers from the
+previous snapshot, and the next request sees the new one.
+
+There are two pointers because a snapshot can be useless. If the text does
+not parse, `LoadCheckedOverlay` does not type-check (the checker needs a
+tree), so `res` is nil: the snapshot has the parse error to show, but no
+types, no resolved names, nothing to hover on. `cur` is always the newest
+snapshot, and `good` is the newest one **with** a `res`, the **last good
+build**. Diagnostics are published from the newest; hover, definition,
+references and completion answer from the last good one. Without that, every
+time you typed a half line, everything would go dark until you finished it.
+
+But the last good build was made from the text as it was, not from the text
+as it is, so it can answer wrongly. If you insert a line above `lastPage`,
+the build still says `lastPage` is on line 22; and the cursor, which the
+editor reports in today's coordinates, is on what used to be line 23. The
+rule that prevents the wrong answer (**R11**) is called freshness:
+
+```go
+func freshLines(a *analysis, rel string, now []string, line int, inclusive bool) bool {
+	…
+	last := line - 1
+	if inclusive {
+		last = line
+	}
+	…
+	for i := 0; i < last; i++ {
+		if built[i] != now[i] {
+			return false
+		}
+	}
+	return true
+}
+```
+
+A position is **fresh** if the lines above it are the same text in the
+build and now. Then every line number and byte column above the cursor means
+the same thing in both, and the build's answer about the cursor's line holds
+too, if that line itself is unchanged (`inclusive`). Hover, definition and
+references ask for the cursor's line to be unchanged as well. Completion
+does not, because the line under the cursor is the one being typed and is
+usually not parseable. It asks that only the lines above it are unchanged,
+and reads the line itself from the text.
+
+Here is the rule at work, from the log. In `load`, line 31,
+`let q = Text.slice 0 100 (Text.trim params.q)`, is replaced by `let q = Text.`,
+as if it were being typed. The editor sends `didChange` (version 5) with the whole
+new text, then asks for a hover on `lastPage` (request 3) and for completion
+after `Text.` (request 4). The server answers both from the build it made
+before the edit, since the 150 ms have not passed; then the rebuild runs and
+publishes the parse error, and a hover below the edit (request 6) gets
+nothing. (Between these the log has a second, identical hover on `lastPage`, and,
+at the end, the `didChange` that puts the original line back; both are left
+out.)
+
+```text
+-> {"jsonrpc":"2.0","method":"textDocument/didChange","params":{"contentChanges":[{"text":"module Posts.Index\n…"}],"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder","version":5}}}
+-> {"jsonrpc":"2.0","id":3,"method":"textDocument/hover","params":{"position":{"line":21,"character":2},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"}}}
+<- {"id":3,"jsonrpc":"2.0","result":{"contents":{"kind":"markdown","value":"```alder\nlastPage : Int\n```\n\nlastPage bounds `page`, so `(page - 1) * perPage` cannot overflow."}}}
+-> {"jsonrpc":"2.0","id":4,"method":"textDocument/completion","params":{"position":{"line":30,"character":15},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"}}}
+<- {"id":4,"jsonrpc":"2.0","result":{"isIncomplete":false,"items":[{"label":"NonEmpty","kind":7,"textEdit":{"range":{"start":{"line":30,"character":15},"end":{"line":30,"character":15}},"newText":"NonEmpty"}},…,{"label":"trim","kind":3,"detail":"trim : Text -\u003e Text","textEdit":{"range":{"start":{"line":30,"character":15},"end":{"line":30,"character":15}},"newText":"trim"}},…]}}
+<- {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file://…/blog/app/Posts/Index.alder","version":5,"diagnostics":[{"range":{"start":{"line":30,"character":15},"end":{"line":30,"character":16}},"severity":1,"code":"E0001","source":"alder","message":"in the definition of `load`: expected field name, got end of line"}]}}
+-> {"jsonrpc":"2.0","id":6,"method":"textDocument/hover","params":{"position":{"line":37,"character":36},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"}}}
+<- {"id":6,"jsonrpc":"2.0","result":null}
+<- {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file://…/blog/app/Posts/Index.alder","version":6,"diagnostics":[]}}
+```
+
+Positions are 0-based: line 21 is the file's line 22, `lastPage =
+1000000`, and line 30 is line 31, the one being typed. The new text does not
+parse (E0001), so the rebuild makes a snapshot with no `res`, and no new good
+build exists: every answer comes from the one made before the edit, and the
+freshness rule decides whether it still applies. It compares the build's lines
+with the text as it is **now**, not as it was at the last rebuild, which is
+why requests 3 and 4 are right even though the rebuild had not run yet.
+
+- Hover on `lastPage` (request 3, line 22) is **above** the edit: lines 1 to
+  22 are identical, so the position is fresh and the old build's answer is
+  right, with its doc comment.
+- Completion after `Text.` (request 4, line 31) is **on** the edit. Lines 1
+  to 30 are unchanged, which is all completion asks. The context, "a member of
+  module `Text`", came from the text before the cursor (`Text.`, matched by
+  the regular expression `reMember`), and the members from the module's
+  declarations in the build.
+- Hover on line 38 (request 6) is **below** the edit. Line 31 differs from
+  the build's, so nothing from the build holds at line 38, and the server
+  answers `null`, "nothing here". It would be wrong to answer: had the edit
+  added a line, the build would describe a different place.
+
+When the original line is put back, the next rebuild type-checks, becomes the new last
+good build, and the server publishes `"diagnostics":[]` with version 6.
+Definition and references are held to the same rule for every place they
+return: a target in a file whose lines above it have changed since the build
+is left out (`server.location`), rather than sent to the wrong line.
+
+### From a position to a node
+
+To answer "what is at line 33, column 21?", the server needs the tree node
+there. `syntax.NodeAt(m, pos)` (`internal/syntax/walk.go`) returns the path
+from the module down to the innermost node whose span contains the position:
+
+```go
+func NodeAt(m *Module, pos diag.Pos) []Spanned {
+	path := []Spanned{m}
+	for {
+		var next Spanned
+		for _, c := range Children(path[len(path)-1]) {
+			sp := c.GetSpan()
+			if sp.Start == sp.End {
+				continue
+			}
+			if Contains(sp, pos) {
+				next = c
+			}
+		}
+		if next == nil {
+			return path
+		}
+		path = append(path, next)
+	}
+}
+```
+
+It starts at the module, finds the child that contains the position, and
+descends into it until no child does. The path matters more than the last
+node: the meaning of a name depends on what surrounds it, which parameters
+are in scope, which arm of a `match` it is in.
+
+`Children` needs a list of every node's children, and `Spanned` is the
+interface of every node: anything that embeds `Node`, with its `Span`. There
+are dozens of node types, and the parser adds one whenever the language gains a
+construct. A hand-written `Children` would need a case for each, and the day
+someone adds a node and forgets the case, the node's insides become invisible
+to hover and references, silently. So `Children` finds the children by
+**reflection**, Go's ability to look at a value's type and fields at run
+time: it looks at every exported field of a node, takes a field holding a
+node, or a slice of nodes, or a plain struct that holds nodes (a string
+interpolation's part), skips nil, and sorts what it found by source
+position. A new node type with ordinary fields is covered the moment it
+exists. Reflection is slower than a hand-written walk, and a lookup walks a
+path of a few dozen nodes, not the whole tree.
+
+What the reflection cannot know is whether the spans are right: a child
+must lie inside its parent, or `NodeAt` would descend into the wrong
+place. `TestChildren_SpansNest` (`internal/syntax/walk_test.go`) parses
+every module of every example app and checks it for each child of each node.
+The guarantee is that every node reachable through exported fields has a
+span inside its parent's, on every file in `examples/`; it does not
+guarantee that a new field is exported, or that a parser fills a span.
+
+### Scope, hover and definition
+
+Take the cursor on the `q` of `Text.isEmpty q` in the blog's `load`, line 33:
+
+```alder fragment
+  let matching =
+    if Text.isEmpty q then Db.and [] else Db.or [Post.title.contains q, Post.body.contains q]
+```
+
+The editor asks for hover, and asks for definition, at line 32, character 20
+(0-based):
+
+```text
+-> {"jsonrpc":"2.0","id":2,"method":"textDocument/hover","params":{"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"},"position":{"character":20,"line":32}}}
+<- {"id":2,"jsonrpc":"2.0","result":{"contents":{"kind":"markdown","value":"```alder\nq : Text\n```"}}}
+-> {"jsonrpc":"2.0","id":3,"method":"textDocument/definition","params":{"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"},"position":{"character":20,"line":32}}}
+<- {"id":3,"jsonrpc":"2.0","result":[{"uri":"file://…/blog/app/Posts/Index.alder","range":{"start":{"line":30,"character":6},"end":{"line":30,"character":7}}}]}
+```
+
+How the server gets from the first to the second:
+
+1. `server.at` (`scope.go`) takes the last good build, checks freshness
+   (inclusive: line 33 must be unchanged), finds the module for the file,
+   adds one to line and column to get the compiler's position `33:21`, and
+   calls `NodeAt`. The path is `Module`, `ValueDecl` (`load`), `Block`,
+   `LetStmt` (`matching`), `If`, `App` (`Text.isEmpty q`), `Var` (`q`).
+2. `target` (`scope.go`) says what the node names. The `Var` carries a
+   `Ref`, the resolver's answer (section 4) for the name: its kind is
+   `RefLocal`, "a local variable", and a local has no module or declaration
+   to point at. Which local? The resolver says only that it is local; the
+   server asks `scopeAt`.
+3. `scopeAt(path, pos)` walks the path from the outside in and collects the
+   names in scope. At the `ValueDecl` it adds `load`'s parameters, `params` and
+   `session`. At the `Block` it adds each `let` whose statement **ends before**
+   `pos`:
+
+   ```go
+   		case *syntax.Block:
+   			for _, st := range n.Stmts {
+   				if !posLess(pos, st.Span.End) {
+   					out = append(out, binder{st.Name, st, wordSpan(m, st.Span, len("let"), st.Name)})
+   				}
+   			}
+   ```
+
+   That adds `page` and `q`, and not `matching`, which is the statement the
+   cursor is in: a `let` cannot use itself. An `Arm` adds its pattern's
+   variables for its body, a lambda its parameters, a `for` its variable.
+   The list is ordered outermost first, and `innermost` takes the **last**
+   binder named `q`, so a name that is bound twice means the closer one,
+   as in the language.
+4. The binder is `q`, a `LetStmt` on line 31 whose name is at columns 7 to 8.
+   Its `Key` is the node itself, and the type checker recorded each local's
+   type under that key (`check.Result.Binds`). Hover prints
+   `types.StringIn(t, m.Name)`, the type with names relative to this module,
+   and the answer is `q : Text`. Definition returns the binder's span, shifted by
+   `lspRange` to line 30, characters 6 to 7.
+
+The same `target` drives three features. Hover on `lastPage` finds a `Var`
+with a `RefValue` instead, looks its type up in `Result.Values`, and adds
+the doc comment (`syntax.DocOf`: the run of `--` lines directly above the
+declaration). Definition on it finds the declaration (`findDecl`) and returns
+the span of its name. A name that resolves to the standard library gets a type
+and an answer for hover, and no definition: the stdlib is embedded in the
+binary, so it has no path to open.
+
+### References
+
+`references` asks the reverse question: where is this declaration used? The
+compiler has no index from declarations to their uses, so the server walks
+every module's tree, node by node, and asks for each name node whether it
+resolves to the same declaration (`uses` in `references.go`):
+
+```go
+	for _, name := range a.prog.Order {
+		m := a.prog.Modules[name]
+		if m == nil || local != nil && m.File != local.Span.File {
+			continue
+		}
+		var walk func(path []syntax.Spanned)
+		walk = func(path []syntax.Spanned) {
+			n := path[len(path)-1]
+			if sp, ok := useSpan(m, n, path, ref, local); ok {
+				sp.File = m.File
+				out = append(out, sp)
+			}
+			for _, c := range syntax.Children(n) {
+				walk(append(path[:len(path):len(path)], c))
+			}
+		}
+		walk([]syntax.Spanned{m})
+	}
+```
+
+The test in `useSpan` is the resolver's own answer: the node's `Ref` has the
+same module and name as the target's, in the same **namespace** (a table
+`Post` used in a type position and used as a value are the same declaration
+with different `RefKind`s). A local compares its binder by identity, not
+its name: two `q`s in two functions are two names.
+
+The cost is a walk of the whole program per request: every node of every
+module, plus a reflective `Children` call per node. There is no index to build
+and no index to get out of date, and for an app the size of the blog it is
+fast enough to answer a keypress. An app ten times larger takes about ten
+times as long, which is the point at which an index kept per snapshot would
+start to pay for itself. The server does not have one yet.
+
+### Completion
+
+Completion is the one feature that cannot wait for a good build, because it is
+used on the line that does not parse. So it reads the context from the text,
+and the facts from the build.
+
+`completionAt` takes the line up to the cursor (`prefix`) and tries the
+contexts in order: `import `, a module member (`Text.`), a field (`params.`),
+a closing tag (`</`), an attribute inside a tag, a tag (`<`), a hole (`?`), a
+pattern, and last everything else (names in scope, modules and keywords). The
+first whose regular expression matches the prefix wins. These are text matches
+on purpose; the parser has failed on this line, and its error is no help
+deciding what the user means to write. The expressions are anchored on the
+end of the prefix:
+
+```go
+	reMember   = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.])([A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)*)\.([a-zA-Z0-9_]*)$`)
+	reField    = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.])([a-z][A-Za-z0-9_]*)\.([a-zA-Z0-9_]*)$`)
+```
+
+`Text.` is a capitalised name, a module, so `reMember` matches and `members`
+lists the declarations of that module. `params.` is a lowercase name, a
+value, so `reField` matches, and `fields` needs the type of `params`. For
+that, the scope: on the line being typed, the scope at the **end of the line
+above**, from the last good build (`scopeNow`). That contains the names
+bound before this line, which is all this line can use, and the type of
+`params` is `Params`, a record with the fields `page` and `q`, which are the
+completions.
+
+Both are gated on freshness: if the lines above the cursor have changed since
+the build, the build's scope would be about different code and the server
+offers nothing from it.
+
+**Fitting a hole.** Put the cursor on `?n` in `Db.limit ?n`. The hole has a
+type the checker inferred, here `Int`, and the useful completions are the
+names whose type fits. `fits` asks the unifier (section 5):
+
+```go
+func (cx *completion) fits(name string, want types.Type) bool {
+	…
+	u := cx.a.res.U.Clone()
+	return u.Check(u.Instantiate(t), want) == nil
+}
+```
+
+For each name in scope it takes the name's type, makes the type's type
+parameters fresh variables (`Instantiate`: a function over any list fits
+whether the hole wants a list of `Int` or of `Text`), and asks whether it can be made equal to the hole's type. Unifying
+**changes** the unifier: a type variable that was open becomes `Int`. The
+build's unifier belongs to a snapshot that other requests are reading, and a
+candidate that did not fit would leave a half-finished substitution behind.
+So each question gets `Clone`, a copy with its own substitution (it carries
+on counting fresh variables from the original's counter, so none collide),
+and the copy is thrown away. The names that fit are sorted first
+(`sortText` starting with 0) and the others after them (1). The item's edit
+replaces the whole hole, `?` included, so choosing a name fills it.
+
+### Generators
+
+The generators of chapter 15 started as commands. The editor shows them in
+menus, with forms and previews, so the generator must be described as data,
+not as a command line to parse. A `generate.Spec` (`internal/generate/spec.go`)
+is that description:
+
+```go
+type Spec struct {
+	ID, Summary string
+	Args, Flags []Field
+	Here        func(HereCtx) *Match // nil: never "here"
+	Run         func(sets Sets, app App, dryRun bool) (*Result, error)
+}
+```
+
+`ID` is `"new msg"`, `Args` and `Flags` are the typed fields (`page` is a
+`page`, `name` is text), `Run` is the generator, and `Here` says whether the
+generator applies at the cursor and prefills a form if it does. `HereCtx` is
+where the cursor is (module, whether it is a page, the declaration around it,
+a hole under it); `inPage`, for example, is the `Here` of `new msg`:
+
+```go
+func inPage(c HereCtx) *Match {
+	if !c.IsPage {
+		return nil
+	}
+	return &Match{Sets: map[string]string{"page": c.Module}, Why: "the page at the cursor"}
+}
+```
+
+The command line builds a `Sets` from the arguments and flags it parsed
+against the same `Spec`; `alder help --json` renders the same `Spec`s; the
+server's `alder/generators` lists them with those whose `Here` matched first.
+Three programs, one description.
+
+**A dry run on a copy.** A generator edits files, checks the result, and
+refuses if it does not check. `Run(…, dryRun=true)` does all of that and
+writes nothing. The server calls it on a copy of the app:
+
+```go
+	tmp, cleanup, err := generate.Materialise(s.rootReal, s.docs.overlay())
+	if err != nil {
+		return spec, nil, nil, false, err
+	}
+	defer cleanup()
+	p, _ := generate.Load(tmp) // nil when the app does not check: fields still validate syntactically
+	fields, sets, ready := generate.Form(spec, here, you, p)
+	if !ready {
+		return spec, fields, nil, false, nil
+	}
+	res, err = spec.Run(sets, generate.App{Dir: tmp, Migrate: s.o.Migrate}, true)
+```
+
+`Materialise` copies the project into a fresh temporary directory (not
+`build/`, `.git`, or databases), then writes the open documents over the
+copy. That is the overlay again, but here by writing files: the generators
+read a directory, not a map of texts, so the dry run gets a directory that
+looks the way the editor sees it, and the real project, which the user may be
+looking at, is never touched. The migration writer runs in the copy too. The
+`Migrate` function is passed in (`generate.App.Migrate`) so the server and the
+command line run the same one.
+
+`generate.Form` turns what the user has typed (`you`) over what `Here`
+prefilled into a list of fields, each valid or not and why, and `ready` is
+true when all are valid. The editor calls `alder/preview` as the form is
+filled, once per field. Here is the walk-through of the spec: `new msg` on
+`Posts.Index`, with the cursor on line 26. The first request has no values; the
+form comes back with `page` prefilled from the cursor and `name` required:
+
+```text
+-> {"jsonrpc":"2.0","id":9,"method":"alder/preview","params":{"sets":{},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"},"id":"new msg","position":{"line":25,"character":0}}}
+<- {"id":9,"jsonrpc":"2.0","result":{"fields":[{"name":"page","kind":"page","flag":false,"required":true,"value":"Posts.Index","source":"here","valid":true,"choices":["Admin.Comment.Bulk",…,"Posts.Index","Posts.Show","Write","Write.Edit"]},{"name":"name","kind":"text","flag":false,"required":true,"value":"","source":"","valid":false,"why":"required"},{"name":"fields","kind":"fieldList","flag":false,"required":false,"value":"","source":"","valid":true},…],"files":[],"diff":"","diagnostics":[],"holes":[],"ready":false,"error":""}}
+```
+
+`"source":"here"` says that `page` came from the cursor, not from the user.
+The user types `Delete`:
+
+```text
+-> {"jsonrpc":"2.0","id":10,"method":"alder/preview","params":{"sets":{"name":"Delete"},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"},"id":"new msg","position":{"line":25,"character":0}}}
+<- {"id":10,"jsonrpc":"2.0","result":{"fields":[…,{"name":"name","kind":"text","flag":false,"required":true,"value":"Delete","source":"you","valid":true},…],"files":[{"path":"app/Posts/Index.alder","action":"edited","added":17,"removed":0}],"diff":"--- a/app/Posts/Index.alder\n+++ b/app/Posts/Index.alder\n@@ -51,9 +51,12 @@\n …","diagnostics":[…],"holes":[{"module":"Posts.Index","decl":"update","arm":"Delete","name":"delete","type":"Task Nav","file":"app/Posts/Index.alder","line":59,"col":15},{"module":"Posts.Index","decl":"\"pressing Delete\"","name":"expected","type":"Bool","file":"app/Posts/Index.alder","line":213,"col":16}],"ready":true,"error":""}}
+```
+
+Now `ready` is true, the copy checked, and `diff` is the unified diff, which
+the editor shows (here with its `\n` turned into line breaks):
+
+```text
+--- a/app/Posts/Index.alder
++++ b/app/Posts/Index.alder
+@@ -51,9 +51,12 @@
+ -- whose address (/?q=…) can be bookmarked and shared.
+ msg Search form SearchForm
+ 
++msg Delete
++
+ update : Msg -> Model -> Session -> Task Nav
+ update msg model session = match msg {
+   Search p -> Task.succeed (Redirect (Posts.Index { page: 1, q: p.form.q })),
++  Delete p -> ?delete,
+ }
+ 
+ view : Model -> Session -> Html Msg
+@@ -88,6 +91,8 @@
+       Just _ -> <div class="account">{if model.canWrite then <a href={Write {}}>Write</a> else Html.none} <al-button variant="outline" size="sm" click={App.Logout}>Log out</al-button></div>,
+       Nothing -> <p><a href={Auth.Login {}}>Log in</a></p>,
+     }}
++
++    <al-button click={Delete}>Delete</al-button>
+   </Layout.Page>
+ 
+ test "the front page lists only published posts, newest first" = {
+@@ -195,3 +200,15 @@
+   let out <- Test.click App.Logout
+   Task.succeed ({ out: out.answer, user: out.session.user, role: out.session.role } == { out: Redirected (Auth.Login {}), user: Nothing, role: Reader })
+ }
++
++-- Fill ?expected with what pressing Delete must do, so that a test fails when the arm
++-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
++-- changed (`after`: the page opened again, `after.answer` Shown, or PageMissing when the arm
++-- deleted the page's row, and `after.doc` its HTML), as
++-- `{ answer: r.answer, … } == { answer: Rerendered, … }`.
++test "pressing Delete" = {
++  let _ <- Test.get (Posts.Index {})
++  let r <- Test.click Delete
++  let after <- Test.open (Posts.Index {})
++  Task.succeed ?expected
++}
+```
+
+That is a `msg`, its arm of `update` with a hole, a button, and a test
+with a hole, which is chapter 15's `alder new msg`, and the two holes
+(W0002) are listed with their types so that the editor can offer to fill them. The
+`diagnostics` in the response (the two W0002 warnings for the holes, cut above)
+are the copy's, and the server publishes them nowhere: they describe the
+dry-run copy, not the buffers.
+
+The slow worker runs `alder/preview`, so it cannot stall hover, and a
+second guard keeps previews in order. While the user types the name, the
+editor sends a preview for each keystroke; a dry run takes longer than a
+keystroke; so the answers could return out of order and a stale diff would
+land on top of a fresh one. `dispatch` remembers the id of the newest
+`alder/preview` (`latestPreview`), and `handle` answers an older one with
+`-32800`, "cancelled", before it runs, or after it has run if a newer one
+arrived meanwhile.
+
+**Why the plan carries the texts.** `alder/preview` answers with a diff,
+which is for a person to read. Applying a change needs more. The editor
+puts text into its buffers, and a diff tells it which lines changed in a
+file as the copy had it, not whether the buffer still looks like that. So
+`alder/plan` answers with, for every file, its text before and its text
+after:
+
+```go
+type planFile struct {
+	Path   string  `json:"path"`
+	Action string  `json:"action"`
+	Before *string `json:"before"`
+	After  *string `json:"after"`
+}
+```
+
+`generate.FileChange` (`internal/generate/apply.go`) records both texts as the
+generator wrote the copy. The client does three things with them that a
+diff would not allow. It compares `before` with the buffer, and if they
+differ, someone edited the file since the plan, and it refuses:
+`alder: app/Posts/Index.alder changed since planning; nothing applied`. It
+replaces the buffer's text with `after`, a whole-file replacement with no
+patch to misapply. And the two pointers tell it the action: `before` null
+means "create this file" (an unsaved buffer), `after` null means "remove
+it". The server writes nothing in your project at any point. The editor writes
+when you save.
+
+The whole chain, for the story of one keystroke: the editor sends the
+buffer, the reader stores it, the analysis goroutine rebuilds and
+publishes a diagnostic, a worker answers a hover from the last good build if
+its lines are fresh, and a dry run on a temporary copy of the same text
+answers a generator. At no point is a file of the project written or an
+analysis changed in place; the next change makes another snapshot, and the
+old one stays valid for whoever still holds it.
+
+## 11. Exercises
 
 1. **Dump an AST.** Write `module X` and `x : Int` / `x = 1 + 2 * 3` in a
    file, and print its dump with `alder dump` (section 3). Before you run
@@ -4637,3 +5376,14 @@ the emitter writes into `Todos__Index_alder.go`: it copies the fields and wraps
    emitter never calls `html.Raw` itself, what would break if literal
    text in a view were emitted as `html.Raw`, and why a `<script>` body is
    `html.RawText` and not `html.Raw`.
+6. **Read a wire log.** Start Neovim on a file of `examples/blog` (a copy)
+   with `ALDER_LSP_LOG=/tmp/wire.log` set, hover on a name, and quit. Find the
+   `textDocument/hover` request in the log and the answer with its `id`.
+   Convert the request's `line` and `character` into the line and column
+   `alder check` would print for that place (section 10), and say why no
+   further conversion is needed when the line contains an `é`.
+7. **Break the freshness rule.** Read `TestFresh_TypingBreaksTheLine` in
+   `internal/lsp/analysis_test.go`. For each position it asks about, say which
+   of the lines above it differ from the build, and what `freshLines` answers
+   with `inclusive` true and false. Then say which request would give a wrong
+   answer if `freshLines` compared only the cursor's own line.

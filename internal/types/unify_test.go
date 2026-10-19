@@ -155,3 +155,33 @@ func TestUnify_PoisonFitsWithoutBinding(t *testing.T) {
 		t.Fatalf("String(Err) = %q", String(Err))
 	}
 }
+
+func TestClone_LeavesTheOriginal(t *testing.T) {
+	u := &Unifier{Subst: Subst{}}
+	rec := &Record{Module: "Todo", Name: "Todo"}
+	u.RegisterTable(&TableInfo{Module: "Todo", Name: "Todo", Record: rec, IDType: tText})
+	a, b := u.Fresh(), u.Fresh()
+	if err := u.Unify(a, tInt); err != nil {
+		t.Fatal(err)
+	}
+	c := u.Clone()
+	if String(c.Apply(a)) != "Int" || c.Table(rec) == nil {
+		t.Fatal("the clone lost the substitution or the tables")
+	}
+	if v := c.Fresh(); v.ID == a.ID || v.ID == b.ID {
+		t.Fatalf("fresh var %d collides with the original's", v.ID)
+	}
+	if err := c.Unify(b, tText); err != nil {
+		t.Fatal(err)
+	}
+	c.RegisterTable(&TableInfo{Module: "M", Name: "T"})
+	if _, ok := u.Apply(b).(*Var); !ok {
+		t.Fatalf("unifying on the clone bound the original's var: %s", String(u.Apply(b)))
+	}
+	if u.Table(&Record{Module: "M", Name: "T"}) != nil {
+		t.Fatal("the clone's table reached the original")
+	}
+	if v := u.Fresh(); v.ID != b.ID+1 {
+		t.Fatalf("the original's counter moved: %d", v.ID)
+	}
+}

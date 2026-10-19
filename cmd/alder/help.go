@@ -30,6 +30,7 @@ var commandUsages = map[string]string{
 	"silos":    silosUsage,
 	"help":     helpUsage,
 	"version":  "usage: alder version",
+	"lsp":      "usage: alder lsp",
 	"explain":  "usage: alder explain <code>  (such as E0016)",
 }
 

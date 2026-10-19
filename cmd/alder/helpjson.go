@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"io"
+	"strings"
 
+	"alder/internal/generate"
 	"alder/internal/version"
 )
 
@@ -35,6 +37,49 @@ var genFlags = []flagSpec{
 }
 
 func withGenFlags(fs ...flagSpec) []flagSpec { return append(fs, genFlags...) }
+
+// specFlags are a Spec's flags as help --json shows them. A repeatable flag (--param) is Multi;
+// a greedy one (--from) takes several words but is given once, so it is not.
+func specFlags(s *generate.Spec) []flagSpec {
+	var out []flagSpec
+	for _, f := range s.Flags {
+		v := f.Value
+		if f.Kind == generate.ArgBool {
+			v = ""
+		}
+		out = append(out, flagSpec{Name: "--" + f.Name, Value: v, Multi: f.Variadic, Summary: f.Summary})
+	}
+	return out
+}
+
+func specArgs(s *generate.Spec) []string {
+	var out []string
+	for _, a := range s.Args {
+		out = append(out, a.Value)
+	}
+	return out
+}
+
+// groupCmd is the subcommand nodes of group, from the Specs, in their order. `new` nodes carry
+// their usage line and the generator flags. `edit` and `remove` nodes carry their Args and
+// Flags but no Usage and no generator flags: the group has one usage text, and withGenFlags
+// sits on the group node.
+func groupCmd(group string) []cmdSpec {
+	var out []cmdSpec
+	for _, s := range generate.Specs() {
+		g, sub, _ := strings.Cut(s.ID, " ")
+		if g != group {
+			continue
+		}
+		c := cmdSpec{Name: sub, Summary: s.Summary, Args: specArgs(s), Flags: specFlags(s)}
+		if group == "new" {
+			c.Usage = newGeneratorUsages[sub]
+			c.Flags = withGenFlags(c.Flags...)
+		}
+		out = append(out, c)
+	}
+	return out
+}
 
 var hostFlagSpec = flagSpec{Name: "--host", Value: "name", Summary: "the host of a multi-host environment"}
 
@@ -86,86 +131,15 @@ var commandTree = []cmdSpec{
 		Args:  []string{"[dir]"},
 		Flags: []flagSpec{{Name: "--module", Value: "Name", Summary: "start inside this module"}}},
 	{Name: "new", Summary: "create an app, or generate code in one", Usage: commandUsages["new"],
-		Args:  []string{"<name>"},
-		Flags: []flagSpec{{Name: "--bare", Summary: "the app without its starter pages"}},
-		Subcommands: []cmdSpec{
-			{Name: "page", Summary: "a page module", Usage: newGeneratorUsages["page"],
-				Args: []string{"<Module>", "<path>"},
-				Flags: withGenFlags(
-					flagSpec{Name: "--list", Value: "T", Summary: "a page listing the rows of table T"},
-					flagSpec{Name: "--show", Value: "T", Summary: "a page showing one row of table T"},
-					flagSpec{Name: "--by", Value: "column", Summary: "with --show, the unique column in the path"},
-					flagSpec{Name: "--from", Value: "T…", Summary: "a card of every row of each table T; takes several tables up to the next flag (--from A B)"},
-					flagSpec{Name: "--blank", Summary: "an empty page with typed holes"},
-					flagSpec{Name: "--param", Value: "name:Type", Multi: true, Summary: "a page parameter (repeatable)"},
-					flagSpec{Name: "--requires", Value: "user", Summary: "require a signed-in user"},
-					flagSpec{Name: "--role", Value: "R", Summary: "require role R"},
-				)},
-			{Name: "table", Summary: "a table and its migration", Usage: newGeneratorUsages["table"],
-				Args: []string{"<Name>", "<field>:<Type>…"},
-				Flags: withGenFlags(
-					flagSpec{Name: "--no-timestamps", Summary: "without created and updated columns"},
-					flagSpec{Name: "--silo", Summary: "put the table in its key's silo in App"},
-				)},
-			{Name: "form", Summary: "a form with its msg, handler and view", Usage: newGeneratorUsages["form"],
-				Args: []string{"<Page module>", "<Name>", "<field>:<Type>…"},
-				Flags: withGenFlags(
-					flagSpec{Name: "--into", Value: "T", Summary: "insert the submitted form into table T"},
-					flagSpec{Name: "--msg", Value: "Msg", Summary: "the msg's name"},
-				)},
-			{Name: "msg", Summary: "a msg with its arm, button and test", Usage: newGeneratorUsages["msg"],
-				Args: []string{"<Page module>", "<Name>", "<field>:<Type>…"},
-				Flags: withGenFlags(
-					flagSpec{Name: "--in-for", Value: "binder", Summary: "the button goes inside this for loop"},
-					flagSpec{Name: "--when", Value: "Bool expression", Summary: "show the button only when this holds"},
-					flagSpec{Name: "--id", Value: "id", Summary: "the button's id"},
-				)},
-			{Name: "capability", Summary: "a capability entry with its fake and adapter", Usage: newGeneratorUsages["capability"],
-				Args: []string{"<Module>", "<entry>", "<Type>"}, Flags: withGenFlags()},
-			{Name: "admin", Summary: "the admin pages for every table", Usage: newGeneratorUsages["admin"],
-				Flags: withGenFlags(
-					flagSpec{Name: "--module", Value: "Admin", Summary: "the admin's module prefix"},
-					flagSpec{Name: "--path", Value: "/admin", Summary: "the admin's path prefix"},
-				)},
-			{Name: "auth", Summary: "sign-in, sign-out and the user table", Usage: newGeneratorUsages["auth"],
-				Flags: withGenFlags(
-					flagSpec{Name: "--users", Value: "User", Summary: "the user table"},
-					flagSpec{Name: "--role", Value: "Role", Summary: "the role type"},
-					flagSpec{Name: "--to", Value: "Page", Summary: "the page after sign-in"},
-				)},
-			{Name: "type", Summary: "a type declaration", Usage: newGeneratorUsages["type"],
-				Args: []string{"<Module>", "<declaration>"}, Flags: withGenFlags()},
-			{Name: "decl", Summary: "a value declaration with a typed hole for its body", Usage: newGeneratorUsages["decl"],
-				Args: []string{"<Module>", "<name>", "<Type>"}, Flags: withGenFlags()},
-			{Name: "test", Summary: "a test skeleton", Usage: newGeneratorUsages["test"],
-				Args: []string{"<Module>", "<test name>"}, Flags: withGenFlags()},
-			{Name: "silo", Summary: "put tables in a database per value of a session key", Usage: newGeneratorUsages["silo"],
-				Args:  []string{"<key>", "<Table>…"},
-				Flags: withGenFlags(flagSpec{Name: "--empty", Summary: "a silo with no tables yet"})},
-		}},
+		Args:        []string{"<name>"},
+		Flags:       []flagSpec{{Name: "--bare", Summary: "the app without its starter pages"}},
+		Subcommands: groupCmd("new")},
 	{Name: "edit", Summary: "change a table, page, declaration, auth or the session", Usage: commandUsages["edit"],
-		Flags: withGenFlags(),
-		Subcommands: []cmdSpec{
-			{Name: "table", Summary: "add, rename or drop a field (and write the migration)",
-				Args:  []string{"<T>", "add-field|rename-field|drop-field", "…"},
-				Flags: []flagSpec{{Name: "--strict", Summary: "refuse a change that breaks code"}}},
-			{Name: "page", Summary: "add a page parameter", Args: []string{"<Page module>", "add-param", "<name>:<Type>[=default]"}},
-			{Name: "decl", Summary: "add a component prop", Args: []string{"<Module>.<Name>", "add-prop", "<name>:<Type>=<default>"}},
-			{Name: "auth", Summary: "change where sign-in leads",
-				Flags: []flagSpec{{Name: "--to", Value: "Page", Summary: "the page after sign-in"}}},
-			{Name: "session", Summary: "add a session field",
-				Args: []string{"add-field", "<name>:<Type>=<default> | <key>:<T>.<T>Id via <Membership>"},
-				Flags: []flagSpec{
-					{Name: "--choose", Value: "Page", Summary: "the page that chooses the key"},
-					{Name: "--strict", Summary: "refuse a change that breaks code"},
-				}},
-		}},
+		Flags:       withGenFlags(),
+		Subcommands: groupCmd("edit")},
 	{Name: "remove", Summary: "remove a page or a table", Usage: commandUsages["remove"],
-		Flags: withGenFlags(),
-		Subcommands: []cmdSpec{
-			{Name: "page", Summary: "remove a page module", Args: []string{"<Page module>"}},
-			{Name: "table", Summary: "remove a table (and write the migration)", Args: []string{"<T>"}},
-		}},
+		Flags:       withGenFlags(),
+		Subcommands: groupCmd("remove")},
 	{Name: "fill", Summary: "fill a typed hole with an expression from stdin", Usage: commandUsages["fill"],
 		Args: []string{"<Module>.<decl>[.<arm>]", "-"},
 		Flags: withGenFlags(
@@ -174,12 +148,8 @@ var commandTree = []cmdSpec{
 			flagSpec{Name: "--list", Summary: "list the app's holes"},
 		)},
 	{Name: "regen", Summary: "regenerate generated code", Usage: commandUsages["regen"],
-		Flags: withGenFlags(
-			flagSpec{Name: "--module", Value: "Admin", Summary: "the admin's module prefix"},
-			flagSpec{Name: "--path", Value: "/admin", Summary: "the admin's path prefix"},
-			flagSpec{Name: "--all", Summary: "recreate the admin pages the author deleted"},
-		),
-		Subcommands: []cmdSpec{{Name: "admin", Summary: "the admin pages"}}},
+		Flags:       withGenFlags(specFlags(generate.SpecByID("regen admin"))...),
+		Subcommands: []cmdSpec{{Name: "admin", Summary: generate.SpecByID("regen admin").Summary}}},
 	{Name: "deploy", Summary: "deploy to an environment", Usage: commandUsages["deploy"],
 		Args: []string{"<env>", "[dir]"},
 		Flags: []flagSpec{hostFlagSpec,
@@ -227,6 +197,7 @@ var commandTree = []cmdSpec{
 				}},
 		}},
 	{Name: "version", Summary: "print alder's version and the Go it was built with", Usage: commandUsages["version"]},
+	{Name: "lsp", Summary: "language server for editors, over stdio", Usage: commandUsages["lsp"]},
 	{Name: "explain", Summary: "explain a diagnostic code", Usage: commandUsages["explain"], Args: []string{"<code>"}},
 	{Name: "help", Summary: "print usage", Usage: commandUsages["help"],
 		Args:  []string{"[<command> [<generator>]]"},

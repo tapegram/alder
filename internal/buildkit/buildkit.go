@@ -49,11 +49,21 @@ func LoadChecked(dir string, extra []*syntax.Module) (prog *names.Program, res *
 
 // LoadCheckedWith is LoadChecked with the checker's options (check.ProgramWith).
 func LoadCheckedWith(dir string, extra []*syntax.Module, o check.Options) (prog *names.Program, res *check.Result, bag *diag.Bag, ioErrs []error) {
+	return loadChecked(dir, nil, extra, o)
+}
+
+// LoadCheckedOverlay is LoadChecked with an editor's unsaved buffers read in place of their
+// files (names.LoadOverlay).
+func LoadCheckedOverlay(dir string, overlay map[string][]byte) (prog *names.Program, res *check.Result, bag *diag.Bag, ioErrs []error) {
+	return loadChecked(dir, overlay, nil, check.Options{})
+}
+
+func loadChecked(dir string, overlay map[string][]byte, extra []*syntax.Module, o check.Options) (prog *names.Program, res *check.Result, bag *diag.Bag, ioErrs []error) {
 	std, err := types.LoadStd()
 	if err != nil {
 		return nil, nil, &diag.Bag{}, []error{&StdError{err}}
 	}
-	prog, bag, ioErrs = names.Load(dir, std, extra...)
+	prog, bag, ioErrs = names.LoadOverlay(dir, std, overlay, extra...)
 	if len(ioErrs) > 0 {
 		return prog, nil, bag, ioErrs
 	}

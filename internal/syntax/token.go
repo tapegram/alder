@@ -1,7 +1,11 @@
 // internal/syntax/token.go
 package syntax
 
-import "alder/internal/diag"
+import (
+	"sort"
+
+	"alder/internal/diag"
+)
 
 type Kind int
 
@@ -66,3 +70,13 @@ type Token struct {
 }
 
 var keywords = map[string]bool{"module": true, "import": true, "type": true, "brand": true, "where": true, "page": true, "msg": true, "form": true, "table": true, "capability": true, "fake": true, "session": true, "login": true, "test": true, "let": true, "match": true, "if": true, "then": true, "else": true, "for": true, "in": true, "requires": true}
+
+// Keywords is the language's reserved words, sorted.
+func Keywords() []string {
+	out := make([]string, 0, len(keywords))
+	for k := range keywords {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
