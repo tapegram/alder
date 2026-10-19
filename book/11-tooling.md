@@ -1633,7 +1633,9 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   On a local such as `q` it shows its type, on a hole `?count` the type the
   hole must have, on a module name in an `import` the file and how many
   declarations the module has, and on a standard HTML tag or attribute its
-  description.
+  description. On a page's `load`, `view` or `update`, hover also says what the
+  hook does and what it must return; on the `page` line it shows the route, the
+  parameter record and the `requires` clauses.
 - **Go to definition.** On a use of `lastPage` it jumps to `lastPage : Int`;
   on a local, to the `let` or the parameter that binds it; on the `title` of
   `post.title` to the field in `app/Post.alder`. Neovim's own key for it is
