@@ -260,8 +260,8 @@ func (cx *completion) fields() ([]completionItem, bool) {
 }
 
 // scope is the locals in scope at the cursor. On a line unchanged since the build, the scope at
-// the cursor; on the line being typed, the scope at the end of the line above, which holds the
-// names bound before it (Ruling R11). Empty when the build does not hold above the cursor.
+// the cursor; on the line being typed, the scope at the end of what it keeps of its built text,
+// else at the end of the line above, which holds the names bound before it (Ruling R11). Empty when the build does not hold above the cursor.
 func (cx *completion) scope() []binder {
 	if !cx.hasLocals {
 		cx.locals, cx.hasLocals = cx.scopeNow(), true
@@ -276,11 +276,32 @@ func (cx *completion) scopeNow() []binder {
 	if cx.same {
 		return scopeAt(syntax.NodeAt(cx.m, cx.pos), cx.pos)
 	}
-	above, ok := cx.lineAbove()
+	at, ok := cx.keptEnd()
 	if !ok {
-		return nil
+		if at, ok = cx.lineAbove(); !ok {
+			return nil
+		}
 	}
-	return scopeAt(syntax.NodeAt(cx.m, above), above)
+	return scopeAt(syntax.NodeAt(cx.m, at), at)
+}
+
+// keptEnd is the end, in the build, of the longest common prefix of the cursor's line as built
+// and as it is now, cut at the cursor; false when the line is new or that prefix is empty. Binders introduced
+// earlier on the line being typed (a `for x in`, a lambda parameter) are in scope there.
+func (cx *completion) keptEnd() (diag.Pos, bool) {
+	l := cx.pos.Line
+	if l > len(cx.m.Lines) {
+		return diag.Pos{}, false
+	}
+	built, now := cx.m.Lines[l-1], cx.lines[cx.line]
+	n := 0
+	for n < cx.col && n < len(built) && n < len(now) && built[n] == now[n] {
+		n++
+	}
+	if n == 0 {
+		return diag.Pos{}, false
+	}
+	return diag.Pos{Line: l, Col: n + 1}, true
 }
 
 // lineAbove is the end of the line above the cursor's in the build; false on the first line.

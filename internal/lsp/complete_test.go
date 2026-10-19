@@ -1,6 +1,8 @@
 package lsp
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -287,4 +289,49 @@ func firstUnionArm(t *testing.T, c *client) (string, Position, []string) {
 	}
 	t.Fatal("no match on a union in the blog")
 	return "", Position{}, nil
+}
+
+// fieldsMidLine opens rel (after fix rewrites its text on disk), cuts the first occurrence of
+// cut down to keep, and completes at the end of keep: binders introduced earlier on the
+// cursor's line stay in scope while it is edited.
+func fieldsMidLine(t *testing.T, rel string, fix func(string) string, cut, keep string) map[string]item {
+	t.Helper()
+	root := blogCopy(t)
+	if fix != nil {
+		b, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(fix(string(b))), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := start(t, root)
+	text := openClean(t, c, rel)
+	if !strings.Contains(text, cut) {
+		t.Fatalf("no %q in %s", cut, rel)
+	}
+	c.change(rel, strings.Replace(text, cut, keep, 1))
+	return labels(complete(t, c, rel, c.at(rel, keep, len(keep))))
+}
+
+// The user's case: `e.` inside a one-line `for e in …` offers e's fields.
+func TestComplete_ForBinderOnTheSameLine(t *testing.T) {
+	oneLine := func(s string) string {
+		i := strings.Index(s, "{for post in model.posts ->")
+		j := strings.Index(s[i:], "</tr>}") + i + len("</tr>}")
+		return s[:i] + "{for post in model.posts -> <tr><td>{post.title}</td><td>{post.published}</td></tr>}" + s[j:]
+	}
+	got := fieldsMidLine(t, "app/Write.alder", oneLine, "<td>{post.title}</td><td>", "<td>{post.")
+	if _, ok := got["title"]; !ok {
+		t.Fatalf("post. fields: %v", got)
+	}
+}
+
+// A lambda parameter bound earlier on the cursor's line is in scope.
+func TestComplete_LambdaParamOnTheSameLine(t *testing.T) {
+	got := fieldsMidLine(t, "app/Write.alder", nil, "(\\p -> p.title)", "(\\p -> p.")
+	if _, ok := got["title"]; !ok {
+		t.Fatalf("p. fields: %v", got)
+	}
 }
