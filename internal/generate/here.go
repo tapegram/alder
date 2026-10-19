@@ -31,7 +31,7 @@ type FieldState struct {
 	Flag     bool     `json:"flag"`
 	Required bool     `json:"required"`
 	Value    string   `json:"value"`
-	Source   string   `json:"source"` // "here", "you", "" (empty)
+	Source   string   `json:"source"` // "here", "you", "default" or ""
 	Valid    bool     `json:"valid"`
 	Why      string   `json:"why,omitempty"`
 	Choices  []string `json:"choices,omitempty"`
@@ -81,6 +81,13 @@ func Form(s *Spec, here *Match, you map[string]string, p *Program) ([]FieldState
 	for k, v := range you {
 		values[k], source[k] = v, "you"
 	}
+	for _, fs := range [][]Field{s.Args, s.Flags} {
+		for _, f := range fs {
+			if _, set := values[f.Name]; !set && f.Default != "" && !anySet(values, f.DefaultUnless) {
+				values[f.Name], source[f.Name] = f.Default, "default"
+			}
+		}
+	}
 	ready := true
 	var out []FieldState
 	add := func(f Field, flag bool) {
@@ -99,6 +106,19 @@ func Form(s *Spec, here *Match, you map[string]string, p *Program) ([]FieldState
 		add(f, true)
 	}
 	return out, SetsOf(s, values), ready
+}
+
+// anySet reports whether one of the named fields has a value in values: a bool counts only when
+// it is not "false", any other kind when it is not blank.
+func anySet(values map[string]string, names []string) bool {
+	for _, n := range names {
+		v := strings.TrimSpace(values[n])
+		if v == "" || v == "false" {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // SetsOf turns form text into Sets: a Variadic field or a Greedy flag is split into words, a

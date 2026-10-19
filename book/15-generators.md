@@ -117,6 +117,13 @@ It is the smallest page there is (chapter 6): no parameters, an empty
 the answer and the heading. The page is yours from here: the generator
 never touches it again.
 
+A newcomer can ask for more than the empty page: `alder new page About /about --example`
+adds a small, working example of how a page keeps state — a `count` parameter, a
+`msg Bump { by: Int }`, an `update` arm that redirects to the same page with the new count,
+and a view with a button that sends it. Every part is marked `-- example:` and is meant to
+be deleted once read. The editor's generator form starts with the example on; the command
+line starts with it off, so a program driving the CLI gets the minimal page.
+
 ## A table: `alder new table`
 
 A table is a name and its fields. A field is written

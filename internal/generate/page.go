@@ -54,6 +54,8 @@ type PageData struct {
 	// By is --show's --by column: the row is read by it (`Db.where (T.slug.eq params.slug)`)
 	// rather than by its id
 	By string
+	// Example: page.tmpl renders the --example page instead of the empty one
+	Example bool
 }
 
 // ColData is one column a page shows: its label and the markup of its cell, for `row` (a list)
@@ -95,6 +97,11 @@ type PageOptions struct {
 	// for `alder fill` (or `alder fill --decl`, which also replaces `Model`); with --show T the
 	// page keeps --show's path and parameter (`/{id}`, the row's id), and nothing else of it.
 	Blank bool
+	// Example (--example): the plain page carries a `count: Int = 0` parameter, `msg Bump { by: Int }`,
+	// an update arm redirecting to itself with the new count and a view showing it, every part
+	// marked `-- example:` so the reader deletes it once understood. Off on the CLI; the editor's
+	// form starts with it on (Field.Default).
+	Example bool
 	// Params are --param's `name:Type`, one per `{name}` segment of Path (`/posts/{slug}
 	// --param slug:Post.Slug`): the page's parameter record, in the path's order; `load` is
 	// then the hole ?load (with --blank, as always).
@@ -191,6 +198,9 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 			kinds++
 		}
 	}
+	if o.Example && (o.Blank || kinds > 0 || len(o.Params) > 0) {
+		return nil, Refusef("--example goes with a plain page: a --list, --show or --from page already shows `load` reading a table, and --blank and --param leave `load` to you")
+	}
 	if o.Blank && (o.List != "" || len(o.From) > 0) {
 		return nil, Refusef("--blank takes no --list or --from: a blank page's `load` and `view` are holes (with --show T it has the row's `/{id}` parameter)")
 	}
@@ -254,6 +264,10 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 
 	imports := newImports(o.Module, p.Std)
 	d := PageData{Module: o.Module, Path: o.Path, Params: "{ }", Title: Title(o.Module)}
+	if o.Example {
+		d.Example = true
+		d.Params = "{ count: Int = 0 }"
+	}
 	if o.Requires != "" {
 		d.Requires = " requires " + o.Requires
 		if o.Role != "" {
@@ -502,6 +516,15 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		tb := newTest()
 		tb.let("let r <- Test.open (%s)", pageOf(tb))
 		d.Tests = append(d.Tests, TestData{Name: quote("the page is shown"), Lines: tb.lines, Result: "{ answer: r.answer, heading: " + heading})
+		if o.Example { // the example's loop: press Bump, the redirect carries the new count
+			tb = newTest()
+			tb.let("let _ <- Test.get (%s)", pageOf(tb))
+			tb.let("let r <- Test.click (Bump { by: 1 })")
+			tb.let("let after <- Test.open (%s { count: 1 })", o.Module)
+			d.Tests = append(d.Tests, TestData{Name: quote("pressing Bump counts one"), Lines: tb.lines,
+				Result:  "{ answer: r.answer, count: Test.text \"#count\" after.doc } == { answer: Redirected (" + o.Module + " { count: 1 }), count: Just \"Count: 1\" }",
+				Comment: []string{"example: delete this test with the rest of the example."}})
+		}
 	}
 
 	// who may not see the page: a visitor is sent to log in; a user of another role gets a 404

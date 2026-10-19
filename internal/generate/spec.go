@@ -42,8 +42,16 @@ type Field struct {
 	Greedy   bool     // a flag: takes every following word up to the next starting with "-" or "/" (--from)
 	Table    bool     // ArgFieldList: a table's fields (attributes allowed)
 	Choices  []string // ArgChoice
-	Value    string   // help --json: an arg's display ("<Module>") or a flag's placeholder ("T")
-	Summary  string   // help --json: a flag's summary
+	// Default is the editor's starting value when neither the cursor (here) nor the user set
+	// the field: "true" for a bool flag the form should start checked. Only Form applies it;
+	// the CLI's default is always unset, so agents get the minimal result.
+	Default string
+	// DefaultUnless names fields that cancel Default: Form applies Default only when none of
+	// them has a value (a bool counts as set unless "false" or ""), so an editor does not start
+	// a combination the generator refuses.
+	DefaultUnless []string
+	Value   string // help --json: an arg's display ("<Module>") or a flag's placeholder ("T")
+	Summary string // help --json: a flag's summary
 }
 
 // Sets are the parsed values of a generator's arguments and flags, by Field.Name.

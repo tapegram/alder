@@ -3,7 +3,9 @@ package lsp
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
+	"alder/internal/check"
 	"alder/internal/diag"
 	"alder/internal/markup"
 	"alder/internal/syntax"
@@ -52,6 +54,21 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 			return h
 		}
 	}
+	// a page hook's name at its declaration, or the page header itself
+	if d := declAt(m, pos); d != nil && a.prog.Pages[m.Name] != nil {
+		switch d := d.(type) {
+		case *syntax.PageDecl:
+			if path[len(path)-1] == syntax.Spanned(d) { // the header, not a type inside its parameters
+				return pageHover(a, m, d)
+			}
+		case *syntax.ValueDecl:
+			if syntax.Contains(nameSpan(d, m), pos) {
+				if h := hookHover(a, m.Name, d.Name); h != "" {
+					return withDoc(h, syntax.DocOf(m.Lines, d.GetSpan().Start.Line))
+				}
+			}
+		}
+	}
 	if ref, local, ok := target(a, m, path, pos); ok {
 		switch {
 		case local != nil:
@@ -69,6 +86,9 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 				return withDoc(sig(ref.Name, t), declDoc(a, ref))
 			}
 		case ref.Kind == syntax.RefValue, ref.Kind == syntax.RefStd, ref.Kind == syntax.RefComponent:
+			if h := hookHover(a, ref.Module, ref.Name); h != "" {
+				return withDoc(h, declDoc(a, ref))
+			}
 			t, ok := a.res.Values[ref.Module+"."+ref.Name]
 			if !ok || t == nil {
 				t = a.res.Types[n]
@@ -131,4 +151,47 @@ func moduleHover(a *analysis, name string) string {
 		return ""
 	}
 	return fmt.Sprintf("`%s` · %s · %d declarations", name, mod.File, len(mod.Decls))
+}
+
+// hookHover is the hover of page module mod's hook name (load, view, update): its signature as
+// checked (the required one when the module has none yet) and the hook's role. "" when mod is
+// not a page or name is not a hook.
+func hookHover(a *analysis, mod, name string) string {
+	if a.prog.Pages[mod] == nil {
+		return ""
+	}
+	sig, role, ok := check.HookDoc(name)
+	if !ok {
+		return ""
+	}
+	if a.res != nil {
+		if t, has := a.res.Values[mod+"."+name]; has && t != nil {
+			sig = types.StringIn(t, mod)
+		}
+	}
+	return "```alder\n" + name + " : " + sig + "\n```\n\n" + role
+}
+
+// pageHover is the hover of a page header: its path, parameter record and `requires`, `role` and `silo` clauses.
+func pageHover(a *analysis, m *syntax.Module, d *syntax.PageDecl) string {
+	lines := []string{"page \"" + d.Path + "\""}
+	if a.res != nil {
+		if pi := a.res.Pages[m.Name]; pi != nil && pi.Params != nil {
+			anon := *pi.Params // the generated record is named `Params`; show its fields
+			anon.Anonymous = true
+			lines = append(lines, "params : "+types.StringIn(&anon, m.Name))
+		}
+	}
+	if len(d.Requires) > 0 {
+		lines = append(lines, "requires "+strings.Join(d.Requires, ", "))
+	}
+	if len(d.Roles) > 0 {
+		lines = append(lines, "roles "+strings.Join(d.Roles, " | "))
+	}
+	if d.Silo != "" {
+		lines = append(lines, "silo "+d.Silo)
+	}
+	return "```alder\n" + strings.Join(lines, "\n") + "\n```\n\n" +
+		"The page's route and what a request needs. `load`, `view` and `update` are its hooks; " +
+		"`Params` is this record, `Msg` its messages."
 }

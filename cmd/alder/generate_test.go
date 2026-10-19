@@ -172,6 +172,7 @@ type genCase struct {
 
 var genCases = []genCase{
 	{name: "page", base: "scaffold", args: []string{"new", "page", "About", "/about"}, test: true},
+	{name: "page-example", base: "scaffold", args: []string{"new", "page", "About", "/about", "--example"}, test: true},
 	{name: "page-list", base: "scaffold", args: []string{"new", "page", "Entries.Index", "/entries", "--list", "Entry"}, test: true},
 	{name: "page-show", base: "scaffold", args: []string{"new", "page", "Entries.Show", "/entries", "--show", "Entry"}, test: true},
 	{name: "page-from", base: "scaffold", args: []string{"new", "page", "Dash", "/dash", "--from", "Entry"}, test: true},
@@ -378,6 +379,8 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "page", "About", "/about", "--requires", "user"}, "", "alder new page: `--requires user` needs a session with a `user` field (`session { user: Maybe User.UserId }` in `App`): this app's session has none"},
 		{"fixture", []string{"new", "page", "About", "/about", "--requires", "admin"}, "", "alder new page: `--requires admin`: the session has no field `admin` (a key is a session field: `alder edit session add-field admin:<T>.<T>Id via <Membership>`)"},
 		{"fixture", []string{"new", "page", "About", "/about", "--role", "Editor"}, "", "alder new page: `--role Editor`: `Editor` is not a constructor of the session's `role` type `User.Role` (Reader, Admin)"},
+		{"scaffold", []string{"new", "page", "About", "/about", "--example", "--blank"}, "", "alder new page: --example goes with a plain page: a --list, --show or --from page already shows `load` reading a table, and --blank and --param leave `load` to you"},
+		{"scaffold", []string{"new", "page", "Tags.Show", "/tags/{name}", "--example", "--param", "name:Text"}, "", "alder new page: --example goes with a plain page: a --list, --show or --from page already shows `load` reading a table, and --blank and --param leave `load` to you"},
 		{"scaffold", []string{"new", "table", "Entry", "x:Int"}, "", "alder new table: module `Entry` exists (`app/Entry.alder`) and declares a table: a generator never overwrites a file; choose another table name"},
 		{"scaffold", []string{"new", "table", "Tag", "id:Int"}, "", "alder new table: field `id`: the generator writes the id, `id: TagId @id`; leave it out"},
 		{"scaffold", []string{"new", "table", "Tag", "name"}, "", "alder new table: `name` is not a field: write `name:Type`, such as `title:Text.NonEmpty`"},
@@ -1003,5 +1006,67 @@ func TestGenerate_SiloMove(t *testing.T) {
 		if plan, err := deploy.MakePlanApplied(filepath.Join(dir, "migrations"), c.live, true, true, c.applied); err != nil || len(plan.Migrations) != 0 {
 			t.Errorf("after the move: %v %v", plan.Lines(), err)
 		}
+	}
+}
+
+// TestGenerate_NewMsgAddsMissingComma: Alder allows the last match arm without a trailing comma,
+// so a hand-written `update` often lacks one; `new msg` adds it rather than refusing (M6b plan 2).
+func TestGenerate_NewMsgAddsMissingComma(t *testing.T) {
+	for _, tc := range []struct{ name, from, to, wantLine string }{
+		{"bare", "  },\n}\n\nview", "  }\n}\n\nview", "  },\n"},
+		{"comment after the arm", "  },\n}\n\nview", "  } -- the only arm so far\n}\n\nview", "  }, -- the only arm so far\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := genApp(t, "scaffold")
+			home := filepath.Join(dir, "app", "Home.alder")
+			src, err := os.ReadFile(home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(src), tc.from) {
+				t.Fatalf("scaffold Home.alder no longer has %q:\n%s", tc.from, src)
+			}
+			if err := os.WriteFile(home, []byte(strings.Replace(string(src), tc.from, tc.to, 1)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if code, out, errs := alderIn(t, dir, "", "new", "msg", "Home", "Clear"); code != 0 {
+				t.Fatalf("new msg on a page without the trailing comma: exit %d\n%s\n%s", code, out, errs)
+			}
+			after, _ := os.ReadFile(home)
+			if !strings.Contains(string(after), tc.wantLine) || !strings.Contains(string(after), "Clear p ->") {
+				t.Fatalf("comma not added before the new arm:\n%s", after)
+			}
+			if code, out, _ := alderIn(t, dir, "", "check"); code != 0 {
+				t.Fatalf("the edited page does not check:\n%s", out)
+			}
+		})
+	}
+}
+
+// TestGenerate_NewMsgEmptyMatch: an emptied `update` leaves the app unchecked, so `new msg`
+// refuses and writes nothing.
+func TestGenerate_NewMsgEmptyMatch(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	home := filepath.Join(dir, "app", "Home.alder")
+	src, _ := os.ReadFile(home)
+	start := strings.Index(string(src), "update msg model session = match msg {\n")
+	end := strings.Index(string(src), "\n}\n\nview")
+	if start < 0 || end < 0 {
+		t.Fatalf("scaffold changed:\n%s", src)
+	}
+	// keep `msg Submit form Sign` so the form still has a message; empty the match
+	emptied := string(src[:start]) + "update msg model session = match msg {\n" + string(src[end:])
+	if err := os.WriteFile(home, []byte(emptied), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errs := alderIn(t, dir, "", "new", "msg", "Home", "Clear")
+	after, _ := os.ReadFile(home)
+	// the emptied update no longer handles `Submit`, so the app does not check and nothing is
+	// written; the empty-match logic itself is covered by TestLastArmLine in internal/generate
+	if code == 0 || string(after) != emptied || !strings.Contains(out+errs, "error") {
+		t.Fatalf("exit %d, want a refusal that leaves the file unchanged\n%s\n%s\n%s", code, out, errs, after)
+	}
+	if strings.Contains(string(after), "match msg {,") {
+		t.Fatal("comma added to the match line")
 	}
 }

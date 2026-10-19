@@ -232,7 +232,7 @@ func genUsage(stderr io.Writer, usage string, err error) int {
 	return 2
 }
 
-const newPageUsage = "usage: alder new page <Module> <path> [--list T | --show T [--by <unique column>] | --from T …] [--blank] [--param <name>:<Type> …] [--requires user] [--role R] [--dir app] [--json] [--dry-run]"
+const newPageUsage = "usage: alder new page <Module> <path> [--list T | --show T [--by <unique column>] | --from T …] [--blank] [--example] [--param <name>:<Type> …] [--requires user] [--role R] [--dir app] [--json] [--dry-run]"
 
 const newTableUsage = "usage: alder new table <Name> <field>:<Type>[=default][@attr[=arg]…] … [--no-timestamps] [--silo] [--dir app] [--json] [--dry-run]"
 

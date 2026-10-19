@@ -386,6 +386,11 @@ func addDecls(e *srcEdit, m *Module, page, decls, arm string) error {
 		return Refusef("`%s`'s `update` is not `match msg { … }` written over several lines: add the arm yourself", page)
 	}
 	if has {
+		if last := lastArmLine(e, m.Syntax, line); last > 0 {
+			if fixed, changed := withTrailingComma(e.line(last)); changed {
+				e.replaceLine(last, fixed)
+			}
+		}
 		e.insertBefore(declStart(e, valueDecl(m.Syntax, "update")), decls+"\n")
 		e.insertBefore(line, indent(arm, ind))
 		return nil
@@ -396,6 +401,54 @@ func addDecls(e *srcEdit, m *Module, page, decls, arm string) error {
 	}
 	e.insertBefore(declStart(e, view), decls+"\n\n"+snippet("update", indent(arm, "  "))+"\n")
 	return nil
+}
+
+// lastArmLine is the line of the last code in `update`'s match before its closing `}` at close:
+// not blank, not a comment; 0 when the match has no arms yet. Alder allows the last arm without
+// a trailing comma, so a new arm after it needs one added there.
+func lastArmLine(e *srcEdit, m *syntax.Module, close int) int {
+	v := valueDecl(m, "update")
+	if v == nil {
+		return 0
+	}
+	mt, ok := v.Body.(*syntax.Match)
+	if !ok {
+		return 0
+	}
+	for n := close - 1; n > mt.Span.Start.Line; n-- {
+		t := strings.TrimSpace(e.line(n))
+		if t != "" && !strings.HasPrefix(t, "--") {
+			return n
+		}
+	}
+	return 0
+}
+
+// withTrailingComma is line with a `,` after its code when it has none, before any trailing
+// `-- comment`; changed is false when the comma is already there. A `--` inside a string
+// literal is not a comment.
+func withTrailingComma(line string) (string, bool) {
+	code, comment := line, ""
+	inStr := false
+	for i := 0; i < len(line); i++ {
+		switch {
+		case inStr && line[i] == '\\':
+			i++
+		case line[i] == '"':
+			inStr = !inStr
+		case !inStr && strings.HasPrefix(line[i:], "--"):
+			code, comment = line[:i], line[i:]
+			i = len(line)
+		}
+	}
+	trimmed := strings.TrimRight(code, " \t")
+	if strings.HasSuffix(trimmed, ",") {
+		return line, false
+	}
+	if comment != "" {
+		comment = " " + comment
+	}
+	return trimmed + "," + comment, true
 }
 
 // addToView inserts markup into module m's view: a form (label is its card's heading) inside
