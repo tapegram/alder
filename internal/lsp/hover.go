@@ -172,7 +172,7 @@ func hookHover(a *analysis, mod, name string) string {
 	return "```alder\n" + name + " : " + sig + "\n```\n\n" + role
 }
 
-// pageHover is the hover of a page header: its path, parameter record and `requires` clauses.
+// pageHover is the hover of a page header: its path, parameter record and `requires`, `role` and `silo` clauses.
 func pageHover(a *analysis, m *syntax.Module, d *syntax.PageDecl) string {
 	lines := []string{"page \"" + d.Path + "\""}
 	if a.res != nil {

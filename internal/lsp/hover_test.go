@@ -274,3 +274,13 @@ func TestHover_PageHeader(t *testing.T) {
 		t.Errorf("Text in the header hovered as the page:\n%s", got)
 	}
 }
+
+func TestHover_HookNameOutsideAPage(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Write.alder")
+	// `update` in `Db.update` names the stdlib function in a page module: a plain signature, no hook role
+	got := hover(t, c, "app/Write.alder", c.at("app/Write.alder", "update User author", 0))
+	if !strings.Contains(got, "```alder\nupdate : Table t -> Id t -> (t -> t) -> Task Unit\n```") || strings.Contains(got, "Page hook") {
+		t.Errorf("Db.update hovered as a hook or not at all:\n%s", got)
+	}
+}
