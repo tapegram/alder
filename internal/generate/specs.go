@@ -94,13 +94,14 @@ func newSpecs() []*Spec {
 				{Name: "by", Kind: ArgText, Value: "column", Summary: "with --show, the unique column in the path"},
 				{Name: "from", Kind: ArgTable, Greedy: true, Value: "T…", Summary: "a card of every row of each table T; takes several tables up to the next flag (--from A B)"},
 				{Name: "blank", Kind: ArgBool, Summary: "an empty page with typed holes"},
+				{Name: "example", Kind: ArgBool, Default: "true", Summary: "a working example — state in a page parameter, a message, an update arm and a view that uses them — to delete once read"},
 				{Name: "param", Kind: ArgText, Variadic: true, Value: "name:Type", Summary: "a page parameter (repeatable)"},
 				{Name: "requires", Kind: ArgText, Value: "user", Summary: "require a signed-in user"},
 				{Name: "role", Kind: ArgText, Value: "R", Summary: "require role R"},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				o := PageOptions{Module: s.One("module"), Path: s.One("path"), List: s.One("list"), Show: s.One("show"), From: s.All("from"),
-					Requires: s.One("requires"), Role: s.One("role"), Blank: s.Has("blank"), Params: s.All("param"), By: s.One("by")}
+					Requires: s.One("requires"), Role: s.One("role"), Blank: s.Has("blank"), Example: s.Has("example"), Params: s.All("param"), By: s.One("by")}
 				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return NewPage(p, o) })
 			},
 		},

@@ -172,6 +172,7 @@ type genCase struct {
 
 var genCases = []genCase{
 	{name: "page", base: "scaffold", args: []string{"new", "page", "About", "/about"}, test: true},
+	{name: "page-example", base: "scaffold", args: []string{"new", "page", "About", "/about", "--example"}, test: true},
 	{name: "page-list", base: "scaffold", args: []string{"new", "page", "Entries.Index", "/entries", "--list", "Entry"}, test: true},
 	{name: "page-show", base: "scaffold", args: []string{"new", "page", "Entries.Show", "/entries", "--show", "Entry"}, test: true},
 	{name: "page-from", base: "scaffold", args: []string{"new", "page", "Dash", "/dash", "--from", "Entry"}, test: true},
@@ -378,6 +379,8 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "page", "About", "/about", "--requires", "user"}, "", "alder new page: `--requires user` needs a session with a `user` field (`session { user: Maybe User.UserId }` in `App`): this app's session has none"},
 		{"fixture", []string{"new", "page", "About", "/about", "--requires", "admin"}, "", "alder new page: `--requires admin`: the session has no field `admin` (a key is a session field: `alder edit session add-field admin:<T>.<T>Id via <Membership>`)"},
 		{"fixture", []string{"new", "page", "About", "/about", "--role", "Editor"}, "", "alder new page: `--role Editor`: `Editor` is not a constructor of the session's `role` type `User.Role` (Reader, Admin)"},
+		{"scaffold", []string{"new", "page", "About", "/about", "--example", "--blank"}, "", "alder new page: --example goes with a plain page: a --list, --show or --from page already shows `load` reading a table, and --blank and --param leave `load` to you"},
+		{"scaffold", []string{"new", "page", "Tags.Show", "/tags/{name}", "--example", "--param", "name:Text"}, "", "alder new page: --example goes with a plain page: a --list, --show or --from page already shows `load` reading a table, and --blank and --param leave `load` to you"},
 		{"scaffold", []string{"new", "table", "Entry", "x:Int"}, "", "alder new table: module `Entry` exists (`app/Entry.alder`) and declares a table: a generator never overwrites a file; choose another table name"},
 		{"scaffold", []string{"new", "table", "Tag", "id:Int"}, "", "alder new table: field `id`: the generator writes the id, `id: TagId @id`; leave it out"},
 		{"scaffold", []string{"new", "table", "Tag", "name"}, "", "alder new table: `name` is not a field: write `name:Type`, such as `title:Text.NonEmpty`"},

@@ -1,5 +1,33 @@
 [[- template "header" .]]
+[[if .Example]]
+-- example: a page keeps state in its parameters (or the session, or a table), never in Model
+-- between requests: `load` rebuilds Model on every request. Delete every part marked
+-- `example` when you have seen how they fit together (the `count` parameter above is one).
 
+type Model = { count: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { count: params.count }
+
+-- example: a message carries a record; the view sends it from `click`.
+msg Bump { by: Int }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  -- example: `update` answers with a Nav: Redirect to the same page with the new count
+  -- (Rerender would run `load` again with the old parameters), or Reject with an error.
+  Bump p -> Task.succeed (Redirect ([[.Module]] { count: model.count + p.by })),
+}
+
+-- example: the view shows the state and sends a message from a button.
+view : Model -> Session -> Html Msg
+view model session =
+  [[.Open]]
+    <h1>[[.Title]]</h1>
+    <p id="count">Count: {Text.fromInt model.count}</p>
+    <al-button click={Bump { by: 1 }}>Bump</al-button>
+  [[.Close]]
+[[else]]
 type Model = { }
 
 load : Params -> Session -> Query Model
@@ -10,4 +38,5 @@ view model session =
   [[.Open]]
     <h1>[[.Title]]</h1>
   [[.Close]]
-[[template "tests" .]]
+[[end]]
+[[- template "tests" .]]
