@@ -31,7 +31,7 @@ type FieldState struct {
 	Flag     bool     `json:"flag"`
 	Required bool     `json:"required"`
 	Value    string   `json:"value"`
-	Source   string   `json:"source"` // "here", "you", "" (empty)
+	Source   string   `json:"source"` // "here", "you", "default" or ""
 	Valid    bool     `json:"valid"`
 	Why      string   `json:"why,omitempty"`
 	Choices  []string `json:"choices,omitempty"`
@@ -80,6 +80,13 @@ func Form(s *Spec, here *Match, you map[string]string, p *Program) ([]FieldState
 	}
 	for k, v := range you {
 		values[k], source[k] = v, "you"
+	}
+	for _, fs := range [][]Field{s.Args, s.Flags} {
+		for _, f := range fs {
+			if _, set := values[f.Name]; !set && f.Default != "" {
+				values[f.Name], source[f.Name] = f.Default, "default"
+			}
+		}
 	}
 	ready := true
 	var out []FieldState
