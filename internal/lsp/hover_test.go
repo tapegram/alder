@@ -226,3 +226,51 @@ func TestHover_Attr(t *testing.T) {
 		t.Fatalf("hover %q", got)
 	}
 }
+
+func TestHover_PageHooks(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	cases := []struct{ needle, sig, role string }{
+		{"load params session", "load : Params -> App.Session -> Query Model", "Page hook. Runs on every request"},
+		{"view model session", "view : Model -> App.Session -> Html Msg", "Page hook. Renders"},
+		{"update msg model session", "update : Msg -> Model -> App.Session -> Task Nav", "`Rerender` runs `load`"},
+	}
+	for _, tc := range cases {
+		got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", tc.needle, 0))
+		if !strings.Contains(got, "```alder\n"+tc.sig+"\n```") || !strings.Contains(got, tc.role) {
+			t.Errorf("hover on %q:\n%s", tc.needle, got)
+		}
+	}
+	// a value that is not a hook says nothing about hooks
+	if got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "lastPage then", 0)); strings.Contains(got, "Page hook") {
+		t.Errorf("lastPage is not a hook:\n%s", got)
+	}
+}
+
+func TestHover_PageHooks_NotInAPage(t *testing.T) {
+	c := start(t, blogCopy(t))
+	// Post is a table module, not a page: a value called `view` there is an ordinary value
+	text := c.disk("app/Post.alder") + "\nview : Int\nview = 1\n"
+	c.open("app/Post.alder", text)
+	c.diags("app/Post.alder")
+	got := hover(t, c, "app/Post.alder", c.at("app/Post.alder", "view = 1", 0))
+	if strings.Contains(got, "Page hook") {
+		t.Errorf("view outside a page:\n%s", got)
+	}
+}
+
+func TestHover_PageHeader(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", `page "/"`, 0))
+	for _, want := range []string{"```alder\npage \"/\"", "params : { page: Int, q: Text }", "hooks"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("page header hover lacks %q:\n%s", want, got)
+		}
+	}
+	// a type inside the header still hovers as the type
+	got = hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "q: Text", len("q: ")))
+	if strings.Contains(got, "hooks") {
+		t.Errorf("Text in the header hovered as the page:\n%s", got)
+	}
+}
