@@ -1005,3 +1005,63 @@ func TestGenerate_SiloMove(t *testing.T) {
 		}
 	}
 }
+
+// TestGenerate_NewMsgAddsMissingComma: Alder allows the last match arm without a trailing comma,
+// so a hand-written `update` often lacks one; `new msg` adds it rather than refusing (M6b plan 2).
+func TestGenerate_NewMsgAddsMissingComma(t *testing.T) {
+	for _, tc := range []struct{ name, from, to, wantLine string }{
+		{"bare", "  },\n}\n\nview", "  }\n}\n\nview", "  },\n"},
+		{"comment after the arm", "  },\n}\n\nview", "  } -- the only arm so far\n}\n\nview", "  }, -- the only arm so far\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := genApp(t, "scaffold")
+			home := filepath.Join(dir, "app", "Home.alder")
+			src, err := os.ReadFile(home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(src), tc.from) {
+				t.Fatalf("scaffold Home.alder no longer has %q:\n%s", tc.from, src)
+			}
+			if err := os.WriteFile(home, []byte(strings.Replace(string(src), tc.from, tc.to, 1)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if code, out, errs := alderIn(t, dir, "", "new", "msg", "Home", "Clear"); code != 0 {
+				t.Fatalf("new msg on a page without the trailing comma: exit %d\n%s\n%s", code, out, errs)
+			}
+			after, _ := os.ReadFile(home)
+			if !strings.Contains(string(after), tc.wantLine) || !strings.Contains(string(after), "Clear p ->") {
+				t.Fatalf("comma not added before the new arm:\n%s", after)
+			}
+			if code, out, _ := alderIn(t, dir, "", "check"); code != 0 {
+				t.Fatalf("the edited page does not check:\n%s", out)
+			}
+		})
+	}
+}
+
+// TestGenerate_NewMsgEmptyMatch: an `update` whose match has no arms yet gets the arm and
+// nothing else changes.
+func TestGenerate_NewMsgEmptyMatch(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	home := filepath.Join(dir, "app", "Home.alder")
+	src, _ := os.ReadFile(home)
+	start := strings.Index(string(src), "update msg model session = match msg {\n")
+	end := strings.Index(string(src), "\n}\n\nview")
+	if start < 0 || end < 0 {
+		t.Fatalf("scaffold changed:\n%s", src)
+	}
+	// keep `msg Submit form Sign` so the form still has a message; empty the match
+	emptied := string(src[:start]) + "update msg model session = match msg {\n" + string(src[end:])
+	if err := os.WriteFile(home, []byte(emptied), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errs := alderIn(t, dir, "", "new", "msg", "Home", "Clear")
+	after, _ := os.ReadFile(home)
+	if strings.Contains(string(after), "match msg {,") {
+		t.Fatal("comma added to the match line")
+	}
+	if !strings.Contains(string(after), "match msg {\n  Clear p ->") && code == 0 {
+		t.Fatalf("exit %d\n%s\n%s\n%s", code, out, errs, after)
+	}
+}
