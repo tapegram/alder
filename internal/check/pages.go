@@ -16,11 +16,11 @@ func (mc *modCtx) checkPage() {
 	}
 	html := func(arg types.Type) types.Type { return &types.App{Con: "Html", Args: []types.Type{arg}} }
 	mc.requireSig("load", &types.Fun{Params: []types.Type{mc.page.Params, mc.session}, Result: &types.App{Con: "Query", Args: []types.Type{mc.modelType()}}},
-		"`load` must have type `Params -> Session -> Query Model`")
+		hookMessage("load"))
 	mc.requireSig("view", &types.Fun{Params: []types.Type{mc.modelType(), mc.session}, Result: html(mc.page.Msg)},
-		"`view` must have type `Model -> Session -> Html Msg`")
+		hookMessage("view"))
 	mc.requireSig("update", &types.Fun{Params: []types.Type{mc.page.Msg, mc.modelType(), mc.session}, Result: &types.App{Con: "Task", Args: []types.Type{c.navType()}}},
-		"`update` must have type `Msg -> Model -> Session -> Task Nav`")
+		hookMessage("update"))
 }
 
 func (mc *modCtx) modelType() types.Type {
