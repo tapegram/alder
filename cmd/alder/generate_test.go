@@ -1040,8 +1040,8 @@ func TestGenerate_NewMsgAddsMissingComma(t *testing.T) {
 	}
 }
 
-// TestGenerate_NewMsgEmptyMatch: an `update` whose match has no arms yet gets the arm and
-// nothing else changes.
+// TestGenerate_NewMsgEmptyMatch: an emptied `update` leaves the app unchecked, so `new msg`
+// refuses and writes nothing.
 func TestGenerate_NewMsgEmptyMatch(t *testing.T) {
 	dir := genApp(t, "scaffold")
 	home := filepath.Join(dir, "app", "Home.alder")
@@ -1058,10 +1058,12 @@ func TestGenerate_NewMsgEmptyMatch(t *testing.T) {
 	}
 	code, out, errs := alderIn(t, dir, "", "new", "msg", "Home", "Clear")
 	after, _ := os.ReadFile(home)
+	// the emptied update no longer handles `Submit`, so the app does not check and nothing is
+	// written; the empty-match logic itself is covered by TestLastArmLine in internal/generate
+	if code == 0 || string(after) != emptied || !strings.Contains(out+errs, "error") {
+		t.Fatalf("exit %d, want a refusal that leaves the file unchanged\n%s\n%s\n%s", code, out, errs, after)
+	}
 	if strings.Contains(string(after), "match msg {,") {
 		t.Fatal("comma added to the match line")
-	}
-	if !strings.Contains(string(after), "match msg {\n  Clear p ->") && code == 0 {
-		t.Fatalf("exit %d\n%s\n%s\n%s", code, out, errs, after)
 	}
 }
