@@ -221,11 +221,11 @@ have no nui dependency and are unit-tested; the modal itself is smoke-tested.
     Bump p -> Task.succeed (Redirect (About { count: model.count + p.by })),
   }
 
+  -- example: the view shows the state and sends a message from a button.
   view : Model -> Session -> Html Msg
   view model session =
     <Layout.Page title="About">
       <h1>About</h1>
-      -- example: shows the state and sends a message.
       <p id="count">Count: {Text.fromInt model.count}</p>
       <al-button click={Bump { by: 1 }}>Bump</al-button>
     </Layout.Page>
@@ -238,10 +238,15 @@ have no nui dependency and are unit-tested; the modal itself is smoke-tested.
   covers `Bump`.
 - `help --json`: the flag appears like every other; `testdata/help.json` regenerated; book
   chapter 13 §10 gets one sentence on `--example`.
-- Editor default on: the `alder/generators` here-item for `new page` carries
-  `sets = {example = "true"}`; `FieldState.value` for a bool flag is `"true"`/`"false"`
-  (today's `ArgBool` validation in `here.go` accepts both). The CLI default stays off, so
-  agents get the minimal page.
+- Editor default on: `new page` is never a here-item (it creates a module), so the default
+  rides on the `Field`: a new `Field.Default string` is the value `generate.Form` starts a
+  field with when neither the cursor (`here`) nor the user (`you`) set it, with
+  `FieldState.source = "default"`; only the editor calls `Form`, so the CLI default stays off
+  and agents get the minimal page. `FieldState.value` for a bool flag is `"true"`/`"false"`
+  (today's `ArgBool` validation in `here.go` accepts both); `help --json` does not show
+  `Default`.
+- Comments stay outside markup (a `-- example:` line inside `<Layout.Page>` would be text);
+  the view's comment sits above `view`'s signature.
 
 ### 4.4 Protocol
 
