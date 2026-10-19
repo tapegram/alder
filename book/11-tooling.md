@@ -1654,7 +1654,7 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   nvim-cmp), through its own `<C-x><C-o>`, or after you call
   `vim.lsp.completion.enable(true, client.id, buf, { autotrigger = true })`
   from an `LspAttach` autocommand.
-- **Code actions** (`<leader>aa`, or Neovim's own `gra`). The menu lists the
+- **Code actions** (Neovim's own `gra`). The menu lists the
   compiler's fix for a diagnostic on the cursor's line, such as ``Fix:
   module `Post` is not imported`` (the same fix that `alder check --json`
   carries, "Diagnostics" above), and then the generators that apply where
@@ -1662,7 +1662,8 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   `new decl`, `new test`, `edit page` and `remove page`, each with the page
   already filled in: `new msg (page = Posts.Index)`. Choosing one asks for
   the rest of its fields (a name, say), shows the diff it would make, and
-  applies it when you press `<CR>`.
+  applies it when you press `<CR>`. Choosing a generator opens the generator
+  modal (below) with its fields filled from the cursor.
 
 ### Generators in the editor
 
@@ -1720,13 +1721,16 @@ in `opts.keys`, and with which-key, `<leader>a` is the group "alder":
 
 | Key | What it does |
 |---|---|
-| `<leader>aa` | the code actions at the cursor: fixes first, then generators |
+| `<leader>ag` | the generator modal: search, form, live preview, `<CR>` applies, `<C-o>` reviews |
 | `<leader>ac` | the open buffers' diagnostics into the quickfix list |
 | `<leader>ae` | `alder explain` for the diagnostic under the cursor |
 | `<leader>ar` | `alder run` |
 
-`:AlderGenerate [id]` asks which of all the generators to run, those that
-apply at the cursor first. The plugin's README lists the options and the
+`<leader>ag` (or `:AlderGenerate [id]`) opens the generator modal: a search
+over all the generators, those that apply at the cursor first, then the
+chosen generator's form beside a live preview of the diff, which updates as
+you type. `<CR>` applies when every field is valid, and `<C-o>` opens the
+full review, file by file. The plugin's README lists the options and the
 rest of its commands. If you set `ALDER_LSP_LOG=/some/file` in Neovim's
 environment, the server writes every message it receives and sends to that
 file; the transcripts in chapter 13, section 10, were recorded that way.
