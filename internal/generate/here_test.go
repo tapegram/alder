@@ -123,4 +123,39 @@ func TestForm_Default(t *testing.T) {
 	if sets.Has("example") {
 		t.Fatalf("here = false still set: %v", sets)
 	}
+	// DefaultUnless: a field set by you cancels the default; a false bool or empty text does not
+	u := &Spec{ID: "x y", Flags: []Field{{Name: "example", Kind: ArgBool, Default: "true", DefaultUnless: []string{"list", "blank"}},
+		{Name: "list", Kind: ArgText}, {Name: "blank", Kind: ArgBool}}}
+	fields, sets, _ = Form(u, nil, map[string]string{"list": "T"}, p)
+	for _, f := range fields {
+		if f.Name == "example" && (f.Value != "" || f.Source != "") {
+			t.Fatalf("example with list set: %+v", f)
+		}
+	}
+	if sets.Has("example") || !sets.Has("list") {
+		t.Fatalf("sets %v", sets)
+	}
+	_, sets, _ = Form(u, nil, map[string]string{"blank": "true"}, p)
+	if sets.Has("example") {
+		t.Fatalf("blank set, example default applied: %v", sets)
+	}
+	_, sets, _ = Form(u, nil, map[string]string{"blank": "false", "list": ""}, p)
+	if !sets.Has("example") {
+		t.Fatalf("blank false and list empty must leave the default: %v", sets)
+	}
+	// the real `new page` spec
+	var page *Spec
+	for _, sp := range Specs() {
+		if sp.ID == "new page" {
+			page = sp
+		}
+	}
+	_, sets, _ = Form(page, nil, map[string]string{"module": "Posts", "list": "Post"}, p)
+	if sets.Has("example") {
+		t.Fatalf("new page --list starts with example: %v", sets)
+	}
+	_, sets, _ = Form(page, nil, map[string]string{"module": "Posts"}, p)
+	if !sets.Has("example") {
+		t.Fatalf("plain new page lost its example default: %v", sets)
+	}
 }
