@@ -22,6 +22,7 @@ view : Model -> Session -> Html Msg
 view model session =
   <Layout.Page title="Smoke">
     <h1>Smoke</h1>
+    <a id="file" href={SmokeFile {}}>file</a>
     <al-button variant="outline"><button type="button" id="more-button" commandfor="more" command="toggle-popover">More</button></al-button>
     <al-menu id="more" popover>
       <a href={Posts.Index {}}>Home</a>

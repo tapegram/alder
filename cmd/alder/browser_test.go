@@ -47,8 +47,12 @@ func TestBrowser_BoostedNavigation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	smokeFile, err := os.ReadFile(filepath.Join("testdata", "browser", "SmokeFile.alder"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	start := time.Now()
-	r := startRunAppWith(t, "blog", map[string]string{"app/Smoke.alder": string(smokePage)})
+	r := startRunAppWith(t, "blog", map[string]string{"app/Smoke.alder": string(smokePage), "app/SmokeFile.alder": string(smokeFile)})
 	cmd := exec.Command(node, script, r.base, filepath.Join(filepath.Dir(r.dir), "build", "blog", "dev.db"))
 	cmd.Env = env
 	var stderr strings.Builder

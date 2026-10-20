@@ -1,0 +1,12 @@
+module SmokeFile
+
+-- A file page for the browser smoke test: a link to it must load a document, not morph.
+page "/smoke.txt" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> File
+view model session = File.text { contentType: "text/plain", body: "smoke file" }

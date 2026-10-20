@@ -151,6 +151,21 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.waitForURL('**/static/x.pdf', { timeout: 5000 }).catch(() => {});
     check('a link to a file: a plain navigation', docs.some((d) => d === 'GET ' + BASE + '/static/x.pdf'), docs);
 
+    // a link to a file page: the compiler marks it data-alder-reload; a plain document load
+    await page.goto(BASE + '/smoke');
+    const marked = await page.getAttribute('#file', 'data-alder-reload');
+    check('a file page link is marked', marked === 'true', marked);
+    await page.click('#file');
+    await page.waitForURL('**/smoke.txt', { timeout: 5000 }).catch(() => {});
+    check('a link to a file page: a plain navigation', docs.some((d) => d === 'GET ' + BASE + '/smoke.txt'), docs);
+    check('the file is shown as text', (await page.textContent('body')).includes('smoke file'), await page.content());
+    // a boosted GET of the same URL without the mark (a Page held in a variable) still navigates
+    await page.goto(BASE + '/smoke');
+    await link('/smoke.txt');
+    await page.click('#go');
+    await page.waitForURL('**/smoke.txt', { timeout: 5000 }).catch(() => {});
+    check('an unmarked link to a file page navigates', page.url().endsWith('/smoke.txt'), page.url());
+
     // ---- the interactive elements written in an Alder page (/smoke: testdata/browser/Smoke.alder,
     // added to the copy of the blog served here), as Appendix C writes them ----
     await page.goto(BASE + '/smoke');
