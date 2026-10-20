@@ -305,7 +305,7 @@ func (g *gen) testsTable(b *strings.Builder, p *ir.Program) {
 			if t.Effect {
 				kind = "Task"
 			}
-			cases = append(cases, fmt.Sprintf("{Module: %s, Name: %s, %s: %s}", strconv.Quote(t.Module), strconv.Quote(t.Name), kind, testFunc(t.Module, i+1)))
+			cases = append(cases, fmt.Sprintf("{Module: %s, Name: %s, File: %s, Line: %d, Col: %d, %s: %s}", strconv.Quote(t.Module), strconv.Quote(t.Name), strconv.Quote(t.File), t.Line, t.Col, kind, testFunc(t.Module, i+1)))
 		}
 	}
 	list := "{}"

@@ -3101,8 +3101,8 @@ test "a successful run keeps its insert" = {
 	contains(t, files["Shop_alder.go"], "func test__Shop__1() bool {", "rtesting.Eq(", "func test__Shop__2() bool {")
 	contains(t, files["Shop__Orders_alder.go"], "func test__Shop__Orders__1() eff.Task[bool] {", "func test__Shop__Orders__2() eff.Task[bool] {",
 		`eff.Call("Test.run", true,`, "rtesting.Inner(", `eff.Call("Test.trace", false,`, "rtesting.Trace(")
-	contains(t, files["app__alder.go"], "var Tests = []rtesting.Case{\n", `{Module: "Shop", Name: "total adds", Pure: test__Shop__1},`,
-		`{Module: "Shop.Orders", Name: "a failed run undoes its writes", Task: test__Shop__Orders__1}`,
+	contains(t, files["app__alder.go"], "var Tests = []rtesting.Case{\n", `{Module: "Shop", Name: "total adds", File: "app/Shop.alder", Line: 6, Col: 1, Pure: test__Shop__1},`,
+		`{Module: "Shop.Orders", Name: "a failed run undoes its writes", File: "app/Shop/Orders.alder", Line: 11, Col: 1, Task: test__Shop__Orders__1}`,
 		"func TestSession() any {", "func (Caps) Registry() map[string]any {", "reg := caps.Registry()")
 	prog, err := os.ReadFile("testdata/e2e_tests_test.go.txt")
 	if err != nil {

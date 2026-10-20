@@ -164,6 +164,8 @@ type Module struct {
 // through EffBind and Let bodies) when that is an `==`.
 type Test struct {
 	Module, Name string
+	File         string // the test's file (as the span names it, "app/Todo.alder") and
+	Line, Col    int    // the position of its `test` keyword, for alder test --json
 	Body         Expr
 	Effect       bool
 }

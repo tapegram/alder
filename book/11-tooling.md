@@ -922,11 +922,12 @@ ok   Todos.Index "Toggle by another user is not found"
   announced on standard error: `still running M "name" (10s)`.
 - `--json` prints one JSON object per test on standard output, and
   nothing else; the summary line goes to standard error. An object has
-  `module`, `name`, `ok`, `trace` (a list, empty for a pure test) and
-  `ms`, and `left`, `right`, `note`, `error` when they are not empty:
+  `module`, `name`, `file`, `line`, `col`, `ok`, `trace` (a list, empty for a pure test) and
+  `ms`, and `left`, `right`, `note`, `error` when they are not empty.
+  `file`, `line` and `col` are the position of the `test` keyword, for editors:
 
   ```text
-  {"module":"Todos.Index","name":"Toggle flips done","ok":true,"left":"{ trace: [\"Db.updateMine Todo\"], done: Just True }","right":"{ trace: [\"Db.updateMine Todo\"], done: Just True }","trace":["Db.insert User","Db.insert Todo","Test.login","Test.run","Db.updateMine Todo","Db.get Todo"],"ms":0.466}
+  {"module":"Todos.Index","name":"Toggle flips done","file":"app/Todos/Index.alder","line":92,"col":1,"ok":true,"left":"{ trace: [\"Db.updateMine Todo\"], done: Just True }","right":"{ trace: [\"Db.updateMine Todo\"], done: Just True }","trace":["Db.insert User","Db.insert Todo","Test.login","Test.run","Db.updateMine Todo","Db.get Todo"],"ms":0.466}
   ```
 
   When the app does not compile, `--json` prints one object,

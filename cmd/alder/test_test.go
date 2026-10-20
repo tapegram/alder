@@ -117,15 +117,19 @@ func TestTest_JSON(t *testing.T) {
 	}
 	for _, l := range lines {
 		var r struct {
-			Module, Name string
-			OK           *bool
-			Trace        []string
+			Module, Name, File string
+			Line, Col          int
+			OK                 *bool
+			Trace              []string
 		}
 		if err := json.Unmarshal([]byte(l), &r); err != nil {
 			t.Fatalf("%v: %s", err, l)
 		}
 		if r.Module == "" || r.Name == "" || r.OK == nil || !*r.OK {
 			t.Errorf("want a passing test with module and name: %s", l)
+		}
+		if r.File == "" || !strings.HasPrefix(r.File, "app/") || r.Line <= 0 || r.Col <= 0 {
+			t.Errorf("no position in %s", l)
 		}
 	}
 	toggle := slices.IndexFunc(lines, func(l string) bool { return strings.Contains(l, `"name":"Toggle flips done"`) })

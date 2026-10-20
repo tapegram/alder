@@ -193,9 +193,12 @@ func docSides(l, r Doc) ([2]string, string) {
 // its two sides print the same text (a NaN, two values Show cannot tell apart).
 const sameSidesNote = "the sides print the same but are different values"
 
-// Case is one `test` declaration: exactly one of Pure and Task is set.
+// Case is one `test` declaration: exactly one of Pure and Task is set. File, Line and Col are
+// the position of its `test` keyword (File relative to the app, "app/Todo.alder"), for --json.
 type Case struct {
 	Module, Name string
+	File         string
+	Line, Col    int
 	Pure         func() bool
 	Task         func() eff.Task[bool]
 }
@@ -207,6 +210,8 @@ type Case struct {
 // a pure test); Ms the wall time in milliseconds.
 type CaseResult struct {
 	Module, Name string
+	File         string // the Case's position, for --json
+	Line, Col    int
 	OK           bool
 	Left, Right  string
 	Note         string
@@ -347,7 +352,7 @@ func runCase(c Case, o Options) (r CaseResult) {
 	if caps == nil {
 		caps = map[string]any{}
 	}
-	r = CaseResult{Module: c.Module, Name: c.Name}
+	r = CaseResult{Module: c.Module, Name: c.Name, File: c.File, Line: c.Line, Col: c.Col}
 	start := time.Now()
 	defer func() { r.Ms = float64(time.Since(start).Microseconds()) / 1000 }()
 	sidesMu.Lock()
@@ -454,6 +459,9 @@ func QuoteName(name string) string {
 type jsonResult struct {
 	Module string   `json:"module"`
 	Name   string   `json:"name"`
+	File   string   `json:"file"`
+	Line   int      `json:"line"`
+	Col    int      `json:"col"`
 	OK     bool     `json:"ok"`
 	Left   string   `json:"left,omitempty"`
 	Right  string   `json:"right,omitempty"`
@@ -477,7 +485,8 @@ func WriteResult(w io.Writer, r CaseResult, asJSON bool) error {
 		}
 		enc := json.NewEncoder(w)
 		enc.SetEscapeHTML(false)
-		return enc.Encode(jsonResult{r.Module, r.Name, r.OK, r.Left, r.Right, r.Note, r.Error, tr, r.Ms})
+		return enc.Encode(jsonResult{Module: r.Module, Name: r.Name, File: r.File, Line: r.Line, Col: r.Col, OK: r.OK,
+			Left: r.Left, Right: r.Right, Note: r.Note, Error: r.Error, Trace: tr, Ms: r.Ms})
 	}
 	var b strings.Builder
 	if r.OK {
@@ -679,7 +688,7 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 			case <-deadline:
 				slow.Stop()
 				failed++
-				r = CaseResult{Module: c.Module, Name: c.Name, Error: "timed out after " + timeout, Ms: float64(time.Since(start).Microseconds()) / 1000}
+				r = CaseResult{Module: c.Module, Name: c.Name, File: c.File, Line: c.Line, Col: c.Col, Error: "timed out after " + timeout, Ms: float64(time.Since(start).Microseconds()) / 1000}
 				if e := WriteResult(out, r, *asJSON); e != nil {
 					fmt.Fprintf(err, "alder test: writing the report: %v\n", e)
 					return 2

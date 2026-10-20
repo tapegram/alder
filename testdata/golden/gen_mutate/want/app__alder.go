@@ -39,13 +39,13 @@ func (Caps) Registry() map[string]any {
 
 // Tests are the app's `test` declarations in module order then declaration order, for alder test (rtesting.Main).
 var Tests = []rtesting.Case{
-	{Module: "Note", Name: "a pinned note is labelled pinned", Pure: test__Note__1},
-	{Module: "Note", Name: "deleting a user deletes their notes", Task: test__Note__2},
-	{Module: "Notes", Name: "a visitor is sent to log in", Task: test__Notes__1},
-	{Module: "Notes", Name: "I see only my notes", Task: test__Notes__2},
-	{Module: "Notes", Name: "adding a note stores it", Task: test__Notes__3},
-	{Module: "Notes", Name: "adding a note goes back to the list", Task: test__Notes__4},
-	{Module: "Notes", Name: "a new note is not pinned", Task: test__Notes__5},
+	{Module: "Note", Name: "a pinned note is labelled pinned", File: "app/Note.alder", Line: 20, Col: 1, Pure: test__Note__1},
+	{Module: "Note", Name: "deleting a user deletes their notes", File: "app/Note.alder", Line: 23, Col: 1, Task: test__Note__2},
+	{Module: "Notes", Name: "a visitor is sent to log in", File: "app/Notes.alder", Line: 42, Col: 1, Task: test__Notes__1},
+	{Module: "Notes", Name: "I see only my notes", File: "app/Notes.alder", Line: 47, Col: 1, Task: test__Notes__2},
+	{Module: "Notes", Name: "adding a note stores it", File: "app/Notes.alder", Line: 57, Col: 1, Task: test__Notes__3},
+	{Module: "Notes", Name: "adding a note goes back to the list", File: "app/Notes.alder", Line: 66, Col: 1, Task: test__Notes__4},
+	{Module: "Notes", Name: "a new note is not pinned", File: "app/Notes.alder", Line: 74, Col: 1, Task: test__Notes__5},
 }
 
 // TestSession is the session a test runs with: App's session with every field at its default (nil without an App module).

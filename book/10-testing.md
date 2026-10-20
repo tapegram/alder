@@ -629,12 +629,13 @@ error.
 
 ```text
 $ alder test examples/todos --json -run countOpen
-{"module":"Todo","name":"countOpen ignores done todos","ok":true,"left":"2","right":"2","trace":[],"ms":0.01}
+{"module":"Todo","name":"countOpen ignores done todos","file":"app/Todo.alder","line":37,"col":1,"ok":true,"left":"2","right":"2","trace":[],"ms":0.01}
 1 passed, 0 failed
 ```
 
-Each object has `module`, `name`, `ok`, `trace` (empty for a pure test)
-and `ms`, the time it took in milliseconds (it differs from run to run);
+Each object has `module`, `name`, `file`, `line` and `col` (where the
+test's `test` keyword is, so an editor can jump to it), `ok`, `trace`
+(empty for a pure test) and `ms`, the time it took in milliseconds (it differs from run to run);
 and `left`, `right`, `note` and `error` when they have something to say.
 Unlike the text report, it gives the sides of a passing test's `==` too.
 A test that crashed the program or timed out is an object like any

@@ -44,21 +44,21 @@ func (c Caps) Registry() map[string]any {
 
 // Tests are the app's `test` declarations in module order then declaration order, for alder test (rtesting.Main).
 var Tests = []rtesting.Case{
-	{Module: "Auth.Login", Name: "a page that requires a user redirects to the login page", Task: test__Auth__Login__1},
-	{Module: "Auth.Login", Name: "logging in through the form", Task: test__Auth__Login__2},
-	{Module: "Auth.Login", Name: "Test.login, then log out through the button", Task: test__Auth__Login__3},
-	{Module: "Notes.Index", Name: "adding a note through the form", Task: test__Notes__Index__1},
-	{Module: "Notes.Index", Name: "a click keeps the page's parameter", Task: test__Notes__Index__2},
-	{Module: "Notes.Index", Name: "a form with an empty title is rejected", Task: test__Notes__Index__3},
-	{Module: "Notes.Index", Name: "a step inside Test.run", Task: test__Notes__Index__4},
-	{Module: "Notes.Index", Name: "a panicking update is RequestFailed", Task: test__Notes__Index__5},
-	{Module: "Notes.Index", Name: "the document and the view agree", Task: test__Notes__Index__6},
-	{Module: "Notes.Index", Name: "a stranger's note is missing", Task: test__Notes__Index__7},
-	{Module: "Notes.Index", Name: "the model is the one the page rendered", Task: test__Notes__Index__8},
-	{Module: "Notes.Index", Name: "renaming one row's note", Task: test__Notes__Index__9},
-	{Module: "Notes.Index", Name: "an App form", Task: test__Notes__Index__10},
-	{Module: "Notes.Index", Name: "a Rerender after Session.put updates the session", Task: test__Notes__Index__11},
-	{Module: "Notes.Index", Name: "a browser write inside a failing Test.run is undone", Task: test__Notes__Index__12},
+	{Module: "Auth.Login", Name: "a page that requires a user redirects to the login page", File: "app/Auth/Login.alder", Line: 62, Col: 1, Task: test__Auth__Login__1},
+	{Module: "Auth.Login", Name: "logging in through the form", File: "app/Auth/Login.alder", Line: 69, Col: 1, Task: test__Auth__Login__2},
+	{Module: "Auth.Login", Name: "Test.login, then log out through the button", File: "app/Auth/Login.alder", Line: 79, Col: 1, Task: test__Auth__Login__3},
+	{Module: "Notes.Index", Name: "adding a note through the form", File: "app/Notes/Index.alder", Line: 137, Col: 1, Task: test__Notes__Index__1},
+	{Module: "Notes.Index", Name: "a click keeps the page's parameter", File: "app/Notes/Index.alder", Line: 146, Col: 1, Task: test__Notes__Index__2},
+	{Module: "Notes.Index", Name: "a form with an empty title is rejected", File: "app/Notes/Index.alder", Line: 155, Col: 1, Task: test__Notes__Index__3},
+	{Module: "Notes.Index", Name: "a step inside Test.run", File: "app/Notes/Index.alder", Line: 165, Col: 1, Task: test__Notes__Index__4},
+	{Module: "Notes.Index", Name: "a panicking update is RequestFailed", File: "app/Notes/Index.alder", Line: 176, Col: 1, Task: test__Notes__Index__5},
+	{Module: "Notes.Index", Name: "the document and the view agree", File: "app/Notes/Index.alder", Line: 190, Col: 1, Task: test__Notes__Index__6},
+	{Module: "Notes.Index", Name: "a stranger's note is missing", File: "app/Notes/Index.alder", Line: 200, Col: 1, Task: test__Notes__Index__7},
+	{Module: "Notes.Index", Name: "the model is the one the page rendered", File: "app/Notes/Index.alder", Line: 210, Col: 1, Task: test__Notes__Index__8},
+	{Module: "Notes.Index", Name: "renaming one row's note", File: "app/Notes/Index.alder", Line: 219, Col: 1, Task: test__Notes__Index__9},
+	{Module: "Notes.Index", Name: "an App form", File: "app/Notes/Index.alder", Line: 232, Col: 1, Task: test__Notes__Index__10},
+	{Module: "Notes.Index", Name: "a Rerender after Session.put updates the session", File: "app/Notes/Index.alder", Line: 242, Col: 1, Task: test__Notes__Index__11},
+	{Module: "Notes.Index", Name: "a browser write inside a failing Test.run is undone", File: "app/Notes/Index.alder", Line: 253, Col: 1, Task: test__Notes__Index__12},
 }
 
 // TestSession is the session a test runs with: App's session with every field at its default (nil without an App module).

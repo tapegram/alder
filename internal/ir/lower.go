@@ -71,7 +71,8 @@ func (l *lowerer) lowerTests() {
 			}
 			_, effect := effectKind(l.typeOf(td.Body))
 			l.enter(name)
-			test := &Test{Module: name, Name: td.Name, Effect: effect, Body: l.expr(td.Body)}
+			test := &Test{Module: name, Name: td.Name, Effect: effect, Body: l.expr(td.Body),
+				File: td.Span.File, Line: td.Span.Start.Line, Col: td.Span.Start.Col}
 			if effect {
 				recordEq(test.Body)
 			} else if eq := testEq(test.Body); eq != nil {

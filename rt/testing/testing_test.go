@@ -821,3 +821,36 @@ func TestRun_CapsCopiedPerCase(t *testing.T) {
 		t.Fatalf("%+v seen=%v caps=%v", rs, seen, caps)
 	}
 }
+
+func TestJSONCarriesPositionHumanTextUnchanged(t *testing.T) {
+	r := CaseResult{Module: "Todo", Name: "adds", File: "app/Todo.alder", Line: 37, Col: 1, OK: true, Left: "2", Right: "2"}
+	var js bytes.Buffer
+	if err := WriteResult(&js, r, true); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		File      string
+		Line, Col int
+	}
+	if err := json.Unmarshal(js.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.File != "app/Todo.alder" || got.Line != 37 || got.Col != 1 {
+		t.Errorf("json position = %+v in %s", got, js.String())
+	}
+	if !strings.Contains(js.String(), `"name":"adds","file":"app/Todo.alder","line":37,"col":1,"ok"`) {
+		t.Errorf("fields out of order: %s", js.String())
+	}
+	var withPos, without bytes.Buffer
+	WriteResult(&withPos, r, false)
+	r.File, r.Line, r.Col = "", 0, 0
+	WriteResult(&without, r, false)
+	if withPos.String() != without.String() || withPos.String() != "ok   Todo \"adds\"\n" {
+		t.Errorf("human text changed: %q vs %q", withPos.String(), without.String())
+	}
+	cases := []Case{{Module: "M", Name: "n", File: "app/M.alder", Line: 3, Col: 1, Pure: func() bool { return true }}}
+	res := Run(cases, Options{})
+	if len(res) != 1 || res[0].File != "app/M.alder" || res[0].Line != 3 || res[0].Col != 1 {
+		t.Errorf("Run dropped the position: %+v", res)
+	}
+}

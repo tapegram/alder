@@ -39,13 +39,13 @@ func (c Caps) Registry() map[string]any {
 
 // Tests are the app's `test` declarations in module order then declaration order, for alder test (rtesting.Main).
 var Tests = []rtesting.Case{
-	{Module: "Payments", Name: "a refund marks the charge", Task: test__Payments__1},
-	{Module: "Checkout", Name: "a charge is recorded", Task: test__Checkout__1},
-	{Module: "Checkout", Name: "a declined charge leaves no row", Task: test__Checkout__2},
-	{Module: "Checkout", Name: "a declined charge fails the test", Task: test__Checkout__3},
-	{Module: "Checkout", Name: "the balance counts what is not refunded", Task: test__Checkout__4},
-	{Module: "Checkout", Name: "no fake leaks into the next test", Task: test__Checkout__5},
-	{Module: "Shop", Name: "installs and reads back", Task: test__Shop__1},
+	{Module: "Payments", Name: "a refund marks the charge", File: "app/Payments.alder", Line: 44, Col: 1, Task: test__Payments__1},
+	{Module: "Checkout", Name: "a charge is recorded", File: "app/Checkout.alder", Line: 8, Col: 1, Task: test__Checkout__1},
+	{Module: "Checkout", Name: "a declined charge leaves no row", File: "app/Checkout.alder", Line: 30, Col: 1, Task: test__Checkout__2},
+	{Module: "Checkout", Name: "a declined charge fails the test", File: "app/Checkout.alder", Line: 39, Col: 1, Task: test__Checkout__3},
+	{Module: "Checkout", Name: "the balance counts what is not refunded", File: "app/Checkout.alder", Line: 47, Col: 1, Task: test__Checkout__4},
+	{Module: "Checkout", Name: "no fake leaks into the next test", File: "app/Checkout.alder", Line: 63, Col: 1, Task: test__Checkout__5},
+	{Module: "Shop", Name: "installs and reads back", File: "app/Shop.alder", Line: 9, Col: 1, Task: test__Shop__1},
 }
 
 // TestSession is the session a test runs with: App's session with every field at its default (nil without an App module).
