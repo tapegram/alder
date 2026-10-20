@@ -300,6 +300,7 @@ type Page struct {
 	Module, Path string
 	Params       *RecordType
 	Requires     []string // session fields the page requires (`requires user, org`), nil for none
+	File         bool     // view returns File: a raw GET answer, no messages
 	RequiresPos  Pos      // the `requires f` clause; zero when Requires is nil
 	// Silo is the key of the admin form `requires user, role Admin, silo k` (M15), "" for none:
 	// the page's session field k is its parameter k (narrowed in Session, like a required

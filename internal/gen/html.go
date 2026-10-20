@@ -133,6 +133,9 @@ func (f *fn) attrs(as []ir.HAttr, s *scope) string {
 			out = append(out, "html.M("+name+", "+f.code(a.Value, s)+")")
 		case ir.AttrHref:
 			out = append(out, "html.A("+name+", rt.PageURL("+f.code(a.Value, s)+"))")
+			if pr, ok := a.Value.(*ir.PageRef); ok && pr.Page != nil && pr.Page.File {
+				out = append(out, `html.A("data-alder-reload", "true")`)
+			}
 		case ir.AttrClick:
 			out = append(out, `html.MsgAttr("data-on:click", `+f.msgRef(a.Value, s)+`)`)
 		case ir.AttrSubmit: // on an element Lower did not make a FormEl

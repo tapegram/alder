@@ -3598,3 +3598,38 @@ func TestGen_LetChainLinear(t *testing.T) {
 		t.Fatal("emitting a chain of 40 lets took over 3s")
 	}
 }
+
+func TestGen_FilePage(t *testing.T) {
+	files := emitSource(t, map[string]string{
+		"App.alder": "module App\n\nerror : Error -> Html Never\nerror err = <h1>Error</h1>\n\nnotFound : Html Never\nnotFound = <h1>Not found</h1>\n",
+		"Report.alder": `module Report
+
+page "/report.txt" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> File
+view model session = File.text { contentType: "text/plain", body: "hi" } |> File.withStatus 503
+`,
+		"Home.alder": `module Home
+
+page "/" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> Html Msg
+view model session = <a href={Report {}}>report</a>
+`,
+	})
+	contains(t, files["routes__alder.go"],
+		`return web.Route{Method: "GET", Pattern: "/report.txt", File: true, Handle: func(rq *web.Request) web.Response {`,
+		"return web.FileResponse(Report__view(model, session), rq.Session)")
+	contains(t, files["Home_alder.go"], `html.A("data-alder-reload", "true")`)
+	vet(t, files)
+}

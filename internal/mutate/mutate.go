@@ -14,7 +14,8 @@
 // Html, HTML nodes inside other values, brands' `where` checks, the stdlib. A node Lower shares
 // between several places (a record field's default filled into a literal, a match's shared
 // fallback) is mutated once, at its first occurrence; a default is mutated only as a schema
-// mutant (`default changed`).
+// mutant (`default changed`). A file page's `view` returns File, not Html, so it is mutated like
+// any value.
 package mutate
 
 import (

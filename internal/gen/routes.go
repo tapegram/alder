@@ -231,9 +231,14 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	if pg.Roles != nil {
 		steps = "decode the parameters (404 when they do not), `requires` (303 to App.login), the role (404), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
 	}
+	fileField, respond := "", fmt.Sprintf("web.PageResponse(%s(model, session), &html.FormState{PageParams: %s(params)}, rq.Session, false)", GoName(m, "view"), paramsFunc(m))
+	if pg.File {
+		steps = strings.Replace(steps, "view (the model", "view (its File written raw; the model", 1)
+		fileField, respond = "File: true, ", fmt.Sprintf("web.FileResponse(%s(model, session), rq.Session)", GoName(m, "view"))
+	}
 	b.WriteString(comment(fmt.Sprintf("%s serves page %s, GET %s (book 06): %s", routeFunc(m, ""), m, pg.Path, steps)))
 	fmt.Fprintf(b, `func %s() web.Route {
-	return web.Route{Method: "GET", Pattern: %s, Handle: func(rq *web.Request) web.Response {
+	return web.Route{Method: "GET", Pattern: %s, %sHandle: func(rq *web.Request) web.Response {
 		params, errs := %s(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
@@ -243,11 +248,11 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(%s(model, session), &html.FormState{PageParams: %s(params)}, rq.Session, false)
+		return %s
 	}}
 }
 
-`, routeFunc(m, ""), strconv.Quote(pg.Path), decodeName(m, "Params"), pageFunc(m), keep("nil"), GoName(m, "view"), paramsFunc(m))
+`, routeFunc(m, ""), strconv.Quote(pg.Path), fileField, decodeName(m, "Params"), pageFunc(m), keep("nil"), respond)
 
 	if !hasUpdate {
 		return

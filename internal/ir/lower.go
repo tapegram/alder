@@ -590,7 +590,7 @@ func (l *lowerer) declareTypes() {
 			l.out.AppMsgs = l.declareMsgs(mod, "App", l.res.AppMsg, m)
 		}
 		if info := l.res.Pages[name]; info != nil {
-			pg := &Page{Module: name, Path: info.Decl.Path, Requires: info.Requires, Silo: info.Silo}
+			pg := &Page{Module: name, Path: info.Decl.Path, Requires: info.Requires, Silo: info.Silo, File: info.File}
 			if len(info.Requires) > 0 {
 				pg.RequiresPos = posOf(info.Decl.RequiresSpan)
 			}
