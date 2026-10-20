@@ -720,6 +720,20 @@ module of that name of its own gets an error saying so (as does a
 `--module` naming a standard module, such as `List`); `--module <Name>`
 gives eval's module another name (`alder eval . --module Probe '1 + 2'`).
 
+`--in Name` evaluates inside module `Name` instead: the expression is checked as if written
+at the end of `app/Name.alder`, so the module's own declarations and imports are unqualified
+and the other modules are reachable as the module itself imports them, as a `test` there would
+write them (the overlay adds no imports). A line copied from the file evaluates unchanged:
+
+```text
+$ alder eval examples/todos --in Todo 'countOpen []'
+0 : Int
+```
+
+`--in` and `--module` do not combine (`alder eval: --in and --module do not combine: --in Name
+works inside module Name, --module names the scratch module`, exit 2). A module that declares
+`it` cannot host eval (exit 2).
+
 `alder eval` writes only under `build/<app>/scratch/` of the working
 directory (and, with `--run`, the dev database `build/<app>/dev.db`), and
 two evaluations of one app take turns on the lock file
@@ -738,7 +752,7 @@ has. `alder repl` builds the same way.
 
 ### `alder repl`
 
-`alder repl [dir] [--module Name]` is `alder eval` with a memory: a
+`alder repl [dir] [--in Name | --module Name]` is `alder eval` with a memory: a
 read-eval-print loop over one scratch module that lives as long as the
 session. It is a tool for a person exploring an app: trying a function
 on a value, looking at a type, running a query against the dev
@@ -760,9 +774,15 @@ Each line you type is one of three things:
 | `:run! expr` | runs a `Task` against the same database; its writes **commit**. A task that fails (`alder repl: the task failed: …`) commits nothing: its writes are rolled back with it |
 | `:html expr` | evaluates an `Html` value and prints its markup |
 | `:reload` | re-checks the session against the app as it is now; a `let` that no longer checks is dropped, with a notice, and so is a `let` that used it |
+| `:in Name` | speaks as module `Name`, re-checking the kept `let`s as `:reload` does |
+| `:in` | returns to app scope |
 | `:reset` | forgets every `let` |
 | `:help`, `:h` | lists the commands |
 | `:quit`, `:q` | leaves (so does Ctrl-D) |
+
+A `let` whose name the module declares is refused (`alder repl: Todo already declares
+countOpen`): the module's names are the module's. The banner names the module:
+`alder repl: todos, in Todo (:help for the commands, :quit to leave)`.
 
 A command ends where its letters (and `!`) do, so `:run!(Db.insert …)`
 needs no space. `:run` given a `Task`, or `:run!` given a `Query`, says which one to
@@ -885,7 +905,8 @@ Limits:
   when it ends; one a killed REPL left behind is removed by the next
   `alder repl` there. `:type` and `let` only check, and answer at once.
 - The session's module is named `Scratch`; `--module Name` renames it
-  for an app that has a `Scratch` module of its own.
+  for an app that has a `Scratch` module of its own. `--in Name` (or `:in Name`)
+  has no scratch module: the session is appended to module `Name`'s own file.
 
 Chapter 13, "The REPL", shows how it works.
 
@@ -1622,6 +1643,13 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   compiler's own message and code. A typed hole (W0002) is shown as a hint,
   not a warning. The buffer's text replaces the file's; everything else is
   read from disk.
+- `<leader>at` runs `alder test`; failures land in the quickfix list at their `test` line,
+  compile errors as diagnostics. `<leader>aT` runs the test under the cursor (the module's
+  tests when none is above it).
+- `<leader>am` runs `alder test --mutate` in the background; the survivors land in the
+  quickfix list at the mutated expression, `before → after`.
+- `<leader>ax` opens `alder repl --in <this module>` in a split; `<leader>as` sends the
+  current line or selection to it.
 - **Hover** (`K` in Neovim). On `lastPage` it shows the signature and the
   comment above the declaration:
 

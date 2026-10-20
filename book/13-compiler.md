@@ -2484,6 +2484,18 @@ Here is `alder eval examples/todos 'Todo.filterLabel Active'`, step by step
    through the inserted lines (`MapDiag`, which also maps the line an
    E0009 message names) and the rewriting of step 1, and come out as
    `input:1:18`.
+
+   `--in Todo` changes what step 2 builds. There is no `Scratch` module:
+   the file `app/Todo.alder` is overlaid with its own text plus the
+   session, appended (a newline is added first when the file lacks one),
+   so the session is simply the end of `Todo`. `Build.BaseLines` records
+   how many lines are the module's own, which is how a line of the
+   overlay is told from a line of the session. `InSession` says whether a
+   diagnostic is about the session, and `MapDiag` leaves one in the
+   module's own lines alone, still `app/Todo.alder:L:C`, so that a
+   mistake in the module is not shown as a mistake in your input.
+   `Module.In` must name an app module exactly; anything else is a
+   `NoModuleError`.
 3. **Choose a main.** The inferred type of `Scratch.it` picks the Go
    `main`, which `scratchMain` (`cmd/alder/scratchmain.go`) writes in one
    of three kinds. `mainPure` prints `rt.Show(app.Scratch__it)`, the

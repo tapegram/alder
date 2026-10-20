@@ -48,9 +48,10 @@ book quotes it verbatim in several places, and the editor reads JSON.
 
 `alder eval [dir] [--in Name | --module Name] …` and `alder repl [dir] [--in Name |
 --module Name]`. With `--in`, the session speaks as module `Name` does: the module's own
-declarations and imports unqualified, every other module of the app qualified, the
-module's brand constructors as its own code writes them, and every other module's brand
-constructors too (the rule a `test` has). `Name` must be a module of the app; otherwise
+declarations and imports unqualified, the other modules reachable as the module itself imports them (the overlay
+adds no imports: as a `test` there would write them), the module's brand constructors as
+its own code writes them, and every other module's brand constructors too (the rule a
+`test` has). `Name` must be a module of the app; otherwise
 `alder eval: no module Name in <app>` (exit 2, listing is not attempted).
 
 Implementation: the session module is a copy of module `Name`'s source with the session's
@@ -74,8 +75,8 @@ kept `let`s against the new context as `:reload` does, dropping (with the same n
 
 ### 2.3 Unchanged
 
-`--mutate --json` already reports `file`, `line`, `col`, `kind`, `before`, `after`,
-`killed` per mutant and a final score object; `-run`, `-timeout`, `--min` and the exit
+`--mutate --json` already reports the survivors in one `mutants` array (each with `file`,
+`line`, `col`, `kind`, `before`, `after`) beside the score; `-run`, `-timeout`, `--min` and the exit
 codes are as documented.
 
 ## 3. alder.nvim
