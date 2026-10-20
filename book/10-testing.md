@@ -1142,8 +1142,8 @@ Test.fetch : Page -> Task { status: Int, contentType: Text, body: Bytes, headers
 ```
 
 `status` is the status number, `contentType` the label of the body (both
-explained in chapter 6), `body` the bytes, and `headers` the extra
-headers, sorted by name. It does not follow a redirect: a page that
+explained in chapter 6), `body` the bytes, and `headers` every header of
+the answer, `Content-Type` included, sorted by name. It does not follow a redirect: a page that
 `requires` a user the cookie lacks answers `status: 303` and a
 `Location` header, and the test reads that. It does not change the page
 the browser holds, either, so it can be used between `Test.get`s.
