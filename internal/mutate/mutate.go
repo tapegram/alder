@@ -10,12 +10,13 @@
 // import-topological, dependencies first, roots alphabetical. So adding an import can move a
 // module, renumbering the mutants of modules the edit never touched.
 //
-// Never mutated: test bodies, fake entries, `view`, components and any value whose result is
+// Never mutated: test bodies, fake entries, a page's `view` (a file page's is mutated: see
+// below), components and any value whose result is
 // Html, HTML nodes inside other values, brands' `where` checks, the stdlib. A node Lower shares
 // between several places (a record field's default filled into a literal, a match's shared
 // fallback) is mutated once, at its first occurrence; a default is mutated only as a schema
-// mutant (`default changed`). A file page's `view` returns File, not Html, so it is mutated like
-// any value.
+// mutant (`default changed`). A file page's `view` returns File, not Html, so it is
+// mutated like any value.
 package mutate
 
 import (
@@ -144,7 +145,7 @@ func Collect(p *ir.Program) ([]Mutant, []Suppressed) {
 			}
 		}
 		for _, v := range m.Values {
-			if v.IsComponent || isHtml(v.Type) || (pages[m.Name] != nil && pages[m.Name].View == v) {
+			if v.IsComponent || isHtml(v.Type) || (pages[m.Name] != nil && !pages[m.Name].File && pages[m.Name].View == v) {
 				continue
 			}
 			c.decl = v.Name

@@ -184,7 +184,7 @@ func TestNeverInTestsFakesViews(t *testing.T) {
 			}
 		}
 		for _, pg := range p.Pages {
-			if pg.View != nil {
+			if pg.View != nil && !pg.File {
 				mark(pg.View.Body)
 			}
 		}
@@ -353,5 +353,60 @@ func TestCollect_ScopedNodes(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("no mutant inside the scoped select: %v", table(ms, nil))
+	}
+}
+
+// TestFilePageViewIsMutated: a file page's view (it returns File, not Html) is mutated like any
+// value (here its `if` is negated); an HTML page's view still yields no mutant. The existing
+// kinds apply; there are no mutants for literals.
+func TestFilePageViewIsMutated(t *testing.T) {
+	dir := t.TempDir()
+	srcs := map[string]string{
+		"App.alder": "module App\n\nerror : Error -> Html Never\nerror err = <h1>Error</h1>\n\nnotFound : Html Never\nnotFound = <h1>Not found</h1>\n",
+		"Report.alder": `module Report
+
+page "/report.txt" { }
+
+type Model = { ok : Bool }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { ok: True }
+
+view : Model -> Session -> File
+view model session = if model.ok then File.text { contentType: "text/plain", body: "hi" } else File.text { contentType: "text/plain", body: "no" } |> File.withStatus 503
+`,
+		"Home.alder": `module Home
+
+page "/" { }
+
+type Model = { ok : Bool }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { ok: True }
+
+view : Model -> Session -> Html Msg
+view model session = if model.ok then <p>yes</p> else <p>no</p>
+`,
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, src := range srcs {
+		if err := os.WriteFile(filepath.Join(dir, "app", name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ms, _ := Collect(lower(t, dir))
+	counts := map[string]int{}
+	for _, m := range ms {
+		if m.Decl == "view" {
+			counts[m.Module]++
+		}
+	}
+	if counts["Report"] == 0 {
+		t.Errorf("no mutant in the file page's view; view mutants by module: %v", counts)
+	}
+	if counts["Home"] != 0 {
+		t.Errorf("%d mutants in an HTML page's view, want 0", counts["Home"])
 	}
 }
