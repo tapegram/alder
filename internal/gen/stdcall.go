@@ -62,9 +62,10 @@ var StdCalls = map[string]string{
 	"Float.log":    "std.FloatLog",
 	"Float.pow":    "std.FloatPow",
 	// Html
-	"Html.unsafe": "std.HtmlUnsafe",
-	"Html.none":   "std.HtmlNone",
-	"Html.text":   "std.HtmlText",
+	"Html.unsafe":   "std.HtmlUnsafe",
+	"Html.none":     "std.HtmlNone",
+	"Html.text":     "std.HtmlText",
+	"Html.fragment": "std.HtmlFragment",
 	// Int
 	"Int.toFloat": "std.IntToFloat",
 	"Int.min":     "std.IntMin",

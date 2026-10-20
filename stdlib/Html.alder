@@ -3,3 +3,5 @@ module Html
 unsafe : Text -> Html Never
 none : Html a
 text : Text -> Html a
+-- the nodes side by side with no wrapper element (a doctype before <html>)
+fragment : List (Html a) -> Html a

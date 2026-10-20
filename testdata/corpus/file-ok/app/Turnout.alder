@@ -7,11 +7,12 @@ type Model = { }
 load : Params -> Session -> Query Model
 load params session = Query.succeed { }
 
--- A copy of another site's page, byte for byte: File.html adds no doctype, so the page writes it.
+-- A copy of another site's page, byte for byte, in checked markup: File.html adds no doctype,
+-- so the page writes one before <html>.
 view : Model -> Session -> File
-view model session = File.html (Html.unsafe "<!doctype html>\n<html><body><p id=\"n\">42</p></body></html>")
+view model session = File.html (Html.fragment [Html.unsafe "<!doctype html>\n", <html><body><p id="n">42</p></body></html>])
 
 test "turnout is byte-exact html" = {
   let r <- Test.fetch (Turnout {})
-  Task.succeed (Bytes.toText r.body == Just "<!doctype html>\n<html><body><p id=\"n\">42</p></body></html>")
+  Task.succeed (r.contentType == "text/html; charset=utf-8" && Bytes.toText r.body == Just "<!doctype html>\n<html><body><p id=\"n\">42</p></body></html>")
 }
