@@ -141,7 +141,7 @@ func NewBrowser(env *eff.Env, routes []web.Route, opts web.Options) *Browser {
 	}
 	opts.Store, opts.Caps, opts.Now, opts.Dev, opts.Reload = env.Store, env.Caps, cookieNow, false, ""
 	opts.EnvFor = func(ctx context.Context, session any) *eff.Env {
-		e := &eff.Env{Ctx: ctx, Store: b.env.Store, Caps: b.env.Caps, Now: b.env.Now, Log: b.env.Log, Session: session, Within: b.cur,
+		e := &eff.Env{Ctx: ctx, Store: b.env.Store, Caps: b.env.Caps, Now: b.env.Now, Sleep: b.env.Sleep, Log: b.env.Log, Session: session, Within: b.cur,
 			Stores: b.env.Stores, CheckSession: b.env.CheckSession}
 		b.reqEnvs = append(b.reqEnvs, e)
 		return e

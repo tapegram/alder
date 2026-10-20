@@ -6,6 +6,7 @@ package std
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"math/rand/v2"
 	"net/http"
@@ -109,6 +110,35 @@ func RandomId() eff.Task[string] {
 // TimeNow is Time.now: Env.Now(), or the wall clock when Env.Now is nil.
 func TimeNow() eff.Query[time.Time] {
 	return eff.Q(eff.Call("Time.now", false, func(e *eff.Env) (time.Time, error) { return now(e), nil }))
+}
+
+// QueryDelay is Query.delay: wait ms milliseconds (clamped to 0..60000) through Env.Sleep.
+func QueryDelay(ms int64) eff.Query[struct{}] { return eff.Q(delay("Query.delay", ms)) }
+
+// TaskSleep is Task.sleep: a request-scoped wait, not a scheduler.
+func TaskSleep(ms int64) eff.Task[struct{}] { return delay("Task.sleep", ms) }
+
+func delay(name string, ms int64) eff.Task[struct{}] {
+	ms = min(max(ms, 0), 60000)
+	d := time.Duration(ms) * time.Millisecond
+	return eff.Call(fmt.Sprintf("%s %dms", name, ms), false, func(e *eff.Env) (struct{}, error) {
+		if e.Sleep != nil {
+			e.Sleep(d)
+			return struct{}{}, nil
+		}
+		ctx := e.Ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		t := time.NewTimer(d)
+		defer t.Stop()
+		select {
+		case <-t.C:
+			return struct{}{}, nil
+		case <-ctx.Done():
+			return struct{}{}, ctx.Err()
+		}
+	})
 }
 
 // DateToday is Date.today: the UTC calendar date of Env.Now().

@@ -170,13 +170,16 @@ type Env struct {
 	// router then stores the session cookie, issued anew, even when the value is unchanged —
 	// logging in again as the same user starts a new 30-day lifetime.
 	SessionPut bool
-	Caps       map[string]any          // "Auth.Login.Password" → implementation
-	Now        func() time.Time        // the clock
-	Log        func(level, msg string) // level is "info", "warn" or "effect"; nil: no log
-	Trace      []string                // every Call name in order (dev log / tests)
-	Kind       Kind                    // the kind of the effect Run is running (set by Run, restored when it returns)
-	Rec        *Recorder               // dev mode: per-request trace with timings (nil: none, no cost)
-	Within     *Within                 // nil: a Task begins its own transaction on Store; else it runs inside Within.Tx (Run)
+	Caps       map[string]any   // "Auth.Login.Password" → implementation
+	Now        func() time.Time // the clock
+	// Sleep waits d for Query.delay and Task.sleep; nil means time.Sleep bounded by Ctx. The
+	// test environment advances its clock instead, so a slow page is tested in milliseconds.
+	Sleep  func(time.Duration)
+	Log    func(level, msg string) // level is "info", "warn" or "effect"; nil: no log
+	Trace  []string                // every Call name in order (dev log / tests)
+	Kind   Kind                    // the kind of the effect Run is running (set by Run, restored when it returns)
+	Rec    *Recorder               // dev mode: per-request trace with timings (nil: none, no cost)
+	Within *Within                 // nil: a Task begins its own transaction on Store; else it runs inside Within.Tx (Run)
 	// Stores is the app's stores when it declares a `silo` (a *db.Stores: rt/db routes each Db
 	// step to the store of its table), nil otherwise. Keys are the partition key values the
 	// request is narrowed to by its page (`requires org`: the session's; `silo org`: the page's

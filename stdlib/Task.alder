@@ -4,4 +4,6 @@ succeed : a -> Task a
 fail : Text -> Task a
 notFound : Task a
 map : (a -> b) -> Task a -> Task b
+-- wait ms milliseconds (0..60000); in tests the clock moves instead
+sleep : Int -> Task Unit
 all : List (Task a) -> Task (List a)

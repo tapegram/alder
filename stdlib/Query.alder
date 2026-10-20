@@ -2,5 +2,7 @@ module Query
 
 succeed : a -> Query a
 map : (a -> b) -> Query a -> Query b
+-- wait ms milliseconds (0..60000); in tests the clock moves instead
+delay : Int -> Query Unit
 all : List (Query a) -> Query (List a)
 notFound : Query a

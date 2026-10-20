@@ -35,6 +35,9 @@ func (l *lowerer) effHead(fn syntax.Expr) *effHead {
 		case syntax.RefStd:
 			switch x.Ref.Module {
 			case "Query", "Task", "Db":
+				if x.Ref.Name == "delay" && x.Ref.Module == "Query" || x.Ref.Name == "sleep" && x.Ref.Module == "Task" {
+					return nil // a std call (std.QueryDelay), like Time.now
+				}
 				return &effHead{name: x.Ref.Module + "." + x.Ref.Name, ft: l.typeOf(x), at: pos(x.Span), pos: posOf(x.Span)}
 			case "Test":
 				if x.Ref.Name == "run" || x.Ref.Name == "trace" { // the queries are ordinary calls

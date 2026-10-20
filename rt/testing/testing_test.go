@@ -854,3 +854,15 @@ func TestJSONCarriesPositionHumanTextUnchanged(t *testing.T) {
 		t.Errorf("Run dropped the position: %+v", res)
 	}
 }
+
+func TestClock_AdvanceMovesNow(t *testing.T) {
+	start := time.Date(2026, 11, 3, 20, 0, 0, 0, time.UTC)
+	c := NewClock(start)
+	if !c.Now().Equal(start) {
+		t.Fatal("first reading is start")
+	}
+	c.Advance(20 * time.Second)
+	if got := c.Now(); !got.Equal(start.Add(21 * time.Second)) { // +1s tick, +20s sleep
+		t.Fatalf("got %v", got)
+	}
+}

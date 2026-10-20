@@ -659,3 +659,34 @@ func TestFloatMath(t *testing.T) {
 		t.Fatal("sqrt/pow/log/exp")
 	}
 }
+
+func TestQueryDelay_StubbedSleep(t *testing.T) {
+	var slept []time.Duration
+	env := &eff.Env{Sleep: func(d time.Duration) { slept = append(slept, d) }}
+	for _, ms := range []int64{20000, -5, 90000} {
+		if _, err := eff.RunQuery(env, QueryDelay(ms)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := eff.Run(env, eff.KTask, TaskSleep(250)); err != nil {
+		t.Fatal(err)
+	}
+	want := []time.Duration{20 * time.Second, 0, time.Minute, 250 * time.Millisecond}
+	if !reflect.DeepEqual(slept, want) {
+		t.Fatalf("slept %v, want %v (clamped to 0..60000 ms)", slept, want)
+	}
+	wantTrace := []string{"Query.delay 20000ms", "Query.delay 0ms", "Query.delay 60000ms", "Task.sleep 250ms"}
+	if !reflect.DeepEqual(env.Trace, wantTrace) {
+		t.Fatalf("trace %q", env.Trace)
+	}
+}
+
+func TestQueryDelay_RealSleepStopsOnCancel(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := eff.RunQuery(&eff.Env{Ctx: ctx}, QueryDelay(60000))
+	if err == nil || time.Since(start) > 2*time.Second {
+		t.Fatalf("a cancelled request stops the wait: err %v after %v", err, time.Since(start))
+	}
+}
