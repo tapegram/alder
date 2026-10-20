@@ -462,7 +462,8 @@ view model session =
 
 A header **name** is one of `Content-Disposition`, `Cache-Control`,
 `ETag`, `Last-Modified`, `Retry-After`, `Content-Language`, or any name
-that starts with `X-`, in any case (`etag` and `ETag` are the same). The
+that starts with `X-`, in any case (`etag` and `ETag` are the same). Set
+twice, a named header keeps the last value; `X-` names may repeat. The
 router owns every other header, because each is part of something the
 router already does: `Content-Type` comes from the file, `Set-Cookie`
 from the session, `Location` from a redirect, `Content-Length` and the

@@ -800,7 +800,11 @@ func (rt *router) writeFile(w http.ResponseWriter, r *http.Request, st hop, rq *
 			rt.log("warn", fmt.Sprintf("%s: header %q cannot be set from a page; dropped", r.URL.Path, h[0]))
 			continue
 		}
-		hd.Add(name, headerNewlines.Replace(h[1]))
+		if strings.HasPrefix(name, "X-") { // an X- header may repeat; the others are single-valued: the last wins
+			hd.Add(name, headerNewlines.Replace(h[1]))
+		} else {
+			hd.Set(name, headerNewlines.Replace(h[1]))
+		}
 	}
 	hd.Set("Content-Type", headerNewlines.Replace(ct))
 	w.WriteHeader(resp.Status)

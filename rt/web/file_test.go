@@ -177,3 +177,19 @@ func TestFile_KeepsNotice(t *testing.T) {
 		t.Fatalf("cookies %v body %q", w.Result().Cookies(), w.Body.String())
 	}
 }
+
+func TestFile_RepeatedHeaders(t *testing.T) {
+	var n int
+	f := rtpkg.File{Status: 200, ContentType: "text/csv", Body: []byte("a"),
+		Headers: [][2]string{
+			{"Content-Disposition", "inline"}, {"content-disposition", "attachment; filename=r.csv"},
+			{"X-Tag", "one"}, {"x-tag", "two"}}}
+	h := NewRouter(fileRoute(f, &n), testOpts(nil))
+	w := serve(h, httptest.NewRequest("GET", "/r.csv", nil))
+	if got := w.Header().Values("Content-Disposition"); len(got) != 1 || got[0] != "attachment; filename=r.csv" {
+		t.Fatalf("a single-valued header is sent once, the last value: %q", got)
+	}
+	if got := w.Header().Values("X-Tag"); len(got) != 2 || got[0] != "one" || got[1] != "two" {
+		t.Fatalf("an X- header repeats: %q", got)
+	}
+}
