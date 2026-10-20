@@ -50,8 +50,8 @@ type Field struct {
 	// them has a value (a bool counts as set unless "false" or ""), so an editor does not start
 	// a combination the generator refuses.
 	DefaultUnless []string
-	Value   string // help --json: an arg's display ("<Module>") or a flag's placeholder ("T")
-	Summary string // help --json: a flag's summary
+	Value         string // help --json: an arg's display ("<Module>") or a flag's placeholder ("T")
+	Summary       string // help --json: a flag's summary
 }
 
 // Sets are the parsed values of a generator's arguments and flags, by Field.Name.
