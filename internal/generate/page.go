@@ -337,7 +337,7 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	switch {
 	case o.File:
 		tmpl = "page_file.tmpl"
-		d.ContentType = cmp.Or(o.ContentType, "text/plain")
+		d.ContentType = quote(cmp.Or(o.ContentType, "text/plain"))
 		delete(imports.set, "Layout") // the view is a File: no layout
 		pageOf = func(*testBuilder) string { return pageLit(o.Module, nil) }
 		if paramPage != nil {

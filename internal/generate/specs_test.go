@@ -75,3 +75,20 @@ func TestSpecs_EditTableSlug(t *testing.T) {
 		}
 	}
 }
+
+func TestSpecs_NewPageFileTypeIsQuoted(t *testing.T) {
+	dir := scaffoldApp(t, nil)
+	res, err := SpecByID("new page").Run(Sets{"module": {"Reports.Csv"}, "path": {"/reports.csv"}, "file": {"true"}, "type": {`text/csv"`}}, App{Dir: dir}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range res.Files {
+		if f.After != nil && strings.Contains(*f.After, "File.text") {
+			if !strings.Contains(*f.After, `contentType: "text/csv\""`) {
+				t.Fatalf("--type is escaped in the string literal:\n%s", *f.After)
+			}
+			return
+		}
+	}
+	t.Fatalf("no file page in %+v", res.Files)
+}
