@@ -1,0 +1,14 @@
+module Report
+
+page "/report.txt" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> File
+view model session =
+  File.text { contentType: "text/plain", body: "hi" }
+    |> File.withStatus 42
+    |> File.withStatus 503

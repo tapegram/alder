@@ -1,0 +1,20 @@
+module Report
+
+page "/report.txt" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+form Filter = {
+  q: Text,
+}
+
+msg Refresh
+
+update : Msg -> Model -> Session -> Task Nav
+update m model session = Task.succeed Rerender
+
+view : Model -> Session -> File
+view model session = File.text { contentType: "text/plain", body: "hi" }

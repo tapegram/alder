@@ -1,0 +1,15 @@
+module Report
+
+page "/report.txt" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> File
+view model session =
+  File.text { contentType: "text/plain", body: "hi" }
+    |> File.withHeader { name: "Set-Cookie", value: "a=1" }
+    |> File.withHeader { name: "content-disposition", value: "inline" }
+    |> File.withHeader { name: "X-Replay", value: "1" }

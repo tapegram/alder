@@ -1,0 +1,4 @@
+app/Feed.alder:10:1 E0034 a file page has no messages: `view` returns `File`, so nothing can be posted from it; move the message to an HTML page
+app/Report.alder:10:1 E0034 a file page has no messages: `view` returns `File`, so nothing can be posted from it; move the form to an HTML page
+app/Report.alder:14:1 E0034 a file page has no messages: `view` returns `File`, so nothing can be posted from it; move the message to an HTML page
+app/Report.alder:16:1 E0034 a file page has no messages: `view` returns `File`, so nothing can be posted from it; move the update to an HTML page

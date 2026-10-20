@@ -1,0 +1,16 @@
+module Export
+
+page "/export.csv" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> File
+view model session = File.text { contentType: "text/csv", body: "a,b" }
+
+test "x" = {
+  let r <- Test.open (Export {})
+  Task.succeed True
+}

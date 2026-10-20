@@ -1,0 +1,11 @@
+module Report
+
+page "/report.txt" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> Text
+view model session = "hi"

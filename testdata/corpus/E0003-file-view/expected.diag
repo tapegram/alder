@@ -1,0 +1,2 @@
+app/Export.alder:14:23 E0003 `Export` is a file page: use `Test.fetch`
+app/Report.alder:10:8 E0003 `view` must have type `Model -> Session -> Html Msg`, or `Model -> Session -> File` for a file page

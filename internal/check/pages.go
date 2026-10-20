@@ -2,9 +2,12 @@
 package check
 
 import (
+	"strings"
+
 	"alder/internal/diag"
 	"alder/internal/syntax"
 	"alder/internal/types"
+	rtpkg "alder/rt"
 )
 
 // checkPage checks the required signatures of a page module. App rules run from Program once
@@ -17,10 +20,76 @@ func (mc *modCtx) checkPage() {
 	html := func(arg types.Type) types.Type { return &types.App{Con: "Html", Args: []types.Type{arg}} }
 	mc.requireSig("load", &types.Fun{Params: []types.Type{mc.page.Params, mc.session}, Result: &types.App{Con: "Query", Args: []types.Type{mc.modelType()}}},
 		hookMessage("load"))
-	mc.requireSig("view", &types.Fun{Params: []types.Type{mc.modelType(), mc.session}, Result: html(mc.page.Msg)},
-		hookMessage("view"))
+	viewMsg := hookMessage("view") + ", or `Model -> Session -> File` for a file page"
+	if mc.page.File {
+		mc.requireSig("view", &types.Fun{Params: []types.Type{mc.modelType(), mc.session}, Result: types.File}, viewMsg)
+		mc.checkFilePage()
+		return
+	}
+	mc.requireSig("view", &types.Fun{Params: []types.Type{mc.modelType(), mc.session}, Result: html(mc.page.Msg)}, viewMsg)
 	mc.requireSig("update", &types.Fun{Params: []types.Type{mc.page.Msg, mc.modelType(), mc.session}, Result: &types.App{Con: "Task", Args: []types.Type{c.navType()}}},
 		hookMessage("update"))
+}
+
+// checkFilePage reports E0034 for each `msg`, `form` and `update` of a file page: its view
+// returns File, so there is no document to post from (chapter 6, "File pages").
+func (mc *modCtx) checkFilePage() {
+	for _, d := range mc.c.live(mc.m) {
+		var kind string
+		switch d := d.(type) {
+		case *syntax.MsgDecl:
+			kind = "message"
+		case *syntax.FormDecl:
+			kind = "form"
+		case *syntax.ValueDecl:
+			if d.Name != "update" {
+				continue
+			}
+			kind = "update"
+		default:
+			continue
+		}
+		mc.c.errorf(diag.FilePageMsg, d.GetSpan(), "a file page has no messages: `view` returns `File`, so nothing can be posted from it; move the %s to an HTML page", kind)
+	}
+}
+
+// checkFileArg checks the literal first argument of File.withStatus (200..599) and
+// File.withHeader (an allowed name). The first argument is args[0] in both the direct and the
+// piped form; a non-literal is checked when the page answers.
+func (mc *modCtx) checkFileArg(name string, args []syntax.Expr) {
+	if len(args) == 0 {
+		return
+	}
+	switch name {
+	case "withStatus":
+		if lit, ok := args[0].(*syntax.IntLit); ok && (lit.Value < 200 || lit.Value > 599) {
+			mc.c.errorf(diag.TypeMismatch, lit.Span, "`File.withStatus` takes a status from 200 to 599, got %d", lit.Value)
+		}
+	case "withHeader":
+		rec, ok := args[0].(*syntax.RecordLit)
+		if !ok {
+			return
+		}
+		for _, f := range rec.Fields {
+			if f.Name != "name" {
+				continue
+			}
+			lit, ok := f.Value.(*syntax.StrLit)
+			if !ok {
+				return
+			}
+			var text strings.Builder
+			for _, p := range lit.Parts {
+				if p.Expr != nil {
+					return
+				}
+				text.WriteString(p.Text)
+			}
+			if _, ok := rtpkg.FileHeaderAllowed(text.String()); !ok {
+				mc.c.errorf(diag.FileHeader, lit.Span, "`%s` cannot be set from a page; the headers a file may set are `Content-Disposition`, `Cache-Control`, `ETag`, `Last-Modified`, `Retry-After`, `Content-Language` and `X-…` names", text.String())
+			}
+		}
+	}
 }
 
 func (mc *modCtx) modelType() types.Type {

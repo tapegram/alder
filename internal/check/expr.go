@@ -1248,6 +1248,9 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Test" && mc.inTest {
 		mc.checkSelectorArg(v.Ref.Name, x.Args)
 	}
+	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "File" {
+		mc.checkFileArg(v.Ref.Name, x.Args)
+	}
 	// constructor applied to a record literal: check against the payload (form field implicit)
 	if ct, ok := x.Fn.(*syntax.CtorRef); ok && len(x.Args) == 1 && pipe == nil {
 		if lit, isLit := x.Args[0].(*syntax.RecordLit); isLit {

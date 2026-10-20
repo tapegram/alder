@@ -12,7 +12,7 @@ func HookDoc(name string) (sig, role string, ok bool) {
 	case "view":
 		return "Model -> Session -> Html Msg",
 			"Page hook. Renders the `Model` to HTML; `click` and `submit` in it send `Msg` values to " +
-				"`update`. Required: `Model -> Session -> Html Msg`.", true
+				"`update`. Required: `Model -> Session -> Html Msg`, or `File` for a file page (chapter 6).", true
 	case "update":
 		return "Msg -> Model -> Session -> Task Nav",
 			"Page hook. Handles one `Msg` and answers with a `Task Nav`: `Rerender` runs `load` and " +

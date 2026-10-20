@@ -219,6 +219,10 @@ func (mc *modCtx) testGet(name string, arg syntax.Expr, env *env, eff effect) ty
 	if c.pages[page] == nil {
 		return types.Err
 	}
+	if c.pages[page].File && name != "fetch" {
+		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`%s` is a file page: use `Test.fetch`", page)
+		return types.Err
+	}
 	if name == "open" {
 		return mc.stepResult("answer", c.answerType())
 	}

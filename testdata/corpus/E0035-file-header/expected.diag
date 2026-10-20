@@ -1,0 +1,1 @@
+app/Report.alder:13:32 E0035 `Set-Cookie` cannot be set from a page; the headers a file may set are `Content-Disposition`, `Cache-Control`, `ETag`, `Last-Modified`, `Retry-After`, `Content-Language` and `X-…` names

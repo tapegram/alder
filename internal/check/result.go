@@ -70,6 +70,9 @@ type PageInfo struct {
 	// Silo is the key of the admin form `requires user, role R, silo k` (M15), "" for none (or
 	// when the clause is in error).
 	Silo string
+	// File is true when the page's `view` returns File (chapter 6, "File pages"): a file page
+	// has no messages, forms or `update` (E0034).
+	File bool
 	// Session is the narrowed session of a `requires` page (<page>.Session, see narrow), nil
 	// for a page without `requires`, whose code sees App's session.
 	Session *types.Record

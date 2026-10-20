@@ -121,6 +121,8 @@ const (
 	WriteStores    = "E0031" // an update arm (or fake entry) whose Task writes to two stores: the shared store and a silo, or two silos
 	PartitionDecl  = "E0032" // a `@partition k`, a session field's `via T`, or a `choose k` the rules refuse
 	SiloDecl       = "E0033" // a `silo k { … }` the rules refuse (a table not partitioned by k, a `@ref` into a silo), or a page's `silo k` form
+	FilePageMsg    = "E0034" // a `msg`, `form` or `update` in a file page (view returns File)
+	FileHeader     = "E0035" // File.withHeader with a literal name outside the allow-list
 	UnreachableArm = "E0310"
 	UnusedImport   = "W0001"
 	UnshownErrors  = "W0003"

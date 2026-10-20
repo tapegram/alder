@@ -803,6 +803,7 @@ func (mc *modCtx) definePage() {
 	pd := c.prog.Pages[mc.m.Name]
 	info := &pageInfo{Decl: pd, Module: mc.m.Name, Msgs: map[string]*syntax.MsgDecl{}, Params: &types.Record{Module: mc.m.Name, Name: "Params"}, Msg: &types.Union{Module: mc.m.Name, Name: "Msg"}}
 	c.paramRecs[c.key(mc.m.Name, "Params")] = true
+	info.File = viewReturnsFile(c.live(mc.m))
 	c.pages[mc.m.Name] = info
 	mc.page = info
 	segs := pathParams(pd.Path)
@@ -858,6 +859,29 @@ func (mc *modCtx) definePage() {
 	}
 	mc.reserveGenerated("a page module", map[string]string{
 		"Params": "the page's parameters", "Msg": "the page's messages", "Session": "the page's session"})
+}
+
+// viewReturnsFile reports whether a page module's declared `view` returns File. It reads the
+// signature's syntax, so every module knows it before bodies are checked; `File` is a
+// reserved Prelude name (E0012), so the name decides.
+func viewReturnsFile(decls []syntax.Decl) bool {
+	for _, d := range decls {
+		vd, ok := d.(*syntax.ValueDecl)
+		if !ok || vd.Name != "view" || vd.Sig == nil {
+			continue
+		}
+		t := vd.Sig
+		for {
+			ft, ok := t.(*syntax.FunType)
+			if !ok {
+				break
+			}
+			t = ft.Result
+		}
+		tn, ok := t.(*syntax.TypeName)
+		return ok && tn.Name == "File" && (tn.Module == "" || tn.Module == "Prelude") && len(tn.Args) == 0
+	}
+	return false
 }
 
 // reserveGenerated reports E0012 for a type, table, form or component that takes the name of a
@@ -1208,7 +1232,7 @@ func (mc *modCtx) declareValues() {
 		if _, ok := c.types[c.key(mc.m.Name, "Model")]; !ok {
 			c.errorf(diag.MissingDecl, mc.m.Span, "page module `%s` has no `Model`", mc.m.Name)
 		}
-		if len(mc.page.Msgs) > 0 && !has["update"] {
+		if len(mc.page.Msgs) > 0 && !has["update"] && !mc.page.File { // a file page's msg is E0034
 			sp := mc.m.Span
 			sp.Start = diag.Pos{Line: lastDeclLine(mc.m), Col: 1}
 			c.errorf(diag.MissingDecl, sp, "page module `%s` declares messages but has no `update`", mc.m.Name)

@@ -1,0 +1,13 @@
+module Feed
+
+page "/feed.json" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+msg Poll
+
+view : Model -> Session -> File
+view model session = File.json "[]"
