@@ -983,7 +983,7 @@ written with `let x <-`), and each works only inside a `test`:
 | `Test.login s` | puts the session `s` in the cookie, as a login would | `Unit` |
 | `Test.get p` | requests the page `p`; the test fails unless the page is shown | `{ model: Model, session: Session, doc: Doc }` |
 | `Test.open p` | requests the page `p`, whatever the answer | `{ answer: Answer, session: Session, doc: Doc }` |
-| `Test.fetch p` | requests the file page `p`; the raw answer, redirects not followed (below) | `{ status: Int, contentType: Text, body: Bytes, headers: … }` |
+| `Test.fetch p` | requests the file page `p`; the raw answer, redirects not followed, headers sorted by name | `{ status: Int, contentType: Text, body: Bytes, headers: … }` |
 | `Test.submit F r` | posts the record `r` through the page's form `F` | `{ answer: Answer, session: Session, doc: Doc }` |
 | `Test.submitRaw F fields` | posts text fields through the page's form `F` | `{ answer: Answer, session: Session, doc: Doc }` |
 | `Test.click m` | presses the page's button that sends the message `m` | `{ answer: Answer, session: Session, doc: Doc }` |

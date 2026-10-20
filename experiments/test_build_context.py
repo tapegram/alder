@@ -347,7 +347,8 @@ class BuildContextTests(unittest.TestCase):
         code, out, _ = self.run_main("--reference", "--chapters", ",".join(bc.DEFAULT_CHAPTERS), "--book", str(bc.BOOK),
                                      "--example", str(bc.EXAMPLE))
         self.assertEqual(code, 0)
-        self.assertLessEqual(len(out) // 4, 48000, "the reference is at most 48k tokens (len/4)")
+        self.assertLessEqual(len(out) // 4, 49000, "the reference is at most 49k tokens (len/4)")
+        # M17 (file pages) raised from 48000; see the M17 plan
         # M15: the partition rules, `via`, `silo`, the one-store rule and the commands are in; the
         # silo files, the open-time check and moving a table into a silo (the inside) are not
         for added in ("`@partition k` generalises `@owner`", "Session.put org:\n  no Membership for this user and org",

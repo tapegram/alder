@@ -1239,13 +1239,7 @@ as the whole answer.
 
 ### Declaring a file page
 
-Two small ideas first, because a file has to say both. A **content type**
-is the label that tells the browser what the bytes are (`text/csv` is a
-spreadsheet-like table of text, `application/zip` an archive,
-`text/html` a web page), and the browser chooses what to do with the
-answer by it. A **status** is the three-digit number that says how the
-request went (`200` it worked, `404` there is nothing here, `503` try
-again later). A `File` carries both, plus its body and any extra headers.
+A `File` carries a content type (`text/csv`), a status (`200`, `404`, `503`), a body and extra headers.
 
 The compiler decides a page is a file page by the type of `view`. Here is
 one that downloads the signed-in user's todos as a CSV file:
@@ -1277,42 +1271,13 @@ view model session =
     |> File.withHeader { name: "Content-Disposition", value: "attachment; filename=todos.csv" }
 ```
 
-`File.text` answers `200` with the text as the body, `File.bytes` does the
-same for `Bytes` (chapter 7, "A capability returning bytes"), and
-`File.json` takes a `Text` and labels it `application/json`. The
-`Content-Disposition` header, set with `File.withHeader`, asks the browser
-to save the answer as `todos.csv` instead of showing it.
+`File.withHeader` sets a header: `Content-Disposition: attachment; filename=todos.csv` saves the answer
+(`File.text` etc.: chapter 9).
 
-A page address is made of whole segments: `"/todos.csv"` is one segment,
-and so is `"/reports/{id}/report.csv"` (a parameter, then a fixed segment).
-A parameter inside a segment, such as `"/reports/{id}.csv"`, is not a valid
-page path, so put the parameter in a segment of its own.
+Path segments are whole: `"/reports/{id}/report.csv"` is valid, `"/reports/{id}.csv"` is not.
 
-`File.html` is the way to answer a web page, byte for byte. Markup in a
-`view` has one root element and the renderer writes no doctype, so to
-reproduce a page that starts with `<!doctype html>` (a copy of another
-site's page, say) put the doctype in a `Html.fragment`, which lays its
-nodes side by side with no wrapper:
-
-```alder
-module Todos.Plain
-
-page "/plain" { }
-
-type Model = { }
-
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
-
-view : Model -> Session -> File
-view model session =
-  File.html (Html.fragment [Html.unsafe "<!doctype html>\n", <html><body><p id="n">42</p></body></html>])
-```
-
-The answer is exactly `<!doctype html>`, a newline, then the `<html>`
-element, with the content type `text/html; charset=utf-8`. The text
-inside the markup is still escaped; only the `Html.unsafe` piece is not
-(chapter 5).
+`File.html` answers a web page byte for byte. Markup in a `view` has one root element and
+no doctype, so to start with `<!doctype html>` use `Html.fragment [Html.unsafe "<!doctype html>\n", <html>…</html>]`.
 
 `File.status`, `File.contentType` and `File.body` read a file back; they
 are for tests and helpers, since the router is the one that sends it.
@@ -2783,13 +2748,7 @@ way to `n` decimals and pads with zeros (`Float.format { decimals: 2 }
 [Float.format { decimals: 2 } 1.005, Float.format { decimals: 2 } 1.5, Float.format { decimals: 1 } (-0.001)]
 ```
 
-`Float.sqrt`, `Float.exp`, `Float.log` and `Float.pow` are Go's `math`
-functions: they follow IEEE rules, so `Float.sqrt (-1.0)` and `Float.log (-1.0)`
-are NaN and `Float.log 0.0` is negative infinity, not failures.
-
-```alder eval=[3.0, 8.0]
-[Float.sqrt 9.0, Float.pow 2.0 3.0]
-```
+IEEE rules: `Float.sqrt (-1.0)` is NaN, `Float.log 0.0` -infinity; no failures.
 
 ## Bool
 
@@ -2886,20 +2845,10 @@ one is answered with a 500 (`refusing to navigate to javascript:`).
 A `Page` compares by its address: `Todos.Index {} == Todos.Index
 { filter: All }`, since a defaulted parameter is left out of the URL.
 
-`Time.toMillis` counts milliseconds from the epoch, the instant
-`Time.epoch`, and `Time.fromMillis` goes back. `Time.diffMillis a b` is
-`b − a`, like `Date.diffDays`: negative when `b` is earlier.
-
-```alder eval=0
-Time.toMillis Time.epoch
-```
 
 ## File, Bytes
 
-A file page's `view` returns a `File` (chapter 6, "File pages"). `Bytes` is
-the type of a body that is not text (chapter 7, "A capability returning
-bytes"); it has no operations of its own beyond the two below, and a
-`Text` becomes `Bytes` with `Text.toBytes`.
+`Bytes` is the type of a non-text body; `Text.toBytes` makes one.
 
 ```alder
 File.text       : { contentType: Text, body: Text } -> File      -- a 200 answer
@@ -2916,11 +2865,6 @@ Bytes.length    : Bytes -> Int                                   -- the number o
 Bytes.toText    : Bytes -> Maybe Text                            -- Just when the bytes are valid UTF-8
 ```
 
-`Bytes.length` counts bytes, not letters: `é` is two bytes in UTF-8.
-
-```alder eval=6
-Bytes.length (Text.toBytes "héllo")
-```
 
 ## Query, Task, Db, Session, Log, Time, Random, Http
 
@@ -2994,6 +2938,8 @@ Only a `test` may use these (chapter 10); anywhere else each is E0003
   without its argument.
 - `Test.member ann acme : Task Unit` inserts the `via` table's row making the user a member
   of the key (other columns `Nothing` or their default; E0003 if one is required).
+- `Test.fetch : Page -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }`
+  requests a file page: the raw answer, redirects not followed, headers sorted by name.
 
 
 # 10. Testing
@@ -3613,7 +3559,7 @@ written with `let x <-`), and each works only inside a `test`:
 | `Test.login s` | puts the session `s` in the cookie, as a login would | `Unit` |
 | `Test.get p` | requests the page `p`; the test fails unless the page is shown | `{ model: Model, session: Session, doc: Doc }` |
 | `Test.open p` | requests the page `p`, whatever the answer | `{ answer: Answer, session: Session, doc: Doc }` |
-| `Test.fetch p` | requests the file page `p`; the raw answer, redirects not followed (below) | `{ status: Int, contentType: Text, body: Bytes, headers: … }` |
+| `Test.fetch p` | requests the file page `p`; the raw answer, redirects not followed, headers sorted by name | `{ status: Int, contentType: Text, body: Bytes, headers: … }` |
 | `Test.submit F r` | posts the record `r` through the page's form `F` | `{ answer: Answer, session: Session, doc: Doc }` |
 | `Test.submitRaw F fields` | posts text fields through the page's form `F` | `{ answer: Answer, session: Session, doc: Doc }` |
 | `Test.click m` | presses the page's button that sends the message `m` | `{ answer: Answer, session: Session, doc: Doc }` |
@@ -3678,71 +3624,6 @@ The 404 answer is `PageMissing`, not `NotFound`, so that an app keeps the
 name `NotFound` for a constructor of its own. The six names are kept for
 `Answer` everywhere: a union or `msg` of the app may not use one
 (E0012), nor may a type be named `Doc` or `Answer`.
-
-### `Test.fetch`: requesting a file
-
-A file page (chapter 6, "File pages") answers a file, not a document, so
-there is no page for the browser to hold. `Test.fetch p` takes a page
-value written in place, like `Test.get`, sends the same plain `GET` with
-the cookie, and gives the answer as the server would send it:
-
-```text
-Test.fetch : Page -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }
-```
-
-`status` is the status number, `contentType` the label of the body (both
-explained in chapter 6), `body` the bytes, and `headers` the extra
-headers, sorted by name. It does not follow a redirect: a page that
-`requires` a user the cookie lacks answers `status: 303` and a
-`Location` header, and the test reads that. It does not change the page
-the browser holds, either, so it can be used between `Test.get`s.
-
-`Bytes` has almost no operations (chapter 9, "File, Bytes"), so a test
-reads a text body with `Bytes.toText`, which gives `Just text` when the
-bytes are valid UTF-8, and compares the `Maybe`:
-
-```alder
-module Todos.Slow
-
-page "/slow" { }
-
-type Model = { waited: Int }
-
-load : Params -> Session -> Query Model
-load params session = {
-  let before <- Time.now
-  let _ <- Query.delay 20000
-  let after <- Time.now
-  Query.succeed { waited: Time.diffMillis before after }
-}
-
-view : Model -> Session -> File
-view model session = File.json (Text.fromInt model.waited)
-
--- The test clock moves one second at each Time.now reading, and the delay moves it 20 s
--- without waiting, so the two readings are 21000 ms apart.
-test "slow waits twenty virtual seconds" = {
-  let r <- Test.fetch (Todos.Slow {})
-  Task.succeed ({ status: r.status, type: r.contentType, body: Bytes.toText r.body } == { status: 200, type: "application/json", body: Just "21000" })
-}
-
-test "the delay is on the trace" = {
-  let _ <- Test.fetch (Todos.Slow {})
-  let trace <- Test.trace
-  Task.succeed (List.member "Query.delay 20000ms" trace)
-}
-```
-
-The delay is virtual in a test: `Query.delay 20000` does not wait 20
-seconds. The test's clock moves forward by the delay at once, so a
-`Time.now` after it shows the time that passed, and the test stays fast.
-The trace names the step with its clamped number (`Query.delay 20000ms`).
-
-`Test.open` and `Test.get` on a file page are errors, because their result
-is a page to read: the checker refuses them (E0003, "`Todos.Slow` is a file page:
-use `Test.fetch`"). This is a check of the page's type, so it covers a
-`File.html` page too. As a second guard, a `Test.open` whose answer at run
-time is not HTML fails with `RequestFailed` and the same advice.
 
 ### `Test.login`, `requires`, and the session
 

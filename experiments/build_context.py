@@ -92,7 +92,7 @@ DROP_SUBSECTIONS = {
                                     "`-run`, `-timeout` and `--json`", "Ids and lines change with the code"],
            "9. Testing through the browser": ["Why through the browser", "Step by step", "`Test.get` and `Test.open`: requesting a page",
                                               "More forms", "Bad input, an example", "Clicks that fail", "A selector the compiler refuses",
-                                              "Comparing a page with its view"]},
+                                              "Comparing a page with its view", "`Test.fetch`: requesting a file"]},
 }
 
 # Spans of text --reference shortens in a chapter (before dropping sections), by chapter: (start, end,
@@ -171,7 +171,16 @@ TRIMS = {
             "  database, and a `Task` writes to one store (E0031).\n\n"),
            ("The to-do list's page uses four of them\n", "Why `update` needs them as much as `load` does",
             "The to-do list's page uses four of them, and `Todos.Show` reads its todo with the fifth\n"
-            "(`examples/todos/app/Todos/Index.alder` and `Todos/Show.alder`, in the example app below).\n\n")],
+            "(`examples/todos/app/Todos/Index.alder` and `Todos/Show.alder`, in the example app below).\n\n"),
+           ("Two small ideas first, because a file has to say both.", "The compiler decides a page is a file page",
+            "A `File` carries a content type (`text/csv`), a status (`200`, `404`, `503`), a body and extra headers.\n\n"),
+           ("`File.text` answers `200` with the text", "`File.html` is the way to answer a web page",
+            "`File.withHeader` sets a header: `Content-Disposition: attachment; filename=todos.csv` saves the answer\n"
+            "(`File.text` etc.: chapter 9).\n\n"
+            "Path segments are whole: `\"/reports/{id}/report.csv\"` is valid, `\"/reports/{id}.csv\"` is not.\n\n"),
+           ("`File.html` is the way to answer a web page, byte for byte.", "`File.status`, `File.contentType` and `File.body` read",
+            "`File.html` answers a web page byte for byte. Markup in a `view` has one root element and\n"
+            "no doctype, so to start with `<!doctype html>` use `Html.fragment [Html.unsafe \"<!doctype html>\\n\", <html>…</html>]`.\n\n")],
     "08": [("## Silos\n\nA partition keeps", "### One store per `Task`",
             "## Silos\n\n`silo org { Project, Todo }` in `App` keeps those tables in a database per org; the\n"
             "rest are in the shared database. Each listed table is `@partition org`; a table is in one silo;\n"
@@ -189,9 +198,18 @@ TRIMS = {
             "A table with an `@owner` column (above) also has five **scoped**\noperations, `Db.mine`, "
             "`Db.getMine`, `Db.updateMine`, `Db.deleteMine` and\n`Db.insertMine`, for the pages of a signed-in "
             "user: chapter 6, \"Rules\",\nexplains them, and chapter 9 lists their types.\n\n")],
-    "09": [("- `Test.member : u -> k -> Task Unit` (M15)", "\n### Browser steps and queries",
+    "09": [("`Float.sqrt`, `Float.exp`, `Float.log` and `Float.pow` are", "\n## Bool",
+            "IEEE rules: `Float.sqrt (-1.0)` is NaN, `Float.log 0.0` -infinity; no failures.\n"),
+           ("\n`Time.toMillis` counts milliseconds", "\n## File, Bytes", "\n"),
+           ("A file page's `view` returns a `File`", "```alder\nFile.text ",
+            "`Bytes` is the type of a non-text body; `Text.toBytes` makes one.\n\n"),
+           ("\n`Bytes.length` counts bytes, not letters", "\n## Query, Task, Db",
+            "\n"),
+           ("- `Test.member : u -> k -> Task Unit` (M15)", "\n### Browser steps and queries",
             "- `Test.member ann acme : Task Unit` inserts the `via` table's row making the user a member\n"
-            "  of the key (other columns `Nothing` or their default; E0003 if one is required).\n"),
+            "  of the key (other columns `Nothing` or their default; E0003 if one is required).\n"
+            "- `Test.fetch : Page -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }`\n"
+            "  requests a file page: the raw answer, redirects not followed, headers sorted by name.\n"),
            ("\nRun without the key (a test whose session has no `org`)", "`Query.notFound` and `Task.notFound`",
             "\nWithout the key they fail (\"Db.insertScoped Project: the session has no org\"). On a siloed\n"
             "table (chapter 8, \"Silos\") every `Db` operation needs the key.\n\n")],
