@@ -346,6 +346,197 @@ query, then `Reject` or the writes). Only a failed `Task` (`Task.fail`,
 `Task.notFound`, a `@unique` violation, a capability error) undoes its
 writes and its session changes (chapter 7).
 
+## File pages
+
+Every page so far answers with a web page. Some addresses should answer
+with something else: a spreadsheet to download, a zip, a JSON document, a
+copy of another site's page kept exactly as it was. A **file page** is a
+page whose `view` returns a `File` instead of `Html`. It has an address, a
+`load` and parameters like any page, and the router sends the file's bytes
+as the whole answer.
+
+### Declaring a file page
+
+Two small ideas first, because a file has to say both. A **content type**
+is the label that tells the browser what the bytes are (`text/csv` is a
+spreadsheet-like table of text, `application/zip` an archive,
+`text/html` a web page), and the browser chooses what to do with the
+answer by it. A **status** is the three-digit number that says how the
+request went (`200` it worked, `404` there is nothing here, `503` try
+again later). A `File` carries both, plus its body and any extra headers.
+
+The compiler decides a page is a file page by the type of `view`. Here is
+one that downloads the signed-in user's todos as a CSV file:
+
+```alder
+module Todos.Export
+
+import Todo
+
+page "/todos.csv" { } requires user
+
+type Model = { todos: List Todo }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let todos <-
+    Db.mine Todo
+      |> Db.orderBy Todo.created.desc
+      |> Db.all
+  Query.succeed { todos: todos }
+}
+
+row : Todo -> Text
+row todo = Text.join "," [todo.title, if todo.done then "done" else "open"]
+
+view : Model -> Session -> File
+view model session =
+  File.text { contentType: "text/csv", body: Text.join "\n" (List.map row model.todos) }
+    |> File.withHeader { name: "Content-Disposition", value: "attachment; filename=todos.csv" }
+```
+
+`File.text` answers `200` with the text as the body, `File.bytes` does the
+same for `Bytes` (chapter 7, "A capability returning bytes"), and
+`File.json` takes a `Text` and labels it `application/json`. The
+`Content-Disposition` header, set with `File.withHeader`, asks the browser
+to save the answer as `todos.csv` instead of showing it.
+
+A page address is made of whole segments: `"/todos.csv"` is one segment,
+and so is `"/reports/{id}/report.csv"` (a parameter, then a fixed segment).
+A parameter inside a segment, such as `"/reports/{id}.csv"`, is not a valid
+page path, so put the parameter in a segment of its own.
+
+`File.html` is the way to answer a web page, byte for byte. Markup in a
+`view` has one root element and the renderer writes no doctype, so to
+reproduce a page that starts with `<!doctype html>` (a copy of another
+site's page, say) put the doctype in a `Html.fragment`, which lays its
+nodes side by side with no wrapper:
+
+```alder
+module Todos.Plain
+
+page "/plain" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> File
+view model session =
+  File.html (Html.fragment [Html.unsafe "<!doctype html>\n", <html><body><p id="n">42</p></body></html>])
+```
+
+The answer is exactly `<!doctype html>`, a newline, then the `<html>`
+element, with the content type `text/html; charset=utf-8`. The text
+inside the markup is still escaped; only the `Html.unsafe` piece is not
+(chapter 5).
+
+`File.status`, `File.contentType` and `File.body` read a file back; they
+are for tests and helpers, since the router is the one that sends it.
+
+### Status and headers
+
+`File.withStatus` changes the answer's status. It takes a number from 200
+to 599: a `1xx` status is an interim "keep going" message that the Go
+server cannot send as a final answer, so it is refused. A literal outside
+the range is E0003, and a number computed at run time that falls outside
+it is answered with the app's `500` page.
+
+```alder
+module Todos.Busy
+
+page "/busy" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> File
+view model session =
+  File.text { contentType: "text/plain", body: "busy, try again" }
+    |> File.withStatus 503
+    |> File.withHeader { name: "Retry-After", value: "20" }
+```
+
+A header **name** is one of `Content-Disposition`, `Cache-Control`,
+`ETag`, `Last-Modified`, `Retry-After`, `Content-Language`, or any name
+that starts with `X-`, in any case (`etag` and `ETag` are the same). The
+router owns every other header, because each is part of something the
+router already does: `Content-Type` comes from the file, `Set-Cookie`
+from the session, `Location` from a redirect, `Content-Length` and the
+connection headers from the server. A literal name outside the list is
+E0035:
+
+```alder error=E0035 "`Set-Cookie` cannot be set from a page"
+module Todos.Cookie
+
+page "/cookie" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> File
+view model session =
+  File.text { contentType: "text/plain", body: "hi" }
+    |> File.withHeader { name: "Set-Cookie", value: "a=b" }
+```
+
+A name that is not a literal (one built from a parameter) cannot be checked
+before the page runs; at run time a refused header is left out and the
+server logs a `warn` line naming it.
+
+### Links and the boost
+
+A link to a file page is a download or a document of its own, not a page
+to patch into the one on screen, so the compiler marks it
+`data-alder-reload` itself (see "Links and navigation", below):
+`<a href={Todos.Export {}}>Download</a>` needs no attribute. A redirect
+into a file page navigates the browser to it, as a real load, and the
+router answers a boosted request for a file page with a real navigation too.
+
+### What stays HTML
+
+A file page changes only the answer of a page that is shown. The answers
+that belong to the app stay the app's HTML pages: a `404` from
+`Query.notFound` or a parameter that does not decode (`App.notFound`), a
+failed `Task` or `load` (`App.error`), the maintenance `503`, and the
+redirect to the login page when the page `requires` something the session
+lacks. A file page that answers its own `503` (above) is different: that
+`503` is the page's own file.
+
+A file page has no messages. Its `view` returns a file, not a document, so
+nothing on it can post a message or a form, and a `msg`, `form` or
+`update` in its module is E0034; move the message to an HTML page that
+links to the file:
+
+```alder error=E0034 "a file page has no messages"
+module Todos.Download
+
+page "/download.csv" { }
+
+type Model = { }
+
+msg Refresh
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Refresh p -> Task.succeed Rerender,
+}
+
+view : Model -> Session -> File
+view model session = File.text { contentType: "text/csv", body: "a,b" }
+```
+
+A test reads a file page with `Test.fetch` (chapter 10, "`Test.fetch`:
+requesting a file"); `Test.get` and `Test.open` on one are checker errors.
+
 ## Rules
 
 Most apps with a login have two rules about who may do what. A row
@@ -1531,6 +1722,8 @@ The boost leaves these clicks to the browser:
 - a click that something else on the page already handled (an event
   handler that called `preventDefault`);
 - a link with the attribute `data-alder-reload`;
+- a link to a file page (chapter 6, "File pages"): the compiler marks it
+  `data-alder-reload` itself, since a file is a document of its own;
 - a link to a file under `/static/` or `/_alder/` (a stylesheet, a
   script, a PDF): a document of its own, not a page to morph in. The
   router answers a Datastar `GET` of such a path (from an older page's
@@ -1543,8 +1736,11 @@ to a page that needs a fresh `<head>`. A `data-*` attribute takes a
 there, so any value will do:
 
 ```alder fragment
-<a href={Export {}} data-alder-reload="true">Download everything</a>
+<a href={Todos.Index {}} data-alder-reload="true">Start over</a>
 ```
+
+A link to a file page (a download, say) needs no such attribute: the
+compiler adds it (chapter 6, "File pages").
 
 A form that submits with `GET` (a search box, say) is not a link, and is
 not boosted: it loads its page as usual.

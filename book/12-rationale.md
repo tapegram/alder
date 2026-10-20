@@ -850,6 +850,22 @@ point.
 
 A PaaS deploys an image it is handed, and a file database and a stateless service do not mix, so the `Render` target keeps its data in Turso and has no disk mode (chapter 16, "The Render target").
 
+### Why bytes have no operations **(decided M17; tested: the `file-ok` corpus)**
+
+A file page needs a body that is not text, so M17 adds `Bytes`, and gives
+it two operations: `Bytes.length`, and `Bytes.toText`, which is `Nothing`
+for anything that is not UTF-8. There is no indexing, slicing, appending
+or building, on purpose. Encoders (a zip, a PNG, a spreadsheet's XML) are
+written in Go behind a capability, where the standard library already has
+them and where a format's details are tested by Go's own tooling. A
+language without byte slicing has no off-by-one buffer bugs to write, and
+an agent cannot half-implement a file format in a `view` that a reviewer
+then has to read. The capability boundary is where formats live: Alder
+decides which bytes an address answers and with what status, headers and
+content type, and Go decides what the bytes are. If an app needs an
+operation Alder lacks, that is a signal for an adapter, not for the
+language.
+
 ## Experiments
 
 Each experiment has a directory under `experiments/` with its prompt,

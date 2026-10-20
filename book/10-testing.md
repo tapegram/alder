@@ -975,7 +975,7 @@ and **a cookie**, the signed cookie that carries the session (chapter 6),
 sent back with every request. Before the first step there is no cookie,
 so the session is `App`'s default, `{ user: Nothing }`.
 
-Six steps act through it. Each is a `Task` (a step of the test's block,
+Seven steps act through it. Each is a `Task` (a step of the test's block,
 written with `let x <-`), and each works only inside a `test`:
 
 | Step | What it does | It gives |
@@ -983,6 +983,7 @@ written with `let x <-`), and each works only inside a `test`:
 | `Test.login s` | puts the session `s` in the cookie, as a login would | `Unit` |
 | `Test.get p` | requests the page `p`; the test fails unless the page is shown | `{ model: Model, session: Session, doc: Doc }` |
 | `Test.open p` | requests the page `p`, whatever the answer | `{ answer: Answer, session: Session, doc: Doc }` |
+| `Test.fetch p` | requests the file page `p`; the raw answer, redirects not followed (below) | `{ status: Int, contentType: Text, body: Bytes, headers: … }` |
 | `Test.submit F r` | posts the record `r` through the page's form `F` | `{ answer: Answer, session: Session, doc: Doc }` |
 | `Test.submitRaw F fields` | posts text fields through the page's form `F` | `{ answer: Answer, session: Session, doc: Doc }` |
 | `Test.click m` | presses the page's button that sends the message `m` | `{ answer: Answer, session: Session, doc: Doc }` |
@@ -1128,6 +1129,71 @@ The 404 answer is `PageMissing`, not `NotFound`, so that an app keeps the
 name `NotFound` for a constructor of its own. The six names are kept for
 `Answer` everywhere: a union or `msg` of the app may not use one
 (E0012), nor may a type be named `Doc` or `Answer`.
+
+### `Test.fetch`: requesting a file
+
+A file page (chapter 6, "File pages") answers a file, not a document, so
+there is no page for the browser to hold. `Test.fetch p` takes a page
+value written in place, like `Test.get`, sends the same plain `GET` with
+the cookie, and gives the answer as the server would send it:
+
+```text
+Test.fetch : Page -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }
+```
+
+`status` is the status number, `contentType` the label of the body (both
+explained in chapter 6), `body` the bytes, and `headers` the extra
+headers, sorted by name. It does not follow a redirect: a page that
+`requires` a user the cookie lacks answers `status: 303` and a
+`Location` header, and the test reads that. It does not change the page
+the browser holds, either, so it can be used between `Test.get`s.
+
+`Bytes` has almost no operations (chapter 9, "File, Bytes"), so a test
+reads a text body with `Bytes.toText`, which gives `Just text` when the
+bytes are valid UTF-8, and compares the `Maybe`:
+
+```alder
+module Todos.Slow
+
+page "/slow" { }
+
+type Model = { waited: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let before <- Time.now
+  let _ <- Query.delay 20000
+  let after <- Time.now
+  Query.succeed { waited: Time.diffMillis before after }
+}
+
+view : Model -> Session -> File
+view model session = File.json (Text.fromInt model.waited)
+
+-- The test clock moves one second at each Time.now reading, and the delay moves it 20 s
+-- without waiting, so the two readings are 21000 ms apart.
+test "slow waits twenty virtual seconds" = {
+  let r <- Test.fetch (Todos.Slow {})
+  Task.succeed ({ status: r.status, type: r.contentType, body: Bytes.toText r.body } == { status: 200, type: "application/json", body: Just "21000" })
+}
+
+test "the delay is on the trace" = {
+  let _ <- Test.fetch (Todos.Slow {})
+  let trace <- Test.trace
+  Task.succeed (List.member "Query.delay 20000ms" trace)
+}
+```
+
+The delay is virtual in a test: `Query.delay 20000` does not wait 20
+seconds. The test's clock moves forward by the delay at once, so a
+`Time.now` after it shows the time that passed, and the test stays fast.
+The trace names the step with its clamped number (`Query.delay 20000ms`).
+
+`Test.open` and `Test.get` on a file page are errors, because their result
+is a page to read: the checker refuses them (E0003, "`Todos.Slow` is a file page:
+use `Test.fetch`"). This is a check of the page's type, so it covers a
+`File.html` page too. As a second guard, a `Test.open` whose answer at run
+time is not HTML fails with `RequestFailed` and the same advice.
 
 ### `Test.login`, `requires`, and the session
 

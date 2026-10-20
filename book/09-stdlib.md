@@ -87,6 +87,7 @@ Text.fromInt   : Int -> Text
 Text.fromFloat : Float -> Text
 Text.toInt     : Text -> Maybe Int
 Text.toFloat   : Text -> Maybe Float
+Text.toBytes   : Text -> Bytes               -- the UTF-8 bytes (chapter 9, "File, Bytes")
 Text.NonEmpty, Text.Email, Text.Url, Text.Secret   -- refinement brands
 ```
 
@@ -129,6 +130,10 @@ Float.floor  : Float -> Int
 Float.ceil   : Float -> Int
 Float.min, Float.max, Float.abs
 Float.format : { decimals: Int } -> Float -> Text
+Float.sqrt   : Float -> Float
+Float.exp    : Float -> Float
+Float.log    : Float -> Float                   -- natural logarithm
+Float.pow    : Float -> Float -> Float          -- Float.pow base exponent
 ```
 
 `Int` arithmetic wraps on overflow; `/` truncates toward zero and `%` has
@@ -147,6 +152,14 @@ way to `n` decimals and pads with zeros (`Float.format { decimals: 2 }
 
 ```alder eval=["1.01", "1.50", "0.0"]
 [Float.format { decimals: 2 } 1.005, Float.format { decimals: 2 } 1.5, Float.format { decimals: 1 } (-0.001)]
+```
+
+`Float.sqrt`, `Float.exp`, `Float.log` and `Float.pow` are Go's `math`
+functions: they follow IEEE rules, so `Float.sqrt (-1.0)` and `Float.log (-1.0)`
+are NaN and `Float.log 0.0` is negative infinity, not failures.
+
+```alder eval=[3.0, 8.0]
+[Float.sqrt 9.0, Float.pow 2.0 3.0]
 ```
 
 ## Bool
@@ -203,6 +216,10 @@ Time.now       : Query Time
 Time.toDate    : Time -> Date
 Time.format    : Text -> Time -> Text
 Time.ago       : Time -> Time -> Text           -- Time.ago now then = "3 hours ago"
+Time.toMillis  : Time -> Int                    -- milliseconds since 1970-01-01 00:00 UTC
+Time.fromMillis : Int -> Time
+Time.addMillis : Int -> Time -> Time
+Time.diffMillis : Time -> Time -> Int           -- Time.diffMillis a b = b − a, in milliseconds
 ```
 
 `Date.diffDays a b` is the number of days from `a` to `b`, that is `b − a`:
@@ -221,6 +238,7 @@ Date.fromText "2026-10-08"
 Html.unsafe : Text -> Html Never                -- unescaped markup; never for user text
 Html.none  : Html a                             -- renders nothing
 Html.text  : Text -> Html a
+Html.fragment : List (Html a) -> Html a         -- the nodes side by side, no wrapper element
 Url.external : Text -> Page                     -- external URL for href, src or Redirect
 ```
 
@@ -238,6 +256,42 @@ one is answered with a 500 (`refusing to navigate to javascript:`).
 
 A `Page` compares by its address: `Todos.Index {} == Todos.Index
 { filter: All }`, since a defaulted parameter is left out of the URL.
+
+`Time.toMillis` counts milliseconds from the epoch, the instant
+`Time.epoch`, and `Time.fromMillis` goes back. `Time.diffMillis a b` is
+`b − a`, like `Date.diffDays`: negative when `b` is earlier.
+
+```alder eval=0
+Time.toMillis Time.epoch
+```
+
+## File, Bytes
+
+A file page's `view` returns a `File` (chapter 6, "File pages"). `Bytes` is
+the type of a body that is not text (chapter 7, "A capability returning
+bytes"); it has no operations of its own beyond the two below, and a
+`Text` becomes `Bytes` with `Text.toBytes`.
+
+```alder
+File.text       : { contentType: Text, body: Text } -> File      -- a 200 answer
+File.bytes      : { contentType: Text, body: Bytes } -> File     -- a 200 answer
+File.html       : Html Never -> File                             -- text/html; charset=utf-8, rendered verbatim: no doctype unless the node has one
+File.json       : Text -> File                                   -- application/json
+File.withStatus : Int -> File -> File                            -- 200..599
+File.withHeader : { name: Text, value: Text } -> File -> File    -- Content-Disposition, Cache-Control, ETag, Last-Modified, Retry-After, Content-Language, X-…
+File.status      : File -> Int
+File.contentType : File -> Text
+File.body        : File -> Bytes
+
+Bytes.length    : Bytes -> Int                                   -- the number of bytes
+Bytes.toText    : Bytes -> Maybe Text                            -- Just when the bytes are valid UTF-8
+```
+
+`Bytes.length` counts bytes, not letters: `é` is two bytes in UTF-8.
+
+```alder eval=6
+Bytes.length (Text.toBytes "héllo")
+```
 
 ## Query, Task, Db, Session, Log, Time, Random, Http
 
@@ -289,6 +343,13 @@ has no org". On a table in a `silo` (chapter 8, "Silos") they read and
 write the org's own database, and so do `Db.from`, `Db.get`,
 `Db.update`, `Db.delete` and `Db.insert` on it, which need the key too.
 
+Waiting (chapter 7, "Waiting: `Query.delay` and `Task.sleep`"):
+
+```alder
+Query.delay : Int -> Query Unit                 -- milliseconds, clamped to 0..60000
+Task.sleep  : Int -> Task Unit                  -- the same, in a Task
+```
+
 `Query.notFound` and `Task.notFound` (both
 `: Query a` / `: Task a`, no arguments) stop the effect and answer 404 with
 `App.notFound`; a `Task` that ends in `Task.notFound` is rolled back like
@@ -325,7 +386,7 @@ Only a `test` may use these (chapter 10); anywhere else each is E0003
 
 The browser steps (chapter 10, section 9) are special forms too: each is
 applied directly to all its arguments, never passed as a value or piped
-into, and `get`, `open`, `submit`, `submitRaw` and `click` need an `App`
+into, and `get`, `open`, `fetch`, `submit`, `submitRaw` and `click` need an `App`
 module. `Session` here is `App`'s session record.
 
 ```text
@@ -335,6 +396,7 @@ Test.open      : Page -> Task { answer: Answer, session: Session, doc: Doc }
 Test.submit    : Form -> record -> Task { answer: Answer, session: Session, doc: Doc }
 Test.submitRaw : Form -> List { name: Text, value: Text } -> Task { answer: Answer, session: Session, doc: Doc }
 Test.click     : Msg -> Task { answer: Answer, session: Session, doc: Doc }
+Test.fetch     : Page -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }
 ```
 
 - `Test.login s` sets the browser's session cookie, through the rules a
@@ -351,6 +413,12 @@ Test.click     : Msg -> Task { answer: Answer, session: Session, doc: Doc }
   `Test.submitRaw` takes the same first argument and text fields.
 - `Test.click m` takes a message of a page or of `App` that carries no
   form, with its parameters: `Toggle { id: id }`, `App.Logout`.
+- `Test.fetch p` takes a page value written in place, like `Test.get`,
+  and gives the raw answer: its `status`, `contentType`, `body` as
+  `Bytes` and `headers` (sorted by name). It does not follow a redirect,
+  and it is the step for a file page; `Test.get` and `Test.open` on a
+  file page are checker errors (chapter 10, "`Test.fetch`: requesting a
+  file").
 
 Two types of the Prelude exist only in tests (anywhere else, E0003
 "`Doc` is a test type"): `Doc`, a parsed page, which has `==`, and

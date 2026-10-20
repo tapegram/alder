@@ -205,6 +205,70 @@ implemented" until you write them; `alder new auth` writes a login's
 `Password` capability with a real adapter, PBKDF2 password hashing in
 Go's standard library.
 
+### A capability returning bytes
+
+A capability entry can return `Bytes`, the type of a body that is not
+text: a zip, an image, a spreadsheet file. Bytes have no operations in
+Alder beyond `Bytes.length` and `Bytes.toText` (chapter 9); the Go adapter
+builds them, and the page only passes them on. A capability that builds
+an archive of an election's detail files looks like this, with a fake that
+answers a small value for tests:
+
+```alder
+module Zip
+
+-- The archive of one election's detail files: built in Go, only passed on here.
+capability Zip {
+  detail : { election: Text } -> Query Bytes,
+}
+
+fake Zip {
+  detail r = Query.succeed (Text.toBytes ("PK" ++ r.election))
+}
+```
+
+The adapter returns a plain Go `[]byte`:
+
+```go
+func (zip) Detail(ctx context.Context, args Args__Zip__Zip__Detail) ([]byte, error) {
+	var buf bytes.Buffer
+	w := archive.NewWriter(&buf)
+	// ... one entry per file of args.Election ...
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+```
+
+A page then wraps the bytes in a file (chapter 6, "File pages"). `load`
+asks the capability, and `view` hands the result to `File.bytes`:
+
+```alder
+module Todos.Archive
+
+import Zip
+
+page "/archive/{id}/detail.zip" { id: Text }
+
+type Model = { zip: Bytes }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let zip <- Zip.detail { election: params.id }
+  Query.succeed { zip: zip }
+}
+
+view : Model -> Session -> File
+view model session =
+  File.bytes { contentType: "application/zip", body: model.zip }
+    |> File.withHeader { name: "Content-Disposition", value: "attachment; filename=detail.zip" }
+```
+
+Formats live behind the capability: the zip's layout, or an image's
+encoding, is Go code in `adapters/`, where a standard library already
+exists, and the language never has to slice a buffer.
+
 ## How effects run
 
 This section describes the runtime in `rt/eff`, the Go package the
@@ -429,6 +493,46 @@ it checks every capability when it starts (below). An error the
 implementation returns is wrapped with the call's name
 (`*eff.ErrCapability`, whose text is `Password.verify: <the error>`) and
 fails the task too.
+
+### Waiting: `Query.delay` and `Task.sleep`
+
+`Query.delay : Int -> Query Unit` and `Task.sleep : Int -> Task Unit`
+wait that many milliseconds and then go on. They exist for a page that
+should answer slowly on purpose (a rate limit, a demonstration, a copy of
+a service that is slow too).
+
+- The wait belongs to the request. A request that is cancelled (the
+  browser went away, the server is shutting down) stops waiting at once.
+- The number is clamped to 0 to 60000 (a minute), after which it is what
+  the trace shows: `Query.delay 20000ms`, `Task.sleep 60000ms`.
+- A delay in a `Query` holds no transaction, so a `load` that waits before
+  its first database step costs the database nothing. A `Task` begins its
+  transaction at its first database step (above), so a `Task.sleep` after
+  a write keeps that transaction open for the whole wait, and other
+  writers wait behind it. Don't sleep after a write: sleep first, or end
+  the task and wait in the next request.
+- In a test the wait is virtual: the test's clock moves forward by the
+  delay at once and nothing sleeps (chapter 10, "`Test.fetch`: requesting a
+  file").
+
+```alder
+module Todos.Pause
+
+page "/pause" { }
+
+type Model = { waited: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let before <- Time.now
+  let _ <- Query.delay 2000
+  let after <- Time.now
+  Query.succeed { waited: Time.diffMillis before after }
+}
+
+view : Model -> Session -> File
+view model session = File.json (Text.fromInt model.waited)
+```
 
 ## Implementing a capability
 
