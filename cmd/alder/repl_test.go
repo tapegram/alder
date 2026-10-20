@@ -521,3 +521,90 @@ func TestRepl_MissingAdapter(t *testing.T) {
 	}
 	wantIn(t, out, "2 : Int", "5 : Int")
 }
+
+func TestRepl_InModule(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	code, out := runRepl(t, "countOpen []\nlet n = countOpen []\nn + 1\n", todosDir(t), "--in", "Todo")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	wantIn(t, out, "alder repl: todos, in Todo", "0 : Int\n", "n : Int\n", "1 : Int\n")
+}
+
+func TestRepl_InRefusesShadowingLet(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	_, out := runRepl(t, "let countOpen = 1\ncountOpen []\n", todosDir(t), "--in", "Todo")
+	wantIn(t, out, "alder repl: Todo already declares countOpen", "0 : Int\n")
+}
+
+func TestRepl_InCommandSwitchesAndKeepsLets(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	// a let that uses Todo's names unqualified survives :in Todo and is dropped by :in (app scope)
+	_, out := runRepl(t, "let a = 1\n:in Todo\nlet n = countOpen []\n:in\nn\na\n", todosDir(t))
+	wantIn(t, out, "in Todo\n", "n : Int\n", "dropped let n:", "1 : Int\n")
+	if strings.Contains(out, "dropped let a") {
+		t.Errorf("a does not depend on the module:\n%s", out)
+	}
+}
+
+func TestRepl_InUnknownModule(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	code, out := runRepl(t, "", todosDir(t), "--in", "Nope")
+	if code != 2 || !strings.Contains(out, "no module Nope") {
+		t.Errorf("exit %d\n%s", code, out)
+	}
+	_, out = runRepl(t, ":in Nope\n1\n", todosDir(t))
+	wantIn(t, out, "no module Nope", "1 : Int\n")
+}
+
+func TestRepl_InWithModuleIsUsage(t *testing.T) {
+	code, out := runRepl(t, "", todosDir(t), "--in", "Todo", "--module", "Probe")
+	if code != 2 || !strings.Contains(out, "--in") {
+		t.Errorf("exit %d\n%s", code, out)
+	}
+}
+
+// --in takes a nested module by its dotted name, as eval's does; :in too.
+func TestRepl_InNestedModule(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	code, out := runRepl(t, ":type update\n", todosDir(t), "--in", "Todos.Index")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	wantIn(t, out, "alder repl: todos, in Todos.Index", "update : ")
+	_, out = runRepl(t, ":in Todos.Index\n:type update\n:in todo\n", todosDir(t))
+	wantIn(t, out, "in Todos.Index\n", "update : ", ":in wants an app module name")
+}
+
+// A broken declaration of the module itself is the app's error, named in app/Todo.alder, under
+// --in at startup; :in to it is refused as the app's errors, not as a missing module.
+func TestRepl_InBrokenModule(t *testing.T) {
+	needGoTool(t)
+	tmp := t.TempDir()
+	copyDir(t, todosDir(t), filepath.Join(tmp, "todos"))
+	t.Chdir(tmp)
+	path := filepath.Join("todos", "app", "Todo.alder")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(path, append(b, []byte("\nbroken : Int\nbroken = \"x\"\n")...), 0o644)
+	code, out := runRepl(t, "", "todos", "--in", "Todo")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	wantIn(t, out, "app/Todo.alder:", "the app has errors")
+	if strings.Contains(out, "expr:") || strings.Contains(out, "let ") {
+		t.Errorf("the module's own error is not the session's:\n%s", out)
+	}
+	_, out = runRepl(t, ":in Todo\n", "todos")
+	wantIn(t, out, "app/Todo.alder:", "alder repl: not in Todo: the app has errors")
+	if strings.Contains(out, "no module") {
+		t.Errorf("a broken module is not a missing one:\n%s", out)
+	}
+}

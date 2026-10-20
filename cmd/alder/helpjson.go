@@ -129,8 +129,11 @@ var commandTree = []cmdSpec{
 					{Name: "--allow-data-loss", Summary: "apply a migration that drops data"}}},
 		}},
 	{Name: "repl", Summary: "an interactive session in the app", Usage: commandUsages["repl"],
-		Args:  []string{"[dir]"},
-		Flags: []flagSpec{{Name: "--module", Value: "Name", Summary: "start inside this module"}}},
+		Args: []string{"[dir]"},
+		Flags: []flagSpec{
+			{Name: "--in", Value: "Name", Summary: "start inside this module: its names unqualified"},
+			{Name: "--module", Value: "Name", Summary: "name the REPL's own scratch module (default Scratch)"},
+		}},
 	{Name: "new", Summary: "create an app, or generate code in one", Usage: commandUsages["new"],
 		Args:        []string{"<name>"},
 		Flags:       []flagSpec{{Name: "--bare", Summary: "the app without its starter pages"}},

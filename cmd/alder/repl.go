@@ -23,7 +23,7 @@ import (
 )
 
 // replUsage is the usage line of `alder repl`.
-const replUsage = "usage: alder repl [dir] [--module Name]"
+const replUsage = "usage: alder repl [dir] [--in Name | --module Name]"
 
 // replHelp is what :help prints.
 const replHelp = `  let name = expr   keep a value in the session (a later let of the name replaces it)
@@ -34,6 +34,7 @@ const replHelp = `  let name = expr   keep a value in the session (a later let o
   :html expr        render an Html value as markup
   :reload           re-check the session against the app; lets that no longer check are dropped
   :reset            forget every let
+  :in Name          speak as module Name: its names unqualified (lets are re-checked; :in alone returns to app scope)
   :help, :h         this list
   :quit, :q         leave (Ctrl-D too)
   A line ending in \ continues on the next. The session re-checks when the app's files change.
@@ -50,7 +51,9 @@ type replEntry struct {
 // repl is a REPL session over the app at dir.
 type repl struct {
 	dir, modName, appBuild string
-	work                   string // the build directory, build/<app>/scratch/repl-<pid>
+	in                     string          // the module of in-module mode ("" for app scope)
+	base                   scratch.Checked // the last base check (no lets) that passed: what the module declares
+	work                   string          // the build directory, build/<app>/scratch/repl-<pid>
 	lets                   []replEntry
 	redefining             string // the let a redefinition is being checked for (printDiag)
 	vet                    bool   // vet the next build (the first, and the first after a reload)
@@ -62,10 +65,12 @@ type repl struct {
 	warned                 string                 // the last build's warning of unwired capabilities, as printed
 }
 
-// runReplTo is `alder repl [dir] [--module Name]`: a read-eval-print loop over a persistent
-// scratch module (named Scratch, or Name) that sees every module of the app at dir (default
-// "."). Each line is a `let name = expr` the session keeps, an expression to evaluate (printed
-// as `value : Type`), or a command (replHelp). Every line re-checks the whole session; an
+// runReplTo is `alder repl [dir] [--in Name | --module Name]`: a read-eval-print loop over a
+// persistent scratch module (named Scratch, or Name) that sees every module of the app at dir
+// (default "."), or, with `--in Name` (and after `:in Name`), over a session appended to the app
+// module Name, whose names it uses unqualified (scratch's in-module mode). Each line is a
+// `let name = expr` the session keeps, an expression to evaluate (printed as `value : Type`),
+// or a command (replHelp). Every line re-checks the whole session; an
 // expression is compiled, with the lets it uses, into build/<app>/scratch/repl-<pid>/ (the
 // REPL's own: two REPLs never wait for each other; removed when the REPL ends, and one a killed
 // REPL left is removed by the next) and run. The session re-checks itself
@@ -86,7 +91,7 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 		}
 	}()
 	var pos []string
-	modName, named := "Scratch", false
+	modName, named, inName := "Scratch", false, ""
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
@@ -95,6 +100,9 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 			modName, named = args[i], true
 		case strings.HasPrefix(a, "--module="):
 			modName, named = strings.TrimPrefix(a, "--module="), true
+		case strings.HasPrefix(a, "--in=") || a == "--in" && i+1 < len(args):
+			name, next := inFlagValue(args, i)
+			inName, i = name, next
 		case strings.HasPrefix(a, "-"):
 			fmt.Fprintln(stderr, replUsage)
 			return 2
@@ -104,6 +112,10 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 	}
 	if len(pos) > 1 {
 		fmt.Fprintln(stderr, replUsage)
+		return 2
+	}
+	if err := errInFlags(inName, named); err != nil {
+		fmt.Fprintf(stderr, "alder repl: %v\n%s\n", err, replUsage)
 		return 2
 	}
 	if !moduleNameRE.MatchString(modName) {
@@ -123,10 +135,14 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 		fmt.Fprintf(stderr, "alder repl: no .alder files under %s/app\n", dir)
 		return 2
 	}
-	r := &repl{dir: dir, modName: modName, appBuild: filepath.Join("build", filepath.Base(abs)),
+	r := &repl{dir: dir, modName: modName, in: inName, appBuild: filepath.Join("build", filepath.Base(abs)),
 		vet: true, stdout: stdout, stderr: stderr, interrupt: interrupt, terminate: terminate}
 	r.seen = watch.Snapshot(dir)
 	checked, _ := r.check(nil)
+	if nm := (*scratch.NoModuleError)(nil); errors.As(checked.Err, &nm) {
+		fmt.Fprintf(stderr, "alder repl: %v\n", nm)
+		return 2
+	}
 	if exists := (*scratch.ModuleExistsError)(nil); errors.As(checked.Err, &exists) {
 		if named {
 			fmt.Fprintf(stderr, "alder repl: %s; give --module another name\n", exists.Taken())
@@ -141,6 +157,8 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 	}
 	if r.report(checked, nil, nil, -1) {
 		fmt.Fprintln(stderr, "alder repl: the app has errors; fix them (the REPL re-checks when you save) — :type and lets will work once it checks")
+	} else {
+		r.base = checked
 	}
 	scratchDir := filepath.Join(r.appBuild, "scratch")
 	removeStale(scratchDir)
@@ -149,7 +167,7 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 		os.RemoveAll(r.work)
 		os.Remove(r.work + ".lock")
 	}()
-	fmt.Fprintf(stdout, "alder repl: %s (:help for the commands, :quit to leave)\n", filepath.Base(abs))
+	fmt.Fprintf(stdout, "alder repl: %s%s (:help for the commands, :quit to leave)\n", filepath.Base(abs), r.inSuffix())
 
 	stop := make(chan struct{})
 	defer close(stop)
@@ -217,6 +235,23 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 			fmt.Fprintln(stdout, "(use :quit or Ctrl-D to leave)")
 		}
 	}
+}
+
+// inSuffix is what the banner adds in in-module mode: ", in Name".
+func (r *repl) inSuffix() string {
+	if r.in == "" {
+		return ""
+	}
+	return ", in " + r.in
+}
+
+// session is the name the session's values are recorded under: the module of in-module mode,
+// else the scratch module.
+func (r *repl) session() string {
+	if r.in != "" {
+		return r.in
+	}
+	return r.modName
 }
 
 // replDirRE is a REPL's build directory (or its lock file) under build/<app>/scratch.
@@ -341,6 +376,12 @@ func (r *repl) command(cmd string, lines []string, at int) (quit bool) {
 		fmt.Fprintln(r.stdout, "session reset")
 	case ":reload":
 		r.reload("session re-checked")
+	case ":in":
+		if arg != "" && !appModuleRE.MatchString(arg) {
+			fmt.Fprintf(r.stderr, "alder repl: :in wants an app module name such as Todo or Todos.Index, got %q\n", arg)
+			return false
+		}
+		r.reloadTo(arg)
 	case ":type", ":run", ":run!", ":html":
 		if arg == "" {
 			fmt.Fprintf(r.stderr, "alder repl: `%s` wants an expression: %s <expr>\n", cmd, cmd)
@@ -410,6 +451,10 @@ func (r *repl) let(lines []string, at int) {
 		fmt.Fprintln(r.stderr, "alder repl: a let is `let name = expr`")
 		return
 	}
+	if r.in != "" && r.base.Declares(e.Name) {
+		fmt.Fprintf(r.stderr, "alder repl: %s already declares %s\n", r.in, e.Name)
+		return
+	}
 	// a redefinition replaces the let in place: the lets after it that use the name see the
 	// new definition (lets are definitions, not snapshots)
 	session := append([]replEntry(nil), r.lets...)
@@ -442,7 +487,7 @@ func (r *repl) let(lines []string, at int) {
 		fmt.Fprintf(r.stderr, "alder repl: the let has %d typed hole(s); fill them to keep it\n", checked.Result.Holes)
 		return
 	}
-	sig, ok := checked.Result.Values[r.modName+"."+e.Name]
+	sig, ok := checked.Result.Values[r.session()+"."+e.Name]
 	if !ok {
 		fmt.Fprintf(r.stderr, "alder repl: internal error: no type was inferred for %s\n", e.Name)
 		return
@@ -468,6 +513,10 @@ func (r *repl) eval(cmd string, lines []string, at int) {
 		fmt.Fprintf(r.stderr, "alder repl: %v\n", err)
 		return
 	}
+	if r.in != "" && r.base.Declares("it") {
+		fmt.Fprintf(r.stderr, "alder repl: %s declares it, the name the REPL gives an expression\n", r.in)
+		return
+	}
 	session := append(append([]replEntry(nil), r.lets...), e)
 	checked, starts := r.check(session)
 	if checked.Err != nil {
@@ -481,7 +530,7 @@ func (r *repl) eval(cmd string, lines []string, at int) {
 		fmt.Fprintf(r.stderr, "alder repl: the expression has %d typed hole(s); fill them to evaluate it\n", checked.Result.Holes)
 		return
 	}
-	sig, ok := checked.Result.Values[r.modName+".it"]
+	sig, ok := checked.Result.Values[r.session()+".it"]
 	if !ok {
 		fmt.Fprintln(r.stderr, "alder repl: internal error: no type was inferred for the expression")
 		return
@@ -642,7 +691,7 @@ func (r *repl) run(checked scratch.Checked, kind mainKind, sig types.Type, lets 
 		}
 		env = append(env, "ALDER_EVAL_DB="+dbPath)
 	}
-	mainGo := scratchMain(kind, kind != mainPure && checked.WiresAdapters(), evalIt(r.modName, sig))
+	mainGo := scratchMain(kind, kind != mainPure && checked.WiresAdapters(), evalIt(r.session(), sig))
 	b := scratch.CompileCheckedWith(ctx, checked, mainGo, "repl", r.work, scratch.Options{NoVet: !r.vet, Tests: true, Fetching: func() { fmt.Fprintln(r.stderr, buildkit.FetchingLine) }})
 	defer b.Close()
 	if ctx.Err() != nil {
@@ -693,7 +742,7 @@ func (r *repl) check(entries []replEntry) (scratch.Checked, []int) {
 		n += len(e.Lines)
 	}
 	es := assemble(items)
-	return scratch.Check(r.dir, &scratch.Module{Name: r.modName, Source: es.src, Infer: true}), starts
+	return scratch.Check(r.dir, &scratch.Module{Name: r.modName, In: r.in, Source: es.src, Infer: true}), starts
 }
 
 // owner is the entry (index) a line (1-based) of the session module belongs to: by the
@@ -719,7 +768,7 @@ func (r *repl) report(checked scratch.Checked, entries []replEntry, starts []int
 	failed := false
 	var app []diag.Diagnostic
 	for _, d := range checked.Diags {
-		if d.Span.File != r.modName+".alder" && d.Severity == "error" {
+		if !checked.InSession(d) && d.Severity == "error" {
 			app = append(app, d)
 		}
 	}
@@ -728,7 +777,7 @@ func (r *repl) report(checked scratch.Checked, entries []replEntry, starts []int
 		if d.Severity == "error" {
 			failed = true
 		}
-		if d.Span.File != r.modName+".alder" {
+		if !checked.InSession(d) {
 			continue
 		}
 		k := cur
@@ -754,7 +803,7 @@ func (r *repl) reportApp(checked scratch.Checked, app []diag.Diagnostic) {
 		return
 	}
 	var buf bytes.Buffer
-	evalDiags(r.dir, app, checked.MapDiag, evalSource{}, func(d diag.Diagnostic) bool { return d.Span.File == r.modName+".alder" }, false, nil, &buf)
+	evalDiags(r.dir, app, checked.MapDiag, evalSource{}, checked.InSession, false, nil, &buf)
 	if buf.String() == r.appDiags {
 		fmt.Fprintln(r.stderr, "alder repl: the app has errors (shown above); fix them and save")
 		return
@@ -797,7 +846,7 @@ func (r *repl) printDiag(checked scratch.Checked, d diag.Diagnostic, e replEntry
 	es := assemble([]item{e.item})
 	es.lines = e.lines
 	var buf bytes.Buffer
-	evalDiags(r.dir, []diag.Diagnostic{d}, mapLine, es, func(d diag.Diagnostic) bool { return d.Span.File == r.modName+".alder" }, false, nil, &buf)
+	evalDiags(r.dir, []diag.Diagnostic{d}, mapLine, es, checked.InSession, false, nil, &buf)
 	text := buf.String()
 	if m := inputPos.FindStringSubmatchIndex(text); m != nil {
 		label := "expr:" + text[m[2]:m[5]] + ": "
@@ -818,21 +867,53 @@ func (r *repl) printDiag(checked scratch.Checked, d diag.Diagnostic, e replEntry
 // app checks): each let in order, against the lets kept so far; a let that no longer checks is
 // dropped with a notice. While the app itself has errors they are printed and the session is
 // kept as it is. The next build is vetted.
-func (r *repl) reload(header string) {
+func (r *repl) reload(header string) { r.reloadIn(r.in, header) }
+
+// reloadTo is :in: reload in the scope of module name ("" for app scope), refused (the scope
+// kept) when the app has no module name or does not check there.
+func (r *repl) reloadTo(name string) {
+	header := "app scope"
+	if name != "" {
+		header = "in " + name
+	}
+	r.reloadIn(name, header)
+}
+
+// reloadIn is reload in the scope of module in ("" for app scope): r.in (and r.base) become
+// in's only once the app checks there; otherwise the scope is kept and the refusal says why,
+// a module the app lacks or the app's errors.
+func (r *repl) reloadIn(in, header string) {
 	r.vet = true
 	r.seen = watch.Snapshot(r.dir)
+	prev := r.in
+	r.in = in
 	base, _ := r.check(nil)
 	if base.Err != nil {
-		fmt.Fprintf(r.stderr, "alder repl: %v\n", base.Err)
+		r.in = prev
+		fmt.Fprintf(r.stderr, "alder repl: %v\n", base.Err) // a NoModuleError says "no module X in <app>"
 		return
 	}
 	if r.report(base, nil, nil, -1) {
-		fmt.Fprintln(r.stderr, "alder repl: the session is kept until the app checks")
+		r.in = prev
+		if in != prev {
+			scope := "in app scope"
+			if in != "" {
+				scope = "in " + in
+			}
+			fmt.Fprintf(r.stderr, "alder repl: not %s: the app has errors; fix them and :in again\n", scope)
+		} else {
+			fmt.Fprintln(r.stderr, "alder repl: the session is kept until the app checks")
+		}
 		return
 	}
+	r.base = base
 	fmt.Fprintln(r.stdout, header)
 	var kept []replEntry
 	for _, l := range r.lets {
+		if r.in != "" && base.Declares(l.Name) {
+			fmt.Fprintf(r.stdout, "dropped let %s: %s already declares %s\n", l.Name, r.in, l.Name)
+			continue
+		}
 		session := append(append([]replEntry(nil), kept...), l)
 		checked, _ := r.check(session)
 		if checked.Err != nil {

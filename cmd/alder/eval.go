@@ -102,13 +102,8 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 			pos = append(pos, a)
 		}
 	}
-	if inName != "" && named {
-		return failf(2, "alder eval: --in and --module do not combine: --in Name evaluates inside module Name, --module names the scratch module\n%s", evalUsage)
-	}
-	if inName != "" {
-		if err := errInName(inName); err != nil {
-			return failf(2, "alder eval: %v", err)
-		}
+	if err := errInFlags(inName, named); err != nil {
+		return failf(2, "alder eval: %v\n%s", err, evalUsage)
 	}
 	if !moduleNameRE.MatchString(modName) {
 		return failf(2, "alder eval: --module wants a module name such as Probe, got %q", modName)
@@ -332,7 +327,7 @@ var appModuleRE = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*(_[A-Za-z0-9]+)*(\.[A-Z]
 // inFlagValue reads the value of the `--in Name` or `--in=Name` at args[i] and returns it with
 // the index of the last argument it used. The caller has checked that args[i] is one of the two
 // forms, the second with a following argument. eval and the REPL share it; the name is
-// validated by errInName.
+// validated by errInFlags.
 func inFlagValue(args []string, i int) (name string, last int) {
 	if v, ok := strings.CutPrefix(args[i], "--in="); ok {
 		return v, i
@@ -340,13 +335,19 @@ func inFlagValue(args []string, i int) (name string, last int) {
 	return args[i+1], i + 1
 }
 
-// errInName is nil when name is a module name --in can take (appModuleRE), else the usage error
-// naming what --in wants.
-func errInName(name string) error {
-	if appModuleRE.MatchString(name) {
+// errInFlags is nil when the --in given (inName; "" for none) can be taken, with or without a
+// --module (named), else the usage error: --in and --module do not combine, and --in wants an
+// app module name (appModuleRE).
+func errInFlags(inName string, named bool) error {
+	switch {
+	case inName == "":
 		return nil
+	case named:
+		return errors.New("--in and --module do not combine: --in Name works inside module Name, --module names the scratch module")
+	case !appModuleRE.MatchString(inName):
+		return fmt.Errorf("--in wants an app module name such as Todo or Todos.Index, got %q", inName)
 	}
-	return fmt.Errorf("--in wants an app module name such as Todo or Todos.Index, got %q", name)
+	return nil
 }
 
 // typeParamsOf lists the distinct type parameters of t the way gen counts a declaration's Go
