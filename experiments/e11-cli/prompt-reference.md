@@ -7,21 +7,35 @@ not exist. Follow it exactly.
 
 ====================  COMMANDS  ====================
 alder new <app>   the guestbook: App, Layout, table Entry, page Home at /, its tests. --bare: App
-(empty session) and Layout only; start a task there. Typical: tables, `new auth`, pages, fills.
+(empty session) and Layout only; start a task there. Typical: tables, `new auth` (before any
+`--requires user` page), pages (`--blank` first, then fill: a body may name only what exists), fills.
 The generators check a copy, writing only if it checks (edit table/session: written with the
 breakage listed; --strict refuses); none overwrites. All take --dir D, --dry-run, --json, --help.
-A hole stops `alder test`. Pass stdin with <<'EOF' (echo eats the `\f` of `\from`).
-alder new table <Name> <field>:<Type>[=default][@ref=T][@cascade|@restrict|@setNull][@owner][@unique] …
-  adds created/updated (Time @created/@updated) unless --no-timestamps (then `created:Time@created`)
-alder new page <Module> <path> [--list T | --show T [--by <unique col>] | --from T …] [--requires user] [--role R]
-  a {x} in the path needs --param x:Type (load is then ?load)
+A hole stops `alder test` (it refuses while one is left): run it last, after the fills. Pass stdin with <<'EOF' (echo eats the `\f` of `\from`).
+alder new table <Name> <field>:<Type>[=default][@ref=T][@cascade|@restrict|@setNull][@owner][@partition=k][@unique] … [--silo]
+  adds created/updated (Time @created/@updated) unless --no-timestamps (then `created:Time@created`);
+  `org:Org.OrgId@ref=Org@partition=org`; --silo puts it in App's `silo org` (a table referring to a siloed one must)
+alder new silo <key> <T> … [--empty]   App's `silo key { T, … }`; each T must be @partition key;
+  a T migrations/ create needs --empty (no rows yet: it writes the move's migration)
+alder new page <Module> <path> [--list T | --show T [--by <unique col>] | --from T …] [--requires user|org] [--role R]
+  --requires org writes `requires user, org`; --list/--show read an org-partitioned T with Db.scoped/getScoped
+  a {x} in the path needs --param x:Type (load is then ?load); --show, --list and --from make their own
+  parameters: --param only with --blank or a plain page. A --list page's Model and load go together:
+  replace both (fill --decl), or start --blank
 alder new form <Page> <Name> <field>:<Type> … [--into T] [--msg M]   (msg M, default Submit<Name>)
 alder new msg <Page> <Name> [<field>:<Type> …] [--id id]
-  form and msg refuse while view is ?view: fill view first
+  form and msg refuse while view is ?view: fill view first; the view must be one element over several
+  lines (`<Layout.Page …>` … `</Layout.Page>`)
+alder new msg App <Name> [<field>:<Type> …]   a message of App (a button on any page): an arm with a hole
+  in App.update and a test with a hole
+alder new form <Page> <Form> <field>:<Type> … --msg M   when `msg M { … }` exists without a form: it becomes
+  `msg M { … } form F` (its arm reads p.form); refused if M has a form already
 alder new capability <Module> <entry> "<Type>"
 alder new auth [--users User] [--role R] [--to Page]   the login (Auth.Login, Password with a real
   PBKDF2 adapter, App's session user/role, login, Logout); creates User (passwordHash: Text.Secret)
   if absent, else uses yours; R must exist; no / page and no --to: ?afterLogin, fill it later
+alder edit auth --to <Page>   fills ?afterLogin in Auth.Login.update and its test (refused if none)
+alder edit decl Layout.Page add-prop <name>:<Type>=<default>   a prop on a component; every use keeps checking
 alder new type <Module> "Status = A | B" | "Slug = brand Text where …" | "Row = { … }"
 alder new decl <Module> <name> "<Type>"   (name = ?name; fill a function with a lambda)
 alder new test <Module> "<name>"   (its block is ?test : Task Bool; fill it with a block)
@@ -31,9 +45,12 @@ alder new msg … --in-for <binder> [--when <Bool expr>]   the button in that `f
   insert rows the loop shows the signed-in user, fill the hole with one
 alder edit page <Page> add-param <name>:<Type>[=default]
 alder edit session add-field <name>:<Type>=<default>
+alder edit session add-field org:Org.OrgId via Membership [--choose <Page>]   a key: `org: Maybe Org.OrgId via
+  Membership` (+ `choose org = Page`); the Membership table and the page must exist first
 alder remove page <Page> | remove table <T>   refused while used; a table's migration drops data
 alder fill --decl <Module>.<decl> -   replaces a whole body (value, test, type's right side):
-  for Model (no hole) and bodies that do not fit; prefer a hole when there is one
+  for Model (no hole) and bodies that do not fit; prefer a hole when there is one. The parameters
+  of `load params session = ?load` are bound: send the body, not `\params session -> …`
 alder edit table <T> add-field <f> | rename-field <old> <new> | drop-field <f> [--strict]
   add-field without a default (=Nothing for a Maybe) breaks every insert of T (tests too), which
   no command fixes: give a default, or drop-field it
@@ -42,6 +59,14 @@ alder fill <address> - [--hole ?name]   fills a hole only (an arm without one: -
   an app module the expression names (Member.x) is imported
 alder new admin [--module Admin] [--path /admin]   (needs a session role with Admin)
 alder regen admin [--module Admin] [--path /admin] [--all]
+App may declare where it ships (book 16), once: `deploy { production: Ssh "u@host" { domain: "d",
+  path: "/srv/x" }, staging: Fly "ord" { app: "a" }, local: Script "./s.sh", floor: 0.9, checks: ["cmd"],
+  requires: ["SMTP_URL"], backup: S3 "s3://b/p", keep: 5, proxy: None }`; names only, never a secret (E0030)
+alder deploy <env> [--dry-run] [--host h] [--allow-data-loss] [--unsafe-skip-tests]   the gate (check, build,
+  test, --mutate >= floor, checks) then plan and ship; alder status|logs <env>; alder rollback <env> [id]
+  [--restore-backup --yes]; alder restore <env> [--silo org:<id>] [--to t] [--out f] [--yes]; alder ci init
+  (Fly: experimental, refuses a deploy with a pending migration); with silos: alder migrate silos <env>
+  [--allow-data-loss], alder silos prune <env> [--yes]
 
 # 3. Syntax
 
@@ -688,10 +713,15 @@ expression's type depends on the attribute:
 | Attribute | Type |
 |---|---|
 | most attributes (`class`, `id`, `value`, `placeholder`, ...) | `Text` |
-| boolean attributes (`disabled`, `checked`, `required`, `hidden`, ...) | `Bool` |
+| boolean attributes (`disabled`, `checked`, `required`, `controls`, `muted`, ...) | `Bool` |
 | `href` | a page value (chapter 6) |
+| `src` | `Text`, or a page value: `src={Url.external "https://…"}` |
 | `click`, `submit` | a message value (chapter 6) |
 | any attribute | `Maybe Text`: omitted when `Nothing` |
+
+A boolean attribute (HTML's: `controls`, `muted`, `async`, `defer`, …) is
+written bare (`<video controls>`) or with a `Bool`, rendered present or
+absent.
 
 `href` never takes a `Text`. Links to external sites use `<a href={Url.external "https://..."}>`.
 Event attributes are not HTML event names (`onclick`); they are `click` and
@@ -701,6 +731,23 @@ A `<button click={…}>` works with and without JavaScript (chapter 6); a
 `click` on any other element needs JavaScript.
 
 `data-*` and `aria-*` attributes take `Text`.
+
+## Scripts and styles
+
+Scripts and styles belong in `static/`, but may be inline. The body of a
+`<script>` or `<style>` is raw text, as in HTML: sent exactly as written.
+`{`, `<`, `&&`, quotes and `--` in it are not Alder, so `{model.name}` there
+is those characters, and no Alder value can be spliced into a script or a
+stylesheet:
+
+```alder eval=<script>if (a < b && ok) { go("{x}") }</script>
+<script>if (a < b && ok) { go("{x}") }</script>
+```
+
+Data reaches a script through an escaped `data-*` attribute
+(`<div id="p" data-clip={model.clip}>`, read as `p.dataset.clip`). A body
+may not contain `</script` or `</style` in any case (split it:
+`"<\/script>"`), nor be wholly one `{ … }` that is not JSON (E0001).
 
 ## Components
 
@@ -848,6 +895,24 @@ cannot compute from the model. Put the list in the model and the select
 in the page's `view`. The check ignores the view's `if`s: a select in a
 branch not drawn still offers its options to a crafted post.
 
+**A list too long to render.** A select that offers every row of a large
+table is slow to draw and hard to use, and there is no `al-autocomplete`
+element in the library to type into. The pattern the admin uses (chapter
+15, "A long table behind a reference") needs nothing new, because the
+options are computed from the model and the membership rule is checked
+against the options just rendered. Keep the narrowing text as a page
+parameter (`page "/posts/new" { findAuthor: Text = "" }`), so `load` reads
+it before every message; have `load` fetch at most 50 rows whose label
+contains it (`Db.where (User.email.contains p.findAuthor)`, `Db.limit
+50`); and add a small second form with its own message, `form Find = { q:
+Text }`, whose arm answers `Redirect` to the same page with `findAuthor`
+set. It must be a `Redirect`, not a `Rerender`: `load` ran before the
+message, with the old text, and only a fresh request narrows by the new.
+The select then holds the narrowed rows, and a posted value outside them
+(typed by hand, or left over from an earlier search) is "must be one of the
+options" like any other. The pattern has no script and works with
+JavaScript off.
+
 A `<form submit={M}>` where `M` has no `form` type is allowed; it contains
 no bound inputs, only a button.
 
@@ -887,7 +952,12 @@ The built-in elements (Appendix C; `!` boolean, `*` default, slots after `/`). L
 `/static/al/al.css` in the layout (every build serves it). An `<al-button>` with `click`,
 `type` or `href` renders a real `<button>`/`<a>` inside, so its children are text and inline
 markup only (no control, `Html` value or component) and it takes `href` or `click`, not both
-(E0028); `<al-alert>` gets `role`.
+(E0028); `<al-alert>` gets `role`. Link `/static/al/al.js` (`<script type="module" src="...">`,
+a plain string) for the interactive elements. A button opens a dialog or popover with
+`commandfor="id" command="show-modal|close|toggle-popover"` (no `click`); without
+JavaScript dialog, popover, menu and tabs work natively, a tooltip is hidden (repeat its
+text in `title`), a toast is not seen (use `al-alert`). Toasts come from `Notice.with
+"text" nav`.
 
 - `al-button` variant=primary*|secondary|outline|ghost|destructive, size=sm|md*|lg, disabled!, type=button*|submit / default
 - `al-input` label, placeholder, disabled!, invalid!, help
@@ -901,6 +971,16 @@ markup only (no control, `Html` value or component) and it takes `href` or `clic
 - `al-pagination` page, pages / prev, default, next
 - `al-stack` gap=sm|md*|lg, direction=row|column* / default
 - `al-page` width=narrow|normal*|wide / default
+- `al-dialog` heading, size=sm|md*|lg, dismissible! / header, default, actions
+- `al-popover` placement=top|bottom*|left|right, offset=sm*|md|lg, anchor / default
+- `al-menu` (none) / default
+- `al-tabs` (none) / default
+- `al-tab` name, selected! / default
+- `al-panel` (none) / default
+- `al-toast` variant=info*|success|warning|destructive, timeout / default
+- `al-toasts` position=top-left|top-right|bottom-left|bottom-right* / default
+- `al-tooltip` for / default
+- `al-devpanel` open! / default
 
 ## Partial updates
 
@@ -1147,6 +1227,95 @@ refuse without changing anything, decide before writing (`let taken <-` a
 query, then `Reject` or the writes). Only a failed `Task` (`Task.fail`,
 `Task.notFound`, a `@unique` violation, a capability error) undoes its
 writes and its session changes (chapter 7).
+
+## File pages
+
+Every page so far answers with a web page. Some addresses should answer
+with something else: a spreadsheet to download, a zip, a JSON document, a
+copy of another site's page kept exactly as it was. A **file page** is a
+page whose `view` returns a `File` instead of `Html`. It has an address, a
+`load` and parameters like any page, and the router sends the file's bytes
+as the whole answer.
+
+### Declaring a file page
+
+Two small ideas first, because a file has to say both. A **content type**
+is the label that tells the browser what the bytes are (`text/csv` is a
+spreadsheet-like table of text, `application/zip` an archive,
+`text/html` a web page), and the browser chooses what to do with the
+answer by it. A **status** is the three-digit number that says how the
+request went (`200` it worked, `404` there is nothing here, `503` try
+again later). A `File` carries both, plus its body and any extra headers.
+
+The compiler decides a page is a file page by the type of `view`. Here is
+one that downloads the signed-in user's todos as a CSV file:
+
+```alder
+module Todos.Export
+
+import Todo
+
+page "/todos.csv" { } requires user
+
+type Model = { todos: List Todo }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let todos <-
+    Db.mine Todo
+      |> Db.orderBy Todo.created.desc
+      |> Db.all
+  Query.succeed { todos: todos }
+}
+
+row : Todo -> Text
+row todo = Text.join "," [todo.title, if todo.done then "done" else "open"]
+
+view : Model -> Session -> File
+view model session =
+  File.text { contentType: "text/csv", body: Text.join "\n" (List.map row model.todos) }
+    |> File.withHeader { name: "Content-Disposition", value: "attachment; filename=todos.csv" }
+```
+
+`File.text` answers `200` with the text as the body, `File.bytes` does the
+same for `Bytes` (chapter 7, "A capability returning bytes"), and
+`File.json` takes a `Text` and labels it `application/json`. The
+`Content-Disposition` header, set with `File.withHeader`, asks the browser
+to save the answer as `todos.csv` instead of showing it.
+
+A page address is made of whole segments: `"/todos.csv"` is one segment,
+and so is `"/reports/{id}/report.csv"` (a parameter, then a fixed segment).
+A parameter inside a segment, such as `"/reports/{id}.csv"`, is not a valid
+page path, so put the parameter in a segment of its own.
+
+`File.html` is the way to answer a web page, byte for byte. Markup in a
+`view` has one root element and the renderer writes no doctype, so to
+reproduce a page that starts with `<!doctype html>` (a copy of another
+site's page, say) put the doctype in a `Html.fragment`, which lays its
+nodes side by side with no wrapper:
+
+```alder
+module Todos.Plain
+
+page "/plain" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> File
+view model session =
+  File.html (Html.fragment [Html.unsafe "<!doctype html>\n", <html><body><p id="n">42</p></body></html>])
+```
+
+The answer is exactly `<!doctype html>`, a newline, then the `<html>`
+element, with the content type `text/html; charset=utf-8`. The text
+inside the markup is still escaped; only the `Html.unsafe` piece is not
+(chapter 5).
+
+`File.status`, `File.contentType` and `File.body` read a file back; they
+are for tests and helpers, since the router is the one that sends it.
 
 ## Rules
 
@@ -1414,6 +1583,62 @@ write the scoped form; it costs nothing (`Todos.Show` writes
 `Db.updateMine Todo model.todo.id …`, and the mutation tool counts it
 as the same program as the unscoped one there).
 
+### Partitions
+
+`@partition k` generalises `@owner` (which is `@partition user`) to any session
+key, here `org` (`examples/workspace`):
+
+```alder fragment
+session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Member }
+choose org = Orgs.Index
+table Project { id: ProjectId @id, name: Text.NonEmpty, org: Org.OrgId @ref Org @partition org }
+```
+
+- The column is one `@ref` of the key's type without `Maybe`, and the session has the key
+  (E0032).
+- The generic scoped operations `Db.scoped T`, `Db.getScoped T id`, `Db.updateScoped T id f`
+  (never changes `org`), `Db.deleteScoped T id` and `Db.insertScoped T { … }` (a literal
+  without `org`) keep to the session's org; another org's row is not found. `Db.mine` on an
+  org table is E0025 ("… write `Db.scoped Project`").
+- They need a page that `requires user, org` (E0026); a `via` key comes after `user`
+  (E0027). There `session.org : Org.OrgId`. A visitor is sent to log in, a user without an
+  org to `choose org`'s page (required for a `via` key, E0032; that page must not require
+  the key); a key with no `choose` answers 404.
+- `via Membership`: a `Session.put` of `org` to `Just v` fails the `Task` ("Session.put org:
+  no Membership for this user and org") unless a `Membership` row of the session's user
+  and `v` exists then, inside the `Task`'s transaction (a row inserted earlier in the `Task`
+  counts; one deleted counts as gone). `Nothing` is always allowed, and a session that loses
+  its user loses its org. The membership table has exactly one `@ref` to the user table and
+  one to the key's (E0032); one `via` field per session. Picking an org:
+
+```alder fragment
+Open p -> {
+  let _ <- Session.put (\s -> { s | org: Just p.org })
+  Task.succeed (Redirect (Projects.Index {}))
+},
+```
+
+  A crafted `Open` of an org the user is no member of is refused; a test calls `update`
+  directly to send it.
+- The cookie keeps `org`; it is not checked again per request. A page that must notice a
+  removed member at once re-reads the membership in `load` (the re-read idiom):
+
+```alder fragment
+isMember : User.UserId -> Org.OrgId -> Query Bool
+isMember user org = {
+  let n <- Db.from Membership |> Db.where (Membership.user.eq user) |> Db.where (Membership.org.eq org) |> Db.count
+  Query.succeed (n > 0)
+}
+```
+
+  `load` begins `let member <- Membership.isMember session.user session.org` and answers
+  `Query.notFound` when it is `False`.
+- The admin form `requires user, role Admin, silo org` takes `org` from the page's
+  parameter `{ org: Org.OrgId, … }`, guarded by the role, not `via` (E0033).
+- Not in a fake or `App` (E0026); an org's name stays unscoped (`Db.get Org session.org`).
+- With `silo org { Project, Todo }` (chapter 8, "Silos") each org's rows are in its own
+  database, and a `Task` writes to one store (E0031).
+
 ## The request lifecycle
 
 ```
@@ -1483,8 +1708,37 @@ notFound =
   cookie. Field types follow the same rules as form fields. `Session.put`
   (chapter 7) changes it; a `Task` that fails leaves it as it was.
 - `login` names the page to redirect to when `requires` fails.
-- `error` and `notFound` render failure pages.
+- `error` and `notFound` render failure pages; an app with a `silo` may
+  add `maintenance : Html Never`, the 503 page of a silo not served.
 - `msg` and `update` declare app-level messages (above). They are optional.
+
+## Notices and in-flight state
+
+A message can answer with a toast. `Notice.with "Saved" Rerender` is the
+`Rerender` it wraps, plus a notice: after the page's body is patched in, the
+runtime appends `<al-toast variant="info" timeout="5000">Saved</al-toast>` to
+the page's `<al-toasts>` region as an event of its own, so a later morph does
+not show it again. Put `<al-toasts>` in the layout, outside anything a
+message re-renders; a page without one gets a region the runtime adds to the
+body of the answer. Without JavaScript there is no toast (the region is
+hidden), so a request made without the script (a form posted with
+JavaScript off) gets its notice as an `<al-alert variant="info"
+role="status">` at the top of the page that answers it: the page itself on a
+`Rerender`, the next page on a `Redirect` (the text rides a cookie signed with
+the app's key, `alder_notice`, for that one page). A browser test reads the
+toasts of a step as `r.notices`.
+
+While a message is pending, the form (or the form around a `click` button)
+that sent it is `inert` and `aria-busy="true"`, and a two-pixel bar runs along
+the top of the page; both go when the answer arrives. An inert form loses the
+keyboard focus, so when the answer arrives the runtime puts it back on the
+field that had it (or the element that now carries its `id`), unless the
+focus has gone somewhere else meanwhile: a refused form leaves the cursor
+where the user was typing. A boosted link shows the
+bar too, and Back during a pending GET still ends on the page Back returned
+to. The bar is a rule the runtime puts in the head (`html[data-alder-pending]`),
+not part of the design library.
+
 
 
 # 7. Effects
@@ -2343,6 +2597,23 @@ migration of every table, which this `alder migrate` cannot write yet
 migrations/ until then`` (E0019).
 
 
+## Silos
+
+`silo org { Project, Todo }` in `App` keeps those tables in a database per org; the
+rest are in the shared database. Each listed table is `@partition org`; a table is in one silo;
+a shared table may not `@ref` a siloed one, a siloed one may `@ref` a shared one or one of its
+silo (E0033). Every `Db` operation on a siloed table needs the key narrowed (E0026); there is
+no query over every org. `Db.update` cannot move a row to another org.
+
+### One store per `Task`
+
+A `Task` is one transaction, so it writes to one store, the shared one or
+one silo; an `update` arm whose writes (followed into helpers, any module, and `Task.all`)
+fall in two is E0031: "`Create` writes `Project` (silo `org`) and `AuditLog` (shared): a
+Task writes to one store. Write `AuditLog` inside the silo, or send it from its own
+message." Reads may mix (one `load` reads an org's name and its projects); `Session.put`
+and capabilities do not count.
+
 ## Beyond CRUD
 
 Joins, aggregates, and full-text search are not in the language. Declare a
@@ -2445,6 +2716,7 @@ Text.fromInt   : Int -> Text
 Text.fromFloat : Float -> Text
 Text.toInt     : Text -> Maybe Int
 Text.toFloat   : Text -> Maybe Float
+Text.toBytes   : Text -> Bytes               -- the UTF-8 bytes (chapter 9, "File, Bytes")
 Text.NonEmpty, Text.Email, Text.Url, Text.Secret   -- refinement brands
 ```
 
@@ -2487,6 +2759,10 @@ Float.floor  : Float -> Int
 Float.ceil   : Float -> Int
 Float.min, Float.max, Float.abs
 Float.format : { decimals: Int } -> Float -> Text
+Float.sqrt   : Float -> Float
+Float.exp    : Float -> Float
+Float.log    : Float -> Float                   -- natural logarithm
+Float.pow    : Float -> Float -> Float          -- Float.pow base exponent
 ```
 
 `Int` arithmetic wraps on overflow; `/` truncates toward zero and `%` has
@@ -2505,6 +2781,14 @@ way to `n` decimals and pads with zeros (`Float.format { decimals: 2 }
 
 ```alder eval=["1.01", "1.50", "0.0"]
 [Float.format { decimals: 2 } 1.005, Float.format { decimals: 2 } 1.5, Float.format { decimals: 1 } (-0.001)]
+```
+
+`Float.sqrt`, `Float.exp`, `Float.log` and `Float.pow` are Go's `math`
+functions: they follow IEEE rules, so `Float.sqrt (-1.0)` and `Float.log (-1.0)`
+are NaN and `Float.log 0.0` is negative infinity, not failures.
+
+```alder eval=[3.0, 8.0]
+[Float.sqrt 9.0, Float.pow 2.0 3.0]
 ```
 
 ## Bool
@@ -2561,6 +2845,10 @@ Time.now       : Query Time
 Time.toDate    : Time -> Date
 Time.format    : Text -> Time -> Text
 Time.ago       : Time -> Time -> Text           -- Time.ago now then = "3 hours ago"
+Time.toMillis  : Time -> Int                    -- milliseconds since 1970-01-01 00:00 UTC
+Time.fromMillis : Int -> Time
+Time.addMillis : Int -> Time -> Time
+Time.diffMillis : Time -> Time -> Int           -- Time.diffMillis a b = b − a, in milliseconds
 ```
 
 `Date.diffDays a b` is the number of days from `a` to `b`, that is `b − a`:
@@ -2579,7 +2867,8 @@ Date.fromText "2026-10-08"
 Html.unsafe : Text -> Html Never                -- unescaped markup; never for user text
 Html.none  : Html a                             -- renders nothing
 Html.text  : Text -> Html a
-Url.external : Text -> Page                     -- external link for href or Redirect
+Html.fragment : List (Html a) -> Html a         -- the nodes side by side, no wrapper element
+Url.external : Text -> Page                     -- external URL for href, src or Redirect
 ```
 
 `Url.external` keeps a URL only when it is an absolute `http:` or `https:`
@@ -2596,6 +2885,42 @@ one is answered with a 500 (`refusing to navigate to javascript:`).
 
 A `Page` compares by its address: `Todos.Index {} == Todos.Index
 { filter: All }`, since a defaulted parameter is left out of the URL.
+
+`Time.toMillis` counts milliseconds from the epoch, the instant
+`Time.epoch`, and `Time.fromMillis` goes back. `Time.diffMillis a b` is
+`b − a`, like `Date.diffDays`: negative when `b` is earlier.
+
+```alder eval=0
+Time.toMillis Time.epoch
+```
+
+## File, Bytes
+
+A file page's `view` returns a `File` (chapter 6, "File pages"). `Bytes` is
+the type of a body that is not text (chapter 7, "A capability returning
+bytes"); it has no operations of its own beyond the two below, and a
+`Text` becomes `Bytes` with `Text.toBytes`.
+
+```alder
+File.text       : { contentType: Text, body: Text } -> File      -- a 200 answer
+File.bytes      : { contentType: Text, body: Bytes } -> File     -- a 200 answer
+File.html       : Html Never -> File                             -- text/html; charset=utf-8, rendered verbatim: no doctype unless the node has one
+File.json       : Text -> File                                   -- application/json
+File.withStatus : Int -> File -> File                            -- 200..599
+File.withHeader : { name: Text, value: Text } -> File -> File    -- Content-Disposition, Cache-Control, ETag, Last-Modified, Retry-After, Content-Language, X-…
+File.status      : File -> Int
+File.contentType : File -> Text
+File.body        : File -> Bytes
+
+Bytes.length    : Bytes -> Int                                   -- the number of bytes
+Bytes.toText    : Bytes -> Maybe Text                            -- Just when the bytes are valid UTF-8
+```
+
+`Bytes.length` counts bytes, not letters: `é` is two bytes in UTF-8.
+
+```alder eval=6
+Bytes.length (Text.toBytes "héllo")
+```
 
 ## Query, Task, Db, Session, Log, Time, Random, Http
 
@@ -2627,6 +2952,23 @@ signed-in user`" (the operation and table as written):
 | `Db.deleteMine` | `Table t -> Id t -> Task Unit` | deletes the user's row; not found otherwise |
 | `Db.insertMine` | `Table t -> Insert t -> Task (Id t)` | inserts a row owned by the user; the row is a record literal in the call, without the owner column |
 
+The same operations for any partition key (M15): a table with a
+`@partition k` column (`@owner` is `@partition user`), used only where
+the session's `k` is narrowed, in a page module whose page `requires k`
+(chapter 6, "Partitions"). The `mine` family above is these with the key
+`user`, written for tables partitioned by `user`:
+
+| Function | Type | |
+|---|---|---|
+| `Db.scoped` | `Table t -> Select t` | the rows of the session's partition; a `Select` like `Db.from t` |
+| `Db.getScoped` | `Table t -> Id t -> Query t` | the row in the session's partition; not found when it is missing or in another |
+| `Db.updateScoped` | `Table t -> Id t -> (t -> t) -> Task Unit` | changes the row in the partition; not found otherwise; never changes the partition column |
+| `Db.deleteScoped` | `Table t -> Id t -> Task Unit` | deletes the row in the partition; not found otherwise |
+| `Db.insertScoped` | `Table t -> Insert t -> Task (Id t)` | inserts a row in the session's partition; the row is a record literal in the call, without the partition column |
+
+Without the key they fail ("Db.insertScoped Project: the session has no org"). On a siloed
+table (chapter 8, "Silos") every `Db` operation needs the key.
+
 `Query.notFound` and `Task.notFound` (both
 `: Query a` / `: Task a`, no arguments) stop the effect and answer 404 with
 `App.notFound`; a `Task` that ends in `Task.notFound` is rolled back like
@@ -2650,6 +2992,8 @@ Only a `test` may use these (chapter 10); anywhere else each is E0003
   never an expression. It has no type of its own to pass around, so
   `Test.fake` cannot be applied to a variable, piped into, or left
   without its argument.
+- `Test.member ann acme : Task Unit` inserts the `via` table's row making the user a member
+  of the key (other columns `Nothing` or their default; E0003 if one is required).
 
 
 # 10. Testing
@@ -2843,6 +3187,13 @@ the user. Without a signed-in user a scoped step fails, saying so (`Err
 "Db.updateMine Todo: no signed-in user"`); it never answers as if the user
 had no rows. A test may use the scoped operations itself too, after
 `Test.login`.
+
+With a key (chapter 6, "Partitions"), `Test.login { user: Just ann, org: Just acme }`
+needs the membership first, as `Session.put` does: `Test.member ann acme` inserts it. Each org a
+test touches has its own in-memory database (a silo); insert another org's siloed rows before
+`Test.login`, as production refuses them in a request of this org. A crafted switch is a direct
+call: `Test.run (update (Open { org: globex }) model session)` is `Err "Session.put org: no
+Membership for this user and org"`, which kills the mutant `membership dropped`.
 
 **Where an effect test runs.** Each effect test gets a fresh, empty
 in-memory SQLite database with the app's tables; its block runs as one
@@ -3254,7 +3605,7 @@ and **a cookie**, the signed cookie that carries the session (chapter 6),
 sent back with every request. Before the first step there is no cookie,
 so the session is `App`'s default, `{ user: Nothing }`.
 
-Six steps act through it. Each is a `Task` (a step of the test's block,
+Seven steps act through it. Each is a `Task` (a step of the test's block,
 written with `let x <-`), and each works only inside a `test`:
 
 | Step | What it does | It gives |
@@ -3262,6 +3613,7 @@ written with `let x <-`), and each works only inside a `test`:
 | `Test.login s` | puts the session `s` in the cookie, as a login would | `Unit` |
 | `Test.get p` | requests the page `p`; the test fails unless the page is shown | `{ model: Model, session: Session, doc: Doc }` |
 | `Test.open p` | requests the page `p`, whatever the answer | `{ answer: Answer, session: Session, doc: Doc }` |
+| `Test.fetch p` | requests the file page `p`; the raw answer, redirects not followed (below) | `{ status: Int, contentType: Text, body: Bytes, headers: … }` |
 | `Test.submit F r` | posts the record `r` through the page's form `F` | `{ answer: Answer, session: Session, doc: Doc }` |
 | `Test.submitRaw F fields` | posts text fields through the page's form `F` | `{ answer: Answer, session: Session, doc: Doc }` |
 | `Test.click m` | presses the page's button that sends the message `m` | `{ answer: Answer, session: Session, doc: Doc }` |
@@ -3326,6 +3678,71 @@ The 404 answer is `PageMissing`, not `NotFound`, so that an app keeps the
 name `NotFound` for a constructor of its own. The six names are kept for
 `Answer` everywhere: a union or `msg` of the app may not use one
 (E0012), nor may a type be named `Doc` or `Answer`.
+
+### `Test.fetch`: requesting a file
+
+A file page (chapter 6, "File pages") answers a file, not a document, so
+there is no page for the browser to hold. `Test.fetch p` takes a page
+value written in place, like `Test.get`, sends the same plain `GET` with
+the cookie, and gives the answer as the server would send it:
+
+```text
+Test.fetch : Page -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }
+```
+
+`status` is the status number, `contentType` the label of the body (both
+explained in chapter 6), `body` the bytes, and `headers` the extra
+headers, sorted by name. It does not follow a redirect: a page that
+`requires` a user the cookie lacks answers `status: 303` and a
+`Location` header, and the test reads that. It does not change the page
+the browser holds, either, so it can be used between `Test.get`s.
+
+`Bytes` has almost no operations (chapter 9, "File, Bytes"), so a test
+reads a text body with `Bytes.toText`, which gives `Just text` when the
+bytes are valid UTF-8, and compares the `Maybe`:
+
+```alder
+module Todos.Slow
+
+page "/slow" { }
+
+type Model = { waited: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let before <- Time.now
+  let _ <- Query.delay 20000
+  let after <- Time.now
+  Query.succeed { waited: Time.diffMillis before after }
+}
+
+view : Model -> Session -> File
+view model session = File.json (Text.fromInt model.waited)
+
+-- The test clock moves one second at each Time.now reading, and the delay moves it 20 s
+-- without waiting, so the two readings are 21000 ms apart.
+test "slow waits twenty virtual seconds" = {
+  let r <- Test.fetch (Todos.Slow {})
+  Task.succeed ({ status: r.status, type: r.contentType, body: Bytes.toText r.body } == { status: 200, type: "application/json", body: Just "21000" })
+}
+
+test "the delay is on the trace" = {
+  let _ <- Test.fetch (Todos.Slow {})
+  let trace <- Test.trace
+  Task.succeed (List.member "Query.delay 20000ms" trace)
+}
+```
+
+The delay is virtual in a test: `Query.delay 20000` does not wait 20
+seconds. The test's clock moves forward by the delay at once, so a
+`Time.now` after it shows the time that passed, and the test stays fast.
+The trace names the step with its clamped number (`Query.delay 20000ms`).
+
+`Test.open` and `Test.get` on a file page are errors, because their result
+is a page to read: the checker refuses them (E0003, "`Todos.Slow` is a file page:
+use `Test.fetch`"). This is a check of the page's type, so it covers a
+`File.html` page too. As a second guard, a `Test.open` whose answer at run
+time is not HTML fails with `RequestFailed` and the same advice.
 
 ### `Test.login`, `requires`, and the session
 
@@ -3642,6 +4059,12 @@ And when the test compiles (E0003 unless named):
   browser with JavaScript off, a plain form post answered by a
   redirect, is not tested either (section 12).
 
+A step's result also has `notices`, the list of toast texts the answer showed
+(`Notice.with "Saved" Rerender` gives `["Saved"]`), empty when there were none:
+
+    { answer: r.answer, notices: r.notices } == { answer: Rerendered, notices: ["Saved"] }
+
+
 ## 11. Mutation testing
 
 Passing tests say the code does what they check, not that they check
@@ -3685,14 +4108,15 @@ before `→` after, shortened with `…` (an arm swap names its arms).
 
 ### The operators
 
-Each mutant comes from one of twenty **operators**, named by what it
+Each mutant comes from one of twenty-one **operators**, named by what it
 breaks, in five classes; every mutant is well-typed:
 
 | Class | Operator | What it changes |
 |---|---|---|
 | authorization | `requires dropped` | A page's `requires user` no longer redirects a visitor, who is served as `User.UserId "mutant"` (for a field that is a brand over `Text`) |
 | authorization | `role dropped` | `requires user, role R` becomes `requires user` |
-| authorization | `scope dropped` | `Db.mine T` becomes `Db.from T`; the other scoped operations act on anyone's row |
+| authorization | `scope dropped` | `Db.mine T` becomes `Db.from T`; the other scoped operations act on anyone's row; likewise `Db.scoped` and its family (not on a siloed table) |
+| authorization | `membership dropped` | A key's `via M` check removed: a `Session.put` of any org succeeds |
 | authorization | `guard dropped` | An `if` or `match` with one arm ending in `Task.notFound`, `Query.notFound` or `Task.fail` becomes its other arm: the check is gone |
 | data | `where dropped` | One `Db.where` of a query removed |
 | data | `orderBy reversed` | A `Db.orderBy`'s `asc` and `desc` swapped |
@@ -3710,6 +4134,8 @@ breaks, in five classes; every mutant is well-typed:
 | logic | `not dropped` | `not e` becomes `e` |
 | schema | `default changed` | A table field's default: `False`↔`True`, a number → one more, `""`→`"x"`, a union's constructor → the next one |
 | schema | `cascade ↔ restrict` | A reference's delete rule, `@cascade`↔`@restrict` |
+
+`membership dropped` dies only to a test that tries an org the user is no member of.
 
 ### A surviving mutant is a test you have not written
 
@@ -3810,6 +4236,11 @@ test "Logout makes the role Member" = {
   let _ <- Test.get (Todos.Index {})
   let out <- Test.click Logout
   Task.succeed ({ out: out.answer, role: out.session.role } == { out: Redirected (Auth.Login {}), role: Member })
+}
+
+-- Where `alder deploy` ships the app (book 16). `local` runs a script; nothing here is a secret.
+deploy {
+  local: Script "./scripts/deploy-local.sh",
 }
 
 --- file: app/Auth/Login.alder ---
@@ -3923,6 +4354,7 @@ Page props =
       <meta charset="utf-8" />
       <title>{props.title}</title>
       <link rel="stylesheet" href={Url.external "/static/al/al.css"} />
+      <script type="module" src="/static/al/al.js"></script>
       <link rel="stylesheet" href={Url.external "/static/app.css"} />
     </head>
     <body>

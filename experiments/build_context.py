@@ -81,7 +81,10 @@ KEEP_SUBSECTIONS = {
 # shows are stated in the section around it.
 DROP_SUBSECTIONS = {
     "06": {"Rules": ["The rules and a replicated database"],
-           "App-level messages": ["Example: a theme switch"]},
+           "App-level messages": ["Example: a theme switch"],
+           "File pages": ["Status and headers", "Links and the boost", "What stays HTML"]},
+    "07": {"Capabilities": ["A capability returning bytes"],
+           "How effects run": ["Waiting: `Query.delay` and `Task.sleep`"]},
     "08": {"Migrations": ["When the app starts", "Statements you add"]},
     "09": {"Test": ["Browser steps and queries"]},
     "10": {"11. Mutation testing": ["Why a mutation score", "The rules' mutants in a report", "How the two tests kill them", "All fourteen, and one killed by luck", "What is never a mutant",
