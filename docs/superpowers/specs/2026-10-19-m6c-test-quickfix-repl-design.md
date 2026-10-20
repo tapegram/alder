@@ -95,8 +95,8 @@ disk), then run `alder test --json <args>`. On completion:
   root), `lnum`/`col` from the result, `type = 'E'`, `text` on one line: `FAIL "name" —
   left: <left>  right: <right>`, or `error: <error>` / `note: <note>` when there is no
   `left`; a `trace` is not shown (the terminal has it);
-- a notification with the summary (`12 passed, 1 failed`; `0 passed, 0 failed` keeps the
-  CLI's hint); the quickfix list, titled `alder test`, opens when there are failures and
+- a notification with the CLI's summary line (`12 passed, 1 failed`; a `-run` that matches
+  nothing gives `0 passed, 0 failed`, as the CLI prints it, with no hint); the quickfix list, titled `alder test`, opens when there are failures and
   closes when it is open, holds the previous run, and the run is clean;
 - `{"error": msg}` or a non-zero exit with no results: an error notification with the
   CLI's stderr.
