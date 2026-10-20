@@ -1,6 +1,7 @@
 package generate
 
 import (
+	"cmp"
 	"embed"
 	"fmt"
 	"regexp"
@@ -9,6 +10,7 @@ import (
 	"text/template"
 
 	"alder/internal/check"
+	"alder/internal/syntax"
 	"alder/internal/types"
 )
 
@@ -51,6 +53,8 @@ type PageData struct {
 	// LoadHole: `load` is the typed hole ?load (a page with path parameters, whose load reads
 	// what they name: the author's)
 	LoadHole bool
+	// ContentType is a file page's content type (--file --type).
+	ContentType string
 	// By is --show's --by column: the row is read by it (`Db.where (T.slug.eq params.slug)`)
 	// rather than by its id
 	By string
@@ -109,6 +113,10 @@ type PageOptions struct {
 	// By is --show T --by <column>: the row is looked up by that `@unique` column of T, whose
 	// value the path's last segment `{<column>}` carries, instead of by its id.
 	By string
+	// File (--file): a file page, whose `view` returns `File` (File.text with a typed hole for
+	// the body) instead of HTML; ContentType (--type) is the file's, text/plain when empty.
+	File        bool
+	ContentType string
 }
 
 // pathParam matches a `{name}` segment of a page path.
@@ -131,6 +139,12 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	}
 	if !strings.HasPrefix(o.Path, "/") {
 		return nil, Refusef("`%s` is not a path: a page's path starts with `/`, such as `/posts`", o.Path)
+	}
+	if o.File && (o.List != "" || o.Show != "" || len(o.From) > 0 || o.Blank || o.Example) {
+		return nil, Refusef("--file makes a file page; --list and --show make HTML pages")
+	}
+	if o.ContentType != "" && !o.File {
+		return nil, Refusef("--type goes with --file")
 	}
 	if o.By != "" && o.Show == "" {
 		return nil, Refusef("--by names the column --show T reads its row by: give --show T too")
@@ -321,6 +335,17 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	tmpl := "page.tmpl"
 	var pageOf func(tb *testBuilder) string // the page value a test opens
 	switch {
+	case o.File:
+		tmpl = "page_file.tmpl"
+		d.ContentType = cmp.Or(o.ContentType, "text/plain")
+		delete(imports.set, "Layout") // the view is a File: no layout
+		pageOf = func(*testBuilder) string { return pageLit(o.Module, nil) }
+		if paramPage != nil {
+			pageOf = func(tb *testBuilder) string { return tb.pageValue(paramPage) }
+		}
+		tb := newTest()
+		tb.let("let r <- Test.fetch (%s)", pageOf(tb))
+		d.Tests = append(d.Tests, TestData{Name: quote("the file is served"), Lines: tb.lines, Result: "r.status == 200"})
 	case o.Blank:
 		tmpl = "page_blank.tmpl"
 		delete(imports.set, "Layout") // the view is a hole: whatever fills it imports what it uses
@@ -549,6 +574,25 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	}
 	d.Imports = imports.list()
 	return []Edit{{Path: file, Create: true, Body: render(tmpl, d)}}, nil
+}
+
+// isFilePage reports whether m's `view` returns `File`: the signature walk of the checker's
+// viewReturnsFile (unexported), repeated here.
+func isFilePage(m *syntax.Module) bool {
+	v := valueDecl(m, "view")
+	if v == nil || v.Sig == nil {
+		return false
+	}
+	t := v.Sig
+	for {
+		ft, ok := t.(*syntax.FunType)
+		if !ok {
+			break
+		}
+		t = ft.Result
+	}
+	tn, ok := t.(*syntax.TypeName)
+	return ok && tn.Name == "File" && (tn.Module == "" || tn.Module == "Prelude") && len(tn.Args) == 0
 }
 
 // uniqueColumns lists t's `@unique` columns for a message, "none" when it has none.

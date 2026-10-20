@@ -53,6 +53,9 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]
 	if err != nil {
 		return nil, err
 	}
+	if isFilePage(m.Syntax) {
+		return nil, Refusef("a file page has no messages: `view` returns `File`, so nothing can be posted from it; move the message to an HTML page")
+	}
 	if !IsUpperIdent(name) {
 		return nil, Refusef("`%s` is not a message name: a message is named by a capitalised identifier, such as `Archive`", name)
 	}

@@ -1,0 +1,7 @@
+wrote app/Tags/Txt.alder
+app/Tags/Txt.alder:8:23: warning[W0002]: hole ?load has type Query Tags.Txt.Model
+  load params session = ?load
+                        ^^^^^
+app/Tags/Txt.alder:11:67: warning[W0002]: hole ?body has type Text
+  view model session = File.text { contentType: "text/plain", body: ?body }
+                                                                    ^^^^^

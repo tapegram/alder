@@ -1,0 +1,16 @@
+module Reports.Csv
+
+page "/reports.csv" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> File
+view model session = File.text { contentType: "text/csv", body: ?body }
+
+test "the file is served" = {
+  let r <- Test.fetch (Reports.Csv {})
+  Task.succeed (r.status == 200)
+}

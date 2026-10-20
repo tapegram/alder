@@ -234,6 +234,12 @@ var genCases = []genCase{
 	{name: "page-param", base: "scaffold", args: []string{"new", "page", "Tags.Show", "/tags/{name}", "--param", "name:Text"}, test: true,
 		fills: [][2]string{{"Tags.Show.load", "Query.succeed { }"}}},
 	{name: "fixture-page-show-by", base: "fixture", args: []string{"new", "page", "Tags.Show", "/tags", "--show", "Tag", "--by", "name"}, test: true},
+	{name: "page-file", base: "scaffold", args: []string{"new", "page", "Reports.Csv", "/reports.csv", "--file", "--type", "text/csv"}, test: true,
+		fills: [][2]string{{"Reports.Csv.view --hole ?body", `"a,b\n"`}}},
+	{name: "page-file-default", base: "scaffold", args: []string{"new", "page", "Notes.Txt", "/notes.txt", "--file"}, test: true,
+		fills: [][2]string{{"Notes.Txt.view --hole ?body", `"hi"`}}},
+	{name: "page-file-param", base: "scaffold", args: []string{"new", "page", "Tags.Txt", "/tags/{name}", "--file", "--param", "name:Text"}, test: true,
+		fills: [][2]string{{"Tags.Txt.load", "Query.succeed { }"}, {"Tags.Txt.view --hole ?body", `"hi"`}}},
 	{name: "form-msg", base: "scaffold", args: []string{"new", "form", "Home", "Quick", "name:Text.NonEmpty", "message:Text.NonEmpty", "--msg", "Sign2"}, test: true},
 	// E11 fixes: the four commands
 	{name: "app-msg", base: "scaffold", args: []string{"new", "msg", "App", "ToggleTheme", "dark:Bool"}, test: true,
@@ -426,6 +432,10 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"fill", "--decl", "Home.nope", "-"}, "1", "alder fill: `Home` has no declaration `nope` with a body (a value, a type or a test)"},
 		{"scaffold", []string{"fill", "--decl", "Home.load", "-"}, "Query.succeed { entries: [] },\n}\n", "alder fill: `alder fill --decl` takes one expression; found more after it"},
 		{"scaffold", []string{"fill", "--decl", "Home.Model", "-"}, "{ entries: List Entry } | x", "alder fill: `alder fill --decl` takes one type for `type Model`"},
+		{"scaffold", []string{"new", "page", "X", "/x", "--file", "--list", "Entry"}, "", "alder new page: --file makes a file page; --list and --show make HTML pages"},
+		{"scaffold", []string{"new", "page", "X", "/x", "--file", "--show", "Entry"}, "", "alder new page: --file makes a file page; --list and --show make HTML pages"},
+		{"scaffold", []string{"new", "page", "X", "/x", "--file", "--example"}, "", "alder new page: --file makes a file page; --list and --show make HTML pages"},
+		{"scaffold", []string{"new", "page", "X", "/x", "--type", "text/csv"}, "", "alder new page: --type goes with --file"},
 		// M13 final
 		{"scaffold", []string{"new", "page", "Tags.Show", "/tags/{name}", "--param", "slug:Text"}, "", "alder new page: `/tags/{name}` has the parameter `{name}` but no `--param name:<Type>`"},
 		{"scaffold", []string{"new", "page", "Tags.Show", "/tags/{name}", "--param", "name:Text", "--param", "x:Int"}, "", "alder new page: --param x: `/tags/{name}` has no `{x}` segment"},
@@ -474,8 +484,24 @@ func TestGenerate_Refusals(t *testing.T) {
 		}
 	}
 
-	// two holes in one declaration, and a hole not there
+	// a file page has no messages: new msg and new form refuse it
 	dir := genApp(t, "scaffold")
+	if code, _, errs := alderIn(t, dir, "", "new", "page", "Reports.Csv", "/reports.csv", "--file"); code != 0 {
+		t.Fatalf("new page --file: %s", errs)
+	}
+	for _, args := range [][]string{{"new", "msg", "Reports.Csv", "Refresh"}, {"new", "form", "Reports.Csv", "Contact", "name:Text"}} {
+		before := appFiles(t, dir)
+		code, _, errs := alderIn(t, dir, "", args...)
+		if want := "alder " + args[0] + " " + args[1] + ": a file page has no messages: `view` returns `File`, so nothing can be posted from it; move the message to an HTML page\n"; code != 1 || errs != want {
+			t.Errorf("alder %s: exit %d, stderr %q", strings.Join(args, " "), code, errs)
+		}
+		if ch := changedFiles(before, appFiles(t, dir)); len(ch) != 0 {
+			t.Errorf("alder %s wrote %v", strings.Join(args, " "), slices.Sorted(maps.Keys(ch)))
+		}
+	}
+
+	// two holes in one declaration, and a hole not there
+	dir = genApp(t, "scaffold")
 	alderIn(t, dir, "", "new", "msg", "Home", "Pin", "note:Text")
 	if code, _, errs := alderIn(t, dir, "Rerendered", "fill", `Home."pressing Pin"`, "-"); code != 1 || errs != "alder fill: `Home.\"pressing Pin\"` has 2 holes (?pinNote, ?expected): name one with --hole\n" {
 		t.Errorf("two holes: exit %d, %q", code, errs)

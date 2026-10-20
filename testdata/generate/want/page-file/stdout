@@ -1,0 +1,4 @@
+wrote app/Reports/Csv.alder
+app/Reports/Csv.alder:11:65: warning[W0002]: hole ?body has type Text
+  view model session = File.text { contentType: "text/csv", body: ?body }
+                                                                  ^^^^^

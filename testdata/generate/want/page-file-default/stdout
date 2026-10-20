@@ -1,0 +1,4 @@
+wrote app/Notes/Txt.alder
+app/Notes/Txt.alder:11:67: warning[W0002]: hole ?body has type Text
+  view model session = File.text { contentType: "text/plain", body: ?body }
+                                                                    ^^^^^

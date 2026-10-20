@@ -48,6 +48,9 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 	if err != nil {
 		return nil, err
 	}
+	if isFilePage(m.Syntax) {
+		return nil, Refusef("a file page has no messages: `view` returns `File`, so nothing can be posted from it; move the message to an HTML page")
+	}
 	if !IsUpperIdent(o.Name) {
 		return nil, Refusef("`%s` is not a form name: a form is named by a capitalised identifier, such as `Contact`", o.Name)
 	}
