@@ -104,7 +104,8 @@ var commandTree = []cmdSpec{
 		Flags: []flagSpec{
 			{Name: "--run", Summary: "run the effect the expression describes"},
 			{Name: "--json", Summary: "print the result as JSON"},
-			{Name: "--module", Value: "Name", Summary: "evaluate inside this module"},
+			{Name: "--in", Value: "Name", Summary: "evaluate inside this module: its names unqualified"},
+			{Name: "--module", Value: "Name", Summary: "name eval's own scratch module (default Scratch)"},
 		}},
 	{Name: "test", Summary: "run the app's tests", Usage: commandUsages["test"],
 		Args: []string{"[dir]"},

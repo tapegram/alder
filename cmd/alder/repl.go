@@ -754,7 +754,7 @@ func (r *repl) reportApp(checked scratch.Checked, app []diag.Diagnostic) {
 		return
 	}
 	var buf bytes.Buffer
-	evalDiags(r.dir, app, checked.MapDiag, evalSource{}, r.modName, false, nil, &buf)
+	evalDiags(r.dir, app, checked.MapDiag, evalSource{}, func(d diag.Diagnostic) bool { return d.Span.File == r.modName+".alder" }, false, nil, &buf)
 	if buf.String() == r.appDiags {
 		fmt.Fprintln(r.stderr, "alder repl: the app has errors (shown above); fix them and save")
 		return
@@ -797,7 +797,7 @@ func (r *repl) printDiag(checked scratch.Checked, d diag.Diagnostic, e replEntry
 	es := assemble([]item{e.item})
 	es.lines = e.lines
 	var buf bytes.Buffer
-	evalDiags(r.dir, []diag.Diagnostic{d}, mapLine, es, r.modName, false, nil, &buf)
+	evalDiags(r.dir, []diag.Diagnostic{d}, mapLine, es, func(d diag.Diagnostic) bool { return d.Span.File == r.modName+".alder" }, false, nil, &buf)
 	text := buf.String()
 	if m := inputPos.FindStringSubmatchIndex(text); m != nil {
 		label := "expr:" + text[m[2]:m[5]] + ": "

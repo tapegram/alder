@@ -22,7 +22,7 @@ import (
 )
 
 // evalUsage is the usage line of `alder eval`.
-const evalUsage = "usage: alder eval [dir] [--run] [--json] [--module Name] <expr | ->"
+const evalUsage = "usage: alder eval [dir] [--run] [--json] [--in Name | --module Name] <expr | ->"
 
 // evalResult is the --json output of `alder eval`.
 type evalResult struct {
@@ -33,11 +33,14 @@ type evalResult struct {
 	Hint        string            `json:"hint,omitempty"` // a note on a success (`--run` given a Select)
 }
 
-// runEvalTo is `alder eval [dir] [--run] [--json] [--module Name] <expr | ->`: it evaluates an
+// runEvalTo is `alder eval [dir] [--run] [--json] [--in Name | --module Name] <expr | ->`: it evaluates an
 // expression (or, with `-`, standard input: `let name = expr` lines, then an expression) in a
 // scratch module that sees every module of the app at dir (default "."), compiled by the real
 // compiler, and prints `value : Type`. The scratch module is named Scratch, or Name with
-// --module (for an app that has a module named Scratch). A `Query` is shown as `<Query>` unless
+// --module (for an app that has a module named Scratch). With `--in Name` the expression is
+// checked as if appended to app module Name: its declarations and imports unqualified, as a
+// `test` in that module is written; `--module` names the scratch module of the other mode, and
+// the two together are a usage error. A `Query` is shown as `<Query>` unless
 // --run runs it against build/<app>/dev.db; a `Select` is shown as `<Select>` (with --run, a
 // hint to pipe it to a Db function); a `Task` is refused. --run runs with the app's default
 // session (app.TestSession()) and, when adapters/ holds Go files, the adapters' capabilities
@@ -77,7 +80,7 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 
 	var pos []string
 	run, named := false, false
-	modName := "Scratch"
+	modName, inName := "Scratch", ""
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
@@ -90,10 +93,21 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 			modName, named = args[i], true
 		case strings.HasPrefix(a, "--module="):
 			modName, named = strings.TrimPrefix(a, "--module="), true
+		case strings.HasPrefix(a, "--in=") || a == "--in" && i+1 < len(args):
+			name, next := inFlagValue(args, i)
+			inName, i = name, next
 		case strings.HasPrefix(a, "--"):
 			return failf(2, "%s", evalUsage)
 		default:
 			pos = append(pos, a)
+		}
+	}
+	if inName != "" && named {
+		return failf(2, "alder eval: --in and --module do not combine: --in Name evaluates inside module Name, --module names the scratch module\n%s", evalUsage)
+	}
+	if inName != "" {
+		if err := errInName(inName); err != nil {
+			return failf(2, "alder eval: %v", err)
 		}
 	}
 	if !moduleNameRE.MatchString(modName) {
@@ -131,8 +145,15 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	}
 	appBuild := filepath.Join("build", filepath.Base(abs))
 
-	mod := &scratch.Module{Name: modName, Source: es.src, Infer: true}
+	sessionName := modName
+	if inName != "" {
+		sessionName = inName
+	}
+	mod := &scratch.Module{Name: modName, In: inName, Source: es.src, Infer: true}
 	checked := scratch.Check(dir, mod)
+	if nm := (*scratch.NoModuleError)(nil); errors.As(checked.Err, &nm) {
+		return failf(2, "alder eval: %v", nm)
+	}
 	if exists := (*scratch.ModuleExistsError)(nil); errors.As(checked.Err, &exists) {
 		if named {
 			return failf(2, "alder eval: %s; give --module another name", exists.Taken())
@@ -142,7 +163,10 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	if checked.Err != nil {
 		return failf(2, "alder eval: %v", checked.Err)
 	}
-	errs := evalDiags(dir, checked.Diags, checked.MapDiag, es, modName, jsonOut, &res, stderr)
+	if inName != "" && checked.Declares("it") {
+		return failf(2, "alder eval: %s declares it, the name eval gives the expression", inName)
+	}
+	errs := evalDiags(dir, checked.Diags, checked.MapDiag, es, checked.InSession, jsonOut, &res, stderr)
 	if errs {
 		return 1
 	}
@@ -152,7 +176,7 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	if checked.Result.Holes > 0 {
 		return failf(1, "alder eval: the input has %d typed hole(s); fill them to evaluate it", checked.Result.Holes)
 	}
-	sig, ok := checked.Result.Values[modName+".it"]
+	sig, ok := checked.Result.Values[sessionName+".it"]
 	if !ok {
 		return failf(2, "alder eval: internal error: no type was inferred for the expression")
 	}
@@ -180,7 +204,7 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		}
 	}
 	var env []string
-	mainGo := scratchMain(kind, checked.WiresAdapters(), evalIt(modName, sig))
+	mainGo := scratchMain(kind, checked.WiresAdapters(), evalIt(sessionName, sig))
 	if kind == mainQuery {
 		dbPath, err := filepath.Abs(filepath.Join(appBuild, "dev.db"))
 		if err != nil {
@@ -216,7 +240,7 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		return failf(2, "alder eval: %v", b.Err)
 	}
 	if !b.Runnable() { // the check above passed, so this is not expected
-		if evalDiags(dir, b.Diags, b.MapDiag, es, modName, jsonOut, &res, stderr) {
+		if evalDiags(dir, b.Diags, b.MapDiag, es, b.InSession, jsonOut, &res, stderr) {
 			return 1
 		}
 		return failf(2, "alder eval: internal error: nothing was built")
@@ -302,6 +326,29 @@ func evalIt(mod string, sig types.Type) string {
 // moduleNameRE is a one-segment module name, for --module.
 var moduleNameRE = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*(_[A-Za-z0-9]+)*$`)
 
+// appModuleRE is an app module's name, dotted for a nested one (Todos.Index), for --in.
+var appModuleRE = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*(_[A-Za-z0-9]+)*(\.[A-Z][A-Za-z0-9]*(_[A-Za-z0-9]+)*)*$`)
+
+// inFlagValue reads the value of the `--in Name` or `--in=Name` at args[i] and returns it with
+// the index of the last argument it used. The caller has checked that args[i] is one of the two
+// forms, the second with a following argument. eval and the REPL share it; the name is
+// validated by errInName.
+func inFlagValue(args []string, i int) (name string, last int) {
+	if v, ok := strings.CutPrefix(args[i], "--in="); ok {
+		return v, i
+	}
+	return args[i+1], i + 1
+}
+
+// errInName is nil when name is a module name --in can take (appModuleRE), else the usage error
+// naming what --in wants.
+func errInName(name string) error {
+	if appModuleRE.MatchString(name) {
+		return nil
+	}
+	return fmt.Errorf("--in wants an app module name such as Todo or Todos.Index, got %q", name)
+}
+
 // typeParamsOf lists the distinct type parameters of t the way gen counts a declaration's Go
 // type parameters: not those inside an `Html` (its message type is erased).
 func typeParamsOf(t types.Type) []string {
@@ -359,10 +406,10 @@ func evalPrint(stdout io.Writer, jsonOut bool, res *evalResult, value, typ strin
 	return 0
 }
 
-// evalDiags reports ds (to stderr, or into res for --json), the scratch module mod's positioned
-// in the input as file "input", the app's with their own source lines, and says whether one is
+// evalDiags reports ds (to stderr, or into res for --json), those inSession accepts (the
+// session's own lines, Build.InSession) positioned in the input as file "input", the app's with their own source lines, and says whether one is
 // an error.
-func evalDiags(dir string, ds []diag.Diagnostic, mapLine func(diag.Diagnostic) (diag.Diagnostic, bool), es evalSource, mod string, jsonOut bool, res *evalResult, stderr io.Writer) bool {
+func evalDiags(dir string, ds []diag.Diagnostic, mapLine func(diag.Diagnostic) (diag.Diagnostic, bool), es evalSource, inSession func(diag.Diagnostic) bool, jsonOut bool, res *evalResult, stderr io.Writer) bool {
 	failed := false
 	appLines := map[string][]string{}
 	for _, d := range ds {
@@ -370,7 +417,7 @@ func evalDiags(dir string, ds []diag.Diagnostic, mapLine func(diag.Diagnostic) (
 			failed = true
 		}
 		var lines []string
-		if d.Span.File == mod+".alder" {
+		if inSession(d) {
 			d = evalMapDiag(d, mapLine, es)
 			lines = es.lines
 		} else {

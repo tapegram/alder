@@ -188,3 +188,21 @@ func TestHelpJSON_FromSpecs(t *testing.T) {
 		}
 	}
 }
+
+// TestHelpJSON_InFlag: eval takes `--in Name` (repl's joins it with the REPL task).
+func TestHelpJSON_InFlag(t *testing.T) {
+	for _, c := range commandTree {
+		if c.Name != "eval" {
+			continue
+		}
+		for _, f := range c.Flags {
+			if f.Name == "--in" {
+				if f.Value != "Name" {
+					t.Errorf("eval --in value %q, want Name", f.Value)
+				}
+				return
+			}
+		}
+		t.Errorf("eval lists no --in flag")
+	}
+}

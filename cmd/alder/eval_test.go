@@ -659,3 +659,75 @@ func TestEval_MissingAdapter(t *testing.T) {
 		t.Fatalf("broken adapter: exit %d\nstderr: %s", code, stderr)
 	}
 }
+
+func TestEval_InModule(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	evalOK(t, "0 : Int\n", "--in", "Todo", "countOpen []")
+	// the module's own names unqualified, and the names of a module it imports qualified
+	evalOK(t, "\"a\" : Todo.TodoId\n", "--in", "Todo", "TodoId \"a\"")
+	evalOK(t, "\"u\" : User.UserId\n", "--in", "Todo", "User.UserId \"u\"")
+	evalOK(t, "\"Active\" : Text\n", "--in", "Todo", "filterLabel Active")
+}
+
+func TestEval_InNestedModule(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	// Todos.Index's own `update`, and Todo (which it imports) qualified
+	code, stdout, stderr := runEval(t, "", todosDir(t), "--in", "Todos.Index", "update")
+	if code != 0 || !strings.HasPrefix(stdout, "<function> : Todos.Index.Msg -> ") {
+		t.Errorf("exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
+	}
+	evalOK(t, "0 : Int\n", "--in=Todos.Index", "Todo.countOpen []")
+}
+
+func TestEval_InModuleDiagnosticsNameTheInput(t *testing.T) {
+	needGoTool(t)
+	t.Chdir(t.TempDir())
+	code, stdout, stderr := runEval(t, "", todosDir(t), "--in", "Todo", "countOpen 1")
+	if code != 1 || stdout != "" || !strings.Contains(stderr, "input:1:") {
+		t.Errorf("exit %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+}
+
+// A broken declaration of the module itself is the app's diagnostic, not the input's.
+func TestEval_InModuleOwnDiagnosticNamesTheModule(t *testing.T) {
+	needGoTool(t)
+	tmp := t.TempDir()
+	copyDir(t, todosDir(t), filepath.Join(tmp, "todos"))
+	t.Chdir(tmp)
+	path := filepath.Join("todos", "app", "Todo.alder")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(path, append(b, []byte("\nbroken : Int\nbroken = \"x\"\n")...), 0o644)
+	code, stdout, stderr := runEval(t, "", "todos", "--in", "Todo", "1 + 2")
+	if code != 1 || stdout != "" || !strings.Contains(stderr, "app/Todo.alder:") || strings.Contains(stderr, "input:") {
+		t.Errorf("exit %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+}
+
+func TestEval_InUnknownModule(t *testing.T) {
+	t.Chdir(t.TempDir())
+	code, _, stderr := runEval(t, "", todosDir(t), "--in", "Nope", "1")
+	if code != 2 || !strings.Contains(stderr, "no module Nope") {
+		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+}
+
+func TestEval_InBadName(t *testing.T) {
+	t.Chdir(t.TempDir())
+	code, _, stderr := runEval(t, "", todosDir(t), "--in", "todo", "1")
+	if code != 2 || !strings.Contains(stderr, "--in wants") {
+		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+}
+
+func TestEval_InWithModuleIsUsage(t *testing.T) {
+	t.Chdir(t.TempDir())
+	code, _, stderr := runEval(t, "", todosDir(t), "--in", "Todo", "--module", "Probe", "1")
+	if code != 2 || !strings.Contains(stderr, "--in") {
+		t.Errorf("exit %d, stderr %q", code, stderr)
+	}
+}
