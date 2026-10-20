@@ -903,7 +903,7 @@ func (mc *modCtx) reserveGenerated(where string, fixed map[string]string) {
 var preludeReserved = map[string]bool{
 	"Query": true, "Task": true, "Html": true, "Maybe": true, "Result": true, "Nav": true,
 	"List": true, "Dict": true, "Int": true, "Float": true, "Text": true, "Bool": true,
-	"Unit": true, "Date": true, "Time": true, "Never": true, "Error": true, "Doc": true, "Answer": true,
+	"Unit": true, "Date": true, "Time": true, "Never": true, "Error": true, "Doc": true, "Answer": true, "File": true, "Bytes": true,
 }
 
 // reservePrelude reports E0012 for a type, table, form or union of an app module that takes a

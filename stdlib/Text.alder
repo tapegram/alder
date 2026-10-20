@@ -22,3 +22,5 @@ fromInt : Int -> Text
 fromFloat : Float -> Text
 toInt : Text -> Maybe Int
 toFloat : Text -> Maybe Float
+-- the text's UTF-8 bytes
+toBytes : Text -> Bytes

@@ -9,6 +9,10 @@ type Time
 type Never
 type Error
 type Page
+-- a page's answer when its view returns File: a status, a content type, headers and a body, written as given
+type File
+-- a sequence of bytes, such as the body of a File
+type Bytes
 type List a
 type Dict k v
 type Html a

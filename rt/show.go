@@ -157,6 +157,15 @@ func show(v reflect.Value) (string, bool) {
 	case reflect.Float32, reflect.Float64:
 		return showFloat(v.Float())
 	case reflect.Slice, reflect.Array:
+		if t == reflect.TypeFor[[]byte]() {
+			// Bytes: as the text that made them when they are UTF-8 (an application, so it
+			// takes parentheses as an argument), else by length.
+			b := v.Bytes()
+			if utf8.Valid(b) {
+				return "Text.toBytes " + quote(string(b)), true
+			}
+			return fmt.Sprintf("<%d bytes>", len(b)), false
+		}
 		parts := make([]string, v.Len())
 		for i := range v.Len() {
 			parts[i], _ = show(v.Index(i))

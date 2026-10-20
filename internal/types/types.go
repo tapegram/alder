@@ -84,6 +84,8 @@ var (
 	Never = &Con{Name: "Never"}
 	Error = &Con{Name: "Error"}
 	Page  = &Con{Name: "Page"}
+	File  = &Con{Name: "File"}
+	Bytes = &Con{Name: "Bytes"}
 )
 
 // Err is the poison type: the type of a reference that could not be resolved. An error has

@@ -1,0 +1,17 @@
+module File
+
+-- a 200 answer with the text as its body
+text : { contentType: Text, body: Text } -> File
+-- a 200 answer with the bytes as its body
+bytes : { contentType: Text, body: Bytes } -> File
+-- text/html; charset=utf-8, rendered verbatim: no doctype unless the node has one
+html : Html Never -> File
+-- application/json
+json : Text -> File
+-- 200..599
+withStatus : Int -> File -> File
+-- Content-Disposition, Cache-Control, ETag, Last-Modified, Retry-After, Content-Language, X-…
+withHeader : { name: Text, value: Text } -> File -> File
+status : File -> Int
+contentType : File -> Text
+body : File -> Bytes

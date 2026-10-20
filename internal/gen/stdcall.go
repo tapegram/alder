@@ -18,6 +18,18 @@ import (
 var StdCalls = map[string]string{
 	// Bool
 	"Bool.toText": "std.BoolToText",
+	// File, Bytes
+	"File.text":        "std.FileText",
+	"File.bytes":       "std.FileBytes",
+	"File.html":        "std.FileHtml",
+	"File.json":        "std.FileJson",
+	"File.withStatus":  "std.FileWithStatus",
+	"File.withHeader":  "std.FileWithHeader",
+	"File.status":      "std.FileStatus",
+	"File.contentType": "std.FileContentType",
+	"File.body":        "std.FileBody",
+	"Bytes.length":     "std.BytesLength",
+	"Bytes.toText":     "std.BytesToText",
 	// Date
 	"Date.fromText": "std.DateFromText",
 	"Date.toText":   "std.DateToText",
@@ -97,6 +109,7 @@ var StdCalls = map[string]string{
 	"Result.toMaybe":     "std.ResultToMaybe",
 	// Text
 	"Text.length":     "std.TextLength",
+	"Text.toBytes":    "std.TextToBytes",
 	"Text.isEmpty":    "std.TextIsEmpty",
 	"Text.trim":       "std.TextTrim",
 	"Text.toUpper":    "std.TextToUpper",

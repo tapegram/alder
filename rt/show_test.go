@@ -92,6 +92,8 @@ func TestShow(t *testing.T) {
 		{"false", false, "False"},
 		{"unit", struct{}{}, "()"},
 		{"list", []int64{1, 2}, "[1, 2]"},
+		{"bytes", []byte("hi"), `Text.toBytes "hi"`},
+		{"binary bytes", []byte{0xff}, "<1 bytes>"},
 		{"empty list", []string{}, "[]"},
 		{"nil list", []string(nil), "[]"},
 		{"Nothing", rt.Nothing[int64](), "Nothing"},

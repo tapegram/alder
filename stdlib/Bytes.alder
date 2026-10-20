@@ -1,0 +1,6 @@
+module Bytes
+
+-- the number of bytes
+length : Bytes -> Int
+-- Just when the bytes are valid UTF-8
+toText : Bytes -> Maybe Text

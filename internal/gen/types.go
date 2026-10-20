@@ -13,6 +13,7 @@ import (
 //
 //	Int Float Bool Text Unit         int64 float64 bool string struct{}
 //	Date Time Page Error Never       rt.Date time.Time rt.Page error struct{}
+//	File, Bytes                      rt.File, []byte
 //	HttpError, Nav                   rt.HttpError, rt.Nav
 //	Doc, Answer (test builds only)   rtesting.Doc, rtesting.Answer
 //	List a, Dict k v, Html a         []A, rt.Dict[K, V], html.Node (whatever a is)
@@ -52,6 +53,10 @@ func GoType(t types.Type) string {
 			return "rt.Page"
 		case "Error":
 			return "error"
+		case "Bytes":
+			return "[]byte"
+		case "File":
+			return "rt.File"
 		case "HttpError":
 			return "rt.HttpError"
 		case "Doc":

@@ -531,6 +531,8 @@ func TestGoType(t *testing.T) {
 		{types.Date, "rt.Date"},
 		{types.Time, "time.Time"},
 		{types.Page, "rt.Page"},
+		{types.Bytes, "[]byte"},
+		{types.File, "rt.File"},
 		{list(maybe(types.Int)), "[]rt.Maybe[int64]"},
 		{&types.Union{Module: "Prelude", Name: "Result", Args: []types.Type{types.Text, types.Int}}, "rt.Result[string, int64]"},
 		{&types.App{Con: "Dict", Args: []types.Type{types.Text, list(types.Float)}}, "rt.Dict[string, []float64]"},
