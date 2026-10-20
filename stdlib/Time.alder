@@ -5,3 +5,7 @@ epoch : Time
 toDate : Time -> Date
 format : Text -> Time -> Text
 ago : Time -> Time -> Text
+toMillis : Time -> Int
+fromMillis : Int -> Time
+addMillis : Int -> Time -> Time
+diffMillis : Time -> Time -> Int -- Time.diffMillis a b returns b − a

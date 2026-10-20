@@ -47,6 +47,18 @@ func FloatMax(a, b float64) float64 { return math.Max(a, b) }
 
 func FloatAbs(f float64) float64 { return math.Abs(f) }
 
+// FloatSqrt is the square root of f.
+func FloatSqrt(f float64) float64 { return math.Sqrt(f) }
+
+// FloatExp is e raised to the power f.
+func FloatExp(f float64) float64 { return math.Exp(f) }
+
+// FloatLog is the natural logarithm of f; log of a negative is NaN.
+func FloatLog(f float64) float64 { return math.Log(f) }
+
+// FloatPow is base raised to the power exp.
+func FloatPow(base, exp float64) float64 { return math.Pow(base, exp) }
+
 // FloatFormat is `Float.format { decimals } f`: fixed-point with exactly
 // that many decimals (negative counts as 0). It rounds the shortest decimal
 // form of f half away from zero, like Float.round (so 1.005 → "1.01"), and

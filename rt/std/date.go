@@ -37,6 +37,20 @@ func DateDay(d rt.Date) int64 { return int64(d.D) }
 // TimeEpoch is `Time.epoch`: 1970-01-01T00:00:00Z.
 func TimeEpoch() time.Time { return time.Unix(0, 0).UTC() }
 
+// TimeToMillis is milliseconds since Time.epoch.
+func TimeToMillis(t time.Time) int64 { return t.UnixMilli() }
+
+// TimeFromMillis is the UTC instant ms milliseconds after Time.epoch.
+func TimeFromMillis(ms int64) time.Time { return time.UnixMilli(ms).UTC() }
+
+// TimeAddMillis is t moved by ms milliseconds.
+func TimeAddMillis(ms int64, t time.Time) time.Time {
+	return t.Add(time.Duration(ms) * time.Millisecond)
+}
+
+// TimeDiffMillis is `Time.diffMillis a b`: b − a in whole milliseconds, like Date.diffDays.
+func TimeDiffMillis(a, b time.Time) int64 { return b.Sub(a).Milliseconds() }
+
 // TimeToDate is the UTC calendar date of t.
 func TimeToDate(t time.Time) rt.Date { return rt.DateOf(t) }
 

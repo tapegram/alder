@@ -636,3 +636,26 @@ func TestUrlExternalSanitizes(t *testing.T) {
 		}
 	}
 }
+
+func TestTimeMillis(t *testing.T) {
+	if TimeToMillis(TimeEpoch()) != 0 {
+		t.Fatal("epoch is 0")
+	}
+	x := time.Date(2026, 11, 3, 20, 0, 0, 123_456_789, time.UTC)
+	ms := TimeToMillis(x)
+	if !TimeFromMillis(ms).Equal(x.Truncate(time.Millisecond)) || TimeToMillis(TimeFromMillis(ms)) != ms {
+		t.Fatal("round trip on what toMillis gives")
+	}
+	if TimeDiffMillis(x, TimeAddMillis(1500, x)) != 1500 || TimeDiffMillis(TimeAddMillis(1500, x), x) != -1500 {
+		t.Fatal("diffMillis a b = b - a")
+	}
+	if TimeFromMillis(-1000).Location() != time.UTC || TimeToMillis(TimeFromMillis(-1000)) != -1000 {
+		t.Fatal("before the epoch, UTC")
+	}
+}
+
+func TestFloatMath(t *testing.T) {
+	if FloatSqrt(9) != 3 || FloatPow(2, 10) != 1024 || math.Abs(FloatLog(FloatExp(1))-1) > 1e-12 {
+		t.Fatal("sqrt/pow/log/exp")
+	}
+}

@@ -7,3 +7,7 @@ min : Float -> Float -> Float
 max : Float -> Float -> Float
 abs : Float -> Float
 format : { decimals: Int } -> Float -> Text
+sqrt : Float -> Float
+exp : Float -> Float
+log : Float -> Float
+pow : Float -> Float -> Float -- Float.pow base exponent

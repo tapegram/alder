@@ -57,6 +57,10 @@ var StdCalls = map[string]string{
 	"Float.max":    "std.FloatMax",
 	"Float.abs":    "std.FloatAbs",
 	"Float.format": "std.FloatFormat",
+	"Float.sqrt":   "std.FloatSqrt",
+	"Float.exp":    "std.FloatExp",
+	"Float.log":    "std.FloatLog",
+	"Float.pow":    "std.FloatPow",
 	// Html
 	"Html.unsafe": "std.HtmlUnsafe",
 	"Html.none":   "std.HtmlNone",
@@ -127,10 +131,14 @@ var StdCalls = map[string]string{
 	"Text.toInt":      "std.TextToInt",
 	"Text.toFloat":    "std.TextToFloat",
 	// Time
-	"Time.epoch":  "std.TimeEpoch",
-	"Time.toDate": "std.TimeToDate",
-	"Time.format": "std.TimeFormat",
-	"Time.ago":    "std.TimeAgo",
+	"Time.epoch":      "std.TimeEpoch",
+	"Time.toDate":     "std.TimeToDate",
+	"Time.format":     "std.TimeFormat",
+	"Time.ago":        "std.TimeAgo",
+	"Time.toMillis":   "std.TimeToMillis",
+	"Time.fromMillis": "std.TimeFromMillis",
+	"Time.addMillis":  "std.TimeAddMillis",
+	"Time.diffMillis": "std.TimeDiffMillis",
 	// Notice
 	"Notice.with": "std.NavNoticed",
 	// Url
