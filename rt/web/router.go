@@ -163,6 +163,7 @@ func (t *tracker) Flush() {
 type route struct {
 	method string
 	segs   []segment
+	file   bool // Route.File
 	handle func(*Request) Response
 }
 
@@ -217,7 +218,7 @@ func NewRouter(routes []Route, opts Options) http.Handler {
 		if r.Method != http.MethodGet && r.Method != http.MethodPost {
 			panic(fmt.Sprintf("web: route %q: method %q is not GET or POST", r.Pattern, r.Method))
 		}
-		rt.routes = append(rt.routes, route{method: r.Method, segs: compile(r.Pattern), handle: r.Handle})
+		rt.routes = append(rt.routes, route{method: r.Method, segs: compile(r.Pattern), file: r.File, handle: r.Handle})
 	}
 	// the most specific pattern first: /x/new before /x/{id}, whatever the declaration order
 	slices.SortStableFunc(rt.routes, func(a, b route) int { return strings.Compare(a.shape(), b.shape()) })
@@ -283,7 +284,13 @@ func (r *route) match(segs []string) (map[string]string, bool) {
 // pathSegments splits the request path into unescaped segments, ignoring one trailing slash.
 // ok is false for a path that cannot be unescaped.
 func pathSegments(r *http.Request) ([]string, bool) {
-	p := strings.TrimSuffix(strings.TrimPrefix(r.URL.EscapedPath(), "/"), "/")
+	return splitPath(r.URL.EscapedPath())
+}
+
+// splitPath splits an escaped path into unescaped segments, ignoring one trailing slash. ok is
+// false for a path that cannot be unescaped.
+func splitPath(escaped string) ([]string, bool) {
+	p := strings.TrimSuffix(strings.TrimPrefix(escaped, "/"), "/")
 	if p == "" {
 		return nil, true
 	}
@@ -449,18 +456,18 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 	var hit *route
 	var params map[string]string
 	if segs, ok := pathSegments(r); ok {
-		for i := range rt.routes {
-			if rt.routes[i].method != method {
-				continue
-			}
-			if p, ok := rt.routes[i].match(segs); ok {
-				hit, params = &rt.routes[i], p
-				break
-			}
-		}
+		hit, params = rt.find(method, segs)
 	}
 	if hit == nil {
 		rt.notFound(w, r, st, html.None())
+		return
+	}
+	if hit.file && datastar.IsDatastar(r) {
+		// a file is a document of its own: a real navigation, its load not run. Not rt.reload:
+		// ServeHTTP has already dropped the boost's signals parameter from r.URL.
+		if err := datastar.Navigate(w, r.URL.RequestURI(), datastar.Assign); err != nil {
+			rt.log("error", fmt.Sprintf("%s %s: writing the navigation: %v", r.Method, r.URL.Path, err))
+		}
 		return
 	}
 
@@ -504,7 +511,7 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 		rq.Env.CheckSession = rt.opts.SessionCheck
 	}
 	if tw, ok := w.(*tracker); ok {
-		if !rq.Datastar && r.Method == http.MethodGet { // a page GET only: not a HEAD, which shows nothing
+		if !rq.Datastar && r.Method == http.MethodGet && !hit.file { // an HTML page GET only: not a HEAD, which shows nothing, nor a file, which shows no notice
 			tw.alert = rt.takeNotice(w, r)
 		}
 		if rt.panelOn() {
@@ -523,6 +530,20 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 		rt.opts.Served(rq)
 	}
 	rt.write(w, r, st, rq, resp)
+}
+
+// find is the route serve picks for method and the path's segments (the routes are sorted most
+// specific first), and its params; nil when none matches.
+func (rt *router) find(method string, segs []string) (*route, map[string]string) {
+	for i := range rt.routes {
+		if rt.routes[i].method != method {
+			continue
+		}
+		if p, ok := rt.routes[i].match(segs); ok {
+			return &rt.routes[i], p
+		}
+	}
+	return nil, nil
 }
 
 // readForm reads a POST body: url-encoded forms are parsed, any other body except multipart
@@ -657,6 +678,10 @@ func (rt *router) setSession(w http.ResponseWriter, r *http.Request, rq *Request
 }
 
 func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
+	if resp.Raw != nil {
+		rt.writeFile(w, r, st, rq, resp)
+		return
+	}
 	if tw, ok := w.(*tracker); ok {
 		if rq.Notice != "" && rq.Datastar {
 			tw.notice = rq.Notice
@@ -688,7 +713,7 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 				rt.fail(w, r, st, html.None(), fmt.Errorf("%w: refusing to navigate to %s", eff.ErrInternal, rtpkg.URLScheme(resp.Location)), nil)
 				return
 			}
-			if rq.Datastar && followable(resp.Location) {
+			if rq.Datastar && rt.followable(resp.Location) {
 				// a page of this app: serve it here and morph it in (follow)
 				rt.follow(w, r, st, rq, resp)
 				return
@@ -743,6 +768,47 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 	}
 }
 
+// headerNewlines turns CR and LF in a file's header value into spaces: a value cannot end its
+// header line and start another (net/http does the same when it writes; this does not rely on it).
+var headerNewlines = strings.NewReplacer("\r", " ", "\n", " ")
+
+// writeFile writes a file page's answer as given: allow-listed headers (others dropped, with a
+// warn line), Content-Type (application/octet-stream when empty), the status, the body (none for
+// 204, 304 or a HEAD). No doctype, head tags, panel, Alder-Status or morph. A status outside
+// 200..599 is the app's 500 page.
+func (rt *router) writeFile(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
+	f := resp.Raw
+	if resp.Status < 200 || resp.Status > 599 {
+		rt.fail(w, r, st, html.None(), fmt.Errorf("a file page answered status %d; a file's status is 200 to 599", resp.Status), nil)
+		return
+	}
+	if err := rt.setSession(w, r, rq, resp.Session); err != nil {
+		rt.fail(w, r, st, html.None(), err, nil)
+		return
+	}
+	ct := f.ContentType
+	if ct == "" {
+		ct = "application/octet-stream"
+	}
+	if tw, ok := w.(*tracker); ok {
+		tw.setAnswer(fmt.Sprintf("file %d %s %dB", resp.Status, ct, len(f.Body)))
+	}
+	hd := w.Header()
+	for _, h := range f.Headers {
+		name, ok := rtpkg.FileHeaderAllowed(h[0])
+		if !ok {
+			rt.log("warn", fmt.Sprintf("%s: header %q cannot be set from a page; dropped", r.URL.Path, h[0]))
+			continue
+		}
+		hd.Add(name, headerNewlines.Replace(h[1]))
+	}
+	hd.Set("Content-Type", headerNewlines.Replace(ct))
+	w.WriteHeader(resp.Status)
+	if resp.Status != http.StatusNoContent && resp.Status != http.StatusNotModified && r.Method != http.MethodHead {
+		_, _ = w.Write(f.Body)
+	}
+}
+
 // redirectLimit is how many redirects in a row follow serves before it gives up: a GET of the
 // chain answering a redirect when redirectLimit GETs are already behind it is a 500, as a test's
 // browser (rt/testing) counts them.
@@ -784,16 +850,30 @@ func (rt *router) follow(w http.ResponseWriter, r *http.Request, st hop, rq *Req
 }
 
 // followable reports whether a redirect to loc is to a page of this app the router can serve
-// itself (follow): an absolute path ("/…", not "//…"), not the Datastar script nor a file
-// under /static/. Anything else — another site, "#" (an unsafe URL Url.external neutralised) —
-// is navigated to by the browser.
-func followable(loc string) bool {
+// itself (follow): an absolute path ("/…", not "//…"), not the Datastar script, a file under
+// /static/, nor a file page's (Route.File) — a file is a document of its own, never morphed in.
+// Anything else — another site, "#" (an unsafe URL Url.external neutralised) — is navigated to
+// by the browser.
+func (rt *router) followable(loc string) bool {
 	if !strings.HasPrefix(loc, "/") || strings.HasPrefix(loc, "//") || strings.HasPrefix(loc, "/\\") {
 		return false
 	}
 	p, _, _ := strings.Cut(loc, "?")
 	p, _, _ = strings.Cut(p, "#")
-	return p != datastar.ScriptPath && !strings.HasPrefix(p, staticPrefix)
+	if p == datastar.ScriptPath || strings.HasPrefix(p, staticPrefix) {
+		return false
+	}
+	return !rt.isFileRoute(p)
+}
+
+// isFileRoute reports whether the route serve picks for a GET of escaped path p is a file page's.
+func (rt *router) isFileRoute(p string) bool {
+	segs, ok := splitPath(p)
+	if !ok {
+		return false
+	}
+	hit, _ := rt.find(http.MethodGet, segs)
+	return hit != nil && hit.file
 }
 
 // dropSignals removes the `datastar` query parameter Datastar adds to every GET — its signals,

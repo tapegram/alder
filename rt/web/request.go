@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
+	rtpkg "alder/rt"
 	"alder/rt/eff"
 	"alder/rt/html"
 )
@@ -15,6 +16,7 @@ import (
 type Route struct {
 	Method  string // "GET" | "POST"
 	Pattern string
+	File    bool // a file page's GET: answered raw; never morphed or followed
 	Handle  func(rq *Request) Response
 }
 
@@ -41,7 +43,8 @@ type Request struct {
 }
 
 // Response is what a handler returns; build it with the constructors below. Status decides its
-// kind: 200 Page, 303 Redirect, 404 NotFound, 500 Error, 503 Maintenance.
+// kind: 200 Page, 303 Redirect, 404 NotFound, 500 Error, 503 Maintenance; Raw set: a file, with
+// its own status.
 type Response struct {
 	Status   int
 	Node     html.Node       // the document for Page/NotFound/Error
@@ -50,12 +53,22 @@ type Response struct {
 	Patch    bool            // Page: answer a Datastar request with a body patch
 	Session  any             // to store in the cookie (nil, or equal to the request's: unchanged, not stored)
 	Err      error           // Error
+	Raw      *rtpkg.File     // a file page's answer, written as given
 }
 
 // PageResponse renders doc with st (200). When patch is set and the request came from
 // Datastar, only the document's <body> is sent, as an SSE patch. A non-nil session is stored.
 func PageResponse(doc html.Node, st *html.FormState, session any, patch bool) Response {
 	return Response{Status: http.StatusOK, Node: doc, State: st, Session: session, Patch: patch}
+}
+
+// FileResponse is a file page's answer: f written as given, with f's status.
+func FileResponse(f rtpkg.File, session any) Response {
+	st := f.Status
+	if st == 0 {
+		st = http.StatusOK
+	}
+	return Response{Status: st, Raw: &f, Session: session}
 }
 
 // RedirectResponse is a 303 See Other to location; for a Datastar request, a 200 SSE answer:

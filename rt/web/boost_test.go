@@ -254,12 +254,13 @@ func TestBoost_ExternalRedirectNavigates(t *testing.T) {
 }
 
 func TestBoost_Followable(t *testing.T) {
+	rt := NewRouter(nil, testOpts(nil)).(*router)
 	for loc, want := range map[string]bool{
 		"/": true, "/posts/1?x=y#c": true, "/_m/A/B": true,
 		"#": false, "": false, "posts": false, "//evil.com/x": false, `/\evil.com`: false, "https://ex.com/": false,
 		"/static/app.css": false, "/static/al/al.css": false, datastar.ScriptPath: false, datastar.ScriptPath + "?v": false,
 	} {
-		if got := followable(loc); got != want {
+		if got := rt.followable(loc); got != want {
 			t.Errorf("followable(%q) = %v", loc, got)
 		}
 	}
