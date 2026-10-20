@@ -110,3 +110,17 @@ func TestCheck_InUnknownModule(t *testing.T) {
 		t.Errorf("want NoModuleError, got %v", c.Err)
 	}
 }
+
+func TestCheck_InNameMustBeAnAppModule(t *testing.T) {
+	for _, name := range []string{"TODO", "todo", "../X", "Todos/Index", "App/../Todo"} {
+		c := Check("../../examples/todos", &Module{In: name, Source: "it = 1\n", Infer: true})
+		var e *NoModuleError
+		if !errors.As(c.Err, &e) || e.Name != name {
+			t.Errorf("In %q: want NoModuleError, got err %v, diags %v", name, c.Err, c.Diags)
+		}
+	}
+	c := Check("../../examples/todos", &Module{In: "Todos.Index", Source: "it = 1\n", Infer: true})
+	if c.Err != nil || c.ExtraFile != "app/Todos/Index.alder" {
+		t.Errorf("a dotted module: err %v, ExtraFile %q", c.Err, c.ExtraFile)
+	}
+}

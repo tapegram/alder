@@ -71,7 +71,7 @@ func (e *ModuleExistsError) Taken() string {
 type Build struct {
 	Dir    string            // the output directory (absolute)
 	Binary string            // the executable (absolute), "" unless the build succeeded
-	Diags  []diag.Diagnostic // check diagnostics, sorted: the app's (File "app/…") and the extra module's (File "<Name>.alder")
+	Diags  []diag.Diagnostic // check diagnostics, sorted: the app's (File "app/…") and the extra module's (File "<Name>.alder", or "app/<In>.alder" in in-module mode)
 	Err    error             // an I/O, vet or go build failure (with Go's output); never a diagnostic
 	// LineOffset is the number of lines Compile inserted into the extra module's source: a
 	// diagnostic of the extra module at line L is at line L-LineOffset of the caller's source
@@ -81,7 +81,7 @@ type Build struct {
 	// the lines before and on the inserted ones.
 	LineOffset int
 	InsertLine int    // the first inserted line (1-based) of the rewritten source; 0 when none
-	ExtraFile  string // the extra module's file, "<Name>.alder" ("" without an extra module)
+	ExtraFile  string // the extra module's file, "<Name>.alder" or (Module.In) "app/<In>.alder"; "" without one
 	// BaseLines is, in in-module mode (Module.In), the number of lines of the module's own file:
 	// a diagnostic of ExtraFile at a line past BaseLines is the caller's, at line L-BaseLines;
 	// one at or before it is the module's own and is reported as it is. 0 otherwise.
@@ -125,8 +125,9 @@ const Timeout = 60 * time.Second
 //
 // What callers may assume:
 //   - Diagnostics are returned, never printed. An app diagnostic's Span.File is the file under
-//     the app ("app/Todo.alder"); the extra module's is "<Name>.alder". Diags may hold warnings
-//     alone and still produce a binary.
+//     the app ("app/Todo.alder"); the extra module's is "<Name>.alder" (in in-module mode,
+//     Module.In, the module's own file, ModulePath(In)). Diags may hold warnings alone and
+//     still produce a binary.
 //   - Binary is "" when Diags hold an error or a typed hole (W0002), or when Err is set. Err is
 //     set only for I/O failures, an extra module named like an app or stdlib module
 //     (*ModuleExistsError), adapters that are refused or do not compile with the app
@@ -436,6 +437,17 @@ func Check(appDir string, extra *Module) (c Checked) {
 	var opts check.Options
 	var overlay map[string][]byte
 	if extra != nil && extra.In != "" {
+		// Only a module of the app, by its exact name: on a case-insensitive file system "TODO"
+		// would read app/Todo.alder and load it twice, and "../X" would read outside app/.
+		appMods, err := appModules(appDir)
+		if err != nil {
+			c.Err = err
+			return c
+		}
+		if !slices.Contains(appMods, extra.In) {
+			c.Err = &NoModuleError{Name: extra.In, App: appDir}
+			return c
+		}
 		path := ModulePath(extra.In)
 		raw, err := os.ReadFile(filepath.Join(appDir, filepath.FromSlash(path)))
 		if err != nil {
