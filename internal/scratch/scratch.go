@@ -33,7 +33,19 @@ import (
 type Module struct {
 	Name, Source string
 	Infer        bool
+	// In names an app module the Source is appended to instead of being a module of its own
+	// (`alder eval --in Todo`): the session sees the module's declarations and imports
+	// unqualified, as its own code does. Name is ignored; Infer applies to that module.
+	In string
 }
+
+// NoModuleError is Check's error when Module.In names no module of the app.
+type NoModuleError struct{ Name, App string }
+
+func (e *NoModuleError) Error() string { return "no module " + e.Name + " in " + e.App }
+
+// ModulePath is the file of an app module: "app/Todos/Index.alder" for Todos.Index.
+func ModulePath(name string) string { return "app/" + strings.ReplaceAll(name, ".", "/") + ".alder" }
 
 // ModuleExistsError is Check's (and Compile's) error when the extra module's name is taken: by
 // a module of the app, or (Std) by a standard library module. The two would be one module.
@@ -70,6 +82,10 @@ type Build struct {
 	LineOffset int
 	InsertLine int    // the first inserted line (1-based) of the rewritten source; 0 when none
 	ExtraFile  string // the extra module's file, "<Name>.alder" ("" without an extra module)
+	// BaseLines is, in in-module mode (Module.In), the number of lines of the module's own file:
+	// a diagnostic of ExtraFile at a line past BaseLines is the caller's, at line L-BaseLines;
+	// one at or before it is the module's own and is reported as it is. 0 otherwise.
+	BaseLines int
 	// Warning, for a test build (Options.Tests) of an app missing adapters, is the warning to
 	// print once (buildkit.CheckTestAdapters): those capabilities run unwired. "" when none.
 	Warning string
@@ -178,7 +194,7 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 			b.Binary, b.Err = "", fmt.Errorf("internal error: %v", r)
 		}
 	}()
-	b.Diags, b.Err, b.LineOffset, b.InsertLine, b.ExtraFile = c.Diags, c.Err, c.LineOffset, c.InsertLine, c.ExtraFile
+	b.Diags, b.Err, b.LineOffset, b.InsertLine, b.ExtraFile, b.BaseLines = c.Diags, c.Err, c.LineOffset, c.InsertLine, c.ExtraFile, c.BaseLines
 	prog, res := c.program, c.Result
 	if b.Err != nil || res == nil || c.hasErrors || res.Holes > 0 {
 		return b
@@ -354,15 +370,22 @@ type Checked struct {
 	LineOffset int               // as Build.LineOffset
 	InsertLine int               // as Build.InsertLine
 	ExtraFile  string            // as Build.ExtraFile
+	BaseLines  int               // as Build.BaseLines
 	// Result is what the checker learned (Result.Values holds the extra module's signatures,
-	// inferred ones too, as "<Name>.<value>"); nil when Err is set or a module failed to parse.
-	// When Diags hold an error the program is not to be lowered.
+	// inferred ones too, as "<Name>.<value>", or "<In>.<value>" in in-module mode); nil when
+	// Err is set or a module failed to parse. When Diags hold an error the program is not to be
+	// lowered.
 	Result *check.Result
 
-	program   *names.Program // the checked program, for CompileChecked
-	hasErrors bool           // Diags hold an error
-	appDir    string         // the app checked
+	program   *names.Program  // the checked program, for CompileChecked
+	hasErrors bool            // Diags hold an error
+	appDir    string          // the app checked
+	baseDecls map[string]bool // in-module mode: the values the module declares itself
 }
+
+// Declares reports whether the module of in-module mode declares value name itself (not
+// through the session); false outside that mode.
+func (c Checked) Declares(name string) bool { return c.baseDecls[name] }
 
 // WiresAdapters reports whether a build of what c checked wires the app's adapters: the app
 // has capabilities and adapters (a .go file under adapters/). Then CompileChecked checks them
@@ -387,7 +410,15 @@ func (c Checked) WiresAdapters() bool {
 // MapDiag is Build.MapDiag for a Check: it maps a diagnostic of the extra module to the
 // caller's source.
 func (c Checked) MapDiag(d diag.Diagnostic) (diag.Diagnostic, bool) {
-	return Build{LineOffset: c.LineOffset, InsertLine: c.InsertLine, ExtraFile: c.ExtraFile}.MapDiag(d)
+	return c.build().MapDiag(d)
+}
+
+// InSession is Build.InSession for a Check.
+func (c Checked) InSession(d diag.Diagnostic) bool { return c.build().InSession(d) }
+
+// build is the Build fields that map c's diagnostics.
+func (c Checked) build() Build {
+	return Build{LineOffset: c.LineOffset, InsertLine: c.InsertLine, ExtraFile: c.ExtraFile, BaseLines: c.BaseLines}
 }
 
 // Check loads and checks the app at appDir with extra added, the first half of Compile, and
@@ -403,7 +434,37 @@ func Check(appDir string, extra *Module) (c Checked) {
 	var mods []*syntax.Module
 	var implicit map[int]bool
 	var opts check.Options
-	if extra != nil {
+	var overlay map[string][]byte
+	if extra != nil && extra.In != "" {
+		path := ModulePath(extra.In)
+		raw, err := os.ReadFile(filepath.Join(appDir, filepath.FromSlash(path)))
+		if err != nil {
+			if os.IsNotExist(err) {
+				c.Err = &NoModuleError{Name: extra.In, App: appDir}
+			} else {
+				c.Err = err
+			}
+			return c
+		}
+		base := string(raw)
+		if !strings.HasSuffix(base, "\n") { // the session's first line starts a declaration
+			base += "\n"
+		}
+		c.BaseLines = strings.Count(base, "\n")
+		c.ExtraFile, c.InsertLine, c.LineOffset = path, 1, c.BaseLines
+		if m, ds := syntax.ParseFile(path, raw); len(ds) == 0 {
+			c.baseDecls = map[string]bool{}
+			for _, d := range m.Decls {
+				if v, ok := d.(*syntax.ValueDecl); ok {
+					c.baseDecls[v.Name] = true
+				}
+			}
+		}
+		if extra.Infer {
+			opts.InferModule = extra.In
+		}
+		overlay = map[string][]byte{path: []byte(base + extra.Source)}
+	} else if extra != nil {
 		modName := extra.Name
 		if modName == "" {
 			modName = "Scratch"
@@ -443,7 +504,15 @@ func Check(appDir string, extra *Module) (c Checked) {
 		}
 		mods = append(mods, m)
 	}
-	prog, res, bag, ioErrs := buildkit.LoadCheckedWith(appDir, mods, opts)
+	var prog *names.Program
+	var res *check.Result
+	var bag *diag.Bag
+	var ioErrs []error
+	if overlay != nil {
+		prog, res, bag, ioErrs = buildkit.LoadCheckedOverlayWith(appDir, overlay, opts)
+	} else {
+		prog, res, bag, ioErrs = buildkit.LoadCheckedWith(appDir, mods, opts)
+	}
 	if len(ioErrs) > 0 {
 		c.Err = errors.Join(ioErrs...)
 		return c
@@ -454,7 +523,7 @@ func Check(appDir string, extra *Module) (c Checked) {
 	}
 	buildkit.AddSchemaDrift(appDir, prog, res, bag) // E0019: a test, eval or REPL runs on the app's migrations
 	for _, d := range bag.Items {
-		if d.Code == diag.UnusedImport && extra != nil && d.Span.File == mods[0].File && implicit[d.Span.Start.Line] {
+		if d.Code == diag.UnusedImport && len(mods) > 0 && d.Span.File == mods[0].File && implicit[d.Span.Start.Line] {
 			continue
 		}
 		c.Diags = append(c.Diags, d)

@@ -58,6 +58,12 @@ func LoadCheckedOverlay(dir string, overlay map[string][]byte) (prog *names.Prog
 	return loadChecked(dir, overlay, nil, check.Options{})
 }
 
+// LoadCheckedOverlayWith is LoadCheckedOverlay with checker options (the in-module mode of
+// alder eval and the REPL: the module's file overlaid with the session appended).
+func LoadCheckedOverlayWith(dir string, overlay map[string][]byte, o check.Options) (prog *names.Program, res *check.Result, bag *diag.Bag, ioErrs []error) {
+	return loadChecked(dir, overlay, nil, o)
+}
+
 func loadChecked(dir string, overlay map[string][]byte, extra []*syntax.Module, o check.Options) (prog *names.Program, res *check.Result, bag *diag.Bag, ioErrs []error) {
 	std, err := types.LoadStd()
 	if err != nil {

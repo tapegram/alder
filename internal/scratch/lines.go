@@ -17,7 +17,8 @@ func (b Build) Runnable() bool { return b.Binary != "" }
 // SourceLine maps line l of the extra module as Compile rewrote it to the line of the caller's
 // Module.Source: lines before the inserted ones are unchanged, lines after them move up by
 // LineOffset, and an inserted line (a synthesized `module` line or an implicit import) has no
-// source line (ok false).
+// source line (ok false). In in-module mode (InsertLine 1, LineOffset BaseLines) a line past
+// the module's own maps to the session's line L-BaseLines.
 func (b Build) SourceLine(l int) (line int, ok bool) {
 	switch {
 	case b.LineOffset == 0 || l < b.InsertLine:
@@ -34,10 +35,14 @@ func (b Build) SourceLine(l int) (line int, ok bool) {
 // names (E0009's "at line N") go through SourceLine. A fix that touches an inserted line is
 // dropped; a diagnostic whose span does is returned with ok false (it is about text the caller
 // did not write). Other diagnostics are returned unchanged. Callers should report the extra
-// module's diagnostics through MapDiag rather than subtracting LineOffset.
+// module's diagnostics through MapDiag rather than subtracting LineOffset. In in-module mode a
+// diagnostic at or before line BaseLines is the module's own text and is returned unchanged.
 func (b Build) MapDiag(d diag.Diagnostic) (diag.Diagnostic, bool) {
 	if b.ExtraFile == "" || d.Span.File != b.ExtraFile {
 		return d, true
+	}
+	if b.BaseLines > 0 && d.Span.Start.Line <= b.BaseLines {
+		return d, true // the module's own text, reported as it is
 	}
 	start, ok1 := b.SourceLine(d.Span.Start.Line)
 	end, ok2 := b.SourceLine(d.Span.End.Line)
@@ -58,6 +63,12 @@ func (b Build) MapDiag(d diag.Diagnostic) (diag.Diagnostic, bool) {
 		}
 	}
 	return d, true
+}
+
+// InSession reports whether d is about the caller's source rather than the app: a diagnostic
+// of the extra module, or, in in-module mode, of the module's file past its own BaseLines.
+func (b Build) InSession(d diag.Diagnostic) bool {
+	return b.ExtraFile != "" && d.Span.File == b.ExtraFile && (b.BaseLines == 0 || d.Span.Start.Line > b.BaseLines)
 }
 
 // headerLines classifies the header of src, the lines before its first declaration (blank

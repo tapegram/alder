@@ -209,3 +209,45 @@ func TestRunTethered(t *testing.T) {
 		t.Fatalf("stdin closed: exit %d out %q err %q", code, out.String(), errOut.String())
 	}
 }
+
+func TestMapDiag_BaseLines(t *testing.T) {
+	b := Build{ExtraFile: "app/Todo.alder", BaseLines: 40, InsertLine: 1, LineOffset: 40}
+	own := diag.Diagnostic{Span: diag.Span{File: "app/Todo.alder", Start: diag.Pos{Line: 7, Col: 1}, End: diag.Pos{Line: 7, Col: 3}}}
+	if m, ok := b.MapDiag(own); !ok || m.Span.Start.Line != 7 {
+		t.Errorf("a module line is left alone: %+v %v", m, ok)
+	}
+	in := diag.Diagnostic{Span: diag.Span{File: "app/Todo.alder", Start: diag.Pos{Line: 42, Col: 1}, End: diag.Pos{Line: 42, Col: 3}}}
+	if m, ok := b.MapDiag(in); !ok || m.Span.Start.Line != 2 || m.Span.End.Line != 2 {
+		t.Errorf("an input line maps to line-BaseLines: %+v %v", m, ok)
+	}
+}
+
+func TestInSession(t *testing.T) {
+	at := func(file string, line int) diag.Diagnostic {
+		return diag.Diagnostic{Span: diag.Span{File: file, Start: diag.Pos{Line: line, Col: 1}, End: diag.Pos{Line: line, Col: 2}}}
+	}
+	in := Build{ExtraFile: "app/Todo.alder", BaseLines: 40, InsertLine: 1, LineOffset: 40}
+	scr := Build{ExtraFile: "Scratch.alder", InsertLine: 1, LineOffset: 3}
+	cases := []struct {
+		b    Build
+		d    diag.Diagnostic
+		want bool
+	}{
+		{in, at("app/Todo.alder", 41), true},  // the session's first line
+		{in, at("app/Todo.alder", 40), false}, // the module's last line
+		{in, at("app/Todo.alder", 7), false},
+		{in, at("app/User.alder", 41), false}, // another module
+		{scr, at("Scratch.alder", 1), true},   // the extra module, any line
+		{scr, at("app/Todo.alder", 5), false},
+		{Build{}, at("Scratch.alder", 1), false}, // no extra module
+	}
+	for i, c := range cases {
+		if got := c.b.InSession(c.d); got != c.want {
+			t.Errorf("case %d: InSession(%s:%d) = %v, want %v", i, c.d.Span.File, c.d.Span.Start.Line, got, c.want)
+		}
+		ch := Checked{ExtraFile: c.b.ExtraFile, BaseLines: c.b.BaseLines, InsertLine: c.b.InsertLine, LineOffset: c.b.LineOffset}
+		if got := ch.InSession(c.d); got != c.want {
+			t.Errorf("case %d: Checked.InSession = %v, want %v", i, got, c.want)
+		}
+	}
+}
