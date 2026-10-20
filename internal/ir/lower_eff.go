@@ -98,12 +98,12 @@ func (l *lowerer) testStep(fn syntax.Expr, args []syntax.Expr, t types.Type) Exp
 	switch v.Ref.Name {
 	case "login":
 		return &TestLogin{Typed: Typed{t}, Session: l.expr(args[0])}
-	case "get", "open":
+	case "get", "open", "fetch":
 		ref, ok := l.expr(args[0]).(*PageRef)
 		if !ok {
 			return bug("not a page value")
 		}
-		return &TestGet{Typed: Typed{t}, Page: ref.Page, Params: ref.Params, Open: v.Ref.Name == "open"}
+		return &TestGet{Typed: Typed{t}, Page: ref.Page, Params: ref.Params, Open: v.Ref.Name == "open", Fetch: v.Ref.Name == "fetch"}
 	case "submit", "submitRaw":
 		var form *Form
 		var msg *Msg

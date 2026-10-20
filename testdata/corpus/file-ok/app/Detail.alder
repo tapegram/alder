@@ -1,0 +1,30 @@
+module Detail
+
+import Zip
+
+page "/{id}/detailxml.zip" { id: Text }
+
+type Model = { zip: Bytes }
+
+load : Params -> Session -> Query Model
+load params session = if params.id == "missing" then Query.notFound else {
+  let zip <- Zip.detail { election: params.id }
+  Query.succeed { zip: zip }
+}
+
+view : Model -> Session -> File
+view model session =
+  File.bytes { contentType: "application/zip", body: model.zip }
+    |> File.withHeader { name: "Content-Disposition", value: "attachment; filename=detailxml.zip" }
+
+test "detail zip comes from the capability" = {
+  let _ <- Test.fake Zip
+  let r <- Test.fetch (Detail { id: "2024" })
+  Task.succeed (r.contentType == "application/zip" && Bytes.toText r.body == Just "PK2024" && List.member { name: "Content-Disposition", value: "attachment; filename=detailxml.zip" } r.headers)
+}
+
+-- 404 stays the app's HTML page on a file page.
+test "fetch a missing report is 404" = {
+  let r <- Test.fetch (Detail { id: "missing" })
+  Task.succeed (r.status == 404)
+}

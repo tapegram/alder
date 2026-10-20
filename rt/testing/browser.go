@@ -366,6 +366,41 @@ func (b *Browser) Open(u string) (Result, error) {
 	return b.result(ans), nil
 }
 
+// Fetched is Test.fetch's answer: the Go type of its Alder record, field for field.
+type Fetched = struct {
+	Status      int64
+	ContentType string
+	Body        []byte
+	Headers     []struct {
+		Name  string
+		Value string
+	}
+}
+
+// Fetch is Test.fetch: one GET of u through the router (the cookie, kept as the answer sets it,
+// and the request's effects on the trace, as every step), its raw answer returned: the status,
+// Content-Type, body and every header (sorted by name), a redirect not followed. The page the
+// browser holds, and the notices and model of the last step, stay as they were.
+func (b *Browser) Fetch(u string) (Fetched, error) {
+	notices, model := b.notices, b.model
+	defer func() { b.notices, b.model = notices, model }()
+	w, err := b.serve(http.MethodGet, u, nil, false)
+	if err != nil {
+		return Fetched{}, err
+	}
+	res := w.Result()
+	out := Fetched{Status: int64(res.StatusCode), ContentType: res.Header.Get("Content-Type"), Body: w.Body.Bytes()}
+	for _, n := range slices.Sorted(maps.Keys(res.Header)) {
+		for _, v := range res.Header[n] {
+			out.Headers = append(out.Headers, struct {
+				Name  string
+				Value string
+			}{n, v})
+		}
+	}
+	return out, nil
+}
+
 // Get is Open for a test that expects the page shown: any other answer is a *NotShownError.
 func (b *Browser) Get(u string) (Result, error) {
 	r, err := b.Open(u)
@@ -697,12 +732,19 @@ func (b *Browser) navigate(u string, redirected bool) (Answer, error) {
 	}
 }
 
-// document holds the page of a plain (non-Datastar) answer w to a request for u: 200 Shown,
-// 404 PageMissing, 500 RequestFailed, anything else (a request the router refused: 400, 413, 415) RequestFailed
+// document holds the page of a plain (non-Datastar) answer w to a request for u: a GET answered
+// with anything but text/html (a file page) RequestFailed "GET /path: a file page (<type>): use
+// `Test.fetch`", 200 Shown, 404 PageMissing, 500 RequestFailed, anything else (a request the router refused: 400, 413, 415) RequestFailed
 // with its status.
 func (b *Browser) document(u string, w *httptest.ResponseRecorder) (Answer, error) {
 	body := w.Body.String()
-	isHTML := strings.HasPrefix(w.Header().Get("Content-Type"), "text/html")
+	ct := w.Header().Get("Content-Type")
+	isHTML := strings.HasPrefix(ct, "text/html")
+	if !isHTML && strings.HasPrefix(b.reqHead, http.MethodGet+" ") {
+		// a file page the checker could not see (Test.get/open of one is refused statically);
+		// a POST's plain-text refusal (400, 413, 415) is mapped below
+		return Answer{Tag: RequestFailed, Text: b.reqHead + "a file page (" + ct + "): use `Test.fetch`"}, nil
+	}
 	if isHTML {
 		if err := b.hold(u, body); err != nil {
 			return Answer{}, err

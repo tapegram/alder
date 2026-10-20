@@ -17,6 +17,8 @@ member : u -> k -> Task Unit
 get : Page -> Task { model: model, session: Session, doc: Doc }
 -- special form: the argument is a page value; the answer says what the request came to
 open : Page -> Task { answer: Answer, session: Session, doc: Doc }
+-- special form: the argument is a page value; the raw answer, redirects not followed
+fetch : Page -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }
 -- special form: the first argument is a form a page declares (`NewTodo`, or `Todos.Index.NewTodo`
 -- from another module), the second that form's record
 submit : Form f -> f -> Task { answer: Answer, session: Session, doc: Doc }

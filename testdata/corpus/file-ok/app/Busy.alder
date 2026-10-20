@@ -1,0 +1,20 @@
+module Busy
+
+page "/busy" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> File
+view model session =
+  File.text { contentType: "text/plain", body: "busy" }
+    |> File.withStatus 503
+    |> File.withHeader { name: "Retry-After", value: "20" }
+
+-- A 503 the page answers is its own file, not the maintenance page.
+test "busy is a 503 with its own body" = {
+  let r <- Test.fetch (Busy {})
+  Task.succeed (r.status == 503 && Bytes.toText r.body == Just "busy" && List.member { name: "Retry-After", value: "20" } r.headers)
+}

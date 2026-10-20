@@ -1,4 +1,4 @@
-// The browser steps of module Test (`Test.login`, `get`, `open`, `submit`, `submitRaw`,
+// The browser steps of module Test (`Test.login`, `get`, `open`, `fetch`, `submit`, `submitRaw`,
 // `click`), typed as special forms, the selector literals of its queries (E0023), and the
 // test-only Prelude types `Doc` and `Answer`.
 package check
@@ -16,7 +16,7 @@ import (
 const BadSelector = diag.BadSelector
 
 // testSteps are the browser steps and how many arguments each takes.
-var testSteps = map[string]int{"login": 1, "get": 1, "open": 1, "submit": 2, "submitRaw": 2, "click": 1}
+var testSteps = map[string]int{"login": 1, "get": 1, "open": 1, "fetch": 1, "submit": 2, "submitRaw": 2, "click": 1}
 
 // IsTestStep reports whether `Test.name` is a browser step (a special form).
 func IsTestStep(name string) bool { _, ok := testSteps[name]; return ok }
@@ -24,6 +24,7 @@ func IsTestStep(name string) bool { _, ok := testSteps[name]; return ok }
 // stepExample is how each step is applied, for the message of a step used as a value.
 var stepExample = map[string]string{
 	"login": "Test.login { user: Just id }", "get": "Test.get (Todos.Index {})", "open": "Test.open (Todos.Index {})",
+	"fetch":  "Test.fetch (Report.Csv { id: id })",
 	"submit": "Test.submit NewTodo { title: \"Milk\" }", "submitRaw": "Test.submitRaw NewTodo [{ name: \"title\", value: \"\" }]",
 	"click": "Test.click (Toggle { id: id })",
 }
@@ -53,6 +54,17 @@ func (mc *modCtx) stepResult(first string, t types.Type) types.Type {
 	rec := &types.Record{Anonymous: true, Fields: []types.Field{
 		{Name: first, Type: t}, {Name: "session", Type: mc.c.appSession()}, {Name: "doc", Type: mc.c.types["Prelude.Doc"]},
 		{Name: "notices", Type: &types.App{Con: "List", Args: []types.Type{types.Text}}},
+	}}
+	return &types.App{Con: "Task", Args: []types.Type{rec}}
+}
+
+// fetchResult is Test.fetch's result type: Task { status: Int, contentType: Text, body: Bytes,
+// headers: List { name: Text, value: Text } }, the raw answer.
+func fetchResult() types.Type {
+	header := &types.Record{Anonymous: true, Fields: []types.Field{{Name: "name", Type: types.Text}, {Name: "value", Type: types.Text}}}
+	rec := &types.Record{Anonymous: true, Fields: []types.Field{
+		{Name: "status", Type: types.Int}, {Name: "contentType", Type: types.Text},
+		{Name: "body", Type: types.Bytes}, {Name: "headers", Type: &types.App{Con: "List", Args: []types.Type{header}}},
 	}}
 	return &types.App{Con: "Task", Args: []types.Type{rec}}
 }
@@ -107,7 +119,7 @@ func (mc *modCtx) inferTestStep(x *syntax.App, v *syntax.Var, env *env, eff effe
 	switch name {
 	case "login":
 		res = mc.testLogin(x.Args[0], env, eff)
-	case "get", "open":
+	case "get", "open", "fetch":
 		res = mc.testGet(name, x.Args[0], env, eff)
 	case "submit", "submitRaw":
 		res = mc.testSubmit(name, x.Args[0], x.Args[1], env, eff)
@@ -201,9 +213,10 @@ func pageOf(e syntax.Expr) (page string, ok bool) {
 	return "", true
 }
 
-// testGet types `Test.get p` and `Test.open p`: p is a page value written in place (its head a
-// page); get's result holds the page's `Model`, which must be a record (a union cannot be
-// named in the result: E0003), open's the Answer.
+// testGet types `Test.get p`, `Test.open p` and `Test.fetch p`: p is a page value written in
+// place (its head a page); get's result holds the page's `Model`, which must be a record (a
+// union cannot be named in the result: E0003), open's the Answer, fetch's the raw answer
+// (fetchResult). Only fetch may name a file page.
 func (mc *modCtx) testGet(name string, arg syntax.Expr, env *env, eff effect) types.Type {
 	c := mc.c
 	page, ok := pageOf(arg)
@@ -222,6 +235,9 @@ func (mc *modCtx) testGet(name string, arg syntax.Expr, env *env, eff effect) ty
 	if c.pages[page].File && name != "fetch" {
 		c.errorf(diag.TypeMismatch, arg.GetSpan(), "`%s` is a file page: use `Test.fetch`", page)
 		return types.Err
+	}
+	if name == "fetch" {
+		return fetchResult()
 	}
 	if name == "open" {
 		return mc.stepResult("answer", c.answerType())

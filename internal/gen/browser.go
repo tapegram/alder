@@ -24,6 +24,8 @@ import (
 //	               rendered (the route's rq.Model, through web.Options.Served):
 //	               _m, _err := rtesting.ModelOf[M__Model](_u, _r);
 //	               R{Model: _m, Session: rtesting.SessionOf[S](_r.Session), Doc: rtesting.DocOf(_r.Doc)}
+//	TestGet        "Test.fetch M" (Fetch): _r, _err := _b.Fetch(rt.PageURL(page(_p))); _r is the
+//	               result as is (rtesting.Fetched is the record's Go type)
 //	TestSubmit     "Test.submit F": _b.SubmitForm("/_m/M/Msg", "F", encode__M__F(record)); when
 //	               the test wrote the message with its parameters, _b.SubmitMsg(<its URL>, "F",
 //	               <its label>, encode__M__F(record)) (matched as a click is)
@@ -110,6 +112,9 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 		if x.Open {
 			name = "Test.open "
 		}
+		if x.Fetch {
+			name = "Test.fetch "
+		}
 		return f.callStmts(name+x.Page.Module, true, t, s, func(env string, c *scope) string {
 			var w strings.Builder
 			pKey, p := f.tempVar(c, "_p")
@@ -131,6 +136,10 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 			}
 			u, b, res, err := f.temp(c, "_u"), f.temp(c, "_b"), f.temp(c, "_r"), f.temp(c, "_err")
 			fmt.Fprintf(&w, "%s := rt.PageURL(%s)\n%s := rtesting.BrowserOf(%s)\n", u, f.pageRef(ref, c), b, env)
+			if x.Fetch { // the record's Go type is rtesting.Fetched
+				fmt.Fprintf(&w, "%s, %s := %s.Fetch(%s)\n%sreturn %s, nil\n", res, err, b, u, fail(c, err), res)
+				return w.String()
+			}
 			if x.Open {
 				fmt.Fprintf(&w, "%s, %s := %s.Open(%s)\n%s", res, err, b, u, fail(c, err))
 				w.WriteString(result(c, "Answer", res+".Answer", res))

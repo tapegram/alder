@@ -1,0 +1,16 @@
+module Results
+
+page "/results/allracesbyprecinct.txt" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> File
+view model session = File.text { contentType: "text/plain", body: "MN;1;Senate\n" }
+
+test "results is text/plain" = {
+  let r <- Test.fetch (Results {})
+  Task.succeed ({ status: r.status, type: r.contentType, body: Bytes.toText r.body } == { status: 200, type: "text/plain", body: Just "MN;1;Senate\n" })
+}

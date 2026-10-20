@@ -357,6 +357,26 @@ func (md) Render(_ context.Context, a app.Args__Markdown__Markdown__Render) (htm
 // not render, a field the form does not declare — and, with two inputs taken out of NewNote's
 // form, a field the form has no input for (C1): a defaulted field and an unticked box still
 // submit, a set field and a ticked box fail the step.
+// TestTest_FilePages runs file-ok (M17): Test.fetch on text, zip, byte-exact html, a 503, a
+// 404, a requires redirect and a page whose load waits 20 s on the test clock, not the wall.
+func TestTest_FilePages(t *testing.T) {
+	needGoTool(t)
+	src, err := filepath.Abs("../../testdata/corpus/file-ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inTemp(t)
+	copyDir(t, src, "file-ok")
+	start := time.Now()
+	code, stdout, stderr := runTest(t, "file-ok")
+	if code != 0 || !strings.Contains(stdout, "9 passed, 0 failed\n") {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if time.Since(start) > 2*time.Minute {
+		t.Fatalf("the 20 s delay must be virtual; took %v", time.Since(start))
+	}
+}
+
 func TestTest_Browser(t *testing.T) {
 	needGoTool(t)
 	src, err := filepath.Abs("../../testdata/corpus/browser-ok")

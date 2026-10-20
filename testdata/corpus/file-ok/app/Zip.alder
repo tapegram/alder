@@ -1,0 +1,10 @@
+module Zip
+
+-- The election's detail archive; the fake answers "PK" and the election's name.
+capability Zip {
+  detail : { election: Text } -> Query Bytes,
+}
+
+fake Zip {
+  detail r = Query.succeed (Text.toBytes ("PK" ++ r.election))
+}

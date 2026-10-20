@@ -599,6 +599,9 @@ func (d *dumper) expr(e Expr) *sx {
 		if x.Open {
 			name = "test-open"
 		}
+		if x.Fetch {
+			name = "test-fetch"
+		}
 		items := []*sx{atom(name), atom(x.Page.Module)}
 		if x.Params != nil {
 			items = append(items, d.expr(x.Params))

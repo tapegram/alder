@@ -1,0 +1,29 @@
+module Slow
+
+page "/slow" { }
+
+type Model = { waited: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let before <- Time.now
+  let _ <- Query.delay 20000
+  let after <- Time.now
+  Query.succeed { waited: Time.diffMillis before after }
+}
+
+view : Model -> Session -> File
+view model session = File.json (Text.fromInt model.waited)
+
+-- The test clock: each Time.now reading moves it one second, and the delay moves it 20 s
+-- without waiting, so the two readings are 21000 ms apart.
+test "slow waits twenty virtual seconds" = {
+  let r <- Test.fetch (Slow {})
+  Task.succeed (Bytes.toText r.body == Just "21000")
+}
+
+test "the delay is on the trace" = {
+  let _ <- Test.fetch (Slow {})
+  let trace <- Test.trace
+  Task.succeed (List.member "Query.delay 20000ms" trace)
+}

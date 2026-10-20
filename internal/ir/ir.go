@@ -999,13 +999,15 @@ type TestLogin struct {
 }
 
 // TestGet is `Test.get p` (Open unset: a Task { model: M, session, doc }, failing unless the
-// page is shown; M is Page's Model) or `Test.open p` (Open set: { answer, session, doc }), for
-// the page value Page with Params (nil for a page without parameters).
+// page is shown; M is Page's Model), `Test.open p` (Open set: { answer, session, doc }) or
+// `Test.fetch p` (Fetch set: the raw answer { status, contentType, body, headers }), for the
+// page value Page with Params (nil for a page without parameters).
 type TestGet struct {
 	Typed
 	Page   *Page
 	Params Expr
 	Open   bool
+	Fetch  bool
 }
 
 // TestSubmit is `Test.submit F r`: Record (F's record) posted to Msg, the message that posts

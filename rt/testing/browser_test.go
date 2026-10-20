@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -218,6 +219,9 @@ func fixtureRoutes() []web.Route {
 		}},
 		{Method: "POST", Pattern: "/_m/Index/To", Handle: func(rq *web.Request) web.Response {
 			return web.RedirectResponse(rq.Query.Get("to"), nil)
+		}},
+		{Method: "GET", Pattern: "/r.csv", File: true, Handle: func(rq *web.Request) web.Response {
+			return web.FileResponse(rt.File{ContentType: "text/csv", Headers: [][2]string{{"Content-Disposition", "inline"}}, Body: []byte("a,b\n")}, nil)
 		}},
 	}
 }
@@ -794,5 +798,58 @@ func TestBrowser_FollowedRedirect(t *testing.T) {
 		if ans := to("/loop"); ans.Tag != RequestFailed || ans.Text != "more than 10 redirects in a row (the last to /loop)" {
 			t.Errorf("to /loop: %+v", ans)
 		}
+	})
+}
+
+// TestBrowser_Fetch: Test.fetch answers a file raw and leaves the held page alone; a redirect is
+// not followed; Open of a file page is RequestFailed (the run-time guard).
+func TestBrowser_Fetch(t *testing.T) {
+	browse(t, func(b *Browser, e *eff.Env) {
+		b.Login(session{User: "ann"})
+		mustOf(t)(b.Get("/"))
+		held := html.Render(b.Doc())
+		r, err := b.Fetch("/r.csv")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.Status != 200 || r.ContentType != "text/csv" || string(r.Body) != "a,b\n" {
+			t.Errorf("fetch: %+v", r)
+		}
+		var cd []string
+		for _, h := range r.Headers {
+			if h.Name == "Content-Disposition" {
+				cd = append(cd, h.Value)
+			}
+		}
+		if !slices.Equal(cd, []string{"inline"}) || !slices.IsSortedFunc(r.Headers, func(a, b struct {
+			Name  string
+			Value string
+		}) int {
+			return strings.Compare(a.Name, b.Name)
+		}) {
+			t.Errorf("headers: %+v", r.Headers)
+		}
+		if b.URL() != "/" || html.Render(b.Doc()) != held {
+			t.Errorf("fetch changed the held page: %s", b.URL())
+		}
+		b.Login(session{})
+		r, err = b.Fetch("/")
+		if err != nil {
+			t.Fatal(err)
+		}
+		loc := ""
+		for _, h := range r.Headers {
+			if h.Name == "Location" {
+				loc = h.Value
+			}
+		}
+		if r.Status != 303 || loc != "/login" || b.URL() != "/" {
+			t.Errorf("fetch of a redirect: %+v (held %s)", r, b.URL())
+		}
+		o, err := b.Open("/r.csv")
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantAnswer(t, o, Answer{Tag: RequestFailed, Text: "GET /r.csv: a file page (text/csv): use `Test.fetch`"})
 	})
 }
