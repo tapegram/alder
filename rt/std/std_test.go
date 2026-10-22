@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -118,6 +119,20 @@ func TestList_IndexedRangeUnique(t *testing.T) {
 	ba := DictInsert("a", 1, DictInsert("b", 2, empty))
 	eq(t, "unique dicts order-insensitive", len(ListUnique([]rt.Dict[string, int64]{ab, ba})), 1)
 	eq(t, "unique lists", ListUnique([][]int64{{1}, {1}, {2}}), [][]int64{{1}, {2}})
+	eq(t, "unique keeps one NaN", len(ListUnique([]float64{math.NaN(), 1, math.NaN()})), 2)
+	eq(t, "unique -0 is 0", ListUnique([]float64{0, math.Copysign(0, -1)}), []float64{0})
+}
+
+// 20k distinct keys: hashing keeps this linear (the pairwise version took
+// seconds at 4k keys over 190k items, nightvote-replay#2).
+func BenchmarkListUnique(b *testing.B) {
+	xs := make([]string, 200_000)
+	for i := range xs {
+		xs[i] = strconv.Itoa(i % 20_000)
+	}
+	for b.Loop() {
+		ListUnique(xs)
+	}
 }
 
 func TestList_GroupBy(t *testing.T) {

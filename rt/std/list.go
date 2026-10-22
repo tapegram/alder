@@ -187,11 +187,15 @@ func ListConcat[A any](xss [][]A) []A {
 
 func ListAppend[A any](a, b []A) []A { return rt.Append(a, b) }
 
-// ListUnique keeps the first occurrence of each element.
+// ListUnique keeps the first occurrence of each element. It hashes rt.Key, so
+// it is linear and agrees with Eq, except that every NaN is one element.
 func ListUnique[A any](xs []A) []A {
 	out := []A{}
+	seen := map[string]struct{}{}
 	for _, x := range xs {
-		if !ListMember(x, out) {
+		k := rt.Key(x)
+		if _, ok := seen[k]; !ok {
+			seen[k] = struct{}{}
 			out = append(out, x)
 		}
 	}
