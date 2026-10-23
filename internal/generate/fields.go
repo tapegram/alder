@@ -196,6 +196,6 @@ var keywords = map[string]bool{
 
 // quote is s as an Alder string literal (no interpolation: `{` is escaped).
 func quote(s string) string {
-	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "{", `\{`, "\n", `\n`)
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "{", `\{`, "\n", `\n`, "\r", `\r`)
 	return `"` + r.Replace(s) + `"`
 }

@@ -716,6 +716,8 @@ func (p *Parser) parseString(t Token) Expr {
 			switch raw[i] {
 			case 'n':
 				buf.WriteByte('\n')
+			case 'r':
+				buf.WriteByte('\r')
 			case 't':
 				buf.WriteByte('\t')
 			case '"', '\\', '{':

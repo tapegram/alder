@@ -345,6 +345,8 @@ func quote(s string) string {
 			b.WriteString(`\"`)
 		case '\n':
 			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
 		case '\t':
 			b.WriteString(`\t`)
 		case '{':

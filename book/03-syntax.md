@@ -111,7 +111,7 @@ Multi-word names are `camelCase` or `PascalCase`.
 True  False   -- Bool
 "text"        -- Text
 "Hi {name}"   -- Text with interpolation. The expression must be Text.
-"a \"quoted\" \{brace} \n"   -- escapes: \" \\ \{ \n \t
+"a \"quoted\" \{brace} \n"   -- escapes: \" \\ \{ \n \r \t
 [1, 2, 3]     -- List Int
 { x: 1, y: 2 }   -- record
 ()            -- Unit

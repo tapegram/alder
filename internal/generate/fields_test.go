@@ -91,6 +91,9 @@ func TestNames(t *testing.T) {
 	if got := Tidy("module A\n\n\n\nx = 1   \n\n"); got != "module A\n\nx = 1\n" {
 		t.Errorf("Tidy = %q", got)
 	}
+	if got := quote("a\r\nb"); got != `"a\r\nb"` {
+		t.Errorf("quote CRLF = %s", got)
+	}
 	if got := quote(`a "b" {c} \d`); got != `"a \"b\" \{c} \\d"` {
 		t.Errorf("quote = %s", got)
 	}

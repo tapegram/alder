@@ -175,6 +175,7 @@ func TestShow_Escapes(t *testing.T) {
 		`a\b`:    `"a\\b"`,
 		"a\nb":   `"a\nb"`,
 		"a\tb":   `"a\tb"`,
+		"a\r\nb": `"a\r\nb"`,
 		"{x}":    `"\{x}"`,
 		"é ok }": `"é ok }"`,
 		"":       `""`,

@@ -464,3 +464,14 @@ func TestParse_RawTextCloseAnyCase(t *testing.T) {
 		t.Fatalf("dump %s does not contain %s", got, want)
 	}
 }
+
+func TestParse_StringEscapes(t *testing.T) {
+	src := "module U\nv : Text\nv = \"a\\r\\nb\\tc\\\\d\\\"e\\{f}\"\n"
+	m, diags := ParseFile("u.alder", []byte(src))
+	if len(diags) != 0 {
+		t.Fatalf("unexpected diags: %v", diags)
+	}
+	if got, want := Dump(m), `"a\r\nb\tc\\d\"e{f}"`; !strings.Contains(got, want) {
+		t.Errorf("dump lacks %s:\n%s", want, got)
+	}
+}
