@@ -47,6 +47,7 @@ var (
 		"textDocument/completion": completionReq,
 		"textDocument/codeAction": codeActionReq,
 		"alder/generators":        generatorsReq,
+		"alder/routes":            routesReq,
 	}
 	slowMethods = map[string]handler{
 		"alder/preview":            previewReq,

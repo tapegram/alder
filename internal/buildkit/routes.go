@@ -18,6 +18,7 @@ import (
 type Route struct {
 	Kind, Path, Module, Name, File string
 	Line, Col                      int
+	EndLine, EndCol                int // the declaration's end (1-based, as the span gives it)
 }
 
 // Routes lists the routes of a checked program: the pages (GET), then the messages of the pages
@@ -31,16 +32,16 @@ func Routes(prog *names.Program, res *check.Result) []Route {
 		r := Route{Kind: kind, Path: path, Module: module, Name: name}
 		if m := prog.Modules[module]; m != nil {
 			r.File = m.File
-			r.Line, r.Col = 1, 1
+			r.Line, r.Col, r.EndLine, r.EndCol = 1, 1, 1, 1
 			for _, d := range m.Decls {
 				switch d := d.(type) {
 				case *syntax.PageDecl:
 					if kind == "page" {
-						r.Line, r.Col = d.Span.Start.Line, d.Span.Start.Col
+						r.Line, r.Col, r.EndLine, r.EndCol = d.Span.Start.Line, d.Span.Start.Col, d.Span.End.Line, d.Span.End.Col
 					}
 				case *syntax.MsgDecl:
 					if kind == "msg" && d.Name == name {
-						r.Line, r.Col = d.Span.Start.Line, d.Span.Start.Col
+						r.Line, r.Col, r.EndLine, r.EndCol = d.Span.Start.Line, d.Span.Start.Col, d.Span.End.Line, d.Span.End.Col
 					}
 				}
 			}
