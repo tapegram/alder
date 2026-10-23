@@ -85,7 +85,11 @@ $ alder new page About /about
 wrote app/About.alder
 ```
 
-The first argument is the module, the second its path. The file:
+The first argument is the module, the second its path. A dotted module name is
+a nested module, one directory per dot: `alder new page Sites.Clarity.Index
+/sites/clarity` writes `app/Sites/Clarity/Index.alder` (a name without dots,
+like `About`, writes `app/About.alder`). `alder new page --help` says so, and
+`alder routes` (chapter 11) lists where every page ended up. The file:
 
 ```alder written=guestbook/app/About.alder
 module About

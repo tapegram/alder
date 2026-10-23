@@ -840,7 +840,7 @@ func TestHelp(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"new", "page", "--help"}, newPageUsage},
+		{[]string{"new", "page", "--help"}, newPageUsage + "\n" + newPageHelpNote},
 		{[]string{"fill", "-h"}, fillUsage},
 		{[]string{"edit", "--help"}, editUsage},
 		{[]string{"remove", "--help"}, removeUsage},
@@ -854,6 +854,17 @@ func TestHelp(t *testing.T) {
 	}
 	if helpTo([]string{"new", "page", "X", "/x"}, io.Discard) {
 		t.Error("no --help: helpTo answered")
+	}
+}
+
+// TestHelp_DottedModule: `alder new page --help` shows a nested module and where it is written.
+func TestHelp_DottedModule(t *testing.T) {
+	var b bytes.Buffer
+	helpTo([]string{"new", "page", "--help"}, &b)
+	for _, w := range []string{"alder new page Sites.Clarity.Index", "app/Sites/Clarity/Index.alder"} {
+		if !strings.Contains(b.String(), w) {
+			t.Errorf("help lacks %q:\n%s", w, b.String())
+		}
 	}
 }
 

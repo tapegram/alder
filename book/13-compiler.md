@@ -5222,6 +5222,10 @@ against the same `Spec`; `alder help --json` renders the same `Spec`s; the
 server's `alder/generators` lists them with those whose `Here` matched first.
 Three programs, one description.
 
+The server has a fourth custom request that needs no `Spec`: `alder/routes` returns
+the app's pages and messages (`buildkit.Routes`, which `alder routes` prints too)
+with their places, for an editor's route picker (chapter 11).
+
 **A dry run on a copy.** A generator edits files, checks the result, and
 refuses if it does not check. `Run(…, dryRun=true)` does all of that and
 writes nothing. The server calls it on a copy of the app:

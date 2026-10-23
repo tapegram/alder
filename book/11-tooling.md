@@ -114,6 +114,7 @@ alder logs <env>     the current build's log (-f: follow it)
 alder restore <env>  rebuild the database from the streamed backup (--silo org:<id>: one silo)
 alder silos prune <env>  remove the silos whose key's row is gone (orphans)
 alder ci init        write .github/workflows/alder.yml from the declaration
+alder routes [dir]   list the app's routes, pages and messages, with where each is declared
 alder dump <path>    print a file's tokens, AST, or an app's IR
 alder explain <id>   explain a diagnostic code
 alder version        print alder's version and the Go it was built with
@@ -298,6 +299,40 @@ before its sentence: nothing was written, so no file is named. `--json` prints o
 refusal. The words `page`, `table`,
 `form`, `msg`, `capability` and `admin` name generators, so `alder new`
 refuses them as app names.
+
+### `alder routes`
+
+`alder routes [dir] [--json]` lists every route of the app: its pages (GET) and
+its messages (POST), sorted by path. Nested modules make a page's file easy to
+lose (`Sites.Clarity.Index` is `app/Sites/Clarity/Index.alder`); this answers
+"where is the page at this URL" without reading the tree.
+
+```text
+$ alder routes examples/blog
+KIND  PATH                                  MODULE.decl                       FILE:LINE
+page  /                                     Posts.Index.page                  app/Posts/Index.alder:7
+msg   /_m/Admin.Comment.Bulk/BulkDelete     Admin.Comment.Bulk.BulkDelete     app/Admin/Comment/Bulk.alder:41
+…
+page  /posts/{slug}                         Posts.Show.page                   app/Posts/Show.alder:9
+```
+
+A page's path is the one its `page` declaration gives. A message has no path of
+its own: the table shows the URL it is posted to, `/_m/<Module>/<Msg>`, which is
+what the generated route table serves. The last column is the declaration's file
+(relative to the app directory) and line. The routes come from the checked
+program, the same one the generated route table is built from, so a program
+that does not check prints its diagnostics, as `alder check` does, and exits 1.
+
+`--json` prints one array instead, for tools:
+
+```text
+[{"kind":"page","path":"/posts/{slug}","module":"Posts.Show","name":"page","file":"app/Posts/Show.alder","line":9,"col":1}, …]
+```
+
+`name` is `page` for a page and the message's name for a message; `line` and
+`col` are 1-based. The language server answers the same list as the request
+`alder/routes` (below, "Editor support"), with a file URI and a 0-based range in
+place of `file`, `line` and `col`; alder.nvim uses it for its route picker.
 
 ### `alder build`
 
@@ -1695,6 +1730,14 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   the rest of its fields (a name, say), shows the diff it would make, and
   applies it when you press `<CR>`. Choosing a generator opens the generator
   modal (below) with its fields filled from the cursor.
+
+### Routes in the editor
+
+The server answers one more custom request, `alder/routes`, with params `{}`: the
+array `alder routes --json` prints, from the last build that type-checked, with
+`uri` (a `file://` URI) and `range` (an LSP range, 0-based, over the declaration)
+in place of `file`, `line` and `col`. The other fields are the same (`kind`,
+`path`, `module`, `name`). The list is empty before the first good build.
 
 ### Generators in the editor
 

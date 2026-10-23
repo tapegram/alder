@@ -11,6 +11,7 @@ var commandUsages = map[string]string{
 	"check":    "usage: alder check [dir] [--json]",
 	"build":    "usage: alder build [--emit] [dir]",
 	"run":      "usage: alder run [dir]",
+	"routes":   routesUsage,
 	"dump":     "usage: alder dump [--tokens|--ast|--ir] <file.alder | dir>",
 	"eval":     evalUsage,
 	"test":     testUsage,
@@ -39,6 +40,12 @@ var newGeneratorUsages = map[string]string{
 	"capability": newCapabilityUsage, "admin": newAdminUsage, "auth": newAuthUsage,
 	"type": newTypeUsage, "decl": newDeclUsage, "test": newTestUsage, "silo": newSiloUsage,
 }
+
+// newPageHelpNote follows `alder new page --help`'s usage line: how a module name maps to a file.
+const newPageHelpNote = `
+A dotted module name is a nested module: each dot is a directory.
+  alder new page Sites.Clarity.Index /sites/clarity
+writes app/Sites/Clarity/Index.alder (a name without dots, About, writes app/About.alder).`
 
 const helpUsage = "usage: alder help [<command> [<generator>]] [--json]"
 
@@ -76,6 +83,9 @@ func helpTo(args []string, w io.Writer) bool {
 	if cmd == "new" && len(args) > 1 {
 		if u, ok := newGeneratorUsages[args[1]]; ok {
 			fmt.Fprintln(w, u)
+			if args[1] == "page" {
+				fmt.Fprintln(w, newPageHelpNote)
+			}
 			return true
 		}
 	}
