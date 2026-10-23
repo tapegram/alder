@@ -13,8 +13,8 @@ import (
 // alder/routes. Kind is "page" (GET Path) or "msg" (POST Path). A page's Name is "page"; a
 // message's is its declaration's. Path is the page's path as declared, or for a message the URL
 // it is posted to (/_m/<Module>/<Msg>, as gen/routes.go routes it). File is the declaring module's
-// file as the loader names it (relative to the app dir) and Line, Col are the declaration's
-// place, 1-based.
+// file as the loader names it (relative to the project root, e.g. app/Posts/Show.alder),
+// and Line, Col are the declaration's place, 1-based.
 type Route struct {
 	Kind, Path, Module, Name, File string
 	Line, Col                      int
