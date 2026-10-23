@@ -92,6 +92,9 @@ var commandTree = []cmdSpec{
 		Args:  []string{"[dir]"},
 		Flags: []flagSpec{{Name: "--emit", Summary: "write the generated Go source and stop"}}},
 	{Name: "run", Summary: "run the app with live reload", Usage: commandUsages["run"], Args: []string{"[dir]"}},
+	{Name: "routes", Summary: "list the app's routes: pages (GET) and messages (POST)", Usage: commandUsages["routes"],
+		Args:  []string{"[dir]"},
+		Flags: []flagSpec{{Name: "--json", Summary: "a JSON array of routes with file, line and col"}}},
 	{Name: "dump", Summary: "print a file's tokens or syntax tree, or an app's IR", Usage: commandUsages["dump"],
 		Args: []string{"<file.alder | dir>"},
 		Flags: []flagSpec{
