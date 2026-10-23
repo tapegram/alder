@@ -58,6 +58,7 @@ func runBrowserScript(t *testing.T, script string, r *devRun) {
 // A compile error shows in the dev panel: an Errors tab (first, with a count) and a strip fixed
 // to the top of the viewport that moves nothing; a good build clears both.
 func TestBrowser_ErrorsInPanel(t *testing.T) {
+	t.Parallel()
 	playwrightEnv(t) // skip before the build when there is no browser
 	script := browserScript(t, "errors.cjs")
 	runBrowserScript(t, script, startRun(t))
@@ -67,6 +68,7 @@ func TestBrowser_ErrorsInPanel(t *testing.T) {
 // Ctrl+Shift+D minimises it to a small tab that reserves no space, and its state is remembered
 // (localStorage) across a morph and a reload; with storage unavailable it still works.
 func TestBrowser_PanelResizeAndMinimise(t *testing.T) {
+	t.Parallel()
 	playwrightEnv(t)
 	script := browserScript(t, "panel.cjs")
 	runBrowserScript(t, script, startRun(t))

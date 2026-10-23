@@ -12,6 +12,7 @@ import (
 // The dev server keeps check diagnostics structured: file, line, col, code, message and the
 // source excerpt with its caret.
 func TestParseDiags(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
 		t.Fatal(err)
@@ -43,6 +44,7 @@ func TestParseDiags(t *testing.T) {
 }
 
 func TestErrorsHTML(t *testing.T) {
+	t.Parallel()
 	st := errState{kind: "check", diags: []diagItem{
 		{Code: "E0003", File: "app/X.alder", Line: 2, Col: 6, Message: "expected <Text>, got Int", Excerpt: "x = a\n    ^"},
 		{Code: "E0007", File: "app/Y.alder", Line: 1, Col: 1, Message: "second"},
@@ -65,6 +67,7 @@ func TestErrorsHTML(t *testing.T) {
 
 // A build failure or a crash has no structure: its text is one block, escaped.
 func TestErrorsHTML_TextFallback(t *testing.T) {
+	t.Parallel()
 	h := errorsHTML(errState{kind: "build", text: "alder run: <boom>\nline 2\n"})
 	for _, want := range []string{"Build failed: 1 error. The page is the last good build.", `data-count="1"`, "<pre>alder run: &lt;boom&gt;\nline 2</pre>"} {
 		if !strings.Contains(h, want) {
@@ -83,6 +86,7 @@ func TestErrorsHTML_TextFallback(t *testing.T) {
 // A diagnostic's file, message and excerpt come from the user's files: the strip, the list (which
 // the panel's Errors tab copies) and the 502 page show them escaped, never as markup.
 func TestErrorsHTML_Escapes(t *testing.T) {
+	t.Parallel()
 	st := errState{kind: "check", diags: []diagItem{{
 		Code: "E0003", File: "app/<img src=x>.alder", Line: 1, Col: 1,
 		Message: `bad <b onclick="x">`, Excerpt: "<script>alert(1)</script>\n^",

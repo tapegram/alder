@@ -15,24 +15,22 @@ import (
 	"time"
 )
 
-// runTest runs `alder test args…`. Tests that use examples/todos itself first move to a fresh
-// working directory (inTemp), so the build lands there, not in cmd/alder/build.
+// runTest runs `alder test args…`, building under the test's own build directory
+// (testBuildDir), so nothing lands in cmd/alder/build.
 func runTest(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
 	var out, errb bytes.Buffer
-	code := runTestTo(args, &out, &errb)
+	code := runTestTo(withBuildDir(t, args), &out, &errb)
 	return code, out.String(), errb.String()
 }
 
-// tempTodos copies examples/todos to a temporary directory, makes that the working directory
-// (so the build lands there too), appends extra to the app file rel, and returns the copy's
-// directory, "todos".
+// tempTodos copies examples/todos to a temporary directory, appends extra to the app file rel,
+// and returns the copy's directory.
 func tempTodos(t *testing.T, rel, extra string) string {
 	t.Helper()
 	tmp := t.TempDir()
 	copyDir(t, todosDir(t), filepath.Join(tmp, "todos"))
-	t.Chdir(tmp)
-	path := filepath.Join("todos", "app", rel)
+	path := filepath.Join(tmp, "todos", "app", rel)
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -40,15 +38,12 @@ func tempTodos(t *testing.T, rel, extra string) string {
 	if err := os.WriteFile(path, append(b, []byte(extra)...), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return "todos"
+	return filepath.Join(tmp, "todos")
 }
 
-// inTemp makes a fresh temporary directory the working directory.
-func inTemp(t *testing.T) { t.Chdir(t.TempDir()) }
-
 func TestTest_Todos(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
-	inTemp(t)
 	code, stdout, stderr := runTest(t, todosDir(t))
 	if code != 0 {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
@@ -91,6 +86,7 @@ func TestTest_Todos(t *testing.T) {
 }
 
 func TestTest_Failing(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	dir := tempTodos(t, "Todo.alder", "\ntest \"wrong\" = countOpen [] == 1\n")
 	code, stdout, stderr := runTest(t, dir)
@@ -105,8 +101,8 @@ func TestTest_Failing(t *testing.T) {
 }
 
 func TestTest_JSON(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
-	inTemp(t)
 	code, stdout, stderr := runTest(t, todosDir(t), "--json")
 	if code != 0 {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
@@ -142,8 +138,8 @@ func TestTest_JSON(t *testing.T) {
 }
 
 func TestTest_Run(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
-	inTemp(t)
 	code, stdout, stderr := runTest(t, todosDir(t), "-run", "countOpen")
 	if code != 0 || stdout != "ok   Todo \"countOpen ignores done todos\"\n1 passed, 0 failed\n" {
 		t.Errorf("exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
@@ -151,8 +147,8 @@ func TestTest_Run(t *testing.T) {
 }
 
 func TestTest_NoMatch(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
-	inTemp(t)
 	code, stdout, stderr := runTest(t, todosDir(t), "-run", "zzz")
 	if code != 0 || stdout != "0 passed, 0 failed\n" {
 		t.Errorf("exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
@@ -164,6 +160,7 @@ func TestTest_NoMatch(t *testing.T) {
 }
 
 func TestTest_CheckError(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	dir := tempTodos(t, "Todo.alder", "\nbroken : Int\nbroken = \"x\"\n")
 	code, stdout, stderr := runTest(t, dir)
@@ -187,6 +184,7 @@ func TestTest_CheckError(t *testing.T) {
 }
 
 func TestTest_Unwired(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	dir := tempTodos(t, filepath.Join("Auth", "Login.alder"), `
 test "verify rejects a stranger" = {
@@ -209,6 +207,7 @@ test "verify rejects a stranger" = {
 
 // A capability's Go error inside Test.run is an Err naming the capability, not a failed test.
 func TestTest_CapabilityError(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	dir := tempTodos(t, filepath.Join("Auth", "Login.alder"), `
 test "a capability's error is an Err" = {
@@ -248,14 +247,15 @@ func (password) Verify(context.Context, app.Args__Auth__Login__Password__Verify)
 // installs the fake uses the fake and one that does not uses the adapter (each test has its
 // own capabilities), and the production build (alder build) of the same app has no fakes.
 func TestTest_Fakes(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	src, err := filepath.Abs("../../testdata/corpus/fake-ok")
 	if err != nil {
 		t.Fatal(err)
 	}
-	inTemp(t)
-	copyDir(t, src, "fake-ok")
-	code, stdout, stderr := runTest(t, "fake-ok")
+	dir := filepath.Join(t.TempDir(), "fake-ok")
+	copyDir(t, src, dir)
+	code, stdout, stderr := runTest(t, dir)
 	if code != 0 || !strings.Contains(stdout, "3 passed, 0 failed\n") || !strings.Contains(stdout, `ok   Checkout "a charge is recorded"`) {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
@@ -315,7 +315,8 @@ func (md) Render(_ context.Context, a app.Args__Markdown__Markdown__Render) (htm
 	return html.Text(a.Value), nil
 }
 `
-	for path, body := range map[string]string{"fake-ok/app/App.alder": app, "fake-ok/adapters/payments/stripe.go": stripe, "fake-ok/adapters/markdown/markdown.go": markdown} {
+	for path, body := range map[string]string{"app/App.alder": app, "adapters/payments/stripe.go": stripe, "adapters/markdown/markdown.go": markdown} {
+		path = filepath.Join(dir, path)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -323,7 +324,7 @@ func (md) Render(_ context.Context, a app.Args__Markdown__Markdown__Render) (htm
 			t.Fatal(err)
 		}
 	}
-	f, err := os.OpenFile("fake-ok/app/Checkout.alder", os.O_APPEND|os.O_WRONLY, 0)
+	f, err := os.OpenFile(filepath.Join(dir, "app", "Checkout.alder"), os.O_APPEND|os.O_WRONLY, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,15 +332,15 @@ func (md) Render(_ context.Context, a app.Args__Markdown__Markdown__Render) (htm
 		t.Fatal(err)
 	}
 	f.Close()
-	code, stdout, stderr = runTest(t, "fake-ok")
+	code, stdout, stderr = runTest(t, dir)
 	if code != 0 || !strings.Contains(stdout, "4 passed, 0 failed\n") {
 		t.Fatalf("with adapters: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 	var out, errb bytes.Buffer
-	if code := runBuildTo([]string{"fake-ok"}, &out, &errb); code != 0 {
+	if code := runBuildTo([]string{"--build-dir", testBuildDir(t), dir}, &out, &errb); code != 0 {
 		t.Fatalf("alder build: exit %d\n%s%s", code, out.String(), errb.String())
 	}
-	gen, err := os.ReadFile(filepath.Join("build", "fake-ok", "Payments_alder.go"))
+	gen, err := os.ReadFile(filepath.Join(testBuildDir(t), "fake-ok", "Payments_alder.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -360,15 +361,16 @@ func (md) Render(_ context.Context, a app.Args__Markdown__Markdown__Render) (htm
 // TestTest_FilePages runs file-ok (M17): Test.fetch on text, zip, byte-exact html, a 503, a
 // 404, a requires redirect and a page whose load waits 20 s on the test clock, not the wall.
 func TestTest_FilePages(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	src, err := filepath.Abs("../../testdata/corpus/file-ok")
 	if err != nil {
 		t.Fatal(err)
 	}
-	inTemp(t)
-	copyDir(t, src, "file-ok")
+	dir := filepath.Join(t.TempDir(), "file-ok")
+	copyDir(t, src, dir)
 	start := time.Now()
-	code, stdout, stderr := runTest(t, "file-ok")
+	code, stdout, stderr := runTest(t, dir)
 	if code != 0 || !strings.Contains(stdout, "9 passed, 0 failed\n") {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
@@ -378,14 +380,15 @@ func TestTest_FilePages(t *testing.T) {
 }
 
 func TestTest_Browser(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	src, err := filepath.Abs("../../testdata/corpus/browser-ok")
 	if err != nil {
 		t.Fatal(err)
 	}
-	inTemp(t)
-	copyDir(t, src, "browser-ok")
-	code, stdout, stderr := runTest(t, "browser-ok")
+	dir := filepath.Join(t.TempDir(), "browser-ok")
+	copyDir(t, src, dir)
+	code, stdout, stderr := runTest(t, dir)
 	if code != 0 || !strings.Contains(stdout, "15 passed, 0 failed\n") {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
@@ -488,7 +491,7 @@ test "get a page that is not found" = {
   Task.succeed True
 }
 `
-	index := "browser-ok/app/Notes/Index.alder"
+	index := dir + "/app/Notes/Index.alder"
 	srcB, err := os.ReadFile(index)
 	if err != nil {
 		t.Fatal(err)
@@ -501,7 +504,7 @@ test "get a page that is not found" = {
 	if err := os.WriteFile(index, []byte(cut+failing), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	code, stdout, stderr = runTest(t, "browser-ok", "-run", "Notes.Index")
+	code, stdout, stderr = runTest(t, dir, "-run", "Notes.Index")
 	for _, want := range []string{
 		"FAIL Notes.Index \"get a page that requires a user\"\n  error: GET /: redirected to /login (requires user)\n",
 		"FAIL Notes.Index \"click a message the page does not render\"\n  error: the page / has no button or form for Notes.Index.Toggle { id: \"zzz\" }\n",
@@ -537,14 +540,15 @@ test "get a page that is not found" = {
 // passes the cookie's role check while the re-read idiom's page is not found (RF3). Every
 // mutant, `scope dropped` and `role dropped` among them, is killed.
 func TestTest_Rules(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	src, err := filepath.Abs("../../testdata/corpus/rules-ok")
 	if err != nil {
 		t.Fatal(err)
 	}
-	inTemp(t)
-	copyDir(t, src, "rules-ok")
-	code, stdout, stderr := runTest(t, "rules-ok")
+	dir := filepath.Join(t.TempDir(), "rules-ok")
+	copyDir(t, src, dir)
+	code, stdout, stderr := runTest(t, dir)
 	for _, want := range []string{
 		"ok   Todos.Show \"a stranger's open of my todo is not found\"\n",
 		"ok   Admin.Index \"a reader on an author page is not found\"\n",
@@ -565,12 +569,12 @@ func TestTest_Rules(t *testing.T) {
 		t.Fatalf("exit %d\n%s\n%s", code, stdout, stderr)
 	}
 
-	code, stdout, stderr = runTest(t, "rules-ok", "--mutate")
+	code, stdout, stderr = runTest(t, dir, "--mutate")
 	if code != 0 || !strings.HasSuffix(stdout, "27 passed, 0 failed\n31 mutants: 31 killed, 0 survived  (score 1.00)\n") {
 		t.Fatalf("--mutate: exit %d\n%s\n%s", code, stdout, stderr)
 	}
 	// without the tests that look at a stranger or a role, exactly those mutants survive
-	code, stdout, _ = runTest(t, "rules-ok", "--mutate", "-run", `^(?:User|Todo |Admin\.Index "(an author|a visitor)|Admin\.Users "(an admin|a visitor)|Todos\.Index "(a visitor|adding|toggling|renaming|removing|duplicating)|Todos\.Show "(the owner|a visitor))`)
+	code, stdout, _ = runTest(t, dir, "--mutate", "-run", `^(?:User|Todo |Admin\.Index "(an author|a visitor)|Admin\.Users "(an admin|a visitor)|Todos\.Index "(a visitor|adding|toggling|renaming|removing|duplicating)|Todos\.Show "(the owner|a visitor))`)
 	for _, want := range []string{
 		"  Admin.Index   requires:6   role dropped       requires user, role Author | Admin → requires user\n",
 		"  Admin.Users   requires:7   role dropped       requires user, role Admin → requires user\n",
@@ -585,7 +589,7 @@ func TestTest_Rules(t *testing.T) {
 	}
 
 	// the helper form outside Test.run: the test fails with the operation's text
-	index := filepath.Join("rules-ok", "app", "Todos", "Index.alder")
+	index := filepath.Join(dir, "app", "Todos", "Index.alder")
 	b, err := os.ReadFile(index)
 	if err != nil {
 		t.Fatal(err)
@@ -594,7 +598,7 @@ func TestTest_Rules(t *testing.T) {
 	if err := os.WriteFile(index, append(b, helper...), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	code, stdout, _ = runTest(t, "rules-ok", "-run", "helper without")
+	code, stdout, _ = runTest(t, dir, "-run", "helper without")
 	want := "FAIL Todos.Index \"a helper without a signed-in user\"\n  error: Db.mine Todo: no signed-in user\n  trace: [\"Db.mine Todo\", \"Db.all Todo\"]\n0 passed, 1 failed\n"
 	if code != 1 || stdout != want {
 		t.Fatalf("exit %d\n%s\nwant:\n%s", code, stdout, want)
@@ -606,14 +610,15 @@ func TestTest_Rules(t *testing.T) {
 // and then a Test.run whose Task writes two stores, which fails as the request would (C1: the
 // one-store rule holds for a test's own Tasks, not only for the checker's arms).
 func TestTest_Silos(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	src, err := filepath.Abs("../../testdata/corpus/silo-ok")
 	if err != nil {
 		t.Fatal(err)
 	}
-	inTemp(t)
-	copyDir(t, src, "silo-ok")
-	code, stdout, stderr := runTest(t, "silo-ok")
+	dir := filepath.Join(t.TempDir(), "silo-ok")
+	copyDir(t, src, dir)
+	code, stdout, stderr := runTest(t, dir)
 	for _, want := range []string{
 		"ok   Projects.Index \"labels are scoped by org in the shared store\"\n",
 		"ok   Projects.Index \"Test.run of Tag writes the shared store, of Seed the org's\"\n",
@@ -627,7 +632,7 @@ func TestTest_Silos(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\n%s\n%s", code, stdout, stderr)
 	}
-	index := filepath.Join("silo-ok", "app", "Projects", "Index.alder")
+	index := filepath.Join(dir, "app", "Projects", "Index.alder")
 	b, err := os.ReadFile(index)
 	if err != nil {
 		t.Fatal(err)
@@ -637,7 +642,7 @@ func TestTest_Silos(t *testing.T) {
 	if err := os.WriteFile(index, append(b, two...), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	code, stdout, _ = runTest(t, "silo-ok", "-run", "two stores")
+	code, stdout, _ = runTest(t, dir, "-run", "two stores")
 	want := "FAIL Projects.Index \"two stores in one Test.run\"\n  error: db: internal error: Db.insert Project writes silo org in a Task on the shared store (one store per Task)\n"
 	if code != 1 || !strings.HasPrefix(stdout, want) || !strings.HasSuffix(stdout, "0 passed, 1 failed\n") {
 		t.Fatalf("exit %d\n%s\nwant:\n%s", code, stdout, want)
@@ -645,7 +650,7 @@ func TestTest_Silos(t *testing.T) {
 }
 
 func TestTest_Usage(t *testing.T) {
-	inTemp(t)
+	t.Parallel()
 	for _, args := range [][]string{
 		{todosDir(t), "extra"},
 		{todosDir(t), "--verbose"},
@@ -664,7 +669,7 @@ func TestTest_Usage(t *testing.T) {
 	if code != 2 || !strings.Contains(stderr, "no .alder files") {
 		t.Errorf("no app: exit %d, stderr %q", code, stderr)
 	}
-	if entries, _ := os.ReadDir("."); len(entries) != 0 {
+	if entries, _ := os.ReadDir(testBuildDir(t)); len(entries) != 0 {
 		t.Errorf("a usage error built something: %v", entries)
 	}
 }
@@ -705,11 +710,12 @@ func (w *firstWrite) Write(p []byte) (int, error) {
 
 // Results stream as tests finish; at -timeout the running test fails as timed out.
 func TestTest_StreamAndTimeout(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	dir := slowTodos(t)
 	var out firstWrite
 	var errb bytes.Buffer
-	code := runTestTo([]string{dir, "-run", `"quick"|"hang"`, "-timeout", "2s"}, &out, &errb)
+	code := runTestTo(withBuildDir(t, []string{dir, "-run", `"quick"|"hang"`, "-timeout", "2s"}), &out, &errb)
 	end := time.Now()
 	want := "ok   Todo \"quick\"\nFAIL Todo \"hang\"\n  error: timed out after 2s\n1 passed, 1 failed\n"
 	if code != 1 || out.buf.String() != want {
@@ -725,6 +731,7 @@ func TestTest_StreamAndTimeout(t *testing.T) {
 
 // A test that crashes the program (a stack overflow) fails by name, without the Go trace.
 func TestTest_Crash(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	dir := slowTodos(t)
 	code, stdout, stderr := runTest(t, dir, "-run", "countOpen|overflow")
@@ -753,6 +760,7 @@ func TestTest_Crash(t *testing.T) {
 
 // TestHelperAlderTest is `alder test` in a process of its own, for TestTest_KilledParent.
 func TestHelperAlderTest(t *testing.T) {
+	t.Parallel()
 	args := os.Getenv("ALDER_HELPER_TEST_ARGS")
 	if args == "" {
 		t.Skip("a helper process")
@@ -762,18 +770,19 @@ func TestHelperAlderTest(t *testing.T) {
 
 // SIGKILL of `alder test` takes the test program with it (its stdin reaches end of file).
 func TestTest_KilledParent(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	dir := slowTodos(t)
-	wd, _ := os.Getwd()
-	real, _ := filepath.EvalSymlinks(wd)
+	bd := testBuildDir(t)
+	real, _ := filepath.EvalSymlinks(bd)
 	cmd := exec.Command(os.Args[0], "-test.run=^TestHelperAlderTest$")
-	cmd.Env = append(os.Environ(), "ALDER_HELPER_TEST_ARGS="+dir+"\x1f-run\x1fhang")
+	cmd.Env = append(os.Environ(), "ALDER_HELPER_TEST_ARGS="+dir+"\x1f--build-dir\x1f"+bd+"\x1f-run\x1fhang")
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
 	defer cmd.Process.Kill()
 	// wait for the hanging test to be running
-	status := filepath.Join(wd, "build", "todos", "scratch", "test", "status")
+	status := filepath.Join(bd, "todos", "scratch", "test", "status")
 	for start := time.Now(); ; time.Sleep(50 * time.Millisecond) {
 		if b, _ := os.ReadFile(status); string(b) == "Todo\thang\n" {
 			break
@@ -786,7 +795,7 @@ func TestTest_KilledParent(t *testing.T) {
 		out, _ := exec.Command("ps", "-A", "-o", "pid=,command=").Output()
 		var ps []string
 		for _, l := range strings.Split(string(out), "\n") {
-			if strings.Contains(l, filepath.Join(wd, "build")) || strings.Contains(l, filepath.Join(real, "build")) {
+			if strings.Contains(l, bd) || strings.Contains(l, real) {
 				ps = append(ps, strings.TrimSpace(l))
 			}
 		}
@@ -812,6 +821,7 @@ func TestTest_KilledParent(t *testing.T) {
 // A typed hole stops the run with a reason; a build problem under --json is one object (an
 // adapter that does not compile is the user's: exit 1).
 func TestTest_HoleAndJSONError(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	dir := tempTodos(t, "Todo.alder", "\ntest \"h\" = ?todo == 1\n")
 	code, _, stderr := runTest(t, dir)
@@ -875,6 +885,7 @@ const unwiredWarning = "warning: 1 capability without an adapter runs unwired in
 // so a test with Test.fake passes (fakes first, before any Go) and one without fails "not
 // wired in tests".
 func TestTest_MissingAdapter(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	dir := tempTodos(t, "App.alder", "")
 	if err := os.WriteFile(filepath.Join(dir, "app", "Mail.alder"), []byte(mailAlder), 0o644); err != nil {
@@ -894,6 +905,7 @@ func TestTest_MissingAdapter(t *testing.T) {
 // Adapters alder build refuses, or that do not compile with the app, are the user's: alder
 // test exits 1 with alder build's message.
 func TestTest_AdapterRefusals(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	dir := tempTodos(t, "App.alder", "")
 	if err := os.WriteFile(filepath.Join(dir, "app", "Mail.alder"), []byte(mailAlder), 0o644); err != nil {
@@ -910,7 +922,7 @@ func TestTest_AdapterRefusals(t *testing.T) {
 	}
 	write("adapters/mail/mail.go", "package mail\n\nfunc Mailer() int { return 1 }\n")
 	code, stdout, stderr := runTest(t, dir)
-	if code != 1 || stdout != "" || !strings.Contains(stderr, "alder test: the adapters of todos (copied to build/todos/scratch/test/adapters) do not compile with the app: ") ||
+	if code != 1 || stdout != "" || !strings.Contains(stderr, "alder test: the adapters of todos (copied to "+filepath.Join(testBuildDir(t), "todos", "scratch", "test", "adapters")+") do not compile with the app: ") ||
 		!strings.Contains(stderr, "does not implement app.Cap__Mail__Mailer") {
 		t.Fatalf("wrong signature: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
@@ -935,10 +947,10 @@ func mutateOK(t *testing.T, extra string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inTemp(t)
-	copyDir(t, src, "mutate-ok")
+	dir := filepath.Join(t.TempDir(), "mutate-ok")
+	copyDir(t, src, dir)
 	if extra != "" {
-		f, err := os.OpenFile(filepath.Join("mutate-ok", "app", "Note.alder"), os.O_APPEND|os.O_WRONLY, 0)
+		f, err := os.OpenFile(filepath.Join(dir, "app", "Note.alder"), os.O_APPEND|os.O_WRONLY, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -947,7 +959,7 @@ func mutateOK(t *testing.T, extra string) string {
 			t.Fatal(err)
 		}
 	}
-	return "mutate-ok"
+	return dir
 }
 
 // mutateOKTests are the mutate-ok app's tests, as -run matches them.
@@ -965,6 +977,7 @@ var mutateOKTests = []string{
 // mutant; leaving one test out (-run selects the others) leaves exactly its mutant, one case
 // per operator class; --json, --min and the refusals.
 func TestTest_Mutate(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	dir := mutateOK(t, "")
 	code, stdout, stderr := runTest(t, dir, "--mutate")
@@ -1061,6 +1074,7 @@ ok   Notes "a new note is not pinned"
 // TestTest_MutateFailingSuite: a suite that does not pass measures nothing: the normal report,
 // then the refusal.
 func TestTest_MutateFailingSuite(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	dir := mutateOK(t, "\ntest \"broken\" = label { id: NoteId \"a\", title: \"x\", pinned: False, owner: User.UserId \"u\" } == \"pinned\"\n")
 	code, stdout, stderr := runTest(t, dir, "--mutate")
@@ -1073,6 +1087,7 @@ func TestTest_MutateFailingSuite(t *testing.T) {
 // measures nothing either: the crash's report, then the refusal (with --json on stderr, after
 // the summary).
 func TestTest_MutateSuiteCrashes(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	dir := mutateOK(t, "\nspin : Int -> Int\nspin n = spin (n + 1) + 1\n\ntest \"overflow\" = spin 0 == 1\n")
 	code, stdout, stderr := runTest(t, dir, "--mutate")
@@ -1090,15 +1105,16 @@ func TestTest_MutateSuiteCrashes(t *testing.T) {
 // killed as crashed and the run goes on in a new program from the next mutant. A mutant that
 // computes for hours is killed at -timeout as timed out, and the run goes on too.
 func TestTest_MutateCrashAndHang(t *testing.T) {
+	// serial: timing: the 2s per-mutant -timeout must see the stack-overflow crash first; under parallel load it reports "timed out"
 	needGoTool(t)
 	src, err := filepath.Abs("../../testdata/corpus/mutate-crash")
 	if err != nil {
 		t.Fatal(err)
 	}
-	inTemp(t)
-	copyDir(t, src, "mutate-crash")
+	dir := filepath.Join(t.TempDir(), "mutate-crash")
+	copyDir(t, src, dir)
 	start := time.Now()
-	code, stdout, stderr := runTest(t, "mutate-crash", "--mutate", "-timeout", "2s", "--json")
+	code, stdout, stderr := runTest(t, dir, "--mutate", "-timeout", "2s", "--json")
 	if code != 0 {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, stdout, stderr)
 	}

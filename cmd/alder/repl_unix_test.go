@@ -76,6 +76,7 @@ func wantGone(t *testing.T, prog string, d time.Duration) {
 // A REPL killed outright (SIGKILL: nothing runs in it) leaves no evaluation running: the
 // program reads end of file on the stdin pipe only the REPL held.
 func TestRepl_KillLeavesNoOrphan(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("spawns processes")
 	}
@@ -88,6 +89,7 @@ func TestRepl_KillLeavesNoOrphan(t *testing.T) {
 // SIGTERM, and SIGHUP (the terminal closed), stop the evaluation and the REPL, which exits 1
 // and removes its build directory.
 func TestRepl_SIGTERMAndSIGHUP(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("spawns processes")
 	}
@@ -114,6 +116,7 @@ func TestRepl_SIGTERMAndSIGHUP(t *testing.T) {
 // Two REPLs on one app at once (one busy evaluating) do not wait for each other: each builds in
 // a directory of its own.
 func TestRepl_TwoAtOnce(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("spawns processes")
 	}

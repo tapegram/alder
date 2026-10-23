@@ -9,8 +9,8 @@ import (
 // <generator> --help` prints the generator's (newGeneratorUsages).
 var commandUsages = map[string]string{
 	"check":    "usage: alder check [dir] [--json]",
-	"build":    "usage: alder build [--emit] [dir]",
-	"run":      "usage: alder run [dir]",
+	"build":    "usage: alder build [--emit] [--build-dir DIR] [dir]",
+	"run":      "usage: alder run [--build-dir DIR] [dir]",
 	"routes":   routesUsage,
 	"dump":     "usage: alder dump [--tokens|--ast|--ir] <file.alder | dir>",
 	"eval":     evalUsage,

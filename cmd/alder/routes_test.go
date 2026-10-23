@@ -14,6 +14,7 @@ func runRoutes(args ...string) (int, string, string) {
 }
 
 func TestRoutes_Table(t *testing.T) {
+	t.Parallel()
 	code, out, errs := runRoutes("../../examples/blog")
 	if code != 0 || errs != "" {
 		t.Fatalf("code %d, err %s", code, errs)
@@ -30,6 +31,7 @@ func TestRoutes_Table(t *testing.T) {
 }
 
 func TestRoutes_JSON(t *testing.T) {
+	t.Parallel()
 	code, out, errs := runRoutes("--json", "../../examples/blog")
 	if code != 0 || errs != "" {
 		t.Fatalf("code %d, err %s", code, errs)
@@ -56,6 +58,7 @@ func TestRoutes_JSON(t *testing.T) {
 }
 
 func TestRoutes_Errors(t *testing.T) {
+	t.Parallel()
 	code, _, _ := runRoutes(t.TempDir())
 	if code != 2 {
 		t.Errorf("empty dir: code %d", code)

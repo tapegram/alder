@@ -14,6 +14,7 @@ import (
 // The workflows `alder ci init` writes, by declaration: golden files under testdata/ci (go test
 // -run Ci -update rewrites them), linted with actionlint when it is on PATH.
 func TestCi_Golden(t *testing.T) {
+	t.Parallel()
 	ssh := func(domain, path string) ir.Target {
 		return ir.Target{Kind: "ssh", Host: "deploy@box.example.com", Domain: domain, Path: path}
 	}
@@ -97,6 +98,7 @@ func firstDiffLines(want, got string) string {
 // repository only (a fork's pull request has no secrets); production on a push to main; the
 // secrets it needs are named in its header, and no value is in it.
 func TestCi_PreviewWorkflow(t *testing.T) {
+	t.Parallel()
 	wf := ciWorkflow(&ir.Deploy{Envs: map[string]ir.Target{
 		"production": {Kind: "ssh", Host: "deploy@box.example.com", Domain: "blog.example.com", Path: "/srv/blog"},
 		"preview":    {Kind: "ssh", Host: "deploy@box.example.com", Domain: "*.preview.example.com", Path: "/srv/blog-preview"},
@@ -125,6 +127,7 @@ func TestCi_PreviewWorkflow(t *testing.T) {
 // `alder ci init` on an app: the file written, its summary and secrets printed; a second run
 // refuses to replace it, --force does; a usage error.
 func TestCi_Init(t *testing.T) {
+	// serial: t.Setenv(PATH), and deployScaffold's inTemp (t.Chdir)
 	dir := deployScaffold(t, `deploy {
   production: Fly "ord" { app: "demo-prod" },
   preview: Script "./scripts/record.sh",
@@ -169,6 +172,7 @@ func TestCi_Init(t *testing.T) {
 // request's host; a Script dry run names it, a Script run gets it in ALDER_HOST; a host that
 // does not match the wildcard domain, and --host for a Fly environment, are refused.
 func TestDeploy_Host(t *testing.T) {
+	// serial: inTemp (t.Chdir) via deployScaffold/noTables; deploy scaffolds use relative paths (Task 3)
 	dir := deployScaffold(t, `deploy {
   preview: Script "./scripts/host.sh",
   requires: ["SMTP_URL"],
@@ -219,6 +223,7 @@ func TestDeploy_Host(t *testing.T) {
 
 // ci init says what a preview domain that is not a wildcard does.
 func TestCi_NonWildcardPreview(t *testing.T) {
+	t.Parallel()
 	d := &ir.Deploy{Envs: map[string]ir.Target{"preview": {Kind: "ssh", Host: "deploy@box.example.com", Domain: "preview.example.com", Path: "/srv/p"}}}
 	wf := ciWorkflow(d, "v0.1.0", "1.27")
 	if !strings.Contains(strings.Join(wf.Notes, "\n"), "the preview domain preview.example.com is not a wildcard: each pull request is served at <number>.preview.example.com") {
@@ -232,6 +237,7 @@ func TestCi_NonWildcardPreview(t *testing.T) {
 // The Render jobs have no SSH step; they push an image (`packages: write`, the registry token
 // falling back to the run's) and read the preview's address from `alder deploy preview --json`.
 func TestCiInit_RenderOnly(t *testing.T) {
+	t.Parallel()
 	b, err := os.ReadFile(filepath.Join("testdata", "ci", "render-only.yml"))
 	if err != nil {
 		t.Fatal(err)
@@ -262,6 +268,7 @@ func TestCiInit_RenderOnly(t *testing.T) {
 
 // Production at Render and previews on a box: the SSH step only in the job that deploys to the box.
 func TestCiInit_Mixed(t *testing.T) {
+	t.Parallel()
 	b, err := os.ReadFile(filepath.Join("testdata", "ci", "mixed.yml"))
 	if err != nil {
 		t.Fatal(err)
@@ -280,6 +287,7 @@ func TestCiInit_Mixed(t *testing.T) {
 // `alder ci init` pushes an image: a Render environment with no `image` and no GitHub origin is
 // refused (R5); with an origin it writes the file.
 func TestCiInit_RenderImage(t *testing.T) {
+	// serial: inTemp (t.Chdir) via deployScaffold/noTables; deploy scaffolds use relative paths (Task 3)
 	dir := deployScaffold(t, `deploy {
   production: Render "oregon" { service: "blog", database: Turso "acme" { app: "blog" } },
 }`, nil)

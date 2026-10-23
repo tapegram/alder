@@ -96,6 +96,7 @@ func mustCheck(t *testing.T, dir string, wantE0019 string) {
 // The first migration of each example is what the examples commit (so the committed files are
 // current), the app then checks clean, and a second run changes nothing (Review Focus 5).
 func TestMigrate_Init(t *testing.T) {
+	// serial: tempApp t.Chdir()s to the copy's parent, and the test names the app by a relative path
 	for _, ex := range []string{"todos", "blog"} {
 		t.Run(ex, func(t *testing.T) {
 			committed, err := filepath.Abs(filepath.Join("../../examples", ex, "migrations"))
@@ -131,6 +132,7 @@ func TestMigrate_Init(t *testing.T) {
 // then dropped (DROP COLUMN, DROPS DATA in the file and the output). E0019 comes before each
 // migration and is gone after it.
 func TestMigrate_AddRenameDrop(t *testing.T) {
+	// serial: tempApp t.Chdir()s to the copy's parent, and the test names the app by a relative path
 	dir := freshBlog(t)
 	runMigrate(t, dir)
 
@@ -176,6 +178,7 @@ func TestMigrate_AddRenameDrop(t *testing.T) {
 // DEFAULT would leave a DEFAULT in the table SQLite stores, which the app's CREATE TABLE has
 // not).
 func TestMigrate_NonNullField(t *testing.T) {
+	// serial: tempApp t.Chdir()s to the copy's parent, and the test names the app by a relative path
 	dir := freshBlog(t)
 	writeScore(t, dir)
 	runMigrate(t, dir)
@@ -210,6 +213,7 @@ func writeScore(t *testing.T, dir string) {
 // default alone is no change to the database (defaults are not in its tables), but schema.json
 // records it.
 func TestMigrate_NoChange(t *testing.T) {
+	// serial: tempApp t.Chdir()s to the copy's parent, and the test names the app by a relative path
 	dir := freshBlog(t)
 	runMigrate(t, dir)
 	mustMigrate(t, "no changes since 0001_initial\n", dir)
@@ -233,6 +237,7 @@ func TestMigrate_NoChange(t *testing.T) {
 
 // --dry-run prints the file it would write and writes nothing (Review Focus 5); --name names it.
 func TestMigrate_DryRun(t *testing.T) {
+	// serial: tempApp t.Chdir()s to the copy's parent, and the test names the app by a relative path
 	dir := freshBlog(t)
 	runMigrate(t, dir)
 	editApp(t, dir, "User.alder", "  created: Time @created,\n", "  created: Time @created,\n  bio: Maybe Text = Nothing,\n")
@@ -261,6 +266,7 @@ func TestMigrate_DryRun(t *testing.T) {
 // An app whose tables changed since its last migration is refused by check, build, test and
 // eval with E0019; migrate itself does not report it (it is the fix).
 func TestMigrate_E0019Everywhere(t *testing.T) {
+	// serial: tempApp t.Chdir()s to the copy's parent, and the test names the app by a relative path
 	dir := tempApp(t, "../../examples/blog", "blog") // with the committed 0001_initial
 	editApp(t, dir, "User.alder", "  created: Time @created,\n", "  created: Time @created,\n  bio: Maybe Text = Nothing,\n")
 	const msg = "the schema changed since migration 0001 (table User: column bio): run `alder migrate`"
@@ -287,6 +293,7 @@ func TestMigrate_E0019Everywhere(t *testing.T) {
 // schema.json that is not the last file's result, a schema.json without files, files without
 // a schema.json.
 func TestMigrate_SnapshotMismatch(t *testing.T) {
+	// serial: tempApp t.Chdir()s to the copy's parent, and the test names the app by a relative path
 	dir := freshBlog(t)
 	runMigrate(t, dir)
 	mdir := filepath.Join(dir, "migrations")
@@ -323,6 +330,7 @@ func TestMigrate_SnapshotMismatch(t *testing.T) {
 // (0003, a rebuild) and the next eval --run, which opens the database outside dev mode as a
 // restarted server does, applies 0003 and reads the rows back.
 func TestMigrate_RebuildKeepsRows(t *testing.T) {
+	// serial: tempApp t.Chdir()s to the copy's parent, and the test names the app by a relative path
 	needGoTool(t)
 	dir := freshBlog(t)
 	writeScore(t, dir)
@@ -331,7 +339,7 @@ func TestMigrate_RebuildKeepsRows(t *testing.T) {
 	if code != 0 || out != "0 : Int\n" {
 		t.Fatalf("eval --run: exit %d\n%s%s", code, out, errs)
 	}
-	devDB, err := sql.Open("sqlite", filepath.Join("build", "blog", "dev.db"))
+	devDB, err := sql.Open("sqlite", filepath.Join(testBuildDir(t), "blog", "dev.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,6 +357,7 @@ func TestMigrate_RebuildKeepsRows(t *testing.T) {
 }
 
 func TestDeriveSlug(t *testing.T) {
+	t.Parallel()
 	const T = "Post__Post"
 	for _, c := range []struct {
 		steps []migrate.Step
@@ -380,6 +389,7 @@ func TestDeriveSlug(t *testing.T) {
 // A middle file deleted (or two numbered alike): `alder migrate` refuses with `alder check`'s
 // text instead of planning on top of a broken chain ("no changes").
 func TestMigrate_BrokenChainRefused(t *testing.T) {
+	// serial: tempApp t.Chdir()s to the copy's parent, and the test names the app by a relative path
 	dir := freshBlog(t)
 	runMigrate(t, dir)
 	mdir := filepath.Join(dir, "migrations")

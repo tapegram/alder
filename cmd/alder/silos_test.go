@@ -52,6 +52,7 @@ const siloSecret = "0123456789abcdef-silos"
 // ahead silo answer the maintenance page (503) while the others serve, and --migrate-silos
 // [--allow-data-loss] fixes the first.
 func TestSilos_Binary(t *testing.T) {
+	// serial: tempApp t.Chdir()s to the copy's parent, and the test builds in the working directory (os.Getwd)
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go is not on PATH")
 	}
@@ -67,7 +68,7 @@ func TestSilos_Binary(t *testing.T) {
 			t.Fatalf("build %s: %d\n%s%s", name, code, out, errs)
 		}
 		bin := filepath.Join(tmp, name)
-		if err := os.Rename(filepath.Join(tmp, "build", dir, dir), bin); err != nil {
+		if err := os.Rename(filepath.Join(testBuildDir(t), dir, dir), bin); err != nil {
 			t.Fatal(err)
 		}
 		return bin

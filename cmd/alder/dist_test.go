@@ -22,6 +22,7 @@ import (
 // path and no file under build/ contains the checkout's path. Then it starts the built app and
 // GETs `/`.
 func TestDist_OutOfTree(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go is not on PATH")
 	}

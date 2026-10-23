@@ -6,16 +6,44 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"alder/internal/buildkit"
 	"alder/internal/version"
 )
 
+// testBuildDirs holds each test's build directory (testBuildDir), by test.
+var testBuildDirs sync.Map
+
+// testBuildDir is the build directory of the test t: a temporary directory made on first use,
+// the same on every later call, so that two commands of one test share their build (the dev
+// database of eval, say) and two tests never do.
+func testBuildDir(t *testing.T) string {
+	t.Helper()
+	if d, ok := testBuildDirs.Load(t); ok {
+		return d.(string)
+	}
+	d, _ := testBuildDirs.LoadOrStore(t, t.TempDir())
+	return d.(string)
+}
+
+// withBuildDir is args with `--build-dir <the test's build directory>` in front, unless args
+// give one.
+func withBuildDir(t *testing.T, args []string) []string {
+	t.Helper()
+	for _, a := range args {
+		if a == "--build-dir" || strings.HasPrefix(a, "--build-dir=") {
+			return args
+		}
+	}
+	return append([]string{"--build-dir", testBuildDir(t)}, args...)
+}
+
 func runBuild(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
 	var out, errb bytes.Buffer
-	code := runBuildTo(args, &out, &errb)
+	code := runBuildTo(withBuildDir(t, args), &out, &errb)
 	return code, out.String(), errb.String()
 }
 
@@ -28,16 +56,17 @@ func copyDir(t *testing.T, src, dst string) {
 }
 
 func TestBuildEmit_Todos(t *testing.T) {
+	t.Parallel()
 	src, err := filepath.Abs("../../examples/todos")
 	if err != nil {
 		t.Fatal(err)
 	}
 	tmp := t.TempDir()
 	copyDir(t, src, filepath.Join(tmp, "todos"))
-	t.Chdir(tmp)
+	bd := filepath.Join(tmp, "build")
 	// stale generated files (one from a module since removed, one an M3a build named
 	// <Module>.go) and hand-written ones in the output directory
-	out := filepath.Join("build", "todos")
+	out := filepath.Join(bd, "todos")
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +76,7 @@ func TestBuildEmit_Todos(t *testing.T) {
 	os.WriteFile(filepath.Join(out, "notes.txt"), []byte("mine"), 0o644)
 	os.WriteFile(filepath.Join(out, "mine.go"), []byte("package app\n"), 0o644)
 
-	code, stdout, stderr := runBuild(t, "--emit", "todos")
+	code, stdout, stderr := runBuild(t, "--emit", "--build-dir", bd, filepath.Join(tmp, "todos"))
 	if code != 0 {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
@@ -91,19 +120,20 @@ func TestBuildEmit_Todos(t *testing.T) {
 // A Go file of the user's in build/<app> that does not vet is named as the cause, not reported
 // as an internal error of the compiler (M8).
 func TestBuildEmit_ForeignFileDoesNotVet(t *testing.T) {
+	t.Parallel()
 	src, err := filepath.Abs("../../examples/todos")
 	if err != nil {
 		t.Fatal(err)
 	}
 	tmp := t.TempDir()
 	copyDir(t, src, filepath.Join(tmp, "todos"))
-	t.Chdir(tmp)
-	out := filepath.Join("build", "todos")
+	bd := filepath.Join(tmp, "build")
+	out := filepath.Join(bd, "todos")
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	os.WriteFile(filepath.Join(out, "stale_test.go"), []byte("package app\n\nvar _ = Gone__value\n"), 0o644)
-	code, stdout, stderr := runBuild(t, "--emit", "todos")
+	code, stdout, stderr := runBuild(t, "--emit", "--build-dir", bd, filepath.Join(tmp, "todos"))
 	if code != 2 || strings.Contains(stderr, "internal error") ||
 		!strings.Contains(stderr, "holds Go files alder did not generate: stale_test.go; ") || !strings.Contains(stderr, "must contain only generated files") {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
@@ -114,14 +144,15 @@ func TestBuildEmit_ForeignFileDoesNotVet(t *testing.T) {
 // adapters and static files copied next to it, the generated caps package wiring the adapters,
 // and the generated command.
 func TestBuild_Todos(t *testing.T) {
+	t.Parallel()
 	src, err := filepath.Abs("../../examples/todos")
 	if err != nil {
 		t.Fatal(err)
 	}
 	tmp := t.TempDir()
 	copyDir(t, src, filepath.Join(tmp, "todos"))
-	t.Chdir(tmp)
-	out := filepath.Join("build", "todos")
+	bd, app := filepath.Join(tmp, "build"), filepath.Join(tmp, "todos")
+	out := filepath.Join(bd, "todos")
 	// a stale copy of an adapter since deleted (top level and in a package), and a stale static file
 	os.MkdirAll(filepath.Join(out, "adapters", "gone"), 0o755)
 	os.WriteFile(filepath.Join(out, "adapters", "gone.go"), []byte("package adapters\n\nvar _ = undefined\n"), 0o644)
@@ -133,11 +164,11 @@ func TestBuild_Todos(t *testing.T) {
 	os.MkdirAll(filepath.Join(out, "rt", "rt", "web"), 0o755)
 	os.WriteFile(filepath.Join(out, "rt", "rt", "web", "gone.go"), []byte("package web\n\nvar _ = undefined\n"), 0o644)
 
-	code, stdout, stderr := runBuild(t, "todos")
+	code, stdout, stderr := runBuild(t, "--build-dir", bd, app)
 	if code != 0 {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	if stdout != "wrote build/todos/todos\n" {
+	if want := "wrote " + filepath.Join(out, "todos") + "\n"; stdout != want {
 		t.Errorf("stdout = %q", stdout)
 	}
 	st, err := os.Stat(filepath.Join(out, "todos"))
@@ -172,34 +203,34 @@ func TestBuild_Todos(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(out, "cmd", "main.go")); !strings.Contains(string(b), "app.Serve(caps.Caps(), app.Options{") || !strings.Contains(string(b), "\t\"app/caps\"\n") {
 		t.Errorf("cmd/main.go:\n%s", b)
 	}
-	prodHasNoTests(t, "todos") // the todos' tests exist only in alder test's build
+	prodHasNoTests(t, bd, "todos") // the todos' tests exist only in alder test's build
 	if b, _ := os.ReadFile(filepath.Join(out, "caps", "caps__alder.go")); !strings.Contains(string(b), "a_auth \"app/adapters/auth\"") || !strings.Contains(string(b), "Auth__Login__Password: a_auth.LoginPassword(),") {
 		t.Errorf("caps/caps__alder.go:\n%s", b)
 	}
 
 	// adapters that do not compile are the app's error, shown as Go reports it
-	os.WriteFile(filepath.Join("todos", "adapters", "auth", "broken.go"), []byte("package auth\n\nvar _ int = \"x\"\n"), 0o644)
-	code, stdout, stderr = runBuild(t, "todos")
+	os.WriteFile(filepath.Join(app, "adapters", "auth", "broken.go"), []byte("package auth\n\nvar _ int = \"x\"\n"), 0o644)
+	code, stdout, stderr = runBuild(t, "--build-dir", bd, app)
 	if code != 1 || strings.Contains(stderr, "internal error") || !strings.Contains(stderr, "adapters/auth/broken.go:3:") ||
-		!strings.Contains(stderr, "alder build: the adapters of todos (copied to build/todos/adapters) do not compile with the app: ") {
+		!strings.Contains(stderr, "alder build: the adapters of todos (copied to "+filepath.Join(bd, "todos", "adapters")+") do not compile with the app: ") {
 		t.Fatalf("broken adapters: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	os.Remove(filepath.Join("todos", "adapters", "auth", "broken.go"))
+	os.Remove(filepath.Join(app, "adapters", "auth", "broken.go"))
 
 	// an app with capabilities needs their adapters; a directory without Go files (notes, or
 	// only a package that matches no module) is none
 	want := "todos is missing adapters for 1 capability:\n" +
 		"capability `Auth.Login.Password` needs `adapters/auth/` with `func LoginPassword() app.Cap__Auth__Login__Password`\n"
-	os.RemoveAll(filepath.Join("todos", "adapters"))
-	os.MkdirAll(filepath.Join("todos", "adapters", "sub"), 0o755)
-	os.WriteFile(filepath.Join("todos", "adapters", "sub", "x.go"), []byte("package sub\n"), 0o644)
-	os.WriteFile(filepath.Join("todos", "adapters", "README"), []byte("todo\n"), 0o644)
-	code, stdout, stderr = runBuild(t, "todos")
+	os.RemoveAll(filepath.Join(app, "adapters"))
+	os.MkdirAll(filepath.Join(app, "adapters", "sub"), 0o755)
+	os.WriteFile(filepath.Join(app, "adapters", "sub", "x.go"), []byte("package sub\n"), 0o644)
+	os.WriteFile(filepath.Join(app, "adapters", "README"), []byte("todo\n"), 0o644)
+	code, stdout, stderr = runBuild(t, app)
 	if code != 1 || stderr != want {
 		t.Fatalf("adapters without the package: exit %d\nstdout: %s\nstderr: %q\nwant %q", code, stdout, stderr, want)
 	}
-	os.RemoveAll(filepath.Join("todos", "adapters"))
-	code, stdout, stderr = runBuild(t, "todos")
+	os.RemoveAll(filepath.Join(app, "adapters"))
+	code, stdout, stderr = runBuild(t, app)
 	if code != 1 || stderr != want {
 		t.Fatalf("no adapters: exit %d\nstdout: %s\nstderr: %q\nwant %q", code, stdout, stderr, want)
 	}
@@ -223,18 +254,19 @@ func writeFiles(t *testing.T, dir string, files map[string]string) {
 // package under adapters/internal/: it builds, the helper is copied and compiled but never
 // wired, and the adapters' own tests run in the build directory against the real app package.
 func TestBuild_SubAdapters(t *testing.T) {
+	t.Parallel()
 	src, err := filepath.Abs("testdata/subadapters")
 	if err != nil {
 		t.Fatal(err)
 	}
 	tmp := t.TempDir()
 	copyDir(t, src, filepath.Join(tmp, "subadapters"))
-	t.Chdir(tmp)
-	code, stdout, stderr := runBuild(t, "subadapters")
+	bd := filepath.Join(tmp, "build")
+	code, stdout, stderr := runBuild(t, "--build-dir", bd, filepath.Join(tmp, "subadapters"))
 	if code != 0 || stderr != "" {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	out := filepath.Join("build", "subadapters")
+	out := filepath.Join(bd, "subadapters")
 	b, err := os.ReadFile(filepath.Join(out, "caps", "caps__alder.go"))
 	if err != nil {
 		t.Fatal(err)
@@ -262,6 +294,7 @@ func TestBuild_SubAdapters(t *testing.T) {
 // printed, and nothing is written; a constructor with the wrong result type is Go's error,
 // quoted.
 func TestBuild_AdapterErrors(t *testing.T) {
+	t.Parallel()
 	src, err := filepath.Abs("testdata/subadapters")
 	if err != nil {
 		t.Fatal(err)
@@ -298,15 +331,15 @@ func TestBuild_AdapterErrors(t *testing.T) {
 		}, "module `Testdata` cannot name an adapter package: Go skips `testdata/` directories; rename the module\n", true},
 		{"wrong result type", func(t *testing.T, app string) {
 			replaceIn(t, filepath.Join(app, "adapters", "app", "clock.go"), "func Clock() app.Cap__App__Clock { return clock{} }", "func Clock() app.Cap__Auth__Login__Password { return nil }")
-		}, "alder build: the adapters of subadapters (copied to build/subadapters/adapters) do not compile with the app: ", false},
+		}, "alder build: the adapters of subadapters (copied to {bd}/subadapters/adapters) do not compile with the app: ", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			tmp := t.TempDir()
 			app := filepath.Join(tmp, "subadapters")
 			copyDir(t, src, app)
 			c.edit(t, app)
-			t.Chdir(tmp)
-			code, stdout, stderr := runBuild(t, "subadapters")
+			bd := filepath.Join(tmp, "build")
+			code, stdout, stderr := runBuild(t, "--build-dir", bd, app)
 			if code != 1 || stdout != "" {
 				t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 			}
@@ -314,11 +347,12 @@ func TestBuild_AdapterErrors(t *testing.T) {
 				if stderr != c.stderr {
 					t.Fatalf("stderr:\n%s\nwant:\n%s", stderr, c.stderr)
 				}
-				if _, err := os.Stat("build"); !os.IsNotExist(err) {
+				if _, err := os.Stat(bd); !os.IsNotExist(err) {
 					t.Errorf("build/ written: %v", err)
 				}
 				return
 			}
+			c.stderr = strings.ReplaceAll(c.stderr, "{bd}", bd)
 			if !strings.Contains(stderr, c.stderr) || !strings.Contains(stderr, "caps/caps__alder.go") || !strings.Contains(stderr, "a_app.Clock()") || strings.Contains(stderr, "internal error") {
 				t.Fatalf("stderr:\n%s\nwant it to contain %q and Go's error in caps/caps__alder.go", stderr, c.stderr)
 			}
@@ -329,18 +363,19 @@ func TestBuild_AdapterErrors(t *testing.T) {
 // Two capabilities whose adapters would be one constructor (A.BC's D and A.B's CD are both
 // func BCD of adapters/a/) are an internal naming error naming both, before anything is written.
 func TestBuild_AdapterCollision(t *testing.T) {
+	t.Parallel()
 	tmp := t.TempDir()
 	writeFiles(t, filepath.Join(tmp, "clash"), map[string]string{
 		"app/A/BC.alder": "module A.BC\n\ncapability D {\n  ping : Query Int,\n}\n",
 		"app/A/B.alder":  "module A.B\n\ncapability CD {\n  ping : Query Int,\n}\n",
 	})
-	t.Chdir(tmp)
-	code, stdout, stderr := runBuild(t, "clash")
+	bd := filepath.Join(tmp, "build")
+	code, stdout, stderr := runBuild(t, "--build-dir", bd, filepath.Join(tmp, "clash"))
 	want := "internal naming error: capabilities A.B.CD and A.BC.D both need func BCD in adapters/a/ (rename one of them)\n"
 	if code != 1 || stdout != "" || stderr != want {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %q\nwant %q", code, stdout, stderr, want)
 	}
-	if _, err := os.Stat("build"); !os.IsNotExist(err) {
+	if _, err := os.Stat(bd); !os.IsNotExist(err) {
 		t.Errorf("build/ written: %v", err)
 	}
 }
@@ -361,6 +396,7 @@ func replaceIn(t *testing.T, path, old, new string) {
 }
 
 func TestBuildEmit_RefusesErrorsAndHoles(t *testing.T) {
+	t.Parallel()
 	for name, src := range map[string]string{
 		"error": "module X\n\nx : Int\nx = \"s\"\n",
 		"hole":  "module X\n\nx : Int\nx = ?todo\n",
@@ -369,15 +405,15 @@ func TestBuildEmit_RefusesErrorsAndHoles(t *testing.T) {
 			tmp := t.TempDir()
 			os.MkdirAll(filepath.Join(tmp, "app"), 0o755)
 			os.WriteFile(filepath.Join(tmp, "app", "X.alder"), []byte(src), 0o644)
-			t.Chdir(tmp)
-			code, stdout, stderr := runBuild(t, "--emit", ".")
+			bd := filepath.Join(tmp, "build")
+			code, stdout, stderr := runBuild(t, "--emit", "--build-dir", bd, tmp)
 			if code != 1 {
 				t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 			}
 			if stdout+stderr == "" {
 				t.Error("no diagnostics printed")
 			}
-			if _, err := os.Stat("build"); !os.IsNotExist(err) {
+			if _, err := os.Stat(bd); !os.IsNotExist(err) {
 				t.Errorf("build directory written despite %s", name)
 			}
 		})
@@ -386,16 +422,16 @@ func TestBuildEmit_RefusesErrorsAndHoles(t *testing.T) {
 
 // buildTo with an explicit output directory writes there, not to build/<app>.
 func TestBuildTo_OutDir(t *testing.T) {
+	t.Parallel()
 	src, err := filepath.Abs("../../examples/todos")
 	if err != nil {
 		t.Fatal(err)
 	}
 	tmp := t.TempDir()
 	copyDir(t, src, filepath.Join(tmp, "todos"))
-	t.Chdir(tmp)
 	var stdout, stderr bytes.Buffer
-	out := filepath.Join("elsewhere", "todos")
-	path, code := buildTo("todos", false, out, &stdout, &stderr)
+	out := filepath.Join(tmp, "elsewhere", "todos")
+	path, code := buildTo(filepath.Join(tmp, "todos"), false, out, &stdout, &stderr)
 	if code != 0 || path != filepath.Join(out, "todos") {
 		t.Fatalf("exit %d path %q\nstdout: %s\nstderr: %s", code, path, stdout.String(), stderr.String())
 	}
@@ -404,13 +440,14 @@ func TestBuildTo_OutDir(t *testing.T) {
 			t.Errorf("%s: %v", f, err)
 		}
 	}
-	if _, err := os.Stat("build"); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(tmp, "build")); !os.IsNotExist(err) {
 		t.Errorf("build/ written: %v", err)
 	}
 }
 
 // The heading names the app, not the directory argument: `alder build .` inside the app.
 func TestBuild_MissingAdapterNamesApp(t *testing.T) {
+	// serial: t.Chdir (the test builds app ".", the working directory)
 	src, err := filepath.Abs("testdata/subadapters")
 	if err != nil {
 		t.Fatal(err)
@@ -418,8 +455,8 @@ func TestBuild_MissingAdapterNamesApp(t *testing.T) {
 	app := filepath.Join(t.TempDir(), "subadapters")
 	copyDir(t, src, app)
 	os.RemoveAll(filepath.Join(app, "adapters", "app"))
-	t.Chdir(app)
-	code, stdout, stderr := runBuild(t, ".")
+	t.Chdir(app) // serial: the app is named by "." (the working directory)
+	code, stdout, stderr := runBuild(t, "--build-dir", t.TempDir(), ".")
 	want := "subadapters is missing adapters for 1 capability:\n" +
 		"capability `App.Clock` needs `adapters/app/` with `func Clock() app.Cap__App__Clock`\n"
 	if code != 1 || stdout != "" || stderr != want {
@@ -431,7 +468,7 @@ func TestBuild_MissingAdapterNamesApp(t *testing.T) {
 // that cannot happen (here GOPROXY=off with an empty module cache) alder build and alder test
 // say so as the machine's problem, exit 1, never as an internal error. With a warm cache a
 // build prints nothing extra.
-func TestBuild_DependencyDownload(t *testing.T) {
+func TestBuild_DependencyDownload(t *testing.T) { // serial: t.Setenv(GOMODCACHE, GOPROXY)
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go is not on PATH")
 	}
@@ -442,25 +479,25 @@ func TestBuild_DependencyDownload(t *testing.T) {
 	tmp := t.TempDir()
 	copyDir(t, src, filepath.Join(tmp, "todos"))
 	os.RemoveAll(filepath.Join(tmp, "todos", "build"))
-	t.Chdir(tmp)
+	bd, app := filepath.Join(tmp, "build"), filepath.Join(tmp, "todos")
 
 	// warm (the machine's own cache): no fetching line, nothing on stderr
-	code, stdout, stderr := runBuild(t, "todos")
-	if code != 0 || stderr != "" || stdout != "wrote build/todos/todos\n" {
+	code, stdout, stderr := runBuild(t, "--build-dir", bd, app)
+	if code != 0 || stderr != "" || stdout != "wrote "+filepath.Join(bd, "todos", "todos")+"\n" {
 		t.Fatalf("warm build: exit %d\nstdout: %q\nstderr: %q", code, stdout, stderr)
 	}
 
 	t.Setenv("GOMODCACHE", t.TempDir())
 	t.Setenv("GOPROXY", "off")
-	os.RemoveAll("build")
+	os.RemoveAll(bd)
 	want := "could not download the runtime's dependency modernc.org/sqlite through Go's module proxy (GOPROXY=off); the first build on a machine needs network access:\n"
-	code, stdout, stderr = runBuild(t, "todos")
+	code, stdout, stderr = runBuild(t, "--build-dir", bd, app)
 	if code != 1 || strings.Contains(stderr, "internal error") ||
 		!strings.HasPrefix(stderr, buildkit.FetchingLine+"\nalder build: "+want) || !strings.Contains(stderr, "GOPROXY=off") {
 		t.Fatalf("offline first build: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 	var out, errb bytes.Buffer
-	code = runTestTo([]string{"todos"}, &out, &errb)
+	code = runTestTo([]string{"--build-dir", bd, app}, &out, &errb)
 	if code != 1 || strings.Contains(errb.String(), "internal error") ||
 		!strings.HasPrefix(errb.String(), buildkit.FetchingLine+"\nalder test: "+want) {
 		t.Fatalf("offline first test: exit %d\nstdout: %s\nstderr: %s", code, out.String(), errb.String())
@@ -470,12 +507,13 @@ func TestBuild_DependencyDownload(t *testing.T) {
 // alder build writes cmd/tzdata_deploy.go: under the alder_deploy tag (a deploy's build,
 // buildFor) the binary embeds the time zone database, which a minimal image lacks.
 func TestBuild_TzdataDeployFile(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
-	dir := tempApp(t, "../../examples/todos", "todos")
+	dir := tempAppAbs(t, "../../examples/todos", "todos")
 	if code, out, errs := runBuild(t, dir); code != 0 {
 		t.Fatalf("build: %d\n%s%s", code, out, errs)
 	}
-	b, err := os.ReadFile(filepath.Join("build", "todos", "cmd", "tzdata_deploy.go"))
+	b, err := os.ReadFile(filepath.Join(testBuildDir(t), "todos", "cmd", "tzdata_deploy.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,5 +527,53 @@ func TestBuild_TzdataDeployFile(t *testing.T) {
 	// the deploy build passes the tag
 	if args := strings.Join(deployBuildArgs("/x/app"), " "); !strings.Contains(args, "-tags alder_deploy") {
 		t.Fatalf("buildFor's go build: %s", args)
+	}
+}
+
+// --build-dir puts the app's output under DIR/<app> instead of ./build/<app>.
+func TestBuild_BuildDir(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	src, err := filepath.Abs("../../examples/todos")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bd := filepath.Join(t.TempDir(), "out")
+	code, stdout, stderr := runBuild(t, "--build-dir", bd, src)
+	if code != 0 {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	bin := filepath.Join(bd, "todos", "todos")
+	if want := "wrote " + bin + "\n"; stdout != want {
+		t.Errorf("stdout = %q, want %q", stdout, want)
+	}
+	if _, err := os.Stat(bin); err != nil {
+		t.Errorf("no executable: %v", err)
+	}
+	if _, err := os.Stat("build"); !os.IsNotExist(err) {
+		t.Errorf("./build written despite --build-dir: %v", err)
+	}
+}
+
+// Without --build-dir the output goes to ./build/<app>, relative to the working directory.
+func TestBuild_DefaultBuildDir(t *testing.T) {
+	// serial: t.Chdir (the default build directory is relative to the working directory)
+	needGoTool(t)
+	src, err := filepath.Abs("../../examples/todos")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := t.TempDir()
+	t.Chdir(tmp) // serial: the default build directory is relative to the working directory
+	var out, errb bytes.Buffer
+	code := runBuildTo([]string{src}, &out, &errb)
+	if code != 0 {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, out.String(), errb.String())
+	}
+	if want := "wrote " + filepath.Join("build", "todos", "todos") + "\n"; out.String() != want {
+		t.Errorf("stdout = %q, want %q", out.String(), want)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "build", "todos", "todos")); err != nil {
+		t.Errorf("no executable: %v", err)
 	}
 }

@@ -11,8 +11,12 @@ import (
 )
 
 func runDeployInit(args ...string) (int, string, string) {
+	return runDeployInitSrc(version.SourceOf, args...)
+}
+
+func runDeployInitSrc(source func() version.Source, args ...string) (int, string, string) {
 	var out, errb strings.Builder
-	code := runDeployInitTo(args, &out, &errb)
+	code := runDeployInitWith(args, &out, &errb, source)
 	return code, out.String(), errb.String()
 }
 
@@ -42,6 +46,7 @@ func noTables(t *testing.T) string {
 // An app without tables: the three Render files, named after the directory, no disk; the
 // output says what was written and the next step.
 func TestDeployInit_Render(t *testing.T) {
+	// serial: inTemp (t.Chdir) via deployScaffold/noTables; deploy scaffolds use relative paths (Task 3)
 	dir := noTables(t)
 	code, out, errs := runDeployInit("render", dir)
 	if code != 0 {
@@ -69,6 +74,7 @@ func TestDeployInit_Render(t *testing.T) {
 
 // An app with a table (the scaffold's) gets the volume.
 func TestDeployInit_Fly_Volume(t *testing.T) {
+	// serial: inTemp (t.Chdir) via deployScaffold/noTables; deploy scaffolds use relative paths (Task 3)
 	dir := deployScaffold(t, "", nil)
 	code, out, errs := runDeployInit("fly", dir)
 	if code != 0 {
@@ -89,6 +95,7 @@ func TestDeployInit_Fly_Volume(t *testing.T) {
 // The overwrite rule: an existing file is never replaced without --force, nothing is written,
 // the skipped files are listed and the exit is 1; --force replaces.
 func TestDeployInit_Overwrite(t *testing.T) {
+	// serial: inTemp (t.Chdir) via deployScaffold/noTables; deploy scaffolds use relative paths (Task 3)
 	dir := deployScaffold(t, "", nil)
 	writeFile(t, filepath.Join(dir, "Dockerfile"), "mine\n")
 	code, out, errs := runDeployInit("render", dir)
@@ -110,6 +117,7 @@ func TestDeployInit_Overwrite(t *testing.T) {
 }
 
 func TestDeployInit_DryRun(t *testing.T) {
+	// serial: inTemp (t.Chdir) via deployScaffold/noTables; deploy scaffolds use relative paths (Task 3)
 	dir := deployScaffold(t, "", nil)
 	code, out, errs := runDeployInit("fly", dir, "--dry-run")
 	if code != 0 {
@@ -128,6 +136,7 @@ func TestDeployInit_DryRun(t *testing.T) {
 }
 
 func TestDeployInit_Usage(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{{}, {"heroku"}, {"render", "a", "b"}, {"render", "--nope"}} {
 		if code, _, errs := runDeployInit(args...); code != 2 || !strings.Contains(errs, deployInitUsage) {
 			t.Errorf("%v: exit %d %q", args, code, errs)
@@ -137,6 +146,7 @@ func TestDeployInit_Usage(t *testing.T) {
 
 // A silo-only app (no shared tables) still keeps SQLite files under ALDER_DB's directory.
 func TestDeployInit_NeedsDisk(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		tables, silos int
 		want          bool
@@ -150,7 +160,7 @@ func TestDeployInit_NeedsDisk(t *testing.T) {
 // The pin: a release tag is written as is; a clean commit is written with a note to push it; a
 // modified checkout has no ref, so the placeholder is written and the output warns.
 func TestDeployInit_Pin(t *testing.T) {
-	defer func(f func() version.Source) { initSource = f }(initSource)
+	// serial: inTemp (t.Chdir) via deployScaffold/noTables; deploy scaffolds use relative paths (Task 3)
 	for _, c := range []struct {
 		src        version.Source
 		inDocker   string
@@ -163,9 +173,8 @@ func TestDeployInit_Pin(t *testing.T) {
 		{version.Source{Dirty: true}, "ARG ALDER_REF=" + deploy.InitRefPlaceholder, "uncommitted changes", "is pushed", true},
 	} {
 		src := c.src
-		initSource = func() version.Source { return src }
 		dir := noTables(t)
-		code, out, errs := runDeployInit("render", dir)
+		code, out, errs := runDeployInitSrc(func() version.Source { return src }, "render", dir)
 		if code != 0 {
 			t.Fatalf("%+v: exit %d\n%s%s", c.src, code, out, errs)
 		}
@@ -180,6 +189,7 @@ func TestDeployInit_Pin(t *testing.T) {
 
 // `alder deploy init` is reached through `alder deploy`.
 func TestDeployInit_Dispatch(t *testing.T) {
+	t.Parallel()
 	var out, errb strings.Builder
 	if code := runDeployTo([]string{"init", "heroku"}, &out, &errb); code != 2 || !strings.Contains(errb.String(), deployInitUsage) {
 		t.Errorf("exit %d %q", code, errb.String())

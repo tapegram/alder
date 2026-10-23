@@ -12,6 +12,7 @@ import (
 // R5: the Render image is the declaration's `image`, else ghcr.io/<owner>/<repo> from the GitHub
 // `origin` in <app>/.git/config (a file read), else the E0030 sentence.
 func TestImagePath(t *testing.T) {
+	t.Parallel()
 	gitConfig := func(t *testing.T, body string) string {
 		dir := t.TempDir()
 		if body != "" {
@@ -57,6 +58,7 @@ func TestImagePath(t *testing.T) {
 // The repository is the first `.git` at or above the app: a subdirectory of a repository, a
 // worktree's `.git` file (its gitdir's commondir holds the config), and no repository at all.
 func TestImagePath_Repository(t *testing.T) {
+	t.Parallel()
 	const cfg = "[remote \"origin\"]\n\turl = git@github.com:Tavish/Blog.git\n"
 	mk := func(p, body string) {
 		os.MkdirAll(filepath.Dir(p), 0o755)

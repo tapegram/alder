@@ -28,6 +28,7 @@ import (
 //     503 {"db":"unreachable"} (no host, no driver error).
 //   - FileStillMigrates: v2 with a file ALDER_DB migrates it on start (M14 unchanged).
 func TestStartCheck_Binary(t *testing.T) {
+	// serial: tempApp t.Chdir()s to the copy's parent, and the test names the app by a relative path
 	needGoTool(t)
 	if testing.Short() {
 		t.Skip("builds two binaries")
@@ -45,7 +46,7 @@ func TestStartCheck_Binary(t *testing.T) {
 			t.Fatalf("build %s: %d\n%s%s", name, code, out, errs)
 		}
 		bin := filepath.Join(tmp, name)
-		if err := os.Rename(filepath.Join(tmp, "build", dir, dir), bin); err != nil {
+		if err := os.Rename(filepath.Join(testBuildDir(t), dir, dir), bin); err != nil {
 			t.Fatal(err)
 		}
 		return bin

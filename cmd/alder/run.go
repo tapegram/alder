@@ -28,7 +28,7 @@ import (
 	"alder/internal/watch"
 )
 
-// runRunTo is `alder run [dir]`: a development server for the app in dir. It builds the app
+// runRunTo is `alder run [--build-dir DIR] [dir]`: a development server for the app in dir. It builds the app
 // (buildApp), runs its executable as a child process on a free port, and serves on ALDER_ADDR
 // (default localhost:8080: the app behind it runs in development mode) a reverse proxy to it. While it runs, a save under app/ (*.alder),
 // adapters/ (any file: the whole tree is copied) or migrations/ (`alder migrate`) rebuilds the app and reloads the browser; a change under static/ only
@@ -36,13 +36,32 @@ import (
 // good build keeps serving. See devServer for the lifecycle. It returns when stop is closed,
 // after stopping the child: 0, or 2 for a usage error or when it cannot listen.
 func runRunTo(args []string, stdout, stderr io.Writer, stop <-chan struct{}) int {
-	dir := "."
-	switch {
-	case len(args) > 1 || len(args) == 1 && strings.HasPrefix(args[0], "-"):
-		usageTo(stderr)
-		return 2
-	case len(args) == 1:
-		dir = args[0]
+	return runRunWith(args, stdout, stderr, stop, runOpts{addr: os.Getenv("ALDER_ADDR")})
+}
+
+// runOpts are what runRunWith takes besides the command line: the tests' way in, without
+// globals or the environment.
+type runOpts struct {
+	addr        string           // the address to listen on; "" is localhost:8080
+	onDevServer func(*devServer) // when set, called with the devServer before it starts
+}
+
+// runRunWith is runRunTo with its address and dev-server hook given in opts.
+func runRunWith(args []string, stdout, stderr io.Writer, stop <-chan struct{}, opts runOpts) int {
+	dir, haveDir, bd := ".", false, ""
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "--build-dir" && i+1 < len(args):
+			i++
+			bd = args[i]
+		case strings.HasPrefix(a, "--build-dir="):
+			bd = strings.TrimPrefix(a, "--build-dir=")
+		case strings.HasPrefix(a, "-") || haveDir:
+			usageTo(stderr)
+			return 2
+		default:
+			dir, haveDir = a, true
+		}
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
@@ -53,14 +72,15 @@ func runRunTo(args []string, stdout, stderr io.Writer, stop <-chan struct{}) int
 		fmt.Fprintf(stderr, "alder run: no app directory in %s\n", dir)
 		return 2
 	}
-	ln, err := net.Listen("tcp", runAddr())
+	ln, err := net.Listen("tcp", runAddr(opts.addr))
 	if err != nil {
 		fmt.Fprintf(stderr, "alder run: %v\n", err)
 		return 2
 	}
 	d := newDevServer(dir, filepath.Base(abs), displayAddr(ln.Addr()), stdout, stderr)
-	if onDevServer != nil {
-		onDevServer(d)
+	d.buildDir = bd
+	if opts.onDevServer != nil {
+		opts.onDevServer(d)
 	}
 	srv := &http.Server{Handler: d, ReadHeaderTimeout: 10 * time.Second}
 	served := make(chan struct{})
@@ -101,14 +121,11 @@ func runRunTo(args []string, stdout, stderr io.Writer, stop <-chan struct{}) int
 	return 0
 }
 
-// onDevServer, when set (by tests), is called with runRunTo's devServer before it starts.
-var onDevServer func(*devServer)
-
-// runAddr is the address `alder run` listens on: ALDER_ADDR, by default localhost:8080. The
-// default is the loopback interface only, because the app behind the dev server runs in
+// runAddr is the address `alder run` listens on: addr (ALDER_ADDR), by default localhost:8080.
+// The default is the loopback interface only, because the app behind the dev server runs in
 // development mode (error pages show the error, the public development cookie key).
-func runAddr() string {
-	if addr := os.Getenv("ALDER_ADDR"); addr != "" {
+func runAddr(addr string) string {
+	if addr != "" {
 		return addr
 	}
 	return "localhost:8080"
@@ -153,6 +170,7 @@ func displayAddr(a net.Addr) string {
 // streamed SSE answers alike), or answered 502 with the overlay while there is none.
 type devServer struct {
 	dir, app string
+	buildDir string    // --build-dir ("" is build)
 	addr     string    // the dev server's address, as displayed
 	stdout   io.Writer // the announcement
 	stderr   io.Writer // every check, build and crash message, and the child's output (locked)
@@ -404,7 +422,7 @@ func (d *devServer) rebuild() {
 	}
 	d.stderr.Write(out.Bytes()) // warnings
 	out.Reset()
-	binary, code := buildApp(d.dir, filepath.Join("build", d.app), &out)
+	binary, code := buildApp(d.dir, filepath.Join(buildRoot(d.buildDir), d.app), &out)
 	if code != 0 {
 		d.fail(out.String())
 		return

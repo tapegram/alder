@@ -18,6 +18,7 @@ import (
 // TestRun_ChildExitsWhenParentDies: a dev server killed with SIGKILL (a harness timeout) takes
 // the app with it: the child reads EOF on its stdin pipe and shuts down.
 func TestRun_ChildExitsWhenParentDies(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("spawns processes")
 	}
@@ -119,14 +120,14 @@ func processAlive(pid int) bool {
 // sets) a stdin at end of file from the start (/dev/null, as under a service manager) does not
 // stop it.
 func TestServer_IgnoresStdinEOF(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("spawns processes")
 	}
 	needGoTool(t)
 	work := t.TempDir()
-	t.Chdir(work)
 	var errb strings.Builder
-	bin, code := buildApp(todosDir(t), "", &errb)
+	bin, code := buildApp(todosDir(t), filepath.Join(work, "build", "todos"), &errb)
 	if code != 0 {
 		t.Fatalf("build: exit %d\n%s", code, errb.String())
 	}

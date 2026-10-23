@@ -12,24 +12,34 @@ import (
 	_ "alder/rt/db" // the sqlite driver
 )
 
-// tempApp copies the app at src (relative to this package) to <tmp>/<name>, makes tmp the
-// working directory (builds land there) and returns name.
-func tempApp(t *testing.T, src, name string) string {
+// tempAppAbs copies the app at src (relative to this package) to <tmp>/<name> and returns its
+// absolute path. Builds go to testBuildDir(t).
+func tempAppAbs(t *testing.T, src, name string) string {
 	t.Helper()
 	abs, err := filepath.Abs(src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tmp := t.TempDir()
-	copyDir(t, abs, filepath.Join(tmp, name))
-	t.Chdir(tmp)
+	dir := filepath.Join(t.TempDir(), name)
+	copyDir(t, abs, dir)
+	return dir
+}
+
+// tempApp is tempAppAbs that also makes the copy's parent the working directory and returns
+// the app's name, for the tests that name the app by a relative path (their output shows it).
+// Those tests are serial.
+func tempApp(t *testing.T, src, name string) string {
+	t.Helper()
+	dir := tempAppAbs(t, src, name)
+	t.Chdir(filepath.Dir(dir))
 	return name
 }
 
 // E0019: an app whose tables changed since its last migration is refused by check (text and
 // --json), build, test and eval alike.
 func TestCheck_E0019(t *testing.T) {
-	dir := tempApp(t, "../../testdata/drift/E0019-schema-changed", "posts")
+	t.Parallel()
+	dir := tempAppAbs(t, "../../testdata/drift/E0019-schema-changed", "posts")
 	const want = "migrations/schema.json:1:1: error[E0019]: the schema changed since migration 0001 (table Post: column body): run `alder migrate`\n"
 	code, out, _ := run(t, dir)
 	if code != 1 || out != want {
@@ -43,7 +53,7 @@ func TestCheck_E0019(t *testing.T) {
 	if code != 1 || !strings.Contains(out, "error[E0019]") {
 		t.Fatalf("build: exit %d\n%s%s", code, out, errs)
 	}
-	if _, err := os.Stat(filepath.Join("build", "posts")); err == nil {
+	if _, err := os.Stat(filepath.Join(testBuildDir(t), "posts")); err == nil {
 		t.Fatal("build wrote the module of a refused app")
 	}
 	code, out, errs = runTest(t, dir)
@@ -60,8 +70,9 @@ func TestCheck_E0019(t *testing.T) {
 // one, when the migrations do not make the app's tables; eval --run creates the dev database
 // through them; the build embeds them.
 func TestMigrations_TestEvalBuild(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
-	dir := tempApp(t, "../../testdata/golden/gen_migrations", "notes")
+	dir := tempAppAbs(t, "../../testdata/golden/gen_migrations", "notes")
 	note := filepath.Join(dir, "app", "Note.alder")
 	b, err := os.ReadFile(note)
 	if err != nil {
@@ -87,7 +98,7 @@ test "pure" = 1 + 1 == 2
 	if code != 0 || out != "0 : Int\n" {
 		t.Fatalf("eval --run: exit %d\n%s%s", code, out, errs)
 	}
-	devDB, err := sql.Open("sqlite", filepath.Join("build", "notes", "dev.db"))
+	devDB, err := sql.Open("sqlite", filepath.Join(testBuildDir(t), "notes", "dev.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,10 +112,10 @@ test "pure" = 1 + 1 == 2
 	if code != 0 {
 		t.Fatalf("build: exit %d\n%s%s", code, out, errs)
 	}
-	if _, err := os.Stat(filepath.Join("build", "notes", "migrations", "0001_initial.sql")); err != nil {
+	if _, err := os.Stat(filepath.Join(testBuildDir(t), "notes", "migrations", "0001_initial.sql")); err != nil {
 		t.Fatalf("build did not copy the migrations: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join("build", "notes", "migrations", "schema.json")); err == nil {
+	if _, err := os.Stat(filepath.Join(testBuildDir(t), "notes", "migrations", "schema.json")); err == nil {
 		t.Fatal("build copied schema.json, which the binary does not use")
 	}
 
@@ -135,6 +146,7 @@ test "pure" = 1 + 1 == 2
 
 // alder run rebuilds when `alder migrate` writes migrations/ (so E0019's overlay clears).
 func TestWatch_Migrations(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "migrations"), 0o755)
 	before := watch.Snapshot(dir)
@@ -153,9 +165,10 @@ func TestWatch_Migrations(t *testing.T) {
 // eval --run on a dev database made before the app had migrations: adopted when its tables are
 // where a migration leads; otherwise refused with the path to delete.
 func TestEval_AdoptsDevDB(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
-	dir := tempApp(t, "../../testdata/golden/gen_migrations", "notes")
-	path := filepath.Join("build", "notes", "dev.db")
+	dir := tempAppAbs(t, "../../testdata/golden/gen_migrations", "notes")
+	path := filepath.Join(testBuildDir(t), "notes", "dev.db")
 	const meta = `CREATE TABLE "_alder_meta" ("key" TEXT NOT NULL PRIMARY KEY, "value" TEXT NOT NULL); INSERT INTO "_alder_meta" VALUES ('format', '1')`
 	os.MkdirAll(filepath.Dir(path), 0o755)
 	sqlText, err := os.ReadFile(filepath.Join(dir, "migrations", "0001_initial.sql"))
@@ -201,6 +214,7 @@ func TestEval_AdoptsDevDB(t *testing.T) {
 // files, .DS_Store, a dot directory) nor on a symbolic link, which the build does not copy; a
 // Go file does.
 func TestWatch_AdaptersNoise(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	mail := filepath.Join(dir, "adapters", "mail")
 	os.MkdirAll(filepath.Join(mail, ".git"), 0o755)

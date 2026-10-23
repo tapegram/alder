@@ -30,7 +30,7 @@ import (
 
 // The usage lines of the deploy commands (chapter 16).
 const (
-	deployUsage   = "usage: alder deploy <env> [dir] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json] | alder deploy init render|fly [dir] [--force] [--dry-run]"
+	deployUsage   = "usage: alder deploy <env> [dir] [--build-dir DIR] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json] | alder deploy init render|fly [dir] [--force] [--dry-run]"
 	statusUsage   = "usage: alder status <env> [dir] [--host name]"
 	rollbackUsage = "usage: alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup [--yes]]"
 	logsUsage     = "usage: alder logs <env> [dir] [--host name] [-f]"
@@ -77,10 +77,15 @@ func runDeployTo(args []string, stdout, stderr io.Writer) (code int) {
 	}
 	var pos []string
 	o := deploy.Options{}
-	host := ""
+	host, bd := "", ""
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
+		case a == "--build-dir" && i+1 < len(args):
+			i++
+			bd = args[i]
+		case strings.HasPrefix(a, "--build-dir="):
+			bd = strings.TrimPrefix(a, "--build-dir=")
 		case a == "--host" && i+1 < len(args):
 			i++
 			host = args[i]
@@ -116,7 +121,7 @@ func runDeployTo(args []string, stdout, stderr io.Writer) (code int) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	r := &deployRunner{dir: dir}
+	r := &deployRunner{dir: dir, buildDir: bd}
 	errs, _, _, _ := r.Check()
 	if r.loadErr != "" {
 		return fail(2, r.loadErr)
@@ -173,7 +178,7 @@ func runDeployTo(args []string, stdout, stderr io.Writer) (code int) {
 		defer t.Close()
 	}
 	o.App, o.Env, o.AppDir, o.Decl, o.Runner = r.app, env, dir, r.decl, r
-	o.Built = filepath.Join("build", r.app)
+	o.Built = filepath.Join(buildRoot(bd), r.app)
 	o.ArtifactRoot = filepath.Join(o.Built, "deploy")
 	o.Binary = func(p deploy.Platform, path string) error { return buildFor(o.Built, r.app, p, path) }
 	o.Version, o.Commit = version.String(), gitCommit(dir)
@@ -296,7 +301,7 @@ func targetFor(r *deployRunner, env string, t ir.Target, dir string, stdout, std
 		s.Silos = r.silos
 		if s.DB != nil {
 			s.DB.Silos = r.silos
-			s.DB.Local = func(ctx context.Context, id string) (string, error) { return localBinary(app, id) }
+			s.DB.Local = func(ctx context.Context, id string) (string, error) { return localBinary(r.buildDir, app, id) }
 		}
 		return s, nil, nil
 	case "fly":
@@ -310,11 +315,11 @@ func targetFor(r *deployRunner, env string, t ir.Target, dir string, stdout, std
 		}
 		rd := deploy.NewRender(app, env, t, d, img)
 		rd.Out = stdout
-		rd.Artifact = func(id string) string { return filepath.Join("build", app, "deploy", id) }
+		rd.Artifact = func(id string) string { return filepath.Join(buildRoot(r.buildDir), app, "deploy", id) }
 		rd.RollTimeout = durationEnv(envHealthTimeout, 0) // the one source of the timeout, as for the other targets
 		if rd.DB != nil {
 			rd.DB.Silos = r.silos
-			rd.DB.Local = func(ctx context.Context, id string) (string, error) { return localBinary(app, id) }
+			rd.DB.Local = func(ctx context.Context, id string) (string, error) { return localBinary(r.buildDir, app, id) }
 		}
 		return rd, nil, nil
 	}
@@ -374,17 +379,18 @@ func targetEnv(env, host string) string {
 // deployRunner runs the gate's steps with the code of `alder check`, `alder build` and `alder
 // test`, capturing what each prints.
 type deployRunner struct {
-	dir     string
-	app     string
-	decl    *ir.Deploy
-	silos   []string // the app's silo keys, sorted
-	tables  int      // the app's tables (shared store): non-zero means a SQLite file to keep
-	loadErr string
-	checked bool
-	errs    int
-	warns   int
-	holes   int
-	out     string
+	dir      string
+	buildDir string // --build-dir ("" is build)
+	app      string
+	decl     *ir.Deploy
+	silos    []string // the app's silo keys, sorted
+	tables   int      // the app's tables (shared store): non-zero means a SQLite file to keep
+	loadErr  string
+	checked  bool
+	errs     int
+	warns    int
+	holes    int
+	out      string
 }
 
 func (r *deployRunner) Check() (int, int, int, string) {
@@ -435,13 +441,13 @@ func (r *deployRunner) Check() (int, int, int, string) {
 
 func (r *deployRunner) Build() (string, bool) {
 	var buf bytes.Buffer
-	_, code := buildTo(r.dir, false, "", &buf, &buf)
+	_, code := buildTo(r.dir, false, appBuildDir(r.buildDir, r.dir), &buf, &buf)
 	return buf.String(), code == 0
 }
 
 func (r *deployRunner) Test() (deploy.TestResult, string, bool) {
 	var out, errb bytes.Buffer
-	code := runTestTo([]string{r.dir}, &out, &errb)
+	code := runTestTo([]string{"--build-dir", buildRoot(r.buildDir), r.dir}, &out, &errb)
 	tr := deploy.TestResult{}
 	for _, l := range strings.Split(out.String(), "\n") {
 		var p, f int
@@ -506,8 +512,8 @@ func deployBuildArgs(abs string) []string {
 // runs this platform, else one built beside it (build/<app>/deploy/<id>.local/app) from the
 // generated module `alder build` wrote. A deploy to a `database: Turso` environment runs the
 // migrations with it, here.
-func localBinary(app, id string) (string, error) {
-	built := filepath.Join("build", app)
+func localBinary(bd, app, id string) (string, error) {
+	built := filepath.Join(buildRoot(bd), app)
 	artifact := filepath.Join(built, "deploy", id)
 	var desc struct {
 		Platform string `json:"platform"`

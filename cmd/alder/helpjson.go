@@ -83,6 +83,9 @@ func groupCmd(group string) []cmdSpec {
 
 var hostFlagSpec = flagSpec{Name: "--host", Value: "name", Summary: "the host of a multi-host environment"}
 
+// buildDirFlag is --build-dir, shared by the commands that write under build/.
+var buildDirFlag = flagSpec{Name: "--build-dir", Value: "DIR", Summary: "put the build output under DIR instead of build/"}
+
 // commandTree is `alder help --json`: what the plugin completes and offers in pickers.
 var commandTree = []cmdSpec{
 	{Name: "check", Summary: "type-check the app and print its diagnostics", Usage: commandUsages["check"],
@@ -90,8 +93,9 @@ var commandTree = []cmdSpec{
 		Flags: []flagSpec{{Name: "--json", Summary: "one JSON object per diagnostic, one per line"}}},
 	{Name: "build", Summary: "compile the app to a single binary", Usage: commandUsages["build"],
 		Args:  []string{"[dir]"},
-		Flags: []flagSpec{{Name: "--emit", Summary: "write the generated Go source and stop"}}},
-	{Name: "run", Summary: "run the app with live reload", Usage: commandUsages["run"], Args: []string{"[dir]"}},
+		Flags: []flagSpec{{Name: "--emit", Summary: "write the generated Go source and stop"}, buildDirFlag}},
+	{Name: "run", Summary: "run the app with live reload", Usage: commandUsages["run"], Args: []string{"[dir]"},
+		Flags: []flagSpec{buildDirFlag}},
 	{Name: "routes", Summary: "list the app's routes: pages (GET) and messages (POST)", Usage: commandUsages["routes"],
 		Args:  []string{"[dir]"},
 		Flags: []flagSpec{{Name: "--json", Summary: "a JSON array of routes with file, line and col"}}},
@@ -108,6 +112,7 @@ var commandTree = []cmdSpec{
 			{Name: "--run", Summary: "run the effect the expression describes"},
 			{Name: "--json", Summary: "print the result as JSON"},
 			{Name: "--in", Value: "Name", Summary: "evaluate inside this module: its names unqualified"},
+			buildDirFlag,
 			{Name: "--module", Value: "Name", Summary: "name eval's own scratch module (default Scratch)"},
 		}},
 	{Name: "test", Summary: "run the app's tests", Usage: commandUsages["test"],
@@ -118,6 +123,7 @@ var commandTree = []cmdSpec{
 			{Name: "--json", Summary: "one JSON object per result"},
 			{Name: "--mutate", Summary: "mutation testing: list the mutants no test kills"},
 			{Name: "--min", Value: "R", Summary: "with --mutate, fail below this mutation score"},
+			buildDirFlag,
 		}},
 	{Name: "migrate", Summary: "write the migration for a schema change", Usage: commandUsages["migrate"],
 		Args: []string{"[dir]"},
@@ -136,6 +142,7 @@ var commandTree = []cmdSpec{
 		Flags: []flagSpec{
 			{Name: "--in", Value: "Name", Summary: "start inside this module: its names unqualified"},
 			{Name: "--module", Value: "Name", Summary: "name the REPL's own scratch module (default Scratch)"},
+			buildDirFlag,
 		}},
 	{Name: "new", Summary: "create an app, or generate code in one", Usage: commandUsages["new"],
 		Args:        []string{"<name>"},
@@ -164,6 +171,7 @@ var commandTree = []cmdSpec{
 			{Name: "--unsafe-skip-tests", Summary: "deploy without running the tests"},
 			{Name: "--dry-run", Summary: "print the plan; change nothing"},
 			{Name: "--json", Summary: "print the result as JSON"},
+			buildDirFlag,
 		},
 		Subcommands: []cmdSpec{
 			{Name: "init", Summary: "write the Dockerfile and Render or Fly config", Args: []string{"render|fly", "[dir]"},

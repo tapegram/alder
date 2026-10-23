@@ -23,7 +23,7 @@ import (
 )
 
 // testUsage is the usage line of `alder test`.
-const testUsage = "usage: alder test [dir] [-run re] [-timeout d] [--json] [--mutate [--min R]]"
+const testUsage = "usage: alder test [dir] [-run re] [-timeout d] [--json] [--build-dir DIR] [--mutate [--min R]]"
 
 // defaultTestTimeout bounds one `alder test` run (every test together) unless -timeout says.
 const defaultTestTimeout = 5 * time.Minute
@@ -70,7 +70,7 @@ func main() {
 `
 }
 
-// runTestTo is `alder test [dir] [-run re] [-timeout d] [--json] [--mutate [--min R]]`: it compiles the app at dir
+// runTestTo is `alder test [dir] [-run re] [-timeout d] [--json] [--build-dir DIR] [--mutate [--min R]]`: it compiles the app at dir
 // (default ".") with a main that runs its `test` declarations (testMain) into
 // build/<app>/scratch/test, runs it, and passes the program's report through as it is written:
 // one entry per test as the test finishes and a summary, or with --json one JSON object per
@@ -125,10 +125,15 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 		}
 	}()
 	dir, haveDir, runPat, timeout := ".", false, "", defaultTestTimeout
-	timeoutArg, mutate, minArg := "", false, ""
+	timeoutArg, mutate, minArg, bd := "", false, "", ""
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
+		case (a == "--build-dir" || a == "-build-dir") && i+1 < len(args):
+			i++
+			bd = args[i]
+		case strings.HasPrefix(a, "-build-dir=") || strings.HasPrefix(a, "--build-dir="):
+			_, bd, _ = strings.Cut(a, "=")
 		case a == "--json" || a == "-json":
 			jsonOut = true
 		case a == "--mutate" || a == "-mutate":
@@ -191,7 +196,7 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 	if mutate {
 		purpose = "mutate" // its own directory: a mutate build never replaces the plain test build
 	}
-	b := scratch.CompileCheckedWith(context.Background(), checked, testMain(checked.WiresAdapters(), mutate), purpose, "", scratch.Options{Tests: true, Mutate: mutate, Fetching: func() { fmt.Fprintln(stderr, buildkit.FetchingLine) }})
+	b := scratch.CompileCheckedWith(context.Background(), checked, testMain(checked.WiresAdapters(), mutate), purpose, filepath.Join(appBuildDir(bd, dir), "scratch", purpose), scratch.Options{Tests: true, Mutate: mutate, Fetching: func() { fmt.Fprintln(stderr, buildkit.FetchingLine) }})
 	defer b.Close()
 	io.WriteString(stderr, b.Warning) // capabilities without adapters run unwired
 	if b.Err != nil {
