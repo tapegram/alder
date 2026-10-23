@@ -1396,6 +1396,16 @@ names the binary after the directory, so the app is named after yours.
 - **Secrets.** `render.yaml` has Render generate `ALDER_SECRET`; on Fly you set
   it with `fly secrets set` (the command prints it as the next step).
 
+`init` is a subcommand of `alder deploy`, so an environment named `init`
+cannot be deployed by name; pick another name for it.
+
+If the compiler was built from a checkout with uncommitted changes, no ref
+builds it, so the Dockerfile gets the placeholder and the command warns. If
+it was built from a commit with no release tag, the commit is pinned and the
+command reminds you to make sure it is pushed to the alder remote. A silo-only
+app (no shared tables) still gets the disk or volume, because each silo's
+SQLite file lives under the database's directory.
+
 The command never replaces a file. When any of the files exists it writes
 none of them, lists the ones in the way, and exits 1; `--force` replaces them.
 `--dry-run` prints every file and writes nothing. The files come from the

@@ -59,26 +59,42 @@ func FromBuildInfo(bi *debug.BuildInfo) string {
 	return "devel+" + rev
 }
 
-// Ref is a git ref of alder's repository that builds this binary's source: the release tag of
-// a released binary, the full commit of a checkout build, "" when the binary records neither.
-// A Dockerfile fetches it (`alder deploy init`).
-func Ref() string {
-	bi, ok := debug.ReadBuildInfo()
-	if !ok {
-		return ""
-	}
-	return RefFromBuildInfo(bi)
+// Source says which git ref of alder's repository builds this binary (`alder deploy init` pins
+// it in a Dockerfile). Ref is the release tag of a released binary or the full commit of a
+// checkout build; "" when the binary records neither, or when the checkout had uncommitted
+// changes (no ref builds those). Release is whether Ref is a tag; Dirty whether the checkout
+// was modified.
+type Source struct {
+	Ref            string
+	Release, Dirty bool
 }
 
-// RefFromBuildInfo is Ref for the build information bi.
-func RefFromBuildInfo(bi *debug.BuildInfo) string {
-	if v := FromBuildInfo(bi); !strings.HasPrefix(v, "devel+") && v != "(devel)" {
-		return v
+// SourceOf is this binary's Source.
+func SourceOf() Source {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return Source{}
 	}
+	return SourceFromBuildInfo(bi)
+}
+
+// SourceFromBuildInfo is SourceOf for the build information bi.
+func SourceFromBuildInfo(bi *debug.BuildInfo) Source {
+	if v := FromBuildInfo(bi); !strings.HasPrefix(v, "devel+") && v != "(devel)" {
+		return Source{Ref: v, Release: true}
+	}
+	var src Source
+	rev := ""
 	for _, s := range bi.Settings {
-		if s.Key == "vcs.revision" {
-			return s.Value
+		switch s.Key {
+		case "vcs.revision":
+			rev = s.Value
+		case "vcs.modified":
+			src.Dirty = s.Value == "true"
 		}
 	}
-	return ""
+	if !src.Dirty {
+		src.Ref = rev
+	}
+	return src
 }

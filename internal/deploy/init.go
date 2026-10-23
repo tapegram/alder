@@ -59,7 +59,7 @@ func initDockerfile(s InitSpec) string {
 	if s.Ref == InitRefPlaceholder {
 		mark = "# REPLACE the ref below: this alder records no version of itself. Use a release tag or a\n# full commit of https://github.com/tapegram/alder.\n"
 	}
-	return `# Written by alder deploy init (book chapter 16): ` + s.App + ` on ` + s.Target + `'s Docker runtime.
+	return `# Written by alder deploy init (book chapter 16): ` + s.App + ` on ` + map[string]string{"render": "Render", "fly": "Fly"}[s.Target] + `'s Docker runtime.
 #
 # Alder is built from source at a pinned ref. To upgrade alder, change ALDER_REF (a release tag or a
 # full commit).

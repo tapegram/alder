@@ -13,6 +13,13 @@ import (
 	"alder/internal/version"
 )
 
+// initSource is the alder source to pin (a variable for tests).
+var initSource = version.SourceOf
+
+// initNeedsDisk: SQLite files to keep are the shared tables' and each silo's, which live
+// under ALDER_DB's directory.
+func initNeedsDisk(tables, silos int) bool { return tables > 0 || silos > 0 }
+
 const deployInitUsage = "usage: alder deploy init render|fly [dir] [--force] [--dry-run]"
 
 // runDeployInitTo is `alder deploy init render|fly [dir] [--force] [--dry-run]` (chapter 16): it
@@ -53,7 +60,8 @@ func runDeployInitTo(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "alder deploy init: %s\n", r.loadErr)
 		return 2
 	}
-	spec := deploy.InitSpec{Target: target, App: r.app, Ref: version.Ref(), Disk: r.tables > 0}
+	src := initSource()
+	spec := deploy.InitSpec{Target: target, App: r.app, Ref: src.Ref, Disk: initNeedsDisk(r.tables, len(r.silos))}
 	files, err := deploy.InitFiles(spec)
 	if err != nil {
 		fmt.Fprintf(stderr, "alder deploy init: %v\n", err)
@@ -95,13 +103,19 @@ func runDeployInitTo(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "wrote %s\n", f.Name)
 	}
-	if spec.Ref == "" {
+	switch {
+	case src.Dirty:
+		fmt.Fprintf(stdout, "this alder was built from a checkout with uncommitted changes, which no ref builds: set ALDER_REF in the Dockerfile (%s) to a release tag or a full commit\n", deploy.InitRefPlaceholder)
+	case spec.Ref == "":
 		fmt.Fprintf(stdout, "this alder records no version: set ALDER_REF in the Dockerfile (%s) to a release tag or a full commit\n", deploy.InitRefPlaceholder)
-	} else {
+	default:
 		fmt.Fprintf(stdout, "alder is pinned to %s (ALDER_REF in the Dockerfile)\n", spec.Ref)
+		if !src.Release {
+			fmt.Fprintf(stdout, "note: make sure %s is pushed to the alder remote, or the image build cannot fetch it\n", spec.Ref)
+		}
 	}
 	if spec.Disk {
-		fmt.Fprintf(stdout, "the app has tables: SQLite lives at %s on a persistent %s\n", deploy.InitDB, map[string]string{"render": "disk", "fly": "volume"}[target])
+		fmt.Fprintf(stdout, "the app has tables or silos: SQLite lives at %s on a persistent %s\n", deploy.InitDB, map[string]string{"render": "disk", "fly": "volume"}[target])
 	} else {
 		fmt.Fprintln(stdout, "the app has no tables: no disk or volume declared")
 	}

@@ -33,22 +33,25 @@ func TestFromBuildInfo(t *testing.T) {
 	}
 }
 
-// RefFromBuildInfo is what a Dockerfile can fetch: a release tag, or the full commit.
-func TestRefFromBuildInfo(t *testing.T) {
+// SourceFromBuildInfo is what a Dockerfile can fetch: a release tag, or the full commit of a
+// clean checkout; a modified checkout has no ref.
+func TestSourceFromBuildInfo(t *testing.T) {
 	full := "71c46e8abcdef0123456789abcdef0123456789a"
 	rev := []debug.BuildSetting{{Key: "vcs.revision", Value: full}}
+	dirty := []debug.BuildSetting{{Key: "vcs.revision", Value: full}, {Key: "vcs.modified", Value: "true"}}
 	for _, c := range []struct {
 		version  string
 		settings []debug.BuildSetting
-		want     string
+		want     Source
 	}{
-		{"v0.1.0", nil, "v0.1.0"},
-		{"(devel)", rev, full},
-		{"(devel)", nil, ""},
+		{"v0.1.0", nil, Source{Ref: "v0.1.0", Release: true}},
+		{"(devel)", rev, Source{Ref: full}},
+		{"(devel)", dirty, Source{Dirty: true}},
+		{"(devel)", nil, Source{}},
 	} {
 		bi := &debug.BuildInfo{Main: debug.Module{Path: "alder", Version: c.version}, Settings: c.settings}
-		if got := RefFromBuildInfo(bi); got != c.want {
-			t.Errorf("RefFromBuildInfo(%q, %v) = %q, want %q", c.version, c.settings, got, c.want)
+		if got := SourceFromBuildInfo(bi); got != c.want {
+			t.Errorf("SourceFromBuildInfo(%q, %v) = %+v, want %+v", c.version, c.settings, got, c.want)
 		}
 	}
 }

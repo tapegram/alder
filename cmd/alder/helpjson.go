@@ -161,6 +161,13 @@ var commandTree = []cmdSpec{
 			{Name: "--unsafe-skip-tests", Summary: "deploy without running the tests"},
 			{Name: "--dry-run", Summary: "print the plan; change nothing"},
 			{Name: "--json", Summary: "print the result as JSON"},
+		},
+		Subcommands: []cmdSpec{
+			{Name: "init", Summary: "write the Dockerfile and Render or Fly config", Args: []string{"render|fly", "[dir]"},
+				Flags: []flagSpec{
+					{Name: "--force", Summary: "overwrite existing files"},
+					{Name: "--dry-run", Summary: "print the files; write nothing"},
+				}},
 		}},
 	{Name: "status", Summary: "show what an environment runs", Usage: commandUsages["status"],
 		Args: []string{"<env>", "[dir]"}, Flags: []flagSpec{hostFlagSpec}},

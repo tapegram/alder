@@ -23,7 +23,7 @@ func TestInitFiles_Render(t *testing.T) {
 	if len(m) != 3 || m["Dockerfile"] == "" || m[".dockerignore"] == "" || m["render.yaml"] == "" {
 		t.Fatalf("files: %v", keys(m))
 	}
-	for _, want := range []string{"ARG ALDER_REF=4141f55053f0efb06299ada67d31a3a6bf60f58f", "RUN alder build", "/blog/build/blog/blog", "gcr.io/distroless/static-debian12", `ENTRYPOINT ["/app/blog"]`} {
+	for _, want := range []string{"ARG ALDER_REF=4141f55053f0efb06299ada67d31a3a6bf60f58f", "on Render's Docker runtime", "RUN alder build", "/blog/build/blog/blog", "gcr.io/distroless/static-debian12", `ENTRYPOINT ["/app/blog"]`} {
 		if !strings.Contains(m["Dockerfile"], want) {
 			t.Errorf("Dockerfile lacks %q:\n%s", want, m["Dockerfile"])
 		}

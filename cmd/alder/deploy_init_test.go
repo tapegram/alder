@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"alder/internal/deploy"
+	"alder/internal/version"
 )
 
 func runDeployInit(args ...string) (int, string, string) {
@@ -128,6 +131,49 @@ func TestDeployInit_Usage(t *testing.T) {
 	for _, args := range [][]string{{}, {"heroku"}, {"render", "a", "b"}, {"render", "--nope"}} {
 		if code, _, errs := runDeployInit(args...); code != 2 || !strings.Contains(errs, deployInitUsage) {
 			t.Errorf("%v: exit %d %q", args, code, errs)
+		}
+	}
+}
+
+// A silo-only app (no shared tables) still keeps SQLite files under ALDER_DB's directory.
+func TestDeployInit_NeedsDisk(t *testing.T) {
+	for _, c := range []struct {
+		tables, silos int
+		want          bool
+	}{{0, 0, false}, {1, 0, true}, {0, 2, true}} {
+		if got := initNeedsDisk(c.tables, c.silos); got != c.want {
+			t.Errorf("initNeedsDisk(%d, %d) = %v", c.tables, c.silos, got)
+		}
+	}
+}
+
+// The pin: a release tag is written as is; a clean commit is written with a note to push it; a
+// modified checkout has no ref, so the placeholder is written and the output warns.
+func TestDeployInit_Pin(t *testing.T) {
+	defer func(f func() version.Source) { initSource = f }(initSource)
+	for _, c := range []struct {
+		src        version.Source
+		inDocker   string
+		inOut      string
+		notInOut   string
+		wantDocker bool
+	}{
+		{version.Source{Ref: "v0.3.0", Release: true}, "ARG ALDER_REF=v0.3.0", "pinned to v0.3.0", "is pushed", true},
+		{version.Source{Ref: "abc123"}, "ARG ALDER_REF=abc123", "make sure abc123 is pushed to the alder remote", "", true},
+		{version.Source{Dirty: true}, "ARG ALDER_REF=" + deploy.InitRefPlaceholder, "uncommitted changes", "is pushed", true},
+	} {
+		src := c.src
+		initSource = func() version.Source { return src }
+		dir := noTables(t)
+		code, out, errs := runDeployInit("render", dir)
+		if code != 0 {
+			t.Fatalf("%+v: exit %d\n%s%s", c.src, code, out, errs)
+		}
+		if d := readFile(t, filepath.Join(dir, "Dockerfile")); !strings.Contains(d, c.inDocker) {
+			t.Errorf("%+v: Dockerfile lacks %q", c.src, c.inDocker)
+		}
+		if !strings.Contains(out, c.inOut) || (c.notInOut != "" && strings.Contains(out, c.notInOut)) {
+			t.Errorf("%+v: output:\n%s", c.src, out)
 		}
 	}
 }
