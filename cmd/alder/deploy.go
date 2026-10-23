@@ -72,6 +72,9 @@ func runDeployTo(args []string, stdout, stderr io.Writer) (code int) {
 			code = fail(2, fmt.Sprintf("internal error: %v", r))
 		}
 	}()
+	if len(args) > 0 && args[0] == "init" {
+		return runDeployInitTo(args[1:], stdout, stderr)
+	}
 	var pos []string
 	o := deploy.Options{}
 	host := ""
@@ -375,6 +378,7 @@ type deployRunner struct {
 	app     string
 	decl    *ir.Deploy
 	silos   []string // the app's silo keys, sorted
+	tables  int      // the app's tables (shared store): non-zero means a SQLite file to keep
 	loadErr string
 	checked bool
 	errs    int
@@ -419,6 +423,7 @@ func (r *deployRunner) Check() (int, int, int, string) {
 	if res != nil {
 		if p, err := ir.LowerTables(prog, res); err == nil {
 			r.decl = p.Deploy
+			r.tables = len(p.Tables)
 			for k := range p.Silos {
 				r.silos = append(r.silos, k)
 			}

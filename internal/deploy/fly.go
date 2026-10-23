@@ -632,8 +632,8 @@ func (f *Fly) writeContext(stage, dir, id string) error {
 	files := map[string]string{
 		"Dockerfile":    FlyDockerfile(f.App, id),
 		"run":           FlyRunScript(f.App, f.Env),
-		"fly.toml":      "# Written by alder deploy for the image build only; the machine is made with the Machines API.\napp = " + strconv.Quote(f.FlyApp) + "\nprimary_region = " + strconv.Quote(f.Region) + "\n\n[build]\n  dockerfile = \"Dockerfile\"\n",
-		".dockerignore": "fly.toml\n",
+		"fly.toml":      FlyToml(f.FlyApp, f.Region, false, false),
+		".dockerignore": Dockerignore,
 	}
 	for name, body := range files {
 		if err := os.WriteFile(filepath.Join(stage, name), []byte(body), 0o644); err != nil {

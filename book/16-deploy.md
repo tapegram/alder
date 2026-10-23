@@ -1354,6 +1354,58 @@ It deploys the scaffold twice to a service and a Turso database named
 `alder-m16-<random>`, reads `status`, rolls back, reads the logs, and
 deletes nothing: it prints the commands that remove what it made.
 
+## Deploy files without a `deploy` block: `alder deploy init`
+
+Everything above has `alder deploy` push a build. Render and Fly can also
+build the image themselves, from your repository, on every push. For that
+they need a few files in the repo, and `alder deploy init` writes them:
+
+```text
+alder deploy init render|fly [dir] [--force] [--dry-run]
+```
+
+```text
+$ alder deploy init render
+wrote Dockerfile
+wrote .dockerignore
+wrote render.yaml
+alder is pinned to 4141f55053f0efb06299ada67d31a3a6bf60f58f (ALDER_REF in the Dockerfile)
+the app has tables: SQLite lives at /data/app.db on a persistent disk
+next: commit these files, push, and connect the repo in Render (New > Blueprint)
+```
+
+`render` writes `Dockerfile`, `.dockerignore` and `render.yaml`; `fly` writes
+the same first two and `fly.toml`. The Dockerfile has two stages. The first
+builds alder from source at a pinned git ref and runs `alder build` on your
+app; the second copies the one binary and its `static/` directory onto a
+distroless image (no shell, no package manager, a few megabytes). Alder
+names the binary after the directory, so the app is named after yours.
+
+- **The pin.** The ref is the compiler's own version: the release tag of a
+  released `alder`, the full commit of one built from a checkout. A compiler
+  that records neither gets a placeholder, `REPLACE_WITH_ALDER_REF`, with a
+  comment above it, and the command says so. To upgrade alder, change
+  `ALDER_REF` and push.
+- **The disk.** An app with tables keeps a SQLite file, so `render.yaml`
+  mounts a 1 GB disk at `/data` and `fly.toml` mounts a volume there, with
+  `ALDER_DB=/data/app.db`. An app with no tables gets neither. A Render disk
+  costs what "Why no disk mode" above says: one instance, and a short pause on
+  each deploy. For zero downtime on Render use the `Render` target with Turso.
+- **The health check.** Both files point the platform's check at
+  `/_alder/health`, which every Alder app serves.
+- **Secrets.** `render.yaml` has Render generate `ALDER_SECRET`; on Fly you set
+  it with `fly secrets set` (the command prints it as the next step).
+
+The command never replaces a file. When any of the files exists it writes
+none of them, lists the ones in the way, and exits 1; `--force` replaces them.
+`--dry-run` prints every file and writes nothing. The files come from the
+same templates the `Fly` target uses for its image build, so the two do not
+drift.
+
+This is the lighter path: no gate, no migration plan, no rollback, no
+backups. When you want those, declare a `deploy` block and use `alder deploy
+<env>`.
+
 ## The Script hatch
 
 `Script "./deploy.sh"` is for everything alder does not ship to itself:

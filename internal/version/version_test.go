@@ -32,3 +32,23 @@ func TestFromBuildInfo(t *testing.T) {
 		}
 	}
 }
+
+// RefFromBuildInfo is what a Dockerfile can fetch: a release tag, or the full commit.
+func TestRefFromBuildInfo(t *testing.T) {
+	full := "71c46e8abcdef0123456789abcdef0123456789a"
+	rev := []debug.BuildSetting{{Key: "vcs.revision", Value: full}}
+	for _, c := range []struct {
+		version  string
+		settings []debug.BuildSetting
+		want     string
+	}{
+		{"v0.1.0", nil, "v0.1.0"},
+		{"(devel)", rev, full},
+		{"(devel)", nil, ""},
+	} {
+		bi := &debug.BuildInfo{Main: debug.Module{Path: "alder", Version: c.version}, Settings: c.settings}
+		if got := RefFromBuildInfo(bi); got != c.want {
+			t.Errorf("RefFromBuildInfo(%q, %v) = %q, want %q", c.version, c.settings, got, c.want)
+		}
+	}
+}

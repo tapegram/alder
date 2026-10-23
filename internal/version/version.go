@@ -58,3 +58,27 @@ func FromBuildInfo(bi *debug.BuildInfo) string {
 	}
 	return "devel+" + rev
 }
+
+// Ref is a git ref of alder's repository that builds this binary's source: the release tag of
+// a released binary, the full commit of a checkout build, "" when the binary records neither.
+// A Dockerfile fetches it (`alder deploy init`).
+func Ref() string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+	return RefFromBuildInfo(bi)
+}
+
+// RefFromBuildInfo is Ref for the build information bi.
+func RefFromBuildInfo(bi *debug.BuildInfo) string {
+	if v := FromBuildInfo(bi); !strings.HasPrefix(v, "devel+") && v != "(devel)" {
+		return v
+	}
+	for _, s := range bi.Settings {
+		if s.Key == "vcs.revision" {
+			return s.Value
+		}
+	}
+	return ""
+}
