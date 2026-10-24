@@ -146,6 +146,7 @@ module.exports = grammar({
     $._raw_tag_name, // scanner.c scan_raw_tag_name: `script` or `style` right after `<`
     $._implicit_end_tag, // scanner.c scan_html_text: zero width, closes an element left open before a column-1 line
     $._error_sentinel, // never in a rule: valid only during error recovery
+    $._scratch_start, // scanner.c scan_scratch_start: zero width, a file whose first word is not `module`
   ],
 
   extras: ($) => [/[ \t\r\n]/, $.comment],
@@ -158,7 +159,31 @@ module.exports = grammar({
 
   rules: {
     source_file: ($) =>
-      seq(optional($._newline), $.module_decl, repeat(seq($._newline, $._item)), optional($._newline)),
+      choice(
+        seq(optional($._newline), $.module_decl, repeat(seq($._newline, $._item)), optional($._newline)),
+        $.scratch_file,
+      ),
+
+    // A scratch file (internal/scratch file.go ParseFile): no module line, an optional
+    // `in Module` header first, then items and `> expr` watches. In a scratch file a `>` at
+    // column 1 followed by a space starts a watch rather than continuing the line before
+    // (scanner.c scan_newline). Continuation lines are indented, as for any item. Two
+    // newlines never meet: with the header and items each optional on their own, the leading
+    // and trailing newlines would, and a comment line between them (which ends a newline token)
+    // would let the trailing one end the file before its header.
+    scratch_file: ($) => {
+      const items = sep1(choice($._item, $.watch), $._newline);
+      return seq(
+        $._scratch_start,
+        optional($._newline),
+        optional(
+          seq(choice(seq($.scratch_header, optional(seq($._newline, items))), items), optional($._newline)),
+        ),
+      );
+    },
+
+    scratch_header: ($) => seq('in', field('module', $.module_name)),
+    watch: ($) => seq('>', field('expr', $._expression)),
 
     _item: ($) => choice($.import_decl, $._declaration),
 

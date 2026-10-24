@@ -1,5 +1,6 @@
 [
   (value_decl)
+  (watch)
   (type_decl)
   (table_decl)
   (capability_decl)

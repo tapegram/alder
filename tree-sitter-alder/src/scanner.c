@@ -1,12 +1,15 @@
 // tree-sitter-alder/src/scanner.c
 //
 // The external scanner: the Go lexer's context-sensitive rules, each ported from the function
-// named in its comment (internal/syntax/lexer.go, parser_expr.go). Stateless.
+// named in its comment (internal/syntax/lexer.go, parser_expr.go). Its one piece of state is
+// whether the file is a scratch file (internal/scratch file.go), which changes where a newline
+// separates.
 
 #include "tree_sitter/parser.h"
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum TokenType {
@@ -17,19 +20,21 @@ enum TokenType {
   RAW_TAG_NAME,
   IMPLICIT_END_TAG,
   ERROR_SENTINEL,
+  SCRATCH_START,
 };
 
-void *tree_sitter_alder_external_scanner_create(void) { return NULL; }
-void tree_sitter_alder_external_scanner_destroy(void *payload) { (void)payload; }
+typedef struct {
+  bool scratch;  // set by scan_scratch_start: the file is a scratch file
+} Scanner;
+
+void *tree_sitter_alder_external_scanner_create(void) { return calloc(1, sizeof(Scanner)); }
+void tree_sitter_alder_external_scanner_destroy(void *payload) { free(payload); }
 unsigned tree_sitter_alder_external_scanner_serialize(void *payload, char *buffer) {
-  (void)payload;
-  (void)buffer;
-  return 0;
+  buffer[0] = ((Scanner *)payload)->scratch ? 1 : 0;
+  return 1;
 }
 void tree_sitter_alder_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {
-  (void)payload;
-  (void)buffer;
-  (void)length;
+  ((Scanner *)payload)->scratch = length > 0 && buffer[0] == 1;
 }
 
 static void advance(TSLexer *lexer) { lexer->advance(lexer, false); }
@@ -129,12 +134,23 @@ static bool is_continuation(TSLexer *lexer) {
   }
 }
 
+// is_watch_start reports whether a column-1 line (the lexer's lookahead) starts a scratch
+// file's watch: `>` followed by a space, a tab, a newline or EOF (file.go ParseFile).
+// `>=` and `>x` still continue the line before.
+static bool is_watch_start(TSLexer *lexer) {
+  if (lexer->lookahead != '>' || lexer->get_column(lexer) != 0) return false;
+  advance(lexer);
+  int32_t c = lexer->lookahead;
+  return lexer->eof(lexer) || c == ' ' || c == '\t' || c == '\r' || c == '\n';
+}
+
 // scan_newline runs at '\n' where the grammar accepts a separator. The token is the newline
 // plus any blank lines after it; it stops before a comment line so the comment stays a node.
 // It then looks past blank and comment lines: if the next code line starts with an operator
 // the newline is not a separator (no token; the newline is whitespace). During error recovery
 // it only separates before a line that starts at column 1, which is a declaration boundary.
-static bool scan_newline(TSLexer *lexer, bool recovering) {
+// In a scratch file a line that starts a watch separates too.
+static bool scan_newline(TSLexer *lexer, bool recovering, bool scratch) {
   advance(lexer);
   lexer->mark_end(lexer);
   bool seen_comment = false;
@@ -158,6 +174,10 @@ static bool scan_newline(TSLexer *lexer, bool recovering) {
       return false;
     }
     if (recovering && lexer->get_column(lexer) != 0) return false;
+    if (scratch && lexer->lookahead == '>') {
+      if (is_watch_start(lexer)) break;
+      return false;  // `>=` or `>x`: an operator continuing the line before
+    }
     if (is_continuation(lexer)) return false;
     break;
   }
@@ -289,9 +309,40 @@ static bool scan_raw_tag_name(TSLexer *lexer) {
   return true;
 }
 
+// ---- scratch files: internal/scratch file.go ParseFile ----------------------------------
+
+// scan_scratch_start runs at the start of the file. It looks past blanks, newlines and `--`
+// comments at the first word: a file whose first word is not `module` is a scratch file. The
+// token is zero width, so everything it looked at is lexed again.
+static bool scan_scratch_start(Scanner *s, TSLexer *lexer) {
+  lexer->mark_end(lexer);
+  for (;;) {
+    while (is_blank(lexer->lookahead) || lexer->lookahead == '\n') advance(lexer);
+    if (lexer->lookahead != '-') break;
+    advance(lexer);
+    if (lexer->lookahead != '-') break;
+    while (!lexer->eof(lexer) && lexer->lookahead != '\n') advance(lexer);
+  }
+  static const char module[] = "module";
+  int n = 0;
+  while (module[n] && lexer->lookahead == module[n]) {
+    advance(lexer);
+    n++;
+  }
+  if (!module[n] && !is_name_char(lexer->lookahead)) return false;
+  s->scratch = true;
+  lexer->result_symbol = SCRATCH_START;
+  return true;
+}
+
 bool tree_sitter_alder_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid) {
-  (void)payload;
+  Scanner *s = (Scanner *)payload;
   bool recovering = valid[ERROR_SENTINEL];
+
+  // Only the file's first token may be the scratch start. Looking for it consumes lookahead, so
+  // in a module file nothing else is scanned until `module`: the grammar's lexer takes the
+  // comments before it, and a newline before it is whitespace.
+  if (valid[SCRATCH_START] && !recovering) return scan_scratch_start(s, lexer);
 
   // Text tokens include their leading whitespace, so they are tried before skipping it, and
   // never during error recovery, where they would swallow code.
@@ -305,7 +356,7 @@ bool tree_sitter_alder_external_scanner_scan(void *payload, TSLexer *lexer, cons
 
   while (is_blank(lexer->lookahead)) skip(lexer);
 
-  if (valid[NEWLINE] && lexer->lookahead == '\n') return scan_newline(lexer, recovering);
+  if (valid[NEWLINE] && lexer->lookahead == '\n') return scan_newline(lexer, recovering, s->scratch);
 
   if (valid[STRING]) {
     while (is_blank(lexer->lookahead) || lexer->lookahead == '\n') skip(lexer);

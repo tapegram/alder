@@ -94,3 +94,7 @@
 (html_match . "{" @punctuation.special)
 ; anchors skip anonymous nodes, so the closing brace is the second of the two "}"
 (html_match "}" "}" @punctuation.special)
+
+; ---- scratch files: the `in Module` header and `> expr` watches
+(scratch_header "in" @keyword.import)
+(watch ">" @punctuation.special)

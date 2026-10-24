@@ -1,0 +1,136 @@
+================================================================================
+scratch file: an in header and two watches, one multi-line
+================================================================================
+
+in Todos.Index
+
+> 1 + 1
+
+> [1, 2]
+    |> List.map double
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (scratch_file
+    (scratch_header
+      module: (module_name
+        (constructor)
+        (constructor)))
+    (watch
+      expr: (additive_expr
+        left: (integer)
+        right: (integer)))
+    (watch
+      expr: (pipe_expr
+        left: (list
+          (integer)
+          (integer))
+        right: (application
+          function: (qualified_name
+            module: (constructor)
+            name: (identifier))
+          argument: (identifier))))))
+
+================================================================================
+scratch file: a declaration between watches
+================================================================================
+
+> double 2
+
+double : Int -> Int
+double n = n * 2
+
+> double 3
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (scratch_file
+    (watch
+      expr: (application
+        function: (identifier)
+        argument: (integer)))
+    (value_decl
+      signature: (signature
+        name: (identifier)
+        type: (type_arrow
+          parameter: (type_name
+            (constructor))
+          result: (type_name
+            (constructor))))
+      binding: (binding
+        name: (identifier)
+        params: (parameters
+          (identifier))
+        body: (multiplicative_expr
+          left: (identifier)
+          right: (integer))))
+    (watch
+      expr: (application
+        function: (identifier)
+        argument: (integer)))))
+
+================================================================================
+scratch file: a comment-only first line before in
+================================================================================
+
+-- try the store
+in Todo
+
+> count
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (scratch_file
+    (comment)
+    (scratch_header
+      module: (module_name
+        (constructor)))
+    (watch
+      expr: (identifier))))
+
+================================================================================
+scratch file: no header
+================================================================================
+
+x = 2
+
+> x + 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (scratch_file
+    (value_decl
+      binding: (binding
+        name: (identifier)
+        body: (integer)))
+    (watch
+      expr: (additive_expr
+        left: (identifier)
+        right: (integer)))))
+
+================================================================================
+module file with a column-1 >= continuation
+================================================================================
+
+module M
+
+x =
+  a
+>= b
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (comparison_expr
+        left: (identifier)
+        right: (identifier)))))

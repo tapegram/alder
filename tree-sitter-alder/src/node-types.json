@@ -6507,6 +6507,101 @@
     }
   },
   {
+    "type": "scratch_file",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "capability_decl",
+          "named": true
+        },
+        {
+          "type": "choose_decl",
+          "named": true
+        },
+        {
+          "type": "deploy_decl",
+          "named": true
+        },
+        {
+          "type": "fake_decl",
+          "named": true
+        },
+        {
+          "type": "form_decl",
+          "named": true
+        },
+        {
+          "type": "import_decl",
+          "named": true
+        },
+        {
+          "type": "login_decl",
+          "named": true
+        },
+        {
+          "type": "msg_decl",
+          "named": true
+        },
+        {
+          "type": "page_decl",
+          "named": true
+        },
+        {
+          "type": "scratch_header",
+          "named": true
+        },
+        {
+          "type": "session_decl",
+          "named": true
+        },
+        {
+          "type": "silo_decl",
+          "named": true
+        },
+        {
+          "type": "table_decl",
+          "named": true
+        },
+        {
+          "type": "test_decl",
+          "named": true
+        },
+        {
+          "type": "type_decl",
+          "named": true
+        },
+        {
+          "type": "value_decl",
+          "named": true
+        },
+        {
+          "type": "watch",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "scratch_header",
+    "named": true,
+    "fields": {
+      "module": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "module_name",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "self_closing_element",
     "named": true,
     "fields": {
@@ -6695,6 +6790,10 @@
         },
         {
           "type": "page_decl",
+          "named": true
+        },
+        {
+          "type": "scratch_file",
           "named": true
         },
         {
@@ -7190,6 +7289,138 @@
         "types": [
           {
             "type": "constructor",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "watch",
+    "named": true,
+    "fields": {
+      "expr": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "additive_expr",
+            "named": true
+          },
+          {
+            "type": "and_expr",
+            "named": true
+          },
+          {
+            "type": "application",
+            "named": true
+          },
+          {
+            "type": "block",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "comparison_expr",
+            "named": true
+          },
+          {
+            "type": "constructor",
+            "named": true
+          },
+          {
+            "type": "default_expr",
+            "named": true
+          },
+          {
+            "type": "element",
+            "named": true
+          },
+          {
+            "type": "field_access",
+            "named": true
+          },
+          {
+            "type": "float",
+            "named": true
+          },
+          {
+            "type": "hole",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "if_expr",
+            "named": true
+          },
+          {
+            "type": "integer",
+            "named": true
+          },
+          {
+            "type": "lambda",
+            "named": true
+          },
+          {
+            "type": "list",
+            "named": true
+          },
+          {
+            "type": "match_expr",
+            "named": true
+          },
+          {
+            "type": "multiplicative_expr",
+            "named": true
+          },
+          {
+            "type": "negative_number",
+            "named": true
+          },
+          {
+            "type": "or_expr",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "pipe_expr",
+            "named": true
+          },
+          {
+            "type": "qualified_name",
+            "named": true
+          },
+          {
+            "type": "raw_element",
+            "named": true
+          },
+          {
+            "type": "record",
+            "named": true
+          },
+          {
+            "type": "record_update",
+            "named": true
+          },
+          {
+            "type": "self_closing_element",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "unit",
             "named": true
           }
         ]

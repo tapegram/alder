@@ -18,3 +18,5 @@
 (page_decl path: (string) @string.special)
 (binding name: (_) @function)
 (signature name: (_) @function)
+(scratch_header "in" @keyword.import)
+(watch ">" @punctuation.special)

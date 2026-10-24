@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"alder/book"
+	"alder/internal/scratch"
 	"alder/internal/syntax"
 )
 
@@ -355,6 +356,100 @@ func TestDrift(t *testing.T) {
 		t.Fatalf("%d of %d sources disagree on top-level declarations:\n%s", n, len(srcs), strings.Join(bad, "\n"))
 	}
 	t.Logf("%d sources agree", len(srcs))
+}
+
+// TestDriftScratch: every *scratch.alder in the repo that scratch.ParseFile accepts with no
+// diagnostic parses with no ERROR or MISSING node, has one watch per File.Watches starting on
+// the same lines, and has the Go parser's top-level declarations and imports (read from
+// File.Source as a module, less the watches' generated `itK =` values).
+func TestDriftScratch(t *testing.T) {
+	cli := tsCLI(t)
+	type scratchSource struct {
+		source
+		watchLines []int
+	}
+	var srcs []scratchSource
+	err := filepath.WalkDir("..", func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if n := d.Name(); n != ".." && (strings.HasPrefix(n, ".") || n == "node_modules") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, "scratch.alder") {
+			return nil
+		}
+		text, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		f, diags := scratch.ParseFile(path, string(text))
+		if len(diags) > 0 {
+			return nil
+		}
+		m, diags := syntax.ParseFile(path, []byte("module Scratch\n"+f.Source))
+		if len(diags) > 0 || m == nil {
+			t.Fatalf("%s: scratch.ParseFile accepts it but its module source does not parse: %v", path, diags)
+		}
+		watchNames := map[string]bool{}
+		var lines []int
+		for _, w := range f.Watches {
+			watchNames[w.Name] = true
+			lines = append(lines, w.Line)
+		}
+		im, ds := goDecls(m)
+		var kept []decl
+		for _, d := range ds {
+			if !(d.Kind == "value" && watchNames[d.Name]) {
+				kept = append(kept, d)
+			}
+		}
+		abs, _ := filepath.Abs(path)
+		srcs = append(srcs, scratchSource{source{Path: abs, Label: path, Imports: im, Decls: kept}, lines})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(srcs) == 0 {
+		t.Fatal("no *scratch.alder file in the repo parses clean; expected internal/scaffold/files/scratch.alder")
+	}
+	dir := t.TempDir()
+	plain := make([]source, len(srcs))
+	for i, s := range srcs {
+		plain[i] = s.source
+	}
+	paths := writePaths(t, dir, plain)
+
+	args := append([]string{"parse", "-q"}, libArgs(t, cli)...)
+	out, err := exec.Command(cli, append(args, "--paths", paths)...).Output()
+	if err != nil || len(bytes.TrimSpace(out)) > 0 {
+		t.Fatalf("tree-sitter reports errors in scratch files (%v):\n%s", err, out)
+	}
+
+	got := queryCaptures(t, cli, paths)
+	for _, s := range srcs {
+		var ds []decl
+		var lines []int
+		for _, c := range got[s.Path] {
+			if c.d.Kind == "watch" {
+				lines = append(lines, c.row+1)
+			} else {
+				ds = append(ds, c.d)
+			}
+		}
+		gi, gd := split(ds)
+		if !equal(gi, s.Imports) || !equal(gd, s.Decls) {
+			t.Errorf("%s: top-level declarations disagree\n  go:          %v %v\n  tree-sitter: %v %v", s.Label, s.Imports, s.Decls, gi, gd)
+		}
+		if fmt.Sprint(lines) != fmt.Sprint(s.watchLines) {
+			t.Errorf("%s: watch lines disagree\n  scratch:     %v\n  tree-sitter: %v", s.Label, s.watchLines, lines)
+		}
+	}
+	t.Logf("%d scratch files agree", len(srcs))
 }
 
 // TestRecovery: code being typed (an unterminated string, an unclosed element, a dangling
