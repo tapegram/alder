@@ -71,3 +71,48 @@ func TestDiffMoveAmbiguousNoPair(t *testing.T) {
 		t.Errorf("ambiguous move must drop and create, got:\n%s", sql)
 	}
 }
+
+// TestSiloMoveSeesMovedTable: a table that changes module and silo is still a silo move.
+func TestSiloMoveSeesMovedTable(t *testing.T) {
+	old := schema(named("Todo.Todo", text("title")))
+	moved := named("Table.Todo.Todo", text("title"))
+	moved.Silo = "s"
+	if got := SiloMove(old, schema(moved)); !strings.Contains(got, "table Todo moves into `silo s`") {
+		t.Errorf("SiloMove = %q", got)
+	}
+	if got := SiloMove(old, schema(named("Table.Todo.Todo", text("title")))); got != "" {
+		t.Errorf("a plain move: SiloMove = %q", got)
+	}
+}
+
+// TestDiffRenamedInTableLayout: `@renamed "Todo"` (written "Todo.Todo") finds Table.Todo.Todo.
+func TestDiffRenamedInTableLayout(t *testing.T) {
+	old := schema(named("Table.Todo.Todo", text("title")))
+	task := named("Table.Task.Task", text("title"))
+	task.RenamedFrom = "Todo.Todo"
+	m, err := Plan(old, schema(task), "0002_rename")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := strings.Join(m.SQL, "\n")
+	if !strings.Contains(sql, `ALTER TABLE "Table__Todo__Todo" RENAME TO "Table__Task__Task"`) || strings.Contains(sql, "DROP TABLE") {
+		t.Errorf("want a rename:\n%s", sql)
+	}
+	apply(t, old, schema(task), m)
+}
+
+// TestDiffExplicitRenamedBeatsBareName: with @renamed "Task", Todo is renamed from Task and the
+// old Todo is dropped, rather than the bare-name pass pairing the two Todos.
+func TestDiffExplicitRenamedBeatsBareName(t *testing.T) {
+	old := schema(named("Todo.Todo", text("title")), named("Todo.Task", text("title")))
+	n := named("Table.Todo.Todo", text("title"))
+	n.RenamedFrom = "Task.Task"
+	m, err := Plan(old, schema(n), "0002_x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := strings.Join(m.SQL, "\n")
+	if !strings.Contains(sql, `ALTER TABLE "Todo__Task" RENAME TO "Table__Todo__Todo"`) || !strings.Contains(sql, `DROP TABLE "Todo__Todo"`) {
+		t.Errorf("explicit @renamed must win:\n%s", sql)
+	}
+}

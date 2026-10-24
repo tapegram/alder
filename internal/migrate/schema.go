@@ -183,11 +183,12 @@ func SiloMove(old, new Schema) string {
 		}
 		return "`silo " + silo + "`"
 	}
+	p, _ := pairTables(old, new) // pairing errors are Plan's to report
 	var out []string
 	for _, t := range new.Tables {
-		o := old.table(t.Name)
-		if o == nil && t.RenamedFrom != "" {
-			o = old.table(t.RenamedFrom)
+		var o *Table
+		if from, ok := p.from[t.Name]; ok {
+			o = old.table(from)
 		}
 		if o == nil || o.Silo == t.Silo {
 			continue
@@ -319,4 +320,26 @@ func WriteSnapshot(path string, s Schema) error {
 		return err
 	}
 	return os.WriteFile(path, append(b, '\n'), 0o644)
+}
+
+// renamedFrom is the key of the table of s that a `@renamed "X"` (FromProgram writes it as
+// "X.X") names: that key when s has it, else the one table whose bare name is X (a table moved
+// to `Table.X.X` keeps its bare name), else name itself.
+func (s Schema) renamedFrom(name string) string {
+	if s.table(name) != nil {
+		return name
+	}
+	found := ""
+	for _, t := range s.Tables {
+		if short(t.Name) == short(name) {
+			if found != "" {
+				return name
+			}
+			found = t.Name
+		}
+	}
+	if found == "" {
+		return name
+	}
+	return found
 }

@@ -100,13 +100,14 @@ func short(name string) string {
 
 // pairing is how new's tables descend from old's.
 type pairing struct {
-	from    map[string]string // new table name → old table name (same name, or @renamed)
+	from    map[string]string // new table name → old table name (same name, @renamed, or same bare name: moved)
 	claimed map[string]bool   // old table names with a new table
 	renamed map[string]string // old table name → new, for the renamed ones
 }
 
-// pairTables matches new's tables to old's: by name, else by RenamedFrom, else by bare name (a table moved to another module). A RenamedFrom naming
-// no table of old (when new's own name is not in old either) is an error.
+// pairTables matches new's tables to old's: by name, else by RenamedFrom, else by bare name (a
+// table moved to another module). A RenamedFrom naming no table of old (when new's own name is
+// not in old either) is an error.
 func pairTables(old, new Schema) (pairing, error) {
 	p := pairing{from: map[string]string{}, claimed: map[string]bool{}, renamed: map[string]string{}}
 	for _, t := range new.Tables {
@@ -119,14 +120,15 @@ func pairTables(old, new Schema) (pairing, error) {
 		if _, ok := p.from[t.Name]; ok || t.RenamedFrom == "" {
 			continue
 		}
+		from := old.renamedFrom(t.RenamedFrom)
 		switch {
-		case old.table(t.RenamedFrom) == nil:
+		case old.table(from) == nil:
 			errs = append(errs, fmt.Errorf("table %s: `@renamed %q`, but the snapshot has no table %s", short(t.Name), short(t.RenamedFrom), short(t.RenamedFrom)))
-		case p.claimed[t.RenamedFrom]:
+		case p.claimed[from]:
 			errs = append(errs, fmt.Errorf("table %s: `@renamed %q`, but table %s is still declared (or renamed to twice)", short(t.Name), short(t.RenamedFrom), short(t.RenamedFrom)))
 		default:
-			p.from[t.Name], p.claimed[t.RenamedFrom] = t.RenamedFrom, true
-			p.renamed[t.RenamedFrom] = t.Name
+			p.from[t.Name], p.claimed[from] = from, true
+			p.renamed[from] = t.Name
 		}
 	}
 	// a new table still unpaired whose bare name is that of exactly one unclaimed old table is
@@ -151,7 +153,7 @@ func pairTables(old, new Schema) (pairing, error) {
 	// nothing claims: the rename cannot be made (both names exist), and ignoring it would keep
 	// the wrong table's rows
 	for _, t := range new.Tables {
-		if p.from[t.Name] == t.Name && t.RenamedFrom != "" && t.RenamedFrom != t.Name && old.table(t.RenamedFrom) != nil && !p.claimed[t.RenamedFrom] {
+		if p.from[t.Name] == t.Name && t.RenamedFrom != "" && t.RenamedFrom != t.Name && old.table(old.renamedFrom(t.RenamedFrom)) != nil && !p.claimed[old.renamedFrom(t.RenamedFrom)] {
 			errs = append(errs, renameBothExist("table "+short(t.Name), short(t.Name), short(t.RenamedFrom)))
 		}
 	}
