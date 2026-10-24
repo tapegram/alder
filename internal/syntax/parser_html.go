@@ -68,7 +68,7 @@ func (p *Parser) parseElement() *Element {
 		if !p.at(Gt) {
 			p.errorAt(p.tok, "expected `>`, got "+describe(p.tok))
 		}
-		el.Span = p.spanFrom(start)
+		el.Span = p.spanThroughGt(start)
 		return el
 	}
 	if !p.at(Gt) {
@@ -127,13 +127,22 @@ func (p *Parser) parseElement() *Element {
 					}
 					p.errorAt(saveTok, msg)
 				}
-				el.Span = p.spanFrom(start)
+				el.Span = p.spanThroughGt(start)
 				return el
 			}
 			p.restore(save, saveTok)
 			el.Children = append(el.Children, p.parseElement())
 		}
 	}
+}
+
+// spanThroughGt is the span of an element from start through its final `>`, which is the
+// current token: the caller consumes it, so spanFrom would end before it.
+func (p *Parser) spanThroughGt(start Token) diag.Span {
+	if !p.at(Gt) {
+		return p.spanFrom(start)
+	}
+	return diag.Span{File: p.file, Start: p.posOf(start), End: p.spanTok(p.tok).End}
 }
 
 // rawTextTags are HTML's raw-text elements: their body is text, not markup or Alder.

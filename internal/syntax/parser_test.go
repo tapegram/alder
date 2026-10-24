@@ -451,6 +451,32 @@ func TestParse_HoleSpan(t *testing.T) {
 	}
 }
 
+// A negative literal's span starts at its `-` (the formatter prints literals from their source).
+func TestParse_NegativeLiteralSpan(t *testing.T) {
+	m, diags := ParseFile("M.alder", []byte("module M\n\nx : Float\nx = - 1.5\n"))
+	if len(diags) != 0 {
+		t.Fatal(diags)
+	}
+	l := m.Decls[0].(*ValueDecl).Body.(*FloatLit)
+	if sp := l.Span; sp.Start.Line != 4 || sp.Start.Col != 5 || sp.End.Line != 4 || sp.End.Col != 10 {
+		t.Errorf("span of - 1.5: %d:%d-%d:%d, want 4:5-4:10", sp.Start.Line, sp.Start.Col, sp.End.Line, sp.End.Col)
+	}
+}
+
+// An element's span ends after its final `>`, of a closing tag or of a self-closing one.
+func TestParse_ElementSpanEndsAfterGt(t *testing.T) {
+	m, diags := ParseFile("M.alder", []byte("module M\n\nv : Html a\nv = <p>x</p>\n\nw : Html a\nw = <br />\n"))
+	if len(diags) != 0 {
+		t.Fatal(diags)
+	}
+	for i, want := range []int{13, 11} {
+		sp := m.Decls[i].(*ValueDecl).Body.(*Element).Span
+		if sp.End.Col != want {
+			t.Errorf("element %d ends at column %d, want %d", i, sp.End.Col, want)
+		}
+	}
+}
+
 // A raw-text body ends at its closing tag in any case, as in HTML: `</Script>` and `</STYLE >`
 // close their elements, and the body before them is kept byte for byte.
 func TestParse_RawTextCloseAnyCase(t *testing.T) {

@@ -123,3 +123,12 @@ func TestRender_Performance(t *testing.T) {
 		t.Errorf("unexpected output %q", out[:30])
 	}
 }
+
+func TestRender_TrimsTrailingSpacesBeforeNewline(t *testing.T) {
+	// a flat Line or a text's trailing space before a hard break leaves nothing behind
+	d := Group(Concat(Text("x ="), Line, Concat(Text("y"), Text(" ")), HardLine, Text("z")))
+	eq(t, Render(Concat(Text("a = "), HardLine, Text("b")), 100), "a =\nb")
+	eq(t, Render(d, 100), "x =\ny\nz")
+	// bytes of a text with an embedded newline are verbatim, trailing blanks included
+	eq(t, Render(Concat(Text("s \n t \t"), HardLine, Text("u")), 100), "s \n t \t\nu")
+}

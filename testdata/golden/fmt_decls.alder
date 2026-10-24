@@ -1,0 +1,19 @@
+﻿module Decls
+import Zeta
+import Alpha
+import Zeta
+import Beta.Gamma
+x : Int
+x = 1
+y : Int
+
+y = 2
+
+
+
+z : Text -> Text
+z s = s
+type Flag = On | Off
+w = 3
+neg : Float
+neg = -1.5

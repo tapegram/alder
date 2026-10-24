@@ -1,0 +1,51 @@
+module Types
+
+type Big = {
+  a: Int,
+  b: Text,
+  c: Bool,
+  d: Float,
+  e: List Int,
+  f: Maybe Text,
+  g: Dict Text Int,
+  h: Int,
+  i: Text,
+}
+
+type Pair = { x: Int, y: Int }
+
+type Tag = A | B
+
+type Long =
+  Alpha Int
+  | Beta Text
+  | Gamma (List Int)
+  | Delta { name: Text }
+  | Epsilon (Maybe (List Text))
+  | Zeta
+
+type Wrap a = Wrap (List a) | Fn (a -> Int) | Nested (Maybe (Maybe a)) | Rec { f: a -> b }
+
+type Email = brand Text where Text.contains "@"
+
+type Count = brand Int where (\n -> n >= 0)
+
+type Plain = brand Text
+
+type Empty = { }
+
+f : { name: Text, email: Text }
+  -> (Int -> Int)
+  -> List (Maybe Int)
+  -> Dict Text (List Int)
+  -> Task (Maybe Int)
+f a b c d = Task.succeed Nothing
+
+g : Int -> Int
+g n = (n)
+
+h : a -> b -> c
+h x = h x
+
+u : () -> Int
+u x = 1

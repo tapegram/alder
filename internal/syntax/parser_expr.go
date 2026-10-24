@@ -211,11 +211,13 @@ func (p *Parser) parsePrimary() Expr {
 		p.advance()
 		if p.at(Int) || p.at(Float) {
 			lit := p.parsePrimary()
-			switch l := lit.(type) {
+			switch l := lit.(type) { // the literal's span takes in its `-`
 			case *IntLit:
 				l.Value = -l.Value
+				l.Span.Start = p.posOf(start)
 			case *FloatLit:
 				l.Value = -l.Value
+				l.Span.Start = p.posOf(start)
 			}
 			return lit
 		}

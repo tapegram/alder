@@ -22,8 +22,9 @@
 // Hard-break containment and flat widths are computed once, when a node is
 // built, so rendering is linear apart from the bounded lookahead in fits.
 // Rendering uses an explicit stack, so document depth is not limited by the
-// goroutine stack. Widths count runes. Indentation is written lazily, so
-// blank lines never carry trailing whitespace.
+// goroutine stack. Widths count runes. Indentation is written lazily, and
+// blanks before a line break are trimmed (except those a text holding "\n"
+// wrote, which is verbatim), so no line carries trailing whitespace.
 package format
 
 import (
@@ -170,10 +171,11 @@ type cmd struct {
 
 // Render prints d, breaking groups that do not fit within width columns.
 func Render(d Doc, width int) string {
-	var out strings.Builder
+	var out []byte
 	stack := []cmd{{0, false, d}}
 	col := 0
-	pending := 0 // indentation owed to the next non-empty text
+	pending := 0  // indentation owed to the next non-empty text
+	verbatim := 0 // out[:verbatim] ends with a text holding "\n": its blanks are kept
 	for len(stack) > 0 {
 		c := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -183,12 +185,13 @@ func Render(d Doc, width int) string {
 				continue
 			}
 			if pending > 0 {
-				out.WriteString(strings.Repeat(" ", pending))
+				out = append(out, strings.Repeat(" ", pending)...)
 				pending = 0
 			}
-			out.WriteString(n.s)
+			out = append(out, n.s...)
 			if n.hard {
 				col = n.lastW
+				verbatim = len(out)
 			} else {
 				col += n.w
 			}
@@ -211,20 +214,24 @@ func Render(d Doc, width int) string {
 			switch {
 			case n.kind == kLine && c.flat:
 				if pending > 0 {
-					out.WriteString(strings.Repeat(" ", pending))
+					out = append(out, strings.Repeat(" ", pending)...)
 					pending = 0
 				}
-				out.WriteByte(' ')
+				out = append(out, ' ')
 				col++
 			case n.kind == kSoft && c.flat:
 			default:
-				out.WriteByte('\n')
+				// no trailing blanks, except a verbatim text's own
+				for len(out) > verbatim && (out[len(out)-1] == ' ' || out[len(out)-1] == '\t') {
+					out = out[:len(out)-1]
+				}
+				out = append(out, '\n')
 				pending = c.indent
 				col = c.indent
 			}
 		}
 	}
-	return out.String()
+	return string(out)
 }
 
 // fits reports whether g printed flat, followed by the rest of the stack up to

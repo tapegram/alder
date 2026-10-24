@@ -1,0 +1,46 @@
+module App
+
+import User
+import Org
+
+page "/orgs/{org}" {org: Org.OrgId,   q: Text = "",page: Int = 1} requires user, org, role Admin | Owner, silo org
+
+page "/x" { } requires role Admin
+
+page "/y" { id: Int } requires user
+
+session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Member }
+
+table Post @renamed "Article" { id: PostId @id, title: Text @unique @renamed "heading", author: User.UserId @ref User @cascade, org: Org.OrgId @ref Org @partition org, created: Time @created }
+
+table Tag { id: TagId @id }
+
+form NewPost = { title: Text, body: Text }
+
+form Confirm = {}
+
+msg Toggle { id: PostId }
+msg Logout
+msg Save form NewPost
+msg Edit { id: PostId } form NewPost
+
+capability Mailer { send : { to: Text, body: Text } -> Task (), count : Int -> Query Int }
+
+fake Mailer {
+  send args = Task.succeed ()
+  table Sent { id: SentId @id, to: Text }
+
+  count n = Query.succeed n
+}
+
+deploy { production: Ssh "deploy@box.example.com" { domain: "blog.example.com", path: "/srv/blog" }, staging: Fly "ord" { app: "blog-staging" }, floor: 0.95, keep: -3, requires: ["SMTP_URL","STRIPE_KEY"] }
+
+deploy { local: Script "./scripts/deploy-local.sh" }
+
+login = Auth.Login
+
+choose org = Orgs.Index
+
+silo org { Project, Todo }
+
+test "toggling works" = Task.succeed True
