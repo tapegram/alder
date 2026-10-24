@@ -11,7 +11,9 @@ import (
 
 	"alder/internal/diag"
 	"alder/internal/format"
+	"alder/internal/names"
 	"alder/internal/scratch"
+	"alder/internal/types"
 )
 
 const fmtUsage = "usage: alder fmt [--check | --stdin] [path...]"
@@ -107,7 +109,10 @@ func fmtFile(path string, checkOnly bool, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "alder fmt: %v\n", err)
 		return 2
 	}
-	out, ds, err := format.Source(path, src)
+	// the formatter's safety check compares the migrated source with its output, so the
+	// migration is never judged by it; the file on disk is compared with the final output
+	migrated := fmtMigrate(path, src)
+	out, ds, err := format.Source(path, migrated)
 	return fmtResult(path, src, out, ds, err, stderr, func(out []byte) int {
 		if string(out) == string(src) {
 			return 0
@@ -123,6 +128,34 @@ func fmtFile(path string, checkOnly bool, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, path)
 		return 0
 	})
+}
+
+// fmtMigrate is src with the import-qualifier fixes (E0204, E0205) of a file inside an app
+// project applied; src itself for a file outside one, or when the project cannot be loaded and
+// resolved (a file that does not parse is reported by the formatter, not here).
+func fmtMigrate(path string, src []byte) []byte {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return src
+	}
+	root := findAppRoot(filepath.Dir(abs))
+	if root == "" {
+		return src
+	}
+	std, err := types.LoadStd()
+	if err != nil {
+		return src
+	}
+	prog, bag, ioErrs := names.LoadOverlay(root, std, nil)
+	if len(ioErrs) > 0 || prog.ParseFailed {
+		return src
+	}
+	prog.Resolve(bag)
+	out, _, err := format.Migrate(prog, bag, fmtRel(root, abs), src)
+	if err != nil {
+		return src
+	}
+	return out
 }
 
 // fmtResult turns a format.Source result into an exit code: diagnostics (1), an unsafe rewrite

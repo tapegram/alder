@@ -54,7 +54,11 @@ func (p *printer) module(m *syntax.Module) Doc {
 					out = append(out, Text(c.Text), HardLine)
 				}
 			}
-			out = append(out, Text("import "+im.Module), p.trail(same[0]))
+			line := "import " + im.Module
+			if same[0].Alias != "" {
+				line += " as " + same[0].Alias
+			}
+			out = append(out, Text(line), p.trail(same[0]))
 		}
 	}
 	for _, d := range m.Decls {

@@ -1,5 +1,6 @@
 module Decls
 
+import Admin.Layout as AdminLayout
 import Alpha
 import Beta.Gamma
 import Zeta

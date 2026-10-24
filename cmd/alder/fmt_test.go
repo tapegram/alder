@@ -254,3 +254,36 @@ func TestFmtAppRootStartsAtTheDirectory(t *testing.T) {
 		t.Errorf("an app/ with no .alder file is taken as the root")
 	}
 }
+
+const (
+	fmtTodoSrc  = "module Table.Todo\n\ntype Todo = { title: Text }\n\nfind : Int -> Todo\nfind n = ?find\n"
+	fmtUseOld   = "module Todos\n\nimport Table.Todo\n\na : Table.Todo\na = Table.Todo.find 1\n"
+	fmtUseFixed = "module Todos\n\nimport Table.Todo\n\na : Todo\na = Todo.find 1\n"
+)
+
+func TestFmt_MigratesProjectFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	fmtWrite(t, dir, "app/Table/Todo.alder", fmtTodoSrc)
+	p := fmtWrite(t, dir, "app/Todos.alder", fmtUseOld)
+	if code, out, _ := fmtRun("--check", p); code != 1 || out != p+" would be reformatted\n" {
+		t.Fatalf("--check: code %d out %q", code, out)
+	}
+	if code, out, errOut := fmtRun(p); code != 0 || out != p+"\n" || errOut != "" {
+		t.Fatalf("code %d out %q err %q", code, out, errOut)
+	}
+	if got, _ := os.ReadFile(p); string(got) != fmtUseFixed {
+		t.Fatalf("file %q", got)
+	}
+	if code, out, _ := fmtRun("--check", p); code != 0 || out != "" {
+		t.Fatalf("second --check: code %d out %q", code, out)
+	}
+}
+
+func TestFmt_StdinNoMigration(t *testing.T) {
+	t.Parallel()
+	var o, e bytes.Buffer
+	if code := runFmtTo([]string{"--stdin"}, strings.NewReader(fmtUseOld), &o, &e); code != 0 || o.String() != fmtUseOld {
+		t.Fatalf("code %d out %q err %q", code, o.String(), e.String())
+	}
+}
