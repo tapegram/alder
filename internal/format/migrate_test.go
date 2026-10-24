@@ -42,7 +42,7 @@ func migrateIn(t *testing.T, files map[string]string, file string) (string, bool
 		t.Fatal(ioErrs)
 	}
 	prog.Resolve(bag)
-	out, changed, err := Migrate(prog, bag, file, []byte(files[file]))
+	out, changed, err := Migrate(bag, file, []byte(files[file]))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestMigrate_SharedAndOverlappingSpans(t *testing.T) {
 	bag.Error(diag.FullPath, inner, "overlap").Fix = diag.ReplaceSpan(inner, "Todo")
 	bag.Error("E0203", sp, "other code").Fix = diag.ReplaceSpan(sp, "garbage")
 	bag.Error(diag.FullPath, diag.Span{File: "app/Other.alder", Start: sp.Start, End: sp.End}, "other file").Fix = diag.ReplaceSpan(sp, "garbage")
-	out, changed, err := Migrate(nil, bag, "app/Use.alder", []byte(src))
+	out, changed, err := Migrate(bag, "app/Use.alder", []byte(src))
 	if err != nil || !changed || string(out) != "module Use\n\nb = Todo.Open\n" {
 		t.Fatalf("changed=%v err=%v:\n%s", changed, err, out)
 	}

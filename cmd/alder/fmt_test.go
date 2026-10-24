@@ -309,3 +309,21 @@ func TestFmt_StdinNoMigration(t *testing.T) {
 		t.Fatalf("code %d out %q err %q", code, o.String(), e.String())
 	}
 }
+
+// Several files of one project in one run are each migrated, though the run loads the project
+// once and drops it only after a write.
+func TestFmt_MigratesSeveralFilesOfOneProject(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	fmtWrite(t, dir, "app/Table/Todo.alder", fmtTodoSrc)
+	p := fmtWrite(t, dir, "app/Todos.alder", fmtUseOld)
+	q := fmtWrite(t, dir, "app/Other.alder", strings.Replace(fmtUseOld, "module Todos", "module Other", 1))
+	if code, out, errOut := fmtRun(p, q); code != 0 || out != p+"\n"+q+"\n" || errOut != "" {
+		t.Fatalf("code %d out %q err %q", code, out, errOut)
+	}
+	for _, f := range []string{p, q} {
+		if got, _ := os.ReadFile(f); !strings.HasSuffix(string(got), "a : Todo\na = Todo.find 1\n") {
+			t.Fatalf("%s: %q", f, got)
+		}
+	}
+}

@@ -13,6 +13,7 @@ import (
 	"alder/internal/format"
 	"alder/internal/names"
 	"alder/internal/scratch"
+	"alder/internal/syntax"
 	"alder/internal/types"
 )
 
@@ -71,9 +72,9 @@ func runFmtTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code in
 			code = c
 		}
 	}
-	noted := map[string]bool{} // app roots whose skipped migration was reported
+	cache := &fmtCache{noted: map[string]bool{}, progs: map[string]*fmtProject{}}
 	for _, f := range files {
-		raise(fmtFile(f, checkOnly, noted, stdout, stderr))
+		raise(fmtFile(f, checkOnly, cache, stdout, stderr))
 	}
 	return code
 }
@@ -94,10 +95,26 @@ func fmtStdin(stdin io.Reader, stdout, stderr io.Writer) int {
 	})
 }
 
+// fmtCache is what one `alder fmt` run keeps between files: the standard library, the loaded and
+// resolved program of each app root (dropped once a file in the root is written, so the next file
+// is migrated against what is on disk), and the roots whose skipped migration was reported.
+type fmtCache struct {
+	std   map[string]*syntax.Module
+	noted map[string]bool
+	progs map[string]*fmtProject
+}
+
+// fmtProject is a loaded app root; bag is nil when the project could not be loaded or has files
+// that do not parse (broken lists them, relative to the root).
+type fmtProject struct {
+	bag    *diag.Bag
+	broken []string
+}
+
 // fmtFile formats one file, reporting on stdout and problems on stderr; it returns the file's
 // exit code. When the file's project has a file that does not parse, migration is skipped and
-// stderr says so once per project (noted holds the roots already reported).
-func fmtFile(path string, checkOnly bool, noted map[string]bool, stdout, stderr io.Writer) int {
+// stderr says so once per project.
+func fmtFile(path string, checkOnly bool, cache *fmtCache, stdout, stderr io.Writer) int {
 	info, err := os.Stat(path)
 	if err != nil {
 		fmt.Fprintf(stderr, "alder fmt: %v\n", err)
@@ -114,9 +131,9 @@ func fmtFile(path string, checkOnly bool, noted map[string]bool, stdout, stderr 
 	}
 	// the formatter's safety check compares the migrated source with its output, so the
 	// migration is never judged by it; the file on disk is compared with the final output
-	migrated, root, broken := fmtMigrate(path, src)
-	if len(broken) > 0 && !noted[root] {
-		noted[root] = true
+	migrated, root, broken := fmtMigrate(path, src, cache, stderr)
+	if len(broken) > 0 && !cache.noted[root] {
+		cache.noted[root] = true
 		verb, them := "does", "it"
 		if len(broken) > 1 {
 			verb, them = "do", "them"
@@ -136,6 +153,7 @@ func fmtFile(path string, checkOnly bool, noted map[string]bool, stdout, stderr 
 			fmt.Fprintf(stderr, "alder fmt: %v\n", err)
 			return 2
 		}
+		delete(cache.progs, root) // the project on disk has changed
 		fmt.Fprintln(stdout, path)
 		return 0
 	})
@@ -145,8 +163,9 @@ func fmtFile(path string, checkOnly bool, noted map[string]bool, stdout, stderr 
 // project applied; src itself for a file outside one, or when the project cannot be loaded and
 // resolved. When project files do not parse, it also returns the app root and those files
 // (relative to the root) so the caller can say why nothing was migrated; the formatter reports
-// the syntax errors of the file it formats.
-func fmtMigrate(path string, src []byte) (out []byte, root string, broken []string) {
+// the syntax errors of the file it formats. An error applying the fixes goes to stderr and the
+// file is formatted unmigrated.
+func fmtMigrate(path string, src []byte, cache *fmtCache, stderr io.Writer) (out []byte, root string, broken []string) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return src, "", nil
@@ -155,23 +174,39 @@ func fmtMigrate(path string, src []byte) (out []byte, root string, broken []stri
 	if root == "" {
 		return src, "", nil
 	}
-	std, err := types.LoadStd()
+	pr := cache.progs[root]
+	if pr == nil {
+		pr = loadFmtProject(root, cache)
+		cache.progs[root] = pr
+	}
+	if pr.bag == nil {
+		return src, root, pr.broken
+	}
+	out, _, err = format.Migrate(pr.bag, fmtRel(root, abs), src)
 	if err != nil {
-		return src, root, nil
-	}
-	prog, bag, ioErrs := names.LoadOverlay(root, std, nil)
-	if len(ioErrs) > 0 {
-		return src, root, nil
-	}
-	if prog.ParseFailed {
-		return src, root, prog.Unparsed
-	}
-	prog.Resolve(bag)
-	out, _, err = format.Migrate(prog, bag, fmtRel(root, abs), src)
-	if err != nil {
+		fmt.Fprintf(stderr, "alder fmt: %s: imports were not migrated: %v\n", path, err)
 		return src, root, nil
 	}
 	return out, root, nil
+}
+
+func loadFmtProject(root string, cache *fmtCache) *fmtProject {
+	if cache.std == nil {
+		std, err := types.LoadStd()
+		if err != nil {
+			return &fmtProject{}
+		}
+		cache.std = std
+	}
+	prog, bag, ioErrs := names.LoadOverlay(root, cache.std, nil)
+	if len(ioErrs) > 0 {
+		return &fmtProject{}
+	}
+	if prog.ParseFailed {
+		return &fmtProject{broken: prog.Unparsed}
+	}
+	prog.Resolve(bag)
+	return &fmtProject{bag: bag}
 }
 
 // fmtResult turns a format.Source result into an exit code: diagnostics (1), an unsafe rewrite
