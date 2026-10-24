@@ -1029,10 +1029,11 @@ Line by line:
    renders, and the browser now holds the page. Its result is not needed
    here (`let _ <-`).
 4. `Test.submit Todos.Index.NewTodo { … }` fills the page's `NewTodo`
-   form (a page's messages are global addresses like its page value, so
-   they are written with the full path; if the test file imports
-   `Todos.Index` the short `Index.NewTodo` is accepted too, but the book
-   and the generators write the full one) with the record and posts it. The page must show that form: the
+   form with the record and posts it. A page's forms and messages are
+   global addresses, like its page value, so another module writes them
+   with the page's full path. Even when the test file imports
+   `Todos.Index`, the short `Index.NewTodo` is an error, and its fix
+   writes `Todos.Index.NewTodo`. The page must show that form: the
    browser posts only what a user could. The page's `update` inserts the
    todo and answers `Redirect (Todos.Index { filter: model.filter })`; the
    browser follows the redirect, as a real one does, and now holds the
@@ -1217,7 +1218,7 @@ test replaces it with the fake `app/Auth/Login.alder` declares beside it
 password. The test file imports `Auth.Login`, so the capability is
 written through that import's qualifier, `Login.Password`; the page
 itself is a page value, written with its full path, `Auth.Login {}`, and
-so is its message, `Auth.Login.Credentials`:
+so is its form, `Auth.Login.Credentials`:
 
 ```alder
 test "logging in through the form" = {

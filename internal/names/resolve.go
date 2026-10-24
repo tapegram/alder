@@ -537,8 +537,9 @@ func (r *resolver) testFakeArg(a syntax.Expr, sc *Scope) {
 // testFormArg resolves the first argument of `Test.submit` and `Test.submitRaw`: a form, `NewTodo`
 // (of this module) or `Todos.Index.NewTodo` (of any module, imported or not, as a page needs no
 // import), resolved as a type; or a message posting one, resolved as testClickArg does. A form
-// of another module written unqualified gets the qualified name as a fix. Any other argument
-// is resolved as an expression (the checker refuses it).
+// of another module written unqualified, or through a page import's qualifier
+// (`Login.Credentials`), gets the full name as a fix. Any other argument is resolved as an
+// expression (the checker refuses it).
 func (r *resolver) testFormArg(a syntax.Expr, step string, sc *Scope) {
 	ct, ok := a.(*syntax.CtorRef)
 	if !ok {
@@ -550,7 +551,13 @@ func (r *resolver) testFormArg(a syntax.Expr, step string, sc *Scope) {
 		return
 	}
 	if ct.Module != "" {
-		path := ct.Module // a page's full path, or an import's qualifier
+		if path, ok := r.pageByQualifier(ct.Module); ok {
+			if s := r.p.scopes[path]; s != nil && s.forms[ct.Name] {
+				r.pageMemberShort(ct, path, syntax.RefType, "form")
+				return
+			}
+		}
+		path := ct.Module // a page's full path, or the qualifier of an imported non-page module
 		if im, ok := r.ms.imports[path]; ok {
 			path = im.Module
 		}
@@ -576,7 +583,8 @@ func (r *resolver) testFormArg(a syntax.Expr, step string, sc *Scope) {
 
 // testClickArg resolves the argument of `Test.click`: a message, `Toggle { id: id }` or
 // `App.Logout`, or from another module a page's message written with its page,
-// `Todos.Index.Toggle { id: id }` (a page's messages are otherwise its own). Anything else is
+// `Todos.Index.Toggle { id: id }` (a page's messages are otherwise its own; through the page
+// import's qualifier, `Index.Toggle`, it gets the full name as a fix). Anything else is
 // resolved as an expression.
 func (r *resolver) testClickArg(a syntax.Expr, sc *Scope) {
 	head, rest := a, []syntax.Expr(nil)
@@ -584,6 +592,17 @@ func (r *resolver) testClickArg(a syntax.Expr, sc *Scope) {
 		head, rest = app.Fn, app.Args
 	}
 	ct, ok := head.(*syntax.CtorRef)
+	if ok && ct.Module != "" {
+		if path, isPage := r.pageByQualifier(ct.Module); isPage && path != r.m.Name {
+			if s := r.p.scopes[path]; s != nil && s.ctors[ct.Name] == "Msg" {
+				r.pageMemberShort(ct, path, syntax.RefCtor, "message")
+				for _, x := range rest {
+					r.expr(x, sc)
+				}
+				return
+			}
+		}
+	}
 	if !ok || ct.Module == "" || ct.Module == r.m.Name || !r.p.IsPageModule(ct.Module) {
 		r.expr(a, sc)
 		return
@@ -596,6 +615,28 @@ func (r *resolver) testClickArg(a syntax.Expr, sc *Scope) {
 		return
 	}
 	r.expr(a, sc)
+}
+
+// pageByQualifier reports the path of the imported page module whose qualifier is q, when q is
+// not that path itself (`Login` for `import Auth.Login`).
+func (r *resolver) pageByQualifier(q string) (string, bool) {
+	im, ok := r.ms.imports[q]
+	if !ok || im.Module == q || !r.p.IsPageModule(im.Module) {
+		return "", false
+	}
+	return im.Module, true
+}
+
+// pageMemberShort reports a page's form or message written through the page import's qualifier
+// in a test step (`Test.submit Login.Credentials`): like page values, a page's forms and
+// messages are written with its full path (design rule 6). The fix writes the full path, and
+// the reference resolves to the member so nothing else is reported.
+func (r *resolver) pageMemberShort(ct *syntax.CtorRef, path string, kind syntax.RefKind, what string) {
+	r.ms.used[path] = true // one error, not a W0001 besides
+	full := path + "." + ct.Name
+	d := r.bag.Error(diag.UnknownName, ct.Span, "write `%s`: a page's %ss are written with its full path, like the page itself", full, what)
+	d.Fix = diag.ReplaceSpan(ct.Span, full)
+	ct.Ref = syntax.Ref{Kind: kind, Module: path, Name: ct.Name}
 }
 
 func (r *resolver) fields(fs []*syntax.Field) {

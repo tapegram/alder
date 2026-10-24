@@ -296,6 +296,37 @@ func TestQual_PageMembers(t *testing.T) {
 	}
 }
 
+// A page's forms and messages are global addresses, like page values: a test writes them with
+// the page's full path (`Test.submit Auth.Login.Credentials`, `Test.click Todos.Index.Toggle`),
+// and the short spelling through the import's qualifier is E0002 with a fix to the full path.
+func TestQual_PageFormsAndMsgsFullPath(t *testing.T) {
+	login := "module Auth.Login\n\npage \"/login\" { }\n\nform Credentials = { email: Text }\n\nmsg Toggle\n"
+	full := "module Use\n\nimport Auth.Login\n\nx : Int\nx = Login.n\n\ntest \"t\" = {\n  let _ <- Test.submit Auth.Login.Credentials { email: \"a\" }\n  let _ <- Test.click Auth.Login.Toggle\n  Task.succeed True\n}\n"
+	loginN := login + "\nn : Int\nn = 1\n"
+	_, bag, ms := resolveMods(t, testStd(t), loginN, full)
+	if len(bag.Items) != 0 {
+		t.Fatalf("full path: %s", codes(bag))
+	}
+	wantRef(t, ms["Use"], "Auth.Login.Credentials", syntax.Ref{Kind: syntax.RefType, Module: "Auth.Login", Name: "Credentials"})
+	wantRef(t, ms["Use"], "Auth.Login.Toggle", syntax.Ref{Kind: syntax.RefCtor, Module: "Auth.Login", Name: "Toggle"})
+
+	for _, tc := range []struct{ step, written, want string }{
+		{"Test.submit", "Login.Credentials", "Auth.Login.Credentials"},
+		{"Test.click", "Login.Toggle", "Auth.Login.Toggle"},
+		{"Test.submit", "Login.Toggle", "Auth.Login.Toggle"},
+	} {
+		src := "module Use\n\nimport Auth.Login\n\nx : Int\nx = Login.n\n\ntest \"t\" = {\n  let _ <- " + tc.step + " " + tc.written + "\n  Task.succeed True\n}\n"
+		_, bag, _ := resolveMods(t, testStd(t), loginN, src)
+		d := onlyFix(t, bag, diag.UnknownName)
+		if !strings.Contains(d.Message, "write `"+tc.want+"`") || strings.Contains(d.Message, "can only send") {
+			t.Errorf("%s %s: message %q", tc.step, tc.written, d.Message)
+		}
+		if d.Fix == nil || d.Fix.Replace != tc.want {
+			t.Errorf("%s %s: fix %+v", tc.step, tc.written, d.Fix)
+		}
+	}
+}
+
 // The module's own last segment blocks a qualifier only while the path can grow: `import Layout`
 // inside `Admin.Layout` keeps `Layout`.
 func TestQual_OwnSegmentFullLength(t *testing.T) {

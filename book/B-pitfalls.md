@@ -13,9 +13,10 @@ in chapter 12. Each is a compile error.
    writing the full path (`Table.Todo.find`) is E0205. Where two imports
    or a declared name would clash, the import carries the canonical alias
    (`import Admin.Layout as AdminLayout`); copy it from the E0204 fix or
-   run `alder fmt`. Pages stay full path (`Todos.Show {}`), but their
-   members go through the qualifier (`Index.helper` after `import
-   Todos.Index`).
+   run `alder fmt`. Pages stay full path (`Todos.Show {}`), and so do a
+   page's forms and messages in a test (`Test.submit
+   Auth.Login.Credentials`), but their other members go through the
+   qualifier (`Index.helper` after `import Todos.Index`).
 4. Every module whose types, functions, columns, or components you use must
    be imported. Only pages (`Todos.Show {}`) and app-level messages
    (`App.Logout`) need no import.

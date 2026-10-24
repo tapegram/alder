@@ -322,7 +322,7 @@ func TestResolve_CapabilityNamedLikeModule(t *testing.T) {
 
 func testStd(t *testing.T) map[string]*syntax.Module {
 	s := std(t)
-	tm, ds := syntax.ParseSignatures("Test.alder", []byte("module Test\n\nrun : Task a -> Task a\n-- special form\nfake : Capability -> Task Unit\n"))
+	tm, ds := syntax.ParseSignatures("Test.alder", []byte("module Test\n\nrun : Task a -> Task a\n-- special form\nfake : Capability -> Task Unit\nsubmit : a -> b -> Task Unit\nclick : a -> Task Unit\n"))
 	if len(ds) > 0 {
 		t.Fatal(ds[0].Message)
 	}

@@ -149,8 +149,8 @@ The full path of an imported module is refused too (E0205), because two
 spellings of one name are the cost the rule exists to avoid.
 
 Pages and `App` stay full path. A page value is an address in the whole
-app, valid with or without an import, and the same holds for its
-messages: `Auth.Login {}` means the same in every file. Shortening
+app, valid with or without an import, and the same holds for its forms
+and messages: `Auth.Login {}` means the same in every file. Shortening
 those would make the global names read as local ones. Only a page's
 *members*, which need an import, use the qualifier.
 
