@@ -804,6 +804,7 @@ func (r *resolver) notImported(span diag.Span, x string) {
 		r.bag.Error(diag.UnknownName, span, "there is no `%s.alder` (imported in `%s`)", modulePath(x), by)
 		return
 	}
+	x = r.p.moduleByLastSegment(x)
 	if path := r.p.importPath(x, r.m.Name); path != nil {
 		msg := fmt.Sprintf("module `%s` is not imported, and it %s, so `%s` cannot import it", x, importsPhrase(path), r.m.Name)
 		if r.inTest {
@@ -814,6 +815,27 @@ func (r *resolver) notImported(span diag.Span, x string) {
 	}
 	d := r.bag.Error("E0201", span, "module `%s` is not imported", x)
 	d.Fix = r.importFix(x)
+}
+
+// moduleByLastSegment is the full path of the one app module whose last segment is x
+// (`Table.Todo` for `Todo`), when x itself names no module; x otherwise.
+func (p *Program) moduleByLastSegment(x string) string {
+	if p.Modules[x] != nil || strings.Contains(x, ".") {
+		return x
+	}
+	found := ""
+	for _, name := range p.Order {
+		if lastSegment(name) == x {
+			if found != "" {
+				return x
+			}
+			found = name
+		}
+	}
+	if found == "" {
+		return x
+	}
+	return found
 }
 
 // importFix inserts `import x` after the last import, once per module x, in its canonical form
@@ -908,7 +930,7 @@ func (r *resolver) tableMisplaced(span diag.Span, owner, table string) {
 			return
 		}
 	}
-	r.bag.Error(diag.UnknownName, span, "`%s` is a table of module `%s`, but a table is declared in its own module named after it: move it to `%s.alder`%s", table, owner, modulePath(table), r.p.tableDeclSee(owner, table))
+	r.bag.Error(diag.UnknownName, span, "`%s` is a table of module `%s`, but a table is declared in a module named after it: move it to `app/Table/%s.alder`%s", table, owner, table, r.p.tableDeclSee(owner, table))
 }
 
 // tableDeclSee points at the E0018 declaration of table in module owner: "; see `app/Post.alder:11`".

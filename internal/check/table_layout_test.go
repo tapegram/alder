@@ -1,8 +1,6 @@
 package check
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -12,20 +10,11 @@ import (
 // Tables live in `app/Table/<Name>.alder` (module `Table.<Name>`, #20): a table's module ends in
 // its name, and table names are unique app-wide.
 
-// checkApp writes files (slash path under a fresh app dir → source) and checks the app.
+// checkApp checks the app whose app/ holds files (name → source).
 func checkApp(t *testing.T, files map[string]string) *diag.Bag {
 	t.Helper()
-	dir := t.TempDir()
-	for rel, src := range files {
-		p := filepath.Join(dir, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return runDir(t, dir)
+	_, bag := checkWith(t, files, Options{})
+	return bag
 }
 
 // codes is the codes of bag's errors, in order.
@@ -90,39 +79,39 @@ func appModule(imports, session string) string {
 }
 
 func TestTableInTableFolder(t *testing.T) {
-	wantClean(t, checkApp(t, map[string]string{"app/Table/Todo.alder": todoTable, "app/Home.alder": todoHome, "app/App.alder": appModule("", "n: Int = 0")}))
+	wantClean(t, checkApp(t, map[string]string{"Table/Todo.alder": todoTable, "Home.alder": todoHome, "App.alder": appModule("", "n: Int = 0")}))
 }
 
 func TestTableNested(t *testing.T) {
 	wantClean(t, checkApp(t, map[string]string{
-		"app/Table/Billing/Invoice.alder":  "module Table.Billing.Invoice\n\ntype InvoiceId = brand Text\n\ntable Invoice {\n  id: InvoiceId @id,\n  total: Int,\n}\n",
-		"app/Table/Billing/LineItem.alder": "module Table.Billing.LineItem\n\nimport Table.Billing.Invoice\n\ntype LineItemId = brand Text\n\ntable LineItem {\n  id: LineItemId @id,\n  invoice: Invoice.InvoiceId @ref Invoice,\n}\n",
+		"Table/Billing/Invoice.alder":  "module Table.Billing.Invoice\n\ntype InvoiceId = brand Text\n\ntable Invoice {\n  id: InvoiceId @id,\n  total: Int,\n}\n",
+		"Table/Billing/LineItem.alder": "module Table.Billing.LineItem\n\nimport Table.Billing.Invoice\n\ntype LineItemId = brand Text\n\ntable LineItem {\n  id: LineItemId @id,\n  invoice: Invoice.InvoiceId @ref Invoice,\n}\n",
 	}))
 }
 
 func TestTableWrongLastSegment(t *testing.T) {
 	src := strings.Replace(todoTable, "module Table.Todo", "module Table.Todos", 1)
-	wantOne(t, checkApp(t, map[string]string{"app/Table/Todos.alder": src}), diag.TablePlacement, "app/Table/Todo.alder")
+	wantOne(t, checkApp(t, map[string]string{"Table/Todos.alder": src}), diag.TablePlacement, "app/Table/Todo.alder")
 }
 
 func TestTableRootStillLegal(t *testing.T) {
 	src := strings.Replace(todoTable, "module Table.Todo", "module Todo", 1)
-	wantClean(t, checkApp(t, map[string]string{"app/Todo.alder": src}))
+	wantClean(t, checkApp(t, map[string]string{"Todo.alder": src}))
 }
 
 func TestDuplicateTableName(t *testing.T) {
 	inv := "type InvoiceId = brand Text\n\ntable Invoice {\n  id: InvoiceId @id,\n  total: Int,\n}\n"
 	wantOne(t, checkApp(t, map[string]string{
-		"app/Table/Invoice.alder":         "module Table.Invoice\n\n" + inv,
-		"app/Table/Billing/Invoice.alder": "module Table.Billing.Invoice\n\n" + inv,
+		"Table/Invoice.alder":         "module Table.Invoice\n\n" + inv,
+		"Table/Billing/Invoice.alder": "module Table.Billing.Invoice\n\n" + inv,
 	}), diag.DuplicateTable, "two tables named Invoice: `Table.Invoice` and `Table.Billing.Invoice`; table names are app-wide")
 }
 
 func TestSessionViaTableFolder(t *testing.T) {
 	wantClean(t, checkApp(t, map[string]string{
-		"app/Table/User.alder": "module Table.User\n\ntype UserId = brand Text\n\ntable User {\n  id: UserId @id,\n  name: Text,\n}\n",
-		"app/Table/Org.alder":  "module Table.Org\n\ntype OrgId = brand Text\n\ntable Org {\n  id: OrgId @id,\n  name: Text,\n}\n",
-		"app/Table/Membership.alder": `module Table.Membership
+		"Table/User.alder": "module Table.User\n\ntype UserId = brand Text\n\ntable User {\n  id: UserId @id,\n  name: Text,\n}\n",
+		"Table/Org.alder":  "module Table.Org\n\ntype OrgId = brand Text\n\ntable Org {\n  id: OrgId @id,\n  name: Text,\n}\n",
+		"Table/Membership.alder": `module Table.Membership
 
 import Table.User
 import Table.Org
@@ -135,7 +124,7 @@ table Membership {
   org: Org.OrgId @ref Org @cascade,
 }
 `,
-		"app/App.alder": appModule("import Table.User\nimport Table.Org\n", "user: Maybe User.UserId, org: Maybe Org.OrgId via Membership"),
+		"App.alder": appModule("import Table.User\nimport Table.Org\n", "user: Maybe User.UserId, org: Maybe Org.OrgId via Membership"),
 	}))
 }
 
@@ -145,9 +134,9 @@ table Membership {
 func TestTableTypeThroughAlias(t *testing.T) {
 	use := "module Todos\n\nimport Admin.Todo as AdminTodo\nimport Table.Todo as TableTodo\n\nfirst : List Todo -> AdminTodo.Mode -> Int\nfirst todos m = List.length todos\n"
 	wantOne(t, checkApp(t, map[string]string{
-		"app/Table/Todo.alder": todoTable,
-		"app/Admin/Todo.alder": "module Admin.Todo\n\ntype Mode = A | B\n",
-		"app/Todos.alder":      use,
+		"Table/Todo.alder": todoTable,
+		"Admin/Todo.alder": "module Admin.Todo\n\ntype Mode = A | B\n",
+		"Todos.alder":      use,
 	}), "E0202", "write `TableTodo`")
 }
 
@@ -155,7 +144,7 @@ func TestTableTypeThroughAlias(t *testing.T) {
 func TestMisplacedTableTypeNamesTableFolder(t *testing.T) {
 	post := "module Post\n\ntype CommentId = brand Text\n\ntable Comment {\n  id: CommentId @id,\n  body: Text,\n}\n"
 	use := "module Feed\n\nimport Post\n\nfirst : List Comment -> Int\nfirst cs = List.length cs\n"
-	bag := checkApp(t, map[string]string{"app/Post.alder": post, "app/Feed.alder": use})
+	bag := checkApp(t, map[string]string{"Post.alder": post, "Feed.alder": use})
 	for _, d := range bag.Items {
 		if d.Code == "E0202" && strings.Contains(d.Message, "move it to `app/Table/Comment.alder`") {
 			return
@@ -165,12 +154,24 @@ func TestMisplacedTableTypeNamesTableFolder(t *testing.T) {
 }
 
 // A table in `Table.*` used without its import is a missing import (E0201), not a misplaced
-// table.
+// table, and the fix imports the module by its full path.
 func TestTableFolderNotImported(t *testing.T) {
 	use := "module Todos\n\ncount : List Todo.TodoId -> Int\ncount ids = List.length ids\n"
-	got := render(checkApp(t, map[string]string{"app/Table/Todo.alder": todoTable, "app/Todos.alder": use}))
-	if strings.Contains(got, "move it") || !strings.Contains(got, "E0201") {
-		t.Fatalf("want a missing-import error, got:\n%s", got)
+	bag := checkApp(t, map[string]string{"Table/Todo.alder": todoTable, "Todos.alder": use})
+	if got := codes(bag); len(got) != 1 || got[0] != "E0201" || !strings.Contains(bag.Items[0].Message, "`Table.Todo`") {
+		t.Fatalf("want one E0201 naming Table.Todo, got:\n%s", render(bag))
+	}
+	if f := bag.Items[0].Fix; f == nil || f.Replace != "import Table.Todo\n" {
+		t.Fatalf("want the fix `import Table.Todo`, got:\n%s", render(bag))
+	}
+}
+
+// Two app modules end in `Todo`: the fix cannot choose, and imports `Todo` as before.
+func TestNotImportedAmbiguousLastSegment(t *testing.T) {
+	use := "module Todos\n\ncount : List Todo.TodoId -> Int\ncount ids = List.length ids\n"
+	bag := checkApp(t, map[string]string{"Table/Todo.alder": todoTable, "Admin/Todo.alder": "module Admin.Todo\n\ntype Mode = A | B\n", "Todos.alder": use})
+	if got := codes(bag); len(got) != 1 || got[0] != "E0201" || strings.Contains(render(bag), "Table.Todo") {
+		t.Fatalf("want one E0201 not naming Table.Todo, got:\n%s", render(bag))
 	}
 }
 
@@ -178,8 +179,42 @@ func TestTableFolderNotImported(t *testing.T) {
 // Todo.Todo` is not, for a table at the root).
 func TestTableFolderImportOfTableNotMisplaced(t *testing.T) {
 	use := "module Todos\n\nimport Table.Todo.Todo\n\nn : Int\nn = 1\n"
-	got := render(checkApp(t, map[string]string{"app/Table/Todo.alder": todoTable, "app/Todos.alder": use}))
+	got := render(checkApp(t, map[string]string{"Table/Todo.alder": todoTable, "Todos.alder": use}))
 	if strings.Contains(got, "move it") || !strings.Contains(got, "there is no `app/Table/Todo/Todo.alder`") {
 		t.Fatalf("want no such module, got:\n%s", got)
 	}
+}
+
+// `silo k { T }` names a table in `Table.*` by its bare name.
+func TestSiloTableFolder(t *testing.T) {
+	wantClean(t, checkApp(t, map[string]string{
+		"Table/User.alder": "module Table.User\n\ntype UserId = brand Text\n\ntable User {\n  id: UserId @id,\n  name: Text,\n}\n",
+		"Table/Org.alder":  "module Table.Org\n\ntype OrgId = brand Text\n\ntable Org {\n  id: OrgId @id,\n  name: Text,\n}\n",
+		"Table/Membership.alder": `module Table.Membership
+
+import Table.User
+import Table.Org
+
+type MembershipId = brand Text
+
+table Membership {
+  id: MembershipId @id,
+  user: User.UserId @ref User @cascade,
+  org: Org.OrgId @ref Org @cascade,
+}
+`,
+		"Table/Project.alder": `module Table.Project
+
+import Table.Org
+
+type ProjectId = brand Text
+
+table Project {
+  id: ProjectId @id,
+  name: Text,
+  org: Org.OrgId @ref Org @partition org,
+}
+`,
+		"App.alder": appModule("import Table.User\nimport Table.Org\n", "user: Maybe User.UserId, org: Maybe Org.OrgId via Membership }\n\nsilo org { Project"),
+	}))
 }

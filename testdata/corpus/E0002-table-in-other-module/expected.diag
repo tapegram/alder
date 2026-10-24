@@ -1,6 +1,6 @@
-app/Admin.alder:4:1 E0002 `Comment` is a table of module `Post`, but a table is declared in its own module named after it: move it to `app/Comment.alder` (see `app/Post.alder:11`)
+app/Admin.alder:4:1 E0002 `Comment` is a table of module `Post`, but a table is declared in a module named after it: move it to `app/Table/Comment.alder` (see `app/Post.alder:11`)
 app/Feed.alder:7:40 E0202 type `Comment` belongs to module `Post`, but `Comment` is a table, and a table is declared in a module named after it: move it to `app/Table/Comment.alder` (see `app/Post.alder:11`)
-app/Feed.alder:11:27 E0002 `Comment` is a table of module `Post`, but a table is declared in its own module named after it: move it to `app/Comment.alder` (see `app/Post.alder:11`)
-app/Feed.alder:11:48 E0002 `Comment` is a table of module `Post`, but a table is declared in its own module named after it: move it to `app/Comment.alder` (see `app/Post.alder:11`)
-app/Index.alder:11:53 E0002 `Comment` is a table of module `Post`, but a table is declared in its own module named after it: move it to `app/Comment.alder` (see `app/Post.alder:11`)
+app/Feed.alder:11:27 E0002 `Comment` is a table of module `Post`, but a table is declared in a module named after it: move it to `app/Table/Comment.alder` (see `app/Post.alder:11`)
+app/Feed.alder:11:48 E0002 `Comment` is a table of module `Post`, but a table is declared in a module named after it: move it to `app/Table/Comment.alder` (see `app/Post.alder:11`)
+app/Index.alder:11:53 E0002 `Comment` is a table of module `Post`, but a table is declared in a module named after it: move it to `app/Table/Comment.alder` (see `app/Post.alder:11`)
 app/Post.alder:11:1 E0018 a table is declared in a module named after it: `table Comment` belongs in `app/Table/Comment.alder`
