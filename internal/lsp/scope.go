@@ -260,18 +260,18 @@ func target(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Pos) 
 	case *syntax.Import:
 		return syntax.Ref{Kind: syntax.RefNone, Module: n.Module}, nil, true
 	case *syntax.Var:
-		if onQualifier(a, n.Module, n.Span, pos) {
-			return syntax.Ref{Kind: syntax.RefNone, Module: n.Module}, nil, true
+		if onQualifier(a, m, n.Module, n.Span, pos) {
+			return syntax.Ref{Kind: syntax.RefNone, Module: qualifiedModule(a, m, n.Module)}, nil, true
 		}
 		return resolved(n.Ref, n.Name)
 	case *syntax.CtorRef:
-		if onQualifier(a, n.Module, n.Span, pos) {
-			return syntax.Ref{Kind: syntax.RefNone, Module: n.Module}, nil, true
+		if onQualifier(a, m, n.Module, n.Span, pos) {
+			return syntax.Ref{Kind: syntax.RefNone, Module: qualifiedModule(a, m, n.Module)}, nil, true
 		}
 		return resolved(n.Ref, n.Name)
 	case *syntax.TypeName:
-		if onQualifier(a, n.Module, n.Span, pos) {
-			return syntax.Ref{Kind: syntax.RefNone, Module: n.Module}, nil, true
+		if onQualifier(a, m, n.Module, n.Span, pos) {
+			return syntax.Ref{Kind: syntax.RefNone, Module: qualifiedModule(a, m, n.Module)}, nil, true
 		}
 		return resolved(n.Ref, n.Name)
 	case *syntax.PCtor:
@@ -359,16 +359,43 @@ func declRef(mod string, d syntax.Decl) (syntax.Ref, bool) {
 }
 
 // onQualifier reports whether pos is on the module qualifier of a name spanning sp (`Post` of
-// `Post.title`), and the qualifier names a module of the program or the standard library.
-func onQualifier(a *analysis, module string, sp diag.Span, pos diag.Pos) bool {
+// `Post.title`), and the qualifier names a module of the program or the standard library, as m
+// imports it. The qualifier's length is the written text's, whatever module it names.
+func onQualifier(a *analysis, m *syntax.Module, module string, sp diag.Span, pos diag.Pos) bool {
 	if module == "" || pos.Line != sp.Start.Line || pos.Col < sp.Start.Col || pos.Col >= sp.Start.Col+len(module) {
 		return false
 	}
-	return moduleNamed(a, module) != nil
+	return moduleNamed(a, m, module) != nil
 }
 
-// moduleNamed is the app or standard-library module called name, or nil.
-func moduleNamed(a *analysis, name string) *syntax.Module {
+// qualifiedModule is the full path of the module that qualifier q names in m (q itself when it
+// names none), so a Ref made of it matches the resolver's.
+func qualifiedModule(a *analysis, m *syntax.Module, q string) string {
+	if mod := moduleNamed(a, m, q); mod != nil {
+		return mod.Name
+	}
+	return q
+}
+
+// moduleNamed is the module a written name q means in m: an import's qualifier (design rule 1),
+// else a module's full path (a page value's, or a full path the resolver reports as E0205), else
+// a standard-library module; nil when it is none. m may be nil, which leaves the qualifiers out.
+func moduleNamed(a *analysis, m *syntax.Module, q string) *syntax.Module {
+	if m != nil {
+		for path, qual := range a.prog.Qualifiers(m.Name) {
+			if qual == q && qual != "" {
+				if mod := a.prog.Modules[path]; mod != nil {
+					return mod
+				}
+				return a.prog.Std[path]
+			}
+		}
+	}
+	return modulePath(a, q)
+}
+
+// modulePath is the app or standard-library module with full path name, or nil.
+func modulePath(a *analysis, name string) *syntax.Module {
 	if m := a.prog.Modules[name]; m != nil {
 		return m
 	}
@@ -379,7 +406,7 @@ func moduleNamed(a *analysis, name string) *syntax.Module {
 // type, table, form or message, a union constructor, a page's `page` line, or a capability or
 // its entry. nil when there is none.
 func findDecl(a *analysis, ref syntax.Ref) (*syntax.Module, syntax.Spanned) {
-	mod := moduleNamed(a, ref.Module)
+	mod := modulePath(a, ref.Module)
 	if mod == nil {
 		return nil, nil
 	}

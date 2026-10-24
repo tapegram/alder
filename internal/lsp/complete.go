@@ -9,6 +9,7 @@ import (
 
 	"alder/internal/diag"
 	"alder/internal/markup"
+	"alder/internal/names"
 	"alder/internal/syntax"
 	"alder/internal/types"
 )
@@ -140,11 +141,35 @@ func (cx *completion) imports() ([]completionItem, bool) {
 	if cx.m != nil {
 		for _, name := range cx.moduleNames() {
 			if name != cx.m.Name {
-				out = append(out, cx.item(name, kindModule, "", len(g[1])))
+				it := cx.item(name, kindModule, "", len(g[1]))
+				it.TextEdit.NewText = cx.importText(name)
+				out = append(out, it)
 			}
 		}
 	}
 	return out, true
+}
+
+// importText is what accepting module path in an import completion inserts: the path, and
+// `as Q` when the path's canonical qualifier among this module's imports is not its last
+// segment (design rule 4). A standard-library module, or one with no usable qualifier, is
+// inserted as it is.
+func (cx *completion) importText(path string) string {
+	isStd := func(n string) bool { return cx.a.prog.Std[n] != nil }
+	if isStd(path) {
+		return path
+	}
+	paths := []string{path}
+	for _, im := range cx.m.Imports {
+		if !isStd(im.Module) {
+			paths = append(paths, im.Module)
+		}
+	}
+	quals, _ := names.CanonicalQualifiers(cx.m.Name, paths, names.Taken(cx.m, isStd))
+	if q := quals[path]; q != "" && names.NeedsAlias(path, q) {
+		return path + " as " + q
+	}
+	return path
 }
 
 // moduleNames is every app and standard-library module, sorted.
@@ -168,7 +193,7 @@ func (cx *completion) members() ([]completionItem, bool) {
 	if g == nil || cx.m == nil {
 		return nil, false
 	}
-	mod := moduleNamed(cx.a, g[1])
+	mod := moduleNamed(cx.a, cx.m, g[1])
 	if mod == nil {
 		return nil, false
 	}

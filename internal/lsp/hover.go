@@ -94,7 +94,11 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 				t = a.res.Types[n]
 			}
 			if t != nil {
-				return withDoc(sig(ref.Name, t), declDoc(a, ref))
+				name := ref.Name
+				if v, ok := n.(*syntax.Var); ok && v.Module != "" && a.prog.Modules[ref.Module] != nil {
+					name = ref.Module + "." + ref.Name // `Todo.find` is `Table.Todo.find` in full
+				}
+				return withDoc(sig(name, t), declDoc(a, ref))
 			}
 		}
 	}
@@ -146,7 +150,7 @@ func withDoc(sig, doc string) string {
 // moduleHover is "`Name` · its file · how many declarations": Alder has no export list, so
 // every declaration counts.
 func moduleHover(a *analysis, name string) string {
-	mod := moduleNamed(a, name)
+	mod := modulePath(a, name)
 	if mod == nil {
 		return ""
 	}

@@ -1,6 +1,8 @@
 package lsp
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -282,5 +284,57 @@ func TestHover_HookNameOutsideAPage(t *testing.T) {
 	got := hover(t, c, "app/Write.alder", c.at("app/Write.alder", "update User author", 0))
 	if !strings.Contains(got, "```alder\nupdate : Table t -> Id t -> (t -> t) -> Task Unit\n```") || strings.Contains(got, "Page hook") {
 		t.Errorf("Db.update hovered as a hook or not at all:\n%s", got)
+	}
+}
+
+// qualCopy is the blog plus a module Table.Todo, which Posts.Index imports (written by its
+// qualifier `Todo`) and calls through `Todo.find`.
+func qualCopy(t *testing.T, use string) (*client, string) {
+	t.Helper()
+	root := blogCopy(t)
+	if err := os.MkdirAll(filepath.Join(root, "app/Table"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "app/Table/Todo.alder"), []byte("module Table.Todo\n\nfind : Int -> Int\nfind n = n\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rel := "app/Posts/Index.alder"
+	p := filepath.Join(root, rel)
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Replace(string(b), "import Layout\n", "import Layout\nimport Table.Todo\n", 1)
+	text += "\nuseTodo : Int\nuseTodo = " + use + " 1\n"
+	if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return start(t, root), rel
+}
+
+func TestHover_QualifiedShort(t *testing.T) {
+	c, rel := qualCopy(t, "Todo.find")
+	openClean(t, c, rel)
+	p := c.at(rel, "Todo.find 1", len("Todo."))
+	if got := hover(t, c, rel, p); !strings.Contains(got, "Table.Todo.find : Int -> Int") {
+		t.Fatalf("hover %q", got)
+	}
+	// on the qualifier: the module, by its full path
+	p.Character = c.at(rel, "Todo.find 1", 0).Character
+	if got := hover(t, c, rel, p); !strings.Contains(got, "`Table.Todo` · app/Table/Todo.alder") {
+		t.Fatalf("qualifier hover %q", got)
+	}
+}
+
+func TestDefinition_Qualifier(t *testing.T) {
+	c, rel := qualCopy(t, "Todo.find")
+	openClean(t, c, rel)
+	locs := definitionAt(t, c, rel, c.at(rel, "Todo.find 1", 1))
+	if len(locs) != 1 || !strings.HasSuffix(locs[0].URI, "app/Table/Todo.alder") || locs[0].Range.Start.Line != 0 {
+		t.Fatalf("qualifier definition %+v", locs)
+	}
+	locs = definitionAt(t, c, rel, c.at(rel, "Todo.find 1", len("Todo.")))
+	if len(locs) != 1 || !strings.HasSuffix(locs[0].URI, "app/Table/Todo.alder") || locs[0].Range.Start.Line != 2 {
+		t.Fatalf("member definition %+v", locs)
 	}
 }

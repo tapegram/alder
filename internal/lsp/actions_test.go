@@ -196,3 +196,24 @@ func TestExplain(t *testing.T) {
 		t.Fatalf("unknown code: %v", e)
 	}
 }
+
+// TestAction_E0205Fix: a full path where the qualifier is written offers the fix to it.
+func TestAction_E0205Fix(t *testing.T) {
+	c, rel := qualCopy(t, "Table.Todo.find")
+	c.open(rel, c.disk(rel))
+	line := -1
+	for _, d := range c.diags(rel) {
+		if d.Data != nil && d.Data.Fix != nil && d.Data.Fix.NewText == "Todo.find" {
+			line = d.Range.Start.Line
+		}
+	}
+	if line < 0 {
+		t.Fatalf("no E0205 fix: %+v", c.diags(rel))
+	}
+	for _, a := range actions(t, c, rel, line) {
+		if a.Kind == "quickfix" && a.Edit != nil && len(a.Edit.DocumentChanges[0].Edits) == 1 && a.Edit.DocumentChanges[0].Edits[0].NewText == "Todo.find" {
+			return
+		}
+	}
+	t.Fatalf("no quick fix replacing with Todo.find: %+v", actions(t, c, rel, line))
+}

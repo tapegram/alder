@@ -335,3 +335,28 @@ func TestComplete_LambdaParamOnTheSameLine(t *testing.T) {
 		t.Fatalf("p. fields: %v", got)
 	}
 }
+
+func TestComplete_MemberViaQualifier(t *testing.T) {
+	c, rel := qualCopy(t, "Text.trim")
+	openClean(t, c, rel)
+	p := typing(t, c, rel, "useTodo = Text.trim 1\n", "  let z = Todo.")
+	got := labels(complete(t, c, rel, p))
+	if it, ok := got["find"]; !ok || it.TextEdit.NewText != "find" {
+		t.Fatalf("Todo. members: %v", got)
+	}
+}
+
+// TestComplete_ImportInsertsAlias: Admin.Layout beside Layout needs `as AdminLayout`; Post does not.
+func TestComplete_ImportInsertsAlias(t *testing.T) {
+	c := start(t, blogCopy(t))
+	rel := "app/Posts/Index.alder"
+	openClean(t, c, rel)
+	p := typing(t, c, rel, "import Layout\n", "import ")
+	got := labels(complete(t, c, rel, p))
+	if it, ok := got["Admin.Layout"]; !ok || it.TextEdit.NewText != "Admin.Layout as AdminLayout" {
+		t.Fatalf("Admin.Layout: %+v", it)
+	}
+	if it := got["Comment"]; it.TextEdit.NewText != "Comment" {
+		t.Fatalf("Comment: %+v", it)
+	}
+}
