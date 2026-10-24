@@ -45,7 +45,7 @@ func TestAdmin_Refusals(t *testing.T) {
 	}
 	broken := genApp(t, "fixture")
 	alderIn(t, broken, "", "new", "admin")
-	p := filepath.Join(broken, "app", "Admin", "Post", "Index.alder")
+	p := filepath.Join(broken, "app", "Admin", "Posts", "Index.alder")
 	b, _ := os.ReadFile(p)
 	src := strings.Replace(string(b), "              -- @admin end\n            </tr>}", "            </tr>}", 1)
 	if src == string(b) {
@@ -55,7 +55,7 @@ func TestAdmin_Refusals(t *testing.T) {
 	// a list generated before the filters (M13): no region `filters`, no `listAt`
 	older := genApp(t, "fixture")
 	alderIn(t, older, "", "new", "admin")
-	p = filepath.Join(older, "app", "Admin", "Tag", "Index.alder")
+	p = filepath.Join(older, "app", "Admin", "Tags", "Index.alder")
 	b, _ = os.ReadFile(p)
 	begin, end := strings.Index(string(b), "-- @admin begin filters\n"), strings.Index(string(b), "-- @admin begin sorts\n")
 	if begin < 0 || end < begin {
@@ -71,8 +71,8 @@ func TestAdmin_Refusals(t *testing.T) {
 		{genApp(t, "scaffold"), []string{"new", "admin"}, "alder new admin: " + generate.AdminNeeds + ": this app's session has no `user`; add a user table, a login that sets `user`, and a `role` (chapter 6, \"Rules\" and \"Roles\")"},
 		{withAdmin, []string{"new", "admin"}, "alder new admin: `app/Admin/` exists: `alder regen admin` updates the admin in it; to generate another, choose another `--module`"},
 		{genApp(t, "fixture"), []string{"regen", "admin"}, "alder regen admin: there is no admin in `app/Admin/`: `alder new admin` generates one (name another with --module)"},
-		{broken, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Post/Index.alder`: region `cells` has no end marker (region `tests` begins at line 355, inside it)"},
-		{older, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Tag/Index.alder` has no region `filters`, which its list now needs (it was generated before the filters): delete it and run `alder regen admin --all` to write it again, then carry over your changes"},
+		{broken, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Posts/Index.alder`: region `cells` has no end marker (region `tests` begins at line 355, inside it)"},
+		{older, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Tags/Index.alder` has no region `filters`, which its list now needs (it was generated before the filters): delete it and run `alder regen admin --all` to write it again, then carry over your changes"},
 		{genApp(t, "fixture"), []string{"new", "admin", "--module", "admin"}, "alder new admin: `--module admin` is not a module name: write capitalised names joined by dots, such as `Admin`"},
 		{genApp(t, "fixture"), []string{"new", "admin", "--path", "/admin/{id}"}, "alder new admin: `--path /admin/{id}` is not a path without parameters, such as `/admin`"},
 		{genApp(t, "fixture"), []string{"new", "admin", "--path", "//evil.com"}, "alder new admin: `--path //evil.com` is not a page path: it has an empty segment; a path is `/` followed by segments of letters, digits, `.`, `_`, `~`, `-` or `{param}`"},
@@ -96,13 +96,13 @@ func TestAdmin_Relocated(t *testing.T) {
 	needGoTool(t)
 	dir := genApp(t, "fixture")
 	code, out, errs := alderIn(t, dir, "", "new", "admin", "--module", "Back.Office", "--path", "/back/")
-	if code != 0 || !strings.Contains(out, "wrote app/Back/Office/Post/Index.alder\n") || !strings.Contains(out, "wrote app/Back/Office/Layout.alder\n") {
+	if code != 0 || !strings.Contains(out, "wrote app/Back/Office/Posts/Index.alder\n") || !strings.Contains(out, "wrote app/Back/Office/Layout.alder\n") {
 		t.Fatalf("exit %d\n%s%s", code, out, errs)
 	}
-	b, _ := os.ReadFile(filepath.Join(dir, "app", "Back", "Office", "Post", "Index.alder"))
-	for _, want := range []string{"module Back.Office.Post.Index\n", `page "/back/post" {`, "<Layout.Page title=\"Posts\">", "<al-button href={Back.Office.Post.New {}}>New post</al-button>"} {
+	b, _ := os.ReadFile(filepath.Join(dir, "app", "Back", "Office", "Posts", "Index.alder"))
+	for _, want := range []string{"module Back.Office.Posts.Index\n", `page "/back/post" {`, "<Layout.Page title=\"Posts\">", "<al-button href={Back.Office.Posts.New {}}>New post</al-button>"} {
 		if !strings.Contains(string(b), want) {
-			t.Errorf("Back.Office.Post.Index lacks %q:\n%s", want, b)
+			t.Errorf("Back.Office.Posts.Index lacks %q:\n%s", want, b)
 		}
 	}
 	if code, out, errs := alderIn(t, dir, "", "test"); code != 0 || !strings.HasSuffix(out, " passed, 0 failed\n") {
@@ -120,7 +120,7 @@ func TestAdmin_DryRunJSON(t *testing.T) {
 	dir := genApp(t, "fixture")
 	before := appFiles(t, dir)
 	code, out, _ := alderIn(t, dir, "", "new", "admin", "--dry-run")
-	if code != 0 || !strings.HasPrefix(out, "would write app/Admin/Comment/Bulk.alder\n") || !strings.Contains(out, "--- /dev/null\n+++ b/app/Admin/Index.alder\n") || !strings.HasSuffix(out, "dry run: nothing written\n") {
+	if code != 0 || !strings.HasPrefix(out, "would write app/Admin/Comments/Bulk.alder\n") || !strings.Contains(out, "--- /dev/null\n+++ b/app/Admin/Index.alder\n") || !strings.HasSuffix(out, "dry run: nothing written\n") {
 		t.Errorf("--dry-run: exit %d\n%.2000s", code, out)
 	}
 	if ch := changedFiles(before, appFiles(t, dir)); len(ch) != 0 {
@@ -131,7 +131,7 @@ func TestAdmin_DryRunJSON(t *testing.T) {
 		Files   []struct{ Path, Action string }
 		Written bool
 	}
-	if err := json.Unmarshal([]byte(out), &got); err != nil || code != 0 || strings.Count(out, "\n") != 1 || len(got.Files) != 26 || !got.Written || got.Files[0].Path != "app/Admin/Comment/Bulk.alder" || got.Files[0].Action != "created" {
+	if err := json.Unmarshal([]byte(out), &got); err != nil || code != 0 || strings.Count(out, "\n") != 1 || len(got.Files) != 26 || !got.Written || got.Files[0].Path != "app/Admin/Comments/Bulk.alder" || got.Files[0].Action != "created" {
 		t.Errorf("--json: exit %d, %v\n%.500s", code, err, out)
 	}
 	other := genApp(t, "fixture")
@@ -216,7 +216,7 @@ func TestAdmin_Silo(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("alder new admin: exit %d\n%s%s", code, out, errs)
 	}
-	for _, w := range []string{"wrote app/Admin/Orgs/Index.alder\n", "wrote app/Admin/Orgs/Show.alder\n", "wrote app/Admin/Project/Bulk.alder\n", "wrote app/Admin/Activity/Index.alder\n"} {
+	for _, w := range []string{"wrote app/Admin/Orgs/Pick.alder\n", "wrote app/Admin/Orgs/Dashboard.alder\n", "wrote app/Admin/Projects/Bulk.alder\n", "wrote app/Admin/Activities/Index.alder\n"} {
 		if !strings.Contains(out, w) {
 			t.Errorf("alder new admin did not print %q:\n%s", w, out)
 		}
@@ -229,14 +229,14 @@ func TestAdmin_Silo(t *testing.T) {
 		return string(b)
 	}
 	for rel, wants := range map[string][]string{
-		"app/Admin/Layout.alder":         {"<a href={Admin.Activity.Index {}}>Activities</a>", "<a href={Admin.Orgs.Index {}}>Issues and projects, by org</a>"},
-		"app/Admin/Index.alder":          {`key: "silo-org",`, "href: Admin.Orgs.Show { org: row.id } }) orgs,"},
-		"app/Admin/Orgs/Index.alder":     {`page "/admin/orgs" { } requires user, role Admin`, "<a href={Admin.Orgs.Show { org: row.id }}>{row.name}</a>"},
-		"app/Admin/Orgs/Show.alder":      {`page "/admin/orgs/{org}" { org: Org.OrgId } requires user, role Admin, silo org`, "href: Admin.Project.Index { org: params.org },"},
-		"app/Admin/Project/Index.alder":  {`page "/admin/orgs/{org}/project" {`, "  org: Org.OrgId,\n  q: Text = \"\",", "} requires user, role Admin, silo org", `action={"/admin/orgs/" ++ session.org ++ "/project"}`, "listAt model sort dir n = Admin.Project.Index {\n  org: model.org,", "<a href={Admin.Project.Show { org: session.org, id: row.id }}>"},
-		"app/Admin/Project/New.alder":    {`page "/admin/orgs/{org}/project/new" { org: Org.OrgId } requires user, role Admin, silo org`, "      org: session.org,\n", "Task.succeed (Redirect (Admin.Project.Show { org: session.org, id: id }))"},
-		"app/Admin/Issue/Show.alder":     {"<a href={Admin.Project.Show { org: session.org, id: model.row.project }}>", "<a href={Admin.User.Show { id: v }}>"},
-		"app/Admin/Activity/Index.alder": {`page "/admin/activity" {`},
+		"app/Admin/Layout.alder":           {"<a href={Admin.Activities.Index {}}>Activities</a>", "<a href={Admin.Orgs.Pick {}}>Issues and projects, by org</a>"},
+		"app/Admin/Index.alder":            {`key: "silo-org",`, "href: Admin.Orgs.Dashboard { org: row.id },\n"},
+		"app/Admin/Orgs/Pick.alder":        {`page "/admin/orgs" { } requires user, role Admin`, "<a href={Admin.Orgs.Dashboard { org: row.id }}>{row.name}</a>"},
+		"app/Admin/Orgs/Dashboard.alder":   {`page "/admin/orgs/{org}" { org: Org.OrgId } requires user, role Admin, silo org`, "href: Admin.Projects.Index { org: params.org },"},
+		"app/Admin/Projects/Index.alder":   {`page "/admin/orgs/{org}/project" {`, "  org: Org.OrgId,\n  q: Text = \"\",", "} requires user, role Admin, silo org", `action={"/admin/orgs/" ++ session.org ++ "/project"}`, "listAt model sort dir n = Admin.Projects.Index {\n  org: model.org,", "<a href={Admin.Projects.Show { org: session.org, id: row.id }}>"},
+		"app/Admin/Projects/New.alder":     {`page "/admin/orgs/{org}/project/new" { org: Org.OrgId } requires user, role Admin, silo org`, "      org: session.org,\n", "Task.succeed (Redirect (Admin.Projects.Show { org: session.org, id: id }))"},
+		"app/Admin/Issues/Show.alder":      {"<a href={Admin.Projects.Show { org: session.org, id: model.row.project }}>", "<a href={Admin.Users.Show { id: v }}>"},
+		"app/Admin/Activities/Index.alder": {`page "/admin/activity" {`},
 	} {
 		s := file(rel)
 		for _, w := range wants {
@@ -247,15 +247,15 @@ func TestAdmin_Silo(t *testing.T) {
 	}
 	// the partition column is the page's parameter: no form, list or show page has it
 	for _, page := range []string{"Index", "Show", "New", "Edit"} {
-		code, _, _ := strings.Cut(file("app/Admin/Project/"+page+".alder"), "-- @admin begin tests")
+		code, _, _ := strings.Cut(file("app/Admin/Projects/"+page+".alder"), "-- @admin begin tests")
 		if strings.Contains(code, "row.org") || strings.Contains(code, "p.form.org") {
 			t.Errorf("Admin.Project.%s shows or edits the partition column:\n%s", page, code)
 		}
 	}
-	if s := file("app/Admin/Layout.alder"); strings.Contains(s, "Admin.Project.Index") {
+	if s := file("app/Admin/Layout.alder"); strings.Contains(s, "Admin.Projects.Index") {
 		t.Errorf("the nav links to a siloed table's list without an org:\n%s", s)
 	}
-	if s := file("app/Admin/Org/Delete.alder"); strings.Contains(s, "Db.from Project") {
+	if s := file("app/Admin/Orgs/Delete.alder"); strings.Contains(s, "Db.from Project") {
 		t.Errorf("an org's Delete page counts rows in its silo, another database:\n%s", s)
 	}
 	code, out, errs = alderIn(t, dir, "", "test")
@@ -263,14 +263,14 @@ func TestAdmin_Silo(t *testing.T) {
 		t.Fatalf("alder test: exit %d\n%s%s", code, out, errs)
 	}
 	for _, name := range []string{
-		`Admin.Orgs.Index "the picker lists every org, by name, each opening its dashboard"`,
-		`Admin.Orgs.Index "a Member gets no page, even one made Admin since logging in"`,
-		`Admin.Orgs.Show "the org's dashboard counts its projects, not another org's, and lists the newest five"`,
-		`Admin.Orgs.Show "a missing org is not found"`,
-		`Admin.Project.Index "an Admin who is no member of the org lists its projects, and only its"`,
-		`Admin.Project.Index "a Member gets no page, even one made Admin since logging in"`,
-		`Admin.Project.Bulk "a bulk action stays inside one org"`,
-		`Admin.Issue.Delete "deleting an issue nothing refers to"`,
+		`Admin.Orgs.Pick "the picker lists every org, by name, each opening its dashboard"`,
+		`Admin.Orgs.Pick "a Member gets no page, even one made Admin since logging in"`,
+		`Admin.Orgs.Dashboard "the org's dashboard counts its projects, not another org's, and lists the newest five"`,
+		`Admin.Orgs.Dashboard "a missing org is not found"`,
+		`Admin.Projects.Index "an Admin who is no member of the org lists its projects, and only its"`,
+		`Admin.Projects.Index "a Member gets no page, even one made Admin since logging in"`,
+		`Admin.Projects.Bulk "a bulk action stays inside one org"`,
+		`Admin.Issues.Delete "deleting an issue nothing refers to"`,
 		`Admin.Index "the dashboard lists the newest orgs, each opening its issues and projects"`,
 	} {
 		if !strings.Contains(out, "ok   "+name+"\n") {
@@ -280,8 +280,8 @@ func TestAdmin_Silo(t *testing.T) {
 	if code, out, _ := alderIn(t, dir, "", "regen", "admin"); code != 0 || out != "nothing to do: the admin is up to date\n" {
 		t.Errorf("regen after new: exit %d\n%s", code, out)
 	}
-	os.Remove(filepath.Join(dir, "app", "Admin", "Issue", "Bulk.alder")) // nothing links to it by a page value
-	if code, out, errs := alderIn(t, dir, "", "regen", "admin"); code != 0 || !strings.Contains(out, "not recreated app/Admin/Issue/Bulk.alder") {
+	os.Remove(filepath.Join(dir, "app", "Admin", "Issues", "Bulk.alder")) // nothing links to it by a page value
+	if code, out, errs := alderIn(t, dir, "", "regen", "admin"); code != 0 || !strings.Contains(out, "not recreated app/Admin/Issues/Bulk.alder") {
 		t.Errorf("regen with a siloed table's pages deleted: exit %d\n%s%s", code, out, errs)
 	}
 }
@@ -297,30 +297,30 @@ func TestAdmin_SelfGuard(t *testing.T) {
 	if code, out, errs := alderIn(t, dir, "", "new", "admin"); code != 0 {
 		t.Fatalf("alder new admin: exit %d\n%s%s", code, out, errs)
 	}
-	del, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "User", "Delete.alder"))
-	edit, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "User", "Edit.alder"))
+	del, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Users", "Delete.alder"))
+	edit, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Users", "Edit.alder"))
 	for _, w := range []string{"own: session.user == row.id,", "if model.own then\n      Task.succeed (Reject \"You cannot delete your own account.\")", "{if model.own then\n          <p>You cannot delete your own account.</p>"} {
 		if !strings.Contains(string(del), w) {
-			t.Errorf("Admin.User.Delete lacks %q:\n%s", w, del)
+			t.Errorf("Admin.Users.Delete lacks %q:\n%s", w, del)
 		}
 	}
 	if w := "if session.user == model.row.id && p.form.role != model.row.role then\n      Task.succeed (Reject \"You cannot change your own role.\")"; !strings.Contains(string(edit), w) {
-		t.Errorf("Admin.User.Edit lacks %q:\n%s", w, edit)
+		t.Errorf("Admin.Users.Edit lacks %q:\n%s", w, edit)
 	}
 	// only the user table is guarded
-	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Post", "Delete.alder")); strings.Contains(string(b), "model.own") {
-		t.Errorf("Admin.Post.Delete has the user table's guard:\n%s", b)
+	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Posts", "Delete.alder")); strings.Contains(string(b), "model.own") {
+		t.Errorf("Admin.Posts.Delete has the user table's guard:\n%s", b)
 	}
 	code, out, errs := alderIn(t, dir, "", "test")
 	if code != 0 || !strings.HasSuffix(out, " passed, 0 failed\n") {
 		t.Fatalf("alder test: exit %d\n%s%s", code, out, errs)
 	}
 	for _, name := range []string{
-		`Admin.User.Delete "an Admin cannot delete their own account"`,
-		`Admin.User.Delete "deleting a user nothing refers to"`,
-		`Admin.User.Edit "an Admin cannot change their own role"`,
-		`Admin.User.Edit "an Admin saves their own account, the role unchanged"`,
-		`Admin.User.Edit "an Admin demotes another Admin"`,
+		`Admin.Users.Delete "an Admin cannot delete their own account"`,
+		`Admin.Users.Delete "deleting a user nothing refers to"`,
+		`Admin.Users.Edit "an Admin cannot change their own role"`,
+		`Admin.Users.Edit "an Admin saves their own account, the role unchanged"`,
+		`Admin.Users.Edit "an Admin demotes another Admin"`,
 	} {
 		if !strings.Contains(out, "ok   "+name+"\n") {
 			t.Errorf("alder test did not pass %s:\n%s", name, out)
@@ -389,7 +389,7 @@ func TestAdmin_Regen(t *testing.T) {
 	}
 
 	// the author's customisations, outside the regions
-	index := "app/Admin/Post/Index.alder"
+	index := "app/Admin/Posts/Index.alder"
 	replace(index, "    <h1>Posts</h1>\n", "    <h1>Every post</h1>\n")
 	replace(index, "            -- @admin end\n          </tr>\n", "            -- @admin end\n            <th>Words</th>\n          </tr>\n")
 	replace(index, "              -- @admin end\n            </tr>}", "              -- @admin end\n              <td class=\"words\">{Text.fromInt (List.length (Text.split \" \" row.body))}</td>\n            </tr>}")
@@ -406,13 +406,13 @@ test "the list counts each post's words" = {
     body: "one two three",
     author: me,
   }
-  let page <- Test.get (Admin.Post.Index {})
+  let page <- Test.get (Admin.Posts.Index {})
   Task.succeed (Test.texts "td.words" page.doc == ["3"])
 }
 `)
 	// a page the author does without: Tag's Delete page, and the dialog's link to it
-	replace("app/Admin/Tag/Show.alder", "<div slot=\"actions\"><a href={Admin.Tag.Delete { id: model.row.id }}>See the details</a></div>\n", "<div slot=\"actions\"></div>\n")
-	os.Remove(filepath.Join(dir, "app", "Admin", "Tag", "Delete.alder"))
+	replace("app/Admin/Tags/Show.alder", "<div slot=\"actions\"><a href={Admin.Tags.Delete { id: model.row.id }}>See the details</a></div>\n", "<div slot=\"actions\"></div>\n")
+	os.Remove(filepath.Join(dir, "app", "Admin", "Tags", "Delete.alder"))
 	if code, out, errs := alderIn(t, dir, "", "check"); code != 0 || strings.Contains(out, "error") {
 		t.Fatalf("the customised admin does not check: exit %d\n%s%s", code, out, errs)
 	}
@@ -431,20 +431,20 @@ test "the list counts each post's words" = {
 	}
 	// a file of the author's in the new table's directory: the table is still new (the nav has
 	// no link to it), and gets its pages
-	if err := os.MkdirAll(filepath.Join(dir, "app", "Admin", "Like"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "app", "Admin", "Likes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	write("app/Admin/Like/notes.txt", "likes: to do\n")
+	write("app/Admin/Likes/notes.txt", "likes: to do\n")
 	mid := appFiles(t, dir)
 	code, out, errs := alderIn(t, dir, "", "regen", "admin")
 	if code != 0 {
 		t.Fatalf("alder regen admin: exit %d\n%s%s", code, out, errs)
 	}
-	if !strings.Contains(out, "not recreated app/Admin/Tag/Delete.alder (deleted; --all writes it again)\n") || !strings.Contains(out, "wrote app/Admin/Like/Index.alder\n") || !strings.Contains(out, "edited app/Admin/Post/Index.alder\n") {
+	if !strings.Contains(out, "not recreated app/Admin/Tags/Delete.alder (deleted; --all writes it again)\n") || !strings.Contains(out, "wrote app/Admin/Likes/Index.alder\n") || !strings.Contains(out, "edited app/Admin/Posts/Index.alder\n") {
 		t.Errorf("regen printed:\n%s", out)
 	}
 	after := appFiles(t, dir)
-	if _, ok := after["app/Admin/Tag/Delete.alder"]; ok {
+	if _, ok := after["app/Admin/Tags/Delete.alder"]; ok {
 		t.Errorf("regen recreated the deleted page")
 	}
 
@@ -458,13 +458,13 @@ test "the list counts each post's words" = {
 	}
 	// the new field, in the list, the show page and both forms; the new table, in the nav and the dashboard
 	for p, wants := range map[string][]string{
-		index:                         {"<h1>Every post</h1>", "<th>Words</th>", "  pinned: Text = \"\",", "    name: \"pinned\",\n    label: \"Pinned\",\n    value: f.pinned,\n    options: [", `test "filtering by featured lists the rows with that value"`, "    name: \"views\",\n    asc: Post.views.asc,\n    desc: Post.views.desc,\n  },", ">Views</a></th>", "<td>{Text.fromInt row.views}</td>", "test \"the list counts each post's words\""},
-		"app/Admin/Post/Show.alder":   {"<dt>Views</dt>"},
-		"app/Admin/Post/New.alder":    {"  views: Int,", `<al-input field="views" label="Views" value={0} />`, "views: p.form.views"},
-		"app/Admin/Post/Edit.alder":   {"  views: Int,", `<al-input field="views" label="Views" value={model.row.views} />`, "views: p.form.views"},
-		"app/Admin/Post/Delete.alder": {"likes: Int,", `<dd id="likes">`},
-		"app/Admin/Layout.alder":      {"<a href={Admin.Like.Index {}}>Likes</a>"},
-		"app/Admin/Index.alder":       {`key: "likes",`, `title: "Likes",`},
+		index:                          {"<h1>Every post</h1>", "<th>Words</th>", "  pinned: Text = \"\",", "    name: \"pinned\",\n    label: \"Pinned\",\n    value: f.pinned,\n    options: [", `test "filtering by featured lists the rows with that value"`, "    name: \"views\",\n    asc: Post.views.asc,\n    desc: Post.views.desc,\n  },", ">Views</a></th>", "<td>{Text.fromInt row.views}</td>", "test \"the list counts each post's words\""},
+		"app/Admin/Posts/Show.alder":   {"<dt>Views</dt>"},
+		"app/Admin/Posts/New.alder":    {"  views: Int,", `<al-input field="views" label="Views" value={0} />`, "views: p.form.views"},
+		"app/Admin/Posts/Edit.alder":   {"  views: Int,", `<al-input field="views" label="Views" value={model.row.views} />`, "views: p.form.views"},
+		"app/Admin/Posts/Delete.alder": {"likes: Int,", `<dd id="likes">`},
+		"app/Admin/Layout.alder":       {"<a href={Admin.Likes.Index {}}>Likes</a>"},
+		"app/Admin/Index.alder":        {`key: "likes",`, `title: "Likes",`},
 	} {
 		for _, w := range wants {
 			if !strings.Contains(after[p], w) {
@@ -478,27 +478,27 @@ test "the list counts each post's words" = {
 			t.Errorf("regen wrote %s", p)
 		}
 	}
-	if code, out, errs := alderIn(t, dir, "", "test"); code != 0 || !strings.HasSuffix(out, " passed, 0 failed\n") || !strings.Contains(out, "ok   Admin.Post.Index \"the list counts each post's words\"\n") {
+	if code, out, errs := alderIn(t, dir, "", "test"); code != 0 || !strings.HasSuffix(out, " passed, 0 failed\n") || !strings.Contains(out, "ok   Admin.Posts.Index \"the list counts each post's words\"\n") {
 		t.Fatalf("alder test after regen: exit %d\n%s%s", code, out, errs)
 	}
 	// idempotent: nothing to do, nothing written
-	if code, out, _ := alderIn(t, dir, "", "regen", "admin"); code != 0 || out != "not recreated app/Admin/Tag/Delete.alder (deleted; --all writes it again)\nnothing to do: the admin is up to date\n" {
+	if code, out, _ := alderIn(t, dir, "", "regen", "admin"); code != 0 || out != "not recreated app/Admin/Tags/Delete.alder (deleted; --all writes it again)\nnothing to do: the admin is up to date\n" {
 		t.Errorf("a second regen: exit %d\n%s", code, out)
 	}
 	if ch := changedFiles(after, appFiles(t, dir)); len(ch) != 0 {
 		t.Errorf("a second regen wrote %v", slices.Sorted(maps.Keys(ch)))
 	}
-	if code, out, _ := alderIn(t, dir, "", "regen", "admin", "--json"); code != 0 || !strings.Contains(out, `"skipped":["app/Admin/Tag/Delete.alder"],"upToDate":true}`) {
+	if code, out, _ := alderIn(t, dir, "", "regen", "admin", "--json"); code != 0 || !strings.Contains(out, `"skipped":["app/Admin/Tags/Delete.alder"],"upToDate":true}`) {
 		t.Errorf("a second regen --json: exit %d\n%s", code, out)
 	}
 	// --dry-run, then --all writes the deleted page again
-	if code, out, _ := alderIn(t, dir, "", "regen", "admin", "--all", "--dry-run"); code != 0 || !strings.HasPrefix(out, "would write app/Admin/Tag/Delete.alder\n") || !strings.HasSuffix(out, "dry run: nothing written\n") {
+	if code, out, _ := alderIn(t, dir, "", "regen", "admin", "--all", "--dry-run"); code != 0 || !strings.HasPrefix(out, "would write app/Admin/Tags/Delete.alder\n") || !strings.HasSuffix(out, "dry run: nothing written\n") {
 		t.Errorf("regen --all --dry-run: exit %d\n%s", code, out)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "app", "Admin", "Tag", "Delete.alder")); err == nil {
+	if _, err := os.Stat(filepath.Join(dir, "app", "Admin", "Tags", "Delete.alder")); err == nil {
 		t.Errorf("--dry-run wrote the page")
 	}
-	if code, out, errs := alderIn(t, dir, "", "regen", "admin", "--all"); code != 0 || out != "wrote app/Admin/Tag/Delete.alder\n" {
+	if code, out, errs := alderIn(t, dir, "", "regen", "admin", "--all"); code != 0 || out != "wrote app/Admin/Tags/Delete.alder\n" {
 		t.Errorf("regen --all: exit %d\n%s%s", code, out, errs)
 	}
 
@@ -507,25 +507,25 @@ test "the list counts each post's words" = {
 	if code, out, errs := alderIn(t, dir, "", "edit", "table", "Post", "rename-field", "views", "hits"); code != 0 {
 		t.Fatalf("alder edit table rename-field: exit %d\n%s%s", code, out, errs)
 	}
-	if code, out, _ := alderIn(t, dir, "", "check"); code == 0 || !strings.Contains(out, "app/Admin/Post/") {
+	if code, out, _ := alderIn(t, dir, "", "check"); code == 0 || !strings.Contains(out, "app/Admin/Posts/") {
 		t.Fatalf("the admin checks after the rename: exit %d\n%s", code, out)
 	}
-	if code, out, errs := alderIn(t, dir, "", "regen", "admin"); code != 0 || !strings.Contains(out, "edited app/Admin/Post/Index.alder\n") {
+	if code, out, errs := alderIn(t, dir, "", "regen", "admin"); code != 0 || !strings.Contains(out, "edited app/Admin/Posts/Index.alder\n") {
 		t.Fatalf("regen after rename-field: exit %d\n%s%s", code, out, errs)
 	}
 	if code, out, errs := alderIn(t, dir, "", "check"); code != 0 || strings.Contains(out, "error") {
 		t.Fatalf("the admin does not check after regen: exit %d\n%s%s", code, out, errs)
 	}
-	if s := file("app/Admin/Post/Show.alder"); !strings.Contains(s, "<dt>Hits</dt>") || strings.Contains(s, "views") {
+	if s := file("app/Admin/Posts/Show.alder"); !strings.Contains(s, "<dt>Hits</dt>") || strings.Contains(s, "views") {
 		t.Errorf("Post's show page after the rename:\n%s", s)
 	}
 	// a page deleted that another links to: the app does not check; regen without --all leaves
 	// it deleted and is refused (the result does not check), --all writes it again
-	os.Remove(filepath.Join(dir, "app", "Admin", "Post", "Edit.alder"))
+	os.Remove(filepath.Join(dir, "app", "Admin", "Posts", "Edit.alder"))
 	if code, _, errs := alderIn(t, dir, "", "regen", "admin"); code != 1 || !strings.Contains(errs, "does not check") {
 		t.Errorf("regen with a linked page deleted: exit %d\n%s", code, errs)
 	}
-	if code, out, errs := alderIn(t, dir, "", "regen", "admin", "--all"); code != 0 || out != "wrote app/Admin/Post/Edit.alder\n" {
+	if code, out, errs := alderIn(t, dir, "", "regen", "admin", "--all"); code != 0 || out != "wrote app/Admin/Posts/Edit.alder\n" {
 		t.Errorf("regen --all with a linked page deleted: exit %d\n%s%s", code, out, errs)
 	}
 	if code, out, errs := alderIn(t, dir, "", "test"); code != 0 || !strings.HasSuffix(out, " passed, 0 failed\n") {
@@ -560,7 +560,7 @@ func TestAdmin_Columns(t *testing.T) {
 			t.Fatalf("alder %s: exit %d\n%s%s", strings.Join(args, " "), code, out, errs)
 		}
 	}
-	b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Post", "Delete.alder"))
+	b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Posts", "Delete.alder"))
 	for _, want := range []string{
 		"let flagsOfComments <- Db.from Flag |> Db.where (Flag.comment.in (List.map (\\row -> row.id) commentsRows)) |> Db.count",
 		"let events <- Db.from Event |> Db.where (Event.post.eq (Just params.id)) |> Db.count",
@@ -574,14 +574,14 @@ func TestAdmin_Columns(t *testing.T) {
 		"<dt>Events that lose their post</dt>",
 	} {
 		if !strings.Contains(string(b), want) {
-			t.Errorf("Admin.Post.Delete lacks %q:\n%s", want, b)
+			t.Errorf("Admin.Posts.Delete lacks %q:\n%s", want, b)
 		}
 	}
 	// a table whose rows are a tree (a @cascade to itself), which a @restrict reference can
 	// reach: a row with children is refused ("Delete its children first."), a childless one a
 	// Pin holds is refused by the count, a childless free one is deleted; a Post whose nodes have
 	// children is kept by them, like a @restrict reference
-	b, _ = os.ReadFile(filepath.Join(dir, "app", "Admin", "Node", "Delete.alder"))
+	b, _ = os.ReadFile(filepath.Join(dir, "app", "Admin", "Nodes", "Delete.alder"))
 	for _, want := range []string{
 		"children model = model.nodes",
 		"if children model > 0 then\n      Task.succeed (Reject \"Delete its children first.\")\n    else if blockers model > 0 then",
@@ -594,20 +594,20 @@ func TestAdmin_Columns(t *testing.T) {
 			t.Errorf("Admin.Node.Delete lacks %q:\n%s", want, b)
 		}
 	}
-	b, _ = os.ReadFile(filepath.Join(dir, "app", "Admin", "Post", "Delete.alder"))
+	b, _ = os.ReadFile(filepath.Join(dir, "app", "Admin", "Posts", "Delete.alder"))
 	for _, want := range []string{
 		"let nodesOfNodes <- Db.from Node |> Db.where (Node.parent.in (List.map (\\row -> Just row.id) nodesRows)) |> Db.count",
 		"<dt>Nodes under those nodes, to delete first</dt>",
 		`test "a post with nodes that nodes refer to is not deleted"`,
 	} {
 		if !strings.Contains(string(b), want) {
-			t.Errorf("Admin.Post.Delete lacks %q:\n%s", want, b)
+			t.Errorf("Admin.Posts.Delete lacks %q:\n%s", want, b)
 		}
 	}
 	// secrets (Column.Secret): never listed, searched, sorted, shown or edited; an insert writes
 	// them empty
 	for _, page := range []string{"Index", "Show", "New", "Edit", "Delete"} {
-		b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Key", page+".alder"))
+		b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Keys", page+".alder"))
 		code, _, _ := strings.Cut(string(b), "-- @admin begin tests")
 		for _, secret := range []string{"passwordHash", "clientSecret", "apiToken"} {
 			n := strings.Count(code, secret)
@@ -619,10 +619,10 @@ func TestAdmin_Columns(t *testing.T) {
 			}
 		}
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Key", "New.alder")); !strings.Contains(string(b), `Db.insert Key { name: p.form.name, passwordHash: "", clientSecret: Nothing }`) {
+	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Keys", "New.alder")); !strings.Contains(string(b), `Db.insert Key { name: p.form.name, passwordHash: "", clientSecret: Nothing }`) {
 		t.Errorf("Admin.Key.New's insert:\n%s", b)
 	}
-	b, _ = os.ReadFile(filepath.Join(dir, "app", "Admin", "Event", "New.alder"))
+	b, _ = os.ReadFile(filepath.Join(dir, "app", "Admin", "Events", "New.alder"))
 	for _, want := range []string{"let now <- Time.now", "at: now", `<al-input field="count" label="Count" value={0} />`, `<al-select field="post" label="Post" options=`} {
 		if !strings.Contains(string(b), want) {
 			t.Errorf("Admin.Event.New lacks %q:\n%s", want, b)
@@ -696,7 +696,7 @@ func TestRegen_ThenFmtNoop(t *testing.T) {
 			t.Fatalf("alder %s: exit %d\n%s%s", strings.Join(args, " "), code, out, errs)
 		}
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Post", "Show.alder")); !strings.Contains(string(b), "<dt>Views</dt>") {
+	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Posts", "Show.alder")); !strings.Contains(string(b), "<dt>Views</dt>") {
 		t.Fatalf("regen did not write the field:\n%s", b)
 	}
 	for p, s := range appFiles(t, dir) {
@@ -712,5 +712,44 @@ func TestRegen_ThenFmtNoop(t *testing.T) {
 	}
 	if code, out, errs := fmtRun("--check", filepath.Join(dir, "app", "Admin")); code != 0 { // the fixture's own files are not formatted
 		t.Errorf("alder fmt --check after regen: exit %d\n%s%s", code, out, errs)
+	}
+}
+
+// treeSnapshot is every file under dir, by relative path, with its content.
+func treeSnapshot(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			b, _ := os.ReadFile(path)
+			rel, _ := filepath.Rel(dir, path)
+			out[rel] = string(b)
+		}
+		return nil
+	})
+	return out
+}
+
+// TestRegenAdminRefusesSingularLayout: an admin with a folder per table name (Admin/Posts/, from
+// before the plural folders) is refused, naming the folders, and nothing is written.
+func TestRegenAdminRefusesSingularLayout(t *testing.T) {
+	t.Parallel()
+	dir := genApp(t, "fixture")
+	if code, _, errs := alderIn(t, dir, "", "new", "admin"); code != 0 {
+		t.Fatalf("alder new admin: exit %d: %s", code, errs)
+	}
+	// make it the old layout: the folders and the nav links name the tables singular
+	for _, n := range []string{"Post", "Tag"} {
+		if err := os.Rename(filepath.Join(dir, "app", "Admin", n+"s"), filepath.Join(dir, "app", "Admin", n)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := treeSnapshot(t, dir)
+	code, out, errs := alderIn(t, dir, "", "regen", "admin", "--all")
+	if code == 0 || !strings.Contains(errs, "old layout (Admin/Post/, Admin/Tag/)") || !strings.Contains(errs, "folders are plural now (Admin/Posts/, Admin/Tags/). Delete app/Admin and run `alder new admin` again; move any code you added outside `-- @admin` regions first") {
+		t.Fatalf("exit %d\n%s%s", code, out, errs)
+	}
+	if !maps.Equal(before, treeSnapshot(t, dir)) {
+		t.Error("the refused regen changed files")
 	}
 }

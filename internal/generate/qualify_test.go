@@ -86,10 +86,10 @@ func TestAdmin_ShortQualifiers(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range edits {
-		if e.Path != "app/Admin/Post/Index.alder" {
+		if e.Path != "app/Admin/Posts/Index.alder" {
 			continue
 		}
-		for _, w := range []string{"import Admin.Layout\n", "<Layout.Page ", "Layout.isAdmin", "Admin.Post.Show {"} {
+		for _, w := range []string{"import Admin.Layout\n", "<Layout.Page ", "Layout.isAdmin", "Admin.Posts.Show {"} {
 			if !strings.Contains(e.Body, w) {
 				t.Errorf("missing %q in:\n%s", w, e.Body)
 			}
@@ -99,7 +99,7 @@ func TestAdmin_ShortQualifiers(t *testing.T) {
 		}
 		return
 	}
-	t.Fatal("no Admin.Post.Index page generated")
+	t.Fatal("no Admin.Posts.Index page generated")
 }
 
 // TestTypeImports_Qualifier: a type written with its module's qualifier imports the module.

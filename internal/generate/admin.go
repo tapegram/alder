@@ -91,6 +91,12 @@ func adminCheck(p *Program, o AdminOptions) (AdminOptions, error) {
 // adminDir is the directory of the admin's modules: "app/Admin".
 func adminDir(o AdminOptions) string { return AdminDir(o.Module) }
 
+// adminTableModule is the module prefix of table t's admin pages: "Admin.Todos", the plural of
+// the table's name (not its module, which may be "Table.Todo").
+func adminTableModule(o AdminOptions, t *Table) string {
+	return o.Module + "." + UpperFirst(Plural(LowerFirst(t.Name)))
+}
+
 // AdminDir is the directory of the modules of the admin named module ("" is the default,
 // "Admin"): "app/Admin".
 func AdminDir(module string) string {
@@ -139,16 +145,35 @@ func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []s
 	if b, err := os.ReadFile(filepath.Join(p.Dir, filepath.FromSlash(FileOf(o.Module+".Layout")))); err == nil {
 		nav, navOK, _ = Regions.Body(string(b), "nav")
 	}
+	// an admin generated with a folder per table name (Admin/Todo/) is not updated in place
+	var oldDirs, newDirs []string
+	for _, t := range p.Tables {
+		oldMod := o.Module + "." + t.Name
+		newMod := adminTableModule(o, t)
+		if oldMod == newMod {
+			continue
+		}
+		_, statErr := os.Stat(filepath.Join(p.Dir, filepath.FromSlash(AdminDir(oldMod))))
+		if statErr == nil || strings.Contains(nav, oldMod+".Index") {
+			oldDirs = append(oldDirs, strings.TrimPrefix(AdminDir(oldMod), "app/")+"/")
+			newDirs = append(newDirs, strings.TrimPrefix(AdminDir(newMod), "app/")+"/")
+		}
+	}
+	if len(oldDirs) > 0 {
+		return nil, nil, Refusef("admin is in the old layout (%s): folders are plural now (%s). Delete %s and run `alder new admin` again; move any code you added outside `-- @admin` regions first",
+			strings.Join(oldDirs, ", "), strings.Join(newDirs, ", "), dir)
+	}
 	tableOf := map[string]string{} // a table page's path: the expression of its list page
 	siloOf := map[string]string{}  // a siloed table page's path: its silo's dashboard
 	for _, t := range p.Tables {
+		tmod := adminTableModule(o, t)
 		for _, kind := range []string{"Index", "Show", "New", "Edit", "Delete", "Bulk"} {
 			if t.Silo != "" { // new when the dashboard of one value does not link to its list
-				siloOf[FileOf(o.Module+"."+t.Name+"."+kind)] = FileOf(o.Module + "." + UpperFirst(Plural(t.Silo)) + ".Show")
-				tableOf[FileOf(o.Module+"."+t.Name+"."+kind)] = o.Module + "." + t.Name + ".Index {"
+				siloOf[FileOf(tmod+"."+kind)] = FileOf(o.Module + "." + UpperFirst(Plural(t.Silo)) + ".Dashboard")
+				tableOf[FileOf(tmod+"."+kind)] = tmod + ".Index {"
 				continue
 			}
-			tableOf[FileOf(o.Module+"."+t.Name+"."+kind)] = o.Module + "." + t.Name + ".Index {}"
+			tableOf[FileOf(tmod+"."+kind)] = tmod + ".Index {}"
 		}
 	}
 	exists := func(path string) bool {
@@ -247,7 +272,7 @@ type adminGen struct {
 // adminTable is a table as the admin shows it.
 type adminTable struct {
 	t         *Table
-	mod       string // the module prefix of its pages: "Admin.Post"
+	mod       string // the module prefix of its pages: "Admin.Posts"
 	path      string // "/admin/post"
 	plural    string // "posts": its rows in a model, an element's id
 	title     string // "Posts"
@@ -273,7 +298,7 @@ type referrer struct {
 }
 
 func (g *adminGen) table(t *Table) *adminTable {
-	at := &adminTable{t: t, mod: g.o.Module + "." + t.Name, path: g.o.Path + "/" + strings.ToLower(t.Name),
+	at := &adminTable{t: t, mod: adminTableModule(g.o, t), path: g.o.Path + "/" + strings.ToLower(t.Name),
 		plural: Plural(LowerFirst(t.Name)), noun: strings.ToLower(Humanize(t.Name)), label: t.Label()}
 	at.title = UpperFirst(Plural(at.noun))
 	for _, c := range t.Columns {
@@ -745,7 +770,7 @@ func testsText(tests []TestData) string {
 func (g *adminGen) adminCell(c *Column, row string, imports *importSet) string {
 	if c.Ref != "" {
 		if rt := g.p.TableNamed(c.Ref); rt != nil {
-			show := g.o.Module + "." + rt.Name + ".Show"
+			show := adminTableModule(g.o, rt) + ".Show"
 			text := func(id string) string {
 				if rt.Label().ID {
 					return id

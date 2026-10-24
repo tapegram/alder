@@ -61,43 +61,49 @@ load params session = {
         {
           key: "activities",
           title: "Activities",
-          href: Admin.Activity.Index {},
+          href: Admin.Activities.Index {},
           count: activityCount,
           rows: List.map (\row -> {
             label: row.text,
-            href: Admin.Activity.Show { id: row.id },
+            href: Admin.Activities.Show { id: row.id },
           }) activities,
         },
         {
           key: "memberships",
           title: "Memberships",
-          href: Admin.Membership.Index {},
+          href: Admin.Memberships.Index {},
           count: membershipCount,
           rows: List.map (\row -> {
             label: row.id,
-            href: Admin.Membership.Show { id: row.id },
+            href: Admin.Memberships.Show { id: row.id },
           }) memberships,
         },
         {
           key: "orgs",
           title: "Orgs",
-          href: Admin.Org.Index {},
+          href: Admin.Orgs.Index {},
           count: orgCount,
-          rows: List.map (\row -> { label: row.name, href: Admin.Org.Show { id: row.id } }) orgs,
+          rows: List.map (\row -> { label: row.name, href: Admin.Orgs.Show { id: row.id } }) orgs,
         },
         {
           key: "users",
           title: "Users",
-          href: Admin.User.Index {},
+          href: Admin.Users.Index {},
           count: userCount,
-          rows: List.map (\row -> { label: row.email, href: Admin.User.Show { id: row.id } }) users,
+          rows: List.map (\row -> {
+            label: row.email,
+            href: Admin.Users.Show { id: row.id },
+          }) users,
         },
         {
           key: "silo-org",
           title: "Issues and projects, by org",
-          href: Admin.Orgs.Index {},
+          href: Admin.Orgs.Pick {},
           count: orgCount,
-          rows: List.map (\row -> { label: row.name, href: Admin.Orgs.Show { org: row.id } }) orgs,
+          rows: List.map (\row -> {
+            label: row.name,
+            href: Admin.Orgs.Dashboard { org: row.id },
+          }) orgs,
         },
       ],
     }
@@ -177,7 +183,10 @@ test "the dashboard counts the memberships and lists the newest five" = {
         List.filter (\card -> card.key == "memberships") page.model.cards
       ),
     }
-      == { count: Just "6", rows: [List.map (\row -> Admin.Membership.Show { id: row.id }) newest] }
+      == {
+        count: Just "6",
+        rows: [List.map (\row -> Admin.Memberships.Show { id: row.id }) newest],
+      }
   )
 }
 

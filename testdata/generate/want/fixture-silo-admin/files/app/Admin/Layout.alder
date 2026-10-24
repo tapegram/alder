@@ -15,11 +15,11 @@ Page props =
       <al-stack direction="row" gap="sm">
         <a href={Admin.Index {}}>Dashboard</a>
         -- @admin begin nav
-        <a href={Admin.Activity.Index {}}>Activities</a>
-        <a href={Admin.Membership.Index {}}>Memberships</a>
-        <a href={Admin.Org.Index {}}>Orgs</a>
-        <a href={Admin.User.Index {}}>Users</a>
-        <a href={Admin.Orgs.Index {}}>Issues and projects, by org</a>
+        <a href={Admin.Activities.Index {}}>Activities</a>
+        <a href={Admin.Memberships.Index {}}>Memberships</a>
+        <a href={Admin.Orgs.Index {}}>Orgs</a>
+        <a href={Admin.Users.Index {}}>Users</a>
+        <a href={Admin.Orgs.Pick {}}>Issues and projects, by org</a>
         -- @admin end
       </al-stack>
     </nav>

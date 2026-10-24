@@ -405,11 +405,11 @@ func TestExample_Workspace(t *testing.T) {
 		`ok   Members.Index "removing a member logs it, and a removed member loses access at once"`,
 		`ok   Auth.Login "logging in opens the org the user joined first, with their role"`,
 		// the generated admin (`alder new admin`, book 15): the picker and the pages of one org
-		`ok   Admin.Orgs.Index "the picker lists every org, by name, each opening its dashboard"`,
-		`ok   Admin.Orgs.Show "the org's dashboard counts its projects, not another org's, and lists the newest five"`,
-		`ok   Admin.Project.Index "an Admin who is no member of the org lists its projects, and only its"`,
-		`ok   Admin.Project.Index "a Member gets no page, even one made Admin since logging in"`,
-		`ok   Admin.Project.Bulk "a bulk action stays inside one org"`,
+		`ok   Admin.Orgs.Pick "the picker lists every org, by name, each opening its dashboard"`,
+		`ok   Admin.Orgs.Dashboard "the org's dashboard counts its projects, not another org's, and lists the newest five"`,
+		`ok   Admin.Projects.Index "an Admin who is no member of the org lists its projects, and only its"`,
+		`ok   Admin.Projects.Index "a Member gets no page, even one made Admin since logging in"`,
+		`ok   Admin.Projects.Bulk "a bulk action stays inside one org"`,
 		"307 passed, 0 failed\n",
 	} {
 		if !strings.Contains(out, want) {

@@ -11,8 +11,8 @@ import (
 
 // The admin of the tables in a `silo` (M15, book chapter 15): each value of the silo's key has a
 // database of its own, so there is no page of every org's projects. The admin has a picker
-// instead (`Admin.Orgs.Index`, `/admin/orgs`: the key's table, a link per row) and a dashboard
-// per value (`Admin.Orgs.Show`, `/admin/orgs/{org}`: each siloed table's count and newest rows,
+// instead (`Admin.Orgs.Pick`, `/admin/orgs`: the key's table, a link per row) and a dashboard
+// per value (`Admin.Orgs.Dashboard`, `/admin/orgs/{org}`: each siloed table's count and newest rows,
 // read when it is opened, not for every org at once); the siloed tables' pages are the usual
 // ones, under the dashboard at `/admin/orgs/{org}/project…`, declared `requires user, role Admin, silo org` with the
 // key in the page's parameter `org`. The role check guards them, not `via`: an Admin need not be
@@ -25,8 +25,8 @@ type adminSilo struct {
 	key    string
 	kt     *Table        // the key's table (Org)
 	tables []*adminTable // its tables, in the admin's order
-	picker string        // the picker's module: "Admin.Orgs.Index"
-	dash   string        // the dashboard of one value: "Admin.Orgs.Show"
+	picker string        // the picker's module: "Admin.Orgs.Pick"
+	dash   string        // the dashboard of one value: "Admin.Orgs.Dashboard"
 	path   string        // the picker's path: "/admin/orgs"
 	title  string        // its tables in a sentence: "Projects and tasks"
 	mods   map[string]bool
@@ -46,7 +46,7 @@ func (g *adminGen) silos() {
 			continue
 		}
 		mod := g.o.Module + "." + UpperFirst(Plural(k))
-		s := &adminSilo{key: k, kt: kt, picker: mod + ".Index", dash: mod + ".Show", path: g.o.Path + "/" + Plural(k), mods: map[string]bool{}}
+		s := &adminSilo{key: k, kt: kt, picker: mod + ".Pick", dash: mod + ".Dashboard", path: g.o.Path + "/" + Plural(k), mods: map[string]bool{}}
 		var titles []string
 		for _, at := range g.tables {
 			if at.t.Silo != k {
