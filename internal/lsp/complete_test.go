@@ -360,3 +360,37 @@ func TestComplete_ImportInsertsAlias(t *testing.T) {
 		t.Fatalf("Comment: %+v", it)
 	}
 }
+
+// TestComplete_OtherwiseOffersQualifiers: an imported module is offered by its qualifier, the
+// spelling the compiler accepts (`AdminLayout`, not `Admin.Layout`, which is E0205 with a
+// member); an imported page module is offered by its qualifier, for its members, and by its full
+// path, for its page value.
+func TestComplete_OtherwiseOffersQualifiers(t *testing.T) {
+	root := blogCopy(t)
+	rel := "app/Posts/Index.alder"
+	p := filepath.Join(root, rel)
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Replace(string(b), "import Layout\n", "import Admin.Layout as AdminLayout\nimport Layout\nimport Posts.Show\n", 1)
+	text += "\nuseAdmin : User.UserId -> Query Bool\nuseAdmin = AdminLayout.isAdmin\n\nuseShow : Html a\nuseShow = <a href={Posts.Show { id: 1 }}>x</a>\n"
+	if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := start(t, root)
+	openClean(t, c, rel)
+	at := typing(t, c, rel, afterQ, "  let z = A")
+	got := labels(complete(t, c, rel, at))
+	if it, ok := got["AdminLayout"]; !ok || it.TextEdit.NewText != "AdminLayout" || it.Kind != 9 {
+		t.Errorf("no AdminLayout: %+v", got["AdminLayout"])
+	}
+	if _, ok := got["Admin.Layout"]; ok {
+		t.Error("Admin.Layout offered by its full path")
+	}
+	for _, want := range []string{"Layout", "Show", "Posts.Show"} {
+		if _, ok := got[want]; !ok {
+			t.Errorf("no %s", want)
+		}
+	}
+}

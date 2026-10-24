@@ -622,8 +622,9 @@ func (cx *completion) patterns() ([]completionItem, bool) {
 	return nil, false
 }
 
-// otherwise: the locals in scope, the module's declarations, the imported modules, the
-// standard library's modules and the keywords. Nothing right after a `.`, where none of them
+// otherwise: the locals in scope, the module's declarations, the imported modules (by their
+// qualifiers, and an imported page also by its full path for its page value), the standard
+// library's modules and the keywords. Nothing right after a `.`, where none of them
 // can follow.
 func (cx *completion) otherwise() []completionItem {
 	word := reWord.FindString(cx.prefix)
@@ -643,8 +644,16 @@ func (cx *completion) otherwise() []completionItem {
 		for _, it := range cx.names(n) {
 			add(it)
 		}
+		quals := cx.a.prog.Qualifiers(cx.m.Name)
 		for _, im := range cx.m.Imports {
-			add(cx.item(im.Module, kindModule, "", n))
+			if q := quals[im.Module]; q != "" {
+				add(cx.item(q, kindModule, "", n)) // the spelling the compiler accepts (rule 5)
+			} else {
+				add(cx.item(im.Module, kindModule, "", n)) // no usable qualifier (E0206)
+			}
+			if cx.a.prog.IsPageModule(im.Module) { // a page value keeps its full path (rule 6)
+				add(cx.item(im.Module, kindModule, "", n))
+			}
 		}
 		var std []string
 		for name := range cx.a.prog.Std {
