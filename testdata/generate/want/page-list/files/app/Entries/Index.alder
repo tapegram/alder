@@ -1,7 +1,7 @@
 module Entries.Index
 
-import Entry
 import Layout
+import Table.Entry
 
 page "/entries" { page: Int = 1 }
 

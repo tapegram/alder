@@ -1,4 +1,4 @@
-module Note
+module Table.Note
 
 import Org
 import Project

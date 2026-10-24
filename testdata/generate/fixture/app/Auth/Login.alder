@@ -1,7 +1,7 @@
 module Auth.Login
 
 import Layout
-import User
+import Table.User
 
 -- The fixture signs a user in by email alone: its tests are about pages, not passwords.
 page "/login" { }

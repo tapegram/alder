@@ -2,7 +2,7 @@
   "format": "1",
   "tables": [
     {
-      "name": "Comment.Comment",
+      "name": "Table.Comment.Comment",
       "id": "id",
       "created": "created",
       "columns": [
@@ -13,13 +13,13 @@
         {
           "name": "post",
           "type": "Text",
-          "ref": "Post.Post",
+          "ref": "Table.Post.Post",
           "onDelete": "cascade"
         },
         {
           "name": "author",
           "type": "Text",
-          "ref": "User.User"
+          "ref": "Table.User.User"
         },
         {
           "name": "body",
@@ -32,7 +32,7 @@
       ]
     },
     {
-      "name": "Like.Like",
+      "name": "Table.Like.Like",
       "id": "id",
       "created": "created",
       "updated": "updated",
@@ -44,13 +44,13 @@
         {
           "name": "post",
           "type": "Text",
-          "ref": "Post.Post",
+          "ref": "Table.Post.Post",
           "onDelete": "cascade"
         },
         {
           "name": "owner",
           "type": "Text",
-          "ref": "User.User"
+          "ref": "Table.User.User"
         },
         {
           "name": "created",
@@ -63,7 +63,7 @@
       ]
     },
     {
-      "name": "Post.Post",
+      "name": "Table.Post.Post",
       "id": "id",
       "created": "created",
       "updated": "updated",
@@ -97,7 +97,7 @@
         {
           "name": "author",
           "type": "Text",
-          "ref": "User.User"
+          "ref": "Table.User.User"
         },
         {
           "name": "created",
@@ -110,7 +110,7 @@
       ]
     },
     {
-      "name": "Tag.Tag",
+      "name": "Table.Tag.Tag",
       "id": "id",
       "created": "created",
       "columns": [
@@ -126,7 +126,7 @@
         {
           "name": "post",
           "type": "Text",
-          "ref": "Post.Post"
+          "ref": "Table.Post.Post"
         },
         {
           "name": "created",
@@ -135,7 +135,7 @@
       ]
     },
     {
-      "name": "User.User",
+      "name": "Table.User.User",
       "id": "id",
       "created": "created",
       "columns": [

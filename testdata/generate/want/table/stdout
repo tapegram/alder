@@ -1,5 +1,6 @@
-wrote app/Tag.alder
+wrote app/Table/Tag.alder
 wrote migrations/0002_create_tag.sql
   create table Tag
   add index on Tag.entry
 edited migrations/schema.json
+next: alder new page /tags --list Tag

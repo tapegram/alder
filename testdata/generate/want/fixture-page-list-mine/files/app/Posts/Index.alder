@@ -1,8 +1,8 @@
 module Posts.Index
 
 import Layout
-import Post
-import User
+import Table.Post
+import Table.User
 
 page "/posts" { page: Int = 1 } requires user
 

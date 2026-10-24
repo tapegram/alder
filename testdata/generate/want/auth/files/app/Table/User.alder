@@ -1,4 +1,4 @@
-module User
+module Table.User
 
 type UserId = brand Text
 

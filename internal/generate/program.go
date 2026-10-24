@@ -9,6 +9,7 @@ package generate
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -34,8 +35,8 @@ type Program struct {
 	// wrap their view in it, else in a bare `<al-page>`.
 	Layout bool
 	Std    map[string]bool // the standard library's module names (Text, Db, …)
-	// Silos are App's `silo k { T, … }` (M15): each key's table modules, as written; Via each
-	// `via` session field's membership table module; Choose each `choose k = Page`'s page.
+	// Silos are App's `silo k { T, … }` (M15): each key's table modules; Via each `via`
+	// session field's membership table name; Choose each `choose k = Page`'s page.
 	Silos  map[string][]string
 	Via    map[string]string
 	Choose map[string]string
@@ -111,6 +112,21 @@ const (
 
 // TypeIn is the column's type as written in module mod.
 func (c *Column) TypeIn(mod string) string { return types.StringIn(c.Type, mod) }
+
+// typeText is t as written in module home with qualifiers (#23's rule: a module is written by
+// its last segment): `Post.PostId` for the brand of module Table.Post, where types.StringIn
+// writes the module's whole path. Messages, and comparisons with a type the person typed,
+// use it.
+func typeText(t types.Type, home string) string {
+	s := types.StringIn(t, home)
+	return typeWordRE.ReplaceAllStringFunc(s, func(w string) string {
+		segs := strings.Split(w, ".")
+		return strings.Join(segs[len(segs)-2:], ".")
+	})
+}
+
+// typeWordRE matches a name written with a module of two segments or more (`Table.Post.PostId`).
+var typeWordRE = regexp.MustCompile(`\b[A-Z][A-Za-z0-9_]*(\.[A-Z][A-Za-z0-9_]*){2,}\b`)
 
 // Required is whether an insert must name the column: not the id, @created or @updated, no
 // default (a Maybe without a default is required too, as `Nothing`).
@@ -242,12 +258,11 @@ func newProgram(dir string, prog *names.Program, res *check.Result, diags []diag
 	p.Silos, p.Via, p.Choose = map[string][]string{}, map[string]string{}, map[string]string{}
 	for k, ts := range res.Silos {
 		for _, tk := range ts {
-			mod, _, _ := strings.Cut(tk, ".")
-			p.Silos[k] = append(p.Silos[k], mod)
+			p.Silos[k] = append(p.Silos[k], tk[:strings.LastIndex(tk, ".")])
 		}
 	}
 	for k, tk := range res.Via {
-		p.Via[k], _, _ = strings.Cut(tk, ".")
+		p.Via[k] = tk[strings.LastIndex(tk, ".")+1:]
 	}
 	for k, pg := range res.Choose {
 		p.Choose[k] = pg
@@ -374,7 +389,7 @@ func (p *Program) session() *Session {
 				s.User = sf
 				for _, t := range p.Tables {
 					if types.String(elem) == types.String(t.IDType) {
-						s.UserTable = t.Module
+						s.UserTable = t.Name
 					}
 				}
 			}
@@ -387,15 +402,21 @@ func (p *Program) session() *Session {
 	return s
 }
 
-// TableNamed is the table declared by module name, or nil.
+// TableNamed is the table of that name (`Todo`, the name `--list T` and `@ref T` use), or
+// nil. Its module is Table.<Name> (TableModule), or, in an app written before that layout,
+// the root module <Name>: table names are unique in an app (E0037).
 func (p *Program) TableNamed(name string) *Table {
 	for _, t := range p.Tables {
-		if t.Module == name {
+		if t.Name == name {
 			return t
 		}
 	}
 	return nil
 }
+
+// TableModule is the module a new table of that name is declared in: Table.<Name>, the file
+// app/Table/<Name>.alder.
+func TableModule(name string) string { return "Table." + name }
 
 // PageNamed is page module name, or nil.
 func (p *Program) PageNamed(name string) *Page {

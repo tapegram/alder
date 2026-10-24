@@ -37,7 +37,7 @@ view model session = <Layout.Page title="Hi"><h1>{model}</h1></Layout.Page>
 func noTables(t *testing.T) string {
 	t.Helper()
 	dir := deployScaffold(t, "", map[string]string{"app/Home.alder": staticHome})
-	if err := os.Remove(filepath.Join(dir, "app", "Entry.alder")); err != nil {
+	if err := os.Remove(filepath.Join(dir, "app", "Table", "Entry.alder")); err != nil {
 		t.Fatal(err)
 	}
 	return dir

@@ -1,7 +1,7 @@
-module Comment
+module Table.Comment
 
-import Post
-import User
+import Table.Post
+import Table.User
 
 type CommentId = brand Text
 

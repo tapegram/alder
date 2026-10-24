@@ -100,12 +100,16 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 	var edits []Edit
 	users := p.TableNamed(o.Users)
 	created := users == nil
-	userMod := p.Modules[o.Users]
+	userModName := tableModuleOf(p, o.Users) // Table.<Users> for a table made here (#20)
+	userMod := p.Modules[userModName]
+	if root := p.Modules[o.Users]; created && root != nil {
+		return nil, false, Refusef("module `%s` exists (`%s`): the user table goes in `%s` (module `%s`), and `%s` would then name two modules; move `%s`'s declarations there, or name another table with --users", o.Users, root.File, FileOf(userModName), userModName, o.Users, root.File)
+	}
 	var role *types.Union
 	var ctors []string
 	if o.Role != "" {
 		if userMod != nil {
-			if t, ok := p.Res.Decls[o.Users+"."+o.Role].(*types.Union); ok {
+			if t, ok := p.Res.Decls[userModName+"."+o.Role].(*types.Union); ok {
 				role = t
 			}
 		}
@@ -119,7 +123,7 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 			}
 		}
 		if role == nil {
-			return nil, false, Refusef("`--role %s`: module `%s` has no union `%s` of constructors without payloads: `alder new type %s \"%s = Member | Admin\"` makes one", o.Role, o.Users, o.Role, o.Users, o.Role)
+			return nil, false, Refusef("`--role %s`: module `%s` has no union `%s` of constructors without payloads: `alder new type %s \"%s = Member | Admin\"` makes one", o.Role, userModName, o.Role, userModName, o.Role)
 		}
 	}
 	roleColumn := ""
@@ -127,11 +131,11 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 		if userMod != nil {
 			for _, d := range userMod.Syntax.Decls {
 				if _, ok := d.(*syntax.TableDecl); ok {
-					return nil, false, Refusef("module `%s` declares another table: a table is declared in the module of its name", o.Users)
+					return nil, false, Refusef("module `%s` declares another table: a table is declared in the module of its name", userModName)
 				}
 			}
 			if declared(userMod.Syntax, o.Users+"Id") || declared(userMod.Syntax, o.Users) {
-				return nil, false, Refusef("module `%s` declares `%s` or `%sId` already", o.Users, o.Users, o.Users)
+				return nil, false, Refusef("module `%s` declares `%s` or `%sId` already", userModName, o.Users, o.Users)
 			}
 		}
 		fields := []string{"id: " + o.Users + "Id @id", "email: Text.Email @unique", "name: Text.NonEmpty", hashColumn + ": Text.Secret"}
@@ -142,7 +146,7 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 		fields = append(fields, "created: Time @created")
 		table := "type " + o.Users + "Id = brand Text\n\ntable " + o.Users + " {\n  " + strings.Join(fields, ",\n  ") + ",\n}"
 		if userMod == nil {
-			edits = append(edits, Edit{Path: FileOf(o.Users), Create: true, Body: "module " + o.Users + "\n\n" + table + "\n"})
+			edits = append(edits, Edit{Path: FileOf(userModName), Create: true, Body: "module " + userModName + "\n\n" + table + "\n"})
 		} else {
 			e := newSrcEdit(userMod.Source)
 			e.appendText("\n" + table)

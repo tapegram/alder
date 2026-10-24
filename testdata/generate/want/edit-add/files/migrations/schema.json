@@ -2,7 +2,7 @@
   "format": "1",
   "tables": [
     {
-      "name": "Entry.Entry",
+      "name": "Table.Entry.Entry",
       "id": "id",
       "created": "created",
       "columns": [

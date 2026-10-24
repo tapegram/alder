@@ -1,7 +1,7 @@
 module Users.Show
 
 import Layout
-import User
+import Table.User
 
 page "/users/{id}" { id: User.UserId } requires user, role Admin
 

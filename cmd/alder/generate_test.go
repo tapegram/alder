@@ -214,8 +214,8 @@ var genCases = []genCase{
 
 	// M13: the commands of the agent's loop
 	{name: "auth", base: "scaffold", args: []string{"new", "auth"}, test: true},
-	{name: "type-union", base: "scaffold", args: []string{"new", "type", "Entry", "Mood = Happy | Sad"}, test: true},
-	{name: "type-brand", base: "scaffold", args: []string{"new", "type", "Entry", `Code = brand Text where Text.matches "^[a-z]+$"`}, test: true},
+	{name: "type-union", base: "scaffold", args: []string{"new", "type", "Table.Entry", "Mood = Happy | Sad"}, test: true},
+	{name: "type-brand", base: "scaffold", args: []string{"new", "type", "Table.Entry", `Code = brand Text where Text.matches "^[a-z]+$"`}, test: true},
 	{name: "type-record", base: "scaffold", args: []string{"new", "type", "Home", "Row = { entry: Entry, mood: Text }"}, test: true},
 	{name: "type-module", base: "scaffold", args: []string{"new", "type", "User", "Role = Member | Admin"}, test: true},
 	{name: "decl", base: "scaffold", args: []string{"new", "decl", "Home", "perPage", "Int"}, test: true,
@@ -314,12 +314,12 @@ func TestGenerate_EditTableBreaks(t *testing.T) {
 		t.Fatalf("exit %d, stderr %q", code, errs)
 	}
 	written := changedFiles(before, appFiles(t, dir))
-	if got := slices.Sorted(maps.Keys(written)); !slices.Equal(got, []string{"app/Post.alder", "migrations/0002_add_summary.sql", "migrations/schema.json"}) {
+	if got := slices.Sorted(maps.Keys(written)); !slices.Equal(got, []string{"app/Table/Post.alder", "migrations/0002_add_summary.sql", "migrations/schema.json"}) {
 		t.Errorf("written: %v", got)
 	}
 	// the inserts of Post: four in Home (its update's Db.insertMine and three in a test), two in
 	// Post's tests, two in Comment's, one in Tag's
-	for file, n := range map[string]int{"app/Home.alder": 4, "app/Post.alder": 2, "app/Comment.alder": 2, "app/Tag.alder": 1} {
+	for file, n := range map[string]int{"app/Home.alder": 4, "app/Table/Post.alder": 2, "app/Table/Comment.alder": 2, "app/Table/Tag.alder": 1} {
 		re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(file) + `:\d+:\d+: error\[E0003\]: record .* is missing field\(s\): summary$`)
 		if got := len(re.FindAllString(out, -1)); got != n {
 			t.Errorf("%d inserts printed in %s, want %d:\n%s", got, file, n, out)
@@ -392,13 +392,13 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"fixture", []string{"new", "page", "About", "/about", "--role", "Editor"}, "", "alder new page: `--role Editor`: `Editor` is not a constructor of the session's `role` type `User.Role` (Reader, Admin)"},
 		{"scaffold", []string{"new", "page", "About", "/about", "--example", "--blank"}, "", "alder new page: --example goes with a plain page: a --list, --show or --from page already shows `load` reading a table, and --blank and --param leave `load` to you"},
 		{"scaffold", []string{"new", "page", "Tags.Show", "/tags/{name}", "--example", "--param", "name:Text"}, "", "alder new page: --example goes with a plain page: a --list, --show or --from page already shows `load` reading a table, and --blank and --param leave `load` to you"},
-		{"scaffold", []string{"new", "table", "Entry", "x:Int"}, "", "alder new table: module `Entry` exists (`app/Entry.alder`) and declares a table: a generator never overwrites a file; choose another table name"},
+		{"scaffold", []string{"new", "table", "Entry", "x:Int"}, "", "alder new table: table `Entry` exists (`app/Table/Entry.alder`): a generator never overwrites a file, and table names are unique in an app; choose another table name"},
 		{"scaffold", []string{"new", "table", "Tag", "id:Int"}, "", "alder new table: field `id`: the generator writes the id, `id: TagId @id`; leave it out"},
 		{"scaffold", []string{"new", "table", "Tag", "name"}, "", "alder new table: `name` is not a field: write `name:Type`, such as `title:Text.NonEmpty`"},
 		{"scaffold", []string{"new", "form", "Home", "Sign", "name:Text"}, "", "alder new form: `Home` already declares `Sign`: choose another name"},
 		{"scaffold", []string{"new", "form", "Home", "Entry", "name:Text"}, "", "alder new form: `Entry` names a table of this app: a form named like it hides the table's row type in `Home`; choose another form name, such as `EntryForm`"},
 		{"scaffold", []string{"new", "table", "Tag", "n:Int=1 -- evil"}, "", "alder new table: field `n`: the default `1 -- evil` holds `--`, which begins a comment in Alder source: write the value without it"},
-		{"scaffold", []string{"new", "form", "Entry", "Sign", "name:Text"}, "", "alder new form: `Entry` is not a page (it has no `page` declaration): `alder new page Entry /path` makes one"},
+		{"scaffold", []string{"new", "form", "Table.Entry", "Sign", "name:Text"}, "", "alder new form: `Table.Entry` is not a page (it has no `page` declaration): `alder new page Table.Entry /path` makes one"},
 		{"scaffold", []string{"new", "form", "Home", "Contact", "name:Text", "--into", "Post"}, "", "alder new form: `--into Post`: `Post` is not a table of this app (its tables: Entry)"},
 		{"scaffold", []string{"new", "msg", "Home", "Submit"}, "", "alder new msg: `Home` already declares `Submit`: choose another message name"},
 		{"scaffold", []string{"new", "msg", "Nowhere", "Go"}, "", "alder new msg: there is no page `Nowhere`: `alder new page Nowhere /path` makes one"},
@@ -419,10 +419,10 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "page", "About", "/about", "--role", "Admin"}, "", "alder new page: `--role Admin` needs a session with a `user` field and a `role` field whose type is a union (`session { user: Maybe User.UserId, role: User.Role = Reader }` in `App`): this app's session has no `user` field"},
 		// M13
 		{"fixture", []string{"new", "auth"}, "", "alder new auth: the session already has a `user` field: the app has a login (`login = Auth.Login`)"},
-		{"scaffold", []string{"new", "auth", "--role", "Role"}, "", "alder new auth: `--role Role`: module `User` has no union `Role` of constructors without payloads: `alder new type User \"Role = Member | Admin\"` makes one"},
-		{"scaffold", []string{"new", "type", "Entry", "Entry = A | B"}, "", "alder new type: `Entry` already declares `Entry`: choose another name"},
-		{"scaffold", []string{"new", "type", "Entry", "Mood ="}, "", "alder new type: `type Mood =` is not a type declaration: "},
-		{"scaffold", []string{"new", "type", "Entry", "Slug = Text where Text.matches \"^[a-z]+$\""}, "", "alder new type: `type Slug = Text where Text.matches \"^[a-z]+$\"` is not a type declaration: a brand is written `Slug = brand Text where …` (chapter 4), or `Slug = brand Text` without a check"},
+		{"scaffold", []string{"new", "auth", "--role", "Role"}, "", "alder new auth: `--role Role`: module `Table.User` has no union `Role` of constructors without payloads: `alder new type Table.User \"Role = Member | Admin\"` makes one"},
+		{"scaffold", []string{"new", "type", "Table.Entry", "Entry = A | B"}, "", "alder new type: `Table.Entry` already declares `Entry`: choose another name"},
+		{"scaffold", []string{"new", "type", "Table.Entry", "Mood ="}, "", "alder new type: `type Mood =` is not a type declaration: "},
+		{"scaffold", []string{"new", "type", "Table.Entry", "Slug = Text where Text.matches \"^[a-z]+$\""}, "", "alder new type: `type Slug = Text where Text.matches \"^[a-z]+$\"` is not a type declaration: a brand is written `Slug = brand Text where …` (chapter 4), or `Slug = brand Text` without a check"},
 		{"scaffold", []string{"new", "type", "entry", "Mood = A"}, "", "alder new type: `entry` is not a module name"},
 		{"scaffold", []string{"new", "decl", "Home", "load", "Int"}, "", "alder new decl: `Home` already declares `load`: choose another name, or `alder fill --decl Home.load` to replace its body"},
 		{"scaffold", []string{"new", "decl", "Nope", "x", "Int"}, "", "alder new decl: there is no module `Nope`"},
@@ -431,7 +431,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "page", "Notes", "/notes", "--blank", "--list", "Entry"}, "", "alder new page: --blank takes no --list or --from"},
 		{"scaffold", []string{"new", "msg", "Home", "Hide", "--in-for", "x"}, "", "alder new msg: `Home`'s `view` has no `{for x in …}`: name the loop variable of one of its loops"},
 		{"scaffold", []string{"new", "msg", "Home", "Hide", "--when", "a b c,"}, "", "alder new msg: `--when a b c,` is not one expression"},
-		{"scaffold", []string{"edit", "page", "Entry", "add-param", "q:Text"}, "", "alder edit page: `Entry` is not a page (it has no `page` declaration)"},
+		{"scaffold", []string{"edit", "page", "Table.Entry", "add-param", "q:Text"}, "", "alder edit page: `Table.Entry` is not a page (it has no `page` declaration)"},
 		{"scaffold", []string{"edit", "page", "Home", "add-param", "q:Text"}, "", "alder edit page: the result does not check (the errors above): nothing was written"},
 		{"scaffold", []string{"fill", "--decl", "Home.update.Submit", "-"}, "Task.succeed Rerender", "alder fill: `Home.update.Submit` names an arm: --decl replaces a whole declaration, `Home.update`"},
 		{"scaffold", []string{"fill", "--decl", "Home.nope", "-"}, "1", "alder fill: `Home` has no declaration `nope` with a body (a value, a type or a test)"},
@@ -457,7 +457,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"edit", "table", "Entry", "add-field", "bad:Theme=Nope"}, "", "alder edit table: the result does not check (the errors above): nothing was written"},
 		{"scaffold", []string{"edit", "table", "Entry", "add-field", "n:Int=\"x\""}, "", "alder edit table: the result does not check (the errors above): nothing was written"},
 		{"scaffold", []string{"remove", "table", "Entry"}, "", "alder remove table: table `Entry` is still used (the errors above): remove those uses first; nothing was removed"},
-		{"scaffold", []string{"remove", "page", "Entry"}, "", "alder remove page: `Entry` is not a page"},
+		{"scaffold", []string{"remove", "page", "Table.Entry"}, "", "alder remove page: `Table.Entry` is not a page"},
 		{"scaffold", []string{"remove", "table", "Home"}, "", "alder remove table: `Home` is not a table of this app"},
 		{"fixture", []string{"remove", "page", "Auth.Login"}, "", "alder remove page: `Auth.Login` is still used (the errors above)"},
 		{"scaffold", []string{"fill", "--decl", "Home.Model", "-"}, "{ entries: List Entry, params: Params }", "alder fill: the result does not check (the errors above): nothing was written"}, // I6: a diagnostic, not a crash
@@ -586,8 +586,8 @@ func TestGenerate_DryRun(t *testing.T) {
 	dir := genApp(t, "scaffold")
 	before := appFiles(t, dir)
 	code, dry, _ := alderIn(t, dir, "", append(slices.Clone(args), "--dry-run")...)
-	if code != 0 || !strings.HasPrefix(dry, "would write app/Tag.alder\nwould write migrations/0002_create_tag.sql\n") ||
-		!strings.Contains(dry, "would edit migrations/schema.json\n") || !strings.Contains(dry, "--- /dev/null\n+++ b/app/Tag.alder\n@@ -0,0 +1,") ||
+	if code != 0 || !strings.HasPrefix(dry, "would write app/Table/Tag.alder\nwould write migrations/0002_create_tag.sql\n") ||
+		!strings.Contains(dry, "would edit migrations/schema.json\n") || !strings.Contains(dry, "--- /dev/null\n+++ b/app/Table/Tag.alder\n@@ -0,0 +1,") ||
 		!strings.Contains(dry, "+table Tag {\n") || !strings.HasSuffix(dry, "dry run: nothing written\n") {
 		t.Errorf("--dry-run: exit %d\n%s", code, dry)
 	}
@@ -595,7 +595,7 @@ func TestGenerate_DryRun(t *testing.T) {
 		t.Errorf("--dry-run wrote %v", slices.Sorted(maps.Keys(ch)))
 	}
 	code, out, _ := alderIn(t, dir, "", args...)
-	if code != 0 || !strings.HasPrefix(out, "wrote app/Tag.alder\nwrote migrations/0002_create_tag.sql\n") || strings.Contains(out, "/dev/null") {
+	if code != 0 || !strings.HasPrefix(out, "wrote app/Table/Tag.alder\nwrote migrations/0002_create_tag.sql\n") || strings.Contains(out, "/dev/null") {
 		t.Errorf("the run after the dry run printed:\n%s", out)
 	}
 	other := genApp(t, "scaffold")
@@ -703,14 +703,14 @@ func TestGenerate_FillImports(t *testing.T) {
 	}
 	fill := "{\n  let n <- Db.from Comment |> Db.where (Comment.body.contains (Text.trim \"x\")) |> Db.count\n  Task.succeed (if n > 0 then Rerender else Rerender)\n}"
 	code, out, errs := alderIn(t, dir, fill, "fill", "Home.update.Purge", "-", "--dry-run", "--json")
-	if code != 0 || !strings.Contains(out, `"imports":["Comment"]`) || !strings.Contains(out, `+import Comment\n`) {
+	if code != 0 || !strings.Contains(out, `"imports":["Table.Comment"]`) || !strings.Contains(out, `+import Table.Comment\n`) {
 		t.Errorf("fill --dry-run --json: exit %d\n%s%s", code, out, errs)
 	}
 	code, out, errs = alderIn(t, dir, fill, "fill", "Home.update.Purge", "-")
-	if code != 0 || !strings.HasSuffix(out, "added import Comment to app/Home.alder\n") || !strings.Contains(out, "+import Comment\n") {
+	if code != 0 || !strings.HasSuffix(out, "added import Table.Comment to app/Home.alder\n") || !strings.Contains(out, "+import Table.Comment\n") {
 		t.Fatalf("fill: exit %d\n%s%s", code, out, errs)
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Home.alder")); strings.Count(string(b), "import Comment\n") != 1 || strings.Contains(string(b), "import Text\n") {
+	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Home.alder")); strings.Count(string(b), "import Table.Comment\n") != 1 || strings.Contains(string(b), "import Text\n") {
 		t.Errorf("Home's imports:\n%s", b)
 	}
 	if code, out, _ := alderIn(t, dir, "", "check"); code != 0 || out != "" {
@@ -782,7 +782,7 @@ func TestGenerate_AuthAdapter(t *testing.T) {
 		t.Errorf("a second app printed:\n%s\nthe first:\n%s", again, out)
 	}
 	a, b := appFiles(t, dir), appFiles(t, other)
-	for _, f := range []string{"app/App.alder", "app/Auth/Login.alder", "app/User.alder", "adapters/auth/login_password.go", "adapters/auth/login_password_test.go", "migrations/0002_create_user.sql"} {
+	for _, f := range []string{"app/App.alder", "app/Auth/Login.alder", "app/Table/User.alder", "adapters/auth/login_password.go", "adapters/auth/login_password_test.go", "migrations/0002_create_user.sql"} {
 		if a[f] == "" || a[f] != b[f] {
 			t.Errorf("%s: missing or different on two runs", f)
 		}
@@ -804,14 +804,14 @@ func TestGenerate_AuthAdapter(t *testing.T) {
 	}
 }
 
-// TestGenerate_TableInTypeModule: `alder new table User` after `alder new type User "Role =
+// TestGenerate_TableInTypeModule: `alder new table User` after `alder new type Table.User "Role =
 // …"` adds the table to the module the type made, which then uses the type; `alder new auth
 // --role` takes that table as it is.
 func TestGenerate_TableInTypeModule(t *testing.T) {
 	t.Parallel()
 	dir := genApp(t, "scaffold")
 	for _, args := range [][]string{
-		{"new", "type", "User", "Role = Member | Admin"},
+		{"new", "type", "Table.User", "Role = Member | Admin"},
 		{"new", "table", "User", "email:Text.Email@unique", "name:Text.NonEmpty", "passwordHash:Text", "role:Role=Member"},
 		{"new", "auth", "--role", "Role"},
 	} {
@@ -819,8 +819,8 @@ func TestGenerate_TableInTypeModule(t *testing.T) {
 			t.Fatalf("alder %s: exit %d\n%s%s", strings.Join(args, " "), code, out, errs)
 		}
 	}
-	src, _ := os.ReadFile(filepath.Join(dir, "app", "User.alder"))
-	if !strings.HasPrefix(string(src), "module User\n\ntype Role = Member | Admin\n\ntype UserId = brand Text\n\ntable User {\n") {
+	src, _ := os.ReadFile(filepath.Join(dir, "app", "Table", "User.alder"))
+	if !strings.HasPrefix(string(src), "module Table.User\n\ntype Role = Member | Admin\n\ntype UserId = brand Text\n\ntable User {\n") {
 		t.Errorf("User:\n%s", src)
 	}
 	if code, out, errs := alderIn(t, dir, "", "test"); code != 0 || !strings.HasSuffix(out, " passed, 0 failed\n") {

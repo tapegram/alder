@@ -3,10 +3,10 @@ module Hidden
 -- E9 hidden acceptance tests for T10 (teams and invites). They use only the names the task's
 -- Names block fixes; the model never sees them.
 
-import User
-import Team
-import Member
-import Invite
+import Table.User
+import Table.Team
+import Table.Member
+import Table.Invite
 
 test "a team page is for its owner and members only" = {
   let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }

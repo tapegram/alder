@@ -2,7 +2,7 @@
   "format": "1",
   "tables": [
     {
-      "name": "Entry.Entry",
+      "name": "Table.Entry.Entry",
       "id": "id",
       "created": "created",
       "columns": [
@@ -25,7 +25,7 @@
       ]
     },
     {
-      "name": "Tag.Tag",
+      "name": "Table.Tag.Tag",
       "id": "id",
       "created": "created",
       "updated": "updated",
@@ -42,7 +42,7 @@
         {
           "name": "entry",
           "type": "Text",
-          "ref": "Entry.Entry",
+          "ref": "Table.Entry.Entry",
           "onDelete": "cascade"
         },
         {

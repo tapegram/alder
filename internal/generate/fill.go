@@ -190,16 +190,26 @@ func blockBody(expr string) (string, bool) {
 // type or constructor of, qualified (`Member.x`, `Admin.Layout.isAdmin`): for each dotted name
 // outside strings and comments, the longest prefix of its capitalised segments that is a
 // module of the app, followed by one more segment, but App and the pages, which are named
-// without an import; and a table's (or type's) module named bare, as its record type is
+// without an import; a table's module, named by the table's name as a qualifier (`User.UserId`
+// for Table.User); and a table's (or type's) module named bare, as its record type is
 // (`Db.from Team`). In first-use order.
 func qualifiers(p *Program, expr string) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, segs := range dottedNames(expr) {
-		if len(segs) == 1 && p.namesOwnType(segs[0]) && !seen[segs[0]] { // a table's record type: `Db.from Team`
-			seen[segs[0]] = true
-			out = append(out, segs[0])
+		if len(segs) == 1 { // a table's record type: `Db.from Team` (module Table.Team, or Team)
+			mod := ""
+			if t := p.TableNamed(segs[0]); t != nil {
+				mod = t.Module
+			} else if p.namesOwnType(segs[0]) {
+				mod = segs[0]
+			}
+			if mod != "" && !seen[mod] {
+				seen[mod] = true
+				out = append(out, mod)
+			}
 		}
+		found := false
 		for k := len(segs) - 1; k >= 1; k-- {
 			name := strings.Join(segs[:k], ".")
 			if p.Modules[name] != nil && !p.Std[name] {
@@ -208,8 +218,14 @@ func qualifiers(p *Program, expr string) []string {
 					seen[name] = true
 					out = append(out, name)
 				}
+				found = true
 				break
 			}
+		}
+		// a table's name as the qualifier of its module's member (`User.UserId`, `Room.name`)
+		if t := p.TableNamed(segs[0]); !found && len(segs) >= 2 && t != nil && !seen[t.Module] {
+			seen[t.Module] = true
+			out = append(out, t.Module)
 		}
 	}
 	return out

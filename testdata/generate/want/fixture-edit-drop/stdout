@@ -1,10 +1,10 @@
-edited app/Tag.alder
+edited app/Table/Tag.alder
 wrote migrations/0002_drop_created.sql
   drop column Tag.created
 !! DROPS DATA: column Tag.created
 edited migrations/schema.json
---- a/app/Tag.alder
-+++ b/app/Tag.alder
+--- a/app/Table/Tag.alder
++++ b/app/Table/Tag.alder
 @@ -10,12 +10,15 @@
    id: TagId @id,
    name: Text.NonEmpty @unique,

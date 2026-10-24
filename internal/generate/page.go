@@ -266,7 +266,7 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	if o.Role != "" {
 		r := p.Session.Role
 		if !contains1(r.Ctors, o.Role) {
-			return nil, Refusef("`--role %s`: `%s` is not a constructor of the session's `role` type `%s` (%s)", o.Role, o.Role, types.String(r.Type), strings.Join(r.Ctors, ", "))
+			return nil, Refusef("`--role %s`: `%s` is not a constructor of the session's `role` type `%s` (%s)", o.Role, o.Role, typeText(r.Type, ""), strings.Join(r.Ctors, ", "))
 		}
 	}
 	table := func(name string) (*Table, error) {

@@ -4,9 +4,9 @@ module Admin.Post.Bulk
 
 -- @admin begin imports
 import Admin.Layout
-import Post
-import Tag
-import User
+import Table.Post
+import Table.Tag
+import Table.User
 -- @admin end
 
 page "/admin/post/bulk" { ids: List Post.PostId } requires user, role Admin

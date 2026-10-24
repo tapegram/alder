@@ -29,7 +29,7 @@ if the app still checks (chapter 15):
 type has an `Admin` constructor (`role: User.Role = Member`, with `type Role = Member | Admin`),
 set at login. The guestbook has no login yet; chapter 6, "Rules", shows what to add.
 
-- `app/`: the Alder modules, one per file (`Home` is the page at `/`, `Entry` its table).
+- `app/`: the Alder modules, one per file (`Home` is the page at `/`; its table `Entry` is in `app/Table/Entry.alder`, module `Table.Entry`, written `Entry` after `import Table.Entry`).
 - `migrations/`: the database's migrations, written by `alder migrate` after a change to a table.
 - `static/`: files served as they are, at `/static/…`.
 - `adapters/`: the Go behind the app's capabilities (none yet).

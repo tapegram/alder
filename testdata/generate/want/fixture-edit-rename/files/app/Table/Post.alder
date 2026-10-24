@@ -1,6 +1,6 @@
-module Post
+module Table.Post
 
-import User
+import Table.User
 
 type PostId = brand Text
 

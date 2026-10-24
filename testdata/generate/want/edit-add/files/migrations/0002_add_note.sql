@@ -1,6 +1,6 @@
 -- alder migration 0002_add_note
--- from 2e82b15d5f85
--- to d3a322f805e3
+-- from 9b787a621da5
+-- to 3271191c30ad
 -- step: add column Entry.note
 
-ALTER TABLE "Entry__Entry" ADD COLUMN "note" TEXT;
+ALTER TABLE "Table__Entry__Entry" ADD COLUMN "note" TEXT;

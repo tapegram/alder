@@ -3548,7 +3548,7 @@ The tables. `Invite.status` needs its union, so the type comes first:
 # the tables
 alder new table Team name:Text.NonEmpty owner:User.UserId@ref=User --no-timestamps
 alder new table Member team:Team.TeamId@ref=Team user:User.UserId@ref=User --no-timestamps
-alder new type Invite "Status = Pending | Accepted | Declined"
+alder new type Table.Invite "Status = Pending | Accepted | Declined"
 alder new table Invite team:Team.TeamId@ref=Team email:Text.Email status:Status=Pending --no-timestamps
 ```
 
@@ -3557,12 +3557,12 @@ type and filled with a lambda; a test is filled with its whole block:
 
 ```text
 # a user's Member row in a team
-alder new decl Member row "Team.TeamId -> User.UserId -> Query (Maybe Member)"
-alder fill Member.row - <<'EOF'
+alder new decl Table.Member row "Team.TeamId -> User.UserId -> Query (Maybe Member)"
+alder fill Table.Member.row - <<'EOF'
 \team user -> Db.from Member |> Db.where (Member.team.eq team) |> Db.where (Member.user.eq user) |> Db.first
 EOF
-alder new test Member "row is the row of the user in that team"
-alder fill 'Member."row is the row of the user in that team"' - <<'EOF'
+alder new test Table.Member "row is the row of the user in that team"
+alder fill 'Table.Member."row is the row of the user in that team"' - <<'EOF'
 {
   let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
   let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }

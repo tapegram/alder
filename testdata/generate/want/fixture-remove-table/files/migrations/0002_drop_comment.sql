@@ -1,7 +1,7 @@
 -- alder migration 0002_drop_comment
--- from 0e16e2731724
--- to e99b187b48d6
+-- from df651374c5bd
+-- to 03801c24c7fa
 -- step: drop table Comment
 -- DROPS DATA: table Comment
 
-DROP TABLE "Comment__Comment";
+DROP TABLE "Table__Comment__Comment";

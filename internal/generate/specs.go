@@ -123,9 +123,14 @@ func newSpecs() []*Spec {
 				if err != nil {
 					return nil, err
 				}
-				return runEdits(app, dry, Options{Migrate: app.migrate("")}, nil, func(p *Program) ([]Edit, error) {
-					return NewTableWith(p, s.One("name"), fields, TableOptions{NoTimestamps: s.Has("no-timestamps"), Silo: s.Has("silo")})
+				name := s.One("name")
+				res, err := runEdits(app, dry, Options{Migrate: app.migrate("")}, nil, func(p *Program) ([]Edit, error) {
+					return NewTableWith(p, name, fields, TableOptions{NoTimestamps: s.Has("no-timestamps"), Silo: s.Has("silo")})
 				})
+				if res != nil && err == nil {
+					res.Next = TableNext(name)
+				}
+				return res, err
 			},
 		},
 		{

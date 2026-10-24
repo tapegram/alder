@@ -4,8 +4,8 @@ module Admin.Post.Index
 
 -- @admin begin imports
 import Admin.Layout
-import Post
-import User
+import Table.Post
+import Table.User
 -- @admin end
 
 -- @admin begin params

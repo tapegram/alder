@@ -41,7 +41,7 @@ func EditTable(p *Program, table, op string, args []string) ([]Edit, error) {
 		typeImports(imports, f.Type, p)
 		for _, a := range f.Attrs {
 			if a.Name == "ref" {
-				imports.add(a.Arg)
+				imports.add(tableModuleOf(p, a.Arg))
 			}
 		}
 		addImports(e, p, m.Syntax, imports.list())

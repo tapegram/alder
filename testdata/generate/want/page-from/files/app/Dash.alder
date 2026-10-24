@@ -1,7 +1,7 @@
 module Dash
 
-import Entry
 import Layout
+import Table.Entry
 
 page "/dash" { }
 

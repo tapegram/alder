@@ -55,7 +55,7 @@ edited app/Home.alder
 app/Home.alder:31:13: warning[W0002]: hole ?hide has type Task Nav
     Hide p -> ?hide,
               ^^^^^
-app/Home.alder:88:35: warning[W0002]: hole ?hideId has type Entry.EntryId
+app/Home.alder:88:35: warning[W0002]: hole ?hideId has type Table.Entry.EntryId
     let r <- Test.click (Hide { id: ?hideId })
                                     ^^^^^^^
 app/Home.alder:90:16: warning[W0002]: hole ?expected has type Bool

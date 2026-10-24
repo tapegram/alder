@@ -1,7 +1,7 @@
 module Posts.Edit
 
-import Post
-import User
+import Table.Post
+import Table.User
 
 page "/posts/edit/{id}" { id: Post.PostId } requires user
 

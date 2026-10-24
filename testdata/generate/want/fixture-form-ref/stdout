@@ -4,9 +4,9 @@ edited app/Home.alder
 @@ -2,6 +2,7 @@
  
  import Layout
- import Post
-+import Tag
- import User
+ import Table.Post
++import Table.Tag
+ import Table.User
  
  page "/" { } requires user
 @@ -10,23 +11,31 @@

@@ -1,6 +1,6 @@
-module Tag
+module Table.Tag
 
-import Entry
+import Table.Entry
 
 type TagId = brand Text
 

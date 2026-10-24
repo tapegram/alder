@@ -1,5 +1,5 @@
 edited app/App.alder
-wrote app/Note.alder
+wrote app/Table/Note.alder
 wrote migrations/0002_create_note.sql
   create table Note
   add index on Note.org
@@ -72,3 +72,4 @@ edited migrations/schema.json
 +      }
 +  )
  }
+next: alder new page /notes --list Note

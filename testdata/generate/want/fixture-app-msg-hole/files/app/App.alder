@@ -1,7 +1,7 @@
 module App
 
 import Layout
-import User
+import Table.User
 
 -- The fixture of the generators' tests (cmd/alder/generate_test.go): a session with a user and
 -- a role, copied from the user's row when they log in (Auth.Login).

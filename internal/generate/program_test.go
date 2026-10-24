@@ -27,7 +27,7 @@ func TestLoad_Fixture(t *testing.T) {
 		t.Errorf("tables %v", tables)
 	}
 	post := p.TableNamed("Post")
-	if post.Owner != "author" || post.Created != "created" || post.Updated != "updated" || post.IDField != "id" || types.String(post.IDType) != "Post.PostId" {
+	if post.Owner != "author" || post.Created != "created" || post.Updated != "updated" || post.IDField != "id" || types.String(post.IDType) != "Table.Post.PostId" {
 		t.Errorf("Post: %+v", post)
 	}
 	kinds := map[string]Kind{}
@@ -41,7 +41,7 @@ func TestLoad_Fixture(t *testing.T) {
 	if !slices.Equal(status.Ctors, []string{"Draft", "Published"}) || !status.HasDefault || status.Default != "Draft" || status.Required() {
 		t.Errorf("status: %+v", status)
 	}
-	if a := post.Column("author"); a.Ref != "User" || a.OnDelete != "restrict" || !a.Owner || !a.Required() || a.TypeIn("Home") != "User.UserId" {
+	if a := post.Column("author"); a.Ref != "User" || a.OnDelete != "restrict" || !a.Owner || !a.Required() || a.TypeIn("Home") != "Table.User.UserId" {
 		t.Errorf("author: %+v", a)
 	}
 	if c := p.TableNamed("Comment").Column("post"); c.OnDelete != "cascade" {

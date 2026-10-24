@@ -22,16 +22,16 @@ alder new table Todo title:Text.NonEmpty done:Bool=False project:Project.Project
 alder new silo org Project Todo --empty
 
 # the re-read idiom: whether the user is a member of the org now
-alder new decl Membership isMember "User.UserId -> Org.OrgId -> Query Bool"
-alder fill Membership.isMember - <<'EOF'
+alder new decl Table.Membership isMember "User.UserId -> Org.OrgId -> Query Bool"
+alder fill Table.Membership.isMember - <<'EOF'
 \user org -> {
   let n <- Db.from Membership |> Db.where (Membership.user.eq user) |> Db.where (Membership.org.eq org) |> Db.count
   Query.succeed (n > 0)
 }
 EOF
 
-alder new test Membership "isMember is whether that user has a row for that org"
-alder fill 'Membership."isMember is whether that user has a row for that org"' - <<'EOF'
+alder new test Table.Membership "isMember is whether that user has a row for that org"
+alder fill 'Table.Membership."isMember is whether that user has a row for that org"' - <<'EOF'
 {
   let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
   let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }

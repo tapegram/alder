@@ -1,7 +1,7 @@
-module Like
+module Table.Like
 
-import Post
-import User
+import Table.Post
+import Table.User
 
 type LikeId = brand Text
 

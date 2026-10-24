@@ -1,4 +1,4 @@
-module Tag
+module Table.Tag
 
 type TagId = brand Text
 

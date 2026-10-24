@@ -41,7 +41,7 @@ func adminNeeds(s *Session) string {
 	case s == nil || s.User == nil:
 		return AdminNeeds + ": this app's session has no `user`; add a user table, a login that sets `user`, and a `role` (chapter 6, \"Rules\" and \"Roles\")"
 	case s.Role != nil:
-		return AdminNeeds + ": add `Admin` to the session's role type `" + types.String(s.Role.Type) + "`, and set the role at login (chapter 6)"
+		return AdminNeeds + ": add `Admin` to the session's role type `" + typeText(s.Role.Type, "") + "`, and set the role at login (chapter 6)"
 	case s.UserTable != "":
 		u := s.UserTable
 		return AdminNeeds + ": add `type Role = Reader | Admin` and a column `role: Role = Reader` to `" + u + "`, `role: " + u + ".Role = Reader` to `session` in `App`, and set it at login (chapter 6)"
@@ -144,11 +144,11 @@ func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []s
 	for _, t := range p.Tables {
 		for _, kind := range []string{"Index", "Show", "New", "Edit", "Delete", "Bulk"} {
 			if t.Silo != "" { // new when the dashboard of one value does not link to its list
-				siloOf[FileOf(o.Module+"."+t.Module+"."+kind)] = FileOf(o.Module + "." + UpperFirst(Plural(t.Silo)) + ".Show")
-				tableOf[FileOf(o.Module+"."+t.Module+"."+kind)] = o.Module + "." + t.Module + ".Index {"
+				siloOf[FileOf(o.Module+"."+t.Name+"."+kind)] = FileOf(o.Module + "." + UpperFirst(Plural(t.Silo)) + ".Show")
+				tableOf[FileOf(o.Module+"."+t.Name+"."+kind)] = o.Module + "." + t.Name + ".Index {"
 				continue
 			}
-			tableOf[FileOf(o.Module+"."+t.Module+"."+kind)] = o.Module + "." + t.Module + ".Index {}"
+			tableOf[FileOf(o.Module+"."+t.Name+"."+kind)] = o.Module + "." + t.Name + ".Index {}"
 		}
 	}
 	exists := func(path string) bool {
@@ -273,7 +273,7 @@ type referrer struct {
 }
 
 func (g *adminGen) table(t *Table) *adminTable {
-	at := &adminTable{t: t, mod: g.o.Module + "." + t.Module, path: g.o.Path + "/" + strings.ToLower(t.Name),
+	at := &adminTable{t: t, mod: g.o.Module + "." + t.Name, path: g.o.Path + "/" + strings.ToLower(t.Name),
 		plural: Plural(LowerFirst(t.Name)), noun: strings.ToLower(Humanize(t.Name)), label: t.Label()}
 	at.title = UpperFirst(Plural(at.noun))
 	for _, c := range t.Columns {
@@ -745,7 +745,7 @@ func testsText(tests []TestData) string {
 func (g *adminGen) adminCell(c *Column, row string, imports *importSet) string {
 	if c.Ref != "" {
 		if rt := g.p.TableNamed(c.Ref); rt != nil {
-			show := g.o.Module + "." + rt.Module + ".Show"
+			show := g.o.Module + "." + rt.Name + ".Show"
 			text := func(id string) string {
 				if rt.Label().ID {
 					return id

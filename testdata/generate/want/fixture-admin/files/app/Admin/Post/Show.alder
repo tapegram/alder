@@ -4,10 +4,10 @@ module Admin.Post.Show
 
 -- @admin begin imports
 import Admin.Layout
-import Comment
-import Post
-import Tag
-import User
+import Table.Comment
+import Table.Post
+import Table.Tag
+import Table.User
 -- @admin end
 
 page "/admin/post/{id}" { id: Post.PostId } requires user, role Admin

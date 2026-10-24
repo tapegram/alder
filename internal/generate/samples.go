@@ -285,11 +285,13 @@ func (b *testBuilder) columnValue(t *Table, c *Column, n int) string {
 		if c.Owner || (b.p.Session != nil && c.Ref == b.p.Session.UserTable) {
 			return b.user()
 		}
-		if v := b.ids[c.Ref]; v != "" {
-			return v
-		}
-		if rt := b.p.TableNamed(c.Ref); rt != nil && rt != t {
-			return b.insert(rt, true)
+		if rt := b.p.TableNamed(c.Ref); rt != nil {
+			if v := b.ids[rt.Module]; v != "" {
+				return v
+			}
+			if rt != t {
+				return b.insert(rt, true)
+			}
 		}
 	}
 	return b.sample(c.Type, c.Name, n)

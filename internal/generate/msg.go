@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"alder/internal/syntax"
-	"alder/internal/types"
 )
 
 // MsgData is the data of msg.tmpl: the message, its parameters as declared (`id: Post.PostId`),
@@ -136,7 +135,7 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]
 		for _, f := range fields {
 			v := "?" + LowerFirst(name) + UpperFirst(f.Name)
 			for _, t := range p.Tables {
-				if f.Type == types.StringIn(t.IDType, page) {
+				if f.Type == typeText(t.IDType, page) {
 					if v = tb.ids[t.Module]; v == "" { // the page's row, when it shows one
 						v = tb.insert(t, true)
 					}

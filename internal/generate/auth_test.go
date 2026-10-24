@@ -95,8 +95,8 @@ func TestNewAuth_App(t *testing.T) {
 	want := `module App
 
 import Layout
+import Table.User
 import Theme
-import User
 
 -- the theme is the visitor's choice
 session { theme: Theme.Theme = Light, user: Maybe User.UserId }
@@ -155,7 +155,7 @@ update msg session = match msg {
 		t.Fatal(err)
 	}
 	for _, e := range edits {
-		if e.Path == "app/App.alder" && !strings.HasPrefix(e.Body, "module App\n\nimport Layout\nimport User\n\nsession { user: Maybe User.UserId }\n\nlogin = Auth.Login\n\nmsg Logout\n\nupdate : Msg -> Session -> Task Nav\nupdate msg session = match msg {\n  Logout p -> {\n") {
+		if e.Path == "app/App.alder" && !strings.HasPrefix(e.Body, "module App\n\nimport Layout\nimport Table.User\n\nsession { user: Maybe User.UserId }\n\nlogin = Auth.Login\n\nmsg Logout\n\nupdate : Msg -> Session -> Task Nav\nupdate msg session = match msg {\n  Logout p -> {\n") {
 			t.Errorf("scaffold's App:\n%s", e.Body)
 		}
 	}
@@ -178,7 +178,7 @@ func TestNewAuth_Refusals(t *testing.T) {
 		}
 	}
 	refused(fixture, AuthOptions{}, "the session already has a `user` field")
-	refused(scaffoldApp(t, nil), AuthOptions{Role: "Role"}, "`alder new type User \"Role = Member | Admin\"` makes one")
+	refused(scaffoldApp(t, nil), AuthOptions{Role: "Role"}, "`alder new type Table.User \"Role = Member | Admin\"` makes one")
 	refused(scaffoldApp(t, map[string]string{"app/Auth/Other.alder": "module Auth.Other\n"}), AuthOptions{}, "module `Auth.Other` exists")
 	refused(scaffoldApp(t, map[string]string{"app/User.alder": "module User\n\ntype UserId = brand Text\n\ntable User {\n  id: UserId @id,\n  email: Text.Email,\n}\n"}),
 		AuthOptions{}, "`User` needs the columns `email: Text.Email` and `passwordHash")
@@ -210,5 +210,31 @@ func TestNewAuth_NoHomePage(t *testing.T) {
 	}
 	if len(res.Holes) != 2 {
 		t.Errorf("holes %+v, want ?afterLogin twice", res.Holes)
+	}
+}
+
+// TestNewAuthUserInTableFolder (#20): the user table `alder new auth` makes is
+// app/Table/User.alder, module Table.User, and the login imports it.
+func TestNewAuthUserInTableFolder(t *testing.T) {
+	dir := scaffoldApp(t, nil)
+	p, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edits, created, err := NewAuth(p, AuthOptions{})
+	if err != nil || !created {
+		t.Fatalf("NewAuth: %v (created %v)", err, created)
+	}
+	if e := editAt(edits, "app/Table/User.alder"); e == nil || !strings.HasPrefix(e.Body, "module Table.User\n") {
+		t.Fatalf("edits: %+v", edits)
+	}
+	if editAt(edits, "app/User.alder") != nil {
+		t.Errorf("wrote app/User.alder")
+	}
+	if e := editAt(edits, "app/Auth/Login.alder"); e == nil || !strings.Contains(e.Body, "\nimport Table.User\n") {
+		t.Errorf("Auth.Login: %+v", e)
+	}
+	if res, err := Apply(dir, edits, Options{DryRun: true}); err != nil {
+		t.Fatalf("Apply: %v\n%s", err, res.RenderText(true))
 	}
 }

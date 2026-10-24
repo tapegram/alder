@@ -1,6 +1,6 @@
 -- alder migration 0002_add_summary
--- from 0e16e2731724
--- to 4eaa62b8ec7e
+-- from df651374c5bd
+-- to def7851efede
 -- step: add column Post.summary
 
-ALTER TABLE "Post__Post" ADD COLUMN "summary" TEXT;
+ALTER TABLE "Table__Post__Post" ADD COLUMN "summary" TEXT;

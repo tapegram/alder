@@ -1,6 +1,6 @@
-edited app/Entry.alder
---- a/app/Entry.alder
-+++ b/app/Entry.alder
+edited app/Table/Entry.alder
+--- a/app/Table/Entry.alder
++++ b/app/Table/Entry.alder
 @@ -2,6 +2,8 @@
  
  type EntryId = brand Text

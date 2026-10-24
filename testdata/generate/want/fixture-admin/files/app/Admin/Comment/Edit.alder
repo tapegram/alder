@@ -4,9 +4,9 @@ module Admin.Comment.Edit
 
 -- @admin begin imports
 import Admin.Layout
-import Comment
-import Post
-import User
+import Table.Comment
+import Table.Post
+import Table.User
 -- @admin end
 
 page "/admin/comment/{id}/edit" {

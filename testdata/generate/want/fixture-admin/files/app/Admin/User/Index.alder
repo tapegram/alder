@@ -4,7 +4,7 @@ module Admin.User.Index
 
 -- @admin begin imports
 import Admin.Layout
-import User
+import Table.User
 -- @admin end
 
 -- @admin begin params

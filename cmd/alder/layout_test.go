@@ -95,19 +95,19 @@ func TestLayout_EditTable(t *testing.T) {
 	dir := genApp(t, "scaffold")
 	// two fields: `table Tag { id: TagId @id, name: Text }` on one line
 	layoutStep(t, dir, "", "new", "table", "Tag", "name:Text", "--no-timestamps")
-	if s := readApp(t, dir, "app/Tag.alder"); !strings.Contains(s, "table Tag { id: TagId @id, name: Text }") {
+	if s := readApp(t, dir, "app/Table/Tag.alder"); !strings.Contains(s, "table Tag { id: TagId @id, name: Text }") {
 		t.Fatalf("the table is not on one line:\n%s", s)
 	}
 	layoutStep(t, dir, "", "edit", "table", "Tag", "rename-field", "name", "label")
-	rewrite(t, dir, "app/Tag.alder", ` @renamed "name"`, "")
+	rewrite(t, dir, "app/Table/Tag.alder", ` @renamed "name"`, "")
 	layoutStep(t, dir, "", "edit", "table", "Tag", "drop-field", "label")
 	for _, f := range []string{"a:Int=0", "b:Int=0", "c:Text=\"\"", "d:Bool=False"} { // one line, then over several
 		layoutStep(t, dir, "", "edit", "table", "Tag", "add-field", f)
 	}
 	layoutStep(t, dir, "", "edit", "table", "Tag", "rename-field", "b", "bee")
-	rewrite(t, dir, "app/Tag.alder", ` @renamed "b"`, "")
+	rewrite(t, dir, "app/Table/Tag.alder", ` @renamed "b"`, "")
 	layoutStep(t, dir, "", "edit", "table", "Tag", "drop-field", "c")
-	s := readApp(t, dir, "app/Tag.alder")
+	s := readApp(t, dir, "app/Table/Tag.alder")
 	for _, w := range []string{"  a: Int = 0,", "  bee: Int = 0,", "  d: Bool = False,"} {
 		if !strings.Contains(s, w) {
 			t.Errorf("Tag lacks %q:\n%s", w, s)

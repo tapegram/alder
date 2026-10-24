@@ -72,6 +72,9 @@ type Result struct {
 	// Warnings are for standard error, after the command's name: a file written unformatted
 	// (Formatted's warning).
 	Warnings []string
+	// Next is the command to run next (`alder new table`'s page that lists the table), printed
+	// last as `next: …`; "" for none.
+	Next string
 }
 
 // FileChange is one file Apply writes: Action is "created", "edited" or "removed".
@@ -436,6 +439,9 @@ func (r *Result) RenderText(refused bool) string {
 	b.WriteString(r.Diff)
 	for _, d := range r.Diagnostics {
 		b.WriteString(diag.RenderText(d, r.Sources[d.Span.File]))
+	}
+	if r.Next != "" {
+		fmt.Fprintf(&b, "next: %s\n", r.Next)
 	}
 	return b.String()
 }

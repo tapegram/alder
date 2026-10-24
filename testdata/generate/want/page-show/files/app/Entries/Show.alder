@@ -1,7 +1,7 @@
 module Entries.Show
 
-import Entry
 import Layout
+import Table.Entry
 
 page "/entries/{id}" { id: Entry.EntryId }
 

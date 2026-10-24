@@ -211,12 +211,12 @@ func lookup(ctx context.Context, email string) (*row, error) {
 	}
 	var users db.TableDesc
 	for _, t := range app.Tables {
-		if t.Name == "User.User" {
+		if t.Name == "Table.User.User" {
 			users = t
 		}
 	}
 	if users.Name == "" {
-		return nil, errors.New("auth: the app has no table " + "User.User")
+		return nil, errors.New("auth: the app has no table " + "Table.User.User")
 	}
 	table := &db.Table[struct{}]{Name: users.Name, Columns: users.Columns}
 	rows, err := st.Query(ctx, tx, users.Name, users.Columns, db.Where(db.CEq("email", email), db.From(table)).SQL())
@@ -237,7 +237,7 @@ func lookup(ctx context.Context, email string) (*row, error) {
 		}
 	}
 	if r.hashAt < 0 {
-		return nil, errors.New("auth: the table " + "User.User" + " has no column " + "passwordHash")
+		return nil, errors.New("auth: the table " + "Table.User.User" + " has no column " + "passwordHash")
 	}
 	return r, nil
 }

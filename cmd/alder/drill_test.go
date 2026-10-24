@@ -115,7 +115,7 @@ func checkNames(t *testing.T, dir string, want drillNames) {
 	tables := map[string][]string{}
 	for _, tb := range p.Tables {
 		for _, c := range tb.Columns {
-			tables[tb.Name] = append(tables[tb.Name], c.Name+": "+c.TypeIn(tb.Module))
+			tables[tb.Name] = append(tables[tb.Name], c.Name+": "+asWritten(c.TypeIn(tb.Module)))
 		}
 	}
 	if !reflect.DeepEqual(tables, want.tables) {
@@ -123,7 +123,7 @@ func checkNames(t *testing.T, dir string, want drillNames) {
 	}
 	var session []string
 	for _, f := range p.Session.Fields {
-		session = append(session, f.Name+": "+types.String(f.Type))
+		session = append(session, f.Name+": "+asWritten(types.String(f.Type)))
 	}
 	if !slices.Equal(session, want.session) || p.Login != "Auth.Login" {
 		t.Errorf("session %v, login %q; want %v, Auth.Login", session, p.Login, want.session)
@@ -168,7 +168,7 @@ func checkNames(t *testing.T, dir string, want drillNames) {
 	for _, c := range []struct {
 		what      string
 		got, want any
-	}{{"silos", p.Silos, want.silos}, {"via", p.Via, want.via}, {"choose", p.Choose, want.choose}} {
+	}{{"silos", siloNames(p.Silos), want.silos}, {"via", p.Via, want.via}, {"choose", p.Choose, want.choose}} {
 		if reflect.ValueOf(c.want).Len() == 0 && reflect.ValueOf(c.got).Len() == 0 {
 			continue
 		}
@@ -176,6 +176,21 @@ func checkNames(t *testing.T, dir string, want drillNames) {
 			t.Errorf("%s: %v, want %v", c.what, c.got, c.want)
 		}
 	}
+}
+
+// asWritten is a type's text with the table modules (#20's `Table.<Name>`) written by their
+// last segment, as the task's names and the app's source write them: `Team.TeamId`.
+func asWritten(s string) string { return strings.ReplaceAll(s, "Table.", "") }
+
+// siloNames is p.Silos with each table module written by its table's name.
+func siloNames(silos map[string][]string) map[string][]string {
+	out := map[string][]string{}
+	for k, ms := range silos {
+		for _, m := range ms {
+			out[k] = append(out[k], m[strings.LastIndex(m, ".")+1:])
+		}
+	}
+	return out
 }
 
 // drillSpan is the source text of a one-line span.

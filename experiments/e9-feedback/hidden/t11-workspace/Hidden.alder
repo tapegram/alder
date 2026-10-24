@@ -4,11 +4,11 @@ module Hidden
 -- the names the task's Names block fixes; the model never sees them. Two orgs, Acme and Globex:
 -- Ann is a member of Acme, Bob of both.
 
-import User
-import Org
-import Membership
-import Project
-import Todo
+import Table.User
+import Table.Org
+import Table.Membership
+import Table.Project
+import Table.Todo
 
 test "a member sees the org's name and only its projects, by name" = {
   let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }

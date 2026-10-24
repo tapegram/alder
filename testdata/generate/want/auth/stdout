@@ -2,7 +2,7 @@ wrote adapters/auth/login_password.go
 wrote adapters/auth/login_password_test.go
 edited app/App.alder
 wrote app/Auth/Login.alder
-wrote app/User.alder
+wrote app/Table/User.alder
 wrote migrations/0002_create_user.sql
   create table User
 edited migrations/schema.json
@@ -12,7 +12,7 @@ edited migrations/schema.json
  module App
  
  import Layout
-+import User
++import Table.User
  
 -session { }
 +session { user: Maybe User.UserId }

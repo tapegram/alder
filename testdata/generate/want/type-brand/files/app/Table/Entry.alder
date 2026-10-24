@@ -1,11 +1,12 @@
-module Entry
+module Table.Entry
 
 type EntryId = brand Text
+
+type Code = brand Text where Text.matches "^[a-z]+$"
 
 table Entry {
   id: EntryId @id,
   name: Text.NonEmpty,
   message: Text.NonEmpty,
   created: Time @created,
-  note: Maybe Text,
 }

@@ -1,8 +1,8 @@
 module Home
 
 import Layout
-import Post
-import User
+import Table.Post
+import Table.User
 
 page "/" { } requires user
 

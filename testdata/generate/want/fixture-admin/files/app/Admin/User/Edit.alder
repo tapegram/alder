@@ -4,7 +4,7 @@ module Admin.User.Edit
 
 -- @admin begin imports
 import Admin.Layout
-import User
+import Table.User
 -- @admin end
 
 page "/admin/user/{id}/edit" { id: User.UserId } requires user, role Admin

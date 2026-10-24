@@ -112,10 +112,10 @@ func pluralsOf(p *Program, tables []string) []string {
 func partitionFix(t, kt *Table, key string) error {
 	for _, c := range t.Columns {
 		if c.Ref == kt.Name && !c.Maybe {
-			return Refusef("`%s` is not partitioned by `%s`: mark its column `%s` `@partition %s` (`%s: %s @ref %s @partition %s`), then run this again", t.Name, key, c.Name, key, c.Name, c.TypeIn(t.Module), kt.Name, key)
+			return Refusef("`%s` is not partitioned by `%s`: mark its column `%s` `@partition %s` (`%s: %s @ref %s @partition %s`), then run this again", t.Name, key, c.Name, key, c.Name, typeText(c.Type, t.Module), kt.Name, key)
 		}
 	}
-	return Refusef("`%s` is not partitioned by `%s`: it has no `@ref %s` column, and a required reference cannot be added to a table that may have rows; one with none yet is made again with it: `alder remove table %s`, then `alder new table %s … %s:%s.%sId@ref=%s@partition=%s`", t.Name, key, kt.Name, t.Name, t.Name, key, kt.Module, kt.Name, kt.Name, key)
+	return Refusef("`%s` is not partitioned by `%s`: it has no `@ref %s` column, and a required reference cannot be added to a table that may have rows; one with none yet is made again with it: `alder remove table %s`, then `alder new table %s … %s:%s.%sId@ref=%s@partition=%s`", t.Name, key, kt.Name, t.Name, t.Name, key, kt.Name, kt.Name, kt.Name, key)
 }
 
 // siloEdits are App's edit and, when migrations/schema.json has the tables (migrations create

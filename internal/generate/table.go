@@ -9,10 +9,11 @@ import (
 	"alder/internal/syntax"
 )
 
-// TableData is the data of table.tmpl: the table's name (its module's), its imports, and its
+// TableData is the data of table.tmpl: the table's module and name, its imports, and its
 // fields as declared (`title: Text.NonEmpty`, `post: Post.PostId @ref Post @cascade`), between
 // the id and the `@created`/`@updated` pair the template writes.
 type TableData struct {
+	Module  string // Table.<Name>
 	Name    string
 	Imports []string
 	Fields  []string
@@ -30,12 +31,20 @@ type TableOptions struct {
 	Silo bool
 }
 
-// NewTable generates `alder new table`: app/<Name>.alder with the table, its id brand, the
-// fields given and `created`/`updated` (NewTableWith: without them), and a test of each reference's delete rule. The migration is the caller's (Options.Migrate). It
-// refuses a name that is not a table name or whose module exists, a field given twice, and the
+// NewTable generates `alder new table`: app/Table/<Name>.alder (module Table.<Name>, #20) with
+// the table, its id brand, the fields given and `created`/`updated` (NewTableWith: without
+// them), and a test of each reference's delete rule; a module Table.<Name> of types only takes
+// the table. The migration is the caller's (Options.Migrate). It refuses a name that is not a
+// table name or that names a table or a root module already, a field given twice, and the
 // fields the generator writes itself.
 func NewTable(p *Program, name string, fields []FieldSpec) ([]Edit, error) {
 	return NewTableWith(p, name, fields, TableOptions{})
+}
+
+// TableNext is the command `alder new table` suggests next: a page listing the table's rows,
+// at its name in the plural (`alder new page /todos --list Todo`).
+func TableNext(name string) string {
+	return "alder new page /" + Plural(strings.ToLower(name)) + " --list " + name
 }
 
 // NewTableWith is NewTable with options: with NoTimestamps the table has no `created` and
@@ -44,21 +53,28 @@ func NewTableWith(p *Program, name string, fields []FieldSpec, o TableOptions) (
 	if !IsUpperIdent(name) {
 		return nil, Refusef("`%s` is not a table name: a table is named by one capitalised identifier, such as `Tag`, and declared in the module of that name", name)
 	}
-	m := p.Modules[name]
-	if m != nil { // a module of types only (`alder new type User "Role = …"`) takes its table
+	mod := TableModule(name)
+	if t := p.TableNamed(name); t != nil {
+		return nil, Refusef("table `%s` exists (`%s`): a generator never overwrites a file, and table names are unique in an app; choose another table name", name, t.File)
+	}
+	if root := p.Modules[name]; root != nil {
+		return nil, Refusef("module `%s` exists (`%s`): the table goes in `%s` (module `%s`), and `%s` would then name two modules; move `%s`'s declarations there, or choose another table name", name, root.File, FileOf(mod), mod, name, root.File)
+	}
+	m := p.Modules[mod]
+	if m != nil { // a module of types only (`alder new type Table.User "Role = …"`) takes its table
 		for _, d := range m.Syntax.Decls {
 			if _, ok := d.(*syntax.TableDecl); ok {
-				return nil, Refusef("module `%s` exists (`%s`) and declares a table: a generator never overwrites a file; choose another table name", name, m.File)
+				return nil, Refusef("module `%s` exists (`%s`) and declares a table: a generator never overwrites a file; choose another table name", mod, m.File)
 			}
 		}
 		for _, n := range []string{name, name + "Id"} {
 			if declared(m.Syntax, n) {
-				return nil, Refusef("module `%s` already declares `%s`: the table needs the name", name, n)
+				return nil, Refusef("module `%s` already declares `%s`: the table needs the name", mod, n)
 			}
 		}
 	}
-	imports := newImports(name, p.Std)
-	d := TableData{Name: name, Timestamps: !o.NoTimestamps}
+	imports := newImports(mod, p.Std)
+	d := TableData{Module: mod, Name: name, Timestamps: !o.NoTimestamps}
 	seen := map[string]bool{}
 	for _, f := range fields {
 		switch {
@@ -73,7 +89,7 @@ func NewTableWith(p *Program, name string, fields []FieldSpec, o TableOptions) (
 		typeImports(imports, f.Type, p)
 		for _, a := range f.Attrs {
 			if a.Name == "ref" {
-				imports.add(a.Arg)
+				imports.add(tableModuleOf(p, a.Arg))
 			}
 		}
 		d.Fields = append(d.Fields, f.Source())
@@ -102,7 +118,7 @@ func NewTableWith(p *Program, name string, fields []FieldSpec, o TableOptions) (
 		}
 		appEdit = []Edit{{Path: app.File, Body: e.result()}}
 	}
-	file := FileOf(name)
+	file := FileOf(mod)
 	edit := func() (Edit, error) {
 		body := render("table.tmpl", d)
 		if m == nil {
@@ -210,27 +226,47 @@ func bareType(p *Program, home, typ string) error {
 			}
 		}
 		if len(in) == 1 {
-			return Refusef("`%s` is a type of module `%s`: write `%s.%s` in `%s`", w, in[0], in[0], w, typ)
+			return Refusef("`%s` is a type of module `%s`: write `%s.%s` in `%s`", w, in[0], in[0][strings.LastIndex(in[0], ".")+1:], w, typ)
 		}
 	next:
 	}
 	return nil
 }
 
+// A qualifier that is the last segment of the home module (`Todo.TodoId` in the table Todo
+// being written, module Table.Todo) is the home module's, which needs no import.
 func typeImports(s *importSet, typ string, p *Program) {
 	for _, w := range strings.FieldsFunc(typ, func(r rune) bool { return r == ' ' || r == '(' || r == ')' }) {
 		if i := strings.LastIndex(w, "."); i > 0 {
-			s.add(moduleOfQualifier(p, w[:i]))
+			q := w[:i]
+			m := moduleOfQualifier(p, q)
+			if m == q && strings.HasSuffix(s.home, "."+q) {
+				m = s.home
+			}
+			s.add(m)
 		}
 	}
 }
 
+// tableModuleOf is the module of the table named name (`User` → Table.User, or User in an app
+// of the layout before #20), or TableModule(name) for a table not declared yet (one the same
+// command writes).
+func tableModuleOf(p *Program, name string) string {
+	if t := p.TableNamed(name); t != nil {
+		return t.Module
+	}
+	return TableModule(name)
+}
+
 // moduleOfQualifier is the module of the app that q, written before a name, stands for: a
-// module's full path, or a qualifier (`Todo` for `Table.Todo`) when exactly one module of the
-// app ends in it; q itself when it is neither.
+// module's full path, a table's name (`Todo` for the table of `Table.Todo`), or a qualifier
+// when exactly one module of the app ends in it; q itself when it is none of these.
 func moduleOfQualifier(p *Program, q string) string {
 	if p == nil || p.Modules[q] != nil {
 		return q
+	}
+	if t := p.TableNamed(q); t != nil {
+		return t.Module
 	}
 	found := ""
 	for _, m := range p.Order {

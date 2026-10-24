@@ -1,7 +1,7 @@
 module App
 
 import Layout
-import User
+import Table.User
 
 session { user: Maybe User.UserId }
 

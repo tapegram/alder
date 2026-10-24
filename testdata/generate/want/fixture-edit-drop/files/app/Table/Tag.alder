@@ -1,7 +1,7 @@
-module Tag
+module Table.Tag
 
-import Post
-import User
+import Table.Post
+import Table.User
 
 type TagId = brand Text
 

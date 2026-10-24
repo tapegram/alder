@@ -100,42 +100,6 @@
       ]
     },
     {
-      "name": "Note.Note",
-      "id": "id",
-      "created": "created",
-      "updated": "updated",
-      "silo": "org",
-      "columns": [
-        {
-          "name": "id",
-          "type": "Text"
-        },
-        {
-          "name": "text",
-          "type": "Text"
-        },
-        {
-          "name": "project",
-          "type": "Text",
-          "ref": "Project.Project",
-          "onDelete": "cascade"
-        },
-        {
-          "name": "org",
-          "type": "Text",
-          "ref": "Org.Org"
-        },
-        {
-          "name": "created",
-          "type": "Time"
-        },
-        {
-          "name": "updated",
-          "type": "Time"
-        }
-      ]
-    },
-    {
       "name": "Org.Org",
       "id": "id",
       "created": "created",
@@ -180,6 +144,42 @@
         },
         {
           "name": "created",
+          "type": "Time"
+        }
+      ]
+    },
+    {
+      "name": "Table.Note.Note",
+      "id": "id",
+      "created": "created",
+      "updated": "updated",
+      "silo": "org",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "text",
+          "type": "Text"
+        },
+        {
+          "name": "project",
+          "type": "Text",
+          "ref": "Project.Project",
+          "onDelete": "cascade"
+        },
+        {
+          "name": "org",
+          "type": "Text",
+          "ref": "Org.Org"
+        },
+        {
+          "name": "created",
+          "type": "Time"
+        },
+        {
+          "name": "updated",
           "type": "Time"
         }
       ]

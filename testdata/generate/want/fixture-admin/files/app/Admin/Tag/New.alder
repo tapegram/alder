@@ -4,9 +4,9 @@ module Admin.Tag.New
 
 -- @admin begin imports
 import Admin.Layout
-import Post
-import Tag
-import User
+import Table.Post
+import Table.Tag
+import Table.User
 -- @admin end
 
 page "/admin/tag/new" { findPost: Text = "" } requires user, role Admin

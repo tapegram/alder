@@ -74,7 +74,7 @@ func BareFiles(name string, withGoMod bool) []File {
 	var out []File
 	for _, f := range Files(name, withGoMod) {
 		switch f.Path {
-		case "app/Home.alder", "app/Entry.alder", "README.md":
+		case "app/Home.alder", "app/Table/Entry.alder", "README.md":
 			continue
 		}
 		out = append(out, f)

@@ -4,7 +4,7 @@ module Admin.User.New
 
 -- @admin begin imports
 import Admin.Layout
-import User
+import Table.User
 -- @admin end
 
 page "/admin/user/new" { } requires user, role Admin

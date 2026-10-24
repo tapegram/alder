@@ -11,24 +11,24 @@ alder new auth --users User
 # the rooms and their bookings: a booking holds [from, to)
 alder new table Room name:Text.NonEmpty --no-timestamps
 alder new table Booking room:Room.RoomId@ref=Room owner:User.UserId@ref=User from:Date to:Date --no-timestamps
-alder new decl Booking holds "Date -> Booking -> Bool"
-alder fill Booking.holds - <<'EOF'
+alder new decl Table.Booking holds "Date -> Booking -> Bool"
+alder fill Table.Booking.holds - <<'EOF'
 \d b -> b.from <= d && d < b.to
 EOF
-alder new decl Booking overlaps "Date -> Date -> Booking -> Bool"
-alder fill Booking.overlaps - <<'EOF'
+alder new decl Table.Booking overlaps "Date -> Date -> Booking -> Bool"
+alder fill Table.Booking.overlaps - <<'EOF'
 \from to b -> from < b.to && b.from < to
 EOF
-alder new decl Booking nextFree "Date -> List Booking -> Date"
-alder fill Booking.nextFree - <<'EOF'
+alder new decl Table.Booking nextFree "Date -> List Booking -> Date"
+alder fill Table.Booking.nextFree - <<'EOF'
 \today bookings -> {
   let candidates = [today] ++ List.map (\b -> b.to) bookings
   let free = List.filter (\c -> c >= today && not (List.any (holds c) bookings)) candidates
   List.head (List.sortBy (\c -> Date.diffDays today c) free) ?? today
 }
 EOF
-alder new test Booking "the next free date after back-to-back bookings"
-alder fill 'Booking."the next free date after back-to-back bookings"' - <<'EOF'
+alder new test Table.Booking "the next free date after back-to-back bookings"
+alder fill 'Table.Booking."the next free date after back-to-back bookings"' - <<'EOF'
 {
   let today <- Date.today
   let free = nextFree today [
@@ -43,8 +43,8 @@ alder fill 'Booking."the next free date after back-to-back bookings"' - <<'EOF'
   Task.succeed ({ free: free, later: later } == { free: Date.addDays 5 today, later: today })
 }
 EOF
-alder new decl Room nameOf "List Room -> RoomId -> Text"
-alder fill Room.nameOf - <<'EOF'
+alder new decl Table.Room nameOf "List Room -> RoomId -> Text"
+alder fill Table.Room.nameOf - <<'EOF'
 \rooms id -> match List.find (\r -> r.id == id) rooms {
   Just r -> r.name,
   Nothing -> "",

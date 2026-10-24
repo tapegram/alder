@@ -1,4 +1,4 @@
-module Entry
+module Table.Entry
 
 type EntryId = brand Text
 
@@ -7,4 +7,5 @@ table Entry {
   name: Text.NonEmpty,
   message: Text.NonEmpty,
   created: Time @created,
+  note: Maybe Text,
 }

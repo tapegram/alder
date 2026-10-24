@@ -64,9 +64,9 @@ var scaffoldFiles = []string{
 	"README.md",
 	"adapters/README.md",
 	"app/App.alder",
-	"app/Entry.alder",
 	"app/Home.alder",
 	"app/Layout.alder",
+	"app/Table/Entry.alder",
 	"migrations/0001_initial.sql",
 	"migrations/schema.json",
 	"scratch.alder",
@@ -109,7 +109,7 @@ func TestNew_Writes(t *testing.T) {
 			t.Errorf("README.md lacks the command %q", c)
 		}
 	}
-	if sql := readFile(t, filepath.Join(dir, "migrations", "0001_initial.sql")); !strings.Contains(sql, `CREATE TABLE "Entry__Entry"`) {
+	if sql := readFile(t, filepath.Join(dir, "migrations", "0001_initial.sql")); !strings.Contains(sql, `CREATE TABLE "Table__Entry__Entry"`) {
 		t.Errorf("0001_initial.sql:\n%s", sql)
 	}
 	if code, out, _ := runMigrate(t, dir); code != 0 || !strings.HasPrefix(out, "no changes since 0001_initial") {
@@ -439,5 +439,24 @@ func TestNewScaffoldsScratch(t *testing.T) {
 	out, errs := so.String(), se.String()
 	if code != 0 || !strings.Contains(out, "⇒ 2 : Int") {
 		t.Errorf("alder scratch: exit %d\n%s%s", code, out, errs)
+	}
+}
+
+// TestNewAppScaffoldTable (#20): the scaffold's table is app/Table/Entry.alder, there is no
+// app/Entry.alder, and the new app checks.
+func TestNewAppScaffoldTable(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(outsideModule(t), "demo")
+	if code, _, errs := runNew(t, dir); code != 0 {
+		t.Fatalf("alder new: exit %d, %q", code, errs)
+	}
+	if !strings.HasPrefix(readFile(t, filepath.Join(dir, "app", "Table", "Entry.alder")), "module Table.Entry\n") {
+		t.Errorf("app/Table/Entry.alder is not module Table.Entry")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "app", "Entry.alder")); err == nil {
+		t.Errorf("app/Entry.alder exists")
+	}
+	if code, out, errs := run(t, dir); code != 0 || out != "" || errs != "" {
+		t.Errorf("alder check: exit %d, %q %q", code, out, errs)
 	}
 }

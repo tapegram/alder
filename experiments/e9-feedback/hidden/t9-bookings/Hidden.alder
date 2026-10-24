@@ -4,9 +4,9 @@ module Hidden
 -- block fixes; the model never sees them. "Today" is the test clock's date (book 10: the clock
 -- starts at 2026-01-01 and only ticks seconds), so `Date.today` gives the same day the app sees.
 
-import User
-import Room
-import Booking
+import Table.User
+import Table.Room
+import Table.Booking
 
 test "a booking through the room's form is stored and listed" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }

@@ -255,7 +255,7 @@ func dbNames(t *testing.T, box *sshBox) string {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	rows, err := conn.Query(`SELECT name FROM "Entry__Entry" ORDER BY name`)
+	rows, err := conn.Query(`SELECT name FROM "Table__Entry__Entry" ORDER BY name`)
 	if err != nil {
 		t.Fatalf("reading app.db: %v", err)
 	}

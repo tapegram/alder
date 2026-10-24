@@ -664,7 +664,7 @@ func TestAdmin_NoRoleColumn(t *testing.T) {
 		}
 		os.WriteFile(p, []byte(s), 0o644)
 	}
-	edit("app/User.alder", "role: Role = Reader,", "role: Maybe Role = Nothing,")
+	edit("app/Table/User.alder", "role: Role = Reader,", "role: Maybe Role = Nothing,")
 	edit("app/Auth/Login.alder", "role: u.role })", "role: Maybe.withDefault Reader u.role })", `"Admin", role: Admin }`, `"Admin", role: Just Admin }`)
 	edit("app/Home.alder", `name: Text.NonEmpty "Me", role: Admin }`, `name: Text.NonEmpty "Me", role: Just Admin }`)
 	var out, errb bytes.Buffer

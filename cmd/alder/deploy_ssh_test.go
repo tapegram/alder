@@ -353,7 +353,7 @@ func sshScaffold(t *testing.T, box *sshBox) (string, *deployCmds) {
 // writes its migration.
 func migrateDemo(t *testing.T, dir, old, new, name string) {
 	t.Helper()
-	entry := filepath.Join(dir, "app", "Entry.alder")
+	entry := filepath.Join(dir, "app", "Table", "Entry.alder")
 	b, err := os.ReadFile(entry)
 	if err != nil {
 		t.Fatal(err)
@@ -477,7 +477,7 @@ func TestDeploySsh_Lifecycle(t *testing.T) {
 	// RF3: rolling back to id1 (no mood) under the live schema (mood) is refused
 	so.Reset()
 	se.Reset()
-	if code := c.rollback([]string{"production", "--dir", dir}, &so, &se); code != 1 || !strings.Contains(se.String(), "(changed tables: Entry.Entry): that build would refuse to start on it") {
+	if code := c.rollback([]string{"production", "--dir", dir}, &so, &se); code != 1 || !strings.Contains(se.String(), "(changed tables: Table.Entry.Entry): that build would refuse to start on it") {
 		t.Errorf("RF3: exit %d\n%s\n%s", code, so.String(), se.String())
 	}
 	if got := box.serving(t); got != id2 {
@@ -676,7 +676,7 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	var n int
-	if err := conn.QueryRow(`SELECT count(*) FROM "Entry__Entry"`).Scan(&n); err != nil || n != 3 {
+	if err := conn.QueryRow(`SELECT count(*) FROM "Table__Entry__Entry"`).Scan(&n); err != nil || n != 3 {
 		t.Errorf("the restored file has %d entries (%v)", n, err)
 	}
 	conn.Close()
