@@ -2,11 +2,14 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"alder/internal/scratch"
 )
@@ -67,11 +70,6 @@ func TestScratch(t *testing.T) {
 		code, stdout, stderr := runScratch(t)
 		if code != 0 || !strings.Contains(stdout, "scratch.alder:2: 1 + 1\n  ⇒ 2 : Int\n") {
 			t.Errorf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
-		}
-	})
-	t.Run("WatchFlagIsAccepted", func(t *testing.T) {
-		if code, _, stderr := runScratch(t, "--watch"); code != 0 {
-			t.Errorf("exit %d\nstderr: %s", code, stderr)
 		}
 	})
 	t.Run("ErrorsExit1", func(t *testing.T) {
@@ -200,4 +198,107 @@ func TestHelpJSON_Scratch(t *testing.T) {
 		return
 	}
 	t.Error("scratch is not in commandTree")
+}
+
+// syncBuf is a bytes.Buffer safe for a watch run's writes and the test's reads.
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuf) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+// scratchWatcher runs `alder scratch --watch` on a scratch file in a copy of examples/todos,
+// polling every 20 ms, until stop is called (which returns the exit code).
+type scratchWatcher struct {
+	t         *testing.T
+	file      string
+	out, errb *syncBuf
+	cancel    func()
+	done      chan int
+	once      sync.Once
+	code      int
+	stamp     time.Time
+}
+
+func startScratchWatch(t *testing.T, text string, extra ...string) *scratchWatcher {
+	t.Helper()
+	needGoTool(t)
+	app := filepath.Join(t.TempDir(), "todos")
+	copyDir(t, todosDir(t), app)
+	os.RemoveAll(filepath.Join(app, "build"))
+	w := &scratchWatcher{t: t, file: filepath.Join(app, "scratch.alder"), out: &syncBuf{}, errb: &syncBuf{}, done: make(chan int, 1), stamp: time.Now()}
+	writeScratch(t, w.file, text)
+	ctx, cancel := context.WithCancel(context.Background())
+	w.cancel = cancel
+	args := withBuildDir(t, append([]string{"--watch", w.file}, extra...))
+	go func() { w.done <- runScratchCtx(ctx, 20*time.Millisecond, args, w.out, w.errb) }()
+	t.Cleanup(func() { w.stop() })
+	return w
+}
+
+// edit rewrites the file with a modification time later than every earlier write.
+func (w *scratchWatcher) edit(text string) {
+	w.t.Helper()
+	writeScratch(w.t, w.file, text)
+	w.stamp = w.stamp.Add(2 * time.Second)
+	os.Chtimes(w.file, w.stamp, w.stamp)
+}
+
+// waitFor waits until the stream holds want.
+func (w *scratchWatcher) waitFor(b *syncBuf, want string) {
+	w.t.Helper()
+	deadline := time.Now().Add(90 * time.Second)
+	for !strings.Contains(b.String(), want) {
+		if time.Now().After(deadline) {
+			w.t.Fatalf("no %q\nstdout: %s\nstderr: %s", want, w.out.String(), w.errb.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// stop cancels the run (Ctrl-C) and returns the exit code; it may be called again.
+func (w *scratchWatcher) stop() int {
+	w.once.Do(func() {
+		w.cancel()
+		w.code = <-w.done
+	})
+	return w.code
+}
+
+func TestScratchWatchReruns(t *testing.T) {
+	w := startScratchWatch(t, "> 1\n")
+	w.waitFor(w.out, "⇒ 1 : Int")
+	w.edit("> 2\n")
+	w.waitFor(w.out, "⇒ 2 : Int")
+	if !strings.Contains(w.out.String(), "── ") {
+		t.Errorf("no run header: %q", w.out.String())
+	}
+	if code := w.stop(); code != 0 {
+		t.Errorf("exit %d after Ctrl-C, stderr: %s", code, w.errb.String())
+	}
+}
+
+func TestScratchWatchSurvivesBadSave(t *testing.T) {
+	w := startScratchWatch(t, "> 1\n")
+	w.waitFor(w.out, "⇒ 1 : Int")
+	w.edit("> 1 +\n")
+	w.waitFor(w.errb, "scratch.alder:2:1: error")
+	w.edit("> 3\n")
+	w.waitFor(w.out, "⇒ 3 : Int")
+	os.Remove(w.file)
+	w.waitFor(w.errb, "is gone; waiting for it")
+	if code := w.stop(); code != 0 {
+		t.Errorf("exit %d, stderr: %s", code, w.errb.String())
+	}
 }

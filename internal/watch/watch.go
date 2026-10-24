@@ -28,7 +28,22 @@ type Stamp struct {
 // sent on changed once a poll finds nothing new after a poll that did, so a burst of saves is
 // one change.
 func Watch(dir string, interval time.Duration, stop <-chan struct{}, changed chan<- Change) {
-	prev := Snapshot(dir)
+	WatchWith(dir, nil, interval, stop, changed)
+}
+
+// WatchWith is Watch that also compares the stamps of the files in extra (absolute paths, such as
+// a scratch file outside app/). A change to one, or its appearing or vanishing, is a SourceChange.
+func WatchWith(dir string, extra []string, interval time.Duration, stop <-chan struct{}, changed chan<- Change) {
+	snap := func() map[string]Stamp {
+		m := Snapshot(dir)
+		for _, f := range extra {
+			if info, err := os.Stat(f); err == nil {
+				m[f] = Stamp{info.ModTime(), info.Size()}
+			}
+		}
+		return m
+	}
+	prev := snap()
 	var pending Change
 	t := time.NewTicker(interval)
 	defer t.Stop()
@@ -38,7 +53,7 @@ func Watch(dir string, interval time.Duration, stop <-chan struct{}, changed cha
 			return
 		case <-t.C:
 		}
-		cur := Snapshot(dir)
+		cur := snap()
 		if k := Diff(prev, cur); k != 0 {
 			pending |= k
 			prev = cur
