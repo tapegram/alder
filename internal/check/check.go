@@ -19,7 +19,10 @@ type Checker struct {
 	values map[string]types.Type
 	ctors  map[string]*ctorInfo
 	tables map[string]*types.TableInfo
-	forms  map[string]*types.Record
+	// tableKeys maps each app table's name to its key (indexTables, after pass 2): table names
+	// are app-wide
+	tableKeys map[string]string
+	forms     map[string]*types.Record
 	// paramRecs are the records of page and message parameters (by key): their defaults apply
 	// to a literal too, since a parameter left out of a link is the URL left without it.
 	paramRecs map[string]bool
@@ -191,6 +194,7 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 		c.ctx(m).defineTypes()
 	}
 	c.typesDefined = true
+	c.indexTables()
 	for _, r := range c.early {
 		r.Refresh()
 	}

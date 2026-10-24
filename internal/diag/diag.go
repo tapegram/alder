@@ -124,6 +124,7 @@ const (
 	FilePageMsg    = "E0034" // a `msg`, `form` or `update` in a file page (view returns File)
 	FileHeader     = "E0035" // File.withHeader with a literal name outside the allow-list
 	ScratchInApp   = "E0036" // a *scratch.alder file under app/
+	DuplicateTable = "E0037" // a table name declared by two app modules: table names are app-wide
 	ImportAlias    = "E0204" // an import's `as` is missing, redundant or not its canonical qualifier
 	FullPath       = "E0205" // a name written with an imported module's full path instead of its qualifier
 	NoQualifier    = "E0206" // an import with no usable qualifier: every candidate is taken or shared

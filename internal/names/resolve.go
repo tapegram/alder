@@ -178,7 +178,7 @@ func (p *Program) Resolve(bag *diag.Bag) {
 			p.ctorIndex[b] = append(p.ctorIndex[b], ctorOwner{Module: name, Type: b})
 		}
 		for t := range s.tables {
-			if _, fake := s.fakeTables[t]; t != name && !fake {
+			if _, fake := s.fakeTables[t]; t != lastSegment(name) && !fake {
 				p.tableIndex[t] = append(p.tableIndex[t], name)
 			}
 		}
@@ -882,7 +882,7 @@ func (r *resolver) tableInOtherModule(x string) (owner, table string, ok bool) {
 	}
 	if i := strings.LastIndex(x, "."); i > 0 {
 		owner, table = x[:i], x[i+1:]
-		if s, isApp := r.p.Modules[owner]; isApp && s != nil && r.p.scopes[owner].tables[table] && owner != table {
+		if s, isApp := r.p.Modules[owner]; isApp && s != nil && r.p.scopes[owner].tables[table] && lastSegment(owner) != table {
 			return owner, table, true
 		}
 		return "", "", false
@@ -1008,8 +1008,8 @@ func (r *resolver) typ(t syntax.Type) {
 			for _, x := range r.importNames() {
 				if r.p.scopes[x] != nil && r.p.scopes[x].types[t.Name] {
 					r.ms.used[x] = true
-					if _, fake := r.p.scopes[x].fakeTables[t.Name]; r.p.scopes[x].tables[t.Name] && x != t.Name && r.p.Modules[x] != nil && !fake {
-						r.bag.Error("E0202", t.Span, "type `%s` belongs to module `%s`, but `%s` is a table, and a table is declared in its own module named after it: move it to `%s.alder`%s", t.Name, x, t.Name, modulePath(t.Name), r.p.tableDeclSee(x, t.Name))
+					if _, fake := r.p.scopes[x].fakeTables[t.Name]; r.p.scopes[x].tables[t.Name] && lastSegment(x) != t.Name && r.p.Modules[x] != nil && !fake {
+						r.bag.Error("E0202", t.Span, "type `%s` belongs to module `%s`, but `%s` is a table, and a table is declared in a module named after it: move it to `app/Table/%s.alder`%s", t.Name, x, t.Name, t.Name, r.p.tableDeclSee(x, t.Name))
 						return
 					}
 					q := r.qualFor(x)

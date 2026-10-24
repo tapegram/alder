@@ -39,17 +39,45 @@ func (c *Checker) sessionVia(k string) string {
 	return ""
 }
 
-// appTable is the key ("Org.Org") of the app (not fake) table called name: a table lives in the
-// module named after it (E0018). "" when there is none.
+// appTable is the key ("Table.Org.Org", or "Org.Org" at the root) of the app (not fake) table
+// called name, declared in a module ending in its name (E0018); table names are app-wide (E0037).
+// "" when there is none.
 func (c *Checker) appTable(name string) string {
-	k := c.key(name, name)
-	if c.tables[k] == nil {
-		return ""
+	return c.tableKeys[name]
+}
+
+// indexTables fills tableKeys once every table is defined, and reports a table name declared by
+// two app modules (E0037) at each later module, in sorted module order. A misplaced table (E0018)
+// or a fake's is not an app table.
+func (c *Checker) indexTables() {
+	c.tableKeys = map[string]string{}
+	mods := slices.Sorted(maps.Keys(c.prog.Modules))
+	for _, name := range mods {
+		m := c.prog.Modules[name]
+		if m == nil {
+			continue
+		}
+		for _, d := range c.live(m) {
+			td, ok := d.(*syntax.TableDecl)
+			if !ok || td.Name != lastSegment(name) {
+				continue
+			}
+			k := c.key(name, td.Name)
+			if _, fake := c.fakeTables[k]; fake || c.tables[k] == nil {
+				continue
+			}
+			if first, dup := c.tableKeys[td.Name]; dup {
+				c.errorf(diag.DuplicateTable, td.Span, "two tables named %s: `%s` and `%s`; table names are app-wide", td.Name, name, c.tables[first].Module)
+				continue
+			}
+			c.tableKeys[td.Name] = k
+		}
 	}
-	if _, fake := c.fakeTables[k]; fake {
-		return ""
-	}
-	return k
+}
+
+// lastSegment is the last dot-separated segment of a module path ("Todo" for "Table.Todo").
+func lastSegment(path string) string {
+	return path[strings.LastIndex(path, ".")+1:]
 }
 
 // tableRef is one `@ref` of an app table: the field, its attribute, and the referenced table's

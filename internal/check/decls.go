@@ -395,8 +395,8 @@ func (mc *modCtx) checkAlias(d *syntax.TypeDecl, params map[string]bool) types.T
 func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 	c := mc.c
 	_, fake := c.fakeTables[c.key(mc.m.Name, d.Name)]
-	if d.Name != mc.m.Name && !fake { // reported once here; uses elsewhere point back at it (names); a fake's tables belong to the fake
-		c.errorf(diag.TablePlacement, d.Span, "a table is declared in its own module named after it: `table %s` belongs in `app/%s.alder`", d.Name, d.Name)
+	if d.Name != lastSegment(mc.m.Name) && !fake { // reported once here; uses elsewhere point back at it (names); a fake's tables belong to the fake
+		c.errorf(diag.TablePlacement, d.Span, "a table is declared in a module named after it: `table %s` belongs in `app/Table/%s.alder`", d.Name, d.Name)
 	}
 	rec := c.types[c.key(mc.m.Name, d.Name)].(*types.Record)
 	info := &types.TableInfo{Module: mc.m.Name, Name: d.Name, Record: rec, Columns: map[string]types.Type{}, Insert: &types.Record{Module: mc.m.Name, Name: "Insert " + d.Name}}

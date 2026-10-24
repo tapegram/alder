@@ -146,3 +146,55 @@ func TestLayout_SiloOverSeveralLines(t *testing.T) {
 		t.Fatalf("Activity not in the silo:\n%s", s)
 	}
 }
+
+// A table in `app/Table/Todo.alder` (module `Table.Todo`, #20) checks and builds: a page imports
+// it, inserts into it and lists it.
+func TestBuildTableFolder(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"app/App.alder": "module App\n\nsession { n: Int = 0 }\n\nerror : Error -> Html Never\nerror err = <p>Error</p>\n\nnotFound : Html Never\nnotFound = <p>Not found</p>\n",
+		"app/Table/Todo.alder": `module Table.Todo
+
+type TodoId = brand Text
+
+table Todo {
+  id: TodoId @id,
+  title: Text,
+}
+`,
+		"app/Home.alder": `module Home
+
+import Table.Todo
+
+page "/" { }
+
+type Model = { todos: List Todo }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let todos <- Db.from Todo |> Db.orderBy Todo.title.asc |> Db.all
+  Query.succeed { todos: todos }
+}
+
+msg Add
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Todo { title: "Milk" }
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <ul>{List.map (\t -> <li>{t.title}</li>) model.todos}</ul>
+`,
+	})
+	if code, out, errs := alderIn(t, dir, "", "check"); code != 0 || strings.Contains(out, "error[") {
+		t.Fatalf("alder check: exit %d\n%s%s", code, out, errs)
+	}
+	if code, out, errs := runBuild(t, dir); code != 0 || !strings.HasPrefix(out, "wrote ") {
+		t.Fatalf("alder build: exit %d\nstdout: %s\nstderr: %s", code, out, errs)
+	}
+}
