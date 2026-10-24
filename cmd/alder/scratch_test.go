@@ -52,9 +52,10 @@ func TestScratch(t *testing.T) {
 		code, stdout, stderr := runScratch(t, "scratch.alder", "--json")
 		var got struct {
 			Watches []struct {
-				Line  int
-				Value string
-				Type  string
+				Line, End int
+				Value     string
+				Type      string
+				Kind      string
 			}
 			Diagnostics []json.RawMessage
 			Ran         bool
@@ -62,7 +63,7 @@ func TestScratch(t *testing.T) {
 		if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 			t.Fatalf("%v\nstdout: %s", err, stdout)
 		}
-		if code != 0 || !got.Ran || len(got.Watches) != 2 || got.Watches[0].Value != "2" || got.Watches[0].Type != "Int" || got.Watches[0].Line != 2 {
+		if code != 0 || !got.Ran || len(got.Watches) != 2 || got.Watches[0].Value != "2" || got.Watches[0].Type != "Int" || got.Watches[0].Line != 2 || got.Watches[0].End != 2 || got.Watches[0].Kind != "pure" {
 			t.Errorf("exit %d, got %+v\nstderr: %s", code, got, stderr)
 		}
 	})
@@ -120,14 +121,49 @@ func TestScratch(t *testing.T) {
 			t.Errorf("no build under %s/todos/scratch/file-*: %v", bd, m)
 		}
 	})
-	t.Run("AppDiagnosticKeepsItsFile", func(t *testing.T) {
-		orig, err := os.ReadFile("app/Todo.alder")
+	t.Run("Truncates", func(t *testing.T) {
+		writeScratch(t, "big.scratch.alder", "> List.range 1 20000\n")
+		code, stdout, stderr := runScratch(t, "big.scratch.alder")
+		if code != 0 || !strings.HasSuffix(stdout, "\n"+scratchTruncatedLine+"\n") || len(stdout) < scratch.MaxValue {
+			t.Errorf("exit %d, %d bytes of stdout, tail %q\nstderr: %s", code, len(stdout), stdout[max(0, len(stdout)-80):], stderr)
+		}
+		code, stdout, _ = runScratch(t, "big.scratch.alder", "--json")
+		if code != 0 || !strings.Contains(stdout, `"truncated":true`) {
+			t.Errorf("json: exit %d, truncated missing in %d bytes", code, len(stdout))
+		}
+	})
+	t.Run("UsageErrorIsJSONWithJSONAnywhere", func(t *testing.T) {
+		for _, args := range [][]string{{"--json", "--bogus"}, {"--bogus", "--json"}, {"a", "b", "--json"}} {
+			code, stdout, stderr := runScratch(t, args...)
+			var v scratchResult
+			if code != 2 || stderr != "" || json.Unmarshal([]byte(stdout), &v) != nil || v.Error != scratchUsage {
+				t.Errorf("%v: exit %d\nstdout: %s\nstderr: %s", args, code, stdout, stderr)
+			}
+		}
+		if code, stdout, stderr := runScratch(t, "--bogus"); code != 2 || stdout != "" || stderr != scratchUsage+"\n" {
+			t.Errorf("text: exit %d, stdout %q, stderr %q", code, stdout, stderr)
+		}
+	})
+	t.Run("Interrupted", func(t *testing.T) { // Ctrl-C before the run finishes: exit 1, no results
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		var out, errb bytes.Buffer
+		code := runScratchCtx(ctx, time.Second, withBuildDir(t, []string{"scratch.alder"}), &out, &errb)
+		if code != 1 || out.String() != "" || !strings.Contains(errb.String(), "alder scratch: interrupted") {
+			t.Errorf("exit %d\nstdout: %s\nstderr: %s", code, out.String(), errb.String())
+		}
+	})
+	t.Run("AppDiagnosticKeepsItsFile", func(t *testing.T) { // on a private copy of the app
+		priv := filepath.Join(t.TempDir(), "todos")
+		copyDir(t, todosDir(t), priv)
+		os.RemoveAll(filepath.Join(priv, "build"))
+		orig, err := os.ReadFile(filepath.Join(priv, "app", "Todo.alder"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer os.WriteFile("app/Todo.alder", orig, 0o644)
-		os.WriteFile("app/Todo.alder", append(orig, []byte("\nbroken : Int\nbroken = \"x\"\n")...), 0o644)
-		code, _, stderr := runScratch(t, "scratch.alder")
+		writeScratch(t, filepath.Join(priv, "app", "Todo.alder"), string(orig)+"\nbroken : Int\nbroken = \"x\"\n")
+		writeScratch(t, filepath.Join(priv, "scratch.alder"), "> 1\n")
+		code, _, stderr := runScratch(t, filepath.Join(priv, "scratch.alder"))
 		if code != 1 || !strings.Contains(stderr, "app/Todo.alder:") || !strings.Contains(stderr, "broken = \"x\"") {
 			t.Errorf("exit %d\nstderr: %s", code, stderr)
 		}
@@ -173,7 +209,8 @@ func TestScratchPrintsWatches(t *testing.T) {
 		{"truncated", scratch.WatchResult{Line: 1, Expr: "x", Type: "Text", Value: "a", Truncated: true}, "s:1: x\n  ⇒ a : Text\n  … (truncated at 64 KB)\n"},
 		{"error", scratch.WatchResult{Line: 1, Expr: "x", Type: "Int", Error: "boom\nmore"}, "s:1: x\n  ✗ boom\n    more\n"},
 		{"effect", scratch.WatchResult{Line: 1, Expr: "x", Type: "Query Int", Value: "<Query>", Note: "not run: scratch evaluates pure values only"}, "s:1: x\n  <Query> : Query Int   (not run: scratch evaluates pure values only)\n"},
-		{"not run", scratch.WatchResult{Line: 1, Expr: "x", Type: "Int"}, "s:1: x\n  : Int\n"},
+		{"typed, not run", scratch.WatchResult{Line: 1, Expr: "x", Type: "Int"}, "s:1: x\n  : Int\n"},
+		{"untyped, not run", scratch.WatchResult{Line: 1, Expr: "x"}, "s:1: x\n  (not run)\n"},
 	}
 	for _, c := range cases {
 		var b bytes.Buffer
@@ -181,6 +218,22 @@ func TestScratchPrintsWatches(t *testing.T) {
 		if b.String() != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, b.String(), c.want)
 		}
+	}
+}
+
+// An app with a capability that has no adapter runs unwired: the warning goes to stderr, not stdout.
+func TestScratchUnwiredWarning(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := tempTodos(t, "App.alder", "")
+	if err := os.WriteFile(filepath.Join(dir, "app", "Mail.alder"), []byte(mailAlder), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := filepath.Join(dir, "scratch.alder")
+	writeScratch(t, f, "> 1 + 1\n")
+	code, stdout, stderr := runScratch(t, f)
+	if code != 0 || !strings.HasSuffix(stdout, "  ⇒ 2 : Int\n") || stderr != unwiredWarning {
+		t.Errorf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 }
 
@@ -296,6 +349,21 @@ func TestScratchWatchReruns(t *testing.T) {
 	}
 }
 
+// A change during a run cancels it: its header stays, marked superseded, and the next run follows.
+func TestScratchWatchMarksSupersededRun(t *testing.T) {
+	w := startScratchWatch(t, "> 1\n")
+	w.waitFor(w.out, "── ") // the first run, building from scratch, has started
+	w.edit("> 2\n")
+	w.waitFor(w.out, "  (superseded)\n")
+	w.waitFor(w.out, "⇒ 2 : Int")
+	if strings.Contains(w.out.String(), "⇒ 1 : Int") {
+		t.Errorf("the superseded run's value was printed: %q", w.out.String())
+	}
+	if code := w.stop(); code != 0 {
+		t.Errorf("exit %d, stderr: %s", code, w.errb.String())
+	}
+}
+
 func TestScratchWatchSurvivesBadSave(t *testing.T) {
 	w := startScratchWatch(t, "> 1\n")
 	w.waitFor(w.out, "⇒ 1 : Int")
@@ -305,6 +373,9 @@ func TestScratchWatchSurvivesBadSave(t *testing.T) {
 	w.waitFor(w.out, "⇒ 3 : Int")
 	os.Remove(w.file)
 	w.waitFor(w.errb, "is gone; waiting for it")
+	if n := strings.Count(w.out.String(), "── "); n != 4 { // first run, bad save, good save, gone
+		t.Errorf("%d run headers, want 4: %q", n, w.out.String())
+	}
 	if code := w.stop(); code != 0 {
 		t.Errorf("exit %d, stderr: %s", code, w.errb.String())
 	}
@@ -326,7 +397,9 @@ func TestScratchWatchJSONStreams(t *testing.T) {
 	w.waitFor(w.out, `"value":"1"`)
 	w.edit("> 2\n")
 	w.waitFor(w.out, `"value":"2"`)
-	w.stop()
+	if code := w.stop(); code != 0 {
+		t.Errorf("exit %d after Ctrl-C, stderr: %s", code, w.errb.String())
+	}
 	out := w.out.String()
 	if strings.Contains(out, "──") {
 		t.Errorf("header in JSON stream: %q", out)

@@ -228,3 +228,29 @@ func TestFmtWalkBelowAppKeepsScratchNamedModules(t *testing.T) {
 		t.Fatalf("not formatted: %q", got)
 	}
 }
+
+// A directory argument is judged against its own app root: the directory itself when it holds
+// app/*.alder, and a scratch file there is skipped even with the cwd elsewhere.
+func TestFmtAppRootStartsAtTheDirectory(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	fmtWrite(t, dir, "app/Main.alder", fmtClean)
+	fmtWrite(t, dir, "sub/app/Main.alder", fmtClean) // a nested app
+	fmtWrite(t, dir, "sub/x.scratch.alder", "> 1\n")
+	sub := filepath.Join(dir, "sub")
+	if got := fmtAppRoot(sub); got != sub {
+		t.Errorf("fmtAppRoot(dir) = %q, want %q", got, sub)
+	}
+	if got := fmtAppRoot(filepath.Join(sub, "x.scratch.alder")); got != sub {
+		t.Errorf("fmtAppRoot(file) = %q, want %q", got, sub)
+	}
+	if got := fmtAppRoot(filepath.Join(dir, "app")); got != dir {
+		t.Errorf("fmtAppRoot(app) = %q, want %q", got, dir)
+	}
+	// an empty app/ directory is not an app, as for `alder scratch`
+	empty := t.TempDir()
+	os.MkdirAll(filepath.Join(empty, "app"), 0o755)
+	if got := fmtAppRoot(empty); got == empty {
+		t.Errorf("an app/ with no .alder file is taken as the root")
+	}
+}

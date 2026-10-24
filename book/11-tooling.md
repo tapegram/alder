@@ -865,8 +865,9 @@ exit 0.
 
 `--json` prints one object instead of the text: `{"watches": […],
 "diagnostics": […], "ran": bool}`, with `"note"` and `"error"` when
-there is something to say. A watch is `{"line", "expr", "type", "value"}`
-plus `"note"`, `"truncated"` or `"error"` when they apply; diagnostics
+there is something to say. A watch is `{"line", "end", "expr", "type", "kind",
+"value"}` (`"kind"` is `pure`, `query`, `task` or `select`, absent when the
+type is unknown) plus `"note"`, `"truncated"` or `"error"` when they apply; diagnostics
 have the shape of `alder check --json`. With `--watch` each run is one
 such object on its own line.
 

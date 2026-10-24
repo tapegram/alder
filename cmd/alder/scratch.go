@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -63,7 +64,7 @@ func newScratchResult() *scratchResult {
 
 // runScratchCtx is runScratchTo with the interrupt context and the watch poll interval given.
 func runScratchCtx(sigCtx context.Context, interval time.Duration, args []string, stdout, stderr io.Writer) (code int) {
-	jsonOut, watching, inLoop := false, false, false
+	jsonOut, watching, inLoop := slices.Contains(args, "--json"), false, false // a usage error is JSON too when --json is anywhere
 	res := newScratchResult()
 	failf := func(c int, format string, a ...any) int {
 		msg := fmt.Sprintf(format, a...)
@@ -123,16 +124,7 @@ func runScratchCtx(sigCtx context.Context, interval time.Duration, args []string
 	if err != nil {
 		return failf(2, "alder scratch: %v", err)
 	}
-	appDir := ""
-	for d := filepath.Dir(abs); ; d = filepath.Dir(d) {
-		if dirHasApp(d) {
-			appDir = d
-			break
-		}
-		if filepath.Dir(d) == d {
-			break
-		}
-	}
+	appDir := findAppRoot(filepath.Dir(abs))
 	if appDir == "" {
 		return failf(2, "alder scratch: no app found above %s", file)
 	}
@@ -165,7 +157,8 @@ func writeScratchJSON(w io.Writer, res *scratchResult) {
 }
 
 // scratchWatch runs the file, then again after each coalesced change to the app's watched files or
-// the file, until ctx ends (exit 0). A change cancels the run in progress, whose output is dropped.
+// the file, until ctx ends (exit 0). A change cancels the run in progress, whose output is dropped
+// (a run that had finished by then is still reported, and text output is marked `(superseded)`).
 // Every run's failure is reported and the loop goes on. fresh starts a new result for a run.
 func scratchWatch(ctx context.Context, interval time.Duration, a scratchRunArgs, fresh func() *scratchResult, failf func(int, string, ...any) int) int {
 	stopWatch := make(chan struct{})
@@ -187,15 +180,22 @@ func scratchWatch(ctx context.Context, interval time.Duration, a scratchRunArgs,
 		runCtx, cancel := context.WithCancel(ctx)
 		done := make(chan struct{})
 		superseded := false
+		headed := false   // the run's header went out
+		finished := false // the run ran to its end (reported or failed), uncancelled
 		reread := !first
 		first = false
 		go func() {
 			defer close(done)
+			defer func() { finished = runCtx.Err() == nil }()
 			defer func() {
 				if r := recover(); r != nil {
 					failf(2, "alder scratch: internal error: %v", r)
 				}
 			}()
+			if !a.jsonOut {
+				fmt.Fprintf(a.stdout, "── %s ──\n", time.Now().Format("15:04:05"))
+				headed = true
+			}
 			text := a.text
 			if reread {
 				b, err := os.ReadFile(a.abs)
@@ -208,9 +208,6 @@ func scratchWatch(ctx context.Context, interval time.Duration, a scratchRunArgs,
 					return
 				}
 				text = string(b)
-			}
-			if !a.jsonOut {
-				fmt.Fprintf(a.stdout, "── %s ──\n", time.Now().Format("15:04:05"))
 			}
 			ra := a
 			ra.text = text
@@ -228,10 +225,13 @@ func scratchWatch(ctx context.Context, interval time.Duration, a scratchRunArgs,
 			return 0
 		}
 		cancel()
+		if superseded && headed {
+			fmt.Fprintln(a.stdout, "  (superseded)")
+		}
+		if (!superseded || finished) && ctx.Err() == nil && a.jsonOut {
+			writeScratchJSON(a.stdout, res) // a run that finished as a change arrived is still reported
+		}
 		if !superseded {
-			if ctx.Err() == nil && a.jsonOut {
-				writeScratchJSON(a.stdout, res)
-			}
 			select {
 			case <-changed:
 			case <-ctx.Done():
@@ -342,5 +342,7 @@ func printScratchWatch(w io.Writer, file string, r scratch.WatchResult) {
 		}
 	case r.Type != "":
 		fmt.Fprintf(w, "  : %s\n", r.Type)
+	default: // nothing ran and the file did not check far enough to type it
+		fmt.Fprintln(w, "  (not run)")
 	}
 }

@@ -355,6 +355,19 @@ func dirHasApp(dir string) bool {
 	return found
 }
 
+// findAppRoot is the nearest directory at or above start that holds an app (dirHasApp), "" when
+// there is none.
+func findAppRoot(start string) string {
+	for d := start; ; d = filepath.Dir(d) {
+		if dirHasApp(d) {
+			return d
+		}
+		if filepath.Dir(d) == d {
+			return ""
+		}
+	}
+}
+
 // buildErrCode is the exit code of a failed build or run: 1 for the user's adapters
 // (scratch.AdapterError) and the machine's network (buildkit.DownloadError), as alder build says
 // them, else 2 (internal).

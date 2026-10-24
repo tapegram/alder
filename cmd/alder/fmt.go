@@ -154,20 +154,20 @@ func fmtRel(root, p string) string {
 	return filepath.ToSlash(p)
 }
 
-// fmtAppRoot is the root an explicitly named file is judged against: the nearest directory above
-// it holding an app/ directory, else the current directory.
-func fmtAppRoot(file string) string {
-	abs, err := filepath.Abs(file)
+// fmtAppRoot is the root an explicitly named file or directory is judged against: the nearest
+// directory at or above it (itself, for a directory) holding an app (app/*.alder, as `alder
+// scratch` finds it), else the current directory.
+func fmtAppRoot(path string) string {
+	abs, err := filepath.Abs(path)
 	if err != nil {
 		return "."
 	}
-	for d := filepath.Dir(abs); ; d = filepath.Dir(d) {
-		if fi, err := os.Stat(filepath.Join(d, "app")); err == nil && fi.IsDir() {
-			return d
-		}
-		if filepath.Dir(d) == d {
-			break
-		}
+	start := filepath.Dir(abs)
+	if fi, err := os.Stat(abs); err == nil && fi.IsDir() {
+		start = abs
+	}
+	if root := findAppRoot(start); root != "" {
+		return root
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
