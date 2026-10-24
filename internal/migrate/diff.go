@@ -105,7 +105,7 @@ type pairing struct {
 	renamed map[string]string // old table name → new, for the renamed ones
 }
 
-// pairTables matches new's tables to old's: by name, else by RenamedFrom. A RenamedFrom naming
+// pairTables matches new's tables to old's: by name, else by RenamedFrom, else by bare name (a table moved to another module). A RenamedFrom naming
 // no table of old (when new's own name is not in old either) is an error.
 func pairTables(old, new Schema) (pairing, error) {
 	p := pairing{from: map[string]string{}, claimed: map[string]bool{}, renamed: map[string]string{}}
@@ -127,6 +127,24 @@ func pairTables(old, new Schema) (pairing, error) {
 		default:
 			p.from[t.Name], p.claimed[t.RenamedFrom] = t.RenamedFrom, true
 			p.renamed[t.RenamedFrom] = t.Name
+		}
+	}
+	// a new table still unpaired whose bare name is that of exactly one unclaimed old table is
+	// that table moved to another module (`Todo.Todo` → `Table.Todo.Todo`): table names are
+	// unique app-wide, so the bare name identifies it. Two candidates: no pairing.
+	for _, t := range new.Tables {
+		if _, ok := p.from[t.Name]; ok {
+			continue
+		}
+		var cand []string
+		for _, o := range old.Tables {
+			if !p.claimed[o.Name] && short(o.Name) == short(t.Name) {
+				cand = append(cand, o.Name)
+			}
+		}
+		if len(cand) == 1 {
+			p.from[t.Name], p.claimed[cand[0]] = cand[0], true
+			p.renamed[cand[0]] = t.Name
 		}
 	}
 	// a table kept under its name whose @renamed names another table of the snapshot that
