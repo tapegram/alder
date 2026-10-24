@@ -386,6 +386,9 @@ func (r *resolver) isUnqual(x string) bool {
 	if r.unqual[x] {
 		return true
 	}
+	if r.p.Modules[x] != nil {
+		return false // a real module of that name is its own: it is simply not imported
+	}
 	for path := range r.unqual {
 		segs := strings.Split(path, ".")
 		for i := range segs {

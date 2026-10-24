@@ -421,3 +421,17 @@ func TestQual_NoQualifierMessages(t *testing.T) {
 		t.Errorf("whyAlias: %s", m)
 	}
 }
+
+// A real, unimported module `X` is still "not imported" when another import (A.X) has no
+// qualifier: the short-spelling leniency does not cover it.
+func TestQual_UnqualifiableDoesNotHideRealModule(t *testing.T) {
+	_, bag, _ := resolveMods(t, std(t), "module A.X\n\nv : Int\nv = 1\n", "module B.X\n\nv : Int\nv = 1\n", "module AX\n\nv : Int\nv = 1\n", "module X\n\nfoo : Int\nfoo = 1\n",
+		"module Use\n\nimport A.X\nimport B.X as BX\nimport AX\n\ny : Int\ny = X.foo\n\nw : Int\nw = BX.v\n")
+	found := false
+	for _, d := range bag.Items {
+		found = found || d.Code == "E0201"
+	}
+	if !found {
+		t.Fatalf("no E0201: %s", codes(bag))
+	}
+}

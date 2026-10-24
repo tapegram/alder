@@ -100,3 +100,12 @@ func TestFill_ShortQualifier(t *testing.T) {
 		t.Fatalf("none: imports %v err %v", imports, err)
 	}
 }
+
+// A page is not a candidate for a short qualifier: `Show.x` is not an import of Teams.Show.
+func TestFill_ShortQualifierSkipsPages(t *testing.T) {
+	p := fillApp(t, map[string]string{"app/Teams/Show.alder": "module Teams.Show\n\npage \"/teams\" { }\n\ntype Model = { n: Int }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { n: 1 }\n\nview : Model -> Session -> Html Msg\nview model session = <p></p>\n\nhelper : Int\nhelper = 1\n"})
+	_, _, imports, err := Fill(p, "Home.update.Submit", "", "Task.succeed (if Show.helper == 1 then Rerender else Rerender)")
+	if err != nil || len(imports) != 0 {
+		t.Fatalf("imports %v err %v", imports, err)
+	}
+}

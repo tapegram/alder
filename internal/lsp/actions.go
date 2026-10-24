@@ -134,6 +134,9 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 func disjointFixes(fixes []codeAction) []codeAction {
 	edit := func(a codeAction) TextEdit { return a.Edit.DocumentChanges[0].Edits[0] }
 	before := func(a, b Position) bool { return a.Line < b.Line || a.Line == b.Line && a.Character < b.Character }
+	// Two zero-width insertions at one point count as overlapping (a == b): their order in the
+	// text would be the client's choice. Today only E0201's import insertions do this, and the
+	// resolver offers each module's once (importFix), so nothing is lost.
 	overlap := func(a, b Range) bool {
 		return before(a.Start, b.End) && before(b.Start, a.End) || a == b
 	}

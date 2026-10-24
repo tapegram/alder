@@ -272,7 +272,7 @@ func shortModules(p *Program, m *Module, expr string) ([]string, error) {
 	cands := map[string][]string{} // qualifier -> the not-yet-imported modules that would get it
 	var all []string
 	for x := range p.Modules {
-		if !have[x] && !p.Std[x] && x != "App" {
+		if !have[x] && !p.Std[x] && x != "App" && p.PageNamed(x) == nil { // a page is never named by a short qualifier for a member
 			all = append(all, x)
 		}
 	}

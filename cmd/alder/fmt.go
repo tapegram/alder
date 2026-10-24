@@ -154,6 +154,9 @@ func fmtFile(path string, checkOnly bool, cache *fmtCache, stdout, stderr io.Wri
 			return 2
 		}
 		delete(cache.progs, root) // the project on disk has changed
+		if tr := findAppRoot(filepath.Dir(target)); tr != root {
+			delete(cache.progs, tr) // a symbolic link written through into another project
+		}
 		fmt.Fprintln(stdout, path)
 		return 0
 	})
