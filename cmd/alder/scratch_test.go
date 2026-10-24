@@ -302,3 +302,36 @@ func TestScratchWatchSurvivesBadSave(t *testing.T) {
 		t.Errorf("exit %d, stderr: %s", code, w.errb.String())
 	}
 }
+
+func TestScratchWatchJSONFailsWithOneLine(t *testing.T) {
+	t.Parallel()
+	missing := filepath.Join(t.TempDir(), "nope.scratch.alder")
+	var out, errb bytes.Buffer
+	code := runScratchTo([]string{"--watch", "--json", missing}, &out, &errb)
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if code != 2 || len(lines) != 1 || !strings.Contains(lines[0], `"error"`) {
+		t.Errorf("exit %d, stdout %q", code, out.String())
+	}
+}
+
+func TestScratchWatchJSONStreams(t *testing.T) {
+	w := startScratchWatch(t, "> 1\n", "--json")
+	w.waitFor(w.out, `"value":"1"`)
+	w.edit("> 2\n")
+	w.waitFor(w.out, `"value":"2"`)
+	w.stop()
+	out := w.out.String()
+	if strings.Contains(out, "──") {
+		t.Errorf("header in JSON stream: %q", out)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("want a line per run, got %q", out)
+	}
+	for _, l := range lines {
+		var v scratchResult
+		if err := json.Unmarshal([]byte(l), &v); err != nil {
+			t.Errorf("line %q: %v", l, err)
+		}
+	}
+}

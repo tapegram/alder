@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"alder/internal/buildkit"
 	"alder/internal/diag"
@@ -177,7 +176,7 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 	stop := make(chan struct{})
 	defer close(stop)
 	changed := make(chan watch.Change)
-	go watch.Watch(dir, 300*time.Millisecond, stop, changed)
+	go watch.Watch(dir, watch.DefaultInterval, stop, changed)
 	lines := replLines(stdin, stop)
 
 	lineNo, at := 0, 0

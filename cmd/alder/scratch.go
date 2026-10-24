@@ -53,7 +53,7 @@ const scratchTruncatedLine = "  … (truncated at 64 KB)"
 func runScratchTo(args []string, stdout, stderr io.Writer) int {
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return runScratchCtx(sigCtx, 300*time.Millisecond, args, stdout, stderr)
+	return runScratchCtx(sigCtx, watch.DefaultInterval, args, stdout, stderr)
 }
 
 // newScratchResult is an empty --json result.
@@ -63,7 +63,7 @@ func newScratchResult() *scratchResult {
 
 // runScratchCtx is runScratchTo with the interrupt context and the watch poll interval given.
 func runScratchCtx(sigCtx context.Context, interval time.Duration, args []string, stdout, stderr io.Writer) (code int) {
-	jsonOut, watching := false, false
+	jsonOut, watching, inLoop := false, false, false
 	res := newScratchResult()
 	failf := func(c int, format string, a ...any) int {
 		msg := fmt.Sprintf(format, a...)
@@ -78,7 +78,7 @@ func runScratchCtx(sigCtx context.Context, interval time.Duration, args []string
 		if r := recover(); r != nil {
 			code = failf(2, "alder scratch: internal error: %v", r)
 		}
-		if jsonOut && !watching {
+		if jsonOut && !inLoop {
 			writeScratchJSON(stdout, res)
 		}
 	}()
@@ -153,6 +153,7 @@ func runScratchCtx(sigCtx context.Context, interval time.Duration, args []string
 		return scratchRun(sigCtx, base, res, failf)
 	}
 	base.watching = true
+	inLoop = true // the loop writes each run's JSON itself
 	return scratchWatch(sigCtx, interval, base, func() *scratchResult { res = newScratchResult(); return res }, failf)
 }
 

@@ -94,7 +94,7 @@ func runRunWith(args []string, stdout, stderr io.Writer, stop <-chan struct{}, o
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		watch.Watch(dir, 300*time.Millisecond, d.done, changed)
+		watch.Watch(dir, watch.DefaultInterval, d.done, changed)
 	}()
 	go func() {
 		defer wg.Done()

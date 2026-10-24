@@ -17,6 +17,9 @@ const (
 	StaticChange                    // static/**
 )
 
+// DefaultInterval is how often `alder run`, the REPL and `alder scratch --watch` poll.
+const DefaultInterval = 300 * time.Millisecond
+
 // Stamp is what the watcher compares of a file.
 type Stamp struct {
 	mod  time.Time
