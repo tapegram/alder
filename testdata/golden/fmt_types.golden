@@ -41,7 +41,7 @@ f : {
 f a b c d = Task.succeed Nothing
 
 g : Int -> Int
-g n = (n)
+g n = n
 
 h : a -> b -> c
 h x = h x
@@ -59,7 +59,7 @@ rLong : {
   replyTo: Maybe Text.Email,
   cc: List Text,
 } -> Task Unit
-rLong r = Task.succeed {}
+rLong r = Task.succeed { }
 
 fLong : Dict Text (List Int)
   -> (Int -> Int)

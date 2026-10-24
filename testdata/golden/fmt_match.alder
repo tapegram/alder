@@ -1,0 +1,33 @@
+module Match
+
+one : Int
+one = match x { _ -> 1 }
+
+long : Text
+long = match msg {
+  Inc -> "a fairly long piece of text that goes on " ++ describe model ++ " and then some more text",
+  Dec -> "short"
+}
+
+pats : Int
+pats = match v {
+  Just (Ok n) -> n,
+  Pair { left: (Just a), right: _ } -> a,
+  Many ([first, Nothing, ..rest]) -> first,
+  Num (-1) -> 0,
+  Wrapped ([]) -> 0,
+  "text" -> 1,
+  True -> 2
+}
+
+nested : Int
+nested = match a {
+  A -> match b {
+    B -> 1,
+  },
+}
+
+subject : Int
+subject = match f (g x) {
+  _ -> 0,
+}

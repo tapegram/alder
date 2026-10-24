@@ -132,3 +132,12 @@ func TestRender_TrimsTrailingSpacesBeforeNewline(t *testing.T) {
 	// bytes of a text with an embedded newline are verbatim, trailing blanks included
 	eq(t, Render(Concat(Text("s \n t \t"), HardLine, Text("u")), 100), "s \n t \t\nu")
 }
+
+func TestRender_FlatNeverBreaks(t *testing.T) {
+	eq(t, Render(Concat(Text("f "), Flat(braces())), 5), "f { a: 1 }")
+}
+
+func TestRender_FlatWithHardBreakPrintsAsUsual(t *testing.T) {
+	d := Flat(Group(Concat(Text("{"), Nest(Concat(HardLine, Text("a: 1"))), Line, Text("}"))))
+	eq(t, Render(d, 100), "{\n  a: 1\n}")
+}

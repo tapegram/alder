@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -48,12 +49,63 @@ func samePrograms(file string, m *syntax.Module, out []byte) bool {
 	return programDump(m) == programDump(m2) && slices.Equal(commentTexts(m), commentTexts(m2))
 }
 
-// programDump is the module's Dump with its imports sorted and de-duplicated: the formatter
-// sorts them, and their order and repetition mean nothing.
+// programDump is the module's Dump with its imports sorted and de-duplicated (the formatter
+// sorts them, and their order and repetition mean nothing) and every block that holds only a
+// result replaced by the result (the formatter prints `{ x }` as `x`), except a test's whole
+// body. It rewrites m's blocks in place.
 func programDump(m *syntax.Module) string {
+	unwrapResultBlocks(m)
 	c := *m
 	c.Imports = sortedImports(m.Imports)
 	return syntax.Dump(&c)
+}
+
+var exprType = reflect.TypeFor[syntax.Expr]()
+
+// unwrapResultBlocks replaces, in place, every expression that is a block holding only a result
+// by that result. A test's body is left a block: there a block makes the test an effect test.
+// The checker and the lowering treat such a block as its result everywhere else.
+func unwrapResultBlocks(m *syntax.Module) {
+	var visit func(v reflect.Value)
+	visit = func(v reflect.Value) {
+		switch v.Kind() {
+		case reflect.Pointer, reflect.Interface:
+			if !v.IsNil() {
+				visit(v.Elem())
+			}
+		case reflect.Slice:
+			for i := 0; i < v.Len(); i++ {
+				if v.Type().Elem() == exprType {
+					unwrapAt(v.Index(i))
+				}
+				visit(v.Index(i))
+			}
+		case reflect.Struct:
+			_, isTest := v.Interface().(syntax.TestDecl)
+			for i := 0; i < v.NumField(); i++ {
+				f, ft := v.Field(i), v.Type().Field(i)
+				if !ft.IsExported() {
+					continue
+				}
+				if ft.Type == exprType && !(isTest && ft.Name == "Body") {
+					unwrapAt(f)
+				}
+				visit(f)
+			}
+		}
+	}
+	visit(reflect.ValueOf(m))
+}
+
+// unwrapAt replaces the expression in v, while it is a block holding only a result, by the result.
+func unwrapAt(v reflect.Value) {
+	for {
+		b, ok := v.Interface().(*syntax.Block)
+		if !ok || b == nil || len(b.Stmts) > 0 || b.Result == nil {
+			return
+		}
+		v.Set(reflect.ValueOf(&b.Result).Elem())
+	}
 }
 
 func sortedImports(ims []*syntax.Import) []*syntax.Import {
@@ -70,8 +122,8 @@ func commentTexts(m *syntax.Module) []string {
 	return out
 }
 
-// printer turns a parsed module into a document. It reads literals and (until expressions are
-// printed) expression bodies back from the source through their spans.
+// printer turns a parsed module into a document. It reads literals, strings and (until markup is
+// printed) markup back from the source through their spans.
 type printer struct {
 	src    []byte   // the source as the lexer reads it: no BOM, LF line ends
 	lines  []string // src split into lines
@@ -82,6 +134,9 @@ type printer struct {
 	// inFun counts the function types being printed around the current type: a record type
 	// inside one is laid out by width alone.
 	inFun int
+	// noBrace is set while a match subject is printed: there an application argument cannot
+	// start with `{`.
+	noBrace bool
 }
 
 func newPrinter(src []byte) *printer {
@@ -121,29 +176,3 @@ func (p *printer) blankBetween(a, b int) bool {
 	}
 	return false
 }
-
-// expr prints an expression. For now it is the expression's source, verbatim, with any
-// parentheses around the whole of it (which its span leaves out): expressions are printed
-// only as whole declaration bodies and field defaults, where verbatim source re-parses to the
-// same thing.
-func (p *printer) expr(e syntax.Expr) Doc {
-	sp := e.GetSpan()
-	from, to := p.offset(sp.Start), p.offset(sp.End)
-	for {
-		i := from - 1
-		for i >= 0 && isBlank(p.src[i]) {
-			i--
-		}
-		j := to
-		for j < len(p.src) && isBlank(p.src[j]) {
-			j++
-		}
-		if i < 0 || j >= len(p.src) || p.src[i] != '(' || p.src[j] != ')' {
-			break
-		}
-		from, to = i, j+1
-	}
-	return Text(string(p.src[from:to]))
-}
-
-func isBlank(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }

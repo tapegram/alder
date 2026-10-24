@@ -73,7 +73,7 @@ func (p *printer) decl(d syntax.Decl) Doc {
 	case *syntax.ChooseDecl:
 		return Text("choose " + d.Key + " = " + d.Page)
 	case *syntax.TestDecl:
-		return Concat(Text("test \""+d.Name+"\" = "), p.expr(d.Body))
+		return Concat(Text("test \""+d.Name+"\" ="), p.testBody(d.Body))
 	}
 	panic("format: unknown declaration")
 }
@@ -97,7 +97,16 @@ func (p *printer) definition(d *syntax.ValueDecl) Doc {
 	for _, x := range d.Params {
 		head += " " + x.Name
 	}
-	return Concat(Text(head+" = "), p.expr(d.Body))
+	return Concat(Text(head+" ="), p.after(d.Body))
+}
+
+// testBody prints a test's body after its `=`. A block there makes the test an effect test, so
+// a block holding only a result stays a block.
+func (p *printer) testBody(e syntax.Expr) Doc {
+	if b, ok := e.(*syntax.Block); ok && len(b.Stmts) == 0 {
+		return Concat(Text(" {"), Nest(Concat(HardLine, p.expr(b.Result))), HardLine, Text("}"))
+	}
+	return p.after(e)
 }
 
 func (p *printer) typeDecl(d *syntax.TypeDecl) Doc {
@@ -111,7 +120,8 @@ func (p *printer) typeDecl(d *syntax.TypeDecl) Doc {
 	case d.Brand != nil:
 		doc := Text(head + " = brand " + d.Brand.Base)
 		if d.Brand.Check != nil {
-			return Concat(doc, Text(" where "), p.expr(d.Brand.Check))
+			// a lambda, `if` or `match` in parentheses, as the book writes them
+			return Concat(doc, Text(" where "), p.operand(d.Brand.Check, p.level(d.Brand.Check) == levelOpen))
 		}
 		return doc
 	case d.Union != nil:

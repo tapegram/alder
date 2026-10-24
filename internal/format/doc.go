@@ -9,6 +9,7 @@
 //   - HardLine is always a newline and forces every enclosing group broken.
 //     A Text containing "\n" behaves the same way.
 //   - Nest adds IndentWidth to the indentation of newlines inside it.
+//   - Flat prints its content flat whatever the width, unless it holds a hard break.
 //   - IfBreak picks its first argument when the innermost enclosing group is
 //     broken (the top level counts as broken), otherwise its second.
 //   - A group is flat iff it contains no hard break and the "fits rest" rule
@@ -65,6 +66,12 @@ type nest struct {
 type group struct {
 	d    Doc
 	flat int
+	hard bool
+}
+
+type flat struct {
+	d    Doc
+	w    int
 	hard bool
 }
 
@@ -132,6 +139,13 @@ func Group(d Doc) Doc {
 	return group{d: d, flat: w, hard: h}
 }
 
+// Flat prints d with every group in it flat, however long the line, unless d holds a hard
+// break: then d is printed as it would be without Flat.
+func Flat(d Doc) Doc {
+	w, h := measure(d)
+	return flat{d: d, w: w, hard: h}
+}
+
 // IfBreak prints broken when the enclosing group is broken, else flat.
 func IfBreak(broken, flat Doc) Doc {
 	w, h := measure(flat)
@@ -151,6 +165,8 @@ func measure(d Doc) (int, bool) {
 		return n.flat, n.hard
 	case ifBreak:
 		return n.flatW, n.hard
+	case flat:
+		return n.w, n.hard
 	case line:
 		switch n.kind {
 		case kLine:
@@ -204,6 +220,8 @@ func Render(d Doc, width int) string {
 		case group:
 			flat := c.flat || (!n.hard && fits(n, width-col, stack))
 			stack = append(stack, cmd{c.indent, flat, n.d})
+		case flat:
+			stack = append(stack, cmd{c.indent, c.flat || !n.hard, n.d})
 		case ifBreak:
 			if c.flat {
 				stack = append(stack, cmd{c.indent, c.flat, n.flat})
@@ -267,6 +285,8 @@ func fits(g group, rem int, rest []cmd) bool {
 			local = append(local, cmd{0, c.flat, n.d})
 		case group:
 			local = append(local, cmd{0, c.flat && !n.hard, n.d})
+		case flat:
+			local = append(local, cmd{0, c.flat || !n.hard, n.d})
 		case ifBreak:
 			if c.flat {
 				local = append(local, cmd{0, true, n.flat})

@@ -1,0 +1,70 @@
+module Exprs
+
+redundant : Int
+redundant = ((1 + 2))
+
+nested : Int
+nested = f (g x)
+
+pipes : List Int
+pipes = xs |> List.filter isEven |> List.map double |> List.sum
+
+onePipe : List Int
+onePipe = xs |> List.map double
+
+longAnd : Bool
+longAnd = isAdmin session && isMember session.user org && canEdit session.user post && post.published && not post.archived
+
+rec3 : R
+rec3 = { a: 1, b: 2, c: 3 }
+
+rec2 : R
+rec2 = {a: 1,b: 2}
+
+update3 : R
+update3 = { r | a: 1, b: 2, c: 3 }
+
+update1 : R
+update1 = { r | a: 1 }
+
+longList : List Text
+longList = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa", "lambda"]
+
+shortList : List Int
+shortList = [1,2,3]
+
+lambdaNotLast : List Int
+lambdaNotLast = List.map (\item -> computeTheValueOf item + adjustmentFor item * scalingFactor item) itemsToProcess
+
+hugMap : List Int
+hugMap = List.map someList (\item -> computeTheValueOf item + adjustmentFor item * scalingFactor item)
+
+hugRecord : Task Int
+hugRecord = Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+
+hugLast : List Int
+hugLast = List.foldl someAccumulatorFunction initialValue (\item -> computeTheValueOf item + adjustmentFor item)
+
+noHug : Int
+noHug = someVeryLongFunctionName firstArgument secondArgument thirdArgument fourthArgument fifthArgument (g x) sixth
+
+ifFits : Int
+ifFits = if a then 1 else 2
+
+ifBreaks : Text
+ifBreaks = if someCondition model && anotherCondition model then "the first branch text" else "the other branch text"
+
+ifChain : Text
+ifChain = if n < 0 then "negative number here" else if n == 0 then "exactly zero here" else "positive number"
+
+lambdaBreak : Int -> Int
+lambdaBreak = \someArgument -> someFunction someArgument + anotherFunction someArgument + yetAnotherFunction someArgument
+
+interp : Text
+interp = "hello {user.name}, you have {Text.fromInt (List.length model.notifications)} unread notifications today"
+
+negArg : Int
+negArg = abs (-1) + -2
+
+access : Text
+access = (f x).name ++ model.user.name
