@@ -120,3 +120,19 @@ func TestAddImports_RequalifiesBare(t *testing.T) {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+// TestAddImports_UnqualifiableNoAlias: an added import with no usable qualifier (E0206, here
+// `A.X` beside `B.X` and `AX`) is written plainly, never `import A.X as A.X`, which does not parse.
+func TestAddImports_UnqualifiableNoAlias(t *testing.T) {
+	src := "module Home\n\nimport AX\nimport B.X\n\nx = X.x\n"
+	got, quals := addImportsTo(t, stdProgram(), "Home", src, []string{"A.X"})
+	if strings.Contains(got, " as A.X") || !strings.Contains(got, "import A.X\n") {
+		t.Errorf("imports:\n%s", got)
+	}
+	if quals["A.X"] != "A.X" {
+		t.Errorf("quals = %v", quals)
+	}
+	if strings.Contains(importLine("A.X", "A.X"), " as ") {
+		t.Errorf("importLine(A.X, A.X) = %q", importLine("A.X", "A.X"))
+	}
+}

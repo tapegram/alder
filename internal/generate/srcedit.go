@@ -241,9 +241,10 @@ func canonicalQuals(self string, paths []string, taken func(string) bool) map[st
 }
 
 // importLine is the import of path written with qualifier q: `import P`, or `import P as Q`
-// when Q is not P's last segment.
+// when Q is not P's last segment. A path with no usable qualifier (canonicalQuals maps it to
+// itself) is written plainly: `import A.X as A.X` would not parse.
 func importLine(path, q string) string {
-	if names.NeedsAlias(path, q) {
+	if q != path && names.NeedsAlias(path, q) {
 		return "import " + path + " as " + q
 	}
 	return "import " + path
