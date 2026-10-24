@@ -143,7 +143,6 @@ type siloSchema struct {
 	descs   []TableDesc     // @ref to a table outside the silo removed
 	names   map[string]bool // Alder names
 	sqlName map[string]bool // SQL names
-	short   []string        // their names without the module, for DROPS DATA lines
 	stmts   []string        // CREATE TABLE statements
 	indexes []string        // the @ref indexes (of the app's descs: a removed @ref keeps its index)
 	hash    string          // of stmts, as liveSchema computes it
@@ -268,7 +267,6 @@ func newSiloSchema(si Silo, byName map[string]TableDesc) (*siloSchema, error) {
 	for _, n := range si.Tables {
 		ss.names[n] = true
 		ss.sqlName[SQLName(n)] = true
-		ss.short = append(ss.short, shortName(n))
 	}
 	var orig []TableDesc
 	for _, n := range si.Tables {
@@ -705,9 +703,14 @@ func (s *Stores) inspect(ctx context.Context, q querier, ss *siloSchema, allowDa
 		return plan{state: SiloFailed, detail: fmt.Sprintf("it is at the last migration (%s) but its schema hash %.12s is not the app's %.12s: the tables, or the tables of the silos, changed without `alder migrate` (a table moved into a silo by hand: `alder new silo --empty` writes the migration of the move)", mig, hash, s.hash)}, nil
 	}
 	p := plan{state: SiloMigrating, pending: ms[at+1:]}
-	for _, m := range p.pending {
+	have, err := appTables(ctx, q)
+	if err != nil {
+		return plan{}, err
+	}
+	names := ss.pendingNames(p.pending, have)
+	for i, m := range p.pending {
 		for _, line := range m.DropsData {
-			if ss.mentions(line) {
+			if mentions(line, names[i]) {
 				p.drops = append(p.drops, m.Name+": "+line)
 			}
 		}
@@ -720,12 +723,17 @@ func (s *Stores) inspect(ctx context.Context, q querier, ss *siloSchema, allowDa
 }
 
 // mentions reports whether a DROPS DATA line ("column Project.x", "table Project", "Project.n:
-// …") names a table of the silo.
-func (ss *siloSchema) mentions(line string) bool {
+// …") names one of the silo's tables in its migration, names (pendingNames: SQL names, of which
+// the line has the last part).
+func mentions(line string, names map[string]bool) bool {
 	if strings.HasPrefix(line, "shared rows of ") { // a move into a silo: the shared database's rows
 		return false
 	}
-	for _, n := range ss.short {
+	for sqlName := range names {
+		n := sqlName
+		if i := strings.LastIndex(n, "__"); i >= 0 {
+			n = n[i+len("__"):]
+		}
 		if strings.Contains(line, "table "+n) || strings.Contains(line, n+".") {
 			return true
 		}

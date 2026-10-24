@@ -1124,31 +1124,118 @@ func TestStores_SiloBehindARebuildKeepsRows(t *testing.T) {
 	}
 }
 
-// A silo behind the DROP of one of its tables (#20): the dropped table is the silo's in the
-// migrations up to and including its DROP, so its earlier statements and the DROP run there,
-// whether the earlier one alters it in place or rebuilds it.
-func TestStores_SiloBehindADropOfItsTable(t *testing.T) {
-	t.Run("alter", func(t *testing.T) { siloBehindADrop(t, false) })
-	t.Run("rebuild", func(t *testing.T) { siloBehindADrop(t, true) })
-}
+// taskSilo is a second siloed table for the tests below: Task in `silo org` beside Project.
+var taskSilo = TableDesc{Name: "Task.Task", ID: "id", Columns: []Column{{Name: "id", Type: CText}, {Name: "title", Type: CText}, {Name: "org", Type: CText, Ref: "Org.Org", OnDelete: Cascade}}}
 
-func siloBehindADrop(t *testing.T, rebuild bool) {
-	ctx := context.Background()
-	dir := t.TempDir()
+// taskSiloAt1 is migration 0001 creating Org (shared), Project and Task (siloed); and the shared
+// store at dir/app.db at 0001, with silo org/A holding project p1 and task t1.
+func taskSiloAt1(t *testing.T, ctx context.Context, dir string) (Migration, *SQLite) {
+	t.Helper()
 	proj := projDesc(projCols1)
-	taskCols1 := []Column{{Name: "id", Type: CText}, {Name: "title", Type: CText}, {Name: "org", Type: CText, Ref: "Org.Org", OnDelete: Cascade}}
-	taskCols2 := append(append([]Column(nil), taskCols1...), Column{Name: "due", Type: CText, Nullable: true})
-	task1 := TableDesc{Name: "Task.Task", ID: "id", Columns: taskCols1}
-	task2 := TableDesc{Name: "Task.Task", ID: "id", Columns: taskCols2}
-	by := map[string]TableDesc{orgDesc.Name: orgDesc, proj.Name: proj, task1.Name: task1}
+	v1 := []TableDesc{orgDesc, proj, taskSilo}
+	by := map[string]TableDesc{}
+	for _, d := range v1 {
+		by[d.Name] = d
+	}
 	var creates []string
-	for _, d := range []TableDesc{orgDesc, proj, task1} {
+	for _, d := range v1 {
 		c, err := createStmt(d, by)
 		if err != nil {
 			t.Fatal(err)
 		}
 		creates = append(creates, c+";")
 	}
+	_, empty := hashSchema(nil)
+	m := Migration{Name: "0001_initial", From: short(empty), To: hashOf(t, v1...), SQL: strings.Join(append(creates,
+		`CREATE INDEX IF NOT EXISTS "Project__Project__org" ON "Project__Project"("org");`,
+		`CREATE INDEX IF NOT EXISTS "Task__Task__org" ON "Task__Task"("org");`), "\n")}
+	cfg := StoresConfig{Dir: dir, Silos: []Silo{{Key: "org", Tables: []string{"Project.Project", "Task.Task"}}}, Tables: v1, Migrations: []Migration{m}}
+	path := filepath.Join(dir, "app.db")
+	shared, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { shared.Close() })
+	if _, err := shared.Migrate(ctx, cfg.Tables, cfg.Migrations, false); err != nil {
+		t.Fatal(err)
+	}
+	s1, err := OpenStores(shared, path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s1.Close()
+	d, err := s1.silo(ctx, "org", "A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO "Project__Project" ("id", "name", "org") VALUES ('p1', 'Launch', 'A')`,
+		`INSERT INTO "Task__Task" ("id", "title", "org") VALUES ('t1', 'Plan', 'A')`,
+	} {
+		if _, err := d.store.db.ExecContext(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return m, shared
+}
+
+// openSiloA migrates the shared store to cfg and opens silo org/A, after VerifySilos' dry run of
+// it (which allows data loss) found nothing wrong.
+func openSiloA(t *testing.T, ctx context.Context, shared *SQLite, cfg StoresConfig) (*siloDB, error) {
+	t.Helper()
+	if _, err := shared.Migrate(ctx, cfg.Tables, cfg.Migrations, true); err != nil {
+		t.Fatalf("shared migrate: %v", err)
+	}
+	var out strings.Builder
+	if bad, err := VerifySilos(ctx, cfg, 5, &out); err != nil || bad != 0 {
+		t.Fatalf("verify: %d %v\n%s", bad, err, out.String())
+	}
+	s2, err := OpenStores(shared, filepath.Join(cfg.Dir, "app.db"), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s2.Close() })
+	return s2.silo(ctx, "org", "A")
+}
+
+// wantSiloDataLoss checks that opening silo org/A stopped at the DROPS DATA gate, leaving its
+// database at 0001 with task t1.
+func wantSiloDataLoss(t *testing.T, ctx context.Context, dir string, err error) {
+	t.Helper()
+	var me *MaintenanceError
+	if !errors.As(err, &me) || me.State != SiloDataLoss {
+		t.Fatalf("open: want %s, got %v", SiloDataLoss, err)
+	}
+	st, err := OpenSQLite(filepath.Join(dir, "silos", "org", SiloFileName("A")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	var title string
+	if err := st.db.QueryRow(`SELECT "title" FROM "Task__Task" WHERE "id" = 't1'`).Scan(&title); err != nil || title != "Plan" {
+		t.Fatalf("the task: %q %v", title, err)
+	}
+	if _, m, _, _ := schemaRow(ctx, st.db); m != "0001_initial" {
+		t.Fatalf("row %q", m)
+	}
+}
+
+// A silo behind the DROP of one of its tables (#20): the dropped table is the silo's in the
+// migrations up to and including its DROP, so its earlier statements and the DROP run there,
+// whether the earlier one alters it in place or rebuilds it; and the DROP is behind the DROPS
+// DATA gate, though this build no longer has the table.
+func TestStores_SiloBehindADropOfItsTable(t *testing.T) {
+	t.Run("alter", func(t *testing.T) { siloBehindADrop(t, false, true) })
+	t.Run("rebuild", func(t *testing.T) { siloBehindADrop(t, true, true) })
+	t.Run("gated", func(t *testing.T) { siloBehindADrop(t, false, false) })
+}
+
+func siloBehindADrop(t *testing.T, rebuild, allowDataLoss bool) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	proj := projDesc(projCols1)
+	task2 := taskSilo
+	task2.Columns = append(slices.Clone(taskSilo.Columns), Column{Name: "due", Type: CText, Nullable: true})
 	due := `ALTER TABLE "Task__Task" ADD COLUMN "due" TEXT;`
 	if rebuild {
 		tmp := task2
@@ -1165,60 +1252,20 @@ func siloBehindADrop(t *testing.T, rebuild bool) {
 			`CREATE INDEX IF NOT EXISTS "Task__Task__org" ON "Task__Task"("org");`,
 		}, "\n")
 	}
-	_, empty := hashSchema(nil)
-	ms := []Migration{
-		{Name: "0001_initial", From: short(empty), To: hashOf(t, orgDesc, proj, task1), SQL: strings.Join(append(creates,
-			`CREATE INDEX IF NOT EXISTS "Project__Project__org" ON "Project__Project"("org");`,
-			`CREATE INDEX IF NOT EXISTS "Task__Task__org" ON "Task__Task"("org");`), "\n")},
-		{Name: "0002_due", From: hashOf(t, orgDesc, proj, task1), To: hashOf(t, orgDesc, proj, task2), SQL: due},
+	m1, shared := taskSiloAt1(t, ctx, dir)
+	ms := []Migration{m1,
+		{Name: "0002_due", From: m1.To, To: hashOf(t, orgDesc, proj, task2), SQL: due},
 		{Name: "0003_drop_task", From: hashOf(t, orgDesc, proj, task2), To: hashOf(t, orgDesc, proj), DropsData: []string{"table Task"}, SQL: strings.Join([]string{
 			`DROP INDEX IF EXISTS "Task__Task__org";`,
 			`DROP TABLE "Task__Task";`,
 		}, "\n")},
 	}
-	oldCfg := StoresConfig{Dir: dir, Silos: []Silo{{Key: "org", Tables: []string{"Project.Project", "Task.Task"}}}, Tables: []TableDesc{orgDesc, proj, task1}, Migrations: ms[:1]}
-	newCfg := StoresConfig{Dir: dir, Silos: []Silo{{Key: "org", Tables: []string{"Project.Project"}}}, Tables: []TableDesc{orgDesc, proj}, Migrations: ms, AllowDataLoss: true}
-
-	path := filepath.Join(dir, "app.db")
-	shared, err := OpenSQLite(path)
-	if err != nil {
-		t.Fatal(err)
+	cfg := StoresConfig{Dir: dir, Silos: []Silo{{Key: "org", Tables: []string{"Project.Project"}}}, Tables: []TableDesc{orgDesc, proj}, Migrations: ms, AllowDataLoss: allowDataLoss}
+	d, err := openSiloA(t, ctx, shared, cfg)
+	if !allowDataLoss {
+		wantSiloDataLoss(t, ctx, dir, err)
+		return
 	}
-	defer shared.Close()
-	if _, err := shared.Migrate(ctx, oldCfg.Tables, oldCfg.Migrations, false); err != nil {
-		t.Fatal(err)
-	}
-	s1, err := OpenStores(shared, path, oldCfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	d, err := s1.silo(ctx, "org", "A")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, q := range []string{
-		`INSERT INTO "Project__Project" ("id", "name", "org") VALUES ('p1', 'Launch', 'A')`,
-		`INSERT INTO "Task__Task" ("id", "title", "org") VALUES ('t1', 'Plan', 'A')`,
-	} {
-		if _, err := d.store.db.ExecContext(ctx, q); err != nil {
-			t.Fatal(err)
-		}
-	}
-	s1.Close()
-
-	if _, err := shared.Migrate(ctx, newCfg.Tables, newCfg.Migrations, true); err != nil {
-		t.Fatalf("shared migrate: %v", err)
-	}
-	var out strings.Builder // the dry run (VerifySilos) agrees
-	if bad, err := VerifySilos(ctx, newCfg, 5, &out); err != nil || bad != 0 {
-		t.Fatalf("verify: %d %v\n%s", bad, err, out.String())
-	}
-	s2, err := OpenStores(shared, path, newCfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s2.Close()
-	d, err = s2.silo(ctx, "org", "A")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -1235,6 +1282,30 @@ func siloBehindADrop(t *testing.T, rebuild bool) {
 	if _, m, _, _ := schemaRow(ctx, d.store.db); m != "0003_drop_task" {
 		t.Fatalf("row %q", m)
 	}
+}
+
+// A DROPS DATA line on a silo table a later migration renames away (to another short name) is
+// behind the gate: the line names the table as it was then.
+func TestStores_SiloDropColumnBeforeARenameIsGated(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	proj := projDesc(projCols1)
+	task2 := taskSilo
+	task2.Columns = slices.DeleteFunc(slices.Clone(taskSilo.Columns), func(c Column) bool { return c.Name == "title" })
+	job := task2
+	job.Name = "Work.Job"
+	m1, shared := taskSiloAt1(t, ctx, dir)
+	ms := []Migration{m1,
+		{Name: "0002_drop_title", From: m1.To, To: hashOf(t, orgDesc, proj, task2), DropsData: []string{"column Task.title"}, SQL: `ALTER TABLE "Task__Task" DROP COLUMN "title";`},
+		{Name: "0003_rename_task", From: hashOf(t, orgDesc, proj, task2), To: hashOf(t, orgDesc, proj, job), SQL: strings.Join([]string{
+			`ALTER TABLE "Task__Task" RENAME TO "Work__Job";`,
+			`DROP INDEX IF EXISTS "Task__Task__org";`,
+			`CREATE INDEX IF NOT EXISTS "Work__Job__org" ON "Work__Job"("org");`,
+		}, "\n")},
+	}
+	cfg := StoresConfig{Dir: dir, Silos: []Silo{{Key: "org", Tables: []string{"Project.Project", "Work.Job"}}}, Tables: []TableDesc{orgDesc, proj, job}, Migrations: ms}
+	_, err := openSiloA(t, ctx, shared, cfg)
+	wantSiloDataLoss(t, ctx, dir, err)
 }
 
 // A later migration creating a shared table under a silo table's old SQL name does not run in
