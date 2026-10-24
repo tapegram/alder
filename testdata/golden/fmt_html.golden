@@ -9,7 +9,10 @@ inlineRunLong n =
 
 blockChildren =
   <div>
-    <ul><li>one</li><li>two</li></ul>
+    <ul>
+      <li>one</li>
+      <li>two</li>
+    </ul>
   </div>
 
 attrsLong =
@@ -23,9 +26,19 @@ attrsLong =
   </al-button>
 
 attrsLongSelfClosing =
-  <input type="text" name="title" value={model.title} placeholder="What needs doing?" required />
+  <input
+    type="text"
+    name="title"
+    value={model.title}
+    placeholder="What needs doing today?"
+    class="todo-input"
+    required />
 
-bare = <form submit={Save}><Errors form /><button>Save</button></form>
+bare =
+  <form submit={Save}>
+    <Errors form />
+    <button>Save</button>
+  </form>
 
 loops model =
   <ul>
@@ -42,9 +55,7 @@ conds model =
     {if List.isEmpty model.todos then
       <p class="empty">Nothing to do yet, add something with the form above.</p>
     else
-      <ul>
-        {for t in model.todos -> <li>{t.title}</li>}
-      </ul>}
+      <ul>{for t in model.todos -> <li>{t.title}</li>}</ul>}
   </div>
 
 matches model =
@@ -72,3 +83,18 @@ blankLines =
     <p>Body</p>
     <p>Some text over two lines {x}</p>
   </main>
+
+bracedString = <a class={"plain"} href="/">Home</a>
+
+lessThan x = <p>if x < 5 then say hi {x}</p>
+
+comments model =
+  <ul>
+    {for c in model.comments ->
+      <li>
+        <p class="who">{c.author}</p>
+        <p>{c.body}</p>
+      </li>}
+  </ul>
+
+header = <header><a href={Home}>Blog</a></header>

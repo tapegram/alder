@@ -8,7 +8,7 @@ blockChildren = <div><ul><li>one</li><li>two</li></ul></div>
 
 attrsLong = <al-button variant="secondary" size="sm" class="toggle-button wide" id="toggle-done" click={Toggle { id: model.id }}>Done</al-button>
 
-attrsLongSelfClosing = <input type="text" name="title" value={model.title} placeholder="What needs doing?" required />
+attrsLongSelfClosing = <input type="text" name="title" value={model.title} placeholder="What needs doing today?" class="todo-input" required />
 
 bare = <form submit={Save}><Errors form /><button>Save</button></form>
 
@@ -45,3 +45,11 @@ blankLines =
     </p>
 
   </main>
+
+bracedString = <a class={"plain"} href="/">Home</a>
+
+lessThan x = <p>if x < 5 then say hi {x}</p>
+
+comments model = <ul>{for c in model.comments -> <li><p class="who">{c.author}</p><p>{c.body}</p></li>}</ul>
+
+header = <header><a href={Home}>Blog</a></header>

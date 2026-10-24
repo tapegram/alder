@@ -6,9 +6,10 @@ import (
 	"alder/internal/syntax"
 )
 
-// Markup layout. An element whose children are all inline (text, `{expr}`, elements with no
-// element children, an `{if}` choosing between those) prints on one line when it fits; otherwise
-// its children go one per line, indented. A break is placed only where the JSX whitespace rule
+// Markup layout. An element with two or more element children (counting the elements directly
+// inside its `{for}`, `{if}` and `{match}` children) is always vertical, one child per line, as is
+// one with a blank line between children; any other element prints on one line when it fits,
+// otherwise its children go one per line, indented. A break is placed only where the JSX whitespace rule
 // (book chapter 5) gives the same text either way:
 //   - at whitespace holding a newline in the source (dropped or turned into one space whether it
 //     is printed as a newline or not);
@@ -77,11 +78,17 @@ func (p *printer) htmlAttr(a *syntax.HtmlAttr) Doc {
 	return Concat(Text(a.Name+"={"), p.inBrackets(a.Value), Text("}"))
 }
 
-// bracedAttr reports whether the attribute's value is written in braces (`a={"x"}`).
+// bracedAttr reports whether the attribute's value is written in braces (`a={"x"}`): the first
+// byte after the name and `=` (and any blanks around it) is `{`.
 func (p *printer) bracedAttr(a *syntax.HtmlAttr) bool {
-	rest := strings.TrimLeft(string(p.src[p.offset(a.Span.Start)+len(a.Name):]), " \t\n")
-	rest = strings.TrimLeft(strings.TrimPrefix(rest, "="), " \t\n")
-	return strings.HasPrefix(rest, "{")
+	for _, c := range p.src[p.offset(a.Span.Start)+len(a.Name):] {
+		switch c {
+		case ' ', '\t', '\n', '=':
+			continue
+		}
+		return c == '{'
+	}
+	return false
 }
 
 type breakKind int
@@ -113,10 +120,10 @@ type childEdges struct {
 }
 
 // markupChildren lays out an element's children as boundary, child pieces…, boundary, …,
-// boundary; forced reports that the element must be vertical (a blank line, a child that is not
-// inline, a comment line in text).
+// boundary; forced reports that the element must be vertical (two or more element children, a
+// blank line, a comment line in text).
 func (p *printer) markupChildren(children []syntax.Expr) ([]piece, bool) {
-	forced := false
+	forced := elementChildren(children) >= 2
 	edges := make([]childEdges, len(children))
 	contents := make([][]piece, len(children))
 	for i, c := range children {
@@ -127,7 +134,6 @@ func (p *printer) markupChildren(children []syntax.Expr) ([]piece, bool) {
 			continue
 		}
 		edges[i].startLine, edges[i].endLine = c.GetSpan().Start.Line, c.GetSpan().End.Line
-		forced = forced || !inlineChild(c)
 		contents[i] = []piece{{d: p.markupChild(c)}}
 	}
 	start, end := childEdges{}, childEdges{}
@@ -177,11 +183,7 @@ func (p *printer) markupChildren(children []syntax.Expr) ([]piece, bool) {
 // blank line or a comment line inside the text.
 func (p *printer) markupText(t *syntax.HtmlText) (childEdges, []piece, bool) {
 	start := p.offset(t.Span.Start)
-	end := start + strings.IndexAny(string(p.src[start:]), "<{")
-	if end < start {
-		end = len(p.src)
-	}
-	raw := string(p.src[start:end])
+	raw := string(p.src[start:syntax.TextEnd(p.src, start)]) // where the lexer ends the text
 	body := strings.TrimLeft(raw, " \t\n")
 	lead := raw[:len(raw)-len(body)]
 	body = strings.TrimRight(body, " \t\n")
@@ -281,43 +283,29 @@ func (p *printer) markupMatch(e *syntax.HtmlMatch) Doc {
 	return Concat(Text("{match "), subj, Text(" {"), Nest(Concat(HardLine, join(arms, HardLine))), HardLine, Text("}}"))
 }
 
-// inlineChild reports whether a child may share a line with its siblings: text, `{expr}`, an
-// element with no element children, or an `{if}` whose branches are such elements or
-// expressions. A `{for}` or `{match}` is never inline.
-func inlineChild(c syntax.Expr) bool {
-	switch c := c.(type) {
-	case *syntax.HtmlText, *syntax.HtmlExpr:
-		return true
-	case *syntax.Element:
-		return leafElement(c)
-	case *syntax.HtmlIf:
-		return inlineBranch(c.Then) && inlineBranch(c.Else)
-	}
-	return false
-}
-
-func inlineBranch(b syntax.Expr) bool {
-	if el, ok := b.(*syntax.Element); ok {
-		return leafElement(el)
-	}
-	return true
-}
-
-// leafElement reports whether an element holds no element: only text and expressions (an `{if}`
-// between expressions counts as one).
-func leafElement(e *syntax.Element) bool {
-	for _, c := range e.Children {
-		switch c := c.(type) {
-		case *syntax.HtmlText, *syntax.HtmlExpr:
-		case *syntax.HtmlIf:
-			_, thenEl := c.Then.(*syntax.Element)
-			_, elseEl := c.Else.(*syntax.Element)
-			if thenEl || elseEl {
-				return false
-			}
-		default:
-			return false
+// elementChildren counts the elements among an element's children, and those directly inside
+// its `{for}`, `{if}` and `{match}` children (a body, a branch, an arm).
+func elementChildren(children []syntax.Expr) int {
+	n := 0
+	count := func(b syntax.Expr) {
+		if _, ok := b.(*syntax.Element); ok {
+			n++
 		}
 	}
-	return true
+	for _, c := range children {
+		switch c := c.(type) {
+		case *syntax.Element:
+			n++
+		case *syntax.HtmlFor:
+			count(c.Body)
+		case *syntax.HtmlIf:
+			count(c.Then)
+			count(c.Else)
+		case *syntax.HtmlMatch:
+			for _, a := range c.Arms {
+				count(a.Body)
+			}
+		}
+	}
+	return n
 }

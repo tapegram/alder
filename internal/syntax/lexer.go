@@ -315,10 +315,21 @@ func (l *Lexer) next() Token {
 // a tag (followed by a letter, '/' or '!'). Any other '<' is ordinary text.
 func (l *Lexer) ScanText() Token {
 	line, col, off := l.line, l.col, l.pos
-	for l.pos < len(l.src) && l.peek() != '{' && !(l.peek() == '<' && isTagStart(l.peek2())) {
+	for end := TextEnd(l.src, off); l.pos < end; {
 		l.advance()
 	}
 	return l.record(l.tok(Text, string(l.src[off:l.pos]), line, col, off))
+}
+
+// TextEnd is the offset where markup text starting at offset i ends: the first '{', or '<' that
+// starts a tag (followed by a letter, '/' or '!'), or len(src).
+func TextEnd(src []byte, i int) int {
+	for ; i < len(src); i++ {
+		if src[i] == '{' || src[i] == '<' && i+1 < len(src) && isTagStart(src[i+1]) {
+			return i
+		}
+	}
+	return len(src)
 }
 
 // ScanRawText reads the body of a raw-text element (`<script>`, `<style>`): every byte up to its

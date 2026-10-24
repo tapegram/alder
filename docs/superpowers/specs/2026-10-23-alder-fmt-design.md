@@ -231,9 +231,12 @@ it; the book is the reference corpus. Spacing as in the examples:
   and Elm always write the parentheses).
 - **Empty records**: `{}` as an expression or pattern; `{ }` for an empty
   record type, form or declaration body.
-- **Markup**: an element whose children are all inline (text, `{expr}`,
-  elements with no element children) and fits → one line. Otherwise
-  children one per line, indented. Attributes: on the tag line if they
+- **Markup**: an element with 2 or more element children — counting the
+  elements directly inside its `{for}`, `{if}` and `{match}` children (a
+  body, a branch, an arm) — is always vertical, one child per line. An
+  element with 0–1 element children → one line if it fits, else children
+  one per line, indented. A blank line between children keeps the element
+  vertical. Attributes: on the tag line if they
   fit, else one per line indented 2, with `>` closing on the last
   attribute's line. Runs of inline children joined by significant spaces
   move as a unit; the formatter never splits a run across lines in a way
