@@ -16,7 +16,7 @@
 (source_file (login_decl page: (module_name) @login))
 (source_file (test_decl name: (string) @test))
 
-; The same in a scratch file, and each watch, captured by its `>`.
+; The same in a scratch file, and each watch, captured by its `>` and, for its end row, whole.
 (scratch_file (import_decl module: (module_name) @import))
 (scratch_file (value_decl . (signature name: (_) @value)))
 (scratch_file (value_decl . (binding name: (_) @value)))
@@ -34,3 +34,4 @@
 (scratch_file (login_decl page: (module_name) @login))
 (scratch_file (test_decl name: (string) @test))
 (scratch_file (watch ">" @watch))
+(scratch_file (watch) @watchnode)

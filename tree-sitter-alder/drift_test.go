@@ -169,7 +169,10 @@ func sources(t *testing.T, dir string) []source {
 			if len(diags) > 0 || m == nil {
 				return nil
 			}
-			abs, _ := filepath.Abs(path)
+			abs, err := filepath.Abs(path)
+			if err != nil {
+				return err
+			}
 			im, ds := goDecls(m)
 			out = append(out, source{Path: abs, Label: path, Imports: im, Decls: ds})
 			return nil
@@ -229,10 +232,16 @@ func grammarDir(t *testing.T) string {
 // captureRE matches one line of `tree-sitter query` output:
 //
 //	capture: 0 - value, start: (3, 0), end: (3, 6), text: `update`
-var captureRE = regexp.MustCompile("^\\s+capture: \\d+ - ([a-z]+), start: \\((\\d+), (\\d+)\\), end: \\(\\d+, \\d+\\), text: `(.*)`$")
+//
+// A capture that spans lines is printed without its index or text; drift.scm captures only a
+// watch that way (as `watchnode`), for its end row:
+//
+//	capture: watchnode, start: (2, 0), end: (3, 14)
+var captureRE = regexp.MustCompile("^\\s+capture: (?:\\d+ - )?([a-z]+), start: \\((\\d+), (\\d+)\\), end: \\((\\d+), \\d+\\)(?:, text: `(.*)`)?$")
 
 type capture struct {
 	row, col int
+	endRow   int // set on a watch capture: the last row of its watch
 	d        decl
 }
 
@@ -262,6 +271,11 @@ func queryCaptures(t *testing.T, cli, paths string) map[string][]capture {
 		t.Fatalf("tree-sitter query: %v\n%s", err, stderr.String())
 	}
 	caps := map[string][]capture{}
+	type at struct {
+		file string
+		row  int
+	}
+	watchEnds := map[at]int{} // a watch's file and first row → its last row
 	file := ""
 	sc := bufio.NewScanner(bytes.NewReader(out))
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
@@ -277,14 +291,23 @@ func queryCaptures(t *testing.T, cli, paths string) map[string][]capture {
 		}
 		row, _ := strconv.Atoi(m[2])
 		col, _ := strconv.Atoi(m[3])
-		name := m[4]
+		end, _ := strconv.Atoi(m[4])
+		name := m[5]
 		switch m[1] {
+		case "watchnode":
+			watchEnds[at{file, row}] = end
+			continue
 		case "page", "test":
 			name = strings.TrimSuffix(strings.TrimPrefix(name, `"`), `"`)
 		}
-		caps[file] = append(caps[file], capture{row, col, decl{m[1], name}})
+		caps[file] = append(caps[file], capture{row: row, col: col, d: decl{m[1], name}})
 	}
-	for _, cs := range caps {
+	for file, cs := range caps {
+		for i := range cs {
+			if cs[i].d.Kind == "watch" {
+				cs[i].endRow = watchEnds[at{file, cs[i].row}]
+			}
+		}
 		sort.SliceStable(cs, func(i, j int) bool {
 			if cs[i].row != cs[j].row {
 				return cs[i].row < cs[j].row
@@ -359,14 +382,14 @@ func TestDrift(t *testing.T) {
 }
 
 // TestDriftScratch: every *scratch.alder in the repo that scratch.ParseFile accepts with no
-// diagnostic parses with no ERROR or MISSING node, has one watch per File.Watches starting on
-// the same lines, and has the Go parser's top-level declarations and imports (read from
+// diagnostic parses with no ERROR or MISSING node, has one watch per File.Watches starting and
+// ending on the same lines, and has the Go parser's top-level declarations and imports (read from
 // File.Source as a module, less the watches' generated `itK =` values).
 func TestDriftScratch(t *testing.T) {
 	cli := tsCLI(t)
 	type scratchSource struct {
 		source
-		watchLines []int
+		watchLines [][2]int // each watch's first and last line, 1-based
 	}
 	var srcs []scratchSource
 	err := filepath.WalkDir("..", func(path string, d os.DirEntry, err error) error {
@@ -395,10 +418,10 @@ func TestDriftScratch(t *testing.T) {
 			t.Fatalf("%s: scratch.ParseFile accepts it but its module source does not parse: %v", path, diags)
 		}
 		watchNames := map[string]bool{}
-		var lines []int
+		var lines [][2]int
 		for _, w := range f.Watches {
 			watchNames[w.Name] = true
-			lines = append(lines, w.Line)
+			lines = append(lines, [2]int{w.Line, w.End})
 		}
 		im, ds := goDecls(m)
 		var kept []decl
@@ -407,15 +430,24 @@ func TestDriftScratch(t *testing.T) {
 				kept = append(kept, d)
 			}
 		}
-		abs, _ := filepath.Abs(path)
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
 		srcs = append(srcs, scratchSource{source{Path: abs, Label: path, Imports: im, Decls: kept}, lines})
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(srcs) == 0 {
-		t.Fatal("no *scratch.alder file in the repo parses clean; expected internal/scaffold/files/scratch.alder")
+	for _, want := range []string{"internal/scaffold/files/scratch.alder", "tree-sitter-alder/test/drift/watches.scratch.alder"} {
+		found := false
+		for _, s := range srcs {
+			found = found || filepath.ToSlash(s.Label) == "../"+want
+		}
+		if !found {
+			t.Errorf("%s is not among the scratch files tested: it is missing or does not parse clean", want)
+		}
 	}
 	dir := t.TempDir()
 	plain := make([]source, len(srcs))
@@ -433,10 +465,10 @@ func TestDriftScratch(t *testing.T) {
 	got := queryCaptures(t, cli, paths)
 	for _, s := range srcs {
 		var ds []decl
-		var lines []int
+		var lines [][2]int
 		for _, c := range got[s.Path] {
 			if c.d.Kind == "watch" {
-				lines = append(lines, c.row+1)
+				lines = append(lines, [2]int{c.row + 1, c.endRow + 1})
 			} else {
 				ds = append(ds, c.d)
 			}
@@ -446,7 +478,7 @@ func TestDriftScratch(t *testing.T) {
 			t.Errorf("%s: top-level declarations disagree\n  go:          %v %v\n  tree-sitter: %v %v", s.Label, s.Imports, s.Decls, gi, gd)
 		}
 		if fmt.Sprint(lines) != fmt.Sprint(s.watchLines) {
-			t.Errorf("%s: watch lines disagree\n  scratch:     %v\n  tree-sitter: %v", s.Label, s.watchLines, lines)
+			t.Errorf("%s: watch lines [first last] disagree\n  scratch:     %v\n  tree-sitter: %v", s.Label, s.watchLines, lines)
 		}
 	}
 	t.Logf("%d scratch files agree", len(srcs))
@@ -499,6 +531,52 @@ func TestRecovery(t *testing.T) {
 			t.Errorf("%s: the declaration after the broken one (%v on line %d) is lost or incomplete; captures: %v",
 				filepath.Base(p), want.d, want.row+1, got[p])
 		}
+	}
+}
+
+// TestIncrementalFirstWord edits the first word, which decides the root's branch: `module`
+// makes a module file and `modul` a scratch file, where `> 2` is a watch rather than the right
+// side of `x = 1 > 2`. Each reparse after an edit (tree-sitter parse --edits reuses the old
+// tree, as an editor does) must give the tree a fresh parse of the edited text gives.
+func TestIncrementalFirstWord(t *testing.T) {
+	cli := tsCLI(t)
+	dir := t.TempDir()
+	const module = "module M\n\nx = 1\n> 2\n"
+	steps := []struct {
+		edits []string // "offset deleted inserted", applied in order to module
+		text  string   // the text after them
+	}{
+		{[]string{"5 1 "}, "modul M\n\nx = 1\n> 2\n"},
+		{[]string{"5 1 ", "5 0 e"}, module},
+	}
+	parse := func(path string, edits ...string) string {
+		args := append(append([]string{"parse"}, libArgs(t, cli)...), path)
+		if len(edits) > 0 {
+			args = append(append(args, "--edits"), edits...)
+		}
+		out, _ := exec.Command(cli, args...).Output()     // exit 1 when the tree has an ERROR
+		tree, _, _ := strings.Cut(string(out), "\n"+path) // drop the summary line --edits or an error adds
+		if !strings.HasPrefix(tree, "(source_file") {
+			t.Fatalf("tree-sitter %v: no tree in\n%s", args, out)
+		}
+		return strings.TrimSpace(tree)
+	}
+	src := filepath.Join(dir, "first-word.alder")
+	if err := os.WriteFile(src, []byte(module), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for i, st := range steps {
+		fresh := filepath.Join(dir, fmt.Sprintf("fresh-%d.alder", i))
+		if err := os.WriteFile(fresh, []byte(st.text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		want := parse(fresh)
+		if got := parse(src, st.edits...); got != want {
+			t.Errorf("after edits %q: the incremental tree differs from a fresh parse of %q\n  incremental:\n%s\n  fresh:\n%s", st.edits, st.text, got, want)
+		}
+	}
+	if !strings.Contains(parse(src, steps[0].edits...), "(watch") {
+		t.Errorf("`modul M` does not make a scratch file with a watch")
 	}
 }
 

@@ -40,9 +40,22 @@ var AppModuleRE = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*(_[A-Za-z0-9]+)*(\.[A-Z]
 // reservedRE is a name the file's watches take.
 var reservedRE = regexp.MustCompile(`^it[0-9]+$`)
 
+// continuesWatch reports whether a column-1 line begins with a binary operator that the module
+// parser reads as continuing the line before (parser_expr.go atOpAfterNL; scanner.c
+// is_continuation): such a line is part of the watch above it, not a new item. Lines that
+// start with `>` are watches or diagnostics, so `>` and `>=` are left out.
+func continuesWatch(l string) bool {
+	for _, op := range []string{"|>", "||", "??", "&&", "==", "!=", "<=", "< ", "<\t", "+", "*", "/", "%"} {
+		if strings.HasPrefix(l, op) {
+			return true
+		}
+	}
+	return l == "<" || (strings.HasPrefix(l, "-") && !strings.HasPrefix(l, "->"))
+}
+
 // ParseFile splits a scratch file into its module source and watches. A watch starts at a
 // column-1 item start (snippets.Starts) that is `>` or begins `> `, and runs until the next
-// start. The `in Module` header is recognised on the first start only. The diagnostics are
+// start that does not continue it (continuesWatch). The `in Module` header is recognised on the first start only. The diagnostics are
 // positioned in the file, named name; the source is still returned, so a caller may go on.
 func ParseFile(name, text string) (File, []diag.Diagnostic) {
 	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
@@ -72,6 +85,10 @@ func ParseFile(name, text string) (File, []diag.Diagnostic) {
 			if cur >= 0 && strings.TrimSpace(l) != "" && !strings.HasPrefix(strings.TrimSpace(l), "--") {
 				f.Watches[cur].End = i + 1
 			}
+			continue
+		}
+		if cur >= 0 && continuesWatch(l) {
+			f.Watches[cur].End = i + 1
 			continue
 		}
 		wasFirst := first

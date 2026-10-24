@@ -1,0 +1,16 @@
+-- Read by drift_test.go TestDriftScratch: watches that run past their `>` line.
+xs = [1, 2, 3]
+
+> xs
+|> List.length
+
+> xs
+    |> List.map (\x -> x + 1)
+    |> List.length
+-- a comment ends nothing
+
+> 1
++ 2
+- 3
+
+> xs

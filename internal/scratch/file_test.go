@@ -134,3 +134,21 @@ func TestParseFileGtWithoutSpace(t *testing.T) {
 		t.Errorf("watches %v, source %q", f.Watches, f.Source)
 	}
 }
+
+// A column-1 line that starts with a binary operator continues the watch, as the module
+// parser (parser_expr.go atOpAfterNL) and tree-sitter (scanner.c is_continuation) read it.
+func TestParseFileColumn1OperatorContinuesWatch(t *testing.T) {
+	text := "xs = [1, 2]\n\n> xs\n|> List.length\n\n-- note\n> 1\n+ 2\n- 3\n> 4\n"
+	f, diags := ParseFile("scratch.alder", text)
+	if len(diags) != 0 {
+		t.Fatalf("diagnostics: %v", diags)
+	}
+	want := []Watch{
+		{Line: 3, End: 4, Name: "it1", Expr: "xs\n|> List.length"},
+		{Line: 7, End: 9, Name: "it2", Expr: "1\n+ 2\n- 3"},
+		{Line: 10, End: 10, Name: "it3", Expr: "4"},
+	}
+	if !reflect.DeepEqual(f.Watches, want) {
+		t.Errorf("watches = %#v, want %#v", f.Watches, want)
+	}
+}
