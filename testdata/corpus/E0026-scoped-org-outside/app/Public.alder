@@ -9,7 +9,7 @@ type Model = { projects: List Project, n: Int }
 
 load : Params -> Session -> Query Model
 load params session = {
-  let projects <- Projects.Index.recent |> Db.all
+  let projects <- Index.recent |> Db.all
   let n <- Db.scoped Project |> Db.count
   Query.succeed { projects: projects, n: n }
 }

@@ -11,7 +11,7 @@ type Model = { project: Project, others: List Project }
 load : Params -> Session -> Query Model
 load params session = {
   let project <- Db.getScoped Project params.id
-  let others <- Projects.Index.recent |> Db.all
+  let others <- Index.recent |> Db.all
   Query.succeed { project: project, others: others }
 }
 

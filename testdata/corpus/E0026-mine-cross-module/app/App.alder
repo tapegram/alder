@@ -13,7 +13,7 @@ msg Clear { id: Todo.TodoId }
 update : Msg -> Session -> Task Nav
 update msg session = match msg {
   Clear p -> {
-    let _ <- Todos.Index.wipe p.id
+    let _ <- Index.wipe p.id
     Task.succeed Rerender
   },
 }

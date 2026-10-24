@@ -24,7 +24,7 @@ type Model = {
 
 load : Params -> Session -> Query Model
 load params session = {
-  let admin <- Admin.Layout.isAdmin session.user
+  let admin <- Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
     let found <- Db.get Todo params.id
@@ -64,7 +64,7 @@ update msg model session = match msg {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Admin.Layout.Page title="Delete todo">
+  <Layout.Page title="Delete todo">
     <h1>Delete this todo?</h1>
 
     <al-card>
@@ -84,7 +84,7 @@ view model session =
       </form>
     </al-card>
     <a href={Admin.Todo.Show { org: session.org, id: model.row.id }}>Back</a>
-  </Admin.Layout.Page>
+  </Layout.Page>
 
 -- @admin begin tests
 test "deleting a todo nothing refers to" = {

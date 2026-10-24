@@ -16,7 +16,7 @@ type Model = { rows: List Org }
 
 load : Params -> Session -> Query Model
 load params session = {
-  let admin <- Admin.Layout.isAdmin session.user
+  let admin <- Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
     let rows <-
@@ -31,14 +31,14 @@ load params session = {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Admin.Layout.Page title="Choose an org">
+  <Layout.Page title="Choose an org">
     <h1>Choose an org</h1>
 
     <p>Projects and todos live in a database per org: choose one.</p>
     <ul id="orgs">
       {for row in model.rows -> <li><a href={Admin.Orgs.Show { org: row.id }}>{row.name}</a></li>}
     </ul>
-  </Admin.Layout.Page>
+  </Layout.Page>
 
 -- @admin begin tests
 test "the picker lists every org, by name, each opening its dashboard" = {

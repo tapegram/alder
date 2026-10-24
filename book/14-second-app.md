@@ -469,7 +469,7 @@ test "another author's post is not found" = {
 -- Author`, but `load` re-reads their row (User.isAuthor): the page is a 404 at once, and so is
 -- every message, since each runs `load` first. After a new login the cookie says Reader too.
 test "a demoted author is turned away at once" = {
-  let _ <- Test.fake Auth.Login.Password
+  let _ <- Test.fake Login.Password
   let author <- Db.insert User {
     email: Text.Email "author@example.com",
     name: Text.NonEmpty "Author",
@@ -543,10 +543,10 @@ test "Publish shows the post on the front page; Unpublish hides it" = {
   let _ <- Test.login { user: Just author, role: Author }
   let draft <- load { id: id } { user: author, role: Author }
   let _ <- update Publish draft { user: author, role: Author }
-  let published <- Posts.Index.load { page: 1, q: "" } { user: Nothing, role: Reader }
+  let published <- Index.load { page: 1, q: "" } { user: Nothing, role: Reader }
   let shown <- load { id: id } { user: author, role: Author }
   let _ <- update Unpublish shown { user: author, role: Author }
-  let unpublished <- Posts.Index.load { page: 1, q: "" } { user: Nothing, role: Reader }
+  let unpublished <- Index.load { page: 1, q: "" } { user: Nothing, role: Reader }
   Task.succeed (
     { published: List.length published.posts, unpublished: List.length unpublished.posts }
       == { published: 1, unpublished: 0 }
@@ -573,7 +573,7 @@ role too. The fourth is the other way round: a row made Author whose
 cookie still says Reader is turned away by the role check, until they
 log in again (without it, the re-read alone would let them in, and
 `alder test --mutate` reports the `role dropped` mutant as surviving).
-The last test reads the front page through `Posts.Index.load`, which a
+The last test reads the front page through `Index.load`, which a
 test may call once its module imports `Posts.Index`.
 
 Two more go through the page, and were added after `alder test --mutate`

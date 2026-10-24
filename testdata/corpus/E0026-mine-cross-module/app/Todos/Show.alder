@@ -9,7 +9,7 @@ type Model = { todos: List Todo }
 
 -- another `requires user` page module may use Todos.Index's scoped values
 shown : Query (List Todo)
-shown = Todos.Index.recent |> Db.all
+shown = Index.recent |> Db.all
 
 load : Params -> Session -> Query Model
 load params session = {

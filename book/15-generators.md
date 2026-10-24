@@ -821,7 +821,7 @@ name in lower case:
 | Module | Path | What it is |
 |---|---|---|
 | `Admin.Index` | `/admin` | the dashboard: per table, how many rows and the five newest |
-| `Admin.Layout` | (a component) | `Admin.Layout.Page`: the app's layout, with a nav of the tables |
+| `Admin.Layout` | (a component) | `Layout.Page`: the app's layout, with a nav of the tables |
 | `Admin.T.Index` | `/admin/t` | the rows: search, filter by each `Bool` and union column, sort by any column, 25 to a page |
 | `Admin.T.Show` | `/admin/t/{id}` | one row, every column, with Edit and Delete |
 | `Admin.T.New` | `/admin/t/new` | the form that creates a row |
@@ -933,7 +933,7 @@ recent = 5
 
 load : Params -> Session -> Query Model
 load params session = {
-  let admin <- Admin.Layout.isAdmin session.user
+  let admin <- Layout.isAdmin session.user
   if admin then {
     -- @admin begin cards
     let comments <-
@@ -995,7 +995,7 @@ its headings and layout are yours to change.
 ```alder part=blog/Admin.Index
 view : Model -> Session -> Html Msg
 view model session =
-  <Admin.Layout.Page title="Dashboard">
+  <Layout.Page title="Dashboard">
     <h1>Admin</h1>
 
     <al-stack gap="md">
@@ -1009,7 +1009,7 @@ view model session =
           </ul>
         </al-card>}
     </al-stack>
-  </Admin.Layout.Page>
+  </Layout.Page>
 ```
 
 Then its tests, in the region `tests`. A test that kills a mutant of the
@@ -1349,7 +1349,7 @@ already sorted by that column ascending.
 ```alder part=blog/Admin.Post.Index
 load : Params -> Session -> Query Model
 load params session = {
-  let admin <- Admin.Layout.isAdmin session.user
+  let admin <- Layout.isAdmin session.user
   if admin then {
     let q = Text.slice 0 200 params.q
     let f = chosen params
@@ -1416,7 +1416,7 @@ reads only the users the page's rows refer to, with one query
 ```alder part=blog/Admin.Post.Index
 view : Model -> Session -> Html Msg
 view model session =
-  <Admin.Layout.Page title="Posts">
+  <Layout.Page title="Posts">
     <h1>Posts</h1>
 
     <al-stack direction="row" gap="sm">
@@ -1513,7 +1513,7 @@ view model session =
       else
         <span slot="next" aria-disabled="true">Next</span>}
     </al-pagination>
-  </Admin.Layout.Page>
+  </Layout.Page>
 ```
 
 The form is a plain `GET` form (chapter 5), so submitting it loads the
@@ -1791,7 +1791,7 @@ type Model = {
 
 load : Params -> Session -> Query Model
 load params session = {
-  let admin <- Admin.Layout.isAdmin session.user
+  let admin <- Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
     let findAuthor = Text.slice 0 200 params.findAuthor
@@ -1866,7 +1866,7 @@ reads the users to choose from, ordered by their label.
 ```alder part=blog/Admin.Post.New
 view : Model -> Session -> Html Msg
 view model session =
-  <Admin.Layout.Page title="New post">
+  <Layout.Page title="New post">
     <h1>New post</h1>
 
     <al-card>
@@ -1894,7 +1894,7 @@ view model session =
         <al-button type="submit">Create</al-button>
       </form>
     </al-card>
-  </Admin.Layout.Page>
+  </Layout.Page>
 ```
 
 The author is an `al-select` with `options={…}` (chapter 5): a list of
@@ -2296,7 +2296,7 @@ type Model = {
 
 load : Params -> Session -> Query Model
 load params session = {
-  let admin <- Admin.Layout.isAdmin session.user
+  let admin <- Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
     let found <- Db.get User params.id
@@ -2367,7 +2367,7 @@ before the counts. The other tables' delete pages have no `own`.
 ```alder part=blog/Admin.User.Delete
 view : Model -> Session -> Html Msg
 view model session =
-  <Admin.Layout.Page title="Delete user">
+  <Layout.Page title="Delete user">
     <h1>Delete this user?</h1>
 
     <al-card>
@@ -2391,7 +2391,7 @@ view model session =
       </form>
     </al-card>
     <a href={Admin.User.Show { id: model.row.id }}>Back</a>
-  </Admin.Layout.Page>
+  </Layout.Page>
 ```
 
 The second test is exactly that crafted request: the page shows no

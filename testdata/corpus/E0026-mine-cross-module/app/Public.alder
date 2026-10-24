@@ -10,8 +10,8 @@ type Model = { todos: List Todo, more: List Todo }
 
 load : Params -> Session -> Query Model
 load params session = {
-  let todos <- Todos.Index.recent |> Db.all
-  let more <- Todos.Show.shown
+  let todos <- Index.recent |> Db.all
+  let more <- Show.shown
   Query.succeed { todos: todos, more: more }
 }
 

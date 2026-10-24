@@ -122,7 +122,7 @@ test "Toggle reads, then writes" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
-  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me, role: Member })
+  let r <- Test.run (Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me, role: Member })
   Task.succeed (r.trace == ["Db.get Todo", "Db.update Todo"])
 }
 ```
@@ -229,7 +229,7 @@ test "Toggle flips done" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
-  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me, role: Member })
+  let r <- Test.run (Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me, role: Member })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed ({ trace: r.trace, done: done } == { trace: ["Db.updateMine Todo"], done: Just True })
@@ -281,7 +281,7 @@ test "Toggle by a stranger is not found" = {
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let stranger = User.UserId "someone-else"
   let _ <- Test.login { user: Just stranger }
-  let r <- Test.run (Todos.Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger, role: Member })
+  let r <- Test.run (Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger, role: Member })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed ({ value: r.value, trace: r.trace, done: done } == { value: Err "not found", trace: ["Db.updateMine Todo"], done: Just False })
@@ -1585,7 +1585,7 @@ test "the page and its view agree" = {
   let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
   let page <- Test.get (Todos.Index { filter: Active })
-  Task.succeed ({ same: page.doc == Test.doc (Todos.Index.view page.model { user: me, role: Member }), links: Test.texts "nav a" page.doc, titles: Test.texts "#todos a" page.doc, items: Test.count "#todos > li" page.doc } == { same: True, links: ["All", "Active", "Completed"], titles: ["Milk"], items: 1 })
+  Task.succeed ({ same: page.doc == Test.doc (Index.view page.model { user: me, role: Member }), links: Test.texts "nav a" page.doc, titles: Test.texts "#todos a" page.doc, items: Test.count "#todos > li" page.doc } == { same: True, links: ["All", "Active", "Completed"], titles: ["Milk"], items: 1 })
 }
 ```
 
@@ -1593,7 +1593,7 @@ When a test's last `==` compares two `Doc`s that differ, the report does
 not print the two documents. It names the first element whose content
 differs, its path from the body, and shows that element on each side.
 Had the test compared the page with a view of an empty model,
-`page.doc == Test.doc (Todos.Index.view { page.model | todos: [] } { user: me, role: Member })`,
+`page.doc == Test.doc (Index.view { page.model | todos: [] } { user: me, role: Member })`,
 it would print:
 
 ```text

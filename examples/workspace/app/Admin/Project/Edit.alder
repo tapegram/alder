@@ -22,7 +22,7 @@ type Model = {
 
 load : Params -> Session -> Query Model
 load params session = {
-  let admin <- Admin.Layout.isAdmin session.user
+  let admin <- Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
     let found <- Db.get Project params.id
@@ -58,7 +58,7 @@ update msg model session = match msg {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Admin.Layout.Page title="Edit project">
+  <Layout.Page title="Edit project">
     <h1>Edit project</h1>
 
     <al-card>
@@ -73,7 +73,7 @@ view model session =
       </form>
     </al-card>
     <a href={Admin.Project.Show { org: session.org, id: model.row.id }}>Back</a>
-  </Admin.Layout.Page>
+  </Layout.Page>
 
 -- @admin begin tests
 test "saving changes every field" = {

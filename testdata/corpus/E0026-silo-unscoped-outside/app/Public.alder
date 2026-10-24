@@ -9,7 +9,7 @@ type Model = { projects: List Project, one: Maybe Project }
 
 load : Params -> Session -> Query Model
 load params session = {
-  let projects <- Projects.Index.all |> Db.all
+  let projects <- Index.all |> Db.all
   let one <- Db.get Project params.id
   Query.succeed { projects: projects, one: one }
 }

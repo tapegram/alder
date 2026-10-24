@@ -20,7 +20,7 @@ type Model = {
 
 load : Params -> Session -> Query Model
 load params session = {
-  let admin <- Admin.Layout.isAdmin session.user
+  let admin <- Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
     let findOrg = Text.slice 0 200 params.findOrg
@@ -66,7 +66,7 @@ update msg model session = match msg {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Admin.Layout.Page title="New activity">
+  <Layout.Page title="New activity">
     <h1>New activity</h1>
 
     <al-card>
@@ -91,7 +91,7 @@ view model session =
         <al-button type="submit">Create</al-button>
       </form>
     </al-card>
-  </Admin.Layout.Page>
+  </Layout.Page>
 
 -- @admin begin tests
 test "creating an activity adds it, with the values submitted" = {
