@@ -61,11 +61,6 @@ type Options struct {
 	User            string // the local user, for the record
 	Out             io.Writer
 	Now             func() time.Time // the clock the record's time is read from (nil: time.Now)
-	// TargetNow and Sleep are the target's clock, apart from Now: a Clocked target reads its
-	// point in time by TargetNow and waits for it with Sleep (nil: time.Now, time.Sleep; a test
-	// may give a fake clock here, never to Now, which orders the builds).
-	TargetNow func() time.Time
-	Sleep     func(time.Duration)
 }
 
 // Result is what a deploy produced.
@@ -82,7 +77,6 @@ type identity interface{ Identity() string }
 // or, when t is nil, through script s.
 func Deploy(ctx context.Context, o Options, g GateResult, t Target, s *Script) (Result, error) {
 	w := o.Out
-	setClock(t, o.TargetNow, o.Sleep)
 	if o.Now == nil {
 		o.Now = time.Now
 	}
@@ -497,10 +491,6 @@ type RollbackOptions struct {
 	HealthTimeout time.Duration
 	Out           io.Writer
 	Now           func() time.Time // the clock the rewritten record's When is read from (nil: time.Now)
-	// TargetNow and Sleep are the target's clock, apart from Now (as Options'; nil: time.Now,
-	// time.Sleep).
-	TargetNow func() time.Time
-	Sleep     func(time.Duration)
 }
 
 // ErrNotConfirmed is Rollback's answer when RollbackOptions.Confirm said no: nothing changed.
@@ -513,7 +503,6 @@ var ErrNotConfirmed = errors.New("not confirmed: nothing was changed (pass --yes
 // AllowSchemaMismatch.
 func Rollback(ctx context.Context, t Target, o RollbackOptions) (string, error) {
 	w := o.Out
-	setClock(t, o.TargetNow, o.Sleep)
 	if o.Now == nil {
 		o.Now = time.Now
 	}

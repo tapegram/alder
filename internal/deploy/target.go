@@ -154,7 +154,7 @@ type UploadLabeler interface {
 }
 
 // Clocked is a Target that reads and waits by a clock (a Turso database's point in time before
-// the migrations): Deploy and Rollback give it the clock of their options, when they set one.
+// the migrations): a caller sets its clock with SetClock.
 type Clocked interface {
 	SetClock(now func() time.Time, sleep func(time.Duration))
 }

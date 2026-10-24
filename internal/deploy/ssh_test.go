@@ -1,7 +1,6 @@
 package deploy
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -249,31 +248,5 @@ func TestSsh_PollAndClock(t *testing.T) {
 	setClock(s, nil, nil) // nothing set: the database keeps its clock
 	if s.DB.Now == nil || s.DB.Sleep == nil {
 		t.Error("an unset clock cleared the database's")
-	}
-}
-
-// Deploy and Rollback give a Clocked target TargetNow and Sleep, never Now (the record's clock).
-func TestDeployRollback_TargetClock(t *testing.T) {
-	t.Parallel()
-	noSSH := filepath.Join(t.TempDir(), "ssh") // no ssh there: Connect fails right after the clock is set
-	record := func() time.Time { return time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC) }
-	for _, name := range []string{"deploy", "rollback"} {
-		s := NewSsh("blog", "production", ir.Target{Host: "deploy@box", Path: "/srv/blog"}, &ir.Deploy{Proxy: "None"})
-		s.SSH = noSSH
-		s.DB = NewTurso(&ir.Database{Kind: "turso", Org: "acme", App: "blog"})
-		clock := &testClock{now: time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)}
-		var out bytes.Buffer
-		if name == "deploy" {
-			Deploy(context.Background(), Options{Out: &out, Now: record, TargetNow: clock.Now, Sleep: clock.Sleep}, GateResult{}, s, nil)
-		} else {
-			Rollback(context.Background(), s, RollbackOptions{Out: &out, Now: record, TargetNow: clock.Now, Sleep: clock.Sleep})
-		}
-		if got := s.DB.Now(); !got.Equal(clock.Now()) {
-			t.Errorf("%s: the target's clock reads %s, want TargetNow's %s", name, got, clock.Now())
-		}
-		s.DB.sleep(time.Hour)
-		if len(clock.slept) != 1 {
-			t.Errorf("%s: the target's Sleep is not Options.Sleep", name)
-		}
 	}
 }

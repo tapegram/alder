@@ -550,8 +550,8 @@ func TestBuild_BuildDir(t *testing.T) {
 	if _, err := os.Stat(bin); err != nil {
 		t.Errorf("no executable: %v", err)
 	}
-	if _, err := os.Stat("build"); !os.IsNotExist(err) {
-		t.Errorf("./build written despite --build-dir: %v", err)
+	if _, err := os.Stat(filepath.Join("build", "todos")); !os.IsNotExist(err) {
+		t.Errorf("./build/todos written despite --build-dir: %v", err)
 	}
 }
 

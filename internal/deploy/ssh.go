@@ -346,7 +346,7 @@ func (s *Ssh) stopNow() string {
   sp=$(cat "$R/builds/$1/pid" 2>/dev/null) || return 0
   alive "$1" || { rm -f "$R/builds/$1/pid"; return 0; }
   kill -TERM "$sp" 2>/dev/null
-  se=$(( $(date +%s) + 40 )); while alive "$1" && [ "$(date +%s)" -lt "$se" ]; do sleep "${ALDER_POLL:-0.2}"; done
+  se=$(( $(date +%s) + 40 )); while alive "$1" && [ "$(date +%s)" -le "$se" ]; do sleep "${ALDER_POLL:-0.2}"; done
   alive "$1" && kill -KILL "$sp" 2>/dev/null
   rm -f "$R/builds/$1/pid"; return 0
 }`
@@ -1093,7 +1093,7 @@ if ! command -v caddy >/dev/null 2>&1; then
 fi
 end=$(( $(date +%s) + 10 ))
 until curl -s -o /dev/null "$A/config/"; do
-  [ "$(date +%s)" -ge "$end" ] && { echo noadmin; exit 0; }; sleep "${ALDER_POLL:-0.5}"
+  [ "$(date +%s)" -gt "$end" ] && { echo noadmin; exit 0; }; sleep "${ALDER_POLL:-0.5}"
 done
 echo ready=yes
 `
