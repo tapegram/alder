@@ -4,4 +4,4 @@ import A.B
 import A_B
 
 both : Int
-both = A.B.x + A_B.x + A.B.y
+both = B.x + A_B.x + B.y

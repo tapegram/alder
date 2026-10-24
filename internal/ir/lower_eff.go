@@ -45,9 +45,11 @@ func (l *lowerer) effHead(fn syntax.Expr) *effHead {
 				}
 			}
 		case syntax.RefCapability:
-			capName := x.Module // `Clock.now`; with its module, `A.Clock.now`
+			// the capability, from the Ref ("Clock.now"): the written module (`Clock.now`,
+			// `B.Clock.now`, `LibMarkdown.render`) may be a qualifier, not the capability's name
+			capName := x.Ref.Name
 			if i := strings.LastIndexByte(capName, '.'); i >= 0 {
-				capName = capName[i+1:]
+				capName = capName[:i]
 			}
 			c := l.caps[key(x.Ref.Module, capName)]
 			if c == nil {
@@ -371,7 +373,10 @@ func (l *lowerer) effKind(t types.Type, at string) EffKind {
 
 // column lowers a column reference `Todo.owner`.
 func (l *lowerer) column(x *syntax.Var) *ColumnRef {
-	table := x.Module // `Charge.cents`; a fake's table from another module: `Payments.Charge.cents`
+	// `Charge.cents`; a fake's table from another module: `Payments.Charge.cents`. The written
+	// module's last segment is always the table: an app table's module is named after it (one
+	// segment, its own qualifier), and a fake's table is written after its module's qualifier.
+	table := x.Module
 	if i := strings.LastIndexByte(table, '.'); i >= 0 {
 		table = table[i+1:]
 	}

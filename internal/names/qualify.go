@@ -109,3 +109,34 @@ func Taken(m *syntax.Module, isStd func(string) bool) func(string) bool {
 func lastSegment(path string) string {
 	return path[strings.LastIndex(path, ".")+1:]
 }
+
+// Qualifiers maps each import path of module to its canonical qualifier ("" for an import with
+// no usable qualifier, E0206); nil when there is no such module. A stdlib module imported keeps
+// its name. The editor (completion, hover) and `alder fmt` write references with it.
+func (p *Program) Qualifiers(module string) map[string]string {
+	m := p.Modules[module]
+	if m == nil {
+		return nil
+	}
+	return p.qualifiers(m)
+}
+
+// qualifiers computes module m's import qualifiers (Qualifiers).
+func (p *Program) qualifiers(m *syntax.Module) map[string]string {
+	var paths []string
+	for _, im := range m.Imports {
+		if !p.isStd(im.Module) {
+			paths = append(paths, im.Module)
+		}
+	}
+	quals, _ := CanonicalQualifiers(m.Name, paths, Taken(m, p.isStd))
+	for _, im := range m.Imports {
+		if p.isStd(im.Module) {
+			quals[im.Module] = im.Module
+		}
+	}
+	return quals
+}
+
+// isStd reports whether name is a standard-library module.
+func (p *Program) isStd(name string) bool { _, ok := p.Std[name]; return ok }

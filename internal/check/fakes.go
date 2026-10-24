@@ -161,13 +161,25 @@ func (mc *modCtx) inferTestFake(x *syntax.App, v *syntax.Var, pipe *pipeArg) typ
 }
 
 // columnTable is the table a column reference names: `Charge` in `Charge.cents`, and in the
-// form `Payments.Charge.cents` a fake's table takes from another module. Of a capability
-// entry's reference it is the capability: `Clock` in `Clock.now` and in `A.Clock.now`.
+// form `Payments.Charge.cents` a fake's table takes from another module. It reads the written
+// module's last segment, which is always the table's name: an app table's module is named after
+// it (a single segment, whose qualifier is its name), and a fake's table is written after its
+// module's qualifier.
 func columnTable(x *syntax.Var) string {
 	if i := strings.LastIndexByte(x.Module, '.'); i >= 0 {
 		return x.Module[i+1:]
 	}
 	return x.Module
+}
+
+// entryCap is the capability a capability entry's reference names, from its Ref ("Clock.now"):
+// the written module may be a qualifier that is not the capability's name (`LibMarkdown.render`
+// for `capability Markdown` of `import Lib.Markdown as LibMarkdown`).
+func entryCap(x *syntax.Var) string {
+	if i := strings.LastIndexByte(x.Ref.Name, '.'); i >= 0 {
+		return x.Ref.Name[:i]
+	}
+	return x.Ref.Name
 }
 
 func boolInt(b bool) int {

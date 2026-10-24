@@ -990,11 +990,11 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 			return &types.App{Con: "Column", Args: []types.Type{info.Record, info.Columns[x.Name]}}
 		}
 	case syntax.RefCapability:
-		if entries, ok := c.caps[c.key(x.Ref.Module, columnTable(x))]; ok { // `Clock.now`, or `A.Clock.now`
+		if entries, ok := c.caps[c.key(x.Ref.Module, entryCap(x))]; ok { // `Clock.now`, or `B.Clock.now`
 			if t, ok := entries[x.Name]; ok {
 				return c.u.Instantiate(t)
 			}
-			c.errorf(diag.UnknownName, x.Span, "capability `%s` has no `%s`", x.Module, x.Name)
+			c.errorf(diag.UnknownName, x.Span, "capability `%s` has no `%s`", entryCap(x), x.Name)
 		}
 	}
 	return types.Err // unresolved, or a value whose signature is missing: already reported
@@ -1291,7 +1291,7 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 		}
 	}
 	// E0101: Db.get T x with x not an id
-	if v, ok := x.Fn.(*syntax.Var); ok && v.Module == "Db" && v.Name == "get" && len(x.Args) == 2 && pipe == nil {
+	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Db" && v.Ref.Name == "get" && len(x.Args) == 2 && pipe == nil {
 		if r := mc.checkDbGet(x, env, eff); r != nil {
 			return r
 		}
@@ -1374,7 +1374,7 @@ func (mc *modCtx) applyFn(fnExpr syntax.Expr, fnT types.Type, args []syntax.Expr
 	// arguments fix type variables the piped value's parameter mentions (`p.id |> Db.delete Todo`
 	// needs `Table t` bound before `Id t` can normalize), and lambdas go last so their parameter
 	// types are known.
-	if v, isVar := fnExpr.(*syntax.Var); isVar && v.Module == "Test" && v.Name == "run" && len(args) > 0 {
+	if v, isVar := fnExpr.(*syntax.Var); isVar && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Test" && v.Ref.Name == "run" && len(args) > 0 {
 		if mc.runArgs == nil {
 			mc.runArgs = map[syntax.Expr]bool{}
 		}

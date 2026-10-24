@@ -94,6 +94,8 @@ func (c *Checker) appTableRefs() []tableRef {
 	return out
 }
 
+// importNames is m's import paths (import lines keep the full path; only references use the
+// qualifier).
 func importNames(m *syntax.Module) []string {
 	var out []string
 	for _, im := range m.Imports {

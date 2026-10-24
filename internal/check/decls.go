@@ -613,6 +613,8 @@ func (mc *modCtx) checkRef(f *syntax.Field, a *syntax.Attr, ft types.Type, fromF
 	}
 }
 
+// imports reports whether m imports module name. Import lines keep the full path (only
+// references use the qualifier), so it compares paths.
 func imports(m *syntax.Module, name string) bool {
 	for _, im := range m.Imports {
 		if im.Module == name {
@@ -879,6 +881,8 @@ func viewReturnsFile(decls []syntax.Decl) bool {
 			t = ft.Result
 		}
 		tn, ok := t.(*syntax.TypeName)
+		// the written module: the stdlib's Prelude is written by its name (a stdlib module's
+		// qualifier is its name), and an unqualified `File` is the Prelude's unless declared here
 		return ok && tn.Name == "File" && (tn.Module == "" || tn.Module == "Prelude") && len(tn.Args) == 0
 	}
 	return false

@@ -20,7 +20,7 @@ type Model = {
 
 load : Params -> Session -> Query Model
 load params session = {
-  let admin <- Admin.Layout.isAdmin session.user
+  let admin <- Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
     let findPost = Text.slice 0 200 params.findPost
@@ -74,7 +74,7 @@ update msg model session = match msg {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Admin.Layout.Page title="New comment">
+  <Layout.Page title="New comment">
     <h1>New comment</h1>
 
     <al-card>
@@ -100,7 +100,7 @@ view model session =
         <al-button type="submit">Create</al-button>
       </form>
     </al-card>
-  </Admin.Layout.Page>
+  </Layout.Page>
 
 -- @admin begin tests
 test "creating a comment adds it, with the values submitted" = {

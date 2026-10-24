@@ -26,22 +26,30 @@ type moduleScope struct {
 	// table belongs to the fake, not to its module's name (E0018 does not apply to it)
 	fakeTables map[string]string
 	caps       map[string]bool
-	// capEntries holds, for a capability named like its module (`capability Markdown` in module
-	// Markdown), its entry names: `Markdown.render` from another module is that entry.
+	// capEntries holds, for a capability named like its module's last segment (`capability
+	// Markdown` in module Markdown or Lib.Markdown), its entry names: `Markdown.render` from
+	// another module, through the module's qualifier, is that entry.
 	capEntries map[string]bool
 	// entryCaps maps each entry name of any of its capabilities to the first capability
 	// declaring it: `Mail.send` for `capability Mailer { send … }` says to write `Mailer.send`.
 	entryCaps map[string]string
 	comps     map[string]bool            // capitalized value names
 	columns   map[string]map[string]bool // table → field set
-	imports   map[string]*syntax.Import
-	used      map[string]bool
+	// imports holds the module's imports by canonical qualifier (design rule 3), whatever alias
+	// is written: the written alias is only checked (E0204), so references keep resolving while
+	// it is wrong. An import with no usable qualifier (E0206) is not here.
+	imports map[string]*syntax.Import
+	quals   map[string]string // import path → canonical qualifier ("" for none)
+	used    map[string]bool   // by import path
 }
 
 func (p *Program) index(m *syntax.Module) *moduleScope {
 	s := &moduleScope{name: m.Name, values: map[string]bool{}, types: map[string]bool{}, forms: map[string]bool{}, ctors: map[string]string{}, brands: map[string]bool{}, tables: map[string]bool{}, fakeTables: map[string]string{}, caps: map[string]bool{}, capEntries: map[string]bool{}, entryCaps: map[string]string{}, comps: map[string]bool{}, columns: map[string]map[string]bool{}, imports: map[string]*syntax.Import{}, used: map[string]bool{}}
+	s.quals = p.qualifiers(m)
 	for _, im := range m.Imports {
-		s.imports[im.Module] = im
+		if q := s.quals[im.Module]; q != "" {
+			s.imports[q] = im
+		}
 	}
 	for _, d := range m.Decls {
 		switch d := d.(type) {
@@ -75,7 +83,7 @@ func (p *Program) index(m *syntax.Module) *moduleScope {
 					s.entryCaps[e.Name] = d.Name
 				}
 			}
-			if d.Name == m.Name {
+			if d.Name == lastSegment(m.Name) {
 				for _, e := range d.Entries {
 					s.capEntries[e.Name] = true
 				}
@@ -133,6 +141,9 @@ type resolver struct {
 	// missing holds the imports of this module that name no module: their error at the `import`
 	// stands for every use of the name (message 3), which is then not reported again.
 	missing map[string]bool
+	// unqual holds the imports of this module with no usable qualifier: their E0206 stands for
+	// every use of the module, which is then not reported again.
+	unqual map[string]bool
 	// inTest is set while a `test` body is resolved.
 	inTest bool
 }
@@ -194,12 +205,13 @@ func (p *Program) Resolve(bag *diag.Bag) {
 	}
 }
 
-// importNames lists the valid imported module names in declaration order.
+// importNames lists the valid imported module names (paths) in declaration order: not an import
+// that names no module or has no usable qualifier.
 func (r *resolver) importNames() []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, im := range r.m.Imports {
-		if _, ok := r.ms.imports[im.Module]; ok && !seen[im.Module] {
+		if q := r.ms.quals[im.Module]; q != "" && r.ms.imports[q] != nil && !seen[im.Module] {
 			seen[im.Module] = true
 			out = append(out, im.Module)
 		}
@@ -216,12 +228,15 @@ func (r *resolver) module() {
 				r.missing = map[string]bool{}
 			}
 			r.missing[im.Module] = true
-			delete(r.ms.imports, im.Module)
+			if q := r.ms.quals[im.Module]; q != "" { // a use through its qualifier is silent too
+				r.missing[q] = true
+				delete(r.ms.imports, q)
+			}
 			if owner, table, ok := r.tableInOtherModule(im.Module); ok {
 				if s := r.p.scopes[owner]; s != nil && s.fakeTables[table] != "" { // `import Mail.Sent`
-					d := r.bag.Error(diag.UnknownName, im.Span, "`%s` is a table, not a module: `import %s`", im.Module, owner)
-					if _, has := r.ms.imports[owner]; !has && r.p.importPath(owner, r.m.Name) == nil {
-						d.Fix = diag.ReplaceSpan(im.Span, "import "+owner)
+					d := r.bag.Error(diag.UnknownName, im.Span, "`%s` is a table, not a module: `%s`", im.Module, importText(owner, r.qualFor(owner)))
+					if !r.imported(owner) && r.p.importPath(owner, r.m.Name) == nil {
+						d.Fix = diag.ReplaceSpan(im.Span, importText(owner, r.qualFor(owner)))
 						if r.fixed == nil {
 							r.fixed = map[string]bool{}
 						}
@@ -235,6 +250,7 @@ func (r *resolver) module() {
 			r.bag.Error(diag.UnknownName, im.Span, "there is no `%s` (or `%s/…`): write the module or remove the import", modulePath(im.Module)+".alder", modulePath(im.Module))
 		}
 	}
+	r.aliases()
 	for _, d := range r.m.Decls {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
@@ -275,7 +291,7 @@ func (r *resolver) module() {
 			r.fields(d.Fields)
 		case *syntax.CapDecl:
 			r.fields(d.Entries)
-			if d.Name == r.m.Name {
+			if d.Name == lastSegment(r.m.Name) {
 				for _, e := range d.Entries {
 					if r.ms.values[e.Name] {
 						r.bag.Error(diag.Duplicate, e.Span, "`%s` is both a value of `%s` and an entry of capability `%s`", e.Name, r.m.Name, d.Name)
@@ -302,9 +318,104 @@ func (r *resolver) module() {
 	}
 	for _, name := range r.importNames() {
 		if !r.ms.used[name] {
-			r.bag.Warn(diag.UnusedImport, r.ms.imports[name].Span, "import `%s` is unused", name)
+			r.bag.Warn(diag.UnusedImport, r.ms.imports[r.ms.quals[name]].Span, "import `%s` is unused", name)
 		}
 	}
+}
+
+// aliases checks that each import is written in its canonical form (design rule 4): with no
+// `as` when its qualifier is its last segment, else `as` the qualifier. Any other alias is
+// E0204, with a fix rewriting the line; an import with no usable qualifier is E0206. An import
+// that names no module was reported above.
+func (r *resolver) aliases() {
+	for _, im := range r.m.Imports {
+		if r.missing[im.Module] {
+			continue
+		}
+		q := r.ms.quals[im.Module]
+		if q == "" {
+			if r.unqual == nil {
+				r.unqual = map[string]bool{}
+			}
+			r.unqual[im.Module] = true
+			r.bag.Error(diag.NoQualifier, im.Span, "import `%s` has no usable qualifier: every name made of its last segments is taken here or is another import's; rename the module (or the one it collides with)", im.Module)
+			continue
+		}
+		want := ""
+		if NeedsAlias(im.Module, q) {
+			want = q
+		}
+		if im.Alias == want {
+			continue
+		}
+		line := importText(im.Module, q)
+		var d *diag.Diagnostic
+		switch {
+		case im.Alias == "":
+			d = r.bag.Error(diag.ImportAlias, im.Span, "import `%s` needs `as %s`: %s; write `%s`", im.Module, q, r.whyAlias(im.Module), line)
+		case want == "":
+			d = r.bag.Error(diag.ImportAlias, im.Span, "import `%s` needs no alias: it is already named `%s`; write `%s`", im.Module, q, line)
+		default:
+			d = r.bag.Error(diag.ImportAlias, im.Span, "import `%s` must be named `%s`, not `%s` (one spelling per module); write `%s`", im.Module, q, im.Alias, line)
+		}
+		d.Fix = diag.ReplaceSpan(im.Span, line)
+	}
+}
+
+// whyAlias says why path's last segment cannot be its qualifier here.
+func (r *resolver) whyAlias(path string) string {
+	last := lastSegment(path)
+	for _, im := range r.m.Imports {
+		if im.Module != path && lastSegment(im.Module) == last {
+			return fmt.Sprintf("`%s` also ends in `%s`", im.Module, last)
+		}
+	}
+	switch {
+	case last == lastSegment(r.m.Name):
+		return fmt.Sprintf("`%s` is this module's own name", last)
+	case last == "App":
+		return "`App` is the app module"
+	case r.p.isStd(last):
+		return fmt.Sprintf("`%s` is a standard-library module", last)
+	}
+	return fmt.Sprintf("this module declares `%s`", last)
+}
+
+// importText is the import line of module x with qualifier q: `import x`, or `import x as q`.
+func importText(x, q string) string {
+	if q != x && NeedsAlias(x, q) {
+		return "import " + x + " as " + q
+	}
+	return "import " + x
+}
+
+// imported reports whether module x (a path) is imported here, with a usable qualifier.
+func (r *resolver) imported(x string) bool {
+	q := r.ms.quals[x]
+	return q != "" && r.ms.imports[q] != nil
+}
+
+// qualFor is the qualifier module x has here: its import's, or, when x is not imported, the
+// canonical qualifier it would have beside this module's imports (x itself when it would have
+// none). Text that tells the reader to write a name of x uses it.
+func (r *resolver) qualFor(x string) string {
+	if q := r.ms.quals[x]; q != "" {
+		return q
+	}
+	if r.p.isStd(x) {
+		return x
+	}
+	paths := []string{x}
+	for _, im := range r.m.Imports {
+		if !r.p.isStd(im.Module) {
+			paths = append(paths, im.Module)
+		}
+	}
+	quals, _ := CanonicalQualifiers(r.m.Name, paths, Taken(r.m, r.p.isStd))
+	if q := quals[x]; q != "" {
+		return q
+	}
+	return x
 }
 
 // fake resolves `fake Cap { … }`: its name as a capability of this module or an imported one
@@ -328,9 +439,10 @@ func (r *resolver) fake(d *syntax.FakeDecl) {
 	}
 }
 
-// capability finds capability name, written `name` or `mod.name`: declared in this module or,
-// unqualified, in an imported one. Its Ref is RefCapability with Name "Module.Cap". A name two
-// imported modules declare is reported at span (found, with no Ref).
+// capability finds capability name, written `name` or `mod.name` (mod this module's name or an
+// import's qualifier): declared in this module or, unqualified, in an imported one. Its Ref is
+// RefCapability with Name "Module.Cap". A name two imported modules declare is reported at span
+// (found, with no Ref).
 func (r *resolver) capability(mod, name string, span diag.Span) (syntax.Ref, bool) {
 	ref := func(m string) syntax.Ref {
 		return syntax.Ref{Kind: syntax.RefCapability, Module: m, Name: m + "." + name}
@@ -351,10 +463,10 @@ func (r *resolver) capability(mod, name string, span diag.Span) (syntax.Ref, boo
 			return ref(owners[0]), true
 		}
 	default:
-		if _, ok := r.ms.imports[mod]; ok {
-			if s := r.p.scopes[mod]; s != nil && s.caps[name] {
-				r.ms.used[mod] = true
-				return ref(mod), true
+		if im, ok := r.ms.imports[mod]; ok {
+			if s := r.p.scopes[im.Module]; s != nil && s.caps[name] {
+				r.ms.used[im.Module] = true
+				return ref(im.Module), true
 			}
 		}
 	}
@@ -381,7 +493,7 @@ func (r *resolver) ambiguousCapability(span diag.Span, name string, owners []str
 	for _, o := range owners {
 		r.ms.used[o] = true
 		of = append(of, "`"+o+"`")
-		alts = append(alts, "`"+o+"."+name+"`")
+		alts = append(alts, "`"+r.qualFor(o)+"."+name+"`")
 	}
 	both, or := "both ", alts[0]+" or "+alts[1]
 	if len(owners) > 2 {
@@ -392,23 +504,30 @@ func (r *resolver) ambiguousCapability(span diag.Span, name string, owners []str
 	r.bag.Error(diag.UnknownName, span, "`%s` is a capability of %s%s: write %s", name, both, list, or)
 }
 
-// testFakeArg resolves the argument of `Test.fake`: a capability name, `Stripe` or
-// `Payments.Stripe`. Any other argument is resolved as an expression (the checker refuses it).
+// testFakeArg resolves the argument of `Test.fake`: a capability name, `Stripe` or, through its
+// module's qualifier, `Payments.Stripe`. Any other argument is resolved as an expression (the
+// checker refuses it).
 func (r *resolver) testFakeArg(a syntax.Expr, sc *Scope) {
 	ct, ok := a.(*syntax.CtorRef)
 	if !ok {
 		r.expr(a, sc)
 		return
 	}
-	if ref, found := r.capability(ct.Module, ct.Name, ct.Span); found {
+	mod, name := ct.Module, ct.Name
+	if mod != "" {
+		if short, path, ok := r.fullPath(mod+"."+name, ct.Span.Start); ok { // `A.B.Clock`
+			mod, name = r.splitShort(short, path)
+		}
+	}
+	if ref, found := r.capability(mod, name, ct.Span); found {
 		ct.Ref = ref
 		return
 	}
 	full := ct.Name
 	if ct.Module != "" {
 		full = ct.Module + "." + ct.Name
-		if _, imported := r.ms.imports[ct.Module]; !imported && ct.Module != r.m.Name && r.p.Modules[ct.Module] != nil {
-			r.notImported(ct.Span, ct.Module)
+		if _, imported := r.ms.imports[mod]; !imported && mod != r.m.Name && r.p.Modules[mod] != nil {
+			r.notImported(ct.Span, mod)
 			return
 		}
 	}
@@ -431,8 +550,12 @@ func (r *resolver) testFormArg(a syntax.Expr, step string, sc *Scope) {
 		return
 	}
 	if ct.Module != "" {
-		if s := r.p.scopes[ct.Module]; s != nil && r.p.Modules[ct.Module] != nil && s.forms[ct.Name] {
-			ct.Ref = syntax.Ref{Kind: syntax.RefType, Module: ct.Module, Name: ct.Name}
+		path := ct.Module // a page's full path, or an import's qualifier
+		if im, ok := r.ms.imports[path]; ok {
+			path = im.Module
+		}
+		if s := r.p.scopes[path]; s != nil && r.p.Modules[path] != nil && s.forms[ct.Name] {
+			ct.Ref = syntax.Ref{Kind: syntax.RefType, Module: path, Name: ct.Name}
 			return
 		}
 	} else {
@@ -489,21 +612,73 @@ func (r *resolver) recordType(rt *syntax.RecordType) {
 	}
 }
 
-// importedScope returns the scope of X if X is imported or std, marking it used.
-func (r *resolver) importedScope(x string) (*moduleScope, bool) {
-	if _, ok := r.ms.imports[x]; ok {
-		if s := r.p.scopes[x]; s != nil {
-			r.ms.used[x] = true
-			return s, true
+// importedScope returns the module qualifier q names, its full path and its scope: the import
+// whose canonical qualifier is q (marked used), or the stdlib module q.
+func (r *resolver) importedScope(q string) (string, *moduleScope, bool) {
+	if im, ok := r.ms.imports[q]; ok {
+		if s := r.p.scopes[im.Module]; s != nil {
+			r.ms.used[im.Module] = true
+			return im.Module, s, true
 		}
-		return nil, false
+		return "", nil, false
 	}
-	if _, ok := r.p.Std[x]; ok {
-		if s := r.p.scopes[x]; s != nil {
-			return s, true
+	if r.p.isStd(q) {
+		if s := r.p.scopes[q]; s != nil {
+			return q, s, true
 		}
 	}
-	return nil, false
+	return "", nil, false
+}
+
+// fullPath handles a name written with the full path of an imported module whose qualifier is
+// not that path (design rule 5): `Table.Todo.find`, `A.B.Clock.now`, or `Table.Todo` for its
+// eponymous declaration. It reports E0205 at each of starts (where the written name begins in
+// the source; an element's closing tag is a second place), with a fix writing the qualifier in
+// the path's place, and returns the name as the qualifier writes it and the module's path; the
+// caller resolves that short name, so nothing else is reported. A page value's full path is
+// never E0205: callers resolve page values (design rule 6) before calling it.
+func (r *resolver) fullPath(written string, starts ...diag.Pos) (short, path string, ok bool) {
+	for _, im := range r.m.Imports {
+		p, q := im.Module, r.ms.quals[im.Module]
+		if q == "" || q == p || r.ms.imports[q] == nil || len(p) <= len(path) {
+			continue // no qualifier, or a single-segment path: its qualifier is its name
+		}
+		if written == p || strings.HasPrefix(written, p+".") {
+			path = p // the longest such path: `A.B.C` over `A.B`
+		}
+	}
+	if path == "" {
+		return "", "", false
+	}
+	q := r.ms.quals[path]
+	short = q + written[len(path):]
+	for _, st := range starts {
+		sp := diag.Span{File: r.m.File, Start: st, End: diag.Pos{Line: st.Line, Col: st.Col + len(written)}}
+		d := r.bag.Error(diag.FullPath, sp, "write `%s`, not `%s`: an imported module is named by its qualifier, `%s` for `%s`", short, written, q, path)
+		if r.textAt(st, written) {
+			d.Fix = diag.ReplaceSpan(sp, short)
+		}
+	}
+	return short, path, true
+}
+
+// splitShort splits a name fullPath shortened into its module part and name. The qualifier
+// alone (`Todo` for `Table.Todo`) names the module's eponymous declaration (design rule 2): it
+// splits as the qualifier and the path's last segment.
+func (r *resolver) splitShort(short, path string) (mod, name string) {
+	if i := strings.LastIndexByte(short, '.'); i >= 0 {
+		return short[:i], short[i+1:]
+	}
+	return short, lastSegment(path)
+}
+
+// textAt reports whether the source has text at pos (on one line).
+func (r *resolver) textAt(pos diag.Pos, text string) bool {
+	if pos.Line < 1 || pos.Line > len(r.m.Lines) {
+		return false
+	}
+	line, i := r.m.Lines[pos.Line-1], pos.Col-1
+	return i >= 0 && i+len(text) <= len(line) && line[i:i+len(text)] == text
 }
 
 // stdShadowed reports whether x is the name of an app module refused by E0017 (the stdlib has
@@ -525,7 +700,7 @@ func modulePath(x string) string { return "app/" + strings.ReplaceAll(x, ".", "/
 // does not exist but names a table of another module gets the table's message; and when x
 // imports this module, directly or not, the import cannot be added, so none is offered.
 func (r *resolver) notImported(span diag.Span, x string) {
-	if r.missing[x] || r.reported[x] {
+	if r.missing[x] || r.unqual[x] || r.reported[x] {
 		return
 	}
 	if r.reported == nil {
@@ -552,8 +727,9 @@ func (r *resolver) notImported(span diag.Span, x string) {
 	d.Fix = r.importFix(x)
 }
 
-// importFix inserts `import x` after the last import, once per module x; nil when it was
-// already offered.
+// importFix inserts `import x` after the last import, once per module x, in its canonical form
+// (`import x as Q` when x needs an alias beside this module's imports); nil when it was already
+// offered.
 func (r *resolver) importFix(x string) *diag.Fix {
 	if r.fixed[x] {
 		return nil
@@ -566,7 +742,7 @@ func (r *resolver) importFix(x string) *diag.Fix {
 	if n := len(r.m.Imports); n > 0 {
 		line = r.m.Imports[n-1].Span.End.Line + 1
 	}
-	return diag.InsertAt(line, 1, "import "+x+"\n")
+	return diag.InsertAt(line, 1, importText(x, r.qualFor(x))+"\n")
 }
 
 // importPath is the chain of imports from app module from to module to (from first, to
@@ -637,7 +813,8 @@ func (r *resolver) tableMisplaced(span diag.Span, owner, table string) {
 				r.bag.Error(diag.UnknownName, span, "`%s` is a table of `fake %s` in module `%s`, and `%s` %s, so `%s` cannot import it; %s", table, fake, owner, owner, importsPhrase(path), r.m.Name, r.cycleRemedy(owner))
 				return
 			}
-			d := r.bag.Error(diag.UnknownName, span, "`%s` is a table of `fake %s` in module `%s`: add `import %s`, then write `%s.%s` (columns: `%s.%s.column`)", table, fake, owner, owner, owner, table, owner, table)
+			q := r.qualFor(owner)
+			d := r.bag.Error(diag.UnknownName, span, "`%s` is a table of `fake %s` in module `%s`: add `%s`, then write `%s.%s` (columns: `%s.%s.column`)", table, fake, owner, importText(owner, q), q, table, q, table)
 			d.Fix = r.importFix(owner)
 			return
 		}
@@ -670,17 +847,25 @@ func (r *resolver) typ(t syntax.Type) {
 				t.Ref = syntax.Ref{Kind: syntax.RefType, Module: t.Module, Name: t.Name}
 				return
 			}
-			if s, ok := r.importedScope(t.Module); ok {
-				if s.types[t.Name] {
-					t.Ref = syntax.Ref{Kind: syntax.RefType, Module: t.Module, Name: t.Name}
+			if r.p.IsPageModule(t.Module + "." + t.Name) { // a page: always its full path (design rule 6)
+				t.Ref = syntax.Ref{Kind: syntax.RefPage, Module: t.Module + "." + t.Name}
+				return
+			}
+			mod, name := t.Module, t.Name
+			if short, path, ok := r.fullPath(mod+"."+name, t.Span.Start); ok {
+				mod, name = r.splitShort(short, path)
+			}
+			if path, s, ok := r.importedScope(mod); ok {
+				if s.types[name] {
+					t.Ref = syntax.Ref{Kind: syntax.RefType, Module: path, Name: name}
 					return
 				}
-				if !r.stdShadowed(t.Module) {
-					r.bag.Error(diag.UnknownName, t.Span, "module `%s` has no type `%s`", t.Module, t.Name)
+				if !r.stdShadowed(path) {
+					r.bag.Error(diag.UnknownName, t.Span, "module `%s` has no type `%s`", path, name)
 				}
 				return
 			}
-			if r.p.IsPageModule(t.Module+"."+t.Name) || r.p.IsPageModule(t.Module) {
+			if r.p.IsPageModule(t.Module) {
 				t.Ref = syntax.Ref{Kind: syntax.RefPage, Module: t.Module + "." + t.Name}
 				return
 			}
@@ -712,9 +897,10 @@ func (r *resolver) typ(t syntax.Type) {
 			// itself; `Capability` names no type, here or in any program
 			return
 		}
-		// module-name rule: imported module X declaring type X
-		if s, ok := r.importedScope(t.Name); ok && s.types[t.Name] {
-			t.Ref = syntax.Ref{Kind: syntax.RefType, Module: t.Name, Name: t.Name}
+		// module-name rule (design rule 2): an import's qualifier alone names the module's type
+		// named like its last segment (`Todo` for `import Table.Todo`)
+		if path, s, ok := r.importedScope(t.Name); ok && s.types[lastSegment(path)] {
+			t.Ref = syntax.Ref{Kind: syntax.RefType, Module: path, Name: lastSegment(path)}
 			return
 		}
 		switch {
@@ -737,8 +923,9 @@ func (r *resolver) typ(t syntax.Type) {
 						r.bag.Error("E0202", t.Span, "type `%s` belongs to module `%s`, but `%s` is a table, and a table is declared in its own module named after it: move it to `%s.alder`%s", t.Name, x, t.Name, modulePath(t.Name), r.p.tableDeclSee(x, t.Name))
 						return
 					}
-					d := r.bag.Error("E0202", t.Span, "type `%s` belongs to module `%s`; write `%s.%s`", t.Name, x, x, t.Name)
-					d.Fix = diag.ReplaceSpan(t.Span, x+"."+t.Name)
+					q := r.qualFor(x)
+					d := r.bag.Error("E0202", t.Span, "type `%s` belongs to module `%s`; write `%s.%s`", t.Name, x, q, t.Name)
+					d.Fix = diag.ReplaceSpan(t.Span, q+"."+t.Name)
 					return
 				}
 			}
@@ -910,22 +1097,29 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 		}
 		return
 	}
-	// Module.value
-	if s, ok := r.importedScope(v.Module); ok {
+	// Module.value, in the order of design rule 5: an import's qualifier (or a full path, E0205,
+	// resolved as its qualifier) or a stdlib module, then this module's capabilities and tables,
+	// then `Q.Cap.entry` and `Q.Table.column`
+	mod := v.Module
+	if short, path, ok := r.fullPath(mod+"."+v.Name, v.Span.Start); ok {
+		mod, _ = r.splitShort(short, path)
+	}
+	if path, s, ok := r.importedScope(mod); ok {
+		ep := lastSegment(path) // the name of the module's eponymous table or capability
 		switch {
 		case s.values[v.Name]:
 			kind := syntax.RefValue
-			if _, std := r.p.Std[v.Module]; std {
+			if r.p.isStd(path) {
 				kind = syntax.RefStd
 			}
-			v.Ref = syntax.Ref{Kind: kind, Module: v.Module, Name: v.Name}
-		case s.tables[v.Module] && s.columns[v.Module][v.Name]:
-			v.Ref = syntax.Ref{Kind: syntax.RefColumn, Module: v.Module, Name: v.Name}
+			v.Ref = syntax.Ref{Kind: kind, Module: path, Name: v.Name}
+		case s.tables[ep] && s.columns[ep][v.Name]:
+			v.Ref = syntax.Ref{Kind: syntax.RefColumn, Module: path, Name: v.Name}
 		case s.capEntries[v.Name]: // `capability M` of module M: Markdown.render
-			v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: v.Module, Name: v.Module + "." + v.Name}
+			v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: path, Name: ep + "." + v.Name}
 		default:
-			if !r.stdShadowed(v.Module) {
-				d := r.bag.Error(diag.UnknownName, v.Span, "module `%s` has no `%s`%s", v.Module, v.Name, entryHint(s, v.Name))
+			if !r.stdShadowed(path) {
+				d := r.bag.Error(diag.UnknownName, v.Span, "module `%s` has no `%s`%s", path, v.Name, entryHint(s, v.Name))
 				if c := s.entryCaps[v.Name]; c != "" {
 					d.Fix = diag.ReplaceSpan(v.Span, c+"."+v.Name)
 				}
@@ -934,60 +1128,64 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 		return
 	}
 	// capability declared in this or an imported module: Password.verify
-	if r.ms.caps[v.Module] {
-		v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: r.m.Name, Name: v.Module + "." + v.Name}
+	if r.ms.caps[mod] {
+		v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: r.m.Name, Name: mod + "." + v.Name}
 		return
 	}
-	if owners := r.importedCapOwners(v.Module); len(owners) > 1 { // `Clock.now`, A and B declaring Clock
-		r.ambiguousCapability(v.Span, v.Module, owners)
+	if owners := r.importedCapOwners(mod); len(owners) > 1 { // `Clock.now`, A and B declaring Clock
+		r.ambiguousCapability(v.Span, mod, owners)
 		return
 	} else if len(owners) == 1 {
 		r.ms.used[owners[0]] = true
-		v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: owners[0], Name: v.Module + "." + v.Name}
+		v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: owners[0], Name: mod + "." + v.Name}
 		return
 	}
 	// this module's own table columns: Todo.done inside module Todo
-	if r.ms.tables[v.Module] && r.ms.columns[v.Module][v.Name] {
+	if r.ms.tables[mod] && r.ms.columns[mod][v.Name] {
 		v.Ref = syntax.Ref{Kind: syntax.RefColumn, Module: r.m.Name, Name: v.Name}
 		return
 	}
-	if v.Module == r.m.Name {
+	if mod == r.m.Name {
 		r.ownQualified(v.Span, v.Name, r.ms.values[v.Name], true)
 		return
 	}
-	if i := strings.LastIndexByte(v.Module, '.'); i > 0 {
-		owner, table := v.Module[:i], v.Module[i+1:]
-		// an entry of a capability named with its module: A.Clock.now
-		if s := r.p.scopes[owner]; s != nil && s.caps[table] && r.p.Modules[owner] != nil {
-			switch _, imported := r.ms.imports[owner]; {
-			case owner == r.m.Name:
+	if i := strings.LastIndexByte(mod, '.'); i > 0 {
+		owner, table := mod[:i], mod[i+1:]
+		// owner is an import's qualifier, or (not imported) a module's path
+		path, imported := owner, false
+		if im, ok := r.ms.imports[owner]; ok {
+			path, imported = im.Module, true
+		}
+		// an entry of a capability named with its module: B.Clock.now
+		if s := r.p.scopes[path]; s != nil && s.caps[table] && r.p.Modules[path] != nil {
+			switch {
+			case path == r.m.Name:
 				r.ownQualified(v.Span, table+"."+v.Name, true, true)
 			case imported:
-				r.ms.used[owner] = true
-				v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: owner, Name: table + "." + v.Name}
+				r.ms.used[path] = true
+				v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: path, Name: table + "." + v.Name}
 			default:
-				r.notImported(v.Span, owner)
+				r.notImported(v.Span, path)
 			}
 			return
 		}
 		// a fake's table's column from another module: Payments.Charge.cents
-		if _, fake := r.p.scopes[owner].fakeTablesOf()[table]; fake {
-			if s, ok := r.importedScope(owner); ok && s.columns[table][v.Name] {
-				v.Ref = syntax.Ref{Kind: syntax.RefColumn, Module: owner, Name: v.Name}
+		if _, fake := r.p.scopes[path].fakeTablesOf()[table]; fake && imported {
+			r.ms.used[path] = true
+			if r.p.scopes[path].columns[table][v.Name] {
+				v.Ref = syntax.Ref{Kind: syntax.RefColumn, Module: path, Name: v.Name}
 				return
 			}
-			if _, ok := r.ms.imports[owner]; ok {
-				r.bag.Error(diag.UnknownName, v.Span, "table `%s` of `fake %s` has no column `%s`", table, r.p.scopes[owner].fakeTables[table], v.Name)
-				return
-			}
+			r.bag.Error(diag.UnknownName, v.Span, "table `%s` of `fake %s` has no column `%s`", table, r.p.scopes[path].fakeTables[table], v.Name)
+			return
 		}
 	}
 	// a fake's table of an imported module, unqualified: Charge.cents
-	if owner, fake, ok := r.importedFakeTable(v.Module); ok {
-		r.bag.Error(diag.UnknownName, v.Span, "`%s` is a table of `fake %s` in module `%s`: write `%s.%s.%s`", v.Module, fake, owner, owner, v.Module, v.Name)
+	if owner, fake, ok := r.importedFakeTable(mod); ok {
+		r.bag.Error(diag.UnknownName, v.Span, "`%s` is a table of `fake %s` in module `%s`: write `%s.%s.%s`", mod, fake, owner, r.qualFor(owner), mod, v.Name)
 		return
 	}
-	if v.Module == "App" { // App needs no import; only its messages are usable values
+	if mod == "App" { // App needs no import; only its messages are usable values
 		if app := r.p.scopes["App"]; v.Name == "update" && r.p.Modules["App"] != nil && app != nil && app.values["update"] {
 			r.bag.Error(diag.UnknownName, v.Span, "`App.update` is called by the runtime, not by code; a test of it belongs in `app/App.alder`")
 			return
@@ -999,7 +1197,7 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 		r.bag.Error(diag.UnknownName, v.Span, "`App` has no `%s`; only app-level messages such as `App.Logout` can be used from other modules", v.Name)
 		return
 	}
-	r.notImported(v.Span, v.Module)
+	r.notImported(v.Span, mod)
 }
 
 // fakeTablesOf is s's fake tables (none for a nil scope).
@@ -1063,6 +1261,9 @@ func (r *resolver) unresolvedCtor(c *syntax.CtorRef) {
 		}
 		if len(owners) == 1 {
 			o := owners[0]
+			if r.unqual[o.Module] { // its import's E0206 stands for it
+				return
+			}
 			if o.Type == c.Name && r.p.scopes[o.Module].brands[c.Name] && !r.inTest {
 				r.bag.Error(diag.InvalidDecl, c.Span, "brand constructor `%s` can only be used in module `%s` or inside a `test`", c.Name, o.Module)
 				return
@@ -1154,8 +1355,8 @@ func (r *resolver) tableAlt(name string) syntax.Ref {
 	if r.ms.tables[name] {
 		return syntax.Ref{Kind: syntax.RefTable, Module: r.m.Name, Name: name}
 	}
-	if s, ok := r.importedScope(name); ok && s.tables[name] && r.p.Modules[name] != nil {
-		return syntax.Ref{Kind: syntax.RefTable, Module: name, Name: name}
+	if path, s, ok := r.importedScope(name); ok && s.tables[lastSegment(path)] && r.p.Modules[path] != nil {
+		return syntax.Ref{Kind: syntax.RefTable, Module: path, Name: lastSegment(path)}
 	}
 	return syntax.Ref{}
 }
@@ -1202,8 +1403,8 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 			c.Ref = syntax.Ref{Kind: syntax.RefTable, Module: r.m.Name, Name: c.Name}
 			return
 		}
-		if s, ok := r.importedScope(c.Name); ok && s.tables[c.Name] {
-			c.Ref = syntax.Ref{Kind: syntax.RefTable, Module: c.Name, Name: c.Name}
+		if path, s, ok := r.importedScope(c.Name); ok && s.tables[lastSegment(path)] { // through its qualifier
+			c.Ref = syntax.Ref{Kind: syntax.RefTable, Module: path, Name: lastSegment(path)}
 			return
 		}
 		if s := r.p.scopes[c.Name]; s != nil && s.tables[c.Name] {
@@ -1211,7 +1412,7 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 			return
 		}
 		if owner, fake, ok := r.importedFakeTable(c.Name); ok { // `Db.from Charge` in another module
-			r.bag.Error(diag.UnknownName, c.Span, "`%s` is a table of `fake %s` in module `%s`: write `%s.%s`", c.Name, fake, owner, owner, c.Name)
+			r.bag.Error(diag.UnknownName, c.Span, "`%s` is a table of `fake %s` in module `%s`: write `%s.%s`", c.Name, fake, owner, r.qualFor(owner), c.Name)
 			return
 		}
 		r.unresolvedCtor(c)
@@ -1240,26 +1441,34 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 		r.ownQualified(c.Span, c.Name, isCtor || r.ms.brands[c.Name] || r.ms.tables[c.Name], true)
 		return
 	}
-	if r.missing[c.Module] { // reported at the import
+	if r.missing[c.Module] || r.unqual[c.Module] { // reported at the import
 		return
 	}
-	if s, ok := r.importedScope(c.Module); ok {
-		if s.brands[c.Name] {
-			c.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: c.Module, Name: c.Name}
+	mod, name := c.Module, c.Name
+	if short, path, ok := r.fullPath(full, c.Span.Start); ok {
+		mod, name = r.splitShort(short, path)
+	}
+	if path, s, ok := r.importedScope(mod); ok {
+		if s.brands[name] {
+			c.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: path, Name: name}
 			return
 		}
-		if _, isCtor := s.ctors[c.Name]; isCtor {
-			d := r.bag.Error("E0203", c.Span, "constructors are not qualified; write `%s`", c.Name)
-			d.Fix = diag.ReplaceSpan(c.Span, c.Name)
-			c.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: c.Module, Name: c.Name}
+		if _, isCtor := s.ctors[name]; isCtor {
+			if s.ctors[name] == "Msg" && r.p.IsPageModule(path) { // an imported page's message, through its qualifier
+				r.bag.Error(diag.UnknownName, c.Span, "`%s` belongs to page `%s`; a page can only send its own messages and `App` messages", name, path)
+				return
+			}
+			d := r.bag.Error("E0203", c.Span, "constructors are not qualified; write `%s`", name)
+			d.Fix = diag.ReplaceSpan(c.Span, name)
+			c.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: path, Name: name}
 			return
 		}
-		if s.tables[c.Name] {
-			c.Ref = syntax.Ref{Kind: syntax.RefTable, Module: c.Module, Name: c.Name}
+		if s.tables[name] {
+			c.Ref = syntax.Ref{Kind: syntax.RefTable, Module: path, Name: name}
 			return
 		}
-		if !r.stdShadowed(c.Module) {
-			r.bag.Error(diag.UnknownName, c.Span, "module `%s` has no `%s`", c.Module, c.Name)
+		if !r.stdShadowed(path) {
+			r.bag.Error(diag.UnknownName, c.Span, "module `%s` has no `%s`", path, name)
 		}
 		return
 	}
@@ -1330,8 +1539,9 @@ func (r *resolver) element(e *syntax.Element, sc *Scope) {
 		case r.ms.comps[e.Tag]:
 			e.Ref = syntax.Ref{Kind: syntax.RefComponent, Module: r.m.Name, Name: e.Tag}
 		default:
-			if s, ok := r.importedScope(e.Tag); ok && s.comps[e.Tag] {
-				e.Ref = syntax.Ref{Kind: syntax.RefComponent, Module: e.Tag, Name: e.Tag}
+			// an import's qualifier alone: the module's component named like its last segment
+			if path, s, ok := r.importedScope(e.Tag); ok && s.comps[lastSegment(path)] {
+				e.Ref = syntax.Ref{Kind: syntax.RefComponent, Module: path, Name: lastSegment(path)}
 				return
 			}
 			if r.missing[e.Tag] { // `<Layout>` whose `import Layout` names no module
@@ -1341,12 +1551,17 @@ func (r *resolver) element(e *syntax.Element, sc *Scope) {
 		}
 		return
 	}
-	if s, ok := r.importedScope(e.Module); ok {
-		if s.comps[e.Tag] {
-			e.Ref = syntax.Ref{Kind: syntax.RefComponent, Module: e.Module, Name: e.Tag}
+	mod, tag := e.Module, e.Tag
+	written := mod + "." + tag
+	if short, path, ok := r.fullPath(written, r.tagStarts(e, written)...); ok {
+		mod, tag = r.splitShort(short, path)
+	}
+	if path, s, ok := r.importedScope(mod); ok {
+		if s.comps[tag] {
+			e.Ref = syntax.Ref{Kind: syntax.RefComponent, Module: path, Name: tag}
 			return
 		}
-		r.bag.Error(diag.UnknownName, e.Span, "module `%s` has no component `%s`", e.Module, e.Tag)
+		r.bag.Error(diag.UnknownName, e.Span, "module `%s` has no component `%s`", path, tag)
 		return
 	}
 	if e.Module == r.m.Name {
@@ -1354,4 +1569,17 @@ func (r *resolver) element(e *syntax.Element, sc *Scope) {
 		return
 	}
 	r.notImported(e.Span, e.Module)
+}
+
+// tagStarts is where element e's name, written, begins in the source: after its `<`, and in its
+// closing tag when it has one.
+func (r *resolver) tagStarts(e *syntax.Element, written string) []diag.Pos {
+	out := []diag.Pos{{Line: e.Span.Start.Line, Col: e.Span.Start.Col + 1}}
+	closing := "</" + written + ">"
+	if end := e.Span.End; end.Line >= 1 && end.Line <= len(r.m.Lines) {
+		if line := r.m.Lines[end.Line-1]; end.Col-1 <= len(line) && strings.HasSuffix(line[:end.Col-1], closing) {
+			out = append(out, diag.Pos{Line: end.Line, Col: end.Col - len(closing) + 2})
+		}
+	}
+	return out
 }

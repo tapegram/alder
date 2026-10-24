@@ -22,7 +22,7 @@ type Model = {
 
 load : Params -> Session -> Query Model
 load params session = {
-  let admin <- Admin.Layout.isAdmin session.user
+  let admin <- Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
     let found <- Db.get Comment params.id
@@ -86,7 +86,7 @@ update msg model session = match msg {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Admin.Layout.Page title="Comment">
+  <Layout.Page title="Comment">
     <h1>Comment</h1>
 
     <al-card>
@@ -132,7 +132,7 @@ view model session =
       </div>
     </al-dialog>
     <a href={Admin.Comment.Index {}}>All comments</a>
-  </Admin.Layout.Page>
+  </Layout.Page>
 
 -- @admin begin tests
 test "the page shows the row" = {

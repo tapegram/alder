@@ -27,7 +27,7 @@ recent = 5
 
 load : Params -> Session -> Query Model
 load params session = {
-  let admin <- Admin.Layout.isAdmin session.user
+  let admin <- Layout.isAdmin session.user
   if admin then {
     -- @admin begin cards
     let todos <-
@@ -67,7 +67,7 @@ load params session = {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Admin.Layout.Page title="Dashboard">
+  <Layout.Page title="Dashboard">
     <h1>Admin</h1>
 
     <al-stack gap="md">
@@ -81,7 +81,7 @@ view model session =
           </ul>
         </al-card>}
     </al-stack>
-  </Admin.Layout.Page>
+  </Layout.Page>
 
 -- @admin begin tests
 test "the dashboard counts the todos and lists the newest five" = {
