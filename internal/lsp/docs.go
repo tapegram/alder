@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"alder/internal/scratch"
@@ -47,6 +48,20 @@ func (d *docs) get(rel string) *doc {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.byRel[rel]
+}
+
+// scratchRels are the rels of the open scratch documents, sorted.
+func (d *docs) scratchRels() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	var rels []string
+	for rel := range d.byRel {
+		if scratch.IsScratchFile(rel) {
+			rels = append(rels, rel)
+		}
+	}
+	slices.Sort(rels)
+	return rels
 }
 
 // overlay is the texts of the open documents, keyed by rel, for names.LoadOverlay.
@@ -151,6 +166,12 @@ type didChangeParams struct {
 	} `json:"contentChanges"`
 }
 
+type didSaveParams struct {
+	TextDocument struct {
+		URI string `json:"uri"`
+	} `json:"textDocument"`
+}
+
 type didCloseParams struct {
 	TextDocument struct {
 		URI string `json:"uri"`
@@ -168,6 +189,9 @@ func didOpen(s *server, params json.RawMessage) {
 	}
 	s.docs.put(&doc{URI: p.TextDocument.URI, Rel: rel, Version: p.TextDocument.Version, Text: p.TextDocument.Text})
 	s.schedule()
+	if scratch.IsScratchFile(rel) {
+		s.runScratch(rel)
+	}
 }
 
 // didChange takes the last change's text: the server asks for full sync, so each change is the
@@ -198,4 +222,26 @@ func didClose(s *server, params json.RawMessage) {
 	}
 	s.docs.remove(rel)
 	s.schedule()
+}
+
+// didSave runs a saved scratch document; a save of any other file under the root reruns every
+// open scratch document, which may use what it changed. (A change alone never runs one.)
+func didSave(s *server, params json.RawMessage) {
+	var p didSaveParams
+	if json.Unmarshal(params, &p) != nil {
+		return
+	}
+	rel, ok := s.rel(p.TextDocument.URI)
+	if !ok {
+		return
+	}
+	if scratch.IsScratchFile(rel) {
+		if s.docs.get(rel) != nil {
+			s.runScratch(rel)
+		}
+		return
+	}
+	for _, r := range s.docs.scratchRels() {
+		s.runScratch(r)
+	}
 }

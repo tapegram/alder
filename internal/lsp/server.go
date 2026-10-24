@@ -39,6 +39,7 @@ var (
 		"textDocument/didOpen":   didOpen,
 		"textDocument/didChange": didChange,
 		"textDocument/didClose":  didClose,
+		"textDocument/didSave":   didSave,
 	}
 	fastMethods = map[string]handler{
 		"textDocument/hover":      hoverReq,
@@ -74,7 +75,8 @@ type server struct {
 	cur, good atomic.Pointer[analysis] // current(), lastGood()
 	tokens    chan struct{}            // schedule's: one place, a rebuild pending
 	stop      chan struct{}            // closed when serve returns: stops the analysis and the poller
-	bg        sync.WaitGroup           // the analysis goroutine and the poller
+	bg        sync.WaitGroup           // the analysis goroutine, the poller and the scratch runs
+	scratch   scratchRuns              // the runs of the open scratch documents
 
 	// reader goroutine only
 	initialized bool

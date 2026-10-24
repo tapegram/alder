@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+
+	"alder/internal/scratch"
 )
 
 // Position is a place in a document: a 0-based line and a 0-based byte offset in that line
@@ -57,6 +59,19 @@ type publishDiagnosticsParams struct {
 	Diagnostics []Diagnostic `json:"diagnostics"`
 }
 
+// scratchParams are the params of alder/scratch, the server's notification of a scratch file's
+// run: "types" once the file has checked (before building), then "values" when the run ends.
+type scratchParams struct {
+	URI     string                `json:"uri"`
+	Version int                   `json:"version"`
+	Phase   string                `json:"phase"`   // "types" | "values"
+	Watches []scratch.WatchResult `json:"watches"` // never null
+	Ran     bool                  `json:"ran"`
+	Note    string                `json:"note,omitempty"`
+	Warning string                `json:"warning,omitempty"`
+	Error   string                `json:"error,omitempty"` // FileResult.Err
+}
+
 type initializeParams struct {
 	RootURI  string `json:"rootUri"`
 	RootPath string `json:"rootPath"`
@@ -81,7 +96,7 @@ func uriPath(uri string) (string, error) {
 func capabilities() map[string]any {
 	return map[string]any{
 		"positionEncoding":           "utf-8",
-		"textDocumentSync":           map[string]any{"openClose": true, "change": 1},
+		"textDocumentSync":           map[string]any{"openClose": true, "change": 1, "save": map[string]any{"includeText": false}},
 		"hoverProvider":              true,
 		"documentFormattingProvider": true,
 		"definitionProvider":         true,
@@ -89,5 +104,6 @@ func capabilities() map[string]any {
 		"completionProvider":         map[string]any{"triggerCharacters": []string{".", "<", "?"}},
 		"codeActionProvider":         map[string]any{"codeActionKinds": []string{"quickfix", "refactor"}},
 		"executeCommandProvider":     map[string]any{"commands": []string{"alder.explain"}},
+		"experimental":               map[string]any{"alderScratch": true},
 	}
 }

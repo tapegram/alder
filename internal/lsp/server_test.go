@@ -62,6 +62,12 @@ func TestInitialize_Capabilities(t *testing.T) {
 	if sync["change"].(float64) != 1 || sync["openClose"] != true {
 		t.Fatalf("sync %v", sync)
 	}
+	if save, _ := sync["save"].(map[string]any); save == nil || save["includeText"] != false {
+		t.Fatalf("sync.save %v", sync["save"])
+	}
+	if exp, _ := caps["experimental"].(map[string]any); exp == nil || exp["alderScratch"] != true {
+		t.Fatalf("experimental %v", caps["experimental"])
+	}
 	trig := caps["completionProvider"].(map[string]any)["triggerCharacters"].([]any)
 	if len(trig) != 3 {
 		t.Fatalf("triggers %v", trig)

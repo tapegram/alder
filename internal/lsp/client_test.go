@@ -193,6 +193,41 @@ func (c *client) notify(method string, params any) {
 	c.send(map[string]any{"jsonrpc": "2.0", "method": method, "params": params})
 }
 
+// save sends didSave for rel (no text: the server asks for includeText false).
+func (c *client) save(rel string) {
+	c.mu.Lock()
+	uri := c.uri(rel)
+	for u, r := range c.uriRel {
+		if r == rel {
+			uri = u
+		}
+	}
+	c.mark = c.pubs
+	c.mu.Unlock()
+	c.notify("textDocument/didSave", map[string]any{"textDocument": map[string]any{"uri": uri}})
+}
+
+// noteTimeout bounds note's wait: a notification may follow a real go build.
+const noteTimeout = 3 * time.Minute
+
+// note waits for the server's next notification of method (other than publishDiagnostics),
+// dropping the other notifications before it, and returns its params.
+func (c *client) note(method string) json.RawMessage {
+	c.t.Helper()
+	deadline := time.After(noteTimeout)
+	for {
+		select {
+		case m := <-c.notes:
+			if m.Method == method {
+				return m.Params
+			}
+		case <-deadline:
+			c.t.Fatalf("no %s notification in %v", method, noteTimeout)
+			return nil
+		}
+	}
+}
+
 // waitDone waits for Serve to return and returns its error.
 func (c *client) waitDone() error {
 	c.t.Helper()
@@ -319,10 +354,16 @@ func (c *client) at(rel, needle string, off int) Position {
 	return Position{Line: line, Character: i - (strings.LastIndex(text[:i], "\n") + 1)}
 }
 
-// blogCopy copies examples/blog, without build/ or databases, to a temporary root.
+// blogCopy copies examples/blog to a temporary root (copyExample).
 func blogCopy(t *testing.T) string {
 	t.Helper()
-	src, root := "../../examples/blog", t.TempDir()
+	return copyExample(t, "blog")
+}
+
+// copyExample copies examples/<name>, without build/ or databases, to a temporary root.
+func copyExample(t *testing.T, name string) string {
+	t.Helper()
+	src, root := filepath.Join("../../examples", name), t.TempDir()
 	err := filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err

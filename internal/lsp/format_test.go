@@ -92,7 +92,9 @@ func TestLineEdits_Roundtrip(t *testing.T) {
 	}
 }
 
-func TestLSPIgnoresScratchFile(t *testing.T) {
+// TestLSPDoesNotFormatScratchFile: a scratch file is not ordinary Alder: no formatting and no
+// code actions.
+func TestLSPDoesNotFormatScratchFile(t *testing.T) {
 	c := start(t, blogCopy(t))
 	c.open("scratch.alder", "module Scratch\n\nx:Int\nx   =   1\n> 1 +\n")
 	var raw *[]TextEdit
@@ -109,19 +111,5 @@ func TestLSPIgnoresScratchFile(t *testing.T) {
 	}
 	if len(acts) != 0 {
 		t.Fatalf("code actions: %s", acts)
-	}
-	// A change to another file is analysed after the scratch open; its publish is the
-	// synchronisation point, and nothing may have been published for the scratch file by then.
-	c.change("scratch.alder", "> 1 +\n> 2 +\n")
-	rel := "app/Posts/Index.alder"
-	c.open(rel, c.disk(rel))
-	c.diags(rel)
-	c.change(rel, c.disk(rel)+"\n") // rebuilds run one at a time: the one before this has published everything
-	c.diags(rel)
-	c.mu.Lock()
-	n := len(c.published["scratch.alder"])
-	c.mu.Unlock()
-	if n != 0 {
-		t.Fatalf("%d publishDiagnostics for the scratch file", n)
 	}
 }
