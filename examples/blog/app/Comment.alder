@@ -9,6 +9,7 @@ type CommentId = brand Text
 -- checks for itself what Text.NonEmpty would.) The form refuses a longer one with an error
 -- beside the field.
 type Name = brand Text where (\s -> fits 80 s)
+
 type Body = brand Text where (\s -> fits 5000 s)
 
 table Comment {
@@ -25,5 +26,8 @@ fits n s = not (Text.isEmpty (Text.trim s)) && Text.length s <= n
 
 test "a name or comment has text and a bound" = {
   let long = Text.join "" (List.map (\n -> "a") (List.range 1 81))
-  Task.succeed (List.map (fits 80) ["Ann", "", "   ", Text.slice 0 80 long, long] == [True, False, False, True, False])
+  Task.succeed (
+    List.map (fits 80) ["Ann", "", "   ", Text.slice 0 80 long, long]
+      == [True, False, False, True, False]
+  )
 }

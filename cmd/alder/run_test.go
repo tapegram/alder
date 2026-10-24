@@ -448,8 +448,8 @@ func TestRun_ErrorThenFixReloads(t *testing.T) {
 	overlay := seen[len(seen)-1]
 	// the strip, then each diagnostic structured: file:line:col, the code, the message, the excerpt and its caret
 	for _, want := range []string{"data: mode inner", `<div class="_alder-strip" role="alert">`, "Build failed: 1 error. The page is the last good build.",
-		`data-count="1"`, `<code class="_alder-at">app/Todo.alder:35:19</code>`, `<b class="_alder-code">E0003</b>`, "expected Text, got Int",
-		"(\\t -&gt; not t.done)", "^^^^^^^^"} {
+		`data-count="1"`, `<code class="_alder-at">app/Todo.alder:36:3</code>`, `<b class="_alder-code">E0003</b>`, "expected Text, got Int",
+		"<pre>  todos\n", "   ^</pre>"} {
 		if !strings.Contains(overlay, want) {
 			t.Fatalf("overlay lacks %q:\n%s", want, overlay)
 		}

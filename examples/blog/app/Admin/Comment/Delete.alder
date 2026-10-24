@@ -29,7 +29,8 @@ load params session = {
       Nothing -> Query.notFound,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin blockers
@@ -72,7 +73,10 @@ view model session =
       </dl>
       <form id="delete" submit={Remove}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        {if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p> else <al-button variant="destructive" type="submit">Delete</al-button>}
+        {if blockers model > 0 then
+          <p>It cannot be deleted while other rows refer to it.</p>
+        else
+          <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
     </al-card>
     <a href={Admin.Comment.Show { id: model.row.id }}>Back</a>
@@ -99,15 +103,12 @@ test "deleting a comment nothing refers to" = {
     body: Comment.Body "body-1",
   }
   let _ <- Test.get (Admin.Comment.Delete { id: comment1 })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let gone <- Db.get Comment comment1
-  Task.succeed ({
-    answer: r.answer,
-    gone: Maybe.map (\row -> row.id) gone,
-  } == {
-    answer: Redirected (Admin.Comment.Index {}),
-    gone: Nothing,
-  })
+  Task.succeed (
+    { answer: r.answer, gone: Maybe.map (\row -> row.id) gone }
+      == { answer: Redirected (Admin.Comment.Index {}), gone: Nothing }
+  )
 }
 
 test "a missing row is not found" = {

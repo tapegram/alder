@@ -152,7 +152,7 @@ func TestDefinition_Field(t *testing.T) {
 	c := start(t, blogCopy(t))
 	openClean(t, c, "app/Posts/Index.alder")
 	locs := definitionAt(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "post.slug", len("post.")))
-	if len(locs) != 1 || !strings.HasSuffix(locs[0].URI, "app/Post.alder") || locs[0].Range != (Range{Position{11, 2}, Position{11, 6}}) {
+	if len(locs) != 1 || !strings.HasSuffix(locs[0].URI, "app/Post.alder") || locs[0].Range != (Range{Position{12, 2}, Position{12, 6}}) {
 		t.Fatalf("field definition %+v", locs)
 	}
 }

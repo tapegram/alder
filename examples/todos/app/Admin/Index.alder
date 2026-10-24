@@ -11,7 +11,13 @@ import User
 page "/admin" { } requires user, role Admin
 
 -- A card of the dashboard: a table's count and its newest rows, each linking to its page.
-type Card = { key: Text, title: Text, href: Page, count: Int, rows: List { label: Text, href: Page } }
+type Card = {
+  key: Text,
+  title: Text,
+  href: Page,
+  count: Int,
+  rows: List { label: Text, href: Page },
+}
 
 type Model = { cards: List Card }
 
@@ -24,28 +30,39 @@ load params session = {
   let admin <- Admin.Layout.isAdmin session.user
   if admin then {
     -- @admin begin cards
-    let todos <- Db.from Todo |> Db.orderBy Todo.created.desc |> Db.limit recent |> Db.all
+    let todos <-
+      Db.from Todo
+        |> Db.orderBy Todo.created.desc
+        |> Db.limit recent
+        |> Db.all
     let todoCount <- Db.from Todo |> Db.count
-    let users <- Db.from User |> Db.orderBy User.created.desc |> Db.limit recent |> Db.all
+    let users <-
+      Db.from User
+        |> Db.orderBy User.created.desc
+        |> Db.limit recent
+        |> Db.all
     let userCount <- Db.from User |> Db.count
-    Query.succeed { cards: [
-      {
-        key: "todos",
-        title: "Todos",
-        href: Admin.Todo.Index {},
-        count: todoCount,
-        rows: List.map (\row -> { label: row.title, href: Admin.Todo.Show { id: row.id } }) todos,
-      },
-      {
-        key: "users",
-        title: "Users",
-        href: Admin.User.Index {},
-        count: userCount,
-        rows: List.map (\row -> { label: row.email, href: Admin.User.Show { id: row.id } }) users,
-      },
-    ] }
+    Query.succeed {
+      cards: [
+        {
+          key: "todos",
+          title: "Todos",
+          href: Admin.Todo.Index {},
+          count: todoCount,
+          rows: List.map (\row -> { label: row.title, href: Admin.Todo.Show { id: row.id } }) todos,
+        },
+        {
+          key: "users",
+          title: "Users",
+          href: Admin.User.Index {},
+          count: userCount,
+          rows: List.map (\row -> { label: row.email, href: Admin.User.Show { id: row.id } }) users,
+        },
+      ],
+    }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 view : Model -> Session -> Html Msg
@@ -56,7 +73,9 @@ view model session =
     <al-stack gap="md">
       {for card in model.cards ->
         <al-card id={card.key}>
-          <h2 slot="header"><a href={card.href}>{card.title}</a> <al-badge variant="secondary">{Text.fromInt card.count}</al-badge></h2>
+          <h2 slot="header">
+            <a href={card.href}>{card.title}</a> <al-badge variant="secondary">{Text.fromInt card.count}</al-badge>
+          </h2>
           <ul>
             {for row in card.rows -> <li><a href={row.href}>{row.label}</a></li>}
           </ul>
@@ -73,19 +92,19 @@ test "the dashboard counts the todos and lists the newest five" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let _ <- Task.all (List.map (\n -> Db.insert Todo {
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    due: Nothing,
-    owner: me,
-  }) (List.range 1 6))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Todo {
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        due: Nothing,
+        owner: me,
+      }) (List.range 1 6)
+    )
   let page <- Test.get (Admin.Index {})
-  Task.succeed ({
-    count: Test.text "#todos al-badge" page.doc,
-    rows: Test.texts "#todos li" page.doc,
-  } == {
-    count: Just "6",
-    rows: ["title-6", "title-5", "title-4", "title-3", "title-2"],
-  })
+  Task.succeed (
+    { count: Test.text "#todos al-badge" page.doc, rows: Test.texts "#todos li" page.doc }
+      == { count: Just "6", rows: ["title-6", "title-5", "title-4", "title-3", "title-2"] }
+  )
 }
 
 test "the dashboard counts the users and lists the newest five" = {
@@ -96,25 +115,28 @@ test "the dashboard counts the users and lists the newest five" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let _ <- Task.all (List.map (\n -> Db.insert User {
-    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
-    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
-    passwordHash: "passwordhash-" ++ Text.fromInt n,
-  }) (List.range 2 7))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert User {
+        email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+        passwordHash: "passwordhash-" ++ Text.fromInt n,
+      }) (List.range 2 7)
+    )
   let page <- Test.get (Admin.Index {})
-  Task.succeed ({
-    count: Test.text "#users al-badge" page.doc,
-    rows: Test.texts "#users li" page.doc,
-  } == {
-    count: Just "7",
-    rows: [
-      "email-7@example.com",
-      "email-6@example.com",
-      "email-5@example.com",
-      "email-4@example.com",
-      "email-3@example.com",
-    ],
-  })
+  Task.succeed (
+    { count: Test.text "#users al-badge" page.doc, rows: Test.texts "#users li" page.doc }
+      == {
+        count: Just "7",
+        rows: [
+          "email-7@example.com",
+          "email-6@example.com",
+          "email-5@example.com",
+          "email-4@example.com",
+          "email-3@example.com",
+        ],
+      }
+  )
 }
 
 test "a visitor is sent to log in" = {

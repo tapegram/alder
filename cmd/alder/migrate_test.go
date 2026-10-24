@@ -137,7 +137,7 @@ func TestMigrate_AddRenameDrop(t *testing.T) {
 	runMigrate(t, dir)
 
 	editApp(t, dir, "Post.alder", "  created: Time @created,\n", "  created: Time @created,\n  summary: Maybe Text = Nothing,\n")
-	editApp(t, dir, "Post.alder", "created: Time.epoch }", "created: Time.epoch, summary: Nothing }")
+	editApp(t, dir, "Post.alder", "    created: Time.epoch,\n", "    created: Time.epoch,\n    summary: Nothing,\n")
 	mustCheck(t, dir, "the schema changed since migration 0001 (table Post: column summary): run `alder migrate`")
 	mustMigrate(t, "wrote blog/migrations/0002_add_summary.sql\n  add column Post.summary\nupdated blog/migrations/schema.json\n", dir)
 	if f := readFile(t, filepath.Join(dir, "migrations", "0002_add_summary.sql")); !strings.HasSuffix(f, "\n\nALTER TABLE \"Post__Post\" ADD COLUMN \"summary\" TEXT;\n") {
@@ -146,7 +146,7 @@ func TestMigrate_AddRenameDrop(t *testing.T) {
 	mustCheck(t, dir, "")
 
 	editApp(t, dir, "Post.alder", "  summary: Maybe Text = Nothing,\n", "  excerpt: Maybe Text = Nothing @renamed \"summary\",\n")
-	editApp(t, dir, "Post.alder", "summary: Nothing }", "excerpt: Nothing }")
+	editApp(t, dir, "Post.alder", "    summary: Nothing,\n", "    excerpt: Nothing,\n")
 	mustCheck(t, dir, "the schema changed since migration 0002 (table Post: column excerpt): run `alder migrate`")
 	mustMigrate(t, "wrote blog/migrations/0003_rename_summary.sql\n  rename column Post.summary to excerpt\nupdated blog/migrations/schema.json\n", dir)
 	if f := readFile(t, filepath.Join(dir, "migrations", "0003_rename_summary.sql")); !strings.HasSuffix(f, "\n\nALTER TABLE \"Post__Post\" RENAME COLUMN \"summary\" TO \"excerpt\";\n") {
@@ -157,7 +157,7 @@ func TestMigrate_AddRenameDrop(t *testing.T) {
 	mustMigrate(t, "no changes since 0003_rename_summary\n", dir)
 
 	editApp(t, dir, "Post.alder", "  excerpt: Maybe Text = Nothing,\n", "")
-	editApp(t, dir, "Post.alder", ", excerpt: Nothing }", " }")
+	editApp(t, dir, "Post.alder", "    excerpt: Nothing,\n", "")
 	mustCheck(t, dir, "the schema changed since migration 0003 (table Post: column excerpt): run `alder migrate`")
 	mustMigrate(t, "wrote blog/migrations/0004_drop_excerpt.sql\n  drop column Post.excerpt\n!! DROPS DATA: column Post.excerpt\nupdated blog/migrations/schema.json\n", dir)
 	f := readFile(t, filepath.Join(dir, "migrations", "0004_drop_excerpt.sql"))

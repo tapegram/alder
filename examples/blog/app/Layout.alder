@@ -12,9 +12,7 @@ Page props =
     </head>
     <body>
       <al-page>
-        <header>
-          <a href={Posts.Index {}}>Blog</a>
-        </header>
+        <header><a href={Posts.Index {}}>Blog</a></header>
         <main>{props.children}</main>
       </al-page>
     </body>

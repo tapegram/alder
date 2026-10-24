@@ -25,10 +25,16 @@ load params session = {
     -- @admin begin load
     let findPost = Text.slice 0 200 params.findPost
     let postsTotal <- Db.from Post |> Db.count
-    let posts <- Db.from Post |> Db.orderBy Post.slug.asc |> Db.where (if postsTotal > 200 then Post.slug.contains findPost else Db.and []) |> Db.limit (if postsTotal > 200 then 50 else 200) |> Db.all
+    let posts <-
+      Db.from Post
+        |> Db.orderBy Post.slug.asc
+        |> Db.where (if postsTotal > 200 then Post.slug.contains findPost else Db.and [])
+        |> Db.limit (if postsTotal > 200 then 50 else 200)
+        |> Db.all
     Query.succeed { posts: posts, postsTotal: postsTotal }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin form
@@ -51,11 +57,16 @@ msg Create form CommentForm
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
-  SearchPost p -> Task.succeed (Redirect (Admin.Comment.New { findPost: Text.slice 0 200 p.form.q })),
+  SearchPost p ->
+    Task.succeed (Redirect (Admin.Comment.New { findPost: Text.slice 0 200 p.form.q })),
   -- @admin end
   Create p -> {
     -- @admin begin insert
-    let id <- Db.insert Comment { post: p.form.post, author: p.form.author, body: p.form.body }
+    let id <- Db.insert Comment {
+      post: p.form.post,
+      author: p.form.author,
+      body: p.form.body,
+    }
     Task.succeed (Redirect (Admin.Comment.Show { id: id }))
     -- @admin end
   },
@@ -68,11 +79,20 @@ view model session =
 
     <al-card>
       -- @admin begin finder
-      {if model.postsTotal > 200 then <form submit={SearchPost}><al-input field="q" label="Find post" /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}
+      {if model.postsTotal > 200 then
+        <form submit={SearchPost}>
+          <al-input field="q" label="Find post" />
+          <al-button type="submit" variant="secondary">Find</al-button>
+        </form>
+      else
+        <span></span>}
       -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
-        <al-select field="post" label="Post" options={List.map (\r -> { value: r.id, label: r.slug }) model.posts} />
+        <al-select
+          field="post"
+          label="Post"
+          options={List.map (\r -> { value: r.id, label: r.slug }) model.posts} />
         <al-input field="author" label="Author" />
         <al-textarea field="body" label="Body" />
         -- @admin end
@@ -110,15 +130,27 @@ test "creating a comment adds it, with the values submitted" = {
     body: Comment.Body "body-1",
   }
   let rows <- Db.from Comment |> Db.all
-  Task.succeed ({
-    answers: List.map (\row -> Redirected (Admin.Comment.Show { id: row.id })) rows,
-    rows: List.map (\row -> { post: row.post, author: row.author, body: row.body }) rows,
-    posts: Test.texts "select[name=post] option" page.doc,
-  } == {
-    answers: [r.answer],
-    rows: [{ post: post2, author: Comment.Name "author-1", body: Comment.Body "body-1" }],
-    posts: ["slug-1", "slug-2"],
-  })
+  Task.succeed (
+    {
+      answers: List.map (\row -> Redirected (Admin.Comment.Show { id: row.id })) rows,
+      rows: List.map (\row -> {
+        post: row.post,
+        author: row.author,
+        body: row.body,
+      }) rows,
+      posts: Test.texts "select[name=post] option" page.doc,
+    } == {
+        answers: [r.answer],
+        rows: [
+          {
+            post: post2,
+            author: Comment.Name "author-1",
+            body: Comment.Body "body-1",
+          },
+        ],
+        posts: ["slug-1", "slug-2"],
+      }
+  )
 }
 
 test "a post not offered is refused" = {
@@ -148,13 +180,13 @@ test "a post not offered is refused" = {
     { name: "body", value: "x" },
   ]
   let rows <- Db.from Comment |> Db.count
-  Task.succeed ({
-    answer: r.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "post", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: r.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "post", message: "must be one of the options" }],
+        rows: 0,
+      }
+  )
 }
 
 test "a list of 200 posts is offered whole" = {
@@ -177,12 +209,15 @@ test "a list of 200 posts is offered whole" = {
     body: "body-2",
     author: me,
   }
-  let _ <- Task.all (List.map (\n -> Db.insert Post {
-    slug: Post.Slug ("slug-" ++ Text.fromInt n),
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    body: "body-" ++ Text.fromInt n,
-    author: me,
-  }) (List.range 3 200))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        slug: Post.Slug ("slug-" ++ Text.fromInt n),
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        body: "body-" ++ Text.fromInt n,
+        author: me,
+      }) (List.range 3 200)
+    )
   let page <- Test.get (Admin.Comment.New {})
   Task.succeed (List.length page.model.posts == 200)
 }
@@ -207,26 +242,31 @@ test "a long list of posts offers 50, and the search narrows it" = {
     body: "body-2",
     author: me,
   }
-  let _ <- Task.all (List.map (\n -> Db.insert Post {
-    slug: Post.Slug ("slug-" ++ Text.fromInt n),
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    body: "body-" ++ Text.fromInt n,
-    author: me,
-  }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        slug: Post.Slug ("slug-" ++ Text.fromInt n),
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        body: "body-" ++ Text.fromInt n,
+        author: me,
+      }) (List.range 3 203)
+    )
   let all <- Test.get (Admin.Comment.New {})
   let found <- Test.get (Admin.Comment.New { findPost: "slug-203" })
   let r <- Test.submit FindPost { q: "zz" }
-  Task.succeed ({
-    shown: List.length all.model.posts,
-    total: all.model.postsTotal,
-    found: Test.texts "select[name=post] option" found.doc == ["slug-203"],
-    answer: r.answer,
-  } == {
-    shown: 50,
-    total: 203,
-    found: True,
-    answer: Redirected (Admin.Comment.New { findPost: "zz" }),
-  })
+  Task.succeed (
+    {
+      shown: List.length all.model.posts,
+      total: all.model.postsTotal,
+      found: Test.texts "select[name=post] option" found.doc == ["slug-203"],
+      answer: r.answer,
+    } == {
+        shown: 50,
+        total: 203,
+        found: True,
+        answer: Redirected (Admin.Comment.New { findPost: "zz" }),
+      }
+  )
 }
 
 test "a post outside the narrowed list is refused" = {
@@ -249,12 +289,15 @@ test "a post outside the narrowed list is refused" = {
     body: "body-2",
     author: me,
   }
-  let _ <- Task.all (List.map (\n -> Db.insert Post {
-    slug: Post.Slug ("slug-" ++ Text.fromInt n),
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    body: "body-" ++ Text.fromInt n,
-    author: me,
-  }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        slug: Post.Slug ("slug-" ++ Text.fromInt n),
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        body: "body-" ++ Text.fromInt n,
+        author: me,
+      }) (List.range 3 203)
+    )
   let all <- Test.get (Admin.Comment.New {})
   let found <- Test.get (Admin.Comment.New { findPost: "slug-203" })
   let r <- Test.submit FindPost { q: "zz" }
@@ -266,13 +309,13 @@ test "a post outside the narrowed list is refused" = {
     { name: "body", value: "x" },
   ]
   let rows <- Db.from Comment |> Db.count
-  Task.succeed ({
-    answer: sent.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "post", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: sent.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "post", message: "must be one of the options" }],
+        rows: 0,
+      }
+  )
 }
 
 test "a visitor is sent to log in" = {

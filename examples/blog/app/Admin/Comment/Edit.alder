@@ -9,7 +9,10 @@ import Post
 import User
 -- @admin end
 
-page "/admin/comment/{id}/edit" { id: Comment.CommentId, findPost: Text = "" } requires user, role Admin
+page "/admin/comment/{id}/edit" {
+  id: Comment.CommentId,
+  findPost: Text = "",
+} requires user, role Admin
 
 type Model = {
   row: Comment,
@@ -29,18 +32,36 @@ load params session = {
       Just row -> {
         let findPost = Text.slice 0 200 params.findPost
         let postsTotal <- Db.from Post |> Db.count
-        let postsOwn <- if postsTotal > 200 then Db.from Post |> Db.where (Post.id.eq row.post) |> Db.all else Query.succeed []
-        let postsFound <- Db.from Post |> Db.orderBy Post.slug.asc |> Db.where (if postsTotal > 200 then Db.and [
-          Post.slug.contains findPost,
-          Post.id.ne row.post,
-        ] else Db.and []) |> Db.limit (if postsTotal > 200 then 50 else 200) |> Db.all
+        let postsOwn <-
+          if postsTotal > 200 then
+            Db.from Post
+              |> Db.where (Post.id.eq row.post)
+              |> Db.all
+          else
+            Query.succeed []
+        let postsFound <-
+          Db.from Post
+            |> Db.orderBy Post.slug.asc
+            |> Db.where (
+              if postsTotal > 200 then
+                Db.and [Post.slug.contains findPost, Post.id.ne row.post]
+              else
+                Db.and []
+            )
+            |> Db.limit (if postsTotal > 200 then 50 else 200)
+            |> Db.all
         let posts = postsOwn ++ postsFound
-        Query.succeed { row: row, posts: posts, postsTotal: postsTotal }
+        Query.succeed {
+          row: row,
+          posts: posts,
+          postsTotal: postsTotal,
+        }
       },
       Nothing -> Query.notFound,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin form
@@ -63,14 +84,17 @@ msg Save form CommentForm
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
-  SearchPost p -> Task.succeed (Redirect (Admin.Comment.Edit { id: model.row.id, findPost: Text.slice 0 200 p.form.q })),
+  SearchPost p ->
+    Task.succeed (
+      Redirect (Admin.Comment.Edit { id: model.row.id, findPost: Text.slice 0 200 p.form.q })
+    ),
   -- @admin end
   Save p -> {
     -- @admin begin update
     let _ <- Db.update Comment model.row.id (\row -> { row |
       post: p.form.post,
       author: p.form.author,
-      body: p.form.body,
+      body: p.form.body
     })
     Task.succeed (Redirect (Admin.Comment.Show { id: model.row.id }))
     -- @admin end
@@ -84,11 +108,21 @@ view model session =
 
     <al-card>
       -- @admin begin finder
-      {if model.postsTotal > 200 then <form submit={SearchPost}><al-input field="q" label="Find post" /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}
+      {if model.postsTotal > 200 then
+        <form submit={SearchPost}>
+          <al-input field="q" label="Find post" />
+          <al-button type="submit" variant="secondary">Find</al-button>
+        </form>
+      else
+        <span></span>}
       -- @admin end
       <form submit={Save}>
         -- @admin begin inputs
-        <al-select field="post" label="Post" options={List.map (\r -> { value: r.id, label: r.slug }) model.posts} value={model.row.post} />
+        <al-select
+          field="post"
+          label="Post"
+          options={List.map (\r -> { value: r.id, label: r.slug }) model.posts}
+          value={model.row.post} />
         <al-input field="author" label="Author" value={model.row.author} />
         <al-textarea field="body" label="Body" value={model.row.body} />
         -- @admin end
@@ -132,15 +166,25 @@ test "saving changes every field" = {
     body: Comment.Body "body-2",
   }
   let after <- Db.get Comment comment1
-  Task.succeed ({
-    answer: r.answer,
-    row: Maybe.map (\row -> { post: row.post, author: row.author, body: row.body }) after,
-    posts: Test.texts "select[name=post] option" page.doc,
-  } == {
-    answer: Redirected (Admin.Comment.Show { id: comment1 }),
-    row: Just { post: post2, author: Comment.Name "author-2", body: Comment.Body "body-2" },
-    posts: ["slug-1", "slug-2"],
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      row: Maybe.map (\row -> {
+        post: row.post,
+        author: row.author,
+        body: row.body,
+      }) after,
+      posts: Test.texts "select[name=post] option" page.doc,
+    } == {
+        answer: Redirected (Admin.Comment.Show { id: comment1 }),
+        row: Just {
+          post: post2,
+          author: Comment.Name "author-2",
+          body: Comment.Body "body-2",
+        },
+        posts: ["slug-1", "slug-2"],
+      }
+  )
 }
 
 test "a post not offered is refused" = {
@@ -175,13 +219,13 @@ test "a post not offered is refused" = {
     { name: "body", value: "x" },
   ]
   let after <- Db.get Comment comment1
-  Task.succeed ({
-    answer: r.answer,
-    post: Maybe.map (\row -> row.post) after,
-  } == {
-    answer: FormRejected [{ field: "post", message: "must be one of the options" }],
-    post: Just post1,
-  })
+  Task.succeed (
+    { answer: r.answer, post: Maybe.map (\row -> row.post) after }
+      == {
+        answer: FormRejected [{ field: "post", message: "must be one of the options" }],
+        post: Just post1,
+      }
+  )
 }
 
 test "a list of 200 posts is offered whole" = {
@@ -209,12 +253,15 @@ test "a list of 200 posts is offered whole" = {
     body: "body-2",
     author: me,
   }
-  let _ <- Task.all (List.map (\n -> Db.insert Post {
-    slug: Post.Slug ("slug-" ++ Text.fromInt n),
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    body: "body-" ++ Text.fromInt n,
-    author: me,
-  }) (List.range 3 200))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        slug: Post.Slug ("slug-" ++ Text.fromInt n),
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        body: "body-" ++ Text.fromInt n,
+        author: me,
+      }) (List.range 3 200)
+    )
   let page <- Test.get (Admin.Comment.Edit { id: comment1 })
   Task.succeed (List.length page.model.posts == 200)
 }
@@ -244,26 +291,31 @@ test "a long list of posts offers 50, and the search narrows it" = {
     body: "body-2",
     author: me,
   }
-  let _ <- Task.all (List.map (\n -> Db.insert Post {
-    slug: Post.Slug ("slug-" ++ Text.fromInt n),
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    body: "body-" ++ Text.fromInt n,
-    author: me,
-  }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        slug: Post.Slug ("slug-" ++ Text.fromInt n),
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        body: "body-" ++ Text.fromInt n,
+        author: me,
+      }) (List.range 3 203)
+    )
   let all <- Test.get (Admin.Comment.Edit { id: comment1 })
   let found <- Test.get (Admin.Comment.Edit { id: comment1, findPost: "slug-203" })
   let r <- Test.submit FindPost { q: "zz" }
-  Task.succeed ({
-    shown: List.length all.model.posts,
-    total: all.model.postsTotal,
-    found: Test.count "select[name=post] option" found.doc <= 3,
-    answer: r.answer,
-  } == {
-    shown: 51,
-    total: 203,
-    found: True,
-    answer: Redirected (Admin.Comment.Edit { id: comment1, findPost: "zz" }),
-  })
+  Task.succeed (
+    {
+      shown: List.length all.model.posts,
+      total: all.model.postsTotal,
+      found: Test.count "select[name=post] option" found.doc <= 3,
+      answer: r.answer,
+    } == {
+        shown: 51,
+        total: 203,
+        found: True,
+        answer: Redirected (Admin.Comment.Edit { id: comment1, findPost: "zz" }),
+      }
+  )
 }
 
 test "the row's own post is offered first when it sorts past the 50" = {
@@ -285,12 +337,15 @@ test "the row's own post is offered first when it sorts past the 50" = {
     author: Comment.Name "author-1",
     body: Comment.Body "body-1",
   }
-  let _ <- Task.all (List.map (\n -> Db.insert Post {
-    slug: Post.Slug ("slug-" ++ Text.fromInt n),
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    body: "body-" ++ Text.fromInt n,
-    author: me,
-  }) (List.range 2 202))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        slug: Post.Slug ("slug-" ++ Text.fromInt n),
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        body: "body-" ++ Text.fromInt n,
+        author: me,
+      }) (List.range 2 202)
+    )
   let page <- Test.get (Admin.Comment.Edit { id: comment1 })
   let r <- Test.submit CommentForm {
     post: page.model.row.post,
@@ -298,19 +353,21 @@ test "the row's own post is offered first when it sorts past the 50" = {
     body: page.model.row.body,
   }
   let after <- Db.get Comment comment1
-  Task.succeed ({
-    answer: r.answer,
-    kept: Maybe.map (\row -> row.post) after,
-    first: Maybe.map (\o -> o.id) (List.head page.model.posts),
-    once: List.length (List.filter (\o -> o.id == post1) page.model.posts),
-    shown: List.length page.model.posts,
-  } == {
-    answer: Redirected (Admin.Comment.Show { id: comment1 }),
-    kept: Just post1,
-    first: Just post1,
-    once: 1,
-    shown: 51,
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      kept: Maybe.map (\row -> row.post) after,
+      first: Maybe.map (\o -> o.id) (List.head page.model.posts),
+      once: List.length (List.filter (\o -> o.id == post1) page.model.posts),
+      shown: List.length page.model.posts,
+    } == {
+        answer: Redirected (Admin.Comment.Show { id: comment1 }),
+        kept: Just post1,
+        first: Just post1,
+        once: 1,
+        shown: 51,
+      }
+  )
 }
 
 test "a missing row is not found" = {

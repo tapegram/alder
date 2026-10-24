@@ -640,20 +640,20 @@ func TestPositions(t *testing.T) {
 	visit(value(show, "load").Body)
 	visit(value(show, "update").Body)
 	want := map[string][]Pos{
-		"bind":          {{16, 3}, {35, 5}, {42, 5}, {46, 5}, {13, 3}, {32, 5}, {36, 5}},
-		"match":         {{33, 28}, {30, 28}},
-		"select":        {{18, 10}}, // the step that extends the Base
-		"mine":          {{17, 5}},
+		"bind":          {{13, 3}, {31, 5}, {38, 5}, {42, 5}, {13, 3}, {30, 5}, {34, 5}},
+		"match":         {{29, 28}, {28, 28}},
+		"select":        {{15, 10}}, // the step that extends the Base
+		"mine":          {{14, 5}},
 		"where-step":    nil,
-		"ord":           {{18, 21}},
-		"order-step":    {{18, 10}},
-		"insert-mine":   {{35, 14}},
-		"update-mine":   {{42, 14}, {32, 14}},
-		"record-update": {{42, 45}, {32, 54}},
-		"delete-mine":   {{46, 14}, {36, 14}},
+		"ord":           {{15, 21}},
+		"order-step":    {{15, 10}},
+		"insert-mine":   {{31, 14}},
+		"update-mine":   {{38, 14}, {30, 14}},
+		"record-update": {{38, 45}, {30, 54}},
+		"delete-mine":   {{42, 14}, {34, 14}},
 		"get-mine":      {{13, 15}},
-		"ctor Redirect": {{36, 19}, {33, 19}, {37, 19}},
-		"ctor Rerender": {{43, 18}, {47, 18}},
+		"ctor Redirect": {{32, 19}, {31, 19}, {35, 19}},
+		"ctor Rerender": {{39, 18}, {43, 18}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("positions:\n got %v\nwant %v", got, want)

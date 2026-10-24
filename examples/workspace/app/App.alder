@@ -8,7 +8,11 @@ import User
 -- as their row had it at login. `org` is a key: `via Membership` means a `Session.put` of it to
 -- an org the user has no Membership row for fails, inside the Task's transaction. A page that
 -- `requires user, org` sees it narrowed; one without it is sent to `choose org`'s page.
-session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Member }
+session {
+  user: Maybe User.UserId,
+  org: Maybe Org.OrgId via Membership,
+  role: User.Role = Member,
+}
 
 login = Auth.Login
 
@@ -21,6 +25,7 @@ choose org = Orgs.Index
 silo org { Project, Todo }
 
 msg Logout
+
 msg Leave
 
 update : Msg -> Session -> Task Nav
@@ -45,10 +50,7 @@ error err =
   </Layout.Page>
 
 notFound : Html Never
-notFound =
-  <Layout.Page title="Not found">
-    <h1>Not found</h1>
-  </Layout.Page>
+notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 
 -- What a request answers when its org's database cannot be served (behind by a migration that
 -- drops data, or ahead of this build: book 08, "Silos"): a 503, for that org only.
@@ -62,8 +64,15 @@ maintenance =
 -- Both answers end where a browser would be sent anyway (the login page, `choose org`'s page),
 -- so only a test of `update` itself tells a Redirect from a Rerender (book 10).
 test "Logout and Leave say where to go" = {
-  let me : Session = { user: Just (User.UserId "me"), org: Nothing, role: Member }
+  let me : Session = {
+    user: Just (User.UserId "me"),
+    org: Nothing,
+    role: Member,
+  }
   let out <- Test.run (update Logout me)
   let leave <- Test.run (update Leave me)
-  Task.succeed ({ out: out.value, leave: leave.value } == { out: Ok (Redirect (Auth.Login {})), leave: Ok (Redirect (Orgs.Index {})) })
+  Task.succeed (
+    { out: out.value, leave: leave.value }
+      == { out: Ok (Redirect (Auth.Login {})), leave: Ok (Redirect (Orgs.Index {})) }
+  )
 }

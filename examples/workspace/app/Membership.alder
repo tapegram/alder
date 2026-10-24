@@ -18,13 +18,25 @@ table Membership {
 -- a page that calls this in its `load` turns away a member removed since, at once.
 isMember : User.UserId -> Org.OrgId -> Query Bool
 isMember user org = {
-  let n <- Db.from Membership |> Db.where (Membership.user.eq user) |> Db.where (Membership.org.eq org) |> Db.count
+  let n <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq user)
+      |> Db.where (Membership.org.eq org)
+      |> Db.count
   Query.succeed (n > 0)
 }
 
 test "isMember is whether the user has a row for that org" = {
-  let ann <- Db.insert User.User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User.User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User.User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User.User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org.Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org.Org { name: Text.NonEmpty "Globex" }
   let _ <- Db.insert Membership { user: ann, org: acme }
@@ -36,8 +48,16 @@ test "isMember is whether the user has a row for that org" = {
 }
 
 test "deleting a user or an org deletes their memberships" = {
-  let ann <- Db.insert User.User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User.User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User.User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User.User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org.Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org.Org { name: Text.NonEmpty "Globex" }
   let _ <- Db.insert Membership { user: ann, org: globex }

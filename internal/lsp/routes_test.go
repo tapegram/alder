@@ -20,7 +20,7 @@ func TestRoutes_List(t *testing.T) {
 			page = true
 		}
 		if r.Kind == "msg" && r.Path == "/_m/Posts.Show/AddComment" && r.Name == "AddComment" &&
-			strings.HasSuffix(r.URI, "app/Posts/Show.alder") && r.Range.Start == (Position{Line: 43, Character: 0}) {
+			strings.HasSuffix(r.URI, "app/Posts/Show.alder") && r.Range.Start == (Position{Line: 45, Character: 0}) {
 			msg = true
 		}
 	}

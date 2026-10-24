@@ -1,8 +1,8 @@
 module Posts.Index
 
+import Layout
 import Post
 import User
-import Layout
 
 page "/" { page: Int = 1, q: Text = "" }
 
@@ -40,12 +40,16 @@ load params session = {
       |> Db.offset ((page - 1) * perPage)
       |> Db.all
   let canWrite = session.role == Author
-  Query.succeed { page: page, q: q, posts: List.take perPage found, hasMore: List.length found > perPage, canWrite: canWrite }
+  Query.succeed {
+    page: page,
+    q: q,
+    posts: List.take perPage found,
+    hasMore: List.length found > perPage,
+    canWrite: canWrite,
+  }
 }
 
-form SearchForm = {
-  q: Text,
-}
+form SearchForm = { q: Text }
 
 -- A search is a message like any form: `update` answers with the first page of the results,
 -- whose address (/?q=…) can be bookmarked and shared.
@@ -68,7 +72,9 @@ view model session =
     </form>
 
     {if List.isEmpty model.posts then
-      <p class="empty">No posts{if Text.isEmpty model.q then "" else " match “" ++ model.q ++ "”"}.</p>
+      <p class="empty">
+        No posts{if Text.isEmpty model.q then "" else " match “" ++ model.q ++ "”"}.
+      </p>
     else
       <ul class="posts">
         {for post in model.posts ->
@@ -79,50 +85,181 @@ view model session =
       </ul>}
 
     <al-pagination role="navigation" aria-label="Pages">
-      {if model.page > 1 then <a slot="prev" href={Posts.Index { page: model.page - 1, q: model.q }} rel="prev">Newer</a> else <span slot="prev" aria-disabled="true">Newer</span>}
+      {if model.page > 1 then
+        <a slot="prev" href={Posts.Index { page: model.page - 1, q: model.q }} rel="prev">Newer</a>
+      else
+        <span slot="prev" aria-disabled="true">Newer</span>}
       <span>Page {Text.fromInt model.page}</span>
-      {if model.hasMore then <a slot="next" href={Posts.Index { page: model.page + 1, q: model.q }} rel="next">Older</a> else <span slot="next" aria-disabled="true">Older</span>}
+      {if model.hasMore then
+        <a slot="next" href={Posts.Index { page: model.page + 1, q: model.q }} rel="next">Older</a>
+      else
+        <span slot="next" aria-disabled="true">Older</span>}
     </al-pagination>
 
     {match session.user {
-      Just _ -> <div class="account">{if model.canWrite then <a href={Write {}}>Write</a> else Html.none} <al-button variant="outline" size="sm" click={App.Logout}>Log out</al-button></div>,
+      Just _ ->
+        <div class="account">
+          {if model.canWrite then <a href={Write {}}>Write</a> else Html.none} <al-button variant="outline" size="sm" click={App.Logout}>Log out</al-button>
+        </div>,
       Nothing -> <p><a href={Auth.Login {}}>Log in</a></p>,
     }}
   </Layout.Page>
 
 test "the front page lists only published posts, newest first" = {
-  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
-  let _ <- Db.insert Post { slug: Post.Slug "first", title: Text.NonEmpty "First", body: "", published: True, author: author }
-  let _ <- Db.insert Post { slug: Post.Slug "draft", title: Text.NonEmpty "Draft", body: "", author: author }
-  let _ <- Db.insert Post { slug: Post.Slug "second", title: Text.NonEmpty "Second", body: "", published: True, author: author }
+  let author <- Db.insert User {
+    email: Text.Email "author@example.com",
+    name: Text.NonEmpty "Author",
+    passwordHash: "",
+    role: Author,
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "first",
+    title: Text.NonEmpty "First",
+    body: "",
+    published: True,
+    author: author,
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "draft",
+    title: Text.NonEmpty "Draft",
+    body: "",
+    author: author,
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "second",
+    title: Text.NonEmpty "Second",
+    body: "",
+    published: True,
+    author: author,
+  }
   let model <- load { page: 1, q: "" } { user: Nothing, role: Reader }
-  Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "Second", Text.NonEmpty "First"])
+  Task.succeed (
+    List.map (\p -> p.title) model.posts == [Text.NonEmpty "Second", Text.NonEmpty "First"]
+  )
 }
 
 test "search matches title or body" = {
-  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
-  let _ <- Db.insert Post { slug: Post.Slug "tomatoes", title: Text.NonEmpty "Tomato season", body: "It is here.", published: True, author: author }
-  let _ <- Db.insert Post { slug: Post.Slug "soup", title: Text.NonEmpty "Soup", body: "Use ripe tomatoes.", published: True, author: author }
-  let _ <- Db.insert Post { slug: Post.Slug "trains", title: Text.NonEmpty "Trains", body: "Fast ones.", published: True, author: author }
+  let author <- Db.insert User {
+    email: Text.Email "author@example.com",
+    name: Text.NonEmpty "Author",
+    passwordHash: "",
+    role: Author,
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "tomatoes",
+    title: Text.NonEmpty "Tomato season",
+    body: "It is here.",
+    published: True,
+    author: author,
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "soup",
+    title: Text.NonEmpty "Soup",
+    body: "Use ripe tomatoes.",
+    published: True,
+    author: author,
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "trains",
+    title: Text.NonEmpty "Trains",
+    body: "Fast ones.",
+    published: True,
+    author: author,
+  }
   let model <- load { page: 1, q: "TOMATO" } { user: Nothing, role: Reader }
   let titles = List.map (\p -> p.title) model.posts
-  Task.succeed ({ count: List.length titles, title: List.member (Text.NonEmpty "Tomato season") titles, body: List.member (Text.NonEmpty "Soup") titles } == { count: 2, title: True, body: True })
+  Task.succeed (
+    {
+      count: List.length titles,
+      title: List.member (Text.NonEmpty "Tomato season") titles,
+      body: List.member (Text.NonEmpty "Soup") titles,
+    } == {
+        count: 2,
+        title: True,
+        body: True,
+      }
+  )
 }
 
 test "a `%` in the query is literal" = {
-  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
-  let _ <- Db.insert Post { slug: Post.Slug "done", title: Text.NonEmpty "100% done", body: "", published: True, author: author }
-  let _ <- Db.insert Post { slug: Post.Slug "ways", title: Text.NonEmpty "1000 ways", body: "", published: True, author: author }
+  let author <- Db.insert User {
+    email: Text.Email "author@example.com",
+    name: Text.NonEmpty "Author",
+    passwordHash: "",
+    role: Author,
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "done",
+    title: Text.NonEmpty "100% done",
+    body: "",
+    published: True,
+    author: author,
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "ways",
+    title: Text.NonEmpty "1000 ways",
+    body: "",
+    published: True,
+    author: author,
+  }
   let model <- load { page: 1, q: "100%" } { user: Nothing, role: Reader }
   Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "100% done"])
 }
 
 test "page 99 is empty" = {
-  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
-  let _ <- Task.all (List.map (\n -> Db.insert Post { slug: Post.Slug ("post-" ++ Text.fromInt n), title: Text.NonEmpty "A post", body: "", published: True, author: author }) (List.range 1 11))
-  let pages <- Query.all (List.map (\n -> load { page: n, q: "" } { user: Nothing, role: Reader }) [1, 2, 99, 0])
-  let seen = List.map (\m -> { page: m.page, posts: List.length m.posts, hasMore: m.hasMore }) pages
-  Task.succeed (seen == [{ page: 1, posts: 10, hasMore: True }, { page: 2, posts: 1, hasMore: False }, { page: 99, posts: 0, hasMore: False }, { page: 1, posts: 10, hasMore: True }])
+  let author <- Db.insert User {
+    email: Text.Email "author@example.com",
+    name: Text.NonEmpty "Author",
+    passwordHash: "",
+    role: Author,
+  }
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        slug: Post.Slug ("post-" ++ Text.fromInt n),
+        title: Text.NonEmpty "A post",
+        body: "",
+        published: True,
+        author: author,
+      }) (List.range 1 11)
+    )
+  let pages <-
+    Query.all (List.map (\n -> load { page: n, q: "" } { user: Nothing, role: Reader }) [
+      1,
+      2,
+      99,
+      0,
+    ])
+  let seen =
+    List.map (\m -> {
+      page: m.page,
+      posts: List.length m.posts,
+      hasMore: m.hasMore,
+    }) pages
+  Task.succeed (
+    seen == [
+        {
+          page: 1,
+          posts: 10,
+          hasMore: True,
+        },
+        {
+          page: 2,
+          posts: 1,
+          hasMore: False,
+        },
+        {
+          page: 99,
+          posts: 0,
+          hasMore: False,
+        },
+        {
+          page: 1,
+          posts: 10,
+          hasMore: True,
+        },
+      ]
+  )
 }
 
 test "a negative page is page 1" = {
@@ -131,9 +268,26 @@ test "a negative page is page 1" = {
 }
 
 test "a `_` in the query is literal" = {
-  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
-  let _ <- Db.insert Post { slug: Post.Slug "snake", title: Text.NonEmpty "snake_case", body: "", published: True, author: author }
-  let _ <- Db.insert Post { slug: Post.Slug "camel", title: Text.NonEmpty "snakeYcase", body: "", published: True, author: author }
+  let author <- Db.insert User {
+    email: Text.Email "author@example.com",
+    name: Text.NonEmpty "Author",
+    passwordHash: "",
+    role: Author,
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "snake",
+    title: Text.NonEmpty "snake_case",
+    body: "",
+    published: True,
+    author: author,
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "camel",
+    title: Text.NonEmpty "snakeYcase",
+    body: "",
+    published: True,
+    author: author,
+  }
   let model <- load { page: 1, q: "e_c" } { user: Nothing, role: Reader }
   Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "snake_case"])
 }
@@ -153,45 +307,144 @@ test "a search answers with the first page of its results" = {
 }
 
 test "only an Author sees the Write link" = {
-  let reader <- Db.insert User { email: Text.Email "reader@example.com", name: Text.NonEmpty "Reader", passwordHash: "" }
-  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
-  let pages <- Query.all [load { page: 1, q: "" } { user: Nothing, role: Reader }, load { page: 1, q: "" } { user: Just reader, role: Reader }, load { page: 1, q: "" } { user: Just author, role: Author }]
+  let reader <- Db.insert User {
+    email: Text.Email "reader@example.com",
+    name: Text.NonEmpty "Reader",
+    passwordHash: "",
+  }
+  let author <- Db.insert User {
+    email: Text.Email "author@example.com",
+    name: Text.NonEmpty "Author",
+    passwordHash: "",
+    role: Author,
+  }
+  let pages <- Query.all [
+    load { page: 1, q: "" } { user: Nothing, role: Reader },
+    load { page: 1, q: "" } { user: Just reader, role: Reader },
+    load { page: 1, q: "" } { user: Just author, role: Author },
+  ]
   Task.succeed (List.map (\m -> m.canWrite) pages == [False, False, True])
 }
 
 -- The same page through the browser: the links a page renders, and the search form posted as a
 -- user posts it (book 10, "Testing through the browser").
 test "the second page links back to the first" = {
-  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
-  let _ <- Task.all (List.map (\n -> Db.insert Post { slug: Post.Slug ("post-" ++ Text.fromInt n), title: Text.NonEmpty "A post", body: "", published: True, author: author }) (List.range 1 11))
+  let author <- Db.insert User {
+    email: Text.Email "author@example.com",
+    name: Text.NonEmpty "Author",
+    passwordHash: "",
+    role: Author,
+  }
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        slug: Post.Slug ("post-" ++ Text.fromInt n),
+        title: Text.NonEmpty "A post",
+        body: "",
+        published: True,
+        author: author,
+      }) (List.range 1 11)
+    )
   let first <- Test.get (Posts.Index {})
   let second <- Test.get (Posts.Index { page: 2 })
-  Task.succeed ({ firstPosts: Test.count "ul.posts li" first.doc, next: Test.attr "href" "a[rel=next]" first.doc, secondPosts: Test.count "ul.posts li" second.doc, prev: Test.attr "href" "a[rel=prev]" second.doc, more: Test.has "a[rel=next]" second.doc } == { firstPosts: 10, next: Just "/?page=2", secondPosts: 1, prev: Just "/", more: False })
+  Task.succeed (
+    {
+      firstPosts: Test.count "ul.posts li" first.doc,
+      next: Test.attr "href" "a[rel=next]" first.doc,
+      secondPosts: Test.count "ul.posts li" second.doc,
+      prev: Test.attr "href" "a[rel=prev]" second.doc,
+      more: Test.has "a[rel=next]" second.doc,
+    } == {
+        firstPosts: 10,
+        next: Just "/?page=2",
+        secondPosts: 1,
+        prev: Just "/",
+        more: False,
+      }
+  )
 }
 
 test "a search through the form" = {
-  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
-  let _ <- Db.insert Post { slug: Post.Slug "soup", title: Text.NonEmpty "Soup", body: "Use ripe tomatoes.", published: True, author: author }
-  let _ <- Db.insert Post { slug: Post.Slug "trains", title: Text.NonEmpty "Trains", body: "Fast ones.", published: True, author: author }
+  let author <- Db.insert User {
+    email: Text.Email "author@example.com",
+    name: Text.NonEmpty "Author",
+    passwordHash: "",
+    role: Author,
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "soup",
+    title: Text.NonEmpty "Soup",
+    body: "Use ripe tomatoes.",
+    published: True,
+    author: author,
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "trains",
+    title: Text.NonEmpty "Trains",
+    body: "Fast ones.",
+    published: True,
+    author: author,
+  }
   let _ <- Test.get (Posts.Index {})
   let r <- Test.submit SearchForm { q: "tomato" }
-  Task.succeed ({ answer: r.answer, titles: Test.texts "ul.posts a" r.doc, query: Test.attr "value" "input[name=q]" r.doc } == { answer: Redirected (Posts.Index { page: 1, q: "tomato" }), titles: ["Soup"], query: Just "tomato" })
+  Task.succeed (
+    {
+      answer: r.answer,
+      titles: Test.texts "ul.posts a" r.doc,
+      query: Test.attr "value" "input[name=q]" r.doc,
+    } == {
+        answer: Redirected (Posts.Index { page: 1, q: "tomato" }),
+        titles: ["Soup"],
+        query: Just "tomato",
+      }
+  )
 }
 
 test "a page that is exactly full has no next page" = {
-  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
-  let _ <- Task.all (List.map (\n -> Db.insert Post { slug: Post.Slug ("post-" ++ Text.fromInt n), title: Text.NonEmpty "A post", body: "", published: True, author: author }) (List.range 1 10))
+  let author <- Db.insert User {
+    email: Text.Email "author@example.com",
+    name: Text.NonEmpty "Author",
+    passwordHash: "",
+    role: Author,
+  }
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        slug: Post.Slug ("post-" ++ Text.fromInt n),
+        title: Text.NonEmpty "A post",
+        body: "",
+        published: True,
+        author: author,
+      }) (List.range 1 10)
+    )
   let model <- load { page: 1, q: "" } { user: Nothing, role: Reader }
-  Task.succeed ({ posts: List.length model.posts, hasMore: model.hasMore } == { posts: 10, hasMore: False })
+  Task.succeed (
+    { posts: List.length model.posts, hasMore: model.hasMore } == { posts: 10, hasMore: False }
+  )
 }
 
 -- The front page is the one page with a Log out button that a visitor may also see, so logging
 -- out from it shows whether `App.Logout` redirects: a Rerender would show the front page again.
 -- Logging out also leaves the session's role at Reader.
 test "logging out from the front page goes to log in" = {
-  let author <- Db.insert User { email: Text.Email "author@example.com", name: Text.NonEmpty "Author", passwordHash: "", role: Author }
+  let author <- Db.insert User {
+    email: Text.Email "author@example.com",
+    name: Text.NonEmpty "Author",
+    passwordHash: "",
+    role: Author,
+  }
   let _ <- Test.login { user: Just author, role: Author }
   let _ <- Test.get (Posts.Index {})
   let out <- Test.click App.Logout
-  Task.succeed ({ out: out.answer, user: out.session.user, role: out.session.role } == { out: Redirected (Auth.Login {}), user: Nothing, role: Reader })
+  Task.succeed (
+    {
+      out: out.answer,
+      user: out.session.user,
+      role: out.session.role,
+    } == {
+        out: Redirected (Auth.Login {}),
+        user: Nothing,
+        role: Reader,
+      }
+  )
 }

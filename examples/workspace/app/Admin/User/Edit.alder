@@ -22,13 +22,12 @@ load params session = {
     -- @admin begin load
     let found <- Db.get User params.id
     match found {
-      Just row -> {
-        Query.succeed { row: row }
-      },
+      Just row -> { Query.succeed { row: row } },
       Nothing -> Query.notFound,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin form
@@ -53,17 +52,17 @@ update msg model session = match msg {
     if session.user == model.row.id && p.form.role != model.row.role then
       Task.succeed (Reject "You cannot change your own role.")
     else {
-      let emailTaken <- Db.from User |> Db.where (Db.and [
-        User.email.eq p.form.email,
-        User.id.ne model.row.id,
-      ]) |> Db.count
+      let emailTaken <-
+        Db.from User
+          |> Db.where (Db.and [User.email.eq p.form.email, User.id.ne model.row.id])
+          |> Db.count
       if emailTaken > 0 then
         Task.succeed (Reject "A user with this email exists.")
       else {
         let _ <- Db.update User model.row.id (\row -> { row |
           email: p.form.email,
           name: p.form.name,
-          role: p.form.role,
+          role: p.form.role
         })
         Task.succeed (Redirect (Admin.User.Show { id: model.row.id }))
       }
@@ -101,7 +100,11 @@ test "saving changes every field" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
@@ -114,17 +117,23 @@ test "saving changes every field" = {
     role: Admin,
   }
   let after <- Db.get User user2
-  Task.succeed ({
-    answer: r.answer,
-    row: Maybe.map (\row -> { email: row.email, name: row.name, role: row.role }) after,
-  } == {
-    answer: Redirected (Admin.User.Show { id: user2 }),
-    row: Just {
-      email: Text.Email "email-3@example.com",
-      name: Text.NonEmpty "name-3",
-      role: Admin,
-    },
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      row: Maybe.map (\row -> {
+        email: row.email,
+        name: row.name,
+        role: row.role,
+      }) after,
+    } == {
+        answer: Redirected (Admin.User.Show { id: user2 }),
+        row: Just {
+          email: Text.Email "email-3@example.com",
+          name: Text.NonEmpty "name-3",
+          role: Admin,
+        },
+      }
+  )
 }
 
 test "saving an email another user has is refused" = {
@@ -134,7 +143,11 @@ test "saving an email another user has is refused" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
@@ -153,13 +166,13 @@ test "saving an email another user has is refused" = {
     role: Admin,
   }
   let after <- Db.get User user2
-  Task.succeed ({
-    answer: r.answer,
-    row: after,
-  } == {
-    answer: FormRejected [{ field: "", message: "A user with this email exists." }],
-    row: before,
-  })
+  Task.succeed (
+    { answer: r.answer, row: after }
+      == {
+        answer: FormRejected [{ field: "", message: "A user with this email exists." }],
+        row: before,
+      }
+  )
 }
 
 test "an Admin cannot change their own role" = {
@@ -169,7 +182,11 @@ test "an Admin cannot change their own role" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let before <- Db.get User me
   let _ <- Test.get (Admin.User.Edit { id: me })
   let r <- Test.submit UserForm {
@@ -178,13 +195,13 @@ test "an Admin cannot change their own role" = {
     role: Member,
   }
   let after <- Db.get User me
-  Task.succeed ({
-    answer: r.answer,
-    row: after,
-  } == {
-    answer: FormRejected [{ field: "", message: "You cannot change your own role." }],
-    row: before,
-  })
+  Task.succeed (
+    { answer: r.answer, row: after }
+      == {
+        answer: FormRejected [{ field: "", message: "You cannot change your own role." }],
+        row: before,
+      }
+  )
 }
 
 test "an Admin saves their own account, the role unchanged" = {
@@ -194,7 +211,11 @@ test "an Admin saves their own account, the role unchanged" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let _ <- Test.get (Admin.User.Edit { id: me })
   let r <- Test.submit UserForm {
     email: Text.Email "email-2@example.com",
@@ -202,17 +223,23 @@ test "an Admin saves their own account, the role unchanged" = {
     role: Admin,
   }
   let after <- Db.get User me
-  Task.succeed ({
-    answer: r.answer,
-    row: Maybe.map (\row -> { email: row.email, name: row.name, role: row.role }) after,
-  } == {
-    answer: Redirected (Admin.User.Show { id: me }),
-    row: Just {
-      email: Text.Email "email-2@example.com",
-      name: Text.NonEmpty "name-2",
-      role: Admin,
-    },
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      row: Maybe.map (\row -> {
+        email: row.email,
+        name: row.name,
+        role: row.role,
+      }) after,
+    } == {
+        answer: Redirected (Admin.User.Show { id: me }),
+        row: Just {
+          email: Text.Email "email-2@example.com",
+          name: Text.NonEmpty "name-2",
+          role: Admin,
+        },
+      }
+  )
 }
 
 test "an Admin demotes another Admin" = {
@@ -222,7 +249,11 @@ test "an Admin demotes another Admin" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let admin <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
@@ -236,13 +267,10 @@ test "an Admin demotes another Admin" = {
     role: Member,
   }
   let after <- Db.get User admin
-  Task.succeed ({
-    answer: r.answer,
-    role: Maybe.map (\row -> row.role) after,
-  } == {
-    answer: Redirected (Admin.User.Show { id: admin }),
-    role: Just Member,
-  })
+  Task.succeed (
+    { answer: r.answer, role: Maybe.map (\row -> row.role) after }
+      == { answer: Redirected (Admin.User.Show { id: admin }), role: Just Member }
+  )
 }
 
 test "a missing row is not found" = {
@@ -252,7 +280,11 @@ test "a missing row is not found" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let r <- Test.open (Admin.User.Edit { id: User.UserId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
@@ -274,7 +306,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
@@ -291,7 +327,11 @@ test "a demoted Admin is refused at once" = {
     passwordHash: "passwordhash-1",
     role: Member,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",

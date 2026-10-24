@@ -9,7 +9,10 @@ import Project
 import User
 -- @admin end
 
-page "/admin/orgs/{org}/project/{id}/edit" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
+page "/admin/orgs/{org}/project/{id}/edit" {
+  org: Org.OrgId,
+  id: Project.ProjectId,
+} requires user, role Admin, silo org
 
 type Model = {
   row: Project,
@@ -24,19 +27,16 @@ load params session = {
     -- @admin begin load
     let found <- Db.get Project params.id
     match found {
-      Just row -> {
-        Query.succeed { row: row }
-      },
+      Just row -> { Query.succeed { row: row } },
       Nothing -> Query.notFound,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin form
-form ProjectForm = {
-  name: Text.NonEmpty,
-}
+form ProjectForm = { name: Text.NonEmpty }
 -- @admin end
 
 -- @admin begin search
@@ -85,18 +85,22 @@ test "saving changes every field" = {
     role: Admin,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
   let page <- Test.get (Admin.Project.Edit { org: org, id: project1 })
   let r <- Test.submit ProjectForm { name: Text.NonEmpty "name-2" }
   let after <- Db.get Project project1
-  Task.succeed ({
-    answer: r.answer,
-    row: Maybe.map (\row -> { name: row.name }) after,
-  } == {
-    answer: Redirected (Admin.Project.Show { org: org, id: project1 }),
-    row: Just { name: Text.NonEmpty "name-2" },
-  })
+  Task.succeed (
+    { answer: r.answer, row: Maybe.map (\row -> { name: row.name }) after }
+      == {
+        answer: Redirected (Admin.Project.Show { org: org, id: project1 }),
+        row: Just { name: Text.NonEmpty "name-2" },
+      }
+  )
 }
 
 test "a missing row is not found" = {
@@ -108,7 +112,11 @@ test "a missing row is not found" = {
     role: Admin,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let r <- Test.open (Admin.Project.Edit { org: org, id: Project.ProjectId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
@@ -128,7 +136,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
   let r <- Test.open (Admin.Project.Edit { org: org, id: project1 })
   Task.succeed (r.answer == PageMissing)
@@ -143,7 +155,11 @@ test "a demoted Admin is refused at once" = {
     role: Member,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
   let r <- Test.open (Admin.Project.Edit { org: org, id: project1 })
   Task.succeed (r.answer == PageMissing)

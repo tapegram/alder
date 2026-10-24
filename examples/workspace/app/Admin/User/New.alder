@@ -19,9 +19,10 @@ load params session = {
   let admin <- Admin.Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
-    Query.succeed { }
+    Query.succeed {}
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin form
@@ -44,7 +45,10 @@ update msg model session = match msg {
   Create p -> {
     -- @admin begin insert
     -- the admin never shows or writes a secret (passwordHash): a row starts without one
-    let emailTaken <- Db.from User |> Db.where (User.email.eq p.form.email) |> Db.count
+    let emailTaken <-
+      Db.from User
+        |> Db.where (User.email.eq p.form.email)
+        |> Db.count
     if emailTaken > 0 then
       Task.succeed (Reject "A user with this email exists.")
     else {
@@ -88,26 +92,42 @@ test "creating a user adds it, with the values submitted" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let page <- Test.get (Admin.User.New {})
   let r <- Test.submit UserForm {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
     role: Admin,
   }
-  let rows <- Db.from User |> Db.where (User.email.eq (Text.Email "email-2@example.com")) |> Db.all
-  Task.succeed ({
-    answers: List.map (\row -> Redirected (Admin.User.Show { id: row.id })) rows,
-    rows: List.map (\row -> {
-      email: row.email,
-      name: row.name,
-      role: row.role,
-      passwordHash: row.passwordHash,
-    }) rows,
-  } == {
-    answers: [r.answer],
-    rows: [{ email: Text.Email "email-2@example.com", name: Text.NonEmpty "name-2", role: Admin, passwordHash: "" }],
-  })
+  let rows <-
+    Db.from User
+      |> Db.where (User.email.eq (Text.Email "email-2@example.com"))
+      |> Db.all
+  Task.succeed (
+    {
+      answers: List.map (\row -> Redirected (Admin.User.Show { id: row.id })) rows,
+      rows: List.map (\row -> {
+        email: row.email,
+        name: row.name,
+        role: row.role,
+        passwordHash: row.passwordHash,
+      }) rows,
+    } == {
+        answers: [r.answer],
+        rows: [
+          {
+            email: Text.Email "email-2@example.com",
+            name: Text.NonEmpty "name-2",
+            role: Admin,
+            passwordHash: "",
+          },
+        ],
+      }
+  )
 }
 
 test "a user with an email that exists is refused" = {
@@ -117,7 +137,11 @@ test "a user with an email that exists is refused" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let _ <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
@@ -130,13 +154,13 @@ test "a user with an email that exists is refused" = {
     role: Admin,
   }
   let rows <- Db.from User |> Db.count
-  Task.succeed ({
-    answer: r.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "", message: "A user with this email exists." }],
-    rows: 2,
-  })
+  Task.succeed (
+    { answer: r.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "", message: "A user with this email exists." }],
+        rows: 2,
+      }
+  )
 }
 
 test "a visitor is sent to log in" = {
@@ -151,7 +175,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let r <- Test.open (Admin.User.New {})
   Task.succeed (r.answer == PageMissing)
 }
@@ -163,7 +191,11 @@ test "a demoted Admin is refused at once" = {
     passwordHash: "passwordhash-1",
     role: Member,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let r <- Test.open (Admin.User.New {})
   Task.succeed (r.answer == PageMissing)
 }

@@ -34,7 +34,8 @@ load params session = {
       Nothing -> Query.notFound,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin labels
@@ -44,7 +45,10 @@ type Labels = { orgs: List Org }
 -- labelsOf reads the rows that rows refer to.
 labelsOf : List Activity -> Query Labels
 labelsOf rows = {
-  let orgs <- Db.from Org |> Db.where (Org.id.in (List.map (\row -> row.org) rows)) |> Db.all
+  let orgs <-
+    Db.from Org
+      |> Db.where (Org.id.in (List.map (\row -> row.org) rows))
+      |> Db.all
   Query.succeed { orgs: orgs }
 }
 
@@ -93,14 +97,18 @@ view model session =
         <dt>Text</dt>
         <dd>{model.row.text}</dd>
         <dt>Org</dt>
-        <dd><a href={Admin.Org.Show { id: model.row.org }}>{orgLabel model.labels model.row.org}</a></dd>
+        <dd>
+          <a href={Admin.Org.Show { id: model.row.org }}>{orgLabel model.labels model.row.org}</a>
+        </dd>
         <dt>Created</dt>
         <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
         -- @admin end
       </dl>
       <div slot="actions">
         <al-button href={Admin.Activity.Edit { id: model.row.id }}>Edit</al-button>
-        <al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
+        <al-button variant="destructive">
+          <button type="button" commandfor="delete-dialog" command="show-modal">Delete</button>
+        </al-button>
       </div>
     </al-card>
     <al-dialog id="delete-dialog" heading="Delete this activity?" dismissible>
@@ -110,7 +118,10 @@ view model session =
       </dl>
       <form id="delete" submit={Remove}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        {if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p> else <al-button variant="destructive" type="submit">Delete</al-button>}
+        {if blockers model > 0 then
+          <p>It cannot be deleted while other rows refer to it.</p>
+        else
+          <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
       <div slot="actions">
         <a href={Admin.Activity.Delete { id: model.row.id }}>See the details</a>
@@ -127,23 +138,29 @@ test "the page shows the row" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: "text-1", org: org1 }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
   let r <- Test.open (Admin.Activity.Show { id: activity1 })
   let page <- Test.get (Admin.Activity.Show { id: activity1 })
-  Task.succeed ({
-    answer: r.answer,
-    text: List.member "text-1" (Test.texts "#fields dd" r.doc),
-    orgs: List.length page.model.labels.orgs,
-    orgLabel: orgLabel page.model.labels org1,
-  } == {
-    answer: Shown,
-    text: True,
-    orgs: 1,
-    orgLabel: "name-1",
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      text: List.member "text-1" (Test.texts "#fields dd" r.doc),
+      orgs: List.length page.model.labels.orgs,
+      orgLabel: orgLabel page.model.labels org1,
+    } == {
+        answer: Shown,
+        text: True,
+        orgs: 1,
+        orgLabel: "name-1",
+      }
+  )
 }
 
 test "deleting an activity nothing refers to" = {
@@ -153,19 +170,20 @@ test "deleting an activity nothing refers to" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: "text-1", org: org1 }
   let _ <- Test.get (Admin.Activity.Show { id: activity1 })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let gone <- Db.get Activity activity1
-  Task.succeed ({
-    answer: r.answer,
-    gone: Maybe.map (\row -> row.id) gone,
-  } == {
-    answer: Redirected (Admin.Activity.Index {}),
-    gone: Nothing,
-  })
+  Task.succeed (
+    { answer: r.answer, gone: Maybe.map (\row -> row.id) gone }
+      == { answer: Redirected (Admin.Activity.Index {}), gone: Nothing }
+  )
 }
 
 test "a missing row is not found" = {
@@ -175,7 +193,11 @@ test "a missing row is not found" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let r <- Test.open (Admin.Activity.Show { id: Activity.ActivityId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
@@ -194,7 +216,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: "text-1", org: org1 }
   let r <- Test.open (Admin.Activity.Show { id: activity1 })
@@ -208,7 +234,11 @@ test "a demoted Admin is refused at once" = {
     passwordHash: "passwordhash-1",
     role: Member,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: "text-1", org: org1 }
   let r <- Test.open (Admin.Activity.Show { id: activity1 })

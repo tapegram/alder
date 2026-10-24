@@ -45,7 +45,11 @@ type Filter = {
   name: Text,
   label: Text,
   value: Text,
-  options: List { value: Text, label: Text, rows: Condition Todo },
+  options: List {
+    value: Text,
+    label: Text,
+    rows: Condition Todo,
+  },
 }
 
 -- @admin begin filters
@@ -60,19 +64,35 @@ chosen params = { done: params.done }
 -- filters are the list's filters, each with the option f has chosen.
 filters : Filters -> List Filter
 filters f = [
-  { name: "done", label: "Done", value: f.done, options: [
-    { value: "yes", label: "yes", rows: Todo.done.eq True },
-    { value: "no", label: "no", rows: Todo.done.eq False },
-  ] },
+  {
+    name: "done",
+    label: "Done",
+    value: f.done,
+    options: [
+      {
+        value: "yes",
+        label: "yes",
+        rows: Todo.done.eq True,
+      },
+      {
+        value: "no",
+        label: "no",
+        rows: Todo.done.eq False,
+      },
+    ],
+  },
 ]
 
 -- filtered is the rows that the option each filter has chosen selects (every row for "", or for
 -- a value that is no option's).
 filtered : List Filter -> Condition Todo
-filtered fs = Db.and (List.map (\f -> match List.find (\o -> o.value == f.value) f.options {
-  Just o -> o.rows,
-  Nothing -> Db.and [],
-}) fs)
+filtered fs =
+  Db.and (
+    List.map (\f -> match List.find (\o -> o.value == f.value) f.options {
+      Just o -> o.rows,
+      Nothing -> Db.and [],
+    }) fs
+  )
 
 -- listAt is this list with the model's search and filters, sorted by sort and dir, at page n.
 listAt : Model -> Text -> Text -> Int -> Page
@@ -87,13 +107,37 @@ listAt model sort dir n = Admin.Todo.Index {
 
 -- @admin begin sorts
 -- sorts are the columns the list sorts by, by name.
-sorts : List { name: Text, asc: Order Todo, desc: Order Todo }
+sorts : List {
+  name: Text,
+  asc: Order Todo,
+  desc: Order Todo,
+}
 sorts = [
-  { name: "title", asc: Todo.title.asc, desc: Todo.title.desc },
-  { name: "done", asc: Todo.done.asc, desc: Todo.done.desc },
-  { name: "due", asc: Todo.due.asc, desc: Todo.due.desc },
-  { name: "owner", asc: Todo.owner.asc, desc: Todo.owner.desc },
-  { name: "created", asc: Todo.created.asc, desc: Todo.created.desc },
+  {
+    name: "title",
+    asc: Todo.title.asc,
+    desc: Todo.title.desc,
+  },
+  {
+    name: "done",
+    asc: Todo.done.asc,
+    desc: Todo.done.desc,
+  },
+  {
+    name: "due",
+    asc: Todo.due.asc,
+    desc: Todo.due.desc,
+  },
+  {
+    name: "owner",
+    asc: Todo.owner.asc,
+    desc: Todo.owner.desc,
+  },
+  {
+    name: "created",
+    asc: Todo.created.asc,
+    desc: Todo.created.desc,
+  },
 ]
 -- @admin end
 
@@ -119,7 +163,10 @@ load params session = {
   if admin then {
     let q = Text.slice 0 200 params.q
     let f = chosen params
-    let count <- Db.from Todo |> Db.where (Db.and [search q, filtered (filters f)]) |> Db.count
+    let count <-
+      Db.from Todo
+        |> Db.where (Db.and [search q, filtered (filters f)])
+        |> Db.count
     let pages = Int.max 1 ((count + perPage - 1) / perPage)
     let page = Int.clamp { min: 1, max: pages } params.page
     let rows <-
@@ -141,7 +188,8 @@ load params session = {
       pages: pages,
       count: count,
     }
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin labels
@@ -151,7 +199,10 @@ type Labels = { owners: List User }
 -- labelsOf reads the rows that rows refer to.
 labelsOf : List Todo -> Query Labels
 labelsOf rows = {
-  let owners <- Db.from User |> Db.where (User.id.in (List.map (\row -> row.owner) rows)) |> Db.all
+  let owners <-
+    Db.from User
+      |> Db.where (User.id.in (List.map (\row -> row.owner) rows))
+      |> Db.all
   Query.succeed { owners: owners }
 }
 
@@ -173,10 +224,12 @@ view model session =
         <input type="search" name="q" value={model.q} aria-label="Search" />
         {for f in filters model.filters ->
           <al-select label={f.label}>
-            <label>{f.label}
+            <label>
+              {f.label}
               <select name={f.name}>
                 <option value="" selected={f.value == ""}>any</option>
-                {for o in f.options -> <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
+                {for o in f.options ->
+                  <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
               </select>
             </label>
           </al-select>}
@@ -207,11 +260,30 @@ view model session =
           {for row in model.rows ->
             <tr>
               -- @admin begin cells
-              <td><input type="checkbox" name="ids" form="bulk" value={row.id} aria-label={"Choose " ++ row.title} /></td>
+              <td>
+                <input
+                  type="checkbox"
+                  name="ids"
+                  form="bulk"
+                  value={row.id}
+                  aria-label={"Choose " ++ row.title} />
+              </td>
               <td><a href={Admin.Todo.Show { id: row.id }}>{row.title}</a></td>
-              <td>{if row.done then <al-badge>Yes</al-badge> else <al-badge variant="secondary">No</al-badge>}</td>
-              <td>{match row.due { Just v -> Date.format "Jan 2, 2006" v, Nothing -> "" }}</td>
-              <td><a href={Admin.User.Show { id: row.owner }}>{ownerLabel model.labels row.owner}</a></td>
+              <td>
+                {if row.done then
+                  <al-badge>Yes</al-badge>
+                else
+                  <al-badge variant="secondary">No</al-badge>}
+              </td>
+              <td>
+                {match row.due {
+                  Just v -> Date.format "Jan 2, 2006" v,
+                  Nothing -> "",
+                }}
+              </td>
+              <td>
+                <a href={Admin.User.Show { id: row.owner }}>{ownerLabel model.labels row.owner}</a>
+              </td>
               <td>{Time.format "Jan 2, 2006" row.created}</td>
               -- @admin end
             </tr>}
@@ -230,9 +302,17 @@ view model session =
     </al-stack>
 
     <al-pagination role="navigation" aria-label="Pages">
-      {if model.page > 1 then <a slot="prev" href={listAt model model.sort model.dir (model.page - 1)} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
+      {if model.page > 1 then
+        <a slot="prev" href={listAt model model.sort model.dir (model.page - 1)} rel="prev">
+          Previous
+        </a>
+      else
+        <span slot="prev" aria-disabled="true">Previous</span>}
       <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
-      {if model.page < model.pages then <a slot="next" href={listAt model model.sort model.dir (model.page + 1)} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
+      {if model.page < model.pages then
+        <a slot="next" href={listAt model model.sort model.dir (model.page + 1)} rel="next">Next</a>
+      else
+        <span slot="next" aria-disabled="true">Next</span>}
     </al-pagination>
   </Admin.Layout.Page>
 
@@ -245,23 +325,33 @@ test "the list shows every row, newest first, and the labels of the rows they re
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: me }
-  let todo2 <- Db.insert Todo { title: Text.NonEmpty "title-2", due: Nothing, owner: me }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    due: Nothing,
+    owner: me,
+  }
+  let todo2 <- Db.insert Todo {
+    title: Text.NonEmpty "title-2",
+    due: Nothing,
+    owner: me,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
   let page <- Test.get (Admin.Todo.Index {})
-  Task.succeed ({
-    rows: List.map (\row -> row.id) page.model.rows,
-    owners: List.length page.model.labels.owners,
-    ownerLabel: ownerLabel page.model.labels me,
-  } == {
-    rows: [todo2, todo1],
-    owners: 1,
-    ownerLabel: "email-1@example.com",
-  })
+  Task.succeed (
+    {
+      rows: List.map (\row -> row.id) page.model.rows,
+      owners: List.length page.model.labels.owners,
+      ownerLabel: ownerLabel page.model.labels me,
+    } == {
+        rows: [todo2, todo1],
+        owners: 1,
+        ownerLabel: "email-1@example.com",
+      }
+  )
 }
 
 test "sorting by title goes both ways" = {
@@ -272,19 +362,29 @@ test "sorting by title goes both ways" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-2", due: Nothing, owner: me }
-  let todo2 <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: me }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-2",
+    due: Nothing,
+    owner: me,
+  }
+  let todo2 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    due: Nothing,
+    owner: me,
+  }
   let up <- Test.get (Admin.Todo.Index { sort: "title", dir: "asc" })
   let down <- Test.get (Admin.Todo.Index { sort: "title" })
-  Task.succeed ({
-    up: List.map (\row -> row.id) up.model.rows,
-    down: List.map (\row -> row.id) down.model.rows,
-    toggles: [toggle up.model "title", toggle down.model "title", toggle up.model "done"],
-  } == {
-    up: [todo2, todo1],
-    down: [todo1, todo2],
-    toggles: ["desc", "asc", "asc"],
-  })
+  Task.succeed (
+    {
+      up: List.map (\row -> row.id) up.model.rows,
+      down: List.map (\row -> row.id) down.model.rows,
+      toggles: [toggle up.model "title", toggle down.model "title", toggle up.model "done"],
+    } == {
+        up: [todo2, todo1],
+        down: [todo1, todo2],
+        toggles: ["desc", "asc", "asc"],
+      }
+  )
 }
 
 test "searching finds the rows that contain the text" = {
@@ -295,16 +395,21 @@ test "searching finds the rows that contain the text" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: me }
-  let todo2 <- Db.insert Todo { title: Text.NonEmpty "title-2", due: Nothing, owner: me }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    due: Nothing,
+    owner: me,
+  }
+  let todo2 <- Db.insert Todo {
+    title: Text.NonEmpty "title-2",
+    due: Nothing,
+    owner: me,
+  }
   let page <- Test.get (Admin.Todo.Index { q: "title-2" })
-  Task.succeed ({
-    rows: List.map (\row -> row.id) page.model.rows,
-    count: Test.text "#count" page.doc,
-  } == {
-    rows: [todo2],
-    count: Just "1 row",
-  })
+  Task.succeed (
+    { rows: List.map (\row -> row.id) page.model.rows, count: Test.text "#count" page.doc }
+      == { rows: [todo2], count: Just "1 row" }
+  )
 }
 
 test "filtering by done lists the rows with that value" = {
@@ -329,17 +434,22 @@ test "filtering by done lists the rows with that value" = {
   }
   let yes <- Test.get (Admin.Todo.Index { done: "yes" })
   let no <- Test.get (Admin.Todo.Index { done: "no" })
-  Task.succeed ({
-    yes: List.map (\id -> List.member id (List.map (\row -> row.id) yes.model.rows)) [todo1, todo2],
-    no: List.map (\id -> List.member id (List.map (\row -> row.id) no.model.rows)) [todo1, todo2],
-    count: yes.model.count == List.length yes.model.rows,
-    chosen: Test.texts "select[name=done] option[selected]" yes.doc,
-  } == {
-    yes: [True, False],
-    no: [False, True],
-    count: True,
-    chosen: ["yes"],
-  })
+  Task.succeed (
+    {
+      yes: List.map (\id -> List.member id (List.map (\row -> row.id) yes.model.rows)) [
+        todo1,
+        todo2,
+      ],
+      no: List.map (\id -> List.member id (List.map (\row -> row.id) no.model.rows)) [todo1, todo2],
+      count: yes.model.count == List.length yes.model.rows,
+      chosen: Test.texts "select[name=done] option[selected]" yes.doc,
+    } == {
+        yes: [True, False],
+        no: [False, True],
+        count: True,
+        chosen: ["yes"],
+      }
+  )
 }
 
 test "a search text of 20,000 characters is cut to 200" = {
@@ -352,13 +462,9 @@ test "a search text of 20,000 characters is cut to 200" = {
   let _ <- Test.login { user: Just me, role: Admin }
   let long = Text.join "" (List.map (\n -> "z") (List.range 1 20000))
   let page <- Test.get (Admin.Todo.Index { q: long })
-  Task.succeed ({
-    q: Text.length page.model.q,
-    rows: List.length page.model.rows,
-  } == {
-    q: 200,
-    rows: 0,
-  })
+  Task.succeed (
+    { q: Text.length page.model.q, rows: List.length page.model.rows } == { q: 200, rows: 0 }
+  )
 }
 
 test "the list has 25 rows a page, and a page past the last is the last" = {
@@ -369,27 +475,32 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let _ <- Task.all (List.map (\n -> Db.insert Todo {
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    due: Nothing,
-    owner: me,
-  }) (List.range 1 26))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Todo {
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        due: Nothing,
+        owner: me,
+      }) (List.range 1 26)
+    )
   let first <- Test.get (Admin.Todo.Index {})
   let second <- Test.get (Admin.Todo.Index { page: 2 })
   let past <- Test.get (Admin.Todo.Index { page: 9 })
-  Task.succeed ({
-    first: List.length first.model.rows,
-    second: List.length second.model.rows,
-    past: { page: past.model.page, rows: List.length past.model.rows },
-    count: Test.text "#count" first.doc,
-    pages: Test.texts "al-pagination span" first.doc,
-  } == {
-    first: 25,
-    second: 1,
-    past: { page: 2, rows: 1 },
-    count: Just "26 rows",
-    pages: ["Previous", "Page 1 of 2"],
-  })
+  Task.succeed (
+    {
+      first: List.length first.model.rows,
+      second: List.length second.model.rows,
+      past: { page: past.model.page, rows: List.length past.model.rows },
+      count: Test.text "#count" first.doc,
+      pages: Test.texts "al-pagination span" first.doc,
+    } == {
+        first: 25,
+        second: 1,
+        past: { page: 2, rows: 1 },
+        count: Just "26 rows",
+        pages: ["Previous", "Page 1 of 2"],
+      }
+  )
 }
 
 test "a visitor is sent to log in" = {

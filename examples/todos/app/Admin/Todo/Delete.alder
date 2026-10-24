@@ -28,7 +28,8 @@ load params session = {
       Nothing -> Query.notFound,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin blockers
@@ -71,7 +72,10 @@ view model session =
       </dl>
       <form id="delete" submit={Remove}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        {if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p> else <al-button variant="destructive" type="submit">Delete</al-button>}
+        {if blockers model > 0 then
+          <p>It cannot be deleted while other rows refer to it.</p>
+        else
+          <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
     </al-card>
     <a href={Admin.Todo.Show { id: model.row.id }}>Back</a>
@@ -86,17 +90,18 @@ test "deleting a todo nothing refers to" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: me }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    due: Nothing,
+    owner: me,
+  }
   let _ <- Test.get (Admin.Todo.Delete { id: todo1 })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let gone <- Db.get Todo todo1
-  Task.succeed ({
-    answer: r.answer,
-    gone: Maybe.map (\row -> row.id) gone,
-  } == {
-    answer: Redirected (Admin.Todo.Index {}),
-    gone: Nothing,
-  })
+  Task.succeed (
+    { answer: r.answer, gone: Maybe.map (\row -> row.id) gone }
+      == { answer: Redirected (Admin.Todo.Index {}), gone: Nothing }
+  )
 }
 
 test "a missing row is not found" = {
@@ -117,7 +122,11 @@ test "a visitor is sent to log in" = {
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
   }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: me }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    due: Nothing,
+    owner: me,
+  }
   let r <- Test.open (Admin.Todo.Delete { id: todo1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
@@ -130,7 +139,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Member }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: me }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    due: Nothing,
+    owner: me,
+  }
   let r <- Test.open (Admin.Todo.Delete { id: todo1 })
   Task.succeed (r.answer == PageMissing)
 }
@@ -143,7 +156,11 @@ test "a demoted Admin is refused at once" = {
     role: Member,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: me }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    due: Nothing,
+    owner: me,
+  }
   let r <- Test.open (Admin.Todo.Delete { id: todo1 })
   Task.succeed (r.answer == PageMissing)
 }

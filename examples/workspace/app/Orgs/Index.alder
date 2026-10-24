@@ -15,16 +15,22 @@ type Model = { orgs: List Org }
 
 load : Params -> Session -> Query Model
 load params session = {
-  let mine <- Db.from Membership |> Db.where (Membership.user.eq session.user) |> Db.all
-  let orgs <- Db.from Org |> Db.where (Org.id.in (List.map (\m -> m.org) mine)) |> Db.orderBy Org.name.asc |> Db.all
+  let mine <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq session.user)
+      |> Db.all
+  let orgs <-
+    Db.from Org
+      |> Db.where (Org.id.in (List.map (\m -> m.org) mine))
+      |> Db.orderBy Org.name.asc
+      |> Db.all
   Query.succeed { orgs: orgs }
 }
 
-form NewOrg = {
-  name: Text.NonEmpty,
-}
+form NewOrg = { name: Text.NonEmpty }
 
 msg Open { org: Org.OrgId }
+
 msg Create form NewOrg
 
 update : Msg -> Model -> Session -> Task Nav
@@ -68,15 +74,27 @@ view model session =
     <al-button variant="outline" click={App.Logout}>Log out</al-button>
   </Layout.Page>
 
-
 test "the page lists only the user's orgs, by name" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
   let _ <- Test.member bob globex
-  let s = { ann: ann, bob: bob, acme: acme, globex: globex }
+  let s = {
+    ann: ann,
+    bob: bob,
+    acme: acme,
+    globex: globex,
+  }
   let zeta <- Db.insert Org { name: Text.NonEmpty "Zeta" }
   let _ <- Test.member s.ann zeta
   let _ <- Test.login { user: Just s.ann, org: Nothing }
@@ -85,43 +103,93 @@ test "the page lists only the user's orgs, by name" = {
 }
 
 test "a member opens one of their orgs" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
   let _ <- Test.member bob globex
-  let s = { ann: ann, bob: bob, acme: acme, globex: globex }
+  let s = {
+    ann: ann,
+    bob: bob,
+    acme: acme,
+    globex: globex,
+  }
   let _ <- Test.login { user: Just s.ann, org: Nothing }
   let _ <- Test.get (Orgs.Index {})
   let r <- Test.click (Open { org: s.acme })
-  Task.succeed ({ answer: r.answer, org: r.session.org } == { answer: Redirected (Projects.Index {}), org: Just s.acme })
+  Task.succeed (
+    { answer: r.answer, org: r.session.org }
+      == { answer: Redirected (Projects.Index {}), org: Just s.acme }
+  )
 }
 
 -- A request crafted by hand: the page offers Ann no Globex button, so the test runs `update`
 -- itself. `via Membership` refuses the Session.put: the Task fails, and the session keeps Acme.
 test "a non-member's switch is refused" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
   let _ <- Test.member bob globex
-  let s = { ann: ann, bob: bob, acme: acme, globex: globex }
+  let s = {
+    ann: ann,
+    bob: bob,
+    acme: acme,
+    globex: globex,
+  }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
-  let r <- Test.run (update (Open { org: s.globex }) { orgs: [] } { user: s.ann, org: Nothing, role: Member })
+  let r <-
+    Test.run (update (Open { org: s.globex }) { orgs: [] } {
+      user: s.ann,
+      org: Nothing,
+      role: Member,
+    })
   let page <- Test.get (Orgs.Index {})
-  Task.succeed ({ value: r.value, org: page.session.org } == { value: Err "Session.put org: no Membership for this user and org", org: Just s.acme })
+  Task.succeed (
+    { value: r.value, org: page.session.org }
+      == { value: Err "Session.put org: no Membership for this user and org", org: Just s.acme }
+  )
 }
 
 test "a membership deleted earlier in the same Task counts as gone" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
   let _ <- Test.member bob globex
-  let s = { ann: ann, bob: bob, acme: acme, globex: globex }
+  let s = {
+    ann: ann,
+    bob: bob,
+    acme: acme,
+    globex: globex,
+  }
   let m <- Db.insert Membership { user: s.bob, org: s.acme }
   let _ <- Test.login { user: Just s.bob, org: Nothing }
   let r <- Test.run {
@@ -132,35 +200,98 @@ test "a membership deleted earlier in the same Task counts as gone" = {
 }
 
 test "creating an org makes the user its member, logs it, and opens it" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
   let _ <- Test.member bob globex
-  let s = { ann: ann, bob: bob, acme: acme, globex: globex }
+  let s = {
+    ann: ann,
+    bob: bob,
+    acme: acme,
+    globex: globex,
+  }
   let _ <- Test.login { user: Just s.bob, org: Nothing }
   let _ <- Test.get (Orgs.Index {})
   let r <- Test.submit NewOrg { name: Text.NonEmpty "Initech" }
-  let made <- Db.from Org |> Db.where (Org.name.eq (Text.NonEmpty "Initech")) |> Db.all
+  let made <-
+    Db.from Org
+      |> Db.where (Org.name.eq (Text.NonEmpty "Initech"))
+      |> Db.all
   let ids = List.map (\o -> o.id) made
-  let members <- Db.from Membership |> Db.where (Membership.org.in ids) |> Db.all
-  let logged <- Db.from Activity |> Db.where (Activity.org.in ids) |> Db.count
-  Task.succeed ({ answer: r.answer, org: r.session.org == List.head ids, members: List.map (\m -> m.user) members, logged: logged } == { answer: Redirected (Projects.Index {}), org: True, members: [s.bob], logged: 1 })
+  let members <-
+    Db.from Membership
+      |> Db.where (Membership.org.in ids)
+      |> Db.all
+  let logged <-
+    Db.from Activity
+      |> Db.where (Activity.org.in ids)
+      |> Db.count
+  Task.succeed (
+    {
+      answer: r.answer,
+      org: r.session.org == List.head ids,
+      members: List.map (\m -> m.user) members,
+      logged: logged,
+    } == {
+        answer: Redirected (Projects.Index {}),
+        org: True,
+        members: [s.bob],
+        logged: 1,
+      }
+  )
 }
 
 test "logging out clears the user and the org" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
   let _ <- Test.member bob globex
-  let s = { ann: ann, bob: bob, acme: acme, globex: globex }
-  let _ <- Test.login { user: Just s.ann, org: Just s.acme, role: Admin }
+  let s = {
+    ann: ann,
+    bob: bob,
+    acme: acme,
+    globex: globex,
+  }
+  let _ <- Test.login {
+    user: Just s.ann,
+    org: Just s.acme,
+    role: Admin,
+  }
   let _ <- Test.get (Orgs.Index {})
   let r <- Test.click App.Logout
-  Task.succeed ({ answer: r.answer, user: r.session.user, org: r.session.org, role: r.session.role } == { answer: Redirected (Auth.Login {}), user: Nothing, org: Nothing, role: Member })
+  Task.succeed (
+    {
+      answer: r.answer,
+      user: r.session.user,
+      org: r.session.org,
+      role: r.session.role,
+    } == {
+        answer: Redirected (Auth.Login {}),
+        user: Nothing,
+        org: Nothing,
+        role: Member,
+      }
+  )
 }
 
 test "a visitor is sent to log in" = {

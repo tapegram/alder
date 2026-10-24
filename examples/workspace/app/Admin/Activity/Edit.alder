@@ -9,7 +9,10 @@ import Org
 import User
 -- @admin end
 
-page "/admin/activity/{id}/edit" { id: Activity.ActivityId, findOrg: Text = "" } requires user, role Admin
+page "/admin/activity/{id}/edit" {
+  id: Activity.ActivityId,
+  findOrg: Text = "",
+} requires user, role Admin
 
 type Model = {
   row: Activity,
@@ -29,25 +32,40 @@ load params session = {
       Just row -> {
         let findOrg = Text.slice 0 200 params.findOrg
         let orgsTotal <- Db.from Org |> Db.count
-        let orgsOwn <- if orgsTotal > 200 then Db.from Org |> Db.where (Org.id.eq row.org) |> Db.all else Query.succeed []
-        let orgsFound <- Db.from Org |> Db.orderBy Org.name.asc |> Db.where (if orgsTotal > 200 then Db.and [
-          Org.name.contains findOrg,
-          Org.id.ne row.org,
-        ] else Db.and []) |> Db.limit (if orgsTotal > 200 then 50 else 200) |> Db.all
+        let orgsOwn <-
+          if orgsTotal > 200 then
+            Db.from Org
+              |> Db.where (Org.id.eq row.org)
+              |> Db.all
+          else
+            Query.succeed []
+        let orgsFound <-
+          Db.from Org
+            |> Db.orderBy Org.name.asc
+            |> Db.where (
+              if orgsTotal > 200 then
+                Db.and [Org.name.contains findOrg, Org.id.ne row.org]
+              else
+                Db.and []
+            )
+            |> Db.limit (if orgsTotal > 200 then 50 else 200)
+            |> Db.all
         let orgs = orgsOwn ++ orgsFound
-        Query.succeed { row: row, orgs: orgs, orgsTotal: orgsTotal }
+        Query.succeed {
+          row: row,
+          orgs: orgs,
+          orgsTotal: orgsTotal,
+        }
       },
       Nothing -> Query.notFound,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin form
-form ActivityForm = {
-  text: Text,
-  org: Org.OrgId,
-}
+form ActivityForm = { text: Text, org: Org.OrgId }
 -- @admin end
 
 -- @admin begin search
@@ -62,7 +80,10 @@ msg Save form ActivityForm
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
-  SearchOrg p -> Task.succeed (Redirect (Admin.Activity.Edit { id: model.row.id, findOrg: Text.slice 0 200 p.form.q })),
+  SearchOrg p ->
+    Task.succeed (
+      Redirect (Admin.Activity.Edit { id: model.row.id, findOrg: Text.slice 0 200 p.form.q })
+    ),
   -- @admin end
   Save p -> {
     -- @admin begin update
@@ -79,12 +100,22 @@ view model session =
 
     <al-card>
       -- @admin begin finder
-      {if model.orgsTotal > 200 then <form submit={SearchOrg}><al-input field="q" label="Find org" /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}
+      {if model.orgsTotal > 200 then
+        <form submit={SearchOrg}>
+          <al-input field="q" label="Find org" />
+          <al-button type="submit" variant="secondary">Find</al-button>
+        </form>
+      else
+        <span></span>}
       -- @admin end
       <form submit={Save}>
         -- @admin begin inputs
         <al-input field="text" label="Text" value={model.row.text} />
-        <al-select field="org" label="Org" options={List.map (\r -> { value: r.id, label: r.name }) model.orgs} value={model.row.org} />
+        <al-select
+          field="org"
+          label="Org"
+          options={List.map (\r -> { value: r.id, label: r.name }) model.orgs}
+          value={model.row.org} />
         -- @admin end
         <al-alert variant="destructive"><Errors form /></al-alert>
         <al-button type="submit">Save</al-button>
@@ -101,22 +132,28 @@ test "saving changes every field" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: "text-1", org: org1 }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
   let page <- Test.get (Admin.Activity.Edit { id: activity1 })
   let r <- Test.submit ActivityForm { text: "text-2", org: org2 }
   let after <- Db.get Activity activity1
-  Task.succeed ({
-    answer: r.answer,
-    row: Maybe.map (\row -> { text: row.text, org: row.org }) after,
-    orgs: Test.texts "select[name=org] option" page.doc,
-  } == {
-    answer: Redirected (Admin.Activity.Show { id: activity1 }),
-    row: Just { text: "text-2", org: org2 },
-    orgs: ["name-1", "name-2"],
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      row: Maybe.map (\row -> { text: row.text, org: row.org }) after,
+      orgs: Test.texts "select[name=org] option" page.doc,
+    } == {
+        answer: Redirected (Admin.Activity.Show { id: activity1 }),
+        row: Just { text: "text-2", org: org2 },
+        orgs: ["name-1", "name-2"],
+      }
+  )
 }
 
 test "an org not offered is refused" = {
@@ -126,7 +163,11 @@ test "an org not offered is refused" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: "text-1", org: org1 }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
@@ -136,13 +177,13 @@ test "an org not offered is refused" = {
     { name: "org", value: "missing" },
   ]
   let after <- Db.get Activity activity1
-  Task.succeed ({
-    answer: r.answer,
-    org: Maybe.map (\row -> row.org) after,
-  } == {
-    answer: FormRejected [{ field: "org", message: "must be one of the options" }],
-    org: Just org1,
-  })
+  Task.succeed (
+    { answer: r.answer, org: Maybe.map (\row -> row.org) after }
+      == {
+        answer: FormRejected [{ field: "org", message: "must be one of the options" }],
+        org: Just org1,
+      }
+  )
 }
 
 test "a list of 200 orgs is offered whole" = {
@@ -152,11 +193,20 @@ test "a list of 200 orgs is offered whole" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: "text-1", org: org1 }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
-  let _ <- Task.all (List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (List.range 3 200))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (
+        List.range 3 200
+      )
+    )
   let page <- Test.get (Admin.Activity.Edit { id: activity1 })
   Task.succeed (List.length page.model.orgs == 200)
 }
@@ -168,25 +218,36 @@ test "a long list of orgs offers 50, and the search narrows it" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: "text-1", org: org1 }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
-  let _ <- Task.all (List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (
+        List.range 3 203
+      )
+    )
   let all <- Test.get (Admin.Activity.Edit { id: activity1 })
   let found <- Test.get (Admin.Activity.Edit { id: activity1, findOrg: "name-203" })
   let r <- Test.submit FindOrg { q: "zz" }
-  Task.succeed ({
-    shown: List.length all.model.orgs,
-    total: all.model.orgsTotal,
-    found: Test.count "select[name=org] option" found.doc <= 3,
-    answer: r.answer,
-  } == {
-    shown: 51,
-    total: 203,
-    found: True,
-    answer: Redirected (Admin.Activity.Edit { id: activity1, findOrg: "zz" }),
-  })
+  Task.succeed (
+    {
+      shown: List.length all.model.orgs,
+      total: all.model.orgsTotal,
+      found: Test.count "select[name=org] option" found.doc <= 3,
+      answer: r.answer,
+    } == {
+        shown: 51,
+        total: 203,
+        found: True,
+        answer: Redirected (Admin.Activity.Edit { id: activity1, findOrg: "zz" }),
+      }
+  )
 }
 
 test "the row's own org is offered first when it sorts past the 50" = {
@@ -196,26 +257,37 @@ test "the row's own org is offered first when it sorts past the 50" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "zz-1" }
   let activity1 <- Db.insert Activity { text: "text-1", org: org1 }
-  let _ <- Task.all (List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (List.range 2 202))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (
+        List.range 2 202
+      )
+    )
   let page <- Test.get (Admin.Activity.Edit { id: activity1 })
   let r <- Test.submit ActivityForm { text: page.model.row.text, org: page.model.row.org }
   let after <- Db.get Activity activity1
-  Task.succeed ({
-    answer: r.answer,
-    kept: Maybe.map (\row -> row.org) after,
-    first: Maybe.map (\o -> o.id) (List.head page.model.orgs),
-    once: List.length (List.filter (\o -> o.id == org1) page.model.orgs),
-    shown: List.length page.model.orgs,
-  } == {
-    answer: Redirected (Admin.Activity.Show { id: activity1 }),
-    kept: Just org1,
-    first: Just org1,
-    once: 1,
-    shown: 51,
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      kept: Maybe.map (\row -> row.org) after,
+      first: Maybe.map (\o -> o.id) (List.head page.model.orgs),
+      once: List.length (List.filter (\o -> o.id == org1) page.model.orgs),
+      shown: List.length page.model.orgs,
+    } == {
+        answer: Redirected (Admin.Activity.Show { id: activity1 }),
+        kept: Just org1,
+        first: Just org1,
+        once: 1,
+        shown: 51,
+      }
+  )
 }
 
 test "a missing row is not found" = {
@@ -225,7 +297,11 @@ test "a missing row is not found" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let r <- Test.open (Admin.Activity.Edit { id: Activity.ActivityId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
@@ -244,7 +320,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: "text-1", org: org1 }
   let r <- Test.open (Admin.Activity.Edit { id: activity1 })
@@ -258,7 +338,11 @@ test "a demoted Admin is refused at once" = {
     passwordHash: "passwordhash-1",
     role: Member,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: "text-1", org: org1 }
   let r <- Test.open (Admin.Activity.Edit { id: activity1 })

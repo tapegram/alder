@@ -27,16 +27,25 @@ load params session = {
   if admin then {
     -- @admin begin load
     let found <- Db.get User params.id
-    let todos <- Db.from Todo |> Db.where (Todo.owner.eq params.id) |> Db.count
+    let todos <-
+      Db.from Todo
+        |> Db.where (Todo.owner.eq params.id)
+        |> Db.count
     match found {
       Just row -> {
         let labels <- labelsOf [row]
-        Query.succeed { row: row, labels: labels, own: session.user == row.id, todos: todos }
+        Query.succeed {
+          row: row,
+          labels: labels,
+          own: session.user == row.id,
+          todos: todos,
+        }
       },
       Nothing -> Query.notFound,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin labels
@@ -44,7 +53,7 @@ load params session = {
 type Labels = { }
 
 labelsOf : List User -> Query Labels
-labelsOf rows = Query.succeed { }
+labelsOf rows = Query.succeed {}
 -- @admin end
 
 -- @admin begin blockers
@@ -94,12 +103,21 @@ view model session =
         <dt>Created</dt>
         <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
         <dt>Role</dt>
-        <dd><al-badge>{match model.row.role { Member -> "Member", Admin -> "Admin" }}</al-badge></dd>
+        <dd>
+          <al-badge>
+            {match model.row.role {
+              Member -> "Member",
+              Admin -> "Admin",
+            }}
+          </al-badge>
+        </dd>
         -- @admin end
       </dl>
       <div slot="actions">
         <al-button href={Admin.User.Edit { id: model.row.id }}>Edit</al-button>
-        <al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
+        <al-button variant="destructive">
+          <button type="button" commandfor="delete-dialog" command="show-modal">Delete</button>
+        </al-button>
       </div>
     </al-card>
     <al-dialog id="delete-dialog" heading="Delete this user?" dismissible>
@@ -111,13 +129,15 @@ view model session =
       </dl>
       <form id="delete" submit={Remove}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        {if model.own then <p>You cannot delete your own account.</p>
-          else if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p>
-          else <al-button variant="destructive" type="submit">Delete</al-button>}
+        {if model.own then
+          <p>You cannot delete your own account.</p>
+        else
+          if blockers model > 0 then
+            <p>It cannot be deleted while other rows refer to it.</p>
+          else
+            <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
-      <div slot="actions">
-        <a href={Admin.User.Delete { id: model.row.id }}>See the details</a>
-      </div>
+      <div slot="actions"><a href={Admin.User.Delete { id: model.row.id }}>See the details</a></div>
     </al-dialog>
     <a href={Admin.User.Index {}}>All users</a>
   </Admin.Layout.Page>
@@ -137,13 +157,10 @@ test "the page shows the row" = {
     passwordHash: "passwordhash-2",
   }
   let r <- Test.open (Admin.User.Show { id: user2 })
-  Task.succeed ({
-    answer: r.answer,
-    email: List.member "email-2@example.com" (Test.texts "#fields dd" r.doc),
-  } == {
-    answer: Shown,
-    email: True,
-  })
+  Task.succeed (
+    { answer: r.answer, email: List.member "email-2@example.com" (Test.texts "#fields dd" r.doc) }
+      == { answer: Shown, email: True }
+  )
 }
 
 test "deleting a user nothing refers to" = {
@@ -164,20 +181,26 @@ test "deleting a user nothing refers to" = {
     name: Text.NonEmpty "name-3",
     passwordHash: "passwordhash-3",
   }
-  let _ <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: user3 }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    due: Nothing,
+    owner: user3,
+  }
   let _ <- Test.get (Admin.User.Show { id: user2 })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let gone <- Db.get User user2
   let kept <- Db.get User user3
-  Task.succeed ({
-    answer: r.answer,
-    gone: Maybe.map (\row -> row.id) gone,
-    kept: Maybe.map (\row -> row.id) kept,
-  } == {
-    answer: Redirected (Admin.User.Index {}),
-    gone: Nothing,
-    kept: Just user3,
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      gone: Maybe.map (\row -> row.id) gone,
+      kept: Maybe.map (\row -> row.id) kept,
+    } == {
+        answer: Redirected (Admin.User.Index {}),
+        gone: Nothing,
+        kept: Just user3,
+      }
+  )
 }
 
 test "a user that todos refer to is not deleted" = {
@@ -193,21 +216,29 @@ test "a user that todos refer to is not deleted" = {
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let _ <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: user2 }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    due: Nothing,
+    owner: user2,
+  }
   let page <- Test.get (Admin.User.Show { id: user2 })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let kept <- Db.get User user2
-  Task.succeed ({
-    count: Test.text "#todos" page.doc,
-    buttons: Test.count "#delete button" page.doc,
-    answer: r.answer,
-    kept: Maybe.map (\row -> row.id) kept,
-  } == {
-    count: Just "1",
-    buttons: 0,
-    answer: FormRejected [{ field: "", message: "This user cannot be deleted while other rows refer to it." }],
-    kept: Just user2,
-  })
+  Task.succeed (
+    {
+      count: Test.text "#todos" page.doc,
+      buttons: Test.count "#delete button" page.doc,
+      answer: r.answer,
+      kept: Maybe.map (\row -> row.id) kept,
+    } == {
+        count: Just "1",
+        buttons: 0,
+        answer: FormRejected [
+          { field: "", message: "This user cannot be deleted while other rows refer to it." },
+        ],
+        kept: Just user2,
+      }
+  )
 }
 
 test "an Admin cannot delete their own account" = {
@@ -219,19 +250,21 @@ test "an Admin cannot delete their own account" = {
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let page <- Test.get (Admin.User.Show { id: me })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let kept <- Db.get User me
-  Task.succeed ({
-    says: Test.texts "#delete p" page.doc,
-    buttons: Test.count "#delete button" page.doc,
-    answer: r.answer,
-    kept: Maybe.map (\row -> row.id) kept,
-  } == {
-    says: ["You cannot delete your own account."],
-    buttons: 0,
-    answer: FormRejected [{ field: "", message: "You cannot delete your own account." }],
-    kept: Just me,
-  })
+  Task.succeed (
+    {
+      says: Test.texts "#delete p" page.doc,
+      buttons: Test.count "#delete button" page.doc,
+      answer: r.answer,
+      kept: Maybe.map (\row -> row.id) kept,
+    } == {
+        says: ["You cannot delete your own account."],
+        buttons: 0,
+        answer: FormRejected [{ field: "", message: "You cannot delete your own account." }],
+        kept: Just me,
+      }
+  )
 }
 
 test "a missing row is not found" = {

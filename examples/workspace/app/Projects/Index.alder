@@ -22,16 +22,19 @@ load params session = {
   let member <- Membership.isMember session.user session.org
   if member then {
     let org <- Db.get Org session.org
-    let projects <- Db.scoped Project |> Db.orderBy Project.name.asc |> Db.all
+    let projects <-
+      Db.scoped Project
+        |> Db.orderBy Project.name.asc
+        |> Db.all
     Query.succeed { org: Maybe.withDefault "" (Maybe.map (\o -> o.name) org), projects: projects }
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
-form NewProject = {
-  name: Text.NonEmpty,
-}
+form NewProject = { name: Text.NonEmpty }
 
 msg Create form NewProject
+
 msg Remove { id: Project.ProjectId }
 
 -- Each Task writes to the org's database only (E0031 refuses a Task that writes there and to
@@ -70,11 +73,22 @@ view model session =
     <al-button variant="outline" click={App.Leave}>Another org</al-button>
   </Layout.Page>
 
-
 test "a member sees the org's name and only its projects, by name" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
-  let cy <- Db.insert User { email: Text.Email "cy@example.com", name: Text.NonEmpty "Cy", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
+  let cy <- Db.insert User {
+    email: Text.Email "cy@example.com",
+    name: Text.NonEmpty "Cy",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
@@ -83,17 +97,40 @@ test "a member sees the org's name and only its projects, by name" = {
   let _ <- Test.member cy globex
   let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
   let widget <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
-  let s = { ann: ann, bob: bob, cy: cy, acme: acme, globex: globex, rocket: rocket, widget: widget }
+  let s = {
+    ann: ann,
+    bob: bob,
+    cy: cy,
+    acme: acme,
+    globex: globex,
+    rocket: rocket,
+    widget: widget,
+  }
   let _ <- Db.insert Project { name: Text.NonEmpty "Apollo", org: s.acme }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
   let page <- Test.get (Projects.Index {})
-  Task.succeed ({ org: Test.text "h1" page.doc, projects: Test.texts "#projects .name" page.doc } == { org: Just "Acme", projects: ["Apollo", "Rocket"] })
+  Task.succeed (
+    { org: Test.text "h1" page.doc, projects: Test.texts "#projects .name" page.doc }
+      == { org: Just "Acme", projects: ["Apollo", "Rocket"] }
+  )
 }
 
 test "a project is created in the org's database, and another org does not see it" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
-  let cy <- Db.insert User { email: Text.Email "cy@example.com", name: Text.NonEmpty "Cy", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
+  let cy <- Db.insert User {
+    email: Text.Email "cy@example.com",
+    name: Text.NonEmpty "Cy",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
@@ -102,22 +139,60 @@ test "a project is created in the org's database, and another org does not see i
   let _ <- Test.member cy globex
   let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
   let widget <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
-  let s = { ann: ann, bob: bob, cy: cy, acme: acme, globex: globex, rocket: rocket, widget: widget }
+  let s = {
+    ann: ann,
+    bob: bob,
+    cy: cy,
+    acme: acme,
+    globex: globex,
+    rocket: rocket,
+    widget: widget,
+  }
   let _ <- Test.login { user: Just s.cy, org: Just s.acme }
   let _ <- Test.get (Projects.Index {})
   let r <- Test.submit NewProject { name: Text.NonEmpty "Zephyr" }
-  let inAcme <- Db.scoped Project |> Db.where (Project.name.eq (Text.NonEmpty "Zephyr")) |> Db.all
+  let inAcme <-
+    Db.scoped Project
+      |> Db.where (Project.name.eq (Text.NonEmpty "Zephyr"))
+      |> Db.all
   let acme <- Test.get (Projects.Index {})
   let _ <- Test.login { user: Just s.cy, org: Just s.globex }
   let globex <- Test.get (Projects.Index {})
-  let inGlobex <- Db.scoped Project |> Db.where (Project.name.eq (Text.NonEmpty "Zephyr")) |> Db.count
-  Task.succeed ({ answer: List.map (\p -> Redirected (Projects.Show { id: p.id })) inAcme, acme: Test.texts "#projects .name" acme.doc, globex: Test.texts "#projects .name" globex.doc, inGlobex: inGlobex } == { answer: [r.answer], acme: ["Rocket", "Zephyr"], globex: ["Widget"], inGlobex: 0 })
+  let inGlobex <-
+    Db.scoped Project
+      |> Db.where (Project.name.eq (Text.NonEmpty "Zephyr"))
+      |> Db.count
+  Task.succeed (
+    {
+      answer: List.map (\p -> Redirected (Projects.Show { id: p.id })) inAcme,
+      acme: Test.texts "#projects .name" acme.doc,
+      globex: Test.texts "#projects .name" globex.doc,
+      inGlobex: inGlobex,
+    } == {
+        answer: [r.answer],
+        acme: ["Rocket", "Zephyr"],
+        globex: ["Widget"],
+        inGlobex: 0,
+      }
+  )
 }
 
 test "removing a project" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
-  let cy <- Db.insert User { email: Text.Email "cy@example.com", name: Text.NonEmpty "Cy", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
+  let cy <- Db.insert User {
+    email: Text.Email "cy@example.com",
+    name: Text.NonEmpty "Cy",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
@@ -126,19 +201,42 @@ test "removing a project" = {
   let _ <- Test.member cy globex
   let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
   let widget <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
-  let s = { ann: ann, bob: bob, cy: cy, acme: acme, globex: globex, rocket: rocket, widget: widget }
+  let s = {
+    ann: ann,
+    bob: bob,
+    cy: cy,
+    acme: acme,
+    globex: globex,
+    rocket: rocket,
+    widget: widget,
+  }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
   let _ <- Test.get (Projects.Index {})
   let r <- Test.click (Remove { id: s.rocket })
-  Task.succeed ({ answer: r.answer, projects: Test.texts "#projects .name" r.doc } == { answer: Rerendered, projects: [] })
+  Task.succeed (
+    { answer: r.answer, projects: Test.texts "#projects .name" r.doc }
+      == { answer: Rerendered, projects: [] }
+  )
 }
 
 -- A request crafted by hand: Ann's page has no button for Globex's project. Db.deleteScoped looks
 -- in Acme's database, where there is no such row: not found, and Globex keeps it.
 test "another org's project cannot be removed" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
-  let cy <- Db.insert User { email: Text.Email "cy@example.com", name: Text.NonEmpty "Cy", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
+  let cy <- Db.insert User {
+    email: Text.Email "cy@example.com",
+    name: Text.NonEmpty "Cy",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
@@ -147,20 +245,48 @@ test "another org's project cannot be removed" = {
   let _ <- Test.member cy globex
   let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
   let widget <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
-  let s = { ann: ann, bob: bob, cy: cy, acme: acme, globex: globex, rocket: rocket, widget: widget }
+  let s = {
+    ann: ann,
+    bob: bob,
+    cy: cy,
+    acme: acme,
+    globex: globex,
+    rocket: rocket,
+    widget: widget,
+  }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
   let model <- Test.get (Projects.Index {})
-  let r <- Test.run (update (Remove { id: s.widget }) model.model { user: s.ann, org: s.acme, role: Member })
+  let r <-
+    Test.run (update (Remove { id: s.widget }) model.model {
+      user: s.ann,
+      org: s.acme,
+      role: Member,
+    })
   let _ <- Test.login { user: Just s.bob, org: Just s.globex }
   let globex <- Test.get (Projects.Index {})
-  Task.succeed ({ value: r.value, globex: Test.texts "#projects .name" globex.doc } == { value: Err "not found", globex: ["Widget"] })
+  Task.succeed (
+    { value: r.value, globex: Test.texts "#projects .name" globex.doc }
+      == { value: Err "not found", globex: ["Widget"] }
+  )
 }
 
 -- The re-read idiom: Ann's cookie still says Acme, but her Membership row is gone.
 test "a member removed from the org loses access at once" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
-  let cy <- Db.insert User { email: Text.Email "cy@example.com", name: Text.NonEmpty "Cy", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
+  let cy <- Db.insert User {
+    email: Text.Email "cy@example.com",
+    name: Text.NonEmpty "Cy",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
@@ -169,19 +295,44 @@ test "a member removed from the org loses access at once" = {
   let _ <- Test.member cy globex
   let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
   let widget <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
-  let s = { ann: ann, bob: bob, cy: cy, acme: acme, globex: globex, rocket: rocket, widget: widget }
+  let s = {
+    ann: ann,
+    bob: bob,
+    cy: cy,
+    acme: acme,
+    globex: globex,
+    rocket: rocket,
+    widget: widget,
+  }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
   let before <- Test.open (Projects.Index {})
-  let rows <- Db.from Membership |> Db.where (Membership.user.eq s.ann) |> Db.all
+  let rows <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq s.ann)
+      |> Db.all
   let _ <- Task.all (List.map (\m -> Db.delete Membership m.id) rows)
   let after <- Test.open (Projects.Index {})
-  Task.succeed ({ before: before.answer, after: after.answer } == { before: Shown, after: PageMissing })
+  Task.succeed (
+    { before: before.answer, after: after.answer } == { before: Shown, after: PageMissing }
+  )
 }
 
 test "without an org the page sends you to choose one" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
-  let cy <- Db.insert User { email: Text.Email "cy@example.com", name: Text.NonEmpty "Cy", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
+  let cy <- Db.insert User {
+    email: Text.Email "cy@example.com",
+    name: Text.NonEmpty "Cy",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
@@ -190,16 +341,36 @@ test "without an org the page sends you to choose one" = {
   let _ <- Test.member cy globex
   let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
   let widget <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
-  let s = { ann: ann, bob: bob, cy: cy, acme: acme, globex: globex, rocket: rocket, widget: widget }
+  let s = {
+    ann: ann,
+    bob: bob,
+    cy: cy,
+    acme: acme,
+    globex: globex,
+    rocket: rocket,
+    widget: widget,
+  }
   let _ <- Test.login { user: Just s.ann, org: Nothing }
   let r <- Test.open (Projects.Index {})
   Task.succeed (r.answer == Redirected (Orgs.Index {}))
 }
 
 test "another org goes back to the list of orgs" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
-  let cy <- Db.insert User { email: Text.Email "cy@example.com", name: Text.NonEmpty "Cy", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
+  let cy <- Db.insert User {
+    email: Text.Email "cy@example.com",
+    name: Text.NonEmpty "Cy",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
@@ -208,11 +379,21 @@ test "another org goes back to the list of orgs" = {
   let _ <- Test.member cy globex
   let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
   let widget <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
-  let s = { ann: ann, bob: bob, cy: cy, acme: acme, globex: globex, rocket: rocket, widget: widget }
+  let s = {
+    ann: ann,
+    bob: bob,
+    cy: cy,
+    acme: acme,
+    globex: globex,
+    rocket: rocket,
+    widget: widget,
+  }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
   let _ <- Test.get (Projects.Index {})
   let r <- Test.click App.Leave
-  Task.succeed ({ answer: r.answer, org: r.session.org } == { answer: Redirected (Orgs.Index {}), org: Nothing })
+  Task.succeed (
+    { answer: r.answer, org: r.session.org } == { answer: Redirected (Orgs.Index {}), org: Nothing }
+  )
 }
 
 test "a visitor is sent to log in" = {

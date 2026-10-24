@@ -24,10 +24,16 @@ load params session = {
     -- @admin begin load
     let findOwner = Text.slice 0 200 params.findOwner
     let ownersTotal <- Db.from User |> Db.count
-    let owners <- Db.from User |> Db.orderBy User.email.asc |> Db.where (if ownersTotal > 200 then User.email.contains findOwner else Db.and []) |> Db.limit (if ownersTotal > 200 then 50 else 200) |> Db.all
+    let owners <-
+      Db.from User
+        |> Db.orderBy User.email.asc
+        |> Db.where (if ownersTotal > 200 then User.email.contains findOwner else Db.and [])
+        |> Db.limit (if ownersTotal > 200 then 50 else 200)
+        |> Db.all
     Query.succeed { owners: owners, ownersTotal: ownersTotal }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin form
@@ -51,7 +57,8 @@ msg Create form TodoForm
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
-  SearchOwner p -> Task.succeed (Redirect (Admin.Todo.New { findOwner: Text.slice 0 200 p.form.q })),
+  SearchOwner p ->
+    Task.succeed (Redirect (Admin.Todo.New { findOwner: Text.slice 0 200 p.form.q })),
   -- @admin end
   Create p -> {
     -- @admin begin insert
@@ -73,14 +80,23 @@ view model session =
 
     <al-card>
       -- @admin begin finder
-      {if model.ownersTotal > 200 then <form submit={SearchOwner}><al-input field="q" label="Find owner" /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}
+      {if model.ownersTotal > 200 then
+        <form submit={SearchOwner}>
+          <al-input field="q" label="Find owner" />
+          <al-button type="submit" variant="secondary">Find</al-button>
+        </form>
+      else
+        <span></span>}
       -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
         <al-input field="title" label="Title" />
         <al-checkbox field="done" label="Done" value={False} />
         <al-input field="due" label="Due" />
-        <al-select field="owner" label="Owner" options={List.map (\r -> { value: r.id, label: r.email }) model.owners} />
+        <al-select
+          field="owner"
+          label="Owner"
+          options={List.map (\r -> { value: r.id, label: r.email }) model.owners} />
         -- @admin end
         <al-alert variant="destructive"><Errors form /></al-alert>
         <al-button type="submit">Create</al-button>
@@ -111,20 +127,29 @@ test "creating a todo adds it, with the values submitted" = {
     owner: user2,
   }
   let rows <- Db.from Todo |> Db.all
-  Task.succeed ({
-    answers: List.map (\row -> Redirected (Admin.Todo.Show { id: row.id })) rows,
-    rows: List.map (\row -> {
-      title: row.title,
-      done: row.done,
-      due: row.due,
-      owner: row.owner,
-    }) rows,
-    owners: Test.texts "select[name=owner] option" page.doc,
-  } == {
-    answers: [r.answer],
-    rows: [{ title: Text.NonEmpty "title-1", done: True, due: Just today, owner: user2 }],
-    owners: ["email-1@example.com", "email-2@example.com"],
-  })
+  Task.succeed (
+    {
+      answers: List.map (\row -> Redirected (Admin.Todo.Show { id: row.id })) rows,
+      rows: List.map (\row -> {
+        title: row.title,
+        done: row.done,
+        due: row.due,
+        owner: row.owner,
+      }) rows,
+      owners: Test.texts "select[name=owner] option" page.doc,
+    } == {
+        answers: [r.answer],
+        rows: [
+          {
+            title: Text.NonEmpty "title-1",
+            done: True,
+            due: Just today,
+            owner: user2,
+          },
+        ],
+        owners: ["email-1@example.com", "email-2@example.com"],
+      }
+  )
 }
 
 test "an owner not offered is refused" = {
@@ -148,13 +173,13 @@ test "an owner not offered is refused" = {
     { name: "owner", value: "missing" },
   ]
   let rows <- Db.from Todo |> Db.count
-  Task.succeed ({
-    answer: r.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "owner", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: r.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "owner", message: "must be one of the options" }],
+        rows: 0,
+      }
+  )
 }
 
 test "a list of 200 users is offered whole" = {
@@ -170,11 +195,14 @@ test "a list of 200 users is offered whole" = {
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let _ <- Task.all (List.map (\n -> Db.insert User {
-    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
-    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
-    passwordHash: "passwordhash-" ++ Text.fromInt n,
-  }) (List.range 3 200))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert User {
+        email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+        passwordHash: "passwordhash-" ++ Text.fromInt n,
+      }) (List.range 3 200)
+    )
   let page <- Test.get (Admin.Todo.New {})
   Task.succeed (List.length page.model.owners == 200)
 }
@@ -192,25 +220,30 @@ test "a long list of users offers 50, and the search narrows it" = {
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let _ <- Task.all (List.map (\n -> Db.insert User {
-    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
-    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
-    passwordHash: "passwordhash-" ++ Text.fromInt n,
-  }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert User {
+        email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+        passwordHash: "passwordhash-" ++ Text.fromInt n,
+      }) (List.range 3 203)
+    )
   let all <- Test.get (Admin.Todo.New {})
   let found <- Test.get (Admin.Todo.New { findOwner: "email-203@example.com" })
   let r <- Test.submit FindOwner { q: "zz" }
-  Task.succeed ({
-    shown: List.length all.model.owners,
-    total: all.model.ownersTotal,
-    found: Test.texts "select[name=owner] option" found.doc == ["email-203@example.com"],
-    answer: r.answer,
-  } == {
-    shown: 50,
-    total: 203,
-    found: True,
-    answer: Redirected (Admin.Todo.New { findOwner: "zz" }),
-  })
+  Task.succeed (
+    {
+      shown: List.length all.model.owners,
+      total: all.model.ownersTotal,
+      found: Test.texts "select[name=owner] option" found.doc == ["email-203@example.com"],
+      answer: r.answer,
+    } == {
+        shown: 50,
+        total: 203,
+        found: True,
+        answer: Redirected (Admin.Todo.New { findOwner: "zz" }),
+      }
+  )
 }
 
 test "an owner outside the narrowed list is refused" = {
@@ -226,11 +259,14 @@ test "an owner outside the narrowed list is refused" = {
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let _ <- Task.all (List.map (\n -> Db.insert User {
-    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
-    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
-    passwordHash: "passwordhash-" ++ Text.fromInt n,
-  }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert User {
+        email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+        passwordHash: "passwordhash-" ++ Text.fromInt n,
+      }) (List.range 3 203)
+    )
   let all <- Test.get (Admin.Todo.New {})
   let found <- Test.get (Admin.Todo.New { findOwner: "email-203@example.com" })
   let r <- Test.submit FindOwner { q: "zz" }
@@ -243,13 +279,13 @@ test "an owner outside the narrowed list is refused" = {
     { name: "owner", value: pick },
   ]
   let rows <- Db.from Todo |> Db.count
-  Task.succeed ({
-    answer: sent.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "owner", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: sent.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "owner", message: "must be one of the options" }],
+        rows: 0,
+      }
+  )
 }
 
 test "a visitor is sent to log in" = {

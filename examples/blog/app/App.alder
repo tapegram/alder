@@ -1,7 +1,7 @@
 module App
 
-import User
 import Layout
+import User
 
 -- `role` is the user's role, copied from their row when they log in (Auth.Login): the Write
 -- pages' `requires user, role Author` reads it from here, never from the database (book 06,
@@ -28,12 +28,7 @@ error err =
   </Layout.Page>
 
 notFound : Html Never
-notFound =
-  <Layout.Page title="Not found">
-    <h1>Not found</h1>
-  </Layout.Page>
+notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 
 -- Where `alder deploy` ships the app (book 16). `local` runs a script; nothing here is a secret.
-deploy {
-  local: Script "./scripts/deploy-local.sh",
-}
+deploy { local: Script "./scripts/deploy-local.sh" }

@@ -18,27 +18,42 @@ load : Params -> Session -> Query Model
 load params session = {
   let member <- Membership.isMember session.user session.org
   if member then {
-    let rows <- Db.from Membership |> Db.where (Membership.org.eq session.org) |> Db.all
-    let members <- Db.from User |> Db.where (User.id.in (List.map (\m -> m.user) rows)) |> Db.orderBy User.name.asc |> Db.all
-    let activity <- Db.scoped Activity |> Db.orderBy Activity.created.desc |> Db.limit 20 |> Db.all
+    let rows <-
+      Db.from Membership
+        |> Db.where (Membership.org.eq session.org)
+        |> Db.all
+    let members <-
+      Db.from User
+        |> Db.where (User.id.in (List.map (\m -> m.user) rows))
+        |> Db.orderBy User.name.asc
+        |> Db.all
+    let activity <-
+      Db.scoped Activity
+        |> Db.orderBy Activity.created.desc
+        |> Db.limit 20
+        |> Db.all
     Query.succeed { members: members, activity: activity }
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
-form Invite = {
-  email: Text.Email,
-}
+form Invite = { email: Text.Email }
 
 msg Add form Invite
+
 msg Remove { user: User.UserId }
 
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Add p -> {
-    let found <- Db.from User |> Db.where (User.email.eq p.form.email) |> Db.first
+    let found <-
+      Db.from User
+        |> Db.where (User.email.eq p.form.email)
+        |> Db.first
     match found {
       Just u ->
-        if List.any (\m -> m.id == u.id) model.members then Task.succeed (Reject "They are a member already.")
+        if List.any (\m -> m.id == u.id) model.members then
+          Task.succeed (Reject "They are a member already.")
         else {
           let _ <- Db.insert Membership { user: u.id, org: session.org }
           let _ <- Db.insertScoped Activity { text: u.name ++ " joined." }
@@ -48,7 +63,11 @@ update msg model session = match msg {
     }
   },
   Remove p -> {
-    let rows <- Db.from Membership |> Db.where (Membership.org.eq session.org) |> Db.where (Membership.user.eq p.user) |> Db.all
+    let rows <-
+      Db.from Membership
+        |> Db.where (Membership.org.eq session.org)
+        |> Db.where (Membership.user.eq p.user)
+        |> Db.all
     let _ <- Task.all (List.map (\m -> Db.delete Membership m.id) rows)
     let _ <- Db.insertScoped Activity { text: "A member left." }
     Task.succeed Rerender
@@ -79,90 +98,205 @@ view model session =
     </ul>
   </Layout.Page>
 
-
 test "the members, by name, and the activity of this org only" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
   let _ <- Test.member bob globex
   let _ <- Db.insert Activity { text: "Acme began.", org: acme }
   let _ <- Db.insert Activity { text: "Globex began.", org: globex }
-  let s = { ann: ann, bob: bob, acme: acme, globex: globex }
-  let cy <- Db.insert User { email: Text.Email "cy@example.com", name: Text.NonEmpty "Cy", passwordHash: "" }
+  let s = {
+    ann: ann,
+    bob: bob,
+    acme: acme,
+    globex: globex,
+  }
+  let cy <- Db.insert User {
+    email: Text.Email "cy@example.com",
+    name: Text.NonEmpty "Cy",
+    passwordHash: "",
+  }
   let _ <- Test.member cy s.acme
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
   let page <- Test.get (Members.Index {})
-  Task.succeed ({ members: Test.texts "#members .name" page.doc, activity: Test.texts "#activity li" page.doc } == { members: ["Ann", "Cy"], activity: ["Acme began."] })
+  Task.succeed (
+    { members: Test.texts "#members .name" page.doc, activity: Test.texts "#activity li" page.doc }
+      == { members: ["Ann", "Cy"], activity: ["Acme began."] }
+  )
 }
 
 test "adding a member by email lets them in, and logs it, newest first" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
   let _ <- Test.member bob globex
   let _ <- Db.insert Activity { text: "Acme began.", org: acme }
   let _ <- Db.insert Activity { text: "Globex began.", org: globex }
-  let s = { ann: ann, bob: bob, acme: acme, globex: globex }
+  let s = {
+    ann: ann,
+    bob: bob,
+    acme: acme,
+    globex: globex,
+  }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
   let _ <- Test.get (Members.Index {})
   let r <- Test.submit Invite { email: Text.Email "bob@example.com" }
   let _ <- Test.login { user: Just s.bob, org: Just s.acme }
   let bob <- Test.open (Projects.Index {})
-  Task.succeed ({ answer: r.answer, members: Test.texts "#members .name" r.doc, activity: Test.texts "#activity li" r.doc, bob: bob.answer } == { answer: Rerendered, members: ["Ann", "Bob"], activity: ["Bob joined.", "Acme began."], bob: Shown })
+  Task.succeed (
+    {
+      answer: r.answer,
+      members: Test.texts "#members .name" r.doc,
+      activity: Test.texts "#activity li" r.doc,
+      bob: bob.answer,
+    } == {
+        answer: Rerendered,
+        members: ["Ann", "Bob"],
+        activity: ["Bob joined.", "Acme began."],
+        bob: Shown,
+      }
+  )
 }
 
 test "an unknown email, and a member already, are refused" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
   let _ <- Test.member bob globex
   let _ <- Db.insert Activity { text: "Acme began.", org: acme }
   let _ <- Db.insert Activity { text: "Globex began.", org: globex }
-  let s = { ann: ann, bob: bob, acme: acme, globex: globex }
+  let s = {
+    ann: ann,
+    bob: bob,
+    acme: acme,
+    globex: globex,
+  }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
   let _ <- Test.get (Members.Index {})
   let unknown <- Test.submit Invite { email: Text.Email "nobody@example.com" }
   let again <- Test.submit Invite { email: Text.Email "ann@example.com" }
   let rows <- Db.from Membership |> Db.count
-  Task.succeed ({ unknown: unknown.answer, again: again.answer, rows: rows } == { unknown: FormRejected [{ field: "", message: "No user has that email." }], again: FormRejected [{ field: "", message: "They are a member already." }], rows: 2 })
+  Task.succeed (
+    {
+      unknown: unknown.answer,
+      again: again.answer,
+      rows: rows,
+    } == {
+        unknown: FormRejected [{ field: "", message: "No user has that email." }],
+        again: FormRejected [{ field: "", message: "They are a member already." }],
+        rows: 2,
+      }
+  )
 }
 
 -- Ann removes Cy, then herself: her cookie still says Acme, and the re-read (Membership.isMember
 -- in every page's load) turns her away at once.
 test "removing a member logs it, and a removed member loses access at once" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
   let _ <- Test.member bob globex
   let _ <- Db.insert Activity { text: "Acme began.", org: acme }
   let _ <- Db.insert Activity { text: "Globex began.", org: globex }
-  let s = { ann: ann, bob: bob, acme: acme, globex: globex }
-  let cy <- Db.insert User { email: Text.Email "cy@example.com", name: Text.NonEmpty "Cy", passwordHash: "" }
+  let s = {
+    ann: ann,
+    bob: bob,
+    acme: acme,
+    globex: globex,
+  }
+  let cy <- Db.insert User {
+    email: Text.Email "cy@example.com",
+    name: Text.NonEmpty "Cy",
+    passwordHash: "",
+  }
   let _ <- Test.member cy s.acme
   let _ <- Test.member cy s.globex
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
   let _ <- Test.get (Members.Index {})
   let r <- Test.click (Remove { user: cy })
-  let cyLeft <- Db.from Membership |> Db.where (Membership.user.eq cy) |> Db.count
+  let cyLeft <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq cy)
+      |> Db.count
   let self <- Test.click (Remove { user: s.ann })
   let after <- Test.open (Projects.Index {})
-  let log <- Db.from Activity |> Db.where (Activity.org.eq s.acme) |> Db.count
-  Task.succeed ({ members: Test.texts "#members .name" r.doc, activity: Test.texts "#activity li" r.doc, cyLeft: cyLeft, self: self.answer, after: after.answer, log: log } == { members: ["Ann"], activity: ["A member left.", "Acme began."], cyLeft: 1, self: PageMissing, after: PageMissing, log: 3 })
+  let log <-
+    Db.from Activity
+      |> Db.where (Activity.org.eq s.acme)
+      |> Db.count
+  Task.succeed (
+    {
+      members: Test.texts "#members .name" r.doc,
+      activity: Test.texts "#activity li" r.doc,
+      cyLeft: cyLeft,
+      self: self.answer,
+      after: after.answer,
+      log: log,
+    } == {
+        members: ["Ann"],
+        activity: ["A member left.", "Acme began."],
+        cyLeft: 1,
+        self: PageMissing,
+        after: PageMissing,
+        log: 3,
+      }
+  )
 }
 
 test "the activity shows the newest 20 lines" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let _ <- Test.member ann acme
-  let _ <- Task.all (List.map (\n -> Db.insert Activity { text: "line " ++ Text.fromInt n, org: acme }) (List.range 1 21))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Activity { text: "line " ++ Text.fromInt n, org: acme }) (
+        List.range 1 21
+      )
+    )
   let _ <- Test.login { user: Just ann, org: Just acme }
   let page <- Test.get (Members.Index {})
   Task.succeed (Test.count "#activity li" page.doc == 20)

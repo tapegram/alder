@@ -10,7 +10,10 @@ import Todo
 import User
 -- @admin end
 
-page "/admin/orgs/{org}/todo/{id}" { org: Org.OrgId, id: Todo.TodoId } requires user, role Admin, silo org
+page "/admin/orgs/{org}/todo/{id}" {
+  org: Org.OrgId,
+  id: Todo.TodoId,
+} requires user, role Admin, silo org
 
 -- The row, the labels of the rows it refers to, and (for the delete dialog) how many rows of
 -- each table refer to it.
@@ -35,7 +38,8 @@ load params session = {
       Nothing -> Query.notFound,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin labels
@@ -45,7 +49,10 @@ type Labels = { projects: List Project }
 -- labelsOf reads the rows that rows refer to.
 labelsOf : List Todo -> Query Labels
 labelsOf rows = {
-  let projects <- Db.from Project |> Db.where (Project.id.in (List.map (\row -> row.project) rows)) |> Db.all
+  let projects <-
+    Db.from Project
+      |> Db.where (Project.id.in (List.map (\row -> row.project) rows))
+      |> Db.all
   Query.succeed { projects: projects }
 }
 
@@ -94,16 +101,27 @@ view model session =
         <dt>Title</dt>
         <dd>{model.row.title}</dd>
         <dt>Done</dt>
-        <dd>{if model.row.done then <al-badge>Yes</al-badge> else <al-badge variant="secondary">No</al-badge>}</dd>
+        <dd>
+          {if model.row.done then
+            <al-badge>Yes</al-badge>
+          else
+            <al-badge variant="secondary">No</al-badge>}
+        </dd>
         <dt>Project</dt>
-        <dd><a href={Admin.Project.Show { org: session.org, id: model.row.project }}>{projectLabel model.labels model.row.project}</a></dd>
+        <dd>
+          <a href={Admin.Project.Show { org: session.org, id: model.row.project }}>
+            {projectLabel model.labels model.row.project}
+          </a>
+        </dd>
         <dt>Created</dt>
         <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
         -- @admin end
       </dl>
       <div slot="actions">
         <al-button href={Admin.Todo.Edit { org: session.org, id: model.row.id }}>Edit</al-button>
-        <al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
+        <al-button variant="destructive">
+          <button type="button" commandfor="delete-dialog" command="show-modal">Delete</button>
+        </al-button>
       </div>
     </al-card>
     <al-dialog id="delete-dialog" heading="Delete this todo?" dismissible>
@@ -113,7 +131,10 @@ view model session =
       </dl>
       <form id="delete" submit={Remove}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        {if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p> else <al-button variant="destructive" type="submit">Delete</al-button>}
+        {if blockers model > 0 then
+          <p>It cannot be deleted while other rows refer to it.</p>
+        else
+          <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
       <div slot="actions">
         <a href={Admin.Todo.Delete { org: session.org, id: model.row.id }}>See the details</a>
@@ -132,23 +153,33 @@ test "the page shows the row" = {
     role: Admin,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", project: project1, org: org }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    project: project1,
+    org: org,
+  }
   let project2 <- Db.insert Project { name: Text.NonEmpty "name-2", org: org }
   let r <- Test.open (Admin.Todo.Show { org: org, id: todo1 })
   let page <- Test.get (Admin.Todo.Show { org: org, id: todo1 })
-  Task.succeed ({
-    answer: r.answer,
-    title: List.member "title-1" (Test.texts "#fields dd" r.doc),
-    projects: List.length page.model.labels.projects,
-    projectLabel: projectLabel page.model.labels project1,
-  } == {
-    answer: Shown,
-    title: True,
-    projects: 1,
-    projectLabel: "name-1",
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      title: List.member "title-1" (Test.texts "#fields dd" r.doc),
+      projects: List.length page.model.labels.projects,
+      projectLabel: projectLabel page.model.labels project1,
+    } == {
+        answer: Shown,
+        title: True,
+        projects: 1,
+        projectLabel: "name-1",
+      }
+  )
 }
 
 test "deleting a todo nothing refers to" = {
@@ -160,19 +191,24 @@ test "deleting a todo nothing refers to" = {
     role: Admin,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", project: project1, org: org }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    project: project1,
+    org: org,
+  }
   let _ <- Test.get (Admin.Todo.Show { org: org, id: todo1 })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let gone <- Db.get Todo todo1
-  Task.succeed ({
-    answer: r.answer,
-    gone: Maybe.map (\row -> row.id) gone,
-  } == {
-    answer: Redirected (Admin.Todo.Index { org: org }),
-    gone: Nothing,
-  })
+  Task.succeed (
+    { answer: r.answer, gone: Maybe.map (\row -> row.id) gone }
+      == { answer: Redirected (Admin.Todo.Index { org: org }), gone: Nothing }
+  )
 }
 
 test "a missing row is not found" = {
@@ -184,7 +220,11 @@ test "a missing row is not found" = {
     role: Admin,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let r <- Test.open (Admin.Todo.Show { org: org, id: Todo.TodoId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
@@ -192,7 +232,11 @@ test "a missing row is not found" = {
 test "a visitor is sent to log in" = {
   let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", project: project1, org: org }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    project: project1,
+    org: org,
+  }
   let r <- Test.open (Admin.Todo.Show { org: org, id: todo1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
@@ -205,9 +249,17 @@ test "a Member gets no page, even one made Admin since logging in" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", project: project1, org: org }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    project: project1,
+    org: org,
+  }
   let r <- Test.open (Admin.Todo.Show { org: org, id: todo1 })
   Task.succeed (r.answer == PageMissing)
 }
@@ -221,9 +273,17 @@ test "a demoted Admin is refused at once" = {
     role: Member,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", project: project1, org: org }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    project: project1,
+    org: org,
+  }
   let r <- Test.open (Admin.Todo.Show { org: org, id: todo1 })
   Task.succeed (r.answer == PageMissing)
 }

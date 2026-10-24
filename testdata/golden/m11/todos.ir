@@ -1,12 +1,3 @@
-(module User)
-(union User.Role (Member) (Admin))
-(record User.User
-  (id Text)
-  (email Text)
-  (name Text)
-  (passwordHash Text)
-  (created Time)
-  (role Role = (ctor User.Role.Member)))
 (module Layout)
 (component Layout.Page : { title: Text, children: List (Html a) } -> Html a (props)
   (elem html
@@ -23,6 +14,15 @@
     (elem body
       (elem al-page (attr width text "narrow")
         (elem main (hexpr list (field children (var props))))))))
+(module User)
+(union User.Role (Member) (Admin))
+(record User.User
+  (id Text)
+  (email Text)
+  (name Text)
+  (passwordHash Text)
+  (created Time)
+  (role Role = (ctor User.Role.Member)))
 (module App)
 (record App.Session
   (user Maybe Text)

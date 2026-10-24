@@ -11,9 +11,7 @@ Page props =
       <link rel="stylesheet" href={Url.external "/static/app.css"} />
     </head>
     <body>
-      <al-page width="narrow">
-        <main>{props.children}</main>
-      </al-page>
+      <al-page width="narrow"><main>{props.children}</main></al-page>
       <al-toasts></al-toasts>
     </body>
   </html>

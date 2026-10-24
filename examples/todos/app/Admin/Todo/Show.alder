@@ -33,7 +33,8 @@ load params session = {
       Nothing -> Query.notFound,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin labels
@@ -43,7 +44,10 @@ type Labels = { owners: List User }
 -- labelsOf reads the rows that rows refer to.
 labelsOf : List Todo -> Query Labels
 labelsOf rows = {
-  let owners <- Db.from User |> Db.where (User.id.in (List.map (\row -> row.owner) rows)) |> Db.all
+  let owners <-
+    Db.from User
+      |> Db.where (User.id.in (List.map (\row -> row.owner) rows))
+      |> Db.all
   Query.succeed { owners: owners }
 }
 
@@ -92,18 +96,34 @@ view model session =
         <dt>Title</dt>
         <dd>{model.row.title}</dd>
         <dt>Done</dt>
-        <dd>{if model.row.done then <al-badge>Yes</al-badge> else <al-badge variant="secondary">No</al-badge>}</dd>
+        <dd>
+          {if model.row.done then
+            <al-badge>Yes</al-badge>
+          else
+            <al-badge variant="secondary">No</al-badge>}
+        </dd>
         <dt>Due</dt>
-        <dd>{match model.row.due { Just v -> Date.format "Jan 2, 2006" v, Nothing -> "" }}</dd>
+        <dd>
+          {match model.row.due {
+            Just v -> Date.format "Jan 2, 2006" v,
+            Nothing -> "",
+          }}
+        </dd>
         <dt>Owner</dt>
-        <dd><a href={Admin.User.Show { id: model.row.owner }}>{ownerLabel model.labels model.row.owner}</a></dd>
+        <dd>
+          <a href={Admin.User.Show { id: model.row.owner }}>
+            {ownerLabel model.labels model.row.owner}
+          </a>
+        </dd>
         <dt>Created</dt>
         <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
         -- @admin end
       </dl>
       <div slot="actions">
         <al-button href={Admin.Todo.Edit { id: model.row.id }}>Edit</al-button>
-        <al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
+        <al-button variant="destructive">
+          <button type="button" commandfor="delete-dialog" command="show-modal">Delete</button>
+        </al-button>
       </div>
     </al-card>
     <al-dialog id="delete-dialog" heading="Delete this todo?" dismissible>
@@ -113,11 +133,12 @@ view model session =
       </dl>
       <form id="delete" submit={Remove}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        {if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p> else <al-button variant="destructive" type="submit">Delete</al-button>}
+        {if blockers model > 0 then
+          <p>It cannot be deleted while other rows refer to it.</p>
+        else
+          <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
-      <div slot="actions">
-        <a href={Admin.Todo.Delete { id: model.row.id }}>See the details</a>
-      </div>
+      <div slot="actions"><a href={Admin.Todo.Delete { id: model.row.id }}>See the details</a></div>
     </al-dialog>
     <a href={Admin.Todo.Index {}}>All todos</a>
   </Admin.Layout.Page>
@@ -131,7 +152,11 @@ test "the page shows the row" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: me }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    due: Nothing,
+    owner: me,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
@@ -139,17 +164,19 @@ test "the page shows the row" = {
   }
   let r <- Test.open (Admin.Todo.Show { id: todo1 })
   let page <- Test.get (Admin.Todo.Show { id: todo1 })
-  Task.succeed ({
-    answer: r.answer,
-    title: List.member "title-1" (Test.texts "#fields dd" r.doc),
-    owners: List.length page.model.labels.owners,
-    ownerLabel: ownerLabel page.model.labels me,
-  } == {
-    answer: Shown,
-    title: True,
-    owners: 1,
-    ownerLabel: "email-1@example.com",
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      title: List.member "title-1" (Test.texts "#fields dd" r.doc),
+      owners: List.length page.model.labels.owners,
+      ownerLabel: ownerLabel page.model.labels me,
+    } == {
+        answer: Shown,
+        title: True,
+        owners: 1,
+        ownerLabel: "email-1@example.com",
+      }
+  )
 }
 
 test "deleting a todo nothing refers to" = {
@@ -160,17 +187,18 @@ test "deleting a todo nothing refers to" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: me }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    due: Nothing,
+    owner: me,
+  }
   let _ <- Test.get (Admin.Todo.Show { id: todo1 })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let gone <- Db.get Todo todo1
-  Task.succeed ({
-    answer: r.answer,
-    gone: Maybe.map (\row -> row.id) gone,
-  } == {
-    answer: Redirected (Admin.Todo.Index {}),
-    gone: Nothing,
-  })
+  Task.succeed (
+    { answer: r.answer, gone: Maybe.map (\row -> row.id) gone }
+      == { answer: Redirected (Admin.Todo.Index {}), gone: Nothing }
+  )
 }
 
 test "a missing row is not found" = {
@@ -191,7 +219,11 @@ test "a visitor is sent to log in" = {
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
   }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: me }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    due: Nothing,
+    owner: me,
+  }
   let r <- Test.open (Admin.Todo.Show { id: todo1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
@@ -204,7 +236,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Member }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: me }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    due: Nothing,
+    owner: me,
+  }
   let r <- Test.open (Admin.Todo.Show { id: todo1 })
   Task.succeed (r.answer == PageMissing)
 }
@@ -217,7 +253,11 @@ test "a demoted Admin is refused at once" = {
     role: Member,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", due: Nothing, owner: me }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    due: Nothing,
+    owner: me,
+  }
   let r <- Test.open (Admin.Todo.Show { id: todo1 })
   Task.succeed (r.answer == PageMissing)
 }

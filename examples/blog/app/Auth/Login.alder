@@ -1,7 +1,7 @@
 module Auth.Login
 
-import User
 import Layout
+import User
 
 -- Password checking is outside the language: a capability implemented in Go.
 capability Password {
@@ -12,7 +12,10 @@ capability Password {
 -- a row, whatever the password, so a test can log in through the form below (book 10).
 fake Password {
   verify args = {
-    let found <- Db.from User |> Db.where (User.email.eq args.email) |> Db.first
+    let found <-
+      Db.from User
+        |> Db.where (User.email.eq args.email)
+        |> Db.first
     Task.succeed (Maybe.map (\u -> u.id) found)
   }
 }
@@ -22,12 +25,9 @@ page "/login" { }
 type Model = { }
 
 load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+load params session = Query.succeed {}
 
-form Credentials = {
-  email: Text.Email,
-  password: Text.Secret,
-}
+form Credentials = { email: Text.Email, password: Text.Secret }
 
 msg Submit form Credentials
 
@@ -69,14 +69,43 @@ view model session =
 test "an unknown email is rejected" = {
   let _ <- Test.fake Password
   let _ <- Test.get (Auth.Login {})
-  let r <- Test.submit Credentials { email: Text.Email "nobody@example.com", password: Text.Secret "secret" }
-  Task.succeed ({ answer: r.answer, user: r.session.user } == { answer: FormRejected [{ field: "", message: "Email or password is incorrect." }], user: Nothing })
+  let r <- Test.submit Credentials {
+    email: Text.Email "nobody@example.com",
+    password: Text.Secret "secret",
+  }
+  Task.succeed (
+    { answer: r.answer, user: r.session.user }
+      == {
+        answer: FormRejected [{ field: "", message: "Email or password is incorrect." }],
+        user: Nothing,
+      }
+  )
 }
 
 test "logging in through the form" = {
   let _ <- Test.fake Password
-  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "", role: Author }
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+    role: Author,
+  }
   let _ <- Test.get (Auth.Login {})
-  let r <- Test.submit Credentials { email: Text.Email "me@example.com", password: Text.Secret "secret" }
-  Task.succeed ({ answer: r.answer, user: r.session.user, role: r.session.role, title: Test.text "h1" r.doc } == { answer: Redirected (Posts.Index {}), user: Just me, role: Author, title: Just "Blog" })
+  let r <- Test.submit Credentials {
+    email: Text.Email "me@example.com",
+    password: Text.Secret "secret",
+  }
+  Task.succeed (
+    {
+      answer: r.answer,
+      user: r.session.user,
+      role: r.session.role,
+      title: Test.text "h1" r.doc,
+    } == {
+        answer: Redirected (Posts.Index {}),
+        user: Just me,
+        role: Author,
+        title: Just "Blog",
+      }
+  )
 }

@@ -10,7 +10,10 @@ import Todo
 import User
 -- @admin end
 
-page "/admin/orgs/{org}/todo/{id}/delete" { org: Org.OrgId, id: Todo.TodoId } requires user, role Admin, silo org
+page "/admin/orgs/{org}/todo/{id}/delete" {
+  org: Org.OrgId,
+  id: Todo.TodoId,
+} requires user, role Admin, silo org
 
 -- The row, and how many rows of each table refer to it.
 type Model = {
@@ -30,7 +33,8 @@ load params session = {
       Nothing -> Query.notFound,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin blockers
@@ -73,7 +77,10 @@ view model session =
       </dl>
       <form id="delete" submit={Remove}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        {if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p> else <al-button variant="destructive" type="submit">Delete</al-button>}
+        {if blockers model > 0 then
+          <p>It cannot be deleted while other rows refer to it.</p>
+        else
+          <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
     </al-card>
     <a href={Admin.Todo.Show { org: session.org, id: model.row.id }}>Back</a>
@@ -89,19 +96,24 @@ test "deleting a todo nothing refers to" = {
     role: Admin,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", project: project1, org: org }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    project: project1,
+    org: org,
+  }
   let _ <- Test.get (Admin.Todo.Delete { org: org, id: todo1 })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let gone <- Db.get Todo todo1
-  Task.succeed ({
-    answer: r.answer,
-    gone: Maybe.map (\row -> row.id) gone,
-  } == {
-    answer: Redirected (Admin.Todo.Index { org: org }),
-    gone: Nothing,
-  })
+  Task.succeed (
+    { answer: r.answer, gone: Maybe.map (\row -> row.id) gone }
+      == { answer: Redirected (Admin.Todo.Index { org: org }), gone: Nothing }
+  )
 }
 
 test "a missing row is not found" = {
@@ -113,7 +125,11 @@ test "a missing row is not found" = {
     role: Admin,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let r <- Test.open (Admin.Todo.Delete { org: org, id: Todo.TodoId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
@@ -121,7 +137,11 @@ test "a missing row is not found" = {
 test "a visitor is sent to log in" = {
   let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", project: project1, org: org }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    project: project1,
+    org: org,
+  }
   let r <- Test.open (Admin.Todo.Delete { org: org, id: todo1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
@@ -134,9 +154,17 @@ test "a Member gets no page, even one made Admin since logging in" = {
     passwordHash: "passwordhash-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", project: project1, org: org }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    project: project1,
+    org: org,
+  }
   let r <- Test.open (Admin.Todo.Delete { org: org, id: todo1 })
   Task.succeed (r.answer == PageMissing)
 }
@@ -150,9 +178,17 @@ test "a demoted Admin is refused at once" = {
     role: Member,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let todo1 <- Db.insert Todo { title: Text.NonEmpty "title-1", project: project1, org: org }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    project: project1,
+    org: org,
+  }
   let r <- Test.open (Admin.Todo.Delete { org: org, id: todo1 })
   Task.succeed (r.answer == PageMissing)
 }

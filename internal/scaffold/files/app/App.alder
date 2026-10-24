@@ -12,7 +12,4 @@ error err =
   </Layout.Page>
 
 notFound : Html Never
-notFound =
-  <Layout.Page title="Not found">
-    <h1>Not found</h1>
-  </Layout.Page>
+notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>

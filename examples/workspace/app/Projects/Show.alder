@@ -18,16 +18,20 @@ load params session = {
   let member <- Membership.isMember session.user session.org
   if member then {
     let project <- Db.getScoped Project params.id
-    let todos <- Db.scoped Todo |> Db.where (Todo.project.eq project.id) |> Db.orderBy Todo.created.asc |> Db.all
+    let todos <-
+      Db.scoped Todo
+        |> Db.where (Todo.project.eq project.id)
+        |> Db.orderBy Todo.created.asc
+        |> Db.all
     Query.succeed { project: project, todos: todos }
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
-form NewTodo = {
-  title: Text.NonEmpty,
-}
+form NewTodo = { title: Text.NonEmpty }
 
 msg Add form NewTodo
+
 msg Toggle { id: Todo.TodoId }
 
 update : Msg -> Model -> Session -> Task Nav
@@ -50,7 +54,9 @@ view model session =
       {for t in model.todos ->
         <li class={if t.done then "done" else "open"}>
           <span class="title">{t.title}</span>
-          <al-button variant="outline" click={Toggle { id: t.id }}>{if t.done then "Reopen" else "Done"}</al-button>
+          <al-button variant="outline" click={Toggle { id: t.id }}>
+            {if t.done then "Reopen" else "Done"}
+          </al-button>
         </li>}
     </ul>
     <al-card>
@@ -63,87 +69,196 @@ view model session =
     <a href={Projects.Index {}}>All projects</a>
   </Layout.Page>
 
-
 test "the project's to-dos, oldest first, and adding one" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
   let _ <- Test.member bob globex
   let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
   let widget <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
-  let s = { ann: ann, bob: bob, acme: acme, globex: globex, rocket: rocket, widget: widget }
+  let s = {
+    ann: ann,
+    bob: bob,
+    acme: acme,
+    globex: globex,
+    rocket: rocket,
+    widget: widget,
+  }
   let other <- Db.insert Project { name: Text.NonEmpty "Apollo", org: s.acme }
-  let _ <- Db.insert Todo { title: Text.NonEmpty "Fuel", project: s.rocket, org: s.acme }
-  let _ <- Db.insert Todo { title: Text.NonEmpty "Elsewhere", project: other, org: s.acme }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Fuel",
+    project: s.rocket,
+    org: s.acme,
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Elsewhere",
+    project: other,
+    org: s.acme,
+  }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
   let page <- Test.get (Projects.Show { id: s.rocket })
   let r <- Test.submit NewTodo { title: Text.NonEmpty "Launch" }
-  Task.succeed ({ name: Test.text "h1" page.doc, before: Test.texts "#todos .title" page.doc, after: Test.texts "#todos .title" r.doc } == { name: Just "Rocket", before: ["Fuel"], after: ["Fuel", "Launch"] })
+  Task.succeed (
+    {
+      name: Test.text "h1" page.doc,
+      before: Test.texts "#todos .title" page.doc,
+      after: Test.texts "#todos .title" r.doc,
+    } == {
+        name: Just "Rocket",
+        before: ["Fuel"],
+        after: ["Fuel", "Launch"],
+      }
+  )
 }
 
 test "Done marks a to-do done, and Reopen opens it again" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
   let _ <- Test.member bob globex
   let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
   let widget <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
-  let s = { ann: ann, bob: bob, acme: acme, globex: globex, rocket: rocket, widget: widget }
-  let fuel <- Db.insert Todo { title: Text.NonEmpty "Fuel", project: s.rocket, org: s.acme }
+  let s = {
+    ann: ann,
+    bob: bob,
+    acme: acme,
+    globex: globex,
+    rocket: rocket,
+    widget: widget,
+  }
+  let fuel <- Db.insert Todo {
+    title: Text.NonEmpty "Fuel",
+    project: s.rocket,
+    org: s.acme,
+  }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
   let _ <- Test.get (Projects.Show { id: s.rocket })
   let done <- Test.click (Toggle { id: fuel })
   let open <- Test.click (Toggle { id: fuel })
-  Task.succeed ({ done: Test.texts "#todos li.done .title" done.doc, open: Test.texts "#todos li.open .title" open.doc } == { done: ["Fuel"], open: ["Fuel"] })
+  Task.succeed (
+    {
+      done: Test.texts "#todos li.done .title" done.doc,
+      open: Test.texts "#todos li.open .title" open.doc,
+    }
+      == { done: ["Fuel"], open: ["Fuel"] }
+  )
 }
 
 test "another org's project is not found" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
   let _ <- Test.member bob globex
   let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
   let widget <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
-  let s = { ann: ann, bob: bob, acme: acme, globex: globex, rocket: rocket, widget: widget }
+  let s = {
+    ann: ann,
+    bob: bob,
+    acme: acme,
+    globex: globex,
+    rocket: rocket,
+    widget: widget,
+  }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
   let r <- Test.open (Projects.Show { id: s.widget })
   Task.succeed (r.answer == PageMissing)
 }
 
 test "a member removed from the org loses access at once" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
   let _ <- Test.member bob globex
   let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
   let widget <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
-  let s = { ann: ann, bob: bob, acme: acme, globex: globex, rocket: rocket, widget: widget }
+  let s = {
+    ann: ann,
+    bob: bob,
+    acme: acme,
+    globex: globex,
+    rocket: rocket,
+    widget: widget,
+  }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
-  let rows <- Db.from Membership |> Db.where (Membership.user.eq s.ann) |> Db.all
+  let rows <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq s.ann)
+      |> Db.all
   let _ <- Task.all (List.map (\m -> Db.delete Membership m.id) rows)
   let r <- Test.open (Projects.Show { id: s.rocket })
   Task.succeed (r.answer == PageMissing)
 }
 
 test "deleting a project deletes its to-dos, in the org's database" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
   let _ <- Test.member bob globex
   let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
   let widget <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
-  let s = { ann: ann, bob: bob, acme: acme, globex: globex, rocket: rocket, widget: widget }
-  let _ <- Db.insert Todo { title: Text.NonEmpty "Fuel", project: s.rocket, org: s.acme }
+  let s = {
+    ann: ann,
+    bob: bob,
+    acme: acme,
+    globex: globex,
+    rocket: rocket,
+    widget: widget,
+  }
+  let _ <- Db.insert Todo {
+    title: Text.NonEmpty "Fuel",
+    project: s.rocket,
+    org: s.acme,
+  }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
   let _ <- Db.delete Project s.rocket
   let left <- Db.scoped Todo |> Db.count
@@ -151,15 +266,30 @@ test "deleting a project deletes its to-dos, in the org's database" = {
 }
 
 test "a visitor is sent to log in" = {
-  let ann <- Db.insert User { email: Text.Email "ann@example.com", name: Text.NonEmpty "Ann", passwordHash: "" }
-  let bob <- Db.insert User { email: Text.Email "bob@example.com", name: Text.NonEmpty "Bob", passwordHash: "" }
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
   let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
   let globex <- Db.insert Org { name: Text.NonEmpty "Globex" }
   let _ <- Test.member ann acme
   let _ <- Test.member bob globex
   let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
   let widget <- Db.insert Project { name: Text.NonEmpty "Widget", org: globex }
-  let s = { ann: ann, bob: bob, acme: acme, globex: globex, rocket: rocket, widget: widget }
+  let s = {
+    ann: ann,
+    bob: bob,
+    acme: acme,
+    globex: globex,
+    rocket: rocket,
+    widget: widget,
+  }
   let r <- Test.open (Projects.Show { id: s.rocket })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
