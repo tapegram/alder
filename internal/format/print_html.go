@@ -7,10 +7,10 @@ import (
 )
 
 // Markup layout. An element with two or more element children (counting the elements directly
-// inside its `{for}`, `{if}` and `{match}` children) is always vertical, one child per line, as is
-// one with a blank line between children; any other element prints on one line when it fits,
-// otherwise its children go one per line, indented. A break is placed only where the JSX whitespace rule
-// (book chapter 5) gives the same text either way:
+// inside its `{if}` and `{match}` children, and a `{for}` yielding an element as two) is always
+// vertical, one child per line, as is one with a blank line between children; any other element
+// prints on one line when it fits, otherwise its children go one per line, indented. A break is
+// placed only where the JSX whitespace rule (book chapter 5) gives the same text either way:
 //   - at whitespace holding a newline in the source (dropped or turned into one space whether it
 //     is printed as a newline or not);
 //   - between two non-text children with nothing between them;
@@ -284,7 +284,8 @@ func (p *printer) markupMatch(e *syntax.HtmlMatch) Doc {
 }
 
 // elementChildren counts the elements among an element's children, and those directly inside
-// its `{for}`, `{if}` and `{match}` children (a body, a branch, an arm).
+// its `{if}` and `{match}` children (a branch, an arm). A `{for}` whose body is an element counts
+// as two: it renders many.
 func elementChildren(children []syntax.Expr) int {
 	n := 0
 	count := func(b syntax.Expr) {
@@ -296,8 +297,10 @@ func elementChildren(children []syntax.Expr) int {
 		switch c := c.(type) {
 		case *syntax.Element:
 			n++
-		case *syntax.HtmlFor:
-			count(c.Body)
+		case *syntax.HtmlFor: // renders many
+			if _, ok := c.Body.(*syntax.Element); ok {
+				n += 2
+			}
 		case *syntax.HtmlIf:
 			count(c.Then)
 			count(c.Else)

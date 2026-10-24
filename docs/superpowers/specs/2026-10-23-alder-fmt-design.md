@@ -232,8 +232,9 @@ it; the book is the reference corpus. Spacing as in the examples:
 - **Empty records**: `{}` as an expression or pattern; `{ }` for an empty
   record type, form or declaration body.
 - **Markup**: an element with 2 or more element children — counting the
-  elements directly inside its `{for}`, `{if}` and `{match}` children (a
-  body, a branch, an arm) — is always vertical, one child per line. An
+  elements directly inside its `{if}` and `{match}` children (a branch, an
+  arm), and a `{for}` whose body is an element as 2 (it renders many) — is
+  always vertical, one child per line. An
   element with 0–1 element children → one line if it fits, else children
   one per line, indented. A blank line between children keeps the element
   vertical. Attributes: on the tag line if they

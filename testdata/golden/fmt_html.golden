@@ -55,7 +55,9 @@ conds model =
     {if List.isEmpty model.todos then
       <p class="empty">Nothing to do yet, add something with the form above.</p>
     else
-      <ul>{for t in model.todos -> <li>{t.title}</li>}</ul>}
+      <ul>
+        {for t in model.todos -> <li>{t.title}</li>}
+      </ul>}
   </div>
 
 matches model =
