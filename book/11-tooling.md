@@ -1747,9 +1747,10 @@ shows the hole as a hint until the line checks.
 
 A scratch file (this chapter, "`alder scratch`") is a notebook of `> expr`
 lines, and in the editor you do not run it: you save it. The language server
-treats every open scratch file as a document of its own and runs it on open,
-on save and whenever a file of the app changes, in two phases. Both are sent
-to the editor as the custom notification `alder/scratch`, with a `phase`:
+treats every open scratch file as a document of its own and runs it on open
+and on save, and again when you save another file or the app changes on disk
+(an unsaved edit never runs it). Each run has two phases, both sent to the
+editor as the custom notification `alder/scratch`, with a `phase`:
 
 - **types** arrives as soon as the file has checked, before anything is built:
   every watch has its type, and the errors of the file (and the app's errors,
@@ -1758,7 +1759,7 @@ to the editor as the custom notification `alder/scratch`, with a `phase`:
 - **values** arrives when the build and the run have finished: the value of
   every watch.
 
-The plugin shows them as virtual text at the end of each watch's last line:
+The plugin shows them as virtual text at the end of each watch's `>` line:
 `: Int` first, then `⇒ 42 : Int` when the value comes. A newer save
 supersedes an older run, so what you see is always the latest file. Values
 are not diagnostics, because they are not problems: they would fill the

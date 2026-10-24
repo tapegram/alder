@@ -5377,10 +5377,17 @@ every module) has nothing to say about it. The server runs it as `alder
 scratch` does (chapter 11, "`alder scratch`"), with `scratch.RunFile`, from
 `internal/lsp/scratch.go`.
 
-- **A goroutine per run.** `didOpen` and `didSave` of a scratch document, and
-  every change to the app, start a run on a goroutine of its own and return at
-  once, so the reader loop never waits for a build. The document's text is read
-  from the overlay when the run starts.
+- **A goroutine per run.** `didOpen` and `didSave` of a scratch document, a
+  save of any other file, and a change the poll sees on disk (never an unsaved
+  edit) start a run on a goroutine of its own and return at once, so the reader
+  loop never waits for a build. The document's text is read from the overlay
+  when the run starts.
+- **One save, one run.** An editor save of an app file is seen twice: as
+  `didSave` at once, and by the poll a moment later, when it finds the file's
+  new modification time. So the save's rerun records the stamps of the watched
+  files (`watch.Snapshot`), and the poll reruns only when the files differ from
+  the last stamps recorded; the write the save already covered is nothing new.
+  A file changed on disk with no save, by `git checkout` say, still reruns.
 - **Superseded by `seq`.** Each run takes the next number of one counter, shared
   by all scratch documents, and cancels the document's previous run. A run that
   was cancelled may still be on its way to a send, so a send checks, under the

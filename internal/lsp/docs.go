@@ -224,12 +224,13 @@ func didClose(s *server, params json.RawMessage) {
 	s.docs.remove(rel)
 	s.schedule()
 	if scratch.IsScratchFile(rel) {
-		s.stopScratch(rel)
+		s.stopScratch(rel, p.TextDocument.URI)
 	}
 }
 
 // didSave runs a saved scratch document; a save of any other file under the root reruns every
-// open scratch document, which may use what it changed. (A change alone never runs one.)
+// open scratch document, which may use what it changed (and the poll that sees the save's
+// write does not rerun them again). A change alone never runs one.
 func didSave(s *server, params json.RawMessage) {
 	var p didSaveParams
 	if json.Unmarshal(params, &p) != nil {
@@ -245,5 +246,5 @@ func didSave(s *server, params json.RawMessage) {
 		}
 		return
 	}
-	s.rerunScratch()
+	s.saveRerunScratch()
 }

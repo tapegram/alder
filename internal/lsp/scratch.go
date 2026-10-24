@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"alder/internal/scratch"
+	"alder/internal/watch"
 )
 
 // runScratchFile is scratch.RunFile; a test may replace it before a server starts.
@@ -23,6 +24,9 @@ type scratchRuns struct {
 	mu    sync.Mutex
 	byRel map[string]*scratchRun
 	seq   uint64 // the newest run's seq: every run's is unique, across all rels
+	// sources are the stamps of the watched files (watch.Snapshot) when the open scratch
+	// documents were last rerun for a change to them; nil before the first such rerun.
+	sources map[string]watch.Stamp
 }
 
 // scratchRun is one run of a scratch document.
@@ -45,6 +49,10 @@ func (s *server) runScratch(rel string) {
 		cancel()
 		return
 	default:
+	}
+	if s.docs.get(rel) == nil {
+		cancel()
+		return // closed meanwhile (a close racing a poll rerun): nothing to run
 	}
 	if r.byRel == nil {
 		r.byRel = map[string]*scratchRun{}
@@ -69,9 +77,32 @@ func (s *server) rerunScratch() {
 	}
 }
 
+// saveRerunScratch reruns every open scratch document after an editor save of another file, and
+// records the watched files' stamps, which include that save's write: the poll that later sees
+// the write then finds nothing new (scratchSourcesChanged), so one save is one run.
+func (s *server) saveRerunScratch() {
+	cur := watch.Snapshot(s.rootReal)
+	s.scratch.mu.Lock()
+	s.scratch.sources = cur
+	s.scratch.mu.Unlock()
+	s.rerunScratch()
+}
+
+// scratchSourcesChanged reports whether the watched files differ, in a source, from their stamps
+// at the last rerun for a change to them, and records the stamps now. The poller calls it on a
+// source change: false means an editor save already reran the scratch documents for it.
+func (s *server) scratchSourcesChanged() bool {
+	cur := watch.Snapshot(s.rootReal)
+	s.scratch.mu.Lock()
+	defer s.scratch.mu.Unlock()
+	last := s.scratch.sources
+	s.scratch.sources = cur
+	return last == nil || watch.Diff(last, cur)&watch.SourceChange != 0
+}
+
 // stopScratch cancels the closed scratch document rel's run, forgets it, and clears its
-// diagnostics.
-func (s *server) stopScratch(rel string) {
+// diagnostics at uri, the URI the document was opened by.
+func (s *server) stopScratch(rel, uri string) {
 	r := &s.scratch
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -79,7 +110,7 @@ func (s *server) stopScratch(rel string) {
 		run.cancel()
 		delete(r.byRel, rel)
 	}
-	s.notify("textDocument/publishDiagnostics", publishDiagnosticsParams{URI: s.uriOf(rel), Diagnostics: []Diagnostic{}})
+	s.notify("textDocument/publishDiagnostics", publishDiagnosticsParams{URI: uri, Diagnostics: []Diagnostic{}})
 }
 
 // stopAllScratch cancels every run: the server is stopping (s.stop is closed, so none starts).

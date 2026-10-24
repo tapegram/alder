@@ -448,3 +448,75 @@ func TestScratchShutdownWaits(t *testing.T) {
 		t.Fatalf("the run's ctx: %v", err)
 	}
 }
+
+// TestScratchAppSaveRunsOnce: an editor save of an app file writes it and sends didSave; the
+// didSave reruns the open scratch document and the poll that then sees the write does not.
+func TestScratchAppSaveRunsOnce(t *testing.T) {
+	b := blockScratch(t)
+	close(b.release)
+	polled := make(chan bool, 16)
+	realPolled := scratchPolled
+	scratchPolled = func(rerun bool) { polled <- rerun }
+	t.Cleanup(func() { scratchPolled = realPolled })
+	root := copyExample(t, "todos")
+	c := startWith(t, root, Options{Poll: 20 * time.Millisecond})
+	c.open("scratch.alder", "> 1\n")
+	b.waitEnded(t, 1)
+	time.Sleep(50 * time.Millisecond) // the poller has its first look
+	if err := os.WriteFile(filepath.Join(root, "app", "Todo.alder"), []byte(c.disk("app/Todo.alder")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c.save("app/Todo.alder")
+	b.waitEnded(t, 1)
+	select {
+	case rerun := <-polled:
+		if rerun {
+			t.Fatal("the poll reran the scratch document after the save had")
+		}
+	case <-time.After(timeout):
+		t.Fatal("the poll did not see the write")
+	}
+	if n := c.srv.lastSeq(); n != 2 {
+		t.Fatalf("%d runs, want 2 (the open and the save)", n)
+	}
+}
+
+// TestScratchRunNotOpen: a run asked for a scratch document that is no longer open (a close
+// racing a poll rerun) does not start, and leaves nothing behind.
+func TestScratchRunNotOpen(t *testing.T) {
+	b := blockScratch(t)
+	close(b.release)
+	c := start(t, copyExample(t, "todos"))
+	c.sync()
+	c.srv.runScratch("scratch.alder")
+	c.srv.scratch.mu.Lock()
+	defer c.srv.scratch.mu.Unlock()
+	if len(c.srv.scratch.byRel) != 0 || c.srv.scratch.seq != 0 {
+		t.Fatalf("byRel %v, seq %d", c.srv.scratch.byRel, c.srv.scratch.seq)
+	}
+}
+
+// TestScratchCloseClearsItsURI: the close clears the diagnostics at the URI the document was
+// opened by, though the root was given by another spelling (a symbolic link).
+func TestScratchCloseClearsItsURI(t *testing.T) {
+	b := blockScratch(t)
+	close(b.release)
+	real := copyExample(t, "todos")
+	link := filepath.Join(t.TempDir(), "via-link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip(err)
+	}
+	c := start(t, link)
+	uri := "file://" + filepath.ToSlash(filepath.Join(real, "scratch.alder"))
+	c.openURI(uri, "scratch.alder", "> 1\n")
+	b.waitEnded(t, 1)
+	c.notify("textDocument/didClose", map[string]any{"textDocument": map[string]any{"uri": uri}})
+	c.sync()
+	pubs := c.publishedFor("scratch.alder")
+	if len(pubs) == 0 {
+		t.Fatal("no publishes")
+	}
+	if last := pubs[len(pubs)-1]; last.URI != uri || last.Diagnostics == nil || len(last.Diagnostics) != 0 {
+		t.Fatalf("the close published %+v, want an empty list at %s", last, uri)
+	}
+}

@@ -25,7 +25,8 @@ type analysis struct {
 }
 
 // initializedNote starts the analysis goroutine and, when Options.Poll is set, the disk poller,
-// whose source changes rebuild and rerun the open scratch documents. Both stop when serve
+// whose source changes rebuild and rerun the open scratch documents (unless an editor save has
+// already rerun them for what the poll sees: scratchSourcesChanged). Both stop when serve
 // returns (at `exit` or the end of input).
 func initializedNote(s *server, _ json.RawMessage) {
 	if s.started || s.rootReal == "" {
@@ -45,13 +46,21 @@ func initializedNote(s *server, _ json.RawMessage) {
 				case k := <-ch:
 					if k&watch.SourceChange != 0 {
 						s.schedule()
-						s.rerunScratch()
+						rerun := s.scratchSourcesChanged()
+						if rerun {
+							s.rerunScratch()
+						}
+						scratchPolled(rerun)
 					}
 				}
 			}
 		})
 	}
 }
+
+// scratchPolled is called after the poller has handled a source change, with whether it reran the
+// open scratch documents; a test may replace it before a server starts.
+var scratchPolled = func(rerun bool) {}
 
 // schedule asks for a rebuild without waiting: a token in a one-place channel, so any number of
 // changes before the analysis goroutine wakes are one rebuild, and a change during a rebuild is
