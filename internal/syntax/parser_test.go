@@ -525,3 +525,18 @@ func TestParse_LayoutEquivalence(t *testing.T) {
 		})
 	}
 }
+
+func TestIsScratchName(t *testing.T) {
+	for file, want := range map[string]bool{
+		"scratch.alder":           true,
+		"Todos.scratch.alder":     true,
+		"app/Sub/X.scratch.alder": true,
+		"Scratch.alder":           false,
+		"scratch.alder.bak":       false,
+		"scratch/Todo.alder":      false,
+	} {
+		if got := IsScratchName(file); got != want {
+			t.Errorf("IsScratchName(%q) = %v, want %v", file, got, want)
+		}
+	}
+}

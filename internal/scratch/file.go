@@ -2,7 +2,6 @@ package scratch
 
 import (
 	"fmt"
-	"path"
 	"regexp"
 	"strings"
 
@@ -12,9 +11,10 @@ import (
 )
 
 // IsScratchFile reports whether rel (slash-separated, relative to the project root) is a
-// scratch file: its base name ends in "scratch.alder" and it is not under the app's app/ directory.
+// scratch file: its base name ends in "scratch.alder" (syntax.IsScratchName) and it is not under
+// the app's app/ directory.
 func IsScratchFile(rel string) bool {
-	return strings.HasSuffix(path.Base(rel), "scratch.alder") && !strings.HasPrefix(rel, "app/")
+	return syntax.IsScratchName(rel) && !strings.HasPrefix(rel, "app/")
 }
 
 // Watch is one `> expr` item of a scratch file.

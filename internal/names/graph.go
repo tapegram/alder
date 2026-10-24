@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -69,7 +68,7 @@ func LoadOverlay(dir string, std map[string]*syntax.Module, overlay map[string][
 	var mods []*syntax.Module
 	seen := map[string]bool{}
 	parse := func(rel string, src []byte) {
-		if strings.HasSuffix(path.Base(rel), "scratch.alder") { // a scratch file is not a module (E0036)
+		if syntax.IsScratchName(rel) { // a scratch file is not a module (E0036)
 			bag.Error(diag.ScratchInApp, diag.Span{File: rel, Start: diag.Pos{Line: 1, Col: 1}, End: diag.Pos{Line: 1, Col: 1}},
 				"a scratch file does not belong under app/; move it to the project root")
 			seen[rel] = true

@@ -74,8 +74,8 @@ func TestLoadScratchInApp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const rel = "app/Todos.scratch.alder"
-	check := func(name string, dir string, overlay map[string][]byte) {
+	check := func(name, rel string, dir string, overlay map[string][]byte) {
+		t.Helper()
 		prog, bag, _ := LoadOverlay(dir, std, overlay)
 		if len(bag.Items) != 1 {
 			t.Fatalf("%s: want exactly one diagnostic, got %+v", name, bag.Items)
@@ -85,10 +85,13 @@ func TestLoadScratchInApp(t *testing.T) {
 			d.Message != "a scratch file does not belong under app/; move it to the project root" {
 			t.Fatalf("%s: %+v", name, d)
 		}
-		if len(prog.Modules) != 0 {
-			t.Fatalf("%s: scratch file became a module: %v", name, prog.Modules)
+		if len(prog.Modules) != 1 || prog.Modules["Todos"] == nil {
+			t.Fatalf("%s: want only app/Todos.alder as a module, got %v", name, prog.Order)
 		}
 	}
-	check("disk", writeApp(t, map[string]string{rel: "> 1 +\n"}), nil)
-	check("overlay", writeApp(t, nil), map[string][]byte{rel: []byte("> 1 +\n")})
+	const good = "module Todos\n\nx : Int\nx = 1\n"
+	for _, rel := range []string{"app/Todos.scratch.alder", "app/Sub/X.scratch.alder", "app/Sub/scratch.alder"} {
+		check("disk "+rel, rel, writeApp(t, map[string]string{rel: "> 1 +\n", "app/Todos.alder": good}), nil)
+		check("overlay "+rel, rel, writeApp(t, map[string]string{"app/Todos.alder": good}), map[string][]byte{rel: []byte("> 1 +\n")})
+	}
 }
