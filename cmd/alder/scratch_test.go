@@ -104,6 +104,13 @@ func TestScratch(t *testing.T) {
 			t.Errorf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 		}
 	})
+	t.Run("InitPanicExits1", func(t *testing.T) { // reuses boom's build directory
+		writeScratch(t, "boom.scratch.alder", "boom : Int\nboom = 1 / 0\n\n> 1 + 1\n")
+		code, stdout, stderr := runScratch(t, "boom.scratch.alder")
+		if code != 1 || !strings.Contains(stdout, "  ✗ not run: the program failed before any watch ran: runtime error: integer divide by zero") {
+			t.Errorf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+		}
+	})
 	t.Run("BuildDir", func(t *testing.T) {
 		bd := t.TempDir()
 		if code, _, stderr := runScratch(t, "scratch.alder", "--build-dir", bd); code != 0 {

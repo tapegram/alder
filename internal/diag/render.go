@@ -6,9 +6,15 @@ import (
 	"strings"
 )
 
+// RenderText is d as text, `file:line:col: severity[CODE]: message`, with its source line and
+// a caret under the span; a diagnostic with no code (scratch's own) drops the brackets.
 func RenderText(d Diagnostic, lines []string) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "%s:%d:%d: %s[%s]: %s\n", d.Span.File, d.Span.Start.Line, d.Span.Start.Col, d.Severity, d.Code, d.Message)
+	sev := d.Severity
+	if d.Code != "" {
+		sev += "[" + d.Code + "]"
+	}
+	fmt.Fprintf(&sb, "%s:%d:%d: %s: %s\n", d.Span.File, d.Span.Start.Line, d.Span.Start.Col, sev, d.Message)
 	if l := d.Span.Start.Line; !d.NoSource && l >= 1 && l <= len(lines) {
 		src := lines[l-1]
 		fmt.Fprintf(&sb, "  %s\n", src)

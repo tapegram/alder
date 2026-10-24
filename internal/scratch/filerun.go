@@ -119,14 +119,22 @@ func RunFile(ctx context.Context, appDir string, f File, o FileOptions) (r FileR
 	}
 	var appDiags []diag.Diagnostic
 	appErr := false
+	fileHoles := 0 // the typed holes in the file (W0002); the rest of Result.Holes are the app's
 	for _, d := range checked.Diags {
+		if d.Code == "W0002" && checked.InSession(d) {
+			fileHoles++
+		}
 		if !checked.InSession(d) {
 			appDiags = append(appDiags, d)
 			appErr = appErr || d.Severity == "error"
 			continue
 		}
-		d = f.Map.Position(d, checked.MapDiag, f.Name)
-		d.Message = itPrefixRE.ReplaceAllString(d.Message, "")
+		if inc, ok := f.incomplete(d, checked.MapDiag); ok {
+			d = inc
+		} else {
+			d = f.Map.Position(d, checked.MapDiag, f.Name)
+			d.Message = itPrefixRE.ReplaceAllString(d.Message, "")
+		}
 		fileDiags = append(fileDiags, d)
 		fileErr = fileErr || d.Severity == "error"
 	}
@@ -168,8 +176,11 @@ func RunFile(ctx context.Context, appDir string, f File, o FileOptions) (r FileR
 		return r
 	case fileErr:
 		return r
+	case fileHoles > 0:
+		r.Note = fmt.Sprintf("the file has %d typed hole(s); fill them to run it", fileHoles)
+		return r
 	case res.Holes > 0:
-		r.Note = fmt.Sprintf("the file has %d typed hole(s); fill them to run it", res.Holes)
+		r.Note = fmt.Sprintf("the app has %d typed hole(s); fill them to run the file", res.Holes)
 		return r
 	case len(f.Watches) == 0:
 		r.Note = "the file has no watches; add a line `> expr`"
@@ -241,8 +252,14 @@ func RunFile(ctx context.Context, appDir string, f File, o FileOptions) (r FileR
 			w.Error = "internal error: the program gave no result"
 		case !ok: // never started: the program died before it
 			crashed = i
-			if !started {
-				r.Note = "the program failed before any watch ran: " + msg
+			if !started { // every pure watch is unrun: say so on each, so the run fails
+				why := "the program failed before any watch ran: " + strings.TrimPrefix(msg, "panic: ")
+				for j := range f.Watches {
+					if sigs[j] != nil && effectOf(sigs[j]) == "" {
+						r.Watches[j].Error = "not run: " + why
+					}
+				}
+				r.Note = why
 				return r
 			}
 			w.Error = msg
@@ -308,6 +325,36 @@ func hasError(ds []diag.Diagnostic) bool {
 // errAt is an error diagnostic of the file at p.
 func (f File) errAt(p diag.Pos, msg string) diag.Diagnostic {
 	return diag.Diagnostic{Severity: "error", Message: msg, Span: diag.Span{File: f.Name, Start: p, End: p}}
+}
+
+// incomplete re-anchors a diagnostic of the scratch module that falls inside a watch's
+// generated `itK = ` prefix: the item before it is incomplete and the parser ran on into the
+// watch, as with `> 1 +` followed by `> 2`. The diagnostic would name syntax the user never
+// wrote, so it is put at the end of the item's last line (the last line before the watch that
+// is neither blank nor a comment) with a message of its own; ok is false for any other one.
+func (f File) incomplete(d diag.Diagnostic, mapLine func(diag.Diagnostic) (diag.Diagnostic, bool)) (diag.Diagnostic, bool) {
+	m, ok := mapLine(d)
+	if !ok || d.Severity != "error" {
+		return d, false
+	}
+	line, col := m.Span.Start.Line, m.Span.Start.Col
+	for _, w := range f.Watches {
+		if w.Line != line || col > len(w.Name+" = ") {
+			continue
+		}
+		for i := line - 2; i >= 0; i-- {
+			t := strings.TrimSpace(f.Lines[i])
+			if t == "" || strings.HasPrefix(t, "--") {
+				continue
+			}
+			end := diag.Pos{Line: i + 1, Col: len(strings.TrimRight(f.Lines[i], " \t")) + 1}
+			d.Span = diag.Span{File: f.Name, Start: end, End: end}
+			d.Fix = nil
+			d.Message = fmt.Sprintf("this is incomplete: the watch on line %d starts a new item", w.Line)
+			return d, true
+		}
+	}
+	return d, false
 }
 
 // headerPos is the position of the module name in f's `in` header (1:1 without one).

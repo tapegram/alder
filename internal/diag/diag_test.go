@@ -147,3 +147,10 @@ func TestRenderTextNoSource(t *testing.T) {
 		t.Fatalf("source echoed: %q", got)
 	}
 }
+
+func TestRenderTextNoCode(t *testing.T) {
+	d := Diagnostic{Severity: "error", Span: Span{File: "s", Start: Pos{1, 1}, End: Pos{1, 1}}, Message: "m"}
+	if got := RenderText(d, nil); got != "s:1:1: error: m\n" {
+		t.Fatalf("got %q", got)
+	}
+}

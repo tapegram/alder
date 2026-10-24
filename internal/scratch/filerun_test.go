@@ -2,6 +2,7 @@ package scratch
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -193,6 +194,12 @@ func TestRunFileInitPanic(t *testing.T) {
 	if !strings.HasPrefix(r.Note, "the program failed before any watch ran: ") || !strings.Contains(r.Note, "integer divide by zero") {
 		t.Errorf("note %q", r.Note)
 	}
+	if strings.Contains(r.Note, "panic: ") {
+		t.Errorf("note repeats the panic prefix: %q", r.Note)
+	}
+	if w := r.Watches[0]; w.Error != "not run: "+r.Note {
+		t.Errorf("watch error %q, want %q", w.Error, "not run: "+r.Note)
+	}
 }
 
 func TestRunFileDiagnosticsPositioned(t *testing.T) {
@@ -287,5 +294,61 @@ func TestRunFileNothingToRun(t *testing.T) {
 	r = runFileIn(t, dir, "> 1\n", FileOptions{})
 	if r.Ran || r.Err != nil || r.Note != "the app has errors; fix them and save" || len(r.Diags) == 0 || r.Diags[0].Span.File != "app/Todo.alder" || r.Watches[0].Type != "Int" {
 		t.Errorf("ran %v, err %v, note %q, diags %v, %+v", r.Ran, r.Err, r.Note, r.Diags, r.Watches)
+	}
+}
+
+// A typed hole in the app stops the run too, and is not blamed on the file.
+func TestRunFileAppHole(t *testing.T) {
+	dir := todos(t)
+	p := filepath.Join(dir, "app", "Todo.alder")
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, append(b, []byte("\nholey : Int\nholey = 1 + ?n\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := runFileIn(t, dir, "> 1\n", FileOptions{})
+	if r.Ran || r.Err != nil || r.Note != "the app has 1 typed hole(s); fill them to run the file" {
+		t.Errorf("ran %v, err %v, note %q, diags %v", r.Ran, r.Err, r.Note, r.Diags)
+	}
+}
+
+// A half-typed watch (or declaration) before another watch is reported at its own end, in
+// the user's words: never at the next watch's generated `itK = `.
+func TestRunFileIncompleteBeforeWatch(t *testing.T) {
+	cases := []struct {
+		name, text string
+		line, col  int
+		next       int // the watch line the message names
+	}{
+		{"watch", "> 1 +\n> 2\n", 1, 6, 2},
+		{"declaration", "x = 1 +\n\n-- next\n> 2\n", 1, 8, 4},
+	}
+	for _, c := range cases {
+		r := runFile(t, c.text, FileOptions{})
+		if r.Ran || r.Err != nil {
+			t.Fatalf("%s: ran %v, err %v", c.name, r.Ran, r.Err)
+		}
+		var errs []diag.Diagnostic
+		for _, d := range r.Diags {
+			if d.Severity == "error" {
+				errs = append(errs, d)
+			}
+		}
+		if len(errs) == 0 {
+			t.Fatalf("%s: no error: %+v", c.name, r.Diags)
+		}
+		for _, d := range errs {
+			if d.Span.Start.Line != c.line || d.Span.Start.Col != c.col {
+				t.Errorf("%s: at %d:%d, want %d:%d: %+v", c.name, d.Span.Start.Line, d.Span.Start.Col, c.line, c.col, d)
+			}
+			if strings.Contains(d.Message, "=") || strings.Contains(d.Message, "it1") || strings.Contains(d.Message, "it2") || strings.Contains(d.Message, "`it") {
+				t.Errorf("%s: message names generated syntax: %q", c.name, d.Message)
+			}
+			if !strings.Contains(d.Message, fmt.Sprintf("line %d", c.next)) {
+				t.Errorf("%s: message %q does not name line %d", c.name, d.Message, c.next)
+			}
+		}
 	}
 }
