@@ -561,9 +561,13 @@ func TestParse_ImportAs(t *testing.T) {
 		"module M\n\nimport A.B as\n": "expected alias after `as`",
 		"module M\n\nimport A as b\n": "alias must be capitalized",
 	} {
-		_, diags := ParseFile("m.alder", []byte(src))
+		m, diags := ParseFile("m.alder", []byte(src))
 		if len(diags) == 0 || !strings.Contains(diags[0].Message, want) {
 			t.Errorf("%q: diags = %v, want %q", src, diags, want)
+		}
+		// the import survives its malformed alias, without one
+		if m == nil || len(m.Imports) != 1 || m.Imports[0].Alias != "" {
+			t.Errorf("%q: imports = %+v, want one with no alias", src, m)
 		}
 	}
 	m, diags = ParseFile("m.alder", []byte("module M\n\nas : Int\nas = 1\n"))
