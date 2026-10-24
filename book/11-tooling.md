@@ -17,7 +17,7 @@ page|table|form|msg|capability`, `alder edit table` and `alder fill`
 generate the app's code; as of M13, `alder new auth|type|decl|test`,
 `alder edit page` and `alder fill --decl` complete them, so that an app
 can be built from the command line alone (chapter 15).
-`fmt`, holes beyond W0002 and `query` are planned.
+`alder fmt` formats the app's files (below, "Formatting"). Holes beyond W0002 and `query` are planned.
 
 ## Project layout
 
@@ -98,6 +98,7 @@ alder edit session … add a field to the session
 alder remove …       remove a page, or a table with its migration
 alder fill <decl> -  fill a typed hole with the expression on standard input
 alder check          type-check everything; milliseconds; no output on success
+alder fmt [path…]    rewrite .alder files in the one canonical format (--check: list what would change)
 alder build          check, generate Go, go build → ./build/myapp/myapp
 alder run            build and run with the dev database, reloading on change
 alder eval <expr>    evaluate an expression against the app: value : Type
@@ -1847,6 +1848,59 @@ is the type at a position, and references are the uses of a name (above,
 
 ## Formatting
 
-There is one format. `alder fmt` produces it; `alder check` warns on files
-that are not in it. The format is deterministic: the same program always
-formats to the same text, so diffs are minimal.
+There is one format. `alder fmt` produces it, and it is deterministic: the
+same program always formats to the same text, so diffs are minimal. The
+rules are in chapter 3, "Style". `alder check` does not care how a file is
+laid out: it answers whether the program is correct, and never rewrites
+a file. Enforcing the format is `alder fmt --check`.
+
+```
+alder fmt                  rewrite every .alder file under . in place
+alder fmt app/Post.alder   one file, or a directory (build/ and dot-directories are skipped)
+alder fmt --check          write nothing; list each file that would change
+alder fmt --stdin          format standard input to standard output
+```
+
+Rewriting prints one line per file it changed, and nothing when nothing
+changed. `--check` prints `<file> would be reformatted` for each file that is
+not in the format. `--stdin` is for editors and agents: a program in, the
+formatted program out.
+
+| Exit | Meaning |
+|---|---|
+| 0 | every file is in the format (or was rewritten) |
+| 1 | `--check` found a file that would change, or a file did not parse |
+| 2 | usage, an I/O error, or an internal error |
+
+A file that does not parse is not touched: its diagnostics are printed as
+`alder check` prints them. Before it writes, the formatter parses its own
+output and compares it with the input, comments included; if they differ
+it writes nothing and exits 2 with `alder fmt: internal error: <file>:
+formatting changed the program; please file an issue`. Everything the
+generators write is already formatted, and the splice commands (`alder
+edit`, `alder fill`, `alder remove`, `alder regen admin`) format the
+whole file they changed.
+
+In CI, run the format check before the type check:
+
+```
+alder fmt --check && alder check
+```
+
+The agent loop is the same: write, `alder fmt`, `alder check`.
+
+### Format on save
+
+`alder lsp` answers `textDocument/formatting`, so any editor that formats
+through the language server formats Alder on save. In Neovim:
+
+```lua
+vim.api.nvim_create_autocmd('BufWritePre', {
+  pattern = '*.alder',
+  callback = function() vim.lsp.buf.format({ async = false }) end,
+})
+```
+
+The server returns the smallest edits that make the buffer canonical, so
+the cursor and marks stay where they were. A buffer that does not parse
+gets no edits and no error popup; the diagnostics already show the error.

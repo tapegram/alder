@@ -6,11 +6,16 @@ through every file.
 
 Run these from this directory:
 
+    alder fmt              # rewrite the files into the one canonical format
     alder check            # type-check the app
     alder test             # run its tests
     alder test --mutate    # measure the tests: which changes to the app do they miss?
     alder build            # build the server, build/{{name}}/{{name}}
     alder run              # build, serve on http://localhost:8080, rebuild on every save
+
+Write, then `alder fmt`, then `alder check`: `fmt` puts every file in the one canonical format and
+never changes what the program means; `check` reports what is wrong. In CI, `alder fmt --check &&
+alder check`. An editor can format on save through `alder lsp`.
 
 Then grow it from the command line. Each of these writes plain Alder with its tests, and only
 if the app still checks (chapter 15):

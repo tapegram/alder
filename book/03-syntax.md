@@ -331,6 +331,56 @@ with a comparison:
 }
 ```
 
+## Style
+
+`alder fmt` rewrites a file into the one canonical format, so write the
+code, run `alder fmt`, then `alder check` (chapter 11, "Formatting"). The
+rules, so that the first draft already matches:
+
+- 2-space indent, no trailing whitespace, one blank line between
+  declarations, a signature directly above its value. Lines break at 100
+  columns where no rule below decides.
+- Imports are sorted, one per line.
+- A record, record type, form, table or page-params list with 3 or more
+  fields is always vertical, one field per line with a trailing comma;
+  with 1 or 2 it stays on one line if it fits. The record type of a
+  function's signature, a capability or a fake breaks only when too wide.
+  An empty record is `{}`.
+- A `match` has one arm per line, each ending in a comma. A sum type that
+  does not fit on a line puts one `| Constructor` on each line.
+- `if` that does not fit on a line is `if c then` / `else` with the
+  branches indented; `else if` chains stay at one indent. A block branch is
+  `if c then {` ... `} else {` ... `}`.
+- A pipeline with 2 or more `|>` is always vertical, one `|>` per line. A
+  lambda argument is parenthesised: `List.map (\x -> x + 1) xs`.
+- A block with statements is vertical. Parentheses are only the ones
+  precedence needs, except around a lambda argument.
+- Markup: an element with 2 or more element children (a `{for}` counts as 2)
+  puts each child on its own line.
+- Comments stay where they are; a trailing comment keeps its list vertical.
+
+A record type of nine fields, written on one line:
+
+```text
+type Post = { id: Int, title: Text, body: Text, author: Text, slug: Text, views: Int, draft: Bool, created: Int, updated: Int }
+```
+
+is formatted as:
+
+```alder fragment
+type Post = {
+  id: Int,
+  title: Text,
+  body: Text,
+  author: Text,
+  slug: Text,
+  views: Int,
+  draft: Bool,
+  created: Int,
+  updated: Int,
+}
+```
+
 ## Reserved words
 
 ```
