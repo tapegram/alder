@@ -69,6 +69,7 @@ var scaffoldFiles = []string{
 	"app/Layout.alder",
 	"migrations/0001_initial.sql",
 	"migrations/schema.json",
+	"scratch.alder",
 	"static/app.css",
 }
 
@@ -375,7 +376,7 @@ func TestNew_Bare(t *testing.T) {
 		t.Fatalf("alder new --bare: exit %d\n%s%s", code, out, errs)
 	}
 	got := slices.Sorted(maps.Keys(appFiles(t, dir)))
-	if want := []string{".gitignore", "adapters/README.md", "app/App.alder", "app/Layout.alder", "static/app.css"}; !slices.Equal(got, want) {
+	if want := []string{".gitignore", "adapters/README.md", "app/App.alder", "app/Layout.alder", "scratch.alder", "static/app.css"}; !slices.Equal(got, want) {
 		t.Errorf("files %v, want %v", got, want)
 	}
 	if code, _, errs := runNew(t, dir, "--bare"); code != 1 || !strings.Contains(errs, "exists and is not empty") {
@@ -407,5 +408,36 @@ func TestNew_Bare(t *testing.T) {
 	app, _ := os.ReadFile(filepath.Join(dir, "app", "App.alder"))
 	if !strings.Contains(string(app), "session { user: Maybe User.UserId }\n\nlogin = Auth.Login\n\nmsg Logout\n") {
 		t.Errorf("App:\n%s", app)
+	}
+}
+
+// TestNewScaffoldsScratch: both scaffolds write scratch.alder at the project root, and
+// `alder scratch` on a fresh app prints the starter watch's value.
+func TestNewScaffoldsScratch(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	has := func(fs []scaffold.File) bool {
+		for _, f := range fs {
+			if f.Path == "scratch.alder" {
+				return true
+			}
+		}
+		return false
+	}
+	if !has(scaffold.Files("x", false)) || !has(scaffold.BareFiles("x", false)) {
+		t.Fatal("scratch.alder is missing from Files or BareFiles")
+	}
+	dir := filepath.Join(outsideModule(t), "sc")
+	if code, out, errs := runNew(t, dir); code != 0 {
+		t.Fatalf("alder new: exit %d\n%s%s", code, out, errs)
+	}
+	if !slices.Contains(tree(t, dir), "scratch.alder") {
+		t.Errorf("alder new wrote no scratch.alder: %v", tree(t, dir))
+	}
+	var so, se bytes.Buffer
+	code := runScratchTo(withBuildDir(t, []string{filepath.Join(dir, "scratch.alder")}), &so, &se)
+	out, errs := so.String(), se.String()
+	if code != 0 || !strings.Contains(out, "⇒ 2 : Int") {
+		t.Errorf("alder scratch: exit %d\n%s%s", code, out, errs)
 	}
 }

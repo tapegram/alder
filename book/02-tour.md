@@ -362,6 +362,18 @@ build/
 *.db-shm
 ```
 
+`scratch.alder` is a scratch file, committed with the app: write
+expressions after `> `, run `alder scratch --watch`, and each is
+evaluated on save (chapter 11, "`alder scratch`"):
+
+```text file=guestbook/scratch.alder
+-- A scratch file: each `> expr` line is evaluated. Run `alder scratch --watch` to see results on save.
+-- Everything else is ordinary Alder: define values and helpers here, then watch them.
+-- Put `in Module` on the first line to work inside an app module, with its names unqualified.
+
+> 1 + 1
+```
+
 The README repeats the commands, and names the next ones, the
 generators of chapter 15:
 

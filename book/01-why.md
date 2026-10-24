@@ -196,6 +196,7 @@ created guestbook/
   app/Layout.alder
   migrations/0001_initial.sql
   migrations/schema.json
+  scratch.alder
   static/app.css
 
 next:

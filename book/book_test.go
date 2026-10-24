@@ -1041,7 +1041,7 @@ func TestBook_ScaffoldDrift(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if m, ok := strings.CutSuffix(strings.TrimPrefix(rel, "app/"), ".alder"); ok {
+		if m, ok := strings.CutSuffix(strings.TrimPrefix(rel, "app/"), ".alder"); ok && strings.HasPrefix(rel, "app/") {
 			fmt.Fprintf(&full, "```alder part=guestbook/%s\n%s```\n\n", strings.ReplaceAll(m, "/", "."), b)
 		} else {
 			fmt.Fprintf(&full, "```text file=guestbook/%s\n%s```\n\n", rel, b)

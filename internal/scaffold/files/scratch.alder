@@ -1,0 +1,5 @@
+-- A scratch file: each `> expr` line is evaluated. Run `alder scratch --watch` to see results on save.
+-- Everything else is ordinary Alder: define values and helpers here, then watch them.
+-- Put `in Module` on the first line to work inside an app module, with its names unqualified.
+
+> 1 + 1

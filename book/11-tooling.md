@@ -36,6 +36,7 @@ myapp/
     internal/         -- Go helpers your adapters share (optional; never wired)
   elements/
     custom-elements.json  -- the custom elements the app uses besides alder-ui's (optional)
+  scratch.alder       -- a scratch file for `alder scratch` (committed)
   static/             -- files served under /static/ (stylesheets, images)
   go.mod              -- needed only inside another Go module (below)
   build/              -- generated, never edited
@@ -154,6 +155,7 @@ created guestbook/
   app/Layout.alder
   migrations/0001_initial.sql
   migrations/schema.json
+  scratch.alder
   static/app.css
 
 next:
@@ -785,6 +787,95 @@ runner", shows what it compiles. That build is a test build, like
 developer tool, never deployed), because its main runs with the
 session a test starts from, `TestSession()`, which only a test build
 has. `alder repl` builds the same way.
+
+### `alder scratch`
+
+`alder scratch [file] [--watch] [--json] [--build-dir DIR] [--module Name]`
+runs a scratch file: a file of your own in the project, next to the app,
+where you define values and helpers and ask the compiler what some
+expressions are. `alder new` writes one, `scratch.alder`, at the project
+root (and `alder new --bare` too). It is committed with the app, so it
+has no `.gitignore` entry. The file is the whole interface: edit it in
+your editor, save, read the results.
+
+A scratch file is any file whose name ends in `scratch.alder` and that
+is not under `app/` (`scratch.alder`, `probe.scratch.alder`,
+`notes/db_scratch.alder`). `alder scratch` takes the file as an argument,
+`./scratch.alder` by default, and runs it against the app above it: the
+nearest directory up from the file that holds `app/*.alder`. Any other
+file is refused (exit 2). `alder fmt` skips scratch files when it walks a
+directory and refuses one named on its command line, because a file with
+`>` lines is not a module; the language server leaves them alone too.
+
+A line that starts with `> ` at column 1 is a watch: the rest of the line
+is an expression, and lines indented under it continue it. Everything
+else in the file is ordinary Alder (definitions, comments, blank lines),
+checked together with the watches, so a helper you define is in scope for
+every watch, above or below it. The starter file:
+
+```text
+-- A scratch file: each `> expr` line is evaluated. Run `alder scratch --watch` to see results on save.
+-- Everything else is ordinary Alder: define values and helpers here, then watch them.
+-- Put `in Module` on the first line to work inside an app module, with its names unqualified.
+
+> 1 + 1
+```
+
+Each watch prints its line, then its value and type (the names `it1`,
+`it2`, … are the watches' own and cannot be defined in the file):
+
+```text
+$ alder scratch probe.scratch.alder
+probe.scratch.alder:4: double 21
+  ⇒ 42 : Int
+probe.scratch.alder:5: [1, 2,
+  ⇒ [1, 2, 3] : List Int
+probe.scratch.alder:7: Db.from Entry |> Db.count
+  <Query> : Query Int   (not run: scratch evaluates pure values only)
+```
+
+Without a header the file is the module `Scratch` (`--module Name` names
+it otherwise), and it sees the app's modules by their qualified names.
+`in Module` as the first line of the file that is neither blank nor a
+comment makes it work inside that app module instead, as `alder eval
+--in` does: the module's own names are unqualified.
+
+In this version a scratch file evaluates pure values only. A watch whose
+type is a `Query`, a `Task` or a `Select` is not run: it prints
+`<Query>` (or `<Task>`, `<Select>`) with its type and the note `not run:
+scratch evaluates pure values only`. A line starting `>!` (which would
+run a task) is an error. A watch whose value would be longer than 64 KB
+is cut there and says so, and the whole run has a 60 second limit. A
+watch that fails when it runs (an `error`, a crash) fails on its own
+line and the watches after it still show their values; if the program
+itself dies, the watches after the crash say `not run: the program
+crashed at line N`.
+
+Errors in the file are reported at their place in the file, as you named
+it (`scratch.alder:7:3`), with the compiler's usual messages; errors in
+the app keep the app's file names. A typed hole in a watch is a
+warning-level diagnostic that still makes the run exit 1.
+
+`--watch` keeps running: it runs the file, then again whenever the file
+or any file of the app changes (polled as `alder run` does), printing
+`── HH:MM:SS ──` before each run. A change during a run cancels it and
+starts the next. A save that does not parse, or a file that is gone for
+a moment, is reported and the watching goes on; Ctrl-C ends it with
+exit 0.
+
+`--json` prints one object instead of the text: `{"watches": […],
+"diagnostics": […], "ran": bool}`, with `"note"` and `"error"` when
+there is something to say. A watch is `{"line", "expr", "type", "value"}`
+plus `"note"`, `"truncated"` or `"error"` when they apply; diagnostics
+have the shape of `alder check --json`. With `--watch` each run is one
+such object on its own line.
+
+The exit code is 0 when nothing failed; 1 for an error in the file or
+the app, a typed hole, a watch that failed, an app whose adapters will
+not build, or an interrupt without `--watch`; 2 for a usage or I/O
+error (a file that is not a scratch file, no app above it, an unknown
+flag). The build goes to `build/<app>/scratch/file-<hash>/`, one
+directory per scratch file.
 
 ### `alder repl`
 
