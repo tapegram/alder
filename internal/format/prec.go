@@ -20,8 +20,10 @@ const (
 // parsePostfix.
 const (
 	// levelOpen is a lambda, `if` or `match`: printed in parentheses wherever it is an operand,
-	// a function, an argument or a field's base (a lambda's body and an `if`'s `else` run as far
-	// right as they can, and the book writes all three in parentheses there).
+	// a function, an argument or a field's base. A lambda's body and an `if`'s `else` run as far
+	// right as they can, and `if`/`match` cannot start an argument. A lambda as the last argument
+	// (`f \x -> e`) parses without them; parenthesising it anyway is deliberate, the one place the
+	// parentheses are not minimal: Alder code (and Elm) always writes `f (\x -> e)`.
 	levelOpen = iota
 	levelPipe
 	levelDefault
@@ -74,10 +76,6 @@ func (p *printer) level(e syntax.Expr) int {
 		}
 	case *syntax.Access:
 		return levelPostfix
-	case *syntax.Block:
-		if len(e.Stmts) == 0 { // printed as its result
-			return p.level(e.Result)
-		}
 	}
 	return levelAtom
 }

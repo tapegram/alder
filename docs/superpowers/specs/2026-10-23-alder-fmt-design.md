@@ -203,7 +203,9 @@ it; the book is the reference corpus. Spacing as in the examples:
   else
     b
   ```
-  with `else if` chains flattened at the same indent.
+  with `else if` chains flattened at the same indent. A block branch opens
+  on the `then`/`else` line, K&R: `if c then {` … `} else {` … `}`, and
+  `} else if d then {`.
 - **Lambdas**: `\x y -> body`; a body that doesn't fit breaks after `->`.
 - **Pipelines** (`|>`): 2 or more pipes → always vertical, one `|>` per
   line, operator leading, indented 2 from the expression's start line.
@@ -212,13 +214,23 @@ it; the book is the reference corpus. Spacing as in the examples:
   operator per line, operator leading (the grammar's continuation form).
 - **Application**: arguments stay on the function's line (grammar). If
   the line is too long, break inside the *last* argument when it is a
-  record, list, lambda or parenthesised expression (Prettier's "hugging");
-  otherwise leave the line long. Never wrap in parens to force a break.
+  record, list, lambda or parenthesised expression (Prettier's "hugging"),
+  or inside an earlier argument that is a lambda, record, list or block
+  (`List.map (\row -> {` … `}) rows`); otherwise leave the line long.
+  Never wrap in parens to force a break.
 - **Blocks** `{ let … ; result }`: a block with statements is always
-  vertical. A block with only a result is printed as the result.
+  vertical. A block with only a result stays a block, `{ x }` on one line
+  if it fits: blocks are shape-significant to the checker and lowering
+  (a test whose body is a block is an effect test; an `update` whose body
+  is a `match` splits its arms), so `{ x }` and `x` are not the same
+  program.
 - **Parentheses**: re-derived from precedence; the minimal set is
   emitted, so redundant parens disappear. The equivalence check guards
-  the precedence table.
+  the precedence table. One exception: a lambda argument is always
+  parenthesised, `f (\x -> e)`, though `f \x -> e` parses (Alder code
+  and Elm always write the parentheses).
+- **Empty records**: `{}` as an expression or pattern; `{ }` for an empty
+  record type, form or declaration body.
 - **Markup**: an element whose children are all inline (text, `{expr}`,
   elements with no element children) and fits → one line. Otherwise
   children one per line, indented. Attributes: on the tag line if they

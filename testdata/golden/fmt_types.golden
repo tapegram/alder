@@ -59,7 +59,7 @@ rLong : {
   replyTo: Maybe Text.Email,
   cc: List Text,
 } -> Task Unit
-rLong r = Task.succeed { }
+rLong r = Task.succeed {}
 
 fLong : Dict Text (List Int)
   -> (Int -> Int)

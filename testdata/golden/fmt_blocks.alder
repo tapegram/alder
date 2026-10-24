@@ -31,3 +31,12 @@ lam = Task.andThen (\x -> { let y = x + 1
 viaLambda : List Int
 viaLambda = List.map (\x -> { let y = x + 1
   y * 2 }) xs
+
+ifBlocks : Task Int
+ifBlocks = if admin then { let a <- load
+  Task.succeed a } else if guest then { Task.succeed 0 } else { let b = 2
+  Task.succeed b }
+
+ifMixed : Task Int
+ifMixed = if admin then { let a <- load
+  Task.succeed a } else Task.fail "no access to this page for anyone who is not an administrator"

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"reflect"
 	"slices"
 	"strings"
 
@@ -49,63 +48,12 @@ func samePrograms(file string, m *syntax.Module, out []byte) bool {
 	return programDump(m) == programDump(m2) && slices.Equal(commentTexts(m), commentTexts(m2))
 }
 
-// programDump is the module's Dump with its imports sorted and de-duplicated (the formatter
-// sorts them, and their order and repetition mean nothing) and every block that holds only a
-// result replaced by the result (the formatter prints `{ x }` as `x`), except a test's whole
-// body. It rewrites m's blocks in place.
+// programDump is the module's Dump with its imports sorted and de-duplicated: the formatter
+// sorts them, and their order and repetition mean nothing.
 func programDump(m *syntax.Module) string {
-	unwrapResultBlocks(m)
 	c := *m
 	c.Imports = sortedImports(m.Imports)
 	return syntax.Dump(&c)
-}
-
-var exprType = reflect.TypeFor[syntax.Expr]()
-
-// unwrapResultBlocks replaces, in place, every expression that is a block holding only a result
-// by that result. A test's body is left a block: there a block makes the test an effect test.
-// The checker and the lowering treat such a block as its result everywhere else.
-func unwrapResultBlocks(m *syntax.Module) {
-	var visit func(v reflect.Value)
-	visit = func(v reflect.Value) {
-		switch v.Kind() {
-		case reflect.Pointer, reflect.Interface:
-			if !v.IsNil() {
-				visit(v.Elem())
-			}
-		case reflect.Slice:
-			for i := 0; i < v.Len(); i++ {
-				if v.Type().Elem() == exprType {
-					unwrapAt(v.Index(i))
-				}
-				visit(v.Index(i))
-			}
-		case reflect.Struct:
-			_, isTest := v.Interface().(syntax.TestDecl)
-			for i := 0; i < v.NumField(); i++ {
-				f, ft := v.Field(i), v.Type().Field(i)
-				if !ft.IsExported() {
-					continue
-				}
-				if ft.Type == exprType && !(isTest && ft.Name == "Body") {
-					unwrapAt(f)
-				}
-				visit(f)
-			}
-		}
-	}
-	visit(reflect.ValueOf(m))
-}
-
-// unwrapAt replaces the expression in v, while it is a block holding only a result, by the result.
-func unwrapAt(v reflect.Value) {
-	for {
-		b, ok := v.Interface().(*syntax.Block)
-		if !ok || b == nil || len(b.Stmts) > 0 || b.Result == nil {
-			return
-		}
-		v.Set(reflect.ValueOf(&b.Result).Elem())
-	}
 }
 
 func sortedImports(ims []*syntax.Import) []*syntax.Import {

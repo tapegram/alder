@@ -86,8 +86,8 @@ func TestExpr_Parens(t *testing.T) {
 		"a - (b - c)":              "a - (b - c)",
 		"(a - b) - c":              "a - b - c",
 		"f { a: 1 } (g x)":         "f { a: 1 } (g x)",
-		"{ (x) }":                  "x",
-		"f ({ x })":                "f x",
+		"{ (x) }":                  "{ x }",
+		"f ({ x })":                "f { x }",
 		"f (Just)":                 "f Just",
 		"(Foo).x":                  "(Foo).x",
 		"x == (y == z)":            "x == (y == z)",
@@ -124,12 +124,17 @@ func TestExpr_BlockResultStartingWithMinus(t *testing.T) {
 	}
 }
 
-// A test whose body is a block holding only a result is an effect test: the block stays.
-func TestExpr_TestBodyBlockKept(t *testing.T) {
-	src := "module M\n\ntest \"t\" = { Task.succeed True }\n"
-	want := "module M\n\ntest \"t\" = {\n  Task.succeed True\n}\n"
-	out, _, err := Source("m.alder", []byte(src))
-	if err != nil || string(out) != want {
-		t.Fatalf("got %q, %v", out, err)
+// A block holding only a result stays a block: the checker treats some blocks differently from
+// their result (a test's body makes an effect test; an `update` that is a match splits its
+// arms). It is printed on one line when it fits.
+func TestExpr_ResultOnlyBlockKept(t *testing.T) {
+	for _, src := range []string{
+		"module M\n\ntest \"t\" = { Task.succeed True }\n",
+		"module M\n\nupdate : Msg -> Int\nupdate msg = {\n  match msg {\n    _ -> 1,\n  }\n}\n",
+	} {
+		out, _, err := Source("m.alder", []byte(src))
+		if err != nil || string(out) != src {
+			t.Errorf("got %q, %v; want %q", out, err, src)
+		}
 	}
 }

@@ -13,6 +13,7 @@ pats : Int
 pats = match v {
   Just (Ok n) -> n,
   Pair { left: (Just a), right: _ } -> a,
+  Empty { } -> 0,
   Many ([first, Nothing, ..rest]) -> first,
   Num (-1) -> 0,
   Wrapped ([]) -> 0,

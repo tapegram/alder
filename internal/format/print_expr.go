@@ -35,7 +35,7 @@ func (p *printer) expr(e syntax.Expr) Doc {
 	case *syntax.Access:
 		base := e.Expr
 		paren := p.level(base) < levelPostfix
-		switch unblock(base).(type) {
+		switch base.(type) {
 		case *syntax.CtorRef, *syntax.IntLit, *syntax.FloatLit: // `M.x` would read as a qualified name, `1.x` as a number
 			paren = true
 		}
@@ -49,9 +49,6 @@ func (p *printer) expr(e syntax.Expr) Doc {
 	case *syntax.Match:
 		return p.match(e)
 	case *syntax.Block:
-		if len(e.Stmts) == 0 {
-			return p.expr(e.Result) // `{ x }` is `x`
-		}
 		return p.block(e.Stmts, e.Result)
 	case *syntax.BinOp:
 		return p.binOp(e)
@@ -64,17 +61,6 @@ func qual(module, name string) string {
 		return name
 	}
 	return module + "." + name
-}
-
-// unblock looks through blocks that hold only a result: they print as the result.
-func unblock(e syntax.Expr) syntax.Expr {
-	for {
-		b, ok := e.(*syntax.Block)
-		if !ok || len(b.Stmts) > 0 {
-			return e
-		}
-		e = b.Result
-	}
 }
 
 // inBrackets prints e inside brackets, where application arguments may start with `{` again.
@@ -97,11 +83,11 @@ func (p *printer) operand(e syntax.Expr, paren bool) Doc {
 // there K&R style: a match, a block with statements, a record, a list, a lambda, or an
 // application whose last argument is a lambda, record, list or block (it breaks inside that).
 func opensBody(e syntax.Expr) bool {
-	switch e := unblock(e).(type) {
+	switch e := e.(type) {
 	case *syntax.Match, *syntax.Block, *syntax.RecordLit, *syntax.RecordUpdate, *syntax.ListLit, *syntax.Lambda:
 		return true
 	case *syntax.App:
-		switch unblock(e.Args[len(e.Args)-1]).(type) {
+		switch e.Args[len(e.Args)-1].(type) {
 		case *syntax.Lambda, *syntax.Block, *syntax.RecordLit, *syntax.RecordUpdate, *syntax.ListLit:
 			return true
 		}
@@ -135,19 +121,33 @@ func lambdaHead(l *syntax.Lambda) string {
 // ---- application
 
 // app prints `f a b`. Application cannot span lines, so the arguments stay on the function's
-// line; a line that is too long breaks inside the last argument when it is a lambda, record,
-// list or parenthesised expression ("hugging"), and otherwise stays long.
+// line; a line that is too long breaks inside an argument ("hugging"): the last one when it is a
+// lambda, record, list, block or parenthesised expression, any other when it is a lambda,
+// record, list or block (`List.map (\row -> {` … `}) rows`). Other arguments never break, and a
+// line with nothing to break inside stays long.
 func (p *printer) app(e *syntax.App) Doc {
-	head := []Doc{p.operand(e.Fn, p.level(e.Fn) < levelPostfix)}
+	doc := []Doc{Flat(p.operand(e.Fn, p.level(e.Fn) < levelPostfix))}
 	last := len(e.Args) - 1
-	for _, a := range e.Args[:last] {
-		head = append(head, Text(" "), p.arg(a))
+	for i, a := range e.Args {
+		doc = append(doc, Text(" "))
+		switch {
+		case i == last && p.huggable(a), i < last && opensArg(a):
+			doc = append(doc, p.hug(a))
+		default:
+			doc = append(doc, Flat(p.arg(a)))
+		}
 	}
-	a := e.Args[last]
-	if p.huggable(a) {
-		return Concat(Flat(Concat(head...)), Text(" "), p.hug(a))
+	return Concat(doc...)
+}
+
+// opensArg reports whether an argument other than the last may break inside: a lambda, a record,
+// a list or a block.
+func opensArg(e syntax.Expr) bool {
+	switch e.(type) {
+	case *syntax.Lambda, *syntax.RecordLit, *syntax.RecordUpdate, *syntax.ListLit, *syntax.Block:
+		return true
 	}
-	return Flat(Concat(append(head, Text(" "), p.arg(a))...))
+	return false
 }
 
 // argNeedsParens reports whether e needs parentheses as an application argument.
@@ -158,7 +158,7 @@ func (p *printer) argNeedsParens(e syntax.Expr) bool {
 // startsWithBrace reports whether e is printed starting with `{`: in a match subject, an
 // argument that does is read as the start of the arms.
 func startsWithBrace(e syntax.Expr) bool {
-	switch e := unblock(e).(type) {
+	switch e := e.(type) {
 	case *syntax.RecordLit, *syntax.RecordUpdate, *syntax.Block:
 		return true
 	case *syntax.Access:
@@ -173,14 +173,14 @@ func (p *printer) huggable(e syntax.Expr) bool {
 	if p.argNeedsParens(e) {
 		return true
 	}
-	switch unblock(e).(type) {
+	switch e.(type) {
 	case *syntax.RecordLit, *syntax.RecordUpdate, *syntax.ListLit, *syntax.Block:
 		return true
 	}
 	return false
 }
 
-// hug prints a huggable last argument so that a long line breaks inside it.
+// hug prints an argument so that a long line breaks inside it.
 func (p *printer) hug(e syntax.Expr) Doc {
 	if !p.argNeedsParens(e) {
 		return p.expr(e) // a record, list or block breaks by its own rules
@@ -188,7 +188,7 @@ func (p *printer) hug(e syntax.Expr) Doc {
 	saved := p.noBrace
 	p.noBrace = false
 	defer func() { p.noBrace = saved }()
-	switch x := unblock(e).(type) {
+	switch x := e.(type) {
 	case *syntax.Lambda:
 		// `(\x ->` … `)`, or `(\x -> {` … `})` when the body opens on the arrow's line
 		if opensBody(x.Body) {
@@ -211,7 +211,7 @@ func (p *printer) hug(e syntax.Expr) Doc {
 func (p *printer) binOp(e *syntax.BinOp) Doc {
 	lv, as := prec(e.Op)
 	sameLevel := func(x syntax.Expr) (*syntax.BinOp, bool) {
-		b, ok := unblock(x).(*syntax.BinOp)
+		b, ok := x.(*syntax.BinOp)
 		if !ok {
 			return nil, false
 		}
@@ -280,7 +280,7 @@ func (p *printer) binOp(e *syntax.BinOp) Doc {
 // startsWithMinus reports whether e is printed starting with `-`: on a line of its own that
 // would continue the line before as a subtraction.
 func (p *printer) startsWithMinus(e syntax.Expr) bool {
-	switch x := unblock(e).(type) {
+	switch x := e.(type) {
 	case *syntax.IntLit, *syntax.FloatLit:
 		return strings.HasPrefix(p.spanText(x.GetSpan()), "-")
 	case *syntax.BinOp:
@@ -292,19 +292,33 @@ func (p *printer) startsWithMinus(e syntax.Expr) bool {
 // ---- if, match, blocks
 
 // ifChain prints `if c then a else b` on one line if it fits, else each branch on its own
-// line, indented, with `else if` chains flattened at the same indent.
+// line, indented, with `else if` chains flattened at the same indent. A block branch opens on
+// the `then` or `else` line, K&R style: `if c then {` … `} else {` … `}`.
 func (p *printer) ifChain(e *syntax.If) Doc {
 	var parts []Doc
+	branch := func(x syntax.Expr) {
+		if _, ok := x.(*syntax.Block); ok {
+			parts = append(parts, Text(" "), p.expr(x))
+		} else {
+			parts = append(parts, Nest(Concat(Line, p.expr(x))))
+		}
+	}
 	for {
-		parts = append(parts, Text("if "), p.expr(e.Cond), Text(" then"), Nest(Concat(Line, p.expr(e.Then))), Line, Text("else"))
-		next, ok := unblock(e.Else).(*syntax.If)
+		parts = append(parts, Text("if "), p.expr(e.Cond), Text(" then"))
+		branch(e.Then)
+		if _, ok := e.Then.(*syntax.Block); ok {
+			parts = append(parts, Text(" else"))
+		} else {
+			parts = append(parts, Line, Text("else"))
+		}
+		next, ok := e.Else.(*syntax.If)
 		if !ok {
 			break
 		}
 		parts = append(parts, Text(" "))
 		e = next
 	}
-	parts = append(parts, Nest(Concat(Line, p.expr(e.Else))))
+	branch(e.Else)
 	return Group(Concat(parts...))
 }
 
@@ -326,11 +340,16 @@ func (p *printer) match(e *syntax.Match) Doc {
 }
 
 // block prints `{`, the statements and the result one per line, `}`. A blank line between two
-// of them in the source is kept (one, however many there were).
+// of them in the source is kept (one, however many there were). A block with only a result is
+// `{ x }` if it fits. It stays a block: the checker treats some blocks differently from their
+// result (a test's body, an `update` that is a match).
 func (p *printer) block(stmts []*syntax.LetStmt, result syntax.Expr) Doc {
 	saved := p.noBrace
 	p.noBrace = false
 	defer func() { p.noBrace = saved }()
+	if len(stmts) == 0 {
+		return Group(Concat(Text("{"), Nest(Concat(Line, p.expr(result))), Line, Text("}")))
+	}
 	var items []Doc
 	prevEnd := 0
 	add := func(n syntax.Spanned, d Doc) {
@@ -383,8 +402,12 @@ func (p *printer) fieldInits(fs []*syntax.FieldInit) []Doc {
 	return items
 }
 
-// recordLit prints `{ a: 1, b: 2 }`: 3 or more fields always one per line.
+// recordLit prints `{ a: 1, b: 2 }`: 3 or more fields always one per line. The empty record is
+// `{}`.
 func (p *printer) recordLit(e *syntax.RecordLit) Doc {
+	if len(e.Fields) == 0 {
+		return Text("{}")
+	}
 	return braced(p.fieldInits(e.Fields), len(e.Fields) >= 3)
 }
 
@@ -416,6 +439,9 @@ func (p *printer) pattern(pt syntax.Pattern) Doc {
 		}
 		return Concat(Text(pt.Name+" "), p.subPattern(pt.Arg, true))
 	case *syntax.PRecord:
+		if len(pt.Fields) == 0 {
+			return Text("{}")
+		}
 		items := make([]Doc, len(pt.Fields))
 		for i, f := range pt.Fields {
 			items[i] = Concat(Text(f.Name+": "), p.subPattern(f.Pat, false))

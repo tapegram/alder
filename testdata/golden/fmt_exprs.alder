@@ -68,3 +68,11 @@ negArg = abs (-1) + -2
 
 access : Text
 access = (f x).name ++ model.user.name
+
+nonLastBreaks : List Card
+nonLastBreaks = [
+  { key: "activity", rows: List.map (\row -> { label: row.summary, href: Admin.Activity.Show { id: row.id } }) activities },
+]
+
+emptyRecord : R
+emptyRecord = f { } {}
