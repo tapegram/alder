@@ -312,13 +312,35 @@ func (l *Lexer) next() Token {
 }
 
 // ScanText reads raw HTML text from the current position up to '{', or to a '<' that starts
-// a tag (followed by a letter, '/' or '!'). Any other '<' is ordinary text.
+// a tag (followed by a letter, '/' or '!'). Any other '<' is ordinary text. The text's comment
+// lines (a line after the first that begins with `--`, which the parser drops) are collected
+// with the other comments.
 func (l *Lexer) ScanText() Token {
 	line, col, off := l.line, l.col, l.pos
 	for end := TextEnd(l.src, off); l.pos < end; {
-		l.advance()
+		if c := l.advance(); c == '\n' {
+			l.markupComment(end)
+		}
 	}
 	return l.record(l.tok(Text, string(l.src[off:l.pos]), line, col, off))
+}
+
+// markupComment records the comment line of markup text that starts at the current position,
+// if it is one, up to the end of the line or of the text.
+func (l *Lexer) markupComment(end int) {
+	i := l.pos
+	for i < end && (l.src[i] == ' ' || l.src[i] == '\t') {
+		i++
+	}
+	if i+1 >= end || l.src[i] != '-' || l.src[i+1] != '-' {
+		return
+	}
+	j := i
+	for j < end && l.src[j] != '\n' {
+		j++
+	}
+	text := strings.TrimRight(string(l.src[i:j]), " \t")
+	l.comments = append(l.comments, Comment{Text: text, Line: l.line, Col: l.col + i - l.pos, Offset: i, Markup: true})
 }
 
 // TextEnd is the offset where markup text starting at offset i ends: the first '{', or '<' that

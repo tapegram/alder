@@ -1,0 +1,215 @@
+-- The header: what this module is for.
+-- Second line of the header.
+
+module Comments -- the module line
+
+-- what the imports are for
+import Zeta -- last after sorting
+import Alpha
+-- leads Beta
+import Beta
+import Alpha -- a repeat's comment
+-- after the last import
+
+
+-- A block of comments above a declaration,
+
+-- with blank lines inside, before and after.
+
+answer : Int -- a trailing comment on the signature
+-- between the signature and the value
+answer = 42
+
+afterEquals : Int
+afterEquals =
+  -- after `=`, before the body
+  1 + 2
+
+emptyRecord : Pair
+emptyRecord = {
+  -- nothing here yet
+}
+
+emptyList : List Int
+emptyList = [
+  -- nothing here either
+]
+
+arms : Msg -> Int
+arms msg = match msg {
+  -- the first arm
+  Inc -> -- after the arrow
+    1,
+  Dec ->
+    -- between `->` and the body
+    2, -- after the arm
+  -- before the closing brace
+}
+
+pair : { a: Int, b: Int }
+pair = { a: 1, b: 2 } -- trails the declaration
+
+twoFields : Pair
+twoFields = { a: 1, -- why a is 1
+  b: 2 }
+
+chain : Bool
+chain = isAdmin user && -- admins always
+  isActive user && hasVerifiedEmail user && notSuspended user && notBanned user && agreedToTerms user
+
+table Article {
+  id: Id,
+  -- @admin begin columns
+  title: Text,
+  body: Text,
+  -- @admin end
+}
+
+form Signup = {
+  email: Text, -- the login
+  name: Text,
+
+  -- spaced from the field above
+  age: Int,
+}
+
+type Shape =
+  -- a dot
+  Point
+  | Circle Float -- the radius
+  -- a box
+  | Rect Size
+
+steps : Task Int
+steps = {
+  -- first
+  let a = 1 -- trailing a
+
+  -- second, after a blank line
+  let b <- fetch a
+  a + b -- the result
+  -- dangling at the end of the block
+}
+
+pick : Bool -> Int
+pick c = if c then
+  -- the yes branch
+  1
+else
+  -- the no branch
+  2
+
+items : List Int
+items = [
+  1, -- one
+  2,
+  -- three is last
+  3,
+]
+
+view : Html Never
+view =
+  <div
+    -- the class
+    class="box" -- a trailing attribute comment
+    id="main"
+  >
+    -- before the heading
+    <h1>Title</h1>
+    <p>
+      some text
+      -- a comment line inside the text
+      more text
+    </p>
+    <ul>{for x in xs ->
+      -- each item
+      <li>{x}</li>}</ul>
+    -- after the last child
+  </div>
+
+empty : Html Never
+empty = <div>
+  -- nothing to show
+</div>
+
+-- @admin begin views
+listView : Int
+listView = 1
+
+showView : Int
+showView = 2
+-- @admin end
+
+afterRegion : Int
+afterRegion = 3
+
+tagEnd : Html Never
+tagEnd = <input type="text" name="q" -- the query
+  />
+
+tagDangling : Html Never
+tagDangling = <a href="/"
+  -- nothing after href
+  >home</a>
+
+hugged : List Int
+hugged = List.map (\x ->
+  -- double it
+  x * 2) xs
+
+chainElse : Int
+chainElse = if a then 1 else
+  -- the fallback chain
+  if b then 2 else 3
+
+updated : Model
+updated = { model |
+  count: model.count + 1, -- bump
+  -- keep the name
+  name: model.name
+}
+
+noMatch : Int
+noMatch = match x {
+  -- no arms yet
+}
+
+markupMatch : Html Never
+markupMatch = <div>{match msg {
+  -- the empty case
+  Nothing -> <p>none</p>,
+  Just m ->
+    -- show it
+    <p>{m}</p>,
+}}</div>
+
+fake Mail {
+  -- the sent mails
+  table Sent { to: Text }
+
+  -- send records it
+  send m = Task.succeed ()
+  -- nothing else
+}
+
+capability Clock {
+  now : Task Time, -- the wall clock
+  -- the zone
+  zone : Task Zone,
+}
+
+deploy {
+  -- where it runs
+  production: Ssh "deploy@box" { domain: "x.example.com" },
+  requires: [
+    "A", -- the first
+    -- the last
+    "B",
+  ],
+}
+
+lastDecl : Int
+lastDecl = 1
+-- @admin end
+
+-- at the end of the file

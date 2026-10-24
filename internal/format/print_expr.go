@@ -49,7 +49,7 @@ func (p *printer) expr(e syntax.Expr) Doc {
 	case *syntax.Match:
 		return p.match(e)
 	case *syntax.Block:
-		return p.block(e.Stmts, e.Result)
+		return p.block(e)
 	case *syntax.BinOp:
 		return p.binOp(e)
 	}
@@ -99,6 +99,9 @@ func opensBody(e syntax.Expr) bool {
 // space after it): on the same line when it opens there (opensBody) or fits, else on the next
 // line, indented.
 func (p *printer) after(e syntax.Expr) Doc {
+	if p.hasLead(e) { // the comments go on lines of their own, the body after them
+		return Nest(Concat(HardLine, p.lead(e, true), p.expr(e)))
+	}
 	if opensBody(e) {
 		return Concat(Text(" "), p.expr(e))
 	}
@@ -191,10 +194,10 @@ func (p *printer) hug(e syntax.Expr) Doc {
 	switch x := e.(type) {
 	case *syntax.Lambda:
 		// `(\x ->` … `)`, or `(\x -> {` … `})` when the body opens on the arrow's line
-		if opensBody(x.Body) {
+		if opensBody(x.Body) && !p.hasLead(x.Body) {
 			return Concat(Text("("+lambdaHead(x)+" "), p.expr(x.Body), Text(")"))
 		}
-		return Group(Concat(Text("("+lambdaHead(x)), Nest(Concat(Line, p.expr(x.Body))), SoftLine, Text(")")))
+		return Group(Concat(Text("("+lambdaHead(x)), Nest(Concat(Line, p.lead(x.Body, true), p.expr(x.Body))), SoftLine, Text(")")))
 	default:
 		if opensBody(x) {
 			return Concat(Text("("), p.expr(x), Text(")"))
@@ -296,23 +299,28 @@ func (p *printer) startsWithMinus(e syntax.Expr) bool {
 // the `then` or `else` line, K&R style: `if c then {` … `} else {` … `}`.
 func (p *printer) ifChain(e *syntax.If) Doc {
 	var parts []Doc
+	// a block branch opens on the `then` or `else` line, unless comments lead it
+	opens := func(x syntax.Expr) bool {
+		_, ok := x.(*syntax.Block)
+		return ok && !p.hasLead(x)
+	}
 	branch := func(x syntax.Expr) {
-		if _, ok := x.(*syntax.Block); ok {
+		if opens(x) {
 			parts = append(parts, Text(" "), p.expr(x))
 		} else {
-			parts = append(parts, Nest(Concat(Line, p.expr(x))))
+			parts = append(parts, Nest(Concat(Line, p.lead(x, true), p.expr(x))))
 		}
 	}
 	for {
 		parts = append(parts, Text("if "), p.expr(e.Cond), Text(" then"))
 		branch(e.Then)
-		if _, ok := e.Then.(*syntax.Block); ok {
+		if opens(e.Then) {
 			parts = append(parts, Text(" else"))
 		} else {
 			parts = append(parts, Line, Text("else"))
 		}
 		next, ok := e.Else.(*syntax.If)
-		if !ok {
+		if !ok || p.hasLead(next) {
 			break
 		}
 		parts = append(parts, Text(" "))
@@ -329,37 +337,44 @@ func (p *printer) match(e *syntax.Match) Doc {
 	subj := p.expr(e.Subject)
 	p.noBrace = false
 	defer func() { p.noBrace = saved }()
-	if len(e.Arms) == 0 {
+	if len(e.Arms) == 0 && len(p.c.dangling[e]) == 0 {
 		return Concat(Text("match "), subj, Text(" { }"))
 	}
-	arms := make([]Doc, len(e.Arms))
-	for i, a := range e.Arms {
-		arms[i] = Concat(p.pattern(a.Pat), Text(" ->"), p.after(a.Body), Text(","))
+	return Concat(Text("match "), subj, Text(" {"), p.arms(e, e.Arms, func(a *syntax.Arm) Doc { return p.after(a.Body) }), HardLine, Text("}"))
+}
+
+// arms prints match arms one per line, each with a trailing comma and its comments, then the
+// match's dangling comments, indented.
+func (p *printer) arms(group any, arms []*syntax.Arm, body func(*syntax.Arm) Doc) Doc {
+	var out []Doc
+	for i, a := range arms {
+		out = append(out, HardLine, p.lead(a, i == 0), p.pattern(a.Pat), Text(" ->"), body(a), Text(","), p.trail(a))
 	}
-	return Concat(Text("match "), subj, Text(" {"), Nest(Concat(HardLine, join(arms, HardLine))), HardLine, Text("}"))
+	return Nest(Concat(append(out, p.dangle(group, len(arms) == 0, nil))...))
 }
 
 // block prints `{`, the statements and the result one per line, `}`. A blank line between two
 // of them in the source is kept (one, however many there were). A block with only a result is
 // `{ x }` if it fits. It stays a block: the checker treats some blocks differently from their
 // result (a test's body, an `update` that is a match).
-func (p *printer) block(stmts []*syntax.LetStmt, result syntax.Expr) Doc {
+func (p *printer) block(b *syntax.Block) Doc {
+	stmts, result := b.Stmts, b.Result
 	saved := p.noBrace
 	p.noBrace = false
 	defer func() { p.noBrace = saved }()
 	if len(stmts) == 0 {
-		return Group(Concat(Text("{"), Nest(Concat(Line, p.expr(result))), Line, Text("}")))
+		return Group(Concat(Text("{"), Nest(Concat(Line, p.withComments(result, p.expr(result)), p.dangle(b, false, nil))), Line, Text("}")))
 	}
 	var items []Doc
 	prevEnd := 0
 	add := func(n syntax.Spanned, d Doc) {
 		if len(items) > 0 {
 			items = append(items, HardLine)
-			if p.blankBetween(prevEnd, n.GetSpan().Start.Line) {
+			if p.blankBetween(prevEnd, p.startLine(n)) {
 				items = append(items, HardLine)
 			}
 		}
-		items = append(items, d)
+		items = append(items, p.withComments(n, d))
 		prevEnd = n.GetSpan().End.Line
 	}
 	for _, s := range stmts {
@@ -378,20 +393,30 @@ func (p *printer) block(stmts []*syntax.LetStmt, result syntax.Expr) Doc {
 	}
 	// a result starting with `-` on its own line would continue the last statement
 	add(result, p.operand(result, len(stmts) > 0 && p.startsWithMinus(result)))
-	return Concat(Text("{"), Nest(Concat(HardLine, Concat(items...))), HardLine, Text("}"))
+	return Concat(Text("{"), Nest(Concat(HardLine, Concat(items...), p.dangle(b, false, nil))), HardLine, Text("}"))
 }
 
 // ---- records and lists
 
 func (p *printer) list(e *syntax.ListLit) Doc {
-	if len(e.Elems) == 0 {
+	items := make([]Doc, len(e.Elems))
+	nodes := make([]any, len(e.Elems))
+	for i, x := range e.Elems {
+		items[i], nodes[i] = p.inBrackets(x), x
+	}
+	return p.bracketed(e, nodes, items)
+}
+
+// bracketed prints `[a, b]`, or one item per line with trailing commas; no items is `[]`.
+func (p *printer) bracketed(group any, nodes []any, items []Doc) Doc {
+	if len(items) == 0 && len(p.c.dangling[group]) == 0 {
 		return Text("[]")
 	}
-	items := make([]Doc, len(e.Elems))
-	for i, x := range e.Elems {
-		items[i] = p.inBrackets(x)
+	first := SoftLine
+	if len(items) == 0 {
+		first = Text("")
 	}
-	return Group(Concat(Text("["), Nest(Concat(SoftLine, join(items, Concat(Text(","), Line)), IfBreak(Text(","), Text("")))), SoftLine, Text("]")))
+	return Group(Concat(Text("["), Nest(Concat(first, p.commaItems(group, nodes, items, true))), SoftLine, Text("]")))
 }
 
 func (p *printer) fieldInits(fs []*syntax.FieldInit) []Doc {
@@ -405,10 +430,10 @@ func (p *printer) fieldInits(fs []*syntax.FieldInit) []Doc {
 // recordLit prints `{ a: 1, b: 2 }`: 3 or more fields always one per line. The empty record is
 // `{}`.
 func (p *printer) recordLit(e *syntax.RecordLit) Doc {
-	if len(e.Fields) == 0 {
+	if len(e.Fields) == 0 && len(p.c.dangling[e]) == 0 {
 		return Text("{}")
 	}
-	return braced(p.fieldInits(e.Fields), len(e.Fields) >= 3)
+	return p.braced(e, initItems(e.Fields), p.fieldInits(e.Fields), len(e.Fields) >= 3)
 }
 
 // recordUpdate prints `{ r | a: 1 }`, or `{ r |`, one field per line, `}`. The grammar takes no
@@ -419,7 +444,7 @@ func (p *printer) recordUpdate(e *syntax.RecordUpdate) Doc {
 		first = HardLine
 	}
 	return Group(Concat(Text("{ "), p.inBrackets(e.Base), Text(" |"),
-		Nest(Concat(first, join(p.fieldInits(e.Fields), Concat(Text(","), Line)))), Line, Text("}")))
+		Nest(Concat(first, p.commaItems(e, initItems(e.Fields), p.fieldInits(e.Fields), false))), Line, Text("}")))
 }
 
 // ---- patterns
@@ -446,7 +471,7 @@ func (p *printer) pattern(pt syntax.Pattern) Doc {
 		for i, f := range pt.Fields {
 			items[i] = Concat(Text(f.Name+": "), p.subPattern(f.Pat, false))
 		}
-		return braced(items, false)
+		return p.braced(nil, nil, items, false)
 	case *syntax.PList:
 		// one line: the grammar takes no line break inside a list pattern
 		var items []Doc

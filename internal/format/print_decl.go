@@ -9,23 +9,49 @@ import (
 )
 
 // module prints the header, the imports (sorted, without repeats) and the declarations, one
-// blank line between each part.
+// blank line between each part, with their comments. A comment moves with its import; a
+// repeated import's comments join the one kept.
 func (p *printer) module(m *syntax.Module) Doc {
-	parts := []Doc{Text("module " + m.Name)}
+	var out []Doc
+	if cs := p.c.leading[m]; len(cs) > 0 { // a header above `module`
+		out = append(out, p.lead(m, true))
+	}
+	out = append(out, Text("module "+m.Name), p.trail(m))
 	if len(m.Imports) > 0 {
-		var ims []Doc
+		out = append(out, HardLine, HardLine)
+		byName := map[string][]*syntax.Import{}
+		for _, im := range m.Imports {
+			byName[im.Module] = append(byName[im.Module], im)
+		}
 		for i, im := range sortedImports(m.Imports) {
 			if i > 0 {
-				ims = append(ims, HardLine)
+				out = append(out, HardLine)
 			}
-			ims = append(ims, Text("import "+im.Module))
+			same := byName[im.Module]
+			for _, x := range same {
+				for _, c := range p.c.leading[x] {
+					out = append(out, Text(c.Text), HardLine)
+				}
+			}
+			for _, x := range same[1:] { // a repeat's trailing comment goes above the import kept
+				for _, c := range p.c.trailing[x] {
+					out = append(out, Text(c.Text), HardLine)
+				}
+			}
+			out = append(out, Text("import "+im.Module), p.trail(same[0]))
 		}
-		parts = append(parts, Concat(ims...))
 	}
 	for _, d := range m.Decls {
-		parts = append(parts, p.decl(d))
+		// one blank line before a declaration and its comments; when the comments stand apart
+		// from it (`-- @admin end`), the blank line between them separates it instead
+		out = append(out, HardLine)
+		if cs := p.c.leading[d]; len(cs) == 0 || p.blankAbove(cs[0].Line) || !p.blankBetween(cs[len(cs)-1].Line, d.GetSpan().Start.Line) {
+			out = append(out, HardLine)
+		}
+		out = append(out, p.withComments(d, p.decl(d)))
 	}
-	return Concat(join(parts, Concat(HardLine, HardLine)), HardLine)
+	out = append(out, p.dangle(m, len(m.Decls) == 0 && len(m.Imports) == 0, nil))
+	return Concat(append(out, HardLine)...)
 }
 
 func (p *printer) decl(d syntax.Decl) Doc {
@@ -39,14 +65,14 @@ func (p *printer) decl(d syntax.Decl) Doc {
 	case *syntax.MsgDecl:
 		doc := []Doc{Text("msg " + d.Name)}
 		if d.Params != nil {
-			doc = append(doc, Text(" "), p.fieldRecord(d.Params.Fields))
+			doc = append(doc, Text(" "), p.fieldRecord(d.Params, d.Params.Fields))
 		}
 		if d.Form != "" {
 			doc = append(doc, Text(" form "+d.Form))
 		}
 		return Concat(doc...)
 	case *syntax.FormDecl:
-		return Concat(Text("form "+d.Name+" = "), p.fieldRecord(d.Fields))
+		return Concat(Text("form "+d.Name+" = "), p.fieldRecord(d, d.Fields))
 	case *syntax.TableDecl:
 		return p.tableDecl(d)
 	case *syntax.CapDecl:
@@ -55,13 +81,13 @@ func (p *printer) decl(d syntax.Decl) Doc {
 		for i, f := range d.Entries {
 			items[i] = Concat(Text(f.Name+" : "), p.typ(f.Type))
 		}
-		return Concat(Text("capability "+d.Name+" "), braced(items, true))
+		return Concat(Text("capability "+d.Name+" "), p.braced(d, fieldItems(d.Entries), items, true))
 	case *syntax.FakeDecl:
 		return p.fakeDecl(d)
 	case *syntax.SessionDecl:
-		return Concat(Text("session "), p.fieldRecord(d.Fields))
+		return Concat(Text("session "), p.fieldRecord(d, d.Fields))
 	case *syntax.DeployDecl:
-		return Concat(Text("deploy "), p.deployRecord(d.Fields))
+		return Concat(Text("deploy "), p.deployRecord(d, d.Fields))
 	case *syntax.LoginDecl:
 		return Text("login = " + d.Page)
 	case *syntax.SiloDecl:
@@ -69,7 +95,7 @@ func (p *printer) decl(d syntax.Decl) Doc {
 		for i, t := range d.Tables {
 			items[i] = Text(t)
 		}
-		return Concat(Text("silo "+d.Key+" "), braced(items, false))
+		return Concat(Text("silo "+d.Key+" "), p.braced(nil, nil, items, false))
 	case *syntax.ChooseDecl:
 		return Text("choose " + d.Key + " = " + d.Page)
 	case *syntax.TestDecl:
@@ -82,7 +108,7 @@ func (p *printer) decl(d syntax.Decl) Doc {
 func (p *printer) valueDecl(d *syntax.ValueDecl) Doc {
 	var doc []Doc
 	if d.Sig != nil {
-		doc = append(doc, Text(d.Name+" : "), p.typ(d.Sig))
+		doc = append(doc, Text(d.Name+" : "), p.typ(d.Sig), p.trail(d.Sig), p.dangle(d.Sig, true, nil))
 		if d.Body == nil {
 			return Concat(doc...)
 		}
@@ -107,7 +133,7 @@ func (p *printer) typeDecl(d *syntax.TypeDecl) Doc {
 	}
 	switch {
 	case d.Record != nil:
-		return Concat(Text(head+" = "), p.fieldRecord(d.Record.Fields))
+		return Concat(Text(head+" = "), p.fieldRecord(d.Record, d.Record.Fields))
 	case d.Brand != nil:
 		doc := Text(head + " = brand " + d.Brand.Base)
 		if d.Brand.Check != nil {
@@ -119,7 +145,7 @@ func (p *printer) typeDecl(d *syntax.TypeDecl) Doc {
 		// one line if it fits, else `=` ends the line and each constructor starts one, `|` first
 		var ctors []Doc
 		for i, c := range d.Union {
-			ctors = append(ctors, Line)
+			ctors = append(ctors, Line, p.lead(c, i == 0))
 			if i > 0 {
 				ctors = append(ctors, Text("| "))
 			}
@@ -127,6 +153,7 @@ func (p *printer) typeDecl(d *syntax.TypeDecl) Doc {
 			if c.Arg != nil {
 				ctors = append(ctors, Text(" "), p.atype(c.Arg))
 			}
+			ctors = append(ctors, p.trail(c))
 		}
 		return Group(Concat(Text(head+" ="), Nest(Concat(ctors...))))
 	}
@@ -134,7 +161,7 @@ func (p *printer) typeDecl(d *syntax.TypeDecl) Doc {
 }
 
 func (p *printer) pageDecl(d *syntax.PageDecl) Doc {
-	doc := Concat(Text("page \""+d.Path+"\" "), p.fieldRecord(d.Params.Fields))
+	doc := Concat(Text("page \""+d.Path+"\" "), p.fieldRecord(d.Params, d.Params.Fields))
 	var clauses []string
 	if len(d.Requires) > 0 {
 		clauses = append(clauses, strings.Join(d.Requires, ", "))
@@ -156,12 +183,11 @@ func (p *printer) tableDecl(d *syntax.TableDecl) Doc {
 	for _, a := range d.Attrs {
 		head += " " + p.attr(a)
 	}
-	return Concat(Text(head+" "), p.fieldRecord(d.Fields))
+	return Concat(Text(head+" "), p.fieldRecord(d, d.Fields))
 }
 
-// fakeDecl prints a fake's tables and entry definitions one per line, in source order, keeping
-// one blank line where the source had any.
-func (p *printer) fakeDecl(d *syntax.FakeDecl) Doc {
+// fakeItems is a fake's tables and entry definitions in source order.
+func fakeItems(d *syntax.FakeDecl) []any {
 	var items []syntax.Decl
 	for _, t := range d.Tables {
 		items = append(items, t)
@@ -169,29 +195,47 @@ func (p *printer) fakeDecl(d *syntax.FakeDecl) Doc {
 	for _, e := range d.Entries {
 		items = append(items, e)
 	}
-	if len(items) == 0 {
-		return Text("fake " + d.Name + " { }")
-	}
 	slices.SortFunc(items, func(a, b syntax.Decl) int {
 		sa, sb := a.GetSpan().Start, b.GetSpan().Start
 		return cmp.Or(cmp.Compare(sa.Line, sb.Line), cmp.Compare(sa.Col, sb.Col))
 	})
+	out := make([]any, len(items))
+	for i, it := range items {
+		out[i] = it
+	}
+	return out
+}
+
+// fakeDecl prints a fake's tables and entry definitions one per line, in source order, keeping
+// one blank line where the source had any.
+func (p *printer) fakeDecl(d *syntax.FakeDecl) Doc {
+	items := fakeItems(d)
+	dangling := p.dangle(d, len(items) == 0, nil)
+	if len(items) == 0 && len(p.c.dangling[d]) == 0 {
+		return Text("fake " + d.Name + " { }")
+	}
 	var body []Doc
 	for i, it := range items {
 		if i > 0 {
 			body = append(body, HardLine)
-			if p.blankBetween(items[i-1].GetSpan().End.Line, it.GetSpan().Start.Line) {
+			if p.blankBetween(spanOf(items[i-1]).End.Line, p.startLine(it)) {
 				body = append(body, HardLine)
 			}
 		}
+		var doc Doc
 		switch it := it.(type) {
 		case *syntax.TableDecl:
-			body = append(body, p.tableDecl(it))
+			doc = p.tableDecl(it)
 		case *syntax.ValueDecl:
-			body = append(body, p.definition(it))
+			doc = p.definition(it)
 		}
+		body = append(body, p.withComments(it, doc))
 	}
-	return Concat(Text("fake "+d.Name+" {"), Nest(Concat(HardLine, Concat(body...))), HardLine, Text("}"))
+	inner := Concat(body...)
+	if len(items) > 0 {
+		inner = Concat(HardLine, inner)
+	}
+	return Concat(Text("fake "+d.Name+" {"), Nest(Concat(inner, dangling)), HardLine, Text("}"))
 }
 
 // field prints `name: Type [via T] [= default] [@attr …]`.
@@ -223,34 +267,38 @@ func (p *printer) attr(a *syntax.Attr) string {
 }
 
 // fieldRecord prints a braced field list: 3 or more fields always one per line, fewer on one
-// line when they fit.
-func (p *printer) fieldRecord(fs []*syntax.Field) Doc {
+// line when they fit. group is the node that holds the fields (for its comments).
+func (p *printer) fieldRecord(group any, fs []*syntax.Field) Doc {
 	items := make([]Doc, len(fs))
 	for i, f := range fs {
 		items[i] = p.field(f)
 	}
-	return braced(items, len(items) >= 3)
+	return p.braced(group, fieldItems(fs), items, len(items) >= 3)
 }
 
 // braced prints `{ a, b }`, or when it does not fit or vertical is set, one item per line with
-// trailing commas and the closing brace on a line of its own. No items is `{ }`.
-func braced(items []Doc, vertical bool) Doc {
-	if len(items) == 0 {
+// trailing commas and the closing brace on a line of its own. No items is `{ }`. nodes are the
+// items' nodes and group the node holding them, for their comments (nil: none).
+func (p *printer) braced(group any, nodes []any, items []Doc, vertical bool) Doc {
+	if len(items) == 0 && len(p.c.dangling[group]) == 0 {
 		return Text("{ }")
 	}
 	first := Line
 	if vertical {
 		first = HardLine
 	}
-	return Group(Concat(Text("{"), Nest(Concat(first, join(items, Concat(Text(","), Line)), IfBreak(Text(","), Text("")))), Line, Text("}")))
+	if len(items) == 0 {
+		first = Text("")
+	}
+	return Group(Concat(Text("{"), Nest(Concat(first, p.commaItems(group, nodes, items, true))), Line, Text("}")))
 }
 
-func (p *printer) deployRecord(fs []*syntax.DeployField) Doc {
+func (p *printer) deployRecord(group any, fs []*syntax.DeployField) Doc {
 	items := make([]Doc, len(fs))
 	for i, f := range fs {
 		items[i] = Concat(Text(f.Name+": "), p.deployValue(f.Value))
 	}
-	return braced(items, len(items) >= 3)
+	return p.braced(group, deployItems(fs), items, len(items) >= 3)
 }
 
 func (p *printer) deployValue(v *syntax.DeployValue) Doc {
@@ -258,21 +306,19 @@ func (p *printer) deployValue(v *syntax.DeployValue) Doc {
 	case "string":
 		return Text("\"" + v.Str + "\"")
 	case "list":
-		if len(v.List) == 0 {
-			return Text("[]")
-		}
 		items := make([]Doc, len(v.List))
+		nodes := make([]any, len(v.List))
 		for i, e := range v.List {
-			items[i] = p.deployValue(e)
+			items[i], nodes[i] = p.deployValue(e), e
 		}
-		return Group(Concat(Text("["), Nest(Concat(SoftLine, join(items, Concat(Text(","), Line)), IfBreak(Text(","), Text("")))), SoftLine, Text("]")))
+		return p.bracketed(v, nodes, items)
 	case "ctor":
 		doc := []Doc{Text(v.Ctor)}
 		if v.Arg != nil {
 			doc = append(doc, Text(" "), p.deployValue(v.Arg))
 		}
 		if v.Rec != nil {
-			doc = append(doc, Text(" "), p.deployRecord(v.Rec))
+			doc = append(doc, Text(" "), p.deployRecord(v, v.Rec))
 		}
 		return Concat(doc...)
 	}
@@ -307,9 +353,9 @@ func (p *printer) typ(t syntax.Type) Doc {
 			for i, f := range t.Fields {
 				items[i] = p.field(f)
 			}
-			return braced(items, false)
+			return p.braced(t, fieldItems(t.Fields), items, false)
 		}
-		return p.fieldRecord(t.Fields)
+		return p.fieldRecord(t, t.Fields)
 	case *syntax.FunType:
 		p.inFun++
 		defer func() { p.inFun-- }()

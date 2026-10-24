@@ -24,6 +24,10 @@ import (
 // printed verbatim.
 func (p *printer) element(e *syntax.Element) Doc {
 	name := qual(e.Module, e.Tag)
+	if len(e.Children) == 0 && len(p.markupDangling(e)) > 0 {
+		// only comment lines inside
+		return Concat(p.startTag(e, ">"), Nest(p.dangle(e, true, isMarkup)), HardLine, Text("</"+name+">"))
+	}
 	if len(e.Children) == 0 {
 		if strings.HasSuffix(p.spanText(e.Span), "/>") {
 			return p.startTag(e, " />")
@@ -33,7 +37,7 @@ func (p *printer) element(e *syntax.Element) Doc {
 	if t, ok := e.Children[0].(*syntax.HtmlText); ok && t.Raw {
 		return Concat(p.startTag(e, ">"), Text(t.Text), Text("</"+name+">"))
 	}
-	pieces, forced := p.markupChildren(e.Children)
+	pieces, forced := p.markupChildren(e)
 	render := func(pc piece) Doc {
 		switch {
 		case pc.d != nil:
@@ -61,8 +65,13 @@ func (p *printer) element(e *syntax.Element) Doc {
 // attribute per line, indented, end on the last attribute's line.
 func (p *printer) startTag(e *syntax.Element, end string) Doc {
 	var attrs []Doc
-	for _, a := range e.Attrs {
-		attrs = append(attrs, Line, p.htmlAttr(a))
+	for i, a := range e.Attrs {
+		attrs = append(attrs, Line, p.lead(a, i == 0), p.htmlAttr(a), p.trail(a))
+	}
+	attrs = append(attrs, p.dangle(e, len(e.Attrs) == 0, isCode))
+	// a comment ends its line: the end goes on the next
+	if n := len(e.Attrs); n > 0 && p.hasTrail(e.Attrs[n-1]) || len(p.c.dangling[e]) > len(p.markupDangling(e)) {
+		return Group(Concat(Text("<"+qual(e.Module, e.Tag)), Nest(Concat(attrs...)), HardLine, Text(strings.TrimSpace(end))))
 	}
 	return Group(Concat(Text("<"+qual(e.Module, e.Tag)), Nest(Concat(attrs...)), Text(end)))
 }
@@ -122,8 +131,9 @@ type childEdges struct {
 // markupChildren lays out an element's children as boundary, child pieces…, boundary, …,
 // boundary; forced reports that the element must be vertical (two or more element children, a
 // blank line, a comment line in text).
-func (p *printer) markupChildren(children []syntax.Expr) ([]piece, bool) {
-	forced := elementChildren(children) >= 2
+func (p *printer) markupChildren(e *syntax.Element) ([]piece, bool) {
+	children := e.Children
+	forced := elementChildren(children) >= 2 || len(p.markupDangling(e)) > 0
 	edges := make([]childEdges, len(children))
 	contents := make([][]piece, len(children))
 	for i, c := range children {
@@ -133,8 +143,14 @@ func (p *printer) markupChildren(children []syntax.Expr) ([]piece, bool) {
 			forced = forced || f
 			continue
 		}
-		edges[i].startLine, edges[i].endLine = c.GetSpan().Start.Line, c.GetSpan().End.Line
-		contents[i] = []piece{{d: p.markupChild(c)}}
+		// comment lines of text before a child lead it; after the last, they end the element
+		edges[i].startLine, edges[i].endLine = p.startLine(c), c.GetSpan().End.Line
+		d := Concat(p.lead(c, true), p.markupChild(c))
+		forced = forced || p.hasLead(c)
+		if i == len(children)-1 {
+			d = Concat(d, p.dangle(e, false, isMarkup))
+		}
+		contents[i] = []piece{{d: d}}
 	}
 	start, end := childEdges{}, childEdges{}
 	boundary := func(l, r *childEdges, outer bool) piece {
@@ -239,12 +255,12 @@ func (p *printer) markupChild(c syntax.Expr) Doc {
 	case *syntax.HtmlFor:
 		// `{for x in xs -> <li>…</li>}`, or the body on the next line, indented
 		return Group(Concat(Text("{for "+c.Var+" in "), p.inBrackets(c.List), Text(" ->"),
-			Nest(Concat(Line, p.markupBody(c.Body))), Text("}")))
+			Nest(Concat(Line, p.lead(c.Body, true), p.markupBody(c.Body))), Text("}")))
 	case *syntax.HtmlIf:
 		// `{if c then a else b}`, or `{if c then` / a / `else` / b`}`, each branch indented
 		return Group(Concat(Text("{if "), p.inBrackets(c.Cond), Text(" then"),
-			Nest(Concat(Line, p.markupBody(c.Then))), Line, Text("else"),
-			Nest(Concat(Line, p.markupBody(c.Else))), Text("}")))
+			Nest(Concat(Line, p.lead(c.Then, true), p.markupBody(c.Then))), Line, Text("else"),
+			Nest(Concat(Line, p.lead(c.Else, true), p.markupBody(c.Else))), Text("}")))
 	case *syntax.HtmlMatch:
 		return p.markupMatch(c)
 	}
@@ -267,20 +283,19 @@ func (p *printer) markupMatch(e *syntax.HtmlMatch) Doc {
 	subj := p.expr(e.Subject)
 	p.noBrace = false
 	defer func() { p.noBrace = saved }()
-	if len(e.Arms) == 0 {
+	if len(e.Arms) == 0 && len(p.c.dangling[e]) == 0 {
 		return Concat(Text("{match "), subj, Text(" { }}"))
 	}
-	arms := make([]Doc, len(e.Arms))
-	for i, a := range e.Arms {
-		var body Doc
-		if x, ok := a.Body.(*syntax.HtmlExpr); ok {
-			body = p.after(x.Expr)
-		} else {
-			body = Group(Nest(Concat(Line, p.markupBody(a.Body))))
+	body := func(a *syntax.Arm) Doc {
+		if p.hasLead(a.Body) {
+			return Nest(Concat(HardLine, p.lead(a.Body, true), p.markupBody(a.Body)))
 		}
-		arms[i] = Concat(p.pattern(a.Pat), Text(" ->"), body, Text(","))
+		if x, ok := a.Body.(*syntax.HtmlExpr); ok {
+			return p.after(x.Expr)
+		}
+		return Group(Nest(Concat(Line, p.markupBody(a.Body))))
 	}
-	return Concat(Text("{match "), subj, Text(" {"), Nest(Concat(HardLine, join(arms, HardLine))), HardLine, Text("}}"))
+	return Concat(Text("{match "), subj, Text(" {"), p.arms(e, e.Arms, body), HardLine, Text("}}"))
 }
 
 // elementChildren counts the elements among an element's children, and those directly inside
@@ -311,4 +326,18 @@ func elementChildren(children []syntax.Expr) int {
 		}
 	}
 	return n
+}
+
+func isMarkup(c syntax.Comment) bool { return c.Markup }
+func isCode(c syntax.Comment) bool   { return !c.Markup }
+
+// markupDangling is the comment lines of text after an element's last child.
+func (p *printer) markupDangling(e *syntax.Element) []syntax.Comment {
+	var out []syntax.Comment
+	for _, c := range p.c.dangling[e] {
+		if c.Markup {
+			out = append(out, c)
+		}
+	}
+	return out
 }

@@ -141,3 +141,11 @@ func TestRender_FlatWithHardBreakPrintsAsUsual(t *testing.T) {
 	d := Flat(Group(Concat(Text("{"), Nest(Concat(HardLine, Text("a: 1"))), Line, Text("}"))))
 	eq(t, Render(d, 100), "{\n  a: 1\n}")
 }
+
+// A trailing comment breaks its groups and has no width: the code before it keeps its layout.
+func TestRender_Trailing(t *testing.T) {
+	d := Group(Concat(Text("{"), Nest(Concat(Line, Text("a: 1,"), Trailing(" -- c"), Line, Text("b: 2"))), Line, Text("}")))
+	eq(t, Render(d, 100), "{\n  a: 1, -- c\n  b: 2\n}")
+	body := Concat(Text("x ="), Group(Nest(Concat(Line, Text("long_value")))), Trailing(" -- a comment far wider than the line"))
+	eq(t, Render(body, 20), "x = long_value -- a comment far wider than the line")
+}

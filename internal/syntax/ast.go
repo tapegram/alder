@@ -44,9 +44,12 @@ type Module struct {
 }
 
 // Comment is a `--` comment. Text includes the leading `--`, with trailing blanks trimmed.
+// Markup is set for a comment line inside markup text (a line of text, not its first, that
+// begins with `--`): the parser drops those lines from the text.
 type Comment struct {
 	Text              string
 	Line, Col, Offset int
+	Markup            bool
 }
 type Import struct {
 	Node

@@ -267,3 +267,25 @@ func TestLexer_RestoreDropsComments(t *testing.T) {
 		t.Fatalf("after Reset: %+v", l.Comments())
 	}
 }
+
+// A line of markup text after the first that begins with `--` is a comment (the parser drops it
+// from the text): it is collected, marked Markup. `--` elsewhere in text is text.
+func TestLexer_CollectsMarkupComments(t *testing.T) {
+	src := "module M\nv = <p>a -- b\n  -- one  \n  c\n  -- two {x}</p>\n"
+	m, diags := ParseFile("m.alder", []byte(src))
+	if len(diags) > 0 {
+		t.Fatal(diags)
+	}
+	want := []Comment{
+		{Text: "-- one", Line: 3, Col: 3, Offset: strings.Index(src, "-- one"), Markup: true},
+		{Text: "-- two", Line: 5, Col: 3, Offset: strings.Index(src, "-- two"), Markup: true},
+	}
+	if len(m.Comments) != len(want) {
+		t.Fatalf("comments = %+v, want %+v", m.Comments, want)
+	}
+	for i := range want {
+		if m.Comments[i] != want[i] {
+			t.Errorf("comment %d = %+v, want %+v", i, m.Comments[i], want[i])
+		}
+	}
+}

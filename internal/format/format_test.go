@@ -95,12 +95,53 @@ func TestSource_OutputThatDoesNotParseIsUnsafe(t *testing.T) {
 	}
 }
 
-// Comments are not printed yet (attachment comes later): a file whose comments the output would
-// drop is refused rather than rewritten without them.
+func TestSource_KeepsComments(t *testing.T) {
+	src := "module M\n\n-- the answer\nx : Int\nx = 42 -- forty-two\n"
+	out, _, err := Source("m.alder", []byte(src))
+	if err != nil || string(out) != src {
+		t.Fatalf("got %q, %v; want the input unchanged", out, err)
+	}
+}
+
+// Output that drops a comment, or changes the comments' order, is refused.
 func TestSource_DroppedCommentIsUnsafe(t *testing.T) {
+	testMutate = func(b []byte) []byte { return []byte(strings.Replace(string(b), "-- the answer\n", "", 1)) }
+	defer func() { testMutate = nil }()
 	_, _, err := Source("m.alder", []byte("module M\n\n-- the answer\nx : Int\nx = 42\n"))
 	if !errors.Is(err, ErrUnsafe) {
 		t.Fatalf("err = %v, want ErrUnsafe", err)
+	}
+}
+
+func TestSource_ReorderedCommentsAreUnsafe(t *testing.T) {
+	testMutate = func(b []byte) []byte {
+		s := strings.Replace(string(b), "-- one", "-- tmp", 1)
+		s = strings.Replace(s, "-- two", "-- one", 1)
+		return []byte(strings.Replace(s, "-- tmp", "-- two", 1))
+	}
+	defer func() { testMutate = nil }()
+	_, _, err := Source("m.alder", []byte("module M\n\n-- one\nx : Int\nx = 1\n\n-- two\ny : Int\ny = 2\n"))
+	if !errors.Is(err, ErrUnsafe) {
+		t.Fatalf("err = %v, want ErrUnsafe", err)
+	}
+}
+
+// A comment line inside markup text is a comment too: dropping it is refused.
+func TestSource_DroppedMarkupCommentIsUnsafe(t *testing.T) {
+	testMutate = func(b []byte) []byte { return []byte(strings.Replace(string(b), "-- note\n", "", 1)) }
+	defer func() { testMutate = nil }()
+	_, _, err := Source("m.alder", []byte("module M\n\nv : Html Never\nv =\n  <div>\n    -- note\n    <b>x</b>\n  </div>\n"))
+	if !errors.Is(err, ErrUnsafe) {
+		t.Fatalf("err = %v, want ErrUnsafe", err)
+	}
+}
+
+// Comments move with the imports they belong to, which are sorted: in the import block their
+// order is free.
+func TestSource_ImportCommentsMoveWithImports(t *testing.T) {
+	out, _, err := Source("m.alder", []byte("module M\n\n-- for b\nimport B\nimport A -- for a\n"))
+	if want := "module M\n\nimport A -- for a\n-- for b\nimport B\n"; err != nil || string(out) != want {
+		t.Fatalf("got %q, %v; want %q", out, err, want)
 	}
 }
 

@@ -28,6 +28,7 @@ func Source(file string, src []byte) ([]byte, []diag.Diagnostic, error) {
 		return nil, diags, nil
 	}
 	p := newPrinter(src)
+	p.c = attach(m)
 	out := []byte(strings.TrimRight(Render(p.module(m), Width), "\n") + "\n")
 	if testMutate != nil {
 		out = testMutate(out)
@@ -62,10 +63,28 @@ func sortedImports(ims []*syntax.Import) []*syntax.Import {
 	return slices.CompactFunc(out, func(a, b *syntax.Import) bool { return a.Module == b.Module })
 }
 
+// commentTexts is the module's comments in order, except that those of the import block (after
+// the module line, up to the last import's line) are sorted: they move with their imports, which
+// the formatter sorts.
 func commentTexts(m *syntax.Module) []string {
 	var out []string
+	lo, hi := m.Span.Start.Line, 0
+	if len(m.Imports) > 0 {
+		hi = m.Imports[len(m.Imports)-1].Span.End.Line
+	}
+	block := -1 // where the import block's comments start in out
 	for _, c := range m.Comments {
+		if c.Line > lo && c.Line <= hi && block < 0 {
+			block = len(out)
+		}
 		out = append(out, c.Text)
+	}
+	if block >= 0 {
+		end := block
+		for end < len(out) && m.Comments[end].Line <= hi {
+			end++
+		}
+		slices.Sort(out[block:end])
 	}
 	return out
 }
@@ -76,9 +95,8 @@ type printer struct {
 	src    []byte   // the source as the lexer reads it: no BOM, LF line ends
 	lines  []string // src split into lines
 	starts []int    // byte offset of the start of each line
-	// comments are the module's comments; attachment and printing come later, and a module
-	// whose comments the output drops fails the safety check.
-	comments []syntax.Comment
+	// c places the module's comments (comments.go).
+	c *attached
 	// inFun counts the function types being printed around the current type: a record type
 	// inside one is laid out by width alone.
 	inFun int

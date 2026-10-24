@@ -10,6 +10,9 @@
 //     A Text containing "\n" behaves the same way.
 //   - Nest adds IndentWidth to the indentation of newlines inside it.
 //   - Flat prints its content flat whatever the width, unless it holds a hard break.
+//   - Trailing prints a line comment at the end of the line: it has no width (a comment never
+//     moves code to another line) and forces every enclosing group broken, like HardLine, so
+//     the code that follows goes on another line.
 //   - IfBreak picks its first argument when the innermost enclosing group is
 //     broken (the top level counts as broken), otherwise its second.
 //   - A group is flat iff it contains no hard break and the "fits rest" rule
@@ -81,6 +84,8 @@ type ifBreak struct {
 	hard         bool // of the flat branch: that is what a flat group prints
 }
 
+type trailing struct{ s string }
+
 type lineKind int
 
 const (
@@ -109,6 +114,9 @@ func Text(s string) Doc {
 	j := strings.LastIndexByte(s, '\n')
 	return text{s: s, w: utf8.RuneCountInString(s[:i]), hard: true, lastW: utf8.RuneCountInString(s[j+1:])}
 }
+
+// Trailing is a line comment printed after the code on its line, s holding its leading space.
+func Trailing(s string) Doc { return trailing{s} }
 
 // Concat joins documents.
 func Concat(ds ...Doc) Doc {
@@ -167,6 +175,8 @@ func measure(d Doc) (int, bool) {
 		return n.flatW, n.hard
 	case flat:
 		return n.w, n.hard
+	case trailing:
+		return 0, true
 	case line:
 		switch n.kind {
 		case kLine:
@@ -215,6 +225,8 @@ func Render(d Doc, width int) string {
 			for i := len(n.ds) - 1; i >= 0; i-- {
 				stack = append(stack, cmd{c.indent, c.flat, n.ds[i]})
 			}
+		case trailing:
+			out = append(out, n.s...)
 		case nest:
 			stack = append(stack, cmd{c.indent + IndentWidth, c.flat, n.d})
 		case group:
