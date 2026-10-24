@@ -53,6 +53,8 @@ func main() {
 		os.Exit(runDumpTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "eval":
 		os.Exit(runEvalTo(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
+	case "scratch":
+		os.Exit(runScratchTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "test":
 		os.Exit(runTestTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "migrate":
@@ -127,7 +129,7 @@ func main() {
 func usage() { usageTo(os.Stderr) }
 
 func usageTo(w io.Writer) {
-	fmt.Fprintln(w, "usage: alder new <name> | alder new page|table|form|msg|capability|admin … | alder edit table|page|session … | alder remove page|table … | alder fill <Module>.<decl> - | alder regen admin | alder check [dir] [--json] | alder fmt [--check | --stdin] [path...] | alder build [--emit] [--build-dir DIR] [dir] | alder run [--build-dir DIR] [dir] | alder routes [dir] [--json] | alder dump [--tokens|--ast|--ir] <file.alder | dir> | alder eval [dir] [--run] [--json] [--build-dir DIR] [--in Name | --module Name] <expr | -> | alder test [dir] [-run re] [-timeout d] [--json] [--build-dir DIR] [--mutate [--min R]] | alder repl [dir] [--build-dir DIR] [--in Name | --module Name] | alder migrate [dir] [--name slug] [--dry-run] | alder migrate silos <env> [--allow-data-loss] | alder deploy <env> [dir] [--build-dir DIR] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json] | alder deploy init render|fly [dir] [--force] [--dry-run] | alder status|logs <env> | alder rollback <env> [<id>] | alder restore <env> [--silo key:id] [--from url] [--to time] [--out file] | alder silos prune <env> [--yes] | alder ci init [dir] | alder lsp | alder explain <code> | alder version")
+	fmt.Fprintln(w, "usage: alder new <name> | alder new page|table|form|msg|capability|admin … | alder edit table|page|session … | alder remove page|table … | alder fill <Module>.<decl> - | alder regen admin | alder check [dir] [--json] | alder fmt [--check | --stdin] [path...] | alder build [--emit] [--build-dir DIR] [dir] | alder run [--build-dir DIR] [dir] | alder routes [dir] [--json] | alder dump [--tokens|--ast|--ir] <file.alder | dir> | alder eval [dir] [--run] [--json] [--build-dir DIR] [--in Name | --module Name] <expr | -> | alder scratch [file] [--watch] [--json] [--build-dir DIR] [--module Name] | alder test [dir] [-run re] [-timeout d] [--json] [--build-dir DIR] [--mutate [--min R]] | alder repl [dir] [--build-dir DIR] [--in Name | --module Name] | alder migrate [dir] [--name slug] [--dry-run] | alder migrate silos <env> [--allow-data-loss] | alder deploy <env> [dir] [--build-dir DIR] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json] | alder deploy init render|fly [dir] [--force] [--dry-run] | alder status|logs <env> | alder rollback <env> [<id>] | alder restore <env> [--silo key:id] [--from url] [--to time] [--out file] | alder silos prune <env> [--yes] | alder ci init [dir] | alder lsp | alder explain <code> | alder version")
 }
 
 func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {

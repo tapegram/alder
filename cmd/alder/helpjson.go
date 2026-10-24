@@ -119,6 +119,14 @@ var commandTree = []cmdSpec{
 			buildDirFlag,
 			{Name: "--module", Value: "Name", Summary: "name eval's own scratch module (default Scratch)"},
 		}},
+	{Name: "scratch", Summary: "run a scratch file's watches against the app", Usage: commandUsages["scratch"],
+		Args: []string{"[file]"},
+		Flags: []flagSpec{
+			{Name: "--watch", Summary: "run again whenever the file or the app changes"},
+			{Name: "--json", Summary: "print the result as JSON"},
+			buildDirFlag,
+			{Name: "--module", Value: "Name", Summary: "name the scratch module (default Scratch)"},
+		}},
 	{Name: "test", Summary: "run the app's tests", Usage: commandUsages["test"],
 		Args: []string{"[dir]"},
 		Flags: []flagSpec{

@@ -15,6 +15,7 @@ var commandUsages = map[string]string{
 	"routes":   routesUsage,
 	"dump":     "usage: alder dump [--tokens|--ast|--ir] <file.alder | dir>",
 	"eval":     evalUsage,
+	"scratch":  scratchUsage,
 	"test":     testUsage,
 	"migrate":  migrateUsage,
 	"repl":     replUsage,
