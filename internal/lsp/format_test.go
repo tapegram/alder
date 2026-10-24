@@ -2,6 +2,8 @@ package lsp
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -111,5 +113,76 @@ func TestLSPDoesNotFormatScratchFile(t *testing.T) {
 	}
 	if len(acts) != 0 {
 		t.Fatalf("code actions: %s", acts)
+	}
+}
+
+// migrateRoot is the blog plus two modules, Table.Todo and Admin.Todo, which need aliases
+// when Posts.Index imports both; extra files are added too.
+func migrateRoot(t *testing.T, extra map[string]string) string {
+	t.Helper()
+	root := blogCopy(t)
+	files := map[string]string{
+		"app/Table/Todo.alder": "module Table.Todo\n\nfind : Int -> Int\nfind n = n\n",
+		"app/Admin/Todo.alder": "module Admin.Todo\n\nfind : Int -> Int\nfind n = n\n",
+	}
+	for k, v := range extra {
+		files[k] = v
+	}
+	for rel, src := range files {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, rel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, rel), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+const migrateRel = "app/Posts/Index.alder"
+
+func migrateText(c *client) string {
+	text := strings.Replace(c.disk(migrateRel), "import Layout\n", "import Layout\nimport Table.Todo\nimport Admin.Todo\n", 1)
+	return text + "\n\n\nuseTodo : Int\nuseTodo = Table.Todo.find 1\n"
+}
+
+// formatting migrates this file's import qualifiers (E0204, E0205) and then formats, as
+// `alder fmt` does in a project; a second request has nothing left to do. Both when the
+// server's analysis is current for the buffer and when it is not yet.
+func TestFormatting_Migrates(t *testing.T) {
+	for _, analysed := range []bool{false, true} {
+		c := start(t, migrateRoot(t, nil))
+		text := migrateText(c)
+		c.open(migrateRel, text)
+		if analysed {
+			c.diags(migrateRel)
+		}
+		got := applyEdits(t, text, formatting(t, c, migrateRel))
+		for _, want := range []string{"import Table.Todo as TableTodo\n", "import Admin.Todo as AdminTodo\n", "useTodo = TableTodo.find 1\n"} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("analysed=%v: missing %q in\n%s", analysed, want, got)
+			}
+		}
+		if strings.Contains(got, "\n\n\n") {
+			t.Fatalf("not formatted:\n%s", got)
+		}
+		c.change(migrateRel, got)
+		if again := formatting(t, c, migrateRel); len(again) != 0 {
+			t.Fatalf("analysed=%v: second request: %+v", analysed, again)
+		}
+	}
+}
+
+// A project file that does not parse turns migration off: the buffer is only formatted.
+func TestFormatting_NoMigrationWhenAFileDoesNotParse(t *testing.T) {
+	c := start(t, migrateRoot(t, map[string]string{"app/Broken.alder": "module Broken\n\nx = (\n"}))
+	text := migrateText(c)
+	c.open(migrateRel, text)
+	got := applyEdits(t, text, formatting(t, c, migrateRel))
+	if strings.Contains(got, "TableTodo") || strings.Contains(got, "\n\n\n") {
+		t.Fatalf("migrated despite an unparsed file, or not formatted:\n%s", got)
+	}
+	if !strings.Contains(got, "import Admin.Todo\nimport Layout\n") || !strings.Contains(got, "import Table.Todo\n") {
+		t.Fatalf("imports changed:\n%s", got)
 	}
 }

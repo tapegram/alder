@@ -4,16 +4,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
+	"alder/internal/diag"
 	"alder/internal/format"
+	"alder/internal/names"
 	"alder/internal/scratch"
+	"alder/internal/types"
 )
 
 // formattingReq answers textDocument/formatting: minimal edits that make the open buffer
-// canonical. It formats the buffer text directly (a standalone parse, no analysis). A buffer that
-// does not parse, or whose formatting fails the safety check, yields null: the diagnostics
-// already show the error.
+// canonical. It first applies the file's import-qualifier fixes (E0204, E0205), as `alder fmt`
+// does in a project, then formats the result. A buffer that does not parse, or whose formatting
+// fails the safety check, yields null: the diagnostics already show the error.
 func formattingReq(s *server, params json.RawMessage) (any, error) {
 	var p struct {
 		TextDocument struct {
@@ -31,7 +35,8 @@ func formattingReq(s *server, params json.RawMessage) (any, error) {
 	if d == nil || scratch.IsScratchFile(rel) {
 		return nil, nil
 	}
-	out, _, err := format.Source(rel, []byte(d.Text))
+	src := s.migrated(rel, d)
+	out, _, err := format.Source(rel, src)
 	if errors.Is(err, format.ErrUnsafe) {
 		fmt.Fprintf(s.o.Log, "alder lsp: formatting %s: %v\n", rel, err)
 	}
@@ -39,6 +44,40 @@ func formattingReq(s *server, params json.RawMessage) (any, error) {
 		return nil, nil
 	}
 	return lineEdits(d.Text, string(out)), nil
+}
+
+// migrated is d's text with its import-qualifier fixes applied; the text itself when migration is
+// off: a project file does not parse (Program.Unparsed, the rule `alder fmt` uses, which covers an
+// unparseable buffer), the project cannot be loaded, or there is nothing to fix. It reads the
+// server's analysis when that was built from the open documents as they now are, and loads the
+// program (names only, no checking) otherwise.
+func (s *server) migrated(rel string, d *doc) []byte {
+	text := []byte(d.Text)
+	over, vers := s.docs.snapshot()
+	var items []diag.Diagnostic
+	if a := s.current(); a != nil && maps.Equal(a.versions, vers) {
+		if a.prog.ParseFailed {
+			return text
+		}
+		items = a.diags
+	} else {
+		std, err := types.LoadStd()
+		if err != nil {
+			return text
+		}
+		prog, bag, ioErrs := names.LoadOverlay(s.rootReal, std, over)
+		if len(ioErrs) > 0 || prog.ParseFailed {
+			return text
+		}
+		prog.Resolve(bag)
+		items = bag.Items
+	}
+	out, _, err := format.Migrate(&diag.Bag{Items: items}, rel, text)
+	if err != nil {
+		fmt.Fprintf(s.o.Log, "alder lsp: migrating %s: %v\n", rel, err)
+		return text
+	}
+	return out
 }
 
 // maxLCSCells bounds the line-level diff table; beyond it the differing middle is one edit.

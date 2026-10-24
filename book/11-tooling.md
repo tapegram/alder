@@ -1929,5 +1929,9 @@ vim.api.nvim_create_autocmd('BufWritePre', {
 ```
 
 The server returns the smallest edits that make the buffer canonical, so
-the cursor and marks stay where they were. A buffer that does not parse
-gets no edits and no error popup; the diagnostics already show the error.
+the cursor and marks stay where they were. Like `alder fmt` in a project,
+it first migrates the file's imports (E0204 and E0205, chapter 3), so
+format on save adds the missing `as` clauses and shortens full-path
+references. It skips that step, and only formats, when any file of the
+project does not parse. A buffer that does not parse gets no edits and no
+error popup; the diagnostics already show the error.
