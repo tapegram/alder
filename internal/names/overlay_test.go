@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"alder/internal/diag"
 	"alder/internal/types"
 )
 
@@ -66,4 +67,28 @@ func TestLoadOverlay_ParseErrorInOverlay(t *testing.T) {
 	if !prog.ParseFailed || !bag.HasErrors() || bag.Items[0].Span.File != "app/A.alder" {
 		t.Fatalf("want a parse failure in app/A.alder, got %+v", bag.Items)
 	}
+}
+
+func TestLoadScratchInApp(t *testing.T) {
+	std, err := types.LoadStd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const rel = "app/Todos.scratch.alder"
+	check := func(name string, dir string, overlay map[string][]byte) {
+		prog, bag, _ := LoadOverlay(dir, std, overlay)
+		if len(bag.Items) != 1 {
+			t.Fatalf("%s: want exactly one diagnostic, got %+v", name, bag.Items)
+		}
+		d := bag.Items[0]
+		if d.Code != diag.ScratchInApp || d.Severity != "error" || d.Span.File != rel || d.Span.Start.Line != 1 || d.Span.Start.Col != 1 ||
+			d.Message != "a scratch file does not belong under app/; move it to the project root" {
+			t.Fatalf("%s: %+v", name, d)
+		}
+		if len(prog.Modules) != 0 {
+			t.Fatalf("%s: scratch file became a module: %v", name, prog.Modules)
+		}
+	}
+	check("disk", writeApp(t, map[string]string{rel: "> 1 +\n"}), nil)
+	check("overlay", writeApp(t, nil), map[string][]byte{rel: []byte("> 1 +\n")})
 }
