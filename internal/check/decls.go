@@ -162,11 +162,17 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 					return mc.session
 				}
 			}
-			mc.fakeTableUse(c.key(t.Ref.Module, t.Name), t.Name, t.Span)
-			if t.Ref.Module == "Prelude" && testTypes[t.Name] {
-				mc.testTypeUse(t.Name, t.Span)
+			// the declared name: `TableTodo`, the qualifier of `import Table.Todo as
+			// TableTodo`, names that module's type `Todo`
+			name := t.Ref.Name
+			if name == "" {
+				name = t.Name
 			}
-			decl, ok := c.types[c.key(t.Ref.Module, t.Name)]
+			mc.fakeTableUse(c.key(t.Ref.Module, name), name, t.Span)
+			if t.Ref.Module == "Prelude" && testTypes[name] {
+				mc.testTypeUse(name, t.Span)
+			}
+			decl, ok := c.types[c.key(t.Ref.Module, name)]
 			if !ok {
 				return types.Err
 			}

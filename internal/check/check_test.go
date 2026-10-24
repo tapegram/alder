@@ -430,3 +430,29 @@ func TestFakes(t *testing.T) {
 		})
 	}
 }
+
+// An imported module's eponymous type written through an alias (`TableTodo` for the `Todo` of
+// `import Table.Todo as TableTodo`, the alias forced by a local `type Todo`) is that type: a
+// value of it checks, and a wrong value is a type error, not a silent poison type.
+func TestAliasedEponymousType(t *testing.T) {
+	dir := t.TempDir()
+	write := func(rel, src string) {
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("app/Table/Todo.alder", "module Table.Todo\n\ntype Todo = { title: Text }\n\nfind : Int -> Todo\nfind n = { title: \"x\" }\n")
+	use := "module Todos\n\nimport Table.Todo as TableTodo\n\ntype Todo = { n: Int }\n\nfirst : Int -> TableTodo\nfirst n = TableTodo.find n\n\ntitle : Text\ntitle = (first 1).title\n"
+	write("app/Todos.alder", use)
+	if bag := runDir(t, dir); bag.HasErrors() {
+		t.Fatalf("unexpected: %s", render(bag))
+	}
+	write("app/Todos.alder", use+"\nbad : TableTodo\nbad = 1\n")
+	if got := render(runDir(t, dir)); !strings.Contains(got, "E0003") {
+		t.Fatalf("want E0003, got:\n%s", got)
+	}
+}
