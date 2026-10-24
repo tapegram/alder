@@ -53,7 +53,9 @@ type Comment struct {
 }
 type Import struct {
 	Node
-	Module string
+	Module    string
+	Alias     string    // "" when there is no `as`
+	AliasSpan diag.Span // the alias identifier only
 }
 
 type Decl interface{ GetSpan() diag.Span }

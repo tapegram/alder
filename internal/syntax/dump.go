@@ -27,7 +27,11 @@ func dump(sb *strings.Builder, n any) {
 	case *Module:
 		fmt.Fprintf(sb, "(module %s", x.Name)
 		for _, im := range x.Imports {
-			fmt.Fprintf(sb, " (import %s)", im.Module)
+			if im.Alias != "" {
+				fmt.Fprintf(sb, " (import %s as %s)", im.Module, im.Alias)
+			} else {
+				fmt.Fprintf(sb, " (import %s)", im.Module)
+			}
 		}
 		dumpList(sb, x.Decls)
 		sb.WriteByte(')')

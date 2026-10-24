@@ -240,6 +240,19 @@ func (p *Parser) parseModule() *Module {
 		if p.atKeyword("import") {
 			t := p.advance()
 			im := &Import{Module: p.parseModName()}
+			if p.at(LIdent) && p.tok.Text == "as" {
+				p.advance()
+				switch {
+				case p.at(UIdent):
+					a := p.advance()
+					im.Alias, im.AliasSpan = a.Text, p.spanTok(a)
+				case p.at(LIdent):
+					p.errorAt(p.tok, "alias must be capitalized, got `"+p.tok.Text+"`")
+					p.advance()
+				default:
+					p.errorAt(p.tok, "expected alias after `as`, got "+describe(p.tok))
+				}
+			}
 			im.Span = p.spanFrom(t)
 			m.Imports = append(m.Imports, im)
 		} else if d := p.parseDecl(); d != nil {

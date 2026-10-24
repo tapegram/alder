@@ -540,3 +540,34 @@ func TestIsScratchName(t *testing.T) {
 		}
 	}
 }
+
+func TestParse_ImportAs(t *testing.T) {
+	m, diags := ParseFile("m.alder", []byte("module M\n\nimport Admin.Layout as AdminLayout\n"))
+	if len(diags) != 0 {
+		t.Fatalf("diags: %v", diags)
+	}
+	im := m.Imports[0]
+	if im.Module != "Admin.Layout" || im.Alias != "AdminLayout" {
+		t.Fatalf("import = %q as %q", im.Module, im.Alias)
+	}
+	// Spans are Start-inclusive, End-exclusive (like spanTok): AdminLayout is cols 24-34.
+	if s := im.AliasSpan; s.Start.Line != 3 || s.Start.Col != 24 || s.End.Line != 3 || s.End.Col != 35 {
+		t.Errorf("AliasSpan = %+v", s)
+	}
+	if !strings.Contains(Dump(m), "(import Admin.Layout as AdminLayout)") {
+		t.Errorf("dump: %s", Dump(m))
+	}
+	for src, want := range map[string]string{
+		"module M\n\nimport A.B as\n": "expected alias after `as`",
+		"module M\n\nimport A as b\n": "alias must be capitalized",
+	} {
+		_, diags := ParseFile("m.alder", []byte(src))
+		if len(diags) == 0 || !strings.Contains(diags[0].Message, want) {
+			t.Errorf("%q: diags = %v, want %q", src, diags, want)
+		}
+	}
+	m, diags = ParseFile("m.alder", []byte("module M\n\nas : Int\nas = 1\n"))
+	if len(diags) != 0 || len(m.Decls) != 1 {
+		t.Errorf("value named as: diags=%v decls=%d", diags, len(m.Decls))
+	}
+}
