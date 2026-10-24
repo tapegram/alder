@@ -110,6 +110,7 @@ func (b *sshBox) serving(t *testing.T) string {
 // startBox starts the box for the test (see above), or skips.
 func startBox(t *testing.T) *sshBox {
 	t.Helper()
+	fastPolls(t) // the scripts' wait loops: every 10 ms, not 0.2 s to 1 s
 	switch {
 	case os.Getenv("ALDER_DEPLOY_LOCAL") == "1":
 		return localBox(t)
@@ -719,6 +720,7 @@ func TestDeploySsh_DrainRollback(t *testing.T) {
 	id2 := deployedID(t, out)
 	ctx := context.Background()
 	s := deploy.NewSsh("demo", "production", ir.Target{Kind: "ssh", Host: box.host, Path: box.root, Domain: "localhost"}, &ir.Deploy{Proxy: "None"})
+	s.Poll = 10 * time.Millisecond
 	if _, err := s.Connect(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -727,23 +729,36 @@ func TestDeploySsh_DrainRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// started again inside the window: the same process, the delayed stop cancelled
+	laterPID := func() string {
+		return strings.TrimSpace(box.sh(t, fmt.Sprintf("cat %s/builds/%s/stop-later.pid 2>/dev/null || true", box.qr(), id1)))
+	}
+	// started again inside the window: the same process, the delayed stop cancelled (its
+	// process ends at once: it can no longer fire)
 	if err := s.Stop(ctx, id1, 2*time.Second); err != nil {
 		t.Fatal(err)
+	}
+	later := laterPID()
+	if later == "" {
+		t.Fatal("Stop with a drain scheduled no delayed stop (builds/<id>/stop-later.pid)")
 	}
 	if again, err := s.Start(ctx, id1); err != nil || again != port {
 		t.Fatalf("start inside the drain window: port %d (was %d) %v", again, port, err)
 	}
-	time.Sleep(3 * time.Second)
+	if !pollUntil(5*time.Second, func() bool { return box.sh(t, "kill -0 "+later+" 2>/dev/null && echo alive || true") == "" }) {
+		t.Errorf("the delayed stop (pid %s) still runs after the build was started again", later)
+	}
 	if err := s.Health(ctx, id1, port, 3*time.Second); err != nil {
 		t.Errorf("the delayed stop fired after the build was started again: %v", err)
 	}
-	// current again when the delay ends: the delayed stop does nothing
-	if err := s.Stop(ctx, id1, 2*time.Second); err != nil {
+	// current again when the delay ends: the delayed stop does nothing (it ends, removing its
+	// pid file, once the delay is over)
+	box.sh(t, fmt.Sprintf("echo %s > %s/current", id1, box.qr()))
+	if err := s.Stop(ctx, id1, time.Second); err != nil {
 		t.Fatal(err)
 	}
-	box.sh(t, fmt.Sprintf("echo %s > %s/current", id1, box.qr()))
-	time.Sleep(3 * time.Second)
+	if !pollUntil(10*time.Second, func() bool { return laterPID() == "" }) {
+		t.Errorf("the delayed stop did not end after its delay")
+	}
 	if err := s.Health(ctx, id1, port, 3*time.Second); err != nil {
 		t.Errorf("the delayed stop fired although the build is current again: %v", err)
 	}
@@ -754,9 +769,9 @@ func TestDeploySsh_DrainRollback(t *testing.T) {
 	lctx, lcancel := context.WithCancel(ctx)
 	ldone := make(chan struct{})
 	go func() { s.Logs(lctx, true, &logs); close(ldone) }()
-	time.Sleep(1500 * time.Millisecond)
+	pollUntil(10*time.Second, func() bool { return logs.String() != "" }) // following id2's log
 	box.sh(t, fmt.Sprintf("echo %s > %s/current", id1, box.qr()))
-	time.Sleep(2500 * time.Millisecond)
+	pollUntil(10*time.Second, func() bool { return strings.Contains(logs.String(), "--- alder logs: build "+id1+" is current\n") })
 	lcancel()
 	<-ldone
 	box.sh(t, fmt.Sprintf("echo %s > %s/current", id2, box.qr()))

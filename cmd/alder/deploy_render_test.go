@@ -38,6 +38,7 @@ type renderFakes struct {
 	render *renderfake.Server
 	reg    *registryfake.Server
 	turso  *tursofake.Server
+	clock  *fakeClock // the deploys' points in time and the Turso fake's commits
 }
 
 // renderApp makes the scaffold app with decl and points the commands at fresh fakes.
@@ -46,6 +47,8 @@ func renderApp(t *testing.T, decl string) (string, *renderFakes) {
 	dir := deployScaffold(t, decl, nil)
 	f := &renderFakes{render: renderfake.New(t), reg: registryfake.New(t, registryfake.Options{User: "tavish", Token: rdRegToken, RequireAuth: true}), turso: tursofake.New(t, "acme")}
 	f.render.RequireKey(rdKey)
+	f.clock = useFakeClock(t)
+	f.turso.SetNow(f.clock.Now)
 	for k, v := range map[string]string{
 		"RENDER_API_KEY": rdKey, "ALDER_RENDER_API": f.render.URL, "RENDER_OWNER_ID": "",
 		"ALDER_REGISTRY_TOKEN": rdRegToken, "ALDER_REGISTRY_USER": "", "ALDER_REGISTRY_BASE": f.reg.URL,
@@ -212,9 +215,9 @@ func TestDeployRender_EndToEnd(t *testing.T) {
 
 	// restore --to: the shared database as it was is the app's again (a copy), the service rolled
 	// onto it
-	time.Sleep(1100 * time.Millisecond)
-	at := time.Now().UTC().Truncate(time.Second)
-	time.Sleep(1100 * time.Millisecond)
+	f.clock.Sleep(1100 * time.Millisecond)
+	at := f.clock.Now().UTC().Truncate(time.Second)
+	f.clock.Sleep(1100 * time.Millisecond)
 	if code, o := runCmd(t, runRestoreTo, "production", "--dir", dir, "--to", at.Format(time.RFC3339)); code != 2 || !strings.Contains(o, "not confirmed") {
 		t.Errorf("restore without --yes: exit %d\n%s", code, o)
 	}

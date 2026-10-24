@@ -136,7 +136,7 @@ func TestDeploySsh_Silos(t *testing.T) {
   keep: 3,
 }`, box.host, box.root))
 	bucket := filepath.Join(box.root, "bucket")
-	box.write(t, "env", fmt.Sprintf("ALDER_SECRET=%s\nALDER_BACKUP_URL=%q\nALDER_BACKUP_INTERVAL=1s\nALDER_SILO_RECHECK=300ms\n", siloSecret, "file://"+bucket))
+	box.write(t, "env", fmt.Sprintf("ALDER_SECRET=%s\nALDER_BACKUP_URL=%q\nALDER_BACKUP_INTERVAL=%s\nALDER_SILO_RECHECK=300ms\n", siloSecret, "file://"+bucket, siloShipEvery))
 	code, out, errs := runDeploy(t, "production", dir, "--unsafe-skip-tests")
 	if code != 0 {
 		t.Fatalf("deploy: %d\n%s%s", code, out, errs)
@@ -156,14 +156,16 @@ func TestDeploySsh_Silos(t *testing.T) {
 		t.Fatalf("status:\n%s", st)
 	}
 
-	// restore A as it was after a1 (a2 is gone from it; B untouched)
-	waitShipped(t, filepath.Join(silos, db.SiloFileName("A")), time.Now().Add(1100*time.Millisecond))
-	at := time.Now().UTC().Truncate(time.Second).Add(time.Second)
-	time.Sleep(time.Until(at) + 1200*time.Millisecond)
+	// restore A as it was after a1 (a2 is gone from it; B untouched). The shipper is the app's
+	// process, on the real clock: the point is a millisecond one (the segments' keys carry
+	// milliseconds) between a1's shipment and a2
+	waitShipped(t, filepath.Join(silos, db.SiloFileName("A")), time.Now().Add(siloShipEvery+100*time.Millisecond))
+	at := time.Now().UTC()
+	time.Sleep(20 * time.Millisecond)
 	c.add("A", "a2")
 	c.add("B", "b2")
-	waitShipped(t, filepath.Join(silos, db.SiloFileName("A")), time.Now().Add(1100*time.Millisecond))
-	code, out = runCmd(t, runRestoreTo, "production", "--dir", dir, "--silo", "org:A", "--from", "file://"+bucket, "--to", at.Format(time.RFC3339), "--yes")
+	waitShipped(t, filepath.Join(silos, db.SiloFileName("A")), time.Now().Add(siloShipEvery+100*time.Millisecond))
+	code, out = runCmd(t, runRestoreTo, "production", "--dir", dir, "--silo", "org:A", "--from", "file://"+bucket, "--to", at.Format(time.RFC3339Nano), "--yes")
 	if code != 0 || !strings.Contains(out, "replaced silo org/A's database at Ssh alder-test-box:"+box.root+" (the previous one is kept as db/silos/org/"+db.SiloFileName("A")+".before-restore-") {
 		t.Fatalf("restore --silo: %d\n%s", code, out)
 	}
@@ -212,7 +214,7 @@ func TestDeploySsh_Silos(t *testing.T) {
 		t.Fatalf("migrate silos --allow-data-loss: %d\n%s", code, out)
 	}
 	// the running app opens A again after its recheck interval (shortened for the test)
-	time.Sleep(400 * time.Millisecond)
+	pollUntil(5*time.Second, func() bool { code, _ := c.projects("A"); return code == 200 })
 	if code, body := c.projects("A"); code != 200 || !strings.Contains(body, "a1") {
 		t.Fatalf("A after migrate silos: %d\n%s", code, body)
 	}
@@ -220,6 +222,10 @@ func TestDeploySsh_Silos(t *testing.T) {
 		t.Fatalf("status after:\n%s", st)
 	}
 }
+
+// siloShipEvery is the shipper's interval in TestDeploySsh_Silos (ALDER_BACKUP_INTERVAL), short
+// so its waits for a shipment are.
+const siloShipEvery = 200 * time.Millisecond
 
 func irSsh(box *sshBox) ir.Target {
 	return ir.Target{Kind: "ssh", Host: box.host, Domain: "localhost", Path: box.root}
@@ -244,7 +250,7 @@ func waitShipped(t *testing.T, path string, after time.Time) {
 		if time.Now().After(deadline) {
 			t.Fatalf("%s was not shipped after %s", path, after)
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
@@ -288,6 +294,10 @@ func TestDeployTurso_Lifecycle(t *testing.T) {
 	}
 	box := startBox(t)
 	f := tursofake.New(t, "acme")
+	// one fake clock for the deploys' points in time and the fake's commits: the waits for the
+	// next whole second advance it instead of sleeping
+	clock := useFakeClock(t)
+	f.SetNow(clock.Now)
 	dir := siloDeployApp(t, box, fmt.Sprintf(`deploy {
   production: Ssh %q { domain: "localhost", path: %q, database: Turso "acme" { app: "siloapp", sample: 2 } },
   proxy: None,
@@ -382,9 +392,9 @@ func TestDeployTurso_Lifecycle(t *testing.T) {
 	}
 
 	// restore A as it was before a3 (Turso's point in time)
-	time.Sleep(1100 * time.Millisecond)
-	before := time.Now().UTC().Truncate(time.Second)
-	time.Sleep(1100 * time.Millisecond)
+	clock.Sleep(1100 * time.Millisecond)
+	before := clock.Now().UTC().Truncate(time.Second)
+	clock.Sleep(1100 * time.Millisecond)
 	c.add("A", "a3")
 	code, out = runCmd(t, runRestoreTo, "production", "--dir", dir, "--silo", "org:A", "--to", before.Format(time.RFC3339), "--yes")
 	if code != 0 || !strings.Contains(out, "put silo org/A's database back as it was at "+before.Format(time.RFC3339)) {

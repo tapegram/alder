@@ -65,6 +65,9 @@ type Render struct {
 	Out io.Writer
 	// HTTP is the client of the health check.
 	HTTP *http.Client
+	// Poll, when not zero, is how often Start asks Render about a deploy and Health asks again
+	// (0: renderPoll, 3 s). Tests shorten it.
+	Poll time.Duration
 
 	imageHost string // the image's registry host as declared (Render's registry kind)
 	imageErr  error
@@ -693,6 +696,9 @@ func overlay(env []RenderEnv, set map[string]string) ([]RenderEnv, bool, error) 
 	return out, changed, nil
 }
 
+// SetClock is the clock of the Turso database's point in time (Clocked).
+func (r *Render) SetClock(now func() time.Time, sleep func(time.Duration)) { r.DB.setClock(now, sleep) }
+
 // Backup records, in build id's row, the point in time before its migrations (the next whole
 // second, waited for: every write before it is in the copy, every change of the migrations
 // after it), the shared database's name and the build serving. Nothing when the database has no
@@ -706,11 +712,7 @@ func (r *Render) Backup(ctx context.Context, id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	next := r.DB.Now().UTC().Truncate(time.Second).Add(time.Second)
-	if d := next.Sub(r.DB.Now()); d > 0 && d <= time.Second { // by the clock next came from
-		time.Sleep(d + 50*time.Millisecond)
-	}
-	at := next.Format(time.RFC3339)
+	at := r.DB.pitrWait().Format(time.RFC3339)
 	shared := r.DB.SharedName()
 	if err := r.putRow(ctx, id, func(row *db.DeployRow) { row.Pitr = strings.TrimSpace(at + " " + shared + " " + current) }); err != nil {
 		return "", err
@@ -822,6 +824,14 @@ func instances(n int) string {
 	return fmt.Sprintf("%d instances", n)
 }
 
+// poll is Poll, else renderPoll.
+func (r *Render) poll() time.Duration {
+	if r.Poll > 0 {
+		return r.Poll
+	}
+	return renderPoll
+}
+
 // await polls deploy dep until it is live, fails, or the roll timeout passes (it is then
 // cancelled).
 func (r *Render) await(ctx context.Context, dep string) error {
@@ -847,7 +857,7 @@ func (r *Render) await(ctx context.Context, dep string) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(renderPoll):
+		case <-time.After(r.poll()):
 		}
 	}
 }
@@ -894,7 +904,7 @@ func (r *Render) Health(ctx context.Context, id string, port int, timeout time.D
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(renderPoll):
+		case <-time.After(r.poll()):
 		}
 	}
 }

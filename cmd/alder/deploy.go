@@ -283,6 +283,16 @@ func describeTarget(t ir.Target) string {
 	return t.Kind
 }
 
+// deployTiming is how the deploy commands' targets read the time and wait: the clock of a
+// Turso database's point in time (Now, Sleep; nil: time.Now, time.Sleep) and how often an Ssh
+// target's scripts and a Render target look again (Poll; 0: their own intervals). Tests set
+// it; nothing else does.
+var deployTiming struct {
+	Now   func() time.Time
+	Sleep func(time.Duration)
+	Poll  time.Duration
+}
+
 // targetFor is environment env's target of the app r checked: a deploy.Target for Ssh and Fly,
 // or the Script. An Ssh environment knows the app's silo keys, and with `database: Turso` it
 // runs the migrations here with the build's executable for this machine (localBinary).
@@ -299,9 +309,11 @@ func targetFor(r *deployRunner, env string, t ir.Target, dir string, stdout, std
 		s := deploy.NewSsh(app, env, t, d)
 		s.Warn = stdout
 		s.Silos = r.silos
+		s.Poll = deployTiming.Poll
 		if s.DB != nil {
 			s.DB.Silos = r.silos
 			s.DB.Local = func(ctx context.Context, id string) (string, error) { return localBinary(r.buildDir, app, id) }
+			s.SetClock(deployTiming.Now, deployTiming.Sleep)
 		}
 		return s, nil, nil
 	case "fly":
@@ -317,9 +329,11 @@ func targetFor(r *deployRunner, env string, t ir.Target, dir string, stdout, std
 		rd.Out = stdout
 		rd.Artifact = func(id string) string { return filepath.Join(buildRoot(r.buildDir), app, "deploy", id) }
 		rd.RollTimeout = durationEnv(envHealthTimeout, 0) // the one source of the timeout, as for the other targets
+		rd.Poll = deployTiming.Poll
 		if rd.DB != nil {
 			rd.DB.Silos = r.silos
 			rd.DB.Local = func(ctx context.Context, id string) (string, error) { return localBinary(r.buildDir, app, id) }
+			rd.SetClock(deployTiming.Now, deployTiming.Sleep)
 		}
 		return rd, nil, nil
 	}

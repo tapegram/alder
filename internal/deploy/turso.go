@@ -53,7 +53,10 @@ type Turso struct {
 	// API is the platform API client (made from the environment: TURSO_API_TOKEN,
 	// ALDER_TURSO_API); tests set it.
 	API *db.Turso
-	Now func() time.Time
+	// Now is the clock the point in time and the lock are read from, and Sleep how the
+	// deploy waits by it (nil: time.Sleep); tests set both to a fake clock.
+	Now   func() time.Time
+	Sleep func(time.Duration)
 
 	shared string // the shared database's name (db/turso.env, else App)
 	lock   *db.SQLite
@@ -74,6 +77,40 @@ func NewTurso(d *ir.Database) *Turso {
 		t.Sample = DefaultSample
 	}
 	return t
+}
+
+// setClock sets Now and Sleep to now and sleep where they are not nil.
+func (t *Turso) setClock(now func() time.Time, sleep func(time.Duration)) {
+	if t == nil {
+		return
+	}
+	if now != nil {
+		t.Now = now
+	}
+	if sleep != nil {
+		t.Sleep = sleep
+	}
+}
+
+// sleep waits d by the database's clock: Sleep, else time.Sleep.
+func (t *Turso) sleep(d time.Duration) {
+	if t.Sleep != nil {
+		t.Sleep(d)
+		return
+	}
+	time.Sleep(d)
+}
+
+// pitrWait returns the point in time before a migration: the next whole second by Now (Turso's
+// restore takes seconds), waited for by Sleep, so every write before it is at or before it and
+// every change after it is later. Never time.Until: Now may be a fake clock.
+func (t *Turso) pitrWait() time.Time {
+	now := t.Now()
+	next := now.UTC().Truncate(time.Second).Add(time.Second)
+	if d := next.Sub(now); d > 0 && d <= time.Second {
+		t.sleep(d + 50*time.Millisecond)
+	}
+	return next
 }
 
 // api is the platform client, made from this machine's environment on first use.

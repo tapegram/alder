@@ -69,6 +69,9 @@ type Ssh struct {
 	// CaddyAdmin is the host:port of Caddy's admin API at the box (EnvCaddyAdmin, else
 	// DefaultCaddyAdmin).
 	CaddyAdmin string
+	// Poll, when not zero, is how often the scripts' wait loops look again (ALDER_POLL at the
+	// target; 0: each loop's own interval, 0.2 s to 1 s). Tests shorten it.
+	Poll time.Duration
 	// DB is the environment's `database: Turso "org" { … }` (turso.go), nil for the file
 	// <path>/db/app.db.
 	DB *Turso
@@ -117,6 +120,9 @@ func NewSsh(app, env string, t ir.Target, d *ir.Deploy) *Ssh {
 	}
 	return s
 }
+
+// SetClock is the clock of the Turso database's point in time (Clocked).
+func (s *Ssh) SetClock(now func() time.Time, sleep func(time.Duration)) { s.DB.setClock(now, sleep) }
 
 // MaxSiloFiles is how many silo files the backup shipper streams (one shipper, a lock and two
 // connections each): with more, a deploy that declares `backup` is refused and Turso is the
@@ -291,8 +297,12 @@ func (s *Ssh) stream(ctx context.Context, script string, stdout, stderr io.Write
 // alone) and defines R (the root), U (the unit), SUP (the supervisor), alive ID (whether build
 // ID's process runs), stopnow ID and cancel_later ID.
 func (s *Ssh) prelude() string {
+	poll := ""
+	if s.Poll > 0 {
+		poll = "ALDER_POLL=" + strconv.FormatFloat(s.Poll.Seconds(), 'f', -1, 64) + "; export ALDER_POLL\n"
+	}
 	return `umask 077
-R=` + q(s.Root) + `
+` + poll + `R=` + q(s.Root) + `
 U=` + q(s.unit()) + `
 SUP=` + q(s.sup) + `
 SCTL="systemctl"; [ "$SUP" = user ] && SCTL="systemctl --user"
@@ -320,7 +330,7 @@ func (s *Ssh) stopNow() string {
   sp=$(cat "$R/builds/$1/pid" 2>/dev/null) || return 0
   alive "$1" || { rm -f "$R/builds/$1/pid"; return 0; }
   kill -TERM "$sp" 2>/dev/null
-  si=0; while alive "$1" && [ $si -lt 200 ]; do sleep 0.2; si=$((si + 1)); done
+  se=$(( $(date +%s) + 40 )); while alive "$1" && [ "$(date +%s)" -lt "$se" ]; do sleep "${ALDER_POLL:-0.2}"; done
   alive "$1" && kill -KILL "$sp" 2>/dev/null
   rm -f "$R/builds/$1/pid"; return 0
 }`
@@ -655,11 +665,7 @@ func (s *Ssh) Backup(ctx context.Context, id string) (string, error) {
 		// the point in time is the next whole second (Turso's restore takes seconds), and nothing
 		// is migrated before it has passed: every write before the backup is at or before it,
 		// every change the migrations make after it
-		next := s.DB.Now().UTC().Truncate(time.Second).Add(time.Second)
-		if d := time.Until(next); d > 0 && d <= time.Second {
-			time.Sleep(d + 50*time.Millisecond)
-		}
-		at := next.Format(time.RFC3339)
+		at := s.DB.pitrWait().Format(time.RFC3339)
 		_, err = s.run(ctx, `id=`+q(id)+`
 printf '%s %s\n' `+q(at)+` `+q(s.DB.SharedName())+` > "$R/builds/$id/backup.pitr"
 cat "$R/current" > "$R/builds/$id/backup.of" 2>/dev/null
@@ -757,15 +763,15 @@ if [ "$(wc -c < "$B/log" | tr -d ' ')" -gt 10485760 ]; then
 fi
 off=$(wc -c < "$B/log" | tr -d ' ')
 echo "--- alder deploy: start $(date -u +%Y-%m-%dT%H:%M:%SZ) on `+addr+`" >> "$B/log"
-`+launch+`i=0
-while [ $i -lt 75 ]; do
+`+launch+`end=$(( $(date +%s) + 15 ))
+while [ "$(date +%s)" -le "$end" ]; do
   port=$(tail -c +$((off + 1)) "$B/log" | sed -n 's/^listening on .*:\([0-9][0-9]*\)$/\1/p' | tail -n 1)
   if [ -n "$port" ]; then
     case "`+addr+`" in 127.0.0.1:0) echo "127.0.0.1:$port" > "$B/addr";; esac
     echo "port=$port"; exit 0
   fi
   if ! alive "$id"; then sleep 0.3; echo exited; tail -c +$((off + 1)) "$B/log" | tail -n 40; exit 0; fi
-  sleep 0.2; i=$((i + 1))
+  sleep "${ALDER_POLL:-0.2}"
 done
 echo timeout; tail -c +$((off + 1)) "$B/log" | tail -n 40
 `)
@@ -883,7 +889,7 @@ while :; do
     if [ -n "$seen" ]; then echo "status $seen"; else echo timeout; fi
     break
   fi
-  sleep 1
+  sleep "${ALDER_POLL:-1}"
 done
 tail -n 40 "$R/builds/$id/log"
 `)
@@ -1069,9 +1075,9 @@ if ! command -v caddy >/dev/null 2>&1; then
   fi
   echo installed=yes
 fi
-i=0
+end=$(( $(date +%s) + 10 ))
 until curl -s -o /dev/null "$A/config/"; do
-  i=$((i + 1)); [ $i -gt 20 ] && { echo noadmin; exit 0; }; sleep 0.5
+  [ "$(date +%s)" -ge "$end" ] && { echo noadmin; exit 0; }; sleep "${ALDER_POLL:-0.5}"
 done
 echo ready=yes
 `
@@ -1534,7 +1540,7 @@ while kill -0 "$PPID" 2>/dev/null; do  # the session's sshd gone: stop
   if [ -n "$n" ] && [ "$n" != "$c" ]; then c=$n; off=0; echo "--- alder logs: build $c is current"; fi
   size=$(wc -c < "$R/builds/$c/log" 2>/dev/null | tr -d ' ')
   if [ -n "$size" ] && [ "$size" -gt "$off" ]; then tail -c +$((off + 1)) "$R/builds/$c/log" | head -c $((size - off)); off=$size; fi
-  sleep 1
+  sleep "${ALDER_POLL:-1}"
 done
 `
 	}

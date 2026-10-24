@@ -376,7 +376,8 @@ func TestDeploySsh_CaddyDrainRestore(t *testing.T) {
 	if got := dbNames(t, box); got != "Ada,Edsger" {
 		t.Errorf("app.db holds %q, want Ada,Edsger: the build serving does not write the restored file", got)
 	}
-	time.Sleep(1500 * time.Millisecond)
+	// the monitor's samples since the rollback, 1.5 s of them (one each 100 ms) at least
+	pollUntil(10*time.Second, func() bool { return len(mon.since(after)) >= 15 })
 	for _, b := range mon.since(after) {
 		if b != id1 {
 			t.Errorf("after the rollback the site answered %s: %s", b, mon.summary(after))
