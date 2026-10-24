@@ -101,3 +101,24 @@ func TestParseFileDiagnostics(t *testing.T) {
 		})
 	}
 }
+
+func TestParseFileDroppedItemContinuation(t *testing.T) {
+	for _, text := range []string{"x = 1\n>!\n    save 1\n", "x = 1\n>\n    1\n", "x = 1\nin Todo\n    junk\n"} {
+		f, diags := ParseFile("scratch.alder", text)
+		if len(diags) != 1 {
+			t.Errorf("%q: diagnostics %v", text, diags)
+		}
+		if l := strings.Split(f.Source, "\n"); l[0] != "x = 1" || l[1] != "" || l[2] != "" {
+			t.Errorf("%q: source %q", text, l)
+		}
+	}
+}
+
+// Alder strings end with their line, so a `>` inside one is never at column 1.
+func TestParseFileGtInStringIsNotWatch(t *testing.T) {
+	f, diags := ParseFile("scratch.alder", "x = \"a\n> 2\"\ny = \"> 3\"\n")
+	if len(f.Watches) != 1 || f.Watches[0].Line != 2 {
+		t.Errorf("watches %v", f.Watches)
+	}
+	_ = diags
+}

@@ -61,20 +61,24 @@ func ParseFile(name, text string) (File, []diag.Diagnostic) {
 		f.Map.InLine[i] = i + 1
 	}
 
-	first := true // the next start is the file's first
-	cur := -1     // index in Watches of the watch the line continues
+	first := true    // the next start is the file's first
+	cur := -1        // index in Watches of the watch the line continues
+	dropped := false // the item before is one with a diagnostic, blanked with its continuation lines
 	for i, l := range lines {
 		if !starts[i] {
+			if dropped {
+				src[i] = ""
+			}
 			if cur >= 0 && strings.TrimSpace(l) != "" && !strings.HasPrefix(strings.TrimSpace(l), "--") {
 				f.Watches[cur].End = i + 1
 			}
 			continue
 		}
 		wasFirst := first
-		first, cur = false, -1
+		first, cur, dropped = false, -1, false
 		switch {
 		case l == "in" || strings.HasPrefix(l, "in ") || strings.HasPrefix(l, "in\t"):
-			src[i] = ""
+			src[i], dropped = "", true
 			mod := strings.TrimSpace(l[2:])
 			switch {
 			case !wasFirst:
@@ -87,7 +91,7 @@ func ParseFile(name, text string) (File, []diag.Diagnostic) {
 		case l == ">" || strings.HasPrefix(l, "> ") || strings.HasPrefix(l, ">\t"):
 			expr := strings.TrimSpace(l[1:])
 			if expr == "" {
-				src[i] = ""
+				src[i], dropped = "", true
 				errAt(i+1, 1, 1, "a watch needs an expression: `> expr`")
 				break
 			}
@@ -98,7 +102,7 @@ func ParseFile(name, text string) (File, []diag.Diagnostic) {
 			f.Watches = append(f.Watches, w)
 			cur = len(f.Watches) - 1
 		case strings.HasPrefix(l, ">!"):
-			src[i] = ""
+			src[i], dropped = "", true
 			errAt(i+1, 1, 2, "`>!` (run a Task) is not supported yet: scratch evaluates pure values only")
 		}
 	}
