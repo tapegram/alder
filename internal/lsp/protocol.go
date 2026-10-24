@@ -80,13 +80,14 @@ func uriPath(uri string) (string, error) {
 
 func capabilities() map[string]any {
 	return map[string]any{
-		"positionEncoding":       "utf-8",
-		"textDocumentSync":       map[string]any{"openClose": true, "change": 1},
-		"hoverProvider":          true,
-		"definitionProvider":     true,
-		"referencesProvider":     true,
-		"completionProvider":     map[string]any{"triggerCharacters": []string{".", "<", "?"}},
-		"codeActionProvider":     map[string]any{"codeActionKinds": []string{"quickfix", "refactor"}},
-		"executeCommandProvider": map[string]any{"commands": []string{"alder.explain"}},
+		"positionEncoding":           "utf-8",
+		"textDocumentSync":           map[string]any{"openClose": true, "change": 1},
+		"hoverProvider":              true,
+		"documentFormattingProvider": true,
+		"definitionProvider":         true,
+		"referencesProvider":         true,
+		"completionProvider":         map[string]any{"triggerCharacters": []string{".", "<", "?"}},
+		"codeActionProvider":         map[string]any{"codeActionKinds": []string{"quickfix", "refactor"}},
+		"executeCommandProvider":     map[string]any{"commands": []string{"alder.explain"}},
 	}
 }

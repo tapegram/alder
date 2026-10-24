@@ -46,6 +46,7 @@ var (
 		"textDocument/references": referencesReq,
 		"textDocument/completion": completionReq,
 		"textDocument/codeAction": codeActionReq,
+		"textDocument/formatting": formattingReq,
 		"alder/generators":        generatorsReq,
 		"alder/routes":            routesReq,
 	}
