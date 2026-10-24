@@ -1,10 +1,10 @@
 module Posts.Show
 
-import Comment
 import Layout
 import Markdown
-import Post
-import User
+import Table.Comment
+import Table.Post
+import Table.User
 
 page "/posts/{slug}" { slug: Post.Slug }
 

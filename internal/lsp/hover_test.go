@@ -59,8 +59,8 @@ func TestHover_Hole(t *testing.T) {
 func TestHover_Module(t *testing.T) {
 	c := start(t, blogCopy(t))
 	openClean(t, c, "app/Posts/Index.alder")
-	got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "import Post", len("import ")))
-	if !strings.Contains(got, "app/Post.alder") {
+	got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "import Table.Post", len("import ")))
+	if !strings.Contains(got, "app/Table/Post.alder") {
 		t.Fatalf("hover %q", got)
 	}
 }
@@ -75,7 +75,7 @@ func TestHover_StaleBelowEdit(t *testing.T) {
 	if got := hover(t, c, "app/Posts/Index.alder", p); got != "" {
 		t.Fatalf("stale hover answered %q", got)
 	}
-	if got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "import Post", len("import "))); got == "" {
+	if got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "import Table.Post", len("import "))); got == "" {
 		t.Fatal("hover above the edit did not answer")
 	}
 	if got := hover(t, c, "app/Posts/Index.alder", Position{Line: 99999, Character: 3}); got != "" {
@@ -102,8 +102,8 @@ func TestDefinition(t *testing.T) {
 	if len(locs) != 1 || locs[0].Range.Start != c.at("app/Posts/Index.alder", "lastPage : Int", 0) {
 		t.Fatalf("definition %+v", locs)
 	}
-	c.call("textDocument/definition", map[string]any{"textDocument": map[string]any{"uri": c.uri("app/Posts/Index.alder")}, "position": c.at("app/Posts/Index.alder", "import User", len("import "))}, &locs)
-	if len(locs) != 1 || !strings.HasSuffix(locs[0].URI, "app/User.alder") {
+	c.call("textDocument/definition", map[string]any{"textDocument": map[string]any{"uri": c.uri("app/Posts/Index.alder")}, "position": c.at("app/Posts/Index.alder", "import Table.User", len("import "))}, &locs)
+	if len(locs) != 1 || !strings.HasSuffix(locs[0].URI, "app/Table/User.alder") {
 		t.Fatalf("module definition %+v", locs)
 	}
 	// a local: `q` in `Text.isEmpty q` goes to `let q =`
@@ -130,7 +130,7 @@ func TestHover_Ctor(t *testing.T) {
 		t.Fatalf("hover %q", got)
 	}
 	locs := definitionAt(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "Author\n", 0))
-	if len(locs) != 1 || !strings.HasSuffix(locs[0].URI, "app/User.alder") || locs[0].Range.Start.Line != 8 {
+	if len(locs) != 1 || !strings.HasSuffix(locs[0].URI, "app/Table/User.alder") || locs[0].Range.Start.Line != 8 {
 		t.Fatalf("ctor definition %+v", locs)
 	}
 }
@@ -154,7 +154,7 @@ func TestDefinition_Field(t *testing.T) {
 	c := start(t, blogCopy(t))
 	openClean(t, c, "app/Posts/Index.alder")
 	locs := definitionAt(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "post.slug", len("post.")))
-	if len(locs) != 1 || !strings.HasSuffix(locs[0].URI, "app/Post.alder") || locs[0].Range != (Range{Position{12, 2}, Position{12, 6}}) {
+	if len(locs) != 1 || !strings.HasSuffix(locs[0].URI, "app/Table/Post.alder") || locs[0].Range != (Range{Position{12, 2}, Position{12, 6}}) {
 		t.Fatalf("field definition %+v", locs)
 	}
 }
@@ -170,8 +170,8 @@ func TestHover_BindingSites(t *testing.T) {
 		off    int
 		want   string
 	}{
-		{"let found <-", len("let "), "found : List Post"},
-		{"post in model", 0, "post : Post"},
+		{"let found <-", len("let "), "found : List Table.Post.Post"},
+		{"post in model", 0, "post : Table.Post.Post"},
 		{"load params session", len("load "), "params : Params"},
 		{"load params session", 0, "load : Params -> App.Session -> Query Model"},
 	} {
@@ -192,7 +192,7 @@ func TestDefinition_StaleTarget(t *testing.T) {
 	c := start(t, blogCopy(t))
 	f := "app/Posts/Index.alder"
 	openClean(t, c, f)
-	for _, other := range []string{"app/User.alder", "app/Post.alder"} {
+	for _, other := range []string{"app/Table/User.alder", "app/Table/Post.alder"} {
 		text := c.disk(other)
 		i := strings.Index(text, "\n") + 1
 		c.open(other, text[:i]+"\n\nbroken = \"oops\n"+text[i:])
@@ -206,7 +206,7 @@ func TestDefinition_StaleTarget(t *testing.T) {
 			t.Errorf("definition at %q into a stale file: %+v", tc.needle, locs)
 		}
 	}
-	if locs := definitionAt(t, c, f, c.at(f, "import User", len("import "))); len(locs) != 1 || locs[0].Range != (Range{}) {
+	if locs := definitionAt(t, c, f, c.at(f, "import Table.User", len("import "))); len(locs) != 1 || locs[0].Range != (Range{}) {
 		t.Errorf("module definition %+v", locs)
 	}
 }
@@ -252,10 +252,10 @@ func TestHover_PageHooks(t *testing.T) {
 func TestHover_PageHooks_NotInAPage(t *testing.T) {
 	c := start(t, blogCopy(t))
 	// Post is a table module, not a page: a value called `view` there is an ordinary value
-	text := c.disk("app/Post.alder") + "\nview : Int\nview = 1\n"
-	c.open("app/Post.alder", text)
-	c.diags("app/Post.alder")
-	got := hover(t, c, "app/Post.alder", c.at("app/Post.alder", "view = 1", 0))
+	text := c.disk("app/Table/Post.alder") + "\nview : Int\nview = 1\n"
+	c.open("app/Table/Post.alder", text)
+	c.diags("app/Table/Post.alder")
+	got := hover(t, c, "app/Table/Post.alder", c.at("app/Table/Post.alder", "view = 1", 0))
 	if strings.Contains(got, "Page hook") {
 		t.Errorf("view outside a page:\n%s", got)
 	}

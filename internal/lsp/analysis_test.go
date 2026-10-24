@@ -71,11 +71,11 @@ func TestRebuild_PanicKeepsServing(t *testing.T) {
 // any document is opened.
 func TestDiagnostics_ClosedBrokenAtStart(t *testing.T) {
 	root := blogCopy(t)
-	if err := os.WriteFile(filepath.Join(root, "app", "Post.alder"), []byte("module Post\n\nx = \n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "app", "Post.alder"), []byte("module Table.Post\n\nx = \n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	c := start(t, root)
-	if ds := c.waitPublished("app/Post.alder"); len(ds) == 0 {
+	if ds := c.waitPublished("app/Table/Post.alder"); len(ds) == 0 {
 		t.Fatal("a broken closed file was not reported")
 	}
 	if c.srv.current() == nil {
@@ -122,12 +122,12 @@ func TestDiagnostics_HoleIsHint(t *testing.T) {
 func TestDiagnostics_NotOpenFile(t *testing.T) {
 	c := start(t, blogCopy(t))
 	// Posts/Index uses Post.title; renaming the field in the open Post.alder breaks the closed file
-	text := c.disk("app/Post.alder")
-	c.open("app/Post.alder", strings.Replace(text, "title:", "heading:", 1))
+	text := c.disk("app/Table/Post.alder")
+	c.open("app/Table/Post.alder", strings.Replace(text, "title:", "heading:", 1))
 	if ds := c.waitPublished("app/Posts/Index.alder"); len(ds) == 0 {
 		t.Fatal("no diagnostics published for the file that is not open")
 	}
-	c.change("app/Post.alder", text)
+	c.change("app/Table/Post.alder", text)
 	if ds := c.waitPublished("app/Posts/Index.alder"); len(ds) != 0 {
 		t.Fatalf("the closed file kept %v after the fix", ds)
 	}
@@ -135,11 +135,11 @@ func TestDiagnostics_NotOpenFile(t *testing.T) {
 
 func TestDiagnostics_FixedFileClears(t *testing.T) {
 	c := start(t, blogCopy(t))
-	text := c.disk("app/Post.alder")
-	c.open("app/Post.alder", strings.Replace(text, "module Post", "module Post\n\nbroken : Int\nbroken = \"x\"", 1))
-	c.diags("app/Post.alder")
-	c.change("app/Post.alder", text)
-	if ds := c.diags("app/Post.alder"); len(ds) != 0 {
+	text := c.disk("app/Table/Post.alder")
+	c.open("app/Table/Post.alder", strings.Replace(text, "module Table.Post", "module Table.Post\n\nbroken : Int\nbroken = \"x\"", 1))
+	c.diags("app/Table/Post.alder")
+	c.change("app/Table/Post.alder", text)
+	if ds := c.diags("app/Table/Post.alder"); len(ds) != 0 {
 		t.Fatalf("fixed file kept %v", ds)
 	}
 }
@@ -147,17 +147,17 @@ func TestDiagnostics_FixedFileClears(t *testing.T) {
 // TestDiagnostics_Close: a closed buffer's text no longer applies; the disk text does again.
 func TestDiagnostics_Close(t *testing.T) {
 	c := start(t, blogCopy(t))
-	text := c.disk("app/Post.alder")
-	c.open("app/Post.alder", strings.Replace(text, "module Post", "module Post\n\nbroken : Int\nbroken = \"x\"", 1))
-	if ds := c.diags("app/Post.alder"); len(ds) == 0 {
+	text := c.disk("app/Table/Post.alder")
+	c.open("app/Table/Post.alder", strings.Replace(text, "module Table.Post", "module Table.Post\n\nbroken : Int\nbroken = \"x\"", 1))
+	if ds := c.diags("app/Table/Post.alder"); len(ds) == 0 {
 		t.Fatal("no diagnostics for the broken buffer")
 	}
 	c.mu.Lock()
-	delete(c.vers, "app/Post.alder")
+	delete(c.vers, "app/Table/Post.alder")
 	c.mark = c.pubs
 	c.mu.Unlock()
-	c.notify("textDocument/didClose", map[string]any{"textDocument": map[string]any{"uri": c.uri("app/Post.alder")}})
-	if ds := c.waitPublished("app/Post.alder"); len(ds) != 0 {
+	c.notify("textDocument/didClose", map[string]any{"textDocument": map[string]any{"uri": c.uri("app/Table/Post.alder")}})
+	if ds := c.waitPublished("app/Table/Post.alder"); len(ds) != 0 {
 		t.Fatalf("the closed buffer's diagnostics stayed: %v", ds)
 	}
 }
@@ -243,8 +243,8 @@ func TestDiskChangeRebuilds(t *testing.T) {
 	c := startWith(t, root, Options{Poll: 20 * time.Millisecond})
 	c.open("app/Posts/Index.alder", c.disk("app/Posts/Index.alder"))
 	c.diags("app/Posts/Index.alder")
-	os.WriteFile(filepath.Join(root, "app", "Post.alder"), []byte("module Post\n\nx = \n"), 0o644)
-	if ds := c.waitPublished("app/Post.alder"); len(ds) == 0 {
+	os.WriteFile(filepath.Join(root, "app", "Post.alder"), []byte("module Table.Post\n\nx = \n"), 0o644)
+	if ds := c.waitPublished("app/Table/Post.alder"); len(ds) == 0 {
 		t.Fatal("a broken file on disk was not reported")
 	}
 }
@@ -276,7 +276,7 @@ func TestRel(t *testing.T) {
 			t.Errorf("rel(%s) = %q, %v; want %q, %v", tc.uri, got, ok, tc.want, tc.ok)
 		}
 	}
-	if got := c.srv.uriOf("app/Post.alder"); got != "file://"+filepath.ToSlash(filepath.Join(link, "app/Post.alder")) {
+	if got := c.srv.uriOf("app/Table/Post.alder"); got != "file://"+filepath.ToSlash(filepath.Join(link, "app/Table/Post.alder")) {
 		t.Errorf("uriOf a closed file = %s", got)
 	}
 }

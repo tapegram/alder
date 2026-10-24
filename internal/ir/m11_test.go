@@ -10,7 +10,8 @@ import (
 
 // TestIR_M11Unchanged (M15): `@owner` is `@partition user` and the `mine` family is the scoped
 // operations with the key `user`, so the IR of the M11 apps changes only in how those are
-// recorded. testdata/golden/m11 holds the dumps as M11 (bffe7d0) printed them; the dumps of today,
+// recorded. (todos.ir and blog.ir were rewritten at #20, when the examples' tables moved to
+// app/Table/ and their names gained the `Table.` prefix, which also changes how types print.) testdata/golden/m11 holds the dumps as M11 (bffe7d0) printed them; the dumps of today,
 // read back through m11View, must equal them. The exact difference, and all of it:
 //
 //	(owner C)                          in a table form  ←  (partition user C)

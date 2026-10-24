@@ -3,10 +3,10 @@
 module Admin.Activities.Index
 
 -- @admin begin imports
-import Activity
 import Admin.Layout
-import Org
-import User
+import Table.Activity
+import Table.Org
+import Table.User
 -- @admin end
 
 -- @admin begin params

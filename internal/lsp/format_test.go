@@ -58,7 +58,7 @@ func TestFormatting_ReturnsEdits(t *testing.T) {
 func TestFormatting_ParseErrorNull(t *testing.T) {
 	c := start(t, blogCopy(t))
 	rel := "app/Posts/Index.alder"
-	c.open(rel, "module Posts.Index\n\nf = {\n")
+	c.open(rel, "module Table.Posts.Index\n\nf = {\n")
 	var raw *[]TextEdit
 	if e := c.call("textDocument/formatting", map[string]any{"textDocument": map[string]any{"uri": c.uri(rel)}}, &raw); e != nil {
 		t.Fatal(e)

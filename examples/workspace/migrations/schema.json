@@ -2,7 +2,7 @@
   "format": "1",
   "tables": [
     {
-      "name": "Activity.Activity",
+      "name": "Table.Activity.Activity",
       "id": "id",
       "created": "created",
       "columns": [
@@ -17,7 +17,7 @@
         {
           "name": "org",
           "type": "Text",
-          "ref": "Org.Org",
+          "ref": "Table.Org.Org",
           "onDelete": "cascade"
         },
         {
@@ -27,7 +27,7 @@
       ]
     },
     {
-      "name": "Membership.Membership",
+      "name": "Table.Membership.Membership",
       "id": "id",
       "created": "created",
       "columns": [
@@ -38,13 +38,13 @@
         {
           "name": "user",
           "type": "Text",
-          "ref": "User.User",
+          "ref": "Table.User.User",
           "onDelete": "cascade"
         },
         {
           "name": "org",
           "type": "Text",
-          "ref": "Org.Org",
+          "ref": "Table.Org.Org",
           "onDelete": "cascade"
         },
         {
@@ -54,7 +54,7 @@
       ]
     },
     {
-      "name": "Org.Org",
+      "name": "Table.Org.Org",
       "id": "id",
       "created": "created",
       "columns": [
@@ -73,7 +73,7 @@
       ]
     },
     {
-      "name": "Project.Project",
+      "name": "Table.Project.Project",
       "id": "id",
       "created": "created",
       "silo": "org",
@@ -89,7 +89,7 @@
         {
           "name": "org",
           "type": "Text",
-          "ref": "Org.Org"
+          "ref": "Table.Org.Org"
         },
         {
           "name": "created",
@@ -98,7 +98,7 @@
       ]
     },
     {
-      "name": "Todo.Todo",
+      "name": "Table.Todo.Todo",
       "id": "id",
       "created": "created",
       "silo": "org",
@@ -119,13 +119,13 @@
         {
           "name": "project",
           "type": "Text",
-          "ref": "Project.Project",
+          "ref": "Table.Project.Project",
           "onDelete": "cascade"
         },
         {
           "name": "org",
           "type": "Text",
-          "ref": "Org.Org"
+          "ref": "Table.Org.Org"
         },
         {
           "name": "created",
@@ -134,7 +134,7 @@
       ]
     },
     {
-      "name": "User.User",
+      "name": "Table.User.User",
       "id": "id",
       "created": "created",
       "columns": [

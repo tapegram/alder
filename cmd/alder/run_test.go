@@ -443,12 +443,12 @@ func TestRun_ErrorThenFixReloads(t *testing.T) {
 	t.Parallel()
 	r := startRun(t)
 	events := r.subscribe(t)
-	edit(t, r.dir, "app/Todo.alder", "|> List.length\n", "|> List.length |> Text.length\n")
+	edit(t, r.dir, "app/Table/Todo.alder", "|> List.length\n", "|> List.length |> Text.length\n")
 	seen := waitFor(t, events, "selector #_alder_errors", 60*time.Second)
 	overlay := seen[len(seen)-1]
 	// the strip, then each diagnostic structured: file:line:col, the code, the message, the excerpt and its caret
 	for _, want := range []string{"data: mode inner", `<div class="_alder-strip" role="alert">`, "Build failed: 1 error. The page is the last good build.",
-		`data-count="1"`, `<code class="_alder-at">app/Todo.alder:36:3</code>`, `<b class="_alder-code">E0003</b>`, "expected Text, got Int",
+		`data-count="1"`, `<code class="_alder-at">app/Table/Todo.alder:36:3</code>`, `<b class="_alder-code">E0003</b>`, "expected Text, got Int",
 		"<pre>  todos\n", "   ^</pre>"} {
 		if !strings.Contains(overlay, want) {
 			t.Fatalf("overlay lacks %q:\n%s", want, overlay)
@@ -463,7 +463,7 @@ func TestRun_ErrorThenFixReloads(t *testing.T) {
 		t.Fatalf("a new subscriber's events: %q", later)
 	}
 
-	edit(t, r.dir, "app/Todo.alder", "|> List.length |> Text.length\n", "|> List.length\n")
+	edit(t, r.dir, "app/Table/Todo.alder", "|> List.length |> Text.length\n", "|> List.length\n")
 	seen = waitFor(t, events, wantReload, 60*time.Second)
 	if len(seen) < 2 || seen[len(seen)-2] != "event: datastar-patch-elements\ndata: selector #_alder_errors\ndata: mode inner\ndata: elements " {
 		t.Fatalf("no overlay clear right before the reload: %q", seen)

@@ -125,7 +125,7 @@ func TestEval_BrokenAppReportsDiagnostics(t *testing.T) {
 	needGoTool(t)
 	tmp := t.TempDir()
 	copyDir(t, todosDir(t), filepath.Join(tmp, "todos"))
-	path := filepath.Join(tmp, "todos", "app", "Todo.alder")
+	path := filepath.Join(tmp, "todos", "app", "Table", "Todo.alder")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -135,7 +135,7 @@ func TestEval_BrokenAppReportsDiagnostics(t *testing.T) {
 	if code != 1 || stdout != "" {
 		t.Errorf("exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
 	}
-	if !strings.Contains(stderr, "app/Todo.alder:") || !strings.Contains(stderr, "E0003") || !strings.Contains(stderr, `broken = "x"`) {
+	if !strings.Contains(stderr, "app/Table/Todo.alder:") || !strings.Contains(stderr, "E0003") || !strings.Contains(stderr, `broken = "x"`) {
 		t.Errorf("stderr lacks the app's diagnostic with its source line:\n%s", stderr)
 	}
 	// no app at all is a usage/internal failure
@@ -241,7 +241,7 @@ func TestEval_Select(t *testing.T) {
 	dir := todosDir(t)
 	for _, args := range [][]string{{"Db.from Todo"}, {"--run", "Db.from Todo"}} {
 		code, stdout, stderr := runEval(t, "", append([]string{dir}, args...)...)
-		if code != 0 || stdout != "<Select> : Select Todo\n" {
+		if code != 0 || stdout != "<Select> : Select Table.Todo.Todo\n" {
 			t.Errorf("%q: exit %d, stdout %q\nstderr: %s", args, code, stdout, stderr)
 		}
 		hint := strings.Contains(stderr, "pipe it to Db.all, Db.first or Db.count")
@@ -254,11 +254,11 @@ func TestEval_Select(t *testing.T) {
 	}
 	code, stdout, _ := runEval(t, "", dir, "--json", "--run", "Db.from Todo")
 	j := decodeEval(t, stdout)
-	if code != 0 || *j.Value != "<Select>" || *j.Type != "Select Todo" || !strings.Contains(j.Hint, "Db.all") {
+	if code != 0 || *j.Value != "<Select>" || *j.Type != "Select Table.Todo.Todo" || !strings.Contains(j.Hint, "Db.all") {
 		t.Errorf("json: exit %d, %s", code, stdout)
 	}
 	// a Select inside a value is opaque too (rt.Show)
-	evalOK(t, "{ s: <Select>, n: 1 } : { s: Select Todo, n: Int }\n", "{ s: Db.from Todo, n: 1 }")
+	evalOK(t, "{ s: <Select>, n: 1 } : { s: Select Table.Todo.Todo, n: Int }\n", "{ s: Db.from Todo, n: 1 }")
 }
 
 func TestEval_LetForms(t *testing.T) {
@@ -359,8 +359,8 @@ func TestEval_ModuleFlag(t *testing.T) {
 		t.Errorf("bad --module: exit %d\nstderr: %s", code, stderr)
 	}
 	// a --module that is taken: not "pass --module", which was passed
-	if code, _, stderr := runEval(t, "", app, "--module", "Todo", "1"); code != 2 || !strings.Contains(stderr, "the app already has a module named Todo; give --module another name") {
-		t.Errorf("--module Todo: exit %d\nstderr: %s", code, stderr)
+	if code, _, stderr := runEval(t, "", app, "--module", "Layout", "1"); code != 2 || !strings.Contains(stderr, "the app already has a module named Layout; give --module another name") {
+		t.Errorf("--module Layout: exit %d\nstderr: %s", code, stderr)
 	}
 }
 
@@ -504,7 +504,7 @@ func TestEval_RunHasSession(t *testing.T) {
 		t.Errorf("pure main:\n%s", m)
 	}
 	needGoTool(t)
-	evalOK(t, "[] : List Todo\n", "--run", "Db.from Todo |> Db.all")
+	evalOK(t, "[] : List Table.Todo.Todo\n", "--run", "Db.from Todo |> Db.all")
 }
 
 // `--run` wires the app's adapters (the generated caps package) when adapters/ holds Go files,
@@ -648,11 +648,11 @@ func TestEval_MissingAdapter(t *testing.T) {
 func TestEval_InModule(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
-	evalOK(t, "0 : Int\n", "--in", "Todo", "countOpen []")
+	evalOK(t, "0 : Int\n", "--in", "Table.Todo", "countOpen []")
 	// the module's own names unqualified, and the names of a module it imports qualified
-	evalOK(t, "\"a\" : Todo.TodoId\n", "--in", "Todo", "TodoId \"a\"")
-	evalOK(t, "\"u\" : User.UserId\n", "--in", "Todo", "User.UserId \"u\"")
-	evalOK(t, "\"Active\" : Text\n", "--in", "Todo", "filterLabel Active")
+	evalOK(t, "\"a\" : Table.Todo.TodoId\n", "--in", "Table.Todo", "TodoId \"a\"")
+	evalOK(t, "\"u\" : Table.User.UserId\n", "--in", "Table.Todo", "User.UserId \"u\"")
+	evalOK(t, "\"Active\" : Text\n", "--in", "Table.Todo", "filterLabel Active")
 }
 
 func TestEval_InNestedModule(t *testing.T) {
@@ -669,7 +669,7 @@ func TestEval_InNestedModule(t *testing.T) {
 func TestEval_InModuleDiagnosticsNameTheInput(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
-	code, stdout, stderr := runEval(t, "", todosDir(t), "--in", "Todo", "countOpen 1")
+	code, stdout, stderr := runEval(t, "", todosDir(t), "--in", "Table.Todo", "countOpen 1")
 	if code != 1 || stdout != "" || !strings.Contains(stderr, "input:1:") {
 		t.Errorf("exit %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
@@ -681,14 +681,14 @@ func TestEval_InModuleOwnDiagnosticNamesTheModule(t *testing.T) {
 	needGoTool(t)
 	tmp := t.TempDir()
 	copyDir(t, todosDir(t), filepath.Join(tmp, "todos"))
-	path := filepath.Join(tmp, "todos", "app", "Todo.alder")
+	path := filepath.Join(tmp, "todos", "app", "Table", "Todo.alder")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	os.WriteFile(path, append(b, []byte("\nbroken : Int\nbroken = \"x\"\n")...), 0o644)
-	code, stdout, stderr := runEval(t, "", filepath.Join(tmp, "todos"), "--in", "Todo", "1 + 2")
-	if code != 1 || stdout != "" || !strings.Contains(stderr, "app/Todo.alder:") || strings.Contains(stderr, "input:") {
+	code, stdout, stderr := runEval(t, "", filepath.Join(tmp, "todos"), "--in", "Table.Todo", "1 + 2")
+	if code != 1 || stdout != "" || !strings.Contains(stderr, "app/Table/Todo.alder:") || strings.Contains(stderr, "input:") {
 		t.Errorf("exit %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
 }
@@ -711,7 +711,7 @@ func TestEval_InBadName(t *testing.T) {
 
 func TestEval_InWithModuleIsUsage(t *testing.T) {
 	t.Parallel()
-	code, _, stderr := runEval(t, "", todosDir(t), "--in", "Todo", "--module", "Probe", "1")
+	code, _, stderr := runEval(t, "", todosDir(t), "--in", "Table.Todo", "--module", "Probe", "1")
 	if code != 2 || !strings.Contains(stderr, "--in") {
 		t.Errorf("exit %d, stderr %q", code, stderr)
 	}

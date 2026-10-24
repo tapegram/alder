@@ -4,9 +4,9 @@ module Admin.Projects.Bulk
 
 -- @admin begin imports
 import Admin.Layout
-import Org
-import Project
-import User
+import Table.Org
+import Table.Project
+import Table.User
 -- @admin end
 
 page "/admin/orgs/{org}/project/bulk" {

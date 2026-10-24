@@ -85,8 +85,8 @@ func e2eUsers(ctx context.Context, email string) ([][]any, error) {
 	if st == nil {
 		return nil, errors.New("e2e: the context carries no store")
 	}
-	users := table__User__User.Desc()
-	return st.Query(ctx, tx, users.Name, users.Columns, db.Where(db.CEq("email", email), db.From(table__User__User)).SQL())
+	users := table__Table__User__User.Desc()
+	return st.Query(ctx, tx, users.Name, users.Columns, db.Where(db.CEq("email", email), db.From(table__Table__User__User)).SQL())
 }
 
 // e2eUser finds or creates the User row with email (as the dev adapter's devUser does).
@@ -95,7 +95,7 @@ func e2eUser(ctx context.Context, email string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	users := table__User__User.Desc()
+	users := table__Table__User__User.Desc()
 	if len(rows) > 0 {
 		for i, c := range users.Columns {
 			if c.Name == users.ID {
@@ -103,8 +103,8 @@ func e2eUser(ctx context.Context, email string) (string, error) {
 			}
 		}
 	}
-	vals := insertvals__User__User(insert__User__User{Email: email, Name: "Ann", PasswordHash: ""})
-	return db.InsertRow(ctx, db.StoreFrom(ctx), db.TxFrom(ctx), table__User__User, vals, time.Now())
+	vals := insertvals__Table__User__User(insert__Table__User__User{Email: email, Name: "Ann", PasswordHash: ""})
+	return db.InsertRow(ctx, db.StoreFrom(ctx), db.TxFrom(ctx), table__Table__User__User, vals, time.Now())
 }
 
 // e2e is a running app and a browser-like client (cookie jar, no redirect following).

@@ -1,10 +1,10 @@
 module Members.Index
 
-import Activity
 import Layout
-import Membership
-import Org
-import User
+import Table.Activity
+import Table.Membership
+import Table.Org
+import Table.User
 
 -- The org's members and its activity log. Both are in the shared database: Membership is not
 -- partitioned (the page filters it by the org), Activity is partitioned by org (`Db.scoped

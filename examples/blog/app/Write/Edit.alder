@@ -1,11 +1,11 @@
 module Write.Edit
 
 import Auth.Login
-import Comment
 import Layout
-import Post
 import Posts.Index
-import User
+import Table.Comment
+import Table.Post
+import Table.User
 
 page "/write/{id}" { id: Post.PostId } requires user, role Author
 

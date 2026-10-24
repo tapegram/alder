@@ -16,6 +16,10 @@ in as Bob: he sees Ann's org's projects, and none of an org he is not in. Under 
 shared database is `build/workspace/dev.db` and each org's a file of its own under
 `build/workspace/silos/org/`, named after the org's id (book 08, "Where the files live").
 
+## Layout
+
+The tables (Activity, Membership, Org, Project, Todo and User) live under `app/Table/`, one module each (`module Table.Activity`, ... `Table.User`), and pages `import Table.<Name>`. The admin's folders are plural (`app/Admin/Todos/` and so on); its URLs are not (`/admin/todo`). `migrations/0002_rename_activity_rename_membership.sql` renames the tables from the old root modules to these; it moves no data.
+
 ## What it shows
 
 - **A key with a membership.** `session { user: …, org: Maybe Org.OrgId via Membership, … }`:

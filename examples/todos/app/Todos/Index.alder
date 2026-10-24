@@ -1,8 +1,8 @@
 module Todos.Index
 
 import Layout
-import Todo
-import User
+import Table.Todo
+import Table.User
 
 page "/" { filter: Todo.Filter = All } requires user
 

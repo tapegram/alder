@@ -21,20 +21,20 @@ func todos(t *testing.T) string {
 }
 
 func TestCheck_InModuleSeesUnqualifiedNames(t *testing.T) {
-	c := Check("../../examples/todos", &Module{In: "Todo", Source: "it = countOpen []\n", Infer: true})
+	c := Check("../../examples/todos", &Module{In: "Table.Todo", Source: "it = countOpen []\n", Infer: true})
 	if c.Err != nil || len(c.Diags) != 0 || c.Result == nil {
 		t.Fatalf("err %v, diags %v", c.Err, c.Diags)
 	}
-	if _, ok := c.Result.Values["Todo.it"]; !ok {
+	if _, ok := c.Result.Values["Table.Todo.it"]; !ok {
 		t.Error("Todo.it was not inferred")
 	}
-	if c.ExtraFile != "app/Todo.alder" || c.BaseLines == 0 {
+	if c.ExtraFile != "app/Table/Todo.alder" || c.BaseLines == 0 {
 		t.Errorf("ExtraFile %q, BaseLines %d", c.ExtraFile, c.BaseLines)
 	}
 }
 
 func TestCheck_InModuleMapsInputDiagnostics(t *testing.T) {
-	c := Check("../../examples/todos", &Module{In: "Todo", Source: "it = countOpen 1\n", Infer: true})
+	c := Check("../../examples/todos", &Module{In: "Table.Todo", Source: "it = countOpen 1\n", Infer: true})
 	var got []diag.Diagnostic
 	for _, d := range c.Diags {
 		m, ok := c.MapDiag(d)
@@ -52,14 +52,14 @@ func TestCheck_InModuleMapsInputDiagnostics(t *testing.T) {
 
 func TestCheck_InModuleKeepsModuleDiagnostics(t *testing.T) {
 	dir := todos(t)
-	p := filepath.Join(dir, "app", "Todo.alder")
+	p := filepath.Join(dir, "app", "Table", "Todo.alder")
 	b, _ := os.ReadFile(p)
 	os.WriteFile(p, append(b, []byte("\nbroken : Int\nbroken = \"x\"\n")...), 0o644)
-	c := Check(dir, &Module{In: "Todo", Source: "it = 1\n", Infer: true})
+	c := Check(dir, &Module{In: "Table.Todo", Source: "it = 1\n", Infer: true})
 	var found bool
 	for _, d := range c.Diags {
 		m, ok := c.MapDiag(d)
-		if ok && m.Span.File == "app/Todo.alder" && m.Span.Start.Line <= c.BaseLines && m.Code == "E0003" {
+		if ok && m.Span.File == "app/Table/Todo.alder" && m.Span.Start.Line <= c.BaseLines && m.Code == "E0003" {
 			found = true
 			if m.Span.Start.Line != d.Span.Start.Line || c.InSession(d) {
 				t.Errorf("the module's own error was mapped or counted as the session's: %+v", m)
@@ -73,10 +73,10 @@ func TestCheck_InModuleKeepsModuleDiagnostics(t *testing.T) {
 
 func TestCheck_InModuleNoTrailingNewline(t *testing.T) {
 	dir := todos(t)
-	p := filepath.Join(dir, "app", "Todo.alder")
+	p := filepath.Join(dir, "app", "Table", "Todo.alder")
 	b, _ := os.ReadFile(p)
 	os.WriteFile(p, append([]byte(strings.TrimRight(string(b), "\n")), []byte("\n-- trailing comment")...), 0o644)
-	c := Check(dir, &Module{In: "Todo", Source: "it = countOpen []\n", Infer: true})
+	c := Check(dir, &Module{In: "Table.Todo", Source: "it = countOpen []\n", Infer: true})
 	if c.Err != nil || len(c.Diags) != 0 {
 		t.Fatalf("err %v, diags %v", c.Err, c.Diags)
 	}
@@ -84,20 +84,20 @@ func TestCheck_InModuleNoTrailingNewline(t *testing.T) {
 
 func TestCheck_InModuleNoTrailingNewlineAfterCode(t *testing.T) {
 	dir := todos(t)
-	p := filepath.Join(dir, "app", "Todo.alder")
+	p := filepath.Join(dir, "app", "Table", "Todo.alder")
 	b, _ := os.ReadFile(p)
 	os.WriteFile(p, []byte(strings.TrimRight(string(b), "\n")), 0o644)
-	c := Check(dir, &Module{In: "Todo", Source: "it = countOpen []\n", Infer: true})
+	c := Check(dir, &Module{In: "Table.Todo", Source: "it = countOpen []\n", Infer: true})
 	if c.Err != nil || len(c.Diags) != 0 {
 		t.Fatalf("err %v, diags %v", c.Err, c.Diags)
 	}
-	if _, ok := c.Result.Values["Todo.it"]; !ok {
+	if _, ok := c.Result.Values["Table.Todo.it"]; !ok {
 		t.Error("Todo.it was not inferred")
 	}
 }
 
 func TestCheck_InModuleDeclares(t *testing.T) {
-	c := Check("../../examples/todos", &Module{In: "Todo", Source: "it = 1\n", Infer: true})
+	c := Check("../../examples/todos", &Module{In: "Table.Todo", Source: "it = 1\n", Infer: true})
 	if !c.Declares("countOpen") || c.Declares("it") || c.Declares("nope") {
 		t.Error("Declares answers for the module's own values only")
 	}

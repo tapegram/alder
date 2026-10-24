@@ -13,7 +13,7 @@ func TestResult_RecordsTypes(t *testing.T) {
 	if bag.HasErrors() {
 		t.Fatal(render(bag))
 	}
-	if res.Values["Todo.countOpen"] == nil || res.Decls["Todo.Todo"] == nil || res.Tables["Todo.Todo"] == nil {
+	if res.Values["Table.Todo.countOpen"] == nil || res.Decls["Table.Todo.Todo"] == nil || res.Tables["Table.Todo.Todo"] == nil {
 		t.Fatalf("declarations missing from Result")
 	}
 	// every recorded type is fully resolved: no unbound variable anywhere inside it

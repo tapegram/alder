@@ -9,6 +9,10 @@ To try it: `alder run`, then log in at `/login` with the password `password` as 
 Member) or `admin@b.c` (an Admin: `/admin`). The accounts are the development stub's
 (`adapters/auth/password.go`), which accepts them only under `alder run`.
 
+## Layout
+
+The tables (Todo and User) live under `app/Table/`, one module each (`module Table.Todo` and `Table.User`), and pages `import Table.<Name>`. The admin's folders are plural (`app/Admin/Todos/` and so on); its URLs are not (`/admin/todo`). `migrations/0002_rename_todo_rename_user.sql` renames the tables from the old root modules to these; it moves no data.
+
 ## Deploying
 
 `App` declares one environment, `local`, a `Script` target (book 16, "The Script hatch"):
@@ -106,18 +110,18 @@ The steps, from the app before the admin:
    $ alder new admin
    wrote app/Admin/Index.alder
    wrote app/Admin/Layout.alder
-   wrote app/Admin/Todo/Bulk.alder
-   wrote app/Admin/Todo/Delete.alder
-   wrote app/Admin/Todo/Edit.alder
-   wrote app/Admin/Todo/Index.alder
-   wrote app/Admin/Todo/New.alder
-   wrote app/Admin/Todo/Show.alder
-   wrote app/Admin/User/Bulk.alder
-   wrote app/Admin/User/Delete.alder
-   wrote app/Admin/User/Edit.alder
-   wrote app/Admin/User/Index.alder
-   wrote app/Admin/User/New.alder
-   wrote app/Admin/User/Show.alder
+   wrote app/Admin/Todos/Bulk.alder
+   wrote app/Admin/Todos/Delete.alder
+   wrote app/Admin/Todos/Edit.alder
+   wrote app/Admin/Todos/Index.alder
+   wrote app/Admin/Todos/New.alder
+   wrote app/Admin/Todos/Show.alder
+   wrote app/Admin/Users/Bulk.alder
+   wrote app/Admin/Users/Delete.alder
+   wrote app/Admin/Users/Edit.alder
+   wrote app/Admin/Users/Index.alder
+   wrote app/Admin/Users/New.alder
+   wrote app/Admin/Users/Show.alder
    ```
 
 4. The development login (`adapters/auth/password.go`) gains `admin@b.c`, an Admin.

@@ -1850,8 +1850,8 @@ func TestTodos(t *testing.T) {
 
 	// a user to own the todos (Todo.owner is @ref User)
 	uid, err := eff.Run(env, eff.KTask, eff.Call("Db.insert User", true, func(e *eff.Env) (string, error) {
-		return db.InsertRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), table__User__User,
-			insertvals__User__User(insert__User__User{Email: "a@b.c", Name: "Ann", PasswordHash: "x"}), e.Now())
+		return db.InsertRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), table__Table__User__User,
+			insertvals__Table__User__User(insert__Table__User__User{Email: "a@b.c", Name: "Ann", PasswordHash: "x"}), e.Now())
 	}))
 	if err != nil || uid == "" {
 		t.Fatalf("insert user: %q, %v", uid, err)
@@ -1910,13 +1910,13 @@ func TestTodos(t *testing.T) {
 		t.Fatalf("login did not set the session user: %+v", app)
 	}
 	session := Todos__Index__Session{User: app.User.Val}
-	model := Todos__Index__Model{Filter: Todo__Filter__All__}
+	model := Todos__Index__Model{Filter: Table__Todo__Filter__All__}
 
 	update := func(msg Todos__Index__Msg) (rt.Nav, error) {
 		t.Helper()
 		return eff.Run(env, eff.KTask, Todos__Index__update(msg, model, session))
 	}
-	load := func(f Todo__Filter) []Todo__Todo {
+	load := func(f Table__Todo__Filter) []Table__Todo__Todo {
 		t.Helper()
 		m, err := eff.RunQuery(env, Todos__Index__load(Todos__Index__Params{Filter: f}, session))
 		if err != nil {
@@ -1932,7 +1932,7 @@ func TestTodos(t *testing.T) {
 		t.Fatalf("add: %+v, %v", nav, err)
 	}
 	calls("add", "Db.insertMine Todo") // the owner comes from the session (env.Session)
-	todos := load(Todo__Filter__All__)
+	todos := load(Table__Todo__Filter__All__)
 	if len(todos) != 1 {
 		t.Fatalf("after add: %d todos", len(todos))
 	}
@@ -1940,7 +1940,7 @@ func TestTodos(t *testing.T) {
 	if td.Title != "Buy milk" || td.Done || td.Owner != uid || !td.Created.Equal(clock) || !td.Due.Ok || td.Due.Val != (rt.Date{Y: 2026, M: 10, D: 31}) {
 		t.Fatalf("added todo: %+v", td)
 	}
-	if n := len(load(Todo__Filter__Completed__)); n != 0 {
+	if n := len(load(Table__Todo__Filter__Completed__)); n != 0 {
 		t.Fatalf("completed before toggle: %d", n)
 	}
 
@@ -1951,10 +1951,10 @@ func TestTodos(t *testing.T) {
 		t.Fatalf("toggle: %+v, %v", nav, err)
 	}
 	calls("toggle", "Db.updateMine Todo") // one statement: WHERE id = ? AND owner = ?
-	if todos = load(Todo__Filter__All__); len(todos) != 1 || !todos[0].Done {
+	if todos = load(Table__Todo__Filter__All__); len(todos) != 1 || !todos[0].Done {
 		t.Fatalf("after toggle: %+v", todos)
 	}
-	if n := len(load(Todo__Filter__Active__)); n != 0 {
+	if n := len(load(Table__Todo__Filter__Active__)); n != 0 {
 		t.Fatalf("active after toggle: %d", n)
 	}
 
@@ -1990,7 +1990,7 @@ func TestTodos(t *testing.T) {
 	if _, err := eff.Run(env, eff.KTask, failing); !errors.As(err, &fail) || fail.Msg != "boom" {
 		t.Fatalf("failing add: err = %v", err)
 	}
-	if n := len(load(Todo__Filter__All__)); n != 1 {
+	if n := len(load(Table__Todo__Filter__All__)); n != 1 {
 		t.Fatalf("after rolled-back add: %d todos, want 1", n)
 	}
 
@@ -2001,7 +2001,7 @@ func TestTodos(t *testing.T) {
 		t.Fatalf("delete: %+v, %v", nav, err)
 	}
 	calls("delete", "Db.deleteMine Todo")
-	if n := len(load(Todo__Filter__All__)); n != 0 {
+	if n := len(load(Table__Todo__Filter__All__)); n != 0 {
 		t.Fatalf("after delete: %d todos", n)
 	}
 	calls("load", "Db.mine Todo", "Db.all Todo")
@@ -2875,7 +2875,7 @@ func TestTodosShow(t *testing.T) {
 			"Submit { form: { title: \"Milk\", due: Just 2026-10-09 } }"},
 		{App__Msg__Logout__, "Logout"},
 		{App__Session{User: rt.Just("u1")}, "{ user: Just \"u1\", role: Member }"}, // a union's zero value is its first constructor
-		{Todos__Index__Model{Filter: Todo__Filter__Active__, Todos: []Todo__Todo{{Id: "1", Title: "a", Created: time.Unix(0, 0)}}},
+		{Todos__Index__Model{Filter: Table__Todo__Filter__Active__, Todos: []Table__Todo__Todo{{Id: "1", Title: "a", Created: time.Unix(0, 0)}}},
 			"{ filter: Active, todos: [{ id: \"1\", title: \"a\", done: False, due: Nothing, owner: \"\", created: 1970-01-01T00:00:00Z }] }"},
 	} {
 		got := rt.Show(c.v)

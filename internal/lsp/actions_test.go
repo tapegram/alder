@@ -136,8 +136,8 @@ func TestCodeAction_HereGenerators(t *testing.T) {
 // Spec §7: <leader>aa on a table offers editing and removing it.
 func TestCodeAction_OnTable(t *testing.T) {
 	c := start(t, blogCopy(t))
-	openClean(t, c, "app/Post.alder")
-	acts := actions(t, c, "app/Post.alder", c.at("app/Post.alder", "table Post {", 0).Line)
+	openClean(t, c, "app/Table/Post.alder")
+	acts := actions(t, c, "app/Table/Post.alder", c.at("app/Table/Post.alder", "table Post {", 0).Line)
 	found := map[string]bool{}
 	for _, a := range acts {
 		if a.Data == nil {

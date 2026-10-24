@@ -1,10 +1,10 @@
 module Projects.Index
 
 import Layout
-import Membership
-import Org
-import Project
-import User
+import Table.Membership
+import Table.Org
+import Table.Project
+import Table.User
 
 -- The org's projects. `requires user, org`: a visitor is sent to log in, a user without an org
 -- to `choose org`'s page; here `session.org` is an Org.OrgId, and `Db.scoped Project` reads the

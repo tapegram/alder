@@ -87,7 +87,7 @@ func TestComplete_Imports(t *testing.T) {
 	openClean(t, c, "app/Posts/Index.alder")
 	p := typing(t, c, "app/Posts/Index.alder", "import Layout\n", "import ")
 	got := labels(complete(t, c, "app/Posts/Index.alder", p))
-	for _, want := range []string{"Comment", "Markdown", "Maybe"} {
+	for _, want := range []string{"Table.Comment", "Markdown", "Maybe"} {
 		if it, ok := got[want]; !ok || it.Kind != 9 {
 			t.Errorf("import: no %s in %v", want, got)
 		}
@@ -362,8 +362,8 @@ func TestComplete_ImportInsertsAlias(t *testing.T) {
 	if it, ok := got["Admin.Layout"]; !ok || it.TextEdit.NewText != "Admin.Layout as AdminLayout" {
 		t.Fatalf("Admin.Layout: %+v", it)
 	}
-	if it := got["Comment"]; it.TextEdit.NewText != "Comment" {
-		t.Fatalf("Comment: %+v", it)
+	if it := got["Table.Comment"]; it.TextEdit.NewText != "Table.Comment" {
+		t.Fatalf("Table.Comment: %+v", it)
 	}
 }
 

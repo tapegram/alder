@@ -20,7 +20,7 @@ import (
 func TestExample_SkeletonStandsAlone(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	for _, rel := range []string{"App.alder", "Layout.alder", "User.alder", "Auth/Login.alder"} {
+	for _, rel := range []string{"App.alder", "Layout.alder", "Table/User.alder", "Auth/Login.alder"} {
 		b, err := os.ReadFile(filepath.Join(todosDir(t), "app", filepath.FromSlash(rel)))
 		if err != nil {
 			t.Fatal(err)
@@ -126,8 +126,8 @@ func TestExample_Blog(t *testing.T) {
 		t.Fatalf("alder test examples/blog: exit %d\nout: %s\nerr: %s", code, out, errs)
 	}
 	for _, want := range []string{
-		`ok   Post "a slug is lowercase letters, digits and hyphens"`,
-		`ok   Post "a draft is not visible"`,
+		`ok   Table.Post "a slug is lowercase letters, digits and hyphens"`,
+		`ok   Table.Post "a draft is not visible"`,
 		`ok   Posts.Index "the front page lists only published posts, newest first"`,
 		`ok   Posts.Index "search matches title or body"`,
 		`ok   Posts.Index "a ` + "`%`" + ` in the query is literal"`,
@@ -139,7 +139,7 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Posts.Index "only an Author sees the Write link"`,
 		`ok   Posts.Index "the second page links back to the first"`,
 		`ok   Posts.Index "a search through the form"`,
-		`ok   Comment "a name or comment has text and a bound"`,
+		`ok   Table.Comment "a name or comment has text and a bound"`,
 		`ok   Posts.Show "a draft is not found for a reader"`,
 		`ok   Posts.Show "a draft is shown to its author"`,
 		`ok   Posts.Show "a post's body is rendered through the Markdown capability"`,
@@ -158,8 +158,8 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Write "a demoted author cannot open the write page"`,
 		`ok   Write "a promoted reader logs in again first"`,
 		`ok   Write.Edit "Publish shows the post on the front page; Unpublish hides it"`,
-		`ok   Post "bySlug finds the post with that slug"`,
-		`ok   Post "an author with posts cannot be deleted"`,
+		`ok   Table.Post "bySlug finds the post with that slug"`,
+		`ok   Table.Post "an author with posts cannot be deleted"`,
 		`ok   Write "the write page lists the author's own posts, newest first"`,
 		`ok   Posts.Index "a page that is exactly full has no next page"`,
 		`ok   Posts.Index "logging out from the front page goes to log in"`,
@@ -172,14 +172,14 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Admin.Index "the dashboard counts the posts and lists the newest five"`,
 		`ok   Admin.Index "a Reader gets no page, even one made Admin since logging in"`,
 		`ok   Admin.Index "a demoted Admin is refused at once"`,
-		`ok   Admin.Post.Index "searching finds the rows that contain the text"`,
-		`ok   Admin.Post.New "an author not offered is refused"`,
-		`ok   Admin.Post.Delete "the page counts the rows that go with it"`,
-		`ok   Admin.User.Delete "a user that posts refer to is not deleted"`,
-		`ok   Admin.Post.Index "filtering by published lists the rows with that value"`,
-		`ok   Admin.User.Index "filtering by role lists the rows with that value"`,
-		`ok   Admin.User.Edit "an Admin cannot change their own role"`,
-		`ok   Admin.User.Edit "an Admin demotes another Admin"`,
+		`ok   Admin.Posts.Index "searching finds the rows that contain the text"`,
+		`ok   Admin.Posts.New "an author not offered is refused"`,
+		`ok   Admin.Posts.Delete "the page counts the rows that go with it"`,
+		`ok   Admin.Users.Delete "a user that posts refer to is not deleted"`,
+		`ok   Admin.Posts.Index "filtering by published lists the rows with that value"`,
+		`ok   Admin.Users.Index "filtering by role lists the rows with that value"`,
+		`ok   Admin.Users.Edit "an Admin cannot change their own role"`,
+		`ok   Admin.Users.Edit "an Admin demotes another Admin"`,
 		"183 passed, 0 failed\n",
 	} {
 		if !strings.Contains(out, want) {
@@ -272,7 +272,7 @@ func prodHasNoTests(t *testing.T, buildDir, name string) {
 func TestExample_BlogSkeletonStandsAlone(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	for _, rel := range []string{"App.alder", "Layout.alder", "User.alder", "Auth/Login.alder"} {
+	for _, rel := range []string{"App.alder", "Layout.alder", "Table/User.alder", "Auth/Login.alder"} {
 		b, err := os.ReadFile(filepath.Join(blogDir(t), "app", filepath.FromSlash(rel)))
 		if err != nil {
 			t.Fatal(err)

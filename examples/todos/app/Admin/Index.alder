@@ -4,8 +4,8 @@ module Admin.Index
 
 -- @admin begin imports
 import Admin.Layout
-import Todo
-import User
+import Table.Todo
+import Table.User
 -- @admin end
 
 page "/admin" { } requires user, role Admin
@@ -47,16 +47,22 @@ load params session = {
         {
           key: "todos",
           title: "Todos",
-          href: Admin.Todo.Index {},
+          href: Admin.Todos.Index {},
           count: todoCount,
-          rows: List.map (\row -> { label: row.title, href: Admin.Todo.Show { id: row.id } }) todos,
+          rows: List.map (\row -> {
+            label: row.title,
+            href: Admin.Todos.Show { id: row.id },
+          }) todos,
         },
         {
           key: "users",
           title: "Users",
-          href: Admin.User.Index {},
+          href: Admin.Users.Index {},
           count: userCount,
-          rows: List.map (\row -> { label: row.email, href: Admin.User.Show { id: row.id } }) users,
+          rows: List.map (\row -> {
+            label: row.email,
+            href: Admin.Users.Show { id: row.id },
+          }) users,
         },
       ],
     }

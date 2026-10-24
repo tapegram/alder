@@ -4,7 +4,7 @@ module Admin.Users.Bulk
 
 -- @admin begin imports
 import Admin.Layout
-import User
+import Table.User
 -- @admin end
 
 page "/admin/user/bulk" { ids: List User.UserId } requires user, role Admin

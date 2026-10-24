@@ -1,11 +1,11 @@
 module Projects.Show
 
 import Layout
-import Membership
-import Org
-import Project
-import Todo
-import User
+import Table.Membership
+import Table.Org
+import Table.Project
+import Table.Todo
+import Table.User
 
 -- One project of the org and its to-dos. `Db.getScoped Project` answers 404 for an id that is
 -- not in the org's database (another org's project included).

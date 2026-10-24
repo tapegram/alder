@@ -1,9 +1,9 @@
 module Auth.Login
 
 import Layout
-import Membership
-import Org
-import User
+import Table.Membership
+import Table.Org
+import Table.User
 
 -- Password checking is outside the language: a capability implemented in Go.
 capability Password {

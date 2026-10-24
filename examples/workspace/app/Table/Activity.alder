@@ -1,0 +1,25 @@
+module Table.Activity
+
+import Table.Org
+
+type ActivityId = brand Text
+
+-- The org's log: partitioned by `org` in the shared database (the logical form of a partition,
+-- a `WHERE org = …` that `Db.scoped Activity` adds), not in the silo. It is written in the
+-- Tasks that change memberships, which are shared too: a Task writes to one store (E0031).
+table Activity {
+  id: ActivityId @id,
+  text: Text,
+  org: Org.OrgId @ref Org @cascade @partition org,
+  created: Time @created,
+}
+
+test "deleting an org deletes its activity, and only its" = {
+  let acme <- Db.insert Org.Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org.Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Activity { text: "Acme began.", org: acme }
+  let _ <- Db.insert Activity { text: "Globex began.", org: globex }
+  let _ <- Db.delete Org.Org acme
+  let left <- Db.from Activity |> Db.all
+  Task.succeed (List.map (\a -> a.text) left == ["Globex began."])
+}

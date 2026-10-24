@@ -4,9 +4,9 @@ module Admin.Projects.New
 
 -- @admin begin imports
 import Admin.Layout
-import Org
-import Project
-import User
+import Table.Org
+import Table.Project
+import Table.User
 -- @admin end
 
 page "/admin/orgs/{org}/project/new" { org: Org.OrgId } requires user, role Admin, silo org

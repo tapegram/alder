@@ -3,11 +3,11 @@
 module Admin.Orgs.Show
 
 -- @admin begin imports
-import Activity
 import Admin.Layout
-import Membership
-import Org
-import User
+import Table.Activity
+import Table.Membership
+import Table.Org
+import Table.User
 -- @admin end
 
 page "/admin/org/{id}" { id: Org.OrgId } requires user, role Admin

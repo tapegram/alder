@@ -1,8 +1,8 @@
 module Todos.Show
 
 import Layout
-import Todo
-import User
+import Table.Todo
+import Table.User
 
 page "/todos/{id}" { id: Todo.TodoId } requires user
 

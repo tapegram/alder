@@ -96,7 +96,7 @@ func TestBuildEmit_Todos(t *testing.T) {
 	if b, err := os.ReadFile(filepath.Join(out, "App_alder.go")); err != nil || !strings.Contains(string(b), "func App__update(") {
 		t.Errorf("App_alder.go lacks App__update (%v)", err)
 	}
-	if b, err := os.ReadFile(filepath.Join(out, "app__alder.go")); err != nil || !strings.Contains(string(b), "var Tables = []db.TableDesc{table__User__User.Desc(), table__Todo__Todo.Desc()}") {
+	if b, err := os.ReadFile(filepath.Join(out, "app__alder.go")); err != nil || !strings.Contains(string(b), "var Tables = []db.TableDesc{table__Table__User__User.Desc(), table__Table__Todo__Todo.Desc()}") {
 		t.Errorf("app__alder.go: %v\n%s", err, b)
 	}
 	if b, err := os.ReadFile(filepath.Join(out, "app__alder.go")); err != nil || !strings.Contains(string(b), `var Capabilities = []string{"Auth.Login.Password"}`) {

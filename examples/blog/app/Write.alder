@@ -1,8 +1,8 @@
 module Write
 
 import Layout
-import Post
-import User
+import Table.Post
+import Table.User
 
 -- Only an Author is let in: `role Author` is checked against the session before `load` runs,
 -- and a Reader who is logged in gets the same 404 as a page that does not exist. Every message

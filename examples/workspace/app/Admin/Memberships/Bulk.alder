@@ -4,9 +4,9 @@ module Admin.Memberships.Bulk
 
 -- @admin begin imports
 import Admin.Layout
-import Membership
-import Org
-import User
+import Table.Membership
+import Table.Org
+import Table.User
 -- @admin end
 
 page "/admin/membership/bulk" { ids: List Membership.MembershipId } requires user, role Admin

@@ -2,7 +2,7 @@
   "format": "1",
   "tables": [
     {
-      "name": "Todo.Todo",
+      "name": "Table.Todo.Todo",
       "id": "id",
       "created": "created",
       "columns": [
@@ -27,7 +27,7 @@
         {
           "name": "owner",
           "type": "Text",
-          "ref": "User.User"
+          "ref": "Table.User.User"
         },
         {
           "name": "created",
@@ -36,7 +36,7 @@
       ]
     },
     {
-      "name": "User.User",
+      "name": "Table.User.User",
       "id": "id",
       "created": "created",
       "columns": [

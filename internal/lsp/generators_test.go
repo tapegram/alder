@@ -266,7 +266,7 @@ func TestPlan_MigrationOnlyInTheCopy(t *testing.T) {
 	if e := c.call("alder/plan", req(c, "app/Posts/Index.alder", Position{}, sets), &plan); e != nil || plan.Error != "" {
 		t.Fatalf("plan %+v %v", plan, e)
 	}
-	if !slices.ContainsFunc(plan.Files, func(f struct{ Path string }) bool { return f.Path == "migrations/0002_tag.sql" }) || len(plan.Migration) == 0 || !strings.Contains(plan.Migration[0], "Tag") {
+	if !slices.ContainsFunc(plan.Files, func(f struct{ Path string }) bool { return f.Path == "migrations/0003_tag.sql" }) || len(plan.Migration) == 0 || !strings.Contains(plan.Migration[0], "Tag") {
 		t.Fatalf("plan %+v", plan)
 	}
 	mu.Lock()

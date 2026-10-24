@@ -3,10 +3,10 @@
 module Admin.Activities.Delete
 
 -- @admin begin imports
-import Activity
 import Admin.Layout
-import Org
-import User
+import Table.Activity
+import Table.Org
+import Table.User
 -- @admin end
 
 page "/admin/activity/{id}/delete" { id: Activity.ActivityId } requires user, role Admin

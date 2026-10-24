@@ -59,7 +59,7 @@ func TestCompile_DiagnosticsMapToExtraModule(t *testing.T) {
 	}
 	// a source with its own module line and an import of its own: only the missing imports are
 	// added, after the module line; an unused import the caller wrote is still reported
-	b = Compile("../../examples/todos", &Module{Name: "Scratch", Source: "-- a comment\nmodule Scratch\nimport Todo\n\nit : Int\nit = \"x\"\n"}, printMain, "", t.TempDir())
+	b = Compile("../../examples/todos", &Module{Name: "Scratch", Source: "-- a comment\nmodule Scratch\nimport Table.Todo\n\nit : Int\nit = \"x\"\n"}, printMain, "", t.TempDir())
 	if len(b.Diags) != 2 || b.Diags[0].Code != "W0001" || b.Diags[0].Span.Start.Line-b.LineOffset != 3 ||
 		b.Diags[1].Code != "E0003" || b.Diags[1].Span.Start.Line-b.LineOffset != 6 {
 		t.Fatalf("offset %d: %+v", b.LineOffset, b.Diags)
@@ -74,7 +74,7 @@ func TestCompile_AppErrorIsDiagnostic(t *testing.T) {
 	if err := os.CopyFS(app, os.DirFS("../../examples/todos")); err != nil {
 		t.Fatal(err)
 	}
-	todo := filepath.Join(app, "app", "Todo.alder")
+	todo := filepath.Join(app, "app", "Table", "Todo.alder")
 	orig, err := os.ReadFile(todo)
 	if err != nil {
 		t.Fatal(err)
@@ -86,7 +86,7 @@ func TestCompile_AppErrorIsDiagnostic(t *testing.T) {
 	if b.Err != nil || len(b.Diags) == 0 || b.Binary != "" {
 		t.Fatalf("err %v binary %q diags %+v", b.Err, b.Binary, b.Diags)
 	}
-	if b.Diags[0].Span.File != "app/Todo.alder" {
+	if b.Diags[0].Span.File != "app/Table/Todo.alder" {
 		t.Fatalf("diagnostic file %q", b.Diags[0].Span.File)
 	}
 	os.WriteFile(todo, orig, 0o644)

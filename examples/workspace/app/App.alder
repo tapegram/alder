@@ -1,8 +1,8 @@
 module App
 
 import Layout
-import Org
-import User
+import Table.Org
+import Table.User
 
 -- The session (book 06, "Partitions"): the signed-in user, the org they work in, and their role
 -- as their row had it at login. `org` is a key: `via Membership` means a `Session.put` of it to

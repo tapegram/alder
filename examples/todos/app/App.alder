@@ -1,7 +1,7 @@
 module App
 
 import Layout
-import User
+import Table.User
 
 -- `role` is copied from the user's row at login (Auth.Login); the generated admin's pages
 -- `requires user, role Admin` read it from here (book 06, "Rules"). Logging out makes it Member.

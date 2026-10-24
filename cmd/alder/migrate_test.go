@@ -93,8 +93,10 @@ func mustCheck(t *testing.T, dir string, wantE0019 string) {
 	}
 }
 
-// The first migration of each example is what the examples commit (so the committed files are
-// current), the app then checks clean, and a second run changes nothing (Review Focus 5).
+// A migration from nothing writes the schema the examples commit (so schema.json is current),
+// and the app then checks clean. The examples also commit 0002, the rename of their tables into
+// app/Table/ (#20): it holds only RENAMEs and the index rebuilds that follow them, and a run on
+// the committed chain changes nothing (Review Focus 5).
 func TestMigrate_Init(t *testing.T) {
 	// serial: tempApp t.Chdir()s to the copy's parent, and the test names the app by a relative path
 	for _, ex := range []string{"todos", "blog"} {
@@ -113,14 +115,24 @@ func TestMigrate_Init(t *testing.T) {
 			if got := migrationsList(t, dir); !slices.Equal(got, []string{"0001_initial.sql", "schema.json"}) {
 				t.Fatalf("migrations/ = %v", got)
 			}
-			for _, f := range []string{"0001_initial.sql", "schema.json"} {
-				if got, want := readFile(t, filepath.Join(dir, "migrations", f)), readFile(t, filepath.Join(committed, f)); got != want {
-					t.Errorf("examples/%s/migrations/%s is not what alder migrate writes:\n%s", ex, f, got)
-				}
+			if got, want := readFile(t, filepath.Join(dir, "migrations", "schema.json")), readFile(t, filepath.Join(committed, "schema.json")); got != want {
+				t.Errorf("examples/%s/migrations/schema.json is not what alder migrate writes:\n%s", ex, got)
 			}
 			mustCheck(t, dir, "")
-			mustMigrate(t, "no changes since 0001_initial\n", dir)
-			if got := migrationsList(t, dir); len(got) != 2 {
+
+			// the committed chain: 0001 as the example began, 0002 the rename into app/Table/
+			chain := tempAppAbs(t, filepath.Dir(committed), ex)
+			list := migrationsList(t, chain)
+			if len(list) != 3 || list[0] != "0001_initial.sql" || !strings.HasPrefix(list[1], "0002_rename_") || list[2] != "schema.json" {
+				t.Fatalf("committed migrations/ = %v", list)
+			}
+			for _, l := range strings.Split(readFile(t, filepath.Join(chain, "migrations", list[1])), "\n") {
+				if strings.HasPrefix(l, "CREATE TABLE") || strings.HasPrefix(l, "DROP TABLE") {
+					t.Errorf("0002 is not a rename: %s", l)
+				}
+			}
+			mustMigrate(t, "no changes since "+strings.TrimSuffix(list[1], ".sql")+"\n", chain)
+			if got := migrationsList(t, chain); len(got) != 3 {
 				t.Fatalf("a run without a change wrote %v", got)
 			}
 		})
@@ -136,32 +148,32 @@ func TestMigrate_AddRenameDrop(t *testing.T) {
 	dir := freshBlog(t)
 	runMigrate(t, dir)
 
-	editApp(t, dir, "Post.alder", "  created: Time @created,\n", "  created: Time @created,\n  summary: Maybe Text = Nothing,\n")
-	editApp(t, dir, "Post.alder", "    created: Time.epoch,\n", "    created: Time.epoch,\n    summary: Nothing,\n")
+	editApp(t, dir, "Table/Post.alder", "  created: Time @created,\n", "  created: Time @created,\n  summary: Maybe Text = Nothing,\n")
+	editApp(t, dir, "Table/Post.alder", "    created: Time.epoch,\n", "    created: Time.epoch,\n    summary: Nothing,\n")
 	mustCheck(t, dir, "the schema changed since migration 0001 (table Post: column summary): run `alder migrate`")
 	mustMigrate(t, "wrote blog/migrations/0002_add_summary.sql\n  add column Post.summary\nupdated blog/migrations/schema.json\n", dir)
-	if f := readFile(t, filepath.Join(dir, "migrations", "0002_add_summary.sql")); !strings.HasSuffix(f, "\n\nALTER TABLE \"Post__Post\" ADD COLUMN \"summary\" TEXT;\n") {
+	if f := readFile(t, filepath.Join(dir, "migrations", "0002_add_summary.sql")); !strings.HasSuffix(f, "\n\nALTER TABLE \"Table__Post__Post\" ADD COLUMN \"summary\" TEXT;\n") {
 		t.Fatalf("0002:\n%s", f)
 	}
 	mustCheck(t, dir, "")
 
-	editApp(t, dir, "Post.alder", "  summary: Maybe Text = Nothing,\n", "  excerpt: Maybe Text = Nothing @renamed \"summary\",\n")
-	editApp(t, dir, "Post.alder", "    summary: Nothing,\n", "    excerpt: Nothing,\n")
+	editApp(t, dir, "Table/Post.alder", "  summary: Maybe Text = Nothing,\n", "  excerpt: Maybe Text = Nothing @renamed \"summary\",\n")
+	editApp(t, dir, "Table/Post.alder", "    summary: Nothing,\n", "    excerpt: Nothing,\n")
 	mustCheck(t, dir, "the schema changed since migration 0002 (table Post: column excerpt): run `alder migrate`")
 	mustMigrate(t, "wrote blog/migrations/0003_rename_summary.sql\n  rename column Post.summary to excerpt\nupdated blog/migrations/schema.json\n", dir)
-	if f := readFile(t, filepath.Join(dir, "migrations", "0003_rename_summary.sql")); !strings.HasSuffix(f, "\n\nALTER TABLE \"Post__Post\" RENAME COLUMN \"summary\" TO \"excerpt\";\n") {
+	if f := readFile(t, filepath.Join(dir, "migrations", "0003_rename_summary.sql")); !strings.HasSuffix(f, "\n\nALTER TABLE \"Table__Post__Post\" RENAME COLUMN \"summary\" TO \"excerpt\";\n") {
 		t.Fatalf("0003:\n%s", f)
 	}
-	editApp(t, dir, "Post.alder", ` @renamed "summary"`, "")
+	editApp(t, dir, "Table/Post.alder", ` @renamed "summary"`, "")
 	mustCheck(t, dir, "")
 	mustMigrate(t, "no changes since 0003_rename_summary\n", dir)
 
-	editApp(t, dir, "Post.alder", "  excerpt: Maybe Text = Nothing,\n", "")
-	editApp(t, dir, "Post.alder", "    excerpt: Nothing,\n", "")
+	editApp(t, dir, "Table/Post.alder", "  excerpt: Maybe Text = Nothing,\n", "")
+	editApp(t, dir, "Table/Post.alder", "    excerpt: Nothing,\n", "")
 	mustCheck(t, dir, "the schema changed since migration 0003 (table Post: column excerpt): run `alder migrate`")
 	mustMigrate(t, "wrote blog/migrations/0004_drop_excerpt.sql\n  drop column Post.excerpt\n!! DROPS DATA: column Post.excerpt\nupdated blog/migrations/schema.json\n", dir)
 	f := readFile(t, filepath.Join(dir, "migrations", "0004_drop_excerpt.sql"))
-	if !strings.Contains(f, "\n-- DROPS DATA: column Post.excerpt\n") || !strings.HasSuffix(f, "\n\nALTER TABLE \"Post__Post\" DROP COLUMN \"excerpt\";\n") {
+	if !strings.Contains(f, "\n-- DROPS DATA: column Post.excerpt\n") || !strings.HasSuffix(f, "\n\nALTER TABLE \"Table__Post__Post\" DROP COLUMN \"excerpt\";\n") {
 		t.Fatalf("0004:\n%s", f)
 	}
 	mustCheck(t, dir, "")
@@ -218,7 +230,7 @@ func TestMigrate_NoChange(t *testing.T) {
 	runMigrate(t, dir)
 	mustMigrate(t, "no changes since 0001_initial\n", dir)
 	mustMigrate(t, "no changes since 0001_initial\n", dir, "--dry-run")
-	editApp(t, dir, "Post.alder", "published: Bool = False,", "published: Bool = True,")
+	editApp(t, dir, "Table/Post.alder", "published: Bool = False,", "published: Bool = True,")
 	mustCheck(t, dir, "")
 	snap := filepath.Join(dir, "migrations", "schema.json")
 	mustMigrate(t, "no changes since 0001_initial\n", dir, "--dry-run")
@@ -240,12 +252,12 @@ func TestMigrate_DryRun(t *testing.T) {
 	// serial: tempApp t.Chdir()s to the copy's parent, and the test names the app by a relative path
 	dir := freshBlog(t)
 	runMigrate(t, dir)
-	editApp(t, dir, "User.alder", "  created: Time @created,\n", "  created: Time @created,\n  bio: Maybe Text = Nothing,\n")
+	editApp(t, dir, "Table/User.alder", "  created: Time @created,\n", "  created: Time @created,\n  bio: Maybe Text = Nothing,\n")
 	before := migrationsList(t, dir)
 	snap := readFile(t, filepath.Join(dir, "migrations", "schema.json"))
 	code, out, errs := runMigrate(t, dir, "--dry-run")
 	if code != 0 || errs != "" || !strings.HasPrefix(out, "-- alder migration 0002_add_bio\n-- from ") ||
-		!strings.HasSuffix(out, "-- step: add column User.bio\n\nALTER TABLE \"User__User\" ADD COLUMN \"bio\" TEXT;\n\ndry run: blog/migrations/0002_add_bio.sql not written\n") {
+		!strings.HasSuffix(out, "-- step: add column User.bio\n\nALTER TABLE \"Table__User__User\" ADD COLUMN \"bio\" TEXT;\n\ndry run: blog/migrations/0002_add_bio.sql not written\n") {
 		t.Fatalf("dry run: exit %d\n%s%s", code, out, errs)
 	}
 	if got := migrationsList(t, dir); !slices.Equal(got, before) || readFile(t, filepath.Join(dir, "migrations", "schema.json")) != snap {
@@ -267,9 +279,9 @@ func TestMigrate_DryRun(t *testing.T) {
 // eval with E0019; migrate itself does not report it (it is the fix).
 func TestMigrate_E0019Everywhere(t *testing.T) {
 	// serial: tempApp t.Chdir()s to the copy's parent, and the test names the app by a relative path
-	dir := tempApp(t, "../../examples/blog", "blog") // with the committed 0001_initial
-	editApp(t, dir, "User.alder", "  created: Time @created,\n", "  created: Time @created,\n  bio: Maybe Text = Nothing,\n")
-	const msg = "the schema changed since migration 0001 (table User: column bio): run `alder migrate`"
+	dir := tempApp(t, "../../examples/blog", "blog") // with the committed migrations
+	editApp(t, dir, "Table/User.alder", "  created: Time @created,\n", "  created: Time @created,\n  bio: Maybe Text = Nothing,\n")
+	const msg = "the schema changed since migration 0002 (table User: column bio): run `alder migrate`"
 	mustCheck(t, dir, msg)
 	code, out, errs := runBuild(t, "--emit", dir)
 	if code != 1 || !strings.Contains(out, "error[E0019]: "+msg) {
@@ -298,10 +310,10 @@ func TestMigrate_SnapshotMismatch(t *testing.T) {
 	runMigrate(t, dir)
 	mdir := filepath.Join(dir, "migrations")
 	first := readFile(t, filepath.Join(mdir, "schema.json"))
-	editApp(t, dir, "User.alder", "  created: Time @created,\n", "  created: Time @created,\n  bio: Maybe Text = Nothing,\n")
+	editApp(t, dir, "Table/User.alder", "  created: Time @created,\n", "  created: Time @created,\n  bio: Maybe Text = Nothing,\n")
 	runMigrate(t, dir)
 	os.WriteFile(filepath.Join(mdir, "schema.json"), []byte(first), 0o644) // a snapshot from before 0002
-	editApp(t, dir, "User.alder", "  bio: Maybe Text = Nothing,\n", "  bio: Maybe Text = Nothing,\n  site: Maybe Text = Nothing,\n")
+	editApp(t, dir, "Table/User.alder", "  bio: Maybe Text = Nothing,\n", "  bio: Maybe Text = Nothing,\n  site: Maybe Text = Nothing,\n")
 	before := migrationsList(t, dir)
 	code, out, errs := runMigrate(t, dir)
 	if code != 1 || out != "" || errs != "alder migrate: migrations/schema.json does not match 0002_add_bio.sql's result; restore migrations/schema.json from version control, or delete the last migration file and run `alder migrate` again (only if it has not run against a database you keep)\n" {
@@ -393,9 +405,9 @@ func TestMigrate_BrokenChainRefused(t *testing.T) {
 	dir := freshBlog(t)
 	runMigrate(t, dir)
 	mdir := filepath.Join(dir, "migrations")
-	editApp(t, dir, "User.alder", "  created: Time @created,\n", "  created: Time @created,\n  bio: Maybe Text = Nothing,\n")
+	editApp(t, dir, "Table/User.alder", "  created: Time @created,\n", "  created: Time @created,\n  bio: Maybe Text = Nothing,\n")
 	runMigrate(t, dir)
-	editApp(t, dir, "User.alder", "  bio: Maybe Text = Nothing,\n", "  bio: Maybe Text = Nothing,\n  site: Maybe Text = Nothing,\n")
+	editApp(t, dir, "Table/User.alder", "  bio: Maybe Text = Nothing,\n", "  bio: Maybe Text = Nothing,\n  site: Maybe Text = Nothing,\n")
 	runMigrate(t, dir)
 	if err := os.Remove(filepath.Join(mdir, "0002_add_bio.sql")); err != nil {
 		t.Fatal(err)

@@ -157,14 +157,14 @@ func TestScratch(t *testing.T) {
 		priv := filepath.Join(t.TempDir(), "todos")
 		copyDir(t, todosDir(t), priv)
 		os.RemoveAll(filepath.Join(priv, "build"))
-		orig, err := os.ReadFile(filepath.Join(priv, "app", "Todo.alder"))
+		orig, err := os.ReadFile(filepath.Join(priv, "app", "Table", "Todo.alder"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		writeScratch(t, filepath.Join(priv, "app", "Todo.alder"), string(orig)+"\nbroken : Int\nbroken = \"x\"\n")
+		writeScratch(t, filepath.Join(priv, "app", "Table", "Todo.alder"), string(orig)+"\nbroken : Int\nbroken = \"x\"\n")
 		writeScratch(t, filepath.Join(priv, "scratch.alder"), "> 1\n")
 		code, _, stderr := runScratch(t, filepath.Join(priv, "scratch.alder"))
-		if code != 1 || !strings.Contains(stderr, "app/Todo.alder:") || !strings.Contains(stderr, "broken = \"x\"") {
+		if code != 1 || !strings.Contains(stderr, "app/Table/Todo.alder:") || !strings.Contains(stderr, "broken = \"x\"") {
 			t.Errorf("exit %d\nstderr: %s", code, stderr)
 		}
 	})
@@ -421,7 +421,7 @@ func TestScratchWatchJSONStreams(t *testing.T) {
 func TestScratchFileAbsResolvesSymlinks(t *testing.T) {
 	tmp := t.TempDir()
 	real := filepath.Join(tmp, "real", "todos")
-	writeScratch(t, filepath.Join(real, "app", "Todo.alder"), "module Todo\n")
+	writeScratch(t, filepath.Join(real, "app", "Table", "Todo.alder"), "module Table.Todo\n")
 	writeScratch(t, filepath.Join(real, "scratch.alder"), "> 1\n")
 	link := filepath.Join(tmp, "link")
 	if err := os.Symlink(filepath.Join(tmp, "real"), link); err != nil {

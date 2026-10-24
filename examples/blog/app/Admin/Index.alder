@@ -4,9 +4,9 @@ module Admin.Index
 
 -- @admin begin imports
 import Admin.Layout
-import Comment
-import Post
-import User
+import Table.Comment
+import Table.Post
+import Table.User
 -- @admin end
 
 page "/admin" { } requires user, role Admin
@@ -54,26 +54,29 @@ load params session = {
         {
           key: "comments",
           title: "Comments",
-          href: Admin.Comment.Index {},
+          href: Admin.Comments.Index {},
           count: commentCount,
           rows: List.map (\row -> {
             label: row.author,
-            href: Admin.Comment.Show { id: row.id },
+            href: Admin.Comments.Show { id: row.id },
           }) comments,
         },
         {
           key: "posts",
           title: "Posts",
-          href: Admin.Post.Index {},
+          href: Admin.Posts.Index {},
           count: postCount,
-          rows: List.map (\row -> { label: row.slug, href: Admin.Post.Show { id: row.id } }) posts,
+          rows: List.map (\row -> { label: row.slug, href: Admin.Posts.Show { id: row.id } }) posts,
         },
         {
           key: "users",
           title: "Users",
-          href: Admin.User.Index {},
+          href: Admin.Users.Index {},
           count: userCount,
-          rows: List.map (\row -> { label: row.email, href: Admin.User.Show { id: row.id } }) users,
+          rows: List.map (\row -> {
+            label: row.email,
+            href: Admin.Users.Show { id: row.id },
+          }) users,
         },
       ],
     }

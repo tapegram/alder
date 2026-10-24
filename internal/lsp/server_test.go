@@ -98,7 +98,7 @@ func TestPanicIsInternalError(t *testing.T) {
 		t.Fatalf("err %v", e)
 	}
 	// the server lives on
-	if e := c.call("textDocument/hover", map[string]any{"textDocument": map[string]any{"uri": c.uri("app/Post.alder")}, "position": map[string]any{"line": 0, "character": 0}}, nil); e != nil {
+	if e := c.call("textDocument/hover", map[string]any{"textDocument": map[string]any{"uri": c.uri("app/Table/Post.alder")}, "position": map[string]any{"line": 0, "character": 0}}, nil); e != nil {
 		t.Fatalf("after panic: %v", e)
 	}
 }
@@ -237,7 +237,7 @@ func TestCancel_IDKinds(t *testing.T) {
 // after the reader has queued everything earlier.
 func (c *client) sync() {
 	c.t.Helper()
-	c.call("textDocument/hover", map[string]any{"textDocument": map[string]any{"uri": c.uri("app/Post.alder")}, "position": map[string]any{"line": 0, "character": 0}}, nil)
+	c.call("textDocument/hover", map[string]any{"textDocument": map[string]any{"uri": c.uri("app/Table/Post.alder")}, "position": map[string]any{"line": 0, "character": 0}}, nil)
 }
 
 func wait(t *testing.T, ch <-chan struct{}) {

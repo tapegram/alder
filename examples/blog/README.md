@@ -10,6 +10,10 @@ To try it: `alder run`, then log in at `/login` with the password `password` as
 `admin@example.com` (an Admin: `/admin`). The accounts are the development stub's
 (`adapters/auth/password.go`), which accepts them only under `alder run`.
 
+## Layout
+
+The tables (Comment, Post and User) live under `app/Table/`, one module each (`module Table.Comment`, `Table.Post` and `Table.User`), and pages `import Table.<Name>`. The admin's folders are plural (`app/Admin/Todos/` and so on); its URLs are not (`/admin/todo`). `migrations/0002_rename_comment_rename_post_rename_user.sql` renames the tables from the old root modules to these; it moves no data.
+
 ## Deploying
 
 `App` declares one environment, `local`, a `Script` target (book 16, "The Script hatch"):
@@ -124,26 +128,26 @@ steps, from the blog before the admin:
 
    ```
    $ alder new admin
-   wrote app/Admin/Comment/Bulk.alder
-   wrote app/Admin/Comment/Delete.alder
-   wrote app/Admin/Comment/Edit.alder
-   wrote app/Admin/Comment/Index.alder
-   wrote app/Admin/Comment/New.alder
-   wrote app/Admin/Comment/Show.alder
+   wrote app/Admin/Comments/Bulk.alder
+   wrote app/Admin/Comments/Delete.alder
+   wrote app/Admin/Comments/Edit.alder
+   wrote app/Admin/Comments/Index.alder
+   wrote app/Admin/Comments/New.alder
+   wrote app/Admin/Comments/Show.alder
    wrote app/Admin/Index.alder
    wrote app/Admin/Layout.alder
-   wrote app/Admin/Post/Bulk.alder
-   wrote app/Admin/Post/Delete.alder
-   wrote app/Admin/Post/Edit.alder
-   wrote app/Admin/Post/Index.alder
-   wrote app/Admin/Post/New.alder
-   wrote app/Admin/Post/Show.alder
-   wrote app/Admin/User/Bulk.alder
-   wrote app/Admin/User/Delete.alder
-   wrote app/Admin/User/Edit.alder
-   wrote app/Admin/User/Index.alder
-   wrote app/Admin/User/New.alder
-   wrote app/Admin/User/Show.alder
+   wrote app/Admin/Posts/Bulk.alder
+   wrote app/Admin/Posts/Delete.alder
+   wrote app/Admin/Posts/Edit.alder
+   wrote app/Admin/Posts/Index.alder
+   wrote app/Admin/Posts/New.alder
+   wrote app/Admin/Posts/Show.alder
+   wrote app/Admin/Users/Bulk.alder
+   wrote app/Admin/Users/Delete.alder
+   wrote app/Admin/Users/Edit.alder
+   wrote app/Admin/Users/Index.alder
+   wrote app/Admin/Users/New.alder
+   wrote app/Admin/Users/Show.alder
    ```
 
 4. The development login (`adapters/auth/password.go`) gains `admin@example.com`, an Admin.

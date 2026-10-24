@@ -1,10 +1,10 @@
 module Orgs.Index
 
-import Activity
 import Layout
-import Membership
-import Org
-import User
+import Table.Activity
+import Table.Membership
+import Table.Org
+import Table.User
 
 -- `choose org`'s page: it requires the user, not the org (a page that required the org would
 -- send a session without one back here). It lists the user's orgs, each a button that puts it in

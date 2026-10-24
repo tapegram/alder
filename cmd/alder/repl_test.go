@@ -94,7 +94,7 @@ func TestRepl_LetAndExpr(t *testing.T) {
 func TestRepl_Type(t *testing.T) {
 	t.Parallel()
 	out := replTodos(t, ":type Todo.countOpen\n")
-	wantIn(t, out, "Todo.countOpen : List Todo -> Int\n")
+	wantIn(t, out, "Todo.countOpen : List Table.Todo.Todo -> Int\n")
 }
 
 func TestRepl_Diagnostic(t *testing.T) {
@@ -129,7 +129,7 @@ func TestRepl_LetNames(t *testing.T) {
 		t.Errorf("want the lowercase rule twice, got %d:\n%s", n, out)
 	}
 	wantIn(t, out, "alder repl: a let may not be named `it`, the name the REPL gives the expression; let another name\n",
-		"Todo.countOpen : List Todo -> Int\n")
+		"Todo.countOpen : List Table.Todo.Todo -> Int\n")
 	if strings.Contains(out, "input line") {
 		t.Errorf("the REPL says input line:\n%s", out)
 	}
@@ -281,10 +281,10 @@ func TestRepl_QueryHints(t *testing.T) {
 	t.Parallel()
 	out := replTodos(t, "Db.from Todo \\\n  |> Db.count\nDb.from Todo |> Db.all\nTask.fail \"no\"\nDb.from Todo\n:run Task.fail \"no\"\n:run! (Db.from Todo |> Db.all)\n:html 1\n")
 	wantIn(t, out,
-		"<Query> : Query (List Todo)\n", "`:run ",
+		"<Query> : Query (List Table.Todo.Todo)\n", "`:run ",
 		"hint: `:run Db.from Todo |> Db.count` runs it", // a multi-line input on one line
 		"<Task> : Task a\n", "`:run! ",
-		"<Select> : Select Todo\n", "Db.all, Db.first or Db.count",
+		"<Select> : Select Table.Todo.Todo\n", "Db.all, Db.first or Db.count",
 		"`:run` wants a Query; use `:run!` for a Task",
 		"`:run!` wants a Task; use `:run` for a Query",
 		"`:html` wants an Html value; 1 : Int",
@@ -312,7 +312,7 @@ func TestRepl_RunBangAndFailure(t *testing.T) {
 		`}`,
 		`:run (Db.from User |> Db.count)`,
 	}, "\n")+"\n")
-	wantIn(t, out, " : User.UserId\n", "alder repl: the task failed: no\n", "alder repl: the task failed: late\n")
+	wantIn(t, out, " : Table.User.UserId\n", "alder repl: the task failed: no\n", "alder repl: the task failed: late\n")
 	if n := strings.Count(out, "1 : Int\n"); n != 2 {
 		t.Errorf("want the count 1 twice, got %d:\n%s", n, out)
 	}
@@ -330,13 +330,13 @@ func TestRepl_Html(t *testing.T) {
 // copy's directory.
 func replTemp(t *testing.T) string {
 	t.Helper()
-	return tempTodos(t, "Todo.alder", "\nprobe : Int -> Int\nprobe n = n + 1\n")
+	return tempTodos(t, "Table/Todo.alder", "\nprobe : Int -> Int\nprobe n = n + 1\n")
 }
 
 // dropProbe removes probe from the copy's Todo module.
 func dropProbe(t *testing.T, dir string) {
 	t.Helper()
-	path := filepath.Join(dir, "app", "Todo.alder")
+	path := filepath.Join(dir, "app", "Table", "Todo.alder")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -381,7 +381,7 @@ func TestRepl_BrokenApp(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
 	dir := replTemp(t)
-	path := filepath.Join(dir, "app", "Todo.alder")
+	path := filepath.Join(dir, "app", "Table", "Todo.alder")
 	good, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -536,9 +536,9 @@ func TestRepl_Usage(t *testing.T) {
 			t.Errorf("%q: exit %d, want 2\n%s", args, code, out)
 		}
 	}
-	code, out := runRepl(t, "", todosDir(t), "--module", "Todo")
-	if code != 2 || !strings.Contains(out, "the app already has a module named Todo; give --module another name\n") {
-		t.Errorf("--module Todo: exit %d\n%s", code, out)
+	code, out := runRepl(t, "", todosDir(t), "--module", "Layout")
+	if code != 2 || !strings.Contains(out, "the app already has a module named Layout; give --module another name\n") {
+		t.Errorf("--module Layout: exit %d\n%s", code, out)
 	}
 }
 
@@ -561,26 +561,26 @@ func TestRepl_MissingAdapter(t *testing.T) {
 func TestRepl_InModule(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
-	code, out := runRepl(t, "countOpen []\nlet n = countOpen []\nn + 1\n", todosDir(t), "--in", "Todo")
+	code, out := runRepl(t, "countOpen []\nlet n = countOpen []\nn + 1\n", todosDir(t), "--in", "Table.Todo")
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	wantIn(t, out, "alder repl: todos, in Todo", "0 : Int\n", "n : Int\n", "1 : Int\n")
+	wantIn(t, out, "alder repl: todos, in Table.Todo", "0 : Int\n", "n : Int\n", "1 : Int\n")
 }
 
 func TestRepl_InRefusesShadowingLet(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
-	_, out := runRepl(t, "let countOpen = 1\ncountOpen []\n", todosDir(t), "--in", "Todo")
-	wantIn(t, out, "alder repl: Todo already declares countOpen", "0 : Int\n")
+	_, out := runRepl(t, "let countOpen = 1\ncountOpen []\n", todosDir(t), "--in", "Table.Todo")
+	wantIn(t, out, "alder repl: Table.Todo already declares countOpen", "0 : Int\n")
 }
 
 func TestRepl_InCommandSwitchesAndKeepsLets(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
 	// a let that uses Todo's names unqualified survives :in Todo and is dropped by :in (app scope)
-	_, out := runRepl(t, "let a = 1\n:in Todo\nlet n = countOpen []\n:in\nn\na\n", todosDir(t))
-	wantIn(t, out, "in Todo\n", "n : Int\n", "dropped let n:", "1 : Int\n")
+	_, out := runRepl(t, "let a = 1\n:in Table.Todo\nlet n = countOpen []\n:in\nn\na\n", todosDir(t))
+	wantIn(t, out, "in Table.Todo\n", "n : Int\n", "dropped let n:", "1 : Int\n")
 	if strings.Contains(out, "dropped let a") {
 		t.Errorf("a does not depend on the module:\n%s", out)
 	}
@@ -599,7 +599,7 @@ func TestRepl_InUnknownModule(t *testing.T) {
 
 func TestRepl_InWithModuleIsUsage(t *testing.T) {
 	t.Parallel()
-	code, out := runRepl(t, "", todosDir(t), "--in", "Todo", "--module", "Probe")
+	code, out := runRepl(t, "", todosDir(t), "--in", "Table.Todo", "--module", "Probe")
 	if code != 2 || !strings.Contains(out, "--in") {
 		t.Errorf("exit %d\n%s", code, out)
 	}
@@ -618,29 +618,29 @@ func TestRepl_InNestedModule(t *testing.T) {
 	wantIn(t, out, "in Todos.Index\n", "update : ", ":in wants an app module name")
 }
 
-// A broken declaration of the module itself is the app's error, named in app/Todo.alder, under
+// A broken declaration of the module itself is the app's error, named in app/Table/Todo.alder, under
 // --in at startup; :in to it is refused as the app's errors, not as a missing module.
 func TestRepl_InBrokenModule(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
 	tmp := t.TempDir()
 	copyDir(t, todosDir(t), filepath.Join(tmp, "todos"))
-	path := filepath.Join(tmp, "todos", "app", "Todo.alder")
+	path := filepath.Join(tmp, "todos", "app", "Table", "Todo.alder")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	os.WriteFile(path, append(b, []byte("\nbroken : Int\nbroken = \"x\"\n")...), 0o644)
-	code, out := runRepl(t, "", filepath.Join(tmp, "todos"), "--in", "Todo")
+	code, out := runRepl(t, "", filepath.Join(tmp, "todos"), "--in", "Table.Todo")
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	wantIn(t, out, "app/Todo.alder:", "the app has errors")
+	wantIn(t, out, "app/Table/Todo.alder:", "the app has errors")
 	if strings.Contains(out, "expr:") || strings.Contains(out, "let ") {
 		t.Errorf("the module's own error is not the session's:\n%s", out)
 	}
-	_, out = runRepl(t, ":in Todo\n", filepath.Join(tmp, "todos"))
-	wantIn(t, out, "app/Todo.alder:", "alder repl: not in Todo: the app has errors")
+	_, out = runRepl(t, ":in Table.Todo\n", filepath.Join(tmp, "todos"))
+	wantIn(t, out, "app/Table/Todo.alder:", "alder repl: not in Table.Todo: the app has errors")
 	if strings.Contains(out, "no module") {
 		t.Errorf("a broken module is not a missing one:\n%s", out)
 	}

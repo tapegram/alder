@@ -4,10 +4,10 @@ module Admin.Projects.Show
 
 -- @admin begin imports
 import Admin.Layout
-import Org
-import Project
-import Todo
-import User
+import Table.Org
+import Table.Project
+import Table.Todo
+import Table.User
 -- @admin end
 
 page "/admin/orgs/{org}/project/{id}" {

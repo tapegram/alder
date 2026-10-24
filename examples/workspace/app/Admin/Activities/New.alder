@@ -3,10 +3,10 @@
 module Admin.Activities.New
 
 -- @admin begin imports
-import Activity
 import Admin.Layout
-import Org
-import User
+import Table.Activity
+import Table.Org
+import Table.User
 -- @admin end
 
 page "/admin/activity/new" { findOrg: Text = "" } requires user, role Admin

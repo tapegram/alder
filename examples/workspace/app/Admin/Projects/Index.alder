@@ -4,9 +4,9 @@ module Admin.Projects.Index
 
 -- @admin begin imports
 import Admin.Layout
-import Org
-import Project
-import User
+import Table.Org
+import Table.Project
+import Table.User
 -- @admin end
 
 -- @admin begin params

@@ -1,7 +1,7 @@
 module App
 
 import Layout
-import User
+import Table.User
 
 -- `role` is the user's role, copied from their row when they log in (Auth.Login): the Write
 -- pages' `requires user, role Author` reads it from here, never from the database (book 06,

@@ -4,7 +4,7 @@ module Admin.Layout
 
 -- @admin begin imports
 import Layout
-import User
+import Table.User
 -- @admin end
 
 -- The admin's frame: the app's layout around a nav of every table's list.

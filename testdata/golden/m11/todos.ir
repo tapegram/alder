@@ -14,19 +14,19 @@
     (elem body
       (elem al-page (attr width text "narrow")
         (elem main (hexpr list (field children (var props))))))))
-(module User)
-(union User.Role (Member) (Admin))
-(record User.User
+(module Table.User)
+(union Table.User.Role (Member) (Admin))
+(record Table.User.User
   (id Text)
   (email Text)
   (name Text)
   (passwordHash Text)
   (created Time)
-  (role Role = (ctor User.Role.Member)))
+  (role Role = (ctor Table.User.Role.Member)))
 (module App)
 (record App.Session
   (user Maybe Text)
-  (role User.Role = (ctor User.Role.Member)))
+  (role Table.User.Role = (ctor Table.User.Role.Member)))
 (union App.Msg (Logout))
 (value App.update : Msg -> Session -> Task Nav (msg session)
   (match union (var msg)
@@ -36,7 +36,7 @@
           (lambda (s : Session)
             (update (var s)
               (user (ctor Prelude.Maybe.Nothing))
-              (role (ctor User.Role.Member)))))
+              (role (ctor Table.User.Role.Member)))))
         (pure task
           (ctor Prelude.Nav.Redirect
             (record (value (page-ref Auth.Login (record Auth.Login.Params))))))))))
@@ -54,7 +54,7 @@
         (ctor App.Msg.Logout)
         (record Session
           (user (ctor Prelude.Maybe.Just (record (value "me"))))
-          (role (ctor User.Role.Admin)))))
+          (role (ctor Table.User.Role.Admin)))))
     (pure task
       (test-eq
         (record (value (field value (var r))) (trace (field trace (var r))))
@@ -69,20 +69,20 @@
           (trace (list "Session.put")))))))
 (test "Logout makes the role Member" task
   (bind task me : Text
-    (db-insert User.User
+    (db-insert Table.User.User
       (record
         (email "me@example.com")
         (name "Me")
         (passwordHash "")
-        (role (ctor User.Role.Admin))))
+        (role (ctor Table.User.Role.Admin))))
     (bind task _
       (test-login
         (record Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
-          (role (ctor User.Role.Admin))))
+          (role (ctor Table.User.Role.Admin))))
       (bind task _
         (test-get Todos.Index
-          (record Todos.Index.Params (filter (ctor Todo.Filter.All))))
+          (record Todos.Index.Params (filter (ctor Table.Todo.Filter.All))))
         (bind task out : { answer: Answer, session: Session, doc: Doc, notices: List Text }
           (test-click App.Logout)
           (pure task
@@ -95,7 +95,7 @@
                   (ctor Prelude.Answer.Redirected
                     (record
                       (value (page-ref Auth.Login (record Auth.Login.Params))))))
-                (role (ctor User.Role.Member))))))))))
+                (role (ctor Table.User.Role.Member))))))))))
 (module Auth.Login)
 (record Auth.Login.Model)
 (record Auth.Login.Credentials (email Text) (password Text))
@@ -118,13 +118,13 @@
             (case Just (bind _m1 value : Text)
               (let id : Text
                 (var _m1)
-                (bind task found : Maybe User
-                  (db-get User.User (var id))
-                  (let role : User.Role
+                (bind task found : Maybe Table.User.User
+                  (db-get Table.User.User (var id))
+                  (let role : Table.User.Role
                     (call (std Maybe.withDefault)
-                      (ctor User.Role.Member)
+                      (ctor Table.User.Role.Member)
                       (call (std Maybe.map)
-                        (lambda (u : User) (field role (var u)))
+                        (lambda (u : Table.User.User) (field role (var u)))
                         (var found)))
                     (bind task _
                       (call (std Session.put)
@@ -140,7 +140,7 @@
                             (value
                               (page-ref Todos.Index
                                 (record Todos.Index.Params
-                                  (filter (ctor Todo.Filter.All)))))))))))))
+                                  (filter (ctor Table.Todo.Filter.All)))))))))))))
             (case Nothing
               (pure task
                 (ctor Prelude.Nav.Reject
@@ -185,12 +185,12 @@
   (bind task _
     (test-fake Auth.Login.Password)
     (bind task me : Text
-      (db-insert User.User
+      (db-insert Table.User.User
         (record
           (email "me@example.com")
           (name "Me")
           (passwordHash "")
-          (role (ctor User.Role.Member))))
+          (role (ctor Table.User.Role.Member))))
       (bind task _
         (test-get Auth.Login (record Params))
         (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
@@ -209,19 +209,19 @@
                       (value
                         (page-ref Todos.Index
                           (record Todos.Index.Params
-                            (filter (ctor Todo.Filter.All))))))))
+                            (filter (ctor Table.Todo.Filter.All))))))))
                 (user (ctor Prelude.Maybe.Just (record (value (var me)))))
                 (title (ctor Prelude.Maybe.Just (record (value "Todos"))))))))))))
 (test "logging in copies the role from the user's row" task
   (bind task _
     (test-fake Auth.Login.Password)
     (bind task _
-      (db-insert User.User
+      (db-insert Table.User.User
         (record
           (email "admin@example.com")
           (name "Admin")
           (passwordHash "")
-          (role (ctor User.Role.Admin))))
+          (role (ctor Table.User.Role.Admin))))
       (bind task _
         (test-get Auth.Login (record Params))
         (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
@@ -230,26 +230,26 @@
           (pure task
             (test-eq
               (field role (field session (var r)))
-              (ctor User.Role.Admin))))))))
+              (ctor Table.User.Role.Admin))))))))
 (test "a visitor is sent to log in, and can log out" task
   (bind task me : Text
-    (db-insert User.User
+    (db-insert Table.User.User
       (record
         (email "me@example.com")
         (name "Me")
         (passwordHash "")
-        (role (ctor User.Role.Member))))
+        (role (ctor Table.User.Role.Member))))
     (bind task visitor : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
       (test-open Todos.Index
-        (record Todos.Index.Params (filter (ctor Todo.Filter.All))))
+        (record Todos.Index.Params (filter (ctor Table.Todo.Filter.All))))
       (bind task _
         (test-login
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value (var me)))))
-            (role (ctor User.Role.Member))))
+            (role (ctor Table.User.Role.Member))))
         (bind task _
           (test-get Todos.Index
-            (record Todos.Index.Params (filter (ctor Todo.Filter.All))))
+            (record Todos.Index.Params (filter (ctor Table.Todo.Filter.All))))
           (bind task out : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-click App.Logout)
             (pure task
@@ -266,33 +266,33 @@
                     (ctor Prelude.Answer.Redirected
                       (record (value (page-ref Auth.Login (record Params))))))
                   (user (ctor Prelude.Maybe.Nothing)))))))))))
-(module Todo)
-(union Todo.Filter (All) (Active) (Completed))
-(record Todo.Todo
+(module Table.Todo)
+(union Table.Todo.Filter (All) (Active) (Completed))
+(record Table.Todo.Todo
   (id Text)
   (title Text)
   (done Bool = False)
   (due Maybe Date)
   (owner Text)
   (created Time))
-(value Todo.matches : Filter -> Todo -> Bool (filter todo)
+(value Table.Todo.matches : Filter -> Todo -> Bool (filter todo)
   (match union (var filter)
     (case All True)
     (case Active (call (std Prelude.not) (field done (var todo))))
     (case Completed (field done (var todo)))))
-(value Todo.filterLabel : Filter -> Text (filter)
+(value Table.Todo.filterLabel : Filter -> Text (filter)
   (match union (var filter)
     (case All "All")
     (case Active "Active")
     (case Completed "Completed")))
-(value Todo.countOpen : List Todo -> Int (todos)
+(value Table.Todo.countOpen : List Todo -> Int (todos)
   (call (std List.length)
     (call (std List.filter)
       (lambda (t : Todo) (call (std Prelude.not) (field done (var t))))
       (var todos))))
 (test "countOpen ignores done todos" pure
   (test-eq
-    (call (global Todo.countOpen)
+    (call (global Table.Todo.countOpen)
       (list
         (record Todo
           (id "a")
@@ -321,7 +321,9 @@
     (call (std List.map)
       (lambda (t : Todo) (field title (var t)))
       (call (std List.filter)
-        (partial (global Todo.matches) (ctor Todo.Filter.Active) (missing 1))
+        (partial (global Table.Todo.matches)
+          (ctor Table.Todo.Filter.Active)
+          (missing 1))
         (list
           (record Todo
             (id "a")
@@ -341,31 +343,31 @@
 (test "each filter has its label" pure
   (test-eq
     (call (std List.map)
-      (global Todo.filterLabel)
+      (global Table.Todo.filterLabel)
       (list
-        (ctor Todo.Filter.All)
-        (ctor Todo.Filter.Active)
-        (ctor Todo.Filter.Completed)))
+        (ctor Table.Todo.Filter.All)
+        (ctor Table.Todo.Filter.Active)
+        (ctor Table.Todo.Filter.Completed)))
     (list "All" "Active" "Completed")))
 (test "a user with todos cannot be deleted" task
   (bind task me : Text
-    (db-insert User.User
+    (db-insert Table.User.User
       (record
         (email "me@example.com")
         (name "Me")
         (passwordHash "")
-        (role (ctor User.Role.Member))))
+        (role (ctor Table.User.Role.Member))))
     (bind task id : Text
-      (db-insert Todo.Todo
+      (db-insert Table.Todo.Todo
         (record
           (title "Milk")
           (done False)
           (due (ctor Prelude.Maybe.Nothing))
           (owner (var me))))
       (bind task r : { value: Result Text Unit, trace: List Text }
-        (test-run (db-delete User.User (var me)))
+        (test-run (db-delete Table.User.User (var me)))
         (bind task after : Maybe Todo
-          (db-get Todo.Todo (var id))
+          (db-get Table.Todo.Todo (var id))
           (pure task
             (test-eq
               (record
@@ -378,9 +380,12 @@
                 (deleted (ctor Prelude.Maybe.Nothing))
                 (todo (ctor Prelude.Maybe.Just (record (value "Milk"))))))))))))
 (module Todos.Index)
-(record Todos.Index.Model (filter Todo.Filter) (todos List Todo))
+(record Todos.Index.Model
+  (filter Table.Todo.Filter)
+  (todos List Table.Todo.Todo))
 (record Todos.Index.NewTodo (title Text) (due Maybe Date))
-(record Todos.Index.Params (filter Todo.Filter = (ctor Todo.Filter.All)))
+(record Todos.Index.Params
+  (filter Table.Todo.Filter = (ctor Table.Todo.Filter.All)))
 (record Todos.Index.SubmitParams (form NewTodo))
 (record Todos.Index.ToggleParams (id Text))
 (record Todos.Index.DeleteParams (id Text))
@@ -388,19 +393,19 @@
   (Submit SubmitParams)
   (Toggle ToggleParams)
   (Delete DeleteParams))
-(record Todos.Index.Session (user Text) (role User.Role))
+(record Todos.Index.Session (user Text) (role Table.User.Role))
 (value Todos.Index.load : Params -> Session -> Query Model (params session)
-  (bind query todos : List Todo
-    (db-select Todo.Todo
-      (base (db-mine Todo.Todo))
-      (order (ord (col Todo.Todo created) desc))
+  (bind query todos : List Table.Todo.Todo
+    (db-select Table.Todo.Todo
+      (base (db-mine Table.Todo.Todo))
+      (order (ord (col Table.Todo.Todo created) desc))
       all)
     (pure query
       (record Model
         (filter (field filter (var params)))
         (todos
           (call (std List.filter)
-            (partial (global Todo.matches)
+            (partial (global Table.Todo.matches)
               (field filter (var params))
               (missing 1))
             (var todos)))))))
@@ -410,7 +415,7 @@
       (let p : SubmitParams
         (var _m1)
         (bind task _
-          (db-insert-mine Todo.Todo
+          (db-insert-mine Table.Todo.Todo
             (record
               (title (field title (field form (var p))))
               (done False)
@@ -425,9 +430,9 @@
       (let p : ToggleParams
         (var _m2)
         (bind task _
-          (db-update-mine Todo.Todo
+          (db-update-mine Table.Todo.Todo
             (field id (var p))
-            (lambda (t : Todo)
+            (lambda (t : Table.Todo.Todo)
               (update (var t)
                 (done (call (std Prelude.not) (field done (var t)))))))
           (pure task (ctor Prelude.Nav.Rerender)))))
@@ -435,7 +440,8 @@
       (let p : DeleteParams
         (var _m3)
         (bind task _
-          (db-delete-mine Todo.Todo (field id (var p)))
+          (db-delete-mine Table.Todo.Todo
+            (field id (var p)))
           (pure task (ctor Prelude.Nav.Rerender)))))))
 (value Todos.Index.view : Model -> Session -> Html Msg (model session)
   (comp Layout.Page
@@ -450,34 +456,34 @@
         (elem al-button (attr type text "submit")
           (elem button (attr type text "submit") (htext "Add")))))
     (elem nav
-      (hfor f : Todo.Filter
+      (hfor f : Table.Todo.Filter
         (list
-          (ctor Todo.Filter.All)
-          (ctor Todo.Filter.Active)
-          (ctor Todo.Filter.Completed))
+          (ctor Table.Todo.Filter.All)
+          (ctor Table.Todo.Filter.Active)
+          (ctor Table.Todo.Filter.Completed))
         (elem a
           (attr href href
             (page-ref Todos.Index (record Params (filter (var f)))))
           (attr aria-current maybe
-            (if (== : Todo.Filter (field filter (var model)) (var f))
+            (if (== : Table.Todo.Filter (field filter (var model)) (var f))
               (ctor Prelude.Maybe.Just (record (value "page")))
               (ctor Prelude.Maybe.Nothing)))
-          (hexpr text (call (global Todo.filterLabel) (var f))))))
+          (hexpr text (call (global Table.Todo.filterLabel) (var f))))))
     (elem ul (attr id text "todos")
-      (hfor todo : Todo
+      (hfor todo : Table.Todo.Todo
         (field todos (var model))
         (comp Todos.Index.Item (record (todo (var todo))))))
     (elem p (attr id text "summary")
       (hexpr text
         (call (std Text.fromInt)
-          (call (global Todo.countOpen) (field todos (var model)))))
+          (call (global Table.Todo.countOpen) (field todos (var model)))))
       (htext " open"))
     (elem al-button (attr variant text "outline")
       (elem button
         (attr type text "button")
         (attr click click (ctor App.Msg.Logout))
         (htext "Log out")))))
-(component Todos.Index.Item : { todo: Todo } -> Html Msg (props)
+(component Todos.Index.Item : { todo: Table.Todo.Todo } -> Html Msg (props)
   (elem li
     (attr class text (if (field done (field todo (var props))) "done" ""))
     (elem al-button (attr variant text "secondary") (attr size text "sm")
@@ -510,14 +516,14 @@
         (htext "Delete")))))
 (test "Toggle flips done" task
   (bind task me : Text
-    (db-insert User.User
+    (db-insert Table.User.User
       (record
         (email "me@example.com")
         (name "Me")
         (passwordHash "")
-        (role (ctor User.Role.Member))))
+        (role (ctor Table.User.Role.Member))))
     (bind task id : Text
-      (db-insert Todo.Todo
+      (db-insert Table.Todo.Todo
         (record
           (title "Milk")
           (done False)
@@ -527,18 +533,22 @@
         (test-login
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value (var me)))))
-            (role (ctor User.Role.Member))))
+            (role (ctor Table.User.Role.Member))))
         (bind task r : { value: Result Text Nav, trace: List Text }
           (test-run
             (call (global Todos.Index.update)
               (ctor Todos.Index.Msg.Toggle (record ToggleParams (id (var id))))
-              (record Model (filter (ctor Todo.Filter.All)) (todos (list)))
-              (record Session (user (var me)) (role (ctor User.Role.Member)))))
-          (bind task after : Maybe Todo
-            (db-get Todo.Todo (var id))
+              (record Model
+                (filter (ctor Table.Todo.Filter.All))
+                (todos (list)))
+              (record Session
+                (user (var me))
+                (role (ctor Table.User.Role.Member)))))
+          (bind task after : Maybe Table.Todo.Todo
+            (db-get Table.Todo.Todo (var id))
             (let done : Maybe Bool
               (call (std Maybe.map)
-                (lambda (t : Todo) (field done (var t)))
+                (lambda (t : Table.Todo.Todo) (field done (var t)))
                 (var after))
               (pure task
                 (test-eq
@@ -548,14 +558,14 @@
                     (done (ctor Prelude.Maybe.Just (record (value True))))))))))))))
 (test "Toggle by another user is not found" task
   (bind task me : Text
-    (db-insert User.User
+    (db-insert Table.User.User
       (record
         (email "me@example.com")
         (name "Me")
         (passwordHash "")
-        (role (ctor User.Role.Member))))
+        (role (ctor Table.User.Role.Member))))
     (bind task id : Text
-      (db-insert Todo.Todo
+      (db-insert Table.Todo.Todo
         (record
           (title "Milk")
           (done False)
@@ -565,40 +575,41 @@
         (test-login
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value (var me)))))
-            (role (ctor User.Role.Member))))
+            (role (ctor Table.User.Role.Member))))
         (bind task _
-          (test-get Todos.Index (record Params (filter (ctor Todo.Filter.All))))
+          (test-get Todos.Index
+            (record Params (filter (ctor Table.Todo.Filter.All))))
           (bind task _
             (test-login
               (record App.Session
                 (user (ctor Prelude.Maybe.Just (record (value "someone-else"))))
-                (role (ctor User.Role.Member))))
+                (role (ctor Table.User.Role.Member))))
             (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
               (test-click Todos.Index.Toggle
                 (record ToggleParams (id (var id))))
-              (bind task after : Maybe Todo
-                (db-get Todo.Todo (var id))
+              (bind task after : Maybe Table.Todo.Todo
+                (db-get Table.Todo.Todo (var id))
                 (pure task
                   (test-eq
                     (record
                       (answer (field answer (var r)))
                       (done
                         (call (std Maybe.map)
-                          (lambda (t : Todo) (field done (var t)))
+                          (lambda (t : Table.Todo.Todo) (field done (var t)))
                           (var after))))
                     (record
                       (answer (ctor Prelude.Answer.PageMissing))
                       (done (ctor Prelude.Maybe.Just (record (value False)))))))))))))))
 (test "Delete by another user is not found" task
   (bind task me : Text
-    (db-insert User.User
+    (db-insert Table.User.User
       (record
         (email "me@example.com")
         (name "Me")
         (passwordHash "")
-        (role (ctor User.Role.Member))))
+        (role (ctor Table.User.Role.Member))))
     (bind task id : Text
-      (db-insert Todo.Todo
+      (db-insert Table.Todo.Todo
         (record
           (title "Milk")
           (done False)
@@ -608,58 +619,60 @@
         (test-login
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value (var me)))))
-            (role (ctor User.Role.Member))))
+            (role (ctor Table.User.Role.Member))))
         (bind task _
-          (test-get Todos.Index (record Params (filter (ctor Todo.Filter.All))))
+          (test-get Todos.Index
+            (record Params (filter (ctor Table.Todo.Filter.All))))
           (bind task _
             (test-login
               (record App.Session
                 (user (ctor Prelude.Maybe.Just (record (value "someone-else"))))
-                (role (ctor User.Role.Member))))
+                (role (ctor Table.User.Role.Member))))
             (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
               (test-click Todos.Index.Delete
                 (record DeleteParams (id (var id))))
-              (bind task after : Maybe Todo
-                (db-get Todo.Todo (var id))
+              (bind task after : Maybe Table.Todo.Todo
+                (db-get Table.Todo.Todo (var id))
                 (pure task
                   (test-eq
                     (record
                       (answer (field answer (var r)))
                       (todo
                         (call (std Maybe.map)
-                          (lambda (t : Todo) (field title (var t)))
+                          (lambda (t : Table.Todo.Todo) (field title (var t)))
                           (var after))))
                     (record
                       (answer (ctor Prelude.Answer.PageMissing))
                       (todo (ctor Prelude.Maybe.Just (record (value "Milk")))))))))))))))
 (test "adding a todo through the page" task
   (bind task me : Text
-    (db-insert User.User
+    (db-insert Table.User.User
       (record
         (email "me@example.com")
         (name "Me")
         (passwordHash "")
-        (role (ctor User.Role.Member))))
+        (role (ctor Table.User.Role.Member))))
     (bind task _
       (test-login
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
-          (role (ctor User.Role.Member))))
+          (role (ctor Table.User.Role.Member))))
       (bind task _
-        (test-get Todos.Index (record Params (filter (ctor Todo.Filter.All))))
+        (test-get Todos.Index
+          (record Params (filter (ctor Table.Todo.Filter.All))))
         (bind task added : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
           (test-submit Todos.Index.NewTodo Submit
             (record NewTodo (title "Milk") (due (ctor Prelude.Maybe.Nothing))))
           (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
             (test-get Todos.Index
-              (record Params (filter (ctor Todo.Filter.All))))
+              (record Params (filter (ctor Table.Todo.Filter.All))))
             (pure task
               (test-eq
                 (record
                   (answer (field answer (var added)))
                   (todos
                     (call (std List.map)
-                      (lambda (t : Todo) (field title (var t)))
+                      (lambda (t : Table.Todo.Todo) (field title (var t)))
                       (field todos (field model (var page)))))
                   (summary
                     (call (std Test.text) "#summary" (field doc (var page)))))
@@ -669,19 +682,20 @@
                       (record
                         (value
                           (page-ref Todos.Index
-                            (record Params (filter (ctor Todo.Filter.All))))))))
+                            (record Params
+                              (filter (ctor Table.Todo.Filter.All))))))))
                   (todos (list "Milk"))
                   (summary (ctor Prelude.Maybe.Just (record (value "1 open")))))))))))))
 (test "toggling a todo through the page" task
   (bind task me : Text
-    (db-insert User.User
+    (db-insert Table.User.User
       (record
         (email "me@example.com")
         (name "Me")
         (passwordHash "")
-        (role (ctor User.Role.Member))))
+        (role (ctor Table.User.Role.Member))))
     (bind task id : Text
-      (db-insert Todo.Todo
+      (db-insert Table.Todo.Todo
         (record
           (title "Milk")
           (done False)
@@ -691,9 +705,10 @@
         (test-login
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value (var me)))))
-            (role (ctor User.Role.Member))))
+            (role (ctor Table.User.Role.Member))))
         (bind task _
-          (test-get Todos.Index (record Params (filter (ctor Todo.Filter.All))))
+          (test-get Todos.Index
+            (record Params (filter (ctor Table.Todo.Filter.All))))
           (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-click Todos.Index.Toggle (record ToggleParams (id (var id))))
             (pure task
@@ -709,14 +724,14 @@
                   (summary (ctor Prelude.Maybe.Just (record (value "0 open")))))))))))))
 (test "a stranger cannot see my todo" task
   (bind task me : Text
-    (db-insert User.User
+    (db-insert Table.User.User
       (record
         (email "me@example.com")
         (name "Me")
         (passwordHash "")
-        (role (ctor User.Role.Member))))
+        (role (ctor Table.User.Role.Member))))
     (bind task id : Text
-      (db-insert Todo.Todo
+      (db-insert Table.Todo.Todo
         (record
           (title "Milk")
           (done False)
@@ -726,9 +741,10 @@
         (test-login
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value "someone-else"))))
-            (role (ctor User.Role.Member))))
+            (role (ctor Table.User.Role.Member))))
         (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
-          (test-get Todos.Index (record Params (filter (ctor Todo.Filter.All))))
+          (test-get Todos.Index
+            (record Params (filter (ctor Table.Todo.Filter.All))))
           (bind task show : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-open Todos.Show (record Todos.Show.Params (id (var id))))
             (pure task
@@ -739,14 +755,14 @@
                 (record (items 0) (show (ctor Prelude.Answer.PageMissing)))))))))))
 (test "Delete removes the todo" task
   (bind task me : Text
-    (db-insert User.User
+    (db-insert Table.User.User
       (record
         (email "me@example.com")
         (name "Me")
         (passwordHash "")
-        (role (ctor User.Role.Member))))
+        (role (ctor Table.User.Role.Member))))
     (bind task id : Text
-      (db-insert Todo.Todo
+      (db-insert Table.Todo.Todo
         (record
           (title "Milk")
           (done False)
@@ -756,22 +772,26 @@
         (test-login
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value (var me)))))
-            (role (ctor User.Role.Member))))
+            (role (ctor Table.User.Role.Member))))
         (bind task r : { value: Result Text Nav, trace: List Text }
           (test-run
             (call (global Todos.Index.update)
               (ctor Todos.Index.Msg.Delete (record DeleteParams (id (var id))))
-              (record Model (filter (ctor Todo.Filter.All)) (todos (list)))
-              (record Session (user (var me)) (role (ctor User.Role.Member)))))
-          (bind task after : Maybe Todo
-            (db-get Todo.Todo (var id))
+              (record Model
+                (filter (ctor Table.Todo.Filter.All))
+                (todos (list)))
+              (record Session
+                (user (var me))
+                (role (ctor Table.User.Role.Member)))))
+          (bind task after : Maybe Table.Todo.Todo
+            (db-get Table.Todo.Todo (var id))
             (pure task
               (test-eq
                 (record
                   (value (field value (var r)))
                   (todo
                     (call (std Maybe.map)
-                      (lambda (t : Todo) (field title (var t)))
+                      (lambda (t : Table.Todo.Todo) (field title (var t)))
                       (var after))))
                 (record
                   (value
@@ -780,21 +800,21 @@
                   (todo (ctor Prelude.Maybe.Nothing)))))))))))
 (test "the newest todo is listed first" task
   (bind task me : Text
-    (db-insert User.User
+    (db-insert Table.User.User
       (record
         (email "me@example.com")
         (name "Me")
         (passwordHash "")
-        (role (ctor User.Role.Member))))
+        (role (ctor Table.User.Role.Member))))
     (bind task _
-      (db-insert Todo.Todo
+      (db-insert Table.Todo.Todo
         (record
           (title "First")
           (done False)
           (due (ctor Prelude.Maybe.Nothing))
           (owner (var me))))
       (bind task _
-        (db-insert Todo.Todo
+        (db-insert Table.Todo.Todo
           (record
             (title "Second")
             (done False)
@@ -804,45 +824,45 @@
           (test-login
             (record App.Session
               (user (ctor Prelude.Maybe.Just (record (value (var me)))))
-              (role (ctor User.Role.Member))))
+              (role (ctor Table.User.Role.Member))))
           (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
             (test-get Todos.Index
-              (record Params (filter (ctor Todo.Filter.All))))
+              (record Params (filter (ctor Table.Todo.Filter.All))))
             (pure task
               (test-eq
                 (call (std Test.texts) "li a" (field doc (var page)))
                 (list "Second" "First")))))))))
 (test "Db.mine is what Me sees" task
   (bind task me : Text
-    (db-insert User.User
+    (db-insert Table.User.User
       (record
         (email "me@example.com")
         (name "Me")
         (passwordHash "")
-        (role (ctor User.Role.Member))))
+        (role (ctor Table.User.Role.Member))))
     (bind task other : Text
-      (db-insert User.User
+      (db-insert Table.User.User
         (record
           (email "other@example.com")
           (name "Other")
           (passwordHash "")
-          (role (ctor User.Role.Member))))
+          (role (ctor Table.User.Role.Member))))
       (bind task _
-        (db-insert Todo.Todo
+        (db-insert Table.Todo.Todo
           (record
             (title "Milk")
             (done False)
             (due (ctor Prelude.Maybe.Nothing))
             (owner (var me))))
         (bind task _
-          (db-insert Todo.Todo
+          (db-insert Table.Todo.Todo
             (record
               (title "Bread")
               (done False)
               (due (ctor Prelude.Maybe.Nothing))
               (owner (var me))))
           (bind task _
-            (db-insert Todo.Todo
+            (db-insert Table.Todo.Todo
               (record
                 (title "Eggs")
                 (done False)
@@ -852,11 +872,11 @@
               (test-login
                 (record App.Session
                   (user (ctor Prelude.Maybe.Just (record (value (var me)))))
-                  (role (ctor User.Role.Member))))
+                  (role (ctor Table.User.Role.Member))))
               (bind task r : { value: Result Text Int, trace: List Text }
                 (test-run
                   (bind task n : Int
-                    (db-run count (db-mine Todo.Todo))
+                    (db-run count (db-mine Table.Todo.Todo))
                     (pure task (var n))))
                 (pure task
                   (test-eq
@@ -867,15 +887,15 @@
                       (value (ctor Prelude.Result.Ok (record (value 2))))
                       (trace (list "Db.mine Todo" "Db.count Todo")))))))))))))
 (module Todos.Show)
-(record Todos.Show.Model (todo Todo))
+(record Todos.Show.Model (todo Table.Todo.Todo))
 (record Todos.Show.EditTodo (title Text) (due Maybe Date))
 (record Todos.Show.Params (id Text))
 (record Todos.Show.SaveParams (form EditTodo))
 (union Todos.Show.Msg (Save SaveParams) (Delete))
-(record Todos.Show.Session (user Text) (role User.Role))
+(record Todos.Show.Session (user Text) (role Table.User.Role))
 (value Todos.Show.load : Params -> Session -> Query Model (params session)
-  (bind query todo : Todo
-    (db-get-mine Todo.Todo (field id (var params)))
+  (bind query todo : Table.Todo.Todo
+    (db-get-mine Table.Todo.Todo (field id (var params)))
     (pure query (record Model (todo (var todo))))))
 (value Todos.Show.update : Msg -> Model -> Session -> Task Nav (msg model session)
   (match union (var msg)
@@ -883,9 +903,9 @@
       (let p : SaveParams
         (var _m1)
         (bind task _
-          (db-update-mine Todo.Todo
+          (db-update-mine Table.Todo.Todo
             (field id (field todo (var model)))
-            (lambda (t : Todo)
+            (lambda (t : Table.Todo.Todo)
               (update (var t)
                 (title (field title (field form (var p))))
                 (due (field due (field form (var p)))))))
@@ -894,16 +914,19 @@
               (record
                 (value
                   (page-ref Todos.Index
-                    (record Todos.Index.Params (filter (ctor Todo.Filter.All)))))))))))
+                    (record Todos.Index.Params
+                      (filter (ctor Table.Todo.Filter.All)))))))))))
     (case Delete
       (bind task _
-        (db-delete-mine Todo.Todo (field id (field todo (var model))))
+        (db-delete-mine Table.Todo.Todo
+          (field id (field todo (var model))))
         (pure task
           (ctor Prelude.Nav.Redirect
             (record
               (value
                 (page-ref Todos.Index
-                  (record Todos.Index.Params (filter (ctor Todo.Filter.All))))))))))))
+                  (record Todos.Index.Params
+                    (filter (ctor Table.Todo.Filter.All))))))))))))
 (value Todos.Show.view : Model -> Session -> Html Msg (model session)
   (comp Layout.Page
     (record (title (field title (field todo (var model)))))
@@ -924,7 +947,8 @@
           (elem a
             (attr href href
               (page-ref Todos.Index
-                (record Todos.Index.Params (filter (ctor Todo.Filter.All)))))
+                (record Todos.Index.Params
+                  (filter (ctor Table.Todo.Filter.All)))))
             (htext "Back")))
         (elem al-button (attr variant text "destructive")
           (elem button
@@ -933,14 +957,14 @@
             (htext "Delete")))))))
 (test "a visitor is sent to log in from a todo" task
   (bind task me : Text
-    (db-insert User.User
+    (db-insert Table.User.User
       (record
         (email "me@example.com")
         (name "Me")
         (passwordHash "")
-        (role (ctor User.Role.Member))))
+        (role (ctor Table.User.Role.Member))))
     (bind task id : Text
-      (db-insert Todo.Todo
+      (db-insert Table.Todo.Todo
         (record
           (title "Milk")
           (done False)
@@ -955,14 +979,14 @@
               (record (value (page-ref Auth.Login (record Auth.Login.Params)))))))))))
 (test "saving changes the title and the due date" task
   (bind task me : Text
-    (db-insert User.User
+    (db-insert Table.User.User
       (record
         (email "me@example.com")
         (name "Me")
         (passwordHash "")
-        (role (ctor User.Role.Member))))
+        (role (ctor Table.User.Role.Member))))
     (bind task id : Text
-      (db-insert Todo.Todo
+      (db-insert Table.Todo.Todo
         (record
           (title "Milk")
           (done False)
@@ -972,7 +996,7 @@
         (test-login
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value (var me)))))
-            (role (ctor User.Role.Member))))
+            (role (ctor Table.User.Role.Member))))
         (bind task _
           (test-get Todos.Show (record Params (id (var id))))
           (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
@@ -980,19 +1004,19 @@
               (record EditTodo
                 (title "Bread")
                 (due (call (std Date.fromText) "2026-10-12"))))
-            (bind task after : Maybe Todo
-              (db-get Todo.Todo (var id))
+            (bind task after : Maybe Table.Todo.Todo
+              (db-get Table.Todo.Todo (var id))
               (pure task
                 (test-eq
                   (record
                     (answer (field answer (var r)))
                     (title
                       (call (std Maybe.map)
-                        (lambda (t : Todo) (field title (var t)))
+                        (lambda (t : Table.Todo.Todo) (field title (var t)))
                         (var after)))
                     (due
                       (call (std Maybe.andThen)
-                        (lambda (t : Todo) (field due (var t)))
+                        (lambda (t : Table.Todo.Todo) (field due (var t)))
                         (var after))))
                   (record
                     (answer
@@ -1001,19 +1025,19 @@
                           (value
                             (page-ref Todos.Index
                               (record Todos.Index.Params
-                                (filter (ctor Todo.Filter.All))))))))
+                                (filter (ctor Table.Todo.Filter.All))))))))
                     (title (ctor Prelude.Maybe.Just (record (value "Bread"))))
                     (due (call (std Date.fromText) "2026-10-12"))))))))))))
 (test "deleting from the todo's page" task
   (bind task me : Text
-    (db-insert User.User
+    (db-insert Table.User.User
       (record
         (email "me@example.com")
         (name "Me")
         (passwordHash "")
-        (role (ctor User.Role.Member))))
+        (role (ctor Table.User.Role.Member))))
     (bind task id : Text
-      (db-insert Todo.Todo
+      (db-insert Table.Todo.Todo
         (record
           (title "Milk")
           (done False)
@@ -1023,20 +1047,20 @@
         (test-login
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value (var me)))))
-            (role (ctor User.Role.Member))))
+            (role (ctor Table.User.Role.Member))))
         (bind task _
           (test-get Todos.Show (record Params (id (var id))))
           (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
             (test-click Todos.Show.Delete)
-            (bind task after : Maybe Todo
-              (db-get Todo.Todo (var id))
+            (bind task after : Maybe Table.Todo.Todo
+              (db-get Table.Todo.Todo (var id))
               (pure task
                 (test-eq
                   (record
                     (answer (field answer (var r)))
                     (todo
                       (call (std Maybe.map)
-                        (lambda (t : Todo) (field title (var t)))
+                        (lambda (t : Table.Todo.Todo) (field title (var t)))
                         (var after))))
                   (record
                     (answer
@@ -1045,18 +1069,18 @@
                           (value
                             (page-ref Todos.Index
                               (record Todos.Index.Params
-                                (filter (ctor Todo.Filter.All))))))))
+                                (filter (ctor Table.Todo.Filter.All))))))))
                     (todo (ctor Prelude.Maybe.Nothing))))))))))))
-(table User.User
+(table Table.User.User
   (id id)
   (created created)
   (unique email)
   (insert email name passwordHash role))
-(table Todo.Todo
+(table Table.Todo.Todo
   (id id)
   (created created)
   (owner owner)
-  (ref owner User.User)
+  (ref owner Table.User.User)
   (insert title done due owner))
 (form Auth.Login.Credentials)
 (form Todos.Index.NewTodo)
@@ -1099,11 +1123,11 @@
   (tables)
   (entries
     (entry Auth.Login.verify : { email: Text, password: Text } -> Task (Maybe Text) (args)
-      (bind task found : Maybe User
-        (db-select User.User
-          (where (cond eq (col User.User email) (field email (var args))))
+      (bind task found : Maybe Table.User.User
+        (db-select Table.User.User
+          (where (cond eq (col Table.User.User email) (field email (var args))))
           first)
         (pure task
           (call (std Maybe.map)
-            (lambda (u : User) (field id (var u)))
+            (lambda (u : Table.User.User) (field id (var u)))
             (var found)))))))

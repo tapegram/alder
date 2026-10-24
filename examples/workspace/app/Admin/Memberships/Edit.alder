@@ -4,9 +4,9 @@ module Admin.Memberships.Edit
 
 -- @admin begin imports
 import Admin.Layout
-import Membership
-import Org
-import User
+import Table.Membership
+import Table.Org
+import Table.User
 -- @admin end
 
 page "/admin/membership/{id}/edit" {

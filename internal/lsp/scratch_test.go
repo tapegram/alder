@@ -97,7 +97,7 @@ func TestScratchSaveReruns(t *testing.T) {
 	if got := calls.get(); len(got) != 2 || got[1] != "> 2\n" {
 		t.Fatalf("calls %q", got)
 	}
-	c.save("app/Todo.alder")
+	c.save("app/Table/Todo.alder")
 	if p := c.scratchNote(); p.Watches[0].Value != "3" || p.Version != 2 {
 		t.Fatalf("save of another file: %+v", p)
 	}
@@ -112,7 +112,7 @@ func TestScratchDiagnosticsPositioned(t *testing.T) {
 			{Code: "E0003", Severity: "error", Message: "file error",
 				Span: diag.Span{File: "scratch.alder", Start: diag.Pos{Line: 3, Col: 3}, End: diag.Pos{Line: 3, Col: 5}}},
 			{Code: "E0003", Severity: "error", Message: "app error",
-				Span: diag.Span{File: "app/Todo.alder", Start: diag.Pos{Line: 1, Col: 1}, End: diag.Pos{Line: 1, Col: 2}}},
+				Span: diag.Span{File: "app/Table/Todo.alder", Start: diag.Pos{Line: 1, Col: 1}, End: diag.Pos{Line: 1, Col: 2}}},
 		}}
 	})
 	c := start(t, copyExample(t, "todos"))
@@ -173,7 +173,7 @@ func TestScratchNotOverlaid(t *testing.T) {
 	c := start(t, copyExample(t, "todos"))
 	c.open("scratch.alder", "> 1\n")
 	c.scratchNote()
-	rel := "app/Todo.alder"
+	rel := "app/Table/Todo.alder"
 	c.open(rel, c.disk(rel))
 	c.diags(rel)
 	c.change(rel, c.disk(rel)+"\n") // rebuilds run one at a time: the one before this has finished
@@ -416,7 +416,7 @@ func TestScratchRerunsOnAppSave(t *testing.T) {
 	c := start(t, copyExample(t, "todos"))
 	c.open("scratch.alder", "> 1\n")
 	b.waitEnded(t, 1)
-	c.save("app/Todo.alder")
+	c.save("app/Table/Todo.alder")
 	b.waitEnded(t, 1)
 	if p := c.scratchNote(); p.Watches[0].Value != "1" {
 		t.Fatalf("first run %+v", p)
@@ -438,8 +438,8 @@ func TestScratchRerunsOnPoll(t *testing.T) {
 	c := startWith(t, root, Options{Poll: 20 * time.Millisecond})
 	c.open("scratch.alder", "> 1\n")
 	b.waitEnded(t, 1)
-	file := filepath.Join(root, "app", "Todo.alder")
-	text := c.disk("app/Todo.alder")
+	file := filepath.Join(root, "app", "Table", "Todo.alder")
+	text := c.disk("app/Table/Todo.alder")
 	deadline := time.After(timeout)
 	for rerun := false; !rerun; {
 		text += "\n"
@@ -451,7 +451,7 @@ func TestScratchRerunsOnPoll(t *testing.T) {
 			rerun = true
 		case <-time.After(100 * time.Millisecond):
 		case <-deadline:
-			t.Fatalf("no rerun in %v of rewriting app/Todo.alder", timeout)
+			t.Fatalf("no rerun in %v of rewriting app/Table/Todo.alder", timeout)
 		}
 	}
 	for {
@@ -506,10 +506,10 @@ func TestScratchAppSaveRunsOnce(t *testing.T) {
 	c := startWith(t, root, Options{Poll: time.Hour}) // Poll > 0 starts the (fake) poller
 	c.open("scratch.alder", "> 1\n")
 	b.waitEnded(t, 1)
-	if err := os.WriteFile(filepath.Join(root, "app", "Todo.alder"), []byte(c.disk("app/Todo.alder")+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "app", "Table", "Todo.alder"), []byte(c.disk("app/Table/Todo.alder")+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	c.save("app/Todo.alder")
+	c.save("app/Table/Todo.alder")
 	b.waitEnded(t, 1) // the save's rerun: its stamps are recorded before it starts
 	select {
 	case tick <- watch.SourceChange: // the poll that sees the save's write
@@ -528,7 +528,7 @@ func TestScratchAppSaveRunsOnce(t *testing.T) {
 		t.Fatalf("%d runs, want 2 (the open and the save)", n)
 	}
 	// A write no save reported: the poll reruns it.
-	if err := os.WriteFile(filepath.Join(root, "app", "Todo.alder"), []byte(c.disk("app/Todo.alder")+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "app", "Table", "Todo.alder"), []byte(c.disk("app/Table/Todo.alder")+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -600,7 +600,7 @@ func TestScratchAppSaveWalksOnlyWhenNeeded(t *testing.T) {
 	c := start(t, copyExample(t, "todos")) // Poll 0: no poller
 	c.open("scratch.alder", "> 1\n")
 	b.waitEnded(t, 1)
-	c.save("app/Todo.alder")
+	c.save("app/Table/Todo.alder")
 	b.waitEnded(t, 1) // the save still reruns it
 	if n := walks.Load(); n != 0 {
 		t.Fatalf("%d walks without a poller", n)
@@ -610,14 +610,14 @@ func TestScratchAppSaveWalksOnlyWhenNeeded(t *testing.T) {
 	watchRoot = func(_ string, _ time.Duration, stop <-chan struct{}, _ chan<- watch.Change) { <-stop }
 	t.Cleanup(func() { watchRoot = realWatch })
 	c = startWith(t, copyExample(t, "todos"), Options{Poll: time.Hour})
-	c.save("app/Todo.alder")
+	c.save("app/Table/Todo.alder")
 	c.sync()
 	if n := walks.Load(); n != 0 {
 		t.Fatalf("%d walks with no scratch document open", n)
 	}
 	c.open("scratch.alder", "> 1\n")
 	b.waitEnded(t, 1)
-	c.save("app/Todo.alder")
+	c.save("app/Table/Todo.alder")
 	b.waitEnded(t, 1)
 	if n := walks.Load(); n != 1 {
 		t.Fatalf("%d walks, want 1 (a scratch document open, a poller running)", n)

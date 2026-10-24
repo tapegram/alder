@@ -78,7 +78,7 @@ func want(t *testing.T, w WatchResult, line int, typ, value, errMsg string) {
 func TestRunFilePure(t *testing.T) {
 	r := sharedRun(t)
 	want(t, r.Watches[0], 2, "Int", "2", "")
-	want(t, r.Watches[1], 3, "List Todo -> Int", "<function>", "")
+	want(t, r.Watches[1], 3, "List Table.Todo.Todo -> Int", "<function>", "")
 	want(t, r.Watches[2], 4, "List a", "[]", "")
 	if r.Watches[0].Expr != "1 + 1" || r.Note != "" {
 		t.Errorf("expr %q, note %q", r.Watches[0].Expr, r.Note)
@@ -160,7 +160,7 @@ func TestRunFileOnTypes(t *testing.T) {
 func TestRunFileInModule(t *testing.T) {
 	t.Parallel()
 	needGo(t)
-	r := runFile(t, "in Todo\n\n> countOpen []\n> filterLabel Active\n", FileOptions{})
+	r := runFile(t, "in Table.Todo\n\n> countOpen []\n> filterLabel Active\n", FileOptions{})
 	if r.Err != nil || !r.Ran {
 		t.Fatalf("err %v, note %q, diags %v", r.Err, r.Note, r.Diags)
 	}
@@ -269,8 +269,8 @@ func TestRunFileModuleErrors(t *testing.T) {
 	if len(r.Diags) != 1 || r.Diags[0].Message != "no module Nope in the app" || r.Diags[0].Span.Start != (diag.Pos{Line: 2, Col: 4}) || r.Diags[0].Span.File != "scratch.alder" || r.Ran || r.Err != nil {
 		t.Errorf("%+v", r)
 	}
-	r = runFile(t, "> 1\n", FileOptions{Module: "Todo", OnTypes: onTypes})
-	if len(r.Diags) != 1 || r.Diags[0].Message != "the app already has a module named Todo; pass --module <Name>" || r.Diags[0].Span.Start != (diag.Pos{Line: 1, Col: 1}) || r.Ran || r.Err != nil {
+	r = runFile(t, "> 1\n", FileOptions{Module: "Table.Todo", OnTypes: onTypes})
+	if len(r.Diags) != 1 || r.Diags[0].Message != "the app already has a module named Table.Todo; pass --module <Name>" || r.Diags[0].Span.Start != (diag.Pos{Line: 1, Col: 1}) || r.Ran || r.Err != nil {
 		t.Errorf("%+v", r)
 	}
 	if calls != 0 {
@@ -289,7 +289,7 @@ func TestRunFileNothingToRun(t *testing.T) {
 		t.Errorf("ran %v, err %v, note %q, %+v", r.Ran, r.Err, r.Note, r.Watches)
 	}
 	dir := todos(t)
-	p := filepath.Join(dir, "app", "Todo.alder")
+	p := filepath.Join(dir, "app", "Table", "Todo.alder")
 	b, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatal(err)
@@ -298,7 +298,7 @@ func TestRunFileNothingToRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	r = runFileIn(t, dir, "> 1\n", FileOptions{})
-	if r.Ran || r.Err != nil || r.Note != "the app has errors; fix them and save" || len(r.Diags) == 0 || r.Diags[0].Span.File != "app/Todo.alder" || r.Watches[0].Type != "Int" {
+	if r.Ran || r.Err != nil || r.Note != "the app has errors; fix them and save" || len(r.Diags) == 0 || r.Diags[0].Span.File != "app/Table/Todo.alder" || r.Watches[0].Type != "Int" {
 		t.Errorf("ran %v, err %v, note %q, diags %v, %+v", r.Ran, r.Err, r.Note, r.Diags, r.Watches)
 	}
 }
@@ -306,7 +306,7 @@ func TestRunFileNothingToRun(t *testing.T) {
 // A typed hole in the app stops the run too, and is not blamed on the file.
 func TestRunFileAppHole(t *testing.T) {
 	dir := todos(t)
-	p := filepath.Join(dir, "app", "Todo.alder")
+	p := filepath.Join(dir, "app", "Table", "Todo.alder")
 	b, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatal(err)

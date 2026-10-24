@@ -52,7 +52,7 @@ func TestTest_Todos(t *testing.T) {
 		`ok   Auth.Login "an unknown email is rejected"`,
 		`ok   Auth.Login "logging in through the form"`,
 		`ok   Auth.Login "a visitor is sent to log in, and can log out"`,
-		`ok   Todo "countOpen ignores done todos"`,
+		`ok   Table.Todo "countOpen ignores done todos"`,
 		`ok   Todos.Index "Toggle flips done"`,
 		`ok   Todos.Index "Toggle by another user is not found"`,
 		`ok   Todos.Index "Delete by another user is not found"`,
@@ -60,9 +60,9 @@ func TestTest_Todos(t *testing.T) {
 		`ok   Todos.Index "toggling a todo through the page"`,
 		`ok   Todos.Index "a stranger cannot see my todo"`,
 		`ok   App "Logout clears the user and goes to log in"`,
-		`ok   Todo "Active keeps only open todos"`,
-		`ok   Todo "each filter has its label"`,
-		`ok   Todo "a user with todos cannot be deleted"`,
+		`ok   Table.Todo "Active keeps only open todos"`,
+		`ok   Table.Todo "each filter has its label"`,
+		`ok   Table.Todo "a user with todos cannot be deleted"`,
 		`ok   Todos.Index "Delete removes the todo"`,
 		`ok   Todos.Index "the newest todo is listed first"`,
 		`ok   Todos.Index "Db.mine is what Me sees"`,
@@ -73,10 +73,10 @@ func TestTest_Todos(t *testing.T) {
 		`ok   Auth.Login "logging in copies the role from the user's row"`,
 		// the generated admin (book 15)
 		`ok   Admin.Index "the dashboard counts the todos and lists the newest five"`,
-		`ok   Admin.Todo.Index "a Member gets no page, even one made Admin since logging in"`,
-		`ok   Admin.Todo.Index "a demoted Admin is refused at once"`,
-		`ok   Admin.Todo.Index "filtering by done lists the rows with that value"`,
-		`ok   Admin.User.Delete "an Admin cannot delete their own account"`,
+		`ok   Admin.Todos.Index "a Member gets no page, even one made Admin since logging in"`,
+		`ok   Admin.Todos.Index "a demoted Admin is refused at once"`,
+		`ok   Admin.Todos.Index "filtering by done lists the rows with that value"`,
+		`ok   Admin.Users.Delete "an Admin cannot delete their own account"`,
 		"116 passed, 0 failed\n",
 	} {
 		if !strings.Contains(stdout, want) {
@@ -88,12 +88,12 @@ func TestTest_Todos(t *testing.T) {
 func TestTest_Failing(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
-	dir := tempTodos(t, "Todo.alder", "\ntest \"wrong\" = countOpen [] == 1\n")
+	dir := tempTodos(t, "Table/Todo.alder", "\ntest \"wrong\" = countOpen [] == 1\n")
 	code, stdout, stderr := runTest(t, dir)
 	if code != 1 {
 		t.Fatalf("exit %d, want 1\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	for _, want := range []string{"FAIL Todo \"wrong\"\n  left:  0\n  right: 1\n", "116 passed, 1 failed\n"} {
+	for _, want := range []string{"FAIL Table.Todo \"wrong\"\n  left:  0\n  right: 1\n", "116 passed, 1 failed\n"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
 		}
@@ -141,7 +141,7 @@ func TestTest_Run(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
 	code, stdout, stderr := runTest(t, todosDir(t), "-run", "countOpen")
-	if code != 0 || stdout != "ok   Todo \"countOpen ignores done todos\"\n1 passed, 0 failed\n" {
+	if code != 0 || stdout != "ok   Table.Todo \"countOpen ignores done todos\"\n1 passed, 0 failed\n" {
 		t.Errorf("exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
 	}
 }
@@ -162,12 +162,12 @@ func TestTest_NoMatch(t *testing.T) {
 func TestTest_CheckError(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
-	dir := tempTodos(t, "Todo.alder", "\nbroken : Int\nbroken = \"x\"\n")
+	dir := tempTodos(t, "Table/Todo.alder", "\nbroken : Int\nbroken = \"x\"\n")
 	code, stdout, stderr := runTest(t, dir)
 	if code != 1 {
 		t.Fatalf("exit %d, want 1\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	if !strings.Contains(stdout, "app/Todo.alder:") || !strings.Contains(stdout, "E0003") || !strings.Contains(stdout, `broken = "x"`) {
+	if !strings.Contains(stdout, "app/Table/Todo.alder:") || !strings.Contains(stdout, "E0003") || !strings.Contains(stdout, `broken = "x"`) {
 		t.Errorf("stdout lacks the diagnostic with its source line:\n%s", stdout)
 	}
 	if strings.Contains(stdout, "passed") {
@@ -677,7 +677,7 @@ func TestTest_Usage(t *testing.T) {
 // slowTodos is a copy of examples/todos whose Todo module adds a quick test, a test that
 // runs for hours, and one that overflows the stack.
 func slowTodos(t *testing.T) string {
-	return tempTodos(t, "Todo.alder", `
+	return tempTodos(t, "Table/Todo.alder", `
 loop : Int -> Int
 loop n = loop (n + 1) + 1
 
@@ -717,7 +717,7 @@ func TestTest_StreamAndTimeout(t *testing.T) {
 	var errb bytes.Buffer
 	code := runTestTo(withBuildDir(t, []string{dir, "-run", `"quick"|"hang"`, "-timeout", "2s"}), &out, &errb)
 	end := time.Now()
-	want := "ok   Todo \"quick\"\nFAIL Todo \"hang\"\n  error: timed out after 2s\n1 passed, 1 failed\n"
+	want := "ok   Table.Todo \"quick\"\nFAIL Table.Todo \"hang\"\n  error: timed out after 2s\n1 passed, 1 failed\n"
 	if code != 1 || out.buf.String() != want {
 		t.Fatalf("exit %d\nstdout %q\nwant   %q\nstderr: %s", code, out.buf.String(), want, errb.String())
 	}
@@ -735,12 +735,12 @@ func TestTest_Crash(t *testing.T) {
 	needGoTool(t)
 	dir := slowTodos(t)
 	code, stdout, stderr := runTest(t, dir, "-run", "countOpen|overflow")
-	if code != 1 || !strings.HasPrefix(stdout, "ok   Todo \"countOpen ignores done todos\"\nFAIL Todo \"overflow\"\n  error: fatal error: stack overflow\n    app.Todo__loop(") {
+	if code != 1 || !strings.HasPrefix(stdout, "ok   Table.Todo \"countOpen ignores done todos\"\nFAIL Table.Todo \"overflow\"\n  error: fatal error: stack overflow\n    app.Table__Todo__loop(") {
 		t.Fatalf("exit %d\nstdout %q\nstderr %q", code, stdout, stderr)
 	}
 	// the summary counts the streamed result and the crash, and is the last line
 	if strings.Count(stdout, "\n") != 6 || !strings.HasSuffix(stdout, "\n1 passed, 1 failed\n") || strings.Contains(stderr, "goroutine") || len(stderr) > 300 ||
-		!strings.Contains(stderr, "crashed running Todo \"overflow\"") {
+		!strings.Contains(stderr, "crashed running Table.Todo \"overflow\"") {
 		t.Errorf("want a short report ending in the summary\nstdout %q\nstderr %q", stdout, stderr)
 	}
 	code, stdout, stderr = runTest(t, dir, "-run", "countOpen|overflow", "--json")
@@ -750,7 +750,7 @@ func TestTest_Crash(t *testing.T) {
 		OK                  *bool
 	}
 	if code != 1 || len(lines) != 2 || json.Unmarshal([]byte(lines[1]), &r) != nil ||
-		r.Module != "Todo" || r.Name != "overflow" || r.OK == nil || *r.OK || !strings.HasPrefix(r.Error, "fatal error: stack overflow\n") {
+		r.Module != "Table.Todo" || r.Name != "overflow" || r.OK == nil || *r.OK || !strings.HasPrefix(r.Error, "fatal error: stack overflow\n") {
 		t.Errorf("--json: exit %d stdout %q", code, stdout)
 	}
 	if !strings.HasSuffix(stderr, "\n1 passed, 1 failed\n") {
@@ -784,7 +784,7 @@ func TestTest_KilledParent(t *testing.T) {
 	// wait for the hanging test to be running
 	status := filepath.Join(bd, "todos", "scratch", "test", "status")
 	for start := time.Now(); ; time.Sleep(50 * time.Millisecond) {
-		if b, _ := os.ReadFile(status); string(b) == "Todo\thang\n" {
+		if b, _ := os.ReadFile(status); string(b) == "Table.Todo\thang\n" {
 			break
 		}
 		if time.Since(start) > 2*time.Minute {
@@ -823,7 +823,7 @@ func TestTest_KilledParent(t *testing.T) {
 func TestTest_HoleAndJSONError(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
-	dir := tempTodos(t, "Todo.alder", "\ntest \"h\" = ?todo == 1\n")
+	dir := tempTodos(t, "Table/Todo.alder", "\ntest \"h\" = ?todo == 1\n")
 	code, _, stderr := runTest(t, dir)
 	if code != 1 || !strings.Contains(stderr, "W0002") || !strings.Contains(stderr, "alder test: no tests ran (fill the hole): ?todo : ") {
 		t.Errorf("hole: exit %d stderr %q", code, stderr)
@@ -831,7 +831,7 @@ func TestTest_HoleAndJSONError(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "adapters", "bad.go"), []byte("package adapters\n\nfunc broken() int { return \"x\" }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "app", "Todo.alder"), mustRead(t, filepath.Join(todosDir(t), "app", "Todo.alder")), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "app", "Table", "Todo.alder"), mustRead(t, filepath.Join(todosDir(t), "app", "Table", "Todo.alder")), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	code, stdout, stderr := runTest(t, dir, "--json")
