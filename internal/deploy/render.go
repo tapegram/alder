@@ -101,8 +101,13 @@ const renderHealthPath = "/_alder/health"
 // (NewRenderAPI), ALDER_REGISTRY_TOKEN, ALDER_REGISTRY_USER (default: the image's first path part)
 // and ALDER_REGISTRY_BASE: the registry's API base, an override for the tests only (R-A).
 func NewRender(app, env string, t ir.Target, d *ir.Deploy, image string) *Render {
+	return NewRenderEnv(app, env, t, d, image, os.Getenv)
+}
+
+// NewRenderEnv is NewRender reading this machine's environment with getenv (its Getenv too).
+func NewRenderEnv(app, env string, t ir.Target, d *ir.Deploy, image string, getenv func(string) string) *Render {
 	r := &Render{Env: env, AppName: app, Region: t.Region, Service: t.Service, Plan: t.Plan, Image: image, Instances: t.Instances,
-		API: NewRenderAPI(), Getenv: os.Getenv, Out: io.Discard, HTTP: &http.Client{Timeout: 10 * time.Second}, dirs: map[string]string{}}
+		API: NewRenderAPIEnv(getenv), Getenv: getenv, Out: io.Discard, HTTP: &http.Client{Timeout: 10 * time.Second}, dirs: map[string]string{}}
 	if r.Instances < 1 {
 		r.Instances = 1
 	}
@@ -115,11 +120,11 @@ func NewRender(app, env string, t ir.Target, d *ir.Deploy, image string) *Render
 	host, repo, err := ParseImage(image)
 	r.imageErr = err
 	r.imageHost, _, _ = strings.Cut(image, "/")
-	user := os.Getenv("ALDER_REGISTRY_USER")
+	user := getenv("ALDER_REGISTRY_USER")
 	if user == "" {
 		user, _, _ = strings.Cut(strings.TrimPrefix(image, r.imageHost+"/"), "/")
 	}
-	r.Reg = &Registry{Host: host, Repo: repo, User: user, Token: os.Getenv("ALDER_REGISTRY_TOKEN"), Base: os.Getenv("ALDER_REGISTRY_BASE"),
+	r.Reg = &Registry{Host: host, Repo: repo, User: user, Token: getenv("ALDER_REGISTRY_TOKEN"), Base: getenv("ALDER_REGISTRY_BASE"),
 		Client: &http.Client{Timeout: 10 * time.Minute}}
 	return r
 }

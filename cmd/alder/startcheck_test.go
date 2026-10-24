@@ -28,13 +28,13 @@ import (
 //     503 {"db":"unreachable"} (no host, no driver error).
 //   - FileStillMigrates: v2 with a file ALDER_DB migrates it on start (M14 unchanged).
 func TestStartCheck_Binary(t *testing.T) {
-	// serial: tempApp t.Chdir()s to the copy's parent, and the test names the app by a relative path
+	t.Parallel()
 	needGoTool(t)
 	if testing.Short() {
 		t.Skip("builds two binaries")
 	}
-	dir := tempApp(t, "../../testdata/corpus/silo-ok", "siloapp")
-	tmp, _ := os.Getwd()
+	dir := tempAppAbs(t, "../../testdata/corpus/silo-ok", "siloapp")
+	tmp := filepath.Dir(dir)
 	os.RemoveAll(filepath.Join(dir, "build"))
 	writeFile(t, filepath.Join(dir, "app", "Home.alder"), "module Home\n\npage \"/\" { }\n\ntype Model = { }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { }\n\nview : Model -> Session -> Html Msg\nview model session = <html><body><h1>home</h1></body></html>\n")
 	build := func(name string) string {
@@ -46,7 +46,7 @@ func TestStartCheck_Binary(t *testing.T) {
 			t.Fatalf("build %s: %d\n%s%s", name, code, out, errs)
 		}
 		bin := filepath.Join(tmp, name)
-		if err := os.Rename(filepath.Join(testBuildDir(t), dir, dir), bin); err != nil {
+		if err := os.Rename(filepath.Join(testBuildDir(t), "siloapp", "siloapp"), bin); err != nil {
 			t.Fatal(err)
 		}
 		return bin
@@ -56,22 +56,18 @@ func TestStartCheck_Binary(t *testing.T) {
 	v2 := build("v2")
 
 	f := tursofake.New(t, "acme")
-	t.Setenv(db.EnvTursoAPI, f.URL)
-	t.Setenv(db.EnvTursoOrg, f.Org)
-	t.Setenv(db.EnvTursoGroup, "default")
-	t.Setenv(db.EnvTursoApp, "siloapp")
-	t.Setenv(db.EnvTursoToken, f.APIToken)
-	t.Setenv(db.EnvTursoDB, "siloapp")
-	t.Setenv(db.EnvDBToken, "")
+	// the binaries' Turso settings, in their environment (base): the process's is not changed
+	turso := []string{db.EnvTursoAPI + "=" + f.URL, db.EnvTursoOrg + "=" + f.Org, db.EnvTursoGroup + "=default", db.EnvTursoApp + "=siloapp",
+		db.EnvTursoToken + "=" + f.APIToken, db.EnvTursoDB + "=siloapp", db.EnvDBToken + "="}
 	if err := f.Create("siloapp", "default"); err != nil {
 		t.Fatal(err)
 	}
-	d, ok, err := db.NewTurso(db.TursoConfigFromEnv()).Database(context.Background(), "siloapp")
+	d, ok, err := db.NewTurso(db.TursoConfig{API: f.URL, Org: f.Org, Group: "default", App: "siloapp", Token: f.APIToken}).Database(context.Background(), "siloapp")
 	if err != nil || !ok {
 		t.Fatalf("%v %v", ok, err)
 	}
 	remote := "libsql://" + d.Hostname
-	base := []string{"ALDER_DEV=", "ALDER_SECRET=" + siloSecret, "ALDER_ADDR=127.0.0.1:0"}
+	base := append([]string{"ALDER_DEV=", "ALDER_SECRET=" + siloSecret, "ALDER_ADDR=127.0.0.1:0"}, turso...)
 	run := func(bin, dbPath string, args ...string) (int, string) {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)

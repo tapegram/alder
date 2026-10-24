@@ -113,14 +113,27 @@ func (t *Turso) pitrWait() time.Time {
 	return next
 }
 
-// api is the platform client, made from this machine's environment on first use.
+// api is the platform client, made from this machine's environment on first use (UseConfig
+// makes it from settings read elsewhere).
 func (t *Turso) api() *db.Turso {
 	if t.API == nil {
-		c := db.TursoConfigFromEnv()
-		c.Org, c.Group, c.App = t.Org, t.Group, t.App
-		t.API = db.NewTurso(c)
+		t.UseConfig(db.TursoConfigFromEnv())
 	}
 	return t.API
+}
+
+// UseConfig makes the platform client from c (the token and API of this machine's Turso
+// settings, the API db.DefaultTursoAPI when empty; the organization, group and app are the
+// declaration's).
+func (t *Turso) UseConfig(c db.TursoConfig) {
+	if t == nil {
+		return
+	}
+	if c.API == "" {
+		c.API = db.DefaultTursoAPI
+	}
+	c.Org, c.Group, c.App = t.Org, t.Group, t.App
+	t.API = db.NewTurso(c)
 }
 
 // Describe is "Turso acme/blog".

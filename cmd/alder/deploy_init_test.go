@@ -46,7 +46,7 @@ func noTables(t *testing.T) string {
 // An app without tables: the three Render files, named after the directory, no disk; the
 // output says what was written and the next step.
 func TestDeployInit_Render(t *testing.T) {
-	// serial: inTemp (t.Chdir) via deployScaffold/noTables; deploy scaffolds use relative paths (Task 3)
+	t.Parallel()
 	dir := noTables(t)
 	code, out, errs := runDeployInit("render", dir)
 	if code != 0 {
@@ -74,7 +74,7 @@ func TestDeployInit_Render(t *testing.T) {
 
 // An app with a table (the scaffold's) gets the volume.
 func TestDeployInit_Fly_Volume(t *testing.T) {
-	// serial: inTemp (t.Chdir) via deployScaffold/noTables; deploy scaffolds use relative paths (Task 3)
+	t.Parallel()
 	dir := deployScaffold(t, "", nil)
 	code, out, errs := runDeployInit("fly", dir)
 	if code != 0 {
@@ -95,7 +95,7 @@ func TestDeployInit_Fly_Volume(t *testing.T) {
 // The overwrite rule: an existing file is never replaced without --force, nothing is written,
 // the skipped files are listed and the exit is 1; --force replaces.
 func TestDeployInit_Overwrite(t *testing.T) {
-	// serial: inTemp (t.Chdir) via deployScaffold/noTables; deploy scaffolds use relative paths (Task 3)
+	t.Parallel()
 	dir := deployScaffold(t, "", nil)
 	writeFile(t, filepath.Join(dir, "Dockerfile"), "mine\n")
 	code, out, errs := runDeployInit("render", dir)
@@ -117,7 +117,7 @@ func TestDeployInit_Overwrite(t *testing.T) {
 }
 
 func TestDeployInit_DryRun(t *testing.T) {
-	// serial: inTemp (t.Chdir) via deployScaffold/noTables; deploy scaffolds use relative paths (Task 3)
+	t.Parallel()
 	dir := deployScaffold(t, "", nil)
 	code, out, errs := runDeployInit("fly", dir, "--dry-run")
 	if code != 0 {
@@ -160,7 +160,7 @@ func TestDeployInit_NeedsDisk(t *testing.T) {
 // The pin: a release tag is written as is; a clean commit is written with a note to push it; a
 // modified checkout has no ref, so the placeholder is written and the output warns.
 func TestDeployInit_Pin(t *testing.T) {
-	// serial: inTemp (t.Chdir) via deployScaffold/noTables; deploy scaffolds use relative paths (Task 3)
+	t.Parallel()
 	for _, c := range []struct {
 		src        version.Source
 		inDocker   string

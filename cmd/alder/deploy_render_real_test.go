@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -35,6 +36,7 @@ import (
 // credential and the image package), whether it passed or not. The unit and end-to-end tests
 // (internal/deploy/render_test.go, deploy_render_test.go) cover the same steps against fakes.
 func TestRenderReal(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("ALDER_RENDER_REAL") != "1" {
 		t.Skip("set ALDER_RENDER_REAL=1 (and the variables in this file's comment) to deploy to Render by hand")
 	}
@@ -69,16 +71,17 @@ func TestRenderReal(t *testing.T) {
 }`, region, name, org, name, image), nil)
 	var key [16]byte
 	rand.Read(key[:])
-	t.Setenv("ALDER_SECRET", hex.EncodeToString(key[:]))
-	t.Setenv("SMTP_URL", "smtp://localhost:25")
-	t.Setenv(envHealthTimeout, "15m")
+	c := newDeployCmds(t)
+	c.set("ALDER_SECRET", hex.EncodeToString(key[:]))
+	c.set("SMTP_URL", "smtp://localhost:25")
+	c.env.HealthTimeout = 15 * time.Minute
 
 	deployed := regexp.MustCompile(`deployed ([0-9a-f]{16}) to production`)
 	address := regexp.MustCompile(`(?m)^address  (\S+)`)
 	var url string
 	ship := func() string {
 		t.Helper()
-		code, out, errs := runDeploy(t, "production", dir)
+		code, out, errs := c.deploy("production", dir)
 		t.Log(out)
 		m := deployed.FindStringSubmatch(out)
 		if code != 0 || m == nil {
@@ -118,7 +121,7 @@ func TestRenderReal(t *testing.T) {
 
 	id1 := ship()
 	waitServing(id1, "after the first deploy")
-	appendTo(t, "demo/app/Home.alder", fmt.Sprintf("\nversion : Int\nversion = %d\n", time.Now().Unix()))
+	appendTo(t, filepath.Join(dir, "app", "Home.alder"), fmt.Sprintf("\nversion : Int\nversion = %d\n", time.Now().Unix()))
 	id2 := ship()
 	waitServing(id2, "after the second deploy")
 	if id1 == id2 {
@@ -126,18 +129,18 @@ func TestRenderReal(t *testing.T) {
 	}
 
 	var so, se bytes.Buffer
-	if code := runStatusTo([]string{"production", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "current  "+id2) {
+	if code := c.status([]string{"production", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "current  "+id2) {
 		t.Errorf("status: exit %d\n%s%s", code, so.String(), se.String())
 	}
 	t.Log(so.String())
 	so.Reset()
-	if code := runRollbackTo([]string{"production", "--dir", dir, "--yes"}, &so, &se); code != 0 || !strings.Contains(so.String(), "rolled back to "+id1) {
+	if code := c.rollback([]string{"production", "--dir", dir, "--yes"}, &so, &se); code != 0 || !strings.Contains(so.String(), "rolled back to "+id1) {
 		t.Fatalf("rollback: exit %d\n%s%s", code, so.String(), se.String())
 	}
 	t.Log(so.String())
 	waitServing(id1, "after the rollback")
 	so.Reset()
-	if code := runLogsTo([]string{"production", dir}, &so, &se); code != 0 {
+	if code := c.logs([]string{"production", dir}, &so, &se); code != 0 {
 		t.Errorf("logs: exit %d\n%s", code, se.String())
 	}
 	t.Logf("logs, first lines:\n%s", firstLines(so.String(), 10))

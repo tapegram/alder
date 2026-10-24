@@ -129,6 +129,6 @@ func TestLsp_InitializeOverStdio(t *testing.T) {
 }
 
 // inTemp makes a fresh temporary directory the working directory. Only the tests that still
-// need one (the deploy tests, which build into ./build, and the example tests) use it; they
-// run serially.
+// need one (the example tests, which name their app by a relative path) use it; they run
+// serially.
 func inTemp(t *testing.T) { t.Chdir(t.TempDir()) }

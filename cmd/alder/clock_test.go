@@ -6,7 +6,8 @@ import (
 	"time"
 )
 
-// fakeClock is a clock for the deploy tests: Sleep advances it at once instead of waiting.
+// fakeClock is a clock for the deploy tests (deployCmds.useFakeClock): Sleep advances it at
+// once instead of waiting.
 type fakeClock struct {
 	mu  sync.Mutex
 	now time.Time
@@ -29,28 +30,6 @@ func (c *fakeClock) Sleep(d time.Duration) {
 	c.mu.Lock()
 	c.now = c.now.Add(d)
 	c.mu.Unlock()
-}
-
-// useFakeClock makes the deploy commands' targets read and wait by a fake clock that starts
-// now, for the rest of the test, and polls fast (fastPolls). Serial tests only: deployTiming is
-// the package's.
-func useFakeClock(t *testing.T) *fakeClock {
-	t.Helper()
-	c := newFakeClock(time.Now())
-	old := deployTiming
-	deployTiming.Now, deployTiming.Sleep = c.Now, c.Sleep
-	t.Cleanup(func() { deployTiming = old })
-	fastPolls(t)
-	return c
-}
-
-// fastPolls makes the deploy commands' Ssh scripts and Render polls look again every 10 ms
-// (instead of 0.2 s to 3 s) for the rest of the test. Serial tests only.
-func fastPolls(t *testing.T) {
-	t.Helper()
-	old := deployTiming.Poll
-	deployTiming.Poll = 10 * time.Millisecond
-	t.Cleanup(func() { deployTiming.Poll = old })
 }
 
 // pollUntil polls cond every 20 ms until it holds (true) or limit passes (false): a test waits

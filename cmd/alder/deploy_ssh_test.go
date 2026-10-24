@@ -37,8 +37,8 @@ import (
 //     this machine as the current user, the target's <path> under a temporary directory.
 //
 // The untagged default suite has neither: it runs the same tests against a loopback box (an
-// `ssh` on PATH that runs the remote command here with sh: loopbackBox), so everything but the
-// SSH connection is exercised everywhere. The engine's order (RF1–RF4) is also covered by
+// `ssh` that runs the remote command here with sh: loopbackBox), so everything but the SSH
+// connection is exercised everywhere. The engine's order (RF1–RF4) is also covered by
 // internal/deploy's tests with a fake target, and the Script target end to end by
 // deploy_test.go.
 
@@ -48,21 +48,31 @@ var dockerBox bool
 // qr is the box's root quoted for its shell (the loopback box's has a space and a quote in it).
 func (b *sshBox) qr() string { return fmt.Sprintf("%q", b.root) }
 
-// sshBox is a running box: ssh reaches it as host with the ssh_config config; root is a
-// directory there for the target's <path>; port is the public port its `proxy: None` app
-// listens on. A container box also names its container and the port of this machine its
-// port 18443 (the fake Caddy's public listener: deploy_caddy_test.go) is published on.
+// sshBox is a running box: ssh (the executable bin) reaches it as host with the ssh_config
+// config; root is a directory there for the target's <path>; port is the public port its
+// `proxy: None` app listens on. A container box also names its container and the port of this
+// machine its port 18443 (the fake Caddy's public listener: deploy_caddy_test.go) is published
+// on.
 type sshBox struct {
-	config, host, root string
-	port               int
-	container          string
-	caddyPort          int
+	bin, config, host, root string
+	port                    int
+	container               string
+	caddyPort               int
+}
+
+// cmds is the test's deploy commands pointed at the box: its ssh and ssh_config, the process
+// supervisor, and the scripts' wait loops every 10 ms (not 0.2 s to 1 s).
+func (b *sshBox) cmds(t *testing.T) *deployCmds {
+	t.Helper()
+	c := newDeployCmds(t)
+	c.env.SSH, c.env.SSHConfig, c.env.Supervisor, c.env.Poll = b.bin, b.config, "process", 10*time.Millisecond
+	return c
 }
 
 // sh runs the shell command cmd at the box and returns its output.
 func (b *sshBox) sh(t *testing.T, cmd string) string {
 	t.Helper()
-	out, err := exec.Command("ssh", "-F", b.config, b.host, cmd).CombinedOutput()
+	out, err := exec.Command(b.bin, "-F", b.config, b.host, cmd).CombinedOutput()
 	if err != nil {
 		t.Fatalf("ssh %s: %v\n%s", cmd, err, out)
 	}
@@ -72,7 +82,7 @@ func (b *sshBox) sh(t *testing.T, cmd string) string {
 // write writes content to the file rel under the box's root (through ssh's standard input).
 func (b *sshBox) write(t *testing.T, rel, content string) {
 	t.Helper()
-	cmd := exec.Command("ssh", "-F", b.config, b.host, fmt.Sprintf("umask 077; cat > %s/%s", b.qr(), rel))
+	cmd := exec.Command(b.bin, "-F", b.config, b.host, fmt.Sprintf("umask 077; cat > %s/%s", b.qr(), rel))
 	cmd.Stdin = strings.NewReader(content)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("writing %s: %v %s", rel, err, out)
@@ -99,7 +109,7 @@ func (b *sshBox) names(t *testing.T) string {
 // serving is the build id in the page the box's public port serves ("" when nothing answers).
 func (b *sshBox) serving(t *testing.T) string {
 	t.Helper()
-	out, _ := exec.Command("ssh", "-F", b.config, b.host, fmt.Sprintf("curl -sL --max-time 5 http://127.0.0.1:%d/", b.port)).Output()
+	out, _ := exec.Command(b.bin, "-F", b.config, b.host, fmt.Sprintf("curl -sL --max-time 5 http://127.0.0.1:%d/", b.port)).Output()
 	m := regexp.MustCompile(`name="alder-build" content="([0-9a-f]+)"`).FindSubmatch(out)
 	if m == nil {
 		return ""
@@ -110,7 +120,6 @@ func (b *sshBox) serving(t *testing.T) string {
 // startBox starts the box for the test (see above), or skips.
 func startBox(t *testing.T) *sshBox {
 	t.Helper()
-	fastPolls(t) // the scripts' wait loops: every 10 ms, not 0.2 s to 1 s
 	switch {
 	case os.Getenv("ALDER_DEPLOY_LOCAL") == "1":
 		return localBox(t)
@@ -135,8 +144,8 @@ shift
 exec sh -c "$*"
 `
 
-// loopbackBox is the default suite's box: PATH starts with loopbackSSH as ssh, and the
-// target's <path> is a temporary directory. Everything but the SSH connection itself is
+// loopbackBox is the default suite's box: its ssh is loopbackSSH (named by the commands'
+// deployEnv.SSH: PATH is not changed), and the target's <path> is a temporary directory. Everything but the SSH connection itself is
 // exercised: the remote scripts, the processes, the health check by build id.
 func loopbackBox(t *testing.T) *sshBox {
 	t.Helper()
@@ -146,14 +155,14 @@ func loopbackBox(t *testing.T) *sshBox {
 		}
 	}
 	bin := t.TempDir()
-	writeFile(t, filepath.Join(bin, "ssh"), loopbackSSH)
-	os.Chmod(filepath.Join(bin, "ssh"), 0o755)
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	ssh := filepath.Join(bin, "ssh")
+	writeFile(t, ssh, loopbackSSH)
+	os.Chmod(ssh, 0o755)
 	cfg := filepath.Join(bin, "ssh_config")
 	writeFile(t, cfg, "# the loopback box reads no configuration\n")
 	root := filepath.Join(evalSymlinks(t.TempDir()), "box q'x") // every path the target writes is quoted
 	killBuilds(t, root)
-	return &sshBox{config: cfg, host: "alder-test-box", root: root, port: freePort(t)}
+	return &sshBox{bin: ssh, config: cfg, host: "alder-test-box", root: root, port: freePort(t)}
 }
 
 // killBuilds stops, when the test ends, the builds started under root: they run as this
@@ -265,7 +274,7 @@ PidFile %s
 	waitSSH(t, cfg, logs.String)
 	root := filepath.Join(evalSymlinks(t.TempDir()), "box")
 	killBuilds(t, root)
-	return &sshBox{config: cfg, host: "alder-test-box", root: root, port: freePort(t)}
+	return &sshBox{bin: "ssh", config: cfg, host: "alder-test-box", root: root, port: freePort(t)}
 }
 
 func containerBox(t *testing.T) *sshBox {
@@ -315,7 +324,7 @@ func containerBox(t *testing.T) *sshBox {
 	}
 	cfg := writeSSHConfig(t, dir, port, "deploy", key)
 	waitSSH(t, cfg, func() string { out, _ := exec.Command("docker", "logs", id).CombinedOutput(); return string(out) })
-	return &sshBox{config: cfg, host: "alder-test-box", root: "/srv/alder-test", port: 18080, container: id, caddyPort: caddyPort}
+	return &sshBox{bin: "ssh", config: cfg, host: "alder-test-box", root: "/srv/alder-test", port: 18080, container: id, caddyPort: caddyPort}
 }
 
 func lastLine(s string) string {
@@ -324,9 +333,9 @@ func lastLine(s string) string {
 }
 
 // sshScaffold is deployScaffold with an Ssh environment `production` pointing at box (`proxy:
-// None`, requires SMTP_URL, keep 3), and the knobs that keep the test short: no drain, a 20 s
-// health check, the process supervisor.
-func sshScaffold(t *testing.T, box *sshBox) string {
+// None`, requires SMTP_URL, keep 3); it returns the app's directory and the deploy commands with
+// the knobs that keep the test short: no drain, a 20 s health check, the process supervisor.
+func sshScaffold(t *testing.T, box *sshBox) (string, *deployCmds) {
 	t.Helper()
 	dir := deployScaffold(t, fmt.Sprintf(`deploy {
   production: Ssh %q { domain: "localhost", path: %q },
@@ -334,27 +343,27 @@ func sshScaffold(t *testing.T, box *sshBox) string {
   proxy: None,
   keep: 3,
 }`, box.host, box.root), nil)
-	t.Setenv(deploy.EnvSSHConfig, box.config)
-	t.Setenv(envDrain, "0")
-	t.Setenv(envHealthTimeout, "20s")
-	t.Setenv(deploy.EnvSupervisor, "process")
+	c := box.cmds(t)
+	c.env.Drain, c.env.HealthTimeout = -1, 20*time.Second // -1: no drain
 	box.sh(t, fmt.Sprintf("mkdir -p %s && echo %d > %s/port", box.qr(), box.port, box.qr()))
-	return dir
+	return dir, c
 }
 
-// migrateDemo edits demo's Entry table with edit (old → new) and writes its migration.
-func migrateDemo(t *testing.T, old, new, name string) {
+// migrateDemo edits the Entry table of the app at dir (the scaffold) with edit (old → new) and
+// writes its migration.
+func migrateDemo(t *testing.T, dir, old, new, name string) {
 	t.Helper()
-	b, err := os.ReadFile("demo/app/Entry.alder")
+	entry := filepath.Join(dir, "app", "Entry.alder")
+	b, err := os.ReadFile(entry)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(b), old) {
 		t.Fatalf("Entry.alder lacks %q", old)
 	}
-	writeFile(t, "demo/app/Entry.alder", strings.Replace(string(b), old, new, 1))
+	writeFile(t, entry, strings.Replace(string(b), old, new, 1))
 	var out, errb bytes.Buffer
-	if code := runMigrateTo([]string{"demo", "--name", name}, &out, &errb); code != 0 {
+	if code := runMigrateTo([]string{dir, "--name", name}, &out, &errb); code != 0 {
 		t.Fatalf("alder migrate: %d %s %s", code, out.String(), errb.String())
 	}
 }
@@ -378,18 +387,19 @@ func deployedID(t *testing.T, out string) string {
 // serving, the log in the refusal, its directory kept), logs, and no planted value anywhere
 // under builds/ or in any output.
 func TestDeploySsh_Lifecycle(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("a deploy end to end: real builds, app processes and drain windows")
 	}
 	box := startBox(t)
-	dir := sshScaffold(t, box)
+	dir, c := sshScaffold(t, box)
 	var rnd [8]byte
 	rand.Read(rnd[:])
 	planted := "planted-" + hex.EncodeToString(rnd[:])
 	var all strings.Builder // every output, searched for the planted value at the end
 	deployRun := func(args ...string) (int, string) {
 		t.Helper()
-		code, out, errs := runDeploy(t, append(args[:1:1], append([]string{dir}, args[1:]...)...)...)
+		code, out, errs := c.deploy(append(args[:1:1], append([]string{dir}, args[1:]...)...)...)
 		all.WriteString(out + errs)
 		return code, out + errs
 	}
@@ -422,7 +432,7 @@ func TestDeploySsh_Lifecycle(t *testing.T) {
 	}
 
 	// a deploy without a migration, and a rollback to the first build (the same schema)
-	appendTo(t, "demo/app/Home.alder", "\nversion : Int\nversion = 2\n")
+	appendTo(t, filepath.Join(dir, "app", "Home.alder"), "\nversion : Int\nversion = 2\n")
 	code, out = deployRun("production")
 	if code != 0 {
 		t.Fatalf("deploy of a view change: exit %d\n%s", code, out)
@@ -432,7 +442,7 @@ func TestDeploySsh_Lifecycle(t *testing.T) {
 		t.Errorf("deploy of a view change:\n%s", out)
 	}
 	var so, se bytes.Buffer
-	if code := runRollbackTo([]string{"production", "--dir", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "  schema   ok  the live schema is the build's\n") || !strings.Contains(so.String(), "rolled back to "+id1) {
+	if code := c.rollback([]string{"production", "--dir", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "  schema   ok  the live schema is the build's\n") || !strings.Contains(so.String(), "rolled back to "+id1) {
 		t.Fatalf("rollback to %s: exit %d\n%s\n%s", id1, code, so.String(), se.String())
 	}
 	if got := box.serving(t); got != id1 {
@@ -440,7 +450,7 @@ func TestDeploySsh_Lifecycle(t *testing.T) {
 	}
 
 	// a second deploy with a migration
-	migrateDemo(t, "  message: Text.NonEmpty,\n", "  message: Text.NonEmpty,\n  mood: Maybe Text = Nothing,\n", "add_mood")
+	migrateDemo(t, dir, "  message: Text.NonEmpty,\n", "  message: Text.NonEmpty,\n  mood: Maybe Text = Nothing,\n", "add_mood")
 	code, out = deployRun("production")
 	if code != 0 {
 		t.Fatalf("second deploy: exit %d\n%s", code, out)
@@ -454,7 +464,7 @@ func TestDeploySsh_Lifecycle(t *testing.T) {
 	}
 	so.Reset()
 	se.Reset()
-	if code := runStatusTo([]string{"production", dir}, &so, &se); code != 0 {
+	if code := c.status([]string{"production", dir}, &so, &se); code != 0 {
 		t.Fatalf("status: %d %s", code, se.String())
 	}
 	all.WriteString(so.String() + se.String())
@@ -467,7 +477,7 @@ func TestDeploySsh_Lifecycle(t *testing.T) {
 	// RF3: rolling back to id1 (no mood) under the live schema (mood) is refused
 	so.Reset()
 	se.Reset()
-	if code := runRollbackTo([]string{"production", "--dir", dir}, &so, &se); code != 1 || !strings.Contains(se.String(), "(changed tables: Entry.Entry): that build would refuse to start on it") {
+	if code := c.rollback([]string{"production", "--dir", dir}, &so, &se); code != 1 || !strings.Contains(se.String(), "(changed tables: Entry.Entry): that build would refuse to start on it") {
 		t.Errorf("RF3: exit %d\n%s\n%s", code, so.String(), se.String())
 	}
 	if got := box.serving(t); got != id2 {
@@ -475,7 +485,7 @@ func TestDeploySsh_Lifecycle(t *testing.T) {
 	}
 
 	// RF1: dropping mood drops data: refused by --dry-run and by deploy, nothing uploaded
-	migrateDemo(t, "  mood: Maybe Text = Nothing,\n", "", "drop_mood")
+	migrateDemo(t, dir, "  mood: Maybe Text = Nothing,\n", "", "drop_mood")
 	before := box.sh(t, "ls "+box.qr()+"/builds")
 	for _, args := range [][]string{{"production", "--dry-run"}, {"production"}} {
 		code, out = deployRun(args...)
@@ -518,13 +528,13 @@ func TestDeploySsh_Lifecycle(t *testing.T) {
 	// RF3 again: id1's schema is the live one again, but the database has had 0002 and 0003
 	so.Reset()
 	se.Reset()
-	if code := runRollbackTo([]string{"production", id1, "--dir", dir}, &so, &se); code != 1 || !strings.Contains(se.String(), "the live database has migrations build "+id1+" does not have (0002_add_mood, 0003_drop_mood)") {
+	if code := c.rollback([]string{"production", id1, "--dir", dir}, &so, &se); code != 1 || !strings.Contains(se.String(), "the live database has migrations build "+id1+" does not have (0002_add_mood, 0003_drop_mood)") {
 		t.Errorf("rollback to %s: exit %d\n%s\n%s", id1, code, so.String(), se.String())
 	}
 
 	// RF2: a build whose adapter exits at start
-	writeFile(t, "demo/app/Clock.alder", "module Clock\n\ncapability Clock {\n  now : Task Int,\n}\n")
-	writeFile(t, "demo/adapters/clock/clock.go", `package clock
+	writeFile(t, filepath.Join(dir, "app", "Clock.alder"), "module Clock\n\ncapability Clock {\n  now : Task Int,\n}\n")
+	writeFile(t, filepath.Join(dir, "adapters", "clock", "clock.go"), `package clock
 
 import (
 	"context"
@@ -564,14 +574,14 @@ func (clock) Now(context.Context) (int64, error) { return 0, nil }
 	// status lists the failed build (it has no deployed.json)
 	so.Reset()
 	se.Reset()
-	if code := runStatusTo([]string{"production", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "never switched to (failed or interrupted; kept for inspection)") || !strings.Contains(so.String(), "current  "+id3+"\n") {
+	if code := c.status([]string{"production", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "never switched to (failed or interrupted; kept for inspection)") || !strings.Contains(so.String(), "current  "+id3+"\n") {
 		t.Errorf("status after RF2: %d\n%s%s", code, so.String(), se.String())
 	}
 
 	// logs
 	so.Reset()
 	se.Reset()
-	if code := runLogsTo([]string{"production", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "listening on") {
+	if code := c.logs([]string{"production", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "listening on") {
 		t.Errorf("logs: %d\n%s\n%s", code, so.String(), se.String())
 	}
 	all.WriteString(so.String())
@@ -591,14 +601,15 @@ func (clock) Now(context.Context) (int64, error) { return 0, nil }
 // directory; `alder restore` from that copy puts the database back at the box (entries posted
 // since are gone, the previous file kept beside it) and the build serves it again.
 func TestDeploySsh_BackupRestore(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("a deploy end to end: real builds, app processes and drain windows")
 	}
 	box := startBox(t)
-	dir := sshScaffold(t, box)
+	dir, c := sshScaffold(t, box)
 	bucket := box.root + "/bucket"
 	box.write(t, "env", fmt.Sprintf("ALDER_SECRET=%s\nSMTP_URL=smtp://mail\nALDER_BACKUP_URL=%q\nALDER_BACKUP_INTERVAL=1s\n", strings.Repeat("s", 32), bucket))
-	code, out, errs := runDeploy(t, "production", dir)
+	code, out, errs := c.deploy("production", dir)
 	if code != 0 {
 		t.Fatalf("deploy: exit %d\n%s\n%s", code, out, errs)
 	}
@@ -639,12 +650,12 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 		time.Sleep(300 * time.Millisecond)
 	}
 	var so, se bytes.Buffer
-	if code := runStatusTo([]string{"production", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "(streamed to file://"+bucket+")") {
+	if code := c.status([]string{"production", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "(streamed to file://"+bucket+")") {
 		t.Errorf("status: %d\n%s%s", code, so.String(), se.String())
 	}
 	// a copy of the bucket here
 	local := t.TempDir()
-	tarball, err := exec.Command("ssh", "-F", box.config, box.host, "tar -C "+box.qr()+" -cf - bucket").Output()
+	tarball, err := exec.Command(box.bin, "-F", box.config, box.host, "tar -C "+box.qr()+" -cf - bucket").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -657,7 +668,7 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 	restored := filepath.Join(t.TempDir(), "restored.db")
 	so.Reset()
 	se.Reset()
-	if code := runRestoreTo([]string{"production", "--dir", dir, "--from", copyDir, "--out", restored}, &so, &se); code != 0 || !strings.Contains(so.String(), "wrote "+restored) {
+	if code := c.restore([]string{"production", "--dir", dir, "--from", copyDir, "--out", restored}, &so, &se); code != 0 || !strings.Contains(so.String(), "wrote "+restored) {
 		t.Fatalf("restore --out: %d\n%s%s", code, so.String(), se.String())
 	}
 	conn, err := sql.Open("sqlite", restored)
@@ -673,7 +684,7 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 	// without --yes and without a terminal: refused, nothing replaced
 	so.Reset()
 	se.Reset()
-	if code := runRestoreTo([]string{"production", "--dir", dir, "--from", copyDir}, &so, &se); code != 2 || !strings.Contains(se.String(), "not confirmed: nothing was replaced") {
+	if code := c.restore([]string{"production", "--dir", dir, "--from", copyDir}, &so, &se); code != 2 || !strings.Contains(se.String(), "not confirmed: nothing was replaced") {
 		t.Errorf("restore without --yes: %d %s", code, se.String())
 	}
 	// two more entries, then the copy (three) put back at the box
@@ -684,7 +695,7 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 	}
 	so.Reset()
 	se.Reset()
-	if code := runRestoreTo([]string{"production", "--dir", dir, "--from", copyDir, "--yes"}, &so, &se); code != 0 || !strings.Contains(so.String(), "replaced the database at Ssh alder-test-box:"+box.root) {
+	if code := c.restore([]string{"production", "--dir", dir, "--from", copyDir, "--yes"}, &so, &se); code != 0 || !strings.Contains(so.String(), "replaced the database at Ssh alder-test-box:"+box.root) {
 		t.Fatalf("restore: %d\n%s%s", code, so.String(), se.String())
 	}
 	if n := entries(); n != 3 {
@@ -702,24 +713,25 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 // that build is current again, and starting it again (what the rollback does) reuses the
 // running process and cancels the delayed stop.
 func TestDeploySsh_DrainRollback(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("a deploy end to end: real builds, app processes and drain windows")
 	}
 	box := startBox(t)
-	dir := sshScaffold(t, box)
+	dir, c := sshScaffold(t, box)
 	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\n' > %s/env", strings.Repeat("s", 32), box.qr()))
-	code, out, errs := runDeploy(t, "production", dir)
+	code, out, errs := c.deploy("production", dir)
 	if code != 0 {
 		t.Fatalf("deploy: %d\n%s%s", code, out, errs)
 	}
 	id1 := deployedID(t, out)
-	appendTo(t, "demo/app/Home.alder", "\nversion : Int\nversion = 2\n")
-	if code, out, errs = runDeploy(t, "production", dir); code != 0 {
+	appendTo(t, filepath.Join(dir, "app", "Home.alder"), "\nversion : Int\nversion = 2\n")
+	if code, out, errs = c.deploy("production", dir); code != 0 {
 		t.Fatalf("second deploy: %d\n%s%s", code, out, errs)
 	}
 	id2 := deployedID(t, out)
 	ctx := context.Background()
-	s := deploy.NewSsh("demo", "production", ir.Target{Kind: "ssh", Host: box.host, Path: box.root, Domain: "localhost"}, &ir.Deploy{Proxy: "None"})
+	s := newSshTarget(c.env, "demo", "production", ir.Target{Kind: "ssh", Host: box.host, Path: box.root, Domain: "localhost"}, &ir.Deploy{Proxy: "None"})
 	s.Poll = 10 * time.Millisecond
 	if _, err := s.Connect(ctx); err != nil {
 		t.Fatal(err)
@@ -787,12 +799,12 @@ func TestDeploySsh_DrainRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, out, errs = runDeploy(t, "production", dir)
+	code, out, errs = c.deploy("production", dir)
 	if code != 1 || !strings.Contains(errs, "alder deploy: refused: another deploy, rollback or restore of production is running (the lock at "+box.root+"/deploy.lock is held by ") {
 		t.Errorf("deploy under the lock: %d\n%s%s", code, out, errs)
 	}
 	var so, se bytes.Buffer
-	if code := runRollbackTo([]string{"production", "--dir", dir}, &so, &se); code != 1 || !strings.Contains(se.String(), "another deploy, rollback or restore") {
+	if code := c.rollback([]string{"production", "--dir", dir}, &so, &se); code != 1 || !strings.Contains(se.String(), "another deploy, rollback or restore") {
 		t.Errorf("rollback under the lock: %d %s", code, se.String())
 	}
 	unlock()
@@ -818,7 +830,7 @@ func TestDeploySsh_DrainRollback(t *testing.T) {
 	}
 	// I8: an environment file that turns on development mode is refused
 	box.sh(t, fmt.Sprintf("echo ALDER_DEV=1 >> %s/env", box.qr()))
-	if code, out, errs = runDeploy(t, "production", dir); code != 1 || !strings.Contains(errs, "sets ALDER_DEV: development mode") {
+	if code, out, errs = c.deploy("production", dir); code != 1 || !strings.Contains(errs, "sets ALDER_DEV: development mode") {
 		t.Errorf("ALDER_DEV: %d\n%s%s", code, out, errs)
 	}
 	box.sh(t, fmt.Sprintf("sed -i.bak '/ALDER_DEV/d' %s/env", box.qr()))
@@ -839,11 +851,12 @@ func TestDeploySsh_DrainRollback(t *testing.T) {
 // (the serving build restarts on it), and across an earlier migration it brings back the first
 // build with its data from before that migration.
 func TestDeploySsh_RestoreBackup(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("a deploy end to end: real builds, app processes and drain windows")
 	}
 	box := startBox(t)
-	dir := sshScaffold(t, box)
+	dir, c := sshScaffold(t, box)
 	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\n' > %s/env", strings.Repeat("s", 32), box.qr()))
 	post := func(name string) {
 		t.Helper()
@@ -858,14 +871,14 @@ func TestDeploySsh_RestoreBackup(t *testing.T) {
 		}
 		return strings.Join(got, ",")
 	}
-	code, out, errs := runDeploy(t, "production", dir)
+	code, out, errs := c.deploy("production", dir)
 	if code != 0 {
 		t.Fatalf("deploy: %d\n%s%s", code, out, errs)
 	}
 	id1 := deployedID(t, out)
 	post("Ada")
-	migrateDemo(t, "  message: Text.NonEmpty,\n", "  message: Text.NonEmpty,\n  mood: Maybe Text = Nothing,\n", "add_mood")
-	if code, out, errs = runDeploy(t, "production", dir); code != 0 {
+	migrateDemo(t, dir, "  message: Text.NonEmpty,\n", "  message: Text.NonEmpty,\n  mood: Maybe Text = Nothing,\n", "add_mood")
+	if code, out, errs = c.deploy("production", dir); code != 0 {
 		t.Fatalf("second deploy: %d\n%s%s", code, out, errs)
 	}
 	id2 := deployedID(t, out)
@@ -874,16 +887,16 @@ func TestDeploySsh_RestoreBackup(t *testing.T) {
 		t.Fatalf("entries %q", got)
 	}
 	// a migration, then a build that exits at start
-	migrateDemo(t, "  mood: Maybe Text = Nothing,\n", "  mood: Maybe Text = Nothing,\n  tag: Maybe Text = Nothing,\n", "add_tag")
-	writeFile(t, "demo/app/Clock.alder", "module Clock\n\ncapability Clock {\n  now : Task Int,\n}\n")
-	writeFile(t, "demo/adapters/clock/clock.go", "package clock\n\nimport (\n\t\"context\"\n\t\"os\"\n\n\t\"app\"\n)\n\nfunc Clock() app.Cap__Clock__Clock {\n\tif os.Getenv(\"ALDER_DB\") != \"\" {\n\t\tos.Exit(1)\n\t}\n\treturn clock{}\n}\n\ntype clock struct{}\n\nfunc (clock) Now(context.Context) (int64, error) { return 0, nil }\n")
-	code, out, errs = runDeploy(t, "production", dir, "--unsafe-skip-tests")
+	migrateDemo(t, dir, "  mood: Maybe Text = Nothing,\n", "  mood: Maybe Text = Nothing,\n  tag: Maybe Text = Nothing,\n", "add_tag")
+	writeFile(t, filepath.Join(dir, "app", "Clock.alder"), "module Clock\n\ncapability Clock {\n  now : Task Int,\n}\n")
+	writeFile(t, filepath.Join(dir, "adapters", "clock", "clock.go"), "package clock\n\nimport (\n\t\"context\"\n\t\"os\"\n\n\t\"app\"\n)\n\nfunc Clock() app.Cap__Clock__Clock {\n\tif os.Getenv(\"ALDER_DB\") != \"\" {\n\t\tos.Exit(1)\n\t}\n\treturn clock{}\n}\n\ntype clock struct{}\n\nfunc (clock) Now(context.Context) (int64, error) { return 0, nil }\n")
+	code, out, errs = c.deploy("production", dir, "--unsafe-skip-tests")
 	m := regexp.MustCompile(`builds/([0-9a-f]{16})/ is kept`).FindStringSubmatch(errs)
 	if code != 1 || m == nil || !strings.Contains(errs, "build "+id2+" still serves, but the database was migrated (0003_add_tag) and that build would refuse to start again on it. To go back: `alder rollback production "+id2+" --restore-backup` (puts builds/"+m[1]+"/backup.db, taken before the migration, in place)") {
 		t.Fatalf("I2: %d\n%s%s", code, out, errs)
 	}
 	var so, se bytes.Buffer
-	if code := runRollbackTo([]string{"production", id2, "--dir", dir, "--restore-backup", "--yes"}, &so, &se); code != 0 || !strings.Contains(so.String(), "warning: --restore-backup: the database is now builds/"+m[1]+"/backup.db") {
+	if code := c.rollback([]string{"production", id2, "--dir", dir, "--restore-backup", "--yes"}, &so, &se); code != 0 || !strings.Contains(so.String(), "warning: --restore-backup: the database is now builds/"+m[1]+"/backup.db") {
 		t.Fatalf("rollback %s --restore-backup: %d\n%s%s", id2, code, so.String(), se.String())
 	}
 	if got, serving := names(), box.serving(t); got != "Grace,Ada" || serving != id2 {
@@ -892,7 +905,7 @@ func TestDeploySsh_RestoreBackup(t *testing.T) {
 	// across the migration to the first build: its data from before the migration
 	so.Reset()
 	se.Reset()
-	if code := runRollbackTo([]string{"production", id1, "--dir", dir, "--restore-backup", "--yes"}, &so, &se); code != 0 {
+	if code := c.rollback([]string{"production", id1, "--dir", dir, "--restore-backup", "--yes"}, &so, &se); code != 0 {
 		t.Fatalf("rollback %s --restore-backup: %d\n%s%s", id1, code, so.String(), se.String())
 	}
 	if got, serving := names(), box.serving(t); got != "Ada" || serving != id1 {
@@ -912,28 +925,29 @@ func TestDeploySsh_RestoreBackup(t *testing.T) {
 // match, so the deploy puts this run's pre-migration copy back at once and starts the previous
 // build on it. The site serves the old build, with the dropped column back, and takes writes.
 func TestDeploySsh_DropsDataAutoRestore(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("a deploy end to end: real builds, app processes and drain windows")
 	}
 	box := startBox(t)
-	dir := sshScaffold(t, box)
+	dir, c := sshScaffold(t, box)
 	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\n' > %s/env", strings.Repeat("s", 32), box.qr()))
-	code, out, errs := runDeploy(t, "production", dir)
+	code, out, errs := c.deploy("production", dir)
 	if code != 0 {
 		t.Fatalf("deploy: %d\n%s%s", code, out, errs)
 	}
 	box.post(t, "Ada")
-	migrateDemo(t, "  message: Text.NonEmpty,\n", "  message: Text.NonEmpty,\n  mood: Maybe Text = Nothing,\n", "add_mood")
-	if code, out, errs = runDeploy(t, "production", dir); code != 0 {
+	migrateDemo(t, dir, "  message: Text.NonEmpty,\n", "  message: Text.NonEmpty,\n  mood: Maybe Text = Nothing,\n", "add_mood")
+	if code, out, errs = c.deploy("production", dir); code != 0 {
 		t.Fatalf("second deploy: %d\n%s%s", code, out, errs)
 	}
 	id2 := deployedID(t, out)
 	box.post(t, "Grace")
 	// drop the column, and a build that exits at start
-	migrateDemo(t, "  mood: Maybe Text = Nothing,\n", "", "drop_mood")
-	writeFile(t, "demo/app/Clock.alder", "module Clock\n\ncapability Clock {\n  now : Task Int,\n}\n")
-	writeFile(t, "demo/adapters/clock/clock.go", "package clock\n\nimport (\n\t\"context\"\n\t\"os\"\n\n\t\"app\"\n)\n\nfunc Clock() app.Cap__Clock__Clock {\n\tif os.Getenv(\"ALDER_DB\") != \"\" {\n\t\tos.Exit(1)\n\t}\n\treturn clock{}\n}\n\ntype clock struct{}\n\nfunc (clock) Now(context.Context) (int64, error) { return 0, nil }\n")
-	code, out, errs = runDeploy(t, "production", dir, "--allow-data-loss", "--unsafe-skip-tests")
+	migrateDemo(t, dir, "  mood: Maybe Text = Nothing,\n", "", "drop_mood")
+	writeFile(t, filepath.Join(dir, "app", "Clock.alder"), "module Clock\n\ncapability Clock {\n  now : Task Int,\n}\n")
+	writeFile(t, filepath.Join(dir, "adapters", "clock", "clock.go"), "package clock\n\nimport (\n\t\"context\"\n\t\"os\"\n\n\t\"app\"\n)\n\nfunc Clock() app.Cap__Clock__Clock {\n\tif os.Getenv(\"ALDER_DB\") != \"\" {\n\t\tos.Exit(1)\n\t}\n\treturn clock{}\n}\n\ntype clock struct{}\n\nfunc (clock) Now(context.Context) (int64, error) { return 0, nil }\n")
+	code, out, errs = c.deploy("production", dir, "--allow-data-loss", "--unsafe-skip-tests")
 	m := regexp.MustCompile(`builds/([0-9a-f]{16})/ is kept for inspection`).FindStringSubmatch(errs)
 	if code != 1 || m == nil || !strings.Contains(errs, "did not pass its health check after its migrations dropped data (0003_drop_mood): the database copied before them (builds/"+m[1]+"/backup.db) was put back automatically and build "+id2+" serves again on it; the migrated database is kept as db/app.db.before-rollback-") {
 		t.Fatalf("I8: %d\n%s%s", code, out, errs)

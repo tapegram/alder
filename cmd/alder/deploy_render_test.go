@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -41,30 +41,32 @@ type renderFakes struct {
 	clock  *fakeClock // the deploys' points in time and the Turso fake's commits
 }
 
-// renderApp makes the scaffold app with decl and points the commands at fresh fakes.
-func renderApp(t *testing.T, decl string) (string, *renderFakes) {
+// renderApp makes the scaffold app with decl, and the deploy commands pointed at fresh fakes.
+func renderApp(t *testing.T, decl string) (string, *renderFakes, *deployCmds) {
 	t.Helper()
 	dir := deployScaffold(t, decl, nil)
 	f := &renderFakes{render: renderfake.New(t), reg: registryfake.New(t, registryfake.Options{User: "tavish", Token: rdRegToken, RequireAuth: true}), turso: tursofake.New(t, "acme")}
 	f.render.RequireKey(rdKey)
-	f.clock = useFakeClock(t)
+	c := newDeployCmds(t)
+	f.clock = c.useFakeClock()
 	f.turso.SetNow(f.clock.Now)
 	for k, v := range map[string]string{
 		"RENDER_API_KEY": rdKey, "ALDER_RENDER_API": f.render.URL, "RENDER_OWNER_ID": "",
 		"ALDER_REGISTRY_TOKEN": rdRegToken, "ALDER_REGISTRY_USER": "", "ALDER_REGISTRY_BASE": f.reg.URL,
 		db.EnvTursoToken: f.turso.APIToken, db.EnvTursoAPI: f.turso.URL,
 		"ALDER_SECRET": rdSecret, "SMTP_URL": rdSMTP,
-		envHealthTimeout: "30s", envDrain: "0",
 	} {
-		t.Setenv(k, v)
+		c.set(k, v)
 	}
-	return dir, f
+	c.env.Turso = db.TursoConfig{API: f.turso.URL, Token: f.turso.APIToken}
+	c.env.HealthTimeout, c.env.Drain = 30*time.Second, -1 // -1: no drain
+	return dir, f, c
 }
 
 // noSecrets fails when a secret of the environment is in any of texts.
-func noSecrets(t *testing.T, texts ...string) {
+func (f *renderFakes) noSecrets(t *testing.T, texts ...string) {
 	t.Helper()
-	for _, s := range []string{rdKey, rdRegToken, os.Getenv(db.EnvTursoToken), rdSecret, "smtp-pass-must-not-appear"} {
+	for _, s := range []string{rdKey, rdRegToken, f.turso.APIToken, rdSecret, "smtp-pass-must-not-appear"} {
 		for _, text := range texts {
 			if s != "" && strings.Contains(text, s) {
 				t.Errorf("a secret (%q…) is in the output:\n%s", s[:min(len(s), 8)], text)
@@ -76,15 +78,16 @@ func noSecrets(t *testing.T, texts ...string) {
 // `alder deploy production --host x` is refused: a Render service has the one address Render
 // gave it.
 func TestDeployRender_HostRefused(t *testing.T) {
-	dir, f := renderApp(t, rdDecl)
-	code, out, errs := runDeploy(t, "production", dir, "--host", "x.example.com")
+	t.Parallel()
+	dir, f, c := renderApp(t, rdDecl)
+	code, out, errs := c.deploy("production", dir, "--host", "x.example.com")
 	if code != 2 || !strings.Contains(errs, "the address is the service's: https://blog.onrender.com") {
 		t.Fatalf("exit %d\n%s%s", code, out, errs)
 	}
 	if n := len(f.render.Requests()); n != 0 {
 		t.Errorf("a refused --host reached Render: %v", f.render.Requests())
 	}
-	for _, cmd := range []func([]string, io.Writer, io.Writer) int{runStatusTo, runLogsTo} {
+	for _, cmd := range []func([]string, io.Writer, io.Writer) int{c.status, c.logs} {
 		if code, out := runCmd(t, cmd, "production", dir, "--host", "x.example.com"); code != 2 || !strings.Contains(out, "the address is the service's") {
 			t.Errorf("exit %d\n%s", code, out)
 		}
@@ -94,6 +97,7 @@ func TestDeployRender_HostRefused(t *testing.T) {
 // `--json` carries the address of the environment: Ssh https://<domain>, Fly
 // https://<app>.fly.dev, Render the service's URL; a Script has none.
 func TestDeployRender_JSONAddress(t *testing.T) {
+	t.Parallel()
 	ssh := ir.Target{Kind: "ssh", Host: "deploy@box", Domain: "blog.example.com", Path: "/srv/blog"}
 	fly := ir.Target{Kind: "fly", Region: "ord", App: "blog"}
 	render := deploy.NewRender("blog", "production", ir.Target{Kind: "render", Region: "oregon", Service: "blog", Database: &ir.Database{Kind: "turso", Org: "acme", App: "blog"}}, nil, "ghcr.io/tavish/blog")
@@ -134,12 +138,13 @@ var depLive = regexp.MustCompile(`Render deploy (dep-\w+) live \(1 instance\)`)
 // the service, the second rolls it, `status`, `rollback`, `logs` and `restore --to` read and move
 // it; no secret is in any output.
 func TestDeployRender_EndToEnd(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("a deploy end to end: real builds, app processes and drain windows")
 	}
-	dir, f := renderApp(t, rdDecl)
+	dir, f, c := renderApp(t, rdDecl)
 	var all []string
-	code, out, errs := runDeploy(t, "production", dir, "--unsafe-skip-tests", "--json")
+	code, out, errs := c.deploy("production", dir, "--unsafe-skip-tests", "--json")
 	all = append(all, out, errs)
 	if code != 0 {
 		t.Fatalf("first deploy: exit %d\n%s%s", code, out, errs)
@@ -166,8 +171,8 @@ func TestDeployRender_EndToEnd(t *testing.T) {
 	}
 
 	// a second build rolls the existing service
-	appendTo(t, "demo/app/Home.alder", fmt.Sprintf("\nversion : Int\nversion = %d\n", time.Now().UnixNano()))
-	code, out, errs = runDeploy(t, "production", dir, "--unsafe-skip-tests")
+	appendTo(t, filepath.Join(dir, "app", "Home.alder"), fmt.Sprintf("\nversion : Int\nversion = %d\n", time.Now().UnixNano()))
+	code, out, errs = c.deploy("production", dir, "--unsafe-skip-tests")
 	all = append(all, out, errs)
 	id2 := deployedID(t, out)
 	if code != 0 || id2 == id1 || !strings.Contains(out, "health: 1/1 instances serve "+id2) || !depLive.MatchString(out) {
@@ -178,7 +183,7 @@ func TestDeployRender_EndToEnd(t *testing.T) {
 
 	status := func() string {
 		t.Helper()
-		code, so := runCmd(t, runStatusTo, "production", dir)
+		code, so := runCmd(t, c.status, "production", dir)
 		all = append(all, so)
 		if code != 0 {
 			t.Fatalf("status: exit %d\n%s", code, so)
@@ -193,7 +198,7 @@ func TestDeployRender_EndToEnd(t *testing.T) {
 	}
 	t.Logf("status:\n%s", st)
 
-	code, ro := runCmd(t, runRollbackTo, "production", "--dir", dir, "--yes")
+	code, ro := runCmd(t, c.rollback, "production", "--dir", dir, "--yes")
 	all = append(all, ro)
 	if code != 0 || !strings.Contains(ro, "rolled back to "+id1) {
 		t.Fatalf("rollback: exit %d\n%s", code, ro)
@@ -204,7 +209,7 @@ func TestDeployRender_EndToEnd(t *testing.T) {
 	}
 
 	f.render.Logs(renderfake.LogLine{Time: time.Now().Add(-time.Minute), Instance: "i-1", Message: "listening on :10000"}, renderfake.LogLine{Time: time.Now(), Instance: "i-1", Message: "GET / 200"})
-	code, lo := runCmd(t, runLogsTo, "production", dir)
+	code, lo := runCmd(t, c.logs, "production", dir)
 	all = append(all, lo)
 	if code != 0 || !strings.Contains(lo, "[i-1] listening on :10000") || !strings.Contains(lo, "[i-1] GET / 200") {
 		t.Fatalf("logs: exit %d\n%s", code, lo)
@@ -218,10 +223,10 @@ func TestDeployRender_EndToEnd(t *testing.T) {
 	f.clock.Sleep(1100 * time.Millisecond)
 	at := f.clock.Now().UTC().Truncate(time.Second)
 	f.clock.Sleep(1100 * time.Millisecond)
-	if code, o := runCmd(t, runRestoreTo, "production", "--dir", dir, "--to", at.Format(time.RFC3339)); code != 2 || !strings.Contains(o, "not confirmed") {
+	if code, o := runCmd(t, c.restore, "production", "--dir", dir, "--to", at.Format(time.RFC3339)); code != 2 || !strings.Contains(o, "not confirmed") {
 		t.Errorf("restore without --yes: exit %d\n%s", code, o)
 	}
-	code, re := runCmd(t, runRestoreTo, "production", "--dir", dir, "--to", at.Format(time.RFC3339), "--yes")
+	code, re := runCmd(t, c.restore, "production", "--dir", dir, "--to", at.Format(time.RFC3339), "--yes")
 	all = append(all, re)
 	if code != 0 || !strings.Contains(re, "back as it was at "+at.Format(time.RFC3339)) {
 		t.Fatalf("restore: exit %d\n%s", code, re)
@@ -230,10 +235,10 @@ func TestDeployRender_EndToEnd(t *testing.T) {
 	if names := strings.Join(f.turso.Names(), " "); !strings.Contains(names, "blog-r") || !strings.Contains(names, "blog ") && !strings.HasSuffix(names, "blog") {
 		t.Errorf("databases after the restore: %s", names)
 	}
-	if code, o := runCmd(t, runRestoreTo, "production", "--dir", dir, "--from", "s3://x/y", "--to", at.Format(time.RFC3339)); code != 2 || !strings.Contains(o, "is on Turso") {
+	if code, o := runCmd(t, c.restore, "production", "--dir", dir, "--from", "s3://x/y", "--to", at.Format(time.RFC3339)); code != 2 || !strings.Contains(o, "is on Turso") {
 		t.Errorf("restore --from: exit %d\n%s", code, o)
 	}
-	noSecrets(t, all...)
+	f.noSecrets(t, all...)
 }
 
 func contains(l []string, s string) bool {
@@ -247,8 +252,9 @@ func contains(l []string, s string) bool {
 
 // --dry-run reads and plans: no change at Render, no push, and the address is marked expected.
 func TestDeployRender_DryRun(t *testing.T) {
-	dir, f := renderApp(t, rdDecl)
-	code, out, errs := runDeploy(t, "production", dir, "--unsafe-skip-tests", "--dry-run")
+	t.Parallel()
+	dir, f, c := renderApp(t, rdDecl)
+	code, out, errs := c.deploy("production", dir, "--unsafe-skip-tests", "--dry-run")
 	if code != 0 {
 		t.Fatalf("exit %d\n%s%s", code, out, errs)
 	}
@@ -265,26 +271,27 @@ func TestDeployRender_DryRun(t *testing.T) {
 	if !strings.Contains(out, "https://blog.onrender.com (expected)") {
 		t.Errorf("the dry run does not say where the service will be:\n%s", out)
 	}
-	noSecrets(t, out, errs)
+	f.noSecrets(t, out, errs)
 }
 
 // A Render environment with no `image` and no GitHub origin is refused with E0030's sentence;
 // with one, the image is ghcr.io/<owner>/<repo>.
 func TestDeployRender_DefaultImage(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("a deploy end to end: real builds, app processes and drain windows")
 	}
 	decl := strings.Replace(rdDecl, "  image: \"ghcr.io/tavish/blog\",\n", "", 1)
-	dir, f := renderApp(t, decl)
-	code, out, errs := runDeploy(t, "production", dir, "--unsafe-skip-tests")
+	dir, f, c := renderApp(t, decl)
+	code, out, errs := c.deploy("production", dir, "--unsafe-skip-tests")
 	if code != 2 || !strings.Contains(errs, "E0030 name the registry path") {
 		t.Fatalf("exit %d\n%s%s", code, out, errs)
 	}
-	if code, o := runCmd(t, runStatusTo, "production", dir); code != 2 || !strings.Contains(o, "E0030 name the registry path") {
+	if code, o := runCmd(t, c.status, "production", dir); code != 2 || !strings.Contains(o, "E0030 name the registry path") {
 		t.Errorf("status: exit %d\n%s", code, o)
 	}
 	writeFile(t, dir+"/.git/config", "[remote \"origin\"]\n\turl = git@github.com:Tavish/Blog.git\n")
-	code, out, errs = runDeploy(t, "production", dir, "--unsafe-skip-tests")
+	code, out, errs = c.deploy("production", dir, "--unsafe-skip-tests")
 	id := regexp.MustCompile(`deployed ([0-9a-f]{16}) to production`).FindStringSubmatch(out)
 	if code != 0 || id == nil || !strings.Contains(out, "image pushed ghcr.io/tavish/blog:"+id[1]) {
 		t.Fatalf("exit %d\n%s%s", code, out, errs)

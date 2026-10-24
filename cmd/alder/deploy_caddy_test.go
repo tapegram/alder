@@ -31,10 +31,10 @@ import (
 // fakeCaddyDir is the fake Caddy's source, found before a test changes the working directory.
 var fakeCaddyDir, _ = filepath.Abs(filepath.Join("testdata", "deploy", "fakecaddy"))
 
-// startFakeCaddy builds the fake Caddy and runs it at box until the test ends, points the
-// target at its admin API (deploy.EnvCaddyAdmin), and returns the URL this process reaches
-// its public listener at.
-func startFakeCaddy(t *testing.T, box *sshBox) string {
+// startFakeCaddy builds the fake Caddy and runs it at box until the test ends, and returns the
+// URL this process reaches its public listener at and the address of its admin API at the box
+// (the target's deployEnv.CaddyAdmin).
+func startFakeCaddy(t *testing.T, box *sshBox) (string, string) {
 	t.Helper()
 	goos := runtime.GOOS
 	if box.container != "" {
@@ -54,10 +54,9 @@ func startFakeCaddy(t *testing.T, box *sshBox) string {
 		if out, err := exec.Command("docker", "exec", "-d", box.container, "/usr/local/bin/fakecaddy", deploy.DefaultCaddyAdmin, "0.0.0.0:18443").CombinedOutput(); err != nil {
 			t.Fatalf("docker exec: %v %s", err, out)
 		}
-		t.Setenv(deploy.EnvCaddyAdmin, deploy.DefaultCaddyAdmin)
 		u := fmt.Sprintf("http://127.0.0.1:%d", box.caddyPort)
 		waitHTTP(t, u)
-		return u
+		return u, deploy.DefaultCaddyAdmin
 	}
 	// the box is this machine (the loopback box, or the private sshd): a process of the test
 	admin := fmt.Sprintf("127.0.0.1:%d", freePort(t))
@@ -69,10 +68,9 @@ func startFakeCaddy(t *testing.T, box *sshBox) string {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait(); logFile.Close() })
-	t.Setenv(deploy.EnvCaddyAdmin, admin)
 	u := "http://" + public
 	waitHTTP(t, u)
-	return u
+	return u, admin
 }
 
 // waitHTTP waits until something answers at u (any status).
@@ -190,21 +188,20 @@ func (m *monitor) summary(t0 time.Time) string {
 }
 
 // sshScaffoldCaddy is sshScaffold with `proxy: Caddy` (the default) and the fake Caddy: it
-// returns the app's directory and the URL of the fake Caddy's public listener.
-func sshScaffoldCaddy(t *testing.T, box *sshBox) (string, string) {
+// returns the app's directory, the URL of the fake Caddy's public listener and the deploy
+// commands pointed at its admin API.
+func sshScaffoldCaddy(t *testing.T, box *sshBox) (string, string, *deployCmds) {
 	t.Helper()
-	public := startFakeCaddy(t, box)
+	public, admin := startFakeCaddy(t, box)
 	dir := deployScaffold(t, fmt.Sprintf(`deploy {
   production: Ssh %q { domain: "localhost", path: %q },
   requires: ["SMTP_URL"],
   keep: 4,
 }`, box.host, box.root), nil)
-	t.Setenv(deploy.EnvSSHConfig, box.config)
-	t.Setenv(envDrain, "0")
-	t.Setenv(envHealthTimeout, "20s")
-	t.Setenv(deploy.EnvSupervisor, "process")
+	c := box.cmds(t)
+	c.env.Drain, c.env.HealthTimeout, c.env.CaddyAdmin = -1, 20*time.Second, admin // -1: no drain
 	box.sh(t, fmt.Sprintf("mkdir -p %s && printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\n' > %s/env", box.qr(), strings.Repeat("s", 32), box.qr()))
-	return dir, public
+	return dir, public, c
 }
 
 // postVia posts an entry through the public address u.
@@ -245,7 +242,7 @@ func dbNames(t *testing.T, box *sshBox) string {
 	t.Helper()
 	dir := t.TempDir()
 	for _, f := range []string{"app.db", "app.db-wal"} {
-		b, err := exec.Command("ssh", "-F", box.config, box.host, fmt.Sprintf("cat %s/db/%s 2>/dev/null || true", box.qr(), f)).Output()
+		b, err := exec.Command(box.bin, "-F", box.config, box.host, fmt.Sprintf("cat %s/db/%s 2>/dev/null || true", box.qr(), f)).Output()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -296,12 +293,13 @@ func runningBuilds(t *testing.T, s *deploy.Ssh) []string {
 // Caddy, leaves the restored file 600, and a build that refuses the restored file brings the
 // replaced database back, naming where the refused file is kept.
 func TestDeploySsh_CaddyDrainRestore(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("a deploy end to end: real builds, app processes and drain windows")
 	}
 	box := startBox(t)
-	dir, public := sshScaffoldCaddy(t, box)
-	code, out, errs := runDeploy(t, "production", dir)
+	dir, public, c := sshScaffoldCaddy(t, box)
+	code, out, errs := c.deploy("production", dir)
 	if code != 0 {
 		t.Fatalf("deploy: %d\n%s%s", code, out, errs)
 	}
@@ -311,20 +309,20 @@ func TestDeploySsh_CaddyDrainRestore(t *testing.T) {
 	}
 	// the same build again, with Caddy's route pointing elsewhere: "already serves" checks the
 	// route reaches the build, and sets it again
-	box.sh(t, `curl -s -o /dev/null -X PATCH -H 'Content-Type: application/json' -d '{"dial":"127.0.0.1:1"}' http://`+os.Getenv(deploy.EnvCaddyAdmin)+`/id/alder-demo-production`)
+	box.sh(t, `curl -s -o /dev/null -X PATCH -H 'Content-Type: application/json' -d '{"dial":"127.0.0.1:1"}' http://`+c.env.CaddyAdmin+`/id/alder-demo-production`)
 	if got := pageBuild(http.DefaultClient, public); got != "DOWN" {
 		t.Fatalf("the broken route still reaches %s", got)
 	}
-	if code, out, errs = runDeploy(t, "production", dir); code != 0 || !regexp.MustCompile(`build `+id1+` already serves production \(port \d+; health and route checked\): nothing to ship`).MatchString(out) {
+	if code, out, errs = c.deploy("production", dir); code != 0 || !regexp.MustCompile(`build `+id1+` already serves production \(port \d+; health and route checked\): nothing to ship`).MatchString(out) {
 		t.Fatalf("deploying the build that serves: %d\n%s%s", code, out, errs)
 	}
 	if got := pageBuild(http.DefaultClient, public); got != id1 {
 		t.Fatalf("after the redeploy Caddy reaches %s, want %s", got, id1)
 	}
 	postVia(t, public, "Ada")
-	migrateDemo(t, "  message: Text.NonEmpty,\n", "  message: Text.NonEmpty,\n  mood: Maybe Text = Nothing,\n", "add_mood")
-	t.Setenv(envDrain, "40s") // id1 keeps running, draining, past the rollback below
-	if code, out, errs = runDeploy(t, "production", dir); code != 0 {
+	migrateDemo(t, dir, "  message: Text.NonEmpty,\n", "  message: Text.NonEmpty,\n  mood: Maybe Text = Nothing,\n", "add_mood")
+	c.env.Drain = 40 * time.Second // id1 keeps running, draining, past the rollback below
+	if code, out, errs = c.deploy("production", dir); code != 0 {
 		t.Fatalf("second deploy: %d\n%s%s", code, out, errs)
 	}
 	id2 := deployedID(t, out)
@@ -332,7 +330,7 @@ func TestDeploySsh_CaddyDrainRestore(t *testing.T) {
 		t.Fatalf("no drain window:\n%s", out)
 	}
 	postVia(t, public, "Grace")
-	s := deploy.NewSsh("demo", "production", ir.Target{Kind: "ssh", Host: box.host, Path: box.root, Domain: "localhost"}, &ir.Deploy{})
+	s := newSshTarget(c.env, "demo", "production", ir.Target{Kind: "ssh", Host: box.host, Path: box.root, Domain: "localhost"}, &ir.Deploy{})
 	ctx := context.Background()
 	if _, err := s.Connect(ctx); err != nil {
 		t.Fatal(err)
@@ -344,7 +342,7 @@ func TestDeploySsh_CaddyDrainRestore(t *testing.T) {
 
 	// I5: not confirmed without a terminal
 	var so, se strings.Builder
-	if code := runRollbackTo([]string{"production", id1, "--dir", dir, "--restore-backup"}, &so, &se); code != 2 || !strings.Contains(se.String(), "not confirmed: nothing was changed") {
+	if code := c.rollback([]string{"production", id1, "--dir", dir, "--restore-backup"}, &so, &se); code != 2 || !strings.Contains(se.String(), "not confirmed: nothing was changed") {
 		t.Fatalf("rollback --restore-backup without --yes: %d\n%s%s", code, so.String(), se.String())
 	}
 	if got := dbNames(t, box); got != "Ada,Grace" {
@@ -355,7 +353,7 @@ func TestDeploySsh_CaddyDrainRestore(t *testing.T) {
 	mon := startMonitor(t, public, nil)
 	so.Reset()
 	se.Reset()
-	if code := runRollbackTo([]string{"production", id1, "--dir", dir, "--restore-backup", "--yes"}, &so, &se); code != 0 {
+	if code := c.rollback([]string{"production", id1, "--dir", dir, "--restore-backup", "--yes"}, &so, &se); code != 0 {
 		t.Fatalf("rollback %s --restore-backup: %d\n%s%s", id1, code, so.String(), se.String())
 	}
 	after := time.Now()

@@ -91,3 +91,59 @@
 - [ ] **Step 6: Verify.** Run the full package 3× with `-count=1`, and once with `-race`. Write the final `-json` to `.superpowers/sdd/test-speed2/after.json`. Re-rank the 20 slowest tests (the jq ranking used for the baseline) and append the before/after table to this plan under `## Results`.
 - [ ] **Step 7: CI.** Shard weights from `.github/shard.sh` may be stale now. Regenerate them from `after.json` the way that script documents, and check that the `every cmd/alder test is in exactly one shard` step still passes locally if it can run.
 - [ ] **Step 8: Commit.** `test speed: deploy env via options, parallel deploy tests (#24)`
+
+## Results (2026-10-23)
+
+`go test ./cmd/alder -count=1` on the laptop, wall time: **554.6 s before** (before.json) → 311.2 s after Task 1 (after-task1.json) → **142.6 s after Task 3** (after.json; the other two plain runs 116.1 s and the -json one 142.6 s, `-race` 228.3 s; all green).
+
+The 20 slowest tests of the baseline (top-level tests' Elapsed, `jq -r 'select((.Action=="pass" or .Action=="fail") and .Test != null and (.Test|test("/")|not)) | "\(.Elapsed) \(.Test)"'`, sorted). Per-test times go up after: the tests now run in parallel, so each one's time includes waiting for the CPU; the package's wall time is what fell.
+
+| test | before (s) | after (s) |
+|---|---:|---:|
+| TestDeploySsh_Lifecycle | 24.25 | 82.42 |
+| TestDeploySsh_DrainRollback | 21 | 44.53 |
+| TestDeployRender_EndToEnd | 20.17 | 43.39 |
+| TestDeployTurso_Lifecycle | 17.05 | 49.14 |
+| TestDeploySsh_CaddyDrainRestore | 13.75 | 47.26 |
+| TestDeploySsh_Silos | 12.53 | 38.51 |
+| TestDeploySsh_RestoreBackup | 12.11 | 44.27 |
+| TestDeploySsh_DropsDataAutoRestore | 11.05 | 42.56 |
+| TestExample_Workspace | 10.31 | 6.88 |
+| TestDist_OutOfTree | 8.51 | 33.8 |
+| TestRepl_RunBangAndFailure | 8.15 | 27.14 |
+| TestNew_OutOfTree | 8.01 | 20.92 |
+| TestAdmin_Regen | 7.62 | 33.76 |
+| TestExample_Blog | 7.49 | 5.77 |
+| TestDeploy_ScriptDropsData | 7.49 | 35.98 |
+| TestDeploySsh_BackupRestore | 7.47 | 29.74 |
+| TestRepl_UnusedLetsNotComputed | 6.55 | 27.22 |
+| TestTest_Crash | 6.5 | 22.33 |
+| TestEval_InModule | 6.15 | 24.3 |
+| TestEval_Concurrent | 6.04 | 23.21 |
+
+The 20 slowest after:
+
+| test | after (s) |
+|---|---:|
+| TestDeploySsh_Lifecycle | 82.42 |
+| TestDeployTurso_Lifecycle | 49.14 |
+| TestDeploySsh_CaddyDrainRestore | 47.26 |
+| TestDeploySsh_DrainRollback | 44.53 |
+| TestDeploySsh_RestoreBackup | 44.27 |
+| TestDeployRender_EndToEnd | 43.39 |
+| TestDeploySsh_DropsDataAutoRestore | 42.56 |
+| TestDeploySsh_Silos | 38.51 |
+| TestDeploy_ScriptDropsData | 35.98 |
+| TestDeployRender_DefaultImage | 34.3 |
+| TestDist_OutOfTree | 33.8 |
+| TestAdmin_Regen | 33.76 |
+| TestDeploySsh_BackupRestore | 29.74 |
+| TestDeploy_ScriptScaffold | 27.5 |
+| TestRepl_UnusedLetsNotComputed | 27.22 |
+| TestRepl_RunBangAndFailure | 27.14 |
+| TestDeployRender_DryRun | 26.99 |
+| TestDeploy_UnsafeSkipTests | 24.56 |
+| TestDeploy_DryRun | 24.45 |
+| TestEval_InModule | 24.3 |
+
+Still serial (each with a `// serial:` comment): TestBuild_MissingAdapterNamesApp and TestBuild_DefaultBuildDir (t.Chdir is what they test), TestBuild_DependencyDownload (t.Setenv GOMODCACHE/GOPROXY for the go toolchain), TestExample_* (inTemp, relative app names), TestMigrate_* and TestSilos_Binary (tempApp t.Chdir), TestTest_MutateCrashAndHang (timing). .github/shard-weights regenerated from after.json.

@@ -127,14 +127,13 @@ func TestCi_PreviewWorkflow(t *testing.T) {
 // `alder ci init` on an app: the file written, its summary and secrets printed; a second run
 // refuses to replace it, --force does; a usage error.
 func TestCi_Init(t *testing.T) {
-	// serial: t.Setenv(PATH), and deployScaffold's inTemp (t.Chdir)
+	t.Parallel()
 	dir := deployScaffold(t, `deploy {
   production: Fly "ord" { app: "demo-prod" },
   preview: Script "./scripts/record.sh",
   requires: ["SMTP_URL"],
   floor: 0.8,
 }`, nil)
-	t.Setenv("PATH", t.TempDir()+string(os.PathListSeparator)+os.Getenv("PATH")) // (actionlint, if any, still found)
 	var out, errb strings.Builder
 	code := runCiTo([]string{"init", dir}, &out, &errb)
 	if code != 0 {
@@ -172,7 +171,7 @@ func TestCi_Init(t *testing.T) {
 // request's host; a Script dry run names it, a Script run gets it in ALDER_HOST; a host that
 // does not match the wildcard domain, and --host for a Fly environment, are refused.
 func TestDeploy_Host(t *testing.T) {
-	// serial: inTemp (t.Chdir) via deployScaffold/noTables; deploy scaffolds use relative paths (Task 3)
+	t.Parallel()
 	dir := deployScaffold(t, `deploy {
   preview: Script "./scripts/host.sh",
   requires: ["SMTP_URL"],
@@ -186,7 +185,7 @@ func TestDeploy_Host(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\n%s%s", code, out, errs)
 	}
-	hosts, _ := filepath.Glob("build/demo/deploy/*.host")
+	hosts, _ := filepath.Glob(filepath.Join(testBuildDir(t), "demo", "deploy", "*.host"))
 	if len(hosts) != 1 {
 		t.Fatalf("the script ran %d times", len(hosts))
 	}
@@ -287,7 +286,7 @@ func TestCiInit_Mixed(t *testing.T) {
 // `alder ci init` pushes an image: a Render environment with no `image` and no GitHub origin is
 // refused (R5); with an origin it writes the file.
 func TestCiInit_RenderImage(t *testing.T) {
-	// serial: inTemp (t.Chdir) via deployScaffold/noTables; deploy scaffolds use relative paths (Task 3)
+	t.Parallel()
 	dir := deployScaffold(t, `deploy {
   production: Render "oregon" { service: "blog", database: Turso "acme" { app: "blog" } },
 }`, nil)

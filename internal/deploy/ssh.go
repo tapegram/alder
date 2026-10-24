@@ -22,15 +22,18 @@ import (
 )
 
 // EnvSSHConfig names an ssh_config file every ssh the Ssh target runs reads (`ssh -F`): an
-// identity, a known-hosts file, a jump host. The tests point it at their own sshd.
+// identity, a known-hosts file, a jump host. cmd/alder reads it into Ssh.SSHConfig; the tests
+// point it at their own sshd.
 const EnvSSHConfig = "ALDER_SSH_CONFIG"
 
 // EnvSupervisor forces how the Ssh target runs a build: "process" (a background process with a
 // pid file) even where systemd is present. Without it, systemd is used when it runs on the host.
+// cmd/alder reads it into Ssh.Supervisor.
 const EnvSupervisor = "ALDER_DEPLOY_SUPERVISOR"
 
 // EnvCaddyAdmin is the address of Caddy's admin API at the box (default DefaultCaddyAdmin):
-// for a Caddy that listens elsewhere, and for the tests' fake Caddy.
+// for a Caddy that listens elsewhere, and for the tests' fake Caddy. cmd/alder reads it into
+// Ssh.CaddyAdmin.
 const EnvCaddyAdmin = "ALDER_DEPLOY_CADDY_ADMIN"
 
 // DefaultCaddyAdmin is where Caddy's admin API listens unless configured otherwise.
@@ -66,9 +69,17 @@ type Ssh struct {
 	Proxy     string // "Caddy" or "None"
 	BackupURL string
 	Warn      io.Writer // warnings (the environment file's mode, linger)
-	// CaddyAdmin is the host:port of Caddy's admin API at the box (EnvCaddyAdmin, else
-	// DefaultCaddyAdmin).
+	// CaddyAdmin is the host:port of Caddy's admin API at the box (DefaultCaddyAdmin unless
+	// set: cmd/alder sets it from EnvCaddyAdmin).
 	CaddyAdmin string
+	// SSH is the ssh executable every command runs ("": the ssh on PATH); a test names its own.
+	SSH string
+	// SSHConfig, when set, is an ssh_config file every ssh reads (`ssh -F`; cmd/alder reads it
+	// from EnvSSHConfig).
+	SSHConfig string
+	// Supervisor "process" runs a build as a background process with a pid file even where
+	// systemd runs (EnvSupervisor); anything else lets Connect choose.
+	Supervisor string
 	// Poll, when not zero, is how often the scripts' wait loops look again (ALDER_POLL at the
 	// target; 0: each loop's own interval, 0.2 s to 1 s). Tests shorten it.
 	Poll time.Duration
@@ -105,9 +116,6 @@ func NewSsh(app, env string, t ir.Target, d *ir.Deploy) *Ssh {
 		dest = t.User + "@" + dest
 	}
 	s := &Ssh{App: app, Env: env, Dest: dest, Port: t.Port, Root: strings.TrimRight(t.Path, "/"), Domain: t.Domain, Proxy: d.Proxy, Warn: io.Discard, CaddyAdmin: DefaultCaddyAdmin}
-	if a := os.Getenv(EnvCaddyAdmin); a != "" {
-		s.CaddyAdmin = a
-	}
 	if s.Proxy == "" {
 		s.Proxy = "Caddy"
 	}
@@ -119,6 +127,14 @@ func NewSsh(app, env string, t ir.Target, d *ir.Deploy) *Ssh {
 		s.BackupURL = "" // Turso's point-in-time recovery, not the stream
 	}
 	return s
+}
+
+// ssh is the ssh executable: SSH, else "ssh".
+func (s *Ssh) ssh() string {
+	if s.SSH != "" {
+		return s.SSH
+	}
+	return "ssh"
 }
 
 // SetClock is the clock of the Turso database's point in time (Clocked).
@@ -155,7 +171,7 @@ func (s *Ssh) Close() error {
 	if s.ctl == "" {
 		return nil
 	}
-	exec.Command("ssh", append(s.baseArgs(), "-o", "ControlPath="+s.ctl, "-O", "exit", "--", s.Dest)...).Run()
+	exec.Command(s.ssh(), append(s.baseArgs(), "-o", "ControlPath="+s.ctl, "-O", "exit", "--", s.Dest)...).Run()
 	os.RemoveAll(filepath.Dir(s.ctl))
 	s.ctl = ""
 	return nil
@@ -165,14 +181,14 @@ func (s *Ssh) Close() error {
 // process dies) that every later ssh shares. Without it (it did not start), each ssh connects
 // on its own.
 func (s *Ssh) master(ctx context.Context) {
-	sweepControl()
+	sweepControl(s.ssh())
 	dir, err := os.MkdirTemp(shortTemp(), "alder-ssh-")
 	if err != nil {
 		return
 	}
 	ctl := filepath.Join(dir, "c")
 	args := append(s.baseArgs(), "-o", "ControlMaster=yes", "-o", "ControlPersist=10m", "-o", "ControlPath="+ctl, "-N", "-f", "--", s.Dest)
-	cmd := exec.CommandContext(ctx, "ssh", args...) // no pipes: the background master holds none of ours
+	cmd := exec.CommandContext(ctx, s.ssh(), args...) // no pipes: the background master holds none of ours
 	if err := cmd.Run(); err != nil {
 		os.RemoveAll(dir)
 		return
@@ -188,7 +204,7 @@ func (s *Ssh) master(ctx context.Context) {
 // (SIGKILL: SIGINT and SIGTERM end a run through Close): those older than two hours whose
 // socket no longer answers (`ssh -O check`: a master of a run still going, `alder logs -f` for
 // hours say, keeps its directory). A master outlives its run by ControlPersist (10m) at most.
-func sweepControl() {
+func sweepControl(bin string) {
 	dirs, _ := filepath.Glob(filepath.Join(shortTemp(), "alder-ssh-*"))
 	for _, d := range dirs {
 		fi, err := os.Stat(d)
@@ -197,7 +213,7 @@ func sweepControl() {
 		}
 		ctl := filepath.Join(d, "c")
 		if _, err := os.Stat(ctl); err == nil {
-			if exec.Command("ssh", "-o", "ControlPath="+ctl, "-O", "check", "alder-sweep").Run() == nil {
+			if exec.Command(bin, "-o", "ControlPath="+ctl, "-O", "check", "alder-sweep").Run() == nil {
 				continue // its master answers: in use
 			}
 		}
@@ -238,7 +254,7 @@ func (s *Ssh) sshArgs() []string {
 // baseArgs are the options every ssh of the target takes.
 func (s *Ssh) baseArgs() []string {
 	args := []string{"-o", "BatchMode=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4"}
-	if cfg := os.Getenv(EnvSSHConfig); cfg != "" {
+	if cfg := s.SSHConfig; cfg != "" {
 		args = append(args, "-F", cfg)
 	}
 	if s.Port != "" {
@@ -279,7 +295,7 @@ func (s *Ssh) run(ctx context.Context, script string) (string, error) {
 // stream is run with the script's output going to stdout and stderr as it comes.
 func (s *Ssh) stream(ctx context.Context, script string, stdout, stderr io.Writer) error {
 	var errb bytes.Buffer
-	cmd := exec.CommandContext(ctx, "ssh", append(s.sshArgs(), "sh -s")...)
+	cmd := exec.CommandContext(ctx, s.ssh(), append(s.sshArgs(), "sh -s")...)
 	cmd.Stdin = strings.NewReader(s.prelude() + script)
 	cmd.Stdout = stdout
 	cmd.Stderr = io.MultiWriter(stderr, &errb)
@@ -369,7 +385,7 @@ for c in curl tar; do command -v $c >/dev/null 2>&1 || echo "lack=$c"; done
 	}
 	s.plat = Platform{goos, goarch}
 	s.sup = "process"
-	if v := kv["systemd"]; v != "" && os.Getenv(EnvSupervisor) != "process" {
+	if v := kv["systemd"]; v != "" && s.Supervisor != "process" {
 		s.sup = v
 	}
 	s.conn = true
@@ -556,7 +572,7 @@ func (s *Ssh) Upload(ctx context.Context, dir, id string) error {
 		return err
 	}
 	part := s.Root + "/builds/" + id + ".part"
-	cmd := exec.CommandContext(ctx, "ssh", append(s.sshArgs(), "umask 077 && rm -rf "+q(part)+" && mkdir -p "+q(part)+" && tar -xf - -C "+q(part))...)
+	cmd := exec.CommandContext(ctx, s.ssh(), append(s.sshArgs(), "umask 077 && rm -rf "+q(part)+" && mkdir -p "+q(part)+" && tar -xf - -C "+q(part))...)
 	cmd.Stdin = &tarball
 	var errb bytes.Buffer
 	cmd.Stderr = &errb
@@ -1171,7 +1187,7 @@ echo locked
 cat > /dev/null
 rm -rf "$D"
 `
-	cmd := exec.Command("ssh", append(s.sshArgs(), "sh -c "+q(script))...)
+	cmd := exec.Command(s.ssh(), append(s.sshArgs(), "sh -c "+q(script))...)
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -1571,7 +1587,7 @@ func (s *Ssh) Restore(ctx context.Context, db string) (string, error) {
 	}
 	defer f.Close()
 	dst := s.Root + "/db/app.db.restore"
-	cmd := exec.CommandContext(ctx, "ssh", append(s.sshArgs(), "umask 077 && mkdir -p "+q(s.Root+"/db")+" && cat > "+q(dst+".part")+" && chmod 600 "+q(dst+".part")+" && mv "+q(dst+".part")+" "+q(dst))...)
+	cmd := exec.CommandContext(ctx, s.ssh(), append(s.sshArgs(), "umask 077 && mkdir -p "+q(s.Root+"/db")+" && cat > "+q(dst+".part")+" && chmod 600 "+q(dst+".part")+" && mv "+q(dst+".part")+" "+q(dst))...)
 	cmd.Stdin = f
 	var errb bytes.Buffer
 	cmd.Stderr = &errb

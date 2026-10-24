@@ -24,8 +24,8 @@ const (
 
 // siloTarget is environment env's Ssh target, with its deploy lock taken (release it with the
 // returned function), for a silo command.
-func siloTarget(ctx context.Context, cmd, env, dir, host string) (*deploy.Ssh, func(), error) {
-	t, _, err := envTarget(cmd, env, dir, host)
+func siloTarget(ctx context.Context, cmd, env, dir, host string, e deployEnv) (*deploy.Ssh, func(), error) {
+	t, _, err := envTarget(cmd, env, dir, host, e)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -91,6 +91,11 @@ func siloArgs(args []string, flags ...string) (env, dir, host string, set map[st
 // behind by a migration that drops data needs --allow-data-loss. Exit 0
 // when every silo is served afterwards, 1 when one is not or the target fails, 2 for usage.
 func runMigrateSilosTo(args []string, stdout, stderr io.Writer) int {
+	return runMigrateSilosWith(args, stdout, stderr, osDeployEnv())
+}
+
+// runMigrateSilosWith is runMigrateSilosTo with the environment e.
+func runMigrateSilosWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	env, dir, host, set, ok := siloArgs(args, "--allow-data-loss")
 	if !ok {
 		fmt.Fprintln(stderr, migrateSilosUsage)
@@ -98,7 +103,7 @@ func runMigrateSilosTo(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	s, release, err := siloTarget(ctx, "migrate silos", env, dir, host)
+	s, release, err := siloTarget(ctx, "migrate silos", env, dir, host, e)
 	if err != nil {
 		fmt.Fprintf(stderr, "alder migrate silos: %v\n", err)
 		return 2
@@ -123,6 +128,11 @@ func runMigrateSilosTo(args []string, stdout, stderr io.Writer) int {
 // when it is still orphaned). Exit 0, 1 when the target fails or a silo was kept, 2 for usage
 // and a removal not confirmed.
 func runSilosTo(args []string, stdout, stderr io.Writer) int {
+	return runSilosWith(args, stdout, stderr, osDeployEnv())
+}
+
+// runSilosWith is runSilosTo with the environment e.
+func runSilosWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	if len(args) == 0 || args[0] != "prune" {
 		fmt.Fprintln(stderr, silosUsage)
 		return 2
@@ -134,7 +144,7 @@ func runSilosTo(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	s, release, err := siloTarget(ctx, "silos prune", env, dir, host)
+	s, release, err := siloTarget(ctx, "silos prune", env, dir, host, e)
 	if err != nil {
 		fmt.Fprintf(stderr, "alder silos prune: %v\n", err)
 		return 2

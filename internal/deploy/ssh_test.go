@@ -36,6 +36,20 @@ func TestNewSsh(t *testing.T) {
 	}
 }
 
+// The target's ssh settings are its fields, not this process's environment: SSHConfig is every
+// ssh's -F, SSH the executable, CaddyAdmin DefaultCaddyAdmin unless set.
+func TestSsh_SettingsAreFields(t *testing.T) {
+	t.Parallel()
+	s := NewSsh("blog", "production", ir.Target{Host: "deploy@box", Path: "/srv/blog"}, &ir.Deploy{})
+	if s.CaddyAdmin != DefaultCaddyAdmin || s.ssh() != "ssh" || strings.Contains(strings.Join(s.baseArgs(), " "), "-F") {
+		t.Errorf("defaults: admin %q, ssh %q, args %v", s.CaddyAdmin, s.ssh(), s.baseArgs())
+	}
+	s.SSH, s.SSHConfig = "/opt/ssh", "/etc/alder/ssh_config"
+	if args := strings.Join(s.baseArgs(), " "); s.ssh() != "/opt/ssh" || !strings.Contains(args, "-F /etc/alder/ssh_config") {
+		t.Errorf("set: ssh %q, args %s", s.ssh(), args)
+	}
+}
+
 // q quotes for the remote shell: sh reads back exactly what was quoted.
 func TestQuote(t *testing.T) {
 	for _, s := range []string{"plain", "it's", "a b\tc", `$HOME "x" \n`, "'"} {
@@ -169,12 +183,11 @@ func (c *testClock) Sleep(d time.Duration) {
 // Backup's point in time on Turso is the next whole second by the injected clock, waited for
 // with the injected Sleep (no real wait).
 func TestSsh_BackupPITRUsesInjectedClock(t *testing.T) {
-	bin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(loopbackSSH), 0o755); err != nil {
+	t.Parallel()
+	ssh := filepath.Join(t.TempDir(), "ssh")
+	if err := os.WriteFile(ssh, []byte(loopbackSSH), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv(EnvSSHConfig, "")
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "builds", "b1"), 0o700); err != nil {
 		t.Fatal(err)
@@ -187,6 +200,7 @@ func TestSsh_BackupPITRUsesInjectedClock(t *testing.T) {
 	clock := &testClock{now: time.Date(2026, 10, 17, 12, 0, 0, 300*int(time.Millisecond), time.UTC)}
 	f.SetNow(clock.Now)
 	s := NewSsh("blog", "production", ir.Target{Host: "deploy@box", Path: root}, &ir.Deploy{Proxy: "None"})
+	s.SSH = ssh
 	s.DB = fakeTurso(t, f)
 	s.DB.Now, s.DB.Sleep = clock.Now, clock.Sleep
 	start := time.Now()
@@ -240,10 +254,12 @@ func TestSsh_PollAndClock(t *testing.T) {
 
 // Deploy and Rollback give a Clocked target TargetNow and Sleep, never Now (the record's clock).
 func TestDeployRollback_TargetClock(t *testing.T) {
-	t.Setenv("PATH", t.TempDir()) // no ssh: Connect fails right after the clock is set
+	t.Parallel()
+	noSSH := filepath.Join(t.TempDir(), "ssh") // no ssh there: Connect fails right after the clock is set
 	record := func() time.Time { return time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC) }
 	for _, name := range []string{"deploy", "rollback"} {
 		s := NewSsh("blog", "production", ir.Target{Host: "deploy@box", Path: "/srv/blog"}, &ir.Deploy{Proxy: "None"})
+		s.SSH = noSSH
 		s.DB = NewTurso(&ir.Database{Kind: "turso", Org: "acme", App: "blog"})
 		clock := &testClock{now: time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)}
 		var out bytes.Buffer

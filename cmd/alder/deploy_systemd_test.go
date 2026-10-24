@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -27,6 +28,7 @@ import (
 // brings it back), and a rollback with --restore-backup (every unit stopped, the build started
 // fresh, the route moved).
 func TestDeploySystemd_Caddy(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("ALDER_DEPLOY_SYSTEMD") != "1" {
 		t.Skip("ALDER_DEPLOY_SYSTEMD=1 runs this on a systemd box (CI's deploy-systemd job)")
 	}
@@ -34,23 +36,22 @@ func TestDeploySystemd_Caddy(t *testing.T) {
 	if cfg == "" {
 		t.Fatal("ALDER_DEPLOY_SYSTEMD=1 needs ALDER_SSH_CONFIG naming the host alder-systemd-box")
 	}
-	box := &sshBox{config: cfg, host: "alder-systemd-box", root: "/srv/alder-systemd"}
+	box := &sshBox{bin: "ssh", config: cfg, host: "alder-systemd-box", root: "/srv/alder-systemd"}
 	box.sh(t, "rm -rf "+box.root+" && mkdir -p "+box.root+fmt.Sprintf(" && printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\n' > %s/env && chmod 600 %s/env", strings.Repeat("s", 32), box.root, box.root))
 	dir := deployScaffold(t, fmt.Sprintf(`deploy {
   production: Ssh %q { domain: "localhost", path: %q },
   requires: ["SMTP_URL"],
 }`, box.host, box.root), nil)
-	t.Setenv(envDrain, "3s")
-	t.Setenv(envHealthTimeout, "60s")
-	t.Setenv(deploy.EnvSupervisor, "")
+	c := box.cmds(t)
+	c.env.Drain, c.env.HealthTimeout, c.env.Supervisor, c.env.Poll = 3*time.Second, 60*time.Second, "", 0 // systemd, the scripts' own polls
 	t.Cleanup(func() {
-		exec.Command("ssh", "-F", cfg, box.host, "for u in $(systemctl list-units --plain --no-legend 'alder-demo-production@*' | cut -d' ' -f1); do systemctl disable --now \"$u\"; done").Run()
+		exec.Command(box.bin, "-F", cfg, box.host, "for u in $(systemctl list-units --plain --no-legend 'alder-demo-production@*' | cut -d' ' -f1); do systemctl disable --now \"$u\"; done").Run()
 	})
 	const public = "https://localhost"
 	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
 	serving := func() string { return pageBuild(client, public) }
 
-	code, out, errs := runDeploy(t, "production", dir)
+	code, out, errs := c.deploy("production", dir)
 	if code != 0 {
 		t.Fatalf("first deploy: %d\n%s%s", code, out, errs)
 	}
@@ -72,8 +73,8 @@ func TestDeploySystemd_Caddy(t *testing.T) {
 	// a second deploy: no request misses at the switch
 	mon := startMonitor(t, public, client) // client: Caddy's certificate for localhost is from its own CA
 	t0 := time.Now()
-	appendTo(t, "demo/app/Home.alder", "\nversion : Int\nversion = 2\n")
-	if code, out, errs = runDeploy(t, "production", dir); code != 0 {
+	appendTo(t, filepath.Join(dir, "app", "Home.alder"), "\nversion : Int\nversion = 2\n")
+	if code, out, errs = c.deploy("production", dir); code != 0 {
 		t.Fatalf("second deploy: %d\n%s%s", code, out, errs)
 	}
 	id2 := deployedID(t, out)
@@ -111,7 +112,7 @@ func TestDeploySystemd_Caddy(t *testing.T) {
 
 	// rollback with the copy taken when id1 was replaced: every unit stopped, id1 fresh, routed
 	var so, se strings.Builder
-	if code := runRollbackTo([]string{"production", id1, "--dir", dir, "--restore-backup", "--yes"}, &so, &se); code != 0 {
+	if code := c.rollback([]string{"production", id1, "--dir", dir, "--restore-backup", "--yes"}, &so, &se); code != 0 {
 		t.Fatalf("rollback --restore-backup: %d\n%s%s", code, so.String(), se.String())
 	}
 	if got := serving(); got != id1 {

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -27,6 +28,7 @@ import (
 // everything. The unit tests of internal/deploy (fly_test.go) cover the same steps against a
 // fake Machines API.
 func TestDeployFly_Real(t *testing.T) {
+	t.Parallel()
 	app := os.Getenv("ALDER_FLY_APP")
 	if os.Getenv("FLY_API_TOKEN") == "" || app == "" {
 		t.Skip("set FLY_API_TOKEN and ALDER_FLY_APP to deploy to Fly")
@@ -41,13 +43,14 @@ func TestDeployFly_Real(t *testing.T) {
 }`, region, app), nil)
 	var key [16]byte
 	rand.Read(key[:])
-	t.Setenv("ALDER_SECRET", hex.EncodeToString(key[:]))
-	t.Setenv("SMTP_URL", "smtp://localhost:25")
-	t.Setenv(envHealthTimeout, "180s")
+	c := newDeployCmds(t)
+	c.set("ALDER_SECRET", hex.EncodeToString(key[:]))
+	c.set("SMTP_URL", "smtp://localhost:25")
+	c.env.HealthTimeout = 180 * time.Second
 	deployed := regexp.MustCompile(`deployed ([0-9a-f]{16}) to staging`)
 	ship := func() string {
 		t.Helper()
-		code, out, errs := runDeploy(t, "staging", dir)
+		code, out, errs := c.deploy("staging", dir)
 		m := deployed.FindStringSubmatch(out)
 		if code != 0 || m == nil {
 			t.Fatalf("deploy: exit %d\n%s%s", code, out, errs)
@@ -73,24 +76,24 @@ func TestDeployFly_Real(t *testing.T) {
 	if got := serving(); got != id1 {
 		t.Fatalf("after the first deploy %s.fly.dev serves %q, want %s", app, got, id1)
 	}
-	appendTo(t, "demo/app/Home.alder", fmt.Sprintf("\nversion : Int\nversion = %d\n", time.Now().Unix()))
+	appendTo(t, filepath.Join(dir, "app", "Home.alder"), fmt.Sprintf("\nversion : Int\nversion = %d\n", time.Now().Unix()))
 	id2 := ship()
 	if got := serving(); got != id2 {
 		t.Fatalf("after the second deploy %s.fly.dev serves %q, want %s", app, got, id2)
 	}
 	var so, se bytes.Buffer
-	if code := runStatusTo([]string{"staging", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "current  "+id2) {
+	if code := c.status([]string{"staging", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "current  "+id2) {
 		t.Errorf("status: exit %d\n%s%s", code, so.String(), se.String())
 	}
 	so.Reset()
-	if code := runRollbackTo([]string{"staging", "--dir", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "rolled back to "+id1) {
+	if code := c.rollback([]string{"staging", "--dir", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "rolled back to "+id1) {
 		t.Fatalf("rollback: exit %d\n%s%s", code, so.String(), se.String())
 	}
 	if got := serving(); got != id1 {
 		t.Errorf("after the rollback %s.fly.dev serves %q, want %s", app, got, id1)
 	}
 	so.Reset()
-	if code := runLogsTo([]string{"staging", dir}, &so, &se); code != 0 {
+	if code := c.logs([]string{"staging", dir}, &so, &se); code != 0 {
 		t.Errorf("logs: exit %d\n%s", code, se.String())
 	}
 }
