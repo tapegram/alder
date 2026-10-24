@@ -2,6 +2,9 @@
 
 EBNF. `{x}` is zero or more, `[x]` is optional, `|` is alternation.
 Newlines are significant only as statement separators inside blocks.
+Two further line breaks are allowed: between the attributes of an HTML open
+tag (and before its `>` or `/>`), and in a type, where a line may begin with
+`->` and the type may begin on the line after the `:` of a signature.
 
 ```ebnf
 module      = "module" ModName NL {import NL} {decl NL} ;

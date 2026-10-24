@@ -40,8 +40,8 @@ func (p *Parser) parseElement() *Element {
 		p.errorAt(p.tok, "expected tag name, got "+describe(p.tok))
 	}
 	defer p.in("<" + qual(el.Module, el.Tag) + ">")()
-	// attributes
-	for p.at(LIdent) || p.at(Keyword) {
+	// attributes; line breaks are allowed between them and before `>` / `/>`
+	for p.skipNL(); p.at(LIdent) || p.at(Keyword); p.skipNL() {
 		at := p.advance()
 		a := &HtmlAttr{Name: at.Text}
 		if p.at(Equal) {

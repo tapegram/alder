@@ -291,6 +291,25 @@ List.length [1, 2, 3]
 A line that begins with anything else starts something new, so `f 1`
 followed by a line `    = 2` is E0001.
 
+Two more places take a line break. A type may continue onto a line that
+begins with `->`, and may begin on the line after the `:` of a signature:
+
+```alder fragment
+fullName :
+  { first: Text, last: Text }
+  -> Text
+```
+
+And the attributes of an HTML open tag may each sit on their own line,
+with the closing `>` or `/>` on a line of its own:
+
+```alder fragment
+<a
+  href="/about"
+  class="link"
+>About</a>
+```
+
 `<` is the one operator that can also begin a line of markup. A line
 that begins with `<` and then whitespace (`< x`) continues the
 comparison; a line that begins with `<` and then a letter or `/` (`<li>`,

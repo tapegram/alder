@@ -1,0 +1,11 @@
+module LayoutSig
+
+f : Int
+  -> Text
+  -> Bool
+f a b = True
+
+g :
+  { a: Int, b: Int }
+  -> Int
+g r = 1

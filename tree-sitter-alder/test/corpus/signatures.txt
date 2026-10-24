@@ -76,3 +76,76 @@ login : Session -> Task Unit
             (constructor))
           argument: (type_name
             (constructor)))))))
+
+================================================================================
+signature continued on lines starting with ->
+================================================================================
+
+module M
+
+f : Int
+  -> Text
+  -> Bool
+f a b = True
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    (module_name
+      (constructor)))
+  (value_decl
+    (signature
+      (identifier)
+      (type_arrow
+        (type_name
+          (constructor))
+        (type_arrow
+          (type_name
+            (constructor))
+          (type_name
+            (constructor)))))
+    (binding
+      (identifier)
+      (parameters
+        (identifier)
+        (identifier))
+      (boolean))))
+
+================================================================================
+signature type on the line after the colon
+================================================================================
+
+module M
+
+g :
+  { a: Int, b: Int }
+  -> Int
+g r = 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    (module_name
+      (constructor)))
+  (value_decl
+    (signature
+      (identifier)
+      (type_arrow
+        (record_type
+          (field_decl
+            (identifier)
+            (type_name
+              (constructor)))
+          (field_decl
+            (identifier)
+            (type_name
+              (constructor))))
+        (type_name
+          (constructor))))
+    (binding
+      (identifier)
+      (parameters
+        (identifier))
+      (integer))))

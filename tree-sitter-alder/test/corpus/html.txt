@@ -261,3 +261,55 @@ view m =
         (html_text)
         close: (end_tag
           tag: (tag_name))))))
+
+================================================================================
+attributes on separate lines, and a self-closing tag
+================================================================================
+
+module M
+
+v =
+  <div>
+    <a
+        href="x"
+        class="y"
+      >hi</a>
+    <input
+        name="x"
+      />
+  </div>
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    (module_name
+      (constructor)))
+  (value_decl
+    (binding
+      (identifier)
+      (element
+        (start_tag
+          (tag_name))
+        (html_text)
+        (element
+          (start_tag
+            (tag_name)
+            (attribute
+              (attribute_name)
+              (string))
+            (attribute
+              (attribute_name)
+              (string)))
+          (html_text)
+          (end_tag
+            (tag_name)))
+        (html_text)
+        (self_closing_element
+          (tag_name)
+          (attribute
+            (attribute_name)
+            (string)))
+        (html_text)
+        (end_tag
+          (tag_name))))))

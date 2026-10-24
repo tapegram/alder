@@ -522,6 +522,7 @@ func (p *Parser) parseValueDecl() Decl {
 	defer p.in("the definition of `" + nameTok.Text + "`")()
 	if p.at(Colon) {
 		p.advance()
+		p.skipNL() // the type may start on the line after `:`
 		d.Sig = p.parseType()
 		if p.sigMode && (p.at(NL) || p.at(EOF)) {
 			// peek: is the next non-blank line this name's definition?
@@ -915,7 +916,7 @@ func (p *Parser) parseType() Type {
 			tn.Span = p.spanFrom(start)
 		}
 	}
-	if p.at(Arrow) {
+	if p.at(Arrow) || (p.at(NL) && p.atOpAfterNL(Arrow)) { // a line starting with `->` continues the type
 		p.advance()
 		res := p.parseType()
 		ft := &FunType{Params: []Type{head}, Result: res}

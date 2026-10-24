@@ -1,0 +1,15 @@
+module LayoutAttrs
+
+v : Html a
+v =
+  <div>
+    <a
+        href="x"
+        class="y"
+      >hi</a>
+    <a href="x"
+        class="y">hi</a>
+    <input
+        name="x"
+      />
+  </div>

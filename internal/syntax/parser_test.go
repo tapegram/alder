@@ -475,3 +475,27 @@ func TestParse_StringEscapes(t *testing.T) {
 		t.Errorf("dump lacks %s:\n%s", want, got)
 	}
 }
+
+// The formatter's layouts parse to the same tree as the one-line spelling.
+func TestParse_LayoutEquivalence(t *testing.T) {
+	cases := []struct{ name, broken, flat string }{
+		{"attrs",
+			"module M\nv : Html a\nv =\n  <div>\n    <a\n        href=\"x\"\n        class=\"y\"\n      >hi</a>\n    <a href=\"x\"\n        class=\"y\">hi</a>\n    <input\n        name=\"x\"\n      />\n  </div>\n",
+			"module M\nv : Html a\nv =\n  <div>\n    <a href=\"x\" class=\"y\">hi</a>\n    <a href=\"x\" class=\"y\">hi</a>\n    <input name=\"x\" />\n  </div>\n"},
+		{"sig",
+			"module M\nf : Int\n  -> Text\n  -> Bool\nf a b = True\ng :\n  { a: Int, b: Int }\n  -> Int\ng r = 1\n",
+			"module M\nf : Int -> Text -> Bool\nf a b = True\ng : { a: Int, b: Int } -> Int\ng r = 1\n"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			bm, bd := ParseFile("b.alder", []byte(c.broken))
+			fm, fd := ParseFile("f.alder", []byte(c.flat))
+			if len(bd) != 0 || len(fd) != 0 {
+				t.Fatalf("diagnostics: broken %v flat %v", bd, fd)
+			}
+			if Dump(bm) != Dump(fm) {
+				t.Fatalf("dumps differ\nbroken: %s\nflat: %s", Dump(bm), Dump(fm))
+			}
+		})
+	}
+}

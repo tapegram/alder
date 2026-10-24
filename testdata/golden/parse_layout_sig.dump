@@ -1,0 +1,2 @@
+(module LayoutSig (val f : (fn Int Text -> Bool) a b = (bool true)) (val g : (fn {a: Int, b: Int} -> Int) r = (int 1)))
+@ module 1:1-11:8

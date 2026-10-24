@@ -98,7 +98,7 @@ static bool scan_interp(TSLexer *lexer) {
 // is_continuation reports whether the first character of a line (the lexer's lookahead) begins
 // a binary operator that continues the previous line: |> || ?? && == != < <= > >= + - ++ * / %.
 // Also `|` (union variants) and a lone `=` (a type's `=` on the next line), which can never
-// begin a declaration. `<` continues only when whitespace follows it; `<-` and `->` never do.
+// begin a declaration. `<` continues only when whitespace follows it; `<-` never does.
 static bool is_continuation(TSLexer *lexer) {
   switch (lexer->lookahead) {
     case '|':
@@ -153,9 +153,8 @@ static bool scan_newline(TSLexer *lexer, bool recovering) {
         while (!lexer->eof(lexer) && lexer->lookahead != '\n') advance(lexer);
         continue;
       }
-      // a line starting with `-` (not `->`) continues: subtraction
-      if (recovering) return false;
-      if (lexer->lookahead == '>') break;
+      // a line starting with `-` continues: subtraction, or `->` continuing a type
+      // (parser.go parseType). Go's arms and lambdas never put `->` at a line start.
       return false;
     }
     if (recovering && lexer->get_column(lexer) != 0) return false;

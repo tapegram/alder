@@ -1,0 +1,2 @@
+(module LayoutAttrs (val v : (Html a) = (el div (el a (attr href (str "x")) (attr class (str "y")) (text "hi")) (el a (attr href (str "x")) (attr class (str "y")) (text "hi")) (el input (attr name (str "x"))))))
+@ module 1:1-15:9
