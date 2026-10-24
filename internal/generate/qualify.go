@@ -101,7 +101,7 @@ func requalifyChain(s string, i int, rename, bare map[string]string) (int, strin
 		break
 	}
 	member := j+1 < len(s) && s[j] == '.' && isNameByte(s[j+1]) // a lower-case member follows
-	if !member && len(ends) == 1 { // a bare name: an eponymous type or table, through the old qualifier
+	if !member && len(ends) == 1 {                              // a bare name: an eponymous type or table, through the old qualifier
 		if q, ok := bare[s[i:j]]; ok {
 			return j, q
 		}
