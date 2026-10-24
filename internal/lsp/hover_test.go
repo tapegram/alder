@@ -338,3 +338,44 @@ func TestDefinition_Qualifier(t *testing.T) {
 		t.Fatalf("member definition %+v", locs)
 	}
 }
+
+// qualTypeCopy is qualCopy with a type and a brand in Table.Todo, used through the qualifier.
+func qualTypeCopy(t *testing.T, use string) (*client, string) {
+	t.Helper()
+	root := blogCopy(t)
+	if err := os.MkdirAll(filepath.Join(root, "app/Table"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "app/Table/Todo.alder"), []byte("module Table.Todo\n\ntype Status = Open | Done\n\ntype Tag = brand Text\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rel := "app/Posts/Index.alder"
+	b, err := os.ReadFile(filepath.Join(root, rel))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Replace(string(b), "import Layout\n", "import Layout\nimport Table.Todo\n", 1) + use
+	if err := os.WriteFile(filepath.Join(root, rel), []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return start(t, root), rel
+}
+
+// A type or constructor reached through a qualifier hovers with its module's full path, as a
+// value does.
+func TestHover_QualifiedTypeAndCtor(t *testing.T) {
+	c, rel := qualTypeCopy(t, "\nuseStatus : Todo.Status\nuseStatus = Open\n\nuseTag : Todo.Tag\nuseTag = Todo.Tag \"x\"\n")
+	openClean(t, c, rel)
+	for _, w := range []struct {
+		at       Position
+		contains string
+	}{
+		{c.at(rel, "useStatus : Todo.Status", len("useStatus : Todo.")), "type Table.Todo.Status"},
+		{c.at(rel, "useStatus = Open", len("useStatus = ")), "Open : Table.Todo.Status"},
+		{c.at(rel, "Todo.Tag \"x\"", len("Todo.")), "Table.Todo.Tag : Text -> Table.Todo.Tag"},
+	} {
+		if got := hover(t, c, rel, w.at); !strings.Contains(got, w.contains) {
+			t.Errorf("hover at %+v = %q, want %q", w.at, got, w.contains)
+		}
+	}
+}

@@ -131,7 +131,8 @@ func (cx *completion) item(label string, kind int, detail string, n int) complet
 	return completionItem{Label: label, Kind: kind, Detail: detail, TextEdit: cx.edit(n, label)}
 }
 
-// imports: after `import `, the modules of the program and the standard library.
+// imports: after `import `, the modules of the program and the standard library that this module
+// does not already import (and not the module itself).
 func (cx *completion) imports() ([]completionItem, bool) {
 	g := reImport.FindStringSubmatch(cx.prefix)
 	if g == nil {
@@ -139,8 +140,12 @@ func (cx *completion) imports() ([]completionItem, bool) {
 	}
 	var out []completionItem
 	if cx.m != nil {
+		imported := map[string]bool{cx.m.Name: true}
+		for _, im := range cx.m.Imports {
+			imported[im.Module] = true
+		}
 		for _, name := range cx.moduleNames() {
-			if name != cx.m.Name {
+			if !imported[name] {
 				it := cx.item(name, kindModule, "", len(g[1]))
 				it.TextEdit.NewText = cx.importText(name)
 				out = append(out, it)

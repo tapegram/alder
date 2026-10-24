@@ -87,9 +87,15 @@ func TestComplete_Imports(t *testing.T) {
 	openClean(t, c, "app/Posts/Index.alder")
 	p := typing(t, c, "app/Posts/Index.alder", "import Layout\n", "import ")
 	got := labels(complete(t, c, "app/Posts/Index.alder", p))
-	for _, want := range []string{"Post", "User", "Markdown", "Maybe"} {
+	for _, want := range []string{"Comment", "Markdown", "Maybe"} {
 		if it, ok := got[want]; !ok || it.Kind != 9 {
 			t.Errorf("import: no %s in %v", want, got)
+		}
+	}
+	// Posts.Index already imports these, and the module itself is not offered
+	for _, not := range []string{"Layout", "Post", "User", "Posts.Index"} {
+		if _, ok := got[not]; ok {
+			t.Errorf("import: %s offered", not)
 		}
 	}
 }

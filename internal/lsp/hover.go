@@ -77,13 +77,25 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 			}
 		case ref.Kind == syntax.RefNone:
 			return moduleHover(a, ref.Module)
+		case ref.Kind == syntax.RefType:
+			// a type reached through a qualifier hovers with its module's full path
+			if tn, ok := n.(*syntax.TypeName); ok && tn.Module != "" && a.prog.Modules[ref.Module] != nil {
+				return withDoc("```alder\ntype "+ref.Module+"."+ref.Name+"\n```", declDoc(a, ref))
+			}
 		case ref.Kind == syntax.RefCtor:
+			name := ref.Name
+			if cr, ok := n.(*syntax.CtorRef); ok && cr.Module != "" && a.prog.Modules[ref.Module] != nil {
+				name = ref.Module + "." + ref.Name // a brand written `Todo.Tag` is `Table.Todo.Tag` in full
+			}
 			if ci := a.res.Ctors[ref.Module+"."+ref.Name]; ci != nil && ci.Union != nil {
 				var t types.Type = ci.Union
 				if ci.Arg != nil {
 					t = &types.Fun{Params: []types.Type{ci.Arg}, Result: ci.Union}
 				}
-				return withDoc(sig(ref.Name, t), declDoc(a, ref))
+				return withDoc(sig(name, t), declDoc(a, ref))
+			}
+			if t := a.res.Types[n]; t != nil && name != ref.Name {
+				return withDoc(sig(name, t), declDoc(a, ref))
 			}
 		case ref.Kind == syntax.RefValue, ref.Kind == syntax.RefStd, ref.Kind == syntax.RefComponent:
 			if h := hookHover(a, ref.Module, ref.Name); h != "" {
