@@ -211,3 +211,20 @@ func TestFmtRefusesScratchFile(t *testing.T) {
 		t.Fatalf("code %d err %q", code, errOut)
 	}
 }
+
+func TestFmtWalkBelowAppKeepsScratchNamedModules(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := fmtWrite(t, dir, "app/Posts/x.scratch.alder", fmtMessy)
+	for _, target := range []string{filepath.Join(dir, "app"), filepath.Join(dir, "app", "Posts")} {
+		if code, out, _ := fmtRun("--check", target); code != 1 || !strings.Contains(out, "x.scratch.alder would be reformatted") {
+			t.Fatalf("%s: code %d out %q", target, code, out)
+		}
+	}
+	if code, _, _ := fmtRun(filepath.Join(dir, "app")); code != 0 {
+		t.Fatal(code)
+	}
+	if got, _ := os.ReadFile(p); string(got) != fmtClean {
+		t.Fatalf("not formatted: %q", got)
+	}
+}

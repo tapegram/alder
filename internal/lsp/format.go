@@ -1,13 +1,13 @@
 package lsp
 
 import (
-	"alder/internal/scratch"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	"alder/internal/format"
+	"alder/internal/scratch"
 )
 
 // formattingReq answers textDocument/formatting: minimal edits that make the open buffer

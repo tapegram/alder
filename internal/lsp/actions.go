@@ -1,7 +1,6 @@
 package lsp
 
 import (
-	"alder/internal/scratch"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -9,6 +8,7 @@ import (
 
 	"alder/internal/diag"
 	"alder/internal/generate"
+	"alder/internal/scratch"
 	"alder/internal/syntax"
 )
 

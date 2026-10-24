@@ -1,7 +1,6 @@
 package main
 
 import (
-	"alder/internal/scratch"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +11,7 @@ import (
 
 	"alder/internal/diag"
 	"alder/internal/format"
+	"alder/internal/scratch"
 )
 
 const fmtUsage = "usage: alder fmt [--check | --stdin] [path...]"
@@ -190,6 +190,7 @@ func fmtFiles(path string) ([]string, error) {
 		}
 		return []string{path}, nil
 	}
+	root := fmtAppRoot(path) // scratch files are judged relative to the project root, not the walked dir
 	var files []string
 	err = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -201,7 +202,7 @@ func fmtFiles(path string) ([]string, error) {
 			}
 			return nil
 		}
-		if strings.HasSuffix(p, ".alder") && !scratch.IsScratchFile(fmtRel(path, p)) {
+		if strings.HasSuffix(p, ".alder") && !scratch.IsScratchFile(fmtRel(root, absPath(p))) {
 			files = append(files, p)
 		}
 		return nil
@@ -228,4 +229,11 @@ func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	return nil
+}
+
+func absPath(p string) string {
+	if a, err := filepath.Abs(p); err == nil {
+		return a
+	}
+	return p
 }

@@ -1,13 +1,14 @@
 package lsp
 
 import (
-	"alder/internal/scratch"
 	"encoding/json"
 	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
+
+	"alder/internal/scratch"
 )
 
 // doc is a document the client has open: its text replaces the file's on disk.
