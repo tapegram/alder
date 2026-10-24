@@ -13,8 +13,8 @@ import (
 // to map its positions back to the input's.
 type evalSource struct {
 	src string
-	// Lines is the input's lines (set by the caller of assemble: evalModule sets them). For line
-	// i+1 of src, InLine[i] is the input's line it comes from, and Shift[i] is what to add to a
+	// SourceMap.Lines is the input's lines (set by the caller of assemble: evalModule sets
+	// them). For line i+1 of src, SourceMap.InLine[i] is the input's line it comes from, and SourceMap.Shift[i] is what to add to a
 	// column on it to get the input's column (the expression's first line gains `it = `, a let
 	// line loses its indentation and `let `, an annotated let's body line its annotation).
 	scratch.SourceMap
@@ -87,7 +87,7 @@ func evalModule(input string) (evalSource, error) {
 }
 
 // assemble joins items into the scratch module's source (no module header: scratch adds it)
-// and the position map evalDiags uses (the input's lines, evalSource.lines, are the caller's
+// and the position map evalDiags uses (the input's lines, evalSource.Lines, are the caller's
 // to set). Items without an expression (the REPL's check of a `let` alone) give a module with
 // no `it`.
 func assemble(items []item) evalSource {

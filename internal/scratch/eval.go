@@ -138,6 +138,9 @@ func (m SourceMap) Position(d diag.Diagnostic, mapLine func(diag.Diagnostic) (di
 		}
 		if p.Line > len(m.InLine) { // past the end of the text
 			n := len(m.Lines)
+			if n == 0 {
+				return diag.Pos{Line: 1, Col: 1}
+			}
 			return diag.Pos{Line: n, Col: len(m.Lines[n-1]) + 1}
 		}
 		return diag.Pos{Line: m.InLine[p.Line-1], Col: max(1, p.Col+m.Shift[p.Line-1])}

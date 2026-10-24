@@ -251,3 +251,34 @@ func TestInSession(t *testing.T) {
 		}
 	}
 }
+
+func TestSourceMapPosition(t *testing.T) {
+	// source line 2 comes from original line 3, one column to the left of where it is in the source
+	m := SourceMap{Lines: []string{"a", "b", "cc"}, InLine: []int{1, 3}, Shift: []int{0, -1}}
+	id := func(d diag.Diagnostic) (diag.Diagnostic, bool) { return d, true }
+	at := func(l, c int) diag.Diagnostic {
+		return diag.Diagnostic{Span: diag.Span{File: "x", Start: diag.Pos{Line: l, Col: c}, End: diag.Pos{Line: l, Col: c + 1}}}
+	}
+	if d := m.Position(at(2, 5), id, "f.alder"); d.Span.File != "f.alder" || d.Span.Start != (diag.Pos{Line: 3, Col: 4}) || d.Span.End != (diag.Pos{Line: 3, Col: 5}) {
+		t.Errorf("mapped: %+v", d.Span)
+	}
+	if d := m.Position(at(2, 1), id, "f"); d.Span.Start.Col != 1 {
+		t.Errorf("column clamps to 1: %+v", d.Span)
+	}
+	if d := m.Position(at(9, 1), id, "f"); d.Span.Start != (diag.Pos{Line: 3, Col: 3}) {
+		t.Errorf("past the end: %+v", d.Span)
+	}
+	dup := at(2, 1)
+	dup.Code, dup.Message = diag.Duplicate, "`x` is already declared at line 2"
+	if d := m.Position(dup, id, "f"); d.Message != "`x` is already declared at line 3" {
+		t.Errorf("message %q", d.Message)
+	}
+	unmapped := func(d diag.Diagnostic) (diag.Diagnostic, bool) { return d, false }
+	if d := m.Position(at(2, 5), unmapped, "f"); d.Span.Start != (diag.Pos{Line: 1, Col: 1}) {
+		t.Errorf("inserted line: %+v", d.Span)
+	}
+	// no lines at all must not panic
+	if d := (SourceMap{}).Position(at(4, 2), id, "f"); d.Span.Start != (diag.Pos{Line: 1, Col: 1}) {
+		t.Errorf("empty map: %+v", d.Span)
+	}
+}

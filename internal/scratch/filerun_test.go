@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"alder/internal/diag"
@@ -289,8 +290,13 @@ func TestRunFileNothingToRun(t *testing.T) {
 	}
 	dir := todos(t)
 	p := filepath.Join(dir, "app", "Todo.alder")
-	b, _ := os.ReadFile(p)
-	os.WriteFile(p, append(b, []byte("\nbroken : Int\nbroken = \"x\"\n")...), 0o644)
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, append(b, []byte("\nbroken : Int\nbroken = \"x\"\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	r = runFileIn(t, dir, "> 1\n", FileOptions{})
 	if r.Ran || r.Err != nil || r.Note != "the app has errors; fix them and save" || len(r.Diags) == 0 || r.Diags[0].Span.File != "app/Todo.alder" || r.Watches[0].Type != "Int" {
 		t.Errorf("ran %v, err %v, note %q, diags %v, %+v", r.Ran, r.Err, r.Note, r.Diags, r.Watches)
@@ -350,5 +356,63 @@ func TestRunFileIncompleteBeforeWatch(t *testing.T) {
 				t.Errorf("%s: message %q does not name line %d", c.name, d.Message, c.next)
 			}
 		}
+	}
+}
+
+func TestRunFileWatchEndAndKind(t *testing.T) {
+	r := sharedRun(t)
+	wantKinds := []string{"pure", "pure", "pure", "pure", "pure", "query", "pure", "pure"}
+	for i, w := range r.Watches {
+		if w.Kind != wantKinds[i] || w.End < w.Line {
+			t.Errorf("watch %d: kind %q, line %d, end %d", i, w.Kind, w.Line, w.End)
+		}
+	}
+	r = runFile(t, "> 1 +\n    2\n> Db.all (Db.from Todo)\n", FileOptions{})
+	if r.Watches[0].Line != 1 || r.Watches[0].End != 2 || r.Watches[1].End != 3 {
+		t.Errorf("%+v", r.Watches)
+	}
+	// a watch whose type is unknown has no kind
+	f, _ := ParseFile("scratch.alder", "> nosuchname\n")
+	r = RunFile(context.Background(), todos(t), f, FileOptions{Out: t.TempDir()})
+	if r.Watches[0].Kind != "" || r.Watches[0].Type != "" {
+		t.Errorf("%+v", r.Watches[0])
+	}
+}
+
+func TestFilePurposeAbsolutizesRelativeNames(t *testing.T) {
+	abs, err := filepath.Abs("sub/x.scratch.alder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if FilePurpose("sub/x.scratch.alder") != FilePurpose(abs) {
+		t.Error("a relative name and its absolute path differ")
+	}
+	if FilePurpose(abs) == FilePurpose(abs+"2") || !strings.HasPrefix(FilePurpose(abs), "file-") || len(FilePurpose(abs)) != len("file-")+12 {
+		t.Errorf("%q", FilePurpose(abs))
+	}
+}
+
+// With no Out, RunFile builds under the app's build directory in the file's own purpose directory.
+func TestRunFileDefaultOut(t *testing.T) {
+	needGo(t)
+	dir := todos(t)
+	f, _ := ParseFile("scratch.alder", "> 1 + 1\n")
+	r := RunFile(context.Background(), dir, f, FileOptions{})
+	if r.Err != nil || !r.Ran || r.Watches[0].Value != "2" {
+		t.Fatalf("err %v, ran %v, %+v", r.Err, r.Ran, r.Watches)
+	}
+}
+
+func TestRunFileTimeout(t *testing.T) {
+	needGo(t)
+	r := runFile(t, "fib : Int -> Int\nfib n =\n    if n < 2 then n else fib (n - 1) + fib (n - 2)\n\n> 1\n> fib 60\n> 3\n", FileOptions{Timeout: 2 * time.Second})
+	if r.Err != nil || !r.Ran {
+		t.Fatalf("err %v, ran %v, note %q", r.Err, r.Ran, r.Note)
+	}
+	if r.Watches[0].Value != "1" || r.Watches[1].Error == "" || !strings.Contains(r.Watches[2].Error, "not run") || r.Note == "" {
+		t.Errorf("note %q, %+v", r.Note, r.Watches)
+	}
+	if !strings.Contains(r.Note, "timed out after 2s") && !strings.Contains(r.Watches[1].Error, "timed out after 2s") {
+		t.Errorf("no timeout mentioned: note %q, %+v", r.Note, r.Watches)
 	}
 }

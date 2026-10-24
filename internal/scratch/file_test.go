@@ -115,10 +115,22 @@ func TestParseFileDroppedItemContinuation(t *testing.T) {
 }
 
 // Alder strings end with their line, so a `>` inside one is never at column 1.
-func TestParseFileGtInStringIsNotWatch(t *testing.T) {
+func TestParseFileGtInsideStringsIsNotAWatch(t *testing.T) {
 	f, diags := ParseFile("scratch.alder", "x = \"a\n> 2\"\ny = \"> 3\"\n")
 	if len(f.Watches) != 1 || f.Watches[0].Line != 2 {
 		t.Errorf("watches %v", f.Watches)
 	}
-	_ = diags
+	if len(diags) != 0 {
+		t.Errorf("diagnostics %v", diags)
+	}
+}
+
+func TestParseFileGtWithoutSpace(t *testing.T) {
+	f, diags := ParseFile("scratch.alder", ">x\n> 1\n")
+	if len(diags) != 1 || diags[0].Message != "a watch is `> expr` (a space after `>`)" || diags[0].Span.Start.Line != 1 || diags[0].Span.Start.Col != 1 {
+		t.Errorf("diagnostics %v", diags)
+	}
+	if len(f.Watches) != 1 || f.Watches[0].Line != 2 || strings.Contains(f.Source, ">x") {
+		t.Errorf("watches %v, source %q", f.Watches, f.Source)
+	}
 }

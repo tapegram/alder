@@ -27,10 +27,12 @@ const effectNote = "not run: scratch evaluates pure values only"
 // WatchResult is what RunFile learned of one watch.
 type WatchResult struct {
 	Line      int    `json:"line"`
+	End       int    `json:"end"` // the watch's last line (Line for a one-line watch)
 	Expr      string `json:"expr"`
 	Type      string `json:"type,omitempty"` // "" when the file did not check far enough
 	Value     string `json:"value,omitempty"`
 	Error     string `json:"error,omitempty"`
+	Kind      string `json:"kind,omitempty"` // "pure", "query", "task" or "select"; "" when the type is unknown
 	Note      string `json:"note,omitempty"` // effect watches: "not run: scratch evaluates pure values only"
 	Truncated bool   `json:"truncated,omitempty"`
 }
@@ -65,7 +67,7 @@ type FileOptions struct {
 // FilePurpose is the build purpose of the scratch file at path: "file-" and the first 12 hex
 // digits of the SHA-256 of its absolute path, so each file builds into a directory of its own.
 func FilePurpose(path string) string {
-	abs, err := filepath.Abs(path)
+	abs, err := filepath.Abs(path) // a relative name is taken against the current directory
 	if err != nil {
 		abs = path
 	}
@@ -90,7 +92,7 @@ func RunFile(ctx context.Context, appDir string, f File, o FileOptions) (r FileR
 	}()
 	r.Watches = make([]WatchResult, len(f.Watches))
 	for i, w := range f.Watches {
-		r.Watches[i] = WatchResult{Line: w.Line, Expr: w.Expr}
+		r.Watches[i] = WatchResult{Line: w.Line, End: w.End, Expr: w.Expr}
 	}
 	modName := o.Module
 	if modName == "" {
@@ -157,7 +159,9 @@ func RunFile(ctx context.Context, appDir string, f File, o FileOptions) (r FileR
 		}
 		sigs[i] = res.U.Apply(sig)
 		r.Watches[i].Type = types.String(sigs[i])
+		r.Watches[i].Kind = "pure"
 		if eff := effectOf(sigs[i]); eff != "" {
+			r.Watches[i].Kind = strings.ToLower(eff)
 			r.Watches[i].Value, r.Watches[i].Note = "<"+eff+">", effectNote
 		} else {
 			pure++

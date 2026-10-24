@@ -34,8 +34,8 @@ type File struct {
 	Map     SourceMap // InLine identity; Shift on each watch's first line = 2 - len("itK = ")
 }
 
-// appModuleRE is an app module's name, dotted for a nested one (Todos.Index), as for --in.
-var appModuleRE = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*(_[A-Za-z0-9]+)*(\.[A-Z][A-Za-z0-9]*(_[A-Za-z0-9]+)*)*$`)
+// AppModuleRE is an app module's name, dotted for a nested one (Todos.Index), as for --in. cmd/alder shares it.
+var AppModuleRE = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*(_[A-Za-z0-9]+)*(\.[A-Z][A-Za-z0-9]*(_[A-Za-z0-9]+)*)*$`)
 
 // reservedRE is a name the file's watches take.
 var reservedRE = regexp.MustCompile(`^it[0-9]+$`)
@@ -83,7 +83,7 @@ func ParseFile(name, text string) (File, []diag.Diagnostic) {
 			switch {
 			case !wasFirst:
 				errAt(i+1, 1, 2, "`in Module` must be the file's first line")
-			case !appModuleRE.MatchString(mod):
+			case !AppModuleRE.MatchString(mod):
 				errAt(i+1, 2+1+len(l[2:])-len(strings.TrimLeft(l[2:], " \t")), len(mod), "`in` wants an app module name such as Todo or Todos.Index")
 			default:
 				f.In = mod
@@ -104,6 +104,9 @@ func ParseFile(name, text string) (File, []diag.Diagnostic) {
 		case strings.HasPrefix(l, ">!"):
 			src[i], dropped = "", true
 			errAt(i+1, 1, 2, "`>!` (run a Task) is not supported yet: scratch evaluates pure values only")
+		case strings.HasPrefix(l, ">"):
+			src[i], dropped = "", true
+			errAt(i+1, 1, 1, "a watch is `> expr` (a space after `>`)")
 		}
 	}
 	for k := range f.Watches {

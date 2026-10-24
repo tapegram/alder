@@ -266,7 +266,7 @@ func devDBHint(msg, appBuild string) string {
 var moduleNameRE = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*(_[A-Za-z0-9]+)*$`)
 
 // appModuleRE is an app module's name, dotted for a nested one (Todos.Index), for --in.
-var appModuleRE = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*(_[A-Za-z0-9]+)*(\.[A-Z][A-Za-z0-9]*(_[A-Za-z0-9]+)*)*$`)
+var appModuleRE = scratch.AppModuleRE
 
 // inFlagValue reads the value of the `--in Name` or `--in=Name` at args[i] and returns it with
 // the index of the last argument it used. The caller has checked that args[i] is one of the two
