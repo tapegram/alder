@@ -1,7 +1,7 @@
 ; Minimal highlights for the tree-sitter CLI (`tree-sitter highlight`, the docs-site follow-up).
 ; Standard capture names. General first: when several patterns capture the same node, the CLI
 ; (tree-sitter-highlight) uses the last one, as Neovim does.
-["module" "import" "type" "brand" "where" "page" "msg" "form" "table" "capability" "fake"
+["module" "import" "as" "type" "brand" "where" "page" "msg" "form" "table" "capability" "fake"
  "session" "login" "test" "deploy" "silo" "choose" "requires" "role" "via" "let" "if" "then"
  "else" "match" "for" "in"] @keyword
 (constructor) @constructor

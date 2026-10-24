@@ -188,7 +188,8 @@ module.exports = grammar({
     _item: ($) => choice($.import_decl, $._declaration),
 
     module_decl: ($) => seq('module', field('name', $.module_name)),
-    import_decl: ($) => seq('import', field('module', $.module_name)),
+    import_decl: ($) =>
+      seq('import', field('module', $.module_name), optional(seq('as', field('alias', $.constructor)))),
 
     // Module, type and component names: dotted uppercase segments (`Auth.Login`).
     module_name: ($) => seq($.constructor, repeat(seq('.', $.constructor))),

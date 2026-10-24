@@ -15,7 +15,7 @@
 (wildcard) @character.special
 
 ; ---- keywords
-["module" "import"] @keyword.import
+["module" "import" "as"] @keyword.import
 ["type" "brand" "where"] @keyword.type
 ["page" "msg" "form" "table" "capability" "fake" "session" "login" "test" "deploy" "silo"
  "choose" "requires" "role" "via" "let"] @keyword

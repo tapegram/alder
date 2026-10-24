@@ -84,3 +84,44 @@ bySlug slug = slug
       params: (parameters
         (identifier))
       body: (identifier))))
+
+================================================================================
+import with an alias
+================================================================================
+
+module Main
+
+import Admin.Layout as AdminLayout
+
+x = 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name (constructor)))
+  (import_decl
+    module: (module_name (constructor) (constructor))
+    alias: (constructor))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (integer))))
+
+================================================================================
+as stays an ordinary name
+================================================================================
+
+module Main
+
+as = 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (integer))))

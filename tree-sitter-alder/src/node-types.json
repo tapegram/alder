@@ -4244,6 +4244,16 @@
     "type": "import_decl",
     "named": true,
     "fields": {
+      "alias": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "constructor",
+            "named": true
+          }
+        ]
+      },
       "module": {
         "multiple": false,
         "required": true,
@@ -7545,6 +7555,10 @@
   },
   {
     "type": "]",
+    "named": false
+  },
+  {
+    "type": "as",
     "named": false
   },
   {
