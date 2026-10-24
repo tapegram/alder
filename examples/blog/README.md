@@ -118,8 +118,10 @@ steps, from the blog before the admin:
 1. `User.Role` gains `Admin` (`type Role = Reader | Author | Admin`). The session already had
    `role: User.Role = Reader`, set at login from the user's row (`Auth.Login`), which is what
    `alder new admin` needs.
-2. `migrations/0001_initial.sql` is written again from the tables (`rm migrations/*` and
-   `alder migrate`): an example keeps one migration, since it has no data to keep. An app with
+2. `migrations/0001_initial.sql` was written again from the tables (`rm migrations/*` and
+   `alder migrate`) at this step: the example had no data to keep, so it kept one migration. The
+   tables have since moved into `app/Table/` (`0002_rename_*`, see Layout above), so do not
+   `rm migrations/*` now: it would delete that rename. An app with
    data runs `alder migrate` instead, which rebuilds `User` with `'Admin'` in the column's
    `CHECK`. A `blog.db` that `alder run` made before this step no longer matches `0001`, and
    the app refuses to start on it: delete it, or run once with `ALDER_DEV=1`, which recreates

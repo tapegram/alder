@@ -241,7 +241,7 @@ func TestEval_Select(t *testing.T) {
 	dir := todosDir(t)
 	for _, args := range [][]string{{"Db.from Todo"}, {"--run", "Db.from Todo"}} {
 		code, stdout, stderr := runEval(t, "", append([]string{dir}, args...)...)
-		if code != 0 || stdout != "<Select> : Select Table.Todo.Todo\n" {
+		if code != 0 || stdout != "<Select> : Select Todo\n" {
 			t.Errorf("%q: exit %d, stdout %q\nstderr: %s", args, code, stdout, stderr)
 		}
 		hint := strings.Contains(stderr, "pipe it to Db.all, Db.first or Db.count")
@@ -254,11 +254,11 @@ func TestEval_Select(t *testing.T) {
 	}
 	code, stdout, _ := runEval(t, "", dir, "--json", "--run", "Db.from Todo")
 	j := decodeEval(t, stdout)
-	if code != 0 || *j.Value != "<Select>" || *j.Type != "Select Table.Todo.Todo" || !strings.Contains(j.Hint, "Db.all") {
+	if code != 0 || *j.Value != "<Select>" || *j.Type != "Select Todo" || !strings.Contains(j.Hint, "Db.all") {
 		t.Errorf("json: exit %d, %s", code, stdout)
 	}
 	// a Select inside a value is opaque too (rt.Show)
-	evalOK(t, "{ s: <Select>, n: 1 } : { s: Select Table.Todo.Todo, n: Int }\n", "{ s: Db.from Todo, n: 1 }")
+	evalOK(t, "{ s: <Select>, n: 1 } : { s: Select Todo, n: Int }\n", "{ s: Db.from Todo, n: 1 }")
 }
 
 func TestEval_LetForms(t *testing.T) {
@@ -504,7 +504,7 @@ func TestEval_RunHasSession(t *testing.T) {
 		t.Errorf("pure main:\n%s", m)
 	}
 	needGoTool(t)
-	evalOK(t, "[] : List Table.Todo.Todo\n", "--run", "Db.from Todo |> Db.all")
+	evalOK(t, "[] : List Todo\n", "--run", "Db.from Todo |> Db.all")
 }
 
 // `--run` wires the app's adapters (the generated caps package) when adapters/ holds Go files,
@@ -651,7 +651,7 @@ func TestEval_InModule(t *testing.T) {
 	evalOK(t, "0 : Int\n", "--in", "Table.Todo", "countOpen []")
 	// the module's own names unqualified, and the names of a module it imports qualified
 	evalOK(t, "\"a\" : Table.Todo.TodoId\n", "--in", "Table.Todo", "TodoId \"a\"")
-	evalOK(t, "\"u\" : Table.User.UserId\n", "--in", "Table.Todo", "User.UserId \"u\"")
+	evalOK(t, "\"u\" : User.UserId\n", "--in", "Table.Todo", "User.UserId \"u\"")
 	evalOK(t, "\"Active\" : Text\n", "--in", "Table.Todo", "filterLabel Active")
 }
 

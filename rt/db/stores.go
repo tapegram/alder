@@ -817,16 +817,27 @@ func (s *Stores) check(ctx context.Context, st *SQLite, ss *siloSchema, allowDat
 }
 
 var (
-	stmtTarget = regexp.MustCompile(`^(?:CREATE TABLE(?: IF NOT EXISTS)?|ALTER TABLE|DROP TABLE(?: IF EXISTS)?|INSERT INTO|UPDATE|DELETE FROM)\s+"((?:[^"]|"")*)"`)
-	indexOn    = regexp.MustCompile(`^CREATE (?:UNIQUE )?INDEX .* ON "((?:[^"]|"")*)"`)
-	dropIndex  = regexp.MustCompile(`^DROP INDEX(?: IF EXISTS)? "((?:[^"]|"")*)__[^"_]+"`)
-	references = regexp.MustCompile(` REFERENCES "((?:[^"]|"")*)"\("(?:[^"]|"")*"\)(?: ON DELETE (?:CASCADE|SET NULL))?`)
+	stmtTarget  = regexp.MustCompile(`^(?:CREATE TABLE(?: IF NOT EXISTS)?|ALTER TABLE|DROP TABLE(?: IF EXISTS)?|INSERT INTO|UPDATE|DELETE FROM)\s+"((?:[^"]|"")*)"`)
+	indexOn     = regexp.MustCompile(`^CREATE (?:UNIQUE )?INDEX .* ON "((?:[^"]|"")*)"`)
+	dropIndex   = regexp.MustCompile(`^DROP INDEX(?: IF EXISTS)? "((?:[^"]|"")*)__[^"_]+"`)
+	renameTable = regexp.MustCompile(`^ALTER TABLE "((?:[^"]|"")*)" RENAME TO "((?:[^"]|"")*)"`)
+	references  = regexp.MustCompile(` REFERENCES "((?:[^"]|"")*)"\("(?:[^"]|"")*"\)(?: ON DELETE (?:CASCADE|SET NULL))?`)
 )
 
 // statements are migration m's statements on the silo's tables, as the silo holds them: a
 // statement on another table is left out, and a REFERENCES to a table outside the silo removed.
+//
+// A table renamed into the silo (a move between modules, #20) is the silo's under its old name
+// too, up to its RENAME and the DROP of its old indexes: those come first, before it has the
+// new name every later statement uses.
 func (ss *siloSchema) statements(m Migration) []string {
 	var out []string
+	renamedFrom := map[string]bool{}
+	for _, st := range m.statements() {
+		if x := renameTable.FindStringSubmatch(st); x != nil && ss.sqlName[strings.ReplaceAll(x[2], `""`, `"`)] {
+			renamedFrom[strings.ReplaceAll(x[1], `""`, `"`)] = true
+		}
+	}
 	for _, st := range m.statements() {
 		var target string
 		if x := stmtTarget.FindStringSubmatch(st); x != nil {
@@ -837,7 +848,7 @@ func (ss *siloSchema) statements(m Migration) []string {
 			target = x[1]
 		}
 		target = strings.TrimSuffix(strings.ReplaceAll(target, `""`, `"`), "__alder__new")
-		if !ss.sqlName[target] {
+		if !ss.sqlName[target] && !renamedFrom[target] {
 			continue
 		}
 		st = references.ReplaceAllStringFunc(st, func(ref string) string {

@@ -170,8 +170,8 @@ func TestHover_BindingSites(t *testing.T) {
 		off    int
 		want   string
 	}{
-		{"let found <-", len("let "), "found : List Table.Post.Post"},
-		{"post in model", 0, "post : Table.Post.Post"},
+		{"let found <-", len("let "), "found : List Post"},
+		{"post in model", 0, "post : Post"},
 		{"load params session", len("load "), "params : Params"},
 		{"load params session", 0, "load : Params -> App.Session -> Query Model"},
 	} {
@@ -371,8 +371,8 @@ func TestHover_QualifiedTypeAndCtor(t *testing.T) {
 		contains string
 	}{
 		{c.at(rel, "useStatus : Todo.Status", len("useStatus : Todo.")), "type Table.Todo.Status"},
-		{c.at(rel, "useStatus = Open", len("useStatus = ")), "Open : Table.Todo.Status"},
-		{c.at(rel, "Todo.Tag \"x\"", len("Todo.")), "Table.Todo.Tag : Text -> Table.Todo.Tag"},
+		{c.at(rel, "useStatus = Open", len("useStatus = ")), "Open : Todo.Status"},
+		{c.at(rel, "Todo.Tag \"x\"", len("Todo.")), "Todo.Tag : Text -> Todo.Tag"},
 	} {
 		if got := hover(t, c, rel, w.at); !strings.Contains(got, w.contains) {
 			t.Errorf("hover at %+v = %q, want %q", w.at, got, w.contains)

@@ -504,7 +504,7 @@ func (r *repl) let(lines []string, at int) {
 	if redefined {
 		fmt.Fprintf(r.stdout, "redefined %s\n", e.Name)
 	}
-	fmt.Fprintf(r.stdout, "%s : %s\n", e.Name, types.String(checked.Result.U.Apply(sig)))
+	fmt.Fprintf(r.stdout, "%s : %s\n", e.Name, checked.TypeString(checked.Result.U.Apply(sig), r.session()))
 }
 
 // eval evaluates an expression for cmd: "" (a bare expression), ":type", ":run", ":run!" or
@@ -544,7 +544,7 @@ func (r *repl) eval(cmd string, lines []string, at int) {
 		return
 	}
 	sig = checked.Result.U.Apply(sig)
-	typ := types.String(sig)
+	typ := checked.TypeString(sig, r.session())
 	text := strings.TrimSpace(strings.Join(lines, "\n"))
 	var flat []string // text on one line, for a hint
 	for _, l := range lines {
@@ -579,7 +579,7 @@ func (r *repl) eval(cmd string, lines []string, at int) {
 	case ":run":
 		switch con {
 		case "Query":
-			kind, typ = scratch.MainQuery, types.String(app.Args[0])
+			kind, typ = scratch.MainQuery, checked.TypeString(app.Args[0], r.session())
 		case "Task":
 			fmt.Fprintln(r.stderr, "alder repl: `:run` wants a Query; use `:run!` for a Task")
 			return
@@ -593,7 +593,7 @@ func (r *repl) eval(cmd string, lines []string, at int) {
 	case ":run!":
 		switch con {
 		case "Task":
-			kind, typ = scratch.MainTask, types.String(app.Args[0])
+			kind, typ = scratch.MainTask, checked.TypeString(app.Args[0], r.session())
 		case "Query":
 			fmt.Fprintln(r.stderr, "alder repl: `:run!` wants a Task; use `:run` for a Query")
 			return

@@ -1,8 +1,8 @@
 -- alder migration 0002_rename_todo_rename_user
 -- from 769953ebeb00
 -- to 8004ef3b7282
--- step: rename table Todo to Todo
--- step: rename table User to User
+-- step: rename table Todo.Todo to Table.Todo.Todo
+-- step: rename table User.User to Table.User.User
 -- step: drop index on Todo.owner
 -- step: add index on Todo.owner
 

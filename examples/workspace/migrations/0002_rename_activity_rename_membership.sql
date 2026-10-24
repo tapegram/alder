@@ -1,12 +1,12 @@
 -- alder migration 0002_rename_activity_rename_membership
 -- from d6faca00abdb
 -- to ea6193c9b914
--- step: rename table Activity to Activity
--- step: rename table Membership to Membership
--- step: rename table Org to Org
--- step: rename table Project to Project
--- step: rename table Todo to Todo
--- step: rename table User to User
+-- step: rename table Activity.Activity to Table.Activity.Activity
+-- step: rename table Membership.Membership to Table.Membership.Membership
+-- step: rename table Org.Org to Table.Org.Org
+-- step: rename table Project.Project to Table.Project.Project
+-- step: rename table Todo.Todo to Table.Todo.Todo
+-- step: rename table User.User to Table.User.User
 -- step: drop index on Activity.org
 -- step: drop index on Membership.org
 -- step: drop index on Membership.user

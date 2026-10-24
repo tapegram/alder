@@ -161,7 +161,7 @@ func RunFile(ctx context.Context, appDir string, f File, o FileOptions) (r FileR
 			continue
 		}
 		sigs[i] = res.U.Apply(sig)
-		r.Watches[i].Type = types.String(sigs[i])
+		r.Watches[i].Type = checked.TypeString(sigs[i], session)
 		r.Watches[i].Kind = "pure"
 		if eff := effectOf(sigs[i]); eff != "" {
 			r.Watches[i].Kind = strings.ToLower(eff)

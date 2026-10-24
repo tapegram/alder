@@ -929,3 +929,75 @@ func TestStores_AdoptsMigrationless(t *testing.T) {
 		t.Fatalf("row %q", m)
 	}
 }
+
+// #20: a table moved into app/Table/ is renamed (Project.Project → Table.Project.Project) by a
+// migration made of RENAMEs. A silo database made at the old names is brought to the new ones
+// when it is opened, and its rows are kept.
+func TestStores_SiloRenameMigrationKeepsRows(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	newOrg := TableDesc{Name: "Table.Org.Org", ID: "id", Columns: orgDesc.Columns}
+	newProj := TableDesc{Name: "Table.Project.Project", ID: "id", Columns: []Column{{Name: "id", Type: CText}, {Name: "name", Type: CText}, {Name: "org", Type: CText, Ref: "Table.Org.Org", OnDelete: Cascade}}}
+	oldTables := []TableDesc{orgDesc, projDesc(projCols1)}
+	newTables := []TableDesc{newOrg, newProj}
+	oldHash, newHash := hashOf(t, oldTables...), hashOf(t, newTables...)
+	ms1 := siloMigrations(t, 1)
+	ms2 := append(slices.Clone(ms1), Migration{Name: "0002_rename_org_rename_project", From: oldHash, To: newHash, SQL: strings.Join([]string{
+		`ALTER TABLE "Org__Org" RENAME TO "Table__Org__Org";`,
+		`ALTER TABLE "Project__Project" RENAME TO "Table__Project__Project";`,
+		`DROP INDEX IF EXISTS "Project__Project__org";`,
+		`CREATE INDEX IF NOT EXISTS "Table__Project__Project__org" ON "Table__Project__Project"("org");`,
+	}, "\n")})
+	oldCfg := siloConfig(t, dir, 1)
+	newCfg := StoresConfig{Dir: dir, Silos: []Silo{{Key: "org", Tables: []string{"Table.Project.Project"}}}, Tables: newTables, Migrations: ms2}
+
+	// the old build: a silo database for org A, with a project in it
+	path := filepath.Join(dir, "app.db")
+	shared, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer shared.Close()
+	if _, err := shared.Migrate(ctx, oldCfg.Tables, oldCfg.Migrations, false); err != nil {
+		t.Fatal(err)
+	}
+	s1, err := OpenStores(shared, path, oldCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s1.silo(ctx, "org", "A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.store.db.ExecContext(ctx, `INSERT INTO "Project__Project" ("id", "name", "org") VALUES ('p1', 'Launch', 'A')`); err != nil {
+		t.Fatal(err)
+	}
+	s1.Close()
+
+	// the new build: the shared database migrates, then the silo on open
+	if _, err := shared.Migrate(ctx, newCfg.Tables, newCfg.Migrations, false); err != nil {
+		t.Fatalf("shared migrate: %v", err)
+	}
+	s2, err := OpenStores(shared, path, newCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	d, err = s2.silo(ctx, "org", "A")
+	if err != nil || d.state != SiloOK {
+		t.Fatalf("open: %v", err)
+	}
+	var name, org string
+	if err := d.store.db.QueryRow(`SELECT "name", "org" FROM "Table__Project__Project" WHERE "id" = 'p1'`).Scan(&name, &org); err != nil || name != "Launch" || org != "A" {
+		t.Fatalf("the project after the rename: %q %q %v", name, org, err)
+	}
+	if ok, _ := tableExists(ctx, d.store.db, "Project__Project"); ok {
+		t.Fatal("the old table name is still there")
+	}
+	if _, m, _, _ := schemaRow(ctx, d.store.db); m != "0002_rename_org_rename_project" {
+		t.Fatalf("row %q", m)
+	}
+	if v, err := foreignKeyViolation(ctx, d.store.db); err != nil || v != "" {
+		t.Fatalf("foreign keys after the rename: %q %v", v, err)
+	}
+}

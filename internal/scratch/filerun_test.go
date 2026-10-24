@@ -78,7 +78,7 @@ func want(t *testing.T, w WatchResult, line int, typ, value, errMsg string) {
 func TestRunFilePure(t *testing.T) {
 	r := sharedRun(t)
 	want(t, r.Watches[0], 2, "Int", "2", "")
-	want(t, r.Watches[1], 3, "List Table.Todo.Todo -> Int", "<function>", "")
+	want(t, r.Watches[1], 3, "List Todo -> Int", "<function>", "")
 	want(t, r.Watches[2], 4, "List a", "[]", "")
 	if r.Watches[0].Expr != "1 + 1" || r.Note != "" {
 		t.Errorf("expr %q, note %q", r.Watches[0].Expr, r.Note)

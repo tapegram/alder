@@ -239,13 +239,13 @@ func (cx *completion) valueItem(name string, t types.Type, n int) completionItem
 	if _, ok := t.(*types.Fun); ok {
 		kind = kindFunction
 	}
-	return cx.item(name, kind, name+" : "+types.StringIn(t, cx.m.Name), n)
+	return cx.item(name, kind, name+" : "+types.StringQ(t, cx.m.Name, cx.a.prog.Qualify(cx.m.Name)), n)
 }
 
 // ctorItem is constructor name of module mod, with its signature when the checker knows it.
 func (cx *completion) ctorItem(mod, name string, n int) completionItem {
 	if t := cx.ctorType(mod + "." + name); t != nil {
-		return cx.item(name, kindConstructor, name+" : "+types.StringIn(t, cx.m.Name), n)
+		return cx.item(name, kindConstructor, name+" : "+types.StringQ(t, cx.m.Name, cx.a.prog.Qualify(cx.m.Name)), n)
 	}
 	return cx.item(name, kindConstructor, "", n)
 }
@@ -284,7 +284,7 @@ func (cx *completion) fields() ([]completionItem, bool) {
 	}
 	var out []completionItem
 	for _, f := range r.Fields {
-		out = append(out, cx.item(f.Name, kindField, f.Name+" : "+types.StringIn(cx.a.res.U.Apply(f.Type), cx.m.Name), len(g[2])))
+		out = append(out, cx.item(f.Name, kindField, f.Name+" : "+types.StringQ(cx.a.res.U.Apply(f.Type), cx.m.Name, cx.a.prog.Qualify(cx.m.Name)), len(g[2])))
 	}
 	return out, true
 }

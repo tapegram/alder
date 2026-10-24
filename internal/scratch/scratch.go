@@ -387,6 +387,16 @@ type Checked struct {
 	baseDecls map[string]bool // in-module mode: the values the module declares itself
 }
 
+// TypeString prints t as module mod of the checked program writes the types it imports:
+// through mod's canonical qualifiers (`List Todo`, not `List Table.Todo.Todo`). mod's own types
+// stay whole (`Todos.Index.Msg`), as a session outside mod would name them.
+func (c Checked) TypeString(t types.Type, mod string) string {
+	if c.program == nil {
+		return types.String(t)
+	}
+	return types.StringQ(t, "", c.program.Qualify(mod))
+}
+
 // Declares reports whether the module of in-module mode declares value name itself (not
 // through the session); false outside that mode.
 func (c Checked) Declares(name string) bool { return c.baseDecls[name] }

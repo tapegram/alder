@@ -94,7 +94,7 @@ func TestRepl_LetAndExpr(t *testing.T) {
 func TestRepl_Type(t *testing.T) {
 	t.Parallel()
 	out := replTodos(t, ":type Todo.countOpen\n")
-	wantIn(t, out, "Todo.countOpen : List Table.Todo.Todo -> Int\n")
+	wantIn(t, out, "Todo.countOpen : List Todo -> Int\n")
 }
 
 func TestRepl_Diagnostic(t *testing.T) {
@@ -129,7 +129,7 @@ func TestRepl_LetNames(t *testing.T) {
 		t.Errorf("want the lowercase rule twice, got %d:\n%s", n, out)
 	}
 	wantIn(t, out, "alder repl: a let may not be named `it`, the name the REPL gives the expression; let another name\n",
-		"Todo.countOpen : List Table.Todo.Todo -> Int\n")
+		"Todo.countOpen : List Todo -> Int\n")
 	if strings.Contains(out, "input line") {
 		t.Errorf("the REPL says input line:\n%s", out)
 	}
@@ -281,10 +281,10 @@ func TestRepl_QueryHints(t *testing.T) {
 	t.Parallel()
 	out := replTodos(t, "Db.from Todo \\\n  |> Db.count\nDb.from Todo |> Db.all\nTask.fail \"no\"\nDb.from Todo\n:run Task.fail \"no\"\n:run! (Db.from Todo |> Db.all)\n:html 1\n")
 	wantIn(t, out,
-		"<Query> : Query (List Table.Todo.Todo)\n", "`:run ",
+		"<Query> : Query (List Todo)\n", "`:run ",
 		"hint: `:run Db.from Todo |> Db.count` runs it", // a multi-line input on one line
 		"<Task> : Task a\n", "`:run! ",
-		"<Select> : Select Table.Todo.Todo\n", "Db.all, Db.first or Db.count",
+		"<Select> : Select Todo\n", "Db.all, Db.first or Db.count",
 		"`:run` wants a Query; use `:run!` for a Task",
 		"`:run!` wants a Task; use `:run` for a Query",
 		"`:html` wants an Html value; 1 : Int",
@@ -312,7 +312,7 @@ func TestRepl_RunBangAndFailure(t *testing.T) {
 		`}`,
 		`:run (Db.from User |> Db.count)`,
 	}, "\n")+"\n")
-	wantIn(t, out, " : Table.User.UserId\n", "alder repl: the task failed: no\n", "alder repl: the task failed: late\n")
+	wantIn(t, out, " : User.UserId\n", "alder repl: the task failed: no\n", "alder repl: the task failed: late\n")
 	if n := strings.Count(out, "1 : Int\n"); n != 2 {
 		t.Errorf("want the count 1 twice, got %d:\n%s", n, out)
 	}

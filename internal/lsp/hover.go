@@ -41,7 +41,7 @@ func hoverReq(s *server, params json.RawMessage) (any, error) {
 func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Pos) string {
 	n := path[len(path)-1]
 	sig := func(name string, t types.Type) string {
-		return "```alder\n" + name + " : " + types.StringIn(t, m.Name) + "\n```"
+		return "```alder\n" + name + " : " + types.StringQ(t, m.Name, a.prog.Qualify(m.Name)) + "\n```"
 	}
 	switch n := n.(type) {
 	case *syntax.HoleExpr:
@@ -115,7 +115,7 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 		}
 	}
 	if t, ok := a.res.Types[n]; ok && t != nil {
-		return "```alder\n" + types.StringIn(t, m.Name) + "\n```"
+		return "```alder\n" + types.StringQ(t, m.Name, a.prog.Qualify(m.Name)) + "\n```"
 	}
 	return ""
 }
@@ -182,7 +182,7 @@ func hookHover(a *analysis, mod, name string) string {
 	}
 	if a.res != nil {
 		if t, has := a.res.Values[mod+"."+name]; has && t != nil {
-			sig = types.StringIn(t, mod)
+			sig = types.StringQ(t, mod, a.prog.Qualify(mod))
 		}
 	}
 	return "```alder\n" + name + " : " + sig + "\n```\n\n" + role
@@ -195,7 +195,7 @@ func pageHover(a *analysis, m *syntax.Module, d *syntax.PageDecl) string {
 		if pi := a.res.Pages[m.Name]; pi != nil && pi.Params != nil {
 			anon := *pi.Params // the generated record is named `Params`; show its fields
 			anon.Anonymous = true
-			lines = append(lines, "params : "+types.StringIn(&anon, m.Name))
+			lines = append(lines, "params : "+types.StringQ(&anon, m.Name, a.prog.Qualify(m.Name)))
 		}
 	}
 	if len(d.Requires) > 0 {

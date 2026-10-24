@@ -123,6 +123,13 @@ func (p *Program) Qualifiers(module string) map[string]string {
 	return p.qualifiers(m)
 }
 
+// Qualify is Qualifiers(module) as the function types.StringQ takes: the qualifier module's
+// types are written with ("" for a module it does not import, which is then written by its path).
+func (p *Program) Qualify(module string) func(string) string {
+	q := p.Qualifiers(module)
+	return func(m string) string { return q[m] }
+}
+
 // qualifiers computes module m's import qualifiers (Qualifiers).
 func (p *Program) qualifiers(m *syntax.Module) map[string]string {
 	var paths []string

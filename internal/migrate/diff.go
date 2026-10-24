@@ -55,7 +55,11 @@ func (s Step) String() string {
 	case DropTable:
 		return "drop table " + t
 	case RenameTable:
-		return "rename table " + t + " to " + display(s.NewName)
+		if n := display(s.NewName); n != t {
+			return "rename table " + t + " to " + n
+		}
+		// the same short name: the table moved to another module, so say where from and to
+		return "rename table " + strings.ReplaceAll(s.Table, "__", ".") + " to " + strings.ReplaceAll(s.NewName, "__", ".")
 	case AddColumn:
 		return "add column " + t + "." + s.Column
 	case DropColumn:

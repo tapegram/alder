@@ -98,8 +98,10 @@ The steps, from the app before the admin:
 1. `User` gains `type Role = Member | Admin` and a column `role: Role = Member`; `App`'s
    session gains `role: User.Role = Member`; `Auth.Login` copies the row's role into the
    session, and `App.Logout` puts `Member` back.
-2. `migrations/0001_initial.sql` is written again from the tables (`rm migrations/*` and
-   `alder migrate`): an example keeps one migration, since it has no data to keep. An app with
+2. `migrations/0001_initial.sql` was written again from the tables (`rm migrations/*` and
+   `alder migrate`) at this step: the example had no data to keep, so it kept one migration. The
+   tables have since moved into `app/Table/` (`0002_rename_*`, see Layout above), so do not
+   `rm migrations/*` now: it would delete that rename. An app with
    data runs `alder migrate` instead, which rebuilds `User` with the new column. A `todos.db`
    that `alder run` made before this step no longer matches `0001`, and the app refuses to
    start on it: delete it, or run once with `ALDER_DEV=1`, which recreates the database empty

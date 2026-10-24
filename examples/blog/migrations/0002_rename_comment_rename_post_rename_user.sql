@@ -1,9 +1,9 @@
 -- alder migration 0002_rename_comment_rename_post_rename_user
 -- from b5992516745b
 -- to 35c1cad14669
--- step: rename table Comment to Comment
--- step: rename table Post to Post
--- step: rename table User to User
+-- step: rename table Comment.Comment to Table.Comment.Comment
+-- step: rename table Post.Post to Table.Post.Post
+-- step: rename table User.User to Table.User.User
 -- step: drop index on Comment.post
 -- step: drop index on Post.author
 -- step: add index on Comment.post

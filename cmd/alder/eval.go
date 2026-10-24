@@ -180,7 +180,7 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		return failf(2, "alder eval: internal error: no type was inferred for the expression")
 	}
 	sig = checked.Result.U.Apply(sig)
-	typ := types.String(sig)
+	typ := checked.TypeString(sig, sessionName)
 
 	kind := scratch.MainPure
 	if app, ok := sig.(*types.App); ok {
@@ -199,7 +199,7 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 			if !run {
 				return evalPrint(stdout, jsonOut, &res, "<Query>", typ)
 			}
-			kind, typ = scratch.MainQuery, types.String(app.Args[0])
+			kind, typ = scratch.MainQuery, checked.TypeString(app.Args[0], sessionName)
 		}
 	}
 	var env []string
