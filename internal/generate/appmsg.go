@@ -84,7 +84,7 @@ func newAppMsg(p *Program, name string, fields []FieldSpec) ([]Edit, error) {
 	if err := addTests(e, app, []TestData{test}); err != nil {
 		return nil, err
 	}
-	addImports(e, app.Syntax, imports.list())
+	addImports(e, p, app.Syntax, imports.list())
 	return []Edit{{Path: app.File, Body: e.result()}}, nil
 }
 

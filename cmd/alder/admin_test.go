@@ -100,7 +100,7 @@ func TestAdmin_Relocated(t *testing.T) {
 		t.Fatalf("exit %d\n%s%s", code, out, errs)
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "app", "Back", "Office", "Post", "Index.alder"))
-	for _, want := range []string{"module Back.Office.Post.Index\n", `page "/back/post" {`, "<Back.Office.Layout.Page title=\"Posts\">", "<al-button href={Back.Office.Post.New {}}>New post</al-button>"} {
+	for _, want := range []string{"module Back.Office.Post.Index\n", `page "/back/post" {`, "<Layout.Page title=\"Posts\">", "<al-button href={Back.Office.Post.New {}}>New post</al-button>"} {
 		if !strings.Contains(string(b), want) {
 			t.Errorf("Back.Office.Post.Index lacks %q:\n%s", want, b)
 		}

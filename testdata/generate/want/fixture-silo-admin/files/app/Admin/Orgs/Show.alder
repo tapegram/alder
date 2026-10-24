@@ -30,7 +30,7 @@ recent = 5
 
 load : Params -> Session -> Query Model
 load params session = {
-  let admin <- Admin.Layout.isAdmin session.user
+  let admin <- Layout.isAdmin session.user
   if admin then {
     -- @admin begin cards
     let found <- Db.get Org params.org
@@ -83,7 +83,7 @@ load params session = {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Admin.Layout.Page title="Org">
+  <Layout.Page title="Org">
     <h1>{model.name}</h1>
 
     <al-stack gap="md">
@@ -98,7 +98,7 @@ view model session =
         </al-card>}
     </al-stack>
     <a href={Admin.Orgs.Index {}}>Another org</a>
-  </Admin.Layout.Page>
+  </Layout.Page>
 
 -- @admin begin tests
 -- The Admin is no member of the org: the page's parameter and the role check open its database.

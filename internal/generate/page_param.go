@@ -30,6 +30,6 @@ func EditPage(p *Program, page, op string, args []string) ([]Edit, error) {
 	appendItem(e, rec.Span, fieldSpans(rec.Fields), f.Source())
 	imports := newImports(page, p.Std)
 	typeImports(imports, f.Type, p)
-	addImports(e, m.Syntax, imports.list())
+	addImports(e, p, m.Syntax, imports.list())
 	return []Edit{{Path: m.File, Body: e.result()}}, nil
 }

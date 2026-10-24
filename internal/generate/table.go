@@ -106,13 +106,13 @@ func NewTableWith(p *Program, name string, fields []FieldSpec, o TableOptions) (
 	edit := func() Edit {
 		body := render("table.tmpl", d)
 		if m == nil {
-			return Edit{Path: file, Create: true, Body: body}
+			return Edit{Path: file, Create: true, Body: canonical(p, file, body)}
 		}
 		// in the module: what follows the template's `module` and imports, after its declarations
 		_, rest, _ := strings.Cut(body, "type "+name+"Id = brand Text")
 		e := newSrcEdit(m.Source)
 		e.appendText("\ntype " + name + "Id = brand Text" + strings.TrimRight(rest, "\n"))
-		addImports(e, m.Syntax, d.Imports)
+		addImports(e, p, m.Syntax, d.Imports)
 		return Edit{Path: m.File, Body: e.result()}
 	}
 
@@ -211,9 +211,31 @@ func bareType(p *Program, home, typ string) error {
 func typeImports(s *importSet, typ string, p *Program) {
 	for _, w := range strings.FieldsFunc(typ, func(r rune) bool { return r == ' ' || r == '(' || r == ')' }) {
 		if i := strings.LastIndex(w, "."); i > 0 {
-			s.add(w[:i])
+			s.add(moduleOfQualifier(p, w[:i]))
 		}
 	}
+}
+
+// moduleOfQualifier is the module of the app that q, written before a name, stands for: a
+// module's full path, or a qualifier (`Todo` for `Table.Todo`) when exactly one module of the
+// app ends in it; q itself when it is neither.
+func moduleOfQualifier(p *Program, q string) string {
+	if p == nil || p.Modules[q] != nil {
+		return q
+	}
+	found := ""
+	for _, m := range p.Order {
+		if !p.Std[m] && strings.HasSuffix(m, "."+q) {
+			if found != "" {
+				return q
+			}
+			found = m
+		}
+	}
+	if found == "" {
+		return q
+	}
+	return found
 }
 
 // TableErrors are the errors of diags that lie in a table declaration of prog: a table that does

@@ -308,7 +308,7 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		}
 		src += "\npage \"" + o.Path + "\" " + d.Params + "\n\ntype Model = { }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed {}\n\n" +
 			"view : Model -> Session -> Html Msg\nview model session = <p></p>\n"
-		probe, err := Probe(p.Dir, []Edit{{Path: file, Create: true, Body: src}})
+		probe, err := Probe(p.Dir, []Edit{{Path: file, Create: true, Body: canonical(p, file, src)}})
 		if err != nil {
 			return nil, err
 		}
@@ -573,7 +573,7 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		}
 	}
 	d.Imports = imports.list()
-	return []Edit{{Path: file, Create: true, Body: render(tmpl, d)}}, nil
+	return []Edit{{Path: file, Create: true, Body: canonical(p, file, render(tmpl, d))}}, nil
 }
 
 // isFilePage reports whether m's `view` returns `File`: the signature walk of the checker's

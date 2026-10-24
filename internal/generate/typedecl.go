@@ -30,7 +30,7 @@ func NewType(p *Program, module, decl string) ([]Edit, error) {
 	m := p.Modules[module]
 	if m == nil {
 		body := "module " + module + "\n\n" + imports.lines() + "\n" + text + "\n"
-		return []Edit{{Path: FileOf(module), Create: true, Body: body}}, nil
+		return []Edit{{Path: FileOf(module), Create: true, Body: canonical(p, FileOf(module), body)}}, nil
 	}
 	names := []string{td.Name}
 	for _, c := range td.Union {
@@ -56,7 +56,7 @@ func NewType(p *Program, module, decl string) ([]Edit, error) {
 	default:
 		e.appendText("\n" + text)
 	}
-	addImports(e, m.Syntax, imports.list())
+	addImports(e, p, m.Syntax, imports.list())
 	return []Edit{{Path: m.File, Body: e.result()}}, nil
 }
 
@@ -124,7 +124,7 @@ func NewDecl(p *Program, module, name, typ string) ([]Edit, error) {
 	for _, q := range qualifiers(p, typ) {
 		imports.add(q)
 	}
-	addImports(e, m.Syntax, imports.list())
+	addImports(e, p, m.Syntax, imports.list())
 	return []Edit{{Path: m.File, Body: e.result()}}, nil
 }
 

@@ -26,7 +26,7 @@ type Model = {
 
 load : Params -> Session -> Query Model
 load params session = {
-  let admin <- Admin.Layout.isAdmin session.user
+  let admin <- Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
     let found <- Db.get Issue params.id
@@ -101,7 +101,7 @@ update msg model session = match msg {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Admin.Layout.Page title="Issue">
+  <Layout.Page title="Issue">
     <h1>Issue</h1>
 
     <al-card>
@@ -161,7 +161,7 @@ view model session =
       </div>
     </al-dialog>
     <a href={Admin.Issue.Index { org: session.org }}>All issues</a>
-  </Admin.Layout.Page>
+  </Layout.Page>
 
 -- @admin begin tests
 test "the page shows the row" = {

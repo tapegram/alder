@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"alder/internal/diag"
+	"alder/internal/names"
 	"alder/internal/syntax"
 )
 
@@ -121,24 +122,76 @@ func (e *srcEdit) result() string {
 // indentOf is the leading spaces of line l.
 func indentOf(l string) string { return l[:len(l)-len(strings.TrimLeft(l, " "))] }
 
-// addImports inserts `import M` for each module of want that m does not import yet: in its
+// addImports inserts the import of each module of want that m does not import yet: in its
 // sorted place when m's imports are sorted, else after the last; after its `module` line when
-// it has none.
-func addImports(e *srcEdit, m *syntax.Module, want []string) {
+// it has none. Each import is written with its canonical qualifier (design rule 3): `import P`,
+// or `import P as Q` when Q is not P's last segment. An addition that changes an existing
+// import's qualifier rewrites that import's line, and its references in the file, to the new
+// one; text the generator wrote with a module's full path (`Admin.Layout.isAdmin`) comes out
+// with its qualifier (`Layout.isAdmin`), a page value (`Admin.Layout {}`) as it is. It returns
+// the qualifier of every import of m, after the additions.
+func addImports(e *srcEdit, p *Program, m *syntax.Module, want []string) map[string]string {
+	return retarget(e, p, m, want, false)
+}
+
+// retarget is addImports; with force it also rewrites every import line that is not written in
+// its canonical form (a generated file, whose imports a generator wrote as `import P`).
+func retarget(e *srcEdit, p *Program, m *syntax.Module, want []string, force bool) map[string]string {
 	have := map[string]bool{}
 	last := 0
+	var oldPaths []string
 	for _, im := range m.Imports {
 		have[im.Module] = true
 		last = max(last, im.Span.End.Line)
-	}
-	var add []string
-	for _, w := range want {
-		if !have[w] && w != m.Name {
-			add = append(add, "import "+w)
+		if !p.Std[im.Module] {
+			oldPaths = append(oldPaths, im.Module)
 		}
 	}
+	var add []string
+	paths := slices.Clone(oldPaths)
+	for _, w := range want {
+		if !have[w] && w != m.Name && !slices.Contains(add, w) {
+			add = append(add, w)
+			if !p.Std[w] {
+				paths = append(paths, w)
+			}
+		}
+	}
+	taken := names.Taken(m, func(n string) bool { return p.Std[n] })
+	quals := canonicalQuals(m.Name, paths, taken)
+	was := canonicalQuals(m.Name, oldPaths, taken)
+	for _, im := range m.Imports { // a standard-library module keeps its name
+		if p.Std[im.Module] {
+			quals[im.Module], was[im.Module] = im.Module, im.Module
+		}
+	}
+	for _, w := range add {
+		if p.Std[w] {
+			quals[w] = w
+		}
+	}
+	// the references to rewrite: a module's full path, and a qualifier that changed
+	rename := map[string]string{}
+	for _, im := range m.Imports {
+		if p.Std[im.Module] {
+			continue
+		}
+		q := quals[im.Module]
+		if was[im.Module] != q {
+			rename[was[im.Module]] = q
+			e.replaceLine(im.Span.Start.Line, importLine(im.Module, q))
+		} else if force && e.current(im.Span.Start.Line) != importLine(im.Module, q) {
+			e.replaceLine(im.Span.Start.Line, importLine(im.Module, q))
+		}
+	}
+	for _, path := range paths {
+		if quals[path] != path {
+			rename[path] = quals[path]
+		}
+	}
+	e.requalify(rename)
 	if len(add) == 0 {
-		return
+		return quals
 	}
 	slices.Sort(add)
 	sorted := slices.IsSortedFunc(m.Imports, func(a, b *syntax.Import) int { return strings.Compare(a.Module, b.Module) })
@@ -146,14 +199,18 @@ func addImports(e *srcEdit, m *syntax.Module, want []string) {
 		for _, a := range add {
 			at := last + 1
 			for _, im := range m.Imports {
-				if "import "+im.Module > a {
+				if im.Module > a {
 					at = im.Span.Start.Line
 					break
 				}
 			}
-			e.insertBefore(at, a)
+			e.insertBefore(at, importLine(a, quals[a]))
 		}
-		return
+		return quals
+	}
+	var lines []string
+	for _, a := range add {
+		lines = append(lines, importLine(a, quals[a]))
 	}
 	if last == 0 {
 		mod := 1
@@ -163,10 +220,43 @@ func addImports(e *srcEdit, m *syntax.Module, want []string) {
 				break
 			}
 		}
-		e.insertBefore(mod+1, "\n"+strings.Join(add, "\n"))
-		return
+		e.insertBefore(mod+1, "\n"+strings.Join(lines, "\n"))
+		return quals
 	}
-	e.insertBefore(last+1, strings.Join(add, "\n"))
+	e.insertBefore(last+1, strings.Join(lines, "\n"))
+	return quals
+}
+
+// canonicalQuals is names.CanonicalQualifiers, with a path that has no usable qualifier (E0206)
+// written with its full path.
+func canonicalQuals(self string, paths []string, taken func(string) bool) map[string]string {
+	quals, bad := names.CanonicalQualifiers(self, paths, taken)
+	for _, b := range bad {
+		quals[b] = b
+	}
+	return quals
+}
+
+// importLine is the import of path written with qualifier q: `import P`, or `import P as Q`
+// when Q is not P's last segment.
+func importLine(path, q string) string {
+	if names.NeedsAlias(path, q) {
+		return "import " + path + " as " + q
+	}
+	return "import " + path
+}
+
+// qualified is name (a member, or "" for the module itself) of the module at path, written with
+// its qualifier from quals (addImports' result).
+func qualified(quals map[string]string, path, name string) string {
+	q, ok := quals[path]
+	if !ok {
+		q = path
+	}
+	if name == "" {
+		return q
+	}
+	return q + "." + name
 }
 
 // declStart is the first line of declaration d: its signature's, for a value with one, and any

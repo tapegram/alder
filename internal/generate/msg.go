@@ -187,7 +187,7 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]
 	if err := addTests(e, m, []TestData{test}); err != nil {
 		return nil, err
 	}
-	addImports(e, m.Syntax, imports.list())
+	addImports(e, p, m.Syntax, imports.list())
 	return []Edit{{Path: m.File, Body: e.result()}}, nil
 }
 

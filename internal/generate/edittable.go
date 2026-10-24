@@ -44,7 +44,7 @@ func EditTable(p *Program, table, op string, args []string) ([]Edit, error) {
 				imports.add(a.Arg)
 			}
 		}
-		addImports(e, m.Syntax, imports.list())
+		addImports(e, p, m.Syntax, imports.list())
 		if ownLine(e, after) == nil { // on a line of its own, as `alder fmt` writes 3 fields or more
 			e.insertBefore(after.Span.End.Line+1, indentOf(e.line(after.Span.Start.Line))+f.Source()+",")
 		} else { // `table T { id: TId @id, name: Text }` on one line

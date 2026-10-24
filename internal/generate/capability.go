@@ -63,7 +63,7 @@ func NewCapability(p *Program, module, entry, typ string) ([]Edit, error) {
 			return nil, Refusef("`%s` already declares `%s`: add the entry `%s` to it by hand (and to its fake and its adapter)", module, d.Name, entry)
 		}
 		e := newSrcEdit(m.Source)
-		addImports(e, m.Syntax, imports.list())
+		addImports(e, p, m.Syntax, imports.list())
 		e.appendText("\n" + snippet("capability", d))
 		if err := addTests(e, m, []TestData{install}); err != nil {
 			return nil, err
@@ -71,7 +71,7 @@ func NewCapability(p *Program, module, entry, typ string) ([]Edit, error) {
 		edit = Edit{Path: m.File, Body: e.result()}
 	} else {
 		d.Imports = imports.list()
-		edit = Edit{Path: FileOf(module), Create: true, Body: snippet("capability_module", d) + "\n\n" + snippet("test", install)}
+		edit = Edit{Path: FileOf(module), Create: true, Body: canonical(p, FileOf(module), snippet("capability_module", d)+"\n\n"+snippet("test", install))}
 	}
 
 	// the adapter, from the checked capability

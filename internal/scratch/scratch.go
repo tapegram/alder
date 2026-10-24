@@ -509,7 +509,7 @@ func Check(appDir string, extra *Module) (c Checked) {
 		if extra.Infer {
 			opts.InferModule = modName
 		}
-		src, offset, lines := withImports(extra.Source, modName, appMods)
+		src, offset, lines := withImports(extra.Source, modName, appMods, func(n string) bool { _, ok := std[n]; return ok })
 		c.LineOffset, implicit = offset, lines
 		c.InsertLine, c.ExtraFile = insertInfo(extra.Source, modName, offset)
 		m, ds := syntax.ParseFile(modName+".alder", []byte(src))
@@ -568,9 +568,10 @@ func appModules(appDir string) ([]string, error) {
 // withImports returns src with `import M` inserted for every module of appMods but App, name
 // and those src already imports: after src's `module` line (its first line that is neither
 // blank nor a `--` comment, when that starts with `module`), or at the top after a synthesized
-// `module <name>`. It also returns the number of lines inserted and the (1-based) lines of the
+// `module <name>`; each is written with its canonical alias (`import Admin.Layout as AdminLayout`
+// when `Layout` is taken), isStd saying which names are standard-library modules. It also returns the number of lines inserted and the (1-based) lines of the
 // inserted imports.
-func withImports(src, name string, appMods []string) (string, int, map[int]bool) {
+func withImports(src, name string, appMods []string, isStd func(string) bool) (string, int, map[int]bool) {
 	lines := strings.Split(src, "\n")
 	have := map[string]bool{"App": true, name: true}
 	modLine, declared, imports := headerLines(src) // only the header's imports count
@@ -584,8 +585,27 @@ func withImports(src, name string, appMods []string) (string, int, map[int]bool)
 	if modLine < 0 {
 		ins = append(ins, "module "+name)
 	}
+	var missing []string
 	for _, m := range appMods {
 		if !have[m] {
+			missing = append(missing, m)
+		}
+	}
+	taken := func(n string) bool { return n == "App" || isStd(n) }
+	if pm, _ := syntax.ParseFile(name+".alder", []byte(src)); pm != nil {
+		taken = names.Taken(pm, isStd)
+	}
+	var paths []string
+	for _, m := range append(slices.Clone(imports), missing...) {
+		if !isStd(m) {
+			paths = append(paths, m)
+		}
+	}
+	quals, _ := names.CanonicalQualifiers(name, paths, taken)
+	for _, m := range missing {
+		if q := quals[m]; q != "" && names.NeedsAlias(m, q) {
+			ins = append(ins, "import "+m+" as "+q)
+		} else {
 			ins = append(ins, "import "+m)
 		}
 	}

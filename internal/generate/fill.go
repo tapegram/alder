@@ -95,7 +95,7 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 			e.replaceLine(sp.Start.Line, indent(inner, indentOf(l)))
 		}
 		dropGuidance(e, m.Syntax, h.Decl, h.Name == "expected", onlyExpectedLeft(in, h))
-		addImports(e, m.Syntax, fillImports(p, m, expr, &imports))
+		addImports(e, p, m.Syntax, fillImports(p, m, expr, &imports))
 		return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
 	}
 	if needsParens(before, after, expr) {
@@ -111,7 +111,7 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 	e := newSrcEdit(m.Source)
 	e.replaceLine(sp.Start.Line, before+strings.Join(exprLines, "\n")+after)
 	dropGuidance(e, m.Syntax, h.Decl, h.Name == "expected", onlyExpectedLeft(in, h))
-	addImports(e, m.Syntax, fillImports(p, m, expr, &imports))
+	addImports(e, p, m.Syntax, fillImports(p, m, expr, &imports))
 	return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
 }
 

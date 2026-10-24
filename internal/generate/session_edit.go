@@ -121,7 +121,7 @@ func EditSessionChoose(p *Program, op string, args []string, choose string) ([]E
 	}
 	imports := newImports("App", p.Std)
 	typeImports(imports, f.Type, p)
-	addImports(e, app.Syntax, imports.list())
+	addImports(e, p, app.Syntax, imports.list())
 	edits := []Edit{{Path: app.File, Body: e.result()}}
 	def := f.Default
 	if via != "" {

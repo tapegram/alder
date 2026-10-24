@@ -24,7 +24,7 @@ type Model = {
 
 load : Params -> Session -> Query Model
 load params session = {
-  let admin <- Admin.Layout.isAdmin session.user
+  let admin <- Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
     let found <- Db.get Issue params.id
@@ -64,7 +64,7 @@ update msg model session = match msg {
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Admin.Layout.Page title="Delete issue">
+  <Layout.Page title="Delete issue">
     <h1>Delete this issue?</h1>
 
     <al-card>
@@ -84,7 +84,7 @@ view model session =
       </form>
     </al-card>
     <a href={Admin.Issue.Show { org: session.org, id: model.row.id }}>Back</a>
-  </Admin.Layout.Page>
+  </Layout.Page>
 
 -- @admin begin tests
 test "deleting an issue nothing refers to" = {

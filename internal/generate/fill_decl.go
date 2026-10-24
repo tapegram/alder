@@ -99,7 +99,7 @@ func FillDecl(p *Program, address, src string) (edits []Edit, imports []string, 
 	if !isType { // a test rewritten whole: the generator's comments on its holes go with them
 		dropGuidance(e, m.Syntax, decl, !strings.Contains(src, "?expected"), !strings.Contains(src, "?"))
 	}
-	addImports(e, m.Syntax, fillImports(p, m, src, &imports))
+	addImports(e, p, m.Syntax, fillImports(p, m, src, &imports))
 	return []Edit{{Path: m.File, Body: e.result()}}, imports, nil
 }
 

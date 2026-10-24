@@ -97,7 +97,7 @@ func TestHeaderLines(t *testing.T) {
 		t.Fatalf("no header: %d %q %v", modLine, declared, imports)
 	}
 	// only the header's imports are taken as the caller's: Todo after a declaration is inserted
-	out, n, _ := withImports("module Scratch\nit : Int\nit = 1\n-- import Todo\n", "Scratch", []string{"App", "Todo"})
+	out, n, _ := withImports("module Scratch\nit : Int\nit = 1\n-- import Todo\n", "Scratch", []string{"App", "Todo"}, func(string) bool { return false })
 	if n != 1 || !strings.HasPrefix(out, "module Scratch\nimport Todo\n") {
 		t.Fatalf("%d %q", n, out)
 	}

@@ -239,7 +239,7 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 	d.Tests = append(d.Tests, TestData{Name: quote("a signed-in user logs out here"), Lines: tb.lines,
 		Result: "{ answer: r.answer, user: r.session.user" + outRole + " } == " + want + " }"})
 	d.Imports = imports.list()
-	edits = append(edits, Edit{Path: FileOf(module), Create: true, Body: render("auth_login.tmpl", d)})
+	edits = append(edits, Edit{Path: FileOf(module), Create: true, Body: canonical(p, FileOf(module), render("auth_login.tmpl", d))})
 
 	// App
 	roleField, roleType := "", ""
@@ -371,7 +371,7 @@ func editApp(p *Program, app *Module, users *Table, idType, roleField string, ct
 			"Redirect from a Rerender (book 10, \"The logout redirect\"): the test calls update itself."},
 		Lines:  []string{"let r <- Test.run (update Logout { " + strings.Join(sess, ", ") + " })"},
 		Result: "{ value: r.value, trace: r.trace } == { value: Ok (Redirect (Auth.Login {})), trace: [\"Session.put\"] }"}))
-	addImports(e, app.Syntax, imports.list())
+	addImports(e, p, app.Syntax, imports.list())
 	return Edit{Path: app.File, Body: e.result()}, nil
 }
 

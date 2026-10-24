@@ -112,7 +112,7 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 
 	// the probe: the form declared in the page, to read its fields' types
 	e := newSrcEdit(m.Source)
-	addImports(e, m.Syntax, imports.list())
+	addImports(e, p, m.Syntax, imports.list())
 	e.appendText("\n" + snippet("form_decl", d))
 	probe, err := Probe(p.Dir, []Edit{{Path: m.File, Body: e.result()}})
 	if err != nil {
@@ -305,7 +305,7 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 	if err := addTests(e, m, tests); err != nil {
 		return nil, err
 	}
-	addImports(e, m.Syntax, imports.list())
+	addImports(e, p, m.Syntax, imports.list())
 	return []Edit{{Path: m.File, Body: e.result()}}, nil
 }
 

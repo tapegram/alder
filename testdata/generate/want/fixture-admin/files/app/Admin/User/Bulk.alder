@@ -25,7 +25,7 @@ maxRows = 25
 
 load : Params -> Session -> Query Model
 load params session = {
-  let admin <- Admin.Layout.isAdmin session.user
+  let admin <- Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
     let ids = List.take maxRows params.ids
@@ -83,7 +83,7 @@ update msg model session =
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Admin.Layout.Page title="Selected users">
+  <Layout.Page title="Selected users">
     <h1>{Text.fromInt (List.length model.rows)} selected</h1>
 
     <al-card>
@@ -115,7 +115,7 @@ view model session =
       -- @admin end
     </al-card>
     <a href={Admin.User.Index {}}>Back to the list</a>
-  </Admin.Layout.Page>
+  </Layout.Page>
 
 -- @admin begin tests
 test "deleting the chosen rows leaves the ones other rows refer to" = {

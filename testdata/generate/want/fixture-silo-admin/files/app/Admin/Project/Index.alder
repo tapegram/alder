@@ -153,7 +153,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 -- a text over 10,000 bytes would fail the query (chapter 8, "Search").
 load : Params -> Session -> Query Model
 load params session = {
-  let admin <- Admin.Layout.isAdmin session.user
+  let admin <- Layout.isAdmin session.user
   if admin then {
     let q = Text.slice 0 200 params.q
     let f = chosen params
@@ -197,7 +197,7 @@ labelsOf rows = Query.succeed {}
 
 view : Model -> Session -> Html Msg
 view model session =
-  <Admin.Layout.Page title="Projects">
+  <Layout.Page title="Projects">
     <h1>Projects</h1>
 
     <al-stack direction="row" gap="sm">
@@ -284,7 +284,7 @@ view model session =
       else
         <span slot="next" aria-disabled="true">Next</span>}
     </al-pagination>
-  </Admin.Layout.Page>
+  </Layout.Page>
 
 -- @admin begin tests
 test "the list shows every row, newest first" = {
