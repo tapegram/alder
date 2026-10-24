@@ -789,8 +789,8 @@ the workflow checks and tests and deploys nothing:
 ```text command=todos
 $ alder ci init
 wrote .github/workflows/alder.yml
-  pull request  alder check, alder test --mutate
-  push to main  alder check, alder test --mutate
+  pull request  alder fmt --check, alder check, alder test --mutate
+  push to main  alder fmt --check, alder check, alder test --mutate
 no `production` or `preview` environment in App's `deploy`: the workflow deploys nothing
 repository secrets it needs: none
 …
@@ -808,9 +808,10 @@ the golden file the command's own tests use,
 # Written by `alder ci init` (book chapter 16). The pipeline is alder's own commands: what
 # runs here runs the same from a laptop.
 #
-#   pull request   alder check; alder test --mutate --min 0.95; alder deploy preview --host
-#                  <number>.preview.example.com, and a comment with its address
-#   push to main   alder check; alder test --mutate --min 0.95; alder deploy production
+#   pull request   alder fmt --check; alder check; alder test --mutate --min 0.95; alder deploy
+#                  preview --host <number>.preview.example.com, and a comment with its address
+#   push to main   alder fmt --check; alder check; alder test --mutate --min 0.95; alder deploy
+#                  production
 #
 # Repository secrets (Settings > Secrets and variables > Actions):
 #   SSH_PRIVATE_KEY  a private key deploy@box.example.com accepts (production, preview)
@@ -849,6 +850,7 @@ jobs:
           gh release download "$ALDER_VERSION" --repo tapegram/alder --pattern 'alder_*_linux_amd64.tar.gz' --output "$RUNNER_TEMP/alder.tar.gz"
           tar -xzf "$RUNNER_TEMP/alder.tar.gz" -C "$RUNNER_TEMP" alder
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - run: alder fmt --check
       - run: alder check
       - run: alder test --mutate --min 0.95
 

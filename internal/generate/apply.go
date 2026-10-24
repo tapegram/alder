@@ -28,7 +28,8 @@ type Edit struct {
 	Delete  bool
 	// Guard, when set, picks the declaration the edit changes (the session, a table): an error
 	// located there (in the file as written, formatted) refuses the edit even under
-	// Options.WriteDespiteErrors, whose to-do list is for breakage in other code.
+	// Options.WriteDespiteErrors, whose to-do list is for breakage in other code; so does a file in
+	// which no declaration matches.
 	Guard func(syntax.Decl) bool
 }
 
@@ -98,7 +99,9 @@ func (r *Result) HasErrors() bool {
 // `alder check` checks an app, and, unless the copy has errors (or o.WriteDespiteErrors), writes
 // every file the copy changed into the app. Every Alder file an edit writes is formatted
 // (Formatted) in the copy, whole, before the check; one that cannot be is written as it is, with
-// a warning, as is a file edited that did not parse before the edit. With o.DryRun nothing is
+// a warning, as is a file edited that did not parse before the edit. A file edited that parsed
+// before the edit and does not after it, or an Edit whose Guard finds no declaration, is refused
+// even under o.WriteDespiteErrors: that breakage is the generator's. With o.DryRun nothing is
 // written. A refusal is a *Refusal; when the copy did not check it carries the Result, whose
 // Diagnostics say why.
 func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
@@ -152,7 +155,11 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 		}
 	}
 	res := &Result{}
-	guards := map[string]*[2]int{} // by path: the lines of each Guard's declaration, formatted
+	type guarded struct {
+		path  string
+		lines [2]int // the first and last lines of the Guard's declaration, formatted
+	}
+	var guards []guarded
 	for _, e := range edits {
 		if e.Delete || !strings.HasSuffix(e.Path, ".alder") {
 			continue
@@ -166,6 +173,18 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 		if was, ok := copied[e.Path]; ok && !e.Create && !parses(e.Path, was) {
 			warning = e.Path + " did not parse before the edit; output not formatted" // the author's to fix, not an issue
 		} else {
+			if ok && !e.Create {
+				// it parsed before the edit: a parse error now is the generator's, never the
+				// author's to-do list, so it refuses even under WriteDespiteErrors
+				if m, diags := syntax.ParseFile(e.Path, b); len(diags) > 0 {
+					lines := strings.Split(text, "\n")
+					if m != nil {
+						lines = m.Lines
+					}
+					return nil, &Refusal{Msg: "`" + e.Path + "` does not parse after the edit (the errors above): nothing was written; please file an issue",
+						Diags: diags, Sources: map[string][]string{e.Path: lines}}
+				}
+			}
 			text, warning = Formatted(e.Path, text)
 		}
 		if warning != "" && !slices.Contains(res.Warnings, warning) {
@@ -177,7 +196,11 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 			}
 		}
 		if e.Guard != nil {
-			guards[e.Path] = declLines(e.Path, text, e.Guard)
+			g := declLines(e.Path, text, e.Guard)
+			if g == nil {
+				return nil, Refusef("`%s`: the declaration the command edits was not found after the edit: nothing was written; please file an issue", e.Path)
+			}
+			guards = append(guards, guarded{e.Path, *g})
 		}
 	}
 	if o.Migrate != nil {
@@ -259,14 +282,10 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 			res.Holes = append(res.Holes, h)
 		}
 	}
-	for _, e := range edits {
-		g := guards[e.Path]
-		if e.Guard == nil || g == nil {
-			continue
-		}
+	for _, g := range guards {
 		var own []diag.Diagnostic
 		for _, d := range res.Diagnostics {
-			if d.Severity == "error" && d.Span.File == e.Path && d.Span.Start.Line >= g[0] && d.Span.Start.Line <= g[1] {
+			if d.Severity == "error" && d.Span.File == g.path && d.Span.Start.Line >= g.lines[0] && d.Span.Start.Line <= g.lines[1] {
 				own = append(own, d)
 			}
 		}
@@ -479,8 +498,8 @@ func parses(path string, src []byte) bool {
 // declLines are the first and last lines of the first declaration of src (a file of the app,
 // path) that match picks, or nil when the file does not parse or has none: an Edit's Guard.
 func declLines(path, src string, match func(syntax.Decl) bool) *[2]int {
-	m, _ := syntax.ParseFile(path, []byte(src))
-	if m == nil {
+	m, diags := syntax.ParseFile(path, []byte(src))
+	if m == nil || len(diags) > 0 {
 		return nil
 	}
 	for _, d := range m.Decls {

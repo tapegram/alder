@@ -341,18 +341,26 @@ rules, so that the first draft already matches:
   declarations, a signature directly above its value. Lines break at 100
   columns where no rule below decides.
 - Imports are sorted, one per line.
-- A record, record type, form, table or page-params list with 3 or more
-  fields is always vertical, one field per line with a trailing comma;
-  with 1 or 2 it stays on one line if it fits. The record type of a
-  function's signature, a capability or a fake breaks only when too wide.
-  An empty record is `{}`.
+- A record, record type, form, table, page-params list, `session` or
+  `deploy` with 3 or more fields is always vertical, one field per line
+  with a trailing comma; with 1 or 2 it stays on one line if it fits. The
+  record type of a function's signature, a capability or a fake breaks
+  only when too wide. An empty record expression or pattern is `{}`; an
+  empty record type, form or declaration body is `{ }`.
+- A record update `{ r | a: x }` follows the same field-count rule, but
+  never takes a trailing comma (the grammar forbids it): vertical, it is
+  `{ r |` on the opening line, one field per line, `}` alone.
 - A `match` has one arm per line, each ending in a comma. A sum type that
-  does not fit on a line puts one `| Constructor` on each line.
+  does not fit on a line puts the first constructor bare on the line after
+  `=`, and each of the rest on its own line led by `|`:
+  `type Msg =` / `  Increment` / `  | Decrement` / `  | SetValue Int`.
 - `if` that does not fit on a line is `if c then` / `else` with the
   branches indented; `else if` chains stay at one indent. A block branch is
   `if c then {` ... `} else {` ... `}`.
-- A pipeline with 2 or more `|>` is always vertical, one `|>` per line. A
-  lambda argument is parenthesised: `List.map (\x -> x + 1) xs`.
+- A pipeline with 2 or more `|>` is always vertical: it starts on the line
+  after the `=` (or `let x =`, `let x <-`), and each `|>` leads a line of
+  its own, indented 2 more. A lambda argument is parenthesised:
+  `List.map (\x -> x + 1) xs`.
 - A block with statements is vertical. Parentheses are only the ones
   precedence needs, except around a lambda argument.
 - Markup: an element with 2 or more element children (a `{for}` counts as 2)
@@ -378,6 +386,23 @@ type Post = {
   draft: Bool,
   created: Int,
   updated: Int,
+}
+```
+
+A pipeline and a record update of three fields:
+
+```alder fragment
+positives : List Int -> List Int
+positives xs =
+  xs
+    |> List.filter (\x -> x > 0)
+    |> List.reverse
+
+reset : { a: Int, b: Int, c: Int } -> { a: Int, b: Int, c: Int }
+reset r = { r |
+  a: 0,
+  b: 0,
+  c: 0
 }
 ```
 

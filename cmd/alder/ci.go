@@ -261,8 +261,8 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 	para := func(text string) { b.WriteString(commentWrap(text, "# ", 96)) }
 	w("# Written by `alder ci init` (book chapter 16). The pipeline is alder's own commands: what\n")
 	w("# runs here runs the same from a laptop.\n#\n")
-	prLine := "alder check; " + mutate
-	pushLine := "alder check; " + mutate
+	prLine := "alder fmt --check; alder check; " + mutate
+	pushLine := "alder fmt --check; alder check; " + mutate
 	if preview != nil {
 		prLine += "; alder deploy preview"
 		if preview.host != "" {
@@ -394,6 +394,7 @@ func ciWorkflow(d *ir.Deploy, alderVersion, goVersion string) workflow {
 	w("jobs:\n")
 	w("  check:\n    runs-on: ubuntu-latest\n")
 	setup(nil)
+	w("      - run: alder fmt --check\n")
 	w("      - run: alder check\n")
 	w("      - run: %s\n", mutate)
 	if preview != nil {

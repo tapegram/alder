@@ -1,8 +1,8 @@
 # Written by `alder ci init` (book chapter 16). The pipeline is alder's own commands: what
 # runs here runs the same from a laptop.
 #
-#   pull request   alder check; alder test --mutate
-#   push to main   alder check; alder test --mutate
+#   pull request   alder fmt --check; alder check; alder test --mutate
+#   push to main   alder fmt --check; alder check; alder test --mutate
 #
 # Repository secrets: none.
 #
@@ -33,5 +33,6 @@ jobs:
           gh release download --repo tapegram/alder --pattern 'alder_*_linux_amd64.tar.gz' --output "$RUNNER_TEMP/alder.tar.gz"
           tar -xzf "$RUNNER_TEMP/alder.tar.gz" -C "$RUNNER_TEMP" alder
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - run: alder fmt --check
       - run: alder check
       - run: alder test --mutate

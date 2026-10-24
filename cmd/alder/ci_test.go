@@ -141,8 +141,8 @@ func TestCi_Init(t *testing.T) {
 	}
 	for _, want := range []string{
 		"wrote .github/workflows/alder.yml\n",
-		"  pull request  alder check, alder test --mutate --min 0.8, alder deploy preview --host pr-<number>\n",
-		"  push to main  alder check, alder test --mutate --min 0.8, alder deploy production\n",
+		"  pull request  alder fmt --check, alder check, alder test --mutate --min 0.8, alder deploy preview --host pr-<number>\n",
+		"  push to main  alder fmt --check, alder check, alder test --mutate --min 0.8, alder deploy production\n",
 		"repository secrets it needs: FLY_API_TOKEN, SMTP_URL, ALDER_SECRET (the file's header says what each is)\n",
 	} {
 		if !strings.Contains(out.String(), want) {

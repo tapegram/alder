@@ -1897,7 +1897,7 @@ through the language server formats Alder on save. In Neovim:
 ```lua
 vim.api.nvim_create_autocmd('BufWritePre', {
   pattern = '*.alder',
-  callback = function() vim.lsp.buf.format({ async = false }) end,
+  callback = function(args) vim.lsp.buf.format({ bufnr = args.buf, async = false }) end,
 })
 ```
 
