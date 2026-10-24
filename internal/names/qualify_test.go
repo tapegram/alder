@@ -25,6 +25,8 @@ func TestCanonicalQualifiers(t *testing.T) {
 		{"own segment, full length", "Admin.Layout", []string{"Layout"}, "", map[string]string{"Layout": "Layout"}, nil},
 		{"own segment, beside a longer path", "Admin.Layout", []string{"Layout", "Shop.Layout"}, "", map[string]string{"Layout": "Layout", "Shop.Layout": "ShopLayout"}, nil},
 		{"local declaration", "M", []string{"Table.Todo"}, "Todo", map[string]string{"Table.Todo": "TableTodo"}, nil},
+		{"a join beside its own suffix", "M", []string{"A.X", "AX"}, "", map[string]string{"A.X": "X", "AX": "AX"}, nil},
+		{"local type named like the last segment", "Todos", []string{"Table.Todo", "Layout", "Admin.Layout"}, "Todo", map[string]string{"Table.Todo": "TableTodo", "Layout": "Layout", "Admin.Layout": "AdminLayout"}, nil},
 		{"identical joins", "M", []string{"A.X", "B.X", "AX"}, "", map[string]string{"A.X": "", "B.X": "BX", "AX": ""}, []string{"A.X", "AX"}},
 		{"distinct ends", "M", []string{"Todos.Index", "Projects.Index", "Blog.Show"}, "", map[string]string{"Todos.Index": "TodosIndex", "Projects.Index": "ProjectsIndex", "Blog.Show": "Show"}, nil},
 		{"whole join taken", "M", []string{"List"}, "", map[string]string{"List": ""}, []string{"List"}},

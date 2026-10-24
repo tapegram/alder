@@ -647,7 +647,7 @@ module needs no import, and a name that is not a module's is the
 checker's to report. What a generator writes
 is always canonical (chapter 3, "Files and modules"): it imports a module
 with its canonical `as` where the qualifier differs from the last segment
-(`import Admin.Layout as AdminLayout`), and writes the table `Todo` of
+(`import Admin.Layout as AdminLayout`), and writes the type `Todo` of
 `import Table.Todo` as `Todo`. When a new import changes the canonical
 qualifier of one already in the file, the generator rewrites that import
 line and its uses in the same edit. An address names one declaration: an arm

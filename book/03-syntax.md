@@ -36,8 +36,8 @@ import Table.Todo as TableTodo
 ```
 
 Here `Layout` is the plain layout, `AdminLayout.Page` is the admin one, and
-`TableTodo` is the table of `app/Table/Todo.alder`, because `Todos`
-declares a `table Todo` of its own and `Todo` is already spoken for.
+`TableTodo` is the module in `app/Table/Todo.alder`, because `Todos`
+declares a `type Todo` of its own and `Todo` is already spoken for.
 
 There is no choice in the spelling. The compiler computes exactly one
 qualifier for each import, the *canonical* one, and the `as` must match it:
@@ -71,7 +71,7 @@ imports of one file, worked:
 | `Posts.Index`, `Admin.Posts.Index` | `PostsIndex`, `AdminPostsIndex` | both start as `Index`, then both read `PostsIndex`; `Posts.Index` has no more segments, so only the other grows |
 | `Utils.List` | `UtilsList` | `List` is a standard-library module |
 | `Data.MnSos` in module `Sites.MnSos` | `DataMnSos` | `MnSos` is the module's own last segment |
-| `Table.Todo`, with a `table Todo` declared in the file | `TableTodo` | `Todo` is a declared name |
+| `Table.Todo`, with a `type Todo` declared in the file | `TableTodo` | `Todo` is a declared name |
 | `Todos.Index`, `Projects.Index`, `Blog.Show` | `TodosIndex`, `ProjectsIndex`, `Show` | only the two `Index` imports collide |
 
 Two details. The file's own last segment blocks a candidate only while
@@ -79,11 +79,13 @@ the path can still grow: inside module `Admin.Layout`, `import Layout` is
 legal and keeps `Layout`, since its whole path is all there is. Mind what
 that means to a reader: inside `Admin.Layout`, `Layout.Page` names the
 *other* module, the plain layout, not the file you are in. And some imports
-cannot be saved: `A.X` and `AX` in the same file both end as the whole
-join `AX`, so neither has a usable qualifier. That is E0206, and its fix
-suggests renaming a module. The generators of chapter 15 and the language
-server's completions use this same computation, so what they write is
-always canonical.
+cannot be saved. `A.X` and `AX` alone are fine (`X` and `AX`), but add
+`B.X`: then `A.X` and `B.X` both start as `X` and grow to `AX` and `BX`,
+and `A.X` now ends as the whole join `AX`, the same as the import `AX`,
+which cannot grow either. Neither has a usable qualifier (`B.X` keeps
+`BX`). That is E0206, and its message suggests renaming a module. The
+generators of chapter 15 and the language server's completions use this
+same computation, so what they write is always canonical.
 
 **Always the qualifier, never the path.** Writing the full path of an
 imported module where its qualifier belongs is E0205: `Table.Todo.find`
@@ -95,12 +97,12 @@ Todos.Index`, its helper is `Index.helper`, not `Todos.Index.helper`.
 `alder fmt` applies the E0204 and E0205 fixes for a file of an app project
 (chapter 11), so one run migrates an older project.
 
-A declaration whose name equals the qualifier is referred to by the
-qualifier alone: module `Todo` defining `type Todo` (or `table Todo`) is
-used as `Todo`, not `Todo.Todo`; module `Layout` defining a component
-`Layout` is used as `<Layout>`. With `import Table.Todo` that is `Todo`
-for the table in `app/Table/Todo.alder`, and with `import Table.Todo as
-TableTodo` it is `TableTodo`.
+A declaration named like the module's last segment is referred to by
+the module's qualifier alone: module `Todo` defining `type Todo` (or
+`table Todo`) is used as `Todo`, not `Todo.Todo`; module `Layout`
+defining a component `Layout` is used as `<Layout>`. With `import
+Table.Todo` that is `Todo` for the `type Todo` in `app/Table/Todo.alder`,
+and with `import Table.Todo as TableTodo` the same type is `TableTodo`.
 
 **Addresses in prose.** When the book or a compiler message names a
 declaration of a page by where it lives, it writes the whole address,
