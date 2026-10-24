@@ -523,7 +523,7 @@ func TestGenerate_Refusals(t *testing.T) {
 	if code, _, errs := runNew(t, filepath.Join(base, "page")); code != 1 || errs != "alder new: `page` names a generator (`alder new page …`), so it cannot name an app: choose another name\n" {
 		t.Errorf("an app named page: exit %d, %q", code, errs)
 	}
-	if code, _, errs := runNew(t, "page"); code != 2 || !strings.HasPrefix(errs, "usage: alder new page <Module> <path>") {
+	if code, _, errs := runNew(t, "page"); code != 2 || !strings.HasPrefix(errs, "usage: alder new page [<Module>] <path>") {
 		t.Errorf("alder new page alone: exit %d, %q", code, errs)
 	}
 }

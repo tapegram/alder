@@ -78,3 +78,22 @@ func TestSelect(t *testing.T) {
 		t.Fatal("selected an unknown subcommand")
 	}
 }
+
+func TestParseArgsOptionalLeading(t *testing.T) {
+	spec := &Spec{ID: "x", Args: []Field{{Name: "a", Kind: ArgModule}, {Name: "b", Kind: ArgRoute, Required: true}}}
+	for _, c := range []struct {
+		argv []string
+		want Sets
+		err  error
+	}{
+		{[]string{"/x"}, Sets{"b": {"/x"}}, nil},
+		{[]string{"M", "/x"}, Sets{"a": {"M"}, "b": {"/x"}}, nil},
+		{nil, nil, ErrArity},
+		{[]string{"M", "/x", "extra"}, nil, ErrArity},
+	} {
+		got, _, err := ParseArgs(spec, c.argv)
+		if !errors.Is(err, c.err) || !reflect.DeepEqual(got, c.want) {
+			t.Errorf("ParseArgs(%v) = %v, %v; want %v, %v", c.argv, got, err, c.want, c.err)
+		}
+	}
+}

@@ -176,28 +176,37 @@ func ParseArgs(s *Spec, argv []string) (Sets, CLIFlags, error) {
 	for k, v := range flags {
 		sets[k] = v
 	}
-	for i, a := range s.Args {
+	// with fewer positionals than arguments (and no variadic one), the optional arguments are
+	// skipped from the left: `new page [module?] path` given one word gives it to `path`
+	skip := 0
+	if n := len(s.Args); n > 0 && !s.Args[n-1].Variadic && len(pos) < n {
+		skip = n - len(pos)
+	}
+	for _, a := range s.Args {
+		if skip > 0 && !a.Required {
+			skip--
+			continue
+		}
 		if a.Variadic {
-			if len(pos) > i {
-				sets[a.Name] = pos[i:]
+			if len(pos) > 0 {
+				sets[a.Name] = pos
 			} else if a.Required {
 				return nil, cli, ErrArity
 			}
 			pos = nil
 			break
 		}
-		if i >= len(pos) {
+		if len(pos) == 0 {
 			if a.Required {
 				return nil, cli, ErrArity
 			}
 			continue
 		}
-		sets[a.Name] = []string{pos[i]}
+		sets[a.Name] = []string{pos[0]}
+		pos = pos[1:]
 	}
-	if len(s.Args) == 0 || !s.Args[len(s.Args)-1].Variadic {
-		if len(pos) > len(s.Args) {
-			return nil, cli, ErrArity
-		}
+	if len(pos) > 0 { // words no argument took
+		return nil, cli, ErrArity
 	}
 	return sets, cli, nil
 }

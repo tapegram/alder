@@ -1,6 +1,7 @@
 package generate
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -91,4 +92,67 @@ func TestSpecs_NewPageFileTypeIsQuoted(t *testing.T) {
 		}
 	}
 	t.Fatalf("no file page in %+v", res.Files)
+}
+
+func TestNewPageDerivesModule(t *testing.T) {
+	for _, c := range []struct {
+		app, file, module, path string
+		opts                    PageOptions
+	}{
+		{"fixture", "app/Posts/Index.alder", "Posts.Index", "/posts", PageOptions{Path: "/posts", List: "Post"}},
+		{"fixture-silo", "app/Activities/Show.alder", "Activities.Show", "/activities", PageOptions{Path: "/activities", Show: "Activity"}},
+		{"fixture", "app/Posts/New.alder", "Posts.New", "/new", PageOptions{Path: "/new", From: []string{"Post", "Tag"}}},
+	} {
+		p, err := Load("../../testdata/generate/" + c.app)
+		if err != nil {
+			t.Fatal(err)
+		}
+		edits, err := NewPage(p, c.opts)
+		if err != nil {
+			t.Fatalf("%v: %v", c.opts, err)
+		}
+		var body string
+		for _, e := range edits {
+			if e.Path == c.file {
+				body = e.Body
+			}
+		}
+		if body == "" || !strings.Contains(body, "module "+c.module+"\n") || !strings.Contains(body, `page "`+c.path) {
+			t.Errorf("%v: no %s declaring module %s and page %s in %+v", c.opts, c.file, c.module, c.path, edits)
+		}
+	}
+}
+
+func TestNewPageNoModuleNoTable(t *testing.T) {
+	p, err := Load("../../testdata/generate/fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewPage(p, PageOptions{Path: "/x", Blank: true})
+	want := "a page needs a module: `alder new page <Module> <path>`, or give --list/--show/--from T to name it Ts.Index/Ts.Show/Ts.New"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+	if _, err = NewPage(p, PageOptions{Path: "/x", List: "Nope"}); err == nil || !strings.Contains(err.Error(), "not a table") {
+		t.Fatalf("unknown table: %v", err)
+	}
+}
+
+func TestNewPageMissingPath(t *testing.T) {
+	spec := SpecByID("new page")
+	// the one word is the path (the module is optional), so a module name is refused as a path
+	sets, _, err := ParseArgs(spec, []string{"Todos.Index"})
+	if err != nil || sets.One("path") != "Todos.Index" || sets.One("module") != "" {
+		t.Fatalf("sets = %v, err = %v", sets, err)
+	}
+	p, err := Load("../../testdata/generate/fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewPage(p, PageOptions{Module: "Todos.Index", Path: sets.One("path")}); err == nil || !strings.Contains(err.Error(), "is not a path") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, _, err := ParseArgs(spec, nil); !errors.Is(err, ErrArity) {
+		t.Fatalf("err = %v, want ErrArity", err)
+	}
 }

@@ -119,6 +119,14 @@ type PageOptions struct {
 	ContentType string
 }
 
+// DerivedPageModule is the module `alder new page` names for a page of table t when none is
+// given: Ts.Index for --list, Ts.Show for --show, Ts.New for --from (kind "list", "show",
+// "from"), Ts being the table's plural (PluralConcern).
+func DerivedPageModule(t, kind string) string {
+	leaf := map[string]string{"list": "Index", "show": "Show", "from": "New"}[kind]
+	return PluralConcern(t) + "." + leaf
+}
+
 // pathParam matches a `{name}` segment of a page path.
 var pathParam = regexp.MustCompile(`\{([^/{}]*)\}`)
 
@@ -130,6 +138,24 @@ var pathParam = regexp.MustCompile(`\{([^/{}]*)\}`)
 // column that is not unique, and a role the session does not have; a path another page has is
 // the checker's E0016, surfaced by Apply.
 func NewPage(p *Program, o PageOptions) ([]Edit, error) {
+	if o.Module == "" {
+		kind, name := "", ""
+		switch {
+		case o.List != "":
+			kind, name = "list", o.List
+		case o.Show != "":
+			kind, name = "show", o.Show
+		case len(o.From) > 0:
+			kind, name = "from", o.From[0]
+		}
+		if kind == "" {
+			return nil, Refusef("a page needs a module: `alder new page <Module> <path>`, or give --list/--show/--from T to name it Ts.Index/Ts.Show/Ts.New")
+		}
+		if p.TableNamed(name) == nil {
+			return nil, Refusef("`%s` is not a table of this app (its tables: %s)", name, tableNames(p))
+		}
+		o.Module = DerivedPageModule(name, kind)
+	}
 	if !IsModuleName(o.Module) {
 		return nil, Refusef("`%s` is not a module name: write capitalised names joined by dots, such as `Posts.Index`", o.Module)
 	}

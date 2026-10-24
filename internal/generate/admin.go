@@ -91,10 +91,14 @@ func adminCheck(p *Program, o AdminOptions) (AdminOptions, error) {
 // adminDir is the directory of the admin's modules: "app/Admin".
 func adminDir(o AdminOptions) string { return AdminDir(o.Module) }
 
+// PluralConcern is the folder module of table name's pages: "Todos" for Todo, "Activities" for
+// Activity. Generated pages of a table live in it (`Todos.Index`); the admin's too (`Admin.Todos`).
+func PluralConcern(name string) string { return UpperFirst(Plural(LowerFirst(name))) }
+
 // adminTableModule is the module prefix of table t's admin pages: "Admin.Todos", the plural of
 // the table's name (not its module, which may be "Table.Todo").
 func adminTableModule(o AdminOptions, t *Table) string {
-	return o.Module + "." + UpperFirst(Plural(LowerFirst(t.Name)))
+	return o.Module + "." + PluralConcern(t.Name)
 }
 
 // AdminDir is the directory of the modules of the admin named module ("" is the default,

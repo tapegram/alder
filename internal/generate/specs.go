@@ -85,7 +85,7 @@ func newSpecs() []*Spec {
 		{
 			ID: "new page", Summary: "a page module",
 			Args: []Field{
-				{Name: "module", Kind: ArgModule, Required: true, Value: "<Module>"},
+				{Name: "module", Kind: ArgModule, Value: "<Module>"},
 				{Name: "path", Kind: ArgRoute, Required: true, Value: "<path>"},
 			},
 			Flags: []Field{
