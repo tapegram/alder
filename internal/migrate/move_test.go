@@ -85,6 +85,18 @@ func TestSiloMoveSeesMovedTable(t *testing.T) {
 	}
 }
 
+// TestSiloMoveReportsPairingError: a bad @renamed is the error, not the silo move its partial
+// pairing would report.
+func TestSiloMoveReportsPairingError(t *testing.T) {
+	old := schema(named("Todo.Todo", text("title")))
+	moved := named("Table.Todo.Todo", text("title"))
+	moved.Silo, moved.RenamedFrom = "s", "Task.Task"
+	_, err := Plan(old, schema(moved), "0002_move")
+	if err == nil || !strings.Contains(err.Error(), "the snapshot has no table Task") || strings.Contains(err.Error(), "moves into") {
+		t.Errorf("Plan error = %v", err)
+	}
+}
+
 // TestDiffRenamedInTableLayout: `@renamed "Todo"` (written "Todo.Todo") finds Table.Todo.Todo.
 func TestDiffRenamedInTableLayout(t *testing.T) {
 	old := schema(named("Table.Todo.Todo", text("title")))

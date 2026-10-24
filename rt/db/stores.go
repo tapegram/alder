@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -780,8 +781,9 @@ func (s *Stores) check(ctx context.Context, st *SQLite, ss *siloSchema, allowDat
 			}
 		}
 	default:
-		for _, m := range p.pending {
-			for _, stmt := range ss.statements(m) {
+		names := ss.pendingNames(p.pending)
+		for i, m := range p.pending {
+			for _, stmt := range ss.statements(m, names[i]) {
 				if _, err := tx.ExecContext(ctx, stmt); err != nil {
 					return SiloFailed, fmt.Sprintf("migration %s failed: %v", m.Name, err), nil
 				}
@@ -824,20 +826,41 @@ var (
 	references  = regexp.MustCompile(` REFERENCES "((?:[^"]|"")*)"\("(?:[^"]|"")*"\)(?: ON DELETE (?:CASCADE|SET NULL))?`)
 )
 
-// statements are migration m's statements on the silo's tables, as the silo holds them: a
-// statement on another table is left out, and a REFERENCES to a table outside the silo removed.
-//
-// A table renamed into the silo (a move between modules, #20) is the silo's under its old name
-// too, up to its RENAME and the DROP of its old indexes: those come first, before it has the
-// new name every later statement uses.
-func (ss *siloSchema) statements(m Migration) []string {
-	var out []string
-	renamedFrom := map[string]bool{}
-	for _, st := range m.statements() {
-		if x := renameTable.FindStringSubmatch(st); x != nil && ss.sqlName[strings.ReplaceAll(x[2], `""`, `"`)] {
-			renamedFrom[strings.ReplaceAll(x[1], `""`, `"`)] = true
+// pendingNames are the silo's SQL names in each of the pending migrations ms, walking back from
+// this build's: a table renamed into the silo (a move between modules, #20) is the silo's under
+// its old name in the migrations up to and including its RENAME (there, its RENAME and the DROP
+// of its old indexes), and not in a later one, which may reuse the old name for another table.
+func (ss *siloSchema) pendingNames(ms []Migration) []map[string]bool {
+	out := make([]map[string]bool, len(ms))
+	cur := maps.Clone(ss.sqlName)
+	for i := len(ms) - 1; i >= 0; i-- {
+		names := maps.Clone(cur)
+		var renames [][2]string // old, new
+		for _, st := range ms[i].statements() {
+			if x := renameTable.FindStringSubmatch(st); x != nil && cur[unquote(x[2])] {
+				names[unquote(x[1])] = true
+				renames = append(renames, [2]string{unquote(x[1]), unquote(x[2])})
+			}
+		}
+		out[i] = names
+		for _, r := range renames { // before migration i the table has only its old name
+			delete(cur, r[1])
+		}
+		for _, r := range renames {
+			cur[r[0]] = true
 		}
 	}
+	return out
+}
+
+// unquote is a quoted SQL identifier's text.
+func unquote(s string) string { return strings.ReplaceAll(s, `""`, `"`) }
+
+// statements are migration m's statements on the silo's tables, as the silo holds them: a
+// statement on a table not among names (the silo's SQL names in m, pendingNames) is left out,
+// and a REFERENCES to a table outside the silo removed.
+func (ss *siloSchema) statements(m Migration, names map[string]bool) []string {
+	var out []string
 	for _, st := range m.statements() {
 		var target string
 		if x := stmtTarget.FindStringSubmatch(st); x != nil {
@@ -847,12 +870,11 @@ func (ss *siloSchema) statements(m Migration) []string {
 		} else if x := dropIndex.FindStringSubmatch(st); x != nil {
 			target = x[1]
 		}
-		target = strings.TrimSuffix(strings.ReplaceAll(target, `""`, `"`), "__alder__new")
-		if !ss.sqlName[target] && !renamedFrom[target] {
+		if !names[strings.TrimSuffix(unquote(target), "__alder__new")] {
 			continue
 		}
 		st = references.ReplaceAllStringFunc(st, func(ref string) string {
-			if ss.sqlName[references.FindStringSubmatch(ref)[1]] {
+			if names[unquote(references.FindStringSubmatch(ref)[1])] {
 				return ref
 			}
 			return ""

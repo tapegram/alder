@@ -753,3 +753,36 @@ func TestRegenAdminRefusesSingularLayout(t *testing.T) {
 		t.Error("the refused regen changed files")
 	}
 }
+
+// TestRegenAdminRefusesSingularNavLink: the old layout seen only in the Layout's nav (a link to
+// Admin.Post.Index, no Admin/Post/ folder) is refused too, and nothing is written.
+func TestRegenAdminRefusesSingularNavLink(t *testing.T) {
+	t.Parallel()
+	dir := genApp(t, "fixture")
+	if code, _, errs := alderIn(t, dir, "", "new", "admin"); code != 0 {
+		t.Fatalf("alder new admin: exit %d: %s", code, errs)
+	}
+	layout := filepath.Join(dir, "app", "Admin", "Layout.alder")
+	b, err := os.ReadFile(layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nav, ok, err := generate.Regions.Body(string(b), "nav")
+	if err != nil || !ok || !strings.Contains(nav, "Admin.Posts.Index") {
+		t.Fatalf("the nav does not link Admin.Posts.Index (%v):\n%s", err, nav)
+	}
+	if err := os.WriteFile(layout, []byte(strings.ReplaceAll(string(b), "Admin.Posts.Index", "Admin.Post.Index")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "app", "Admin", "Post")); !os.IsNotExist(err) {
+		t.Fatalf("Admin/Post/ exists: %v", err)
+	}
+	before := treeSnapshot(t, dir)
+	code, out, errs := alderIn(t, dir, "", "regen", "admin", "--all")
+	if code == 0 || !strings.Contains(errs, "old layout (Admin/Post/)") || !strings.Contains(errs, "folders are plural now (Admin/Posts/)") {
+		t.Fatalf("exit %d\n%s%s", code, out, errs)
+	}
+	if !maps.Equal(before, treeSnapshot(t, dir)) {
+		t.Error("the refused regen changed files")
+	}
+}

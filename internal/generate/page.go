@@ -121,10 +121,22 @@ type PageOptions struct {
 
 // DerivedPageModule is the module `alder new page` names for a page of table t when none is
 // given: Ts.Index for --list, Ts.Show for --show, Ts.New for --from (kind "list", "show",
-// "from"), Ts being the table's plural (PluralConcern).
+// "from"), Ts being the table's plural (PluralConcern). Another kind is a programmer error.
 func DerivedPageModule(t, kind string) string {
-	leaf := map[string]string{"list": "Index", "show": "Show", "from": "New"}[kind]
+	leaf, ok := map[string]string{"list": "Index", "show": "Show", "from": "New"}[kind]
+	if !ok {
+		panic(fmt.Sprintf("generate: DerivedPageModule: kind %q is not list, show or from", kind))
+	}
 	return PluralConcern(t) + "." + leaf
+}
+
+// notAPath refuses path, which does not start with `/`; a module name (`alder new page
+// Todos.Index`, whose one word is the path: the module is optional) gets the command it meant.
+func notAPath(path string) error {
+	if IsModuleName(path) {
+		return Refusef("`%s` is not a path: a page needs a path, `alder new page %s /%s`", path, path, strings.ToLower(strings.Split(path, ".")[0]))
+	}
+	return Refusef("`%s` is not a path: a page's path starts with `/`, such as `/posts`", path)
 }
 
 // pathParam matches a `{name}` segment of a page path.
@@ -138,6 +150,9 @@ var pathParam = regexp.MustCompile(`\{([^/{}]*)\}`)
 // column that is not unique, and a role the session does not have; a path another page has is
 // the checker's E0016, surfaced by Apply.
 func NewPage(p *Program, o PageOptions) ([]Edit, error) {
+	if o.Module == "" && !strings.HasPrefix(o.Path, "/") && IsModuleName(o.Path) {
+		return nil, notAPath(o.Path)
+	}
 	if o.Module == "" {
 		kind, name := "", ""
 		switch {
@@ -164,7 +179,7 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		return nil, Refusef("module `%s` exists (`%s`): a generator never overwrites a file; choose another module name", o.Module, m.File)
 	}
 	if !strings.HasPrefix(o.Path, "/") {
-		return nil, Refusef("`%s` is not a path: a page's path starts with `/`, such as `/posts`", o.Path)
+		return nil, notAPath(o.Path)
 	}
 	if o.File && (o.List != "" || o.Show != "" || len(o.From) > 0 || o.Blank || o.Example) {
 		return nil, Refusef("--file makes a file page; --list and --show make HTML pages")

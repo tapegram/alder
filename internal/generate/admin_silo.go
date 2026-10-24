@@ -119,8 +119,10 @@ func (at *adminTable) action(suffix string) string {
 	return `{"` + before + `" ++ session.` + at.silo.key + ` ++ "` + after + `"}`
 }
 
-// siloLits adds the key, expr, to every page value of a table in silo s in text: `Admin.Project.Show
-// { id: x }` becomes `Admin.Project.Show { org: expr, id: x }` (one that names the key is left).
+// siloLits adds the key, expr, to every page value of a table in silo s in text: `Admin.Projects.Show
+// { id: x }` becomes `Admin.Projects.Show { org: expr, id: x }` (one that names the key is left).
+// The key's own pages, the picker `Admin.Orgs.Pick` and the dashboard `Admin.Orgs.Dashboard`,
+// are not a table's and are left as written.
 func (s *adminSilo) siloLits(text, expr string) string {
 	var alts []string
 	for m := range s.mods {

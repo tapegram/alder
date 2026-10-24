@@ -568,7 +568,7 @@ after a deploy that added `mood`):
 $ alder rollback production                                  (recorded)
 rollback 46ea832c79966e56 → 339250fe1b936905
   schema   FAIL  the live database is newer than the build
-alder rollback: refused: the live database's schema 9c29f6e97d0b is not build 339250fe1b936905's 9b787a621da5 (changed tables: Entry.Entry): that build would refuse to start on it or serve only its maintenance page, and rolling back never changes the data. Deploy a build with the schema you want, or pass --allow-schema-mismatch to try anyway; or `alder rollback production 339250fe1b936905 --restore-backup` puts back the copy of the data taken when that build was replaced (builds/46ea832c79966e56/backup.db), losing every write since
+alder rollback: refused: the live database's schema 9c29f6e97d0b is not build 339250fe1b936905's 9b787a621da5 (changed tables: Table.Entry.Entry): that build would refuse to start on it or serve only its maintenance page, and rolling back never changes the data. Deploy a build with the schema you want, or pass --allow-schema-mismatch to try anyway; or `alder rollback production 339250fe1b936905 --restore-backup` puts back the copy of the data taken when that build was replaced (builds/46ea832c79966e56/backup.db), losing every write since
 ```
 
 The refusal also catches the case the hashes cannot: a migration that

@@ -177,7 +177,10 @@ func ParseArgs(s *Spec, argv []string) (Sets, CLIFlags, error) {
 		sets[k] = v
 	}
 	// with fewer positionals than arguments (and no variadic one), the optional arguments are
-	// skipped from the left: `new page [module?] path` given one word gives it to `path`
+	// skipped from the left: `new page [module?] path` given one word gives it to `path`. With
+	// two or more optionals (no spec has them yet) the leftmost go unfilled first, so a later
+	// optional takes a word before an earlier one does: `[a?] [b?] c` given two words sets b
+	// and c, not a and c. A spec whose optionals should fill left to right needs another rule.
 	skip := 0
 	if n := len(s.Args); n > 0 && !s.Args[n-1].Variadic && len(pos) < n {
 		skip = n - len(pos)

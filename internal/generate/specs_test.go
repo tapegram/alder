@@ -149,8 +149,12 @@ func TestNewPageMissingPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewPage(p, PageOptions{Module: "Todos.Index", Path: sets.One("path")}); err == nil || !strings.Contains(err.Error(), "is not a path") {
+	hint := "`Todos.Index` is not a path: a page needs a path, `alder new page Todos.Index /todos`"
+	if _, err := NewPage(p, PageOptions{Module: sets.One("module"), Path: sets.One("path")}); err == nil || !strings.Contains(err.Error(), hint) {
 		t.Fatalf("err = %v", err)
+	}
+	if _, err := NewPage(p, PageOptions{Path: "Todos.Index", List: "Todo"}); err == nil || !strings.Contains(err.Error(), hint) {
+		t.Fatalf("with --list: err = %v", err)
 	}
 	if _, _, err := ParseArgs(spec, nil); !errors.Is(err, ErrArity) {
 		t.Fatalf("err = %v, want ErrArity", err)

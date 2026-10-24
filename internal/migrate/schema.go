@@ -175,7 +175,8 @@ func (s Schema) WithSilos(silos map[string][]string) Schema {
 // SiloMove is the migration generator's refusal of a table that changes store, "" for none: a
 // table the snapshot old has in the shared store (or a silo) that new puts in a silo (or the
 // shared store, or another silo). A migration changes one database's tables; it does not move
-// a table's rows from one database to others (book 8, "Silos").
+// a table's rows from one database to others (book 8, "Silos"). When the tables cannot be
+// paired (a bad @renamed) it is that error, which Plan reports before any silo move.
 func SiloMove(old, new Schema) string {
 	where := func(silo string) string {
 		if silo == "" {
@@ -183,7 +184,10 @@ func SiloMove(old, new Schema) string {
 		}
 		return "`silo " + silo + "`"
 	}
-	p, _ := pairTables(old, new) // pairing errors are Plan's to report
+	p, err := pairTables(sorted(old), sorted(new))
+	if err != nil { // the pairing's own error (a bad @renamed), as Diff reports it
+		return err.Error()
+	}
 	var out []string
 	for _, t := range new.Tables {
 		var o *Table

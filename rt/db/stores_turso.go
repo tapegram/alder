@@ -310,8 +310,9 @@ func (s *Stores) dryRun(ctx context.Context, st *SQLite, ss *siloSchema, ms []Mi
 		return err
 	}
 	defer tx.Rollback()
-	for _, m := range ms {
-		for _, q := range ss.statements(m) {
+	names := ss.pendingNames(ms)
+	for i, m := range ms {
+		for _, q := range ss.statements(m, names[i]) {
 			if _, err := tx.ExecContext(ctx, q); err != nil {
 				return fmt.Errorf("migration %s fails on it: %s: %v", m.Name, firstWords(q, 6), err)
 			}
