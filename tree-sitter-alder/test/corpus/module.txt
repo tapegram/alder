@@ -125,3 +125,25 @@ as = 1
     binding: (binding
       name: (identifier)
       body: (integer))))
+
+================================================================================
+as as a parameter and an operand
+================================================================================
+
+module Main
+
+f as = as + 1
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      params: (parameters
+        (identifier))
+      body: (additive_expr
+        left: (identifier)
+        right: (integer)))))
