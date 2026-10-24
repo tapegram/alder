@@ -280,6 +280,28 @@ func TestFmt_MigratesProjectFile(t *testing.T) {
 	}
 }
 
+// A project file that does not parse turns migration off for the run; fmt says so once on
+// stderr, naming the file, and the exit code stays the formatter's.
+func TestFmt_BrokenSiblingNotesSkippedMigration(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	fmtWrite(t, dir, "app/Table/Todo.alder", fmtTodoSrc)
+	fmtWrite(t, dir, "app/Broken.alder", "module Broken\n\nx = (\n")
+	p := fmtWrite(t, dir, "app/Todos.alder", fmtUseOld)
+	q := fmtWrite(t, dir, "app/Other.alder", strings.Replace(fmtUseOld, "module Todos", "module Other", 1))
+	code, out, errOut := fmtRun(p, q)
+	if code != 0 || out != "" {
+		t.Fatalf("code %d out %q err %q", code, out, errOut)
+	}
+	want := "alder fmt: app/Broken.alder does not parse, so imports were not migrated; fix it and run again\n"
+	if errOut != want {
+		t.Fatalf("stderr %q, want %q", errOut, want)
+	}
+	if got, _ := os.ReadFile(p); string(got) != fmtUseOld {
+		t.Fatalf("file %q", got)
+	}
+}
+
 func TestFmt_StdinNoMigration(t *testing.T) {
 	t.Parallel()
 	var o, e bytes.Buffer

@@ -1561,7 +1561,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | Code | Meaning | Fix offered |
 |---|---|---|
 | E0001 | parse error (also: an identifier with `__` in it, a module name segment ending in `_`) | — |
-| E0002 | unknown name | — |
+| E0002 | unknown name | — (in a test step, a form of another page written unqualified, or a page's form or message written through its import's qualifier, `Login.Credentials`, gets its full path, `Auth.Login.Credentials`) |
 | E0003 | type mismatch (also: a `Db.insertMine` row that names the owner column ("`owner` is set by `Db.insertMine`") or is not a record literal in the call ("`Db.insertMine` takes its row as a record literal: write the record literal in the `Db.insertMine` call (its row is `Insert Todo` without `owner`)"), `==` or a `Dict` key on a function or an effect value, a column method on a column held in a variable, `.contains` or `.startsWith` on a column that is not `Text`, `@setNull` on a field that is not a `Maybe`, a `Db` function over a type parameter, a `fake` that lacks an entry of its capability or defines one it does not have, `Test.fake` outside a `test`, on an expression, or on a capability without a `fake`, `Session` in a fake's entry; a browser step outside a `test`, on something not written in place (`Test.get p`), piped into or not applied, its argument of the wrong kind ("`Submit` carries form `NewTodo`: use `Test.submit`", "`Toggle` posts no form: use `Test.click`", "`Rename` is posted by `Save` and `Draft`: write `Test.submit (Save { id: … }) { … }`", "`Test.get` needs a record `Model`: …"), `Test.login` with a record that is not the app's session; `Doc`, `Answer` or one of its constructors outside a `test`, chapter 10, section 9) | conversion such as `Text.fromInt (…)` where one exists |
 | E0004 | non-exhaustive `match` | arm skeleton |
 | E0005 | module name does not match its file path | — |
@@ -1881,9 +1881,12 @@ chapter 3, "Files and modules"), then formats. That is how a project
 written before short qualifiers is brought over in one run, and it is
 safe to repeat: the second run changes nothing. A file with unrelated
 type errors is still migrated, and a file that does not parse is left as
-it is. `--stdin` and a file outside an app project only format, and
-`--check` lists a file that would be migrated as one that would be
-reformatted.
+it is. While any file of the project does not parse, the program cannot
+be loaded, so no file is migrated: fmt still formats, and says so once on
+stderr, `alder fmt: app/Broken.alder does not parse, so imports were not
+migrated; fix it and run again`, without changing the exit code.
+`--stdin` and a file outside an app project only format, and `--check`
+lists a file that would be migrated as one that would be reformatted.
 
 Rewriting prints one line per file it changed, and nothing when nothing
 changed. `--check` prints `<file> would be reformatted` for each file that is

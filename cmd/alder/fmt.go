@@ -71,8 +71,9 @@ func runFmtTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code in
 			code = c
 		}
 	}
+	noted := map[string]bool{} // app roots whose skipped migration was reported
 	for _, f := range files {
-		raise(fmtFile(f, checkOnly, stdout, stderr))
+		raise(fmtFile(f, checkOnly, noted, stdout, stderr))
 	}
 	return code
 }
@@ -93,8 +94,10 @@ func fmtStdin(stdin io.Reader, stdout, stderr io.Writer) int {
 	})
 }
 
-// fmtFile formats one file, reporting on stdout and problems on stderr; it returns the file's exit code.
-func fmtFile(path string, checkOnly bool, stdout, stderr io.Writer) int {
+// fmtFile formats one file, reporting on stdout and problems on stderr; it returns the file's
+// exit code. When the file's project has a file that does not parse, migration is skipped and
+// stderr says so once per project (noted holds the roots already reported).
+func fmtFile(path string, checkOnly bool, noted map[string]bool, stdout, stderr io.Writer) int {
 	info, err := os.Stat(path)
 	if err != nil {
 		fmt.Fprintf(stderr, "alder fmt: %v\n", err)
@@ -111,7 +114,15 @@ func fmtFile(path string, checkOnly bool, stdout, stderr io.Writer) int {
 	}
 	// the formatter's safety check compares the migrated source with its output, so the
 	// migration is never judged by it; the file on disk is compared with the final output
-	migrated := fmtMigrate(path, src)
+	migrated, root, broken := fmtMigrate(path, src)
+	if len(broken) > 0 && !noted[root] {
+		noted[root] = true
+		verb, them := "does", "it"
+		if len(broken) > 1 {
+			verb, them = "do", "them"
+		}
+		fmt.Fprintf(stderr, "alder fmt: %s %s not parse, so imports were not migrated; fix %s and run again\n", strings.Join(broken, ", "), verb, them)
+	}
 	out, ds, err := format.Source(path, migrated)
 	return fmtResult(path, src, out, ds, err, stderr, func(out []byte) int {
 		if string(out) == string(src) {
@@ -132,30 +143,35 @@ func fmtFile(path string, checkOnly bool, stdout, stderr io.Writer) int {
 
 // fmtMigrate is src with the import-qualifier fixes (E0204, E0205) of a file inside an app
 // project applied; src itself for a file outside one, or when the project cannot be loaded and
-// resolved (a file that does not parse is reported by the formatter, not here).
-func fmtMigrate(path string, src []byte) []byte {
+// resolved. When project files do not parse, it also returns the app root and those files
+// (relative to the root) so the caller can say why nothing was migrated; the formatter reports
+// the syntax errors of the file it formats.
+func fmtMigrate(path string, src []byte) (out []byte, root string, broken []string) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return src
+		return src, "", nil
 	}
-	root := findAppRoot(filepath.Dir(abs))
+	root = findAppRoot(filepath.Dir(abs))
 	if root == "" {
-		return src
+		return src, "", nil
 	}
 	std, err := types.LoadStd()
 	if err != nil {
-		return src
+		return src, root, nil
 	}
 	prog, bag, ioErrs := names.LoadOverlay(root, std, nil)
-	if len(ioErrs) > 0 || prog.ParseFailed {
-		return src
+	if len(ioErrs) > 0 {
+		return src, root, nil
+	}
+	if prog.ParseFailed {
+		return src, root, prog.Unparsed
 	}
 	prog.Resolve(bag)
-	out, _, err := format.Migrate(prog, bag, fmtRel(root, abs), src)
+	out, _, err = format.Migrate(prog, bag, fmtRel(root, abs), src)
 	if err != nil {
-		return src
+		return src, root, nil
 	}
-	return out
+	return out, root, nil
 }
 
 // fmtResult turns a format.Source result into an exit code: diagnostics (1), an unsafe rewrite

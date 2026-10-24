@@ -39,6 +39,9 @@ type Program struct {
 	quiet   map[string]bool // modules that used a stdNamed module's missing name: Failed, silently
 	// ParseFailed is set by Load when any file had a syntax error; such a program must not be checked.
 	ParseFailed bool
+	// Unparsed lists, in load order, the files (relative to the project) that made ParseFailed
+	// true: a syntax error, or a scratch file under app/.
+	Unparsed []string
 	// ElementsManifest is the content of the app's elements/custom-elements.json (the custom
 	// elements it declares, chapter 5), read by Load; nil when the file does not exist. The
 	// checker parses it (internal/elements).
@@ -66,16 +69,24 @@ func LoadOverlay(dir string, std map[string]*syntax.Module, overlay map[string][
 	var ioErrs []error
 	bag := &diag.Bag{}
 	var mods []*syntax.Module
+	var unparsed []string
 	seen := map[string]bool{}
 	parse := func(rel string, src []byte) {
 		if syntax.IsScratchName(rel) { // a scratch file is not a module (E0036)
 			bag.Error(diag.ScratchInApp, diag.Span{File: rel, Start: diag.Pos{Line: 1, Col: 1}, End: diag.Pos{Line: 1, Col: 1}},
 				"a scratch file does not belong under app/; move it to the project root")
 			seen[rel] = true
+			unparsed = append(unparsed, rel)
 			return
 		}
 		m, ds := syntax.ParseFile(rel, src)
 		bag.Items = append(bag.Items, ds...)
+		for _, d := range ds {
+			if d.Severity == "error" {
+				unparsed = append(unparsed, rel)
+				break
+			}
+		}
 		mods = append(mods, m)
 		seen[rel] = true
 	}
@@ -116,6 +127,7 @@ func LoadOverlay(dir string, std map[string]*syntax.Module, overlay map[string][
 	mods = append(mods, extra...)
 	prog, b2 := Build(mods, std)
 	prog.ParseFailed = parseFailed
+	prog.Unparsed = unparsed
 	if data, err := os.ReadFile(filepath.Join(dir, "elements", "custom-elements.json")); err == nil {
 		prog.ElementsManifest = data
 	} else if !errors.Is(err, fs.ErrNotExist) {
