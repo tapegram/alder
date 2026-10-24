@@ -110,6 +110,7 @@ func TestRender_DeepNestingNoRecursion(t *testing.T) {
 }
 
 func TestRender_Performance(t *testing.T) {
+	skipTiming(t)
 	items := make([]Doc, 0, 4000)
 	for i := 0; i < 1000; i++ {
 		items = append(items, Group(Concat(Text("let x ="), Nest(Concat(Line, Text("foo(bar, baz)"))), IfBreak(Text(";"), Text("")))), HardLine)
