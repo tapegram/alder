@@ -171,7 +171,7 @@ func retarget(e *srcEdit, p *Program, m *syntax.Module, want []string, force boo
 		}
 	}
 	// the references to rewrite: a module's full path, and a qualifier that changed
-	rename := map[string]string{}
+	rename, bare := map[string]string{}, map[string]string{}
 	for _, im := range m.Imports {
 		if p.Std[im.Module] {
 			continue
@@ -179,6 +179,9 @@ func retarget(e *srcEdit, p *Program, m *syntax.Module, want []string, force boo
 		q := quals[im.Module]
 		if was[im.Module] != q {
 			rename[was[im.Module]] = q
+			if was[im.Module] != im.Module { // a proper suffix of the path, so no page value
+				bare[was[im.Module]] = q
+			}
 			e.replaceLine(im.Span.Start.Line, importLine(im.Module, q))
 		} else if force && e.current(im.Span.Start.Line) != importLine(im.Module, q) {
 			e.replaceLine(im.Span.Start.Line, importLine(im.Module, q))
@@ -189,7 +192,7 @@ func retarget(e *srcEdit, p *Program, m *syntax.Module, want []string, force boo
 			rename[path] = quals[path]
 		}
 	}
-	e.requalify(rename)
+	e.requalify(rename, bare)
 	if len(add) == 0 {
 		return quals
 	}

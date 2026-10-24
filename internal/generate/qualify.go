@@ -9,29 +9,31 @@ import (
 // requalify rewrites, in every line of the edit (as replaced so far) and every insertion, the
 // module qualifiers named by the keys of rename to their values: `Admin.Layout.isAdmin` and
 // `<Admin.Layout.Page>` with Admin.Layout → Layout. Only a name written with a member after the
-// module is rewritten, so a page value (`Admin.Layout {}`) keeps its full path.
-func (e *srcEdit) requalify(rename map[string]string) {
-	if len(rename) == 0 {
+// module is rewritten, so a page value (`Admin.Layout {}`) keeps its full path. bare maps a
+// qualifier that changed to its new one for the name written alone (`Todo { … }`, `: Todo`, an
+// eponymous declaration): such a name is never a page value, whose spelling is a full path.
+func (e *srcEdit) requalify(rename, bare map[string]string) {
+	if len(rename) == 0 && len(bare) == 0 {
 		return
 	}
 	for n := 1; n <= len(e.lines); n++ {
 		if r, ok := e.repl[n]; ok && r == nil {
 			continue // deleted
 		}
-		if cur := e.current(n); requalified(cur, rename) != cur {
-			e.replaceLine(n, requalified(cur, rename))
+		if cur := e.current(n); requalified(cur, rename, bare) != cur {
+			e.replaceLine(n, requalified(cur, rename, bare))
 		}
 	}
 	for i := range e.ins {
 		for j, l := range e.ins[i].text {
-			e.ins[i].text[j] = requalified(l, rename)
+			e.ins[i].text[j] = requalified(l, rename, bare)
 		}
 	}
 }
 
 // requalified is s with the qualifiers of rename rewritten (requalify), outside strings and
 // comments.
-func requalified(s string, rename map[string]string) string {
+func requalified(s string, rename, bare map[string]string) string {
 	if !strings.ContainsAny(s, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
 		return s
 	}
@@ -63,7 +65,7 @@ func requalified(s string, rename map[string]string) string {
 				j++
 			}
 			if 'A' <= c && c <= 'Z' && (i == 0 || s[i-1] != '.') {
-				k, out := requalifyChain(s, i, rename)
+				k, out := requalifyChain(s, i, rename, bare)
 				b.WriteString(out)
 				i = k
 				continue
@@ -82,7 +84,7 @@ func requalified(s string, rename map[string]string) string {
 // in `Admin.Layout.Page` or `Admin.Layout.isAdmin`): its longest prefix that is a key of rename
 // and has a segment after it is replaced. It returns where the name ends (before a member)
 // and the text for s[i:end].
-func requalifyChain(s string, i int, rename map[string]string) (int, string) {
+func requalifyChain(s string, i int, rename, bare map[string]string) (int, string) {
 	var ends []int // the end of each capitalised segment
 	j := i
 	for {
@@ -99,6 +101,11 @@ func requalifyChain(s string, i int, rename map[string]string) (int, string) {
 		break
 	}
 	member := j+1 < len(s) && s[j] == '.' && isNameByte(s[j+1]) // a lower-case member follows
+	if !member && len(ends) == 1 { // a bare name: an eponymous type or table, through the old qualifier
+		if q, ok := bare[s[i:j]]; ok {
+			return j, q
+		}
+	}
 	for n := len(ends); n >= 1; n-- {
 		if n == len(ends) && !member {
 			continue // the whole name with nothing after it: a page value, or a type

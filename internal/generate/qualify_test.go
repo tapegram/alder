@@ -110,3 +110,13 @@ func TestTypeImports_Qualifier(t *testing.T) {
 		t.Errorf("imports = %s", got)
 	}
 }
+
+// TestAddImports_RequalifiesBare: a bare eponymous name follows its import's new qualifier.
+func TestAddImports_RequalifiesBare(t *testing.T) {
+	src := "module Home\n\nimport Table.Todo\n\nx : Todo\nx = Todo { a: 1 }\ny = Todo.f\n"
+	got, _ := addImportsTo(t, stdProgram(), "Home", src, []string{"Admin.Todo"})
+	want := "module Home\n\nimport Admin.Todo as AdminTodo\nimport Table.Todo as TableTodo\n\nx : TableTodo\nx = TableTodo { a: 1 }\ny = TableTodo.f\n"
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
