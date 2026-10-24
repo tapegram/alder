@@ -24,6 +24,9 @@ const MaxValue = 64 << 10
 // effectNote is a watch's Note when its value is an effect, which scratch does not run.
 const effectNote = "not run: scratch evaluates pure values only"
 
+// AppErrorsNote is FileResult.Note when the app has errors, so nothing was built.
+const AppErrorsNote = "the app has errors; fix them and save"
+
 // WatchResult is what RunFile learned of one watch.
 type WatchResult struct {
 	Line      int    `json:"line"`
@@ -176,7 +179,7 @@ func RunFile(ctx context.Context, appDir string, f File, o FileOptions) (r FileR
 	// 3. Whether to build.
 	switch {
 	case appErr:
-		r.Note = "the app has errors; fix them and save"
+		r.Note = AppErrorsNote
 		return r
 	case fileErr:
 		return r

@@ -107,6 +107,7 @@ func newServer(w io.Writer, o Options) *server {
 func (s *server) serve(r io.Reader) error {
 	defer func() {
 		close(s.stop)
+		s.stopAllScratch()
 		s.bg.Wait()
 	}()
 	var wg sync.WaitGroup

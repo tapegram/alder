@@ -25,7 +25,8 @@ type analysis struct {
 }
 
 // initializedNote starts the analysis goroutine and, when Options.Poll is set, the disk poller,
-// whose source changes rebuild. Both stop when serve returns (at `exit` or the end of input).
+// whose source changes rebuild and rerun the open scratch documents. Both stop when serve
+// returns (at `exit` or the end of input).
 func initializedNote(s *server, _ json.RawMessage) {
 	if s.started || s.rootReal == "" {
 		return
@@ -44,6 +45,7 @@ func initializedNote(s *server, _ json.RawMessage) {
 				case k := <-ch:
 					if k&watch.SourceChange != 0 {
 						s.schedule()
+						s.rerunScratch()
 					}
 				}
 			}

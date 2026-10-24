@@ -13,56 +13,88 @@ import (
 // runScratchFile is scratch.RunFile; a test may replace it before a server starts.
 var runScratchFile = scratch.RunFile
 
-// appErrorsWarning is the scratch file's warning at 1:1 when the app it runs against has errors.
-const appErrorsWarning = "the app has errors; fix them and save"
+// scratchRunEnded is called as each scratch run's goroutine ends, its sends done; a test may
+// replace it before a server starts.
+var scratchRunEnded = func(rel string) {}
 
-// scratchRuns are the runs of the open scratch documents, by rel: one at a time for each.
+// scratchRuns are the runs of the open scratch documents: the current one of each, by rel. A run
+// sends only under mu, and only while it is current, so a superseded or closed run sends nothing.
 type scratchRuns struct {
 	mu    sync.Mutex
 	byRel map[string]*scratchRun
+	seq   uint64 // the newest run's seq: every run's is unique, across all rels
 }
 
-// scratchRun is one scratch document's run slot: held for the length of a run, so a second run
-// of the document waits for the first and then takes its newest text.
+// scratchRun is one run of a scratch document.
 type scratchRun struct {
-	mu sync.Mutex
+	seq    uint64
+	cancel context.CancelFunc
 }
 
-// run is rel's run slot, made on first use.
-func (r *scratchRuns) run(rel string) *scratchRun {
+// runScratch cancels the open scratch document rel's current run and starts another, returning
+// at once. The run sends alder/scratch with phase "types" once the file has checked and "values"
+// when it ends, each with the file's diagnostics published first. Nothing starts once the
+// server is stopping.
+func (s *server) runScratch(rel string) {
+	ctx, cancel := context.WithCancel(context.Background())
+	r := &s.scratch
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	select {
+	case <-s.stop:
+		cancel()
+		return
+	default:
+	}
 	if r.byRel == nil {
 		r.byRel = map[string]*scratchRun{}
 	}
-	x := r.byRel[rel]
-	if x == nil {
-		x = &scratchRun{}
-		r.byRel[rel] = x
+	if old := r.byRel[rel]; old != nil {
+		old.cancel()
 	}
-	return x
-}
-
-// runScratch starts a run of the open scratch document rel and returns at once. The run sends
-// alder/scratch with phase "types" once the file has checked and "values" when it ends, each
-// with the file's diagnostics published first.
-func (s *server) runScratch(rel string) {
-	slot := s.scratch.run(rel)
+	r.seq++
+	run := &scratchRun{seq: r.seq, cancel: cancel}
+	r.byRel[rel] = run
 	s.bg.Go(func() {
-		slot.mu.Lock()
-		defer slot.mu.Unlock()
-		select {
-		case <-s.stop:
-			return
-		default:
-		}
-		s.scratchOnce(rel)
+		defer scratchRunEnded(rel)
+		defer cancel()
+		s.scratchOnce(ctx, rel, run.seq)
 	})
 }
 
-// scratchOnce runs the open scratch document rel as it is now (nothing when it has closed). A
-// panic is logged with its stack, so the server keeps serving.
-func (s *server) scratchOnce(rel string) {
+// rerunScratch runs every open scratch document again: after a change to the app they may use.
+func (s *server) rerunScratch() {
+	for _, rel := range s.docs.scratchRels() {
+		s.runScratch(rel)
+	}
+}
+
+// stopScratch cancels the closed scratch document rel's run, forgets it, and clears its
+// diagnostics.
+func (s *server) stopScratch(rel string) {
+	r := &s.scratch
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if run := r.byRel[rel]; run != nil {
+		run.cancel()
+		delete(r.byRel, rel)
+	}
+	s.notify("textDocument/publishDiagnostics", publishDiagnosticsParams{URI: s.uriOf(rel), Diagnostics: []Diagnostic{}})
+}
+
+// stopAllScratch cancels every run: the server is stopping (s.stop is closed, so none starts).
+func (s *server) stopAllScratch() {
+	r := &s.scratch
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, run := range r.byRel {
+		run.cancel()
+	}
+}
+
+// scratchOnce is run seq of the open scratch document rel, as it is now (nothing when it has
+// closed). A panic is logged with its stack, so the server keeps serving.
+func (s *server) scratchOnce(ctx context.Context, rel string, seq uint64) {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(s.o.Log, "alder lsp: scratch %s: internal error: %v\n%s", rel, r, debug.Stack())
@@ -72,17 +104,13 @@ func (s *server) scratchOnce(rel string) {
 	if x == nil {
 		return
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { // the server stopping cancels the run
-		select {
-		case <-s.stop:
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
 	f, parsed := scratch.ParseFile(rel, x.Text)
 	send := func(phase string, r scratch.FileResult) {
+		s.scratch.mu.Lock()
+		defer s.scratch.mu.Unlock()
+		if run := s.scratch.byRel[rel]; run == nil || run.seq != seq || ctx.Err() != nil || s.docs.get(rel) == nil {
+			return // superseded, closed or stopping
+		}
 		s.publishScratch(x, r)
 		p := scratchParams{URI: x.URI, Version: x.Version, Phase: phase, Watches: r.Watches,
 			Ran: r.Ran, Note: r.Note, Warning: r.Warning}
@@ -98,9 +126,6 @@ func (s *server) scratchOnce(rel string) {
 		Out: s.scratchOut(rel), Parsed: parsed,
 		OnTypes: func(r scratch.FileResult) { send("types", r) },
 	})
-	if ctx.Err() != nil {
-		return // the server is stopping
-	}
 	send("values", r)
 }
 
@@ -119,7 +144,7 @@ func (s *server) publishScratch(x *doc, r scratch.FileResult) {
 		}
 	}
 	if appErr {
-		ds = append(ds, Diagnostic{Range: lspRange(1, 1, 1, 1), Severity: 2, Source: "alder", Message: appErrorsWarning})
+		ds = append(ds, Diagnostic{Range: lspRange(1, 1, 1, 1), Severity: 2, Source: "alder", Message: scratch.AppErrorsNote})
 	}
 	v := x.Version
 	s.notify("textDocument/publishDiagnostics", publishDiagnosticsParams{URI: x.URI, Version: &v, Diagnostics: ds})

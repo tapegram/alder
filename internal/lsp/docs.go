@@ -210,7 +210,8 @@ func didChange(s *server, params json.RawMessage) {
 	s.schedule()
 }
 
-// didClose forgets the document, so the file on disk applies again.
+// didClose forgets the document, so the file on disk applies again; a scratch document's run
+// stops and its diagnostics clear.
 func didClose(s *server, params json.RawMessage) {
 	var p didCloseParams
 	if json.Unmarshal(params, &p) != nil {
@@ -222,6 +223,9 @@ func didClose(s *server, params json.RawMessage) {
 	}
 	s.docs.remove(rel)
 	s.schedule()
+	if scratch.IsScratchFile(rel) {
+		s.stopScratch(rel)
+	}
 }
 
 // didSave runs a saved scratch document; a save of any other file under the root reruns every
@@ -241,7 +245,5 @@ func didSave(s *server, params json.RawMessage) {
 		}
 		return
 	}
-	for _, r := range s.docs.scratchRels() {
-		s.runScratch(r)
-	}
+	s.rerunScratch()
 }
