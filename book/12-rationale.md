@@ -127,10 +127,12 @@ across a module's imports.
 Modules used to be named by their whole path: `Table.Todo.find`,
 `<Admin.Layout.Page>`. In a project of any size most lines carried a
 prefix the reader already knew, and the longest names were the ones
-that were easiest to get wrong. Go, Python and Elm all name an imported
-module by its last segment (`import "a/b/c"` is `c.`, `import a.b.c as
-c`, `import Data.Maybe` is `Maybe.`), so that is the habit a model brings.
-An import is now named by its last segment.
+that were easiest to get wrong. Go names an import by its package name,
+usually the last path element. Elm and Python make you write the whole
+path unless you add `as`, and in practice people alias to the last
+segment (`import Data.Maybe as Maybe`, `import numpy as np`). That habit,
+last segment by default, is what a model brings. An import is now named
+by its last segment.
 
 Two modules can end the same way, though, and that is where a free choice
 of alias would hurt. If every file chose its own (`AL`, `Lay`, `AdminL`),
