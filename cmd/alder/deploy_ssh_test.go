@@ -750,12 +750,15 @@ func TestDeploySsh_DrainRollback(t *testing.T) {
 	if err := s.Health(ctx, id1, port, 3*time.Second); err != nil {
 		t.Errorf("the delayed stop fired after the build was started again: %v", err)
 	}
-	// current again when the delay ends: the delayed stop does nothing (it ends, removing its
-	// pid file, once the delay is over)
-	box.sh(t, fmt.Sprintf("echo %s > %s/current", id1, box.qr()))
-	if err := s.Stop(ctx, id1, time.Second); err != nil {
+	// current again when the delay ends: the delayed stop, scheduled while id1 was not current,
+	// reads current after its sleep and does nothing (it ends, removing its pid file)
+	if err := s.Stop(ctx, id1, 2*time.Second); err != nil {
 		t.Fatal(err)
 	}
+	if laterPID() == "" {
+		t.Fatal("Stop with a drain scheduled no delayed stop (builds/<id>/stop-later.pid)")
+	}
+	box.sh(t, fmt.Sprintf("echo %s > %s/current", id1, box.qr())) // inside the drain window
 	if !pollUntil(10*time.Second, func() bool { return laterPID() == "" }) {
 		t.Errorf("the delayed stop did not end after its delay")
 	}
