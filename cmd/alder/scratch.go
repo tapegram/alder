@@ -120,7 +120,7 @@ func runScratchCtx(sigCtx context.Context, interval time.Duration, args []string
 	if len(pos) == 1 {
 		file = pos[0]
 	}
-	abs, err := filepath.Abs(file)
+	abs, err := scratchFileAbs(file)
 	if err != nil {
 		return failf(2, "alder scratch: %v", err)
 	}
@@ -243,13 +243,29 @@ func scratchWatch(ctx context.Context, interval time.Duration, a scratchRunArgs,
 
 // scratchRunArgs are one run's inputs.
 type scratchRunArgs struct {
-	file, abs, appDir, text string // the path as given, absolute, the app's directory, the file's text
+	file, abs, appDir, text string // the path as given, absolute (scratchFileAbs), the app's directory, the file's text
 	module                  string // --module's value
 	named                   bool
 	buildDir                string
 	jsonOut                 bool
 	watching                bool // a change may cancel the run: that is not an error to print
 	stdout, stderr          io.Writer
+}
+
+// scratchFileAbs is the scratch file's absolute path with its symbolic links resolved, as the
+// language server resolves its root and documents (lsp evalExisting): the app root found above
+// it, the app's build directory name and the file's FilePurpose hash then agree with the
+// server's, so both build in one directory under one lock. A file that does not exist keeps its
+// unresolved path, for the read that reports it.
+func scratchFileAbs(file string) (string, error) {
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		return "", err
+	}
+	if real, err := filepath.EvalSymlinks(abs); err == nil {
+		return real, nil
+	}
+	return abs, nil
 }
 
 // scratchRun parses and runs the file once, reports it as a.jsonOut says, and returns the exit

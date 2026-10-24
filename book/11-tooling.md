@@ -885,7 +885,8 @@ the app, a typed hole, a watch that failed, an app whose adapters will
 not build, or an interrupt without `--watch`; 2 for a usage or I/O
 error (a file that is not a scratch file, no app above it, an unknown
 flag). The build goes to `build/<app>/scratch/file-<hash>/`, one
-directory per scratch file.
+directory per scratch file (the hash is of its absolute path, symbolic
+links resolved).
 
 ### `alder repl`
 
@@ -1764,8 +1765,10 @@ The plugin shows them as virtual text at the end of each watch's `>` line:
 `: Int` first, then `⇒ 42 : Int` when the value comes. A newer save
 supersedes an older run, so what you see is always the latest file. Values
 are not diagnostics, because they are not problems: they would fill the
-problem list and the sign column. An inline value is cut at 8 lines or 2048
-bytes, and says so.
+problem list and the sign column. An inline value shows at most 8 lines below
+the `>` line and 2048 bytes: the lines left out are counted on a last line
+(`… (3 more lines, <leader>ao to open)`), and a first line longer than 2048
+bytes is cut and ends with `…`.
 
 | Key | What it does |
 |---|---|

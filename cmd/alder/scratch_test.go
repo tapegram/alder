@@ -415,3 +415,31 @@ func TestScratchWatchJSONStreams(t *testing.T) {
 		}
 	}
 }
+
+// TestScratchFileAbsResolvesSymlinks: reached through a symbolic link, the scratch file has the
+// path, app root and build directory hash the language server gives it (the link resolved).
+func TestScratchFileAbsResolvesSymlinks(t *testing.T) {
+	tmp := t.TempDir()
+	real := filepath.Join(tmp, "real", "todos")
+	writeScratch(t, filepath.Join(real, "app", "Todo.alder"), "module Todo\n")
+	writeScratch(t, filepath.Join(real, "scratch.alder"), "> 1\n")
+	link := filepath.Join(tmp, "link")
+	if err := os.Symlink(filepath.Join(tmp, "real"), link); err != nil {
+		t.Skip(err)
+	}
+	rootReal, err := filepath.EvalSymlinks(real) // as lsp resolves its root
+	if err != nil {
+		t.Fatal(err)
+	}
+	abs, err := scratchFileAbs(filepath.Join(link, "todos", "scratch.alder"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(rootReal, "scratch.alder")
+	if abs != want || findAppRoot(filepath.Dir(abs)) != rootReal || scratch.FilePurpose(abs) != scratch.FilePurpose(want) {
+		t.Fatalf("scratchFileAbs = %s (app root %s), want %s", abs, findAppRoot(filepath.Dir(abs)), want)
+	}
+	if abs, err := scratchFileAbs(filepath.Join(link, "todos", "missing.scratch.alder")); err != nil || abs != filepath.Join(link, "todos", "missing.scratch.alder") {
+		t.Fatalf("a missing file: %s, %v", abs, err)
+	}
+}

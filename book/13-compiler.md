@@ -5380,8 +5380,9 @@ scratch` does (chapter 11, "`alder scratch`"), with `scratch.RunFile`, from
 - **A goroutine per run.** `didOpen` and `didSave` of a scratch document, a
   save of any other file, and a change the poll sees on disk (never an unsaved
   edit) start a run on a goroutine of its own and return at once, so the reader
-  loop never waits for a build. The document's text is read from the overlay
-  when the run starts.
+  loop never waits for a build. The run's goroutine reads the document's text
+  from the overlay as its first step, not the handler that started it, so an
+  edit that arrives in between is part of the run.
 - **One save, one run.** An editor save of an app file is seen twice: as
   `didSave` at once, and by the poll a moment later, when it finds the file's
   new modification time. So the save's rerun records the stamps of the watched
@@ -5402,9 +5403,12 @@ scratch` does (chapter 11, "`alder scratch`"), with `scratch.RunFile`, from
   diagnostics, under the same mutex, so the editor sees both in order.
 - **The same build directory and lock as the command.** The run builds into
   `build/<app>/scratch/file-<hash>/` of the project root, the directory `alder
-  scratch` uses for that file, under the same lock. Two runs of one file, one
-  from the editor and one from a terminal, wait for each other instead of
-  writing into one directory at once.
+  scratch` uses for that file when it runs from the project root, unless
+  `--build-dir` is given, under the same lock. Both resolve symbolic links
+  first (the root, and the file whose path is hashed), so a project reached
+  through a link still names one directory. Two runs of one file, one from the
+  editor and one from a terminal, wait for each other instead of writing into
+  one directory at once.
 - **Values are not diagnostics.** A diagnostic is a problem at a place, and
   the editor lists it, counts it and marks the line. A value is neither a
   problem nor a place to fix; as diagnostics, a scratch file of ten watches
