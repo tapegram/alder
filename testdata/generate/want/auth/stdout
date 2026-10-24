@@ -32,14 +32,17 @@ edited migrations/schema.json
  error : Error -> Html Never
  error err =
    <Layout.Page title="Error">
-@@ -16,3 +29,10 @@
-   <Layout.Page title="Not found">
-     <h1>Not found</h1>
-   </Layout.Page>
+@@ -13,3 +26,13 @@
+ 
+ notFound : Html Never
+ notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 +
 +-- Every Log out button is on a page that requires a user, so a browser test cannot tell this
 +-- Redirect from a Rerender (book 10, "The logout redirect"): the test calls update itself.
 +test "Logout clears the user and goes to log in" = {
 +  let r <- Test.run (update Logout { user: Just (User.UserId "me") })
-+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok (Redirect (Auth.Login {})), trace: ["Session.put"] })
++  Task.succeed (
++    { value: r.value, trace: r.trace }
++      == { value: Ok (Redirect (Auth.Login {})), trace: ["Session.put"] }
++  )
 +}

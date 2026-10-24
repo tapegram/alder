@@ -1442,10 +1442,10 @@ func TestBook_CommandParts(t *testing.T) {
 func TestBook_CommandsFail(t *testing.T) {
 	bin := alder(t)
 	about := "module About\n\nimport Layout\n\npage \"/about\" { }\n\ntype Model = { }\n\n" +
-		"load : Params -> Session -> Query Model\nload params session = Query.succeed { }\n\n" +
-		"view : Model -> Session -> Html Msg\nview model session =\n  <Layout.Page title=\"About\">\n    <h1>About</h1>\n  </Layout.Page>\n\n" +
+		"load : Params -> Session -> Query Model\nload params session = Query.succeed {}\n\n" +
+		"view : Model -> Session -> Html Msg\nview model session = <Layout.Page title=\"About\"><h1>About</h1></Layout.Page>\n\n" +
 		"test \"the page is shown\" = {\n  let r <- Test.open (About {})\n" +
-		"  Task.succeed ({ answer: r.answer, heading: Test.text \"h1\" r.doc } == { answer: Shown, heading: Just \"About\" })\n}\n"
+		"  Task.succeed (\n    { answer: r.answer, heading: Test.text \"h1\" r.doc } == { answer: Shown, heading: Just \"About\" }\n  )\n}\n"
 	newPage := "```text command=guestbook\n$ alder new page About /about\nwrote app/About.alder\n```\n\n"
 	ch := filepath.Join(t.TempDir(), "15-x.md")
 	for _, c := range []struct {

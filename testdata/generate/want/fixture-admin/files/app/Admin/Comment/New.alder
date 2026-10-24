@@ -27,13 +27,29 @@ load params session = {
     -- @admin begin load
     let findPost = Text.slice 0 200 params.findPost
     let postsTotal <- Db.from Post |> Db.count
-    let posts <- Db.from Post |> Db.orderBy Post.title.asc |> Db.where (if postsTotal > 200 then Post.title.contains findPost else Db.and []) |> Db.limit (if postsTotal > 200 then 50 else 200) |> Db.all
+    let posts <-
+      Db.from Post
+        |> Db.orderBy Post.title.asc
+        |> Db.where (if postsTotal > 200 then Post.title.contains findPost else Db.and [])
+        |> Db.limit (if postsTotal > 200 then 50 else 200)
+        |> Db.all
     let findAuthor = Text.slice 0 200 params.findAuthor
     let authorsTotal <- Db.from User |> Db.count
-    let authors <- Db.from User |> Db.orderBy User.email.asc |> Db.where (if authorsTotal > 200 then User.email.contains findAuthor else Db.and []) |> Db.limit (if authorsTotal > 200 then 50 else 200) |> Db.all
-    Query.succeed { posts: posts, postsTotal: postsTotal, authors: authors, authorsTotal: authorsTotal }
+    let authors <-
+      Db.from User
+        |> Db.orderBy User.email.asc
+        |> Db.where (if authorsTotal > 200 then User.email.contains findAuthor else Db.and [])
+        |> Db.limit (if authorsTotal > 200 then 50 else 200)
+        |> Db.all
+    Query.succeed {
+      posts: posts,
+      postsTotal: postsTotal,
+      authors: authors,
+      authorsTotal: authorsTotal,
+    }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin form
@@ -60,12 +76,18 @@ msg Create form CommentForm
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
-  SearchPost p -> Task.succeed (Redirect (Admin.Comment.New { findPost: Text.slice 0 200 p.form.q })),
-  SearchAuthor p -> Task.succeed (Redirect (Admin.Comment.New { findAuthor: Text.slice 0 200 p.form.q })),
+  SearchPost p ->
+    Task.succeed (Redirect (Admin.Comment.New { findPost: Text.slice 0 200 p.form.q })),
+  SearchAuthor p ->
+    Task.succeed (Redirect (Admin.Comment.New { findAuthor: Text.slice 0 200 p.form.q })),
   -- @admin end
   Create p -> {
     -- @admin begin insert
-    let id <- Db.insert Comment { post: p.form.post, author: p.form.author, body: p.form.body }
+    let id <- Db.insert Comment {
+      post: p.form.post,
+      author: p.form.author,
+      body: p.form.body,
+    }
     Task.succeed (Redirect (Admin.Comment.Show { id: id }))
     -- @admin end
   },
@@ -78,13 +100,31 @@ view model session =
 
     <al-card>
       -- @admin begin finder
-      {if model.postsTotal > 200 then <form submit={SearchPost}><al-input field="q" label="Find post" /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}
-      {if model.authorsTotal > 200 then <form submit={SearchAuthor}><al-input field="q" label="Find author" /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}
+      {if model.postsTotal > 200 then
+        <form submit={SearchPost}>
+          <al-input field="q" label="Find post" />
+          <al-button type="submit" variant="secondary">Find</al-button>
+        </form>
+      else
+        <span></span>}
+      {if model.authorsTotal > 200 then
+        <form submit={SearchAuthor}>
+          <al-input field="q" label="Find author" />
+          <al-button type="submit" variant="secondary">Find</al-button>
+        </form>
+      else
+        <span></span>}
       -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
-        <al-select field="post" label="Post" options={List.map (\r -> { value: r.id, label: r.title }) model.posts} />
-        <al-select field="author" label="Author" options={List.map (\r -> { value: r.id, label: r.email }) model.authors} />
+        <al-select
+          field="post"
+          label="Post"
+          options={List.map (\r -> { value: r.id, label: r.title }) model.posts} />
+        <al-select
+          field="author"
+          label="Author"
+          options={List.map (\r -> { value: r.id, label: r.email }) model.authors} />
         <al-textarea field="body" label="Body" />
         -- @admin end
         <al-alert variant="destructive"><Errors form /></al-alert>
@@ -101,26 +141,50 @@ test "creating a comment adds it, with the values submitted" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
   let page <- Test.get (Admin.Comment.New {})
-  let r <- Test.submit CommentForm { post: post2, author: user2, body: Text.NonEmpty "body-1" }
+  let r <- Test.submit CommentForm {
+    post: post2,
+    author: user2,
+    body: Text.NonEmpty "body-1",
+  }
   let rows <- Db.from Comment |> Db.all
-  Task.succeed ({
-    answers: List.map (\row -> Redirected (Admin.Comment.Show { id: row.id })) rows,
-    rows: List.map (\row -> { post: row.post, author: row.author, body: row.body }) rows,
-    posts: Test.texts "select[name=post] option" page.doc,
-    authors: Test.texts "select[name=author] option" page.doc,
-  } == {
-    answers: [r.answer],
-    rows: [{ post: post2, author: user2, body: Text.NonEmpty "body-1" }],
-    posts: ["title-1", "title-2"],
-    authors: ["email-1@example.com", "email-2@example.com"],
-  })
+  Task.succeed (
+    {
+      answers: List.map (\row -> Redirected (Admin.Comment.Show { id: row.id })) rows,
+      rows: List.map (\row -> {
+        post: row.post,
+        author: row.author,
+        body: row.body,
+      }) rows,
+      posts: Test.texts "select[name=post] option" page.doc,
+      authors: Test.texts "select[name=author] option" page.doc,
+    } == {
+        answers: [r.answer],
+        rows: [
+          {
+            post: post2,
+            author: user2,
+            body: Text.NonEmpty "body-1",
+          },
+        ],
+        posts: ["title-1", "title-2"],
+        authors: ["email-1@example.com", "email-2@example.com"],
+      }
+  )
 }
 
 test "a post not offered is refused" = {
@@ -130,8 +194,16 @@ test "a post not offered is refused" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
@@ -144,13 +216,13 @@ test "a post not offered is refused" = {
     { name: "body", value: "x" },
   ]
   let rows <- Db.from Comment |> Db.count
-  Task.succeed ({
-    answer: r.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "post", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: r.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "post", message: "must be one of the options" }],
+        rows: 0,
+      }
+  )
 }
 
 test "an author not offered is refused" = {
@@ -160,8 +232,16 @@ test "an author not offered is refused" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
@@ -174,13 +254,13 @@ test "an author not offered is refused" = {
     { name: "body", value: "x" },
   ]
   let rows <- Db.from Comment |> Db.count
-  Task.succeed ({
-    answer: r.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "author", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: r.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "author", message: "must be one of the options" }],
+        rows: 0,
+      }
+  )
 }
 
 test "a list of 200 posts is offered whole" = {
@@ -190,17 +270,28 @@ test "a list of 200 posts is offered whole" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let _ <- Task.all (List.map (\n -> Db.insert Post {
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    body: "body-" ++ Text.fromInt n,
-    author: me,
-  }) (List.range 3 200))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        body: "body-" ++ Text.fromInt n,
+        author: me,
+      }) (List.range 3 200)
+    )
   let page <- Test.get (Admin.Comment.New {})
   Task.succeed (List.length page.model.posts == 200)
 }
@@ -212,31 +303,44 @@ test "a long list of posts offers 50, and the search narrows it" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let _ <- Task.all (List.map (\n -> Db.insert Post {
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    body: "body-" ++ Text.fromInt n,
-    author: me,
-  }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        body: "body-" ++ Text.fromInt n,
+        author: me,
+      }) (List.range 3 203)
+    )
   let all <- Test.get (Admin.Comment.New {})
   let found <- Test.get (Admin.Comment.New { findPost: "title-203" })
   let r <- Test.submit FindPost { q: "zz" }
-  Task.succeed ({
-    shown: List.length all.model.posts,
-    total: all.model.postsTotal,
-    found: Test.texts "select[name=post] option" found.doc == ["title-203"],
-    answer: r.answer,
-  } == {
-    shown: 50,
-    total: 203,
-    found: True,
-    answer: Redirected (Admin.Comment.New { findPost: "zz" }),
-  })
+  Task.succeed (
+    {
+      shown: List.length all.model.posts,
+      total: all.model.postsTotal,
+      found: Test.texts "select[name=post] option" found.doc == ["title-203"],
+      answer: r.answer,
+    } == {
+        shown: 50,
+        total: 203,
+        found: True,
+        answer: Redirected (Admin.Comment.New { findPost: "zz" }),
+      }
+  )
 }
 
 test "a post outside the narrowed list is refused" = {
@@ -246,17 +350,28 @@ test "a post outside the narrowed list is refused" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let _ <- Task.all (List.map (\n -> Db.insert Post {
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    body: "body-" ++ Text.fromInt n,
-    author: me,
-  }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        body: "body-" ++ Text.fromInt n,
+        author: me,
+      }) (List.range 3 203)
+    )
   let all <- Test.get (Admin.Comment.New {})
   let found <- Test.get (Admin.Comment.New { findPost: "title-203" })
   let r <- Test.submit FindPost { q: "zz" }
@@ -269,13 +384,13 @@ test "a post outside the narrowed list is refused" = {
     { name: "body", value: "x" },
   ]
   let rows <- Db.from Comment |> Db.count
-  Task.succeed ({
-    answer: sent.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "post", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: sent.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "post", message: "must be one of the options" }],
+        rows: 0,
+      }
+  )
 }
 
 test "a list of 200 users is offered whole" = {
@@ -285,16 +400,27 @@ test "a list of 200 users is offered whole" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let _ <- Task.all (List.map (\n -> Db.insert User {
-    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
-    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
-  }) (List.range 3 200))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert User {
+        email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+      }) (List.range 3 200)
+    )
   let page <- Test.get (Admin.Comment.New {})
   Task.succeed (List.length page.model.authors == 200)
 }
@@ -306,30 +432,43 @@ test "a long list of users offers 50, and the search narrows it" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let _ <- Task.all (List.map (\n -> Db.insert User {
-    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
-    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
-  }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert User {
+        email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+      }) (List.range 3 203)
+    )
   let all <- Test.get (Admin.Comment.New {})
   let found <- Test.get (Admin.Comment.New { findAuthor: "email-203@example.com" })
   let r <- Test.submit FindAuthor { q: "zz" }
-  Task.succeed ({
-    shown: List.length all.model.authors,
-    total: all.model.authorsTotal,
-    found: Test.texts "select[name=author] option" found.doc == ["email-203@example.com"],
-    answer: r.answer,
-  } == {
-    shown: 50,
-    total: 203,
-    found: True,
-    answer: Redirected (Admin.Comment.New { findAuthor: "zz" }),
-  })
+  Task.succeed (
+    {
+      shown: List.length all.model.authors,
+      total: all.model.authorsTotal,
+      found: Test.texts "select[name=author] option" found.doc == ["email-203@example.com"],
+      answer: r.answer,
+    } == {
+        shown: 50,
+        total: 203,
+        found: True,
+        answer: Redirected (Admin.Comment.New { findAuthor: "zz" }),
+      }
+  )
 }
 
 test "an author outside the narrowed list is refused" = {
@@ -339,16 +478,27 @@ test "an author outside the narrowed list is refused" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let _ <- Task.all (List.map (\n -> Db.insert User {
-    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
-    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
-  }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert User {
+        email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+      }) (List.range 3 203)
+    )
   let all <- Test.get (Admin.Comment.New {})
   let found <- Test.get (Admin.Comment.New { findAuthor: "email-203@example.com" })
   let r <- Test.submit FindAuthor { q: "zz" }
@@ -361,13 +511,13 @@ test "an author outside the narrowed list is refused" = {
     { name: "body", value: "x" },
   ]
   let rows <- Db.from Comment |> Db.count
-  Task.succeed ({
-    answer: sent.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "author", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: sent.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "author", message: "must be one of the options" }],
+        rows: 0,
+      }
+  )
 }
 
 test "a visitor is sent to log in" = {

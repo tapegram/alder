@@ -21,16 +21,14 @@ load params session = {
   let admin <- Admin.Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
-    Query.succeed { }
+    Query.succeed {}
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin form
-form ProjectForm = {
-  name: Text.NonEmpty,
-  archived: Bool,
-}
+form ProjectForm = { name: Text.NonEmpty, archived: Bool }
 -- @admin end
 
 -- @admin begin search
@@ -44,7 +42,11 @@ update msg model session = match msg {
   -- @admin end
   Create p -> {
     -- @admin begin insert
-    let id <- Db.insert Project { name: p.form.name, archived: p.form.archived, org: session.org }
+    let id <- Db.insert Project {
+      name: p.form.name,
+      archived: p.form.archived,
+      org: session.org,
+    }
     Task.succeed (Redirect (Admin.Project.Show { org: session.org, id: id }))
     -- @admin end
   },
@@ -78,17 +80,21 @@ test "creating a project adds it, with the values submitted" = {
     role: Admin,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let page <- Test.get (Admin.Project.New { org: org })
   let r <- Test.submit ProjectForm { name: Text.NonEmpty "name-1", archived: True }
   let rows <- Db.from Project |> Db.all
-  Task.succeed ({
-    answers: List.map (\row -> Redirected (Admin.Project.Show { org: org, id: row.id })) rows,
-    rows: List.map (\row -> { name: row.name, archived: row.archived }) rows,
-  } == {
-    answers: [r.answer],
-    rows: [{ name: Text.NonEmpty "name-1", archived: True }],
-  })
+  Task.succeed (
+    {
+      answers: List.map (\row -> Redirected (Admin.Project.Show { org: org, id: row.id })) rows,
+      rows: List.map (\row -> { name: row.name, archived: row.archived }) rows,
+    }
+      == { answers: [r.answer], rows: [{ name: Text.NonEmpty "name-1", archived: True }] }
+  )
 }
 
 test "a visitor is sent to log in" = {
@@ -104,7 +110,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let r <- Test.open (Admin.Project.New { org: org })
   Task.succeed (r.answer == PageMissing)
 }
@@ -117,7 +127,11 @@ test "a demoted Admin is refused at once" = {
     role: Member,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let r <- Test.open (Admin.Project.New { org: org })
   Task.succeed (r.answer == PageMissing)
 }

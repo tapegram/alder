@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"alder/internal/buildkit"
+	"alder/internal/generate"
 )
 
 var updateGenerate = flag.Bool("update", false, "rewrite the generators' golden files (testdata/generate/want)")
@@ -1125,5 +1126,86 @@ func TestGenerate_NewMsgEmptyMatch(t *testing.T) {
 	}
 	if strings.Contains(string(after), "match msg {,") {
 		t.Fatal("comma added to the match line")
+	}
+}
+
+// TestGenReport_Warnings: a file written unformatted is a warning on standard error after the
+// command's name, and the command still succeeds.
+func TestGenReport_Warnings(t *testing.T) {
+	res := &generate.Result{Written: true, Warnings: []string{"output not formatted: app/X.alder:3:1: oops; please file an issue"}}
+	var out, errb bytes.Buffer
+	if code := genReport("alder new page", genArgs{}, res, nil, nil, &out, &errb); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if want := "alder new page: warning: output not formatted: app/X.alder:3:1: oops; please file an issue\n"; errb.String() != want {
+		t.Errorf("stderr %q, want %q", errb.String(), want)
+	}
+}
+
+// TestFill_OneLineBlockHole: `alder new test` writes `{ ?test }` on one line, as `alder fmt`
+// does; a block filled into it gives the test its statements, not a block in a block.
+func TestFill_OneLineBlockHole(t *testing.T) {
+	t.Parallel()
+	dir := genApp(t, "scaffold")
+	if code, out, errs := alderIn(t, dir, "", "new", "test", "Home", "starts empty"); code != 0 {
+		t.Fatalf("new test: exit %d\n%s%s", code, out, errs)
+	}
+	if code, out, errs := alderIn(t, dir, "{\n  let n <- Db.from Entry |> Db.count\n  Task.succeed (n == 0)\n}", "fill", `Home."starts empty"`, "-"); code != 0 {
+		t.Fatalf("fill: exit %d\n%s%s", code, out, errs)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "app", "Home.alder"))
+	if want := "test \"starts empty\" = {\n  let n <- Db.from Entry |> Db.count\n  Task.succeed (n == 0)\n}\n"; !strings.HasSuffix(string(b), want) {
+		t.Errorf("Home ends:\n%s\nwant it to end:\n%s", b[max(0, len(b)-200):], want)
+	}
+}
+
+// TestNewForm_OneLineView: a view `alder fmt` writes on one line (one element child) still takes
+// a form, and a message's button: the generators split it before its closing tag.
+func TestNewForm_OneLineView(t *testing.T) {
+	t.Parallel()
+	dir := genApp(t, "scaffold")
+	for _, c := range []struct {
+		stdin string
+		args  []string
+	}{
+		{"", []string{"new", "page", "Notes", "/notes", "--blank"}},
+		{"Query.succeed { }", []string{"fill", "Notes.load", "-"}},
+		{"<Layout.Page title=\"Notes\">\n  <h1>Notes</h1>\n</Layout.Page>", []string{"fill", "Notes.view", "-"}},
+	} {
+		if code, out, errs := alderIn(t, dir, c.stdin, c.args...); code != 0 {
+			t.Fatalf("alder %s: exit %d\n%s%s", strings.Join(c.args, " "), code, out, errs)
+		}
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "app", "Notes.alder"))
+	if !strings.Contains(string(b), "<Layout.Page title=\"Notes\"><h1>Notes</h1></Layout.Page>") {
+		t.Fatalf("the view is not on one line:\n%s", b)
+	}
+	if code, out, errs := alderIn(t, dir, "", "new", "form", "Notes", "NewNote", "title:Text.NonEmpty", "--msg", "Add"); code != 0 {
+		t.Fatalf("new form on a one-line view: exit %d\n%s%s\n%s", code, out, errs, b)
+	}
+	b, _ = os.ReadFile(filepath.Join(dir, "app", "Notes.alder"))
+	if !strings.Contains(string(b), "<al-card>") || !strings.Contains(string(b), "<form ") {
+		t.Errorf("no form in the view:\n%s", b)
+	}
+	// a message's button, at the end of a one-line view whose element continues the
+	// declaration's line
+	for _, c := range []struct {
+		stdin string
+		args  []string
+	}{
+		{"", []string{"new", "page", "Other", "/other", "--blank"}},
+		{"Query.succeed { }", []string{"fill", "Other.load", "-"}},
+		{"<Layout.Page title=\"Other\"><h1>Other</h1></Layout.Page>", []string{"fill", "Other.view", "-"}},
+		{"", []string{"new", "msg", "Other", "Ping"}},
+	} {
+		if code, out, errs := alderIn(t, dir, c.stdin, c.args...); code != 0 {
+			t.Fatalf("alder %s: exit %d\n%s%s", strings.Join(c.args, " "), code, out, errs)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Other.alder")); !strings.Contains(string(b), "<al-button click={Ping}>Ping</al-button>") {
+		t.Errorf("no button in the view:\n%s", b)
+	}
+	if code, out, errs := alderIn(t, dir, "", "check"); code != 0 || out != "" {
+		t.Errorf("alder check: exit %d\n%s%s", code, out, errs)
 	}
 }

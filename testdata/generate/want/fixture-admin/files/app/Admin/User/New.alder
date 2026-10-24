@@ -19,9 +19,10 @@ load params session = {
   let admin <- Admin.Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
-    Query.succeed { }
+    Query.succeed {}
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin form
@@ -43,11 +44,18 @@ update msg model session = match msg {
   -- @admin end
   Create p -> {
     -- @admin begin insert
-    let emailTaken <- Db.from User |> Db.where (User.email.eq p.form.email) |> Db.count
+    let emailTaken <-
+      Db.from User
+        |> Db.where (User.email.eq p.form.email)
+        |> Db.count
     if emailTaken > 0 then
       Task.succeed (Reject "A user with this email exists.")
     else {
-      let id <- Db.insert User { email: p.form.email, name: p.form.name, role: p.form.role }
+      let id <- Db.insert User {
+        email: p.form.email,
+        name: p.form.name,
+        role: p.form.role,
+      }
       Task.succeed (Redirect (Admin.User.Show { id: id }))
     }
     -- @admin end
@@ -88,14 +96,29 @@ test "creating a user adds it, with the values submitted" = {
     name: Text.NonEmpty "name-2",
     role: Admin,
   }
-  let rows <- Db.from User |> Db.where (User.email.eq (Text.Email "email-2@example.com")) |> Db.all
-  Task.succeed ({
-    answers: List.map (\row -> Redirected (Admin.User.Show { id: row.id })) rows,
-    rows: List.map (\row -> { email: row.email, name: row.name, role: row.role }) rows,
-  } == {
-    answers: [r.answer],
-    rows: [{ email: Text.Email "email-2@example.com", name: Text.NonEmpty "name-2", role: Admin }],
-  })
+  let rows <-
+    Db.from User
+      |> Db.where (User.email.eq (Text.Email "email-2@example.com"))
+      |> Db.all
+  Task.succeed (
+    {
+      answers: List.map (\row -> Redirected (Admin.User.Show { id: row.id })) rows,
+      rows: List.map (\row -> {
+        email: row.email,
+        name: row.name,
+        role: row.role,
+      }) rows,
+    } == {
+        answers: [r.answer],
+        rows: [
+          {
+            email: Text.Email "email-2@example.com",
+            name: Text.NonEmpty "name-2",
+            role: Admin,
+          },
+        ],
+      }
+  )
 }
 
 test "a user with an email that exists is refused" = {
@@ -113,13 +136,13 @@ test "a user with an email that exists is refused" = {
     role: Admin,
   }
   let rows <- Db.from User |> Db.count
-  Task.succeed ({
-    answer: r.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "", message: "A user with this email exists." }],
-    rows: 2,
-  })
+  Task.succeed (
+    { answer: r.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "", message: "A user with this email exists." }],
+        rows: 2,
+      }
+  )
 }
 
 test "a visitor is sent to log in" = {

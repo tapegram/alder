@@ -1,22 +1,20 @@
 edited app/Home.alder
 --- a/app/Home.alder
 +++ b/app/Home.alder
-@@ -21,8 +21,13 @@
+@@ -21,8 +21,11 @@
  
  msg Submit form Write
  
 -msg Feature { id: Post.PostId }
 +-- Feature's arm reads the posted fields as p.form (p.form : Reason, such as p.form.why)
-+form Reason = {
-+  why: Text.NonEmpty,
-+}
++form Reason = { why: Text.NonEmpty }
  
 +msg Feature { id: Post.PostId } form Reason
 +
  update : Msg -> Model -> Session -> Task Nav
  update msg model session = match msg {
    Submit p -> {
-@@ -49,11 +54,15 @@
+@@ -49,11 +52,14 @@
          <al-textarea field="body" label="Body" />
          <al-button type="submit">Write</al-button>
        </form>
@@ -28,13 +26,13 @@ edited app/Home.alder
      </al-card>
  
      <al-button variant="outline" click={App.Logout}>Log out</al-button>
- 
+-
 -    <al-button click={Feature { id: ?featureId }}>Feature</al-button>
    </Layout.Page>
  
  test "writing a post lists it, a draft" = {
-@@ -89,15 +98,10 @@
-   Task.succeed ({ answer: out.answer, user: out.session.user, role: out.session.role } == { answer: Redirected (Auth.Login {}), user: Nothing, role: Reader })
+@@ -135,19 +141,10 @@
+   )
  }
  
 --- Fill ?expected with what pressing Feature must do, so that a test fails when the arm
@@ -44,7 +42,11 @@ edited app/Home.alder
 +test "submitting Reason" = {
    let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
    let _ <- Test.login { user: Just me }
--  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+-  let post1 <- Db.insert Post {
+-    title: Text.NonEmpty "title-1",
+-    body: "body-1",
+-    author: me,
+-  }
    let _ <- Test.get (Home {})
 -  let r <- Test.click (Feature { id: post1 })
 -  let after <- Db.get Post post1
@@ -52,15 +54,15 @@ edited app/Home.alder
 +  let r <- Test.submit (Feature { id: ?featureId }) { why: Text.NonEmpty "why-1" }
 +  Task.succeed (r.answer == ?expected)
  }
-app/Home.alder:37:16: warning[W0002]: hole ?feature has type Task Nav
+app/Home.alder:35:16: warning[W0002]: hole ?feature has type Task Nav
     Feature p -> ?feature,
                  ^^^^^^^^
-app/Home.alder:57:35: warning[W0002]: hole ?featureId has type Post.PostId
+app/Home.alder:55:35: warning[W0002]: hole ?featureId has type Post.PostId
         <form submit={Feature { id: ?featureId }}>
                                     ^^^^^^^^^^
-app/Home.alder:105:39: warning[W0002]: hole ?featureId has type Post.PostId
+app/Home.alder:148:39: warning[W0002]: hole ?featureId has type Post.PostId
     let r <- Test.submit (Feature { id: ?featureId }) { why: Text.NonEmpty "why-1" }
                                         ^^^^^^^^^^
-app/Home.alder:106:29: warning[W0002]: hole ?expected has type Answer
+app/Home.alder:149:29: warning[W0002]: hole ?expected has type Answer
     Task.succeed (r.answer == ?expected)
                               ^^^^^^^^^

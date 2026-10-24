@@ -1,30 +1,32 @@
 package generate
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"unicode"
+
+	"alder/internal/format"
 )
 
-// The book's formatting, for generated source: two-space indentation (the templates write it),
-// imports sorted, one blank line between declarations, no trailing spaces, one final newline.
+// Formatted is body (the text of path, an Alder file a generator writes) as `alder fmt` prints
+// it. When it cannot be formatted (it does not parse, or the formatter's safety check fails) it
+// is body unchanged and a warning, which the command prints on standard error after its name:
+// the generator still writes the file, and the tests catch the bug.
+func Formatted(path, body string) (out string, warning string) {
+	b, diags, err := format.Source(path, []byte(body))
+	switch {
+	case len(diags) > 0:
+		return body, notFormatted(fmt.Sprintf("%s:%d:%d: %s", path, diags[0].Span.Start.Line, diags[0].Span.Start.Col, diags[0].Message))
+	case err != nil:
+		return body, notFormatted(err.Error())
+	}
+	return string(b), ""
+}
 
-// Tidy normalises generated source: trailing spaces removed, runs of blank lines made one, no
-// blank line first or last, and one final newline.
-func Tidy(src string) string {
-	lines := strings.Split(src, "\n")
-	var out []string
-	for _, l := range lines {
-		l = strings.TrimRight(l, " \t")
-		if l == "" && (len(out) == 0 || out[len(out)-1] == "") {
-			continue
-		}
-		out = append(out, l)
-	}
-	for len(out) > 0 && out[len(out)-1] == "" {
-		out = out[:len(out)-1]
-	}
-	return strings.Join(out, "\n") + "\n"
+// notFormatted is the warning of a file written unformatted, for reason.
+func notFormatted(reason string) string {
+	return "output not formatted: " + reason + "; please file an issue"
 }
 
 // importSet collects the modules a generated module imports.

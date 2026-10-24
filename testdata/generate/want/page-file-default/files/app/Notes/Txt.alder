@@ -5,7 +5,7 @@ page "/notes.txt" { }
 type Model = { }
 
 load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+load params session = Query.succeed {}
 
 view : Model -> Session -> File
 view model session = File.text { contentType: "text/plain", body: ?body }

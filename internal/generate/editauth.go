@@ -26,6 +26,8 @@ func EditAuth(p *Program, to string) ([]Edit, error) {
 	}
 	lit := pageLit(to, nil)
 	body := strings.ReplaceAll(m.Source, afterLoginComment, lit)
-	body = strings.ReplaceAll(body, "?afterLogin", lit)
+	// the hole is an argument (`Redirect ?afterLogin`, as the formatter writes it): the page
+	// literal, an application, takes parentheses there
+	body = strings.ReplaceAll(body, "?afterLogin", "("+lit+")")
 	return []Edit{{Path: m.File, Body: body}}, nil
 }

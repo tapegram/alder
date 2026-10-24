@@ -9,4 +9,4 @@ edited app/Home.alder
 +
  load : Params -> Session -> Query Model
  load params session = {
-   let entries <- Db.from Entry |> Db.orderBy Entry.created.desc |> Db.all
+   let entries <-

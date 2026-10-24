@@ -29,17 +29,29 @@ load params session = {
   if admin then {
     -- @admin begin load
     let found <- Db.get Post params.id
-    let comments <- Db.from Comment |> Db.where (Comment.post.eq params.id) |> Db.count
-    let tags <- Db.from Tag |> Db.where (Tag.post.eq params.id) |> Db.count
+    let comments <-
+      Db.from Comment
+        |> Db.where (Comment.post.eq params.id)
+        |> Db.count
+    let tags <-
+      Db.from Tag
+        |> Db.where (Tag.post.eq params.id)
+        |> Db.count
     match found {
       Just row -> {
         let labels <- labelsOf [row]
-        Query.succeed { row: row, labels: labels, comments: comments, tags: tags }
+        Query.succeed {
+          row: row,
+          labels: labels,
+          comments: comments,
+          tags: tags,
+        }
       },
       Nothing -> Query.notFound,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin labels
@@ -49,7 +61,10 @@ type Labels = { authors: List User }
 -- labelsOf reads the rows that rows refer to.
 labelsOf : List Post -> Query Labels
 labelsOf rows = {
-  let authors <- Db.from User |> Db.where (User.id.in (List.map (\row -> row.author) rows)) |> Db.all
+  let authors <-
+    Db.from User
+      |> Db.where (User.id.in (List.map (\row -> row.author) rows))
+      |> Db.all
   Query.succeed { authors: authors }
 }
 
@@ -104,11 +119,27 @@ view model session =
         <dt>Body</dt>
         <dd>{model.row.body}</dd>
         <dt>Status</dt>
-        <dd><al-badge>{match model.row.status { Draft -> "Draft", Published -> "Published" }}</al-badge></dd>
+        <dd>
+          <al-badge>
+            {match model.row.status {
+              Draft -> "Draft",
+              Published -> "Published",
+            }}
+          </al-badge>
+        </dd>
         <dt>Featured</dt>
-        <dd>{if model.row.featured then <al-badge>Yes</al-badge> else <al-badge variant="secondary">No</al-badge>}</dd>
+        <dd>
+          {if model.row.featured then
+            <al-badge>Yes</al-badge>
+          else
+            <al-badge variant="secondary">No</al-badge>}
+        </dd>
         <dt>Author</dt>
-        <dd><a href={Admin.User.Show { id: model.row.author }}>{authorLabel model.labels model.row.author}</a></dd>
+        <dd>
+          <a href={Admin.User.Show { id: model.row.author }}>
+            {authorLabel model.labels model.row.author}
+          </a>
+        </dd>
         <dt>Created</dt>
         <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
         <dt>Updated</dt>
@@ -117,7 +148,9 @@ view model session =
       </dl>
       <div slot="actions">
         <al-button href={Admin.Post.Edit { id: model.row.id }}>Edit</al-button>
-        <al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
+        <al-button variant="destructive">
+          <button type="button" commandfor="delete-dialog" command="show-modal">Delete</button>
+        </al-button>
       </div>
     </al-card>
     <al-dialog id="delete-dialog" heading="Delete this post?" dismissible>
@@ -131,11 +164,12 @@ view model session =
       </dl>
       <form id="delete" submit={Remove}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        {if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p> else <al-button variant="destructive" type="submit">Delete</al-button>}
+        {if blockers model > 0 then
+          <p>It cannot be deleted while other rows refer to it.</p>
+        else
+          <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
-      <div slot="actions">
-        <a href={Admin.Post.Delete { id: model.row.id }}>See the details</a>
-      </div>
+      <div slot="actions"><a href={Admin.Post.Delete { id: model.row.id }}>See the details</a></div>
     </al-dialog>
     <a href={Admin.Post.Index {}}>All posts</a>
   </Admin.Layout.Page>
@@ -148,24 +182,30 @@ test "the page shows the row" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
   let r <- Test.open (Admin.Post.Show { id: post1 })
   let page <- Test.get (Admin.Post.Show { id: post1 })
-  Task.succeed ({
-    answer: r.answer,
-    title: List.member "title-1" (Test.texts "#fields dd" r.doc),
-    authors: List.length page.model.labels.authors,
-    authorLabel: authorLabel page.model.labels me,
-  } == {
-    answer: Shown,
-    title: True,
-    authors: 1,
-    authorLabel: "email-1@example.com",
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      title: List.member "title-1" (Test.texts "#fields dd" r.doc),
+      authors: List.length page.model.labels.authors,
+      authorLabel: authorLabel page.model.labels me,
+    } == {
+        answer: Shown,
+        title: True,
+        authors: 1,
+        authorLabel: "email-1@example.com",
+      }
+  )
 }
 
 test "deleting a post nothing refers to" = {
@@ -175,23 +215,37 @@ test "deleting a post nothing refers to" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
-  let _ <- Db.insert Comment { post: post2, author: me, body: Text.NonEmpty "body-1" }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
+  let _ <- Db.insert Comment {
+    post: post2,
+    author: me,
+    body: Text.NonEmpty "body-1",
+  }
   let _ <- Db.insert Tag { name: Text.NonEmpty "name-1", post: post2 }
   let _ <- Test.get (Admin.Post.Show { id: post1 })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let gone <- Db.get Post post1
   let kept <- Db.get Post post2
-  Task.succeed ({
-    answer: r.answer,
-    gone: Maybe.map (\row -> row.id) gone,
-    kept: Maybe.map (\row -> row.id) kept,
-  } == {
-    answer: Redirected (Admin.Post.Index {}),
-    gone: Nothing,
-    kept: Just post2,
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      gone: Maybe.map (\row -> row.id) gone,
+      kept: Maybe.map (\row -> row.id) kept,
+    } == {
+        answer: Redirected (Admin.Post.Index {}),
+        gone: Nothing,
+        kept: Just post2,
+      }
+  )
 }
 
 test "the page counts the rows that go with it" = {
@@ -201,10 +255,26 @@ test "the page counts the rows that go with it" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let _ <- Db.insert Comment { post: post1, author: me, body: Text.NonEmpty "body-1" }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
-  let _ <- Db.insert Comment { post: post2, author: me, body: Text.NonEmpty "body-2" }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let _ <- Db.insert Comment {
+    post: post1,
+    author: me,
+    body: Text.NonEmpty "body-1",
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
+  let _ <- Db.insert Comment {
+    post: post2,
+    author: me,
+    body: Text.NonEmpty "body-2",
+  }
   let page <- Test.get (Admin.Post.Show { id: post1 })
   Task.succeed ({ comments: Test.text "#comments" page.doc } == { comments: Just "1" })
 }
@@ -216,22 +286,30 @@ test "a post that tags refer to is not deleted" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
   let _ <- Db.insert Tag { name: Text.NonEmpty "name-1", post: post1 }
   let page <- Test.get (Admin.Post.Show { id: post1 })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let kept <- Db.get Post post1
-  Task.succeed ({
-    count: Test.text "#tags" page.doc,
-    buttons: Test.count "#delete button" page.doc,
-    answer: r.answer,
-    kept: Maybe.map (\row -> row.id) kept,
-  } == {
-    count: Just "1",
-    buttons: 0,
-    answer: FormRejected [{ field: "", message: "This post cannot be deleted while other rows refer to it." }],
-    kept: Just post1,
-  })
+  Task.succeed (
+    {
+      count: Test.text "#tags" page.doc,
+      buttons: Test.count "#delete button" page.doc,
+      answer: r.answer,
+      kept: Maybe.map (\row -> row.id) kept,
+    } == {
+        count: Just "1",
+        buttons: 0,
+        answer: FormRejected [
+          { field: "", message: "This post cannot be deleted while other rows refer to it." },
+        ],
+        kept: Just post1,
+      }
+  )
 }
 
 test "a missing row is not found" = {
@@ -247,7 +325,11 @@ test "a missing row is not found" = {
 
 test "a visitor is sent to log in" = {
   let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
   let r <- Test.open (Admin.Post.Show { id: post1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
@@ -259,7 +341,11 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
   let r <- Test.open (Admin.Post.Show { id: post1 })
   Task.succeed (r.answer == PageMissing)
 }
@@ -271,7 +357,11 @@ test "a demoted Admin is refused at once" = {
     role: Reader,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
   let r <- Test.open (Admin.Post.Show { id: post1 })
   Task.succeed (r.answer == PageMissing)
 }

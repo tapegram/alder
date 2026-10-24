@@ -469,7 +469,8 @@ func (g *adminGen) file(module string, imports *importSet, body string) {
 	b.WriteString(regionAt("", "imports", strings.Split(strings.TrimSuffix(imports.lines(), "\n"), "\n")) + "\n\n")
 	b.WriteString(g.siloCode(module, body))
 	path := FileOf(module)
-	g.files[path] = Tidy(b.String())
+	// formatted here, not only by Apply: regen compares these regions with the file's, formatted
+	g.files[path], _ = Formatted(path, b.String()) // a failure: Apply tries again and warns
 	g.order = append(g.order, path)
 }
 
@@ -810,7 +811,7 @@ func (g *adminGen) labels(at *adminTable, mod string, imports *importSet) []stri
 	}
 	out := []string{"-- Labels are the rows the references of the rows shown name: their links show their labels."}
 	if len(cols) == 0 {
-		return append(out, "type Labels = { }", "", "labelsOf : List "+t.Name+" -> Query Labels", "labelsOf rows = Query.succeed { }")
+		return append(out, "type Labels = { }", "", "labelsOf : List "+t.Name+" -> Query Labels", "labelsOf rows = Query.succeed {}")
 	}
 	out = append(out, "type Labels = { "+strings.Join(fields, ", ")+" }", "",
 		"-- labelsOf reads the rows that rows refer to.",
@@ -1582,7 +1583,7 @@ func (g *adminGen) newPage(at *adminTable) {
 	}
 	loads = append(loads, "Query.succeed { "+strings.Join(fields, ", ")+" }")
 	if len(fields) == 0 {
-		loads[len(loads)-1] = "Query.succeed { }"
+		loads[len(loads)-1] = "Query.succeed {}"
 	}
 	var insert []string
 	var inits []string

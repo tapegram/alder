@@ -9,14 +9,14 @@ type Model = { entries: List Entry }
 
 load : Params -> Session -> Query Model
 load params session = {
-  let entries <- Db.from Entry |> Db.orderBy Entry.created.desc |> Db.all
+  let entries <-
+    Db.from Entry
+      |> Db.orderBy Entry.created.desc
+      |> Db.all
   Query.succeed { entries: entries }
 }
 
-form Sign = {
-  name: Text.NonEmpty,
-  message: Text.NonEmpty,
-}
+form Sign = { name: Text.NonEmpty, message: Text.NonEmpty }
 
 msg Submit form Sign
 
@@ -54,7 +54,10 @@ test "signing adds an entry" = {
   let _ <- Test.get (Home {})
   let signed <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
   let page <- Test.get (Home {})
-  Task.succeed ({ answer: signed.answer, entries: Test.count "#entries li" page.doc } == { answer: Redirected (Home {}), entries: 1 })
+  Task.succeed (
+    { answer: signed.answer, entries: Test.count "#entries li" page.doc }
+      == { answer: Redirected (Home {}), entries: 1 }
+  )
 }
 
 test "entries are listed newest first" = {

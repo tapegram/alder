@@ -27,7 +27,7 @@ page "/login" { }
 type Model = { }
 
 load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+load params session = Query.succeed {}
 
 form Credentials = {
   email: Text.Email,

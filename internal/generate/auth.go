@@ -142,7 +142,7 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 		fields = append(fields, "created: Time @created")
 		table := "type " + o.Users + "Id = brand Text\n\ntable " + o.Users + " {\n  " + strings.Join(fields, ",\n  ") + ",\n}"
 		if userMod == nil {
-			edits = append(edits, Edit{Path: FileOf(o.Users), Create: true, Body: Tidy("module " + o.Users + "\n\n" + table + "\n")})
+			edits = append(edits, Edit{Path: FileOf(o.Users), Create: true, Body: "module " + o.Users + "\n\n" + table + "\n"})
 		} else {
 			e := newSrcEdit(userMod.Source)
 			e.appendText("\n" + table)

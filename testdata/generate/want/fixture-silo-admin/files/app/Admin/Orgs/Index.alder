@@ -19,10 +19,14 @@ load params session = {
   let admin <- Admin.Layout.isAdmin session.user
   if admin then {
     -- @admin begin load
-    let rows <- Db.from Org |> Db.orderBy Org.name.asc |> Db.all
+    let rows <-
+      Db.from Org
+        |> Db.orderBy Org.name.asc
+        |> Db.all
     Query.succeed { rows: rows }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 view : Model -> Session -> Html Msg
@@ -43,17 +47,18 @@ test "the picker lists every org, by name, each opening its dashboard" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-2" }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let page <- Test.get (Admin.Orgs.Index {})
-  Task.succeed ({
-    rows: List.map (\row -> row.id) page.model.rows,
-    first: Test.text "#orgs li" page.doc,
-  } == {
-    rows: [org2, org1],
-    first: Just "name-1",
-  })
+  Task.succeed (
+    { rows: List.map (\row -> row.id) page.model.rows, first: Test.text "#orgs li" page.doc }
+      == { rows: [org2, org1], first: Just "name-1" }
+  )
 }
 
 test "a visitor is sent to log in" = {
@@ -67,7 +72,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let r <- Test.open (Admin.Orgs.Index {})
   Task.succeed (r.answer == PageMissing)
 }
@@ -78,7 +87,11 @@ test "a demoted Admin is refused at once" = {
     name: Text.NonEmpty "name-1",
     role: Member,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let r <- Test.open (Admin.Orgs.Index {})
   Task.succeed (r.answer == PageMissing)
 }

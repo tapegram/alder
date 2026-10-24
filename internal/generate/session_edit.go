@@ -131,7 +131,7 @@ func EditSessionChoose(p *Program, op string, args []string, choose string) ([]E
 	}
 	for i := range edits { // an error in the session itself (the type, the default) refuses
 		if edits[i].Path == app.File {
-			edits[i].Guard = declLines(app.File, edits[i].Body, func(d syntax.Decl) bool { _, ok := d.(*syntax.SessionDecl); return ok })
+			edits[i].Guard = func(d syntax.Decl) bool { _, ok := d.(*syntax.SessionDecl); return ok }
 		}
 	}
 	return edits, nil

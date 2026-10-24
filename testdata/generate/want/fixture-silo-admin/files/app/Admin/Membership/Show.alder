@@ -34,7 +34,8 @@ load params session = {
       Nothing -> Query.notFound,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin labels
@@ -44,8 +45,14 @@ type Labels = { users: List User, orgs: List Org }
 -- labelsOf reads the rows that rows refer to.
 labelsOf : List Membership -> Query Labels
 labelsOf rows = {
-  let users <- Db.from User |> Db.where (User.id.in (List.map (\row -> row.user) rows)) |> Db.all
-  let orgs <- Db.from Org |> Db.where (Org.id.in (List.map (\row -> row.org) rows)) |> Db.all
+  let users <-
+    Db.from User
+      |> Db.where (User.id.in (List.map (\row -> row.user) rows))
+      |> Db.all
+  let orgs <-
+    Db.from Org
+      |> Db.where (Org.id.in (List.map (\row -> row.org) rows))
+      |> Db.all
   Query.succeed { users: users, orgs: orgs }
 }
 
@@ -99,16 +106,24 @@ view model session =
         <dt>Id</dt>
         <dd>{model.row.id}</dd>
         <dt>User</dt>
-        <dd><a href={Admin.User.Show { id: model.row.user }}>{userLabel model.labels model.row.user}</a></dd>
+        <dd>
+          <a href={Admin.User.Show { id: model.row.user }}>
+            {userLabel model.labels model.row.user}
+          </a>
+        </dd>
         <dt>Org</dt>
-        <dd><a href={Admin.Org.Show { id: model.row.org }}>{orgLabel model.labels model.row.org}</a></dd>
+        <dd>
+          <a href={Admin.Org.Show { id: model.row.org }}>{orgLabel model.labels model.row.org}</a>
+        </dd>
         <dt>Created</dt>
         <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
         -- @admin end
       </dl>
       <div slot="actions">
         <al-button href={Admin.Membership.Edit { id: model.row.id }}>Edit</al-button>
-        <al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
+        <al-button variant="destructive">
+          <button type="button" commandfor="delete-dialog" command="show-modal">Delete</button>
+        </al-button>
       </div>
     </al-card>
     <al-dialog id="delete-dialog" heading="Delete this membership?" dismissible>
@@ -118,7 +133,10 @@ view model session =
       </dl>
       <form id="delete" submit={Remove}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        {if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p> else <al-button variant="destructive" type="submit">Delete</al-button>}
+        {if blockers model > 0 then
+          <p>It cannot be deleted while other rows refer to it.</p>
+        else
+          <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
       <div slot="actions">
         <a href={Admin.Membership.Delete { id: model.row.id }}>See the details</a>
@@ -134,7 +152,11 @@ test "the page shows the row" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let membership1 <- Db.insert Membership { user: me, org: org1 }
   let user2 <- Db.insert User {
@@ -144,21 +166,23 @@ test "the page shows the row" = {
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
   let r <- Test.open (Admin.Membership.Show { id: membership1 })
   let page <- Test.get (Admin.Membership.Show { id: membership1 })
-  Task.succeed ({
-    answer: r.answer,
-    fields: Test.count "#fields dd" r.doc,
-    users: List.length page.model.labels.users,
-    userLabel: userLabel page.model.labels me,
-    orgs: List.length page.model.labels.orgs,
-    orgLabel: orgLabel page.model.labels org1,
-  } == {
-    answer: Shown,
-    fields: 4,
-    users: 1,
-    userLabel: "email-1@example.com",
-    orgs: 1,
-    orgLabel: "name-1",
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      fields: Test.count "#fields dd" r.doc,
+      users: List.length page.model.labels.users,
+      userLabel: userLabel page.model.labels me,
+      orgs: List.length page.model.labels.orgs,
+      orgLabel: orgLabel page.model.labels org1,
+    } == {
+        answer: Shown,
+        fields: 4,
+        users: 1,
+        userLabel: "email-1@example.com",
+        orgs: 1,
+        orgLabel: "name-1",
+      }
+  )
 }
 
 test "deleting a membership nothing refers to" = {
@@ -167,19 +191,20 @@ test "deleting a membership nothing refers to" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let membership1 <- Db.insert Membership { user: me, org: org1 }
   let _ <- Test.get (Admin.Membership.Show { id: membership1 })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let gone <- Db.get Membership membership1
-  Task.succeed ({
-    answer: r.answer,
-    gone: Maybe.map (\row -> row.id) gone,
-  } == {
-    answer: Redirected (Admin.Membership.Index {}),
-    gone: Nothing,
-  })
+  Task.succeed (
+    { answer: r.answer, gone: Maybe.map (\row -> row.id) gone }
+      == { answer: Redirected (Admin.Membership.Index {}), gone: Nothing }
+  )
 }
 
 test "a missing row is not found" = {
@@ -188,7 +213,11 @@ test "a missing row is not found" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let r <- Test.open (Admin.Membership.Show { id: Membership.MembershipId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
@@ -207,7 +236,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let membership1 <- Db.insert Membership { user: me, org: org1 }
   let r <- Test.open (Admin.Membership.Show { id: membership1 })
@@ -220,7 +253,11 @@ test "a demoted Admin is refused at once" = {
     name: Text.NonEmpty "name-1",
     role: Member,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let membership1 <- Db.insert Membership { user: me, org: org1 }
   let r <- Test.open (Admin.Membership.Show { id: membership1 })

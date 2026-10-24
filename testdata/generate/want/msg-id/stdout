@@ -26,7 +26,7 @@ edited app/Home.alder
    </Layout.Page>
  
  test "signing adds an entry" = {
-@@ -61,3 +66,15 @@
+@@ -64,3 +69,15 @@
    let page <- Test.get (Home {})
    Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
  }
@@ -45,6 +45,6 @@ edited app/Home.alder
 app/Home.alder:31:14: warning[W0002]: hole ?clear has type Task Nav
     Clear p -> ?clear,
                ^^^^^^
-app/Home.alder:79:16: warning[W0002]: hole ?expected has type Bool
+app/Home.alder:82:16: warning[W0002]: hole ?expected has type Bool
     Task.succeed ?expected
                  ^^^^^^^^^

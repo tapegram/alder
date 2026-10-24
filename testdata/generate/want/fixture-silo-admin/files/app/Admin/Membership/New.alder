@@ -27,20 +27,33 @@ load params session = {
     -- @admin begin load
     let findUser = Text.slice 0 200 params.findUser
     let usersTotal <- Db.from User |> Db.count
-    let users <- Db.from User |> Db.orderBy User.email.asc |> Db.where (if usersTotal > 200 then User.email.contains findUser else Db.and []) |> Db.limit (if usersTotal > 200 then 50 else 200) |> Db.all
+    let users <-
+      Db.from User
+        |> Db.orderBy User.email.asc
+        |> Db.where (if usersTotal > 200 then User.email.contains findUser else Db.and [])
+        |> Db.limit (if usersTotal > 200 then 50 else 200)
+        |> Db.all
     let findOrg = Text.slice 0 200 params.findOrg
     let orgsTotal <- Db.from Org |> Db.count
-    let orgs <- Db.from Org |> Db.orderBy Org.name.asc |> Db.where (if orgsTotal > 200 then Org.name.contains findOrg else Db.and []) |> Db.limit (if orgsTotal > 200 then 50 else 200) |> Db.all
-    Query.succeed { users: users, usersTotal: usersTotal, orgs: orgs, orgsTotal: orgsTotal }
+    let orgs <-
+      Db.from Org
+        |> Db.orderBy Org.name.asc
+        |> Db.where (if orgsTotal > 200 then Org.name.contains findOrg else Db.and [])
+        |> Db.limit (if orgsTotal > 200 then 50 else 200)
+        |> Db.all
+    Query.succeed {
+      users: users,
+      usersTotal: usersTotal,
+      orgs: orgs,
+      orgsTotal: orgsTotal,
+    }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin form
-form MembershipForm = {
-  user: User.UserId,
-  org: Org.OrgId,
-}
+form MembershipForm = { user: User.UserId, org: Org.OrgId }
 -- @admin end
 
 -- @admin begin search
@@ -59,8 +72,10 @@ msg Create form MembershipForm
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
-  SearchUser p -> Task.succeed (Redirect (Admin.Membership.New { findUser: Text.slice 0 200 p.form.q })),
-  SearchOrg p -> Task.succeed (Redirect (Admin.Membership.New { findOrg: Text.slice 0 200 p.form.q })),
+  SearchUser p ->
+    Task.succeed (Redirect (Admin.Membership.New { findUser: Text.slice 0 200 p.form.q })),
+  SearchOrg p ->
+    Task.succeed (Redirect (Admin.Membership.New { findOrg: Text.slice 0 200 p.form.q })),
   -- @admin end
   Create p -> {
     -- @admin begin insert
@@ -77,13 +92,31 @@ view model session =
 
     <al-card>
       -- @admin begin finder
-      {if model.usersTotal > 200 then <form submit={SearchUser}><al-input field="q" label="Find user" /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}
-      {if model.orgsTotal > 200 then <form submit={SearchOrg}><al-input field="q" label="Find org" /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}
+      {if model.usersTotal > 200 then
+        <form submit={SearchUser}>
+          <al-input field="q" label="Find user" />
+          <al-button type="submit" variant="secondary">Find</al-button>
+        </form>
+      else
+        <span></span>}
+      {if model.orgsTotal > 200 then
+        <form submit={SearchOrg}>
+          <al-input field="q" label="Find org" />
+          <al-button type="submit" variant="secondary">Find</al-button>
+        </form>
+      else
+        <span></span>}
       -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
-        <al-select field="user" label="User" options={List.map (\r -> { value: r.id, label: r.email }) model.users} />
-        <al-select field="org" label="Org" options={List.map (\r -> { value: r.id, label: r.name }) model.orgs} />
+        <al-select
+          field="user"
+          label="User"
+          options={List.map (\r -> { value: r.id, label: r.email }) model.users} />
+        <al-select
+          field="org"
+          label="Org"
+          options={List.map (\r -> { value: r.id, label: r.name }) model.orgs} />
         -- @admin end
         <al-alert variant="destructive"><Errors form /></al-alert>
         <al-button type="submit">Create</al-button>
@@ -98,7 +131,11 @@ test "creating a membership adds it, with the values submitted" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
@@ -108,17 +145,19 @@ test "creating a membership adds it, with the values submitted" = {
   let page <- Test.get (Admin.Membership.New {})
   let r <- Test.submit MembershipForm { user: user2, org: org2 }
   let rows <- Db.from Membership |> Db.all
-  Task.succeed ({
-    answers: List.map (\row -> Redirected (Admin.Membership.Show { id: row.id })) rows,
-    rows: List.map (\row -> { user: row.user, org: row.org }) rows,
-    users: Test.texts "select[name=user] option" page.doc,
-    orgs: Test.texts "select[name=org] option" page.doc,
-  } == {
-    answers: [r.answer],
-    rows: [{ user: user2, org: org2 }],
-    users: ["email-1@example.com", "email-2@example.com"],
-    orgs: ["name-1", "name-2"],
-  })
+  Task.succeed (
+    {
+      answers: List.map (\row -> Redirected (Admin.Membership.Show { id: row.id })) rows,
+      rows: List.map (\row -> { user: row.user, org: row.org }) rows,
+      users: Test.texts "select[name=user] option" page.doc,
+      orgs: Test.texts "select[name=org] option" page.doc,
+    } == {
+        answers: [r.answer],
+        rows: [{ user: user2, org: org2 }],
+        users: ["email-1@example.com", "email-2@example.com"],
+        orgs: ["name-1", "name-2"],
+      }
+  )
 }
 
 test "a user not offered is refused" = {
@@ -127,7 +166,11 @@ test "a user not offered is refused" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
@@ -141,13 +184,13 @@ test "a user not offered is refused" = {
     { name: "org", value: orgId },
   ]
   let rows <- Db.from Membership |> Db.count
-  Task.succeed ({
-    answer: r.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "user", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: r.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "user", message: "must be one of the options" }],
+        rows: 0,
+      }
+  )
 }
 
 test "an org not offered is refused" = {
@@ -156,7 +199,11 @@ test "an org not offered is refused" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
@@ -170,13 +217,10 @@ test "an org not offered is refused" = {
     { name: "org", value: "missing" },
   ]
   let rows <- Db.from Membership |> Db.count
-  Task.succeed ({
-    answer: r.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "org", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: r.answer, rows: rows }
+      == { answer: FormRejected [{ field: "org", message: "must be one of the options" }], rows: 0 }
+  )
 }
 
 test "a list of 200 users is offered whole" = {
@@ -185,17 +229,24 @@ test "a list of 200 users is offered whole" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
-  let _ <- Task.all (List.map (\n -> Db.insert User {
-    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
-    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
-  }) (List.range 3 200))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert User {
+        email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+      }) (List.range 3 200)
+    )
   let page <- Test.get (Admin.Membership.New {})
   Task.succeed (List.length page.model.users == 200)
 }
@@ -206,31 +257,40 @@ test "a long list of users offers 50, and the search narrows it" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
-  let _ <- Task.all (List.map (\n -> Db.insert User {
-    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
-    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
-  }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert User {
+        email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+      }) (List.range 3 203)
+    )
   let all <- Test.get (Admin.Membership.New {})
   let found <- Test.get (Admin.Membership.New { findUser: "email-203@example.com" })
   let r <- Test.submit FindUser { q: "zz" }
-  Task.succeed ({
-    shown: List.length all.model.users,
-    total: all.model.usersTotal,
-    found: Test.texts "select[name=user] option" found.doc == ["email-203@example.com"],
-    answer: r.answer,
-  } == {
-    shown: 50,
-    total: 203,
-    found: True,
-    answer: Redirected (Admin.Membership.New { findUser: "zz" }),
-  })
+  Task.succeed (
+    {
+      shown: List.length all.model.users,
+      total: all.model.usersTotal,
+      found: Test.texts "select[name=user] option" found.doc == ["email-203@example.com"],
+      answer: r.answer,
+    } == {
+        shown: 50,
+        total: 203,
+        found: True,
+        answer: Redirected (Admin.Membership.New { findUser: "zz" }),
+      }
+  )
 }
 
 test "a user outside the narrowed list is refused" = {
@@ -239,17 +299,24 @@ test "a user outside the narrowed list is refused" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
-  let _ <- Task.all (List.map (\n -> Db.insert User {
-    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
-    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
-  }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert User {
+        email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+      }) (List.range 3 203)
+    )
   let all <- Test.get (Admin.Membership.New {})
   let found <- Test.get (Admin.Membership.New { findUser: "email-203@example.com" })
   let r <- Test.submit FindUser { q: "zz" }
@@ -261,13 +328,13 @@ test "a user outside the narrowed list is refused" = {
     { name: "org", value: orgId },
   ]
   let rows <- Db.from Membership |> Db.count
-  Task.succeed ({
-    answer: sent.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "user", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: sent.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "user", message: "must be one of the options" }],
+        rows: 0,
+      }
+  )
 }
 
 test "a list of 200 orgs is offered whole" = {
@@ -276,14 +343,23 @@ test "a list of 200 orgs is offered whole" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
-  let _ <- Task.all (List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (List.range 3 200))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (
+        List.range 3 200
+      )
+    )
   let page <- Test.get (Admin.Membership.New {})
   Task.succeed (List.length page.model.orgs == 200)
 }
@@ -294,28 +370,39 @@ test "a long list of orgs offers 50, and the search narrows it" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
-  let _ <- Task.all (List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (
+        List.range 3 203
+      )
+    )
   let all <- Test.get (Admin.Membership.New {})
   let found <- Test.get (Admin.Membership.New { findOrg: "name-203" })
   let r <- Test.submit FindOrg { q: "zz" }
-  Task.succeed ({
-    shown: List.length all.model.orgs,
-    total: all.model.orgsTotal,
-    found: Test.texts "select[name=org] option" found.doc == ["name-203"],
-    answer: r.answer,
-  } == {
-    shown: 50,
-    total: 203,
-    found: True,
-    answer: Redirected (Admin.Membership.New { findOrg: "zz" }),
-  })
+  Task.succeed (
+    {
+      shown: List.length all.model.orgs,
+      total: all.model.orgsTotal,
+      found: Test.texts "select[name=org] option" found.doc == ["name-203"],
+      answer: r.answer,
+    } == {
+        shown: 50,
+        total: 203,
+        found: True,
+        answer: Redirected (Admin.Membership.New { findOrg: "zz" }),
+      }
+  )
 }
 
 test "an org outside the narrowed list is refused" = {
@@ -324,14 +411,23 @@ test "an org outside the narrowed list is refused" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let user2 <- Db.insert User {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
-  let _ <- Task.all (List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (
+        List.range 3 203
+      )
+    )
   let all <- Test.get (Admin.Membership.New {})
   let found <- Test.get (Admin.Membership.New { findOrg: "name-203" })
   let r <- Test.submit FindOrg { q: "zz" }
@@ -343,13 +439,10 @@ test "an org outside the narrowed list is refused" = {
     { name: "org", value: pick },
   ]
   let rows <- Db.from Membership |> Db.count
-  Task.succeed ({
-    answer: sent.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "org", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: sent.answer, rows: rows }
+      == { answer: FormRejected [{ field: "org", message: "must be one of the options" }], rows: 0 }
+  )
 }
 
 test "a visitor is sent to log in" = {
@@ -363,7 +456,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let r <- Test.open (Admin.Membership.New {})
   Task.succeed (r.answer == PageMissing)
 }
@@ -374,7 +471,11 @@ test "a demoted Admin is refused at once" = {
     name: Text.NonEmpty "name-1",
     role: Member,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let r <- Test.open (Admin.Membership.New {})
   Task.succeed (r.answer == PageMissing)
 }

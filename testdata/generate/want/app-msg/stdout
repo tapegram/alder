@@ -1,10 +1,10 @@
 edited app/App.alder
 --- a/app/App.alder
 +++ b/app/App.alder
-@@ -16,3 +16,18 @@
-   <Layout.Page title="Not found">
-     <h1>Not found</h1>
-   </Layout.Page>
+@@ -13,3 +13,18 @@
+ 
+ notFound : Html Never
+ notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 +
 +msg ToggleTheme { dark: Bool }
 +
@@ -20,12 +20,12 @@ edited app/App.alder
 +  let r <- Test.run (update (ToggleTheme { dark: ?toggleThemeDark }) {})
 +  Task.succeed ?expected
 +}
-app/App.alder:24:20: warning[W0002]: hole ?toggleTheme has type Task Nav
+app/App.alder:21:20: warning[W0002]: hole ?toggleTheme has type Task Nav
     ToggleTheme p -> ?toggleTheme,
                      ^^^^^^^^^^^^
-app/App.alder:31:50: warning[W0002]: hole ?toggleThemeDark has type Bool
+app/App.alder:28:50: warning[W0002]: hole ?toggleThemeDark has type Bool
     let r <- Test.run (update (ToggleTheme { dark: ?toggleThemeDark }) {})
                                                    ^^^^^^^^^^^^^^^^
-app/App.alder:32:16: warning[W0002]: hole ?expected has type Bool
+app/App.alder:29:16: warning[W0002]: hole ?expected has type Bool
     Task.succeed ?expected
                  ^^^^^^^^^

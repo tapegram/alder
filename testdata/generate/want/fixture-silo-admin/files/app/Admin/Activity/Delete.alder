@@ -29,7 +29,8 @@ load params session = {
       Nothing -> Query.notFound,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin blockers
@@ -72,7 +73,10 @@ view model session =
       </dl>
       <form id="delete" submit={Remove}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        {if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p> else <al-button variant="destructive" type="submit">Delete</al-button>}
+        {if blockers model > 0 then
+          <p>It cannot be deleted while other rows refer to it.</p>
+        else
+          <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
     </al-card>
     <a href={Admin.Activity.Show { id: model.row.id }}>Back</a>
@@ -85,19 +89,20 @@ test "deleting an activity nothing refers to" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: Text.NonEmpty "text-1", org: org1 }
   let _ <- Test.get (Admin.Activity.Delete { id: activity1 })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let gone <- Db.get Activity activity1
-  Task.succeed ({
-    answer: r.answer,
-    gone: Maybe.map (\row -> row.id) gone,
-  } == {
-    answer: Redirected (Admin.Activity.Index {}),
-    gone: Nothing,
-  })
+  Task.succeed (
+    { answer: r.answer, gone: Maybe.map (\row -> row.id) gone }
+      == { answer: Redirected (Admin.Activity.Index {}), gone: Nothing }
+  )
 }
 
 test "a missing row is not found" = {
@@ -106,7 +111,11 @@ test "a missing row is not found" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let r <- Test.open (Admin.Activity.Delete { id: Activity.ActivityId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
@@ -124,7 +133,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: Text.NonEmpty "text-1", org: org1 }
   let r <- Test.open (Admin.Activity.Delete { id: activity1 })
@@ -137,7 +150,11 @@ test "a demoted Admin is refused at once" = {
     name: Text.NonEmpty "name-1",
     role: Member,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: Text.NonEmpty "text-1", org: org1 }
   let r <- Test.open (Admin.Activity.Delete { id: activity1 })

@@ -30,7 +30,7 @@ func NewType(p *Program, module, decl string) ([]Edit, error) {
 	m := p.Modules[module]
 	if m == nil {
 		body := "module " + module + "\n\n" + imports.lines() + "\n" + text + "\n"
-		return []Edit{{Path: FileOf(module), Create: true, Body: Tidy(body)}}, nil
+		return []Edit{{Path: FileOf(module), Create: true, Body: body}}, nil
 	}
 	names := []string{td.Name}
 	for _, c := range td.Union {

@@ -45,7 +45,11 @@ type Filter = {
   name: Text,
   label: Text,
   value: Text,
-  options: List { value: Text, label: Text, rows: Condition Membership },
+  options: List {
+    value: Text,
+    label: Text,
+    rows: Condition Membership,
+  },
 }
 
 -- @admin begin filters
@@ -55,7 +59,7 @@ type Filters = { }
 
 -- chosen is the filters' options in params.
 chosen : Params -> Filters
-chosen params = { }
+chosen params = {}
 
 -- filters are the list's filters, each with the option f has chosen.
 filters : Filters -> List Filter
@@ -68,16 +72,37 @@ filtered fs = Db.and []
 
 -- listAt is this list with the model's search and filters, sorted by sort and dir, at page n.
 listAt : Model -> Text -> Text -> Int -> Page
-listAt model sort dir n = Admin.Membership.Index { q: model.q, sort: sort, dir: dir, page: n }
+listAt model sort dir n = Admin.Membership.Index {
+  q: model.q,
+  sort: sort,
+  dir: dir,
+  page: n,
+}
 -- @admin end
 
 -- @admin begin sorts
 -- sorts are the columns the list sorts by, by name.
-sorts : List { name: Text, asc: Order Membership, desc: Order Membership }
+sorts : List {
+  name: Text,
+  asc: Order Membership,
+  desc: Order Membership,
+}
 sorts = [
-  { name: "user", asc: Membership.user.asc, desc: Membership.user.desc },
-  { name: "org", asc: Membership.org.asc, desc: Membership.org.desc },
-  { name: "created", asc: Membership.created.asc, desc: Membership.created.desc },
+  {
+    name: "user",
+    asc: Membership.user.asc,
+    desc: Membership.user.desc,
+  },
+  {
+    name: "org",
+    asc: Membership.org.asc,
+    desc: Membership.org.desc,
+  },
+  {
+    name: "created",
+    asc: Membership.created.asc,
+    desc: Membership.created.desc,
+  },
 ]
 -- @admin end
 
@@ -103,7 +128,10 @@ load params session = {
   if admin then {
     let q = Text.slice 0 200 params.q
     let f = chosen params
-    let count <- Db.from Membership |> Db.where (Db.and [search q, filtered (filters f)]) |> Db.count
+    let count <-
+      Db.from Membership
+        |> Db.where (Db.and [search q, filtered (filters f)])
+        |> Db.count
     let pages = Int.max 1 ((count + perPage - 1) / perPage)
     let page = Int.clamp { min: 1, max: pages } params.page
     let rows <-
@@ -125,7 +153,8 @@ load params session = {
       pages: pages,
       count: count,
     }
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin labels
@@ -135,8 +164,14 @@ type Labels = { users: List User, orgs: List Org }
 -- labelsOf reads the rows that rows refer to.
 labelsOf : List Membership -> Query Labels
 labelsOf rows = {
-  let users <- Db.from User |> Db.where (User.id.in (List.map (\row -> row.user) rows)) |> Db.all
-  let orgs <- Db.from Org |> Db.where (Org.id.in (List.map (\row -> row.org) rows)) |> Db.all
+  let users <-
+    Db.from User
+      |> Db.where (User.id.in (List.map (\row -> row.user) rows))
+      |> Db.all
+  let orgs <-
+    Db.from Org
+      |> Db.where (Org.id.in (List.map (\row -> row.org) rows))
+      |> Db.all
   Query.succeed { users: users, orgs: orgs }
 }
 
@@ -165,10 +200,12 @@ view model session =
         <input type="search" name="q" value={model.q} aria-label="Search" />
         {for f in filters model.filters ->
           <al-select label={f.label}>
-            <label>{f.label}
+            <label>
+              {f.label}
               <select name={f.name}>
                 <option value="" selected={f.value == ""}>any</option>
-                {for o in f.options -> <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
+                {for o in f.options ->
+                  <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
               </select>
             </label>
           </al-select>}
@@ -198,9 +235,18 @@ view model session =
           {for row in model.rows ->
             <tr>
               -- @admin begin cells
-              <td><input type="checkbox" name="ids" form="bulk" value={row.id} aria-label={"Choose " ++ row.id} /></td>
+              <td>
+                <input
+                  type="checkbox"
+                  name="ids"
+                  form="bulk"
+                  value={row.id}
+                  aria-label={"Choose " ++ row.id} />
+              </td>
               <td><a href={Admin.Membership.Show { id: row.id }}>{row.id}</a></td>
-              <td><a href={Admin.User.Show { id: row.user }}>{userLabel model.labels row.user}</a></td>
+              <td>
+                <a href={Admin.User.Show { id: row.user }}>{userLabel model.labels row.user}</a>
+              </td>
               <td><a href={Admin.Org.Show { id: row.org }}>{orgLabel model.labels row.org}</a></td>
               <td>{Time.format "Jan 2, 2006" row.created}</td>
               -- @admin end
@@ -220,9 +266,17 @@ view model session =
     </al-stack>
 
     <al-pagination role="navigation" aria-label="Pages">
-      {if model.page > 1 then <a slot="prev" href={listAt model model.sort model.dir (model.page - 1)} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
+      {if model.page > 1 then
+        <a slot="prev" href={listAt model model.sort model.dir (model.page - 1)} rel="prev">
+          Previous
+        </a>
+      else
+        <span slot="prev" aria-disabled="true">Previous</span>}
       <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
-      {if model.page < model.pages then <a slot="next" href={listAt model model.sort model.dir (model.page + 1)} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
+      {if model.page < model.pages then
+        <a slot="next" href={listAt model model.sort model.dir (model.page + 1)} rel="next">Next</a>
+      else
+        <span slot="next" aria-disabled="true">Next</span>}
     </al-pagination>
   </Admin.Layout.Page>
 
@@ -233,7 +287,11 @@ test "the list shows every row, newest first, and the labels of the rows they re
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let membership1 <- Db.insert Membership { user: me, org: org1 }
   let membership2 <- Db.insert Membership { user: me, org: org1 }
@@ -243,19 +301,21 @@ test "the list shows every row, newest first, and the labels of the rows they re
   }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
   let page <- Test.get (Admin.Membership.Index {})
-  Task.succeed ({
-    rows: List.map (\row -> row.id) page.model.rows,
-    users: List.length page.model.labels.users,
-    userLabel: userLabel page.model.labels me,
-    orgs: List.length page.model.labels.orgs,
-    orgLabel: orgLabel page.model.labels org1,
-  } == {
-    rows: [membership2, membership1],
-    users: 1,
-    userLabel: "email-1@example.com",
-    orgs: 1,
-    orgLabel: "name-1",
-  })
+  Task.succeed (
+    {
+      rows: List.map (\row -> row.id) page.model.rows,
+      users: List.length page.model.labels.users,
+      userLabel: userLabel page.model.labels me,
+      orgs: List.length page.model.labels.orgs,
+      orgLabel: orgLabel page.model.labels org1,
+    } == {
+        rows: [membership2, membership1],
+        users: 1,
+        userLabel: "email-1@example.com",
+        orgs: 1,
+        orgLabel: "name-1",
+      }
+  )
 }
 
 test "a search text of 20,000 characters is cut to 200" = {
@@ -264,16 +324,16 @@ test "a search text of 20,000 characters is cut to 200" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let long = Text.join "" (List.map (\n -> "z") (List.range 1 20000))
   let page <- Test.get (Admin.Membership.Index { q: long })
-  Task.succeed ({
-    q: Text.length page.model.q,
-    rows: List.length page.model.rows,
-  } == {
-    q: 200,
-    rows: 0,
-  })
+  Task.succeed (
+    { q: Text.length page.model.q, rows: List.length page.model.rows } == { q: 200, rows: 0 }
+  )
 }
 
 test "the list has 25 rows a page, and a page past the last is the last" = {
@@ -282,28 +342,32 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
-  let _ <- Task.all (List.map (\n -> Db.insert Membership {
-    user: me,
-    org: org1,
-  }) (List.range 1 26))
+  let _ <-
+    Task.all (List.map (\n -> Db.insert Membership { user: me, org: org1 }) (List.range 1 26))
   let first <- Test.get (Admin.Membership.Index {})
   let second <- Test.get (Admin.Membership.Index { page: 2 })
   let past <- Test.get (Admin.Membership.Index { page: 9 })
-  Task.succeed ({
-    first: List.length first.model.rows,
-    second: List.length second.model.rows,
-    past: { page: past.model.page, rows: List.length past.model.rows },
-    count: Test.text "#count" first.doc,
-    pages: Test.texts "al-pagination span" first.doc,
-  } == {
-    first: 25,
-    second: 1,
-    past: { page: 2, rows: 1 },
-    count: Just "26 rows",
-    pages: ["Previous", "Page 1 of 2"],
-  })
+  Task.succeed (
+    {
+      first: List.length first.model.rows,
+      second: List.length second.model.rows,
+      past: { page: past.model.page, rows: List.length past.model.rows },
+      count: Test.text "#count" first.doc,
+      pages: Test.texts "al-pagination span" first.doc,
+    } == {
+        first: 25,
+        second: 1,
+        past: { page: 2, rows: 1 },
+        count: Just "26 rows",
+        pages: ["Previous", "Page 1 of 2"],
+      }
+  )
 }
 
 test "a visitor is sent to log in" = {
@@ -317,7 +381,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let r <- Test.open (Admin.Membership.Index {})
   Task.succeed (r.answer == PageMissing)
 }
@@ -328,7 +396,11 @@ test "a demoted Admin is refused at once" = {
     name: Text.NonEmpty "name-1",
     role: Member,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let r <- Test.open (Admin.Membership.Index {})
   Task.succeed (r.answer == PageMissing)
 }

@@ -34,9 +34,9 @@ type attached struct {
 	after map[any][]syntax.Comment
 }
 
-// regionEnd is a region's end marker, generate.RegionEnd (internal/generate/regions.go; not
-// imported: the generators will import this package).
-const regionEnd = "-- @admin end"
+// RegionEnd is a region's end marker, generate.RegionEnd (internal/generate/regions.go; not
+// imported: the generators import this package, and a test there keeps the two equal).
+const RegionEnd = "-- @admin end"
 
 type place uint8
 
@@ -159,7 +159,7 @@ func (a *attacher) items(group any, start diag.Pos, items []any, end diag.Pos) {
 	// a region's end marker after an item, with no comment leading the next item before it,
 	// stays with the item
 	led := false
-	ends := func() bool { return prev != nil && !led && strings.HasPrefix(a.cs[a.i].Text, regionEnd) }
+	ends := func() bool { return prev != nil && !led && strings.HasPrefix(a.cs[a.i].Text, RegionEnd) }
 	for _, it := range items {
 		led = false
 		for a.more(spanOf(it).Start) {

@@ -38,7 +38,10 @@ view model session =
 test "the page shows the row" = {
   let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
   let r <- Test.open (Entries.Show { id: entry1 })
-  Task.succeed ({ answer: r.answer, name: List.member "name-1" (Test.texts "dd" r.doc) } == { answer: Shown, name: True })
+  Task.succeed (
+    { answer: r.answer, name: List.member "name-1" (Test.texts "dd" r.doc) }
+      == { answer: Shown, name: True }
+  )
 }
 
 test "a missing row is not found" = {

@@ -3,7 +3,7 @@
 type Model = { }
 
 load : Params -> Session -> Query Model
-load params session = [[if .LoadHole]]?load[[else]]Query.succeed { }[[end]]
+load params session = [[if .LoadHole]]?load[[else]]Query.succeed {}[[end]]
 
 view : Model -> Session -> File
 view model session = File.text { contentType: [[.ContentType]], body: ?body }

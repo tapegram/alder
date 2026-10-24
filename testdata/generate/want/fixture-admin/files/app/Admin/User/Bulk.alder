@@ -13,7 +13,11 @@ page "/admin/user/bulk" { ids: List User.UserId } requires user, role Admin
 
 -- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep
 -- from being deleted, and how many ids the page was given.
-type Model = { rows: List User, held: List User.UserId, chosen: Int }
+type Model = {
+  rows: List User,
+  held: List User.UserId,
+  chosen: Int,
+}
 
 -- maxRows is how many rows one action takes: a page of the list. More are refused.
 maxRows : Int
@@ -25,16 +29,26 @@ load params session = {
   if admin then {
     -- @admin begin load
     let ids = List.take maxRows params.ids
-    let rows <- Db.from User |> Db.where (User.id.in ids) |> Db.all
-    let held1 <- Db.from Comment |> Db.where (Comment.author.in (ids)) |> Db.all
-    let held2 <- Db.from Post |> Db.where (Post.author.in (ids)) |> Db.all
+    let rows <-
+      Db.from User
+        |> Db.where (User.id.in ids)
+        |> Db.all
+    let held1 <-
+      Db.from Comment
+        |> Db.where (Comment.author.in ids)
+        |> Db.all
+    let held2 <-
+      Db.from Post
+        |> Db.where (Post.author.in ids)
+        |> Db.all
     Query.succeed {
       rows: rows,
       held: List.concat [List.map (\r -> r.author) held1, List.map (\r -> r.author) held2],
       chosen: List.length params.ids,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- refused says whether a row is kept from being deleted: rows refer to it with a `@restrict`,
@@ -53,13 +67,18 @@ update : Msg -> Model -> Session -> Task Nav
 update msg model session =
   if model.chosen > maxRows then
     Task.succeed (Reject ("Choose at most " ++ Text.fromInt maxRows ++ " rows at a time."))
-  else match msg {
-    BulkDelete p -> {
-      let allowed = List.filter (\row -> refused model session row == False) model.rows
-      let _ <- Task.all (List.map (\row -> Db.delete User row.id) allowed)
-      Task.succeed (Notice.with ("Deleted " ++ Text.fromInt (List.length allowed) ++ " of " ++ Text.fromInt (List.length model.rows)) (Redirect (Admin.User.Index {})))
-    },
-  }
+  else
+    match msg {
+      BulkDelete p -> {
+        let allowed = List.filter (\row -> refused model session row == False) model.rows
+        let _ <- Task.all (List.map (\row -> Db.delete User row.id) allowed)
+        Task.succeed (
+          Notice.with ("Deleted " ++ Text.fromInt (List.length allowed) ++ " of " ++ Text.fromInt (List.length model.rows)) (
+            Redirect (Admin.User.Index {})
+          )
+        )
+      },
+    }
 -- @admin end
 
 view : Model -> Session -> Html Msg
@@ -68,15 +87,31 @@ view model session =
     <h1>{Text.fromInt (List.length model.rows)} selected</h1>
 
     <al-card>
-      {if model.chosen > maxRows then <al-alert id="too-many" variant="warning">{"Choose at most " ++ Text.fromInt maxRows ++ " rows at a time."}</al-alert> else <span></span>}
+      {if model.chosen > maxRows then
+        <al-alert id="too-many" variant="warning">
+          {"Choose at most " ++ Text.fromInt maxRows ++ " rows at a time."}
+        </al-alert>
+      else
+        <span></span>}
       <ul id="selected">
         {for row in model.rows ->
-          <li>{row.email}{if session.user == row.id then <small> (kept: your own account)</small> else if refused model session row then <small> (kept: other rows refer to it)</small> else <span></span>}</li>}
+          <li>
+            {row.email}
+            {if session.user == row.id then
+              <small> (kept: your own account)</small>
+            else
+              if refused model session row then
+                <small> (kept: other rows refer to it)</small>
+              else
+                <span></span>}
+          </li>}
       </ul>
       -- @admin begin actions
       <form id="bulk-delete" submit={BulkDelete}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        <al-button variant="destructive" type="submit">Delete the rows that can be deleted</al-button>
+        <al-button variant="destructive" type="submit">
+          Delete the rows that can be deleted
+        </al-button>
       </form>
       -- @admin end
     </al-card>
@@ -95,8 +130,16 @@ test "deleting the chosen rows leaves the ones other rows refer to" = {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let _ <- Db.insert Comment { post: post1, author: user2, body: Text.NonEmpty "body-1" }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let _ <- Db.insert Comment {
+    post: post1,
+    author: user2,
+    body: Text.NonEmpty "body-1",
+  }
   let user3 <- Db.insert User {
     email: Text.Email "email-3@example.com",
     name: Text.NonEmpty "name-3",
@@ -106,24 +149,26 @@ test "deleting the chosen rows leaves the ones other rows refer to" = {
     name: Text.NonEmpty "name-4",
   }
   let _ <- Test.get (Admin.User.Bulk { ids: [user2, user3] })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let gone <- Db.get User user3
   let left <- Db.get User user4
   let kept <- Db.get User user2
   let page <- Test.get (Admin.User.Bulk { ids: [user2, user3] })
-  Task.succeed ({
-    answer: r.answer,
-    gone: Maybe.map (\row -> row.id) gone,
-    left: Maybe.map (\row -> row.id) left,
-    kept: Maybe.map (\row -> row.id) kept,
-    listed: Test.count "#selected li small" page.doc,
-  } == {
-    answer: Redirected (Admin.User.Index {}),
-    gone: Nothing,
-    left: Just user4,
-    kept: Just user2,
-    listed: 1,
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      gone: Maybe.map (\row -> row.id) gone,
+      left: Maybe.map (\row -> row.id) left,
+      kept: Maybe.map (\row -> row.id) kept,
+      listed: Test.count "#selected li small" page.doc,
+    } == {
+        answer: Redirected (Admin.User.Index {}),
+        gone: Nothing,
+        left: Just user4,
+        kept: Just user2,
+        listed: 1,
+      }
+  )
 }
 
 test "an Admin's own row is not deleted with the chosen rows" = {
@@ -134,15 +179,12 @@ test "an Admin's own row is not deleted with the chosen rows" = {
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let page <- Test.get (Admin.User.Bulk { ids: [me] })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let kept <- Db.get User me
-  Task.succeed ({
-    kept: Maybe.map (\row -> row.id) kept,
-    says: Test.texts "#selected small" page.doc,
-  } == {
-    kept: Just me,
-    says: ["(kept: your own account)"],
-  })
+  Task.succeed (
+    { kept: Maybe.map (\row -> row.id) kept, says: Test.texts "#selected small" page.doc }
+      == { kept: Just me, says: ["(kept: your own account)"] }
+  )
 }
 
 test "25 chosen ids are taken" = {
@@ -156,18 +198,23 @@ test "25 chosen ids are taken" = {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let page <- Test.get (Admin.User.Bulk { ids: [user2] ++ List.map (\n -> User.UserId ("none-" ++ Text.fromInt n)) (List.range 1 24) })
-  let r <- Test.submit Confirm { }
+  let page <-
+    Test.get (Admin.User.Bulk {
+      ids: [user2] ++ List.map (\n -> User.UserId ("none-" ++ Text.fromInt n)) (List.range 1 24),
+    })
+  let r <- Test.submit Confirm {}
   let after <- Db.get User user2
-  Task.succeed ({
-    answer: r.answer,
-    kept: Maybe.map (\row -> row.id) after,
-    warned: Test.count "#too-many" page.doc,
-  } == {
-    answer: Redirected (Admin.User.Index {}),
-    kept: Nothing,
-    warned: 0,
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      kept: Maybe.map (\row -> row.id) after,
+      warned: Test.count "#too-many" page.doc,
+    } == {
+        answer: Redirected (Admin.User.Index {}),
+        kept: Nothing,
+        warned: 0,
+      }
+  )
 }
 
 test "26 chosen ids are refused" = {
@@ -181,18 +228,23 @@ test "26 chosen ids are refused" = {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let page <- Test.get (Admin.User.Bulk { ids: [user2] ++ List.map (\n -> User.UserId ("none-" ++ Text.fromInt n)) (List.range 1 25) })
-  let r <- Test.submit Confirm { }
+  let page <-
+    Test.get (Admin.User.Bulk {
+      ids: [user2] ++ List.map (\n -> User.UserId ("none-" ++ Text.fromInt n)) (List.range 1 25),
+    })
+  let r <- Test.submit Confirm {}
   let after <- Db.get User user2
-  Task.succeed ({
-    answer: r.answer,
-    kept: Maybe.map (\row -> row.id) after,
-    warned: Test.count "#too-many" page.doc,
-  } == {
-    answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
-    kept: Just user2,
-    warned: 1,
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      kept: Maybe.map (\row -> row.id) after,
+      warned: Test.count "#too-many" page.doc,
+    } == {
+        answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
+        kept: Just user2,
+        warned: 1,
+      }
+  )
 }
 
 test "a visitor is sent to log in" = {

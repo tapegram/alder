@@ -21,13 +21,13 @@ var templateFS embed.FS
 // Alder's own braces would otherwise read as template actions.
 var templates = template.Must(template.New("").Delims("[[", "]]").ParseFS(templateFS, "templates/*.tmpl"))
 
-// render executes template name with data and tidies the result (Tidy).
+// render executes template name with data (Apply formats what it writes).
 func render(name string, data any) string {
 	var b strings.Builder
 	if err := templates.ExecuteTemplate(&b, name, data); err != nil {
 		panic(fmt.Sprintf("generate: template %s: %v", name, err))
 	}
-	return Tidy(b.String())
+	return b.String()
 }
 
 // PageData is the data every page template takes (page.tmpl, page_list.tmpl, page_show.tmpl,
@@ -306,7 +306,7 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		for _, i := range imports.list() {
 			src += "import " + i + "\n"
 		}
-		src += "\npage \"" + o.Path + "\" " + d.Params + "\n\ntype Model = { }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { }\n\n" +
+		src += "\npage \"" + o.Path + "\" " + d.Params + "\n\ntype Model = { }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed {}\n\n" +
 			"view : Model -> Session -> Html Msg\nview model session = <p></p>\n"
 		probe, err := Probe(p.Dir, []Edit{{Path: file, Create: true, Body: src}})
 		if err != nil {

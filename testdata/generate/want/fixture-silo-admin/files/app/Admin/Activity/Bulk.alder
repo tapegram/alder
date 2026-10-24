@@ -13,7 +13,11 @@ page "/admin/activity/bulk" { ids: List Activity.ActivityId } requires user, rol
 
 -- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep
 -- from being deleted, and how many ids the page was given.
-type Model = { rows: List Activity, held: List Activity.ActivityId, chosen: Int }
+type Model = {
+  rows: List Activity,
+  held: List Activity.ActivityId,
+  chosen: Int,
+}
 
 -- maxRows is how many rows one action takes: a page of the list. More are refused.
 maxRows : Int
@@ -25,10 +29,18 @@ load params session = {
   if admin then {
     -- @admin begin load
     let ids = List.take maxRows params.ids
-    let rows <- Db.from Activity |> Db.where (Activity.id.in ids) |> Db.all
-    Query.succeed { rows: rows, held: [], chosen: List.length params.ids }
+    let rows <-
+      Db.from Activity
+        |> Db.where (Activity.id.in ids)
+        |> Db.all
+    Query.succeed {
+      rows: rows,
+      held: [],
+      chosen: List.length params.ids,
+    }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- refused says whether a row is kept from being deleted: rows refer to it with a `@restrict`.
@@ -46,13 +58,18 @@ update : Msg -> Model -> Session -> Task Nav
 update msg model session =
   if model.chosen > maxRows then
     Task.succeed (Reject ("Choose at most " ++ Text.fromInt maxRows ++ " rows at a time."))
-  else match msg {
-    BulkDelete p -> {
-      let allowed = List.filter (\row -> refused model session row == False) model.rows
-      let _ <- Task.all (List.map (\row -> Db.delete Activity row.id) allowed)
-      Task.succeed (Notice.with ("Deleted " ++ Text.fromInt (List.length allowed) ++ " of " ++ Text.fromInt (List.length model.rows)) (Redirect (Admin.Activity.Index {})))
-    },
-  }
+  else
+    match msg {
+      BulkDelete p -> {
+        let allowed = List.filter (\row -> refused model session row == False) model.rows
+        let _ <- Task.all (List.map (\row -> Db.delete Activity row.id) allowed)
+        Task.succeed (
+          Notice.with ("Deleted " ++ Text.fromInt (List.length allowed) ++ " of " ++ Text.fromInt (List.length model.rows)) (
+            Redirect (Admin.Activity.Index {})
+          )
+        )
+      },
+    }
 -- @admin end
 
 view : Model -> Session -> Html Msg
@@ -61,15 +78,28 @@ view model session =
     <h1>{Text.fromInt (List.length model.rows)} selected</h1>
 
     <al-card>
-      {if model.chosen > maxRows then <al-alert id="too-many" variant="warning">{"Choose at most " ++ Text.fromInt maxRows ++ " rows at a time."}</al-alert> else <span></span>}
+      {if model.chosen > maxRows then
+        <al-alert id="too-many" variant="warning">
+          {"Choose at most " ++ Text.fromInt maxRows ++ " rows at a time."}
+        </al-alert>
+      else
+        <span></span>}
       <ul id="selected">
         {for row in model.rows ->
-          <li>{row.text}{if refused model session row then <small> (kept: other rows refer to it)</small> else <span></span>}</li>}
+          <li>
+            {row.text}
+            {if refused model session row then
+              <small> (kept: other rows refer to it)</small>
+            else
+              <span></span>}
+          </li>}
       </ul>
       -- @admin begin actions
       <form id="bulk-delete" submit={BulkDelete}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        <al-button variant="destructive" type="submit">Delete the rows that can be deleted</al-button>
+        <al-button variant="destructive" type="submit">
+          Delete the rows that can be deleted
+        </al-button>
       </form>
       -- @admin end
     </al-card>
@@ -83,23 +113,29 @@ test "deleting the chosen rows" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: Text.NonEmpty "text-1", org: org1 }
   let activity2 <- Db.insert Activity { text: Text.NonEmpty "text-2", org: org1 }
   let _ <- Test.get (Admin.Activity.Bulk { ids: [activity1] })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let gone <- Db.get Activity activity1
   let left <- Db.get Activity activity2
-  Task.succeed ({
-    answer: r.answer,
-    gone: Maybe.map (\row -> row.id) gone,
-    left: Maybe.map (\row -> row.id) left,
-  } == {
-    answer: Redirected (Admin.Activity.Index {}),
-    gone: Nothing,
-    left: Just activity2,
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      gone: Maybe.map (\row -> row.id) gone,
+      left: Maybe.map (\row -> row.id) left,
+    } == {
+        answer: Redirected (Admin.Activity.Index {}),
+        gone: Nothing,
+        left: Just activity2,
+      }
+  )
 }
 
 test "25 chosen ids are taken" = {
@@ -108,21 +144,31 @@ test "25 chosen ids are taken" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: Text.NonEmpty "text-1", org: org1 }
-  let page <- Test.get (Admin.Activity.Bulk { ids: [activity1] ++ List.map (\n -> Activity.ActivityId ("none-" ++ Text.fromInt n)) (List.range 1 24) })
-  let r <- Test.submit Confirm { }
+  let page <-
+    Test.get (Admin.Activity.Bulk {
+      ids: [activity1]
+        ++ List.map (\n -> Activity.ActivityId ("none-" ++ Text.fromInt n)) (List.range 1 24),
+    })
+  let r <- Test.submit Confirm {}
   let after <- Db.get Activity activity1
-  Task.succeed ({
-    answer: r.answer,
-    kept: Maybe.map (\row -> row.id) after,
-    warned: Test.count "#too-many" page.doc,
-  } == {
-    answer: Redirected (Admin.Activity.Index {}),
-    kept: Nothing,
-    warned: 0,
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      kept: Maybe.map (\row -> row.id) after,
+      warned: Test.count "#too-many" page.doc,
+    } == {
+        answer: Redirected (Admin.Activity.Index {}),
+        kept: Nothing,
+        warned: 0,
+      }
+  )
 }
 
 test "26 chosen ids are refused" = {
@@ -131,21 +177,31 @@ test "26 chosen ids are refused" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: Text.NonEmpty "text-1", org: org1 }
-  let page <- Test.get (Admin.Activity.Bulk { ids: [activity1] ++ List.map (\n -> Activity.ActivityId ("none-" ++ Text.fromInt n)) (List.range 1 25) })
-  let r <- Test.submit Confirm { }
+  let page <-
+    Test.get (Admin.Activity.Bulk {
+      ids: [activity1]
+        ++ List.map (\n -> Activity.ActivityId ("none-" ++ Text.fromInt n)) (List.range 1 25),
+    })
+  let r <- Test.submit Confirm {}
   let after <- Db.get Activity activity1
-  Task.succeed ({
-    answer: r.answer,
-    kept: Maybe.map (\row -> row.id) after,
-    warned: Test.count "#too-many" page.doc,
-  } == {
-    answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
-    kept: Just activity1,
-    warned: 1,
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      kept: Maybe.map (\row -> row.id) after,
+      warned: Test.count "#too-many" page.doc,
+    } == {
+        answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
+        kept: Just activity1,
+        warned: 1,
+      }
+  )
 }
 
 test "a visitor is sent to log in" = {
@@ -161,7 +217,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: Text.NonEmpty "text-1", org: org1 }
   let r <- Test.open (Admin.Activity.Bulk { ids: [activity1] })
@@ -174,7 +234,11 @@ test "a demoted Admin is refused at once" = {
     name: Text.NonEmpty "name-1",
     role: Member,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let activity1 <- Db.insert Activity { text: Text.NonEmpty "text-1", org: org1 }
   let r <- Test.open (Admin.Activity.Bulk { ids: [activity1] })

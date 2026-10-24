@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"alder/internal/format"
 	"alder/internal/generate"
 )
 
@@ -70,7 +71,7 @@ func TestAdmin_Refusals(t *testing.T) {
 		{genApp(t, "scaffold"), []string{"new", "admin"}, "alder new admin: " + generate.AdminNeeds + ": this app's session has no `user`; add a user table, a login that sets `user`, and a `role` (chapter 6, \"Rules\" and \"Roles\")"},
 		{withAdmin, []string{"new", "admin"}, "alder new admin: `app/Admin/` exists: `alder regen admin` updates the admin in it; to generate another, choose another `--module`"},
 		{genApp(t, "fixture"), []string{"regen", "admin"}, "alder regen admin: there is no admin in `app/Admin/`: `alder new admin` generates one (name another with --module)"},
-		{broken, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Post/Index.alder`: region `cells` has no end marker (region `tests` begins at line 250, inside it)"},
+		{broken, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Post/Index.alder`: region `cells` has no end marker (region `tests` begins at line 355, inside it)"},
 		{older, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Tag/Index.alder` has no region `filters`, which its list now needs (it was generated before the filters): delete it and run `alder regen admin --all` to write it again, then carry over your changes"},
 		{genApp(t, "fixture"), []string{"new", "admin", "--module", "admin"}, "alder new admin: `--module admin` is not a module name: write capitalised names joined by dots, such as `Admin`"},
 		{genApp(t, "fixture"), []string{"new", "admin", "--path", "/admin/{id}"}, "alder new admin: `--path /admin/{id}` is not a path without parameters, such as `/admin`"},
@@ -233,7 +234,7 @@ func TestAdmin_Silo(t *testing.T) {
 		"app/Admin/Orgs/Index.alder":     {`page "/admin/orgs" { } requires user, role Admin`, "<a href={Admin.Orgs.Show { org: row.id }}>{row.name}</a>"},
 		"app/Admin/Orgs/Show.alder":      {`page "/admin/orgs/{org}" { org: Org.OrgId } requires user, role Admin, silo org`, "href: Admin.Project.Index { org: params.org },"},
 		"app/Admin/Project/Index.alder":  {`page "/admin/orgs/{org}/project" {`, "  org: Org.OrgId,\n  q: Text = \"\",", "} requires user, role Admin, silo org", `action={"/admin/orgs/" ++ session.org ++ "/project"}`, "listAt model sort dir n = Admin.Project.Index {\n  org: model.org,", "<a href={Admin.Project.Show { org: session.org, id: row.id }}>"},
-		"app/Admin/Project/New.alder":    {`page "/admin/orgs/{org}/project/new" { org: Org.OrgId } requires user, role Admin, silo org`, "org: session.org }\n", "Task.succeed (Redirect (Admin.Project.Show { org: session.org, id: id }))"},
+		"app/Admin/Project/New.alder":    {`page "/admin/orgs/{org}/project/new" { org: Org.OrgId } requires user, role Admin, silo org`, "      org: session.org,\n", "Task.succeed (Redirect (Admin.Project.Show { org: session.org, id: id }))"},
 		"app/Admin/Issue/Show.alder":     {"<a href={Admin.Project.Show { org: session.org, id: model.row.project }}>", "<a href={Admin.User.Show { id: v }}>"},
 		"app/Admin/Activity/Index.alder": {`page "/admin/activity" {`},
 	} {
@@ -298,7 +299,7 @@ func TestAdmin_SelfGuard(t *testing.T) {
 	}
 	del, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "User", "Delete.alder"))
 	edit, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "User", "Edit.alder"))
-	for _, w := range []string{"own: session.user == row.id,", "if model.own then\n      Task.succeed (Reject \"You cannot delete your own account.\")", "{if model.own then <p>You cannot delete your own account.</p>"} {
+	for _, w := range []string{"own: session.user == row.id,", "if model.own then\n      Task.succeed (Reject \"You cannot delete your own account.\")", "{if model.own then\n          <p>You cannot delete your own account.</p>"} {
 		if !strings.Contains(string(del), w) {
 			t.Errorf("Admin.User.Delete lacks %q:\n%s", w, del)
 		}
@@ -394,15 +395,23 @@ func TestAdmin_Regen(t *testing.T) {
 	replace(index, "              -- @admin end\n            </tr>}", "              -- @admin end\n              <td class=\"words\">{Text.fromInt (List.length (Text.split \" \" row.body))}</td>\n            </tr>}")
 	write(index, file(index)+`
 test "the list counts each post's words" = {
-  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", role: Admin }
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    role: Admin,
+  }
   let _ <- Test.login { user: Just me, role: Admin }
-  let _ <- Db.insert Post { title: Text.NonEmpty "Hello", body: "one two three", author: me }
+  let _ <- Db.insert Post {
+    title: Text.NonEmpty "Hello",
+    body: "one two three",
+    author: me,
+  }
   let page <- Test.get (Admin.Post.Index {})
   Task.succeed (Test.texts "td.words" page.doc == ["3"])
 }
 `)
 	// a page the author does without: Tag's Delete page, and the dialog's link to it
-	replace("app/Admin/Tag/Show.alder", "        <a href={Admin.Tag.Delete { id: model.row.id }}>See the details</a>\n", "")
+	replace("app/Admin/Tag/Show.alder", "<div slot=\"actions\"><a href={Admin.Tag.Delete { id: model.row.id }}>See the details</a></div>\n", "<div slot=\"actions\"></div>\n")
 	os.Remove(filepath.Join(dir, "app", "Admin", "Tag", "Delete.alder"))
 	if code, out, errs := alderIn(t, dir, "", "check"); code != 0 || strings.Contains(out, "error") {
 		t.Fatalf("the customised admin does not check: exit %d\n%s%s", code, out, errs)
@@ -449,7 +458,7 @@ test "the list counts each post's words" = {
 	}
 	// the new field, in the list, the show page and both forms; the new table, in the nav and the dashboard
 	for p, wants := range map[string][]string{
-		index:                         {"<h1>Every post</h1>", "<th>Words</th>", "  pinned: Text = \"\",", `{ name: "pinned", label: "Pinned", value: f.pinned, options: [`, `test "filtering by featured lists the rows with that value"`, `{ name: "views", asc: Post.views.asc, desc: Post.views.desc },`, ">Views</a></th>", "<td>{Text.fromInt row.views}</td>", "test \"the list counts each post's words\""},
+		index:                         {"<h1>Every post</h1>", "<th>Words</th>", "  pinned: Text = \"\",", "    name: \"pinned\",\n    label: \"Pinned\",\n    value: f.pinned,\n    options: [", `test "filtering by featured lists the rows with that value"`, "    name: \"views\",\n    asc: Post.views.asc,\n    desc: Post.views.desc,\n  },", ">Views</a></th>", "<td>{Text.fromInt row.views}</td>", "test \"the list counts each post's words\""},
 		"app/Admin/Post/Show.alder":   {"<dt>Views</dt>"},
 		"app/Admin/Post/New.alder":    {"  views: Int,", `<al-input field="views" label="Views" value={0} />`, "views: p.form.views"},
 		"app/Admin/Post/Edit.alder":   {"  views: Int,", `<al-input field="views" label="Views" value={model.row.views} />`, "views: p.form.views"},
@@ -673,5 +682,35 @@ func TestAdmin_NoRoleColumn(t *testing.T) {
 	}
 	if code, out, errs := alderIn(t, dir, "", "test"); code != 0 || !strings.HasSuffix(out, " passed, 0 failed\n") {
 		t.Fatalf("alder test: exit %d\n%s%s", code, out, errs)
+	}
+}
+
+// TestRegen_ThenFmtNoop (Review Focus 5 of #18): after `alder regen admin` writes a field into
+// the admin's regions, every file of the admin is as `alder fmt` prints it, and its regions
+// still read (the markers on their own lines).
+func TestRegen_ThenFmtNoop(t *testing.T) {
+	t.Parallel()
+	dir := genApp(t, "fixture")
+	for _, args := range [][]string{{"new", "admin"}, {"edit", "table", "Post", "add-field", "views:Int=0"}, {"regen", "admin"}} {
+		if code, out, errs := alderIn(t, dir, "", args...); code != 0 || errs != "" {
+			t.Fatalf("alder %s: exit %d\n%s%s", strings.Join(args, " "), code, out, errs)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Post", "Show.alder")); !strings.Contains(string(b), "<dt>Views</dt>") {
+		t.Fatalf("regen did not write the field:\n%s", b)
+	}
+	for p, s := range appFiles(t, dir) {
+		if !strings.HasPrefix(p, "app/Admin/") {
+			continue
+		}
+		if out, _, err := format.Source(p, []byte(s)); err != nil || string(out) != s {
+			t.Errorf("%s is not formatted after regen (%v):\n%s", p, err, generate.UnifiedDiff(p, s, string(out)))
+		}
+		if _, err := generate.Regions.Names(s); err != nil {
+			t.Errorf("%s: %v", p, err)
+		}
+	}
+	if code, out, errs := fmtRun("--check", filepath.Join(dir, "app", "Admin")); code != 0 { // the fixture's own files are not formatted
+		t.Errorf("alder fmt --check after regen: exit %d\n%s%s", code, out, errs)
 	}
 }

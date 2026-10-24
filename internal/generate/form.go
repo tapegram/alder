@@ -464,14 +464,14 @@ func addToView(e *srcEdit, m *Module, page, markup, label string) error {
 	}
 	switch {
 	case label == "": // a button, after a blank line, as the root's sections are
-		e.insertBefore(spot.Line, "\n"+indent(markup, spot.Indent))
+		spot.insert(e, "\n"+indent(markup, spot.Indent))
 		return nil
 	case spot.InCard:
-		e.insertBefore(spot.Line, indent(markup, spot.Indent))
+		spot.insert(e, indent(markup, spot.Indent))
 		return nil
 	}
 	card := snippet("card", map[string]string{"Label": label, "Body": indent(markup, "  ")})
-	e.insertBefore(spot.Line, "\n"+indent(card, spot.Indent))
+	spot.insert(e, "\n"+indent(card, spot.Indent))
 	return nil
 }
 

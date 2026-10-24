@@ -2,7 +2,7 @@ edited app/App.alder
 edited app/Home.alder
 --- a/app/App.alder
 +++ b/app/App.alder
-@@ -1,12 +1,16 @@
+@@ -1,12 +1,20 @@
  module App
  
  import Layout
@@ -12,7 +12,11 @@ edited app/Home.alder
  -- The fixture of the generators' tests (cmd/alder/generate_test.go): a session with a user and
  -- a role, copied from the user's row when they log in (Auth.Login).
 -session { user: Maybe User.UserId, role: User.Role = Reader }
-+session { user: Maybe User.UserId, role: User.Role = Reader, post: Maybe Post.PostId via Comment }
++session {
++  user: Maybe User.UserId,
++  role: User.Role = Reader,
++  post: Maybe Post.PostId via Comment,
++}
  
 +-- a page that `requires post` sends a session without one here, to pick one
 +choose post = Home
@@ -20,17 +24,51 @@ edited app/Home.alder
  login = Auth.Login
  
  msg Logout
-@@ -35,6 +39,6 @@
+@@ -27,14 +35,16 @@
+   </Layout.Page>
+ 
+ notFound : Html Never
+-notFound =
+-  <Layout.Page title="Not found">
+-    <h1>Not found</h1>
+-  </Layout.Page>
++notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
+ 
  -- From a page that `requires user` a Rerender ends at the login page too; only a test of
  -- `update` itself tells Redirect from Rerender.
  test "Logout goes to log in" = {
 -  let r <- Test.run (update Logout { user: Just (User.UserId "me"), role: Admin })
-+  let r <- Test.run (update Logout { user: Just (User.UserId "me"), role: Admin, post: Nothing })
++  let r <-
++    Test.run (update Logout {
++      user: Just (User.UserId "me"),
++      role: Admin,
++      post: Nothing,
++    })
    Task.succeed (r.value == Ok (Redirect (Auth.Login {})))
  }
 --- a/app/Home.alder
 +++ b/app/Home.alder
-@@ -53,7 +53,7 @@
+@@ -10,14 +10,14 @@
+ 
+ load : Params -> Session -> Query Model
+ load params session = {
+-  let posts <- Db.mine Post |> Db.orderBy Post.created.desc |> Db.all
++  let posts <-
++    Db.mine Post
++      |> Db.orderBy Post.created.desc
++      |> Db.all
+   Query.succeed { posts: posts }
+ }
+ 
+-form Write = {
+-  title: Text.NonEmpty,
+-  body: Text,
+-}
++form Write = { title: Text.NonEmpty, body: Text }
+ 
+ msg Submit form Write
+ 
+@@ -53,20 +53,52 @@
  
  test "writing a post lists it, a draft" = {
    let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
@@ -39,21 +77,84 @@ edited app/Home.alder
    let _ <- Test.get (Home {})
    let r <- Test.submit Write { title: Text.NonEmpty "Hello", body: "" }
    let posts <- Db.from Post |> Db.all
-@@ -66,7 +66,7 @@
-   let _ <- Db.insert Post { title: Text.NonEmpty "First", body: "", author: me }
-   let _ <- Db.insert Post { title: Text.NonEmpty "Theirs", body: "", author: other }
-   let _ <- Db.insert Post { title: Text.NonEmpty "Second", body: "", author: me }
+-  Task.succeed ({ answer: r.answer, listed: Test.texts "#posts li" r.doc, posts: List.map (\p -> { status: p.status, featured: p.featured, author: p.author }) posts } == { answer: Redirected (Home {}), listed: ["Hello"], posts: [{ status: Draft, featured: False, author: me }] })
++  Task.succeed (
++    {
++      answer: r.answer,
++      listed: Test.texts "#posts li" r.doc,
++      posts: List.map (\p -> {
++        status: p.status,
++        featured: p.featured,
++        author: p.author,
++      }) posts,
++    } == {
++        answer: Redirected (Home {}),
++        listed: ["Hello"],
++        posts: [
++          {
++            status: Draft,
++            featured: False,
++            author: me,
++          },
++        ],
++      }
++  )
+ }
+ 
+ test "only my posts are listed, newest first" = {
+   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+   let other <- Db.insert User { email: Text.Email "other@example.com", name: Text.NonEmpty "Other" }
+-  let _ <- Db.insert Post { title: Text.NonEmpty "First", body: "", author: me }
+-  let _ <- Db.insert Post { title: Text.NonEmpty "Theirs", body: "", author: other }
+-  let _ <- Db.insert Post { title: Text.NonEmpty "Second", body: "", author: me }
 -  let _ <- Test.login { user: Just me }
++  let _ <- Db.insert Post {
++    title: Text.NonEmpty "First",
++    body: "",
++    author: me,
++  }
++  let _ <- Db.insert Post {
++    title: Text.NonEmpty "Theirs",
++    body: "",
++    author: other,
++  }
++  let _ <- Db.insert Post {
++    title: Text.NonEmpty "Second",
++    body: "",
++    author: me,
++  }
 +  let _ <- Test.login { user: Just me, post: Nothing }
    let page <- Test.get (Home {})
    Task.succeed (Test.texts "#posts li" page.doc == ["Second", "First"])
  }
-@@ -78,7 +78,7 @@
+@@ -77,9 +109,27 @@
+ }
  
  test "logging out signs the user out" = {
-   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", role: Admin }
+-  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", role: Admin }
 -  let _ <- Test.login { user: Just me, role: Admin }
-+  let _ <- Test.login { user: Just me, role: Admin, post: Nothing }
++  let me <- Db.insert User {
++    email: Text.Email "me@example.com",
++    name: Text.NonEmpty "Me",
++    role: Admin,
++  }
++  let _ <- Test.login {
++    user: Just me,
++    role: Admin,
++    post: Nothing,
++  }
    let _ <- Test.get (Home {})
    let out <- Test.click App.Logout
-   Task.succeed ({ answer: out.answer, user: out.session.user, role: out.session.role } == { answer: Redirected (Auth.Login {}), user: Nothing, role: Reader })
+-  Task.succeed ({ answer: out.answer, user: out.session.user, role: out.session.role } == { answer: Redirected (Auth.Login {}), user: Nothing, role: Reader })
++  Task.succeed (
++    {
++      answer: out.answer,
++      user: out.session.user,
++      role: out.session.role,
++    } == {
++        answer: Redirected (Auth.Login {}),
++        user: Nothing,
++        role: Reader,
++      }
++  )
+ }

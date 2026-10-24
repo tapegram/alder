@@ -26,10 +26,10 @@ type Edit struct {
 	Body    string
 	Replace []Region
 	Delete  bool
-	// Guard, when set, are the lines (first, last) of the declaration the edit changes (the
-	// session, a table): an error located there refuses the edit even under
+	// Guard, when set, picks the declaration the edit changes (the session, a table): an error
+	// located there (in the file as written, formatted) refuses the edit even under
 	// Options.WriteDespiteErrors, whose to-do list is for breakage in other code.
-	Guard *[2]int
+	Guard func(syntax.Decl) bool
 }
 
 // Region is the new body of one owned region of a file (Task 2's `-- @admin begin <name>` …
@@ -68,6 +68,9 @@ type Result struct {
 	Written     bool     // the files were written into the app
 	Skipped     []string // regen admin: the pages not recreated
 	UpToDate    bool     // regen admin: whether there was nothing to do
+	// Warnings are for standard error, after the command's name: a file written unformatted
+	// (Formatted's warning).
+	Warnings []string
 }
 
 // FileChange is one file Apply writes: Action is "created", "edited" or "removed".
@@ -93,8 +96,11 @@ func (r *Result) HasErrors() bool {
 // (all but build/, .git and SQLite databases) to a temporary directory, applies edits there (a created file that
 // already exists in the app is refused), runs o.Migrate on the copy, checks the copy exactly as
 // `alder check` checks an app, and, unless the copy has errors (or o.WriteDespiteErrors), writes
-// every file the copy changed into the app. With o.DryRun nothing is written. A refusal is a
-// *Refusal; when the copy did not check it carries the Result, whose Diagnostics say why.
+// every file the copy changed into the app. Every Alder file an edit writes is formatted
+// (Formatted) in the copy, whole, before the check; one that cannot be is written as it is, with
+// a warning, as is a file edited that did not parse before the edit. With o.DryRun nothing is
+// written. A refusal is a *Refusal; when the copy did not check it carries the Result, whose
+// Diagnostics say why.
 func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 	tmp, err := os.MkdirTemp("", "alder-generate-")
 	if err != nil {
@@ -146,6 +152,34 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 		}
 	}
 	res := &Result{}
+	guards := map[string]*[2]int{} // by path: the lines of each Guard's declaration, formatted
+	for _, e := range edits {
+		if e.Delete || !strings.HasSuffix(e.Path, ".alder") {
+			continue
+		}
+		p := filepath.Join(copyDir, filepath.FromSlash(e.Path))
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return nil, err
+		}
+		text, warning := string(b), ""
+		if was, ok := copied[e.Path]; ok && !e.Create && !parses(e.Path, was) {
+			warning = notFormatted("`" + e.Path + "` did not parse before the edit")
+		} else {
+			text, warning = Formatted(e.Path, text)
+		}
+		if warning != "" && !slices.Contains(res.Warnings, warning) {
+			res.Warnings = append(res.Warnings, warning)
+		}
+		if text != string(b) {
+			if err := writeFile(p, text); err != nil {
+				return nil, err
+			}
+		}
+		if e.Guard != nil {
+			guards[e.Path] = declLines(e.Path, text, e.Guard)
+		}
+	}
 	if o.Migrate != nil {
 		notes, err := o.Migrate(copyDir)
 		if err != nil {
@@ -226,12 +260,13 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 		}
 	}
 	for _, e := range edits {
-		if e.Guard == nil {
+		g := guards[e.Path]
+		if e.Guard == nil || g == nil {
 			continue
 		}
 		var own []diag.Diagnostic
 		for _, d := range res.Diagnostics {
-			if d.Severity == "error" && d.Span.File == e.Path && d.Span.Start.Line >= e.Guard[0] && d.Span.Start.Line <= e.Guard[1] {
+			if d.Severity == "error" && d.Span.File == e.Path && d.Span.Start.Line >= g[0] && d.Span.Start.Line <= g[1] {
 				own = append(own, d)
 			}
 		}
@@ -433,6 +468,12 @@ func (p *Program) errorsIn(file string) *Refusal {
 		return nil
 	}
 	return &Refusal{Msg: "the result does not check (the errors above): nothing was written", Diags: errs, Sources: buildkit.Sources(p.Prog)}
+}
+
+// parses reports whether src (the text of path) parses without errors.
+func parses(path string, src []byte) bool {
+	_, diags := syntax.ParseFile(path, src)
+	return len(diags) == 0
 }
 
 // declLines are the first and last lines of the first declaration of src (a file of the app,

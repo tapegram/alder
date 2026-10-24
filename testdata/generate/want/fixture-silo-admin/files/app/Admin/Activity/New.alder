@@ -25,17 +25,20 @@ load params session = {
     -- @admin begin load
     let findOrg = Text.slice 0 200 params.findOrg
     let orgsTotal <- Db.from Org |> Db.count
-    let orgs <- Db.from Org |> Db.orderBy Org.name.asc |> Db.where (if orgsTotal > 200 then Org.name.contains findOrg else Db.and []) |> Db.limit (if orgsTotal > 200 then 50 else 200) |> Db.all
+    let orgs <-
+      Db.from Org
+        |> Db.orderBy Org.name.asc
+        |> Db.where (if orgsTotal > 200 then Org.name.contains findOrg else Db.and [])
+        |> Db.limit (if orgsTotal > 200 then 50 else 200)
+        |> Db.all
     Query.succeed { orgs: orgs, orgsTotal: orgsTotal }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin form
-form ActivityForm = {
-  text: Text.NonEmpty,
-  org: Org.OrgId,
-}
+form ActivityForm = { text: Text.NonEmpty, org: Org.OrgId }
 -- @admin end
 
 -- @admin begin search
@@ -50,7 +53,8 @@ msg Create form ActivityForm
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
-  SearchOrg p -> Task.succeed (Redirect (Admin.Activity.New { findOrg: Text.slice 0 200 p.form.q })),
+  SearchOrg p ->
+    Task.succeed (Redirect (Admin.Activity.New { findOrg: Text.slice 0 200 p.form.q })),
   -- @admin end
   Create p -> {
     -- @admin begin insert
@@ -67,12 +71,21 @@ view model session =
 
     <al-card>
       -- @admin begin finder
-      {if model.orgsTotal > 200 then <form submit={SearchOrg}><al-input field="q" label="Find org" /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}
+      {if model.orgsTotal > 200 then
+        <form submit={SearchOrg}>
+          <al-input field="q" label="Find org" />
+          <al-button type="submit" variant="secondary">Find</al-button>
+        </form>
+      else
+        <span></span>}
       -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
         <al-input field="text" label="Text" />
-        <al-select field="org" label="Org" options={List.map (\r -> { value: r.id, label: r.name }) model.orgs} />
+        <al-select
+          field="org"
+          label="Org"
+          options={List.map (\r -> { value: r.id, label: r.name }) model.orgs} />
         -- @admin end
         <al-alert variant="destructive"><Errors form /></al-alert>
         <al-button type="submit">Create</al-button>
@@ -87,21 +100,27 @@ test "creating an activity adds it, with the values submitted" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
   let page <- Test.get (Admin.Activity.New {})
   let r <- Test.submit ActivityForm { text: Text.NonEmpty "text-1", org: org2 }
   let rows <- Db.from Activity |> Db.all
-  Task.succeed ({
-    answers: List.map (\row -> Redirected (Admin.Activity.Show { id: row.id })) rows,
-    rows: List.map (\row -> { text: row.text, org: row.org }) rows,
-    orgs: Test.texts "select[name=org] option" page.doc,
-  } == {
-    answers: [r.answer],
-    rows: [{ text: Text.NonEmpty "text-1", org: org2 }],
-    orgs: ["name-1", "name-2"],
-  })
+  Task.succeed (
+    {
+      answers: List.map (\row -> Redirected (Admin.Activity.Show { id: row.id })) rows,
+      rows: List.map (\row -> { text: row.text, org: row.org }) rows,
+      orgs: Test.texts "select[name=org] option" page.doc,
+    } == {
+        answers: [r.answer],
+        rows: [{ text: Text.NonEmpty "text-1", org: org2 }],
+        orgs: ["name-1", "name-2"],
+      }
+  )
 }
 
 test "an org not offered is refused" = {
@@ -110,7 +129,11 @@ test "an org not offered is refused" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
   let page <- Test.get (Admin.Activity.New {})
@@ -119,13 +142,10 @@ test "an org not offered is refused" = {
     { name: "org", value: "missing" },
   ]
   let rows <- Db.from Activity |> Db.count
-  Task.succeed ({
-    answer: r.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "org", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: r.answer, rows: rows }
+      == { answer: FormRejected [{ field: "org", message: "must be one of the options" }], rows: 0 }
+  )
 }
 
 test "a list of 200 orgs is offered whole" = {
@@ -134,10 +154,19 @@ test "a list of 200 orgs is offered whole" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
-  let _ <- Task.all (List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (List.range 3 200))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (
+        List.range 3 200
+      )
+    )
   let page <- Test.get (Admin.Activity.New {})
   Task.succeed (List.length page.model.orgs == 200)
 }
@@ -148,24 +177,35 @@ test "a long list of orgs offers 50, and the search narrows it" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
-  let _ <- Task.all (List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (
+        List.range 3 203
+      )
+    )
   let all <- Test.get (Admin.Activity.New {})
   let found <- Test.get (Admin.Activity.New { findOrg: "name-203" })
   let r <- Test.submit FindOrg { q: "zz" }
-  Task.succeed ({
-    shown: List.length all.model.orgs,
-    total: all.model.orgsTotal,
-    found: Test.texts "select[name=org] option" found.doc == ["name-203"],
-    answer: r.answer,
-  } == {
-    shown: 50,
-    total: 203,
-    found: True,
-    answer: Redirected (Admin.Activity.New { findOrg: "zz" }),
-  })
+  Task.succeed (
+    {
+      shown: List.length all.model.orgs,
+      total: all.model.orgsTotal,
+      found: Test.texts "select[name=org] option" found.doc == ["name-203"],
+      answer: r.answer,
+    } == {
+        shown: 50,
+        total: 203,
+        found: True,
+        answer: Redirected (Admin.Activity.New { findOrg: "zz" }),
+      }
+  )
 }
 
 test "an org outside the narrowed list is refused" = {
@@ -174,10 +214,19 @@ test "an org outside the narrowed list is refused" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
-  let _ <- Task.all (List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (
+        List.range 3 203
+      )
+    )
   let all <- Test.get (Admin.Activity.New {})
   let found <- Test.get (Admin.Activity.New { findOrg: "name-203" })
   let r <- Test.submit FindOrg { q: "zz" }
@@ -188,13 +237,10 @@ test "an org outside the narrowed list is refused" = {
     { name: "org", value: pick },
   ]
   let rows <- Db.from Activity |> Db.count
-  Task.succeed ({
-    answer: sent.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "org", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: sent.answer, rows: rows }
+      == { answer: FormRejected [{ field: "org", message: "must be one of the options" }], rows: 0 }
+  )
 }
 
 test "a visitor is sent to log in" = {
@@ -208,7 +254,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let r <- Test.open (Admin.Activity.New {})
   Task.succeed (r.answer == PageMissing)
 }
@@ -219,7 +269,11 @@ test "a demoted Admin is refused at once" = {
     name: Text.NonEmpty "name-1",
     role: Member,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let r <- Test.open (Admin.Activity.New {})
   Task.succeed (r.answer == PageMissing)
 }

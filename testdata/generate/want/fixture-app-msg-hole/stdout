@@ -17,7 +17,19 @@ edited app/App.alder
  }
  
  error : Error -> Html Never
-@@ -38,3 +41,11 @@
+@@ -27,10 +30,7 @@
+   </Layout.Page>
+ 
+ notFound : Html Never
+-notFound =
+-  <Layout.Page title="Not found">
+-    <h1>Not found</h1>
+-  </Layout.Page>
++notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
+ 
+ -- From a page that `requires user` a Rerender ends at the login page too; only a test of
+ -- `update` itself tells Redirect from Rerender.
+@@ -38,3 +38,11 @@
    let r <- Test.run (update Logout { user: Just (User.UserId "me"), role: Admin })
    Task.succeed (r.value == Ok (Redirect (Auth.Login {})))
  }
@@ -32,6 +44,6 @@ edited app/App.alder
 app/App.alder:22:13: warning[W0002]: hole ?ping has type Task Nav
     Ping p -> ?ping,
               ^^^^^
-app/App.alder:50:16: warning[W0002]: hole ?expected has type Bool
+app/App.alder:47:16: warning[W0002]: hole ?expected has type Bool
     Task.succeed ?expected
                  ^^^^^^^^^

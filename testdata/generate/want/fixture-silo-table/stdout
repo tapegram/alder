@@ -7,7 +7,18 @@ wrote migrations/0002_create_note.sql
 edited migrations/schema.json
 --- a/app/App.alder
 +++ b/app/App.alder
-@@ -14,7 +14,7 @@
+@@ -8,13 +8,17 @@
+ -- the user is a member of (`via Membership`), and a role copied from the user's row at login.
+ -- Projects and issues live in a database per org; Activity is partitioned by org in the shared
+ -- database.
+-session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Member }
++session {
++  user: Maybe User.UserId,
++  org: Maybe Org.OrgId via Membership,
++  role: User.Role = Member,
++}
+ 
+ login = Auth.Login
  
  choose org = Orgs
  
@@ -16,3 +27,48 @@ edited migrations/schema.json
  
  msg Logout
  
+@@ -27,21 +31,33 @@
+ }
+ 
+ error : Error -> Html Never
+-error err =
+-  <Layout.Page title="Error">
+-    <h1>Something went wrong</h1>
+-  </Layout.Page>
++error err = <Layout.Page title="Error"><h1>Something went wrong</h1></Layout.Page>
+ 
+ notFound : Html Never
+-notFound =
+-  <Layout.Page title="Not found">
+-    <h1>Not found</h1>
+-  </Layout.Page>
++notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
+ 
+ test "Logout clears the user and the role, and goes to log in" = {
+-  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", role: Admin }
+-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
++  let me <- Db.insert User {
++    email: Text.Email "me@example.com",
++    name: Text.NonEmpty "Me",
++    role: Admin,
++  }
++  let _ <- Test.login {
++    user: Just me,
++    org: Nothing,
++    role: Admin,
++  }
+   let _ <- Test.get (Orgs {})
+   let r <- Test.click Logout
+-  Task.succeed ({ answer: r.answer, user: r.session.user, role: r.session.role } == { answer: Redirected (Auth.Login {}), user: Nothing, role: Member })
++  Task.succeed (
++    {
++      answer: r.answer,
++      user: r.session.user,
++      role: r.session.role,
++    } == {
++        answer: Redirected (Auth.Login {}),
++        user: Nothing,
++        role: Member,
++      }
++  )
+ }

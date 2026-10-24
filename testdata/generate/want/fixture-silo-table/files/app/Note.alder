@@ -21,7 +21,11 @@ test "deleting its project deletes a Note" = {
   let _ <- Test.member me org
   let _ <- Test.login { user: Just me, org: Just org }
   let target <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let _ <- Db.insert Note { text: Text.NonEmpty "text-1", project: target, org: org }
+  let _ <- Db.insert Note {
+    text: Text.NonEmpty "text-1",
+    project: target,
+    org: org,
+  }
   let _ <- Db.delete Project target
   let left <- Db.from Note |> Db.count
   Task.succeed (left == 0)

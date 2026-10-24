@@ -13,7 +13,13 @@ import User
 page "/admin" { } requires user, role Admin
 
 -- A card of the dashboard: a table's count and its newest rows, each linking to its page.
-type Card = { key: Text, title: Text, href: Page, count: Int, rows: List { label: Text, href: Page } }
+type Card = {
+  key: Text,
+  title: Text,
+  href: Page,
+  count: Int,
+  rows: List { label: Text, href: Page },
+}
 
 type Model = { cards: List Card }
 
@@ -26,59 +32,78 @@ load params session = {
   let admin <- Admin.Layout.isAdmin session.user
   if admin then {
     -- @admin begin cards
-    let activities <- Db.from Activity |> Db.orderBy Activity.created.desc |> Db.limit recent |> Db.all
+    let activities <-
+      Db.from Activity
+        |> Db.orderBy Activity.created.desc
+        |> Db.limit recent
+        |> Db.all
     let activityCount <- Db.from Activity |> Db.count
-    let memberships <- Db.from Membership |> Db.orderBy Membership.created.desc |> Db.limit recent |> Db.all
+    let memberships <-
+      Db.from Membership
+        |> Db.orderBy Membership.created.desc
+        |> Db.limit recent
+        |> Db.all
     let membershipCount <- Db.from Membership |> Db.count
-    let orgs <- Db.from Org |> Db.orderBy Org.created.desc |> Db.limit recent |> Db.all
+    let orgs <-
+      Db.from Org
+        |> Db.orderBy Org.created.desc
+        |> Db.limit recent
+        |> Db.all
     let orgCount <- Db.from Org |> Db.count
-    let users <- Db.from User |> Db.orderBy User.created.desc |> Db.limit recent |> Db.all
+    let users <-
+      Db.from User
+        |> Db.orderBy User.created.desc
+        |> Db.limit recent
+        |> Db.all
     let userCount <- Db.from User |> Db.count
-    Query.succeed { cards: [
-      {
-        key: "activities",
-        title: "Activities",
-        href: Admin.Activity.Index {},
-        count: activityCount,
-        rows: List.map (\row -> {
-          label: row.text,
-          href: Admin.Activity.Show { id: row.id },
-        }) activities,
-      },
-      {
-        key: "memberships",
-        title: "Memberships",
-        href: Admin.Membership.Index {},
-        count: membershipCount,
-        rows: List.map (\row -> {
-          label: row.id,
-          href: Admin.Membership.Show { id: row.id },
-        }) memberships,
-      },
-      {
-        key: "orgs",
-        title: "Orgs",
-        href: Admin.Org.Index {},
-        count: orgCount,
-        rows: List.map (\row -> { label: row.name, href: Admin.Org.Show { id: row.id } }) orgs,
-      },
-      {
-        key: "users",
-        title: "Users",
-        href: Admin.User.Index {},
-        count: userCount,
-        rows: List.map (\row -> { label: row.email, href: Admin.User.Show { id: row.id } }) users,
-      },
-      {
-        key: "silo-org",
-        title: "Issues and projects, by org",
-        href: Admin.Orgs.Index {},
-        count: orgCount,
-        rows: List.map (\row -> { label: row.name, href: Admin.Orgs.Show { org: row.id } }) orgs,
-      },
-    ] }
+    Query.succeed {
+      cards: [
+        {
+          key: "activities",
+          title: "Activities",
+          href: Admin.Activity.Index {},
+          count: activityCount,
+          rows: List.map (\row -> {
+            label: row.text,
+            href: Admin.Activity.Show { id: row.id },
+          }) activities,
+        },
+        {
+          key: "memberships",
+          title: "Memberships",
+          href: Admin.Membership.Index {},
+          count: membershipCount,
+          rows: List.map (\row -> {
+            label: row.id,
+            href: Admin.Membership.Show { id: row.id },
+          }) memberships,
+        },
+        {
+          key: "orgs",
+          title: "Orgs",
+          href: Admin.Org.Index {},
+          count: orgCount,
+          rows: List.map (\row -> { label: row.name, href: Admin.Org.Show { id: row.id } }) orgs,
+        },
+        {
+          key: "users",
+          title: "Users",
+          href: Admin.User.Index {},
+          count: userCount,
+          rows: List.map (\row -> { label: row.email, href: Admin.User.Show { id: row.id } }) users,
+        },
+        {
+          key: "silo-org",
+          title: "Issues and projects, by org",
+          href: Admin.Orgs.Index {},
+          count: orgCount,
+          rows: List.map (\row -> { label: row.name, href: Admin.Orgs.Show { org: row.id } }) orgs,
+        },
+      ],
+    }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 view : Model -> Session -> Html Msg
@@ -89,7 +114,9 @@ view model session =
     <al-stack gap="md">
       {for card in model.cards ->
         <al-card id={card.key}>
-          <h2 slot="header"><a href={card.href}>{card.title}</a> <al-badge variant="secondary">{Text.fromInt card.count}</al-badge></h2>
+          <h2 slot="header">
+            <a href={card.href}>{card.title}</a> <al-badge variant="secondary">{Text.fromInt card.count}</al-badge>
+          </h2>
           <ul>
             {for row in card.rows -> <li><a href={row.href}>{row.label}</a></li>}
           </ul>
@@ -104,20 +131,24 @@ test "the dashboard counts the activities and lists the newest five" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
-  let _ <- Task.all (List.map (\n -> Db.insert Activity {
-    text: Text.NonEmpty ("text-" ++ Text.fromInt n),
-    org: org1,
-  }) (List.range 1 6))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Activity {
+        text: Text.NonEmpty ("text-" ++ Text.fromInt n),
+        org: org1,
+      }) (List.range 1 6)
+    )
   let page <- Test.get (Admin.Index {})
-  Task.succeed ({
-    count: Test.text "#activities al-badge" page.doc,
-    rows: Test.texts "#activities li" page.doc,
-  } == {
-    count: Just "6",
-    rows: ["text-6", "text-5", "text-4", "text-3", "text-2"],
-  })
+  Task.succeed (
+    { count: Test.text "#activities al-badge" page.doc, rows: Test.texts "#activities li" page.doc }
+      == { count: Just "6", rows: ["text-6", "text-5", "text-4", "text-3", "text-2"] }
+  )
 }
 
 test "the dashboard counts the memberships and lists the newest five" = {
@@ -126,18 +157,28 @@ test "the dashboard counts the memberships and lists the newest five" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let _ <- Task.all (List.map (\n -> Db.insert Membership { user: me, org: org1 }) (List.range 1 6))
   let page <- Test.get (Admin.Index {})
-  let newest <- Db.from Membership |> Db.orderBy Membership.created.desc |> Db.limit 5 |> Db.all
-  Task.succeed ({
-    count: Test.text "#memberships al-badge" page.doc,
-    rows: List.map (\card -> List.map (\row -> row.href) card.rows) (List.filter (\card -> card.key == "memberships") page.model.cards),
-  } == {
-    count: Just "6",
-    rows: [List.map (\row -> Admin.Membership.Show { id: row.id }) newest],
-  })
+  let newest <-
+    Db.from Membership
+      |> Db.orderBy Membership.created.desc
+      |> Db.limit 5
+      |> Db.all
+  Task.succeed (
+    {
+      count: Test.text "#memberships al-badge" page.doc,
+      rows: List.map (\card -> List.map (\row -> row.href) card.rows) (
+        List.filter (\card -> card.key == "memberships") page.model.cards
+      ),
+    }
+      == { count: Just "6", rows: [List.map (\row -> Admin.Membership.Show { id: row.id }) newest] }
+  )
 }
 
 test "the dashboard counts the orgs and lists the newest five" = {
@@ -146,16 +187,22 @@ test "the dashboard counts the orgs and lists the newest five" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
-  let _ <- Task.all (List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (List.range 1 6))
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (
+        List.range 1 6
+      )
+    )
   let page <- Test.get (Admin.Index {})
-  Task.succeed ({
-    count: Test.text "#orgs al-badge" page.doc,
-    rows: Test.texts "#orgs li" page.doc,
-  } == {
-    count: Just "6",
-    rows: ["name-6", "name-5", "name-4", "name-3", "name-2"],
-  })
+  Task.succeed (
+    { count: Test.text "#orgs al-badge" page.doc, rows: Test.texts "#orgs li" page.doc }
+      == { count: Just "6", rows: ["name-6", "name-5", "name-4", "name-3", "name-2"] }
+  )
 }
 
 test "the dashboard counts the users and lists the newest five" = {
@@ -164,25 +211,32 @@ test "the dashboard counts the users and lists the newest five" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
-  let _ <- Task.all (List.map (\n -> Db.insert User {
-    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
-    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
-  }) (List.range 2 7))
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert User {
+        email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+      }) (List.range 2 7)
+    )
   let page <- Test.get (Admin.Index {})
-  Task.succeed ({
-    count: Test.text "#users al-badge" page.doc,
-    rows: Test.texts "#users li" page.doc,
-  } == {
-    count: Just "7",
-    rows: [
-      "email-7@example.com",
-      "email-6@example.com",
-      "email-5@example.com",
-      "email-4@example.com",
-      "email-3@example.com",
-    ],
-  })
+  Task.succeed (
+    { count: Test.text "#users al-badge" page.doc, rows: Test.texts "#users li" page.doc }
+      == {
+        count: Just "7",
+        rows: [
+          "email-7@example.com",
+          "email-6@example.com",
+          "email-5@example.com",
+          "email-4@example.com",
+          "email-3@example.com",
+        ],
+      }
+  )
 }
 
 test "the dashboard lists the newest orgs, each opening its issues and projects" = {
@@ -191,16 +245,22 @@ test "the dashboard lists the newest orgs, each opening its issues and projects"
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
-  let _ <- Task.all (List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (List.range 1 6))
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Org { name: Text.NonEmpty ("name-" ++ Text.fromInt n) }) (
+        List.range 1 6
+      )
+    )
   let page <- Test.get (Admin.Index {})
-  Task.succeed ({
-    count: Test.text "#silo-org al-badge" page.doc,
-    rows: Test.texts "#silo-org li" page.doc,
-  } == {
-    count: Just "6",
-    rows: ["name-6", "name-5", "name-4", "name-3", "name-2"],
-  })
+  Task.succeed (
+    { count: Test.text "#silo-org al-badge" page.doc, rows: Test.texts "#silo-org li" page.doc }
+      == { count: Just "6", rows: ["name-6", "name-5", "name-4", "name-3", "name-2"] }
+  )
 }
 
 test "a visitor is sent to log in" = {
@@ -214,7 +274,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let r <- Test.open (Admin.Index {})
   Task.succeed (r.answer == PageMissing)
 }
@@ -225,7 +289,11 @@ test "a demoted Admin is refused at once" = {
     name: Text.NonEmpty "name-1",
     role: Member,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let r <- Test.open (Admin.Index {})
   Task.succeed (r.answer == PageMissing)
 }

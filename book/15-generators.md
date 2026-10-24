@@ -101,17 +101,16 @@ page "/about" { }
 type Model = { }
 
 load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+load params session = Query.succeed {}
 
 view : Model -> Session -> Html Msg
-view model session =
-  <Layout.Page title="About">
-    <h1>About</h1>
-  </Layout.Page>
+view model session = <Layout.Page title="About"><h1>About</h1></Layout.Page>
 
 test "the page is shown" = {
   let r <- Test.open (About {})
-  Task.succeed ({ answer: r.answer, heading: Test.text "h1" r.doc } == { answer: Shown, heading: Just "About" })
+  Task.succeed (
+    { answer: r.answer, heading: Test.text "h1" r.doc } == { answer: Shown, heading: Just "About" }
+  )
 }
 ```
 
@@ -221,7 +220,11 @@ import Reply
 
 page "/replies" { page: Int = 1 }
 
-type Model = { rows: List Reply, page: Int, pages: Int }
+type Model = {
+  rows: List Reply,
+  page: Int,
+  pages: Int,
+}
 
 perPage : Int
 perPage = 20
@@ -241,7 +244,11 @@ load params session = {
       |> Db.offset ((page - 1) * perPage)
       |> Db.all
   let count <- Db.from Reply |> Db.count
-  Query.succeed { rows: rows, page: page, pages: Int.max 1 ((count + perPage - 1) / perPage) }
+  Query.succeed {
+    rows: rows,
+    page: page,
+    pages: Int.max 1 ((count + perPage - 1) / perPage),
+  }
 }
 
 view : Model -> Session -> Html Msg
@@ -252,14 +259,25 @@ view model session =
     <al-table>
       <table>
         <thead>
-          <tr><th>Entry</th><th>Message</th><th>Hidden</th><th>Created</th><th>Updated</th></tr>
+          <tr>
+            <th>Entry</th>
+            <th>Message</th>
+            <th>Hidden</th>
+            <th>Created</th>
+            <th>Updated</th>
+          </tr>
         </thead>
         <tbody>
           {for row in model.rows ->
             <tr>
               <td>{row.entry}</td>
               <td>{row.message}</td>
-              <td>{if row.hidden then <al-badge>Yes</al-badge> else <al-badge variant="secondary">No</al-badge>}</td>
+              <td>
+                {if row.hidden then
+                  <al-badge>Yes</al-badge>
+                else
+                  <al-badge variant="secondary">No</al-badge>}
+              </td>
               <td>{Time.format "Jan 2, 2006" row.created}</td>
               <td>{Time.format "Jan 2, 2006" row.updated}</td>
             </tr>}
@@ -268,9 +286,15 @@ view model session =
     </al-table>
 
     <al-pagination role="navigation" aria-label="Pages">
-      {if model.page > 1 then <a slot="prev" href={Replies { page: model.page - 1 }} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
+      {if model.page > 1 then
+        <a slot="prev" href={Replies { page: model.page - 1 }} rel="prev">Previous</a>
+      else
+        <span slot="prev" aria-disabled="true">Previous</span>}
       <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
-      {if model.page < model.pages then <a slot="next" href={Replies { page: model.page + 1 }} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
+      {if model.page < model.pages then
+        <a slot="next" href={Replies { page: model.page + 1 }} rel="next">Next</a>
+      else
+        <span slot="next" aria-disabled="true">Next</span>}
     </al-pagination>
   </Layout.Page>
 
@@ -284,10 +308,26 @@ test "the list shows the rows, newest first" = {
 
 test "the list has 20 rows a page" = {
   let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
-  let _ <- Task.all (List.map (\n -> Db.insert Reply { entry: entry1, message: Text.NonEmpty ("message-" ++ Text.fromInt n) }) (List.range 1 21))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Reply {
+        entry: entry1,
+        message: Text.NonEmpty ("message-" ++ Text.fromInt n),
+      }) (List.range 1 21)
+    )
   let first <- Test.get (Replies {})
   let second <- Test.get (Replies { page: 2 })
-  Task.succeed ({ first: List.length first.model.rows, second: List.length second.model.rows, pages: Test.texts "al-pagination span" first.doc } == { first: 20, second: 1, pages: ["Previous", "Page 1 of 2"] })
+  Task.succeed (
+    {
+      first: List.length first.model.rows,
+      second: List.length second.model.rows,
+      pages: Test.texts "al-pagination span" first.doc,
+    } == {
+        first: 20,
+        second: 1,
+        pages: ["Previous", "Page 1 of 2"],
+      }
+  )
 }
 ```
 
@@ -331,14 +371,11 @@ $ alder new form Replies NewReply entry:Entry.EntryId message:Text.NonEmpty
 edited app/Replies.alder
 --- a/app/Replies.alder
 +++ b/app/Replies.alder
-@@ -29,6 +29,21 @@
-   Query.succeed { rows: rows, page: page, pages: Int.max 1 ((count + perPage - 1) / perPage) }
+@@ -37,6 +37,18 @@
+   }
  }
  
-+form NewReply = {
-+  entry: Entry.EntryId,
-+  message: Text.NonEmpty,
-+}
++form NewReply = { entry: Entry.EntryId, message: Text.NonEmpty }
 +
 +msg SubmitNewReply form NewReply
 +
@@ -353,9 +390,9 @@ edited app/Replies.alder
  view : Model -> Session -> Html Msg
  view model session =
    <Layout.Page title="Replies">
-@@ -57,6 +72,16 @@
-       <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
-       {if model.page < model.pages then <a slot="next" href={Replies { page: model.page + 1 }} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
+@@ -82,6 +94,16 @@
+       else
+         <span slot="next" aria-disabled="true">Next</span>}
      </al-pagination>
 +
 +    <al-card>
@@ -370,9 +407,9 @@ edited app/Replies.alder
    </Layout.Page>
  
  test "the list shows the rows, newest first" = {
-@@ -74,3 +99,18 @@
-   let second <- Test.get (Replies { page: 2 })
-   Task.succeed ({ first: List.length first.model.rows, second: List.length second.model.rows, pages: Test.texts "al-pagination span" first.doc } == { first: 20, second: 1, pages: ["Previous", "Page 1 of 2"] })
+@@ -115,3 +137,39 @@
+       }
+   )
  }
 +
 +test "submitting NewReply adds a row" = {
@@ -380,14 +417,35 @@ edited app/Replies.alder
 +  let _ <- Test.get (Replies {})
 +  let r <- Test.submit NewReply { entry: entry1, message: Text.NonEmpty "message-1" }
 +  let rows <- Db.from Reply |> Db.all
-+  Task.succeed ({ answer: r.answer, rows: List.map (\row -> { entry: row.entry, message: row.message, hidden: row.hidden }) rows } == { answer: Redirected (Replies {}), rows: [{ entry: entry1, message: Text.NonEmpty "message-1", hidden: False }] })
++  Task.succeed (
++    {
++      answer: r.answer,
++      rows: List.map (\row -> {
++        entry: row.entry,
++        message: row.message,
++        hidden: row.hidden,
++      }) rows,
++    } == {
++        answer: Redirected (Replies {}),
++        rows: [
++          {
++            entry: entry1,
++            message: Text.NonEmpty "message-1",
++            hidden: False,
++          },
++        ],
++      }
++  )
 +}
 +
 +test "NewReply refuses an empty message" = {
 +  let _ <- Test.get (Replies {})
 +  let r <- Test.submitRaw NewReply [{ name: "entry", value: "x" }, { name: "message", value: "" }]
 +  let rows <- Db.from Reply |> Db.count
-+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: FormRejected [{ field: "message", message: "must not be empty" }], rows: 0 })
++  Task.succeed (
++    { answer: r.answer, rows: rows }
++      == { answer: FormRejected [{ field: "message", message: "must not be empty" }], rows: 0 }
++  )
 +}
 ```
 
@@ -449,7 +507,7 @@ edited app/Replies/Show.alder
  view : Model -> Session -> Html Msg
  view model session =
    <Layout.Page title="Reply">
-@@ -38,6 +45,8 @@
+@@ -43,6 +50,8 @@
          <dd>{Time.format "Jan 2, 2006" model.row.updated}</dd>
        </dl>
      </al-card>
@@ -458,7 +516,7 @@ edited app/Replies/Show.alder
    </Layout.Page>
  
  test "the page shows the row" = {
-@@ -51,3 +60,17 @@
+@@ -59,3 +68,17 @@
    let r <- Test.open (Replies.Show { id: Reply.ReplyId "missing" })
    Task.succeed (r.answer == PageMissing)
  }
@@ -479,7 +537,7 @@ edited app/Replies/Show.alder
 app/Replies/Show.alder:24:15: warning[W0002]: hole ?delete has type Task Nav
     Delete p -> ?delete,
                 ^^^^^^^
-app/Replies/Show.alder:75:16: warning[W0002]: hole ?expected has type Bool
+app/Replies/Show.alder:83:16: warning[W0002]: hole ?expected has type Bool
     Task.succeed ?expected
                  ^^^^^^^^^
 ```
@@ -507,7 +565,7 @@ $ alder test
 app/Replies/Show.alder:24:15: warning[W0002]: hole ?delete has type Task Nav
     Delete p -> ?delete,
                 ^^^^^^^
-app/Replies/Show.alder:75:16: warning[W0002]: hole ?expected has type Bool
+app/Replies/Show.alder:83:16: warning[W0002]: hole ?expected has type Bool
     Task.succeed ?expected
                  ^^^^^^^^^
 alder test: no tests ran (fill the hole): ?delete : Task Nav, ?expected : Bool
@@ -541,7 +599,7 @@ EOF
 app/Replies/Show.alder:24:15: error[E0003]: expected Task Nav, got Task Unit
     Delete p -> Db.delete Reply model.row.id,
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Replies/Show.alder:75:16: warning[W0002]: hole ?expected has type Bool
+app/Replies/Show.alder:83:16: warning[W0002]: hole ?expected has type Bool
     Task.succeed ?expected
                  ^^^^^^^^^
 alder fill: the result does not check (the errors above): nothing was written
@@ -573,7 +631,7 @@ edited app/Replies/Show.alder
  }
  
  view : Model -> Session -> Html Msg
-app/Replies/Show.alder:78:16: warning[W0002]: hole ?expected has type Bool
+app/Replies/Show.alder:86:16: warning[W0002]: hole ?expected has type Bool
     Task.succeed ?expected
                  ^^^^^^^^^
 ```
@@ -600,7 +658,7 @@ EOF
 edited app/Replies/Show.alder
 --- a/app/Replies/Show.alder
 +++ b/app/Replies/Show.alder
-@@ -64,16 +64,11 @@
+@@ -72,16 +72,14 @@
    Task.succeed (r.answer == PageMissing)
  }
  
@@ -616,7 +674,10 @@ edited app/Replies/Show.alder
    let r <- Test.click Delete
    let after <- Test.open (Replies.Show { id: reply1 })
 -  Task.succeed ?expected
-+  Task.succeed ({ answer: r.answer, after: after.answer } == { answer: Redirected (Replies {}), after: PageMissing })
++  Task.succeed (
++    { answer: r.answer, after: after.answer }
++      == { answer: Redirected (Replies {}), after: PageMissing }
++  )
  }
 ```
 
@@ -656,7 +717,7 @@ one:
 
 ```text command=guestbook
 $ alder new form Replies.Show Note message:Text.NonEmpty --into Reply
-app/Replies/Show.alder:35:30: error[E0003]: record `Reply.Insert Reply` is missing field(s): entry
+app/Replies/Show.alder:33:30: error[E0003]: record `Reply.Insert Reply` is missing field(s): entry
       let _ <- Db.insert Reply { message: p.form.message }
                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 alder new form: the result does not check (the errors above): nothing was written
@@ -856,7 +917,13 @@ import User
 page "/admin" { } requires user, role Admin
 
 -- A card of the dashboard: a table's count and its newest rows, each linking to its page.
-type Card = { key: Text, title: Text, href: Page, count: Int, rows: List { label: Text, href: Page } }
+type Card = {
+  key: Text,
+  title: Text,
+  href: Page,
+  count: Int,
+  rows: List { label: Text, href: Page },
+}
 
 type Model = { cards: List Card }
 
@@ -869,40 +936,55 @@ load params session = {
   let admin <- Admin.Layout.isAdmin session.user
   if admin then {
     -- @admin begin cards
-    let comments <- Db.from Comment |> Db.orderBy Comment.created.desc |> Db.limit recent |> Db.all
+    let comments <-
+      Db.from Comment
+        |> Db.orderBy Comment.created.desc
+        |> Db.limit recent
+        |> Db.all
     let commentCount <- Db.from Comment |> Db.count
-    let posts <- Db.from Post |> Db.orderBy Post.created.desc |> Db.limit recent |> Db.all
+    let posts <-
+      Db.from Post
+        |> Db.orderBy Post.created.desc
+        |> Db.limit recent
+        |> Db.all
     let postCount <- Db.from Post |> Db.count
-    let users <- Db.from User |> Db.orderBy User.created.desc |> Db.limit recent |> Db.all
+    let users <-
+      Db.from User
+        |> Db.orderBy User.created.desc
+        |> Db.limit recent
+        |> Db.all
     let userCount <- Db.from User |> Db.count
-    Query.succeed { cards: [
-      {
-        key: "comments",
-        title: "Comments",
-        href: Admin.Comment.Index {},
-        count: commentCount,
-        rows: List.map (\row -> {
-          label: row.author,
-          href: Admin.Comment.Show { id: row.id },
-        }) comments,
-      },
-      {
-        key: "posts",
-        title: "Posts",
-        href: Admin.Post.Index {},
-        count: postCount,
-        rows: List.map (\row -> { label: row.slug, href: Admin.Post.Show { id: row.id } }) posts,
-      },
-      {
-        key: "users",
-        title: "Users",
-        href: Admin.User.Index {},
-        count: userCount,
-        rows: List.map (\row -> { label: row.email, href: Admin.User.Show { id: row.id } }) users,
-      },
-    ] }
+    Query.succeed {
+      cards: [
+        {
+          key: "comments",
+          title: "Comments",
+          href: Admin.Comment.Index {},
+          count: commentCount,
+          rows: List.map (\row -> {
+            label: row.author,
+            href: Admin.Comment.Show { id: row.id },
+          }) comments,
+        },
+        {
+          key: "posts",
+          title: "Posts",
+          href: Admin.Post.Index {},
+          count: postCount,
+          rows: List.map (\row -> { label: row.slug, href: Admin.Post.Show { id: row.id } }) posts,
+        },
+        {
+          key: "users",
+          title: "Users",
+          href: Admin.User.Index {},
+          count: userCount,
+          rows: List.map (\row -> { label: row.email, href: Admin.User.Show { id: row.id } }) users,
+        },
+      ],
+    }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 ```
 
@@ -919,7 +1001,9 @@ view model session =
     <al-stack gap="md">
       {for card in model.cards ->
         <al-card id={card.key}>
-          <h2 slot="header"><a href={card.href}>{card.title}</a> <al-badge variant="secondary">{Text.fromInt card.count}</al-badge></h2>
+          <h2 slot="header">
+            <a href={card.href}>{card.title}</a> <al-badge variant="secondary">{Text.fromInt card.count}</al-badge>
+          </h2>
           <ul>
             {for row in card.rows -> <li><a href={row.href}>{row.label}</a></li>}
           </ul>
@@ -955,19 +1039,19 @@ test "the dashboard counts the comments and lists the newest five" = {
     body: "body-1",
     author: me,
   }
-  let _ <- Task.all (List.map (\n -> Db.insert Comment {
-    post: post1,
-    author: Comment.Name ("author-" ++ Text.fromInt n),
-    body: Comment.Body ("body-" ++ Text.fromInt n),
-  }) (List.range 1 6))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Comment {
+        post: post1,
+        author: Comment.Name ("author-" ++ Text.fromInt n),
+        body: Comment.Body ("body-" ++ Text.fromInt n),
+      }) (List.range 1 6)
+    )
   let page <- Test.get (Admin.Index {})
-  Task.succeed ({
-    count: Test.text "#comments al-badge" page.doc,
-    rows: Test.texts "#comments li" page.doc,
-  } == {
-    count: Just "6",
-    rows: ["author-6", "author-5", "author-4", "author-3", "author-2"],
-  })
+  Task.succeed (
+    { count: Test.text "#comments al-badge" page.doc, rows: Test.texts "#comments li" page.doc }
+      == { count: Just "6", rows: ["author-6", "author-5", "author-4", "author-3", "author-2"] }
+  )
 }
 
 test "the dashboard counts the posts and lists the newest five" = {
@@ -978,20 +1062,20 @@ test "the dashboard counts the posts and lists the newest five" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let _ <- Task.all (List.map (\n -> Db.insert Post {
-    slug: Post.Slug ("slug-" ++ Text.fromInt n),
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    body: "body-" ++ Text.fromInt n,
-    author: me,
-  }) (List.range 1 6))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        slug: Post.Slug ("slug-" ++ Text.fromInt n),
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        body: "body-" ++ Text.fromInt n,
+        author: me,
+      }) (List.range 1 6)
+    )
   let page <- Test.get (Admin.Index {})
-  Task.succeed ({
-    count: Test.text "#posts al-badge" page.doc,
-    rows: Test.texts "#posts li" page.doc,
-  } == {
-    count: Just "6",
-    rows: ["slug-6", "slug-5", "slug-4", "slug-3", "slug-2"],
-  })
+  Task.succeed (
+    { count: Test.text "#posts al-badge" page.doc, rows: Test.texts "#posts li" page.doc }
+      == { count: Just "6", rows: ["slug-6", "slug-5", "slug-4", "slug-3", "slug-2"] }
+  )
 }
 
 test "the dashboard counts the users and lists the newest five" = {
@@ -1002,25 +1086,28 @@ test "the dashboard counts the users and lists the newest five" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let _ <- Task.all (List.map (\n -> Db.insert User {
-    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
-    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
-    passwordHash: "passwordhash-" ++ Text.fromInt n,
-  }) (List.range 2 7))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert User {
+        email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+        passwordHash: "passwordhash-" ++ Text.fromInt n,
+      }) (List.range 2 7)
+    )
   let page <- Test.get (Admin.Index {})
-  Task.succeed ({
-    count: Test.text "#users al-badge" page.doc,
-    rows: Test.texts "#users li" page.doc,
-  } == {
-    count: Just "7",
-    rows: [
-      "email-7@example.com",
-      "email-6@example.com",
-      "email-5@example.com",
-      "email-4@example.com",
-      "email-3@example.com",
-    ],
-  })
+  Task.succeed (
+    { count: Test.text "#users al-badge" page.doc, rows: Test.texts "#users li" page.doc }
+      == {
+        count: Just "7",
+        rows: [
+          "email-7@example.com",
+          "email-6@example.com",
+          "email-5@example.com",
+          "email-4@example.com",
+          "email-3@example.com",
+        ],
+      }
+  )
 }
 
 test "a visitor is sent to log in" = {
@@ -1116,7 +1203,11 @@ type Filter = {
   name: Text,
   label: Text,
   value: Text,
-  options: List { value: Text, label: Text, rows: Condition Post },
+  options: List {
+    value: Text,
+    label: Text,
+    rows: Condition Post,
+  },
 }
 
 -- @admin begin filters
@@ -1131,19 +1222,35 @@ chosen params = { published: params.published }
 -- filters are the list's filters, each with the option f has chosen.
 filters : Filters -> List Filter
 filters f = [
-  { name: "published", label: "Published", value: f.published, options: [
-    { value: "yes", label: "yes", rows: Post.published.eq True },
-    { value: "no", label: "no", rows: Post.published.eq False },
-  ] },
+  {
+    name: "published",
+    label: "Published",
+    value: f.published,
+    options: [
+      {
+        value: "yes",
+        label: "yes",
+        rows: Post.published.eq True,
+      },
+      {
+        value: "no",
+        label: "no",
+        rows: Post.published.eq False,
+      },
+    ],
+  },
 ]
 
 -- filtered is the rows that the option each filter has chosen selects (every row for "", or for
 -- a value that is no option's).
 filtered : List Filter -> Condition Post
-filtered fs = Db.and (List.map (\f -> match List.find (\o -> o.value == f.value) f.options {
-  Just o -> o.rows,
-  Nothing -> Db.and [],
-}) fs)
+filtered fs =
+  Db.and (
+    List.map (\f -> match List.find (\o -> o.value == f.value) f.options {
+      Just o -> o.rows,
+      Nothing -> Db.and [],
+    }) fs
+  )
 
 -- listAt is this list with the model's search and filters, sorted by sort and dir, at page n.
 listAt : Model -> Text -> Text -> Int -> Page
@@ -1176,14 +1283,42 @@ filter, so a column added later only rewrites the region.
 ```alder part=blog/Admin.Post.Index
 -- @admin begin sorts
 -- sorts are the columns the list sorts by, by name.
-sorts : List { name: Text, asc: Order Post, desc: Order Post }
+sorts : List {
+  name: Text,
+  asc: Order Post,
+  desc: Order Post,
+}
 sorts = [
-  { name: "slug", asc: Post.slug.asc, desc: Post.slug.desc },
-  { name: "title", asc: Post.title.asc, desc: Post.title.desc },
-  { name: "body", asc: Post.body.asc, desc: Post.body.desc },
-  { name: "published", asc: Post.published.asc, desc: Post.published.desc },
-  { name: "author", asc: Post.author.asc, desc: Post.author.desc },
-  { name: "created", asc: Post.created.asc, desc: Post.created.desc },
+  {
+    name: "slug",
+    asc: Post.slug.asc,
+    desc: Post.slug.desc,
+  },
+  {
+    name: "title",
+    asc: Post.title.asc,
+    desc: Post.title.desc,
+  },
+  {
+    name: "body",
+    asc: Post.body.asc,
+    desc: Post.body.desc,
+  },
+  {
+    name: "published",
+    asc: Post.published.asc,
+    desc: Post.published.desc,
+  },
+  {
+    name: "author",
+    asc: Post.author.asc,
+    desc: Post.author.desc,
+  },
+  {
+    name: "created",
+    asc: Post.created.asc,
+    desc: Post.created.desc,
+  },
 ]
 -- @admin end
 
@@ -1218,7 +1353,10 @@ load params session = {
   if admin then {
     let q = Text.slice 0 200 params.q
     let f = chosen params
-    let count <- Db.from Post |> Db.where (Db.and [search q, filtered (filters f)]) |> Db.count
+    let count <-
+      Db.from Post
+        |> Db.where (Db.and [search q, filtered (filters f)])
+        |> Db.count
     let pages = Int.max 1 ((count + perPage - 1) / perPage)
     let page = Int.clamp { min: 1, max: pages } params.page
     let rows <-
@@ -1240,7 +1378,8 @@ load params session = {
       pages: pages,
       count: count,
     }
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin labels
@@ -1250,7 +1389,10 @@ type Labels = { authors: List User }
 -- labelsOf reads the rows that rows refer to.
 labelsOf : List Post -> Query Labels
 labelsOf rows = {
-  let authors <- Db.from User |> Db.where (User.id.in (List.map (\row -> row.author) rows)) |> Db.all
+  let authors <-
+    Db.from User
+      |> Db.where (User.id.in (List.map (\row -> row.author) rows))
+      |> Db.all
   Query.succeed { authors: authors }
 }
 
@@ -1282,10 +1424,12 @@ view model session =
         <input type="search" name="q" value={model.q} aria-label="Search" />
         {for f in filters model.filters ->
           <al-select label={f.label}>
-            <label>{f.label}
+            <label>
+              {f.label}
               <select name={f.name}>
                 <option value="" selected={f.value == ""}>any</option>
-                {for o in f.options -> <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
+                {for o in f.options ->
+                  <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
               </select>
             </label>
           </al-select>}
@@ -1317,12 +1461,28 @@ view model session =
           {for row in model.rows ->
             <tr>
               -- @admin begin cells
-              <td><input type="checkbox" name="ids" form="bulk" value={row.id} aria-label={"Choose " ++ row.slug} /></td>
+              <td>
+                <input
+                  type="checkbox"
+                  name="ids"
+                  form="bulk"
+                  value={row.id}
+                  aria-label={"Choose " ++ row.slug} />
+              </td>
               <td><a href={Admin.Post.Show { id: row.id }}>{row.slug}</a></td>
               <td>{row.title}</td>
               <td>{row.body}</td>
-              <td>{if row.published then <al-badge>Yes</al-badge> else <al-badge variant="secondary">No</al-badge>}</td>
-              <td><a href={Admin.User.Show { id: row.author }}>{authorLabel model.labels row.author}</a></td>
+              <td>
+                {if row.published then
+                  <al-badge>Yes</al-badge>
+                else
+                  <al-badge variant="secondary">No</al-badge>}
+              </td>
+              <td>
+                <a href={Admin.User.Show { id: row.author }}>
+                  {authorLabel model.labels row.author}
+                </a>
+              </td>
               <td>{Time.format "Jan 2, 2006" row.created}</td>
               -- @admin end
             </tr>}
@@ -1341,9 +1501,17 @@ view model session =
     </al-stack>
 
     <al-pagination role="navigation" aria-label="Pages">
-      {if model.page > 1 then <a slot="prev" href={listAt model model.sort model.dir (model.page - 1)} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
+      {if model.page > 1 then
+        <a slot="prev" href={listAt model model.sort model.dir (model.page - 1)} rel="prev">
+          Previous
+        </a>
+      else
+        <span slot="prev" aria-disabled="true">Previous</span>}
       <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
-      {if model.page < model.pages then <a slot="next" href={listAt model model.sort model.dir (model.page + 1)} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
+      {if model.page < model.pages then
+        <a slot="next" href={listAt model model.sort model.dir (model.page + 1)} rel="next">Next</a>
+      else
+        <span slot="next" aria-disabled="true">Next</span>}
     </al-pagination>
   </Admin.Layout.Page>
 ```
@@ -1396,15 +1564,17 @@ test "the list shows every row, newest first, and the labels of the rows they re
     passwordHash: "passwordhash-2",
   }
   let page <- Test.get (Admin.Post.Index {})
-  Task.succeed ({
-    rows: List.map (\row -> row.id) page.model.rows,
-    authors: List.length page.model.labels.authors,
-    authorLabel: authorLabel page.model.labels me,
-  } == {
-    rows: [post2, post1],
-    authors: 1,
-    authorLabel: "email-1@example.com",
-  })
+  Task.succeed (
+    {
+      rows: List.map (\row -> row.id) page.model.rows,
+      authors: List.length page.model.labels.authors,
+      authorLabel: authorLabel page.model.labels me,
+    } == {
+        rows: [post2, post1],
+        authors: 1,
+        authorLabel: "email-1@example.com",
+      }
+  )
 }
 
 test "sorting by slug goes both ways" = {
@@ -1429,15 +1599,17 @@ test "sorting by slug goes both ways" = {
   }
   let up <- Test.get (Admin.Post.Index { sort: "slug", dir: "asc" })
   let down <- Test.get (Admin.Post.Index { sort: "slug" })
-  Task.succeed ({
-    up: List.map (\row -> row.id) up.model.rows,
-    down: List.map (\row -> row.id) down.model.rows,
-    toggles: [toggle up.model "slug", toggle down.model "slug", toggle up.model "title"],
-  } == {
-    up: [post2, post1],
-    down: [post1, post2],
-    toggles: ["desc", "asc", "asc"],
-  })
+  Task.succeed (
+    {
+      up: List.map (\row -> row.id) up.model.rows,
+      down: List.map (\row -> row.id) down.model.rows,
+      toggles: [toggle up.model "slug", toggle down.model "slug", toggle up.model "title"],
+    } == {
+        up: [post2, post1],
+        down: [post1, post2],
+        toggles: ["desc", "asc", "asc"],
+      }
+  )
 }
 
 test "searching finds the rows that contain the text" = {
@@ -1461,13 +1633,10 @@ test "searching finds the rows that contain the text" = {
     author: me,
   }
   let page <- Test.get (Admin.Post.Index { q: "slug-2" })
-  Task.succeed ({
-    rows: List.map (\row -> row.id) page.model.rows,
-    count: Test.text "#count" page.doc,
-  } == {
-    rows: [post2],
-    count: Just "1 row",
-  })
+  Task.succeed (
+    { rows: List.map (\row -> row.id) page.model.rows, count: Test.text "#count" page.doc }
+      == { rows: [post2], count: Just "1 row" }
+  )
 }
 
 test "filtering by published lists the rows with that value" = {
@@ -1494,17 +1663,22 @@ test "filtering by published lists the rows with that value" = {
   }
   let yes <- Test.get (Admin.Post.Index { published: "yes" })
   let no <- Test.get (Admin.Post.Index { published: "no" })
-  Task.succeed ({
-    yes: List.map (\id -> List.member id (List.map (\row -> row.id) yes.model.rows)) [post1, post2],
-    no: List.map (\id -> List.member id (List.map (\row -> row.id) no.model.rows)) [post1, post2],
-    count: yes.model.count == List.length yes.model.rows,
-    chosen: Test.texts "select[name=published] option[selected]" yes.doc,
-  } == {
-    yes: [True, False],
-    no: [False, True],
-    count: True,
-    chosen: ["yes"],
-  })
+  Task.succeed (
+    {
+      yes: List.map (\id -> List.member id (List.map (\row -> row.id) yes.model.rows)) [
+        post1,
+        post2,
+      ],
+      no: List.map (\id -> List.member id (List.map (\row -> row.id) no.model.rows)) [post1, post2],
+      count: yes.model.count == List.length yes.model.rows,
+      chosen: Test.texts "select[name=published] option[selected]" yes.doc,
+    } == {
+        yes: [True, False],
+        no: [False, True],
+        count: True,
+        chosen: ["yes"],
+      }
+  )
 }
 
 test "a search text of 20,000 characters is cut to 200" = {
@@ -1517,13 +1691,9 @@ test "a search text of 20,000 characters is cut to 200" = {
   let _ <- Test.login { user: Just me, role: Admin }
   let long = Text.join "" (List.map (\n -> "z") (List.range 1 20000))
   let page <- Test.get (Admin.Post.Index { q: long })
-  Task.succeed ({
-    q: Text.length page.model.q,
-    rows: List.length page.model.rows,
-  } == {
-    q: 200,
-    rows: 0,
-  })
+  Task.succeed (
+    { q: Text.length page.model.q, rows: List.length page.model.rows } == { q: 200, rows: 0 }
+  )
 }
 
 test "the list has 25 rows a page, and a page past the last is the last" = {
@@ -1534,28 +1704,33 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let _ <- Task.all (List.map (\n -> Db.insert Post {
-    slug: Post.Slug ("slug-" ++ Text.fromInt n),
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    body: "body-" ++ Text.fromInt n,
-    author: me,
-  }) (List.range 1 26))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        slug: Post.Slug ("slug-" ++ Text.fromInt n),
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        body: "body-" ++ Text.fromInt n,
+        author: me,
+      }) (List.range 1 26)
+    )
   let first <- Test.get (Admin.Post.Index {})
   let second <- Test.get (Admin.Post.Index { page: 2 })
   let past <- Test.get (Admin.Post.Index { page: 9 })
-  Task.succeed ({
-    first: List.length first.model.rows,
-    second: List.length second.model.rows,
-    past: { page: past.model.page, rows: List.length past.model.rows },
-    count: Test.text "#count" first.doc,
-    pages: Test.texts "al-pagination span" first.doc,
-  } == {
-    first: 25,
-    second: 1,
-    past: { page: 2, rows: 1 },
-    count: Just "26 rows",
-    pages: ["Previous", "Page 1 of 2"],
-  })
+  Task.succeed (
+    {
+      first: List.length first.model.rows,
+      second: List.length second.model.rows,
+      past: { page: past.model.page, rows: List.length past.model.rows },
+      count: Test.text "#count" first.doc,
+      pages: Test.texts "al-pagination span" first.doc,
+    } == {
+        first: 25,
+        second: 1,
+        past: { page: 2, rows: 1 },
+        count: Just "26 rows",
+        pages: ["Previous", "Page 1 of 2"],
+      }
+  )
 }
 
 test "a visitor is sent to log in" = {
@@ -1621,10 +1796,16 @@ load params session = {
     -- @admin begin load
     let findAuthor = Text.slice 0 200 params.findAuthor
     let authorsTotal <- Db.from User |> Db.count
-    let authors <- Db.from User |> Db.orderBy User.email.asc |> Db.where (if authorsTotal > 200 then User.email.contains findAuthor else Db.and []) |> Db.limit (if authorsTotal > 200 then 50 else 200) |> Db.all
+    let authors <-
+      Db.from User
+        |> Db.orderBy User.email.asc
+        |> Db.where (if authorsTotal > 200 then User.email.contains findAuthor else Db.and [])
+        |> Db.limit (if authorsTotal > 200 then 50 else 200)
+        |> Db.all
     Query.succeed { authors: authors, authorsTotal: authorsTotal }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin form
@@ -1649,11 +1830,15 @@ msg Create form PostForm
 update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
-  SearchAuthor p -> Task.succeed (Redirect (Admin.Post.New { findAuthor: Text.slice 0 200 p.form.q })),
+  SearchAuthor p ->
+    Task.succeed (Redirect (Admin.Post.New { findAuthor: Text.slice 0 200 p.form.q })),
   -- @admin end
   Create p -> {
     -- @admin begin insert
-    let slugTaken <- Db.from Post |> Db.where (Post.slug.eq p.form.slug) |> Db.count
+    let slugTaken <-
+      Db.from Post
+        |> Db.where (Post.slug.eq p.form.slug)
+        |> Db.count
     if slugTaken > 0 then
       Task.succeed (Reject "A post with this slug exists.")
     else {
@@ -1686,7 +1871,13 @@ view model session =
 
     <al-card>
       -- @admin begin finder
-      {if model.authorsTotal > 200 then <form submit={SearchAuthor}><al-input field="q" label="Find author" /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}
+      {if model.authorsTotal > 200 then
+        <form submit={SearchAuthor}>
+          <al-input field="q" label="Find author" />
+          <al-button type="submit" variant="secondary">Find</al-button>
+        </form>
+      else
+        <span></span>}
       -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
@@ -1694,7 +1885,10 @@ view model session =
         <al-input field="title" label="Title" />
         <al-textarea field="body" label="Body" />
         <al-checkbox field="published" label="Published" value={False} />
-        <al-select field="author" label="Author" options={List.map (\r -> { value: r.id, label: r.email }) model.authors} />
+        <al-select
+          field="author"
+          label="Author"
+          options={List.map (\r -> { value: r.id, label: r.email }) model.authors} />
         -- @admin end
         <al-alert variant="destructive"><Errors form /></al-alert>
         <al-button type="submit">Create</al-button>
@@ -1752,22 +1946,35 @@ test "creating a post adds it, with the values submitted" = {
     published: True,
     author: user2,
   }
-  let rows <- Db.from Post |> Db.where (Post.slug.eq (Post.Slug "slug-2")) |> Db.all
-  Task.succeed ({
-    answers: List.map (\row -> Redirected (Admin.Post.Show { id: row.id })) rows,
-    rows: List.map (\row -> {
-      slug: row.slug,
-      title: row.title,
-      body: row.body,
-      published: row.published,
-      author: row.author,
-    }) rows,
-    authors: Test.texts "select[name=author] option" page.doc,
-  } == {
-    answers: [r.answer],
-    rows: [{ slug: Post.Slug "slug-2", title: Text.NonEmpty "title-2", body: "body-2", published: True, author: user2 }],
-    authors: ["email-1@example.com", "email-2@example.com"],
-  })
+  let rows <-
+    Db.from Post
+      |> Db.where (Post.slug.eq (Post.Slug "slug-2"))
+      |> Db.all
+  Task.succeed (
+    {
+      answers: List.map (\row -> Redirected (Admin.Post.Show { id: row.id })) rows,
+      rows: List.map (\row -> {
+        slug: row.slug,
+        title: row.title,
+        body: row.body,
+        published: row.published,
+        author: row.author,
+      }) rows,
+      authors: Test.texts "select[name=author] option" page.doc,
+    } == {
+        answers: [r.answer],
+        rows: [
+          {
+            slug: Post.Slug "slug-2",
+            title: Text.NonEmpty "title-2",
+            body: "body-2",
+            published: True,
+            author: user2,
+          },
+        ],
+        authors: ["email-1@example.com", "email-2@example.com"],
+      }
+  )
 }
 
 test "a post with a slug that exists is refused" = {
@@ -1798,13 +2005,10 @@ test "a post with a slug that exists is refused" = {
     author: user2,
   }
   let rows <- Db.from Post |> Db.count
-  Task.succeed ({
-    answer: r.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "", message: "A post with this slug exists." }],
-    rows: 1,
-  })
+  Task.succeed (
+    { answer: r.answer, rows: rows }
+      == { answer: FormRejected [{ field: "", message: "A post with this slug exists." }], rows: 1 }
+  )
 }
 ```
 
@@ -1831,13 +2035,13 @@ test "an author not offered is refused" = {
     { name: "author", value: "missing" },
   ]
   let rows <- Db.from Post |> Db.count
-  Task.succeed ({
-    answer: r.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "author", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: r.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "author", message: "must be one of the options" }],
+        rows: 0,
+      }
+  )
 }
 
 test "a list of 200 users is offered whole" = {
@@ -1853,11 +2057,14 @@ test "a list of 200 users is offered whole" = {
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let _ <- Task.all (List.map (\n -> Db.insert User {
-    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
-    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
-    passwordHash: "passwordhash-" ++ Text.fromInt n,
-  }) (List.range 3 200))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert User {
+        email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+        passwordHash: "passwordhash-" ++ Text.fromInt n,
+      }) (List.range 3 200)
+    )
   let page <- Test.get (Admin.Post.New {})
   Task.succeed (List.length page.model.authors == 200)
 }
@@ -1875,25 +2082,30 @@ test "a long list of users offers 50, and the search narrows it" = {
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let _ <- Task.all (List.map (\n -> Db.insert User {
-    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
-    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
-    passwordHash: "passwordhash-" ++ Text.fromInt n,
-  }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert User {
+        email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+        passwordHash: "passwordhash-" ++ Text.fromInt n,
+      }) (List.range 3 203)
+    )
   let all <- Test.get (Admin.Post.New {})
   let found <- Test.get (Admin.Post.New { findAuthor: "email-203@example.com" })
   let r <- Test.submit FindAuthor { q: "zz" }
-  Task.succeed ({
-    shown: List.length all.model.authors,
-    total: all.model.authorsTotal,
-    found: Test.texts "select[name=author] option" found.doc == ["email-203@example.com"],
-    answer: r.answer,
-  } == {
-    shown: 50,
-    total: 203,
-    found: True,
-    answer: Redirected (Admin.Post.New { findAuthor: "zz" }),
-  })
+  Task.succeed (
+    {
+      shown: List.length all.model.authors,
+      total: all.model.authorsTotal,
+      found: Test.texts "select[name=author] option" found.doc == ["email-203@example.com"],
+      answer: r.answer,
+    } == {
+        shown: 50,
+        total: 203,
+        found: True,
+        answer: Redirected (Admin.Post.New { findAuthor: "zz" }),
+      }
+  )
 }
 
 test "an author outside the narrowed list is refused" = {
@@ -1909,11 +2121,14 @@ test "an author outside the narrowed list is refused" = {
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let _ <- Task.all (List.map (\n -> Db.insert User {
-    email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
-    name: Text.NonEmpty ("name-" ++ Text.fromInt n),
-    passwordHash: "passwordhash-" ++ Text.fromInt n,
-  }) (List.range 3 203))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert User {
+        email: Text.Email ("email-" ++ Text.fromInt n ++ "@example.com"),
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+        passwordHash: "passwordhash-" ++ Text.fromInt n,
+      }) (List.range 3 203)
+    )
   let all <- Test.get (Admin.Post.New {})
   let found <- Test.get (Admin.Post.New { findAuthor: "email-203@example.com" })
   let r <- Test.submit FindAuthor { q: "zz" }
@@ -1927,13 +2142,13 @@ test "an author outside the narrowed list is refused" = {
     { name: "author", value: pick },
   ]
   let rows <- Db.from Post |> Db.count
-  Task.succeed ({
-    answer: sent.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "author", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: sent.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "author", message: "must be one of the options" }],
+        rows: 0,
+      }
+  )
 }
 
 test "a visitor is sent to log in" = {
@@ -2085,13 +2300,21 @@ load params session = {
   if admin then {
     -- @admin begin load
     let found <- Db.get User params.id
-    let posts <- Db.from Post |> Db.where (Post.author.eq params.id) |> Db.count
+    let posts <-
+      Db.from Post
+        |> Db.where (Post.author.eq params.id)
+        |> Db.count
     match found {
-      Just row -> Query.succeed { row: row, own: session.user == row.id, posts: posts },
+      Just row -> Query.succeed {
+        row: row,
+        own: session.user == row.id,
+        posts: posts,
+      },
       Nothing -> Query.notFound,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin blockers
@@ -2159,9 +2382,13 @@ view model session =
       </dl>
       <form id="delete" submit={Remove}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        {if model.own then <p>You cannot delete your own account.</p>
-          else if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p>
-          else <al-button variant="destructive" type="submit">Delete</al-button>}
+        {if model.own then
+          <p>You cannot delete your own account.</p>
+        else
+          if blockers model > 0 then
+            <p>It cannot be deleted while other rows refer to it.</p>
+          else
+            <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
     </al-card>
     <a href={Admin.User.Show { id: model.row.id }}>Back</a>
@@ -2201,18 +2428,20 @@ test "deleting a user nothing refers to" = {
     author: user3,
   }
   let _ <- Test.get (Admin.User.Delete { id: user2 })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let gone <- Db.get User user2
   let kept <- Db.get User user3
-  Task.succeed ({
-    answer: r.answer,
-    gone: Maybe.map (\row -> row.id) gone,
-    kept: Maybe.map (\row -> row.id) kept,
-  } == {
-    answer: Redirected (Admin.User.Index {}),
-    gone: Nothing,
-    kept: Just user3,
-  })
+  Task.succeed (
+    {
+      answer: r.answer,
+      gone: Maybe.map (\row -> row.id) gone,
+      kept: Maybe.map (\row -> row.id) kept,
+    } == {
+        answer: Redirected (Admin.User.Index {}),
+        gone: Nothing,
+        kept: Just user3,
+      }
+  )
 }
 
 test "a user that posts refer to is not deleted" = {
@@ -2235,19 +2464,23 @@ test "a user that posts refer to is not deleted" = {
     author: user2,
   }
   let page <- Test.get (Admin.User.Delete { id: user2 })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let kept <- Db.get User user2
-  Task.succeed ({
-    count: Test.text "#posts" page.doc,
-    buttons: Test.count "#delete button" page.doc,
-    answer: r.answer,
-    kept: Maybe.map (\row -> row.id) kept,
-  } == {
-    count: Just "1",
-    buttons: 0,
-    answer: FormRejected [{ field: "", message: "This user cannot be deleted while other rows refer to it." }],
-    kept: Just user2,
-  })
+  Task.succeed (
+    {
+      count: Test.text "#posts" page.doc,
+      buttons: Test.count "#delete button" page.doc,
+      answer: r.answer,
+      kept: Maybe.map (\row -> row.id) kept,
+    } == {
+        count: Just "1",
+        buttons: 0,
+        answer: FormRejected [
+          { field: "", message: "This user cannot be deleted while other rows refer to it." },
+        ],
+        kept: Just user2,
+      }
+  )
 }
 
 test "an Admin cannot delete their own account" = {
@@ -2259,19 +2492,21 @@ test "an Admin cannot delete their own account" = {
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let page <- Test.get (Admin.User.Delete { id: me })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let kept <- Db.get User me
-  Task.succeed ({
-    says: Test.texts "#delete p" page.doc,
-    buttons: Test.count "#delete button" page.doc,
-    answer: r.answer,
-    kept: Maybe.map (\row -> row.id) kept,
-  } == {
-    says: ["You cannot delete your own account."],
-    buttons: 0,
-    answer: FormRejected [{ field: "", message: "You cannot delete your own account." }],
-    kept: Just me,
-  })
+  Task.succeed (
+    {
+      says: Test.texts "#delete p" page.doc,
+      buttons: Test.count "#delete button" page.doc,
+      answer: r.answer,
+      kept: Maybe.map (\row -> row.id) kept,
+    } == {
+        says: ["You cannot delete your own account."],
+        buttons: 0,
+        answer: FormRejected [{ field: "", message: "You cannot delete your own account." }],
+        kept: Just me,
+      }
+  )
 }
 
 test "a missing row is not found" = {
@@ -2559,16 +2794,19 @@ edited migrations/schema.json
  error : Error -> Html Never
  error err =
    <Layout.Page title="Error">
-@@ -16,3 +29,10 @@
-   <Layout.Page title="Not found">
-     <h1>Not found</h1>
-   </Layout.Page>
+@@ -13,3 +26,13 @@
+ 
+ notFound : Html Never
+ notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 +
 +-- Every Log out button is on a page that requires a user, so a browser test cannot tell this
 +-- Redirect from a Rerender (book 10, "The logout redirect"): the test calls update itself.
 +test "Logout clears the user and goes to log in" = {
 +  let r <- Test.run (update Logout { user: Just (User.UserId "me") })
-+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok (Redirect (Auth.Login {})), trace: ["Session.put"] })
++  Task.succeed (
++    { value: r.value, trace: r.trace }
++      == { value: Ok (Redirect (Auth.Login {})), trace: ["Session.put"] }
++  )
 +}
 ```
 
@@ -2787,9 +3025,7 @@ hole `?test : Task Bool`:
 $ alder new test Home "a page has twenty entries"
 edited app/Home.alder
 …
-+test "a page has twenty entries" = {
-+  ?test
-+}
++test "a page has twenty entries" = { ?test }
 …
 ```
 
@@ -2930,7 +3166,14 @@ $ alder new msg Home Hide id:Entry.EntryId --in-for e --when "List.length model.
 edited app/Home.alder
 …
 -      {for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}
-+      {for e in model.entries -> <li><b>{e.name}</b>: {e.message}{if List.length model.entries > 1 then <al-button class="hide" click={Hide { id: e.id }}>Hide</al-button> else Html.none}</li>}
++      {for e in model.entries ->
++        <li>
++          <b>{e.name}</b>: {e.message}
++          {if List.length model.entries > 1 then
++            <al-button class="hide" click={Hide { id: e.id }}>Hide</al-button>
++          else
++            Html.none}
++        </li>}
 …
 ```
 
@@ -3103,7 +3346,10 @@ type Model = { row: Note }
 
 load : Params -> Session -> Query Model
 load params session = {
-  let found <- Db.from Note |> Db.where (Note.slug.eq params.slug) |> Db.first
+  let found <-
+    Db.from Note
+      |> Db.where (Note.slug.eq params.slug)
+      |> Db.first
   match found {
     Just row -> Query.succeed { row: row },
     Nothing -> Query.notFound,
@@ -3132,23 +3378,46 @@ view model session =
   </Layout.Page>
 
 test "the page shows the row" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+  }
   let _ <- Test.login { user: Just me }
-  let _ <- Db.insert Note { slug: Note.Slug "slug-1", title: Text.NonEmpty "title-1", owner: me }
+  let _ <- Db.insert Note {
+    slug: Note.Slug "slug-1",
+    title: Text.NonEmpty "title-1",
+    owner: me,
+  }
   let r <- Test.open (Notes.Show { slug: Note.Slug "slug-1" })
-  Task.succeed ({ answer: r.answer, slug: List.member "slug-1" (Test.texts "dd" r.doc) } == { answer: Shown, slug: True })
+  Task.succeed (
+    { answer: r.answer, slug: List.member "slug-1" (Test.texts "dd" r.doc) }
+      == { answer: Shown, slug: True }
+  )
 }
 
 test "a missing row is not found" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+  }
   let _ <- Test.login { user: Just me }
   let r <- Test.open (Notes.Show { slug: Note.Slug "slug-999" })
   Task.succeed (r.answer == PageMissing)
 }
 
 test "a visitor is sent to log in" = {
-  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1", passwordHash: "passwordhash-1" }
-  let note1 <- Db.insert Note { slug: Note.Slug "slug-1", title: Text.NonEmpty "title-1", owner: me }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+  }
+  let note1 <- Db.insert Note {
+    slug: Note.Slug "slug-1",
+    title: Text.NonEmpty "title-1",
+    owner: me,
+  }
   let r <- Test.open (Notes.Show { slug: Note.Slug "slug-1" })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
@@ -3180,14 +3449,15 @@ edited app/App.alder
  
  login = Auth.Login
  
-@@ -33,6 +33,6 @@
+@@ -30,7 +30,7 @@
  -- Every Log out button is on a page that requires a user, so a browser test cannot tell this
  -- Redirect from a Rerender (book 10, "The logout redirect"): the test calls update itself.
  test "Logout clears the user and goes to log in" = {
 -  let r <- Test.run (update Logout { user: Just (User.UserId "me") })
 +  let r <- Test.run (update Logout { user: Just (User.UserId "me"), theme: "light" })
-   Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok (Redirect (Auth.Login {})), trace: ["Session.put"] })
- }
+   Task.succeed (
+     { value: r.value, trace: r.trace }
+       == { value: Ok (Redirect (Auth.Login {})), trace: ["Session.put"] }
 ```
 
 A literal written over several lines is left, and shows in the check
@@ -3897,22 +4167,22 @@ edited migrations/schema.json
  }
  
  test "deleting its entry deletes a Reply" = {
-app/Replies.alder:42:30: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
+app/Replies.alder:47:30: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
       let _ <- Db.insert Reply { entry: p.form.entry, message: p.form.message }
                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Replies.alder:89:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
+app/Replies.alder:111:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
     let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Replies.alder:90:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
+app/Replies.alder:112:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
     let reply2 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-2" }
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Replies.alder:97:54: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
-    let _ <- Task.all (List.map (\n -> Db.insert Reply { entry: entry1, message: Text.NonEmpty ("message-" ++ Text.fromInt n) }) (List.range 1 21))
-                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Replies/Show.alder:57:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
+app/Replies.alder:121:39: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
+        List.map (\n -> Db.insert Reply {
+                                        ^
+app/Replies/Show.alder:62:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
     let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Replies/Show.alder:69:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
+app/Replies/Show.alder:77:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
     let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/Reply.alder:19:28: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
@@ -3974,7 +4244,7 @@ wrote migrations/0002_add_approved.sql
 edited migrations/schema.json
 --- a/app/Comment.alder
 +++ b/app/Comment.alder
-@@ -17,6 +17,7 @@
+@@ -18,6 +18,7 @@
    author: Name,
    body: Body,
    created: Time @created,
@@ -4005,7 +4275,7 @@ edited app/Admin/Comment/Show.alder
    sort: Text = "created",
    dir: Text = "desc",
    page: Int = 1,
-@@ -50,25 +51,39 @@
+@@ -54,26 +55,51 @@
  
  -- @admin begin filters
  -- Filters are the option each filter has chosen in the address ("" for any): a select for each
@@ -4016,50 +4286,65 @@ edited app/Admin/Comment/Show.alder
  
  -- chosen is the filters' options in params.
  chosen : Params -> Filters
--chosen params = { }
+-chosen params = {}
 +chosen params = { approved: params.approved }
  
  -- filters are the list's filters, each with the option f has chosen.
  filters : Filters -> List Filter
 -filters f = []
 +filters f = [
-+  { name: "approved", label: "Approved", value: f.approved, options: [
-+    { value: "yes", label: "yes", rows: Comment.approved.eq True },
-+    { value: "no", label: "no", rows: Comment.approved.eq False },
-+  ] },
++  {
++    name: "approved",
++    label: "Approved",
++    value: f.approved,
++    options: [
++      {
++        value: "yes",
++        label: "yes",
++        rows: Comment.approved.eq True,
++      },
++      {
++        value: "no",
++        label: "no",
++        rows: Comment.approved.eq False,
++      },
++    ],
++  },
 +]
  
  -- filtered is the rows that the option each filter has chosen selects (every row for "", or for
  -- a value that is no option's).
  filtered : List Filter -> Condition Comment
 -filtered fs = Db.and []
-+filtered fs = Db.and (List.map (\f -> match List.find (\o -> o.value == f.value) f.options {
-+  Just o -> o.rows,
-+  Nothing -> Db.and [],
-+}) fs)
++filtered fs =
++  Db.and (
++    List.map (\f -> match List.find (\o -> o.value == f.value) f.options {
++      Just o -> o.rows,
++      Nothing -> Db.and [],
++    }) fs
++  )
  
  -- listAt is this list with the model's search and filters, sorted by sort and dir, at page n.
  listAt : Model -> Text -> Text -> Int -> Page
--listAt model sort dir n = Admin.Comment.Index { q: model.q, sort: sort, dir: dir, page: n }
-+listAt model sort dir n = Admin.Comment.Index {
-+  q: model.q,
+ listAt model sort dir n = Admin.Comment.Index {
+   q: model.q,
 +  approved: model.filters.approved,
-+  sort: sort,
-+  dir: dir,
-+  page: n,
-+}
- -- @admin end
- 
- -- @admin begin sorts
-@@ -79,6 +94,7 @@
-   { name: "author", asc: Comment.author.asc, desc: Comment.author.desc },
-   { name: "body", asc: Comment.body.asc, desc: Comment.body.desc },
-   { name: "created", asc: Comment.created.asc, desc: Comment.created.desc },
-+  { name: "approved", asc: Comment.approved.asc, desc: Comment.approved.desc },
+   sort: sort,
+   dir: dir,
+   page: n,
+@@ -108,6 +134,11 @@
+     asc: Comment.created.asc,
+     desc: Comment.created.desc,
+   },
++  {
++    name: "approved",
++    asc: Comment.approved.asc,
++    desc: Comment.approved.desc,
++  },
  ]
  -- @admin end
  
-@@ -184,6 +200,7 @@
+@@ -222,6 +253,7 @@
              <th><a href={listAt model "author" (toggle model "author") 1}>Author</a></th>
              <th><a href={listAt model "body" (toggle model "body") 1}>Body</a></th>
              <th><a href={listAt model "created" (toggle model "created") 1}>Created</a></th>
@@ -4067,23 +4352,33 @@ edited app/Admin/Comment/Show.alder
              -- @admin end
            </tr>
          </thead>
-@@ -196,6 +213,7 @@
+@@ -243,6 +275,12 @@
                <td><a href={Admin.Comment.Show { id: row.id }}>{row.author}</a></td>
                <td>{row.body}</td>
                <td>{Time.format "Jan 2, 2006" row.created}</td>
-+              <td>{if row.approved then <al-badge>Yes</al-badge> else <al-badge variant="secondary">No</al-badge>}</td>
++              <td>
++                {if row.approved then
++                  <al-badge>Yes</al-badge>
++                else
++                  <al-badge variant="secondary">No</al-badge>}
++              </td>
                -- @admin end
              </tr>}
          </tbody>
 …
 --- a/app/Admin/Comment/Show.alder
 +++ b/app/Admin/Comment/Show.alder
-@@ -98,6 +98,8 @@
+@@ -106,6 +106,13 @@
          <dd>{model.row.body}</dd>
          <dt>Created</dt>
          <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
 +        <dt>Approved</dt>
-+        <dd>{if model.row.approved then <al-badge>Yes</al-badge> else <al-badge variant="secondary">No</al-badge>}</dd>
++        <dd>
++          {if model.row.approved then
++            <al-badge>Yes</al-badge>
++          else
++            <al-badge variant="secondary">No</al-badge>}
++        </dd>
          -- @admin end
        </dl>
        <div slot="actions">

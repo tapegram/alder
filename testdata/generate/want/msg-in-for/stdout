@@ -17,16 +17,23 @@ edited app/Home.alder
  }
  
  view : Model -> Session -> Html Msg
-@@ -43,7 +46,7 @@
+@@ -43,7 +46,14 @@
      </al-card>
  
      <ul id="entries">
 -      {for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}
-+      {for e in model.entries -> <li><b>{e.name}</b>: {e.message}{if List.length model.entries > 0 then <al-button class="hide" click={Hide { id: e.id }}>Hide</al-button> else Html.none}</li>}
++      {for e in model.entries ->
++        <li>
++          <b>{e.name}</b>: {e.message}
++          {if List.length model.entries > 0 then
++            <al-button class="hide" click={Hide { id: e.id }}>Hide</al-button>
++          else
++            Html.none}
++        </li>}
      </ul>
    </Layout.Page>
  
-@@ -61,3 +64,18 @@
+@@ -64,3 +74,18 @@
    let page <- Test.get (Home {})
    Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
  }
@@ -48,9 +55,9 @@ edited app/Home.alder
 app/Home.alder:31:13: warning[W0002]: hole ?hide has type Task Nav
     Hide p -> ?hide,
               ^^^^^
-app/Home.alder:78:35: warning[W0002]: hole ?hideId has type Entry.EntryId
+app/Home.alder:88:35: warning[W0002]: hole ?hideId has type Entry.EntryId
     let r <- Test.click (Hide { id: ?hideId })
                                     ^^^^^^^
-app/Home.alder:80:16: warning[W0002]: hole ?expected has type Bool
+app/Home.alder:90:16: warning[W0002]: hole ?expected has type Bool
     Task.succeed ?expected
                  ^^^^^^^^^

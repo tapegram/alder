@@ -25,17 +25,20 @@ load params session = {
     -- @admin begin load
     let findPost = Text.slice 0 200 params.findPost
     let postsTotal <- Db.from Post |> Db.count
-    let posts <- Db.from Post |> Db.orderBy Post.title.asc |> Db.where (if postsTotal > 200 then Post.title.contains findPost else Db.and []) |> Db.limit (if postsTotal > 200 then 50 else 200) |> Db.all
+    let posts <-
+      Db.from Post
+        |> Db.orderBy Post.title.asc
+        |> Db.where (if postsTotal > 200 then Post.title.contains findPost else Db.and [])
+        |> Db.limit (if postsTotal > 200 then 50 else 200)
+        |> Db.all
     Query.succeed { posts: posts, postsTotal: postsTotal }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin form
-form TagForm = {
-  name: Text.NonEmpty,
-  post: Post.PostId,
-}
+form TagForm = { name: Text.NonEmpty, post: Post.PostId }
 -- @admin end
 
 -- @admin begin search
@@ -54,7 +57,10 @@ update msg model session = match msg {
   -- @admin end
   Create p -> {
     -- @admin begin insert
-    let nameTaken <- Db.from Tag |> Db.where (Tag.name.eq p.form.name) |> Db.count
+    let nameTaken <-
+      Db.from Tag
+        |> Db.where (Tag.name.eq p.form.name)
+        |> Db.count
     if nameTaken > 0 then
       Task.succeed (Reject "A tag with this name exists.")
     else {
@@ -72,12 +78,21 @@ view model session =
 
     <al-card>
       -- @admin begin finder
-      {if model.postsTotal > 200 then <form submit={SearchPost}><al-input field="q" label="Find post" /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}
+      {if model.postsTotal > 200 then
+        <form submit={SearchPost}>
+          <al-input field="q" label="Find post" />
+          <al-button type="submit" variant="secondary">Find</al-button>
+        </form>
+      else
+        <span></span>}
       -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
         <al-input field="name" label="Name" />
-        <al-select field="post" label="Post" options={List.map (\r -> { value: r.id, label: r.title }) model.posts} />
+        <al-select
+          field="post"
+          label="Post"
+          options={List.map (\r -> { value: r.id, label: r.title }) model.posts} />
         -- @admin end
         <al-alert variant="destructive"><Errors form /></al-alert>
         <al-button type="submit">Create</al-button>
@@ -93,21 +108,34 @@ test "creating a tag adds it, with the values submitted" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
   let _ <- Db.insert Tag { name: Text.NonEmpty "name-1", post: post1 }
   let page <- Test.get (Admin.Tag.New {})
   let r <- Test.submit TagForm { name: Text.NonEmpty "name-2", post: post2 }
-  let rows <- Db.from Tag |> Db.where (Tag.name.eq (Text.NonEmpty "name-2")) |> Db.all
-  Task.succeed ({
-    answers: List.map (\row -> Redirected (Admin.Tag.Show { id: row.id })) rows,
-    rows: List.map (\row -> { name: row.name, post: row.post }) rows,
-    posts: Test.texts "select[name=post] option" page.doc,
-  } == {
-    answers: [r.answer],
-    rows: [{ name: Text.NonEmpty "name-2", post: post2 }],
-    posts: ["title-1", "title-2"],
-  })
+  let rows <-
+    Db.from Tag
+      |> Db.where (Tag.name.eq (Text.NonEmpty "name-2"))
+      |> Db.all
+  Task.succeed (
+    {
+      answers: List.map (\row -> Redirected (Admin.Tag.Show { id: row.id })) rows,
+      rows: List.map (\row -> { name: row.name, post: row.post }) rows,
+      posts: Test.texts "select[name=post] option" page.doc,
+    } == {
+        answers: [r.answer],
+        rows: [{ name: Text.NonEmpty "name-2", post: post2 }],
+        posts: ["title-1", "title-2"],
+      }
+  )
 }
 
 test "a tag with a name that exists is refused" = {
@@ -117,19 +145,24 @@ test "a tag with a name that exists is refused" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
   let _ <- Db.insert Tag { name: Text.NonEmpty "name-1", post: post1 }
   let _ <- Test.get (Admin.Tag.New {})
   let r <- Test.submit TagForm { name: Text.NonEmpty "name-1", post: post2 }
   let rows <- Db.from Tag |> Db.count
-  Task.succeed ({
-    answer: r.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "", message: "A tag with this name exists." }],
-    rows: 1,
-  })
+  Task.succeed (
+    { answer: r.answer, rows: rows }
+      == { answer: FormRejected [{ field: "", message: "A tag with this name exists." }], rows: 1 }
+  )
 }
 
 test "a post not offered is refused" = {
@@ -139,18 +172,26 @@ test "a post not offered is refused" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
   let page <- Test.get (Admin.Tag.New {})
   let r <- Test.submitRaw TagForm [{ name: "name", value: "x" }, { name: "post", value: "missing" }]
   let rows <- Db.from Tag |> Db.count
-  Task.succeed ({
-    answer: r.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "post", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: r.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "post", message: "must be one of the options" }],
+        rows: 0,
+      }
+  )
 }
 
 test "a list of 200 posts is offered whole" = {
@@ -160,13 +201,24 @@ test "a list of 200 posts is offered whole" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
-  let _ <- Task.all (List.map (\n -> Db.insert Post {
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    body: "body-" ++ Text.fromInt n,
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
     author: me,
-  }) (List.range 3 200))
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        body: "body-" ++ Text.fromInt n,
+        author: me,
+      }) (List.range 3 200)
+    )
   let page <- Test.get (Admin.Tag.New {})
   Task.succeed (List.length page.model.posts == 200)
 }
@@ -178,27 +230,40 @@ test "a long list of posts offers 50, and the search narrows it" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
-  let _ <- Task.all (List.map (\n -> Db.insert Post {
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    body: "body-" ++ Text.fromInt n,
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
     author: me,
-  }) (List.range 3 203))
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        body: "body-" ++ Text.fromInt n,
+        author: me,
+      }) (List.range 3 203)
+    )
   let all <- Test.get (Admin.Tag.New {})
   let found <- Test.get (Admin.Tag.New { findPost: "title-203" })
   let r <- Test.submit FindPost { q: "zz" }
-  Task.succeed ({
-    shown: List.length all.model.posts,
-    total: all.model.postsTotal,
-    found: Test.texts "select[name=post] option" found.doc == ["title-203"],
-    answer: r.answer,
-  } == {
-    shown: 50,
-    total: 203,
-    found: True,
-    answer: Redirected (Admin.Tag.New { findPost: "zz" }),
-  })
+  Task.succeed (
+    {
+      shown: List.length all.model.posts,
+      total: all.model.postsTotal,
+      found: Test.texts "select[name=post] option" found.doc == ["title-203"],
+      answer: r.answer,
+    } == {
+        shown: 50,
+        total: 203,
+        found: True,
+        answer: Redirected (Admin.Tag.New { findPost: "zz" }),
+      }
+  )
 }
 
 test "a post outside the narrowed list is refused" = {
@@ -208,13 +273,24 @@ test "a post outside the narrowed list is refused" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
-  let post2 <- Db.insert Post { title: Text.NonEmpty "title-2", body: "body-2", author: me }
-  let _ <- Task.all (List.map (\n -> Db.insert Post {
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    body: "body-" ++ Text.fromInt n,
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
     author: me,
-  }) (List.range 3 203))
+  }
+  let post2 <- Db.insert Post {
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    author: me,
+  }
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Post {
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        body: "body-" ++ Text.fromInt n,
+        author: me,
+      }) (List.range 3 203)
+    )
   let all <- Test.get (Admin.Tag.New {})
   let found <- Test.get (Admin.Tag.New { findPost: "title-203" })
   let r <- Test.submit FindPost { q: "zz" }
@@ -222,13 +298,13 @@ test "a post outside the narrowed list is refused" = {
   let page <- Test.get (Admin.Tag.New {})
   let sent <- Test.submitRaw TagForm [{ name: "name", value: "x" }, { name: "post", value: pick }]
   let rows <- Db.from Tag |> Db.count
-  Task.succeed ({
-    answer: sent.answer,
-    rows: rows,
-  } == {
-    answer: FormRejected [{ field: "post", message: "must be one of the options" }],
-    rows: 0,
-  })
+  Task.succeed (
+    { answer: sent.answer, rows: rows }
+      == {
+        answer: FormRejected [{ field: "post", message: "must be one of the options" }],
+        rows: 0,
+      }
+  )
 }
 
 test "a visitor is sent to log in" = {

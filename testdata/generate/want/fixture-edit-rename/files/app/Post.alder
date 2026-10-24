@@ -21,14 +21,22 @@ table Post {
 
 test "a new post is a draft" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
-  let id <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
+  let id <- Db.insert Post {
+    title: Text.NonEmpty "Hello",
+    body: "",
+    author: me,
+  }
   let post <- Db.get Post id
   Task.succeed (Maybe.map (\p -> p.status) post == Just Draft)
 }
 
 test "an author with posts cannot be deleted" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
-  let _ <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
+  let _ <- Db.insert Post {
+    title: Text.NonEmpty "Hello",
+    body: "",
+    author: me,
+  }
   let r <- Test.run (Db.delete User me)
   let posts <- Db.from Post |> Db.count
   Task.succeed ({ deleted: Result.toMaybe r.value, posts: posts } == { deleted: Nothing, posts: 1 })

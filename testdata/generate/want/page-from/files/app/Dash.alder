@@ -29,5 +29,8 @@ view model session =
 test "the page shows each table's rows" = {
   let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
   let page <- Test.get (Dash {})
-  Task.succeed ({ heading: Test.text "h1" page.doc, entries: Test.count "#entries li" page.doc } == { heading: Just "Dash", entries: 1 })
+  Task.succeed (
+    { heading: Test.text "h1" page.doc, entries: Test.count "#entries li" page.doc }
+      == { heading: Just "Dash", entries: 1 }
+  )
 }

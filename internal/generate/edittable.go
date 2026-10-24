@@ -101,9 +101,8 @@ func EditTable(p *Program, table, op string, args []string) ([]Edit, error) {
 	}
 	// an error in the table itself (the new field's type or default) refuses the edit; breakage
 	// in other code is the to-do list the caller writes despite
-	body := e.result()
-	guard := declLines(m.File, body, func(d syntax.Decl) bool { td, ok := d.(*syntax.TableDecl); return ok && td.Name == table })
-	return []Edit{{Path: m.File, Body: body, Guard: guard}}, nil
+	guard := func(d syntax.Decl) bool { td, ok := d.(*syntax.TableDecl); return ok && td.Name == table }
+	return []Edit{{Path: m.File, Body: e.result(), Guard: guard}}, nil
 }
 
 // column is t's column name, refused when it has none.

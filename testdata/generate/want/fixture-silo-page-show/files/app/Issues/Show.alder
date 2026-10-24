@@ -32,9 +32,21 @@ view model session =
         <dt>Org</dt>
         <dd>{model.row.org}</dd>
         <dt>Status</dt>
-        <dd><al-badge>{match model.row.status { Open -> "Open", Closed -> "Closed" }}</al-badge></dd>
+        <dd>
+          <al-badge>
+            {match model.row.status {
+              Open -> "Open",
+              Closed -> "Closed",
+            }}
+          </al-badge>
+        </dd>
         <dt>Assignee</dt>
-        <dd>{match model.row.assignee { Just v -> v, Nothing -> "" }}</dd>
+        <dd>
+          {match model.row.assignee {
+            Just v -> v,
+            Nothing -> "",
+          }}
+        </dd>
         <dt>Created</dt>
         <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
       </dl>
@@ -47,9 +59,17 @@ test "the page shows the row" = {
   let _ <- Test.member me org
   let _ <- Test.login { user: Just me, org: Just org }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let issue1 <- Db.insert Issue { title: Text.NonEmpty "title-1", project: project1, org: org, assignee: Nothing }
+  let issue1 <- Db.insert Issue {
+    title: Text.NonEmpty "title-1",
+    project: project1,
+    org: org,
+    assignee: Nothing,
+  }
   let r <- Test.open (Issues.Show { id: issue1 })
-  Task.succeed ({ answer: r.answer, title: List.member "title-1" (Test.texts "dd" r.doc) } == { answer: Shown, title: True })
+  Task.succeed (
+    { answer: r.answer, title: List.member "title-1" (Test.texts "dd" r.doc) }
+      == { answer: Shown, title: True }
+  )
 }
 
 test "a missing row is not found" = {
@@ -64,7 +84,12 @@ test "a missing row is not found" = {
 test "a visitor is sent to log in" = {
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org1 }
-  let issue1 <- Db.insert Issue { title: Text.NonEmpty "title-1", project: project1, org: org1, assignee: Nothing }
+  let issue1 <- Db.insert Issue {
+    title: Text.NonEmpty "title-1",
+    project: project1,
+    org: org1,
+    assignee: Nothing,
+  }
   let r <- Test.open (Issues.Show { id: issue1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
@@ -74,7 +99,12 @@ test "without an org the page sends you to choose one" = {
   let _ <- Test.login { user: Just me, org: Nothing }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org1 }
-  let issue1 <- Db.insert Issue { title: Text.NonEmpty "title-1", project: project1, org: org1, assignee: Nothing }
+  let issue1 <- Db.insert Issue {
+    title: Text.NonEmpty "title-1",
+    project: project1,
+    org: org1,
+    assignee: Nothing,
+  }
   let r <- Test.open (Issues.Show { id: issue1 })
   Task.succeed (r.answer == Redirected (Orgs {}))
 }

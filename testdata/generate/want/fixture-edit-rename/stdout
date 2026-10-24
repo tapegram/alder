@@ -13,6 +13,31 @@ edited migrations/schema.json
    status: Status = Draft,
    featured: Bool = False,
    author: User.UserId @ref User @owner,
+@@ -21,14 +21,22 @@
+ 
+ test "a new post is a draft" = {
+   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+-  let id <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
++  let id <- Db.insert Post {
++    title: Text.NonEmpty "Hello",
++    body: "",
++    author: me,
++  }
+   let post <- Db.get Post id
+   Task.succeed (Maybe.map (\p -> p.status) post == Just Draft)
+ }
+ 
+ test "an author with posts cannot be deleted" = {
+   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+-  let _ <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
++  let _ <- Db.insert Post {
++    title: Text.NonEmpty "Hello",
++    body: "",
++    author: me,
++  }
+   let r <- Test.run (Db.delete User me)
+   let posts <- Db.from Post |> Db.count
+   Task.succeed ({ deleted: Result.toMaybe r.value, posts: posts } == { deleted: Nothing, posts: 1 })
 app/Comment.alder:19:30: error[E0003]: record `Post.Insert Post` is missing field(s): text
     let post <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -50,17 +75,17 @@ app/Home.alder:68:60: error[E0002]: no field `body` on `Post.Insert Post`
     let _ <- Db.insert Post { title: Text.NonEmpty "Second", body: "", author: me }
                                                              ^^^^^^^^
 app/Post.alder:24:28: error[E0003]: record `Post.Insert Post` is missing field(s): text
-    let id <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
-                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Post.alder:24:60: error[E0002]: no field `body` on `Post.Insert Post`
-    let id <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
-                                                             ^^^^^^^^
-app/Post.alder:31:27: error[E0003]: record `Post.Insert Post` is missing field(s): text
-    let _ <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
-                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Post.alder:31:59: error[E0002]: no field `body` on `Post.Insert Post`
-    let _ <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
-                                                            ^^^^^^^^
+    let id <- Db.insert Post {
+                             ^
+app/Post.alder:26:5: error[E0002]: no field `body` on `Post.Insert Post`
+      body: "",
+      ^^^^^^^^
+app/Post.alder:35:27: error[E0003]: record `Post.Insert Post` is missing field(s): text
+    let _ <- Db.insert Post {
+                            ^
+app/Post.alder:37:5: error[E0002]: no field `body` on `Post.Insert Post`
+      body: "",
+      ^^^^^^^^
 app/Tag.alder:18:30: error[E0003]: record `Post.Insert Post` is missing field(s): text
     let post <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -78,11 +78,22 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 		return nil, nil, nil, Refusef("internal error: the hole ?%s is not where the checker says", h.Name)
 	}
 	before, after := l[:sp.Start.Col-1], l[sp.End.Col-1:]
-	if inner, ok := soleInBlock(lines, sp.Start.Line, h.Name, expr); ok {
+	inner, ok := soleInBlock(lines, sp.Start.Line, h.Name, expr)
+	oneLine := false
+	if !ok && strings.HasSuffix(before, "{ ") && strings.TrimSpace(after) == "}" {
+		// `{ ?test }` on one line, as `alder fmt` writes a block with only a hole
+		inner, ok = blockBody(expr)
+		oneLine = ok
+	}
+	if ok {
 		// the hole is a block's whole body (`alder new test`'s `{ ?test }`) and expr a block:
 		// expr's statements become that block's, rather than a block in a block
 		e := newSrcEdit(m.Source)
-		e.replaceLine(sp.Start.Line, indent(inner, indentOf(l)))
+		if oneLine {
+			e.replaceLine(sp.Start.Line, strings.TrimSuffix(before, " ")+"\n"+indent(inner, indentOf(l)+"  ")+"\n"+indentOf(l)+strings.TrimLeft(after, " "))
+		} else {
+			e.replaceLine(sp.Start.Line, indent(inner, indentOf(l)))
+		}
 		dropGuidance(e, m.Syntax, h.Decl, h.Name == "expected", onlyExpectedLeft(in, h))
 		addImports(e, m.Syntax, fillImports(p, m, expr, &imports))
 		return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
@@ -128,6 +139,12 @@ func soleInBlock(lines []string, n int, name, expr string) (string, bool) {
 		!strings.HasSuffix(strings.TrimRight(lines[n-2], " "), "{") || !strings.HasPrefix(strings.TrimSpace(lines[n]), "}") {
 		return "", false
 	}
+	return blockBody(expr)
+}
+
+// blockBody is the statements of expr when it is a block written over several lines, without
+// its braces and their common indentation.
+func blockBody(expr string) (string, bool) {
 	if !strings.HasPrefix(expr, "{") || closing(expr, 0) != len(expr)-1 {
 		return "", false
 	}

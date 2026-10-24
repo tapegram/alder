@@ -5,7 +5,7 @@ wrote migrations/0002_drop_created.sql
 edited migrations/schema.json
 --- a/app/Tag.alder
 +++ b/app/Tag.alder
-@@ -10,7 +10,6 @@
+@@ -10,12 +10,15 @@
    id: TagId @id,
    name: Text.NonEmpty @unique,
    post: Post.PostId @ref Post @restrict,
@@ -13,3 +13,13 @@ edited migrations/schema.json
  }
  
  test "a tagged post cannot be deleted" = {
+   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
+-  let post <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
++  let post <- Db.insert Post {
++    title: Text.NonEmpty "Hello",
++    body: "",
++    author: me,
++  }
+   let _ <- Db.insert Tag { name: Text.NonEmpty "news", post: post }
+   let r <- Test.run (Db.delete Post post)
+   let tags <- Db.from Tag |> Db.count

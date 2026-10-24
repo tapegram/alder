@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"alder/internal/format"
+	"alder/internal/generate"
 	"bytes"
 	"os"
 	"path/filepath"
@@ -146,5 +147,45 @@ func TestFmt_UnsafeSkipsWrite(t *testing.T) {
 	})
 	if code != 2 || !strings.Contains(e.String(), "alder fmt: internal error:") {
 		t.Fatalf("code %d err %q", code, e.String())
+	}
+}
+
+// TestExamples_AreFormatted: the example apps and the scaffold `alder new` writes are as `alder
+// fmt` prints them, so the code an agent reads and copies is canonical.
+func TestExamples_AreFormatted(t *testing.T) {
+	if code, out, errOut := fmtRun("--check", "../../examples", "../../internal/scaffold/files"); code != 0 {
+		t.Fatalf("alder fmt --check examples internal/scaffold/files: exit %d (run `alder fmt` on them)\n%s%s", code, out, errOut)
+	}
+}
+
+// TestGenerated_IsFormatted: every Alder file the generators wrote in TestGenerate's cases
+// (testdata/generate/want/*/files) is as `alder fmt` prints it.
+func TestGenerated_IsFormatted(t *testing.T) {
+	n := 0
+	err := filepath.WalkDir("../../testdata/generate/want", func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".alder") {
+			return err
+		}
+		n++
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		out, diags, err := format.Source(p, b)
+		switch {
+		case len(diags) > 0:
+			t.Errorf("%s does not parse: %s", p, diags[0].Message)
+		case err != nil:
+			t.Errorf("%v", err)
+		case string(out) != string(b):
+			t.Errorf("%s is not formatted:\n%s", p, generate.UnifiedDiff(p, string(b), string(out)))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n == 0 {
+		t.Fatal("no generated Alder file found")
 	}
 }

@@ -8,7 +8,7 @@
 -- example: delete the field `count: Int`, leaving `type Model = { }`.
 type Model = { count: Int }
 
--- example: in `load`, delete `count: params.count`, leaving `Query.succeed { }`.
+-- example: in `load`, delete `count: params.count`, leaving `Query.succeed {}`.
 load : Params -> Session -> Query Model
 load params session = Query.succeed { count: params.count }
 
@@ -36,7 +36,7 @@ view model session =
 type Model = { }
 
 load : Params -> Session -> Query Model
-load params session = [[if .LoadHole]]?load[[else]]Query.succeed { }[[end]]
+load params session = [[if .LoadHole]]?load[[else]]Query.succeed {}[[end]]
 
 view : Model -> Session -> Html Msg
 view model session =

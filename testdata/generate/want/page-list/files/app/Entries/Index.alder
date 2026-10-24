@@ -5,7 +5,11 @@ import Layout
 
 page "/entries" { page: Int = 1 }
 
-type Model = { rows: List Entry, page: Int, pages: Int }
+type Model = {
+  rows: List Entry,
+  page: Int,
+  pages: Int,
+}
 
 perPage : Int
 perPage = 20
@@ -25,7 +29,11 @@ load params session = {
       |> Db.offset ((page - 1) * perPage)
       |> Db.all
   let count <- Db.from Entry |> Db.count
-  Query.succeed { rows: rows, page: page, pages: Int.max 1 ((count + perPage - 1) / perPage) }
+  Query.succeed {
+    rows: rows,
+    page: page,
+    pages: Int.max 1 ((count + perPage - 1) / perPage),
+  }
 }
 
 view : Model -> Session -> Html Msg
@@ -36,7 +44,11 @@ view model session =
     <al-table>
       <table>
         <thead>
-          <tr><th>Name</th><th>Message</th><th>Created</th></tr>
+          <tr>
+            <th>Name</th>
+            <th>Message</th>
+            <th>Created</th>
+          </tr>
         </thead>
         <tbody>
           {for row in model.rows ->
@@ -50,9 +62,15 @@ view model session =
     </al-table>
 
     <al-pagination role="navigation" aria-label="Pages">
-      {if model.page > 1 then <a slot="prev" href={Entries.Index { page: model.page - 1 }} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
+      {if model.page > 1 then
+        <a slot="prev" href={Entries.Index { page: model.page - 1 }} rel="prev">Previous</a>
+      else
+        <span slot="prev" aria-disabled="true">Previous</span>}
       <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
-      {if model.page < model.pages then <a slot="next" href={Entries.Index { page: model.page + 1 }} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
+      {if model.page < model.pages then
+        <a slot="next" href={Entries.Index { page: model.page + 1 }} rel="next">Next</a>
+      else
+        <span slot="next" aria-disabled="true">Next</span>}
     </al-pagination>
   </Layout.Page>
 
@@ -64,8 +82,24 @@ test "the list shows the rows, newest first" = {
 }
 
 test "the list has 20 rows a page" = {
-  let _ <- Task.all (List.map (\n -> Db.insert Entry { name: Text.NonEmpty ("name-" ++ Text.fromInt n), message: Text.NonEmpty ("message-" ++ Text.fromInt n) }) (List.range 1 21))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Entry {
+        name: Text.NonEmpty ("name-" ++ Text.fromInt n),
+        message: Text.NonEmpty ("message-" ++ Text.fromInt n),
+      }) (List.range 1 21)
+    )
   let first <- Test.get (Entries.Index {})
   let second <- Test.get (Entries.Index { page: 2 })
-  Task.succeed ({ first: List.length first.model.rows, second: List.length second.model.rows, pages: Test.texts "al-pagination span" first.doc } == { first: 20, second: 1, pages: ["Previous", "Page 1 of 2"] })
+  Task.succeed (
+    {
+      first: List.length first.model.rows,
+      second: List.length second.model.rows,
+      pages: Test.texts "al-pagination span" first.doc,
+    } == {
+        first: 20,
+        second: 1,
+        pages: ["Previous", "Page 1 of 2"],
+      }
+  )
 }

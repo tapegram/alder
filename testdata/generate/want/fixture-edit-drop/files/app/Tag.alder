@@ -14,7 +14,11 @@ table Tag {
 
 test "a tagged post cannot be deleted" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me" }
-  let post <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
+  let post <- Db.insert Post {
+    title: Text.NonEmpty "Hello",
+    body: "",
+    author: me,
+  }
   let _ <- Db.insert Tag { name: Text.NonEmpty "news", post: post }
   let r <- Test.run (Db.delete Post post)
   let tags <- Db.from Tag |> Db.count

@@ -12,7 +12,7 @@ page "/about" { count: Int = 0 }
 -- example: delete the field `count: Int`, leaving `type Model = { }`.
 type Model = { count: Int }
 
--- example: in `load`, delete `count: params.count`, leaving `Query.succeed { }`.
+-- example: in `load`, delete `count: params.count`, leaving `Query.succeed {}`.
 load : Params -> Session -> Query Model
 load params session = Query.succeed { count: params.count }
 
@@ -39,7 +39,9 @@ view model session =
 
 test "the page is shown" = {
   let r <- Test.open (About {})
-  Task.succeed ({ answer: r.answer, heading: Test.text "h1" r.doc } == { answer: Shown, heading: Just "About" })
+  Task.succeed (
+    { answer: r.answer, heading: Test.text "h1" r.doc } == { answer: Shown, heading: Just "About" }
+  )
 }
 
 -- example: delete this test with the rest of the example.
@@ -47,5 +49,8 @@ test "pressing Bump counts one" = {
   let _ <- Test.get (About {})
   let r <- Test.click (Bump { by: 1 })
   let after <- Test.open (About { count: 1 })
-  Task.succeed ({ answer: r.answer, count: Test.text "#count" after.doc } == { answer: Redirected (About { count: 1 }), count: Just "Count: 1" })
+  Task.succeed (
+    { answer: r.answer, count: Test.text "#count" after.doc }
+      == { answer: Redirected (About { count: 1 }), count: Just "Count: 1" }
+  )
 }

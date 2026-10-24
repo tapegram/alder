@@ -121,6 +121,11 @@ func genReport(cmd string, g genArgs, res *generate.Result, err error, extra fun
 	if res == nil && refused && ref.Result != nil {
 		res = ref.Result
 	}
+	if res != nil {
+		for _, w := range res.Warnings {
+			fmt.Fprintf(stderr, "%s: warning: %s\n", cmd, w)
+		}
+	}
 	if g.json {
 		out := genJSON{Files: []generate.FileChange{}, Diagnostics: []json.RawMessage{}, Holes: []generate.Hole{}}
 		if res != nil {

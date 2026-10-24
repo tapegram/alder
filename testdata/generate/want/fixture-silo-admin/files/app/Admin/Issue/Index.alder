@@ -49,7 +49,11 @@ type Filter = {
   name: Text,
   label: Text,
   value: Text,
-  options: List { value: Text, label: Text, rows: Condition Issue },
+  options: List {
+    value: Text,
+    label: Text,
+    rows: Condition Issue,
+  },
 }
 
 -- @admin begin filters
@@ -64,19 +68,35 @@ chosen params = { status: params.status }
 -- filters are the list's filters, each with the option f has chosen.
 filters : Filters -> List Filter
 filters f = [
-  { name: "status", label: "Status", value: f.status, options: [
-    { value: "Open", label: "Open", rows: Issue.status.eq Open },
-    { value: "Closed", label: "Closed", rows: Issue.status.eq Closed },
-  ] },
+  {
+    name: "status",
+    label: "Status",
+    value: f.status,
+    options: [
+      {
+        value: "Open",
+        label: "Open",
+        rows: Issue.status.eq Open,
+      },
+      {
+        value: "Closed",
+        label: "Closed",
+        rows: Issue.status.eq Closed,
+      },
+    ],
+  },
 ]
 
 -- filtered is the rows that the option each filter has chosen selects (every row for "", or for
 -- a value that is no option's).
 filtered : List Filter -> Condition Issue
-filtered fs = Db.and (List.map (\f -> match List.find (\o -> o.value == f.value) f.options {
-  Just o -> o.rows,
-  Nothing -> Db.and [],
-}) fs)
+filtered fs =
+  Db.and (
+    List.map (\f -> match List.find (\o -> o.value == f.value) f.options {
+      Just o -> o.rows,
+      Nothing -> Db.and [],
+    }) fs
+  )
 
 -- listAt is this list with the model's search and filters, sorted by sort and dir, at page n.
 listAt : Model -> Text -> Text -> Int -> Page
@@ -92,13 +112,37 @@ listAt model sort dir n = Admin.Issue.Index {
 
 -- @admin begin sorts
 -- sorts are the columns the list sorts by, by name.
-sorts : List { name: Text, asc: Order Issue, desc: Order Issue }
+sorts : List {
+  name: Text,
+  asc: Order Issue,
+  desc: Order Issue,
+}
 sorts = [
-  { name: "title", asc: Issue.title.asc, desc: Issue.title.desc },
-  { name: "project", asc: Issue.project.asc, desc: Issue.project.desc },
-  { name: "status", asc: Issue.status.asc, desc: Issue.status.desc },
-  { name: "assignee", asc: Issue.assignee.asc, desc: Issue.assignee.desc },
-  { name: "created", asc: Issue.created.asc, desc: Issue.created.desc },
+  {
+    name: "title",
+    asc: Issue.title.asc,
+    desc: Issue.title.desc,
+  },
+  {
+    name: "project",
+    asc: Issue.project.asc,
+    desc: Issue.project.desc,
+  },
+  {
+    name: "status",
+    asc: Issue.status.asc,
+    desc: Issue.status.desc,
+  },
+  {
+    name: "assignee",
+    asc: Issue.assignee.asc,
+    desc: Issue.assignee.desc,
+  },
+  {
+    name: "created",
+    asc: Issue.created.asc,
+    desc: Issue.created.desc,
+  },
 ]
 -- @admin end
 
@@ -124,7 +168,10 @@ load params session = {
   if admin then {
     let q = Text.slice 0 200 params.q
     let f = chosen params
-    let count <- Db.from Issue |> Db.where (Db.and [search q, filtered (filters f)]) |> Db.count
+    let count <-
+      Db.from Issue
+        |> Db.where (Db.and [search q, filtered (filters f)])
+        |> Db.count
     let pages = Int.max 1 ((count + perPage - 1) / perPage)
     let page = Int.clamp { min: 1, max: pages } params.page
     let rows <-
@@ -147,7 +194,8 @@ load params session = {
       pages: pages,
       count: count,
     }
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin labels
@@ -157,8 +205,14 @@ type Labels = { projects: List Project, assignees: List User }
 -- labelsOf reads the rows that rows refer to.
 labelsOf : List Issue -> Query Labels
 labelsOf rows = {
-  let projects <- Db.from Project |> Db.where (Project.id.in (List.map (\row -> row.project) rows)) |> Db.all
-  let assignees <- Db.from User |> Db.where (User.id.in (List.filterMap (\row -> row.assignee) rows)) |> Db.all
+  let projects <-
+    Db.from Project
+      |> Db.where (Project.id.in (List.map (\row -> row.project) rows))
+      |> Db.all
+  let assignees <-
+    Db.from User
+      |> Db.where (User.id.in (List.filterMap (\row -> row.assignee) rows))
+      |> Db.all
   Query.succeed { projects: projects, assignees: assignees }
 }
 
@@ -187,10 +241,12 @@ view model session =
         <input type="search" name="q" value={model.q} aria-label="Search" />
         {for f in filters model.filters ->
           <al-select label={f.label}>
-            <label>{f.label}
+            <label>
+              {f.label}
               <select name={f.name}>
                 <option value="" selected={f.value == ""}>any</option>
-                {for o in f.options -> <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
+                {for o in f.options ->
+                  <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
               </select>
             </label>
           </al-select>}
@@ -221,11 +277,34 @@ view model session =
           {for row in model.rows ->
             <tr>
               -- @admin begin cells
-              <td><input type="checkbox" name="ids" form="bulk" value={row.id} aria-label={"Choose " ++ row.title} /></td>
+              <td>
+                <input
+                  type="checkbox"
+                  name="ids"
+                  form="bulk"
+                  value={row.id}
+                  aria-label={"Choose " ++ row.title} />
+              </td>
               <td><a href={Admin.Issue.Show { org: session.org, id: row.id }}>{row.title}</a></td>
-              <td><a href={Admin.Project.Show { org: session.org, id: row.project }}>{projectLabel model.labels row.project}</a></td>
-              <td><al-badge>{match row.status { Open -> "Open", Closed -> "Closed" }}</al-badge></td>
-              <td>{match row.assignee { Just v -> <a href={Admin.User.Show { id: v }}>{assigneeLabel model.labels v}</a>, Nothing -> Html.none }}</td>
+              <td>
+                <a href={Admin.Project.Show { org: session.org, id: row.project }}>
+                  {projectLabel model.labels row.project}
+                </a>
+              </td>
+              <td>
+                <al-badge>
+                  {match row.status {
+                    Open -> "Open",
+                    Closed -> "Closed",
+                  }}
+                </al-badge>
+              </td>
+              <td>
+                {match row.assignee {
+                  Just v -> <a href={Admin.User.Show { id: v }}>{assigneeLabel model.labels v}</a>,
+                  Nothing -> Html.none,
+                }}
+              </td>
               <td>{Time.format "Jan 2, 2006" row.created}</td>
               -- @admin end
             </tr>}
@@ -244,9 +323,17 @@ view model session =
     </al-stack>
 
     <al-pagination role="navigation" aria-label="Pages">
-      {if model.page > 1 then <a slot="prev" href={listAt model model.sort model.dir (model.page - 1)} rel="prev">Previous</a> else <span slot="prev" aria-disabled="true">Previous</span>}
+      {if model.page > 1 then
+        <a slot="prev" href={listAt model model.sort model.dir (model.page - 1)} rel="prev">
+          Previous
+        </a>
+      else
+        <span slot="prev" aria-disabled="true">Previous</span>}
       <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
-      {if model.page < model.pages then <a slot="next" href={listAt model model.sort model.dir (model.page + 1)} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
+      {if model.page < model.pages then
+        <a slot="next" href={listAt model model.sort model.dir (model.page + 1)} rel="next">Next</a>
+      else
+        <span slot="next" aria-disabled="true">Next</span>}
     </al-pagination>
   </Admin.Layout.Page>
 
@@ -259,7 +346,11 @@ test "the list shows every row, newest first, and the labels of the rows they re
     role: Admin,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
   let issue1 <- Db.insert Issue {
     title: Text.NonEmpty "title-1",
@@ -280,19 +371,21 @@ test "the list shows every row, newest first, and the labels of the rows they re
   }
   let assigneesAll <- Db.from User |> Db.all
   let page <- Test.get (Admin.Issue.Index { org: org })
-  Task.succeed ({
-    rows: List.map (\row -> row.id) page.model.rows,
-    projects: List.length page.model.labels.projects,
-    projectLabel: projectLabel page.model.labels project1,
-    assigneeLabel: assigneeLabel { page.model.labels | assignees: assigneesAll } user2,
-    assignees: List.length page.model.labels.assignees,
-  } == {
-    rows: [issue2, issue1],
-    projects: 1,
-    projectLabel: "name-1",
-    assigneeLabel: "email-2@example.com",
-    assignees: 0,
-  })
+  Task.succeed (
+    {
+      rows: List.map (\row -> row.id) page.model.rows,
+      projects: List.length page.model.labels.projects,
+      projectLabel: projectLabel page.model.labels project1,
+      assigneeLabel: assigneeLabel { page.model.labels | assignees: assigneesAll } user2,
+      assignees: List.length page.model.labels.assignees,
+    } == {
+        rows: [issue2, issue1],
+        projects: 1,
+        projectLabel: "name-1",
+        assigneeLabel: "email-2@example.com",
+        assignees: 0,
+      }
+  )
 }
 
 test "sorting by title goes both ways" = {
@@ -303,7 +396,11 @@ test "sorting by title goes both ways" = {
     role: Admin,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
   let issue1 <- Db.insert Issue {
     title: Text.NonEmpty "title-2",
@@ -317,17 +414,24 @@ test "sorting by title goes both ways" = {
     org: org,
     assignee: Nothing,
   }
-  let up <- Test.get (Admin.Issue.Index { org: org, sort: "title", dir: "asc" })
+  let up <-
+    Test.get (Admin.Issue.Index {
+      org: org,
+      sort: "title",
+      dir: "asc",
+    })
   let down <- Test.get (Admin.Issue.Index { org: org, sort: "title" })
-  Task.succeed ({
-    up: List.map (\row -> row.id) up.model.rows,
-    down: List.map (\row -> row.id) down.model.rows,
-    toggles: [toggle up.model "title", toggle down.model "title", toggle up.model "project"],
-  } == {
-    up: [issue2, issue1],
-    down: [issue1, issue2],
-    toggles: ["desc", "asc", "asc"],
-  })
+  Task.succeed (
+    {
+      up: List.map (\row -> row.id) up.model.rows,
+      down: List.map (\row -> row.id) down.model.rows,
+      toggles: [toggle up.model "title", toggle down.model "title", toggle up.model "project"],
+    } == {
+        up: [issue2, issue1],
+        down: [issue1, issue2],
+        toggles: ["desc", "asc", "asc"],
+      }
+  )
 }
 
 test "searching finds the rows that contain the text" = {
@@ -338,7 +442,11 @@ test "searching finds the rows that contain the text" = {
     role: Admin,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
   let issue1 <- Db.insert Issue {
     title: Text.NonEmpty "title-1",
@@ -353,13 +461,10 @@ test "searching finds the rows that contain the text" = {
     assignee: Nothing,
   }
   let page <- Test.get (Admin.Issue.Index { org: org, q: "title-2" })
-  Task.succeed ({
-    rows: List.map (\row -> row.id) page.model.rows,
-    count: Test.text "#count" page.doc,
-  } == {
-    rows: [issue2],
-    count: Just "1 row",
-  })
+  Task.succeed (
+    { rows: List.map (\row -> row.id) page.model.rows, count: Test.text "#count" page.doc }
+      == { rows: [issue2], count: Just "1 row" }
+  )
 }
 
 test "filtering by status lists the rows with that value" = {
@@ -370,7 +475,11 @@ test "filtering by status lists the rows with that value" = {
     role: Admin,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
   let issue1 <- Db.insert Issue {
     title: Text.NonEmpty "title-1",
@@ -387,18 +496,20 @@ test "filtering by status lists the rows with that value" = {
     assignee: Nothing,
   }
   let closed <- Test.get (Admin.Issue.Index { org: org, status: "Closed" })
-  Task.succeed ({
-    closed: List.map (\id -> List.member id (List.map (\row -> row.id) closed.model.rows)) [
-      issue1,
-      issue2,
-    ],
-    count: closed.model.count == List.length closed.model.rows,
-    chosen: Test.texts "select[name=status] option[selected]" closed.doc,
-  } == {
-    closed: [True, False],
-    count: True,
-    chosen: ["Closed"],
-  })
+  Task.succeed (
+    {
+      closed: List.map (\id -> List.member id (List.map (\row -> row.id) closed.model.rows)) [
+        issue1,
+        issue2,
+      ],
+      count: closed.model.count == List.length closed.model.rows,
+      chosen: Test.texts "select[name=status] option[selected]" closed.doc,
+    } == {
+        closed: [True, False],
+        count: True,
+        chosen: ["Closed"],
+      }
+  )
 }
 
 test "a search text of 20,000 characters is cut to 200" = {
@@ -409,16 +520,16 @@ test "a search text of 20,000 characters is cut to 200" = {
     role: Admin,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let long = Text.join "" (List.map (\n -> "z") (List.range 1 20000))
   let page <- Test.get (Admin.Issue.Index { org: org, q: long })
-  Task.succeed ({
-    q: Text.length page.model.q,
-    rows: List.length page.model.rows,
-  } == {
-    q: 200,
-    rows: 0,
-  })
+  Task.succeed (
+    { q: Text.length page.model.q, rows: List.length page.model.rows } == { q: 200, rows: 0 }
+  )
 }
 
 test "the list has 25 rows a page, and a page past the last is the last" = {
@@ -429,30 +540,39 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
     role: Admin,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let _ <- Task.all (List.map (\n -> Db.insert Issue {
-    title: Text.NonEmpty ("title-" ++ Text.fromInt n),
-    project: project1,
-    org: org,
-    assignee: Nothing,
-  }) (List.range 1 26))
+  let _ <-
+    Task.all (
+      List.map (\n -> Db.insert Issue {
+        title: Text.NonEmpty ("title-" ++ Text.fromInt n),
+        project: project1,
+        org: org,
+        assignee: Nothing,
+      }) (List.range 1 26)
+    )
   let first <- Test.get (Admin.Issue.Index { org: org })
   let second <- Test.get (Admin.Issue.Index { org: org, page: 2 })
   let past <- Test.get (Admin.Issue.Index { org: org, page: 9 })
-  Task.succeed ({
-    first: List.length first.model.rows,
-    second: List.length second.model.rows,
-    past: { page: past.model.page, rows: List.length past.model.rows },
-    count: Test.text "#count" first.doc,
-    pages: Test.texts "al-pagination span" first.doc,
-  } == {
-    first: 25,
-    second: 1,
-    past: { page: 2, rows: 1 },
-    count: Just "26 rows",
-    pages: ["Previous", "Page 1 of 2"],
-  })
+  Task.succeed (
+    {
+      first: List.length first.model.rows,
+      second: List.length second.model.rows,
+      past: { page: past.model.page, rows: List.length past.model.rows },
+      count: Test.text "#count" first.doc,
+      pages: Test.texts "al-pagination span" first.doc,
+    } == {
+        first: 25,
+        second: 1,
+        past: { page: 2, rows: 1 },
+        count: Just "26 rows",
+        pages: ["Previous", "Page 1 of 2"],
+      }
+  )
 }
 
 -- Each org's rows live in its own database: the page's parameter and the role check open it.
@@ -463,7 +583,11 @@ test "an Admin who is no member of the org lists its issues, and only its" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
   let issue1 <- Db.insert Issue {
     title: Text.NonEmpty "title-1",
@@ -481,13 +605,13 @@ test "an Admin who is no member of the org lists its issues, and only its" = {
   }
   let page <- Test.get (Admin.Issue.Index { org: org })
   let them <- Test.get (Admin.Issue.Index { org: other })
-  Task.succeed ({
-    mine: List.map (\row -> row.id) page.model.rows,
-    theirs: List.map (\row -> row.id) them.model.rows,
-  } == {
-    mine: [issue1],
-    theirs: [issue2],
-  })
+  Task.succeed (
+    {
+      mine: List.map (\row -> row.id) page.model.rows,
+      theirs: List.map (\row -> row.id) them.model.rows,
+    }
+      == { mine: [issue1], theirs: [issue2] }
+  )
 }
 
 test "a visitor is sent to log in" = {
@@ -503,7 +627,11 @@ test "a Member gets no page, even one made Admin since logging in" = {
     name: Text.NonEmpty "name-1",
     role: Admin,
   }
-  let _ <- Test.login { user: Just me, org: Nothing, role: Member }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
   let r <- Test.open (Admin.Issue.Index { org: org })
   Task.succeed (r.answer == PageMissing)
 }
@@ -516,7 +644,11 @@ test "a demoted Admin is refused at once" = {
     role: Member,
   }
   let _ <- Test.member me org
-  let _ <- Test.login { user: Just me, org: Just org, role: Admin }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
   let r <- Test.open (Admin.Issue.Index { org: org })
   Task.succeed (r.answer == PageMissing)
 }

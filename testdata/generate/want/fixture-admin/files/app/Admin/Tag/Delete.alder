@@ -29,7 +29,8 @@ load params session = {
       Nothing -> Query.notFound,
     }
     -- @admin end
-  } else Query.notFound
+  } else
+    Query.notFound
 }
 
 -- @admin begin blockers
@@ -72,7 +73,10 @@ view model session =
       </dl>
       <form id="delete" submit={Remove}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        {if blockers model > 0 then <p>It cannot be deleted while other rows refer to it.</p> else <al-button variant="destructive" type="submit">Delete</al-button>}
+        {if blockers model > 0 then
+          <p>It cannot be deleted while other rows refer to it.</p>
+        else
+          <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
     </al-card>
     <a href={Admin.Tag.Show { id: model.row.id }}>Back</a>
@@ -86,18 +90,19 @@ test "deleting a tag nothing refers to" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
   let tag1 <- Db.insert Tag { name: Text.NonEmpty "name-1", post: post1 }
   let _ <- Test.get (Admin.Tag.Delete { id: tag1 })
-  let r <- Test.submit Confirm { }
+  let r <- Test.submit Confirm {}
   let gone <- Db.get Tag tag1
-  Task.succeed ({
-    answer: r.answer,
-    gone: Maybe.map (\row -> row.id) gone,
-  } == {
-    answer: Redirected (Admin.Tag.Index {}),
-    gone: Nothing,
-  })
+  Task.succeed (
+    { answer: r.answer, gone: Maybe.map (\row -> row.id) gone }
+      == { answer: Redirected (Admin.Tag.Index {}), gone: Nothing }
+  )
 }
 
 test "a missing row is not found" = {
@@ -113,7 +118,11 @@ test "a missing row is not found" = {
 
 test "a visitor is sent to log in" = {
   let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
   let tag1 <- Db.insert Tag { name: Text.NonEmpty "name-1", post: post1 }
   let r <- Test.open (Admin.Tag.Delete { id: tag1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
@@ -126,7 +135,11 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
   let tag1 <- Db.insert Tag { name: Text.NonEmpty "name-1", post: post1 }
   let r <- Test.open (Admin.Tag.Delete { id: tag1 })
   Task.succeed (r.answer == PageMissing)
@@ -139,7 +152,11 @@ test "a demoted Admin is refused at once" = {
     role: Reader,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let post1 <- Db.insert Post { title: Text.NonEmpty "title-1", body: "body-1", author: me }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
   let tag1 <- Db.insert Tag { name: Text.NonEmpty "name-1", post: post1 }
   let r <- Test.open (Admin.Tag.Delete { id: tag1 })
   Task.succeed (r.answer == PageMissing)

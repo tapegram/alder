@@ -6,7 +6,11 @@ import User
 
 -- The fixture of the generators' tests (cmd/alder/generate_test.go): a session with a user and
 -- a role, copied from the user's row when they log in (Auth.Login).
-session { user: Maybe User.UserId, role: User.Role = Reader, post: Maybe Post.PostId via Comment }
+session {
+  user: Maybe User.UserId,
+  role: User.Role = Reader,
+  post: Maybe Post.PostId via Comment,
+}
 
 -- a page that `requires post` sends a session without one here, to pick one
 choose post = Home
@@ -31,14 +35,16 @@ error err =
   </Layout.Page>
 
 notFound : Html Never
-notFound =
-  <Layout.Page title="Not found">
-    <h1>Not found</h1>
-  </Layout.Page>
+notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 
 -- From a page that `requires user` a Rerender ends at the login page too; only a test of
 -- `update` itself tells Redirect from Rerender.
 test "Logout goes to log in" = {
-  let r <- Test.run (update Logout { user: Just (User.UserId "me"), role: Admin, post: Nothing })
+  let r <-
+    Test.run (update Logout {
+      user: Just (User.UserId "me"),
+      role: Admin,
+      post: Nothing,
+    })
   Task.succeed (r.value == Ok (Redirect (Auth.Login {})))
 }

@@ -71,7 +71,7 @@ func NewCapability(p *Program, module, entry, typ string) ([]Edit, error) {
 		edit = Edit{Path: m.File, Body: e.result()}
 	} else {
 		d.Imports = imports.list()
-		edit = Edit{Path: FileOf(module), Create: true, Body: Tidy(snippet("capability_module", d) + "\n\n" + snippet("test", install))}
+		edit = Edit{Path: FileOf(module), Create: true, Body: snippet("capability_module", d) + "\n\n" + snippet("test", install)}
 	}
 
 	// the adapter, from the checked capability

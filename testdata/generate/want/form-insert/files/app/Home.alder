@@ -9,21 +9,18 @@ type Model = { entries: List Entry }
 
 load : Params -> Session -> Query Model
 load params session = {
-  let entries <- Db.from Entry |> Db.orderBy Entry.created.desc |> Db.all
+  let entries <-
+    Db.from Entry
+      |> Db.orderBy Entry.created.desc
+      |> Db.all
   Query.succeed { entries: entries }
 }
 
-form Sign = {
-  name: Text.NonEmpty,
-  message: Text.NonEmpty,
-}
+form Sign = { name: Text.NonEmpty, message: Text.NonEmpty }
 
 msg Submit form Sign
 
-form Quick = {
-  name: Text.NonEmpty,
-  message: Text.NonEmpty,
-}
+form Quick = { name: Text.NonEmpty, message: Text.NonEmpty }
 
 msg SubmitQuick form Quick
 
@@ -68,7 +65,10 @@ test "signing adds an entry" = {
   let _ <- Test.get (Home {})
   let signed <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
   let page <- Test.get (Home {})
-  Task.succeed ({ answer: signed.answer, entries: Test.count "#entries li" page.doc } == { answer: Redirected (Home {}), entries: 1 })
+  Task.succeed (
+    { answer: signed.answer, entries: Test.count "#entries li" page.doc }
+      == { answer: Redirected (Home {}), entries: 1 }
+  )
 }
 
 test "entries are listed newest first" = {
@@ -83,12 +83,21 @@ test "submitting Quick adds a row" = {
   let _ <- Test.get (Home {})
   let r <- Test.submit Quick { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
   let rows <- Db.from Entry |> Db.all
-  Task.succeed ({ answer: r.answer, rows: List.map (\row -> { name: row.name, message: row.message }) rows } == { answer: Redirected (Home {}), rows: [{ name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }] })
+  Task.succeed (
+    { answer: r.answer, rows: List.map (\row -> { name: row.name, message: row.message }) rows }
+      == {
+        answer: Redirected (Home {}),
+        rows: [{ name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }],
+      }
+  )
 }
 
 test "Quick refuses an empty name" = {
   let _ <- Test.get (Home {})
   let r <- Test.submitRaw Quick [{ name: "name", value: "" }, { name: "message", value: "x" }]
   let rows <- Db.from Entry |> Db.count
-  Task.succeed ({ answer: r.answer, rows: rows } == { answer: FormRejected [{ field: "name", message: "must not be empty" }], rows: 0 })
+  Task.succeed (
+    { answer: r.answer, rows: rows }
+      == { answer: FormRejected [{ field: "name", message: "must not be empty" }], rows: 0 }
+  )
 }

@@ -1,14 +1,11 @@
 edited app/Home.alder
 --- a/app/Home.alder
 +++ b/app/Home.alder
-@@ -20,12 +20,20 @@
+@@ -20,12 +20,17 @@
  
  msg Submit form Sign
  
-+form Contact = {
-+  email: Text.Email,
-+  topic: Text,
-+}
++form Contact = { email: Text.Email, topic: Text }
 +
 +msg SubmitContact form Contact
 +
@@ -22,7 +19,7 @@ edited app/Home.alder
  }
  
  view : Model -> Session -> Html Msg
-@@ -40,6 +48,12 @@
+@@ -40,6 +45,12 @@
          <al-input field="message" label="Message" />
          <al-button type="submit">Sign</al-button>
        </form>
@@ -35,7 +32,7 @@ edited app/Home.alder
      </al-card>
  
      <ul id="entries">
-@@ -61,3 +75,15 @@
+@@ -64,3 +75,15 @@
    let page <- Test.get (Home {})
    Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
  }
@@ -51,7 +48,7 @@ edited app/Home.alder
 +  let r <- Test.submitRaw Contact [{ name: "email", value: "" }, { name: "topic", value: "x" }]
 +  Task.succeed (r.answer == FormRejected [{ field: "email", message: "must be an email address" }])
 +}
-app/Home.alder:36:22: warning[W0002]: hole ?submitContact has type Task Nav
+app/Home.alder:33:22: warning[W0002]: hole ?submitContact has type Task Nav
     SubmitContact p -> ?submitContact,
                        ^^^^^^^^^^^^^^
 app/Home.alder:82:29: warning[W0002]: hole ?expected has type Answer

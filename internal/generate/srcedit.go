@@ -205,11 +205,26 @@ type viewSpot struct {
 	Line   int
 	Indent string
 	InCard bool
+	// Head and Tail split the line of an element written on one line (as `alder fmt` writes
+	// `<Layout.Page title="Notes"><h1>Notes</h1></Layout.Page>`) before its closing tag: the
+	// markup then goes between them, on lines of its own, before Line+1.
+	Head, Tail string
+}
+
+// insert puts text (lines indented at the spot) at the spot.
+func (s viewSpot) insert(e *srcEdit, text string) {
+	if s.Tail == "" {
+		e.insertBefore(s.Line, text)
+		return
+	}
+	e.replaceLine(s.Line, s.Head)
+	e.insertBefore(s.Line+1, text)
+	e.insertBefore(s.Line+1, strings.TrimSuffix(s.Indent, "  ")+s.Tail) // the closing tag, at the element's indentation
 }
 
 // findViewSpot finds the spot in module m's `view` (with rootOnly, the end of the root element,
-// whatever cards it holds). The view must be one element written over several lines (its
-// closing tag on a line of its own).
+// whatever cards it holds). The view must be one element; written on one line, the spot splits
+// it before its closing tag.
 func findViewSpot(e *srcEdit, m *syntax.Module, rootOnly bool) (viewSpot, bool) {
 	v := valueDecl(m, "view")
 	if v == nil {
@@ -238,7 +253,23 @@ func findViewSpot(e *srcEdit, m *syntax.Module, rootOnly bool) (viewSpot, bool) 
 	}
 	close := target.Span.End.Line
 	l := e.line(close)
-	if !strings.HasPrefix(strings.TrimSpace(l), "</") || close == target.Span.Start.Line {
+	if close == target.Span.Start.Line { // on one line: split it before the closing tag
+		end := min(max(target.Span.End.Col-1, 0), len(l))
+		tag := target.Tag
+		if target.Module != "" {
+			tag = target.Module + "." + tag
+		}
+		at := strings.LastIndex(l[:end], "</"+tag)
+		if at <= len(indentOf(l)) {
+			return viewSpot{}, false
+		}
+		ind := indentOf(l)
+		if !strings.HasPrefix(l[len(ind):], "<") { // `view model session = <…>…</…>`: the element continues the line
+			ind += "  "
+		}
+		return viewSpot{Line: close, Indent: ind + "  ", InCard: inCard, Head: l[:at], Tail: l[at:]}, true
+	}
+	if !strings.HasPrefix(strings.TrimSpace(l), "</") {
 		return viewSpot{}, false
 	}
 	return viewSpot{Line: close, Indent: indentOf(l) + "  ", InCard: inCard}, true

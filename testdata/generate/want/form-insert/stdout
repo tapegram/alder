@@ -1,14 +1,11 @@
 edited app/Home.alder
 --- a/app/Home.alder
 +++ b/app/Home.alder
-@@ -20,12 +20,23 @@
+@@ -20,12 +20,20 @@
  
  msg Submit form Sign
  
-+form Quick = {
-+  name: Text.NonEmpty,
-+  message: Text.NonEmpty,
-+}
++form Quick = { name: Text.NonEmpty, message: Text.NonEmpty }
 +
 +msg SubmitQuick form Quick
 +
@@ -25,7 +22,7 @@ edited app/Home.alder
  }
  
  view : Model -> Session -> Html Msg
-@@ -40,6 +51,12 @@
+@@ -40,6 +48,12 @@
          <al-input field="message" label="Message" />
          <al-button type="submit">Sign</al-button>
        </form>
@@ -38,7 +35,7 @@ edited app/Home.alder
      </al-card>
  
      <ul id="entries">
-@@ -61,3 +78,17 @@
+@@ -64,3 +78,26 @@
    let page <- Test.get (Home {})
    Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
  }
@@ -47,12 +44,21 @@ edited app/Home.alder
 +  let _ <- Test.get (Home {})
 +  let r <- Test.submit Quick { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
 +  let rows <- Db.from Entry |> Db.all
-+  Task.succeed ({ answer: r.answer, rows: List.map (\row -> { name: row.name, message: row.message }) rows } == { answer: Redirected (Home {}), rows: [{ name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }] })
++  Task.succeed (
++    { answer: r.answer, rows: List.map (\row -> { name: row.name, message: row.message }) rows }
++      == {
++        answer: Redirected (Home {}),
++        rows: [{ name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }],
++      }
++  )
 +}
 +
 +test "Quick refuses an empty name" = {
 +  let _ <- Test.get (Home {})
 +  let r <- Test.submitRaw Quick [{ name: "name", value: "" }, { name: "message", value: "x" }]
 +  let rows <- Db.from Entry |> Db.count
-+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: FormRejected [{ field: "name", message: "must not be empty" }], rows: 0 })
++  Task.succeed (
++    { answer: r.answer, rows: rows }
++      == { answer: FormRejected [{ field: "name", message: "must not be empty" }], rows: 0 }
++  )
 +}
