@@ -645,3 +645,23 @@ func TestRepl_InBrokenModule(t *testing.T) {
 		t.Errorf("a broken module is not a missing one:\n%s", out)
 	}
 }
+
+// TestReplPrintsDeprecation: the banner stays on standard output, as the editor plugin detects
+// it there; the deprecation line follows it on standard error.
+func TestReplPrintsDeprecation(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runReplTo(withBuildDir(t, []string{todosDir(t)}), strings.NewReader(""), &stdout, &stderr, nil)
+	if code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, stdout.String(), stderr.String())
+	}
+	const line = "alder repl is deprecated: use a scratch file (alder scratch --watch, or save scratch.alder in the editor); it will be removed in the next release"
+	if !strings.Contains(stderr.String(), line+"\n") {
+		t.Errorf("stderr lacks the deprecation line:\n%s", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "deprecated") {
+		t.Errorf("stdout carries the deprecation:\n%s", stdout.String())
+	}
+	if !strings.HasPrefix(stdout.String(), "alder repl: todos (:help for the commands, :quit to leave)\n") {
+		t.Errorf("the banner changed:\n%s", stdout.String())
+	}
+}

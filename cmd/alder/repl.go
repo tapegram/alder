@@ -24,6 +24,9 @@ import (
 // replUsage is the usage line of `alder repl`.
 const replUsage = "usage: alder repl [dir] [--build-dir DIR] [--in Name | --module Name]"
 
+// replDeprecation is printed to standard error after the banner.
+const replDeprecation = "alder repl is deprecated: use a scratch file (alder scratch --watch, or save scratch.alder in the editor); it will be removed in the next release"
+
 // replHelp is what :help prints.
 const replHelp = `  let name = expr   keep a value in the session (a later let of the name replaces it)
   expr              evaluate; a Query, Task or Select shows its type
@@ -172,6 +175,7 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 		os.Remove(r.work + ".lock")
 	}()
 	fmt.Fprintf(stdout, "alder repl: %s%s (:help for the commands, :quit to leave)\n", filepath.Base(abs), r.inSuffix())
+	fmt.Fprintln(stderr, replDeprecation)
 
 	stop := make(chan struct{})
 	defer close(stop)

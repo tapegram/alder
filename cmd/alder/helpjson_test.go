@@ -217,3 +217,17 @@ func TestHelpJSON_InFlag(t *testing.T) {
 		}
 	}
 }
+
+// TestHelpJSON_ReplDeprecated: repl's summary points to alder scratch.
+func TestHelpJSON_ReplDeprecated(t *testing.T) {
+	t.Parallel()
+	for _, c := range commandTree {
+		if c.Name == "repl" {
+			if !strings.HasSuffix(c.Summary, " (deprecated: use alder scratch)") {
+				t.Errorf("repl summary %q", c.Summary)
+			}
+			return
+		}
+	}
+	t.Error("no repl command")
+}

@@ -5370,6 +5370,40 @@ answers a generator. At no point is a file of the project written or an
 analysis changed in place; the next change makes another snapshot, and the
 old one stays valid for whoever still holds it.
 
+### Scratch files in the language server
+
+A scratch file is not a module, so the analysis of this section (a snapshot of
+every module) has nothing to say about it. The server runs it as `alder
+scratch` does (chapter 11, "`alder scratch`"), with `scratch.RunFile`, from
+`internal/lsp/scratch.go`.
+
+- **A goroutine per run.** `didOpen` and `didSave` of a scratch document, and
+  every change to the app, start a run on a goroutine of its own and return at
+  once, so the reader loop never waits for a build. The document's text is read
+  from the overlay when the run starts.
+- **Superseded by `seq`.** Each run takes the next number of one counter, shared
+  by all scratch documents, and cancels the document's previous run. A run that
+  was cancelled may still be on its way to a send, so a send checks, under the
+  mutex that guards the runs, that its run is still the document's current one
+  (and that the document is still open and the server not stopping); if not, it
+  sends nothing. An old result can therefore never overwrite a newer one on the
+  editor's screen, and a closed document leaves no run behind.
+- **Two notifications.** `RunFile` calls back as soon as the file has checked,
+  and the server sends `alder/scratch` with `phase: "types"`: each watch's
+  line range, expression and type. When the build and the run end it sends
+  `phase: "values"`, with the values. Each is sent after publishing the file's
+  diagnostics, under the same mutex, so the editor sees both in order.
+- **The same build directory and lock as the command.** The run builds into
+  `build/<app>/scratch/file-<hash>/` of the project root, the directory `alder
+  scratch` uses for that file, under the same lock. Two runs of one file, one
+  from the editor and one from a terminal, wait for each other instead of
+  writing into one directory at once.
+- **Values are not diagnostics.** A diagnostic is a problem at a place, and
+  the editor lists it, counts it and marks the line. A value is neither a
+  problem nor a place to fix; as diagnostics, a scratch file of ten watches
+  would put ten entries in the problem list every save. They travel in a
+  notification of their own, and the plugin draws them as virtual text.
+
 ## 11. Exercises
 
 1. **Dump an AST.** Write `module X` and `x : Int` / `x = 1 + 2 * 3` in a

@@ -149,7 +149,7 @@ var commandTree = []cmdSpec{
 				Flags: []flagSpec{hostFlagSpec,
 					{Name: "--allow-data-loss", Summary: "apply a migration that drops data"}}},
 		}},
-	{Name: "repl", Summary: "an interactive session in the app", Usage: commandUsages["repl"],
+	{Name: "repl", Summary: "an interactive session in the app (deprecated: use alder scratch)", Usage: commandUsages["repl"],
 		Args: []string{"[dir]"},
 		Flags: []flagSpec{
 			{Name: "--in", Value: "Name", Summary: "start inside this module: its names unqualified"},

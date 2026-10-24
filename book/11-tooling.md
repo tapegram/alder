@@ -103,7 +103,7 @@ alder fmt [path…]    rewrite .alder files in the one canonical format (--check
 alder build          check, generate Go, go build → ./build/myapp/myapp
 alder run            build and run with the dev database, reloading on change
 alder eval <expr>    evaluate an expression against the app: value : Type
-alder repl           a session: let, evaluate, :type, :run, :run!, :html, :reload
+alder repl           (deprecated: use a scratch file) a session: let, evaluate, :type, :run
 alder test           run every `test`, each against a fresh database: ok/FAIL
                      (--mutate: and once per mutant: the mutation score)
 alder migrate        write the next migration after a change to the tables
@@ -821,8 +821,17 @@ every watch, above or below it. The starter file:
 > 1 + 1
 ```
 
+Run on the starter file, it prints the line and the value with its type:
+
+```text command=guestbook
+$ alder scratch
+scratch.alder:5: 1 + 1
+  ⇒ 2 : Int
+```
+
 Each watch prints its line, then its value and type (the names `it1`,
-`it2`, … are the watches' own and cannot be defined in the file):
+`it2`, … are the watches' own and cannot be defined in the file). A file
+with a helper, a two-line watch and a query:
 
 ```text
 $ alder scratch probe.scratch.alder
@@ -880,163 +889,28 @@ directory per scratch file.
 
 ### `alder repl`
 
-`alder repl [dir] [--in Name | --module Name]` is `alder eval` with a memory: a
-read-eval-print loop over one scratch module that lives as long as the
-session. It is a tool for a person exploring an app: trying a function
-on a value, looking at a type, running a query against the dev
-database. An agent uses `alder eval`, which takes its whole input at
-once and has `--json`; the REPL has neither.
+`alder repl [dir] [--in Name | --module Name]` is deprecated and will be
+removed in the next release. It prints, on standard error after its
+banner, `alder repl is deprecated: use a scratch file (alder scratch
+--watch, or save scratch.alder in the editor); it will be removed in the
+next release`. Everything the REPL did a scratch file does with a file
+you keep, edit and commit instead of a session that forgets itself when
+you quit:
 
-Each line you type is one of three things:
-
-| You type | The REPL |
+| In the REPL | In a scratch file |
 |---|---|
-| `let name = expr` (or `let name : Type = expr`) | checks it with the session's other `let`s; when it is clean, keeps it and prints `name : Type`. The name starts with a lowercase letter or `_` and is not `it`. A later `let` of the same name replaces it where it stands (`redefined name`): a `let` is a definition, not a snapshot, so the `let`s that use the name see the new one (`let a = 1`, `let b = a + 1`, `let a = 5`, then `b` is `6`). A `let` with an error is not kept, and a redefinition that breaks another `let` is refused, leaving the old one: `alder repl: a not redefined: let b (line 2) uses it: error[E0003]: …`. |
-| `expr` | evaluates it and prints `value : Type`. A `Query`, a `Task` and a `Select` are not run: they print `<Query> : Query T` (and so on) with a hint naming the command that runs them. |
-| `:command …` | one of the commands below. |
+| `let name = expr` | a declaration in the file (`name = expr`, or a function with its signature), in scope for every watch |
+| `expr` | a watch: `> expr` |
+| `:type expr` | the types phase: the type of every watch appears as soon as the file checks, before anything is built or run (in the editor, "Scratch files in the editor" below) |
+| `:run expr`, `:run! expr` | not in this version: a scratch file evaluates pure values only, and a `Query`, a `Task` or a `Select` prints its type and `not run`; `alder eval --run` still runs them |
+| `:html expr` | `> expr` on an `Html` value: the watch shows its value |
+| `:reload` | save the file (`alder scratch --watch` also re-runs when the app changes) |
+| `:reset` | delete the lines |
+| `:in Name`, `--in Name` | the `in Name` header, the first line of the file that is not a comment |
+| `:help`, `:quit` | nothing to learn, nothing to leave |
 
-| Command | What it does |
-|---|---|
-| `:type expr` | prints `expr : Type` (the expression as you typed it, on one line) without building or running anything |
-| `:run expr` | runs a `Query` against the dev database `build/<app>/dev.db` (the one `alder run` uses; created when absent) and prints the result |
-| `:run! expr` | runs a `Task` against the same database; its writes **commit**. A task that fails (`alder repl: the task failed: …`) commits nothing: its writes are rolled back with it |
-| `:html expr` | evaluates an `Html` value and prints its markup |
-| `:reload` | re-checks the session against the app as it is now; a `let` that no longer checks is dropped, with a notice, and so is a `let` that used it |
-| `:in Name` | speaks as module `Name`, re-checking the kept `let`s as `:reload` does |
-| `:in` | returns to app scope |
-| `:reset` | forgets every `let` |
-| `:help`, `:h` | lists the commands |
-| `:quit`, `:q` | leaves (so does Ctrl-D) |
-
-A `let` whose name the module declares is refused (`alder repl: Todo already declares
-countOpen`): the module's names are the module's. The banner names the module:
-`alder repl: todos, in Todo (:help for the commands, :quit to leave)`.
-
-A command ends where its letters (and `!`) do, so `:run!(Db.insert …)`
-needs no space. `:run` given a `Task`, or `:run!` given a `Query`, says which one to
-use instead; a `Select` needs `Db.all`, `Db.first` or `Db.count` first.
-Both run with the app's default session (`TestSession()`, every field
-at its default, as a test has) and, when the app has `adapters/`, its
-real capabilities, exactly as `alder eval --run` does. A `Query` that
-needs a session takes it as an argument you write, like any other
-value. A `Task` that changes the session (`Session.put`) changes only
-that run's copy: it is discarded, so `:run!` cannot log you in to the
-app that `alder run` serves.
-
-A captured session against `examples/todos`, from a fresh working
-directory (the id is random):
-
-```text
-$ alder repl examples/todos
-alder repl: todos (:help for the commands, :quit to leave)
-alder> let xs = [3, 1, 2]
-xs : List Int
-alder> List.sortBy (\n -> n) xs
-[1, 2, 3] : List Int
-alder> :type Todo.countOpen
-Todo.countOpen : List Todo -> Int
-alder> Db.from Todo |> Db.count
-<Query> : Query Int
-hint: `:run Db.from Todo |> Db.count` runs it against the dev database
-alder> :run (Db.from Todo |> Db.count)
-0 : Int
-alder> :run! (Db.insert User { email: Text.Email "ada@example.com", name: Text.NonEmpty "Ada", passwordHash: "" })
-"6Pm-PR7HhdkHXHb9kzij" : User.UserId
-alder> :run (Db.from User |> Db.count)
-1 : Int
-alder> :html <p>{Text.fromInt (List.length xs)} items</p>
-<p>3 items</p>
-alder> xs ++ "four"
-expr:1:7: error[E0003]: expected List Int, got Text
-  xs ++ "four"
-        ^^^^^^
-alder> let total = List.sum xs \
-    …>   + 10
-total : Int
-alder> :reload
-session re-checked
-alder> total * 2
-32 : Int
-alder> :quit
-```
-
-Diagnostics are the compiler's, positioned in what you typed. One in
-the expression is `expr:line:col`, counted in the expression's own
-lines. One in a `let` names it and the REPL line it was typed on,
-`let total (line 10): …`. Either way the source line and a caret
-follow. The app's own errors are printed with their files, as `alder
-check` prints them.
-
-The REPL watches `app/` and `adapters/` as `alder run` does, every
-300 ms. When you save a file it re-checks the session before the
-next prompt (`app changed: session re-checked`), as `:reload` does. A
-`let` that used something the edit removed is dropped. Here
-`Todo.shout` was deleted from `app/Todo.alder` between the second and
-third lines:
-
-```text
-alder> let greeting = Todo.shout "hello"
-greeting : Text
-alder> let n = 2
-n : Int
-alder> :reload
-session re-checked
-dropped let greeting: error[E0002]: module `Todo` has no `shout`
-alder> greeting
-expr:1:1: error[E0002]: unknown name `greeting`
-  greeting
-  ^^^^^^^^
-```
-
-While the app itself has errors, nothing can be evaluated. The REPL
-prints the app's errors once, at start or when they appear, and each
-line you type after that says only `alder repl: the app has errors
-(shown above); fix them and save` (a changed set of errors is printed
-again). `:reload` says the same (or prints the errors, when they have
-changed) and keeps the session as it is (`the session is kept until the
-app checks`), so fixing the app gets the `let`s back.
-
-An evaluation computes only the `let`s its expression uses, directly or
-through other `let`s. Each `let` becomes a value of the scratch module,
-and the program computes its values when it starts, so without that a
-`let` that fails, or takes a long time, would fail or slow every line
-after it. With it, after `let loop n = loop (n + 1)` and `let boom =
-loop 0`, `1 + 1` still prints `2 : Int`, and only an expression that
-uses `boom` fails, naming the `let`s: `alder repl: stack overflow (unbounded
-recursion?) (the lets it uses — loop, boom — are computed with it)`.
-`:type` and `let` check with the whole session, which costs nothing.
-
-Ctrl-C during an evaluation (or its build) stops it and everything it
-started (`alder repl: interrupted`) and keeps the session; at the prompt it
-only says `(use :quit or Ctrl-D to leave)`. SIGTERM, or closing the
-terminal (SIGHUP), stops a running evaluation and ends the REPL with
-exit 1. Killed outright (SIGKILL), the REPL cannot stop anything, but
-the evaluation's program notices that the REPL is gone and exits
-(chapter 13, "The REPL").
-
-Limits:
-
-- There is no line editing beyond what the terminal gives: no history,
-  no arrow keys (the REPL uses only Go's standard library). `rlwrap
-  alder repl` adds both. A line longer than 1 MB is refused (`line too
-  long (limit 1 MB); ignored`), and the REPL reads on.
-- A line ending in `\` continues on the next (the `\` is dropped, the
-  line break kept), with the prompt `    …>`. Pasting a multi-line
-  `match` needs a `\` at the end of every line but the last.
-- `:run!` writes to the dev database, the one `alder run` serves. Use it
-  to set up data to look at, knowing that it stays.
-- Like `alder eval`, every evaluation compiles the app with the session
-  module: about half a second each (0.1 s for the same expression
-  again), in `build/<app>/scratch/repl-<pid>/` of the working
-  directory, a directory of the REPL's own (`<pid>` is its process id),
-  so two REPLs on one app never wait for each other. The REPL removes it
-  when it ends; one a killed REPL left behind is removed by the next
-  `alder repl` there. `:type` and `let` only check, and answer at once.
-- The session's module is named `Scratch`; `--module Name` renames it
-  for an app that has a `Scratch` module of its own. `--in Name` (or `:in Name`)
-  has no scratch module: the session is appended to module `Name`'s own file.
-
-Chapter 13, "The REPL", shows how it works.
+Chapter 13, "The REPL", still describes how it works, for as long as it
+exists.
 
 ### `alder test`
 
@@ -1717,6 +1591,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0033 | a `silo` the rules refuse: "`Note` is in `silo org` but is not partitioned by `org`", "`AuditLog.project` refers to `Project`, which lives in `silo org`: a shared table cannot point into a silo", "`Board.team` refers to `Team`, which lives in `silo team`: `Board` lives in `silo org`, and a table cannot point into another silo", "`Board` is in `silo org` and `silo team`: a table lives in one store", "`silo org` is declared twice: …"; the admin form `requires user, role Admin, silo org`: "`silo org` needs a role check: …", "`silo org` takes `org` from the page's parameter: add `org: Org.OrgId` to the page's parameters" | — |
 | E0034 | a file page with a message: "a file page has no messages: `view` returns `File`, so nothing can be posted from it; move the message to an HTML page" (the same for a `form` and an `update`) | — |
 | E0035 | a header a file page cannot set: "`Set-Cookie` cannot be set from a page; the headers a file may set are `Content-Disposition`, `Cache-Control`, `ETag`, `Last-Modified`, `Retry-After`, `Content-Language` and `X-…` names" | — |
+| E0036 | a scratch file (a name ending in `scratch.alder`) under `app/` (this chapter, "`alder scratch`"): "a scratch file does not belong under app/; move it to the project root" | — |
 | E0101 | `Db.get T x` where `x` is not `Id T` | `Db.from T \|> Db.where (T.<col>.eq x) \|> Db.first` when a column of `x`'s type exists |
 | E0102 | field access on a `Maybe` | `match` skeleton |
 | E0201 | name from a module that isn't imported | `import M` |
@@ -1778,8 +1653,8 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   tests when none is above it).
 - `<leader>am` runs `alder test --mutate` in the background; the survivors land in the
   quickfix list at the mutated expression, `before → after`.
-- `<leader>ax` opens `alder repl --in <this module>` in a split; `<leader>as` sends the
-  current line or selection to it.
+- `<leader>ax` opens `scratch.alder` (made from the starter file when it is missing);
+  `<leader>as` and `<leader>ao` work in it ("Scratch files in the editor", below).
 - **Hover** (`K` in Neovim). On `lastPage` it shows the signature and the
   comment above the declaration:
 
@@ -1867,6 +1742,42 @@ editor needs no command for holes, because a hole is just text: put the
 cursor on `?delete`, hover to see the type it must have, ask for completion
 (the names whose type fits come first), and type the expression. The server
 shows the hole as a hint until the line checks.
+
+### Scratch files in the editor
+
+A scratch file (this chapter, "`alder scratch`") is a notebook of `> expr`
+lines, and in the editor you do not run it: you save it. The language server
+treats every open scratch file as a document of its own and runs it on open,
+on save and whenever a file of the app changes, in two phases. Both are sent
+to the editor as the custom notification `alder/scratch`, with a `phase`:
+
+- **types** arrives as soon as the file has checked, before anything is built:
+  every watch has its type, and the errors of the file (and the app's errors,
+  as one warning on line 1) are published as ordinary diagnostics. This is
+  what `:type` was in the REPL, for the whole file at once, in milliseconds.
+- **values** arrives when the build and the run have finished: the value of
+  every watch.
+
+The plugin shows them as virtual text at the end of each watch's last line:
+`: Int` first, then `⇒ 42 : Int` when the value comes. A newer save
+supersedes an older run, so what you see is always the latest file. Values
+are not diagnostics, because they are not problems: they would fill the
+problem list and the sign column. An inline value is cut at 8 lines or 2048
+bytes, and says so.
+
+| Key | What it does |
+|---|---|
+| `<leader>ax` | opens `scratch.alder` at the project root, creating it from the starter file (`:AlderScratch` does the same) |
+| `<leader>as` | sends the selection, or the current line, as a watch appended to `scratch.alder`, and saves it |
+| `<leader>ao` | opens the full value of the watch under the cursor in a float, for a value cut inline |
+
+`:AlderRepl` still opens `alder repl`, and says that it is deprecated.
+
+Not yet: hover, completion, go to definition and code actions inside a
+scratch file (the server analyses the app's modules, and a scratch file is not
+one), formatting a scratch file (`alder fmt` skips them), and inlay hints, for
+an editor without the plugin. Chapter 13, section 10, shows how the server
+runs a scratch file.
 
 ### Setting up Neovim
 
