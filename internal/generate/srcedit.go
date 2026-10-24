@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"alder/internal/diag"
 	"alder/internal/syntax"
 )
 
@@ -28,6 +29,44 @@ func newSrcEdit(src string) *srcEdit {
 
 // replaceLine replaces line n with text.
 func (e *srcEdit) replaceLine(n int, text string) { e.repl[n] = &text }
+
+// current is line n as replaced so far (the original when it is not).
+func (e *srcEdit) current(n int) string {
+	if r, ok := e.repl[n]; ok && r != nil {
+		return *r
+	}
+	return e.line(n)
+}
+
+// insertAt inserts text into line n before its byte column col (1-based, as a span's), in the
+// line as replaced so far: several insertions into one line go right to left.
+func (e *srcEdit) insertAt(n, col int, text string) {
+	l := e.current(n)
+	c := min(max(col-1, 0), len(l))
+	e.replaceLine(n, l[:c]+text+l[c:])
+}
+
+// appendItem adds item at the end of the items of a `{ … }` (a record type's fields, a page's
+// parameters, a silo's tables) whose span is braces and whose items' spans are items, in
+// whatever layout the braces are written: after the last item, or inside empty braces. Apply's
+// formatting then lays it out.
+func appendItem(e *srcEdit, braces diag.Span, items []diag.Span, item string) {
+	if len(items) == 0 {
+		e.insertAt(braces.Start.Line, braces.Start.Col+1, " "+item)
+		return
+	}
+	last := items[len(items)-1]
+	e.insertAt(last.End.Line, last.End.Col, ", "+item)
+}
+
+// fieldSpans are the spans of fs.
+func fieldSpans(fs []*syntax.Field) []diag.Span {
+	var out []diag.Span
+	for _, f := range fs {
+		out = append(out, f.Span)
+	}
+	return out
+}
 
 // deleteLine removes line n.
 func (e *srcEdit) deleteLine(n int) { e.repl[n] = nil }

@@ -121,7 +121,7 @@ func genReport(cmd string, g genArgs, res *generate.Result, err error, extra fun
 	if res == nil && refused && ref.Result != nil {
 		res = ref.Result
 	}
-	if res != nil {
+	if res != nil && !refused { // a refusal writes nothing, formatted or not
 		for _, w := range res.Warnings {
 			fmt.Fprintf(stderr, "%s: warning: %s\n", cmd, w)
 		}

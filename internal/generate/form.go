@@ -176,16 +176,23 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 		arm = fmt.Sprintf("%s p -> ?%s,", msg, LowerFirst(msg))
 	}
 	if attach != nil {
-		ml := e.line(attach.Span.Start.Line)
-		if attach.Span.Start.Line != attach.Span.End.Line || strings.Contains(ml, "--") {
-			return nil, Refusef("`msg %s` is not on one line without a comment: add ` form %s` to it yourself", msg, o.Name)
-		}
-		e.replaceLine(attach.Span.Start.Line, strings.TrimRight(ml, " ")+" form "+o.Name)
+		e.insertAt(attach.Span.End.Line, attach.Span.End.Col, " form "+o.Name) // after its parameters, on one line or several
 		e.insertBefore(attach.Span.Start.Line, "-- "+msg+"'s arm reads the posted fields as p.form (p.form : "+o.Name+", such as p.form."+o.Fields[0].Name+")\n"+snippet("form_decl", d)+"\n")
 		// the message's own button and its "pressing" test (Test.click cannot post a form) give way to the form
-		for n := 1; n <= len(m.Syntax.Lines); n++ {
-			if t := strings.TrimSpace(m.Syntax.Lines[n-1]); strings.HasPrefix(t, "<al-button") && strings.HasSuffix(t, "</al-button>") && strings.Contains(t, "click={"+msg+" ") {
-				e.deleteLine(n)
+		for n := 1; n <= len(m.Syntax.Lines); n++ { // on one line, or over several (`alder fmt` breaks a long one)
+			if !strings.HasPrefix(strings.TrimSpace(m.Syntax.Lines[n-1]), "<al-button") {
+				continue
+			}
+			end, text := n, strings.TrimSpace(m.Syntax.Lines[n-1])
+			for !strings.HasSuffix(strings.TrimSpace(m.Syntax.Lines[end-1]), "</al-button>") && end < len(m.Syntax.Lines) {
+				end++
+				text += " " + strings.TrimSpace(m.Syntax.Lines[end-1])
+			}
+			if strings.HasSuffix(text, "</al-button>") && strings.Count(text, "<al-button") == 1 && strings.Contains(text, "click={"+msg+" ") {
+				for k := n; k <= end; k++ {
+					e.deleteLine(k)
+				}
+				n = end
 			}
 		}
 		for _, dc := range m.Syntax.Decls {
@@ -460,7 +467,7 @@ func withTrailingComma(line string) (string, bool) {
 func addToView(e *srcEdit, m *Module, page, markup, label string) error {
 	spot, ok := findViewSpot(e, m.Syntax, label == "")
 	if !ok {
-		return Refusef("`%s`'s `view` is not one element over several lines (write it as `<Layout.Page …>` … `</Layout.Page>` on several lines, with `alder fill --decl %s.view -`), or add the markup yourself", page, page)
+		return Refusef("`%s`'s `view` is not one element (write it as `<Layout.Page …>` … `</Layout.Page>`, with `alder fill --decl %s.view -`), or add the markup yourself", page, page)
 	}
 	switch {
 	case label == "": // a button, after a blank line, as the root's sections are

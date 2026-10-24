@@ -1140,6 +1140,12 @@ func TestGenReport_Warnings(t *testing.T) {
 	if want := "alder new page: warning: output not formatted: app/X.alder:3:1: oops; please file an issue\n"; errb.String() != want {
 		t.Errorf("stderr %q, want %q", errb.String(), want)
 	}
+	// refused: nothing was written, so nothing was written unformatted
+	out.Reset()
+	errb.Reset()
+	if code := genReport("alder new page", genArgs{}, res, &generate.Refusal{Msg: "no", Result: res}, nil, &out, &errb); code != 1 || strings.Contains(errb.String(), "warning") {
+		t.Errorf("refused: exit %d, stderr %q", code, errb.String())
+	}
 }
 
 // TestFill_OneLineBlockHole: `alder new test` writes `{ ?test }` on one line, as `alder fmt`

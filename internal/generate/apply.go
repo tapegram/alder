@@ -164,7 +164,7 @@ func Apply(appDir string, edits []Edit, o Options) (*Result, error) {
 		}
 		text, warning := string(b), ""
 		if was, ok := copied[e.Path]; ok && !e.Create && !parses(e.Path, was) {
-			warning = notFormatted("`" + e.Path + "` did not parse before the edit")
+			warning = e.Path + " did not parse before the edit; output not formatted" // the author's to fix, not an issue
 		} else {
 			text, warning = Formatted(e.Path, text)
 		}

@@ -3432,8 +3432,8 @@ wrote app/Tags/Show.alder
 **The session.** `alder edit session add-field` adds a field at the end
 of `App`'s `session`. A default is required: a new visitor's session,
 and every cookie stored before the field existed, take it. A session
-record written on one line elsewhere (a test's `update X model { user:
-me }`) gets the field with its default too:
+record written elsewhere (a test's `update X model { user: me }`), on
+one line or over several, gets the field with its default too:
 
 ```text command=notes
 $ alder edit session add-field 'theme:Text="light"'
@@ -3460,7 +3460,7 @@ edited app/App.alder
        == { value: Ok (Redirect (Auth.Login {})), trace: ["Session.put"] }
 ```
 
-A literal written over several lines is left, and shows in the check
+A session built some other way lacks the field, and shows in the check
 after the edit, which is written all the same (as `alder edit table`'s
 are; `--strict` refuses instead). An error in the session itself is not
 breakage elsewhere: a type that does not exist, or a default of another
@@ -3993,7 +3993,7 @@ alder new page Projects.Show /projects --show Project --blank --requires org
 the key, `org: Maybe Org.OrgId via Membership` (the `Maybe` is added:
 a session starts without an org, and a key takes no default), and with
 `--choose Orgs.Index` the line `choose org = Orgs.Index` after the
-session. Session records written on one line elsewhere get `org:
+session. Session records written elsewhere get `org:
 Nothing`. The page it names must exist first, hence `Orgs.Index` before
 it; the `Membership` table too, with one `@ref` to the user table and
 one to `Org`. A second `via` field is refused ("the session's `org` is

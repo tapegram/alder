@@ -11,7 +11,7 @@ import (
 // children: List (Html a) } -> Html a`), with its default, so that every use of the component
 // keeps checking (an anonymous record type's defaults apply to the component's literals). It
 // refuses a property without a default, one the record has, a declaration whose first argument
-// is not a record, and a record written over several lines.
+// is not a record.
 func EditDecl(p *Program, address, op string, args []string) ([]Edit, error) {
 	if op != "add-prop" || len(args) != 1 {
 		return nil, Refusef("`alder edit decl` has one operation: `add-prop <name>:<Type>=<default>`")
@@ -47,20 +47,8 @@ func EditDecl(p *Program, address, op string, args []string) ([]Edit, error) {
 			return nil, Refusef("`%s` already has a property `%s`", address, f.Name)
 		}
 	}
-	if rec.Span.Start.Line != rec.Span.End.Line {
-		return nil, Refusef("`%s`'s props record is not on one line: add the property yourself", address)
-	}
 	e := newSrcEdit(m.Source)
-	l := e.line(rec.Span.Start.Line)
-	open, close := rec.Span.Start.Col-1, rec.Span.End.Col-1
-	if close > len(l) || l[open] != '{' || l[close-1] != '}' {
-		return nil, Refusef("internal error: `%s`'s props record is not where the parser says", address)
-	}
-	inner := strings.TrimSuffix(strings.TrimSpace(l[open+1:close-1]), ",")
-	if inner != "" {
-		inner += ", "
-	}
-	e.replaceLine(rec.Span.Start.Line, l[:open]+"{ "+inner+f.Source()+" }"+l[close:])
+	appendItem(e, rec.Span, fieldSpans(rec.Fields), f.Source())
 	imports := newImports(m.Name, p.Std)
 	typeImports(imports, f.Type, p)
 	addImports(e, m.Syntax, imports.list())

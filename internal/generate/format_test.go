@@ -80,7 +80,7 @@ func TestSplice_UnparsableFileWarns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "output not formatted: `app/Note.alder` did not parse before the edit; please file an issue"
+	want := "app/Note.alder did not parse before the edit; output not formatted"
 	if len(res.Warnings) != 1 || res.Warnings[0] != want {
 		t.Errorf("warnings %q, want [%q]", res.Warnings, want)
 	}

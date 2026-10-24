@@ -1,8 +1,10 @@
 package generate
 
 import (
+	"slices"
 	"strings"
 
+	"alder/internal/diag"
 	"alder/internal/syntax"
 )
 
@@ -11,9 +13,9 @@ import (
 // its type names imported into App. A session field needs a default (a new visitor's session,
 // and every cookie written before the field existed, take it), so a field without one is
 // refused, as is a name the session has and an App without a `session`. Session record literals
-// written elsewhere on one line are completed with the default; others lack the new field and
-// no longer check: they are the diagnostics the edit prints (the caller writes despite them, as
-// `alder edit table` does). An error in the session declaration itself (an unknown type, a
+// written elsewhere are completed with the default, whatever their layout; a session built
+// otherwise lacks the new field and no longer checks: those are the diagnostics the edit prints
+// (the caller writes despite them, as `alder edit table` does). An error in the session declaration itself (an unknown type, a
 // default of another type) refuses the edit (Edit.Guard): nothing is written.
 func EditSession(p *Program, op string, args []string) ([]Edit, error) {
 	return EditSessionChoose(p, op, args, "")
@@ -139,9 +141,8 @@ func EditSessionChoose(p *Program, op string, args []string, choose string) ([]E
 
 // completeSessionLiterals adds field (`theme: "light"`, the new field with its default) to the
 // session record literals edits leave without it — the generated Logout test's, a test's
-// `update X model { user: me }` — where a literal is written on one line ending in `}`. The
-// probe of edits finds them (the checker's "record literal for `Session` is missing"); a
-// literal written otherwise is left, and reported by the check after the edit.
+// `update X model { user: me }` — whatever their layout. The probe of edits finds them (the
+// checker's "record literal for `Session` is missing").
 func completeSessionLiterals(p *Program, edits []Edit, field string) ([]Edit, error) {
 	probe, err := Probe(p.Dir, edits)
 	if err != nil {
@@ -154,10 +155,20 @@ func completeSessionLiterals(p *Program, edits []Edit, field string) ([]Edit, er
 	}
 	bodies := map[string]*srcEdit{}
 	var order []string
+	var lits []diag.Diagnostic
 	for _, d := range probe.Diags {
-		if d.Severity != "error" || !missing(d.Message) || d.Span.Start.Line != d.Span.End.Line {
-			continue
+		if d.Severity == "error" && missing(d.Message) {
+			lits = append(lits, d)
 		}
+	}
+	// right to left, so that several literals on one line each find their `}`
+	slices.SortFunc(lits, func(a, b diag.Diagnostic) int {
+		if a.Span.End.Line != b.Span.End.Line {
+			return b.Span.End.Line - a.Span.End.Line
+		}
+		return b.Span.End.Col - a.Span.End.Col
+	})
+	for _, d := range lits {
 		se := bodies[d.Span.File]
 		if se == nil {
 			src := ""
@@ -180,17 +191,9 @@ func completeSessionLiterals(p *Program, edits []Edit, field string) ([]Edit, er
 			bodies[d.Span.File] = se
 			order = append(order, d.Span.File)
 		}
-		l := se.line(d.Span.Start.Line)
-		end := d.Span.End.Col - 2 // the literal's `}`
-		if end < 0 || end >= len(l) || l[end] != '}' {
-			continue
+		if !closeRecord(se, d.Span, field) {
+			return nil, Refusef("internal error: the session record at %s:%d:%d is not where the checker says: add `%s` to it yourself", d.Span.File, d.Span.Start.Line, d.Span.Start.Col, field)
 		}
-		before := strings.TrimRight(l[:end], " ")
-		sep := ", "
-		if strings.HasSuffix(before, "{") {
-			sep = " "
-		}
-		se.replaceLine(d.Span.Start.Line, before+sep+field+" "+l[end:])
 	}
 	for _, file := range order {
 		body := bodies[file].result()
@@ -205,4 +208,50 @@ func completeSessionLiterals(p *Program, edits []Edit, field string) ([]Edit, er
 		}
 	}
 	return edits, nil
+}
+
+// closeRecord adds field to the record literal at span (its `}` the span's last character), after
+// its last field, on one line or over several; false when the span does not end in `}`.
+func closeRecord(e *srcEdit, span diag.Span, field string) bool {
+	end := span.End.Col - 2 // the literal's `}`
+	if l := e.current(span.End.Line); end < 0 || end >= len(l) || l[end] != '}' {
+		return false
+	}
+	for n := span.End.Line; n >= span.Start.Line; n-- {
+		l := e.current(n)
+		if n == span.End.Line {
+			l = l[:end]
+		}
+		code := strings.TrimRight(codeOf(l), " \t")
+		if code == "" {
+			continue
+		}
+		sep := ", "
+		if strings.HasSuffix(code, "{") || strings.HasSuffix(code, ",") {
+			sep = " "
+		}
+		text := sep + field
+		if n == span.End.Line {
+			text += " "
+		}
+		e.insertAt(n, len(code)+1, text)
+		return true
+	}
+	return false
+}
+
+// codeOf is line without its trailing `-- comment` (a `--` inside a string literal is not one).
+func codeOf(line string) string {
+	inStr := false
+	for i := 0; i < len(line); i++ {
+		switch {
+		case inStr && line[i] == '\\':
+			i++
+		case line[i] == '"':
+			inStr = !inStr
+		case !inStr && strings.HasPrefix(line[i:], "--"):
+			return line[:i]
+		}
+	}
+	return line
 }

@@ -81,13 +81,10 @@ func siloApp(app *Module, key string, tables, plurals []string) (*srcEdit, error
 		switch d := d.(type) {
 		case *syntax.SiloDecl:
 			if d.Key == key {
-				l := e.line(d.Span.End.Line)
-				end := strings.LastIndex(l, "}")
-				if d.Span.Start.Line != d.Span.End.Line || end < 0 {
-					return nil, Refusef("`App`'s `silo %s` is not on one line: add the tables to it yourself", key)
+				if len(d.TableSpans) == 0 {
+					return nil, Refusef("`App`'s `silo %s` has no table: add the tables to it yourself", key)
 				}
-				inner := strings.TrimSuffix(strings.TrimSpace(l[strings.Index(l, "{")+1:end]), ",")
-				e.replaceLine(d.Span.Start.Line, l[:strings.Index(l, "{")]+"{ "+inner+", "+strings.Join(tables, ", ")+" }"+l[end+1:])
+				appendItem(e, d.Span, d.TableSpans, strings.Join(tables, ", "))
 				return e, nil
 			}
 			after = max(after, d.Span.End.Line)
