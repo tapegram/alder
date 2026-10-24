@@ -76,6 +76,7 @@ var scaffoldFiles = []string{
 // name in the README, and the migrations `alder migrate` writes for those tables (a second run
 // of the generator finds nothing to do); it prints the files and the five commands.
 func TestNew_Writes(t *testing.T) {
+	t.Parallel()
 	base := outsideModule(t)
 	dir := filepath.Join(base, "guestbook")
 	code, out, errs := runNew(t, dir)
@@ -134,6 +135,7 @@ func TestNew_Writes(t *testing.T) {
 // existing non-empty directory and a file are refused (exit 1) and nothing is written; usage
 // errors exit 2.
 func TestNew_Refusals(t *testing.T) {
+	t.Parallel()
 	base := t.TempDir()
 	for _, name := range []string{"9lives", "my_app", "my app", "café"} {
 		code, out, errs := runNew(t, filepath.Join(base, name))
@@ -180,6 +182,7 @@ func TestNew_Refusals(t *testing.T) {
 // adapter that imports "app" (which resolves only in build/<name>). Without the app's go.mod
 // the same vet fails, which is why it is written.
 func TestNew_InsideModule(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go is not on PATH")
 	}
@@ -233,6 +236,7 @@ func TestNew_InsideModule(t *testing.T) {
 // design system: /static/al/al.css linked and served with the design-system cache header and an ETag, the button a native one), in both placements:
 // outside any Go module and inside one (RF3).
 func TestNew_OutOfTree(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go is not on PATH")
 	}
@@ -364,6 +368,7 @@ func TestNew_OutOfTree(t *testing.T) {
 // requires the user — reaches `page "/"` without a second page there (E0016), and checks and
 // passes its tests once the holes are filled.
 func TestNew_Bare(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	dir := filepath.Join(outsideModule(t), "notes")
 	if code, out, errs := runNew(t, dir, "--bare"); code != 0 || !strings.Contains(out, "created "+dir+"/\n") {

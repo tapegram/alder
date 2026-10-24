@@ -5,13 +5,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"alder/internal/deploy"
 )
@@ -20,11 +23,102 @@ import (
 // and the Script target end to end on the scaffold. The Ssh target's tests are in
 // deploy_ssh_test.go (a local sshd: Docker under -tags deploy, or ALDER_DEPLOY_LOCAL=1).
 
+// runDeploy is `alder deploy args` as the test t runs it, in a deployCmds of its own.
 func runDeploy(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
+	return newDeployCmds(t).deploy(args...)
+}
+
+// deployCmds runs the deploy commands (deploy, status, rollback, logs, restore, migrate silos,
+// silos prune) as one test does: with an environment of its own (env, the deployEnv the
+// commands would read from this process's; vars, the variables set for its Getenv and a
+// Script's environment) and the test's build directory (testBuildDir). Nothing is set in the
+// process's environment, so the deploy tests run in parallel.
+type deployCmds struct {
+	env deployEnv
+
+	mu   sync.Mutex
+	vars map[string]string
+}
+
+// newDeployCmds is the test's deploy commands: the default knobs, the test's build directory,
+// and the process's environment for every variable not set.
+func newDeployCmds(t *testing.T) *deployCmds {
+	t.Helper()
+	c := &deployCmds{vars: map[string]string{}}
+	c.env = deployEnv{BuildDir: testBuildDir(t), Getenv: c.getenv}
+	return c
+}
+
+// set sets a variable of the commands' environment (to "" too: set, empty), as t.Setenv would
+// for this test alone.
+func (c *deployCmds) set(name, value string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.vars[name] = value
+}
+
+// getenv is a variable set, else the process's.
+func (c *deployCmds) getenv(name string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if v, ok := c.vars[name]; ok {
+		return v
+	}
+	return os.Getenv(name)
+}
+
+// e is the commands' deployEnv for one run: env, and a Script's environment the process's with
+// the variables set.
+func (c *deployCmds) e() deployEnv {
+	e := c.env
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e.Environ = os.Environ()
+	for k, v := range c.vars {
+		e.Environ = append(e.Environ, k+"="+v)
+	}
+	return e
+}
+
+// useFakeClock makes the targets read and wait by a fake clock that starts now (deployEnv.Now,
+// Sleep), and poll every 10 ms (instead of 0.2 s to 3 s); it returns the clock.
+func (c *deployCmds) useFakeClock() *fakeClock {
+	clock := newFakeClock(time.Now())
+	c.env.Now, c.env.Sleep, c.env.Poll = clock.Now, clock.Sleep, 10*time.Millisecond
+	return clock
+}
+
+func (c *deployCmds) deploy(args ...string) (int, string, string) {
 	var out, errb bytes.Buffer
-	code := runDeployTo(args, &out, &errb)
+	code := runDeployWith(args, &out, &errb, c.e())
 	return code, out.String(), errb.String()
+}
+
+func (c *deployCmds) status(args []string, stdout, stderr io.Writer) int {
+	return runStatusWith(args, stdout, stderr, c.e())
+}
+
+func (c *deployCmds) rollback(args []string, stdout, stderr io.Writer) int {
+	return runRollbackWith(args, stdout, stderr, c.e())
+}
+
+func (c *deployCmds) logs(args []string, stdout, stderr io.Writer) int {
+	return runLogsWith(args, stdout, stderr, c.e())
+}
+
+func (c *deployCmds) restore(args []string, stdout, stderr io.Writer) int {
+	return runRestoreWith(args, stdout, stderr, c.e())
+}
+
+func (c *deployCmds) silos(args []string, stdout, stderr io.Writer) int {
+	return runSilosWith(args, stdout, stderr, c.e())
+}
+
+// migrate is `alder migrate args` (`alder migrate silos <env>` with the commands' environment).
+func (c *deployCmds) migrate(args []string, stdout, stderr io.Writer) int {
+	e := c.e()
+	return runMigrateWith(args, stdout, stderr, &e)
 }
 
 // recordScript is a Script target that records its arguments and ALDER_REQUIRES next to the
@@ -39,25 +133,25 @@ set -eu
 } > "$1.recorded"
 `
 
-// deployScaffold makes a fresh `alder new demo` app in a new temporary working directory,
-// appends decl (a `deploy` declaration) to its App.alder and extra files (path → content), adds
-// scripts/record.sh (recordScript), and returns "demo".
+// deployScaffold makes a fresh `alder new demo` app in a new temporary directory, appends decl
+// (a `deploy` declaration) to its App.alder and extra files (path → content), adds
+// scripts/record.sh (recordScript), and returns the app's directory (absolute: <tmp>/demo).
 func deployScaffold(t *testing.T, decl string, extra map[string]string) string {
 	t.Helper()
 	needGoTool(t)
-	inTemp(t)
-	if code, _, errs := runNew(t, "demo"); code != 0 {
+	dir := filepath.Join(t.TempDir(), "demo")
+	if code, _, errs := runNew(t, dir); code != 0 {
 		t.Fatalf("alder new: %d %s", code, errs)
 	}
-	appendTo(t, "demo/app/App.alder", "\n"+decl+"\n")
+	appendTo(t, filepath.Join(dir, "app", "App.alder"), "\n"+decl+"\n")
 	for p, c := range extra {
-		writeFile(t, filepath.Join("demo", p), c)
+		writeFile(t, filepath.Join(dir, p), c)
 	}
-	writeFile(t, "demo/scripts/record.sh", recordScript)
-	if err := os.Chmod("demo/scripts/record.sh", 0o755); err != nil {
+	writeFile(t, filepath.Join(dir, "scripts", "record.sh"), recordScript)
+	if err := os.Chmod(filepath.Join(dir, "scripts", "record.sh"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return "demo"
+	return dir
 }
 
 func appendTo(t *testing.T, path, s string) {
@@ -79,10 +173,10 @@ func writeFile(t *testing.T, path, s string) {
 	}
 }
 
-// artifacts are the artifact directories under build/demo/deploy.
+// artifacts are the artifact directories under the test's <build>/demo/deploy.
 func artifacts(t *testing.T) []string {
 	t.Helper()
-	ds, _ := filepath.Glob("build/demo/deploy/*")
+	ds, _ := filepath.Glob(filepath.Join(testBuildDir(t), "demo", "deploy", "*"))
 	var out []string
 	for _, d := range ds {
 		if fi, err := os.Stat(d); err == nil && fi.IsDir() {
@@ -103,17 +197,19 @@ const scriptDecl = `deploy {
 // directory and the environment's name, the names in ALDER_REQUIRES. A value set in the
 // environment appears nowhere: not in the output, not in any file of the artifact.
 func TestDeploy_ScriptScaffold(t *testing.T) {
+	t.Parallel()
 	dir := deployScaffold(t, scriptDecl, nil)
+	c := newDeployCmds(t)
 	const planted = "planted-secret-9f8e7d6c5b4a"
-	t.Setenv("SMTP_URL", "smtp://user:"+planted+"@mail.example.com")
-	t.Setenv("STRIPE_KEY", planted)
-	code, out, errs := runDeploy(t, "local", dir)
+	c.set("SMTP_URL", "smtp://user:"+planted+"@mail.example.com")
+	c.set("STRIPE_KEY", planted)
+	code, out, errs := c.deploy("local", dir)
 	if code != 0 {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errs)
 	}
 	for _, want := range []string{"alder deploy local → Script ./scripts/record.sh\n", "gate\n", "  check    ok\n", "  build    ok\n",
 		"  test     ok  2 passed\n", "  mutate   ok  score 1.00 ≥ floor 0.00 (none yet; 3 mutants, 0 survived)\n",
-		"plan\n", "  0001_initial\n", "    create table Entry\n", "script ./scripts/record.sh build/demo/deploy/"} {
+		"plan\n", "  0001_initial\n", "    create table Entry\n", "script ./scripts/record.sh " + filepath.Join(testBuildDir(t), "demo", "deploy") + "/"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
@@ -175,7 +271,7 @@ func TestDeploy_ScriptScaffold(t *testing.T) {
 	})
 
 	// --json: the record on stdout, the progress on stderr
-	code, out, errs = runDeploy(t, "local", dir, "--json")
+	code, out, errs = c.deploy("local", dir, "--json")
 	if code != 0 {
 		t.Fatalf("--json: exit %d\n%s", code, errs)
 	}
@@ -185,6 +281,43 @@ func TestDeploy_ScriptScaffold(t *testing.T) {
 	}
 	if !strings.Contains(errs, "deployed "+id) {
 		t.Errorf("--json: the progress is not on stderr:\n%s", errs)
+	}
+}
+
+// A Script deploy with --host hands the script ALDER_HOST in the script's own environment, not
+// the process's: two deploys at once each give their script their own host, and the process's
+// ALDER_HOST stays unset throughout.
+func TestDeploy_ScriptSeesHostWithoutProcessEnv(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	if _, ok := os.LookupEnv("ALDER_HOST"); ok {
+		t.Skip("ALDER_HOST is set in the test's environment")
+	}
+	for _, host := range []string{"a.example", "b.example"} {
+		t.Run(host, func(t *testing.T) {
+			t.Parallel()
+			dir := filepath.Join(t.TempDir(), "demo")
+			if code, _, errs := runNew(t, dir); code != 0 {
+				t.Fatalf("alder new: %d %s", code, errs)
+			}
+			appendTo(t, filepath.Join(dir, "app", "App.alder"), "\ndeploy {\n  preview: Script \"./scripts/host.sh\",\n}\n")
+			writeFile(t, filepath.Join(dir, "scripts", "host.sh"), "#!/bin/sh\necho \"ALDER_HOST=$ALDER_HOST\" > \"$1.host\"\n")
+			os.Chmod(filepath.Join(dir, "scripts", "host.sh"), 0o755)
+			var out, errb bytes.Buffer
+			if code := runDeployTo(withBuildDir(t, []string{"preview", dir, "--host", host, "--unsafe-skip-tests"}), &out, &errb); code != 0 {
+				t.Fatalf("exit %d\n%s%s", code, out.String(), errb.String())
+			}
+			hosts, _ := filepath.Glob(filepath.Join(testBuildDir(t), "demo", "deploy", "*.host"))
+			if len(hosts) != 1 {
+				t.Fatalf("the script ran %d times", len(hosts))
+			}
+			if b, _ := os.ReadFile(hosts[0]); string(b) != "ALDER_HOST="+host+"\n" {
+				t.Errorf("the script for %s got %q", host, b)
+			}
+			if v, ok := os.LookupEnv("ALDER_HOST"); ok {
+				t.Errorf("ALDER_HOST is set in the process after the deploy for %s: %q", host, v)
+			}
+		})
 	}
 }
 
@@ -198,6 +331,7 @@ func evalSymlinks(p string) string {
 // --dry-run runs the gate, writes the artifact and prints the plan, and ships nothing: the
 // script does not run.
 func TestDeploy_DryRun(t *testing.T) {
+	t.Parallel()
 	dir := deployScaffold(t, scriptDecl, nil)
 	code, out, errs := runDeploy(t, "local", dir, "--dry-run")
 	if code != 0 {
@@ -222,6 +356,7 @@ func TestDeploy_DryRun(t *testing.T) {
 // a declared check that exits non-zero (with its last lines), a typed hole, a check error. Each
 // exits 1, ships nothing and writes no artifact.
 func TestDeploy_GateRefusals(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("a deploy end to end: real builds, app processes and drain windows")
 	}
@@ -247,9 +382,10 @@ test "clamp keeps a small number" = clamp 3 == 3
 			[]string{"  check    FAIL  1 error", "alder deploy: refused: `alder check` found 1 error: fix them before deploying"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			dir := deployScaffold(t, c.decl, c.extra)
 			if c.name == "check" {
-				os.Chmod("demo/scripts/lint.sh", 0o755)
+				os.Chmod(filepath.Join(dir, "scripts", "lint.sh"), 0o755)
 			}
 			code, out, errs := runDeploy(t, "local", dir)
 			if code != 1 {
@@ -269,6 +405,7 @@ test "clamp keeps a small number" = clamp 3 == 3
 
 // --unsafe-skip-tests skips the tests, the score and the checks, and the record says so.
 func TestDeploy_UnsafeSkipTests(t *testing.T) {
+	t.Parallel()
 	dir := deployScaffold(t, `deploy { local: Script "./scripts/record.sh", floor: 1, checks: ["exit 1"] }`,
 		map[string]string{"app/Calc.alder": "module Calc\n\ntest \"wrong\" = 1 == 2\n"})
 	code, out, errs := runDeploy(t, "local", dir, "--unsafe-skip-tests", "--json")
@@ -289,6 +426,8 @@ func TestDeploy_UnsafeSkipTests(t *testing.T) {
 
 // The usage errors and the refusals that come before the gate: exit 2.
 func TestDeploy_Usage(t *testing.T) {
+	t.Parallel()
+	c := newDeployCmds(t)
 	for _, args := range [][]string{{}, {"a", "b", "c"}, {"local", "--bogus"}} {
 		if code, _, errs := runDeploy(t, args...); code != 2 || !strings.Contains(errs, "usage: alder deploy") {
 			t.Errorf("%v: exit %d %s", args, code, errs)
@@ -299,9 +438,9 @@ func TestDeploy_Usage(t *testing.T) {
 		t.Errorf("unknown env: exit %d %s", code, errs)
 	}
 	for _, f := range []func([]string, *bytes.Buffer, *bytes.Buffer) int{
-		func(a []string, o, e *bytes.Buffer) int { return runStatusTo(a, o, e) },
-		func(a []string, o, e *bytes.Buffer) int { return runLogsTo(a, o, e) },
-		func(a []string, o, e *bytes.Buffer) int { return runRollbackTo(append(a[:1], "--dir", a[1]), o, e) },
+		func(a []string, o, e *bytes.Buffer) int { return c.status(a, o, e) },
+		func(a []string, o, e *bytes.Buffer) int { return c.logs(a, o, e) },
+		func(a []string, o, e *bytes.Buffer) int { return c.rollback(append(a[:1], "--dir", a[1]), o, e) },
 	} {
 		var o, e bytes.Buffer
 		if code := f([]string{"local", dir}, &o, &e); code != 2 || !strings.Contains(e.String(), "is not available for a Script target") {
@@ -322,11 +461,11 @@ func TestDeploy_Usage(t *testing.T) {
 			t.Errorf("restore %v: exit %d %s", c.args, code, e.String())
 		}
 	}
-	inTemp(t)
-	if code, _, errs := runNew(t, "bare"); code != 0 {
+	bare := filepath.Join(t.TempDir(), "bare")
+	if code, _, errs := runNew(t, bare); code != 0 {
 		t.Fatal(errs)
 	}
-	if code, _, errs := runDeploy(t, "local", "bare"); code != 2 || !strings.Contains(errs, "App has no `deploy` declaration") {
+	if code, _, errs := runDeploy(t, "local", bare); code != 2 || !strings.Contains(errs, "App has no `deploy` declaration") {
 		t.Errorf("no declaration: exit %d %s", code, errs)
 	}
 }
@@ -336,28 +475,30 @@ func TestDeploy_Usage(t *testing.T) {
 // --allow-data-loss; the binary's --migrate-only refuses it on a database that has data unless
 // that variable is set.
 func TestDeploy_ScriptDropsData(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("a deploy end to end: real builds, app processes and drain windows")
 	}
 	dir := deployScaffold(t, `deploy { local: Script "./scripts/record.sh" }`, nil)
-	t.Setenv("ALDER_ALLOW_DATA_LOSS", "1") // the command's own environment must not leak it to the script
-	migrateDemo(t, "  message: Text.NonEmpty,\n", "  message: Text.NonEmpty,\n  mood: Maybe Text = Nothing,\n", "add_mood")
-	code, out, errs := runDeploy(t, "local", dir)
+	c := newDeployCmds(t)
+	c.set("ALDER_ALLOW_DATA_LOSS", "1") // the command's own environment must not leak it to the script
+	migrateDemo(t, dir, "  message: Text.NonEmpty,\n", "  message: Text.NonEmpty,\n  mood: Maybe Text = Nothing,\n", "add_mood")
+	code, out, errs := c.deploy("local", dir)
 	if code != 0 {
 		t.Fatalf("exit %d\n%s%s", code, out, errs)
 	}
 	before := filepath.Join(artifacts(t)[0], "app")
-	migrateDemo(t, "  mood: Maybe Text = Nothing,\n", "", "drop_mood")
-	code, out, errs = runDeploy(t, "local", dir)
+	migrateDemo(t, dir, "  mood: Maybe Text = Nothing,\n", "", "drop_mood")
+	code, out, errs = c.deploy("local", dir)
 	if code != 0 || !strings.Contains(out, "    DROPS DATA (if not applied yet): column Entry.mood\n") {
 		t.Fatalf("exit %d\n%s%s", code, out, errs)
 	}
 	id := regexp.MustCompile(`deployed ([0-9a-f]{16})`).FindStringSubmatch(out)[1]
-	art := filepath.Join("build", "demo", "deploy", id)
+	art := filepath.Join(testBuildDir(t), "demo", "deploy", id)
 	if rec, _ := os.ReadFile(art + ".recorded"); !strings.Contains(string(rec), "ALDER_ALLOW_DATA_LOSS=unset") {
 		t.Errorf("without --allow-data-loss the script got: %s", rec)
 	}
-	if code, out, errs = runDeploy(t, "local", dir, "--allow-data-loss"); code != 0 {
+	if code, out, errs = c.deploy("local", dir, "--allow-data-loss"); code != 0 {
 		t.Fatalf("exit %d\n%s%s", code, out, errs)
 	}
 	if rec, _ := os.ReadFile(art + ".recorded"); !strings.Contains(string(rec), "ALDER_ALLOW_DATA_LOSS=1") {

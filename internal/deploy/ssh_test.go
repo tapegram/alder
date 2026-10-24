@@ -1,12 +1,18 @@
 package deploy
 
 import (
+	"context"
 	"encoding/json"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"alder/internal/ir"
+	"alder/internal/tursofake"
 )
 
 func TestNewSsh(t *testing.T) {
@@ -26,6 +32,20 @@ func TestNewSsh(t *testing.T) {
 	}
 	if s := NewSsh("my blog", "pr.12", ir.Target{Host: "h", Path: "/p"}, &ir.Deploy{}); s.unit() != "alder-my-blog-pr-12" || s.Proxy != "Caddy" {
 		t.Errorf("unit %q proxy %q", s.unit(), s.Proxy)
+	}
+}
+
+// The target's ssh settings are its fields, not this process's environment: SSHConfig is every
+// ssh's -F, SSH the executable, CaddyAdmin DefaultCaddyAdmin unless set.
+func TestSsh_SettingsAreFields(t *testing.T) {
+	t.Parallel()
+	s := NewSsh("blog", "production", ir.Target{Host: "deploy@box", Path: "/srv/blog"}, &ir.Deploy{})
+	if s.CaddyAdmin != DefaultCaddyAdmin || s.ssh() != "ssh" || strings.Contains(strings.Join(s.baseArgs(), " "), "-F") {
+		t.Errorf("defaults: admin %q, ssh %q, args %v", s.CaddyAdmin, s.ssh(), s.baseArgs())
+	}
+	s.SSH, s.SSHConfig = "/opt/ssh", "/etc/alder/ssh_config"
+	if args := strings.Join(s.baseArgs(), " "); s.ssh() != "/opt/ssh" || !strings.Contains(args, "-F /etc/alder/ssh_config") {
+		t.Errorf("set: ssh %q, args %s", s.ssh(), args)
 	}
 }
 
@@ -126,5 +146,107 @@ func TestPrunePlan(t *testing.T) {
 	builds = []Build{b("c", ok, true, "y"), b("y", ok, false, "z"), b("x", ok, false, "w"), b("old", ok, false, "y"), b("w", ok, false, "")}
 	if got := strings.Join(PrunePlan(builds, 2, nil), ","); got != "w,old,x" {
 		t.Errorf("copies: %s", got)
+	}
+}
+
+// loopbackSSH stands in for ssh: it drops ssh's options and the destination and runs the
+// remote command here with sh (cmd/alder's loopback box does the same).
+const loopbackSSH = `#!/bin/sh
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o|-F|-p|-i|-l|-O) shift 2;;
+    -*) shift;;
+    *) break;;
+  esac
+done
+shift
+exec sh -c "$*"
+`
+
+// testClock is a fake clock: Sleep advances it without waiting.
+type testClock struct {
+	mu    sync.Mutex
+	now   time.Time
+	slept []time.Duration
+}
+
+func (c *testClock) Now() time.Time { c.mu.Lock(); defer c.mu.Unlock(); return c.now }
+
+func (c *testClock) Sleep(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.slept = append(c.slept, d)
+	c.now = c.now.Add(d)
+}
+
+// Backup's point in time on Turso is the next whole second by the injected clock, waited for
+// with the injected Sleep (no real wait).
+func TestSsh_BackupPITRUsesInjectedClock(t *testing.T) {
+	t.Parallel()
+	ssh := filepath.Join(t.TempDir(), "ssh")
+	if err := os.WriteFile(ssh, []byte(loopbackSSH), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "builds", "b1"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	f := tursofake.New(t, "acme")
+	if err := f.Create("blog", "default"); err != nil {
+		t.Fatal(err)
+	}
+	f.Exec("blog", `CREATE TABLE "_alder_meta" ("k" TEXT)`)
+	clock := &testClock{now: time.Date(2026, 10, 17, 12, 0, 0, 300*int(time.Millisecond), time.UTC)}
+	f.SetNow(clock.Now)
+	s := NewSsh("blog", "production", ir.Target{Host: "deploy@box", Path: root}, &ir.Deploy{Proxy: "None"})
+	s.SSH = ssh
+	s.DB = fakeTurso(t, f)
+	s.DB.Now, s.DB.Sleep = clock.Now, clock.Sleep
+	start := time.Now()
+	got, err := s.Backup(context.Background(), "b1")
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed >= 100*time.Millisecond {
+		t.Errorf("Backup waited %s in real time", elapsed)
+	}
+	clock.mu.Lock()
+	slept := clock.slept
+	clock.mu.Unlock()
+	if len(slept) != 1 || slept[0] < 700*time.Millisecond {
+		t.Errorf("the injected Sleep was called with %v, want one call of at least 700ms", slept)
+	}
+	if !strings.Contains(got, "2026-10-17T12:00:01Z") {
+		t.Errorf("Backup: %q", got)
+	}
+	b, err := os.ReadFile(filepath.Join(root, "builds", "b1", "backup.pitr"))
+	if err != nil || !strings.HasPrefix(string(b), "2026-10-17T12:00:01Z blog") {
+		t.Errorf("backup.pitr: %q %v", b, err)
+	}
+}
+
+// Poll reaches the scripts as ALDER_POLL (the loops' interval); unset, each loop keeps its own.
+// Deploy's and Rollback's clock reaches the Turso database (Clocked).
+func TestSsh_PollAndClock(t *testing.T) {
+	s := NewSsh("blog", "production", ir.Target{Host: "deploy@box", Path: "/srv/blog"}, &ir.Deploy{})
+	if strings.Contains(s.prelude(), "ALDER_POLL=") {
+		t.Errorf("Poll 0 exports ALDER_POLL:\n%s", s.prelude())
+	}
+	s.Poll = 10 * time.Millisecond
+	out, err := exec.Command("sh", "-c", s.prelude()+`printf %s "$ALDER_POLL"; sh -c 'printf " %s" "$ALDER_POLL"'`).Output()
+	if err != nil || string(out) != "0.01 0.01" {
+		t.Errorf("ALDER_POLL at the target: %q %v", out, err)
+	}
+	s.DB = NewTurso(&ir.Database{Kind: "turso", Org: "acme", App: "blog"})
+	clock := &testClock{now: time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)}
+	setClock(s, clock.Now, clock.Sleep)
+	s.DB.sleep(time.Hour)
+	if got := s.DB.Now(); !got.Equal(time.Date(2026, 10, 17, 13, 0, 0, 0, time.UTC)) {
+		t.Errorf("the database's clock after Sleep(1h): %s", got)
+	}
+	setClock(s, nil, nil) // nothing set: the database keeps its clock
+	if s.DB.Now == nil || s.DB.Sleep == nil {
+		t.Error("an unset clock cleared the database's")
 	}
 }

@@ -23,7 +23,7 @@ import (
 )
 
 // replUsage is the usage line of `alder repl`.
-const replUsage = "usage: alder repl [dir] [--in Name | --module Name]"
+const replUsage = "usage: alder repl [dir] [--build-dir DIR] [--in Name | --module Name]"
 
 // replHelp is what :help prints.
 const replHelp = `  let name = expr   keep a value in the session (a later let of the name replaces it)
@@ -65,7 +65,7 @@ type repl struct {
 	warned                 string                 // the last build's warning of unwired capabilities, as printed
 }
 
-// runReplTo is `alder repl [dir] [--in Name | --module Name]`: a read-eval-print loop over a
+// runReplTo is `alder repl [dir] [--build-dir DIR] [--in Name | --module Name]`: a read-eval-print loop over a
 // persistent scratch module (named Scratch, or Name) that sees every module of the app at dir
 // (default "."), or, with `--in Name` (and after `:in Name`), over a session appended to the app
 // module Name, whose names it uses unqualified (scratch's in-module mode). Each line is a
@@ -91,10 +91,15 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 		}
 	}()
 	var pos []string
-	modName, named, inName := "Scratch", false, ""
+	modName, named, inName, bd := "Scratch", false, "", ""
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
+		case a == "--build-dir" && i+1 < len(args):
+			i++
+			bd = args[i]
+		case strings.HasPrefix(a, "--build-dir="):
+			bd = strings.TrimPrefix(a, "--build-dir=")
 		case a == "--module" && i+1 < len(args):
 			i++
 			modName, named = args[i], true
@@ -135,7 +140,7 @@ func replMain(args []string, stdin io.Reader, stdout, stderr io.Writer, interrup
 		fmt.Fprintf(stderr, "alder repl: no .alder files under %s/app\n", dir)
 		return 2
 	}
-	r := &repl{dir: dir, modName: modName, in: inName, appBuild: filepath.Join("build", filepath.Base(abs)),
+	r := &repl{dir: dir, modName: modName, in: inName, appBuild: filepath.Join(buildRoot(bd), filepath.Base(abs)),
 		vet: true, stdout: stdout, stderr: stderr, interrupt: interrupt, terminate: terminate}
 	r.seen = watch.Snapshot(dir)
 	checked, _ := r.check(nil)

@@ -92,16 +92,13 @@ func startRunAppWith(t *testing.T, app string, files map[string]string) *devRun 
 			t.Fatal(err)
 		}
 	}
-	t.Chdir(tmp)
-	t.Setenv("ALDER_ADDR", "127.0.0.1:0")
 	r := &devRun{dir: filepath.Join(tmp, app), out: &syncBuffer{}, errs: &syncBuffer{},
 		done: make(chan struct{}), stopCh: make(chan struct{})}
 	devs := make(chan *devServer, 1)
-	onDevServer = func(d *devServer) { devs <- d }
-	t.Cleanup(func() { onDevServer = nil })
 	go func() {
 		defer close(r.done)
-		r.code = runRunTo([]string{app}, r.out, r.errs, r.stopCh)
+		r.code = runRunWith([]string{"--build-dir", filepath.Join(tmp, "build"), filepath.Join(tmp, app)}, r.out, r.errs, r.stopCh,
+			runOpts{addr: "127.0.0.1:0", onDevServer: func(d *devServer) { devs <- d }})
 	}()
 	t.Cleanup(func() { r.stop(t) })
 	deadline := time.Now().Add(120 * time.Second)
@@ -279,6 +276,7 @@ const wantReload = "event: datastar-patch-elements\ndata: selector body\ndata: m
 // morph) and the reload subscriber (naming the build generation, open while the tab is hidden);
 // /_dev/reload is an event stream.
 func TestRun_ServesAndInjectsSubscriber(t *testing.T) {
+	t.Parallel()
 	r := startRun(t)
 	body := get(t, r.base+"/login")
 	for _, want := range []string{`<body><div id="_alder_errors" data-ignore-morph></div><div data-init=`, "/_alder/datastar-v1.0.0.js", `type="password"`} {
@@ -346,6 +344,7 @@ func dsDo(t *testing.T, req *http.Request) (*http.Response, string) {
 // `requires` redirects pushes the login page; a message that redirects is answered with the
 // target's morph under Datastar, and with the 303 without it.
 func TestRun_BoostedNavigation(t *testing.T) {
+	t.Parallel()
 	r := startRun(t)
 	if page := get(t, r.base+"/login"); !strings.Contains(page, `<head><meta name="color-scheme" content="light dark" /><meta name="alder-build" content="`) ||
 		!regexp.MustCompile(`<meta name="alder-build" content="[0-9a-f]{16}" /><style>[^<]*</style><script type="module" src="/_alder/datastar-v1.0.0.js"></script>`).MatchString(page) ||
@@ -387,6 +386,7 @@ func TestRun_BoostedNavigation(t *testing.T) {
 // new generation. A page of the old build that subscribes only now (its stream was closed while
 // the reload was sent) is reloaded at once, as is one of an earlier dev server.
 func TestRun_EditReloads(t *testing.T) {
+	t.Parallel()
 	r := startRun(t)
 	old := generation(t, get(t, r.base+"/login"))
 	events := sse(t, r.base+"/_dev/reload?b="+old)
@@ -412,6 +412,7 @@ func TestRun_EditReloads(t *testing.T) {
 // assets (/static/al/al.css, fresh for five minutes then stale-while-revalidate, with an ETag). Saving a static file copies it again and reloads,
 // without a rebuild (the generation is unchanged).
 func TestRun_ServesStaticAndDesignSystem(t *testing.T) {
+	t.Parallel()
 	r := startRun(t)
 	gen := generation(t, get(t, r.base+"/login"))
 	res, err := http.Get(r.base + "/static/al/al.css")
@@ -439,6 +440,7 @@ func TestRun_ServesStaticAndDesignSystem(t *testing.T) {
 // A type error is overlaid (escaped) while the old build keeps serving; fixing it clears the
 // overlay, then reloads.
 func TestRun_ErrorThenFixReloads(t *testing.T) {
+	t.Parallel()
 	r := startRun(t)
 	events := r.subscribe(t)
 	edit(t, r.dir, "app/Todo.alder", "|> List.length\n", "|> List.length |> Text.length\n")
@@ -470,6 +472,7 @@ func TestRun_ErrorThenFixReloads(t *testing.T) {
 
 // Two saves in quick succession make one rebuild and one reload.
 func TestRun_CoalescesSaves(t *testing.T) {
+	t.Parallel()
 	r := startRun(t)
 	events := r.subscribe(t)
 	edit(t, r.dir, "app/Layout.alder", `<main>`, `<main class="edited">`)
@@ -489,6 +492,7 @@ func TestRun_CoalescesSaves(t *testing.T) {
 // A build failure after the check (here: the adapters are gone) is overlaid and the old child
 // keeps serving.
 func TestRun_BuildFailureKeepsOld(t *testing.T) {
+	t.Parallel()
 	r := startRun(t)
 	events := r.subscribe(t)
 	if err := os.Remove(filepath.Join(r.dir, "adapters", "auth", "password.go")); err != nil {
@@ -509,10 +513,11 @@ func TestRun_BuildFailureKeepsOld(t *testing.T) {
 // A new child that does not start (here: its database path is a directory) is overlaid with
 // its stderr, and the old child keeps serving.
 func TestRun_StartupCrashKeepsOld(t *testing.T) {
+	t.Parallel()
 	r := startRun(t)
 	events := r.subscribe(t)
 	gen := generation(t, get(t, r.base+"/login"))
-	db := filepath.Join("build", "todos", "dev.db") // the test's working directory is the copy's parent
+	db := filepath.Join(filepath.Dir(r.dir), "build", "todos", "dev.db") // startRunAppWith: --build-dir <tmp>/build
 	for _, f := range []string{db, db + "-wal", db + "-shm", db + "-journal"} {
 		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
 			t.Fatal(err)
@@ -539,6 +544,7 @@ func TestRun_StartupCrashKeepsOld(t *testing.T) {
 // A child that dies while it serves (SIGKILL) is overlaid, the dev server answers 502 with the
 // overlay and a subscriber until the next good build, and saving a source file recovers.
 func TestRun_RuntimeCrashThenRecovers(t *testing.T) {
+	t.Parallel()
 	r := startRun(t)
 	events := r.subscribe(t)
 	gen := generation(t, get(t, r.base+"/login"))
@@ -570,17 +576,17 @@ func TestRun_RuntimeCrashThenRecovers(t *testing.T) {
 }
 
 func TestRunAddr(t *testing.T) {
-	t.Setenv("ALDER_ADDR", "")
-	if got := runAddr(); got != "localhost:8080" {
+	t.Parallel()
+	if got := runAddr(""); got != "localhost:8080" {
 		t.Errorf("default ALDER_ADDR = %q, want localhost:8080", got)
 	}
-	t.Setenv("ALDER_ADDR", "127.0.0.1:0")
-	if got := runAddr(); got != "127.0.0.1:0" {
+	if got := runAddr("127.0.0.1:0"); got != "127.0.0.1:0" {
 		t.Errorf("ALDER_ADDR = %q", got)
 	}
 }
 
 func TestLastLines(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		in   string
 		n    int
@@ -607,6 +613,7 @@ func TestLastLines(t *testing.T) {
 
 // Stopping the dev server stops the child.
 func TestRun_StopKillsChild(t *testing.T) {
+	t.Parallel()
 	r := startRun(t)
 	get(t, "http://"+r.child+"/login")
 	r.stop(t)
@@ -633,6 +640,7 @@ func TestRun_StopKillsChild(t *testing.T) {
 // The blog's layout begins its <head> with <meta charset>: the router's insertions keep it in
 // the first 1024 bytes, where a browser looks for it (the boost goes before </head>).
 func TestRun_CharsetEarly(t *testing.T) {
+	t.Parallel()
 	r := startRunApp(t, "blog")
 	page := get(t, r.base+"/")
 	if i := strings.Index(page, `<meta charset="utf-8" />`); i < 0 || i+len(`<meta charset="utf-8" />`) > 1024 {

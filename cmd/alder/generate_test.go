@@ -67,7 +67,7 @@ func alderIn(t *testing.T, dir, stdin string, args ...string) (int, string, stri
 	case "check":
 		code = runCheckTo([]string{dir}, &out, &errb)
 	case "test":
-		code = runTestTo([]string{dir}, &out, &errb)
+		code = runTestTo(withBuildDir(t, []string{dir}), &out, &errb)
 	default:
 		t.Fatalf("no command %s", args[0])
 	}
@@ -255,6 +255,7 @@ var genCases = []genCase{
 
 // TestGenerate runs every case of genCases.
 func TestGenerate(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	for _, c := range genCases {
 		t.Run(c.name, func(t *testing.T) {
@@ -297,6 +298,7 @@ func TestGenerate(t *testing.T) {
 // now lacks it is printed with its file and line; --strict refuses the same edit and writes
 // nothing.
 func TestGenerate_EditTableBreaks(t *testing.T) {
+	t.Parallel()
 	dir := genApp(t, "fixture")
 	before := appFiles(t, dir)
 	code, out, errs := alderIn(t, dir, "", "edit", "table", "Post", "add-field", "summary:Maybe Text", "--strict")
@@ -328,6 +330,7 @@ func TestGenerate_EditTableBreaks(t *testing.T) {
 // nothing, prints the checker's diagnostics and exits 1; after the mistake is corrected the
 // same command works.
 func TestGenerate_DoesNotCheck(t *testing.T) {
+	t.Parallel()
 	dir := genApp(t, "fixture")
 	before := appFiles(t, dir)
 	code, out, errs := alderIn(t, dir, "", "new", "form", "Home", "Bad", "title:Int", "--into", "Post")
@@ -365,6 +368,7 @@ func TestGenerate_DoesNotCheck(t *testing.T) {
 // TestGenerate_Refusals: each refusal is one sentence on standard error, exit 1, nothing
 // written.
 func TestGenerate_Refusals(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		base  string
 		args  []string
@@ -526,6 +530,7 @@ func TestGenerate_Refusals(t *testing.T) {
 // TestGenerate_JSON: --json is one object, {files, diff, diagnostics, holes, written}, with
 // the refusal's sentence in "error".
 func TestGenerate_JSON(t *testing.T) {
+	t.Parallel()
 	dir := genApp(t, "scaffold")
 	code, out, _ := alderIn(t, dir, "", "new", "msg", "Home", "Clear", "--json")
 	if code != 0 || strings.Count(out, "\n") != 1 {
@@ -575,6 +580,7 @@ func TestGenerate_JSON(t *testing.T) {
 // TestGenerate_DryRun: --dry-run says what it would write, created files in full, and writes
 // nothing; the output is the same on every run.
 func TestGenerate_DryRun(t *testing.T) {
+	t.Parallel()
 	args := []string{"new", "table", "Tag", "name:Text.NonEmpty", "entry:Entry.EntryId@ref=Entry"}
 	dir := genApp(t, "scaffold")
 	before := appFiles(t, dir)
@@ -608,6 +614,7 @@ func TestGenerate_DryRun(t *testing.T) {
 // TestGenerate_Args: --show takes a path with or without its `/{id}`; --from's tables may come
 // TestGenerate_EditFlagsPerSubcommand: each edit subcommand accepts only its own flags (M6b R5).
 func TestGenerate_EditFlagsPerSubcommand(t *testing.T) {
+	t.Parallel()
 	dir := genApp(t, "fixture")
 	code, _, stderr := alderIn(t, dir, "", "edit", "page", "Home", "add-param", "n:Int=1", "--to", "X")
 	if code != 2 || !strings.Contains(stderr, "unknown flag --to") || !strings.Contains(stderr, editUsage) {
@@ -617,6 +624,7 @@ func TestGenerate_EditFlagsPerSubcommand(t *testing.T) {
 
 // before the path.
 func TestGenerate_Args(t *testing.T) {
+	t.Parallel()
 	dir := genApp(t, "scaffold")
 	if code, _, errs := alderIn(t, dir, "", "new", "page", "Entries.Show", "/entries/{id}", "--show", "Entry"); code != 0 {
 		t.Fatalf("--show with /{id}: exit %d: %s", code, errs)
@@ -659,6 +667,7 @@ var scoreRe = regexp.MustCompile(`(?m)^(\d+) mutants: (\d+) killed, (\d+) surviv
 // The fixture, after the golden sequence of every generator (its holes filled), scores at
 // least 0.90 under `alder test --mutate`; the failure lists the survivors.
 func TestGenerate_Mutate(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	if testing.Short() {
 		t.Skip("runs every mutant of the fixture")
@@ -670,7 +679,7 @@ func TestGenerate_Mutate(t *testing.T) {
 		}
 	}
 	var out, errb bytes.Buffer
-	code := runTestTo([]string{dir, "--mutate"}, &out, &errb)
+	code := runTestTo(withBuildDir(t, []string{dir, "--mutate"}), &out, &errb)
 	m := scoreRe.FindStringSubmatch(out.String())
 	if code != 0 || m == nil {
 		t.Fatalf("alder test --mutate: exit %d\n%s%s", code, out.String(), errb.String())
@@ -686,6 +695,7 @@ func TestGenerate_Mutate(t *testing.T) {
 // which the hole's module does not import gets the import, said on standard output and in
 // --json's "imports"; a standard library module's name (`Text.trim`) needs none.
 func TestGenerate_FillImports(t *testing.T) {
+	t.Parallel()
 	dir := genApp(t, "fixture")
 	if code, _, errs := alderIn(t, dir, "", "new", "msg", "Home", "Purge"); code != 0 {
 		t.Fatalf("alder new msg: %s", errs)
@@ -711,6 +721,7 @@ func TestGenerate_FillImports(t *testing.T) {
 // test's, and writes only what checks. Review Focus 5: an `update` that drops an arm the view's
 // form posts is refused by the checker, and nothing is written.
 func TestGenerate_FillDecl(t *testing.T) {
+	t.Parallel()
 	dir := genApp(t, "scaffold")
 	before := appFiles(t, dir)
 	dropped := "match msg {\n}"
@@ -761,6 +772,7 @@ func TestGenerate_FillDecl(t *testing.T) {
 // malformed stored text), and the command is deterministic: on two apps it writes the same
 // files.
 func TestGenerate_AuthAdapter(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	dir := genApp(t, "scaffold")
 	_, out, _ := alderIn(t, dir, "", "new", "auth")
@@ -777,11 +789,10 @@ func TestGenerate_AuthAdapter(t *testing.T) {
 	if !strings.Contains(a["adapters/auth/login_password.go"], "iterations = 600000") || !strings.Contains(a["adapters/auth/login_password.go"], "subtle.ConstantTimeCompare(got, p.want)") {
 		t.Errorf("the adapter:\n%s", a["adapters/auth/login_password.go"])
 	}
-	t.Chdir(filepath.Dir(dir))
-	if code, stdout, stderr := runBuild(t, filepath.Base(dir)); code != 0 {
+	if code, stdout, stderr := runBuild(t, dir); code != 0 {
 		t.Fatalf("alder build: exit %d\n%s%s", code, stdout, stderr)
 	}
-	testOut, err := buildkit.GoCmd(filepath.Join("build", filepath.Base(dir)), "test", "-count=1", "-v", "./adapters/...")
+	testOut, err := buildkit.GoCmd(filepath.Join(testBuildDir(t), filepath.Base(dir)), "test", "-count=1", "-v", "./adapters/...")
 	if err != nil || !strings.Contains(string(testOut), "ok  \tapp/adapters/auth") {
 		t.Fatalf("go test ./adapters/...: %v\n%s", err, testOut)
 	}
@@ -796,6 +807,7 @@ func TestGenerate_AuthAdapter(t *testing.T) {
 // …"` adds the table to the module the type made, which then uses the type; `alder new auth
 // --role` takes that table as it is.
 func TestGenerate_TableInTypeModule(t *testing.T) {
+	t.Parallel()
 	dir := genApp(t, "scaffold")
 	for _, args := range [][]string{
 		{"new", "type", "User", "Role = Member | Admin"},
@@ -818,6 +830,7 @@ func TestGenerate_TableInTypeModule(t *testing.T) {
 // TestGenerate_ViewHole (I7): a form or a button needs a view to go in: on a page whose `view`
 // is still the hole ?view, `alder new form` and `alder new msg` refuse, saying to fill it first.
 func TestGenerate_ViewHole(t *testing.T) {
+	t.Parallel()
 	dir := genApp(t, "scaffold")
 	if code, out, errs := alderIn(t, dir, "", "new", "page", "Notes", "/notes", "--blank"); code != 0 {
 		t.Fatalf("new page: exit %d\n%s%s", code, out, errs)
@@ -836,6 +849,7 @@ func TestGenerate_ViewHole(t *testing.T) {
 // TestHelp (m12): `alder <command> --help` prints the command's usage on standard output, a
 // generator's for `alder new <generator> --help`.
 func TestHelp(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		args []string
 		want string
@@ -859,6 +873,7 @@ func TestHelp(t *testing.T) {
 
 // TestHelp_DottedModule: `alder new page --help` shows a nested module and where it is written.
 func TestHelp_DottedModule(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	helpTo([]string{"new", "page", "--help"}, &b)
 	for _, w := range []string{"alder new page Sites.Clarity.Index", "app/Sites/Clarity/Index.alder"} {
@@ -871,6 +886,7 @@ func TestHelp_DottedModule(t *testing.T) {
 // TestGenerate_E11Commands: `new form --msg` on a message declared without a form, and `edit
 // auth --to` (their goldens), and the refusals of the four commands.
 func TestGenerate_E11Commands(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	t.Run("form-on-msg", func(t *testing.T) {
 		dir := genApp(t, "fixture")
@@ -932,6 +948,7 @@ func TestGenerate_E11Commands(t *testing.T) {
 // parameters, a hole-less test or Model, a test's block in a Bool hole, a bare app type, and `alder test`
 // with holes left; an unquoted test address is accepted.
 func TestGenerate_E11Messages(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	dir := genApp(t, "fixture")
 	run := func(stdin string, args ...string) (int, string) {
@@ -982,6 +999,7 @@ func TestGenerate_E11Messages(t *testing.T) {
 // declares it instead, marking schema.json and saying what stays behind; `alder migrate` then has
 // nothing to do.
 func TestGenerate_SiloMove(t *testing.T) {
+	t.Parallel()
 	dir := genApp(t, "fixture-silo")
 	app := filepath.Join(dir, "app", "App.alder")
 	live, err := os.ReadFile(filepath.Join(dir, "migrations", "schema.json"))
@@ -1049,6 +1067,7 @@ func TestGenerate_SiloMove(t *testing.T) {
 // TestGenerate_NewMsgAddsMissingComma: Alder allows the last match arm without a trailing comma,
 // so a hand-written `update` often lacks one; `new msg` adds it rather than refusing (M6b plan 2).
 func TestGenerate_NewMsgAddsMissingComma(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, from, to, wantLine string }{
 		{"bare", "  },\n}\n\nview", "  }\n}\n\nview", "  },\n"},
 		{"comment after the arm", "  },\n}\n\nview", "  } -- the only arm so far\n}\n\nview", "  }, -- the only arm so far\n"},
@@ -1083,6 +1102,7 @@ func TestGenerate_NewMsgAddsMissingComma(t *testing.T) {
 // TestGenerate_NewMsgEmptyMatch: an emptied `update` leaves the app unchecked, so `new msg`
 // refuses and writes nothing.
 func TestGenerate_NewMsgEmptyMatch(t *testing.T) {
+	t.Parallel()
 	dir := genApp(t, "scaffold")
 	home := filepath.Join(dir, "app", "Home.alder")
 	src, _ := os.ReadFile(home)

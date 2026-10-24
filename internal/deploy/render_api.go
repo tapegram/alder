@@ -24,12 +24,15 @@ type RenderAPI struct {
 }
 
 // NewRenderAPI reads ALDER_RENDER_API (default https://api.render.com/v1) and RENDER_API_KEY.
-func NewRenderAPI() *RenderAPI {
-	base := strings.TrimRight(os.Getenv("ALDER_RENDER_API"), "/")
+func NewRenderAPI() *RenderAPI { return NewRenderAPIEnv(os.Getenv) }
+
+// NewRenderAPIEnv is NewRenderAPI reading the variables with getenv.
+func NewRenderAPIEnv(getenv func(string) string) *RenderAPI {
+	base := strings.TrimRight(getenv("ALDER_RENDER_API"), "/")
 	if base == "" {
 		base = "https://api.render.com/v1"
 	}
-	return &RenderAPI{Base: base, Key: os.Getenv("RENDER_API_KEY"), Client: &http.Client{Timeout: 60 * time.Second}}
+	return &RenderAPI{Base: base, Key: getenv("RENDER_API_KEY"), Client: &http.Client{Timeout: 60 * time.Second}}
 }
 
 // String and GoString never show the key.

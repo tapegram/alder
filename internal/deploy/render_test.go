@@ -50,8 +50,17 @@ type renderRig struct {
 	instances int
 	refuse    bool // the next migration run refuses (exits 1) without applying anything
 	out       syncBuffer
-	texts     []string // errors, --json, other outputs
-	secrets   []string // extra values the test set (dashboard variables)
+	texts     []string   // errors, --json, other outputs
+	secrets   []string   // extra values the test set (dashboard variables)
+	clock     *testClock // the targets' and the Turso fake's clock (fakeClock)
+}
+
+// fakeClock gives the rig's targets and its Turso fake one fake clock, starting now: the waits
+// for the next whole second advance it instead of sleeping.
+func (g *renderRig) fakeClock() *testClock {
+	g.clock = &testClock{now: time.Now()}
+	g.turso.SetNow(g.clock.Now)
+	return g.clock
 }
 
 // syncBuffer is a bytes.Buffer safe for a writer and a reader in two goroutines.
@@ -79,6 +88,7 @@ func newRenderRig(t *testing.T) *renderRig {
 	g.render.RequireKey(rKey)
 	g.reg = registryfake.New(t, registryfake.Options{User: "tavish", Token: rRegToken, RequireAuth: true})
 	g.turso = tursofake.New(t, "acme")
+	g.fakeClock()
 	for k, v := range map[string]string{
 		"RENDER_API_KEY": rKey, "ALDER_RENDER_API": g.render.URL, "RENDER_OWNER_ID": "",
 		"ALDER_REGISTRY_TOKEN": rRegToken, "ALDER_REGISTRY_USER": "", "ALDER_REGISTRY_BASE": g.reg.URL,
@@ -107,6 +117,9 @@ func (g *renderRig) target() *Render {
 	r.Out = &g.out
 	r.Artifact = func(id string) string { return filepath.Join(g.root, id) }
 	r.DB.Local = g.local(r)
+	if g.clock != nil {
+		r.SetClock(g.clock.Now, g.clock.Sleep)
+	}
 	return r
 }
 
@@ -886,11 +899,12 @@ func TestRender_RollbackRestoreBackup(t *testing.T) {
 // left behind.
 func TestRender_RestorePointInTime(t *testing.T) {
 	g := newRenderRig(t)
+	clock := g.clock
 	ctx := context.Background()
 	id1 := g.mustDeploy(g.target())
-	time.Sleep(1100 * time.Millisecond)
-	at := time.Now().UTC().Truncate(time.Second)
-	time.Sleep(1100 * time.Millisecond)
+	clock.Sleep(1100 * time.Millisecond)
+	at := clock.Now().UTC().Truncate(time.Second)
+	clock.Sleep(1100 * time.Millisecond)
 
 	r := g.connected()
 	unlock, err := r.Lock(ctx)
@@ -927,8 +941,8 @@ func TestRender_RestorePointInTime(t *testing.T) {
 	}
 	defer unlock()
 	g.render.Script("update_in_progress", "update_failed")
-	time.Sleep(1100 * time.Millisecond) // the copy's name carries the second
-	_, err = g2.RestorePointInTime(ctx, time.Now().UTC(), &g.out)
+	clock.Sleep(1100 * time.Millisecond) // the copy's name carries the second
+	_, err = g2.RestorePointInTime(ctx, clock.Now().UTC(), &g.out)
 	g.keep("", err)
 	if err == nil || !strings.Contains(err.Error(), "is the service's again") {
 		t.Fatalf("error: %v", err)

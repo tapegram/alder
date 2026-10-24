@@ -41,7 +41,13 @@ const maxSlug = 40
 // migrations/ that do not agree with themselves (a schema.json that is not the last file's
 // result, a file that does not follow the one before it, two files with one number:
 // buildkit.MigrationsChain); 2 for usage errors and files that cannot be read or written.
-func runMigrateTo(args []string, stdout, stderr io.Writer) (code int) {
+func runMigrateTo(args []string, stdout, stderr io.Writer) int {
+	return runMigrateWith(args, stdout, stderr, nil)
+}
+
+// runMigrateWith is runMigrateTo with the deploy commands' environment of `alder migrate silos`
+// (nil: osDeployEnv's).
+func runMigrateWith(args []string, stdout, stderr io.Writer, e *deployEnv) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(stderr, "alder migrate: internal error: %v\n", r)
@@ -49,7 +55,10 @@ func runMigrateTo(args []string, stdout, stderr io.Writer) (code int) {
 		}
 	}()
 	if len(args) >= 2 && args[0] == "silos" && !strings.HasPrefix(args[1], "-") {
-		return runMigrateSilosTo(args[1:], stdout, stderr) // `alder migrate silos <env>`
+		if e == nil {
+			return runMigrateSilosTo(args[1:], stdout, stderr) // `alder migrate silos <env>`
+		}
+		return runMigrateSilosWith(args[1:], stdout, stderr, *e)
 	}
 	dir, name, dry, haveDir := ".", "", false, false
 	for i := 0; i < len(args); i++ {

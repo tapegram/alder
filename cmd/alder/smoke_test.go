@@ -19,6 +19,7 @@ import (
 // the login page is served and that SIGINT shuts it down cleanly; then starts it in production
 // with ALDER_STATIC and checks that directory is served and SIGTERM stops it.
 func TestBuild_BinarySmoke(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go is not on PATH")
 	}
@@ -28,8 +29,7 @@ func TestBuild_BinarySmoke(t *testing.T) {
 	}
 	tmp := t.TempDir()
 	copyDir(t, src, filepath.Join(tmp, "todos"))
-	t.Chdir(tmp)
-	if code, stdout, stderr := runBuild(t, "todos"); code != 0 {
+	if code, stdout, stderr := runBuild(t, "--build-dir", filepath.Join(tmp, "build"), filepath.Join(tmp, "todos")); code != 0 {
 		t.Fatalf("alder build: exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 

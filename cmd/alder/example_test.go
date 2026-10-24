@@ -18,6 +18,7 @@ import (
 // the Theme module it imported. The one other module the skeleton names is the page the login
 // sends the user to, which every app writes for itself; the test writes a bare one.
 func TestExample_SkeletonStandsAlone(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, rel := range []string{"App.alder", "Layout.alder", "User.alder", "Auth/Login.alder"} {
 		b, err := os.ReadFile(filepath.Join(todosDir(t), "app", filepath.FromSlash(rel)))
@@ -78,6 +79,7 @@ func blogDir(t *testing.T) string {
 // (adapters/auth/ and adapters/markdown/) pass their Go tests, and the app passes its own tests,
 // every one of which chapter 14 quotes by name.
 func TestExample_Blog(t *testing.T) {
+	// serial: inTemp (t.Chdir) into a fresh dir; the test names its app by a relative path
 	needGoTool(t)
 	code, out, errs := run(t, blogDir(t))
 	if code != 0 || out != "" || errs != "" {
@@ -85,11 +87,11 @@ func TestExample_Blog(t *testing.T) {
 	}
 	inTemp(t)
 	copyDir(t, blogDir(t), "blog")
-	code, out, errs = runBuild(t, "blog")
+	code, out, errs = runBuild(t, "--build-dir", "build", "blog")
 	if code != 0 || out != "wrote build/blog/blog\n" {
 		t.Fatalf("alder build examples/blog: exit %d\nout: %s\nerr: %s", code, out, errs)
 	}
-	prodHasNoTests(t, "blog")
+	prodHasNoTests(t, "build", "blog")
 	tmp, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -234,6 +236,7 @@ func mutationAtLeast(t *testing.T, dir string, min float64, mutants int) {
 // mutant killed), measured on a copy so the build lands in a temporary directory. A mutation
 // quality gate: it runs nightly in CI, or with ALDER_MUTATION_GATES=1.
 func TestExample_TodosMutation(t *testing.T) {
+	// serial: inTemp (t.Chdir) into a fresh dir; the test names its app by a relative path
 	mutationGate(t)
 	needGoTool(t)
 	inTemp(t)
@@ -243,9 +246,9 @@ func TestExample_TodosMutation(t *testing.T) {
 
 // prodHasNoTests fails t when the production module build/<name> (alder build's) carries test
 // code: Tests, TestSession, a test function or the rt/testing import.
-func prodHasNoTests(t *testing.T, name string) {
+func prodHasNoTests(t *testing.T, buildDir, name string) {
 	t.Helper()
-	gos, _ := filepath.Glob(filepath.Join("build", name, "*.go"))
+	gos, _ := filepath.Glob(filepath.Join(buildDir, name, "*.go"))
 	if len(gos) == 0 {
 		t.Fatalf("no generated Go in build/%s", name)
 	}
@@ -267,6 +270,7 @@ func prodHasNoTests(t *testing.T, name string) {
 // (TestExample_SkeletonStandsAlone); the login sends the user to Posts.Index, which the test
 // writes bare.
 func TestExample_BlogSkeletonStandsAlone(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, rel := range []string{"App.alder", "Layout.alder", "User.alder", "Auth/Login.alder"} {
 		b, err := os.ReadFile(filepath.Join(blogDir(t), "app", filepath.FromSlash(rel)))
@@ -322,6 +326,7 @@ var workspaceAbs, workspaceAbsErr = filepath.Abs("../../examples/workspace")
 // exactly what `alder new admin` writes (README, "Replaying the admin"), and it keeps the
 // mutation score its README records.
 func TestExample_Workspace(t *testing.T) {
+	// serial: inTemp (t.Chdir) into a fresh dir; the test names its app by a relative path
 	needGoTool(t)
 	if workspaceAbsErr != nil {
 		t.Fatal(workspaceAbsErr)
@@ -352,11 +357,11 @@ func TestExample_Workspace(t *testing.T) {
 
 	inTemp(t)
 	copyDir(t, workspaceAbs, "workspace")
-	code, out, errs = runBuild(t, "workspace")
+	code, out, errs = runBuild(t, "--build-dir", "build", "workspace")
 	if code != 0 || out != "wrote build/workspace/workspace\n" {
 		t.Fatalf("alder build examples/workspace: exit %d\nout: %s\nerr: %s", code, out, errs)
 	}
-	prodHasNoTests(t, "workspace")
+	prodHasNoTests(t, "build", "workspace")
 	tmp, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)

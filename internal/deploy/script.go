@@ -24,6 +24,9 @@ type Script struct {
 	// AllowDataLoss (the run's --allow-data-loss) gives the script ALDER_ALLOW_DATA_LOSS=1, which
 	// the binary needs to apply a migration that drops data; without it the variable is removed.
 	AllowDataLoss bool
+	// Env is the environment the script starts from (nil: this process's, os.Environ()); a
+	// later NAME=value overrides an earlier one. cmd/alder adds ALDER_HOST for --host.
+	Env []string
 }
 
 // ScriptUnavailable is the refusal of status, rollback, logs and restore for a Script target.
@@ -49,8 +52,12 @@ func (s Script) Run(ctx context.Context, dir, env string, requires []string) err
 	}
 	cmd := exec.CommandContext(ctx, path, abs, env)
 	cmd.Dir = s.AppDir
+	base := s.Env
+	if base == nil {
+		base = os.Environ()
+	}
 	vars := []string{}
-	for _, kv := range os.Environ() {
+	for _, kv := range base {
 		if !strings.HasPrefix(kv, "ALDER_ALLOW_DATA_LOSS=") {
 			vars = append(vars, kv)
 		}

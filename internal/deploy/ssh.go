@@ -22,15 +22,18 @@ import (
 )
 
 // EnvSSHConfig names an ssh_config file every ssh the Ssh target runs reads (`ssh -F`): an
-// identity, a known-hosts file, a jump host. The tests point it at their own sshd.
+// identity, a known-hosts file, a jump host. cmd/alder reads it into Ssh.SSHConfig; the tests
+// point it at their own sshd.
 const EnvSSHConfig = "ALDER_SSH_CONFIG"
 
 // EnvSupervisor forces how the Ssh target runs a build: "process" (a background process with a
 // pid file) even where systemd is present. Without it, systemd is used when it runs on the host.
+// cmd/alder reads it into Ssh.Supervisor.
 const EnvSupervisor = "ALDER_DEPLOY_SUPERVISOR"
 
 // EnvCaddyAdmin is the address of Caddy's admin API at the box (default DefaultCaddyAdmin):
-// for a Caddy that listens elsewhere, and for the tests' fake Caddy.
+// for a Caddy that listens elsewhere, and for the tests' fake Caddy. cmd/alder reads it into
+// Ssh.CaddyAdmin.
 const EnvCaddyAdmin = "ALDER_DEPLOY_CADDY_ADMIN"
 
 // DefaultCaddyAdmin is where Caddy's admin API listens unless configured otherwise.
@@ -66,9 +69,20 @@ type Ssh struct {
 	Proxy     string // "Caddy" or "None"
 	BackupURL string
 	Warn      io.Writer // warnings (the environment file's mode, linger)
-	// CaddyAdmin is the host:port of Caddy's admin API at the box (EnvCaddyAdmin, else
-	// DefaultCaddyAdmin).
+	// CaddyAdmin is the host:port of Caddy's admin API at the box (DefaultCaddyAdmin unless
+	// set: cmd/alder sets it from EnvCaddyAdmin).
 	CaddyAdmin string
+	// SSH is the ssh executable every command runs ("": the ssh on PATH); a test names its own.
+	SSH string
+	// SSHConfig, when set, is an ssh_config file every ssh reads (`ssh -F`; cmd/alder reads it
+	// from EnvSSHConfig).
+	SSHConfig string
+	// Supervisor "process" runs a build as a background process with a pid file even where
+	// systemd runs (EnvSupervisor); anything else lets Connect choose.
+	Supervisor string
+	// Poll, when not zero, is how often the scripts' wait loops look again (ALDER_POLL at the
+	// target; 0: each loop's own interval, 0.2 s to 1 s). Tests shorten it.
+	Poll time.Duration
 	// DB is the environment's `database: Turso "org" { … }` (turso.go), nil for the file
 	// <path>/db/app.db.
 	DB *Turso
@@ -102,9 +116,6 @@ func NewSsh(app, env string, t ir.Target, d *ir.Deploy) *Ssh {
 		dest = t.User + "@" + dest
 	}
 	s := &Ssh{App: app, Env: env, Dest: dest, Port: t.Port, Root: strings.TrimRight(t.Path, "/"), Domain: t.Domain, Proxy: d.Proxy, Warn: io.Discard, CaddyAdmin: DefaultCaddyAdmin}
-	if a := os.Getenv(EnvCaddyAdmin); a != "" {
-		s.CaddyAdmin = a
-	}
 	if s.Proxy == "" {
 		s.Proxy = "Caddy"
 	}
@@ -117,6 +128,17 @@ func NewSsh(app, env string, t ir.Target, d *ir.Deploy) *Ssh {
 	}
 	return s
 }
+
+// ssh is the ssh executable: SSH, else "ssh".
+func (s *Ssh) ssh() string {
+	if s.SSH != "" {
+		return s.SSH
+	}
+	return "ssh"
+}
+
+// SetClock is the clock of the Turso database's point in time (Clocked).
+func (s *Ssh) SetClock(now func() time.Time, sleep func(time.Duration)) { s.DB.setClock(now, sleep) }
 
 // MaxSiloFiles is how many silo files the backup shipper streams (one shipper, a lock and two
 // connections each): with more, a deploy that declares `backup` is refused and Turso is the
@@ -149,7 +171,7 @@ func (s *Ssh) Close() error {
 	if s.ctl == "" {
 		return nil
 	}
-	exec.Command("ssh", append(s.baseArgs(), "-o", "ControlPath="+s.ctl, "-O", "exit", "--", s.Dest)...).Run()
+	exec.Command(s.ssh(), append(s.baseArgs(), "-o", "ControlPath="+s.ctl, "-O", "exit", "--", s.Dest)...).Run()
 	os.RemoveAll(filepath.Dir(s.ctl))
 	s.ctl = ""
 	return nil
@@ -159,14 +181,14 @@ func (s *Ssh) Close() error {
 // process dies) that every later ssh shares. Without it (it did not start), each ssh connects
 // on its own.
 func (s *Ssh) master(ctx context.Context) {
-	sweepControl()
+	sweepControl(s.ssh())
 	dir, err := os.MkdirTemp(shortTemp(), "alder-ssh-")
 	if err != nil {
 		return
 	}
 	ctl := filepath.Join(dir, "c")
 	args := append(s.baseArgs(), "-o", "ControlMaster=yes", "-o", "ControlPersist=10m", "-o", "ControlPath="+ctl, "-N", "-f", "--", s.Dest)
-	cmd := exec.CommandContext(ctx, "ssh", args...) // no pipes: the background master holds none of ours
+	cmd := exec.CommandContext(ctx, s.ssh(), args...) // no pipes: the background master holds none of ours
 	if err := cmd.Run(); err != nil {
 		os.RemoveAll(dir)
 		return
@@ -182,7 +204,7 @@ func (s *Ssh) master(ctx context.Context) {
 // (SIGKILL: SIGINT and SIGTERM end a run through Close): those older than two hours whose
 // socket no longer answers (`ssh -O check`: a master of a run still going, `alder logs -f` for
 // hours say, keeps its directory). A master outlives its run by ControlPersist (10m) at most.
-func sweepControl() {
+func sweepControl(bin string) {
 	dirs, _ := filepath.Glob(filepath.Join(shortTemp(), "alder-ssh-*"))
 	for _, d := range dirs {
 		fi, err := os.Stat(d)
@@ -191,7 +213,7 @@ func sweepControl() {
 		}
 		ctl := filepath.Join(d, "c")
 		if _, err := os.Stat(ctl); err == nil {
-			if exec.Command("ssh", "-o", "ControlPath="+ctl, "-O", "check", "alder-sweep").Run() == nil {
+			if exec.Command(bin, "-o", "ControlPath="+ctl, "-O", "check", "alder-sweep").Run() == nil {
 				continue // its master answers: in use
 			}
 		}
@@ -232,7 +254,7 @@ func (s *Ssh) sshArgs() []string {
 // baseArgs are the options every ssh of the target takes.
 func (s *Ssh) baseArgs() []string {
 	args := []string{"-o", "BatchMode=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4"}
-	if cfg := os.Getenv(EnvSSHConfig); cfg != "" {
+	if cfg := s.SSHConfig; cfg != "" {
 		args = append(args, "-F", cfg)
 	}
 	if s.Port != "" {
@@ -273,7 +295,7 @@ func (s *Ssh) run(ctx context.Context, script string) (string, error) {
 // stream is run with the script's output going to stdout and stderr as it comes.
 func (s *Ssh) stream(ctx context.Context, script string, stdout, stderr io.Writer) error {
 	var errb bytes.Buffer
-	cmd := exec.CommandContext(ctx, "ssh", append(s.sshArgs(), "sh -s")...)
+	cmd := exec.CommandContext(ctx, s.ssh(), append(s.sshArgs(), "sh -s")...)
 	cmd.Stdin = strings.NewReader(s.prelude() + script)
 	cmd.Stdout = stdout
 	cmd.Stderr = io.MultiWriter(stderr, &errb)
@@ -291,8 +313,12 @@ func (s *Ssh) stream(ctx context.Context, script string, stdout, stderr io.Write
 // alone) and defines R (the root), U (the unit), SUP (the supervisor), alive ID (whether build
 // ID's process runs), stopnow ID and cancel_later ID.
 func (s *Ssh) prelude() string {
+	poll := ""
+	if s.Poll > 0 {
+		poll = "ALDER_POLL=" + strconv.FormatFloat(s.Poll.Seconds(), 'f', -1, 64) + "; export ALDER_POLL\n"
+	}
 	return `umask 077
-R=` + q(s.Root) + `
+` + poll + `R=` + q(s.Root) + `
 U=` + q(s.unit()) + `
 SUP=` + q(s.sup) + `
 SCTL="systemctl"; [ "$SUP" = user ] && SCTL="systemctl --user"
@@ -320,7 +346,7 @@ func (s *Ssh) stopNow() string {
   sp=$(cat "$R/builds/$1/pid" 2>/dev/null) || return 0
   alive "$1" || { rm -f "$R/builds/$1/pid"; return 0; }
   kill -TERM "$sp" 2>/dev/null
-  si=0; while alive "$1" && [ $si -lt 200 ]; do sleep 0.2; si=$((si + 1)); done
+  se=$(( $(date +%s) + 40 )); while alive "$1" && [ "$(date +%s)" -le "$se" ]; do sleep "${ALDER_POLL:-0.2}"; done
   alive "$1" && kill -KILL "$sp" 2>/dev/null
   rm -f "$R/builds/$1/pid"; return 0
 }`
@@ -359,7 +385,7 @@ for c in curl tar; do command -v $c >/dev/null 2>&1 || echo "lack=$c"; done
 	}
 	s.plat = Platform{goos, goarch}
 	s.sup = "process"
-	if v := kv["systemd"]; v != "" && os.Getenv(EnvSupervisor) != "process" {
+	if v := kv["systemd"]; v != "" && s.Supervisor != "process" {
 		s.sup = v
 	}
 	s.conn = true
@@ -546,7 +572,7 @@ func (s *Ssh) Upload(ctx context.Context, dir, id string) error {
 		return err
 	}
 	part := s.Root + "/builds/" + id + ".part"
-	cmd := exec.CommandContext(ctx, "ssh", append(s.sshArgs(), "umask 077 && rm -rf "+q(part)+" && mkdir -p "+q(part)+" && tar -xf - -C "+q(part))...)
+	cmd := exec.CommandContext(ctx, s.ssh(), append(s.sshArgs(), "umask 077 && rm -rf "+q(part)+" && mkdir -p "+q(part)+" && tar -xf - -C "+q(part))...)
 	cmd.Stdin = &tarball
 	var errb bytes.Buffer
 	cmd.Stderr = &errb
@@ -655,11 +681,7 @@ func (s *Ssh) Backup(ctx context.Context, id string) (string, error) {
 		// the point in time is the next whole second (Turso's restore takes seconds), and nothing
 		// is migrated before it has passed: every write before the backup is at or before it,
 		// every change the migrations make after it
-		next := s.DB.Now().UTC().Truncate(time.Second).Add(time.Second)
-		if d := time.Until(next); d > 0 && d <= time.Second {
-			time.Sleep(d + 50*time.Millisecond)
-		}
-		at := next.Format(time.RFC3339)
+		at := s.DB.pitrWait().Format(time.RFC3339)
 		_, err = s.run(ctx, `id=`+q(id)+`
 printf '%s %s\n' `+q(at)+` `+q(s.DB.SharedName())+` > "$R/builds/$id/backup.pitr"
 cat "$R/current" > "$R/builds/$id/backup.of" 2>/dev/null
@@ -757,15 +779,15 @@ if [ "$(wc -c < "$B/log" | tr -d ' ')" -gt 10485760 ]; then
 fi
 off=$(wc -c < "$B/log" | tr -d ' ')
 echo "--- alder deploy: start $(date -u +%Y-%m-%dT%H:%M:%SZ) on `+addr+`" >> "$B/log"
-`+launch+`i=0
-while [ $i -lt 75 ]; do
+`+launch+`end=$(( $(date +%s) + 15 ))
+while [ "$(date +%s)" -le "$end" ]; do
   port=$(tail -c +$((off + 1)) "$B/log" | sed -n 's/^listening on .*:\([0-9][0-9]*\)$/\1/p' | tail -n 1)
   if [ -n "$port" ]; then
     case "`+addr+`" in 127.0.0.1:0) echo "127.0.0.1:$port" > "$B/addr";; esac
     echo "port=$port"; exit 0
   fi
   if ! alive "$id"; then sleep 0.3; echo exited; tail -c +$((off + 1)) "$B/log" | tail -n 40; exit 0; fi
-  sleep 0.2; i=$((i + 1))
+  sleep "${ALDER_POLL:-0.2}"
 done
 echo timeout; tail -c +$((off + 1)) "$B/log" | tail -n 40
 `)
@@ -883,7 +905,7 @@ while :; do
     if [ -n "$seen" ]; then echo "status $seen"; else echo timeout; fi
     break
   fi
-  sleep 1
+  sleep "${ALDER_POLL:-1}"
 done
 tail -n 40 "$R/builds/$id/log"
 `)
@@ -1069,9 +1091,9 @@ if ! command -v caddy >/dev/null 2>&1; then
   fi
   echo installed=yes
 fi
-i=0
+end=$(( $(date +%s) + 10 ))
 until curl -s -o /dev/null "$A/config/"; do
-  i=$((i + 1)); [ $i -gt 20 ] && { echo noadmin; exit 0; }; sleep 0.5
+  [ "$(date +%s)" -gt "$end" ] && { echo noadmin; exit 0; }; sleep "${ALDER_POLL:-0.5}"
 done
 echo ready=yes
 `
@@ -1165,7 +1187,7 @@ echo locked
 cat > /dev/null
 rm -rf "$D"
 `
-	cmd := exec.Command("ssh", append(s.sshArgs(), "sh -c "+q(script))...)
+	cmd := exec.Command(s.ssh(), append(s.sshArgs(), "sh -c "+q(script))...)
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -1534,7 +1556,7 @@ while kill -0 "$PPID" 2>/dev/null; do  # the session's sshd gone: stop
   if [ -n "$n" ] && [ "$n" != "$c" ]; then c=$n; off=0; echo "--- alder logs: build $c is current"; fi
   size=$(wc -c < "$R/builds/$c/log" 2>/dev/null | tr -d ' ')
   if [ -n "$size" ] && [ "$size" -gt "$off" ]; then tail -c +$((off + 1)) "$R/builds/$c/log" | head -c $((size - off)); off=$size; fi
-  sleep 1
+  sleep "${ALDER_POLL:-1}"
 done
 `
 	}
@@ -1565,7 +1587,7 @@ func (s *Ssh) Restore(ctx context.Context, db string) (string, error) {
 	}
 	defer f.Close()
 	dst := s.Root + "/db/app.db.restore"
-	cmd := exec.CommandContext(ctx, "ssh", append(s.sshArgs(), "umask 077 && mkdir -p "+q(s.Root+"/db")+" && cat > "+q(dst+".part")+" && chmod 600 "+q(dst+".part")+" && mv "+q(dst+".part")+" "+q(dst))...)
+	cmd := exec.CommandContext(ctx, s.ssh(), append(s.sshArgs(), "umask 077 && mkdir -p "+q(s.Root+"/db")+" && cat > "+q(dst+".part")+" && chmod 600 "+q(dst+".part")+" && mv "+q(dst+".part")+" "+q(dst))...)
 	cmd.Stdin = f
 	var errb bytes.Buffer
 	cmd.Stderr = &errb

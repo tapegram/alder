@@ -269,6 +269,7 @@ func drillWords(s string) ([]string, error) {
 // its task's names, its own tests pass, its tests score at least 0.90, and the hidden tests
 // pass.
 func TestDrill(t *testing.T) {
+	t.Parallel()
 	needGoTool(t)
 	if testing.Short() {
 		t.Skip("builds apps and runs their mutants")
@@ -307,7 +308,7 @@ func TestDrill(t *testing.T) {
 
 			// the score, on the app's own tests (before the hidden ones are added)
 			var out, errb bytes.Buffer
-			code := runTestTo([]string{dir, "--mutate"}, &out, &errb)
+			code := runTestTo(withBuildDir(t, []string{dir, "--mutate"}), &out, &errb)
 			m := scoreRe.FindStringSubmatch(out.String())
 			if code != 0 || m == nil {
 				t.Fatalf("alder test --mutate: exit %d\n%s%s", code, out.String(), errb.String())
@@ -329,7 +330,7 @@ func TestDrill(t *testing.T) {
 			total := strings.Count(string(hidden), "\ntest \"")
 			out.Reset()
 			errb.Reset()
-			code = runTestTo([]string{dir, "-run", "^Hidden "}, &out, &errb)
+			code = runTestTo(withBuildDir(t, []string{dir, "-run", "^Hidden "}), &out, &errb)
 			if want := fmt.Sprintf("%d passed, 0 failed\n", total); code != 0 || total == 0 || !strings.HasSuffix(out.String(), want) {
 				t.Fatalf("the hidden tests: exit %d, want %q\n%s%s", code, want, out.String(), errb.String())
 			}
@@ -342,6 +343,7 @@ func TestDrill(t *testing.T) {
 // it is: its `text` blocks, one after another, are the script's commands (the script without
 // its first comment paragraph).
 func TestDrill_Chapter(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile(drillScript)
 	if err != nil {
 		t.Fatal(err)

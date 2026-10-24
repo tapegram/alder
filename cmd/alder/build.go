@@ -18,8 +18,8 @@ import (
 	"alder/internal/version"
 )
 
-// runBuildTo is `alder build [--emit] [dir]`: check the app in dir and, when it has no errors
-// and no holes, lower it and emit its Go into build/<app>/ (app is dir's base name), the module
+// runBuildTo is `alder build [--emit] [--build-dir DIR] [dir]`: check the app in dir and, when it has no errors
+// and no holes, lower it and emit its Go into build/<app>/ (app is dir's base name; DIR/<app>/ with --build-dir, which replaces build/ throughout), the module
 // "app", with the runtime it requires in build/<app>/rt/ (buildkit.WriteRuntime: the copy
 // embedded in this binary, refreshed on every build) and its dependencies in Go's module cache
 // (buildkit.DownloadDeps: downloaded once per machine, with the line buildkit.FetchingLine; a
@@ -39,11 +39,16 @@ import (
 // (Go's errors are printed as they are); 2 for usage errors and internal errors (including
 // generated Go that does not vet).
 func runBuildTo(args []string, stdout, stderr io.Writer) int {
-	dir, emit, haveDir := ".", false, false
-	for _, a := range args {
-		switch {
+	dir, emit, haveDir, bd := ".", false, false, ""
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
 		case a == "--emit":
 			emit = true
+		case a == "--build-dir" && i+1 < len(args):
+			i++
+			bd = args[i]
+		case strings.HasPrefix(a, "--build-dir="):
+			bd = strings.TrimPrefix(a, "--build-dir=")
 		case strings.HasPrefix(a, "-") || haveDir:
 			usageTo(stderr)
 			return 2
@@ -51,11 +56,30 @@ func runBuildTo(args []string, stdout, stderr io.Writer) int {
 			dir, haveDir = a, true
 		}
 	}
-	path, code := buildTo(dir, emit, "", stdout, stderr)
+	path, code := buildTo(dir, emit, appBuildDir(bd, dir), stdout, stderr)
 	if code == 0 {
 		fmt.Fprintf(stdout, "wrote %s\n", path)
 	}
 	return code
+}
+
+// buildRoot is the directory the build output of every app goes under: the --build-dir flag's
+// value when given, else "build" (relative to the working directory).
+func buildRoot(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	return "build"
+}
+
+// appBuildDir is the output directory of the app in dir: buildRoot(bd)/<app>, app being dir's
+// base name.
+func appBuildDir(bd, dir string) string {
+	name := filepath.Base(dir)
+	if abs, err := filepath.Abs(dir); err == nil {
+		name = filepath.Base(abs)
+	}
+	return filepath.Join(buildRoot(bd), name)
 }
 
 // buildApp builds the executable of the app in dir as `alder build dir` does (buildTo), into the
@@ -130,7 +154,7 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 		return "", 2
 	}
 	if out == "" {
-		out = filepath.Join("build", name)
+		out = filepath.Join(buildRoot(""), name)
 	}
 	if err := buildkit.WriteGenerated(out, files); err != nil {
 		fmt.Fprintf(stderr, "alder build: %v\n", err)

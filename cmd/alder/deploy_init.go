@@ -13,9 +13,6 @@ import (
 	"alder/internal/version"
 )
 
-// initSource is the alder source to pin (a variable for tests).
-var initSource = version.SourceOf
-
 // initNeedsDisk: SQLite files to keep are the shared tables' and each silo's, which live
 // under ALDER_DB's directory.
 func initNeedsDisk(tables, silos int) bool { return tables > 0 || silos > 0 }
@@ -31,6 +28,11 @@ const deployInitUsage = "usage: alder deploy init render|fly [dir] [--force] [--
 // --dry-run prints the files and writes nothing. Exit 0; 1 for files in the way; 2 for usage
 // errors and an app that does not load.
 func runDeployInitTo(args []string, stdout, stderr io.Writer) int {
+	return runDeployInitWith(args, stdout, stderr, version.SourceOf)
+}
+
+// runDeployInitWith is runDeployInitTo with the alder source to pin given by source.
+func runDeployInitWith(args []string, stdout, stderr io.Writer, source func() version.Source) int {
 	var pos []string
 	force, dry := false, false
 	for _, a := range args {
@@ -60,7 +62,7 @@ func runDeployInitTo(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "alder deploy init: %s\n", r.loadErr)
 		return 2
 	}
-	src := initSource()
+	src := source()
 	spec := deploy.InitSpec{Target: target, App: r.app, Ref: src.Ref, Disk: initNeedsDisk(r.tables, len(r.silos))}
 	files, err := deploy.InitFiles(spec)
 	if err != nil {

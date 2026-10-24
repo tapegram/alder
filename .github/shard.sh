@@ -7,13 +7,53 @@
 #                                    value counts)
 #   .github/shard.sh N check [pkg]   assert the N shards' -run patterns together select every
 #                                    test exactly once (go test -list with each shard's pattern)
+#   .github/shard.sh weights FILE    print the weight lines of .github/shard-weights from FILE, the
+#                                    output of `go test ./cmd/alder -count=1 -json` (needs python3)
 #
 # Shards are balanced by weight: .github/shard-weights lists the slow tests with their seconds
-# (measured; `go test -v` prints them), every other test weighs 1. The tests, heaviest first
+# (measured: `shard.sh weights`), every other test weighs 1. A test's weight is its Elapsed, or
+# for a parallel group (a test whose subtests call t.Parallel: its own Elapsed ends before they
+# run) the time from its first subtest starting (its "cont" event once t.Parallel lets it go, else
+# its "run") to its last subtest ending, whichever is longer; the tests of 2 s or more are listed. The tests, heaviest first
 # (ties by name), each go to the lightest shard so far (ties: the lowest k). Deterministic, and a
 # new or renamed test lands in some shard without anyone editing a file; a new slow test is worth
 # a line in shard-weights.
 set -euo pipefail
+if [ "$1" = weights ]; then
+  exec python3 - "$2" <<'PY'
+import datetime, json, re, sys
+def at(s):  # an RFC 3339 time with nanoseconds, which Python's fromisoformat does not read
+    m = re.match(r'(.*T\d\d:\d\d:\d\d)(\.\d+)?(Z|[+-]\d\d:\d\d)$', s)
+    return datetime.datetime.fromisoformat(m.group(1) + m.group(3).replace('Z', '+00:00')).timestamp() + float(m.group(2) or 0)
+elapsed, run, cont, end = {}, {}, {}, {}
+for line in open(sys.argv[1]):
+    try:
+        e = json.loads(line)
+    except ValueError:
+        continue
+    name, act = e.get('Test'), e.get('Action')
+    if not name or 'Time' not in e:
+        continue
+    root = name.split('/')[0]
+    if '/' not in name:
+        if act == 'pass':
+            elapsed[root] = e['Elapsed']
+    elif act == 'run':
+        run.setdefault(name, at(e['Time']))
+    elif act == 'cont':
+        cont[name] = at(e['Time'])
+    elif act in ('pass', 'fail', 'skip'):
+        end[root] = max(end.get(root, 0), at(e['Time']))
+weight = dict(elapsed)
+for root in end:
+    if root in elapsed:
+        first = min(cont.get(s, run[s]) for s in run if s.split('/')[0] == root)
+        weight[root] = max(elapsed[root], end[root] - first)
+for name, w in sorted(weight.items(), key=lambda x: (-round(x[1]), x[0])):
+    if round(w) >= 2:
+        print(round(w), name)
+PY
+fi
 n=$1 k=$2 pkg=${3:-./cmd/alder}
 shift $(( $# < 3 ? $# : 3 ))
 

@@ -22,7 +22,7 @@ import (
 )
 
 // evalUsage is the usage line of `alder eval`.
-const evalUsage = "usage: alder eval [dir] [--run] [--json] [--in Name | --module Name] <expr | ->"
+const evalUsage = "usage: alder eval [dir] [--run] [--json] [--build-dir DIR] [--in Name | --module Name] <expr | ->"
 
 // evalResult is the --json output of `alder eval`.
 type evalResult struct {
@@ -33,7 +33,7 @@ type evalResult struct {
 	Hint        string            `json:"hint,omitempty"` // a note on a success (`--run` given a Select)
 }
 
-// runEvalTo is `alder eval [dir] [--run] [--json] [--in Name | --module Name] <expr | ->`: it evaluates an
+// runEvalTo is `alder eval [dir] [--run] [--json] [--build-dir DIR] [--in Name | --module Name] <expr | ->`: it evaluates an
 // expression (or, with `-`, standard input: `let name = expr` lines, then an expression) in a
 // scratch module that sees every module of the app at dir (default "."), compiled by the real
 // compiler, and prints `value : Type`. The scratch module is named Scratch, or Name with
@@ -80,10 +80,15 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 
 	var pos []string
 	run, named := false, false
-	modName, inName := "Scratch", ""
+	modName, inName, bd := "Scratch", "", ""
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
+		case a == "--build-dir" && i+1 < len(args):
+			i++
+			bd = args[i]
+		case strings.HasPrefix(a, "--build-dir="):
+			bd = strings.TrimPrefix(a, "--build-dir=")
 		case a == "--json":
 			jsonOut = true
 		case a == "--run":
@@ -138,7 +143,7 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	if !dirHasApp(abs) {
 		return failf(2, "alder eval: no .alder files under %s/app", dir)
 	}
-	appBuild := filepath.Join("build", filepath.Base(abs))
+	appBuild := filepath.Join(buildRoot(bd), filepath.Base(abs))
 
 	sessionName := modName
 	if inName != "" {

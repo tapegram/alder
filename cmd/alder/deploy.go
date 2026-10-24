@@ -30,7 +30,7 @@ import (
 
 // The usage lines of the deploy commands (chapter 16).
 const (
-	deployUsage   = "usage: alder deploy <env> [dir] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json] | alder deploy init render|fly [dir] [--force] [--dry-run]"
+	deployUsage   = "usage: alder deploy <env> [dir] [--build-dir DIR] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json] | alder deploy init render|fly [dir] [--force] [--dry-run]"
 	statusUsage   = "usage: alder status <env> [dir] [--host name]"
 	rollbackUsage = "usage: alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup [--yes]]"
 	logsUsage     = "usage: alder logs <env> [dir] [--host name] [-f]"
@@ -45,6 +45,80 @@ const (
 	envHealthTimeout = "ALDER_DEPLOY_HEALTH_TIMEOUT"
 )
 
+// deployEnv is what the deploy commands (deploy, status, rollback, logs, restore, migrate
+// silos, silos prune) take from this machine's environment, read once per command by
+// osDeployEnv. The commands read nothing from the process's environment on their own and change
+// nothing in it, so tests give each run its own (and run in parallel).
+type deployEnv struct {
+	// Drain is how long the previous build drains after the switch (envDrain): 0 for the
+	// default, -1 to stop it at once (the variable set to 0), as deploy.Options.Drain.
+	Drain time.Duration
+	// HealthTimeout is how long a new build has to pass its health check (envHealthTimeout; 0:
+	// the default).
+	HealthTimeout time.Duration
+	// SSHConfig, Supervisor and CaddyAdmin are an Ssh target's deploy.EnvSSHConfig,
+	// deploy.EnvSupervisor and deploy.EnvCaddyAdmin ("": not set).
+	SSHConfig, Supervisor, CaddyAdmin string
+	// SSH is the ssh executable an Ssh target runs ("": the ssh on PATH). Tests name their own.
+	SSH string
+	// Turso is the Turso client's settings (TURSO_API_TOKEN, ALDER_TURSO_API, …) for an
+	// environment whose database is on Turso.
+	Turso db.TursoConfig
+	// Getenv reads everything else: the `requires` values, Render's and Fly's tokens and
+	// settings, USER (nil: os.Getenv).
+	Getenv func(string) string
+	// Environ is the environment a Script target's script starts from (nil: os.Environ()).
+	Environ []string
+	// BuildDir is the build directory of a command without --build-dir ("": build, relative
+	// to the working directory): where status, rollback, restore and the silo commands find a
+	// build's artifact.
+	BuildDir string
+	// Now and Sleep are the clock of a Turso database's point in time (nil: time.Now,
+	// time.Sleep), and Poll how often an Ssh target's scripts and a Render target look again
+	// (0: their own intervals). Tests set them; osDeployEnv leaves them.
+	Now   func() time.Time
+	Sleep func(time.Duration)
+	Poll  time.Duration
+}
+
+// osDeployEnv is the deploy commands' deployEnv read from this process's environment.
+func osDeployEnv() deployEnv {
+	e := deployEnv{
+		Drain:         durationEnv(envDrain, 0),
+		HealthTimeout: durationEnv(envHealthTimeout, 0),
+		SSHConfig:     os.Getenv(deploy.EnvSSHConfig),
+		Supervisor:    os.Getenv(deploy.EnvSupervisor),
+		CaddyAdmin:    os.Getenv(deploy.EnvCaddyAdmin),
+		Turso:         db.TursoConfigFromEnv(),
+		Getenv:        os.Getenv,
+	}
+	if v := os.Getenv(envDrain); v != "" && e.Drain == 0 {
+		e.Drain = -1 // explicitly 0: stop at once
+	}
+	return e
+}
+
+// getenv reads a variable of the commands' environment (Getenv, else os.Getenv).
+func (e deployEnv) getenv(name string) string {
+	if e.Getenv != nil {
+		return e.Getenv(name)
+	}
+	return os.Getenv(name)
+}
+
+// scriptEnv is the environment a Script target's script starts from: Environ (else this
+// process's), with ALDER_HOST=host when the run has a --host.
+func (e deployEnv) scriptEnv(host string) []string {
+	env := e.Environ
+	if env == nil {
+		env = os.Environ()
+	}
+	if host != "" {
+		env = append(slices.Clip(env), "ALDER_HOST="+host)
+	}
+	return env
+}
+
 // runDeployTo is `alder deploy <env> [dir] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run]
 // [--json]` (chapter 16): it reads App's `deploy` declaration in dir (default "."), runs the
 // gate (`alder check`: errors and holes refuse; `alder build`; `alder test`; `alder test
@@ -58,7 +132,12 @@ const (
 // name, a migration that drops data without --allow-data-loss, a build that fails its health
 // check), a target that cannot be reached, a script that exits non-zero; 2 for usage errors, a
 // missing declaration or environment, and internal errors.
-func runDeployTo(args []string, stdout, stderr io.Writer) (code int) {
+func runDeployTo(args []string, stdout, stderr io.Writer) int {
+	return runDeployWith(args, stdout, stderr, osDeployEnv())
+}
+
+// runDeployWith is runDeployTo with the environment e.
+func runDeployWith(args []string, stdout, stderr io.Writer, e deployEnv) (code int) {
 	jsonOut := false
 	fail := func(code int, msg string) int {
 		fmt.Fprintf(stderr, "alder deploy: %s\n", msg)
@@ -77,10 +156,15 @@ func runDeployTo(args []string, stdout, stderr io.Writer) (code int) {
 	}
 	var pos []string
 	o := deploy.Options{}
-	host := ""
+	host, bd := "", ""
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
+		case a == "--build-dir" && i+1 < len(args):
+			i++
+			bd = args[i]
+		case strings.HasPrefix(a, "--build-dir="):
+			bd = strings.TrimPrefix(a, "--build-dir=")
 		case a == "--host" && i+1 < len(args):
 			i++
 			host = args[i]
@@ -109,6 +193,9 @@ func runDeployTo(args []string, stdout, stderr io.Writer) (code int) {
 	if len(pos) == 2 {
 		dir = pos[1]
 	}
+	if bd == "" {
+		bd = e.BuildDir
+	}
 	progress := stdout
 	if jsonOut {
 		progress = stderr
@@ -116,7 +203,7 @@ func runDeployTo(args []string, stdout, stderr io.Writer) (code int) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	r := &deployRunner{dir: dir}
+	r := &deployRunner{dir: dir, buildDir: bd}
 	errs, _, _, _ := r.Check()
 	if r.loadErr != "" {
 		return fail(2, r.loadErr)
@@ -153,37 +240,25 @@ func runDeployTo(args []string, stdout, stderr io.Writer) (code int) {
 	if err != nil {
 		return deployFailed(err, fail)
 	}
-	t, script, err := targetFor(r, targetEnv(env, host), tgt, dir, progress, stderr)
+	t, script, err := targetFor(r, targetEnv(env, host), tgt, dir, progress, stderr, e)
 	if err != nil {
 		return fail(2, err.Error())
 	}
-	if script != nil && host != "" {
-		// the script reads the host the run is for from ALDER_HOST
-		prev, had := os.LookupEnv("ALDER_HOST")
-		os.Setenv("ALDER_HOST", host)
-		defer func() {
-			if had {
-				os.Setenv("ALDER_HOST", prev)
-			} else {
-				os.Unsetenv("ALDER_HOST")
-			}
-		}()
+	if script != nil {
+		// the script reads the host the run is for from ALDER_HOST, in its own environment
+		script.Env = e.scriptEnv(host)
 	}
 	if t != nil {
 		defer t.Close()
 	}
 	o.App, o.Env, o.AppDir, o.Decl, o.Runner = r.app, env, dir, r.decl, r
-	o.Built = filepath.Join("build", r.app)
+	o.Built = filepath.Join(buildRoot(bd), r.app)
 	o.ArtifactRoot = filepath.Join(o.Built, "deploy")
 	o.Binary = func(p deploy.Platform, path string) error { return buildFor(o.Built, r.app, p, path) }
 	o.Version, o.Commit = version.String(), gitCommit(dir)
-	o.User = os.Getenv("USER")
+	o.User = e.getenv("USER")
 	o.Out = progress
-	o.Drain = durationEnv(envDrain, 0)
-	if v := os.Getenv(envDrain); v != "" && o.Drain == 0 {
-		o.Drain = -1 // explicitly 0: stop at once
-	}
-	o.HealthTimeout = durationEnv(envHealthTimeout, 0)
+	o.Drain, o.HealthTimeout = e.Drain, e.HealthTimeout
 	res, err := deploy.Deploy(ctx, o, g, t, script)
 	if err != nil {
 		return deployFailed(err, fail)
@@ -281,7 +356,7 @@ func describeTarget(t ir.Target) string {
 // targetFor is environment env's target of the app r checked: a deploy.Target for Ssh and Fly,
 // or the Script. An Ssh environment knows the app's silo keys, and with `database: Turso` it
 // runs the migrations here with the build's executable for this machine (localBinary).
-func targetFor(r *deployRunner, env string, t ir.Target, dir string, stdout, stderr io.Writer) (deploy.Target, *deploy.Script, error) {
+func targetFor(r *deployRunner, env string, t ir.Target, dir string, stdout, stderr io.Writer, e deployEnv) (deploy.Target, *deploy.Script, error) {
 	app, d := r.app, r.decl
 	switch t.Kind {
 	case "script":
@@ -291,34 +366,55 @@ func targetFor(r *deployRunner, env string, t ir.Target, dir string, stdout, std
 		}
 		return nil, &deploy.Script{Path: t.ScriptPath, AppDir: abs, Stdout: stdout, Stderr: stderr}, nil
 	case "ssh":
-		s := deploy.NewSsh(app, env, t, d)
+		s := newSshTarget(e, app, env, t, d)
 		s.Warn = stdout
 		s.Silos = r.silos
 		if s.DB != nil {
 			s.DB.Silos = r.silos
-			s.DB.Local = func(ctx context.Context, id string) (string, error) { return localBinary(app, id) }
+			s.DB.Local = func(ctx context.Context, id string) (string, error) { return localBinary(r.buildDir, app, id) }
 		}
 		return s, nil, nil
 	case "fly":
 		f := deploy.NewFly(app, env, t, d)
 		f.Warn = stdout
+		f.Token, f.Org, f.Getenv = e.getenv(deploy.EnvFlyToken), e.getenv(deploy.EnvFlyOrg), e.getenv
 		return f, nil, nil
 	case "render":
 		img, err := imagePath(dir, d)
 		if err != nil {
 			return nil, nil, err
 		}
-		rd := deploy.NewRender(app, env, t, d, img)
+		rd := deploy.NewRenderEnv(app, env, t, d, img, e.getenv)
 		rd.Out = stdout
-		rd.Artifact = func(id string) string { return filepath.Join("build", app, "deploy", id) }
-		rd.RollTimeout = durationEnv(envHealthTimeout, 0) // the one source of the timeout, as for the other targets
+		rd.Artifact = func(id string) string { return filepath.Join(buildRoot(r.buildDir), app, "deploy", id) }
+		rd.RollTimeout = e.HealthTimeout // the one source of the timeout, as for the other targets
+		rd.Poll = e.Poll
 		if rd.DB != nil {
 			rd.DB.Silos = r.silos
-			rd.DB.Local = func(ctx context.Context, id string) (string, error) { return localBinary(app, id) }
+			rd.DB.Local = func(ctx context.Context, id string) (string, error) { return localBinary(r.buildDir, app, id) }
+			rd.DB.UseConfig(e.Turso)
+			rd.SetClock(e.Now, e.Sleep)
 		}
 		return rd, nil, nil
 	}
 	return nil, nil, fmt.Errorf("the %s target is not available in this alder yet", t.Kind)
+}
+
+// newSshTarget is environment env's Ssh target t of app as the commands make it with the
+// environment e: its ssh, ssh_config, supervisor, Caddy admin address, polls, and its Turso
+// database's client and clock.
+func newSshTarget(e deployEnv, app, env string, t ir.Target, d *ir.Deploy) *deploy.Ssh {
+	s := deploy.NewSsh(app, env, t, d)
+	s.SSH, s.SSHConfig, s.Supervisor = e.SSH, e.SSHConfig, e.Supervisor
+	if e.CaddyAdmin != "" {
+		s.CaddyAdmin = e.CaddyAdmin
+	}
+	s.Poll = e.Poll
+	if s.DB != nil {
+		s.DB.UseConfig(e.Turso)
+		s.SetClock(e.Now, e.Sleep)
+	}
+	return s
 }
 
 // withHost is environment env's target t serving host instead of its declared domain (`alder
@@ -374,17 +470,18 @@ func targetEnv(env, host string) string {
 // deployRunner runs the gate's steps with the code of `alder check`, `alder build` and `alder
 // test`, capturing what each prints.
 type deployRunner struct {
-	dir     string
-	app     string
-	decl    *ir.Deploy
-	silos   []string // the app's silo keys, sorted
-	tables  int      // the app's tables (shared store): non-zero means a SQLite file to keep
-	loadErr string
-	checked bool
-	errs    int
-	warns   int
-	holes   int
-	out     string
+	dir      string
+	buildDir string // --build-dir ("" is build)
+	app      string
+	decl     *ir.Deploy
+	silos    []string // the app's silo keys, sorted
+	tables   int      // the app's tables (shared store): non-zero means a SQLite file to keep
+	loadErr  string
+	checked  bool
+	errs     int
+	warns    int
+	holes    int
+	out      string
 }
 
 func (r *deployRunner) Check() (int, int, int, string) {
@@ -435,13 +532,13 @@ func (r *deployRunner) Check() (int, int, int, string) {
 
 func (r *deployRunner) Build() (string, bool) {
 	var buf bytes.Buffer
-	_, code := buildTo(r.dir, false, "", &buf, &buf)
+	_, code := buildTo(r.dir, false, appBuildDir(r.buildDir, r.dir), &buf, &buf)
 	return buf.String(), code == 0
 }
 
 func (r *deployRunner) Test() (deploy.TestResult, string, bool) {
 	var out, errb bytes.Buffer
-	code := runTestTo([]string{r.dir}, &out, &errb)
+	code := runTestTo([]string{"--build-dir", buildRoot(r.buildDir), r.dir}, &out, &errb)
 	tr := deploy.TestResult{}
 	for _, l := range strings.Split(out.String(), "\n") {
 		var p, f int
@@ -454,7 +551,7 @@ func (r *deployRunner) Test() (deploy.TestResult, string, bool) {
 
 func (r *deployRunner) Mutate() (float64, int, int, string, bool) {
 	var out, errb bytes.Buffer
-	code := runTestTo([]string{r.dir, "--mutate", "--json"}, &out, &errb)
+	code := runTestTo([]string{"--build-dir", buildRoot(r.buildDir), r.dir, "--mutate", "--json"}, &out, &errb)
 	var score float64
 	mutants, survived, found := 0, 0, false
 	sc := bufio.NewScanner(bytes.NewReader(out.Bytes()))
@@ -506,8 +603,8 @@ func deployBuildArgs(abs string) []string {
 // runs this platform, else one built beside it (build/<app>/deploy/<id>.local/app) from the
 // generated module `alder build` wrote. A deploy to a `database: Turso` environment runs the
 // migrations with it, here.
-func localBinary(app, id string) (string, error) {
-	built := filepath.Join("build", app)
+func localBinary(bd, app, id string) (string, error) {
+	built := filepath.Join(buildRoot(bd), app)
 	artifact := filepath.Join(built, "deploy", id)
 	var desc struct {
 		Platform string `json:"platform"`
@@ -556,8 +653,8 @@ func durationEnv(name string, def time.Duration) time.Duration {
 
 // envTarget loads dir's `deploy` declaration and environment env's target for status,
 // rollback, logs and restore: a Script target has no state to read.
-func envTarget(cmd, env, dir, host string) (deploy.Target, *ir.Deploy, error) {
-	r := &deployRunner{dir: dir}
+func envTarget(cmd, env, dir, host string, e deployEnv) (deploy.Target, *ir.Deploy, error) {
+	r := &deployRunner{dir: dir, buildDir: e.BuildDir}
 	r.Check()
 	if r.loadErr != "" {
 		return nil, nil, errors.New(r.loadErr)
@@ -578,7 +675,7 @@ func envTarget(cmd, env, dir, host string) (deploy.Target, *ir.Deploy, error) {
 			return nil, nil, err
 		}
 	}
-	tg, _, err := targetFor(r, targetEnv(env, host), t, dir, io.Discard, io.Discard)
+	tg, _, err := targetFor(r, targetEnv(env, host), t, dir, io.Discard, io.Discard, e)
 	return tg, r.decl, err
 }
 
@@ -586,6 +683,11 @@ func envTarget(cmd, env, dir, host string) (deploy.Target, *ir.Deploy, error) {
 // builds, the database's size and the last backup (deploy.Status). Exit 0, 1 when the target
 // cannot be reached, 2 for usage errors and a Script environment.
 func runStatusTo(args []string, stdout, stderr io.Writer) int {
+	return runStatusWith(args, stdout, stderr, osDeployEnv())
+}
+
+// runStatusWith is runStatusTo with the environment e.
+func runStatusWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	var pos []string
 	host := ""
 	for i := 0; i < len(args); i++ {
@@ -608,7 +710,7 @@ func runStatusTo(args []string, stdout, stderr io.Writer) int {
 	if len(pos) == 2 {
 		dir = pos[1]
 	}
-	t, _, err := envTarget("status", pos[0], dir, host)
+	t, _, err := envTarget("status", pos[0], dir, host, e)
 	if err != nil {
 		fmt.Fprintf(stderr, "alder status: %v\n", err)
 		return 2
@@ -628,6 +730,11 @@ func runStatusTo(args []string, stdout, stderr io.Writer) int {
 // Exit 0, 1 for a refusal or an unreachable target, 2 for usage errors, a Script environment
 // and a restore not confirmed.
 func runRollbackTo(args []string, stdout, stderr io.Writer) int {
+	return runRollbackWith(args, stdout, stderr, osDeployEnv())
+}
+
+// runRollbackWith is runRollbackTo with the environment e.
+func runRollbackWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	var pos []string
 	dir, o, host, yes := ".", deploy.RollbackOptions{Out: stdout}, "", false
 	for i := 0; i < len(args); i++ {
@@ -670,17 +777,13 @@ func runRollbackTo(args []string, stdout, stderr io.Writer) int {
 	if !yes {
 		o.Confirm = func(q string) bool { return confirm(q, stdout) }
 	}
-	t, _, err := envTarget("rollback", pos[0], dir, host)
+	t, _, err := envTarget("rollback", pos[0], dir, host, e)
 	if err != nil {
 		fmt.Fprintf(stderr, "alder rollback: %v\n", err)
 		return 2
 	}
 	defer t.Close()
-	o.Drain = durationEnv(envDrain, 0)
-	if v := os.Getenv(envDrain); v != "" && o.Drain == 0 {
-		o.Drain = -1
-	}
-	o.HealthTimeout = durationEnv(envHealthTimeout, 0)
+	o.Drain, o.HealthTimeout = e.Drain, e.HealthTimeout
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if _, err := deploy.Rollback(ctx, t, o); err != nil {
@@ -696,6 +799,11 @@ func runRollbackTo(args []string, stdout, stderr io.Writer) int {
 // runLogsTo is `alder logs <env> [dir] [-f]`: the current build's log, the last lines, or with
 // -f followed until interrupted.
 func runLogsTo(args []string, stdout, stderr io.Writer) int {
+	return runLogsWith(args, stdout, stderr, osDeployEnv())
+}
+
+// runLogsWith is runLogsTo with the environment e.
+func runLogsWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	var pos []string
 	follow, host := false, ""
 	for i := 0; i < len(args); i++ {
@@ -722,7 +830,7 @@ func runLogsTo(args []string, stdout, stderr io.Writer) int {
 	if len(pos) == 2 {
 		dir = pos[1]
 	}
-	t, _, err := envTarget("logs", pos[0], dir, host)
+	t, _, err := envTarget("logs", pos[0], dir, host, e)
 	if err != nil {
 		fmt.Fprintf(stderr, "alder logs: %v\n", err)
 		return 2
@@ -747,6 +855,11 @@ func runLogsTo(args []string, stdout, stderr io.Writer) int {
 // credentials come from this machine's environment (AWS_ACCESS_KEY_ID, …). Exit 0, 1 when the
 // backup or the target fails, 2 for usage errors.
 func runRestoreTo(args []string, stdout, stderr io.Writer) int {
+	return runRestoreWith(args, stdout, stderr, osDeployEnv())
+}
+
+// runRestoreWith is runRestoreTo with the environment e.
+func runRestoreWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	var pos []string
 	dir, from, toText, out, yes, silo := ".", "", "", "", false, ""
 	flag := func(i *int, name string) (string, bool) {
@@ -795,7 +908,7 @@ func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 			return fail(2, "%v", err)
 		}
 	}
-	r := &deployRunner{dir: dir}
+	r := &deployRunner{dir: dir, buildDir: e.BuildDir}
 	r.Check()
 	if r.loadErr != "" {
 		return fail(2, "%s", r.loadErr)
@@ -819,7 +932,7 @@ func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if tgt.Kind == "render" || tgt.Kind == "ssh" && tgt.Database != nil {
-		return restoreTurso(r, pos[0], tgt, dir, siloKey, siloValue, from, toText, to, out, yes, stdout, stderr)
+		return restoreTurso(r, pos[0], tgt, dir, siloKey, siloValue, from, toText, to, out, yes, stdout, stderr, e)
 	}
 	if from == "" {
 		if r.decl.Backup == nil {
@@ -868,7 +981,7 @@ func runRestoreTo(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "wrote %s\n", out)
 		return 0
 	}
-	t, _, err := targetFor(r, pos[0], tgt, dir, stdout, stderr)
+	t, _, err := targetFor(r, pos[0], tgt, dir, stdout, stderr, e)
 	if err != nil {
 		return fail(2, "%v", err)
 	}
@@ -925,7 +1038,7 @@ type pitTarget interface {
 // database is on Turso: Turso's point-in-time recovery, not a stream. The shared database is
 // copied as it was then and becomes the app's (the replaced one kept at Turso); a silo's
 // database is put back in place (Turso.RestoreChild). --from and --out do not apply.
-func restoreTurso(r *deployRunner, env string, tgt ir.Target, dir, siloKey, siloValue, from, toText string, to time.Time, out string, yes bool, stdout, stderr io.Writer) int {
+func restoreTurso(r *deployRunner, env string, tgt ir.Target, dir, siloKey, siloValue, from, toText string, to time.Time, out string, yes bool, stdout, stderr io.Writer, e deployEnv) int {
 	fail := func(code int, format string, a ...any) int {
 		fmt.Fprintf(stderr, "alder restore: "+format+"\n", a...)
 		return code
@@ -936,7 +1049,7 @@ func restoreTurso(r *deployRunner, env string, tgt ir.Target, dir, siloKey, silo
 	case toText == "":
 		return fail(2, "environment %s's database is on Turso: give the point in time to restore with --to (UTC, such as 2026-10-17T10:00:00Z)", env)
 	}
-	t, _, err := targetFor(r, env, tgt, dir, stdout, stderr)
+	t, _, err := targetFor(r, env, tgt, dir, stdout, stderr, e)
 	if err != nil {
 		return fail(2, "%v", err)
 	}

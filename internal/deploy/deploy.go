@@ -60,7 +60,7 @@ type Options struct {
 	HealthTimeout   time.Duration
 	User            string // the local user, for the record
 	Out             io.Writer
-	Now             func() time.Time
+	Now             func() time.Time // the clock the record's time is read from (nil: time.Now)
 }
 
 // Result is what a deploy produced.

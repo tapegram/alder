@@ -37,6 +37,7 @@ import (
 // Chromium is Playwright's own (`npx playwright install chromium`). Without them the test is
 // skipped, saying why.
 func TestBrowser_BoostedNavigation(t *testing.T) {
+	t.Parallel()
 	node, env := playwrightEnv(t)
 	script, err := filepath.Abs(filepath.Join("testdata", "browser", "smoke.cjs"))
 	if err != nil {

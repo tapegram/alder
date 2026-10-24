@@ -9,6 +9,7 @@ import (
 )
 
 func TestParseItems(t *testing.T) {
+	t.Parallel()
 	type it struct {
 		Let    bool
 		Name   string
@@ -101,6 +102,7 @@ func TestParseItems(t *testing.T) {
 
 // assemble of lets alone is a module with no `it`.
 func TestAssembleLetsOnly(t *testing.T) {
+	t.Parallel()
 	items, err := parseItems("let a = 1\nlet b : Int = a", "eval")
 	if !errors.Is(err, errNothing) {
 		t.Fatal(err)
@@ -116,6 +118,7 @@ func TestAssembleLetsOnly(t *testing.T) {
 // assemble, this test held the old evalModule verbatim and compared the two on every input
 // below, errors included: byte-identical.)
 func TestAssembleRoundTrip(t *testing.T) {
+	t.Parallel()
 	for _, in := range []string{
 		"1 + 2",
 		"let xs = [1, 2]\nList.length xs\n",

@@ -281,7 +281,7 @@ func (s *Ssh) RestoreSilo(ctx context.Context, key, value, file string, at time.
 		}
 		defer fh.Close()
 		dst := s.Root + "/" + rel + ".restore"
-		cmd := exec.CommandContext(ctx, "ssh", append(s.sshArgs(), "umask 077 && mkdir -p "+q(s.Root+"/db/silos/"+key)+" && cat > "+q(dst+".part")+" && mv "+q(dst+".part")+" "+q(dst))...)
+		cmd := exec.CommandContext(ctx, s.ssh(), append(s.sshArgs(), "umask 077 && mkdir -p "+q(s.Root+"/db/silos/"+key)+" && cat > "+q(dst+".part")+" && mv "+q(dst+".part")+" "+q(dst))...)
 		cmd.Stdin = fh
 		var errb bytes.Buffer
 		cmd.Stderr = &errb

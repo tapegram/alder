@@ -17,6 +17,7 @@ func run(t *testing.T, args ...string) (int, string, string) {
 }
 
 func TestCLI_ExampleClean(t *testing.T) {
+	t.Parallel()
 	code, out, errs := run(t, "../../examples/todos")
 	if code != 0 || out != "" || errs != "" {
 		t.Fatalf("exit %d, out: %s, err: %s", code, out, errs)
@@ -24,6 +25,7 @@ func TestCLI_ExampleClean(t *testing.T) {
 }
 
 func TestCLI_JSONAndExit(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "app"), 0o755)
 	os.WriteFile(filepath.Join(dir, "app", "X.alder"), []byte("module X\n\nx : Int\nx = \"s\"\n"), 0o644)
@@ -38,6 +40,7 @@ func TestCLI_JSONAndExit(t *testing.T) {
 }
 
 func TestCLI_NoFiles(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	code, out, errs := run(t, dir, "--json")
 	if code != 2 || out != "" || !strings.Contains(errs, "no .alder files") {
@@ -46,6 +49,7 @@ func TestCLI_NoFiles(t *testing.T) {
 }
 
 func TestCLI_TextFormat(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "app"), 0o755)
 	os.WriteFile(filepath.Join(dir, "app", "X.alder"), []byte("module X\n\nx : Text\nx = 1\n"), 0o644)
@@ -56,6 +60,7 @@ func TestCLI_TextFormat(t *testing.T) {
 }
 
 func TestCLI_UnreadableFile(t *testing.T) {
+	t.Parallel()
 	if os.Geteuid() == 0 {
 		t.Skip("root can read anything")
 	}
@@ -72,6 +77,7 @@ func TestCLI_UnreadableFile(t *testing.T) {
 }
 
 func TestCLI_DeepFile(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "app", "A", "B", "C"), 0o755)
 	os.WriteFile(filepath.Join(dir, "app", "A", "B", "C", "D.alder"), []byte("module A.B.C.D\n"), 0o644)
@@ -82,6 +88,7 @@ func TestCLI_DeepFile(t *testing.T) {
 }
 
 func TestCLI_BadFlag(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{{"--jsno"}, {"-x", "."}, {"a", "b"}} {
 		code, out, errs := run(t, args...)
 		if code != 2 || out != "" || !strings.Contains(errs, "usage") {
@@ -92,6 +99,7 @@ func TestCLI_BadFlag(t *testing.T) {
 
 // TestCLI_HoleSpanJSON: W0002's span covers the whole hole, `?` and name.
 func TestCLI_HoleSpanJSON(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "app"), 0o755)
 	os.WriteFile(filepath.Join(dir, "app", "X.alder"), []byte("module X\n\nx : Int\nx = 1 + ?count\n"), 0o644)
@@ -104,6 +112,7 @@ func TestCLI_HoleSpanJSON(t *testing.T) {
 
 // TestLsp_InitializeOverStdio: `alder lsp` answers initialize on stdout and stops at exit.
 func TestLsp_InitializeOverStdio(t *testing.T) {
+	t.Parallel()
 	frame := func(body string) string { return fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(body), body) }
 	in := frame(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`) +
 		frame(`{"jsonrpc":"2.0","method":"exit"}`)
@@ -118,3 +127,8 @@ func TestLsp_InitializeOverStdio(t *testing.T) {
 		t.Fatalf("an argument: exit %d, %s", code, errb.String())
 	}
 }
+
+// inTemp makes a fresh temporary directory the working directory. Only the tests that still
+// need one (the example tests, which name their app by a relative path) use it; they run
+// serially.
+func inTemp(t *testing.T) { t.Chdir(t.TempDir()) }

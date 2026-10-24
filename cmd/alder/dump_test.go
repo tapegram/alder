@@ -15,6 +15,7 @@ func runDump(args ...string) (int, string, string) {
 }
 
 func TestDump_AST(t *testing.T) {
+	t.Parallel()
 	code, out, errs := runDump("../../testdata/golden/gen_basic/app/M.alder")
 	if code != 0 || !strings.Contains(out, "(val area") || errs != "" {
 		t.Fatalf("code %d, out %s, err %s", code, out, errs)
@@ -26,6 +27,7 @@ func TestDump_AST(t *testing.T) {
 }
 
 func TestDump_IR(t *testing.T) {
+	t.Parallel()
 	code, out, errs := runDump("--ir", "../../testdata/golden/gen_basic")
 	want, err := os.ReadFile("../../testdata/golden/ir_basic.ir")
 	if err != nil {
@@ -40,6 +42,7 @@ func TestDump_IR(t *testing.T) {
 // golden (partitions, via, silo, choose, the admin form, the arms' stores), and the AST dump of
 // its App shows the declarations as written.
 func TestDump_Partitions(t *testing.T) {
+	t.Parallel()
 	code, out, errs := runDump("--ir", "../../testdata/corpus/partitions-ok")
 	want, err := os.ReadFile("../../testdata/golden/ir_partitions.ir")
 	if err != nil {
@@ -61,6 +64,7 @@ func TestDump_Partitions(t *testing.T) {
 }
 
 func TestDump_Tokens(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	f := filepath.Join(dir, "V.alder")
 	if err := os.WriteFile(f, []byte("module V\nv = <p>hi {x}</p>\n"), 0o644); err != nil {
@@ -77,6 +81,7 @@ func TestDump_Tokens(t *testing.T) {
 }
 
 func TestDump_ParseErrorExits1(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	f := filepath.Join(dir, "B.alder")
 	if err := os.WriteFile(f, []byte("module B\nx = (1\n"), 0o644); err != nil {
@@ -89,6 +94,7 @@ func TestDump_ParseErrorExits1(t *testing.T) {
 }
 
 func TestDump_IRCheckErrorExits1(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
 		t.Fatal(err)
@@ -103,6 +109,7 @@ func TestDump_IRCheckErrorExits1(t *testing.T) {
 }
 
 func TestDump_Usage(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{
 		{},
 		{"--ir", "../../testdata/golden/gen_basic/app/M.alder"},
@@ -123,6 +130,7 @@ func TestDump_Usage(t *testing.T) {
 }
 
 func TestDump_DirAST(t *testing.T) {
+	t.Parallel()
 	code, out, errs := runDump("../../testdata/golden/gen_basic")
 	if code != 0 || !strings.HasPrefix(out, "(module M") || errs != "" {
 		t.Fatalf("code %d out %s err %s", code, out, errs)

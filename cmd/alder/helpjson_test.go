@@ -53,6 +53,7 @@ func sortedKeys(m map[string]bool) []string {
 // TestHelpJSON_MatchesUsage pins the structured tree to the text help: the same commands and
 // generators, each node's usage string the one `--help` prints, and the same flags.
 func TestHelpJSON_MatchesUsage(t *testing.T) {
+	t.Parallel()
 	top := map[string]bool{}
 	for _, c := range commandTree {
 		top[c.Name] = true
@@ -111,6 +112,7 @@ func TestHelpJSON_MatchesUsage(t *testing.T) {
 }
 
 func TestHelpJSON_Output(t *testing.T) {
+	t.Parallel()
 	var out bytes.Buffer
 	if !wantsHelpJSON([]string{"help", "--json"}) {
 		t.Fatal("main would not route `help --json` to writeHelpJSON")
@@ -137,6 +139,7 @@ func TestHelpJSON_Output(t *testing.T) {
 }
 
 func TestHelp_SiloAndSilosHaveUsage(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{{"help", "silos"}, {"new", "silo", "--help"}} {
 		var out bytes.Buffer
 		if !helpTo(args, &out) {
@@ -151,6 +154,7 @@ func TestHelp_SiloAndSilosHaveUsage(t *testing.T) {
 // TestHelpJSON_Golden pins `alder help --json` byte for byte: the generator nodes are rendered
 // from generate.Specs (M6b) and must not change what alder.nvim and agents read.
 func TestHelpJSON_Golden(t *testing.T) {
+	t.Parallel()
 	var out bytes.Buffer
 	writeHelpJSON(&out)
 	want, err := os.ReadFile("../../testdata/help.json")
@@ -168,6 +172,7 @@ func TestHelpJSON_Golden(t *testing.T) {
 // TestHelpJSON_FromSpecs: every generator node in the tree is a Spec's, so a flag added to a
 // Spec reaches help --json (and, through the usage pin, the usage text).
 func TestHelpJSON_FromSpecs(t *testing.T) {
+	t.Parallel()
 	for _, s := range generate.Specs() {
 		group, sub, _ := strings.Cut(s.ID, " ")
 		var node *cmdSpec
@@ -191,6 +196,7 @@ func TestHelpJSON_FromSpecs(t *testing.T) {
 
 // TestHelpJSON_InFlag: eval and repl take `--in Name`.
 func TestHelpJSON_InFlag(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"eval", "repl"} {
 		found := false
 		for _, c := range commandTree {
