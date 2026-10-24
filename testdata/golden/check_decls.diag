@@ -1,7 +1,7 @@
 app/Broken.alder:6:3 E0011 `@id` field must be a `brand Text`, got `Int`
 app/Todo.alder:12:3 E0502 `@ref User` field `bad` must have type `User.UserId` or `Maybe User.UserId`, got `Text`
 app/Todo.alder:14:3 E0011 table field `nested` has type `List Int`, which cannot be stored; model nesting with a second table and `@ref`
-app/Todo.alder:15:3 E0011 table field `boxed` has type `Todo.Payload`, which cannot be stored; model nesting with a second table and `@ref`
+app/Todo.alder:15:3 E0011 table field `boxed` has type `Payload`, which cannot be stored; model nesting with a second table and `@ref`
 app/Todos/Index.alder:5:29 E0011 page parameter `todos` has type `List Todo`, which cannot appear in a URL
 app/Todos/Index.alder:5:48 E0011 `requires missing`: the session has no field `missing`
 app/Todos/Index.alder:14:3 E0011 form field `items` has type `List Int`, which cannot come from a form

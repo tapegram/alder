@@ -283,7 +283,7 @@ func (c *Checker) checkVia() {
 			keyTable = c.tableOfID(kt)
 		}
 		if keyTable == "" {
-			c.errorf(diag.PartitionDecl, at, "`via %s` needs `%s` to be `Maybe` of a table's id (such as `Maybe Org.OrgId`), got `%s`", f.Via, f.Name, types.String(ft))
+			c.errorf(diag.PartitionDecl, at, "`via %s` needs `%s` to be `Maybe` of a table's id (such as `Maybe Org.OrgId`), got `%s`", f.Via, f.Name, c.typeIn(ft, "App"))
 			continue
 		}
 		userTable := c.tableOfID(userT)
@@ -429,10 +429,10 @@ func (mc *modCtx) checkRequiresM15(pd *syntax.PageDecl, info *pageInfo) []string
 	case seen[k]:
 		c.errorf(diag.SiloDecl, at, "`silo %s` and `requires %s` both name `%s`: the admin form takes `%s` from the page's parameter, not the session", k, k, k, k)
 	case param == nil:
-		c.errorf(diag.SiloDecl, at, "`silo %s` takes `%s` from the page's parameter: add `%s: %s` to the page's parameters", k, k, k, types.StringIn(kt, mc.m.Name))
+		c.errorf(diag.SiloDecl, at, "`silo %s` takes `%s` from the page's parameter: add `%s: %s` to the page's parameters", k, k, k, mc.ts(kt))
 	case types.IsErr(param.Type):
 	case c.u.Unify(param.Type, kt) != nil:
-		c.errorf(diag.SiloDecl, at, "the page's parameter `%s` is `%s`; `silo %s` needs `%s`, the type of the session's `%s`", k, types.StringIn(param.Type, mc.m.Name), k, types.StringIn(kt, mc.m.Name), k)
+		c.errorf(diag.SiloDecl, at, "the page's parameter `%s` is `%s`; `silo %s` needs `%s`, the type of the session's `%s`", k, mc.ts(param.Type), k, mc.ts(kt), k)
 	default:
 		info.Silo = k
 		return append(narrowed, k)

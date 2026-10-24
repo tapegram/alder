@@ -174,7 +174,7 @@ func (mc *modCtx) testLogin(arg syntax.Expr, env *env, eff effect) types.Type {
 		var fs []string
 		if r, ok := want.(*types.Record); ok {
 			for _, f := range r.Fields {
-				fs = append(fs, f.Name+": "+types.StringIn(f.Type, mc.m.Name))
+				fs = append(fs, f.Name+": "+mc.ts(f.Type))
 			}
 		}
 		shape := "{ }"
@@ -385,7 +385,7 @@ func (mc *modCtx) testClick(arg syntax.Expr, env *env, eff effect) types.Type {
 		t := c.u.Apply(mc.infer(arg, env, eff))
 		got := "`" + mc.source(arg.GetSpan()) + "`"
 		if !types.IsErr(t) {
-			got += " of type `" + types.StringIn(t, mc.m.Name) + "`"
+			got += " of type `" + mc.ts(t) + "`"
 		}
 		if page, _ := pageOf(arg); page != "" { // a link, not a button
 			got += ": follow a link with `Test.get` or `Test.open`"

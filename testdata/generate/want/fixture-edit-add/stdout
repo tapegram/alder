@@ -37,27 +37,27 @@ edited migrations/schema.json
 app/Home.alder:27:33: error[E0003]: record `Insert Post` without `author` is missing field(s): summary
       let _ <- Db.insertMine Post { title: p.form.title, body: p.form.body }
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Home.alder:66:27: error[E0003]: record `Table.Post.Insert Post` is missing field(s): summary
+app/Home.alder:66:27: error[E0003]: record `Post.Insert Post` is missing field(s): summary
     let _ <- Db.insert Post { title: Text.NonEmpty "First", body: "", author: me }
                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Home.alder:67:27: error[E0003]: record `Table.Post.Insert Post` is missing field(s): summary
+app/Home.alder:67:27: error[E0003]: record `Post.Insert Post` is missing field(s): summary
     let _ <- Db.insert Post { title: Text.NonEmpty "Theirs", body: "", author: other }
                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Home.alder:68:27: error[E0003]: record `Table.Post.Insert Post` is missing field(s): summary
+app/Home.alder:68:27: error[E0003]: record `Post.Insert Post` is missing field(s): summary
     let _ <- Db.insert Post { title: Text.NonEmpty "Second", body: "", author: me }
                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Table/Comment.alder:19:30: error[E0003]: record `Table.Post.Insert Post` is missing field(s): summary
+app/Table/Comment.alder:19:30: error[E0003]: record `Post.Insert Post` is missing field(s): summary
     let post <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Table/Comment.alder:29:30: error[E0003]: record `Table.Post.Insert Post` is missing field(s): summary
+app/Table/Comment.alder:29:30: error[E0003]: record `Post.Insert Post` is missing field(s): summary
     let post <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: author }
                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Table/Post.alder:25:28: error[E0003]: record `Table.Post.Insert Post` is missing field(s): summary
+app/Table/Post.alder:25:28: error[E0003]: record `Insert Post` is missing field(s): summary
     let id <- Db.insert Post {
                              ^
-app/Table/Post.alder:36:27: error[E0003]: record `Table.Post.Insert Post` is missing field(s): summary
+app/Table/Post.alder:36:27: error[E0003]: record `Insert Post` is missing field(s): summary
     let _ <- Db.insert Post {
                             ^
-app/Table/Tag.alder:18:30: error[E0003]: record `Table.Post.Insert Post` is missing field(s): summary
+app/Table/Tag.alder:18:30: error[E0003]: record `Post.Insert Post` is missing field(s): summary
     let post <- Db.insert Post { title: Text.NonEmpty "Hello", body: "", author: me }
                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -150,8 +150,9 @@ func completeSessionLiterals(p *Program, edits []Edit, field string) ([]Edit, er
 	}
 	name, _, _ := strings.Cut(field, ":")
 	want := "record literal for `Session` is missing `" + name + "`"
-	missing := func(m string) bool { // or, for a field without a default (a key), the record's
-		return strings.HasPrefix(m, want) || strings.Contains(m, "record `App.Session` is missing field(s): "+name) && !strings.Contains(m, name+", ") && strings.HasSuffix(m, "field(s): "+name)
+	missing := func(m string) bool { // or, for a field without a default (a key), the record's (`Session` in App, `App.Session` elsewhere)
+		rec := strings.Contains(m, "record `App.Session` is missing field(s): "+name) || strings.Contains(m, "record `Session` is missing field(s): "+name)
+		return strings.HasPrefix(m, want) || rec && !strings.Contains(m, name+", ") && strings.HasSuffix(m, "field(s): "+name)
 	}
 	bodies := map[string]*srcEdit{}
 	var order []string

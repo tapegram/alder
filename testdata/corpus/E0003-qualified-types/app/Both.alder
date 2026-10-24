@@ -1,0 +1,7 @@
+module Both
+
+import Blog.Post as BlogPost
+import Table.Post as TablePost
+
+same : TablePost.PostId -> BlogPost.Key -> Bool
+same id k = id == k

@@ -183,6 +183,9 @@ func TestNewAuth_Refusals(t *testing.T) {
 	refused(scaffoldApp(t, map[string]string{"app/User.alder": "module User\n\ntype UserId = brand Text\n\ntable User {\n  id: UserId @id,\n  email: Text.Email,\n}\n"}),
 		AuthOptions{}, "`User` needs the columns `email: Text.Email` and `passwordHash")
 	refused(scaffoldApp(t, nil), AuthOptions{To: "Nope"}, "`--to Nope` is not a page")
+	// a root module of the user table's name: the table would go in Table.User beside it
+	refused(scaffoldApp(t, map[string]string{"app/User.alder": "module User\n\ntype Role = Member | Admin\n"}), AuthOptions{},
+		"module `User` exists (`app/User.alder`): the user table goes in `app/Table/User.alder`")
 }
 
 // An app with no page at `/` and no --to (a bare app: its pages come after the login, since

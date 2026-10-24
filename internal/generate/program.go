@@ -9,7 +9,6 @@ package generate
 
 import (
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -113,20 +112,45 @@ const (
 // TypeIn is the column's type as written in module mod.
 func (c *Column) TypeIn(mod string) string { return types.StringIn(c.Type, mod) }
 
-// typeText is t as written in module home with qualifiers (#23's rule: a module is written by
-// its last segment): `Post.PostId` for the brand of module Table.Post, where types.StringIn
-// writes the module's whole path. Messages, and comparisons with a type the person typed,
-// use it.
-func typeText(t types.Type, home string) string {
-	s := types.StringIn(t, home)
-	return typeWordRE.ReplaceAllStringFunc(s, func(w string) string {
-		segs := strings.Split(w, ".")
-		return strings.Join(segs[len(segs)-2:], ".")
-	})
+// typeText is t as written in module home: each module through the qualifier home writes it
+// with (#23, names.CanonicalQualifiers over home's imports and t's modules: `Post.PostId` for
+// Table.Post's brand, `TablePost.PostId` when home also imports a Blog.Post), a standard
+// library module by its name. Messages, and comparisons with a type the person typed, use it.
+func typeText(p *Program, t types.Type, home string) string {
+	var mods []string
+	types.StringQ(t, home, func(m string) string { mods = append(mods, m); return "" })
+	q := p.qualifiersFor(home, mods)
+	return types.StringQ(t, home, func(m string) string { return q[m] })
 }
 
-// typeWordRE matches a name written with a module of two segments or more (`Table.Post.PostId`).
-var typeWordRE = regexp.MustCompile(`\b[A-Z][A-Za-z0-9_]*(\.[A-Z][A-Za-z0-9_]*){2,}\b`)
+// qualifierIn is the qualifier module home writes module with (qualifiersFor).
+func (p *Program) qualifierIn(home, module string) string {
+	if q := p.qualifiersFor(home, []string{module})[module]; q != "" {
+		return q
+	}
+	return module
+}
+
+// qualifiersFor are the canonical qualifiers of home's imports with mods imported too; a
+// standard-library module, and one with no usable qualifier, map to "" (written by its path).
+func (p *Program) qualifiersFor(home string, mods []string) map[string]string {
+	var paths []string
+	taken := func(n string) bool { return n == "App" || p.Std[n] }
+	if m := p.Modules[home]; m != nil && m.Syntax != nil {
+		taken = names.Taken(m.Syntax, func(n string) bool { return p.Std[n] })
+		for _, im := range m.Syntax.Imports {
+			paths = append(paths, im.Module)
+		}
+	}
+	for _, m := range mods {
+		if m != home && m != "Prelude" {
+			paths = append(paths, m)
+		}
+	}
+	paths = slices.DeleteFunc(paths, func(m string) bool { return p.Std[m] })
+	q, _ := names.CanonicalQualifiers(home, paths, taken)
+	return q
+}
 
 // Required is whether an insert must name the column: not the id, @created or @updated, no
 // default (a Maybe without a default is required too, as `Nothing`).
@@ -258,11 +282,13 @@ func newProgram(dir string, prog *names.Program, res *check.Result, diags []diag
 	p.Silos, p.Via, p.Choose = map[string][]string{}, map[string]string{}, map[string]string{}
 	for k, ts := range res.Silos {
 		for _, tk := range ts {
-			p.Silos[k] = append(p.Silos[k], tk[:strings.LastIndex(tk, ".")])
+			if i := strings.LastIndex(tk, "."); i > 0 { // "Table.Post.Post": the module before the name
+				p.Silos[k] = append(p.Silos[k], tk[:i])
+			}
 		}
 	}
 	for k, tk := range res.Via {
-		p.Via[k] = tk[strings.LastIndex(tk, ".")+1:]
+		p.Via[k] = tk[strings.LastIndex(tk, ".")+1:] // the table's name, after its module (all of tk without one)
 	}
 	for k, pg := range res.Choose {
 		p.Choose[k] = pg

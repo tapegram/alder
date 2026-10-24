@@ -4,10 +4,10 @@ app/Todo.alder:26:3 E0310 unreachable arm: every case is already handled
 app/Todo.alder:33:8 E0003 expected Int, got Text; `++` joins Text, `+` is for numbers
 app/Todo.alder:36:14 E0003 expected Text, got Int
   fix 36:14-36:28 Text.fromInt (List.length [])
-app/Todo.alder:42:8 E0003 cannot compare `Todo.TodoId` with `Text`: `==` needs both sides to have the same type
+app/Todo.alder:42:8 E0003 cannot compare `TodoId` with `Text`: `==` needs both sides to have the same type
 app/Todo.alder:45:10 E0102 `.year` on a `Maybe Date`; match it first
   fix 45:10-45:20 (match t.due { Just x -> x.year, Nothing -> ?default })
-app/Todo.alder:49:28 E0101 `Db.get Todo` takes a `Todo.TodoId`, got `Text`
+app/Todo.alder:49:28 E0101 `Db.get Todo` takes a `TodoId`, got `Text`
 app/Todo.alder:55:12 E0401 `Task` cannot run inside a `Query`; `load` and `Query` blocks can only read
 app/Todo.alder:61:3 E0402 `let x <-` is only allowed in a block that returns `Query` or `Task`
 app/Todo.alder:66:10 E0004 missing cases: `Nothing`

@@ -1,5 +1,5 @@
 wrote app/Tags/Txt.alder
-app/Tags/Txt.alder:8:23: warning[W0002]: hole ?load has type Query Tags.Txt.Model
+app/Tags/Txt.alder:8:23: warning[W0002]: hole ?load has type Query Model
   load params session = ?load
                         ^^^^^
 app/Tags/Txt.alder:11:67: warning[W0002]: hole ?body has type Text

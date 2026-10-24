@@ -71,7 +71,7 @@ func binderValue(p *Program, binder string, bt types.Type, field, fieldType, hom
 		return ""
 	}
 	for _, f := range r.Fields {
-		if f.Name == field && typeText(f.Type, home) == fieldType {
+		if f.Name == field && typeText(p, f.Type, home) == fieldType {
 			return binder + "." + field
 		}
 	}
@@ -80,7 +80,7 @@ func binderValue(p *Program, binder string, bt types.Type, field, fieldType, hom
 		if info == nil || info.Record == nil || types.String(info.Record) != types.String(r) {
 			continue
 		}
-		if typeText(t.IDType, home) == fieldType {
+		if typeText(p, t.IDType, home) == fieldType {
 			return binder + "." + t.IDField
 		}
 	}

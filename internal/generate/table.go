@@ -226,7 +226,7 @@ func bareType(p *Program, home, typ string) error {
 			}
 		}
 		if len(in) == 1 {
-			return Refusef("`%s` is a type of module `%s`: write `%s.%s` in `%s`", w, in[0], in[0][strings.LastIndex(in[0], ".")+1:], w, typ)
+			return Refusef("`%s` is a type of module `%s`: write `%s.%s` in `%s`", w, in[0], p.qualifierIn(home, in[0]), w, typ)
 		}
 	next:
 	}
@@ -235,10 +235,23 @@ func bareType(p *Program, home, typ string) error {
 
 // A qualifier that is the last segment of the home module (`Todo.TodoId` in the table Todo
 // being written, module Table.Todo) is the home module's, which needs no import.
+// A qualifier one of the home module's imports is written with (`TablePost`, an alias) is
+// that import's module.
 func typeImports(s *importSet, typ string, p *Program) {
+	var have map[string]string // the home module's imports, by qualifier
 	for _, w := range strings.FieldsFunc(typ, func(r rune) bool { return r == ' ' || r == '(' || r == ')' }) {
 		if i := strings.LastIndex(w, "."); i > 0 {
 			q := w[:i]
+			if have == nil && p != nil {
+				have = map[string]string{}
+				for m, mq := range p.qualifiersFor(s.home, nil) {
+					have[mq] = m
+				}
+			}
+			if m, ok := have[q]; ok {
+				s.add(m)
+				continue
+			}
 			m := moduleOfQualifier(p, q)
 			if m == q && strings.HasSuffix(s.home, "."+q) {
 				m = s.home

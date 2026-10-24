@@ -1,1 +1,1 @@
-app/Post.alder:6:3 E0003 cannot compare `Post.Slug` with `Maybe _`: `==` needs both sides to have the same type
+app/Post.alder:6:3 E0003 cannot compare `Slug` with `Maybe _`: `==` needs both sides to have the same type

@@ -57,10 +57,10 @@ edited app/Home.alder
 app/Home.alder:35:16: warning[W0002]: hole ?feature has type Task Nav
     Feature p -> ?feature,
                  ^^^^^^^^
-app/Home.alder:55:35: warning[W0002]: hole ?featureId has type Table.Post.PostId
+app/Home.alder:55:35: warning[W0002]: hole ?featureId has type Post.PostId
         <form submit={Feature { id: ?featureId }}>
                                     ^^^^^^^^^^
-app/Home.alder:148:39: warning[W0002]: hole ?featureId has type Table.Post.PostId
+app/Home.alder:148:39: warning[W0002]: hole ?featureId has type Post.PostId
     let r <- Test.submit (Feature { id: ?featureId }) { why: Text.NonEmpty "why-1" }
                                         ^^^^^^^^^^
 app/Home.alder:149:29: warning[W0002]: hole ?expected has type Answer

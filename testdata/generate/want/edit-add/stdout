@@ -10,6 +10,6 @@ edited migrations/schema.json
    created: Time @created,
 +  note: Maybe Text,
  }
-app/Home.alder:26:30: error[E0003]: record `Table.Entry.Insert Entry` is missing field(s): note
+app/Home.alder:26:30: error[E0003]: record `Entry.Insert Entry` is missing field(s): note
       let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

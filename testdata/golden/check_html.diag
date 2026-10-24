@@ -13,7 +13,7 @@ app/Pg.alder:34:19 E0003 expected Text, got Int
   fix 34:19-34:26 Text.fromInt (model.n)
 app/Pg.alder:36:5 E0304 `<Input>` must be inside `<form submit={…}>`
 app/Pg.alder:38:7 E0304 form `F` has no field `nope`; fields: title, kind
-app/Pg.alder:39:7 E0304 field `kind` is a union; use `<Select>` for `Pg.Kind`
+app/Pg.alder:39:7 E0304 field `kind` is a union; use `<Select>` for `Kind`
 app/Pg.alder:41:7 E0304 plain `<input>` inside `<form submit>`; use `<Input field="…">`
 app/Pg.alder:42:28 E0304 `<Input>` attribute `label` needs a value
 app/Pg.alder:43:7 E0304 `<Select>` needs a union field, or `options={…}` for a field of `Text` or a brand of `Text`; `title` has type `Text.NonEmpty`

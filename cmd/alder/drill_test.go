@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -180,7 +181,10 @@ func checkNames(t *testing.T, dir string, want drillNames) {
 
 // asWritten is a type's text with the table modules (#20's `Table.<Name>`) written by their
 // last segment, as the task's names and the app's source write them: `Team.TeamId`.
-func asWritten(s string) string { return strings.ReplaceAll(s, "Table.", "") }
+func asWritten(s string) string { return tableModuleRE.ReplaceAllString(s, "") }
+
+// tableModuleRE matches the `Table.` that begins a table module's path (not `MyTable.`).
+var tableModuleRE = regexp.MustCompile(`\bTable\.`)
 
 // siloNames is p.Silos with each table module written by its table's name.
 func siloNames(silos map[string][]string) map[string][]string {

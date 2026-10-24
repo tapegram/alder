@@ -41,12 +41,12 @@ func (mc *modCtx) checkPattern(p syntax.Pattern, t types.Type, env *env) {
 					return
 				}
 			}
-			c.errorf(diag.TypeMismatch, p.Span, "pattern `%s` is a constructor, but the value has type `%s`", p.Name, types.String(t))
+			c.errorf(diag.TypeMismatch, p.Span, "pattern `%s` is a constructor, but the value has type `%s`", p.Name, mc.ts(t))
 			return
 		}
 		arg, found := types.CtorArg(un, p.Name)
 		if !found {
-			c.errorf(diag.TypeMismatch, p.Span, "pattern `%s` is not a constructor of `%s`", p.Name, types.String(un))
+			c.errorf(diag.TypeMismatch, p.Span, "pattern `%s` is not a constructor of `%s`", p.Name, mc.ts(un))
 			return
 		}
 		if p.Arg == nil {
@@ -67,7 +67,7 @@ func (mc *modCtx) checkPattern(p syntax.Pattern, t types.Type, env *env) {
 	case *syntax.PRecord:
 		rec, ok := t.(*types.Record)
 		if !ok {
-			c.errorf(diag.TypeMismatch, p.Span, "record pattern against `%s`", types.String(t))
+			c.errorf(diag.TypeMismatch, p.Span, "record pattern against `%s`", mc.ts(t))
 			return
 		}
 		for _, f := range p.Fields {
@@ -78,7 +78,7 @@ func (mc *modCtx) checkPattern(p syntax.Pattern, t types.Type, env *env) {
 				}
 			}
 			if ft == nil {
-				c.errorf(diag.UnknownName, f.Span, "no field `%s` on `%s`", f.Name, types.String(rec))
+				c.errorf(diag.UnknownName, f.Span, "no field `%s` on `%s`", f.Name, mc.ts(rec))
 				continue
 			}
 			mc.checkPattern(f.Pat, ft, env)

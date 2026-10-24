@@ -63,6 +63,8 @@ type genJSON struct {
 	Notes       []string              `json:"migration,omitempty"`
 	Written     bool                  `json:"written"`
 	Error       string                `json:"error,omitempty"`
+	// Next is the command to run next (`alder new table`'s `next:` line), "" for none.
+	Next string `json:"next,omitempty"`
 	// Skipped and UpToDate are `alder regen admin`'s: the pages it did not recreate (deleted;
 	// --all writes them), and whether it had nothing to do.
 	Skipped  *[]string `json:"skipped,omitempty"`
@@ -129,7 +131,7 @@ func genReport(cmd string, g genArgs, res *generate.Result, err error, extra fun
 	if g.json {
 		out := genJSON{Files: []generate.FileChange{}, Diagnostics: []json.RawMessage{}, Holes: []generate.Hole{}}
 		if res != nil {
-			out.Files, out.Diff, out.Notes, out.Written = res.Files, res.Diff, res.Notes, res.Written
+			out.Files, out.Diff, out.Notes, out.Written, out.Next = res.Files, res.Diff, res.Notes, res.Written, res.Next
 			if out.Files == nil {
 				out.Files = []generate.FileChange{}
 			}
@@ -147,7 +149,7 @@ func genReport(cmd string, g genArgs, res *generate.Result, err error, extra fun
 		if refused {
 			out.Error = strings.Replace(ref.Msg, " (the errors above)", "", 1) // they are in "diagnostics"
 			out.Written = false
-			out.Files, out.Diff = []generate.FileChange{}, "" // nothing was written
+			out.Files, out.Diff, out.Next = []generate.FileChange{}, "", "" // nothing was written
 		}
 		for i, n := range out.Notes {
 			out.Notes[i] = strings.TrimSpace(n)

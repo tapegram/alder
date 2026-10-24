@@ -602,12 +602,12 @@ func TestGenerate_DryRun(t *testing.T) {
 	if _, again, _ := alderIn(t, other, "", args...); again != out {
 		t.Errorf("a second app printed:\n%s\nthe first:\n%s", again, out)
 	}
-	if a, b := appFiles(t, dir), appFiles(t, other); a["app/Tag.alder"] != b["app/Tag.alder"] || a["migrations/0002_create_tag.sql"] != b["migrations/0002_create_tag.sql"] {
+	if a, b := appFiles(t, dir), appFiles(t, other); a["app/Table/Tag.alder"] == "" || a["app/Table/Tag.alder"] != b["app/Table/Tag.alder"] || a["migrations/0002_create_tag.sql"] != b["migrations/0002_create_tag.sql"] {
 		t.Errorf("two runs wrote different files")
 	}
-	// --json: the migration's steps as they are, unindented
+	// --json: the migration's steps as they are, unindented, and the command to run next
 	code, out, _ = alderIn(t, genApp(t, "scaffold"), "", append(slices.Clone(args), "--json")...)
-	if code != 0 || !strings.Contains(out, `"migration":["create table Tag","add index on Tag.entry"]`) {
+	if code != 0 || !strings.Contains(out, `"migration":["create table Tag","add index on Tag.entry"]`) || !strings.Contains(out, `"next":"alder new page /tags --list Tag"`) {
 		t.Errorf("--json: exit %d\n%s", code, out)
 	}
 }

@@ -107,3 +107,57 @@ func TestTableNamedByName(t *testing.T) {
 		t.Errorf("TableModule(Todo) = %q", TableModule("Todo"))
 	}
 }
+
+// twoPostsApp has two modules ending in `Post`, Table.Post (a table) and Blog.Post, and a page
+// that imports both, so each is written with its canonical alias (`TablePost`, `BlogPost`).
+func twoPostsApp(t *testing.T) *Program {
+	t.Helper()
+	dir := scaffoldApp(t, map[string]string{
+		"app/Table/Post.alder": "module Table.Post\n\ntype PostId = brand Text\n\ntable Post {\n  id: PostId @id,\n  title: Text,\n}\n",
+		"app/Blog/Post.alder":  "module Blog.Post\n\ntype Key = brand Text\n",
+		"app/Notes.alder": "module Notes\n\nimport Blog.Post as BlogPost\nimport Table.Post as TablePost\n\npage \"/notes\" { }\n\n" +
+			"type Model = { n: Int }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { n: 0 }\n\n" +
+			"view : Model -> Session -> Html Msg\nview model session = <al-page><h1>Notes</h1></al-page>\n",
+	})
+	p, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// TestTypeTextCanonicalQualifiers (#23): a type is written through the qualifier the module
+// writes its module with: the alias on a clash of last segments, the last segment otherwise.
+func TestTypeTextCanonicalQualifiers(t *testing.T) {
+	p := twoPostsApp(t)
+	post := p.TableNamed("Post")
+	if got := typeText(p, post.IDType, "Notes"); got != "TablePost.PostId" {
+		t.Errorf("in Notes: %q, want TablePost.PostId", got)
+	}
+	if got := typeText(p, post.IDType, "Home"); got != "Post.PostId" {
+		t.Errorf("in Home: %q, want Post.PostId", got)
+	}
+	if got := typeText(p, post.IDType, "Table.Post"); got != "PostId" {
+		t.Errorf("in Table.Post: %q, want PostId", got)
+	}
+}
+
+// TestNewMsgIdOfAliasedTable: a message field typed with the aliased qualifier
+// (`TablePost.PostId`) is the table's id, so the test clicks with a row it inserts, not a
+// hole, and the field keeps its qualifier. (The test's `Db.insert Post` still writes the
+// table by its name, not `TablePost`: generated code does not yet alias a table's name.)
+func TestNewMsgIdOfAliasedTable(t *testing.T) {
+	p := twoPostsApp(t)
+	f, err := ParseField("id:TablePost.PostId", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edits, err := NewMsg(p, "Notes", "Feature", []FieldSpec{f}, MsgOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := editAt(edits, "app/Notes.alder")
+	if e == nil || !strings.Contains(e.Body, "Test.click (Feature { id: post1 })") || !strings.Contains(e.Body, "msg Feature { id: TablePost.PostId }") {
+		t.Fatalf("Notes:\n%+v", e)
+	}
+}

@@ -95,26 +95,61 @@ var Err = &Con{Name: "<error>"}
 // IsErr reports whether t is the poison type.
 func IsErr(t Type) bool { c, ok := t.(*Con); return ok && c == Err }
 
-func String(t Type) string { return str(t, false, "") }
+func String(t Type) string { return str(t, false, printer{}) }
 
 // StringIn prints t as written inside module mod: mod's own types are not qualified.
-func StringIn(t Type, mod string) string { return str(t, false, mod) }
+func StringIn(t Type, mod string) string { return str(t, false, printer{home: mod}) }
 
-// qualify writes name with its module, unless the module is home (the module the text is for).
-func qualify(module, name, home string) string {
-	if module == "" || module == home {
-		return name
-	}
-	return module + "." + name
+// StringQ prints t as written inside module mod, each other module through the qualifier q
+// gives it (the importing module's canonical qualifiers, #23: `Post` for Table.Post); a module
+// q gives "" for (one mod does not import) is written by its whole path. A record or union
+// whose qualifier is its own name (the table `Post` of Table.Post) is written bare, as a
+// program writes it.
+func StringQ(t Type, mod string, q func(module string) string) string {
+	return str(t, false, printer{home: mod, q: q})
 }
 
-func str(t Type, paren bool, home string) string {
+// printer is how str writes a module: not at all for home, else through q when it gives a
+// qualifier, else by its path.
+type printer struct {
+	home string
+	q    func(module string) string
+}
+
+// qual is the qualifier module is written with ("" for home or no module).
+func (p printer) qual(module string) string {
+	if module == "" || module == p.home {
+		return ""
+	}
+	if p.q != nil {
+		if q := p.q(module); q != "" {
+			return q
+		}
+	}
+	return module
+}
+
+// qualify writes name with its module's qualifier, unless the module is home.
+func (p printer) qualify(module, name string) string {
+	if q := p.qual(module); q != "" {
+		return q + "." + name
+	}
+	return name
+}
+
+// eponymous reports whether a record or union named name of module is written bare: its
+// module is named after it, or (StringQ) is written with its name.
+func (p printer) eponymous(module, name string) bool {
+	return module == name || p.q != nil && p.qual(module) == name
+}
+
+func str(t Type, paren bool, home printer) string {
 	switch t := t.(type) {
 	case *Con:
 		if t == Err {
 			return "_"
 		}
-		return qualify(t.Module, t.Name, home)
+		return home.qualify(t.Module, t.Name)
 	case *Var:
 		if t.Name != "" {
 			return t.Name
@@ -123,12 +158,12 @@ func str(t Type, paren bool, home string) string {
 	case *Param:
 		return t.Name
 	case *Brand:
-		return qualify(t.Module, t.Name, home)
+		return home.qualify(t.Module, t.Name)
 	case *Record:
 		if !t.Anonymous && t.Name != "" {
 			s := t.Name
-			if t.Module != t.Name {
-				s = qualify(t.Module, t.Name, home)
+			if !home.eponymous(t.Module, t.Name) {
+				s = home.qualify(t.Module, t.Name)
 			}
 			if len(t.Args) == 0 {
 				return s
@@ -148,8 +183,8 @@ func str(t Type, paren bool, home string) string {
 		return "{ " + strings.Join(parts, ", ") + " }"
 	case *Union:
 		s := t.Name
-		if t.Module != "Prelude" && t.Module != t.Name {
-			s = qualify(t.Module, t.Name, home)
+		if t.Module != "Prelude" && !home.eponymous(t.Module, t.Name) {
+			s = home.qualify(t.Module, t.Name)
 		}
 		if len(t.Args) == 0 {
 			return s

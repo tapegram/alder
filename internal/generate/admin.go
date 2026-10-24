@@ -36,12 +36,12 @@ const AdminNeeds = "`alder new admin` needs a session with a `role` whose type h
 // adminNeeds is the refusal for session s: AdminNeeds, then what this app lacks and what to
 // add: a user first (the guestbook), a role (named after the user table, when there is one),
 // or the constructor.
-func adminNeeds(s *Session) string {
+func adminNeeds(p *Program, s *Session) string {
 	switch {
 	case s == nil || s.User == nil:
 		return AdminNeeds + ": this app's session has no `user`; add a user table, a login that sets `user`, and a `role` (chapter 6, \"Rules\" and \"Roles\")"
 	case s.Role != nil:
-		return AdminNeeds + ": add `Admin` to the session's role type `" + typeText(s.Role.Type, "") + "`, and set the role at login (chapter 6)"
+		return AdminNeeds + ": add `Admin` to the session's role type `" + typeText(p, s.Role.Type, "App") + "`, and set the role at login (chapter 6)"
 	case s.UserTable != "":
 		u := s.UserTable
 		return AdminNeeds + ": add `type Role = Reader | Admin` and a column `role: Role = Reader` to `" + u + "`, `role: " + u + ".Role = Reader` to `session` in `App`, and set it at login (chapter 6)"
@@ -54,7 +54,7 @@ func adminNeeds(s *Session) string {
 func adminCheck(p *Program, o AdminOptions) (AdminOptions, error) {
 	s := p.Session
 	if s == nil || s.User == nil || s.Role == nil || !slices.Contains(s.Role.Ctors, "Admin") {
-		return o, Refusef("%s", adminNeeds(s))
+		return o, Refusef("%s", adminNeeds(p, s))
 	}
 	if o.Module == "" {
 		o.Module = "Admin"

@@ -13,6 +13,7 @@ import (
 
 type Checker struct {
 	prog   *names.Program
+	quals  map[string]map[string]string // typeIn's qualifiers, by module
 	bag    *diag.Bag
 	u      *types.Unifier
 	types  map[string]types.Type
@@ -287,6 +288,49 @@ func narrow(s *types.Record, fs []string, page string) *types.Record {
 }
 
 func (c *Checker) key(mod, name string) string { return mod + "." + name }
+
+// typeIn is t as a message for module mod writes it: each module through mod's canonical
+// qualifier (#23: `Post.PostId` for Table.Post's brand, `AdminLayout.X` on a clash), a module
+// mod does not import by its path.
+func (c *Checker) typeIn(t types.Type, mod string) string {
+	q := c.qualifiers(mod)
+	return types.StringQ(t, mod, func(m string) string { return q[m] })
+}
+
+// qualifiers are module mod's import qualifiers (names.Program.Qualifiers), computed once.
+func (c *Checker) qualifiers(mod string) map[string]string {
+	if c.quals == nil {
+		c.quals = map[string]map[string]string{}
+	}
+	q, ok := c.quals[mod]
+	if !ok {
+		q = c.prog.Qualifiers(mod)
+		c.quals[mod] = q
+	}
+	return q
+}
+
+// typeAt is typeIn for the module of the file span lies in.
+func (c *Checker) typeAt(t types.Type, span diag.Span) string {
+	for name, m := range c.prog.Modules {
+		if m.File == span.File {
+			return c.typeIn(t, name)
+		}
+	}
+	return types.String(t)
+}
+
+// qual is the qualifier the module being checked writes module with (its path when it does
+// not import it).
+func (mc *modCtx) qual(module string) string {
+	if q := mc.c.qualifiers(mc.m.Name)[module]; q != "" {
+		return q
+	}
+	return module
+}
+
+// ts is typeIn for the module being checked.
+func (mc *modCtx) ts(t types.Type) string { return mc.c.typeIn(t, mc.m.Name) }
 
 func (c *Checker) errorf(code string, span diag.Span, format string, args ...any) *diag.Diagnostic {
 	return c.bag.Error(code, span, format, args...)

@@ -21,7 +21,7 @@ func TestAdminNeeds(t *testing.T) {
 		{&Session{User: user}, ": add a union with an `Admin` constructor and `role: Role = Reader` of it to `session` in `App`, and set it at login (chapter 6)"},
 		{&Session{User: user, UserTable: "Member", Role: role}, ": add `Admin` to the session's role type `Account.Kind`, and set the role at login (chapter 6)"},
 	} {
-		got := adminNeeds(c.s)
+		got := adminNeeds(&Program{}, c.s)
 		if !strings.HasPrefix(got, AdminNeeds) || strings.TrimPrefix(got, AdminNeeds) != c.want {
 			t.Errorf("adminNeeds(%+v) = %q, want …%q", c.s, got, c.want)
 		}

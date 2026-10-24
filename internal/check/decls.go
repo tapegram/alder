@@ -185,7 +185,7 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 				return types.Err
 			}
 			if app, ok := decl.(*types.App); ok && app.Con == "Dict" && len(args) == 2 && containsFun(args[0]) {
-				c.errorf(diag.TypeMismatch, t.Span, "%s", dictKeyMessage(args[0], types.StringIn(args[0], mc.m.Name)))
+				c.errorf(diag.TypeMismatch, t.Span, "%s", dictKeyMessage(args[0], mc.ts(args[0])))
 				return types.Err
 			}
 			out := applyArgs(decl, args)
@@ -365,7 +365,7 @@ func (mc *modCtx) checkRegular(decl *types.Record, f *syntax.Field, ft types.Typ
 	walk(ft)
 	if bad != nil {
 		mc.c.errorf(diag.InvalidDecl, f.Span, "field `%s` refers to `%s` as `%s`; a record may refer to itself only with its own parameters (`%s %s`)",
-			f.Name, decl.Name, types.StringIn(bad, mc.m.Name), decl.Name, strings.Join(decl.Params, " "))
+			f.Name, decl.Name, mc.ts(bad), decl.Name, strings.Join(decl.Params, " "))
 	}
 }
 
@@ -419,7 +419,7 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 				generated = true
 				info.IDField, info.IDType = f.Name, ft
 				if b, ok := ft.(*types.Brand); !types.IsErr(ft) && (!ok || !isCon(b.Base, "Text")) {
-					c.errorf(diag.InvalidDecl, f.Span, "`@id` field must be a `brand Text`, got `%s`", types.String(ft))
+					c.errorf(diag.InvalidDecl, f.Span, "`@id` field must be a `brand Text`, got `%s`", mc.ts(ft))
 				}
 			case "created", "updated":
 				generated = true
@@ -437,7 +437,7 @@ func (mc *modCtx) defineTable(d *syntax.TableDecl) {
 			case "setNull":
 				// without `@ref` the rule itself is the error (checkDeleteRules): no second one here
 				if _, ok := maybeOf(ft); !ok && !types.IsErr(ft) && hasAttr(f, "ref") {
-					c.errorf(diag.TypeMismatch, a.Span, "`@setNull` needs a `Maybe` reference, got `%s`; write `%s: Maybe %s`", types.String(ft), f.Name, types.String(ft))
+					c.errorf(diag.TypeMismatch, a.Span, "`@setNull` needs a `Maybe` reference, got `%s`; write `%s: Maybe %s`", mc.ts(ft), f.Name, mc.ts(ft))
 				}
 			default:
 				c.errorf(diag.InvalidDecl, a.Span, "unknown attribute `@%s`", a.Name)
@@ -615,7 +615,7 @@ func (mc *modCtx) checkRef(f *syntax.Field, a *syntax.Attr, ft types.Type, fromF
 		}
 	}
 	if !ok {
-		c.errorf("E0502", f.Span, "`@ref %s` field `%s` must have type `%s` or `Maybe %s`, got `%s`", a.Arg, f.Name, types.String(idType), types.String(idType), types.String(ft))
+		c.errorf("E0502", f.Span, "`@ref %s` field `%s` must have type `%s` or `Maybe %s`, got `%s`", a.Arg, f.Name, mc.ts(idType), mc.ts(idType), mc.ts(ft))
 	}
 }
 
@@ -736,13 +736,13 @@ func (mc *modCtx) checkRepresentable() {
 		case *syntax.TableDecl:
 			for _, f := range d.Fields {
 				if ft := mc.typeOf(f.Type, nil); !storable(ft) {
-					c.errorf(diag.InvalidDecl, f.Span, "table field `%s` has type `%s`, which cannot be stored; model nesting with a second table and `@ref`", f.Name, types.String(ft))
+					c.errorf(diag.InvalidDecl, f.Span, "table field `%s` has type `%s`, which cannot be stored; model nesting with a second table and `@ref`", f.Name, mc.ts(ft))
 				}
 			}
 		case *syntax.FormDecl:
 			for _, f := range d.Fields {
 				if ft := mc.typeOf(f.Type, nil); !formRepresentable(ft) {
-					c.errorf(diag.InvalidDecl, f.Span, "form field `%s` has type `%s`, which cannot come from a form", f.Name, types.String(ft))
+					c.errorf(diag.InvalidDecl, f.Span, "form field `%s` has type `%s`, which cannot come from a form", f.Name, mc.ts(ft))
 				}
 			}
 		}
@@ -764,7 +764,7 @@ func (mc *modCtx) defineApp() {
 			for _, f := range d.Fields {
 				ft := mc.typeOf(f.Type, nil)
 				if !formRepresentable(ft) {
-					c.errorf(diag.InvalidDecl, f.Span, "session field `%s` has type `%s`, which cannot be stored in a session", f.Name, types.String(ft))
+					c.errorf(diag.InvalidDecl, f.Span, "session field `%s` has type `%s`, which cannot be stored in a session", f.Name, mc.ts(ft))
 				}
 				mc.deferDefault(f, ft)
 				rec.Fields = append(rec.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
@@ -788,7 +788,7 @@ func (mc *modCtx) addMsg(u *types.Union, d *syntax.MsgDecl, owner string) {
 		for _, f := range d.Params.Fields {
 			ft := mc.typeOf(f.Type, nil)
 			if !urlRepresentable(ft) {
-				c.errorf(diag.InvalidDecl, f.Span, "message parameter `%s` has type `%s`, which cannot appear in a URL", f.Name, types.String(ft))
+				c.errorf(diag.InvalidDecl, f.Span, "message parameter `%s` has type `%s`, which cannot appear in a URL", f.Name, mc.ts(ft))
 			}
 			mc.deferDefault(f, ft)
 			payload.Fields = append(payload.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
@@ -820,7 +820,7 @@ func (mc *modCtx) definePage() {
 		ft := mc.typeOf(f.Type, nil)
 		declared[f.Name] = true
 		if !urlRepresentable(ft) {
-			c.errorf(diag.InvalidDecl, f.Span, "page parameter `%s` has type `%s`, which cannot appear in a URL", f.Name, types.String(ft))
+			c.errorf(diag.InvalidDecl, f.Span, "page parameter `%s` has type `%s`, which cannot appear in a URL", f.Name, mc.ts(ft))
 		}
 		mc.deferDefault(f, ft)
 		info.Params.Fields = append(info.Params.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})

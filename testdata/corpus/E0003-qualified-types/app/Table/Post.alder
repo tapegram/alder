@@ -1,0 +1,8 @@
+module Table.Post
+
+type PostId = brand Text
+
+table Post {
+  id: PostId @id,
+  title: Text,
+}

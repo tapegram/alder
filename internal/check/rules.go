@@ -111,9 +111,9 @@ func (c *Checker) checkOwner(m *syntax.Module, d *syntax.TableDecl) {
 				const msg = "`@owner` must mark a `@ref` column of the session's user type `%s`; `%s` is `%s`"
 				switch {
 				case c.u.Unify(ft, userT) != nil:
-					c.errorf(diag.OwnerColumn, a.Span, msg, types.String(userT), f.Name, types.String(ft))
+					c.errorf(diag.OwnerColumn, a.Span, msg, c.typeIn(userT, m.Name), f.Name, c.typeIn(ft, m.Name))
 				case !hasAttr(f, "ref"):
-					c.errorf(diag.OwnerColumn, a.Span, msg+" without `@ref`", types.String(userT), f.Name, types.String(ft))
+					c.errorf(diag.OwnerColumn, a.Span, msg+" without `@ref`", c.typeIn(userT, m.Name), f.Name, c.typeIn(ft, m.Name))
 				}
 			default:
 				ft := info.Columns[f.Name]
@@ -122,9 +122,9 @@ func (c *Checker) checkOwner(m *syntax.Module, d *syntax.TableDecl) {
 				switch {
 				case types.IsErr(ft):
 				case !hasAttr(f, "ref"):
-					c.errorf(diag.PartitionDecl, a.Span, "`@partition %s` must mark a `@ref` column; `%s` is `%s` without `@ref`", key, f.Name, types.String(ft))
+					c.errorf(diag.PartitionDecl, a.Span, "`@partition %s` must mark a `@ref` column; `%s` is `%s` without `@ref`", key, f.Name, c.typeIn(ft, m.Name))
 				case !hasKey || !isMaybe || c.u.Unify(ft, kt) != nil:
-					c.errorf(diag.PartitionDecl, a.Span, "`@partition %s` needs a session field `%s` of type `Maybe %s`", key, key, types.String(ft))
+					c.errorf(diag.PartitionDecl, a.Span, "`@partition %s` needs a session field `%s` of type `Maybe %s`", key, key, c.typeIn(ft, m.Name))
 				}
 			}
 			if first == nil {
@@ -182,10 +182,10 @@ func (mc *modCtx) checkRoles(pd *syntax.PageDecl, info *pageInfo) {
 	case types.IsErr(role.Type):
 		return
 	case ok && un.Name == "Maybe" && un.Module == "Prelude":
-		c.errorf(diag.RoleClause, pd.RolesSpan, "this session's `role` field is `%s`: the role must be a union, not `Maybe`", types.String(role.Type))
+		c.errorf(diag.RoleClause, pd.RolesSpan, "this session's `role` field is `%s`: the role must be a union, not `Maybe`", mc.ts(role.Type))
 		return
 	case !ok:
-		c.errorf(diag.RoleClause, pd.RolesSpan, "this session's `role` field is `%s`, not a union: write `role: Role = …` with `type Role = Reader | Author`", types.String(role.Type))
+		c.errorf(diag.RoleClause, pd.RolesSpan, "this session's `role` field is `%s`, not a union: write `role: Role = …` with `type Role = Reader | Author`", mc.ts(role.Type))
 		return
 	}
 	seen := map[string]bool{}
@@ -207,7 +207,7 @@ func (mc *modCtx) checkRoles(pd *syntax.PageDecl, info *pageInfo) {
 			for _, ct := range un.Constructors() {
 				names = append(names, ct.Name)
 			}
-			c.errorf(diag.RoleClause, pd.RolesSpan, "`%s` is not a constructor of this session's `role` type `%s` (%s)", r, types.String(un), strings.Join(names, ", "))
+			c.errorf(diag.RoleClause, pd.RolesSpan, "`%s` is not a constructor of this session's `role` type `%s` (%s)", r, mc.ts(un), strings.Join(names, ", "))
 		}
 	}
 	if !bad {
@@ -542,19 +542,19 @@ func (c *Checker) insertRecordTable(rec *types.Record) (info *types.TableInfo, m
 	return nil, false
 }
 
-// recordLabel is how a message names record rec: its type, but the scoped insert's row (whose
+// recordLabel is how a message for module mod names record rec: its type, but the scoped insert's row (whose
 // type a program never writes) as "Insert T` without `owner" (the message's backticks around it).
-func (c *Checker) recordLabel(rec *types.Record) string {
+func (c *Checker) recordLabel(rec *types.Record, mod string) string {
 	if info, mine := c.insertRecordTable(rec); mine && info != nil {
 		return "Insert " + info.Name + "` without `" + info.PartCol
 	}
-	return types.String(rec)
+	return c.typeIn(rec, mod)
 }
 
 // recordLabelName is recordLabel with a declared record named without its module.
 func (c *Checker) recordLabelName(rec *types.Record) string {
 	if info, mine := c.insertRecordTable(rec); mine && info != nil {
-		return c.recordLabel(rec)
+		return c.recordLabel(rec, "")
 	}
 	return rec.Name
 }

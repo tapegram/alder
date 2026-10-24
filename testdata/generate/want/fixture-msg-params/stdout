@@ -140,7 +140,7 @@ edited app/Home.alder
 app/Home.alder:32:16: warning[W0002]: hole ?feature has type Task Nav
     Feature p -> ?feature,
                  ^^^^^^^^
-app/Home.alder:56:37: warning[W0002]: hole ?featureId has type Table.Post.PostId
+app/Home.alder:56:37: warning[W0002]: hole ?featureId has type Post.PostId
       <al-button click={Feature { id: ?featureId }}>Feature</al-button>
                                       ^^^^^^^^^^
 app/Home.alder:152:16: warning[W0002]: hole ?expected has type Bool

@@ -61,7 +61,7 @@ func (mc *modCtx) defineFakes() {
 		}
 		for _, name := range mc.capEntryOrder(fd.Name) {
 			if defined[name] == nil {
-				c.errorf(diag.TypeMismatch, fd.Span, "`fake %s` lacks `%s` (`%s`)", fd.Name, name, types.StringIn(entries[name], mc.m.Name))
+				c.errorf(diag.TypeMismatch, fd.Span, "`fake %s` lacks `%s` (`%s`)", fd.Name, name, mc.ts(entries[name]))
 			}
 		}
 	}

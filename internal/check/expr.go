@@ -112,7 +112,7 @@ func (mc *modCtx) checkValue(d *syntax.ValueDecl, sig types.Type) {
 			body = fn.Result
 		}
 	} else if len(d.Params) > 0 {
-		c.errorf(diag.Arity, d.Span, "`%s` has type `%s`, which takes no parameters", d.Name, types.String(sig))
+		c.errorf(diag.Arity, d.Span, "`%s` has type `%s`, which takes no parameters", d.Name, mc.ts(sig))
 		return
 	}
 	mc.check(d.Body, body, env, effect{})
@@ -138,7 +138,7 @@ func (mc *modCtx) inferSig(d *syntax.ValueDecl) {
 	mc.reportHoles()
 	s := "?type"
 	if t := c.u.Apply(sig); !unknownIn(t) {
-		s = types.StringIn(t, mc.m.Name)
+		s = mc.ts(t)
 	}
 	mc.missingSig(d, s)
 }
@@ -286,7 +286,7 @@ func (mc *modCtx) missingSig(d *syntax.ValueDecl, sig string) {
 func (mc *modCtx) reportHoles() {
 	for _, h := range mc.holes {
 		mc.c.res.Holes++
-		mc.c.bag.Warn("W0002", h.span, "hole ?%s has type %s", h.name, types.String(mc.c.u.Apply(h.t)))
+		mc.c.bag.Warn("W0002", h.span, "hole ?%s has type %s", h.name, mc.ts(mc.c.u.Apply(h.t)))
 	}
 	mc.holes = nil
 	mc.c.checkDbTables()
@@ -362,7 +362,7 @@ func (c *Checker) checkInferredDictKeys() {
 		}
 	}
 	if at != nil {
-		c.errorf(diag.TypeMismatch, at.GetSpan(), "%s", dictKeyMessage(key, types.String(key)))
+		c.errorf(diag.TypeMismatch, at.GetSpan(), "%s", dictKeyMessage(key, c.typeAt(key, at.GetSpan())))
 	}
 }
 
@@ -431,13 +431,13 @@ func (mc *modCtx) mismatch(span diag.Span, got, expected types.Type) *diag.Diagn
 	if poisoned(g) || poisoned(e) {
 		return &diag.Diagnostic{}
 	}
-	msg := fmt.Sprintf("expected %s, got %s", types.String(e), types.String(g))
+	msg := fmt.Sprintf("expected %s, got %s", mc.ts(e), mc.ts(g))
 	if inner, ok := maybeOf(g); ok && c.u.Check(inner, e) == nil {
 		msg += "; match it: match m { Just x -> …, Nothing -> … }"
 	}
 	if sameFields(g, e) {
 		// a record literal bound without a signature (an eval or REPL let) is structural
-		msg += fmt.Sprintf("; the record has %s's fields: annotate the let (`let x : %s = …`), or give the value a signature", types.String(e), types.String(e))
+		msg += fmt.Sprintf("; the record has %s's fields: annotate the let (`let x : %s = …`), or give the value a signature", mc.ts(e), mc.ts(e))
 	}
 	return c.errorf(diag.TypeMismatch, span, "%s", msg)
 }
@@ -660,7 +660,7 @@ func (mc *modCtx) checkRecordLit(x *syntax.RecordLit, rec *types.Record, env *en
 					continue
 				}
 			}
-			c.errorf(diag.UnknownName, fi.Span, "no field `%s` on `%s`", fi.Name, c.recordLabel(rec))
+			c.errorf(diag.UnknownName, fi.Span, "no field `%s` on `%s`", fi.Name, c.recordLabel(rec, mc.m.Name))
 			mc.infer(fi.Value, env, eff)
 			continue
 		}
@@ -695,9 +695,9 @@ func (mc *modCtx) checkRecordLit(x *syntax.RecordLit, rec *types.Record, env *en
 	case len(missing) > 0 && len(missing) == len(defaulted):
 		c.errorf(diag.TypeMismatch, x.Span, "record literal for `%s` is missing `%s` (%s)", c.recordLabelName(rec), strings.Join(missing, "`, `"), why)
 	case len(defaulted) > 0:
-		c.errorf(diag.TypeMismatch, x.Span, "record `%s` is missing field(s): %s (for `%s`, %s)", c.recordLabel(rec), strings.Join(missing, ", "), strings.Join(defaulted, "`, `"), why)
+		c.errorf(diag.TypeMismatch, x.Span, "record `%s` is missing field(s): %s (for `%s`, %s)", c.recordLabel(rec, mc.m.Name), strings.Join(missing, ", "), strings.Join(defaulted, "`, `"), why)
 	case len(missing) > 0:
-		c.errorf(diag.TypeMismatch, x.Span, "record `%s` is missing field(s): %s", c.recordLabel(rec), strings.Join(missing, ", "))
+		c.errorf(diag.TypeMismatch, x.Span, "record `%s` is missing field(s): %s", c.recordLabel(rec, mc.m.Name), strings.Join(missing, ", "))
 	}
 }
 
@@ -868,7 +868,7 @@ func (mc *modCtx) inferExpr(e syntax.Expr, env *env, eff effect) types.Type {
 			return base
 		}
 		if !ok {
-			c.errorf(diag.TypeMismatch, x.Span, "record update on a non-record `%s`", types.String(base))
+			c.errorf(diag.TypeMismatch, x.Span, "record update on a non-record `%s`", mc.ts(base))
 			for _, fi := range x.Fields {
 				mc.infer(fi.Value, env, eff)
 			}
@@ -883,7 +883,7 @@ func (mc *modCtx) inferExpr(e syntax.Expr, env *env, eff effect) types.Type {
 				}
 			}
 			if !found {
-				c.errorf(diag.UnknownName, fi.Span, "no field `%s` on `%s`", fi.Name, c.recordLabel(rec))
+				c.errorf(diag.UnknownName, fi.Span, "no field `%s` on `%s`", fi.Name, c.recordLabel(rec, mc.m.Name))
 				mc.infer(fi.Value, env, eff)
 			}
 		}
@@ -1048,8 +1048,8 @@ func (mc *modCtx) resolveByType(ct *syntax.CtorRef, t types.Type) {
 	if t != nil && types.IsErr(t) {
 		return
 	}
-	union := types.StringIn(info.Union, mc.m.Name)
-	c.errorf(diag.UnknownName, ct.Span, "`%s` is both a constructor of `%s` and a table: write `%s` for the constructor only where a `%s` is expected, or qualify the table `%s.%s`", ct.Name, union, ct.Name, union, table.Module, table.Name)
+	union := mc.ts(info.Union)
+	c.errorf(diag.UnknownName, ct.Span, "`%s` is both a constructor of `%s` and a table: write `%s` for the constructor only where a `%s` is expected, or qualify the table `%s.%s`", ct.Name, union, ct.Name, union, mc.qual(table.Module), table.Name)
 	c.ambiguousErr[ct] = true
 }
 
@@ -1151,15 +1151,15 @@ func (mc *modCtx) inferAccess(x *syntax.Access, env *env, eff effect) types.Type
 				return f.Type
 			}
 		}
-		c.errorf(diag.UnknownName, x.Span, "no field `%s` on `%s`", x.Field, types.String(b))
+		c.errorf(diag.UnknownName, x.Span, "no field `%s` on `%s`", x.Field, mc.ts(b))
 	case *types.Union:
 		if inner, ok := maybeOf(b); ok {
 			src := mc.source(x.Expr.GetSpan())
-			c.errorf("E0102", x.Span, "`.%s` on a `Maybe %s`; match it first", x.Field, types.String(inner)).Fix =
+			c.errorf("E0102", x.Span, "`.%s` on a `Maybe %s`; match it first", x.Field, mc.ts(inner)).Fix =
 				diag.ReplaceSpan(x.Span, fmt.Sprintf("(match %s { Just x -> x.%s, Nothing -> ?default })", src, x.Field))
 			return c.u.Fresh()
 		}
-		c.errorf(diag.TypeMismatch, x.Span, "`%s` has no fields; it is a union", types.String(b))
+		c.errorf(diag.TypeMismatch, x.Span, "`%s` has no fields; it is a union", mc.ts(b))
 	case *types.App:
 		if b.Con == "Column" && len(b.Args) == 2 {
 			// Lower resolves a column method's column from its receiver's syntax, so the
@@ -1175,11 +1175,11 @@ func (mc *modCtx) inferAccess(x *syntax.Access, env *env, eff effect) types.Type
 			}
 			return mc.columnMethod(x, b.Args[0], b.Args[1])
 		}
-		c.errorf(diag.TypeMismatch, x.Span, "`%s` has no field `%s`", types.String(b), x.Field)
+		c.errorf(diag.TypeMismatch, x.Span, "`%s` has no field `%s`", mc.ts(b), x.Field)
 	case *types.Var:
 		c.errorf(diag.TypeMismatch, x.Span, "cannot infer the record type of `%s`; add a type annotation", mc.source(x.Expr.GetSpan()))
 	default:
-		c.errorf(diag.TypeMismatch, x.Span, "`%s` has no field `%s`", types.String(b), x.Field)
+		c.errorf(diag.TypeMismatch, x.Span, "`%s` has no field `%s`", mc.ts(b), x.Field)
 	}
 	return c.u.Fresh()
 }
@@ -1195,19 +1195,19 @@ func (mc *modCtx) columnMethod(x *syntax.Access, table, field types.Type) types.
 		return &types.Fun{Params: []types.Type{ft}, Result: cond}
 	case "lt", "le", "gt", "ge":
 		if !comparable(ft) {
-			c.errorf(diag.TypeMismatch, x.Span, "`.%s` needs an ordered column, got `%s`", x.Field, types.String(ft))
+			c.errorf(diag.TypeMismatch, x.Span, "`.%s` needs an ordered column, got `%s`", x.Field, mc.ts(ft))
 		}
 		return &types.Fun{Params: []types.Type{ft}, Result: cond}
 	case "contains", "startsWith":
 		if !isTextLike {
-			c.errorf(diag.TypeMismatch, x.Span, "`.%s` needs a Text column, got `%s`", x.Field, types.String(ft))
+			c.errorf(diag.TypeMismatch, x.Span, "`.%s` needs a Text column, got `%s`", x.Field, mc.ts(ft))
 		}
 		return &types.Fun{Params: []types.Type{types.Text}, Result: cond}
 	case "in":
 		return &types.Fun{Params: []types.Type{&types.App{Con: "List", Args: []types.Type{ft}}}, Result: cond}
 	case "isNothing", "isJust":
 		if _, ok := maybeOf(ft); !ok {
-			c.errorf(diag.TypeMismatch, x.Span, "`.%s` needs a Maybe column, got `%s`", x.Field, types.String(ft))
+			c.errorf(diag.TypeMismatch, x.Span, "`.%s` needs a Maybe column, got `%s`", x.Field, mc.ts(ft))
 		}
 		return cond
 	case "asc", "desc":
@@ -1351,7 +1351,7 @@ func (mc *modCtx) applyFn(fnExpr syntax.Expr, fnT types.Type, args []syntax.Expr
 		if ct, isCtor := fnExpr.(*syntax.CtorRef); isCtor {
 			c.errorf(diag.Arity, span, "`%s` takes no arguments", ct.Name)
 		} else {
-			c.errorf(diag.TypeMismatch, fnExpr.GetSpan(), "`%s` is not a function; it has type `%s`", mc.source(fnExpr.GetSpan()), types.String(fnT))
+			c.errorf(diag.TypeMismatch, fnExpr.GetSpan(), "`%s` is not a function; it has type `%s`", mc.source(fnExpr.GetSpan()), mc.ts(fnT))
 		}
 		for _, a := range args {
 			mc.infer(a, env, eff)
@@ -1421,7 +1421,7 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 			return types.Err
 		}
 		if _, ok := fnT.(*types.Fun); !ok {
-			c.errorf(diag.TypeMismatch, x.R.GetSpan(), "right side of `|>` must be a function, got `%s`", types.String(fnT))
+			c.errorf(diag.TypeMismatch, x.R.GetSpan(), "right side of `|>` must be a function, got `%s`", mc.ts(fnT))
 			return c.u.Fresh()
 		}
 		return mc.applyFn(x.R, fnT, nil, p, nil, x.Span, env, eff)
@@ -1452,7 +1452,7 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 			r = c.u.Apply(mc.infer(x.R, env, eff))
 		}
 		if err := c.u.Unify(l, r); err != nil {
-			c.errorf(diag.TypeMismatch, x.Span, "cannot compare `%s` with `%s`: `==` needs both sides to have the same type", types.String(l), types.String(r))
+			c.errorf(diag.TypeMismatch, x.Span, "cannot compare `%s` with `%s`: `==` needs both sides to have the same type", mc.ts(l), mc.ts(r))
 		} else if lt := c.u.Apply(l); containsFun(lt) {
 			if containsEffect(lt) {
 				c.errorf(diag.TypeMismatch, x.Span, "effect values cannot be compared: a `Query` or `Task` is a description of work, not its result; run it with `let x <-` and compare the results")
@@ -1478,7 +1478,7 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 		}
 		if l2 := c.u.Apply(l); !comparable(l2) {
 			if _, isVar := l2.(*types.Var); !isVar {
-				c.errorf(diag.TypeMismatch, x.Span, "`%s` is not ordered; comparison needs Int, Float, Text, Date, Time or a union without payloads", types.String(l2))
+				c.errorf(diag.TypeMismatch, x.Span, "`%s` is not ordered; comparison needs Int, Float, Text, Date, Time or a union without payloads", mc.ts(l2))
 			}
 		}
 		return types.Bool
@@ -1717,7 +1717,7 @@ func (mc *modCtx) arith(x *syntax.BinOp, l, r types.Type) types.Type {
 	lt, lok := numericBase(l)
 	_, rok := numericBase(r)
 	if !lok || !rok {
-		msg := fmt.Sprintf("expected Int, got %s", types.String(firstNonNumeric(l, r)))
+		msg := fmt.Sprintf("expected Int, got %s", mc.ts(firstNonNumeric(l, r)))
 		if isCon(l, "Text") || isCon(r, "Text") {
 			msg += "; `++` joins Text, `+` is for numbers"
 		}
@@ -1737,7 +1737,7 @@ func (mc *modCtx) arith(x *syntax.BinOp, l, r types.Type) types.Type {
 		if lb, rb := brandBase(l), brandBase(r); lb != nil && rb != nil && lb.Name == rb.Name {
 			return lb
 		}
-		c.errorf(diag.TypeMismatch, x.Span, "cannot apply `%s` to `%s` and `%s`", x.Op, types.String(l), types.String(r))
+		c.errorf(diag.TypeMismatch, x.Span, "cannot apply `%s` to `%s` and `%s`", x.Op, mc.ts(l), mc.ts(r))
 		return c.u.Fresh()
 	}
 	return lt
@@ -1784,7 +1784,7 @@ func (mc *modCtx) checkDbGet(x *syntax.App, env *env, eff effect) types.Type {
 	if err := c.u.Check(argT, info.IDType); err == nil {
 		return res
 	}
-	d := c.errorf("E0101", x.Args[1].GetSpan(), "`Db.get %s` takes a `%s`, got `%s`", rec.Name, types.String(info.IDType), types.String(argT))
+	d := c.errorf("E0101", x.Args[1].GetSpan(), "`Db.get %s` takes a `%s`, got `%s`", rec.Name, mc.ts(info.IDType), mc.ts(argT))
 	// fix: a column of the argument's type, if exactly one exists
 	var cols []string
 	for name, ct := range info.Columns {

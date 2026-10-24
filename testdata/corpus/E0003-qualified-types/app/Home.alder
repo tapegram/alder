@@ -1,0 +1,6 @@
+module Home
+
+import Table.Post
+
+same : Post.PostId -> Text -> Bool
+same id t = id == t

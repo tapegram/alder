@@ -44,7 +44,7 @@ func (mc *modCtx) checkHTML(e syntax.Expr, expected types.Type, env *env, eff ef
 			return
 		}
 		if !types.IsErr(ex) {
-			c.errorf(diag.TypeMismatch, e.GetSpan(), "expected %s, got Html", types.String(ex))
+			c.errorf(diag.TypeMismatch, e.GetSpan(), "expected %s, got Html", mc.ts(ex))
 		}
 		mc.htmlNode(e, c.u.Fresh(), env, eff)
 		return
@@ -65,7 +65,7 @@ func (mc *modCtx) htmlNode(e syntax.Expr, m types.Type, env *env, eff effect) {
 		if c.u.Check(got, types.Text) == nil || c.u.Check(got, htmlT) == nil || c.u.Check(got, &types.App{Con: "List", Args: []types.Type{htmlT}}) == nil {
 			return
 		}
-		d := c.errorf(diag.TypeMismatch, x.Expr.GetSpan(), "expected Text, Html or List Html in `{…}`, got %s", types.String(got))
+		d := c.errorf(diag.TypeMismatch, x.Expr.GetSpan(), "expected Text, Html or List Html in `{…}`, got %s", mc.ts(got))
 		mc.annotateMismatch(d, x.Expr, got, types.Text)
 	case *syntax.HtmlFor:
 		elem := c.u.Fresh()
@@ -394,7 +394,7 @@ func (mc *modCtx) component(x *syntax.Element, m types.Type, env *env, eff effec
 	}
 	props, isRec := c.u.Apply(fn.Params[0]).(*types.Record)
 	if !isRec {
-		c.errorf(diag.TypeMismatch, x.Span, "component `%s` must take a record, got `%s`", x.Tag, types.String(fn.Params[0]))
+		c.errorf(diag.TypeMismatch, x.Span, "component `%s` must take a record, got `%s`", x.Tag, mc.ts(fn.Params[0]))
 		return
 	}
 	lit := &syntax.RecordLit{Node: x.Node}
@@ -515,7 +515,7 @@ func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.Ht
 	switch kind {
 	case "Input", "Textarea":
 		if isUnion {
-			c.errorf("E0304", x.Span, "field `%s` is a union; use `<%s>` for `%s`", fieldName, selectTag, types.String(inner))
+			c.errorf("E0304", x.Span, "field `%s` is a union; use `<%s>` for `%s`", fieldName, selectTag, mc.ts(inner))
 		}
 	case "Select":
 		switch {
@@ -523,7 +523,7 @@ func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.Ht
 			c.errorf("E0304", options.GetSpan(), "field `%s` is a union, whose options are its constructors; `options` is for a field of `Text` or a brand of `Text`, such as a row's id", fieldName)
 			mc.infer(options, env, eff)
 		case options != nil && !isTextLike(inner):
-			c.errorf("E0304", options.GetSpan(), "`options` needs a field of `Text` or a brand of `Text`, such as a row's id; `%s` has type `%s`", fieldName, types.String(ft))
+			c.errorf("E0304", options.GetSpan(), "`options` needs a field of `Text` or a brand of `Text`, such as a row's id; `%s` has type `%s`", fieldName, mc.ts(ft))
 			mc.infer(options, env, eff)
 		case options != nil:
 			// the options are the values the field may take, each with its label; a submitted value
@@ -535,11 +535,11 @@ func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.Ht
 			mc.check(options, &types.App{Con: "List", Args: []types.Type{&types.Record{Anonymous: true, Fields: []types.Field{{Name: "value", Type: inner}, {Name: "label", Type: types.Text}}}}}, env, eff)
 			mc.options, mc.optionsBad = nil, nil
 		case !isUnion:
-			c.errorf("E0304", x.Span, "`<%s>` needs a union field, or `options={…}` for a field of `Text` or a brand of `Text`; `%s` has type `%s`", x.Tag, fieldName, types.String(ft))
+			c.errorf("E0304", x.Span, "`<%s>` needs a union field, or `options={…}` for a field of `Text` or a brand of `Text`; `%s` has type `%s`", x.Tag, fieldName, mc.ts(ft))
 		}
 	case "Checkbox":
 		if !isCon(inner, "Bool") {
-			c.errorf("E0304", x.Span, "`<%s>` needs a Bool field; `%s` has type `%s`", x.Tag, fieldName, types.String(ft))
+			c.errorf("E0304", x.Span, "`<%s>` needs a Bool field; `%s` has type `%s`", x.Tag, fieldName, mc.ts(ft))
 		}
 	}
 	if value != nil {

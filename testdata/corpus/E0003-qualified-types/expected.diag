@@ -1,0 +1,2 @@
+app/Both.alder:7:13 E0003 cannot compare `TablePost.PostId` with `BlogPost.Key`: `==` needs both sides to have the same type
+app/Home.alder:6:13 E0003 cannot compare `Post.PostId` with `Text`: `==` needs both sides to have the same type
