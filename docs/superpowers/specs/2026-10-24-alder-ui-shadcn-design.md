@@ -1,8 +1,10 @@
 # alder-ui looks like shadcn out of the box — design
 
 Issue: tapegram/alder#21. Date: 2026-10-24. Status: decisions approved by the user in
-conversation ("Yes sounds good" to the five recommendations below); this is the spec a
-plan argues from. Companion: `2026-10-24-alder-ui-shadcn-reference.md` (the shadcn token
+conversation ("Yes sounds good" to the five recommendations below), then amended the
+same day by four rulings (section 5.3: breaking changes accepted, "I'm ok with breaking
+changes that require apps to manually update. There is only one app at the moment.");
+this is the spec a plan argues from. Companion: `2026-10-24-alder-ui-shadcn-reference.md` (the shadcn token
 sheet, resolved Tailwind values and verbatim class recipes). Related: the M7a spec
 (`2026-10-12-m7a-elements-design.md`: the manifest, the checker, the vendor flow), the
 book's Appendix C (`book/C-design-system.md`), memory note "shadcn web components idea".
@@ -45,8 +47,10 @@ toolchain again to get shadcn's look.
    like shadcn's Typography page by default, so a page written with elements plus flow
    content looks designed with no app CSS.
 4. The element API (names, attributes, values, slots, the markup Alder emits) does not
-   change. Additions only. Every existing Alder program, example, scaffold, generator
-   output and nightvote-replay restyles with a rebuild and no source change.
+   change. Additions only. The CSS surface does change, deliberately: the old `--al-*`
+   tokens are removed and dark mode needs the theme script in the page (section 5.3).
+   Alder's own examples, scaffold and generator output are updated in the same change;
+   nightvote-replay, the one external app, is migrated by hand with the guide in section 10.
 5. Parity is measured, not eyeballed: a committed shadcn reference grid, a
    computed-style diff that gates CI in alder-ui, and before/after screenshots for
    review.
@@ -81,22 +85,23 @@ toolchain again to get shadcn's look.
   through shadcn's tokens (colours, `--radius`, fonts) and the `--shadow-*` tokens.
 - **No breaking the compiler's contract**: no renamed or removed attribute, value, slot
   or emitted markup; no class names Alder must emit beyond today's `help`, `errors`,
-  `_alder-click`.
+  `_alder-click`. (The stylesheet's custom properties are not part of that contract: the
+  old `--al-*` tokens go, section 5.3.)
 
 ## 5. Decisions
 
 ### 5.1 Made by the user (2026-10-24; recommended by the design lead, accepted as stated)
 
 1. **Dark mode is the `.dark` class on `<html>`** (shadcn's convention), so theme
-   exports paste in unchanged. `[data-theme="dark"]` is kept as an alias for one
-   release (v0.4.x) and removed in the next. The CSS-only `prefers-color-scheme`
+   exports paste in unchanged. There is no `[data-theme]` alias (ruling 2, section 5.3). The CSS-only `prefers-color-scheme`
    auto-dark block is dropped: with a pasted theme it is a trap (the pasted, unlayered
    `:root` beats the layered OS-dark block, so an OS-dark user would get light tokens
    on whatever the page assumed). Following the OS is done the way shadcn apps do it: a
    one-line blocking script in `<head>` that sets `.dark` from `localStorage.theme`
    or `matchMedia("(prefers-color-scheme: dark)")` before first paint. alder-ui ships
-   the line in its README and demos; `alder new`'s Layout includes it. Without
-   JavaScript a page is light, as a shadcn page is.
+   the line in its README and demos; `alder new`'s Layout and the generators emit it
+   (section 9); the runtime injects nothing. Without JavaScript a page is light, as a
+   shadcn page is.
 2. **Fidelity over non-text AA.** shadcn's `--border`/`--input` (oklch 0.922 on white)
    and `--ring` fail WCAG's 3:1 for control edges; alder-ui had darkened them. Ship
    shadcn's exact values. In `test/check.py`, text-pairing contrast (4.5:1) stays a hard
@@ -124,7 +129,7 @@ toolchain again to get shadcn's look.
   implements as a comment above the rule, so a future diff against shadcn is
   mechanical. Translation rules:
   - `bg-x/NN` → `color-mix(in oklab, var(--x) NN%, transparent)` (Tailwind v4 mixes in
-    oklab); `dark:` → a rule under `.dark, [data-theme="dark"]`.
+    oklab); `dark:` → a rule under `.dark`.
   - `ring-[3px] ring-x/50` → `box-shadow: 0 0 0 3px color-mix(in oklab, var(--x) 50%, transparent)`;
     where `shadow-xs` also applies, the two are comma-joined.
   - `shadow-xs/sm/md/lg` → `var(--shadow-xs|sm|md|lg)`; `rounded-sm/md/lg/xl` →
@@ -140,7 +145,7 @@ toolchain again to get shadcn's look.
     `transition-behavior: allow-discrete` on `[open]`/`:popover-open` (150ms; dialog
     200ms), under `@media (prefers-reduced-motion: no-preference)`.
 - **Token file layout** (`tokens.css`): shadcn's `:root` block verbatim; shadcn's
-  `.dark` block verbatim under `.dark, [data-theme="dark"]`; a `.light, [data-theme="light"]`
+  `.dark` block verbatim under `.dark`; a `.light`
   block re-declaring the light values (so a dark subtree can hold a light card);
   `color-scheme: light|dark` with each; then one `:root` block of the Tailwind-emitted
   scale written out (`--radius-sm/md/lg/xl`, `--shadow-xs/sm/md/lg`, `--font-sans`,
@@ -149,7 +154,7 @@ toolchain again to get shadcn's look.
   (`--al-width-narrow|normal|wide`). `--al-space-*`, `--al-text-*`, `--al-leading*`,
   `--al-weight-*`, `--al-control-h-*`, `--al-radius-*`, `--al-ring-*`, `--al-shadow-sm`,
   `--al-font-*`, `--al-destructive-text` and the `--al-*-soft/border` tokens are
-  removed. `test/check.py`'s tokens-only rule becomes: no literal colours or font
+  removed outright, with no alias block (section 5.3). `test/check.py`'s tokens-only rule becomes: no literal colours or font
   families in `components/`; lengths are allowed.
 - **Icons** as CSS: the lucide glyphs in the reference (section 4) as inline SVG data
   URIs applied with `mask-image` on `::before`/`::after`, coloured by `currentColor`,
@@ -162,13 +167,45 @@ toolchain again to get shadcn's look.
   `al-popover`, `al-toast` reset headings/paragraphs/lists inside them to their own
   recipes; a bare `<table>` anywhere in `al-page` gets the shadcn table recipe, so
   `al-table` becomes a thin wrapper (`overflow-x: auto`, `striped`, `dense`).
-- **Versioning**: this lands as alder-ui `v0.4.0` (minor: additive API, visual
-  change) and Alder vendors it once at the end of the alder-ui work, or after phase 1
-  for an early look. The `data-theme` alias goes in `v0.5.0`.
+- **Versioning**: this lands as alder-ui `v0.4.0`. The vendored version today is
+  `v0.3.3`; under pre-1.0 semver a breaking change bumps the minor (0.3.x to 0.4.0), so
+  `v0.4.0` is the breaking release, not merely an additive one (token removal, dark mode
+  by script, visual change). The release notes say so and carry the migration steps.
+  Alder vendors it once at the end of the alder-ui work; the early look after phase 1
+  is section 5.3 ruling 4b. There is no `v0.5.0` alias-removal release.
+
+### 5.3 Rulings after the first approval (2026-10-24; the user: "I'm ok with breaking changes that require apps to manually update. There is only one app at the moment.")
+
+1. **Old `--al-*` tokens are removed outright, no alias block.** This is a breaking
+   alder-ui release (`v0.4.0`, pre-1.0 breaking bump, section 5.2). Alder updates its
+   own uses in the same change (section 9). The overlays `rt/web` injects are hardened
+   against the global Preflight/base layer (section 9).
+2. **Dark mode has no runtime injection.** `alder new`'s Layout and the generators
+   (including `internal/generate/admin.go`) emit the theme script; generator goldens
+   change accordingly. Existing apps add it by hand. The one-release `[data-theme]`
+   alias from 5.1 decision 1 is dropped too: the user accepted it earlier only as part
+   of a recommendation and now prefers breaking changes, so `.dark` / `.light` are the
+   only selectors.
+3. **"Zero source changes" is no longer the acceptance bar** for nightvote-replay. It
+   is migrated by hand (old tokens replaced, theme script added to its Layout) and a
+   short migration guide lists the steps (section 10; Appendix C carries the same list).
+4. **Controller's calls** (the controller may revisit with a note in the plan):
+   a. **Parity gate scope (controller's call).** The gate tests Alder's emitted markup.
+      The builder may add allow-list entries for structural gaps on their own (a label
+      wrapping the input, a native checkbox versus a button, display/layout
+      differences), provided each entry is in the committed `test/parity-allow.json`
+      with a one-line reason and is reviewed with the work. Colour, spacing, radius,
+      type and shadow values must still match exactly.
+   b. **Early look (controller's call).** After phase 1 the look is vendored from a
+      pre-release tag (`v0.4.0-rc.1`) on the Alder branch only. Alder main never ships a
+      mixed old/new look. `vendor-al.sh`'s tag == manifest-version rule is satisfied by
+      setting the manifest `version` to `v0.4.0-rc.1` in the rc; the final tag resets it
+      to `v0.4.0`.
 
 ## 6. Constraints
 
-- **The element API is stable.** `custom-elements.json` names, attribute types
+- **The element API is stable** (the CSS custom properties are not; section 5.3).
+  `custom-elements.json` names, attribute types
   (closed unions), defaults and slots may only gain entries. Upstream `test/check.py`
   holds an `API` table that fails on a rename or drop; its `ADDED` list takes the
   additions below. Alder's checker (`internal/elements`, E0028) accepts new
@@ -261,8 +298,12 @@ All of this lives in alder-ui except the last item.
    fixed-size controls, gap, opacity, outline, text-decoration) plus `getBoundingClientRect`
    size (±0.5px), in rest, hover, focus-visible and disabled states (driven by
    Playwright). Output: a per-component table of differing properties and values.
-   Any difference not in `test/parity-allow.json` fails CI. The allow-list holds
-   deliberate deviations, each with a reason: the native `<select>` listbox; the
+   Any difference not in `test/parity-allow.json` fails CI. The twin page uses the
+   markup Alder emits, so structural gaps (the label wrapping the input, a native
+   checkbox versus shadcn's button, display/layout differences) are allow-listed by the
+   builder on their own, each entry with a one-line reason, reviewed with the work;
+   colour, spacing, radius, type and shadow values must still match exactly
+   (controller's call). The allow-list holds deliberate deviations, each with a reason: the native `<select>` listbox; the
    radio-backed tab labels when JavaScript is off; `font-family` on machines without
    Geist installed only if the woff2 failed to load (the script asserts it loaded);
    the alert/toast variants shadcn lacks (compared against `default`).
@@ -273,10 +314,14 @@ All of this lives in alder-ui except the last item.
    literal colours/fonts in components, every `var(--x)` defined, text AA hard /
    border AA warning, demos cover every variant and link `../al.css`, bundle equals
    build output.
-6. **Alder (this repository)**: after vendoring, `go test ./...` (goldens unchanged;
+6. **Alder (this repository)**: after vendoring, `go test ./...` (the generator and
+   scaffold goldens change for the theme script and are regenerated and reviewed; the
+   `rt/web` production-page golden changes with the `--al-primary` replacement;
    `book/appendix_test.go` after the Appendix C rewrite; `cmd/alder` build/run/new tests
-   extended for the font files); `alder build` + `alder run` of `examples/*` and a
-   visual pass over them; and the nightvote-replay check (section 10).
+   extended for the font files); a grep that no `--al-` token other than
+   `--al-width-*` remains outside the vendored `rt/al/`; `alder build` + `alder run` of
+   `examples/*` and a visual pass over them, the dev panel, error strip and pending bar
+   included, against the new base layer; and the nightvote-replay check (section 10).
 
 ## 9. Alder-side changes (this repository)
 
@@ -295,50 +340,106 @@ All of this lives in alder-ui except the last item.
   (same reasoning as the stylesheet).
 - `alder new` scaffold (Layout template; `cmd/alder/new_test.go`): add the one-line theme
   script to `<head>` before the stylesheet link. Keep linking `al.css` and `al.js`.
-  Generators and the admin: no change required; optional follow-up to use the card
-  `description`/`action` slots.
-- `book/C-design-system.md`: rewrite the tokens section (oklch sheet, `.dark`, the
-  one-line script, `--radius-*`/`--shadow-*`/fonts, the AA note with the strict
+- Generators: every generator that emits a layout or page shell emits the same theme
+  script, including `internal/generate/admin.go` (the admin layout it writes when the
+  app has none; where it reuses the app's `Layout`, the app's script serves). Goldens
+  under the generator tests change accordingly and are reviewed. The runtime injects
+  nothing for dark mode. Optional follow-up: use the card `description`/`action` slots.
+- Old tokens, Alder's own uses (all of them found by grep; none other exists outside the
+  vendored `rt/al/al.css`, the book and the golden):
+  - `rt/web/devpanel_ui.go`: `--al-radius-sm` and `--al-radius-md` become
+    `--radius-sm` and `--radius-md`.
+  - `cmd/alder/devui.go`: `--al-font-mono` becomes `--font-mono` (both the error strip
+    and overlay rules).
+  - `rt/web/router.go` (`pendingStyle`): `--al-primary` becomes `--primary`;
+    `rt/web/testdata/production_page.golden` is regenerated.
+  - `examples/blog/static/app.css`: `--al-font-mono` becomes `--font-mono`.
+  - `examples/todos/static/app.css`: `--al-destructive-text` becomes `--destructive`
+    (the text tint on the destructive alert/error text).
+  - `book/C-design-system.md` is rewritten (below).
+  Each replacement keeps its fallback value, so the surfaces still render if a page
+  carries no stylesheet.
+- Hardening the injected UI against the global base layer: the dev panel
+  (`al-devpanel`), the error strip/overlay (`cmd/alder/devui.go`) and the pending bar
+  (`rt/web/router.go`) are injected into apps whose `al.css` now carries Preflight
+  (zero margins, `* { border: 0 solid }`, reset buttons/lists/headings, `img/svg
+  { display: block }`). Each injected rule set states what it relies on (`box-sizing`,
+  `border`, `font`, `margin`, `list-style`, `line-height`, `color`, `background` on
+  buttons) explicitly instead of inheriting browser defaults, uses only
+  `var(--x, fallback)` with literal fallbacks so it also works without alder-ui, and a
+  test or screenshot pass checks the panel and strip in a default and a dark page.
+- `book/C-design-system.md` (the Appendix C rewrite also carries the migration guide,
+  section 10): rewrite the tokens section (oklch sheet, `.dark`, the one-line script, `--radius-*`/`--shadow-*`/fonts, the AA note with the strict
   override), add "The base layer and typography" (`al-page plain`), update each element's
   attribute table and demo for the additions, update "From another stack" and the
-  vendored version. `appendix_test.go` enforces the tables.
-- Tests: `cmd/alder/{build,run,new}_test.go` assert the font files are written/served;
-  the vendoring test still checks `VERSION`.
+  vendored version; list the removed `--al-*` tokens with their replacements. `appendix_test.go` enforces the tables.
+- Tests: `cmd/alder/{build,run,new}_test.go` assert the font files are written/served and
+  that the scaffold's Layout carries the theme script; generator tests assert it in
+  their goldens; the vendoring test still checks `VERSION` (set to the rc during the
+  early look, `v0.4.0` at the end).
 - `.superpowers/brainstorm/2026-10-24-alder-ui-shadcn/` is scratch; the reference
   material it needs is this spec's companion file under `docs/`.
 
-Compiler, checker, renderer, LSP: **no change**. Emitted markup is unchanged; the
-manifest additions are picked up by vendoring.
+Compiler, checker, LSP: **no change**. Emitted element markup is unchanged; the
+manifest additions are picked up by vendoring. Renderer: only the injected dev/pending
+CSS above, and the theme script in scaffold and generator output; no dark-mode logic.
 
-## 10. The nightvote-replay check
+## 10. The nightvote-replay check and migration guide
 
 `~/projects/nightvote-replay` uses `al-page width="narrow"`, `al-card` ×6, `al-button` ×2,
-`al-alert` ×2, `al-toasts`, and raw `h2`/`p`/`code`/`ul`/`table` inside the cards. It is the
-real-page acceptance test for decision 3:
+`al-alert` ×2, `al-toasts`, and raw `h2`/`p`/`code`/`ul`/`table` inside the cards (the
+builder re-counts these with a grep before the check and corrects this list if the app
+has moved). It is the real-page acceptance test for decision 3, and it is migrated by
+hand: zero source changes is not the bar (section 5.3, ruling 3).
 
 1. Before: `alder build && alder run`, screenshot `/` light and dark (toggle `.dark` by
    hand), keep in `ref/out/nightvote-before-*.png` (or the PR).
-2. After vendoring: rebuild with the new compiler (`go install ./cmd/alder` first, per
+2. Migrate by hand with the guide below.
+3. After vendoring: rebuild with the new compiler (`go install ./cmd/alder` first, per
    the "reinstall alder after merge" note), screenshot the same; the cards should
    read as shadcn cards with CardTitle/CardDescription-like headings, the bare tables
-   as shadcn tables, links and code as Typography's. Zero source changes expected;
-   `app.css` is reviewed for overrides that fought the old look and can go.
-3. The user looks at both pairs and says whether it is "shadcn out of the box". That
+   as shadcn tables, links and code as Typography's. `app.css` is reviewed for overrides
+   that fought the old look and can go.
+4. The user looks at both pairs and says whether it is "shadcn out of the box". That
    judgement, not the diff script, closes #21.
+
+### Migration guide (alder-ui v0.3.x to v0.4.0; goes in the release notes and Appendix C)
+
+1. Re-vendor / rebuild with the Alder release that carries alder-ui `v0.4.0`.
+2. Replace every old token in your own CSS: `--al-radius-*` to `--radius-sm|md|lg|xl`;
+   `--al-font-mono` / `--al-font-sans` to `--font-mono` / `--font-sans`;
+   `--al-destructive-text` to `--destructive`; `--al-primary` and the other plain colour
+   tokens to the shadcn name without the prefix; `--al-shadow-sm` to `--shadow-sm`;
+   `--al-space-*`, `--al-text-*`, `--al-leading*`, `--al-weight-*`, `--al-control-h-*`,
+   `--al-ring-*` to literal rem values or Tailwind-scale equivalents; `--al-*-soft` and
+   `--al-*-border` have no replacement (alerts no longer use them). Only
+   `--al-width-narrow|normal|wide` survive. `grep -rn -e '--al-' static/ src/` finds them.
+3. Dark mode: add the theme script to the `<head>` of your Layout, before the stylesheet
+   link (the exact line is in Appendix C and the alder-ui README). The CSS-only
+   OS-dark block and `[data-theme="dark"]` are gone; `.dark` on `<html>` is the only switch.
+4. Rebuild, look at each page in light and dark, and delete any app CSS that fought the
+   old look.
+
+For nightvote-replay: steps 2 and 3 are applied to its `static/app.css` (or equivalent)
+and its Layout; steps 1 and 4 are the check above.
 
 ## 11. Phasing (each phase one alder-ui PR with its triptychs)
 
 0. Oracle: `ref/` app and committed `ref/dist/`, `demo/parity.html`, `test/parity.py`
    (+ allow-list), CI job. Nothing visual changes yet.
-1. Tokens and base: oklch sheet, `.dark` (+ alias), `--radius-*`/`--shadow-*`/fonts,
+1. Tokens and base: oklch sheet, `.dark` (no alias), old `--al-*` tokens removed, `--radius-*`/`--shadow-*`/fonts,
    Geist woff2 + `@font-face`, Preflight, Typography, icons, focus ring, check.py rule
-   changes. Most of the visible change lands here.
+   changes. Most of the visible change lands here. Tag `v0.4.0-rc.1` (manifest `version`
+   set to match) for the Alder branch's early look (section 5.3, ruling 4b).
 2. Controls: button, input, textarea, select, checkbox, label/help/errors.
 3. Surfaces: card (+ slots), badge, alert, table, pagination, stack, page (`plain`).
 4. Overlays and motion: dialog (+ slot), popover, menu, tooltip, toast, tabs (+ variant),
    devpanel re-pin.
-5. Tag `v0.4.0`. Then in Alder: vendor, fonts in the embed/build/serve lists, Appendix C,
-   `alder new` snippet, tests, nightvote-replay before/after, examples pass.
+5. Tag `v0.4.0` (breaking; manifest `version` back to `v0.4.0`). Then in Alder: vendor,
+   fonts in the embed/build/serve lists, `--al-*` replacements, injected-UI hardening,
+   Appendix C with the migration guide, `alder new` and generator theme script with
+   regenerated goldens, tests, nightvote-replay hand migration and before/after,
+   examples pass.
 
 ## 12. Left to the builder
 
@@ -351,7 +452,7 @@ real-page acceptance test for decision 3:
 - Whether `al-card`'s unslotted-heading rule needs `:first-child` or
   `:nth-child(1 of :not([slot]))`, and the same for the description `p`.
 - How `test/parity.py` drives hover/focus states for both pages identically, and the
-  initial allow-list contents.
+  initial allow-list contents (structural entries per section 5.3, ruling 4a).
 - Where Playwright for Python is installed for CI (a `requirements-dev.txt` in alder-ui)
   and how the triptychs are attached (artifact upload).
 - The `line` tabs' exact classes (re-fetch `tabs.tsx`; the reference marks this).
