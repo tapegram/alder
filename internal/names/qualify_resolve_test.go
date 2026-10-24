@@ -295,3 +295,14 @@ func TestQual_PageMembers(t *testing.T) {
 		t.Fatalf("got %s", got)
 	}
 }
+
+// The module's own last segment blocks a qualifier only while the path can grow: `import Layout`
+// inside `Admin.Layout` keeps `Layout`.
+func TestQual_OwnSegmentFullLength(t *testing.T) {
+	_, bag, ms := resolveMods(t, std(t), "module Layout\n\npageTitle : Int\npageTitle = 1\n",
+		"module Admin.Layout\n\nimport Layout\n\nx : Int\nx = Layout.pageTitle\n")
+	if len(bag.Items) != 0 {
+		t.Fatalf("unexpected: %s", codes(bag))
+	}
+	wantRef(t, ms["Admin.Layout"], "Layout.pageTitle", syntax.Ref{Kind: syntax.RefValue, Module: "Layout", Name: "pageTitle"})
+}

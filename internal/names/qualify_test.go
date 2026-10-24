@@ -22,6 +22,8 @@ func TestCanonicalQualifiers(t *testing.T) {
 		{"two segments", "M", []string{"Posts.Index", "Admin.Posts.Index"}, "", map[string]string{"Posts.Index": "PostsIndex", "Admin.Posts.Index": "AdminPostsIndex"}, nil},
 		{"stdlib name", "M", []string{"Utils.List"}, "", map[string]string{"Utils.List": "UtilsList"}, nil},
 		{"self segment", "Sites.MnSos", []string{"Data.MnSos"}, "", map[string]string{"Data.MnSos": "DataMnSos"}, nil},
+		{"own segment, full length", "Admin.Layout", []string{"Layout"}, "", map[string]string{"Layout": "Layout"}, nil},
+		{"own segment, beside a longer path", "Admin.Layout", []string{"Layout", "Shop.Layout"}, "", map[string]string{"Layout": "Layout", "Shop.Layout": "ShopLayout"}, nil},
 		{"local declaration", "M", []string{"Table.Todo"}, "Todo", map[string]string{"Table.Todo": "TableTodo"}, nil},
 		{"identical joins", "M", []string{"A.X", "B.X", "AX"}, "", map[string]string{"A.X": "", "B.X": "BX", "AX": ""}, []string{"A.X", "AX"}},
 		{"distinct ends", "M", []string{"Todos.Index", "Projects.Index", "Blog.Show"}, "", map[string]string{"Todos.Index": "TodosIndex", "Projects.Index": "ProjectsIndex", "Blog.Show": "Show"}, nil},

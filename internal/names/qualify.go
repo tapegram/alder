@@ -42,22 +42,24 @@ func CanonicalQualifiers(self string, paths []string, taken func(string) bool) (
 			}
 		}
 		for c, g := range groups {
-			blocked := taken(c) || c == selfLast
-			if len(g) == 1 && !blocked {
-				continue
-			}
 			canGrow := false
 			for _, p := range g {
 				if k[p] < len(segs[p]) {
 					canGrow = true
 				}
 			}
+			// The module's own last segment blocks a name only while the path can still grow:
+			// `import Layout` inside `Admin.Layout` keeps `Layout` (its own names are never
+			// written with it), while `Data.MnSos` inside `Sites.MnSos` becomes `DataMnSos`.
+			if len(g) == 1 && !taken(c) && !(c == selfLast && canGrow) {
+				continue
+			}
 			for _, p := range g {
 				switch {
 				case k[p] < len(segs[p]):
 					k[p]++
 					changed = true
-				case blocked || !canGrow:
+				case taken(c) || !canGrow:
 					// Cannot grow: a taken name, or a tie only with other whole joins.
 					if !isBad[p] {
 						isBad[p] = true
