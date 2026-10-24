@@ -1,10 +1,13 @@
 package generate
 
 import (
+	"maps"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
+	"alder/internal/names"
 	"alder/internal/syntax"
 )
 
@@ -15,7 +18,9 @@ import (
 // a hole, a declaration with several holes and no hole named, and an empty expression. A module
 // of the app that expr names qualified (`Member.x`) and the hole's module does not import is
 // imported (imports: their names); a standard library module needs no import, and a name that
-// is not a module's is left to the check.
+// is not a module's is left to the check. A short qualifier (`Index.x`) of a module not yet
+// imported also counts when exactly one module of the app would get it as its canonical
+// qualifier beside the imports the module has; when several would, fill refuses and names them.
 func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, imports []string, err error) {
 	if err := controlChars(expr); err != nil {
 		return nil, nil, nil, err
@@ -95,7 +100,9 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 			e.replaceLine(sp.Start.Line, indent(inner, indentOf(l)))
 		}
 		dropGuidance(e, m.Syntax, h.Decl, h.Name == "expected", onlyExpectedLeft(in, h))
-		addImports(e, p, m.Syntax, fillImports(p, m, expr, &imports))
+		if err := fillImports(e, p, m, expr, &imports); err != nil {
+			return nil, nil, nil, err
+		}
 		return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
 	}
 	if needsParens(before, after, expr) {
@@ -111,24 +118,32 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 	e := newSrcEdit(m.Source)
 	e.replaceLine(sp.Start.Line, before+strings.Join(exprLines, "\n")+after)
 	dropGuidance(e, m.Syntax, h.Decl, h.Name == "expected", onlyExpectedLeft(in, h))
-	addImports(e, p, m.Syntax, fillImports(p, m, expr, &imports))
+	if err := fillImports(e, p, m, expr, &imports); err != nil {
+		return nil, nil, nil, err
+	}
 	return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
 }
 
-// fillImports adds to *imports the modules of the app expr names (qualifiers) that module m
-// does not import yet, and returns them.
-func fillImports(p *Program, m *Module, expr string, imports *[]string) []string {
+// fillImports adds to e the imports of the modules of the app that expr names, by their full
+// path, by a short qualifier (shortModules) or as a bare table's, and module m does not import
+// yet; it adds their names to *imports.
+func fillImports(e *srcEdit, p *Program, m *Module, expr string, imports *[]string) error {
+	short, err := shortModules(p, m, expr)
+	if err != nil {
+		return err
+	}
 	have := map[string]bool{m.Name: true}
 	for _, im := range m.Syntax.Imports {
 		have[im.Module] = true
 	}
-	for _, q := range qualifiers(p, expr) {
+	for _, q := range append(qualifiers(p, expr), short...) {
 		if !have[q] {
 			have[q] = true
 			*imports = append(*imports, q)
 		}
 	}
-	return *imports
+	addImports(e, p, m.Syntax, *imports)
+	return nil
 }
 
 // soleInBlock reports whether the hole ?name on line n (1-based) of lines is alone on its
@@ -180,6 +195,31 @@ func blockBody(expr string) (string, bool) {
 func qualifiers(p *Program, expr string) []string {
 	var out []string
 	seen := map[string]bool{}
+	for _, segs := range dottedNames(expr) {
+		if len(segs) == 1 && p.namesOwnType(segs[0]) && !seen[segs[0]] { // a table's record type: `Db.from Team`
+			seen[segs[0]] = true
+			out = append(out, segs[0])
+		}
+		for k := len(segs) - 1; k >= 1; k-- {
+			name := strings.Join(segs[:k], ".")
+			if p.Modules[name] != nil && !p.Std[name] {
+				// App and the pages are named without an import (`App.Logout`, `Teams.Show.Remove`)
+				if !seen[name] && name != "App" && p.PageNamed(name) == nil {
+					seen[name] = true
+					out = append(out, name)
+				}
+				break
+			}
+		}
+	}
+	return out
+}
+
+// dottedNames are the names of expr that start with a capital letter, outside strings and
+// comments, each as its segments (`Admin.Layout.isAdmin` is Admin, Layout, isAdmin), in order of
+// appearance. It stops at an unterminated string.
+func dottedNames(expr string) [][]string {
+	var out [][]string
 	for i := 0; i < len(expr); i++ {
 		switch ch := expr[i]; {
 		case ch >= utf8.RuneSelf: // a multi-byte character is no part of a name: step over all of it
@@ -200,22 +240,7 @@ func qualifiers(p *Program, expr string) []string {
 			for j < len(expr) && (isNameByte(expr[j]) || expr[j] == '.') {
 				j++
 			}
-			segs := strings.Split(strings.TrimRight(expr[i:j], "."), ".")
-			if len(segs) == 1 && p.namesOwnType(segs[0]) && !seen[segs[0]] { // a table's record type: `Db.from Team`
-				seen[segs[0]] = true
-				out = append(out, segs[0])
-			}
-			for k := len(segs) - 1; k >= 1; k-- {
-				name := strings.Join(segs[:k], ".")
-				if p.Modules[name] != nil && !p.Std[name] {
-					// App and the pages are named without an import (`App.Logout`, `Teams.Show.Remove`)
-					if !seen[name] && name != "App" && p.PageNamed(name) == nil {
-						seen[name] = true
-						out = append(out, name)
-					}
-					break
-				}
-			}
+			out = append(out, strings.Split(strings.TrimRight(expr[i:j], "."), "."))
 			i = j - 1
 		case isNameByte(ch):
 			for i+1 < len(expr) && (isNameByte(expr[i+1]) || expr[i+1] == '.') {
@@ -224,6 +249,61 @@ func qualifiers(p *Program, expr string) []string {
 		}
 	}
 	return out
+}
+
+// shortModules are the modules of the app that expr names by a short qualifier (`Index.helper`)
+// without m importing them: the one module that would get that qualifier were it imported
+// beside m's imports (the canonical qualifier of chapter 3). A written qualifier that m already
+// has, that names a standard-library module, or that no module would get is left to the check.
+// A qualifier that several modules would get is an error naming them, since fill cannot know
+// which was meant.
+func shortModules(p *Program, m *Module, expr string) ([]string, error) {
+	isStd := func(n string) bool { return p.Std[n] }
+	var old []string
+	have := map[string]bool{m.Name: true}
+	for _, im := range m.Syntax.Imports {
+		have[im.Module] = true
+		if !p.Std[im.Module] {
+			old = append(old, im.Module)
+		}
+	}
+	taken := names.Taken(m.Syntax, isStd)
+	quals := canonicalQuals(m.Name, old, taken)
+	cands := map[string][]string{} // qualifier -> the not-yet-imported modules that would get it
+	var all []string
+	for x := range p.Modules {
+		if !have[x] && !p.Std[x] && x != "App" {
+			all = append(all, x)
+		}
+	}
+	slices.Sort(all)
+	var out []string
+	seen := map[string]bool{}
+	for _, segs := range dottedNames(expr) {
+		q := segs[0]
+		if len(segs) < 2 || seen[q] || p.Std[q] || p.Modules[q] != nil {
+			continue // not a qualified name, seen, or a module's full path (qualifiers finds those)
+		}
+		seen[q] = true
+		if slices.Contains(slices.Collect(maps.Values(quals)), q) {
+			continue
+		}
+		if _, done := cands[q]; !done {
+			for _, x := range all {
+				if canonicalQuals(m.Name, append(slices.Clone(old), x), taken)[x] == q {
+					cands[q] = append(cands[q], x)
+				}
+			}
+		}
+		switch len(cands[q]) {
+		case 0:
+		case 1:
+			out = append(out, cands[q][0])
+		default:
+			return nil, Refusef("`%s` in the expression could be the qualifier of %s, and `%s` imports none of them: write the import you mean first, then fill", q, "`"+strings.Join(cands[q], "`, `")+"`", m.Name)
+		}
+	}
+	return out, nil
 }
 
 // namesOwnType reports whether name is a module of the app (not the standard library's) that

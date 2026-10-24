@@ -470,7 +470,9 @@ func (g *adminGen) file(module string, imports *importSet, body string) {
 	b.WriteString(g.siloCode(module, body))
 	path := FileOf(module)
 	// formatted here, not only by Apply: regen compares these regions with the file's, formatted
-	g.files[path], _ = Formatted(path, canonical(g.p, path, b.String())) // a failure: Apply tries again and warns
+	// a text that does not parse is kept as it is: Apply formats it again, warns and the tests catch it
+	text, _ := canonical(g.p, path, b.String())
+	g.files[path], _ = Formatted(path, text)
 	g.order = append(g.order, path)
 }
 

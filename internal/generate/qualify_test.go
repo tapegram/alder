@@ -1,6 +1,7 @@
 package generate
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -134,5 +135,20 @@ func TestAddImports_UnqualifiableNoAlias(t *testing.T) {
 	}
 	if strings.Contains(importLine("A.X", "A.X"), " as ") {
 		t.Errorf("importLine(A.X, A.X) = %q", importLine("A.X", "A.X"))
+	}
+}
+
+// canonical writes a module's imports canonically, and refuses (not passes on) text that does
+// not parse.
+func TestCanonical_RefusesUnparseableText(t *testing.T) {
+	p := stdProgram()
+	good := "module Home\n\nimport Layout\n\nx = 1\n"
+	if out, err := canonical(p, "app/Home.alder", good); err != nil || out != good {
+		t.Fatalf("clean text: %q, %v", out, err)
+	}
+	out, err := canonical(p, "app/Home.alder", "module Home\n\nx = (\n")
+	var r *Refusal
+	if !errors.As(err, &r) || !strings.Contains(err.Error(), "does not parse") || out == "" {
+		t.Fatalf("got %q, %v", out, err)
 	}
 }

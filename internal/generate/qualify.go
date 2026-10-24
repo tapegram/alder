@@ -119,18 +119,19 @@ func requalifyChain(s string, i int, rename, bare map[string]string) (int, strin
 
 // canonical is body, the text of a module a generator wrote at path with `import P` lines and
 // full module paths, written with canonical qualifiers (design rule 9): each import with its
-// alias, each reference through its qualifier. Text that does not parse is returned as it is.
-func canonical(p *Program, path, body string) string {
+// alias, each reference through its qualifier. Text that does not parse is an internal error (a
+// template or generator bug), reported as a refusal rather than passed on.
+func canonical(p *Program, path, body string) (string, error) {
 	m, ds := syntax.ParseFile(path, []byte(body))
 	for _, d := range ds {
 		if d.Severity == "error" {
-			return body
+			return body, Refusef("internal error: the generated %s does not parse (%d:%d: %s); please file an issue", path, d.Span.Start.Line, d.Span.Start.Col, d.Message)
 		}
 	}
 	e := newSrcEdit(body)
 	retarget(e, p, m, nil, true)
 	if out := e.result(); strings.TrimSuffix(out, "\n") != strings.TrimSuffix(body, "\n") {
-		return out
+		return out, nil
 	}
-	return body
+	return body, nil
 }

@@ -71,7 +71,11 @@ func NewCapability(p *Program, module, entry, typ string) ([]Edit, error) {
 		edit = Edit{Path: m.File, Body: e.result()}
 	} else {
 		d.Imports = imports.list()
-		edit = Edit{Path: FileOf(module), Create: true, Body: canonical(p, FileOf(module), snippet("capability_module", d)+"\n\n"+snippet("test", install))}
+		body, err := canonical(p, FileOf(module), snippet("capability_module", d)+"\n\n"+snippet("test", install))
+		if err != nil {
+			return nil, err
+		}
+		edit = Edit{Path: FileOf(module), Create: true, Body: body}
 	}
 
 	// the adapter, from the checked capability

@@ -103,32 +103,41 @@ func NewTableWith(p *Program, name string, fields []FieldSpec, o TableOptions) (
 		appEdit = []Edit{{Path: app.File, Body: e.result()}}
 	}
 	file := FileOf(name)
-	edit := func() Edit {
+	edit := func() (Edit, error) {
 		body := render("table.tmpl", d)
 		if m == nil {
-			return Edit{Path: file, Create: true, Body: canonical(p, file, body)}
+			body, err := canonical(p, file, body)
+			return Edit{Path: file, Create: true, Body: body}, err
 		}
 		// in the module: what follows the template's `module` and imports, after its declarations
 		_, rest, _ := strings.Cut(body, "type "+name+"Id = brand Text")
 		e := newSrcEdit(m.Source)
 		e.appendText("\ntype " + name + "Id = brand Text" + strings.TrimRight(rest, "\n"))
 		addImports(e, p, m.Syntax, d.Imports)
-		return Edit{Path: m.File, Body: e.result()}
+		return Edit{Path: m.File, Body: e.result()}, nil
 	}
 
 	// the tests of its delete rules, from the checked table
-	probe, err := Probe(p.Dir, append([]Edit{edit()}, appEdit...))
+	first, err := edit()
 	if err != nil {
 		return nil, err
 	}
-	if r := probe.errorsIn(edit().Path); r != nil {
+	probe, err := Probe(p.Dir, append([]Edit{first}, appEdit...))
+	if err != nil {
+		return nil, err
+	}
+	if r := probe.errorsIn(first.Path); r != nil {
 		return nil, r
 	}
 	if t := probe.TableNamed(name); t != nil {
 		d.Tests = deleteRuleTests(probe, t, imports)
 	}
 	d.Imports = imports.list()
-	return append([]Edit{edit()}, appEdit...), nil
+	last, err := edit()
+	if err != nil {
+		return nil, err
+	}
+	return append([]Edit{last}, appEdit...), nil
 }
 
 // deleteRuleTests are the tests of t's references' delete rules (chapter 8): with `@cascade`,

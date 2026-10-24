@@ -239,7 +239,11 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 	d.Tests = append(d.Tests, TestData{Name: quote("a signed-in user logs out here"), Lines: tb.lines,
 		Result: "{ answer: r.answer, user: r.session.user" + outRole + " } == " + want + " }"})
 	d.Imports = imports.list()
-	edits = append(edits, Edit{Path: FileOf(module), Create: true, Body: canonical(p, FileOf(module), render("auth_login.tmpl", d))})
+	loginBody, err := canonical(p, FileOf(module), render("auth_login.tmpl", d))
+	if err != nil {
+		return nil, false, err
+	}
+	edits = append(edits, Edit{Path: FileOf(module), Create: true, Body: loginBody})
 
 	// App
 	roleField, roleType := "", ""
