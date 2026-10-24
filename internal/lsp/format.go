@@ -2,6 +2,8 @@ package lsp
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 
 	"alder/internal/format"
@@ -29,6 +31,9 @@ func formattingReq(s *server, params json.RawMessage) (any, error) {
 		return nil, nil
 	}
 	out, _, err := format.Source(rel, []byte(d.Text))
+	if errors.Is(err, format.ErrUnsafe) {
+		fmt.Fprintf(s.o.Log, "alder lsp: formatting %s: %v\n", rel, err)
+	}
 	if err != nil || out == nil {
 		return nil, nil
 	}
@@ -57,7 +62,7 @@ func lineEdits(old, new string) []TextEdit {
 	}
 	am, bm := a[pre:len(a)-suf], b[pre:len(b)-suf]
 
-	// pos is the position of the start of line i of a (or the end of the text for i == len(a)).
+	// A lone \r is not a line break here either. pos is the position of the start of line i of a (or the end of the text for i == len(a)).
 	pos := func(i int) Position {
 		if i < len(a) || strings.HasSuffix(old, "\n") || len(a) == 0 {
 			return Position{Line: i}
@@ -106,6 +111,7 @@ func lineEdits(old, new string) []TextEdit {
 }
 
 // splitLines is s's lines, each keeping its newline; the last has none when s does not end in one.
+// A lone \r is not a line break (as in the parser and LSP positions, only \n ends a line).
 func splitLines(s string) []string {
 	if s == "" {
 		return nil

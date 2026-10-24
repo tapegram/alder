@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+
+	"alder/internal/format"
 	"bytes"
 	"os"
 	"path/filepath"
@@ -109,5 +112,39 @@ func TestFmt_BadFlag(t *testing.T) {
 	code, _, errOut := fmtRun("--nope")
 	if code != 2 || !strings.HasPrefix(errOut, "alder fmt: ") {
 		t.Fatalf("code %d err %q", code, errOut)
+	}
+}
+
+func TestFmt_WritesThroughSymlink(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	real := fmtWrite(t, dir, "real/Main.alder", fmtMessy)
+	link := filepath.Join(dir, "app", "Link.alder")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip(err)
+	}
+	if code, _, errOut := fmtRun(link); code != 0 {
+		t.Fatalf("code %d err %q", code, errOut)
+	}
+	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("link was replaced: %v %v", fi, err)
+	}
+	if got, _ := os.ReadFile(real); string(got) != fmtClean {
+		t.Fatalf("target %q", got)
+	}
+}
+
+func TestFmt_UnsafeSkipsWrite(t *testing.T) {
+	t.Parallel()
+	var e bytes.Buffer
+	code := fmtResult("app/Main.alder", nil, []byte("x"), nil, fmt.Errorf("x: %w", format.ErrUnsafe), &e, func([]byte) int {
+		t.Error("write callback ran")
+		return 0
+	})
+	if code != 2 || !strings.Contains(e.String(), "alder fmt: internal error:") {
+		t.Fatalf("code %d err %q", code, e.String())
 	}
 }

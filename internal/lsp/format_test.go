@@ -82,7 +82,7 @@ func TestLineEdits_Minimal(t *testing.T) {
 func TestLineEdits_Roundtrip(t *testing.T) {
 	cases := [][2]string{
 		{"", "a\n"}, {"a\n", ""}, {"a", "a\n"}, {"a\nb", "a\nc\n"}, {"a\nb\nc\nd\n", "b\nx\nd\ne\n"},
-		{"a\n\n\nb\n", "a\n\nb\n"}, {"é\nx\n", "é\ny\n"}, {"a\r\nb\r\n", "a\nb\n"}, {"x\n", "x\n"},
+		{"a\n\n\nb\n", "a\n\nb\n"}, {"é\nx\n", "é\ny\n"}, {"a\r\nb\r\n", "a\nb\n"}, {"x\n", "x\n"}, {"x\né", "x\né\n"}, {"é", "é\nb"},
 	}
 	for _, c := range cases {
 		if got := applyEdits(t, c[0], lineEdits(c[0], c[1])); got != c[1] {

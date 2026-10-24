@@ -93,6 +93,10 @@ func fmtFile(path string, checkOnly bool, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "alder fmt: %v\n", err)
 		return 2
 	}
+	target := path // a symbolic link is written through, not replaced
+	if r, err := filepath.EvalSymlinks(path); err == nil {
+		target = r
+	}
 	src, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Fprintf(stderr, "alder fmt: %v\n", err)
@@ -107,7 +111,7 @@ func fmtFile(path string, checkOnly bool, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stdout, "%s would be reformatted\n", path)
 			return 1
 		}
-		if err := writeFileAtomic(path, out, info.Mode().Perm()); err != nil {
+		if err := writeFileAtomic(target, out, info.Mode().Perm()); err != nil {
 			fmt.Fprintf(stderr, "alder fmt: %v\n", err)
 			return 2
 		}
