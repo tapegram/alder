@@ -531,7 +531,11 @@ func TestScratchAppSaveRunsOnce(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "app", "Todo.alder"), []byte(c.disk("app/Todo.alder")+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	tick <- watch.SourceChange
+	select {
+	case tick <- watch.SourceChange:
+	case <-time.After(timeout):
+		t.Fatal("the poller did not take the second tick")
+	}
 	select {
 	case rerun := <-polled:
 		if !rerun {

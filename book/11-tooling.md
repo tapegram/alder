@@ -803,7 +803,9 @@ is not under `app/` (`scratch.alder`, `probe.scratch.alder`,
 `notes/db_scratch.alder`). `alder scratch` takes the file as an argument,
 `./scratch.alder` by default, and runs it against the app above it: the
 nearest directory up from the file that holds `app/*.alder`. Any other
-file is refused (exit 2). `alder fmt` skips scratch files when it walks a
+file is refused (exit 2). A scratch file given as a symbolic link is judged by its
+target (the CLI and the language server both resolve links): the target must be
+named `*scratch.alder` and live in an app's project. `alder fmt` skips scratch files when it walks a
 directory and refuses one named on its command line, because a file with
 `>` lines is not a module; the language server leaves them alone too.
 
