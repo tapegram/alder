@@ -81,6 +81,7 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 		if v, open := a.versions[rel]; open {
 			doc.Version = &v
 		}
+		var fixes []codeAction
 		for _, d := range a.diags {
 			if d.Span.File != rel || d.Fix == nil {
 				continue
@@ -89,11 +90,12 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 			if !linesOverlap(ld.Range, p.Range) || !freshLines(a, rel, now, d.Fix.EndLine, true) {
 				continue
 			}
-			out = append(out, codeAction{
+			fixes = append(fixes, codeAction{
 				Title: "Fix: " + d.Message, Kind: "quickfix", Diagnostics: []Diagnostic{ld},
 				Edit: &workspaceEdit{DocumentChanges: []textDocumentEdit{{TextDocument: doc, Edits: []TextEdit{*ld.Data.Fix}}}},
 			})
 		}
+		out = append(out, disjointFixes(fixes)...)
 	}
 	start := p.Range.Start
 	if start.Line < 0 || start.Character < 0 {
@@ -120,6 +122,55 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 		})
 	}
 	return out, nil
+}
+
+// disjointFixes drops the quick fixes whose edit overlaps another's, so a client is never offered
+// two rewrites of the same text that cannot both apply (a full-path constructor, `Table.Todo.Open`,
+// is E0205 and E0203 on one span). Of an overlapping group the widest edit is kept; on equal
+// ranges one other than E0205 (the first of those), which is the one that leaves checked code
+// (`Open`, where E0205's `Todo.Open` is still E0203). The dropped fixes' diagnostics are
+// added to the kept action, so the action is offered on each of them. Each action carries one
+// edit, and the order of the rest is unchanged.
+func disjointFixes(fixes []codeAction) []codeAction {
+	edit := func(a codeAction) TextEdit { return a.Edit.DocumentChanges[0].Edits[0] }
+	before := func(a, b Position) bool { return a.Line < b.Line || a.Line == b.Line && a.Character < b.Character }
+	overlap := func(a, b Range) bool {
+		return before(a.Start, b.End) && before(b.Start, a.End) || a == b
+	}
+	// better: a's fix beats b's, an overlapping one. Wider wins; on equal ranges a fix other than
+	// E0205 wins, since E0205 only shortens the module path and leaves what the other code fixes.
+	better := func(a, b codeAction) bool {
+		ra, rb := edit(a).Range, edit(b).Range
+		if ra == rb {
+			return a.Diagnostics[0].Code != diag.FullPath && b.Diagnostics[0].Code == diag.FullPath
+		}
+		return before(ra.Start, rb.Start) && !before(ra.End, rb.End) || !before(rb.Start, ra.Start) && before(rb.End, ra.End)
+	}
+	keep := make([]bool, len(fixes))
+	for i := range keep {
+		keep[i] = true
+	}
+	for i := range fixes {
+		for j := range fixes {
+			if i == j || !keep[i] || !keep[j] || !overlap(edit(fixes[i]).Range, edit(fixes[j]).Range) {
+				continue
+			}
+			drop := j // i is kept unless j is better
+			if better(fixes[j], fixes[i]) {
+				drop = i
+			}
+			winner := i + j - drop
+			fixes[winner].Diagnostics = append(fixes[winner].Diagnostics, fixes[drop].Diagnostics...)
+			keep[drop] = false
+		}
+	}
+	var out []codeAction
+	for i, f := range fixes {
+		if keep[i] {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // linesOverlap reports whether a and b share a line. An end at a line's first byte does not

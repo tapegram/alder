@@ -1,12 +1,15 @@
 package lsp
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 type action struct {
 	Title, Kind string
+	Diagnostics []Diagnostic
 	Edit        *struct {
 		DocumentChanges []struct {
 			TextDocument struct {
@@ -216,4 +219,48 @@ func TestAction_E0205Fix(t *testing.T) {
 		}
 	}
 	t.Fatalf("no quick fix replacing with Todo.find: %+v", actions(t, c, rel, line))
+}
+
+// A full-path constructor (`Table.Todo.Open`) is E0205 and E0203 on one span, with two fixes
+// that rewrite it differently. Only the wider one is offered, as one action that carries both
+// diagnostics, and applying it leaves code that checks clean.
+func TestAction_OverlappingFixesAreOneAction(t *testing.T) {
+	root := blogCopy(t)
+	if err := os.MkdirAll(filepath.Join(root, "app/Table"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "app/Table/Todo.alder"), []byte("module Table.Todo\n\ntype Status = Open | Done\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rel := "app/Posts/Index.alder"
+	b, err := os.ReadFile(filepath.Join(root, rel))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Replace(string(b), "import Layout\n", "import Layout\nimport Table.Todo\n", 1)
+	text += "\nuseTodo : Todo.Status\nuseTodo = Table.Todo.Open\n"
+	c := start(t, root)
+	c.open(rel, text)
+	c.diags(rel)
+	line := strings.Count(text[:strings.Index(text, "useTodo = ")], "\n")
+	var fixes []action
+	for _, a := range actions(t, c, rel, line) {
+		if a.Kind == "quickfix" {
+			fixes = append(fixes, a)
+		}
+	}
+	if len(fixes) != 1 {
+		t.Fatalf("want one quick fix, got %+v", fixes)
+	}
+	edits := fixes[0].Edit.DocumentChanges[0].Edits
+	if len(edits) != 1 || edits[0].NewText != "Open" || len(fixes[0].Diagnostics) != 2 {
+		t.Fatalf("fix %+v diagnostics %d", edits, len(fixes[0].Diagnostics))
+	}
+	fixed := applyEdits(t, text, edits)
+	c.change(rel, fixed)
+	for _, d := range c.diags(rel) {
+		if d.Severity == 1 {
+			t.Fatalf("still an error after the fix: %s\n%s", d.Message, fixed)
+		}
+	}
 }
