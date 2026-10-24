@@ -366,3 +366,58 @@ func TestQual_LongestModulePrefix(t *testing.T) {
 		t.Fatalf("page value member: %s, fix %+v", d.Message, d.Fix)
 	}
 }
+
+// A bare type that is the eponymous type of an aliased import is fixed to the qualifier alone
+// (`AdminLayout`), not `AdminLayout.Layout`.
+func TestQual_BareEponymousTypeSuggestsQualifier(t *testing.T) {
+	_, bag, _ := resolveMods(t, std(t), layoutSrc, "module Admin.Layout\n\ntype Layout = { n: Int }\n",
+		"module Use\n\nimport Layout\nimport Admin.Layout as AdminLayout\n\nz : Layout -> Int\nz l = 1\n")
+	var d *diag.Diagnostic
+	for i := range bag.Items {
+		if bag.Items[i].Code == "E0202" {
+			d = &bag.Items[i]
+		}
+	}
+	if d == nil || d.Fix == nil || d.Fix.Replace != "AdminLayout" || !strings.Contains(d.Message, "write `AdminLayout`") {
+		t.Fatalf("got %s", codes(bag))
+	}
+}
+
+// The short spelling of an import with no qualifier (`X.v` for A.X) adds nothing to its E0206.
+func TestQual_UnqualifiableShortSpelling(t *testing.T) {
+	_, bag, _ := resolveMods(t, std(t), "module A.X\n\nv : Int\nv = 1\n", "module B.X\n\nv : Int\nv = 1\n", "module AX\n\nv : Int\nv = 1\n",
+		"module Use\n\nimport A.X\nimport B.X as BX\nimport AX\n\ny : Int\ny = X.v\n\nz : Int\nz = A.X.v\n\nw : Int\nw = BX.v\n")
+	for _, d := range bag.Items {
+		if d.Code != "E0206" {
+			t.Fatalf("want only E0206s, got: %s", codes(bag))
+		}
+	}
+}
+
+// E0206 names what to rename: a declaration or a standard-library name that took the whole
+// join, or else the module; E0204 names the other import as an import.
+func TestQual_NoQualifierMessages(t *testing.T) {
+	msg := func(code string, srcs ...string) string {
+		t.Helper()
+		_, bag, _ := resolveMods(t, std(t), srcs...)
+		for _, d := range bag.Items {
+			if d.Code == code {
+				return d.Message
+			}
+		}
+		t.Fatalf("no %s in %s", code, codes(bag))
+		return ""
+	}
+	if m := msg("E0206", "module A.X\n\nv : Int\nv = 1\n", "module Use\n\nimport A.X\n\ntype X = Int\ntype AX = Int\n"); !strings.Contains(m, "declares `AX`; rename that declaration") {
+		t.Errorf("declaration: %s", m)
+	}
+	if m := msg("E0206", "module Todo\n\nv : Int\nv = 1\n", "module Use\n\nimport Todo\n\ntype Todo = Int\n"); !strings.Contains(m, "declares `Todo`; rename that declaration") {
+		t.Errorf("single segment: %s", m)
+	}
+	if m := msg("E0206", "module A.X\n\nv : Int\nv = 1\n", "module AX\n\nv : Int\nv = 1\n", "module B.X\n\nv : Int\nv = 1\n", "module Use\n\nimport A.X\nimport B.X\nimport AX\n"); !strings.Contains(m, "another import's; rename the module") {
+		t.Errorf("collision: %s", m)
+	}
+	if m := msg("E0204", layoutSrc, adminLayoutSrc, "module Use\n\nimport Layout\nimport Admin.Layout\n"); !strings.Contains(m, "import `Layout` also ends in `Layout`") {
+		t.Errorf("whyAlias: %s", m)
+	}
+}

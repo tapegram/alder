@@ -29,6 +29,9 @@ func TestCanonicalQualifiers(t *testing.T) {
 		{"local type named like the last segment", "Todos", []string{"Table.Todo", "Layout", "Admin.Layout"}, "Todo", map[string]string{"Table.Todo": "TableTodo", "Layout": "Layout", "Admin.Layout": "AdminLayout"}, nil},
 		{"identical joins", "M", []string{"A.X", "B.X", "AX"}, "", map[string]string{"A.X": "", "B.X": "BX", "AX": ""}, []string{"A.X", "AX"}},
 		{"distinct ends", "M", []string{"Todos.Index", "Projects.Index", "Blog.Show"}, "", map[string]string{"Todos.Index": "TodosIndex", "Projects.Index": "ProjectsIndex", "Blog.Show": "Show"}, nil},
+		{"three suffixes of one name", "M", []string{"X", "A.X", "B.A.X"}, "", map[string]string{"X": "X", "A.X": "AX", "B.A.X": "BAX"}, nil},
+		{"taken at k and colliding at k+1", "M", []string{"A.B.X", "C.B.X"}, "X", map[string]string{"A.B.X": "ABX", "C.B.X": "CBX"}, nil},
+		{"self blocks nothing at the whole join", "Y.AX", []string{"A.X", "B.X"}, "", map[string]string{"A.X": "AX", "B.X": "BX"}, nil},
 		{"whole join taken", "M", []string{"List"}, "", map[string]string{"List": ""}, []string{"List"}},
 	}
 	for _, c := range cases {

@@ -338,7 +338,7 @@ func (r *resolver) aliases() {
 				r.unqual = map[string]bool{}
 			}
 			r.unqual[im.Module] = true
-			r.bag.Error(diag.NoQualifier, im.Span, "import `%s` has no usable qualifier: every name made of its last segments is taken here or is another import's; rename the module (or the one it collides with)", im.Module)
+			r.bag.Error(diag.NoQualifier, im.Span, "import `%s` has no usable qualifier: %s", im.Module, r.whyNoQualifier(im.Module))
 			continue
 		}
 		want := ""
@@ -362,12 +362,47 @@ func (r *resolver) aliases() {
 	}
 }
 
+// whyNoQualifier says why path has no qualifier here and what to rename. The last candidate is
+// the whole path joined: it is a declaration of this module, `App` or a standard-library module,
+// or else it is another import's.
+func (r *resolver) whyNoQualifier(path string) string {
+	join := strings.ReplaceAll(path, ".", "")
+	local := Taken(r.m, func(string) bool { return false })
+	switch {
+	case join == "App":
+		return fmt.Sprintf("`%s` is the app module; rename the module", join)
+	case r.p.isStd(join):
+		return fmt.Sprintf("`%s` is a standard-library module; rename the module", join)
+	case local(join):
+		return fmt.Sprintf("this module declares `%s`; rename that declaration (or the module)", join)
+	}
+	return "its qualifier would be another import's; rename the module (or the one it collides with)"
+}
+
+// isUnqual reports whether x, a module as written (its full path or any trailing run of its
+// segments joined, the spellings a qualifier takes), names an import with no usable qualifier,
+// whose E0206 stands for the reference.
+func (r *resolver) isUnqual(x string) bool {
+	if r.unqual[x] {
+		return true
+	}
+	for path := range r.unqual {
+		segs := strings.Split(path, ".")
+		for i := range segs {
+			if strings.Join(segs[i:], "") == x {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // whyAlias says why path's last segment cannot be its qualifier here.
 func (r *resolver) whyAlias(path string) string {
 	last := lastSegment(path)
 	for _, im := range r.m.Imports {
 		if im.Module != path && lastSegment(im.Module) == last {
-			return fmt.Sprintf("`%s` also ends in `%s`", im.Module, last)
+			return fmt.Sprintf("import `%s` also ends in `%s`", im.Module, last)
 		}
 	}
 	switch {
@@ -751,7 +786,7 @@ func modulePath(x string) string { return "app/" + strings.ReplaceAll(x, ".", "/
 // does not exist but names a table of another module gets the table's message; and when x
 // imports this module, directly or not, the import cannot be added, so none is offered.
 func (r *resolver) notImported(span diag.Span, x string) {
-	if r.missing[x] || r.unqual[x] || r.reported[x] {
+	if r.missing[x] || r.isUnqual(x) || r.reported[x] {
 		return
 	}
 	if r.reported == nil {
@@ -975,8 +1010,12 @@ func (r *resolver) typ(t syntax.Type) {
 						return
 					}
 					q := r.qualFor(x)
-					d := r.bag.Error("E0202", t.Span, "type `%s` belongs to module `%s`; write `%s.%s`", t.Name, x, q, t.Name)
-					d.Fix = diag.ReplaceSpan(t.Span, q+"."+t.Name)
+					write := q + "." + t.Name
+					if t.Name == lastSegment(x) {
+						write = q // the eponymous type is written by its qualifier alone
+					}
+					d := r.bag.Error("E0202", t.Span, "type `%s` belongs to module `%s`; write `%s`", t.Name, x, write)
+					d.Fix = diag.ReplaceSpan(t.Span, write)
 					return
 				}
 			}
@@ -1492,7 +1531,7 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 		r.ownQualified(c.Span, c.Name, isCtor || r.ms.brands[c.Name] || r.ms.tables[c.Name], true)
 		return
 	}
-	if r.missing[c.Module] || r.unqual[c.Module] { // reported at the import
+	if r.missing[c.Module] || r.isUnqual(c.Module) { // reported at the import
 		return
 	}
 	mod, name := c.Module, c.Name
