@@ -364,27 +364,6 @@ func TestEval_ModuleFlag(t *testing.T) {
 	}
 }
 
-func TestClassifyRun(t *testing.T) {
-	t.Parallel()
-	for _, c := range []struct {
-		errOut  string
-		exit    int
-		msg     string
-		outcome runOutcome
-	}{
-		{"", 0, "", runOK},
-		{"scratch: exec: no such file\n", -1, "scratch: exec: no such file", runInternal},
-		{"runtime: goroutine stack exceeds 1000000000-byte limit\nfatal error: stack overflow\n\nruntime stack:\n…", 2, "stack overflow (unbounded recursion?)", runCrashed},
-		{"scratch: /tmp/x y/build/todos/scratch/eval/scratch timed out after 1m0s\n", -1, "the evaluation timed out after 1m0s", runCrashed},
-		{"panic: list index out of range\n\ngoroutine 1 [running]:\nmain.main()\n", 2, "panic: list index out of range", runFailed},
-		{"no such todo\n", 1, "no such todo", runFailed},
-	} {
-		if msg, outcome := classifyRun(c.errOut, c.exit); msg != c.msg || outcome != c.outcome {
-			t.Errorf("%q %d: got %q %d, want %q %d", c.errOut, c.exit, msg, outcome, c.msg, c.outcome)
-		}
-	}
-}
-
 // A line starting with a closer continues the item: a multi-line match or element pastes as
 // written, its `}` or `</tag>` at column 1.
 func TestEval_Closers(t *testing.T) {
@@ -506,22 +485,22 @@ func TestEval_StackOverflow(t *testing.T) {
 // its result.
 func TestEval_RunHasSession(t *testing.T) {
 	t.Parallel()
-	for _, k := range []mainKind{mainQuery, mainTask} {
-		m := scratchMain(k, false, "x")
+	for _, k := range []scratch.MainKind{scratch.MainQuery, scratch.MainTask} {
+		m := scratch.Main(k, false, "x")
 		if !strings.Contains(m, "Session: app.TestSession()") || !strings.Contains(m, "Caps: app.Caps{}.Registry()") || strings.Contains(m, "app/caps") {
 			t.Errorf("kind %d:\n%s", k, m)
 		}
 	}
-	if m := scratchMain(mainTask, false, "x"); !strings.Contains(m, "eff.Run(env, eff.KTask, x)") {
+	if m := scratch.Main(scratch.MainTask, false, "x"); !strings.Contains(m, "eff.Run(env, eff.KTask, x)") {
 		t.Errorf("task main:\n%s", m)
 	}
-	for _, k := range []mainKind{mainPure, mainQuery, mainTask} {
-		m := scratchMain(k, true, "x")
+	for _, k := range []scratch.MainKind{scratch.MainPure, scratch.MainQuery, scratch.MainTask} {
+		m := scratch.Main(k, true, "x")
 		if !strings.Contains(m, "\t\"alder/rt\"\n") { // rt's init is the stdin tether (rt/tether.go)
 			t.Errorf("kind %d: does not import alder/rt:\n%s", k, m)
 		}
 	}
-	if m := scratchMain(mainPure, true, "x"); !strings.Contains(m, "func main() { fmt.Print(rt.Show(x)) }") {
+	if m := scratch.Main(scratch.MainPure, true, "x"); !strings.Contains(m, "func main() { fmt.Print(rt.Show(x)) }") {
 		t.Errorf("pure main:\n%s", m)
 	}
 	needGoTool(t)
@@ -532,7 +511,7 @@ func TestEval_RunHasSession(t *testing.T) {
 // and none otherwise.
 func TestEval_RunWithAdapters(t *testing.T) {
 	t.Parallel()
-	m := scratchMain(mainQuery, true, "x")
+	m := scratch.Main(scratch.MainQuery, true, "x")
 	if !strings.Contains(m, "\t\"app/caps\"\n") || !strings.Contains(m, "Caps: caps.Caps().Registry()") {
 		t.Errorf("query main with adapters:\n%s", m)
 	}
@@ -639,7 +618,7 @@ func TestEval_WaitsForLock(t *testing.T) {
 }
 
 // pureMainFor is the scratch main printing the Go expression it.
-func pureMainFor(it string) string { return scratchMain(mainPure, false, it) }
+func pureMainFor(it string) string { return scratch.Main(scratch.MainPure, false, it) }
 
 // A capability without an adapter does not stop eval: it runs unwired, with the warning, and
 // `1 + 1` is evaluated; an adapter that does not compile is the user's (exit 1, build's text).

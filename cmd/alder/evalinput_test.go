@@ -108,8 +108,8 @@ func TestAssembleLetsOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	es := assemble(items)
-	if es.src != "a = 1\nb : Int\nb = a\n" || !reflect.DeepEqual(es.inLine, []int{1, 2, 2}) {
-		t.Errorf("%q %v", es.src, es.inLine)
+	if es.src != "a = 1\nb : Int\nb = a\n" || !reflect.DeepEqual(es.InLine, []int{1, 2, 2}) {
+		t.Errorf("%q %v", es.src, es.InLine)
 	}
 }
 
@@ -158,9 +158,9 @@ func TestAssembleRoundTrip(t *testing.T) {
 			continue
 		}
 		es := assemble(items)
-		es.lines = inputLines(in)
-		if es.src != old.src || !reflect.DeepEqual(es.inLine, old.inLine) || !reflect.DeepEqual(es.shift, old.shift) || !reflect.DeepEqual(es.lines, old.lines) {
-			t.Errorf("%q:\n got %q %v %v\nwant %q %v %v", in, es.src, es.inLine, es.shift, old.src, old.inLine, old.shift)
+		es.Lines = inputLines(in)
+		if es.src != old.src || !reflect.DeepEqual(es.InLine, old.InLine) || !reflect.DeepEqual(es.Shift, old.Shift) || !reflect.DeepEqual(es.Lines, old.Lines) {
+			t.Errorf("%q:\n got %q %v %v\nwant %q %v %v", in, es.src, es.InLine, es.Shift, old.src, old.InLine, old.Shift)
 		}
 	}
 	// and what the two agree on, for a few inputs: the module and its column shifts
@@ -178,8 +178,8 @@ func TestAssembleRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%q: %v", in, err)
 		}
-		if es := assemble(items); es.src != want.src || !reflect.DeepEqual(es.shift, want.shift) {
-			t.Errorf("%q: got %q %v, want %q %v", in, es.src, es.shift, want.src, want.shift)
+		if es := assemble(items); es.src != want.src || !reflect.DeepEqual(es.Shift, want.shift) {
+			t.Errorf("%q: got %q %v, want %q %v", in, es.src, es.Shift, want.src, want.shift)
 		}
 	}
 }

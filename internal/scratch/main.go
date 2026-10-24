@@ -1,35 +1,35 @@
-package main
+package scratch
 
 import "strings"
 
-// mainKind is what a scratch build's main does with the scratch module's `it`.
-type mainKind int
+// MainKind is what a scratch build's main does with the scratch module's `it`.
+type MainKind int
 
 const (
-	mainPure  mainKind = iota // prints rt.Show(it)
-	mainQuery                 // runs it as a Query against ALDER_EVAL_DB and prints the result
-	mainTask                  // runs it as a Task (writes commit) and prints the result
+	MainPure  MainKind = iota // prints rt.Show(it)
+	MainQuery                 // runs it as a Query against ALDER_EVAL_DB and prints the result
+	MainTask                  // runs it as a Task (writes commit) and prints the result
 )
 
-// scratchMain is the generated cmd/main.go of a scratch build: it evaluates the Go expression
+// Main is the generated cmd/main.go of a scratch build: it evaluates the Go expression
 // it (e.g. "app.Scratch__it") of the given kind. Query and Task mains open ALDER_EVAL_DB
 // (created with the app's tables when absent, O_EXCL; an existing one checked against the
 // schema and never rebuilt; for an app with migrations, db.Migrate applies those the database
 // has not had, as the app would at start), run with Session app.TestSession(), Now time.Now and the
 // capabilities the generated caps package wires from the adapters (caps.Caps) when withCaps
-// (scratch.Checked.WiresAdapters; else none: a capability call fails with "capability X is not
+// (Checked.WiresAdapters; else none: a capability call fails with "capability X is not
 // wired in eval"), and print rt.Show of the value; a failed effect prints its message to stderr
 // and exits 1.
 //
 // Every main imports alder/rt, whose init exits the program (2) when its standard input reaches
 // end of file if ALDER_SCRATCH_STDIN_EOF is 1 (rt.EnvStdinEOF): eval and the REPL run it with
-// scratch.RunTethered, whose stdin is a pipe only they hold, so the program, in a process group
+// RunTethered, whose stdin is a pipe only they hold, so the program, in a process group
 // of its own, dies with them however they die.
 //
 // The database file is created with O_EXCL, so of this process and an `alder run` starting at
 // the same moment only the one that created it builds its tables.
-func scratchMain(kind mainKind, withCaps bool, it string) string {
-	if kind == mainPure {
+func Main(kind MainKind, withCaps bool, it string) string {
+	if kind == MainPure {
 		return strings.ReplaceAll(pureMain, "{{it}}", it)
 	}
 	imp, caps := "", "app.Caps{}.Registry()"
@@ -37,7 +37,7 @@ func scratchMain(kind mainKind, withCaps bool, it string) string {
 		imp, caps = "\t\"app/caps\"\n", "caps.Caps().Registry()"
 	}
 	run := "eff.RunQuery(env, " + it + ")"
-	if kind == mainTask {
+	if kind == MainTask {
 		run = "eff.Run(env, eff.KTask, " + it + ")"
 	}
 	return strings.NewReplacer("{{imports}}", imp, "{{caps}}", caps, "{{run}}", run).Replace(effectMain)
@@ -57,7 +57,7 @@ func main() { fmt.Print(rt.Show({{it}})) }
 `
 
 // effectMain runs an effect ({{run}}) against ALDER_EVAL_DB with the app's default session and
-// the capabilities {{caps}}, and prints its result; see scratchMain.
+// the capabilities {{caps}}, and prints its result; see Main.
 const effectMain = `package main
 
 import (

@@ -559,7 +559,7 @@ func (r *repl) eval(cmd string, lines []string, at int) {
 	if app != nil {
 		con = app.Con
 	}
-	kind := mainPure
+	kind := scratch.MainPure
 	switch cmd {
 	case "":
 		switch con {
@@ -576,7 +576,7 @@ func (r *repl) eval(cmd string, lines []string, at int) {
 	case ":run":
 		switch con {
 		case "Query":
-			kind, typ = mainQuery, types.String(app.Args[0])
+			kind, typ = scratch.MainQuery, types.String(app.Args[0])
 		case "Task":
 			fmt.Fprintln(r.stderr, "alder repl: `:run` wants a Query; use `:run!` for a Task")
 			return
@@ -590,7 +590,7 @@ func (r *repl) eval(cmd string, lines []string, at int) {
 	case ":run!":
 		switch con {
 		case "Task":
-			kind, typ = mainTask, types.String(app.Args[0])
+			kind, typ = scratch.MainTask, types.String(app.Args[0])
 		case "Query":
 			fmt.Fprintln(r.stderr, "alder repl: `:run!` wants a Task; use `:run` for a Query")
 			return
@@ -666,7 +666,7 @@ var identRE = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 // REPL's build directory and runs it; it reports a failure itself (ok false), naming lets, the
 // lets the program computes. A value on interrupt (or terminate) stops the build or the run.
 // Like eval's, the build is a test build (scratch.Options.Tests): its main uses app.TestSession().
-func (r *repl) run(checked scratch.Checked, kind mainKind, sig types.Type, lets []string) (out string, ok bool) {
+func (r *repl) run(checked scratch.Checked, kind scratch.MainKind, sig types.Type, lets []string) (out string, ok bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan struct{})
@@ -686,7 +686,7 @@ func (r *repl) run(checked scratch.Checked, kind mainKind, sig types.Type, lets 
 	}
 
 	var env []string
-	if kind != mainPure {
+	if kind != scratch.MainPure {
 		dbPath, err := filepath.Abs(filepath.Join(r.appBuild, "dev.db"))
 		if err != nil {
 			return failf("%v", err)
@@ -696,7 +696,7 @@ func (r *repl) run(checked scratch.Checked, kind mainKind, sig types.Type, lets 
 		}
 		env = append(env, "ALDER_EVAL_DB="+dbPath)
 	}
-	mainGo := scratchMain(kind, kind != mainPure && checked.WiresAdapters(), evalIt(r.session(), sig))
+	mainGo := scratch.Main(kind, kind != scratch.MainPure && checked.WiresAdapters(), scratch.GoValue(r.session(), "it", sig, false))
 	b := scratch.CompileCheckedWith(ctx, checked, mainGo, "repl", r.work, scratch.Options{NoVet: !r.vet, Tests: true, Fetching: func() { fmt.Fprintln(r.stderr, buildkit.FetchingLine) }})
 	defer b.Close()
 	if ctx.Err() != nil {
@@ -719,15 +719,15 @@ func (r *repl) run(checked scratch.Checked, kind mainKind, sig types.Type, lets 
 	if ctx.Err() != nil {
 		return failf("interrupted")
 	}
-	msg, outcome := classifyRun(errOut, exit)
+	msg, outcome := scratch.ClassifyRun(errOut, exit)
 	switch outcome {
-	case runOK:
+	case scratch.RunOK:
 		return out, true
-	case runInternal:
+	case scratch.RunInternal:
 		return failf("%s", msg)
 	}
 	msg = devDBHint(msg, r.appBuild)
-	if outcome == runFailed && kind == mainTask {
+	if outcome == scratch.RunFailed && kind == scratch.MainTask {
 		msg = "the task failed: " + msg
 	}
 	if len(lets) > 0 {
@@ -849,7 +849,7 @@ func (r *repl) printDiag(checked scratch.Checked, d diag.Diagnostic, e replEntry
 		return d, true
 	}
 	es := assemble([]item{e.item})
-	es.lines = e.lines
+	es.Lines = e.lines
 	var buf bytes.Buffer
 	evalDiags(r.dir, []diag.Diagnostic{d}, mapLine, es, checked.InSession, false, nil, &buf)
 	text := buf.String()

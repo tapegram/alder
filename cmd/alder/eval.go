@@ -15,7 +15,6 @@ import (
 
 	"alder/internal/buildkit"
 	"alder/internal/diag"
-	"alder/internal/gen"
 	"alder/internal/scratch"
 	"alder/internal/types"
 	"alder/rt/db"
@@ -183,7 +182,7 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	sig = checked.Result.U.Apply(sig)
 	typ := types.String(sig)
 
-	kind := mainPure
+	kind := scratch.MainPure
 	if app, ok := sig.(*types.App); ok {
 		switch app.Con {
 		case "Task":
@@ -200,12 +199,12 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 			if !run {
 				return evalPrint(stdout, jsonOut, &res, "<Query>", typ)
 			}
-			kind, typ = mainQuery, types.String(app.Args[0])
+			kind, typ = scratch.MainQuery, types.String(app.Args[0])
 		}
 	}
 	var env []string
-	mainGo := scratchMain(kind, checked.WiresAdapters(), evalIt(sessionName, sig))
-	if kind == mainQuery {
+	mainGo := scratch.Main(kind, checked.WiresAdapters(), scratch.GoValue(sessionName, "it", sig, false))
+	if kind == scratch.MainQuery {
 		dbPath, err := filepath.Abs(filepath.Join(appBuild, "dev.db"))
 		if err != nil {
 			return failf(2, "alder eval: %v", err)
@@ -251,52 +250,15 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	if sigCtx.Err() != nil {
 		return failf(1, "alder eval: interrupted")
 	}
-	switch msg, outcome := classifyRun(errOut, exit); outcome {
-	case runInternal: // could not start
+	switch msg, outcome := scratch.ClassifyRun(errOut, exit); outcome {
+	case scratch.RunInternal: // could not start
 		return failf(2, "alder eval: %s", msg)
-	case runOK:
+	case scratch.RunOK:
 	default:
 		return failf(1, "alder eval: %s", devDBHint(msg, appBuild))
 	}
 	return evalPrint(stdout, jsonOut, &res, out, typ)
 }
-
-// runOutcome is how a scratch run ended (classifyRun).
-type runOutcome int
-
-const (
-	runOK       runOutcome = iota
-	runFailed              // the program reported a failure (a panic, a failed effect)
-	runCrashed             // it overflowed its stack or ran past its time limit
-	runInternal            // it could not be run at all
-)
-
-// classifyRun is what eval and the REPL report of a scratch run that ended with exit code exit
-// and standard error errOut (scratch.RunTethered's; the caller has already told its own
-// interruption apart): the message (without the tool's prefix) and how the run ended. A stack
-// overflow is one line (Go's trace of it is hundreds about the generated code), a panic its
-// first paragraph (the goroutine dump says nothing about the input), a timeout says so without
-// the scratch program's path.
-func classifyRun(errOut string, exit int) (string, runOutcome) {
-	switch {
-	case exit == 0:
-		return "", runOK
-	case exit == -1 && !timedOutRE.MatchString(errOut):
-		return strings.TrimSpace(errOut), runInternal
-	case strings.Contains(errOut, "goroutine stack exceeds") || strings.Contains(errOut, "fatal error: stack overflow"):
-		return "stack overflow (unbounded recursion?)", runCrashed
-	}
-	if m := timedOutRE.FindStringSubmatch(errOut); m != nil && exit == -1 {
-		return "the evaluation " + m[1], runCrashed
-	}
-	if strings.HasPrefix(errOut, "panic: ") {
-		errOut, _, _ = strings.Cut(errOut, "\n\n")
-	}
-	return strings.TrimSpace(errOut), runFailed
-}
-
-// timedOutRE is the line scratch.RunStream adds when a program runs past its deadline.
-var timedOutRE = regexp.MustCompile(`(?m)^scratch: .* (timed out.*)$`)
 
 // devDBHint rewrites the database's dev-mode remedy (db.DevRemedy, which ends Ensure's and
 // Migrate's refusals: what the app's server says) for eval and the REPL, which never recreate
@@ -304,23 +266,6 @@ var timedOutRE = regexp.MustCompile(`(?m)^scratch: .* (timed out.*)$`)
 func devDBHint(msg, appBuild string) string {
 	return strings.Replace(msg, db.DevRemedy,
 		"to start over, start `alder run` (it recreates "+filepath.Join(appBuild, "dev.db")+" empty: every row is deleted) or delete it", 1)
-}
-
-// evalIt is the Go expression for the scratch module mod's `it` of type sig in the generated
-// package: a polymorphic value is a generic thunk (`func Scratch__it[A any]() …`) and a
-// polymorphic function a generic function, both instantiated here at `any` (an empty `[]` shows
-// the same at any element type); gen gives `it` no other thunk, since nothing can refer to it.
-func evalIt(mod string, sig types.Type) string {
-	it := "app." + gen.GoName(mod, "it")
-	n := len(typeParamsOf(sig))
-	if n == 0 {
-		return it
-	}
-	s := it + "[" + strings.TrimSuffix(strings.Repeat("any, ", n), ", ") + "]"
-	if _, isFun := sig.(*types.Fun); !isFun {
-		s += "()"
-	}
-	return s
 }
 
 // moduleNameRE is a one-segment module name, for --module.
@@ -355,53 +300,6 @@ func errInFlags(inName string, named bool) error {
 	return nil
 }
 
-// typeParamsOf lists the distinct type parameters of t the way gen counts a declaration's Go
-// type parameters: not those inside an `Html` (its message type is erased).
-func typeParamsOf(t types.Type) []string {
-	var out []string
-	seen := map[string]bool{}
-	var walk func(types.Type)
-	walk = func(t types.Type) {
-		switch t := t.(type) {
-		case *types.Param:
-			if !seen[t.Name] {
-				seen[t.Name] = true
-				out = append(out, t.Name)
-			}
-		case *types.Brand:
-			walk(t.Base)
-		case *types.App:
-			if t.Con == "Html" {
-				return
-			}
-			for _, a := range t.Args {
-				walk(a)
-			}
-		case *types.Record:
-			if t.Name != "" && !t.Anonymous {
-				for _, a := range t.Args {
-					walk(a)
-				}
-				return
-			}
-			for _, f := range t.Fields {
-				walk(f.Type)
-			}
-		case *types.Union:
-			for _, a := range t.Args {
-				walk(a)
-			}
-		case *types.Fun:
-			for _, p := range t.Params {
-				walk(p)
-			}
-			walk(t.Result)
-		}
-	}
-	walk(t)
-	return out
-}
-
 // evalPrint reports a value: `value : Type` on stdout, or into the JSON result.
 func evalPrint(stdout io.Writer, jsonOut bool, res *evalResult, value, typ string) int {
 	if jsonOut {
@@ -425,7 +323,7 @@ func evalDiags(dir string, ds []diag.Diagnostic, mapLine func(diag.Diagnostic) (
 		var lines []string
 		if inSession(d) {
 			d = evalMapDiag(d, mapLine, es)
-			lines = es.lines
+			lines = es.Lines
 		} else {
 			l, ok := appLines[d.Span.File]
 			if !ok {
@@ -445,45 +343,14 @@ func evalDiags(dir string, ds []diag.Diagnostic, mapLine func(diag.Diagnostic) (
 	return failed
 }
 
-// evalMapDiag positions a diagnostic of the scratch module in the input, as file "input": its
-// lines through mapLine (scratch's MapDiag) and evalSource's map, its columns undoing the input
-// items' rewriting (parseItems), and the line a duplicate's message names (E0009) likewise. One
-// on a line Compile inserted (not mapped) is put at 1:1 with its message unchanged; one past the end
-// of the source at the end of the input. The parser's "in the definition of `it`: " is
-// dropped: `it` is a name the input never wrote.
+// evalMapDiag positions a diagnostic of the scratch module in the input, as file "input"
+// (evalSource's SourceMap.Position) and rewrites the messages about `it`: the parser's "in the
+// definition of `it`: " is dropped, `it` being a name the input never wrote.
 func evalMapDiag(d diag.Diagnostic, mapLine func(diag.Diagnostic) (diag.Diagnostic, bool), es evalSource) diag.Diagnostic {
-	d, ok := mapLine(d)
-	d.Span.File = "input"
+	d = es.Position(d, mapLine, "input")
 	d.Message = strings.TrimPrefix(d.Message, "in the definition of `it`: ")
 	if strings.HasPrefix(d.Message, "the type of `it` cannot be inferred") {
 		d.Message = "the expression uses `it`, which eval does not define"
-	}
-	if !ok {
-		d.Span.Start, d.Span.End, d.Fix = diag.Pos{Line: 1, Col: 1}, diag.Pos{Line: 1, Col: 1}, nil
-		return d
-	}
-	pos := func(p diag.Pos) diag.Pos {
-		if p.Line < 1 {
-			return diag.Pos{Line: 1, Col: 1}
-		}
-		if p.Line > len(es.inLine) { // past the end of the input
-			n := len(es.lines)
-			return diag.Pos{Line: n, Col: len(es.lines[n-1]) + 1}
-		}
-		return diag.Pos{Line: es.inLine[p.Line-1], Col: max(1, p.Col+es.shift[p.Line-1])}
-	}
-	d.Span.Start, d.Span.End = pos(d.Span.Start), pos(d.Span.End)
-	d.Message = scratch.MapLineRef(d, func(l int) (int, bool) {
-		if l < 1 || l > len(es.inLine) {
-			return 0, false
-		}
-		return es.inLine[l-1], true
-	})
-	if d.Fix != nil {
-		f := *d.Fix
-		start, end := pos(diag.Pos{Line: f.Line, Col: f.Col}), pos(diag.Pos{Line: f.EndLine, Col: f.EndCol})
-		f.Line, f.Col, f.EndLine, f.EndCol = start.Line, start.Col, end.Line, end.Col
-		d.Fix = &f
 	}
 	return d
 }

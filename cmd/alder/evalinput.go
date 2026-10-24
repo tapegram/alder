@@ -5,19 +5,19 @@ import (
 	"fmt"
 	"strings"
 
+	"alder/internal/scratch"
 	"alder/internal/snippets"
 )
 
 // evalSource is the scratch module `alder eval` (and the REPL) compiles for an input, and how
 // to map its positions back to the input's.
 type evalSource struct {
-	src   string
-	lines []string // the input's lines (set by the caller of assemble: evalModule sets them)
-	// For line i+1 of src: inLine[i] is the input's line it comes from, and shift[i] is what to
-	// add to a column on it to get the input's column (the expression's first line gains
-	// `it = `, a let line loses its indentation and `let `, an annotated let's body line its
-	// annotation).
-	inLine, shift []int
+	src string
+	// Lines is the input's lines (set by the caller of assemble: evalModule sets them). For line
+	// i+1 of src, InLine[i] is the input's line it comes from, and Shift[i] is what to add to a
+	// column on it to get the input's column (the expression's first line gains `it = `, a let
+	// line loses its indentation and `let `, an annotated let's body line its annotation).
+	scratch.SourceMap
 }
 
 // errNothing is an input with no expression.
@@ -72,7 +72,7 @@ func parseItems(input, who string) ([]item, error) {
 // `it = expr`; unannotated values have no signature, and the checker infers them.
 func evalModule(input string) (evalSource, error) {
 	lines := inputLines(input)
-	es := evalSource{lines: lines}
+	es := evalSource{SourceMap: scratch.SourceMap{Lines: lines}}
 	starts := itemStarts(lines)
 	if len(starts) == 0 {
 		return es, errNothing
@@ -82,7 +82,7 @@ func evalModule(input string) (evalSource, error) {
 		return es, err
 	}
 	es = assemble(items)
-	es.lines = lines
+	es.Lines = lines
 	return es, nil
 }
 
@@ -95,8 +95,8 @@ func assemble(items []item) evalSource {
 	var out []string
 	for _, it := range items {
 		out = append(out, it.Lines...)
-		es.inLine = append(es.inLine, it.InLine...)
-		es.shift = append(es.shift, it.Shift...)
+		es.InLine = append(es.InLine, it.InLine...)
+		es.Shift = append(es.Shift, it.Shift...)
 	}
 	es.src = strings.Join(out, "\n") + "\n"
 	return es
