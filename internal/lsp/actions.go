@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"alder/internal/scratch"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -71,7 +72,7 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 	}
 	out := []codeAction{}
 	rel, ok := s.rel(p.TextDocument.URI)
-	if !ok {
+	if !ok || scratch.IsScratchFile(rel) {
 		return out, nil
 	}
 	now := strings.Split(s.text(rel), "\n")

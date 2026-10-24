@@ -189,3 +189,25 @@ func TestGenerated_IsFormatted(t *testing.T) {
 		t.Fatal("no generated Alder file found")
 	}
 }
+
+func TestFmtSkipsScratchFiles(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	fmtWrite(t, dir, "app/Main.alder", fmtClean)
+	fmtWrite(t, dir, "scratch.alder", "> 1 + 1\n")
+	fmtWrite(t, dir, "notes/my_scratch.alder", "> 1   +1\n")
+	if code, out, errOut := fmtRun("--check", dir); code != 0 || out != "" || errOut != "" {
+		t.Fatalf("code %d out %q err %q", code, out, errOut)
+	}
+}
+
+func TestFmtRefusesScratchFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	fmtWrite(t, dir, "app/Main.alder", fmtClean)
+	p := fmtWrite(t, dir, "scratch.alder", "> 1 + 1\n")
+	code, _, errOut := fmtRun(p)
+	if code != 2 || !strings.Contains(errOut, "is a scratch file; scratch files are not formatted yet") {
+		t.Fatalf("code %d err %q", code, errOut)
+	}
+}

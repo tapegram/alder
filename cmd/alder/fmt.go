@@ -1,6 +1,7 @@
 package main
 
 import (
+	"alder/internal/scratch"
 	"errors"
 	"fmt"
 	"io"
@@ -52,6 +53,10 @@ func runFmtTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code in
 	var files []string
 	for _, p := range paths {
 		found, err := fmtFiles(p)
+		if errors.Is(err, errScratchFile) {
+			fmt.Fprintf(stderr, "alder fmt: %s is a scratch file; scratch files are not formatted yet\n", p)
+			return 2
+		}
 		if err != nil {
 			fmt.Fprintf(stderr, "alder fmt: %v\n", err)
 			return 2
@@ -139,6 +144,38 @@ func fmtResult(name string, src, out []byte, ds []diag.Diagnostic, err error, st
 	return ok(out)
 }
 
+var errScratchFile = errors.New("scratch file")
+
+// fmtRel is p relative to root, slash-separated; p itself when it cannot be made relative.
+func fmtRel(root, p string) string {
+	if r, err := filepath.Rel(root, p); err == nil {
+		return filepath.ToSlash(r)
+	}
+	return filepath.ToSlash(p)
+}
+
+// fmtAppRoot is the root an explicitly named file is judged against: the nearest directory above
+// it holding an app/ directory, else the current directory.
+func fmtAppRoot(file string) string {
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		return "."
+	}
+	for d := filepath.Dir(abs); ; d = filepath.Dir(d) {
+		if fi, err := os.Stat(filepath.Join(d, "app")); err == nil && fi.IsDir() {
+			return d
+		}
+		if filepath.Dir(d) == d {
+			break
+		}
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	return cwd
+}
+
 // fmtFiles is the .alder files path names: itself, or a directory's, skipping build/ and
 // dot-directories.
 func fmtFiles(path string) ([]string, error) {
@@ -147,6 +184,10 @@ func fmtFiles(path string) ([]string, error) {
 		return nil, err
 	}
 	if !info.IsDir() {
+		abs, _ := filepath.Abs(path)
+		if scratch.IsScratchFile(fmtRel(fmtAppRoot(abs), abs)) {
+			return nil, errScratchFile
+		}
 		return []string{path}, nil
 	}
 	var files []string
@@ -160,7 +201,7 @@ func fmtFiles(path string) ([]string, error) {
 			}
 			return nil
 		}
-		if strings.HasSuffix(p, ".alder") {
+		if strings.HasSuffix(p, ".alder") && !scratch.IsScratchFile(fmtRel(path, p)) {
 			files = append(files, p)
 		}
 		return nil

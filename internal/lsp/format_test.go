@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -88,5 +89,39 @@ func TestLineEdits_Roundtrip(t *testing.T) {
 		if got := applyEdits(t, c[0], lineEdits(c[0], c[1])); got != c[1] {
 			t.Errorf("%q -> %q: got %q", c[0], c[1], got)
 		}
+	}
+}
+
+func TestLSPIgnoresScratchFile(t *testing.T) {
+	c := start(t, blogCopy(t))
+	c.open("scratch.alder", "module Scratch\n\nx:Int\nx   =   1\n> 1 +\n")
+	var raw *[]TextEdit
+	if e := c.call("textDocument/formatting", map[string]any{"textDocument": map[string]any{"uri": c.uri("scratch.alder")}}, &raw); e != nil {
+		t.Fatal(e)
+	}
+	if raw != nil {
+		t.Fatalf("formatting: want null, got %v", *raw)
+	}
+	var acts []json.RawMessage
+	rng := map[string]any{"start": map[string]any{"line": 0, "character": 0}, "end": map[string]any{"line": 0, "character": 0}}
+	if e := c.call("textDocument/codeAction", map[string]any{"textDocument": map[string]any{"uri": c.uri("scratch.alder")}, "range": rng, "context": map[string]any{"diagnostics": []any{}}}, &acts); e != nil {
+		t.Fatal(e)
+	}
+	if len(acts) != 0 {
+		t.Fatalf("code actions: %s", acts)
+	}
+	// A change to another file is analysed after the scratch open; its publish is the
+	// synchronisation point, and nothing may have been published for the scratch file by then.
+	c.change("scratch.alder", "> 1 +\n> 2 +\n")
+	rel := "app/Posts/Index.alder"
+	c.open(rel, c.disk(rel))
+	c.diags(rel)
+	c.change(rel, c.disk(rel)+"\n") // rebuilds run one at a time: the one before this has published everything
+	c.diags(rel)
+	c.mu.Lock()
+	n := len(c.published["scratch.alder"])
+	c.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("%d publishDiagnostics for the scratch file", n)
 	}
 }

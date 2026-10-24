@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"alder/internal/scratch"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,7 +28,7 @@ func formattingReq(s *server, params json.RawMessage) (any, error) {
 		return nil, nil
 	}
 	d := s.docs.get(rel)
-	if d == nil {
+	if d == nil || scratch.IsScratchFile(rel) {
 		return nil, nil
 	}
 	out, _, err := format.Source(rel, []byte(d.Text))

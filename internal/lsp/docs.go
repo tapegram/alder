@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"alder/internal/scratch"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -59,6 +60,9 @@ func (d *docs) snapshot() (map[string][]byte, map[string]int) {
 	defer d.mu.Unlock()
 	over, vers := make(map[string][]byte, len(d.byRel)), make(map[string]int, len(d.byRel))
 	for rel, x := range d.byRel {
+		if scratch.IsScratchFile(rel) {
+			continue // not valid ordinary Alder: kept out of the analysis until the LSP learns watches
+		}
 		over[rel], vers[rel] = []byte(x.Text), x.Version
 	}
 	return over, vers
