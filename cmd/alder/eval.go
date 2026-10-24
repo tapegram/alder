@@ -230,13 +230,7 @@ func runEvalTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	}
 	io.WriteString(stderr, b.Warning) // capabilities without adapters run unwired
 	if b.Err != nil {
-		if adapters := (*scratch.AdapterError)(nil); errors.As(b.Err, &adapters) {
-			return failf(1, "alder eval: %v", b.Err) // the user's adapters, as alder build says
-		}
-		if de := (*buildkit.DownloadError)(nil); errors.As(b.Err, &de) {
-			return failf(1, "alder eval: %v", b.Err) // the machine's network, as alder build says
-		}
-		return failf(2, "alder eval: %v", b.Err)
+		return failf(buildErrCode(b.Err), "alder eval: %v", b.Err)
 	}
 	if !b.Runnable() { // the check above passed, so this is not expected
 		if evalDiags(dir, b.Diags, b.MapDiag, es, b.InSession, jsonOut, &res, stderr) {
@@ -325,14 +319,7 @@ func evalDiags(dir string, ds []diag.Diagnostic, mapLine func(diag.Diagnostic) (
 			d = evalMapDiag(d, mapLine, es)
 			lines = es.Lines
 		} else {
-			l, ok := appLines[d.Span.File]
-			if !ok {
-				if b, err := os.ReadFile(filepath.Join(dir, d.Span.File)); err == nil {
-					l = strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n")
-				}
-				appLines[d.Span.File] = l
-			}
-			lines = l
+			lines = appSourceLines(dir, appLines, d.Span.File)
 		}
 		if jsonOut {
 			res.Diagnostics = append(res.Diagnostics, json.RawMessage(diag.RenderJSON(d)))
@@ -366,4 +353,30 @@ func dirHasApp(dir string) bool {
 		return nil
 	})
 	return found
+}
+
+// buildErrCode is the exit code of a failed build or run: 1 for the user's adapters
+// (scratch.AdapterError) and the machine's network (buildkit.DownloadError), as alder build says
+// them, else 2 (internal).
+func buildErrCode(err error) int {
+	if adapters := (*scratch.AdapterError)(nil); errors.As(err, &adapters) {
+		return 1
+	}
+	if de := (*buildkit.DownloadError)(nil); errors.As(err, &de) {
+		return 1
+	}
+	return 2
+}
+
+// appSourceLines is the lines of the app's file (relative to dir) for a diagnostic's source
+// excerpt, read once into cache; nil when it cannot be read.
+func appSourceLines(dir string, cache map[string][]string, file string) []string {
+	l, ok := cache[file]
+	if !ok {
+		if b, err := os.ReadFile(filepath.Join(dir, file)); err == nil {
+			l = strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n")
+		}
+		cache[file] = l
+	}
+	return l
 }

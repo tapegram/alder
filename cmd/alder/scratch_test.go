@@ -77,7 +77,7 @@ func TestScratch(t *testing.T) {
 	t.Run("ErrorsExit1", func(t *testing.T) {
 		writeScratch(t, "err.scratch.alder", "> 1 + \"x\"\n")
 		code, stdout, stderr := runScratch(t, "err.scratch.alder")
-		if code != 1 || !strings.Contains(stderr, "err.scratch.alder:1:") {
+		if code != 1 || !strings.Contains(stderr, "err.scratch.alder:1:3") {
 			t.Errorf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 		}
 		code, stdout, _ = runScratch(t, "err.scratch.alder", "--json")
@@ -88,7 +88,7 @@ func TestScratch(t *testing.T) {
 	t.Run("HoleExits1", func(t *testing.T) {
 		writeScratch(t, "hole.scratch.alder", "> 1 + ?x\n")
 		code, stdout, stderr := runScratch(t, "hole.scratch.alder")
-		if code != 1 || !strings.Contains(stderr, "W0002") || !strings.Contains(stderr, "typed hole") {
+		if code != 1 || !strings.Contains(stderr, "W0002") || !strings.Contains(stderr, "typed hole") || !strings.Contains(stderr, "\nalder scratch: the file has 1 typed hole(s)") {
 			t.Errorf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 		}
 	})
@@ -99,14 +99,42 @@ func TestScratch(t *testing.T) {
 			t.Errorf("stdout: %s\nstderr: %s", stdout, stderr)
 		}
 	})
+	t.Run("WatchErrorExits1", func(t *testing.T) {
+		writeScratch(t, "boom.scratch.alder", "> 1 / 0\n> 2 + 2\n")
+		code, stdout, stderr := runScratch(t, "boom.scratch.alder")
+		if code != 1 || !strings.Contains(stdout, "  ✗ ") || !strings.Contains(stdout, "⇒ 4 : Int") {
+			t.Errorf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+		}
+	})
+	t.Run("BuildDir", func(t *testing.T) {
+		bd := t.TempDir()
+		if code, _, stderr := runScratch(t, "scratch.alder", "--build-dir", bd); code != 0 {
+			t.Fatalf("exit %d\nstderr: %s", code, stderr)
+		}
+		if m, _ := filepath.Glob(filepath.Join(bd, "todos", "scratch", "file-????????????")); len(m) != 1 {
+			t.Errorf("no build under %s/todos/scratch/file-*: %v", bd, m)
+		}
+	})
+	t.Run("AppDiagnosticKeepsItsFile", func(t *testing.T) {
+		orig, err := os.ReadFile("app/Todo.alder")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.WriteFile("app/Todo.alder", orig, 0o644)
+		os.WriteFile("app/Todo.alder", append(orig, []byte("\nbroken : Int\nbroken = \"x\"\n")...), 0o644)
+		code, _, stderr := runScratch(t, "scratch.alder")
+		if code != 1 || !strings.Contains(stderr, "app/Todo.alder:") || !strings.Contains(stderr, "broken = \"x\"") {
+			t.Errorf("exit %d\nstderr: %s", code, stderr)
+		}
+	})
 	t.Run("RefusesAppFile", func(t *testing.T) {
 		writeScratch(t, "app/foo.scratch.alder", "> 1\n")
+		defer os.Remove("app/foo.scratch.alder")
 		code, _, stderr := runScratch(t, "app/foo.scratch.alder")
 		want := "alder scratch: app/foo.scratch.alder is not a scratch file (a name ending in scratch.alder, outside app/)"
 		if code != 2 || !strings.Contains(stderr, want) {
 			t.Errorf("exit %d, stderr %s", code, stderr)
 		}
-		os.Remove("app/foo.scratch.alder")
 	})
 	t.Run("ModuleWithInHeader", func(t *testing.T) {
 		writeScratch(t, "in.scratch.alder", "in Todo\n> 1\n")

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -28,6 +27,9 @@ type scratchResult struct {
 	Note        string                `json:"note,omitempty"`
 	Error       string                `json:"error,omitempty"`
 }
+
+// holeCode is the checker's warning for a typed hole (`?name`).
+const holeCode = "W0002"
 
 // scratchTruncatedLine ends a value cut at scratch.MaxValue.
 const scratchTruncatedLine = "  … (truncated at 64 KB)"
@@ -170,7 +172,7 @@ func scratchRun(ctx context.Context, a scratchRunArgs, res *scratchResult, failf
 		if d.Severity == "error" {
 			failed = true
 		}
-		if d.Code == "W0002" {
+		if d.Code == holeCode {
 			holes = true
 		}
 		if a.jsonOut {
@@ -179,14 +181,7 @@ func scratchRun(ctx context.Context, a scratchRunArgs, res *scratchResult, failf
 		}
 		lines := f.Lines
 		if d.Span.File != f.Name {
-			l, ok := appLines[d.Span.File]
-			if !ok {
-				if b, err := os.ReadFile(filepath.Join(a.appDir, d.Span.File)); err == nil {
-					l = strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n")
-				}
-				appLines[d.Span.File] = l
-			}
-			lines = l
+			lines = appSourceLines(a.appDir, appLines, d.Span.File)
 		}
 		fmt.Fprint(a.stderr, diag.RenderText(d, lines))
 	}
@@ -215,14 +210,7 @@ func scratchRun(ctx context.Context, a scratchRunArgs, res *scratchResult, failf
 		}
 	}
 	if r.Err != nil {
-		code := 2
-		if adapters := (*scratch.AdapterError)(nil); errors.As(r.Err, &adapters) {
-			code = 1
-		}
-		if de := (*buildkit.DownloadError)(nil); errors.As(r.Err, &de) {
-			code = 1
-		}
-		return failf(code, "alder scratch: %v", r.Err)
+		return failf(buildErrCode(r.Err), "alder scratch: %v", r.Err)
 	}
 	if failed {
 		return 1
