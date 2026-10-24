@@ -3,11 +3,13 @@
 
 module Comments -- the module line
 
+-- what the imports are for: a header above the block
+
 -- a repeat's comment
 import Alpha
 -- leads Beta
 import Beta
--- what the imports are for
+-- for Zeta
 import Zeta -- last after sorting
 -- after the last import
 
@@ -153,6 +155,18 @@ showView = 2
 
 afterRegion : Int
 afterRegion = 3
+
+-- @admin begin tight
+q : Int
+q = 1
+-- @admin end
+
+r : Int
+r = 2
+
+-- inside the signature
+inSig : Int
+inSig = 1
 
 tagEnd : Html Never
 tagEnd =

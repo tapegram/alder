@@ -14,6 +14,8 @@ import (
 //     `<-`, `then`, `else`); printed on its own line(s) above it, at its indent;
 //   - trailing: on the line where an item ends; printed after it (and its comma), one space
 //     before, which forces the group around it vertical;
+//   - after: a region's end marker (`-- @admin end`) on its own line stays with the item before
+//     it, printed on the next line, so the region keeps its items and nothing else;
 //   - dangling: after the last item of a bracketed group (or of the file, or of an element's
 //     attributes or children); printed at the end of the group at the items' indent. Comments
 //     between a signature and its definition dangle on the signature and stay between them.
@@ -28,7 +30,13 @@ import (
 // its children).
 type attached struct {
 	leading, trailing, dangling map[any][]syntax.Comment
+	// after holds the own-line comments printed just after an item (region end markers)
+	after map[any][]syntax.Comment
 }
+
+// regionEnd is a region's end marker, generate.RegionEnd (internal/generate/regions.go; not
+// imported: the generators will import this package).
+const regionEnd = "-- @admin end"
 
 type place uint8
 
@@ -36,6 +44,7 @@ const (
 	placeLeading place = iota
 	placeTrailing
 	placeDangling
+	placeAfter
 	placeText // a comment line of a markup text child, printed with the text
 )
 
@@ -75,7 +84,7 @@ func attach(m *syntax.Module) *attached {
 	}
 	a.items(m, m.Span.Start, items, diag.Pos{Line: len(m.Lines) + 1})
 	a.flush(diag.Pos{Line: len(m.Lines) + 2})
-	out := &attached{map[any][]syntax.Comment{}, map[any][]syntax.Comment{}, map[any][]syntax.Comment{}}
+	out := &attached{map[any][]syntax.Comment{}, map[any][]syntax.Comment{}, map[any][]syntax.Comment{}, map[any][]syntax.Comment{}}
 	for i, c := range a.cs {
 		switch a.kind[i] {
 		case placeLeading:
@@ -84,6 +93,8 @@ func attach(m *syntax.Module) *attached {
 			out.trailing[a.at[i]] = append(out.trailing[a.at[i]], c)
 		case placeDangling:
 			out.dangling[a.at[i]] = append(out.dangling[a.at[i]], c)
+		case placeAfter:
+			out.after[a.at[i]] = append(out.after[a.at[i]], c)
 		}
 	}
 	return out
@@ -145,11 +156,19 @@ func (a *attacher) items(group any, start diag.Pos, items []any, end diag.Pos) {
 	a.flush(start)
 	var prev any
 	trails := func() bool { return prev != nil && a.cs[a.i].Line == spanOf(prev).End.Line && !a.cs[a.i].Markup }
+	// a region's end marker after an item, with no comment leading the next item before it,
+	// stays with the item
+	led := false
+	ends := func() bool { return prev != nil && !led && strings.HasPrefix(a.cs[a.i].Text, regionEnd) }
 	for _, it := range items {
+		led = false
 		for a.more(spanOf(it).Start) {
 			if trails() {
 				a.put(placeTrailing, prev)
+			} else if ends() {
+				a.put(placeAfter, prev)
 			} else {
+				led = true
 				a.put(placeLeading, it)
 			}
 		}
@@ -159,7 +178,10 @@ func (a *attacher) items(group any, start diag.Pos, items []any, end diag.Pos) {
 	for a.more(end) && !a.cs[a.i].Markup {
 		if trails() {
 			a.put(placeTrailing, prev)
+		} else if ends() {
+			a.put(placeAfter, prev)
 		} else {
+			led = true
 			a.put(placeDangling, group)
 		}
 	}
@@ -210,6 +232,7 @@ func (a *attacher) walk(n any) {
 	// ---- declarations
 	case *syntax.ValueDecl:
 		if n.Sig != nil {
+			a.flush(n.Sig.GetSpan().Start) // inside `x :`, before the type: they lead the declaration
 			a.walk(n.Sig)
 			// comments between the signature and the definition stay there
 			def := diag.Pos{Line: a.defLine(n), Col: 1}
@@ -440,11 +463,19 @@ func (p *printer) lead(n any, first bool) Doc {
 	return Concat(out...)
 }
 
-// trail prints n's trailing comment after it.
+// trail prints n's trailing comment after it, then the comments that follow it on lines of
+// their own (a region's end marker), keeping one blank line where the source has any.
 func (p *printer) trail(n any) Doc {
 	var out []Doc
 	for _, c := range p.c.trailing[n] {
 		out = append(out, Trailing(" "+c.Text))
+	}
+	for _, c := range p.c.after[n] {
+		out = append(out, HardLine)
+		if p.blankAbove(c.Line) {
+			out = append(out, HardLine)
+		}
+		out = append(out, Text(c.Text))
 	}
 	return Concat(out...)
 }

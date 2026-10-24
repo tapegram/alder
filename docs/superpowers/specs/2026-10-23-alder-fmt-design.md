@@ -122,7 +122,11 @@ replacing the region, so `regen` then `fmt` is a no-op.
   `check`) and skips the file; LSP returns no edits.
 - After printing, re-parse the output and require `Dump` equality with
   the input (comments excluded from the dump) *and* that the sequence of
-  comment texts is unchanged. `Dump` omits spans (verified); the plan's
+  comment texts is unchanged. One exception: imports are sorted and their
+  comments move with them, so the comments of the import block (after the
+  module line, up to the last import's line) are compared as a multiset,
+  with a marker at the block's end so no comment can move into or out of
+  the block. `Dump` omits spans (verified); the plan's
   first task confirms it covers every semantic field (`HtmlText.Raw`,
   attribute order, `HoleExpr`, literal values) and adds a normalised dump
   if anything is missing. On mismatch: don't write, report

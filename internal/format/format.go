@@ -65,28 +65,39 @@ func sortedImports(ims []*syntax.Import) []*syntax.Import {
 
 // commentTexts is the module's comments in order, except that those of the import block (after
 // the module line, up to the last import's line) are sorted: they move with their imports, which
-// the formatter sorts.
+// the formatter sorts. A marker ends the block, so no comment can move in or out of it.
 func commentTexts(m *syntax.Module) []string {
 	var out []string
-	lo, hi := m.Span.Start.Line, 0
-	if len(m.Imports) > 0 {
-		hi = m.Imports[len(m.Imports)-1].Span.End.Line
+	if len(m.Imports) == 0 {
+		for _, c := range m.Comments {
+			out = append(out, c.Text)
+		}
+		return out
 	}
-	block := -1 // where the import block's comments start in out
+	lo, hi := m.Span.Start.Line, m.Imports[len(m.Imports)-1].Span.End.Line
+	block, ended := -1, false
 	for _, c := range m.Comments {
-		if c.Line > lo && c.Line <= hi && block < 0 {
+		if c.Line > hi && !ended {
+			out, ended = endImports(out, block), true
+		}
+		if c.Line > lo && block < 0 && !ended {
 			block = len(out)
 		}
 		out = append(out, c.Text)
 	}
-	if block >= 0 {
-		end := block
-		for end < len(out) && m.Comments[end].Line <= hi {
-			end++
-		}
-		slices.Sort(out[block:end])
+	if !ended {
+		out = endImports(out, block)
 	}
 	return out
+}
+
+// endImports sorts the import block's comments, out[block:] (none when block < 0), and ends the
+// block with a marker.
+func endImports(out []string, block int) []string {
+	if block >= 0 {
+		slices.Sort(out[block:])
+	}
+	return append(out, "\x00end of imports")
 }
 
 // printer turns a parsed module into a document. It reads literals, strings and markup text back

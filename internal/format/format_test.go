@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"alder/internal/syntax"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -150,5 +152,30 @@ func TestSource_SpanTextIsByteBased(t *testing.T) {
 	out, _, err := Source("m.alder", []byte(src))
 	if err != nil || string(out) != src {
 		t.Fatalf("got %q, %v", out, err)
+	}
+}
+
+// A comment cannot move out of the import block, where the comments' order is free.
+func TestSource_CommentLeavingImportBlockIsUnsafe(t *testing.T) {
+	testMutate = func(b []byte) []byte {
+		s := strings.Replace(string(b), "-- zz for a\n", "", 1)
+		return []byte(strings.Replace(s, "import B\n", "import B\n-- zz for a\n", 1))
+	}
+	defer func() { testMutate = nil }()
+	_, _, err := Source("m.alder", []byte("module M\n\n-- zz for a\nimport A\n-- b\nimport B\n\nx : Int\nx = 1\n"))
+	if !errors.Is(err, ErrUnsafe) {
+		t.Fatalf("err = %v, want ErrUnsafe", err)
+	}
+}
+
+// Known limit: a code comment that has to lead its item, after a comment line of markup text in
+// that item, cannot keep the order (the text's comment is printed with the text): refused.
+func TestSource_MarkupCommentThenHoistIsUnsafe(t *testing.T) {
+	src := "module M\n\nv : Bool\nv =\n  <p>\n    text\n    -- in the text\n  </p> == -- between operands\n    w\n"
+	if _, diags := syntax.ParseFile("m.alder", []byte(src)); len(diags) > 0 {
+		t.Fatal(diags)
+	}
+	if _, _, err := Source("m.alder", []byte(src)); !errors.Is(err, ErrUnsafe) {
+		t.Fatalf("err = %v, want ErrUnsafe", err)
 	}
 }

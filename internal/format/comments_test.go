@@ -126,3 +126,38 @@ func TestAttach_BetweenSignatureAndDefinition(t *testing.T) {
 	wantTexts(t, "dangling sig", texts(a.dangling, d.Sig), "-- the value")
 	wantTexts(t, "leading body", texts(a.leading, d.Body), "-- the body")
 }
+
+// A comment hoisted into an inner item moves again, with it, when a later comment leads the
+// outer body: both lead the body, in order.
+func TestAttach_HoistAcrossNestedFrames(t *testing.T) {
+	m := parse(t, `module M
+
+ok : Bool
+ok =
+  [
+    a && -- inner
+      b,
+  ] == -- outer
+    c
+`)
+	a := attach(m)
+	body := m.Decls[0].(*syntax.ValueDecl).Body
+	elem := body.(*syntax.BinOp).L.(*syntax.ListLit).Elems[0]
+	wantTexts(t, "leading body", texts(a.leading, body), "-- inner", "-- outer")
+	wantTexts(t, "leading element", texts(a.leading, elem))
+}
+
+// Comments inside a signature, before its type, lead the declaration.
+func TestAttach_InsideSignatureLeadsDeclaration(t *testing.T) {
+	m := parse(t, "module M\n\nx :\n  -- c\n  Int\nx = 1\n")
+	a := attach(m)
+	wantTexts(t, "leading x", texts(a.leading, m.Decls[0]), "-- c")
+}
+
+// A region's end marker stays with the item before it.
+func TestAttach_RegionEndFollowsItem(t *testing.T) {
+	m := parse(t, "module M\n\nq : Int\nq = 1\n-- @admin end\nr : Int\nr = 2\n")
+	a := attach(m)
+	wantTexts(t, "after q", texts(a.after, m.Decls[0]), "-- @admin end")
+	wantTexts(t, "leading r", texts(a.leading, m.Decls[1]))
+}

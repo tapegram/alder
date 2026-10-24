@@ -10,7 +10,8 @@ import (
 
 // module prints the header, the imports (sorted, without repeats) and the declarations, one
 // blank line between each part, with their comments. A comment moves with its import; a
-// repeated import's comments join the one kept.
+// repeated import's comments join the one kept. Comments above the first import that a blank
+// line separates from it are about the block: they stay above it.
 func (p *printer) module(m *syntax.Module) Doc {
 	var out []Doc
 	if cs := p.c.leading[m]; len(cs) > 0 { // a header above `module`
@@ -19,6 +20,17 @@ func (p *printer) module(m *syntax.Module) Doc {
 	out = append(out, Text("module "+m.Name), p.trail(m))
 	if len(m.Imports) > 0 {
 		out = append(out, HardLine, HardLine)
+		first := m.Imports[0]
+		head := p.importsHeader(first)
+		for i, c := range head {
+			if i > 0 && p.blankBetween(head[i-1].Line, c.Line) {
+				out = append(out, HardLine)
+			}
+			out = append(out, Text(c.Text), HardLine)
+		}
+		if len(head) > 0 {
+			out = append(out, HardLine)
+		}
 		byName := map[string][]*syntax.Import{}
 		for _, im := range m.Imports {
 			byName[im.Module] = append(byName[im.Module], im)
@@ -29,12 +41,16 @@ func (p *printer) module(m *syntax.Module) Doc {
 			}
 			same := byName[im.Module]
 			for _, x := range same {
-				for _, c := range p.c.leading[x] {
+				cs := p.c.leading[x]
+				if x == first {
+					cs = cs[len(head):]
+				}
+				for _, c := range cs {
 					out = append(out, Text(c.Text), HardLine)
 				}
 			}
-			for _, x := range same[1:] { // a repeat's trailing comment goes above the import kept
-				for _, c := range p.c.trailing[x] {
+			for _, x := range same[1:] { // a repeat's other comments go above the import kept
+				for _, c := range append(p.c.trailing[x], p.c.after[x]...) {
 					out = append(out, Text(c.Text), HardLine)
 				}
 			}
@@ -52,6 +68,22 @@ func (p *printer) module(m *syntax.Module) Doc {
 	}
 	out = append(out, p.dangle(m, len(m.Decls) == 0 && len(m.Imports) == 0, nil))
 	return Concat(append(out, HardLine)...)
+}
+
+// importsHeader is the comments above the first import, up to the last blank line between them
+// and it: they are about the import block, not that import.
+func (p *printer) importsHeader(first *syntax.Import) []syntax.Comment {
+	cs := p.c.leading[first]
+	for k := len(cs) - 1; k >= 0; k-- {
+		next := first.Span.Start.Line
+		if k+1 < len(cs) {
+			next = cs[k+1].Line
+		}
+		if p.blankBetween(cs[k].Line, next) {
+			return cs[:k+1]
+		}
+	}
+	return nil
 }
 
 func (p *printer) decl(d syntax.Decl) Doc {
