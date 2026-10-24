@@ -167,6 +167,14 @@ it; the book is the reference corpus. Spacing as in the examples:
   else vertical. Vertical form: opening bracket stays on the current line,
   one field per line indented, closing bracket alone on a line at the
   parent indent.
+- **Record types inside a function type** (signatures, capability and fake
+  entries, `let` annotations) are width-based whatever their field count:
+  one line if it fits, else K&R with the rest of the type on the closing
+  line (`send : {` … `} -> Task Unit`). A function type holding a record
+  keeps its arrows inline, so the record's break never forces the
+  `->`-leading layout; a function type nested inside another stays on one
+  line.
+- **Capability and fake bodies**: always one entry per line.
 - **Lists**: one line if it fits, else one element per line.
 - **Sum types**: one line if it fits, else one constructor per line,
   `|`-leading. Preferred layout:

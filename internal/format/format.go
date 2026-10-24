@@ -79,6 +79,9 @@ type printer struct {
 	// comments are the module's comments; attachment and printing come later, and a module
 	// whose comments the output drops fails the safety check.
 	comments []syntax.Comment
+	// inFun counts the function types being printed around the current type: a record type
+	// inside one is laid out by width alone.
+	inFun int
 }
 
 func newPrinter(src []byte) *printer {

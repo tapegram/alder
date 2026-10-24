@@ -281,7 +281,8 @@ func (p *printer) deployValue(v *syntax.DeployValue) Doc {
 // ---- types
 
 // typ prints a type. A function type that does not fit puts each further parameter and the
-// result on a line of its own, `->` first.
+// result on a line of its own, `->` first, unless it holds a record type (see below). Record
+// types inside a function type are width-based whatever their field count.
 func (p *printer) typ(t syntax.Type) Doc {
 	switch t := t.(type) {
 	case *syntax.TypeName:
@@ -300,16 +301,44 @@ func (p *printer) typ(t syntax.Type) Doc {
 	case *syntax.TypeVar:
 		return Text(t.Name)
 	case *syntax.RecordType:
+		if p.inFun > 0 { // width-based: the 3-field rule is for records that are a whole body
+			items := make([]Doc, len(t.Fields))
+			for i, f := range t.Fields {
+				items[i] = p.field(f)
+			}
+			return braced(items, false)
+		}
 		return p.fieldRecord(t.Fields)
 	case *syntax.FunType:
+		p.inFun++
+		defer func() { p.inFun-- }()
+		// With a record in it, the record breaks (K&R, `} -> R` on its closing line) and the
+		// arrows stay inline; otherwise the outermost function type's arrows break, `->` first.
+		sep := Concat(Line, Text("-> "))
+		if p.inFun > 1 || containsRecord(t) { // a function type inside another stays on its line
+			sep = Text(" -> ")
+		}
 		var rest []Doc
 		for _, x := range t.Params[1:] {
-			rest = append(rest, Line, Text("-> "), p.paramType(x))
+			rest = append(rest, sep, p.paramType(x))
 		}
-		rest = append(rest, Line, Text("-> "), p.typ(t.Result))
+		rest = append(rest, sep, p.typ(t.Result))
 		return Group(Concat(p.paramType(t.Params[0]), Nest(Concat(rest...))))
 	}
 	panic("format: unknown type")
+}
+
+// containsRecord reports whether a record type occurs anywhere in t.
+func containsRecord(t syntax.Type) bool {
+	switch t := t.(type) {
+	case *syntax.RecordType:
+		return true
+	case *syntax.TypeName:
+		return slices.ContainsFunc(t.Args, containsRecord)
+	case *syntax.FunType:
+		return containsRecord(t.Result) || slices.ContainsFunc(t.Params, containsRecord)
+	}
+	return false
 }
 
 // paramType prints a function type's parameter: a function type in parentheses.

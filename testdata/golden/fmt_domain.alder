@@ -26,6 +26,12 @@ msg Edit { id: PostId } form NewPost
 
 capability Mailer { send : { to: Text, body: Text } -> Task (), count : Int -> Query Int }
 
+capability Email {
+  send : { to: Text.Email, subject: Text, body: Html Never } -> Task Unit,
+}
+
+capability Notify { push : { to: Text.Email, subject: Text, body: Html Never, badge: Int, category: Text } -> Task Unit }
+
 fake Mailer {
   send args = Task.succeed ()
   table Sent { id: SentId @id, to: Text }

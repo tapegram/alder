@@ -30,3 +30,12 @@ h x = h x
 
 u : () -> Int
 u x = 1
+
+r3 : { a: Int, b: Int, c: Int } -> Int
+r3 r = 1
+
+rLong : { address: Text, subject: Text, body: Html Never, replyTo: Maybe Text.Email, cc: List Text } -> Task Unit
+rLong r = Task.succeed {}
+
+fLong : Dict Text (List Int) -> (Int -> Int) -> List (Maybe Int) -> Dict Text (List Int) -> Task (Maybe Int)
+fLong a b c d = Task.succeed Nothing

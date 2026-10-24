@@ -78,6 +78,15 @@ func TestSource_UnsafeRefused(t *testing.T) {
 	}
 }
 
+func TestSource_DroppedImportIsUnsafe(t *testing.T) {
+	testMutate = func(b []byte) []byte { return []byte(strings.Replace(string(b), "import B\n", "", 1)) }
+	defer func() { testMutate = nil }()
+	_, _, err := Source("m.alder", []byte("module M\n\nimport A\nimport B\n\nx : Int\nx = 1\n"))
+	if !errors.Is(err, ErrUnsafe) {
+		t.Fatalf("err = %v, want ErrUnsafe", err)
+	}
+}
+
 func TestSource_OutputThatDoesNotParseIsUnsafe(t *testing.T) {
 	testMutate = func(b []byte) []byte { return append(b, "x ="...) }
 	defer func() { testMutate = nil }()
