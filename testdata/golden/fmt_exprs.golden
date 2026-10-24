@@ -135,3 +135,21 @@ nonLastBreaks = [
 
 emptyRecord : R
 emptyRecord = f {} {}
+
+updateHugFits = Db.update Post row.id (\r -> { r | published: p.form.value })
+
+updateHugLong =
+  List.map (\row -> Db.update Post row.id (\r -> { r |
+    published: p.form.value,
+    title: p.form.title
+  })) model.rows
+
+updateHugLongLast = Db.update Post row.id { r |
+  published: p.form.value,
+  title: p.form.titleeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+}
+
+updateLambdaBody = \r -> { r |
+  published: p.form.value,
+  title: p.form.titleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+}

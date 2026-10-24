@@ -91,11 +91,10 @@ view model session =
         <al-alert variant="destructive"><Errors form /></al-alert>
         {if model.own then
           <p>You cannot delete your own account.</p>
+        else if blockers model > 0 then
+          <p>It cannot be deleted while other rows refer to it.</p>
         else
-          if blockers model > 0 then
-            <p>It cannot be deleted while other rows refer to it.</p>
-          else
-            <al-button variant="destructive" type="submit">Delete</al-button>}
+          <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
     </al-card>
     <a href={Admin.User.Show { id: model.row.id }}>Back</a>

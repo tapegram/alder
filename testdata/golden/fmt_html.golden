@@ -100,3 +100,15 @@ comments model =
   </ul>
 
 header = <header><a href={Home}>Blog</a></header>
+
+markupElseIf n =
+  <div>
+    {if n == 0 then
+      <p>You cannot delete your own account, really.</p>
+    else if n == 1 then
+      <p>It cannot be deleted while others refer to it.</p>
+    else
+      <p>Delete</p>}
+  </div>
+
+markupElseIfFits n = <div>{if n == 0 then <p>a</p> else if n == 1 then <p>b</p> else <p>c</p>}</div>

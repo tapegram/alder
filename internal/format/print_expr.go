@@ -297,7 +297,11 @@ func (p *printer) startsWithMinus(e syntax.Expr) bool {
 // ifChain prints `if c then a else b` on one line if it fits, else each branch on its own
 // line, indented, with `else if` chains flattened at the same indent. A block branch opens on
 // the `then` or `else` line, K&R style: `if c then {` … `} else {` … `}`.
-func (p *printer) ifChain(e *syntax.If) Doc {
+func (p *printer) ifChain(e *syntax.If) Doc { return Group(Concat(p.ifParts(e)...)) }
+
+// ifParts is ifChain's content, outside a group: a markup `{if}` whose `else` is an `if`
+// expression continues the chain in its own group.
+func (p *printer) ifParts(e *syntax.If) []Doc {
 	var parts []Doc
 	// a block branch opens on the `then` or `else` line, unless comments lead it
 	opens := func(x syntax.Expr) bool {
@@ -327,7 +331,7 @@ func (p *printer) ifChain(e *syntax.If) Doc {
 		e = next
 	}
 	branch(e.Else)
-	return Group(Concat(parts...))
+	return parts
 }
 
 // match prints `match subject {`, then each arm on its own line with a trailing comma.

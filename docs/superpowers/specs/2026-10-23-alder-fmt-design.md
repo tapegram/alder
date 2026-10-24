@@ -171,6 +171,19 @@ it; the book is the reference corpus. Spacing as in the examples:
   else vertical. Vertical form: opening bracket stays on the current line,
   one field per line indented, closing bracket alone on a line at the
   parent indent.
+- **Record update** `{ r | a: x }`: the same field-count rule; a 1–2
+  field update that fits stays on one line. Vertical form: `{ r |` on the
+  opening line (the base always follows `{`), one field per line indented
+  one level from the line that opened it, no trailing comma (the grammar
+  forbids it), `}` alone at that line's indent. Hugged as a lambda body or
+  an argument it breaks K&R exactly like a hugged record literal, the
+  closing parens directly after the `}`:
+
+  ```
+  List.map (\row -> Db.update Post row.id (\r -> { r |
+    published: p.form.value
+  })) model.rows
+  ```
 - **Record types inside a function type** (signatures, capability and fake
   entries, `let` annotations) are width-based whatever their field count:
   one line if it fits, else K&R with the rest of the type on the closing
@@ -207,7 +220,9 @@ it; the book is the reference corpus. Spacing as in the examples:
   else
     b
   ```
-  with `else if` chains flattened at the same indent. A block branch opens
+  with `else if` chains flattened at the same indent — in markup too,
+  where `{if c then` … `else if d then` … `else` … `}` flattens an `else`
+  whose body is an `if` expression. A block branch opens
   on the `then`/`else` line, K&R: `if c then {` … `} else {` … `}`, and
   `} else if d then {`.
 - **Lambdas**: `\x y -> body`; a body that doesn't fit breaks after `->`.

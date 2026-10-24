@@ -257,14 +257,30 @@ func (p *printer) markupChild(c syntax.Expr) Doc {
 		return Group(Concat(Text("{for "+c.Var+" in "), p.inBrackets(c.List), Text(" ->"),
 			Nest(Concat(Line, p.lead(c.Body, true), p.markupBody(c.Body))), Text("}")))
 	case *syntax.HtmlIf:
-		// `{if c then a else b}`, or `{if c then` / a / `else` / b`}`, each branch indented
-		return Group(Concat(Text("{if "), p.inBrackets(c.Cond), Text(" then"),
-			Nest(Concat(Line, p.lead(c.Then, true), p.markupBody(c.Then))), Line, Text("else"),
-			Nest(Concat(Line, p.lead(c.Else, true), p.markupBody(c.Else))), Text("}")))
+		return p.markupIf(c)
 	case *syntax.HtmlMatch:
 		return p.markupMatch(c)
 	}
 	panic("format: unknown markup child")
+}
+
+// markupIf prints `{if c then a else b}`, or `{if c then` / a / `else` / b`}`, each branch
+// indented. An `else` whose body is an `if` expression continues the chain flattened at the same
+// indent, as ifChain prints it: `else if d then` / c / `else` / e`}`.
+func (p *printer) markupIf(c *syntax.HtmlIf) Doc {
+	parts := []Doc{Text("{if "), p.inBrackets(c.Cond), Text(" then"),
+		Nest(Concat(Line, p.lead(c.Then, true), p.markupBody(c.Then))), Line, Text("else")}
+	if x, ok := c.Else.(*syntax.HtmlExpr); ok && !p.hasLead(c.Else) {
+		if next, ok := x.Expr.(*syntax.If); ok {
+			saved := p.noBrace
+			p.noBrace = false
+			defer func() { p.noBrace = saved }()
+			parts = append(append(parts, Text(" ")), p.ifParts(next)...)
+			return Group(Concat(append(parts, Text("}"))...))
+		}
+	}
+	parts = append(parts, Nest(Concat(Line, p.lead(c.Else, true), p.markupBody(c.Else))), Text("}"))
+	return Group(Concat(parts...))
 }
 
 // markupBody prints the body of a markup `for`, `if` branch or `match` arm: an element, or an
