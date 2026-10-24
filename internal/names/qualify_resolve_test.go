@@ -306,3 +306,32 @@ func TestQual_OwnSegmentFullLength(t *testing.T) {
 	}
 	wantRef(t, ms["Admin.Layout"], "Layout.pageTitle", syntax.Ref{Kind: syntax.RefValue, Module: "Layout", Name: "pageTitle"})
 }
+
+// fullPath only fires for the longest real module prefix: beside `import Admin.Users`, a name of
+// the unimported module `Admin.Users.Util` (or page `Admin.Users.Edit`) is not E0205.
+func TestQual_LongestModulePrefix(t *testing.T) {
+	users := "module Admin.Users\n\nn : Int\nn = 1\n"
+	util := "module Admin.Users.Util\n\nhelper : Int\nhelper = 1\n"
+	_, bag, _ := resolveMods(t, std(t), users, util,
+		"module Use\n\nimport Admin.Users\n\na : Int\na = Users.n\n\nx : Int\nx = Admin.Users.Util.helper\n")
+	d := onlyFix(t, bag, "E0201")
+	if !strings.Contains(d.Message, "module `Admin.Users.Util` is not imported") || d.Fix == nil || d.Fix.Replace != "import Admin.Users.Util\n" {
+		t.Fatalf("%s, fix %+v", d.Message, d.Fix)
+	}
+
+	edit := "module Admin.Users.Edit\n\npage \"/admin/users/edit\" { }\n\ntype Model = { n: Int }\n\nview : Int\nview = 1\n"
+	_, bag, ms := resolveMods(t, std(t), users, edit,
+		"module Use\n\nimport Admin.Users\n\na : Int\na = Users.n\n\nm : Admin.Users.Edit.Model -> Int\nm x = 1\n\nv : Html a\nv = <a href={Admin.Users.Edit {}}>e</a>\n")
+	if len(bag.Items) != 0 {
+		t.Fatalf("page type and value: %s", codes(bag))
+	}
+	wantRef(t, ms["Use"], "Admin.Users.Edit.Model", syntax.Ref{Kind: syntax.RefPage, Module: "Admin.Users.Edit.Model"}) // as before #23
+	wantRef(t, ms["Use"], "Admin.Users.Edit", syntax.Ref{Kind: syntax.RefPage, Module: "Admin.Users.Edit"})
+
+	_, bag, _ = resolveMods(t, std(t), users, edit,
+		"module Use\n\nimport Admin.Users\n\na : Int\na = Users.n\n\nx : Int\nx = Admin.Users.Edit.view\n")
+	d = onlyFix(t, bag, "E0201")
+	if !strings.Contains(d.Message, "module `Admin.Users.Edit` is not imported") || d.Fix == nil || d.Fix.Replace != "import Admin.Users.Edit\n" {
+		t.Fatalf("page value member: %s, fix %+v", d.Message, d.Fix)
+	}
+}

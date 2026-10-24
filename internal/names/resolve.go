@@ -635,8 +635,9 @@ func (r *resolver) importedScope(q string) (string, *moduleScope, bool) {
 // eponymous declaration. It reports E0205 at each of starts (where the written name begins in
 // the source; an element's closing tag is a second place), with a fix writing the qualifier in
 // the path's place, and returns the name as the qualifier writes it and the module's path; the
-// caller resolves that short name, so nothing else is reported. A page value's full path is
-// never E0205: callers resolve page values (design rule 6) before calling it.
+// caller resolves that short name, so nothing else is reported. Only the longest prefix that is
+// a module counts. A page value's full path is never E0205: callers resolve page values (design
+// rule 6) before calling it.
 func (r *resolver) fullPath(written string, starts ...diag.Pos) (short, path string, ok bool) {
 	for _, im := range r.m.Imports {
 		p, q := im.Module, r.ms.quals[im.Module]
@@ -649,6 +650,15 @@ func (r *resolver) fullPath(written string, starts ...diag.Pos) (short, path str
 	}
 	if path == "" {
 		return "", "", false
+	}
+	// a longer prefix that is itself a module (`Admin.Users.Util` beside `import Admin.Users`,
+	// or the page `Admin.Users.Edit`) is the module the name means: not a full path of path
+	for i := len(path) + 1; i <= len(written); i++ {
+		if i == len(written) || written[i] == '.' {
+			if _, isMod := r.p.Modules[written[:i]]; isMod {
+				return "", "", false
+			}
+		}
 	}
 	q := r.ms.quals[path]
 	short = q + written[len(path):]
