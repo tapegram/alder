@@ -122,6 +122,42 @@ Active, Completed]` without a module prefix, while qualifying the *types*
 (`Todo.Priority`). The book now says so. Constructor names must be unique
 across a module's imports.
 
+### Short qualifiers, and one spelling of each **(decided #23; tested: the corpus, both examples and the book)**
+
+Modules used to be named by their whole path: `Table.Todo.find`,
+`<Admin.Layout.Page>`. In a project of any size most lines carried a
+prefix the reader already knew, and the longest names were the ones
+that were easiest to get wrong. Go, Python and Elm all name an imported
+module by its last segment (`import "a/b/c"` is `c.`, `import a.b.c as
+c`, `import Data.Maybe` is `Maybe.`), so that is the habit a model brings.
+An import is now named by its last segment.
+
+Two modules can end the same way, though, and that is where a free choice
+of alias would hurt. If every file chose its own (`AL`, `Lay`, `AdminL`),
+the same module would read differently from file to file, a search for
+its uses would miss half of them, and an agent could not predict a name
+without reading the import block. So there is **one spelling**: the
+canonical qualifier is computed from the file's imports and its
+declarations, by a rule that depends on nothing else (chapter 3 gives it
+step by step), and `as` is required exactly when the canonical qualifier
+differs from the last segment, and forbidden otherwise. An alias the
+compiler could compute is an alias nobody has to choose, so the errors
+(E0204, E0205) carry a fix and `alder fmt` migrates a project in one run.
+The full path of an imported module is refused too (E0205), because two
+spellings of one name are the cost the rule exists to avoid.
+
+Pages and `App` stay full path. A page value is an address in the whole
+app, valid with or without an import, and the same holds for its
+messages: `Auth.Login {}` means the same in every file. Shortening
+those would make the global names read as local ones. Only a page's
+*members*, which need an import, use the qualifier.
+
+The costs: a file's qualifiers depend on its other imports, so adding an
+import can change another import's qualifier (the generators rewrite the
+affected lines; a hand edit meets E0204 and fixes it); and inside module
+`Admin.Layout`, `import Layout` is legal and `Layout.Page` names the
+other module, which reads like a self-reference until you know the rule.
+
 ### `view` receives the session **(tested: E2)**
 
 In E2-T4 (a per-user theme), every model wanted the session in `view`:

@@ -1600,6 +1600,9 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0201 | name from a module that isn't imported | `import M` |
 | E0202 | unqualified type from another module | `M.T` |
 | E0203 | qualified constructor | unqualified name |
+| E0204 | an import alias that is not the canonical one: missing, redundant or different (`import Todo as T`, or `import Admin.Layout` beside `Layout`) | the import line with the canonical `as` |
+| E0205 | the full path of an imported module where its qualifier belongs (`Table.Todo.find`, `<Admin.Layout.Page>`, `Todos.Index.helper`) | the qualified spelling (`Todo.find`, `<AdminLayout.Page>`, `Index.helper`) |
+| E0206 | an import with no usable qualifier: its whole joined path is taken, or equals another import's | — (the message suggests renaming a module) |
 | E0301 | message sent without its parameters | `M { field: ?field }` |
 | E0302 | `update` missing an arm | arm skeleton |
 | E0303 | `href` with a `Text` | — |
@@ -1870,6 +1873,17 @@ alder fmt app/Post.alder   one file, or a directory (build/ and dot-directories 
 alder fmt --check          write nothing; list each file that would change
 alder fmt --stdin          format standard input to standard output
 ```
+
+In an app project, `alder fmt` also migrates imports. For each file it
+loads the program, applies that file's E0204 and E0205 fixes (the
+canonical `as`, and the qualifier where a full module path was written;
+chapter 3, "Files and modules"), then formats. That is how a project
+written before short qualifiers is brought over in one run, and it is
+safe to repeat: the second run changes nothing. A file with unrelated
+type errors is still migrated, and a file that does not parse is left as
+it is. `--stdin` and a file outside an app project only format, and
+`--check` lists a file that would be migrated as one that would be
+reformatted.
 
 Rewriting prints one line per file it changed, and nothing when nothing
 changed. `--check` prints `<file> would be reformatted` for each file that is

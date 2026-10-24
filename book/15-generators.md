@@ -640,8 +640,17 @@ app/Replies/Show.alder:86:16: warning[W0002]: hole ?expected has type Bool
 names a module of the app qualified, such as `Member.isAdmin`, and the
 page does not import it, `fill` adds the import and says so: `added
 import Member to app/Replies/Show.alder` (with `--json`, `"imports":
-["Member"]`). A standard library module needs no import, and a name
-that is not a module's is the checker's to report. An address names one declaration: an arm
+["Member"]`). A module whose path has several segments is not found from its short
+qualifier before it is imported (`Index` could be any of several), so
+write that import first and `fill` then resolves it. A standard library
+module needs no import, and a name that is not a module's is the
+checker's to report. What a generator writes
+is always canonical (chapter 3, "Files and modules"): it imports a module
+with its canonical `as` where the qualifier differs from the last segment
+(`import Admin.Layout as AdminLayout`), and writes the table `Todo` of
+`import Table.Todo` as `Todo`. When a new import changes the canonical
+qualifier of one already in the file, the generator rewrites that import
+line and its uses in the same edit. An address names one declaration: an arm
 (`Replies.Show.update.Delete`), a test (`Replies.Show."pressing
 Delete"`) or any other top-level name (`Replies.perPage`). When the
 declaration has more than one hole, `--hole ?name` picks one. The

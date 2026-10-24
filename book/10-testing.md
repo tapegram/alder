@@ -1029,7 +1029,10 @@ Line by line:
    renders, and the browser now holds the page. Its result is not needed
    here (`let _ <-`).
 4. `Test.submit Todos.Index.NewTodo { … }` fills the page's `NewTodo`
-   form with the record and posts it. The page must show that form: the
+   form (a page's messages are global addresses like its page value, so
+   they are written with the full path; if the test file imports
+   `Todos.Index` the short `Index.NewTodo` is accepted too, but the book
+   and the generators write the full one) with the record and posts it. The page must show that form: the
    browser posts only what a user could. The page's `update` inserts the
    todo and answers `Redirect (Todos.Index { filter: model.filter })`; the
    browser follows the redirect, as a real one does, and now holds the
@@ -1211,11 +1214,14 @@ test about logging in itself goes through the login page with its real
 form. That page calls the `Password` capability, whose adapter is Go; a
 test replaces it with the fake `app/Auth/Login.alder` declares beside it
 (section 8), which accepts any user who has a row, whatever the
-password:
+password. The test file imports `Auth.Login`, so the capability is
+written through that import's qualifier, `Login.Password`; the page
+itself is a page value, written with its full path, `Auth.Login {}`, and
+so is its message, `Auth.Login.Credentials`:
 
 ```alder
 test "logging in through the form" = {
-  let _ <- Test.fake Password
+  let _ <- Test.fake Login.Password
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let _ <- Test.get (Auth.Login {})
   let r <- Test.submit Auth.Login.Credentials { email: Text.Email "me@example.com", password: Text.Secret "secret" }

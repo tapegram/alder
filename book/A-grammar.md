@@ -8,7 +8,7 @@ tag (and before its `>` or `/>`), and in a type, where a line may begin with
 
 ```ebnf
 module      = "module" ModName NL {import NL} {decl NL} ;
-import      = "import" ModName ;
+import      = "import" ModName ["as" uname] ;   (* the canonical qualifier, chapter 3: E0204 otherwise *)
 
 decl        = valueDecl | typeDecl | pageDecl | msgDecl | formDecl
             | tableDecl | capDecl | fakeDecl | sessionDecl | testDecl | loginDecl ;

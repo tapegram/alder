@@ -8,7 +8,14 @@ in chapter 12. Each is a compile error.
 2. `Db.get` and `Db.first` return a `Maybe`. Match it; there is no `.field`
    on a `Maybe`.
 3. Types from another module are qualified (`User.UserId`, `Todo.Priority`).
-   Constructors are not (`Normal`, `Just`).
+   Constructors are not (`Normal`, `Just`). The qualifier is the last
+   segment of the import: `import Table.Todo` gives `Todo.find`, and
+   writing the full path (`Table.Todo.find`) is E0205. Where two imports
+   or a declared name would clash, the import carries the canonical alias
+   (`import Admin.Layout as AdminLayout`); copy it from the E0204 fix or
+   run `alder fmt`. Pages stay full path (`Todos.Show {}`), but their
+   members go through the qualifier (`Index.helper` after `import
+   Todos.Index`).
 4. Every module whose types, functions, columns, or components you use must
    be imported. Only pages (`Todos.Show {}`) and app-level messages
    (`App.Logout`) need no import.

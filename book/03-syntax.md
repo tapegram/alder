@@ -12,18 +12,101 @@ import Todo
 import Layout
 ```
 
-`import X` brings module `X` into scope as a qualified name: `X.foo`,
-`X.SomeType`, `<X.Component>`. There are no unqualified imports and no
-renaming. Modules from the standard library (`List`, `Text`, `Db`, ...) are
-always in scope and never imported. For the same reason no module of the
-app may take a standard-library module's name: an app module `Test` would
-be hidden behind the stdlib's `Test`, so it is refused (E0017); call it
-`TestHelpers` or `Todos.Fixtures` instead.
+`import X` brings module `X` into scope under a short name, its
+*qualifier*: `X.foo`, `X.SomeType`, `<X.Component>`. Modules from the
+standard library (`List`, `Text`, `Db`, ...) are always in scope and never
+imported. For the same reason no module of the app may take a
+standard-library module's name: an app module `Test` would be hidden behind
+the stdlib's `Test`, so it is refused (E0017); call it `TestHelpers` or
+`Todos.Fixtures` instead.
 
-A declaration whose name equals the last segment of its module's name is
-referred to by the module name alone: module `Todo` defining `type Todo` (or
-`table Todo`) is used as `Todo`, not `Todo.Todo`; module `Layout` defining a
-component `Layout` is used as `<Layout>`.
+**The qualifier.** A module is named by the last segment of its path:
+after `import Table.Todo` you write `Todo.find`, never `Table.Todo.find`.
+Most imports in an app have no neighbour that ends the same way, so the
+qualifier is the last segment and the import line is plain `import
+Table.Todo`. When two imports would share a qualifier, or the qualifier
+would hide something, the import gets a longer one and says so with `as`:
+
+```alder fragment
+module Todos
+
+import Admin.Layout as AdminLayout
+import Layout
+import Table.Todo as TableTodo
+```
+
+Here `Layout` is the plain layout, `AdminLayout.Page` is the admin one, and
+`TableTodo` is the table of `app/Table/Todo.alder`, because `Todos`
+declares a `table Todo` of its own and `Todo` is already spoken for.
+
+There is no choice in the spelling. The compiler computes exactly one
+qualifier for each import, the *canonical* one, and the `as` must match it:
+an import whose qualifier is its last segment has no `as` (a redundant one
+is E0204), and any other import must spell the canonical `as` (a missing
+or different one is E0204 as well, and the error's fix rewrites the line).
+You never invent an alias; you copy the one the error shows, or run
+`alder fmt`. The compiler looks every import up by its canonical
+qualifier whatever alias was written, so a file with `as AL` and uses of
+`AL.x` reports E0204 and unknown names until the alias is fixed.
+
+**How the compiler computes it.** The resolver works on one file's imports
+at a time. Every import starts with a one-segment candidate, the last
+segment: `Table.Todo` starts as `Todo`. It lengthens a candidate by one
+segment from the right (`Todo` becomes `TableTodo`, the segments joined
+with no separator) while either of these holds:
+
+- another import of the file has the same candidate (two imports ending in
+  `Layout`, or two ending in `Index`); or
+- the candidate is *taken*: a standard-library module name or `App`, the
+  last segment of the file's own module name, or the name of a type,
+  table, capability or fake table the file declares.
+
+It stops when the candidate is free or when the whole path is in it. The
+imports of one file, worked:
+
+| imports | qualifiers | why |
+|---|---|---|
+| `Table.Todo` | `Todo` | nothing else ends in `Todo` |
+| `Layout`, `Admin.Layout` | `Layout`, `AdminLayout` | both start as `Layout`; `Layout` is already its whole path and keeps it, so only `Admin.Layout` grows |
+| `Posts.Index`, `Admin.Posts.Index` | `PostsIndex`, `AdminPostsIndex` | both start as `Index`, then both read `PostsIndex`; `Posts.Index` has no more segments, so only the other grows |
+| `Utils.List` | `UtilsList` | `List` is a standard-library module |
+| `Data.MnSos` in module `Sites.MnSos` | `DataMnSos` | `MnSos` is the module's own last segment |
+| `Table.Todo`, with a `table Todo` declared in the file | `TableTodo` | `Todo` is a declared name |
+| `Todos.Index`, `Projects.Index`, `Blog.Show` | `TodosIndex`, `ProjectsIndex`, `Show` | only the two `Index` imports collide |
+
+Two details. The file's own last segment blocks a candidate only while
+the path can still grow: inside module `Admin.Layout`, `import Layout` is
+legal and keeps `Layout`, since its whole path is all there is. Mind what
+that means to a reader: inside `Admin.Layout`, `Layout.Page` names the
+*other* module, the plain layout, not the file you are in. And some imports
+cannot be saved: `A.X` and `AX` in the same file both end as the whole
+join `AX`, so neither has a usable qualifier. That is E0206, and its fix
+suggests renaming a module. The generators of chapter 15 and the language
+server's completions use this same computation, so what they write is
+always canonical.
+
+**Always the qualifier, never the path.** Writing the full path of an
+imported module where its qualifier belongs is E0205: `Table.Todo.find`
+for `import Table.Todo` must be `Todo.find`, and `<Admin.Layout.Page>`
+must be `<AdminLayout.Page>`. The compiler still understands the name, so
+that one error is the only one, and its fix is the qualified spelling. The
+same holds for the members of an imported page module: with `import
+Todos.Index`, its helper is `Index.helper`, not `Todos.Index.helper`.
+`alder fmt` applies the E0204 and E0205 fixes for a file of an app project
+(chapter 11), so one run migrates an older project.
+
+A declaration whose name equals the qualifier is referred to by the
+qualifier alone: module `Todo` defining `type Todo` (or `table Todo`) is
+used as `Todo`, not `Todo.Todo`; module `Layout` defining a component
+`Layout` is used as `<Layout>`. With `import Table.Todo` that is `Todo`
+for the table in `app/Table/Todo.alder`, and with `import Table.Todo as
+TableTodo` it is `TableTodo`.
+
+**Addresses in prose.** When the book or a compiler message names a
+declaration of a page by where it lives, it writes the whole address,
+`Todos.Index.load` or `Todos.Index.recent`. That is a name for the reader,
+not code to type: in a file you write `Index.recent` after `import
+Todos.Index`.
 
 **Pages and app-level messages are global.** A page value (`Todos.Show { id:
 id }`), an app-level message (`App.Logout`), and their type `App.Msg` can be
