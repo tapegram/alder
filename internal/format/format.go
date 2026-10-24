@@ -70,8 +70,8 @@ func commentTexts(m *syntax.Module) []string {
 	return out
 }
 
-// printer turns a parsed module into a document. It reads literals, strings and (until markup is
-// printed) markup back from the source through their spans.
+// printer turns a parsed module into a document. It reads literals, strings and markup text back
+// from the source through their spans.
 type printer struct {
 	src    []byte   // the source as the lexer reads it: no BOM, LF line ends
 	lines  []string // src split into lines

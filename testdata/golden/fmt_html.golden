@@ -1,0 +1,74 @@
+module Html
+
+inlineShort n = <p>Hi <b>{n}</b>!</p>
+
+inlineRunLong n =
+  <p>
+    This paragraph is long enough that the formatter has to break it, and the part <b>{n}</b> stays glued to it.
+  </p>
+
+blockChildren =
+  <div>
+    <ul><li>one</li><li>two</li></ul>
+  </div>
+
+attrsLong =
+  <al-button
+    variant="secondary"
+    size="sm"
+    class="toggle-button wide"
+    id="toggle-done"
+    click={Toggle { id: model.id }}>
+    Done
+  </al-button>
+
+attrsLongSelfClosing =
+  <input type="text" name="title" value={model.title} placeholder="What needs doing?" required />
+
+bare = <form submit={Save}><Errors form /><button>Save</button></form>
+
+loops model =
+  <ul>
+    {for todo in model.todos -> <li>{todo.title}</li>}
+    {for todo in model.todos ->
+      <li class="todo-item">
+        <a href={Todos.Show { id: todo.id }}>{todo.title}</a> <span>{todo.notes}</span>
+      </li>}
+  </ul>
+
+conds model =
+  <div>
+    {if model.done then <b>Done</b> else Html.none}
+    {if List.isEmpty model.todos then
+      <p class="empty">Nothing to do yet, add something with the form above.</p>
+    else
+      <ul>
+        {for t in model.todos -> <li>{t.title}</li>}
+      </ul>}
+  </div>
+
+matches model =
+  <nav>
+    {match model.user {
+      Just u -> <span>{u.name}</span>,
+      Nothing -> <a href={Auth.Login {}}>Log in</a>,
+    }}
+  </nav>
+
+script =
+  <div>
+    <script>
+  // -- x
+  if (a) { b(); }
+</script>
+  </div>
+
+component = <Layout.Page title="x"><h1>Hello</h1></Layout.Page>
+
+blankLines =
+  <main>
+    <h1>Title</h1>
+
+    <p>Body</p>
+    <p>Some text over two lines {x}</p>
+  </main>

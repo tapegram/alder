@@ -14,7 +14,7 @@ func (p *printer) expr(e syntax.Expr) Doc {
 	case *syntax.IntLit, *syntax.FloatLit, *syntax.StrLit, *syntax.HoleExpr:
 		return Text(p.spanText(e.GetSpan())) // verbatim, interpolations and all
 	case *syntax.Element:
-		return Text(p.spanText(e.Span)) // markup is printed verbatim until it has its own printer
+		return p.element(e)
 	case *syntax.BoolLit:
 		if e.Value {
 			return Text("True")
