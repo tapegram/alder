@@ -94,11 +94,10 @@ view model session =
             {row.email}
             {if session.user == row.id then
               <small> (kept: your own account)</small>
+            else if refused model session row then
+              <small> (kept: other rows refer to it)</small>
             else
-              if refused model session row then
-                <small> (kept: other rows refer to it)</small>
-              else
-                <span></span>}
+              <span></span>}
           </li>}
       </ul>
       -- @admin begin actions
