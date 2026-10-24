@@ -67,7 +67,7 @@ type scratchParams struct {
 	Phase   string                `json:"phase"`   // "types" | "values"
 	Watches []scratch.WatchResult `json:"watches"` // never null
 	Ran     bool                  `json:"ran"`
-	Note    string                `json:"note,omitempty"`
+	Note    string                `json:"note,omitempty"` // FileResult.Note, but not AppErrorsNote: the W0007 warning says that
 	Warning string                `json:"warning,omitempty"`
 	Error   string                `json:"error,omitempty"` // FileResult.Err
 }

@@ -7,12 +7,17 @@ import (
 	"runtime/debug"
 	"sync"
 
+	"alder/internal/diag"
 	"alder/internal/scratch"
 	"alder/internal/watch"
 )
 
 // runScratchFile is scratch.RunFile; a test may replace it before a server starts.
 var runScratchFile = scratch.RunFile
+
+// snapshotRoot is watch.Snapshot, the stamps of the watched files (a walk of the tree); a test may
+// replace it before a server starts.
+var snapshotRoot = watch.Snapshot
 
 // scratchRunEnded is called as each scratch run's goroutine ends, its sends done; a test may
 // replace it before a server starts.
@@ -77,22 +82,31 @@ func (s *server) rerunScratch() {
 	}
 }
 
-// saveRerunScratch reruns every open scratch document after an editor save of another file, and
-// records the watched files' stamps, which include that save's write: the poll that later sees
-// the write then finds nothing new (scratchSourcesChanged), so one save is one run.
+// saveRerunScratch reruns every open scratch document after an editor save of another file. With
+// a poller it first records the watched files' stamps, which include that save's write: the poll
+// that later sees the write then finds nothing new (scratchSourcesChanged), so one save is one
+// run. With no scratch document open it does nothing, not even the walk the stamps take.
 func (s *server) saveRerunScratch() {
-	cur := watch.Snapshot(s.rootReal)
-	s.scratch.mu.Lock()
-	s.scratch.sources = cur
-	s.scratch.mu.Unlock()
-	s.rerunScratch()
+	rels := s.docs.scratchRels()
+	if len(rels) == 0 {
+		return
+	}
+	if s.o.Poll > 0 {
+		cur := snapshotRoot(s.rootReal)
+		s.scratch.mu.Lock()
+		s.scratch.sources = cur
+		s.scratch.mu.Unlock()
+	}
+	for _, rel := range rels {
+		s.runScratch(rel)
+	}
 }
 
 // scratchSourcesChanged reports whether the watched files differ, in a source, from their stamps
 // at the last rerun for a change to them, and records the stamps now. The poller calls it on a
 // source change: false means an editor save already reran the scratch documents for it.
 func (s *server) scratchSourcesChanged() bool {
-	cur := watch.Snapshot(s.rootReal)
+	cur := snapshotRoot(s.rootReal)
 	s.scratch.mu.Lock()
 	defer s.scratch.mu.Unlock()
 	last := s.scratch.sources
@@ -148,6 +162,9 @@ func (s *server) scratchOnce(ctx context.Context, rel string, seq uint64) {
 		if p.Watches == nil {
 			p.Watches = []scratch.WatchResult{}
 		}
+		if p.Note == scratch.AppErrorsNote {
+			p.Note = "" // publishScratch's W0007 warning says it, on line 1 too
+		}
 		if r.Err != nil {
 			p.Error = r.Err.Error()
 		}
@@ -175,7 +192,7 @@ func (s *server) publishScratch(x *doc, r scratch.FileResult) {
 		}
 	}
 	if appErr {
-		ds = append(ds, Diagnostic{Range: lspRange(1, 1, 1, 1), Severity: 2, Source: "alder", Message: scratch.AppErrorsNote})
+		ds = append(ds, Diagnostic{Range: lspRange(1, 1, 1, 1), Severity: 2, Code: diag.ScratchAppErrors, Source: "alder", Message: scratch.AppErrorsNote})
 	}
 	v := x.Version
 	s.notify("textDocument/publishDiagnostics", publishDiagnosticsParams{URI: x.URI, Version: &v, Diagnostics: ds})

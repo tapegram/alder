@@ -16,6 +16,7 @@ import (
 	"alder/internal/diag"
 	"alder/internal/names"
 	"alder/internal/scratch"
+	"alder/internal/watch"
 )
 
 // fakeScratch replaces runScratchFile for the test (restored after the server has stopped):
@@ -103,10 +104,11 @@ func TestScratchSaveReruns(t *testing.T) {
 }
 
 // TestScratchDiagnosticsPositioned: the scratch file's publish holds its own diagnostics and a
-// warning at 1:1 for the app's errors, never the app's diagnostics themselves.
+// warning (W0007) at 1:1 for the app's errors, never the app's diagnostics themselves; the
+// warning is the one place the app's errors are said, so alder/scratch carries no note for them.
 func TestScratchDiagnosticsPositioned(t *testing.T) {
 	fakeScratch(t, func(int, scratch.File) scratch.FileResult {
-		return scratch.FileResult{Watches: []scratch.WatchResult{}, Diags: []diag.Diagnostic{
+		return scratch.FileResult{Watches: []scratch.WatchResult{}, Note: scratch.AppErrorsNote, Diags: []diag.Diagnostic{
 			{Code: "E0003", Severity: "error", Message: "file error",
 				Span: diag.Span{File: "scratch.alder", Start: diag.Pos{Line: 3, Col: 3}, End: diag.Pos{Line: 3, Col: 5}}},
 			{Code: "E0003", Severity: "error", Message: "app error",
@@ -115,7 +117,9 @@ func TestScratchDiagnosticsPositioned(t *testing.T) {
 	})
 	c := start(t, copyExample(t, "todos"))
 	c.open("scratch.alder", "> 1\n\n> x\n")
-	c.scratchNote()
+	if p := c.scratchNote(); p.Note != "" {
+		t.Fatalf("alder/scratch note %q: the warning already says it", p.Note)
+	}
 	ds := c.diags("scratch.alder")
 	if len(ds) != 2 {
 		t.Fatalf("diagnostics %+v", ds)
@@ -123,15 +127,18 @@ func TestScratchDiagnosticsPositioned(t *testing.T) {
 	if d := ds[0]; d.Message != "file error" || d.Severity != 1 || d.Range.Start != (Position{2, 2}) || d.Range.End != (Position{2, 4}) {
 		t.Fatalf("file error %+v", d)
 	}
-	if d := ds[1]; d.Message != "the app has errors; fix them and save" || d.Severity != 2 || d.Range.Start != (Position{0, 0}) {
+	if d := ds[1]; d.Message != "the app has errors; fix them and save" || d.Code != diag.ScratchAppErrors || d.Severity != 2 || d.Range.Start != (Position{0, 0}) {
 		t.Fatalf("warning %+v", d)
 	}
+	c.sync()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for _, p := range c.published["app/Todo.alder"] {
-		for _, d := range p.Diagnostics {
-			if d.Message == "app error" {
-				t.Fatalf("the scratch run published the app's diagnostic: %+v", p)
+	for rel, pubs := range c.published {
+		for _, p := range pubs {
+			for _, d := range p.Diagnostics {
+				if d.Message == "app error" {
+					t.Fatalf("the app's diagnostic was published, for %s: %+v", rel, p)
+				}
 			}
 		}
 	}
@@ -365,24 +372,35 @@ func TestScratchCloseCancelsAndClears(t *testing.T) {
 }
 
 // TestScratchRename (#30): an editor renames a scratch file by closing the old name and opening
-// the new one: the old one's diagnostics clear and only the new one runs.
+// the new one, here while the old one's run is in flight: the old one's diagnostics clear,
+// nothing of its run reaches the client, and only the new one runs.
 func TestScratchRename(t *testing.T) {
 	b := blockScratch(t)
-	close(b.release)
 	c := start(t, copyExample(t, "todos"))
 	c.open("a.scratch.alder", "> 1\n")
-	b.waitEnded(t, 1)
+	b.waitStarted(t, 1)
 	c.closeDoc("a.scratch.alder")
 	c.open("b.scratch.alder", "> 1\n")
-	b.waitEnded(t, 1)
+	b.waitStarted(t, 2)
+	b.waitDone(t, 1) // cancelled by the close
+	if err := b.err(1); err != context.Canceled {
+		t.Fatalf("a's run's ctx: %v", err)
+	}
+	close(b.release)
+	b.waitEnded(t, 2)
 	c.sync()
 	pubs := c.publishedFor("a.scratch.alder")
-	if len(pubs) == 0 || len(pubs[len(pubs)-1].Diagnostics) != 0 {
-		t.Fatalf("a's publishes %+v", pubs)
+	if len(pubs) != 1 || pubs[0].Diagnostics == nil || len(pubs[0].Diagnostics) != 0 {
+		t.Fatalf("a's publishes %+v, want only the close's empty list", pubs)
 	}
 	ps := c.scratchNotes()
-	if len(ps) == 0 || ps[len(ps)-1].URI != c.uri("b.scratch.alder") {
-		t.Fatalf("alder/scratch %+v", ps)
+	if len(ps) != 2 {
+		t.Fatalf("alder/scratch %+v, want b's types and values", ps)
+	}
+	for _, p := range ps {
+		if p.URI != c.uri("b.scratch.alder") || p.Watches[0].Value != "2" {
+			t.Fatalf("alder/scratch %+v, want only b's run", p)
+		}
 	}
 	c.srv.scratch.mu.Lock()
 	defer c.srv.scratch.mu.Unlock()
@@ -410,7 +428,9 @@ func TestScratchRerunsOnAppSave(t *testing.T) {
 	}
 }
 
-// TestScratchRerunsOnPoll: a change to an app file on disk reruns the open scratch document.
+// TestScratchRerunsOnPoll: a change to an app file on disk reruns the open scratch document. The
+// file is rewritten (growing) until a run ends, since a write before the poller's first look is
+// not a change to it.
 func TestScratchRerunsOnPoll(t *testing.T) {
 	b := blockScratch(t)
 	close(b.release)
@@ -418,11 +438,22 @@ func TestScratchRerunsOnPoll(t *testing.T) {
 	c := startWith(t, root, Options{Poll: 20 * time.Millisecond})
 	c.open("scratch.alder", "> 1\n")
 	b.waitEnded(t, 1)
-	time.Sleep(50 * time.Millisecond) // the poller has its first look
-	if err := os.WriteFile(filepath.Join(root, "app", "Todo.alder"), []byte(c.disk("app/Todo.alder")+"\n"), 0o644); err != nil {
-		t.Fatal(err)
+	file := filepath.Join(root, "app", "Todo.alder")
+	text := c.disk("app/Todo.alder")
+	deadline := time.After(timeout)
+	for rerun := false; !rerun; {
+		text += "\n"
+		if err := os.WriteFile(file, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-b.ended: // nothing else runs it: no save, no change to it
+			rerun = true
+		case <-time.After(100 * time.Millisecond):
+		case <-deadline:
+			t.Fatalf("no rerun in %v of rewriting app/Todo.alder", timeout)
+		}
 	}
-	b.waitEnded(t, 1)
 	for {
 		if p := c.scratchNote(); p.Phase == "values" && p.Watches[0].Value == "2" {
 			break
@@ -450,35 +481,66 @@ func TestScratchShutdownWaits(t *testing.T) {
 }
 
 // TestScratchAppSaveRunsOnce: an editor save of an app file writes it and sends didSave; the
-// didSave reruns the open scratch document and the poll that then sees the write does not.
+// didSave reruns the open scratch document and the poll that then sees the write does not. The
+// poller is a fake the test ticks (watchRoot), so the poll comes after the save, as it does
+// when the save is handled first; scratchSourcesChanged still compares the files on disk.
 func TestScratchAppSaveRunsOnce(t *testing.T) {
 	b := blockScratch(t)
 	close(b.release)
 	polled := make(chan bool, 16)
-	realPolled := scratchPolled
+	tick := make(chan watch.Change)
+	realPolled, realWatch := scratchPolled, watchRoot
 	scratchPolled = func(rerun bool) { polled <- rerun }
-	t.Cleanup(func() { scratchPolled = realPolled })
+	watchRoot = func(_ string, _ time.Duration, stop <-chan struct{}, ch chan<- watch.Change) {
+		for {
+			select {
+			case <-stop:
+				return
+			case k := <-tick:
+				ch <- k
+			}
+		}
+	}
+	t.Cleanup(func() { scratchPolled, watchRoot = realPolled, realWatch })
 	root := copyExample(t, "todos")
-	c := startWith(t, root, Options{Poll: 20 * time.Millisecond})
+	c := startWith(t, root, Options{Poll: time.Hour}) // Poll > 0 starts the (fake) poller
 	c.open("scratch.alder", "> 1\n")
 	b.waitEnded(t, 1)
-	time.Sleep(50 * time.Millisecond) // the poller has its first look
 	if err := os.WriteFile(filepath.Join(root, "app", "Todo.alder"), []byte(c.disk("app/Todo.alder")+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	c.save("app/Todo.alder")
-	b.waitEnded(t, 1)
+	b.waitEnded(t, 1) // the save's rerun: its stamps are recorded before it starts
+	select {
+	case tick <- watch.SourceChange: // the poll that sees the save's write
+	case <-time.After(timeout):
+		t.Fatal("the poller did not start")
+	}
 	select {
 	case rerun := <-polled:
 		if rerun {
 			t.Fatal("the poll reran the scratch document after the save had")
 		}
 	case <-time.After(timeout):
-		t.Fatal("the poll did not see the write")
+		t.Fatal("the poll was not handled")
 	}
 	if n := c.srv.lastSeq(); n != 2 {
 		t.Fatalf("%d runs, want 2 (the open and the save)", n)
 	}
+	// A write no save reported: the poll reruns it.
+	if err := os.WriteFile(filepath.Join(root, "app", "Todo.alder"), []byte(c.disk("app/Todo.alder")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tick <- watch.SourceChange
+	select {
+	case rerun := <-polled:
+		if !rerun {
+			t.Fatal("the poll of an unsaved write did not rerun the scratch document")
+		}
+	case <-time.After(timeout):
+		t.Fatal("the poll was not handled")
+	}
+	b.waitEnded(t, 1)
 }
 
 // TestScratchRunNotOpen: a run asked for a scratch document that is no longer open (a close
@@ -518,5 +580,42 @@ func TestScratchCloseClearsItsURI(t *testing.T) {
 	}
 	if last := pubs[len(pubs)-1]; last.URI != uri || last.Diagnostics == nil || len(last.Diagnostics) != 0 {
 		t.Fatalf("the close published %+v, want an empty list at %s", last, uri)
+	}
+}
+
+// TestScratchAppSaveWalksOnlyWhenNeeded: a save of an app file stamps the watched files (a walk
+// of the tree) only when a scratch document is open and a poller would see the write.
+func TestScratchAppSaveWalksOnlyWhenNeeded(t *testing.T) {
+	b := blockScratch(t)
+	close(b.release)
+	var walks atomic.Int32
+	realSnap := snapshotRoot
+	snapshotRoot = func(dir string) map[string]watch.Stamp { walks.Add(1); return realSnap(dir) }
+	t.Cleanup(func() { snapshotRoot = realSnap })
+
+	c := start(t, copyExample(t, "todos")) // Poll 0: no poller
+	c.open("scratch.alder", "> 1\n")
+	b.waitEnded(t, 1)
+	c.save("app/Todo.alder")
+	b.waitEnded(t, 1) // the save still reruns it
+	if n := walks.Load(); n != 0 {
+		t.Fatalf("%d walks without a poller", n)
+	}
+
+	realWatch := watchRoot
+	watchRoot = func(_ string, _ time.Duration, stop <-chan struct{}, _ chan<- watch.Change) { <-stop }
+	t.Cleanup(func() { watchRoot = realWatch })
+	c = startWith(t, copyExample(t, "todos"), Options{Poll: time.Hour})
+	c.save("app/Todo.alder")
+	c.sync()
+	if n := walks.Load(); n != 0 {
+		t.Fatalf("%d walks with no scratch document open", n)
+	}
+	c.open("scratch.alder", "> 1\n")
+	b.waitEnded(t, 1)
+	c.save("app/Todo.alder")
+	b.waitEnded(t, 1)
+	if n := walks.Load(); n != 1 {
+		t.Fatalf("%d walks, want 1 (a scratch document open, a poller running)", n)
 	}
 }

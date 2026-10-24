@@ -1614,6 +1614,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | W0004 | a default on a field of a declared `type R = {…}` (``field `loud`: a default on a plain record type never applies; remove it``): a literal of a declared record names every field, so the default could never apply | — |
 | W0005 | a form posting a page's message whose arm of `update` can answer `Reject`, but without `<Errors form />` to show the text: "`Submit` can answer `Reject`, but this form has no `<Errors form />`: the user never sees the rejection text" (chapter 10, "`Test.submitRaw`: input the types forbid") | — |
 | W0006 | an adapter package reads (through `os.Getenv` or `os.LookupEnv` with a literal name) an environment variable that `deploy.requires` does not name (chapter 16): "adapter `auth` reads `SMTP_URL`, which `deploy.requires` does not name"; the runtime's own `ALDER_…` variables are never reported, and a name in `requires` that no adapter reads is fine | name it in `requires` |
+| W0007 | the language server's warning on line 1 of an open scratch file when the app has errors, so the file does not run (this chapter, "Scratch files in the editor"): "the app has errors; fix them and save"; the errors themselves are on the app's files | fix the app's errors and save |
 
 ## Editor support
 

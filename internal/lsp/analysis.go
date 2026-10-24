@@ -37,7 +37,7 @@ func initializedNote(s *server, _ json.RawMessage) {
 	s.schedule() // the first build: closed files' diagnostics, and a last good build before any didOpen
 	if s.o.Poll > 0 {
 		ch := make(chan watch.Change)
-		s.bg.Go(func() { watch.Watch(s.rootReal, s.o.Poll, s.stop, ch) })
+		s.bg.Go(func() { watchRoot(s.rootReal, s.o.Poll, s.stop, ch) })
 		s.bg.Go(func() {
 			for {
 				select {
@@ -57,6 +57,9 @@ func initializedNote(s *server, _ json.RawMessage) {
 		})
 	}
 }
+
+// watchRoot is watch.Watch, the disk poller; a test may replace it before a server starts.
+var watchRoot = watch.Watch
 
 // scratchPolled is called after the poller has handled a source change, with whether it reran the
 // open scratch documents; a test may replace it before a server starts.
