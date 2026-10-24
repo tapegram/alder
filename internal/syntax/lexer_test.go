@@ -226,3 +226,44 @@ func TestTokens_ParserDriven(t *testing.T) {
 		t.Fatalf("\n got %s\nwant %s", s, want)
 	}
 }
+
+const commentsSrc = "module M -- head\n-- own line\nf : Text\nf = \"a -- b\" -- tail\nv : Html Never\nv = <p>x -- y<script>a -- b</script></p>\n"
+
+func TestLexer_CollectsComments(t *testing.T) {
+	m, _ := ParseFile("m.alder", []byte(commentsSrc))
+	wantText := []string{"-- head", "-- own line", "-- tail"}
+	wantLine := []int{1, 2, 4}
+	wantCol := []int{10, 1, 14}
+	if len(m.Comments) != len(wantText) {
+		t.Fatalf("comments = %+v, want %d", m.Comments, len(wantText))
+	}
+	for i, c := range m.Comments {
+		if c.Text != wantText[i] || c.Line != wantLine[i] || c.Col != wantCol[i] {
+			t.Errorf("comment %d = %+v, want %q at %d:%d", i, c, wantText[i], wantLine[i], wantCol[i])
+		}
+	}
+	sm, _ := ParseSignatures("m.alder", []byte("module M -- head\nf : Text -- sig\n"))
+	if len(sm.Comments) != 2 {
+		t.Errorf("signature comments = %+v, want 2", sm.Comments)
+	}
+}
+
+func TestLexer_RestoreDropsComments(t *testing.T) {
+	l := NewLexer("m.alder", []byte("a -- one\nb"))
+	l.Next()
+	s := l.Mark()
+	l.Next()
+	l.Next()
+	if len(l.Comments()) != 1 {
+		t.Fatalf("comments = %+v", l.Comments())
+	}
+	l.Restore(s)
+	if len(l.Comments()) != 0 {
+		t.Fatalf("after Restore: %+v", l.Comments())
+	}
+	l.Next()
+	l.Reset(0)
+	if len(l.Comments()) != 0 {
+		t.Fatalf("after Reset: %+v", l.Comments())
+	}
+}

@@ -1,7 +1,10 @@
 // internal/syntax/dump_test.go
 package syntax
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestDump(t *testing.T) {
 	e := &App{Fn: &Var{Name: "add"}, Args: []Expr{&IntLit{Value: 1}, &Var{Module: "M", Name: "x"}}}
@@ -25,5 +28,17 @@ func TestParseDeploy(t *testing.T) {
 	}
 	if len(m.Decls) != 2 { // `deploy = 1` stays a value
 		t.Fatalf("decls: %d", len(m.Decls))
+	}
+}
+
+func TestDump_IgnoresComments(t *testing.T) {
+	with, _ := ParseFile("m.alder", []byte(commentsSrc))
+	m, _ := ParseFile("m.alder", []byte(commentsSrc))
+	m.Comments = nil
+	if Dump(with) != Dump(m) {
+		t.Errorf("Dump differs with comments:\n%s\nvs\n%s", Dump(with), Dump(m))
+	}
+	if strings.Contains(Dump(with), "head") {
+		t.Errorf("Dump prints comments:\n%s", Dump(with))
 	}
 }

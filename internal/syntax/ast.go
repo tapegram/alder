@@ -39,6 +39,14 @@ type Module struct {
 	Imports []*Import
 	Decls   []Decl
 	Lines   []string // source lines, for rendering
+	// Comments are the `--` comments of the source in order; the AST does not attach them.
+	Comments []Comment
+}
+
+// Comment is a `--` comment. Text includes the leading `--`, with trailing blanks trimmed.
+type Comment struct {
+	Text              string
+	Line, Col, Offset int
 }
 type Import struct {
 	Node

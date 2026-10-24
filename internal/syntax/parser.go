@@ -254,6 +254,7 @@ func (p *Parser) parseModule() *Module {
 		}
 	}
 	m.Span = p.spanFrom(start)
+	m.Comments = p.lx.Comments()
 	return m
 }
 

@@ -23,6 +23,9 @@ type Lexer struct {
 	// trace, when non-nil, records every token produced, in order; Restore and Reset drop the
 	// tokens they rewind past, so it ends up as the stream the parser consumed.
 	trace *[]Token
+	// comments holds every `--` comment skipped between tokens, in source order; Restore and
+	// Reset drop the ones they rewind past, so speculative lookahead never duplicates one.
+	comments []Comment
 }
 
 func NewLexer(file string, src []byte) *Lexer {
@@ -31,9 +34,10 @@ func NewLexer(file string, src []byte) *Lexer {
 	return &Lexer{file: file, src: src, line: 1, col: 1}
 }
 
-func (l *Lexer) Errors() []LexError { return l.errs }
-func (l *Lexer) Pos() int           { return l.pos }
-func (l *Lexer) SetHTMLTag(on bool) { l.htmlTag = on }
+func (l *Lexer) Errors() []LexError  { return l.errs }
+func (l *Lexer) Comments() []Comment { return l.comments }
+func (l *Lexer) Pos() int            { return l.pos }
+func (l *Lexer) SetHTMLTag(on bool)  { l.htmlTag = on }
 
 // LexState is a cheap snapshot of the lexer position, for speculative lookahead.
 type LexState struct{ pos, line, col, nerrs int }
@@ -45,6 +49,14 @@ func (l *Lexer) Restore(s LexState) {
 	l.pos, l.line, l.col = s.pos, s.line, s.col
 	l.errs = l.errs[:s.nerrs]
 	l.dropTrace(s.pos)
+	l.dropComments(s.pos)
+}
+
+// dropComments forgets comments that start at or after offset.
+func (l *Lexer) dropComments(offset int) {
+	for len(l.comments) > 0 && l.comments[len(l.comments)-1].Offset >= offset {
+		l.comments = l.comments[:len(l.comments)-1]
+	}
 }
 
 // dropTrace forgets traced tokens that start at or after offset.
@@ -81,6 +93,7 @@ func (l *Lexer) Reset(offset int) {
 	}
 	l.errs = l.errs[:keep]
 	l.dropTrace(offset)
+	l.dropComments(offset)
 	// Rewind to the offset
 	l.pos, l.line, l.col = 0, 1, 1
 	for l.pos < offset {
@@ -143,9 +156,11 @@ func (l *Lexer) next() Token {
 			continue
 		}
 		if c == '-' && l.peek2() == '-' {
+			line, col, off := l.line, l.col, l.pos
 			for l.pos < len(l.src) && l.peek() != '\n' {
 				l.advance()
 			}
+			l.comments = append(l.comments, Comment{Text: strings.TrimRight(string(l.src[off:l.pos]), " \t"), Line: line, Col: col, Offset: off})
 			continue
 		}
 		break
