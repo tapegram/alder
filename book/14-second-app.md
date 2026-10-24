@@ -28,10 +28,10 @@ aside (chapter 11). The others are described in the text.
 
 ## A relation: `Comment`
 
-```alder part=blog/Comment
-module Comment
+```alder part=blog/Table.Comment
+module Table.Comment
 
-import Post
+import Table.Post
 
 type CommentId = brand Text
 
@@ -82,10 +82,10 @@ an error beside the field before `update` runs.
 
 ## A slug: `Post`
 
-```alder part=blog/Post
-module Post
+```alder part=blog/Table.Post
+module Table.Post
 
-import User
+import Table.User
 
 type PostId = brand Text
 
@@ -113,7 +113,7 @@ pages where an author manages their posts read and write them through
 `Db`'s scoped operations (chapter 6, "Rules"). The public pages, which
 show anyone's published posts, use `Db.from` as before.
 
-```alder part=blog/Post
+```alder part=blog/Table.Post
 bySlug : Slug -> Query (Maybe Post)
 bySlug slug =
   Db.from Post
@@ -134,7 +134,7 @@ visible viewer post = post.published || viewer == Just post.author
 the brand and the first test below. `visible` is the rule for drafts;
 `viewer` is a `Maybe` because a visitor need not log in.
 
-```alder part=blog/Post
+```alder part=blog/Table.Post
 test "a slug is lowercase letters, digits and hyphens" =
   List.map isSlug ["hello-world", "post-2", "Hello", "a b", "", "x/y"]
     == [True, True, False, False, False, False]
@@ -172,7 +172,7 @@ default rule, `@restrict`, the delete fails and the post stays, so
 generated id, which differs from run to run, so the test does not
 compare it.
 
-```alder part=blog/Post
+```alder part=blog/Table.Post
 test "bySlug finds the post with that slug" = {
   let author <- Db.insert User {
     email: Text.Email "author@example.com",
@@ -268,11 +268,11 @@ fail on `@unique` with a 500 page. The edit page, in full:
 module Write.Edit
 
 import Auth.Login
-import Comment
 import Layout
-import Post
 import Posts.Index
-import User
+import Table.Comment
+import Table.Post
+import Table.User
 
 page "/write/{id}" { id: Post.PostId } requires user, role Author
 
@@ -668,8 +668,8 @@ anyway, with `Task.notFound`.
 module Posts.Index
 
 import Layout
-import Post
-import User
+import Table.Post
+import Table.User
 
 page "/" { page: Int = 1, q: Text = "" }
 
@@ -1332,8 +1332,8 @@ a comment saying what it does:
 module App
 
 import Layout
-import Org
-import User
+import Table.Org
+import Table.User
 
 -- The session (book 06, "Partitions"): the signed-in user, the org they work in, and their role
 -- as their row had it at login. `org` is a key: `via Membership` means a `Session.put` of it to
@@ -1439,10 +1439,10 @@ test "Logout and Leave say where to go" = {
 
 ### A table in the silo: `Project`
 
-```alder part=workspace/Project
-module Project
+```alder part=workspace/Table.Project
+module Table.Project
 
-import Org
+import Table.Org
 
 type ProjectId = brand Text
 

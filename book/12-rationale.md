@@ -904,6 +904,41 @@ content type, and Go decides what the bytes are. If an app needs an
 operation Alder lacks, that is a signal for an adapter, not for the
 language.
 
+### Tables go in `Table/`, and a table's module ends in its name **(decided #20; tested: both examples, the scaffold, the generators' goldens)**
+
+Every app started with its tables in the root of `app/`, next to the
+pages, so a small app's directory was a list of nouns with no way to tell a
+table from a page or a helper. A table is state shared by the pages, the
+admin and the tests, and belongs to none of them, so the default now puts
+every table in `app/Table/` (`Table.Todo`, written `Todo` after `import
+Table.Todo`, by the short qualifiers above), and the pages of a concern in
+a plural folder beside it (`Todos/Index`, `Todos/Show`). Plural folders
+because `Todo` is already the table and `Todo.Index` would read as a name
+inside it. Chapter 2, "Where files go", states this as a convention the
+generators follow; nothing in the compiler requires the folders.
+
+What the compiler requires is smaller: the table's module must **end in the
+table's name**, and a module holds one table. The alternative that tempted
+was to let one module declare several tables (`Table` or `Schema` with the
+whole data model in one file). It would make the bare name `Todo` ambiguous
+between the module and the table, and it is the mistake the experiments
+kept finding: E5 to E7's models put a table in another table's module
+(`table Comment` inside `Post`) and then wrote `import Post.Comment`, a
+module that does not exist. One table per module, named after it, keeps
+that mistake to one diagnostic (E0018, which now names the file the table
+belongs in), while the last-segment rule leaves room to group related
+tables in subfolders (`Table.Billing.Invoice`). Because the folder is not
+part of a table's name, table names are app-wide, and two tables with one
+name are E0037.
+
+A table keeps the identity `Module.Name`, so an app whose tables are still
+in the root runs unchanged. Moving one into `Table/` would then look to
+`alder migrate` like dropping a table and creating another, which loses its
+rows. So the migration diff pairs a table that disappeared from one module
+and appeared in another under the same bare name, and writes a rename. The
+move needs no `@renamed`, because the table is the same one in a new
+place.
+
 ## Experiments
 
 Each experiment has a directory under `experiments/` with its prompt,

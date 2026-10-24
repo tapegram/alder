@@ -8,7 +8,7 @@ it. This is the whole shape of an Alder app.
 ```alder
 module Todos.Index
 
-import Todo
+import Table.Todo
 
 page "/" { filter: Todo.Filter = All } requires user
 
@@ -371,7 +371,7 @@ one that downloads the signed-in user's todos as a CSV file:
 ```alder
 module Todos.Export
 
-import Todo
+import Table.Todo
 
 page "/todos.csv" { } requires user
 
@@ -550,7 +550,7 @@ check to forget.
 ### Ownership: `@owner`
 
 A table says which of its columns names the row's owner. In the to-do
-app (`examples/todos/app/Todo.alder`):
+app (`examples/todos/app/Table/Todo.alder`):
 
 ```alder fragment
 table Todo {
@@ -643,7 +643,7 @@ Naming it is an error:
 ```alder error=E0003 "`owner` is set by `Db.insertMine`"
 module Quick
 
-import Todo
+import Table.Todo
 
 page "/quick" { } requires user
 
@@ -713,7 +713,7 @@ Anywhere else, it is E0026: in a page without `requires user`,
 ```alder error=E0026 "`Db.mine` needs a page that `requires user`: `Public` does not"
 module Public
 
-import Todo
+import Table.Todo
 
 page "/public" { }
 
@@ -744,7 +744,7 @@ A table without `@owner` has nothing to scope by (E0025):
 ```alder error=E0025 "`User` has no `@owner` column, so `Db.mine User` has nothing to scope by"
 module Account
 
-import User
+import Table.User
 
 page "/account" { } requires user
 
@@ -873,7 +873,7 @@ demoted to Reader still passes `requires user, role Author`, and a
 Reader promoted to Author must log in again. A page where a demotion
 must apply at once also reads the user's row in its `load`, the
 **re-read idiom**, as the blog's Write pages do with a helper in `User`
-(`examples/blog/app/User.alder`):
+(`examples/blog/app/Table/User.alder`):
 
 ```alder fragment
 isAuthor : UserId -> Query Bool
@@ -973,7 +973,7 @@ It is a `Maybe` of a table's id, like `user`: a new session has no org
 yet. `via Membership` is the rule for setting it, below.
 
 **`@partition org`.** A table says which of its columns holds the key
-(`examples/workspace/app/Project.alder`):
+(`examples/workspace/app/Table/Project.alder`):
 
 ```alder fragment
 table Project {
@@ -1126,7 +1126,7 @@ every request. A member removed from the org keeps the org in their
 cookie until they log out, pick another, or the cookie's 30 days end. A
 page that must notice a removal at once reads the membership again in
 its `load`, the re-read idiom of "Roles" above, with a helper in
-`Membership` (`examples/workspace/app/Membership.alder`):
+`Membership` (`examples/workspace/app/Table/Membership.alder`):
 
 ```alder fragment
 isMember : User.UserId -> Org.OrgId -> Query Bool
@@ -1235,7 +1235,7 @@ Every app has an `App` module:
 ```alder
 module App
 
-import User
+import Table.User
 import Layout
 
 session { user: Maybe User.UserId, role: User.Role = Member }

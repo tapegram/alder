@@ -411,10 +411,10 @@ func (v *verifier) place(dir string, s Snippet, n int) placed {
 			own[m[1]] = true
 		}
 		if t := TableModule(s); t != "" { // one table: its own module, replacing the example's
-			name = t
+			name = "Table." + t // tables live in app/Table/ (the layout of chapter 2)
 			for _, m := range exampleModules {
-				p.replaces = p.replaces || m == t
-				if m == t || exampleImports(m, t) { // itself, or a module that would make a cycle
+				p.replaces = p.replaces || m == name
+				if m == name || exampleImports(m, name) { // itself, or a module that would make a cycle
 					own[m] = true
 				}
 			}
@@ -1122,18 +1122,18 @@ func sameAsExample(example, m, src string) string {
 }
 
 func TestSameAsExample(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join(todosApp, "app", "Todo.alder"))
+	b, err := os.ReadFile(filepath.Join(todosApp, "app", "Table", "Todo.alder"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	src := string(b)
-	if msg := sameAsExample("todos", "Todo", "\n\n"+strings.ReplaceAll(src, "\n", "\n\n")); msg != "" {
+	if msg := sameAsExample("todos", "Table.Todo", "\n\n"+strings.ReplaceAll(src, "\n", "\n\n")); msg != "" {
 		t.Errorf("blank lines aside the same, got %q", msg)
 	}
-	if msg := sameAsExample("todos", "Todo", strings.Replace(src, "countOpen", "countAll", 1)); !strings.Contains(msg, "differ from") {
+	if msg := sameAsExample("todos", "Table.Todo", strings.Replace(src, "countOpen", "countAll", 1)); !strings.Contains(msg, "differ from") {
 		t.Errorf("a changed line: got %q", msg)
 	}
-	if msg := sameAsExample("todos", "Todo", src+"\nextra = 1\n"); !strings.Contains(msg, `"extra = 1"`) {
+	if msg := sameAsExample("todos", "Table.Todo", src+"\nextra = 1\n"); !strings.Contains(msg, `"extra = 1"`) {
 		t.Errorf("an extra line: got %q", msg)
 	}
 	if msg := sameAsExample("todos", "Extra", "module Extra\n"); msg != "" {
@@ -1142,19 +1142,19 @@ func TestSameAsExample(t *testing.T) {
 }
 
 func TestSameAsExample_OtherExample(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join(exampleApp("blog"), "app", "Comment.alder"))
+	b, err := os.ReadFile(filepath.Join(exampleApp("blog"), "app", "Table", "Comment.alder"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	src := string(b)
-	if msg := sameAsExample("blog", "Comment", src); msg != "" {
+	if msg := sameAsExample("blog", "Table.Comment", src); msg != "" {
 		t.Errorf("the blog's own Comment: got %q", msg)
 	}
-	if msg := sameAsExample("blog", "Comment", strings.Replace(src, "@cascade", "@restrict", 1)); !strings.Contains(msg, "part=blog/Comment") || !strings.Contains(msg, filepath.Join("blog", "app", "Comment.alder")) {
+	if msg := sameAsExample("blog", "Table.Comment", strings.Replace(src, "@cascade", "@restrict", 1)); !strings.Contains(msg, "part=blog/Table.Comment") || !strings.Contains(msg, filepath.Join("blog", "app", "Table", "Comment.alder")) {
 		t.Errorf("a changed line: got %q", msg)
 	}
 	// todos has no Comment: the same source is not compared with anything there.
-	if msg := sameAsExample("todos", "Comment", "module Comment\n"); msg != "" {
+	if msg := sameAsExample("todos", "Table.Comment", "module Table.Comment\n"); msg != "" {
 		t.Errorf("todos has no Comment: got %q", msg)
 	}
 	// a module of another example must exist there: a typo'd name fails
@@ -1169,17 +1169,17 @@ func TestSameAsExample_OtherExample(t *testing.T) {
 // exist fails.
 func TestBook_PartOfAnotherExample(t *testing.T) {
 	t.Parallel()
-	b, err := os.ReadFile(filepath.Join(exampleApp("blog"), "app", "Comment.alder"))
+	b, err := os.ReadFile(filepath.Join(exampleApp("blog"), "app", "Table", "Comment.alder"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	head, rest, ok := strings.Cut(string(b), "type CommentId")
 	if !ok {
-		t.Fatal("examples/blog/app/Comment.alder has no `type CommentId`")
+		t.Fatal("examples/blog/app/Table/Comment.alder has no `type CommentId`")
 	}
 	rest = "type CommentId" + rest
 	chapter := func(name, rest string) string {
-		md := "# A walk\n\n```alder part=blog/Comment\n" + head + "```\n\nProse.\n\n```alder part=blog/Comment\n" + rest + "```\n"
+		md := "# A walk\n\n```alder part=blog/Table.Comment\n" + head + "```\n\nProse.\n\n```alder part=blog/Table.Comment\n" + rest + "```\n"
 		p := filepath.Join(t.TempDir(), name)
 		if err := os.WriteFile(p, []byte(md), 0o644); err != nil {
 			t.Fatal(err)
@@ -1191,11 +1191,11 @@ func TestBook_PartOfAnotherExample(t *testing.T) {
 		t.Errorf("the blog's own Comment in two pieces: failures %v, counts %v", r.failures, r.counts)
 	}
 	r = verify(t, chapter("drift.md", strings.Replace(rest, "@cascade", "@restrict", 1)), "drift.md")
-	if len(r.failures) != 1 || !strings.HasPrefix(r.failures[0], "drift.md:3: the part=blog/Comment blocks joined differ") || !strings.Contains(r.failures[0], `"  post: Post.PostId @ref Post @restrict,"`) {
+	if len(r.failures) != 1 || !strings.HasPrefix(r.failures[0], "drift.md:3: the part=blog/Table.Comment blocks joined differ") || !strings.Contains(r.failures[0], `"  post: Post.PostId @ref Post @restrict,"`) {
 		t.Errorf("a drifted piece: failures %v", r.failures)
 	}
 	p := filepath.Join(t.TempDir(), "nope.md")
-	if err := os.WriteFile(p, []byte("```alder part=nope/Comment\nmodule Comment\n```\n"), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte("```alder part=nope/Table.Comment\nmodule Table.Comment\n```\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	r = verify(t, p, "nope.md")

@@ -191,9 +191,9 @@ created guestbook/
   README.md
   adapters/README.md
   app/App.alder
-  app/Entry.alder
   app/Home.alder
   app/Layout.alder
+  app/Table/Entry.alder
   migrations/0001_initial.sql
   migrations/schema.json
   scratch.alder

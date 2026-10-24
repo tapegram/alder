@@ -40,11 +40,17 @@ table Todo {
   those, unions with no payloads, and `Maybe` of any of those. Nothing
   nested; model nesting with a second table and `@ref`.
 
-A table is declared in its own module named after it (`Todo` in
-`app/Todo.alder`), together with the brand for its id and any functions
-that belong to it. A table declared in any other module is an error at
-its declaration (E0018): `table Comment` in `app/Post.alder` belongs in
-`app/Comment.alder`, even if only `Post` uses it.
+A table is declared in a module named after it, together with the brand for
+its id and any functions that belong to it. By convention that module is in
+`Table/`: `Todo` in `app/Table/Todo.alder`, written `Todo` after
+`import Table.Todo`. The compiler's rule is that the module's name **ends in
+the table's name** (`Todo`, `Table.Todo` or `Table.Billing.Invoice` for
+`Invoice`), so subfolders can group related tables, and a module holds one
+table. A table declared in any other module is an error at its declaration
+(E0018): `table Comment` in `app/Post.alder` belongs in
+`app/Table/Comment.alder`, even if only `Post` uses it. Table names are
+app-wide (a table is `Todo` everywhere, whichever folder it is in), so two
+tables of one name, in two folders, are E0037.
 
 A table field's default must be a **literal**: `True` or `False`, a
 number, a string without `{…}`, a constructor without a payload
@@ -82,7 +88,7 @@ The attribute may stay once the migration is made (the migration's
 snapshot already has the new name):
 
 ```alder
-module Memo
+module Table.Memo
 
 type MemoId = brand Text
 
@@ -97,6 +103,12 @@ The old name must be a name (`"body"`, not `"the body"`), not the field's
 or table's own name, and not a field the table still has; a field takes
 one `@renamed`, and two fields cannot both be renamed from one name (all
 E0011).
+
+Moving a table to another module, as when `app/Todo.alder` becomes
+`app/Table/Todo.alder`, needs no `@renamed`: the migration sees the same
+table name leave one module and arrive in another, and renames the table,
+so its rows stay. (`@renamed "Note"` likewise finds a table of `Table/`
+by its short name.)
 
 ## Reading
 
@@ -272,9 +284,9 @@ notes attached to to-dos, which go when their to-do goes, and which keep
 an optional link to another to-do that is cleared when that one goes:
 
 ```alder
-module Note
+module Table.Note
 
-import Todo
+import Table.Todo
 
 type NoteId = brand Text
 
@@ -295,9 +307,9 @@ or before `@ref T`, is E0011).
 could not hold the `Nothing` it would be set to:
 
 ```alder error=E0003 "`@setNull` needs a `Maybe` reference, got `Todo.TodoId`"
-module Note
+module Table.Note
 
-import Todo
+import Table.Todo
 
 type NoteId = brand Text
 
@@ -434,7 +446,7 @@ change: "Without migrations", below).
 
 The steps below were run on a copy of the blog (chapter 14):
 `cp -R examples/blog /tmp/blog`, then `cd /tmp/blog`. First, give posts a
-summary. Add the field to `table Post` in `app/Post.alder`:
+summary. Add the field to `table Post` in `app/Table/Post.alder`:
 
 ```alder fragment
   created: Time @created,
@@ -447,7 +459,7 @@ but not a `Post` written as a literal: the checker points at the one test
 that builds a whole `Post` by hand, which needs `summary: Nothing`:
 
 ```text
-app/Post.alder:35:22: error[E0003]: record literal for `Post` is missing `summary` (a default applies only to an insert, the session cookie, a page or message parameter, or a form, not to a literal)
+app/Table/Post.alder:35:22: error[E0003]: record literal for `Post` is missing `summary` (a default applies only to an insert, the session cookie, a page or message parameter, or a form, not to a literal)
 ```
 
 With that fixed, the tables are ahead of the migrations:

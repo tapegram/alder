@@ -2485,14 +2485,14 @@ Here is `alder eval examples/todos 'Todo.filterLabel Active'`, step by step
    E0009 message names) and the rewriting of step 1, and come out as
    `input:1:18`.
 
-   `--in Todo` changes what step 2 builds. There is no `Scratch` module:
-   the file `app/Todo.alder` is overlaid with its own text plus the
+   `--in Table.Todo` changes what step 2 builds. There is no `Scratch` module:
+   the file `app/Table/Todo.alder` is overlaid with its own text plus the
    session, appended (a newline is added first when the file lacks one),
-   so the session is simply the end of `Todo`. `Build.BaseLines` records
+   so the session is simply the end of `Table.Todo`. `Build.BaseLines` records
    how many lines are the module's own, which is how a line of the
    overlay is told from a line of the session. `InSession` says whether a
    diagnostic is about the session, and `MapDiag` leaves one in the
-   module's own lines alone, still `app/Todo.alder:L:C`, so that a
+   module's own lines alone, still `app/Table/Todo.alder:L:C`, so that a
    mistake in the module is not shown as a mistake in your input.
    `Module.In` must name an app module exactly; anything else is a
    `NoModuleError`.
@@ -5262,7 +5262,7 @@ form comes back with `page` prefilled from the cursor and `name` required:
 
 ```text
 -> {"jsonrpc":"2.0","id":9,"method":"alder/preview","params":{"sets":{},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"},"id":"new msg","position":{"line":25,"character":0}}}
-<- {"id":9,"jsonrpc":"2.0","result":{"fields":[{"name":"page","kind":"page","flag":false,"required":true,"value":"Posts.Index","source":"here","valid":true,"choices":["Admin.Comment.Bulk",…,"Posts.Index","Posts.Show","Write","Write.Edit"]},{"name":"name","kind":"text","flag":false,"required":true,"value":"","source":"","valid":false,"why":"required"},{"name":"fields","kind":"fieldList","flag":false,"required":false,"value":"","source":"","valid":true},…],"files":[],"diff":"","diagnostics":[],"holes":[],"ready":false,"error":""}}
+<- {"id":9,"jsonrpc":"2.0","result":{"fields":[{"name":"page","kind":"page","flag":false,"required":true,"value":"Posts.Index","source":"here","valid":true,"choices":["Admin.Comments.Bulk",…,"Posts.Index","Posts.Show","Write","Write.Edit"]},{"name":"name","kind":"text","flag":false,"required":true,"value":"","source":"","valid":false,"why":"required"},{"name":"fields","kind":"fieldList","flag":false,"required":false,"value":"","source":"","valid":true},…],"files":[],"diff":"","diagnostics":[],"holes":[],"ready":false,"error":""}}
 ```
 
 `"source":"here"` says that `page` came from the cursor, not from the user.

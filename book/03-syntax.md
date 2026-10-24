@@ -8,7 +8,7 @@ is the file path: `Todos.Index` lives in `app/Todos/Index.alder`.
 ```alder fragment
 module Todos.Index
 
-import Todo
+import Table.Todo
 import Layout
 ```
 

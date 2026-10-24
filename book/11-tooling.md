@@ -137,7 +137,7 @@ same.
 `alder new <name>` writes a new app into the directory `<name>`: the
 guestbook that chapter 2 tours, with an empty session and the two error
 pages (`app/App.alder`), a layout (`app/Layout.alder`), one table
-(`app/Entry.alder`), one page with a form and two tests through the browser
+(`app/Table/Entry.alder`), one page with a form and two tests through the browser
 (`app/Home.alder`), a stylesheet, a `.gitignore` (`build/` and the
 SQLite files), an `adapters/` directory that holds only
 a README saying what goes there, a `README.md` with the five commands, and
@@ -150,9 +150,9 @@ created guestbook/
   README.md
   adapters/README.md
   app/App.alder
-  app/Entry.alder
   app/Home.alder
   app/Layout.alder
+  app/Table/Entry.alder
   migrations/0001_initial.sql
   migrations/schema.json
   scratch.alder
@@ -231,9 +231,9 @@ holes (W0002) with their types among them.
 
 | Command | What it writes |
 |---|---|
-| `alder new page <Module> <path>` | `app/<Module>.alder`: the page, its `Model`, `load` and `view` in the app's layout, and a browser test. `--list T`: a table of `T`'s rows (`al-table`, badges for Bool and unions), 20 to a page with `al-pagination`; `--show T`: one row, at `<path>/{id}`, and a test of a missing one; `--from T …`: every row of each table, a card each; `--requires user` and `--role R` add the clause, and `--list` reads an `@owner` table with `Db.mine`; `--file [--type T]`: a file page (chapter 6, "File pages"), not an HTML page: its `view` returns `File.text` with the content type `T` (default `text/plain`) and a typed hole for the body, in no layout, and a test that fetches it with `Test.fetch` and checks the status is 200; it does not combine with `--list`, `--show`, `--from`, `--blank` or `--example` |
+| `alder new page [<Module>] <path>` | `app/<Module>.alder`: the page, its `Model`, `load` and `view` in the app's layout, and a browser test. `--list T`: a table of `T`'s rows (`al-table`, badges for Bool and unions), 20 to a page with `al-pagination`; `--show T`: one row, at `<path>/{id}`, and a test of a missing one; `--from T …`: every row of each table, a card each; `--requires user` and `--role R` add the clause, and `--list` reads an `@owner` table with `Db.mine`; `--file [--type T]`: a file page (chapter 6, "File pages"), not an HTML page: its `view` returns `File.text` with the content type `T` (default `text/plain`) and a typed hole for the body, in no layout, and a test that fetches it with `Test.fetch` and checks the status is 200; it does not combine with `--list`, `--show`, `--from`, `--blank` or `--example`. The module is optional with `--list T`, `--show T` or `--from T`: it is derived from the table's plural, in the concern's folder (`Todos.Index`, `Todos.Show`, `Todos.New`; `Activity` gives `Activities`), and written as given when you name one |
 | (its tests) | written to kill the mutants of the code beside them (chapter 10): the rows newest first, 20 a page, another user's rows absent (`Db.mine`) or not found (`Db.getMine`), a visitor sent to log in, a user of another role given no page |
-| `alder new table <Name> <field>:<Type> …` | `app/<Name>.alder`: `table <Name>` with its id brand, the fields, `created` and `updated`, a test of each reference's delete rule; and its migration, as `alder migrate` writes it. A field is `name:Type[=default][@attr[=arg]]…`: `done:Bool=False`, `post:Post.PostId@ref=Post@cascade`, `"note:Maybe Text"` |
+| `alder new table <Name> <field>:<Type> …` | `app/Table/<Name>.alder` (module `Table.<Name>`; refused when a root module `<Name>` exists): `table <Name>` with its id brand, the fields, `created` and `updated`, a test of each reference's delete rule; and its migration, as `alder migrate` writes it; the last line it prints is the next step, `next: alder new page /replies --list Reply` (`--json`: a `next` field). A field is `name:Type[=default][@attr[=arg]]…`: `done:Bool=False`, `post:Post.PostId@ref=Post@cascade`, `"note:Maybe Text"` |
 | `alder new form <Page> <Name> <field>:<Type> …` | in the page: `form <Name>`, `msg Submit<Name> form <Name>`, its arm of `update` (an insert into the table whose columns the fields are, by name and type, or `--into T`'s; else the hole `?submit<Name>`), the form in `view` (wrapped inputs, `<Errors form />` in an `al-alert`), and two browser tests |
 | `alder new msg <Page> <Name> [<field>:<Type> …]` | in the page: `msg <Name>`, its arm (the hole `?<name>`), an `al-button` that sends it at the end of the view, and a test that clicks it and reads again the row a parameter names, or else opens the page again with `Test.open` (the message may delete the page's row), whose verdict is the hole `?expected : Bool` |
 | `alder new capability <Module> <entry> "<Type>"` | the capability (named after the module's last segment) with its entry, a `fake` whose entry is the hole `?<entry>`, a test that installs the fake, and the adapter, `adapters/<segment>/<capability>_<entry>.go`, whose methods return "not implemented" |
@@ -242,7 +242,7 @@ holes (W0002) with their types among them.
 | `alder edit table <T> drop-field <field>` | the field removed, and its migration |
 | `alder fill <Module>.<decl>[.<arm>] -` | the declaration's hole (`--hole ?name` when it has several) replaced by the expression on standard input; `Module."test name"` names a test, `Module.update.Msg` an arm, `Module.Fake.entry` a fake's entry. A module of the app the expression names qualified (`Member.x`) that the file does not import is imported: `added import Member to app/…` (`--json`: `"imports"`). `alder fill --list` lists every hole: `Home update.Clear ?clear : Task Nav` |
 | `alder fill --decl <Module>.<decl> -` | the declaration's whole body (a value's, a test's block, a `type`'s right-hand side) replaced by the one expression, or type, on standard input; its signature stays. Refused when the result does not check (an `update` that drops an arm the view sends). For what has no hole: a `Model`, a generated body or test that does not fit |
-| `alder new auth [--users User] [--role R] [--to Page]` | the login: `app/Auth/Login.alder` (`capability Password { verify, hash }`, its fake, `page "/login"`, the form `Credentials`, the arm that puts the user, and the role, in the session or rejects the form, a Log out button for a signed-in user, three tests); `App` edited at fixed places (the session's `user` and `role` after its fields, `login = Auth.Login`, `msg Logout` and its arm, a test of it); the user table when it does not exist (`email @unique`, `name`, `passwordHash: Text.Secret`, the role, `created`) and its migration; and the adapter `adapters/auth/login_password.go` (PBKDF2-SHA256, 600,000 iterations, a 16-byte salt, a constant-time compare; stored as `pbkdf2-sha256$<iterations>$<salt>$<hash>`) with its Go tests. `R` must be a union of the user module (`alder new type`). Refused when the session has a `user` or an `Auth` module exists. A login goes to `--to`'s page, else the page at `/`, else the hole `?afterLogin` (filled once the page exists) |
+| `alder new auth [--users User] [--role R] [--to Page]` | the login: `app/Auth/Login.alder` (`capability Password { verify, hash }`, its fake, `page "/login"`, the form `Credentials`, the arm that puts the user, and the role, in the session or rejects the form, a Log out button for a signed-in user, three tests); `App` edited at fixed places (the session's `user` and `role` after its fields, `login = Auth.Login`, `msg Logout` and its arm, a test of it); the user table when it does not exist, in `app/Table/User.alder` (`email @unique`, `name`, `passwordHash: Text.Secret`, the role, `created`) and its migration; and the adapter `adapters/auth/login_password.go` (PBKDF2-SHA256, 600,000 iterations, a 16-byte salt, a constant-time compare; stored as `pbkdf2-sha256$<iterations>$<salt>$<hash>`) with its Go tests. `R` must be a union of the user module (`alder new type`). Refused when the session has a `user` or an `Auth` module exists. A login goes to `--to`'s page, else the page at `/`, else the hole `?afterLogin` (filled once the page exists) |
 | `alder new type <Module> "<Name> = …"` | a union (`Status = Pending \| Done`), a brand (`Code = brand Text where …`) or a record (`Row = { … }`), after the module's type declarations; the module is created when it does not exist |
 | `alder new decl <Module> <name> "<Type>"` | `name : Type` and `name = ?name`, before the module's tests; a function's body is filled with a lambda |
 | `alder new test <Module> "<name>"` | `test "<name>" = { ?test }`, the hole a `Task Bool`; a block filled into it becomes the test's block |
@@ -263,8 +263,8 @@ holes (W0002) with their types among them.
 | `alder edit decl <Module>.<Name> add-prop <name>:<Type>=<default>` | the property, at the end of a component's props record (`Layout.Page`); the default is required, so that every use keeps checking |
 | `alder edit auth --to <Page>` | `?afterLogin` filled in `Auth.Login`'s `Submit` and its test; refused when there is no such hole |
 | `alder remove page <Page>`, `alder remove table <T>` | the page's file; the table's declaration, id type and its module's tests (or the whole module), and the migration that drops it (`DROPS DATA`). Refused while anything else names it, the errors saying where |
-| `alder new admin [--module Admin] [--path /admin]` | refused unless the session has a `user` and a `role` whose type has an `Admin` constructor (the sentence says what to add; `alder new auth --role` makes them); never edits `App` or the login. The admin, under `app/Admin/`, every file headed by two comment lines naming the command (and no version, so every build of `alder` writes the same files): a dashboard (`/admin`: a card per table, its count and newest five rows), a layout with a nav of the tables, and per table `T` a list (`/admin/t`: search, a filter per `Bool` and union column, sort by any column, 25 to a page), a page per row, a new and an edit form (`<al-select options>` of the referenced table's rows for a reference) and a delete page (what goes with the row; refused while a `@restrict` reference holds it); on the user table, the signed-in Admin cannot delete their own row or change their own role. Every page `requires user, role Admin` and has browser tests; the parts that follow the schema are owned regions, between `-- @admin begin <name>` and `-- @admin end`. It needs a session whose `role` has an `Admin` constructor. The tables of a `silo` get no nav link and no dashboard card: a picker of the key's rows (`/admin/orgs`), each opening that org's dashboard (`/admin/orgs/{org}`), and their pages at `/admin/orgs/{org}/<table>…`, declared `requires user, role Admin, silo org` with the org as the page's first parameter (chapter 15, "The admin of a silo") |
-| `alder regen admin [--all]` | the admin's owned regions, regenerated from the app as it is now (a field added, a table added): only the lines between the markers change, so a heading, a column or a test the author added outside them stays as it is. A file the author deleted is not written again unless `--all`; a table added since (one the nav does not link to) gets its pages. Errors in the admin's own files do not stop it, since a field renamed or dropped breaks them inside the regions it rewrites; errors elsewhere do, and what it writes must check. A second run says `nothing to do: the admin is up to date`; with `--json`, `"skipped"` lists the pages not written again and `"upToDate"` says there was nothing to do. A marker without its pair is refused, naming the file and the region |
+| `alder new admin [--module Admin] [--path /admin]` | refused unless the session has a `user` and a `role` whose type has an `Admin` constructor (the sentence says what to add; `alder new auth --role` makes them); never edits `App` or the login. The admin, under `app/Admin/`, every file headed by two comment lines naming the command (and no version, so every build of `alder` writes the same files): a dashboard (`/admin`: a card per table, its count and newest five rows), a layout with a nav of the tables, and per table `T` a plural folder (`Admin/Ts/`, the URLs unchanged) with a list (`/admin/t`: search, a filter per `Bool` and union column, sort by any column, 25 to a page), a page per row, a new and an edit form (`<al-select options>` of the referenced table's rows for a reference) and a delete page (what goes with the row; refused while a `@restrict` reference holds it); on the user table, the signed-in Admin cannot delete their own row or change their own role. Every page `requires user, role Admin` and has browser tests; the parts that follow the schema are owned regions, between `-- @admin begin <name>` and `-- @admin end`. It needs a session whose `role` has an `Admin` constructor. The tables of a `silo` get no nav link and no dashboard card: a picker of the key's rows (`/admin/orgs`), each opening that org's dashboard (`/admin/orgs/{org}`; the modules are `Admin.Orgs.Pick` and `Admin.Orgs.Dashboard`), and their pages at `/admin/orgs/{org}/<table>…`, declared `requires user, role Admin, silo org` with the org as the page's first parameter (chapter 15, "The admin of a silo") |
+| `alder regen admin [--all]` | the admin's owned regions, regenerated from the app as it is now (a field added, a table added): only the lines between the markers change, so a heading, a column or a test the author added outside them stays as it is. A file the author deleted is not written again unless `--all`; a table added since (one the nav does not link to) gets its pages. Errors in the admin's own files do not stop it, since a field renamed or dropped breaks them inside the regions it rewrites; errors elsewhere do, and what it writes must check. A second run says `nothing to do: the admin is up to date`; with `--json`, `"skipped"` lists the pages not written again and `"upToDate"` says there was nothing to do. A marker without its pair is refused, naming the file and the region. An admin written before the folders were plural (`Admin/Todo/`) is refused too: "admin is in the old layout (Admin/Todo/): folders are plural now (Admin/Todos/). Delete app/Admin and run `alder new admin` again; move any code you added outside `-- @admin` regions first" |
 
 A hole stops `alder test` (`alder test: no tests ran (fill the
 hole)`), so after `new msg`, `new capability`, and a `new form` whose
@@ -314,7 +314,7 @@ lose (`Sites.Clarity.Index` is `app/Sites/Clarity/Index.alder`); this answers
 $ alder routes examples/blog
 KIND  PATH                                  MODULE.decl                       FILE:LINE
 page  /                                     Posts.Index.page                  app/Posts/Index.alder:7
-msg   /_m/Admin.Comment.Bulk/BulkDelete     Admin.Comment.Bulk.BulkDelete     app/Admin/Comment/Bulk.alder:41
+msg   /_m/Admin.Comments.Bulk/BulkDelete    Admin.Comments.Bulk.BulkDelete    app/Admin/Comments/Bulk.alder:53
 …
 page  /posts/{slug}                         Posts.Show.page                   app/Posts/Show.alder:9
 ```
@@ -705,7 +705,7 @@ $ alder eval examples/todos '[]'
 Every module of the app is in scope under its own name. A constructor
 two modules declare is ambiguous unqualified (E0009): in an app with a
 generated admin, every table's pages declare `Create`, `Save` and
-`Remove`, so write those qualified (`Admin.Post.New.Create`). With `-` in place
+`Remove`, so write those qualified (`Admin.Posts.New.Create`). With `-` in place
 of the expression, `alder eval` reads standard input: `let name = expr`
 lines (or `let name : Type = expr`), then the expression, which may use
 them. A `let`'s name starts with a lowercase letter or `_`, like any value's
@@ -758,13 +758,13 @@ module of that name of its own gets an error saying so (as does a
 `--module` naming a standard module, such as `List`); `--module <Name>`
 gives eval's module another name (`alder eval . --module Probe '1 + 2'`).
 
-`--in Name` evaluates inside module `Name` instead: the expression is checked as if written
+`--in Name` evaluates inside module `Name` (its full path, `Table.Todo`) instead: the expression is checked as if written
 at the end of `app/Name.alder`, so the module's own declarations and imports are unqualified
 and the other modules are reachable as the module itself imports them, as a `test` there would
 write them (the overlay adds no imports). A line copied from the file evaluates unchanged:
 
 ```text
-$ alder eval examples/todos --in Todo 'countOpen []'
+$ alder eval examples/todos --in Table.Todo 'countOpen []'
 0 : Int
 ```
 
@@ -1576,7 +1576,8 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0015 | a module whose first name segment is exactly `Route`, `Cap` or `Args` (`Cap.Mail` is refused, `Caps.Mail` and `My.Cap` are fine): the generated Go uses those prefixes for exported names | — |
 | E0016 | two pages answer the same path (`/x/{id}` and `/x/{slug}`, or `/x` and `/x/`) | — |
 | E0017 | a module named like a standard-library module (`Test`, `List`, `Http`, …): the stdlib's would shadow it; uses of its names are not reported separately | — |
-| E0018 | a table declared outside its own module (`table Comment` in `app/Post.alder` belongs in `app/Comment.alder`); reported once, at the declaration | — |
+| E0018 | a table declared in a module that does not end in its name, or a second table in a module (``a table is declared in a module named after it: `table Comment` belongs in `app/Table/Comment.alder` ``); reported once, at the declaration | — |
+| E0037 | two tables with one name in different modules (`Table.Entry` and `Entry`): table names are app-wide | — |
 | E0019 | `migrations/` is behind the app or disagrees with itself, reported at `migrations/schema.json:1:1` by every command but `alder migrate`: the tables changed since the last migration (``the schema changed since migration 0003 (table Post: column body): run `alder migrate` ``); a storage format change (``the storage format changed (v1 → v2): this needs a rebuild migration of every table, which this `alder migrate` cannot write yet (`alder migrate --format` is planned); build with the compiler that wrote migrations/ until then``); `.sql` files but no `schema.json`; a `schema.json` or migration file that does not read; a malformed file (``migration 0002_x: line 6: a statement must end in `;` ``, a wrong first line, a header without `-- from` or `-- to`); two files with one number (``two migrations are numbered 0005 (likely two branches: 0005_a.sql, 0005_b.sql): keep the one already merged or deployed, delete the other, restore schema.json to its result, run `alder migrate` ``); a file that does not start where the one before it ends (``migration 0003_sub does not follow 0001_initial: a file is missing or edited; restore migrations/ from version control (`git checkout migrations/`)``); a last file that does not end at the snapshot (``migration 0003_sub does not lead to migrations/schema.json: a file is missing or edited; restore migrations/ from version control (`git checkout migrations/`)``) | — |
 | E0020 | a `fake` declared outside the module of its capability: "`fake Stripe` must be declared in the module that declares `capability Stripe`" (chapter 10, "Faking a capability") | — |
 | E0021 | a fake's table used outside a `test` and the fake's own entries (a value, a signature, a page's `load`, an app table's `@ref`): "`Charge` is a fake's table: only tests and `fake Stripe` may use it" | — |
@@ -1679,7 +1680,7 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   parameter record and the `requires` clauses.
 - **Go to definition.** On a use of `lastPage` it jumps to `lastPage : Int`;
   on a local, to the `let` or the parameter that binds it; on the `title` of
-  `post.title` to the field in `app/Post.alder`. Neovim's own key for it is
+  `post.title` to the field in `app/Table/Post.alder`. Neovim's own key for it is
   `<C-]>`, and many configurations also map `gd` to it. A name from the
   standard library (`Text.trim`) has no file to jump to, so the server
   answers nothing; hover still shows its signature.
@@ -1869,7 +1870,7 @@ a file. Enforcing the format is `alder fmt --check`.
 
 ```
 alder fmt                  rewrite every .alder file under . in place
-alder fmt app/Post.alder   one file, or a directory (build/ and dot-directories are skipped)
+alder fmt app/Table/Post.alder   one file, or a directory (build/ and dot-directories are skipped)
 alder fmt --check          write nothing; list each file that would change
 alder fmt --stdin          format standard input to standard output
 ```

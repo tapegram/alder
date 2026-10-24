@@ -23,9 +23,9 @@ guestbook/
   README.md                     the commands to try
   adapters/README.md            where Go code would go (none yet)
   app/App.alder                 the session and the error pages
-  app/Entry.alder               the table
   app/Home.alder                the page at /, with its test
   app/Layout.alder              the HTML around every page
+  app/Table/Entry.alder         the table
   migrations/0001_initial.sql   the SQL that creates the table
   migrations/schema.json        the tables that SQL leads to
   static/app.css                the stylesheet
@@ -35,12 +35,34 @@ An Alder app is a directory like this one: `app/` holds the program, one
 module per file, and the module `Home` is the file `app/Home.alder`
 (`Todos.Index` would be `app/Todos/Index.alder`).
 
+### Where files go
+
+The root of `app/` holds the three modules every app has: `App`, `Layout`
+and `Home`. Everything else goes in a folder, by what it is:
+
+- **Tables** go in `Table/`: `app/Table/Todo.alder` is the module
+  `Table.Todo`, and other modules write `import Table.Todo` and then just
+  `Todo`. A table is state shared by every part of the app (the pages, the
+  admin, the tests all read the same rows), so it belongs to none of them;
+  keeping every schema in one folder means you can read the app's whole data
+  model by listing it.
+- **The pages of a concern** go in a plural folder: `Todos/Index`,
+  `Todos/Show`, `Todos/New`. A capability the concern needs goes beside
+  them, in `Todos/Data`.
+- **Views shared by several pages** go in `Ui/`.
+
+These are conventions, and the generators of chapter 15 follow them so you
+do not have to remember. The compiler enforces one rule only: a table's
+module must end in the table's name (the table `Invoice` may live in
+`Invoice`, `Table.Invoice` or `Table.Billing.Invoice`), and a module holds
+one table.
+
 ### The table
 
-`app/Entry.alder` declares the one table, and the type of its ids:
+`app/Table/Entry.alder` declares the one table, and the type of its ids:
 
-```alder part=guestbook/Entry
-module Entry
+```alder part=guestbook/Table.Entry
+module Table.Entry
 
 type EntryId = brand Text
 
@@ -70,15 +92,15 @@ top, piece by piece.
 ```alder part=guestbook/Home
 module Home
 
-import Entry
 import Layout
+import Table.Entry
 
 page "/" { }
 ```
 
-`import` makes another module's names available: `Entry` for the table,
-`Layout` for the HTML around the page. `page "/" { }` makes this module a
-page, served at `/`; the braces would list the address's parameters, and
+`import` makes another module's names available: `Layout` for the HTML
+around the page, `Table.Entry` for the table (written `Entry` from here
+on). `page "/" { }` makes this module a page, served at `/`; the braces would list the address's parameters, and
 this page has none.
 
 ```alder part=guestbook/Home
@@ -301,10 +323,10 @@ the first migration is already there:
 ```sql file=guestbook/migrations/0001_initial.sql
 -- alder migration 0001_initial
 -- from e3b0c44298fc
--- to 2e82b15d5f85
+-- to 9b787a621da5
 -- step: create table Entry
 
-CREATE TABLE "Entry__Entry" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL, "message" TEXT NOT NULL, "created" TEXT NOT NULL) STRICT;
+CREATE TABLE "Table__Entry__Entry" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT NOT NULL, "message" TEXT NOT NULL, "created" TEXT NOT NULL) STRICT;
 ```
 
 The header says which tables the database had before (`from`, here none)
@@ -318,7 +340,7 @@ from it:
   "format": "1",
   "tables": [
     {
-      "name": "Entry.Entry",
+      "name": "Table.Entry.Entry",
       "id": "id",
       "created": "created",
       "columns": [
@@ -409,7 +431,7 @@ if the app still checks (chapter 15):
 type has an `Admin` constructor (`role: User.Role = Member`, with `type Role = Member | Admin`),
 set at login. The guestbook has no login yet; chapter 6, "Rules", shows what to add.
 
-- `app/`: the Alder modules, one per file (`Home` is the page at `/`, `Entry` its table).
+- `app/`: the Alder modules, one per file (`Home` is the page at `/`; its table `Entry` is in `app/Table/Entry.alder`, module `Table.Entry`, written `Entry` after `import Table.Entry`).
 - `migrations/`: the database's migrations, written by `alder migrate` after a change to a table.
 - `static/`: files served as they are, at `/static/…`.
 - `adapters/`: the Go behind the app's capabilities (none yet).
@@ -486,12 +508,12 @@ parameters, and messages that change or delete a row.
 
 ### The data
 
-`app/Todo.alder` declares the table and its id type:
+`app/Table/Todo.alder` declares the table and its id type:
 
 ```alder
-module Todo
+module Table.Todo
 
-import User
+import Table.User
 
 type TodoId = brand Text
 
@@ -546,8 +568,8 @@ rows (below; chapter 6, "Rules").
 module Todos.Index
 
 import Layout
-import Todo
-import User
+import Table.Todo
+import Table.User
 
 page "/" { filter: Todo.Filter = All } requires user
 ```
@@ -967,7 +989,7 @@ that `requires user`. None of that needed a test.
   `Member`, or an `Admin`), the error pages, and the app-level `Logout`
   message, which any page can send with `click={App.Logout}`, with two
   tests of it.
-- `app/User.alder`, `app/Layout.alder`: the user table, with its `role`
+- `app/Table/User.alder`, `app/Layout.alder`: the user table, with its `role`
   column, and a page layout component.
 - `app/Admin/`: an admin for every table, for a user whose role is
   `Admin`, which one command wrote: `alder new admin` (chapter 15).

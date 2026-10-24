@@ -14,7 +14,7 @@ yet.
 
 `test "name" = expression` declares a test. When its body is not a block,
 the body must be a `Bool`: `True` means the test passed. The to-do app's
-`Todo` module (`examples/todos/app/Todo.alder`) ends with one, which
+`Todo` module (`examples/todos/app/Table/Todo.alder`) ends with one, which
 checks that `countOpen` counts only the todos that are not done:
 
 ```alder
@@ -629,7 +629,7 @@ error.
 
 ```text
 $ alder test examples/todos --json -run countOpen
-{"module":"Todo","name":"countOpen ignores done todos","file":"app/Todo.alder","line":37,"col":1,"ok":true,"left":"2","right":"2","trace":[],"ms":0.01}
+{"module":"Table.Todo","name":"countOpen ignores done todos","file":"app/Table/Todo.alder","line":40,"col":1,"ok":true,"left":"2","right":"2","trace":[],"ms":0.01}
 1 passed, 0 failed
 ```
 
@@ -889,7 +889,7 @@ fake Stripe {
 
 - A table of `fake Stripe` in module `Payments` is the record type
   `Payments.Charge`, as an app table of that module would be. It is
-  exempt from E0018 (a table in its own module).
+  exempt from E0018 (a table in a module named after it).
 - Only a `test`, in any module, and the fake's own entries may use it,
   its type or its columns. Anywhere else (a value, a signature, a page's
   `load`, an app table's `@ref`) it is E0021: a value
@@ -2255,7 +2255,7 @@ to-do app's run, two of the 154:
 
 ```text
 {"id":138,"module":"Todos.Index","file":"app/Todos/Index.alder","decl":"load","line":18,"col":10,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
-{"id":3,"module":"Todo","file":"app/Todo.alder","decl":"Todo","line":16,"col":3,"kind":"cascade ↔ restrict","before":"owner @ref User @restrict","after":"owner @ref User @cascade","killed":true,"by":"Todo \"a user with todos cannot be deleted\"","note":"","tables":"ensure"}
+{"id":3,"module":"Table.Todo","file":"app/Table/Todo.alder","decl":"Todo","line":16,"col":3,"kind":"cascade ↔ restrict","before":"owner @ref User @restrict","after":"owner @ref User @cascade","killed":true,"by":"Todo \"a user with todos cannot be deleted\"","note":"","tables":"ensure"}
 ```
 
 and the last line:

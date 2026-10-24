@@ -196,6 +196,11 @@ plan
     create table Todo
     create table User
     add index on Todo.owner
+  0002_rename_todo_rename_user
+    rename table Todo.Todo to Table.Todo.Todo
+    rename table User.User to Table.User.User
+    drop index on Todo.owner
+    add index on Todo.owner
 script ./scripts/deploy-local.sh build/todos/deploy/… local
 deployed … to local
 ```
@@ -249,7 +254,7 @@ artifact build/demo/deploy/46ea832c79966e56 (darwin/arm64)
 target
   requires ok  SMTP_URL, ALDER_SECRET
 plan
-  live schema 2e82b15d5f85 → build schema 9c29f6e97d0b
+  live schema 9b787a621da5 → build schema 9c29f6e97d0b
   0002_add_mood
     rebuild table Entry: Entry: column order changed (ALTER TABLE only appends); Entry.mood added
 warning: no `backup` in the declaration: only the pre-migration copies (builds/<id>/backup.db) exist
@@ -273,7 +278,7 @@ What happened, in order:
   environment file for each name. It ran `grep` on the file; no value
   crossed the connection.
 - `plan`: the box's `db/schema.json` records the schema of the last
-  migration its database took (`2e82b15d5f85` is the first 12 hex digits
+  migration its database took (`9b787a621da5` is the first 12 hex digits
   of its hash); the build's migrations are placed against it, and
   `0002_add_mood` is the one pending. Its step is a table rebuild
   (chapter 8, "How tables are stored").
@@ -475,7 +480,7 @@ that dropped the `mood` column again:
 $ alder deploy production --dry-run                          (recorded)
 …
 plan
-  live schema 9c29f6e97d0b → build schema 2e82b15d5f85
+  live schema 9c29f6e97d0b → build schema 9b787a621da5
   0003_drop_mood
     drop column Entry.mood
     DROPS DATA: column Entry.mood
@@ -563,7 +568,7 @@ after a deploy that added `mood`):
 $ alder rollback production                                  (recorded)
 rollback 46ea832c79966e56 → 339250fe1b936905
   schema   FAIL  the live database is newer than the build
-alder rollback: refused: the live database's schema 9c29f6e97d0b is not build 339250fe1b936905's 2e82b15d5f85 (changed tables: Entry.Entry): that build would refuse to start on it or serve only its maintenance page, and rolling back never changes the data. Deploy a build with the schema you want, or pass --allow-schema-mismatch to try anyway; or `alder rollback production 339250fe1b936905 --restore-backup` puts back the copy of the data taken when that build was replaced (builds/46ea832c79966e56/backup.db), losing every write since
+alder rollback: refused: the live database's schema 9c29f6e97d0b is not build 339250fe1b936905's 9b787a621da5 (changed tables: Entry.Entry): that build would refuse to start on it or serve only its maintenance page, and rolling back never changes the data. Deploy a build with the schema you want, or pass --allow-schema-mismatch to try anyway; or `alder rollback production 339250fe1b936905 --restore-backup` puts back the copy of the data taken when that build was replaced (builds/46ea832c79966e56/backup.db), losing every write since
 ```
 
 The refusal also catches the case the hashes cannot: a migration that
@@ -640,7 +645,7 @@ once and starts the previous build on it (recorded):
 $ alder deploy production --allow-data-loss --unsafe-skip-tests (recorded)
 …
 plan
-  live schema 9c29f6e97d0b → build schema 2e82b15d5f85
+  live schema 9c29f6e97d0b → build schema 9b787a621da5
   0003_drop_mood
     drop column Entry.mood
     DROPS DATA: column Entry.mood

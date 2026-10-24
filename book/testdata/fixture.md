@@ -85,7 +85,7 @@ A module walked through in pieces, checked whole:
 ```alder part=Extra
 module Extra
 
-import Todo
+import Table.Todo
 ```
 
 Prose between the pieces.

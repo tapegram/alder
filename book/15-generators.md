@@ -136,11 +136,12 @@ the guestbook's entries:
 
 ```text command=guestbook
 $ alder new table Reply entry:Entry.EntryId@ref=Entry@cascade message:Text.NonEmpty hidden:Bool=False
-wrote app/Reply.alder
+wrote app/Table/Reply.alder
 wrote migrations/0002_create_reply.sql
   create table Reply
   add index on Reply.entry
 edited migrations/schema.json
+next: alder new page /replies --list Reply
 ```
 
 `entry:Entry.EntryId@ref=Entry@cascade` is a reference to an entry,
@@ -148,10 +149,10 @@ deleted with it (`@ref Entry @cascade`, chapter 8). `hidden:Bool=False`
 has a default. The generator adds the id (`id: ReplyId @id`, with its
 brand), `created` and `updated`:
 
-```alder written=guestbook/app/Reply.alder
-module Reply
+```alder written=guestbook/app/Table/Reply.alder
+module Table.Reply
 
-import Entry
+import Table.Entry
 
 type ReplyId = brand Text
 
@@ -185,13 +186,13 @@ The table's migration is written in the same step, by the same code as
 
 ```sql written=guestbook/migrations/0002_create_reply.sql
 -- alder migration 0002_create_reply
--- from 2e82b15d5f85
--- to b2852c92312f
+-- from 9b787a621da5
+-- to 9d5fa11a40bb
 -- step: create table Reply
 -- step: add index on Reply.entry
 
-CREATE TABLE "Reply__Reply" ("id" TEXT NOT NULL PRIMARY KEY, "entry" TEXT NOT NULL REFERENCES "Entry__Entry"("id") ON DELETE CASCADE, "message" TEXT NOT NULL, "hidden" INTEGER NOT NULL CHECK ("hidden" IN (0, 1)), "created" TEXT NOT NULL, "updated" TEXT NOT NULL) STRICT;
-CREATE INDEX IF NOT EXISTS "Reply__Reply__entry" ON "Reply__Reply"("entry");
+CREATE TABLE "Table__Reply__Reply" ("id" TEXT NOT NULL PRIMARY KEY, "entry" TEXT NOT NULL REFERENCES "Table__Entry__Entry"("id") ON DELETE CASCADE, "message" TEXT NOT NULL, "hidden" INTEGER NOT NULL CHECK ("hidden" IN (0, 1)), "created" TEXT NOT NULL, "updated" TEXT NOT NULL) STRICT;
+CREATE INDEX IF NOT EXISTS "Table__Reply__Reply__entry" ON "Table__Reply__Reply"("entry");
 ```
 
 A type the checker does not know (`x:Nope.Type`) is refused with the
@@ -210,13 +211,18 @@ wrote app/Replies.alder
 The module is the name you give, `Replies`, at `app/Replies.alder`: a
 page's module is its name, and nothing is added to it (`Replies.Index`
 would be `app/Replies/Index.alder`, if you prefer that).
+Leave the module out and the generator derives it from the table: `alder new
+page /replies --list Reply` writes `Replies.Index` (and `--show Reply` writes
+`Replies.Show`, `--from Reply` `Replies.New`), in the plural folder of
+chapter 2's "Where files go". `alder new table` prints that command as its
+last line, `next: alder new page /replies --list Reply`.
 
 ```alder written=guestbook/app/Replies.alder
 module Replies
 
-import Entry
 import Layout
-import Reply
+import Table.Entry
+import Table.Reply
 
 page "/replies" { page: Int = 1 }
 
@@ -699,7 +705,7 @@ $ alder test
 ok   About "the page is shown"
 ok   Home "signing adds an entry"
 ok   Home "entries are listed newest first"
-ok   Reply "deleting its entry deletes a Reply"
+ok   Table.Reply "deleting its entry deletes a Reply"
 ok   Replies "the list shows the rows, newest first"
 ok   Replies "the list has 20 rows a page"
 ok   Replies "submitting NewReply adds a row"
@@ -803,23 +809,23 @@ blog's README replays it, file for file):
 
 ```text
 $ alder new admin
-wrote app/Admin/Comment/Delete.alder
-wrote app/Admin/Comment/Edit.alder
-wrote app/Admin/Comment/Index.alder
-wrote app/Admin/Comment/New.alder
-wrote app/Admin/Comment/Show.alder
+wrote app/Admin/Comments/Delete.alder
+wrote app/Admin/Comments/Edit.alder
+wrote app/Admin/Comments/Index.alder
+wrote app/Admin/Comments/New.alder
+wrote app/Admin/Comments/Show.alder
 wrote app/Admin/Index.alder
 wrote app/Admin/Layout.alder
-wrote app/Admin/Post/Delete.alder
-wrote app/Admin/Post/Edit.alder
-wrote app/Admin/Post/Index.alder
-wrote app/Admin/Post/New.alder
-wrote app/Admin/Post/Show.alder
-wrote app/Admin/User/Delete.alder
-wrote app/Admin/User/Edit.alder
-wrote app/Admin/User/Index.alder
-wrote app/Admin/User/New.alder
-wrote app/Admin/User/Show.alder
+wrote app/Admin/Posts/Delete.alder
+wrote app/Admin/Posts/Edit.alder
+wrote app/Admin/Posts/Index.alder
+wrote app/Admin/Posts/New.alder
+wrote app/Admin/Posts/Show.alder
+wrote app/Admin/Users/Delete.alder
+wrote app/Admin/Users/Edit.alder
+wrote app/Admin/Users/Index.alder
+wrote app/Admin/Users/New.alder
+wrote app/Admin/Users/Show.alder
 ```
 
 `examples/blog/app/Admin/` holds exactly these files, as the command
@@ -827,18 +833,19 @@ wrote them; nobody has edited them, and the blog's README says how to
 check that by running it again. Its tests pass, and they kill 226 of
 the admin's 231 mutants, the five survivors being equivalent (chapter 10;
 the blog's README lists them). For each table `T`, with `t` its
-name in lower case:
+name in lower case and `Ts` its plural (`Posts`, `Activities`; the folder is
+plural so that `Admin.Posts` never reads as the table `Post`):
 
 | Module | Path | What it is |
 |---|---|---|
 | `Admin.Index` | `/admin` | the dashboard: per table, how many rows and the five newest |
 | `Admin.Layout` | (a component) | `Layout.Page`: the app's layout, with a nav of the tables |
-| `Admin.T.Index` | `/admin/t` | the rows: search, filter by each `Bool` and union column, sort by any column, 25 to a page |
-| `Admin.T.Show` | `/admin/t/{id}` | one row, every column, with Edit and Delete |
-| `Admin.T.New` | `/admin/t/new` | the form that creates a row |
-| `Admin.T.Edit` | `/admin/t/{id}/edit` | the form that changes a row |
-| `Admin.T.Delete` | `/admin/t/{id}/delete` | what goes with the row, and the button, or why there is none |
-| `Admin.T.Bulk` | `/admin/t/bulk?ids=…` | the rows chosen on the list, and what to do with them all at once (only for a table with an action; "Bulk actions", below) |
+| `Admin.Ts.Index` | `/admin/t` | the rows: search, filter by each `Bool` and union column, sort by any column, 25 to a page |
+| `Admin.Ts.Show` | `/admin/t/{id}` | one row, every column, with Edit and Delete |
+| `Admin.Ts.New` | `/admin/t/new` | the form that creates a row |
+| `Admin.Ts.Edit` | `/admin/t/{id}/edit` | the form that changes a row |
+| `Admin.Ts.Delete` | `/admin/t/{id}/delete` | what goes with the row, and the button, or why there is none |
+| `Admin.Ts.Bulk` | `/admin/t/bulk?ids=…` | the rows chosen on the list, and what to do with them all at once (only for a table with an action; "Bulk actions", below) |
 
 `--module` and `--path` put the admin elsewhere (`--module Back.Office
 --path /back`). An admin that exists is not written again: `alder new
@@ -856,7 +863,7 @@ module Admin.Layout
 
 -- @admin begin imports
 import Layout
-import User
+import Table.User
 -- @admin end
 
 -- The admin's frame: the app's layout around a nav of every table's list.
@@ -867,9 +874,9 @@ Page props =
       <al-stack direction="row" gap="sm">
         <a href={Admin.Index {}}>Dashboard</a>
         -- @admin begin nav
-        <a href={Admin.Comment.Index {}}>Comments</a>
-        <a href={Admin.Post.Index {}}>Posts</a>
-        <a href={Admin.User.Index {}}>Users</a>
+        <a href={Admin.Comments.Index {}}>Comments</a>
+        <a href={Admin.Posts.Index {}}>Posts</a>
+        <a href={Admin.Users.Index {}}>Users</a>
         -- @admin end
       </al-stack>
     </nav>
@@ -920,9 +927,9 @@ module Admin.Index
 
 -- @admin begin imports
 import Admin.Layout
-import Comment
-import Post
-import User
+import Table.Comment
+import Table.Post
+import Table.User
 -- @admin end
 
 page "/admin" { } requires user, role Admin
@@ -970,26 +977,29 @@ load params session = {
         {
           key: "comments",
           title: "Comments",
-          href: Admin.Comment.Index {},
+          href: Admin.Comments.Index {},
           count: commentCount,
           rows: List.map (\row -> {
             label: row.author,
-            href: Admin.Comment.Show { id: row.id },
+            href: Admin.Comments.Show { id: row.id },
           }) comments,
         },
         {
           key: "posts",
           title: "Posts",
-          href: Admin.Post.Index {},
+          href: Admin.Posts.Index {},
           count: postCount,
-          rows: List.map (\row -> { label: row.slug, href: Admin.Post.Show { id: row.id } }) posts,
+          rows: List.map (\row -> { label: row.slug, href: Admin.Posts.Show { id: row.id } }) posts,
         },
         {
           key: "users",
           title: "Users",
-          href: Admin.User.Index {},
+          href: Admin.Users.Index {},
           count: userCount,
-          rows: List.map (\row -> { label: row.email, href: Admin.User.Show { id: row.id } }) users,
+          rows: List.map (\row -> {
+            label: row.email,
+            href: Admin.Users.Show { id: row.id },
+          }) users,
         },
       ],
     }
@@ -1154,19 +1164,19 @@ test "a demoted Admin is refused at once" = {
 
 ### A list
 
-`Admin.Post.Index` is the list of posts. Its parameters carry the search
+`Admin.Posts.Index` is the list of posts. Its parameters carry the search
 text, a filter for each `Bool` and union column (here `published`), the
 sort column and direction, and the page:
 
-```alder part=blog/Admin.Post.Index
+```alder part=blog/Admin.Posts.Index
 -- generated by `alder new admin`; regions between
 -- `-- @admin begin <name>` / `-- @admin end` are rewritten by `alder regen admin`
-module Admin.Post.Index
+module Admin.Posts.Index
 
 -- @admin begin imports
 import Admin.Layout
-import Post
-import User
+import Table.Post
+import Table.User
 -- @admin end
 
 -- @admin begin params
@@ -1207,7 +1217,7 @@ a filter, and its filter a parameter. `search` is a `Db.or` of
 (chapter 8, "Search": case-insensitive, and `%` and `_` match
 themselves).
 
-```alder part=blog/Admin.Post.Index
+```alder part=blog/Admin.Posts.Index
 -- A Filter is one of the list's selects: the column it filters, the option chosen ("" for any),
 -- and each option's value in the address, its label, and the rows it selects.
 type Filter = {
@@ -1265,7 +1275,7 @@ filtered fs =
 
 -- listAt is this list with the model's search and filters, sorted by sort and dir, at page n.
 listAt : Model -> Text -> Text -> Int -> Page
-listAt model sort dir n = Admin.Post.Index {
+listAt model sort dir n = Admin.Posts.Index {
   q: model.q,
   published: model.filters.published,
   sort: sort,
@@ -1291,7 +1301,7 @@ use. All of it follows the columns, so it is the region `filters`; a
 table with neither kind of column has the same declarations, with no
 filter, so a column added later only rewrites the region.
 
-```alder part=blog/Admin.Post.Index
+```alder part=blog/Admin.Posts.Index
 -- @admin begin sorts
 -- sorts are the columns the list sorts by, by name.
 sorts : List {
@@ -1357,7 +1367,7 @@ column's; both follow the table, so `sorts` is a region. `toggle` is the
 direction a header's link asks for: the other way round when the list is
 already sorted by that column ascending.
 
-```alder part=blog/Admin.Post.Index
+```alder part=blog/Admin.Posts.Index
 load : Params -> Session -> Query Model
 load params session = {
   let admin <- Layout.isAdmin session.user
@@ -1424,7 +1434,7 @@ shown by its label, the user's email, rather than by its id: `labelsOf`
 reads only the users the page's rows refer to, with one query
 (`.in`), not one per row.
 
-```alder part=blog/Admin.Post.Index
+```alder part=blog/Admin.Posts.Index
 view : Model -> Session -> Html Msg
 view model session =
   <Layout.Page title="Posts">
@@ -1448,7 +1458,7 @@ view model session =
         <input type="hidden" name="dir" value={model.dir} />
         <al-button type="submit" variant="secondary">Search</al-button>
       </form>
-      <al-button href={Admin.Post.New {}}>New post</al-button>
+      <al-button href={Admin.Posts.New {}}>New post</al-button>
     </al-stack>
 
     <p id="count">{if model.count == 1 then "1 row" else Text.fromInt model.count ++ " rows"}</p>
@@ -1480,7 +1490,7 @@ view model session =
                   value={row.id}
                   aria-label={"Choose " ++ row.slug} />
               </td>
-              <td><a href={Admin.Post.Show { id: row.id }}>{row.slug}</a></td>
+              <td><a href={Admin.Posts.Show { id: row.id }}>{row.slug}</a></td>
               <td>{row.title}</td>
               <td>{row.body}</td>
               <td>
@@ -1490,7 +1500,7 @@ view model session =
                   <al-badge variant="secondary">No</al-badge>}
               </td>
               <td>
-                <a href={Admin.User.Show { id: row.author }}>
+                <a href={Admin.Users.Show { id: row.author }}>
                   {authorLabel model.labels row.author}
                 </a>
               </td>
@@ -1547,7 +1557,7 @@ checks that the count agrees with the rows and that the select shows the
 option chosen. A table with a union column gets a second filter test
 (the blog's users, by `role`); a table with neither gets none.
 
-```alder part=blog/Admin.Post.Index
+```alder part=blog/Admin.Posts.Index
 -- @admin begin tests
 test "the list shows every row, newest first, and the labels of the rows they refer to" = {
   let me <- Db.insert User {
@@ -1574,7 +1584,7 @@ test "the list shows every row, newest first, and the labels of the rows they re
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let page <- Test.get (Admin.Post.Index {})
+  let page <- Test.get (Admin.Posts.Index {})
   Task.succeed (
     {
       rows: List.map (\row -> row.id) page.model.rows,
@@ -1608,8 +1618,8 @@ test "sorting by slug goes both ways" = {
     body: "body-2",
     author: me,
   }
-  let up <- Test.get (Admin.Post.Index { sort: "slug", dir: "asc" })
-  let down <- Test.get (Admin.Post.Index { sort: "slug" })
+  let up <- Test.get (Admin.Posts.Index { sort: "slug", dir: "asc" })
+  let down <- Test.get (Admin.Posts.Index { sort: "slug" })
   Task.succeed (
     {
       up: List.map (\row -> row.id) up.model.rows,
@@ -1643,7 +1653,7 @@ test "searching finds the rows that contain the text" = {
     body: "body-2",
     author: me,
   }
-  let page <- Test.get (Admin.Post.Index { q: "slug-2" })
+  let page <- Test.get (Admin.Posts.Index { q: "slug-2" })
   Task.succeed (
     { rows: List.map (\row -> row.id) page.model.rows, count: Test.text "#count" page.doc }
       == { rows: [post2], count: Just "1 row" }
@@ -1672,8 +1682,8 @@ test "filtering by published lists the rows with that value" = {
     published: False,
     author: me,
   }
-  let yes <- Test.get (Admin.Post.Index { published: "yes" })
-  let no <- Test.get (Admin.Post.Index { published: "no" })
+  let yes <- Test.get (Admin.Posts.Index { published: "yes" })
+  let no <- Test.get (Admin.Posts.Index { published: "no" })
   Task.succeed (
     {
       yes: List.map (\id -> List.member id (List.map (\row -> row.id) yes.model.rows)) [
@@ -1701,7 +1711,7 @@ test "a search text of 20,000 characters is cut to 200" = {
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let long = Text.join "" (List.map (\n -> "z") (List.range 1 20000))
-  let page <- Test.get (Admin.Post.Index { q: long })
+  let page <- Test.get (Admin.Posts.Index { q: long })
   Task.succeed (
     { q: Text.length page.model.q, rows: List.length page.model.rows } == { q: 200, rows: 0 }
   )
@@ -1724,9 +1734,9 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
         author: me,
       }) (List.range 1 26)
     )
-  let first <- Test.get (Admin.Post.Index {})
-  let second <- Test.get (Admin.Post.Index { page: 2 })
-  let past <- Test.get (Admin.Post.Index { page: 9 })
+  let first <- Test.get (Admin.Posts.Index {})
+  let second <- Test.get (Admin.Posts.Index { page: 2 })
+  let past <- Test.get (Admin.Posts.Index { page: 9 })
   Task.succeed (
     {
       first: List.length first.model.rows,
@@ -1745,7 +1755,7 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
 }
 
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Admin.Post.Index {})
+  let r <- Test.open (Admin.Posts.Index {})
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -1757,7 +1767,7 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
-  let r <- Test.open (Admin.Post.Index {})
+  let r <- Test.open (Admin.Posts.Index {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -1769,7 +1779,7 @@ test "a demoted Admin is refused at once" = {
     role: Reader,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Post.Index {})
+  let r <- Test.open (Admin.Posts.Index {})
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end
@@ -1777,18 +1787,18 @@ test "a demoted Admin is refused at once" = {
 
 ### A form
 
-`Admin.Post.New` creates a post. Its form has a field per column but
+`Admin.Posts.New` creates a post. Its form has a field per column but
 the id, `@created` and `@updated`:
 
-```alder part=blog/Admin.Post.New
+```alder part=blog/Admin.Posts.New
 -- generated by `alder new admin`; regions between
 -- `-- @admin begin <name>` / `-- @admin end` are rewritten by `alder regen admin`
-module Admin.Post.New
+module Admin.Posts.New
 
 -- @admin begin imports
 import Admin.Layout
-import Post
-import User
+import Table.Post
+import Table.User
 -- @admin end
 
 page "/admin/post/new" { findAuthor: Text = "" } requires user, role Admin
@@ -1842,7 +1852,7 @@ update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   -- @admin begin finds
   SearchAuthor p ->
-    Task.succeed (Redirect (Admin.Post.New { findAuthor: Text.slice 0 200 p.form.q })),
+    Task.succeed (Redirect (Admin.Posts.New { findAuthor: Text.slice 0 200 p.form.q })),
   -- @admin end
   Create p -> {
     -- @admin begin insert
@@ -1860,7 +1870,7 @@ update msg model session = match msg {
         published: p.form.published,
         author: p.form.author,
       }
-      Task.succeed (Redirect (Admin.Post.Show { id: id }))
+      Task.succeed (Redirect (Admin.Posts.Show { id: id }))
     }
     -- @admin end
   },
@@ -1874,7 +1884,7 @@ arm counts the posts with that slug first, and answers `Reject` with a
 sentence when there is one. And `author` refers to a user, so `load`
 reads the users to choose from, ordered by their label.
 
-```alder part=blog/Admin.Post.New
+```alder part=blog/Admin.Posts.New
 view : Model -> Session -> Html Msg
 view model session =
   <Layout.Page title="New post">
@@ -1928,7 +1938,7 @@ compute the options again from the model alone (chapter 5).
 The tests of the form submit a valid post and compare what was stored,
 submit a slug that exists, and submit an author that was not offered:
 
-```alder part=blog/Admin.Post.New
+```alder part=blog/Admin.Posts.New
 -- @admin begin tests
 test "creating a post adds it, with the values submitted" = {
   let me <- Db.insert User {
@@ -1949,7 +1959,7 @@ test "creating a post adds it, with the values submitted" = {
     body: "body-1",
     author: me,
   }
-  let page <- Test.get (Admin.Post.New {})
+  let page <- Test.get (Admin.Posts.New {})
   let r <- Test.submit PostForm {
     slug: Post.Slug "slug-2",
     title: Text.NonEmpty "title-2",
@@ -1963,7 +1973,7 @@ test "creating a post adds it, with the values submitted" = {
       |> Db.all
   Task.succeed (
     {
-      answers: List.map (\row -> Redirected (Admin.Post.Show { id: row.id })) rows,
+      answers: List.map (\row -> Redirected (Admin.Posts.Show { id: row.id })) rows,
       rows: List.map (\row -> {
         slug: row.slug,
         title: row.title,
@@ -2007,7 +2017,7 @@ test "a post with a slug that exists is refused" = {
     body: "body-1",
     author: me,
   }
-  let _ <- Test.get (Admin.Post.New {})
+  let _ <- Test.get (Admin.Posts.New {})
   let r <- Test.submit PostForm {
     slug: Post.Slug "slug-1",
     title: Text.NonEmpty "title-2",
@@ -2023,7 +2033,7 @@ test "a post with a slug that exists is refused" = {
 }
 ```
 
-```alder part=blog/Admin.Post.New
+```alder part=blog/Admin.Posts.New
 test "an author not offered is refused" = {
   let me <- Db.insert User {
     email: Text.Email "email-1@example.com",
@@ -2037,7 +2047,7 @@ test "an author not offered is refused" = {
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let page <- Test.get (Admin.Post.New {})
+  let page <- Test.get (Admin.Posts.New {})
   let r <- Test.submitRaw PostForm [
     { name: "slug", value: "x" },
     { name: "title", value: "x" },
@@ -2076,7 +2086,7 @@ test "a list of 200 users is offered whole" = {
         passwordHash: "passwordhash-" ++ Text.fromInt n,
       }) (List.range 3 200)
     )
-  let page <- Test.get (Admin.Post.New {})
+  let page <- Test.get (Admin.Posts.New {})
   Task.succeed (List.length page.model.authors == 200)
 }
 
@@ -2101,8 +2111,8 @@ test "a long list of users offers 50, and the search narrows it" = {
         passwordHash: "passwordhash-" ++ Text.fromInt n,
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Post.New {})
-  let found <- Test.get (Admin.Post.New { findAuthor: "email-203@example.com" })
+  let all <- Test.get (Admin.Posts.New {})
+  let found <- Test.get (Admin.Posts.New { findAuthor: "email-203@example.com" })
   let r <- Test.submit FindAuthor { q: "zz" }
   Task.succeed (
     {
@@ -2114,7 +2124,7 @@ test "a long list of users offers 50, and the search narrows it" = {
         shown: 50,
         total: 203,
         found: True,
-        answer: Redirected (Admin.Post.New { findAuthor: "zz" }),
+        answer: Redirected (Admin.Posts.New { findAuthor: "zz" }),
       }
   )
 }
@@ -2140,11 +2150,11 @@ test "an author outside the narrowed list is refused" = {
         passwordHash: "passwordhash-" ++ Text.fromInt n,
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Post.New {})
-  let found <- Test.get (Admin.Post.New { findAuthor: "email-203@example.com" })
+  let all <- Test.get (Admin.Posts.New {})
+  let found <- Test.get (Admin.Posts.New { findAuthor: "email-203@example.com" })
   let r <- Test.submit FindAuthor { q: "zz" }
   let pick = Maybe.withDefault "" (Test.attr "value" "select[name=author] option" found.doc)
-  let page <- Test.get (Admin.Post.New {})
+  let page <- Test.get (Admin.Posts.New {})
   let sent <- Test.submitRaw PostForm [
     { name: "slug", value: "x" },
     { name: "title", value: "x" },
@@ -2163,7 +2173,7 @@ test "an author outside the narrowed list is refused" = {
 }
 
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Admin.Post.New {})
+  let r <- Test.open (Admin.Posts.New {})
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -2175,7 +2185,7 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
-  let r <- Test.open (Admin.Post.New {})
+  let r <- Test.open (Admin.Posts.New {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -2187,19 +2197,19 @@ test "a demoted Admin is refused at once" = {
     role: Reader,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Post.New {})
+  let r <- Test.open (Admin.Posts.New {})
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end
 ```
 
-`Admin.Post.Edit` is the same form, filled with the row's values, its
+`Admin.Posts.Edit` is the same form, filled with the row's values, its
 arm an update instead of an insert, and its `@unique` check counting
 the other rows only.
 
 ### A long table behind a reference
 
-The select of `Admin.Post.New` holds one `<option>` per user. That is fine
+The select of `Admin.Posts.New` holds one `<option>` per user. That is fine
 for a few hundred rows and not for a hundred thousand: the page would
 load them all, and the browser would draw them all. So the admin counts
 the referenced table in `load` (`authorsTotal`) and takes the
@@ -2218,7 +2228,7 @@ the referenced table in `load` (`authorsTotal`) and takes the
   cannot pick, or be tricked into posting, a user the select did not
   offer.
 - A small form of its own, `FindAuthor { q: Text }`, with the message
-  `SearchAuthor`, sends the text. Its arm answers `Redirect (Admin.Post.New
+  `SearchAuthor`, sends the text. Its arm answers `Redirect (Admin.Posts.New
   { findAuthor: Text.slice 0 200 p.form.q })`, not `Rerender`: a rerender
   would show the select narrowed by the *old* text, since the options come
   from `load`, which ran before the message. The redirect loads the page
@@ -2247,7 +2257,7 @@ options".
 
 ### The Delete button: a dialog, and the page behind it
 
-A row's own page (`Admin.T.Show`) has a Delete button. It opens an
+A row's own page (`Admin.Ts.Show`) has a Delete button. It opens an
 `al-dialog` (Appendix C), "Delete this comment?", which shows what the
 delete page shows before anything is deleted: how many rows go with the
 row (its `@cascade` references), how many lose a reference (`@setNull`)
@@ -2261,7 +2271,7 @@ in the same regions (`model`, `load`, `blockers`, `remove`, `counts`). A
 refusal is shown in the dialog, which stays open across the update.
 
 The dialog ends with a link, "See the details", to the delete page,
-`Admin.T.Delete`, which stays: it is the same confirmation as a page of
+`Admin.Ts.Delete`, which stays: it is the same confirmation as a page of
 its own, with the row's label, and an app may link to it from anywhere.
 The button that opens the dialog is the library's documented shape, a
 `<button commandfor="delete-dialog" command="show-modal">`. Invoker
@@ -2283,15 +2293,15 @@ to it along with it, which the person deleting it should know. So the
 delete page counts both, before anyone presses anything. A user is the
 author of posts, and `Post.author` is `@restrict`:
 
-```alder part=blog/Admin.User.Delete
+```alder part=blog/Admin.Users.Delete
 -- generated by `alder new admin`; regions between
 -- `-- @admin begin <name>` / `-- @admin end` are rewritten by `alder regen admin`
-module Admin.User.Delete
+module Admin.Users.Delete
 
 -- @admin begin imports
 import Admin.Layout
-import Post
-import User
+import Table.Post
+import Table.User
 -- @admin end
 
 page "/admin/user/{id}/delete" { id: User.UserId } requires user, role Admin
@@ -2353,7 +2363,7 @@ update msg model session = match msg {
       Task.succeed (Reject "This user cannot be deleted while other rows refer to it.")
     else {
       let _ <- Db.delete User model.row.id
-      Task.succeed (Redirect (Admin.User.Index {}))
+      Task.succeed (Redirect (Admin.Users.Index {}))
     }
     -- @admin end
   },
@@ -2375,7 +2385,7 @@ the `view` says "You cannot delete your own account." where the button
 would be, and `Remove` answers `Reject` with the same sentence, first,
 before the counts. The other tables' delete pages have no `own`.
 
-```alder part=blog/Admin.User.Delete
+```alder part=blog/Admin.Users.Delete
 view : Model -> Session -> Html Msg
 view model session =
   <Layout.Page title="Delete user">
@@ -2401,7 +2411,7 @@ view model session =
           <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
     </al-card>
-    <a href={Admin.User.Show { id: model.row.id }}>Back</a>
+    <a href={Admin.Users.Show { id: model.row.id }}>Back</a>
   </Layout.Page>
 ```
 
@@ -2411,7 +2421,7 @@ button, the test posts the form anyway, and the answer is the
 third does the same with the signed-in Admin's own row. (The first
 deletes another user, so it shows the guard does not refuse every row.)
 
-```alder part=blog/Admin.User.Delete
+```alder part=blog/Admin.Users.Delete
 -- @admin begin tests
 test "deleting a user nothing refers to" = {
   let me <- Db.insert User {
@@ -2437,7 +2447,7 @@ test "deleting a user nothing refers to" = {
     body: "body-1",
     author: user3,
   }
-  let _ <- Test.get (Admin.User.Delete { id: user2 })
+  let _ <- Test.get (Admin.Users.Delete { id: user2 })
   let r <- Test.submit Confirm {}
   let gone <- Db.get User user2
   let kept <- Db.get User user3
@@ -2447,7 +2457,7 @@ test "deleting a user nothing refers to" = {
       gone: Maybe.map (\row -> row.id) gone,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-        answer: Redirected (Admin.User.Index {}),
+        answer: Redirected (Admin.Users.Index {}),
         gone: Nothing,
         kept: Just user3,
       }
@@ -2473,7 +2483,7 @@ test "a user that posts refer to is not deleted" = {
     body: "body-1",
     author: user2,
   }
-  let page <- Test.get (Admin.User.Delete { id: user2 })
+  let page <- Test.get (Admin.Users.Delete { id: user2 })
   let r <- Test.submit Confirm {}
   let kept <- Db.get User user2
   Task.succeed (
@@ -2501,7 +2511,7 @@ test "an Admin cannot delete their own account" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let page <- Test.get (Admin.User.Delete { id: me })
+  let page <- Test.get (Admin.Users.Delete { id: me })
   let r <- Test.submit Confirm {}
   let kept <- Db.get User me
   Task.succeed (
@@ -2527,7 +2537,7 @@ test "a missing row is not found" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.User.Delete { id: User.UserId "missing" })
+  let r <- Test.open (Admin.Users.Delete { id: User.UserId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -2537,7 +2547,7 @@ test "a visitor is sent to log in" = {
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
   }
-  let r <- Test.open (Admin.User.Delete { id: user1 })
+  let r <- Test.open (Admin.Users.Delete { id: user1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -2554,7 +2564,7 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let r <- Test.open (Admin.User.Delete { id: user2 })
+  let r <- Test.open (Admin.Users.Delete { id: user2 })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -2571,7 +2581,7 @@ test "a demoted Admin is refused at once" = {
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let r <- Test.open (Admin.User.Delete { id: user2 })
+  let r <- Test.open (Admin.Users.Delete { id: user2 })
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end
@@ -2582,7 +2592,7 @@ own row with another role is refused, since an Admin who made themselves
 a Reader would lose the admin at the next request; anything else on
 one's own row may change, and so may another user's role, another
 Admin's included. The check is the first line of `Save`'s region
-`update` in `Admin.User.Edit`:
+`update` in `Admin.Users.Edit`:
 
 ```alder fragment
 if session.user == model.row.id && p.form.role != model.row.role then
@@ -2634,7 +2644,7 @@ belong to a form of the page (`form="bulk"`), so a row's checkbox is
 submitted with it wherever it sits in the table. Two buttons below the
 table take the choice to the table's bulk page: "Act on the chosen rows"
 and, for no-script use, "Act on all rows on this page" (a second form of
-hidden ids). Both are `GET` forms to `Admin.T.Bulk`, whose page parameter
+hidden ids). Both are `GET` forms to `Admin.Ts.Bulk`, whose page parameter
 is a list of the table's ids, so the chosen rows are in the address. The bulk page
 lists the rows and offers the table's actions. (Each checkbox is labelled
 with its row, "Choose hello-world", for a screen reader.)
@@ -2679,13 +2689,13 @@ database per org, so the admin has no page of every org's projects: no
 query could read them. `alder new admin` (`examples/workspace`, whose
 admin is committed as it wrote it) gives each silo three things instead.
 
-- **A picker**, `Admin.Orgs.Index` at `/admin/orgs`: every row of the
+- **A picker**, `Admin.Orgs.Pick` at `/admin/orgs`: every row of the
   key's table, by its label, each a link to that org's dashboard. The
   layout's nav links to it ("Projects and todos, by org") where it would
   link to the siloed tables' lists, and the dashboard has a card for it
   (the newest orgs, each opening its dashboard) where their cards would
   be.
-- **The dashboard of one org**, `Admin.Orgs.Show` at
+- **The dashboard of one org**, `Admin.Orgs.Dashboard` at
   `/admin/orgs/{org}`: the org's name, and a card per siloed table, its
   count and newest rows, read from that org's database when the page is
   opened, never for every org at once.
@@ -2701,7 +2711,7 @@ admin is committed as it wrote it) gives each silo three things instead.
   guards it: an Admin manages an org's rows without being a member.
   Inside, `session.org` is that parameter, so every read and write goes
   to the org's database; every link to a page of the silo carries it
-  (`Admin.Project.Show { org: session.org, id: row.id }`), as do the
+  (`Admin.Projects.Show { org: session.org, id: row.id }`), as do the
   list's search and bulk forms, whose `action` is built around it. The
   partition column is the page's parameter, so no list, row page or
   form shows or edits it: a new row takes `org: session.org`.
@@ -2719,14 +2729,14 @@ the test's own reads (`Db.get Project target` after a delete) reach that
 org's database; the four that matter for the rule sign in without an
 org and use the pages alone:
 
-- `Admin.Project.Index "an Admin who is no member of the org lists its
+- `Admin.Projects.Index "an Admin who is no member of the org lists its
   projects, and only its"`: two orgs, a project in each; the list of one
   org shows its project only.
-- `Admin.Project.Bulk "a bulk action stays inside one org"`: the bulk
+- `Admin.Projects.Bulk "a bulk action stays inside one org"`: the bulk
   page of one org, given both projects' ids, takes only its own, and a
   delete leaves the other org's project where it was.
-- `Admin.Orgs.Index "the picker lists every org, by name, each opening
-  its dashboard"`, and `Admin.Orgs.Show "the org's dashboard counts its
+- `Admin.Orgs.Pick "the picker lists every org, by name, each opening
+  its dashboard"`, and `Admin.Orgs.Dashboard "the org's dashboard counts its
   projects, not another org's, and lists the newest five"`.
 
 A Member is refused every page of it (a 404), as on any admin page.
@@ -2774,7 +2784,7 @@ wrote adapters/auth/login_password.go
 wrote adapters/auth/login_password_test.go
 edited app/App.alder
 wrote app/Auth/Login.alder
-wrote app/User.alder
+wrote app/Table/User.alder
 wrote migrations/0003_create_user.sql
   create table User
 edited migrations/schema.json
@@ -2784,7 +2794,7 @@ edited migrations/schema.json
  module App
  
  import Layout
-+import User
++import Table.User
  
 -session { }
 +session { user: Maybe User.UserId }
@@ -2831,8 +2841,8 @@ already has a `user`, when a module `Auth` or `Auth.…` exists, and when
 
 The table it created:
 
-```alder written=guestbook/app/User.alder
-module User
+```alder written=guestbook/app/Table/User.alder
+module Table.User
 
 type UserId = brand Text
 
@@ -2855,7 +2865,7 @@ app's users, so the command does not invent one: `R` must be a union of
 the user module, and the command that makes one comes first.
 
 ```text
-$ alder new type User "Role = Member | Admin"
+$ alder new type Table.User "Role = Member | Admin"
 $ alder new auth --role Role
 ```
 
@@ -2995,10 +3005,10 @@ written as chapter 4 writes it after `type`: a union, a brand, or a
 record:
 
 ```text command=guestbook
-$ alder new type Entry "Mood = Calm | Glad"
-edited app/Entry.alder
---- a/app/Entry.alder
-+++ b/app/Entry.alder
+$ alder new type Table.Entry "Mood = Calm | Glad"
+edited app/Table/Entry.alder
+--- a/app/Table/Entry.alder
++++ b/app/Table/Entry.alder
 @@ -2,6 +2,8 @@
  
  type EntryId = brand Text
@@ -3075,10 +3085,10 @@ shows but no template fits it (with `--show T`, the page keeps
 ```text command=guestbook
 $ alder new page Stats /stats --blank
 wrote app/Stats.alder
-app/Stats.alder:8:23: warning[W0002]: hole ?load has type Query Stats.Model
+app/Stats.alder:8:23: warning[W0002]: hole ?load has type Query Model
   load params session = ?load
                         ^^^^^
-app/Stats.alder:11:22: warning[W0002]: hole ?view has type Html Stats.Msg
+app/Stats.alder:11:22: warning[W0002]: hole ?view has type Html Msg
   view model session = ?view
                        ^^^^^
 ```
@@ -3123,7 +3133,7 @@ $ alder fill Stats.load - <<'EOF'
 EOF
 edited app/Stats.alder
 …
-added import Entry to app/Stats.alder
+added import Table.Entry to app/Stats.alder
 ```
 
 ```text command=guestbook
@@ -3207,8 +3217,8 @@ edited app/Stats.alder
 --- a/app/Stats.alder
 +++ b/app/Stats.alder
 @@ -3,7 +3,7 @@
- import Entry
  import Layout
+ import Table.Entry
  
 -page "/stats" { }
 +page "/stats" { q: Text = "" }
@@ -3237,10 +3247,11 @@ pair, and a field may then be `@created` itself:
 
 ```text command=notes
 $ alder new table User email:Text.Email@unique name:Text.NonEmpty passwordHash:Text created:Time@created --no-timestamps
-wrote app/User.alder
+wrote app/Table/User.alder
 wrote migrations/0001_initial.sql
   create table User
 wrote migrations/schema.json
+next: alder new page /users --list User
 ```
 
 The login comes before the pages, because a page that `requires user`
@@ -3328,13 +3339,13 @@ row by a `@unique` column of `T` rather than by its id, the path's last
 segment:
 
 ```text command=notes
-$ alder new type Note "Slug = brand Text"
-wrote app/Note.alder
+$ alder new type Table.Note "Slug = brand Text"
+wrote app/Table/Note.alder
 ```
 
 ```text command=notes
 $ alder new table Note slug:Slug@unique title:Text.NonEmpty owner:User.UserId@ref=User created:Time@created --no-timestamps
-edited app/Note.alder
+edited app/Table/Note.alder
 …
 ```
 
@@ -3347,8 +3358,8 @@ wrote app/Notes/Show.alder
 module Notes.Show
 
 import Layout
-import Note
-import User
+import Table.Note
+import Table.User
 
 page "/notes/{slug}" { slug: Note.Slug } requires user
 
@@ -3452,7 +3463,7 @@ edited app/App.alder
 +++ b/app/App.alder
 @@ -3,7 +3,7 @@
  import Layout
- import User
+ import Table.User
  
 -session { user: Maybe User.UserId }
 +session { user: Maybe User.UserId, theme: Text = "light" }
@@ -3496,7 +3507,7 @@ alder remove table: table `Note` is still used (the errors above): remove those 
 ```
 
 A table the generated admin shows is used by the admin's pages: remove
-those (`alder remove page Admin.Note.Index` and the others), then
+those (`alder remove page Admin.Notes.Index` and the others), then
 `alder regen admin`, which does not bring back a page of a table that
 is gone.
 
@@ -4163,12 +4174,12 @@ the checker's errors, and nothing is written. A note on each reply:
 
 ```text command=guestbook
 $ alder edit table Reply add-field "note:Maybe Text"
-edited app/Reply.alder
+edited app/Table/Reply.alder
 wrote migrations/0004_add_note.sql
   add column Reply.note
 edited migrations/schema.json
---- a/app/Reply.alder
-+++ b/app/Reply.alder
+--- a/app/Table/Reply.alder
++++ b/app/Table/Reply.alder
 @@ -11,6 +11,7 @@
    hidden: Bool = False,
    created: Time @created,
@@ -4195,7 +4206,7 @@ app/Replies/Show.alder:62:33: error[E0003]: record `Reply.Insert Reply` is missi
 app/Replies/Show.alder:77:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
     let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Reply.alder:19:28: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
+app/Table/Reply.alder:19:28: error[E0003]: record `Insert Reply` is missing field(s): note
     let _ <- Db.insert Reply { entry: target, message: Text.NonEmpty "message-1" }
                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
@@ -4248,12 +4259,12 @@ Here the blog's comments gain a flag:
 
 ```text command=blog
 $ alder edit table Comment add-field approved:Bool=True
-edited app/Comment.alder
-wrote migrations/0002_add_approved.sql
+edited app/Table/Comment.alder
+wrote migrations/0003_add_approved.sql
   rebuild table Comment: Comment.approved: new column filled with 1
 edited migrations/schema.json
---- a/app/Comment.alder
-+++ b/app/Comment.alder
+--- a/app/Table/Comment.alder
++++ b/app/Table/Comment.alder
 @@ -18,6 +18,7 @@
    author: Name,
    body: Body,
@@ -4269,14 +4280,14 @@ admin catches up:
 
 ```text command=blog
 $ alder regen admin
-edited app/Admin/Comment/Bulk.alder
-edited app/Admin/Comment/Edit.alder
-edited app/Admin/Comment/Index.alder
-edited app/Admin/Comment/New.alder
-edited app/Admin/Comment/Show.alder
+edited app/Admin/Comments/Bulk.alder
+edited app/Admin/Comments/Edit.alder
+edited app/Admin/Comments/Index.alder
+edited app/Admin/Comments/New.alder
+edited app/Admin/Comments/Show.alder
 …
---- a/app/Admin/Comment/Index.alder
-+++ b/app/Admin/Comment/Index.alder
+--- a/app/Admin/Comments/Index.alder
++++ b/app/Admin/Comments/Index.alder
 @@ -12,6 +12,7 @@
  -- @admin begin params
  page "/admin/comment" {
@@ -4336,7 +4347,7 @@ edited app/Admin/Comment/Show.alder
  
  -- listAt is this list with the model's search and filters, sorted by sort and dir, at page n.
  listAt : Model -> Text -> Text -> Int -> Page
- listAt model sort dir n = Admin.Comment.Index {
+ listAt model sort dir n = Admin.Comments.Index {
    q: model.q,
 +  approved: model.filters.approved,
    sort: sort,
@@ -4363,7 +4374,7 @@ edited app/Admin/Comment/Show.alder
            </tr>
          </thead>
 @@ -243,6 +275,12 @@
-               <td><a href={Admin.Comment.Show { id: row.id }}>{row.author}</a></td>
+               <td><a href={Admin.Comments.Show { id: row.id }}>{row.author}</a></td>
                <td>{row.body}</td>
                <td>{Time.format "Jan 2, 2006" row.created}</td>
 +              <td>
@@ -4376,8 +4387,8 @@ edited app/Admin/Comment/Show.alder
              </tr>}
          </tbody>
 …
---- a/app/Admin/Comment/Show.alder
-+++ b/app/Admin/Comment/Show.alder
+--- a/app/Admin/Comments/Show.alder
++++ b/app/Admin/Comments/Show.alder
 @@ -106,6 +106,13 @@
          <dd>{model.row.body}</dd>
          <dt>Created</dt>
@@ -4412,7 +4423,7 @@ The rules of `regen`:
 - **It is idempotent.** Run twice, the second run changes nothing and
   writes nothing.
 - **It does not bring back what you deleted.** A page you removed (say,
-  a table's delete page) is listed as `not recreated app/Admin/Comment/Delete.alder
+  a table's delete page) is listed as `not recreated app/Admin/Comments/Delete.alder
   (deleted; --all writes it again)`; `--all` writes it again. Remove the
   links to it as well (the Delete button of the table's `Show` page),
   or the app no longer checks and `regen` refuses.
@@ -4421,7 +4432,7 @@ The rules of `regen`:
   its card and its link appear in the dashboard's and the nav's regions.
 - **It refuses a broken marker.** A begin marker without its end, an end
   without its begin, a region that begins twice: the command names the
-  file and the region (`` `app/Admin/Post/Index.alder`: region `cells`
+  file and the region (`` `app/Admin/Posts/Index.alder`: region `cells`
   has no end marker ``) and writes nothing.
 - **It refuses a list older than its filters.** A list page generated
   before the filters existed has no region `filters`, and its other
