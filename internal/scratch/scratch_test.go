@@ -311,3 +311,45 @@ func TestCompileCheckedWith_NoVet(t *testing.T) {
 		t.Errorf("neither vets nor builds: %v", b.Err)
 	}
 }
+
+// Two app modules sharing a last segment get canonical aliases among the auto-imports.
+func TestScratch_AutoImportsAliasClashes(t *testing.T) {
+	needGo(t)
+	app := filepath.Join(t.TempDir(), "todos")
+	if err := os.CopyFS(app, os.DirFS("../../examples/todos")); err != nil {
+		t.Fatal(err)
+	}
+	for p, v := range map[string]string{"Posts/Index": "posts", "Admin/Posts/Index": "admin posts"} {
+		f := filepath.Join(app, "app", p+".alder")
+		os.MkdirAll(filepath.Dir(f), 0o755)
+		mod := strings.ReplaceAll(p, "/", ".")
+		os.WriteFile(f, []byte("module "+mod+"\n\ntitle : Text\ntitle = \""+v+"\"\n"), 0o644)
+	}
+	main := strings.ReplaceAll(printMain, "Scratch__it", "Probe__it")
+	b := Compile(app, &Module{Name: "Probe", Source: "it = AdminPostsIndex.title\n", Infer: true}, main, "", t.TempDir())
+	defer b.Close()
+	if !b.Runnable() {
+		t.Fatalf("%v %v", b.Err, b.Diags)
+	}
+	if out, _, code := Run(b, nil, ""); code != 0 || strings.TrimSpace(out) != "admin posts" {
+		t.Fatalf("%q %d", out, code)
+	}
+}
+
+// A header `import P as Q` is part of the header, and counts toward the canonical qualifiers.
+func TestScratch_HeaderAs(t *testing.T) {
+	src := "module Scratch\nimport Admin.Layout as AdminLayout\nit : Int\n"
+	modLine, declared, imports := headerLines(src)
+	if modLine != 0 || declared != "Scratch" || strings.Join(imports, ",") != "Admin.Layout" {
+		t.Fatalf("%d %q %v", modLine, declared, imports)
+	}
+	out, n, _ := withImports(src, "Scratch", []string{"App", "Admin.Layout", "Layout"}, func(string) bool { return false })
+	if n != 1 || !strings.Contains(out, "import Layout\n") || strings.Contains(out, "import Admin.Layout\n") || strings.Count(out, "Admin.Layout") != 1 {
+		t.Fatalf("%d %q", n, out)
+	}
+	// the user's own import of Layout forces the auto Admin.Layout to an alias
+	out, _, _ = withImports("module Scratch\nimport Layout\nit : Int\n", "Scratch", []string{"Layout", "Admin.Layout"}, func(string) bool { return false })
+	if !strings.Contains(out, "import Admin.Layout as AdminLayout\n") {
+		t.Fatalf("%q", out)
+	}
+}
