@@ -182,6 +182,9 @@ type Options struct {
 	// Mutate, with Tests, makes the mutate build of `alder test --mutate` (gen.Options.Mutate):
 	// every mutant compiled in as a switch on app.Mutant, and the table app.Mutants.
 	Mutate bool
+	// Thunks names the constants ("Module.name") to emit as functions of no parameters
+	// (gen.Options.Thunks): a scratch file's watches, called by its main (RunFile, GoValue).
+	Thunks map[string]bool
 }
 
 // CompileCheckedWith is CompileChecked with options, stopped when ctx is done: `go vet` and `go
@@ -259,7 +262,7 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 			return b
 		}
 	}
-	files, err := gen.Emit(p, gen.Options{Version: version.String(), Migrations: buildkit.HasMigrations(appDir), Tests: o.Tests, Mutate: o.Mutate, Unwired: unwired})
+	files, err := gen.Emit(p, gen.Options{Version: version.String(), Migrations: buildkit.HasMigrations(appDir), Tests: o.Tests, Mutate: o.Mutate, Unwired: unwired, Thunks: o.Thunks})
 	if err != nil {
 		b.Err = fmt.Errorf("internal error: %v", err)
 		return b

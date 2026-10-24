@@ -56,6 +56,11 @@ type Options struct {
 	// the refused counts. Every constant becomes a thunk, so a mutant reaches it at run time.
 	// Without it nothing of this is emitted.
 	Mutate bool
+	// Thunks names constants ("Module.name") to emit as thunks, functions of no parameters
+	// called at each use, as a generic one is: a scratch file's watches, so that a panic in one
+	// happens at its call, where the caller's main recovers it, not at package init. A named
+	// function or unknown name is ignored.
+	Thunks map[string]bool
 }
 
 // Emit returns the generated files: one "<Module>_alder.go" per module ('.' → "__"),
@@ -73,7 +78,7 @@ func Emit(p *ir.Program, opts Options) (files map[string][]byte, err error) {
 			files, err = nil, fmt.Errorf("%v", r)
 		}
 	}()
-	g := newGen(p)
+	g := newGen(p, opts.Thunks)
 	g.indexFakes(p, opts.Tests)
 	if opts.Mutate {
 		if !opts.Tests {
@@ -231,8 +236,9 @@ func (g *gen) indexFakes(p *ir.Program, tests bool) {
 // newGen indexes the program's values. A constant (a value with no parameters and a non-function
 // type) is a Go package variable, except that it is a function called at each use (a thunk) when
 // it is generic (Go has no generic variables) or when its initializer refers back to itself
-// through other values (Go rejects initialization cycles).
-func newGen(p *ir.Program) *gen {
+// through other values (Go rejects initialization cycles), or when thunks names it
+// (Options.Thunks).
+func newGen(p *ir.Program, thunks map[string]bool) *gen {
 	g := &gen{values: map[string]*ir.Value{}, thunks: map[*ir.Value]bool{}, tparams: map[*ir.Value][]string{},
 		pages: map[string]*ir.Page{}, session: p.Session, boxed: boxedFields(p), payloads: map[string]*ir.RecordType{},
 		tables: map[string][]*ir.Table{}, caps: map[string][]*ir.Capability{}, brands: map[string][]*ir.Brand{}, enums: storedEnums(p),
@@ -292,7 +298,7 @@ func newGen(p *ir.Program) *gen {
 		if _, isFun := v.Type.(*types.Fun); isFun || len(v.Params) > 0 {
 			continue
 		}
-		if len(g.params(v)) > 0 || reaches(refs, v) {
+		if len(g.params(v)) > 0 || reaches(refs, v) || thunks[v.Module+"."+v.Name] {
 			g.thunks[v] = true
 		}
 	}

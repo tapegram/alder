@@ -3633,3 +3633,24 @@ view model session = <a href={Report {}}>report</a>
 	contains(t, files["Home_alder.go"], `html.A("data-alder-reload", "true")`)
 	vet(t, files)
 }
+
+// Options.Thunks makes the named constants functions of no parameters (a scratch file's
+// watches, so a panic in one is recovered at its call), called at each use; other constants
+// stay package variables.
+func TestGenThunksOption(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := "module M\n\nx : Int\nx = 1\n\ny : Int\ny = x + 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "app", "M.alder"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := string(emitOpts(t, dir, Options{Thunks: map[string]bool{"M.x": true}})["M_alder.go"])
+	if !strings.Contains(got, "func M__x() int64 {") {
+		t.Errorf("x is not a thunk:\n%s", got)
+	}
+	if !regexp.MustCompile(`var M__y int64 = M__x\(\) \+`).MatchString(got) {
+		t.Errorf("y is not a variable calling x:\n%s", got)
+	}
+}
