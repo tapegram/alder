@@ -566,11 +566,15 @@ func appModules(appDir string) ([]string, error) {
 }
 
 // withImports returns src with `import M` inserted for every module of appMods but App, name
-// and those src already imports: after src's `module` line (its first line that is neither
-// blank nor a `--` comment, when that starts with `module`), or at the top after a synthesized
-// `module <name>`; each is written with its canonical alias (`import Admin.Layout as AdminLayout`
-// when `Layout` is taken), isStd saying which names are standard-library modules. It also returns the number of lines inserted and the (1-based) lines of the
-// inserted imports.
+// and those src already imports: after src's `module` line (its first line that is neither blank
+// nor a `--` comment, when that starts with `module`), or at the top after a synthesized
+// `module <name>`. isStd says which names are standard-library modules. Each inserted import is
+// written with its canonical alias (`import Admin.Layout as AdminLayout` when `Layout` is
+// taken), counting the imports of src's header (only those, and whatever alias they carry) and
+// its declarations; a header import that is not canonical is the caller's to fix, and is
+// reported (E0204) on its own line. A module with no usable qualifier beside these (E0206) is
+// left out, so that error never lands on a synthesized line. It also returns the number of lines
+// inserted and the (1-based) lines of the inserted imports.
 func withImports(src, name string, appMods []string, isStd func(string) bool) (string, int, map[int]bool) {
 	lines := strings.Split(src, "\n")
 	have := map[string]bool{"App": true, name: true}
@@ -603,6 +607,9 @@ func withImports(src, name string, appMods []string, isStd func(string) bool) (s
 	}
 	quals, _ := names.CanonicalQualifiers(name, paths, taken)
 	for _, m := range missing {
+		if !isStd(m) && quals[m] == "" {
+			continue // unqualifiable: not imported implicitly
+		}
 		if q := quals[m]; q != "" && names.NeedsAlias(m, q) {
 			ins = append(ins, "import "+m+" as "+q)
 		} else {

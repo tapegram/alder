@@ -353,3 +353,40 @@ func TestScratch_HeaderAs(t *testing.T) {
 		t.Fatalf("%q", out)
 	}
 }
+
+// A module with no usable qualifier is left out of the implicit imports: E0206 is never
+// reported on a synthesized line.
+func TestScratch_UnqualifiableLeftOut(t *testing.T) {
+	out, n, implicit := withImports("module Scratch\nit : Int\nit = 1\n", "Scratch", []string{"A.X", "AX", "B.X"}, func(string) bool { return false })
+	if n != 1 || strings.Contains(out, "import A.X") || strings.Contains(out, "import AX") || !strings.Contains(out, "import B.X as BX\n") || len(implicit) != 1 {
+		t.Fatalf("%d %v %q", n, implicit, out)
+	}
+}
+
+// A header import with a missing or non-canonical alias is the user's: E0204 on the user's own
+// line, mapped past the implicit imports; nothing is reported on an inserted line.
+func TestCompile_HeaderImportAliasMapsToUserLine(t *testing.T) {
+	app := filepath.Join(t.TempDir(), "todos")
+	if err := os.CopyFS(app, os.DirFS("../../examples/todos")); err != nil {
+		t.Fatal(err)
+	}
+	for p, v := range map[string]string{"Posts/Index": "posts", "Admin/Posts/Index": "admin posts"} {
+		f := filepath.Join(app, "app", p+".alder")
+		os.MkdirAll(filepath.Dir(f), 0o755)
+		os.WriteFile(f, []byte("module "+strings.ReplaceAll(p, "/", ".")+"\n\ntitle : Text\ntitle = \""+v+"\"\n"), 0o644)
+	}
+	// missing alias on line 3, a wrong one on line 4
+	src := "module Probe\n\nimport Admin.Posts.Index\nimport Posts.Index as PI\n\nit = AdminPostsIndex.title ++ PostsIndex.title\n"
+	b := Compile(app, &Module{Name: "Probe", Source: src, Infer: true}, printMain, "", t.TempDir())
+	defer b.Close()
+	if b.Err != nil {
+		t.Fatal(b.Err)
+	}
+	got := map[int]string{}
+	for _, d := range b.Diags {
+		got[d.Span.Start.Line-b.LineOffset] = d.Code
+	}
+	if got[3] != "E0204" || got[4] != "E0204" || len(got) != 2 {
+		t.Fatalf("offset %d: %+v", b.LineOffset, b.Diags)
+	}
+}
