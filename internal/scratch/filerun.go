@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"alder/internal/diag"
 	"alder/internal/types"
@@ -195,7 +196,7 @@ func RunFile(ctx context.Context, appDir string, f File, o FileOptions) (r FileR
 	if out == "" {
 		purpose = FilePurpose(f.Name)
 	}
-	b := CompileCheckedWith(ctx, checked, strings.Replace(fileMain, "{{calls}}", calls.String(), 1), purpose, out, bo)
+	b := CompileCheckedWith(ctx, checked, strings.NewReplacer("{{calls}}", calls.String(), "{{max}}", strconv.Itoa(MaxValue+1)).Replace(fileMain), purpose, out, bo)
 	defer b.Close()
 	r.Warning = b.Warning
 	if b.Err != nil {
@@ -255,9 +256,7 @@ func RunFile(ctx context.Context, appDir string, f File, o FileOptions) (r FileR
 		case frame[0] == '\x02':
 			started = true
 			w.Value = frame[1:]
-			if len(w.Value) > MaxValue {
-				w.Value, w.Truncated = w.Value[:MaxValue], true
-			}
+			w.Value, w.Truncated = truncate(w.Value)
 		default: // '\x15'
 			started = true
 			w.Error = frame[1:]
@@ -321,9 +320,23 @@ func headerPos(f File) diag.Pos {
 	return diag.Pos{Line: 1, Col: 1}
 }
 
+// truncate cuts s to at most MaxValue bytes, at a rune boundary, and says whether it did.
+func truncate(s string) (string, bool) {
+	if len(s) <= MaxValue {
+		return s, false
+	}
+	i := MaxValue
+	for i > 0 && !utf8.RuneStart(s[i]) { // s[i] is the first byte left out
+		i--
+	}
+	return s[:i], true
+}
+
 // fileMain is the generated cmd/main.go of a scratch file's build: {{calls}} are a show call per
 // pure watch, in file order. show writes the start marker \x1e<k>\n before evaluating watch k,
-// then \x02 and the value, or \x15 and the message of a panic it recovers. Writes go straight
+// then \x02 and the value, or \x15 and the message of a panic it recovers. A payload's own \x1e
+// becomes U+FFFD, so it cannot end the frame, and it is cut to {{max}} (MaxValue+1) bytes, so a
+// huge value never crosses the pipe and RunFile still sees it is too long. Writes go straight
 // to the unbuffered os.Stdout, so a crash that ends the program (a stack overflow) leaves the
 // frames before it whole and its own started.
 const fileMain = `package main
@@ -331,20 +344,28 @@ const fileMain = `package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"alder/rt"
 	"app"
 )
 
+func write(status, s string) {
+	s = strings.ReplaceAll(s, "\x1e", "\uFFFD")
+	if len(s) > {{max}} {
+		s = s[:{{max}}]
+	}
+	os.Stdout.WriteString(status + s)
+}
+
 func show(k int, v func() string) {
 	os.Stdout.WriteString(fmt.Sprintf("\x1e%d\n", k))
 	defer func() {
 		if r := recover(); r != nil {
-			os.Stdout.WriteString("\x15" + fmt.Sprint(r))
+			write("\x15", fmt.Sprint(r))
 		}
 	}()
-	s := v()
-	os.Stdout.WriteString("\x02" + s)
+	write("\x02", v())
 }
 
 func main() {

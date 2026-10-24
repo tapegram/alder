@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"alder/internal/diag"
 )
@@ -31,8 +32,8 @@ func runFileIn(t *testing.T, dir, text string, o FileOptions) FileResult {
 }
 
 // mixed is one file, one build, for the tests below that read sharedRun: pure values (a
-// function, a polymorphic value), a watch that panics between two good ones, an effect and a
-// value past MaxValue.
+// function, a polymorphic value), a watch that panics between two good ones, an effect, a
+// value past MaxValue and one holding the frame delimiter \x1e.
 const mixed = `-- a scratch file
 > 1 + 1
 > Todo.countOpen
@@ -41,6 +42,7 @@ const mixed = `-- a scratch file
 > 3 * 2
 > Db.all (Db.from Todo)
 > List.range 1 20000
+> "x` + "\x1e" + `9"
 `
 
 var shared struct {
@@ -57,7 +59,7 @@ func sharedRun(t *testing.T) FileResult {
 		shared.res = runFile(t, mixed, FileOptions{OnTypes: func(r FileResult) { shared.onTypes = append(shared.onTypes, r) }})
 	})
 	r := shared.res
-	if r.Err != nil || !r.Ran || len(r.Watches) != 7 {
+	if r.Err != nil || !r.Ran || len(r.Watches) != 8 {
 		t.Fatalf("err %v, ran %v, note %q, diags %v, watches %+v", r.Err, r.Ran, r.Note, r.Diags, r.Watches)
 	}
 	return r
@@ -108,13 +110,36 @@ func TestRunFileTruncates(t *testing.T) {
 	}
 }
 
+// A value's own \x1e cannot end its frame: the program writes it as U+FFFD.
+func TestRunFileDelimiterInValue(t *testing.T) {
+	r := sharedRun(t)
+	want(t, r.Watches[7], 9, "Text", "\"x\uFFFD9\"", "")
+}
+
+// truncate cuts at MaxValue bytes, backing off to a rune boundary.
+func TestTruncate(t *testing.T) {
+	if s, cut := truncate("short"); s != "short" || cut {
+		t.Errorf("%q %v", s, cut)
+	}
+	ascii := strings.Repeat("a", MaxValue+10)
+	if s, cut := truncate(ascii); len(s) != MaxValue || !cut {
+		t.Errorf("len %d %v", len(s), cut)
+	}
+	// "é" is 2 bytes: one starting at MaxValue-1 straddles the cut.
+	multi := strings.Repeat("a", MaxValue-1) + "é" + "b"
+	s, cut := truncate(multi)
+	if len(s) != MaxValue-1 || !cut || !utf8.ValidString(s) {
+		t.Errorf("len %d, cut %v, valid %v", len(s), cut, utf8.ValidString(s))
+	}
+}
+
 func TestRunFileOnTypes(t *testing.T) {
 	sharedRun(t)
 	if len(shared.onTypes) != 1 {
 		t.Fatalf("OnTypes called %d times", len(shared.onTypes))
 	}
 	got := shared.onTypes[0]
-	if got.Ran || len(got.Watches) != 7 {
+	if got.Ran || len(got.Watches) != 8 {
 		t.Fatalf("%+v", got)
 	}
 	for i, w := range got.Watches {
