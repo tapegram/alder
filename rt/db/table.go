@@ -106,6 +106,10 @@ func (t *Table[T]) Desc() TableDesc {
 // SQLName is the SQL table name for an Alder table name: "." → "__".
 func SQLName(table string) string { return strings.ReplaceAll(table, ".", "__") }
 
+// RebuildSuffix ends the SQL name of the table a rebuild migration (internal/migrate) builds
+// next to "T" before renaming it to "T": "T__alder__new".
+const RebuildSuffix = "__alder__new"
+
 // quote makes a double-quoted SQL identifier.
 func quote(name string) string { return `"` + strings.ReplaceAll(name, `"`, `""`) + `"` }
 

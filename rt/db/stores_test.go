@@ -1071,6 +1071,172 @@ func TestStores_SiloBehindARenameKeepsRows(t *testing.T) {
 	}
 }
 
+// A silo behind a rebuild of its table (#20): the rebuild's closing RENAME of "T__alder__new" to
+// "T" is not a rename of the table, so the earlier pending migrations still run on "T".
+func TestStores_SiloBehindARebuildKeepsRows(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	projCols4 := append(append([]Column(nil), projCols1...), Column{Name: "note", Type: CInt, Nullable: true})
+	final := projDesc(projCols4)
+	tmp := final
+	tmp.Name += RebuildSuffix
+	create, err := createStmt(tmp, map[string]TableDesc{orgDesc.Name: orgDesc, tmp.Name: tmp})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms := append(siloMigrations(t, 2), Migration{Name: "0003_rebuild_project", From: hashOf(t, orgDesc, projDesc(projCols2)), To: hashOf(t, orgDesc, final), SQL: strings.Join([]string{
+		create + ";",
+		`INSERT INTO "Project__Project__alder__new" ("id", "name", "org", "note") SELECT "id", "name", "org", CAST("note" AS INTEGER) FROM "Project__Project";`,
+		`DROP TABLE "Project__Project";`,
+		`ALTER TABLE "Project__Project__alder__new" RENAME TO "Project__Project";`,
+		`CREATE INDEX IF NOT EXISTS "Project__Project__org" ON "Project__Project"("org");`,
+	}, "\n")})
+	newCfg := StoresConfig{Dir: dir, Silos: []Silo{{Key: "org", Tables: []string{"Project.Project"}}}, Tables: []TableDesc{orgDesc, final}, Migrations: ms}
+
+	shared := openSiloAt1(t, ctx, dir)
+	defer shared.Close()
+	if _, err := shared.Migrate(ctx, newCfg.Tables, newCfg.Migrations, false); err != nil {
+		t.Fatalf("shared migrate: %v", err)
+	}
+	var out strings.Builder // the dry run (VerifySilos) agrees
+	if bad, err := VerifySilos(ctx, newCfg, 5, &out); err != nil || bad != 0 {
+		t.Fatalf("verify: %d %v\n%s", bad, err, out.String())
+	}
+	s2, err := OpenStores(shared, filepath.Join(dir, "app.db"), newCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	d, err := s2.silo(ctx, "org", "A")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if d.state != SiloOK {
+		t.Fatalf("open: %s: %s", d.state, d.detail)
+	}
+	var name string
+	var note sql.NullInt64
+	if err := d.store.db.QueryRow(`SELECT "name", "note" FROM "Project__Project" WHERE "id" = 'p1'`).Scan(&name, &note); err != nil || name != "Launch" || note.Valid {
+		t.Fatalf("the project after 0002 and the rebuild: %q %v %v", name, note, err)
+	}
+	if _, m, _, _ := schemaRow(ctx, d.store.db); m != "0003_rebuild_project" {
+		t.Fatalf("row %q", m)
+	}
+}
+
+// A silo behind the DROP of one of its tables (#20): the dropped table is the silo's in the
+// migrations up to and including its DROP, so its earlier statements and the DROP run there,
+// whether the earlier one alters it in place or rebuilds it.
+func TestStores_SiloBehindADropOfItsTable(t *testing.T) {
+	t.Run("alter", func(t *testing.T) { siloBehindADrop(t, false) })
+	t.Run("rebuild", func(t *testing.T) { siloBehindADrop(t, true) })
+}
+
+func siloBehindADrop(t *testing.T, rebuild bool) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	proj := projDesc(projCols1)
+	taskCols1 := []Column{{Name: "id", Type: CText}, {Name: "title", Type: CText}, {Name: "org", Type: CText, Ref: "Org.Org", OnDelete: Cascade}}
+	taskCols2 := append(append([]Column(nil), taskCols1...), Column{Name: "due", Type: CText, Nullable: true})
+	task1 := TableDesc{Name: "Task.Task", ID: "id", Columns: taskCols1}
+	task2 := TableDesc{Name: "Task.Task", ID: "id", Columns: taskCols2}
+	by := map[string]TableDesc{orgDesc.Name: orgDesc, proj.Name: proj, task1.Name: task1}
+	var creates []string
+	for _, d := range []TableDesc{orgDesc, proj, task1} {
+		c, err := createStmt(d, by)
+		if err != nil {
+			t.Fatal(err)
+		}
+		creates = append(creates, c+";")
+	}
+	due := `ALTER TABLE "Task__Task" ADD COLUMN "due" TEXT;`
+	if rebuild {
+		tmp := task2
+		tmp.Name += RebuildSuffix
+		create, err := createStmt(tmp, map[string]TableDesc{orgDesc.Name: orgDesc, tmp.Name: tmp})
+		if err != nil {
+			t.Fatal(err)
+		}
+		due = strings.Join([]string{
+			create + ";",
+			`INSERT INTO "Task__Task__alder__new" ("id", "title", "org", "due") SELECT "id", "title", "org", NULL FROM "Task__Task";`,
+			`DROP TABLE "Task__Task";`,
+			`ALTER TABLE "Task__Task__alder__new" RENAME TO "Task__Task";`,
+			`CREATE INDEX IF NOT EXISTS "Task__Task__org" ON "Task__Task"("org");`,
+		}, "\n")
+	}
+	_, empty := hashSchema(nil)
+	ms := []Migration{
+		{Name: "0001_initial", From: short(empty), To: hashOf(t, orgDesc, proj, task1), SQL: strings.Join(append(creates,
+			`CREATE INDEX IF NOT EXISTS "Project__Project__org" ON "Project__Project"("org");`,
+			`CREATE INDEX IF NOT EXISTS "Task__Task__org" ON "Task__Task"("org");`), "\n")},
+		{Name: "0002_due", From: hashOf(t, orgDesc, proj, task1), To: hashOf(t, orgDesc, proj, task2), SQL: due},
+		{Name: "0003_drop_task", From: hashOf(t, orgDesc, proj, task2), To: hashOf(t, orgDesc, proj), DropsData: []string{"table Task"}, SQL: strings.Join([]string{
+			`DROP INDEX IF EXISTS "Task__Task__org";`,
+			`DROP TABLE "Task__Task";`,
+		}, "\n")},
+	}
+	oldCfg := StoresConfig{Dir: dir, Silos: []Silo{{Key: "org", Tables: []string{"Project.Project", "Task.Task"}}}, Tables: []TableDesc{orgDesc, proj, task1}, Migrations: ms[:1]}
+	newCfg := StoresConfig{Dir: dir, Silos: []Silo{{Key: "org", Tables: []string{"Project.Project"}}}, Tables: []TableDesc{orgDesc, proj}, Migrations: ms, AllowDataLoss: true}
+
+	path := filepath.Join(dir, "app.db")
+	shared, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer shared.Close()
+	if _, err := shared.Migrate(ctx, oldCfg.Tables, oldCfg.Migrations, false); err != nil {
+		t.Fatal(err)
+	}
+	s1, err := OpenStores(shared, path, oldCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s1.silo(ctx, "org", "A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO "Project__Project" ("id", "name", "org") VALUES ('p1', 'Launch', 'A')`,
+		`INSERT INTO "Task__Task" ("id", "title", "org") VALUES ('t1', 'Plan', 'A')`,
+	} {
+		if _, err := d.store.db.ExecContext(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s1.Close()
+
+	if _, err := shared.Migrate(ctx, newCfg.Tables, newCfg.Migrations, true); err != nil {
+		t.Fatalf("shared migrate: %v", err)
+	}
+	var out strings.Builder // the dry run (VerifySilos) agrees
+	if bad, err := VerifySilos(ctx, newCfg, 5, &out); err != nil || bad != 0 {
+		t.Fatalf("verify: %d %v\n%s", bad, err, out.String())
+	}
+	s2, err := OpenStores(shared, path, newCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	d, err = s2.silo(ctx, "org", "A")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if d.state != SiloOK {
+		t.Fatalf("open: %s: %s", d.state, d.detail)
+	}
+	if ok, _ := tableExists(ctx, d.store.db, "Task__Task"); ok {
+		t.Fatal("the dropped table is still in the silo")
+	}
+	var name string
+	if err := d.store.db.QueryRow(`SELECT "name" FROM "Project__Project" WHERE "id" = 'p1'`).Scan(&name); err != nil || name != "Launch" {
+		t.Fatalf("the project: %q %v", name, err)
+	}
+	if _, m, _, _ := schemaRow(ctx, d.store.db); m != "0003_drop_task" {
+		t.Fatalf("row %q", m)
+	}
+}
+
 // A later migration creating a shared table under a silo table's old SQL name does not run in
 // the silo: the old name is the silo's only up to its RENAME.
 func TestStores_SiloOldNameReusedBySharedTable(t *testing.T) {

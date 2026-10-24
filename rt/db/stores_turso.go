@@ -310,7 +310,11 @@ func (s *Stores) dryRun(ctx context.Context, st *SQLite, ss *siloSchema, ms []Mi
 		return err
 	}
 	defer tx.Rollback()
-	names := ss.pendingNames(ms)
+	have, err := appTables(ctx, tx)
+	if err != nil {
+		return err
+	}
+	names := ss.pendingNames(ms, have)
 	for i, m := range ms {
 		for _, q := range ss.statements(m, names[i]) {
 			if _, err := tx.ExecContext(ctx, q); err != nil {

@@ -781,7 +781,11 @@ func (s *Stores) check(ctx context.Context, st *SQLite, ss *siloSchema, allowDat
 			}
 		}
 	default:
-		names := ss.pendingNames(p.pending)
+		have, err := appTables(ctx, tx)
+		if err != nil {
+			return "", "", err
+		}
+		names := ss.pendingNames(p.pending, have)
 		for i, m := range p.pending {
 			for _, stmt := range ss.statements(m, names[i]) {
 				if _, err := tx.ExecContext(ctx, stmt); err != nil {
@@ -822,22 +826,29 @@ var (
 	stmtTarget  = regexp.MustCompile(`^(?:CREATE TABLE(?: IF NOT EXISTS)?|ALTER TABLE|DROP TABLE(?: IF EXISTS)?|INSERT INTO|UPDATE|DELETE FROM)\s+"((?:[^"]|"")*)"`)
 	indexOn     = regexp.MustCompile(`^CREATE (?:UNIQUE )?INDEX .* ON "((?:[^"]|"")*)"`)
 	dropIndex   = regexp.MustCompile(`^DROP INDEX(?: IF EXISTS)? "((?:[^"]|"")*)__[^"_]+"`)
+	dropTable   = regexp.MustCompile(`^DROP TABLE(?: IF EXISTS)? "((?:[^"]|"")*)"`)
 	renameTable = regexp.MustCompile(`^ALTER TABLE "((?:[^"]|"")*)" RENAME TO "((?:[^"]|"")*)"`)
 	references  = regexp.MustCompile(` REFERENCES "((?:[^"]|"")*)"\("(?:[^"]|"")*"\)(?: ON DELETE (?:CASCADE|SET NULL))?`)
 )
 
-// pendingNames are the silo's SQL names in each of the pending migrations ms, walking back from
-// this build's: a table renamed into the silo (a move between modules, #20) is the silo's under
-// its old name in the migrations up to and including its RENAME (there, its RENAME and the DROP
-// of its old indexes), and not in a later one, which may reuse the old name for another table.
-func (ss *siloSchema) pendingNames(ms []Migration) []map[string]bool {
+// pendingNames are the silo's SQL names in each of the pending migrations ms.
+//
+// Walking back from this build's: a table renamed into the silo (a move between modules, #20) is
+// the silo's under its old name in the migrations up to and including its RENAME (there, its
+// RENAME and the DROP of its old indexes), and not in a later one, which may reuse the old name
+// for another table. A rebuild's closing RENAME of "T__alder__new" to "T" is not a rename of T.
+//
+// Walking forward from have, the tables the silo's database holds before ms: each is the
+// silo's, under the names its RENAMEs give it, up to and including the migration that DROPs it,
+// though this build no longer has it. A shared table is in neither walk.
+func (ss *siloSchema) pendingNames(ms []Migration, have []string) []map[string]bool {
 	out := make([]map[string]bool, len(ms))
 	cur := maps.Clone(ss.sqlName)
 	for i := len(ms) - 1; i >= 0; i-- {
 		names := maps.Clone(cur)
 		var renames [][2]string // old, new
 		for _, st := range ms[i].statements() {
-			if x := renameTable.FindStringSubmatch(st); x != nil && cur[unquote(x[2])] {
+			if x := renameTable.FindStringSubmatch(st); x != nil && cur[unquote(x[2])] && unquote(x[1]) != unquote(x[2])+RebuildSuffix {
 				names[unquote(x[1])] = true
 				renames = append(renames, [2]string{unquote(x[1]), unquote(x[2])})
 			}
@@ -848,6 +859,22 @@ func (ss *siloSchema) pendingNames(ms []Migration) []map[string]bool {
 		}
 		for _, r := range renames {
 			cur[r[0]] = true
+		}
+	}
+	held := map[string]bool{}
+	for _, n := range have {
+		held[n] = true
+	}
+	for i, m := range ms {
+		maps.Copy(out[i], held)
+		for _, st := range m.statements() {
+			if x := renameTable.FindStringSubmatch(st); x != nil && (held[unquote(x[1])] || unquote(x[1]) == unquote(x[2])+RebuildSuffix && out[i][unquote(x[2])]) {
+				delete(held, unquote(x[1]))
+				held[unquote(x[2])] = true
+				out[i][unquote(x[2])] = true
+			} else if x := dropTable.FindStringSubmatch(st); x != nil {
+				delete(held, unquote(x[1]))
+			}
 		}
 	}
 	return out
@@ -870,7 +897,7 @@ func (ss *siloSchema) statements(m Migration, names map[string]bool) []string {
 		} else if x := dropIndex.FindStringSubmatch(st); x != nil {
 			target = x[1]
 		}
-		if !names[strings.TrimSuffix(unquote(target), "__alder__new")] {
+		if !names[strings.TrimSuffix(unquote(target), RebuildSuffix)] {
 			continue
 		}
 		st = references.ReplaceAllStringFunc(st, func(ref string) string {

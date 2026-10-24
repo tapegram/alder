@@ -150,7 +150,7 @@ func rebuild(step Step, old, new Schema) ([]string, error) {
 		return nil, err
 	}
 	tmp := *n
-	tmp.Name = n.Name + "__alder__new" // SQL "T__alder__new": no @ref index "T__<col>" can be named so (a name has no "__")
+	tmp.Name = n.Name + db.RebuildSuffix // SQL "T__alder__new": no @ref index "T__<col>" can be named so (a name has no "__")
 	create, err := db.CreateStmt(tmp.Desc(), new.byName())
 	if err != nil {
 		return nil, err
