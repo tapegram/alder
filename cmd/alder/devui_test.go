@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"alder/internal/csscheck"
 )
 
 // The dev server keeps check diagnostics structured: file, line, col, code, message and the
@@ -112,5 +114,19 @@ func TestErrorsHTML_Escapes(t *testing.T) {
 	// the text fallback is escaped too
 	if h := errorsHTML(errState{kind: "build", text: "<script>alert(1)</script>"}); strings.Contains(h, "<script>alert") {
 		t.Errorf("text fallback unescaped: %s", h)
+	}
+}
+
+// The error strip and sheet name only the design system's current tokens, each with a literal
+// fallback (the 502 page and an app without al.css carry no tokens), in Geist Mono with alder-ui.
+func TestErrorsCSSTokens(t *testing.T) {
+	if got := csscheck.VarsWithoutLiteralFallback(errorsCSS); len(got) > 0 {
+		t.Errorf("var() without a literal fallback: %q", got)
+	}
+	if got := csscheck.RemovedALTokens(errorsCSS); len(got) > 0 {
+		t.Errorf("removed --al-* tokens: %q", got)
+	}
+	if n := strings.Count(errorsCSS, "var(--font-mono,ui-monospace,SFMono-Regular,Menlo,monospace)"); n != 2 {
+		t.Errorf("var(--font-mono,…) %d times, want 2", n)
 	}
 }

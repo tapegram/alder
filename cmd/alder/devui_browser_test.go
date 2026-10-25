@@ -64,6 +64,16 @@ func TestBrowser_ErrorsInPanel(t *testing.T) {
 	runBrowserScript(t, script, startRun(t))
 }
 
+// The injected UI (error strip and sheet, minimised panel, pending bar) under alder-ui v0.4's
+// global base layer, light and dark: borders, fonts and colours are its own and the design
+// system's tokens, not Preflight's resets (spec §9). ALDER_SHOTS_DIR keeps screenshots.
+func TestBrowser_InjectedUIUnderBaseLayer(t *testing.T) {
+	t.Parallel()
+	playwrightEnv(t)
+	script := browserScript(t, "injected.cjs")
+	runBrowserScript(t, script, startRun(t))
+}
+
 // The dev panel's top edge resizes it (120 px up to 80% of the viewport), a button or
 // Ctrl+Shift+D minimises it to a small tab that reserves no space, and its state is remembered
 // (localStorage) across a morph and a reload; with storage unavailable it still works.

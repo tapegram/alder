@@ -5,6 +5,7 @@ import (
 	"os"
 	"regexp"
 
+	"alder/internal/csscheck"
 	"alder/rt/eff"
 	"net/http/httptest"
 	"strings"
@@ -312,7 +313,8 @@ func prodPages(t *testing.T) string {
 
 // Production output is byte for byte what it was before the dev panel's Errors tab, strip,
 // resizing and minimising: testdata/production_page.golden was generated from the commit before
-// them (168ad442), with the build id normalised to BUILD.
+// them (168ad442), with the build id normalised to BUILD; the one change since is the pending
+// bar's token, now alder-ui v0.4's --primary (#21).
 func TestProductionPageHasNoDevUI(t *testing.T) {
 	want, err := os.ReadFile("testdata/production_page.golden")
 	if err != nil {
@@ -320,5 +322,27 @@ func TestProductionPageHasNoDevUI(t *testing.T) {
 	}
 	if got := prodPages(t); got != string(want) {
 		t.Fatalf("production output changed:\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
+// The CSS the runtime injects (the dev panel's own rules and the pending bar) names only the
+// design system's current tokens, each with a literal fallback, so it renders the same with
+// alder-ui v0.4 loaded and on a page without it (spec §9).
+func TestInjectedCSSTokens(t *testing.T) {
+	for name, css := range map[string]string{"panelUICSS": panelUICSS, "pendingStyle": pendingStyle} {
+		if got := csscheck.VarsWithoutLiteralFallback(css); len(got) > 0 {
+			t.Errorf("%s: var() without a literal fallback: %q", name, got)
+		}
+		if got := csscheck.RemovedALTokens(css); len(got) > 0 {
+			t.Errorf("%s: removed --al-* tokens: %q", name, got)
+		}
+	}
+	if !strings.Contains(pendingStyle, "var(--primary,currentColor)") {
+		t.Errorf("pendingStyle lacks var(--primary,currentColor): %s", pendingStyle)
+	}
+	for _, want := range []string{"var(--radius-sm,4px)", "var(--radius-md,6px)"} {
+		if !strings.Contains(panelUICSS, want) {
+			t.Errorf("panelUICSS lacks %s", want)
+		}
 	}
 }

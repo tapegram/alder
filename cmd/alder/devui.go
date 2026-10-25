@@ -132,9 +132,9 @@ func errorsHTML(e errState) string {
 // al.css is not loaded: the 502 page, an app without it); dark and light follow the tokens.
 // The list is hidden in the page itself: the panel shows it in its Errors tab; without a panel
 // the strip's button shows it as a sheet (data-show); on the 502 page (data-page) it is the page.
-const errorsCSS = `._alder-strip{position:fixed;inset:0 0 auto 0;z-index:2147483000;box-sizing:border-box;display:flex;gap:.75rem;align-items:center;justify-content:center;padding:.3rem .75rem;background:var(--destructive,#b91c1c);color:var(--destructive-foreground,#fff);font:12px/1.4 var(--al-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace)}` +
+const errorsCSS = `._alder-strip{position:fixed;inset:0 0 auto 0;z-index:2147483000;box-sizing:border-box;display:flex;gap:.75rem;align-items:center;justify-content:center;padding:.3rem .75rem;background:var(--destructive,#b91c1c);color:var(--color-white,#fff);font:12px/1.4 var(--font-mono,ui-monospace,SFMono-Regular,Menlo,monospace)}` +
 	`._alder-strip button{margin:0;padding:0 .5rem;border:1px solid currentColor;border-radius:4px;background:transparent;color:inherit;font:inherit;cursor:pointer}` +
-	`._alder-errs{display:block;font:12px/1.5 var(--al-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);color:var(--foreground,inherit)}` +
+	`._alder-errs{display:block;font:12px/1.5 var(--font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);color:var(--foreground,currentColor)}` +
 	`._alder-errs ._alder-diag{margin:0 0 .75rem;padding:.5rem .75rem;border-left:3px solid var(--destructive,#b91c1c);border-radius:0 4px 4px 0;background:var(--muted,rgba(127,127,127,.12))}` +
 	`._alder-errs ._alder-loc{display:flex;gap:.75rem;align-items:baseline}` +
 	`._alder-errs ._alder-at{font:inherit;font-weight:600}` +

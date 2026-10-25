@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"alder/internal/csscheck"
 )
 
 // TestExample_SkeletonStandsAlone: the example's skeleton (App, Layout, User and the login
@@ -417,4 +419,34 @@ func TestExample_Workspace(t *testing.T) {
 		}
 	}
 	mutationAtLeast(t, "workspace", workspaceMutationScore, workspaceMutants)
+}
+
+// The examples' stylesheets use alder-ui v0.4's tokens: no removed --al-* token (the
+// --al-width-* layout widths are kept).
+func TestExampleCSSTokens(t *testing.T) {
+	files, err := filepath.Glob("../../examples/*/static/*.css")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no example stylesheets (%v)", err)
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := csscheck.RemovedALTokens(string(b)); len(got) > 0 {
+			t.Errorf("%s: removed --al-* tokens: %q", f, got)
+		}
+	}
+	for f, want := range map[string]string{
+		"../../examples/blog/static/app.css":  "var(--font-mono)",
+		"../../examples/todos/static/app.css": "var(--destructive)",
+	} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(b), want) {
+			t.Errorf("%s lacks %s", f, want)
+		}
+	}
 }
