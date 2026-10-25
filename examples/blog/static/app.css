@@ -29,6 +29,7 @@ al-alert > ul.errors {
 ul.posts,
 .comments ul {
   list-style: none;
+  margin-left: 0;
   padding: 0;
 }
 
