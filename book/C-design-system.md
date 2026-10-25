@@ -35,7 +35,7 @@ box", explains why):
   styles that box by its tag name and attributes. Every element works
   with JavaScript off.
 
-The version Alder ships is **v0.4.1**: the compiler embeds a copy of
+The version Alder ships is **v0.4.2**: the compiler embeds a copy of
 the library's stylesheet, scripts (`al.js`) and manifest at that tag (`rt/al/VERSION`;
 "Where it lives", below).
 
@@ -221,6 +221,7 @@ A button, in five variants and three sizes.
 | `size` | `"sm" \| "md" \| "lg" \| "xs" \| "icon" \| "icon-sm" \| "icon-lg"` | `"md"` | the height and padding; the `icon` sizes make a square button for a lone icon |
 | `disabled` | `boolean` | `false` | dims the button; the button inside is disabled too |
 | `type` | `"button" \| "submit"` | `"button"` | the kind of the `<button>` Alder renders inside |
+| `full` | `boolean` | `false` | makes the button as wide as its container; without it a button keeps its natural width, also in a grid or a column stack |
 
 Slots: default.
 
@@ -619,7 +620,7 @@ Lays its children out in a column or a wrapping row, with a gap.
 
 | Attribute | Type | Default | Meaning |
 |---|---|---|---|
-| `gap` | `"sm" \| "md" \| "lg"` | `"md"` | the space between children |
+| `gap` | `"sm" \| "md" \| "lg" \| "xl"` | `"md"` | the space between children; `xl` is 2.5rem |
 | `direction` | `"row" \| "column"` | `"column"` | top to bottom, or left to right (wrapping) |
 
 Slots: default.
@@ -1084,7 +1085,7 @@ open panel shows the Request section. Alder emits the panel only under
 
 alder-ui v0.4 changed the look to shadcn/ui's and removed the tokens of v0.3. An app written for v0.3.x needs these four steps:
 
-1. Re-vendor / rebuild with the Alder release that carries alder-ui `v0.4.1`.
+1. Re-vendor / rebuild with the Alder release that carries alder-ui `v0.4.2`.
 2. Replace every old token in your own CSS. The table under "Removed tokens", below, says what each became: radii and fonts and shadows lose the `--al-` prefix, the plain colour tokens (`--primary` and the rest) are unchanged, the scales for space, type, weight, control height and ring become literal rem values or Tailwind-scale equivalents, and the soft and border colours of alerts have no replacement (alerts no longer use them). Only `--al-width-narrow|normal|wide` survive. `grep -rn -e '--al-' static/ src/` finds them.
 3. Dark mode: add the theme script to the `<head>` of your Layout, before the stylesheet link (the exact line is under "Light and dark"). The CSS-only OS-dark block and `[data-theme="dark"]` are gone; `.dark` on `<html>` is the only switch.
 4. Rebuild, look at each page in light and dark, and delete any app CSS that fought the old look.
@@ -1141,7 +1142,7 @@ every colour pairing passes AA.
 Alder *vendors* it: the compiler's source keeps a copy of one tagged
 release in `rt/al/` (`al.css`, `al.js`, `custom-elements.json`, `VERSION`, a
 `fonts/` directory with the two Geist files and their licence, and the
-licences of the library and of the lucide icons it draws), at `v0.4.1`,
+licences of the library and of the lucide icons it draws), at `v0.4.2`,
 and embeds it, so a build never fetches anything. `scripts/vendor-al.sh
 <tag>` refreshes the copy from the library's repository; a test checks
 that `VERSION`, the manifest's `version` and the stylesheet's banner
