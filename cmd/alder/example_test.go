@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"alder/internal/csscheck"
+	"alder/internal/scaffold"
 )
 
 // TestExample_SkeletonStandsAlone: the example's skeleton (App, Layout, User and the login
@@ -447,6 +448,21 @@ func TestExampleCSSTokens(t *testing.T) {
 		}
 		if !strings.Contains(string(b), want) {
 			t.Errorf("%s lacks %s", f, want)
+		}
+	}
+}
+
+// TestExample_LayoutThemeScript: each example's Layout carries the theme script, so the .dark
+// class is set before the stylesheet paints.
+func TestExample_LayoutThemeScript(t *testing.T) {
+	t.Parallel()
+	for _, ex := range []string{"blog", "todos", "workspace"} {
+		b, err := os.ReadFile(filepath.Join("..", "..", "examples", ex, "app", "Layout.alder"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(b), scaffold.ThemeScript) {
+			t.Errorf("examples/%s/app/Layout.alder lacks the theme script", ex)
 		}
 	}
 }

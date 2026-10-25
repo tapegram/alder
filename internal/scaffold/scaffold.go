@@ -17,6 +17,11 @@ import (
 	"strings"
 )
 
+// ThemeScript is the line every Layout carries in its <head>, before the design system's
+// stylesheet: it sets the .dark class on <html> from the saved choice or the system's preference,
+// so the first paint is already the right theme. It is the one Go copy of the line.
+const ThemeScript = `<script>try{document.documentElement.classList.toggle("dark",localStorage.theme==="dark"||(!("theme" in localStorage)&&matchMedia("(prefers-color-scheme: dark)").matches))}catch(e){}</script>`
+
 //go:embed all:files
 var files embed.FS
 

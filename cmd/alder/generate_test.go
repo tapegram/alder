@@ -1215,3 +1215,31 @@ func TestNewForm_OneLineView(t *testing.T) {
 		t.Errorf("alder check: exit %d\n%s%s", code, out, errs)
 	}
 }
+
+// TestGenerateNoNestedPage: the Layout wraps every view in the one <al-page> (D1), so no
+// generated page adds its own.
+func TestGenerateNoNestedPage(t *testing.T) {
+	t.Parallel()
+	n := 0
+	err := filepath.WalkDir("../../testdata/generate/want", func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".alder") || d.Name() == "Layout.alder" ||
+			!strings.Contains(filepath.ToSlash(p), "/files/app/") {
+			return err
+		}
+		n++
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(b), "<al-page") {
+			t.Errorf("%s nests an <al-page>", p)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n == 0 {
+		t.Fatal("no generated pages found")
+	}
+}

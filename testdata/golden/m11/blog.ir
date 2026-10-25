@@ -3,6 +3,8 @@
   (elem html
     (elem head
       (elem meta (attr charset text "utf-8"))
+      (elem script
+        (hrawtext "try{document.documentElement.classList.toggle(\"dark\",localStorage.theme===\"dark\"||(!(\"theme\" in localStorage)&&matchMedia(\"(prefers-color-scheme: dark)\").matches))}catch(e){}"))
       (elem title (hexpr text (field title (var props))))
       (elem link
         (attr rel text "stylesheet")

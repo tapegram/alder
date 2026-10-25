@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"alder/internal/check"
+	"alder/internal/scaffold"
 	"alder/internal/types"
 )
 
@@ -566,7 +567,7 @@ func (g *adminGen) layout() {
 		b.WriteString("    {props.children}\n")
 		b.WriteString("  </Layout.Page>\n")
 	} else {
-		b.WriteString("  <html>\n    <head>\n      <meta charset=\"utf-8\" />\n      <title>{props.title ++ \" · Admin\"}</title>\n")
+		b.WriteString("  <html>\n    <head>\n      <meta charset=\"utf-8\" />\n      " + scaffold.ThemeScript + "\n      <title>{props.title ++ \" · Admin\"}</title>\n")
 		b.WriteString("      <link rel=\"stylesheet\" href={Url.external \"/static/al/al.css\"} />\n    </head>\n    <body>\n      <al-page>\n")
 		b.WriteString(indent(navBlock, "        ") + "\n")
 		b.WriteString("        <main>{props.children}</main>\n      </al-page>\n    </body>\n  </html>\n")
