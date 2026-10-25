@@ -76,9 +76,16 @@ const VH = 600;
     check('minimised: the error badge', /2/.test(badge), badge);
     await page.evaluate(() => document.querySelector('al-devpanel').removeAttribute('data-errors'));
     const lightBg = s.bg;
+    // alder-ui v0.4 follows the .dark class on <html>, which the layout's theme script sets from
+    // localStorage.theme or the OS scheme: emulate the OS scheme and run that script's logic
+    const theme = () => page.evaluate(() => document.documentElement.classList.toggle('dark', localStorage.theme === 'dark' ||
+      (!('theme' in localStorage) && matchMedia('(prefers-color-scheme: dark)').matches)));
     await page.emulateMedia({ colorScheme: 'dark' });
+    const darkOn = await theme();
     const darkBg = (await info()).bg;
     await page.emulateMedia({ colorScheme: 'light' });
+    const darkOff = !(await theme());
+    check('the theme script\'s logic sets .dark from the OS scheme', darkOn && darkOff, { darkOn, darkOff });
     check('the tab follows dark and light mode', lightBg !== darkBg, { lightBg, darkBg });
 
     // a reload keeps it minimised; clicking the tab restores height and tab

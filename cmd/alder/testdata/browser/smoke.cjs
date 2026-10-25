@@ -245,11 +245,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await sleep(300);
     // 205 more users (a long reference table: more than 200 rows), one post
     for (let i = 0; i < 205; i++) {
-      await p2.request.post(BASE + '/_m/Admin.User.New/Create', { form: { email: `u${i}@example.com`, name: `user ${i}`, role: 'Reader' } });
+      await p2.request.post(BASE + '/_m/Admin.Users.New/Create', { form: { email: `u${i}@example.com`, name: `user ${i}`, role: 'Reader' } });
     }
     const newPage = await (await p2.request.get(BASE + '/admin/post/new')).text();
     const me = /<option value="([^"]+)">admin@example\.com/.exec(newPage)[1];
-    await p2.request.post(BASE + '/_m/Admin.Post.New/Create', { form: { slug: 'hello', title: 'Hello', body: 'b', published: 'True', author: me } });
+    await p2.request.post(BASE + '/_m/Admin.Posts.New/Create', { form: { slug: 'hello', title: 'Hello', body: 'b', published: 'True', author: me } });
     await p2.goto(BASE + '/admin/post');
     const showHref = await p2.evaluate(() => [...document.querySelectorAll('a')].map((a) => a.getAttribute('href')).find((h) => /^\/admin\/post\/[^/]+$/.test(h) && !/new|bulk/.test(h)));
     await p2.goto(BASE + showHref);
@@ -366,11 +366,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     check('search: it narrows the select (a Redirect, so the narrowing survives)', found.options.length === 1 && found.options[0] === 'u99@example.com' && /findAuthor/.test(found.url), found);
     // a crafted post of that user, with no search text: not among the 50 offered, so refused
     const u99 = await p2.evaluate(() => document.querySelector('select[name=author] option').value);
-    const crafted = await p2.request.post(BASE + '/_m/Admin.Post.New/Create', { form: { slug: 'x', title: 'x', body: 'x', published: 'True', author: u99 } });
+    const crafted = await p2.request.post(BASE + '/_m/Admin.Posts.New/Create', { form: { slug: 'x', title: 'x', body: 'x', published: 'True', author: u99 } });
     check('search: an id outside the rendered options is refused', /must be one of the options/.test(await crafted.text()), crafted.status());
 
     // the Edit page of a post whose author sorts after the 50 offered: offered first, kept on save
-    await p2.request.post(BASE + '/_m/Admin.User.New/Create', { form: { email: 'zz-last@example.com', name: 'last', role: 'Reader' } });
+    await p2.request.post(BASE + '/_m/Admin.Users.New/Create', { form: { email: 'zz-last@example.com', name: 'last', role: 'Reader' } });
     await p2.goto(BASE + '/admin/user?q=zz-last');
     const zz = await p2.evaluate(() => { const c = document.querySelector('input[name=ids]'); return c && c.value; });
     // the New page offers that user only once the search finds it: post to the form's own action
@@ -428,7 +428,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       await p2.goto(BASE + '/admin');
       await p2.evaluate(() => { window.__m = 1; });
       docs2 = [];
-      const broke = sql('ALTER TABLE Comment__Comment RENAME TO Comment__Hidden');
+      const broke = sql('ALTER TABLE Table__Comment__Comment RENAME TO Table__Comment__Hidden');
       await follow('/admin/comment');
       await at2('/admin/comment');
       await sleep(700);
@@ -439,7 +439,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       check('500 with the panel: morphed in, the panel shows an error answer with its text', broke && e500 && e500.marker && /error/.test(e500.text) && /no such table|Comment/.test(e500.text) && docs2.length === 0, { broke, e500: e500 && e500.text.slice(0, 160), docs2 });
       await p2.click('al-devpanel > nav > button:has-text("Answer")');
       check('500 with the panel: its tabs still work', await p2.evaluate(() => document.querySelector('al-devpanel').hasAttribute('open')));
-      sql('ALTER TABLE Comment__Hidden RENAME TO Comment__Comment');
+      sql('ALTER TABLE Table__Comment__Hidden RENAME TO Table__Comment__Comment');
       await p2.evaluate(() => document.querySelector('al-devpanel').removeAttribute('open'));
       await follow('/admin/comment');
       await sleep(600);
