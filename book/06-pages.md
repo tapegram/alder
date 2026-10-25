@@ -253,9 +253,22 @@ Page props =
   </html>
 ```
 
-The class does nothing until the stylesheet has rules for it. Add them to
-`static/app.css` (the to-do app's, served at `/static/app.css`), after the
-rules they override:
+One thing to check first. A Layout from `alder new` carries a small theme
+script in its `<head>`: on every full page load it reads the visitor's
+choice from the browser (`localStorage`) or their operating system's
+preference, and sets or removes the `dark` class on `<html>` itself. That
+would overwrite the class the server just rendered from the session, and your
+button would seem to do nothing whenever the two disagree. So a Layout whose
+theme comes from the session drops the theme script: the session owns the
+class. (The other way to do it, a button in the browser that remembers the
+choice in `localStorage`, keeps the script; it is described under "Light and
+dark" in Appendix C.)
+
+The `dark` class does something without any rules of yours, because
+alder-ui follows `html.dark` itself: its own colours switch to the dark
+values (Appendix C, "Light and dark"). Rules in `static/app.css` (the to-do
+app's, served at `/static/app.css`) are only for your own colours, the ones
+alder-ui does not draw. Add them after the rules they override:
 
 ```css
 html.dark body {

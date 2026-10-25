@@ -85,12 +85,13 @@ The stylesheet starts with the tokens. The colour tokens come from shadcn/ui, an
 |---|---|
 | `--background`, `--foreground` | the page |
 | `--card`, `--card-foreground` | `al-card`, and the body of `al-alert` |
-| `--popover`, `--popover-foreground` | dialogs, popovers, menus, toasts |
+| `--popover`, `--popover-foreground` | popovers, menus, toasts, the open list of `al-select` (dialogs draw `--background` and `--foreground`) |
 | `--primary`, `--primary-foreground` | primary buttons, default badges |
 | `--secondary`, `--secondary-foreground` | secondary buttons and badges |
 | `--muted`, `--muted-foreground` | striped rows; help text, placeholders, table headers |
 | `--accent`, `--accent-foreground` | the hover of outline and ghost buttons and of pagination links |
-| `--destructive`, `--destructive-foreground` | destructive buttons and badges; error messages and an invalid field's border |
+| `--destructive` | destructive buttons and badges; error messages and an invalid field's border |
+| `--destructive-foreground` | defined so a theme pasted from shadcn/ui fits; no element draws it (destructive buttons and badges use `--color-white`) |
 | `--border` | borders of cards, tables, badges |
 | `--input` | the borders of fields |
 | `--ring` | the focus ring |
@@ -104,7 +105,7 @@ Beyond the colours, the sheet defines the scales every element draws from:
 - **Page widths.** `--al-width-narrow`, `--al-width-normal` and `--al-width-wide`, the three widths of `al-page`. They are the only tokens still starting with `--al-`; the old ones are listed, with what replaced them, under "Migrating from v0.3.x" below.
 - **White and black.** `--color-white` and `--color-black`, for the text on a destructive button and the dimmed backdrop behind a dialog.
 
-Every text pairing the elements draw (a foreground on its background) meets WCAG AA contrast, 4.5:1, in both themes; the library's tests compute the ratios from the token values. Borders are different. shadcn's own `--border`, `--input` and `--ring` are pale on purpose and fall below the 3:1 that WCAG asks of the edge of a control, so a field's outline is hard to see for some people. alder-ui keeps shadcn's values so the look is the one you expect, and reports the shortfall as a warning. If you want the strict reading, override the two border tokens in your own stylesheet, as the design's strict-AA override:
+Every text pairing the elements draw (a foreground on its background) meets WCAG AA contrast, 4.5:1, in both themes; the library's tests compute the ratios from the token values. Borders are different. shadcn's own `--border`, `--input` and `--ring` are pale on purpose and fall below the 3:1 that WCAG asks of the edge of a control, so a field's outline is hard to see for some people. alder-ui keeps shadcn's values so the look is the one you expect, and reports the shortfall as a warning. If you want the strict reading, override the two border tokens in your own stylesheet, like this:
 
 ```css
 :root, .light { --input: oklch(0.65 0 0); --border: oklch(0.65 0 0); }
@@ -1030,7 +1031,9 @@ Slots: default.
 Event: `al-close`, fired on the region when a toast closes
 (`detail.toast` is the toast). A closing toast first plays its exit motion
 (150ms of fade and slide, during which it carries `data-closing`); the event
-fires after that, once the toast has been removed from the page.
+fires after that, once the toast has been removed from the page. When the
+visitor asks for reduced motion (`prefers-reduced-motion: reduce`) there is no
+exit motion, and the toast is removed and `al-close` fires at once.
 
 ### `al-tooltip`
 

@@ -102,16 +102,17 @@ const MODES = ['light', 'dark'];
       check(`${mode}: strip button: 1px solid border, transparent, the strip's colour`, strip.button.style === 'solid' && strip.button.width === '1px' &&
         strip.button.bg === 'rgba(0, 0, 0, 0)' && strip.button.color === strip.button.stripColor, strip.button);
 
-      // text on --destructive is --color-white (shadcn's text-white), not --destructive-foreground,
-      // which alder-ui's dark theme makes a red for text on a dark surface
-      const white = await probe(page, 'color', 'var(--color-white)');
+      // text on --destructive is --background: white-ish on red in light, near-black on the
+      // lighter salmon --destructive in dark (white there would fall below AA); not
+      // --destructive-foreground, which alder-ui's dark theme makes a red
+      const onDestructive = await probe(page, 'color', 'var(--background)');
       await page.waitForSelector('al-devpanel[data-min][data-errors]');
       const badge = await page.evaluate(() => {
         const cs = getComputedStyle(document.querySelector('al-devpanel[data-min]'), '::after');
         return { content: cs.content, bg: cs.backgroundColor, color: cs.color };
       });
-      check(`${mode}: strip text and the minimised tab's error badge are --color-white on --destructive`, strip.button.stripColor === white &&
-        badge.content === '"1"' && badge.bg === destructive && badge.color === white, { strip: strip.button.stripColor, badge, white, destructive });
+      check(`${mode}: strip text and the minimised tab's error badge are var(--background) on --destructive${mode === 'dark' ? ' (dark: the strip text equals the probe of var(--background))' : ''}`, strip.button.stripColor === onDestructive &&
+        badge.content === '"1"' && badge.bg === destructive && badge.color === onDestructive, { strip: strip.button.stripColor, badge, onDestructive, destructive });
 
       // the sheet: what the strip's button shows on a page without the dev panel
       await page.evaluate(() => document.getElementById('_alder_panel').remove());

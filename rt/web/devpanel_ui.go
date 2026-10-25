@@ -18,7 +18,7 @@ import "strconv"
 var panelUI = `<script id="_alder_ui">` + panelUIJS + `</script>`
 
 const panelUICSS = `al-devpanel>nav>button[data-errors]{color:color-mix(in srgb,var(--destructive,#b91c1c) 60%,var(--foreground,#000));font-weight:600}` +
-	`al-devpanel>nav>button[data-errors] [data-badge]{display:inline-block;box-sizing:border-box;min-inline-size:1.4em;margin-inline-start:.25em;padding:0 .35em;border-radius:999px;background:var(--destructive,#b91c1c);color:var(--color-white,#fff);text-align:center}` +
+	`al-devpanel>nav>button[data-errors] [data-badge]{display:inline-block;box-sizing:border-box;min-inline-size:1.4em;margin-inline-start:.25em;padding:0 .35em;border-radius:999px;background:var(--destructive,#b91c1c);color:var(--background,#fff);text-align:center}` +
 	`al-devpanel>section#_alder_tab_errors ._alder-errs{display:block}` +
 	`al-devpanel>section#_alder_tab_errors>h3{margin:0 0 .5rem;font-size:inherit;font-weight:600;line-height:inherit}` +
 	`al-devpanel>nav{padding-inline-end:2.5rem}` +
@@ -32,7 +32,7 @@ const panelUICSS = `al-devpanel>nav>button[data-errors]{color:color-mix(in srgb,
 	`al-devpanel[data-min]>section,al-devpanel[data-min]>[data-grip],al-devpanel[data-min]>[data-minbtn],al-devpanel[data-min]>nav>:not([data-ms]){display:none}` +
 	`al-devpanel[data-min]>nav{flex-wrap:nowrap;margin:0;padding:.25rem .25rem .25rem .6rem}` +
 	`al-devpanel[data-min]:hover,al-devpanel[data-min]:focus-visible{background:var(--accent,rgba(127,127,127,.2))}` +
-	`al-devpanel[data-min][data-errors]::after{content:attr(data-errors);margin-inline-end:.4rem;padding:0 .4em;border-radius:999px;background:var(--destructive,#b91c1c);color:var(--color-white,#fff);font-weight:600}`
+	`al-devpanel[data-min][data-errors]::after{content:attr(data-errors);margin-inline-end:.4rem;padding:0 .4em;border-radius:999px;background:var(--destructive,#b91c1c);color:var(--background,#fff);font-weight:600}`
 
 var panelUIJS = `(function(){if(window._alderUI)return;window._alderUI=1;
 var css=document.createElement("style");css.id="_alder_ui_css";css.textContent=` + strconv.Quote(panelUICSS) + `;document.head.appendChild(css);

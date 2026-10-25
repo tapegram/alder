@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -618,6 +619,13 @@ func TestSessionCookie_RoundTrip(t *testing.T) {
 }
 
 func TestDesignSystemFontServed(t *testing.T) {
+	// Hosts' mime tables (macOS apache, Debian /etc/mime.types) already know .woff2, which
+	// would hide a handler that stopped setting the type. Make the table wrong so only
+	// serveStatic's own Content-Type can pass. Process-global: this test must not be parallel.
+	if err := mime.AddExtensionType(".woff2", "application/octet-stream"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = mime.AddExtensionType(".woff2", "font/woff2") })
 	h := NewRouter(nil, testOpts(func(o *Options) { o.StaticDir = t.TempDir() }))
 	w := serve(h, httptest.NewRequest("GET", "/static/al/fonts/Geist-Variable.woff2", nil))
 	etag := w.Header().Get("ETag")
