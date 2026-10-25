@@ -79,69 +79,65 @@ layout may load the stylesheet another way (a CDN, a bundle of its own).
 
 ## Tokens and themes
 
-The stylesheet starts with the tokens. The colour tokens, from shadcn/ui:
+The stylesheet starts with the tokens. The colour tokens come from shadcn/ui, and they are written in `oklch()`, a colour notation that describes a colour by its lightness, its chroma (how vivid it is) and its hue, so equal steps of lightness look equal to the eye. The light values sit on `:root, .light`, the dark ones on `.dark`:
 
 | Token | Used for |
 |---|---|
 | `--background`, `--foreground` | the page |
-| `--card`, `--card-foreground` | `al-card` |
-| `--popover`, `--popover-foreground` | reserved for the interactive tier |
+| `--card`, `--card-foreground` | `al-card`, and the body of `al-alert` |
+| `--popover`, `--popover-foreground` | dialogs, popovers, menus, toasts |
 | `--primary`, `--primary-foreground` | primary buttons, default badges |
 | `--secondary`, `--secondary-foreground` | secondary buttons and badges |
 | `--muted`, `--muted-foreground` | striped rows; help text, placeholders, table headers |
 | `--accent`, `--accent-foreground` | the hover of outline and ghost buttons and of pagination links |
-| `--destructive`, `--destructive-foreground` | destructive buttons and badges |
+| `--destructive`, `--destructive-foreground` | destructive buttons and badges; error messages and an invalid field's border |
 | `--border` | borders of cards, tables, badges |
 | `--input` | the borders of fields |
 | `--ring` | the focus ring |
-| `--radius` | the corner radius |
+| `--chart-1` to `--chart-5`, `--sidebar*` | no element uses them; they are in the sheet so a theme exported from shadcn/ui pastes in whole |
 
-alder-ui's own tokens start with `--al-`: `--al-destructive-text` (the
-colour of error messages and of an invalid field's border), the soft
-alert colours (`--al-info-soft`, `--al-info-soft-foreground`,
-`--al-info-border`, and the same for `success`, `warning` and
-`destructive`), spacing (`--al-space-1` to `--al-space-10`), type
-(`--al-font-sans`, `--al-font-mono`, `--al-text-xs` to `--al-text-lg`,
-`--al-weight-*`), control heights (`--al-control-h-sm`, `-md`, `-lg`),
-the page widths (`--al-width-narrow`, `-normal`, `-wide`), and the focus
-ring (`--al-ring-width`, `--al-ring-offset`).
+Beyond the colours, the sheet defines the scales every element draws from:
 
-Every pairing of a foreground with its background meets WCAG AA contrast
-(4.5:1 for text, 3:1 for borders and the focus ring) in both themes; the
-library's tests compute the ratios from the token values. Three values
-differ from shadcn's defaults for that reason: the light `--destructive`
-is darker, and `--input` is darker in both themes, so a field's border
-can be seen.
+- **Corners.** `--radius` is `0.625rem`; `--radius-sm`, `--radius-md`, `--radius-lg` and `--radius-xl` are computed from it (0.6, 0.8, 1 and 1.4 times), so changing `--radius` rounds everything.
+- **Shadows.** `--shadow-xs`, `--shadow-sm`, `--shadow-md` and `--shadow-lg`.
+- **Fonts.** `--font-sans` and `--font-mono` name Geist and Geist Mono, then the system fonts as fallbacks. The two font files are bundled with Alder (they are variable fonts, so one file covers every weight, and they are licensed under the SIL Open Font License, OFL), and every build writes them to `/static/al/fonts/`, next to `al.css`, which loads them with `@font-face` and a relative `url("fonts/…")`. They come from your own server, so there is no request to a font CDN. Until a font arrives the browser shows the fallback and then swaps (`font-display: swap`).
+- **Page widths.** `--al-width-narrow`, `--al-width-normal` and `--al-width-wide`, the three widths of `al-page`. They are the only tokens still starting with `--al-`; the old ones are listed, with what replaced them, under "Migrating from v0.3.x" below.
+- **White and black.** `--color-white` and `--color-black`, for the text on a destructive button and the dimmed backdrop behind a dialog.
+
+Every text pairing the elements draw (a foreground on its background) meets WCAG AA contrast, 4.5:1, in both themes; the library's tests compute the ratios from the token values. Borders are different. shadcn's own `--border`, `--input` and `--ring` are pale on purpose and fall below the 3:1 that WCAG asks of the edge of a control, so a field's outline is hard to see for some people. alder-ui keeps shadcn's values so the look is the one you expect, and reports the shortfall as a warning. If you want the strict reading, override the two border tokens in your own stylesheet (ruling R11 of the design):
+
+```css
+:root, .light { --input: oklch(0.65 0 0); --border: oklch(0.65 0 0); }
+.dark { --input: oklch(1 0 0 / 35%); --border: oklch(1 0 0 / 35%); }
+```
 
 ### Light and dark
 
-The light theme is the default. The dark theme applies when the
-operating system asks for it (`prefers-color-scheme: dark`), unless the
-page says otherwise with a `data-theme` attribute:
+There is one switch, and it is a class. A `dark` class on `<html>` turns the dark theme on for the whole page; without it the page is light. The same class on any other element darkens just that element's subtree (`<al-card class="dark">` is a dark card on a light page), and a `light` class inside a dark page turns that subtree light again. Nothing in the stylesheet looks at the operating system's setting by itself, and there is no `data-theme` attribute any more.
 
-- `data-theme="dark"` forces the dark theme;
-- `data-theme="light"` forces the light one.
+Something has to set the class, and in Alder that is one line of JavaScript in the layout's `<head>`, before the stylesheet link:
 
-Put it on `<html>` for the whole page, or on any element for that part
-of the page: a dark card on a light page is
-`<al-card data-theme="dark">`. `data-theme` is an ordinary `data-`
-attribute, so the checker accepts it anywhere.
+```html
+<script>try{document.documentElement.classList.toggle("dark",localStorage.theme==="dark"||(!("theme" in localStorage)&&matchMedia("(prefers-color-scheme: dark)").matches))}catch(e){}</script>
+```
+
+Read it from the inside out. If the visitor has chosen a theme before, it is in `localStorage.theme` (`"dark"` or `"light"`), and that wins. If they never chose, the script asks the browser whether the operating system prefers dark (`matchMedia("(prefers-color-scheme: dark)")`). `classList.toggle("dark", yes)` then adds or removes the class. The `try … catch` is for browsers that refuse `localStorage` (a private window, blocked site data): the page stays light. The script runs in the `<head>`, before the body exists to be painted, so the first frame is already the right theme. `alder new` and the generators write this line into the layouts they emit. A toggle button of yours does the other half: flip the class and remember the choice, `var d=document.documentElement.classList.toggle("dark");try{localStorage.theme=d?"dark":"light"}catch(e){}`. With JavaScript off nothing sets the class and the page is light, which is the designed fallback.
+
+A theme you paste in (shadcn/ui's theme page and tweakcn export one) is two blocks, a light one and a `.dark` one. Put them in your own stylesheet, which comes after `al.css`. The light block must be written `:root, .light { … }`, not just `:root { … }`: the library defines its own light values on `:root, .light` so that a `light` subtree inside a dark page gets light values back, and a pasted theme that only names `:root` would leave such a subtree with the dark page's colours (alder#21, item 4).
 
 ### Between pages: no white flash
 
-In the dark theme, a page load used to show a white frame: the browser
-paints a blank page before the stylesheet has said the page is dark.
-Three things stop it, two of them Alder's and one the library's:
+A page load can show one blank frame before the stylesheet has arrived. Two things decide its colour.
 
-- **The `color-scheme` meta.** The router puts
-  `<meta name="color-scheme" content="light dark" />` at the top of every
-  page's `<head>` (chapter 6), so the browser knows before any CSS
-  arrives that the page has a dark theme, and paints its first frame and
-  its blank canvas dark when the operating system is dark.
-- **Boosted links.** A click on a link of your app does not load a page
-  at all: the new `<body>` is morphed into the old one, and the `<head>`
-  and its stylesheet stay (chapter 6, "Links and navigation").
-- **View transitions.** Since v0.1.3 the library's `tokens.css` has
+- **The `color-scheme` meta.** The router puts `<meta name="color-scheme" content="light dark" />` at the top of every page's `<head>` (chapter 6). It tells the browser the page can be either, so the blank canvas before any CSS is painted dark when the operating system is dark and light when it is light.
+- **The stylesheet is render-blocking.** The browser does not paint the page's content until `al.css` has arrived, and `al.css` sets `color-scheme: light` on `:root` and `color-scheme: dark` on `.dark`, together with the page colours. The theme script has already set the class by then, so the first frame that shows content has the right theme.
+
+The meta therefore only colours the pre-stylesheet canvas, and it follows the operating system, not the visitor's choice. A visitor who chose light on a dark operating system can see that one blank frame dark before the page paints light. Alder keeps the meta anyway: the frame is brief, and in the common case (the choice and the system agree) it removes the flash.
+
+Two more things keep the flash from happening between your own pages:
+
+- **Boosted links.** A click on a link of your app does not load a page at all: the new `<body>` is morphed into the old one, and the `<head>`, its stylesheet and the `dark` class stay (chapter 6, "Links and navigation").
+- **View transitions.** `al.css` has
 
   ```css
   @view-transition {
@@ -149,50 +145,36 @@ Three things stop it, two of them Alder's and one the library's:
   }
   ```
 
-  which opts every page into *cross-document view transitions*: when the
-  browser goes from one document of the site to another of the same
-  origin (a link with `data-alder-reload`, a form that submits with
-  `GET`, Back or Forward to a page that was loaded rather than boosted),
-  it cross-fades from the old page to the new one. A first visit and a
-  reload have no old page of the site to fade from, so they get no
-  transition; for them the `color-scheme` meta is what keeps the first
-  frame dark. (While a new document loads, the browser keeps showing the
-  old one until the new one can paint; that is the browser's paint
-  holding, which happens with or without the rule. The transition is the
-  animation once it has painted.) Chrome and Edge (126 and later) and
-  Safari (18.2 and later) support it; other browsers ignore the rule.
+  which opts every page into *cross-document view transitions*: when the browser goes from one document of the site to another of the same origin (a link with `data-alder-reload`, a form that submits with `GET`, Back or Forward to a page that was loaded rather than boosted), it cross-fades from the old page to the new one. A first visit and a reload have no old page of the site to fade from, so they get no transition. (While a new document loads, the browser keeps showing the old one until the new one can paint; that is the browser's paint holding, which happens with or without the rule.) Chrome and Edge (126 and later) and Safari (18.2 and later) support it; other browsers ignore the rule.
 
 ### Changing a token
 
 To change a token, set it in your own stylesheet:
 
 ```css
-:root {
-  --primary: hsl(262 83% 58%);
+:root, .light {
+  --primary: oklch(0.55 0.22 285);
   --radius: 0.25rem;
 }
+.dark { --primary: oklch(0.72 0.16 285); }
 ```
 
-A token set on `:root` changes both themes: your rule beats the
-library's theme rules (the next paragraph says why). To give the dark
-theme its own value, set it after that, in both places the dark theme
-comes from, the forced theme and the operating system's:
+Your rules win without any `!important`, because the whole library sits in a *cascade layer*: `al.css` wraps everything in `@layer al { … }`, and CSS that is not in a layer always beats CSS that is, whatever the selectors. The trade-off is that a rule of yours cannot lose to the library by accident either: `button { padding: 0 }` in your stylesheet also removes the padding of the button inside every `<al-button>`. Write such rules with a narrower selector (`.toolbar button`), or put your own CSS in a layer declared after it (`@layer al, app;`).
 
-```css
-[data-theme="dark"] { --primary: hsl(263 70% 70%); }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --primary: hsl(263 70% 70%); }
-}
-```
+## The base layer and typography
 
-Your rules win without any `!important`, because the whole library sits
-in a *cascade layer*: `al.css` wraps everything in `@layer al { … }`, and
-CSS that is not in a layer always beats CSS that is, whatever the
-selectors. The trade-off is that a rule of yours cannot lose to the
-library by accident either: `button { padding: 0 }` in your stylesheet
-also removes the padding of the button inside every `<al-button>`. Write
-such rules with a narrower selector (`.toolbar button`), or put your own
-CSS in a layer declared after it (`@layer al, app;`).
+Two groups of rules in `al.css` are not about any one element.
+
+**The base layer** is global. It is a version of Tailwind's *Preflight*, a reset that removes the browser's default styling so every browser starts from the same blank page: margins are zero, every element has `box-sizing: border-box` and a zero-width border, headings and lists lose their built-in size, bullets and indent, buttons and form controls inherit the page's font, and images and SVGs are blocks. It applies to the whole document, with or without an `<al-page>`, and it is also what sets the page's font to Geist.
+
+**Typography** gives the plain HTML you write the shadcn/ui look: `h1` to `h4`, `p`, `ul`, `ol`, `blockquote`, `a`, `code`, `hr` and a bare `table`. It is scoped to `al-page:not([plain])`: it applies wherever *some* enclosing `al-page` does not have the `plain` attribute. Without it the base layer would leave a heading looking like body text.
+
+Two consequences for what you write:
+
+- **A `div` is a flow container.** Typography spaces the blocks inside an `al-page` with margins. When you build a component of your own out of `div`s, `p`s and headings inside a page, zero the margins of its children yourself (`.my-widget > * { margin: 0 }`) and lay it out with `display: flex` or `grid` and `gap`; otherwise the page's typography spaces them as if they were prose (alder#21, item 3).
+- **To turn typography off, use `plain`.** `<al-page plain>` opts out, for a page that styles its own text. In Alder the layout owns the one `<al-page>`: the scaffold's layout, the examples' and the admin fallback each wrap every view in a single `<al-page>`, and the runtime adds none. So the opt-out is to put `plain` on the *Layout's own* `<al-page>`, and pages never add their own. An app that mixes the two looks has one Layout component per look.
+
+`plain` switches off typography only; the base layer stays. The elements are drawn assuming it.
 
 ### Browser support
 
@@ -764,7 +746,9 @@ backdrop.
 Slots: `header`, default, `actions`, `description`.
 
 Event: `al-close`, fired (it bubbles) on the `<al-dialog>` when its
-dialog closes, however it closed.
+dialog closes, however it closed. It fires about 150ms after `close()`
+is called, not at once: the dialog plays its exit motion first, and the
+event marks the end of it (alder#21, item 2).
 
 ```html
 <al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
@@ -1000,6 +984,11 @@ screen reader announces it) and closes it after `timeout` milliseconds.
 
 Slots: default (the message).
 
+A bare `<al-toast>` with no `variant` shows no icon, although the
+manifest's default is `info`: the icon is drawn for an explicit variant
+only (alder#21, item 5). Write `variant="info"` when you want it; the
+toast Alder's runtime patches in already does.
+
 ```html
 <al-toasts popover="manual" position="bottom-right">
   <al-toast variant="success" timeout="5000">Saved</al-toast>
@@ -1086,10 +1075,44 @@ renders every section but the first `hidden`, so without the script the
 open panel shows the Request section. Alder emits the panel only under
 `ALDER_DEV=1`, and never without it.
 
+## Migrating from v0.3.x
+
+alder-ui v0.4 changed the look to shadcn/ui's and removed the tokens of v0.3. An app written for v0.3.x needs these four steps:
+
+1. Re-vendor / rebuild with the Alder release that carries alder-ui `v0.4.1`.
+2. Replace every old token in your own CSS. The table under "Removed tokens", below, says what each became: radii and fonts and shadows lose the `--al-` prefix, the plain colour tokens (`--primary` and the rest) are unchanged, the scales for space, type, weight, control height and ring become literal rem values or Tailwind-scale equivalents, and the soft and border colours of alerts have no replacement (alerts no longer use them). Only `--al-width-narrow|normal|wide` survive. `grep -rn -e '--al-' static/ src/` finds them.
+3. Dark mode: add the theme script to the `<head>` of your Layout, before the stylesheet link (the exact line is under "Light and dark"). The CSS-only OS-dark block and `[data-theme="dark"]` are gone; `.dark` on `<html>` is the only switch.
+4. Rebuild, look at each page in light and dark, and delete any app CSS that fought the old look.
+
+Two more things may show up when you look: headings, paragraphs, lists, links, code and tables inside the page now get typography (see "The base layer and typography"), and a `div` of your own that relied on the browser's default margins now has none.
+
+### Removed tokens
+
+| Removed | Replacement |
+|---|---|
+| `--al-radius-sm`, `--al-radius-full` | `--radius-sm` (6px at the default `--radius`), literal `9999px` |
+| `--al-radius-md`, `--al-radius-lg` | `--radius-md`, `--radius-lg`; `--radius` itself is now `0.625rem` (it was `0.5rem`), and `--radius-xl` is new |
+| `--al-font-sans`, `--al-font-mono` | `--font-sans`, `--font-mono` |
+| `--al-destructive-text` | `--destructive` |
+| `--al-shadow-sm` | `--shadow-sm` (new beside it: `--shadow-xs`, `--shadow-md`, `--shadow-lg`) |
+| `--al-space-0-5` to `--al-space-10` | literal `0.125rem 0.25rem 0.375rem 0.5rem 0.75rem 1rem 1.5rem 2rem 2.5rem` |
+| `--al-text-xs`, `--al-text-sm`, `--al-text-base`, `--al-text-lg` | literal `0.75rem`, `0.875rem`, `1rem`, `1.125rem` |
+| `--al-leading`, `--al-leading-tight` | literal `1.5`, `1.25` |
+| `--al-weight-normal`, `--al-weight-medium`, `--al-weight-semibold` | literal `400`, `500`, `600` |
+| `--al-control-h-sm`, `--al-control-h-md`, `--al-control-h-lg` | literal `2rem`, `2.25rem`, `2.5rem` (shadcn's h-8, h-9, h-10) |
+| `--al-checkbox-size`, `--al-border-width` | literal `1rem`, `1px` |
+| `--al-ring-width`, `--al-ring-offset` | none: the focus ring is `0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent)` |
+| `--al-disabled-opacity`, `--al-duration` | literal `0.5`, `150ms` |
+| `--al-info-soft`, `--al-success-soft`, `--al-warning-soft`, `--al-destructive-soft`, the same with `-foreground`, and `--al-info-border`, `--al-success-border`, `--al-warning-border`, `--al-destructive-border` | none: alerts use `--card`, `--card-foreground`, `--border` and `--destructive` |
+
 ## From another stack
 
 alder-ui is plain CSS, so any stack that writes HTML can use it: link
-`al.css` and write the elements. The one thing Alder does for you that
+`al.css` and write the elements, and keep the `fonts/` directory beside
+it (the stylesheet loads Geist from `fonts/Geist-Variable.woff2` and
+`fonts/GeistMono-Variable.woff2`, relative to itself; without them the
+page uses the system fonts). Add the theme script from "Light and dark"
+to the `<head>` if you want the dark theme. The one thing Alder does for you that
 you then do yourself is the native control inside `<al-button>`: write
 `<al-button variant="primary"><button type="submit">Save</button></al-button>`
 (or an `<a>` inside), and the button takes the element's look and works
@@ -1111,7 +1134,9 @@ in the manifest and the reverse, no component hard-codes a colour, and
 every colour pairing passes AA.
 
 Alder *vendors* it: the compiler's source keeps a copy of one tagged
-release in `rt/al/` (`al.css`, `custom-elements.json` and `VERSION`),
+release in `rt/al/` (`al.css`, `al.js`, `custom-elements.json`, `VERSION`, a
+`fonts/` directory with the two Geist files and their licence, and the
+licences of the library and of the lucide icons it draws), at `v0.4.1`,
 and embeds it, so a build never fetches anything. `scripts/vendor-al.sh
 <tag>` refreshes the copy from the library's repository; a test checks
 that `VERSION`, the manifest's `version` and the stylesheet's banner

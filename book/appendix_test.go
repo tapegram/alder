@@ -3,12 +3,15 @@ package book
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
 
+	"alder/internal/csscheck"
 	"alder/internal/elements"
+	"alder/internal/scaffold"
 	"alder/rt"
 )
 
@@ -254,4 +257,50 @@ func unquote(cell string) string {
 		return cell[1 : len(cell)-1]
 	}
 	return cell
+}
+
+// Every --al-* token alder-ui v0.4 removed is named in Appendix C only inside its "Removed
+// tokens" table (the migration guide's lookup); nowhere in the book may recommend one. The
+// appendix also carries the theme script byte-exact and the light block's ":root, .light"
+// spelling.
+func TestAppendixC_NoRemovedTokens(t *testing.T) {
+	files, err := filepath.Glob("*.md")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no book files: %v", err)
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		md := string(b)
+		allowed := ""
+		if f == "C-design-system.md" {
+			allowed = removedTokensTable(t, md)
+			if !strings.Contains(md, scaffold.ThemeScript) {
+				t.Errorf("%s: lacks the theme script line byte-exact", f)
+			}
+			if !strings.Contains(md, ":root, .light") {
+				t.Errorf("%s: lacks %q", f, ":root, .light")
+			}
+		}
+		outside := strings.Replace(md, allowed, "", 1)
+		for _, tok := range csscheck.RemovedALTokens(outside) {
+			t.Errorf("%s: names removed token %s outside the Removed tokens table", f, tok)
+		}
+	}
+}
+
+// removedTokensTable is the text under "### Removed tokens", up to the next heading.
+func removedTokensTable(t *testing.T, md string) string {
+	t.Helper()
+	_, rest, ok := strings.Cut(md, "### Removed tokens\n")
+	if !ok {
+		t.Fatal("C-design-system.md has no \"### Removed tokens\" heading")
+	}
+	end := strings.Index(rest, "\n#")
+	if end < 0 {
+		end = len(rest)
+	}
+	return rest[:end]
 }
