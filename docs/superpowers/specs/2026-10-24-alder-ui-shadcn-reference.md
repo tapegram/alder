@@ -260,6 +260,11 @@ Separator `pointer-events-none -mx-1 my-1 h-px bg-border`.
 | SubTrigger | `flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-[inset]:pl-8 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground …` + `<ChevronRightIcon className="ml-auto size-4" />` |
 | SubContent | `z-50 min-w-[8rem] … overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-lg …` |
 
+> **Note 2026-10-24 (alder-ui Task 15, checked against `ref/src/components/ui/dropdown-menu.tsx`):**
+> the Item string above omits its last class, `data-[variant=destructive]:*:[svg]:text-destructive!`:
+> an svg that is a direct child of a destructive item takes `text-destructive`, overriding the
+> `text-muted-foreground` every other item svg gets. `al-menu` implements it.
+
 ### popover
 
 Content: `z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-hidden` + the side/state animations (`sideOffset={4}`). PopoverHeader `flex flex-col gap-1 text-sm`; Title `font-medium`; Description `text-muted-foreground`.
