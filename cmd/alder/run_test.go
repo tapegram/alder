@@ -421,8 +421,16 @@ func TestRun_ServesStaticAndDesignSystem(t *testing.T) {
 	}
 	b, _ := io.ReadAll(res.Body)
 	res.Body.Close()
-	if res.StatusCode != 200 || res.Header.Get("Cache-Control") != "public, max-age=300, stale-while-revalidate=86400" || res.Header.Get("ETag") == "" || !strings.Contains(string(b), "alder-ui v0.3.3") {
+	if res.StatusCode != 200 || res.Header.Get("Cache-Control") != "public, max-age=300, stale-while-revalidate=86400" || res.Header.Get("ETag") == "" || !strings.Contains(string(b), "alder-ui v0.4.1") {
 		t.Fatalf("GET /static/al/al.css = %d %q %.60q", res.StatusCode, res.Header.Get("Cache-Control"), b)
+	}
+	fres, err := http.Get(r.base + "/static/al/fonts/GeistMono-Variable.woff2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fres.Body.Close()
+	if fres.StatusCode != 200 || fres.Header.Get("Content-Type") != "font/woff2" {
+		t.Fatalf("GET /static/al/fonts/GeistMono-Variable.woff2 = %d %q", fres.StatusCode, fres.Header.Get("Content-Type"))
 	}
 	get(t, r.base+"/static/al/custom-elements.json")
 	events := r.subscribe(t)

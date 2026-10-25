@@ -35,7 +35,7 @@ box", explains why):
   styles that box by its tag name and attributes. Every element works
   with JavaScript off.
 
-The version Alder ships is **v0.3.3**: the compiler embeds a copy of
+The version Alder ships is **v0.4.1**: the compiler embeds a copy of
 the library's stylesheet, scripts (`al.js`) and manifest at that tag (`rt/al/VERSION`;
 "Where it lives", below).
 
@@ -234,8 +234,8 @@ A button, in five variants and three sizes.
 
 | Attribute | Type | Default | Meaning |
 |---|---|---|---|
-| `variant` | `"primary" \| "secondary" \| "outline" \| "ghost" \| "destructive"` | `"primary"` | the look: filled, soft, bordered, borderless until hovered, or red for deleting |
-| `size` | `"sm" \| "md" \| "lg"` | `"md"` | the height and padding |
+| `variant` | `"primary" \| "secondary" \| "outline" \| "ghost" \| "destructive" \| "link"` | `"primary"` | the look: filled, soft, bordered, borderless until hovered, red for deleting, or text with an underline on hover |
+| `size` | `"sm" \| "md" \| "lg" \| "xs" \| "icon" \| "icon-sm" \| "icon-lg"` | `"md"` | the height and padding; the `icon` sizes make a square button for a lone icon |
 | `disabled` | `boolean` | `false` | dims the button; the button inside is disabled too |
 | `type` | `"button" \| "submit"` | `"button"` | the kind of the `<button>` Alder renders inside |
 
@@ -513,7 +513,7 @@ footer, then the actions in a row at the end.
 
 No attributes.
 
-Slots: `header`, default, `footer`, `actions`.
+Slots: `header`, default, `footer`, `actions`, `description`, `action`.
 
 ```alder eval=<al-card><h3 slot="header">Hello, world</h3><p>The first post. The body is every child without a slot.</p><p slot="footer">Posted on 12 October 2026</p><div slot="actions"><al-button variant="outline"><a href="/">Back</a></al-button><al-button variant="destructive" type="submit"><button type="submit">Delete</button></al-button></div></al-card>
 <al-card>
@@ -658,6 +658,7 @@ inside it.
 | Attribute | Type | Default | Meaning |
 |---|---|---|---|
 | `width` | `"narrow" \| "normal" \| "wide"` | `"normal"` | at most 40rem, 56rem or 80rem |
+| `plain` | `boolean` | `false` | switches off the typography the library gives flow content in the page, for a page that brings its own |
 
 Slots: default.
 
@@ -760,7 +761,7 @@ backdrop.
 | `size` | `"sm" \| "md" \| "lg"` | `"md"` | the width |
 | `dismissible` | `boolean` | `false` | makes room for a close button: a `<form method="dialog">` holding a `<button>` as the first child of the `<dialog>` |
 
-Slots: `header`, default, `actions`.
+Slots: `header`, default, `actions`, `description`.
 
 Event: `al-close`, fired (it bubbles) on the `<al-dialog>` when its
 dialog closes, however it closed.
@@ -882,7 +883,9 @@ A popover of links or buttons. Open it with `<button commandfor="id"
 command="toggle-popover">` and give the `<al-menu>` the `popover`
 attribute and the same `id`.
 
-No attributes.
+| Attribute | Type | Default | Meaning |
+|---|---|---|---|
+| `anchor` | `string` | — | the id of the element to anchor to, when it is not the invoker |
 
 Slots: default.
 
@@ -913,7 +916,9 @@ menu. Without it the menu is a popover of links, which still navigate.
 Tabs backed by a radio group, so selecting a tab and the arrow keys work
 with no script. Its children are `<al-tab>`s.
 
-No attributes.
+| Attribute | Type | Default | Meaning |
+|---|---|---|---|
+| `variant` | `"default" \| "line"` | `"default"` | `line` drops the muted pill behind the tabs and underlines the active one |
 
 Slots: default.
 

@@ -1261,6 +1261,9 @@ func (rt *router) serveStatic(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Cache-Control", DesignSystemCache)
 		h.Set("ETag", etag)
+		if strings.HasSuffix(r.URL.Path, ".woff2") {
+			h.Set("Content-Type", "font/woff2")
+		}
 		http.ServeContent(w, r, r.URL.Path, time.Time{}, bytes.NewReader(data)) // 304 on If-None-Match
 		return
 	}

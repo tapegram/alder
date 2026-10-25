@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "version": "v0.3.3",
+  "version": "v0.4.1",
   "modules": [
     {
       "kind": "javascript-module",
@@ -16,17 +16,17 @@
             {
               "name": "variant",
               "type": {
-                "text": "\"primary\" | \"secondary\" | \"outline\" | \"ghost\" | \"destructive\""
+                "text": "\"primary\" | \"secondary\" | \"outline\" | \"ghost\" | \"destructive\" | \"link\""
               },
-              "description": "The button's look: `primary` (filled), `secondary` (soft), `outline` (bordered), `ghost` (no border until hover) or `destructive` (for deleting).",
+              "description": "The button's look: `primary` (filled), `secondary` (soft), `outline` (bordered), `ghost` (no border until hover), `destructive` (for deleting) or `link` (text with an underline on hover).",
               "default": "\"primary\""
             },
             {
               "name": "size",
               "type": {
-                "text": "\"sm\" | \"md\" | \"lg\""
+                "text": "\"sm\" | \"md\" | \"lg\" | \"xs\" | \"icon\" | \"icon-sm\" | \"icon-lg\""
               },
-              "description": "The button's height and padding.",
+              "description": "The button's height and padding. `xs`, `sm`, `md` and `lg` size a labelled button; `icon`, `icon-sm` and `icon-lg` make a square button for a lone icon.",
               "default": "\"md\""
             },
             {
@@ -313,6 +313,14 @@
             {
               "name": "actions",
               "description": "The card's buttons."
+            },
+            {
+              "name": "description",
+              "description": "The line under the header (CardDescription)."
+            },
+            {
+              "name": "action",
+              "description": "A control at the header's end (CardAction)."
             }
           ]
         }
@@ -363,7 +371,7 @@
               "type": {
                 "text": "\"info\" | \"success\" | \"warning\" | \"destructive\""
               },
-              "description": "The alert's kind, which sets its colours: `info`, `success`, `warning` or `destructive`.",
+              "description": "The alert's kind, which sets its icon: `info`, `success`, `warning` or `destructive` (which also tints the text). The surface is the same for all four.",
               "default": "\"info\""
             },
             {
@@ -489,6 +497,14 @@
               },
               "description": "The frame's maximum width: `narrow` (40rem), `normal` (56rem) or `wide` (80rem).",
               "default": "\"normal\""
+            },
+            {
+              "name": "plain",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Switches off the typography alder-ui gives flow content in the page (headings, paragraphs, lists, links, code, quotes, tables, `hr`), for a page that brings its own. The reset (base.css) stays.",
+              "default": "false"
             }
           ],
           "slots": [
@@ -547,6 +563,10 @@
             {
               "name": "actions",
               "description": "The buttons along the bottom, right-aligned."
+            },
+            {
+              "name": "description",
+              "description": "A line under the heading, in muted text."
             }
           ],
           "events": [
@@ -590,7 +610,7 @@
               "type": {
                 "text": "string"
               },
-              "description": "The id of the element to anchor to, when it is not the invoker (the platform's `anchor` attribute)."
+              "description": "The id of the element to anchor to, when it is not the invoker. Needs al.js (al-shim.js); without it the invoker is the anchor."
             }
           ],
           "slots": [
@@ -618,7 +638,15 @@
           "tagName": "al-menu",
           "customElement": true,
           "description": "A menu: a popover of links or buttons. Open it with `<button commandfor=\"id\" command=\"toggle-popover\">`. Without JavaScript it is a popover of links (which still navigate); `al-menu.js` adds the `menu` / `menuitem` roles, roving arrow keys, Home/End, and closes on select.",
-          "attributes": [],
+          "attributes": [
+            {
+              "name": "anchor",
+              "type": {
+                "text": "string"
+              },
+              "description": "The id of the element to anchor to, when it is not the invoker. Needs al.js (al-shim.js); without it the invoker is the anchor."
+            }
+          ],
           "slots": [
             {
               "name": "",
@@ -648,7 +676,16 @@
           "tagName": "al-tabs",
           "customElement": true,
           "description": "Tabs backed by a radio group: selection and arrow keys work with no JavaScript. Children are `<al-tab>`s; each holds a `<label>` wrapping a radio input (same `name`, one `checked`) and its `<al-panel>`. `al-tabs.js` builds the tabs ARIA pattern: a `<div role=\"tablist\">` of `<button role=\"tab\">` (with `aria-selected`, `aria-controls` and a roving `tabindex`) made from the labels' text and placed before the panels, the radio labels hidden, each panel given `role=\"tabpanel\"`, an `id` and `aria-labelledby`; it rebuilds all of it (and keeps the chosen tab) after a DOM patch such as a morph, and `al-tabs-keys.js` adds the click and arrow keys, Home/End), plus `selected` and the `al-select` event.",
-          "attributes": [],
+          "attributes": [
+            {
+              "name": "variant",
+              "type": {
+                "text": "\"default\" | \"line\""
+              },
+              "default": "\"default\"",
+              "description": "`line` drops the muted pill behind the tabs and underlines the active one."
+            }
+          ],
           "slots": [
             {
               "name": "",
@@ -724,7 +761,7 @@
               "type": {
                 "text": "\"info\" | \"success\" | \"warning\" | \"destructive\""
               },
-              "description": "The toast's look, like al-alert's.",
+              "description": "The toast's icon: `info`, `success`, `warning` or `destructive`. Without the attribute no icon is drawn (like sonner's plain toast); write `variant=\"info\"` for the info icon. The surface and text are the same for all.",
               "default": "\"info\""
             },
             {

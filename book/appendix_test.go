@@ -38,8 +38,8 @@ func TestAppendixC_ManifestDrift(t *testing.T) {
 	md := string(b)
 	m, version := builtinManifest(t)
 	for _, c := range []struct{ name, old, new, want string }{
-		{"a type", "| `size` | `\"sm\" \\| \"md\" \\| \"lg\"` | `\"md\"` |", "| `size` | `\"sm\" \\| \"lg\"` | `\"md\"` |",
-			"`al-button` attribute `size`: the chapter's type is `\"sm\" | \"lg\"`, the manifest's `\"sm\" | \"md\" | \"lg\"`"},
+		{"a type", "| `gap` | `\"sm\" \\| \"md\" \\| \"lg\"` | `\"md\"` |", "| `gap` | `\"sm\" \\| \"lg\"` | `\"md\"` |",
+			"`al-stack` attribute `gap`: the chapter's type is `\"sm\" | \"lg\"`, the manifest's `\"sm\" | \"md\" | \"lg\"`"},
 		{"a default", "| `gap` | `\"sm\" \\| \"md\" \\| \"lg\"` | `\"md\"` |", "| `gap` | `\"sm\" \\| \"md\" \\| \"lg\"` | `\"lg\"` |",
 			"`al-stack` attribute `gap`: the chapter's default is `\"lg\"`, the manifest's `\"md\"`"},
 		{"a name", "| `heading` | `string` |", "| `title` | `string` |",
