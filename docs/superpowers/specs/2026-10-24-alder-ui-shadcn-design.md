@@ -252,18 +252,33 @@ of the recipe with no deviation.
 | `al-checkbox` | checkbox | — | `appearance: none; 1rem; rounded 4px; border-input; shadow-xs; :checked bg-primary border-primary` + masked check (`size-3.5`), `:indeterminate` minus; label row `gap-2`, box first (today's `row-reverse` stays) |
 | `al-card` | card + parts | slots `description`, `action` | `py-6 gap-6 rounded-xl shadow-sm`; `header` = CardTitle; `description` = CardDescription; `action` = CardAction (header grid `1fr auto`); default children = CardContent (`px-6`); `footer` = CardFooter; `actions` = CardFooter with `justify-content: flex-end; gap-2`; an unslotted leading `h2`/`h3` (+ following `p`) is styled as title (+ description) — mine |
 | `al-badge` | badge | `variant` unchanged (shadcn's `ghost`/`link` not added) | `font-medium`, `border-transparent`; `al-badge > a` gets `[a&]:hover` |
-| `al-alert` | alert | — | `rounded-lg px-4 py-3 grid` with icon column; `heading` → AlertTitle; body → AlertDescription; variants per 5.2; dismiss button = ghost icon `size-7` at top-right (lucide x) |
+| `al-alert` | alert | — | `rounded-lg px-4 py-3 grid` with icon column (amended: block flow, A3); `heading` → AlertTitle; body → AlertDescription; variants per 5.2; dismiss button = ghost icon `size-7` at top-right (lucide x) |
 | `al-table` | table | — | outer frame and radius removed; `striped` → `tbody tr:nth-child(even) { background: muted/50 }`; `dense` → `h-8`/`p-1`; `caption-bottom mt-4` |
-| `al-pagination` | pagination | — | `prev`/`next` = ghost buttons `gap-1 px-2.5` with masked chevrons; the generated "Page n of m" and unslotted children sit in `text-sm text-muted-foreground`; unslotted `a` children are ghost `size-9` links, `[aria-current=page]` outline |
+| `al-pagination` | pagination | — | `prev`/`next` = ghost buttons `gap-1 px-2.5` (amended: `px-3`, A2) with masked chevrons; the generated "Page n of m" and unslotted children sit in `text-sm text-muted-foreground`; unslotted `a` children are ghost `size-9` links, `[aria-current=page]` outline |
 | `al-stack` | — | — | gaps re-pinned: sm 0.5rem, md 1rem, lg 1.5rem (Tailwind 2/4/6) |
 | `al-page` | — | `plain` (boolean) | `py-8 px-4`, `px-6` from 40rem; typography scope per 5.2 |
 | `al-dialog` | dialog | slot `description` | `<dialog>`: `bg-background p-6 grid gap-4 rounded-lg shadow-lg w-[calc(100%-2rem)] max-w-lg`; `::backdrop` `rgb(0 0 0 / .5)`; `header` = Title (`text-lg leading-none font-semibold`), `description` = Description, `actions` = Footer; `form[method=dialog] > button` = Close (masked x, `top-4 right-4 opacity-70`); `size` sm/md/lg = `max-w-md/lg/2xl`; fade+zoom-95 200ms in and out |
 | `al-popover` | popover content | — | `w-72 p-4 rounded-md shadow-md`; fade+zoom+slide 0.5rem from the anchored side; `offset` sm/md/lg = 4/8/16 px |
 | `al-menu` | dropdown-menu | — | `min-w-[8rem] p-1 rounded-md shadow-md`; `a`/`button` items `gap-2 rounded-sm px-2 py-1.5 text-sm`, `:hover`/`:focus-visible` = `focus:bg-accent`; `al-menu > hr` = Separator; `[data-variant=destructive]` honoured as a `data-` attribute (free in the checker) — mine; submenu/label/shortcut later |
 | `al-tabs`, `al-tab`, `al-panel` | tabs | `al-tabs variant`: `default` \| `line` | both the no-JS radio labels and the JS-built tablist get the recipe: list `bg-muted rounded-lg p-[3px] h-9`, trigger `rounded-md px-2 py-1 text-sm font-medium text-foreground/60`, active `bg-background text-foreground shadow-sm` (dark `bg-input/30 border-input`); `line` = `bg-transparent gap-1`, active underline `h-0.5 bg-foreground`; panel `flex-1` |
-| `al-toast`, `al-toasts` | sonner | — | toast `w-[356px] p-4 rounded-[var(--radius)] border bg-popover text-popover-foreground shadow-[0_4px_12px_rgb(0_0_0/.1)]`, icon `size-4` per variant, title 13px/500; region offsets 32px, gap 14px; slide-in from the edge |
+| `al-toast`, `al-toasts` | sonner | — | toast `w-[356px] p-4 rounded-[var(--radius)] border bg-popover text-popover-foreground shadow-[0_4px_12px_rgb(0_0_0/.1)]`, icon `size-4` per variant, title 13px/500; region offsets 32px (amended: 24px, A1), gap 14px; slide-in from the edge |
 | `al-tooltip` | tooltip | — | `px-3 py-1.5 rounded-md text-xs bg-foreground text-background text-balance`; arrow = `::after` 10px square rotated 45° on the anchored side; fade+zoom |
 | `al-devpanel` | — (Alder's own) | — | re-pinned to the new tokens; mono = `--font-mono`; otherwise unchanged |
+
+**Amendments (2026-10-25, alder-ui v0.4.0 build).** The committed shadcn reference
+build (alder-ui `ref/`) is the measurable authority; where it disagrees with this table,
+it wins. The table keeps the original values for history; do not reinstate them:
+
+- **A1, `al-toasts` offset: 24px, not 32px.** Sonner's `VIEWPORT_OFFSET` is 24px and the
+  oracle measures 24px (ruling R4). Sonner's 16px offset below 600px is not adopted.
+- **A2, `al-pagination` prev/next padding: `px-3` (0.75rem), not `px-2.5`.** The oracle
+  computes 12px: `has-[>svg]:px-3` beats `px-2.5` on the links that carry a chevron
+  (ruling R17).
+- **A3, `al-alert` is block flow, not a grid.** In a grid every inline child (`a`,
+  `code`, `strong`) and every text run between them becomes its own row. The icon is an
+  absolute `::after` in a `calc(1rem + 1rem + 0.75rem)` start padding (px-4 + size-4 +
+  gap-x-3); block children (`p`, `div`, `ul`, `ol`) are the description with gap-y-0.5 as
+  a 2px top margin (final review I1, the same change `al-toast` took).
 
 Base layer (new files `base.css` and `typography.css`, first in the bundle after
 tokens): Tailwind v4 Preflight translated (border-box; zero margins; `* { border: 0 solid
