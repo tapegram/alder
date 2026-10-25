@@ -104,7 +104,7 @@ Beyond the colours, the sheet defines the scales every element draws from:
 - **Page widths.** `--al-width-narrow`, `--al-width-normal` and `--al-width-wide`, the three widths of `al-page`. They are the only tokens still starting with `--al-`; the old ones are listed, with what replaced them, under "Migrating from v0.3.x" below.
 - **White and black.** `--color-white` and `--color-black`, for the text on a destructive button and the dimmed backdrop behind a dialog.
 
-Every text pairing the elements draw (a foreground on its background) meets WCAG AA contrast, 4.5:1, in both themes; the library's tests compute the ratios from the token values. Borders are different. shadcn's own `--border`, `--input` and `--ring` are pale on purpose and fall below the 3:1 that WCAG asks of the edge of a control, so a field's outline is hard to see for some people. alder-ui keeps shadcn's values so the look is the one you expect, and reports the shortfall as a warning. If you want the strict reading, override the two border tokens in your own stylesheet (ruling R11 of the design):
+Every text pairing the elements draw (a foreground on its background) meets WCAG AA contrast, 4.5:1, in both themes; the library's tests compute the ratios from the token values. Borders are different. shadcn's own `--border`, `--input` and `--ring` are pale on purpose and fall below the 3:1 that WCAG asks of the edge of a control, so a field's outline is hard to see for some people. alder-ui keeps shadcn's values so the look is the one you expect, and reports the shortfall as a warning. If you want the strict reading, override the two border tokens in your own stylesheet, as the design's strict-AA override:
 
 ```css
 :root, .light { --input: oklch(0.65 0 0); --border: oklch(0.65 0 0); }
@@ -746,9 +746,9 @@ backdrop.
 Slots: `header`, default, `actions`, `description`.
 
 Event: `al-close`, fired (it bubbles) on the `<al-dialog>` when its
-dialog closes, however it closed. It fires about 150ms after `close()`
-is called, not at once: the dialog plays its exit motion first, and the
-event marks the end of it (alder#21, item 2).
+dialog closes, however it closed. It comes from the browser's
+native `close` event, so it fires when the dialog closes, while the
+dialog's exit motion plays on (alder#21, item 2).
 
 ```html
 <al-button variant="destructive"><button type="button" commandfor="delete-dialog" command="show-modal">Delete</button></al-button>
@@ -1028,7 +1028,9 @@ itself, marked `data-ignore-morph`, when the page has none).
 Slots: default.
 
 Event: `al-close`, fired on the region when a toast closes
-(`detail.toast` is the toast).
+(`detail.toast` is the toast). A closing toast first plays its exit motion
+(150ms of fade and slide, during which it carries `data-closing`); the event
+fires after that, once the toast has been removed from the page.
 
 ### `al-tooltip`
 
