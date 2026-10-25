@@ -177,6 +177,21 @@ Two consequences for what you write:
 
 `plain` switches off typography only; the base layer stays. The elements are drawn assuming it.
 
+### Spacing
+
+Elements have no outer margin, as in shadcn. Space siblings with `al-stack` (`sm` 0.5rem, `md` 1rem, `lg` 1.5rem, `xl` 2.5rem). An app's Layout wraps page content in `<al-stack gap="lg">`; inside `al-page`, prose keeps shadcn's Typography rhythm.
+
+The scaffold's Layout does this in its `<body>`:
+
+```alder
+<body>
+  <al-page width="narrow"><main><al-stack gap="lg">{props.children}</al-stack></main></al-page>
+  <al-toasts></al-toasts>
+</body>
+```
+
+A page that needs tighter groups adds an inner `<al-stack gap="md">`, as the admin dashboard does for its cards. A `dl` reads as a detail list (muted labels beside values from 40rem), which is how the generated Show and Delete pages render.
+
 ### Browser support
 
 The library uses only widely available CSS: custom properties, cascade
@@ -214,6 +229,14 @@ renders the wrong slot quietly (chapter 5, "Slots").
 ### `al-button`
 
 A button, in five variants and three sizes.
+
+An `<al-button>` is as wide as its content, even in a grid or a column; add `full` to stretch it to the width of its container.
+
+```alder eval=<form style="display:grid"><al-button full><button type="submit">Save</button></al-button></form>
+<form style="display:grid">
+  <al-button full><button type="submit">Save</button></al-button>
+</form>
+```
 
 | Attribute | Type | Default | Meaning |
 |---|---|---|---|
@@ -620,7 +643,7 @@ Lays its children out in a column or a wrapping row, with a gap.
 
 | Attribute | Type | Default | Meaning |
 |---|---|---|---|
-| `gap` | `"sm" \| "md" \| "lg" \| "xl"` | `"md"` | the space between children; `xl` is 2.5rem |
+| `gap` | `"sm" \| "md" \| "lg" \| "xl"` | `"md"` | the space between children; `xl` is 2.5rem, for space between page sections |
 | `direction` | `"row" \| "column"` | `"column"` | top to bottom, or left to right (wrapping) |
 
 Slots: default.
@@ -1091,6 +1114,16 @@ alder-ui v0.4 changed the look to shadcn/ui's and removed the tokens of v0.3. An
 4. Rebuild, look at each page in light and dark, and delete any app CSS that fought the old look.
 
 Two more things may show up when you look: headings, paragraphs, lists, links, code and tables inside the page now get typography (see "The base layer and typography"), and a `div` of your own that relied on the browser's default margins now has none.
+
+### Upgrading to v0.4.2
+
+An app made by an older `alder new` keeps its own Layout, which does not have the page stack. Inside `<main>`, wrap `{props.children}` in an `al-stack`:
+
+```alder
+<main><al-stack gap="lg">{props.children}</al-stack></main>
+```
+
+An `<al-button>` no longer stretches in a grid or a column; add `full` to any button that relied on stretching.
 
 ### Removed tokens
 
