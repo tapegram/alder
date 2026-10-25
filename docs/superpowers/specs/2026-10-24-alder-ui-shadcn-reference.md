@@ -214,6 +214,10 @@ shadcn has no info/success/warning variants and no tinted backgrounds.
 Root: `peer size-4 shrink-0 rounded-[4px] border border-input shadow-xs transition-shadow outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground dark:bg-input/30 dark:aria-invalid:ring-destructive/40 dark:data-[state=checked]:bg-primary`.
 Indicator: `flex items-center justify-center text-current transition-none` with `<CheckIcon className="size-3.5" />`.
 
+> **Amended 2026-10-24 (alder-ui `ref/`, `shadcn@4.22.1 add checkbox`, new-york-v4):** the
+> Indicator is now `grid place-content-center text-current transition-none` (same
+> centring, grid instead of flex); the root string above is unchanged.
+
 ### switch (deferred; for the record)
 
 Root: `peer group/switch inline-flex shrink-0 items-center rounded-full border border-transparent shadow-xs transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 data-[size=default]:h-[1.15rem] data-[size=default]:w-8 data-[size=sm]:h-3.5 data-[size=sm]:w-6 data-[state=checked]:bg-primary data-[state=unchecked]:bg-input dark:data-[state=unchecked]:bg-input/80`.
@@ -268,6 +272,20 @@ Trigger: `relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-ce
 plus (default variant, active) `bg-background text-foreground` and dark `bg-input/30 border-input text-foreground`; (line variant, active) an `after:` 2px `bg-foreground` underline at the bottom (`after:absolute after:inset-x-0 after:-bottom-[4px] after:h-0.5 after:bg-foreground`) — the builder should re-fetch `tabs.tsx` for the exact `line` classes, which were not copied in full.
 Content: `flex-1 outline-none`.
 
+> **Amended 2026-10-24 (alder-ui `ref/`, re-fetched `tabs.tsx` via `shadcn@4.22.1 add tabs`,
+> new-york-v4):**
+> - Root is `group/tabs flex gap-2 data-[orientation=horizontal]:flex-col` (no
+>   `data-[orientation=vertical]:flex-row`); `Tabs` also sets `data-orientation`.
+> - List and the first Trigger string are unchanged. The Trigger's `cn()` carries three
+>   more strings, verbatim:
+>   1. line variant: `group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent dark:group-data-[variant=line]/tabs-list:data-[state=active]:border-transparent dark:group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent`
+>   2. active: `data-[state=active]:bg-background data-[state=active]:text-foreground dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 dark:data-[state=active]:text-foreground`
+>   3. underline: `after:absolute after:bg-foreground after:opacity-0 after:transition-opacity group-data-[orientation=horizontal]/tabs:after:inset-x-0 group-data-[orientation=horizontal]/tabs:after:bottom-[-5px] group-data-[orientation=horizontal]/tabs:after:h-0.5 group-data-[orientation=vertical]/tabs:after:inset-y-0 group-data-[orientation=vertical]/tabs:after:-right-1 group-data-[orientation=vertical]/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-[state=active]:after:opacity-100`
+> - So the line underline sits at `bottom: -5px` (not `-4px`), is 2px tall, spans the
+>   trigger (`inset-x-0`), exists on every trigger at `opacity: 0` and fades to `1` on the
+>   active one (`transition-opacity`, 150ms); in the line variant the active trigger keeps
+>   a transparent background (and a transparent border in dark), and `shadow-none`.
+
 ### table
 
 | part | classes |
@@ -294,6 +312,17 @@ Arrow: `z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-
 ### sonner (toast)
 
 The Toaster sets `--normal-bg: var(--popover); --normal-text: var(--popover-foreground); --normal-border: var(--border); --border-radius: var(--radius)` and icons `size-4`: success CircleCheck, info Info, warning TriangleAlert, error OctagonX, loading Loader2 (spinning). Sonner's own toast: width 356px, `padding: 16px`, `gap: 6px` between icon/title, `box-shadow` `0 4px 12px rgb(0 0 0 / .1)`, title `font-weight 500; line-height 1.5; font-size 13px`, description `font-weight 400; color: inherit; opacity .8`, bottom-right with 32px offset and 14px gap between toasts.
+
+> **Amended 2026-10-24 (alder-ui `ref/`, `sonner@2.0.8` as installed by `shadcn@4.22.1 add
+> sonner`):** `sonner.tsx` matches the above. Sonner's own stylesheet differs in places
+> from the summary: the viewport offset is **24px** (`VIEWPORT_OFFSET`; 16px on mobile),
+> not 32px; the toaster sets its own `font-family: ui-sans-serif, system-ui, …` (so toasts
+> do not inherit Geist unless the app overrides it); the description is `font-weight: 400;
+> line-height: 1.4; color: #3f3f3f` (dark `hsl(0, 0%, 91%)`), not `inherit` at 0.8 opacity;
+> the title is `font-weight: 500; line-height: 1.5; color: inherit`; toasts enter with a
+> 400ms transform/opacity transition. Width 356px, gap 14px, padding 16px, border
+> `var(--normal-border)`, radius `var(--border-radius)` and shadow `0 4px 12px rgb(0 0 0 / .1)`
+> are as stated.
 
 ### skeleton (deferred)
 
