@@ -345,7 +345,7 @@ func TestNew_OutOfTree(t *testing.T) {
 				t.Errorf("the theme script at %d, the al.css link at %d:\n%s", i, j, body)
 			}
 			// the design system: linked, used, and its button a real submit button
-			for _, want := range []string{`<link rel="stylesheet" href="/static/al/al.css" />`, `<al-page width="narrow">`, "<al-card>",
+			for _, want := range []string{`<link rel="stylesheet" href="/static/al/al.css" />`, `<al-page width="narrow">`, `<main><al-stack gap="lg">`, "<al-card>",
 				`<al-input label="Your name"><label>Your name<input name="name"`, `<al-button type="submit"><button type="submit">Sign</button></al-button>`} {
 				if !strings.Contains(string(body), want) {
 					t.Errorf("GET / lacks %s:\n%s", want, body)

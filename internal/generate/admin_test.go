@@ -80,3 +80,27 @@ func TestAdminNoDuplicatePaths(t *testing.T) {
 		}
 	}
 }
+
+// TestAdminLayoutPageStack: the admin's own frame (no app Layout) wraps the page in the stack,
+// with the nav before <main>; with an app Layout, the children go straight into Layout.Page.
+func TestAdminLayoutPageStack(t *testing.T) {
+	p, err := Load("../../testdata/generate/fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Layout = false
+	files, _ := AdminFiles(p, AdminOptions{Module: "Admin", Path: "/admin"})
+	src := files["app/Admin/Layout.alder"]
+	if !strings.Contains(src, `<main><al-stack gap="lg">{props.children}</al-stack></main>`) {
+		t.Errorf("no page stack in:\n%s", src)
+	}
+	if i, j := strings.Index(src, "<nav"), strings.Index(src, "<main>"); i < 0 || i > j {
+		t.Errorf("nav at %d, main at %d:\n%s", i, j, src)
+	}
+	p.Layout = true
+	files, _ = AdminFiles(p, AdminOptions{Module: "Admin", Path: "/admin"})
+	src = files["app/Admin/Layout.alder"]
+	if !strings.Contains(src, "{props.children}\n  </Layout.Page>") || strings.Contains(src, `al-stack gap="lg"`) {
+		t.Errorf("app-Layout frame wrong:\n%s", src)
+	}
+}

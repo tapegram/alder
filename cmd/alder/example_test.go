@@ -466,3 +466,24 @@ func TestExample_LayoutThemeScript(t *testing.T) {
 		}
 	}
 }
+
+// TestExample_LayoutPageStack: each example's Layout wraps the page in the stack inside <main>;
+// a header stays outside it.
+func TestExample_LayoutPageStack(t *testing.T) {
+	t.Parallel()
+	for _, ex := range []string{"blog", "todos", "workspace"} {
+		b, err := os.ReadFile(filepath.Join("..", "..", "examples", ex, "app", "Layout.alder"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := string(b)
+		stack := `<main><al-stack gap="lg">{props.children}</al-stack></main>`
+		i := strings.Index(s, stack)
+		if i < 0 {
+			t.Errorf("examples/%s/app/Layout.alder lacks %s", ex, stack)
+		}
+		if h := strings.Index(s, "<header"); h >= 0 && h > i {
+			t.Errorf("examples/%s/app/Layout.alder: the header is not before <main>", ex)
+		}
+	}
+}
