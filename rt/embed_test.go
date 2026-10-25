@@ -27,7 +27,7 @@ func TestFiles_Complete(t *testing.T) {
 	var want []string
 	for _, f := range strings.Fields(string(out)) {
 		f = strings.TrimPrefix(f, "rt/")
-		if strings.HasSuffix(f, "_test.go") || strings.HasPrefix(f, "testdata/") || strings.Contains(f, "/testdata/") || f == "embed.go" {
+		if strings.HasSuffix(f, "_test.go") || strings.HasPrefix(f, "testdata/") || strings.Contains(f, "/testdata/") || f == "embed.go" || f == "al/LICENSE" || f == "al/LICENSE-lucide" { // the vendored licences are kept in the repository, not shipped
 			continue
 		}
 		if _, err := os.Stat(f); err != nil { // deleted in the worktree, not yet in the index
@@ -152,5 +152,31 @@ func TestDesignSystemVersion(t *testing.T) {
 	}
 	if !bytes.HasPrefix(css, []byte("/*! alder-ui "+tag+" ")) {
 		t.Errorf("al/al.css begins %.40q, want the banner of alder-ui %s", css, tag)
+	}
+}
+
+func TestDesignSystemFonts(t *testing.T) {
+	for _, name := range []string{"al/fonts/Geist-Variable.woff2", "al/fonts/GeistMono-Variable.woff2"} {
+		b, err := Files.ReadFile(name)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if len(b) <= 10_000 || string(b[:4]) != "wOF2" {
+			t.Errorf("%s: %d bytes, begins %q, want a woff2 file", name, len(b), b[:4])
+		}
+	}
+	ofl, err := Files.ReadFile("al/fonts/OFL.txt")
+	if err != nil || !strings.Contains(string(ofl), "SIL OPEN FONT LICENSE Version 1.1") {
+		t.Errorf("al/fonts/OFL.txt: %v", err)
+	}
+	css, err := Files.ReadFile("al/al.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range []string{`url("fonts/Geist-Variable.woff2")`, `url("fonts/GeistMono-Variable.woff2")`} {
+		if !strings.Contains(string(css), u) {
+			t.Errorf("al/al.css does not contain %s", u)
+		}
 	}
 }

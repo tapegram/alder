@@ -1,6 +1,6 @@
 // errors.cjs BASE APPDIR: compile errors in the dev panel, against todos served by `alder run`
 // at BASE (APPDIR is its source). cmd/alder/devui_browser_test.go runs it and reads the JSON it
-// prints: {"checks": [{"name", "ok", "got"}...]}. It breaks app/Todo.alder, expects the strip
+// prints: {"checks": [{"name", "ok", "got"}...]}. It breaks app/Table/Todo.alder, expects the strip
 // and the panel's Errors tab (and no movement of the page), then fixes it.
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -12,7 +12,7 @@ const check = (name, ok, got) => checks.push({ name, ok: !!ok, got: JSON.stringi
 
 (async () => {
   const browser = await chromium.launch();
-  const file = path.join(APPDIR, 'app', 'Todo.alder');
+  const file = path.join(APPDIR, 'app', 'Table', 'Todo.alder');
   const good = fs.readFileSync(file, 'utf8');
   try {
     const page = await (await browser.newContext({ viewport: { width: 900, height: 600 } })).newPage();
@@ -51,8 +51,8 @@ const check = (name, ok, got) => checks.push({ name, ok: !!ok, got: JSON.stringi
     });
     check('Errors tab: first, with a count badge, selected, panel open', /^Errors\s*1$/.test(tab.first) && tab.selected === 'true' && tab.open, tab);
     check('Errors tab: the other sections are hidden, the page holds no list', tab.secVisible && tab.others && tab.listInFlow === 'none', tab);
-    check('Errors tab: file:line:col, code, message', /app\/Todo\.alder:35:19/.test(tab.text) && /E0003/.test(tab.text) && /expected Text, got Int/.test(tab.text), tab.text);
-    check('Errors tab: the excerpt with the caret', /countOpen todos = [^\n]*Text\.length\n\s*\^{10,}/.test(tab.text), tab.text);
+    check('Errors tab: file:line:col, code, message', /app\/Table\/Todo\.alder:36:3/.test(tab.text) && /E0003/.test(tab.text) && /expected Text, got Int/.test(tab.text), tab.text);
+    check('Errors tab: the excerpt with the caret', /\n {2}todos\n {2}\^/.test(tab.text), tab.text);
 
     // a boosted navigation keeps the strip, the tab and its selection
     await page.evaluate(() => {

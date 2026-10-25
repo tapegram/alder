@@ -21,6 +21,7 @@ nav a[aria-current="page"] {
 
 ul#todos {
   list-style: none;
+  margin-left: 0;
   padding: 0;
 }
 
@@ -39,7 +40,7 @@ li.done a {
 /* The form-level list (`<Errors form />`); a field's list is the design
    system's. */
 ul.errors[data-errors="form"] {
-  color: var(--al-destructive-text);
+  color: var(--destructive);
   margin: 0;
   padding-left: 1.25rem;
 }

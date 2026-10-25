@@ -12,6 +12,7 @@ import (
 
 	"alder/internal/format"
 	"alder/internal/generate"
+	"alder/internal/scaffold"
 )
 
 // The admin (`alder new admin`, `alder regen admin`; book chapter 15) on the fixture, whose
@@ -784,5 +785,51 @@ func TestRegenAdminRefusesSingularNavLink(t *testing.T) {
 	}
 	if !maps.Equal(before, treeSnapshot(t, dir)) {
 		t.Error("the refused regen changed files")
+	}
+}
+
+// TestAdmin_NoLayoutThemeScript: an app without a Layout.Page gets the admin's own frame, which
+// carries the theme script before the stylesheet (D5: the script only, not al.js or <al-toasts>),
+// and that frame is a fixed point of the formatter with the script byte for byte.
+func TestAdmin_NoLayoutThemeScript(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := genApp(t, "fixture")
+	// the app's frame is not called Page, so the generator finds no Layout.Page to wrap in
+	err := filepath.WalkDir(filepath.Join(dir, "app"), func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".alder") {
+			return err
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		b = bytes.ReplaceAll(b, []byte("Layout.Page"), []byte("Layout.Frame"))
+		if d.Name() == "Layout.alder" {
+			b = bytes.ReplaceAll(b, []byte("Page"), []byte("Frame"))
+		}
+		return os.WriteFile(p, b, 0o644)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, out, errs := alderIn(t, dir, "", "new", "admin"); code != 0 {
+		t.Fatalf("alder new admin: exit %d\n%s%s", code, out, errs)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "app", "Admin", "Layout.alder"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(got)
+	i, j := strings.Index(s, scaffold.ThemeScript), strings.Index(s, `href={Url.external "/static/al/al.css"}`)
+	if i < 0 || j < 0 || i > j {
+		t.Fatalf("theme script at %d, al.css link at %d:\n%s", i, j, s)
+	}
+	if strings.Contains(s, "al.js") || strings.Contains(s, "al-toasts") {
+		t.Errorf("the fallback shell gained more than the theme script:\n%s", s)
+	}
+	out, diags, err := format.Source("Layout.alder", got)
+	if err != nil || len(diags) > 0 || string(out) != s {
+		t.Errorf("fmt changed the admin shell (err %v, diags %v):\n%s", err, diags, out)
 	}
 }

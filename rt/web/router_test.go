@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -614,5 +615,30 @@ func TestSessionCookie_RoundTrip(t *testing.T) {
 	}
 	if _, ok := SessionFromCookie([]byte("another-key-another-key"), jsonCodec{}, v, now); ok {
 		t.Fatal("wrong key accepted")
+	}
+}
+
+func TestDesignSystemFontServed(t *testing.T) {
+	// Hosts' mime tables (macOS apache, Debian /etc/mime.types) already know .woff2, which
+	// would hide a handler that stopped setting the type. Make the table wrong so only
+	// serveStatic's own Content-Type can pass. Process-global: this test must not be parallel.
+	if err := mime.AddExtensionType(".woff2", "application/octet-stream"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = mime.AddExtensionType(".woff2", "font/woff2") })
+	h := NewRouter(nil, testOpts(func(o *Options) { o.StaticDir = t.TempDir() }))
+	w := serve(h, httptest.NewRequest("GET", "/static/al/fonts/Geist-Variable.woff2", nil))
+	etag := w.Header().Get("ETag")
+	if w.Code != 200 || w.Header().Get("Content-Type") != "font/woff2" || w.Header().Get("Cache-Control") != DesignSystemCache || etag == "" {
+		t.Fatalf("font: %d %q %q %q", w.Code, w.Header().Get("Content-Type"), w.Header().Get("Cache-Control"), etag)
+	}
+	req := httptest.NewRequest("GET", "/static/al/fonts/Geist-Variable.woff2", nil)
+	req.Header.Set("If-None-Match", etag)
+	if w := serve(h, req); w.Code != http.StatusNotModified {
+		t.Fatalf("If-None-Match: %d", w.Code)
+	}
+	w = serve(h, httptest.NewRequest("GET", "/static/al/fonts/OFL.txt", nil))
+	if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain") {
+		t.Fatalf("OFL.txt: %d %q", w.Code, w.Header().Get("Content-Type"))
 	}
 }

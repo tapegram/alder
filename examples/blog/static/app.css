@@ -29,6 +29,7 @@ al-alert > ul.errors {
 ul.posts,
 .comments ul {
   list-style: none;
+  margin-left: 0;
   padding: 0;
 }
 
@@ -58,7 +59,7 @@ ul.posts li {
 }
 
 article code {
-  font-family: var(--al-font-mono);
+  font-family: var(--font-mono);
   background: var(--muted);
   padding: 0 0.2rem;
 }

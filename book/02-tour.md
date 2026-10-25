@@ -235,6 +235,7 @@ Page props =
   <html>
     <head>
       <meta charset="utf-8" />
+      <script>try{document.documentElement.classList.toggle("dark",localStorage.theme==="dark"||(!("theme" in localStorage)&&matchMedia("(prefers-color-scheme: dark)").matches))}catch(e){}</script>
       <title>{props.title}</title>
       <link rel="stylesheet" href={Url.external "/static/al/al.css"} />
       <script type="module" src="/static/al/al.js"></script>
@@ -250,7 +251,10 @@ Page props =
 `children` is the HTML written between `<Layout.Page …>` and
 `</Layout.Page>`. `Url.external` marks a link that is not one of the
 app's pages: a link to a page is a page value (`Home {}`), checked by the
-compiler, never a string. The first stylesheet is the design system's,
+compiler, never a string. The `<script>` line before the stylesheets is
+the theme script: it turns the dark theme on (a `dark` class on `<html>`)
+when the visitor chose it or their system prefers it, before the page is
+painted (Appendix C, "Light and dark"). The first stylesheet is the design system's,
 which every build serves at `/static/al/al.css`; `<al-page
 width="narrow">` is its centred column.
 

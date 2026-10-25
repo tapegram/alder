@@ -1,195 +1,366 @@
-/*! alder-ui v0.3.3 | Apache-2.0 | https://github.com/tapegram/alder-ui
- * Built by scripts/build.py from tokens.css and components/; do not edit. */
+/*! alder-ui v0.4.1 | Apache-2.0 | https://github.com/tapegram/alder-ui
+ * Built by scripts/build.py from tokens.css, base.css, typography.css and components/;
+ * do not edit. Geist and Geist Mono (SIL OFL 1.1) load from fonts/ beside this file. */
 
 @layer al {
 
 /* ---- tokens.css ---- */
 
 /*
- * alder-ui tokens.
+ * alder-ui tokens: shadcn/ui's canonical neutral theme (new-york-v4,
+ * theming.mdx), verbatim, as full oklch() colours that components use
+ * directly: var(--primary). One addition, --destructive-foreground (from the
+ * shadcn docs site), and Tailwind's --color-white / --color-black, which
+ * stand in for shadcn's text-white and bg-black/50.
  *
- * Colour tokens use shadcn/ui's names and its default (slate) values, written
- * as full hsl() colours so components can use them directly: var(--primary).
- * Three values differ from shadcn's defaults so every pairing passes WCAG AA
- * (test/check.py computes the ratios): light --destructive is darker, and
- * --input is darker in both themes so field borders reach 3:1.
+ * Themes: light by default. class="dark" on <html> (or any element) turns
+ * the dark theme on for that subtree; class="light" inside a dark page turns
+ * it back to light. Nothing follows the OS by itself: a one-line script in
+ * <head> sets the class (see README).
  *
- * Tokens prefixed --al- are alder-ui's own: the soft colours for alerts, the
- * error text colour, spacing, type, sizes and the focus ring.
+ * To re-theme, paste the :root and .dark blocks that ui.shadcn.com/themes or
+ * tweakcn export, unlayered, after al.css. Everything alder-ui ships sits in
+ * @layer al, so your unlayered blocks win whatever their specificity. To
+ * keep .light subtrees working, write your light block as ":root, .light".
  *
- * Themes: light by default; dark when the OS asks for it, unless the page (or
- * a subtree) says data-theme="light"; data-theme="dark" forces dark.
+ * Contrast: test/check.py computes every text pairing the components draw
+ * (WCAG AA, 4.5:1) and every border and ring (3:1, a warning only). A few
+ * of shadcn's own pairings fall short; the tokens stay verbatim and the
+ * check prints them as warnings.
  *
- * In al.css everything sits in @layer al, so any unlayered CSS of yours wins
- * whatever its specificity. To re-theme:
- *   :root { --primary: …; }                 both themes
- *   [data-theme="dark"] { --primary: …; }   the forced dark theme; for the
- *   OS-driven one, repeat it in
- *   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { … } }
+ * Of alder-ui's own tokens only the page widths remain (--al-width-*).
+ * Components keep private properties under --_al-.
  */
 
 :root,
-[data-theme="light"] {
+.light {
   color-scheme: light;
 
-  --background: hsl(0 0% 100%);
-  --foreground: hsl(222.2 84% 4.9%);
-  --card: hsl(0 0% 100%);
-  --card-foreground: hsl(222.2 84% 4.9%);
-  --popover: hsl(0 0% 100%);
-  --popover-foreground: hsl(222.2 84% 4.9%);
-  --primary: hsl(222.2 47.4% 11.2%);
-  --primary-foreground: hsl(210 40% 98%);
-  --secondary: hsl(210 40% 96.1%);
-  --secondary-foreground: hsl(222.2 47.4% 11.2%);
-  --muted: hsl(210 40% 96.1%);
-  --muted-foreground: hsl(215.4 16.3% 46.9%);
-  --accent: hsl(210 40% 96.1%);
-  --accent-foreground: hsl(222.2 47.4% 11.2%);
-  --destructive: hsl(0 72.2% 50.6%);
-  --destructive-foreground: hsl(210 40% 98%);
-  --border: hsl(214.3 31.8% 91.4%);
-  --input: hsl(215 16% 57%);
-  --ring: hsl(222.2 84% 4.9%);
-
-  --al-destructive-text: hsl(0 72.2% 50.6%);
-  --al-info-soft: hsl(214 100% 97%);
-  --al-info-soft-foreground: hsl(224 76% 33%);
-  --al-info-border: hsl(213 97% 87%);
-  --al-success-soft: hsl(138 76% 97%);
-  --al-success-soft-foreground: hsl(144 61% 20%);
-  --al-success-border: hsl(141 79% 85%);
-  --al-warning-soft: hsl(48 100% 96%);
-  --al-warning-soft-foreground: hsl(22 78% 26%);
-  --al-warning-border: hsl(48 97% 77%);
-  --al-destructive-soft: hsl(0 86% 97%);
-  --al-destructive-soft-foreground: hsl(0 70% 35%);
-  --al-destructive-border: hsl(0 96% 89%);
-  --al-shadow-sm: 0 1px 2px 0 hsl(222.2 84% 4.9% / 0.06);
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+  --destructive-foreground: oklch(0.97 0.01 17);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-
-    --background: hsl(222.2 84% 4.9%);
-    --foreground: hsl(210 40% 98%);
-    --card: hsl(222.2 84% 4.9%);
-    --card-foreground: hsl(210 40% 98%);
-    --popover: hsl(222.2 84% 4.9%);
-    --popover-foreground: hsl(210 40% 98%);
-    --primary: hsl(210 40% 98%);
-    --primary-foreground: hsl(222.2 47.4% 11.2%);
-    --secondary: hsl(217.2 32.6% 17.5%);
-    --secondary-foreground: hsl(210 40% 98%);
-    --muted: hsl(217.2 32.6% 17.5%);
-    --muted-foreground: hsl(215 20.2% 65.1%);
-    --accent: hsl(217.2 32.6% 17.5%);
-    --accent-foreground: hsl(210 40% 98%);
-    --destructive: hsl(0 62.8% 30.6%);
-    --destructive-foreground: hsl(210 40% 98%);
-    --border: hsl(217.2 32.6% 17.5%);
-    --input: hsl(215 20% 40%);
-    --ring: hsl(212.7 26.8% 83.9%);
-
-    --al-destructive-text: hsl(0 90% 70%);
-    --al-info-soft: hsl(222 47% 14%);
-    --al-info-soft-foreground: hsl(213 94% 78%);
-    --al-info-border: hsl(217 60% 30%);
-    --al-success-soft: hsl(150 40% 11%);
-    --al-success-soft-foreground: hsl(142 69% 68%);
-    --al-success-border: hsl(145 45% 25%);
-    --al-warning-soft: hsl(35 60% 11%);
-    --al-warning-soft-foreground: hsl(45 93% 65%);
-    --al-warning-border: hsl(35 60% 28%);
-    --al-destructive-soft: hsl(0 50% 12%);
-    --al-destructive-soft-foreground: hsl(0 94% 82%);
-    --al-destructive-border: hsl(0 55% 32%);
-    --al-shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.5);
-  }
-}
-
-[data-theme="dark"] {
+.dark {
   color-scheme: dark;
 
-  --background: hsl(222.2 84% 4.9%);
-  --foreground: hsl(210 40% 98%);
-  --card: hsl(222.2 84% 4.9%);
-  --card-foreground: hsl(210 40% 98%);
-  --popover: hsl(222.2 84% 4.9%);
-  --popover-foreground: hsl(210 40% 98%);
-  --primary: hsl(210 40% 98%);
-  --primary-foreground: hsl(222.2 47.4% 11.2%);
-  --secondary: hsl(217.2 32.6% 17.5%);
-  --secondary-foreground: hsl(210 40% 98%);
-  --muted: hsl(217.2 32.6% 17.5%);
-  --muted-foreground: hsl(215 20.2% 65.1%);
-  --accent: hsl(217.2 32.6% 17.5%);
-  --accent-foreground: hsl(210 40% 98%);
-  --destructive: hsl(0 62.8% 30.6%);
-  --destructive-foreground: hsl(210 40% 98%);
-  --border: hsl(217.2 32.6% 17.5%);
-  --input: hsl(215 20% 40%);
-  --ring: hsl(212.7 26.8% 83.9%);
-
-  --al-destructive-text: hsl(0 90% 70%);
-  --al-info-soft: hsl(222 47% 14%);
-  --al-info-soft-foreground: hsl(213 94% 78%);
-  --al-info-border: hsl(217 60% 30%);
-  --al-success-soft: hsl(150 40% 11%);
-  --al-success-soft-foreground: hsl(142 69% 68%);
-  --al-success-border: hsl(145 45% 25%);
-  --al-warning-soft: hsl(35 60% 11%);
-  --al-warning-soft-foreground: hsl(45 93% 65%);
-  --al-warning-border: hsl(35 60% 28%);
-  --al-destructive-soft: hsl(0 50% 12%);
-  --al-destructive-soft-foreground: hsl(0 94% 82%);
-  --al-destructive-border: hsl(0 55% 32%);
-  --al-shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.5);
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+  --destructive-foreground: oklch(0.58 0.22 27);
 }
 
 /* Theme-independent tokens. */
 :root {
-  --radius: 0.5rem;
-  --al-radius-sm: calc(var(--radius) - 2px);
-  --al-radius-full: 9999px;
-  --al-border-width: 1px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
 
-  --al-space-0-5: 0.125rem;
-  --al-space-1: 0.25rem;
-  --al-space-1-5: 0.375rem;
-  --al-space-2: 0.5rem;
-  --al-space-3: 0.75rem;
-  --al-space-4: 1rem;
-  --al-space-6: 1.5rem;
-  --al-space-8: 2rem;
-  --al-space-10: 2.5rem;
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 
-  --al-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --al-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --al-text-xs: 0.75rem;
-  --al-text-sm: 0.875rem;
-  --al-text-base: 1rem;
-  --al-text-lg: 1.125rem;
-  --al-leading: 1.5;
-  --al-leading-tight: 1.25;
-  --al-weight-normal: 400;
-  --al-weight-medium: 500;
-  --al-weight-semibold: 600;
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
-  --al-control-h-sm: 2.25rem;
-  --al-control-h-md: 2.5rem;
-  --al-control-h-lg: 2.75rem;
-  --al-checkbox-size: 1rem;
+  --color-white: #fff;
+  --color-black: #000;
 
   --al-width-narrow: 40rem;
   --al-width-normal: 56rem;
   --al-width-wide: 80rem;
+}
 
-  --al-ring-width: 2px;
-  --al-ring-offset: 2px;
-  --al-disabled-opacity: 0.5;
-  --al-duration: 150ms;
+/* ---- base.css ---- */
+
+/*
+ * alder-ui base layer: the fonts, a translation of Tailwind v4's Preflight with
+ * shadcn's own base rules on top (design spec §7, "Base layer"), and
+ * cross-document view transitions. It is global and not switchable; like
+ * everything alder-ui ships it sits inside @layer al, so a page's unlayered CSS
+ * wins over it. The flow-content typography is typography.css, scoped to
+ * al-page:not([plain]).
+ *
+ * The selectors are bare element names (specificity 0,0,1 at most) so every
+ * component rule, which names its al- element, wins over them.
+ */
+
+/* Geist and Geist Mono (SIL OFL 1.1, fonts/OFL.txt), variable, self-hosted
+ * beside al.css. --font-sans / --font-mono (tokens.css) name them first. */
+@font-face {
+  font-family: "Geist";
+  src: url("fonts/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("fonts/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Preflight: border-box, zero margins and padding, a 0-width solid border in
+ * the border colour (shadcn: `* { @apply border-border outline-ring/50 }`, so
+ * a bare `border-b` draws a --border line and an outline is ring/50). */
+*,
+::before,
+::after,
+::backdrop,
+::file-selector-button {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 0 solid var(--border);
+  outline-color: color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+html {
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+  tab-size: 4;
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* shadcn: body `bg-background text-foreground`; the docs' antialiasing and no
+ * synthesised bold. */
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis-weight: none;
+}
+
+hr {
+  height: 0;
+  color: inherit;
+  border-top-width: 1px;
+}
+
+abbr:where([title]) {
+  text-decoration: underline dotted;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: inherit;
+}
+
+b,
+strong {
+  font-weight: bolder;
+}
+
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--font-mono);
+  font-size: 1em;
+}
+
+small {
+  font-size: 80%;
+}
+
+sub,
+sup {
+  font-size: 75%;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+
+sub {
+  bottom: -0.25em;
+}
+
+sup {
+  top: -0.5em;
+}
+
+table {
+  text-indent: 0;
+  border-color: inherit;
+  border-collapse: collapse;
+}
+
+progress {
+  vertical-align: baseline;
+}
+
+summary {
+  display: list-item;
+}
+
+ol,
+ul,
+menu {
+  list-style: none;
+}
+
+img,
+svg,
+video,
+canvas,
+audio,
+iframe,
+embed,
+object {
+  display: block;
+  vertical-align: middle;
+}
+
+img,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+button,
+input,
+select,
+optgroup,
+textarea,
+::file-selector-button {
+  font: inherit;
+  font-feature-settings: inherit;
+  font-variation-settings: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  border-radius: 0;
+  background: transparent;
+  opacity: 1;
+}
+
+::file-selector-button {
+  margin-inline-end: 4px;
+}
+
+/* shadcn's inputs: `placeholder:text-muted-foreground`. */
+::placeholder {
+  opacity: 1;
+  color: var(--muted-foreground);
+}
+
+textarea {
+  resize: vertical;
+}
+
+::-webkit-search-decoration {
+  -webkit-appearance: none;
+}
+
+::-webkit-date-and-time-value {
+  min-height: 1lh;
+  text-align: inherit;
+}
+
+::-webkit-datetime-edit {
+  display: inline-flex;
+}
+
+::-webkit-datetime-edit-fields-wrapper {
+  padding: 0;
+}
+
+::-webkit-calendar-picker-indicator {
+  line-height: 1;
+}
+
+button,
+input:where([type="button"], [type="reset"], [type="submit"]),
+::file-selector-button {
+  appearance: button;
+}
+
+::-webkit-inner-spin-button,
+::-webkit-outer-spin-button {
+  height: auto;
+}
+
+/* Tailwind Preflight's rule, kept as is. Inside `@layer al` this !important
+   still beats an unlayered app `!important`: for important declarations the
+   layer order inverts, so an earlier layer wins over the unlayered styles. */
+[hidden]:where(:not([hidden="until-found"])) {
+  display: none !important;
 }
 
 /* Cross-document view transitions: a same-origin page load cross-fades from
@@ -200,16 +371,283 @@
   navigation: auto;
 }
 
-/* Base: the page takes the theme's colours and type. */
-:root,
-[data-theme] {
-  background-color: var(--background);
+/* ---- typography.css ---- */
+
+/*
+ * alder-ui typography: shadcn's Typography recipe (the docs' Typography page,
+ * Ref §3 "typography") for raw flow content inside al-page, with `hr` drawn as
+ * the Separator and a bare <table> drawn with the shadcn Table recipe (Ref §3
+ * "table"), not the Typography page's bordered table. Design spec §5.2/§7.
+ *
+ * Scope: every rule sits under al-page:not([plain]); <al-page plain> switches
+ * the whole file off for a page that brings its own typography (base.css's
+ * reset still applies). The scope, and every pseudo-class or attribute
+ * condition, is wrapped in :where(), so each rule weighs only its element
+ * names, at least one, (0,0,1) or (0,0,2): a component that re-styles what it contains
+ * (al-card's title, al-dialog's paragraphs, al-table's table) wins with any
+ * selector that names its own element. test/check.py enforces this. Typography applies wherever some
+ * enclosing al-page is not plain, so put a plain page directly in <body>
+ * rather than inside another al-page.
+ */
+
+/* Flow rhythm: an alder addition beyond shadcn Typography, because alder flow
+ * content is mostly components (<h2> then <al-input>, <p> then <al-input>), which
+ * shadcn's `p` margin never reaches. Whatever follows an h2, h3, h4 or p gets the
+ * same 1.5rem as shadcn's `p` rhythm (mt-6).
+ * - Only in flow containers: the page itself and the plain HTML grouping elements
+ *   (and al-panel, a tab's content). A component's own children (al-dialog's
+ *   <dialog> > p + footer, al-card's description, al-input's help) are not reached.
+ *   al-stack is left out: its gap spaces its children (al-stack.css).
+ * - Hidden siblings do not break the adjacency: up to two of them (an al-alert
+ *   holding only an empty errors list, which al-alert.css hides; <input
+ *   type=hidden>; <template>; <script>) may sit between the h2/h3/h4/p and what
+ *   follows, as in Alder's <h2> <al-alert><Errors form/></al-alert> <al-input>.
+ *   Three or more in a row are not bridged.
+ * - These rules come first so the element rules below, at the same (0,0,1),
+ *   win where they set their own margin: p then h2 keeps h2's mt-10, ul/ol keep my-6. */
+:where(al-page:not([plain]), al-page:not([plain]) :is(al-panel, article, aside, details, div, fieldset, footer, form, header, main, nav, section)) > h2 + *,
+:where(al-page:not([plain]), al-page:not([plain]) :is(al-panel, article, aside, details, div, fieldset, footer, form, header, main, nav, section)) > h2 + :where(al-alert:not([heading]):has(> ul.errors:empty), input[type="hidden"], template, script) + *,
+:where(al-page:not([plain]), al-page:not([plain]) :is(al-panel, article, aside, details, div, fieldset, footer, form, header, main, nav, section)) > h2 + :where(al-alert:not([heading]):has(> ul.errors:empty), input[type="hidden"], template, script) + :where(al-alert:not([heading]):has(> ul.errors:empty), input[type="hidden"], template, script) + *,
+:where(al-page:not([plain]), al-page:not([plain]) :is(al-panel, article, aside, details, div, fieldset, footer, form, header, main, nav, section)) > h3 + *,
+:where(al-page:not([plain]), al-page:not([plain]) :is(al-panel, article, aside, details, div, fieldset, footer, form, header, main, nav, section)) > h3 + :where(al-alert:not([heading]):has(> ul.errors:empty), input[type="hidden"], template, script) + *,
+:where(al-page:not([plain]), al-page:not([plain]) :is(al-panel, article, aside, details, div, fieldset, footer, form, header, main, nav, section)) > h3 + :where(al-alert:not([heading]):has(> ul.errors:empty), input[type="hidden"], template, script) + :where(al-alert:not([heading]):has(> ul.errors:empty), input[type="hidden"], template, script) + *,
+:where(al-page:not([plain]), al-page:not([plain]) :is(al-panel, article, aside, details, div, fieldset, footer, form, header, main, nav, section)) > h4 + *,
+:where(al-page:not([plain]), al-page:not([plain]) :is(al-panel, article, aside, details, div, fieldset, footer, form, header, main, nav, section)) > h4 + :where(al-alert:not([heading]):has(> ul.errors:empty), input[type="hidden"], template, script) + *,
+:where(al-page:not([plain]), al-page:not([plain]) :is(al-panel, article, aside, details, div, fieldset, footer, form, header, main, nav, section)) > h4 + :where(al-alert:not([heading]):has(> ul.errors:empty), input[type="hidden"], template, script) + :where(al-alert:not([heading]):has(> ul.errors:empty), input[type="hidden"], template, script) + *,
+:where(al-page:not([plain]), al-page:not([plain]) :is(al-panel, article, aside, details, div, fieldset, footer, form, header, main, nav, section)) > p + *,
+:where(al-page:not([plain]), al-page:not([plain]) :is(al-panel, article, aside, details, div, fieldset, footer, form, header, main, nav, section)) > p + :where(al-alert:not([heading]):has(> ul.errors:empty), input[type="hidden"], template, script) + *,
+:where(al-page:not([plain]), al-page:not([plain]) :is(al-panel, article, aside, details, div, fieldset, footer, form, header, main, nav, section)) > p + :where(al-alert:not([heading]):has(> ul.errors:empty), input[type="hidden"], template, script) + :where(al-alert:not([heading]):has(> ul.errors:empty), input[type="hidden"], template, script) + * {
+  margin-top: 1.5rem;
+}
+
+/* h1: scroll-m-20 text-4xl font-extrabold tracking-tight text-balance */
+:where(al-page:not([plain])) h1 {
+  scroll-margin-top: 5rem;
+  font-size: 2.25rem;
+  line-height: 2.5rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+/* h2: mt-10 scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight first:mt-0
+ * (mt-10 is the Typography page's spacing between sections) */
+:where(al-page:not([plain])) h2 {
+  margin-top: 2.5rem;
+  scroll-margin-top: 5rem;
+  border-bottom-width: 1px;
+  padding-bottom: 0.5rem;
+  font-size: 1.875rem;
+  line-height: 2.25rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+:where(al-page:not([plain])) h2:where(:first-child) {
+  margin-top: 0;
+}
+
+/* h3: scroll-m-20 text-2xl font-semibold tracking-tight */
+:where(al-page:not([plain])) h3 {
+  scroll-margin-top: 5rem;
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+/* h4: scroll-m-20 text-xl font-semibold tracking-tight */
+:where(al-page:not([plain])) h4 {
+  scroll-margin-top: 5rem;
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+/* p: leading-7 [&:not(:first-child)]:mt-6 */
+:where(al-page:not([plain])) p {
+  line-height: 1.75rem;
+}
+
+:where(al-page:not([plain])) p:where(:not(:first-child)) {
+  margin-top: 1.5rem;
+}
+
+/* blockquote: mt-6 border-l-2 pl-6 italic */
+:where(al-page:not([plain])) blockquote {
+  margin-top: 1.5rem;
+  border-left-width: 2px;
+  padding-left: 1.5rem;
+  font-style: italic;
+}
+
+/* ul: my-6 ml-6 list-disc [&>li]:mt-2
+ * (ol: mine, the same with list-decimal, so a numbered list keeps its numbers) */
+:where(al-page:not([plain])) ul,
+:where(al-page:not([plain])) ol {
+  margin-block: 1.5rem;
+  margin-left: 1.5rem;
+}
+
+:where(al-page:not([plain])) ul {
+  list-style: disc;
+}
+
+:where(al-page:not([plain])) ol {
+  list-style: decimal;
+}
+
+:where(al-page:not([plain])) ul > li,
+:where(al-page:not([plain])) ol > li {
+  margin-top: 0.5rem;
+}
+
+/* code: relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold */
+:where(al-page:not([plain])) code {
+  position: relative;
+  border-radius: 0.25rem;
+  background: var(--muted);
+  padding: 0.2rem 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+}
+
+/* a: font-medium text-primary underline underline-offset-4 */
+:where(al-page:not([plain])) a {
+  font-weight: 500;
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+/* small: text-sm leading-none font-medium */
+:where(al-page:not([plain])) small {
+  font-size: 0.875rem;
+  line-height: 1;
+  font-weight: 500;
+}
+
+/* hr = Separator: shrink-0 bg-border data-[orientation=horizontal]:h-px data-[orientation=horizontal]:w-full */
+:where(al-page:not([plain])) hr {
+  flex-shrink: 0;
+  border-width: 0;
+  height: 1px;
+  width: 100%;
+  background: var(--border);
+}
+
+/* table = the shadcn Table recipe.
+ * Table: w-full caption-bottom text-sm */
+:where(al-page:not([plain])) table {
+  width: 100%;
+  caption-side: bottom;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+/* TableHeader: [&_tr]:border-b; TableRow: border-b transition-colors */
+:where(al-page:not([plain])) tr {
+  border-bottom-width: 1px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :where(al-page:not([plain])) tr {
+    transition: color 150ms cubic-bezier(.4, 0, .2, 1), background-color 150ms cubic-bezier(.4, 0, .2, 1), border-color 150ms cubic-bezier(.4, 0, .2, 1);
+  }
+}
+
+/* TableRow: hover:bg-muted/50 has-aria-expanded:bg-muted/50 */
+:where(al-page:not([plain])) tr:where(:hover),
+:where(al-page:not([plain])) tr:where(:has([aria-expanded="true"])) {
+  background: color-mix(in oklab, var(--muted) 50%, transparent);
+}
+
+/* TableRow: data-[state=selected]:bg-muted */
+:where(al-page:not([plain])) tr:where([aria-selected="true"]) {
+  background: var(--muted);
+}
+
+/* TableBody: [&_tr:last-child]:border-0 */
+:where(al-page:not([plain])) tbody tr:where(:last-child) {
+  border-width: 0;
+}
+
+/* TableFooter: border-t bg-muted/50 font-medium [&>tr]:last:border-b-0 */
+:where(al-page:not([plain])) tfoot {
+  border-top-width: 1px;
+  background: color-mix(in oklab, var(--muted) 50%, transparent);
+  font-weight: 500;
+}
+
+:where(al-page:not([plain])) tfoot > tr:where(:last-child) {
+  border-bottom-width: 0;
+}
+
+/* TableHead: h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground
+ * [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] */
+:where(al-page:not([plain])) th {
+  height: 2.5rem;
+  padding: 0 0.5rem;
+  text-align: left;
+  vertical-align: middle;
+  font-weight: 500;
+  white-space: nowrap;
   color: var(--foreground);
 }
 
+/* TableCell: p-2 align-middle whitespace-nowrap
+ * [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] */
+:where(al-page:not([plain])) td {
+  padding: 0.5rem;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+:where(al-page:not([plain])) th:where(:has([role="checkbox"])),
+:where(al-page:not([plain])) td:where(:has([role="checkbox"])) {
+  padding-right: 0;
+}
+
+:where(al-page:not([plain])) th > :where([role="checkbox"]),
+:where(al-page:not([plain])) td > :where([role="checkbox"]) {
+  translate: 0 2px;
+}
+
+/* TableCaption: mt-4 text-sm text-muted-foreground */
+:where(al-page:not([plain])) caption {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--muted-foreground);
+}
+
+/* ---- components/icons.css ---- */
+
+/*
+ * Icons: Lucide (https://lucide.dev, lucide-static v1.61.0, ISC licence, see
+ * LICENSE-lucide) as mask images. Each is a quoted, URL-encoded 24x24 SVG
+ * (stroke-width 2, round caps and joins, as Lucide ships them). Only the
+ * alpha channel matters to a mask, so the stroke colour inside is irrelevant.
+ * Use: mask: var(--_al-icon-x) center / contain no-repeat; background: currentColor
+ * on a ::before or ::after.
+ */
+
 :root {
-  font-family: var(--al-font-sans);
-  line-height: var(--al-leading);
+  --_al-icon-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5' /%3E%3C/svg%3E");
+  --_al-icon-minus: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h14' /%3E%3C/svg%3E");
+  --_al-icon-chevron-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6' /%3E%3C/svg%3E");
+  --_al-icon-chevron-left: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m15 18-6-6 6-6' /%3E%3C/svg%3E");
+  --_al-icon-chevron-right: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6' /%3E%3C/svg%3E");
+  --_al-icon-x: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 6 6 18' /%3E%3Cpath d='m6 6 12 12' /%3E%3C/svg%3E");
+  --_al-icon-circle-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10' /%3E%3Cpath d='m16 9-5.5 5.5L8 12' /%3E%3C/svg%3E");
+  --_al-icon-info: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10' /%3E%3Cpath d='M12 16v-4' /%3E%3Cpath d='M12 8h.01' /%3E%3C/svg%3E");
+  --_al-icon-triangle-alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3' /%3E%3Cpath d='M12 9v4' /%3E%3Cpath d='M12 17h.01' /%3E%3C/svg%3E");
+  --_al-icon-octagon-x: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m15 9-6 6' /%3E%3Cpath d='M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z' /%3E%3Cpath d='m9 9 6 6' /%3E%3C/svg%3E");
+  --_al-icon-loader-circle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 12a9 9 0 1 1-6.219-8.56' /%3E%3C/svg%3E");
+  --_al-icon-ellipsis: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='1' /%3E%3Ccircle cx='19' cy='12' r='1' /%3E%3Ccircle cx='5' cy='12' r='1' /%3E%3C/svg%3E");
 }
 
 /* ---- components/al-button.css ---- */
@@ -224,89 +662,190 @@
  *   <al-button variant="primary">Save</al-button>
  *     presentational: the element draws the look, but it is not a button
  *     until a framework adds the role, focus and Enter/Space handling.
- * The variant sets private colour properties; every form reads them.
- * Hovers mix the background toward a theme colour (never toward
- * transparent), so the text keeps its contrast; test/check.py computes it.
+ * The variant sets private colour properties and the size private metrics;
+ * every form reads them. Hovers are shadcn's (bg-primary/90 and so on, as a
+ * colour-mix toward transparent); test/check.py composites them over the
+ * page background and checks the text on them.
  */
 
+/* default: bg-primary text-primary-foreground hover:bg-primary/90
+   size default: h-9 px-4 py-2 has-[>svg]:px-3 */
 al-button {
   --_al-bg: var(--primary);
   --_al-fg: var(--primary-foreground);
-  --_al-border: var(--primary);
-  --_al-hover: color-mix(in srgb, var(--primary) 90%, var(--primary-foreground));
-  --_al-h: var(--al-control-h-md);
-  --_al-px: var(--al-space-4);
-  --_al-text: var(--al-text-sm);
+  --_al-hover: color-mix(in oklab, var(--primary) 90%, transparent);
+  --_al-hover-fg: var(--primary-foreground);
+  --_al-ring: color-mix(in oklab, var(--ring) 50%, transparent);
+  --_al-border: var(--border);
+  /* The transparent layers mirror how Tailwind composes box-shadow, so the
+     computed list matches the reference's. --_al-shadow (in variants that set a
+     shadow: 4 no-op layers + shadow; none otherwise) and --_al-shadow-end (the last layer, under the focus ring: 3
+     no-op layers + ring + shadow-end) must stay in step; change one, change
+     the other. */
+  --_al-shadow: none;
+  --_al-shadow-end: 0 0 transparent;
+  --_al-border-focus: var(--ring);
+  --_al-h: 2.25rem;
+  --_al-w: auto;
+  --_al-px: 1rem;
+  --_al-px-svg: 0.75rem;
+  --_al-py: 0.5rem;
+  --_al-gap: 0.5rem;
+  --_al-text: 0.875rem;
+  --_al-lh: 1.25rem;
+  --_al-svg: 1rem;
 }
 
-al-button[variant="secondary"] {
-  --_al-bg: var(--secondary);
-  --_al-fg: var(--secondary-foreground);
-  --_al-border: var(--secondary);
-  --_al-hover: color-mix(in srgb, var(--secondary) 94%, var(--foreground));
+/* destructive: bg-destructive text-white hover:bg-destructive/90
+   focus-visible:ring-destructive/20 dark:bg-destructive/60
+   dark:focus-visible:ring-destructive/40 */
+al-button[variant="destructive"] {
+  --_al-bg: var(--destructive);
+  --_al-fg: var(--color-white);
+  --_al-hover: color-mix(in oklab, var(--destructive) 90%, transparent);
+  --_al-hover-fg: var(--color-white);
+  --_al-ring: color-mix(in oklab, var(--destructive) 20%, transparent);
 }
 
+.dark al-button[variant="destructive"] {
+  --_al-bg: color-mix(in oklab, var(--destructive) 60%, transparent);
+  --_al-hover: color-mix(in oklab, var(--destructive) 60%, transparent);
+  --_al-ring: color-mix(in oklab, var(--destructive) 40%, transparent);
+}
+
+/* outline: border bg-background shadow-xs hover:bg-accent
+   hover:text-accent-foreground dark:border-input dark:bg-input/30
+   dark:hover:bg-input/50 */
 al-button[variant="outline"] {
   --_al-bg: var(--background);
   --_al-fg: var(--foreground);
-  --_al-border: var(--input);
   --_al-hover: var(--accent);
+  --_al-hover-fg: var(--accent-foreground);
+  --_al-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 transparent, var(--shadow-xs);
+  --_al-shadow-end: var(--shadow-xs);
 }
 
+.dark al-button[variant="outline"] {
+  --_al-border: var(--input);
+  --_al-border-focus: var(--input);
+  --_al-bg: color-mix(in oklab, var(--input) 30%, transparent);
+  --_al-hover: color-mix(in oklab, var(--input) 50%, transparent);
+}
+
+/* secondary: bg-secondary text-secondary-foreground hover:bg-secondary/80 */
+al-button[variant="secondary"] {
+  --_al-bg: var(--secondary);
+  --_al-fg: var(--secondary-foreground);
+  --_al-hover: color-mix(in oklab, var(--secondary) 80%, transparent);
+  --_al-hover-fg: var(--secondary-foreground);
+}
+
+/* ghost: hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 */
 al-button[variant="ghost"] {
   --_al-bg: transparent;
   --_al-fg: var(--foreground);
-  --_al-border: transparent;
   --_al-hover: var(--accent);
+  --_al-hover-fg: var(--accent-foreground);
 }
 
-al-button[variant="destructive"] {
-  --_al-bg: var(--destructive);
-  --_al-fg: var(--destructive-foreground);
-  --_al-border: var(--destructive);
-  --_al-hover: color-mix(in srgb, var(--destructive) 90%, var(--foreground));
+.dark al-button[variant="ghost"] {
+  --_al-hover: color-mix(in oklab, var(--accent) 50%, transparent);
 }
 
+/* link: text-primary underline-offset-4 hover:underline */
+al-button[variant="link"] {
+  --_al-bg: transparent;
+  --_al-fg: var(--primary);
+  --_al-hover: transparent;
+  --_al-hover-fg: var(--primary);
+}
+
+/* xs: h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5
+   [&_svg:not([class*='size-'])]:size-3 */
+al-button[size="xs"] {
+  --_al-h: 1.5rem;
+  --_al-px: 0.5rem;
+  --_al-px-svg: 0.375rem;
+  --_al-py: 0;
+  --_al-gap: 0.25rem;
+  --_al-text: 0.75rem;
+  --_al-lh: 1rem;
+  --_al-svg: 0.75rem;
+}
+
+/* sm: h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5 */
 al-button[size="sm"] {
-  --_al-h: var(--al-control-h-sm);
-  --_al-px: var(--al-space-3);
+  --_al-h: 2rem;
+  --_al-px: 0.75rem;
+  --_al-px-svg: 0.625rem;
+  --_al-py: 0;
+  --_al-gap: 0.375rem;
 }
 
-al-button[size="md"] {
-  --_al-h: var(--al-control-h-md);
-  --_al-px: var(--al-space-4);
-}
-
+/* lg: h-10 rounded-md px-6 has-[>svg]:px-4 */
 al-button[size="lg"] {
-  --_al-h: var(--al-control-h-lg);
-  --_al-px: var(--al-space-8);
-  --_al-text: var(--al-text-base);
+  --_al-h: 2.5rem;
+  --_al-px: 1.5rem;
+  --_al-px-svg: 1rem;
+  --_al-py: 0;
 }
 
+/* icon: size-9; icon-sm: size-8; icon-lg: size-10 */
+al-button[size="icon"],
+al-button[size="icon-sm"],
+al-button[size="icon-lg"] {
+  --_al-h: 2.25rem;
+  --_al-w: 2.25rem;
+  --_al-px: 0;
+  --_al-px-svg: 0;
+  --_al-py: 0;
+}
+
+al-button[size="icon-sm"] {
+  --_al-h: 2rem;
+  --_al-w: 2rem;
+}
+
+al-button[size="icon-lg"] {
+  --_al-h: 2.5rem;
+  --_al-w: 2.5rem;
+}
+
+/* inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm
+   font-medium whitespace-nowrap outline-none */
 al-button,
 al-button > :is(button, a) {
   display: inline-flex;
-  inline-size: fit-content;
+  flex: none;
+  inline-size: var(--_al-w);
+  block-size: var(--_al-h);
   align-items: center;
   justify-content: center;
-  gap: var(--al-space-2);
+  gap: var(--_al-gap);
   box-sizing: border-box;
-  min-height: var(--_al-h);
   margin: 0;
-  padding: 0 var(--_al-px);
-  border: var(--al-border-width) solid var(--_al-border);
-  border-radius: var(--radius);
+  padding: var(--_al-py) var(--_al-px);
+  border: 0 solid var(--_al-border);
+  border-radius: var(--radius-md);
   background: var(--_al-bg);
   color: var(--_al-fg);
-  font-family: var(--al-font-sans);
+  box-shadow: var(--_al-shadow);
+  font-family: var(--font-sans);
   font-size: var(--_al-text);
-  font-weight: var(--al-weight-medium);
-  line-height: var(--al-leading-tight);
+  font-weight: 500;
+  line-height: var(--_al-lh);
   white-space: nowrap;
   text-decoration: none;
+  text-underline-offset: 4px;
+  outline-style: none;
   cursor: pointer;
   user-select: none;
-  transition: background-color var(--al-duration);
+}
+
+/* outline: border */
+al-button[variant="outline"],
+al-button[variant="outline"] > :is(button, a) {
+  border-width: 1px;
 }
 
 al-button > :is(button, a) {
@@ -317,30 +856,65 @@ al-button > a:any-link {
   color: var(--_al-fg);
 }
 
+/* has-[>svg]:px-3 (and the other sizes) */
+al-button:has(> svg),
+al-button > :is(button, a):has(> svg) {
+  padding-inline: var(--_al-px-svg);
+}
+
+/* [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 */
+al-button svg {
+  width: var(--_al-svg);
+  height: var(--_al-svg);
+  flex: none;
+  pointer-events: none;
+}
+
 /* The native forms: the element only holds the button or link. */
 al-button:has(> :is(button, a)) {
-  min-height: 0;
+  block-size: auto;
+  inline-size: auto;
   padding: 0;
   border: 0;
   background: none;
+  box-shadow: none;
   cursor: auto;
 }
 
+/* transition-all (150ms, cubic-bezier(.4, 0, .2, 1)) */
+@media (prefers-reduced-motion: no-preference) {
+  al-button,
+  al-button > :is(button, a) {
+    transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* hover:bg-primary/90 (and the other variants); link: hover:underline */
 al-button:not(:has(> :is(button, a))):hover,
 al-button > :is(button, a):hover {
   background: var(--_al-hover);
+  color: var(--_al-hover-fg);
 }
 
-al-button:focus-visible,
+al-button[variant="link"]:not(:has(> :is(button, a))):hover,
+al-button[variant="link"] > :is(button, a):hover {
+  text-decoration: underline;
+}
+
+/* focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50
+   (dark outline keeps dark:border-input; the no-op layers mirror how Tailwind
+   composes box-shadow, so the computed list matches the reference's) */
+al-button:not(:has(> :is(button, a))):focus-visible,
 al-button > :is(button, a):focus-visible {
-  outline: var(--al-ring-width) solid var(--ring);
-  outline-offset: var(--al-ring-offset);
+  border-color: var(--_al-border-focus);
+  box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 0 3px var(--_al-ring), var(--_al-shadow-end);
 }
 
+/* disabled:pointer-events-none disabled:opacity-50 */
 al-button[disabled],
 al-button[disabled] > :is(button, a),
 al-button > button:disabled {
-  opacity: var(--al-disabled-opacity);
+  opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
 }
@@ -359,6 +933,16 @@ form._alder-click {
   display: contents;
 }
 
+/* forced colors drop box-shadow rings and backgrounds: draw the focus indicator as an
+   outline in the system colour (#15) */
+@media (forced-colors: active) {
+  al-button:not(:has(> :is(button, a))):focus-visible,
+  al-button > :is(button, a):focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+}
+
 /* ---- components/al-input.css ---- */
 
 /*
@@ -371,71 +955,122 @@ form._alder-click {
  * The label text is the real <label> (not attr(label)); help is the
  * <small class="help"> (or, without it, drawn from the attribute); the
  * errors list shows in the destructive colour. A label beside the control
- * (<label for> + <input id>) works too.
+ * (<label for> + <input id>) works too. Shaped like shadcn's field
+ * composition: <div class="grid gap-2"> holding Label, control, description
+ * and message.
  */
 
+/* grid gap-2 text-sm */
 al-input {
   display: grid;
-  gap: var(--al-space-1-5);
-  font-family: var(--al-font-sans);
-  font-size: var(--al-text-sm);
+  gap: 0.5rem;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
   color: var(--foreground);
 }
 
+/* label: flex items-center gap-2 text-sm leading-none font-medium select-none
+   (the label wraps the control, so it is a grid of text and control) */
 al-input label {
   display: grid;
-  gap: var(--al-space-1-5);
+  gap: 0.5rem;
   order: 0;
-  font-weight: var(--al-weight-medium);
-  line-height: var(--al-leading-tight);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1;
+  user-select: none;
 }
 
+/* group-data-[disabled=true]:opacity-50: the label text dims; the control
+   dims itself, so the label does not use opacity (it would dim it twice) */
+al-input[disabled] label,
+al-input label:has(> input:disabled) {
+  color: color-mix(in oklab, var(--foreground) 50%, transparent);
+  cursor: not-allowed;
+}
+
+/* h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1
+   text-base shadow-xs outline-none md:text-sm */
 al-input input {
+  --_al-ring: color-mix(in oklab, var(--ring) 50%, transparent);
+  --_al-border: var(--input);
+  display: block;
   box-sizing: border-box;
   width: 100%;
-  height: var(--al-control-h-md);
-  padding: 0 var(--al-space-3);
+  min-width: 0;
+  height: 2.25rem;
+  padding: 0.25rem 0.75rem;
   margin: 0;
-  border: var(--al-border-width) solid var(--input);
-  border-radius: var(--radius);
-  background: var(--background);
+  border: 1px solid var(--_al-border);
+  border-radius: var(--radius-md);
+  background: transparent;
   color: var(--foreground);
+  box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 transparent, var(--shadow-xs);
   font-family: inherit;
-  font-size: var(--al-text-sm);
-  font-weight: var(--al-weight-normal);
-  line-height: var(--al-leading);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.25rem;
+  outline: 3px none color-mix(in oklab, var(--ring) 50%, transparent);
 }
 
+/* dark:bg-input/30 */
+.dark al-input input {
+  background: color-mix(in oklab, var(--input) 30%, transparent);
+}
+
+/* transition-[color,box-shadow] (150ms, cubic-bezier(.4, 0, .2, 1)) */
+@media (prefers-reduced-motion: no-preference) {
+  al-input input {
+    transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* selection:bg-primary selection:text-primary-foreground */
+al-input input::selection {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* placeholder:text-muted-foreground */
 al-input input::placeholder {
   color: var(--muted-foreground);
 }
 
+/* focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 */
 al-input input:focus-visible {
-  outline: var(--al-ring-width) solid var(--ring);
-  outline-offset: var(--al-ring-offset);
+  --_al-border: var(--ring);
+  outline-width: 1px;
+  box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 0 3px var(--_al-ring), var(--shadow-xs);
 }
 
-al-input[invalid] input {
-  border-color: var(--al-destructive-text);
+/* aria-invalid:border-destructive aria-invalid:ring-destructive/20
+   dark:aria-invalid:ring-destructive/40 (the ring is only drawn on focus) */
+al-input[invalid] input,
+al-input input[aria-invalid="true"] {
+  --_al-border: var(--destructive);
+  --_al-ring: color-mix(in oklab, var(--destructive) 20%, transparent);
 }
 
-al-input[invalid] input:focus-visible {
-  outline-color: var(--al-destructive-text);
+.dark al-input[invalid] input,
+.dark al-input input[aria-invalid="true"] {
+  --_al-ring: color-mix(in oklab, var(--destructive) 40%, transparent);
 }
 
-/* Dim once: the whole field when the element is disabled, or just the
-   control when only it is. */
-al-input[disabled],
-al-input:not([disabled]) input:disabled {
+/* disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 */
+al-input input:disabled {
+  pointer-events: none;
   cursor: not-allowed;
-  opacity: var(--al-disabled-opacity);
+  opacity: 0.5;
 }
 
+/* description: text-sm text-muted-foreground (the attribute form, drawn when
+   no <small class="help"> is given) */
 al-input[help]::after {
   content: attr(help);
   order: 1;
   color: var(--muted-foreground);
-  font-size: var(--al-text-sm);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
 }
 
 /* The markup form, which Alder renders: <small class="help" id="help-…">
@@ -444,25 +1079,45 @@ al-input[help]::after {
 al-input > .help {
   order: 1;
   color: var(--muted-foreground);
-  font-size: var(--al-text-sm);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.25rem;
 }
 
 al-input:has(> .help)::after {
   content: none;
 }
 
+/* message: text-sm text-destructive font-medium */
 al-input ul.errors {
   order: 2;
   margin: 0;
   padding: 0;
   list-style: none;
-  color: var(--al-destructive-text);
-  font-size: var(--al-text-sm);
-  font-weight: var(--al-weight-medium);
+  color: var(--destructive);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
 }
 
+al-input ul.errors > li {
+  margin: 0;
+  padding: 0;
+}
+
+/* An empty list takes no room (display: none, so the field is as tall as one
+   without a list). */
 al-input ul.errors:empty {
   display: none;
+}
+
+/* forced colors drop box-shadow rings and backgrounds: draw the focus indicator as an
+   outline in the system colour (#15) */
+@media (forced-colors: active) {
+  al-input input:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 0;
+  }
 }
 
 /* ---- components/al-textarea.css ---- */
@@ -477,72 +1132,124 @@ al-input ul.errors:empty {
  * The label text is the real <label> (not attr(label)); help is the
  * <small class="help"> (or, without it, drawn from the attribute); the
  * errors list shows in the destructive colour. A label beside the control
- * (<label for> + <textarea id>) works too.
+ * (<label for> + <textarea id>) works too. Shaped like shadcn's field
+ * composition: <div class="grid gap-2"> holding Label, control, description
+ * and message.
  */
 
+/* grid gap-2 text-sm */
 al-textarea {
   display: grid;
-  gap: var(--al-space-1-5);
-  font-family: var(--al-font-sans);
-  font-size: var(--al-text-sm);
+  gap: 0.5rem;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
   color: var(--foreground);
 }
 
+/* label: flex items-center gap-2 text-sm leading-none font-medium select-none
+   (the label wraps the control, so it is a grid of text and control) */
 al-textarea label {
   display: grid;
-  gap: var(--al-space-1-5);
+  gap: 0.5rem;
   order: 0;
-  font-weight: var(--al-weight-medium);
-  line-height: var(--al-leading-tight);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1;
+  user-select: none;
 }
 
+/* group-data-[disabled=true]:opacity-50: the label text dims; the control
+   dims itself, so the label does not use opacity (it would dim it twice) */
+al-textarea[disabled] label,
+al-textarea label:has(> textarea:disabled) {
+  color: color-mix(in oklab, var(--foreground) 50%, transparent);
+  cursor: not-allowed;
+}
+
+/* flex field-sizing-content min-h-16 w-full rounded-md border border-input
+   bg-transparent px-3 py-2 text-base shadow-xs outline-none md:text-sm */
 al-textarea textarea {
+  --_al-ring: color-mix(in oklab, var(--ring) 50%, transparent);
+  --_al-border: var(--input);
+  display: flex;
   box-sizing: border-box;
   width: 100%;
-  min-height: calc(var(--al-control-h-md) * 2);
-  padding: var(--al-space-2) var(--al-space-3);
-  resize: vertical;
+  min-width: 0;
+  min-height: 4rem;
+  field-sizing: content;
+  padding: 0.5rem 0.75rem;
   margin: 0;
-  border: var(--al-border-width) solid var(--input);
-  border-radius: var(--radius);
-  background: var(--background);
+  resize: vertical;
+  border: 1px solid var(--_al-border);
+  border-radius: var(--radius-md);
+  background: transparent;
   color: var(--foreground);
+  box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 transparent, var(--shadow-xs);
   font-family: inherit;
-  font-size: var(--al-text-sm);
-  font-weight: var(--al-weight-normal);
-  line-height: var(--al-leading);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.25rem;
+  outline: 3px none color-mix(in oklab, var(--ring) 50%, transparent);
 }
 
+/* dark:bg-input/30 */
+.dark al-textarea textarea {
+  background: color-mix(in oklab, var(--input) 30%, transparent);
+}
+
+/* transition-[color,box-shadow] (150ms, cubic-bezier(.4, 0, .2, 1)) */
+@media (prefers-reduced-motion: no-preference) {
+  al-textarea textarea {
+    transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* selection:bg-primary selection:text-primary-foreground */
+al-textarea textarea::selection {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* placeholder:text-muted-foreground */
 al-textarea textarea::placeholder {
   color: var(--muted-foreground);
 }
 
+/* focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 */
 al-textarea textarea:focus-visible {
-  outline: var(--al-ring-width) solid var(--ring);
-  outline-offset: var(--al-ring-offset);
+  --_al-border: var(--ring);
+  outline-width: 1px;
+  box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 0 3px var(--_al-ring), var(--shadow-xs);
 }
 
-al-textarea[invalid] textarea {
-  border-color: var(--al-destructive-text);
+/* aria-invalid:border-destructive aria-invalid:ring-destructive/20
+   dark:aria-invalid:ring-destructive/40 (the ring is only drawn on focus) */
+al-textarea[invalid] textarea,
+al-textarea textarea[aria-invalid="true"] {
+  --_al-border: var(--destructive);
+  --_al-ring: color-mix(in oklab, var(--destructive) 20%, transparent);
 }
 
-al-textarea[invalid] textarea:focus-visible {
-  outline-color: var(--al-destructive-text);
+.dark al-textarea[invalid] textarea,
+.dark al-textarea textarea[aria-invalid="true"] {
+  --_al-ring: color-mix(in oklab, var(--destructive) 40%, transparent);
 }
 
-/* Dim once: the whole field when the element is disabled, or just the
-   control when only it is. */
-al-textarea[disabled],
-al-textarea:not([disabled]) textarea:disabled {
+/* disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 */
+al-textarea textarea:disabled {
+  pointer-events: none;
   cursor: not-allowed;
-  opacity: var(--al-disabled-opacity);
+  opacity: 0.5;
 }
 
+/* description: text-sm text-muted-foreground (the attribute form, drawn when
+   no <small class="help"> is given) */
 al-textarea[help]::after {
   content: attr(help);
   order: 1;
   color: var(--muted-foreground);
-  font-size: var(--al-text-sm);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
 }
 
 /* The markup form, which Alder renders: <small class="help" id="help-…">
@@ -551,25 +1258,45 @@ al-textarea[help]::after {
 al-textarea > .help {
   order: 1;
   color: var(--muted-foreground);
-  font-size: var(--al-text-sm);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.25rem;
 }
 
 al-textarea:has(> .help)::after {
   content: none;
 }
 
+/* message: text-sm text-destructive font-medium */
 al-textarea ul.errors {
   order: 2;
   margin: 0;
   padding: 0;
   list-style: none;
-  color: var(--al-destructive-text);
-  font-size: var(--al-text-sm);
-  font-weight: var(--al-weight-medium);
+  color: var(--destructive);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
 }
 
+al-textarea ul.errors > li {
+  margin: 0;
+  padding: 0;
+}
+
+/* An empty list takes no room (display: none, so the field is as tall as one
+   without a list). */
 al-textarea ul.errors:empty {
   display: none;
+}
+
+/* forced colors drop box-shadow rings and backgrounds: draw the focus indicator as an
+   outline in the system colour (#15) */
+@media (forced-colors: active) {
+  al-textarea textarea:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 0;
+  }
 }
 
 /* ---- components/al-select.css ---- */
@@ -584,63 +1311,161 @@ al-textarea ul.errors:empty {
  * The native <select> keeps its own arrow and keyboard behaviour.
  */
 
+/* grid gap-2 text-sm */
 al-select {
+  position: relative;
   display: grid;
-  gap: var(--al-space-1-5);
-  font-family: var(--al-font-sans);
-  font-size: var(--al-text-sm);
+  gap: 0.5rem;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
   color: var(--foreground);
 }
 
+/* label: flex items-center gap-2 text-sm leading-none font-medium select-none
+   (the label wraps the control, so it is a grid of text and control).
+   justify-self: start keeps the label as wide as its select (w-fit), so the
+   chevron, anchored to the label's right edge, stays on the select. */
 al-select label {
+  position: relative;
   display: grid;
-  gap: var(--al-space-1-5);
+  justify-self: start;
+  gap: 0.5rem;
   order: 0;
-  font-weight: var(--al-weight-medium);
-  line-height: var(--al-leading-tight);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1;
+  user-select: none;
 }
 
+/* The chevron: <ChevronDownIcon className="size-4 opacity-50" />, drawn by the
+   label's ::after over the select's right padding (a <select> takes no
+   pseudo-element). right-3 is 0.75rem. The bottom offset (select height 2.25rem / 2 minus
+   icon 1rem / 2, from the label's bottom edge) assumes the select is the
+   label's last row: a hint or error line after it would shift the chevron. */
+al-select label::after {
+  content: "";
+  position: absolute;
+  right: 0.75rem;
+  bottom: calc(1.125rem - 0.5rem);
+  width: 1rem;
+  height: 1rem;
+  background: var(--muted-foreground);
+  mask: var(--_al-icon-chevron-down) center / contain no-repeat;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* group-data-[disabled=true]:opacity-50: the label text dims; the control
+   dims itself */
+al-select[disabled] label,
+al-select label:has(> select:disabled) {
+  color: color-mix(in oklab, var(--foreground) 50%, transparent);
+  cursor: not-allowed;
+}
+
+/* flex w-fit items-center justify-between gap-2 rounded-md border border-input
+   bg-transparent px-3 py-2 text-sm whitespace-nowrap shadow-xs
+   transition-[color,box-shadow] outline-none h-9 (appearance: none and
+   padding-right: 2rem make room for the chevron) */
 al-select select {
+  --_al-ring: color-mix(in oklab, var(--ring) 50%, transparent);
+  --_al-border: var(--input);
+  appearance: none;
+  display: block;
   box-sizing: border-box;
   width: 100%;
-  height: var(--al-control-h-md);
+  max-width: 100%;
+  height: 2.25rem;
   margin: 0;
-  padding: 0 var(--al-space-3);
-  border: var(--al-border-width) solid var(--input);
-  border-radius: var(--radius);
-  background-color: var(--background);
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  border: 1px solid var(--_al-border);
+  border-radius: var(--radius-md);
+  background-color: transparent;
   color: var(--foreground);
+  box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 transparent, var(--shadow-xs);
   font-family: inherit;
-  font-size: var(--al-text-sm);
-  font-weight: var(--al-weight-normal);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.25rem;
+  white-space: nowrap;
+  color-scheme: inherit;
+  cursor: pointer;
+  /* `outline-style: none` at width 3px keeps the computed `outline` equal to
+     the reference's; on focus the width becomes 1px (below) to match its
+     outline-width. The visible ring is the box-shadow. */
+  outline: 3px none color-mix(in oklab, var(--ring) 50%, transparent);
 }
 
+/* dark:bg-input/30 dark:hover:bg-input/50 */
+.dark al-select select {
+  background-color: color-mix(in oklab, var(--input) 30%, transparent);
+}
+
+.dark al-select select:hover:not(:disabled) {
+  background-color: color-mix(in oklab, var(--input) 50%, transparent);
+}
+
+/* transition-[color,box-shadow] (150ms, cubic-bezier(.4, 0, .2, 1)) */
+@media (prefers-reduced-motion: no-preference) {
+  al-select select {
+    transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* data-[placeholder]:text-muted-foreground (the empty option is the
+   placeholder) */
+al-select select:has(option[value=""]:checked) {
+  color: var(--muted-foreground);
+}
+
+/* the open listbox is native: its options keep the page colours. In .dark,
+   `color-scheme: inherit` (above) already gives the listbox dark chrome, so
+   these colours partly duplicate it; they stay because the computed colours
+   are compared with the reference's. */
+al-select select option {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+}
+
+/* focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 */
 al-select select:focus-visible {
-  outline: var(--al-ring-width) solid var(--ring);
-  outline-offset: var(--al-ring-offset);
+  --_al-border: var(--ring);
+  outline-width: 1px;
+  box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 0 3px var(--_al-ring), var(--shadow-xs);
 }
 
-al-select[invalid] select {
-  border-color: var(--al-destructive-text);
+/* aria-invalid:border-destructive aria-invalid:ring-destructive/20
+   dark:aria-invalid:ring-destructive/40 (the ring is only drawn on focus) */
+al-select[invalid] select,
+al-select select[aria-invalid="true"] {
+  --_al-border: var(--destructive);
+  --_al-ring: color-mix(in oklab, var(--destructive) 20%, transparent);
 }
 
-al-select[invalid] select:focus-visible {
-  outline-color: var(--al-destructive-text);
+.dark al-select[invalid] select,
+.dark al-select select[aria-invalid="true"] {
+  --_al-ring: color-mix(in oklab, var(--destructive) 40%, transparent);
 }
 
-/* Dim once: the whole field when the element is disabled, or just the
-   control when only it is. */
-al-select[disabled],
-al-select:not([disabled]) select:disabled {
+/* disabled:cursor-not-allowed disabled:opacity-50 */
+al-select select:disabled {
   cursor: not-allowed;
-  opacity: var(--al-disabled-opacity);
+  opacity: 0.5;
 }
 
+/* the chevron dims with its control (the label's opacity is not used) */
+al-select label:has(> select:disabled)::after {
+  opacity: 0.25;
+}
+
+/* description: text-sm text-muted-foreground (the attribute form, drawn when
+   no <small class="help"> is given) */
 al-select[help]::after {
   content: attr(help);
   order: 1;
   color: var(--muted-foreground);
-  font-size: var(--al-text-sm);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
 }
 
 /* The markup form, which Alder renders: <small class="help" id="help-…">
@@ -649,25 +1474,44 @@ al-select[help]::after {
 al-select > .help {
   order: 1;
   color: var(--muted-foreground);
-  font-size: var(--al-text-sm);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.25rem;
 }
 
 al-select:has(> .help)::after {
   content: none;
 }
 
+/* message: text-sm text-destructive font-medium */
 al-select ul.errors {
   order: 2;
   margin: 0;
   padding: 0;
   list-style: none;
-  color: var(--al-destructive-text);
-  font-size: var(--al-text-sm);
-  font-weight: var(--al-weight-medium);
+  color: var(--destructive);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
 }
 
+al-select ul.errors > li {
+  margin: 0;
+  padding: 0;
+}
+
+/* An empty list takes no room (display: none). */
 al-select ul.errors:empty {
   display: none;
+}
+
+/* forced colors drop box-shadow rings and backgrounds: draw the focus indicator as an
+   outline in the system colour (#15) */
+@media (forced-colors: active) {
+  al-select select:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 0;
+  }
 }
 
 /* ---- components/al-checkbox.css ---- */
@@ -680,68 +1524,147 @@ al-select ul.errors:empty {
  *     <ul class="errors" data-errors="done"></ul>
  *   </al-checkbox>
  * The box is drawn before the text (row-reverse), whatever the source order.
- * invalid (set by Alder when the field has errors) outlines the box in the
- * destructive colour.
+ * invalid (set by Alder when the field has errors) draws the box in the
+ * destructive colour, as aria-invalid does.
  */
 
+/* grid gap-2 text-sm (items start: the row is as wide as its content) */
 al-checkbox {
   display: grid;
-  gap: var(--al-space-1-5);
+  gap: 0.5rem;
   justify-items: start;
-  font-family: var(--al-font-sans);
-  font-size: var(--al-text-sm);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
   color: var(--foreground);
 }
 
+/* label: flex items-center gap-2 text-sm leading-none font-medium select-none;
+   the box comes first (row-reverse), whatever the source order */
 al-checkbox label {
   display: inline-flex;
   order: 0;
   flex-direction: row-reverse;
   justify-content: flex-end;
   align-items: center;
-  gap: var(--al-space-2);
-  font-weight: var(--al-weight-medium);
-  line-height: var(--al-leading-tight);
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1;
+  user-select: none;
   cursor: pointer;
 }
 
-al-checkbox input[type="checkbox"] {
-  flex: none;
-  width: var(--al-checkbox-size);
-  height: var(--al-checkbox-size);
-  margin: 0;
-  accent-color: var(--primary);
-  cursor: inherit;
-}
-
-al-checkbox input[type="checkbox"]:focus-visible {
-  outline: var(--al-ring-width) solid var(--ring);
-  outline-offset: var(--al-ring-offset);
-}
-
-/* Dim once: the whole field, or just the label holding a disabled box. */
-al-checkbox[disabled],
-al-checkbox:not([disabled]) label:has(input:disabled) {
+/* group-data-[disabled=true]:opacity-50: the text dims; the box dims itself */
+al-checkbox[disabled] label,
+al-checkbox label:has(> input:disabled) {
+  color: color-mix(in oklab, var(--foreground) 50%, transparent);
   cursor: not-allowed;
-  opacity: var(--al-disabled-opacity);
 }
 
-al-checkbox[invalid] input[type="checkbox"] {
-  outline: var(--al-border-width) solid var(--al-destructive-text);
-  outline-offset: var(--al-border-width);
-  accent-color: var(--al-destructive-text);
+/* peer size-4 shrink-0 rounded-[4px] border border-input shadow-xs
+   transition-shadow outline-none (appearance: none draws the box ourselves) */
+al-checkbox input[type="checkbox"] {
+  --_al-ring: color-mix(in oklab, var(--ring) 50%, transparent);
+  --_al-border: var(--input);
+  appearance: none;
+  position: relative;
+  display: inline-block;
+  flex: none;
+  box-sizing: border-box;
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--_al-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--foreground);
+  box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 transparent, var(--shadow-xs);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.5rem;
+  cursor: inherit;
+  outline: 3px none color-mix(in oklab, var(--ring) 50%, transparent);
 }
 
-al-checkbox[invalid] input[type="checkbox"]:focus-visible {
-  outline: var(--al-ring-width) solid var(--al-destructive-text);
-  outline-offset: var(--al-ring-offset);
+/* dark:bg-input/30 */
+.dark al-checkbox input[type="checkbox"] {
+  background: color-mix(in oklab, var(--input) 30%, transparent);
 }
 
+/* transition-shadow (150ms, cubic-bezier(.4, 0, .2, 1)) */
+@media (prefers-reduced-motion: no-preference) {
+  al-checkbox input[type="checkbox"] {
+    transition: box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* data-[state=checked]:border-primary data-[state=checked]:bg-primary
+   data-[state=checked]:text-primary-foreground dark:data-[state=checked]:bg-primary
+   (an indeterminate box is drawn the same way, with a minus) */
+al-checkbox input[type="checkbox"]:checked,
+al-checkbox input[type="checkbox"]:indeterminate {
+  --_al-border: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.dark al-checkbox input[type="checkbox"]:checked,
+.dark al-checkbox input[type="checkbox"]:indeterminate {
+  background: var(--primary);
+}
+
+/* indicator: <CheckIcon className="size-3.5" /> centred, text-current */
+al-checkbox input[type="checkbox"]:checked::before,
+al-checkbox input[type="checkbox"]:indeterminate::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 0.875rem;
+  height: 0.875rem;
+  background: currentColor;
+  mask: var(--_al-icon-check) center / contain no-repeat;
+}
+
+al-checkbox input[type="checkbox"]:indeterminate:not(:checked)::before {
+  mask-image: var(--_al-icon-minus);
+}
+
+/* focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 */
+al-checkbox input[type="checkbox"]:focus-visible {
+  --_al-border: var(--ring);
+  outline-width: 1px;
+  box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 0 3px var(--_al-ring), var(--shadow-xs);
+}
+
+/* aria-invalid:border-destructive aria-invalid:ring-destructive/20
+   dark:aria-invalid:ring-destructive/40 (the ring is only drawn on focus) */
+al-checkbox[invalid] input[type="checkbox"],
+al-checkbox input[type="checkbox"][aria-invalid="true"] {
+  --_al-border: var(--destructive);
+  --_al-ring: color-mix(in oklab, var(--destructive) 20%, transparent);
+}
+
+.dark al-checkbox[invalid] input[type="checkbox"],
+.dark al-checkbox input[type="checkbox"][aria-invalid="true"] {
+  --_al-ring: color-mix(in oklab, var(--destructive) 40%, transparent);
+}
+
+/* disabled:cursor-not-allowed disabled:opacity-50 */
+al-checkbox input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* description: text-sm text-muted-foreground (the attribute form, drawn when
+   no <small class="help"> is given) */
 al-checkbox[help]::after {
   content: attr(help);
   order: 1;
   color: var(--muted-foreground);
-  font-size: var(--al-text-sm);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
 }
 
 /* The markup form, which Alder renders: <small class="help" id="help-…">
@@ -750,25 +1673,44 @@ al-checkbox[help]::after {
 al-checkbox > .help {
   order: 1;
   color: var(--muted-foreground);
-  font-size: var(--al-text-sm);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.25rem;
 }
 
 al-checkbox:has(> .help)::after {
   content: none;
 }
 
+/* message: text-sm text-destructive font-medium */
 al-checkbox ul.errors {
   order: 2;
   margin: 0;
   padding: 0;
   list-style: none;
-  color: var(--al-destructive-text);
-  font-size: var(--al-text-sm);
-  font-weight: var(--al-weight-medium);
+  color: var(--destructive);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
 }
 
+al-checkbox ul.errors > li {
+  margin: 0;
+  padding: 0;
+}
+
+/* An empty list takes no room (display: none). */
 al-checkbox ul.errors:empty {
   display: none;
+}
+
+/* forced colors drop box-shadow rings and backgrounds: draw the focus indicator as an
+   outline in the system colour (#15) */
+@media (forced-colors: active) {
+  al-checkbox input[type="checkbox"]:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 0;
+  }
 }
 
 /* ---- components/al-table.css ---- */
@@ -777,240 +1719,605 @@ al-checkbox ul.errors:empty {
  * al-table styles the <table> you put inside it:
  *   <al-table striped><table>…</table></al-table>
  * The element scrolls sideways when the table is wider than the page.
+ * shadcn's recipe, with no frame round the table (it has none).
  */
 
+/* wrapper: relative w-full overflow-x-auto */
 al-table {
   display: block;
+  position: relative;
+  width: 100%;
   overflow-x: auto;
-  border: var(--al-border-width) solid var(--border);
-  border-radius: var(--radius);
-  font-family: var(--al-font-sans);
-  font-size: var(--al-text-sm);
-  color: var(--foreground);
 }
 
-al-table table {
+/* Table: w-full caption-bottom text-sm */
+al-table > table {
   width: 100%;
   border-collapse: collapse;
   caption-side: bottom;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
 }
 
-al-table caption {
-  padding: var(--al-space-3);
-  color: var(--muted-foreground);
+/* TableHeader: [&_tr]:border-b; TableRow: border-b transition-colors
+   hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted */
+al-table tr {
+  border-bottom: 1px solid var(--border);
 }
 
-al-table th,
-al-table td {
-  padding: var(--al-space-3) var(--al-space-4);
-  border-bottom: var(--al-border-width) solid var(--border);
-  text-align: start;
-  vertical-align: middle;
+al-table tr:hover,
+al-table tr:has([aria-expanded="true"]) {
+  background: color-mix(in oklab, var(--muted) 50%, transparent);
 }
 
-al-table th {
-  color: var(--muted-foreground);
-  font-weight: var(--al-weight-medium);
-}
-
-al-table tbody tr:last-child > * {
-  border-bottom: 0;
-}
-
-al-table[striped] tbody tr:nth-child(even) {
+al-table tr[aria-selected="true"] {
   background: var(--muted);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  al-table tr {
+    transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1), background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* TableBody: [&_tr:last-child]:border-0 */
+al-table tbody tr:last-child {
+  border-bottom-width: 0;
+}
+
+/* TableFooter: border-t bg-muted/50 font-medium [&>tr]:last:border-b-0 */
+al-table tfoot {
+  border-top: 1px solid var(--border);
+  background: color-mix(in oklab, var(--muted) 50%, transparent);
+  font-weight: 500;
+}
+
+al-table tfoot > tr:last-child {
+  border-bottom-width: 0;
+}
+
+/* dense: th h-8, cells p-1 */
+al-table[dense] th {
+  height: 2rem;
 }
 
 al-table[dense] th,
 al-table[dense] td {
-  padding: var(--al-space-1-5) var(--al-space-3);
+  padding: 0.25rem;
+}
+
+/* TableHead: h-10 px-2 text-left align-middle font-medium whitespace-nowrap
+   text-foreground [&:has([role=checkbox])]:pr-0
+   [&>[role=checkbox]]:translate-y-[2px] */
+al-table th {
+  height: 2.5rem;
+  padding: 0 0.5rem;
+  color: var(--foreground);
+  font-weight: 500;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* TableCell: p-2 align-middle whitespace-nowrap (same checkbox rules) */
+al-table td {
+  padding: 0.5rem;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* after the dense block: dense cells keep the checkbox cell's pr-0 */
+al-table th:has([role="checkbox"]),
+al-table td:has([role="checkbox"]) {
+  padding-right: 0;
+}
+
+al-table th > [role="checkbox"],
+al-table td > [role="checkbox"] {
+  translate: 0 2px;
+}
+
+/* TableCaption: mt-4 text-sm text-muted-foreground */
+al-table caption {
+  margin-top: 1rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+/* striped: even:bg-muted/50 on the body rows (row hover is the same mix) */
+al-table[striped] tbody tr:nth-child(even) {
+  background: color-mix(in oklab, var(--muted) 50%, transparent);
+}
+
+/* data-[state=selected]:bg-muted wins over the even row (#13) */
+al-table[striped] tbody tr[aria-selected="true"]:nth-child(even) {
+  background: var(--muted);
 }
 
 /* ---- components/al-card.css ---- */
 
 /*
  * al-card: a bordered surface. Children are placed by slot, whatever their
- * source order: header, the body (no slot), footer, then actions.
+ * source order. The slots map to shadcn's parts:
+ *   header = CardTitle, description = CardDescription, action = CardAction,
+ *   the body (no slot) = CardContent, footer = CardFooter,
+ *   actions = CardFooter with the buttons pushed to the end.
+ * shadcn's CardHeader is a wrapper element; Alder emits none, so the card
+ * itself is the grid: two columns (1fr auto), the action in the second.
+ * Title, description and action take their 1.5rem side gutter as margin, not
+ * padding, so they stay padding-free like shadcn's leaf elements; the body
+ * and footer take it as padding (px-6).
+ *
+ * Spec 12 choice: an unslotted leading h2/h3 is the title, and a p right
+ * after it the description. `:nth-child(1 of :not([slot]))` counts only the
+ * unslotted children, so a slotted element before the heading does not
+ * break the rule (:first-child would).
+ *
+ * Typography (#11): a body paragraph keeps 24px leading (CardContent sets
+ * none, so it inherits leading-normal); the description is text-sm, 20px.
+ * Every surface keeps shadcn's per-part values; none is reset uniformly.
  */
 
+/* flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground
+   shadow-sm   (a grid rather than a flex column, to hold the action; the
+   gap is gap-6 both ways, and the header's gap-2 is a negative margin on the
+   description (rows) and on the action (columns)) */
 al-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--al-space-4);
-  padding: var(--al-space-6);
-  border: var(--al-border-width) solid var(--border);
-  border-radius: var(--radius);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: start;
+  align-items: start;
+  gap: 1.5rem;
+  padding-block: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
   background: var(--card);
   color: var(--card-foreground);
-  box-shadow: var(--al-shadow-sm);
-  font-family: var(--al-font-sans);
+  /* the four transparent layers are Tailwind's no-op shadow slots (see
+     al-button.css), kept so the computed list matches the reference's */
+  box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 transparent, var(--shadow-sm);
+  font-family: var(--font-sans);
 }
 
+/* CardContent: px-6 (every child but the header parts, below) */
 al-card > * {
+  grid-column: 1 / -1;
   margin-block: 0;
 }
 
-al-card > [slot="header"] {
-  order: -1;
-  font-size: var(--al-text-lg);
-  font-weight: var(--al-weight-semibold);
-  line-height: var(--al-leading-tight);
+al-card > :not([slot="header"], [slot="description"], [slot="action"]) {
+  padding-inline: 1.5rem;
 }
 
+/* CardContent sets no leading: a body paragraph inherits the page's
+   leading-normal (24px at text-base), not Typography's p leading-7 (R27) */
+al-card > p {
+  line-height: 1.5rem;
+}
+
+/* CardTitle: leading-none font-semibold (and no Typography h2 divider:
+   border-b pb-2 is reset, as in al-dialog); CardDescription: text-sm
+   text-muted-foreground; CardAction: col-start-2 row-start-1 self-start
+   justify-self-end row-span-2 (span 2 only when a description exists, below:
+   otherwise it would leave an empty row); the -1rem start margin turns the
+   1.5rem column gap into CardHeader's gap-2. All inside CardHeader's px-6. */
+al-card > [slot="header"],
+al-card > [slot="description"],
+al-card > :is(h2, h3):nth-child(1 of :not([slot])),
+al-card > :is(h2, h3):nth-child(1 of :not([slot])) ~ p:nth-child(2 of :not([slot])) {
+  padding-inline: 0;
+  margin-inline: 1.5rem;
+}
+
+al-card > [slot="header"],
+al-card > :is(h2, h3):nth-child(1 of :not([slot])) {
+  order: -3;
+  padding-block: 0;
+  border-width: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: normal;
+}
+
+al-card > [slot="description"],
+al-card > :is(h2, h3):nth-child(1 of :not([slot])) ~ p:nth-child(2 of :not([slot])) {
+  order: -2;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+/* the header's gap-2 pulls the description up under the title; a card with
+   no title has nothing to be close to (#13) */
+al-card:has(> [slot="header"], > :is(h2, h3):nth-child(1 of :not([slot]))) > :is([slot="description"], :is(h2, h3):nth-child(1 of :not([slot])) ~ p:nth-child(2 of :not([slot]))) {
+  margin-block-start: -1rem;
+}
+
+al-card > [slot="action"] {
+  order: -3;
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  justify-self: end;
+  margin-inline: -1rem 1.5rem;
+}
+
+al-card:has(> [slot="action"]) > :is([slot="header"], [slot="description"], :is(h2, h3):nth-child(1 of :not([slot])), :is(h2, h3):nth-child(1 of :not([slot])) ~ p:nth-child(2 of :not([slot]))) {
+  grid-column: 1;
+  margin-inline-end: 0;
+}
+
+al-card:has(> [slot="description"], > :is(h2, h3):nth-child(1 of :not([slot])) ~ p:nth-child(2 of :not([slot]))) > [slot="action"] {
+  grid-row: 1 / span 2;
+}
+
+/* CardFooter: flex items-center px-6 */
 al-card > [slot="footer"] {
   order: 1;
-  color: var(--muted-foreground);
-  font-size: var(--al-text-sm);
+  display: flex;
+  align-items: center;
 }
 
+/* actions: CardFooter, justify-end gap-2 */
 al-card > [slot="actions"] {
   order: 2;
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: var(--al-space-2);
+  gap: 0.5rem;
 }
 
 /* ---- components/al-badge.css ---- */
 
 /* al-badge: a small pill for a status or a count. */
 
+/* inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden
+   rounded-full border border-transparent px-2 py-0.5 text-xs font-medium
+   whitespace-nowrap  ([&>svg]:size-3 omitted: Alder emits no icon child)
+   default: bg-primary text-primary-foreground [a&]:hover:bg-primary/90 */
 al-badge {
+  --_al-hover: color-mix(in oklab, var(--primary) 90%, transparent);
   display: inline-flex;
   inline-size: fit-content;
+  flex-shrink: 0;
   align-items: center;
-  padding: var(--al-space-0-5) var(--al-space-2);
-  border: var(--al-border-width) solid var(--primary);
-  border-radius: var(--al-radius-full);
+  justify-content: center;
+  gap: 0.25rem;
+  overflow: hidden;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: calc(infinity * 1px);
   background: var(--primary);
   color: var(--primary-foreground);
-  font-family: var(--al-font-sans);
-  font-size: var(--al-text-xs);
-  font-weight: var(--al-weight-semibold);
-  line-height: var(--al-leading);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1rem;
   white-space: nowrap;
 }
 
-al-badge[variant="default"] {
-  border-color: var(--primary);
-  background: var(--primary);
-  color: var(--primary-foreground);
-}
-
+/* secondary: bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90 */
 al-badge[variant="secondary"] {
-  border-color: var(--secondary);
+  --_al-hover: color-mix(in oklab, var(--secondary) 90%, transparent);
   background: var(--secondary);
   color: var(--secondary-foreground);
 }
 
+/* destructive: bg-destructive text-white focus-visible:ring-destructive/20
+   dark:bg-destructive/60 dark:focus-visible:ring-destructive/40
+   [a&]:hover:bg-destructive/90 */
+al-badge[variant="destructive"] {
+  --_al-hover: color-mix(in oklab, var(--destructive) 90%, transparent);
+  --_al-ring: color-mix(in oklab, var(--destructive) 20%, transparent);
+  background: var(--destructive);
+  color: var(--color-white);
+}
+
+.dark al-badge[variant="destructive"] {
+  --_al-ring: color-mix(in oklab, var(--destructive) 40%, transparent);
+  background: color-mix(in oklab, var(--destructive) 60%, transparent);
+}
+
+/* outline: border-border text-foreground [a&]:hover:bg-accent
+   [a&]:hover:text-accent-foreground */
 al-badge[variant="outline"] {
+  --_al-hover: var(--accent);
   border-color: var(--border);
   background: transparent;
   color: var(--foreground);
 }
 
-al-badge[variant="destructive"] {
-  border-color: var(--destructive);
-  background: var(--destructive);
-  color: var(--destructive-foreground);
+/* A badge that is a link: al-badge > a is the [a&] of shadcn. It takes the
+   badge's look; the badge shows the hover and the focus ring. */
+al-badge > a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* [a&]:hover:bg-... */
+al-badge:has(> a:hover) {
+  background: var(--_al-hover);
+}
+
+al-badge[variant="outline"]:has(> a:hover) {
+  color: var(--accent-foreground);
+}
+
+/* focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50
+   (destructive: focus-visible:ring-destructive/20, dark /40, via --_al-ring) */
+al-badge:has(> a:focus-visible) {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px var(--_al-ring, color-mix(in oklab, var(--ring) 50%, transparent));
+}
+
+/* the host draws the ring, so the link inside draws no outline of its own */
+al-badge > a:focus-visible {
+  outline: none;
+}
+
+/* forced colors drop box-shadow rings and backgrounds: draw the focus indicator as an
+   outline in the system colour (#15) */
+@media (forced-colors: active) {
+  al-badge > a:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
 }
 
 /* ---- components/al-alert.css ---- */
 
 /*
- * al-alert: a message box. The heading attribute is drawn as its heading.
- * Write role="alert" (warning, destructive) or role="status" (info,
- * success) on the element yourself: CSS cannot add a role. dismissible
- * makes room for the close button that the optional al-alert.js adds.
+ * al-alert: a message box. The heading attribute is drawn as its title (a
+ * ::before) and the variant's icon as an absolute ::after in the start
+ * padding. The alert is block flow, not shadcn's grid, so a message may mix
+ * text and inline elements ("Saved <code>post.md</code>"); its block
+ * children (p, div, ul, ol) are the description. Write role="alert"
+ * (warning, destructive) or role="status" (info, success) on the element
+ * yourself: CSS cannot add a role. dismissible makes room for the close
+ * button that the optional al-alert.js adds.
+ *
+ * shadcn has only default and destructive. info, success and warning are
+ * the default look; they differ only in the icon (info, circle-check,
+ * triangle-alert; destructive has octagon-x). No tinted backgrounds.
+ *
+ * Content (spec 5.2): a heading attribute plus bare text reads like a heading
+ * plus a p: the host takes the description colour and the title (::before),
+ * the icon and the close button take the title colour (--_al-title). An h1-h6
+ * child is styled as AlertTitle, not as Typography's heading. An empty
+ * ul.errors is hidden; with a heading the alert still draws the heading.
+ *
+ * Typography (#11): the description is text-sm, 20px, and a p nested in a
+ * block child is leading-relaxed (1.625), as in shadcn's [&_p]:leading-relaxed.
+ * Every surface keeps shadcn's per-part values; none is reset uniformly.
  */
 
+/* relative grid w-full grid-cols-[0_1fr] items-start gap-y-0.5 rounded-lg
+   border px-4 py-3 text-sm has-[>svg]:grid-cols-[calc(var(--spacing)*4)_1fr]
+   has-[>svg]:gap-x-3
+   default: bg-card text-card-foreground
+   Block flow here, not grid: in a grid every inline child (a, code, strong)
+   and every run of text between them would be a row of its own. The icon
+   column and gap-x-3 are the start padding: px-4 + size-4 + gap-x-3. */
 al-alert {
+  --_al-icon: var(--_al-icon-info);
+  --_al-title: var(--card-foreground);
   display: block;
   position: relative;
-  padding: var(--al-space-4);
-  border: var(--al-border-width) solid var(--al-info-border);
-  border-radius: var(--radius);
-  background: var(--al-info-soft);
-  color: var(--al-info-soft-foreground);
-  font-family: var(--al-font-sans);
-  font-size: var(--al-text-sm);
-  line-height: var(--al-leading);
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  padding-inline-start: calc(1rem + 1rem + 0.75rem);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  color: var(--card-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
 }
 
-al-alert[variant="info"] {
-  border-color: var(--al-info-border);
-  background: var(--al-info-soft);
-  color: var(--al-info-soft-foreground);
+/* [&>svg]:size-4 [&>svg]:translate-y-0.5 [&>svg]:text-current  (the icon,
+   at the top of the first line: px-4, py-3) */
+al-alert::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: 1rem;
+  inset-block-start: 0.75rem;
+  width: 1rem;
+  height: 1rem;
+  translate: 0 0.125rem;
+  background: currentColor;
+  mask: var(--_al-icon) center / contain no-repeat;
 }
 
 al-alert[variant="success"] {
-  border-color: var(--al-success-border);
-  background: var(--al-success-soft);
-  color: var(--al-success-soft-foreground);
+  --_al-icon: var(--_al-icon-circle-check);
 }
 
 al-alert[variant="warning"] {
-  border-color: var(--al-warning-border);
-  background: var(--al-warning-soft);
-  color: var(--al-warning-soft-foreground);
+  --_al-icon: var(--_al-icon-triangle-alert);
 }
 
+/* destructive: bg-card text-destructive
+   *:data-[slot=alert-description]:text-destructive/90 */
 al-alert[variant="destructive"] {
-  border-color: var(--al-destructive-border);
-  background: var(--al-destructive-soft);
-  color: var(--al-destructive-soft-foreground);
+  --_al-icon: var(--_al-icon-octagon-x);
+  --_al-title: var(--destructive);
+  color: var(--destructive);
 }
 
+/* heading + bare text: the text is the description (the p rules below give
+   the same colours to a block child, so the host keeps its own then) */
+al-alert[heading]:not(:has(> :is(p, div, ul:not(.errors:empty), ol))) {
+  color: var(--muted-foreground);
+}
+
+al-alert[heading][variant="destructive"]:not(:has(> :is(p, div, ul:not(.errors:empty), ol))) {
+  color: color-mix(in oklab, var(--destructive) 90%, transparent);
+}
+
+/* the icon is text-current on the title colour, not the description's */
+al-alert[heading]::after {
+  color: var(--_al-title);
+}
+
+/* AlertTitle: col-start-2 line-clamp-1 min-h-4 font-medium tracking-tight
+   (-webkit-box is block-level: the title is a line of its own) */
 al-alert[heading]::before {
   content: attr(heading);
-  display: block;
-  margin-bottom: var(--al-space-1);
-  font-weight: var(--al-weight-semibold);
-  line-height: var(--al-leading-tight);
+  display: -webkit-box;
+  overflow: hidden;
+  min-height: 1rem;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  color: var(--_al-title);
+  font-weight: 500;
+  letter-spacing: -0.025em;
 }
 
-al-alert > :first-child {
-  margin-top: 0;
+/* gap-y-0.5 under the title when bare text follows it (a block child brings
+   its own 2px margin).
+   An empty errors list counts as a block child here: CSS cannot see bare text
+   beside it, and a heading-only alert (Alder's Errors form) must stay 46px. */
+al-alert[heading]:not(:has(> :is(p, div, ul, ol)))::before {
+  margin-block-end: 0.125rem;
 }
 
-al-alert > :last-child {
-  margin-bottom: 0;
+/* an h1-h6 child is the AlertTitle: font-medium tracking-tight text-sm, with
+   no Typography margin, divider or size (scroll-m-20 h3 text-2xl) */
+al-alert > :is(h1, h2, h3, h4, h5, h6) {
+  margin: 0;
+  padding: 0;
+  border-width: 0;
+  color: var(--_al-title);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  letter-spacing: -0.025em;
+}
+
+/* AlertDescription: col-start-2 grid justify-items-start gap-1 text-sm
+   text-muted-foreground [&_p]:leading-relaxed   (only the block children:
+   inline ones flow with the text around them; a p or div is block flow, so
+   the inline elements inside it stay on its lines too) */
+al-alert > :is(p, div, ul, ol) {
+  margin: 0;
+  padding: 0;
+  border-width: 0;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  letter-spacing: normal;
+}
+
+/* gap-y-0.5 between the title and the description, and between blocks */
+al-alert[heading] > :is(p, div, ul, ol),
+al-alert > :not(.al-alert-dismiss) + :is(p, div, ul, ol) {
+  margin-block-start: 0.125rem;
+}
+
+al-alert[variant="destructive"] > :is(p, div, ul, ol) {
+  color: color-mix(in oklab, var(--destructive) 90%, transparent);
+}
+
+/* an errors list is plain lines here, not bullets: grid gap-1, and no
+   Typography [&>li]:mt-2 on its items */
+al-alert > :is(ul, ol) {
+  display: grid;
+  justify-items: start;
+  gap: 0.25rem;
+  list-style: none;
+}
+
+al-alert > :is(ul, ol) > li {
+  margin: 0;
+  padding: 0;
+}
+
+al-alert > :is(p, div, ul, ol) p {
+  line-height: 1.625;
 }
 
 al-alert[dismissible] {
-  padding-inline-end: var(--al-space-10);
+  padding-inline-end: 3rem;
 }
 
+/* The dismiss button: a ghost icon button, size-7, top right.
+   hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50
+   focus-visible:ring-[3px] focus-visible:ring-ring/50 (no border-ring: the
+   button's border is 0, so focus draws the ring as a box-shadow only) */
 al-alert > .al-alert-dismiss {
   position: absolute;
-  top: var(--al-space-2);
-  inset-inline-end: var(--al-space-2);
+  top: 0.5rem;
+  inset-inline-end: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 1.75rem;
+  height: 1.75rem;
   margin: 0;
-  padding: var(--al-space-1) var(--al-space-2);
+  padding: 0;
   border: 0;
-  border-radius: var(--al-radius-sm);
+  border-radius: var(--radius-md);
   background: transparent;
-  color: inherit;
-  font-family: inherit;
-  font-size: var(--al-text-base);
-  line-height: var(--al-leading-tight);
+  color: var(--_al-title);
   cursor: pointer;
+  outline: none;
+}
+
+al-alert > .al-alert-dismiss::before {
+  content: "";
+  width: 1rem;
+  height: 1rem;
+  background: currentColor;
+  mask: var(--_al-icon-x) center / contain no-repeat;
 }
 
 al-alert > .al-alert-dismiss:hover {
-  background: color-mix(in srgb, currentColor 12%, transparent);
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.dark al-alert > .al-alert-dismiss:hover {
+  background: color-mix(in oklab, var(--accent) 50%, transparent);
 }
 
 al-alert > .al-alert-dismiss:focus-visible {
-  outline: var(--al-ring-width) solid var(--ring);
-  outline-offset: var(--al-ring-offset);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  al-alert > .al-alert-dismiss {
+    transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
 }
 
 /* An alert that holds only an empty errors list (Alder's
    <al-alert variant="destructive"><Errors form /></al-alert>, before any
    error) is not drawn: no empty coloured box. */
-al-alert:has(> ul.errors:empty) {
+al-alert:not([heading]):has(> ul.errors:empty) {
   display: none;
+}
+
+/* with a heading the alert stays and only the empty list goes (it would
+   otherwise add a 2px gap and, as a grid, beat the plain display rule) */
+al-alert > ul.errors:empty {
+  display: none;
+}
+
+/* forced colors drop box-shadow rings and backgrounds: draw the focus indicator as an
+   outline in the system colour (#15) */
+@media (forced-colors: active) {
+  al-alert > .al-alert-dismiss:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
 }
 
 /* ---- components/al-pagination.css ---- */
@@ -1023,17 +2330,24 @@ al-alert:has(> ul.errors:empty) {
  *   </al-pagination>
  * prev, then "Page 2 of 5" (from the attributes), then next. A slot with no
  * page to go to can be <span slot="prev" aria-disabled="true">. Children
- * without a slot (your own "Page 2 of 5", page links) go in the middle and
- * replace the generated text.
+ * without a slot go in the middle and replace the generated text: page
+ * links (<a>) are 2.25rem square buttons, the current one
+ * (aria-current="page") outlined; anything else is muted text, except the
+ * ellipsis (<span aria-hidden="true">&hellip;</span>), which is shadcn's
+ * size-9 PaginationEllipsis: the mask icon replaces the text (kept for no-CSS).
+ * Content: flex flex-row items-center gap-1 (centred, as Pagination's
+ * mx-auto flex w-full justify-center)
  */
 
 al-pagination {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--al-space-4);
-  font-family: var(--al-font-sans);
-  font-size: var(--al-text-sm);
+  justify-content: center;
+  gap: 0.25rem;
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
   color: var(--foreground);
 }
 
@@ -1041,9 +2355,11 @@ al-pagination > [slot="prev"] {
   order: 0;
 }
 
+/* "Page n of m": text-sm text-muted-foreground */
 al-pagination[page][pages]::after {
   content: "Page " attr(page) " of " attr(pages);
   order: 1;
+  padding-inline: 0.5rem;
   color: var(--muted-foreground);
 }
 
@@ -1059,79 +2375,223 @@ al-pagination > [slot="next"] {
   order: 2;
 }
 
-al-pagination > [slot="prev"],
-al-pagination > [slot="next"] {
-  display: inline-flex;
-  align-items: center;
-  box-sizing: border-box;
-  min-height: var(--al-control-h-sm);
-  padding: 0 var(--al-space-3);
-  border: var(--al-border-width) solid var(--input);
-  border-radius: var(--radius);
-  background: var(--background);
-  color: var(--foreground);
-  font-weight: var(--al-weight-medium);
-  text-decoration: none;
+al-pagination > :not([slot]):not(a) {
+  padding-inline: 0.5rem;
+  color: var(--muted-foreground);
 }
 
-al-pagination > a[slot]:hover {
-  background: var(--accent);
+/* PaginationEllipsis: flex size-9 items-center justify-center, with a size-4
+   more-horizontal icon (inherits the foreground colour and the 16px/24px body
+   type, as in shadcn). The text stays for no-CSS and is pushed out of the
+   clipped box; the icon is centred on it. */
+al-pagination > [aria-hidden="true"]:not([slot]):not(a) {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  padding: 0;
+  overflow: hidden;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1.5rem;
+  text-indent: 4rem;
+  white-space: nowrap;
+}
+
+al-pagination > [aria-hidden="true"]:not([slot]):not(a)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  inline-size: 1rem;
+  block-size: 1rem;
+  background: currentColor;
+  mask: var(--_al-icon-ellipsis) center / contain no-repeat;
+}
+
+/* Link: buttonVariants({ variant: "ghost" | "outline", size: "icon" }) =
+   inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm
+   font-medium whitespace-nowrap outline-none size-9
+   ghost: hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50
+   Previous/Next: size default (h-9 px-4 py-2 has-[>svg]:px-3) with gap-1
+   (the icon is an svg in shadcn, so the px-3 wins over px-2.5) */
+al-pagination > a,
+al-pagination > [slot="prev"],
+al-pagination > [slot="next"] {
+  --_al-bg: transparent;
+  --_al-hover: var(--accent);
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  block-size: 2.25rem;
+  inline-size: 2.25rem;
+  margin: 0;
+  padding: 0;
+  border: 0 solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--_al-bg);
+  color: var(--foreground);
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+  outline-style: none;
+}
+
+al-pagination > [slot="prev"],
+al-pagination > [slot="next"] {
+  inline-size: auto;
+  gap: 0.25rem;
+  padding: 0.5rem 0.75rem;
+}
+
+/* ChevronLeftIcon / ChevronRightIcon, size-4 */
+al-pagination > [slot="prev"]::before,
+al-pagination > [slot="next"]::after {
+  content: "";
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  background: currentColor;
+}
+
+al-pagination > [slot="prev"]::before {
+  mask: var(--_al-icon-chevron-left) center / contain no-repeat;
+}
+
+al-pagination > [slot="next"]::after {
+  mask: var(--_al-icon-chevron-right) center / contain no-repeat;
+}
+
+.dark al-pagination > a,
+.dark al-pagination > [slot="prev"],
+.dark al-pagination > [slot="next"] {
+  --_al-hover: color-mix(in oklab, var(--accent) 50%, transparent);
+}
+
+/* active link: outline: border bg-background shadow-xs hover:bg-accent
+   hover:text-accent-foreground dark:border-input dark:bg-input/30
+   dark:hover:bg-input/50 */
+al-pagination > a[aria-current="page"] {
+  --_al-bg: var(--background);
+  --_al-hover: var(--accent);
+  border-width: 1px;
+  box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 transparent, var(--shadow-xs);
+}
+
+.dark al-pagination > a[aria-current="page"] {
+  --_al-bg: color-mix(in oklab, var(--input) 30%, transparent);
+  --_al-hover: color-mix(in oklab, var(--input) 50%, transparent);
+  border-color: var(--input);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  al-pagination > a,
+  al-pagination > [slot="prev"],
+  al-pagination > [slot="next"] {
+    transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+al-pagination > a:hover {
+  background: var(--_al-hover);
   color: var(--accent-foreground);
 }
 
-al-pagination > a[slot]:focus-visible {
-  outline: var(--al-ring-width) solid var(--ring);
-  outline-offset: var(--al-ring-offset);
+/* focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 */
+al-pagination > a:focus-visible {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
 }
 
+.dark al-pagination > a[aria-current="page"]:focus-visible {
+  border-color: var(--input);
+}
+
+/* disabled:pointer-events-none disabled:opacity-50 */
 al-pagination > [slot][aria-disabled="true"] {
-  opacity: var(--al-disabled-opacity);
+  opacity: 0.5;
   pointer-events: none;
+}
+
+/* forced colors drop box-shadow rings and backgrounds: draw the focus indicator as an
+   outline in the system colour (#15) */
+@media (forced-colors: active) {
+  al-pagination > a:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
 }
 
 /* ---- components/al-stack.css ---- */
 
 /* al-stack: children in a column (default) or a wrapping row, with a gap. */
 
+/* flex flex-col gap-4 */
 al-stack {
   display: flex;
   flex-direction: column;
-  gap: var(--al-space-4);
+  gap: 1rem;
 }
 
 al-stack[direction="column"] {
   flex-direction: column;
 }
 
+/* flex-row flex-wrap items-center */
 al-stack[direction="row"] {
   flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
 }
 
+/* gap-2 */
 al-stack[gap="sm"] {
-  gap: var(--al-space-2);
+  gap: 0.5rem;
 }
 
+/* gap-4 */
 al-stack[gap="md"] {
-  gap: var(--al-space-4);
+  gap: 1rem;
 }
 
+/* gap-6 */
 al-stack[gap="lg"] {
-  gap: var(--al-space-8);
+  gap: 1.5rem;
+}
+
+/* The gap alone spaces a stack's children: typography's flow margins (p and
+ * whatever follows a heading or p get mt-6, h2 mt-10, ul/ol my-6) would add to
+ * it. (0,0,1), and after typography.css in the bundle, so it beats those rules
+ * (also (0,0,1)); a component that sets its own margin later in the bundle
+ * (al-popover, al-menu, al-tooltip) or with more weight keeps it. */
+al-stack > * {
+  margin-block: 0;
 }
 
 /* ---- components/al-page.css ---- */
 
 /* al-page: the content frame, a centred column of a set maximum width. */
 
+/* mx-auto w-full py-8 px-4 (max-w from --al-width-*) */
 al-page {
   display: block;
   box-sizing: border-box;
   width: 100%;
   max-width: var(--al-width-normal);
   margin-inline: auto;
-  padding: var(--al-space-8) var(--al-space-4);
+  padding: 2rem 1rem;
+}
+
+/* sm:px-6 */
+@media (min-width: 40rem) {
+  al-page {
+    padding-inline: 1.5rem;
+  }
 }
 
 al-page[width="narrow"] {
@@ -1144,6 +2604,14 @@ al-page[width="normal"] {
 
 al-page[width="wide"] {
   max-width: var(--al-width-wide);
+}
+
+/* plain: no look of its own. typography.css scopes every rule to
+ * al-page:not([plain]), so a plain page's flow content keeps only base.css's
+ * reset (unstyled headings, no list markers, zero margins), for a page that
+ * brings its own typography. */
+al-page[plain] {
+  display: block;
 }
 
 /* ---- components/al-dialog.css ---- */
@@ -1163,99 +2631,237 @@ al-page[width="wide"] {
  * heading is rendered by the framework as the header slot's <h2>. The close
  * button of a dismissible dialog is a <form method="dialog"> with a button,
  * the first child of the <dialog>; closedby="any" adds backdrop clicks.
+ *
+ * The slots map to shadcn's parts: header = DialogTitle, description =
+ * DialogDescription, the body (no slot) = DialogContent's own children,
+ * actions = DialogFooter, the close form's button = the Close. shadcn's
+ * DialogHeader is a wrapper element; Alder emits none, so the <dialog> itself
+ * is the grid, and the header's gap-2 is a negative margin on the
+ * description. Children are placed by slot (order), so the layout does not
+ * depend on source order, with one exception: the description's negative
+ * margin applies only when it directly follows the header in the source,
+ * which is how the renderer always emits them.
+ *
+ * Typography (#11): a body paragraph keeps 24px leading (DialogContent sets
+ * none, so it inherits leading-normal); the description is text-sm, 20px.
+ * Every surface keeps shadcn's per-part values; none is reset uniformly.
  */
 
 al-dialog {
   display: contents;
 }
 
+/* DialogContent: fixed top-[50%] left-[50%] z-50 grid w-full
+   max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4
+   rounded-lg border bg-background p-6 shadow-lg duration-200 outline-none
+   sm:max-w-lg   (centred by inset 0 + margin auto, as the platform centres a
+   modal <dialog>; width calc(100% - 2rem) with max-width 32rem is the same
+   width at every viewport) */
 al-dialog > dialog {
   position: fixed;
-  inline-size: calc(var(--al-width-narrow) * 0.75);
-  max-inline-size: calc(100dvw - var(--al-space-8));
-  max-block-size: calc(100dvh - var(--al-space-8));
+  inset: 0;
+  z-index: 50;
+  inline-size: calc(100% - 2rem);
+  max-inline-size: 32rem;
+  max-block-size: calc(100dvh - 2rem);
   margin: auto;
-  padding: 0;
-  border: var(--al-border-width) solid var(--border);
-  border-radius: var(--radius);
-  background: var(--popover);
-  color: var(--popover-foreground);
-  box-shadow: var(--al-shadow-sm);
-  font-family: var(--al-font-sans);
-  font-size: var(--al-text-sm);
-  line-height: var(--al-leading);
-}
-
-al-dialog > dialog::backdrop {
+  padding: 1.5rem;
+  gap: 1rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--background);
   color: var(--foreground);
-  background: color-mix(in srgb, currentColor 50%, transparent);
+  box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 transparent, var(--shadow-lg);
+  outline-style: none;
 }
 
-/* No JavaScript: the dialog the URL fragment names is shown. */
-al-dialog > dialog:target:not([open]) {
-  display: block;
+/* grid only while shown: a closed <dialog> keeps the platform's display: none.
+   No JavaScript: the dialog the URL fragment names is shown (not modal). */
+al-dialog > dialog:is([open], :target) {
+  display: grid;
 }
 
+/* sm:max-w-md / sm:max-w-lg / sm:max-w-2xl */
 al-dialog[size="sm"] > dialog {
-  inline-size: calc(var(--al-width-narrow) / 2);
+  max-inline-size: 28rem;
 }
 
 al-dialog[size="lg"] > dialog {
-  inline-size: var(--al-width-narrow);
+  max-inline-size: 42rem;
 }
 
-al-dialog [slot="header"] {
+/* DialogOverlay: fixed inset-0 z-50 bg-black/50 */
+al-dialog > dialog::backdrop {
+  background: color-mix(in oklab, var(--color-black) 50%, transparent);
+}
+
+al-dialog > dialog > * {
   margin: 0;
-  padding: var(--al-space-4) var(--al-space-6) 0;
-  font-size: var(--al-text-lg);
-  font-weight: var(--al-weight-semibold);
-  line-height: var(--al-leading-tight);
 }
 
-al-dialog > dialog > :not([slot]):not(form) {
-  padding: var(--al-space-4) var(--al-space-6);
+/* DialogContent sets no leading: a body paragraph inherits the page's
+   leading-normal (24px at text-base), not Typography's p leading-7 (R27) */
+al-dialog > dialog > p {
+  line-height: 1.5rem;
 }
 
-al-dialog [slot="actions"] {
+/* DialogHeader: flex flex-col gap-2 text-center sm:text-left
+   DialogTitle: text-lg leading-none font-semibold */
+al-dialog > dialog > [slot="header"] {
+  order: -2;
+  padding: 0;
+  border-width: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: normal;
+  text-align: center;
+}
+
+/* DialogClose is absolute at the top-end corner, so a long title would run under
+   it: a dismissible dialog keeps the title's inline end clear of the button.
+   The button's inner edge is 0.5rem inside the content box (right-4 against
+   p-6), so 1rem leaves a 0.5rem gap. A divergence from shadcn, #15. */
+al-dialog[dismissible] > dialog > [slot="header"] {
+  padding-inline-end: 1rem;
+}
+
+/* DialogDescription: text-sm text-muted-foreground   (the -0.5rem top margin
+   turns the grid's gap-4 into DialogHeader's gap-2; it applies only when the
+   description directly follows the header in source order, below) */
+al-dialog > dialog > [slot="description"] {
+  order: -1;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  text-align: center;
+}
+
+al-dialog > dialog > [slot="header"] + [slot="description"] {
+  margin-block-start: -0.5rem;
+}
+
+/* DialogFooter: flex flex-col-reverse gap-2 sm:flex-row sm:justify-end */
+al-dialog > dialog > [slot="actions"] {
+  order: 1;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--al-space-2);
-  padding: 0 var(--al-space-6) var(--al-space-4);
+  flex-direction: column-reverse;
+  gap: 0.5rem;
 }
 
-al-dialog[dismissible] [slot="header"] {
-  padding-inline-end: var(--al-space-10);
+/* In the column, shadcn's buttons stretch (align-items: stretch); an
+   al-button is a flex row around its <button> or <a>, so the inner one grows. */
+al-dialog > dialog > [slot="actions"] > al-button > :is(button, a) {
+  flex: auto;
 }
 
-al-dialog[dismissible] > dialog > form[method="dialog"] {
+@media (min-width: 40rem) {
+  al-dialog > dialog > [slot="actions"] > al-button > :is(button, a) {
+    flex: none;
+  }
+
+  al-dialog > dialog > :is([slot="header"], [slot="description"]) {
+    text-align: start;
+  }
+
+  al-dialog > dialog > [slot="actions"] {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+}
+
+/* A dismissible dialog's first-child close form is no box: its button is
+   placed against the dialog. (A <form method="dialog"> elsewhere in the body
+   is the app's own form, left alone.) */
+al-dialog[dismissible] > dialog > form[method="dialog"]:first-child {
+  display: contents;
+}
+
+/* DialogClose: absolute top-4 right-4 rounded-xs opacity-70
+   ring-offset-background transition-opacity hover:opacity-100 focus:ring-2
+   focus:ring-ring focus:ring-offset-2 focus:outline-hidden
+   disabled:pointer-events-none [&_svg]:size-4   with <XIcon />: the glyph
+   Alder writes (&times;) is pushed out of the 1rem box and the x is a mask
+   on ::before. */
+al-dialog[dismissible] > dialog > form[method="dialog"]:first-child > button {
   position: absolute;
-  top: var(--al-space-3);
-  inset-inline-end: var(--al-space-3);
-  margin: 0;
-}
-
-al-dialog[dismissible] > dialog > form[method="dialog"] > button {
-  margin: 0;
-  padding: var(--al-space-1) var(--al-space-2);
-  border: 0;
-  border-radius: var(--al-radius-sm);
+  top: 1rem;
+  inset-inline-end: 1rem;
+  inline-size: 1rem;
+  block-size: 1rem;
+  overflow: hidden;
+  border-radius: 0.125rem;
   background: transparent;
   color: inherit;
-  font-family: inherit;
-  font-size: var(--al-text-base);
-  line-height: var(--al-leading-tight);
+  font: inherit;
+  white-space: nowrap;
+  text-indent: 100%;
+  opacity: 0.7;
   cursor: pointer;
 }
 
-al-dialog[dismissible] > dialog > form[method="dialog"] > button:hover {
-  background: var(--accent);
-  color: var(--accent-foreground);
+/* transition-opacity */
+@media (prefers-reduced-motion: no-preference) {
+  al-dialog[dismissible] > dialog > form[method="dialog"]:first-child > button {
+    transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
 }
 
-al-dialog[dismissible] > dialog > form[method="dialog"] > button:focus-visible {
-  outline: var(--al-ring-width) solid var(--ring);
-  outline-offset: var(--al-ring-offset);
+al-dialog[dismissible] > dialog > form[method="dialog"]:first-child > button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  mask: var(--_al-icon-x) center / contain no-repeat;
+  pointer-events: none;
+}
+
+al-dialog[dismissible] > dialog > form[method="dialog"]:first-child > button:hover {
+  opacity: 1;
+}
+
+al-dialog[dismissible] > dialog > form[method="dialog"]:first-child > button:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--ring);
+}
+
+al-dialog[dismissible] > dialog > form[method="dialog"]:first-child > button:disabled {
+  pointer-events: none;
+}
+
+/* data-[state=open]:animate-in fade-in-0 zoom-in-95, data-[state=closed]:
+   animate-out fade-out-0 zoom-out-95, duration-200; the overlay fades.
+   The :target form shows and hides with no motion. */
+@media (prefers-reduced-motion: no-preference) {
+  al-dialog > dialog,
+  al-dialog > dialog::backdrop {
+    transition-property: opacity, scale, display, overlay;
+    transition-duration: 200ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-behavior: allow-discrete;
+  }
+
+  al-dialog > dialog:not([open], :target) {
+    opacity: 0;
+    scale: 0.95;
+  }
+
+  al-dialog > dialog:not([open], :target)::backdrop {
+    opacity: 0;
+  }
+
+  @starting-style {
+    al-dialog > dialog[open] {
+      opacity: 0;
+      scale: 0.95;
+    }
+
+    al-dialog > dialog[open]::backdrop {
+      opacity: 0;
+    }
+  }
 }
 
 /* ---- components/al-popover.css ---- */
@@ -1265,59 +2871,132 @@ al-dialog[dismissible] > dialog > form[method="dialog"] > button:focus-visible {
  * popover attribute yourself and open it with a button carrying
  * popovertarget="<id>" or commandfor="<id>" command="toggle-popover"; both
  * work with no JavaScript. Position: CSS anchor positioning (the invoker is
- * the implicit anchor, or name another element with the HTML anchor="<id>"
- * attribute); position-try flips it to the other side when it would overflow.
- * placement and offset choose the side and the gap.
+ * the implicit anchor, or name another element with anchor="<id>");
+ * position-try flips it to the other side when it would overflow.
+ * placement and offset choose the side and the gap. anchor= needs al.js
+ * (al-shim.js sets position-anchor at each open; Chromium ignores the HTML
+ * attribute); without it the invoker is the anchor.
+ *
+ * The parts map to shadcn's: the element is PopoverContent; a heading inside
+ * it is PopoverTitle and a paragraph PopoverDescription (PopoverHeader's
+ * gap-1 is the paragraph's top margin after a heading). Children have no
+ * margin between them (`al-popover > * { margin: 0 }`): PopoverContent has no
+ * inter-child spacing either, only the header's gap-1.
+ *
+ * Typography (#11): the paragraph is text-sm, 20px (the reference computes the
+ * same), pinned in demo/parity.html. Every surface keeps shadcn's per-part
+ * values; none is reset uniformly (card and dialog body p are 24px).
+ *
+ * Limit (#13): when position-try flips the popover to the other side, its
+ * transform-origin and slide-in direction stay those of the first choice.
+ * @position-try cannot carry transform-origin or translate, and a container
+ * query cannot restyle its own container, so mirroring them needs JS.
  */
 
+/* PopoverContent: z-50 w-72 origin-(--radix-popover-content-transform-origin)
+   rounded-md border bg-popover p-4 text-popover-foreground shadow-md
+   outline-hidden   (sideOffset={4}: the margin) */
 al-popover {
+  --_al-from: 0 -0.5rem;
   position: fixed;
   inset: auto;
   position-area: block-end;
   position-try-fallbacks: flip-block, flip-inline;
-  margin: var(--al-space-1);
-  padding: var(--al-space-3);
-  border: var(--al-border-width) solid var(--border);
-  border-radius: var(--radius);
+  z-index: 50;
+  inline-size: 18rem;
+  max-inline-size: calc(100dvw - 2rem);
+  margin: 0.25rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   background: var(--popover);
   color: var(--popover-foreground);
-  box-shadow: var(--al-shadow-sm);
-  font-family: var(--al-font-sans);
-  font-size: var(--al-text-sm);
-  line-height: var(--al-leading);
-  max-inline-size: calc(100dvw - var(--al-space-8));
+  box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 transparent, var(--shadow-md);
+  outline-style: none;
+  transform-origin: top;
 }
 
+/* data-[side=…]:slide-in-from-…-2: --_al-from is the 0.5rem the content
+   slides in from, away from the anchor; the zoom grows out of the anchored side. */
 al-popover[placement="top"] {
+  --_al-from: 0 0.5rem;
   position-area: block-start;
+  transform-origin: bottom;
 }
 
 al-popover[placement="left"] {
+  --_al-from: 0.5rem 0;
   position-area: inline-start;
+  transform-origin: right;
 }
 
 al-popover[placement="right"] {
+  --_al-from: -0.5rem 0;
   position-area: inline-end;
+  transform-origin: left;
 }
 
 al-popover[offset="sm"] {
-  margin: var(--al-space-1);
+  margin: 0.25rem;
 }
 
 al-popover[offset="md"] {
-  margin: var(--al-space-3);
+  margin: 0.5rem;
 }
 
 al-popover[offset="lg"] {
-  margin: var(--al-space-6);
+  margin: 1rem;
 }
 
-al-popover > :first-child {
-  margin-top: 0;
+/* shadcn-faithful: no spacing between children (see the header) */
+al-popover > * {
+  margin: 0;
 }
 
-al-popover > :last-child {
-  margin-bottom: 0;
+/* PopoverHeader: flex flex-col gap-1 text-sm   PopoverTitle: font-medium */
+al-popover > :is(h1, h2, h3, h4, h5, h6) {
+  padding: 0;
+  border-width: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  letter-spacing: normal;
+}
+
+/* PopoverDescription: text-muted-foreground   (text-sm from PopoverHeader) */
+al-popover > p {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+al-popover > :is(h1, h2, h3, h4, h5, h6) + p {
+  margin-block-start: 0.25rem;
+}
+
+/* data-[state=open]:animate-in fade-in-0 zoom-in-95 slide-in-from-…-2,
+   data-[state=closed]:animate-out fade-out-0 zoom-out-95 */
+@media (prefers-reduced-motion: no-preference) {
+  al-popover {
+    transition-property: opacity, scale, translate, display, overlay;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-behavior: allow-discrete;
+  }
+
+  al-popover[popover]:not(:popover-open) {
+    opacity: 0;
+    scale: 0.95;
+    translate: var(--_al-from);
+  }
+
+  @starting-style {
+    al-popover:popover-open {
+      opacity: 0;
+      scale: 0.95;
+      translate: var(--_al-from);
+    }
+  }
 }
 
 /* ---- components/al-menu.css ---- */
@@ -1328,67 +3007,167 @@ al-popover > :last-child {
  * Home/End, and closes the menu on select. Open it with a button carrying
  * commandfor="<id>" command="toggle-popover" (or popovertarget). Without the
  * script it is a popover of links, which still works.
+ *
+ * The parts map to shadcn's dropdown-menu: the element is DropdownMenuContent,
+ * each a / button child a DropdownMenuItem (data-variant="destructive" for
+ * the destructive one), an <hr> child the DropdownMenuSeparator.
+ *
+ * Position: like al-popover, anchor="<id>" names another element to anchor to.
+ * It needs al.js (al-shim.js sets position-anchor at each open; Chromium
+ * ignores the HTML attribute); without it the invoker is the anchor.
+ *
+ * Limit (#13): the transform-origin is the resting one (top left, top right
+ * under dir=rtl). When position-try flips the menu, the origin is not
+ * mirrored: @position-try cannot carry transform-origin or translate, and a
+ * container query cannot restyle its container, so that needs JS.
  */
 
+/* DropdownMenuContent: z-50 max-h-(--radix-dropdown-menu-content-available-height)
+   min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin)
+   overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1
+   text-popover-foreground shadow-md   (sideOffset={4}: the margin; Radix
+   writes outline: none on the content) */
 al-menu {
   position: fixed;
   inset: auto;
   position-area: block-end span-inline-end;
   position-try-fallbacks: flip-block, flip-inline;
+  z-index: 50;
   display: none;
-  min-inline-size: calc(var(--al-width-narrow) / 4);
-  margin: var(--al-space-1);
-  padding: var(--al-space-1);
-  border: var(--al-border-width) solid var(--border);
-  border-radius: var(--radius);
+  min-inline-size: 8rem;
+  max-block-size: calc(100dvh - 0.5rem);
+  margin: 0.25rem;
+  padding: 0.25rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   background: var(--popover);
   color: var(--popover-foreground);
-  box-shadow: var(--al-shadow-sm);
-  font-family: var(--al-font-sans);
-  font-size: var(--al-text-sm);
-  line-height: var(--al-leading);
+  box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 transparent, var(--shadow-md);
+  outline: none;
+  transform-origin: top left;
+}
+
+/* the resting origin is the inline start (position-area: block-end
+   span-inline-end opens at the invoker's start edge) */
+al-menu:dir(rtl) {
+  transform-origin: top right;
 }
 
 al-menu:popover-open {
-  display: flex;
-  flex-direction: column;
+  display: block;
 }
 
+/* DropdownMenuItem: relative flex cursor-default items-center gap-2 rounded-sm
+   px-2 py-1.5 text-sm outline-hidden select-none [&_svg]:pointer-events-none
+   [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4
+   [&_svg:not([class*='text-'])]:text-muted-foreground */
 al-menu > a,
 al-menu > button {
-  display: block;
-  margin: 0;
-  padding: var(--al-space-1-5) var(--al-space-3);
-  border: 0;
-  border-radius: var(--al-radius-sm);
-  background: transparent;
+  position: relative;
+  display: flex;
+  inline-size: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: var(--radius-sm);
   color: inherit;
-  font-family: inherit;
-  font-size: inherit;
-  line-height: var(--al-leading);
+  font-size: 0.875rem;
+  font-weight: inherit;
+  line-height: 1.25rem;
   text-align: start;
   text-decoration: none;
-  cursor: pointer;
+  outline-style: none;
+  cursor: default;
+  user-select: none;
 }
 
-al-menu > a:hover,
-al-menu > button:hover,
-al-menu > a:focus-visible,
-al-menu > button:focus-visible {
+al-menu > :is(a, button) svg {
+  inline-size: 1rem;
+  block-size: 1rem;
+  flex: none;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+
+/* focus:bg-accent focus:text-accent-foreground   (Radix focuses the item the
+   pointer is over, so hover is the same). A focused ref item computes
+   outline-width 1px (outline-style stays none), so hover matches it. */
+al-menu > :is(a, button):is(:hover, :focus-visible) {
   background: var(--accent);
   color: var(--accent-foreground);
+  outline-width: 1px;
 }
 
-al-menu > a:focus-visible,
-al-menu > button:focus-visible {
-  outline: var(--al-ring-width) solid var(--ring);
-  outline-offset: calc(var(--al-ring-width) * -1);
+/* Keyboard focus also draws an outline, which hover does not (a divergence from
+   shadcn, #15): the accent fill alone is too faint to find the focused item
+   (muted-foreground on popover is checked at 3:1 by test/check.py). The negative
+   offset keeps it inside the popover's clipped edge. Forced colors recolour it. */
+al-menu > :is(a, button):focus-visible {
+  outline: 2px solid var(--muted-foreground);
+  outline-offset: -2px;
 }
 
+/* data-[variant=destructive]:text-destructive
+   data-[variant=destructive]:*:[svg]:text-destructive! */
+al-menu > [data-variant="destructive"],
+al-menu > [data-variant="destructive"] > svg {
+  color: var(--destructive);
+}
+
+/* data-[variant=destructive]:focus:bg-destructive/10
+   data-[variant=destructive]:focus:text-destructive
+   dark:data-[variant=destructive]:focus:bg-destructive/20 */
+al-menu > [data-variant="destructive"]:is(:hover, :focus-visible) {
+  background: color-mix(in oklab, var(--destructive) 10%, transparent);
+  color: var(--destructive);
+}
+
+.dark al-menu > [data-variant="destructive"]:is(:hover, :focus-visible) {
+  background: color-mix(in oklab, var(--destructive) 20%, transparent);
+}
+
+/* data-[disabled]:pointer-events-none data-[disabled]:opacity-50 */
 al-menu > [aria-disabled="true"],
 al-menu > button:disabled {
-  opacity: var(--al-disabled-opacity);
+  opacity: 0.5;
   pointer-events: none;
+}
+
+/* DropdownMenuSeparator: -mx-1 my-1 h-px bg-border   (auto width, not the
+   typography hr's w-full, so the negative margins reach the menu's border) */
+al-menu > hr {
+  inline-size: auto;
+  block-size: 1px;
+  margin: 0.25rem -0.25rem;
+  border-width: 0;
+  background: var(--border);
+}
+
+/* data-[state=open]:animate-in fade-in-0 zoom-in-95 slide-in-from-top-2,
+   data-[state=closed]:animate-out fade-out-0 zoom-out-95 */
+@media (prefers-reduced-motion: no-preference) {
+  al-menu {
+    transition-property: opacity, scale, translate, display, overlay;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-behavior: allow-discrete;
+  }
+
+  al-menu:not(:popover-open) {
+    opacity: 0;
+    scale: 0.95;
+    translate: 0 -0.5rem;
+  }
+
+  @starting-style {
+    al-menu:popover-open {
+      opacity: 0;
+      scale: 0.95;
+      translate: 0 -0.5rem;
+    }
+  }
 }
 
 /* ---- components/al-tabs.css ---- */
@@ -1399,31 +3178,192 @@ al-menu > button:disabled {
  * same name; one `checked`) and its al-panel. The labels sit in a row, the
  * checked tab's panel shows beneath. The optional al-tabs.js builds a
  * <div role="tablist"> of <button role="tab"> from the labels (which it hides),
- * styled below like the labels, and adds the arrow keys, Home/End, the selected
- * attribute, and the al-select event.
+ * styled as shadcn's TabsList / TabsTrigger (the rules below), and adds the
+ * arrow keys, Home/End, the selected attribute, and the al-select event.
+ *
+ * With no script the radio labels are the tab row, a plain fallback with no
+ * shadcn counterpart. variant=line applies there too (a transparent checked
+ * label with the same underline); the muted pill does not, because labels and
+ * panels share one flex row, so nothing wraps just the labels.
  */
 
+/* Tabs: group/tabs flex flex-col gap-2. Written as a wrapping row so the no-JS
+   labels sit side by side; each panel takes a full row beneath them. */
 al-tabs {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  border-bottom: var(--al-border-width) solid var(--border);
-  font-family: var(--al-font-sans);
-  font-size: var(--al-text-sm);
-  line-height: var(--al-leading);
+  align-content: flex-start;
+  row-gap: 0.5rem;
+  font-family: var(--font-sans);
 }
 
 al-tabs > al-tab {
   display: contents;
 }
 
+/* TabsList (the built tablist): inline-flex h-9 w-fit items-center
+   justify-center rounded-lg bg-muted p-[3px] text-muted-foreground;
+   line: gap-1 rounded-none bg-transparent */
+al-tabs > [role="tablist"] {
+  display: inline-flex;
+  order: 1;
+  align-items: center;
+  justify-content: center;
+  inline-size: fit-content;
+  block-size: 2.25rem;
+  padding: 3px;
+  border-radius: var(--radius-lg);
+  background: var(--muted);
+  outline-color: currentcolor;
+  color: var(--muted-foreground);
+}
+
+al-tabs[variant="line"] > [role="tablist"] {
+  gap: 0.25rem;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* TabsTrigger: relative inline-flex h-[calc(100%-1px)] flex-1 items-center
+   justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm
+   font-medium whitespace-nowrap text-foreground/60 transition-all
+   hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px]
+   focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring
+   dark:text-muted-foreground dark:hover:text-foreground */
+al-tabs > [role="tablist"] > [role="tab"] {
+  position: relative;
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  block-size: calc(100% - 1px);
+  margin: 0;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  white-space: nowrap;
+  cursor: pointer;
+  outline-style: none;
+}
+
+/* transition-all (150ms, cubic-bezier(.4, 0, .2, 1)) */
+@media (prefers-reduced-motion: no-preference) {
+  al-tabs > [role="tablist"] > [role="tab"] {
+    transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+.dark al-tabs > [role="tablist"] > [role="tab"] {
+  color: var(--muted-foreground);
+}
+
+al-tabs > [role="tablist"] > [role="tab"]:hover {
+  color: var(--foreground);
+}
+
+al-tabs > [role="tablist"] > [role="tab"]:focus-visible {
+  border-color: var(--ring);
+  outline: 1px solid var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+/* data-[state=active]:bg-background data-[state=active]:text-foreground
+   data-[state=active]:shadow-sm  dark:data-[state=active]:border-input
+   dark:data-[state=active]:bg-input/30 */
+al-tabs > [role="tablist"] > [role="tab"][aria-selected="true"] {
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 transparent, var(--shadow-sm);
+}
+
+.dark al-tabs > [role="tablist"] > [role="tab"][aria-selected="true"] {
+  border-color: var(--input);
+  background: color-mix(in oklab, var(--input) 30%, transparent);
+  color: var(--foreground);
+}
+
+/* line: bg-transparent, shadow-none, dark border-transparent (the no-op layers
+   mirror how Tailwind composes box-shadow, so the computed list matches) */
+al-tabs[variant="line"] > [role="tablist"] > [role="tab"][aria-selected="true"],
+.dark al-tabs[variant="line"] > [role="tablist"] > [role="tab"][aria-selected="true"] {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 transparent;
+}
+
+al-tabs[variant="line"] > [role="tablist"] > [role="tab"]:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+/* after:absolute after:inset-x-0 after:bottom-[-5px] after:h-0.5
+   after:bg-foreground after:opacity-0 after:transition-opacity; line + active:
+   after:opacity-100 */
+al-tabs > [role="tablist"] > [role="tab"]::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: -5px;
+  block-size: 2px;
+  background: var(--foreground);
+  opacity: 0;
+}
+
+/* after:transition-opacity */
+@media (prefers-reduced-motion: no-preference) {
+  al-tabs > [role="tablist"] > [role="tab"]::after {
+    transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+al-tabs[variant="line"] > [role="tablist"] > [role="tab"][aria-selected="true"]::after {
+  opacity: 1;
+}
+
+/* TabsContent: flex-1 outline-none */
+al-tabs > al-tab > al-panel {
+  display: none;
+  order: 2;
+  flex: 1 1 100%;
+  outline-style: none;
+  color: var(--foreground);
+}
+
+al-tabs > al-tab:has(> label > input:checked) > al-panel {
+  display: block;
+}
+
+/* Enter only: opacity 0 and scale .95 to rest, as the other overlays do. There
+   is no exit transition (no `display` allow-discrete): panels are in flow, so a
+   fading old panel would stack with the new one and jump the layout; Radix
+   tabs content unmounts at once. */
+@media (prefers-reduced-motion: no-preference) {
+  al-tabs > al-tab > al-panel {
+    transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1), scale 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @starting-style {
+    al-tabs > al-tab:has(> label > input:checked) > al-panel {
+      opacity: 0;
+      scale: 0.95;
+    }
+  }
+}
+
+/* No script: the radio labels are the tab row (no shadcn counterpart). */
 al-tabs > al-tab > label {
   order: 1;
   position: relative;
-  padding: var(--al-space-2) var(--al-space-4);
-  border-bottom: var(--al-ring-width) solid transparent;
-  color: var(--muted-foreground);
-  font-weight: var(--al-weight-medium);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-md);
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+  font-weight: 500;
   cursor: pointer;
 }
 
@@ -1438,68 +3378,47 @@ al-tabs > al-tab > label:hover {
 }
 
 al-tabs > al-tab > label:has(> input:checked) {
-  border-bottom-color: var(--primary);
+  background: var(--background);
   color: var(--foreground);
+  box-shadow: var(--shadow-sm);
+}
+
+/* variant=line, no script: no pill and no shadow, the checked label gets the
+   built tab's underline (the same ::after as the tablist's line tab). The muted
+   pill is not possible here: labels and panels share one flex row, so there is
+   no container that holds only the labels. */
+al-tabs[variant="line"] > al-tab > label:has(> input:checked) {
+  background: transparent;
+  box-shadow: none;
+}
+
+al-tabs[variant="line"] > al-tab > label::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: -5px;
+  block-size: 2px;
+  background: var(--foreground);
+  opacity: 0;
+}
+
+al-tabs[variant="line"] > al-tab > label:has(> input:checked)::after {
+  opacity: 1;
 }
 
 al-tabs > al-tab > label:has(> input:focus-visible) {
-  outline: var(--al-ring-width) solid var(--ring);
-  outline-offset: calc(var(--al-ring-width) * -1);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
 }
 
-al-tabs > al-tab > al-panel {
-  display: none;
-  order: 2;
-  flex-basis: 100%;
-  padding: var(--al-space-4) 0;
-  color: var(--foreground);
-}
-
-al-tabs > al-tab:has(> label > input:checked) > al-panel {
-  display: block;
-}
-
-/* With the script: the tab strip it builds (the labels are hidden). */
-al-tabs:has(> [role="tablist"]) {
-  border-bottom: 0;
-}
-
-al-tabs > [role="tablist"] {
-  display: flex;
-  flex-wrap: wrap;
-  flex-basis: 100%;
-  align-items: flex-end;
-  order: 1;
-  border-bottom: var(--al-border-width) solid var(--border);
-}
-
-al-tabs > [role="tablist"] > [role="tab"] {
-  margin: 0;
-  padding: var(--al-space-2) var(--al-space-4);
-  border: 0;
-  border-bottom: var(--al-ring-width) solid transparent;
-  border-radius: 0;
-  background: transparent;
-  color: var(--muted-foreground);
-  font-family: inherit;
-  font-size: inherit;
-  font-weight: var(--al-weight-medium);
-  line-height: inherit;
-  cursor: pointer;
-}
-
-al-tabs > [role="tablist"] > [role="tab"]:hover {
-  color: var(--foreground);
-}
-
-al-tabs > [role="tablist"] > [role="tab"][aria-selected="true"] {
-  border-bottom-color: var(--primary);
-  color: var(--foreground);
-}
-
-al-tabs > [role="tablist"] > [role="tab"]:focus-visible {
-  outline: var(--al-ring-width) solid var(--ring);
-  outline-offset: calc(var(--al-ring-width) * -1);
+/* forced colors drop box-shadow rings and backgrounds: draw the focus indicator as an
+   outline in the system colour (#15) */
+@media (forced-colors: active) {
+  al-tabs > [role="tablist"] > [role="tab"]:focus-visible,
+  al-tabs > al-tab > label:has(> input:focus-visible) {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
 }
 
 /* ---- components/al-toast.css ---- */
@@ -1510,47 +3429,125 @@ al-tabs > [role="tablist"] > [role="tab"]:focus-visible {
  * shows the region when a toast connects, closes the toast after timeout ms
  * (0 keeps it) and gives it role="status". Without JavaScript the region
  * stays hidden: render the message as an al-alert in the page instead.
+ *
+ * The look is sonner's under shadcn's Toaster: the popover surface, a border
+ * and, with a variant, its icon (info, circle-check, triangle-alert,
+ * octagon-x) drawn as an absolute ::before in the start padding; with no
+ * variant attribute there is no icon, like sonner's plain toast(). No tinted
+ * backgrounds and no tinted text. The toast is block flow, so a one-line
+ * message may mix text and inline elements ("Saved <code>post.md</code>").
+ * A message with no block child is all title; with blocks (div, p, ul, ol),
+ * the text or strong/heading before them is the title and the blocks are
+ * the description.
  */
 
+/* [data-sonner-toast]: width var(--width) 356px; padding 16px; gap 6px;
+   display flex; align-items center; border-radius var(--border-radius);
+   border 1px solid var(--normal-border); background var(--normal-bg);
+   color var(--normal-text); box-shadow 0 4px 12px rgb(0 0 0 / .1);
+   font-size 13px; outline 0   (the Toaster's --normal-bg, --normal-text,
+   --normal-border and --border-radius are var(--popover),
+   var(--popover-foreground), var(--border) and var(--radius)). Block flow
+   here, not flex: sonner wraps title and description in [data-content] and
+   Alder emits no wrapper. */
 al-toast {
   display: block;
-  inline-size: calc(var(--al-width-narrow) / 2);
-  max-inline-size: calc(100dvw - var(--al-space-8));
-  padding: var(--al-space-3) var(--al-space-4);
-  border: var(--al-border-width) solid var(--al-info-border);
+  position: relative;
+  box-sizing: border-box;
+  inline-size: 356px;
+  max-inline-size: calc(100dvw - 48px);
+  padding: 16px;
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--al-info-soft);
-  color: var(--al-info-soft-foreground);
-  box-shadow: var(--al-shadow-sm);
-  font-family: var(--al-font-sans);
-  font-size: var(--al-text-sm);
-  line-height: var(--al-leading);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 4px 12px color-mix(in oklab, var(--color-black) 10%, transparent);
+  outline: 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+/* [data-icon]: size-4 (the Toaster's icons); margin-left -3px;
+   margin-right 4px; then the 6px gap: the text starts 16 - 3 + 16 + 4 + 6
+   = 39px in, and the icon is centred on the title and description */
+al-toast[variant] {
+  --_al-icon: var(--_al-icon-info);
+  padding-inline-start: 39px;
+}
+
+al-toast[variant]::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 13px;
+  inset-block-start: 50%;
+  width: 1rem;
+  height: 1rem;
+  translate: 0 -50%;
+  background: currentColor;
+  mask: var(--_al-icon) center / contain no-repeat;
 }
 
 al-toast[variant="success"] {
-  border-color: var(--al-success-border);
-  background: var(--al-success-soft);
-  color: var(--al-success-soft-foreground);
+  --_al-icon: var(--_al-icon-circle-check);
 }
 
 al-toast[variant="warning"] {
-  border-color: var(--al-warning-border);
-  background: var(--al-warning-soft);
-  color: var(--al-warning-soft-foreground);
+  --_al-icon: var(--_al-icon-triangle-alert);
 }
 
+/* sonner's error type: the icon only (shadcn's Toaster sets no richColors) */
 al-toast[variant="destructive"] {
-  border-color: var(--al-destructive-border);
-  background: var(--al-destructive-soft);
-  color: var(--al-destructive-soft-foreground);
+  --_al-icon: var(--_al-icon-octagon-x);
 }
 
+/* headings, paragraphs and lists inside reset to the toast's own recipe (an
+   al-button or al-badge keeps its own size, #13) */
+al-toast > :not(al-button, al-badge) {
+  margin: 0;
+  padding: 0;
+  border-width: 0;
+  font-size: 13px;
+  letter-spacing: normal;
+}
+
+/* [data-title]: font-weight 500; line-height 1.5; color inherit   (a message
+   with no description block is all title) */
+al-toast:not(:has(> :is(div, p, ul, ol))),
+al-toast > :is(strong, b, h1, h2, h3, h4, h5, h6) {
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+/* [data-description]: font-weight 400; line-height 1.4; opacity .8 on the
+   toast's colour (sonner's literal #3f3f3f is not a token); [data-content]'s
+   gap 2px is the top margin */
+al-toast > :is(div, p, ul, ol) {
+  font-weight: 400;
+  line-height: 1.4;
+  opacity: 0.8;
+}
+
+al-toast > :is(div, p, ul, ol):not(:first-child) {
+  margin-block-start: 2px;
+}
+
+al-toast > :is(ul, ol) {
+  list-style: none;
+}
+
+/* [data-sonner-toaster]: position fixed; --offset 24px (VIEWPORT_OFFSET);
+   --gap 14px; the front toast sits at the region's edge */
 al-toasts {
+  --_al-from: 0 100%;
   position: fixed;
   inset: auto;
-  inset-block-end: var(--al-space-4);
-  inset-inline-end: var(--al-space-4);
+  inset-block-end: 24px;
+  inset-inline-end: 24px;
   display: none;
+  flex-direction: column;
+  gap: 14px;
   margin: 0;
   padding: 0;
   border: 0;
@@ -1560,21 +3557,51 @@ al-toasts {
 
 al-toasts:popover-open {
   display: flex;
-  flex-direction: column;
-  gap: var(--al-space-2);
+}
+
+al-toasts[position="top-left"],
+al-toasts[position="top-right"] {
+  --_al-from: 0 -100%;
+  flex-direction: column-reverse;
 }
 
 al-toasts[position="top-left"] {
-  inset-block: var(--al-space-4) auto;
-  inset-inline: var(--al-space-4) auto;
+  inset-block: 24px auto;
+  inset-inline: 24px auto;
 }
 
 al-toasts[position="top-right"] {
-  inset-block: var(--al-space-4) auto;
+  inset-block: 24px auto;
 }
 
 al-toasts[position="bottom-left"] {
-  inset-inline: var(--al-space-4) auto;
+  inset-inline: 24px auto;
+}
+
+/* Spec section 7's toast row: "slide-in from the edge". Sonner slides and
+   fades and does not scale, so there is no scale .95 here (R22).
+   [data-sonner-toast][data-mounted=false]: translate from the region's edge,
+   opacity 0; [data-removed=true]: back out the same way. --_al-from is the
+   toast's own height toward the edge; al-toast.js sets data-closing and
+   removes the toast once the exit transition has run. */
+@media (prefers-reduced-motion: no-preference) {
+  al-toast {
+    transition-property: opacity, translate;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  al-toast[data-closing] {
+    opacity: 0;
+    translate: var(--_al-from);
+  }
+
+  @starting-style {
+    al-toast {
+      opacity: 0;
+      translate: var(--_al-from);
+    }
+  }
 }
 
 /* ---- components/al-tooltip.css ---- */
@@ -1591,22 +3618,80 @@ al-tooltip:not(:popover-open) {
   display: none;
 }
 
+/* TooltipContent: z-50 w-fit origin-(--radix-tooltip-content-transform-origin)
+   rounded-md bg-foreground px-3 py-1.5 text-xs text-balance text-background
+   (sideOffset={0}; Radix adds the arrow's 5px height to the offset, so the
+   margin is 5px). It sits above its trigger (shadcn's side="top"), or below
+   when there is no room. */
 al-tooltip {
   position: fixed;
   inset: auto;
-  position-area: block-end;
+  position-area: block-start;
   position-try-fallbacks: flip-block, flip-inline;
-  margin: var(--al-space-1);
-  padding: var(--al-space-1) var(--al-space-2);
-  border: 0;
-  border-radius: var(--al-radius-sm);
+  container-type: anchored;
+  z-index: 50;
+  inline-size: fit-content;
+  max-inline-size: calc(var(--al-width-narrow) / 2);
+  margin: 5px;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius-md);
   background: var(--foreground);
   color: var(--background);
-  font-family: var(--al-font-sans);
-  font-size: var(--al-text-xs);
-  line-height: var(--al-leading-tight);
-  max-inline-size: calc(var(--al-width-narrow) / 2);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  text-wrap: balance;
   pointer-events: none;
+  transform-origin: bottom;
+}
+
+/* TooltipArrow: z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45
+   rounded-[2px] bg-foreground fill-foreground   (its centre 2px inside the
+   edge that faces the trigger) */
+al-tooltip::after {
+  content: "";
+  position: absolute;
+  inset-block-end: -3px;
+  inset-inline-start: calc(50% - 5px);
+  z-index: 50;
+  inline-size: 10px;
+  block-size: 10px;
+  border-radius: 2px;
+  background: var(--foreground);
+  rotate: 45deg;
+}
+
+/* Flipped below the trigger: the arrow moves to the top edge. */
+@container anchored(fallback: flip-block) {
+  al-tooltip::after {
+    inset-block: -3px auto;
+  }
+}
+
+/* animate-in fade-in-0 zoom-in-95 data-[side=top]:slide-in-from-bottom-2
+   data-[state=closed]:animate-out fade-out-0 zoom-out-95   (a container
+   query cannot restyle the tooltip itself, so a flipped tooltip slides the
+   same way) */
+@media (prefers-reduced-motion: no-preference) {
+  al-tooltip {
+    transition-property: opacity, scale, translate, display, overlay;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-behavior: allow-discrete;
+  }
+
+  al-tooltip:not(:popover-open) {
+    opacity: 0;
+    scale: 0.95;
+    translate: 0 0.5rem;
+  }
+
+  @starting-style {
+    al-tooltip:popover-open {
+      opacity: 0;
+      scale: 0.95;
+      translate: 0 0.5rem;
+    }
+  }
 }
 
 /* ---- components/al-devpanel.css ---- */
@@ -1618,36 +3703,57 @@ al-tooltip {
  * <button>s (aria-controls="<section id>") and the <section>s. al-devpanel.js
  * hides the other sections, re-applies that after DOM patches, and toggles `open`; without it, every section shows
  * when open. Monospace for SQL and other code.
+ *
+ * Preflight (base.css) zeroes margins, borders, list markers and button
+ * chrome. The panel states what it relies on (box-sizing, border, margin,
+ * list-style, line-height, button background/font/colour) on its own rules,
+ * so it does not depend on the reset's values.
  */
 
 al-devpanel {
   display: block;
   position: sticky;
   inset-block-end: 0;
-  border-top: var(--al-border-width) solid var(--border);
+  border-top: 1px solid var(--border);
   background: var(--card);
   color: var(--card-foreground);
-  font-family: var(--al-font-mono);
-  font-size: var(--al-text-xs);
-  line-height: var(--al-leading);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  box-sizing: border-box;
+  margin: 0;
+}
+
+al-devpanel *,
+al-devpanel ::before,
+al-devpanel ::after {
+  box-sizing: border-box;
+}
+
+al-devpanel ul,
+al-devpanel ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 al-devpanel > nav {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--al-space-1);
-  padding: var(--al-space-1) var(--al-space-2);
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
 }
 
 al-devpanel > nav > button {
   margin: 0;
-  padding: var(--al-space-1) var(--al-space-2);
-  border: 0;
-  border-radius: var(--al-radius-sm);
+  padding: 0.25rem 0.5rem;
+  border: 0 solid transparent;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted-foreground);
   font-family: inherit;
   font-size: inherit;
+  line-height: inherit;
   cursor: pointer;
 }
 
@@ -1658,15 +3764,15 @@ al-devpanel > nav > button[aria-selected="true"] {
 }
 
 al-devpanel > nav > button:focus-visible {
-  outline: var(--al-ring-width) solid var(--ring);
-  outline-offset: var(--al-ring-offset);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
 }
 
 al-devpanel > section {
   display: none;
   max-block-size: 50dvh;
-  padding: var(--al-space-2) var(--al-space-4);
-  border-top: var(--al-border-width) solid var(--border);
+  padding: 0.5rem 1rem;
+  border-top: 1px solid var(--border);
   overflow: auto;
 }
 
@@ -1676,12 +3782,21 @@ al-devpanel[open] > section:not([hidden]) {
 
 al-devpanel pre,
 al-devpanel code {
-  font-family: var(--al-font-mono);
+  font-family: var(--font-mono);
   white-space: pre-wrap;
 }
 
 al-devpanel pre {
-  margin: var(--al-space-2) 0;
+  margin: 0.5rem 0;
+}
+
+/* forced colors drop box-shadow rings and backgrounds: draw the focus indicator as an
+   outline in the system colour (#15) */
+@media (forced-colors: active) {
+  al-devpanel > nav > button:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
 }
 
 }

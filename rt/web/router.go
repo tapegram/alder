@@ -1117,7 +1117,7 @@ func HeadTags() (first, boost string) {
 // pendingStyle is the in-flight look the runtime injects (not the library's): a 2px bar along the
 // top of the page while a request is pending (html[data-alder-pending], set by the boost's
 // window._alderBusy) and a dimmed form that is busy (aria-busy, inert).
-const pendingStyle = `<style>html[data-alder-pending]::before{content:"";position:fixed;top:0;left:0;width:100%;height:2px;z-index:2147483647;background:var(--al-primary,currentColor);transform-origin:left;animation:alder-pending 1s ease-in-out infinite}@keyframes alder-pending{from{transform:scaleX(0)}to{transform:scaleX(1)}}form[aria-busy=true]{opacity:.6}</style>`
+const pendingStyle = `<style>html[data-alder-pending]::before{content:"";position:fixed;top:0;left:0;width:100%;height:2px;z-index:2147483647;background:var(--primary,currentColor);transform-origin:left;animation:alder-pending 1s ease-in-out infinite}@keyframes alder-pending{from{transform:scaleX(0)}to{transform:scaleX(1)}}form[aria-busy=true]{opacity:.6}</style>`
 
 // BuildMeta is the <meta name="alder-build" content="…"> HeadTags carries: the build of the
 // binary serving the page (BuildID), which the boost sends back with each boosted GET
@@ -1261,6 +1261,9 @@ func (rt *router) serveStatic(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Cache-Control", DesignSystemCache)
 		h.Set("ETag", etag)
+		if strings.HasSuffix(r.URL.Path, ".woff2") {
+			h.Set("Content-Type", "font/woff2")
+		}
 		http.ServeContent(w, r, r.URL.Path, time.Time{}, bytes.NewReader(data)) // 304 on If-None-Match
 		return
 	}

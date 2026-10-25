@@ -366,9 +366,11 @@ part of `dir` once it is made absolute (so `alder build .` inside
    `<dir>/adapters/` tree (every file in every directory: helper
    packages, Go test files and `testdata/` included; a file that is gone
    from yours is removed from the copy), and `build/<app>/static/` with a
-   copy of `<dir>/static/`. Into that copy it writes `al/al.css` and
-   `al/custom-elements.json`, the `alder-ui` design system's stylesheet and
-   manifest (Appendix C), from the copy the binary carries; the server
+   copy of `<dir>/static/`. Into that copy it writes `al/al.css`, `al/al.js`,
+   `al/custom-elements.json` and `al/fonts/` (`Geist-Variable.woff2`,
+   `GeistMono-Variable.woff2` and the licence `OFL.txt`), the `alder-ui`
+   design system's stylesheet, script, manifest and fonts (Appendix C,
+   "Where it lives"), from the copy the binary carries; the server
    then serves them at `/static/al/…` with
    `Cache-Control: public, max-age=300, stale-while-revalidate=86400` and
    an `ETag` (a hash of the content). Their address carries no version
@@ -1352,13 +1354,14 @@ it). `alder test`, `alder eval` and the REPL write the same into their
 own build directories (`build/<app>/scratch/test/rt/`, …).
 
 Among the runtime's files is the design system, under `rt/al/`: the
-stylesheet `al.css`, the manifest `custom-elements.json` the checker
-reads, and `VERSION`, the `alder-ui` release they were copied from. They
+stylesheet `al.css`, the script `al.js`, the two Geist font files under
+`fonts/` with their licence `OFL.txt`, the manifest `custom-elements.json`
+the checker reads, and `VERSION`, the `alder-ui` release they were copied from. They
 are *vendored*: a copy of the library's files at one tag, kept in Alder's
 repository and embedded in the binary, so no build fetches anything. In
 the repository, `scripts/vendor-al.sh <tag>` replaces the copy with the
 library's release `<tag>` (it clones `github.com/tapegram/alder-ui` at
-the tag, copies the two files and writes `VERSION`); a test fails if
+the tag, copies the files and writes `VERSION`); a test fails if
 `VERSION`, the manifest's `version` and the stylesheet's banner disagree,
 and the book's tests fail if Appendix C's tables no longer match the
 manifest.

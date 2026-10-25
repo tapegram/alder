@@ -86,7 +86,7 @@ func devUser(ctx context.Context, acc devAccount) (string, error) {
 	}
 	var users db.TableDesc
 	for _, t := range app.Tables {
-		if t.Name == "User.User" {
+		if t.Name == "Table.User.User" {
 			users = t
 		}
 	}

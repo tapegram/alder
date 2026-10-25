@@ -5,6 +5,7 @@ Page props =
   <html>
     <head>
       <meta charset="utf-8" />
+      <script>try{document.documentElement.classList.toggle("dark",localStorage.theme==="dark"||(!("theme" in localStorage)&&matchMedia("(prefers-color-scheme: dark)").matches))}catch(e){}</script>
       <title>{props.title}</title>
       <link rel="stylesheet" href={Url.external "/static/al/al.css"} />
       <script type="module" src="/static/al/al.js"></script>

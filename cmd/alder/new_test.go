@@ -341,6 +341,9 @@ func TestNew_OutOfTree(t *testing.T) {
 			if res.StatusCode != http.StatusOK || !strings.Contains(string(body), "<h1>Guestbook</h1>") || !strings.Contains(string(body), `<ul id="entries">`) {
 				t.Fatalf("GET / = %d:\n%s", res.StatusCode, body)
 			}
+			if i, j := strings.Index(string(body), scaffold.ThemeScript), strings.Index(string(body), `<link rel="stylesheet" href="/static/al/al.css" />`); i < 0 || j < 0 || i > j {
+				t.Errorf("the theme script at %d, the al.css link at %d:\n%s", i, j, body)
+			}
 			// the design system: linked, used, and its button a real submit button
 			for _, want := range []string{`<link rel="stylesheet" href="/static/al/al.css" />`, `<al-page width="narrow">`, "<al-card>",
 				`<al-input label="Your name"><label>Your name<input name="name"`, `<al-button type="submit"><button type="submit">Sign</button></al-button>`} {

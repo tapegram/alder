@@ -159,8 +159,9 @@ func CopyStatic(src, dst string) error {
 
 // DesignSystemFiles are the `alder-ui` assets (rt/al/, vendored by scripts/vendor-al.sh) every
 // build writes under static/al/: the stylesheet a page links as /static/al/al.css, and the
-// Custom Elements Manifest the checker reads (served too, for other tools).
-var DesignSystemFiles = []string{"al.css", "al.js", "custom-elements.json"}
+// Custom Elements Manifest the checker reads (served too, for other tools), and the Geist
+// fonts the stylesheet loads from fonts/.
+var DesignSystemFiles = []string{"al.css", "al.js", "custom-elements.json", "fonts/Geist-Variable.woff2", "fonts/GeistMono-Variable.woff2", "fonts/OFL.txt"}
 
 // WriteDesignSystem writes DesignSystemFiles into staticDir/al/ from the embedded runtime. The
 // directory is the compiler's: a file of the app's own static/al/ with one of these names is
@@ -175,7 +176,11 @@ func WriteDesignSystem(staticDir string) error {
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(dir, name), b, 0o644); err != nil {
+		dst := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(dst, b, 0o644); err != nil {
 			return err
 		}
 	}
