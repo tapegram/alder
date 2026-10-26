@@ -1,2 +1,2 @@
-app/Index.alder:20:16 E0028 `<al-button>` has no attribute `tone`; it has `variant`, `size`, `disabled`, `type`
+app/Index.alder:20:16 E0028 `<al-button>` has no attribute `tone`; it has `variant`, `size`, `disabled`, `type`, `full`
 app/Index.alder:21:14 E0028 `<al-card>` has no attribute `size`; it declares none

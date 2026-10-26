@@ -20,7 +20,7 @@
             (attr href href
               (page-ref Posts.Index (record Posts.Index.Params (page 1) (q ""))))
             (htext "Blog")))
-        (elem main (hexpr list (field children (var props))))))))
+        (elem main (elem al-stack (attr gap text "lg") (hexpr list (field children (var props)))))))))
 (module Table.User)
 (union Table.User.Role (Reader) (Author) (Admin))
 (record Table.User.User
