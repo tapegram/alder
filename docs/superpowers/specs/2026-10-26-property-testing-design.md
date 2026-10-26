@@ -175,7 +175,7 @@ FAIL Todo "reverse twice"  (failed on run 37 of 100, shrunk in 12 steps)
 - Run loop per property: replay each saved sequence from `.alder/fuzz/<module>/<test-name-hash>` first; then up to N fresh draws from the seed; stop at the first failure.
 - Shrink loop (minithesis): repeat until no pass changes the sequence — delete a block of choices, zero a block, lower a choice toward 0, swap adjacent to sort, binary-search a single choice. Each candidate re-runs the test; a candidate counts only if it still fails. Bound by a step budget (my call: 1000 attempts) so shrinking cannot hang.
 - Effectful property: each attempt (fresh, replay, shrink candidate) opens its own transaction and rolls it back; the test's `Test.fake`s and session apply to every attempt.
-- Saved failures: after shrinking, write the sequence as bytes keyed by module + test name; delete the key when the property passes a full run. `.alder/` is already the build cache directory (confirm) and is gitignored by the scaffold.
+- Saved failures: after shrinking, write the sequence as bytes keyed by module + test name; delete the key when the property passes a full run. Location: the survey found no `.alder/` convention — the build cache is `build/<app>/` (see `internal/scratch`). Builder's call: put the database beside the build cache (`build/<app>/fuzz/`, already ignored) and keep the `.alder/fuzz/` name in this doc as the user-facing description only if a per-project directory is chosen instead; either way it is gitignored by default.
 - Determinism: with `--seed S` and no saved failures the run is fully reproducible. Saved failures are tried regardless of seed.
 
 ## 8. Book and tooling
