@@ -1,4 +1,4 @@
-/*! alder-ui v0.4.1 | Apache-2.0 | built by scripts/build.py from components/*.js; do not edit. */
+/*! alder-ui v0.4.2 | Apache-2.0 | built by scripts/build.py from components/*.js; do not edit. */
 
 // ---- components/al-shim.js ----
 {

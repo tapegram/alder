@@ -41,9 +41,9 @@ func TestAppendixC_ManifestDrift(t *testing.T) {
 	md := string(b)
 	m, version := builtinManifest(t)
 	for _, c := range []struct{ name, old, new, want string }{
-		{"a type", "| `gap` | `\"sm\" \\| \"md\" \\| \"lg\"` | `\"md\"` |", "| `gap` | `\"sm\" \\| \"lg\"` | `\"md\"` |",
-			"`al-stack` attribute `gap`: the chapter's type is `\"sm\" | \"lg\"`, the manifest's `\"sm\" | \"md\" | \"lg\"`"},
-		{"a default", "| `gap` | `\"sm\" \\| \"md\" \\| \"lg\"` | `\"md\"` |", "| `gap` | `\"sm\" \\| \"md\" \\| \"lg\"` | `\"lg\"` |",
+		{"a type", "| `gap` | `\"sm\" \\| \"md\" \\| \"lg\" \\| \"xl\"` | `\"md\"` |", "| `gap` | `\"sm\" \\| \"lg\"` | `\"md\"` |",
+			"`al-stack` attribute `gap`: the chapter's type is `\"sm\" | \"lg\"`, the manifest's `\"sm\" | \"md\" | \"lg\" | \"xl\"`"},
+		{"a default", "| `gap` | `\"sm\" \\| \"md\" \\| \"lg\" \\| \"xl\"` | `\"md\"` |", "| `gap` | `\"sm\" \\| \"md\" \\| \"lg\" \\| \"xl\"` | `\"lg\"` |",
 			"`al-stack` attribute `gap`: the chapter's default is `\"lg\"`, the manifest's `\"md\"`"},
 		{"a name", "| `heading` | `string` |", "| `title` | `string` |",
 			"`al-alert` attributes: the chapter has `variant`, `title`, `dismissible`, the manifest `variant`, `heading`, `dismissible`"},

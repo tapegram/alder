@@ -570,7 +570,7 @@ func (g *adminGen) layout() {
 		b.WriteString("  <html>\n    <head>\n      <meta charset=\"utf-8\" />\n      " + scaffold.ThemeScript + "\n      <title>{props.title ++ \" · Admin\"}</title>\n")
 		b.WriteString("      <link rel=\"stylesheet\" href={Url.external \"/static/al/al.css\"} />\n    </head>\n    <body>\n      <al-page>\n")
 		b.WriteString(indent(navBlock, "        ") + "\n")
-		b.WriteString("        <main>{props.children}</main>\n      </al-page>\n    </body>\n  </html>\n")
+		b.WriteString("        <main><al-stack gap=\"lg\">{props.children}</al-stack></main>\n      </al-page>\n    </body>\n  </html>\n")
 	}
 	// isAdmin: every page's load asks it
 	id, _ := unMaybe(g.p.Session.User.Type)

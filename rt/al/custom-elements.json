@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "version": "v0.4.1",
+  "version": "v0.4.2",
   "modules": [
     {
       "kind": "javascript-module",
@@ -44,6 +44,14 @@
               },
               "description": "The kind of the button, for frameworks that render the native `<button>` from it (Alder: `submit` inside a form). It does not change the look.",
               "default": "\"button\""
+            },
+            {
+              "name": "full",
+              "type": {
+                "text": "boolean"
+              },
+              "description": "Makes the button as wide as its container (shadcn's w-full). Without it a button keeps its natural width, also in a grid or a column stack.",
+              "default": "false"
             }
           ],
           "slots": [
@@ -456,9 +464,9 @@
             {
               "name": "gap",
               "type": {
-                "text": "\"sm\" | \"md\" | \"lg\""
+                "text": "\"sm\" | \"md\" | \"lg\" | \"xl\""
               },
-              "description": "The space between the children: `sm`, `md` or `lg`.",
+              "description": "The space between the children: `sm`, `md`, `lg` or `xl`.",
               "default": "\"md\""
             },
             {

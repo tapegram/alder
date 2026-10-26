@@ -9,7 +9,7 @@ load params session = Query.succeed { tone: "outline" }
 
 view : Model -> Session -> Html Msg
 view model session =
-  <al-stack gap="xl">
+  <al-stack gap="xxl">
     <al-button variant="destuctive">Delete</al-button>
     <al-badge variant="primary">New</al-badge>
     <al-badge variant={model.tone}>Computed values are not checked</al-badge>

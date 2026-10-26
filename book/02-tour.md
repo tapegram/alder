@@ -242,7 +242,7 @@ Page props =
       <link rel="stylesheet" href={Url.external "/static/app.css"} />
     </head>
     <body>
-      <al-page width="narrow"><main>{props.children}</main></al-page>
+      <al-page width="narrow"><main><al-stack gap="lg">{props.children}</al-stack></main></al-page>
       <al-toasts></al-toasts>
     </body>
   </html>
@@ -256,7 +256,8 @@ the theme script: it turns the dark theme on (a `dark` class on `<html>`)
 when the visitor chose it or their system prefers it, before the page is
 painted (Appendix C, "Light and dark"). The first stylesheet is the design system's,
 which every build serves at `/static/al/al.css`; `<al-page
-width="narrow">` is its centred column.
+width="narrow">` is its centred column. The `<al-stack gap="lg">` inside `<main>` spaces whatever a page puts
+in `children` (Appendix C, "Spacing").
 
 `app/App.alder` is the one module every app has: it declares the session,
 what the server keeps for a visitor between requests (this app keeps

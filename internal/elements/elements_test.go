@@ -14,7 +14,7 @@ func TestBuiltin_FirstTier(t *testing.T) {
 		attrs string // "name" or "name!" for a boolean
 		slots string // "-" for the default slot
 	}{
-		"al-button":     {"variant size disabled! type", "-"},
+		"al-button":     {"variant size disabled! type full!", "-"},
 		"al-input":      {"label placeholder disabled! invalid! help", ""},
 		"al-textarea":   {"label placeholder disabled! invalid! help", ""},
 		"al-select":     {"label disabled! invalid! help", ""},

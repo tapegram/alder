@@ -15,7 +15,7 @@
         (attr href href (call (std Url.external) "/static/app.css"))))
     (elem body
       (elem al-page (attr width text "narrow")
-        (elem main (hexpr list (field children (var props))))))))
+        (elem main (elem al-stack (attr gap text "lg") (hexpr list (field children (var props)))))))))
 (module Table.User)
 (union Table.User.Role (Member) (Admin))
 (record Table.User.User

@@ -421,7 +421,7 @@ func TestRun_ServesStaticAndDesignSystem(t *testing.T) {
 	}
 	b, _ := io.ReadAll(res.Body)
 	res.Body.Close()
-	if res.StatusCode != 200 || res.Header.Get("Cache-Control") != "public, max-age=300, stale-while-revalidate=86400" || res.Header.Get("ETag") == "" || !strings.Contains(string(b), "alder-ui v0.4.1") {
+	if res.StatusCode != 200 || res.Header.Get("Cache-Control") != "public, max-age=300, stale-while-revalidate=86400" || res.Header.Get("ETag") == "" || !strings.Contains(string(b), "alder-ui v0.4.2") {
 		t.Fatalf("GET /static/al/al.css = %d %q %.60q", res.StatusCode, res.Header.Get("Cache-Control"), b)
 	}
 	fres, err := http.Get(r.base + "/static/al/fonts/GeistMono-Variable.woff2")

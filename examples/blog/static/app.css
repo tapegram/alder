@@ -55,7 +55,6 @@ ul.posts li {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-top: 1.5rem;
 }
 
 article code {

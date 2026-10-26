@@ -11,5 +11,7 @@ Page props =
       <script type="module" src="/static/al/al.js"></script>
       <link rel="stylesheet" href={Url.external "/static/app.css"} />
     </head>
-    <body><al-page width="narrow"><main>{props.children}</main></al-page></body>
+    <body>
+      <al-page width="narrow"><main><al-stack gap="lg">{props.children}</al-stack></main></al-page>
+    </body>
   </html>
