@@ -481,6 +481,7 @@ func TestExample_LayoutPageStack(t *testing.T) {
 		i := strings.Index(s, stack)
 		if i < 0 {
 			t.Errorf("examples/%s/app/Layout.alder lacks %s", ex, stack)
+			continue
 		}
 		if h := strings.Index(s, "<header"); h >= 0 && h > i {
 			t.Errorf("examples/%s/app/Layout.alder: the header is not before <main>", ex)

@@ -248,7 +248,7 @@ Page props =
       <nav>
         <button click={App.SwitchTheme}>{if props.theme == Dark then "Light mode" else "Dark mode"}</button>
       </nav>
-      <main>{props.children}</main>
+      <main><al-stack gap="lg">{props.children}</al-stack></main>
     </body>
   </html>
 ```

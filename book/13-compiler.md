@@ -1568,7 +1568,7 @@ Content-Type: text/event-stream
 event: datastar-patch-elements
 data: selector body
 data: mode outer
-data: elements <body><al-page><header><a href="/">Blog</a></header><main><h1>Blog</h1>…</main></al-page></body>
+data: elements <body><al-page><header><a href="/">Blog</a></header><main><al-stack gap="lg"><h1>Blog</h1>…</al-stack></main></al-page></body>
 
 event: datastar-patch-elements
 data: selector head > title
