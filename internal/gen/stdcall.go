@@ -9,7 +9,7 @@ import (
 )
 
 // StdCalls maps every stdlib function emitted as a call, named "Module.name" as in its stdlib
-// file, to the Go function of alder/rt/std that implements it: the pure ones, and the effectful
+// file, to the Go function of alder/rt/std (alder/rt/fuzz for Fuzz.*) that implements it: the pure ones, and the effectful
 // ones that stay calls in the IR (Session.put, Log.*, Random.*, Time.now, Date.today, Http.*),
 // whose Go functions build effect values. A stdlib constant (Html.none, Time.epoch, Dict.empty,
 // Random.id, Time.now) is a Go function of no parameters, called at each use. Emitting a stdlib
@@ -156,6 +156,30 @@ var StdCalls = map[string]string{
 	"Task.sleep":  "std.TaskSleep",
 	"Http.get":    "std.HttpGet",
 	"Http.post":   "std.HttpPost",
+	// Fuzz (Fuzz.any is the derived generator, FuzzDerive; Fuzz.forAll and forAllTask are a
+	// property test's body, which gen's test emits)
+	"Fuzz.constant":    "fuzz.Constant",
+	"Fuzz.bool":        "fuzz.BoolF",
+	"Fuzz.int":         "fuzz.IntF",
+	"Fuzz.intRange":    "fuzz.IntRangeF",
+	"Fuzz.float":       "fuzz.FloatF",
+	"Fuzz.floatRange":  "fuzz.FloatRangeF",
+	"Fuzz.text":        "fuzz.TextF",
+	"Fuzz.textOf":      "fuzz.TextOf",
+	"Fuzz.char":        "fuzz.Char",
+	"Fuzz.list":        "fuzz.List",
+	"Fuzz.listOf":      "fuzz.ListOf",
+	"Fuzz.maybe":       "fuzz.Maybe",
+	"Fuzz.result":      "fuzz.Result",
+	"Fuzz.pair":        "fuzz.Pair",
+	"Fuzz.dict":        "fuzz.Dict",
+	"Fuzz.oneOf":       "fuzz.OneOf",
+	"Fuzz.oneOfValues": "fuzz.OneOfValues",
+	"Fuzz.frequency":   "fuzz.Frequency",
+	"Fuzz.map":         "fuzz.Map",
+	"Fuzz.map2":        "fuzz.Map2",
+	"Fuzz.andThen":     "fuzz.AndThen",
+	"Fuzz.filter":      "fuzz.FilterF",
 	// Test's queries (test builds only: the checker allows Test.* only in a `test`)
 	"Test.text":  "rtesting.DocText",
 	"Test.texts": "rtesting.DocTexts",

@@ -1,0 +1,45 @@
+module Todo
+
+type Todo = { title: Text.NonEmpty, due: Maybe Date, tags: List Text }
+
+type Tree = Leaf | Node { left: Tree, value: Int, right: Tree }
+
+type Slug = brand Text where Text.matches "^[a-z0-9-]+$"
+
+type Shape = Dot | Circle Float | Square { side: Int.Positive }
+
+type Box a = { item: a }
+
+type Dir = { name: Text, entries: List Dir }
+
+size : Tree -> Int
+size t = match t {
+  Leaf -> 0,
+  Node n -> size n.left + 1 + size n.right,
+}
+
+slugs : Fuzz.Fuzzer Slug
+slugs = Fuzz.any
+
+test "titles are not blank" = \(t : Todo) -> Text.length (Text.trim t.title) > 0
+
+test "trees have a size" = \(t : Tree) -> size t >= 0
+
+test "slugs are not empty" = \(s : Slug) -> Text.length s > 0
+
+test "reverse twice" = \xs -> List.reverse (List.reverse xs) == xs
+
+test "everything else" = \(s : Shape) (b : Box (Result Text Time)) (d : Dict Text Bytes) (u : Unit) (e : Text.Email) (w : Dir) (f : Float) (ok : Bool) -> True
+
+test "positive in a task" = \(n : Int.Positive) -> {
+  let m = n + 0
+  Task.succeed (m > 0)
+}
+
+test "explicit" = Fuzz.forAll (Fuzz.listOf { min: 1, max: 3 } (Fuzz.intRange { min: 0, max: 9 })) (\ns -> List.length ns >= 1)
+
+test "explicit with any" = Fuzz.forAll (Fuzz.map (\(t : Todo) -> t.tags) Fuzz.any) (\(tags : List Text) -> List.length tags >= 0)
+
+test "explicit task" = Fuzz.forAllTask (Fuzz.filter (\n -> n > 2) Fuzz.int) (\n -> Task.succeed (n > 2))
+
+test "plain" = size Leaf == 0

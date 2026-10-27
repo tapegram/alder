@@ -34,20 +34,7 @@ var boundaries = []uint64{
 // shrinking moves toward it. Fresh: 55% in 0..10, 20% in 0..1000, 12% below 2^32, 7% anywhere,
 // 6% a boundary (2^63 is MinInt64 when negative, MaxInt64 when positive).
 func Int(c *Choices) int64 {
-	m := c.draw(1<<63, func(r *rand.Rand) uint64 {
-		switch x := r.Float64(); {
-		case x < 0.55:
-			return r.Uint64N(11)
-		case x < 0.75:
-			return r.Uint64N(1001)
-		case x < 0.87:
-			return r.Uint64N(1 << 32)
-		case x < 0.94:
-			return uniform(r, 1<<63)
-		default:
-			return boundaries[r.IntN(len(boundaries))]
-		}
-	})
+	m := c.draw(1<<63, magnitude)
 	if Bool(c, 0.5) {
 		return -int64(m) // 2^63 wraps to MinInt64, whose negation is itself
 	}
@@ -55,6 +42,22 @@ func Int(c *Choices) int64 {
 		return math.MaxInt64
 	}
 	return int64(m)
+}
+
+// magnitude is the fresh pick of an Int's magnitude (clamped by draw to the range asked).
+func magnitude(r *rand.Rand) uint64 {
+	switch x := r.Float64(); {
+	case x < 0.55:
+		return r.Uint64N(11)
+	case x < 0.75:
+		return r.Uint64N(1001)
+	case x < 0.87:
+		return r.Uint64N(1 << 32)
+	case x < 0.94:
+		return uniform(r, 1<<63)
+	default:
+		return boundaries[r.IntN(len(boundaries))]
+	}
 }
 
 // IntRange draws an Int in [min, max] (just min when max <= min, with no choice). The

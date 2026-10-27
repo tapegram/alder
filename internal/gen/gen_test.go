@@ -248,7 +248,7 @@ func mapsKeys(m map[string][]byte) []string {
 
 // testBuildGoldens are the gen goldens whose want/ is a test build (Options.Tests) and whose
 // want_prod/ is the production build of the same app.
-var testBuildGoldens = map[string]bool{"gen_fakes": true, "gen_browser": true}
+var testBuildGoldens = map[string]bool{"gen_fakes": true, "gen_browser": true, "gen_fuzz": true}
 
 // mutateBuildGoldens are the gen goldens whose want/ is a mutate build (Options.Mutate, a test
 // build) and whose want_prod/ is the production build of the same app.
@@ -803,8 +803,8 @@ func TestStdCallsCoverStdlib(t *testing.T) {
 			}
 			n++
 			key := m.Name + "." + v.Name
-			if m.Name == "Fuzz" {
-				continue // Task 5 maps the Fuzz.* names
+			if key == "Fuzz.forAll" || key == "Fuzz.forAllTask" {
+				continue // a property's body, emitted by gen's test (Fuzz.any is no declaration)
 			}
 			_, call := StdCalls[key]
 			eff := isEffectful(m.Name, v.Name)
@@ -847,8 +847,12 @@ func TestStdCallsExist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fuzz, err := filepath.Glob("../../rt/fuzz/*.go") // Fuzz.*
+	if err != nil {
+		t.Fatal(err)
+	}
 	funcs := map[string]bool{}
-	for _, file := range append(pkgs, testing...) {
+	for _, file := range append(append(pkgs, testing...), fuzz...) {
 		if strings.HasSuffix(file, "_test.go") {
 			continue
 		}
@@ -861,6 +865,9 @@ func TestStdCallsExist(t *testing.T) {
 				pkg := "std."
 				if strings.Contains(file, "rt/testing/") {
 					pkg = "rtesting."
+				}
+				if strings.Contains(file, "rt/fuzz/") {
+					pkg = "fuzz."
 				}
 				funcs[pkg+fd.Name.Name] = true
 			}
@@ -882,8 +889,12 @@ func TestStdTypeParamOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fuzz, err := filepath.Glob("../../rt/fuzz/*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
 	tparams := map[string][]string{}
-	for _, file := range files {
+	for _, file := range append(files, fuzz...) {
 		if strings.HasSuffix(file, "_test.go") {
 			continue
 		}
@@ -902,7 +913,11 @@ func TestStdTypeParamOrder(t *testing.T) {
 					names = append(names, n.Name)
 				}
 			}
-			tparams["std."+fd.Name.Name] = names
+			pkg := "std."
+			if strings.Contains(file, "rt/fuzz/") {
+				pkg = "fuzz."
+			}
+			tparams[pkg+fd.Name.Name] = names
 		}
 	}
 	for key, target := range StdCalls {

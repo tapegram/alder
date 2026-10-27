@@ -301,11 +301,14 @@ func (g *gen) testsTable(b *strings.Builder, p *ir.Program) {
 	var cases []string
 	for _, m := range p.Modules {
 		for i, t := range m.Tests {
-			kind := "Pure"
+			kind, body := "Pure", testFunc(t.Module, i+1)
 			if t.Effect {
 				kind = "Task"
 			}
-			cases = append(cases, fmt.Sprintf("{Module: %s, Name: %s, File: %s, Line: %d, Col: %d, %s: %s}", strconv.Quote(t.Module), strconv.Quote(t.Name), strconv.Quote(t.File), t.Line, t.Col, kind, testFunc(t.Module, i+1)))
+			if _, prop := t.Body.(*ir.TestProp); prop { // the function builds the property
+				kind, body = "Prop", body+"()"
+			}
+			cases = append(cases, fmt.Sprintf("{Module: %s, Name: %s, File: %s, Line: %d, Col: %d, %s: %s}", strconv.Quote(t.Module), strconv.Quote(t.Name), strconv.Quote(t.File), t.Line, t.Col, kind, body))
 		}
 	}
 	list := "{}"

@@ -45,6 +45,9 @@ import (
 //	argsName    Args__M__Capability__Entry  the arguments record of a capability entry
 //	testFunc    test__M__N                  the N-th `test` of module M (from 1, in declaration
 //	                                        order)
+//	fuzz__T, lit__T                         the derived generator and literal printer of type T
+//	                                        (fuzz.go; T its Key made an identifier, numbered
+//	                                        when two Keys make the same, fuzz__alder.go)
 //	fakeName    fake__M__Capability         the struct implementing a capability with its `fake`
 //	                                        (test builds only)
 //	fakeEntry   fakeentry__M__Capability__Entry
@@ -84,7 +87,7 @@ import (
 //     (an identifier never ends in "__"). Stripping that "__", Ctor is the text after the last
 //     "__" (Ctor has no "__" and does not start with '_'), and the rest is a GoName (1).
 //  3. payloadName, tagType, tagConst, widenName, tableName, insertName, insertVals, insertMineName, insertMineVals, enumName,
-//     checkName, decodeName, encodeName, selector__N, pageFunc, paramsFunc, updateFunc, testFunc, fakeName, fakeEntry and the
+//     checkName, decodeName, encodeName, selector__N, pageFunc, paramsFunc, updateFunc, testFunc, fakeName, fakeEntry, fuzz__, lit__ and the
 //     route__/session__ helpers start with a lower-case word and "__". No GoName or ctorName does (they start with
 //     an upper-case module segment); no local does (a local contains "__" only at its end, or
 //     followed by its "_N" renaming suffix); the words differ, so the kinds cannot collide with
@@ -148,7 +151,7 @@ func init() {
 		any append bool byte cap clear close comparable complex complex64 complex128 copy delete
 		error false float32 float64 imag int int8 int16 int32 int64 iota len make max min new nil
 		panic print println real recover rune string true uint uint8 uint16 uint32 uint64 uintptr
-		rt html std time math eff db context fmt url web http json errors strings reflect rtesting`) {
+		rt html std time math eff db context fmt url web http json errors strings reflect rtesting fuzz`) {
 		reserved[s] = true
 	}
 }

@@ -1,0 +1,12 @@
+module Note
+
+type NoteId = brand Text
+
+table Note {
+  id: NoteId @id,
+  body: Text,
+}
+
+type Pick a = Neither | One a | Two { first: a, second: a }
+
+test "rows and generic unions" = \(n : Note) (i : Id Note) (p : Pick Text) (q : Pick Int) -> Text.length n.body >= 0

@@ -29,7 +29,9 @@ import (
 // Effects (kind is query or task): (pure kind v), (bind kind x : T effect body) or
 // (bind kind _ effect body), (map kind fn effect), (all kind effects), (fail msg), (not-found),
 // (cap M.Cap entry args…). Tests, after a module's values and components: (test "name" pure|task
-// body); in their bodies (test-run task), (test-trace), (test-fake M.Cap), (test-eq l r). Database: (db-get M.T id), (db-select M.T [(base e)] (where c)…
+// body); in their bodies (test-run task), (test-trace), (test-fake M.Cap), (test-eq l r); a
+// property's body is (test-prop "x : T [(defaulted)]"… fn [(for-all gen)]), and Fuzz.any is
+// (fuzz-derive T). Database: (db-get M.T id), (db-select M.T [(base e)] (where c)…
 // (order o)… [(limit n)] [(offset n)] select|all|first|count), (db-run all|first|count sel),
 // (db-insert M.T row), (db-update M.T id fn), (db-delete M.T id), (col M.T field),
 // (cond kind [col] [value] subs…) with (cond and|or (value e)) for a list that is no literal,
@@ -592,6 +594,22 @@ func (d *dumper) expr(e Expr) *sx {
 		return atoms("test-fake", x.Fake.Capability.Module+"."+x.Fake.Capability.Name)
 	case *TestEq:
 		return list(1, atom("test-eq"), d.expr(x.Left), d.expr(x.Right))
+	case *FuzzDerive:
+		return atoms("fuzz-derive", x.Gen.Key)
+	case *TestProp:
+		items := []*sx{atom("test-prop")}
+		for i, n := range x.Params {
+			arg := n + " : " + x.Types[i]
+			if x.Defaulted[i] {
+				arg += " (defaulted)"
+			}
+			items = append(items, atom(strconv.Quote(arg)))
+		}
+		items = append(items, d.expr(x.Fn))
+		if x.ForAllGen != nil {
+			items = append(items, list(1, atom("for-all"), d.expr(x.ForAllGen)))
+		}
+		return list(1, items...)
 	case *TestLogin:
 		return list(1, atom("test-login"), d.expr(x.Session))
 	case *TestGet:

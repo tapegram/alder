@@ -161,7 +161,8 @@ type Module struct {
 // Test is a `test` declaration. Effect says its Body is a Task Bool (a block, run as a Task);
 // otherwise Body is a Bool. The test's recorded `==` is a TestEq: a pure test's Body when it is
 // an `==`, or the Value of the EffPure that ends an effect test's straight-line block (reached
-// through EffBind and Let bodies) when that is an `==`.
+// through EffBind and Let bodies) when that is an `==`. A property test's Body is a TestProp,
+// and Effect says its function returns a Task Bool.
 type Test struct {
 	Module, Name string
 	File         string // the test's file (as the span names it, "app/Todo.alder") and
@@ -1043,6 +1044,63 @@ type TestClick struct {
 	Page   *Page
 	Msg    *Msg
 	Params Expr
+}
+
+// GenKind is the shape of a derived generator (GenTree).
+type GenKind int
+
+const (
+	GenPrim     GenKind = iota // a builtin type: Prim names it
+	GenList                    // List a: Elems[0] is a
+	GenMaybe                   // Maybe a: Elems[0] is a
+	GenResult                  // Result e a: Elems are e, a
+	GenDict                    // Dict k v: Elems are k, v
+	GenRecord                  // a record: Names and Elems are its fields, in order
+	GenUnion                   // a union of the app: Names are its constructors, Elems their payloads (nil for none), Rec which are recursive
+	GenBrand                   // a brand of the app: Elems[0] is its base, drawn then checked when Check, printed with the brand's constructor
+	GenStdBrand                // one of the six stdlib refinement brands ("Text.Email"), drawn by its own generator
+)
+
+// GenTree is the generator `alder test` derives for a type (spec §4), for a property's
+// argument or a `Fuzz.any`. Trees are shared by Key, so a recursive type's tree is a graph: a
+// child may be an ancestor.
+type GenTree struct {
+	Kind  GenKind
+	Prim  string     // GenPrim: "Int", "Float", "Bool", "Text", "Unit", "Bytes", "Date", "Time" or "Id"
+	Elems []*GenTree // children in order: record fields, constructor payloads, the arguments of List, Maybe, Result, Dict; a brand's base
+	Names []string   // GenRecord: field names; GenUnion: constructor names
+	Rec   []bool     // GenUnion: constructor i's payload reaches the union again
+	Brand string     // GenBrand, GenStdBrand: "Module.Name"
+	Check bool       // GenBrand: the brand has a `where` check (check__M__B), which a drawn value must pass
+	Key   string     // types.String of the type (brands spelled out): the identity of the generated function
+	// Type is the brand-erased type of the values (their Go type); Union is the union of a
+	// GenUnion; Cyclic says the tree reaches itself, so a List, Maybe or Dict of it spends depth.
+	Type   types.Type
+	Union  *UnionType
+	Cyclic bool
+}
+
+// FuzzDerive is `Fuzz.any` at a concrete type: the value of the generator Gen (a Fuzzer).
+type FuzzDerive struct {
+	Typed
+	Gen *GenTree
+}
+
+// TestProp is the Body of a property test (a function or `Fuzz.forAll` body). For a function
+// body Fn is the lambda, Params its parameters' names, Gens their derived generators and
+// Defaulted which defaulted to Int (spec §4.4). For `Fuzz.forAll gen f` (or forAllTask) Fn is f,
+// ForAllGen is gen, Params the name of f's parameter ("value" when f is no lambda written
+// there), and ForAllLit the tree that prints the value (nil when its type has none: it is
+// printed with rt.Show). Types are the arguments' types as the test's module writes them.
+type TestProp struct {
+	Typed
+	Params    []string
+	Types     []string
+	Gens      []*GenTree
+	Defaulted []bool
+	Fn        Expr
+	ForAllGen Expr
+	ForAllLit *GenTree
 }
 
 // TestEq is the `==` a test records (see Test): Left == Right, of type Bool, whose sides the

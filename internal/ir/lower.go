@@ -60,7 +60,7 @@ func newLowerer(prog *names.Program, res *check.Result) *lowerer {
 }
 
 // lowerTests lowers every module's `test` declarations into Module.Tests, marking the `==` each
-// records (see Test).
+// records (see Test). A property test's Body is a TestProp (propTest).
 func (l *lowerer) lowerTests() {
 	for i, name := range l.prog.Order {
 		mod := l.out.Modules[i]
@@ -69,8 +69,13 @@ func (l *lowerer) lowerTests() {
 			if !ok {
 				continue
 			}
-			_, effect := effectKind(l.typeOf(td.Body))
 			l.enter(name)
+			if info, ok := l.res.Props[td]; ok {
+				mod.Tests = append(mod.Tests, &Test{Module: name, Name: td.Name, Effect: info.Effect, Body: l.propTest(td, info),
+					File: td.Span.File, Line: td.Span.Start.Line, Col: td.Span.Start.Col})
+				continue
+			}
+			_, effect := effectKind(l.typeOf(td.Body))
 			test := &Test{Module: name, Name: td.Name, Effect: effect, Body: l.expr(td.Body),
 				File: td.Span.File, Line: td.Span.Start.Line, Col: td.Span.Start.Col}
 			if effect {
@@ -144,6 +149,8 @@ type lowerer struct {
 
 	// brands are the brands of the app and of the stdlib met so far, by "Module.Name"
 	brands map[string]*Brand
+	// gens are the derived generators made so far, by Key (genTree)
+	gens map[string]*GenTree
 
 	defaults []pendingDefault
 	bodies   []pendingBody

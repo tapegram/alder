@@ -93,6 +93,11 @@ func Children(e Expr) []Expr {
 		return []Expr{x.Task}
 	case *TestEq:
 		return []Expr{x.Left, x.Right}
+	case *TestProp:
+		if x.ForAllGen != nil {
+			return []Expr{x.ForAllGen, x.Fn}
+		}
+		return []Expr{x.Fn}
 	case *TestLogin:
 		return []Expr{x.Session}
 	case *TestGet:
@@ -104,7 +109,7 @@ func Children(e Expr) []Expr {
 	case *TestClick:
 		return []Expr{x.Params}
 	}
-	return nil // Lit, Var, Hole, HText, EffNotFound, ColumnRef, TableRef, Ord, TestTrace, TestFake, DbScoped
+	return nil // Lit, Var, Hole, HText, EffNotFound, ColumnRef, TableRef, Ord, TestTrace, TestFake, DbScoped, FuzzDerive
 }
 
 func matchChildren(x *Match) []Expr {

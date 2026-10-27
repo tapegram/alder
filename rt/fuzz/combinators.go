@@ -49,17 +49,20 @@ func Char() Fuzzer[string] {
 
 // List is Fuzz.list: a continue bit before each element (stop = 0), length biased small.
 func List[A any](f Fuzzer[A]) Fuzzer[[]A] {
-	return ListOf(struct{ Min, Max int64 }{0, -1}, f)
+	return listOf(0, -1, f)
 }
 
 // ListOf is Fuzz.listOf: Min elements, then a continue bit before each further one up to Max
-// (no bound when Max < 0, which only List passes; a Max below Min means Min).
+// (a Max below Min, a negative one included, means Min).
 func ListOf[A any](r struct{ Min, Max int64 }, f Fuzzer[A]) Fuzzer[[]A] {
+	lo := max(r.Min, 0)
+	return listOf(lo, max(r.Max, lo), f)
+}
+
+// listOf draws lo elements, then a continue bit before each further one up to hi (no bound
+// when hi < 0, which only List passes).
+func listOf[A any](lo, hi int64, f Fuzzer[A]) Fuzzer[[]A] {
 	return func(c *Choices) []A {
-		lo, hi := max(r.Min, 0), r.Max
-		if hi >= 0 {
-			hi = max(hi, lo)
-		}
 		xs := []A{}
 		p := lengthBias(c)
 		for i := int64(0); hi < 0 || i < hi; i++ {
@@ -112,10 +115,16 @@ func Pair[A, B any](fa Fuzzer[A], fb Fuzzer[B]) Fuzzer[struct {
 // Dict is Fuzz.dict: entries drawn as a list of key, value (a repeated key keeps its first
 // position and its last value).
 func Dict[K, V any](fk Fuzzer[K], fv Fuzzer[V]) Fuzzer[rt.Dict[K, V]] {
+	return DictOf(-1, fk, fv)
+}
+
+// DictOf is Dict with at most max entries drawn (no bound when max < 0): a derived generator's
+// Dict that holds its own type keeps within its depth budget with it.
+func DictOf[K, V any](max int64, fk Fuzzer[K], fv Fuzzer[V]) Fuzzer[rt.Dict[K, V]] {
 	return func(c *Choices) rt.Dict[K, V] {
 		var d rt.Dict[K, V]
 		p := lengthBias(c)
-		for more(c, p) {
+		for i := int64(0); (max < 0 || i < max) && more(c, p); i++ {
 			k := fk(c)
 			d.Put(k, fv(c))
 		}
@@ -197,8 +206,12 @@ func AndThen[A, B any](k func(A) Fuzzer[B], fa Fuzzer[A]) Fuzzer[B] {
 	return func(c *Choices) B { return k(fa(c))(c) }
 }
 
-// Filter is Fuzz.filter: a value p accepts, or panic Reject{what} (no retry: the runner counts
-// rejections for the health check). what names the predicate in that check's message.
+// FilterF is Fuzz.filter: Filter with the rejections named "Fuzz.filter" in the health check.
+func FilterF[A any](p func(A) bool, f Fuzzer[A]) Fuzzer[A] { return Filter("Fuzz.filter", p, f) }
+
+// Filter is a value of f that p accepts, or panic Reject{what} (no retry: the runner counts
+// rejections for the health check). what names the predicate in that check's message:
+// "Fuzz.filter" for Fuzz.filter (FilterF), the brand's name for a derived brand's check.
 func Filter[A any](what string, p func(A) bool, f Fuzzer[A]) Fuzzer[A] {
 	return func(c *Choices) A {
 		a := f(c)

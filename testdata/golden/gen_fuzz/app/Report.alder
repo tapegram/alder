@@ -1,0 +1,5 @@
+module Report
+
+import Todo
+
+test "the same types from another module" = \(t : Todo) (ss : List Todo.Slug) (k : Maybe Text.Email) -> List.length t.tags >= 0

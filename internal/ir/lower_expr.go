@@ -44,6 +44,9 @@ func (l *lowerer) exprOf(e syntax.Expr) Expr {
 		}
 		return out
 	case *syntax.Var:
+		if isFuzzAny(x) {
+			return l.fuzzDerive(x)
+		}
 		if h := l.effHead(x); h != nil {
 			return l.special(h, nil, h.ft)
 		}

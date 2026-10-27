@@ -2,6 +2,7 @@ package gen
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -307,6 +308,8 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 		*ir.ColumnRef, *ir.TableRef, *ir.Cond, *ir.Ord, *ir.TestRun, *ir.TestTrace, *ir.TestFake,
 		*ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick:
 		return f.effect(e, s), precAtom // effects.go
+	case *ir.FuzzDerive:
+		return f.g.fuzzDerive(x), precAtom
 	case *ir.TestEq: // as rt.Eq for `==`, typed: an Int literal passed as `any` would be a Go int
 		f.g.testNode(x)
 		return "rtesting.Eq(" + f.typedExpr(x.Left, s) + ", " + f.typedExpr(x.Right, s) + ")", precAtom
@@ -324,7 +327,7 @@ func lit(x *ir.Lit) (string, int) {
 		return s, precAtom
 	case ir.LitFloat:
 		s := floatLit(x.Float)
-		if strings.HasPrefix(s, "-") {
+		if strings.HasPrefix(s, "-") && !strings.HasPrefix(s, "math.") {
 			return s, precUnary
 		}
 		return s, precAtom
@@ -336,8 +339,13 @@ func lit(x *ir.Lit) (string, int) {
 	return "struct{}{}", precAtom
 }
 
-// floatLit formats f so that Go reads it as a float constant ("1.0", not "1").
+// floatLit formats f so that Go reads it as a float constant ("1.0", not "1"). Negative zero,
+// which no Go constant is (Go folds -0.0 to 0), is math.Copysign(0, -1): the parser keeps the
+// sign of `-0.0`, and so does the program.
 func floatLit(f float64) string {
+	if f == 0 && math.Signbit(f) {
+		return "math.Copysign(0, -1)"
+	}
 	s := strconv.FormatFloat(f, 'g', -1, 64)
 	if !strings.ContainsAny(s, ".eEIN") {
 		s += ".0"

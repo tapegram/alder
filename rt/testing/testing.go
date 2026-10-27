@@ -193,14 +193,16 @@ func docSides(l, r Doc) ([2]string, string) {
 // its two sides print the same text (a NaN, two values Show cannot tell apart).
 const sameSidesNote = "the sides print the same but are different values"
 
-// Case is one `test` declaration: exactly one of Pure and Task is set. File, Line and Col are
-// the position of its `test` keyword (File relative to the app, "app/Todo.alder"), for --json.
+// Case is one `test` declaration: exactly one of Pure, Task and Prop is set (Prop for a
+// property test, property.go). File, Line and Col are the position of its `test` keyword (File
+// relative to the app, "app/Todo.alder"), for --json.
 type Case struct {
 	Module, Name string
 	File         string
 	Line, Col    int
 	Pure         func() bool
 	Task         func() eff.Task[bool]
+	Prop         *Property
 }
 
 // CaseResult is the outcome of one Case. Left and Right are the Show text of the sides of the
@@ -376,6 +378,8 @@ func runCase(c Case, o Options) (r CaseResult) {
 	switch {
 	case o.schemaErr != "":
 		errText = o.schemaErr
+	case c.Prop != nil:
+		errText = "property tests are not run yet"
 	case c.Pure != nil:
 		ok, errText, r.panicked = guard(c.Pure)
 	case c.Task != nil:
