@@ -51,6 +51,7 @@ const scratchTruncatedLine = "  … (truncated at 64 KB)"
 // the app's watched files (polled as `alder run` does), a run in progress is cancelled by a
 // change, a failed run (a file that no longer parses, one that is gone) is reported and the
 // watching goes on, and Ctrl-C exits 0. With --watch --json each run is one compact JSON line.
+// Watch reruns skip `go vet`; a build that fails is still vetted to explain it.
 func runScratchTo(args []string, stdout, stderr io.Writer) int {
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -211,6 +212,7 @@ func scratchWatch(ctx context.Context, interval time.Duration, a scratchRunArgs,
 			}
 			ra := a
 			ra.text = text
+			ra.noVet = reread
 			scratchRun(runCtx, ra, res, failf)
 		}()
 		select {
@@ -241,6 +243,9 @@ func scratchWatch(ctx context.Context, interval time.Duration, a scratchRunArgs,
 	}
 }
 
+// runScratchFile is scratch.RunFile; tests replace it.
+var runScratchFile = scratch.RunFile
+
 // scratchRunArgs are one run's inputs.
 type scratchRunArgs struct {
 	file, abs, appDir, text string // the path as given, absolute (scratchFileAbs), the app's directory, the file's text
@@ -248,6 +253,7 @@ type scratchRunArgs struct {
 	named                   bool
 	buildDir                string
 	jsonOut                 bool
+	noVet                   bool // --watch reruns: the first run vetted
 	watching                bool // a change may cancel the run: that is not an error to print
 	stdout, stderr          io.Writer
 }
@@ -277,9 +283,9 @@ func scratchRun(ctx context.Context, a scratchRunArgs, res *scratchResult, failf
 	}
 	waiting := func() { fmt.Fprintln(a.stderr, "alder scratch: waiting for another run of this scratch file…") }
 	out := filepath.Join(appBuildDir(a.buildDir, a.appDir), "scratch", scratch.FilePurpose(a.abs))
-	r := scratch.RunFile(ctx, a.appDir, f, scratch.FileOptions{
+	r := runScratchFile(ctx, a.appDir, f, scratch.FileOptions{
 		Module: a.module, Out: out, Parsed: parsed,
-		Build: scratch.Options{Waiting: waiting, Fetching: func() { fmt.Fprintln(a.stderr, buildkit.FetchingLine) }},
+		Build: scratch.Options{NoVet: a.noVet, Waiting: waiting, Fetching: func() { fmt.Fprintln(a.stderr, buildkit.FetchingLine) }},
 	})
 	if ctx.Err() != nil {
 		if a.watching {

@@ -443,3 +443,62 @@ func TestScratchFileAbsResolvesSymlinks(t *testing.T) {
 		t.Fatalf("a missing file: %s, %v", abs, err)
 	}
 }
+
+// stubScratchFile replaces runScratchFile with a stub recording each run's Build.NoVet.
+func stubScratchFile(t *testing.T) func() []bool {
+	t.Helper()
+	var mu sync.Mutex
+	var calls []bool
+	real := runScratchFile
+	runScratchFile = func(_ context.Context, _ string, f scratch.File, o scratch.FileOptions) scratch.FileResult {
+		mu.Lock()
+		calls = append(calls, o.Build.NoVet)
+		mu.Unlock()
+		r := scratch.FileResult{Watches: []scratch.WatchResult{}}
+		for _, w := range f.Watches {
+			r.Watches = append(r.Watches, scratch.WatchResult{Line: w.Line, End: w.Line, Expr: w.Expr, Value: "1"})
+		}
+		r.Ran = true
+		return r
+	}
+	t.Cleanup(func() { runScratchFile = real })
+	return func() []bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]bool(nil), calls...)
+	}
+}
+
+func TestScratchWatchVetsFirstRunOnly(t *testing.T) {
+	calls := stubScratchFile(t)
+	w := startScratchWatch(t, "> 1\n")
+	waitCalls := func(n int) {
+		t.Helper()
+		for deadline := time.Now().Add(90 * time.Second); len(calls()) < n; time.Sleep(10 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("want %d runs, got %v", n, calls())
+			}
+		}
+	}
+	waitCalls(1)
+	w.edit("> 2\n")
+	waitCalls(2)
+	w.stop()
+	if got := calls(); len(got) < 2 || got[0] || !got[1] {
+		t.Fatalf("NoVet per run = %v, want [false true]", got)
+	}
+}
+
+func TestScratchOneShotVets(t *testing.T) {
+	needGoTool(t)
+	calls := stubScratchFile(t)
+	app := filepath.Join(t.TempDir(), "todos")
+	copyDir(t, todosDir(t), app)
+	file := filepath.Join(app, "scratch.alder")
+	writeScratch(t, file, "> 1\n")
+	args := withBuildDir(t, []string{file})
+	runScratchCtx(context.Background(), time.Second, args, &syncBuf{}, &syncBuf{})
+	if got := calls(); len(got) != 1 || got[0] {
+		t.Fatalf("NoVet per run = %v, want [false]", got)
+	}
+}
