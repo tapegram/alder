@@ -1,0 +1,4 @@
+module Fuzz
+
+helper : Int
+helper = 1

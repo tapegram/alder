@@ -143,6 +143,7 @@ type modCtx struct {
 	value    string               // the top-level value whose body is being checked, "" for none
 	testBody syntax.Expr          // the body of the `test` being checked (inTest)
 	testName string               // the name of the `test` being checked (inTest)
+	propHead *syntax.Var          // the `Fuzz.forAll` of the test body: the one place a Property may be made
 	runArgs  map[syntax.Expr]bool // the arguments of `Test.run` calls (their mismatches get a hint)
 	fake     string               // the capability whose `fake` entries are being checked
 	// cookieLit is the record literal `Test.login` is applied to: the cookie's value, so the

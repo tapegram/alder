@@ -1,0 +1,43 @@
+module Fuzz
+
+-- a description of how to draw a value of type a from random choices
+type Fuzzer a
+
+-- what a `test` body of `forAll` makes; only a test body can use it
+type Property
+
+-- special form: any : Fuzzer a
+-- the generator alder test derives from the type; the explicit form of a derived argument
+-- (resolved by the compiler at the use site's type)
+forAll : Fuzzer a -> (a -> Bool) -> Property
+forAllTask : Fuzzer a -> (a -> Task Bool) -> Property
+
+constant : a -> Fuzzer a
+bool : Fuzzer Bool
+-- mostly small, sometimes extreme
+int : Fuzzer Int
+intRange : { min: Int, max: Int } -> Fuzzer Int
+-- finite; 0, -0, tiny, huge included; no NaN/Inf
+float : Fuzzer Float
+floatRange : { min: Float, max: Float } -> Fuzzer Float
+-- mostly short ASCII, sometimes Unicode, sometimes empty
+text : Fuzzer Text
+-- the length is in code points
+textOf : { min: Int, max: Int } -> Fuzzer Text
+-- one code point
+char : Fuzzer Text
+-- size biased small
+list : Fuzzer a -> Fuzzer (List a)
+listOf : { min: Int, max: Int } -> Fuzzer a -> Fuzzer (List a)
+maybe : Fuzzer a -> Fuzzer (Maybe a)
+result : Fuzzer e -> Fuzzer a -> Fuzzer (Result e a)
+pair : Fuzzer a -> Fuzzer b -> Fuzzer { first: a, second: b }
+dict : Fuzzer k -> Fuzzer v -> Fuzzer (Dict k v)
+oneOf : List (Fuzzer a) -> Fuzzer a
+oneOfValues : List a -> Fuzzer a
+frequency : List { weight: Int, fuzzer: Fuzzer a } -> Fuzzer a
+map : (a -> b) -> Fuzzer a -> Fuzzer b
+map2 : (a -> b -> c) -> Fuzzer a -> Fuzzer b -> Fuzzer c
+andThen : (a -> Fuzzer b) -> Fuzzer a -> Fuzzer b
+-- subject to the health check
+filter : (a -> Bool) -> Fuzzer a -> Fuzzer a

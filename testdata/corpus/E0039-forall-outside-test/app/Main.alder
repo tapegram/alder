@@ -1,0 +1,4 @@
+module Main
+
+p : Fuzz.Property
+p = Fuzz.forAll Fuzz.int (\n -> n == n)

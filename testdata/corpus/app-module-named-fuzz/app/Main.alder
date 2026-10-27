@@ -1,0 +1,6 @@
+module Main
+
+import Fuzz
+
+x : Int
+x = Fuzz.helper + 1

@@ -54,13 +54,16 @@ func (mc *modCtx) checkBodies() {
 		case *syntax.TestDecl:
 			mc.holes = nil
 			mc.inTest, mc.testBody, mc.testName = true, d.Body, d.Name
-			if _, isBlock := d.Body.(*syntax.Block); isBlock { // an effect test: a Task Bool
+			mc.propHead = fuzzForAllHead(d.Body)
+			if mc.propHead != nil { // a property: `Fuzz.forAll …` as the whole body
+				mc.check(d.Body, fuzzProperty, newEnv(), effect{})
+			} else if _, isBlock := d.Body.(*syntax.Block); isBlock { // an effect test: a Task Bool
 				mc.check(d.Body, &types.App{Con: "Task", Args: []types.Type{types.Bool}}, newEnv(), effect{kind: "Task"})
 			} else {
 				mc.check(d.Body, types.Bool, newEnv(), effect{})
 			}
 			mc.reportHoles() // still in the test: its scoped checks run here, where every key is narrowed
-			mc.inTest, mc.testBody, mc.testName = false, nil, ""
+			mc.inTest, mc.testBody, mc.testName, mc.propHead = false, nil, "", nil
 		case *syntax.TypeDecl:
 			if d.Brand != nil && d.Brand.Check != nil {
 				mc.holes = nil
@@ -960,6 +963,10 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 			return t
 		}
 	case syntax.RefValue, syntax.RefStd:
+		if isFuzzProperty(x) && x != mc.propHead {
+			c.errorf(diag.PropertyOutsideTest, x.Span, "`Fuzz.%s` makes a Property, which only a test body can use", x.Ref.Name)
+			return types.Err
+		}
 		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Test" && !mc.inTest { // eval's module is not a test here: it cannot run Tasks
 			c.errorf(diag.TypeMismatch, x.Span, "`Test.%s` is only available inside a `test`", x.Ref.Name)
 			return types.Err
