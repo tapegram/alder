@@ -41,7 +41,13 @@ func (l *lowerer) propTest(d *syntax.TestDecl, info check.PropInfo) *TestProp {
 	for _, t := range info.Types {
 		p.Types = append(p.Types, types.StringQ(t, l.module, qual))
 	}
-	defer func() { p.Case, p.Quals = l.pasteCase(d, info), l.literalQuals(p) }()
+	defer func() {
+		p.Quals = l.literalQuals(p)
+		// a forAll value with no printer is shown with rt.Show, which is no Alder: no case
+		if info.Kind == check.PropFun || p.ForAllLit != nil {
+			p.Case = l.pasteCase(d, info)
+		}
+	}()
 	body := l.expr(d.Body)
 	if info.Kind == check.PropFun {
 		p.Fn = body

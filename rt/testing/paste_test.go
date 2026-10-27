@@ -106,3 +106,30 @@ func TestProp_StatusSeedRun(t *testing.T) {
 		t.Errorf("crash json %s", js)
 	}
 }
+
+// While a saved failure replays, the status line's run is savedRun: a crash then is reported
+// as the saved case's (no seed reproduces it), not as run 1 of the seed.
+func TestProp_StatusSavedReplay(t *testing.T) {
+	dir := t.TempDir()
+	status := filepath.Join(dir, "status")
+	var first string
+	p := listProp(func(xs []int64) bool {
+		if first == "" {
+			b, _ := os.ReadFile(status)
+			first = string(b)
+		}
+		return len(xs) < 2
+	})
+	runProp(p, Options{FuzzDB: dir, Seed: 9, SeedSet: true}) // saves the failure
+	runProp(p, Options{FuzzDB: dir, Seed: 9, SeedSet: true, Status: status})
+	if first != "M\tp\t9\t-1\n" {
+		t.Fatalf("status while replaying %q", first)
+	}
+	if _, _, _, run, ok := ParseStatus(first); !ok || run != savedRun {
+		t.Errorf("ParseStatus: run %d %v", run, ok)
+	}
+	out := report(t, CaseResult{Module: "M", Name: "p", Error: "fatal error: stack overflow", Seed: 9, Run: savedRun, Crash: true}, false)
+	if out != "FAIL M \"p\"\n  error: fatal error: stack overflow\n  run: the saved failing case, replayed first (build/<app>/fuzz/M/)\n" {
+		t.Errorf("crash report %q", out)
+	}
+}

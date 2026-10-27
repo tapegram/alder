@@ -230,7 +230,8 @@ type CaseResult struct {
 	// failing case, Paste the plain test that keeps it ("" when the generated code prints
 	// none, or a literal is not Alder, or it is too long), and Left, Right, Note, Error and
 	// Trace are that case's. Crash marks the result `alder test` reports for a property that
-	// crashed the whole program: only Seed and Run (from the status file, ParseStatus) are set.
+	// crashed the whole program: only Seed and Run (from the status file, ParseStatus; Run
+	// is savedRun when the saved failure was replaying) are set.
 	Args      []ArgValue
 	Seed      uint64
 	Run, Runs int

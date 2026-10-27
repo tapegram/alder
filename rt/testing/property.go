@@ -191,7 +191,7 @@ func runProperty(c Case, o Options, r CaseResult) CaseResult {
 		st.path = o.Status
 	}
 	if seq, ok := readSaved(path); ok {
-		st.at(1)
+		st.at(savedRun)
 		if a := runAttempt(p, o, fuzz.Replay(seq)); !a.overrun && !a.rejected && ran(a) {
 			return finish(c, o, r, failing, path)
 		}
@@ -333,10 +333,15 @@ func Paste(tmpl string, lits []string) string {
 	}
 }
 
+// savedRun is the run a status line gives while the saved failure is replayed: no seed and run
+// reproduce that attempt, the saved file does (it is replayed first again).
+const savedRun = -1
+
 // statusLine writes property test c's line of Main's status file (EnvStatus) before each
 // attempt: `Module\tName\tseed\trun`, the run being the one the attempt makes (or the failing
-// run while it is shrunk), so after a crash of the whole program the report gives the seed and
-// run that reproduce it (ParseStatus). No path: nothing is written.
+// run while it is shrunk; savedRun while the saved failure is replayed), so after a crash of
+// the whole program the report says how to reproduce it (ParseStatus). No path: nothing is
+// written.
 type statusLine struct {
 	path string
 	c    Case
@@ -353,8 +358,8 @@ func (s *statusLine) at(run int) {
 }
 
 // ParseStatus reads a line of Main's status file: `Module\tName` before a test, followed by
-// `\tseed\trun` while a property test runs (run is then from 1; 0 for any other line). ok is
-// false for an empty file.
+// `\tseed\trun` while a property test runs (run is then from 1, or savedRun while its saved
+// failure is replayed; 0 for any other line). ok is false for an empty file.
 func ParseStatus(line string) (mod, name string, seed uint64, run int, ok bool) {
 	mod, name, ok = strings.Cut(strings.TrimSuffix(line, "\n"), "\t")
 	if !ok || mod == "" {
@@ -364,7 +369,7 @@ func ParseStatus(line string) (mod, name string, seed uint64, run int, ok bool) 
 	if n := len(parts); n >= 3 {
 		s, e1 := strconv.ParseUint(parts[n-2], 10, 64)
 		r, e2 := strconv.Atoi(parts[n-1])
-		if e1 == nil && e2 == nil && r > 0 {
+		if e1 == nil && e2 == nil && (r > 0 || r == savedRun) {
 			return mod, strings.Join(parts[:n-2], "\t"), s, r, true
 		}
 	}
@@ -495,7 +500,11 @@ func writeArgs(b *strings.Builder, r CaseResult) {
 // gives the seed and the run that reproduce it.
 func writeSeed(b *strings.Builder, r CaseResult) {
 	if r.Crash {
-		fmt.Fprintf(b, "  seed: %d\n  run: %d\n", r.Seed, r.Run)
+		if r.Run == savedRun {
+			fmt.Fprintf(b, "  run: the saved failing case, replayed first (build/<app>/fuzz/%s/)\n", r.Module)
+		} else {
+			fmt.Fprintf(b, "  seed: %d\n  run: %d\n", r.Seed, r.Run)
+		}
 		return
 	}
 	if r.Runs == 0 {

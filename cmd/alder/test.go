@@ -376,7 +376,7 @@ func runTests(b scratch.Build, runPat string, timeout time.Duration, mut *mutate
 			r := rtesting.CaseResult{Module: mod, Name: name, Error: crash.summary()}
 			if timedOut {
 				r.Error = "timed out after " + timeout.String()
-			} else if run > 0 { // a property test: the seed and run reproduce the crash
+			} else if run != 0 { // a property test: its seed and run, or the saved failure, reproduce the crash
 				r.Seed, r.Run, r.Crash = seed, run, true
 			}
 			rtesting.WriteResult(stdout, r, jsonOut)
@@ -448,8 +448,8 @@ func (c *resultCounter) Write(p []byte) (int, error) {
 }
 
 // readStatus reads the status file the test program writes before each test: `Module\tName\n`,
-// for a property test then `Module\tName\tseed\trun\n` before each attempt (run from 1; 0 for
-// a plain test), or nothing when no test was running.
+// for a property test then `Module\tName\tseed\trun\n` before each attempt (run from 1, or -1
+// while its saved failure replays; 0 for a plain test), or nothing when no test was running.
 func readStatus(path string) (mod, name string, seed uint64, run int, ok bool) {
 	b, err := os.ReadFile(path)
 	if err != nil {

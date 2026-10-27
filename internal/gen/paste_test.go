@@ -52,6 +52,8 @@ test "subject" = \(m : Maybe Int) -> match m {
 test "interpolated" = \(s : Text) -> "a{s}" != ""
 
 test "tags" = \(t : Tag) (tr : Tree) -> Text.length t >= 0
+
+test "functions" = Fuzz.forAll (Fuzz.constant (\(x : Int) -> x)) (\f -> f 1 == 2)
 `,
 	"Data/Colors.alder": `module Data.Colors
 
@@ -91,6 +93,7 @@ func TestGen_PasteCase(t *testing.T) {
 	runGo(t, files, `package app
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -135,6 +138,17 @@ func TestPasteCase(t *testing.T) {
 	}
 	if prop(t, "interpolated").Case != nil {
 		t.Error("interpolated: a Case")
+	}
+	// a forAll value with no printer is shown with rt.Show, which is no Alder: no case
+	if prop(t, "functions").Case != nil {
+		t.Error("functions: a Case")
+	}
+	for _, r := range rtesting.Run(Tests, rtesting.Options{Run: regexp.MustCompile("functions"), Seed: 1, SeedSet: true}) {
+		var b strings.Builder
+		rtesting.WriteResult(&b, r, false)
+		if r.OK || strings.Contains(b.String(), "to keep this case") || !strings.Contains(b.String(), "  paste the values above into a plain test\n") {
+			t.Errorf("functions report:\n%s", b.String())
+		}
 	}
 	zeros := func() *fuzz.Choices { return fuzz.Replay(make([]uint64, 64)) }
 	for _, c := range []struct {
