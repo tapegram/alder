@@ -308,7 +308,7 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 			return b
 		}
 	}
-	if buildOut, err := buildkit.GoCmdContext(ctx, b.Dir, "build", "-mod=mod", "-o", "scratch", "./cmd"); err != nil {
+	if buildOut, err := buildkit.GoCmdContext(ctx, b.Dir, "build", "-mod=mod", "-ldflags=-s -w", "-o", "scratch", "./cmd"); err != nil { // stripped: faster link and first exec; panics keep file:line (pclntab)
 		if ctx.Err() != nil {
 			return b
 		}

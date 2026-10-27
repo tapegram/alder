@@ -2,6 +2,7 @@ package scratch
 
 import (
 	"context"
+	"debug/buildinfo"
 	"errors"
 	"os"
 	"os/exec"
@@ -310,6 +311,30 @@ func TestCompileCheckedWith_NoVet(t *testing.T) {
 	if b.Err == nil || !strings.Contains(b.Err.Error(), "the Go main in ") || !strings.Contains(b.Err.Error(), " does not vet") || b.Runnable() {
 		t.Errorf("neither vets nor builds: %v", b.Err)
 	}
+}
+
+// The scratch binary is linked stripped (-s -w): the link and the first exec are faster.
+func TestCompileCheckedWith_Stripped(t *testing.T) {
+	needGo(t)
+	c := Check("../../examples/todos", &Module{Name: "Scratch", Source: "it : Int\nit = Todo.countOpen []\n"})
+	b := CompileCheckedWith(context.Background(), c, printMain, "", t.TempDir(), Options{})
+	defer b.Close()
+	if b.Err != nil || !b.Runnable() {
+		t.Fatalf("%v", b.Err)
+	}
+	info, err := buildinfo.ReadFile(b.Binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range info.Settings {
+		if s.Key == "-ldflags" {
+			if s.Value != "-s -w" {
+				t.Errorf("-ldflags = %q", s.Value)
+			}
+			return
+		}
+	}
+	t.Errorf("no -ldflags in build info: %v", info.Settings)
 }
 
 // Two app modules sharing a last segment get canonical aliases among the auto-imports.
