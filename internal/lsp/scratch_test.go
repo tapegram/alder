@@ -25,9 +25,10 @@ func fakeScratch(t *testing.T, result func(k int, f scratch.File) scratch.FileRe
 	t.Helper()
 	calls := &scratchCalls{}
 	real := runScratchFile
-	runScratchFile = func(_ context.Context, _ string, f scratch.File, _ scratch.FileOptions) scratch.FileResult {
+	runScratchFile = func(_ context.Context, _ string, f scratch.File, o scratch.FileOptions) scratch.FileResult {
 		calls.mu.Lock()
 		calls.texts = append(calls.texts, strings.Join(f.Lines, "\n"))
+		calls.noVet = append(calls.noVet, o.Build.NoVet)
 		k := len(calls.texts)
 		calls.mu.Unlock()
 		return result(k, f)
@@ -39,12 +40,20 @@ func fakeScratch(t *testing.T, result func(k int, f scratch.File) scratch.FileRe
 type scratchCalls struct {
 	mu    sync.Mutex
 	texts []string // each call's file text, its lines joined by "\n"
+	noVet []bool   // each call's Build.NoVet
 }
 
 func (c *scratchCalls) get() []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]string(nil), c.texts...)
+}
+
+// vets returns each call's Build.NoVet.
+func (c *scratchCalls) vets() []bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]bool(nil), c.noVet...)
 }
 
 func (c *client) scratchNote() scratchParams {
@@ -100,6 +109,23 @@ func TestScratchSaveReruns(t *testing.T) {
 	c.save("app/Table/Todo.alder")
 	if p := c.scratchNote(); p.Watches[0].Value != "3" || p.Version != 2 {
 		t.Fatalf("save of another file: %+v", p)
+	}
+}
+
+// TestScratchVetsOncePerServer: the server's first scratch run vets; every later run skips it.
+func TestScratchVetsOncePerServer(t *testing.T) {
+	calls := fakeScratch(t, func(k int, f scratch.File) scratch.FileResult {
+		return scratch.FileResult{Ran: true, Watches: []scratch.WatchResult{{Line: 1, End: 1, Expr: f.Watches[0].Expr, Value: strconv.Itoa(k)}}}
+	})
+	c := start(t, copyExample(t, "todos"))
+	c.open("scratch.alder", "> 1\n")
+	c.scratchNote()
+	c.save("scratch.alder")
+	c.scratchNote()
+	c.open("other.scratch.alder", "> 2\n")
+	c.scratchNote()
+	if got, want := calls.vets(), []bool{false, true, true}; len(got) != 3 || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+		t.Fatalf("NoVet per call %v, want %v", got, want)
 	}
 }
 
