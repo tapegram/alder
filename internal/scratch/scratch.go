@@ -166,6 +166,8 @@ type Options struct {
 	// module is vetted after all, so the failure is reported as without NoVet: generated Go
 	// that does not vet is an internal error, a main or adapters that do not vet say so.
 	NoVet bool
+	// NoFormat skips gofmt of the generated module files (gen.Options.NoFormat: RunFile).
+	NoFormat bool
 	// Waiting, when set, is called once when another process (or Build) holds the lock on the
 	// output directory, before CompileCheckedWith waits for it (a done ctx ends the wait).
 	Waiting func()
@@ -262,7 +264,7 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 			return b
 		}
 	}
-	files, err := gen.Emit(p, gen.Options{Version: version.String(), Migrations: buildkit.HasMigrations(appDir), Tests: o.Tests, Mutate: o.Mutate, Unwired: unwired, Thunks: o.Thunks})
+	files, err := gen.Emit(p, gen.Options{Version: version.String(), Migrations: buildkit.HasMigrations(appDir), Tests: o.Tests, Mutate: o.Mutate, Unwired: unwired, Thunks: o.Thunks, NoFormat: o.NoFormat})
 	if err != nil {
 		b.Err = fmt.Errorf("internal error: %v", err)
 		return b

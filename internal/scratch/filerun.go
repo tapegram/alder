@@ -209,6 +209,7 @@ func RunFile(ctx context.Context, appDir string, f File, o FileOptions) (r FileR
 	}
 	bo := o.Build
 	bo.Tests, bo.Thunks = true, thunks
+	bo.NoFormat = true
 	out := o.Out
 	purpose := ""
 	if out == "" {

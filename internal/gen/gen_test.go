@@ -1,6 +1,7 @@
 package gen
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -3670,5 +3671,41 @@ func TestGenThunksOption(t *testing.T) {
 	}
 	if !regexp.MustCompile(`var M__y int64 = M__x\(\) \+`).MatchString(got) {
 		t.Errorf("y is not a variable calling x:\n%s", got)
+	}
+}
+
+// NoFormat leaves the module files unformatted but valid Go that gofmt turns into what the
+// formatted emit holds; app__alder.go is the same either way.
+func TestEmitNoFormat(t *testing.T) {
+	dir := "../../testdata/golden/gen_basic"
+	plain := emitOpts(t, dir, Options{})
+	raw := emitOpts(t, dir, Options{NoFormat: true})
+	if !bytes.Equal(plain[appFile], raw[appFile]) {
+		t.Errorf("%s differs with NoFormat", appFile)
+	}
+	differs := false
+	for name, src := range raw {
+		if !strings.HasSuffix(name, "_alder.go") || name == appFile || name == "routes__alder.go" {
+			continue
+		}
+		if _, err := parser.ParseFile(token.NewFileSet(), name, src, parser.SkipObjectResolution); err != nil {
+			t.Errorf("%s does not parse: %v", name, err)
+			continue
+		}
+		got, err := format.Source(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err = format.Source(got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, plain[name]) {
+			t.Errorf("%s: formatting the NoFormat output is not the formatted emit", name)
+		}
+		differs = differs || !bytes.Equal(src, plain[name])
+	}
+	if !differs {
+		t.Error("NoFormat changed no module file")
 	}
 }

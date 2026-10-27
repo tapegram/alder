@@ -3,6 +3,7 @@ package scratch
 import (
 	"context"
 	"fmt"
+	"go/format"
 	"os"
 	"path/filepath"
 	"strings"
@@ -414,5 +415,32 @@ func TestRunFileTimeout(t *testing.T) {
 	}
 	if !strings.Contains(r.Note, "timed out after 2s") && !strings.Contains(r.Watches[1].Error, "timed out after 2s") {
 		t.Errorf("no timeout mentioned: note %q, %+v", r.Note, r.Watches)
+	}
+}
+
+// RunFile builds without gofmt of the module files (nobody reads them).
+func TestRunFileNoFormat(t *testing.T) {
+	needGo(t)
+	out := t.TempDir()
+	r := runFile(t, "> 1 + 1\n", FileOptions{Out: out})
+	if r.Err != nil || !r.Ran {
+		t.Fatalf("err %v, ran %v", r.Err, r.Ran)
+	}
+	files, _ := filepath.Glob(filepath.Join(out, "*_alder.go"))
+	unformatted := false
+	for _, f := range files {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if filepath.Base(f) == "app__alder.go" || filepath.Base(f) == "routes__alder.go" {
+			continue
+		}
+		if fmtd, err := format.Source(src); err != nil || string(fmtd) != string(src) {
+			unformatted = true
+		}
+	}
+	if !unformatted {
+		t.Errorf("every module file of %v is gofmt-formatted; want them unformatted", files)
 	}
 }
