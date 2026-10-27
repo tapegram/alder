@@ -43,7 +43,7 @@ func (p *printer) expr(e syntax.Expr) Doc {
 	case *syntax.App:
 		return p.app(e)
 	case *syntax.Lambda:
-		return Concat(Text(lambdaHead(e)), p.after(e.Body))
+		return Concat(Text(p.lambdaHead(e)), p.after(e.Body))
 	case *syntax.If:
 		return p.ifChain(e)
 	case *syntax.Match:
@@ -108,12 +108,18 @@ func (p *printer) after(e syntax.Expr) Doc {
 	return Group(Nest(Concat(Line, p.expr(e))))
 }
 
-func lambdaHead(l *syntax.Lambda) string {
+func (p *printer) lambdaHead(l *syntax.Lambda) string {
 	var b strings.Builder
 	b.WriteString(`\`)
 	for i, x := range l.Params {
 		if i > 0 {
 			b.WriteByte(' ')
+		}
+		if i < len(l.Types) && l.Types[i] != nil {
+			p.inFun++ // a record annotation is width-based, not the 3-field rule
+			b.WriteString("(" + x.Name + " : " + Render(Flat(p.typ(l.Types[i])), 1<<20) + ")")
+			p.inFun--
+			continue
 		}
 		b.WriteString(x.Name)
 	}
@@ -195,9 +201,9 @@ func (p *printer) hug(e syntax.Expr) Doc {
 	case *syntax.Lambda:
 		// `(\x ->` … `)`, or `(\x -> {` … `})` when the body opens on the arrow's line
 		if opensBody(x.Body) && !p.hasLead(x.Body) {
-			return Concat(Text("("+lambdaHead(x)+" "), p.expr(x.Body), Text(")"))
+			return Concat(Text("("+p.lambdaHead(x)+" "), p.expr(x.Body), Text(")"))
 		}
-		return Group(Concat(Text("("+lambdaHead(x)), Nest(Concat(Line, p.lead(x.Body, true), p.expr(x.Body))), SoftLine, Text(")")))
+		return Group(Concat(Text("("+p.lambdaHead(x)), Nest(Concat(Line, p.lead(x.Body, true), p.expr(x.Body))), SoftLine, Text(")")))
 	default:
 		if opensBody(x) {
 			return Concat(Text("("), p.expr(x), Text(")"))

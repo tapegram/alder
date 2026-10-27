@@ -526,7 +526,15 @@ func (mc *modCtx) checkExpr(e syntax.Expr, expected types.Type, env *env, eff ef
 			}
 			child := env.child()
 			for i, p := range x.Params {
-				c.bind(child, p, p.Name, fn.Params[i])
+				pt := fn.Params[i]
+				if i < len(x.Types) && x.Types[i] != nil {
+					ann := mc.typeOf(x.Types[i], nil)
+					if err := c.u.Unify(ann, pt); err != nil {
+						mc.mismatch(x.Types[i].GetSpan(), ann, pt)
+					}
+					pt = ann
+				}
+				c.bind(child, p, p.Name, pt)
 			}
 			body := fn.Result
 			if len(x.Params) < len(fn.Params) {
@@ -902,8 +910,13 @@ func (mc *modCtx) inferExpr(e syntax.Expr, env *env, eff effect) types.Type {
 	case *syntax.Lambda:
 		child := env.child()
 		fn := &types.Fun{}
-		for _, p := range x.Params {
-			v := c.u.Fresh()
+		for i, p := range x.Params {
+			var v types.Type
+			if i < len(x.Types) && x.Types[i] != nil {
+				v = mc.typeOf(x.Types[i], nil)
+			} else {
+				v = c.u.Fresh()
+			}
 			c.bind(child, p, p.Name, v)
 			fn.Params = append(fn.Params, v)
 		}

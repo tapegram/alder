@@ -319,6 +319,7 @@ type App struct {
 type Lambda struct {
 	Node
 	Params []*Ident
+	Types  []Type // Types[i] annotates Params[i], `\(x : T) -> …`; nil when unannotated
 	Body   Expr
 }
 type If struct {

@@ -116,7 +116,20 @@ const expressionRules = (prefix) => {
         : choice($._simple, $.lambda, $.record, $.record_update, $.block),
 
     [key('lambda')]: ($) =>
-      prec.right(PREC.body, seq('\\', repeat(field('param', $.identifier)), '->', field('body', expr($)))),
+      prec.right(
+        PREC.body,
+        seq(
+          '\\',
+          repeat(
+            choice(
+              field('param', $.identifier),
+              seq('(', field('param', $.identifier), ':', field('param_type', $._type), ')'),
+            ),
+          ),
+          '->',
+          field('body', expr($)),
+        ),
+      ),
 
     [key('if_expr')]: ($) =>
       prec.right(

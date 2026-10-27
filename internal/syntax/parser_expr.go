@@ -290,11 +290,26 @@ func (p *Parser) parsePrimary() Expr {
 	case Backslash:
 		p.advance()
 		l := &Lambda{}
-		for p.at(LIdent) {
+		for p.at(LIdent) || p.at(LParen) {
+			paren := p.at(LParen)
+			if paren {
+				p.advance()
+				if !p.at(LIdent) {
+					p.errorAt(p.tok, "expected a parameter name after `(`")
+					break
+				}
+			}
 			t := p.advance()
 			id := &Ident{Name: t.Text}
 			id.Span = p.spanTok(t)
+			var ann Type
+			if paren {
+				p.expect(Colon, "`:`")
+				ann = p.parseType()
+				p.expect(RParen, "`)`")
+			}
 			l.Params = append(l.Params, id)
+			l.Types = append(l.Types, ann)
 		}
 		p.expect(Arrow, "`->`")
 		p.skipNL()

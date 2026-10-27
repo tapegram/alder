@@ -1,0 +1,2 @@
+(module LambdaAnnot (val f = (lambda (x : Int) y (z : (List Text)) -> (var x))) (val g = (lambda (s : Text.NonEmpty) -> (var s))) (val h = (lambda (p : {a: Int}) -> (access (var p) a))))
+@ module 1:1-7:29

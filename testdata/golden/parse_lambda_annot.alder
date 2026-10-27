@@ -1,0 +1,7 @@
+module LambdaAnnot
+
+f = \(x : Int) y (z : List Text) -> x
+
+g = \(s : Text.NonEmpty) -> s
+
+h = \(p : { a: Int }) -> p.a

@@ -246,6 +246,13 @@ There is no `<|`, no `<<`, no `>>`.
 (\a b -> a + b) 1 2
 ```
 
+A parameter may carry a type annotation in parentheses, `(name : Type)`, and
+annotated and plain parameters mix freely:
+
+```alder eval=3
+(\(a : Int) b -> a + b) 1 2
+```
+
 ## Operators
 
 | Operator | Types | Meaning |

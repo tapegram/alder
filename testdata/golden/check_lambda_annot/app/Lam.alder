@@ -1,0 +1,13 @@
+module Lam
+
+bad : Int -> Int
+bad = \(x : Int) -> x ++ "a"
+
+ok : List Int
+ok = List.map (\(n : Int) -> n + 1) [1]
+
+amb : Text -> Text
+amb = \(x : Text) -> x
+
+use : Text
+use = amb 1

@@ -256,7 +256,13 @@ func dump(sb *strings.Builder, n any) {
 		sb.WriteByte(')')
 	case *Lambda:
 		sb.WriteString("(lambda")
-		for _, p := range x.Params {
+		for i, p := range x.Params {
+			if i < len(x.Types) && x.Types[i] != nil {
+				sb.WriteString(" (" + p.Name + " : ")
+				dump(sb, x.Types[i])
+				sb.WriteString(")")
+				continue
+			}
 			sb.WriteString(" " + p.Name)
 		}
 		sb.WriteString(" -> ")

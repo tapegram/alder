@@ -1146,7 +1146,10 @@ func (r *resolver) expr(e syntax.Expr, sc *Scope) {
 		}
 	case *syntax.Lambda:
 		c := sc.child()
-		for _, p := range e.Params {
+		for i, p := range e.Params {
+			if i < len(e.Types) && e.Types[i] != nil {
+				r.typ(e.Types[i])
+			}
 			c.bind(p.Name)
 		}
 		r.expr(e.Body, c)

@@ -154,6 +154,36 @@ d = Task.succeed ()
         argument: (unit)))))
 
 ================================================================================
+lambda with annotated parameters
+================================================================================
+
+module M
+
+f = \(x : Int) y (z : List Text) -> x
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (lambda
+        param: (identifier)
+        param_type: (type_name
+          (constructor))
+        param: (identifier)
+        param: (identifier)
+        param_type: (type_app
+          constructor: (type_name
+            (constructor))
+          argument: (type_name
+            (constructor)))
+        body: (identifier)))))
+
+================================================================================
 keywords that are column-1 only are names elsewhere
 ================================================================================
 
