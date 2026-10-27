@@ -21,6 +21,7 @@ import "embed"
 //go:embed datastar/datastar.go datastar/datastar.js datastar/VERSION
 //go:embed db/encode.go db/libsql.go db/migrate.go db/sqlite.go db/store.go db/stores.go db/stores_turso.go db/table.go db/turso.go
 //go:embed eff/eff.go eff/run.go
+//go:embed fuzz/choices.go fuzz/combinators.go fuzz/draw.go fuzz/shrink.go
 //go:embed html/diff.go html/html.go html/parse.go html/state.go
 //go:embed selector/selector.go
 //go:embed std/date.go std/dict.go std/effects.go std/file.go std/html.go std/list.go std/maybe.go std/num.go std/result.go std/text.go
