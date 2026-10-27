@@ -1,6 +1,9 @@
 package check
 
 import (
+	"fmt"
+	"sort"
+	"strings"
 	"testing"
 
 	"alder/internal/diag"
@@ -300,5 +303,124 @@ func (cv *coverage) pat(p syntax.Pattern) {
 		}
 	default:
 		cv.t.Errorf("coverage walk does not know pattern %T at %v", p, p.GetSpan())
+	}
+}
+
+// propsOf checks src as module Props and returns its Result with the Props entry of each test
+// by name, failing on any error.
+func propsOf(t *testing.T, src string) (*Result, map[string]PropInfo) {
+	t.Helper()
+	res, bag := checkWith(t, map[string]string{"Props.alder": "module Props\n\n" + src}, Options{})
+	if bag.HasErrors() {
+		t.Fatal(render(bag))
+	}
+	byName := map[string]PropInfo{}
+	for d, p := range res.Props {
+		byName[d.Name] = p
+	}
+	return res, byName
+}
+
+// A property's argument types are final: a type variable left free is defaulted to Int and
+// marked, at any depth (a list's element, a Maybe's payload, a record's field).
+func TestProps_Defaulting(t *testing.T) {
+	_, props := propsOf(t, `test "rev" = \xs -> List.reverse (List.reverse xs) == xs
+
+test "text" = \(xs : List Text) -> List.reverse (List.reverse xs) == xs
+
+test "maybe" = \m -> Maybe.withDefault 0 (Maybe.map (\x -> 0) m) >= 0 || True
+
+test "pair" = Fuzz.forAll (Fuzz.pair Fuzz.any Fuzz.int) (\p -> p.second == p.second)
+
+test "two" = \x y -> x == y || True
+
+test "eff" = \(n : Int) -> {
+  Task.succeed (n == n)
+}
+
+test "task" = Fuzz.forAllTask Fuzz.int (\n -> Task.succeed (n == n))
+
+test "pipe" = (\n -> n == n) |> Fuzz.forAll (Fuzz.list Fuzz.text)
+
+test "plain" = 1 == 1
+`)
+	for _, tc := range []struct {
+		name      string
+		kind      PropKind
+		effect    bool
+		types     []string
+		defaulted []bool
+	}{
+		{"rev", PropFun, false, []string{"List Int"}, []bool{true}},
+		{"text", PropFun, false, []string{"List Text"}, []bool{false}},
+		{"maybe", PropFun, false, []string{"Maybe Int"}, []bool{true}},
+		{"pair", PropForAll, false, []string{"{ first: Int, second: Int }"}, []bool{true}},
+		{"two", PropFun, false, []string{"Int", "Int"}, []bool{true, true}},
+		{"eff", PropFun, true, []string{"Int"}, []bool{false}},
+		{"task", PropForAll, true, []string{"Int"}, []bool{false}},
+		{"pipe", PropForAll, false, []string{"List Text"}, []bool{false}},
+	} {
+		p, ok := props[tc.name]
+		if !ok {
+			t.Errorf("%s: no Props entry", tc.name)
+			continue
+		}
+		var got []string
+		for _, ty := range p.Types {
+			got = append(got, types.String(ty))
+		}
+		if p.Kind != tc.kind || p.Effect != tc.effect || strings.Join(got, "|") != strings.Join(tc.types, "|") || fmt.Sprint(p.Defaulted) != fmt.Sprint(tc.defaulted) {
+			t.Errorf("%s: got kind %v effect %v types %q defaulted %v, want %v %v %q %v", tc.name, p.Kind, p.Effect, got, p.Defaulted, tc.kind, tc.effect, tc.types, tc.defaulted)
+		}
+		if len(p.Params) != len(p.Types) { // every forAll here is given a lambda
+			t.Errorf("%s: %d params for %d types", tc.name, len(p.Params), len(p.Types))
+		}
+	}
+	if _, ok := props["plain"]; ok {
+		t.Error("a plain test has a Props entry")
+	}
+}
+
+// derivable names the innermost part of a type that has no generator.
+func TestDerivable(t *testing.T) {
+	fn := &types.Fun{Params: []types.Type{types.Int}, Result: types.Int}
+	card := &types.Record{Module: "M", Name: "Card", Fields: []types.Field{{Name: "title", Type: types.Text}, {Name: "view", Type: &types.App{Con: "Html", Args: []types.Type{types.Unit}}}}}
+	for _, tc := range []struct {
+		t    types.Type
+		path string
+	}{
+		{&types.App{Con: "List", Args: []types.Type{&types.App{Con: "Id", Args: []types.Type{card}}}}, ""},
+		{&types.Brand{Module: "Text", Name: "Email", Base: types.Text}, ""},
+		{&types.App{Con: "Dict", Args: []types.Type{types.Text, fn}}, "`Int -> Int`"},
+		{&types.App{Con: "List", Args: []types.Type{card}}, "`Html Unit` in field `view` of `M.Card`"},
+		{types.File, "`File`"},
+		{&types.Con{Name: "HttpError", Module: "Http"}, "`Http.HttpError`"},
+	} {
+		path, ok := derivable(tc.t)
+		if path != tc.path || ok != (tc.path == "") {
+			t.Errorf("derivable(%s) = %q, %v; want %q", types.String(tc.t), path, ok, tc.path)
+		}
+	}
+}
+
+// Fuzz.any records the concrete type it is used at.
+func TestProps_FuzzAny(t *testing.T) {
+	res, props := propsOf(t, `test "any" = Fuzz.forAll (Fuzz.list Fuzz.any) (\(xs : List Bool) -> True)
+
+test "free" = Fuzz.forAll Fuzz.any (\n -> n == n)
+
+evens : Fuzz.Fuzzer (Maybe Text)
+evens = Fuzz.any
+`)
+	var got []string
+	for v, ty := range res.FuzzAny {
+		got = append(got, fmt.Sprintf("%d:%s", v.Span.Start.Line, types.String(ty)))
+	}
+	sort.Strings(got)
+	if want := "3:Bool 5:Int 8:Maybe Text"; strings.Join(got, " ") != want {
+		t.Errorf("FuzzAny = %q, want %q", strings.Join(got, " "), want)
+	}
+	if p := props["free"]; fmt.Sprint(p.Defaulted) != "[true]" || p.Effect || len(p.Params) != 1 || p.Params[0].Name != "n" {
+		t.Errorf("free: %+v", p)
 	}
 }

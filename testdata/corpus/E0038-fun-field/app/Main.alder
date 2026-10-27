@@ -1,0 +1,5 @@
+module Main
+
+type Card = { title: Text, onClick: Int -> Int }
+
+test "cards" = \(cs : List Card) -> List.length cs >= 0

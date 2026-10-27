@@ -1,0 +1,1 @@
+app/Main.alder:5:18 E0038 `Int -> Int` in field `onClick` of `Card` cannot be generated; use `Fuzz.forAll` with a generator you write

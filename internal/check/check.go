@@ -100,6 +100,8 @@ type Checker struct {
 	// bodyExprs are the expressions recorded since the last body ended (reportHoles), for
 	// checkInferredDictKeys
 	bodyExprs []syntax.Expr
+	// fuzzAny are the `Fuzz.any` uses checked since the last resolveFuzzAny (fuzz.go)
+	fuzzAny []fuzzUse
 }
 
 // holeNote records a `?name` typed hole to be reported once its type is known.
@@ -144,6 +146,8 @@ type modCtx struct {
 	testBody syntax.Expr          // the body of the `test` being checked (inTest)
 	testName string               // the name of the `test` being checked (inTest)
 	propHead *syntax.Var          // the `Fuzz.forAll` of the test body: the one place a Property may be made
+	propType types.Type           // propHead's instantiated type
+	propBody syntax.Expr          // the body of a function-bodied test's lambda (its result is the property's)
 	runArgs  map[syntax.Expr]bool // the arguments of `Test.run` calls (their mismatches get a hint)
 	fake     string               // the capability whose `fake` entries are being checked
 	// cookieLit is the record literal `Test.login` is applied to: the cookie's value, so the
@@ -178,7 +182,7 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 		types: map[string]types.Type{}, values: map[string]types.Type{}, ctors: map[string]*ctorInfo{},
 		tables: map[string]*types.TableInfo{}, forms: map[string]*types.Record{}, paramRecs: map[string]bool{}, caps: map[string]map[string]types.Type{}, pages: map[string]*pageInfo{}, losers: map[syntax.Decl]bool{},
 		anonDefaults: map[*syntax.Field]bool{}, fakes: map[string]*syntax.FakeDecl{}, fakeTables: map[string]string{}, fakeUses: map[diag.Span]bool{},
-		res:         &Result{Types: map[syntax.Expr]types.Type{}, Binds: map[any]types.Type{}, DefaultModules: map[syntax.Expr]string{}, Widened: map[syntax.Expr]*types.Record{}, Wrapped: map[*syntax.Element]string{}, Rendered: map[*syntax.Element]string{}},
+		res:         &Result{Types: map[syntax.Expr]types.Type{}, Binds: map[any]types.Type{}, DefaultModules: map[syntax.Expr]string{}, Widened: map[syntax.Expr]*types.Record{}, Wrapped: map[*syntax.Element]string{}, Rendered: map[*syntax.Element]string{}, Props: map[*syntax.TestDecl]PropInfo{}, FuzzAny: map[*syntax.Var]types.Type{}},
 		widenedFrom: map[syntax.Expr]types.Type{}, ambiguousErr: map[*syntax.CtorRef]bool{}}
 	c.declareStd()
 	// pass 1: placeholders for every declared type in every module (app + std)
@@ -245,7 +249,8 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 	if app := prog.Modules["App"]; app != nil && !prog.Failed["App"] {
 		c.ctx(app).checkApp()
 	}
-	c.checkInferredDictKeys() // anything recorded after the last body
+	c.checkInferredDictKeys()             // anything recorded after the last body
+	c.resolveFuzzAny(types.String, false) // a `Fuzz.any` checked outside every body (a field default)
 	quietErrors(bag, checkStart, quiet)
 	return c.result()
 }

@@ -43,6 +43,7 @@ func (mc *modCtx) checkBodies() {
 	if c.prog.Std[mc.m.Name] != nil {
 		return
 	}
+	c.resolveFuzzAny(mc.ts, false) // uses checked before the bodies (field defaults)
 	for _, d := range c.live(mc.m) {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
@@ -52,18 +53,7 @@ func (mc *modCtx) checkBodies() {
 		case *syntax.FakeDecl:
 			mc.checkFakeEntries(d)
 		case *syntax.TestDecl:
-			mc.holes = nil
-			mc.inTest, mc.testBody, mc.testName = true, d.Body, d.Name
-			mc.propHead = fuzzForAllHead(d.Body)
-			if mc.propHead != nil { // a property: `Fuzz.forAll …` as the whole body
-				mc.check(d.Body, fuzzProperty, newEnv(), effect{})
-			} else if _, isBlock := d.Body.(*syntax.Block); isBlock { // an effect test: a Task Bool
-				mc.check(d.Body, &types.App{Con: "Task", Args: []types.Type{types.Bool}}, newEnv(), effect{kind: "Task"})
-			} else {
-				mc.check(d.Body, types.Bool, newEnv(), effect{})
-			}
-			mc.reportHoles() // still in the test: its scoped checks run here, where every key is narrowed
-			mc.inTest, mc.testBody, mc.testName, mc.propHead = false, nil, "", nil
+			mc.checkTest(d)
 		case *syntax.TypeDecl:
 			if d.Brand != nil && d.Brand.Check != nil {
 				mc.holes = nil
@@ -71,8 +61,33 @@ func (mc *modCtx) checkBodies() {
 				mc.reportHoles()
 			}
 		}
+		c.resolveFuzzAny(mc.ts, false) // after the declaration: its Fuzz.any uses must be concrete
 	}
 	mc.checkPage() // Task 11; no-op for non-page modules
+	c.resolveFuzzAny(mc.ts, false)
+}
+
+// checkTest checks the body of test d: a Bool, a block (a Task Bool), or a property (fuzz.go).
+func (mc *modCtx) checkTest(d *syntax.TestDecl) {
+	mc.holes = nil
+	mc.inTest, mc.testBody, mc.testName = true, d.Body, d.Name
+	mc.propHead = fuzzForAllHead(d.Body)
+	lam, isLambda := d.Body.(*syntax.Lambda)
+	switch _, isBlock := d.Body.(*syntax.Block); {
+	case mc.propHead != nil: // a property: `Fuzz.forAll …` as the whole body
+		mc.check(d.Body, fuzzProperty, newEnv(), effect{})
+		mc.endProperty(d, mc.forAllInfo(d.Body), []types.Type{mc.forAllValue()})
+	case isLambda: // a property: each argument's generator is derived from its type
+		info, params := mc.checkPropLambda(lam)
+		mc.endProperty(d, info, params)
+	case isBlock: // an effect test: a Task Bool
+		mc.check(d.Body, &types.App{Con: "Task", Args: []types.Type{types.Bool}}, newEnv(), effect{kind: "Task"})
+	default:
+		mc.check(d.Body, types.Bool, newEnv(), effect{})
+	}
+	mc.c.resolveFuzzAny(mc.ts, true)
+	mc.reportHoles() // still in the test: its scoped checks run here, where every key is narrowed
+	mc.inTest, mc.testBody, mc.testName, mc.propHead, mc.propType, mc.propBody = false, nil, "", nil, nil, nil
 }
 
 // checkValueDecl checks the body of top-level value d.
@@ -597,13 +612,16 @@ func (mc *modCtx) annotateMismatch(d *diag.Diagnostic, e syntax.Expr, got, expec
 	} else if mc.inTest && e == mc.testBody && isCon(ex, "Bool") && d.Message != "" {
 		// the body itself is neither a Bool nor a Task Bool: say which test
 		d.Message = "test " + strconv.Quote(mc.testName) + ": " + d.Message
+	} else if mc.inTest && e == mc.propBody && d.Message != "" {
+		// a property's lambda returns neither a Bool nor a Task Bool
+		d.Message = "test " + strconv.Quote(mc.testName) + ": " + d.Message + "; a property must return Bool or Task Bool"
 	}
 	if k, _ := queryOrTask(g); k == "Query" && mc.runArgs[e] && d.Message != "" {
 		if k, _ := queryOrTask(ex); k == "Task" {
 			d.Message += "; a Query runs inside a test's block: `let x <- q`; `Test.run` takes a Task"
 		}
 	}
-	if b, ok := mc.testBody.(*syntax.Block); ok && mc.inTest && e == b.Result && isCon(g, "Bool") {
+	if b := mc.testBlock(); b != nil && mc.inTest && e == b.Result && isCon(g, "Bool") {
 		if k, arg := queryOrTask(ex); k == "Task" && isCon(arg, "Bool") && d.Message != "" {
 			d.Message += "; a block test is a Task: end it with `Task.succeed (…)`"
 		}
@@ -618,6 +636,16 @@ func (mc *modCtx) annotateMismatch(d *diag.Diagnostic, e syntax.Expr, got, expec
 			d.Fix = diag.ReplaceSpan(sp, "Text.fromFloat ("+src+")")
 		}
 	}
+}
+
+// testBlock is the block of the test being checked, the body's or its property lambda's; nil
+// when it has none.
+func (mc *modCtx) testBlock() *syntax.Block {
+	if b, ok := mc.testBody.(*syntax.Block); ok {
+		return b
+	}
+	b, _ := mc.propBody.(*syntax.Block)
+	return b
 }
 
 // source returns the exact text of a span, across lines when it spans several (trimmed at both ends).
@@ -967,6 +995,9 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 			c.errorf(diag.PropertyOutsideTest, x.Span, "`Fuzz.%s` makes a Property, which only a test body can use", x.Ref.Name)
 			return types.Err
 		}
+		if isFuzzAny(x) {
+			return c.inferFuzzAny(x)
+		}
 		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Test" && !mc.inTest { // eval's module is not a test here: it cannot run Tasks
 			c.errorf(diag.TypeMismatch, x.Span, "`Test.%s` is only available inside a `test`", x.Ref.Name)
 			return types.Err
@@ -996,7 +1027,11 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 			mc.scopedRef(x)
 		}
 		if t, ok := c.values[c.key(x.Ref.Module, x.Ref.Name)]; ok {
-			return c.u.Instantiate(t)
+			t = c.u.Instantiate(t)
+			if x == mc.propHead {
+				mc.propType = t // its `Fuzzer a` is the property's argument type
+			}
+			return t
 		}
 		if c.poisonedTop[c.key(x.Ref.Module, x.Ref.Name)] {
 			c.usedPoisoned = true

@@ -1,0 +1,1 @@
+app/App.alder:11:20 E0038 `Html Msg` cannot be generated; use `Fuzz.forAll` with a generator you write

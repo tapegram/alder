@@ -1231,6 +1231,10 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 				kind = syntax.RefStd
 			}
 			v.Ref = syntax.Ref{Kind: kind, Module: path, Name: v.Name}
+		case path == "Fuzz" && v.Name == "any" && r.p.isStd(path):
+			// `any : Fuzzer a` is a special form (stdlib/Fuzz.alder): the checker types it and
+			// records the type at each use, from which the generator is derived
+			v.Ref = syntax.Ref{Kind: syntax.RefStd, Module: path, Name: v.Name}
 		case s.tables[ep] && s.columns[ep][v.Name]:
 			v.Ref = syntax.Ref{Kind: syntax.RefColumn, Module: path, Name: v.Name}
 		case s.capEntries[v.Name]: // `capability M` of module M: Markdown.render

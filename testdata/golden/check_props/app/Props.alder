@@ -1,0 +1,33 @@
+module Props
+
+test "rev" = \xs -> List.reverse (List.reverse xs) == xs
+
+test "slug" = \(s : Text.NonEmpty) -> Text.length s > 0
+
+test "effect" = \(t : Text.NonEmpty) -> {
+  let n = Text.length t
+  Task.succeed (n > 0)
+}
+
+test "any" = Fuzz.forAll (Fuzz.list Fuzz.any) (\xs -> List.length xs >= 0)
+
+test "task" = Fuzz.forAllTask Fuzz.int (\n -> Task.succeed (n == n))
+
+test "ret" = \x -> x + 1
+
+test "block ret" = \(n : Int) -> {
+  let m = n + 1
+  m > 0
+}
+
+test "fn any" = Fuzz.forAll Fuzz.any (\(f : Int -> Int) -> True)
+
+type Tree = Leaf | Node { left: Tree, value: Int, right: Tree }
+
+type Shape = Circle Int | Custom (Int -> Int)
+
+test "tree" = \(t : Tree) (d : Dict Text (Maybe Int.Positive)) (r : Result Text Date) -> True
+
+test "shape" = \(s : Shape) -> True
+
+test "nav" = \(n : Nav) (t : Task Int) -> True

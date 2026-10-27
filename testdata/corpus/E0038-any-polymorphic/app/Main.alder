@@ -1,0 +1,4 @@
+module Main
+
+gen : Fuzz.Fuzzer a
+gen = Fuzz.any

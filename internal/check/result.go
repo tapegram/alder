@@ -47,9 +47,37 @@ type Result struct {
 	Choose map[string]string
 	// Arms are the arms of each `update` with their stores, from the one-store analysis
 	// (writeset.go), by page module ("App" for App's update).
-	Arms  map[string][]ArmStore
-	Holes int            // count of W0002 reported
-	U     *types.Unifier // for Apply on stored types
+	Arms map[string][]ArmStore
+	// Props are the property tests (a function or `Fuzz.forAll` body), by declaration; a plain
+	// test has no entry.
+	Props map[*syntax.TestDecl]PropInfo
+	// FuzzAny is the concrete type at each `Fuzz.any` use (the `a` of its `Fuzzer a`), from which
+	// the generator is derived. Every use checked without error has an entry.
+	FuzzAny map[*syntax.Var]types.Type
+	Holes   int            // count of W0002 reported
+	U       *types.Unifier // for Apply on stored types
+}
+
+// PropKind is the form of a property test's body.
+type PropKind int
+
+const (
+	PropFun    PropKind = iota + 1 // `\x y -> …`: each argument's generator is derived from its type
+	PropForAll                     // `Fuzz.forAll gen f` or `Fuzz.forAllTask gen f`
+)
+
+// PropInfo is what the checker learned about a property test.
+type PropInfo struct {
+	Kind   PropKind
+	Effect bool // the body's result is a Task Bool (a block-bodied lambda, or Fuzz.forAllTask)
+	// Params are the lambda's parameters: the test body's for PropFun; for PropForAll the
+	// parameters of forAll's function argument when it is a lambda written there, else nil.
+	Params []*syntax.Ident
+	// Types are the final, concrete argument types (after defaulting): one per parameter for
+	// PropFun; for PropForAll one, the value type of forAll's generator.
+	Types []types.Type
+	// Defaulted[i] is set when a type variable left free in Types[i] was set to Int (spec §4.4).
+	Defaulted []bool
 }
 
 // CtorInfo is a union constructor: the union it builds and its payload type (nil for none).
@@ -105,6 +133,9 @@ func (c *Checker) result() *Result {
 	}
 	for k, t := range r.Binds {
 		r.Binds[k] = c.u.Apply(t)
+	}
+	for v, t := range r.FuzzAny {
+		r.FuzzAny[v] = c.u.Apply(t)
 	}
 	r.Values, r.Decls, r.Tables, r.Forms, r.Caps = c.values, c.types, c.tables, c.forms, c.caps
 	r.Pages, r.Ctors, r.Session, r.AppMsg, r.U = c.pages, c.ctors, c.session, c.appMsg, c.u
