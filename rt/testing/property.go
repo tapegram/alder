@@ -193,6 +193,9 @@ func runProperty(c Case, o Options, r CaseResult) CaseResult {
 	if seq, ok := readSaved(path); ok {
 		st.at(savedRun)
 		if a := runAttempt(p, o, fuzz.Replay(seq)); !a.overrun && !a.rejected && ran(a) {
+			if failing != nil {
+				r.Run = savedRun // not a run of this seed: the report says so
+			}
 			return finish(c, o, r, failing, path)
 		}
 	}
@@ -476,6 +479,9 @@ func propertyHeader(r CaseResult) string {
 		return ""
 	}
 	s := fmt.Sprintf("  (failed on run %d of %d", r.Run, r.Runs)
+	if r.Run == savedRun {
+		s = "  (failed on the saved case"
+	}
 	if r.Shrinks > 0 {
 		s += fmt.Sprintf(", shrunk in %d steps", r.Shrinks)
 	}
@@ -499,9 +505,12 @@ func writeArgs(b *strings.Builder, r CaseResult) {
 // Alder) says to paste the argument lines instead. A property that crashed the program (Crash)
 // gives the seed and the run that reproduce it.
 func writeSeed(b *strings.Builder, r CaseResult) {
+	saved := func() {
+		fmt.Fprintf(b, "  run: the saved failing case, replayed first (build/<app>/fuzz/%s/)\n", r.Module)
+	}
 	if r.Crash {
 		if r.Run == savedRun {
-			fmt.Fprintf(b, "  run: the saved failing case, replayed first (build/<app>/fuzz/%s/)\n", r.Module)
+			saved()
 		} else {
 			fmt.Fprintf(b, "  seed: %d\n  run: %d\n", r.Seed, r.Run)
 		}
@@ -510,7 +519,11 @@ func writeSeed(b *strings.Builder, r CaseResult) {
 	if r.Runs == 0 {
 		return
 	}
-	fmt.Fprintf(b, "  seed: %d\n", r.Seed)
+	if r.Run == savedRun {
+		saved()
+	} else {
+		fmt.Fprintf(b, "  seed: %d\n", r.Seed)
+	}
 	switch {
 	case r.Paste != "":
 		fmt.Fprintf(b, "  to keep this case:\n    %s\n", strings.ReplaceAll(r.Paste, "\n", "\n    "))

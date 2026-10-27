@@ -31,3 +31,5 @@ test "tree" = \(t : Tree) (d : Dict Text (Maybe Int.Positive)) (r : Result Text 
 test "shape" = \(s : Shape) -> True
 
 test "nav" = \(n : Nav) (t : Task Int) -> True
+
+test "task ret" = \(n : Int) -> Task.succeed (n == n)

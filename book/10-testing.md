@@ -2576,7 +2576,9 @@ the hash being that of the test's name, and replays them before it draws
 anything new. The saved case fails again until the bug is fixed; the
 first run in which the property passes all its cases deletes the file.
 `--seed` does not override a saved failure: the saved case is replayed
-first whatever the seed. `build/` is not source (`.gitignore` keeps it
+first whatever the seed. When it is the saved case that fails, the report
+says so (`failed on the saved case`) and gives no seed, since the seed did
+not find it; the case is in the report and in the file. `build/` is not source (`.gitignore` keeps it
 out of git, chapter 2), so this is a local memory and not a record: the
 permanent record of a bug is the plain test that the report printed. A
 saved case is also lost if its test is renamed, which is another reason

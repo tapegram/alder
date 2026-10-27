@@ -188,8 +188,17 @@ func TestProp_SavedFailureReplayedFirst(t *testing.T) {
 		t.Fatalf("seed 2 without the saved failure: %+v", r)
 	}
 	r := runProp(prop(), Options{FuzzDB: dbDir, Seed: 2, SeedSet: true})
-	if r.OK || r.Run != 1 || r.Args[0].Value != "[0, 0]" {
+	if r.OK || r.Run != savedRun || r.Args[0].Value != "[0, 0]" {
 		t.Fatalf("saved failure not replayed first: %+v", r)
+	}
+	out := report(t, r, false)
+	for _, want := range []string{"(failed on the saved case", "  run: the saved failing case, replayed first (build/<app>/fuzz/M/)\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("report lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "failed on run") || strings.Contains(out, "seed:") {
+		t.Errorf("report names a run or seed for the saved case:\n%s", out)
 	}
 	broken = false
 	if r := runProp(prop(), Options{FuzzDB: dbDir}); !r.OK {

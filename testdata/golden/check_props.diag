@@ -4,3 +4,4 @@ app/Props.alder:23:29 E0038 `Int -> Int` cannot be generated; use `Fuzz.forAll` 
 app/Props.alder:31:18 E0038 `Int -> Int` in constructor `Custom` of `Shape` cannot be generated; use `Fuzz.forAll` with a generator you write
 app/Props.alder:33:16 E0038 `Nav` cannot be generated; use `Fuzz.forAll` with a generator you write
 app/Props.alder:33:26 E0038 `Task Int` cannot be generated; use `Fuzz.forAll` with a generator you write
+app/Props.alder:35:33 E0003 test "task ret": expected Bool, got Task Bool; a property that returns a Task Bool needs a block body `{ … }`

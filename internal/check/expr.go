@@ -614,7 +614,11 @@ func (mc *modCtx) annotateMismatch(d *diag.Diagnostic, e syntax.Expr, got, expec
 		d.Message = "test " + strconv.Quote(mc.testName) + ": " + d.Message
 	} else if mc.inTest && e == mc.propBody && d.Message != "" {
 		// a property's lambda returns neither a Bool nor a Task Bool
-		d.Message = "test " + strconv.Quote(mc.testName) + ": " + d.Message + "; a property must return Bool or Task Bool"
+		hint := "; a property must return Bool or Task Bool"
+		if k, _ := queryOrTask(g); k != "" {
+			hint = "; a property that returns a Task Bool needs a block body `{ … }`"
+		}
+		d.Message = "test " + strconv.Quote(mc.testName) + ": " + d.Message + hint
 	}
 	if k, _ := queryOrTask(g); k == "Query" && mc.runArgs[e] && d.Message != "" {
 		if k, _ := queryOrTask(ex); k == "Task" {
