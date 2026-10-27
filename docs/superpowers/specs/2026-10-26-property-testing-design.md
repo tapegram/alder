@@ -1,6 +1,6 @@
 # Design: property-based testing (alder #22)
 
-Status: design approved in conversation, 2026-10-26. Read-only survey of `~/projects/alder`; nothing else edited. Builder check pending (see §9).
+Status: design approved in conversation, 2026-10-26. Read-only survey of `~/projects/alder`; nothing else edited. Builder check done 2026-10-26 evening; its decisions are in §0a.
 
 ## 0. Decisions (2026-10-26)
 
@@ -10,6 +10,20 @@ Status: design approved in conversation, 2026-10-26. Read-only survey of `~/proj
 - **Effectful properties are in v1**: a function returning `Task Bool` runs each case in its own rolled-back transaction, like today's effect tests.
 - **#7 (pure seeded `Random`) is no longer a blocker.** The engine has its own PRNG in Go. `Fuzz.fromRandom` may come later with weak shrinking.
 - v1 non-goals: model-based testing of pages, `Fuzz.cover` / statistics, regex-driven brand generation, per-test run counts.
+
+## 0a. Builder-check decisions (2026-10-26, evening)
+
+- **Lambda parameter annotations, in every lambda** (user decision). `\(x : T) y (z : U) -> …` is new grammar: a parameter is a bare name or a parenthesised `name : Type`. Parser, AST, checker, formatter, tree-sitter and `book/A-grammar.md` change. §8's "Grammar: no change" is superseded.
+- **`Fuzzer` values may live anywhere** (user decision): a top-level `slugs : Fuzz.Fuzzer Slug` is legal in any module, so generators are shared and typed by a signature. `Fuzz.forAll`, `Fuzz.forAllTask` and `Property` are legal only as a test body (new E-code). Fuzzer-typed values get no mutants.
+- Saved failures live in `build/<app>/fuzz/<Module>/<sha1(test name)[:16]>` (already gitignored), not `.alder/fuzz/`.
+- Effect properties repeat today's per-case isolation per attempt (fresh in-memory SQLite, migrations, fakes); there is no rolled-back transaction today. Fall back to a savepoint per attempt only if measurement says so.
+- The six stdlib brands (`Text.NonEmpty`, `Text.Email`, `Text.Url`, `Text.Secret`, `Int.Positive`, `Int.NonNegative`) get dedicated generators; filtering random text would trip the health check.
+- The "too slow" check is new (no per-test timeout exists): an attempt over 5 s fails the property.
+- Argument lines print `xs: [0, -1]`; the type is added only when it was defaulted.
+- Generated Text is printable code points plus `\n \t \r`, so every value prints as a literal. Values print with a typed printer (brands spelled out, `Time.fromMillis N`), not `rt.Show`.
+- Under `--mutate`: fixed seed, no shrinking, no saved failures.
+- A fatal crash (stack overflow) prints the seed and run, not the arguments.
+- New codes: E0038 (argument or `Fuzz.any` type not derivable or not concrete) and E0039 (`Property` outside a test body).
 
 ## 1. Intent
 
@@ -122,7 +136,7 @@ Multiple explicit arguments: `Fuzz.pair` / `Fuzz.map2` into a record, or nest `f
 | `Float` | `Fuzz.float` |
 | `Bool` | `Fuzz.bool` |
 | `Text` | `Fuzz.text` |
-| `Unit` | `constant Unit` |
+| `Unit` | `constant ()` |
 | `Bytes` | short byte strings, biased small |
 | `Date`, `Time` | within a few years of the epoch, biased near it; plus epoch itself |
 | `Maybe a`, `Result e a`, `List a`, `Dict k v` | the combinators over derived parts |
@@ -181,7 +195,7 @@ FAIL Todo "reverse twice"  (failed on run 37 of 100, shrunk in 12 steps)
 ## 8. Book and tooling
 
 - Chapter 10 gains a section "Properties" between pure tests and the report, teaching: the function form, what derived types mean, brands as constraints, `Fuzz.forAll`, reading a failure, pasting the case, `--seed`/`--fuzz`, and why no shrinkers. Chapter 9 (stdlib) lists `Fuzz`. Chapter 13 (compiler) explains `Fuzz.any` resolution. Chapter 12 (rationale) gets the "why both forms, why internal shrinking, why not a committed file" paragraph.
-- Grammar: no change (a test body is already any expression).
+- Grammar: lambda parameters may be annotated, `\(x : T)` (§0a).
 - LSP/nvim: nothing new required; test running already works through `alder test`.
 - `alder.nvim`: none in v1.
 
