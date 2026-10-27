@@ -187,6 +187,22 @@ func TestFuzz(t *testing.T) {
 		t.Error("slugs rejected \"a\"")
 	}
 }
+
+// The runner runs every property: all hold but "slugs are not empty", whose Slug predicate
+// accepts too few random Texts and fails the filter health check (Review Focus 1).
+func TestRunProperties(t *testing.T) {
+	for _, r := range rtesting.Run(Tests, rtesting.Options{Seed: 1, SeedSet: true}) {
+		if r.Name == "slugs are not empty" {
+			if r.OK || !strings.Contains(r.Error, "`+"`Slug`'s predicate rejects"+`") || r.Runs != 100 {
+				t.Errorf("slugs: %+v", r)
+			}
+			continue
+		}
+		if !r.OK {
+			t.Errorf("%s fails: %+v", r.Name, r)
+		}
+	}
+}
 `)
 }
 

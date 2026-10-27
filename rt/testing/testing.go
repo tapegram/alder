@@ -9,7 +9,9 @@
 // copy of the capabilities it was given (so Test.fake, which replaces one in the running
 // test's Env.Caps, never reaches the next case) and the session it was given. A pure test is a func() bool; a task test is an eff.Task[bool]
 // run as a Task (eff.Run with KTask), so its writes happen inside one transaction, which is
-// committed when the task succeeds and then thrown away with the database.
+// committed when the task succeeds and then thrown away with the database. A property test
+// (Case.Prop) runs its body on many drawn cases, each attempt of an effect property against a
+// fresh store and Env of its own as above (property.go).
 //
 // Test.run is what lets a task test look at a failure: its generated code is a Call that
 // calls Inner, which runs the task it was given inside the running Task (eff.RunInner) under
@@ -221,6 +223,18 @@ type CaseResult struct {
 	Trace        []string
 	Ms           float64
 
+	// A property test's result (property.go) also has Runs, the runs it was to make
+	// (Options.Fuzz, so Runs > 0 marks a property), and Seed, the seed of its fresh draws; when
+	// it failed, Run is the run that failed (from 1; 0 when none did, as when a health check
+	// failed it), Shrinks the attempts the shrinker made, Args the arguments of the (shrunk)
+	// failing case, Paste the plain test that keeps it ("" when the generated code prints
+	// none), and Left, Right, Note, Error and Trace are that case's.
+	Args      []ArgValue
+	Seed      uint64
+	Run, Runs int
+	Shrinks   int
+	Paste     string
+
 	panicked bool // the case panicked (not a task's failure): a mutant it kills is "crashed"
 }
 
@@ -252,6 +266,15 @@ type Options struct {
 	// BrowserOf fails the test.
 	Routes []web.Route
 	Web    web.Options
+	// Fuzz is how many runs each property test makes (0: 100); Seed seeds their fresh draws when
+	// SeedSet (else each property picks one at random); FuzzDB is the directory of saved
+	// failures (build/<app>/fuzz; "": none are read or written). Mutating (a --mutate run) fixes
+	// the seed at Seed (0 unless set) and turns off shrinking and saved failures.
+	Fuzz     int
+	Seed     uint64
+	SeedSet  bool
+	FuzzDB   string
+	Mutating bool
 
 	schemaErr string // why Migrations do not make Tables (set by defaults): every case fails with it
 }
@@ -321,6 +344,9 @@ func defaults(o Options) Options {
 	if o.Caps == nil {
 		o.Caps = map[string]any{}
 	}
+	if o.Fuzz <= 0 {
+		o.Fuzz = defaultFuzz
+	}
 	if len(o.Migrations) > 0 {
 		o.schemaErr = ""
 		store, err := db.OpenSQLite(":memory:")
@@ -363,82 +389,125 @@ func selected(cases []Case, o Options) []Case {
 }
 
 func runCase(c Case, o Options) (r CaseResult) {
-	caps, now := maps.Clone(o.Caps), o.Now // a copy: Test.fake replaces entries of the case's own
-	if caps == nil {
-		caps = map[string]any{}
-	}
 	r = CaseResult{Module: c.Module, Name: c.Name, File: c.File, Line: c.Line, Col: c.Col}
 	start := time.Now()
 	defer func() { r.Ms = float64(time.Since(start).Microseconds()) / 1000 }()
-	sidesMu.Lock()
-	lastSides, hasSides, lastEq, lastNote = [2]string{}, false, false, ""
-	sidesMu.Unlock()
+	resetSides()
 
 	ok, errText := false, ""
 	switch {
 	case o.schemaErr != "":
 		errText = o.schemaErr
 	case c.Prop != nil:
-		errText = "property tests are not run yet"
+		return runProperty(c, o, r)
 	case c.Pure != nil:
 		ok, errText, r.panicked = guard(c.Pure)
 	case c.Task != nil:
-		ctx := context.Background()
-		if !o.Deadline.IsZero() {
-			var cancel context.CancelFunc
-			// a little after the deadline, so Main's timer (not a failed step) reports it
-			ctx, cancel = context.WithDeadline(ctx, o.Deadline.Add(100*time.Millisecond))
-			defer cancel()
-		}
-		store, err := db.OpenSQLite(":memory:")
+		env, done, err := newCaseEnv(o)
 		if err != nil {
 			r.Error = err.Error()
 			return r
 		}
-		defer store.Close()
-		if err := ensure(ctx, store, o); err != nil {
-			r.Error = err.Error()
-			return r
-		}
-		clock := NewClock(now)
-		env := &eff.Env{Ctx: ctx, Store: store, Caps: caps, Session: o.Session, Now: clock.Now, Sleep: clock.Advance, CheckSession: o.Web.SessionCheck}
-		if len(o.Web.Silos) > 0 { // a store per silo value the test touches, each in memory
-			stores, err := db.NewTestStores(store, db.StoresConfig{Silos: o.Web.Silos, Tables: o.Tables, Migrations: o.Migrations, Dev: true})
-			if err != nil {
-				r.Error = err.Error()
-				return r
-			}
-			defer stores.Close()
-			env.Store, env.Stores = db.TestStore{SQLite: store, Stores: stores}, stores
-		}
-		if o.Routes != nil {
-			env.Ctx = withBrowser(env, o.Routes, o.Web)
-		}
-		ok, errText, r.panicked = guard(func() bool {
-			v, err := eff.Run(env, eff.KTask, c.Task())
-			if err != nil {
-				panic(runErr{err})
-			}
-			return v
-		})
+		defer done()
+		ok, errText, r.panicked = guard(func() bool { return runTask(env, c.Task()) })
 		r.Trace = append([]string{}, env.Trace...)
 	default:
 		errText = "test has no body"
 	}
 	r.OK = ok && errText == ""
-	r.Error = unwired.ReplaceAllString(errText, "capability $1 is not wired in tests")
-	sidesMu.Lock()
-	defer sidesMu.Unlock()
-	if hasSides {
-		r.Left, r.Right = lastSides[0], lastSides[1]
-		if !r.OK && !lastEq && r.Left == r.Right {
-			r.Note = sameSidesNote
-		}
-		if !r.OK && lastNote != "" {
-			r.Note = lastNote
+	r.Error = unwiredText(errText)
+	r.Left, r.Right, r.Note = readSides(r.OK)
+	return r
+}
+
+// newCaseEnv is a task test's Env (made again for each attempt of an effect property): a fresh
+// private in-memory store with o's tables and then its test tables (and, for an app with silos,
+// one per silo value the test touches), a copy of o.Caps (Test.fake replaces entries of the
+// case's own), o.Session, a clock from o.Now, the browser when o has routes, and a context with
+// o's deadline. done closes what it opened.
+func newCaseEnv(o Options) (env *eff.Env, done func(), err error) {
+	var closers []func()
+	done = func() {
+		for i := len(closers) - 1; i >= 0; i-- {
+			closers[i]()
 		}
 	}
-	return r
+	ctx := context.Background()
+	if !o.Deadline.IsZero() {
+		var cancel context.CancelFunc
+		// a little after the deadline, so Main's timer (not a failed step) reports it
+		ctx, cancel = context.WithDeadline(ctx, o.Deadline.Add(100*time.Millisecond))
+		closers = append(closers, cancel)
+	}
+	store, err := db.OpenSQLite(":memory:")
+	if err != nil {
+		done()
+		return nil, nil, err
+	}
+	closers = append(closers, func() { store.Close() })
+	if err := ensure(ctx, store, o); err != nil {
+		done()
+		return nil, nil, err
+	}
+	caps := maps.Clone(o.Caps)
+	if caps == nil {
+		caps = map[string]any{}
+	}
+	clock := NewClock(o.Now)
+	env = &eff.Env{Ctx: ctx, Store: store, Caps: caps, Session: o.Session, Now: clock.Now, Sleep: clock.Advance, CheckSession: o.Web.SessionCheck}
+	if len(o.Web.Silos) > 0 { // a store per silo value the test touches, each in memory
+		stores, err := db.NewTestStores(store, db.StoresConfig{Silos: o.Web.Silos, Tables: o.Tables, Migrations: o.Migrations, Dev: true})
+		if err != nil {
+			done()
+			return nil, nil, err
+		}
+		closers = append(closers, func() { stores.Close() })
+		env.Store, env.Stores = db.TestStore{SQLite: store, Stores: stores}, stores
+	}
+	if o.Routes != nil {
+		env.Ctx = withBrowser(env, o.Routes, o.Web)
+	}
+	return env, done, nil
+}
+
+// runTask runs t as a task test in env (eff.Run with KTask); its error leaves as a runErr panic,
+// for guard.
+func runTask(env *eff.Env, t eff.Task[bool]) bool {
+	v, err := eff.Run(env, eff.KTask, t)
+	if err != nil {
+		panic(runErr{err})
+	}
+	return v
+}
+
+// unwiredText is a failure's text with an unwired capability's panic said as tests say it.
+func unwiredText(errText string) string {
+	return unwired.ReplaceAllString(errText, "capability $1 is not wired in tests")
+}
+
+// resetSides forgets the last Eq's sides: before each case, and each attempt of a property.
+func resetSides() {
+	sidesMu.Lock()
+	lastSides, hasSides, lastEq, lastNote = [2]string{}, false, false, ""
+	sidesMu.Unlock()
+}
+
+// readSides are the Left, Right and Note of a case that passed (ok) or not, from the last Eq
+// it made (all "" when it made none).
+func readSides(ok bool) (left, right, note string) {
+	sidesMu.Lock()
+	defer sidesMu.Unlock()
+	if !hasSides {
+		return "", "", ""
+	}
+	left, right = lastSides[0], lastSides[1]
+	if !ok && !lastEq && left == right {
+		note = sameSidesNote
+	}
+	if !ok && lastNote != "" {
+		note = lastNote
+	}
+	return left, right, note
 }
 
 // runErr carries a task's error out of guard's function.
@@ -450,17 +519,22 @@ func guard(f func() bool) (ok bool, errText string, panicked bool) {
 	defer func() {
 		if p := recover(); p != nil {
 			ok, panicked = false, true
-			switch x := p.(type) {
-			case runErr:
+			if x, isRun := p.(runErr); isRun {
 				errText, panicked = x.err.Error(), false
-			case error:
-				errText = x.Error()
-			default:
-				errText = fmt.Sprint(x)
+			} else {
+				errText = panicText(p)
 			}
 		}
 	}()
 	return f(), "", false
+}
+
+// panicText is a recovered panic value as failure text.
+func panicText(p any) string {
+	if e, ok := p.(error); ok {
+		return e.Error()
+	}
+	return fmt.Sprint(p)
 }
 
 // QuoteName is a test name as the text report prints it: in double quotes, escaped
@@ -487,14 +561,18 @@ type jsonResult struct {
 	Error  string   `json:"error,omitempty"`
 	Trace  []string `json:"trace"`
 	Ms     float64  `json:"ms"`
+	// Property is a property test's runs, seed and failing case (propertyJSON); nil otherwise.
+	Property *jsonProperty `json:"property,omitempty"`
 }
 
-// WriteResult writes r as the report prints it: with asJSON one JSON object on one line;
-// otherwise `ok   M "name"`, or `FAIL M "name"` followed by indented `left:`/`right:` lines
+// WriteResult writes r as the report prints it: with asJSON one JSON object on one line (a
+// property's with "property": propertyJSON); otherwise `ok   M "name"`, or `FAIL M "name"`
+// (a property's followed on that line by where it failed and then by a line per argument:
+// propertyHeader, writeArgs) followed by indented `left:`/`right:` lines
 // (when the test made an Eq), `note:` (when that Eq was False but its sides print the same),
-// `error:` (when it has one; its continuation lines indented by four spaces) and `trace:` (a
-// task test's steps, as Show of a List Text). `alder test` uses it to report a test whose
-// program crashed.
+// `error:` (when it has one; its continuation lines indented by four spaces), `trace:` (a
+// task test's steps, as Show of a List Text) and, for a property, `seed:` and the case to keep
+// (writeSeed). `alder test` uses it to report a test whose program crashed.
 func WriteResult(w io.Writer, r CaseResult, asJSON bool) error {
 	if asJSON {
 		tr := r.Trace
@@ -504,13 +582,14 @@ func WriteResult(w io.Writer, r CaseResult, asJSON bool) error {
 		enc := json.NewEncoder(w)
 		enc.SetEscapeHTML(false)
 		return enc.Encode(jsonResult{Module: r.Module, Name: r.Name, File: r.File, Line: r.Line, Col: r.Col, OK: r.OK,
-			Left: r.Left, Right: r.Right, Note: r.Note, Error: r.Error, Trace: tr, Ms: r.Ms})
+			Left: r.Left, Right: r.Right, Note: r.Note, Error: r.Error, Trace: tr, Ms: r.Ms, Property: propertyJSON(r)})
 	}
 	var b strings.Builder
 	if r.OK {
 		fmt.Fprintf(&b, "ok   %s %s\n", r.Module, QuoteName(r.Name))
 	} else {
-		fmt.Fprintf(&b, "FAIL %s %s\n", r.Module, QuoteName(r.Name))
+		fmt.Fprintf(&b, "FAIL %s %s%s\n", r.Module, QuoteName(r.Name), propertyHeader(r))
+		writeArgs(&b, r)
 		if r.Left != "" || r.Right != "" {
 			fmt.Fprintf(&b, "  left:  %s\n  right: %s\n", r.Left, r.Right)
 		}
@@ -523,6 +602,7 @@ func WriteResult(w io.Writer, r CaseResult, asJSON bool) error {
 		if r.Trace != nil {
 			fmt.Fprintf(&b, "  trace: %s\n", rt.Show(r.Trace))
 		}
+		writeSeed(&b, r)
 	}
 	_, e := io.WriteString(w, b.String())
 	return e
@@ -541,14 +621,19 @@ const (
 	// EnvStatus names a file Main truncates and writes `Module\tName\n` to before each test,
 	// and empties when it returns: after a crash it names the test that crashed.
 	EnvStatus = "ALDER_TEST_STATUS"
+	// EnvFuzz is the runs per property test (--fuzz), EnvSeed the seed of their fresh draws
+	// (--seed), EnvFuzzDB the directory of their saved failures (build/<app>/fuzz).
+	EnvFuzz   = "ALDER_TEST_FUZZ"
+	EnvSeed   = "ALDER_TEST_SEED"
+	EnvFuzzDB = "ALDER_TEST_FUZZ_DB"
 	// EnvStdinEOF=1 makes the program exit (2, "alder test: parent gone") when its standard
 	// input reaches end of file: `alder test` holds the pipe open while it runs, so the program
 	// dies with it.
 	EnvStdinEOF = "ALDER_TEST_STDIN_EOF"
 )
 
-// Main runs cases with the flags in args (-run re, --json) and env (ALDER_TEST_RUN, ALDER_TEST_JSON=1,
-// flags win), prints the report to out/err, returns the exit code: 0 all passed, 1 a failure, 2 a usage error.
+// Main runs cases with the flags in args (-run re, --json, --fuzz n, --seed s) and env
+// (ALDER_TEST_RUN, ALDER_TEST_JSON=1, EnvFuzz, EnvSeed; flags win; EnvFuzzDB has no flag), prints the report to out/err, returns the exit code: 0 all passed, 1 a failure, 2 a usage error.
 //
 // The report has one entry per case (WriteResult), printed as the case finishes, and ends with
 // `N passed, M failed`; an app with no tests at all (not a -run that selects none) is followed in
@@ -587,6 +672,8 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 	minText := fs.String("min", os.Getenv(EnvMin), "with --mutate, exit 1 when the mutation score is below this")
 	timeoutText := fs.String("timeout", os.Getenv(EnvTimeout), "with --mutate, how long one mutant's run may take (default 10s)")
 	fromText := fs.String("mutate-from", os.Getenv(EnvMutateFrom), "with --mutate, the id of the first mutant to run (above 1: the tests' own run is skipped)")
+	fuzzText := fs.String("fuzz", os.Getenv(EnvFuzz), "how many runs each property test makes (default 100)")
+	seedText := fs.String("seed", os.Getenv(EnvSeed), "the seed of the property tests' fresh draws (default random; saved failures are replayed first regardless)")
 	if e := fs.Parse(args); e != nil {
 		return 2
 	}
@@ -635,7 +722,24 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 			os.Exit(2)
 		}()
 	}
-	o := Options{Tables: tables, TestTables: testTables, Migrations: migrations, Caps: caps, Session: session, Now: defaultNow, Routes: routes, Web: webOpts}
+	o := Options{Tables: tables, TestTables: testTables, Migrations: migrations, Caps: caps, Session: session, Now: defaultNow, Routes: routes, Web: webOpts,
+		FuzzDB: os.Getenv(EnvFuzzDB), Mutating: *mutating}
+	if *fuzzText != "" {
+		v, e := strconv.Atoi(*fuzzText)
+		if e != nil || v < 1 {
+			fmt.Fprintf(err, "alder test: bad --fuzz %q: want a number of runs, such as 100\n", *fuzzText)
+			return 2
+		}
+		o.Fuzz = v
+	}
+	if *seedText != "" {
+		v, e := strconv.ParseUint(*seedText, 10, 64)
+		if e != nil {
+			fmt.Fprintf(err, "alder test: bad --seed %q: want a whole number, such as 42\n", *seedText)
+			return 2
+		}
+		o.Seed, o.SeedSet = v, true
+	}
 	if *runPat != "" {
 		re, e := regexp.Compile(*runPat)
 		if e != nil {

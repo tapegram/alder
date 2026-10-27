@@ -60,7 +60,8 @@ func newLowerer(prog *names.Program, res *check.Result) *lowerer {
 }
 
 // lowerTests lowers every module's `test` declarations into Module.Tests, marking the `==` each
-// records (see Test). A property test's Body is a TestProp (propTest).
+// records (see Test). A property test's Body is a TestProp (propTest); the `==` it records is
+// the one its function (a lambda written there) ends with, found as for a plain test.
 func (l *lowerer) lowerTests() {
 	for i, name := range l.prog.Order {
 		mod := l.out.Modules[i]
@@ -71,7 +72,15 @@ func (l *lowerer) lowerTests() {
 			}
 			l.enter(name)
 			if info, ok := l.res.Props[td]; ok {
-				mod.Tests = append(mod.Tests, &Test{Module: name, Name: td.Name, Effect: info.Effect, Body: l.propTest(td, info),
+				p := l.propTest(td, info)
+				if lam, ok := p.Fn.(*Lambda); ok { // the `==` the property's function ends with
+					if info.Effect {
+						recordEq(lam.Body)
+					} else if eq := testEq(lam.Body); eq != nil {
+						lam.Body = eq
+					}
+				}
+				mod.Tests = append(mod.Tests, &Test{Module: name, Name: td.Name, Effect: info.Effect, Body: p,
 					File: td.Span.File, Line: td.Span.Start.Line, Col: td.Span.Start.Col})
 				continue
 			}

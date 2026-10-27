@@ -162,7 +162,8 @@ type Module struct {
 // otherwise Body is a Bool. The test's recorded `==` is a TestEq: a pure test's Body when it is
 // an `==`, or the Value of the EffPure that ends an effect test's straight-line block (reached
 // through EffBind and Let bodies) when that is an `==`. A property test's Body is a TestProp,
-// and Effect says its function returns a Task Bool.
+// and Effect says its function returns a Task Bool; its recorded `==` is found the same way in
+// the body of its function when that is a lambda.
 type Test struct {
 	Module, Name string
 	File         string // the test's file (as the span names it, "app/Todo.alder") and

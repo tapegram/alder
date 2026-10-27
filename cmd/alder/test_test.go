@@ -100,6 +100,30 @@ func TestTest_Failing(t *testing.T) {
 	}
 }
 
+// A property test runs: a failing one is shrunk to a two-element list and reported with its
+// argument, the sides of its `==` and the seed; --json adds "property".
+func TestTest_Property(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := tempTodos(t, "Table/Todo.alder", "\ntest \"rev\" = \\xs -> List.reverse xs == xs\n")
+	code, stdout, stderr := runTest(t, dir)
+	if code != 1 {
+		t.Fatalf("exit %d, want 1\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	for _, want := range []string{"FAIL Table.Todo \"rev\"  (failed on run ", "  seed: ", "116 passed, 1 failed\n"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout lacks %q:\n%s", want, stdout)
+		}
+	}
+	if !regexp.MustCompile(`\n  xs: \[-?\d+, -?\d+\]  \(xs : List Int\)\n  left:  \[-?\d+, -?\d+\]\n  right: \[-?\d+, -?\d+\]\n`).MatchString(stdout) {
+		t.Errorf("no two-element case with its sides:\n%s", stdout)
+	}
+	code, stdout, stderr = runTest(t, dir, "--json", "-run", "rev")
+	if code != 1 || !strings.Contains(stdout, `"property":{"runs":100,"seed":`) || !strings.Contains(stdout, `"args":[{"name":"xs","type":"List Int","value":"[`) {
+		t.Errorf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+}
+
 func TestTest_JSON(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)

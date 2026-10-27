@@ -163,7 +163,7 @@ func test__Todo__4() *rtesting.Property {
 		},
 		Pure: func(_vs1 []any) bool {
 			xs := _vs1[0].([]int64)
-			return rt.Eq(std.ListReverse(std.ListReverse(xs)), xs)
+			return rtesting.Eq(std.ListReverse(std.ListReverse(xs)), xs)
 		},
 	}
 }
