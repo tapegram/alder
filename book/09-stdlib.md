@@ -445,3 +445,49 @@ several of those together (`li.done`), combined with spaces (inside) or
 `>` (directly inside). Written as a literal it is checked when the test
 compiles (E0023); any other selector that does not parse matches
 nothing.
+
+## Fuzz
+
+The generators of property tests (chapter 10, section 12). Only a `test` body
+may be a `Fuzz.Property`; a `Fuzz.Fuzzer a`, a description of how to draw
+an `a` from random choices, may be a value anywhere, so a generator is
+written once, with a signature, and shared.
+
+```text
+Fuzz.forAll     : Fuzz.Fuzzer a -> (a -> Bool) -> Fuzz.Property
+Fuzz.forAllTask : Fuzz.Fuzzer a -> (a -> Task Bool) -> Fuzz.Property
+Fuzz.any        : Fuzz.Fuzzer a
+Fuzz.constant   : a -> Fuzz.Fuzzer a
+Fuzz.bool       : Fuzz.Fuzzer Bool
+Fuzz.int        : Fuzz.Fuzzer Int
+Fuzz.intRange   : { min: Int, max: Int } -> Fuzz.Fuzzer Int
+Fuzz.float      : Fuzz.Fuzzer Float
+Fuzz.floatRange : { min: Float, max: Float } -> Fuzz.Fuzzer Float
+Fuzz.text       : Fuzz.Fuzzer Text
+Fuzz.textOf     : { min: Int, max: Int } -> Fuzz.Fuzzer Text
+Fuzz.char       : Fuzz.Fuzzer Text
+Fuzz.list       : Fuzz.Fuzzer a -> Fuzz.Fuzzer (List a)
+Fuzz.listOf     : { min: Int, max: Int } -> Fuzz.Fuzzer a -> Fuzz.Fuzzer (List a)
+Fuzz.maybe      : Fuzz.Fuzzer a -> Fuzz.Fuzzer (Maybe a)
+Fuzz.result     : Fuzz.Fuzzer e -> Fuzz.Fuzzer a -> Fuzz.Fuzzer (Result e a)
+Fuzz.pair       : Fuzz.Fuzzer a -> Fuzz.Fuzzer b -> Fuzz.Fuzzer { first: a, second: b }
+Fuzz.dict       : Fuzz.Fuzzer k -> Fuzz.Fuzzer v -> Fuzz.Fuzzer (Dict k v)
+Fuzz.oneOf      : List (Fuzz.Fuzzer a) -> Fuzz.Fuzzer a
+Fuzz.oneOfValues : List a -> Fuzz.Fuzzer a
+Fuzz.frequency  : List { weight: Int, fuzzer: Fuzz.Fuzzer a } -> Fuzz.Fuzzer a
+Fuzz.map        : (a -> b) -> Fuzz.Fuzzer a -> Fuzz.Fuzzer b
+Fuzz.map2       : (a -> b -> c) -> Fuzz.Fuzzer a -> Fuzz.Fuzzer b -> Fuzz.Fuzzer c
+Fuzz.andThen    : (a -> Fuzz.Fuzzer b) -> Fuzz.Fuzzer a -> Fuzz.Fuzzer b
+Fuzz.filter     : (a -> Bool) -> Fuzz.Fuzzer a -> Fuzz.Fuzzer a
+```
+
+`Fuzz.any` is a special form, like `Test.fake`: the compiler gives it the
+generator it derives from the type the context asks for (chapter 13), so
+that type must be concrete where it is written (E0038). `Fuzz.forAll` and
+`Fuzz.forAllTask` are legal only as the body of a `test` (E0039). `int` is
+mostly small and sometimes extreme; `float` is finite (no `NaN`, no
+infinity); `text` is mostly short ASCII, sometimes Unicode, sometimes
+empty, and `textOf` and `char` count code points; `list` is biased to
+short lists, and `listOf` bounds the length. `filter` is subject to the
+health check: a predicate that rejects over 90% of the first 50 draws
+fails the test (chapter 10).

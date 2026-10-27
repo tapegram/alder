@@ -44,3 +44,8 @@ in chapter 12. Each is a compile error.
     (`<script>{model.code}</script>`) (E0001): the body is raw text, not
     Alder, so `{x}` in it is never a value. Pass data through a `data-*`
     attribute (`<div data-clip={model.clip}>`) and read it from the script.
+15. A property argument with no annotation whose type nothing in the body
+    decides is generated as an `Int` (`\xs -> List.reverse (List.reverse xs) == xs`
+    tests `List Int`), and passes without ever drawing the type you meant. The
+    failure report marks the choice, `xs: [0, 1]  (xs : List Int)`; write
+    `\(xs : List Text) -> …` to pick the type.

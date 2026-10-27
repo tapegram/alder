@@ -481,6 +481,47 @@ visible; `--min` is then set to the score the app has reached.
 more build and a run of the suite per mutant, which is for CI and for
 the moment a feature's tests are written, not for every edit.
 
+### Properties: two forms, shrinking inside the engine, no file in the repo **(decided #22; tested: the corpus, the book)**
+
+`alder test` runs a `test` whose body is a function as a property
+(chapter 10, "Properties"). Three choices shaped it.
+
+**Both forms.** `test "…" = \xs -> …` derives a generator from the type of
+each parameter; `Fuzz.forAll gen f` takes one you write. The derived
+form is the headline: the shortest way to state a property is the
+statement, and in a language with no typeclasses the type is the only
+place a generator can come from (elm-test, which has none, makes you
+write every generator and a `fuzz2`, `fuzz3` family for the arguments). The
+explicit form is for what the type does not say, a brand with a tight
+predicate or a value only some strings are, and `Fuzz.any` is the derived
+generator as a value, so the two compose. A test that is a property is
+still a `test`: no new declaration, no second runner, and `-run`,
+`--mutate` and the report treat it as they treat any other.
+
+**Shrinking is internal.** A counterexample of a hundred elements is no
+use, and the one worth reading is the smallest. QuickCheck shrinks with a
+`shrink` function the programmer writes for each type, beside the
+generator it must agree with; it is the part of QuickCheck its users
+like least, and a shrinker that makes a value the generator could not
+reports a failure that cannot happen. Hypothesis, and elm-test 2.0 after
+it, shrink the recorded sequence of random choices instead, replaying the
+generator on smaller ones, so every shrunk value is one the generator
+makes and nobody writes a shrinker. Alder takes that design (chapter 10,
+"How the shrinking works"). It is also the only one that works for
+generators built with `Fuzz.map` and `Fuzz.andThen`, which have no
+inverse to shrink through.
+
+**The permanent record is a plain test, not a file.** The report prints
+the failing case as a `test` to paste (the paste-ready test), because a
+test in the source is reviewed, renamed with the code, and run in every
+CI. Proptest and Go's fuzzing commit a file of failing inputs; it is a
+machine-written file in the repository, which goes stale when a test is
+renamed or a type changes, and nobody reads it. The failure that
+`alder test` saves under `build/<app>/fuzz/` is only the bridge to the
+fix: it makes the next run fail the same way until the bug is gone,
+and is deleted on the first pass. It is local and ignored by git on
+purpose.
+
 ### Rules are declared: `@owner` and session roles **(decided M11; tested: both examples)**
 
 Every app with a login wrote two checks by hand: "this row is mine"

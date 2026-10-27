@@ -3209,6 +3209,146 @@ file to WAL is refused at once, without waiting, while anyone holds it.
 `rtesting` and the `eval`/REPL mains call the same function, so a test's
 database and the dev database are made exactly as production's.
 
+### Property tests
+
+Chapter 10, section 12, shows properties from the outside. Inside, a
+property is a test whose generators the compiler wrote, a runner that
+draws values from them, and a shrinker.
+
+**Resolving `Fuzz.any`.** `Fuzz.any : Fuzzer a` is not a function in
+`stdlib/Fuzz.alder` but a special form, like `Test.fake`. While the
+checker (section 5) infers a declaration, each use gets a `Fuzzer a` with
+a fresh `a` (`inferFuzzAny` in `internal/check/fuzz.go`) and remembers the
+reference. At the end of the declaration `resolveFuzzAny` looks at what
+`a` has become. If it is a type with a generator it is recorded in
+`Result.FuzzAny`; if it is still a variable, or a type with no generator
+(a function, a `Task`, `Html`), the reference is E0038. The same pass
+handles a property test's parameters: it records their types in
+`Result.Props`, defaulting a variable still open to `Int` and noting that
+it did (the `Defaulted` flag the report shows as `(xs : List Int)`), and
+E0038 if one has no generator. A `Fuzz.forAll` anywhere but a test body
+is E0039; the checker allows it in exactly one place, the head of the
+application that is the body, or the last stage of a `|>`.
+
+**The generators are built in lowering.** Lowering (section 6) is the
+last place that still sees brands, so it is where a type becomes a
+`GenTree` (`internal/ir/fuzz.go`): a tree whose nodes say "an `Int`", "a
+list of", "a record of these fields", "a union with these constructors,
+of which these are recursive", "a brand of the app, with its `where`", or
+"one of the six standard brands". Trees are shared by the type's
+spelling, so a recursive type's tree is a graph that reaches itself. A
+`Fuzz.any` becomes a `FuzzDerive` holding its tree, and a property test a
+`TestProp` holding one tree for each parameter.
+
+The emitter (section 7) then writes one Go generator and one literal
+printer for each distinct tree into `build/<app>/scratch/test/fuzz__alder.go`
+(`internal/gen/fuzz.go`). The generator of `Todo`'s slug brand
+(`type Slug = brand Text where Text.matches "^[a-z0-9-]+$"`), as the
+golden file `testdata/golden/gen_fuzz/want/fuzz__alder.go` has it:
+
+```go
+// fuzz__Todo_Slug draws a Todo.Slug.
+func fuzz__Todo_Slug(c *fuzz.Choices, depth int) string {
+	v := fuzz.Text(c)
+	if !check__Todo__Slug(v) {
+		panic(fuzz.Reject{What: "Slug"})
+	}
+	return v
+}
+```
+
+It draws the base type, then runs the brand's own `where` check, the
+function that `Slug`'s constructor and a form decoder also use; a value
+that fails is a `Reject` panic, which the runner counts for the health
+check and discards. A record is `Todo__Todo{Title: fuzz.NonEmpty(c), Due:
+fuzz__Maybe_Date(c, depth), …}`, each field drawn in order. A union calls
+`fuzz.Ctor(c, []bool{false, true}, depth)`, which draws the constructor
+(non-recursive ones first, so the simplest value is the first of them)
+and, for the recursive payload, passes `depth-1`; at depth 0 only the
+others can be drawn. `depth` starts at `fuzz.Depth`, 4.
+
+A property is a test that returns a value instead of a `bool`. The
+property of chapter 10's `rotate` is emitted as a `*rtesting.Property`
+(this is the golden file's `reverse twice`, in a module `Todo`):
+
+```go
+// test__Todo__4 is property test "reverse twice" of module Todo.
+func test__Todo__4() *rtesting.Property {
+	return &rtesting.Property{
+		Args: []rtesting.Arg{{Name: "xs", Type: "List Int", Defaulted: true}},
+		Draw: func(c *fuzz.Choices) []any {
+			return []any{fuzz__List_Int(c, fuzz.Depth)}
+		},
+		Lit: func(vs []any) []string {
+			q := fuzz.Quals{"Todo": ""}
+			return []string{lit__List_Int(q, vs[0].([]int64))}
+		},
+		Pure: func(_vs1 []any) bool {
+			xs := _vs1[0].([]int64)
+			return rtesting.Eq(std.ListReverse(std.ListReverse(xs)), xs)
+		},
+		Case: func(lits []string) string {
+			return rtesting.Paste("test \"reverse twice (case)\" = List.reverse (List.reverse \x00a0\x00) == \x00p0\x00", lits)
+		},
+	}
+}
+```
+
+`Draw` makes all the arguments from one `Choices`; `Pure` (or `Task` for a
+block body) is the lambda with its parameters unpacked; `Lit` prints the
+values as Alder, in the names the test's own module would write
+(`fuzz.Quals`); and `Case` is the paste-ready test as a template, with a
+marker where each literal goes and whether it needs parentheses there
+(`a` for an argument, `p` for a position that does not). The template is
+cut from the test's syntax tree and printed by the formatter, so it is
+Alder as `alder fmt` would write it, and `internal/names/qualify.go`
+rewrites its names for the module the test is in. A parameter used
+inside `"…{n}…"` or markup has no place for a literal, so the compiler
+leaves `Case` out and the report says to paste the values.
+
+**The run.** `rtesting.Main` calls `runProperty` (`rt/testing/property.go`)
+for a `Case` with a `Prop`. It replays the saved failure of the test if
+there is one, then makes up to `--fuzz` runs: attempt *i* gets
+`fuzz.Fresh(seed')`, a PCG generator seeded from `--seed` and *i* by
+splitmix64, so the attempts are unrelated but the whole run is a function
+of the seed. An attempt draws, runs the body in a fresh `Env` (for a
+`Task`: its own in-memory store, migrated, with the fakes and the session,
+as in "Fakes" below), and is one of four things: a run that passed or
+failed; *rejected* (a `Reject` panic from a brand or `Fuzz.filter`);
+*overrun* (the draw asked for more than `fuzz.MaxChoices`, 8192, which is
+64 KiB of 8-byte choices, or, on a replay, for more than the sequence had).
+Rejected attempts do not count as runs but are counted per predicate; at
+the 50th attempt `filterTooTight` fails the property if more than 90%
+were rejected. An overrun on a fresh attempt is the "generator draws too
+much" failure; on a replay it only means the candidate is not a value the
+generator can make, and the shrinker discards it. An attempt that took
+over 5 seconds fails too, which is checked after it finishes, since a Go
+function cannot be interrupted: a body that never returns is caught by
+the test timeout (`-timeout`, chapter 10).
+
+**The shrinker.** `fuzz.Shrink` (`rt/fuzz/shrink.go`) gets the recorded
+choices of the failing run and a function that replays a candidate and
+says whether it still fails. It never builds a value: the same generator
+reads the candidate. The passes are those of minithesis: delete blocks of
+8, 4, 3, 2 and 1 choices (3 is one `Int` element of a list: its
+continue bit, magnitude and sign); set blocks of 8, 4, 2 and 1 to zero;
+lower each choice by binary search toward zero; sort adjacent pairs; and
+move a choice's value onto one of the next four (so `a + b >= 100`
+ends at 0 and 100, and not at 40 and 60). A candidate is kept only if it
+is smaller (shorter, then lexicographically) and still fails, and the
+passes repeat until a round changes nothing or the budget of 1000
+replays is spent. The shrunk sequence is replayed once more, so that
+the values, the `left:` and `right:` sides and the trace are those of the
+shrunk case, and written to `build/<app>/fuzz/<Module>/<sha1 of the test
+name, first 16 hex digits>` as bytes (`fuzz.Encode`). The `savedRun` run
+number marks the replay of that file for the crash report, which is why a
+crash can say "the saved case" without knowing any arguments.
+
+A fatal crash (a stack overflow in the body) cannot be caught by the
+runner, so before each attempt `Main` writes the test's module, name, seed
+and run into the status file (`ALDER_TEST_STATUS`), and `alder test`,
+seeing the program die, reads it back to print them.
+
 ### Fakes
 
 Chapter 10 shows a `fake` from the outside. Here is what each stage

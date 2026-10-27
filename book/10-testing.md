@@ -7,8 +7,9 @@ with the simplest kind, a test of a pure function, then reads the report
 `alder test` prints, then tests code that reads and writes the database,
 replaces a capability with a fake written in Alder, drives the app
 through an in-memory browser as a user would, measures the tests with
-mutants (`alder test --mutate`), and ends with what cannot be tested
-yet.
+mutants (`alder test --mutate`), checks statements about all inputs
+instead of examples (properties, section 12), and ends with what cannot
+be tested yet.
 
 ## 1. A test is a `Bool`
 
@@ -212,7 +213,7 @@ app/Probe.alder:6:29: error[E0003]: expected Bool, got Int
 
 ## 3. Testing effects
 
-A `Task` cannot be compared with `==` (section 12 says why), so a test of
+A `Task` cannot be compared with `==` (section 13 says why), so a test of
 `update` cannot just compare its result. Instead it runs the task and
 looks at what happened. A test whose body is a block, `{ … }`, is an
 **effect test**: the block is a `Task Bool`, with `let x <-` lines like
@@ -1700,7 +1701,7 @@ And when the test compiles (E0003 unless named):
   button is visible, whether a web component works, how the page looks.
   The browser is Datastar's client (section 10), so the path of a
   browser with JavaScript off, a plain form post answered by a
-  redirect, is not tested either (section 12).
+  redirect, is not tested either (section 13).
 
 A step's result also has `notices`, the list of toast texts the answer showed
 (`Notice.with "Saved" Rerender` gives `["Saved"]`), empty when there were none:
@@ -2177,6 +2178,13 @@ the reason for each.
 `--min R` (0 to 1) exits 1 when the exact score is below `R`; without
 it the exit code is the tests'.
 
+### Properties under `--mutate`
+
+A property (section 12) is one test here: a mutant is killed when it
+fails on any of the property's cases. A mutated run uses a fixed seed,
+does not shrink, and neither reads nor writes saved failures, so the same
+code gives the same score. A `Fuzzer` value gets no mutants.
+
 ### The exact score
 
 With no survivor the report ends at the score line. The comparison
@@ -2293,7 +2301,378 @@ its filters and its guard). Ids
 and lines are for reading one report; to compare runs, compare what
 survived.
 
-## 12. What cannot be tested yet
+## 12. Properties
+
+A test checks one example: `countOpen` of three todos is 2. It passes,
+and says nothing about four todos, or none, or a thousand. A **property**
+is a statement that should hold for every input of some type, and a
+property test checks it against many inputs the tool makes up. You write
+the statement; `alder test` writes the examples, a hundred of them by
+default, and when one fails it shrinks the example to the smallest one
+that still fails and prints it as a test you can keep.
+
+### The function form
+
+A test whose body is a function is a property. Its parameters are the
+inputs, and its body, as in section 1, is a `Bool`:
+
+```alder
+-- moves the first element to the end: a rotation, not a reverse
+rotate : List a -> List a
+rotate xs = List.append (List.drop 1 xs) (List.take 1 xs)
+
+test "rotate keeps the length" = \(xs : List Int) -> List.length (rotate xs) == List.length xs
+
+test "rotate twice" = \xs -> rotate (rotate xs) == xs
+```
+
+`\(xs : List Int) -> …` is a lambda (chapter 3) whose parameter is
+written with its type, in parentheses; a bare `\xs ->` is the same
+without the type. There is no new declaration and no library: the
+property is a `test`, it is listed in the report like any other, and
+`-run` (section 7) picks it by name. The first one passes. The second is
+wrong, as the report below will show: rotating a list twice gives it
+back only when it has one or two elements.
+
+### Where the inputs come from
+
+`alder test` has to make a `List Int` out of nothing, and it does it from
+the **type**. The checker works out the type of each parameter (the
+annotation, or what the body forces), and the compiler writes, for that
+type, a **generator**: a function that builds one value of the type from
+a stream of random choices. Every ordinary type has one:
+
+- `Int`, `Float`, `Bool`, `Text`, `Unit`, `Bytes`, `Date` and `Time`.
+  The distributions are chosen to find bugs, not to be uniform: an `Int`
+  is mostly small (over half the draws are 0 to 10), sometimes up to a
+  thousand, sometimes large, and now and then a boundary such as 255,
+  2^31 - 1 or the largest `Int`; a `Float` is finite (no `NaN`, no
+  infinity) and includes 0, tiny and huge values; a `Text` is mostly
+  short ASCII, sometimes Unicode, sometimes empty, and made only of
+  printable characters and `\n`, `\t` and `\r`, so that every value can
+  be written back as a literal; a `Date` or `Time` is within a few years
+  of the epoch or of 2026.
+- `Maybe a`, `Result e a`, `List a` and `Dict k v` are built from the
+  generators of their parts, and a list is short most of the time.
+- A record is each field's generator in turn.
+- A union is a choice of one constructor, then a generator for its
+  payload. A union that contains itself (a tree) has a depth budget: each
+  level down halves the chance of a constructor that recurses, and at
+  depth 4 only the others are drawn, so the values are finite.
+- A brand draws its base type and, when it has a `where` predicate,
+  keeps the value only if the predicate holds. Below.
+
+Some types have no generator: `Html`, `Page`, a function, a `Task`, a
+`Query`, a capability, a `Form`. A property over one is E0038 (below),
+and you write the generator yourself with `Fuzz.forAll`.
+
+### `Int` when the type is open
+
+In `\xs -> rotate (rotate xs) == xs` nothing says what the elements are:
+`rotate` works on a list of anything, and `==` on anything comparable, so
+the type of `xs` is `List a` for an `a` that nothing decides. Rather than
+refuse, the checker **defaults** a type variable that is left open in a
+property's parameter to `Int`, and the report says so (below), so that
+the choice is not hidden. `Int` is the simplest type that shows most
+bugs. When the property is about something else, annotate the parameter:
+
+```alder
+test "unique never grows a list of text" = \(xs : List Text) -> List.length (List.unique xs) <= List.length xs
+```
+
+An annotation is how you pick any type, and the only way to get a type
+the body does not force, such as a brand. Each lambda parameter is a bare
+name or `(name : Type)`; the annotated form works in every lambda, not
+only in a test.
+
+### Brands as constraints
+
+A brand with a `where` (chapter 4) is a constraint, and a property over
+it draws only values that satisfy it:
+
+```alder
+type Age = brand Int where (\n -> n >= 0 && n < 150)
+
+test "ages are under 100" = \(a : Age) -> a < 100
+```
+
+The generator for `Age` draws an `Int` and throws away the ones the
+predicate refuses. For this brand that wastes few draws. For a brand like
+`Slug = brand Text where Text.matches "^[a-z0-9-]+$"` it wastes nearly
+all of them: a random `Text` is almost never a slug. A generator that
+rejected 94% of its draws would run the property on a handful of values,
+or on none and pass, so `alder test` checks, and fails the property with
+the reason instead:
+
+```text
+FAIL Probe "a slug is trimmed"
+  error: `Slug`'s predicate rejects 94% of generated values; write a `Fuzz.forAll` with a generator that produces `Slug` values
+  seed: 1061676061
+```
+
+The check looks after the first 50 attempts: more than 90% rejected is a
+failure. The six brands of the standard library (`Text.NonEmpty`,
+`Text.Email`, `Text.Url`, `Text.Secret`, `Int.Positive`,
+`Int.NonNegative`) are not made by filtering; each has a generator that
+draws values of its own shape directly, so they never trip it. For your
+own tight brand, write the generator.
+
+### `Fuzz.forAll` and shared `Fuzzer`s
+
+`Fuzz.forAll gen f` is the explicit form: the test's body is the
+property, `gen` is a `Fuzzer a` that you build, and `f` takes one `a`.
+The `Fuzz` module (chapter 9) has the pieces: `Fuzz.int`,
+`Fuzz.intRange { min: 0, max: 5 }`, `Fuzz.text`, `Fuzz.list`,
+`Fuzz.listOf { min: 1, max: 5 }`, `Fuzz.maybe`, `Fuzz.oneOfValues`,
+`Fuzz.map`, `Fuzz.filter` and the rest. A `Fuzzer` is a value like any
+other and may be a top-level declaration of any module, typed by a
+signature, so a generator is written once and shared by many tests:
+
+```alder
+type Slug = brand Text where Text.matches "^[a-z0-9-]+$"
+
+slugs : Fuzz.Fuzzer Slug
+slugs = Fuzz.map Slug (Fuzz.oneOfValues ["a", "b-c", "2024"])
+
+test "a slug is not empty" = Fuzz.forAll slugs (\s -> Text.length s > 0)
+```
+
+`Fuzz.map Slug` is allowed because the brand's constructor is: the
+module that declares a brand, and any test, may call it. A property over
+several inputs takes `Fuzz.pair` or `Fuzz.map2` into a record, or nests
+two `forAll`s; there is no `forAll2`. `Fuzz.any : Fuzzer a` is the
+generator that the function form derives from the type, as a value, so
+the two forms mix: `Fuzz.pair slugs Fuzz.any` is a record of a slug and a derived
+value of whatever type the context asks for. Its type must be known where
+it is written: inside a function that is itself generic, it has none,
+which is E0038.
+
+`Fuzz.forAll` and `Fuzz.forAllTask` make a `Fuzz.Property`, a value that
+only a `test` body can be. Anywhere else it is E0039 (below).
+
+### Properties over the database
+
+A property whose body is a block is a property of effects, and, as in
+section 3, the block ends in `Task.succeed` of the verdict. Each attempt
+gets a database of its own, empty and migrated, with the test's fakes and
+session set up afresh, so one attempt never sees another's rows:
+
+```alder
+test "a saved title reads back" = \(title : Text.NonEmpty) -> {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: title, due: Nothing, owner: me }
+  let after <- Db.get Todo id
+  Task.succeed (Maybe.map (\t -> t.title) after == Just title)
+}
+```
+
+The same holds for each attempt the shrinker makes, which is why an
+effect property is slower than a pure one: each attempt builds a database
+(in memory, section 3). `Fuzz.forAllTask` is the explicit form, with a
+function that returns a `Task Bool`.
+
+### Reading a failure
+
+Here is `rotate`, in a module `Lists`, run:
+
+```text
+$ alder test
+ok   Lists "rotate keeps the length"
+FAIL Lists "rotate twice"  (failed on run 1 of 100, shrunk in 146 steps)
+  xs: [0, 0, 1]  (xs : List Int)
+  left:  [1, 0, 0]
+  right: [0, 0, 1]
+  seed: 953983626
+  to keep this case:
+    test "rotate twice (case)" = rotate (rotate [0, 0, 1]) == [0, 0, 1]
+1 passed, 1 failed
+```
+
+Line by line:
+
+- The header says which run failed first (`run 1` of the `100`) and how
+  many attempts the shrinker spent getting from that case to this one.
+  The first failing list was longer and noisier; this one is the
+  smallest the shrinker could find.
+- `xs:` is the shrunk argument, one line for each, named as in the
+  lambda and written as an Alder literal that you could paste into code:
+  brands are spelled out (`Text.NonEmpty "a"`), a `Time` is
+  `Time.fromMillis 0`. When the type was a defaulted one, the line ends
+  with the type the checker chose, `(xs : List Int)`, so a missing
+  annotation shows. An annotated argument has no such suffix.
+- `left:` and `right:` are the sides of the body's `==`, as in section 2
+  (a body that is not an `==` has none).
+- `seed:` is what to give `--seed` to draw the same cases.
+- `to keep this case:` is the failing case as a **plain test**.
+
+### Keeping the case
+
+The pasted test is the property's body with the lambda removed and each
+parameter replaced by its literal. Copy it into the module. It fails
+today, and once `rotate` is fixed it passes for good, without random
+inputs and without the saved failure below: a bug found once stays
+found. For a `Fuzz.forAll` the same is done with `forAll` removed, and
+for a block the substitution is made inside the block:
+
+```text
+FAIL Notes "titles stay short"  (failed on run 2 of 100, shrunk in 73 steps)
+  title: Text.NonEmpty "aaa"
+  trace: ["Db.insert Note", "Db.get Note"]
+  seed: 9744707179
+  to keep this case:
+    test "titles stay short (case)" = {
+      let id <- Db.insert Note { title: Text.NonEmpty "aaa" }
+      let n <- Db.get Note id
+      Task.succeed (match n {
+        Just x -> Text.length x.title < 3,
+        Nothing -> False,
+      })
+    }
+```
+
+(An effect property also shows the steps the failing case took, as
+section 6 does.) Two things to know before you paste.
+
+- A literal may name a module the test's module does not import. The
+  test is printed with names as the test's own module would write them,
+  but the *value* can reach into types the module never mentions. A
+  property over `Box.Box`, whose `id` is an `Ids.Id`, prints
+  `{ id: Ids.Id "", size: 10 }`, and a module that imports `Box` and not
+  `Ids` needs an `import Ids` (chapter 3) before the pasted test
+  compiles. Add the import.
+- Sometimes there is no test to paste, and the report says `paste the
+  values above into a plain test`: when the case is longer than 20 lines,
+  when a value has no Alder literal (a `Text` with non-printing
+  characters, or the value of a `Fuzz.forAll` generator whose type has no
+  printer), or when a parameter is used inside text interpolation or
+  markup (`"n is {Text.fromInt n}"`), where a literal cannot be put in
+  without changing what it means. The argument lines are still printed,
+  and you write the test from them:
+
+```text
+FAIL Notes "interpolated"  (failed on run 1 of 100, shrunk in 79 steps)
+  n: 100
+  seed: 1118386523
+  paste the values above into a plain test
+```
+
+### `--fuzz`, `--seed` and saved failures
+
+```text
+alder test --fuzz 1000      # 1000 cases for each property (the default is 100)
+alder test --seed 5         # draw the cases from seed 5
+```
+
+`--fuzz N` is the number of cases for each property. `--seed S` fixes the
+random choices, so the run is the same every time; without it each run
+draws a new seed, and prints it when a property fails. With the same
+seed and the same code, the same cases are drawn, so a failure of CI is
+reproduced on your machine with the seed of its report.
+
+Finding a bug and fixing it take two different runs, and the next fresh
+run may not draw the same case. So a failing case is **saved**: `alder
+test` keeps the shrunk choices in `build/<app>/fuzz/<Module>/<hash>`,
+the hash being that of the test's name, and replays them before it draws
+anything new. The saved case fails again until the bug is fixed; the
+first run in which the property passes all its cases deletes the file.
+`--seed` does not override a saved failure: the saved case is replayed
+first whatever the seed. `build/` is not source (`.gitignore` keeps it
+out of git, chapter 2), so this is a local memory and not a record: the
+permanent record of a bug is the plain test that the report printed. A
+saved case is also lost if its test is renamed, which is another reason
+not to commit it.
+
+### Health checks
+
+A property can pass for a bad reason, or hang, so each property is
+checked as it runs, and the check fails the property with a reason
+instead:
+
+- **A filter or brand that is too tight.** More than 90% of the first 50
+  attempts rejected by a `Fuzz.filter` or a brand's predicate (above).
+- **An attempt that is too slow.** One case took over 5 seconds. The
+  report names the run.
+- **A generator that draws too much.** One case needed more than 8192
+  random choices (a `Fuzz.andThen` that builds lists of lists of lists
+  with no bound): the report says `generator draws too much`. Bound the
+  size with `Fuzz.listOf { min: 0, max: 10 }`.
+
+A program that crashes outright (a function that recurses without end
+overflows the stack) takes `alder test` down with it, as in section 2.
+The report then gives what reproduces the crash instead of the arguments,
+which the crashed program could not print: the seed and the run, or, when
+the crash was in the replay of a saved case, a line that says so.
+
+### How the shrinking works, and why you do not write it
+
+The case `[0, 0, 1]` was not the first one found. The first failing list
+had more elements and bigger numbers, and the report shows what 146
+re-runs made of it.
+
+Every generator builds its value out of **choices**: numbers drawn from a
+random stream, each recorded in order. A list draws, for each element,
+one choice that says "another element" or "stop", and then the element's
+own choices; an `Int` draws a magnitude and then a sign; a union draws a
+constructor number. All generators are written so that a **smaller choice
+means a simpler value**: zero is the empty list, the first constructor,
+the number 0.
+
+The shrinker never sees a list. It sees the recorded sequence of choices
+of the failing case, and tries smaller sequences: delete a block of
+choices, set a block to zero, lower a choice by binary search, sort
+neighbours, move a value from one choice onto the next. Each candidate is
+*replayed*: the same generator runs, reading its choices from the
+candidate instead of the random stream, so what it builds is always a
+value the generator could have drawn, and the property runs on it. A
+candidate that still fails and is smaller replaces the sequence. The
+shrinker goes on until a full round changes nothing or it has spent its
+**1000 attempts**, so it cannot hang. That is how a bug in a record of a
+union of lists shrinks to a short list in the first constructor, without
+anyone saying how to shrink a record.
+
+This is the design of Hypothesis, of its small model `minithesis`, and of
+elm-test 2.0 (the test library of Elm, the language Alder's syntax is
+closest to). It is *internal* shrinking, as against QuickCheck's, where
+each type has a separate `shrink` function that the programmer writes
+beside its generator. The two must agree, and nothing makes them: a
+shrinker that produces a value its generator never could, such as an
+`Age` of 200, reports a counterexample that cannot happen. With choices
+there is no second function to get wrong. That is why Alder has no way to
+write a shrinker, and no need.
+
+### Properties and `--mutate`
+
+Under `--mutate` (section 11) a property counts as one test: a mutant is
+killed when the property fails on it. So that the property behaves the
+same against every mutant, the run uses a fixed seed, does not shrink,
+and reads and writes no saved failures. A `Fuzzer` value (such as
+`slugs` above) is a generator and not part of the app's behaviour, so it
+gets no mutants.
+
+### Two errors
+
+A property needs a generator for every parameter. When a type has none,
+the checker says so at the parameter:
+
+```alder error=E0038 "`Int -> Int` cannot be generated; use `Fuzz.forAll` with a generator you write"
+test "a function is the same twice" = \(f : Int -> Int) -> f 1 == f 1
+```
+
+A function type, an effect type (`Task`, `Query`), a type parameter and a
+value only the runtime can make have no generator. Annotate with a type
+that has one, or write the generator with the `Fuzz` functions and give
+it to `Fuzz.forAll`.
+
+A `Fuzz.Property` is what a test body is, and nothing else may be one:
+
+```alder error=E0039 "`Fuzz.forAll` makes a Property, which only a test body can use"
+pending : Fuzz.Property
+pending = Fuzz.forAll Fuzz.int (\n -> n == n)
+```
+
+Move the `Fuzz.forAll` into a `test`, and keep the generator in a value.
+
+## 13. What cannot be tested yet
 
 The browser of section 9 runs the app's real routes, so a request's round
 trip, the page a step leaves, and the session after a step are all
