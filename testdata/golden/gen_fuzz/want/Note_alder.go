@@ -91,11 +91,15 @@ func test__Note__1() *rtesting.Property {
 			return []any{fuzz__Note(c, fuzz.Depth), fuzz__Note_NoteId(c, fuzz.Depth), fuzz__Note_Pick_Text(c, fuzz.Depth), fuzz__Note_Pick_Int(c, fuzz.Depth)}
 		},
 		Lit: func(vs []any) []string {
-			return []string{lit__Note(vs[0].(Note__Note)), lit__Note_NoteId(vs[1].(string)), lit__Note_Pick_Text(vs[2].(Note__Pick[string])), lit__Note_Pick_Int(vs[3].(Note__Pick[int64]))}
+			q := fuzz.Quals{"Note": ""}
+			return []string{lit__Note(q, vs[0].(Note__Note)), lit__Note_NoteId(q, vs[1].(string)), lit__Note_Pick_Text(q, vs[2].(Note__Pick[string])), lit__Note_Pick_Int(q, vs[3].(Note__Pick[int64]))}
 		},
 		Pure: func(_vs1 []any) bool {
 			n := _vs1[0].(Note__Note)
 			return std.TextLength(n.Body) >= 0
+		},
+		Case: func(lits []string) string {
+			return rtesting.Paste("test \"rows and generic unions (case)\" = Text.length \x00a0\x00.body >= 0", lits)
 		},
 	}
 }

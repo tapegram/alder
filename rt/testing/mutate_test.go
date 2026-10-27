@@ -357,3 +357,33 @@ func TestOwnModuleFirst(t *testing.T) {
 		t.Errorf("ownModuleFirst(…, C) = %v, want %s", got, want)
 	}
 }
+
+// TestMutate_Property: under --mutate a property counts as one test: one that fails under a
+// mutant kills it, as a plain test does. The seed is fixed and nothing is shrunk or saved, so
+// two runs give the same score and no fuzz directory is written.
+func TestMutate_Property(t *testing.T) {
+	setMutants(t)
+	SetMutants(&active, []Mutant{
+		{ID: 1, Module: "M", Decl: "f", Kind: "bool flipped", Line: 3, Before: "True", After: "False"},
+		{ID: 2, Module: "M", Decl: "g", Kind: "bool flipped", Line: 5, Before: "True", After: "False"},
+	}, 0, 0)
+	dbDir := t.TempDir()
+	t.Setenv(EnvFuzzDB, dbDir)
+	t.Setenv(EnvSeed, "")
+	t.Setenv(EnvFuzz, "")
+	cases := []Case{{Module: "M", Name: "p", Prop: listProp(func(xs []int64) bool { return active != 1 || len(xs) < 3 })}}
+	var outs []string
+	for range 2 {
+		out, errs, code := runMutate(cases)
+		if code != 0 || !strings.Contains(out, "2 mutants: 1 killed, 1 survived  (score 0.50)\n") {
+			t.Fatalf("exit %d\n%s\n%s", code, out, errs)
+		}
+		outs = append(outs, out)
+	}
+	if outs[0] != outs[1] {
+		t.Errorf("two runs differ:\n%s\n%s", outs[0], outs[1])
+	}
+	if es, _ := os.ReadDir(dbDir); len(es) != 0 {
+		t.Errorf("--mutate wrote %v", es)
+	}
+}

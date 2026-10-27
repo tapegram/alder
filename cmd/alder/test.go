@@ -23,7 +23,14 @@ import (
 )
 
 // testUsage is the usage line of `alder test`.
-const testUsage = "usage: alder test [dir] [-run re] [-timeout d] [--json] [--build-dir DIR] [--mutate [--min R]]"
+const testUsage = "usage: alder test [dir] [-run re] [-timeout d] [--json] [--build-dir DIR] [--fuzz N] [--seed S] [--mutate [--min R]]"
+
+// testHelpNote follows `alder test --help`'s usage line: what the property-test flags do.
+const testHelpNote = `
+--fuzz N   runs per property test (default 100)
+--seed S   the seed of the property tests' random cases (default: a new one each run, printed
+           when a property fails); --seed does not override saved failures: a property's last
+           failing case (build/<app>/fuzz/) is replayed first until it passes`
 
 // defaultTestTimeout bounds one `alder test` run (every test together) unless -timeout says.
 const defaultTestTimeout = 5 * time.Minute
@@ -70,7 +77,7 @@ func main() {
 `
 }
 
-// runTestTo is `alder test [dir] [-run re] [-timeout d] [--json] [--build-dir DIR] [--mutate [--min R]]`: it compiles the app at dir
+// runTestTo is `alder test [dir] [-run re] [-timeout d] [--json] [--build-dir DIR] [--fuzz N] [--seed S] [--mutate [--min R]]`: it compiles the app at dir
 // (default ".") with a main that runs its `test` declarations (testMain) into
 // build/<app>/scratch/test, runs it, and passes the program's report through as it is written:
 // one entry per test as the test finishes and a summary, or with --json one JSON object per
@@ -102,6 +109,11 @@ func main() {
 // mutant that crashes the program is killed and the run goes on (runTests). --min R exits 1
 // when the score is below R (it needs --mutate).
 //
+// --fuzz N (runs per property test) and --seed S (the seed of their fresh draws) go to the
+// program as rtesting.EnvFuzz and EnvSeed, with EnvFuzzDB the absolute build/<app>/fuzz, where
+// a failing property's shrunk case is saved and replayed first on the next run (--mutate reads
+// and writes none there).
+//
 // Exit 0 when every selected test passed; 1 for a failing, crashed or timed-out test, a check
 // error, a typed hole, adapters refused or that do not compile with the app (alder build's
 // message), or an interrupted run; 2 for usage errors and other build problems. Runs of one
@@ -126,9 +138,20 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 	}()
 	dir, haveDir, runPat, timeout := ".", false, "", defaultTestTimeout
 	timeoutArg, mutate, minArg, bd := "", false, "", ""
+	fuzzArg, seedArg := "", ""
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
+		case (a == "--fuzz" || a == "-fuzz") && i+1 < len(args):
+			i++
+			fuzzArg = args[i]
+		case strings.HasPrefix(a, "-fuzz=") || strings.HasPrefix(a, "--fuzz="):
+			_, fuzzArg, _ = strings.Cut(a, "=")
+		case (a == "--seed" || a == "-seed") && i+1 < len(args):
+			i++
+			seedArg = args[i]
+		case strings.HasPrefix(a, "-seed=") || strings.HasPrefix(a, "--seed="):
+			_, seedArg, _ = strings.Cut(a, "=")
 		case (a == "--build-dir" || a == "-build-dir") && i+1 < len(args):
 			i++
 			bd = args[i]
@@ -182,6 +205,15 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 		}
 		timeout = d
 	}
+	// the property tests' flags, checked before the build as the test program checks them
+	if v, err := strconv.Atoi(fuzzArg); fuzzArg != "" && (err != nil || v < 1) {
+		fail(fmt.Sprintf("bad --fuzz %q: want a number of runs, such as 100", fuzzArg))
+		return 2
+	}
+	if _, err := strconv.ParseUint(seedArg, 10, 64); seedArg != "" && err != nil {
+		fail(fmt.Sprintf("bad --seed %q: want a whole number, such as 42", seedArg))
+		return 2
+	}
 	if _, err := regexp.Compile(runPat); err != nil { // before the build: a typo should fail at once
 		fail(fmt.Sprintf("bad -run pattern: %v", err))
 		return 2
@@ -219,7 +251,13 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 	if mutate {
 		mut = &mutateRun{min: minArg}
 	}
-	return runTests(b, runPat, timeout, mut, jsonOut, stdout, stderr, fail)
+	fuzzDB, err := filepath.Abs(filepath.Join(appBuildDir(bd, dir), "fuzz"))
+	if err != nil {
+		fail(err.Error())
+		return 2
+	}
+	props := []string{rtesting.EnvFuzz + "=" + fuzzArg, rtesting.EnvSeed + "=" + seedArg, rtesting.EnvFuzzDB + "=" + fuzzDB}
+	return runTests(b, runPat, timeout, mut, props, jsonOut, stdout, stderr, fail)
 }
 
 // mutateRun is what runTests needs for --mutate: the --min text ("" for none).
@@ -244,7 +282,11 @@ func hasError(ds []diag.Diagnostic) bool {
 // logging itself (rtesting.ExitMutantTimedOut); either way the program is run again from the
 // next mutant (rtesting.EnvMutateFrom), until a run finishes the last mutant and prints the
 // report from the log (rtesting.EnvMutateLog).
-func runTests(b scratch.Build, runPat string, timeout time.Duration, mut *mutateRun, jsonOut bool, stdout, stderr io.Writer, fail func(string)) int {
+//
+// props is the property tests' environment (rtesting.EnvFuzz, EnvSeed, EnvFuzzDB). When a
+// property test crashes the program, the status file also gives the seed and run it was
+// making (rtesting.ParseStatus), and the report gives them in place of its arguments.
+func runTests(b scratch.Build, runPat string, timeout time.Duration, mut *mutateRun, props []string, jsonOut bool, stdout, stderr io.Writer, fail func(string)) int {
 	status := filepath.Join(b.Dir, "status")
 	os.Remove(status)
 	defer os.Remove(status)
@@ -274,6 +316,7 @@ func runTests(b scratch.Build, runPat string, timeout time.Duration, mut *mutate
 			rtesting.EnvTimeout + "=" + timeout.String(),
 			rtesting.EnvStatus + "=" + status,
 			rtesting.EnvStdinEOF + "=1"}
+		env = append(env, props...)
 		if jsonOut {
 			env[1] = "ALDER_TEST_JSON=1"
 		}
@@ -329,12 +372,14 @@ func runTests(b scratch.Build, runPat string, timeout time.Duration, mut *mutate
 			from = id + 1
 			continue
 		}
-		if mod, name, ok := readStatus(status); ok {
-			msg := crash.summary()
+		if mod, name, seed, run, ok := readStatus(status); ok {
+			r := rtesting.CaseResult{Module: mod, Name: name, Error: crash.summary()}
 			if timedOut {
-				msg = "timed out after " + timeout.String()
+				r.Error = "timed out after " + timeout.String()
+			} else if run > 0 { // a property test: the seed and run reproduce the crash
+				r.Seed, r.Run, r.Crash = seed, run, true
 			}
-			rtesting.WriteResult(stdout, rtesting.CaseResult{Module: mod, Name: name, Error: msg}, jsonOut)
+			rtesting.WriteResult(stdout, r, jsonOut)
 			if timedOut {
 				fmt.Fprintf(stderr, "alder test: %v\n", errTimeout)
 			} else {
@@ -403,15 +448,14 @@ func (c *resultCounter) Write(p []byte) (int, error) {
 }
 
 // readStatus reads the status file the test program writes before each test: `Module\tName\n`,
-// or nothing when no test was running.
-func readStatus(path string) (mod, name string, ok bool) {
+// for a property test then `Module\tName\tseed\trun\n` before each attempt (run from 1; 0 for
+// a plain test), or nothing when no test was running.
+func readStatus(path string) (mod, name string, seed uint64, run int, ok bool) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return "", "", false
+		return "", "", 0, 0, false
 	}
-	line := strings.TrimSuffix(string(b), "\n")
-	mod, name, ok = strings.Cut(line, "\t")
-	return mod, name, ok && mod != ""
+	return rtesting.ParseStatus(string(b))
 }
 
 // crashFilter passes the test program's standard error through line by line until a line that

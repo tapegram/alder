@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -185,7 +186,12 @@ func runProperty(c Case, o Options, r CaseResult) CaseResult {
 		}
 		return false
 	}
+	st := statusLine{c: c, seed: r.Seed}
+	if !o.Mutating { // a --mutate run's status names the mutant (MutantStatus)
+		st.path = o.Status
+	}
 	if seq, ok := readSaved(path); ok {
+		st.at(1)
 		if a := runAttempt(p, o, fuzz.Replay(seq)); !a.overrun && !a.rejected && ran(a) {
 			return finish(c, o, r, failing, path)
 		}
@@ -201,6 +207,7 @@ func runProperty(c Case, o Options, r CaseResult) CaseResult {
 				break // a pass on the runs made: the predicates accept enough draws, rarely
 			}
 		}
+		st.at(runs + 1)
 		a := runAttempt(p, o, fuzz.Fresh(attemptSeed(r.Seed, i)))
 		switch {
 		case a.overrun:
@@ -254,15 +261,114 @@ func finish(c Case, o Options, r CaseResult, failing *attempt, path string) Case
 	r.Args = argValues(p, final.vals)
 	r.Left, r.Right, r.Note = final.left, final.right, final.note
 	r.Error, r.Trace, r.panicked = unwiredText(final.errText), final.trace, final.panicked
-	if p.Case != nil && final.vals != nil {
-		r.Paste = p.Case(literals(p, final.vals))
-	}
+	r.Paste = pasteCase(p, final.vals)
 	if path != "" {
 		if err := save(path, final.seq); err != nil {
 			r.Error = strings.TrimPrefix(r.Error+"\n", "\n") + "could not save the failing case: " + err.Error()
 		}
 	}
 	return r
+}
+
+// maxPasteLines is the longest paste-ready case the report prints (spec §6); a longer one, or
+// one with a literal that is no Alder, is pasteFallback instead.
+const (
+	maxPasteLines = 20
+	pasteFallback = "paste the values above into a plain test"
+)
+
+// pasteCase is the plain test that keeps the failing case vs (p.Case of their literals): ""
+// when there is none, when a literal is not Alder (fuzz.Pasteable), or when it is over
+// maxPasteLines lines.
+func pasteCase(p *Property, vs []any) string {
+	if p.Case == nil || vs == nil {
+		return ""
+	}
+	lits := literals(p, vs)
+	for _, l := range lits {
+		if !fuzz.Pasteable(l) {
+			return ""
+		}
+	}
+	s := p.Case(lits)
+	if strings.Count(s, "\n") >= maxPasteLines {
+		return ""
+	}
+	return s
+}
+
+// Paste is the paste-ready case of template tmpl (the generated Property.Case's) with literal
+// lits[i] put in for each placeholder "\x00" mode i "\x00". The mode is the place's: 'a' where
+// an application would need parentheses (an argument, a field access's base), so a literal
+// that is no atom gets them (fuzz.Atom), and 'p' where it would not; 'A' and 'P' are those
+// inside a match subject, where a literal that starts with `{` also needs them (it would
+// open the arms).
+func Paste(tmpl string, lits []string) string {
+	var b strings.Builder
+	for {
+		i := strings.IndexByte(tmpl, 0)
+		if i < 0 || i+2 >= len(tmpl) {
+			b.WriteString(tmpl)
+			return b.String()
+		}
+		j := strings.IndexByte(tmpl[i+2:], 0)
+		if j < 0 {
+			b.WriteString(tmpl)
+			return b.String()
+		}
+		mode, n := tmpl[i+1], 0
+		for _, d := range tmpl[i+2 : i+2+j] {
+			n = n*10 + int(d-'0')
+		}
+		lit := lits[n]
+		if mode == 'a' || mode == 'A' {
+			lit = fuzz.Atom(lit)
+		}
+		if (mode == 'A' || mode == 'P') && strings.HasPrefix(lit, "{") {
+			lit = "(" + lit + ")"
+		}
+		b.WriteString(tmpl[:i])
+		b.WriteString(lit)
+		tmpl = tmpl[i+2+j+1:]
+	}
+}
+
+// statusLine writes property test c's line of Main's status file (EnvStatus) before each
+// attempt: `Module\tName\tseed\trun`, the run being the one the attempt makes (or the failing
+// run while it is shrunk), so after a crash of the whole program the report gives the seed and
+// run that reproduce it (ParseStatus). No path: nothing is written.
+type statusLine struct {
+	path string
+	c    Case
+	seed uint64
+	run  int // the run last written
+}
+
+func (s *statusLine) at(run int) {
+	if s.path == "" || run == s.run {
+		return
+	}
+	s.run = run
+	os.WriteFile(s.path, []byte(fmt.Sprintf("%s\t%s\t%d\t%d\n", s.c.Module, s.c.Name, s.seed, run)), 0o644)
+}
+
+// ParseStatus reads a line of Main's status file: `Module\tName` before a test, followed by
+// `\tseed\trun` while a property test runs (run is then from 1; 0 for any other line). ok is
+// false for an empty file.
+func ParseStatus(line string) (mod, name string, seed uint64, run int, ok bool) {
+	mod, name, ok = strings.Cut(strings.TrimSuffix(line, "\n"), "\t")
+	if !ok || mod == "" {
+		return "", "", 0, 0, false
+	}
+	parts := strings.Split(name, "\t") // a name may hold a tab: the numbers are the last two
+	if n := len(parts); n >= 3 {
+		s, e1 := strconv.ParseUint(parts[n-2], 10, 64)
+		r, e2 := strconv.Atoi(parts[n-1])
+		if e1 == nil && e2 == nil && r > 0 {
+			return mod, strings.Join(parts[:n-2], "\t"), s, r, true
+		}
+	}
+	return mod, name, 0, 0, true
 }
 
 // filterTooTight is the filter health check's failure after attempts fresh attempts, of which
@@ -384,13 +490,23 @@ func writeArgs(b *strings.Builder, r CaseResult) {
 }
 
 // writeSeed writes a failing property's `  seed:` line and the plain test that keeps its case.
+// A failing case with no paste-ready test (none made, over maxPasteLines, a literal that is no
+// Alder) says to paste the argument lines instead. A property that crashed the program (Crash)
+// gives the seed and the run that reproduce it.
 func writeSeed(b *strings.Builder, r CaseResult) {
+	if r.Crash {
+		fmt.Fprintf(b, "  seed: %d\n  run: %d\n", r.Seed, r.Run)
+		return
+	}
 	if r.Runs == 0 {
 		return
 	}
 	fmt.Fprintf(b, "  seed: %d\n", r.Seed)
-	if r.Paste != "" {
+	switch {
+	case r.Paste != "":
 		fmt.Fprintf(b, "  to keep this case:\n    %s\n", strings.ReplaceAll(r.Paste, "\n", "\n    "))
+	case len(r.Args) > 0:
+		fmt.Fprintf(b, "  %s\n", pasteFallback)
 	}
 }
 
@@ -413,7 +529,7 @@ type jsonArg struct {
 
 // propertyJSON is r's "property" object: nil unless r is a property's result.
 func propertyJSON(r CaseResult) *jsonProperty {
-	if r.Runs == 0 {
+	if r.Runs == 0 && !r.Crash {
 		return nil
 	}
 	args := []jsonArg{}

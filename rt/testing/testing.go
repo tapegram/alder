@@ -228,12 +228,15 @@ type CaseResult struct {
 	// it failed, Run is the run that failed (from 1; 0 when none did, as when a health check
 	// failed it), Shrinks the attempts the shrinker made, Args the arguments of the (shrunk)
 	// failing case, Paste the plain test that keeps it ("" when the generated code prints
-	// none), and Left, Right, Note, Error and Trace are that case's.
+	// none, or a literal is not Alder, or it is too long), and Left, Right, Note, Error and
+	// Trace are that case's. Crash marks the result `alder test` reports for a property that
+	// crashed the whole program: only Seed and Run (from the status file, ParseStatus) are set.
 	Args      []ArgValue
 	Seed      uint64
 	Run, Runs int
 	Shrinks   int
 	Paste     string
+	Crash     bool
 
 	panicked bool // the case panicked (not a task's failure): a mutant it kills is "crashed"
 }
@@ -275,6 +278,9 @@ type Options struct {
 	SeedSet  bool
 	FuzzDB   string
 	Mutating bool
+	// Status is Main's status file (EnvStatus): a property test writes its seed and run there
+	// before each attempt (unless Mutating). "": none.
+	Status string
 
 	schemaErr string // why Migrations do not make Tables (set by defaults): every case fails with it
 }
@@ -618,7 +624,7 @@ const (
 	EnvDeadline = "ALDER_TEST_DEADLINE"
 	// EnvTimeout is the -timeout the deadline came from (a Go duration), for the message.
 	EnvTimeout = "ALDER_TEST_TIMEOUT"
-	// EnvStatus names a file Main truncates and writes `Module\tName\n` to before each test,
+	// EnvStatus names a file Main truncates and writes `Module\tName\n` to before each test (a property test adds `\tseed\trun`, ParseStatus),
 	// and empties when it returns: after a crash it names the test that crashed.
 	EnvStatus = "ALDER_TEST_STATUS"
 	// EnvFuzz is the runs per property test (--fuzz), EnvSeed the seed of their fresh draws
@@ -764,6 +770,7 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 	if status != "" {
 		defer os.WriteFile(status, nil, 0o644)
 	}
+	o.Status = status
 	o = defaults(o)
 
 	run := selected(cases, o)

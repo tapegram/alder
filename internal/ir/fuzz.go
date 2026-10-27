@@ -2,9 +2,12 @@ package ir
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"alder/internal/check"
+	"alder/internal/format"
 	"alder/internal/syntax"
 	"alder/internal/types"
 )
@@ -34,9 +37,11 @@ func (l *lowerer) fuzzDerive(v *syntax.Var) Expr {
 // propTest lowers property test d's body to a TestProp.
 func (l *lowerer) propTest(d *syntax.TestDecl, info check.PropInfo) *TestProp {
 	p := &TestProp{Typed: Typed{l.typeOf(d.Body)}, Defaulted: info.Defaulted}
+	qual := func(m string) string { return l.prog.QualifierFor(l.module, m) }
 	for _, t := range info.Types {
-		p.Types = append(p.Types, types.StringIn(t, l.module))
+		p.Types = append(p.Types, types.StringQ(t, l.module, qual))
 	}
+	defer func() { p.Case, p.Quals = l.pasteCase(d, info), l.literalQuals(p) }()
 	body := l.expr(d.Body)
 	if info.Kind == check.PropFun {
 		p.Fn = body
@@ -63,6 +68,174 @@ func (l *lowerer) propTest(d *syntax.TestDecl, info check.PropInfo) *TestProp {
 		p.ForAllLit = g
 	}
 	return p
+}
+
+// pasteCase is the template of property test d's paste-ready plain test (spec §6): `test
+// "<name> (case)" = ` and the property's body with the lambda removed (for a Fuzz.forAll body,
+// forAll and its generator too; a function written there that is no lambda is applied to its
+// argument), each use of an argument a placeholder format.Paste writes and rtesting.Paste
+// fills. "" when there is none: an argument used inside a string literal or markup, whose text
+// the formatter does not rebuild.
+func (l *lowerer) pasteCase(d *syntax.TestDecl, info check.PropInfo) string {
+	var body syntax.Expr
+	var params []string
+	switch {
+	case info.Kind == check.PropFun:
+		lam, ok := d.Body.(*syntax.Lambda)
+		if !ok {
+			return ""
+		}
+		body = lam.Body
+		for _, prm := range lam.Params {
+			params = append(params, prm.Name)
+		}
+	default:
+		fn := forAllFn(d.Body)
+		if fn == nil {
+			return ""
+		}
+		if lam, ok := fn.(*syntax.Lambda); ok && len(lam.Params) == 1 {
+			body, params = lam.Body, []string{lam.Params[0].Name}
+			break
+		}
+		arg := &syntax.Var{Name: "value", Ref: syntax.Ref{Kind: syntax.RefLocal, Name: "value"}}
+		return l.pasteTemplate(d, &syntax.App{Fn: fn, Args: []syntax.Expr{arg}}, map[*syntax.Var]int{arg: 0})
+	}
+	holes := map[*syntax.Var]int{}
+	scope := map[string]int{}
+	for i, n := range params {
+		scope[n] = i
+	}
+	paramUses(body, scope, holes)
+	return l.pasteTemplate(d, body, holes)
+}
+
+// pasteTemplate is `test "<d's name> (case)" = ` and body printed with holes as placeholders,
+// or "" when format.Paste cannot print it.
+func (l *lowerer) pasteTemplate(d *syntax.TestDecl, body syntax.Expr, holes map[*syntax.Var]int) string {
+	text, ok := format.Paste(l.prog.Modules[l.module], body, holes)
+	if !ok {
+		return ""
+	}
+	return "test " + alderString(d.Name+" (case)") + " = " + text
+}
+
+// forAllFn is the function of a `Fuzz.forAll gen f` (or forAllTask) body as written, also as
+// `f |> Fuzz.forAll gen`; nil for anything else.
+func forAllFn(e syntax.Expr) syntax.Expr {
+	isForAll := func(e syntax.Expr) bool {
+		v, ok := e.(*syntax.Var)
+		return ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Fuzz" && (v.Ref.Name == "forAll" || v.Ref.Name == "forAllTask")
+	}
+	switch x := e.(type) {
+	case *syntax.App:
+		if isForAll(x.Fn) && len(x.Args) == 2 {
+			return x.Args[1]
+		}
+	case *syntax.BinOp:
+		if app, ok := x.R.(*syntax.App); ok && x.Op == "|>" && isForAll(app.Fn) && len(app.Args) == 1 {
+			return x.L
+		}
+	}
+	return nil
+}
+
+// paramUses adds to holes each variable under e that names a property argument: scope maps a
+// name to its argument's index while it is one, -1 once a lambda parameter, `let`, pattern
+// variable or `for` variable of e shadows it.
+func paramUses(e syntax.Spanned, scope map[string]int, holes map[*syntax.Var]int) {
+	shadow := func(names ...string) map[string]int {
+		inner := maps.Clone(scope)
+		for _, n := range names {
+			if _, ok := inner[n]; ok {
+				inner[n] = -1
+			}
+		}
+		return inner
+	}
+	switch x := e.(type) {
+	case *syntax.Var:
+		if i, ok := scope[x.Name]; ok && i >= 0 && x.Module == "" && x.Ref.Kind == syntax.RefLocal {
+			holes[x] = i
+		}
+		return
+	case *syntax.Lambda:
+		var names []string
+		for _, p := range x.Params {
+			names = append(names, p.Name)
+		}
+		paramUses(x.Body, shadow(names...), holes)
+		return
+	case *syntax.Block:
+		inner := scope
+		for _, s := range x.Stmts {
+			paramUses(s.Expr, inner, holes)
+			inner = shadowIn(inner, s.Name)
+		}
+		paramUses(x.Result, inner, holes)
+		return
+	case *syntax.Arm:
+		bound := map[string]bool{}
+		patternVars(x.Pat, bound)
+		paramUses(x.Body, shadow(slices.Collect(maps.Keys(bound))...), holes)
+		return
+	case *syntax.HtmlFor:
+		paramUses(x.List, scope, holes)
+		paramUses(x.Body, shadow(x.Var), holes)
+		return
+	}
+	for _, c := range syntax.Children(e) {
+		paramUses(c, scope, holes)
+	}
+}
+
+// shadowIn is scope with name, when it is an argument's, no longer one.
+func shadowIn(scope map[string]int, name string) map[string]int {
+	if _, ok := scope[name]; !ok {
+		return scope
+	}
+	inner := maps.Clone(scope)
+	inner[name] = -1
+	return inner
+}
+
+// alderString is s as an Alder string literal.
+func alderString(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "{", `\{`, "\n", `\n`, "\r", `\r`, "\t", `\t`)
+	return `"` + r.Replace(s) + `"`
+}
+
+// literalQuals maps each module whose constructors or brands p's literals print (by path) to
+// how the test's module writes them ("" for its own names): the generated printers name them
+// through it (fuzz.Quals).
+func (l *lowerer) literalQuals(p *TestProp) map[string]string {
+	out := map[string]string{l.module: ""}
+	seen := map[*GenTree]bool{}
+	var walk func(*GenTree)
+	walk = func(g *GenTree) {
+		if g == nil || seen[g] {
+			return
+		}
+		seen[g] = true
+		mod := ""
+		switch g.Kind {
+		case GenUnion:
+			mod = g.Union.Module
+		case GenBrand:
+			mod = BrandModule(g.Brand)
+		}
+		if _, ok := out[mod]; mod != "" && !ok {
+			out[mod] = l.prog.QualifierFor(l.module, mod)
+		}
+		for _, e := range g.Elems {
+			walk(e)
+		}
+	}
+	for _, g := range p.Gens {
+		walk(g)
+	}
+	walk(p.ForAllLit)
+	return out
 }
 
 // forAllArgs are the generator and function of the lowered `Fuzz.forAll gen f` (or forAllTask,

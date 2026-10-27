@@ -1,10 +1,13 @@
 package fuzz
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"alder/rt"
 )
@@ -15,12 +18,25 @@ import (
 // `Time.fromMillis N` and a Date counts days from the epoch.
 
 // TextLit is s as an Alder string literal: `"`, `\`, `{` (which would start an
-// interpolation), newline, carriage return and tab are escaped; every other code point is
-// written as itself (generated Text is printable, spec §0a).
+// interpolation), newline, carriage return and tab are escaped; every other printable code
+// point (unicode.IsPrint) is written as itself, and derived Text is only those (spec §0a).
+// Alder has no escape for any other code point (a control, a format character) nor for
+// invalid UTF-8, which a Fuzz.forAll generator can make: such a one is written `\u{XXXX}`
+// (invalid UTF-8 as U+FFFD), readable but no Alder, so the literal is not Pasteable.
 func TextLit(s string) string {
 	var b strings.Builder
 	b.WriteByte('"')
-	for _, r := range s {
+	for i, r := range s {
+		if r == utf8.RuneError {
+			if _, n := utf8.DecodeRuneInString(s[i:]); n == 1 {
+				b.WriteString(noLiteral + "FFFD}")
+				continue
+			}
+		}
+		if !unicode.IsPrint(r) && r != '\n' && r != '\r' && r != '\t' {
+			fmt.Fprintf(&b, "%s%X}", noLiteral, r)
+			continue
+		}
 		switch r {
 		case '"':
 			b.WriteString(`\"`)
@@ -42,6 +58,15 @@ func TextLit(s string) string {
 	return b.String()
 }
 
+// noLiteral starts how TextLit writes a code point Alder has no literal for. No Alder literal
+// these printers make holds it: in TextLit's output every other `\` is followed by one of
+// `"\{nrt`.
+const noLiteral = `\u{`
+
+// Pasteable reports whether lit, made by these printers, is Alder source: false when a Text in
+// it has a code point Alder cannot write (TextLit).
+func Pasteable(lit string) bool { return !strings.Contains(lit, noLiteral) }
+
 // IntLit is n as an Alder Int literal. MinInt64 has none (its magnitude is no Int), so it is
 // the expression `(-9223372036854775807 - 1)`.
 func IntLit(n int64) string {
@@ -53,8 +78,19 @@ func IntLit(n int64) string {
 
 // FloatLit is f as an Alder Float literal: digits, '.', digits, never an exponent (the lexer
 // reads none), the shortest such text that reads back as f. Negative zero is -0.0 (the parser
-// and gen keep its sign). f is finite: Fuzz never draws NaN or Inf.
+// and gen keep its sign). Fuzz never draws NaN or an infinity, but a Fuzz.forAll generator can
+// make one (`Fuzz.map (\x -> x / 0.0) Fuzz.float`); having no literal, it is the parenthesised
+// division that evaluates to it, `(1.0 / 0.0)`, `(-1.0 / 0.0)` or `(0.0 / 0.0)` (Float
+// division by zero is infinity or NaN, book chapter 4).
 func FloatLit(f float64) string {
+	switch {
+	case math.IsNaN(f):
+		return "(0.0 / 0.0)"
+	case math.IsInf(f, 1):
+		return "(1.0 / 0.0)"
+	case math.IsInf(f, -1):
+		return "(-1.0 / 0.0)"
+	}
 	s := strconv.FormatFloat(f, 'f', -1, 64)
 	if !strings.Contains(s, ".") {
 		s += ".0"
@@ -91,11 +127,11 @@ func BytesLit(b []byte) string { return Apply("Text.toBytes", TextLit(string(b))
 // atom: a string, list, record or parenthesised literal, or a single word that is no negative
 // number.
 func Apply(fn, arg string) string {
-	return fn + " " + atom(arg)
+	return fn + " " + Atom(arg)
 }
 
-// atom is lit, parenthesised unless it already reads as one argument.
-func atom(lit string) string {
+// Atom is lit, parenthesised unless it already reads as one argument.
+func Atom(lit string) string {
 	if lit == "" {
 		return "()"
 	}
@@ -160,4 +196,25 @@ func RecordLit(names, vals []string) string {
 		parts[i] = n + ": " + vals[i]
 	}
 	return "{ " + strings.Join(parts, ", ") + " }"
+}
+
+// Quals is how the module a literal is pasted into writes the constructors and brands of each
+// module (by path): "" for its own, else the module's canonical qualifier there. A module
+// absent from it is written by its path; a nil Quals writes every name bare.
+type Quals map[string]string
+
+// Name is the constructor or brand name of module as the module q is for writes it: `Leaf`,
+// `Todo.Leaf`.
+func (q Quals) Name(module, name string) string {
+	if q == nil {
+		return name
+	}
+	qual, ok := q[module]
+	switch {
+	case !ok:
+		return module + "." + name
+	case qual == "":
+		return name
+	}
+	return qual + "." + name
 }

@@ -17,11 +17,15 @@ func test__Report__1() *rtesting.Property {
 			return []any{fuzz__Todo(c, fuzz.Depth), fuzz__List_Todo_Slug(c, fuzz.Depth), fuzz__Maybe_Text_Email(c, fuzz.Depth)}
 		},
 		Lit: func(vs []any) []string {
-			return []string{lit__Todo(vs[0].(Todo__Todo)), lit__List_Todo_Slug(vs[1].([]string)), lit__Maybe_Text_Email(vs[2].(rt.Maybe[string]))}
+			q := fuzz.Quals{"Report": "", "Todo": "Todo"}
+			return []string{lit__Todo(q, vs[0].(Todo__Todo)), lit__List_Todo_Slug(q, vs[1].([]string)), lit__Maybe_Text_Email(q, vs[2].(rt.Maybe[string]))}
 		},
 		Pure: func(_vs1 []any) bool {
 			t := _vs1[0].(Todo__Todo)
 			return std.ListLength(t.Tags) >= 0
+		},
+		Case: func(lits []string) string {
+			return rtesting.Paste("test \"the same types from another module (case)\" = List.length \x00a0\x00.tags >= 0", lits)
 		},
 	}
 }

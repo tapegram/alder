@@ -23,6 +23,9 @@ func (p *printer) expr(e syntax.Expr) Doc {
 	case *syntax.UnitLit:
 		return Text("()")
 	case *syntax.Var:
+		if s, ok := p.holes[e]; ok {
+			return Text(s)
+		}
 		return Text(qual(e.Module, e.Name))
 	case *syntax.CtorRef:
 		return Text(qual(e.Module, e.Name))

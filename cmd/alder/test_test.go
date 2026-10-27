@@ -124,6 +124,75 @@ func TestTest_Property(t *testing.T) {
 	}
 }
 
+// --fuzz and --seed reach the test program: a passing property runs, a failing one reports the
+// seed given and the paste-ready case; bad values are refused before the build; --help lists
+// both and says --seed does not override saved failures.
+func TestTest_PropertyFlags(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := tempTodos(t, "Table/Todo.alder", "\ntest \"same\" = \\(n : Int) -> n == n\n\ntest \"rev\" = \\xs -> List.reverse xs == xs\n")
+	if code, stdout, stderr := runTest(t, dir, "--fuzz", "5", "--seed", "3", "-run", "same"); code != 0 || !strings.Contains(stdout, "ok   Table.Todo \"same\"\n") {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	code, stdout, stderr := runTest(t, dir, "--fuzz=5", "--seed=3", "-run", "rev")
+	if code != 1 || !strings.Contains(stdout, " of 5, shrunk in ") || !strings.Contains(stdout, "  seed: 3\n  to keep this case:\n    test \"rev (case)\" = List.reverse [") {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	for _, bad := range [][]string{{"--fuzz", "0"}, {"--fuzz", "x"}, {"--seed", "-1"}} {
+		if code, _, stderr := runTest(t, append(bad, dir)...); code != 2 || !strings.Contains(stderr, "bad "+bad[0]) {
+			t.Errorf("%v: exit %d %s", bad, code, stderr)
+		}
+	}
+	var help bytes.Buffer
+	if !helpTo([]string{"test", "--help"}, &help) {
+		t.Fatal("no help")
+	}
+	for _, want := range []string{"[--fuzz N]", "[--seed S]", "--seed does not override saved failures"} {
+		if !strings.Contains(help.String(), want) {
+			t.Errorf("help lacks %q:\n%s", want, help.String())
+		}
+	}
+}
+
+// A failing property's shrunk case is saved under the app's build directory, build/<app>/fuzz
+// (which the scaffold's .gitignore keeps out of git): one file for the module's property.
+func TestTest_PropertyDB(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := tempTodos(t, "Table/Todo.alder", "\ntest \"rev\" = \\xs -> List.reverse xs == xs\n")
+	if code, stdout, stderr := runTest(t, dir, "-run", "rev"); code != 1 {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	es, err := os.ReadDir(filepath.Join(testBuildDir(t), "todos", "fuzz", "Table.Todo"))
+	if err != nil || len(es) != 1 {
+		t.Fatalf("saved failures: %v %v", es, err)
+	}
+	if got := filepath.Join(appBuildDir("", dir), "fuzz"); got != filepath.Join("build", "todos", "fuzz") {
+		t.Errorf("the saved failures of an app without --build-dir are in %s", got)
+	}
+	ignore, err := os.ReadFile("../../internal/scaffold/files/.gitignore")
+	if err != nil || !regexp.MustCompile(`(?m)^/?build/$`).Match(ignore) {
+		t.Errorf("the scaffold does not ignore build/: %v\n%s", err, ignore)
+	}
+}
+
+// A property that crashes the test program (a stack overflow) fails with the crash and the
+// seed and run that reproduce it, not its arguments.
+func TestTest_PropertyFatalCrash(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := tempTodos(t, "Table/Todo.alder", "\nloop : Int -> Int\nloop n = loop (n + 1) + 1\n\ntest \"deep\" = \\(n : Int) -> loop n == 1\n")
+	code, stdout, stderr := runTest(t, dir, "-run", "deep", "--seed", "11")
+	if code != 1 || !strings.HasPrefix(stdout, "FAIL Table.Todo \"deep\"\n  error: fatal error: stack overflow\n") ||
+		!strings.Contains(stdout, "\n  seed: 11\n  run: 1\n0 passed, 1 failed\n") || strings.Contains(stdout, "  n: ") {
+		t.Fatalf("exit %d\nstdout %q\nstderr %q", code, stdout, stderr)
+	}
+	code, stdout, _ = runTest(t, dir, "-run", "deep", "--seed", "11", "--json")
+	if code != 1 || !strings.Contains(stdout, `"property":{"runs":0,"seed":11,"run":1,`) {
+		t.Errorf("--json: exit %d stdout %q", code, stdout)
+	}
+}
+
 func TestTest_JSON(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)

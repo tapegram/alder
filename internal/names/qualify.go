@@ -130,6 +130,31 @@ func (p *Program) Qualify(module string) func(string) string {
 	return func(m string) string { return q[m] }
 }
 
+// QualifierFor is the qualifier module writes path's names with: its import's canonical
+// qualifier, or, when module does not import path, the canonical qualifier path would have
+// beside module's imports (path itself when it would have none), as the resolver's hints name
+// it. A stdlib module is its own name.
+func (p *Program) QualifierFor(module, path string) string {
+	m := p.Modules[module]
+	if m == nil || p.isStd(path) {
+		return path
+	}
+	if q := p.qualifiers(m)[path]; q != "" {
+		return q
+	}
+	paths := []string{path}
+	for _, im := range m.Imports {
+		if !p.isStd(im.Module) {
+			paths = append(paths, im.Module)
+		}
+	}
+	quals, _ := CanonicalQualifiers(m.Name, paths, Taken(m, p.isStd))
+	if q := quals[path]; q != "" {
+		return q
+	}
+	return path
+}
+
 // qualifiers computes module m's import qualifiers (Qualifiers).
 func (p *Program) qualifiers(m *syntax.Module) map[string]string {
 	var paths []string

@@ -175,34 +175,34 @@ func fuzz__Maybe_Text_Email(c *fuzz.Choices, depth int) rt.Maybe[string] {
 	return fuzz.Maybe(func(c *fuzz.Choices) string { return fuzz.Email(c) })(c)
 }
 
-// lit__Note prints a Note as an Alder literal.
-func lit__Note(v Note__Note) string {
+// lit__Note prints a Note as an Alder literal, its constructors and brands named through q.
+func lit__Note(q fuzz.Quals, v Note__Note) string {
 	return fuzz.RecordLit([]string{"id", "body"}, []string{
-		lit__Note_NoteId(v.Id),
+		lit__Note_NoteId(q, v.Id),
 		fuzz.TextLit(v.Body),
 	})
 }
 
-// lit__Note_NoteId prints a Note.NoteId as an Alder literal.
-func lit__Note_NoteId(v string) string {
-	return fuzz.Apply("NoteId", fuzz.TextLit(v))
+// lit__Note_NoteId prints a Note.NoteId as an Alder literal, its constructors and brands named through q.
+func lit__Note_NoteId(q fuzz.Quals, v string) string {
+	return fuzz.Apply(q.Name("Note", "NoteId"), fuzz.TextLit(v))
 }
 
-// lit__Note_Pick_Text prints a Note.Pick Text as an Alder literal.
-func lit__Note_Pick_Text(v Note__Pick[string]) string {
+// lit__Note_Pick_Text prints a Note.Pick Text as an Alder literal, its constructors and brands named through q.
+func lit__Note_Pick_Text(q fuzz.Quals, v Note__Pick[string]) string {
 	switch v.Tag {
 	case is__Note__Pick__Neither:
-		return "Neither"
+		return q.Name("Note", "Neither")
 	case is__Note__Pick__One:
-		return fuzz.Apply("One", fuzz.TextLit(v.One.Value))
+		return fuzz.Apply(q.Name("Note", "One"), fuzz.TextLit(v.One.Value))
 	case is__Note__Pick__Two:
-		return fuzz.Apply("Two", lit__Rec_first_Text_second_Text(*v.Two))
+		return fuzz.Apply(q.Name("Note", "Two"), lit__Rec_first_Text_second_Text(q, *v.Two))
 	}
 	panic("unreachable")
 }
 
-// lit__Rec_first_Text_second_Text prints a { first: Text, second: Text } as an Alder literal.
-func lit__Rec_first_Text_second_Text(v struct {
+// lit__Rec_first_Text_second_Text prints a { first: Text, second: Text } as an Alder literal, its constructors and brands named through q.
+func lit__Rec_first_Text_second_Text(q fuzz.Quals, v struct {
 	First  string
 	Second string
 }) string {
@@ -212,21 +212,21 @@ func lit__Rec_first_Text_second_Text(v struct {
 	})
 }
 
-// lit__Note_Pick_Int prints a Note.Pick Int as an Alder literal.
-func lit__Note_Pick_Int(v Note__Pick[int64]) string {
+// lit__Note_Pick_Int prints a Note.Pick Int as an Alder literal, its constructors and brands named through q.
+func lit__Note_Pick_Int(q fuzz.Quals, v Note__Pick[int64]) string {
 	switch v.Tag {
 	case is__Note__Pick__Neither:
-		return "Neither"
+		return q.Name("Note", "Neither")
 	case is__Note__Pick__One:
-		return fuzz.Apply("One", fuzz.IntLit(v.One.Value))
+		return fuzz.Apply(q.Name("Note", "One"), fuzz.IntLit(v.One.Value))
 	case is__Note__Pick__Two:
-		return fuzz.Apply("Two", lit__Rec_first_Int_second_Int(*v.Two))
+		return fuzz.Apply(q.Name("Note", "Two"), lit__Rec_first_Int_second_Int(q, *v.Two))
 	}
 	panic("unreachable")
 }
 
-// lit__Rec_first_Int_second_Int prints a { first: Int, second: Int } as an Alder literal.
-func lit__Rec_first_Int_second_Int(v struct {
+// lit__Rec_first_Int_second_Int prints a { first: Int, second: Int } as an Alder literal, its constructors and brands named through q.
+func lit__Rec_first_Int_second_Int(q fuzz.Quals, v struct {
 	First  int64
 	Second int64
 }) string {
@@ -236,115 +236,115 @@ func lit__Rec_first_Int_second_Int(v struct {
 	})
 }
 
-// lit__Todo prints a Todo as an Alder literal.
-func lit__Todo(v Todo__Todo) string {
+// lit__Todo prints a Todo as an Alder literal, its constructors and brands named through q.
+func lit__Todo(q fuzz.Quals, v Todo__Todo) string {
 	return fuzz.RecordLit([]string{"title", "due", "tags"}, []string{
 		fuzz.Apply("Text.NonEmpty", fuzz.TextLit(v.Title)),
-		lit__Maybe_Date(v.Due),
-		lit__List_Text(v.Tags),
+		lit__Maybe_Date(q, v.Due),
+		lit__List_Text(q, v.Tags),
 	})
 }
 
-// lit__Maybe_Date prints a Maybe Date as an Alder literal.
-func lit__Maybe_Date(v rt.Maybe[rt.Date]) string {
+// lit__Maybe_Date prints a Maybe Date as an Alder literal, its constructors and brands named through q.
+func lit__Maybe_Date(q fuzz.Quals, v rt.Maybe[rt.Date]) string {
 	return fuzz.MaybeLit(v, func(x rt.Date) string { return fuzz.DateLit(fuzz.DaysOf(x)) })
 }
 
-// lit__List_Text prints a List Text as an Alder literal.
-func lit__List_Text(v []string) string {
+// lit__List_Text prints a List Text as an Alder literal, its constructors and brands named through q.
+func lit__List_Text(q fuzz.Quals, v []string) string {
 	return fuzz.ListLit(v, fuzz.TextLit)
 }
 
-// lit__Todo_Tree prints a Todo.Tree as an Alder literal.
-func lit__Todo_Tree(v Todo__Tree) string {
+// lit__Todo_Tree prints a Todo.Tree as an Alder literal, its constructors and brands named through q.
+func lit__Todo_Tree(q fuzz.Quals, v Todo__Tree) string {
 	switch v.Tag {
 	case is__Todo__Tree__Leaf:
-		return "Leaf"
+		return q.Name("Todo", "Leaf")
 	case is__Todo__Tree__Node:
-		return fuzz.Apply("Node", lit__Rec_left_Todo_Tree_value_Int_right_Todo_Tree(*v.Node))
+		return fuzz.Apply(q.Name("Todo", "Node"), lit__Rec_left_Todo_Tree_value_Int_right_Todo_Tree(q, *v.Node))
 	}
 	panic("unreachable")
 }
 
-// lit__Rec_left_Todo_Tree_value_Int_right_Todo_Tree prints a { left: Todo.Tree, value: Int, right: Todo.Tree } as an Alder literal.
-func lit__Rec_left_Todo_Tree_value_Int_right_Todo_Tree(v struct {
+// lit__Rec_left_Todo_Tree_value_Int_right_Todo_Tree prints a { left: Todo.Tree, value: Int, right: Todo.Tree } as an Alder literal, its constructors and brands named through q.
+func lit__Rec_left_Todo_Tree_value_Int_right_Todo_Tree(q fuzz.Quals, v struct {
 	Left  Todo__Tree
 	Value int64
 	Right Todo__Tree
 }) string {
 	return fuzz.RecordLit([]string{"left", "value", "right"}, []string{
-		lit__Todo_Tree(v.Left),
+		lit__Todo_Tree(q, v.Left),
 		fuzz.IntLit(v.Value),
-		lit__Todo_Tree(v.Right),
+		lit__Todo_Tree(q, v.Right),
 	})
 }
 
-// lit__Todo_Slug prints a Todo.Slug as an Alder literal.
-func lit__Todo_Slug(v string) string {
-	return fuzz.Apply("Slug", fuzz.TextLit(v))
+// lit__Todo_Slug prints a Todo.Slug as an Alder literal, its constructors and brands named through q.
+func lit__Todo_Slug(q fuzz.Quals, v string) string {
+	return fuzz.Apply(q.Name("Todo", "Slug"), fuzz.TextLit(v))
 }
 
-// lit__List_Int prints a List Int as an Alder literal.
-func lit__List_Int(v []int64) string {
+// lit__List_Int prints a List Int as an Alder literal, its constructors and brands named through q.
+func lit__List_Int(q fuzz.Quals, v []int64) string {
 	return fuzz.ListLit(v, fuzz.IntLit)
 }
 
-// lit__Todo_Shape prints a Todo.Shape as an Alder literal.
-func lit__Todo_Shape(v Todo__Shape) string {
+// lit__Todo_Shape prints a Todo.Shape as an Alder literal, its constructors and brands named through q.
+func lit__Todo_Shape(q fuzz.Quals, v Todo__Shape) string {
 	switch v.Tag {
 	case is__Todo__Shape__Dot:
-		return "Dot"
+		return q.Name("Todo", "Dot")
 	case is__Todo__Shape__Circle:
-		return fuzz.Apply("Circle", fuzz.FloatLit(v.Circle.Value))
+		return fuzz.Apply(q.Name("Todo", "Circle"), fuzz.FloatLit(v.Circle.Value))
 	case is__Todo__Shape__Square:
-		return fuzz.Apply("Square", lit__Rec_side_Int_Positive(*v.Square))
+		return fuzz.Apply(q.Name("Todo", "Square"), lit__Rec_side_Int_Positive(q, *v.Square))
 	}
 	panic("unreachable")
 }
 
-// lit__Rec_side_Int_Positive prints a { side: Int.Positive } as an Alder literal.
-func lit__Rec_side_Int_Positive(v struct{ Side int64 }) string {
+// lit__Rec_side_Int_Positive prints a { side: Int.Positive } as an Alder literal, its constructors and brands named through q.
+func lit__Rec_side_Int_Positive(q fuzz.Quals, v struct{ Side int64 }) string {
 	return fuzz.RecordLit([]string{"side"}, []string{
 		fuzz.Apply("Int.Positive", fuzz.IntLit(v.Side)),
 	})
 }
 
-// lit__Todo_Box_Result_Text_Time prints a Todo.Box (Result Text Time) as an Alder literal.
-func lit__Todo_Box_Result_Text_Time(v Todo__Box[rt.Result[string, time.Time]]) string {
+// lit__Todo_Box_Result_Text_Time prints a Todo.Box (Result Text Time) as an Alder literal, its constructors and brands named through q.
+func lit__Todo_Box_Result_Text_Time(q fuzz.Quals, v Todo__Box[rt.Result[string, time.Time]]) string {
 	return fuzz.RecordLit([]string{"item"}, []string{
-		lit__Result_Text_Time(v.Item),
+		lit__Result_Text_Time(q, v.Item),
 	})
 }
 
-// lit__Result_Text_Time prints a Result Text Time as an Alder literal.
-func lit__Result_Text_Time(v rt.Result[string, time.Time]) string {
+// lit__Result_Text_Time prints a Result Text Time as an Alder literal, its constructors and brands named through q.
+func lit__Result_Text_Time(q fuzz.Quals, v rt.Result[string, time.Time]) string {
 	return fuzz.ResultLit(v, fuzz.TextLit, func(x time.Time) string { return fuzz.TimeLit(x.UnixMilli()) })
 }
 
-// lit__Dict_Text_Bytes prints a Dict Text Bytes as an Alder literal.
-func lit__Dict_Text_Bytes(v rt.Dict[string, []byte]) string {
+// lit__Dict_Text_Bytes prints a Dict Text Bytes as an Alder literal, its constructors and brands named through q.
+func lit__Dict_Text_Bytes(q fuzz.Quals, v rt.Dict[string, []byte]) string {
 	return fuzz.DictLit(v, fuzz.TextLit, fuzz.BytesLit)
 }
 
-// lit__Todo_Dir prints a Todo.Dir as an Alder literal.
-func lit__Todo_Dir(v Todo__Dir) string {
+// lit__Todo_Dir prints a Todo.Dir as an Alder literal, its constructors and brands named through q.
+func lit__Todo_Dir(q fuzz.Quals, v Todo__Dir) string {
 	return fuzz.RecordLit([]string{"name", "entries"}, []string{
 		fuzz.TextLit(v.Name),
-		lit__List_Todo_Dir(v.Entries),
+		lit__List_Todo_Dir(q, v.Entries),
 	})
 }
 
-// lit__List_Todo_Dir prints a List Todo.Dir as an Alder literal.
-func lit__List_Todo_Dir(v []Todo__Dir) string {
-	return fuzz.ListLit(v, lit__Todo_Dir)
+// lit__List_Todo_Dir prints a List Todo.Dir as an Alder literal, its constructors and brands named through q.
+func lit__List_Todo_Dir(q fuzz.Quals, v []Todo__Dir) string {
+	return fuzz.ListLit(v, func(x Todo__Dir) string { return lit__Todo_Dir(q, x) })
 }
 
-// lit__List_Todo_Slug prints a List Todo.Slug as an Alder literal.
-func lit__List_Todo_Slug(v []string) string {
-	return fuzz.ListLit(v, lit__Todo_Slug)
+// lit__List_Todo_Slug prints a List Todo.Slug as an Alder literal, its constructors and brands named through q.
+func lit__List_Todo_Slug(q fuzz.Quals, v []string) string {
+	return fuzz.ListLit(v, func(x string) string { return lit__Todo_Slug(q, x) })
 }
 
-// lit__Maybe_Text_Email prints a Maybe Text.Email as an Alder literal.
-func lit__Maybe_Text_Email(v rt.Maybe[string]) string {
+// lit__Maybe_Text_Email prints a Maybe Text.Email as an Alder literal, its constructors and brands named through q.
+func lit__Maybe_Text_Email(q fuzz.Quals, v rt.Maybe[string]) string {
 	return fuzz.MaybeLit(v, func(x string) string { return fuzz.Apply("Text.Email", fuzz.TextLit(x)) })
 }

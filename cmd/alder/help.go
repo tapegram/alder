@@ -93,6 +93,9 @@ func helpTo(args []string, w io.Writer) bool {
 	}
 	if u, ok := commandUsages[cmd]; ok {
 		fmt.Fprintln(w, u)
+		if cmd == "test" {
+			fmt.Fprintln(w, testHelpNote)
+		}
 		return true
 	}
 	usageTo(w)

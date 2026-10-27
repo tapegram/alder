@@ -114,6 +114,8 @@ type printer struct {
 	// noBrace is set while a match subject is printed: there an application argument cannot
 	// start with `{`.
 	noBrace bool
+	// holes are the variables Paste writes as placeholders, with the text of each.
+	holes map[*syntax.Var]string
 }
 
 func newPrinter(src []byte) *printer {

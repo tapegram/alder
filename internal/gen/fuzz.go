@@ -2,6 +2,8 @@ package gen
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -19,9 +21,10 @@ import (
 // that draws a value from the choices (depth is the recursion budget, fuzz.Depth at the root),
 // and a literal printer
 //
-//	func lit__Tree(v Todo__Tree) string
+//	func lit__Tree(q fuzz.Quals, v Todo__Tree) string
 //
-// that prints a value as the Alder expression that builds it. Builtin types and the stdlib
+// that prints a value as the Alder expression that builds it, in the module whose qualifiers
+// q are (a constructor of another module is written `Todo.Leaf`). Builtin types and the stdlib
 // brands are drawn and printed by rt/fuzz directly. They are emitted to fuzzFile, in the order
 // first needed, in production builds too when a value of the program uses `Fuzz.any`.
 
@@ -169,13 +172,14 @@ func (g *gen) lit(t *ir.GenTree, v string) string {
 		}
 		return "fuzz.Apply(" + strconv.Quote(t.Brand) + ", " + base + ")"
 	}
-	return "lit__" + g.fuzzName(t) + "(" + v + ")"
+	return "lit__" + g.fuzzName(t) + "(q, " + v + ")"
 }
 
-// litFunc is t's printer as a function value.
+// litFunc is t's printer as a function value (for a type with a lit__ function, a closure over
+// the qualifiers q in scope).
 func (g *gen) litFunc(t *ir.GenTree) string {
 	if hasFunc(t) {
-		return "lit__" + g.fuzzName(t)
+		return "func(x " + GoType(t.Type) + ") string { return " + g.lit(t, "x") + " }"
 	}
 	if t.Kind == ir.GenPrim {
 		switch t.Prim {
@@ -308,7 +312,7 @@ func (g *gen) unionDraw(w *strings.Builder, t *ir.GenTree) {
 // litFuncDecl writes t's printer.
 func (g *gen) litFuncDecl(w *strings.Builder, t *ir.GenTree) {
 	name := "lit__" + g.fuzzName(t)
-	fmt.Fprintf(w, "// %s prints a %s as an Alder literal.\nfunc %s(v %s) string {\n", name, t.Key, name, GoType(t.Type))
+	fmt.Fprintf(w, "// %s prints a %s as an Alder literal, its constructors and brands named through q.\nfunc %s(q fuzz.Quals, v %s) string {\n", name, t.Key, name, GoType(t.Type))
 	switch t.Kind {
 	case ir.GenList:
 		fmt.Fprintf(w, "return fuzz.ListLit(v, %s)\n", g.litFunc(t.Elems[0]))
@@ -339,22 +343,42 @@ func (g *gen) litFuncDecl(w *strings.Builder, t *ir.GenTree) {
 		for i, name := range t.Names {
 			fmt.Fprintf(w, "case %s:\n", tagConst(u.Module, u.Name, name))
 			ct := ctorT(u, name)
+			qn := "q.Name(" + strconv.Quote(u.Module) + ", " + strconv.Quote(name) + ")"
 			switch {
 			case ct.Payload == nil:
-				fmt.Fprintf(w, "return %s\n", strconv.Quote(name))
+				fmt.Fprintf(w, "return %s\n", qn)
 			case wrapped(ct.Payload):
-				fmt.Fprintf(w, "return fuzz.Apply(%s, %s)\n", strconv.Quote(name), g.lit(t.Elems[i], "v."+ctorField(name)+".Value"))
+				fmt.Fprintf(w, "return fuzz.Apply(%s, %s)\n", qn, g.lit(t.Elems[i], "v."+ctorField(name)+".Value"))
 			default:
-				fmt.Fprintf(w, "return fuzz.Apply(%s, %s)\n", strconv.Quote(name), g.lit(t.Elems[i], "*v."+ctorField(name)))
+				fmt.Fprintf(w, "return fuzz.Apply(%s, %s)\n", qn, g.lit(t.Elems[i], "*v."+ctorField(name)))
 			}
 		}
 		w.WriteString("}\npanic(\"unreachable\")\n")
 	case ir.GenBrand:
-		fmt.Fprintf(w, "return fuzz.Apply(%s, %s)\n", strconv.Quote(ir.BrandName(t.Brand)), g.lit(t.Elems[0], "v"))
+		fmt.Fprintf(w, "return fuzz.Apply(q.Name(%s, %s), %s)\n", strconv.Quote(ir.BrandModule(t.Brand)), strconv.Quote(ir.BrandName(t.Brand)), g.lit(t.Elems[0], "v"))
 	default:
 		panic(fmt.Sprintf("gen: no printer function for %s", t.Key))
 	}
 	w.WriteString("}\n\n")
+}
+
+// qualsDecl declares q, the fuzz.Quals the printers of trees name constructors and brands
+// through (p.Quals: as p's module writes them), when one of them has a lit__ function to pass
+// it to; "" otherwise.
+func qualsDecl(p *ir.TestProp, trees ...*ir.GenTree) string {
+	if !slices.ContainsFunc(trees, hasFunc) {
+		return ""
+	}
+	var kv []string
+	for _, m := range slices.Sorted(maps.Keys(p.Quals)) {
+		kv = append(kv, strconv.Quote(m)+": "+strconv.Quote(p.Quals[m]))
+	}
+	return "q := fuzz.Quals{" + strings.Join(kv, ", ") + "}\n"
+}
+
+// pasteFunc is a Property.Case filling the template tmpl (ir.TestProp.Case) with the literals.
+func pasteFunc(tmpl string) string {
+	return "func(lits []string) string {\nreturn rtesting.Paste(" + strconv.Quote(tmpl) + ", lits)\n}"
 }
 
 // propTest emits property test t's function: the rtesting.Property it runs.
@@ -363,7 +387,8 @@ func (g *gen) litFuncDecl(w *strings.Builder, t *ir.GenTree) {
 //		return &rtesting.Property{
 //			Args: []rtesting.Arg{{Name: "xs", Type: "List Int", Defaulted: true}},
 //			Draw: func(c *fuzz.Choices) []any { return []any{fuzz__List_Int(c, fuzz.Depth)} },
-//			Lit:  func(vs []any) []string { return []string{lit__List_Int(vs[0].([]int64))} },
+//			Lit:  func(vs []any) []string { q := fuzz.Quals{"Todo": ""}; return []string{lit__List_Int(q, vs[0].([]int64))} },
+//			Case: func(lits []string) string { return rtesting.Paste("test \"reverse twice (case)\" = …", lits) },
 //			Pure: func(vs []any) bool { xs := vs[0].([]int64); return … },
 //		}
 //	}
@@ -390,12 +415,17 @@ func (g *gen) propTest(w *strings.Builder, t *ir.Test, p *ir.TestProp, n int) {
 		}
 		v := f.temp(s, "_p")
 		fmt.Fprintf(&b, "%s := %s(%s, %s)\n%s.Args = %s\n", v, ctor, f.code(p.ForAllGen, s), f.code(p.Fn, s), v, argList)
-		lit := "rt.Show(vs[0])"
+		lit, quals := "rt.Show(vs[0])", ""
 		if p.ForAllLit != nil {
 			g.needLit(p.ForAllLit)
 			lit = g.lit(p.ForAllLit, "vs[0].("+GoType(p.ForAllLit.Type)+")")
+			quals = qualsDecl(p, p.ForAllLit)
 		}
-		fmt.Fprintf(&b, "%s.Lit = func(vs []any) []string {\nreturn []string{%s}\n}\nreturn %s\n", v, lit, v)
+		fmt.Fprintf(&b, "%s.Lit = func(vs []any) []string {\n%sreturn []string{%s}\n}\n", v, quals, lit)
+		if p.Case != "" {
+			fmt.Fprintf(&b, "%s.Case = %s\n", v, pasteFunc(p.Case))
+		}
+		fmt.Fprintf(&b, "return %s\n", v)
 	} else {
 		var draws, lits []string
 		for i, gt := range p.Gens {
@@ -420,9 +450,13 @@ func (g *gen) propTest(w *strings.Builder, t *ir.Test, p *ir.TestProp, n int) {
 		} else {
 			f.ret(&body, lam.Body, inner)
 		}
+		paste := ""
+		if p.Case != "" {
+			paste = "Case: " + pasteFunc(p.Case) + ",\n"
+		}
 		fmt.Fprintf(&b, "return &rtesting.Property{\nArgs: %s,\nDraw: func(c *fuzz.Choices) []any {\nreturn []any{%s}\n},\n"+
-			"Lit: func(vs []any) []string {\nreturn []string{%s}\n},\n%s: func(%s []any) %s {\n%s},\n}\n",
-			argList, strings.Join(draws, ", "), strings.Join(lits, ", "), kind, vs, result, body.String())
+			"Lit: func(vs []any) []string {\n%sreturn []string{%s}\n},\n%s: func(%s []any) %s {\n%s},\n%s}\n",
+			argList, strings.Join(draws, ", "), qualsDecl(p, p.Gens...), strings.Join(lits, ", "), kind, vs, result, body.String(), paste)
 	}
 	fmt.Fprintf(w, "// %s is property test %s of module %s.\nfunc %s() *rtesting.Property {\n%s}\n\n", testFunc(t.Module, n), strconv.Quote(t.Name), t.Module,
 		testFunc(t.Module, n), b.String())

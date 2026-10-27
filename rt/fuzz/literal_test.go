@@ -100,3 +100,50 @@ func TestDateTimeLitValues(t *testing.T) {
 }
 
 func parseFloatLit(s string) (float64, error) { return strconv.ParseFloat(s, 64) }
+
+// A user's Fuzz.forAll generator may make what derived ones never do: a non-finite Float prints
+// as the Alder expression that evaluates to it (book chapter 4: `1.0 / 0.0` is infinity), and a
+// Text with a code point Alder has no literal for (a control other than \n \t \r, invalid
+// UTF-8) prints readably as `\u{…}`, which is no Alder: Pasteable says so.
+func TestLiterals_OutsideDerived(t *testing.T) {
+	for _, c := range []struct {
+		got, want string
+		ok        bool
+	}{
+		{FloatLit(math.Inf(1)), "(1.0 / 0.0)", true},
+		{FloatLit(math.Inf(-1)), "(-1.0 / 0.0)", true},
+		{FloatLit(math.NaN()), "(0.0 / 0.0)", true},
+		{Apply("Just", FloatLit(math.Inf(1))), "Just (1.0 / 0.0)", true},
+		{TextLit("a\x01b\x7f"), `"a\u{1}b\u{7F}"`, false},
+		{TextLit("\u200b"), `"\u{200B}"`, false},
+		{TextLit("x\xffy"), `"x\u{FFFD}y"`, false},
+		{ListLit([]string{"ok", "\x00"}, TextLit), `["ok", "\u{0}"]`, false},
+		{TextLit(`\u{1}`), `"\\u\{1}"`, true}, // the text itself, escaped: no marker
+		{TextLit("é\n"), `"é\n"`, true},
+	} {
+		if c.got != c.want {
+			t.Errorf("got %s, want %s", c.got, c.want)
+		}
+		if Pasteable(c.got) != c.ok {
+			t.Errorf("Pasteable(%s) = %v", c.got, !c.ok)
+		}
+	}
+}
+
+// Quals writes a constructor or brand of another module through the module's qualifier in the
+// module the literal is pasted into: its own names bare, an imported module's through its
+// canonical qualifier, any other by the qualifier the map gives (or its path).
+func TestQuals(t *testing.T) {
+	q := Quals{"Report": "", "Todo": "Todo", "Data.Colors": "Colors"}
+	for _, c := range []struct{ got, want string }{
+		{q.Name("Report", "Slug"), "Slug"},
+		{q.Name("Todo", "Leaf"), "Todo.Leaf"},
+		{q.Name("Data.Colors", "Red"), "Colors.Red"},
+		{q.Name("Other.Mod", "X"), "Other.Mod.X"},
+		{Quals(nil).Name("Todo", "Leaf"), "Leaf"},
+	} {
+		if c.got != c.want {
+			t.Errorf("got %s, want %s", c.got, c.want)
+		}
+	}
+}

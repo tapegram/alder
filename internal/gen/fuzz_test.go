@@ -11,7 +11,7 @@ import (
 func TestGen_FuzzDeriveCompiles(t *testing.T) {
 	files := emitWith(t, "../../testdata/golden/gen_fuzz", true)
 	contains(t, files["fuzz__alder.go"], "func fuzz__Todo_Tree(c *fuzz.Choices, depth int) Todo__Tree {",
-		"func lit__Todo_Tree(v Todo__Tree) string {", `panic(fuzz.Reject{What: "Slug"})`)
+		"func lit__Todo_Tree(q fuzz.Quals, v Todo__Tree) string {", `panic(fuzz.Reject{What: "Slug"})`)
 	contains(t, files["app__alder.go"], "Prop: test__Todo__1()")
 	runGo(t, files, `package app
 

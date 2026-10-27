@@ -133,6 +133,8 @@ var commandTree = []cmdSpec{
 			{Name: "-run", Value: "re", Summary: "only the tests whose name matches"},
 			{Name: "-timeout", Value: "d", Summary: "fail a test that runs longer"},
 			{Name: "--json", Summary: "one JSON object per result"},
+			{Name: "--fuzz", Value: "N", Summary: "runs per property test (default 100)"},
+			{Name: "--seed", Value: "S", Summary: "the seed of the property tests' random cases; saved failures are replayed first regardless"},
 			{Name: "--mutate", Summary: "mutation testing: list the mutants no test kills"},
 			{Name: "--min", Value: "R", Summary: "with --mutate, fail below this mutation score"},
 			buildDirFlag,

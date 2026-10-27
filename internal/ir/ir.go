@@ -1093,6 +1093,9 @@ type FuzzDerive struct {
 // ForAllGen is gen, Params the name of f's parameter ("value" when f is no lambda written
 // there), and ForAllLit the tree that prints the value (nil when its type has none: it is
 // printed with rt.Show). Types are the arguments' types as the test's module writes them.
+// Case is the template of the paste-ready plain test (pasteCase; "" for none) and Quals how
+// the test's module writes each module's constructors and brands, which the literal printers
+// spell (fuzz.Quals).
 type TestProp struct {
 	Typed
 	Params    []string
@@ -1102,6 +1105,8 @@ type TestProp struct {
 	Fn        Expr
 	ForAllGen Expr
 	ForAllLit *GenTree
+	Case      string
+	Quals     map[string]string
 }
 
 // TestEq is the `==` a test records (see Test): Left == Right, of type Bool, whose sides the

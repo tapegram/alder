@@ -859,7 +859,7 @@ func TestHelp(t *testing.T) {
 		{[]string{"fill", "-h"}, fillUsage},
 		{[]string{"edit", "--help"}, editUsage},
 		{[]string{"remove", "--help"}, removeUsage},
-		{[]string{"help", "test"}, testUsage},
+		{[]string{"help", "test"}, testUsage + "\n" + testHelpNote},
 		{[]string{"new", "--help"}, newUsage},
 	} {
 		var b bytes.Buffer

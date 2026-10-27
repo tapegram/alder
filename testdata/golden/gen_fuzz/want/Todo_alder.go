@@ -108,11 +108,15 @@ func test__Todo__1() *rtesting.Property {
 			return []any{fuzz__Todo(c, fuzz.Depth)}
 		},
 		Lit: func(vs []any) []string {
-			return []string{lit__Todo(vs[0].(Todo__Todo))}
+			q := fuzz.Quals{"Todo": ""}
+			return []string{lit__Todo(q, vs[0].(Todo__Todo))}
 		},
 		Pure: func(_vs1 []any) bool {
 			t := _vs1[0].(Todo__Todo)
 			return std.TextLength(std.TextTrim(t.Title)) > 0
+		},
+		Case: func(lits []string) string {
+			return rtesting.Paste("test \"titles are not blank (case)\" = Text.length (Text.trim \x00a0\x00.title) > 0", lits)
 		},
 	}
 }
@@ -125,11 +129,15 @@ func test__Todo__2() *rtesting.Property {
 			return []any{fuzz__Todo_Tree(c, fuzz.Depth)}
 		},
 		Lit: func(vs []any) []string {
-			return []string{lit__Todo_Tree(vs[0].(Todo__Tree))}
+			q := fuzz.Quals{"Todo": ""}
+			return []string{lit__Todo_Tree(q, vs[0].(Todo__Tree))}
 		},
 		Pure: func(_vs1 []any) bool {
 			t := _vs1[0].(Todo__Tree)
 			return Todo__size(t) >= 0
+		},
+		Case: func(lits []string) string {
+			return rtesting.Paste("test \"trees have a size (case)\" = size \x00a0\x00 >= 0", lits)
 		},
 	}
 }
@@ -142,11 +150,15 @@ func test__Todo__3() *rtesting.Property {
 			return []any{fuzz__Todo_Slug(c, fuzz.Depth)}
 		},
 		Lit: func(vs []any) []string {
-			return []string{lit__Todo_Slug(vs[0].(string))}
+			q := fuzz.Quals{"Todo": ""}
+			return []string{lit__Todo_Slug(q, vs[0].(string))}
 		},
 		Pure: func(_vs1 []any) bool {
 			s := _vs1[0].(string)
 			return std.TextLength(s) > 0
+		},
+		Case: func(lits []string) string {
+			return rtesting.Paste("test \"slugs are not empty (case)\" = Text.length \x00a0\x00 > 0", lits)
 		},
 	}
 }
@@ -159,11 +171,15 @@ func test__Todo__4() *rtesting.Property {
 			return []any{fuzz__List_Int(c, fuzz.Depth)}
 		},
 		Lit: func(vs []any) []string {
-			return []string{lit__List_Int(vs[0].([]int64))}
+			q := fuzz.Quals{"Todo": ""}
+			return []string{lit__List_Int(q, vs[0].([]int64))}
 		},
 		Pure: func(_vs1 []any) bool {
 			xs := _vs1[0].([]int64)
 			return rtesting.Eq(std.ListReverse(std.ListReverse(xs)), xs)
+		},
+		Case: func(lits []string) string {
+			return rtesting.Paste("test \"reverse twice (case)\" = List.reverse (List.reverse \x00a0\x00) == \x00p0\x00", lits)
 		},
 	}
 }
@@ -176,10 +192,14 @@ func test__Todo__5() *rtesting.Property {
 			return []any{fuzz__Todo_Shape(c, fuzz.Depth), fuzz__Todo_Box_Result_Text_Time(c, fuzz.Depth), fuzz__Dict_Text_Bytes(c, fuzz.Depth), struct{}{}, fuzz.Email(c), fuzz__Todo_Dir(c, fuzz.Depth), fuzz.Float(c), fuzz.Bool(c, 0.5)}
 		},
 		Lit: func(vs []any) []string {
-			return []string{lit__Todo_Shape(vs[0].(Todo__Shape)), lit__Todo_Box_Result_Text_Time(vs[1].(Todo__Box[rt.Result[string, time.Time]])), lit__Dict_Text_Bytes(vs[2].(rt.Dict[string, []byte])), "()", fuzz.Apply("Text.Email", fuzz.TextLit(vs[4].(string))), lit__Todo_Dir(vs[5].(Todo__Dir)), fuzz.FloatLit(vs[6].(float64)), fuzz.BoolLit(vs[7].(bool))}
+			q := fuzz.Quals{"Todo": ""}
+			return []string{lit__Todo_Shape(q, vs[0].(Todo__Shape)), lit__Todo_Box_Result_Text_Time(q, vs[1].(Todo__Box[rt.Result[string, time.Time]])), lit__Dict_Text_Bytes(q, vs[2].(rt.Dict[string, []byte])), "()", fuzz.Apply("Text.Email", fuzz.TextLit(vs[4].(string))), lit__Todo_Dir(q, vs[5].(Todo__Dir)), fuzz.FloatLit(vs[6].(float64)), fuzz.BoolLit(vs[7].(bool))}
 		},
 		Pure: func(_vs1 []any) bool {
 			return true
+		},
+		Case: func(lits []string) string {
+			return rtesting.Paste("test \"everything else (case)\" = True", lits)
 		},
 	}
 }
@@ -199,6 +219,9 @@ func test__Todo__6() *rtesting.Property {
 			m := n + 0
 			return eff.Pure(m > 0)
 		},
+		Case: func(lits []string) string {
+			return rtesting.Paste("test \"positive in a task (case)\" = {\n  let m = \x00p0\x00 + 0\n  Task.succeed (m > 0)\n}", lits)
+		},
 	}
 }
 
@@ -215,7 +238,11 @@ func test__Todo__7() *rtesting.Property {
 	})
 	_p1.Args = []rtesting.Arg{{Name: "ns", Type: "List Int"}}
 	_p1.Lit = func(vs []any) []string {
-		return []string{lit__List_Int(vs[0].([]int64))}
+		q := fuzz.Quals{"Todo": ""}
+		return []string{lit__List_Int(q, vs[0].([]int64))}
+	}
+	_p1.Case = func(lits []string) string {
+		return rtesting.Paste("test \"explicit (case)\" = List.length \x00a0\x00 >= 1", lits)
 	}
 	return _p1
 }
@@ -229,7 +256,11 @@ func test__Todo__8() *rtesting.Property {
 	})
 	_p1.Args = []rtesting.Arg{{Name: "tags", Type: "List Text"}}
 	_p1.Lit = func(vs []any) []string {
-		return []string{lit__List_Text(vs[0].([]string))}
+		q := fuzz.Quals{"Todo": ""}
+		return []string{lit__List_Text(q, vs[0].([]string))}
+	}
+	_p1.Case = func(lits []string) string {
+		return rtesting.Paste("test \"explicit with any (case)\" = List.length \x00a0\x00 >= 0", lits)
 	}
 	return _p1
 }
@@ -244,6 +275,9 @@ func test__Todo__9() *rtesting.Property {
 	_p1.Args = []rtesting.Arg{{Name: "n", Type: "Int"}}
 	_p1.Lit = func(vs []any) []string {
 		return []string{fuzz.IntLit(vs[0].(int64))}
+	}
+	_p1.Case = func(lits []string) string {
+		return rtesting.Paste("test \"explicit task (case)\" = Task.succeed (\x00p0\x00 > 2)", lits)
 	}
 	return _p1
 }

@@ -12,7 +12,7 @@
 //
 // Never mutated: test bodies, fake entries, a page's `view` (a file page's is mutated: see
 // below), components and any value whose result is
-// Html, HTML nodes inside other values, brands' `where` checks, the stdlib. A node Lower shares
+// Html, any value whose result is a Fuzzer (a generator), HTML nodes inside other values, brands' `where` checks, the stdlib. A node Lower shares
 // between several places (a record field's default filled into a literal, a match's shared
 // fallback) is mutated once, at its first occurrence; a default is mutated only as a schema
 // mutant (`default changed`). A file page's `view` returns File, not Html, so it is
@@ -145,7 +145,7 @@ func Collect(p *ir.Program) ([]Mutant, []Suppressed) {
 			}
 		}
 		for _, v := range m.Values {
-			if v.IsComponent || isHtml(v.Type) || (pages[m.Name] != nil && !pages[m.Name].File && pages[m.Name].View == v) {
+			if v.IsComponent || isHtml(v.Type) || isFuzzer(v.Type) || (pages[m.Name] != nil && !pages[m.Name].File && pages[m.Name].View == v) {
 				continue
 			}
 			c.decl = v.Name
@@ -1158,7 +1158,14 @@ func isText(t types.Type) bool {
 
 // isHtml reports whether a value's final result type contains Html anywhere (`Html m`,
 // `List (Html m)`, a record with an Html field, …): such a value is view code.
-func isHtml(t types.Type) bool {
+func isHtml(t types.Type) bool { return resultHas(t, "Html") }
+
+// isFuzzer reports whether a value's final result type contains a Fuzzer (`Fuzz.Fuzzer a`, a
+// function returning one, …): a generator, test code wherever it is declared (spec §0a).
+func isFuzzer(t types.Type) bool { return resultHas(t, "Fuzzer") }
+
+// resultHas reports whether the final result type of t contains the type constructor con.
+func resultHas(t types.Type, con string) bool {
 	for {
 		fn, ok := t.(*types.Fun)
 		if !ok {
@@ -1166,10 +1173,10 @@ func isHtml(t types.Type) bool {
 		}
 		t = fn.Result
 	}
-	return containsHtml(t, map[types.Type]bool{})
+	return containsApp(t, con, map[types.Type]bool{})
 }
 
-func containsHtml(t types.Type, seen map[types.Type]bool) bool {
+func containsApp(t types.Type, con string, seen map[types.Type]bool) bool {
 	if t == nil || seen[t] {
 		return false
 	}
@@ -1177,7 +1184,7 @@ func containsHtml(t types.Type, seen map[types.Type]bool) bool {
 	var parts []types.Type
 	switch x := t.(type) {
 	case *types.App:
-		if x.Con == "Html" {
+		if x.Con == con {
 			return true
 		}
 		parts = x.Args
@@ -1192,7 +1199,7 @@ func containsHtml(t types.Type, seen map[types.Type]bool) bool {
 		parts = append(append(parts, x.Params...), x.Result)
 	}
 	for _, p := range parts {
-		if containsHtml(p, seen) {
+		if containsApp(p, con, seen) {
 			return true
 		}
 	}
