@@ -129,6 +129,24 @@ func TestScratchVetsOncePerServer(t *testing.T) {
 	}
 }
 
+// TestScratchVetsUntilARunBuilt: a run that did not run (a parse error, app errors) has not
+// vetted, so the next run vets too; only a run that ran lets later ones skip it.
+func TestScratchVetsUntilARunBuilt(t *testing.T) {
+	calls := fakeScratch(t, func(k int, f scratch.File) scratch.FileResult {
+		return scratch.FileResult{Ran: k > 1, Watches: []scratch.WatchResult{{Line: 1, End: 1, Expr: f.Watches[0].Expr, Value: strconv.Itoa(k)}}}
+	})
+	c := start(t, copyExample(t, "todos"))
+	c.open("scratch.alder", "> 1\n")
+	c.scratchNote()
+	c.save("scratch.alder")
+	c.scratchNote()
+	c.open("other.scratch.alder", "> 2\n")
+	c.scratchNote()
+	if got, want := calls.vets(), []bool{false, false, true}; len(got) != 3 || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+		t.Fatalf("NoVet per call %v, want %v", got, want)
+	}
+}
+
 // TestScratchDiagnosticsPositioned: the scratch file's publish holds its own diagnostics and a
 // warning (W0007) at 1:1 for the app's errors, never the app's diagnostics themselves; the
 // warning is the one place the app's errors are said, so alder/scratch carries no note for them.

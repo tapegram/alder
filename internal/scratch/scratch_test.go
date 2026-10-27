@@ -327,6 +327,11 @@ func TestCompileCheckedWith_Stripped(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, s := range info.Settings {
+		if s.Key == "-trimpath" && s.Value == "true" {
+			t.Skip("cmd/go omits -ldflags from build info under -trimpath (go.dev/issue/52372)")
+		}
+	}
+	for _, s := range info.Settings {
 		if s.Key == "-ldflags" {
 			if s.Value != "-s -w" {
 				t.Errorf("-ldflags = %q", s.Value)

@@ -56,8 +56,10 @@ Findings that shape the design:
 
 ### 1. Eval latency (alder)
 
-**Vet once per session, not per run** (author's call, the REPL's existing policy: `repl.go` vets the
-first build and the first after a reload, `NoVet` otherwise). Callers pass it as
+**Vet once per session, not per run** (author's call). The REPL vets its first build and again after
+each `:reload`; the editor vets its first run that builds and does not re-vet after an app-file
+change (app code is vetted by `alder build`/`alder run`, and re-vetting would add ~1.1 s to the
+first eval after every app save). The flag is set only after a run that built and ran. Callers pass it as
 `FileOptions.Build.NoVet` (`Build` is already a `scratch.Options`, and `RunFile` copies it through).
 `CompileCheckedWith` already vets after a failed build when `NoVet` is set, so a build failure is
 still explained by vet's message.

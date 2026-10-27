@@ -32,7 +32,7 @@ type scratchRuns struct {
 	// sources are the stamps of the watched files (watch.Snapshot) when the open scratch
 	// documents were last rerun for a change to them; nil before the first such rerun.
 	sources map[string]watch.Stamp
-	vetted  bool // a scratch run has built with vet: later runs skip it (NoVet)
+	vetted  bool // a scratch run has built (vetted) and run: later runs skip vet (NoVet); until then every run vets
 }
 
 // scratchRun is one run of a scratch document.
@@ -172,13 +172,17 @@ func (s *server) scratchOnce(ctx context.Context, rel string, seq uint64) {
 		s.notify("alder/scratch", p)
 	}
 	s.scratch.mu.Lock()
-	noVet := s.scratch.vetted
-	s.scratch.vetted = true
+	noVet := s.scratch.vetted // a concurrent first run of another document may vet too: harmless
 	s.scratch.mu.Unlock()
 	r := runScratchFile(ctx, s.rootReal, f, scratch.FileOptions{
 		Build: scratch.Options{NoVet: noVet}, Out: s.scratchOut(rel), Parsed: parsed,
 		OnTypes: func(r scratch.FileResult) { send("types", r) },
 	})
+	if ctx.Err() == nil && r.Ran {
+		s.scratch.mu.Lock()
+		s.scratch.vetted = true
+		s.scratch.mu.Unlock()
+	}
 	send("values", r)
 }
 

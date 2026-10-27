@@ -447,18 +447,25 @@ func TestScratchFileAbsResolvesSymlinks(t *testing.T) {
 // stubScratchFile replaces runScratchFile with a stub recording each run's Build.NoVet.
 func stubScratchFile(t *testing.T) func() []bool {
 	t.Helper()
+	return stubScratchFileRan(t, func(int) bool { return true })
+}
+
+// stubScratchFileRan is stubScratchFile with the k-th call (from 1) reporting Ran as ran(k).
+func stubScratchFileRan(t *testing.T, ran func(k int) bool) func() []bool {
+	t.Helper()
 	var mu sync.Mutex
 	var calls []bool
 	real := runScratchFile
 	runScratchFile = func(_ context.Context, _ string, f scratch.File, o scratch.FileOptions) scratch.FileResult {
 		mu.Lock()
 		calls = append(calls, o.Build.NoVet)
+		k := len(calls)
 		mu.Unlock()
 		r := scratch.FileResult{Watches: []scratch.WatchResult{}}
 		for _, w := range f.Watches {
 			r.Watches = append(r.Watches, scratch.WatchResult{Line: w.Line, End: w.Line, Expr: w.Expr, Value: "1"})
 		}
-		r.Ran = true
+		r.Ran = ran(k)
 		return r
 	}
 	t.Cleanup(func() { runScratchFile = real })
@@ -486,6 +493,29 @@ func TestScratchWatchVetsFirstRunOnly(t *testing.T) {
 	w.stop()
 	if got := calls(); len(got) < 2 || got[0] || !got[1] {
 		t.Fatalf("NoVet per run = %v, want [false true]", got)
+	}
+}
+
+// A first run that did not run (a parse error, app errors) has not vetted: the next one vets too.
+func TestScratchWatchVetsUntilARunBuilt(t *testing.T) {
+	calls := stubScratchFileRan(t, func(k int) bool { return k > 1 })
+	w := startScratchWatch(t, "> 1\n")
+	waitCalls := func(n int) {
+		t.Helper()
+		for deadline := time.Now().Add(90 * time.Second); len(calls()) < n; time.Sleep(10 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("want %d runs, got %v", n, calls())
+			}
+		}
+	}
+	waitCalls(1)
+	w.edit("> 2\n")
+	waitCalls(2)
+	w.edit("> 3\n")
+	waitCalls(3)
+	w.stop()
+	if got := calls(); len(got) < 3 || got[0] || got[1] || !got[2] {
+		t.Fatalf("NoVet per run = %v, want [false false true]", got)
 	}
 }
 

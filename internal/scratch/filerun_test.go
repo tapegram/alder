@@ -426,7 +426,13 @@ func TestRunFileNoFormat(t *testing.T) {
 	if r.Err != nil || !r.Ran {
 		t.Fatalf("err %v, ran %v", r.Err, r.Ran)
 	}
-	files, _ := filepath.Glob(filepath.Join(out, "*_alder.go"))
+	files, err := filepath.Glob(filepath.Join(out, "*_alder.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) == 0 {
+		t.Fatalf("no module files under %s", out)
+	}
 	unformatted := false
 	for _, f := range files {
 		src, err := os.ReadFile(f)

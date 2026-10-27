@@ -51,7 +51,7 @@ const scratchTruncatedLine = "  … (truncated at 64 KB)"
 // the app's watched files (polled as `alder run` does), a run in progress is cancelled by a
 // change, a failed run (a file that no longer parses, one that is gone) is reported and the
 // watching goes on, and Ctrl-C exits 0. With --watch --json each run is one compact JSON line.
-// Watch reruns skip `go vet`; a build that fails is still vetted to explain it.
+// Watch reruns skip `go vet` after the first run that built; a build that fails is still vetted to explain it.
 func runScratchTo(args []string, stdout, stderr io.Writer) int {
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -176,6 +176,7 @@ func scratchWatch(ctx context.Context, interval time.Duration, a scratchRunArgs,
 	}()
 
 	first := true
+	vetted := false // a run has built (vetted) and run: later runs skip vet
 	for {
 		res := fresh()
 		runCtx, cancel := context.WithCancel(ctx)
@@ -187,7 +188,12 @@ func scratchWatch(ctx context.Context, interval time.Duration, a scratchRunArgs,
 		first = false
 		go func() {
 			defer close(done)
-			defer func() { finished = runCtx.Err() == nil }()
+			defer func() {
+				finished = runCtx.Err() == nil
+				if finished && res.Ran {
+					vetted = true
+				}
+			}()
 			defer func() {
 				if r := recover(); r != nil {
 					failf(2, "alder scratch: internal error: %v", r)
@@ -212,7 +218,7 @@ func scratchWatch(ctx context.Context, interval time.Duration, a scratchRunArgs,
 			}
 			ra := a
 			ra.text = text
-			ra.noVet = reread
+			ra.noVet = vetted
 			scratchRun(runCtx, ra, res, failf)
 		}()
 		select {
@@ -323,8 +329,9 @@ func scratchRun(ctx context.Context, a scratchRunArgs, res *scratchResult, failf
 		failed = true
 	}
 
+	res.Ran = r.Ran
 	if a.jsonOut {
-		res.Watches, res.Ran, res.Note = r.Watches, r.Ran, r.Note
+		res.Watches, res.Note = r.Watches, r.Note
 		if res.Watches == nil {
 			res.Watches = []scratch.WatchResult{}
 		}
