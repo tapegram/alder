@@ -83,6 +83,14 @@ func (mc *modCtx) customElement(x *syntax.Element, m types.Type, env *env, eff e
 // contain: a control inside a control is invalid HTML, and both would answer the click.
 var interactiveTags = map[string]bool{"button": true, "a": true, "input": true, "select": true, "textarea": true}
 
+// AnchorAttrs are the attributes of an `<al-button href>` that belong to the `<a>` it renders:
+// the lowering moves them onto it, next to `href`, where the browser and the Datastar boost read
+// them. Without `href` there is no link for them to describe (alButton).
+var AnchorAttrs = map[string]bool{
+	"data-alder-reload": true, "target": true, "rel": true, "download": true,
+	"hreflang": true, "referrerpolicy": true, "ping": true,
+}
+
 // alButton checks the built-in `<al-button>` x, whose children are already checked, and reports
 // whether the renderer may complete it. Given `click`, `type` or `href`, it renders its own
 // `<button>` or `<a>` (rendered), so it takes `href` or `click`, not both, and its children,
@@ -94,6 +102,13 @@ func (mc *modCtx) alButton(x *syntax.Element) bool {
 	if hasHTMLAttr(x, "href") && hasHTMLAttr(x, "click") {
 		c.errorf(diag.CustomElement, x.Span, "`<%s>` takes `href` or `click`, not both", x.Tag)
 		return false
+	}
+	if !hasHTMLAttr(x, "href") {
+		for _, a := range x.Attrs {
+			if AnchorAttrs[a.Name] {
+				c.errorf(diag.CustomElement, a.Span, "`<%s>` without `href` renders no link for `%s`; put `%s` on the `<a>` you write inside, or use `href`", x.Tag, a.Name, a.Name)
+			}
+		}
 	}
 	attr, own := "", "button"
 	switch {
@@ -210,7 +225,8 @@ func (mc *modCtx) wrappedInput(x *syntax.Element, el *elements.Element, kind str
 
 // customAttr checks attribute a of custom element x (entry el): declared by the manifest (a
 // boolean one bare or `{Bool}`, any other Text as usual), or on the escape list (checked as on
-// any element); anything else is E0028.
+// any element), or one of an `<al-button>`'s AnchorAttrs (alButton says when it has no link to
+// take them); anything else is E0028.
 func (mc *modCtx) customAttr(x *syntax.Element, el *elements.Element, a *syntax.HtmlAttr, m types.Type, env *env, eff effect) {
 	c := mc.c
 	if a.Name == "submit" { // a custom element is not a form: the control would be dead
@@ -241,7 +257,7 @@ func (mc *modCtx) customAttr(x *syntax.Element, el *elements.Element, a *syntax.
 		}
 		return
 	}
-	if elements.Escaped(a.Name) || (strings.HasPrefix(a.Name, "on") && len(a.Name) > 2) {
+	if elements.Escaped(a.Name) || (x.Tag == "al-button" && AnchorAttrs[a.Name]) || (strings.HasPrefix(a.Name, "on") && len(a.Name) > 2) {
 		mc.attribute(a, m, env, eff) // `onclick` gets its own message there
 		return
 	}

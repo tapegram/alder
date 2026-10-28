@@ -398,6 +398,35 @@ func contains(t *testing.T, src []byte, wants ...string) {
 	}
 }
 
+// An `<al-button href>` writes the attributes that describe its link on the `<a>` it renders,
+// next to `href`: the author's `data-alder-reload` (the `Edit` and disabled buttons) and the one
+// the compiler adds for a link to a file page (`Export`). The `<al-button>` itself keeps only the
+// rest, so no `data-alder-reload` is written on it.
+func TestGen_AlButtonAnchorAttrs(t *testing.T) {
+	files := emit(t, "../../testdata/corpus/al-button-anchor-attrs-ok")
+	src := string(files["Index_alder.go"])
+	if src == "" {
+		t.Fatalf("no Index_alder.go among %v", mapsKeys(files))
+	}
+	const reload = `html.A("data-alder-reload", "true")`
+	// Edit, Off, Both and Bare write their own; Export gets the compiler's. A link that has
+	// its own is not given a second one, on an `<a>` or an `<al-button>`.
+	if n := strings.Count(src, reload); n != 5 {
+		t.Errorf("%d %s, want 5 (Edit, Off, Export, Both, Bare):\n%s", n, reload, src)
+	}
+	if strings.Contains(src, reload+", "+reload) {
+		t.Errorf("a link has data-alder-reload twice:\n%s", src)
+	}
+	if n := strings.Count(src, `html.M("target", model.T)`); n != 2 {
+		t.Errorf("%d html.M(\"target\", model.T), want 2 (both branches of the disabled `if`):\n%s", n, src)
+	}
+	contains(t, []byte(src),
+		`html.El("a", []html.Attr{html.A("href", rt.PageURL(`,
+		`html.A("target", "_blank"), html.A("rel", "noopener"), `+reload+`, html.A("download", "a.txt")`,
+		`html.El("a", []html.Attr{html.A("aria-disabled", "true"), html.A("target", "_blank"), `+reload+`}`,
+	)
+}
+
 // A constructor's anonymous record payload gets its own named payload struct, and a non-record
 // payload is wrapped as { Value T }; generic unions carry their parameters into both.
 func TestGen_UnionAnonymousPayload(t *testing.T) {

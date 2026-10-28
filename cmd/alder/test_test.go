@@ -472,6 +472,23 @@ func TestTest_FilePages(t *testing.T) {
 	}
 }
 
+// An `<al-button href>` puts the attributes that describe its link on the `<a>` it renders:
+// `Test.has "#edit a[data-alder-reload]"` finds it there and not on the element.
+func TestTest_AlButtonAnchorAttrs(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	src, err := filepath.Abs("../../testdata/corpus/al-button-anchor-attrs-ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "al-button-anchor-attrs-ok")
+	copyDir(t, src, dir)
+	code, stdout, stderr := runTest(t, dir)
+	if code != 0 || !strings.Contains(stdout, "1 passed, 0 failed\n") {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+}
+
 func TestTest_Browser(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
