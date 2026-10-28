@@ -346,9 +346,9 @@ class BuildContextTests(unittest.TestCase):
         for kept in ("### The function form", "### Where the inputs come from", "### `Int` when the type is open",
                      "### Brands as constraints", "### `Fuzz.forAll` and shared `Fuzzer`s",
                      "### Properties over the database", "### Reading a failure",
-                     "### `--fuzz`, `--seed` and saved failures", "### Two errors"):
+                     "### `--fuzz`, `--seed` and saved failures", "### Two errors", "### Health checks"):
             self.assertIn("\n" + kept + "\n", out)
-        for dropped in ("### Keeping the case", "### Health checks",
+        for dropped in ("### Keeping the case",
                         "### How the shrinking works, and why you do not write it", "### Properties and `--mutate`"):
             self.assertNotIn(dropped, out)
 

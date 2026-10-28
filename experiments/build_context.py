@@ -79,9 +79,9 @@ KEEP_SUBSECTIONS = {
 # "Statements you add" (M12 final review): hand-written migration SQL, which an agent never
 # writes. Chapter 6's "Example: a theme switch" (a worked App message) goes too: the rules it
 # shows are stated in the section around it. Chapter 10's "12. Properties" keeps the forms, the
-# input rules, the database properties, the report and the commands an agent writing a property needs;
-# it drops the saved-case walkthrough, the health checks, the shrinker's internals and the
-# `--mutate` interplay, reading for a person.
+# input rules, the database properties, the report, the health checks (the reasons a run reports
+# failing) and the commands an agent writing a property needs; it drops the saved-case walkthrough,
+# the shrinker's internals and the `--mutate` interplay, reading for a person.
 DROP_SUBSECTIONS = {
     "06": {"Rules": ["The rules and a replicated database"],
            "App-level messages": ["Example: a theme switch"],
@@ -96,7 +96,7 @@ DROP_SUBSECTIONS = {
            "9. Testing through the browser": ["Why through the browser", "Step by step", "`Test.get` and `Test.open`: requesting a page",
                                               "More forms", "Bad input, an example", "Clicks that fail", "A selector the compiler refuses",
                                               "Comparing a page with its view", "`Test.fetch`: requesting a file"],
-           "12. Properties": ["Keeping the case", "Health checks", "How the shrinking works, and why you do not write it",
+           "12. Properties": ["Keeping the case", "How the shrinking works, and why you do not write it",
                               "Properties and `--mutate`"]},
 }
 
