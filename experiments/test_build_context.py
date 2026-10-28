@@ -306,10 +306,11 @@ class BuildContextTests(unittest.TestCase):
                      "ok   Todo \"countOpen ignores done todos\""):
             self.assertNotIn(gone, out)
         self.assertIn("32 mutants: 32 killed, 0 survived  (score 1.00)", out)   # the run after: its score line only
-        section = out[out.index("\n## 11. Mutation testing\n"):].split("====================  EXAMPLE")[0].rstrip("\n")
+        section = out[out.index("\n## 11. Mutation testing\n"):].split("\n## 12. Properties\n")[0].rstrip("\n")   # chapter 10's next section starts here
         # 6.5k until M11, whose two operators (`role dropped`, `scope dropped`) are two more rows; M15's
-        # `membership dropped` is one more, with a sentence on the partition mutants
-        self.assertLessEqual(len(section), 6900, "the reference keeps at most 6.9k characters of chapter 10's section 11")
+        # `membership dropped` is one more, with a sentence on the partition mutants; the operators table
+        # has since grown to twenty-one operators (7.2k measured, found when #22's heading change let the test run again)
+        self.assertLessEqual(len(section), 7300, "the reference keeps at most 7.3k characters of chapter 10's section 11")
 
     def test_real_reference_keeps_browser_steps(self):
         # agents write browser tests: chapter 10's "Testing through the browser" (the step table,
@@ -334,6 +335,23 @@ class BuildContextTests(unittest.TestCase):
                      "test \"a stranger cannot see my todo\"", "FAIL Todos.Index \"a stranger clicks my todo\""):
             self.assertNotIn(gone, out)
 
+    def test_real_reference_keeps_properties(self):
+        # chapter 10's "12. Properties" keeps the forms and the commands, drops the walkthroughs
+        bc.HUMAN_SECTIONS = self.saved
+        bc.TRIMS = self.saved_trims
+        bc.DROP_SUBSECTIONS = self.saved_drop
+        code, out, _ = self.run_main("--reference", "--chapters", "10", "--book", str(bc.BOOK))
+        self.assertEqual(code, 0)
+        self.assertIn("\n## 12. Properties\n", out)
+        for kept in ("### The function form", "### Where the inputs come from", "### `Int` when the type is open",
+                     "### Brands as constraints", "### `Fuzz.forAll` and shared `Fuzzer`s",
+                     "### Properties over the database", "### Reading a failure",
+                     "### `--fuzz`, `--seed` and saved failures", "### Two errors"):
+            self.assertIn("\n" + kept + "\n", out)
+        for dropped in ("### Keeping the case", "### Health checks",
+                        "### How the shrinking works, and why you do not write it", "### Properties and `--mutate`"):
+            self.assertNotIn(dropped, out)
+
     def test_real_reference_cut(self):
         # M11's final review cut the reference to at most 44k tokens (len/4, with the example):
         # the rules' facts stay, their repeated quotes and transcripts go. M7a raised the budget
@@ -342,12 +360,14 @@ class BuildContextTests(unittest.TestCase):
         # elements' lines, the invoker commands and the long-reference pattern. M15 raised it to 48k for
         # the partitions (`@partition`, `via`, `choose`, `requires user, org`, the re-read of a
         # membership), the silos and the one-store rule, `Test.member`, and the commands.
+        # #22 (properties) raised it to 57k: the book's section 12, cut to its forms and commands, and the growth
+        # #40's rewrite left (51.6k before #22).
         bc.HUMAN_SECTIONS, bc.KEEP_SUBSECTIONS = self.saved, self.saved_keep
         bc.DROP_SUBSECTIONS, bc.TRIMS = self.saved_drop, self.saved_trims
         code, out, _ = self.run_main("--reference", "--chapters", ",".join(bc.DEFAULT_CHAPTERS), "--book", str(bc.BOOK),
                                      "--example", str(bc.EXAMPLE))
         self.assertEqual(code, 0)
-        self.assertLessEqual(len(out) // 4, 49000, "the reference is at most 49k tokens (len/4)")
+        self.assertLessEqual(len(out) // 4, 57000, "the reference is at most 57k tokens (len/4)")
         # M17 (file pages) raised from 48000; see the M17 plan
         # M15: the partition rules, `via`, `silo`, the one-store rule and the commands are in; the
         # silo files, the open-time check and moving a table into a silo (the inside) are not
@@ -371,8 +391,8 @@ class BuildContextTests(unittest.TestCase):
                      "write the scoped form; it costs ", "`elements/custom-elements.json`", "`data-*`, `aria-*`, `click`", "`submit` on any custom element", "a literal outside an attribute's quoted values",
                      "`slot` on\na child of a plain element", "takes `href` or `click`, not both",
                      "`al-checkbox` `<Input>`\non a `Bool`", "`/static/al/al.css`",
-                     "- `al-button` variant=primary*|secondary|outline|ghost|destructive, size=sm|md*|lg, disabled!, type=button*|submit / default\n",
-                     "- `al-card` (none) / header, default, footer, actions\n", "- `al-dialog` heading, size=sm|md*|lg, dismissible! / header, default, actions\n",
+                     "- `al-button` variant=primary*|secondary|outline|ghost|destructive|link, size=sm|md*|lg|xs|icon|icon-sm|icon-lg, disabled!, type=button*|submit, full! / default\n",
+                     "- `al-card` (none) / header, default, footer, actions, description, action\n", "- `al-dialog` heading, size=sm|md*|lg, dismissible! / header, default, actions, description\n",
                      "command=\"show-modal|close|toggle-popover\"", "A list too long to render", "Notice.with", "- `al-input` label, placeholder, disabled!, invalid!, help\n"):
             self.assertIn(kept, out)
         for gone in ("$ alder test examples/todos -run 'without a login'", "module Public",

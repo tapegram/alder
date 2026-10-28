@@ -38,7 +38,7 @@ HUMAN_SECTIONS = {
     "08": ["How tables are stored"],
     "10": ["2. Running the tests", "6. What a trace says",
            "7. Choosing tests, and output for programs", "10. How the browser works",
-           "12. What cannot be tested yet"],
+           "13. What cannot be tested yet"],
 }
 
 # The `### ` subsections of a dropped section that --reference keeps, by chapter and `## `
@@ -78,7 +78,10 @@ KEEP_SUBSECTIONS = {
 # stored"; the workflow an agent follows (E0019, `alder migrate`, the files) stays. It also drops
 # "Statements you add" (M12 final review): hand-written migration SQL, which an agent never
 # writes. Chapter 6's "Example: a theme switch" (a worked App message) goes too: the rules it
-# shows are stated in the section around it.
+# shows are stated in the section around it. Chapter 10's "12. Properties" keeps the forms, the
+# input rules, the database properties, the report and the commands an agent writing a property needs;
+# it drops the saved-case walkthrough, the health checks, the shrinker's internals and the
+# `--mutate` interplay, reading for a person.
 DROP_SUBSECTIONS = {
     "06": {"Rules": ["The rules and a replicated database"],
            "App-level messages": ["Example: a theme switch"],
@@ -92,7 +95,9 @@ DROP_SUBSECTIONS = {
                                     "`-run`, `-timeout` and `--json`", "Ids and lines change with the code"],
            "9. Testing through the browser": ["Why through the browser", "Step by step", "`Test.get` and `Test.open`: requesting a page",
                                               "More forms", "Bad input, an example", "Clicks that fail", "A selector the compiler refuses",
-                                              "Comparing a page with its view", "`Test.fetch`: requesting a file"]},
+                                              "Comparing a page with its view", "`Test.fetch`: requesting a file"],
+           "12. Properties": ["Keeping the case", "Health checks", "How the shrinking works, and why you do not write it",
+                              "Properties and `--mutate`"]},
 }
 
 # Spans of text --reference shortens in a chapter (before dropping sections), by chapter: (start, end,
