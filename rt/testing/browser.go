@@ -546,6 +546,7 @@ func (b *Browser) Click(msgURL string) (Result, error) {
 }
 
 var (
+	selBody     = html.MustParseSelector("body")
 	selForm     = html.MustParseSelector("form")
 	selAction   = html.MustParseSelector("[formaction]")
 	selClick    = html.MustParseSelector("[data-on:click]")
@@ -735,7 +736,7 @@ func (b *Browser) navigate(u string, redirected bool) (Answer, error) {
 // document holds the page of a plain (non-Datastar) answer w to a request for u: a GET answered
 // with anything but text/html (a file page) RequestFailed "GET /path: a file page (<type>): use
 // `Test.fetch`", 200 Shown, 404 PageMissing, 500 RequestFailed, anything else (a request the router refused: 400, 413, 415) RequestFailed
-// with its status.
+// with its status and the router's text (the page's, for the HTML 400 of a query that does not parse).
 func (b *Browser) document(u string, w *httptest.ResponseRecorder) (Answer, error) {
 	body := w.Body.String()
 	ct := w.Header().Get("Content-Type")
@@ -760,7 +761,20 @@ func (b *Browser) document(u string, w *httptest.ResponseRecorder) (Answer, erro
 	case w.Code == http.StatusServiceUnavailable:
 		return Answer{Tag: RequestFailed, Text: maintenanceText}, nil
 	}
+	if isHTML { // the router's own page, which names the status: a 400 for a query that does not parse
+		return Answer{Tag: RequestFailed, Text: b.refusedText()}, nil
+	}
 	return Answer{Tag: RequestFailed, Text: fmt.Sprintf("%d %s", w.Code, strings.TrimSpace(body))}, nil
+}
+
+// refusedText is RequestFailed's text for the router's own page of a request it refused (the 400
+// of a query that does not parse): the held body's text, which names the status and the
+// parameter. The body alone: a Datastar answer patched only it, and the old title stays.
+func (b *Browser) refusedText() string {
+	if body := html.Select(b.doc, selBody); len(body) > 0 {
+		return strings.TrimSpace(html.TextContent(body[0]))
+	}
+	return strings.TrimSpace(html.TextContent(b.doc))
 }
 
 // maintenanceText is RequestFailed's text for a request on a silo that is not served (503: the
@@ -831,6 +845,8 @@ func (b *Browser) post(target string, form url.Values) (Answer, error) {
 			b.reqHead = http.MethodGet + " " + p.Path + ": "
 		}
 		switch w.Header().Get(web.StatusHeader) {
+		case "400":
+			return Answer{Tag: RequestFailed, Text: b.refusedText()}, nil
 		case "404":
 			return Answer{Tag: PageMissing}, nil
 		case "500":
@@ -841,6 +857,8 @@ func (b *Browser) post(target string, form url.Values) (Answer, error) {
 		return Answer{Tag: Redirected, Page: pageOf(pushed)}, nil
 	}
 	switch w.Header().Get(web.StatusHeader) {
+	case "400": // a query that does not parse: the router's page says which parameter
+		return Answer{Tag: RequestFailed, Text: b.refusedText()}, nil
 	case "404":
 		return Answer{Tag: PageMissing}, nil
 	case "500":

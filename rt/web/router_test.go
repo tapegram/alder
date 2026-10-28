@@ -642,3 +642,63 @@ func TestDesignSystemFontServed(t *testing.T) {
 		t.Fatalf("OFL.txt: %d %q", w.Code, w.Header().Get("Content-Type"))
 	}
 }
+
+// A query pair the router cannot parse — a raw `;`, which Go's url.ParseQuery refuses since
+// 1.17, or a bad escape — is a 400 naming the parameter, not a parameter silently dropped (#12).
+func TestRouter_BadQueryIs400(t *testing.T) {
+	var got *Request
+	var logs []string
+	routes := []Route{{Method: "GET", Pattern: "/start", Handle: func(rq *Request) Response {
+		got = rq
+		return PageResponse(doc("start"), nil, nil, false)
+	}}}
+	h := NewRouter(routes, testOpts(func(o *Options) {
+		o.Log = func(level, msg string) { logs = append(logs, level+": "+msg) }
+	}))
+
+	w := serve(h, httptest.NewRequest("GET", "/start?faults=captcha@5-9;truncated@10&seed=3", nil))
+	if w.Code != 400 || got != nil || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/html") {
+		t.Fatalf("raw semicolon: %d %q, handler called %v", w.Code, w.Header().Get("Content-Type"), got != nil)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `&#34;faults&#34; holds a raw &#34;;&#34;: encode it as %3B`) || strings.Contains(body, "seed") {
+		t.Fatalf("body %q", body)
+	}
+	if len(logs) != 1 || !strings.HasPrefix(logs[0], "warn: GET /start: ") || !strings.Contains(logs[0], `"faults"`) {
+		t.Fatalf("logs %q", logs)
+	}
+
+	// a bad escape is the other way a pair fails to parse; every failing pair is named
+	got, logs = nil, nil
+	w = serve(h, httptest.NewRequest("GET", "/start?seed=%zz&faults=a;b&ok=1", nil))
+	if body := w.Body.String(); w.Code != 400 || got != nil || !strings.Contains(body, `&#34;seed&#34;: invalid URL escape`) || !strings.Contains(body, `&#34;faults&#34; holds`) || strings.Contains(body, `&#34;ok&#34;`) {
+		t.Fatalf("bad escape: %d %q", w.Code, body)
+	}
+
+	// a bad escape in the key names the key as written
+	got = nil
+	if w := serve(h, httptest.NewRequest("GET", "/start?se%zzd=1", nil)); w.Code != 400 || got != nil || !strings.Contains(w.Body.String(), `&#34;se%zzd&#34;: invalid URL escape`) {
+		t.Fatalf("bad key escape: %d %q", w.Code, w.Body.String())
+	}
+
+	// the encoded form reaches the handler with the `;` in the value
+	got, logs = nil, nil
+	w = serve(h, httptest.NewRequest("GET", "/start?faults=captcha%405-9%3Btruncated%4010&seed=3", nil))
+	if w.Code != 200 || got == nil || got.Query.Get("faults") != "captcha@5-9;truncated@10" || got.Query.Get("seed") != "3" || len(logs) != 0 {
+		t.Fatalf("encoded: %d %v %q", w.Code, got, logs)
+	}
+
+	// a Datastar request: a 200 body patch carrying Alder-Status 400 (the client ignores non-2xx answers)
+	got = nil
+	req := httptest.NewRequest("GET", "/start?faults=a;b", nil)
+	req.Header.Set("Datastar-Request", "true")
+	w = serve(h, req)
+	if w.Code != 200 || w.Header().Get(StatusHeader) != "400" || got != nil || !strings.Contains(w.Body.String(), `&#34;faults&#34;`) {
+		t.Fatalf("datastar: %d %s %q body %q", w.Code, StatusHeader, w.Header().Get(StatusHeader), w.Body.String())
+	}
+
+	// an unknown path is a 404 first, whatever its query
+	if w := serve(h, httptest.NewRequest("GET", "/nowhere?a=1;2", nil)); w.Code != 404 {
+		t.Fatalf("unknown path: %d", w.Code)
+	}
+}
