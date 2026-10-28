@@ -3,6 +3,7 @@ package ir
 import (
 	"fmt"
 
+	"alder/internal/check"
 	"alder/internal/syntax"
 	"alder/internal/types"
 )
@@ -87,8 +88,9 @@ func (l *lowerer) element(x *syntax.Element) Expr {
 //	"a"                <al-button …><a href=…>children</a></al-button>
 //
 // The inner `<button>` takes `click` and `type` (as written, else "button") and a copy of
-// `disabled`, which stays on the element for its style; the inner `<a>` takes `href`. Every
-// other attribute stays on the element. A link cannot be disabled, so a disabled one renders
+// `disabled`, which stays on the element for its style; the inner `<a>` takes `href` and the
+// attributes that describe the link (check.AnchorAttrs: `target`, `rel`, `data-alder-reload`, …),
+// which move off the element. Every other attribute stays on the element. A link cannot be disabled, so a disabled one renders
 // as `<a aria-disabled="true">` without `href` (m2); when `disabled` is computed, both are
 // rendered under an `if`.
 func completeBuiltin(el *Elem, r string) {
@@ -119,7 +121,7 @@ func completeBuiltin(el *Elem, r string) {
 		el.Attrs = append(el.Attrs, HAttr{Name: "popover", Kind: AttrText, Value: text("manual")})
 		return
 	}
-	var outer, inner []HAttr
+	var outer, inner, anchor []HAttr
 	var typ, disabled *HAttr
 	for _, a := range el.Attrs {
 		if a.Name == "disabled" {
@@ -128,6 +130,9 @@ func completeBuiltin(el *Elem, r string) {
 		switch {
 		case a.Name == "href" && r == "a", a.Name == "click":
 			inner = append(inner, a)
+		case r == "a" && check.AnchorAttrs[a.Name]:
+			inner = append(inner, a)
+			anchor = append(anchor, a)
 		case a.Name == "type":
 			typ = &a
 			outer = append(outer, a)
@@ -151,7 +156,7 @@ func completeBuiltin(el *Elem, r string) {
 		el.Children = []Expr{link}
 		return
 	}
-	off := &Elem{Typed: el.Typed, Tag: "a", Attrs: []HAttr{{Name: "aria-disabled", Kind: AttrText, Value: text("true")}}, Children: el.Children}
+	off := &Elem{Typed: el.Typed, Tag: "a", Attrs: append([]HAttr{{Name: "aria-disabled", Kind: AttrText, Value: text("true")}}, anchor...), Children: el.Children}
 	switch v, ok := disabled.Value.(*Lit); {
 	case ok && v.Kind == LitBool && v.Bool:
 		el.Children = []Expr{off}

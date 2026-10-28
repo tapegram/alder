@@ -1,0 +1,3 @@
+app/Index.alder:20:5 E0028 `<al-button>` without `href` has no link for `target`; give it `href`, or put `target` on the `<a>` you write inside
+app/Index.alder:20:5 E0028 `<al-button>` without `href` has no link for `data-alder-reload`; give it `href`, or put `data-alder-reload` on the `<a>` you write inside
+app/Index.alder:21:5 E0028 `<al-button>` without `href` has no link for `rel`; give it `href`, or put `rel` on the `<a>` you write inside

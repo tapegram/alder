@@ -1,0 +1,36 @@
+module Index
+
+page "/" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 1 }
+
+msg Go
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Go p -> Task.succeed Rerender,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <main>
+    <al-button id="edit" variant="outline" href={Index {}} target="_blank" rel="noopener" data-alder-reload="true" download="a.txt" hreflang="en" referrerpolicy="no-referrer" ping="/p">Edit</al-button>
+    <al-button id="off" href={Index {}} target="_blank" data-alder-reload="true" disabled>Off</al-button>
+    <al-button id="file" href={Export {}}>Export</al-button>
+    <al-button id="own"><a href={Index {}} target="_blank">Own</a></al-button>
+  </main>
+
+test "an authored opt-out lands on the link" = {
+  let page <- Test.get (Index {})
+  Task.succeed (
+    {
+      onLink: Test.has "#edit a[data-alder-reload]" page.doc,
+      onHost: Test.has "al-button#edit[data-alder-reload]" page.doc,
+      target: Test.attr "target" "#edit a" page.doc,
+      off: Test.has "#off a[aria-disabled=true][target]" page.doc,
+    } == { onLink: True, onHost: False, target: Just "_blank", off: True }
+  )
+}

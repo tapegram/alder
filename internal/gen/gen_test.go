@@ -398,6 +398,27 @@ func contains(t *testing.T, src []byte, wants ...string) {
 	}
 }
 
+// An `<al-button href>` writes the attributes that describe its link on the `<a>` it renders,
+// next to `href`: the author's `data-alder-reload` (the `Edit` and disabled buttons) and the one
+// the compiler adds for a link to a file page (`Export`). The `<al-button>` itself keeps only the
+// rest, so no `data-alder-reload` is written on it.
+func TestGen_AlButtonAnchorAttrs(t *testing.T) {
+	files := emit(t, "../../testdata/corpus/al-button-anchor-attrs-ok")
+	src := string(files["Index_alder.go"])
+	if src == "" {
+		t.Fatalf("no Index_alder.go among %v", mapsKeys(files))
+	}
+	const reload = `html.A("data-alder-reload", "true")`
+	if n := strings.Count(src, reload); n != 3 {
+		t.Errorf("%d %s, want 3 (Edit, Off, Export):\n%s", n, reload, src)
+	}
+	contains(t, []byte(src),
+		`html.El("a", []html.Attr{html.A("href", rt.PageURL(`,
+		`html.A("target", "_blank"), html.A("rel", "noopener"), `+reload+`, html.A("download", "a.txt")`,
+		`html.El("a", []html.Attr{html.A("aria-disabled", "true"), html.A("target", "_blank"), `+reload+`}`,
+	)
+}
+
 // A constructor's anonymous record payload gets its own named payload struct, and a non-record
 // payload is wrapped as { Value T }; generic unions carry their parameters into both.
 func TestGen_UnionAnonymousPayload(t *testing.T) {
