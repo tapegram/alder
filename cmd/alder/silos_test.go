@@ -252,10 +252,15 @@ func TestSilos_Binary(t *testing.T) {
 	}
 }
 
+// sqliteDSN opens path with the runtime's busy timeout, because the deployed app may hold the file (WAL, shipper) while a test touches it.
+func sqliteDSN(path string) string {
+	return path + "?_pragma=busy_timeout(5000)"
+}
+
 // sqlCount is the integer stmt selects from the SQLite file path.
 func sqlCount(t *testing.T, path, stmt string) int {
 	t.Helper()
-	d, err := sql.Open("sqlite", path)
+	d, err := sql.Open("sqlite", sqliteDSN(path))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +275,7 @@ func sqlCount(t *testing.T, path, stmt string) int {
 // sqlExec runs stmt on the SQLite file path.
 func sqlExec(t *testing.T, path, stmt string) {
 	t.Helper()
-	d, err := sql.Open("sqlite", path)
+	d, err := sql.Open("sqlite", sqliteDSN(path))
 	if err != nil {
 		t.Fatal(err)
 	}

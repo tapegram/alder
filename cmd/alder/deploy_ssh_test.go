@@ -505,7 +505,7 @@ func TestDeploySsh_Lifecycle(t *testing.T) {
 	// the copy was taken before the migration: it still has the column
 	backupFile := filepath.Join(t.TempDir(), "backup.db")
 	writeFile(t, backupFile, box.sh(t, "cat "+box.qr()+"/builds/"+id3+"/backup.db"))
-	conn, err := sql.Open("sqlite", backupFile)
+	conn, err := sql.Open("sqlite", sqliteDSN(backupFile))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -671,7 +671,7 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 	if code := c.restore([]string{"production", "--dir", dir, "--from", copyDir, "--out", restored}, &so, &se); code != 0 || !strings.Contains(so.String(), "wrote "+restored) {
 		t.Fatalf("restore --out: %d\n%s%s", code, so.String(), se.String())
 	}
-	conn, err := sql.Open("sqlite", restored)
+	conn, err := sql.Open("sqlite", sqliteDSN(restored))
 	if err != nil {
 		t.Fatal(err)
 	}
