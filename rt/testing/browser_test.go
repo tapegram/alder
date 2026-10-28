@@ -597,6 +597,32 @@ func TestBrowser_MissingAndFailed(t *testing.T) {
 	})
 }
 
+// TestBrowser_BadQuery: a query pair the router cannot parse (a raw `;`) is RequestFailed with
+// the router's 400 text naming the parameter, for a plain GET and for a Datastar POST alike.
+func TestBrowser_BadQuery(t *testing.T) {
+	browse(t, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		want := Answer{Tag: RequestFailed, Text: "400 bad request: query parameter \"filter\" holds a raw \";\": encode it as %3B"}
+		wantAnswer(t, must(b.Open("/?filter=a;b")), want)
+		if _, err := b.Get("/?filter=a;b"); err == nil || !strings.Contains(err.Error(), `"filter"`) {
+			t.Errorf("Get: %v", err)
+		}
+		// a Datastar POST (sent directly: no page offers a control with that id): the 200 body
+		// patch's Alder-Status 400 is the same RequestFailed
+		b.Login(session{User: "ann"})
+		must(b.Get("/"))
+		ans, err := b.post("/_m/Index/Delete?id=a;b", url.Values{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want.Text = "400 bad request: query parameter \"id\" holds a raw \";\": encode it as %3B"
+		wantAnswer(t, b.result(ans), want)
+		if got := titles(t, e); len(got) != 0 {
+			t.Errorf("rows %v", got)
+		}
+	})
+}
+
 // TestBrowser_AnswerParsing exercises the answer parsing directly: an SSE patch replacing the
 // body, a navigate event, MsgLabel and pageOf.
 func TestBrowser_AnswerParsing(t *testing.T) {

@@ -64,6 +64,9 @@ page "/write" { } requires user
   the parameter record; parameters not in the path are query parameters.
   Segments are letters, digits, `.`, `_`, `~`, `-`, or a whole `{param}`;
   anything else (`//x`, a space, `?`) is E0029.
+- A query parameter whose pair does not parse — a raw `;` in it (write
+  `%3B`), or a bad `%` escape — is a `400` naming the parameter, never a
+  parameter quietly at its default.
 - Parameter types must be one of: `Int`, `Text`, `Bool`, a brand of those,
   a union with no payloads, `Maybe` of those, or `List` of those.
 - A parameter with a default is optional in links and in the URL.

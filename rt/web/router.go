@@ -462,6 +462,10 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 		rt.notFound(w, r, st, html.None())
 		return
 	}
+	if why := badQuery(r.URL.RawQuery); why != "" {
+		rt.badRequest(w, r, st, why)
+		return
+	}
 	if hit.file && datastar.IsDatastar(r) {
 		// a file is a document of its own: a real navigation, its load not run. Not rt.reload:
 		// ServeHTTP has already dropped the boost's signals parameter from r.URL.
@@ -966,6 +970,48 @@ func (rt *router) document(w http.ResponseWriter, status int, page string) {
 	_, _ = w.Write([]byte("<!doctype html>\n" + withScript(rt.inlinePanel(w, rt.dev(page), status))))
 }
 
+// badQuery is why raw, a request's query string, does not parse, or "" when it does: a pair
+// holding a raw `;`, which url.ParseQuery has refused since Go 1.17, or a bad `%` escape. Each
+// failing pair is named by its key, so the answer says which parameter to encode (`;` as %3B).
+// r.URL.Query() discards the error and the failing pairs with it, so a list-valued parameter
+// written with `;` reached load at its default, with nothing logged (#12).
+func badQuery(raw string) string {
+	if _, err := url.ParseQuery(raw); err == nil {
+		return ""
+	}
+	var why []string
+	for _, kv := range strings.Split(raw, "&") {
+		k, v, _ := strings.Cut(kv, "=")
+		name, kerr := url.QueryUnescape(k)
+		if kerr != nil {
+			name = k // named as written
+		}
+		_, verr := url.QueryUnescape(v)
+		switch {
+		case strings.Contains(kv, ";"):
+			why = append(why, fmt.Sprintf("query parameter %q holds a raw \";\": encode it as %%3B", name))
+		case kerr != nil:
+			why = append(why, fmt.Sprintf("query parameter %q: %v", name, kerr))
+		case verr != nil:
+			why = append(why, fmt.Sprintf("query parameter %q: %v", name, verr))
+		}
+	}
+	if len(why) == 0 { // ParseQuery refused it for a reason not seen above: say so, at least
+		why = append(why, "query does not parse: "+raw)
+	}
+	return strings.Join(why, "; ")
+}
+
+// badRequest answers a request whose query does not parse (why, from badQuery) with status 400
+// and a page saying so, or as a body patch for a Datastar request; logged at warn.
+func (rt *router) badRequest(w http.ResponseWriter, r *http.Request, st hop, why string) {
+	rt.log("warn", fmt.Sprintf("%s %s: %s", r.Method, r.URL.Path, why))
+	if tw, ok := w.(*tracker); ok {
+		tw.setAnswer("bad request")
+	}
+	rt.failure(w, r, st, http.StatusBadRequest, "<p>400 bad request: "+esc(why)+"</p>")
+}
+
 // notFound writes doc (or, when it renders empty, Options.NotFoundDoc) with status 404, or as
 // a body patch for a Datastar request.
 func (rt *router) notFound(w http.ResponseWriter, r *http.Request, st hop, doc html.Node) {
@@ -1030,7 +1076,7 @@ func (rt *router) fail(w http.ResponseWriter, r *http.Request, st hop, doc html.
 	rt.failure(w, r, st, http.StatusInternalServerError, page)
 }
 
-// failure writes a 404/500 page: a full document with that status, or, for a Datastar
+// failure writes a 400/404/500/503 page: a full document with that status, or, for a Datastar
 // request, a 200 SSE patch of its body (the Datastar client ignores non-2xx answers) whose
 // StatusHeader names the status, so a client that is not a browser (an Alder test's) can tell
 // it from a re-rendered page; for a boosted navigation (st.url) also its title and the history
@@ -1043,8 +1089,8 @@ func (rt *router) failure(w http.ResponseWriter, r *http.Request, st hop, status
 	rt.document(w, status, page)
 }
 
-// StatusHeader is the response header of a Datastar answer to a request that failed: "404" or
-// "500" (the answer itself is a 200 body patch).
+// StatusHeader is the response header of a Datastar answer to a request that failed: "400",
+// "404", "500" or "503" (the answer itself is a 200 body patch).
 const StatusHeader = "Alder-Status"
 
 // endOfBody inserts s just before the last </body> of page, or appends it when there is none.
