@@ -1,6 +1,7 @@
 package gen
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -133,7 +134,7 @@ func (f *fn) attrs(as []ir.HAttr, s *scope) string {
 			out = append(out, "html.M("+name+", "+f.code(a.Value, s)+")")
 		case ir.AttrHref:
 			out = append(out, "html.A("+name+", rt.PageURL("+f.code(a.Value, s)+"))")
-			if pr, ok := a.Value.(*ir.PageRef); ok && pr.Page != nil && pr.Page.File {
+			if pr, ok := a.Value.(*ir.PageRef); ok && pr.Page != nil && pr.Page.File && !slices.ContainsFunc(as, func(b ir.HAttr) bool { return b.Name == "data-alder-reload" }) {
 				out = append(out, `html.A("data-alder-reload", "true")`)
 			}
 		case ir.AttrClick:

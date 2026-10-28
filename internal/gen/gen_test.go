@@ -409,8 +409,16 @@ func TestGen_AlButtonAnchorAttrs(t *testing.T) {
 		t.Fatalf("no Index_alder.go among %v", mapsKeys(files))
 	}
 	const reload = `html.A("data-alder-reload", "true")`
-	if n := strings.Count(src, reload); n != 3 {
-		t.Errorf("%d %s, want 3 (Edit, Off, Export):\n%s", n, reload, src)
+	// Edit, Off, Both and Bare write their own; Export gets the compiler's. A link that has
+	// its own is not given a second one, on an `<a>` or an `<al-button>`.
+	if n := strings.Count(src, reload); n != 5 {
+		t.Errorf("%d %s, want 5 (Edit, Off, Export, Both, Bare):\n%s", n, reload, src)
+	}
+	if strings.Contains(src, reload+", "+reload) {
+		t.Errorf("a link has data-alder-reload twice:\n%s", src)
+	}
+	if n := strings.Count(src, `html.M("target", model.T)`); n != 2 {
+		t.Errorf("%d html.M(\"target\", model.T), want 2 (both branches of the disabled `if`):\n%s", n, src)
 	}
 	contains(t, []byte(src),
 		`html.El("a", []html.Attr{html.A("href", rt.PageURL(`,

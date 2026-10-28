@@ -90,9 +90,9 @@ func (l *lowerer) element(x *syntax.Element) Expr {
 // The inner `<button>` takes `click` and `type` (as written, else "button") and a copy of
 // `disabled`, which stays on the element for its style; the inner `<a>` takes `href` and the
 // attributes that describe the link (check.AnchorAttrs: `target`, `rel`, `data-alder-reload`, …),
-// which move off the element. Every other attribute stays on the element. A link cannot be disabled, so a disabled one renders
-// as `<a aria-disabled="true">` without `href` (m2); when `disabled` is computed, both are
-// rendered under an `if`.
+// which move off the element. Every other attribute stays on the element. A link cannot be
+// disabled, so a disabled one renders as `<a aria-disabled="true">` without `href` (m2), which
+// takes the same link attributes; when `disabled` is computed, both are rendered under an `if`.
 func completeBuiltin(el *Elem, r string) {
 	text := func(s string) Expr { return &Lit{Typed: Typed{types.Text}, Kind: LitText, Text: s} }
 	switch r {

@@ -106,7 +106,7 @@ func (mc *modCtx) alButton(x *syntax.Element) bool {
 	if !hasHTMLAttr(x, "href") {
 		for _, a := range x.Attrs {
 			if AnchorAttrs[a.Name] {
-				c.errorf(diag.CustomElement, x.Span, "`<%s>` without `href` has no link for `%s`; give it `href`, or put `%s` on the `<a>` you write inside", x.Tag, a.Name, a.Name)
+				c.errorf(diag.CustomElement, a.Span, "`<%s>` without `href` renders no link for `%s`; put `%s` on the `<a>` you write inside, or use `href`", x.Tag, a.Name, a.Name)
 			}
 		}
 	}

@@ -1,3 +1,4 @@
-app/Index.alder:20:5 E0028 `<al-button>` without `href` has no link for `target`; give it `href`, or put `target` on the `<a>` you write inside
-app/Index.alder:20:5 E0028 `<al-button>` without `href` has no link for `data-alder-reload`; give it `href`, or put `data-alder-reload` on the `<a>` you write inside
-app/Index.alder:21:5 E0028 `<al-button>` without `href` has no link for `rel`; give it `href`, or put `rel` on the `<a>` you write inside
+app/Index.alder:20:34 E0028 `<al-button>` without `href` renders no link for `target`; put `target` on the `<a>` you write inside, or use `href`
+app/Index.alder:20:50 E0028 `<al-button>` without `href` renders no link for `data-alder-reload`; put `data-alder-reload` on the `<a>` you write inside, or use `href`
+app/Index.alder:21:27 E0028 `<al-button>` without `href` renders no link for `rel`; put `rel` on the `<a>` you write inside, or use `href`
+app/Index.alder:23:23 E0028 `<al-dialog>` has no attribute `target`; it has `heading`, `size`, `dismissible`

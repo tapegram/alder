@@ -265,11 +265,14 @@ attributes and gives the control its look:
 </al-stack>
 ```
 
-With `href`, the attributes that describe the link move onto the `<a>`
-next to it: `target`, `rel`, `download`, `hreflang`, `referrerpolicy`,
-`ping` and `data-alder-reload` (see "Links and navigation" in chapter 6).
-The rest stay on the element. Without `href` there is no link for them,
-and Alder reports an error.
+With `href`, the attributes that describe the link move onto the `<a>`,
+next to `href`, where the browser and Alder's link handling read them:
+`target`, `rel`, `download`, `hreflang`, `referrerpolicy`, `ping` and
+`data-alder-reload` (see "Links and navigation" in chapter 6). The rest
+stay on the element. Without `href` there is no link for them, and Alder
+reports an error. For example,
+`<al-button href={Report.Export {}} download="report.csv">Download</al-button>`
+renders `<a href="…" download="report.csv">` inside the button.
 
 The inner `<button>` gets `type="submit"` when you write
 `type="submit"`, and `type="button"` otherwise, so a button with a

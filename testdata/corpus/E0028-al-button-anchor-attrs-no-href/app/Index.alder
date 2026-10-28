@@ -20,4 +20,5 @@ view model session =
     <al-button variant="outline" target="_blank" data-alder-reload="true">Presentational</al-button>
     <al-button click={Go} rel="next">Click</al-button>
     <al-button><a href={Index {}} target="_blank" rel="next">Own</a></al-button>
+    <al-dialog id="d" target="_blank">No</al-dialog>
   </main>

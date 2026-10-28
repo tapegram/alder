@@ -2,10 +2,10 @@ module Index
 
 page "/" { }
 
-type Model = { n: Int }
+type Model = { n: Int, t: Maybe Text }
 
 load : Params -> Session -> Query Model
-load params session = Query.succeed { n: 1 }
+load params session = Query.succeed { n: 1, t: Just "_blank" }
 
 msg Go
 
@@ -20,6 +20,9 @@ view model session =
     <al-button id="edit" variant="outline" href={Index {}} target="_blank" rel="noopener" data-alder-reload="true" download="a.txt" hreflang="en" referrerpolicy="no-referrer" ping="/p">Edit</al-button>
     <al-button id="off" href={Index {}} target="_blank" data-alder-reload="true" disabled>Off</al-button>
     <al-button id="file" href={Export {}}>Export</al-button>
+    <al-button id="maybe" href={Index {}} target={model.t} disabled={model.n == 0}>Maybe</al-button>
+    <al-button id="both" href={Export {}} data-alder-reload="true">Both</al-button>
+    <a id="bare" href={Export {}} data-alder-reload="true">Bare</a>
     <al-button id="own"><a href={Index {}} target="_blank">Own</a></al-button>
   </main>
 

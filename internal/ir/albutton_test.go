@@ -14,6 +14,7 @@ func TestIR_AlButtonAnchorAttrs(t *testing.T) {
 	for _, want := range []string{
 		`(elem al-button (attr id text "edit") (attr variant text "outline") (elem a (attr href href (page-ref Index (record Params))) (attr target text "_blank") (attr rel text "noopener") (attr data-alder-reload text "true") (attr download text "a.txt") (attr hreflang text "en") (attr referrerpolicy text "no-referrer") (attr ping text "/p") (htext "Edit")))`,
 		`(elem al-button (attr id text "off") (attr disabled bool True) (elem a (attr aria-disabled text "true") (attr target text "_blank") (attr data-alder-reload text "true") (htext "Off")))`,
+		`(elem al-button (attr id text "maybe") (attr disabled bool (== : Int (field n (var model)) 0)) (hif (== : Int (field n (var model)) 0) (elem a (attr aria-disabled text "true") (attr target maybe (field t (var model))) (htext "Maybe")) (elem a (attr href href (page-ref Index (record Params))) (attr target maybe (field t (var model))) (htext "Maybe"))))`,
 		`(elem al-button (attr id text "file") (elem a (attr href href (page-ref Export (record Export.Params))) (htext "Export")))`,
 		`(elem al-button (attr id text "own") (elem a (attr href href (page-ref Index (record Params))) (attr target text "_blank") (htext "Own")))`,
 	} {
