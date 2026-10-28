@@ -45,15 +45,15 @@ class ParseTests(unittest.TestCase):
 
     def test_heredoc_bodies(self):
         steps, _ = rl.parse_script(drill("t10-teams"))
-        fill = next(st for st in steps if st["args"][:2] == ["fill", "Member.row"])
-        self.assertEqual(fill["args"], ["fill", "Member.row", "-"])
+        fill = next(st for st in steps if st["args"][:2] == ["fill", "Table.Member.row"])
+        self.assertEqual(fill["args"], ["fill", "Table.Member.row", "-"])
         self.assertEqual(fill["stdin"], "\\team user -> Db.from Member |> Db.where (Member.team.eq team) |> Db.where (Member.user.eq user) |> Db.first\n")
-        test = next(st for st in steps if st["args"][1] == 'Member."row is the row of the user in that team"')
+        test = next(st for st in steps if st["args"][1] == 'Table.Member."row is the row of the user in that team"')
         self.assertTrue(test["stdin"].startswith("{\n  let ann <- Db.insert User"))
         self.assertTrue(test["stdin"].endswith("Task.succeed (Maybe.map (\\m -> m.id) found == Just want)\n}\n"))
         self.assertEqual(test["src"].split("\n")[-1], "EOF")
         t9, _ = rl.parse_script(drill("t9-bookings"))
-        self.assertEqual(t9[5]["args"], ["fill", "Booking.holds", "-"])
+        self.assertEqual(t9[5]["args"], ["fill", "Table.Booking.holds", "-"])
         self.assertEqual(t9[5]["stdin"], "\\d b -> b.from <= d && d < b.to\n")
 
     def test_comments_and_quotes(self):
@@ -114,7 +114,7 @@ class ExecuteTests(unittest.TestCase):
         exit_code, diags, _, reason = rl.run_check(self.alder, self.app)
         self.assertIsNone(reason)
         self.assertEqual((exit_code, [d for d in diags if d["severity"] == "error"]), (0, []))
-        self.assertIn("holds", (self.app / "app" / "Booking.alder").read_text())
+        self.assertIn("holds", (self.app / "app" / "Table" / "Booking.alder").read_text())
 
     def test_a_cut_short_round_never_passes(self):
         """A script that stops early fails its round even when the partial app checks and its tests
@@ -259,7 +259,7 @@ class RunOneTests(unittest.TestCase):
         self.assertEqual(len((run / "round0" / "commands.jsonl").read_text().splitlines()), 6)
         self.assertEqual((run / "round0" / "script.txt").read_text(), script)
         self.assertFalse((run / "round1" / "script.txt").exists())
-        self.assertTrue((run / "round1" / "bookings" / "app" / "Booking.alder").is_file())   # copied forward
+        self.assertTrue((run / "round1" / "bookings" / "app" / "Table" / "Booking.alder").is_file())   # copied forward
         self.assertFalse((run / "round1" / "bookings" / "build").exists())
         t0 = (run / "round0" / "transcript.md").read_text()
         self.assertIn("The harness refused line 9 of your script: `ls app`: a step is an `alder` command", t0)

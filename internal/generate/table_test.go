@@ -161,3 +161,86 @@ func TestNewMsgIdOfAliasedTable(t *testing.T) {
 		t.Fatalf("Notes:\n%+v", e)
 	}
 }
+
+// selfRefFields are a tree's columns as written on the command line: a reference to the table
+// itself, qualified by its name as for any other table, and one to Post.
+func selfRefFields(t *testing.T) []FieldSpec {
+	t.Helper()
+	var fs []FieldSpec
+	for _, arg := range []string{"parent:Maybe Node.NodeId@ref=Node@cascade", "post:Maybe Post.PostId@ref=Post@cascade"} {
+		f, err := ParseField(arg, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fs = append(fs, f)
+	}
+	return fs
+}
+
+// checkSelfRef generates table Node with selfRefFields in the app at dir, checks that the
+// edits apply, and returns the body written to path.
+func checkSelfRef(t *testing.T, dir, path string) string {
+	t.Helper()
+	p, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edits, err := NewTable(p, "Node", selfRefFields(t))
+	if r, ok := err.(*Refusal); ok {
+		t.Fatalf("NewTable: %v %+v", err, r.Diags)
+	} else if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	e := editAt(edits, path)
+	if e == nil {
+		t.Fatalf("no edit of %s: %+v", path, edits)
+	}
+	if res, err := Apply(dir, edits, Options{DryRun: true}); err != nil {
+		t.Fatalf("Apply: %v\n%s", err, res.RenderText(true))
+	}
+	return e.Body
+}
+
+// TestNewTableSelfRefUnqualified (#41): in module Table.Node the table's own name is not a
+// module, so a reference to itself is written unqualified while one to Post keeps its qualifier.
+func TestNewTableSelfRefUnqualified(t *testing.T) {
+	dir := scaffoldApp(t, map[string]string{
+		"app/Table/Post.alder": "module Table.Post\n\ntype PostId = brand Text\n\ntable Post {\n  id: PostId @id,\n}\n",
+	})
+	body := checkSelfRef(t, dir, "app/Table/Node.alder")
+	for _, want := range []string{"parent: Maybe NodeId @ref Node @cascade", "post: Maybe Post.PostId @ref Post @cascade", "\nimport Table.Post\n"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "import Table.Node") {
+		t.Errorf("imports itself:\n%s", body)
+	}
+}
+
+// TestNewTableSelfRefLegacyLayout (#41): beside a table of the layout before #20 (module Post
+// at app/Post.alder) the new table still checks.
+func TestNewTableSelfRefLegacyLayout(t *testing.T) {
+	dir := scaffoldApp(t, map[string]string{
+		"app/Post.alder": "module Post\n\ntype PostId = brand Text\n\ntable Post {\n  id: PostId @id,\n}\n",
+	})
+	body := checkSelfRef(t, dir, "app/Table/Node.alder")
+	if !strings.Contains(body, "parent: Maybe NodeId @ref Node @cascade") || !strings.Contains(body, "\nimport Post\n") {
+		t.Errorf("body:\n%s", body)
+	}
+}
+
+// TestNewTableSelfRefTypesModule (#41): a types-only module Table.Node that takes the table
+// gets the reference to itself unqualified too.
+func TestNewTableSelfRefTypesModule(t *testing.T) {
+	dir := scaffoldApp(t, map[string]string{
+		"app/Table/Post.alder": "module Table.Post\n\ntype PostId = brand Text\n\ntable Post {\n  id: PostId @id,\n}\n",
+		"app/Table/Node.alder": "module Table.Node\n\ntype Kind = A | B\n",
+	})
+	body := checkSelfRef(t, dir, "app/Table/Node.alder")
+	for _, want := range []string{"type Kind = A | B", "parent: Maybe NodeId @ref Node @cascade", "\nimport Table.Post\n"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in:\n%s", want, body)
+		}
+	}
+}

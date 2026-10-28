@@ -563,11 +563,11 @@ func TestAdmin_Columns(t *testing.T) {
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Posts", "Delete.alder"))
 	for _, want := range []string{
-		"let flagsOfComments <- Db.from Flag |> Db.where (Flag.comment.in (List.map (\\row -> row.id) commentsRows)) |> Db.count",
-		"let events <- Db.from Event |> Db.where (Event.post.eq (Just params.id)) |> Db.count",
-		"let repliesOfCommentsRows <- Db.from Reply |> Db.where (Reply.comment.in (List.map (\\row -> row.id) commentsRows)) |> Db.all",
-		"let reportsOfRepliesOfComments <- Db.from Report |> Db.where (Report.reply.in (List.map (\\row -> row.id) repliesOfCommentsRows)) |> Db.count",
-		"blockers model = model.flagsOfComments + model.reportsOfRepliesOfComments + model.nodesOfNodes + model.pinsOfNodes + model.tags",
+		"let flagsOfComments <-\n      Db.from Flag\n        |> Db.where (Flag.comment.in (List.map (\\row -> row.id) commentsRows))\n        |> Db.count",
+		"let events <-\n      Db.from Event\n        |> Db.where (Event.post.eq (Just params.id))\n        |> Db.count",
+		"let repliesOfCommentsRows <-\n      Db.from Reply\n        |> Db.where (Reply.comment.in (List.map (\\row -> row.id) commentsRows))\n        |> Db.all",
+		"let reportsOfRepliesOfComments <-\n      Db.from Report\n        |> Db.where (Report.reply.in (List.map (\\row -> row.id) repliesOfCommentsRows))\n        |> Db.count",
+		"blockers model =\n  model.flagsOfComments\n    + model.reportsOfRepliesOfComments\n    + model.nodesOfNodes\n    + model.pinsOfNodes\n    + model.tags",
 		"<dt>Replies of those comments deleted with it</dt>",
 		"<dt>Reports of those replies that keep it from being deleted</dt>",
 		`test "a post with comments that flags refer to is not deleted"`,
@@ -586,7 +586,7 @@ func TestAdmin_Columns(t *testing.T) {
 	for _, want := range []string{
 		"children model = model.nodes",
 		"if children model > 0 then\n      Task.succeed (Reject \"Delete its children first.\")\n    else if blockers model > 0 then",
-		"{if children model > 0 then <p>Delete its children first.</p>",
+		"{if children model > 0 then\n          <p>Delete its children first.</p>",
 		`test "deleting a node with children is refused, and a childless one pins refer to"`,
 		`test "deleting a node nothing refers to"`,
 		`test "a node that pins refer to is not deleted"`,
@@ -597,7 +597,7 @@ func TestAdmin_Columns(t *testing.T) {
 	}
 	b, _ = os.ReadFile(filepath.Join(dir, "app", "Admin", "Posts", "Delete.alder"))
 	for _, want := range []string{
-		"let nodesOfNodes <- Db.from Node |> Db.where (Node.parent.in (List.map (\\row -> Just row.id) nodesRows)) |> Db.count",
+		"let nodesOfNodes <-\n      Db.from Node\n        |> Db.where (Node.parent.in (List.map (\\row -> Just row.id) nodesRows))\n        |> Db.count",
 		"<dt>Nodes under those nodes, to delete first</dt>",
 		`test "a post with nodes that nodes refer to is not deleted"`,
 	} {
@@ -620,11 +620,11 @@ func TestAdmin_Columns(t *testing.T) {
 			}
 		}
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Keys", "New.alder")); !strings.Contains(string(b), `Db.insert Key { name: p.form.name, passwordHash: "", clientSecret: Nothing }`) {
+	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Keys", "New.alder")); !strings.Contains(string(b), "Db.insert Key {\n      name: p.form.name,\n      passwordHash: \"\",\n      clientSecret: Nothing,\n    }") {
 		t.Errorf("Admin.Key.New's insert:\n%s", b)
 	}
 	b, _ = os.ReadFile(filepath.Join(dir, "app", "Admin", "Events", "New.alder"))
-	for _, want := range []string{"let now <- Time.now", "at: now", `<al-input field="count" label="Count" value={0} />`, `<al-select field="post" label="Post" options=`} {
+	for _, want := range []string{"let now <- Time.now", "at: now", `<al-input field="count" label="Count" value={0} />`, "<al-select\n          field=\"post\"\n          label=\"Post\"\n          options="} {
 		if !strings.Contains(string(b), want) {
 			t.Errorf("Admin.Event.New lacks %q:\n%s", want, b)
 		}

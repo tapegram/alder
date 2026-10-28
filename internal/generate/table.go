@@ -92,6 +92,7 @@ func NewTableWith(p *Program, name string, fields []FieldSpec, o TableOptions) (
 				imports.add(tableModuleOf(p, a.Arg))
 			}
 		}
+		f.Type = unqualifySelf(f.Type, name, mod)
 		d.Fields = append(d.Fields, f.Source())
 	}
 	d.Imports = imports.list()
@@ -259,6 +260,29 @@ func typeImports(s *importSet, typ string, p *Program) {
 			s.add(m)
 		}
 	}
+}
+
+// unqualifySelf writes the names typ qualifies by the table's own name or module unqualified,
+// since inside module mod (Table.Node) the qualifier `Node` names no imported module.
+func unqualifySelf(typ, name, mod string) string {
+	var b strings.Builder
+	start := 0
+	flush := func(end int) {
+		w := typ[start:end]
+		if i := strings.LastIndex(w, "."); i > 0 && (w[:i] == name || w[:i] == mod) {
+			w = w[i+1:]
+		}
+		b.WriteString(w)
+	}
+	for i, r := range typ {
+		if r == ' ' || r == '(' || r == ')' {
+			flush(i)
+			b.WriteRune(r)
+			start = i + 1
+		}
+	}
+	flush(len(typ))
+	return b.String()
 }
 
 // tableModuleOf is the module of the table named name (`User` → Table.User, or User in an app

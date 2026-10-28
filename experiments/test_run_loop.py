@@ -1860,7 +1860,7 @@ class FeedbackTests(unittest.TestCase):
         shutil.copytree(root / "examples" / "todos" / "app", app / "app")
         h0, _, _ = rl.app_ir(binp, app)
         self.assertIsNotNone(h0)
-        login = app / "app" / "Todo.alder"
+        login = app / "app" / "Table" / "Todo.alder"
         login.write_text(login.read_text() + '\ntest "added in feedback (with a paren" =\n  Text.length "a)(b" == 4\n')
         h1, _, _ = rl.app_ir(binp, app)
         self.assertEqual(h0, h1)   # a test added: the app is unchanged
