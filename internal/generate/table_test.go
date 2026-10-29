@@ -174,7 +174,7 @@ func TestNewMsgIdOfAliasedTable(t *testing.T) {
 			t.Errorf("missing %q in:\n%s", want, e.Body)
 		}
 	}
-	if strings.Contains(e.Body, "Db.insert Post ") {
+	if strings.Contains(e.Body, "Db.insert Post ") || strings.Contains(e.Body, "Table.Post.Post") {
 		t.Errorf("writes the table by its name, not its alias:\n%s", e.Body)
 	}
 	if res, err := Apply(dir, edits, Options{DryRun: true}); err != nil {
@@ -207,7 +207,7 @@ func TestNewFormIntoAliasedTable(t *testing.T) {
 			t.Errorf("missing %q in:\n%s", want, e.Body)
 		}
 	}
-	if strings.Contains(e.Body, "Db.insert Post ") || strings.Contains(e.Body, "Db.from Post ") {
+	if strings.Contains(e.Body, "Db.insert Post ") || strings.Contains(e.Body, "Db.from Post ") || strings.Contains(e.Body, "Table.Post.Post") {
 		t.Errorf("writes the table by its name, not its alias:\n%s", e.Body)
 	}
 	if res, err := Apply(dir, edits, Options{DryRun: true}); err != nil {
@@ -270,7 +270,7 @@ func TestNewPageAliasedTable(t *testing.T) {
 					t.Errorf("missing %q in:\n%s", want, e.Body)
 				}
 			}
-			for _, bad := range []string{"Db.from Post", "Db.get Post ", "Db.insert Post ", "List Post", "row: Post\n"} {
+			for _, bad := range []string{"Db.from Post", "Db.get Post ", "Db.insert Post ", "List Post", "row: Post\n", "Table.Post.Post"} {
 				if strings.Contains(e.Body, bad) {
 					t.Errorf("writes the table by its name, not its alias (%q):\n%s", bad, e.Body)
 				}
