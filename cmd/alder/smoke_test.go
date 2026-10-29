@@ -152,18 +152,24 @@ func startApp(t *testing.T, dir string, env ...string) *running {
 // startAppNamed is startApp for the app name's executable, build/<name>/<name>.
 func startAppNamed(t *testing.T, dir, name string, env ...string) *running {
 	t.Helper()
-	cmd := exec.Command(filepath.Join(dir, "build", name, name))
-	cmd.Dir = dir
-	cmd.Env = append(append(os.Environ(), "ALDER_ADDR=127.0.0.1:0", "ALDER_DB=:memory:"), env...)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
+	var cmd *exec.Cmd
+	var stdout io.ReadCloser
+	r := &running{stderr: &strings.Builder{}, drained: make(chan struct{})}
+	// a fresh Cmd per attempt, retried on ETXTBSY (see retryETXTBSY)
+	if err := retryETXTBSY(func() error {
+		var err error
+		cmd = exec.Command(filepath.Join(dir, "build", name, name))
+		cmd.Dir = dir
+		cmd.Env = append(append(os.Environ(), "ALDER_ADDR=127.0.0.1:0", "ALDER_DB=:memory:"), env...)
+		if stdout, err = cmd.StdoutPipe(); err != nil {
+			return err
+		}
+		cmd.Stderr = r.stderr
+		return cmd.Start()
+	}); err != nil {
 		t.Fatal(err)
 	}
-	r := &running{cmd: cmd, stderr: &strings.Builder{}, drained: make(chan struct{})}
-	cmd.Stderr = r.stderr
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
+	r.cmd = cmd
 	t.Cleanup(func() {
 		if cmd.ProcessState == nil {
 			_ = cmd.Process.Kill()
