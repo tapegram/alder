@@ -1167,6 +1167,10 @@ func (mc *modCtx) checkWireNames(pd *syntax.PageDecl, segs []string) {
 			case strings.HasPrefix(f.Wire, "_p."):
 				c.errorf(diag.InvalidDecl, sp, "the wire name `%s` of page parameter `%s` starts with `_p.`, which Alder keeps for message URLs (they carry the page's parameters as `_p.<key>`)", f.Wire, f.Name)
 				continue
+			case inPath[f.Wire]:
+				// message URLs carry path parameters as `_p.<name>` too: the two would share a key
+				c.errorf(diag.InvalidDecl, sp, "the wire name `%s` of page parameter `%s` is the path segment `{%s}`: give `%s` another wire name", f.Wire, f.Name, f.Wire, f.Name)
+				continue
 			}
 		}
 		if inPath[f.Name] {

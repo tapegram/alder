@@ -33,6 +33,7 @@ func TestPageWireNames(t *testing.T) {
 		{"/r", `a: Text = "" as "K", b: Text = "" as "K"`, "page parameters `a` and `b` both read the query key `K`"},
 		{"/r", `a: Text = "", b: Text = "" as "a"`, "page parameters `a` and `b` both read the query key `a`"},
 		{"/r", `b: Text = "" as "a", a: Text = ""`, "page parameters `b` and `a` both read the query key `a`"},
+		{"/r/{cfg}", `cfg: Text, other: Text = "" as "cfg"`, "the wire name `cfg` of page parameter `other` is the path segment `{cfg}`: give `other` another wire name"},
 		{"/r/{cfg}", `cfg: Text as "Cfg"`, "page parameter `cfg` is the path segment `{cfg}`, not a query parameter: only a query parameter takes a wire name (`as \"Cfg\"`)"},
 	} {
 		bag := checkApp(t, wirePage(c.path, c.params))
