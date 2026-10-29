@@ -26,7 +26,9 @@ formDecl    = "form" uname "=" "{" {fieldDef ","} [fieldDef] "}" ;
 tableDecl   = "table" uname [renamed] "{" {fieldDef {attr} ","} [fieldDef {attr}] "}" ;
 fieldDef    = lname ":" type ["=" expr] ["as" string] ;
                                     (* in a table: the default is a literal, E0022;
-                                       "as": a page's query key, page parameters only *)
+                                       "as": a page's query key, page parameters only;
+                                       it may start the next line; a top-level "as" ends
+                                       the default, one inside ( ), [ ] or { } is a name *)
 attr        = "@id" | "@ref" uname | "@created" | "@updated" | "@unique"
             | "@cascade" | "@restrict" | "@setNull"    (* a delete rule: after "@ref T" only *)
             | "@owner"                                 (* one per table, on a "@ref" of the user: E0024 *)

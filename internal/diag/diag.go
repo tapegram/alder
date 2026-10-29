@@ -136,6 +136,7 @@ const (
 	PlainDefault        = "W0004"
 	UnnamedEnv          = "W0006" // an adapter reads an environment variable `deploy.requires` does not name
 	UnshownReject       = "W0005" // a message whose update may answer Reject, posted by a form without <Errors form />
+	FormWireName        = "W0008" // a GET form's input named after a page parameter that reads another query key (#63)
 
 	// ScratchAppErrors is the language server's warning at 1:1 of a scratch file the app's errors
 	// keep from running (internal/lsp publishScratch).

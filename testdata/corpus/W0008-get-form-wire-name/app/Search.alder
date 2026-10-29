@@ -1,0 +1,31 @@
+module Search
+
+-- #63: a GET form to a page whose parameter has a wire name sends its inputs' names as the
+-- query keys, so an input named after the field sets nothing.
+page "/search" { }
+
+type Model = { tags: List Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { tags: ["a"] }
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html>
+    <body>
+      <form method="get" action="/r/abc/wood/Results">
+        <input name="electionId" />
+        <input name="contestId" />
+        <input name="ElectionId" />
+        {for t in model.tags ->
+          <label>{t} <select name="tag"><option value={t}>{t}</option></select></label>}
+      </form>
+      <form action="/r/abc/wood/Results?x=1"><textarea name="electionId"></textarea></form>
+      <form method="GET" action="/r/abc/wood/Results/">
+        {if List.isEmpty model.tags then <input name="tag" /> else <span></span>}
+      </form>
+      <form method="post" action="/r/abc/wood/Results"><input name="electionId" /></form>
+      <form method="get" action="/elsewhere"><input name="electionId" /></form>
+      <form method="get" action="/r/abc/def/wood/Results"><input name="electionId" /></form>
+    </body>
+  </html>
