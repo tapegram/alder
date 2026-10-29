@@ -880,6 +880,9 @@ func (p *Parser) parseFieldList(closing Kind, attrs bool) []*Field {
 			f.Default = p.parseExpr()
 			p.fieldDefault = saved
 		}
+		if p.pageParams && p.at(NL) && p.wireAfterNL() {
+			p.skipNL() // `as "Key"` may start the next line: the list is brace-delimited (#63)
+		}
 		if p.atWire() {
 			p.parseWire(f)
 		}
@@ -921,6 +924,14 @@ func (p *Parser) atWire() bool {
 		return false
 	}
 	return p.pageParams || p.peekIs(String)
+}
+
+// wireAfterNL reports whether the tokens after the current newlines start a wire name `as`.
+func (p *Parser) wireAfterNL() bool {
+	st, tok := p.mark()
+	defer p.restore(st, tok)
+	p.skipNL()
+	return p.atWire()
 }
 
 // parseWire parses a field's `as "Key"` at `as` into f.Wire and f.WireSpan. Outside a page's

@@ -16,6 +16,15 @@ func (p *Parser) withBraces(allowed bool, f func()) {
 	p.noBrace = saved
 }
 
+// nested parses f inside `( )`, `[ ]` or `{ }`: there `as` is an ordinary name even in a page
+// parameter's default, where only a top-level `as` starts the wire name (#63).
+func (p *Parser) nested(f func()) {
+	saved := p.fieldDefault
+	p.fieldDefault = false
+	p.withBraces(true, f)
+	p.fieldDefault = saved
+}
+
 func (p *Parser) binary(start Token, op string, l, r Expr) Expr {
 	b := &BinOp{Op: op, L: l, R: r}
 	b.Span = p.spanFrom(start)
@@ -247,7 +256,7 @@ func (p *Parser) parsePrimary() Expr {
 			return p.unit(start)
 		}
 		var inner Expr
-		p.withBraces(true, func() {
+		p.nested(func() {
 			p.skipNL()
 			inner = p.parseExpr()
 			p.skipNL()
@@ -270,7 +279,7 @@ func (p *Parser) parsePrimary() Expr {
 	case LBracket:
 		p.advance()
 		e := &ListLit{}
-		p.withBraces(true, func() {
+		p.nested(func() {
 			p.skipNL()
 			for !p.at(RBracket) && !p.at(EOF) {
 				e.Elems = append(e.Elems, p.parseExpr())
@@ -288,7 +297,7 @@ func (p *Parser) parsePrimary() Expr {
 		return e
 	case LBrace:
 		var e Expr
-		p.withBraces(true, func() { e = p.parseBraces() })
+		p.nested(func() { e = p.parseBraces() })
 		return e
 	case Backslash:
 		p.advance()

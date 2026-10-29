@@ -586,6 +586,11 @@ func TestParse_PageParamWire(t *testing.T) {
 		{"page \"/r\" {\n  a: Int = f 1 as \"A\",\n  b: List Int as \"B\",\n}", `{a: Int = (app (var f) (int 1)) as "A", b: (List Int) as "B"}`},
 		{`page "/r" { n: Int = 0 }`, `{n: Int = (int 0)}`},
 		{"x : Int\nx = f as 1", "(app (var f) (var as) (int 1))"},
+		// #63: `as` may start the line after the default or the type (the list is brace-delimited)
+		{"page \"/r\" {\n  a: Text = \"\"\n    as \"A\",\n  b: Int\n    as \"B\",\n}", `{a: Text = (str "") as "A", b: Int as "B"}`},
+		// #63: inside parens, brackets or braces in a default, `as` is an ordinary name
+		{`page "/r" { a: Int = f (g as) as "A" }`, `{a: Int = (app (var f) (app (var g) (var as))) as "A"}`},
+		{`page "/r" { a: List Int = f [as] as "A" }`, `{a: (List Int) = (app (var f) (list (var as))) as "A"}`},
 	} {
 		m, diags := ParseFile("m.alder", []byte("module M\n\n"+c.src+"\n"))
 		if len(diags) > 0 {
