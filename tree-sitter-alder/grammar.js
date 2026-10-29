@@ -277,7 +277,8 @@ module.exports = grammar({
     record_type: ($) => seq('{', commaSep($.field_decl), '}'),
 
     // One field shape for records, forms, tables, capabilities and the session: `via` is legal
-    // only in the session and attributes only in tables, which the compiler checks.
+    // only in the session, `as "Key"` (a query key, #55) only on page parameters and attributes
+    // only in tables, which the compiler checks.
     field_decl: ($) =>
       seq(
         field('name', $.identifier),
@@ -285,6 +286,7 @@ module.exports = grammar({
         field('type', $._type),
         optional(seq('via', field('via', $.constructor))),
         optional(seq('=', field('default', $._expression))),
+        optional(seq('as', field('wire', $.string))),
         repeat(field('attribute', $.field_attribute)),
       ),
 

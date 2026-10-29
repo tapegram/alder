@@ -2829,6 +2829,16 @@
             "named": true
           }
         ]
+      },
+      "wire": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
       }
     }
   },

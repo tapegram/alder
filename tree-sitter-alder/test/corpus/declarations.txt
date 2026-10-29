@@ -124,6 +124,42 @@ table Post @renamed "Article" {
         default: (boolean)))))
 
 ================================================================================
+page parameters with wire names
+================================================================================
+
+module Wood
+
+page "/r/{cfg}" { cfg: Text, electionId: Text = "" as "ElectionId", contestId: Maybe Int as "ContestId" }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (page_decl
+    path: (string)
+    params: (record_type
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor)))
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor))
+        default: (string)
+        wire: (string))
+      (field_decl
+        name: (identifier)
+        type: (type_app
+          constructor: (type_name
+            (constructor))
+          argument: (type_name
+            (constructor)))
+        wire: (string)))))
+
+================================================================================
 page with requires, msg, form
 ================================================================================
 
