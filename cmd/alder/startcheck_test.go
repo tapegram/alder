@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -72,9 +74,17 @@ func TestStartCheck_Binary(t *testing.T) {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, bin, args...)
-		cmd.Env = append(append(os.Environ(), base...), "ALDER_DB="+dbPath)
-		out, err := cmd.CombinedOutput()
+		var out []byte
+		var err error
+		retryETXTBSY(func() error {
+			cmd := exec.CommandContext(ctx, bin, args...)
+			cmd.Env = append(append(os.Environ(), base...), "ALDER_DB="+dbPath)
+			out, err = cmd.CombinedOutput()
+			if errors.Is(err, syscall.ETXTBSY) {
+				return err
+			}
+			return nil
+		})
 		if ctx.Err() != nil {
 			t.Fatalf("%s %v still running after 60 s (it served?):\n%s", bin, args, out)
 		}
