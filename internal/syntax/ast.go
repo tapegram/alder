@@ -99,6 +99,11 @@ type Field struct {
 	// (M15), "" for none; ViaSpan is the `via T` clause. Only a session field takes it.
 	Via     string
 	ViaSpan diag.Span
+	// Wire is the query key of a page's query parameter `electionId: Text = "" as "ElectionId"`
+	// (#55), "" for none (the key is Name); WireSpan is the `as "Key"` clause. Only a page
+	// parameter takes it.
+	Wire     string
+	WireSpan diag.Span
 }
 type Attr struct {
 	Node

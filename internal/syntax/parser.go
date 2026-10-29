@@ -23,6 +23,12 @@ type Parser struct {
 	// session is set inside App's `session { … }`: a field's type stops at `via`, which names
 	// the field's membership table (`org: Maybe Org.OrgId via Membership`).
 	session bool
+	// pageParams is set inside a page's `{ … }`: a field's type and default stop at `as`, which
+	// names the parameter's query key (`electionId: Text = "" as "ElectionId"`, #55).
+	pageParams bool
+	// fieldDefault is set while a field's default is parsed: application stops at `as "…"`, so
+	// a wire name written where none is allowed is reported as such.
+	fieldDefault bool
 }
 
 func newParser(file string, src []byte, sigMode bool, trace *[]Token) *Parser {
@@ -304,7 +310,9 @@ func (p *Parser) parseDecl() Decl {
 		p.advance()
 		d := &PageDecl{Path: p.parseStringText()}
 		pop := p.in("page parameters")
+		p.pageParams = true
 		d.Params = p.parseRecordType()
+		p.pageParams = false
 		pop()
 		if p.atKeyword("requires") {
 			p.parseRequires(d)
@@ -867,7 +875,13 @@ func (p *Parser) parseFieldList(closing Kind, attrs bool) []*Field {
 		}
 		if p.at(Equal) {
 			p.advance()
+			saved := p.fieldDefault
+			p.fieldDefault = true
 			f.Default = p.parseExpr()
+			p.fieldDefault = saved
+		}
+		if p.atWire() {
+			p.parseWire(f)
 		}
 		for !attrs && p.at(At) {
 			// `title: Text @unique` in a form: report the rule, skip `@name [Table]`, and go on
@@ -899,6 +913,43 @@ func (p *Parser) parseFieldList(closing Kind, attrs bool) []*Field {
 	}
 }
 
+// atWire reports whether the parser is at a field's wire name `as "Key"` (#55): in a page's
+// parameters any `as` (no type or default there names a value `as`), elsewhere `as` followed by
+// a string, which is reported as misplaced.
+func (p *Parser) atWire() bool {
+	if !p.at(LIdent) || p.tok.Text != "as" {
+		return false
+	}
+	return p.pageParams || p.peekIs(String)
+}
+
+// parseWire parses a field's `as "Key"` at `as` into f.Wire and f.WireSpan. Outside a page's
+// parameters the clause is an error, as is a key that is not a plain string.
+func (p *Parser) parseWire(f *Field) {
+	at := p.advance()
+	if !p.at(String) {
+		p.errorAt(p.tok, "expected the query key after `as`, as a string (`as \"Key\"`), got "+describe(p.tok))
+		return
+	}
+	t := p.advance()
+	s := p.parseString(t).(*StrLit)
+	key := ""
+	for _, part := range s.Parts {
+		if part.Expr != nil {
+			p.errorAt(t, "a wire name is a plain string, without `{…}`")
+			return
+		}
+		key += part.Text
+	}
+	span := p.spanFrom(at)
+	if !p.pageParams {
+		p.diags = append(p.diags, diag.Diagnostic{Code: diag.ParseError, Severity: "error", Span: span,
+			Message: "a wire name (`as \"" + key + "\"`) is only allowed on a page's query parameters (`page \"/p\" { id: Text as \"Id\" }`), not on `" + f.Name + "` here"})
+		return
+	}
+	f.Wire, f.WireSpan = key, span
+}
+
 func (p *Parser) parseStringText() string {
 	t := p.expect(String, "string literal")
 	s := t.Text
@@ -916,7 +967,7 @@ func (p *Parser) parseType() Type {
 	start := p.tok
 	first := p.parseAType()
 	var args []Type
-	for p.at(UIdent) || p.at(LIdent) && !(p.session && p.tok.Text == "via") || p.at(LBrace) || p.at(LParen) {
+	for p.at(UIdent) || p.at(LIdent) && !(p.session && p.tok.Text == "via") && !p.atWire() || p.at(LBrace) || p.at(LParen) {
 		args = append(args, p.parseAType())
 	}
 	var head Type = first
