@@ -531,6 +531,44 @@ func (g *adminGen) load(body string) string {
 // requires is the `page` line's clause of every admin page.
 const adminRequires = " requires user, role Admin"
 
+// wire is the query key page module page reads parameter name from: its wire name when the
+// page, as the app has it now, declares one (`q: Text = "" as "Q"`, #55), else the name. A GET
+// form to the page names its inputs by it.
+func (g *adminGen) wire(page, name string) string {
+	if pg := g.p.PageNamed(page); pg != nil {
+		for _, par := range pg.Params {
+			if par.Name == name && par.Wire != "" {
+				return par.Wire
+			}
+		}
+	}
+	return name
+}
+
+// wireSel is a selector's value for an input named by g.wire: the name, or the wire name quoted
+// (a wire name may hold `.` or `~`, which a bare selector value may not).
+func (g *adminGen) wireSel(page, name string) string {
+	if w := g.wire(page, name); w != name {
+		return "'" + w + "'"
+	}
+	return name
+}
+
+// keepWires adds to each of page's parameters ("q: Text = \"\"") the wire name the page, as the
+// app has it now, gives it: a regenerated `page` line keeps an `as "Key"` the author added.
+func (g *adminGen) keepWires(page string, params []string) []string {
+	out := make([]string, len(params))
+	for i, par := range params {
+		out[i] = par
+		if name, _, ok := strings.Cut(par, ":"); ok {
+			if w := g.wire(page, name); w != name {
+				out[i] = par + " as " + quote(w)
+			}
+		}
+	}
+	return out
+}
+
 // page is the page module of table at's page kind ("Index", "Show", …).
 func (at *adminTable) page(kind string) string { return at.mod + "." + kind }
 
@@ -967,7 +1005,7 @@ func (g *adminGen) index(at *adminTable) {
 
 	if at.hasBulk() { // a checkbox a row, in the bulk form (below the table)
 		headers = append([]string{`<th><span class="sr-only">Choose</span></th>`}, headers...)
-		cells = append([]string{fmt.Sprintf(`<td><input type="checkbox" name="ids" form="bulk" value={%s} aria-label={"Choose " ++ %s} /></td>`, textOf(at.idColumn(), "row."+t.IDField), paren(textOf(at.label, "row."+at.label.Name)))}, cells...)
+		cells = append([]string{fmt.Sprintf(`<td><input type="checkbox" name=%s form="bulk" value={%s} aria-label={"Choose " ++ %s} /></td>`, quote(g.wire(at.page("Bulk"), "ids")), textOf(at.idColumn(), "row."+t.IDField), paren(textOf(at.label, "row."+at.label.Name)))}, cells...)
 	}
 	filterCols := filterColumns(t)
 	params := []string{"q: Text = \"\""}
@@ -977,7 +1015,7 @@ func (g *adminGen) index(at *adminTable) {
 	params = append(params, "sort: Text = "+quote(order), "dir: Text = \"desc\"", "page: Int = 1")
 
 	var b strings.Builder
-	b.WriteString(regionAt("", "params", wrapAll([]string{fmt.Sprintf("page %s { %s }%s", pathLit(at.path), strings.Join(at.params(mod, imports, params), ", "), at.requires())})) + "\n\n")
+	b.WriteString(regionAt("", "params", wrapAll([]string{fmt.Sprintf("page %s { %s }%s", pathLit(at.path), strings.Join(g.keepWires(mod, at.params(mod, imports, params)), ", "), at.requires())})) + "\n\n")
 	keyField, keyInit := "", ""
 	if at.silo != nil { // the key, for the links listAt makes (it has the model, not the session)
 		keyField = "  " + at.silo.key + ": " + at.silo.keyType(mod, imports) + ",\n"
@@ -1048,7 +1086,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n", open, at.title)
 	fmt.Fprintf(&b, `    <al-stack direction="row" gap="sm">
       <form method="get" action=%s>
-        <input type="search" name="q" value={model.q} aria-label="Search" />
+        <input type="search" name=%s value={model.q} aria-label="Search" />
         {for f in filters model.filters ->
           <al-select label={f.label}>
             <label>{f.label}
@@ -1058,8 +1096,8 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
               </select>
             </label>
           </al-select>}
-        <input type="hidden" name="sort" value={model.sort} />
-        <input type="hidden" name="dir" value={model.dir} />
+        <input type="hidden" name=%s value={model.sort} />
+        <input type="hidden" name=%s value={model.dir} />
         <al-button type="submit" variant="secondary">Search</al-button>
       </form>
       <al-button href={%s {}}>New %s</al-button>
@@ -1088,7 +1126,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
       <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
       {if model.page < model.pages then <a slot="next" href={listAt model model.sort model.dir (model.page + 1)} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
     </al-pagination>
-`, at.action(""), at.page("New"), at.noun, regionAt("            ", "headers", headers), regionAt("              ", "cells", cells), bulkForms(at))
+`, at.action(""), quote(g.wire(mod, "q")), quote(g.wire(mod, "sort")), quote(g.wire(mod, "dir")), at.page("New"), at.noun, regionAt("            ", "headers", headers), regionAt("              ", "cells", cells), g.bulkForms(at))
 	fmt.Fprintf(&b, "  %s\n", close)
 
 	// the tests
@@ -1263,7 +1301,7 @@ func (g *adminGen) filters(at *adminTable, mod string, cols []*Column, imports *
 			if c.Union != nil {
 				imports.add(c.Union.Module)
 			}
-			out = append(out, fmt.Sprintf("  { name: %s, label: %s, value: f.%s, options: [", quote(c.Name), quote(Humanize(c.Name)), c.Name))
+			out = append(out, fmt.Sprintf("  { name: %s, label: %s, value: f.%s, options: [", quote(g.wire(mod, c.Name)), quote(Humanize(c.Name)), c.Name))
 			for _, o := range filterOptions(c) {
 				out = append(out, fmt.Sprintf("    { value: %s, label: %s, rows: %s.%s.eq %s },", quote(o.value), quote(o.label), t.Name, c.Name, o.col))
 			}
@@ -1340,7 +1378,7 @@ func (g *adminGen) filterTest(at *adminTable, mod string, imports *importSet, c 
 		rhs = append(rhs, other.value+": [False, True]")
 	}
 	lhs = append(lhs, fmt.Sprintf("count: %s.model.count == List.length %s.model.rows", page, page),
-		fmt.Sprintf("chosen: Test.texts \"select[name=%s] option[selected]\" %s.doc", c.Name, page))
+		fmt.Sprintf("chosen: Test.texts \"select[name=%s] option[selected]\" %s.doc", g.wireSel(mod, c.Name), page))
 	rhs = append(rhs, "count: True", "chosen: ["+quote(pick.label)+"]")
 	return TestData{Name: quote("filtering by " + strings.ToLower(Humanize(c.Name)) + " lists the rows with that value"), Lines: tb.lines,
 		Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"}

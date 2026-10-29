@@ -178,6 +178,7 @@ type Param struct {
 	Name       string
 	Type       types.Type
 	HasDefault bool
+	Wire       string // the query key it reads, declared `as "Key"` (#55); "" for its name
 }
 
 // Session is App's session.
@@ -366,8 +367,9 @@ func (p *Program) page(m *Module, d *syntax.PageDecl) *Page {
 	if info := p.Res.Pages[m.Name]; info != nil && info.Params != nil {
 		for i, f := range info.Params.Fields {
 			par := &Param{Name: f.Name, Type: f.Type, HasDefault: f.HasDefault}
-			if d.Params != nil && i < len(d.Params.Fields) && d.Params.Fields[i].Default != nil {
-				par.HasDefault = true
+			if d.Params != nil && i < len(d.Params.Fields) {
+				par.HasDefault = par.HasDefault || d.Params.Fields[i].Default != nil
+				par.Wire = d.Params.Fields[i].Wire
 			}
 			pg.Params = append(pg.Params, par)
 		}
