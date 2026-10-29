@@ -168,7 +168,7 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 		case into.PartKey != "" && slices.Contains(pg.Keys, into.PartKey): // M15: the page's key fills the column
 			op = "Db.insertScoped"
 		}
-		arm = fmt.Sprintf("%s p -> {\n  let _ <- %s %s { %s }\n  Task.succeed (%s)\n},", msg, op, into.Name, strings.Join(inits, ", "), redirect)
+		arm = fmt.Sprintf("%s p -> {\n  let _ <- %s %s { %s }\n  Task.succeed (%s)\n},", msg, op, recordName(into, o.Page), strings.Join(inits, ", "), redirect)
 		if redirect == "Rerender" {
 			arm = strings.Replace(arm, "Task.succeed (Rerender)", "Task.succeed Rerender", 1)
 		}
@@ -265,11 +265,11 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 				want = append(want, c.Name+": "+c.Default)
 			}
 		}
-		valid = append(valid, "let rows <- Db.from "+into.Name+" |> Db.all")
+		valid = append(valid, "let rows <- Db.from "+recordName(into, o.Page)+" |> Db.all")
 		tests = append(tests, TestData{Name: quote("submitting " + o.Name + " adds a row"), Lines: valid,
 			Result: fmt.Sprintf("{ answer: r.answer, rows: List.map (\\row -> { %s }) rows } == { answer: %s, rows: [{ %s }] }", strings.Join(got, ", "), answer, strings.Join(want, ", "))})
 	case into != nil:
-		valid = append(valid, "let rows <- Db.from "+into.Name+" |> Db.count")
+		valid = append(valid, "let rows <- Db.from "+recordName(into, o.Page)+" |> Db.count")
 		tests = append(tests, TestData{Name: quote("submitting " + o.Name + " adds a row"), Lines: valid,
 			Result: fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", answer, rowsBefore+1)})
 	default:
@@ -296,7 +296,7 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 		rejected := fmt.Sprintf("FormRejected [{ field: %s, message: %s }]", quote(f.Name), quote(msgText))
 		res := "r.answer == " + rejected
 		if into != nil {
-			lines = append(lines, "let rows <- Db.from "+into.Name+" |> Db.count")
+			lines = append(lines, "let rows <- Db.from "+recordName(into, o.Page)+" |> Db.count")
 			res = fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", rejected, rowsBefore)
 		}
 		tests = append(tests, TestData{Name: quote(o.Name + " refuses an empty " + f.Name), Lines: lines, Result: res})

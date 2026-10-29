@@ -192,7 +192,14 @@ func retarget(e *srcEdit, p *Program, m *syntax.Module, want []string, force boo
 			rename[path] = quals[path]
 		}
 	}
-	e.requalify(rename, bare)
+	// a table written as its module's path and its name (recordName): the module's qualifier
+	tables := map[string]string{}
+	for path, q := range quals {
+		if t := p.TableNamed(path[strings.LastIndex(path, ".")+1:]); t != nil && t.Module == path {
+			tables[path+"."+t.Name] = q
+		}
+	}
+	e.requalify(rename, bare, tables)
 	if len(add) == 0 {
 		return quals
 	}

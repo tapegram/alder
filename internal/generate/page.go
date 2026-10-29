@@ -429,13 +429,13 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		imports.add(t.Module)
 		tmpl = "page_list.tmpl"
 		d.Params = "{ page: Int = 1 }"
+		d.T, d.Order = recordName(t, o.Module), t.OrderColumn()
+		d.Select = selectIn(t, o.Module, keys)
 		for _, c := range t.Columns {
 			if !c.ID {
 				d.Cols = append(d.Cols, ColData{Humanize(c.Name), cell(c, "row."+c.Name, imports)})
 			}
 		}
-		d.T, d.Order = recordName(p, t, o.Module, imports), t.OrderColumn() // after the cells' imports
-		d.Select = selectIn(p, t, o.Module, imports, keys)
 		mine := scoped(t)
 		pageOf = func(*testBuilder) string { return pageLit(o.Module, nil) }
 
@@ -492,13 +492,13 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		d.Path = strings.TrimSuffix(o.Path, "/") + "/{id}"
 		importTypes(imports, t.IDType)
 		d.Params = "{ id: " + types.StringIn(t.IDType, o.Module) + " }"
-		for _, c := range t.Columns {
-			d.Cols = append(d.Cols, ColData{Humanize(c.Name), cell(c, "model.row."+c.Name, imports)})
-		}
-		d.T, d.Mine = recordName(p, t, o.Module, imports), scoped(t) // after the cells' imports
+		d.T, d.Mine = recordName(t, o.Module), scoped(t)
 		d.Get = "Db.getMine"
 		if d.Mine && t.PartKey != "user" {
 			d.Get = "Db.getScoped"
+		}
+		for _, c := range t.Columns {
+			d.Cols = append(d.Cols, ColData{Humanize(c.Name), cell(c, "model.row."+c.Name, imports)})
 		}
 		// the page value of the row a test inserted last: by its id, or by its --by column
 		param := func(tb *testBuilder, row string) string { return "id: " + row }
@@ -508,7 +508,7 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 				return nil, Refusef("`--by %s`: `%s` is not a `@unique` column of `%s` (a row is looked up by one; its unique columns: %s)", o.By, o.By, t.Name, uniqueColumns(t))
 			}
 			importTypes(imports, by.Type)
-			d.By, d.Select = o.By, selectIn(p, t, o.Module, imports, keys)
+			d.By, d.Select = o.By, selectIn(t, o.Module, keys)
 			d.Path = strings.TrimSuffix(o.Path, "/") + "/{" + o.By + "}"
 			d.Params = "{ " + o.By + ": " + by.TypeIn(o.Module) + " }"
 			param = func(tb *testBuilder, row string) string {
@@ -558,11 +558,8 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 			tables = append(tables, t)
 			imports.add(t.Module)
 			label := t.Label()
-			d.Lists = append(d.Lists, FromList{Field: Plural(LowerFirst(t.Name)),
+			d.Lists = append(d.Lists, FromList{Field: Plural(LowerFirst(t.Name)), T: recordName(t, o.Module), Select: selectIn(t, o.Module, keys),
 				Title: Humanize(Plural(LowerFirst(t.Name))), Cell: cell(label, "row."+label.Name, imports)})
-		}
-		for i, t := range tables { // after every table's and cell's imports
-			d.Lists[i].T, d.Lists[i].Select = recordName(p, t, o.Module, imports), selectIn(p, t, o.Module, imports, keys)
 		}
 		pageOf = func(*testBuilder) string { return pageLit(o.Module, nil) }
 
@@ -705,37 +702,30 @@ func rootTags(p *Program, title string, imports *importSet) (string, string) {
 	return "<al-page>", "</al-page>"
 }
 
-// recordName is table t's record type as written in module home, which imports the modules
-// of imports: its name in its own module; elsewhere the qualifier home writes t's module with
-// (#34: `Post` under `import Table.Post`, `TablePost` when another import or home itself ends
-// in `Post`), as a table is the eponymous type of its module, written by the qualifier alone.
-// A table whose module is not named after it (a legacy layout, a fake) keeps its name. Call it
-// once every module the page imports is in imports: a later import can change the qualifier.
-func recordName(p *Program, t *Table, home string, imports *importSet) string {
+// recordName is table t's record type as written in module home: its name in its own module,
+// else its module's path and its name (`Table.Post.Post`), which retarget rewrites to the
+// qualifier home imports the module with once every import of the file is known (`Post`, or
+// `TablePost` when another import or home itself ends in `Post`, #34): a table is the eponymous
+// type of its module, named by the qualifier alone. A table whose module is not named after it
+// (a fake) keeps its name.
+func recordName(t *Table, home string) string {
 	if home == t.Module || t.Module[strings.LastIndex(t.Module, ".")+1:] != t.Name {
 		return t.Name
 	}
-	var mods []string
-	if imports != nil {
-		mods = imports.list()
-	}
-	if q := p.qualifiersFor(home, append(mods, t.Module))[t.Module]; q != "" {
-		return q
-	}
-	return t.Name
+	return t.Module + "." + t.Name
 }
 
 // selectIn is how a page that requires keys reads t's rows: `Db.mine T` for a table partitioned
 // by `user`, `Db.scoped T` for one partitioned by another of them (chapter 6, "Partitions"),
 // else `Db.from T`.
-func selectIn(p *Program, t *Table, home string, imports *importSet, keys []string) string {
+func selectIn(t *Table, home string, keys []string) string {
 	switch {
 	case t.PartKey == "" || !slices.Contains(keys, t.PartKey):
-		return "Db.from " + recordName(p, t, home, imports)
+		return "Db.from " + recordName(t, home)
 	case t.PartKey == "user":
-		return "Db.mine " + recordName(p, t, home, imports)
+		return "Db.mine " + recordName(t, home)
 	}
-	return "Db.scoped " + recordName(p, t, home, imports)
+	return "Db.scoped " + recordName(t, home)
 }
 
 // cell is the markup showing column c's value expr: Bool and unions as an `al-badge`, a Time

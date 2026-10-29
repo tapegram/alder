@@ -140,7 +140,7 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]
 						v = tb.insert(t, true)
 					}
 					if reread == "" {
-						reread = "let after <- Db.get " + recordName(p, t, page, imports) + " " + v
+						reread = "let after <- Db.get " + recordName(t, page) + " " + v
 					}
 				}
 			}

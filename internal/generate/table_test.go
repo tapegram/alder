@@ -182,6 +182,39 @@ func TestNewMsgIdOfAliasedTable(t *testing.T) {
 	}
 }
 
+// TestNewFormIntoAliasedTable (#34): a form inserting into a table the page imports under an
+// alias writes the table through it, in the arm and in the tests.
+func TestNewFormIntoAliasedTable(t *testing.T) {
+	dir := twoPostsDir(t)
+	p, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := ParseField("title:Text", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edits, err := NewForm(p, FormOptions{Page: "Notes", Name: "NewPost", Fields: []FieldSpec{f}, Into: "Post"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := editAt(edits, "app/Notes.alder")
+	if e == nil {
+		t.Fatalf("no edit of Notes: %+v", edits)
+	}
+	for _, want := range []string{"Db.insert TablePost {", "Db.from TablePost |>"} {
+		if !strings.Contains(e.Body, want) {
+			t.Errorf("missing %q in:\n%s", want, e.Body)
+		}
+	}
+	if strings.Contains(e.Body, "Db.insert Post ") || strings.Contains(e.Body, "Db.from Post ") {
+		t.Errorf("writes the table by its name, not its alias:\n%s", e.Body)
+	}
+	if res, err := Apply(dir, edits, Options{DryRun: true}); err != nil {
+		t.Fatalf("Apply: %v\n%s", err, res.RenderText(true))
+	}
+}
+
 // TestNewPageAliasedTable (#34): a page whose module writes the table's module with an alias
 // (its own last segment is `Post`, or it imports another module ending in `Post` for a column's
 // union) writes the table through the alias: `Db.from TablePost`, `List TablePost`.
@@ -190,6 +223,13 @@ func TestNewPageAliasedTable(t *testing.T) {
 		return scaffoldApp(t, map[string]string{
 			"app/Blog/Post.alder":  "module Blog.Post\n\ntype Kind = Draft | Published\n",
 			"app/Table/Post.alder": "module Table.Post\n\nimport Blog.Post as BlogPost\n\ntype PostId = brand Text\n\ntable Post {\n  id: PostId @id,\n  title: Text,\n  kind: BlogPost.Kind,\n}\n",
+		})
+	}
+	refDir := func(t *testing.T) string {
+		return scaffoldApp(t, map[string]string{
+			"app/Blog/Post.alder":    "module Blog.Post\n\ntype Kind = Draft | Published\n",
+			"app/Table/Author.alder": "module Table.Author\n\nimport Blog.Post\n\ntype AuthorId = brand Text\n\ntable Author {\n  id: AuthorId @id,\n  name: Text,\n  kind: Post.Kind,\n}\n",
+			"app/Table/Post.alder":   "module Table.Post\n\nimport Table.Author\n\ntype PostId = brand Text\n\ntable Post {\n  id: PostId @id,\n  title: Text,\n  author: Author.AuthorId @ref Author,\n}\n",
 		})
 	}
 	for _, c := range []struct {
@@ -207,6 +247,9 @@ func TestNewPageAliasedTable(t *testing.T) {
 			[]string{"\nimport Table.Post as TablePost\n", "List TablePost", "Db.from TablePost", "Db.insert TablePost {"}},
 		{"list with a union column from another Post module", unionDir, PageOptions{Module: "Posts.Index", Path: "/posts", List: "Post"}, "app/Posts/Index.alder",
 			[]string{"\nimport Blog.Post as BlogPost\n", "\nimport Table.Post as TablePost\n", "List TablePost", "Db.from TablePost", "Db.insert TablePost {"}},
+		// only the tests' rows (the referenced author's sample) import the other Post module, after the body was written
+		{"list whose test rows import another Post module", refDir, PageOptions{Module: "Posts.Index", Path: "/posts", List: "Post"}, "app/Posts/Index.alder",
+			[]string{"\nimport Blog.Post as BlogPost\n", "\nimport Table.Post as TablePost\n", "List TablePost", "Db.from TablePost", "TablePost.id.desc", "Db.insert TablePost {", "Db.insert Author {"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := c.dir(t)

@@ -195,7 +195,7 @@ func (b *testBuilder) insertRow(t *Table, v string, over map[string]string, memo
 		}
 		b.rows[t.Module] = append(b.rows[t.Module], rowRef{v, owner})
 	}
-	b.let("let %s <- Db.insert %s { %s }", v, recordName(b.p, t, b.home, b.imports), strings.Join(fields, ", "))
+	b.let("let %s <- Db.insert %s { %s }", v, recordName(t, b.home), strings.Join(fields, ", "))
 	return v
 }
 
@@ -226,7 +226,7 @@ func (b *testBuilder) bulkInsert(t *Table, k int, owner string) {
 	if owner == "" || owner == b.me {
 		b.bulk[t.Module] += k
 	}
-	b.let("let _ <- Task.all (List.map (\\n -> Db.insert %s { %s }) (List.range %d %d))", recordName(b.p, t, b.home, b.imports), strings.Join(fields, ", "), from, to)
+	b.let("let _ <- Task.all (List.map (\\n -> Db.insert %s { %s }) (List.range %d %d))", recordName(t, b.home), strings.Join(fields, ", "), from, to)
 }
 
 // visible are the named rows of t the signed-in user sees: all of them, or with mine (a page
