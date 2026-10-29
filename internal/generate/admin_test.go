@@ -109,3 +109,42 @@ func TestAdminLayoutPageStack(t *testing.T) {
 		t.Errorf("app-Layout frame wrong:\n%s", src)
 	}
 }
+
+// TestAdminWireNames (#63): when the admin's pages already name a query parameter's wire key
+// (`q: Text = "" as "Q"`, as on regen after the author added it), the regenerated page line
+// keeps it, and the GET forms and the list's filter selects and tests write the key the target
+// page reads (the list's own `q` and filters, the bulk page's `ids`), not the field name.
+func TestAdminWireNames(t *testing.T) {
+	p, err := Load("../../testdata/generate/fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, bulk := p.PageNamed("Admin.Posts.Index"), p.PageNamed("Admin.Posts.Bulk")
+	if index != nil || bulk != nil {
+		t.Fatal("the fixture has an admin already")
+	}
+	p.Pages = append(p.Pages,
+		&Page{Module: "Admin.Posts.Index", Params: []*Param{{Name: "q", Wire: "Q"}, {Name: "status", Wire: "Status"}, {Name: "featured"}}},
+		&Page{Module: "Admin.Posts.Bulk", Params: []*Param{{Name: "ids", Wire: "Ids"}}})
+	files, _ := AdminFiles(p, AdminOptions{Module: "Admin", Path: "/admin"})
+	src := files["app/Admin/Posts/Index.alder"]
+	for _, want := range []string{
+		`q: Text = "" as "Q"`,
+		`status: Text = "" as "Status"`,
+		`featured: Text = "",` + "\n",
+		`name: "Status",`,
+		`name: "featured",`,
+		`<input type="search" name="Q" value={model.q} aria-label="Search" />`,
+		`<input type="hidden" name="sort" value={model.sort} />`,
+		`<input type="hidden" name="Ids" value={row.id} />`,
+		`select[name='Status'] option[selected]`,
+		`select[name=featured] option[selected]`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("Index lacks %q:\n%s", want, src)
+		}
+	}
+	if strings.Contains(src, `name="ids"`) || strings.Count(src, `name="Ids"`) != 2 {
+		t.Errorf("Index: the checkbox and the page form should both write Ids:\n%s", src)
+	}
+}

@@ -123,6 +123,9 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 	if (x.Tag == "input" || x.Tag == "textarea" || x.Tag == "select") && mc.form != nil {
 		c.errorf("E0304", x.Span, "plain `<%s>` inside `<form submit>`; use `<%s field=\"…\">`", x.Tag, map[string]string{"input": "Input", "textarea": "Textarea", "select": "Select"}[x.Tag])
 	}
+	if x.Tag == "form" {
+		mc.formWireNames(x)
+	}
 	var pushed *formCtx
 	for _, a := range x.Attrs {
 		mc.attribute(a, m, env, eff)

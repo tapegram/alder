@@ -242,7 +242,7 @@ const bulkTooMany = `"Choose at most " ++ Text.fromInt maxRows ++ " rows at a ti
 
 // bulkForms are the list's two ways to the bulk page: the rows chosen (the checkboxes name this
 // form), and every row on the page (a form of its own, no script needed).
-func bulkForms(at *adminTable) string {
+func (g *adminGen) bulkForms(at *adminTable) string {
 	if !at.hasBulk() {
 		return ""
 	}
@@ -252,11 +252,11 @@ func bulkForms(at *adminTable) string {
         <al-button type="submit" variant="secondary">Act on the chosen rows</al-button>
       </form>
       <form id="bulk-page" method="get" action=%s>
-        {for row in model.rows -> <input type="hidden" name="ids" value={%s} />}
+        {for row in model.rows -> <input type="hidden" name=%s value={%s} />}
         <al-button type="submit" variant="secondary">Act on all rows on this page</al-button>
       </form>
     </al-stack>
-`, at.action("/bulk"), at.action("/bulk"), textOf(at.idColumn(), "row."+at.t.IDField))
+`, at.action("/bulk"), at.action("/bulk"), quote(g.wire(at.page("Bulk"), "ids")), textOf(at.idColumn(), "row."+at.t.IDField))
 }
 
 // findTests are the New (or Edit) page's tests of a long table behind a reference: at exactly

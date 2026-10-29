@@ -60,6 +60,13 @@ const fieldAccessValues = ($, fieldAccess) => [
 // are hidden (`_subject_pipe_expr`) and aliased to the ordinary names, so both build the same
 // trees. Parentheses, lists, braces and arms go back to the ordinary family, as
 // withBraces(true) does.
+//
+// The '_default' family is a field's default (`a: Int = f x as "A"`). A page parameter's wire
+// name follows it, so `as` ends an application there (parser_expr.go canStartArg under
+// fieldDefault). Its own rules keep that `as` out of the ordinary family's parse states:
+// sharing them made `as` a keyword inside every application, so `f (g as)` failed where the Go
+// parser reads `as` as a name (#63). Parentheses, lists and braces go back to the ordinary
+// family, as Parser.nested does. Arguments are the ordinary family's.
 const expressionRules = (prefix) => {
   const key = (name) => (!prefix ? name : name.startsWith('_') ? prefix + name : `${prefix}_${name}`);
   // Every in-family reference must go through ref: a bare $.name silently uses the ordinary family.
@@ -111,7 +118,7 @@ const expressionRules = (prefix) => {
         $._html,
       ),
     [key('_argument')]: ($) =>
-      prefix
+      prefix === '_subject'
         ? choice($._subject_simple, ref($, 'lambda'))
         : choice($._simple, $.lambda, $.record, $.record_update, $.block),
 
@@ -285,7 +292,7 @@ module.exports = grammar({
         ':',
         field('type', $._type),
         optional(seq('via', field('via', $.constructor))),
-        optional(seq('=', field('default', $._expression))),
+        optional(seq('=', field('default', $._default_expression))),
         optional(seq('as', field('wire', $.string))),
         repeat(field('attribute', $.field_attribute)),
       ),
@@ -355,6 +362,7 @@ module.exports = grammar({
 
     ...expressionRules(''),
     ...expressionRules('_subject'),
+    ...expressionRules('_default'),
 
     _simple: ($) => choice(...simpleAtoms($, $.field_access)),
     // A no-brace argument never starts with `{` (canStartArg under noBrace), not even as the

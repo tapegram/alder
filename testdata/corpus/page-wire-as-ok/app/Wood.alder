@@ -1,0 +1,38 @@
+module Wood
+
+-- #63: `as` is an ordinary name outside a page parameter's top-level default, and a wire name
+-- may start the line after the default or the type.
+-- Deliberately not `alder fmt`-clean: fmt joins the `as` lines this case tests.
+page "/wood" {
+  a: Int = inc (twice as) as "A",
+  b: Text = ""
+    as "B",
+  c: Maybe Int
+    as "C",
+}
+
+as : Int
+as = 1
+
+inc : Int -> Int
+inc n = n + 1
+
+twice : Int -> Int
+twice n = n * 2
+
+add : Int -> Int -> Int
+add x y = x + y
+
+three : Int
+three = add as 2
+
+listed : List Int
+listed = [as, twice as]
+
+type Model = { a: Int, b: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { a: params.a, b: params.b }
+
+view : Model -> Session -> Html Msg
+view model session = <html><body><p>{Text.fromInt model.a} {model.b}</p></body></html>

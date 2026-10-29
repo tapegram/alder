@@ -1,0 +1,16 @@
+module Wood
+
+page "/r/{cfg}/wood/Results" {
+  cfg: Text,
+  electionId: Text = "" as "ElectionId",
+  contestId: Maybe Int,
+  tag: List Text = [] as "Tag",
+}
+
+type Model = { election: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { election: params.electionId }
+
+view : Model -> Session -> Html Msg
+view model session = <html><body><p>{model.election}</p></body></html>

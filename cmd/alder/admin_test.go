@@ -833,3 +833,53 @@ func TestAdmin_NoLayoutThemeScript(t *testing.T) {
 		t.Errorf("fmt changed the admin shell (err %v, diags %v):\n%s", err, diags, out)
 	}
 }
+
+// TestAdmin_RegenWireNames (#63): the author gives the list's `status` filter and the bulk
+// page's `ids` wire names (`as "Status"`, `as "Ids"`). Regen keeps the list's `as` (its page line
+// is a region) and writes the keys into the regions that name those inputs: the filter select,
+// the rows' checkboxes and the filter test's selector. The bulk-page form outside the regions is
+// the author's, still `name="ids"`: `alder check` warns about it (W0008). The tests pass.
+func TestAdmin_RegenWireNames(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := genApp(t, "fixture")
+	if code, out, errs := alderIn(t, dir, "", "new", "admin"); code != 0 {
+		t.Fatalf("alder new admin: exit %d\n%s%s", code, out, errs)
+	}
+	file := func(rel string) string {
+		b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	replace := func(rel, old, new string) {
+		s := file(rel)
+		if !strings.Contains(s, old) {
+			t.Fatalf("%s has no %q", rel, old)
+		}
+		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(rel)), []byte(strings.Replace(s, old, new, 1)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	index, bulk := "app/Admin/Posts/Index.alder", "app/Admin/Posts/Bulk.alder"
+	replace(index, "  status: Text = \"\",\n", "  status: Text = \"\" as \"Status\",\n")
+	replace(bulk, "{ ids: List Post.PostId }", "{ ids: List Post.PostId as \"Ids\" }")
+	code, out, errs := alderIn(t, dir, "", "regen", "admin")
+	if code != 0 || !strings.Contains(out, "edited "+index+"\n") {
+		t.Fatalf("alder regen admin: exit %d\n%s%s", code, out, errs)
+	}
+	s := file(index)
+	for _, want := range []string{`status: Text = "" as "Status",`, `name: "Status",`, `name="Ids"`, `select[name='Status'] option[selected]`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("%s lacks %q after regen:\n%s", index, want, s)
+		}
+	}
+	code, out, errs = alderIn(t, dir, "", "check")
+	if all := out + errs; code != 0 || strings.Contains(all, "error") || strings.Count(all, "warning[W0008]") != 1 || !strings.Contains(all, "use the wire name: `name=\"Ids\"`") {
+		t.Errorf("alder check after regen: exit %d\n%s%s", code, out, errs)
+	}
+	if code, out, errs := alderIn(t, dir, "", "test"); code != 0 || !strings.HasSuffix(out, " passed, 0 failed\n") || !strings.Contains(out, "ok   Admin.Posts.Index \"filtering by status lists the rows with that value\"\n") {
+		t.Fatalf("alder test after regen: exit %d\n%s%s", code, out, errs)
+	}
+}
