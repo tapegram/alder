@@ -2,6 +2,7 @@ module Wood
 
 -- #63: `as` is an ordinary name outside a page parameter's top-level default, and a wire name
 -- may start the line after the default or the type.
+-- Deliberately not `alder fmt`-clean: fmt joins the `as` lines this case tests.
 page "/wood" {
   a: Int = inc (twice as) as "A",
   b: Text = ""

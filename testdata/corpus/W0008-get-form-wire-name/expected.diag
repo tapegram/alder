@@ -6,3 +6,5 @@ app/Search.alder:23:56 W0008 page `Wood` reads its parameter `electionId` from t
   fix 23:61-23:73 "ElectionId"
 app/Search.alder:25:49 W0008 page `Wood` reads its parameter `tag` from the query key `Tag`, so `name="tag"` in this GET form sets nothing; use the wire name: `name="Tag"`
   fix 25:54-25:59 "Tag"
+app/Swap.alder:19:16 W0008 page `Swap` reads its parameter `a` from the query key `b`, so `name="a"` in this GET form sets nothing; use the wire name: `name="b"`
+  fix 19:21-19:24 "b"

@@ -1,0 +1,26 @@
+module Swap
+
+-- #63 review I1: `b` is `a`'s wire name, so `name="b"` sets `a` and is not reported; `name="a"`
+-- reads nothing and is.
+page "/swap" { a: Text = "" as "b", b: Text = "" as "c" }
+
+type Model = { a: Text, b: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { a: params.a, b: params.b }
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html>
+    <body>
+      <form method="get" action="/swap">
+        <input name="b" />
+        <input name="c" />
+        <input name="a" />
+      </form>
+      <form id="other" method="post" action="/elsewhere"></form>
+      <form method="get" action="/r/abc/wood/Results">
+        <input name="electionId" form="other" />
+      </form>
+    </body>
+  </html>

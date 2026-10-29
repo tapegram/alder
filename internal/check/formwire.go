@@ -9,8 +9,9 @@ import (
 
 // formWireNames warns (W0008, #63) about a GET `<form>` (method "get" or none, and no `submit`
 // message) whose literal `action` is the path of a page, when a plain `<input>`, `<select>` or
-// `<textarea>` inside it has a literal `name` that is one of the page's query parameters
-// declared with another wire name (`electionId: Text = "" as "ElectionId"`): the browser sends
+// `<textarea>` inside it (without a `form` attribute naming another form) has a literal `name`
+// that is one of the page's query parameters declared with another wire name, and no key the
+// page reads (`electionId: Text = "" as "ElectionId"`): the browser sends
 // the name as the query key, and the page reads the wire name, so the input sets nothing.
 func (mc *modCtx) formWireNames(x *syntax.Element) {
 	action, method := "", "get"
@@ -44,10 +45,19 @@ func (mc *modCtx) formWireNames(x *syntax.Element) {
 		return
 	}
 	wires := map[string]string{} // a parameter's name → its wire name, where they differ
+	reads := map[string]bool{}   // every key the page reads: a wire name, or a name without one
 	for _, f := range pd.Params.Fields {
 		if f.Wire != "" && f.Wire != f.Name {
 			wires[f.Name] = f.Wire
 		}
+		if f.Wire != "" {
+			reads[f.Wire] = true
+		} else {
+			reads[f.Name] = true
+		}
+	}
+	for k := range reads { // `a: T as "b", b: T as "c"`: `name="b"` sets `a` (review I1)
+		delete(wires, k)
 	}
 	if len(wires) == 0 {
 		return
@@ -64,7 +74,8 @@ func (mc *modCtx) formInputWires(e syntax.Expr, page string, wires map[string]st
 		if x.Ref.Kind == syntax.RefComponent || x.Tag == "form" {
 			return
 		}
-		if x.Tag == "input" || x.Tag == "select" || x.Tag == "textarea" {
+		if (x.Tag == "input" || x.Tag == "select" || x.Tag == "textarea") && !hasHTMLAttr(x, "form") {
+			// an input with `form="id"` belongs to that form, wherever it sits
 			for _, a := range x.Attrs {
 				if a.Name != "name" || a.Value == nil {
 					continue

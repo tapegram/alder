@@ -86,9 +86,12 @@ page "/write" { } requires user
   redirects, message URLs, a test's `Test.get`) writes `ElectionId=17`. The key
   is letters, digits, `-`, `_`, `.` and `~`, two parameters may not read one
   key, and a `{segment}` parameter takes no `as` (E0011).
-  The `as` may start the line after the type or default. In a default, only an
-  `as` outside parentheses, brackets and braces starts the key: `f (g as) as "A"`
-  passes a value named `as` to `g`.
+  The `as` may start the line after the type or default. In a default, `as` is an
+  ordinary name inside parentheses, a list's brackets, and the braces of a record,
+  a record update or a block: `f (g as) as "A"` passes a value named `as` to `g`.
+  Anywhere else in the default, a `match` arm and an element's `{…}` included,
+  `as` starts the key, so a value named `as` there is an error; wrap it in
+  parentheses.
   A hand-written GET form names its inputs by the key, not the field:
   `<form method="get" action="/r/c/wood/Results"><input name="ElectionId" /></form>`.
   The browser sends the input's `name` as the key, so `name="electionId"` would
