@@ -160,6 +160,57 @@ page "/r/{cfg}" { cfg: Text, electionId: Text = "" as "ElectionId", contestId: M
         wire: (string)))))
 
 ================================================================================
+page parameter wire name after a newline, as inside parens
+================================================================================
+
+module Wood
+
+page "/r" {
+  a: Int = f (g as) as "A",
+  b: Text = ""
+    as "B",
+}
+
+x = f (g as) as
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (page_decl
+    path: (string)
+    params: (record_type
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor))
+        default: (application
+          function: (identifier)
+          argument: (parenthesized_expression
+            (application
+              function: (identifier)
+              argument: (identifier))))
+        wire: (string))
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor))
+        default: (string)
+        wire: (string))))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (application
+        function: (identifier)
+        argument: (parenthesized_expression
+          (application
+            function: (identifier)
+            argument: (identifier)))
+        argument: (identifier)))))
+
+================================================================================
 page with requires, msg, form
 ================================================================================
 
