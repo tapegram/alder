@@ -672,7 +672,7 @@ func (f *fn) pageRef(x *ir.PageRef, s *scope) string {
 	var items []kvItem
 	for _, fd := range x.Page.Params.Fields {
 		if !inPath[fd.Name] {
-			items = append(items, kvItem{name: fd.Name, t: fd.Type, v: f.pageParam(x.Params, fd.Name), def: fd.Default, omitBlank: true})
+			items = append(items, kvItem{name: fd.Key(), t: fd.Type, v: f.pageParam(x.Params, fd.Name), def: fd.Default, omitBlank: true})
 		}
 	}
 	if q := f.kvList(items, s); q != "nil" {

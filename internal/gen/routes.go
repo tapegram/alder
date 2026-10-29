@@ -472,7 +472,7 @@ func (g *gen) paramsKVs(b *strings.Builder, pg *ir.Page) {
 	pv := &ir.Var{Typed: ir.Typed{Ty: &types.Record{Module: m, Name: "Params"}}, Kind: ir.VarLocal, Name: "p"}
 	var items []kvItem
 	for _, fd := range pg.Params.Fields {
-		items = append(items, kvItem{name: fd.Name, t: fd.Type, v: &ir.Field{Typed: ir.Typed{Ty: fd.Type}, Expr: pv, Name: fd.Name}, def: fd.Default, omitBlank: true})
+		items = append(items, kvItem{name: fd.Key(), t: fd.Type, v: &ir.Field{Typed: ir.Typed{Ty: fd.Type}, Expr: pv, Name: fd.Name}, def: fd.Default, omitBlank: true})
 	}
 	kvs := f.kvList(items, s)
 	if len(items) == 0 {
@@ -824,13 +824,14 @@ func chain(cs []clause, final string) string {
 	return b.String()
 }
 
-// field is the code decoding record field f from the url.Values named src into r.
+// field is the code decoding record field f from the url.Values named src into r: src[f.Key()],
+// the wire name of a page parameter declared `as "Key"`.
 func (d *decoder) field(f ir.FieldT, src string) string {
 	def := ""
 	if f.Default != nil {
 		def = (&fn{g: d.g}).code(f.Default, newScope())
 	}
-	return d.item(f.Type, f.Brand, src, strconv.Quote(f.Name), "r."+Field(f.Name), def)
+	return d.item(f.Type, f.Brand, src, strconv.Quote(f.Key()), "r."+Field(f.Name), def)
 }
 
 // item is the code decoding a value of type t at src[name] (name a Go string literal) into

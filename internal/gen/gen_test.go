@@ -249,7 +249,7 @@ func mapsKeys(m map[string][]byte) []string {
 
 // testBuildGoldens are the gen goldens whose want/ is a test build (Options.Tests) and whose
 // want_prod/ is the production build of the same app.
-var testBuildGoldens = map[string]bool{"gen_fakes": true, "gen_browser": true, "gen_fuzz": true}
+var testBuildGoldens = map[string]bool{"gen_fakes": true, "gen_browser": true, "gen_fuzz": true, "gen_wire": true}
 
 // mutateBuildGoldens are the gen goldens whose want/ is a mutate build (Options.Mutate, a test
 // build) and whose want_prod/ is the production build of the same app.
@@ -3201,6 +3201,20 @@ func TestGen_Browser(t *testing.T) {
 	contains(t, files["routes__alder.go"], "func encode__Notes__Index__NewNote(r Notes__Index__NewNote) rtesting.Fields {")
 	contains(t, files["app__alder.go"], "func Web() web.Options {", `selector__1  = rtesting.Sel("h1")`)
 	prog, err := os.ReadFile("testdata/e2e_browser_test.go.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runGo(t, files, string(prog))
+}
+
+// TestGen_Wire (#55): a test build of the gen_wire golden, whose page names its query keys
+// (`electionId: Text = "" as "ElectionId"`), decodes the wire keys and emits them in every URL
+// of the page: a link, the page's message URLs (_p.<key>), a redirect and a test's visit
+// (testdata/e2e_wire_test.go.txt).
+func TestGen_Wire(t *testing.T) {
+	files := emitWith(t, "../../testdata/golden/gen_wire", true)
+	contains(t, files["routes__alder.go"], `web.Text(q, "ElectionId", false)`, `web.Text(q, "ContestId", false)`)
+	prog, err := os.ReadFile("testdata/e2e_wire_test.go.txt")
 	if err != nil {
 		t.Fatal(err)
 	}

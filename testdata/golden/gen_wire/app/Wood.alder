@@ -1,0 +1,30 @@
+module Wood
+
+-- #55: a results app whose real URLs carry capitalised query keys
+-- (/Results?ElectionId=17&ContestId=5); the fields stay lowercase.
+page "/r/{cfg}/wood/Results" { cfg: Text, electionId: Text = "" as "ElectionId", contestId: Maybe Int as "ContestId" }
+
+type Model = { cfg: Text, election: Text, contest: Maybe Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { cfg: params.cfg, election: params.electionId, contest: params.contestId }
+
+msg Bump
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Bump p -> Task.succeed (Redirect (Wood { cfg: model.cfg, electionId: model.election, contestId: Just 9 })),
+}
+
+view : Model -> Session -> Html Msg
+view model session = <html><body>
+  <p id="election">{model.election}</p>
+  <a id="next" href={Wood { cfg: model.cfg, electionId: "18", contestId: Just 5 }}>next</a>
+  <button click={Bump}>bump</button>
+</body></html>
+
+test "a visit and a click use the wire keys" = {
+  let page <- Test.get (Wood { cfg: "c", electionId: "17", contestId: Just 5 })
+  let r <- Test.click Bump
+  Task.succeed ({ election: page.model.election, contest: page.model.contest, shown: Test.text "#election" page.doc, next: Test.attr "href" "#next" page.doc, answer: r.answer } == { election: "17", contest: Just 5, shown: Just "17", next: Just "/r/c/wood/Results?ElectionId=18&ContestId=5", answer: Redirected (Wood { cfg: "c", electionId: "17", contestId: Just 9 }) })
+}
