@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -284,9 +285,31 @@ func (cx *completion) fields() ([]completionItem, bool) {
 	}
 	var out []completionItem
 	for _, f := range r.Fields {
-		out = append(out, cx.item(f.Name, kindField, f.Name+" : "+types.StringQ(cx.a.res.U.Apply(f.Type), cx.m.Name, cx.a.prog.Qualify(cx.m.Name)), len(g[2])))
+		detail := f.Name + " : " + types.StringQ(cx.a.res.U.Apply(f.Type), cx.m.Name, cx.a.prog.Qualify(cx.m.Name))
+		if w := pageParamWire(cx.a, r, f.Name); w != "" {
+			detail += " as " + strconv.Quote(w)
+		}
+		out = append(out, cx.item(f.Name, kindField, detail, len(g[2])))
 	}
 	return out, true
+}
+
+// pageParamWire is the wire name of field name when r is a page's Params record and the field
+// is declared `as "Key"` (#55), else "".
+func pageParamWire(a *analysis, r *types.Record, name string) string {
+	if r.Name != "Params" || a.res == nil {
+		return ""
+	}
+	pi := a.res.Pages[r.Module]
+	if pi == nil || pi.Decl == nil || pi.Decl.Params == nil {
+		return ""
+	}
+	for _, f := range pi.Decl.Params.Fields {
+		if f.Name == name {
+			return f.Wire
+		}
+	}
+	return ""
 }
 
 // scope is the locals in scope at the cursor. On a line unchanged since the build, the scope at

@@ -274,7 +274,7 @@ func (p *printer) fakeDecl(d *syntax.FakeDecl) Doc {
 	return Concat(Text("fake "+d.Name+" {"), Nest(Concat(inner, dangling)), HardLine, Text("}"))
 }
 
-// field prints `name: Type [via T] [= default] [@attr …]`.
+// field prints `name: Type [via T] [= default] [as "Key"] [@attr …]` (the key as written).
 func (p *printer) field(f *syntax.Field) Doc {
 	doc := []Doc{Text(f.Name + ": "), p.typ(f.Type)}
 	if f.Via != "" {
@@ -282,6 +282,10 @@ func (p *printer) field(f *syntax.Field) Doc {
 	}
 	if f.Default != nil {
 		doc = append(doc, Text(" = "), p.expr(f.Default))
+	}
+	if f.WireSpan.File != "" {
+		s := p.spanText(f.WireSpan)
+		doc = append(doc, Text(" as "+s[strings.IndexByte(s, '"'):]))
 	}
 	for _, a := range f.Attrs {
 		doc = append(doc, Text(" "+p.attr(a)))

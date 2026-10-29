@@ -206,6 +206,17 @@ type FieldT struct {
 	DefaultLit  *string
 	RenamedFrom string
 	Pos         Pos // the field's declaration; zero for a field Lower made up
+	// Wire is the query key of a page's query parameter declared `as "Key"` (#55), "" for none;
+	// see Key.
+	Wire string
+}
+
+// Key is the URL key of a page or message parameter f: its wire name, else its name.
+func (f FieldT) Key() string {
+	if f.Wire != "" {
+		return f.Wire
+	}
+	return f.Name
 }
 
 // UnionType is a union's declaration. Params are its type parameter names (`Maybe a` → ["a"]).

@@ -400,3 +400,14 @@ func TestComplete_OtherwiseOffersQualifiers(t *testing.T) {
 		}
 	}
 }
+
+// A page parameter declared `as "Key"` completes with its query key (#55).
+func TestComplete_RecordFieldsWire(t *testing.T) {
+	c := start(t, wireBlog(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	p := typing(t, c, "app/Posts/Index.alder", afterQ, "  let z = params.")
+	got := labels(complete(t, c, "app/Posts/Index.alder", p))
+	if got["q"].Detail != `q : Text as "Q"` || got["page"].Detail != "page : Int" {
+		t.Fatalf("q: %+v, page: %+v", got["q"], got["page"])
+	}
+}

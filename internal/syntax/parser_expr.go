@@ -164,6 +164,9 @@ func (p *Parser) parseApp() Expr {
 }
 
 func (p *Parser) canStartArg() bool {
+	if p.fieldDefault && p.atWire() { // `x: T = d as "Key"`: the wire name ends the default
+		return false
+	}
 	switch p.tok.Kind {
 	case LIdent, UIdent, Int, Float, String, LParen, LBracket, Hole, Backslash:
 		return true

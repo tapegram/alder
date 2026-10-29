@@ -9,6 +9,10 @@ page "/x" { } requires role Admin
 
 page "/y" { id: Int } requires user
 
+page "/r/{cfg}" {cfg: Text, electionId: Text = ""   as "ElectionId", contestId: Maybe Int  as  "ContestId"}
+
+page "/w" { e: Text as "E" }
+
 session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Member }
 
 table Post @renamed "Article" { id: PostId @id, title: Text @unique @renamed "heading", author: User.UserId @ref User @cascade, org: Org.OrgId @ref Org @partition org, created: Time @created }

@@ -193,6 +193,9 @@ func dump(sb *strings.Builder, n any) {
 				sb.WriteString(" = ")
 				dump(sb, f.Default)
 			}
+			if f.Wire != "" {
+				fmt.Fprintf(sb, " as %q", f.Wire)
+			}
 		}
 		sb.WriteString("}")
 	case *FunType:

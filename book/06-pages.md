@@ -72,6 +72,20 @@ page "/write" { } requires user
 - A parameter with a default is optional in links and in the URL.
 - A `List` parameter repeats its key in the URL: `{ tag: List Text }` with
   `["a", "b"]` is `?tag=a&tag=b`, and `[]` is no key at all.
+- A query parameter's key is its name, unless the field gives another with
+  `as "Key"` after its type or default. That is for URLs whose shape is not
+  yours to choose, such as a capitalised key (`ElectionId`) that no field name
+  can spell:
+
+  ```alder fragment
+  page "/r/{cfg}/wood/Results" { cfg: Text, electionId: Text = "" as "ElectionId", contestId: Maybe Int as "ContestId" }
+  ```
+
+  The code still says `params.electionId` and `Sites.Wood { cfg: c, electionId: "17" }`;
+  the request decoder reads `?ElectionId=17`, and every URL of the page (links,
+  redirects, message URLs, a test's `Test.get`) writes `ElectionId=17`. The key
+  is letters, digits, `-`, `_`, `.` and `~`, two parameters may not read one
+  key, and a `{segment}` parameter takes no `as` (E0011).
 - `Params` is the parameter record type for this module.
 - Two pages may not answer the same path: `/x/{id}` and `/x/{slug}` are the
   same pattern, so the second is an error (E0016). Patterns that merely

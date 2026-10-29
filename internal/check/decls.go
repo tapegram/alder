@@ -830,6 +830,7 @@ func (mc *modCtx) definePage() {
 			c.errorf(diag.InvalidDecl, pd.Span, "path segment `{%s}` has no matching parameter", s)
 		}
 	}
+	mc.checkWireNames(pd, segs)
 	if len(pd.Requires) > 0 || pd.Silo != "" {
 		info.Requires = pd.Requires
 		for i, req := range pd.Requires {
@@ -1137,6 +1138,68 @@ func PagePathProblem(path string) string {
 		}
 	}
 	return ""
+}
+
+// checkWireNames checks the wire names of page pd's parameters (`e: Text = "" as "ElectionId"`,
+// #55): only a query parameter (not a `{segment}` of path segments segs) takes one, it is a
+// plain query key outside the message URLs' `_p.` keys, and no two query parameters read one
+// key (a parameter without a wire name reads its name).
+func (mc *modCtx) checkWireNames(pd *syntax.PageDecl, segs []string) {
+	c := mc.c
+	inPath := map[string]bool{}
+	for _, s := range segs {
+		inPath[s] = true
+	}
+	keys := map[string]string{} // query key → the parameter reading it
+	for _, f := range pd.Params.Fields {
+		if f.Wire != "" || f.WireSpan.File != "" {
+			sp := f.WireSpan
+			switch {
+			case inPath[f.Name]:
+				c.errorf(diag.InvalidDecl, sp, "page parameter `%s` is the path segment `{%s}`, not a query parameter: only a query parameter takes a wire name (`as %q`)", f.Name, f.Name, f.Wire)
+				continue
+			case f.Wire == "":
+				c.errorf(diag.InvalidDecl, sp, "the wire name of page parameter `%s` is empty: write the query key the URL carries (`as \"Id\"`), or leave the `as` out", f.Name)
+				continue
+			case !plainQueryKey(f.Wire):
+				c.errorf(diag.InvalidDecl, sp, "the wire name `%s` of page parameter `%s` is not a plain query key: use letters, digits, `-`, `_`, `.` and `~`", f.Wire, f.Name)
+				continue
+			case strings.HasPrefix(f.Wire, "_p."):
+				c.errorf(diag.InvalidDecl, sp, "the wire name `%s` of page parameter `%s` starts with `_p.`, which Alder keeps for message URLs (they carry the page's parameters as `_p.<key>`)", f.Wire, f.Name)
+				continue
+			case inPath[f.Wire]:
+				// message URLs carry path parameters as `_p.<name>` too: the two would share a key
+				c.errorf(diag.InvalidDecl, sp, "the wire name `%s` of page parameter `%s` is the path segment `{%s}`: give `%s` another wire name", f.Wire, f.Name, f.Wire, f.Name)
+				continue
+			}
+		}
+		if inPath[f.Name] {
+			continue
+		}
+		key, sp := f.Name, f.Span
+		if f.Wire != "" {
+			key, sp = f.Wire, f.WireSpan
+		}
+		if prev, ok := keys[key]; ok {
+			c.errorf(diag.InvalidDecl, sp, "page parameters `%s` and `%s` both read the query key `%s`: give one of them another wire name (`as \"…\"`)", prev, f.Name, key)
+			continue
+		}
+		keys[key] = f.Name
+	}
+}
+
+// plainQueryKey reports whether k is a query key a URL carries as written: URL-unreserved
+// characters (letters, digits, `-`, `_`, `.`, `~`), at least one.
+func plainQueryKey(k string) bool {
+	if k == "" {
+		return false
+	}
+	for _, r := range k {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("-_.~", r)) {
+			return false
+		}
+	}
+	return true
 }
 
 // plainSegment reports whether s is a path segment of letters, digits, `_` and (literal, a

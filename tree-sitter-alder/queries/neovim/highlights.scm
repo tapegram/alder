@@ -16,6 +16,7 @@
 
 ; ---- keywords
 ["module" "import" "as"] @keyword.import
+(field_decl "as" @keyword) ; a page parameter's wire name: `id: Text as "Id"`
 ["type" "brand" "where"] @keyword.type
 ["page" "msg" "form" "table" "capability" "fake" "session" "login" "test" "deploy" "silo"
  "choose" "requires" "role" "via" "let"] @keyword

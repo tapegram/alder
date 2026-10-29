@@ -3,6 +3,7 @@ package gen
 import (
 	"encoding/json"
 	"sort"
+	"strconv"
 	"strings"
 
 	"alder/internal/ir"
@@ -49,7 +50,11 @@ func devFields(r *ir.RecordType) []string {
 	}
 	var out []string
 	for _, f := range r.Fields {
-		out = append(out, f.Name+": "+types.String(f.Type))
+		s := f.Name + ": " + types.String(f.Type)
+		if f.Wire != "" { // a page parameter's query key (#55)
+			s += " as " + strconv.Quote(f.Wire)
+		}
+		out = append(out, s)
 	}
 	return out
 }

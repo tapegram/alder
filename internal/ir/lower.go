@@ -720,6 +720,7 @@ func (l *lowerer) recordFields(module string, rt *RecordType, t types.Type, fiel
 		rt.Fields = append(rt.Fields, FieldT{Name: f.Name, Type: l.erase(f.Type), Brand: l.fieldBrand(f.Type)})
 		if i < len(fields) && fields[i].Name == f.Name {
 			rt.Fields[i].Pos = posOf(fields[i].Span)
+			rt.Fields[i].Wire = fields[i].Wire
 		}
 		if i < len(fields) && fields[i].Name == f.Name && fields[i].Default != nil {
 			l.defaults = append(l.defaults, pendingDefault{module, rt, i, fields[i]})

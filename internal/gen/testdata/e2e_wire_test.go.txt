@@ -1,0 +1,83 @@
+package app
+
+// TestE2E_WireNames (#55): the gen_wire golden's page declares `electionId: Text = "" as
+// "ElectionId"` and `contestId: Maybe Int as "ContestId"`. Served through Serve, a request
+// with ?ElectionId=17&ContestId=5 reaches the page as electionId "17"; the lowercase key is not
+// read; the page's link renders ElectionId=18; its message URL carries _p.ElectionId, and the
+// message's redirect renders the wire keys. TestAlderWire runs the app's own Alder test (a
+// Test.get and a Test.click) as `alder test` does. internal/gen's TestGen_Wire writes this file
+// into the module the app is emitted to and runs it.
+
+import (
+	"html"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+
+	rtesting "alder/rt/testing"
+)
+
+func TestE2E_WireNames(t *testing.T) {
+	h, err := Serve(Caps{}, Options{DB: ":memory:", Dev: true, Secret: []byte("test-secret-0123456789")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	c := &http.Client{Timeout: 10 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	do := func(method, path string) (*http.Response, string) {
+		t.Helper()
+		req, _ := http.NewRequest(method, srv.URL+path, nil)
+		res, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		return res, string(b)
+	}
+
+	res, body := do("GET", "/r/c/wood/Results?ElectionId=17&ContestId=5")
+	if res.StatusCode != 200 || !strings.Contains(body, `<p id="election">17</p>`) {
+		t.Fatalf("GET ?ElectionId=17: %d\n%s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, `href="/r/c/wood/Results?ElectionId=18&amp;ContestId=5"`) {
+		t.Errorf("the link does not carry the wire keys:\n%s", body)
+	}
+	m := regexp.MustCompile(`/_m/Wood/Bump[^"']*`).FindString(body)
+	if m == "" {
+		t.Fatalf("no message URL for Bump:\n%s", body)
+	}
+	m = html.UnescapeString(m)
+	if !strings.Contains(m, "_p.ElectionId=17") || !strings.Contains(m, "_p.ContestId=5") || strings.Contains(m, "electionId") {
+		t.Errorf("message URL %q does not carry the wire keys", m)
+	}
+	res, body = do("POST", m)
+	if loc := res.Header.Get("Location"); res.StatusCode != 303 || loc != "/r/c/wood/Results?ElectionId=17&ContestId=9" {
+		t.Errorf("POST %s: %d Location %q\n%s", m, res.StatusCode, loc, body)
+	}
+
+	// the field's own name is not its key: the default applies
+	if res, body := do("GET", "/r/c/wood/Results?electionId=17"); res.StatusCode != 200 || !strings.Contains(body, `<p id="election"></p>`) {
+		t.Errorf("GET ?electionId=17: %d\n%s", res.StatusCode, body)
+	}
+	// a wire key that does not decode is the page's 404, as for any parameter
+	if res, _ := do("GET", "/r/c/wood/Results?ContestId=x"); res.StatusCode != 404 {
+		t.Errorf("GET ?ContestId=x: %d, want 404", res.StatusCode)
+	}
+}
+
+func TestAlderWire(t *testing.T) {
+	rs := rtesting.Run(Tests, rtesting.Options{Tables: Tables, Caps: Caps{}.Registry(), Session: TestSession(), Routes: Routes, Web: Web()})
+	if len(rs) != 1 {
+		t.Fatalf("%d results", len(rs))
+	}
+	if r := rs[0]; !r.OK {
+		t.Errorf("%q: %+v", r.Name, r)
+	}
+}

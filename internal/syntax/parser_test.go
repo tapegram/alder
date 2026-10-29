@@ -575,3 +575,42 @@ func TestParse_ImportAs(t *testing.T) {
 		t.Errorf("value named as: diags=%v decls=%d", diags, len(m.Decls))
 	}
 }
+
+// TestParse_PageParamWire (#55): a page's query parameter may name its query key with `as
+// "Key"`, after its type or its default; `as` stays an ordinary name in expressions and types
+// elsewhere, and a wire name outside a page's parameters is a parse error saying so.
+func TestParse_PageParamWire(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{`page "/r/{cfg}" { cfg: Text, electionId: Text = "" as "ElectionId" }`, `electionId: Text = (str "") as "ElectionId"}`},
+		{`page "/r" { electionId: Maybe Text as "ElectionId" }`, `{electionId: (Maybe Text) as "ElectionId"}`},
+		{"page \"/r\" {\n  a: Int = f 1 as \"A\",\n  b: List Int as \"B\",\n}", `{a: Int = (app (var f) (int 1)) as "A", b: (List Int) as "B"}`},
+		{`page "/r" { n: Int = 0 }`, `{n: Int = (int 0)}`},
+		{"x : Int\nx = f as 1", "(app (var f) (var as) (int 1))"},
+	} {
+		m, diags := ParseFile("m.alder", []byte("module M\n\n"+c.src+"\n"))
+		if len(diags) > 0 {
+			t.Errorf("%q: %v", c.src, diags)
+			continue
+		}
+		if got := Dump(m); !strings.Contains(got, c.want) {
+			t.Errorf("%q: dump %s lacks %s", c.src, got, c.want)
+		}
+	}
+	m, _ := ParseFile("m.alder", []byte("module M\n\npage \"/r\" { e: Text = \"\" as \"E\" }\n"))
+	f := m.Decls[0].(*PageDecl).Params.Fields[0]
+	if f.Wire != "E" || f.WireSpan.Start.Col != 26 || f.WireSpan.End.Col != 32 || f.Span.End.Col != 32 {
+		t.Fatalf("field: wire %q span %+v field span %+v", f.Wire, f.WireSpan, f.Span)
+	}
+	for _, c := range []struct{ src, want string }{
+		{"msg Pick { id: Int as \"Id\" }", "a wire name (`as \"Id\"`) is only allowed on a page's query parameters"},
+		{"form F = { title: Text as \"Title\" }", "a wire name (`as \"Title\"`) is only allowed on a page's query parameters"},
+		{"type R = { a: Int = 0 as \"A\" }", "a wire name (`as \"A\"`) is only allowed on a page's query parameters"},
+		{"page \"/r\" { e: Text as Key }", "expected the query key after `as`, as a string (`as \"Key\"`)"},
+		{"page \"/r\" { e: Text as \"{x}\" }", "a wire name is a plain string, without `{…}`"},
+	} {
+		_, diags := ParseFile("m.alder", []byte("module M\n\n"+c.src+"\n"))
+		if len(diags) != 1 || !strings.Contains(diags[0].Message, c.want) {
+			t.Errorf("%s: diags %v, want one with %q", c.src, diags, c.want)
+		}
+	}
+}
