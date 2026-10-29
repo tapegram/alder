@@ -13,6 +13,14 @@ page "/x" { } requires role Admin
 
 page "/y" { id: Int } requires user
 
+page "/r/{cfg}" {
+  cfg: Text,
+  electionId: Text = "" as "ElectionId",
+  contestId: Maybe Int as "ContestId",
+}
+
+page "/w" { e: Text as "E" }
+
 session {
   user: Maybe User.UserId,
   org: Maybe Org.OrgId via Membership,
