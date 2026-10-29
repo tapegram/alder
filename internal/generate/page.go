@@ -702,9 +702,18 @@ func rootTags(p *Program, title string, imports *importSet) (string, string) {
 	return "<al-page>", "</al-page>"
 }
 
-// recordName is table t's record type as written in module home: its name, there or in any
-// module importing its module, which is named after it.
-func recordName(t *Table, home string) string { return t.Name }
+// recordName is table t's record type as written in module home: its name in its own module,
+// else its module's path and its name (`Table.Post.Post`), which retarget rewrites to the
+// qualifier home imports the module with once every import of the file is known (`Post`, or
+// `TablePost` when another import or home itself ends in `Post`, #34): a table is the eponymous
+// type of its module, named by the qualifier alone. A table whose module is not named after it
+// (a fake) keeps its name.
+func recordName(t *Table, home string) string {
+	if home == t.Module || t.Module[strings.LastIndex(t.Module, ".")+1:] != t.Name {
+		return t.Name
+	}
+	return t.Module + "." + t.Name
+}
 
 // selectIn is how a page that requires keys reads t's rows: `Db.mine T` for a table partitioned
 // by `user`, `Db.scoped T` for one partitioned by another of them (chapter 6, "Partitions"),
@@ -717,15 +726,6 @@ func selectIn(t *Table, home string, keys []string) string {
 		return "Db.mine " + recordName(t, home)
 	}
 	return "Db.scoped " + recordName(t, home)
-}
-
-// selectOf is how a page reads t's rows: `Db.mine T` on a `requires user` page when t has an
-// `@owner` (chapter 6, "Rules"), else `Db.from T`.
-func selectOf(t *Table, home string, requiresUser bool) string {
-	if requiresUser && t.Owner != "" {
-		return "Db.mine " + recordName(t, home)
-	}
-	return "Db.from " + recordName(t, home)
 }
 
 // cell is the markup showing column c's value expr: Bool and unions as an `al-badge`, a Time

@@ -12,28 +12,30 @@ import (
 // module is rewritten, so a page value (`Admin.Layout {}`) keeps its full path. bare maps a
 // qualifier that changed to its new one for the name written alone (`Todo { … }`, `: Todo`, an
 // eponymous declaration): such a name is never a page value, whose spelling is a full path.
-func (e *srcEdit) requalify(rename, bare map[string]string) {
-	if len(rename) == 0 && len(bare) == 0 {
+// tables maps a table written as its module's path and its name (`Table.Post.Post`, recordName)
+// to the qualifier that names it (`Post`, or `TablePost` under an alias, #34).
+func (e *srcEdit) requalify(rename, bare, tables map[string]string) {
+	if len(rename) == 0 && len(bare) == 0 && len(tables) == 0 {
 		return
 	}
 	for n := 1; n <= len(e.lines); n++ {
 		if r, ok := e.repl[n]; ok && r == nil {
 			continue // deleted
 		}
-		if cur := e.current(n); requalified(cur, rename, bare) != cur {
-			e.replaceLine(n, requalified(cur, rename, bare))
+		if cur := e.current(n); requalified(cur, rename, bare, tables) != cur {
+			e.replaceLine(n, requalified(cur, rename, bare, tables))
 		}
 	}
 	for i := range e.ins {
 		for j, l := range e.ins[i].text {
-			e.ins[i].text[j] = requalified(l, rename, bare)
+			e.ins[i].text[j] = requalified(l, rename, bare, tables)
 		}
 	}
 }
 
 // requalified is s with the qualifiers of rename rewritten (requalify), outside strings and
 // comments.
-func requalified(s string, rename, bare map[string]string) string {
+func requalified(s string, rename, bare, tables map[string]string) string {
 	if !strings.ContainsAny(s, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
 		return s
 	}
@@ -65,7 +67,7 @@ func requalified(s string, rename, bare map[string]string) string {
 				j++
 			}
 			if 'A' <= c && c <= 'Z' && (i == 0 || s[i-1] != '.') {
-				k, out := requalifyChain(s, i, rename, bare)
+				k, out := requalifyChain(s, i, rename, bare, tables)
 				b.WriteString(out)
 				i = k
 				continue
@@ -82,9 +84,10 @@ func requalified(s string, rename, bare map[string]string) string {
 
 // requalifyChain handles the dotted name of capitalised segments starting at s[i] (`Admin.Layout`
 // in `Admin.Layout.Page` or `Admin.Layout.isAdmin`): its longest prefix that is a key of rename
-// and has a segment after it is replaced. It returns where the name ends (before a member)
+// and has a segment after it is replaced; a whole name that is a key of tables (`Table.Post.Post`,
+// a member or not after it) is its qualifier. It returns where the name ends (before a member)
 // and the text for s[i:end].
-func requalifyChain(s string, i int, rename, bare map[string]string) (int, string) {
+func requalifyChain(s string, i int, rename, bare, tables map[string]string) (int, string) {
 	var ends []int // the end of each capitalised segment
 	j := i
 	for {
@@ -99,6 +102,9 @@ func requalifyChain(s string, i int, rename, bare map[string]string) (int, strin
 		}
 		j = k
 		break
+	}
+	if q, ok := tables[s[i:j]]; ok { // a table as its module's path and its name (recordName)
+		return j, q
 	}
 	member := j+1 < len(s) && s[j] == '.' && isNameByte(s[j+1]) // a lower-case member follows
 	if !member && len(ends) == 1 {                              // a bare name: an eponymous type or table, through the old qualifier

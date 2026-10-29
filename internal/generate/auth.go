@@ -243,7 +243,7 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 	d.Tests = append(d.Tests, TestData{Name: quote("a signed-in user logs out here"), Lines: tb.lines,
 		Result: "{ answer: r.answer, user: r.session.user" + outRole + " } == " + want + " }"})
 	d.Imports = imports.list()
-	loginBody, err := canonical(p, FileOf(module), render("auth_login.tmpl", d))
+	loginBody, err := canonical(probe, FileOf(module), render("auth_login.tmpl", d)) // probe: it knows a user table created here (its name, recordName)
 	if err != nil {
 		return nil, false, err
 	}
@@ -255,7 +255,7 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 		roleType = types.StringIn(role, "App")
 		roleField = "role: " + roleType + " = " + ctors[0]
 	}
-	appEdit, err := editApp(p, app, users, idType, roleField, ctors)
+	appEdit, err := editApp(probe, app, users, idType, roleField, ctors) // probe: it knows a user table created here
 	if err != nil {
 		return nil, false, err
 	}

@@ -185,12 +185,12 @@ func deleteRuleTests(p *Program, t *Table, imports *importSet) []TestData {
 		}
 		tb.insertRow(t, "_", map[string]string{c.Name: val}, false)
 		if c.OnDelete == "cascade" {
-			tb.let("let _ <- Db.delete %s %s", r.Name, target)
+			tb.let("let _ <- Db.delete %s %s", recordName(r, t.Module), target)
 			tb.let("let left <- Db.from %s |> Db.count", t.Name)
 			tests = append(tests, TestData{Name: quote("deleting its " + c.Name + " deletes a " + t.Name), Lines: tb.lines, Result: "left == 0"})
 			continue
 		}
-		tb.let("let r <- Test.run (Db.delete %s %s)", r.Name, target)
+		tb.let("let r <- Test.run (Db.delete %s %s)", recordName(r, t.Module), target)
 		tb.let("let left <- Db.from %s |> Db.count", t.Name)
 		tests = append(tests, TestData{Name: quote("a " + t.Name + " keeps its " + c.Name + " from being deleted"), Lines: tb.lines,
 			Result: fmt.Sprintf("{ deleted: Result.toMaybe r.value, left: left } == { deleted: Nothing, left: %d }", tb.counts[t.Module])})
