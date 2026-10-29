@@ -3,6 +3,7 @@ package lsp
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"alder/internal/check"
@@ -196,6 +197,11 @@ func pageHover(a *analysis, m *syntax.Module, d *syntax.PageDecl) string {
 			anon := *pi.Params // the generated record is named `Params`; show its fields
 			anon.Anonymous = true
 			lines = append(lines, "params : "+types.StringQ(&anon, m.Name, a.prog.Qualify(m.Name)))
+		}
+	}
+	for _, f := range d.Params.Fields {
+		if f.Wire != "" {
+			lines = append(lines, "-- "+f.Name+" is read from the query key "+strconv.Quote(f.Wire))
 		}
 	}
 	if len(d.Requires) > 0 {

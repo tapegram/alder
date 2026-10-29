@@ -379,3 +379,37 @@ func TestHover_QualifiedTypeAndCtor(t *testing.T) {
 		}
 	}
 }
+
+// wireBlog is the blog with Posts.Index's `q` read from the query key "Q" (#55).
+func wireBlog(t *testing.T) string {
+	t.Helper()
+	root := blogCopy(t)
+	path := filepath.Join(root, "app/Posts/Index.alder")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := strings.Replace(string(src), `q: Text = "" }`, `q: Text = "" as "Q" }`, 1)
+	if out == string(src) {
+		t.Fatal("Posts.Index's header changed")
+	}
+	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+// A page header's hover names the query key of each parameter declared `as "Key"` (#55).
+func TestHover_PageHeaderWire(t *testing.T) {
+	c := start(t, wireBlog(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", `page "/"`, 0))
+	for _, want := range []string{"params : { page: Int, q: Text }", "-- q is read from the query key \"Q\""} {
+		if !strings.Contains(got, want) {
+			t.Errorf("page header hover lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "page is read") {
+		t.Errorf("a parameter without a wire name is listed:\n%s", got)
+	}
+}
