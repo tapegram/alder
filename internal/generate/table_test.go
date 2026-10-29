@@ -112,18 +112,23 @@ func TestTableNamedByName(t *testing.T) {
 // that imports both, so each is written with its canonical alias (`TablePost`, `BlogPost`).
 func twoPostsApp(t *testing.T) *Program {
 	t.Helper()
-	dir := scaffoldApp(t, map[string]string{
+	p, err := Load(twoPostsDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// twoPostsDir is twoPostsApp's app on disk.
+func twoPostsDir(t *testing.T) string {
+	t.Helper()
+	return scaffoldApp(t, map[string]string{
 		"app/Table/Post.alder": "module Table.Post\n\ntype PostId = brand Text\n\ntable Post {\n  id: PostId @id,\n  title: Text,\n}\n",
 		"app/Blog/Post.alder":  "module Blog.Post\n\ntype Key = brand Text\n",
 		"app/Notes.alder": "module Notes\n\nimport Blog.Post as BlogPost\nimport Table.Post as TablePost\n\npage \"/notes\" { }\n\n" +
 			"type Model = { n: Int }\n\nload : Params -> Session -> Query Model\nload params session = Query.succeed { n: 0 }\n\n" +
 			"view : Model -> Session -> Html Msg\nview model session = <al-page><h1>Notes</h1></al-page>\n",
 	})
-	p, err := Load(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return p
 }
 
 // TestTypeTextCanonicalQualifiers (#23): a type is written through the qualifier the module
@@ -144,10 +149,14 @@ func TestTypeTextCanonicalQualifiers(t *testing.T) {
 
 // TestNewMsgIdOfAliasedTable: a message field typed with the aliased qualifier
 // (`TablePost.PostId`) is the table's id, so the test clicks with a row it inserts, not a
-// hole, and the field keeps its qualifier. (The test's `Db.insert Post` still writes the
-// table by its name, not `TablePost`: generated code does not yet alias a table's name.)
+// hole, and the field keeps its qualifier. The test writes the table through the alias too
+// (#34): `Db.insert TablePost`, `Db.get TablePost`.
 func TestNewMsgIdOfAliasedTable(t *testing.T) {
-	p := twoPostsApp(t)
+	dir := twoPostsDir(t)
+	p, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	f, err := ParseField("id:TablePost.PostId", false)
 	if err != nil {
 		t.Fatal(err)
@@ -157,8 +166,76 @@ func TestNewMsgIdOfAliasedTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := editAt(edits, "app/Notes.alder")
-	if e == nil || !strings.Contains(e.Body, "Test.click (Feature { id: post1 })") || !strings.Contains(e.Body, "msg Feature { id: TablePost.PostId }") {
-		t.Fatalf("Notes:\n%+v", e)
+	if e == nil {
+		t.Fatalf("no edit of Notes: %+v", edits)
+	}
+	for _, want := range []string{"Test.click (Feature { id: post1 })", "msg Feature { id: TablePost.PostId }", "Db.insert TablePost {", "Db.get TablePost post1"} {
+		if !strings.Contains(e.Body, want) {
+			t.Errorf("missing %q in:\n%s", want, e.Body)
+		}
+	}
+	if strings.Contains(e.Body, "Db.insert Post ") {
+		t.Errorf("writes the table by its name, not its alias:\n%s", e.Body)
+	}
+	if res, err := Apply(dir, edits, Options{DryRun: true}); err != nil {
+		t.Fatalf("Apply: %v\n%s", err, res.RenderText(true))
+	}
+}
+
+// TestNewPageAliasedTable (#34): a page whose module writes the table's module with an alias
+// (its own last segment is `Post`, or it imports another module ending in `Post` for a column's
+// union) writes the table through the alias: `Db.from TablePost`, `List TablePost`.
+func TestNewPageAliasedTable(t *testing.T) {
+	unionDir := func(t *testing.T) string {
+		return scaffoldApp(t, map[string]string{
+			"app/Blog/Post.alder":  "module Blog.Post\n\ntype Kind = Draft | Published\n",
+			"app/Table/Post.alder": "module Table.Post\n\nimport Blog.Post as BlogPost\n\ntype PostId = brand Text\n\ntable Post {\n  id: PostId @id,\n  title: Text,\n  kind: BlogPost.Kind,\n}\n",
+		})
+	}
+	for _, c := range []struct {
+		name string
+		dir  func(*testing.T) string
+		opts PageOptions
+		file string
+		want []string
+	}{
+		{"list in a module ending in Post", twoPostsDir, PageOptions{Module: "Admin.Post", Path: "/admin/posts", List: "Post"}, "app/Admin/Post.alder",
+			[]string{"\nimport Table.Post as TablePost\n", "List TablePost", "Db.from TablePost", "TablePost.id.desc", "Db.insert TablePost {"}},
+		{"show in a module ending in Post", twoPostsDir, PageOptions{Module: "Admin.Post", Path: "/admin/posts", Show: "Post"}, "app/Admin/Post.alder",
+			[]string{"\nimport Table.Post as TablePost\n", "row: TablePost", "Db.get TablePost params.id", "Db.insert TablePost {"}},
+		{"from in a module ending in Post", twoPostsDir, PageOptions{Module: "Admin.Post", Path: "/admin/posts", From: []string{"Post"}}, "app/Admin/Post.alder",
+			[]string{"\nimport Table.Post as TablePost\n", "List TablePost", "Db.from TablePost", "Db.insert TablePost {"}},
+		{"list with a union column from another Post module", unionDir, PageOptions{Module: "Posts.Index", Path: "/posts", List: "Post"}, "app/Posts/Index.alder",
+			[]string{"\nimport Blog.Post as BlogPost\n", "\nimport Table.Post as TablePost\n", "List TablePost", "Db.from TablePost", "Db.insert TablePost {"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := c.dir(t)
+			p, err := Load(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			edits, err := NewPage(p, c.opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			e := editAt(edits, c.file)
+			if e == nil {
+				t.Fatalf("no edit of %s: %+v", c.file, edits)
+			}
+			for _, want := range c.want {
+				if !strings.Contains(e.Body, want) {
+					t.Errorf("missing %q in:\n%s", want, e.Body)
+				}
+			}
+			for _, bad := range []string{"Db.from Post", "Db.get Post ", "Db.insert Post ", "List Post", "row: Post\n"} {
+				if strings.Contains(e.Body, bad) {
+					t.Errorf("writes the table by its name, not its alias (%q):\n%s", bad, e.Body)
+				}
+			}
+			if res, err := Apply(dir, edits, Options{DryRun: true}); err != nil {
+				t.Fatalf("Apply: %v\n%s", err, res.RenderText(true))
+			}
+		})
 	}
 }
 
