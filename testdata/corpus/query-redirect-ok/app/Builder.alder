@@ -1,0 +1,12 @@
+module Builder
+
+-- The target of Start's redirect: a path parameter and a query parameter with a default.
+page "/builder/{seed}" { seed: Text, tab: Text = "main" }
+
+type Model = { seed: Text, tab: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { seed: params.seed, tab: params.tab }
+
+view : Model -> Session -> Html Msg
+view model session = <html><body><h1 id="builder">Builder {model.seed} ({model.tab})</h1></body></html>
