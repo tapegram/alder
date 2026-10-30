@@ -288,8 +288,8 @@ func runSpecWith(s *generate.Spec, argv []string, usage string, seen func(*gener
 	if err != nil {
 		return genUsage(stderr, usage, err)
 	}
-	if s.ID == "new page" && sets.Has("list") && sets.Has("show") {
-		return genUsage(stderr, usage, errors.New("alder new page: --list and --show name different pages: give one of them"))
+	if s.ID == "new page" && countTrue(sets.Has("list"), sets.Has("show"), sets.Has("from")) > 1 {
+		return genUsage(stderr, usage, errors.New("alder new page: choose one of --list, --show and --from: a page generated with --list shows one table's rows, --show one row, --from several tables"))
 	}
 	g := genArgs{dir: cli.Dir, json: cli.JSON, dry: cli.DryRun}
 	cmd := "alder " + s.ID
@@ -319,6 +319,15 @@ func specExtra(s *generate.Spec, res *generate.Result) func(*genJSON) {
 		}
 	}
 	return func(out *genJSON) { out.Skipped, out.UpToDate = &skipped, &upToDate }
+}
+
+func countTrue(bs ...bool) (n int) {
+	for _, b := range bs {
+		if b {
+			n++
+		}
+	}
+	return n
 }
 
 // newGenerator is the Spec of `alder new <kind>`, or nil when kind is an app name.

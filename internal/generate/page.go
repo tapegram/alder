@@ -139,6 +139,15 @@ func notAPath(path string) error {
 	return Refusef("`%s` is not a path: a page's path starts with `/`, such as `/posts`", path)
 }
 
+const pageKindsMsg = "choose one of --list, --show and --from: a page generated with --list shows one table's rows, --show one row, --from several tables"
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 // pathParam matches a `{name}` segment of a page path.
 var pathParam = regexp.MustCompile(`\{([^/{}]*)\}`)
 
@@ -153,8 +162,8 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	if o.Module == "" && !strings.HasPrefix(o.Path, "/") && IsModuleName(o.Path) {
 		return nil, notAPath(o.Path)
 	}
-	if o.List != "" && o.Show != "" {
-		return nil, Refusef("--list and --show name different pages: give one of them")
+	if n := b2i(o.List != "") + b2i(o.Show != "") + b2i(len(o.From) > 0); n > 1 { // before a module is derived from the first of them
+		return nil, Refusef(pageKindsMsg)
 	}
 	if o.Module == "" {
 		kind, name := "", ""
@@ -263,7 +272,7 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 		return nil, Refusef("--blank takes no --list or --from: a blank page's `load` and `view` are holes (with --show T it has the row's `/{id}` parameter)")
 	}
 	if kinds > 1 {
-		return nil, Refusef("choose one of --list, --show and --from: a page generated with --list shows one table's rows, --show one row, --from several tables")
+		return nil, Refusef(pageKindsMsg)
 	}
 	// --requires: `user`, a key of the session (`org`, M15), or both; a key with `via` needs the
 	// user first (E0027), so it is written `requires user, org`

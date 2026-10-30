@@ -34,13 +34,28 @@ func TestHelpJSON_RequiredArgs(t *testing.T) {
 	}
 }
 
+// #35: the drill's asWritten drops the `Table.` of a table module's path, not the end of
+// another name (`MyTable.X`).
+func TestAsWrittenKeepsOtherTableNames(t *testing.T) {
+	t.Parallel()
+	if got := asWritten("Table.Team.TeamId -> MyTable.X"); got != "Team.TeamId -> MyTable.X" {
+		t.Errorf("asWritten = %q", got)
+	}
+}
+
 // #35: `alder new page --list T --show U` is a usage error (exit 2), not a silent --list.
 func TestGenerate_NewPageListAndShowConflict(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
 	dir := genApp(t, "scaffold")
-	code, out, errs := alderIn(t, dir, "", "new", "page", "/both", "--list", "Entry", "--show", "Entry")
-	if code != 2 || !strings.Contains(errs, "--list and --show") || !strings.Contains(errs, "usage: alder new page") {
-		t.Errorf("exit %d\n%s%s", code, out, errs)
+	for _, args := range [][]string{
+		{"new", "page", "/both", "--list", "Entry", "--show", "Entry"},
+		{"new", "page", "About", "/about", "--list", "Entry", "--show", "Entry"},
+		{"new", "page", "About", "/about", "--show", "Entry", "--from", "Entry"},
+	} {
+		code, out, errs := alderIn(t, dir, "", args...)
+		if code != 2 || !strings.Contains(errs, "choose one of --list, --show and --from") || !strings.Contains(errs, "usage: alder new page") {
+			t.Errorf("%v: exit %d\n%s%s", args, code, out, errs)
+		}
 	}
 }

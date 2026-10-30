@@ -76,6 +76,18 @@ func TestTableNameAddress(t *testing.T) {
 	})
 }
 
+// #35: --list with --show is refused with no module given too, not resolved to --list's.
+func TestNewPageListAndShowRefused(t *testing.T) {
+	p, err := Load(scaffoldApp(t, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewPage(p, PageOptions{Path: "/both", List: "Entry", Show: "Entry"})
+	if err == nil || !strings.Contains(err.Error(), "choose one of --list, --show and --from") {
+		t.Fatalf("err: %v", err)
+	}
+}
+
 // #35: a bare capitalised word that equals a table's name is the table's record type, and
 // imports its module, unless it is a constructor: of the type being declared, or of a union the
 // module declares.
