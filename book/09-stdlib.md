@@ -239,8 +239,12 @@ Html.unsafe : Text -> Html Never                -- unescaped markup; never for u
 Html.none  : Html a                             -- renders nothing
 Html.text  : Text -> Html a
 Html.fragment : List (Html a) -> Html a         -- the nodes side by side, no wrapper element
+Html.toText : Html Never -> Text                -- the markup File.html serves
 Url.external : Text -> Page                     -- external URL for href, src or Redirect
 ```
+
+`Html.toText` takes `Html Never`, a view that sends no messages, because the
+markup is rendered without a running page to receive them.
 
 `Url.external` keeps a URL only when it is an absolute `http:` or `https:`
 URL (`https://example.com/a`), a path of this site (`/static/app.css`,

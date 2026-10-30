@@ -66,6 +66,7 @@ var StdCalls = map[string]string{
 	"Html.none":     "std.HtmlNone",
 	"Html.text":     "std.HtmlText",
 	"Html.fragment": "std.HtmlFragment",
+	"Html.toText":   "std.HtmlToText",
 	// Int
 	"Int.toFloat": "std.IntToFloat",
 	"Int.min":     "std.IntMin",

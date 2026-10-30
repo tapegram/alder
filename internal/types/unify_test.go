@@ -185,3 +185,17 @@ func TestClone_LeavesTheOriginal(t *testing.T) {
 		t.Fatalf("the original's counter moved: %d", v.ID)
 	}
 }
+
+// Html.toText : Html Never -> Text takes a view that sends no messages: Html Msg is rejected,
+// and Html Never fits Html a.
+func TestCheck_HtmlToTextRejectsMessages(t *testing.T) {
+	u := &Unifier{Subst: Subst{}}
+	never := &App{Con: "Html", Args: []Type{Never}}
+	msg := &App{Con: "Html", Args: []Type{&Con{Name: "Msg"}}}
+	if err := u.Check(msg, never); err == nil {
+		t.Fatal("Html Msg must not fit Html Never")
+	}
+	if err := u.Check(never, msg); err != nil {
+		t.Fatal("Html Never must fit Html Msg:", err)
+	}
+}

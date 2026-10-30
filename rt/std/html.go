@@ -13,3 +13,6 @@ func HtmlFragment(ns []html.Node) html.Node { return html.Nodes(ns...) }
 
 // HtmlUnsafe is `Html.unsafe`: raw markup, never escaped.
 func HtmlUnsafe(s string) html.Node { return html.Raw(s) }
+
+// HtmlToText is `Html.toText`: the markup File.html would serve for the node.
+func HtmlToText(n html.Node) string { return html.Render(n) }

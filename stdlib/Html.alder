@@ -5,3 +5,5 @@ none : Html a
 text : Text -> Html a
 -- the nodes side by side with no wrapper element (a doctype before <html>)
 fragment : List (Html a) -> Html a
+-- the markup File.html serves for the node
+toText : Html Never -> Text
