@@ -201,6 +201,7 @@ var StdCalls = map[string]string{
 	"Text.indexes":        "std.TextIndexes",
 	"Text.toCodePoints":   "std.TextToCodePoints",
 	"Text.fromCodePoints": "std.TextFromCodePoints",
+	"Text.hash":           "std.TextHash",
 	// Time
 	"Time.fromDate":   "std.TimeFromDate",
 	"Time.epoch":      "std.TimeEpoch",
