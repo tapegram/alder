@@ -5628,6 +5628,64 @@ scratch` does (chapter 11, "`alder scratch`"), with `scratch.RunFile`, from
   would put ten entries in the problem list every save. They travel in a
   notification of their own, and the plugin draws them as virtual text.
 
+Hover, definition, completion and code actions in a scratch file cannot use
+the analysis either, so they use a **view** of the file
+(`internal/lsp/scratchview.go`): the file's text checked with the app by
+`scratch.Check`, the first step of a run, without the build. The view is
+built by the request that needs it and kept until the text changes or the
+app's sources on disk do (the stamps the poller compares, `watch.Snapshot`,
+taken with each view), so a hover after a hover costs one walk of `app/`
+rather than a check.
+
+The checked program has the scratch file in it as a module, but not line for
+line. Take this file:
+
+```text
+double : Int -> Int          line 1
+double n = n * 2             line 2
+                             line 3
+> double 21                  line 4
+```
+
+`scratch.ParseFile` rewrites line 4 as `it1 = double 21`, so on that line a
+column of the module is 4 more than the file's (`it1 = ` is six bytes where
+`> ` was two; the file's `SourceMap.Shift` records -4 for the line). Then
+`scratch.Check` puts `module Scratch` and an `import` for every app module in
+front, say 21 lines, so file line 4 is module line 25. After an `in
+Table.Todo` header the module's own text goes in front instead: the file
+continues the module. A view records where the inserted lines start and how
+many there are (`Checked.InsertLine`, `Checked.LineOffset`), and two small
+functions turn a position one way and back: `toModule` adds the lines and
+undoes the shift, `fromModule` does the opposite, and has no answer for an
+inserted line, which the user never wrote. A request maps the cursor into the
+module, asks the same code an app module uses (`hoverText`, `definition`,
+completion's contexts), and maps any place in the answer back: a definition in
+the scratch module becomes a place in the file, one in an app module stays
+where it is, and a completion's edit gets the shift of its line.
+
+The freshness rule (above) carries over. While you type a watch, the text
+often does not parse (`> Todo.` is not an expression yet), and that text has
+no program to ask. The view of the last text that checked is used instead,
+compared with the module text the current file would make (the current
+lines with the same inserted lines in front): when the lines above the cursor
+are the same, its scopes and types still hold there. That view is retired as
+soon as the app's sources change on disk: its program is the old app, and an
+answer from it could name what the app no longer declares. Code actions are the
+exception, as for an app module: they come from the current text's own
+diagnostics, positioned in the file as a run positions them
+(`File.Positioned`), with their fixes.
+
+**Inlay hints** come from the runs, not the view. Each `alder/scratch` the
+server sends is also kept, with the text it was run on; a
+`textDocument/inlayHint` request turns each watch's result into one label at
+the end of its last line, but only while those lines are the same in the
+current text, so an edited watch never shows a value it no longer has. Inlay
+hints are pulled: the editor asks when it redraws, and a run that ends between
+two redraws would not show until the next. An editor that says, at
+`initialize`, that it supports `workspace/inlayHint/refresh` is therefore sent
+that request (the one request the server ever sends) after each phase, and
+asks again.
+
 ## 11. Exercises
 
 1. **Dump an AST.** Write `module X` and `x : Int` / `x = 1 + 2 * 3` in a

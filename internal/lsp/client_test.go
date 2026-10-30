@@ -59,6 +59,12 @@ func startWith(t *testing.T, root string, o Options) *client {
 // startOffering is startWith for a client whose general.positionEncodings is offered.
 func startOffering(t *testing.T, root string, o Options, offered []string) *client {
 	t.Helper()
+	return startCaps(t, root, o, map[string]any{"general": map[string]any{"positionEncodings": offered}})
+}
+
+// startCaps is startWith with the client capabilities initialize sends.
+func startCaps(t *testing.T, root string, o Options, caps map[string]any) *client {
+	t.Helper()
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	c := &client{
@@ -87,7 +93,7 @@ func startOffering(t *testing.T, root string, o Options, offered []string) *clie
 			t.Error("the server did not stop at EOF")
 		}
 	})
-	if e := c.call("initialize", map[string]any{"rootUri": c.uri(""), "capabilities": map[string]any{"general": map[string]any{"positionEncodings": offered}}}, &c.initResult); e != nil {
+	if e := c.call("initialize", map[string]any{"rootUri": c.uri(""), "capabilities": caps}, &c.initResult); e != nil {
 		t.Fatalf("initialize: %v", e)
 	}
 	c.notify("initialized", map[string]any{})
@@ -132,7 +138,7 @@ func (c *client) read(r io.Reader) {
 			close(c.publishing)
 			c.publishing = make(chan struct{})
 			c.mu.Unlock()
-		case m.ID == nil:
+		case m.ID == nil, m.Method != "": // a notification, or a request of the server's (unanswered)
 			select {
 			case c.notes <- m:
 			default:

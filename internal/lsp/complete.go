@@ -11,6 +11,7 @@ import (
 	"alder/internal/diag"
 	"alder/internal/markup"
 	"alder/internal/names"
+	"alder/internal/scratch"
 	"alder/internal/syntax"
 	"alder/internal/theme"
 	"alder/internal/types"
@@ -78,7 +79,9 @@ func completionReq(s *server, params json.RawMessage) (any, error) {
 	}
 	items := []completionItem{}
 	rel, ok := s.rel(p.TextDocument.URI)
-	if ok {
+	if ok && scratch.IsScratchFile(rel) {
+		items = append(items, s.scratchCompletion(rel, p.Position)...)
+	} else if ok {
 		if cx := s.completionAt(rel, p.Position); cx != nil {
 			items = append(items, cx.items()...)
 		}
