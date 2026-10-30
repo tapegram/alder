@@ -1442,21 +1442,23 @@ view model session =
 
     <al-stack direction="row" gap="sm">
       <form method="get" action="/admin/post">
-        <input type="search" name="q" value={model.q} aria-label="Search" />
-        {for f in filters model.filters ->
-          <al-select label={f.label}>
-            <label>
-              {f.label}
-              <select name={f.name}>
-                <option value="" selected={f.value == ""}>any</option>
-                {for o in f.options ->
-                  <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
-              </select>
-            </label>
-          </al-select>}
-        <input type="hidden" name="sort" value={model.sort} />
-        <input type="hidden" name="dir" value={model.dir} />
-        <al-button type="submit" variant="secondary">Search</al-button>
+        <al-stack direction="row" gap="sm">
+          <al-input><label>Search<input type="search" name="q" value={model.q} /></label></al-input>
+          {for f in filters model.filters ->
+            <al-select label={f.label}>
+              <label>
+                {f.label}
+                <select name={f.name}>
+                  <option value="" selected={f.value == ""}>any</option>
+                  {for o in f.options ->
+                    <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
+                </select>
+              </label>
+            </al-select>}
+          <input type="hidden" name="sort" value={model.sort} />
+          <input type="hidden" name="dir" value={model.dir} />
+          <al-button type="submit" variant="secondary">Search</al-button>
+        </al-stack>
       </form>
       <al-button href={Admin.Posts.New {}}>New post</al-button>
     </al-stack>
@@ -4371,7 +4373,7 @@ edited app/Admin/Comments/Show.alder
  ]
  -- @admin end
  
-@@ -222,6 +253,7 @@
+@@ -224,6 +255,7 @@
              <th><a href={listAt model "author" (toggle model "author") 1}>Author</a></th>
              <th><a href={listAt model "body" (toggle model "body") 1}>Body</a></th>
              <th><a href={listAt model "created" (toggle model "created") 1}>Created</a></th>
@@ -4379,7 +4381,7 @@ edited app/Admin/Comments/Show.alder
              -- @admin end
            </tr>
          </thead>
-@@ -243,6 +275,12 @@
+@@ -245,6 +277,12 @@
                <td><a href={Admin.Comments.Show { id: row.id }}>{row.author}</a></td>
                <td>{row.body}</td>
                <td>{Time.format "Jan 2, 2006" row.created}</td>
