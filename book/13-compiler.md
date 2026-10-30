@@ -344,6 +344,22 @@ app/M.alder:4:16: error[E0003]: expected Int, got Text
                  ^^^^^^
 ```
 
+A record literal is the same idea with a twist. When nothing expects a
+record where `{ median: 1.0, sigma: 2.0, perDoubling: 0.5 }` is written,
+say in `let wide = { … }`, the checker can't yet know which named type it
+is, so it gives the literal a structural type carrying a **handle**
+(`Record.Flex` in `types.go`), a fresh variable that stands for "the type
+this literal will turn out to be". When `wide` is later passed where a
+`Curve` is expected, `unify` sees a structural record with an unbound
+handle on one side and a named record on the other. If the field names are
+exactly the same and every field's type unifies, it records
+`handle = Curve`, just as it recorded `t1 = Int` above; from then on
+`Apply` returns `Curve` for the literal, so the generated Go builds a
+`Curve` struct. If the names differ or a field's type is wrong, the handle
+stays unbound and the error says which field. The first named type wins,
+so a literal used as a `Point` and then as a `Vec` (same fields, different
+names) is still a mismatch: records stay nominal.
+
 **Brands** show what the checker knows that the program doesn't. Given
 `type UserId = brand Text`, the checker refuses a `Text` where a `UserId`
 is required, but lets a `UserId` widen to `Text` (`Check` in `unify.go`).
