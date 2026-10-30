@@ -13,6 +13,9 @@
 //   - Trailing prints a line comment at the end of the line: it has no width (a comment never
 //     moves code to another line) and forces every enclosing group broken, like HardLine, so
 //     the code that follows goes on another line.
+//   - Choice prints its first alternative if that fits rendered on its own (every line, or only
+//     its first), else its second. It costs a trial render of the first alternative, so it is
+//     kept to small documents (a type, the head of a body).
 //   - IfBreak picks its first argument when the innermost enclosing group is
 //     broken (the top level counts as broken), otherwise its second.
 //   - A group is flat iff it contains no hard break and the "fits rest" rule
@@ -85,6 +88,13 @@ type ifBreak struct {
 }
 
 type trailing struct{ s string }
+
+type choice struct {
+	a, b      Doc
+	flatW     int
+	hard      bool
+	firstLine bool
+}
 
 type lineKind int
 
@@ -160,6 +170,16 @@ func IfBreak(broken, flat Doc) Doc {
 	return ifBreak{broken: broken, flat: flat, flatW: w, hard: h}
 }
 
+// Choice prints a if it fits, else b: a fits when, rendered on its own from the current position,
+// every line of it is within the width (only its first line, when firstLine is set), its last
+// line counting what follows it up to the next possible line break. When only first lines count,
+// b is printed only if its first line fits. a and b are expected to print
+// the same text when flat; inside a flat group, and when measuring, a stands for both.
+func Choice(a, b Doc, firstLine bool) Doc {
+	w, h := measure(a)
+	return choice{a: a, b: b, flatW: w, hard: h, firstLine: firstLine}
+}
+
 // measure returns the flat width of d and whether it contains a hard break.
 func measure(d Doc) (int, bool) {
 	switch n := d.(type) {
@@ -177,6 +197,8 @@ func measure(d Doc) (int, bool) {
 		return n.w, n.hard
 	case trailing:
 		return 0, true
+	case choice:
+		return n.flatW, n.hard
 	case line:
 		switch n.kind {
 		case kLine:
@@ -197,12 +219,37 @@ type cmd struct {
 
 // Render prints d, breaking groups that do not fit within width columns.
 func Render(d Doc, width int) string {
-	var out []byte
-	stack := []cmd{{0, false, d}}
-	col := 0
-	pending := 0  // indentation owed to the next non-empty text
-	verbatim := 0 // out[:verbatim] ends with a text holding "\n": its blanks are kept
-	for len(stack) > 0 {
+	r := renderer{width: width}
+	r.run([]cmd{{0, false, d}})
+	return string(r.out)
+}
+
+// renderer is Render's state. It also records the widest line and the first line's width, which
+// a trial render (for Choice) reads.
+type renderer struct {
+	width    int
+	out      []byte
+	col      int
+	pending  int  // indentation owed to the next non-empty text
+	verbatim int  // out[:verbatim] ends with a text holding "\n": its blanks are kept
+	maxCol   int  // the widest finished line
+	lines    int  // line breaks written so far
+	wrote    bool // some text has been written
+	firstCol int  // a trial's: the width of the first line it wrote text on, once that ended; else -1
+	first    bool // a trial that stops once firstCol is known
+}
+
+// endLine records the width of the line that ends at the current column.
+func (r *renderer) endLine() {
+	r.maxCol = max(r.maxCol, r.col)
+	if r.firstCol < 0 && r.wrote {
+		r.firstCol = r.col
+	}
+	r.lines++
+}
+
+func (r *renderer) run(stack []cmd) {
+	for len(stack) > 0 && !(r.first && r.firstCol >= 0) {
 		c := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 		switch n := c.d.(type) {
@@ -210,27 +257,31 @@ func Render(d Doc, width int) string {
 			if n.s == "" {
 				continue
 			}
-			if pending > 0 {
-				out = append(out, strings.Repeat(" ", pending)...)
-				pending = 0
+			if r.pending > 0 {
+				r.out = append(r.out, strings.Repeat(" ", r.pending)...)
+				r.pending = 0
 			}
-			out = append(out, n.s...)
+			r.out = append(r.out, n.s...)
+			r.wrote = true
 			if n.hard {
-				col = n.lastW
-				verbatim = len(out)
+				r.col += n.w
+				r.endLine()
+				r.lines += strings.Count(n.s, "\n") - 1
+				r.col = n.lastW
+				r.verbatim = len(r.out)
 			} else {
-				col += n.w
+				r.col += n.w
 			}
 		case concat:
 			for i := len(n.ds) - 1; i >= 0; i-- {
 				stack = append(stack, cmd{c.indent, c.flat, n.ds[i]})
 			}
 		case trailing:
-			out = append(out, n.s...)
+			r.out = append(r.out, n.s...)
 		case nest:
 			stack = append(stack, cmd{c.indent + IndentWidth, c.flat, n.d})
 		case group:
-			flat := c.flat || (!n.hard && fits(n, width-col, stack))
+			flat := c.flat || (!n.hard && fits(n, r.width-r.col, stack))
 			stack = append(stack, cmd{c.indent, flat, n.d})
 		case flat:
 			stack = append(stack, cmd{c.indent, c.flat || !n.hard, n.d})
@@ -240,28 +291,58 @@ func Render(d Doc, width int) string {
 			} else {
 				stack = append(stack, cmd{c.indent, c.flat, n.broken})
 			}
+		case choice:
+			d := n.b
+			if c.flat || r.tryChoice(n, c.indent, stack) {
+				d = n.a
+			}
+			stack = append(stack, cmd{c.indent, c.flat, d})
 		case line:
 			switch {
 			case n.kind == kLine && c.flat:
-				if pending > 0 {
-					out = append(out, strings.Repeat(" ", pending)...)
-					pending = 0
+				if r.pending > 0 {
+					r.out = append(r.out, strings.Repeat(" ", r.pending)...)
+					r.pending = 0
 				}
-				out = append(out, ' ')
-				col++
+				r.out = append(r.out, ' ')
+				r.col++
 			case n.kind == kSoft && c.flat:
 			default:
 				// no trailing blanks, except a verbatim text's own
-				for len(out) > verbatim && (out[len(out)-1] == ' ' || out[len(out)-1] == '\t') {
-					out = out[:len(out)-1]
+				for len(r.out) > r.verbatim && (r.out[len(r.out)-1] == ' ' || r.out[len(r.out)-1] == '\t') {
+					r.out = r.out[:len(r.out)-1]
 				}
-				out = append(out, '\n')
-				pending = c.indent
-				col = c.indent
+				r.endLine()
+				r.out = append(r.out, '\n')
+				r.pending = c.indent
+				r.col = c.indent
 			}
 		}
 	}
-	return string(out)
+}
+
+// tryChoice reports whether n's first alternative is the one to print: it fits, or only first
+// lines count and the second alternative's does not fit either.
+func (r *renderer) tryChoice(n choice, indent int, rest []cmd) bool {
+	if r.trial(n.a, n.firstLine, indent, rest) {
+		return true
+	}
+	return n.firstLine && !r.trial(n.b, true, indent, rest)
+}
+
+// trial renders d on its own from the current position and reports whether it fits: the first
+// line it writes text on (firstLine) or every line, the last one followed by the rest of the stack up to its first
+// possible line break.
+func (r *renderer) trial(d Doc, firstLine bool, indent int, rest []cmd) bool {
+	t := renderer{width: r.width, col: r.col, firstCol: -1, first: firstLine}
+	t.run([]cmd{{indent, false, d}})
+	switch {
+	case firstLine && t.firstCol >= 0:
+		return t.firstCol <= r.width
+	case !firstLine && t.maxCol > r.width:
+		return false
+	}
+	return fits(group{d: text{}}, r.width-t.col, rest)
 }
 
 // fits reports whether g printed flat, followed by the rest of the stack up to
@@ -299,6 +380,8 @@ func fits(g group, rem int, rest []cmd) bool {
 			local = append(local, cmd{0, c.flat && !n.hard, n.d})
 		case flat:
 			local = append(local, cmd{0, c.flat || !n.hard, n.d})
+		case choice:
+			local = append(local, cmd{0, c.flat, n.a})
 		case ifBreak:
 			if c.flat {
 				local = append(local, cmd{0, true, n.flat})

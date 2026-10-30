@@ -173,17 +173,17 @@ test "creating a comment adds it, with the values submitted" = {
       posts: Test.texts "select[name=post] option" page.doc,
       authors: Test.texts "select[name=author] option" page.doc,
     } == {
-        answers: [r.answer],
-        rows: [
-          {
-            post: post2,
-            author: user2,
-            body: Text.NonEmpty "body-1",
-          },
-        ],
-        posts: ["title-1", "title-2"],
-        authors: ["email-1@example.com", "email-2@example.com"],
-      }
+      answers: [r.answer],
+      rows: [
+        {
+          post: post2,
+          author: user2,
+          body: Text.NonEmpty "body-1",
+        },
+      ],
+      posts: ["title-1", "title-2"],
+      authors: ["email-1@example.com", "email-2@example.com"],
+    }
   )
 }
 
@@ -335,11 +335,11 @@ test "a long list of posts offers 50, and the search narrows it" = {
       found: Test.texts "select[name=post] option" found.doc == ["title-203"],
       answer: r.answer,
     } == {
-        shown: 50,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Comments.New { findPost: "zz" }),
-      }
+      shown: 50,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Comments.New { findPost: "zz" }),
+    }
   )
 }
 
@@ -463,11 +463,11 @@ test "a long list of users offers 50, and the search narrows it" = {
       found: Test.texts "select[name=author] option" found.doc == ["email-203@example.com"],
       answer: r.answer,
     } == {
-        shown: 50,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Comments.New { findAuthor: "zz" }),
-      }
+      shown: 50,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Comments.New { findAuthor: "zz" }),
+    }
   )
 }
 

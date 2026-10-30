@@ -178,14 +178,14 @@ test "saving changes every field" = {
       }) after,
       projects: Test.texts "select[name=project] option" page.doc,
     } == {
-        answer: Redirected (Admin.Todos.Show { org: org, id: todo1 }),
-        row: Just {
-          title: Text.NonEmpty "title-2",
-          done: True,
-          project: project2,
-        },
-        projects: ["name-1", "name-2"],
-      }
+      answer: Redirected (Admin.Todos.Show { org: org, id: todo1 }),
+      row: Just {
+        title: Text.NonEmpty "title-2",
+        done: True,
+        project: project2,
+      },
+      projects: ["name-1", "name-2"],
+    }
   )
 }
 
@@ -301,15 +301,15 @@ test "a long list of projects offers 50, and the search narrows it" = {
       found: Test.count "select[name=project] option" found.doc <= 3,
       answer: r.answer,
     } == {
-        shown: 51,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Todos.Edit {
-          org: org,
-          id: todo1,
-          findProject: "zz",
-        }),
-      }
+      shown: 51,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Todos.Edit {
+        org: org,
+        id: todo1,
+        findProject: "zz",
+      }),
+    }
   )
 }
 
@@ -355,12 +355,12 @@ test "the row's own project is offered first when it sorts past the 50" = {
       once: List.length (List.filter (\o -> o.id == project1) page.model.projects),
       shown: List.length page.model.projects,
     } == {
-        answer: Redirected (Admin.Todos.Show { org: org, id: todo1 }),
-        kept: Just project1,
-        first: Just project1,
-        once: 1,
-        shown: 51,
-      }
+      answer: Redirected (Admin.Todos.Show { org: org, id: todo1 }),
+      kept: Just project1,
+      first: Just project1,
+      once: 1,
+      shown: 51,
+    }
   )
 }
 

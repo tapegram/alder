@@ -821,10 +821,10 @@ test "adding a todo through the page" = {
       todos: List.map (\t -> t.title) page.model.todos,
       summary: Test.text "#summary" page.doc,
     } == {
-        answer: Redirected (Todos.Index {}),
-        todos: [Text.NonEmpty "Milk"],
-        summary: Just "1 open",
-      }
+      answer: Redirected (Todos.Index {}),
+      todos: [Text.NonEmpty "Milk"],
+      summary: Just "1 open",
+    }
   )
 }
 
@@ -848,10 +848,10 @@ test "toggling a todo through the page" = {
       done: Test.has "li.done" r.doc,
       summary: Test.text "#summary" r.doc,
     } == {
-        answer: Rerendered,
-        done: True,
-        summary: Just "0 open",
-      }
+      answer: Rerendered,
+      done: True,
+      summary: Just "0 open",
+    }
   )
 }
 

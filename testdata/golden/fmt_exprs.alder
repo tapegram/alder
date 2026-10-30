@@ -84,3 +84,9 @@ updateHugLong = List.map (\row -> Db.update Post row.id (\r -> { r | published: 
 updateHugLongLast = Db.update Post row.id { r | published: p.form.value, title: p.form.titleeeeeeeeeeeeeeeeeeeeeeeeeeeeee }
 
 updateLambdaBody = \r -> { r | published: p.form.value, title: p.form.titleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee }
+
+recordOperand = someLongFunctionName aaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbb ccccccccccc == { alpha: 1, beta: 2, gamma: 3 }
+
+hugHeadTooLong = someVeryLongFunctionNameThatIsReally aaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbb (\q -> q + 1)
+
+hugHeadNeverFits = someVeryLongFunctionNameThatIsReallyLong aaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb (\q -> q + 1)

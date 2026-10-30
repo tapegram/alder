@@ -169,10 +169,10 @@ test "deleting the chosen rows" = {
       gone: Maybe.map (\row -> row.id) gone,
       left: Maybe.map (\row -> row.id) left,
     } == {
-        answer: Redirected (Admin.Issues.Index { org: org }),
-        gone: Nothing,
-        left: Just issue2,
-      }
+      answer: Redirected (Admin.Issues.Index { org: org }),
+      gone: Nothing,
+      left: Just issue2,
+    }
   )
 }
 
@@ -212,10 +212,10 @@ test "setting status changes the chosen rows only" = {
       one: Maybe.map (\row -> row.status == Closed) one,
       other: Maybe.map (\row -> row.status == Closed) other,
     } == {
-        answer: Redirected (Admin.Issues.Index { org: org }),
-        one: Just True,
-        other: Just False,
-      }
+      answer: Redirected (Admin.Issues.Index { org: org }),
+      one: Just True,
+      other: Just False,
+    }
   )
 }
 
@@ -252,10 +252,10 @@ test "25 chosen ids are taken" = {
       kept: Maybe.map (\row -> row.id) after,
       warned: Test.count "#too-many" page.doc,
     } == {
-        answer: Redirected (Admin.Issues.Index { org: org }),
-        kept: Nothing,
-        warned: 0,
-      }
+      answer: Redirected (Admin.Issues.Index { org: org }),
+      kept: Nothing,
+      warned: 0,
+    }
   )
 }
 
@@ -292,10 +292,10 @@ test "26 chosen ids are refused" = {
       kept: Maybe.map (\row -> row.id) after,
       warned: Test.count "#too-many" page.doc,
     } == {
-        answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
-        kept: Just issue1,
-        warned: 1,
-      }
+      answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
+      kept: Just issue1,
+      warned: 1,
+    }
   )
 }
 
@@ -336,10 +336,10 @@ test "a bulk action stays inside one org" = {
       mine: List.length mineAfter.model.rows,
       theirs: List.map (\row -> row.id) theirsAfter.model.rows,
     } == {
-        chosen: [issue1],
-        mine: 0,
-        theirs: [issue2],
-      }
+      chosen: [issue1],
+      mine: 0,
+      theirs: [issue2],
+    }
   )
 }
 

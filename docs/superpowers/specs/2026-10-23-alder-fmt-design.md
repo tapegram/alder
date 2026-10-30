@@ -187,10 +187,14 @@ it; the book is the reference corpus. Spacing as in the examples:
 - **Record types inside a function type** (signatures, capability and fake
   entries, `let` annotations) are width-based whatever their field count:
   one line if it fits, else K&R with the rest of the type on the closing
-  line (`send : {` … `} -> Task Unit`). A function type holding a record
-  keeps its arrows inline, so the record's break never forces the
-  `->`-leading layout; a function type nested inside another stays on one
-  line.
+  line (`send : {` … `} -> Task Unit`). A function type holding a record,
+  directly or nested (`Task { a: Int }`), first keeps its arrows inline and
+  lets the record break; the record's fields indent one level from the
+  line the type starts on, not from the arrows. If a line of that layout is
+  still over the width (a long tail after `}`), the arrows break
+  `->`-leading instead, each record on its own `->` line, one line if it
+  fits, else K&R there (#27). A function type nested inside another stays
+  on one line.
 - **Capability and fake bodies**: always one entry per line.
 - **Lists**: one line if it fits, else one element per line.
 - **Sum types**: one line if it fits, else one constructor per line,
@@ -222,7 +226,10 @@ it; the book is the reference corpus. Spacing as in the examples:
   ```
   with `else if` chains flattened at the same indent — in markup too,
   where `{if c then` … `else if d then` … `else` … `}` flattens an `else`
-  whose body is an `if` expression. A block branch opens
+  whose body is an `if` expression. A comment above the inner `if` has no
+  line to sit on in the flattened form, so an `else` led by a comment
+  keeps the nested layout: `else`, the comment and the inner `if` each on
+  a line of their own, indented under `else` (in code and in markup). A block branch opens
   on the `then`/`else` line, K&R: `if c then {` … `} else {` … `}`, and
   `} else if d then {`.
 - **Lambdas**: `\x y -> body`; a body that doesn't fit breaks after `->`.
@@ -231,12 +238,19 @@ it; the book is the reference corpus. Spacing as in the examples:
   One pipe → width-based.
 - **Other binary operator chains**: one line if they fit, else one
   operator per line, operator leading (the grammar's continuation form).
+  A chain with an operand that always spans lines (a vertical record, a
+  block) keeps its operators inline, `} == {`, and the operands' own lines
+  indent one level from the line the chain starts on, not two (#27).
 - **Application**: arguments stay on the function's line (grammar). If
   the line is too long, break inside the *last* argument when it is a
   record, list, lambda or parenthesised expression (Prettier's "hugging"),
   or inside an earlier argument that is a lambda, record, list or block
   (`List.map (\row -> {` … `}) rows`); otherwise leave the line long.
-  Never wrap in parens to force a break.
+  Never wrap in parens to force a break. A body after `=`, `->` or `<-`
+  that is a call hugging its last argument stays on that line unless the
+  call's head (the line up to where the argument opens) is over the width
+  there and fits on the next line: then the call starts on the next line,
+  indented (#27).
 - **Blocks** `{ let … ; result }`: a block with statements is always
   vertical. A block with only a result stays a block, `{ x }` on one line
   if it fits: blocks are shape-significant to the checker and lowering
@@ -261,7 +275,11 @@ it; the book is the reference corpus. Spacing as in the examples:
   attribute's line. Runs of inline children joined by significant spaces
   move as a unit; the formatter never splits a run across lines in a way
   that changes the JSX whitespace result — the Dump equality check is the
-  oracle. `<script>`/`<style>` bodies verbatim.
+  oracle. `<script>`/`<style>` bodies verbatim, indentation included: the
+  formatter does not re-indent them when the tags around them move (a
+  body's whitespace is the script's or stylesheet's own). A self-closing
+  element prints `<br />`, however the source spaced the `/ >`; an empty
+  element written with an end tag keeps it (`<p></p>`).
 - **Strings and holes**: verbatim.
 - **Comments**: text after `--` verbatim (trailing spaces trimmed). A
   trailing comment on an item forces its group vertical (a line comment

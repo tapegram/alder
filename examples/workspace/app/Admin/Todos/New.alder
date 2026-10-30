@@ -143,16 +143,16 @@ test "creating a todo adds it, with the values submitted" = {
       }) rows,
       projects: Test.texts "select[name=project] option" page.doc,
     } == {
-        answers: [r.answer],
-        rows: [
-          {
-            title: Text.NonEmpty "title-1",
-            done: True,
-            project: project2,
-          },
-        ],
-        projects: ["name-1", "name-2"],
-      }
+      answers: [r.answer],
+      rows: [
+        {
+          title: Text.NonEmpty "title-1",
+          done: True,
+          project: project2,
+        },
+      ],
+      projects: ["name-1", "name-2"],
+    }
   )
 }
 
@@ -248,11 +248,11 @@ test "a long list of projects offers 50, and the search narrows it" = {
       found: Test.texts "select[name=project] option" found.doc == ["name-203"],
       answer: r.answer,
     } == {
-        shown: 50,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Todos.New { org: org, findProject: "zz" }),
-      }
+      shown: 50,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Todos.New { org: org, findProject: "zz" }),
+    }
   )
 }
 

@@ -150,3 +150,76 @@ func TestRender_Trailing(t *testing.T) {
 	body := Concat(Text("x ="), Group(Nest(Concat(Line, Text("long_value")))), Trailing(" -- a comment far wider than the line"))
 	eq(t, Render(body, 20), "x = long_value -- a comment far wider than the line")
 }
+
+// A HardLine in IfBreak's broken branch does not force the group broken: only the flat branch
+// counts while the group decides.
+func TestRender_IfBreakHardLineInBrokenBranch(t *testing.T) {
+	d := Group(Concat(Text("a"), IfBreak(HardLine, Text(" ")), Text("b")))
+	eq(t, Render(d, 100), "a b")
+	eq(t, Render(d, 2), "a\nb")
+	// broken, the HardLine indents as a Line would
+	n := Group(Concat(Text("x"), Nest(Concat(IfBreak(HardLine, Text(" ")), Text("yy")))))
+	eq(t, Render(n, 100), "x yy")
+	eq(t, Render(n, 3), "x\n  yy")
+}
+
+// A broken branch holding a HardLine, inside a group that fits, is never printed.
+func TestRender_IfBreakHardLineInFlatGroup(t *testing.T) {
+	inner := Group(Concat(Text("["), IfBreak(Concat(HardLine, Text("tail")), Text("")), Text("]")))
+	outer := Group(Concat(Text("f"), Line, inner))
+	eq(t, Render(outer, 100), "f []")
+	// the outer group breaks, the inner one still fits: its flat branch is printed
+	eq(t, Render(outer, 3), "f\n[]")
+}
+
+func TestRender_ChoiceFirstFits(t *testing.T) {
+	a := Concat(Text("x = f {"), Nest(Concat(HardLine, Text("a"))), HardLine, Text("}"))
+	b := Concat(Text("x ="), Nest(Concat(HardLine, Text("f {"))), Text(" ... }"))
+	eq(t, Render(Choice(a, b, false), 100), "x = f {\n  a\n}")
+	eq(t, Render(Choice(a, b, false), 6), "x =\n  f { ... }")
+}
+
+// Every line of the first alternative must fit, the last one counting what follows it.
+func TestRender_ChoiceEveryLine(t *testing.T) {
+	a := Concat(Text("{"), Nest(Concat(HardLine, Text("a"))), HardLine, Text("} -> long"))
+	b := Text("other")
+	eq(t, Render(Choice(a, b, false), 9), "{\n  a\n} -> long")
+	eq(t, Render(Choice(a, b, false), 8), "other")
+	eq(t, Render(Concat(Choice(a, b, false), Text("!")), 9), "other!")
+}
+
+// With firstLine, only the first line the alternative writes on counts, and the second
+// alternative is printed only if its own first line fits.
+func TestRender_ChoiceFirstLine(t *testing.T) {
+	call := func(head string) Doc {
+		return Concat(Text(head), Nest(Concat(HardLine, Text("a long line here"))), HardLine, Text(")"))
+	}
+	d := Concat(Text("x ="), Choice(call(" head("), Nest(Concat(HardLine, call("head("))), true))
+	eq(t, Render(d, 10), "x = head(\n  a long line here\n)")
+	eq(t, Render(d, 8), "x =\n  head(\n    a long line here\n  )")
+	eq(t, Render(d, 6), "x = head(\n  a long line here\n)") // neither fits: the first
+}
+
+func TestRender_ChoiceInFlatGroupPrintsFirst(t *testing.T) {
+	d := Group(Concat(Text("a"), Line, Choice(Text("b"), Text("c"), false)))
+	eq(t, Render(d, 100), "a b")
+}
+
+// TestScaling_Render is TestRender_Performance's machine-independent guard: rendering four times
+// as many groups allocates at most 1.5 times more per group.
+func TestScaling_Render(t *testing.T) {
+	doc := func(n int) Doc {
+		items := make([]Doc, 0, 2*n)
+		for i := 0; i < n; i++ {
+			items = append(items, Group(Concat(Text("let x ="), Nest(Concat(Line, Text("foo(bar, baz)"))), IfBreak(Text(";"), Text("")))), HardLine)
+		}
+		return Concat(items...)
+	}
+	small, big := doc(1000), doc(4000)
+	as := testing.AllocsPerRun(5, func() { Render(small, Width) })
+	ab := testing.AllocsPerRun(5, func() { Render(big, Width) })
+	t.Logf("1000 groups: %.0f allocs; 4000 groups: %.0f allocs", as, ab)
+	if ab > 4*1.5*as {
+		t.Errorf("rendering 4000 groups allocated %.0f times, 1000 groups %.0f: want at most 6x", ab, as)
+	}
+}

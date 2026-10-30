@@ -309,12 +309,12 @@ test "the list shows every row, newest first, and the labels of the rows they re
       orgs: List.length page.model.labels.orgs,
       orgLabel: orgLabel page.model.labels org1,
     } == {
-        rows: [membership2, membership1],
-        users: 1,
-        userLabel: "email-1@example.com",
-        orgs: 1,
-        orgLabel: "name-1",
-      }
+      rows: [membership2, membership1],
+      users: 1,
+      userLabel: "email-1@example.com",
+      orgs: 1,
+      orgLabel: "name-1",
+    }
   )
 }
 
@@ -361,12 +361,12 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
       count: Test.text "#count" first.doc,
       pages: Test.texts "al-pagination span" first.doc,
     } == {
-        first: 25,
-        second: 1,
-        past: { page: 2, rows: 1 },
-        count: Just "26 rows",
-        pages: ["Previous", "Page 1 of 2"],
-      }
+      first: 25,
+      second: 1,
+      past: { page: 2, rows: 1 },
+      count: Just "26 rows",
+      pages: ["Previous", "Page 1 of 2"],
+    }
   )
 }
 

@@ -105,6 +105,11 @@ func (p *printer) after(e syntax.Expr) Doc {
 	if p.hasLead(e) { // the comments go on lines of their own, the body after them
 		return Nest(Concat(HardLine, p.lead(e, true), p.expr(e)))
 	}
+	if _, ok := e.(*syntax.App); ok && opensBody(e) {
+		// a call that hugs its last argument stays on the line unless its head alone (the line up
+		// to where it opens) is too long: then the call goes on the next line
+		return Choice(Concat(Text(" "), p.expr(e)), Group(Nest(Concat(Line, p.expr(e)))), true)
+	}
 	if opensBody(e) {
 		return Concat(Text(" "), p.expr(e))
 	}
@@ -276,15 +281,19 @@ func (p *printer) binOp(e *syntax.BinOp) Doc {
 		multiline = multiline || hard
 	}
 	sep := Line
+	inline := false
 	switch {
 	case lv == levelPipe && len(ops) >= 2:
 		sep = HardLine
 	case multiline: // the operand's own lines break the expression: `[` … `] == 2`
-		sep = Text(" ")
+		sep, inline = Text(" "), true
 	}
 	var rest []Doc
 	for i := 1; i < len(operands); i++ {
 		rest = append(rest, sep, Text(ops[i-1]+" "), docs[i])
+	}
+	if inline { // an operand that breaks indents from the chain's line, not one level more
+		return Group(Concat(docs[0], Concat(rest...)))
 	}
 	return Group(Concat(docs[0], Nest(Concat(rest...))))
 }

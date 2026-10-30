@@ -332,10 +332,10 @@ test "sorting by email goes both ways" = {
       down: List.map (\row -> row.id) down.model.rows,
       toggles: [toggle up.model "email", toggle down.model "email", toggle up.model "name"],
     } == {
-        up: [me, user3, user2],
-        down: [user2, user3, me],
-        toggles: ["desc", "asc", "asc"],
-      }
+      up: [me, user3, user2],
+      down: [user2, user3, me],
+      toggles: ["desc", "asc", "asc"],
+    }
   )
 }
 
@@ -388,10 +388,10 @@ test "filtering by role lists the rows with that value" = {
       count: admin.model.count == List.length admin.model.rows,
       chosen: Test.texts "select[name=role] option[selected]" admin.doc,
     } == {
-        admin: [True, False],
-        count: True,
-        chosen: ["Admin"],
-      }
+      admin: [True, False],
+      count: True,
+      chosen: ["Admin"],
+    }
   )
 }
 
@@ -434,12 +434,12 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
       count: Test.text "#count" first.doc,
       pages: Test.texts "al-pagination span" first.doc,
     } == {
-        first: 25,
-        second: 2,
-        past: { page: 2, rows: 2 },
-        count: Just "27 rows",
-        pages: ["Previous", "Page 1 of 2"],
-      }
+      first: 25,
+      second: 2,
+      past: { page: 2, rows: 2 },
+      count: Just "27 rows",
+      pages: ["Previous", "Page 1 of 2"],
+    }
   )
 }
 
