@@ -31,7 +31,23 @@ List.concat   : List (List a) -> List a
 List.append   : List a -> List a -> List a    -- same as ++
 List.unique   : List a -> List a
 List.groupBy  : (a -> Text) -> List a -> Dict Text (List a)
+List.indexedMap : (Int -> a -> b) -> List a -> List b
+List.map2 : (a -> b -> c) -> List a -> List b -> List c
+List.map3 : (a -> b -> c -> d) -> List a -> List b -> List c -> List d
+List.foldr : (a -> b -> b) -> b -> List a -> b
+List.concatMap : (a -> List b) -> List a -> List b
+List.intersperse : a -> List a -> List a
+List.partition : (a -> Bool) -> List a -> { yes: List a, no: List a }
+List.tail : List a -> Maybe (List a)
+List.repeat : Int -> a -> List a
+List.maximum : List Int -> Maybe Int
+List.minimum : List Int -> Maybe Int
+List.maximumFloat : List Float -> Maybe Float
+List.minimumFloat : List Float -> Maybe Float
+List.sortByFloat : (a -> Float) -> List a -> List a
 ```
+
+`List.partition` returns a record with a `yes` field (the elements that satisfy the test) and a `no` field, each in input order. `List.map2` and `List.map3` stop at the shortest list.
 
 ```alder eval=[10, 30, 50]
 List.range 1 5
