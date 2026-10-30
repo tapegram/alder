@@ -896,7 +896,9 @@ func (mc *modCtx) inferExpr(e syntax.Expr, env *env, eff effect) types.Type {
 		}
 		return &types.App{Con: "List", Args: []types.Type{elem}}
 	case *syntax.RecordLit:
-		rec := &types.Record{Anonymous: true}
+		// nothing expected a record here: the literal is undecided until the first record type it
+		// meets (see types.Record.Flex)
+		rec := &types.Record{Anonymous: true, Flex: c.u.Fresh()}
 		for _, f := range x.Fields {
 			rec.Fields = append(rec.Fields, types.Field{Name: f.Name, Type: mc.infer(f.Value, env, eff)})
 		}
