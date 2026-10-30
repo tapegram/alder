@@ -228,6 +228,7 @@ module.exports = grammar({
         $.login_decl,
         $.test_decl,
         $.deploy_decl,
+        $.theme_decl,
         $.silo_decl,
         $.choose_decl,
       ),
@@ -347,7 +348,11 @@ module.exports = grammar({
         ':',
         field('value', $._deploy_value),
       ),
-    _deploy_value: ($) => choice($.string, $.integer, $.float, $.negative_number, $.deploy_list, $.deploy_target),
+    _deploy_value: ($) =>
+      choice($.string, $.integer, $.float, $.negative_number, $.deploy_list, $.deploy_target, $.deploy_record),
+
+    // App's `theme { … }` (Appendix C): deploy-style fields; `light` and `dark` are bare records.
+    theme_decl: ($) => seq('theme', field('body', $.deploy_record)),
     deploy_list: ($) => seq('[', commaSep($._deploy_value), ']'),
     deploy_target: ($) =>
       prec.right(

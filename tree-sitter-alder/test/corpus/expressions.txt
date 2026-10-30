@@ -232,3 +232,25 @@ x = [1.5e-3, 1e6, 2E+3]
         (float)
         (float)
         (float)))))
+
+================================================================================
+exponent without digits is an Int then an identifier
+================================================================================
+
+module M
+
+x = f 1e
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (application
+        function: (identifier)
+        argument: (integer)
+        argument: (identifier)))))

@@ -118,13 +118,18 @@ func DictPartition[K, V any](f func(K, V) bool, d rt.Dict[K, V]) struct {
 	return r
 }
 
-// DictUnion keeps a's entries and order, then appends b's new keys.
+// DictUnion keeps a's entries and order, then appends b's new keys. It builds one
+// fresh Dict with Put (linear), so neither input changes.
 func DictUnion[K, V any](a, b rt.Dict[K, V]) rt.Dict[K, V] {
-	out := a
-	for _, k := range b.Keys() {
+	var out rt.Dict[K, V]
+	av := a.Values()
+	for i, k := range a.Keys() {
+		out.Put(k, av[i])
+	}
+	bv := b.Values()
+	for i, k := range b.Keys() {
 		if !out.Has(k) {
-			v, _ := b.Get(k)
-			out = out.Insert(k, v)
+			out.Put(k, bv[i])
 		}
 	}
 	return out

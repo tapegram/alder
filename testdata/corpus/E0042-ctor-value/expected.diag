@@ -1,0 +1,2 @@
+app/App.alder:10:11 E0042 `radius` is a length written as text, such as `"0.5rem"`
+app/App.alder:11:21 E0042 `primary` is a colour written as text: `"oklch(0.55 0.22 285)"`, `"#4f46e5"` or `"var(--accent)"`

@@ -19,16 +19,16 @@ func (mc *modCtx) checkPage() {
 	}
 	html := func(arg types.Type) types.Type { return &types.App{Con: "Html", Args: []types.Type{arg}} }
 	mc.requireSig("load", &types.Fun{Params: []types.Type{mc.page.Params, mc.session}, Result: &types.App{Con: "Query", Args: []types.Type{mc.modelType()}}},
-		hookMessage("load"))
+		hookSig("load"), hookMessage("load"))
 	viewMsg := hookMessage("view") + ", or `Model -> Session -> File` for a file page"
 	if mc.page.File {
-		mc.requireSig("view", &types.Fun{Params: []types.Type{mc.modelType(), mc.session}, Result: types.File}, viewMsg)
+		mc.requireSig("view", &types.Fun{Params: []types.Type{mc.modelType(), mc.session}, Result: types.File}, "Model -> Session -> File", viewMsg)
 		mc.checkFilePage()
 		return
 	}
-	mc.requireSig("view", &types.Fun{Params: []types.Type{mc.modelType(), mc.session}, Result: html(mc.page.Msg)}, viewMsg)
+	mc.requireSig("view", &types.Fun{Params: []types.Type{mc.modelType(), mc.session}, Result: html(mc.page.Msg)}, hookSig("view"), viewMsg)
 	mc.requireSig("update", &types.Fun{Params: []types.Type{mc.page.Msg, mc.modelType(), mc.session}, Result: &types.App{Con: "Task", Args: []types.Type{c.navType()}}},
-		hookMessage("update"))
+		hookSig("update"), hookMessage("update"))
 }
 
 // checkFilePage reports E0034 for each `msg`, `form` and `update` of a file page: its view
@@ -106,8 +106,10 @@ func (c *Checker) navType() types.Type {
 	return c.u.Fresh()
 }
 
-// requireSig checks that value `name`'s declared signature unifies exactly with want.
-func (mc *modCtx) requireSig(name string, want types.Type, msg string) {
+// requireSig checks that value `name`'s declared signature unifies exactly with want, whose
+// Alder text is sig. A mismatch carries the preferred fix "Change signature to `sig`", which
+// replaces the declared signature (issue 45).
+func (mc *modCtx) requireSig(name string, want types.Type, sig, msg string) {
 	c := mc.c
 	for _, d := range c.live(mc.m) {
 		vd, ok := d.(*syntax.ValueDecl)
@@ -123,7 +125,9 @@ func (mc *modCtx) requireSig(name string, want types.Type, msg string) {
 			if name == "view" && mc.page != nil && viewIsNever(c.u.Apply(got)) {
 				m += "; it is `Html Msg` even when the page has no messages"
 			}
-			c.errorf(diag.TypeMismatch, vd.Sig.GetSpan(), "%s", m)
+			d := c.errorf(diag.TypeMismatch, vd.Sig.GetSpan(), "%s", m)
+			d.Fix = diag.ReplaceSpan(vd.Sig.GetSpan(), sig)
+			d.Fix.Title, d.Fix.Preferred = "Change signature to `"+sig+"`", true
 		}
 	}
 }
@@ -155,15 +159,15 @@ func (mc *modCtx) checkApp() {
 	if has["error"] == nil {
 		c.errorf(diag.MissingDecl, mc.m.Span, "`App` has no `error : Error -> Html Never`")
 	} else {
-		mc.requireSig("error", &types.Fun{Params: []types.Type{types.Error}, Result: html(types.Never)}, "`error` must have type `Error -> Html Never`")
+		mc.requireSig("error", &types.Fun{Params: []types.Type{types.Error}, Result: html(types.Never)}, "Error -> Html Never", "`error` must have type `Error -> Html Never`")
 	}
 	if has["notFound"] == nil {
 		c.errorf(diag.MissingDecl, mc.m.Span, "`App` has no `notFound : Html Never`")
 	} else {
-		mc.requireSig("notFound", html(types.Never), "`notFound` must have type `Html Never`")
+		mc.requireSig("notFound", html(types.Never), "Html Never", "`notFound` must have type `Html Never`")
 	}
 	if has["maintenance"] != nil { // optional (M15): what a silo whose database cannot be served answers
-		mc.requireSig("maintenance", html(types.Never), "`maintenance` must have type `Html Never`")
+		mc.requireSig("maintenance", html(types.Never), "Html Never", "`maintenance` must have type `Html Never`")
 	}
 	if len(c.appMsg.Constructors()) > 0 {
 		if has["update"] == nil {
@@ -171,7 +175,7 @@ func (mc *modCtx) checkApp() {
 		}
 	}
 	if has["update"] != nil {
-		mc.requireSig("update", &types.Fun{Params: []types.Type{c.appMsg, c.session}, Result: &types.App{Con: "Task", Args: []types.Type{c.navType()}}}, "`update` must have type `Msg -> Session -> Task Nav`")
+		mc.requireSig("update", &types.Fun{Params: []types.Type{c.appMsg, c.session}, Result: &types.App{Con: "Task", Args: []types.Type{c.navType()}}}, "Msg -> Session -> Task Nav", "`update` must have type `Msg -> Session -> Task Nav`")
 	}
 	anyRequires := false
 	for name, p := range c.pages {

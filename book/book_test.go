@@ -410,8 +410,8 @@ func (v *verifier) place(dir string, s Snippet, n int) placed {
 		for _, m := range importRE.FindAllStringSubmatch(s.Source, -1) {
 			own[m[1]] = true
 		}
-		if t := TableModule(s); t != "" { // one table: its own module, replacing the example's
-			name = "Table." + t // tables live in app/Table/ (the layout of chapter 2)
+		if t := TableModulePath(s); t != "" { // one table: its own module, replacing the example's
+			name = t // tables live in app/Table/ (the layout of chapter 2)
 			for _, m := range exampleModules {
 				p.replaces = p.replaces || m == name
 				if m == name || exampleImports(m, name) { // itself, or a module that would make a cycle
@@ -802,6 +802,9 @@ func TestBook_Extract(t *testing.T) {
 	for i, s := range ss {
 		if want := map[int]string{13: "Note"}[i]; TableModule(s) != want {
 			t.Errorf("TableModule(snippet %d) = %q, want %q", i, TableModule(s), want)
+		}
+		if want := map[int]string{13: "Table.Note"}[i]; TableModulePath(s) != want {
+			t.Errorf("TableModulePath(snippet %d) = %q, want %q", i, TableModulePath(s), want)
 		}
 	}
 	two := Snippet{Source: "table A {\n  id: AId @id,\n}\n\ntable B {\n  id: BId @id,\n}\n"}
