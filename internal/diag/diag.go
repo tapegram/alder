@@ -127,6 +127,7 @@ const (
 	DuplicateTable      = "E0037" // a table name declared by two app modules: table names are app-wide
 	NotDerivable        = "E0038" // a property's argument, or a `Fuzz.any`, whose type no generator can be derived for (not concrete, or a function)
 	PropertyOutsideTest = "E0039" // `Fuzz.forAll` or `Fuzz.forAllTask` anywhere but as a test's body
+	ThemeDecl           = "E0042" // a `theme` declaration the rules refuse: outside App, twice, an unknown or removed token, a value of the wrong kind or shape
 	ImportAlias         = "E0204" // an import's `as` is missing, redundant or not its canonical qualifier
 	FullPath            = "E0205" // a name written with an imported module's full path instead of its qualifier
 	NoQualifier         = "E0206" // an import with no usable qualifier: every candidate is taken or shared
