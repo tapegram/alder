@@ -144,21 +144,67 @@ func (l *Logger) Log(level, msg string) {
 		return
 	}
 	bp := l.start(lv)
-	b := append(append(*bp, prefix...), msg...)
+	b := appendText(*bp, prefix)
+	b = appendText(b, strings.TrimRight(msg, "\r\n"))
 	*bp = b
 	l.end(bp)
 }
 
+// appendText appends s to a text line so that nothing it holds can pass for a line of its own:
+// each line break (\n, \r, \r\n) becomes "\n\t", so a continuation line (a stack's, or text
+// a message carries from a user) is indented and never starts at column 0 the way every line's
+// stamp does; any other control character (C0, DEL, C1) is written escaped, `\x1b`.
+func appendText(b []byte, s string) []byte {
+	const hex = "0123456789abcdef"
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '\r' && i+1 < len(s) && s[i+1] == '\n':
+			// the \n that follows makes the break
+		case c == '\n' || c == '\r':
+			b = append(b, '\n', '\t')
+		case c < 0x20 && c != '\t' || c == 0x7f:
+			b = append(b, '\\', 'x', hex[c>>4], hex[c&15])
+		case c == 0xc2 && i+1 < len(s) && s[i+1] >= 0x80 && s[i+1] <= 0x9f: // a C1 control, U+0080–U+009F
+			b = append(b, '\\', 'u', '0', '0', hex[s[i+1]>>4], hex[s[i+1]&15])
+			i++
+		default:
+			b = append(b, c)
+		}
+	}
+	return b
+}
+
+// MaxText is the longest message (an app's Log.* text, what a router error line says) kept, in
+// bytes: a longer one is cut, ending "…".
+const MaxText = 8 << 10
+
+// CutText is s cut at MaxText bytes, on a character boundary, ending "…"; s itself when it is
+// not longer.
+func CutText(s string) string {
+	if len(s) <= MaxText {
+		return s
+	}
+	i := MaxText
+	for i > 0 && !utf8.RuneStart(s[i]) {
+		i--
+	}
+	return s[:i] + "…"
+}
+
 // Access is one request's line (Logger.Access): what the router knows once it has answered.
 type Access struct {
-	ID           string        // the request id (RequestID)
-	Method, Path string        // Path is already masked (MaskURL); "": URL masked when the line is written
-	URL          *url.URL      // the request's URL, masked (MaskURL) only for a line that is written
-	Status       int           // 0: the handler wrote nothing
-	Dur          time.Duration // from the request's arrival to the answer written
-	Bytes        int64         // the body bytes written
-	Quiet        bool          // a file answered 2xx/304: logged at Debug, not Info
-	Steps        int           // effect calls run; shown at Debug only
+	ID           string   // the request id (RequestID)
+	Method, Path string   // Path is already masked (MaskURL); "": URL masked when the line is written
+	URL          *url.URL // the request's URL, masked (MaskURL) only for a line that is written
+	// Masker, when set, masks URL instead of MaskURL: the router's, which also hides the path
+	// parameters whose name is Sensitive (MaskURLSegments).
+	Masker func(method string, u *url.URL) string
+	Status int           // 0: the handler wrote nothing
+	Dur    time.Duration // from the request's arrival to the answer written
+	Bytes  int64         // the body bytes written
+	Quiet  bool          // a file answered 2xx/304: logged at Debug, not Info
+	Steps  int           // effect calls run; shown at Debug only
 }
 
 // Access writes a's line at Info (Debug when a.Quiet). As text:
@@ -215,7 +261,11 @@ const MaxPath = 4 << 10
 func (a *Access) MaskedPath() string {
 	p := a.Path
 	if p == "" && a.URL != nil {
-		p = MaskURL(a.URL)
+		if a.Masker != nil {
+			p = a.Masker(a.Method, a.URL)
+		} else {
+			p = MaskURL(a.URL)
+		}
 	}
 	return CutPath(p)
 }

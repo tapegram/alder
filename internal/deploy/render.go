@@ -683,7 +683,9 @@ func (r *Render) mergedEnv(ctx context.Context) ([]RenderEnv, bool, error) {
 		set[PublicURLName] = r.Address() // a value set in the dashboard (a custom domain) is kept
 	}
 	for _, n := range r.Required {
-		if v := r.Getenv(n); v != "" && n != SecretName {
+		// an ALDER_ name is the runtime's (the checker refuses it in `requires`, E0030): this
+		// machine's value (a stale ALDER_PUBLIC_URL, ALDER_DEV=1) never goes to the service
+		if v := r.Getenv(n); v != "" && !strings.HasPrefix(n, "ALDER_") {
 			set[n] = v
 		}
 	}

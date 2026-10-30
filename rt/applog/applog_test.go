@@ -116,7 +116,7 @@ func TestText_Line(t *testing.T) {
 	l := newAt(&b, Debug, Text)
 	l.Log("info", "listening on :8080")
 	l.Log("error", "GET /boom: panic: x\nstack line 1\nstack line 2\n")
-	want := "2026/10/29 20:00:00 info: listening on :8080\n2026/10/29 20:00:00 error: GET /boom: panic: x\nstack line 1\nstack line 2\n"
+	want := "2026/10/29 20:00:00 info: listening on :8080\n2026/10/29 20:00:00 error: GET /boom: panic: x\n\tstack line 1\n\tstack line 2\n"
 	if b.String() != want {
 		t.Errorf("lines\n%q\nwant\n%q", b.String(), want)
 	}

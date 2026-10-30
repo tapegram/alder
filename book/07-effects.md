@@ -159,6 +159,12 @@ the app's responsibility: the runtime masks secrets in the URLs it
 logs, but it cannot know that a `Log.info` text holds an email address
 or a token. Log ids and outcomes, not the values people typed.
 
+The same goes for tokens in URLs. A reset or magic link carries a token
+the app made with `Random.id`; the log masks it only when its
+parameter's name says it is a secret, so write `page "/reset/{token}"`
+or `?token=…`, not `/reset/{t}` or `?t=…` (chapter 16, "What is never
+logged").
+
 `Http.HttpError` is the stdlib's type for a failed request: a type of a
 standard module other than the Prelude is always written qualified (a bare
 `HttpError` is E0202, with the fix).

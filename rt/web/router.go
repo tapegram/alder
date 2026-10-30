@@ -99,6 +99,11 @@ type router struct {
 
 	bigCookie sync.Once // the oversized-cookie warning is logged once per router
 
+	// anyHide is whether a route has a path parameter whose name is Sensitive (route.hide);
+	// masker is maskURL as a func value, made once (no allocation per request)
+	anyHide bool
+	masker  func(method string, u *url.URL) string
+
 	// healthDown is whether the last health check failed its SELECT 1: the error is logged
 	// when it starts failing and the recovery when it answers again, not on every check
 	healthDown atomic.Bool
@@ -123,7 +128,8 @@ type tracker struct {
 	bytes  int64
 	id     string
 	steps  int
-	acc    applog.Access // the record handed to Options.Access
+	acc    applog.Access                          // the record handed to Options.Access
+	masker func(method string, u *url.URL) string // the router's maskURL
 
 	// dev panel: the request, what it ran, how it was answered
 	r       *http.Request
@@ -180,7 +186,13 @@ func (t *tracker) Write(b []byte) (int, error) {
 // " rid=<id>" (the request's id) when w is the router's tracker. A stack, when there is one,
 // follows on the next lines (after the id).
 func line(w http.ResponseWriter, r *http.Request, what string) string {
-	s := r.Method + " " + applog.CutPath(applog.MaskURL(r.URL)) + ": " + what
+	u := ""
+	if tw, ok := w.(*tracker); ok && tw.masker != nil {
+		u = tw.masker(r.Method, r.URL)
+	} else {
+		u = applog.MaskURL(r.URL)
+	}
+	s := r.Method + " " + applog.CutPath(u) + ": " + applog.CutText(what)
 	if tw, ok := w.(*tracker); ok && tw.id != "" {
 		s += " rid=" + tw.id
 	}
@@ -210,6 +222,9 @@ type route struct {
 	segs   []segment
 	file   bool // Route.File
 	handle func(*Request) Response
+	// hide marks the segments that are a parameter whose name is Sensitive (`/reset/{token}`):
+	// a log line masks their values whatever they look like; nil when there is none
+	hide []bool
 }
 
 // segment is a literal path segment, or a parameter when param is set.
@@ -263,8 +278,19 @@ func NewRouter(routes []Route, opts Options) http.Handler {
 		if r.Method != http.MethodGet && r.Method != http.MethodPost {
 			panic(fmt.Sprintf("web: route %q: method %q is not GET or POST", r.Pattern, r.Method))
 		}
-		rt.routes = append(rt.routes, route{method: r.Method, segs: compile(r.Pattern), file: r.File, handle: r.Handle})
+		ro := route{method: r.Method, segs: compile(r.Pattern), file: r.File, handle: r.Handle}
+		for i, s := range ro.segs {
+			if s.param != "" && applog.Sensitive(s.param) {
+				if ro.hide == nil {
+					ro.hide = make([]bool, len(ro.segs))
+				}
+				ro.hide[i] = true
+				rt.anyHide = true
+			}
+		}
+		rt.routes = append(rt.routes, ro)
 	}
+	rt.masker = rt.maskURL
 	// the most specific pattern first: /x/new before /x/{id}, whatever the declaration order
 	slices.SortStableFunc(rt.routes, func(a, b route) int { return strings.Compare(a.shape(), b.shape()) })
 	return rt
@@ -304,6 +330,42 @@ func compile(pattern string) []segment {
 		}
 	}
 	return segs
+}
+
+// maskURL is u, a request with method's URL, as a log line shows it: applog.MaskURL, and the
+// value of each path parameter of the route it matches whose name is Sensitive masked whatever
+// it looks like (a Random.id token in `/reset/{token}` is too short to look like a secret).
+func (rt *router) maskURL(method string, u *url.URL) string {
+	if rt.anyHide {
+		if method == http.MethodHead {
+			method = http.MethodGet
+		}
+		if segs, ok := splitPath(u.EscapedPath()); ok {
+			for i := range rt.routes {
+				r := &rt.routes[i]
+				if r.method == method && r.matches(segs) {
+					if r.hide != nil {
+						return applog.MaskURLSegments(u, r.hide)
+					}
+					break
+				}
+			}
+		}
+	}
+	return applog.MaskURL(u)
+}
+
+// matches is match without the params.
+func (r *route) matches(segs []string) bool {
+	if len(segs) != len(r.segs) {
+		return false
+	}
+	for i, s := range r.segs {
+		if s.param != "" && segs[i] == "" || s.param == "" && s.lit != segs[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // match reports whether the path segments fit the pattern, and its params.
@@ -352,7 +414,7 @@ func splitPath(escaped string) ([]string, bool) {
 }
 
 func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-	w := &tracker{ResponseWriter: rw, r: r, start: time.Now(), id: applog.RequestID(r)}
+	w := &tracker{ResponseWriter: rw, r: r, start: time.Now(), id: applog.RequestID(r), masker: rt.masker}
 	rw.Header().Set(applog.IDHeader, w.id)
 	st := hop{origin: r}
 	get := r.Method == http.MethodGet || r.Method == http.MethodHead
@@ -372,7 +434,7 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			// the record lives in the tracker, and the URL is masked only when the logger
 			// writes the line: a filtered access line costs no allocation and no masking
 			w.acc = applog.Access{
-				ID: w.id, Method: r.Method, URL: r.URL, Status: w.status,
+				ID: w.id, Method: r.Method, URL: r.URL, Masker: rt.masker, Status: w.status,
 				Dur: time.Since(w.start), Bytes: w.bytes, Quiet: quiet(r.URL.Path, w.status), Steps: w.steps,
 			}
 			rt.opts.Access(&w.acc)
@@ -762,7 +824,7 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 		}
 		switch {
 		case resp.Status == http.StatusSeeOther:
-			tw.setAnswer("redirect " + resp.Location)
+			tw.setAnswer("redirect " + rt.maskRef(resp.Location))
 		case resp.Status == http.StatusOK && !resp.Patch: // a document, or a boosted GET's morph of one
 			tw.setAnswer("page")
 		case resp.Status == http.StatusOK:

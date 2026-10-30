@@ -731,10 +731,18 @@ the end of the first line of every error or warning about that request:
 
 ```text
 2026/10/29 16:00:01 error: GET /boom?key=••••: panic: kaboom rid=0a0b0c0d
-goroutine 42 [running]:
-…
+	goroutine 42 [running]:
+	…
 2026/10/29 16:00:01 info: GET /boom?key=•••• 500 0.4ms 1290B rid=0a0b0c0d
 ```
+
+Every line of an entry after its first (a stack, or a message with a
+line break in it) is indented by a tab, so only an entry's first line
+starts at the left margin with the time. A message carrying user text
+(`Log.info ("signup " ++ name)`, an adapter's error quoting what it was
+sent) cannot forge a line of its own: whatever follows a line break in
+it is indented, and any other control character is written escaped
+(`\x1b`). A message is cut at 8 KB, ending `…`.
 
 So `alder logs production --grep rid=0a0b0c0d` prints everything about
 one request, and a user who sends you the `X-Request-Id` their browser
@@ -797,7 +805,14 @@ its secrets replaced by `••••` (the dev panel's mask):
   value keeps its shape, with its own secrets masked;
 - the value of a query pair that does not parse (a bad `%` escape, a raw
   `;`): the runtime cannot tell what it holds, so it hides it. The pair
-  is kept, never dropped, so the line still shows the URL's shape.
+  is kept, never dropped, so the line still shows the URL's shape;
+- the value of a page's path parameter whose name contains one of the
+  words above, whatever the value looks like: for `page "/reset/{token}"`
+  the line shows `/reset/••••`. This matters for the tokens an app makes
+  itself: `Random.id` gives 20 characters, too short to look like a
+  secret, so a reset or magic-link token is masked only because its
+  parameter is named `token` (or `code`, `key`, `otp`…). Name it so,
+  in the path and in the query alike (`?token=…`, not `?t=…`).
 
 A byte that is not printable ASCII (a control character, or any byte of
 a non-ASCII character) is written `%`-escaped, so a request cannot put a
@@ -813,8 +828,16 @@ hidden costs a little reading; a secret shown cannot be taken back.
 Some things the runtime never hands to the log at all: request and
 response headers (`Authorization`, `Cookie`), cookies, request bodies,
 form fields and sessions. A `Log.info` text is the app's own: the
-runtime writes it as given, so log ids and outcomes, not what people
-typed (chapter 7).
+runtime writes it as given (indented and escaped, never masked), so log
+ids and outcomes, not what people typed (chapter 7).
+
+`requires` cannot name an `ALDER_` variable (E0030): those are the
+runtime's own, set by `alder deploy` or in the target's environment,
+and a deploy copies a required variable's value from your machine to
+the target (Render's service environment). A stale local
+`ALDER_PUBLIC_URL=http://localhost:8080`, or `ALDER_DEV=1`, would
+otherwise reach production. Render's deploy skips `ALDER_` names even if
+one gets past the checker.
 
 ### JSON lines
 

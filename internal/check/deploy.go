@@ -103,6 +103,10 @@ func (mc *modCtx) deployField(f *syntax.DeployField) {
 				c.errorf(diag.DeployDecl, e.Span, "a `checks` command is empty")
 			case f.Name == "requires" && !envName(e.Str):
 				c.errorf(diag.DeployDecl, e.Span, "a `requires` entry must be an environment variable name (letters, digits, `_`)")
+			case f.Name == "requires" && strings.HasPrefix(e.Str, "ALDER_"):
+				// a deploy copies a required variable's local value to the target (Render's
+				// environment): a stale ALDER_PUBLIC_URL, or ALDER_DEV=1, would change the app
+				c.errorf(diag.DeployDecl, e.Span, "`requires` cannot name `%s`: `ALDER_` variables are the runtime's own, set by `alder deploy` or in the target's environment, and a deploy copies a required variable's local value there (`ALDER_DEV=1` would turn on development mode in production)", e.Str)
 			}
 		}
 	case "backup":

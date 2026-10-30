@@ -1,0 +1,1 @@
+app/App.alder:10:26 E0030 `requires` cannot name `ALDER_PUBLIC_URL`: `ALDER_` variables are the runtime's own, set by `alder deploy` or in the target's environment, and a deploy copies a required variable's local value there (`ALDER_DEV=1` would turn on development mode in production)

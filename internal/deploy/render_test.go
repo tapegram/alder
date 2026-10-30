@@ -603,15 +603,21 @@ func TestRender_EnvPublicURL(t *testing.T) {
 	if !strings.Contains(s.out.String(), "ALDER_PUBLIC_URL of blog set to the service's address") {
 		t.Errorf("suffixed: transcript:\n%s", s.out.String())
 	}
-	// a `requires` ALDER_PUBLIC_URL set here is the operator's: not corrected
+	// an ALDER_ name in `requires` (refused by the checker, E0030) is never copied from this
+	// machine: a stale local ALDER_PUBLIC_URL, or ALDER_DEV=1, does not reach the service
 	o := newRenderRig(t)
 	o.render.URLSuffix = "-x1y2"
-	t.Setenv("ALDER_PUBLIC_URL", "https://www.example.com")
+	t.Setenv("ALDER_PUBLIC_URL", "http://localhost:8080")
+	t.Setenv("ALDER_DEV", "1")
 	r := o.target()
-	r.Required = append(r.Required, "ALDER_PUBLIC_URL")
+	r.Required = append(r.Required, "ALDER_PUBLIC_URL", "ALDER_DEV")
 	o.mustDeploy(r)
-	if got := envOf(o.render.Service("blog"))["ALDER_PUBLIC_URL"]; got != "https://www.example.com" || count(o.render.Requests(), "PUT /services/") != 0 {
-		t.Errorf("operator's value: %q, requests %v", got, nonGET(o.render.Requests()))
+	oenv := envOf(o.render.Service("blog"))
+	if got := oenv["ALDER_PUBLIC_URL"]; got != o.render.URL+"/svc/blog-x1y2" {
+		t.Errorf("a local ALDER_PUBLIC_URL reached the service: %q", got)
+	}
+	if v, ok := oenv["ALDER_DEV"]; ok {
+		t.Errorf("a local ALDER_DEV reached the service: %q", v)
 	}
 
 	k := newRenderRig(t)

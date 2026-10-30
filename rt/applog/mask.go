@@ -151,15 +151,33 @@ func base64Only(s string) bool {
 // A URL without a query and without a secret-looking segment is its escaped path, without
 // allocating.
 func MaskURL(u *url.URL) string {
-	p := maskPath(u.EscapedPath())
-	if u.RawQuery == "" {
+	return withQuery(maskPath(u.EscapedPath()), u.RawQuery)
+}
+
+// MaskURLSegments is MaskURL that also replaces, whatever its value, each path segment i
+// (counted from 0 after the leading `/`) for which hide[i] is set: the router's way to mask a
+// path parameter whose name is Sensitive (`/reset/{token}`), since a short token (Random.id's
+// 20 characters) does not look like a secret on its own.
+func MaskURLSegments(u *url.URL, hide []bool) string {
+	parts := strings.Split(u.EscapedPath(), "/")
+	for i, s := range parts {
+		if i >= 1 && i-1 < len(hide) && hide[i-1] && s != "" || segmentSecret(s) {
+			parts[i] = Mask
+		}
+	}
+	return withQuery(strings.Join(parts, "/"), u.RawQuery)
+}
+
+// withQuery is the masked path p followed by the raw query q masked ("": p alone).
+func withQuery(p, q string) string {
+	if q == "" {
 		return p
 	}
 	var b strings.Builder
-	b.Grow(len(p) + 1 + len(u.RawQuery))
+	b.Grow(len(p) + 1 + len(q))
 	b.WriteString(p)
 	b.WriteByte('?')
-	maskQuery(&b, u.RawQuery, 0)
+	maskQuery(&b, q, 0)
 	return b.String()
 }
 
