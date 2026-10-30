@@ -638,8 +638,17 @@ func OrElse[T any](m Maybe[T], d T) T {
 	return d
 }
 
-// Append is `++` on lists. The result never shares storage with a or b.
+// Append is `++` on lists. It shares storage only when one side is empty (the result is then
+// the other side); the result's capacity is its length, so appending to it reallocates. Lists
+// are never written to (see std.ListTake), so the sharing is invisible. `acc ++ [x]` in a loop
+// is O(n) per step: List.foldl, List.concatMap or Text.Builder accumulate instead.
 func Append[T any](a, b []T) []T {
+	if len(a) == 0 {
+		return b[:len(b):len(b)]
+	}
+	if len(b) == 0 {
+		return a[:len(a):len(a)]
+	}
 	out := make([]T, 0, len(a)+len(b))
 	out = append(out, a...)
 	return append(out, b...)
