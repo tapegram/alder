@@ -15,6 +15,12 @@ type Fix struct {
 	Line, Col       int
 	EndLine, EndCol int
 	Replace         string
+	// Title is the editor's name for the fix ("Change signature to `…`"); "" names it after the
+	// diagnostic ("Fix: <message>").
+	Title string
+	// Preferred marks the fix an editor should list first and may apply on its own: the one
+	// obvious repair of its diagnostic.
+	Preferred bool
 }
 
 // ReplaceSpan is a fix that replaces the half-open span [sp.Start, sp.End) with text.

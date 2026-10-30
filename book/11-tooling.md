@@ -1724,7 +1724,10 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   compiler's fix for a diagnostic on the cursor's line, such as ``Fix:
   module `Post` is not imported`` (the same fix that `alder check --json`
   carries, "Diagnostics" above), and then the generators that apply where
-  the cursor is. On `Posts.Index`, a page, those are `new form`, `new msg`,
+  the cursor is. A fix that is the one obvious repair comes first and is
+  marked preferred: on a page hook with the wrong signature, ``Change
+  signature to `Params -> Session -> Query Model` ``. The generators are
+  refactor actions, after every fix. On `Posts.Index`, a page, those are `new form`, `new msg`,
   `new decl`, `new test`, `edit page` and `remove page`, each with the page
   already filled in: `new msg (page = Posts.Index)`. Choosing one asks for
   the rest of its fields (a name, say), shows the diff it would make, and
@@ -1842,8 +1845,13 @@ in `opts.keys`, and with which-key, `<leader>a` is the group "alder":
 `<leader>ag` (or `:AlderGenerate [id]`) opens the generator modal: a search
 over all the generators, those that apply at the cursor first, then the
 chosen generator's form beside a live preview of the diff, which updates as
-you type. `<CR>` applies when every field is valid, and `<C-o>` opens the
-full review, file by file. The plugin's README lists the options and the
+you type. The form starts filled: required fields at an example (or the
+first page or table, for one that must exist), so the preview shows a
+change as soon as it opens. The field under the cursor says what it means
+and gives an example. Flags that matter to agents rather than people
+(where `new msg` puts its button, `--strict`) are left out of the form;
+the command line still takes them. `<CR>` applies when every field is
+valid, and `<C-o>` opens the full review, file by file. The plugin's README lists the options and the
 rest of its commands. If you set `ALDER_LSP_LOG=/some/file` in Neovim's
 environment, the server writes every message it receives and sends to that
 file; the transcripts in chapter 13, section 10, were recorded that way.
