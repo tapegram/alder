@@ -76,10 +76,10 @@ func IntLit(n int64) string {
 	return strconv.FormatInt(n, 10)
 }
 
-// FloatLit is f as an Alder Float literal: digits, '.', digits, never an exponent (the
-// generator emits only the plain decimal form, though the lexer reads exponents), the shortest such text that reads back as f. Negative zero is -0.0 (the parser
-// and gen keep its sign). Fuzz never draws NaN or an infinity, but a Fuzz.forAll generator can
-// make one (`Fuzz.map (\x -> x / 0.0) Fuzz.float`); having no literal, it is the parenthesised
+// FloatLit is f as an Alder Float literal: digits, '.', digits, never an exponent (the lexer
+// reads exponents, but the plain decimal form is the one generated), the shortest such text
+// that reads back as f. Negative zero is -0.0 (the parser and gen keep its sign). Fuzz never
+// draws NaN or an infinity, but a Fuzz.forAll generator can make one (`Fuzz.map (\x -> x / 0.0) Fuzz.float`); having no literal, it is the parenthesised
 // division that evaluates to it, `(1.0 / 0.0)`, `(-1.0 / 0.0)` or `(0.0 / 0.0)` (Float
 // division by zero is infinity or NaN, book chapter 4).
 func FloatLit(f float64) string {
