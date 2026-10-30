@@ -1,0 +1,98 @@
+module M
+
+-- Nested patterns at any depth (#2): constructors, lists, records and literals inside each
+-- other, with refutable parts at every level and shared fallbacks.
+
+type Node = { v: Int, next: Maybe Node }
+
+type Shape = Circle Float | Rect { w: Int, h: Int }
+
+sum3 : List (Maybe Int) -> Int
+sum3 xs = match xs {
+  [Just m, Just s, Just p] -> m + s + p,
+  [Just m, ..rest] -> m,
+  _ -> 0,
+}
+
+parse : Text -> Float
+parse s = match Text.words s |> List.map Text.toFloat {
+  [Just m, Just sec, Just p] -> m + sec + p,
+  _ -> -1.0,
+}
+
+inner : Maybe (Maybe Int) -> Int
+inner m = match m {
+  Just (Just 0) -> 100,
+  Just (Just x) -> x,
+  Just Nothing -> 0,
+  Nothing -> -1,
+}
+
+heads : Maybe (List Int) -> Int
+heads m = match m {
+  Just [a, ..rest] -> a,
+  Just [] -> 0,
+  Nothing -> -1,
+}
+
+lists : List (List Int) -> Int
+lists xss = match xss {
+  [[a], b] -> a + List.length b,
+  [[], ..rest] -> List.length rest,
+  _ -> 0,
+}
+
+second : Node -> Int
+second n = match n {
+  { next: Just { v: v, next: Just _ } } -> v,
+  { v: v, next: Just { next: Nothing } } -> v + 1,
+  { v: v, next: Nothing } -> v,
+}
+
+results : List (Result Text Int) -> Text
+results rs = match rs {
+  [Ok 0, Err e] -> e,
+  [Ok n, ..more] -> Text.fromInt n,
+  [Err "", ..more] -> "empty",
+  [Err e, ..more] -> e,
+  [] -> "none",
+}
+
+shapes : List Shape -> Int
+shapes ss = match ss {
+  [Rect { w: 0, h: h }, Circle _] -> h,
+  [Rect { w: w, h: _ }, ..rest] -> w,
+  _ -> 0,
+}
+
+flags : { a: Bool, b: Maybe Bool } -> Int
+flags r = match r {
+  { a: True, b: Just True } -> 3,
+  { a: True, b: _ } -> 2,
+  { a: False, b: Just False } -> 1,
+  { a: False, b: _ } -> 0,
+}
+
+Items : { xs: List (Maybe Int) } -> Html a
+Items p = <ul>{match p.xs {
+  [Just a, Just b] -> <li>{Text.fromInt (a + b)}</li>,
+  [Nothing, ..rest] -> <li>none</li>,
+  _ -> <li>other</li>,
+}}</ul>
+
+values : List Int
+values = [
+  sum3 [Just 1, Just 2, Just 3],
+  inner (Just (Just 4)),
+  heads (Just [5]),
+  lists [[1], [2, 3]],
+  second { v: 1, next: Just { v: 2, next: Nothing } },
+  shapes [Rect { w: 0, h: 9 }, Circle 1.0],
+  flags { a: True, b: Nothing },
+]
+
+texts : List Text
+texts = [results [Ok 0, Err "e"], Text.fromFloat (parse "1 2 3")]
+
+items : Html a
+items = <Items xs={[Just 1, Nothing]} />

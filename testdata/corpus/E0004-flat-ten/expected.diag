@@ -1,0 +1,2 @@
+app/Digits.alder:7:11 E0004 missing cases: `D1`, `D2`, `D3`, `D4`, `D5`, `D6`, `D7`, `D8`, `D9`
+  fix 8:10-9:1 ,⏎  D1 -> ?todo,⏎  D2 -> ?todo,⏎  D3 -> ?todo,⏎  D4 -> ?todo,⏎  D5 -> ?todo,⏎  D6 -> ?todo,⏎  D7 -> ?todo,⏎  D8 -> ?todo,⏎  D9 -> ?todo,⏎

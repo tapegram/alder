@@ -1,0 +1,6 @@
+app/Util.alder:8:19 E0003 expected Maybe _, got Bool; `??` binds looser than `&&`, so this reads as `(ready && (m |> Maybe.map positive)) ?? True`; write `ready && ((m |> Maybe.map positive) ?? True)`
+app/Util.alder:8:29 E0003 expected Bool, got Maybe Bool; match it: match m { Just x -> …, Nothing -> … }; `??` binds looser than `&&`, so this reads as `(ready && (m |> Maybe.map positive)) ?? True`; write `ready && ((m |> Maybe.map positive) ?? True)`
+app/Util.alder:12:19 E0003 expected Maybe _, got Bool; `??` binds looser than `&&`, so this reads as `(a || b && flag) ?? False`; write `a || b && (flag ?? False)`
+app/Util.alder:12:29 E0003 expected Bool, got Maybe Bool; match it: match m { Just x -> …, Nothing -> … }; `??` binds looser than `&&`, so this reads as `(a || b && flag) ?? False`; write `a || b && (flag ?? False)`
+app/Util.alder:17:3 E0003 expected Maybe _, got Bool; `??` binds looser than `&&`: put the `??` and the value it defaults in parentheses
+app/Util.alder:18:8 E0003 expected Bool, got Maybe Bool; match it: match m { Just x -> …, Nothing -> … }; `??` binds looser than `&&`: put the `??` and the value it defaults in parentheses

@@ -1,0 +1,11 @@
+module Types
+
+-- The constructor `Status` is named like the page module Status: wherever this constructor is
+-- in scope, `Status { … }` builds a Code, and the page cannot be written.
+type Code = Status Int | Down
+
+describe : Code -> Text
+describe code = match code {
+  Status n -> Text.fromInt n,
+  Down -> "down",
+}

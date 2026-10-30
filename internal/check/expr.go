@@ -918,18 +918,12 @@ func (c *Checker) boundaryRecord(rec *types.Record) bool {
 
 func (mc *modCtx) checkMatch(x *syntax.Match, expected types.Type, env *env, eff effect) {
 	subj := mc.c.u.Apply(mc.infer(x.Subject, env, eff))
-	ex := newExhaustiveness(mc, subj)
 	for _, a := range x.Arms {
 		child := env.child()
-		if ex.closed && ex.kind != "error" {
-			mc.c.errorf(diag.UnreachableArm, a.Span, "unreachable arm: every case is already handled")
-		}
 		mc.checkPattern(a.Pat, subj, child)
-		ex.refresh(subj)
-		ex.cover(a.Pat)
 		mc.check(a.Body, expected, child, eff)
 	}
-	ex.report(x)
+	mc.checkArms(subj, x)
 }
 
 func queryOrTask(t types.Type) (string, types.Type) {
@@ -1644,13 +1638,15 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 			return types.Err
 		}
 		if _, ok := fnT.(*types.Fun); !ok {
-			c.errorf(diag.TypeMismatch, x.R.GetSpan(), "right side of `|>` must be a function, got `%s`", mc.ts(fnT))
+			c.errorf(diag.TypeMismatch, x.R.GetSpan(), "right side of `|>` must be a function, got `%s`%s", mc.ts(fnT), mc.pipeComparisonHint(x))
 			return c.u.Fresh()
 		}
 		return mc.applyFn(x.R, fnT, nil, p, nil, x.Span, env, eff)
 	case "??":
 		inner := c.u.Fresh()
+		from := len(c.bag.Items)
 		mc.check(x.L, mc.maybeOf(inner), env, eff)
+		mc.defaultHint(x, from)
 		mc.check(x.R, inner, env, eff)
 		return inner
 	case "&&", "||":

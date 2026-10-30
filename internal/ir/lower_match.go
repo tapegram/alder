@@ -10,8 +10,10 @@ import (
 
 // Lowering `match` to decision trees.
 //
-// The checker has proved every match exhaustive and patterns nest at most one level below a
-// constructor (records and lists may nest further). Arms are compiled in order, first match wins:
+// The checker has proved every match exhaustive. Patterns nest at any depth (#2): a constructor,
+// list, record, literal, wildcard or variable may stand inside a constructor's argument, a list
+// element or a record field, and each refutable nested tag compiles to its own single-Case Match
+// whose failure is the shared fallback. Arms are compiled in order, first match wins:
 //
 //   - When the first arm is irrefutable (wildcard, variable, record of such) it is the result.
 //     A refutable record pattern tests its fields left to right; when one fails, the next arm runs.

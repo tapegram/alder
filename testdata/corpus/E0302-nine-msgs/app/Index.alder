@@ -1,0 +1,28 @@
+module Index
+
+page "/" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 0 }
+
+msg Set0 { n: Int }
+msg Set1 { n: Int }
+msg Set2 { n: Int }
+msg Set3 { n: Int }
+msg Set4 { n: Int }
+msg Set5 { n: Int }
+msg Set6 { n: Int }
+msg Set7 { n: Int }
+msg Set8 { n: Int }
+msg Set9 { n: Int }
+
+-- nine unhandled messages: the error names them all and the fix adds nine arms (#2)
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Set0 p -> Task.succeed Rerender,
+}
+
+view : Model -> Session -> Html Msg
+view model session = <button click={Set0 { n: 1 }}>{Text.fromInt model.n}</button>

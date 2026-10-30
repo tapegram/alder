@@ -1832,6 +1832,10 @@
             "named": true
           },
           {
+            "type": "list_pattern",
+            "named": true
+          },
+          {
             "type": "parenthesized_pattern",
             "named": true
           },

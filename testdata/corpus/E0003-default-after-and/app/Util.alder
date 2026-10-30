@@ -1,0 +1,19 @@
+module Util
+
+positive : Int -> Bool
+positive n = n > 0
+
+-- `??` binds looser than `&&`: this is `(ready && (m |> Maybe.map positive)) ?? True`.
+allowed : Bool -> Maybe Int -> Bool
+allowed ready m = ready && (m |> Maybe.map positive) ?? True
+
+-- The same through `||`, ending a chain: `(a || b && flag) ?? False`.
+either : Bool -> Bool -> Maybe Bool -> Bool
+either a b flag = a || b && flag ?? False
+
+-- Over several lines the hint names the rule without rewriting the expression.
+spread : Bool -> Maybe Bool -> Bool
+spread a m =
+  a
+    && m
+    ?? True
