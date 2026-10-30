@@ -405,19 +405,25 @@ func prodPages(t *testing.T) string {
 	t.Setenv("ALDER_DEV", "")
 	route := one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil, false) })
 	h := NewRouter(route, testOpts(func(o *Options) { o.Dev = false }))
-	full := serve(h, httptest.NewRequest("GET", "/x", nil)).Body.String()
+	full := serveRaw(h, httptest.NewRequest("GET", "/x", nil)).Body.String()
 	req := httptest.NewRequest("GET", "/x", nil)
 	req.Header.Set("Datastar-Request", "true")
-	patch := serve(h, req).Body.String()
+	patch := serveRaw(h, req).Body.String()
 	out := "== full page\n" + full + "\n== datastar request\n" + patch + "\n"
 	return regexp.MustCompile(`name="alder-build" content="[0-9a-f]+"`).ReplaceAllString(out, `name="alder-build" content="BUILD"`)
 }
 
 // Production output is byte for byte what it was before the dev panel's Errors tab, strip,
 // resizing and minimising: testdata/production_page.golden was generated from the commit before
-// them (168ad442), with the build id normalised to BUILD; the one change since is the pending
-// bar's token, now alder-ui v0.4's --primary (#21).
+// them (168ad442), with the build id normalised to BUILD; the changes since are the pending
+// bar's token, now alder-ui v0.4's --primary (#21), and the shown hash (#49): the boost's
+// window._alderO and the <al-shown> at the end of every body.
 func TestProductionPageHasNoDevUI(t *testing.T) {
+	if os.Getenv("UPDATE_GOLDEN") != "" {
+		if err := os.WriteFile("testdata/production_page.golden", []byte(prodPages(t)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	want, err := os.ReadFile("testdata/production_page.golden")
 	if err != nil {
 		t.Fatal(err)

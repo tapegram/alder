@@ -1,0 +1,13 @@
+module Home
+
+import Types
+
+page "/" { }
+
+type Model = { code: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { code: Types.describe Down }
+
+view : Model -> Session -> Html Msg
+view model session = <a href={Status { cfg: "pa" }}>{model.code}</a>

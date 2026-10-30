@@ -87,6 +87,7 @@ func update__Auth__Login(rq *web.Request, params Auth__Login__Params, msg Auth__
 	if stop != nil {
 		return *stop
 	}
+	model0, session0 := model, session // the page the client shows: Before
 	nav, err := eff.Run(rq.Env, eff.KTask, Auth__Login__update(msg, model, session))
 	if err != nil {
 		return route__fail(err)
@@ -107,7 +108,7 @@ func update__Auth__Login(rq *web.Request, params Auth__Login__Params, msg Auth__
 	if stop != nil {
 		return *stop
 	}
-	return web.PageResponse(Auth__Login__view(model, session), st, rq.Env.Session, true)
+	return web.PageResponse(Auth__Login__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Auth__Login__view(model0, session0) })
 }
 
 // Route__Auth__Login__page serves page Auth.Login, GET /login (book 06): decode the parameters (404
@@ -147,7 +148,7 @@ func Route__Auth__Login__Submit() web.Route {
 			if stop != nil {
 				return *stop
 			}
-			return web.PageResponse(Auth__Login__view(model, session), &html.FormState{Form: "Auth.Login.Credentials", Msg: rt.MsgKey("/_m/Auth.Login/Submit", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Auth__Login(params)}, nil, true)
+			return web.PageResponse(Auth__Login__view(model, session), &html.FormState{Form: "Auth.Login.Credentials", Msg: rt.MsgKey("/_m/Auth.Login/Submit", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Auth__Login(params)}, nil, true).WithBefore(func() html.Node { return Auth__Login__view(model, session) })
 		}
 		p.Form = form
 		return update__Auth__Login(rq, params, Auth__Login__Msg__Submit__(p), &html.FormState{Form: "Auth.Login.Credentials", Msg: rt.MsgKey("/_m/Auth.Login/Submit", rq.Query), Values: values})
@@ -338,6 +339,7 @@ func update__Notes__Index(rq *web.Request, params Notes__Index__Params, msg Note
 	if stop != nil {
 		return *stop
 	}
+	model0, session0 := model, session // the page the client shows: Before
 	nav, err := eff.Run(rq.Env, eff.KTask, Notes__Index__update(msg, model, session))
 	if err != nil {
 		return route__fail(err)
@@ -358,7 +360,7 @@ func update__Notes__Index(rq *web.Request, params Notes__Index__Params, msg Note
 	if stop != nil {
 		return *stop
 	}
-	return web.PageResponse(Notes__Index__view(model, session), st, rq.Env.Session, true)
+	return web.PageResponse(Notes__Index__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Notes__Index__view(model0, session0) })
 }
 
 // Route__Notes__Index__page serves page Notes.Index, GET / (book 06): decode the parameters (404
@@ -399,7 +401,7 @@ func Route__Notes__Index__Submit() web.Route {
 			if stop != nil {
 				return *stop
 			}
-			return web.PageResponse(Notes__Index__view(model, session), &html.FormState{Form: "Notes.Index.NewNote", Msg: rt.MsgKey("/_m/Notes.Index/Submit", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Notes__Index(params)}, nil, true)
+			return web.PageResponse(Notes__Index__view(model, session), &html.FormState{Form: "Notes.Index.NewNote", Msg: rt.MsgKey("/_m/Notes.Index/Submit", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Notes__Index(params)}, nil, true).WithBefore(func() html.Node { return Notes__Index__view(model, session) })
 		}
 		p.Form = form
 		return update__Notes__Index(rq, params, Notes__Index__Msg__Submit__(p), &html.FormState{Form: "Notes.Index.NewNote", Msg: rt.MsgKey("/_m/Notes.Index/Submit", rq.Query), Values: values})
@@ -459,7 +461,7 @@ func Route__Notes__Index__Rename() web.Route {
 			if stop != nil {
 				return *stop
 			}
-			return web.PageResponse(Notes__Index__view(model, session), &html.FormState{Form: "Notes.Index.Title", Msg: rt.MsgKey("/_m/Notes.Index/Rename", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Notes__Index(params)}, nil, true)
+			return web.PageResponse(Notes__Index__view(model, session), &html.FormState{Form: "Notes.Index.Title", Msg: rt.MsgKey("/_m/Notes.Index/Rename", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Notes__Index(params)}, nil, true).WithBefore(func() html.Node { return Notes__Index__view(model, session) })
 		}
 		p.Form = form
 		return update__Notes__Index(rq, params, Notes__Index__Msg__Rename__(p), &html.FormState{Form: "Notes.Index.Title", Msg: rt.MsgKey("/_m/Notes.Index/Rename", rq.Query), Values: values})
@@ -485,7 +487,7 @@ func Route__Notes__Index__SavePrefs() web.Route {
 			if stop != nil {
 				return *stop
 			}
-			return web.PageResponse(Notes__Index__view(model, session), &html.FormState{Form: "Notes.Index.Prefs", Msg: rt.MsgKey("/_m/Notes.Index/SavePrefs", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Notes__Index(params)}, nil, true)
+			return web.PageResponse(Notes__Index__view(model, session), &html.FormState{Form: "Notes.Index.Prefs", Msg: rt.MsgKey("/_m/Notes.Index/SavePrefs", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Notes__Index(params)}, nil, true).WithBefore(func() html.Node { return Notes__Index__view(model, session) })
 		}
 		p.Form = form
 		return update__Notes__Index(rq, params, Notes__Index__Msg__SavePrefs__(p), &html.FormState{Form: "Notes.Index.Prefs", Msg: rt.MsgKey("/_m/Notes.Index/SavePrefs", rq.Query), Values: values})

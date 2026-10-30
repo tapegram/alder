@@ -79,6 +79,7 @@ func update__Wood(rq *web.Request, params Wood__Params, msg Wood__Msg, st *html.
 	if stop != nil {
 		return *stop
 	}
+	model0, session0 := model, session // the page the client shows: Before
 	nav, err := eff.Run(rq.Env, eff.KTask, Wood__update(msg, model, session))
 	if err != nil {
 		return route__fail(err)
@@ -99,7 +100,7 @@ func update__Wood(rq *web.Request, params Wood__Params, msg Wood__Msg, st *html.
 	if stop != nil {
 		return *stop
 	}
-	return web.PageResponse(Wood__view(model, session), st, rq.Env.Session, true)
+	return web.PageResponse(Wood__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Wood__view(model0, session0) })
 }
 
 // Route__Wood__page serves page Wood, GET /r/{cfg}/wood/Results (book 06): decode the parameters

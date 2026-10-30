@@ -1,0 +1,5 @@
+app/App.alder:8:1 W0011 message `Admin` shadows page `Admin` in `App`: there `Admin { … }` is the message, so the page cannot be linked or fetched; rename the message or the page module (for example `module AdminPage`)
+app/Ok.alder:1:1 W0011 the Prelude constructor `Ok` (of `Result`) shadows page `Ok`: `Ok { … }` is the constructor in every module, so the page cannot be linked or fetched; rename the page module (for example `module OkPage`)
+app/Panel.alder:16:1 W0011 message `Go` shadows page `Go` in `Panel`: there `Go { … }` is the message, so the page cannot be linked or fetched; rename the message or the page module (for example `module GoPage`)
+app/Panel.alder:18:1 W0011 message `Stop` shadows page `Stop` in `Panel`: there `Stop { … }` is the message, so the page cannot be linked or fetched; rename the message or the page module (for example `module StopPage`)
+app/Roles.alder:5:22 W0011 constructor `Admin` (of `Roles.Role`) shadows page `Admin` in `Roles` and the modules importing it: there `Admin { … }` is the constructor, so the page cannot be linked or fetched; rename the constructor or the page module (for example `module AdminPage`)

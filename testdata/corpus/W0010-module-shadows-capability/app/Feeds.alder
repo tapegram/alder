@@ -1,0 +1,6 @@
+module Feeds
+
+-- A capability not named like its module: other modules write `Clarity.latest`, or `Feeds.Clarity.latest`.
+capability Clarity {
+  latest : Query Text,
+}

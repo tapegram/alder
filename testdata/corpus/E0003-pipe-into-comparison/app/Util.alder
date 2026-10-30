@@ -1,0 +1,12 @@
+module Util
+
+double : Int -> Int
+double n = n * 2
+
+-- `|>` binds looser than `==`: this is `x |> (double == 4)`.
+isFour : Int -> Bool
+isFour x = x |> double == 4
+
+-- A chain with an applied function before `<`: `xs |> List.map double |> (List.length < 3)`.
+short : List Int -> Bool
+short xs = xs |> List.map double |> List.length < 3

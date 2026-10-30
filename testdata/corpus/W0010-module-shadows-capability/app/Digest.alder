@@ -1,0 +1,13 @@
+module Digest
+
+import Clarity
+import Feeds
+
+-- `Clarity.latest` resolves to module Clarity's `latest`, not the entry of Feeds' capability
+-- Clarity: it compiles, so the clash is the warning at the import.
+latest : Query Text
+latest = Query.map (\t -> t) Clarity.latest
+
+-- Feeds is used through the capability's long spelling as well.
+fresh : Query Text
+fresh = Feeds.Clarity.latest
