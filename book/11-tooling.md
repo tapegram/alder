@@ -770,6 +770,18 @@ $ alder eval examples/todos --in Table.Todo 'countOpen []'
 0 : Int
 ```
 
+A diagnostic of the expression is positioned in the input (`input:1:5`). When a `let` redeclares
+a name the module declares, the earlier declaration is named by its file, since its line is not
+a line of the input: ``input:1:5: error[E0009]: `countOpen` is already declared in
+app/Table/Todo.alder:34``.
+
+`--in` is deliberately more permissive than `alder check` about one thing: eval infers the
+type of the module's own top-level values that have no signature (as it does the input's
+`let`s), where `check` reports E0007 for them. The input has no place for
+signatures, and the checker's inference switch (`InferModule`) applies to the whole module the
+input is appended to, so it covers the module's own unsigned values too. That is accepted:
+eval is for probing, and `alder check` gives the strict verdict.
+
 `--in` and `--module` do not combine (`alder eval: --in and --module do not combine: --in Name
 works inside module Name, --module names the scratch module`, exit 2). A module that declares
 `it` cannot host eval (exit 2).
