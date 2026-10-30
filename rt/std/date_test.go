@@ -26,6 +26,13 @@ func TestDate_FromParts(t *testing.T) {
 	}
 }
 
+func TestDate_FromParts_AnyYear(t *testing.T) {
+	d := DateAddYears(10000, DateEpoch())
+	eq(t, "roundtrip", DateFromParts(DateToParts(d)), rt.Just(d))
+	eq(t, "year", DateToParts(d).Year, int64(11970))
+	eq(t, "bad", DateFromParts(dparts{11970, 2, 30}), rt.Nothing[rt.Date]())
+}
+
 func TestDate_ToParts(t *testing.T) {
 	eq(t, "toParts", DateToParts(dt(t, "2026-10-29")), dparts{2026, 10, 29})
 	d := dt(t, "2024-02-29")

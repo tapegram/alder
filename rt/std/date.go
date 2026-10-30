@@ -94,7 +94,7 @@ func TimeAgo(now, then time.Time) string {
 // DateFromParts builds a Date from year, month and day; an impossible date is
 // Nothing (no normalisation: month 13 is not January).
 func DateFromParts(p struct{ Year, Month, Day int64 }) rt.Maybe[rt.Date] {
-	if p.Year < -9999 || p.Year > 9999 || p.Month < 1 || p.Month > 12 || p.Day < 1 || p.Day > 31 {
+	if p.Month < 1 || p.Month > 12 || p.Day < 1 || p.Day > 31 {
 		return rt.Nothing[rt.Date]()
 	}
 	t := time.Date(int(p.Year), time.Month(p.Month), int(p.Day), 0, 0, 0, 0, time.UTC)
