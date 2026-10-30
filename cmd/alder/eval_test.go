@@ -541,10 +541,11 @@ func TestEval_RunWithAdapters(t *testing.T) {
 }
 
 // A let bound to a record literal takes the table's record where it is first expected (#3); one
-// with a field the record lacks says which.
+// with a field the record lacks says which. A literal with a field of a generalised type (`due:
+// Nothing` is `Maybe a`) is structural for good, as before #3, and the mismatch says so.
 func TestEval_RecordLiteralTakesNamedType(t *testing.T) {
 	t.Parallel()
-	in := "let t = { id: Todo.TodoId \"a\", title: Text.NonEmpty \"x\", done: False, due: Nothing, owner: User.UserId \"u\", created: Time.epoch }\nTodo.countOpen [t]\n"
+	in := "let t = { id: Todo.TodoId \"a\", title: Text.NonEmpty \"x\", done: False, due: Just (Time.toDate Time.epoch), owner: User.UserId \"u\", created: Time.epoch }\nTodo.countOpen [t]\n"
 	code, stdout, stderr := runEval(t, in, todosDir(t), "-")
 	if code != 0 || stdout != "1 : Int\n" {
 		t.Errorf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
@@ -553,6 +554,38 @@ func TestEval_RecordLiteralTakesNamedType(t *testing.T) {
 	code, _, stderr = runEval(t, in, todosDir(t), "-")
 	if code != 1 || !strings.Contains(stderr, "; the record is missing Todo's `created`; `made` is not a field of Todo") {
 		t.Errorf("exit %d\nstderr: %s", code, stderr)
+	}
+	in = "let t = { id: Todo.TodoId \"a\", title: Text.NonEmpty \"x\", done: False, due: Nothing, owner: User.UserId \"u\", created: Time.epoch }\nTodo.countOpen [t]\n"
+	code, _, stderr = runEval(t, in, todosDir(t), "-")
+	if code != 1 || !strings.Contains(stderr, "declare it as Todo where it is made") || strings.Contains(stderr, "internal error") {
+		t.Errorf("exit %d\nstderr: %s", code, stderr)
+	}
+}
+
+// An unsigned function whose result is a literal mentioning its parameter is generalised: each
+// use gets its own instance, a named record expected of it is a readable E0003 (never a Go
+// error), and a generalised literal's field is used at two types, as before #3.
+func TestEval_GeneralisedRecordLiteral(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	app := filepath.Join(t.TempDir(), "todos")
+	if err := os.CopyFS(app, os.DirFS(todosDir(t))); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(app, "app", "Box.alder"), []byte("module Box\n\ntype Box a = { v: a }\n\nunbox : Box a -> a\nunbox b = b.v\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := runEval(t, "let mk x = { v: x }\nBox.unbox (mk 1)\n", app, "-")
+	if code != 1 || !strings.Contains(stderr, "E0003") || !strings.Contains(stderr, "declare it as") || strings.Contains(stderr, "internal error") {
+		t.Errorf("unbox (mk 1): exit %d\nstderr: %s", code, stderr)
+	}
+	code, stdout, stderr := runEval(t, "let mk x = { v: x }\n\"{Text.fromInt ((mk 1).v)}{(mk \"s\").v}\"\n", app, "-")
+	if code != 0 || stdout != "\"1s\" : Text\n" {
+		t.Errorf("mk at two types: exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
+	}
+	code, stdout, stderr = runEval(t, "let r = { l: [] }\nlet a = r.l == [1]\nlet b = r.l == [\"a\"]\n[a, b]\n", app, "-")
+	if code != 0 || stdout != "[False, False] : List Bool\n" {
+		t.Errorf("r.l at two types: exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
 	}
 }
 

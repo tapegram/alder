@@ -1,6 +1,51 @@
 package check
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+// An unsigned top-level function whose result is a literal mentioning its parameter is
+// generalised as on main: the literal is structural for good, so each use instantiates it afresh
+// and a named record expected of it is a mismatch with the hint, never a shared decision.
+func TestRecordLitInference_InferModuleGeneric(t *testing.T) {
+	src := `module M
+
+type Box a = { v: a }
+
+unbox : Box a -> a
+unbox b = b.v
+
+mk x = { v: x }
+
+one = (mk 1).v + 1
+
+word = (mk "s").v ++ "t"
+
+boxed = unbox (mk 1)
+`
+	_, bag := checkWith(t, map[string]string{"M.alder": src}, Options{InferModule: "M"})
+	got := render(bag)
+	if strings.Count(got, "E0003") != 1 || !strings.Contains(got, "E0003 expected Box _, got { v: Int }; the record has Box _'s fields: declare it as Box _ where it is made") {
+		t.Fatalf("want one E0003 with the hint for `boxed`, got:\n%s", got)
+	}
+}
+
+// A generalised literal's field keeps its own instance per use, as on main.
+func TestRecordLitInference_InferModuleFieldPerUse(t *testing.T) {
+	src := `module M
+
+it = { l: [] }
+
+ints = it.l == [1]
+
+texts = it.l == ["a"]
+`
+	_, bag := checkWith(t, map[string]string{"M.alder": src}, Options{InferModule: "M"})
+	if got := errorsOf(bag); got != "" {
+		t.Fatalf("want no errors, got:\n%s", got)
+	}
+}
 
 // A record literal typed with nothing expected takes the named record type it first meets (#3).
 

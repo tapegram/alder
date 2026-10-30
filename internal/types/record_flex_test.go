@@ -145,17 +145,22 @@ func TestRecordFlex_CarriedBySubstAndInstantiate(t *testing.T) {
 	if r := u.Apply(l).(*Record); r.Flex == nil || r.Flex.ID != l.Flex.ID {
 		t.Fatal("Apply must carry the handle")
 	}
-	if r := u.Instantiate(l).(*Record); r.Flex == nil || r.Flex.ID != l.Flex.ID {
-		t.Fatal("Instantiate must carry the handle")
-	}
 	if r := substParams(l, []string{"a"}, []Type{tFloat}).(*Record); r.Flex == nil || r.Flex.ID != l.Flex.ID {
 		t.Fatal("subst must carry the handle")
 	}
-	inst := u.Instantiate(l)
+	// instances of a literal mentioning a parameter each get their own field types: no shared handle
+	if r := u.Instantiate(l).(*Record); r.Flex != nil {
+		t.Fatal("Instantiate must not share a handle across instances of a generic literal")
+	}
+	mono := curveLit(u)
+	if r := u.Instantiate(mono).(*Record); r.Flex == nil || r.Flex.ID != mono.Flex.ID {
+		t.Fatal("Instantiate must carry the handle of a literal without parameters")
+	}
+	inst := u.Instantiate(mono)
 	if err := u.Unify(inst, curve()); err != nil {
 		t.Fatal(err)
 	}
-	if !isCurve(u.Apply(l)) {
+	if !isCurve(u.Apply(mono)) {
 		t.Fatal("deciding an instance decides the literal")
 	}
 }

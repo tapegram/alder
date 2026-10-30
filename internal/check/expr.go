@@ -209,8 +209,9 @@ func (mc *modCtx) inferTopLevel(d *syntax.ValueDecl) {
 		c.errorf(diag.MissingSig, d.Span, "the type of `%s` cannot be inferred: it uses itself at a different type; give it a type signature", d.Name)
 	}
 	t := c.u.Apply(sig)
-	// an undecided record literal's variables are left to the use that decides it (#3)
-	for i, v := range freeVarsOutsideLiterals(t) {
+	free := freeVars(t)
+	mc.fixGeneralisedLiterals(t, free)
+	for i, v := range free {
 		c.u.Subst[v.ID] = &types.Param{Name: paramName(i)}
 	}
 	mc.reportHoles()
@@ -247,14 +248,7 @@ func errorCount(bag *diag.Bag) int {
 }
 
 // freeVars lists the unsolved variables of the applied type t, in order of first occurrence.
-func freeVars(t types.Type) []*types.Var { return walkFreeVars(t, false) }
-
-// freeVarsOutsideLiterals is freeVars without the variables inside an undecided record literal
-// (a structural record with a handle): they are fixed by the named type the literal becomes, so
-// generalising them would leave the literal's own expressions at a parameter Go cannot name.
-func freeVarsOutsideLiterals(t types.Type) []*types.Var { return walkFreeVars(t, true) }
-
-func walkFreeVars(t types.Type, skipLiterals bool) []*types.Var {
+func freeVars(t types.Type) []*types.Var {
 	var out []*types.Var
 	seen := map[int]bool{}
 	var walk func(types.Type)
@@ -279,7 +273,7 @@ func walkFreeVars(t types.Type, skipLiterals bool) []*types.Var {
 			}
 			walk(t.Result)
 		case *types.Record:
-			if t.Anonymous && !(skipLiterals && t.Flex != nil) {
+			if t.Anonymous {
 				for _, f := range t.Fields {
 					walk(f.Type)
 				}
@@ -291,6 +285,63 @@ func walkFreeVars(t types.Type, skipLiterals bool) []*types.Var {
 	}
 	walk(t)
 	return out
+}
+
+// fixGeneralisedLiterals makes every undecided record literal in the applied type t whose fields
+// mention one of the variables about to be generalised structural for good (its handle bound to
+// its own structural type, as before #3): each use instantiates those variables afresh, so no
+// single named type could be decided for all of them. A literal without such a variable (`wide =
+// { median: 1.0, … }`) keeps its handle and is decided by its first use, like a let.
+func (mc *modCtx) fixGeneralisedLiterals(t types.Type, free []*types.Var) {
+	if len(free) == 0 {
+		return
+	}
+	gen := map[int]bool{}
+	for _, v := range free {
+		gen[v.ID] = true
+	}
+	mentions := func(t types.Type) bool {
+		for _, v := range freeVars(t) {
+			if gen[v.ID] {
+				return true
+			}
+		}
+		return false
+	}
+	var walk func(types.Type)
+	walk = func(t types.Type) {
+		switch t := t.(type) {
+		case *types.App:
+			for _, a := range t.Args {
+				walk(a)
+			}
+		case *types.Union:
+			for _, a := range t.Args {
+				walk(a)
+			}
+		case *types.Fun:
+			for _, p := range t.Params {
+				walk(p)
+			}
+			walk(t.Result)
+		case *types.Record:
+			if !t.Anonymous {
+				for _, a := range t.Args {
+					walk(a)
+				}
+				return
+			}
+			for _, f := range t.Fields {
+				walk(f.Type)
+			}
+			if t.Flex != nil && mentions(t) {
+				if _, bound := mc.c.u.Subst[t.Flex.ID]; !bound {
+					mc.c.u.Subst[t.Flex.ID] = &types.Record{Anonymous: true, Fields: t.Fields}
+				}
+			}
+		}
+	}
+	walk(t)
 }
 
 // paramName is the i-th generalized type parameter's name: a … z, then a1, b1, ….
@@ -458,7 +509,7 @@ func (mc *modCtx) mismatch(span diag.Span, got, expected types.Type) *diag.Diagn
 		return &diag.Diagnostic{}
 	}
 	msg := fmt.Sprintf("expected %s, got %s", mc.ts(e), mc.ts(g))
-	if inner, ok := maybeOf(g); ok && c.u.Check(inner, e) == nil {
+	if inner, ok := maybeOf(g); ok && c.u.Clone().Check(inner, e) == nil { // a clone: reporting never decides a literal
 		msg += "; match it: match m { Just x -> …, Nothing -> … }"
 	}
 	msg += mc.recordDiff(g, e)
@@ -527,8 +578,19 @@ func (mc *modCtx) recordDiff(got, expected types.Type) string {
 func recordPair(got, expected types.Type) (*types.Record, *types.Record) {
 	switch g := got.(type) {
 	case *types.Record:
-		if e, ok := expected.(*types.Record); ok && g.Anonymous && !e.Anonymous {
+		e, ok := expected.(*types.Record)
+		if !ok {
+			break
+		}
+		if g.Anonymous && !e.Anonymous {
 			return g, e
+		}
+		if !g.Anonymous && !e.Anonymous && g.Module == e.Module && g.Name == e.Name && len(g.Args) == len(e.Args) {
+			for i := range g.Args {
+				if r, n := recordPair(g.Args[i], e.Args[i]); r != nil {
+					return r, n
+				}
+			}
 		}
 	case *types.App:
 		if e, ok := expected.(*types.App); ok && g.Con == e.Con && len(g.Args) == len(e.Args) {

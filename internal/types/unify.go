@@ -405,7 +405,12 @@ func (u *Unifier) Instantiate(t Type) Type {
 			for i, f := range t.Fields {
 				fs[i] = Field{Name: f.Name, Type: inst(f.Type), HasDefault: f.HasDefault, Default: f.Default}
 			}
-			return &Record{Fields: fs, Anonymous: true, Flex: t.Flex}
+			flex := t.Flex
+			if flex != nil && hasParam(t) {
+				// each instance has its own field types, so no one handle can stand for them all
+				flex = nil
+			}
+			return &Record{Fields: fs, Anonymous: true, Flex: flex}
 		}
 		return t
 	}
@@ -483,4 +488,46 @@ func subst(t Type, idx map[string]Type, inProgress map[string]*Record) Type {
 		return &Record{Module: t.Module, Name: t.Name, Fields: fs, Anonymous: t.Anonymous, Flex: t.Flex}
 	}
 	return t
+}
+
+// hasParam reports whether t mentions a type parameter (outside a nominal record's declaration).
+func hasParam(t Type) bool {
+	switch t := t.(type) {
+	case *Param:
+		return true
+	case *App:
+		for _, a := range t.Args {
+			if hasParam(a) {
+				return true
+			}
+		}
+	case *Union:
+		for _, a := range t.Args {
+			if hasParam(a) {
+				return true
+			}
+		}
+	case *Fun:
+		for _, p := range t.Params {
+			if hasParam(p) {
+				return true
+			}
+		}
+		return hasParam(t.Result)
+	case *Record:
+		if !t.Anonymous {
+			for _, a := range t.Args {
+				if hasParam(a) {
+					return true
+				}
+			}
+			return false
+		}
+		for _, f := range t.Fields {
+			if hasParam(f.Type) {
+				return true
+			}
+		}
+	}
+	return false
 }
