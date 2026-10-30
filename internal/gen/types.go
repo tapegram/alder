@@ -18,6 +18,7 @@ import (
 //	Doc, Answer (test builds only)   rtesting.Doc, rtesting.Answer
 //	Fuzz.Fuzzer a, Fuzz.Property     fuzz.Fuzzer[A], *rtesting.Property
 //	Random.Generator a, Random.Seed  std.Generator[A], std.Seed
+//	Json.Value                       rt.JsonValue
 //	Text.Builder                     rt.TextBuilder
 //	List a, Dict k v, Html a         []A, rt.Dict[K, V], html.Node (whatever a is)
 //	Maybe a, Result e a              rt.Maybe[A], rt.Result[E, A]
@@ -71,6 +72,10 @@ func GoType(t types.Type) string {
 		case "Seed":
 			if t.Module == "Random" {
 				return "std.Seed"
+			}
+		case "Value":
+			if t.Module == "Json" {
+				return "rt.JsonValue"
 			}
 		case "Builder":
 			if t.Module == "Text" {

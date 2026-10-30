@@ -18,7 +18,6 @@ func TestFile_BodyAliasesText(t *testing.T) {
 			ContentType string
 			Body        string
 		}{"text/plain", body}),
-		"json": FileJson(body),
 	} {
 		if len(f.Body) != len(body) || &f.Body[0] != unsafe.StringData(body) || string(f.Body) != body {
 			t.Errorf("%s: body was copied", name)
@@ -35,7 +34,7 @@ func TestFile_BodyAliasesText(t *testing.T) {
 	if empty.Body == nil || len(empty.Body) != 0 {
 		t.Fatalf("empty body = %#v, want empty non-nil", empty.Body)
 	}
-	if FileJson("").Body == nil {
+	if FileJson(JsonList(nil)).Body == nil {
 		t.Fatal("empty json body is nil")
 	}
 }
@@ -55,7 +54,10 @@ func TestFile_HtmlBodyAliasesRender(t *testing.T) {
 // program does with File.body can write into a Text.
 func TestFile_BytesOfBodyAreFresh(t *testing.T) {
 	body := rt.Concat("abc", "def")
-	b := FileBody(FileJson(body))
+	b := FileBody(FileText(struct {
+		ContentType string
+		Body        string
+	}{"text/plain", body}))
 	s := BytesSlice(0, 3, b)
 	a := BytesAppend(b, []byte{})
 	c := BytesConcat([][]byte{b})

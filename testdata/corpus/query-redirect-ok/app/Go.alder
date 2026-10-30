@@ -1,0 +1,17 @@
+module Go
+
+-- A file page whose load redirects: Test.fetch sees the 303.
+page "/go.txt" { seed: Text = "9" }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.redirect (Builder { seed: params.seed, tab: "raw" })
+
+view : Model -> Session -> File
+view model session = File.text { contentType: "text/plain", body: "never" }
+
+test "a file page's redirect is a 303" = {
+  let r <- Test.fetch (Go { seed: "9" })
+  Task.succeed (r.status == 303 && List.member { name: "Location", value: "/builder/9?tab=raw" } r.headers)
+}

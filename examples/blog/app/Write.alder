@@ -237,10 +237,10 @@ test "an Author logs out from the write page" = {
       out: out.answer,
       user: out.session.user,
     } == {
-        heading: Just "Your posts",
-        out: Redirected (Auth.Login {}),
-        user: Nothing,
-      }
+      heading: Just "Your posts",
+      out: Redirected (Auth.Login {}),
+      user: Nothing,
+    }
   )
 }
 

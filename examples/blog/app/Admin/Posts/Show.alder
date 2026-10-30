@@ -183,11 +183,11 @@ test "the page shows the row" = {
       authors: List.length page.model.labels.authors,
       authorLabel: authorLabel page.model.labels me,
     } == {
-        answer: Shown,
-        slug: True,
-        authors: 1,
-        authorLabel: "email-1@example.com",
-      }
+      answer: Shown,
+      slug: True,
+      authors: 1,
+      authorLabel: "email-1@example.com",
+    }
   )
 }
 
@@ -226,10 +226,10 @@ test "deleting a post nothing refers to" = {
       gone: Maybe.map (\row -> row.id) gone,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-        answer: Redirected (Admin.Posts.Index {}),
-        gone: Nothing,
-        kept: Just post2,
-      }
+      answer: Redirected (Admin.Posts.Index {}),
+      gone: Nothing,
+      kept: Just post2,
+    }
   )
 }
 

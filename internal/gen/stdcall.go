@@ -112,6 +112,16 @@ var StdCalls = map[string]string{
 	"Int.abs":     "std.IntAbs",
 	"Int.clamp":   "std.IntClamp",
 	"Int.pow":     "std.IntPow",
+	// Json
+	"Json.null":           "std.JsonNull",
+	"Json.bool":           "std.JsonBool",
+	"Json.int":            "std.JsonInt",
+	"Json.float":          "std.JsonFloat",
+	"Json.string":         "std.JsonString",
+	"Json.list":           "std.JsonList",
+	"Json.object":         "std.JsonObject",
+	"Json.encode":         "std.JsonEncode",
+	"Json.encodeIndented": "std.JsonEncodeIndented",
 	// List
 	"List.length":       "std.ListLength",
 	"List.isEmpty":      "std.ListIsEmpty",

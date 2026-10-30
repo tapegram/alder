@@ -15,7 +15,7 @@ func TestFile_Constructors(t *testing.T) {
 	if FileStatus(f) != 200 || FileContentType(f) != "text/csv" || string(FileBody(f)) != "a,b\n" {
 		t.Fatalf("text: %+v", f)
 	}
-	j := FileJson(`{"a":1}`)
+	j := FileJson(JsonObject([]jfield{{"a", JsonInt(1)}}))
 	if FileContentType(j) != "application/json" || string(FileBody(j)) != `{"a":1}` {
 		t.Fatalf("json: %+v", j)
 	}
@@ -67,7 +67,7 @@ func TestBytes(t *testing.T) {
 	if !rt.Eq(TextToBytes("ab"), []byte("ab")) || rt.Eq(TextToBytes("ab"), []byte("ac")) {
 		t.Fatal("Bytes compares by content")
 	}
-	if !rt.Eq(FileJson("1"), FileJson("1")) || rt.Eq(FileJson("1"), FileWithStatus(500, FileJson("1"))) {
+	if !rt.Eq(FileJson(JsonInt(1)), FileJson(JsonInt(1))) || rt.Eq(FileJson(JsonInt(1)), FileWithStatus(500, FileJson(JsonInt(1)))) {
 		t.Fatal("File compares by status, type, headers, body")
 	}
 }

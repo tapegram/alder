@@ -29,7 +29,7 @@ func (p *printer) element(e *syntax.Element) Doc {
 		return Concat(p.startTag(e, ">"), Nest(p.dangle(e, true, isMarkup)), HardLine, Text("</"+name+">"))
 	}
 	if len(e.Children) == 0 {
-		if strings.HasSuffix(p.spanText(e.Span), "/>") {
+		if selfClosing(p.spanText(e.Span)) {
 			return p.startTag(e, " />")
 		}
 		return Concat(p.startTag(e, ">"), Text("</"+name+">"))
@@ -59,6 +59,12 @@ func (p *printer) element(e *syntax.Element) Doc {
 		inner = append(inner, render(pc))
 	}
 	return Group(Concat(p.startTag(e, ">"), Nest(Concat(inner...)), render(pieces[len(pieces)-1]), Text("</"+name+">")))
+}
+
+// selfClosing reports whether an element's source ends `/>`, or `/` and `>` with blanks between.
+func selfClosing(src string) bool {
+	s, ok := strings.CutSuffix(src, ">")
+	return ok && strings.HasSuffix(strings.TrimRight(s, " \t\r\n"), "/")
 }
 
 // startTag prints `<name attr…` and then end (`>` or ` />`): on one line if it fits, else one

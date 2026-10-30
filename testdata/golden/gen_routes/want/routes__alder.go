@@ -96,8 +96,8 @@ func params__Edit(p Edit__Params) []rt.KV {
 // (st, the state of the form that sent the message; nil for a message without one) load and view
 // again with t on the form (patched into the page under Datastar); for Rerender (and a Reject
 // without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh
-// does not post again). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound
-// or Task.notFound.
+// does not post again). A failed Task changes nothing: 500 (App.error), 404 for Query.notFound or
+// Task.notFound, or a 303 for Query.redirect.
 func update__Edit(rq *web.Request, params Edit__Params, msg Edit__Msg, st *html.FormState) web.Response {
 	model, session, stop := page__Edit(rq, params, nil)
 	if stop != nil {
@@ -127,8 +127,8 @@ func update__Edit(rq *web.Request, params Edit__Params, msg Edit__Msg, st *html.
 }
 
 // Route__Edit__page serves page Edit, GET /edit/{n} (book 06): decode the parameters (404 when they
-// do not), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which
-// a test's browser reads).
+// do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model
+// also in rq.Model, which a test's browser reads).
 func Route__Edit__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/edit/{n}", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Edit__Params(rq.Params, rq.Query)
@@ -213,8 +213,8 @@ func params__Other(_ Other__Params) []rt.KV {
 }
 
 // Route__Other__page serves page Other, GET /other (book 06): decode the parameters (404 when they
-// do not), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which
-// a test's browser reads).
+// do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model
+// also in rq.Model, which a test's browser reads).
 func Route__Other__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/other", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Other__Params(rq.Params, rq.Query)
@@ -264,8 +264,8 @@ func params__Secret(_ Secret__Params) []rt.KV {
 }
 
 // Route__Secret__page serves page Secret, GET /secret (book 06): decode the parameters (404 when
-// they do not), `requires` (303 to App.login), load (404 on Query.notFound, 500 on a failure), view
-// (the model also in rq.Model, which a test's browser reads).
+// they do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect,
+// 500 on a failure), view (the model also in rq.Model, which a test's browser reads).
 func Route__Secret__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/secret", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Secret__Params(rq.Params, rq.Query)
@@ -281,9 +281,13 @@ func Route__Secret__page() web.Route {
 	}}
 }
 
-// route__fail answers a load or update that did not succeed: 404 (App.notFound) for
-// Query.notFound and Task.notFound, else 500 (App.error).
+// route__fail answers a load or update that did not succeed: a 303 to the page for
+// Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
+	var rd *eff.ErrRedirect
+	if errors.As(err, &rd) {
+		return web.QueryRedirectResponse(rd.Location)
+	}
 	if errors.Is(err, eff.ErrNotFound) {
 		return web.NotFoundResponse(html.None())
 	}

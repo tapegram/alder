@@ -77,7 +77,7 @@ view model session =
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
@@ -116,10 +116,10 @@ test "creating an activity adds it, with the values submitted" = {
       rows: List.map (\row -> { text: row.text, org: row.org }) rows,
       orgs: Test.texts "select[name=org] option" page.doc,
     } == {
-        answers: [r.answer],
-        rows: [{ text: Text.NonEmpty "text-1", org: org2 }],
-        orgs: ["name-1", "name-2"],
-      }
+      answers: [r.answer],
+      rows: [{ text: Text.NonEmpty "text-1", org: org2 }],
+      orgs: ["name-1", "name-2"],
+    }
   )
 }
 
@@ -200,11 +200,11 @@ test "a long list of orgs offers 50, and the search narrows it" = {
       found: Test.texts "select[name=org] option" found.doc == ["name-203"],
       answer: r.answer,
     } == {
-        shown: 50,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Activities.New { findOrg: "zz" }),
-      }
+      shown: 50,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Activities.New { findOrg: "zz" }),
+    }
   )
 }
 

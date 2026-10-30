@@ -13,6 +13,7 @@ import (
 	"alder/internal/generate"
 	"alder/internal/ir"
 	"alder/internal/migrate"
+	"alder/internal/style"
 )
 
 // The generators: `alder new page|table|form|msg|capability`, `alder edit table` and `alder
@@ -71,6 +72,13 @@ type genJSON struct {
 	UpToDate *bool     `json:"upToDate,omitempty"`
 	// Imports are `alder fill`'s: the modules it imported for the expression.
 	Imports *[]string `json:"imports,omitempty"`
+	// Expression, Attempts and Model are `alder fill --ai`'s: the model's expression, how many
+	// answers it took, and the model (or "command").
+	Expression *string `json:"expression,omitempty"`
+	Attempts   *int    `json:"attempts,omitempty"`
+	Model      *string `json:"model,omitempty"`
+	// Effects are the effects of the expression its hole's type does not limit (fill.Effects).
+	Effects *[]string `json:"effects,omitempty"`
 }
 
 // runGeneratorWith ends every generator: it applies edits (computed by gen, from the loaded app)
@@ -160,14 +168,14 @@ func genReport(cmd string, g genArgs, res *generate.Result, err error, extra fun
 		writeJSON(stdout, out)
 	} else {
 		if res != nil {
-			io.WriteString(stdout, res.RenderText(refused))
+			io.WriteString(stdout, res.RenderTextStyled(refused, style.For(stdout)))
 		} else if refused {
 			for _, d := range ref.Diags {
-				fmt.Fprint(stdout, diag.RenderText(d, ref.Sources[d.Span.File]))
+				fmt.Fprint(stdout, diag.RenderTextStyled(d, ref.Sources[d.Span.File], style.For(stdout)))
 			}
 		}
 		if res != nil && !refused && g.dry {
-			fmt.Fprintln(stdout, "dry run: nothing written")
+			fmt.Fprintln(stdout, style.For(stdout).Dim("dry run: nothing written"))
 		}
 	}
 	if refused {

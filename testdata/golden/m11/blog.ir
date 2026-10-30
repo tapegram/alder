@@ -304,7 +304,7 @@
           (hexpr text
             (++ : Text (++ : Text "Choose at most " (call (std Text.fromInt) (global Admin.Comments.Bulk.maxRows)))
               " rows at a time.")))
-        (elem span))
+        (hexpr html (std Html.none)))
       (elem ul (attr id text "selected")
         (hfor row : Table.Comment.Comment
           (field rows (var model))
@@ -943,7 +943,7 @@
             (attr type text "submit")
             (attr variant text "secondary")
             (elem button (attr type text "submit") (htext "Find"))))
-        (elem span))
+        (hexpr html (std Html.none)))
       (form-el Admin.Comments.Edit.Save
         (attr submit submit
           (ctor Admin.Comments.Edit.Msg.Save (record SaveParams)))
@@ -1587,41 +1587,44 @@
     (elem h1 (htext "Comments"))
     (elem al-stack (attr direction text "row") (attr gap text "sm")
       (elem form (attr method text "get") (attr action text "/admin/comment")
-        (elem input
-          (attr type text "search")
-          (attr name text "q")
-          (attr value text (field q (var model)))
-          (attr aria-label text "Search"))
-        (hfor f : Filter
-          (call (global Admin.Comments.Index.filters)
-            (field filters (var model)))
-          (elem al-select (attr label text (field label (var f)))
+        (elem al-stack (attr direction text "row") (attr gap text "sm")
+          (elem al-input
             (elem label
-              (hexpr text (field label (var f)))
-              (elem select (attr name text (field name (var f)))
-                (elem option
-                  (attr value text "")
-                  (attr selected bool (== : Text (field value (var f)) ""))
-                  (htext "any"))
-                (hfor o : { value: Text, label: Text, rows: Condition Table.Comment.Comment }
-                  (field options (var f))
+              (htext "Search")
+              (elem input
+                (attr type text "search")
+                (attr name text "q")
+                (attr value text (field q (var model))))))
+          (hfor f : Filter
+            (call (global Admin.Comments.Index.filters)
+              (field filters (var model)))
+            (elem al-select (attr label text (field label (var f)))
+              (elem label
+                (hexpr text (field label (var f)))
+                (elem select (attr name text (field name (var f)))
                   (elem option
-                    (attr value text (field value (var o)))
-                    (attr selected bool
-                      (== : Text (field value (var o)) (field value (var f))))
-                    (hexpr text (field label (var o)))))))))
-        (elem input
-          (attr type text "hidden")
-          (attr name text "sort")
-          (attr value text (field sort (var model))))
-        (elem input
-          (attr type text "hidden")
-          (attr name text "dir")
-          (attr value text (field dir (var model))))
-        (elem al-button
-          (attr type text "submit")
-          (attr variant text "secondary")
-          (elem button (attr type text "submit") (htext "Search"))))
+                    (attr value text "")
+                    (attr selected bool (== : Text (field value (var f)) ""))
+                    (htext "any"))
+                  (hfor o : { value: Text, label: Text, rows: Condition Table.Comment.Comment }
+                    (field options (var f))
+                    (elem option
+                      (attr value text (field value (var o)))
+                      (attr selected bool
+                        (== : Text (field value (var o)) (field value (var f))))
+                      (hexpr text (field label (var o)))))))))
+          (elem input
+            (attr type text "hidden")
+            (attr name text "sort")
+            (attr value text (field sort (var model))))
+          (elem input
+            (attr type text "hidden")
+            (attr name text "dir")
+            (attr value text (field dir (var model))))
+          (elem al-button
+            (attr type text "submit")
+            (attr variant text "secondary")
+            (elem button (attr type text "submit") (htext "Search")))))
       (elem al-button
         (elem a
           (attr href href
@@ -2165,7 +2168,7 @@
             (attr type text "submit")
             (attr variant text "secondary")
             (elem button (attr type text "submit") (htext "Find"))))
-        (elem span))
+        (hexpr html (std Html.none)))
       (form-el Admin.Comments.New.Create
         (attr submit submit
           (ctor Admin.Comments.New.Msg.Create (record CreateParams)))
@@ -3352,7 +3355,7 @@
           (hexpr text
             (++ : Text (++ : Text "Choose at most " (call (std Text.fromInt) (global Admin.Posts.Bulk.maxRows)))
               " rows at a time.")))
-        (elem span))
+        (hexpr html (std Html.none)))
       (elem ul (attr id text "selected")
         (hfor row : Table.Post.Post
           (field rows (var model))
@@ -4128,7 +4131,7 @@
             (attr type text "submit")
             (attr variant text "secondary")
             (elem button (attr type text "submit") (htext "Find"))))
-        (elem span))
+        (hexpr html (std Html.none)))
       (form-el Admin.Posts.Edit.Save
         (attr submit submit
           (ctor Admin.Posts.Edit.Msg.Save (record SaveParams)))
@@ -4877,40 +4880,43 @@
     (elem h1 (htext "Posts"))
     (elem al-stack (attr direction text "row") (attr gap text "sm")
       (elem form (attr method text "get") (attr action text "/admin/post")
-        (elem input
-          (attr type text "search")
-          (attr name text "q")
-          (attr value text (field q (var model)))
-          (attr aria-label text "Search"))
-        (hfor f : Filter
-          (call (global Admin.Posts.Index.filters) (field filters (var model)))
-          (elem al-select (attr label text (field label (var f)))
+        (elem al-stack (attr direction text "row") (attr gap text "sm")
+          (elem al-input
             (elem label
-              (hexpr text (field label (var f)))
-              (elem select (attr name text (field name (var f)))
-                (elem option
-                  (attr value text "")
-                  (attr selected bool (== : Text (field value (var f)) ""))
-                  (htext "any"))
-                (hfor o : { value: Text, label: Text, rows: Condition Table.Post.Post }
-                  (field options (var f))
+              (htext "Search")
+              (elem input
+                (attr type text "search")
+                (attr name text "q")
+                (attr value text (field q (var model))))))
+          (hfor f : Filter
+            (call (global Admin.Posts.Index.filters) (field filters (var model)))
+            (elem al-select (attr label text (field label (var f)))
+              (elem label
+                (hexpr text (field label (var f)))
+                (elem select (attr name text (field name (var f)))
                   (elem option
-                    (attr value text (field value (var o)))
-                    (attr selected bool
-                      (== : Text (field value (var o)) (field value (var f))))
-                    (hexpr text (field label (var o)))))))))
-        (elem input
-          (attr type text "hidden")
-          (attr name text "sort")
-          (attr value text (field sort (var model))))
-        (elem input
-          (attr type text "hidden")
-          (attr name text "dir")
-          (attr value text (field dir (var model))))
-        (elem al-button
-          (attr type text "submit")
-          (attr variant text "secondary")
-          (elem button (attr type text "submit") (htext "Search"))))
+                    (attr value text "")
+                    (attr selected bool (== : Text (field value (var f)) ""))
+                    (htext "any"))
+                  (hfor o : { value: Text, label: Text, rows: Condition Table.Post.Post }
+                    (field options (var f))
+                    (elem option
+                      (attr value text (field value (var o)))
+                      (attr selected bool
+                        (== : Text (field value (var o)) (field value (var f))))
+                      (hexpr text (field label (var o)))))))))
+          (elem input
+            (attr type text "hidden")
+            (attr name text "sort")
+            (attr value text (field sort (var model))))
+          (elem input
+            (attr type text "hidden")
+            (attr name text "dir")
+            (attr value text (field dir (var model))))
+          (elem al-button
+            (attr type text "submit")
+            (attr variant text "secondary")
+            (elem button (attr type text "submit") (htext "Search")))))
       (elem al-button
         (elem a
           (attr href href
@@ -5614,7 +5620,7 @@
             (attr type text "submit")
             (attr variant text "secondary")
             (elem button (attr type text "submit") (htext "Find"))))
-        (elem span))
+        (hexpr html (std Html.none)))
       (form-el Admin.Posts.New.Create
         (attr submit submit
           (ctor Admin.Posts.New.Msg.Create (record CreateParams)))
@@ -6573,7 +6579,7 @@
           (hexpr text
             (++ : Text (++ : Text "Choose at most " (call (std Text.fromInt) (global Admin.Users.Bulk.maxRows)))
               " rows at a time.")))
-        (elem span))
+        (hexpr html (std Html.none)))
       (elem ul (attr id text "selected")
         (hfor row : Table.User.User
           (field rows (var model))
@@ -7857,40 +7863,43 @@
     (elem h1 (htext "Users"))
     (elem al-stack (attr direction text "row") (attr gap text "sm")
       (elem form (attr method text "get") (attr action text "/admin/user")
-        (elem input
-          (attr type text "search")
-          (attr name text "q")
-          (attr value text (field q (var model)))
-          (attr aria-label text "Search"))
-        (hfor f : Filter
-          (call (global Admin.Users.Index.filters) (field filters (var model)))
-          (elem al-select (attr label text (field label (var f)))
+        (elem al-stack (attr direction text "row") (attr gap text "sm")
+          (elem al-input
             (elem label
-              (hexpr text (field label (var f)))
-              (elem select (attr name text (field name (var f)))
-                (elem option
-                  (attr value text "")
-                  (attr selected bool (== : Text (field value (var f)) ""))
-                  (htext "any"))
-                (hfor o : { value: Text, label: Text, rows: Condition Table.User.User }
-                  (field options (var f))
+              (htext "Search")
+              (elem input
+                (attr type text "search")
+                (attr name text "q")
+                (attr value text (field q (var model))))))
+          (hfor f : Filter
+            (call (global Admin.Users.Index.filters) (field filters (var model)))
+            (elem al-select (attr label text (field label (var f)))
+              (elem label
+                (hexpr text (field label (var f)))
+                (elem select (attr name text (field name (var f)))
                   (elem option
-                    (attr value text (field value (var o)))
-                    (attr selected bool
-                      (== : Text (field value (var o)) (field value (var f))))
-                    (hexpr text (field label (var o)))))))))
-        (elem input
-          (attr type text "hidden")
-          (attr name text "sort")
-          (attr value text (field sort (var model))))
-        (elem input
-          (attr type text "hidden")
-          (attr name text "dir")
-          (attr value text (field dir (var model))))
-        (elem al-button
-          (attr type text "submit")
-          (attr variant text "secondary")
-          (elem button (attr type text "submit") (htext "Search"))))
+                    (attr value text "")
+                    (attr selected bool (== : Text (field value (var f)) ""))
+                    (htext "any"))
+                  (hfor o : { value: Text, label: Text, rows: Condition Table.User.User }
+                    (field options (var f))
+                    (elem option
+                      (attr value text (field value (var o)))
+                      (attr selected bool
+                        (== : Text (field value (var o)) (field value (var f))))
+                      (hexpr text (field label (var o)))))))))
+          (elem input
+            (attr type text "hidden")
+            (attr name text "sort")
+            (attr value text (field sort (var model))))
+          (elem input
+            (attr type text "hidden")
+            (attr name text "dir")
+            (attr value text (field dir (var model))))
+          (elem al-button
+            (attr type text "submit")
+            (attr variant text "secondary")
+            (elem button (attr type text "submit") (htext "Search")))))
       (elem al-button
         (elem a
           (attr href href

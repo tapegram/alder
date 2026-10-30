@@ -1,0 +1,62 @@
+module Rows.Bench
+
+import Table.Row
+
+-- The scenarios `alder bench` measures: each seeds its rows (not measured: a brand's
+-- constructor is for tests, so the seeding is written in each), then takes exactly the browser
+-- steps its name says.
+
+test "index 100" = {
+  let _ <- Task.all (List.map (\i -> Db.insert Row { title: Text.NonEmpty ("row " ++ Text.fromInt i), n: i }) (List.range 1 100))
+  let page <- Test.get (Rows.Index {})
+  Task.succeed (Test.count "#rows li" page.doc == 100)
+}
+
+test "index 1000" = {
+  let _ <- Task.all (List.map (\i -> Db.insert Row { title: Text.NonEmpty ("row " ++ Text.fromInt i), n: i }) (List.range 1 1000))
+  let page <- Test.get (Rows.Index {})
+  Task.succeed (Test.count "#rows li" page.doc == 1000)
+}
+
+test "index 10000" = {
+  let _ <- Task.all (List.map (\i -> Db.insert Row { title: Text.NonEmpty ("row " ++ Text.fromInt i), n: i }) (List.range 1 10000))
+  let page <- Test.get (Rows.Index {})
+  Task.succeed (Test.count "#rows li" page.doc == 10000)
+}
+
+test "toggle 1000" = {
+  let ids <- Task.all (List.map (\i -> Db.insert Row { title: Text.NonEmpty ("row " ++ Text.fromInt i), n: i }) (List.range 1 1000))
+  let _ <- Test.get (Rows.Index {})
+  match List.head ids {
+    Just id -> {
+      let r <- Test.click (Rows.Index.Toggle { id: id })
+      Task.succeed (r.answer == Rerendered)
+    },
+    Nothing -> Task.succeed False,
+  }
+}
+
+test "add 1000" = {
+  let _ <- Task.all (List.map (\i -> Db.insert Row { title: Text.NonEmpty ("row " ++ Text.fromInt i), n: i }) (List.range 1 1000))
+  let _ <- Test.get (Rows.Index {})
+  let r <- Test.submit Rows.Index.NewRow { title: Text.NonEmpty "new" }
+  Task.succeed (r.answer == Rerendered)
+}
+
+test "jump 1000" = {
+  let ids <- Task.all (List.map (\i -> Db.insert Row { title: Text.NonEmpty ("row " ++ Text.fromInt i), n: i }) (List.range 1 1000))
+  let _ <- Test.get (Rows.Index {})
+  match List.head ids {
+    Just id -> {
+      let r <- Test.click (Rows.Index.Jump { id: id })
+      Task.succeed (r.answer == Redirected (Rows.Show { id: id }))
+    },
+    Nothing -> Task.succeed False,
+  }
+}
+
+test "slow 100" = {
+  let _ <- Task.all (List.map (\i -> Db.insert Row { title: Text.NonEmpty ("row " ++ Text.fromInt i), n: i }) (List.range 1 100))
+  let page <- Test.get (Rows.Slow {})
+  Task.succeed (Test.text "#count" page.doc == Just "100")
+}

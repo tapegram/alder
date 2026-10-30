@@ -173,11 +173,11 @@ test "the page shows the row" = {
       owners: List.length page.model.labels.owners,
       ownerLabel: ownerLabel page.model.labels me,
     } == {
-        answer: Shown,
-        title: True,
-        owners: 1,
-        ownerLabel: "email-1@example.com",
-      }
+      answer: Shown,
+      title: True,
+      owners: 1,
+      ownerLabel: "email-1@example.com",
+    }
   )
 }
 

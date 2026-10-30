@@ -174,11 +174,11 @@ test "the page shows the row" = {
       projects: List.length page.model.labels.projects,
       projectLabel: projectLabel page.model.labels project1,
     } == {
-        answer: Shown,
-        title: True,
-        projects: 1,
-        projectLabel: "name-1",
-      }
+      answer: Shown,
+      title: True,
+      projects: 1,
+      projectLabel: "name-1",
+    }
   )
 }
 

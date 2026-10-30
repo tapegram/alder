@@ -12,7 +12,7 @@ import (
 var ErrInternal = errors.New("internal error")
 
 // Run interprets t eagerly, node by node, and returns its result:
-// (value, nil) | (zero, *ErrFail) | (zero, ErrNotFound) | (zero, another
+// (value, nil) | (zero, *ErrFail) | (zero, ErrNotFound) | (zero, *ErrRedirect) | (zero, another
 // error from the context, the store or a Call).
 //
 // kind KTask: the transaction is begun lazily. Run begins none itself; the
@@ -155,8 +155,15 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 	return as[T](v), nil
 }
 
-// RunQuery runs q as a Query: Run(env, KQuery, T(q)).
+// RunQuery runs q as a Query: Run(env, KQuery, T(q)). With a Recorder it is counted
+// (Recorder.Loads): in a request, a Query run is a page's `load`.
 func RunQuery[T any](env *Env, q Query[T]) (T, error) {
+	if env.Rec == nil {
+		return Run(env, KQuery, Task[T]{q.node})
+	}
+	env.Rec.AddLoad()
+	env.Rec.Cut()
+	defer env.Rec.Cut()
 	return Run(env, KQuery, Task[T]{q.node})
 }
 
@@ -233,6 +240,8 @@ func interpret(env *Env, kind Kind, n node) (any, error) {
 			return nil, &ErrFail{Msg: x.msg}
 		case notFound:
 			return nil, ErrNotFound
+		case redirect:
+			return nil, &ErrRedirect{Location: x.location}
 		default:
 			return nil, fmt.Errorf("eff: %w: invalid effect node %T (zero Task or Query?)", ErrInternal, n)
 		}

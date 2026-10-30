@@ -67,3 +67,77 @@ fLong : Dict Text (List Int)
   -> Dict Text (List Int)
   -> Task (Maybe Int)
 fLong a b c d = Task.succeed Nothing
+
+fetchMany : Text -> Text -> {
+  alpha: Int,
+  beta: Text,
+  gamma: Bool,
+  delta: List Int,
+  epsilon: Text,
+} -> Task Unit
+fetchMany a b r = Task.succeed ()
+
+fetchNested : Text -> Task {
+  alpha: Int,
+  beta: Text,
+  gamma: Bool,
+  delta: List Int,
+  epsilon: Text,
+  zeta: Int,
+} -> Task Unit
+fetchNested a b = Task.succeed ()
+
+fetchLongTail : Text
+  -> { alpha: Int }
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+fetchLongTail a b = Task.succeed ()
+
+fetchRecordTail : Text
+  -> { alpha: Int, beta: Int }
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+fetchRecordTail a b = Task.succeed ()
+
+fetchBoth : Text
+  -> {
+    to: Text,
+    subject: Text,
+    body: Text,
+    cc: List Text,
+    bcc: List Text,
+    replyTo: Text,
+    sender: Text,
+  }
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+  -> Task Unit
+fetchBoth a b = Task.succeed ()
+
+capability Mail {
+  send : Text -> {
+    to: Text,
+    subject: Text,
+    body: Text,
+    cc: List Text,
+    bcc: List Text,
+    replyTo: Text,
+  } -> Task Unit,
+}

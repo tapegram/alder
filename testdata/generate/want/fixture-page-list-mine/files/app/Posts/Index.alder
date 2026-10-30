@@ -152,10 +152,10 @@ test "the list has 20 rows a page" = {
       second: List.length second.model.rows,
       pages: Test.texts "al-pagination span" first.doc,
     } == {
-        first: 20,
-        second: 1,
-        pages: ["Previous", "Page 1 of 2"],
-      }
+      first: 20,
+      second: 1,
+      pages: ["Previous", "Page 1 of 2"],
+    }
   )
 }
 

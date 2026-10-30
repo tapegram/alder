@@ -66,16 +66,16 @@ edited app/Home.alder
 +        author: p.author,
 +      }) posts,
 +    } == {
-+        answer: Redirected (Home {}),
-+        listed: ["Hello"],
-+        posts: [
-+          {
-+            status: Draft,
-+            featured: False,
-+            author: me,
-+          },
-+        ],
-+      }
++      answer: Redirected (Home {}),
++      listed: ["Hello"],
++      posts: [
++        {
++          status: Draft,
++          featured: False,
++          author: me,
++        },
++      ],
++    }
 +  )
  }
  
@@ -123,10 +123,10 @@ edited app/Home.alder
 +      user: out.session.user,
 +      role: out.session.role,
 +    } == {
-+        answer: Redirected (Auth.Login {}),
-+        user: Nothing,
-+        role: Reader,
-+      }
++      answer: Redirected (Auth.Login {}),
++      user: Nothing,
++      role: Reader,
++    }
 +  )
  }
 +
@@ -146,16 +146,16 @@ edited app/Home.alder
 +        featured: row.featured,
 +      }) rows,
 +    } == {
-+        answer: Redirected (Home {}),
-+        rows: [
-+          {
-+            title: Text.NonEmpty "title-1",
-+            body: "body-1",
-+            status: Draft,
-+            featured: False,
-+          },
-+        ],
-+      }
++      answer: Redirected (Home {}),
++      rows: [
++        {
++          title: Text.NonEmpty "title-1",
++          body: "body-1",
++          status: Draft,
++          featured: False,
++        },
++      ],
++    }
 +  )
 +}
 +
