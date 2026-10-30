@@ -1,4 +1,0 @@
-app/Todos/Index.alder:30:11 E0003 `Doc` is a test type: it exists only inside a `test`
-app/Todos/Index.alder:33:11 E0003 `Answer` is a test type: it exists only inside a `test`
-app/Todos/Index.alder:34:11 E0003 `Shown` is a constructor of the test type `Answer`: it exists only inside a `test`
-app/Todos/Index.alder:37:8 E0003 `Test.login` is only available inside a `test`

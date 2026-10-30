@@ -1,0 +1,1 @@
+app/Checkout.alder:17:12 E0040 `Payments.install` is a test helper (it uses `Test.fake`): only a `test` or another test helper may use it

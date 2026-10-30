@@ -1035,6 +1035,7 @@ func (mc *modCtx) deferDefault(f *syntax.Field, ft types.Type) {
 func (c *Checker) checkDefaults() {
 	for _, d := range c.defaults {
 		mc := c.ctx(d.m)
+		mc.never = "a field default is not a helper"
 		mc.check(d.f.Default, d.t, newEnv(), effect{})
 		mc.reportHoles()
 	}
@@ -1056,7 +1057,10 @@ func (mc *modCtx) anonDefault(f *syntax.Field, ft types.Type) {
 		c.defaults = append(c.defaults, pendingDefault{mc.m, f, ft})
 		return
 	}
+	never := mc.never
+	mc.never = "a field default is not a helper"
 	mc.check(f.Default, ft, newEnv(), effect{})
+	mc.never = never
 }
 
 func lineOf(m *syntax.Module, line int) string {
@@ -1289,7 +1293,9 @@ func (mc *modCtx) declareValues() {
 			continue
 		}
 		params := map[string]bool{}
+		mc.value = vd.Name // a test type in the signature makes the value a test helper
 		c.values[c.key(mc.m.Name, vd.Name)] = mc.typeOf(vd.Sig, params)
+		mc.value = ""
 	}
 	if !mc.isApp && c.prog.Std[mc.m.Name] == nil {
 		for _, d := range mc.m.Decls {

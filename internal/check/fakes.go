@@ -115,6 +115,10 @@ func (mc *modCtx) fakeTableUse(tableKey, table string, span diag.Span) {
 	if c.fakeUses[span] {
 		return
 	}
+	if mc.value != "" && mc.fake == "" && mc.helperBan() == "" { // a plain value: it becomes a helper
+		mc.testUse("`"+table+"`", span)
+		return
+	}
 	c.fakeUses[span] = true
 	c.errorf(FakeTable, span, "`%s` is a fake's table: only tests and `fake %s` may use it", table, owner)
 }
@@ -123,8 +127,7 @@ func (mc *modCtx) fakeTableUse(tableKey, table string, span diag.Span) {
 // a capability name whose module declares a `fake` for it; a `Task Unit`.
 func (mc *modCtx) inferTestFake(x *syntax.App, v *syntax.Var, pipe *pipeArg) types.Type {
 	c := mc.c
-	if !mc.inTest {
-		c.errorf(diag.TypeMismatch, v.Span, "`Test.fake` is only available inside a `test`")
+	if !mc.testUse("`Test.fake`", v.Span) {
 		return types.Err
 	}
 	if len(x.Args) > 1 || (pipe != nil && len(x.Args) > 0) {

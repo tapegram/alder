@@ -54,8 +54,12 @@ type Result struct {
 	// FuzzAny is the concrete type at each `Fuzz.any` use (the `a` of its `Fuzzer a`), from which
 	// the generator is derived. Every use checked without error has an entry.
 	FuzzAny map[*syntax.Var]types.Type
-	Holes   int            // count of W0002 reported
-	U       *types.Unifier // for Apply on stored types
+	// TestOnly are the test helpers (#4), "Module.name" → the first thing that makes each one
+	// (“`Test.fetch`”, or “`fetchText`, a test helper”): values only tests and other helpers use,
+	// which a production build omits.
+	TestOnly map[string]string
+	Holes    int            // count of W0002 reported
+	U        *types.Unifier // for Apply on stored types
 }
 
 // PropKind is the form of a property test's body.

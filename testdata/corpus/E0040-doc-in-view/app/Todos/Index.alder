@@ -17,16 +17,22 @@ msg Submit form NewTodo
 msg Toggle { id: Text }
 
 update : Msg -> Model -> Session -> Task Nav
-update msg model session = Task.succeed Rerender
+update msg model session = {
+  let _ <- step
+  Task.succeed Rerender
+}
 
 view : Model -> Session -> Html Msg
-view model session =
+view model session = {
+  let d : Maybe Doc = Nothing
   <form submit={Submit}>
     <Input field="title" label="Title" />
     <Errors field="title" />
     <button click={Toggle { id: "a" }}>Toggle</button>
   </form>
+}
 
+-- Test helpers: each uses a test type or a browser step.
 heading : Doc -> Maybe Text
 heading doc = Nothing
 
