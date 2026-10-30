@@ -70,7 +70,7 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 	for _, h := range tw.hops {
 		answer += ", then " + h.answer
 	}
-	reps := segRepeats(tw.hops, sqls)
+	reps := repeatMarks(segRepeats(tw.hops, rec))
 	var b strings.Builder
 	fmt.Fprintf(&b, `<nav data-rid="%d"><span data-bar>%s %s</span> <span>%s</span> <span data-ms>%.1f ms</span> <span>%d SQL</span>`,
 		tw.start.UnixNano(), esc(r.Method), esc(r.URL.Path), esc(answer), ms, len(sqls))
@@ -157,8 +157,8 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 	for i, q := range sqls {
 		marker(i, func(h hopMark) int { return h.sql })
 		dup, k := "", key{seg(i), q.Stmt}
-		if reps[k] { // an N+1 (eff.Repeats): five or more, not a bulk write
-			dup = fmt.Sprintf(` <strong data-nplus1>N+1 x%d</strong>`, count[k])
+		if r, ok := reps[key{seg(i), eff.Shape(q.Stmt)}]; ok { // an N+1 (eff.RepeatsCut): five or more in one load, not a bulk write
+			dup = fmt.Sprintf(` <strong data-nplus1>N+1 x%d</strong>`, r.Count)
 		} else if bulk(k) {
 			dup = fmt.Sprintf(` <span data-bulk>x%d (bulk)</span>`, count[k])
 		} else if count[k] > 1 {
@@ -222,22 +222,39 @@ func segOf(hops []hopMark, i int) int {
 	return n
 }
 
-// segments splits sqls by answer segment: one slice per segment (the request, then each hop).
-func segments(hops []hopMark, sqls []eff.SQLRec) [][]eff.SQLRec {
-	out := make([][]eff.SQLRec, len(hops)+1)
-	for i, q := range sqls {
-		s := segOf(hops, i)
-		out[s] = append(out[s], q)
+// segRepeats is the N+1s of each answer segment (the request, then each hop): eff.RepeatsCut of
+// its statements, each load run counted on its own (rec.Cuts). By segment, in order.
+func segRepeats(hops []hopMark, rec *eff.Recorder) [][]eff.Repeat {
+	out := make([][]eff.Repeat, len(hops)+1)
+	if rec == nil {
+		return out
+	}
+	sqls := rec.SQL
+	for s := range out {
+		from, to := 0, len(sqls)
+		if s > 0 {
+			from = min(hops[s-1].sql, len(sqls))
+		}
+		if s < len(hops) {
+			to = min(hops[s].sql, len(sqls))
+		}
+		var cuts []int
+		for _, c := range rec.Cuts {
+			if c > from && c < to {
+				cuts = append(cuts, c-from)
+			}
+		}
+		out[s] = eff.RepeatsCut(sqls[from:to], cuts, eff.RepeatThreshold)
 	}
 	return out
 }
 
-// segRepeats is the statements eff.Repeats finds in each answer segment.
-func segRepeats(hops []hopMark, sqls []eff.SQLRec) map[segStmt]bool {
-	out := map[segStmt]bool{}
-	for s, qs := range segments(hops, sqls) {
-		for _, r := range eff.Repeats(qs, eff.RepeatThreshold) {
-			out[segStmt{s, r.Stmt}] = true
+// repeatMarks is segRepeats by segment and shape (eff.Shape), for the SQL tab's marks.
+func repeatMarks(reps [][]eff.Repeat) map[segStmt]eff.Repeat {
+	out := map[segStmt]eff.Repeat{}
+	for s, rs := range reps {
+		for _, r := range rs {
+			out[segStmt{s, r.Stmt}] = r
 		}
 	}
 	return out
@@ -249,13 +266,13 @@ func (rt *router) warnRepeats(tw *tracker) {
 	if !rt.opts.Dev || tw.rq == nil || tw.rq.Env == nil || tw.rq.Env.Rec == nil {
 		return // a test's browser records too (Options.EnvFor), and warns in its own report
 	}
-	for s, qs := range segments(tw.hops, tw.rq.Env.Rec.SQL) {
+	for s, rs := range segRepeats(tw.hops, tw.rq.Env.Rec) {
 		head := tw.r.Method + " " + tw.r.URL.Path
 		if s > 0 {
 			u, _, _ := strings.Cut(tw.hops[s-1].url, "?")
 			head = "GET " + u
 		}
-		for _, r := range eff.Repeats(qs, eff.RepeatThreshold) {
+		for _, r := range rs {
 			rt.log("warn", head+": "+r.String())
 		}
 	}

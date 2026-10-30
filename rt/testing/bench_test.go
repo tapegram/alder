@@ -9,6 +9,7 @@ import (
 
 	"alder/rt/db"
 	"alder/rt/eff"
+	"alder/rt/html"
 	"alder/rt/web"
 )
 
@@ -87,6 +88,51 @@ func TestBrowser_NPlusOneWarning(t *testing.T) {
 				t.Errorf("text %q", buf.String())
 			}
 		}
+	}
+}
+
+// A load that runs one select 3 times warns neither on its GET nor on a Rerender, which runs the
+// load twice (6 in the request, 3 per load run).
+func TestBrowser_RerenderNotNPlusOne(t *testing.T) {
+	load := func(rq *web.Request) error {
+		_, err := eff.RunQuery(rq.Env, eff.Q(eff.Call("Db.get T", false, func(e *eff.Env) (int, error) {
+			for range 3 {
+				if _, err := db.GetRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), tb, "x"); err != nil {
+					return 0, err
+				}
+			}
+			return 0, nil
+		})))
+		return err
+	}
+	view := layout("Three", html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("Three", "Go"))}, html.Text("Go")))
+	routes := []web.Route{
+		{Method: "GET", Pattern: "/three", Handle: func(rq *web.Request) web.Response {
+			if err := load(rq); err != nil {
+				return fail(err)
+			}
+			return web.PageResponse(view, nil, nil, false)
+		}},
+		{Method: "POST", Pattern: "/_m/Three/Go", Handle: func(rq *web.Request) web.Response {
+			for range 2 {
+				if err := load(rq); err != nil {
+					return fail(err)
+				}
+			}
+			return web.PageResponse(view, &html.FormState{}, nil, true)
+		}},
+	}
+	r := browseOpts(t, Options{Bench: true}, routes, func(b *Browser, e *eff.Env) {
+		if _, err := b.Get("/three"); err != nil {
+			t.Fatal(err)
+		}
+		c, err := b.Click("/_m/Three/Go")
+		if err != nil || c.Answer.Tag != Rerendered {
+			t.Fatalf("%+v %v", c.Answer, err)
+		}
+	})
+	if len(r.Warnings) != 0 || len(r.Bench) != 2 || r.Bench[1].SQL != 6 || r.Bench[1].Loads != 2 || len(r.Bench[1].Repeats) != 0 {
+		t.Fatalf("warnings %q, bench %+v", r.Warnings, r.Bench)
 	}
 }
 

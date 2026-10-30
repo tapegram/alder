@@ -158,9 +158,12 @@ func Run[T any](env *Env, kind Kind, t Task[T]) (T, error) {
 // RunQuery runs q as a Query: Run(env, KQuery, T(q)). With a Recorder it is counted
 // (Recorder.Loads): in a request, a Query run is a page's `load`.
 func RunQuery[T any](env *Env, q Query[T]) (T, error) {
-	if env.Rec != nil {
-		env.Rec.AddLoad()
+	if env.Rec == nil {
+		return Run(env, KQuery, Task[T]{q.node})
 	}
+	env.Rec.AddLoad()
+	env.Rec.Cut()
+	defer env.Rec.Cut()
 	return Run(env, KQuery, Task[T]{q.node})
 }
 

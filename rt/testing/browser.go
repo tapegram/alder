@@ -699,7 +699,7 @@ func (b *Browser) serve(method, target string, form url.Values, ds bool) (*httpt
 	b.reqEnvs, b.lastErr, b.cur, b.model = nil, "", cur, nil
 	b.reqHead = req.Method + " " + req.URL.Path + ": "
 	w := httptest.NewRecorder()
-	b.handler.ServeHTTP(w, req)
+	b.serveHTTP(w, req)
 	for _, e := range b.reqEnvs {
 		b.env.Trace = append(b.env.Trace, e.Trace...)
 	}
