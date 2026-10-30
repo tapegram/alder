@@ -395,8 +395,8 @@ func (d *devServer) work(changed <-chan watch.Change) {
 			fmt.Fprintln(d.stderr, d.errSt.Dim("alder run: rebuilding "+d.app))
 			d.rebuild()
 		} else {
-			if d.static != "" { // the child serves the build's copy: refresh it first
-				if err := buildkit.CopyStatic(filepath.Join(d.dir, "static"), d.static); err != nil {
+			if d.static != "" { // the child serves the build's copy: refresh it first, keeping the last build's theme
+				if err := buildkit.CopyStatic(filepath.Join(d.dir, "static"), d.static, buildkit.WrittenTheme(d.static)); err != nil {
 					d.fail("alder run: " + err.Error())
 					continue
 				}

@@ -134,7 +134,7 @@ func (g *adminGen) bulk(at *adminTable) {
 
 	label := textOf(at.label, "row."+at.label.Name)
 	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
-	fmt.Fprintf(&b, "  %s\n    <h1>{Text.fromInt (List.length model.rows)} selected</h1>\n\n    <al-card>\n      {if model.chosen > maxRows then <al-alert id=\"too-many\" variant=\"warning\">{%s}</al-alert> else <span></span>}\n      <ul id=\"selected\">\n        {for row in model.rows ->\n          <li>{%s}%s</li>}\n      </ul>\n%s\n    </al-card>\n    <a href={%s {}}>Back to the list</a>\n",
+	fmt.Fprintf(&b, "  %s\n    <h1>{Text.fromInt (List.length model.rows)} selected</h1>\n\n    <al-card>\n      {if model.chosen > maxRows then <al-alert id=\"too-many\" variant=\"warning\">{%s}</al-alert> else Html.none}\n      <ul id=\"selected\">\n        {for row in model.rows ->\n          <li>{%s}%s</li>}\n      </ul>\n%s\n    </al-card>\n    <a href={%s {}}>Back to the list</a>\n",
 		open, bulkTooMany, label, kept, regionAt("      ", "actions", views), at.page("Index"))
 	fmt.Fprintf(&b, "  %s\n", close)
 

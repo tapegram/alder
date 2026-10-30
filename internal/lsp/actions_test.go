@@ -9,6 +9,7 @@ import (
 
 type action struct {
 	Title, Kind string
+	IsPreferred bool
 	Diagnostics []Diagnostic
 	Edit        *struct {
 		DocumentChanges []struct {
@@ -32,10 +33,16 @@ type action struct {
 
 func actions(t *testing.T, c *client, rel string, line int) []action {
 	t.Helper()
+	return actionsIn(t, c, rel, line, line+1)
+}
+
+// actionsIn asks for the code actions of lines [from, to).
+func actionsIn(t *testing.T, c *client, rel string, from, to int) []action {
+	t.Helper()
 	var out []action
 	if e := c.call("textDocument/codeAction", map[string]any{
 		"textDocument": map[string]any{"uri": c.uri(rel)},
-		"range":        Range{Start: Position{Line: line}, End: Position{Line: line + 1}},
+		"range":        Range{Start: Position{Line: from}, End: Position{Line: to}},
 		"context":      map[string]any{"diagnostics": []any{}},
 	}, &out); e != nil {
 		t.Fatalf("codeAction: %v", e)
@@ -262,5 +269,53 @@ func TestAction_OverlappingFixesAreOneAction(t *testing.T) {
 		if d.Severity == 1 {
 			t.Fatalf("still an error after the fix: %s\n%s", d.Message, fixed)
 		}
+	}
+}
+
+// A page hook with the wrong signature offers "Change signature to …" as the first, preferred
+// quick fix (issue 45), and the generators, which are not about the cursor, follow it as
+// refactor actions. The range starts on the line above the signature, which is unchanged since
+// the last good build, so the generators are offered too.
+func TestCodeAction_HookSignatureFixFirst(t *testing.T) {
+	c := start(t, blogCopy(t))
+	rel := "app/Posts/Index.alder"
+	text := openClean(t, c, rel)
+	broken := strings.Replace(text, "load : Params -> Session -> Query Model", "load : Params -> Session -> Model", 1)
+	c.change(rel, broken)
+	c.diags(rel)
+	sig := c.at(rel, "load : Params", 0).Line
+	acts := actionsIn(t, c, rel, sig-1, sig+1)
+	if len(acts) == 0 {
+		t.Fatal("no actions")
+	}
+	first := acts[0]
+	want := "Params -> Session -> Query Model"
+	if first.Kind != "quickfix" || !first.IsPreferred || first.Title != "Change signature to `"+want+"`" || first.Edit == nil {
+		t.Fatalf("first action %+v", first)
+	}
+	edits := first.Edit.DocumentChanges[0].Edits
+	if len(edits) != 1 || edits[0].NewText != want {
+		t.Fatalf("edits %+v", edits)
+	}
+	if got := applyEdits(t, broken, edits); got != text {
+		t.Fatalf("applying the fix does not restore the signature:\n%s", got)
+	}
+	gens := 0
+	for i, a := range acts {
+		if a.Data == nil {
+			continue
+		}
+		gens++
+		if a.Kind != "refactor" || a.IsPreferred {
+			t.Errorf("generator action %q: kind %q preferred %v", a.Title, a.Kind, a.IsPreferred)
+		}
+		for _, b := range acts[i:] {
+			if b.Kind == "quickfix" {
+				t.Errorf("quick fix %q after generator %q", b.Title, a.Title)
+			}
+		}
+	}
+	if gens == 0 {
+		t.Fatalf("no generator actions in %+v", acts)
 	}
 }

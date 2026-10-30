@@ -17,7 +17,7 @@ func (s *server) publish(a *analysis) {
 		if d.Span.File == "" {
 			continue // nothing to attach it to
 		}
-		byRel[d.Span.File] = append(byRel[d.Span.File], lspDiagnostic(d))
+		byRel[d.Span.File] = append(byRel[d.Span.File], s.enc.wireDiagnostic(a.lines[d.Span.File], lspDiagnostic(d)))
 	}
 	var rels []string
 	for rel := range a.versions {

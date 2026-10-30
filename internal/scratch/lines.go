@@ -50,7 +50,7 @@ func (b Build) MapDiag(d diag.Diagnostic) (diag.Diagnostic, bool) {
 		return d, false
 	}
 	d.Span.Start.Line, d.Span.End.Line = start, end
-	d.Message = MapLineRef(d, b.SourceLine)
+	d.Message = b.mapLineRef(d)
 	if d.Fix != nil {
 		l, ok1 := b.SourceLine(d.Fix.Line)
 		e, ok2 := b.SourceLine(d.Fix.EndLine)
@@ -63,6 +63,21 @@ func (b Build) MapDiag(d diag.Diagnostic) (diag.Diagnostic, bool) {
 		}
 	}
 	return d, true
+}
+
+// mapLineRef is d's message with an E0009 "at line N" mapped to the caller's line. In
+// in-module mode a line within the module's own text (N <= BaseLines) is not the caller's: it
+// is named with the module's file, "in app/X.alder:N", so it is not read as a line of the
+// input (and a later mapping, which looks for "at line N" at the end, leaves it alone).
+func (b Build) mapLineRef(d diag.Diagnostic) string {
+	if b.BaseLines > 0 && d.Code == diag.Duplicate {
+		if m := lineRefRE.FindStringSubmatchIndex(d.Message); m != nil {
+			if n, err := strconv.Atoi(d.Message[m[2]:m[3]]); err == nil && n <= b.BaseLines {
+				return d.Message[:m[0]] + "in " + b.ExtraFile + ":" + strconv.Itoa(n)
+			}
+		}
+	}
+	return MapLineRef(d, b.SourceLine)
 }
 
 // InSession reports whether d is about the caller's source rather than the app: a diagnostic

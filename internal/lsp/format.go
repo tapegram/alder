@@ -43,7 +43,12 @@ func formattingReq(s *server, params json.RawMessage) (any, error) {
 	if err != nil || out == nil {
 		return nil, nil
 	}
-	return lineEdits(d.Text, string(out)), nil
+	edits := lineEdits(d.Text, string(out))
+	lines := splitLines(d.Text)
+	for i, e := range edits {
+		edits[i] = s.enc.wireEdit(lines, e)
+	}
+	return edits, nil
 }
 
 // migrated is d's text with its import-qualifier fixes applied; the text itself when migration is

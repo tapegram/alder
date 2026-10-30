@@ -20,8 +20,9 @@ func EditDecl(p *Program, address, op string, args []string) ([]Edit, error) {
 	if i < 0 {
 		return nil, Refusef("`%s` is not an address: write `<Module>.<Name>`, such as `Layout.Page`", address)
 	}
-	m := p.Modules[address[:i]]
-	if m == nil || p.Std[address[:i]] {
+	modName := p.ResolveModule(address[:i])
+	m := p.Modules[modName]
+	if m == nil || p.Std[modName] {
 		return nil, Refusef("there is no module `%s` in this app", address[:i])
 	}
 	v := valueDecl(m.Syntax, address[i+1:])
