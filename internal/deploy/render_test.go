@@ -1103,7 +1103,7 @@ func TestRender_NoSecretsInOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	var logs bytes.Buffer
-	if err := g.connected().Logs(ctx, false, 100, &logs); err != nil {
+	if err := g.connected().Logs(ctx, false, 100, time.Time{}, &logs); err != nil {
 		t.Fatal(err)
 	}
 	g.texts = append(g.texts, st.String(), logs.String())
@@ -1150,7 +1150,7 @@ func TestRender_Logs(t *testing.T) {
 	g.mustDeploy(g.target())
 	g.render.Logs(renderLogLines...)
 	var w bytes.Buffer
-	if err := g.connected().Logs(context.Background(), false, 100, &w); err != nil {
+	if err := g.connected().Logs(context.Background(), false, 100, time.Time{}, &w); err != nil {
 		t.Fatal(err)
 	}
 	g.texts = append(g.texts, w.String())
@@ -1171,13 +1171,13 @@ func TestRender_Logs(t *testing.T) {
 	}
 	// -n 1: Render is asked for the last line; more than Render gives (100) is asked as 100
 	w.Reset()
-	if err := g.connected().Logs(context.Background(), false, 1, &w); err != nil {
+	if err := g.connected().Logs(context.Background(), false, 1, time.Time{}, &w); err != nil {
 		t.Fatal(err)
 	}
 	if q := limit(); q != "1" || w.String() != "[srv-a1] boom: the mail server is unreachable\n" {
 		t.Errorf("-n 1: limit %q, logs:\n%s", q, w.String())
 	}
-	if err := g.connected().Logs(context.Background(), false, 500, &w); err != nil {
+	if err := g.connected().Logs(context.Background(), false, 500, time.Time{}, &w); err != nil {
 		t.Fatal(err)
 	}
 	if q := limit(); q != "100" {
@@ -1195,7 +1195,7 @@ func TestRender_LogsFollow(t *testing.T) {
 	defer cancel()
 	var w syncBuffer
 	done := make(chan error, 1)
-	go func() { done <- r.Logs(ctx, true, 100, &w) }()
+	go func() { done <- r.Logs(ctx, true, 100, time.Time{}, &w) }()
 	want := "[srv-a1] listening on :10000\n[srv-a1] boom: the mail server is unreachable\n"
 	deadline := time.Now().Add(5 * time.Second)
 	for w.String() != want && time.Now().Before(deadline) {

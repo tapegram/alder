@@ -501,6 +501,8 @@ The executable reads eight environment variables
 | `ALDER_PUBLIC_URL` | the site's public address, `http(s)://host[:port]`, that `Url.absolute` puts in front of a page's URL | `http://` and the address it listens on |
 | `ALDER_LOG` | the least level of the lines written to standard error: `debug`, `info`, `warn` or `error` (chapter 16, "Operating an app") | `info` |
 | `ALDER_LOG_FORMAT` | the lines' shape: `text` or `json` | `text` |
+| `ALDER_SLOW_MS` | a request that takes this many milliseconds or more is a `warn` line with its route, effect steps and database time (chapter 16, "Slow requests"); `0` is off | off |
+| `ALDER_METRICS` | `open`, or a token of at least 16 characters: `GET /_alder/metrics` answers Prometheus text, to `Authorization: Bearer <token>`, or with `open` to anyone, which a deploy target refuses (chapter 16, "Metrics") | off: no endpoint |
 
 Development mode shows a failed request's error text in the page (as an
 HTML comment), shows the dev panel (whose Trace tab has every effect
@@ -519,8 +521,9 @@ listening on 127.0.0.1:8080
 (The `warn:` line is logged with a date and time in front, in UTC.)
 Each request the app answers adds a line too, such as `info: GET /
 200 1.4ms 2311B rid=5f3a2c1e`; chapter 16 ("Operating an app") says
-what one holds and how to filter them. A bad `ALDER_LOG` or
-`ALDER_LOG_FORMAT` stops the server before it listens, like a bad
+what one holds and how to filter them. A bad `ALDER_LOG`,
+`ALDER_LOG_FORMAT`, `ALDER_SLOW_MS` or `ALDER_METRICS` stops the server
+before it listens, like a bad
 `ALDER_PUBLIC_URL` below. Outside
 development mode a missing or short `ALDER_SECRET` stops the server before
 it listens:
@@ -1252,7 +1255,7 @@ Chapter 16 is the full account; here are the usage lines and exit codes.
 alder deploy <env> [dir] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json]
 alder status <env> [dir] [--host name]
 alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup [--yes]]
-alder logs <env> [dir] [--host name] [-f] [-n N] [--grep PATTERN]
+alder logs <env> [dir] [--host name] [-f] [-n N] [--since T] [--grep PATTERN]
 alder restore <env> [--silo key:id] [--from url] [--to time] [--out file.db] [--dir dir] [--yes]
 alder migrate silos <env> [dir] [--host name] [--allow-data-loss]
 alder silos prune <env> [dir] [--host name] [--yes]

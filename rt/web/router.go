@@ -29,6 +29,7 @@ import (
 	"alder/rt/db"
 	"alder/rt/eff"
 	"alder/rt/html"
+	"alder/rt/metrics"
 )
 
 // Options configures NewRouter. The generated main fills it from the App module and the
@@ -87,6 +88,13 @@ type Options struct {
 	// (Serve: on Turso, a newer build migrated it, "ahead: <detail>"): every route answers the
 	// maintenance page (MaintenanceDoc) with 503, and /_alder/health 503 with its text.
 	SharedMaintenance error
+	// Metrics, when set (ALDER_METRICS), counts every request but the health check and a scrape
+	// and answers MetricsPath; nil: no endpoint (the path is routed like any other), nothing
+	// counted.
+	Metrics *metrics.Collector
+	// SlowAfter, when positive (ALDER_SLOW_MS), marks a request that took at least this long
+	// Slow in its access record (a warn line with its breakdown); 0: none.
+	SlowAfter time.Duration
 }
 
 // maxBody is the largest POST body the router reads.
@@ -119,6 +127,10 @@ type router struct {
 	// healthDown is whether the last health check failed its SELECT 1: the error is logged
 	// when it starts failing and the recovery when it answers again, not on every check
 	healthDown atomic.Bool
+
+	// probeAt is when (unix seconds) a refused scrape's access line was last written at Info: one
+	// a minute is, the rest are Debug, so a scanner hammering /_alder/metrics cannot flood the log
+	probeAt atomic.Int64
 }
 
 // sessionMaxAge is the session cookie's lifetime in seconds: 30 days from the time the session
@@ -140,7 +152,12 @@ type tracker struct {
 	bytes  int64
 	id     string
 	steps  int
-	acc    applog.Access                          // the record handed to Options.Access
+	acc    applog.Access // the record handed to Options.Access
+	// route is the pattern of the route serve matched first (the metrics' route label and a
+	// slow line's route=); stats the request's statements, counted when Options.Metrics or
+	// SlowAfter is set (eff.Env.Stats points here: no allocation)
+	route  string
+	stats  eff.Stats
 	masker func(method string, u *url.URL) string // the router's maskURL
 
 	// dev panel: the request, what it ran, how it was answered
@@ -230,10 +247,11 @@ func (t *tracker) Flush() {
 }
 
 type route struct {
-	method string
-	segs   []segment
-	file   bool // Route.File
-	handle func(*Request) Response
+	method  string
+	pattern string // Route.Pattern: the metrics' route label
+	segs    []segment
+	file    bool // Route.File
+	handle  func(*Request) Response
 	// hide marks the segments that are a parameter whose name is Sensitive (`/reset/{token}`):
 	// a log line masks their values whatever they look like; nil when there is none
 	hide []bool
@@ -293,7 +311,7 @@ func NewRouter(routes []Route, opts Options) http.Handler {
 		if r.Method != http.MethodGet && r.Method != http.MethodPost {
 			panic(fmt.Sprintf("web: route %q: method %q is not GET or POST", r.Pattern, r.Method))
 		}
-		ro := route{method: r.Method, segs: compile(r.Pattern), file: r.File, handle: r.Handle}
+		ro := route{method: r.Method, pattern: r.Pattern, segs: compile(r.Pattern), file: r.File, handle: r.Handle}
 		for i, s := range ro.segs {
 			if s.param != "" && applog.Sensitive(s.param) {
 				if ro.hide == nil {
@@ -434,6 +452,9 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	st := hop{origin: r}
 	get := r.Method == http.MethodGet || r.Method == http.MethodHead
 	health := get && r.URL.Path == HealthPath
+	m := rt.opts.Metrics
+	scrape := m != nil && get && r.URL.Path == MetricsPath
+	unseen := health // a 200 scrape is unseen too: no access line, not counted
 	defer func() {
 		v := recover()
 		if v != nil && v != http.ErrAbortHandler {
@@ -445,14 +466,31 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 				rt.fail(w, r, st, html.None(), err, debug.Stack())
 			}
 		}
-		if rt.opts.Access != nil && !health {
-			// the record lives in the tracker, and the URL is masked only when the logger
-			// writes the line: a filtered access line costs no allocation and no masking
-			w.acc = applog.Access{
-				ID: w.id, Method: r.Method, URL: r.URL, Masker: rt.masker, Status: w.status,
-				Dur: time.Since(w.start), Bytes: w.bytes, Quiet: quiet(r.URL.Path, w.status), Steps: w.steps,
+		if !unseen && (rt.opts.Access != nil || m != nil) {
+			dur := time.Since(w.start)
+			label := routeLabel(w.route, r.URL.Path)
+			if rt.opts.Access != nil {
+				// the record lives in the tracker, and the URL is masked only when the logger
+				// writes the line: a filtered access line costs no allocation and no masking
+				w.acc = applog.Access{
+					ID: w.id, Method: r.Method, URL: r.URL, Masker: rt.masker, Status: w.status,
+					Dur: dur, Bytes: w.bytes, Quiet: quiet(r.URL.Path, w.status) || scrape && !rt.probeInfo(), Steps: w.steps,
+					Route: label, Stmts: w.stats.Exec + w.stats.Query, DBDur: w.stats.ExecDur + w.stats.QueryDur,
+					Slow: rt.opts.SlowAfter > 0 && dur >= rt.opts.SlowAfter,
+				}
+				rt.opts.Access(&w.acc)
 			}
-			rt.opts.Access(&w.acc)
+			if m != nil {
+				status := w.status
+				if v == http.ErrAbortHandler && status == 0 {
+					status = http.StatusInternalServerError // aborted before writing anything: a failure, not a 2xx
+				}
+				m.Request(label, r.Method, status, dur)
+				m.Statements(&w.stats)
+				if !scrape {
+					m.InFlight(-1)
+				}
+			}
 		}
 		if v == http.ErrAbortHandler {
 			panic(v)
@@ -462,6 +500,13 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	if health {
 		rt.health(rw, r)
 		return
+	}
+	if scrape {
+		unseen = rt.metrics(w, r)
+		return
+	}
+	if m != nil {
+		m.InFlight(1)
 	}
 	if get && datastar.IsDatastar(r) && (strings.HasPrefix(r.URL.Path, staticPrefix) || strings.HasPrefix(r.URL.Path, alderPrefix)) {
 		// a file, not a page: a boost of an older runtime (or a hand-made Datastar GET) asked
@@ -510,6 +555,63 @@ const alderPrefix = "/_alder/"
 
 // HealthPath is the health check every app answers (GET or HEAD), whatever its routes.
 const HealthPath = alderPrefix + "health"
+
+// MetricsPath is where Options.Metrics is answered (GET or HEAD): Prometheus text.
+const MetricsPath = alderPrefix + "metrics"
+
+// metrics answers MetricsPath: the exposition (200, never cached) when the scrape is authorized
+// (metrics.Collector.Authorized: an open Collector, or the right bearer token), else 401 with
+// WWW-Authenticate. Like the health check it is answered before anything else: no session is
+// read or set, no CSRF check, no dev panel. ok reports a 200: it gets no access line and is not
+// counted; a refused one gets both (a probe is worth seeing), its line at Info for the first in a
+// minute and at Debug after (probeInfo). The token is never written anywhere: the access line
+// has no headers.
+func (rt *router) metrics(w http.ResponseWriter, r *http.Request) (ok bool) {
+	m := rt.opts.Metrics
+	h := w.Header()
+	h.Set("Cache-Control", "no-store")
+	if !m.Authorized(r) {
+		h.Set("WWW-Authenticate", `Bearer realm="alder"`)
+		h.Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusUnauthorized)
+		if r.Method != http.MethodHead {
+			_, _ = io.WriteString(w, "unauthorized\n")
+		}
+		return false
+	}
+	h.Set("Content-Type", metrics.ContentType)
+	w.WriteHeader(http.StatusOK)
+	if r.Method != http.MethodHead {
+		_ = m.Write(w, rt.opts.Build)
+	}
+	return true
+}
+
+// probeInfo reports whether a refused scrape's access line is written at Info: the first in a
+// minute is, later ones in that minute are Debug.
+func (rt *router) probeInfo() bool {
+	now := rt.now().Unix()
+	last := rt.probeAt.Load()
+	return now-last >= 60 && rt.probeAt.CompareAndSwap(last, now)
+}
+
+// routeLabel is a request's route label (metrics, a slow line's route=): the pattern serve
+// matched, else a fixed name by its path: /static/ (a static file), /_alder/ (a runtime file),
+// /_dev, or (none) (no route matched, or the path did not parse). Never anything from the
+// request itself.
+func routeLabel(pattern, path string) string {
+	switch {
+	case pattern != "":
+		return pattern
+	case strings.HasPrefix(path, staticPrefix):
+		return staticPrefix
+	case strings.HasPrefix(path, alderPrefix):
+		return alderPrefix
+	case path == "/_dev":
+		return "/_dev"
+	}
+	return "(none)"
+}
 
 // healthTimeout bounds the health check's SELECT 1: a database that does not answer in time is
 // down (503), not a check left hanging.
@@ -593,6 +695,10 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 	if segs, ok := pathSegments(r); ok {
 		hit, params = rt.find(method, segs)
 	}
+	tw, _ := w.(*tracker)
+	if hit != nil && tw != nil && tw.route == "" { // a redirect follow keeps the first request's
+		tw.route = hit.pattern
+	}
 	if hit == nil {
 		rt.notFound(w, r, st, html.None())
 		return
@@ -649,6 +755,9 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 			rq.Env.Stores = rt.opts.Stores
 		}
 		rq.Env.CheckSession = rt.opts.SessionCheck
+		if tw != nil && (rt.opts.Metrics != nil || rt.opts.SlowAfter > 0) {
+			rq.Env.Stats = &tw.stats // the tracker's: no allocation; nil otherwise, nothing timed
+		}
 	}
 	if tw, ok := w.(*tracker); ok {
 		if !rq.Datastar && r.Method == http.MethodGet && !hit.file { // an HTML page GET only: not a HEAD, which shows nothing, nor a file, which shows no notice
@@ -666,8 +775,11 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 		}
 	}
 	resp := hit.handle(rq)
-	if tw, ok := w.(*tracker); ok && rq.Env != nil {
+	if tw != nil && rq.Env != nil {
 		tw.steps += len(rq.Env.Trace)
+		if rt.opts.Metrics != nil {
+			rt.opts.Metrics.Steps(rq.Env.Trace)
+		}
 	}
 	if rt.opts.Served != nil {
 		rt.opts.Served(rq)

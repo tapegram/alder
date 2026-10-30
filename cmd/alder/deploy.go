@@ -35,7 +35,7 @@ const (
 	deployUsage   = "usage: alder deploy <env> [dir] [--build-dir DIR] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json] | alder deploy init render|fly [dir] [--force] [--dry-run]"
 	statusUsage   = "usage: alder status <env> [dir] [--host name]"
 	rollbackUsage = "usage: alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup [--yes]]"
-	logsUsage     = "usage: alder logs <env> [dir] [--host name] [-f] [-n N] [--grep PATTERN]"
+	logsUsage     = "usage: alder logs <env> [dir] [--host name] [-f] [-n N] [--since T] [--grep PATTERN]"
 	restoreUsage  = "usage: alder restore <env> [--silo key:id] [--from url] [--to time] [--out file.db] [--dir dir] [--yes]"
 )
 
@@ -808,10 +808,12 @@ func runRollbackWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	return 0
 }
 
-// runLogsTo is `alder logs <env> [dir] [-f] [-n N] [--grep PATTERN]`: the current build's log,
-// its last N lines (default 100), or with -f followed until interrupted; with --grep only the
-// lines the Go regexp PATTERN matches (`--grep rid=5f3a2c1e`: one request's lines), on every
-// target.
+// runLogsTo is `alder logs <env> [dir] [-f] [-n N] [--since T] [--grep PATTERN]`: the current
+// build's log, its last N lines (default 100), or with --since every line since T (a duration
+// ago, an RFC 3339 time, or a date: parseSince; Render reads that range, Fly and Ssh what they
+// keep, kept by each line's stamp: sinceWriter), or with -f followed until interrupted; with
+// --grep only the lines the Go regexp PATTERN matches (`--grep rid=5f3a2c1e`: one request's
+// lines), on every target. -n and --since do not combine.
 func runLogsTo(args []string, stdout, stderr io.Writer) int {
 	return runLogsWith(args, stdout, stderr, osDeployEnv())
 }
@@ -821,6 +823,8 @@ func runLogsWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	var pos []string
 	follow, host, n := false, "", 100
 	var grep *regexp.Regexp
+	var since time.Time
+	nSet := false
 	value := func(i *int, name string) (string, bool) { // `name V` or `name=V`
 		if v, ok := strings.CutPrefix(args[*i], name+"="); ok {
 			return v, true
@@ -844,7 +848,17 @@ func runLogsWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 				fmt.Fprintf(stderr, "alder logs: -n wants a number of lines, at least 1 (got %q)\n%s\n", v, logsUsage)
 				return 2
 			}
-			n = k
+			n, nSet = k, true
+			continue
+		}
+		if a == "--since" || strings.HasPrefix(a, "--since=") {
+			v, ok := value(&i, "--since")
+			t, err := parseSince(v, logsNow())
+			if !ok || err != nil {
+				fmt.Fprintf(stderr, "alder logs: --since: want a duration (2h), an RFC 3339 time or a date\n%s\n", logsUsage)
+				return 2
+			}
+			since = t
 			continue
 		}
 		if a == "--grep" || strings.HasPrefix(a, "--grep=") {
@@ -875,6 +889,13 @@ func runLogsWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 		fmt.Fprintln(stderr, logsUsage)
 		return 2
 	}
+	if nSet && !since.IsZero() {
+		fmt.Fprintf(stderr, "alder logs: -n and --since do not combine: --since prints every line since T\n%s\n", logsUsage)
+		return 2
+	}
+	if !since.IsZero() {
+		n = 0 // every line since
+	}
 	dir := "."
 	if len(pos) == 2 {
 		dir = pos[1]
@@ -887,20 +908,132 @@ func runLogsWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	defer t.Close()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if _, ok := t.(*deploy.Render); ok && !follow && n > deploy.RenderLogMax {
+	rd, isRender := t.(*deploy.Render)
+	if isRender && !follow && n > deploy.RenderLogMax {
 		fmt.Fprintf(stderr, "alder logs: Render returns at most %d lines at once: these are the last %d\n", deploy.RenderLogMax, deploy.RenderLogMax)
 	}
-	out := stdout
+	if isRender {
+		rd.Out = stderr // the note when --since reaches past RenderSincePages pages
+	}
+	var out io.Writer = stdout
 	if grep != nil {
-		g := &grepWriter{w: stdout, re: grep}
+		g := &grepWriter{w: out, re: grep}
 		defer g.Flush()
 		out = g
 	}
-	if err := t.Logs(ctx, follow, n, out); err != nil && ctx.Err() == nil {
+	if !since.IsZero() && !isRender { // Render reads the range itself; Fly and Ssh send what they keep
+		sw := &sinceWriter{w: out, since: since}
+		defer sw.Flush() // before the grep's Flush (deferred first)
+		out = sw
+	}
+	if err := t.Logs(ctx, follow, n, since, out); err != nil && ctx.Err() == nil {
 		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder logs:"), err)
 		return 1
 	}
 	return 0
+}
+
+// logsNow is the clock a --since duration counts back from (tests set it).
+var logsNow = time.Now
+
+// parseSince is --since's T: a positive Go duration (30m, 2h, 48h: that long before now), an RFC
+// 3339 instant, or a date YYYY-MM-DD (midnight UTC).
+func parseSince(v string, now time.Time) (time.Time, error) {
+	v = strings.TrimSpace(v)
+	if d, err := time.ParseDuration(v); err == nil {
+		if d <= 0 {
+			return time.Time{}, errors.New("not a positive duration")
+		}
+		return now.Add(-d), nil
+	}
+	if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
+		return t, nil
+	}
+	return time.Parse(time.DateOnly, v)
+}
+
+// sinceWriter writes to w the whole lines written to it whose stamp is at or after since
+// (the second it falls in, as a text stamp has no finer one): applog's text stamp
+// (2006/01/02 15:04:05, UTC), applog's JSON {"time":"<RFC 3339>", or an RFC 3339 stamp (flyctl's),
+// at the line's start or after a Render "[instance] " prefix. A line with no stamp (a stack's
+// continuation, "listening on", flyctl's own text) goes with the last stamped line; before any
+// stamped line it is dropped. Flush judges a last line without a newline.
+type sinceWriter struct {
+	w     io.Writer
+	since time.Time
+	buf   []byte
+	seen  bool // a stamped line has been read
+	keep  bool // the last stamped line's verdict
+}
+
+func (s *sinceWriter) Write(p []byte) (int, error) {
+	s.buf = append(s.buf, p...)
+	for {
+		i := bytes.IndexByte(s.buf, '\n')
+		if i < 0 {
+			break
+		}
+		if s.judge(s.buf[:i]) {
+			if _, err := s.w.Write(s.buf[:i+1]); err != nil {
+				return 0, err
+			}
+		}
+		s.buf = s.buf[i+1:]
+	}
+	if len(s.buf) == 0 {
+		s.buf = nil
+	}
+	return len(p), nil
+}
+
+// Flush writes the pending line, with a newline, when it is kept.
+func (s *sinceWriter) Flush() error {
+	defer func() { s.buf = nil }()
+	if len(s.buf) > 0 && s.judge(s.buf) {
+		_, err := s.w.Write(append(s.buf, '\n'))
+		return err
+	}
+	return nil
+}
+
+// judge is whether line is kept, updating the verdict an unstamped line follows.
+func (s *sinceWriter) judge(line []byte) bool {
+	if t, ok := lineStamp(line); ok {
+		s.seen = true
+		s.keep = !t.Before(s.since.Truncate(time.Second))
+	}
+	return s.seen && s.keep
+}
+
+// lineStamp is the time at line's start (after an optional "[instance] " prefix), if any.
+func lineStamp(line []byte) (time.Time, bool) {
+	l := string(line)
+	if strings.HasPrefix(l, "[") {
+		if i := strings.Index(l, "] "); i > 0 && !strings.ContainsAny(l[1:i], " \t") {
+			l = l[i+2:]
+		}
+	}
+	const textStamp = "2006/01/02 15:04:05"
+	if len(l) >= len(textStamp) {
+		if t, err := time.ParseInLocation(textStamp, l[:len(textStamp)], time.UTC); err == nil {
+			return t, true
+		}
+	}
+	if rest, ok := strings.CutPrefix(l, `{"time":"`); ok {
+		if i := strings.IndexByte(rest, '"'); i > 0 {
+			if t, err := time.Parse(time.RFC3339Nano, rest[:i]); err == nil {
+				return t, true
+			}
+		}
+		return time.Time{}, false
+	}
+	first, _, _ := strings.Cut(l, " ")
+	if len(first) >= len("2006-01-02T15:04:05Z") {
+		if t, err := time.Parse(time.RFC3339Nano, first); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 // grepWriter writes to w the whole lines written to it that re matches (without their newline),

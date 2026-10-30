@@ -98,10 +98,10 @@ func (f *fakeTarget) Prune(context.Context, int, []string) ([]string, error) {
 	f.call("prune")
 	return nil, nil
 }
-func (f *fakeTarget) Info(context.Context) (Info, error)               { return Info{}, nil }
-func (f *fakeTarget) Logs(context.Context, bool, int, io.Writer) error { return nil }
-func (f *fakeTarget) Restore(context.Context, string) (string, error)  { return "", nil }
-func (f *fakeTarget) Close() error                                     { return nil }
+func (f *fakeTarget) Info(context.Context) (Info, error)                          { return Info{}, nil }
+func (f *fakeTarget) Logs(context.Context, bool, int, time.Time, io.Writer) error { return nil }
+func (f *fakeTarget) Restore(context.Context, string) (string, error)             { return "", nil }
+func (f *fakeTarget) Close() error                                                { return nil }
 func (f *fakeTarget) shipped() bool {
 	for _, c := range f.calls {
 		if c == "upload" {

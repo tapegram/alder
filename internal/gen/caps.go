@@ -412,6 +412,8 @@ type Options struct {
 	Log       func(level, msg string) // nil: no log
 	Access    func(*applog.Access)    // one call per request routed (not the health check); nil: no access log
 	Build     string                  // the build's id (ALDER_BUILD, set by alder deploy), answered by /_alder/health
+	Metrics   *metrics.Collector      // ALDER_METRICS: answers /_alder/metrics and counts requests; nil: no endpoint
+	SlowAfter time.Duration           // ALDER_SLOW_MS: a request this slow is a warn line with its breakdown; 0: none
 }
 
 // Serve is the app's HTTP handler. It checks that o.Secret is at least 16 bytes outside dev
@@ -486,7 +488,7 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	}
 SILOSTORES	w := Web()
 	w.Store, w.Caps, w.Log, w.Dev, w.Secret, w.StaticDir, w.Reload = store, reg, o.Log, o.Dev, o.Secret, o.StaticDir, o.Reload
-	w.Access = o.Access
+	w.Access, w.Metrics, w.SlowAfter = o.Access, o.Metrics, o.SlowAfter
 	w.Build, w.SharedMaintenance = o.Build, shared
 SILOWEB
 	for _, m := range Migrations {
@@ -684,7 +686,12 @@ func (g *gen) sessionDefault(r *ir.RecordType) string {
 // and ALDER_ADDR as alder run shows it, with a port-0 address refined after Listen),
 // ALDER_LOG (debug, info, warn or error; default info) and ALDER_LOG_FORMAT (text or json;
 // default text), which pick the lines written to standard error (rt/applog: one access line per
-// request routed, the runtime's and Log.*'s lines; a bad value exits 1 before serving); static
+// request routed, the runtime's and Log.*'s lines; a bad value exits 1 before serving),
+// ALDER_SLOW_MS (a whole number of milliseconds: a request that slow is a warn line with its
+// route, steps and database time; unset or 0: off) and ALDER_METRICS ("open", or a bearer token
+// of at least 16 characters: GET /_alder/metrics answers Prometheus text; unset: no endpoint;
+// "open" is refused on Render, Fly and a box alder deployed, and logged at warn elsewhere;
+// rt/metrics), each a bad value exiting 1 before serving; static
 // files are served from ALDER_STATIC, by default the static directory next to the executable
 // (alder build copies the app's static/ there). Before serving it prints "listening on
 // <address>" with the bound address, so ALDER_ADDR=127.0.0.1:0 picks a free port that a caller
@@ -724,7 +731,13 @@ func Main(name string, withCaps, withSilos bool) []byte {
 // info) is the least level written to standard error, ALDER_LOG_FORMAT (text or json; default
 // text) the lines' shape: one line per request (method, masked URL, status, duration, bytes,
 // request id), the runtime's warnings and errors, and the app's Log.* lines; effect steps at
-// debug. A bad value exits 1 before anything is served. Static files are served under /static/
+// debug. ALDER_SLOW_MS=N makes a request that takes N ms or more a warn line with its route,
+// effect steps and database statements and time (unset or 0: off). ALDER_METRICS=open, or a
+// token of at least 16 characters (then sent as Authorization: Bearer <token>), turns on
+// GET /_alder/metrics: Prometheus text of requests by route, latency, database statements and
+// effect steps (unset: no endpoint). "open" (unauthenticated) is refused on Render, Fly and a
+// box alder deployed, whose port is public, and is a warn line elsewhere. A bad value of any of
+// these exits 1 before anything is served. Static files are served under /static/
 // from ALDER_STATIC, by default the static directory next to the executable. SIGINT or SIGTERM
 // shuts the server down gracefully: requests in flight get 5 s to finish. ALDER_EXIT_ON_STDIN_EOF=1
 // (set by alder run) makes the app stop the same way when its standard input reaches EOF, so it
@@ -758,6 +771,7 @@ import (
 	"alder/rt/applog"
 	"alder/rt/backup"
 	"alder/rt/db"
+	"alder/rt/metrics"
 	"alder/rt/publicurl" // sets rt.PublicURL from the environment before package app initialises
 	"alder/rt/web"
 ` + imports + `)
@@ -777,6 +791,19 @@ func main() {
 		fmt.Fprintln(os.Stderr, "alder:", err)
 		os.Exit(1)
 	}
+	slow, err := applog.SlowFromEnv() // ALDER_SLOW_MS
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "alder:", err)
+		os.Exit(1)
+	}
+	m, err := metrics.FromEnv() // ALDER_METRICS
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "alder:", err)
+		os.Exit(1)
+	}
+	if m != nil && m.Open() {
+		lg.Log("warn", metrics.OpenWarning)
+	}
 	static := os.Getenv("ALDER_STATIC")
 	if static == "" {
 		static = "static"
@@ -793,6 +820,8 @@ func main() {
 		Build:     os.Getenv("ALDER_BUILD"),
 		Log:       lg.Log,
 		Access:    lg.Access,
+		Metrics:   m,
+		SlowAfter: slow,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "alder:", err)

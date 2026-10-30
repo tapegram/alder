@@ -831,7 +831,7 @@ func TestDeploySsh_DrainRollback(t *testing.T) {
 	var logs syncBuffer
 	lctx, lcancel := context.WithCancel(ctx)
 	ldone := make(chan struct{})
-	go func() { s.Logs(lctx, true, 100, &logs); close(ldone) }()
+	go func() { s.Logs(lctx, true, 100, time.Time{}, &logs); close(ldone) }()
 	pollUntil(10*time.Second, func() bool { return logs.String() != "" }) // following id2's log
 	box.sh(t, fmt.Sprintf("echo %s > %s/current", id1, box.qr()))
 	pollUntil(10*time.Second, func() bool { return strings.Contains(logs.String(), "--- alder logs: build "+id1+" is current\n") })

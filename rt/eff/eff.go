@@ -183,12 +183,15 @@ type Env struct {
 	Now        func() time.Time // the clock
 	// Sleep waits d for Query.delay and Task.sleep; nil means time.Sleep bounded by Ctx. The
 	// test environment advances its clock instead, so a slow page is tested in milliseconds.
-	Sleep  func(time.Duration)
-	Log    func(level, msg string) // level is "info", "warn" or "effect"; nil: no log
-	Trace  []string                // every Call name in order (dev log / tests)
-	Kind   Kind                    // the kind of the effect Run is running (set by Run, restored when it returns)
-	Rec    *Recorder               // dev mode: per-request trace with timings (nil: none, no cost)
-	Within *Within                 // nil: a Task begins its own transaction on Store; else it runs inside Within.Tx (Run)
+	Sleep func(time.Duration)
+	Log   func(level, msg string) // level is "info", "warn" or "effect"; nil: no log
+	Trace []string                // every Call name in order (dev log / tests)
+	Kind  Kind                    // the kind of the effect Run is running (set by Run, restored when it returns)
+	Rec   *Recorder               // dev mode: per-request trace with timings (nil: none, no cost)
+	// Stats, when set, counts the request's database statements and their time (rt/db): the
+	// router sets it when metrics or the slow-request threshold is on; nil: nothing is timed.
+	Stats  *Stats
+	Within *Within // nil: a Task begins its own transaction on Store; else it runs inside Within.Tx (Run)
 	// Stores is the app's stores when it declares a `silo` (a *db.Stores: rt/db routes each Db
 	// step to the store of its table), nil otherwise. Keys are the partition key values the
 	// request is narrowed to by its page (`requires org`: the session's; `silo org`: the page's
@@ -213,6 +216,25 @@ type Env struct {
 
 	beginTx func() (Tx, error) // set by Run for a Task with a Store: begins Tx
 	active  bool               // Run is running (RunInner may run inside it); restored when it returns
+}
+
+// Stats is a request's database statements: how many of each kind and their time. Plain fields:
+// a request's effects run on its goroutine (rt/eff starts none).
+type Stats struct {
+	Exec, Query       int
+	ExecDur, QueryDur time.Duration
+}
+
+// Add counts one statement that took d: a query (a read, QueryRow included) when query is set,
+// else an exec.
+func (s *Stats) Add(query bool, d time.Duration) {
+	if query {
+		s.Query++
+		s.QueryDur += d
+		return
+	}
+	s.Exec++
+	s.ExecDur += d
 }
 
 // Transaction is the running Task's transaction, begun on first use: the

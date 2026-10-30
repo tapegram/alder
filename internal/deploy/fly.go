@@ -1027,9 +1027,13 @@ exit 0
 }
 
 // Logs is `flyctl logs` of the app: the recent lines, of which the last n (`flyctl logs
-// --no-tail` has no count: they are kept here), or with follow everything flyctl prints until
-// ctx ends.
-func (f *Fly) Logs(ctx context.Context, follow bool, n int, w io.Writer) error {
+// --no-tail` has no count: they are kept here; 0: all), or with follow everything flyctl prints
+// until ctx ends. flyctl has no time flag: with a since every recent line is written, and
+// `alder logs` keeps those from since on by their stamps (Fly keeps only recent lines).
+func (f *Fly) Logs(ctx context.Context, follow bool, n int, since time.Time, w io.Writer) error {
+	if !since.IsZero() {
+		n = 0
+	}
 	if _, err := f.Connect(ctx); err != nil {
 		return err
 	}

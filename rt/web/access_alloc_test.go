@@ -8,9 +8,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"alder/rt/applog"
+	"alder/rt/eff"
 	"alder/rt/html"
+	"alder/rt/metrics"
 )
 
 // An error line names its URL cut at applog.MaxPath, as an access line does.
@@ -145,9 +148,36 @@ func TestAccessLog_FilteredNoCost(t *testing.T) {
 	if a != b {
 		t.Errorf("a request with the access hook at warn: %v allocations, without a hook %v: the hook costs %v", a, b, a-b)
 	}
+	// metrics and the slow threshold off (ALDER_METRICS, ALDER_SLOW_MS unset, #92): a request
+	// allocates exactly what it did before they existed (#93's count for this request), and no
+	// statement is counted (Env.Stats nil)
+	if b != offAllocs {
+		t.Errorf("metrics and slow off: %v allocations per request, #93 pinned %v", b, offAllocs)
+	}
+	// on, a known route's request costs nothing more either: the series key is a struct, the
+	// statements' counts live in the tracker
+	on := NewRouter(route, testOpts(func(o *Options) { o.Metrics, o.SlowAfter = metrics.New(""), time.Hour }))
+	run(on)
+	if c := run(on); c != offAllocs {
+		t.Errorf("metrics and slow on: %v allocations per request, off %v", c, offAllocs)
+	}
+	var stats *eff.Stats
+	probe := NewRouter(one("GET", "/p", func(rq *Request) Response {
+		stats = rq.Env.Stats
+		return PageResponse(html.None(), nil, nil, false)
+	}), testOpts(nil))
+	probe.ServeHTTP(w, req)
+	if stats != nil {
+		t.Error("Env.Stats set with metrics and slow off")
+	}
 	// the measure sees the masking: at info, where the line is written, it costs
 	info := NewRouter(route, testOpts(func(o *Options) { o.Access = applog.New(io.Discard, applog.Info, applog.Text).Access }))
 	if c := run(info); c <= b {
 		t.Errorf("a written access line: %v allocations, without a hook %v", c, b)
 	}
 }
+
+// offAllocs is what TestAccessLog_FilteredNoCost's request allocates with no access hook, no
+// metrics and no slow threshold: the count main has with #93 and its masking fixes (go1.27). Metrics and ALDER_SLOW_MS (#92)
+// must not move it; a Go upgrade that does is re-pinned here deliberately.
+const offAllocs = 54

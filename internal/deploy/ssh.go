@@ -630,6 +630,7 @@ export ALDER_TURSO_ORG=` + q(s.DB.Org) + ` ALDER_TURSO_GROUP=` + q(s.DB.Group) +
 set -e
 if [ -f ` + q(s.Root+"/env") + ` ]; then set -a; . ` + q(s.Root+"/env") + `; set +a; fi
 unset ALDER_DEV  # development mode never runs at a target
+export ALDER_DEPLOY_TARGET=ssh  # behind the proxy: ALDER_METRICS=open is refused (rt/metrics)
 ` + public + database + `export ALDER_STATIC=` + q(b+"/static") + `
 export ALDER_ADDR="$(cat ` + q(b+"/addr") + ` 2>/dev/null || echo 127.0.0.1:0)"
 ` + backup + `exec ` + q(b+"/app") + ` "$@"
@@ -1545,24 +1546,33 @@ exit 0
 	return in, nil
 }
 
-// Logs writes the current build's last n log lines; with follow it goes on writing what is
-// appended, and when another build becomes current (a deploy, a rollback) that build's log.
-func (s *Ssh) Logs(ctx context.Context, follow bool, n int, w io.Writer) error {
+// Logs writes the current build's last n log lines (0, or with a since: all of it, `cat`;
+// `alder logs` keeps the lines from since on by their stamps); with follow it goes on writing
+// what is appended, and when another build becomes current (a deploy, a rollback) that build's
+// log.
+func (s *Ssh) Logs(ctx context.Context, follow bool, n int, since time.Time, w io.Writer) error {
 	if _, err := s.Connect(ctx); err != nil {
 		return err
 	}
-	n = max(n, 1)
+	if !since.IsZero() {
+		n = 0
+	}
+	read := `cat` // the whole log
+	if n > 0 {
+		read = `tail -n ` + strconv.Itoa(n)
+	}
 	script := `c=$(cat "$R/current" 2>/dev/null) || { echo "not deployed yet" >&2; exit 1; }
-exec tail -n ` + strconv.Itoa(n) + ` "$R/builds/$c/log"
+exec ` + read + ` "$R/builds/$c/log"
 `
 	if follow { // across switches: when current changes, the new build's log from its start
 		script = `c=$(cat "$R/current" 2>/dev/null) || { echo "not deployed yet" >&2; exit 1; }
-tail -n ` + strconv.Itoa(n) + ` "$R/builds/$c/log"
-off=$(wc -c < "$R/builds/$c/log" | tr -d ' ')
+off=$(wc -c < "$R/builds/$c/log" | tr -d ' ')  # measured first: a line appended meanwhile comes in the loop
+head -c "$off" "$R/builds/$c/log" | ` + read + `
 while kill -0 "$PPID" 2>/dev/null; do  # the session's sshd gone: stop
   n=$(cat "$R/current" 2>/dev/null)
   if [ -n "$n" ] && [ "$n" != "$c" ]; then c=$n; off=0; echo "--- alder logs: build $c is current"; fi
   size=$(wc -c < "$R/builds/$c/log" 2>/dev/null | tr -d ' ')
+  if [ -n "$size" ] && [ "$size" -lt "$off" ]; then off=0; fi  # trimmed (a build start past 10 MB): from its start
   if [ -n "$size" ] && [ "$size" -gt "$off" ]; then tail -c +$((off + 1)) "$R/builds/$c/log" | head -c $((size - off)); off=$size; fi
   sleep "${ALDER_POLL:-1}"
 done
