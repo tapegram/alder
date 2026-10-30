@@ -469,6 +469,15 @@ func TestFly_DeployLifecycle(t *testing.T) {
 	}
 }
 
+// The machine's environment carries ALDER_PUBLIC_URL, the app's address (a Fly secret of the
+// same name wins: Fly's rule).
+func TestFly_ConfigPublicURL(t *testing.T) {
+	f := NewFly("demo", "staging", ir.Target{Kind: "fly", Region: "ord", App: "demo-staging"}, &ir.Deploy{})
+	if got := f.config("0123456789abcdef", "vol_1").Env["ALDER_PUBLIC_URL"]; got != "https://demo-staging.fly.dev" {
+		t.Errorf("ALDER_PUBLIC_URL %q", got)
+	}
+}
+
 // ALDER_ALLOW_DATA_LOSS never enters a machine's configuration (it would outlive the run): a
 // Fly deploy never applies a migration to a database with data.
 func TestFly_AllowDataLoss(t *testing.T) {

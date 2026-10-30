@@ -1,0 +1,11 @@
+module Index
+
+page "/" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 1 }
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Url.absolute "/x"}</p>

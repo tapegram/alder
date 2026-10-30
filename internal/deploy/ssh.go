@@ -602,7 +602,8 @@ echo 127.0.0.1:0 > "$R/builds/$id/addr"
 	return err
 }
 
-// runScript is builds/<id>/run: it reads the operator's environment file, points the app at the
+// runScript is builds/<id>/run: it reads the operator's environment file, defaults
+// ALDER_PUBLIC_URL to https://<domain> (none for a wildcard domain), points the app at the
 // database, its static files, its address and the backup location, and execs the binary with
 // its arguments. It holds no value of the environment file.
 func (s *Ssh) runScript(id string) string {
@@ -617,13 +618,19 @@ func (s *Ssh) runScript(id string) string {
 		database = `set -a; . ` + q(s.Root+"/db/turso.env") + `; set +a
 export ALDER_TURSO_ORG=` + q(s.DB.Org) + ` ALDER_TURSO_GROUP=` + q(s.DB.Group) + ` ALDER_TURSO_APP=` + q(s.DB.App) + "\nunset ALDER_BACKUP_URL\n"
 	}
+	public := ""
+	if s.Domain != "" && !strings.HasPrefix(s.Domain, "*") {
+		// the address the proxy serves (the --host host for a preview), unless the env file says
+		// otherwise; the domain's characters are E0030's, safe in double quotes
+		public = `: "${ALDER_PUBLIC_URL:=https://` + s.Domain + `}"; export ALDER_PUBLIC_URL` + "\n"
+	}
 	return `#!/bin/sh
 # Written by alder deploy: runs build ` + id + ` of ` + s.App + ` (environment ` + s.Env + `). The
 # variables come from ` + s.Root + `/env, which the operator writes; nothing here is a secret.
 set -e
 if [ -f ` + q(s.Root+"/env") + ` ]; then set -a; . ` + q(s.Root+"/env") + `; set +a; fi
 unset ALDER_DEV  # development mode never runs at a target
-` + database + `export ALDER_STATIC=` + q(b+"/static") + `
+` + public + database + `export ALDER_STATIC=` + q(b+"/static") + `
 export ALDER_ADDR="$(cat ` + q(b+"/addr") + ` 2>/dev/null || echo 127.0.0.1:0)"
 ` + backup + `exec ` + q(b+"/app") + ` "$@"
 `

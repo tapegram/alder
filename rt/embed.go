@@ -23,6 +23,7 @@ import "embed"
 //go:embed eff/eff.go eff/run.go
 //go:embed fuzz/brands.go fuzz/choices.go fuzz/combinators.go fuzz/derive.go fuzz/draw.go fuzz/literal.go fuzz/shrink.go
 //go:embed html/diff.go html/fragments.go html/html.go html/parse.go html/repair.go html/state.go
+//go:embed publicurl/publicurl.go
 //go:embed selector/selector.go
 //go:embed testing/bench.go testing/browser.go testing/clock.go testing/mutate.go testing/property.go testing/steps.go testing/testing.go
 //go:embed std/bytes.go std/date.go std/dict.go std/effects.go std/file.go std/html.go std/json.go std/list.go std/maybe.go std/num.go std/random.go std/result.go std/text.go

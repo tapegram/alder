@@ -701,13 +701,15 @@ exec "$A/app"
 }
 
 // config is the machine's configuration running build id: its image, the volume at /data, the
-// environment (no secret: Fly adds the app's secrets), ports 80 and 443 of the app's address.
+// environment (no secret: Fly adds the app's secrets; ALDER_PUBLIC_URL is the app's address,
+// which a Fly secret of the same name overrides), ports 80 and 443 of the app's address.
 func (f *Fly) config(id, volume string) flyConfig {
 	env := map[string]string{
-		"ALDER_DB":     f.Data + "/db/app.db",
-		"ALDER_ADDR":   ":" + strconv.Itoa(FlyPort),
-		"ALDER_STATIC": "/app/static",
-		"ALDER_DATA":   f.Data,
+		"ALDER_DB":         f.Data + "/db/app.db",
+		"ALDER_ADDR":       ":" + strconv.Itoa(FlyPort),
+		"ALDER_STATIC":     "/app/static",
+		"ALDER_DATA":       f.Data,
+		"ALDER_PUBLIC_URL": "https://" + f.FlyApp + ".fly.dev",
 	}
 	if f.BackupURL != "" {
 		env["ALDER_BACKUP_URL"] = f.BackupURL
