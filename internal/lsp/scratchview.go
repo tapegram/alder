@@ -10,6 +10,7 @@ import (
 	"alder/internal/diag"
 	"alder/internal/scratch"
 	"alder/internal/syntax"
+	"alder/internal/watch"
 )
 
 // A scratch document is not one of the app's modules, so the app's analysis knows nothing of it.
@@ -23,13 +24,13 @@ import (
 // scratchView is the analysis of one text of a scratch document.
 type scratchView struct {
 	text     string
-	app      *analysis         // the app's last good analysis when it was built: a newer one rebuilds it
-	a        *analysis         // the checked program; nil when the text did not check (a parse error)
-	file     string            // the scratch module's file in a.prog (Checked.ExtraFile)
-	insert   int               // Checked.InsertLine: the first inserted line of the module
-	offset   int               // Checked.LineOffset: how many lines were inserted there
-	inserted []string          // those lines
-	diags    []diag.Diagnostic // the file's own (ParseFile's, then the check's), positioned in it
+	stamps   map[string]watch.Stamp // the app's sources when it was built (watch.Snapshot)
+	a        *analysis              // the checked program; nil when the text did not check (a parse error)
+	file     string                 // the scratch module's file in a.prog (Checked.ExtraFile)
+	insert   int                    // Checked.InsertLine: the first inserted line of the module
+	offset   int                    // Checked.LineOffset: how many lines were inserted there
+	inserted []string               // those lines
+	diags    []diag.Diagnostic      // the file's own (ParseFile's, then the check's), positioned in it
 }
 
 // scratchViews are the views of the open scratch documents, by rel: the one of the current text
@@ -40,21 +41,30 @@ type scratchViews struct {
 }
 
 // scratchView is the view of rel's text (which the caller has read) and the last view of rel
-// that checked (it, when the text checks); good is nil before any text of rel has checked. A
-// view is rebuilt when the text or the app's last good analysis has changed.
+// that checked (it, when the text checks); good is nil before any text of rel has checked against
+// the app as it is now. A view is checked against the app on disk, so it holds while the app's
+// sources (watch.Snapshot: app/, adapters/, migrations/) are unchanged since: the current view is
+// rebuilt when the text or they have changed, and the last good one is retired when they have.
 func (s *server) scratchView(rel, text string) (cur, good *scratchView) {
-	app := s.lastGood()
+	now := watch.Snapshot(s.rootReal) // before the check: a change during it rebuilds next time
+	same := func(x *scratchView) bool { return watch.Diff(x.stamps, now)&watch.SourceChange == 0 }
 	v := &s.views
 	v.mu.Lock()
-	if c := v.cur[rel]; c != nil && c.text == text && c.app == app {
+	if g := v.good[rel]; g != nil && !same(g) {
+		delete(v.good, rel)
+	}
+	if c := v.cur[rel]; c != nil && c.text == text && same(c) {
 		defer v.mu.Unlock()
 		return c, v.good[rel]
 	}
 	v.mu.Unlock()
 	cur = buildScratchView(s.rootReal, rel, text)
-	cur.app = app
+	cur.stamps = now
 	v.mu.Lock()
 	defer v.mu.Unlock()
+	if g := v.good[rel]; g != nil && !same(g) { // retired meanwhile by another request's snapshot
+		delete(v.good, rel)
+	}
 	if s.docs.get(rel) == nil { // not open (or closed meanwhile): nothing to keep
 		if cur.a != nil {
 			return cur, cur

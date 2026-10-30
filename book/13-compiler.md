@@ -5560,8 +5560,10 @@ Hover, definition, completion and code actions in a scratch file cannot use
 the analysis either, so they use a **view** of the file
 (`internal/lsp/scratchview.go`): the file's text checked with the app by
 `scratch.Check`, the first step of a run, without the build. The view is
-built by the request that needs it and kept until the text or the app's
-analysis changes, so a hover after a hover costs nothing.
+built by the request that needs it and kept until the text changes or the
+app's sources on disk do (the stamps the poller compares, `watch.Snapshot`,
+taken with each view), so a hover after a hover costs one walk of `app/`
+rather than a check.
 
 The checked program has the scratch file in it as a module, but not line for
 line. Take this file:
@@ -5594,7 +5596,9 @@ often does not parse (`> Todo.` is not an expression yet), and that text has
 no program to ask. The view of the last text that checked is used instead,
 compared with the module text the current file would make (the current
 lines with the same inserted lines in front): when the lines above the cursor
-are the same, its scopes and types still hold there. Code actions are the
+are the same, its scopes and types still hold there. That view is retired as
+soon as the app's sources change on disk: its program is the old app, and an
+answer from it could name what the app no longer declares. Code actions are the
 exception, as for an app module: they come from the current text's own
 diagnostics, positioned in the file as a run positions them
 (`File.Positioned`), with their fixes.

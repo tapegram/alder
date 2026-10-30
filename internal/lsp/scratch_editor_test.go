@@ -1,6 +1,8 @@
 package lsp
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -74,6 +76,25 @@ func TestScratchDefinitionInModule(t *testing.T) {
 	locs = definitionAt(t, c, "scratch.alder", c.at("scratch.alder", "> half", 3))
 	if len(locs) != 1 || locs[0].URI != c.uri("scratch.alder") || locs[0].Range.Start.Line != 3 && locs[0].Range.Start.Line != 2 {
 		t.Errorf("definition in the file: %+v", locs)
+	}
+}
+
+// A change to the app on disk retires the last view that checked: when the app no longer parses,
+// hover says nothing rather than what the old app said.
+func TestScratchViewRetiredByAppChange(t *testing.T) {
+	noScratchRuns(t)
+	c := start(t, copyExample(t, "todos"))
+	c.open("scratch.alder", "> Todo.countOpen []\n")
+	at := c.at("scratch.alder", "countOpen", 2)
+	if got := hover(t, c, "scratch.alder", at); !strings.Contains(got, "countOpen : List Todo -> Int") {
+		t.Fatalf("hover before: %q", got)
+	}
+	rel := "app/Table/Todo.alder"
+	if err := os.WriteFile(filepath.Join(c.root, rel), []byte(c.disk(rel)+"\nbroken =\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := hover(t, c, "scratch.alder", at); got != "" {
+		t.Fatalf("hover from a view of the old app: %q", got)
 	}
 }
 
@@ -198,6 +219,23 @@ func TestScratchInlayHints(t *testing.T) {
 	// an app file has none
 	if hs := inlayHints(t, c, "app/Table/Todo.alder"); len(hs) != 0 {
 		t.Fatalf("app file: %+v", hs)
+	}
+}
+
+// A hint's column counts bytes, as every position the server sends does (positionEncoding
+// utf-8, which initialize announces): after `"é"` it is one more than the characters.
+func TestScratchInlayHintColumnIsBytes(t *testing.T) {
+	fakeScratch(t, func(int, scratch.File) scratch.FileResult {
+		return scratch.FileResult{Ran: true, Watches: []scratch.WatchResult{{Line: 1, End: 1, Type: "Text", Value: `"é"`}}}
+	})
+	c := start(t, copyExample(t, "todos"))
+	if caps, _ := c.initResult["capabilities"].(map[string]any); caps["positionEncoding"] != "utf-8" {
+		t.Fatalf("positionEncoding %v", caps["positionEncoding"])
+	}
+	c.open("scratch.alder", "> \"é\"\n")
+	c.scratchNote()
+	if hs := inlayHints(t, c, "scratch.alder"); len(hs) != 1 || hs[0].Position != (Position{0, len("> \"é\"")}) {
+		t.Fatalf("hints %+v", hs)
 	}
 }
 
