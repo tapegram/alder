@@ -170,7 +170,12 @@ static bool scan_newline(TSLexer *lexer, bool recovering, bool scratch) {
         continue;
       }
       // a line starting with `-` continues: subtraction, or `->` continuing a type
-      // (parser.go parseType). Go's arms and lambdas never put `->` at a line start.
+      // (parser.go parseType). This runs only where a separator is valid, and there the
+      // grammar takes `->` only after a type, where Go continues too, so no narrower rule is
+      // needed. A line-leading `->` in a match arm or after a lambda's parameters (E0001 in Go)
+      // is still accepted, but not through here: inside an arm or a lambda head no separator is
+      // valid, so the newline is plain whitespace (extras). Rejecting it would take newline
+      // tokens inside every match and lambda for code the compiler already reports.
       return false;
     }
     if (recovering && lexer->get_column(lexer) != 0) return false;

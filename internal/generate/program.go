@@ -442,6 +442,20 @@ func (p *Program) TableNamed(name string) *Table {
 	return nil
 }
 
+// ResolveModule is the module a generator's module address names: a module of the app by its
+// full path, else, when the address equals a table's name (`Member`), that table's module
+// (`Table.Member`; table names are unique app-wide, E0037). Any other address is returned as
+// written, for the caller to refuse.
+func (p *Program) ResolveModule(address string) string {
+	if p.Modules[address] != nil {
+		return address
+	}
+	if t := p.TableNamed(address); t != nil {
+		return t.Module
+	}
+	return address
+}
+
 // TableModule is the module a new table of that name is declared in: Table.<Name>, the file
 // app/Table/<Name>.alder.
 func TableModule(name string) string { return "Table." + name }

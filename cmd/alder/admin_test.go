@@ -72,7 +72,7 @@ func TestAdmin_Refusals(t *testing.T) {
 		{genApp(t, "scaffold"), []string{"new", "admin"}, "alder new admin: " + generate.AdminNeeds + ": this app's session has no `user`; add a user table, a login that sets `user`, and a `role` (chapter 6, \"Rules\" and \"Roles\")"},
 		{withAdmin, []string{"new", "admin"}, "alder new admin: `app/Admin/` exists: `alder regen admin` updates the admin in it; to generate another, choose another `--module`"},
 		{genApp(t, "fixture"), []string{"regen", "admin"}, "alder regen admin: there is no admin in `app/Admin/`: `alder new admin` generates one (name another with --module)"},
-		{broken, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Posts/Index.alder`: region `cells` has no end marker (region `tests` begins at line 355, inside it)"},
+		{broken, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Posts/Index.alder`: region `cells` has no end marker (region `tests` begins at line 357, inside it)"},
 		{older, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Tags/Index.alder` has no region `filters`, which its list now needs (it was generated before the filters): delete it and run `alder regen admin --all` to write it again, then carry over your changes"},
 		{genApp(t, "fixture"), []string{"new", "admin", "--module", "admin"}, "alder new admin: `--module admin` is not a module name: write capitalised names joined by dots, such as `Admin`"},
 		{genApp(t, "fixture"), []string{"new", "admin", "--path", "/admin/{id}"}, "alder new admin: `--path /admin/{id}` is not a path without parameters, such as `/admin`"},

@@ -1,0 +1,1 @@
+app/Main.alder:5:18 E0038 `S` cannot be generated: no constructor ends the recursion (give one a payload that can be empty, such as a `Maybe` or a `List`, or none); use `Fuzz.forAll` with a generator you write

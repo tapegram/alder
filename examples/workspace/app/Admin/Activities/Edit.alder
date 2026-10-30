@@ -106,7 +106,7 @@ view model session =
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       -- @admin end
       <form submit={Save}>
         -- @admin begin inputs
@@ -149,10 +149,10 @@ test "saving changes every field" = {
       row: Maybe.map (\row -> { text: row.text, org: row.org }) after,
       orgs: Test.texts "select[name=org] option" page.doc,
     } == {
-        answer: Redirected (Admin.Activities.Show { id: activity1 }),
-        row: Just { text: "text-2", org: org2 },
-        orgs: ["name-1", "name-2"],
-      }
+      answer: Redirected (Admin.Activities.Show { id: activity1 }),
+      row: Just { text: "text-2", org: org2 },
+      orgs: ["name-1", "name-2"],
+    }
   )
 }
 
@@ -242,11 +242,11 @@ test "a long list of orgs offers 50, and the search narrows it" = {
       found: Test.count "select[name=org] option" found.doc <= 3,
       answer: r.answer,
     } == {
-        shown: 51,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Activities.Edit { id: activity1, findOrg: "zz" }),
-      }
+      shown: 51,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Activities.Edit { id: activity1, findOrg: "zz" }),
+    }
   )
 }
 
@@ -281,12 +281,12 @@ test "the row's own org is offered first when it sorts past the 50" = {
       once: List.length (List.filter (\o -> o.id == org1) page.model.orgs),
       shown: List.length page.model.orgs,
     } == {
-        answer: Redirected (Admin.Activities.Show { id: activity1 }),
-        kept: Just org1,
-        first: Just org1,
-        once: 1,
-        shown: 51,
-      }
+      answer: Redirected (Admin.Activities.Show { id: activity1 }),
+      kept: Just org1,
+      first: Just org1,
+      once: 1,
+      shown: 51,
+    }
   )
 }
 

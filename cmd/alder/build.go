@@ -190,7 +190,7 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 		fmt.Fprintf(stderr, "alder build: %v\n", err)
 		return "", 2
 	}
-	if err := buildkit.CopyStatic(filepath.Join(dir, "static"), filepath.Join(out, "static")); err != nil {
+	if err := buildkit.CopyStatic(filepath.Join(dir, "static"), filepath.Join(out, "static"), p.Theme.CSS()); err != nil {
 		fmt.Fprintf(stderr, "alder build: %v\n", err)
 		return "", 2
 	}

@@ -32,18 +32,28 @@ func formattingReq(s *server, params json.RawMessage) (any, error) {
 		return nil, nil
 	}
 	d := s.docs.get(rel)
-	if d == nil || scratch.IsScratchFile(rel) {
+	if d == nil {
 		return nil, nil
 	}
-	src := s.migrated(rel, d)
-	out, _, err := format.Source(rel, src)
+	var out []byte
+	var err error
+	if scratch.IsScratchFile(rel) { // not an app module: nothing to migrate
+		out, _, err = scratch.Format(rel, []byte(d.Text))
+	} else {
+		out, _, err = format.Source(rel, s.migrated(rel, d))
+	}
 	if errors.Is(err, format.ErrUnsafe) {
 		fmt.Fprintf(s.o.Log, "alder lsp: formatting %s: %v\n", rel, err)
 	}
 	if err != nil || out == nil {
 		return nil, nil
 	}
-	return lineEdits(d.Text, string(out)), nil
+	edits := lineEdits(d.Text, string(out))
+	lines := splitLines(d.Text)
+	for i, e := range edits {
+		edits[i] = s.enc.wireEdit(lines, e)
+	}
+	return edits, nil
 }
 
 // migrated is d's text with its import-qualifier fixes applied; the text itself when migration is

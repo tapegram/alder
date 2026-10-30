@@ -84,7 +84,7 @@ view model session =
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
@@ -131,10 +131,10 @@ test "creating a tag adds it, with the values submitted" = {
       rows: List.map (\row -> { name: row.name, post: row.post }) rows,
       posts: Test.texts "select[name=post] option" page.doc,
     } == {
-        answers: [r.answer],
-        rows: [{ name: Text.NonEmpty "name-2", post: post2 }],
-        posts: ["title-1", "title-2"],
-      }
+      answers: [r.answer],
+      rows: [{ name: Text.NonEmpty "name-2", post: post2 }],
+      posts: ["title-1", "title-2"],
+    }
   )
 }
 
@@ -258,11 +258,11 @@ test "a long list of posts offers 50, and the search narrows it" = {
       found: Test.texts "select[name=post] option" found.doc == ["title-203"],
       answer: r.answer,
     } == {
-        shown: 50,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Tags.New { findPost: "zz" }),
-      }
+      shown: 50,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Tags.New { findPost: "zz" }),
+    }
   )
 }
 

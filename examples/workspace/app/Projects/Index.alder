@@ -169,11 +169,11 @@ test "a project is created in the org's database, and another org does not see i
       globex: Test.texts "#projects .name" globex.doc,
       inGlobex: inGlobex,
     } == {
-        answer: [r.answer],
-        acme: ["Rocket", "Zephyr"],
-        globex: ["Widget"],
-        inGlobex: 0,
-      }
+      answer: [r.answer],
+      acme: ["Rocket", "Zephyr"],
+      globex: ["Widget"],
+      inGlobex: 0,
+    }
   )
 }
 

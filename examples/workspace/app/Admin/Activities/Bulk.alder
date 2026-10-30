@@ -83,7 +83,7 @@ view model session =
           {"Choose at most " ++ Text.fromInt maxRows ++ " rows at a time."}
         </al-alert>
       else
-        <span></span>}
+        Html.none}
       <ul id="selected">
         {for row in model.rows ->
           <li>
@@ -132,10 +132,10 @@ test "deleting the chosen rows" = {
       gone: Maybe.map (\row -> row.id) gone,
       left: Maybe.map (\row -> row.id) left,
     } == {
-        answer: Redirected (Admin.Activities.Index {}),
-        gone: Nothing,
-        left: Just activity2,
-      }
+      answer: Redirected (Admin.Activities.Index {}),
+      gone: Nothing,
+      left: Just activity2,
+    }
   )
 }
 
@@ -166,10 +166,10 @@ test "25 chosen ids are taken" = {
       kept: Maybe.map (\row -> row.id) after,
       warned: Test.count "#too-many" page.doc,
     } == {
-        answer: Redirected (Admin.Activities.Index {}),
-        kept: Nothing,
-        warned: 0,
-      }
+      answer: Redirected (Admin.Activities.Index {}),
+      kept: Nothing,
+      warned: 0,
+    }
   )
 }
 
@@ -200,10 +200,10 @@ test "26 chosen ids are refused" = {
       kept: Maybe.map (\row -> row.id) after,
       warned: Test.count "#too-many" page.doc,
     } == {
-        answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
-        kept: Just activity1,
-        warned: 1,
-      }
+      answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
+      kept: Just activity1,
+      warned: 1,
+    }
   )
 }
 

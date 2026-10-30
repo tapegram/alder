@@ -329,10 +329,10 @@ test "the list has 20 rows a page" = {
       second: List.length second.model.rows,
       pages: Test.texts "al-pagination span" first.doc,
     } == {
-        first: 20,
-        second: 1,
-        pages: ["Previous", "Page 1 of 2"],
-      }
+      first: 20,
+      second: 1,
+      pages: ["Previous", "Page 1 of 2"],
+    }
   )
 }
 ```
@@ -414,7 +414,7 @@ edited app/Replies.alder
  
  test "the list shows the rows, newest first" = {
 @@ -115,3 +137,39 @@
-       }
+     }
    )
  }
 +
@@ -432,15 +432,15 @@ edited app/Replies.alder
 +        hidden: row.hidden,
 +      }) rows,
 +    } == {
-+        answer: Redirected (Replies {}),
-+        rows: [
-+          {
-+            entry: entry1,
-+            message: Text.NonEmpty "message-1",
-+            hidden: False,
-+          },
-+        ],
-+      }
++      answer: Redirected (Replies {}),
++      rows: [
++        {
++          entry: entry1,
++          message: Text.NonEmpty "message-1",
++          hidden: False,
++        },
++      ],
++    }
 +  )
 +}
 +
@@ -1442,21 +1442,23 @@ view model session =
 
     <al-stack direction="row" gap="sm">
       <form method="get" action="/admin/post">
-        <input type="search" name="q" value={model.q} aria-label="Search" />
-        {for f in filters model.filters ->
-          <al-select label={f.label}>
-            <label>
-              {f.label}
-              <select name={f.name}>
-                <option value="" selected={f.value == ""}>any</option>
-                {for o in f.options ->
-                  <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
-              </select>
-            </label>
-          </al-select>}
-        <input type="hidden" name="sort" value={model.sort} />
-        <input type="hidden" name="dir" value={model.dir} />
-        <al-button type="submit" variant="secondary">Search</al-button>
+        <al-stack direction="row" gap="sm">
+          <al-input><label>Search<input type="search" name="q" value={model.q} /></label></al-input>
+          {for f in filters model.filters ->
+            <al-select label={f.label}>
+              <label>
+                {f.label}
+                <select name={f.name}>
+                  <option value="" selected={f.value == ""}>any</option>
+                  {for o in f.options ->
+                    <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
+                </select>
+              </label>
+            </al-select>}
+          <input type="hidden" name="sort" value={model.sort} />
+          <input type="hidden" name="dir" value={model.dir} />
+          <al-button type="submit" variant="secondary">Search</al-button>
+        </al-stack>
       </form>
       <al-button href={Admin.Posts.New {}}>New post</al-button>
     </al-stack>
@@ -1591,10 +1593,10 @@ test "the list shows every row, newest first, and the labels of the rows they re
       authors: List.length page.model.labels.authors,
       authorLabel: authorLabel page.model.labels me,
     } == {
-        rows: [post2, post1],
-        authors: 1,
-        authorLabel: "email-1@example.com",
-      }
+      rows: [post2, post1],
+      authors: 1,
+      authorLabel: "email-1@example.com",
+    }
   )
 }
 
@@ -1626,10 +1628,10 @@ test "sorting by slug goes both ways" = {
       down: List.map (\row -> row.id) down.model.rows,
       toggles: [toggle up.model "slug", toggle down.model "slug", toggle up.model "title"],
     } == {
-        up: [post2, post1],
-        down: [post1, post2],
-        toggles: ["desc", "asc", "asc"],
-      }
+      up: [post2, post1],
+      down: [post1, post2],
+      toggles: ["desc", "asc", "asc"],
+    }
   )
 }
 
@@ -1694,11 +1696,11 @@ test "filtering by published lists the rows with that value" = {
       count: yes.model.count == List.length yes.model.rows,
       chosen: Test.texts "select[name=published] option[selected]" yes.doc,
     } == {
-        yes: [True, False],
-        no: [False, True],
-        count: True,
-        chosen: ["yes"],
-      }
+      yes: [True, False],
+      no: [False, True],
+      count: True,
+      chosen: ["yes"],
+    }
   )
 }
 
@@ -1745,12 +1747,12 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
       count: Test.text "#count" first.doc,
       pages: Test.texts "al-pagination span" first.doc,
     } == {
-        first: 25,
-        second: 1,
-        past: { page: 2, rows: 1 },
-        count: Just "26 rows",
-        pages: ["Previous", "Page 1 of 2"],
-      }
+      first: 25,
+      second: 1,
+      past: { page: 2, rows: 1 },
+      count: Just "26 rows",
+      pages: ["Previous", "Page 1 of 2"],
+    }
   )
 }
 
@@ -1898,7 +1900,7 @@ view model session =
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
@@ -1983,18 +1985,18 @@ test "creating a post adds it, with the values submitted" = {
       }) rows,
       authors: Test.texts "select[name=author] option" page.doc,
     } == {
-        answers: [r.answer],
-        rows: [
-          {
-            slug: Post.Slug "slug-2",
-            title: Text.NonEmpty "title-2",
-            body: "body-2",
-            published: True,
-            author: user2,
-          },
-        ],
-        authors: ["email-1@example.com", "email-2@example.com"],
-      }
+      answers: [r.answer],
+      rows: [
+        {
+          slug: Post.Slug "slug-2",
+          title: Text.NonEmpty "title-2",
+          body: "body-2",
+          published: True,
+          author: user2,
+        },
+      ],
+      authors: ["email-1@example.com", "email-2@example.com"],
+    }
   )
 }
 
@@ -2121,11 +2123,11 @@ test "a long list of users offers 50, and the search narrows it" = {
       found: Test.texts "select[name=author] option" found.doc == ["email-203@example.com"],
       answer: r.answer,
     } == {
-        shown: 50,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Posts.New { findAuthor: "zz" }),
-      }
+      shown: 50,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Posts.New { findAuthor: "zz" }),
+    }
   )
 }
 
@@ -2457,10 +2459,10 @@ test "deleting a user nothing refers to" = {
       gone: Maybe.map (\row -> row.id) gone,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-        answer: Redirected (Admin.Users.Index {}),
-        gone: Nothing,
-        kept: Just user3,
-      }
+      answer: Redirected (Admin.Users.Index {}),
+      gone: Nothing,
+      kept: Just user3,
+    }
   )
 }
 
@@ -2493,13 +2495,13 @@ test "a user that posts refer to is not deleted" = {
       answer: r.answer,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-        count: Just "1",
-        buttons: 0,
-        answer: FormRejected [
-          { field: "", message: "This user cannot be deleted while other rows refer to it." },
-        ],
-        kept: Just user2,
-      }
+      count: Just "1",
+      buttons: 0,
+      answer: FormRejected [
+        { field: "", message: "This user cannot be deleted while other rows refer to it." },
+      ],
+      kept: Just user2,
+    }
   )
 }
 
@@ -2521,11 +2523,11 @@ test "an Admin cannot delete their own account" = {
       answer: r.answer,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-        says: ["You cannot delete your own account."],
-        buttons: 0,
-        answer: FormRejected [{ field: "", message: "You cannot delete your own account." }],
-        kept: Just me,
-      }
+      says: ["You cannot delete your own account."],
+      buttons: 0,
+      answer: FormRejected [{ field: "", message: "You cannot delete your own account." }],
+      kept: Just me,
+    }
   )
 }
 
@@ -3037,8 +3039,8 @@ app/Home.alder:51:11: warning[W0002]: hole ?perPage has type Int
 ```
 
 A function is a value of a function type, and its body a lambda
-(`alder new decl Member row "Team.TeamId -> User.UserId -> Query (Maybe
-Member)"`, then `\team user -> …`). And a test, whose whole body is the
+(`alder new decl Table.Member row "Team.TeamId -> User.UserId -> Query
+(Maybe Member)"`, then `\team user -> …`). And a test, whose whole body is the
 hole `?test : Task Bool`:
 
 ```text command=guestbook
@@ -3587,6 +3589,12 @@ alder fill 'Table.Member."row is the row of the user in that team"' - <<'EOF'
 }
 EOF
 ```
+
+A table's module is `Table.Member`, and that full path is the address
+the generators are taught with. When an address names no module but
+equals a table's name (table names are unique in an app), the generators
+take it for the table's module: `alder new decl Member row …`, `alder new
+test Member "…"` and `alder fill Member.row -` do the same.
 
 The pages, blank, all three at once: `/teams` links to `/teams/{id}`
 and `/invites`, and a view cannot name a page that does not exist yet:
@@ -4365,7 +4373,7 @@ edited app/Admin/Comments/Show.alder
  ]
  -- @admin end
  
-@@ -222,6 +253,7 @@
+@@ -224,6 +255,7 @@
              <th><a href={listAt model "author" (toggle model "author") 1}>Author</a></th>
              <th><a href={listAt model "body" (toggle model "body") 1}>Body</a></th>
              <th><a href={listAt model "created" (toggle model "created") 1}>Created</a></th>
@@ -4373,7 +4381,7 @@ edited app/Admin/Comments/Show.alder
              -- @admin end
            </tr>
          </thead>
-@@ -243,6 +275,12 @@
+@@ -245,6 +277,12 @@
                <td><a href={Admin.Comments.Show { id: row.id }}>{row.author}</a></td>
                <td>{row.body}</td>
                <td>{Time.format "Jan 2, 2006" row.created}</td>

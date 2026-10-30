@@ -102,10 +102,10 @@ test "logging in through the form" = {
       role: r.session.role,
       title: Test.text "h1" r.doc,
     } == {
-        answer: Redirected (Posts.Index {}),
-        user: Just me,
-        role: Author,
-        title: Just "Blog",
-      }
+      answer: Redirected (Posts.Index {}),
+      user: Just me,
+      role: Author,
+      title: Just "Blog",
+    }
   )
 }
