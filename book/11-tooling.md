@@ -1085,21 +1085,9 @@ ok   Rows.Bench "toggle 1000"
 
 | column | what it counts |
 |---|---|
-<<<<<<< HEAD
-<<<<<<< HEAD
-| `ms` | the step's wall time |
+| `ms` | the wall time the router took to serve the step's requests (summed) |
 | `bytes` | the answers' bodies: the document of a GET, the event stream of a Datastar answer (the regions patched, or the body, title, history) |
-| `alloc` | bytes and objects the Go runtime allocated during the step (`runtime.MemStats`: `TotalAlloc` and `Mallocs` before and after) |
-=======
-| `ms` | the wall time the router took to serve the step's requests (summed) |
-| `bytes` | the answers' bodies: the document of a GET, the event stream of a Datastar answer (the body patch, title, history) |
 | `alloc` | bytes and objects the Go runtime allocated while the router served them (`runtime.MemStats`: `TotalAlloc` and `Mallocs` read just before and just after each request) |
->>>>>>> origin/issue-48-perf-harness
-=======
-| `ms` | the wall time the router took to serve the step's requests (summed) |
-| `bytes` | the answers' bodies: the document of a GET, the event stream of a Datastar answer (the body patch, title, history) |
-| `alloc` | bytes and objects the Go runtime allocated while the router served them (`runtime.MemStats`: `TotalAlloc` and `Mallocs` read just before and just after each request) |
->>>>>>> origin/main
 | `req` | requests the router served: 1, 2 when it followed a `Redirect` itself (chapter 6), more for each 303 the browser followed |
 | `loads` | how many times a page's `load` ran: a `Rerender` runs it twice (before `update`, to give it the model, and after, to render), and so does a followed `Redirect` (the message's page, then the target) |
 | `steps` | the effect steps the requests ran (their trace) |
