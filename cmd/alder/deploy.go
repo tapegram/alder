@@ -541,13 +541,13 @@ func (r *deployRunner) Check() (int, int, int, string) {
 
 func (r *deployRunner) Build() (string, bool) {
 	var buf bytes.Buffer
-	_, code := buildTo(r.dir, false, appBuildDir(r.buildDir, r.dir), &buf, &buf)
+	_, code := buildTo(r.dir, false, appBuildDir(r.buildDir, r.dir), style.NoStyle(&buf), style.NoStyle(&buf))
 	return buf.String(), code == 0
 }
 
 func (r *deployRunner) Test() (deploy.TestResult, string, bool) {
 	var out, errb bytes.Buffer
-	code := runTestTo([]string{"--build-dir", buildRoot(r.buildDir), r.dir}, &out, &errb)
+	code := runTestTo([]string{"--build-dir", buildRoot(r.buildDir), r.dir}, style.NoStyle(&out), style.NoStyle(&errb))
 	tr := deploy.TestResult{}
 	for _, l := range strings.Split(out.String(), "\n") {
 		var p, f int
@@ -560,7 +560,7 @@ func (r *deployRunner) Test() (deploy.TestResult, string, bool) {
 
 func (r *deployRunner) Mutate() (float64, int, int, string, bool) {
 	var out, errb bytes.Buffer
-	code := runTestTo([]string{"--build-dir", buildRoot(r.buildDir), r.dir, "--mutate", "--json"}, &out, &errb)
+	code := runTestTo([]string{"--build-dir", buildRoot(r.buildDir), r.dir, "--mutate", "--json"}, style.NoStyle(&out), style.NoStyle(&errb))
 	var score float64
 	mutants, survived, found := 0, 0, false
 	sc := bufio.NewScanner(bytes.NewReader(out.Bytes()))

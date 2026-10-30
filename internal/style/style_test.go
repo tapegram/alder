@@ -79,6 +79,18 @@ func TestFor_AlwaysStylesABuffer(t *testing.T) {
 	}
 }
 
+func TestNoStyle_BeatsAlways(t *testing.T) {
+	var buf bytes.Buffer
+	always := env("ALDER_COLOR", "always")
+	if !ForEnv(&buf, always).On() || ForEnv(NoStyle(&buf), always).On() {
+		t.Error("NoStyle must stay plain under ALDER_COLOR=always")
+	}
+	NoStyle(&buf).Write([]byte("x"))
+	if buf.String() != "x" {
+		t.Error("NoStyle must pass writes through")
+	}
+}
+
 func TestPlain_Identity(t *testing.T) {
 	p := Plain
 	for _, f := range []func(string) string{p.Bold, p.Dim, p.Red, p.Green, p.Yellow, p.Cyan, p.BoldRed, p.BoldGreen, p.BoldYellow, p.Mark} {

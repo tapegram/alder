@@ -31,6 +31,9 @@ func For(w io.Writer) Style { return ForEnv(w, os.Getenv) }
 // ForEnv is For reading its variables through getenv (the deploy commands read none from the
 // process's own environment).
 func ForEnv(w io.Writer, getenv func(string) string) Style {
+	if _, ok := w.(plainWriter); ok {
+		return Plain
+	}
 	f, isFile := w.(*os.File)
 	isTTY := false
 	if isFile {
@@ -47,6 +50,12 @@ func ForEnv(w io.Writer, getenv func(string) string) Style {
 	}
 	return Style{ansi: true, width: width}
 }
+
+type plainWriter struct{ io.Writer }
+
+// NoStyle is w marked as never styled, even under ALDER_COLOR=always: for a buffer the command
+// itself reads back (the deploy gate parses `alder test`'s report), not one a person sees.
+func NoStyle(w io.Writer) io.Writer { return plainWriter{w} }
 
 // isTerminal reports whether f is a character device that is not the null device (which is
 // one, but no terminal).

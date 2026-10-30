@@ -111,7 +111,7 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 		written = append(written, f.Path)
 	}
 	var mout bytes.Buffer
-	if c := runMigrateTo([]string{dir}, &mout, &mout); c != 0 {
+	if c := runMigrateTo([]string{dir}, style.NoStyle(&mout), style.NoStyle(&mout)); c != 0 {
 		return fail(fmt.Errorf("the migration generator failed on the scaffold:\n%s", mout.String()))
 	}
 	if !bare { // a bare app has no table: nothing to migrate yet

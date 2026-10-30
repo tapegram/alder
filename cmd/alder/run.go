@@ -413,7 +413,7 @@ func (d *devServer) work(changed <-chan watch.Change) {
 // old child keeps serving. Only the worker calls it.
 func (d *devServer) rebuild() {
 	var out bytes.Buffer
-	if code := runCheckTo([]string{d.dir}, &out, &out); code != 0 {
+	if code := runCheckTo([]string{d.dir}, style.NoStyle(&out), style.NoStyle(&out)); code != 0 {
 		// the checker's structured output (what `alder check --json` prints), run again for the
 		// failure only; a failure without diagnostics (a load error) stays text
 		var js bytes.Buffer
@@ -427,7 +427,7 @@ func (d *devServer) rebuild() {
 	}
 	d.stderr.Write(out.Bytes()) // warnings
 	out.Reset()
-	binary, code := buildApp(d.dir, filepath.Join(buildRoot(d.buildDir), d.app), &out)
+	binary, code := buildApp(d.dir, filepath.Join(buildRoot(d.buildDir), d.app), style.NoStyle(&out))
 	if code != 0 {
 		d.fail(out.String())
 		return
