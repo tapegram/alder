@@ -25,3 +25,20 @@ concat : List (List a) -> List a
 append : List a -> List a -> List a
 unique : List a -> List a
 groupBy : (a -> Text) -> List a -> Dict Text (List a)
+indexedMap : (Int -> a -> b) -> List a -> List b
+-- map2 and map3 stop at the shortest list
+map2 : (a -> b -> c) -> List a -> List b -> List c
+map3 : (a -> b -> c -> d) -> List a -> List b -> List c -> List d
+foldr : (a -> b -> b) -> b -> List a -> b
+concatMap : (a -> List b) -> List a -> List b
+intersperse : a -> List a -> List a
+-- both halves keep input order
+partition : (a -> Bool) -> List a -> { yes: List a, no: List a }
+tail : List a -> Maybe (List a)
+repeat : Int -> a -> List a
+maximum : List Int -> Maybe Int
+minimum : List Int -> Maybe Int
+maximumFloat : List Float -> Maybe Float
+minimumFloat : List Float -> Maybe Float
+-- stable; NaN keys sort first
+sortByFloat : (a -> Float) -> List a -> List a
