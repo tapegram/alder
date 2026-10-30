@@ -113,33 +113,33 @@ load averages 24 to 66): the `ms` column is not comparable, every other column i
 
 | test | step | bytes before | bytes after | alloc before | alloc after | req | loads | sql |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| index 100 | GET / | 84.1 kB | 93.9 kB | 1.25 MB / 5.8k | 1.41 MB / 5.9k | 1 | 1 | 1 |
-| index 1000 | GET / | 811.3 kB | 907.5 kB | 12.32 MB / 57.8k | 15.02 MB / 58.8k | 1 | 1 | 1 |
-| index 10000 | GET / | 8.10 MB | 9.06 MB | 123.53 MB / 579.8k | 150.13 MB / 589.8k | 1 | 1 | 1 |
-| toggle 1000 | POST /_m/Rows.Index/Toggle | 808.4 kB | **1.2 kB** | 12.70 MB / 66.7k | 19.04 MB / 119.8k | 1 | 2 | 4 |
-| add 1000 | POST /_m/Rows.Index/Add | 809.2 kB | 905.0 kB | 12.70 MB / 66.7k | 21.76 MB / 119.8k | 1 | 2 | 3 |
+| index 100 | GET / | 84.1 kB | 70.1 kB | 1.25 MB / 5.8k | 1.09 MB / 5.7k | 1 | 1 | 1 |
+| index 1000 | GET / | 811.3 kB | 669.5 kB | 12.32 MB / 57.8k | 10.78 MB / 56.8k | 1 | 1 | 1 |
+| index 10000 | GET / | 8.10 MB | 6.68 MB | 123.53 MB / 579.8k | 108.64 MB / 569.8k | 1 | 1 | 1 |
+| toggle 1000 | POST /_m/Rows.Index/Toggle | 808.4 kB | **934 B** | 12.70 MB / 66.7k | 14.29 MB / 117.8k | 1 | 2 | 4 |
+| add 1000 | POST /_m/Rows.Index/Add | 809.2 kB | 666.7 kB | 12.70 MB / 66.7k | 16.30 MB / 117.8k | 1 | 2 | 3 |
 | jump 1000 | POST /_m/Rows.Index/Jump | 766 B | 838 B | 431.9 kB / 9.0k | 432.9 kB / 9.0k | 2 | 2 | 2 |
-| slow 100 | GET /slow | 3.0 kB | 3.2 kB | 329.0 kB / 6.9k | 331.0 kB / 6.9k | 1 | 1 | 101 |
+| slow 100 | GET /slow | 3.0 kB | 3.4 kB | 329.0 kB / 6.9k | 333.0 kB / 6.9k | 1 | 1 | 101 |
 
-The keep rule holds: `toggle 1000` sends 1.2 kB (one `<li>` and the `al-shown` event) against
-the page's 907.5 kB, 0.13% (rule: at most 2%); its allocations are 1.50x the baseline (rule: at
-most 1.7x; 1.48x against the old runtime serving the fixture with ids, 12.87 MB / 67.7k); `req`,
-`loads` and `sql` are unchanged on every row. `loads` stays 2: the before-view renders the
-model loaded before `update` and runs no query.
+(The "after" column is the PR's fix round 1, load averages 26 to 59.)
+
+The keep rule holds: `toggle 1000` sends 934 B (one `<li>` and the `al-shown` event) against
+the page's 669.5 kB, 0.14% (rule: at most 2%); its allocations are 1.13x the baseline (rule: at
+most 1.7x); `req`, `loads` and `sql` are unchanged on every row. `loads` stays 2: the
+before-view renders the model loaded before `update` and runs no query.
 
 Where the other numbers move:
 
+- **The page is 142 kB (17%) smaller**, ids and all. Every post action now calls one helper the
+  boost defines once in the `<head>`, `@post('<url>', window._alderO())` (`window._alderO('form')`
+  for a form): it aborts the navigation in flight, starts the next one's AbortController and adds
+  the `Alder-Shown` header. That replaces the 86 bytes of abort and controller every button
+  carried before (plus their escaping), and pays for the fixture's new `id="row-…"` on 1,000 rows
+  (30 kB) and the `<al-shown>` element (60 B).
 - **`toggle` and `add` render the page twice.** The before-view is a second view and render
-  (+53k objects, the same as a GET's tree). Its buffer is sized from the after-page up front
-  (`html.RenderTrackedSized`): grown step by step it cost 4 MB more, and `toggle` was 1.84x.
-  `add 1000` (1.71x) gains nothing in bytes for it: a row added changes `#rows`' children, so
-  the whole `<ul>` is sent (the keyed-diff follow-up).
-- **The page grew 96 kB (12%).** 30 kB is the fixture's new `id="row-…"` on 1,000 rows (the old
-  runtime serves 841.3 kB for it). 66 kB is the `Alder-Shown` header on each post action,
-  `headers: window._alderShown?.(), ` (33 bytes on each of the 2,000 buttons; the lookup itself
-  lives once in the boost's `data-init`), and 60 B the `<al-shown>` element. With gzip at the host
-  the repeated text costs little; without it, it is the price of the header on a list-heavy page.
-- **`index` allocates 2.7 MB more** (12.47 MB for the old runtime on the fixture with ids): the
-  longer attribute strings and one more copy of the page to put the `<al-shown>` in it.
-- The equality check the test browser runs after every re-render (a parse and a diff of the
-  body) is the browser's work, not measured.
+  (+51k objects, the same as a GET's tree). Its buffer is sized from the after-page up front
+  (`html.RenderTrackedSized`); grown step by step it cost 4 MB more. `add 1000` gains nothing in
+  bytes for it: a row added changes `#rows`' children, so the whole `<ul>` is sent (the keyed-diff
+  follow-up). Regions are tracked only when the request carries `Alder-Shown`.
+- The equality check the test browser runs after every re-render (a parse, the parser's repairs
+  modelled by `html.Repair`, and a diff of the body) is the browser's work, not measured.

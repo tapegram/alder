@@ -208,14 +208,15 @@ func TestPatchShown_EventFormat(t *testing.T) {
 	}
 }
 
-// The boost's data-init defines the helper every message's post calls for its Alder-Shown
-// header (html.Shown): the data-h of the page's al-shown, "" without one.
+// The boost's data-init defines the helper every message's post calls for its options
+// (html.PostOptions): the abort of the navigation in flight, the next one's controller, the
+// Alder-Shown header (the data-h of the page's al-shown, "" without one), the content type.
 func TestBoostInit_DefinesShown(t *testing.T) {
-	want := `window._alderShown = () => ({'Alder-Shown': document.getElementById('_alder_shown')?.dataset.h || ''});`
+	want := `window._alderO = (f) => { window._alderAC?.abort(); const o = {headers: {'Alder-Shown': document.getElementById('_alder_shown')?.dataset.h || ''}, requestCancellation: window._alderAC = new AbortController()}; if (f) o.contentType = f; return o };`
 	if !strings.Contains(BoostInit, want) {
 		t.Fatalf("BoostInit lacks %s:\n%s", want, BoostInit)
 	}
-	if !strings.Contains(BoostTag(), "window._alderShown = () =&gt; ({'Alder-Shown'") {
+	if !strings.Contains(BoostTag(), "window._alderO = (f) =&gt; {") {
 		t.Fatalf("BoostTag: %s", BoostTag())
 	}
 }

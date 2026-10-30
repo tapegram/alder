@@ -148,7 +148,7 @@ A `<button click={…}>` works with and without JavaScript. Outside a form it
 is rendered inside a small form of its own that posts the message:
 
 ```html
-<form method="post" action="/_m/App/Logout" class="_alder-click" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/App/Logout&#39;, {contentType: &#39;form&#39;, headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))"><button type="submit">Log out</button></form>
+<form method="post" action="/_m/App/Logout" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/App/Logout&#39;, window._alderO(&#39;form&#39;)))"><button type="submit">Log out</button></form>
 ```
 
 The design system's stylesheet (Appendix C) gives that wrapper
@@ -612,7 +612,12 @@ small an update is:
 
 An `id` counts as a region only when it is a plain name (letters, digits,
 `_` and `-`, not starting with a digit) and appears once on the page;
-`id`s inside `<head>` or in `Html.unsafe` markup do not count. None of
+`id`s inside `<head>`, `<noscript>` or `Html.unsafe` markup do not count. Nor
+does an element around markup the browser rebuilds as it reads it: a
+`<div>` inside a `<p>` (the browser closes the `<p>` first), a link inside
+a link, a form inside a form, text or a `<div>` directly inside a
+`<table>` or `<tr>`. Its page is not the markup you wrote, so the runtime
+patches a region further out, or the whole body. None of
 this can make the page wrong: the runtime sends a region only when it has
 proved everything outside it is unchanged, and when it cannot tell which
 page the browser shows (the first click after a form showed errors, for

@@ -112,6 +112,10 @@ type Browser struct {
 	hasDoc  bool
 	notices []string // the toasts of the step's requests (Result.Notices)
 
+	// dom is the held page as a browser's parser builds it and Datastar patches it (html.Repair):
+	// the page the drift check compares (checkPatched). doc stays the markup as the router sent
+	// it, which is what a test reads.
+	dom html.Node
 	// shown is the hash of the body the held page shows (its <al-shown>, which the held doc
 	// leaves out), sent with every post as html.ShownHeader, as the page's script does
 	shown string
@@ -829,6 +833,7 @@ func (b *Browser) hold(u, page string) error {
 	}
 	b.url, b.hasDoc = u, true
 	b.doc, b.shown = takeShown(doc)
+	b.dom = html.Repair(b.doc)
 	return nil
 }
 
@@ -893,18 +898,20 @@ func (e *DriftError) Error() string {
 		e.Step, e.Diff.At, e.Diff.What, e.Diff.Left, e.Diff.Right)
 }
 
-// checkPatched compares the held body with the full render of the page the last request
+// checkPatched compares the held body, as the browser built and patched it (dom), with the full
+// render, as the browser's parser builds it, of the page the last request
 // re-rendered (b.rendered), the router's implicit <al-toasts> region left out. It runs after
 // the request was served: `alder bench` measures the router alone (serveHTTP), not this.
 func (b *Browser) checkPatched() error {
 	if b.rendered == "" {
 		return nil
 	}
-	want, err := html.Parse(b.rendered)
+	full, err := html.Parse(b.rendered)
 	if err != nil {
 		return fmt.Errorf("the full render of the page does not parse: %w", err)
 	}
-	held := html.Select(b.doc, selBody)
+	want := html.Repair(full)
+	held := html.Select(b.dom, selBody)
 	if len(held) == 0 {
 		return errors.New("the held page has no <body>")
 	}
@@ -1132,6 +1139,11 @@ func (b *Browser) patch(ev sseEvent) error {
 			return fmt.Errorf("a patch of %s: the held page has no element with that id", sel)
 		}
 		b.doc = doc
+		// Datastar morphs the element into the nodes its parser builds from the patch; an id
+		// the DOM lacks patches nothing (the drift check then reports the difference)
+		if dom, ok := html.ReplaceByID(b.dom, id, html.Repair(els)); ok {
+			b.dom = dom
+		}
 		return nil
 	}
 	if sel == "al-toasts" && mode == "append" {
@@ -1170,9 +1182,10 @@ func (b *Browser) patch(ev sseEvent) error {
 	b.hasDoc = true
 	if mode == "append" {
 		b.doc = doc
-		return nil
+	} else {
+		b.doc, b.shown = takeShown(doc)
 	}
-	b.doc, b.shown = takeShown(doc)
+	b.dom = html.Repair(b.doc)
 	return nil
 }
 

@@ -315,3 +315,30 @@ func TestPanel_ListsRegionPatches(t *testing.T) {
 		t.Fatalf("%s", body)
 	}
 }
+
+// A region around markup the browser's parser restructures (a <div> in a <p>) is not patched:
+// here the only region is one, so the body is morphed.
+func TestRerender_RepairedMarkupMorphsBody(t *testing.T) {
+	n := 1
+	pageOf := func(n int) html.Node {
+		return html.El("html", nil, html.El("body", nil,
+			html.El("p", []html.Attr{html.A("id", "msg")}, html.Text(strconv.Itoa(n)), html.El("div", nil, html.Text("x")))))
+	}
+	routes := []Route{
+		{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response { return PageResponse(pageOf(n), &html.FormState{}, nil, false) }},
+		{Method: "POST", Pattern: "/_m/R/Inc", Handle: func(rq *Request) Response {
+			before := n
+			n++
+			return PageResponse(pageOf(n), &html.FormState{}, nil, true).WithBefore(func() html.Node { return pageOf(before) })
+		}},
+	}
+	h := NewRouter(routes, testOpts(nil))
+	shown := shownOf(serveRaw(h, httptest.NewRequest("GET", "/", nil)).Body.String())
+	req := httptest.NewRequest("POST", "/_m/R/Inc", nil)
+	req.Header.Set("Datastar-Request", "true")
+	req.Header.Set(html.ShownHeader, shown)
+	w := serveRaw(h, req)
+	if !isBodyMorph(t, w) || !strings.Contains(w.Body.String(), `<p id="msg">2<div>x</div></p>`) {
+		t.Fatalf("%q", w.Body.String())
+	}
+}

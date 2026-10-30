@@ -776,7 +776,7 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 // Options.Rendered gets the full render's body either way.
 func (rt *router) rerender(w http.ResponseWriter, r *http.Request, rq *Request, resp Response) {
 	var after html.Rendered
-	if resp.Before != nil {
+	if resp.Before != nil && r.Header.Get(html.ShownHeader) != "" { // regions only when fragments may follow
 		after = html.RenderTracked(resp.Node, resp.State)
 	} else {
 		after.Page = html.RenderWith(resp.Node, resp.State)
@@ -834,7 +834,7 @@ func (rt *router) fragments(w http.ResponseWriter, r *http.Request, resp Respons
 	if resp.Before == nil || shown == "" {
 		return nil, false
 	}
-	if tw, isT := w.(*tracker); isT && tw.notice != "" && !strings.Contains(body, "<al-toasts") {
+	if tw, isT := w.(*tracker); isT && tw.notice != "" && !after.Toasts {
 		return nil, false
 	}
 	var plain *html.FormState

@@ -1433,7 +1433,7 @@ page's parameters to every message URL it writes. This is the Done button
 of `GET /?filter=Active`, as the running app sends it:
 
 ```html
-<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;, headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
+<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, window._alderO(&#39;form&#39;)))"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
 ```
 
 (A `click` button is wrapped in a form of its own so that it works without
@@ -1624,10 +1624,11 @@ early and start a field of its own, so the renderer writes it as `&#13;`
 and `PatchBody` turns any line end into a plain newline first.
 
 The two kinds of message travel differently under Datastar. A form posts
-with `data-on:submit="window._alderAC?.abort();@post('<url>', {contentType:
-'form', headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()})"`, so
+with `data-on:submit="@post('<url>', window._alderO('form'))"`, so
 its fields arrive url-encoded and are decoded as the form. The
-`window._alderAC` part is the page's one navigation signal, shared with
+`window._alderO` helper (defined once in the page's `<head>`) gives the post
+its options: the content type, the `Alder-Shown` header (chapter 5,
+"Partial updates") and the page's one navigation signal, shared with
 boosted links ("Links and navigation" below): a new post or click aborts
 the request still in flight, so a slow answer never lands over a newer page. A `click` button's
 message carries its parameters in the URL, and its body is ignored.

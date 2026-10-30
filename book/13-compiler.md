@@ -1382,14 +1382,16 @@ Content-Type: text/html; charset=utf-8
 and has the Done button with its message URL:
 
 ```html
-<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;, headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
+<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, window._alderO(&#39;form&#39;)))"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
 ```
 
 The `&#39;` and `&amp;` are the escaping of section 8's first part: the
 attribute holds
-`window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post('/_m/Todos.Index/Toggle?id=…&_p.filter=Active', {contentType: 'form', headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))`:
-the abort and the shared AbortController make the newest navigation the only
-one whose answer is applied (chapter 6, "Links and navigation").
+`(window._alderBusy||((e,p)=&gt;p))(el, @post('/_m/Todos.Index/Toggle?id=…&_p.filter=Active', window._alderO('form')))`:
+`window._alderO` (defined once in the page's `<head>`) returns the post's
+options: the `contentType`, the `Alder-Shown` header (below), and a new
+shared AbortController after aborting the request in flight, which makes the
+newest navigation the only one whose answer is applied (chapter 6, "Links and navigation").
 
 **`POST /_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&_p.filter=Active`.**
 Click Done, and the button submits its little form; Datastar catches the
@@ -1476,8 +1478,9 @@ each one ended its `<body>` with
 
 where `data-h` is `html.Hash` of the body: FNV-1a, a fast 64-bit hash, as
 16 hex digits. The click's `@post` sent it back in the `Alder-Shown`
-header (`headers: window._alderShown?.()` in the attribute above; the
-helper, defined once in the `<head>`, reads `data-h`). The router renders
+header (`window._alderO('form')` in the attribute above: the helper,
+defined once in the `<head>`, reads `data-h` and returns the post's
+options). The router renders
 the before-view (`Before`, with the same page parameters), hashes its
 body, and compares. Equal means the browser shows exactly that page, so
 the router may send only the parts that differ. Anything else, and it

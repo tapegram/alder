@@ -417,7 +417,7 @@ func prodPages(t *testing.T) string {
 // resizing and minimising: testdata/production_page.golden was generated from the commit before
 // them (168ad442), with the build id normalised to BUILD; the changes since are the pending
 // bar's token, now alder-ui v0.4's --primary (#21), and the shown hash (#49): the boost's
-// window._alderShown and the <al-shown> at the end of every body.
+// window._alderO and the <al-shown> at the end of every body.
 func TestProductionPageHasNoDevUI(t *testing.T) {
 	if os.Getenv("UPDATE_GOLDEN") != "" {
 		if err := os.WriteFile("testdata/production_page.golden", []byte(prodPages(t)), 0o644); err != nil {

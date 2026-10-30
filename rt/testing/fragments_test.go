@@ -150,7 +150,7 @@ func TestBrowser_ReportsFragmentDrift(t *testing.T) {
 				return err
 			}
 			li, _ := html.Parse(`<li id="row-3" class="open"><span>Row 3 (edited)</span></li>`)
-			b.doc, _ = html.ReplaceByID(b.doc, "row-3", li)
+			b.dom, _ = html.ReplaceByID(b.dom, "row-3", li)
 			return nil
 		},
 		func(b *Browser, e *eff.Env) error { _, err := b.Click("/_m/Rows/Toggle?id=7"); return err })
@@ -159,5 +159,67 @@ func TestBrowser_ReportsFragmentDrift(t *testing.T) {
 	}
 	if !strings.Contains(res.Error, "POST /_m/Rows/Toggle: the patched page differs from a full render at body > ul#rows > li#row-3") {
 		t.Fatalf("error: %s", res.Error)
+	}
+}
+
+// msgPage is a page whose only region (#msg) holds a <div> in a <p>, which the browser's parser
+// restructures: <p id="msg">n</p><div>x</div><p></p>.
+func msgPage(n int) html.Node {
+	return html.El("html", nil, html.El("head", nil, html.El("title", nil, html.Text("M"))), html.El("body", nil,
+		html.El("p", []html.Attr{html.A("id", "msg")}, html.Text(strconv.Itoa(n)), html.El("div", nil, html.Text("x"))),
+		html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("M", "Inc"))}, html.Text("Inc"))))
+}
+
+func msgRoutes(n *int) []web.Route {
+	return []web.Route{
+		{Method: "GET", Pattern: "/", Handle: func(rq *web.Request) web.Response {
+			return web.PageResponse(msgPage(*n), &html.FormState{}, nil, false)
+		}},
+		{Method: "POST", Pattern: "/_m/M/Inc", Handle: func(rq *web.Request) web.Response {
+			before := *n
+			*n++
+			return web.PageResponse(msgPage(*n), &html.FormState{}, nil, true).WithBefore(func() html.Node { return msgPage(before) })
+		}},
+	}
+}
+
+func browseMsg(n *int, steps ...func(b *Browser) error) CaseResult {
+	var task eff.Task[bool] = eff.Pure(true)
+	for i := len(steps) - 1; i >= 0; i-- {
+		f := steps[i]
+		rest := task
+		task = eff.Bind(eff.Call("step", true, func(e *eff.Env) (bool, error) {
+			return true, f(BrowserOf(e))
+		}), func(bool) eff.Task[bool] { return rest })
+	}
+	return Run([]Case{{Module: "M", Name: "msg", Task: func() eff.Task[bool] { return task }}},
+		Options{Tables: tables, Routes: msgRoutes(n), Web: web.Options{}})[0]
+}
+
+// TestBrowser_RepairedPageFallsBack: clicks on a page whose region the parser restructures pass
+// the drift check: the router morphs the body. A #msg patch, as the markup alone would suggest,
+// is caught: on the DOM the browser built it adds another <div> and <p>.
+func TestBrowser_RepairedPageFallsBack(t *testing.T) {
+	n := 1
+	click := func(b *Browser) error { _, err := b.Click("/_m/M/Inc"); return err }
+	res := browseMsg(&n, func(b *Browser) error { _, err := b.Open("/"); return err }, click, click)
+	if !res.OK {
+		t.Fatalf("the test failed: %s", res.Error)
+	}
+
+	n = 1
+	res = browseMsg(&n, func(b *Browser) error { _, err := b.Open("/"); return err }, func(b *Browser) error {
+		b.rendered = html.BodyOf(html.Render(msgPage(2)))
+		ev, err := sseEvents("event: datastar-patch-elements\ndata: selector #msg\ndata: mode outer\ndata: elements <p id=\"msg\">2<div>x</div></p>\n\n")
+		if err != nil {
+			return err
+		}
+		if err := b.patch(ev[0]); err != nil {
+			return err
+		}
+		return b.checkPatched()
+	})
+	if res.OK || !strings.Contains(res.Error, "the patched page differs from a full render") {
+		t.Fatalf("the misplaced patch was not caught: %+v", res)
 	}
 }

@@ -201,7 +201,7 @@ const BoostPopstate = `if (location.pathname + location.search !== window._alder
 // shown, and its build is the one its <meta name="alder-build"> names ("" without one: no
 // check).
 const BoostInit = `window._alderAt = location.pathname + location.search;` +
-	` window._alderShown = () => ({'` + html.ShownHeader + `': document.getElementById('` + ShownID + `')?.dataset.h || ''});` +
+	` window._alderO = (f) => { window._alderAC?.abort(); const o = {headers: {'` + html.ShownHeader + `': document.getElementById('` + ShownID + `')?.dataset.h || ''}, ` + html.Navigation + `}; if (f) o.contentType = f; return o };` +
 	` window._alderBuild = document.querySelector('meta[name=alder-build]')?.content || '';` +
 	` window._alderN = 0;` +
 	` window._alderBusy = (el, p) => { const f = el && el.closest ? el.closest('form') || el : null, h = document.documentElement, a = document.activeElement;` +
