@@ -48,7 +48,7 @@ func effectsAt(p *generate.Program, span diag.Span) (out []string, lines []int) 
 	if mod == nil {
 		return nil, nil
 	}
-	w := &effectWalk{p: p, memo: map[string][]string{}, busy: map[string]bool{}}
+	w := &effectWalk{p: p, memo: map[string][]string{}, busy: map[string]int{}}
 	seen := map[string]bool{}
 	var visit func(n syntax.Spanned)
 	visit = func(n syntax.Spanned) {
@@ -114,59 +114,84 @@ func Excerpt(text string, at []int) string {
 }
 
 // effectWalk memoises, per app value ("Module.name"), the first path by which its body reaches
-// an effect (nil: none). A value being walked counts as none, so a cycle ends.
+// an effect (nil: none). A value being walked (busy, at its depth on the walk) counts as none,
+// so a cycle ends; but a "none" found while an ancestor was busy is only provisional (that
+// ancestor's own effect, found later, may reach it), so it is remembered only by the value that
+// opened the cycle, once its whole body is walked: each strongly connected group of values is
+// settled at its root, as Tarjan's algorithm settles it.
 type effectWalk struct {
 	p    *generate.Program
 	memo map[string][]string
-	busy map[string]bool
+	busy map[string]int // the values being walked, by their depth
 }
+
+// settled is the low mark of a walk that met no busy value.
+const settled = int(^uint(0) >> 1)
 
 // ref is the path from r to an effect: [capability X.y], [Http.get], or [Mod.v, …] through app
 // values; nil when r reaches none.
 func (w *effectWalk) ref(r syntax.Ref) []string {
+	path, _ := w.refLow(r)
+	return path
+}
+
+// refLow is ref, with the lowest depth of a busy value the walk met (settled for none): a nil
+// path with a low mark under the caller's depth is provisional.
+func (w *effectWalk) refLow(r syntax.Ref) ([]string, int) {
 	switch r.Kind {
 	case syntax.RefCapability:
-		return []string{"capability " + r.Name}
+		return []string{"capability " + r.Name}, settled
 	case syntax.RefStd:
 		if stdEffect(r.Module, r.Name) {
-			return []string{r.Module + "." + r.Name}
+			return []string{r.Module + "." + r.Name}, settled
 		}
 	case syntax.RefValue, syntax.RefComponent:
 		key := r.Module + "." + r.Name
 		if path, ok := w.memo[key]; ok {
-			return path
+			return path, settled
 		}
-		if w.busy[key] {
-			return nil
+		if d, ok := w.busy[key]; ok {
+			return nil, d
 		}
-		w.busy[key] = true
+		depth := len(w.busy)
+		w.busy[key] = depth
 		var path []string
+		low := settled
 		if body := w.body(r.Module, r.Name); body != nil {
-			path = w.inside(body)
+			path, low = w.inside(body)
 		}
 		delete(w.busy, key)
 		if path != nil {
 			last := path[len(path)-1]
 			last = strings.TrimPrefix(last, "capability ")
 			path = append([]string{key}, append(path[:len(path)-1:len(path)-1], last)...)
+			w.memo[key] = path // an effect found is an effect, whatever was busy
+			return path, settled
 		}
-		w.memo[key] = path
-		return path
+		if low >= depth { // only this value, or values under it, were busy: none, for good
+			w.memo[key] = nil
+			return nil, settled
+		}
+		return nil, low // provisional: an ancestor still being walked may yet reach an effect
 	}
-	return nil
+	return nil, settled
 }
 
-// inside is the first path to an effect from the references in n's subtree.
-func (w *effectWalk) inside(n syntax.Spanned) []string {
-	if path := w.ref(refOf(n)); path != nil {
-		return path
+// inside is the first path to an effect from the references in n's subtree, and the lowest
+// busy depth met on the way.
+func (w *effectWalk) inside(n syntax.Spanned) ([]string, int) {
+	path, low := w.refLow(refOf(n))
+	if path != nil {
+		return path, low
 	}
 	for _, c := range syntax.Children(n) {
-		if path := w.inside(c); path != nil {
-			return path
+		p, l := w.inside(c)
+		low = min(low, l)
+		if p != nil {
+			return p, low
 		}
 	}
-	return nil
+	return nil, low
 }
 
 // body is the body of the value name of module mod, nil when there is none (a stdlib value).
