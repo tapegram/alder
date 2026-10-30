@@ -31,6 +31,12 @@ func TestNoWritesToParameters(t *testing.T) {
 		"fresh.go: needsFreshIn index visiting": "a local scratch map",
 		// FloatRound's helper: its only caller passes []byte(whole + frac), a fresh conversion.
 		"std/num.go: incDecimal index d": "called only on a fresh []byte",
+		// Datastar region tracking: the renderer's own tracker, never an Alder value.
+		"html/html.go: (*renderer).render append tr": "tr is the renderer's own region tracker (regions, open tags); Go-side only",
+		// Repair's tree builder: bnodes and the stack are created by the builder itself.
+		"html/repair.go: (*bnode).build index n":           "n is a copy of the builder's own node; children is a fresh make",
+		"html/repair.go: (*builder).fosterParent append p": "p is a builder-owned bnode, never an Alder value",
+		"html/repair.go: (*builder).node append t":         "t is the builder; its stack and bnode kids are its own",
 	}
 	var hits []string
 	// The packages whose functions take and return Alder values, and the router that writes a
