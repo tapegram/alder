@@ -41,6 +41,7 @@ type fakeFly struct {
 	maint    map[string]bool // builds that answer with their maintenance page (503, their id in the meta)
 	requests []string        // every API request: method, path and body
 	flyctl   []string        // every flyctl command
+	logs     string          // what `flyctl logs` prints ("": one line)
 	api, pub *httptest.Server
 }
 
@@ -213,6 +214,9 @@ func (ff *fakeFly) runFlyctl(_ context.Context, stdin io.Reader, args ...string)
 		ff.images[label] = dst
 		return "", nil
 	case args[0] == "logs":
+		if ff.logs != "" {
+			return ff.logs, nil
+		}
 		return "alder: listening on :8080\n", nil
 	}
 	return "", fmt.Errorf("the fake flyctl does not know %v", args)
@@ -627,5 +631,55 @@ func TestFly_Scripts(t *testing.T) {
 	f.call(context.Background(), "GET", "/apps/x", nil, nil)
 	if auth != "FlyV1 fm2_abc" {
 		t.Errorf("Authorization: %q", auth)
+	}
+}
+
+// flyctl logs --no-tail has no count: Logs keeps the last n lines itself.
+func TestLogs_FlyLastN(t *testing.T) {
+	ff := newFakeFly(t)
+	var lines []string
+	for i := 1; i <= 150; i++ {
+		lines = append(lines, fmt.Sprintf("line %d", i))
+	}
+	ff.logs = strings.Join(lines, "\n") + "\n"
+	f := ff.target(nil)
+	for _, c := range []struct {
+		n    int
+		want string
+	}{
+		{1, "line 150\n"},
+		{2, "line 149\nline 150\n"},
+		{100, strings.Join(lines[50:], "\n") + "\n"},
+		{150, ff.logs},
+		{500, ff.logs},
+	} {
+		var w bytes.Buffer
+		if err := f.Logs(context.Background(), false, c.n, &w); err != nil {
+			t.Fatal(err)
+		}
+		if w.String() != c.want {
+			t.Errorf("-n %d: %d bytes, want %d:\n%s", c.n, w.Len(), len(c.want), w.String())
+		}
+	}
+	// no trailing newline
+	ff.logs = "a\nb\nc"
+	var w bytes.Buffer
+	if err := f.Logs(context.Background(), false, 2, &w); err != nil || w.String() != "b\nc" {
+		t.Errorf("no final newline: %q %v", w.String(), err)
+	}
+}
+
+func TestTailLines(t *testing.T) {
+	for _, c := range []struct {
+		s    string
+		n    int
+		want string
+	}{
+		{"", 3, ""}, {"a\n", 1, "a\n"}, {"a\nb\n", 1, "b\n"}, {"a\nb\n", 5, "a\nb\n"},
+		{"a\nb", 1, "b"}, {"a\n\nb\n", 2, "\nb\n"}, {"a\nb\n", 0, "a\nb\n"},
+	} {
+		if got := tailLines(c.s, c.n); got != c.want {
+			t.Errorf("tailLines(%q, %d) = %q, want %q", c.s, c.n, got, c.want)
+		}
 	}
 }

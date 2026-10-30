@@ -1545,18 +1545,19 @@ exit 0
 	return in, nil
 }
 
-// Logs writes the current build's last 100 log lines; with follow it goes on writing what is
+// Logs writes the current build's last n log lines; with follow it goes on writing what is
 // appended, and when another build becomes current (a deploy, a rollback) that build's log.
-func (s *Ssh) Logs(ctx context.Context, follow bool, w io.Writer) error {
+func (s *Ssh) Logs(ctx context.Context, follow bool, n int, w io.Writer) error {
 	if _, err := s.Connect(ctx); err != nil {
 		return err
 	}
+	n = max(n, 1)
 	script := `c=$(cat "$R/current" 2>/dev/null) || { echo "not deployed yet" >&2; exit 1; }
-exec tail -n 100 "$R/builds/$c/log"
+exec tail -n ` + strconv.Itoa(n) + ` "$R/builds/$c/log"
 `
 	if follow { // across switches: when current changes, the new build's log from its start
 		script = `c=$(cat "$R/current" 2>/dev/null) || { echo "not deployed yet" >&2; exit 1; }
-tail -n 100 "$R/builds/$c/log"
+tail -n ` + strconv.Itoa(n) + ` "$R/builds/$c/log"
 off=$(wc -c < "$R/builds/$c/log" | tr -d ' ')
 while kill -0 "$PPID" 2>/dev/null; do  # the session's sshd gone: stop
   n=$(cat "$R/current" 2>/dev/null)

@@ -17,6 +17,7 @@ import "embed"
 //
 //go:embed builder.go core.go file.go fresh.go json.go nav.go show.go tether.go
 //go:embed backup/bucket.go backup/lock_other.go backup/lock_unix.go backup/restore.go backup/s3.go backup/ship.go backup/silos.go backup/snapshot.go
+//go:embed applog/applog.go applog/id.go applog/mask.go
 //go:embed al/al.go al/al.css al/al.js al/custom-elements.json al/VERSION al/fonts/Geist-Variable.woff2 al/fonts/GeistMono-Variable.woff2 al/fonts/OFL.txt
 //go:embed datastar/datastar.go datastar/datastar.js datastar/VERSION
 //go:embed db/encode.go db/libsql.go db/migrate.go db/sqlite.go db/store.go db/stores.go db/stores_turso.go db/table.go db/turso.go

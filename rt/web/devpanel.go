@@ -7,11 +7,13 @@ import (
 	stdhtml "html"
 	"html/template"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
 	"time"
 
+	"alder/rt/applog"
 	"alder/rt/datastar"
 	"alder/rt/eff"
 )
@@ -73,7 +75,7 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 	reps := repeatMarks(segRepeats(tw.hops, rec))
 	var b strings.Builder
 	fmt.Fprintf(&b, `<nav data-rid="%d"><span data-bar>%s %s</span> <span>%s</span> <span data-ms>%.1f ms</span> <span>%d SQL</span>`,
-		tw.start.UnixNano(), esc(r.Method), esc(r.URL.Path), esc(answer), ms, len(sqls))
+		tw.start.UnixNano(), esc(r.Method), esc(rt.maskPath(r.Method, r.URL)), esc(answer), ms, len(sqls))
 	if len(reps) > 0 {
 		b.WriteString(` <span data-nplus1>N+1</span>`)
 	}
@@ -87,7 +89,7 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 	marker := func(i int, at func(h hopMark) int) {
 		for _, h := range tw.hops {
 			if at(h) == i {
-				fmt.Fprintf(&b, `<li data-hop>then GET %s</li>`, esc(h.url))
+				fmt.Fprintf(&b, `<li data-hop>then GET %s</li>`, esc(rt.maskRef(h.url)))
 			}
 		}
 	}
@@ -95,7 +97,7 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 	// only the Request section is shown at first; the others are `hidden` until their tab is
 	// chosen (the panel's script keeps the chosen tab across later answers)
 	b.WriteString(`<section id="_alder_tab_request"><h3>Request</h3><pre>`)
-	fmt.Fprintf(&b, "%s %s\n", esc(r.Method), esc(r.URL.RequestURI()))
+	fmt.Fprintf(&b, "id %s\n%s %s\n", esc(tw.id), esc(r.Method), esc(rt.maskURL(r.Method, r.URL)))
 	if tw.rq != nil {
 		keys := make([]string, 0, len(tw.rq.Form))
 		for k := range tw.rq.Form {
@@ -111,7 +113,7 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 		}
 		sort.Strings(pk)
 		for _, k := range pk {
-			fmt.Fprintf(&b, "param %s = %s\n", esc(k), esc(tw.rq.Params[k]))
+			fmt.Fprintf(&b, "param %s = %s\n", esc(k), esc(strings.Join(masked(k, []string{tw.rq.Params[k]}), "")))
 		}
 		fmt.Fprintf(&b, "session %s\n", esc(rt.sessionText(tw.rq.Session)))
 	}
@@ -180,9 +182,9 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 		fmt.Fprintf(&b, `<p>%s</p>`, esc(tw.answer))
 		for i, h := range tw.hops {
 			if i == len(tw.hops)-1 {
-				fmt.Fprintf(&b, `<p>then GET %s: %d %s</p>`, esc(h.url), status, esc(h.answer))
+				fmt.Fprintf(&b, `<p>then GET %s: %d %s</p>`, esc(rt.maskRef(h.url)), status, esc(h.answer))
 			} else {
-				fmt.Fprintf(&b, `<p>then GET %s: %s</p>`, esc(h.url), esc(h.answer))
+				fmt.Fprintf(&b, `<p>then GET %s: %s</p>`, esc(rt.maskRef(h.url)), esc(h.answer))
 			}
 		}
 	}
@@ -267,9 +269,9 @@ func (rt *router) warnRepeats(tw *tracker) {
 		return // a test's browser records too (Options.EnvFor), and warns in its own report
 	}
 	for s, rs := range segRepeats(tw.hops, tw.rq.Env.Rec) {
-		head := tw.r.Method + " " + tw.r.URL.Path
+		head := tw.r.Method + " " + rt.maskPath(tw.r.Method, tw.r.URL)
 		if s > 0 {
-			u, _, _ := strings.Cut(tw.hops[s-1].url, "?")
+			u, _, _ := strings.Cut(rt.maskRef(tw.hops[s-1].url), "?")
 			head = "GET " + u
 		}
 		for _, r := range rs {
@@ -279,18 +281,16 @@ func (rt *router) warnRepeats(tw *tracker) {
 }
 
 // masked is the values of form field k as the panel shows them: a field whose name says it holds
-// a password (or a secret, a token) is shown as "••••", so the panel, its History and the curl
-// line never carry one.
+// a secret (applog.Sensitive: a password, a token, a key, a code…) is shown as "••••", so the
+// panel, its History and the curl line never carry one. The request's URL is shown masked the
+// way the log masks it (applog.MaskURL).
 func masked(k string, vs []string) []string {
-	n := strings.ToLower(k)
-	for _, w := range []string{"password", "passwd", "secret", "token"} {
-		if strings.Contains(n, w) {
-			out := make([]string, len(vs))
-			for i := range out {
-				out[i] = "••••"
-			}
-			return out
+	if applog.Sensitive(k) {
+		out := make([]string, len(vs))
+		for i := range out {
+			out[i] = applog.Mask
 		}
+		return out
 	}
 	return vs
 }
@@ -323,7 +323,11 @@ func shq(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'
 func curlLine(tw *tracker) string {
 	r := tw.r
 	var b strings.Builder
-	b.WriteString("curl -X " + r.Method + " " + shq("http://"+r.Host+r.URL.RequestURI()))
+	u := applog.MaskURL(r.URL)
+	if tw.masker != nil {
+		u = tw.masker(r.Method, r.URL)
+	}
+	b.WriteString("curl -X " + r.Method + " " + shq("http://"+r.Host+u))
 	b.WriteString(" -H " + shq("Cookie: "+CookieName+"=<your session cookie>"))
 	if tw.rq != nil && tw.rq.Datastar {
 		b.WriteString(" -H " + shq("Datastar-Request: true"))
@@ -497,4 +501,24 @@ func (rt *router) devMap(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(b.Bytes())
+}
+
+// maskPath is the path of u (a request with method's URL) as the panel's bar shows it: masked
+// like a log line (maskURL), without the query.
+func (rt *router) maskPath(method string, u *url.URL) string {
+	p, _, _ := strings.Cut(rt.maskURL(method, u), "?")
+	return p
+}
+
+// maskRef is ref, a URL the panel shows (a redirect's target), masked like a log line: a path of
+// this app by its route (maskURL, as a GET), another site's with its scheme and host kept.
+func (rt *router) maskRef(ref string) string {
+	u, err := url.Parse(ref)
+	if err != nil {
+		return applog.Mask
+	}
+	if u.Host == "" && u.Scheme == "" {
+		return rt.maskURL(http.MethodGet, u)
+	}
+	return u.Scheme + "://" + u.Host + applog.MaskURL(u)
 }

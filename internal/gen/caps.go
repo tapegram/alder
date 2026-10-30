@@ -410,6 +410,7 @@ type Options struct {
 	StaticDir string                  // the directory served under /static/; "" for none
 	Reload    string                  // under alder run, the build generation; non-empty: pages subscribe to the dev server's reloads and error overlay
 	Log       func(level, msg string) // nil: no log
+	Access    func(*applog.Access)    // one call per request routed (not the health check); nil: no access log
 	Build     string                  // the build's id (ALDER_BUILD, set by alder deploy), answered by /_alder/health
 }
 
@@ -485,6 +486,7 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	}
 SILOSTORES	w := Web()
 	w.Store, w.Caps, w.Log, w.Dev, w.Secret, w.StaticDir, w.Reload = store, reg, o.Log, o.Dev, o.Secret, o.StaticDir, o.Reload
+	w.Access = o.Access
 	w.Build, w.SharedMaintenance = o.Build, shared
 SILOWEB
 	for _, m := range Migrations {
@@ -679,7 +681,10 @@ func (g *gen) sessionDefault(r *ir.RecordType) string {
 // "<name>.db", in the working directory), ALDER_SECRET, ALDER_DEV=1, ALDER_STATIC and
 // ALDER_PUBLIC_URL (rt.ResolvePublicURL, run by rt/publicurl's initialisation before package
 // app's, so top-level constants see it; a bad value exits 1 before serving; by default http://
-// and ALDER_ADDR as alder run shows it, with a port-0 address refined after Listen); static
+// and ALDER_ADDR as alder run shows it, with a port-0 address refined after Listen),
+// ALDER_LOG (debug, info, warn or error; default info) and ALDER_LOG_FORMAT (text or json;
+// default text), which pick the lines written to standard error (rt/applog: one access line per
+// request routed, the runtime's and Log.*'s lines; a bad value exits 1 before serving); static
 // files are served from ALDER_STATIC, by default the static directory next to the executable
 // (alder build copies the app's static/ there). Before serving it prints "listening on
 // <address>" with the bound address, so ALDER_ADDR=127.0.0.1:0 picks a free port that a caller
@@ -715,7 +720,11 @@ func Main(name string, withCaps, withSilos bool) []byte {
 // (http(s)://host[:port]) is the base Url.absolute puts in front of a page's URL; a bad value
 // exits 1 before anything is served, and without one the base is http:// and ALDER_ADDR (an
 // unspecified host shown as localhost; with port 0, the port Listen picked, which a top-level
-// value computed before Listen does not see). Static files are served under /static/
+// value computed before Listen does not see). ALDER_LOG (debug, info, warn or error; default
+// info) is the least level written to standard error, ALDER_LOG_FORMAT (text or json; default
+// text) the lines' shape: one line per request (method, masked URL, status, duration, bytes,
+// request id), the runtime's warnings and errors, and the app's Log.* lines; effect steps at
+// debug. A bad value exits 1 before anything is served. Static files are served under /static/
 // from ALDER_STATIC, by default the static directory next to the executable. SIGINT or SIGTERM
 // shuts the server down gracefully: requests in flight get 5 s to finish. ALDER_EXIT_ON_STDIN_EOF=1
 // (set by alder run) makes the app stop the same way when its standard input reaches EOF, so it
@@ -738,7 +747,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -747,6 +755,7 @@ import (
 	"syscall"
 	"time"
 
+	"alder/rt/applog"
 	"alder/rt/backup"
 	"alder/rt/db"
 	"alder/rt/publicurl" // sets rt.PublicURL from the environment before package app initialises
@@ -763,6 +772,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "alder:", publicurl.Err)
 		os.Exit(1)
 	}
+	lg, err := applog.FromEnv(os.Stderr) // ALDER_LOG, ALDER_LOG_FORMAT
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "alder:", err)
+		os.Exit(1)
+	}
 	static := os.Getenv("ALDER_STATIC")
 	if static == "" {
 		static = "static"
@@ -777,11 +791,8 @@ func main() {
 		StaticDir: static,
 		Reload:    os.Getenv("ALDER_RELOAD"),
 		Build:     os.Getenv("ALDER_BUILD"),
-		Log: func(level, msg string) {
-			if level != "effect" || dev { // every effect step is logged in development mode only
-				log.Printf("%s: %s", level, msg)
-			}
-		},
+		Log:       lg.Log,
+		Access:    lg.Access,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "alder:", err)
@@ -789,7 +800,7 @@ func main() {
 	}
 	stopBackup := func() {}
 	if loc := os.Getenv(backup.EnvURL); loc != "" {
-		stopBackup, err = backup.Start(dbPath, loc, backup.IntervalFromEnv(), func(level, msg string) { log.Printf("%s: %s", level, msg) })
+		stopBackup, err = backup.Start(dbPath, loc, backup.IntervalFromEnv(), lg.Log)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "alder:", err)
 			os.Exit(1)

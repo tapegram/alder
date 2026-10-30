@@ -49,7 +49,7 @@ func TestFile_WrittenVerbatim(t *testing.T) {
 	if w.Header().Get("Set-Cookie") != "" || w.Header().Get(StatusHeader) != "" {
 		t.Fatal("refused header dropped; no Alder-Status; no session cookie")
 	}
-	if !strings.Contains(logs.String(), `warn /r.csv: header "Set-Cookie" cannot be set from a page; dropped`) {
+	if !strings.Contains(logs.String(), `warn GET /r.csv: header "Set-Cookie" cannot be set from a page; dropped rid=`) {
 		t.Fatalf("a dropped header is a warn line: %q", logs.String())
 	}
 	// HEAD: the same headers, no body

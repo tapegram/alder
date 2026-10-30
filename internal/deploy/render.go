@@ -683,7 +683,9 @@ func (r *Render) mergedEnv(ctx context.Context) ([]RenderEnv, bool, error) {
 		set[PublicURLName] = r.Address() // a value set in the dashboard (a custom domain) is kept
 	}
 	for _, n := range r.Required {
-		if v := r.Getenv(n); v != "" && n != SecretName {
+		// an ALDER_ name is the runtime's (the checker refuses it in `requires`, E0030): this
+		// machine's value (a stale ALDER_PUBLIC_URL, ALDER_DEV=1) never goes to the service
+		if v := r.Getenv(n); v != "" && !strings.HasPrefix(n, "ALDER_") {
 			set[n] = v
 		}
 	}
@@ -1069,9 +1071,13 @@ func (r *Render) Info(ctx context.Context) (Info, error) {
 	return in, nil
 }
 
-// Logs writes the service's last 100 lines ("[instance] message"); with follow, the lines of
-// Render's log stream as they come, until ctx ends.
-func (r *Render) Logs(ctx context.Context, follow bool, w io.Writer) error {
+// RenderLogMax is the most lines one read of Render's log API returns.
+const RenderLogMax = 100
+
+// Logs writes the service's last n lines ("[instance] message"; at most RenderLogMax, what
+// Render's API returns at once); with follow, the lines of Render's log stream as they come,
+// until ctx ends.
+func (r *Render) Logs(ctx context.Context, follow bool, n int, w io.Writer) error {
 	if !r.have {
 		// `alder logs` has not connected (status and the deploys do): look for the service
 		if _, err := r.Connect(ctx); err != nil {
@@ -1082,7 +1088,7 @@ func (r *Render) Logs(ctx context.Context, follow bool, w io.Writer) error {
 		return refuse("", "the service %s does not exist at Render yet: deploy first", r.Service)
 	}
 	if !follow {
-		logs, err := r.API.Tail(ctx, r.owner, r.svc.ID, 100)
+		logs, err := r.API.Tail(ctx, r.owner, r.svc.ID, min(max(n, 1), RenderLogMax))
 		if err != nil {
 			return err
 		}

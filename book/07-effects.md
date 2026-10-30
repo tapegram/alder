@@ -156,14 +156,31 @@ standard library provides these; they need no declaration:
 ```alder
 Db          -- chapter 8
 Session.put : (Session -> Session) -> Task Unit
+Log.debug   : Text -> Task Unit
 Log.info    : Text -> Task Unit
 Log.warn    : Text -> Task Unit
+Log.error   : Text -> Task Unit
 Time.now    : Query Time
 Random.int  : { min: Int, max: Int } -> Task Int
 Random.id   : Task Text              -- 20-character URL-safe id
 Http.get    : { url: Text } -> Task (Result Http.HttpError Text)
 Http.post   : { url: Text, body: Text } -> Task (Result Http.HttpError Text)
 ```
+
+The four `Log` functions write a line to the app's log at their level.
+An operator chooses how much of it to keep with `ALDER_LOG` (chapter 16,
+"Operating an app"): the default, `info`, drops `Log.debug`; `warn`
+keeps only `Log.warn` and `Log.error`. A log line is kept for a long
+time and read by people who are not the user, so what goes in one is
+the app's responsibility: the runtime masks secrets in the URLs it
+logs, but it cannot know that a `Log.info` text holds an email address
+or a token. Log ids and outcomes, not the values people typed.
+
+The same goes for tokens in URLs. A reset or magic link carries a token
+the app made with `Random.id`; the log masks it only when its
+parameter's name says it is a secret, so write `page "/reset/{token}"`
+or `?token=…`, not `/reset/{t}` or `?t=…` (chapter 16, "What is never
+logged").
 
 `Http.HttpError` is the stdlib's type for a failed request: a type of a
 standard module other than the Prelude is always written qualified (a bare
@@ -393,14 +410,16 @@ The checker already makes that impossible (E0401); the runtime checks
 again so that a compiler bug can't turn a page view into a write.
 
 **Every step is traced.** Before it runs a `call`, `Run` appends the
-step's name to `Env.Trace` and logs it at level `effect`. The `Toggle`
+step's name to `Env.Trace` and logs it at level `effect` (written as a
+`debug:` line, so only under `ALDER_LOG=debug`). The `Toggle`
 above leaves the trace `["Db.getMine Todo", "Db.update Todo"]`: the
 scoped read, then the update. A scoped operation is traced as written
 (`Db.updateMine Todo`), and `Db.mine Todo` adds its own name before the
 step that runs it: `Db.mine Todo |> Db.all` traces `["Db.mine Todo",
 "Db.all Todo"]`. The `Add` arm of
 `testdata/golden/gen_effects/app/Index.alder`, which inserts a row and
-then logs, leaves `["Db.insert Todo" "Log.info"]`. The trace is the dev
+then logs at three levels, leaves `["Db.insert Todo" "Log.info"
+"Log.debug" "Log.error"]`. The trace is the dev
 log of what a request did, and what a test can compare (chapter 10).
 
 ### What a capability looks like in Go

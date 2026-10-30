@@ -504,7 +504,7 @@ var packages = map[string]string{
 	"eff": "alder/rt/eff", "db": "alder/rt/db", "context": "context", "fmt": "fmt",
 	"web": "alder/rt/web", "url": "net/url", "http": "net/http", "json": "encoding/json", "errors": "errors",
 	"strings": "strings", "reflect": "reflect", "rtesting": "alder/rt/testing", "embed": "embed",
-	"filepath": "path/filepath", "fuzz": "alder/rt/fuzz",
+	"filepath": "path/filepath", "fuzz": "alder/rt/fuzz", "applog": "alder/rt/applog",
 }
 
 // importNames are the packages whose name is not their path's last element, by path: they are

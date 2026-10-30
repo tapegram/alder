@@ -575,11 +575,17 @@ func TestEffects_Log(t *testing.T) {
 			lines = append(lines, level+": "+msg)
 		}
 	}}
-	task := eff.Bind(LogInfo("one"), func(struct{}) eff.Task[struct{}] { return LogWarn("two") })
+	task := eff.Bind(LogInfo("one"), func(struct{}) eff.Task[struct{}] {
+		return eff.Bind(LogWarn("two"), func(struct{}) eff.Task[struct{}] {
+			return eff.Bind(LogDebug("three"), func(struct{}) eff.Task[struct{}] { return LogError("four") })
+		})
+	})
+	env.Trace = nil
 	if _, err := eff.Run(env, eff.KTask, task); err != nil {
 		t.Fatal(err)
 	}
-	eq(t, "log", lines, []string{"info: one", "warn: two"})
+	eq(t, "log", lines, []string{"info: one", "warn: two", "debug: three", "error: four"})
+	eq(t, "trace", env.Trace, []string{"Log.info", "Log.warn", "Log.debug", "Log.error"})
 	if _, err := eff.Run(&eff.Env{}, eff.KTask, LogInfo("no logger")); err != nil {
 		t.Errorf("Log.info without Env.Log: %v", err)
 	}

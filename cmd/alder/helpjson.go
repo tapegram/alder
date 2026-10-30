@@ -232,8 +232,10 @@ var commandTree = []cmdSpec{
 			{Name: "--yes", Summary: "do not ask for confirmation"},
 		}},
 	{Name: "logs", Summary: "print an environment's logs", Usage: commandUsages["logs"],
-		Args:  []string{"<env>", "[dir]"},
-		Flags: []flagSpec{hostFlagSpec, {Name: "-f", Summary: "follow"}}},
+		Args: []string{"<env>", "[dir]"},
+		Flags: []flagSpec{hostFlagSpec, {Name: "-f", Summary: "follow"},
+			{Name: "-n", Value: "N", Summary: "the last N lines (default 100)"},
+			{Name: "--grep", Value: "PATTERN", Summary: "only the lines a Go regexp matches (rid=<id>: one request's)"}}},
 	{Name: "restore", Summary: "restore a database from a backup", Usage: commandUsages["restore"],
 		Args: []string{"<env>"},
 		Flags: []flagSpec{

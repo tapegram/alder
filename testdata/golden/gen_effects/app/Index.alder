@@ -42,6 +42,8 @@ update msg model session = match msg {
   Add p -> {
     let id <- Db.insert Todo { title: p.title, due: Nothing, owner: session.user }
     let _ <- Log.info "added {id}"
+    let _ <- Log.debug "debug {id}"
+    let _ <- Log.error "error {id}"
     Task.succeed (Redirect (Index { a: id, b: id }))
   },
   Toggle p -> {

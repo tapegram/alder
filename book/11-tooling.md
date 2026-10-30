@@ -488,7 +488,7 @@ error of the compiler and is reported as one, with Go's output. (If
 `build/<app>/` holds Go files alder did not write, the message names them
 instead.)
 
-The executable reads six environment variables
+The executable reads eight environment variables
 (`build/<app>/cmd/main.go`):
 
 | Variable | Meaning | Default |
@@ -499,9 +499,12 @@ The executable reads six environment variables
 | `ALDER_DEV` | `1` turns on development mode | off |
 | `ALDER_STATIC` | the directory served under `/static/` | the `static/` directory next to the executable |
 | `ALDER_PUBLIC_URL` | the site's public address, `http(s)://host[:port]`, that `Url.absolute` puts in front of a page's URL | `http://` and the address it listens on |
+| `ALDER_LOG` | the least level of the lines written to standard error: `debug`, `info`, `warn` or `error` (chapter 16, "Operating an app") | `info` |
+| `ALDER_LOG_FORMAT` | the lines' shape: `text` or `json` | `text` |
 
 Development mode shows a failed request's error text in the page (as an
-HTML comment), logs every effect step, lets a database that is not
+HTML comment), shows the dev panel (whose Trace tab has every effect
+step; `ALDER_LOG=debug` writes them to the log too), lets a database that is not
 where the app's migrations say (changed by hand, say, or, for an app
 without migrations, made for other tables) be dropped and created again,
 empty (chapter 8, "Migrations"), and accepts a missing `ALDER_SECRET`.
@@ -513,7 +516,12 @@ warn: ALDER_SECRET is not set (or shorter than 16 bytes); dev mode signs session
 listening on 127.0.0.1:8080
 ```
 
-(The `warn:` line is logged with a date and time in front.) Outside
+(The `warn:` line is logged with a date and time in front, in UTC.)
+Each request the app answers adds a line too, such as `info: GET /
+200 1.4ms 2311B rid=5f3a2c1e`; chapter 16 ("Operating an app") says
+what one holds and how to filter them. A bad `ALDER_LOG` or
+`ALDER_LOG_FORMAT` stops the server before it listens, like a bad
+`ALDER_PUBLIC_URL` below. Outside
 development mode a missing or short `ALDER_SECRET` stops the server before
 it listens:
 
@@ -1244,7 +1252,7 @@ Chapter 16 is the full account; here are the usage lines and exit codes.
 alder deploy <env> [dir] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json]
 alder status <env> [dir] [--host name]
 alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup [--yes]]
-alder logs <env> [dir] [--host name] [-f]
+alder logs <env> [dir] [--host name] [-f] [-n N] [--grep PATTERN]
 alder restore <env> [--silo key:id] [--from url] [--to time] [--out file.db] [--dir dir] [--yes]
 alder migrate silos <env> [dir] [--host name] [--allow-data-loss]
 alder silos prune <env> [dir] [--host name] [--yes]
@@ -1777,7 +1785,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0027 | a role clause the session cannot answer (`requires user, role R`): "`role` needs `user` first", "this session has no `role` field", "this session's `role` field is `Text`, not a union: write `role: Role = …` with `type Role = Reader \| Author`", "this session's `role` field is `Maybe User.Role`: the role must be a union, not `Maybe`", "`Editor` is not a constructor of this session's `role` type `User.Role` (Reader, Author, Admin)", "`role` names `Admin` twice"; a key with `via` before `user`: "`org` needs `user` first: `org` is `via Membership`, a membership of the signed-in user; write `requires user, org`" | — |
 | E0028 | a custom element (a tag with a hyphen) the manifests do not vouch for (chapter 5, "Custom elements"): "unknown element `<wa-button>`: declare custom elements in `elements/custom-elements.json` (chapter 5)"; an attribute neither declared nor on the escape list: "`<al-button>` has no attribute `tone`; it has `variant`, `size`, `disabled`, `type`" ("it declares none" for an element without attributes); a quoted value on a boolean attribute: "`<al-button>` attribute `disabled` is boolean: write `disabled` or `disabled={expr}`"; a `slot` its parent does not declare: "`<al-card>` has no slot `aside`; it has `header`, `footer`, `actions`" ("it has only the default slot", "it declares no slots"); a manifest file that does not parse, at the file: "`elements/custom-elements.json`: no `modules`" or the JSON reader's reason | — |
 | E0029 | a `page "…"` path the router cannot serve (chapter 6): "page path `//evil.com` has an empty segment; a path is `/` followed by segments of letters, digits, `.`, `_`, `~`, `-` or `{param}`"; likewise "has a space", "has a query (`?`)", "has a fragment (`#`)", "has the character `\`", "has the segment `..`, which a browser resolves away", "has the segment `a{id}`, which is neither a name nor a whole `{param}`". A trailing `/` is allowed. `alder new page` and `alder new admin --path` refuse the same paths | — |
-| E0030 | a `deploy` declaration `alder deploy` cannot use (chapter 16): "unknown deploy target `Heroku` in environment `production`: a target is `Ssh`, `Fly` or `Script`", "environment `production` (Ssh) has no `domain`" (likewise `path`, and `app` for `Fly`), "a `requires` name is empty", "`floor` is 1.5, outside 0..1: it is a mutation score", "environment `production` is declared twice in `deploy`", "`deploy` is declared once", "`deploy` is only allowed in `App`"; a target's text outside its character set (an `Ssh` host, user or domain with another character or beginning with `-`, a `path` with a control character, `"`, `\`, `$`, `` ` ``, `%` or `..`, a `Fly` region that is not a three-letter code, an `app` that is not lowercase letters, digits and `-`); and the file carries no secret: "a secret belongs in the environment, not in `App`: name it in `requires`" for a text with a password in a URL (`scheme://user:pass@host`), beginning `sk_`, `ghp_`, `AKIA`, `xoxb-`, `xoxp-` or `-----BEGIN`, or of 32 or more base64 or hex characters without a space (a path is never taken for one) | — |
+| E0030 | a `deploy` declaration `alder deploy` cannot use (chapter 16): "unknown deploy target `Heroku` in environment `production`: a target is `Ssh`, `Fly` or `Script`", "environment `production` (Ssh) has no `domain`" (likewise `path`, and `app` for `Fly`), "a `requires` name is empty", "`requires` cannot name `ALDER_PUBLIC_URL`: `ALDER_` variables are the runtime's own…" (a deploy copies a required variable's local value to the target), "`floor` is 1.5, outside 0..1: it is a mutation score", "environment `production` is declared twice in `deploy`", "`deploy` is declared once", "`deploy` is only allowed in `App`"; a target's text outside its character set (an `Ssh` host, user or domain with another character or beginning with `-`, a `path` with a control character, `"`, `\`, `$`, `` ` ``, `%` or `..`, a `Fly` region that is not a three-letter code, an `app` that is not lowercase letters, digits and `-`); and the file carries no secret: "a secret belongs in the environment, not in `App`: name it in `requires`" for a text with a password in a URL (`scheme://user:pass@host`), beginning `sk_`, `ghp_`, `AKIA`, `xoxb-`, `xoxp-` or `-----BEGIN`, or of 32 or more base64 or hex characters without a space (a path is never taken for one) | — |
 | E0031 | a `Task` that writes to two stores (chapter 8, "Partitions and silos"): "`Create` writes `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. Write `AuditLog` inside the silo, or send it from its own message."; two silos: "… `Board` (silo `team`): a Task writes to one store. Send one of the writes from its own message."; the arm is named by its constructor, "the `_` arm", or "`update`" when the update is not a `match` on its message | — |
 | E0032 | a partition declaration the rules refuse: "`@partition org` needs a session field `org` of type `Maybe Org.OrgId`", "`@partition org` must mark a `@ref` column; `name` is `Text` without `@ref`", "a table has one partition column: `Board` marks `org` and `owner`", "`@partition` needs a session: …"; `via`: "`via Seat`: `Seat` needs exactly one `@ref User` column and one `@ref Org` column; it has 0 and 1", "`org` is `via Membership`, which needs a session field `user`: a membership is a user's", "`user` cannot be `via` a table: …"; `choose`: "`org` is `via Membership` and `Projects` `requires org`: `App` needs `choose org = Page`, …", "`choose org = Picker`: `Picker` `requires org` itself, …", "`choose user`: the signed-in user is chosen by `login`; …" | — |
 | E0033 | a `silo` the rules refuse: "`Note` is in `silo org` but is not partitioned by `org`", "`AuditLog.project` refers to `Project`, which lives in `silo org`: a shared table cannot point into a silo", "`Board.team` refers to `Team`, which lives in `silo team`: `Board` lives in `silo org`, and a table cannot point into another silo", "`Board` is in `silo org` and `silo team`: a table lives in one store", "`silo org` is declared twice: …"; the admin form `requires user, role Admin, silo org`: "`silo org` needs a role check: …", "`silo org` takes `org` from the page's parameter: add `org: Org.OrgId` to the page's parameters" | — |

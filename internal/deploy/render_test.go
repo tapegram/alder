@@ -603,15 +603,18 @@ func TestRender_EnvPublicURL(t *testing.T) {
 	if !strings.Contains(s.out.String(), "ALDER_PUBLIC_URL of blog set to the service's address") {
 		t.Errorf("suffixed: transcript:\n%s", s.out.String())
 	}
-	// a `requires` ALDER_PUBLIC_URL set here is the operator's: not corrected
+	// an ALDER_ name in `requires` (refused by the checker, E0030) is never copied from this
+	// machine: a stale local ALDER_PUBLIC_URL, or ALDER_DEV=1, does not reach the service
 	o := newRenderRig(t)
 	o.render.URLSuffix = "-x1y2"
-	t.Setenv("ALDER_PUBLIC_URL", "https://www.example.com")
+	t.Setenv("ALDER_PUBLIC_URL", "http://localhost:8080")
+	t.Setenv("ALDER_DEV", "1")
 	r := o.target()
-	r.Required = append(r.Required, "ALDER_PUBLIC_URL")
+	r.Required = append(r.Required, "ALDER_PUBLIC_URL", "ALDER_DEV")
 	o.mustDeploy(r)
-	if got := envOf(o.render.Service("blog"))["ALDER_PUBLIC_URL"]; got != "https://www.example.com" || count(o.render.Requests(), "PUT /services/") != 0 {
-		t.Errorf("operator's value: %q, requests %v", got, nonGET(o.render.Requests()))
+	oenv := envOf(o.render.Service("blog"))
+	if got := oenv["ALDER_PUBLIC_URL"]; got != o.render.URL+"/svc/blog-x1y2" {
+		t.Errorf("a local ALDER_PUBLIC_URL reached the service: %q", got)
 	}
 
 	k := newRenderRig(t)
@@ -1100,7 +1103,7 @@ func TestRender_NoSecretsInOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	var logs bytes.Buffer
-	if err := g.connected().Logs(ctx, false, &logs); err != nil {
+	if err := g.connected().Logs(ctx, false, 100, &logs); err != nil {
 		t.Fatal(err)
 	}
 	g.texts = append(g.texts, st.String(), logs.String())
@@ -1147,21 +1150,38 @@ func TestRender_Logs(t *testing.T) {
 	g.mustDeploy(g.target())
 	g.render.Logs(renderLogLines...)
 	var w bytes.Buffer
-	if err := g.connected().Logs(context.Background(), false, &w); err != nil {
+	if err := g.connected().Logs(context.Background(), false, 100, &w); err != nil {
 		t.Fatal(err)
 	}
 	g.texts = append(g.texts, w.String())
 	if w.String() != "[srv-a1] listening on :10000\n[srv-a1] boom: the mail server is unreachable\n" {
 		t.Errorf("logs:\n%s", w.String())
 	}
-	var q string
-	for _, c := range g.render.Calls() {
-		if c.Path == "/logs" {
-			q = c.Query.Get("limit")
+	limit := func() string {
+		var q string
+		for _, c := range g.render.Calls() {
+			if c.Path == "/logs" {
+				q = c.Query.Get("limit")
+			}
 		}
+		return q
 	}
-	if q != "100" {
+	if q := limit(); q != "100" {
 		t.Errorf("limit %q", q)
+	}
+	// -n 1: Render is asked for the last line; more than Render gives (100) is asked as 100
+	w.Reset()
+	if err := g.connected().Logs(context.Background(), false, 1, &w); err != nil {
+		t.Fatal(err)
+	}
+	if q := limit(); q != "1" || w.String() != "[srv-a1] boom: the mail server is unreachable\n" {
+		t.Errorf("-n 1: limit %q, logs:\n%s", q, w.String())
+	}
+	if err := g.connected().Logs(context.Background(), false, 500, &w); err != nil {
+		t.Fatal(err)
+	}
+	if q := limit(); q != "100" {
+		t.Errorf("-n 500: limit %q", q)
 	}
 }
 
@@ -1175,7 +1195,7 @@ func TestRender_LogsFollow(t *testing.T) {
 	defer cancel()
 	var w syncBuffer
 	done := make(chan error, 1)
-	go func() { done <- r.Logs(ctx, true, &w) }()
+	go func() { done <- r.Logs(ctx, true, 100, &w) }()
 	want := "[srv-a1] listening on :10000\n[srv-a1] boom: the mail server is unreachable\n"
 	deadline := time.Now().Add(5 * time.Second)
 	for w.String() != want && time.Now().Before(deadline) {

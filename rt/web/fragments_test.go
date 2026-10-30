@@ -246,7 +246,7 @@ func TestRerender_BeforePanicMorphsBody(t *testing.T) {
 	if !isBodyMorph(t, w) || w.Header().Get(StatusHeader) != "" || !strings.Contains(w.Body.String(), `<li id="row-1" class="done">`) {
 		t.Fatalf("%q", w.Body.String())
 	}
-	if len(logged) != 1 || !strings.Contains(logged[0], "error POST /_m/R/Toggle: rendering the page before the message: before") {
+	if len(logged) != 1 || !strings.Contains(logged[0], "error POST /_m/R/Toggle?id=1: rendering the page before the message: before") {
 		t.Fatalf("logged %q", logged)
 	}
 }
@@ -340,5 +340,24 @@ func TestRerender_RepairedMarkupMorphsBody(t *testing.T) {
 	w := serveRaw(h, req)
 	if !isBodyMorph(t, w) || !strings.Contains(w.Body.String(), `<p id="msg">2<div>x</div></p>`) {
 		t.Fatalf("%q", w.Body.String())
+	}
+}
+
+// The before-render panic's log line masks a Sensitive path parameter and carries the request id.
+func TestRerender_BeforePanicLineIsMasked(t *testing.T) {
+	a := newFrApp(3)
+	routes := append(a.routes(), Route{Method: "POST", Pattern: "/_m/R/Reset/{token}", Handle: func(rq *Request) Response {
+		resp := PageResponse(a.view(a.done, a.heading), &html.FormState{}, nil, true)
+		resp.Before = func() html.Node { panic("before") }
+		return resp
+	}})
+	var logged []string
+	opts := testOpts(func(o *Options) { o.Log = func(level, msg string) { logged = append(logged, level+" "+msg) } })
+	req := httptest.NewRequest("POST", "/_m/R/Reset/hunter2secret", nil)
+	req.Header.Set("Datastar-Request", "true")
+	req.Header.Set(html.ShownHeader, shownNow(t, a, testOpts(nil)))
+	serveRaw(NewRouter(routes, opts), req)
+	if len(logged) != 1 || strings.Contains(logged[0], "hunter2secret") || !strings.Contains(logged[0], "/_m/R/Reset/••••: rendering the page before the message: before") || !strings.Contains(logged[0], " rid=") {
+		t.Fatalf("logged %q", logged)
 	}
 }

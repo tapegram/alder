@@ -10,6 +10,7 @@ import (
 	"alder/internal/diag"
 	"alder/internal/registry"
 	"alder/internal/syntax"
+	"alder/rt/applog"
 )
 
 // The `deploy` declaration (chapter 16). It is data for `alder deploy`: the checker only refuses
@@ -96,13 +97,17 @@ func (mc *modCtx) deployField(f *syntax.DeployField) {
 				continue
 			}
 			switch {
-			case looksSecret(e.Str): // reported once, by deploySecrets, without the value
+			case applog.LooksSecret(e.Str): // reported once, by deploySecrets, without the value
 			case strings.TrimSpace(e.Str) == "" && f.Name == "requires":
 				c.errorf(diag.DeployDecl, e.Span, "a `requires` name is empty: name an environment variable such as \"SMTP_URL\"")
 			case strings.TrimSpace(e.Str) == "":
 				c.errorf(diag.DeployDecl, e.Span, "a `checks` command is empty")
 			case f.Name == "requires" && !envName(e.Str):
 				c.errorf(diag.DeployDecl, e.Span, "a `requires` entry must be an environment variable name (letters, digits, `_`)")
+			case f.Name == "requires" && strings.HasPrefix(e.Str, "ALDER_"):
+				// a deploy copies a required variable's local value to the target (Render's
+				// environment): a stale ALDER_PUBLIC_URL, or ALDER_DEV=1, would change the app
+				c.errorf(diag.DeployDecl, e.Span, "`requires` cannot name `%s`: `ALDER_` variables are the runtime's own, set by `alder deploy` or in the target's environment, and a deploy copies a required variable's local value there (`ALDER_DEV=1` would turn on development mode in production)", e.Str)
 			}
 		}
 	case "backup":
@@ -241,11 +246,11 @@ var renderPlanChars = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
 // renderCharacters reports a Render target's region or plan outside what Render takes (E0030).
 func (c *Checker) renderCharacters(v *syntax.DeployValue) {
-	if a := v.Arg; a != nil && strings.TrimSpace(a.Str) != "" && !looksSecret(a.Str) && !slices.Contains(renderRegions, a.Str) {
+	if a := v.Arg; a != nil && strings.TrimSpace(a.Str) != "" && !applog.LooksSecret(a.Str) && !slices.Contains(renderRegions, a.Str) {
 		c.errorf(diag.DeployDecl, a.Span, "the region of `Render` is one of Render's: `oregon`, `ohio`, `virginia`, `frankfurt` or `singapore`")
 	}
 	for _, rf := range v.Rec {
-		if rf.Name == "plan" && rf.Value != nil && rf.Value.Kind == "string" && strings.TrimSpace(rf.Value.Str) != "" && !looksSecret(rf.Value.Str) && !renderPlanChars.MatchString(rf.Value.Str) {
+		if rf.Name == "plan" && rf.Value != nil && rf.Value.Kind == "string" && strings.TrimSpace(rf.Value.Str) != "" && !applog.LooksSecret(rf.Value.Str) && !renderPlanChars.MatchString(rf.Value.Str) {
 			c.errorf(diag.DeployDecl, rf.Value.Span, "`plan` is Render's plan name, such as \"starter\", or a compute spec such as \"1c-2g\": lowercase letters, digits, `-` and `_`")
 		}
 	}
@@ -268,7 +273,7 @@ func (mc *modCtx) deployImage(v *syntax.DeployValue) {
 	switch {
 	case strings.TrimSpace(s) == "":
 		bad("`image` is empty: name the registry path, `image: \"ghcr.io/<owner>/<app>\"`")
-	case looksSecret(s): // reported once, by deploySecrets
+	case applog.LooksSecret(s): // reported once, by deploySecrets
 	case strings.Contains(s, "@"):
 		bad("`image` carries a credential: it is the registry path, without a tag: the build id is the tag (the registry login is set in the environment, not in `App`)")
 	case strings.Contains(s, ":"):
@@ -322,7 +327,7 @@ func (mc *modCtx) deployDatabase(env string, v *syntax.DeployValue) {
 	}
 	if v.Arg == nil || strings.TrimSpace(v.Arg.Str) == "" {
 		c.errorf(diag.DeployDecl, v.Span, "`Turso` needs its organization as text, such as `Turso \"acme\" { app: \"blog\" }`")
-	} else if !looksSecret(v.Arg.Str) && !tursoNameChars.MatchString(v.Arg.Str) {
+	} else if !applog.LooksSecret(v.Arg.Str) && !tursoNameChars.MatchString(v.Arg.Str) {
 		c.errorf(diag.DeployDecl, v.Arg.Span, "the organization of `Turso` is a Turso organization name: lowercase letters, digits and `-`")
 	}
 	have := map[string]bool{}
@@ -340,7 +345,7 @@ func (mc *modCtx) deployDatabase(env string, v *syntax.DeployValue) {
 			switch {
 			case rf.Value.Kind != "string":
 				c.errorf(diag.DeployDecl, rf.Value.Span, "`%s` is text", rf.Name)
-			case looksSecret(rf.Value.Str): // reported once, by deploySecrets
+			case applog.LooksSecret(rf.Value.Str): // reported once, by deploySecrets
 			case !tursoNameChars.MatchString(rf.Value.Str):
 				c.errorf(diag.DeployDecl, rf.Value.Span, "`%s` is a Turso name: lowercase letters, digits and `-`, not at either end", rf.Name)
 			case rf.Name == "app" && len(rf.Value.Str) > 24:
@@ -368,11 +373,11 @@ var (
 
 // flyCharacters reports a Fly target's region or app outside its character set (E0030).
 func (c *Checker) flyCharacters(v *syntax.DeployValue) {
-	if a := v.Arg; a != nil && strings.TrimSpace(a.Str) != "" && !looksSecret(a.Str) && !flyRegionChars.MatchString(a.Str) {
+	if a := v.Arg; a != nil && strings.TrimSpace(a.Str) != "" && !applog.LooksSecret(a.Str) && !flyRegionChars.MatchString(a.Str) {
 		c.errorf(diag.DeployDecl, a.Span, "the region of `Fly` is Fly's three-letter code, such as \"ord\" (`fly platform regions` lists them)")
 	}
 	for _, rf := range v.Rec {
-		if rf.Name == "app" && rf.Value != nil && rf.Value.Kind == "string" && strings.TrimSpace(rf.Value.Str) != "" && !looksSecret(rf.Value.Str) && !flyAppChars.MatchString(rf.Value.Str) {
+		if rf.Name == "app" && rf.Value != nil && rf.Value.Kind == "string" && strings.TrimSpace(rf.Value.Str) != "" && !applog.LooksSecret(rf.Value.Str) && !flyAppChars.MatchString(rf.Value.Str) {
 			c.errorf(diag.DeployDecl, rf.Value.Span, "`app` is a Fly app name: lowercase letters, digits and `-`, not beginning with `-`")
 		}
 	}
@@ -389,11 +394,11 @@ var (
 // sshCharacters reports an Ssh target's host, user, domain or path outside its character set
 // (E0030): a host, user or domain beginning with `-` would read as an option.
 func (c *Checker) sshCharacters(v *syntax.DeployValue) {
-	if a := v.Arg; a != nil && strings.TrimSpace(a.Str) != "" && !looksSecret(a.Str) && (!sshHostChars.MatchString(a.Str) || strings.HasPrefix(a.Str, "-")) {
+	if a := v.Arg; a != nil && strings.TrimSpace(a.Str) != "" && !applog.LooksSecret(a.Str) && (!sshHostChars.MatchString(a.Str) || strings.HasPrefix(a.Str, "-")) {
 		c.errorf(diag.DeployDecl, a.Span, "the host of `Ssh` is a host name or `user@host`, such as \"deploy@box.example.com\": letters, digits, `.`, `-`, `_`, `@` (and `:`, `[`, `]` for an address), not beginning with `-`")
 	}
 	for _, rf := range v.Rec {
-		if rf.Value == nil || rf.Value.Kind != "string" || strings.TrimSpace(rf.Value.Str) == "" || looksSecret(rf.Value.Str) {
+		if rf.Value == nil || rf.Value.Kind != "string" || strings.TrimSpace(rf.Value.Str) == "" || applog.LooksSecret(rf.Value.Str) {
 			continue // a secret is reported as one (deploySecrets)
 		}
 		str := rf.Value.Str
@@ -423,7 +428,7 @@ func (mc *modCtx) deploySecrets(v *syntax.DeployValue) {
 	}
 	switch v.Kind {
 	case "string":
-		if looksSecret(v.Str) {
+		if applog.LooksSecret(v.Str) {
 			mc.c.errorf(diag.DeployDecl, v.Span, "a secret belongs in the environment, not in `App`: name it in `requires`").NoSource = true
 		}
 	case "list":
@@ -436,35 +441,6 @@ func (mc *modCtx) deploySecrets(v *syntax.DeployValue) {
 			mc.deploySecrets(rf.Value)
 		}
 	}
-}
-
-// looksSecret: a URL with a password (`scheme://user:pass@host`), a text beginning like a known
-// key (`sk_`, `ghp_`, `AKIA`, `xoxb-`, `xoxp-`, `-----BEGIN`), or 32 or more base64 or hex
-// characters without a space. A path (starting `/` or `./`, or with a `/` and no `=` or `+`) is never taken for the last kind.
-func looksSecret(s string) bool {
-	if i := strings.Index(s, "://"); i >= 0 {
-		auth := s[i+3:]
-		if j := strings.IndexAny(auth, "/?#"); j >= 0 {
-			auth = auth[:j]
-		}
-		if at := strings.LastIndex(auth, "@"); at >= 0 && strings.Contains(auth[:at], ":") {
-			return true
-		}
-	}
-	for _, p := range []string{"sk_", "ghp_", "AKIA", "xoxb-", "xoxp-", "-----BEGIN"} {
-		if strings.HasPrefix(s, p) {
-			return true
-		}
-	}
-	if len(s) >= 32 && !strings.HasPrefix(s, "/") && !strings.HasPrefix(s, "./") && !(strings.Contains(s, "/") && !strings.ContainsAny(s, "=+")) {
-		for _, r := range s {
-			if !(r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '+' || r == '/' || r == '=') {
-				return false
-			}
-		}
-		return true
-	}
-	return false
 }
 
 // deployFilesWithoutBlock warns (W0009, #25) when `alder deploy init` files (render.yaml,

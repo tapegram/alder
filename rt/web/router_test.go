@@ -716,7 +716,7 @@ func TestRouter_BadQueryIs400(t *testing.T) {
 	if !strings.Contains(body, `&#34;faults&#34; holds a raw &#34;;&#34;: encode it as %3B`) || strings.Contains(body, "seed") {
 		t.Fatalf("body %q", body)
 	}
-	if len(logs) != 1 || !strings.HasPrefix(logs[0], "warn: GET /start: ") || !strings.Contains(logs[0], `"faults"`) {
+	if len(logs) != 1 || !strings.HasPrefix(logs[0], "warn: GET /start?faults=••••&seed=3: ") || !strings.Contains(logs[0], `"faults"`) {
 		t.Fatalf("logs %q", logs)
 	}
 

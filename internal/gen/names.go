@@ -151,7 +151,7 @@ func init() {
 		any append bool byte cap clear close comparable complex complex64 complex128 copy delete
 		error false float32 float64 imag int int8 int16 int32 int64 iota len make max min new nil
 		panic print println real recover rune string true uint uint8 uint16 uint32 uint64 uintptr
-		rt html std time math eff db context fmt url web http json errors strings reflect rtesting fuzz`) {
+		rt html std time math eff db context fmt url web http json errors strings reflect rtesting fuzz applog`) {
 		reserved[s] = true
 	}
 }

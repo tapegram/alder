@@ -124,7 +124,11 @@ func Index__update(msg Index__Msg, model Index__Model, session Index__Session) e
 			return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Todo__Todo, insertvals__Todo__Todo(insert__Todo__Todo{Title: p.Title, Done: false, Due: rt.Nothing[rt.Date](), Owner: session.User}), _e1.Now())
 		}), func(id string) eff.Task[rt.Nav] {
 			return eff.Bind(std.LogInfo(rt.Concat("added ", id)), func(_ struct{}) eff.Task[rt.Nav] {
-				return eff.Pure(rt.Redirect(rt.Page{Path: rt.Concat("/pair/", rt.PathSegment(id), "/", rt.PathSegment(id))}))
+				return eff.Bind(std.LogDebug(rt.Concat("debug ", id)), func(_ struct{}) eff.Task[rt.Nav] {
+					return eff.Bind(std.LogError(rt.Concat("error ", id)), func(_ struct{}) eff.Task[rt.Nav] {
+						return eff.Pure(rt.Redirect(rt.Page{Path: rt.Concat("/pair/", rt.PathSegment(id), "/", rt.PathSegment(id))}))
+					})
+				})
 			})
 		})
 	case is__Index__Msg__Toggle:
