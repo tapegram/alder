@@ -219,3 +219,130 @@ func ListGroupBy[A any](key func(A) string, xs []A) rt.Dict[string, []A] {
 	}
 	return d
 }
+
+// ListIndexedMap maps with the zero-based index.
+func ListIndexedMap[A, B any](f func(int64, A) B, xs []A) []B {
+	out := make([]B, len(xs))
+	for i, x := range xs {
+		out[i] = f(int64(i), x)
+	}
+	return out
+}
+
+// ListMap2 stops at the shorter list.
+func ListMap2[A, B, C any](f func(A, B) C, xs []A, ys []B) []C {
+	out := make([]C, min(len(xs), len(ys)))
+	for i := range out {
+		out[i] = f(xs[i], ys[i])
+	}
+	return out
+}
+
+// ListMap3 stops at the shortest list.
+func ListMap3[A, B, C, D any](f func(A, B, C) D, xs []A, ys []B, zs []C) []D {
+	out := make([]D, min(len(xs), len(ys), len(zs)))
+	for i := range out {
+		out[i] = f(xs[i], ys[i], zs[i])
+	}
+	return out
+}
+
+// ListFoldr folds from the right: f xn acc, then f xn-1 that, ...
+func ListFoldr[A, B any](f func(A, B) B, acc B, xs []A) B {
+	for i := len(xs) - 1; i >= 0; i-- {
+		acc = f(xs[i], acc)
+	}
+	return acc
+}
+
+func ListConcatMap[A, B any](f func(A) []B, xs []A) []B {
+	out := []B{}
+	for _, x := range xs {
+		out = append(out, f(x)...)
+	}
+	return out
+}
+
+func ListIntersperse[A any](sep A, xs []A) []A {
+	out := make([]A, 0, max(2*len(xs)-1, 0))
+	for i, x := range xs {
+		if i > 0 {
+			out = append(out, sep)
+		}
+		out = append(out, x)
+	}
+	return out
+}
+
+// ListPartition splits by the predicate; both halves keep input order.
+func ListPartition[A any](f func(A) bool, xs []A) struct {
+	Yes []A
+	No  []A
+} {
+	r := struct {
+		Yes []A
+		No  []A
+	}{[]A{}, []A{}}
+	for _, x := range xs {
+		if f(x) {
+			r.Yes = append(r.Yes, x)
+		} else {
+			r.No = append(r.No, x)
+		}
+	}
+	return r
+}
+
+// ListTail drops the first element (Nothing for an empty list); the result is a copy.
+func ListTail[A any](xs []A) rt.Maybe[[]A] {
+	if len(xs) == 0 {
+		return rt.Nothing[[]A]()
+	}
+	return rt.Just(append([]A{}, xs[1:]...))
+}
+
+// ListRepeat makes n copies of x (none for n <= 0).
+func ListRepeat[A any](n int64, x A) []A {
+	if n <= 0 {
+		return []A{}
+	}
+	out := make([]A, n)
+	for i := range out {
+		out[i] = x
+	}
+	return out
+}
+
+func extreme[T cmp.Ordered](xs []T, better func(a, b T) bool) rt.Maybe[T] {
+	if len(xs) == 0 {
+		return rt.Nothing[T]()
+	}
+	m := xs[0]
+	for _, x := range xs[1:] {
+		if better(x, m) {
+			m = x
+		}
+	}
+	return rt.Just(m)
+}
+
+func ListMaximum(xs []int64) rt.Maybe[int64] {
+	return extreme(xs, func(a, b int64) bool { return a > b })
+}
+
+func ListMinimum(xs []int64) rt.Maybe[int64] {
+	return extreme(xs, func(a, b int64) bool { return a < b })
+}
+
+// ListMaximumFloat orders NaN lowest (as cmp.Compare does), so it only wins in an all-NaN list.
+func ListMaximumFloat(xs []float64) rt.Maybe[float64] {
+	return extreme(xs, func(a, b float64) bool { return cmp.Compare(a, b) > 0 })
+}
+
+// ListMinimumFloat orders NaN lowest (as cmp.Compare does), so a NaN element is the minimum.
+func ListMinimumFloat(xs []float64) rt.Maybe[float64] {
+	return extreme(xs, func(a, b float64) bool { return cmp.Compare(a, b) < 0 })
+}
+
+// ListSortByFloat sorts ascending by key; equal keys keep their order, NaN keys sort first.
+func ListSortByFloat[A any](key func(A) float64, xs []A) []A { return sortByKey(key, xs) }

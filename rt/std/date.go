@@ -90,3 +90,61 @@ func TimeAgo(now, then time.Time) string {
 	}
 	return "just now"
 }
+
+// DateFromParts builds a Date from year, month and day; an impossible date is
+// Nothing (no normalisation: month 13 is not January).
+func DateFromParts(p struct{ Year, Month, Day int64 }) rt.Maybe[rt.Date] {
+	if p.Month < 1 || p.Month > 12 || p.Day < 1 || p.Day > 31 {
+		return rt.Nothing[rt.Date]()
+	}
+	t := time.Date(int(p.Year), time.Month(p.Month), int(p.Day), 0, 0, 0, 0, time.UTC)
+	if int64(t.Year()) != p.Year || int64(t.Month()) != p.Month || int64(t.Day()) != p.Day {
+		return rt.Nothing[rt.Date]()
+	}
+	return rt.Just(rt.DateOf(t))
+}
+
+// DateToParts is the year, month and day of d.
+func DateToParts(d rt.Date) struct{ Year, Month, Day int64 } {
+	return struct{ Year, Month, Day int64 }{int64(d.Y), int64(d.M), int64(d.D)}
+}
+
+// DateEpoch is `Date.epoch`: 1970-01-01.
+func DateEpoch() rt.Date { return rt.Date{Y: 1970, M: 1, D: 1} }
+
+// DateWeekday is the ISO weekday of d: 1 = Monday … 7 = Sunday.
+func DateWeekday(d rt.Date) int64 {
+	w := int64(d.Time().Weekday())
+	if w == 0 {
+		return 7
+	}
+	return w
+}
+
+// DateAddMonths moves d by n months, clamping the day to the target month's
+// length (Jan 31 + 1 month = Feb 28/29). It avoids AddDate, which normalises.
+func DateAddMonths(n int64, d rt.Date) rt.Date {
+	total := int64(d.Y)*12 + int64(d.M) - 1 + n
+	y := dateFloorDiv(total, 12)
+	m := total - y*12 + 1
+	last := int64(time.Date(int(y), time.Month(m)+1, 0, 0, 0, 0, 0, time.UTC).Day())
+	day := int64(d.D)
+	if day > last {
+		day = last
+	}
+	return rt.Date{Y: int(y), M: int(m), D: int(day)}
+}
+
+// DateAddYears is DateAddMonths (12 * n): Feb 29 becomes Feb 28 in a non-leap year.
+func DateAddYears(n int64, d rt.Date) rt.Date { return DateAddMonths(12*n, d) }
+
+// TimeFromDate is midnight UTC at the start of d.
+func TimeFromDate(d rt.Date) time.Time { return d.Time() }
+
+func dateFloorDiv(a, b int64) int64 {
+	q := a / b
+	if a%b != 0 && (a < 0) != (b < 0) {
+		q--
+	}
+	return q
+}

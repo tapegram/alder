@@ -4,3 +4,13 @@ module Bytes
 length : Bytes -> Int
 -- Just when the bytes are valid UTF-8
 toText : Bytes -> Maybe Text
+empty : Bytes
+isEmpty : Bytes -> Bool
+-- same index rules as Text.slice, in bytes
+slice : Int -> Int -> Bytes -> Bytes
+append : Bytes -> Bytes -> Bytes
+concat : List Bytes -> Bytes
+-- each 0..255
+toList : Bytes -> List Int
+-- the low eight bits of each Int
+fromList : List Int -> Bytes

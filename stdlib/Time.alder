@@ -9,3 +9,4 @@ toMillis : Time -> Int
 fromMillis : Int -> Time
 addMillis : Int -> Time -> Time
 diffMillis : Time -> Time -> Int -- Time.diffMillis a b returns b − a
+fromDate : Date -> Time -- midnight UTC

@@ -429,7 +429,7 @@ module.exports = grammar({
 
     negative_number: ($) => seq('-', choice($.integer, $.float)),
     integer: ($) => /[0-9]+/,
-    float: ($) => /[0-9]+\.[0-9]+/,
+    float: ($) => /[0-9]+(\.[0-9]+)?[eE][+-]?[0-9]+|[0-9]+\.[0-9]+/,
     boolean: ($) => choice('True', 'False'),
     hole: ($) => /\?[a-zA-Z0-9_]*/,
 

@@ -31,7 +31,23 @@ List.concat   : List (List a) -> List a
 List.append   : List a -> List a -> List a    -- same as ++
 List.unique   : List a -> List a
 List.groupBy  : (a -> Text) -> List a -> Dict Text (List a)
+List.indexedMap : (Int -> a -> b) -> List a -> List b
+List.map2 : (a -> b -> c) -> List a -> List b -> List c
+List.map3 : (a -> b -> c -> d) -> List a -> List b -> List c -> List d
+List.foldr : (a -> b -> b) -> b -> List a -> b
+List.concatMap : (a -> List b) -> List a -> List b
+List.intersperse : a -> List a -> List a
+List.partition : (a -> Bool) -> List a -> { yes: List a, no: List a }
+List.tail : List a -> Maybe (List a)
+List.repeat : Int -> a -> List a
+List.maximum : List Int -> Maybe Int
+List.minimum : List Int -> Maybe Int
+List.maximumFloat : List Float -> Maybe Float
+List.minimumFloat : List Float -> Maybe Float
+List.sortByFloat : (a -> Float) -> List a -> List a
 ```
+
+`List.partition` returns a record with a `yes` field (the elements that satisfy the test) and a `no` field, each in input order. `List.map2` and `List.map3` stop at the shortest list.
 
 ```alder eval=[10, 30, 50]
 List.range 1 5
@@ -88,6 +104,22 @@ Text.fromFloat : Float -> Text
 Text.toInt     : Text -> Maybe Int
 Text.toFloat   : Text -> Maybe Float
 Text.toBytes   : Text -> Bytes               -- the UTF-8 bytes (chapter 9, "File, Bytes")
+Text.padLeft   : Int -> Text -> Text -> Text -- Text.padLeft 2 "0" "7" == "07"
+Text.padRight  : Int -> Text -> Text -> Text
+Text.left      : Int -> Text -> Text         -- first n code points
+Text.right     : Int -> Text -> Text         -- last n code points
+Text.dropLeft  : Int -> Text -> Text
+Text.dropRight : Int -> Text -> Text
+Text.repeat    : Int -> Text -> Text
+Text.reverse   : Text -> Text
+Text.trimLeft  : Text -> Text
+Text.trimRight : Text -> Text
+Text.concat    : List Text -> Text           -- Text.join ""
+Text.lines     : Text -> List Text
+Text.words     : Text -> List Text
+Text.indexes   : Text -> Text -> List Int    -- Text.indexes needle haystack
+Text.toCodePoints   : Text -> List Int
+Text.fromCodePoints : List Int -> Text
 Text.NonEmpty, Text.Email, Text.Url, Text.Secret   -- refinement brands
 ```
 
@@ -111,6 +143,15 @@ shortest decimal that reads back as the same number, never an exponent
 not-a-number is `"NaN"`. `Text.toInt` and `Text.toFloat` give `Nothing`
 for anything else than a plain decimal number (spaces, overflow, `"NaN"`).
 
+`Text.padLeft n pad s` makes `s` at least `n` code points long: a pad of
+several characters is repeated and cut at the outer edge, so
+`Text.padLeft 5 "ab" "x"` is `"ababx"`, and `s` itself is never cut.
+`Text.lines` splits on `\n`, removes a `\r` before it (so `\r\n` text works)
+and drops the empty line after a final newline: `Text.lines "a\nb\n"` is
+`["a", "b"]`. `Text.indexes needle haystack` lists every code-point offset
+where `needle` starts, overlapping matches included (`Text.indexes "aa" "aaa"`
+is `[0, 1]`). There is no `toChars`: `Text.split "" s` gives the characters.
+
 ```alder eval=["de", "2", "3.5"]
 [Text.slice (-3) (-1) "abcdef", Text.fromFloat 2.0, Text.fromFloat 3.5]
 ```
@@ -123,6 +164,7 @@ Int.min      : Int -> Int -> Int
 Int.max      : Int -> Int -> Int
 Int.abs      : Int -> Int
 Int.clamp    : { min: Int, max: Int } -> Int -> Int
+Int.pow      : Int -> Int -> Int                -- Int.pow base exponent
 Int.Positive, Int.NonNegative                -- refinement brands
 
 Float.round  : Float -> Int
@@ -134,11 +176,27 @@ Float.sqrt   : Float -> Float
 Float.exp    : Float -> Float
 Float.log    : Float -> Float                   -- natural logarithm
 Float.pow    : Float -> Float -> Float          -- Float.pow base exponent
+Float.truncate   : Float -> Int                 -- rounds toward zero
+Float.clamp      : { min: Float, max: Float } -> Float -> Float
+Float.pi, Float.e                               -- Float constants
+Float.isNaN, Float.isInfinite : Float -> Bool
+Float.logBase    : Float -> Float -> Float      -- Float.logBase base x
+Float.sin, Float.cos, Float.tan, Float.asin, Float.acos, Float.atan : Float -> Float
+Float.atan2      : Float -> Float -> Float      -- Float.atan2 y x
 ```
 
 `Int` arithmetic wraps on overflow; `/` truncates toward zero and `%` has
 the dividend's sign; an `Int` division or remainder by zero is a runtime
 failure (chapter 4). `Float` division by zero gives infinity or NaN.
+
+`Int.pow` wraps on overflow like `*`, and a negative exponent gives `0`
+(`Int.pow 2 (-1)` is `0`), never a failure. `Float.clamp` takes the same
+record as `Int.clamp` and checks in the same order, so `min` above `max`
+behaves as it does there. `Float.truncate` rounds toward zero.
+
+A `Float` literal may carry an exponent: `1.5e-3`, `1e6` and `2E+3`. Any
+literal with an exponent is a `Float`, including `1e6`. `Text.toFloat` reads
+the same form, and `Text.fromFloat` output is unchanged.
 
 `Float.round` rounds half away from zero: `Float.round 2.5` is `3` and
 `Float.round (-2.5)` is `-3`. `Float.format { decimals: n }` rounds the same
@@ -183,7 +241,24 @@ Dict.remove   : k -> Dict k v -> Dict k v
 Dict.keys     : Dict k v -> List k
 Dict.values   : Dict k v -> List v
 Dict.size     : Dict k v -> Int
+Dict.singleton : k -> v -> Dict k v
+Dict.isEmpty  : Dict k v -> Bool
+Dict.member   : k -> Dict k v -> Bool
+Dict.update   : k -> (Maybe v -> Maybe v) -> Dict k v -> Dict k v
+Dict.map      : (k -> v -> w) -> Dict k v -> Dict k w
+Dict.filter   : (k -> v -> Bool) -> Dict k v -> Dict k v
+Dict.foldl    : (k -> v -> b -> b) -> b -> Dict k v -> b
+Dict.partition : (k -> v -> Bool) -> Dict k v -> { yes: Dict k v, no: Dict k v }
+Dict.union    : Dict k v -> Dict k v -> Dict k v
+Dict.intersect : Dict k v -> Dict k v -> Dict k v
+Dict.diff     : Dict k v -> Dict k v -> Dict k v
 ```
+
+`Dict.update` calls the function with `Just` the current value, or `Nothing`
+when the key is absent: `Just` keeps the key's position (a new key is
+appended) and `Nothing` removes it. `Dict.union a b` prefers the first dict's
+value and order, then appends the keys only `b` has. `map`, `filter`,
+`partition`, `intersect` and `diff` keep key order; `foldl` walks it.
 
 A key may be of any type `==` works on: a `List`, a record, a `Time`, but
 not a function or a type containing one. Two keys are the
@@ -211,9 +286,16 @@ Date.format    : Text -> Date -> Text           -- Date.format "Jan 2, 2006" d
 Date.addDays   : Int -> Date -> Date
 Date.diffDays  : Date -> Date -> Int
 Date.year, Date.month, Date.day : Date -> Int
+Date.fromParts : { year: Int, month: Int, day: Int } -> Maybe Date
+Date.toParts   : Date -> { year: Int, month: Int, day: Int }
+Date.epoch     : Date                           -- 1970-01-01
+Date.weekday   : Date -> Int                    -- 1 = Monday ... 7 = Sunday
+Date.addMonths : Int -> Date -> Date
+Date.addYears  : Int -> Date -> Date
 
 Time.now       : Query Time
 Time.toDate    : Time -> Date
+Time.fromDate  : Date -> Time                   -- midnight UTC
 Time.format    : Text -> Time -> Text
 Time.ago       : Time -> Time -> Text           -- Time.ago now then = "3 hours ago"
 Time.toMillis  : Time -> Int                    -- milliseconds since 1970-01-01 00:00 UTC
@@ -225,6 +307,13 @@ Time.diffMillis : Time -> Time -> Int           -- Time.diffMillis a b = b − a
 `Date.diffDays a b` is the number of days from `a` to `b`, that is `b − a`:
 `Date.diffDays monday wednesday` is `2`, and it is negative when `b` comes
 first.
+
+`Date.fromParts` is `Nothing` for an impossible date (month 13, Feb 30); it
+never rolls over into the next month. `Date.weekday` is ISO-numbered, so
+Monday is `1` and Sunday is `7`, and `weekday d >= 6` means weekend.
+`Date.addMonths` clamps the day to the target month's length: one month after
+January 31 is February 28 (29 in a leap year). `Date.addYears 1` on February 29
+gives February 28.
 
 ```alder eval=Just "2026-10-09"
 Date.fromText "2026-10-08"
@@ -239,8 +328,12 @@ Html.unsafe : Text -> Html Never                -- unescaped markup; never for u
 Html.none  : Html a                             -- renders nothing
 Html.text  : Text -> Html a
 Html.fragment : List (Html a) -> Html a         -- the nodes side by side, no wrapper element
+Html.toText : Html Never -> Text                -- the markup File.html serves
 Url.external : Text -> Page                     -- external URL for href, src or Redirect
 ```
+
+`Html.toText` takes `Html Never`, a view that sends no messages, because the
+markup is rendered without a running page to receive them.
 
 `Url.external` keeps a URL only when it is an absolute `http:` or `https:`
 URL (`https://example.com/a`), a path of this site (`/static/app.css`,
@@ -269,7 +362,7 @@ Time.toMillis Time.epoch
 
 A file page's `view` returns a `File` (chapter 6, "File pages"). `Bytes` is
 the type of a body that is not text (chapter 7, "A capability returning
-bytes"); it has no operations of its own beyond the two below, and a
+bytes"); it has the few operations below, and a
 `Text` becomes `Bytes` with `Text.toBytes`.
 
 ```alder
@@ -285,9 +378,20 @@ File.body        : File -> Bytes
 
 Bytes.length    : Bytes -> Int                                   -- the number of bytes
 Bytes.toText    : Bytes -> Maybe Text                            -- Just when the bytes are valid UTF-8
+Bytes.empty     : Bytes
+Bytes.isEmpty   : Bytes -> Bool
+Bytes.slice     : Int -> Int -> Bytes -> Bytes                   -- same index rules as Text.slice, in bytes
+Bytes.append    : Bytes -> Bytes -> Bytes
+Bytes.concat    : List Bytes -> Bytes
+Bytes.toList    : Bytes -> List Int                              -- each 0..255
+Bytes.fromList  : List Int -> Bytes                              -- the low eight bits of each Int
 ```
 
 `Bytes.length` counts bytes, not letters: `é` is two bytes in UTF-8.
+`Bytes.slice` follows `Text.slice`'s rule, counting bytes: negative indices
+count from the end, indices clamp, and `start >= end` gives `Bytes.empty`.
+`Bytes.fromList` keeps the low eight bits of each `Int`, so
+`Bytes.fromList [256]` is `Bytes.fromList [0]`.
 
 ```alder eval=6
 Bytes.length (Text.toBytes "héllo")
