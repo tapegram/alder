@@ -25,6 +25,8 @@ func TestNoWritesToParameters(t *testing.T) {
 		// Put is documented for a Dict no Alder code has seen yet (inside a stdlib function).
 		"core.go: (*Dict).Put append d": "Put builds a fresh Dict",
 		"core.go: (*Dict).Put index d":  "Put builds a fresh Dict",
+		// dictEnc's helper fills its caller's stack array, never an Alder value.
+		"core.go: putInt index buf": "fills a local [8]byte",
 		// FloatRound's helper: its only caller passes []byte(whole + frac), a fresh conversion.
 		"std/num.go: incDecimal index d": "called only on a fresh []byte",
 	}
