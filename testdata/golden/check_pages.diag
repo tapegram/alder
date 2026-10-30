@@ -4,4 +4,6 @@ app/P.alder:11:12 E0401 `Task` cannot run inside a `Query`; `load` and `Query` b
 app/P.alder:23:28 E0302 `update` does not handle `Dec`
   fix 27:4-28:1 ,⏎  Dec p -> ?todo,⏎
 app/P.alder:30:8 E0003 `view` must have type `Model -> Session -> Html Msg`, or `Model -> Session -> File` for a file page; it is `Html Msg` even when the page has no messages
+  fix 30:8-30:38 Model -> Session -> Html Msg
 app/Q.alder:7:8 E0003 `load` must have type `Params -> Session -> Query Model`
+  fix 7:8-7:29 Params -> Session -> Query Model

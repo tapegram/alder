@@ -76,7 +76,7 @@ func TestProp_StatusSeedRun(t *testing.T) {
 	if r.OK || len(lines) < r.Run {
 		t.Fatalf("got %+v", r)
 	}
-	if lines[0] != "M\tp\t9\t1\n" || lines[r.Run-1] != "M\tp\t9\t"+strconv.Itoa(r.Run)+"\n" {
+	if lines[0] != "M\tp\t\x00fuzz\t9\t1\n" || lines[r.Run-1] != "M\tp\t\x00fuzz\t9\t"+strconv.Itoa(r.Run)+"\n" {
 		t.Errorf("status lines %q", lines[:r.Run])
 	}
 	mod, name, seed, run, ok := ParseStatus(lines[r.Run-1])
@@ -122,7 +122,7 @@ func TestProp_StatusSavedReplay(t *testing.T) {
 	})
 	runProp(p, Options{FuzzDB: dir, Seed: 9, SeedSet: true}) // saves the failure
 	runProp(p, Options{FuzzDB: dir, Seed: 9, SeedSet: true, Status: status})
-	if first != "M\tp\t9\t-1\n" {
+	if first != "M\tp\t\x00fuzz\t9\t-1\n" {
 		t.Fatalf("status while replaying %q", first)
 	}
 	if _, _, _, run, ok := ParseStatus(first); !ok || run != savedRun {

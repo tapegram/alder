@@ -1,0 +1,3 @@
+module Main
+
+test "nested" = Fuzz.forAll Fuzz.int (\n -> Fuzz.forAll Fuzz.int (\m -> n == m))

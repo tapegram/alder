@@ -30,6 +30,8 @@ type scratchResult struct {
 	Ran         bool                  `json:"ran"`
 	Note        string                `json:"note,omitempty"`
 	Error       string                `json:"error,omitempty"`
+
+	cancelled bool // the run was stopped before it reported (scratchRun saw its context end)
 }
 
 // holeCode is the checker's warning for a typed hole (`?name`).
@@ -168,7 +170,7 @@ func scratchWatch(ctx context.Context, interval time.Duration, a scratchRunArgs,
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		watch.WatchWith(a.appDir, []string{a.abs}, interval, stopWatch, changed)
+		watch.WatchReady(a.appDir, []string{a.abs}, interval, stopWatch, changed, scratchWatchReady)
 	}()
 	defer func() {
 		close(stopWatch)
@@ -183,13 +185,12 @@ func scratchWatch(ctx context.Context, interval time.Duration, a scratchRunArgs,
 		done := make(chan struct{})
 		superseded := false
 		headed := false   // the run's header went out
-		finished := false // the run ran to its end (reported or failed), uncancelled
+		finished := false // the run ran to its end (reported or failed) before any cancellation
 		reread := !first
 		first = false
 		go func() {
 			defer close(done)
 			defer func() {
-				finished = runCtx.Err() == nil
 				if finished && res.Ran {
 					vetted = true
 				}
@@ -197,6 +198,7 @@ func scratchWatch(ctx context.Context, interval time.Duration, a scratchRunArgs,
 			defer func() {
 				if r := recover(); r != nil {
 					failf(2, "alder scratch: internal error: %v", r)
+					finished = true // the failure is the run's result
 				}
 			}()
 			if !a.jsonOut {
@@ -212,6 +214,7 @@ func scratchWatch(ctx context.Context, interval time.Duration, a scratchRunArgs,
 					} else {
 						failf(1, "alder scratch: %v", err)
 					}
+					finished = true // the failure is the run's result
 					return
 				}
 				text = string(b)
@@ -220,6 +223,11 @@ func scratchWatch(ctx context.Context, interval time.Duration, a scratchRunArgs,
 			ra.text = text
 			ra.noVet = vetted
 			scratchRun(runCtx, ra, res, failf)
+			scratchRunReturned(runCtx)
+			// Whether the run finished is what scratchRun decided when it reported (or dropped)
+			// its result, not runCtx's state now: a cancel arriving after that must not drop
+			// a result that was reported.
+			finished = !res.cancelled
 		}()
 		select {
 		case <-done:
@@ -248,6 +256,14 @@ func scratchWatch(ctx context.Context, interval time.Duration, a scratchRunArgs,
 		}
 	}
 }
+
+// scratchWatchReady is called once the watch's first snapshot is taken; tests replace it to wait
+// for it before they edit (an edit before then is part of the baseline and is never seen).
+var scratchWatchReady func()
+
+// scratchRunReturned is called in the watch loop's run goroutine as scratchRun returns, before the
+// loop learns of it; tests replace it to cancel the run at exactly that point.
+var scratchRunReturned = func(context.Context) {}
 
 // runScratchFile is scratch.RunFile; tests replace it.
 var runScratchFile = scratch.RunFile
@@ -294,6 +310,7 @@ func scratchRun(ctx context.Context, a scratchRunArgs, res *scratchResult, failf
 		Build: scratch.Options{NoVet: a.noVet, Waiting: waiting, Fetching: func() { fmt.Fprintln(a.stderr, buildkit.FetchingLine) }},
 	})
 	if ctx.Err() != nil {
+		res.cancelled = true
 		if a.watching {
 			return 1
 		}

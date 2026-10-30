@@ -7,6 +7,7 @@
   (fake_decl)
   (session_decl)
   (deploy_decl)
+  (theme_decl)
   (test_decl)
   (form_decl)
   (block)

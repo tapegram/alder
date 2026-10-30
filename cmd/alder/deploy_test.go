@@ -447,7 +447,7 @@ func TestDeploy_Usage(t *testing.T) {
 			t.Errorf("exit %d %s", code, e.String())
 		}
 	}
-	for _, c := range []struct {
+	for _, tc := range []struct {
 		args []string
 		want string
 	}{
@@ -457,8 +457,8 @@ func TestDeploy_Usage(t *testing.T) {
 		{[]string{"local", "x", "--dir", dir}, "usage: alder restore"},
 	} {
 		var o, e bytes.Buffer
-		if code := runRestoreTo(c.args, &o, &e); code != 2 || !strings.Contains(e.String(), c.want) {
-			t.Errorf("restore %v: exit %d %s", c.args, code, e.String())
+		if code := runRestoreTo(tc.args, &o, &e); code != 2 || !strings.Contains(e.String(), tc.want) {
+			t.Errorf("restore %v: exit %d %s", tc.args, code, e.String())
 		}
 	}
 	bare := filepath.Join(t.TempDir(), "bare")

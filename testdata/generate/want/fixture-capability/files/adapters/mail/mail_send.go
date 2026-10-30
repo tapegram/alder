@@ -1,6 +1,9 @@
 // Package mail holds the Go adapter of capability Mail.Mail, written by
 // `alder new capability`: each method returns an error until you write it (the Alder book,
 // chapter 7, "Implementing a capability").
+//
+// Each method's List and Bytes arguments are fresh copies made for the call: write into them
+// if you like, but do not rely on them sharing storage with the app.
 package mail
 
 import (

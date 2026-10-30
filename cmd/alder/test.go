@@ -384,6 +384,9 @@ func runTests(b scratch.Build, runPat string, timeout time.Duration, mut *mutate
 				fmt.Fprintf(stderr, "alder test: %v\n", errTimeout)
 			} else {
 				fmt.Fprintf(stderr, "alder test: the test program crashed running %s %s; no later test ran\n", mod, rtesting.QuoteName(name))
+				if mut != nil && strings.Contains(crash.summary(), "stack overflow") { // name the cap: the suite may pass without --mutate
+					fmt.Fprintln(stderr, "alder test: --mutate caps the stack at 64 MB; a suite that passes without --mutate may need more")
+				}
 			}
 			// the summary the program could not print: the results it streamed and this failure
 			summary := fmt.Sprintf("%d passed, %d failed\n", counted.passed, counted.failed+1)
@@ -448,7 +451,7 @@ func (c *resultCounter) Write(p []byte) (int, error) {
 }
 
 // readStatus reads the status file the test program writes before each test: `Module\tName\n`,
-// for a property test then `Module\tName\tseed\trun\n` before each attempt (run from 1, or -1
+// for a property test then `Module\tName\t\x00fuzz\tseed\trun\n` before each attempt (run from 1, or -1
 // while its saved failure replays; 0 for a plain test), or nothing when no test was running.
 func readStatus(path string) (mod, name string, seed uint64, run int, ok bool) {
 	b, err := os.ReadFile(path)

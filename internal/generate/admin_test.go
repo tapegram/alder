@@ -148,3 +148,28 @@ func TestAdminWireNames(t *testing.T) {
 		t.Errorf("Index: the checkbox and the page form should both write Ids:\n%s", src)
 	}
 }
+
+// TestAdminFormsNoEmptySpan: the New and Edit pages emit no empty element into their card; an
+// empty <span> there left a band of the card's gap (#43).
+func TestAdminFormsNoEmptySpan(t *testing.T) {
+	for _, app := range []string{"fixture", "fixture-silo"} {
+		p, err := Load("../../testdata/generate/" + app)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files, _ := AdminFiles(p, AdminOptions{Module: "Admin", Path: "/admin"})
+		n := 0
+		for path, src := range files {
+			if !strings.HasSuffix(path, "/New.alder") && !strings.HasSuffix(path, "/Edit.alder") {
+				continue
+			}
+			n++
+			if strings.Contains(src, "<span></span>") {
+				t.Errorf("%s/%s has an empty <span></span>", app, path)
+			}
+		}
+		if n == 0 {
+			t.Errorf("%s: no New or Edit pages", app)
+		}
+	}
+}
