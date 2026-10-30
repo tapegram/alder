@@ -438,7 +438,9 @@ view model session =
 
 `File.text` answers `200` with the text as the body, `File.bytes` does the
 same for `Bytes` (chapter 7, "A capability returning bytes"), and
-`File.json` takes a `Text` and labels it `application/json`. The
+`File.json` takes a `Json.Value` built with the `Json` module (chapter 9,
+"Json"), encodes it and labels it `application/json`; text that is already
+JSON goes through `File.text` with that content type. The
 `Content-Disposition` header, set with `File.withHeader`, asks the browser
 to save the answer as `todos.csv` instead of showing it.
 
@@ -547,8 +549,10 @@ that belong to the app stay the app's HTML pages: a `404` from
 `Query.notFound` or a parameter that does not decode (`App.notFound`), a
 failed `Task` or `load` (`App.error`), the maintenance `503`, and the
 redirect to the login page when the page `requires` something the session
-lacks. A file page that answers its own `503` (above) is different: that
-`503` is the page's own file.
+lacks. A file page's `load` that ends in `Query.redirect p` is a plain
+`303` to `p`, as its `Query.notFound` is the app's `404`. A file page that
+answers its own `503` (above) is different: that `503` is the page's own
+file.
 
 A file page has no messages. Its `view` returns a file, not a document, so
 nothing on it can post a message or a form, and a `msg`, `form` or
@@ -1249,7 +1253,8 @@ GET  /path
   1. decode route parameters      → 404 on failure
   2. check `requires`             → redirect to App.login on failure
      check `role R`, if declared  → 404 when the session's role is not R
-  3. load                         → Query, run by the runtime
+  3. load                         → Query, run by the runtime: 404 on
+                                    Query.notFound, 303 on Query.redirect
   4. view (with the session)      → HTML
 
 POST (generated message URL)
@@ -1266,7 +1271,7 @@ POST (generated message URL)
      history push; to another site, an event that navigates)
      Reject: load → view with the text on the form → patch
      Task failure: App.error → HTML, status 500 (404 for Query.notFound
-     and Task.notFound)
+     and Task.notFound, 303 for Query.redirect)
 ```
 
 ## The `App` module
@@ -1433,7 +1438,7 @@ page's parameters to every message URL it writes. This is the Done button
 of `GET /?filter=Active`, as the running app sends it:
 
 ```html
-<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()}))"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
+<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, window._alderO?.(&#39;form&#39;)))"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
 ```
 
 (A `click` button is wrapped in a form of its own so that it works without
@@ -1624,10 +1629,11 @@ early and start a field of its own, so the renderer writes it as `&#13;`
 and `PatchBody` turns any line end into a plain newline first.
 
 The two kinds of message travel differently under Datastar. A form posts
-with `data-on:submit="window._alderAC?.abort();@post('<url>', {contentType:
-'form', requestCancellation: window._alderAC = new AbortController()})"`, so
+with `data-on:submit="@post('<url>', window._alderO?.('form')||{contentType: 'form'})"`, so
 its fields arrive url-encoded and are decoded as the form. The
-`window._alderAC` part is the page's one navigation signal, shared with
+`window._alderO` helper (defined once in the page's `<head>`) gives the post
+its options: the content type, the `Alder-Shown` header (chapter 5,
+"Partial updates") and the page's one navigation signal, shared with
 boosted links ("Links and navigation" below): a new post or click aborts
 the request still in flight, so a slow answer never lands over a newer page. A `click` button's
 message carries its parameters in the URL, and its body is ignored.
@@ -1791,7 +1797,8 @@ not boosted: it loads its page as usual.
 
 A path no route matches, a page parameter that doesn't decode,
 `Query.notFound` and `Task.notFound` are answered with `App.notFound`,
-status 404. A failed
+status 404. `Query.redirect p` is not a failure page: it is a 303 to `p`,
+answered as a `Redirect p` is (under Datastar, the target morphed in). A failed
 `Task` is answered with `App.error`, status 500, and logged as an `error`
 line naming the request. With `ALDER_DEV=1` (chapter 11), the error's text
 is added at the end of the page's `<body>` as an HTML comment, such as

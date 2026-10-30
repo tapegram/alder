@@ -155,9 +155,9 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 }
 
 // Web is the app's options for web.NewRouter that do not depend on how it runs: the session
-// codec, App.error, App.notFound and the page App.login names. Serve adds the store, the
-// capabilities, the log, dev mode, the secret, the static directory and the reload generation;
-// alder test's browser routes the app with these options too.
+// codec, App.error, App.notFound, the page App.login names and App's theme. Serve adds the
+// store, the capabilities, the log, dev mode, the secret, the static directory and the reload
+// generation; alder test's browser routes the app with these options too.
 func Web() web.Options {
 	return web.Options{
 		Session:     session__codec{},

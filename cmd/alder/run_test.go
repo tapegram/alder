@@ -409,8 +409,10 @@ func TestRun_EditReloads(t *testing.T) {
 }
 
 // The child serves the build's static directory: the app's static/ and the design system's
-// assets (/static/al/al.css, fresh for five minutes then stale-while-revalidate, with an ETag). Saving a static file copies it again and reloads,
-// without a rebuild (the generation is unchanged).
+// assets (/static/al/al.css with an ETag, revalidated on every load under `alder run` so an edit
+// to App's theme shows (#38); the other files fresh for five minutes then
+// stale-while-revalidate). Saving a static file copies it again and reloads, without a rebuild
+// (the generation is unchanged).
 func TestRun_ServesStaticAndDesignSystem(t *testing.T) {
 	t.Parallel()
 	r := startRun(t)
@@ -421,7 +423,7 @@ func TestRun_ServesStaticAndDesignSystem(t *testing.T) {
 	}
 	b, _ := io.ReadAll(res.Body)
 	res.Body.Close()
-	if res.StatusCode != 200 || res.Header.Get("Cache-Control") != "public, max-age=300, stale-while-revalidate=86400" || res.Header.Get("ETag") == "" || !strings.Contains(string(b), "alder-ui v0.4.2") {
+	if res.StatusCode != 200 || res.Header.Get("Cache-Control") != "no-cache" || res.Header.Get("ETag") == "" || !strings.Contains(string(b), "alder-ui v0.4.2") {
 		t.Fatalf("GET /static/al/al.css = %d %q %.60q", res.StatusCode, res.Header.Get("Cache-Control"), b)
 	}
 	fres, err := http.Get(r.base + "/static/al/fonts/GeistMono-Variable.woff2")
@@ -429,8 +431,8 @@ func TestRun_ServesStaticAndDesignSystem(t *testing.T) {
 		t.Fatal(err)
 	}
 	fres.Body.Close()
-	if fres.StatusCode != 200 || fres.Header.Get("Content-Type") != "font/woff2" {
-		t.Fatalf("GET /static/al/fonts/GeistMono-Variable.woff2 = %d %q", fres.StatusCode, fres.Header.Get("Content-Type"))
+	if fres.StatusCode != 200 || fres.Header.Get("Content-Type") != "font/woff2" || fres.Header.Get("Cache-Control") != "public, max-age=300, stale-while-revalidate=86400" {
+		t.Fatalf("GET /static/al/fonts/GeistMono-Variable.woff2 = %d %q %q", fres.StatusCode, fres.Header.Get("Content-Type"), fres.Header.Get("Cache-Control"))
 	}
 	get(t, r.base+"/static/al/custom-elements.json")
 	events := r.subscribe(t)

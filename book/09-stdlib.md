@@ -32,22 +32,29 @@ List.append   : List a -> List a -> List a    -- same as ++
 List.unique   : List a -> List a
 List.groupBy  : (a -> Text) -> List a -> Dict Text (List a)
 List.indexedMap : (Int -> a -> b) -> List a -> List b
-List.map2 : (a -> b -> c) -> List a -> List b -> List c
-List.map3 : (a -> b -> c -> d) -> List a -> List b -> List c -> List d
-List.foldr : (a -> b -> b) -> b -> List a -> b
+List.map2     : (a -> b -> c) -> List a -> List b -> List c
+List.map3     : (a -> b -> c -> d) -> List a -> List b -> List c -> List d
+List.foldr    : (a -> b -> b) -> b -> List a -> b
 List.concatMap : (a -> List b) -> List a -> List b
 List.intersperse : a -> List a -> List a
 List.partition : (a -> Bool) -> List a -> { yes: List a, no: List a }
-List.tail : List a -> Maybe (List a)
-List.repeat : Int -> a -> List a
-List.maximum : List Int -> Maybe Int
-List.minimum : List Int -> Maybe Int
+List.tail     : List a -> Maybe (List a)
+List.repeat   : Int -> a -> List a
+List.maximum  : List Int -> Maybe Int
+List.minimum  : List Int -> Maybe Int
 List.maximumFloat : List Float -> Maybe Float
 List.minimumFloat : List Float -> Maybe Float
 List.sortByFloat : (a -> Float) -> List a -> List a
 ```
 
 `List.partition` returns a record with a `yes` field (the elements that satisfy the test) and a `no` field, each in input order. `List.map2` and `List.map3` stop at the shortest list.
+
+`List.take`, `List.drop` and `List.tail` cost nothing however long the list:
+the result shares the original's elements, which is safe because no list is
+ever changed. `++` copies both sides into a new list (unless one is empty), so
+a loop that grows a list with `acc ++ [x]` copies the whole list at every
+step; use `List.foldl`, `List.concatMap` or, for text, a `Text.Builder`
+(below) instead.
 
 ```alder eval=[10, 30, 50]
 List.range 1 5
@@ -118,8 +125,9 @@ Text.concat    : List Text -> Text           -- Text.join ""
 Text.lines     : Text -> List Text
 Text.words     : Text -> List Text
 Text.indexes   : Text -> Text -> List Int    -- Text.indexes needle haystack
-Text.toCodePoints   : Text -> List Int
+Text.toCodePoints : Text -> List Int
 Text.fromCodePoints : List Int -> Text
+Text.hash      : Text -> Int                 -- stable forever, never negative, not cryptographic
 Text.NonEmpty, Text.Email, Text.Url, Text.Secret   -- refinement brands
 ```
 
@@ -152,9 +160,49 @@ and drops the empty line after a final newline: `Text.lines "a\nb\n"` is
 where `needle` starts, overlapping matches included (`Text.indexes "aa" "aaa"`
 is `[0, 1]`). There is no `toChars`: `Text.split "" s` gives the characters.
 
+`Text.hash` is FNV-1a (64-bit) over the text's UTF-8 bytes with the top
+bit cleared, so it is never negative and `Text.hash s % n` is a bucket in
+`0..n-1`. Its values are fixed forever, on every platform: use it for
+seeds (see "Random"), buckets and cache keys. It is not cryptographic:
+never use it for passwords, tokens or anything an attacker may choose.
+
 ```alder eval=["de", "2", "3.5"]
 [Text.slice (-3) (-1) "abcdef", Text.fromFloat 2.0, Text.fromFloat 3.5]
 ```
+
+### Building a large Text
+
+```alder
+Text.Builder                                 -- an accumulator for a large Text
+Text.builder   : Text.Builder                -- empty
+Text.add       : Text -> Text.Builder -> Text.Builder   -- Text.add piece b
+Text.build     : Text.Builder -> Text
+```
+
+Interpolation and `Text.join` each make a new Text, copying every byte they
+are given. That is cheap for a heading, but a page that renders a large body
+by nesting them (rows joined into options, options into items, items into a
+file) copies each byte once per level: a 100 MB JSON file allocates close to
+a gigabyte. A `Text.Builder` avoids that. `Text.add` puts a piece after
+everything added so far without copying anything, and `Text.build` copies each
+byte once, into the finished Text. A builder is a value like any other:
+adding to it gives a new builder and leaves the old one as it was, so two
+builders can grow from the same start. Make each row with interpolation and
+add whole rows; adding many tiny pieces (a comma, a field) costs more than
+the copy it saves. There is no `addAll`: `List.foldl Text.add b pieces` adds a
+list of pieces in order.
+
+```alder eval="name,votes\nKent,3\nDane,5\n"
+[{ name: "Kent", votes: 3 }, { name: "Dane", votes: 5 }]
+  |> List.foldl (\r b -> b |> Text.add "{r.name},{Text.fromInt r.votes}\n") (Text.builder |> Text.add "name,votes\n")
+  |> Text.build
+```
+
+Under the hood a builder is a chain of the pieces, newest first, each link
+remembering the total length so far. `Text.build` allocates that many bytes
+once and fills them from the end, walking the chain back. A File page passes
+the result straight to `File.text`, which uses the Text's bytes as the body
+without copying them again.
 
 ## Int, Float
 
@@ -176,13 +224,13 @@ Float.sqrt   : Float -> Float
 Float.exp    : Float -> Float
 Float.log    : Float -> Float                   -- natural logarithm
 Float.pow    : Float -> Float -> Float          -- Float.pow base exponent
-Float.truncate   : Float -> Int                 -- rounds toward zero
-Float.clamp      : { min: Float, max: Float } -> Float -> Float
+Float.truncate : Float -> Int                   -- rounds toward zero
+Float.clamp  : { min: Float, max: Float } -> Float -> Float
 Float.pi, Float.e                               -- Float constants
 Float.isNaN, Float.isInfinite : Float -> Bool
-Float.logBase    : Float -> Float -> Float      -- Float.logBase base x
+Float.logBase : Float -> Float -> Float         -- Float.logBase base x
 Float.sin, Float.cos, Float.tan, Float.asin, Float.acos, Float.atan : Float -> Float
-Float.atan2      : Float -> Float -> Float      -- Float.atan2 y x
+Float.atan2  : Float -> Float -> Float          -- Float.atan2 y x
 ```
 
 `Int` arithmetic wraps on overflow; `/` truncates toward zero and `%` has
@@ -196,7 +244,10 @@ behaves as it does there. `Float.truncate` rounds toward zero.
 
 A `Float` literal may carry an exponent: `1.5e-3`, `1e6` and `2E+3`. Any
 literal with an exponent is a `Float`, including `1e6`. `Text.toFloat` reads
-the same form, and `Text.fromFloat` output is unchanged.
+the same form, and `Text.fromFloat` output is unchanged. An `Int` literal
+that does not fit in 64 bits (above `9223372036854775807`) is an error, and a
+`Float` literal that overflows to infinity is one too; the smallest `Int` is
+written `-9223372036854775808` (the `-` directly on the literal, not `-(…)`).
 
 `Float.round` rounds half away from zero: `Float.round 2.5` is `3` and
 `Float.round (-2.5)` is `-3`. `Float.format { decimals: n }` rounds the same
@@ -379,6 +430,57 @@ is still a type error. In a test the address is always
 Time.toMillis Time.epoch
 ```
 
+## Json
+
+A JSON answer is a `Json.Value`, built with the functions below and written
+by `Json.encode` or `File.json`. Never build JSON as `Text` by hand: the
+encoder escapes what a hand-built string forgets.
+
+```alder
+Json.null   : Json.Value
+Json.bool   : Bool -> Json.Value
+Json.int    : Int -> Json.Value
+Json.float  : Float -> Json.Value                               -- NaN, +Inf and -Inf encode as null
+Json.string : Text -> Json.Value
+Json.list   : List Json.Value -> Json.Value
+Json.object : List { key: Text, value: Json.Value } -> Json.Value  -- keys in list order
+Json.encode : Json.Value -> Text                                -- compact: no whitespace
+Json.encodeIndented : Int -> Json.Value -> Text                 -- n spaces per level; n <= 0 is encode
+```
+
+A list of values is a pipeline, `xs |> List.map Json.int |> Json.list`, and
+a `Dict Text Json.Value` becomes an object with
+`d |> Dict.toList |> Json.object`.
+
+`Json.float` writes the shortest decimal that reads back as the same
+number, without an exponent (`Json.float 1.0` is `1`), and writes `null` for
+NaN and the infinities, which JSON has no spelling for; test with
+`Float.isNaN` and `Float.isInfinite` first if you want something else.
+`Json.int` writes every digit, however large.
+
+`Json.object` keeps its keys in list order. A key given twice keeps its first
+position and takes its last value, as `Dict.insert` would, so the output never
+repeats a key:
+
+```alder eval={"name":"Grace","score":null}
+Json.object [{ key: "name", value: Json.string "Ada" }, { key: "score", value: Json.float (0.0 / 0.0) }, { key: "name", value: Json.string "Grace" }]
+```
+
+`Json.string` escapes `"`, `\` and the control characters, and also writes
+`<`, `>`, `&` and the line separators U+2028 and U+2029 as `\u` escapes
+(`<` is `\u003c`). The text means the same to any JSON reader, and a
+`Json.encode` placed inside a `<script>` element through `Html.unsafe` can
+never end the element or break a JavaScript string.
+
+`Json.encodeIndented 2` writes one array item or object member per line,
+indented two spaces per level, as `JSON.stringify(v, null, 2)` does;
+`Json.encodeIndented 0` (or less) is `Json.encode`.
+
+Two values are equal when they encode to the same text, so
+`Json.int 1 == Json.float 1.0`; a `Json.Value` can be a `Dict` key on the
+same rule, and it shows (in the REPL, `Log` and test failures) as its
+compact JSON, without the quotes a `Text` would have.
+
 ## File, Bytes
 
 A file page's `view` returns a `File` (chapter 6, "File pages"). `Bytes` is
@@ -390,7 +492,7 @@ bytes"); it has the few operations below, and a
 File.text       : { contentType: Text, body: Text } -> File      -- a 200 answer
 File.bytes      : { contentType: Text, body: Bytes } -> File     -- a 200 answer
 File.html       : Html Never -> File                             -- text/html; charset=utf-8, rendered verbatim: no doctype unless the node has one
-File.json       : Text -> File                                   -- application/json
+File.json       : Json.Value -> File                             -- application/json: Json.encode of the value
 File.withStatus : Int -> File -> File                            -- 200..599
 File.withHeader : { name: Text, value: Text } -> File -> File    -- Content-Disposition, Cache-Control, ETag, Last-Modified, Retry-After, Content-Language, X-…
 File.status      : File -> Int
@@ -417,6 +519,57 @@ count from the end, indices clamp, and `start >= end` gives `Bytes.empty`.
 ```alder eval=6
 Bytes.length (Text.toBytes "héllo")
 ```
+
+## Random
+
+`Random.int` and `Random.id` are effects (chapter 7): a fresh value on
+every run. The rest of `Random` is pure and seeded: the same seed gives
+the same values on every run, on every platform, in every Alder version.
+A `Random.Generator a` describes how to draw an `a`; `Random.step` draws
+it from a `Random.Seed` and gives back the seed to draw the next value
+from. Being pure, it works in `load`, in `view` and in any function.
+
+```text
+Random.seed       : Int -> Random.Seed       -- every Int is a seed, 0 and negatives too
+Random.step       : Random.Generator a -> Random.Seed -> { value: a, seed: Random.Seed }
+Random.constant   : a -> Random.Generator a
+Random.intRange   : { min: Int, max: Int } -> Random.Generator Int
+Random.floatRange : { min: Float, max: Float } -> Random.Generator Float
+Random.normal     : { mean: Float, sd: Float } -> Random.Generator Float
+Random.uniform    : a -> List a -> Random.Generator a   -- Random.uniform first rest
+Random.weighted   : { weight: Float, value: a } -> List { weight: Float, value: a } -> Random.Generator a
+Random.list       : Int -> Random.Generator a -> Random.Generator (List a)
+Random.map        : (a -> b) -> Random.Generator a -> Random.Generator b
+Random.map2       : (a -> b -> c) -> Random.Generator a -> Random.Generator b -> Random.Generator c
+Random.andThen    : (a -> Random.Generator b) -> Random.Generator a -> Random.Generator b
+```
+
+```alder eval={ value: 2, seed: Random.seed (-7046029254386353089) }
+Random.step (Random.intRange { min: 1, max: 6 }) (Random.seed 42)
+```
+
+A seed prints as the expression that re-creates it. To make one from
+data, hash it: `Random.seed (Text.hash (Text.join "/" [county, key]))`
+gives every county and key its own stream, the same on every run.
+
+Where a value sits in the stream depends only on the program, never on
+the values drawn: `intRange`, `floatRange`, `normal`, `uniform` and
+`weighted` each take exactly one step (even `intRange { min: 5, max: 5 }`);
+`constant` and `map` take none; `list n g` takes `n` steps of `g` (none
+when `n <= 0`, which gives `[]`); `map2 f a b` runs `a`, then `b`;
+`andThen f a` runs `a`, then the generator `f` returns. So adding a draw
+at the end of a program does not change the draws before it.
+
+`intRange` and `floatRange` give `min` when `max <= min`; `floatRange`
+never gives `max` itself. `normal` is one uniform draw through Acklam's
+inverse of the normal distribution (accurate to about 1e-9). `uniform x
+xs` picks evenly from `x` and `xs`, so the list is never empty.
+`weighted` picks each item with probability proportional to its weight
+(a negative weight counts as its absolute value; all zero gives the
+first). The algorithms are part of the language and will not change:
+the generator is SplitMix64 (Steele, Lea and Flood, 2014), and the
+floats are computed the same way on every processor. Like `Text.hash`,
+none of this is cryptographic: for ids and secrets use `Random.id`.
 
 ## Query, Task, Db, Session, Log, Time, Random, Http
 
@@ -478,12 +631,16 @@ Task.sleep  : Int -> Task Unit                  -- the same, in a Task
 `Query.notFound` and `Task.notFound` (both
 `: Query a` / `: Task a`, no arguments) stop the effect and answer 404 with
 `App.notFound`; a `Task` that ends in `Task.notFound` is rolled back like
-any failed `Task`.
+any failed `Task`. `Query.redirect : Page -> Query a` stops the effect and
+answers a 303 to the page value, as `Redirect p` does (chapter 7,
+"Failure"): a page's `load` uses it to send the browser elsewhere.
 
 ## Test
 
-Only a `test` may use these (chapter 10); anywhere else each is E0003
-"… is only available inside a `test`".
+Only a `test` or a test helper may use these (chapter 10, "Test
+helpers": a value that uses one becomes a helper); where no test can
+reach, such as a page's `view`, each is E0040 "… is only available in a
+`test` or a test helper".
 
 - `Test.run : Task a -> Task { value: Result Text a, trace: List Text }`
   runs a task that may fail: `value` is `Ok` with its result or `Err`
@@ -506,6 +663,11 @@ Only a `test` may use these (chapter 10); anywhere else each is E0003
   user and the org of a `Membership`: `Membership.since` has no default;
   insert the row with `Db.insert Membership { … }`"), and so is an app
   without a `via` field (chapter 10, "Two orgs").
+- `Test.setClock : Time -> Task Unit` sets the test's clock to a time:
+  `Time.now`, `Date.today` and `@created` read it, and it stands still
+  (no one-second tick) until something moves it (chapter 10, "Setting the clock").
+- `Test.advance : Int -> Task Unit` moves the test's clock that many
+  milliseconds forward (a negative number is 0), set or ticking.
 
 ### Browser steps and queries
 
@@ -545,8 +707,9 @@ Test.fetch     : Page -> Task { status: Int, contentType: Text, body: Bytes, hea
   file page are checker errors (chapter 10, "`Test.fetch`: requesting a
   file").
 
-Two types of the Prelude exist only in tests (anywhere else, E0003
-"`Doc` is a test type"): `Doc`, a parsed page, which has `==`, and
+Two types of the Prelude exist only in tests and test helpers (in a
+type declaration, E0003 "`Doc` is a test type"; in a page's `view` and
+the other values that can never be helpers, E0040): `Doc`, a parsed page, which has `==`, and
 
 ```text
 type Answer = Shown | Rerendered | Redirected Page | FormRejected (List { field: Text, message: Text }) | PageMissing | RequestFailed Text
@@ -604,6 +767,7 @@ Fuzz.map        : (a -> b) -> Fuzz.Fuzzer a -> Fuzz.Fuzzer b
 Fuzz.map2       : (a -> b -> c) -> Fuzz.Fuzzer a -> Fuzz.Fuzzer b -> Fuzz.Fuzzer c
 Fuzz.andThen    : (a -> Fuzz.Fuzzer b) -> Fuzz.Fuzzer a -> Fuzz.Fuzzer b
 Fuzz.filter     : (a -> Bool) -> Fuzz.Fuzzer a -> Fuzz.Fuzzer a
+Fuzz.fromRandom : Random.Generator a -> Fuzz.Fuzzer a
 ```
 
 `Fuzz.any` is a special form, like `Test.fake`: the compiler gives it the
@@ -616,3 +780,10 @@ empty, and `textOf` and `char` count code points; `list` is biased to
 short lists, and `listOf` bounds the length. `filter` is subject to the
 health check: a predicate that rejects over 90% of the first 50 draws
 fails the test (chapter 10).
+
+`Fuzz.fromRandom g` turns a seeded generator (see "Random") into a
+fuzzer: it draws a random seed and gives `g`'s value at it. Shrinking
+lowers the seed toward `Random.seed 0`, never the value inside `g`, so a
+failure shrinks to a nearby seed, not to the simplest value: a
+`Fuzz.Fuzzer` written with `Fuzz.*` shrinks better and is the first
+choice; `fromRandom` is for reusing a generator the app already has.

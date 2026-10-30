@@ -1,0 +1,12 @@
+module Ok
+
+-- Named like the Prelude's `Ok` (of `Result`), which is in scope in every module.
+page "/ok" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
+
+view : Model -> Session -> Html Msg
+view model session = <p>ok</p>

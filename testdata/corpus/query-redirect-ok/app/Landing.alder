@@ -1,0 +1,26 @@
+module Landing
+
+import User
+
+-- `requires` runs before load: a visitor goes to the login page, a user is sent on home.
+page "/landing" { } requires user
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.redirect (Home {})
+
+view : Model -> Session -> Html Msg
+view model session = <html><body><p>never shown</p></body></html>
+
+test "a visitor is sent to log in" = {
+  let r <- Test.open (Landing {})
+  Task.succeed (r.answer == Redirected (Auth.Login {}))
+}
+
+test "a user is sent home" = {
+  let me <- Db.insert User { name: "Me" }
+  let _ <- Test.login { user: Just me }
+  let r <- Test.open (Landing {})
+  Task.succeed (r.answer == Redirected (Home {}) && Test.has "#home" r.doc)
+}

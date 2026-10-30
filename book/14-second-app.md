@@ -430,11 +430,11 @@ test "deleting a post deletes its comments" = {
       posts: posts,
       comments: comments,
     } == {
-        value: Ok (Redirect (Write {})),
-        trace: ["Db.deleteMine Post"],
-        posts: 0,
-        comments: 0,
-      }
+      value: Ok (Redirect (Write {})),
+      trace: ["Db.deleteMine Post"],
+      posts: 0,
+      comments: 0,
+    }
   )
 }
 
@@ -502,10 +502,10 @@ test "a demoted author is turned away at once" = {
       stale: stale.answer,
       fresh: fresh.answer,
     } == {
-        before: Shown,
-        stale: PageMissing,
-        fresh: PageMissing,
-      }
+      before: Shown,
+      stale: PageMissing,
+      fresh: PageMissing,
+    }
   )
 }
 
@@ -629,12 +629,12 @@ test "saving changes the title and the body" = {
       status: Test.text "al-badge" r.doc,
       notices: r.notices,
     } == {
-        answer: Rerendered,
-        heading: Just "Hello again",
-        body: Just "More.",
-        status: Just "Draft",
-        notices: ["Saved"],
-      }
+      answer: Rerendered,
+      heading: Just "Hello again",
+      body: Just "More.",
+      status: Just "Draft",
+      notices: ["Saved"],
+    }
   )
 }
 ```
@@ -944,10 +944,10 @@ test "search matches title or body" = {
       title: List.member (Text.NonEmpty "Tomato season") titles,
       body: List.member (Text.NonEmpty "Soup") titles,
     } == {
-        count: 2,
-        title: True,
-        body: True,
-      }
+      count: 2,
+      title: True,
+      body: True,
+    }
   )
 }
 
@@ -1008,27 +1008,27 @@ test "page 99 is empty" = {
     }) pages
   Task.succeed (
     seen == [
-        {
-          page: 1,
-          posts: 10,
-          hasMore: True,
-        },
-        {
-          page: 2,
-          posts: 1,
-          hasMore: False,
-        },
-        {
-          page: 99,
-          posts: 0,
-          hasMore: False,
-        },
-        {
-          page: 1,
-          posts: 10,
-          hasMore: True,
-        },
-      ]
+      {
+        page: 1,
+        posts: 10,
+        hasMore: True,
+      },
+      {
+        page: 2,
+        posts: 1,
+        hasMore: False,
+      },
+      {
+        page: 99,
+        posts: 0,
+        hasMore: False,
+      },
+      {
+        page: 1,
+        posts: 10,
+        hasMore: True,
+      },
+    ]
   )
 }
 
@@ -1136,12 +1136,12 @@ test "the second page links back to the first" = {
       prev: Test.attr "href" "a[rel=prev]" second.doc,
       more: Test.has "a[rel=next]" second.doc,
     } == {
-        firstPosts: 10,
-        next: Just "/?page=2",
-        secondPosts: 1,
-        prev: Just "/",
-        more: False,
-      }
+      firstPosts: 10,
+      next: Just "/?page=2",
+      secondPosts: 1,
+      prev: Just "/",
+      more: False,
+    }
   )
 }
 
@@ -1174,10 +1174,10 @@ test "a search through the form" = {
       titles: Test.texts "ul.posts a" r.doc,
       query: Test.attr "value" "input[name=q]" r.doc,
     } == {
-        answer: Redirected (Posts.Index { page: 1, q: "tomato" }),
-        titles: ["Soup"],
-        query: Just "tomato",
-      }
+      answer: Redirected (Posts.Index { page: 1, q: "tomato" }),
+      titles: ["Soup"],
+      query: Just "tomato",
+    }
   )
 }
 ```
@@ -1269,10 +1269,10 @@ test "logging out from the front page goes to log in" = {
       user: out.session.user,
       role: out.session.role,
     } == {
-        out: Redirected (Auth.Login {}),
-        user: Nothing,
-        role: Reader,
-      }
+      out: Redirected (Auth.Login {}),
+      user: Nothing,
+      role: Reader,
+    }
   )
 }
 ```

@@ -288,7 +288,7 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 		b.Err = err
 		return b
 	}
-	if err := buildkit.CopyStatic(filepath.Join(appDir, "static"), filepath.Join(b.Dir, "static")); err != nil {
+	if err := buildkit.CopyStatic(filepath.Join(appDir, "static"), filepath.Join(b.Dir, "static"), p.Theme.CSS()); err != nil {
 		b.Err = err
 		return b
 	}
@@ -397,6 +397,15 @@ func (c Checked) TypeString(t types.Type, mod string) string {
 		return types.String(t)
 	}
 	return types.StringQ(t, "", c.program.Qualify(mod))
+}
+
+// Program is the checked program (the extra module among its modules, as ExtraFile), nil when
+// Result is.
+func (c Checked) Program() *names.Program {
+	if c.Result == nil {
+		return nil
+	}
+	return c.program
 }
 
 // Declares reports whether the module of in-module mode declares value name itself (not

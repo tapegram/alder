@@ -449,10 +449,14 @@ func (g *gen) module(m *ir.Module, gofmt bool) ([]byte, error) {
 		widenFunc(&body, pg, g.session, g.boxed)
 	}
 	for _, v := range m.Values {
-		g.value(&body, v)
+		if !v.TestOnly || g.tests { // a test helper: test builds only (the checker refused every production use)
+			g.value(&body, v)
+		}
 	}
 	for _, v := range m.Components {
-		g.value(&body, v)
+		if !v.TestOnly || g.tests {
+			g.value(&body, v)
+		}
 	}
 	if g.tests {
 		for _, fk := range g.fakes[m.Name] {

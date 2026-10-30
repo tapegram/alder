@@ -9,7 +9,9 @@ import (
 	"alder/internal/check"
 	"alder/internal/diag"
 	"alder/internal/markup"
+	"alder/internal/scratch"
 	"alder/internal/syntax"
+	"alder/internal/theme"
 	"alder/internal/types"
 )
 
@@ -25,15 +27,35 @@ func hoverReq(s *server, params json.RawMessage) (any, error) {
 	if !ok {
 		return nil, nil
 	}
-	a, m, path, pos, ok := s.at(rel, p.Position, true)
-	if !ok {
-		return nil, nil
+	var text string
+	if scratch.IsScratchFile(rel) {
+		pl, ok := s.scratchAt(rel, p.Position, true)
+		if !ok {
+			return nil, nil
+		}
+		text = hoverOrTheme(pl.v.a, pl.m, pl.path, pl.pos)
+	} else {
+		a, m, path, pos, ok := s.at(rel, p.Position, true)
+		if !ok {
+			return nil, nil
+		}
+		text = hoverOrTheme(a, m, path, pos)
 	}
-	text := hoverText(a, m, path, pos)
 	if text == "" {
 		return nil, nil
 	}
 	return map[string]any{"contents": map[string]any{"kind": "markdown", "value": text}}, nil
+}
+
+// hoverOrTheme is a theme declaration's field hover, else hoverText when pos has an expression path.
+func hoverOrTheme(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Pos) string {
+	if d, isTheme := declAt(m, pos).(*syntax.ThemeDecl); isTheme {
+		return themeHover(d.Fields, pos)
+	}
+	if len(path) > 0 {
+		return hoverText(a, m, path, pos)
+	}
+	return ""
 }
 
 // hoverText is the hover at pos, "" for none: a hole's type; what target names (a local's type,
@@ -111,7 +133,7 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 				if v, ok := n.(*syntax.Var); ok && v.Module != "" && a.prog.Modules[ref.Module] != nil {
 					name = ref.Module + "." + ref.Name // `Todo.find` is `Table.Todo.find` in full
 				}
-				return withDoc(sig(name, t), declDoc(a, ref))
+				return withDoc(sig(name, t)+helperLine(a, ref), declDoc(a, ref))
 			}
 		}
 	}
@@ -150,6 +172,14 @@ func declDoc(a *analysis, ref syntax.Ref) string {
 		return ""
 	}
 	return syntax.DocOf(mod.Lines, d.GetSpan().Start.Line)
+}
+
+// helperLine is the hover's note on a test helper (#4), "" for any other value.
+func helperLine(a *analysis, ref syntax.Ref) string {
+	if why := a.res.TestOnly[ref.Module+"."+ref.Name]; why != "" {
+		return "\n\ntest helper (uses " + why + ")"
+	}
+	return ""
 }
 
 // withDoc is sig followed by doc, when there is one, as its own paragraph.
@@ -216,4 +246,24 @@ func pageHover(a *analysis, m *syntax.Module, d *syntax.PageDecl) string {
 	return "```alder\n" + strings.Join(lines, "\n") + "\n```\n\n" +
 		"The page's route and what a request needs. `load`, `view` and `update` are its hooks; " +
 		"`Params` is this record, `Msg` its messages."
+}
+
+// themeHover is the hover of a token's name in App's theme (fs, or a record inside it): its CSS
+// name, kind and alder-ui's default values; "" elsewhere.
+func themeHover(fs []*syntax.DeployField, pos diag.Pos) string {
+	for _, f := range fs {
+		if f.Value != nil && f.Value.Kind == "record" && syntax.Contains(f.Value.Span, pos) {
+			return themeHover(f.Value.Rec, pos)
+		}
+		if !syntax.Contains(f.NameSpan, pos) {
+			continue
+		}
+		t, ok := theme.Lookup(f.Name)
+		if !ok {
+			return ""
+		}
+		d := theme.Defaults()[t.CSS]
+		return fmt.Sprintf("`%s`: `%s`, a %s token of alder-ui %s\n\nalder-ui's default: light `%s`, dark `%s`", t.Field, t.CSS, t.Kind, theme.Version(), d.Light, d.Dark)
+	}
+	return ""
 }

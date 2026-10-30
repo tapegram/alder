@@ -59,14 +59,14 @@ func runDeployInitWith(args []string, stdout, stderr io.Writer, source func() ve
 	r := &deployRunner{dir: dir}
 	r.Check()
 	if r.loadErr != "" {
-		fmt.Fprintf(stderr, "alder deploy init: %s\n", r.loadErr)
+		fmt.Fprintf(stderr, "%s %s\n", errTag(stderr, "alder deploy init:"), r.loadErr)
 		return 2
 	}
 	src := source()
 	spec := deploy.InitSpec{Target: target, App: r.app, Ref: src.Ref, Disk: initNeedsDisk(r.tables, len(r.silos))}
 	files, err := deploy.InitFiles(spec)
 	if err != nil {
-		fmt.Fprintf(stderr, "alder deploy init: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder deploy init:"), err)
 		return 2
 	}
 	var exist []string
@@ -74,13 +74,13 @@ func runDeployInitWith(args []string, stdout, stderr io.Writer, source func() ve
 		if _, err := os.Stat(filepath.Join(dir, f.Name)); err == nil {
 			exist = append(exist, f.Name)
 		} else if !errors.Is(err, fs.ErrNotExist) {
-			fmt.Fprintf(stderr, "alder deploy init: %v\n", err)
+			fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder deploy init:"), err)
 			return 2
 		}
 	}
 	blocked := len(exist) > 0 && !force
 	if blocked {
-		fmt.Fprintf(stderr, "alder deploy init: not writing: %s already exist(s); remove them, or pass --force to replace them\n", strings.Join(exist, ", "))
+		fmt.Fprintf(stderr, "%s not writing: %s already exist(s); remove them, or pass --force to replace them\n", errTag(stderr, "alder deploy init:"), strings.Join(exist, ", "))
 	}
 	if dry {
 		for _, f := range files {
@@ -100,7 +100,7 @@ func runDeployInitWith(args []string, stdout, stderr io.Writer, source func() ve
 	}
 	for _, f := range files {
 		if err := os.WriteFile(filepath.Join(dir, f.Name), []byte(f.Body), 0o644); err != nil {
-			fmt.Fprintf(stderr, "alder deploy init: %v\n", err)
+			fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder deploy init:"), err)
 			return 2
 		}
 		fmt.Fprintf(stdout, "wrote %s\n", f.Name)
@@ -120,6 +120,10 @@ func runDeployInitWith(args []string, stdout, stderr io.Writer, source func() ve
 		fmt.Fprintf(stdout, "the app has tables or silos: SQLite lives at %s on a persistent %s\n", deploy.InitDB, map[string]string{"render": "disk", "fly": "volume"}[target])
 	} else {
 		fmt.Fprintln(stdout, "the app has no tables: no disk or volume declared")
+	}
+	if r.decl == nil { // the platform deploys whatever is pushed; `alder check` warns the same (W0009)
+		platformFile := map[string]string{"render": "render.yaml", "fly": "fly.toml"}[target]
+		fmt.Fprintf(stdout, "%s deploys whatever is pushed; for a check, migration plan and backup, add a `deploy` block to App.alder (book chapter 16)\n", platformFile)
 	}
 	switch target {
 	case "render":

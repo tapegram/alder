@@ -7,6 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"alder/internal/diag"
 	"alder/internal/names"
 	"alder/internal/syntax"
 )
@@ -22,15 +23,29 @@ import (
 // imported also counts when exactly one module of the app would get it as its canonical
 // qualifier beside the imports the module has; when several would, fill refuses and names them.
 func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, imports []string, err error) {
+	edits, h, imports, _, err = FillAt(p, address, hole, expr)
+	return edits, h, imports, err
+}
+
+// FillAt is Fill, with where the expression stands in the edited file (edits[0].Body, before
+// Apply formats it): the span of the text the fill wrote in place of the hole (for a block's
+// statements, their whole lines). A caller that checks the result (generate.Probe) finds the
+// expression's nodes there.
+func FillAt(p *Program, address, hole, expr string) (edits []Edit, h *Hole, imports []string, span diag.Span, err error) {
+	edits, h, imports, span, err = fillAt(p, address, hole, expr)
+	return
+}
+
+func fillAt(p *Program, address, hole, expr string) (edits []Edit, h *Hole, imports []string, span diag.Span, err error) {
 	if err := controlChars(expr); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, diag.Span{}, err
 	}
 	expr = strings.TrimRight(expr, " \t\r\n")
 	for strings.HasPrefix(expr, "\n") {
 		expr = expr[1:]
 	}
 	if strings.TrimSpace(expr) == "" {
-		return nil, nil, nil, Refusef("standard input is empty: write the expression that fills the hole")
+		return nil, nil, nil, diag.Span{}, Refusef("standard input is empty: write the expression that fills the hole")
 	}
 	parsed, ds, more, at := syntax.ParseExpr("stdin", []byte(expr))
 	if more != "" {
@@ -38,49 +53,27 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 		if more == "`->`" {
 			hint = " (a lambda starts with `\\`: `\\a b -> …`)"
 		}
-		return nil, nil, nil, Refusef("`alder fill` takes one expression; found more after it: %s at line %d, column %d of standard input%s", more, at.Line, at.Col, hint)
+		return nil, nil, nil, diag.Span{}, Refusef("`alder fill` takes one expression; found more after it: %s at line %d, column %d of standard input%s", more, at.Line, at.Col, hint)
 	} else if len(ds) > 0 {
-		return nil, nil, nil, Refusef("`alder fill` takes one expression; standard input does not parse as one: %s (line %d, column %d)", ds[0].Message, ds[0].Span.Start.Line, ds[0].Span.Start.Col)
+		return nil, nil, nil, diag.Span{}, Refusef("`alder fill` takes one expression; standard input does not parse as one: %s (line %d, column %d)", ds[0].Message, ds[0].Span.Start.Line, ds[0].Span.Start.Col)
 	}
-	mod, decl, arm, err := parseAddress(p, address)
+	h, in, err := findHole(p, address, hole)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, diag.Span{}, err
 	}
 	hole = strings.TrimPrefix(hole, "?")
-	var in, named []Hole
-	for _, h := range HoleIndex(p.Prog, p.Diags) {
-		if h.Module == mod && h.Decl == decl && (arm == "" || h.Arm == arm) {
-			in = append(in, h)
-			if hole == "" || h.Name == hole {
-				named = append(named, h)
-			}
-		}
-	}
-	switch {
-	case len(in) == 0 && arm != "":
-		return nil, nil, nil, Refusef("`%s` has no typed hole: a fill replaces a hole, and this arm has none; to rewrite it, give `alder fill --decl %s.update -` the whole `match msg { … }` (`alder fill --list` lists the app's holes)", address, mod)
-	case len(in) == 0:
-		return nil, nil, nil, Refusef("`%s` has no typed hole; to rewrite it whole, `alder fill --decl %s -` (`alder fill --list` lists the app's holes)", address, shellAddress(address))
-	case len(named) == 0:
-		return nil, nil, nil, Refusef("`%s` has no hole `?%s` (it has %s)", address, hole, holeNames(in))
-	case len(named) > 1 && hole == "":
-		return nil, nil, nil, Refusef("`%s` has %d holes (%s): name one with --hole", address, len(named), holeNames(named))
-	case len(named) > 1:
-		return nil, nil, nil, Refusef("`%s` has %d holes named `?%s`: fill them one at a time by naming a declaration that holds one", address, len(named), hole)
-	}
-	h = &named[0]
 	m := p.Modules[h.Module]
 	if err := fillShape(m, h, parsed, hole); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, diag.Span{}, err
 	}
 	lines := strings.Split(strings.TrimSuffix(m.Source, "\n"), "\n")
 	sp := h.Span
 	if sp.Start.Line != sp.End.Line || sp.Start.Line > len(lines) {
-		return nil, nil, nil, Refusef("internal error: the hole ?%s is not on one line", h.Name)
+		return nil, nil, nil, diag.Span{}, Refusef("internal error: the hole ?%s is not on one line", h.Name)
 	}
 	l := lines[sp.Start.Line-1]
 	if sp.Start.Col < 1 || sp.End.Col-1 > len(l) || l[sp.Start.Col-1:sp.End.Col-1] != "?"+h.Name {
-		return nil, nil, nil, Refusef("internal error: the hole ?%s is not where the checker says", h.Name)
+		return nil, nil, nil, diag.Span{}, Refusef("internal error: the hole ?%s is not where the checker says", h.Name)
 	}
 	before, after := l[:sp.Start.Col-1], l[sp.End.Col-1:]
 	inner, ok := soleInBlock(lines, sp.Start.Line, h.Name, expr)
@@ -101,11 +94,20 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 		}
 		dropGuidance(e, m.Syntax, h.Decl, h.Name == "expected", onlyExpectedLeft(in, h))
 		if err := fillImports(e, p, m, expr, &imports); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, diag.Span{}, err
 		}
-		return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
+		return []Edit{{Path: m.File, Body: e.result()}}, h, imports, e.spanOf(m.File, sp.Start.Line, 1, 0), nil
 	}
-	if needsParens(before, after, expr) {
+	// The expression goes between the hole line's text before and after it. A comment in it would
+	// comment out the rest of that line (`n -- ` in `?a + 1 * n`), and an operator in it could bind
+	// differently from the hole (`1 + 1` in `?a * 2`): its comments are cut (by the lexer), and
+	// any expression but an atomic one is parenthesised; formatting drops the parentheses that
+	// are not needed.
+	expr = syntax.StripComments(expr)
+	if strings.TrimSpace(expr) == "" {
+		return nil, nil, nil, diag.Span{}, Refusef("standard input has only comments: write the expression that fills the hole")
+	}
+	if !atomic(expr) {
 		expr = "(" + expr + ")"
 	}
 	// a multi-line expression continues at the hole's line's indentation
@@ -119,9 +121,48 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 	e.replaceLine(sp.Start.Line, before+strings.Join(exprLines, "\n")+after)
 	dropGuidance(e, m.Syntax, h.Decl, h.Name == "expected", onlyExpectedLeft(in, h))
 	if err := fillImports(e, p, m, expr, &imports); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, diag.Span{}, err
 	}
-	return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
+	return []Edit{{Path: m.File, Body: e.result()}}, h, imports, e.spanOf(m.File, sp.Start.Line, len(before)+1, len(after)), nil
+}
+
+// FindHole is the typed hole that `alder fill <address>` (with --hole hole, "" for none, `?name`
+// or `name`) would fill, with Fill's refusals: an address that names no declaration with a
+// hole, a hole the declaration does not have, several holes and none named.
+func FindHole(p *Program, address, hole string) (*Hole, error) {
+	h, _, err := findHole(p, address, hole)
+	return h, err
+}
+
+// findHole is FindHole, with every hole of the declaration (in).
+func findHole(p *Program, address, hole string) (h *Hole, in []Hole, err error) {
+	mod, decl, arm, err := parseAddress(p, address)
+	if err != nil {
+		return nil, nil, err
+	}
+	hole = strings.TrimPrefix(hole, "?")
+	var named []Hole
+	for _, h := range HoleIndex(p.Prog, p.Diags) {
+		if h.Module == mod && h.Decl == decl && (arm == "" || h.Arm == arm) {
+			in = append(in, h)
+			if hole == "" || h.Name == hole {
+				named = append(named, h)
+			}
+		}
+	}
+	switch {
+	case len(in) == 0 && arm != "":
+		return nil, nil, Refusef("`%s` has no typed hole: a fill replaces a hole, and this arm has none; to rewrite it, give `alder fill --decl %s.update -` the whole `match msg { … }` (`alder fill --list` lists the app's holes)", address, mod)
+	case len(in) == 0:
+		return nil, nil, Refusef("`%s` has no typed hole; to rewrite it whole, `alder fill --decl %s -` (`alder fill --list` lists the app's holes)", address, shellAddress(address))
+	case len(named) == 0:
+		return nil, nil, Refusef("`%s` has no hole `?%s` (it has %s)", address, hole, holeNames(in))
+	case len(named) > 1 && hole == "":
+		return nil, nil, Refusef("`%s` has %d holes (%s): name one with --hole", address, len(named), holeNames(named))
+	case len(named) > 1:
+		return nil, nil, Refusef("`%s` has %d holes named `?%s`: fill them one at a time by naming a declaration that holds one", address, len(named), hole)
+	}
+	return &named[0], in, nil
 }
 
 // fillImports adds to e the imports of the modules of the app that expr names, by their full
@@ -136,7 +177,7 @@ func fillImports(e *srcEdit, p *Program, m *Module, expr string, imports *[]stri
 	for _, im := range m.Syntax.Imports {
 		have[im.Module] = true
 	}
-	for _, q := range append(qualifiers(p, expr), short...) {
+	for _, q := range append(qualifiers(p, expr, moduleCtors(m.Syntax)...), short...) {
 		if !have[q] {
 			have[q] = true
 			*imports = append(*imports, q)
@@ -193,11 +234,13 @@ func blockBody(expr string) (string, bool) {
 // without an import; a table's module, named by the table's name as a qualifier (`User.UserId`
 // for Table.User); and a table's (or type's) module named bare, as its record type is
 // (`Db.from Team`). In first-use order.
-func qualifiers(p *Program, expr string) []string {
+//
+// A bare word in ctors is a constructor in scope, not a table's record type, whatever its name.
+func qualifiers(p *Program, expr string, ctors ...string) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, segs := range dottedNames(expr) {
-		if len(segs) == 1 { // a table's record type: `Db.from Team` (module Table.Team, or Team)
+		if len(segs) == 1 && !slices.Contains(ctors, segs[0]) { // a table's record type: `Db.from Team` (module Table.Team, or Team)
 			mod := ""
 			if t := p.TableNamed(segs[0]); t != nil {
 				mod = t.Module
@@ -226,6 +269,19 @@ func qualifiers(p *Program, expr string) []string {
 		if t := p.TableNamed(segs[0]); !found && len(segs) >= 2 && t != nil && !seen[t.Module] {
 			seen[t.Module] = true
 			out = append(out, t.Module)
+		}
+	}
+	return out
+}
+
+// moduleCtors are the constructors of the unions that module m declares.
+func moduleCtors(m *syntax.Module) []string {
+	var out []string
+	for _, d := range m.Decls {
+		if td, ok := d.(*syntax.TypeDecl); ok {
+			for _, c := range td.Union {
+				out = append(out, c.Name)
+			}
 		}
 	}
 	return out
@@ -363,15 +419,16 @@ func parseAddress(p *Program, address string) (mod, decl, arm string, err error)
 		if rest != "" {
 			return "", "", "", Refusef("`%s` is not a declaration: write `Module.decl`, `Module.update.Msg` or `Module.\"test name\"`", address)
 		}
-		if p.Modules[mod] == nil {
+		if p.Modules[p.ResolveModule(mod)] == nil {
 			return "", "", "", Refusef("there is no module `%s`", mod)
 		}
+		mod = p.ResolveModule(mod)
 		return mod, decl, "", nil
 	}
 	segs := strings.Split(address, ".")
 	for i := len(segs) - 1; i >= 1; i-- {
-		if p.Modules[strings.Join(segs[:i], ".")] != nil {
-			mod, rest := strings.Join(segs[:i], "."), segs[i:]
+		if cand := p.ResolveModule(strings.Join(segs[:i], ".")); p.Modules[cand] != nil {
+			mod, rest := cand, segs[i:]
 			if len(rest) > 2 {
 				return "", "", "", Refusef("`%s` is not a declaration: write `Module.decl`, `Module.update.Msg` or `Module.\"test name\"`", address)
 			}
@@ -395,35 +452,6 @@ func holeNames(hs []Hole) string {
 		names = append(names, "?"+h.Name)
 	}
 	return strings.Join(names, ", ")
-}
-
-// needsParens reports whether expr must be parenthesised to replace a hole between the texts
-// before and after it on its line: not when it is atomic (a name, a literal, one bracketed
-// whole), nor where any expression may stand (after `->`, `=`, `<-`, `:`, an opening bracket or
-// a comma, before a closing one, a comma or the end of the line); after an operator only when it
-// has an operator or a keyword of its own at its top level.
-func needsParens(before, after, expr string) bool {
-	if atomic(expr) {
-		return false
-	}
-	b := strings.TrimRight(before, " ")
-	a := strings.TrimLeft(after, " ")
-	opens := b == "" || strings.HasSuffix(b, "->") || strings.HasSuffix(b, "<-") || strings.HasSuffix(b, ":") ||
-		strings.HasSuffix(b, "{") || strings.HasSuffix(b, "(") || strings.HasSuffix(b, "[") || strings.HasSuffix(b, ",") ||
-		(strings.HasSuffix(b, "=") && !strings.HasSuffix(b, "==") && !strings.HasSuffix(b, "!=") && !strings.HasSuffix(b, "<=") && !strings.HasSuffix(b, ">="))
-	closes := a == "" || strings.HasPrefix(a, ",") || strings.HasPrefix(a, "}") || strings.HasPrefix(a, ")") || strings.HasPrefix(a, "]")
-	if opens && closes {
-		return false
-	}
-	last := rune(0)
-	if b != "" {
-		last = rune(b[len(b)-1])
-	}
-	application := unicode.IsLetter(last) || unicode.IsDigit(last) || last == ')' || last == ']' || last == '}' || last == '"' || last == '_'
-	if application {
-		return true
-	}
-	return topLevelOperator(expr)
 }
 
 // atomic reports whether expr is one name or number, or one bracketed whole (`( … )`, `[ … ]`,
@@ -474,40 +502,6 @@ func closing(s string, i int) int {
 		}
 	}
 	return -1
-}
-
-// topLevelOperator reports whether expr has, outside brackets and strings, a binary operator, or
-// starts with a keyword (`if`, `match`, `let`) or a lambda.
-func topLevelOperator(expr string) bool {
-	t := strings.TrimSpace(expr)
-	for _, kw := range []string{"if ", "match ", "let ", "\\"} {
-		if strings.HasPrefix(t, kw) {
-			return true
-		}
-	}
-	depth, inStr := 0, false
-	for i := 0; i < len(t); i++ {
-		ch := t[i]
-		switch {
-		case inStr:
-			if ch == '\\' {
-				i++
-			} else if ch == '"' {
-				inStr = false
-			}
-		case ch == '"':
-			inStr = true
-		case ch == '(' || ch == '[' || ch == '{':
-			depth++
-		case ch == ')' || ch == ']' || ch == '}':
-			depth--
-		case depth == 0 && strings.ContainsRune("=!<>+*/%&|?", rune(ch)):
-			return true
-		case depth == 0 && ch == '-' && i > 0 && t[i-1] == ' ' && i+1 < len(t) && t[i+1] == ' ':
-			return true
-		}
-	}
-	return false
 }
 
 // onlyExpectedLeft reports whether, once h is filled, the holes of its declaration (in) left are

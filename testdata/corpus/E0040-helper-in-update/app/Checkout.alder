@@ -1,0 +1,22 @@
+module Checkout
+
+import Payments
+
+page "/checkout" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 0 }
+
+msg Pay
+
+-- `Payments.install` is a test helper, and `update` runs in production.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = {
+  let _ <- Payments.install
+  Task.succeed Rerender
+}
+
+view : Model -> Session -> Html Msg
+view model session = <button click={Pay}>Pay</button>

@@ -1,0 +1,20 @@
+module Helpers
+
+import Gate
+
+-- A test helper: it uses `Test.fake` and `Test.fetch`, so only tests and other helpers may use
+-- it, and a production build omits it.
+fetchText : Text -> Task { status: Int, body: Text }
+fetchText cfg = {
+  let _ <- Test.fake Gate
+  let r <- Test.fetch (Sites.MnSos { cfg: cfg })
+  Task.succeed { status: r.status, body: Bytes.toText r.body ?? "" }
+}
+
+-- A test helper through `fetchText`.
+at : Int -> Text -> Task { status: Int, body: Text }
+at minute cfg = fetchText (if minute >= 400 then cfg else "")
+
+-- An ordinary value: both builds have it.
+final : Text
+final = "final"

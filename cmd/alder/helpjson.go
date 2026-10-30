@@ -25,6 +25,7 @@ type cmdSpec struct {
 	Summary     string     `json:"summary"`
 	Usage       string     `json:"usage,omitempty"`
 	Args        []string   `json:"args"`
+	Required    []bool     `json:"required,omitempty"` // per arg, for a generator that has a required one: whether it must be given
 	Flags       []flagSpec `json:"flags"`
 	Subcommands []cmdSpec  `json:"subcommands,omitempty"`
 }
@@ -60,6 +61,20 @@ func specArgs(s *generate.Spec) []string {
 	return out
 }
 
+// specRequired is whether each of the Spec's args is required; nil when none is.
+func specRequired(s *generate.Spec) []bool {
+	var out []bool
+	any := false
+	for _, a := range s.Args {
+		out = append(out, a.Required)
+		any = any || a.Required
+	}
+	if !any {
+		return nil
+	}
+	return out
+}
+
 // groupCmd is the subcommand nodes of group, from the Specs, in their order. `new` nodes carry
 // their usage line and the generator flags. `edit` and `remove` nodes carry their Args and
 // Flags but no Usage and no generator flags: the group has one usage text, and withGenFlags
@@ -71,7 +86,7 @@ func groupCmd(group string) []cmdSpec {
 		if g != group {
 			continue
 		}
-		c := cmdSpec{Name: sub, Summary: s.Summary, Args: specArgs(s), Flags: specFlags(s)}
+		c := cmdSpec{Name: sub, Summary: s.Summary, Args: specArgs(s), Required: specRequired(s), Flags: specFlags(s)}
 		if group == "new" {
 			c.Usage = newGeneratorUsages[sub]
 			c.Flags = withGenFlags(c.Flags...)
@@ -139,6 +154,15 @@ var commandTree = []cmdSpec{
 			{Name: "--min", Value: "R", Summary: "with --mutate, fail below this mutation score"},
 			buildDirFlag,
 		}},
+	{Name: "bench", Summary: "measure each browser step of the app's tests", Usage: commandUsages["bench"],
+		Args: []string{"[dir]"},
+		Flags: []flagSpec{
+			{Name: "-run", Value: "re", Summary: "only the tests whose name matches"},
+			{Name: "--count", Value: "N", Summary: "runs per test, the median time reported (default 3)"},
+			{Name: "-timeout", Value: "d", Summary: "fail a test that runs longer"},
+			{Name: "--json", Summary: "one JSON object per result, with its \"bench\" rows"},
+			buildDirFlag,
+		}},
 	{Name: "migrate", Summary: "write the migration for a schema change", Usage: commandUsages["migrate"],
 		Args: []string{"[dir]"},
 		Flags: []flagSpec{
@@ -174,6 +198,8 @@ var commandTree = []cmdSpec{
 			flagSpec{Name: "--hole", Value: "?name", Summary: "the hole to fill when the declaration has several"},
 			flagSpec{Name: "--decl", Summary: "replace the whole declaration body"},
 			flagSpec{Name: "--list", Summary: "list the app's holes"},
+			flagSpec{Name: "--ai", Summary: "fill the hole with a model's expression (ANTHROPIC_API_KEY or ALDER_FILL_COMMAND), written only if it checks"},
+			flagSpec{Name: "--prompt", Summary: "print what --ai would send the model, and send nothing"},
 		)},
 	{Name: "regen", Summary: "regenerate generated code", Usage: commandUsages["regen"],
 		Flags:       withGenFlags(specFlags(generate.SpecByID("regen admin"))...),

@@ -1,0 +1,2 @@
+app/Todos/Index.alder:21:12 E0040 `step` is a test helper (it uses `Test.login`): only a `test` or another test helper may use it
+app/Todos/Index.alder:27:17 E0040 `Doc` is only available in a `test` or a test helper: `view` is the page's view, not a helper

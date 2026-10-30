@@ -168,9 +168,67 @@ func RenderWith(n Node, st *FormState) string {
 	return b.String()
 }
 
+// Rendered is a page rendered with its regions recorded (RenderTracked).
+type Rendered struct {
+	Page    string
+	Regions []Region // every element with an id, in document order (by Start)
+	// RawIDs: Html.unsafe markup in the page holds an `id=`, whose element the renderer does not
+	// see: no id of the page can be proved unique, so it has no regions (Fragments).
+	RawIDs bool
+	// Toasts: the page has an <al-toasts> element of its own (outside <head>, <template> and
+	// <noscript>).
+	Toasts bool
+}
+
+// Region is an element with an id attribute: Page[Start:End] is its markup. Inert: it is never a
+// region (but counted for uniqueness): it is inside <head>, <template> or <noscript>, or the
+// browser's parser would not build it as written (repairOf: it holds, or is, markup the parser
+// restructures, such as a <div> in a <p>).
+type Region struct {
+	ID         string
+	Start, End int
+	Inert      bool
+}
+
+// RenderTracked renders n as RenderWith(n, st) does and records each element with an id as it
+// writes it: no parse, no second walk.
+func RenderTracked(n Node, st *FormState) Rendered { return RenderTrackedSized(n, st, 0) }
+
+// RenderTrackedSized is RenderTracked with room for size bytes made up front: a page rendered
+// for comparison with another of about that size (the before-view of a message's answer) grows
+// its buffer once instead of step by step.
+func RenderTrackedSized(n Node, st *FormState, size int) Rendered {
+	var b strings.Builder
+	b.Grow(size)
+	tr := &tracking{}
+	r := renderer{b: &b, st: st, track: tr}
+	r.render(n)
+	return Rendered{Page: b.String(), Regions: tr.regions, RawIDs: tr.rawIDs, Toasts: tr.toasts}
+}
+
+// tracking is what RenderTracked records.
+type tracking struct {
+	regions []Region
+	inert   int // depth inside <head>, <template> or <noscript>
+	rawIDs  bool
+	toasts  bool
+	open    []string // the elements open where the renderer is, outermost first
+	openReg []int    // each one's index in regions, -1 for none
+}
+
+// repaired makes every open region inert: the parser restructures markup inside them.
+func (tr *tracking) repaired() {
+	for _, i := range tr.openReg {
+		if i >= 0 {
+			tr.regions[i].Inert = true
+		}
+	}
+}
+
 // renderer is one rendering: the request's form state and where in the tree it is.
 type renderer struct {
 	b      *strings.Builder
+	track  *tracking // RenderTracked's record, nil otherwise
 	st     *FormState
 	inForm bool     // inside a <form> element
 	form   string   // the message key (rt.MsgRef.Key) of the enclosing <form>, "" for none
@@ -183,8 +241,19 @@ func (r *renderer) render(n Node) {
 	case kCtrl:
 		r.render(n.control.build(r.st, r.active(n.control), r.orphan))
 	case kText:
+		if tr := r.track; tr != nil && len(tr.open) > 0 && textFosters(tr.open[len(tr.open)-1], n.text) {
+			tr.repaired()
+		}
 		b.WriteString(escape(n.text))
 	case kRaw:
+		if tr := r.track; tr != nil {
+			if hasIDAttr(n.text) {
+				tr.rawIDs = true
+			}
+			if strings.IndexByte(n.text, '<') >= 0 { // markup the renderer does not see: any shape
+				tr.repaired()
+			}
+		}
 		b.WriteString(n.text)
 	case kRawText:
 		b.WriteString(escape(n.text)) // outside <script> and <style>: text
@@ -212,10 +281,36 @@ func (r *renderer) render(n Node) {
 				r.orphan = orphanErrors(n, st)
 			}
 		}
+		region := -1
+		tr := r.track
+		if tr != nil {
+			fixed := false
+			if act, _ := repairOf(tr.open, n.tag); act != keep {
+				tr.repaired()
+				fixed = true
+			}
+			if id, ok := idOf(n.attrs, r.st); ok {
+				region = len(tr.regions)
+				tr.regions = append(tr.regions, Region{ID: id, Start: b.Len(), Inert: tr.inert > 0 || fixed})
+			}
+			if n.tag == "al-toasts" && tr.inert == 0 {
+				tr.toasts = true
+			}
+			if n.tag == "head" || n.tag == "template" || n.tag == "noscript" {
+				tr.inert++
+				defer func() { tr.inert-- }()
+			}
+		}
 		r.open(n.tag, n.attrs)
 		if void[n.tag] {
+			if region >= 0 {
+				r.track.regions[region].End = b.Len()
+			}
 			*r = saved
 			return
+		}
+		if tr != nil {
+			tr.open, tr.openReg = append(tr.open, n.tag), append(tr.openReg, region)
 		}
 		for _, c := range n.children {
 			if rawTextElems[n.tag] {
@@ -229,8 +324,44 @@ func (r *renderer) render(n Node) {
 		b.WriteString("</")
 		b.WriteString(n.tag)
 		b.WriteByte('>')
+		if tr != nil {
+			tr.open, tr.openReg = tr.open[:len(tr.open)-1], tr.openReg[:len(tr.openReg)-1]
+		}
+		if region >= 0 {
+			r.track.regions[region].End = b.Len()
+		}
 		*r = saved
 	}
+}
+
+// idOf is the value of attrs' id attribute as rendered with st, if it renders one.
+func idOf(attrs []Attr, st *FormState) (string, bool) {
+	for _, a := range attrs {
+		if a.Name == "id" && !a.Omit && !a.Bool {
+			return a.value(st), true
+		}
+	}
+	return "", false
+}
+
+// hasIDAttr reports whether raw markup may hold an id attribute: `id` before an `=`, any case,
+// with any whitespace between (`id = "x"`).
+func hasIDAttr(s string) bool {
+	for i := strings.IndexByte(s, '='); i >= 0; {
+		k := i
+		for k > 0 && isSpace(s[k-1]) {
+			k--
+		}
+		if k >= 2 && (s[k-2]|0x20) == 'i' && (s[k-1]|0x20) == 'd' {
+			return true
+		}
+		j := strings.IndexByte(s[i+1:], '=')
+		if j < 0 {
+			return false
+		}
+		i += 1 + j
+	}
+	return false
 }
 
 // open writes the start tag of tag with attrs (" />" for a void element).
@@ -288,7 +419,7 @@ func (r *renderer) clickButton(n Node, m *rt.MsgRef, outer *Node) {
 		*r = saved
 		return
 	}
-	r.render(El("form", []Attr{A("method", "post"), A("action", url), A("class", "_alder-click"), A("data-on:submit", SubmitPost(url))}, button))
+	r.render(El("form", []Attr{A("method", "post"), A("action", url), A("class", "_alder-click"), A("data-on:submit", ClickFormPost(url))}, button))
 }
 
 // url is m's URL on the page being rendered (MsgAttr).
@@ -395,27 +526,39 @@ func FormTo(m rt.MsgRef, attrs []Attr, children ...Node) Node {
 }
 
 // SubmitPost is the Datastar action of a form's data-on:submit: post the form's fields
-// url-encoded to action, on the page's one navigation signal (Navigation).
+// url-encoded to action with the message options (PostOptions, contentType 'form'; before the
+// helper exists, the content type alone).
 func SubmitPost(action string) string {
-	return abortNavigation + busy("el", "@post('"+action+"', {contentType: 'form', "+Navigation+"})")
+	return busy("el", "@post('"+action+"', "+PostOptions+"?.('form')||{contentType: 'form'})")
+}
+
+// ClickFormPost is the data-on:submit of a click button's own form (RenderWith): SubmitPost
+// without the fallback options, since a click posts no fields.
+func ClickFormPost(url string) string {
+	return busy("el", "@post('"+url+"', "+PostOptions+"?.('form'))")
 }
 
 // ClickPost is the Datastar action of a click that posts a message (a data-on:click, a submit
-// button's formaction): post to url, on the page's one navigation signal (Navigation).
+// button's formaction): post to url with the message options (PostOptions).
 func ClickPost(url string) string {
-	return abortNavigation + busy("el", "@post('"+url+"', {"+Navigation+"})")
+	return busy("el", "@post('"+url+"', "+PostOptions+"?.())")
 }
 
+// PostOptions is the helper a message's post calls for its request options,
+// window._alderO(contentType?) (datastar.BoostInit defines it, once, in the <head>, so each
+// button of a long list carries a call of about 20 bytes): it aborts the navigation in flight
+// and starts the page's next one (Navigation), and sends ShownHeader, the hash the page's
+// <al-shown id="_alder_shown"> holds. It is called as `?.()`: a post made before the boost's
+// data-init ran sends no header, and its answer morphs the whole body.
+const PostOptions = "window._alderO"
+
 // Navigation is the request option every navigating Datastar request of a page shares — a
-// message's post (SubmitPost, ClickPost) and a boosted link's or a back/forward's GET
+// message's post (SubmitPost, ClickPost, through PostOptions) and a boosted link's or a back/forward's GET
 // (datastar.BoostClick, BoostPopstate): one AbortController, window._alderAC, each request
-// aborting the one before it (abortNavigation) and starting a new one. Only the latest
+// aborting the one before it (window._alderAC?.abort()) and starting a new one. Only the latest
 // navigation's answer is applied, so a slow post's answer cannot land after (and over) the
 // page a later click asked for. The dev server's reload stream does not use it.
 const Navigation = "requestCancellation: window._alderAC = new AbortController()"
-
-// abortNavigation, run before a navigating request, aborts the one in flight (Navigation).
-const abortNavigation = "window._alderAC?.abort();"
 
 // BusyNull opens the wrapper of a request that only marks the page pending (a boosted GET):
 // BusyNull + request + ")". The wrapper is window._alderBusy (datastar.BoostInit) marking the

@@ -12,6 +12,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,7 +47,7 @@ type Task[T any] struct{ node node }
 func (Query[T]) step() {}
 func (Task[T]) step()  {}
 
-// node is the untyped tree: one of pure, bind, call, fail, notFound.
+// node is the untyped tree: one of pure, bind, call, fail, notFound, redirect.
 type node interface{ isNode() }
 
 type pure struct{ v any }
@@ -65,6 +67,8 @@ type fail struct{ msg string }
 
 type notFound struct{}
 
+type redirect struct{ location string }
+
 // mark begins (on) or ends a Task.all, for the recorder.
 type mark struct{ on bool }
 
@@ -73,6 +77,7 @@ func (bind) isNode()     {}
 func (call) isNode()     {}
 func (fail) isNode()     {}
 func (notFound) isNode() {}
+func (redirect) isNode() {}
 func (mark) isNode()     {}
 
 // as unwraps a value carried through the untyped tree. A nil interface
@@ -138,6 +143,10 @@ func Fail[T any](msg string) Task[T] { return Task[T]{fail{msg}} }
 // NotFound is an effect that fails with ErrNotFound (a missing record).
 // Run rolls a Task's transaction back.
 func NotFound[T any]() Task[T] { return Task[T]{notFound{}} }
+
+// Redirect is an effect that stops with *ErrRedirect to location (Query.redirect, book 07): a
+// route answers it with a 303 to location. Run rolls a Task's transaction back, as for NotFound.
+func Redirect[T any](location string) Task[T] { return Task[T]{redirect{location}} }
 
 // Call is one effect step. name is for the log and Env.Trace ("Db.get
 // Todo", "Password.verify"); write says whether it may write (a write Call
@@ -320,6 +329,12 @@ func (e *ErrFail) Error() string { return e.Msg }
 // not there. Run returns this exact value, so err == ErrNotFound works.
 var ErrNotFound = errors.New("not found")
 
+// ErrRedirect is the error of an effect that stopped with Query.redirect: a route answers it
+// with a 303 to Location (route__fail); Test.run (rtesting.Inner) reports its Error text.
+type ErrRedirect struct{ Location string }
+
+func (e *ErrRedirect) Error() string { return "redirected to " + e.Location }
+
 // ErrCapability is the error of a capability whose implementation (an adapter) returned an
 // error: Name is the step ("Password.verify") and Err the adapter's error. Generated
 // capability Calls wrap with CapError. A route answers it as it answers any other error (500);
@@ -336,12 +351,14 @@ func (e *ErrCapability) Error() string { return e.Name + ": " + e.Err.Error() }
 func (e *ErrCapability) Unwrap() error { return e.Err }
 
 // CapError is what a generated capability Call returns for its adapter's error err: nil for
-// nil; err itself when it is already a failure (*ErrFail, ErrNotFound) or an ErrCapability;
+// nil; err itself when it is already a failure (*ErrFail, ErrNotFound, *ErrRedirect) or an
+// ErrCapability;
 // otherwise &ErrCapability{name, err}.
 func CapError(name string, err error) error {
 	var f *ErrFail
 	var c *ErrCapability
-	if err == nil || errors.Is(err, ErrNotFound) || errors.As(err, &f) || errors.As(err, &c) {
+	var rd *ErrRedirect
+	if err == nil || errors.Is(err, ErrNotFound) || errors.As(err, &f) || errors.As(err, &c) || errors.As(err, &rd) {
 		return err
 	}
 	return &ErrCapability{Name: name, Err: err}
@@ -371,7 +388,179 @@ type Recorder struct {
 	Steps []StepRec
 	SQL   []SQLRec
 
+	// Loads counts the Queries run on the Env (RunQuery): in a request, a page's `load` (a
+	// Rerender runs it twice, before and after update). `alder bench` reports it.
+	Loads int
+	// Cuts are the indexes into SQL where a Query run (a page's `load`) began and ended: the N+1
+	// rule counts each run on its own (RepeatsCut), so a Rerender, whose load runs twice, does
+	// not double a load's statements, and update's own statements are counted apart from them.
+	Cuts []int
+
 	group, depth, groups int // the Task.all being run (0: none), its nesting, groups begun
+}
+
+// AddLoad counts a Query run (Loads).
+func (r *Recorder) AddLoad() { r.mu.Lock(); r.Loads++; r.mu.Unlock() }
+
+// Cut marks a load boundary at the statements recorded so far (Cuts).
+func (r *Recorder) Cut() {
+	r.mu.Lock()
+	if n := len(r.SQL); len(r.Cuts) == 0 || r.Cuts[len(r.Cuts)-1] != n {
+		r.Cuts = append(r.Cuts, n)
+	}
+	r.mu.Unlock()
+}
+
+// RepeatsCut is Repeats of each part of sql between the cuts (indexes into sql, ascending; those
+// outside it are ignored): one load run, or what ran between loads. A shape found in more than
+// one part is reported once, with its largest part's numbers.
+func RepeatsCut(sql []SQLRec, cuts []int, k int) []Repeat {
+	var out []Repeat
+	seen := map[string]int{}
+	start := 0
+	for _, c := range append(slices.Clone(cuts), len(sql)) {
+		if c <= start || c > len(sql) {
+			continue
+		}
+		for _, r := range Repeats(sql[start:c], k) {
+			if i, ok := seen[r.Stmt]; ok {
+				if r.Count > out[i].Count {
+					out[i] = r
+				}
+				continue
+			}
+			seen[r.Stmt] = len(out)
+			out = append(out, r)
+		}
+		start = c
+	}
+	slices.SortStableFunc(out, func(x, y Repeat) int { return y.Count - x.Count })
+	return out
+}
+
+// inList is a list of placeholders, `(?, ?, ?)`: a `.in` makes one per list length.
+var inList = regexp.MustCompile(`\(\?(?:, \?)+\)`)
+
+// Shape is stmt with each list of placeholders written `(?, …)`: `IN (?, ?)` and `IN (?, ?, ?)`
+// are one statement for the N+1 rule.
+func Shape(stmt string) string { return inList.ReplaceAllString(stmt, "(?, …)") }
+
+// RepeatThreshold is how many times one statement runs in one answer before Repeats calls it an
+// N+1: two to four identical selects are hand-written lookups (two records on one page), five a
+// loop.
+const RepeatThreshold = 5
+
+// Repeat is a statement Repeats found run in a loop: Stmt its text, Count the times it ran, Args
+// the distinct argument sets it ran with and Ms the time they took together.
+type Repeat struct {
+	Stmt  string
+	Count int
+	Args  int
+	Ms    float64
+}
+
+// Repeats is the statements of sql run k times or more (grouped by text: the arguments are bound,
+// so the text is the statement's shape), by Count, most first. A group whose statements are all
+// writes (INSERT, UPDATE, DELETE) issued under one Task.all (one nonzero SQLRec.Group) is a bulk
+// action, not a repeat; a read under a Task.all is: `Query.all` of `Db.get` is the N+1 that costs
+// N round trips on a remote database.
+func Repeats(sql []SQLRec, k int) []Repeat {
+	type acc struct {
+		r      Repeat
+		args   map[string]bool
+		groups map[int]bool
+		writes bool
+		first  int
+	}
+	by := map[string]*acc{}
+	var order []string
+	for i, q := range sql {
+		shape := Shape(q.Stmt)
+		a := by[shape]
+		if a == nil {
+			a = &acc{r: Repeat{Stmt: shape}, args: map[string]bool{}, groups: map[int]bool{}, writes: true, first: i}
+			by[shape] = a
+			order = append(order, shape)
+		}
+		a.r.Count++
+		a.r.Ms += q.Ms
+		a.args[fmt.Sprint(q.Args)] = true
+		a.groups[q.Group] = true
+		if !isWrite(q.Stmt) {
+			a.writes = false
+		}
+	}
+	var out []Repeat
+	for _, s := range order {
+		a := by[s]
+		if a.r.Count < k || a.writes && len(a.groups) == 1 && !a.groups[0] {
+			continue
+		}
+		a.r.Args = len(a.args)
+		out = append(out, a.r)
+	}
+	slices.SortStableFunc(out, func(x, y Repeat) int { return y.Count - x.Count })
+	return out
+}
+
+// isWrite reports whether stmt is an INSERT, UPDATE or DELETE.
+func isWrite(stmt string) bool {
+	s := strings.ToUpper(strings.TrimSpace(stmt))
+	return strings.HasPrefix(s, "INSERT") || strings.HasPrefix(s, "UPDATE") || strings.HasPrefix(s, "DELETE")
+}
+
+// String is the warning: `N+1: <statement> ran 100 times (100 argument sets, 3.21 ms): <what to
+// do>`, the statement's column list cut to its first two names.
+func (r Repeat) String() string {
+	sets := "argument sets"
+	if r.Args == 1 {
+		sets = "argument set"
+	}
+	hint := repeatHint(r.Stmt)
+	if r.Args == 1 {
+		hint = fmt.Sprintf("the same query ran %d times with the same arguments; run it once and pass its result along", r.Count)
+	}
+	return fmt.Sprintf("N+1: %s ran %d times (%d %s, %.2f ms): %s", shortStmt(r.Stmt), r.Count, r.Args, sets, r.Ms, hint)
+}
+
+// shortStmt is stmt with a SELECT's column list cut to its first two names and "…".
+func shortStmt(stmt string) string {
+	rest, ok := strings.CutPrefix(stmt, "SELECT ")
+	if !ok {
+		return stmt
+	}
+	cols, from, ok := strings.Cut(rest, " FROM ")
+	if !ok {
+		return stmt
+	}
+	names := strings.Split(cols, ", ")
+	if len(names) <= 2 {
+		return stmt
+	}
+	return "SELECT " + names[0] + ", " + names[1] + ", … FROM " + from
+}
+
+// repeatHint is what to do about a repeat of stmt: for a select of one row by one column, read the
+// rows together with that column's `.in`.
+func repeatHint(stmt string) string {
+	const tail = "or in the page's first query"
+	_, rest, ok := strings.Cut(stmt, " FROM \"")
+	if !strings.HasPrefix(stmt, "SELECT ") || !ok {
+		return "the same statement for each row; do the work together, " + tail
+	}
+	table, where, _ := strings.Cut(rest, "\"")
+	if i := strings.LastIndex(table, "__"); i >= 0 {
+		table = table[i+2:]
+	}
+	col, ok1 := strings.CutPrefix(strings.TrimSpace(where), "WHERE \"")
+	col, eq, ok2 := strings.Cut(col, "\"")
+	if !ok1 || !ok2 || strings.TrimSpace(eq) != "= ?" {
+		return "one query per row; read the rows together, " + tail
+	}
+	if col == "id" {
+		return fmt.Sprintf("one Db.get per row; read them together with Db.where (%s.id.in ids), %s", table, tail)
+	}
+	return fmt.Sprintf("one query per row; read them together with Db.where (%s.%s.in values), %s", table, col, tail)
 }
 
 // BeginGroup marks the start of a Task.all: statements recorded until the matching EndGroup

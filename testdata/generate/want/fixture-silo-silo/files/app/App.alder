@@ -55,9 +55,9 @@ test "Logout clears the user and the role, and goes to log in" = {
       user: r.session.user,
       role: r.session.role,
     } == {
-        answer: Redirected (Auth.Login {}),
-        user: Nothing,
-        role: Member,
-      }
+      answer: Redirected (Auth.Login {}),
+      user: Nothing,
+      role: Member,
+    }
   )
 }

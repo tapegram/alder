@@ -2,6 +2,7 @@
 package syntax
 
 import (
+	"slices"
 	"strings"
 
 	"alder/internal/diag"
@@ -68,6 +69,45 @@ func ParseExpr(file string, src []byte) (e Expr, diags []diag.Diagnostic, more s
 		more, at = describe(p.tok), p.posOf(p.tok)
 	}
 	return e, p.finish(), more, at
+}
+
+// StripComments is src, an expression as ParseExpr reads it, without its comments: each `--`
+// comment the lexer finds (in code, or a comment line of markup text) is cut to the end of its
+// line, with the blanks before it, and a line left empty by the cut is dropped. Strings that
+// contain `--` are not comments to the lexer, so they are kept.
+func StripComments(src string) string {
+	p := newParser("expr", []byte(src), false, nil)
+	p.skipNL()
+	p.parseExpr()
+	for !p.at(EOF) { // lex what follows too, so a comment after the expression is found
+		p.advance()
+	}
+	cs := slices.Clone(p.lx.Comments())
+	if len(cs) == 0 {
+		return src
+	}
+	slices.SortFunc(cs, func(a, b Comment) int { return b.Offset - a.Offset })
+	out := src
+	for _, c := range cs {
+		if c.Offset < 0 || c.Offset > len(out) {
+			continue
+		}
+		end := strings.IndexByte(out[c.Offset:], '\n')
+		if end < 0 {
+			end = len(out)
+		} else {
+			end += c.Offset
+		}
+		start := c.Offset
+		for start > 0 && (out[start-1] == ' ' || out[start-1] == '\t') {
+			start--
+		}
+		if (start == 0 || out[start-1] == '\n') && end < len(out) {
+			end++ // the whole line was the comment: drop the line
+		}
+		out = out[:start] + out[end:]
+	}
+	return strings.TrimRight(out, " \t\n")
 }
 
 // ParseSignatures parses stdlib signature files: bodies are optional and `type X a` may be opaque.
@@ -382,6 +422,14 @@ func (p *Parser) parseDecl() Decl {
 		p.advance()
 		pop := p.in("the deploy declaration")
 		d := &DeployDecl{Fields: p.parseDeployFields()}
+		pop()
+		d.Span = p.spanFrom(start)
+		return d
+	case p.at(LIdent) && p.tok.Text == "theme" && p.peekIs(LBrace): // contextual, like `deploy`
+		p.advance()
+		p.advance()
+		pop := p.in("the theme declaration")
+		d := &ThemeDecl{Fields: p.parseDeployFields()}
 		pop()
 		d.Span = p.spanFrom(start)
 		return d
@@ -1100,7 +1148,8 @@ func (p *Parser) parseDeployFields() []*DeployField {
 	}
 }
 
-// parseDeployValue parses a string, a number, `[value, …]`, or `Ctor ["text"] [{ fields }]`.
+// parseDeployValue parses a string, a number, `[value, …]`, `Ctor ["text"] [{ fields }]`, or
+// a bare `{ fields }` (a theme's `light` and `dark`).
 func (p *Parser) parseDeployValue() *DeployValue {
 	start := p.tok
 	switch {
@@ -1168,7 +1217,15 @@ func (p *Parser) parseDeployValue() *DeployValue {
 		}
 		v.Span = p.spanFrom(start)
 		return v
+	case p.at(LBrace):
+		p.advance()
+		v := &DeployValue{Kind: "record", Rec: p.parseDeployFields()}
+		if v.Rec == nil {
+			v.Rec = []*DeployField{}
+		}
+		v.Span = p.spanFrom(start)
+		return v
 	}
-	p.errorAt(p.tok, "expected a string, a number, a list or a constructor, got "+describe(p.tok))
+	p.errorAt(p.tok, "expected a string, a number, a list, a record or a constructor, got "+describe(p.tok))
 	return nil
 }

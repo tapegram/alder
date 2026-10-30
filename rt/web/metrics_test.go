@@ -96,7 +96,7 @@ func TestMetrics_Off(t *testing.T) {
 	var s sink
 	h := NewRouter(one("GET", "/", page), s.opts(nil))
 	w := scrape(t, h, "")
-	if w.Code != 404 || strings.Contains(w.Body.String(), "alder_") {
+	if w.Code != 404 || strings.Contains(w.Body.String(), "# TYPE alder_") {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 	if a := s.one(t); a.Status != 404 || a.Path != MetricsPath {

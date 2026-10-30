@@ -1,7 +1,0 @@
-module Main
-
-attempt : Task Bool
-attempt = {
-  let r <- Test.run (Task.succeed 1)
-  Task.succeed (r.value == Ok 1)
-}

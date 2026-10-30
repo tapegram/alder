@@ -451,7 +451,7 @@ func (md) Render(_ context.Context, a app.Args__Markdown__Markdown__Render) (htm
 // not render, a field the form does not declare — and, with two inputs taken out of NewNote's
 // form, a field the form has no input for (C1): a defaulted field and an unticked box still
 // submit, a set field and a ticked box fail the step.
-// TestTest_FilePages runs file-ok (M17): Test.fetch on text, zip, byte-exact html, a 503, a
+// TestTest_FilePages runs file-ok (M17): Test.fetch on text, zip, byte-exact html, JSON (#1), a 503, a
 // 404, a requires redirect and a page whose load waits 20 s on the test clock, not the wall.
 func TestTest_FilePages(t *testing.T) {
 	t.Parallel()
@@ -464,11 +464,69 @@ func TestTest_FilePages(t *testing.T) {
 	copyDir(t, src, dir)
 	start := time.Now()
 	code, stdout, stderr := runTest(t, dir)
-	if code != 0 || !strings.Contains(stdout, "9 passed, 0 failed\n") {
+	if code != 0 || !strings.Contains(stdout, "13 passed, 0 failed\n") {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 	if time.Since(start) > 2*time.Minute {
 		t.Fatalf("the 20 s delay must be virtual; took %v", time.Since(start))
+	}
+}
+
+// TestTest_QueryRedirect runs query-redirect-ok (#8): a load's Query.redirect seen by Test.open
+// (Redirected, the browser on the target), Test.fetch (the 303 and its Location, a file page's
+// too), a `requires user` page that redirects after login, a redirect to a 404 (PageMissing), a
+// loop (RequestFailed naming the limit), and Test.run of a Task that binds it (Err "redirected
+// to …", its write undone); then a Test.get of a redirecting page fails naming the target.
+func TestTest_QueryRedirect(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	src, err := filepath.Abs("../../testdata/corpus/query-redirect-ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "query-redirect-ok")
+	copyDir(t, src, dir)
+	code, stdout, stderr := runTest(t, dir)
+	if code != 0 || !strings.Contains(stdout, "11 passed, 0 failed\n") {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	start := dir + "/app/Start.alder"
+	b, err := os.ReadFile(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failing := `
+test "get a page that redirects" = {
+  let _ <- Test.get (Start { key: "test", seed: "7", go: "builder" })
+  Task.succeed True
+}
+`
+	if err := os.WriteFile(start, append(b, failing...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr = runTest(t, dir, "-run", "Start")
+	want := "FAIL Start \"get a page that redirects\"\n  error: GET /start?key=test&seed=7&go=builder: redirected to /builder/7\n"
+	if code == 0 || !strings.Contains(stdout, want) {
+		t.Fatalf("exit %d, want %q\nstdout:\n%s\nstderr:\n%s", code, want, stdout, stderr)
+	}
+}
+
+// TestTest_Clock runs clock-ok (#5): Test.setClock stands the clock still for Time.now and
+// Date.today on the pages a test fetches, Test.advance moves it (a negative advance is 0, a
+// ticking clock keeps its tick), a page's Query.delay and the test's own Task.sleep and Query.delay
+// move a set clock, and the trace says so.
+func TestTest_Clock(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	src, err := filepath.Abs("../../testdata/corpus/clock-ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "clock-ok")
+	copyDir(t, src, dir)
+	code, stdout, stderr := runTest(t, dir)
+	if code != 0 || !strings.Contains(stdout, "8 passed, 0 failed\n") {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 }
 
@@ -1215,7 +1273,9 @@ func TestTest_MutateSuiteCrashes(t *testing.T) {
 // killed as crashed and the run goes on in a new program from the next mutant. A mutant that
 // computes for hours is killed at -timeout as timed out, and the run goes on too.
 func TestTest_MutateCrashAndHang(t *testing.T) {
-	// serial: timing: the 2s per-mutant -timeout must see the stack-overflow crash first; under parallel load it reports "timed out"
+	// parallel-safe: a mutation run caps the stack (rtesting.mutateMaxStack), so the overflow comes
+	// in milliseconds, far ahead of the 2s per-mutant -timeout
+	t.Parallel()
 	needGoTool(t)
 	src, err := filepath.Abs("../../testdata/corpus/mutate-crash")
 	if err != nil {

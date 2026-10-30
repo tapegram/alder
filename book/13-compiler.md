@@ -344,6 +344,22 @@ app/M.alder:4:16: error[E0003]: expected Int, got Text
                  ^^^^^^
 ```
 
+A record literal is the same idea with a twist. When nothing expects a
+record where `{ median: 1.0, sigma: 2.0, perDoubling: 0.5 }` is written,
+say in `let wide = { … }`, the checker can't yet know which named type it
+is, so it gives the literal a structural type carrying a **handle**
+(`Record.Flex` in `types.go`), a fresh variable that stands for "the type
+this literal will turn out to be". When `wide` is later passed where a
+`Curve` is expected, `unify` sees a structural record with an unbound
+handle on one side and a named record on the other. If the field names are
+exactly the same and every field's type unifies, it records
+`handle = Curve`, just as it recorded `t1 = Int` above; from then on
+`Apply` returns `Curve` for the literal, so the generated Go builds a
+`Curve` struct. If the names differ or a field's type is wrong, the handle
+stays unbound and the error says which field. The first named type wins,
+so a literal used as a `Point` and then as a `Vec` (same fields, different
+names) is still a mismatch: records stay nominal.
+
 **Brands** show what the checker knows that the program doesn't. Given
 `type UserId = brand Text`, the checker refuses a `Text` where a `UserId`
 is required, but lets a `UserId` widen to `Text` (`Check` in `unify.go`).
@@ -387,6 +403,19 @@ ended in a comma. `Rect x` binds the whole payload to `x` because the
 checker can't guess which fields you need, and `?todo` is a typed hole.
 Applying the fix leaves you with a warning that tells you what to write:
 `warning[W0002]: hole ?todo has type Float`.
+
+A page hook with the wrong signature (`requireSig` in
+`internal/check/pages.go`) has a fix too: the required signature, as the
+hover text writes it (`HookDoc`), in place of the declared one. Write
+`load : Params -> Session -> Model` and the checker says
+`` `load` must have type `Params -> Session -> Query Model` `` with
+`fix: Params -> Session -> Query Model`. A `diag.Fix` may carry a `Title`
+and be `Preferred`: this one is titled ``Change signature to `…` `` and is
+preferred, because it is the one obvious repair. The command line ignores
+both; the language server uses the title for the code action, marks it
+`isPreferred`, and lists preferred fixes first, before the other fixes and
+before the generators, which are `refactor` actions and are not about the
+text under the cursor.
 
 **HTML** is checked element by element (`internal/check/html.go`). A
 lower-case tag must be one of the HTML5 tags listed in `htmlTags`; an
@@ -1383,14 +1412,18 @@ Content-Type: text/html; charset=utf-8
 and has the Done button with its message URL:
 
 ```html
-<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()}))"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
+<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, window._alderO?.(&#39;form&#39;)))"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
 ```
 
 The `&#39;` and `&amp;` are the escaping of section 8's first part: the
 attribute holds
-`window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post('/_m/Todos.Index/Toggle?id=…&_p.filter=Active', {contentType: 'form', requestCancellation: window._alderAC = new AbortController()}))`:
-the abort and the shared AbortController make the newest navigation the only
-one whose answer is applied (chapter 6, "Links and navigation").
+`(window._alderBusy||((e,p)=&gt;p))(el, @post('/_m/Todos.Index/Toggle?id=…&_p.filter=Active', window._alderO?.('form')))`:
+`window._alderO` (defined once in the page's `<head>`) returns the post's
+options: the `contentType`, the `Alder-Shown` header (below), and a new
+shared AbortController after aborting the request in flight, which makes the
+newest navigation the only one whose answer is applied (chapter 6, "Links and navigation").
+It is called with `?.`: a click before the page's script has defined it
+posts without those options, and the answer morphs the whole body.
 
 **`POST /_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&_p.filter=Active`.**
 Click Done, and the button submits its little form; Datastar catches the
@@ -1410,6 +1443,7 @@ func update__Todos__Index(rq *web.Request, params Todos__Index__Params, msg Todo
 	if stop != nil {
 		return *stop
 	}
+	model0, session0 := model, session // the page the client shows: Before
 	nav, err := eff.Run(rq.Env, eff.KTask, Todos__Index__update(msg, model, session))
 	if err != nil {
 		return route__fail(err)
@@ -1429,7 +1463,7 @@ func update__Todos__Index(rq *web.Request, params Todos__Index__Params, msg Todo
 	if stop != nil {
 		return *stop
 	}
-	return web.PageResponse(Todos__Index__view(model, session), st, rq.Env.Session, true)
+	return web.PageResponse(Todos__Index__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Todos__Index__view(model0, session0) })
 }
 ```
 
@@ -1453,14 +1487,48 @@ This is chapter 6's lifecycle, line by line:
    session the task left. `load` reads the database after the commit, so
    the new model has Milk done. If this second load fails, the 404 or 500
    still stores that session: what the task committed is not lost.
-5. `PageResponse(…, true)` asks for a patch.
+5. `PageResponse(…, true)` asks for a patch, and `WithBefore` hands the
+   router a way to draw the page as it was before the message: the view of
+   `model0`, the model the first load returned. It is a function, not a
+   page: nothing is rendered unless the router needs it, and no query runs
+   for it.
 
 The router's `write` sees a 200 with `Patch` set and `rq.Datastar` true.
-The task left the session as it was, so it sets no cookie. It renders
-the page, cuts out its `<body>…</body>`
-(`bodyOf`), and calls `datastar.PatchBody`, which writes one server-sent
-event: the event name, two lines that say what to replace and how, and one
-`data: elements` line for each line of the body. The answer is
+The task left the session as it was, so it sets no cookie. It renders the
+page with `html.RenderTracked`, which is `RenderWith` that also writes
+down, as it goes, where each element with an `id` starts and ends in the
+markup: here `<ul id="todos">` and `<p id="summary">`. These are the
+page's **regions**.
+
+Now the router asks one question: which page is the browser showing? It
+cannot know the browser's DOM, but it knows every page it sent, because
+each one ended its `<body>` with
+
+```html
+<al-shown id="_alder_shown" data-h="9c1f0e3b5a7d2c48" hidden></al-shown>
+```
+
+where `data-h` is `html.Hash` of the body: FNV-1a, a fast 64-bit hash, as
+16 hex digits. The click's `@post` sent it back in the `Alder-Shown`
+header (`window._alderO?.('form')` in the attribute above: the helper,
+defined once in the `<head>`, reads `data-h` and returns the post's
+options). The router renders
+the before-view (`Before`, with the same page parameters), hashes its
+body, and compares. Equal means the browser shows exactly that page, so
+the router may send only the parts that differ. Anything else, and it
+falls back to sending the whole body: no header (a page without the
+script's helper), a different hash (the first click after a form showed
+errors, or a tab of an older build), a before-view that panics, or a
+toast that needs a region the page lacks.
+
+`html.Fragments` then compares the two renders region by region, starting
+with the body. A region whose markup is the same on both sides is left
+alone. A region whose markup differs only inside its child regions (the
+same children, in the same order, and the same text between them) is
+looked into, child by child. Any other changed region is sent whole. Here
+Milk leaves the Active list, so `#todos` changed and has no child regions
+to look into; the count changed, so `#summary` did too; nothing outside
+them changed. The answer is three small events:
 
 ```
 HTTP/1.1 200 OK
@@ -1468,21 +1536,41 @@ Cache-Control: no-cache
 Content-Type: text/event-stream
 
 event: datastar-patch-elements
-data: selector body
+data: selector #todos
 data: mode outer
-data: elements <body><main><h1>Todos</h1>…<ul id="todos"></ul><p id="summary">0 open</p>…</main></body>
+data: elements <ul id="todos"></ul>
+
+event: datastar-patch-elements
+data: selector #summary
+data: mode outer
+data: elements <p id="summary">0 open</p>
+
+event: datastar-patch-elements
+data: selector #_alder_shown
+data: mode outer
+data: elements <al-shown id="_alder_shown" data-h="4e0b7a19c2d36f85" hidden></al-shown>
 
 ```
 
-(without the `Date` and `Transfer-Encoding` headers, and shortened at each
-`…`). The rendered page has no line breaks, so the body
-is one `elements` line, and a blank line ends the event. (`PatchBody`
-turns every `\r\n` and lone `\r` into `\n` before it splits the lines, and
-the renderer writes a carriage return in text as `&#13;`: a line end
-inside your data can never end a `data:` line and start a field.) Datastar finds
-`body` in the page and morphs it into the new one: Milk is done, so it
-leaves the Active list, and the summary says `0 open`. No `<head>` and no
-doctype are sent.
+(without the `Date` and `Transfer-Encoding` headers). Each event is the
+event name, two lines that say what to replace and how, and one
+`data: elements` line for each line of the markup; the rendered page has
+no line breaks, so each is one line, and a blank line ends the event.
+(The writer turns every `\r\n` and lone `\r` into `\n` before it splits the
+lines, and the renderer writes a carriage return in text as `&#13;`: a
+line end inside your data can never end a `data:` line and start a
+field.) Datastar finds each element by its `id` and morphs it into the new
+one; the last event records which page the browser now shows, for the
+next click. The rest of the page is not touched at all: an open
+`<details>`, a half-typed input or the scroll position elsewhere stay as
+they were. No `<head>` and no doctype are sent.
+
+When the router falls back, or a change lies outside every region (a
+heading with no `id` around it), the answer is the one event of
+`datastar.PatchBody`: `data: selector body`, the whole `<body>…</body>`
+(`bodyOf`), its `<al-shown>` at the end, which Datastar morphs into the
+page. Either way the browser ends up with the same page: `alder test`
+checks this on every click and submit (chapter 11).
 
 The same `POST` without the `Datastar-Request` header goes through the
 same handler, up to the `switch`: there `Rerender` meets `!rq.Datastar`
@@ -3329,7 +3417,9 @@ much" failure; on a replay it only means the candidate is not a value the
 generator can make, and the shrinker discards it. An attempt that took
 over 5 seconds fails too, which is checked after it finishes, since a Go
 function cannot be interrupted: a body that never returns is caught by
-the test timeout (`-timeout`, chapter 10).
+the test timeout (`-timeout`, chapter 10). The slow case is saved like a
+failing one, and a shrink candidate that is slow ends the shrinking with
+the best case so far.
 
 **The shrinker.** `fuzz.Shrink` (`rt/fuzz/shrink.go`) gets the recorded
 choices of the failing run and a function that replays a candidate and
@@ -3502,9 +3592,14 @@ fake table, no `FakeTables` or `Fakes`. Nor are the tests (section 8,
 so nothing in a production build uses a fake, a fake's table or
 `Test.fake`, and nothing imports `alder/rt/testing`. The `Test` nodes
 (`ir.TestRun`, `ir.TestTrace`, `ir.TestFake` and a test's recorded `==`,
-`ir.TestEq`) occur only in `test` bodies, so the emitter treats one
-reaching it in a production build as a bug in the compiler: `testNode`
-in `internal/gen/effects.go` panics, and `Emit` returns that as its
+`ir.TestEq`) occur only in `test` bodies and test helpers, and a
+production build omits every test helper (`ir.Value.TestOnly`, from the
+checker's `Result.TestOnly`, which `internal/check/helpers.go` computes
+from the values' references after every body is checked; it has refused,
+with E0040, each reference to a helper from code that runs in
+production). So the emitter treats a test node reaching it in a
+production build as a bug in the compiler: `testNode` in
+`internal/gen/effects.go` panics, and `Emit` returns that as its
 internal error instead of writing Go.
 
 ### The browser
@@ -4217,7 +4312,18 @@ before reloading the browser). The router (`serveStatic` in
 written runtime has them) with `web.DesignSystemCache`,
 `Cache-Control: public, max-age=300, stale-while-revalidate=86400`, and a
 strong `ETag`, a SHA-256 of the bytes computed once; `http.ServeContent`
-answers a matching `If-None-Match` with `304 Not Modified`. An immutable
+answers a matching `If-None-Match` with `304 Not Modified`. An app that
+declares a `theme` (Appendix C, "Changing a token") changes one file of
+these: the checker has held every field to `internal/theme`'s table of
+tokens (E0042), the IR keeps the settings by CSS name (`ir.Theme`), and
+`theme.CSS` writes them as three one-line rules in the table's order. The
+generated `Web()` carries that text as `web.Options.Theme`, and
+`NewRouter` builds the served `al.css` once from it
+(`web.ThemedStylesheet`: the embedded bytes, a newline, the theme) with
+an ETag of its own; `buildkit.WriteDesignSystem` writes the same bytes to
+`static/al/al.css`, so the build directory and the server agree. Under
+`alder run` (`Options.Reload` set) `al.css` is sent `no-cache`, so an edit
+to the theme shows on the next load. An immutable
 header would be wrong there: the address stays `/static/al/al.css` across
 compiler upgrades, so a browser would keep an old stylesheet for a year.
 `no-cache`, what Alder sent before M13, made every page load wait for a
@@ -4889,15 +4995,21 @@ server's copy for good. After `initialized` the editor opens the file with
 `didOpen` and sends its entire text, and the server, which has now built the
 app, publishes the file's diagnostics (none). Two messages in that exchange
 are the reason for two of the server's rules, which the next paragraphs
-explain: `"positionEncoding":"utf-8"` and the whole `text` in `didOpen`.
+explain: `"positionEncoding"` and the whole `text` in `didOpen`.
 
-**Why utf-8 positions.** An LSP position is a line and a character offset in
-that line, both counted from 0. The protocol's historical unit for the
-offset is the UTF-16 code unit, a unit that nothing in Alder uses. The
-compiler counts lines from 1 and columns from 1 in **bytes** of the UTF-8
-file (`diag.Pos`), the unit Go strings index by. Since LSP 3.17 a server can
-announce a different unit, so `alder lsp` announces UTF-8 bytes, and the
-conversion is `line-1` and `col-1`, both ways:
+**Why the server chooses the position encoding.** An LSP position is a line
+and a character offset in that line, both counted from 0. The protocol's
+historical unit for the offset is the UTF-16 code unit, a unit that nothing
+in Alder uses. The compiler counts lines from 1 and columns from 1 in
+**bytes** of the UTF-8 file (`diag.Pos`), the unit Go strings index by. Since
+LSP 3.17 the client lists the units it can count in
+`capabilities.general.positionEncodings` and the server picks one and
+announces it as `positionEncoding`. `alder lsp` picks `utf-8` when the client
+lists it (Neovim does), and otherwise `utf-16`, the default every client must
+support (`negotiate` in `internal/lsp/encoding.go`).
+
+Inside the server every column stays a byte column. With `utf-8` the
+conversion to the wire is `line-1` and `col-1`, both ways:
 
 ```go
 func lspRange(line, col, endLine, endCol int) Range {
@@ -4906,10 +5018,18 @@ func lspRange(line, col, endLine, endCol int) Range {
 }
 ```
 
-The alternative is converting to and from UTF-16 on every position, and a
-line like `"hé {name}"` is where such a conversion goes wrong. With bytes
-there is no conversion to get wrong. (A client that can only count UTF-16
-units is not served; Neovim speaks UTF-8.)
+With `utf-16` there is one more step, and it sits at the protocol boundary
+only: a position coming in is turned into a byte offset by reading the
+line's text (`fromWire`), and a range going out is turned into UTF-16 units
+the same way (`wireRange`, `toWire`). A character below U+10000 is one unit
+and a character above it, such as an emoji, is two (a surrogate pair), so
+on the line `"hé😀 {name}"` the `{` is at byte 9 and at UTF-16 character 6. A
+client that counts in UTF-16 and a server that counts in bytes disagree on
+every position after the `é`, which is why the server converts instead of
+assuming. The conversion needs the line's text, so a range is converted with
+the text it was computed from: the build's lines for diagnostics, fixes and
+locations, the current text for a cursor. With `utf-8` both directions are
+the identity, so the common case costs nothing.
 
 ### The overlay
 
@@ -5405,24 +5525,40 @@ command line run the same one.
 `generate.Form` turns what the user has typed (`you`) over what `Here`
 prefilled into a list of fields, each valid or not and why, and `ready` is
 true when all are valid. The editor calls `alder/preview` as the form is
-filled, once per field. Here is the walk-through of the spec: `new msg` on
-`Posts.Index`, with the cursor on line 26. The first request has no values; the
-form comes back with `page` prefilled from the cursor and `name` required:
+filled, once per field.
+
+Each field also carries `help`, one line on what it means, and `example`, a
+value it accepts. Both are written once, on the `generate.Field` in
+`specs.go` (`Help`, `Example`; a flag's `help` is its `Summary` unless it
+has its own), so the command line's help and the editor's form cannot
+drift. A required field the cursor and the user leave empty starts filled
+(`startValue`): at the first choice when it names something that must exist
+(a page, a table, a declaration, one of its fixed choices), else at its
+example. So the form is usually ready as it opens and the preview shows a
+change at once; the user edits from there. A flag marked `Agent` (where
+`new msg` puts its button, `--strict` on a table edit) comes back with
+`"agent":true`, and the editor's form leaves it out: an agent needs that
+precision on the command line, a person sees the preview and edits by hand.
+
+Here is the walk-through of the spec: `new msg` on `Posts.Index`, with the
+cursor on line 26. The first request has no values; the form comes back with
+`page` prefilled from the cursor and `name` at its example:
 
 ```text
 -> {"jsonrpc":"2.0","id":9,"method":"alder/preview","params":{"sets":{},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"},"id":"new msg","position":{"line":25,"character":0}}}
-<- {"id":9,"jsonrpc":"2.0","result":{"fields":[{"name":"page","kind":"page","flag":false,"required":true,"value":"Posts.Index","source":"here","valid":true,"choices":["Admin.Comments.Bulk",…,"Posts.Index","Posts.Show","Write","Write.Edit"]},{"name":"name","kind":"text","flag":false,"required":true,"value":"","source":"","valid":false,"why":"required"},{"name":"fields","kind":"fieldList","flag":false,"required":false,"value":"","source":"","valid":true},…],"files":[],"diff":"","diagnostics":[],"holes":[],"ready":false,"error":""}}
+<- {"id":9,"jsonrpc":"2.0","result":{"fields":[{"name":"page","kind":"page","flag":false,"required":true,"value":"Posts.Index","source":"here","valid":true,"choices":["Admin.Comments.Bulk",…,"Posts.Index","Posts.Show","Write","Write.Edit"],"help":"the page the message belongs to","example":"Posts.Index"},{"name":"name","kind":"text","flag":false,"required":true,"value":"Archive","source":"default","valid":true,"help":"the message's name, a capitalised word","example":"Archive"},{"name":"fields","kind":"fieldList","flag":false,"required":false,"value":"","source":"","valid":true,"help":"the values the message carries, as name:Type words (none is fine)","example":"note:Text"},…],"files":[{"path":"app/Posts/Index.alder","action":"edited",…}],"diff":"…","diagnostics":[…],"holes":[…],"ready":true,"error":""}}
 ```
 
-`"source":"here"` says that `page` came from the cursor, not from the user.
-The user types `Delete`:
+`"source":"here"` says that `page` came from the cursor, not from the user;
+`"source":"default"` that `name` is the server's starting value, which the
+editor never sends back. The user types `Delete`:
 
 ```text
 -> {"jsonrpc":"2.0","id":10,"method":"alder/preview","params":{"sets":{"name":"Delete"},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"},"id":"new msg","position":{"line":25,"character":0}}}
 <- {"id":10,"jsonrpc":"2.0","result":{"fields":[…,{"name":"name","kind":"text","flag":false,"required":true,"value":"Delete","source":"you","valid":true},…],"files":[{"path":"app/Posts/Index.alder","action":"edited","added":17,"removed":0}],"diff":"--- a/app/Posts/Index.alder\n+++ b/app/Posts/Index.alder\n@@ -51,9 +51,12 @@\n …","diagnostics":[…],"holes":[{"module":"Posts.Index","decl":"update","arm":"Delete","name":"delete","type":"Task Nav","file":"app/Posts/Index.alder","line":59,"col":15},{"module":"Posts.Index","decl":"\"pressing Delete\"","name":"expected","type":"Bool","file":"app/Posts/Index.alder","line":213,"col":16}],"ready":true,"error":""}}
 ```
 
-Now `ready` is true, the copy checked, and `diff` is the unified diff, which
+`ready` is true, the copy checked, and `diff` is the unified diff, which
 the editor shows (here with its `\n` turned into line breaks):
 
 ```text
@@ -5519,6 +5655,154 @@ answers a generator. At no point is a file of the project written or an
 analysis changed in place; the next change makes another snapshot, and the
 old one stays valid for whoever still holds it.
 
+### Filling a hole with a model
+
+Everything above answers the editor and then waits for the next question.
+One code action breaks that pattern: `Fill ?delete with AI (Task Nav)`
+(chapter 11, "Generators in the editor") takes up to three answers from a
+model, a minute or more, and its result has to reach a buffer. Four pieces
+make it work: the loop that checks the model's answers, the code action
+that offers it, a command the server runs in the background, and requests
+that go the other way, from the server to the editor.
+
+**The loop.** `internal/fill` holds what `alder fill --ai` and the server
+share. `fill.Run` loads the app with `generate.Load`, finds the hole with
+`generate.FindHole` (the same address `alder fill` takes,
+`App.update.Logout`), and builds the first message with `fill.Prompt`:
+where the hole is and its type, the comment above its declaration, the
+module's source, one `name : Type` line for each name in scope (the
+binders at the hole, read from the checker's `Binds` as hover reads them,
+the module's values, the values and types of the app modules it imports;
+the ones whose type unifies with the hole's on a clone of the unifier
+come first, as in completion), and the standard library's signature
+files that the module names. The system prompt is `internal/fill/card.md`,
+embedded in the binary: a page on what a hole is, the expression syntax and
+the idioms of `update` arms and tests. Then, up to three times: send the
+conversation to the backend, strip a code fence if the model wrote one,
+place the expression with `generate.Fill`, and run `generate.Apply` as a
+dry run, the same copy-and-check every generator ends in. An answer that
+checks is the result; a refused one goes back to the model as a new turn,
+`The checker refused it:` and the errors exactly as `alder check` prints
+them. `Run` writes nothing: it returns the edits and, for each changed
+file, the text before and after.
+
+The expression lands in the middle of a line, between the text before the
+hole and the text after it, and that text must keep its meaning. Two things
+in an answer could change it. A comment would comment out the rest of the
+line: `n -- ` in `bump n = ?a + 1 * n` would leave `bump n = n -- + 1 * n`,
+which checks, and has lost `+ 1 * n`. And an operator could bind
+differently from the hole: `1 + 1` in `?a * 2` would read `1 + 1 * 2`. So
+`generate.Fill` asks the lexer for the expression's comments and cuts them
+(`syntax.StripComments`: a regular expression would cut a `--` inside a
+string), and parenthesises any expression that is not atomic (a name, a
+literal, one bracketed whole). The formatter, which runs on every file a
+generator writes, drops the parentheses that are not needed, so
+`Clear p -> (Task.succeed Rerender),` is written without them.
+
+A backend is one method, `Complete(ctx, system, messages) (text, error)`.
+`fill.Anthropic` posts the Messages API's JSON with `net/http`; the system
+prompt goes in a block marked `cache_control`, so the card is read from the
+API's cache on the second and third attempts. Its HTTP client follows no redirect (Go would
+send the `x-api-key` header on to whatever host a redirect names), and it
+refuses an `ALDER_ANTHROPIC_API` that is not `https`, except on the loopback
+host the tests use. `fill.Command` runs
+`ALDER_FILL_COMMAND` with `sh -c`, writing the conversation as plain text to
+its standard input and reading the expression from its standard output
+(at most 1 MB). It must be a plain text completer: with tools, the prompt's
+comments become instructions to an agent that can act on them. The command
+runs in a process group of its own: when the
+attempt's time is up, or once the command has answered, the whole group is
+killed, so nothing it started in the background outlives the attempt or
+holds the server's shutdown.
+The command backend is also how the tests run the whole loop without a
+model: the backend is a shell script, or a Go function, that answers what
+the test needs.
+
+**The action.** `codeActionReq` already finds the hole under the cursor
+for the generators (`hereCtx`). When there is one, and the client said in
+`initialize` that it applies workspace edits (`workspace.applyEdit`, now a
+field of `initializeParams`), it adds a quick fix whose `diagnostics` are
+the hole's W0002 and whose `command` is `alder.fill`, with the document,
+the address and the hole as its argument. Unlike `alder.generate`, which
+the plugin runs, the server lists `alder.fill` in its
+`executeCommandProvider`, so the editor sends it back as
+`workspace/executeCommand`.
+
+**The command.** `executeCommandReq` runs on the slow worker, and a fill
+would hold it for minutes, blocking every preview and plan behind it. So
+`fillCommand` only checks the argument, refuses a second fill while one
+runs (an atomic flag; one at a time per server), starts a goroutine under
+`s.bg`, the group the scratch runs use, and answers `{"started": true}` at
+once. The goroutine takes the open documents and their versions in one
+snapshot, writes them over a temporary copy of the app with
+`generate.Materialise` (as a generator's dry run does, so the model sees
+the unsaved buffer), and calls `fill.Run` there.
+
+**Requests from the server.** Until now the server only answered requests
+and sent notifications. The fill needs two answers from the editor: a
+progress token, and whether the edit was applied. `s.request(method,
+params)` sends a request with an id of its own (`"alder-3"`), puts a channel
+in a map of pending requests under that id, and waits on the channel. On
+the reader goroutine, a message with an id and no method is a response;
+`dispatch` looks its id up in the map and hands it to the waiting
+goroutine. That is why `request` is never called on the reader goroutine:
+the reader is the one that would deliver the answer.
+
+With the first, `window/workDoneProgress/create`, the server gets a token
+and then sends `$/progress` notifications on it: `begin` with the title
+`alder: filling ?out : Task Nav` and the model's name, a `report` before
+each retry (`attempt 2 of 3: E0003 …`), and `end`. Neovim shows them in
+`vim.lsp.status()`, which status lines read. A client that did not declare
+`window.workDoneProgress` gets none of them.
+
+With the second, `workspace/applyEdit`, the server sends the result. It does
+not send the whole file: `generate.LineEdits` runs the diff behind
+`UnifiedDiff` without context and turns each run of changed lines into one
+`TextEdit` (lines `[start, end)` replaced by the new lines), so the filled
+hole and the import it needed are two small edits and the rest of the
+buffer is not touched. The edit names the document's version from the
+snapshot the fill read. If you typed in that buffer meanwhile, its version
+is higher, and the server does not send the edit at all: it shows the
+model's expression in a warning, for you to paste. It cannot leave that to
+the editor: Neovim, given an edit for an older version, prints `Buffer …
+newer than edits` and answers `applied: true` without applying it. (A client
+that answers `applied: false` gets the same warning.) Each of the server's
+requests waits at most 30 seconds for its answer, so an editor that never
+answers cannot hold the one fill forever. An edit the
+editor applies is one undo step.
+
+Before the edit goes, two more checks. The hole's type bounds what the
+expression returns, not what it does: an answer the module's own text talked
+the model into (a comment is part of the prompt) can be a `Task Nav` that
+deletes every row and still checks. So `fill.Run` checks the result once
+more with `generate.Probe`, which returns the checked copy, and
+`fill.Effects` reads the expression there: `generate.FillAt` says where the
+fill put it, and every name in it carries the resolver's answer (a
+`syntax.Ref`: a value of the app, a standard library value, a capability).
+Text would not do: an alias, or a helper in another module, hides a name
+from a search. It flags three things. A capability's entry, Query or Task
+alike, since each runs host Go (`capability Email.send`). The standard
+library's effects that reach beyond the page and its user's rows: `Http.*`,
+`Session.put`, `Html.unsafe`, `Task.sleep`, and `Db.insert`, `Db.update`,
+`Db.delete` (the `…Mine` and `…Scoped` ones keep to the session's rows). And
+any value of the app whose body reaches one of those, through as many other
+values as it takes, with the path (`Mail.notify → Email.send`). The walk
+over the values' bodies remembers each value's answer, and a value it is
+already inside counts as having none, so mutual recursion ends. With any of
+them, the server asks `window/showMessageRequest` with `Apply` and
+`Discard` (the whole expression when it is shorter than 40 lines, else the
+lines that hold a flagged name), and sends the edit only on `Apply`; a client that did not declare
+`window.showMessage` cannot be asked, so it gets the expression in a warning
+and no edit. And every edit applied is followed by a message that shows the
+expression, so nothing a model wrote lands unseen. `alder fill --ai` prints
+the expression and the same warning on the command line.
+
+What leaves the machine is exactly the prompt: one module's source (its
+comments and string literals too), names and types, the standard library's
+signatures and, on retries, the errors, which quote lines of that module. `alder fill <address> --prompt` prints
+it. With `ALDER_LSP_LOG` set, the server also writes each request body and
+each answer to the log, never a header, so never the key.
+
 ### Scratch files in the language server
 
 A scratch file is not a module, so the analysis of this section (a snapshot of
@@ -5563,6 +5847,64 @@ scratch` does (chapter 11, "`alder scratch`"), with `scratch.RunFile`, from
   problem nor a place to fix; as diagnostics, a scratch file of ten watches
   would put ten entries in the problem list every save. They travel in a
   notification of their own, and the plugin draws them as virtual text.
+
+Hover, definition, completion and code actions in a scratch file cannot use
+the analysis either, so they use a **view** of the file
+(`internal/lsp/scratchview.go`): the file's text checked with the app by
+`scratch.Check`, the first step of a run, without the build. The view is
+built by the request that needs it and kept until the text changes or the
+app's sources on disk do (the stamps the poller compares, `watch.Snapshot`,
+taken with each view), so a hover after a hover costs one walk of `app/`
+rather than a check.
+
+The checked program has the scratch file in it as a module, but not line for
+line. Take this file:
+
+```text
+double : Int -> Int          line 1
+double n = n * 2             line 2
+                             line 3
+> double 21                  line 4
+```
+
+`scratch.ParseFile` rewrites line 4 as `it1 = double 21`, so on that line a
+column of the module is 4 more than the file's (`it1 = ` is six bytes where
+`> ` was two; the file's `SourceMap.Shift` records -4 for the line). Then
+`scratch.Check` puts `module Scratch` and an `import` for every app module in
+front, say 21 lines, so file line 4 is module line 25. After an `in
+Table.Todo` header the module's own text goes in front instead: the file
+continues the module. A view records where the inserted lines start and how
+many there are (`Checked.InsertLine`, `Checked.LineOffset`), and two small
+functions turn a position one way and back: `toModule` adds the lines and
+undoes the shift, `fromModule` does the opposite, and has no answer for an
+inserted line, which the user never wrote. A request maps the cursor into the
+module, asks the same code an app module uses (`hoverText`, `definition`,
+completion's contexts), and maps any place in the answer back: a definition in
+the scratch module becomes a place in the file, one in an app module stays
+where it is, and a completion's edit gets the shift of its line.
+
+The freshness rule (above) carries over. While you type a watch, the text
+often does not parse (`> Todo.` is not an expression yet), and that text has
+no program to ask. The view of the last text that checked is used instead,
+compared with the module text the current file would make (the current
+lines with the same inserted lines in front): when the lines above the cursor
+are the same, its scopes and types still hold there. That view is retired as
+soon as the app's sources change on disk: its program is the old app, and an
+answer from it could name what the app no longer declares. Code actions are the
+exception, as for an app module: they come from the current text's own
+diagnostics, positioned in the file as a run positions them
+(`File.Positioned`), with their fixes.
+
+**Inlay hints** come from the runs, not the view. Each `alder/scratch` the
+server sends is also kept, with the text it was run on; a
+`textDocument/inlayHint` request turns each watch's result into one label at
+the end of its last line, but only while those lines are the same in the
+current text, so an edited watch never shows a value it no longer has. Inlay
+hints are pulled: the editor asks when it redraws, and a run that ends between
+two redraws would not show until the next. An editor that says, at
+`initialize`, that it supports `workspace/inlayHint/refresh` is therefore sent
+that request (the one request the server ever sends) after each phase, and
+asks again.
 
 ## 11. Exercises
 

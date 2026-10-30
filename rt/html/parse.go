@@ -565,3 +565,65 @@ func stripPageParams(u string) string {
 	}
 	return path + "?" + strings.Join(keep, "&")
 }
+
+// ReplaceByID is doc with its first element whose id is id (in document order) replaced by
+// with, and whether there was one: a Datastar `#id` patch in mode outer, as a test's browser
+// applies it.
+func ReplaceByID(doc Node, id string, with Node) (Node, bool) {
+	done := false
+	var walk func(n Node) Node
+	walk = func(n Node) Node {
+		if done {
+			return n
+		}
+		if n.kind == kElem {
+			if v, ok := AttrOf(n, "id"); ok && v == id {
+				done = true
+				return with
+			}
+		}
+		if n.kind == kElem || n.kind == kFrag {
+			cs := make([]Node, len(n.children))
+			for i, c := range n.children {
+				cs[i] = walk(c)
+			}
+			n.children = cs
+		}
+		return n
+	}
+	out := walk(doc)
+	return out, done
+}
+
+// Without is n without the elements drop reports (with everything inside them).
+// Only the elements on the way to a dropped one are copied: the rest of the tree is shared.
+func Without(n Node, drop func(Node) bool) Node {
+	out, _ := without(n, drop)
+	return out
+}
+
+func without(n Node, drop func(Node) bool) (Node, bool) {
+	if n.kind != kElem && n.kind != kFrag {
+		return n, false
+	}
+	var cs []Node // nil until a child changes
+	for i, c := range n.children {
+		dropped := c.kind == kElem && drop(c)
+		var nc Node
+		changed := dropped
+		if !dropped {
+			nc, changed = without(c, drop)
+		}
+		if changed && cs == nil {
+			cs = append(make([]Node, 0, len(n.children)), n.children[:i]...)
+		}
+		if cs != nil && !dropped {
+			cs = append(cs, nc)
+		}
+	}
+	if cs == nil {
+		return n, false
+	}
+	n.children = cs
+	return n, true
+}

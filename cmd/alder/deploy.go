@@ -24,6 +24,7 @@ import (
 	"alder/internal/deploy"
 	"alder/internal/diag"
 	"alder/internal/ir"
+	"alder/internal/style"
 	"alder/internal/version"
 	"alder/rt/backup"
 	"alder/rt/db"
@@ -141,7 +142,11 @@ func runDeployTo(args []string, stdout, stderr io.Writer) int {
 func runDeployWith(args []string, stdout, stderr io.Writer, e deployEnv) (code int) {
 	jsonOut := false
 	fail := func(code int, msg string) int {
-		fmt.Fprintf(stderr, "alder deploy: %s\n", msg)
+		tag := "alder deploy:"
+		if !jsonOut {
+			tag = errTag(stderr, tag)
+		}
+		fmt.Fprintf(stderr, "%s %s\n", tag, msg)
 		if jsonOut {
 			writeJSON(stdout, map[string]string{"error": msg})
 		}
@@ -200,6 +205,10 @@ func runDeployWith(args []string, stdout, stderr io.Writer, e deployEnv) (code i
 	progress := stdout
 	if jsonOut {
 		progress = stderr
+	} else { // a terminal gets the rows marked (deploy.Styled); a pipe the plain text
+		var done func()
+		progress, done = deploy.Styled(stdout, style.ForEnv(stdout, e.getenv))
+		defer done()
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -533,13 +542,13 @@ func (r *deployRunner) Check() (int, int, int, string) {
 
 func (r *deployRunner) Build() (string, bool) {
 	var buf bytes.Buffer
-	_, code := buildTo(r.dir, false, appBuildDir(r.buildDir, r.dir), &buf, &buf)
+	_, code := buildTo(r.dir, false, appBuildDir(r.buildDir, r.dir), style.NoStyle(&buf), style.NoStyle(&buf))
 	return buf.String(), code == 0
 }
 
 func (r *deployRunner) Test() (deploy.TestResult, string, bool) {
 	var out, errb bytes.Buffer
-	code := runTestTo([]string{"--build-dir", buildRoot(r.buildDir), r.dir}, &out, &errb)
+	code := runTestTo([]string{"--build-dir", buildRoot(r.buildDir), r.dir}, style.NoStyle(&out), style.NoStyle(&errb))
 	tr := deploy.TestResult{}
 	for _, l := range strings.Split(out.String(), "\n") {
 		var p, f int
@@ -552,7 +561,7 @@ func (r *deployRunner) Test() (deploy.TestResult, string, bool) {
 
 func (r *deployRunner) Mutate() (float64, int, int, string, bool) {
 	var out, errb bytes.Buffer
-	code := runTestTo([]string{"--build-dir", buildRoot(r.buildDir), r.dir, "--mutate", "--json"}, &out, &errb)
+	code := runTestTo([]string{"--build-dir", buildRoot(r.buildDir), r.dir, "--mutate", "--json"}, style.NoStyle(&out), style.NoStyle(&errb))
 	var score float64
 	mutants, survived, found := 0, 0, false
 	sc := bufio.NewScanner(bytes.NewReader(out.Bytes()))
@@ -713,12 +722,14 @@ func runStatusWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	}
 	t, _, err := envTarget("status", pos[0], dir, host, e)
 	if err != nil {
-		fmt.Fprintf(stderr, "alder status: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder status:"), err)
 		return 2
 	}
 	defer t.Close()
-	if err := deploy.Status(context.Background(), t, stdout); err != nil {
-		fmt.Fprintf(stderr, "alder status: %v\n", err)
+	out, done := deploy.Styled(stdout, style.ForEnv(stdout, e.getenv))
+	defer done()
+	if err := deploy.Status(context.Background(), t, out); err != nil {
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder status:"), err)
 		return 1
 	}
 	return 0
@@ -780,7 +791,7 @@ func runRollbackWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	}
 	t, _, err := envTarget("rollback", pos[0], dir, host, e)
 	if err != nil {
-		fmt.Fprintf(stderr, "alder rollback: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder rollback:"), err)
 		return 2
 	}
 	defer t.Close()
@@ -788,7 +799,7 @@ func runRollbackWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if _, err := deploy.Rollback(ctx, t, o); err != nil {
-		fmt.Fprintf(stderr, "alder rollback: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder rollback:"), err)
 		if errors.Is(err, deploy.ErrNotConfirmed) {
 			return 2
 		}
@@ -891,7 +902,7 @@ func runLogsWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	}
 	t, _, err := envTarget("logs", pos[0], dir, host, e)
 	if err != nil {
-		fmt.Fprintf(stderr, "alder logs: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder logs:"), err)
 		return 2
 	}
 	defer t.Close()
@@ -916,7 +927,7 @@ func runLogsWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 		out = sw
 	}
 	if err := t.Logs(ctx, follow, n, since, out); err != nil && ctx.Err() == nil {
-		fmt.Fprintf(stderr, "alder logs: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder logs:"), err)
 		return 1
 	}
 	return 0

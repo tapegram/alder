@@ -148,7 +148,7 @@ A `<button click={…}>` works with and without JavaScript. Outside a form it
 is rendered inside a small form of its own that posts the message:
 
 ```html
-<form method="post" action="/_m/App/Logout" class="_alder-click" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/App/Logout&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()}))"><button type="submit">Log out</button></form>
+<form method="post" action="/_m/App/Logout" class="_alder-click" data-on:submit="(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/App/Logout&#39;, window._alderO?.(&#39;form&#39;)))"><button type="submit">Log out</button></form>
 ```
 
 The design system's stylesheet (Appendix C) gives that wrapper
@@ -582,12 +582,44 @@ element, and inside a `<form submit>` it holds no bound input (use
 
 ## Partial updates
 
-After a message, the runtime renders the whole page again and sends its
-`<body>` to the browser, where Datastar morphs it into the page that is
-there: elements that did not change are left alone. Without Datastar
-(JavaScript off), the browser gets the whole new page. Nothing in your
-code changes between the two (chapter 6, "With and without JavaScript").
+After a message, the runtime renders the whole page again, and also the
+page as it was before the message (the same `view` of the model `load`
+gave before `update`). It compares the two and sends the browser only the
+elements that changed, each found by its `id`; Datastar morphs each into
+place, and leaves the rest of the page alone. Without Datastar (JavaScript
+off), the browser gets the whole new page. Nothing in your code changes
+between the two (chapter 6, "With and without JavaScript").
 
-`id` attributes are not required for this. They help the morph match an
-old element with its new self when a list changes, so give the regions
-that change (`<ul id="todos">`) a stable `id`.
+An element with an `id` is a **region**. The `<body>` is the outermost
+one, and regions nest. When something changes, the runtime sends the
+smallest region that holds the change, so the `id`s you give decide how
+small an update is:
+
+```alder
+<ul id="todos">
+  {for t in model.todos ->
+    <li id={"todo-" ++ t.id}>{t.title}</li>}
+</ul>
+<p id="summary">{Text.fromInt (Todo.countOpen model.todos)} open</p>
+```
+
+- Ticking one to-do sends that `<li>` (and `#summary`, whose count
+  changed): the list around it is the same.
+- Adding or removing a to-do sends the whole `<ul id="todos">`: its
+  children are not the same list any more.
+- A change in text that no region holds (a heading with no `id` around
+  it) sends the whole `<body>`, as a page without any `id` always does.
+
+An `id` counts as a region only when it is a plain name (letters, digits,
+`_` and `-`, not starting with a digit) and appears once on the page;
+`id`s inside `<head>`, `<noscript>` or `Html.unsafe` markup do not count. Nor
+does an element around markup the browser rebuilds as it reads it: a
+`<div>` inside a `<p>` (the browser closes the `<p>` first), a link inside
+a link, a form inside a form, text or a `<div>` directly inside a
+`<table>` or `<tr>`. Its page is not the markup you wrote, so the runtime
+patches a region further out, or the whole body. None of
+this can make the page wrong: the runtime sends a region only when it has
+proved everything outside it is unchanged, and when it cannot tell which
+page the browser shows (the first click after a form showed errors, for
+one) it sends the whole body. `alder test` checks, after every click and
+submit, that the patched page equals a full render (chapter 11).

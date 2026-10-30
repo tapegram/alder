@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"alder/rt"
+	"alder/rt/datastar"
 	"alder/rt/eff"
 	"alder/rt/html"
 	"alder/rt/web"
@@ -116,11 +117,29 @@ type Browser struct {
 	hasDoc  bool
 	notices []string // the toasts of the step's requests (Result.Notices)
 
+	// dom is the held page as a browser's parser builds it and Datastar patches it (html.Repair):
+	// the page the drift check compares (checkPatched). doc stays the markup as the router sent
+	// it, which is what a test reads.
+	dom html.Node
+	// shown is the hash of the body the held page shows (its <al-shown>, which the held doc
+	// leaves out), sent with every post as html.ShownHeader, as the page's script does
+	shown string
+	// rendered is the body a full render of the last request's page would have sent
+	// (web.Options.Rendered), "" when it re-rendered nothing: after applying the answer, the held
+	// body must equal it (checkPatched)
+	rendered string
+
 	model   any         // the model the last request's page GET rendered (web.Request.Model), nil for none
 	reqEnvs []*eff.Env  // the Envs of the request being served
 	cur     *eff.Within // the transaction it runs within
 	reqHead string      // "METHOD /decoded/path: ", how the router's log lines for it begin
 	lastErr string      // the router's last error log line for it
+
+	heads    map[*eff.Env]string // each request Env's "METHOD /path" (Options.Served)
+	step     *stepAcc            // the step running (track), nil between steps
+	bench    bool                // measure each step (`alder bench`)
+	warnings []string            // the N+1 warnings of the steps so far (CaseResult.Warnings)
+	measures []Measure           // with bench, each step's Measure (CaseResult.Bench)
 }
 
 // NewBrowser is a browser for the test running env, serving routes with opts: opts is the
@@ -130,7 +149,7 @@ type Browser struct {
 // Test.fake installed since applies), Now and Log, and runs Within env's transaction, begun
 // when the first request needs it (env.Transaction).
 func NewBrowser(env *eff.Env, routes []web.Route, opts web.Options) *Browser {
-	b := &Browser{env: env, codec: opts.Session, login: opts.Login}
+	b := &Browser{env: env, codec: opts.Session, login: opts.Login, heads: map[*eff.Env]string{}}
 	if len(opts.Secret) < 16 {
 		opts.Secret = TestSecret
 	}
@@ -147,15 +166,26 @@ func NewBrowser(env *eff.Env, routes []web.Route, opts web.Options) *Browser {
 	opts.Store, opts.Caps, opts.Now, opts.Dev, opts.Reload = env.Store, env.Caps, cookieNow, false, ""
 	opts.EnvFor = func(ctx context.Context, session any) *eff.Env {
 		e := &eff.Env{Ctx: ctx, Store: b.env.Store, Caps: b.env.Caps, Now: b.env.Now, Sleep: b.env.Sleep, Log: b.env.Log, Session: session, Within: b.cur,
-			Stores: b.env.Stores, CheckSession: b.env.CheckSession}
+			Stores: b.env.Stores, CheckSession: b.env.CheckSession,
+			Rec: &eff.Recorder{}} // its statements, for the N+1 warning (and `alder bench`)
 		b.reqEnvs = append(b.reqEnvs, e)
 		return e
 	}
 	served := opts.Served
 	opts.Served = func(rq *web.Request) {
 		b.model = rq.Model
+		if rq.Env != nil && rq.HTTP != nil {
+			b.heads[rq.Env] = rq.HTTP.Method + " " + rq.HTTP.URL.Path
+		}
 		if served != nil {
 			served(rq)
+		}
+	}
+	rendered := opts.Rendered
+	opts.Rendered = func(rq *web.Request, body string) {
+		b.rendered = body
+		if rendered != nil {
+			rendered(rq, body)
 		}
 	}
 	b.handler = web.NewRouter(routes, opts)
@@ -187,15 +217,16 @@ type browserSlot struct {
 	routes []web.Route
 	opts   web.Options
 	b      *Browser
+	bench  bool // the browser measures its steps (`alder bench`)
 }
 
 // withBrowser is env.Ctx carrying the slot BrowserOf makes env's browser in.
-func withBrowser(env *eff.Env, routes []web.Route, opts web.Options) context.Context {
+func withBrowser(env *eff.Env, routes []web.Route, opts web.Options, bench bool) context.Context {
 	ctx := env.Ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return context.WithValue(ctx, browserKey{}, &browserSlot{env: env, routes: routes, opts: opts})
+	return context.WithValue(ctx, browserKey{}, &browserSlot{env: env, routes: routes, opts: opts, bench: bench})
 }
 
 // BrowserOf is the browser of the test running env, made on first use: the test runner puts
@@ -210,7 +241,7 @@ func BrowserOf(env *eff.Env) *Browser {
 	if slot == nil {
 		panic("alder: this test has no browser (the test program was built without the app's routes)")
 	}
-	slot.once.Do(func() { slot.b = NewBrowser(slot.env, slot.routes, slot.opts) })
+	slot.once.Do(func() { slot.b = NewBrowser(slot.env, slot.routes, slot.opts); slot.b.bench = slot.bench })
 	return slot.b
 }
 
@@ -364,6 +395,7 @@ func MsgLabel(msgURL string) string {
 // reached), PageMissing (the not-found document held) or RequestFailed (the error document held, Text the
 // error). Its error is for internal failures only (a page that does not parse).
 func (b *Browser) Open(u string) (Result, error) {
+	defer b.track()()
 	ans, err := b.navigate(u, false)
 	if err != nil {
 		return Result{}, err
@@ -387,6 +419,7 @@ type Fetched = struct {
 // Content-Type, body and every header (sorted by name), a redirect not followed. The page the
 // browser holds, and the notices and model of the last step, stay as they were.
 func (b *Browser) Fetch(u string) (Fetched, error) {
+	defer b.track()()
 	notices, model := b.notices, b.model
 	defer func() { b.notices, b.model = notices, model }()
 	w, err := b.serve(http.MethodGet, u, nil, false)
@@ -431,6 +464,7 @@ func (b *Browser) Submit(msgURL string, fields url.Values) (Result, error) {
 
 // submit is Submit of fields, form the form's name for the errors.
 func (b *Browser) submit(msgURL, form string, fields Fields) (Result, error) {
+	defer b.track()()
 	target, f, ok := b.formFor(msgURL)
 	if !ok {
 		return Result{}, &NoControlError{Submit: true, Form: form, Msg: MsgLabel(msgURL), URL: msgURL, Page: b.url,
@@ -539,6 +573,7 @@ func Offered(msgURL string, urls []string) string {
 // `_p.` parameters, is what is posted. The answer is applied as for Submit. With no such control
 // the error is a *NoControlError and nothing is sent.
 func (b *Browser) Click(msgURL string) (Result, error) {
+	defer b.track()()
 	target, ok := b.control(msgURL)
 	if !ok {
 		return Result{}, &NoControlError{Msg: MsgLabel(msgURL), URL: msgURL, Page: b.url, Offers: Offered(msgURL, b.controlURLs(false))}
@@ -552,6 +587,7 @@ func (b *Browser) Click(msgURL string) (Result, error) {
 
 var (
 	selBody     = html.MustParseSelector("body")
+	selShown    = html.MustParseSelector("al-shown")
 	selForm     = html.MustParseSelector("form")
 	selAction   = html.MustParseSelector("[formaction]")
 	selClick    = html.MustParseSelector("[data-on:click]")
@@ -679,6 +715,9 @@ func (b *Browser) serve(method, target string, form url.Values, ds bool) (*httpt
 	}
 	if ds {
 		req.Header.Set("Datastar-Request", "true")
+		if method == http.MethodPost && b.shown != "" {
+			req.Header.Set(html.ShownHeader, b.shown)
+		}
 	}
 	if b.url != "" {
 		req.Header.Set("Referer", "http://example.com"+b.url)
@@ -686,14 +725,16 @@ func (b *Browser) serve(method, target string, form url.Values, ds bool) (*httpt
 	if b.cookie != "" {
 		req.AddCookie(&http.Cookie{Name: web.CookieName, Value: b.cookie})
 	}
-	b.reqEnvs, b.lastErr, b.cur, b.model = nil, "", cur, nil
+	b.reqEnvs, b.lastErr, b.cur, b.model, b.rendered = nil, "", cur, nil, ""
 	b.reqHead = req.Method + " " + req.URL.Path + ": "
 	w := httptest.NewRecorder()
-	b.handler.ServeHTTP(w, req)
+	b.serveHTTP(w, req)
 	for _, e := range b.reqEnvs {
 		b.env.Trace = append(b.env.Trace, e.Trace...)
 	}
+	b.account(req.Method+" "+req.URL.Path, w.Body.Len())
 	b.reqEnvs = nil
+	clear(b.heads)
 	for _, c := range w.Result().Cookies() {
 		if c.Name == web.CookieName {
 			if c.MaxAge < 0 || c.Value == "" {
@@ -714,6 +755,11 @@ func (b *Browser) navigate(u string, redirected bool) (Answer, error) {
 			// another site (Url.external): the browser does not leave the app, so nothing is
 			// served and the held page and URL stay as they were; the answer names the target
 			// as Url.external builds it
+			return Answer{Tag: Redirected, Page: rt.Page{Path: u}}, nil
+		}
+		if redirected && strings.HasPrefix(u, "#") {
+			// "#" (an unsafe URL Url.external neutralised) or "#frag": a browser stays on the
+			// page it has, so nothing is requested and the held page and URL stay
 			return Answer{Tag: Redirected, Page: rt.Page{Path: u}}, nil
 		}
 		w, err := b.serve(http.MethodGet, u, nil, false)
@@ -795,7 +841,97 @@ func (b *Browser) hold(u, page string) error {
 	if err != nil {
 		return fmt.Errorf("the page at %s does not parse: %w", u, err)
 	}
-	b.url, b.doc, b.hasDoc = u, doc, true
+	b.url, b.hasDoc = u, true
+	b.doc, b.shown = takeShown(doc)
+	b.dom = html.Repair(b.doc)
+	return nil
+}
+
+// takeShown is doc without the router's <al-shown> element, and the hash it carries ("" for none).
+// The router puts it at the end of the <body>: it is looked for there first, without a walk
+// of the whole page.
+func takeShown(doc html.Node) (html.Node, string) {
+	var shown html.Node
+	if body, ok := bodyNode(doc, 2); ok {
+		cs := body.Children()
+		for i := len(cs) - 1; i >= 0 && i >= len(cs)-4; i-- {
+			if isShown(cs[i]) {
+				shown = cs[i]
+				break
+			}
+		}
+	}
+	if shown.Tag() == "" {
+		els := html.Select(doc, selShown)
+		if len(els) == 0 {
+			return doc, ""
+		}
+		shown = els[len(els)-1]
+	}
+	h, _ := html.AttrOf(shown, "data-h")
+	return html.Without(doc, isShown), h
+}
+
+// bodyNode is the <body> of n found within depth levels (n itself, its children, …).
+func bodyNode(n html.Node, depth int) (html.Node, bool) {
+	if n.Tag() == "body" {
+		return n, true
+	}
+	if depth == 0 {
+		return html.Node{}, false
+	}
+	for _, c := range n.Children() {
+		if c.Tag() == "body" || c.Tag() == "html" || c.Tag() == "" {
+			if b, ok := bodyNode(c, depth-1); ok {
+				return b, true
+			}
+		}
+	}
+	return html.Node{}, false
+}
+
+func isShown(n html.Node) bool {
+	id, _ := html.AttrOf(n, "id")
+	return n.Tag() == "al-shown" && id == datastar.ShownID
+}
+
+// DriftError is a step whose answer, applied to the page the browser held, did not give the
+// page a full render shows: the router's fragments (html.Fragments) or the page's Before are
+// wrong. Every click and submit of every test checks it.
+type DriftError struct {
+	Step string // "POST /_m/…"
+	Diff html.Difference
+}
+
+func (e *DriftError) Error() string {
+	return fmt.Sprintf("%s: the patched page differs from a full render at %s: %s\n  patched: %s\n  full:    %s",
+		e.Step, e.Diff.At, e.Diff.What, e.Diff.Left, e.Diff.Right)
+}
+
+// checkPatched compares the held body, as the browser built and patched it (dom), with the full
+// render, as the browser's parser builds it, of the page the last request
+// re-rendered (b.rendered), the router's implicit <al-toasts> region left out. It runs after
+// the request was served: `alder bench` measures the router alone (serveHTTP), not this.
+func (b *Browser) checkPatched() error {
+	if b.rendered == "" {
+		return nil
+	}
+	full, err := html.Parse(b.rendered)
+	if err != nil {
+		return fmt.Errorf("the full render of the page does not parse: %w", err)
+	}
+	want := html.Repair(full)
+	held := html.Select(b.dom, selBody)
+	if len(held) == 0 {
+		return errors.New("the held page has no <body>")
+	}
+	got := held[0]
+	if !strings.Contains(b.rendered, "<al-toasts") {
+		got = html.Without(got, func(n html.Node) bool { return n.Tag() == "al-toasts" })
+	}
+	if d, differ := html.Diff(got, want); differ {
+		return &DriftError{Step: strings.TrimSuffix(b.reqHead, ": "), Diff: d}
+	}
 	return nil
 }
 
@@ -874,6 +1010,9 @@ func (b *Browser) post(target string, form url.Values) (Answer, error) {
 		return Answer{Tag: RequestFailed, Text: b.failText()}, nil
 	case "503":
 		return Answer{Tag: RequestFailed, Text: maintenanceText}, nil
+	}
+	if err := b.checkPatched(); err != nil {
+		return Answer{}, err
 	}
 	if errs := pageErrors(b.doc); len(errs) > 0 {
 		return Answer{Tag: FormRejected, Errors: errs}, nil
@@ -1004,6 +1143,23 @@ func (b *Browser) patch(ev sseEvent) error {
 	if sel == "#_alder_panel" {
 		return nil // the dev panel is not part of the page a test sees
 	}
+	if sel == "#"+datastar.ShownID {
+		_, b.shown = takeShown(els)
+		return nil
+	}
+	if id, ok := strings.CutPrefix(sel, "#"); ok && mode == "outer" {
+		doc, ok := html.ReplaceByID(b.doc, id, els)
+		if !ok {
+			return fmt.Errorf("a patch of %s: the held page has no element with that id", sel)
+		}
+		b.doc = doc
+		// Datastar morphs the element into the nodes its parser builds from the patch; an id
+		// the DOM lacks patches nothing (the drift check then reports the difference)
+		if dom, ok := html.ReplaceByID(b.dom, id, html.RepairFragment(els)); ok {
+			b.dom = dom
+		}
+		return nil
+	}
 	if sel == "al-toasts" && mode == "append" {
 		b.notices = append(b.notices, strings.TrimSpace(html.TextContent(els)))
 		return nil
@@ -1037,7 +1193,13 @@ func (b *Browser) patch(ev sseEvent) error {
 	if !ok {
 		return errors.New("the held page has no <body> to patch")
 	}
-	b.doc, b.hasDoc = doc, true
+	b.hasDoc = true
+	if mode == "append" {
+		b.doc = doc
+	} else {
+		b.doc, b.shown = takeShown(doc)
+	}
+	b.dom = html.Repair(b.doc)
 	return nil
 }
 

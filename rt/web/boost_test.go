@@ -195,6 +195,26 @@ func TestBoost_RedirectMorphsTarget(t *testing.T) {
 	}
 }
 
+// A boosted GET of a page whose load redirects (Query.redirect, #8) to a page of this app with a
+// query string: the target is served in-process and morphed in, the push names the target with
+// its query; the session is left as it was (no cookie).
+func TestBoost_GetRedirectMorphsTarget(t *testing.T) {
+	h := NewRouter([]Route{
+		{Method: "GET", Pattern: "/start", Handle: func(rq *Request) Response {
+			return RedirectResponse("/builder?seed=7", nil)
+		}},
+		{Method: "GET", Pattern: "/builder", Handle: func(rq *Request) Response {
+			return PageResponse(doc("Builder "+rq.Query.Get("seed")), nil, rq.Session, false)
+		}},
+	}, testOpts(nil))
+	w := serve(h, dsGet("/start?go=builder"))
+	evs := events(w.Body.String())
+	if w.Code != 200 || len(evs) != 3 || evs[0] != bodyEvent("<p>Builder 7</p>") || sessionCookie(t, w) != nil {
+		t.Fatalf("%d %q", w.Code, evs)
+	}
+	historyEvent(t, evs[2], pushOpen, "\"/builder?seed=7\"")
+}
+
 // A redirect chain is followed (a boosted link to a page whose `requires` sends to the login
 // page: the push names the login page; a back/forward's chain replaces); a target that fails
 // is morphed in with its status; more than redirectLimit in a row is a 500 logged for the

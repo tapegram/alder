@@ -45,6 +45,10 @@ func (mc *modCtx) testTypeUse(name string, span diag.Span) {
 	if mc.inTest || c.prog.Std[mc.m.Name] != nil || c.fakeUses[span] {
 		return
 	}
+	if mc.value != "" || mc.fake != "" || mc.never != "" { // a value's signature or body: it may be a helper
+		mc.testUse("`"+name+"`", span)
+		return
+	}
 	c.fakeUses[span] = true
 	c.errorf(diag.TypeMismatch, span, "`%s` is a test type: it exists only inside a `test`", name)
 }
@@ -90,8 +94,7 @@ func (c *Checker) answerType() types.Type {
 func (mc *modCtx) inferTestStep(x *syntax.App, v *syntax.Var, env *env, eff effect, pipe *pipeArg) types.Type {
 	c := mc.c
 	name := v.Ref.Name
-	if !mc.inTest {
-		c.errorf(diag.TypeMismatch, v.Span, "`Test.%s` is only available inside a `test`", name)
+	if !mc.testUse("`Test."+name+"`", v.Span) {
 		mc.inferArgs(x.Args, env, eff)
 		return types.Err
 	}

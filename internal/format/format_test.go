@@ -97,6 +97,27 @@ func TestSource_OutputThatDoesNotParseIsUnsafe(t *testing.T) {
 	}
 }
 
+// The theme declaration: the spec's example is already formatted; a record of one or two fields
+// stays on one line, three go vertical; a comment inside a scheme is kept.
+func TestSource_Theme(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{"module App\n\ntheme {\n  radius: \"0.5rem\",\n  fontSans: [\"Inter\", \"system-ui\", \"sans-serif\"],\n  light: {\n    primary: \"oklch(0.55 0.22 285)\",\n    primaryForeground: \"#ffffff\",\n    ring: \"var(--primary)\",\n  },\n  dark: { primary: \"oklch(0.72 0.16 285)\", primaryForeground: \"oklch(0.145 0 0)\" },\n}\n", ""},
+		{"module App\n\ntheme {\n  radius: \"0.5rem\"\n}\n", "module App\n\ntheme { radius: \"0.5rem\" }\n"},
+		{"module App\n\ntheme { radius: \"1rem\", light: { ring: \"#000\" }, dark: { } }\n", "module App\n\ntheme {\n  radius: \"1rem\",\n  light: { ring: \"#000\" },\n  dark: { },\n}\n"},
+		{"module App\n\ntheme {\n  light: {\n    -- the brand\n    primary: \"#4f46e5\",\n  },\n}\n", ""},
+		{"module App\n\ntheme { }\n", ""},
+	} {
+		want := c.want
+		if want == "" {
+			want = c.src
+		}
+		out, _, err := Source("App.alder", []byte(c.src))
+		if err != nil || string(out) != want {
+			t.Errorf("Source(%q) = %q, %v; want %q", c.src, out, err, want)
+		}
+	}
+}
+
 func TestSource_KeepsComments(t *testing.T) {
 	src := "module M\n\n-- the answer\nx : Int\nx = 42 -- forty-two\n"
 	out, _, err := Source("m.alder", []byte(src))

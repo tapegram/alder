@@ -169,11 +169,11 @@ test "the page shows the row" = {
       posts: List.length page.model.labels.posts,
       postLabel: postLabel page.model.labels post1,
     } == {
-        answer: Shown,
-        author: True,
-        posts: 1,
-        postLabel: "slug-1",
-      }
+      answer: Shown,
+      author: True,
+      posts: 1,
+      postLabel: "slug-1",
+    }
   )
 }
 

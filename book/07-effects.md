@@ -78,6 +78,7 @@ Query.succeed : a -> Query a
 Query.map     : (a -> b) -> Query a -> Query b
 Query.all     : List (Query a) -> Query (List a)
 Query.notFound : Query a            -- stop: respond 404 with App.notFound
+Query.redirect : Page -> Query a    -- stop: respond 303 to a page
 
 Task.succeed  : a -> Task a
 Task.fail     : Text -> Task a
@@ -105,7 +106,23 @@ if a failure should be handled, the capability returns a `Result` instead
 of failing.
 
 A `Query` cannot fail. A missing row is `Nothing`; a database outage is
-an `App.error` page.
+an `App.error` page. It can stop: `Query.notFound` answers 404, and
+`Query.redirect p` answers a 303 to the page value `p`, written as an
+`href={p}` or a `Redirect p` is (`Url.external` included). A page's
+`load` uses it to send the browser on without showing anything:
+
+```alder fragment
+load params session =
+  if params.go == "builder" then Query.redirect (Builder { seed: params.seed })
+  else Query.succeed { seed: params.seed }
+```
+
+Nothing after it runs, and `view` is not called. A `Query` bound in a
+`Task` block stops the `Task` the same way: `let _ <- Query.redirect p`
+in `update` is a failure, its writes and `Session.put` changes undone,
+and the request is answered with the 303 (in `Test.run`, chapter 10, it is
+`Err "redirected to /builder/7"`). To write and then go, end the
+`Task` with `Redirect p` instead (chapter 6).
 
 ## Capabilities
 
@@ -168,6 +185,12 @@ logged").
 `Http.HttpError` is the stdlib's type for a failed request: a type of a
 standard module other than the Prelude is always written qualified (a bare
 `HttpError` is E0202, with the fix).
+
+`Random.int` is a fresh number on every run. When the numbers must be the
+same every run (a seeded simulation, test data, a stable bucket), use the
+pure, seeded half of `Random` instead: `Random.step` with a `Random.Seed`,
+which is no effect at all, so `load` and plain functions can use it
+(chapter 9, "Random").
 
 Nothing else in the language touches the outside world. If a function's
 signature has no `Query` or `Task` in it, it is pure.
@@ -295,7 +318,7 @@ when things happen and what a failure undoes. Chapter 13 follows one
 
 **An effect is a tree.** A `Query` or `Task` value is data: a small tree
 of steps, built by the generated code and never inspected by it. There are
-five kinds of node (`rt/eff/eff.go`):
+six kinds of node (`rt/eff/eff.go`):
 
 ```go
 type pure struct{ v any }
@@ -314,6 +337,8 @@ type call struct {
 type fail struct{ msg string }
 
 type notFound struct{}
+
+type redirect struct{ location string }
 ```
 
 `pure` is `Task.succeed`/`Query.succeed`. `bind` is one `let x <- e`: run
@@ -322,7 +347,10 @@ the block. `call` is one step that touches the outside world: a `Db.*`
 operation, a capability, `Time.now`, `Log.info`. It carries a name for the
 log, whether it writes, and the Go function that does the work. `fail` is
 `Task.fail` (and a `@unique` violation, chapter 8); `notFound` is
-`Query.notFound` or `Task.notFound`. Building a tree does nothing. Only `eff.Run` does.
+`Query.notFound` or `Task.notFound`; `redirect` is `Query.redirect p`,
+carrying `p`'s URL (`rt.PageURL`), which `Run` returns as
+`*eff.ErrRedirect` for the route to answer with a 303. Building a tree
+does nothing. Only `eff.Run` does.
 
 **Run is eager.** `eff.Run` (`rt/eff/run.go`) walks the tree node by node:
 at a `call` it runs the step right away, at a `bind` it remembers the
@@ -362,7 +390,7 @@ database lock: other requests' tasks run meanwhile. If the task produces
 its result, `Run` commits the transaction, if one was begun. If it fails
 in any way (`Task.fail`, `Db.update` on a row that doesn't exist, a
 scoped operation on a row that is not the user's,
-`Query.notFound`, `Task.notFound`, an error from the database or a capability, or a Go
+`Query.notFound`, `Task.notFound`, `Query.redirect`, an error from the database or a capability, or a Go
 panic), `Run` rolls the transaction back instead. `Db.get` finding
 nothing is not a failure: it produces `Nothing`. Either every write of an
 `update` happens or none does.
@@ -550,7 +578,7 @@ load params session = {
 }
 
 view : Model -> Session -> File
-view model session = File.json (Text.fromInt model.waited)
+view model session = File.json (Json.int model.waited)
 ```
 
 ## Implementing a capability
@@ -769,6 +797,21 @@ call: `Password.verify: <the error>`. A page answers it like any other
 failure, with a 500; inside a test, `Test.run` gives it back as
 `Err "Password.verify: <the error>"` (chapter 10). A capability's error is
 a failure the test can observe.
+
+An adapter's arguments are its own. Every `List` and `Bytes` it is handed,
+directly or inside a record, a `Maybe` or a `Dict`, is a fresh copy made
+for that call (the generated call passes each such argument through
+`rt.Fresh`). The method may sort a slice, write into it or keep it, and
+the Alder caller sees no difference. This matters because the runtime
+shares storage wherever no one can tell. `List.take` gives a view of the
+original list, not a copy. `File.text` uses the bytes of the `Text` as the
+body. A Text written in the program's source lives in read-only memory,
+where a write would crash the server. Sharing is safe only because nothing
+ever writes to an Alder value, and Go code is the one place the compiler
+cannot check that, so the copy happens at the boundary. Do not rely on an
+argument sharing storage with anything: a change to it never reaches the
+app. The values a method returns are not copied. Return a slice the
+adapter will not touch again.
 
 The server refuses to start when a field of `Caps` is `nil` (a
 constructor that returned `nil`, say). `Serve`, in `app__alder.go`,

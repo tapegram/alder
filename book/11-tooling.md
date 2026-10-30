@@ -87,48 +87,60 @@ and writes the app's own only when it finds one.
 ## Commands
 
 ```
-alder new <name>     write a new app, the guestbook, into the directory <name>
-                     (--bare: App, Layout and static/ only, no page or table)
-alder new <kind> …   generate a page, table, form, msg, capability, auth, type, decl or test
-alder new silo …     put tables in a database per value of a session key (App's `silo`)
-alder new admin      generate an admin of every table, under app/Admin/
-alder regen admin    rewrite the admin's owned regions after the tables change
-alder edit table …   add, rename or drop a table's field, with its migration
-alder edit page …    add a parameter to a page
-alder edit session … add a field to the session
-alder remove …       remove a page, or a table with its migration
-alder fill <decl> -  fill a typed hole with the expression on standard input
-alder check          type-check everything; milliseconds; no output on success
-alder fmt [path…]    rewrite .alder files in the one canonical format (--check: list what would change)
-alder build          check, generate Go, go build → ./build/myapp/myapp
-alder run            build and run with the dev database, reloading on change
-alder eval <expr>    evaluate an expression against the app: value : Type
-alder repl           (deprecated: use a scratch file) a session: let, evaluate, :type, :run
-alder test           run every `test`, each against a fresh database: ok/FAIL
-                     (--mutate: and once per mutant: the mutation score)
-alder migrate        write the next migration after a change to the tables
-alder migrate silos <env>  migrate every silo of an environment now
-alder deploy <env>   gate, build, plan and ship to an environment of App's `deploy`
-alder status <env>   the environment's current build, its last builds, its database
-                     (and, with silos, how many are ok, migrating, pending, ahead, failed)
-alder rollback <env> make an earlier build current again
-alder logs <env>     the current build's log (-f: follow it; -n N lines; --since T; --grep a pattern)
-alder restore <env>  rebuild the database from the streamed backup (--silo org:<id>: one silo)
-alder silos prune <env>  remove the silos whose key's row is gone (orphans)
-alder ci init        write .github/workflows/alder.yml from the declaration
-alder routes [dir]   list the app's routes, pages and messages, with where each is declared
-alder dump <path>    print a file's tokens, AST, or an app's IR
-alder explain <id>   explain a diagnostic code
-alder version        print alder's version and the Go it was built with
-alder help [cmd]     print usage (`alder help <command>` is `alder <command> --help`)
-alder help --json    print the command tree (commands, subcommands, arguments and flags,
-                     each with a one-line summary) as JSON; editors build completion from it
+usage: alder <command> [arguments]
+
+  check     type-check the app and print its diagnostics
+  fmt       format .alder files canonically
+  build     compile the app to a single binary
+  run       run the app with live reload
+  routes    list the app's routes: pages (GET) and messages (POST)
+  dump      print a file's tokens or syntax tree, or an app's IR
+  eval      evaluate an expression in the app
+  scratch   run a scratch file's watches against the app
+  test      run the app's tests
+  bench     measure each browser step of the app's tests
+  migrate   write the migration for a schema change
+  repl      an interactive session in the app (deprecated: use alder scratch)
+  new       create an app, or generate code in one
+  edit      change a table, page, declaration, auth or the session
+  remove    remove a page or a table
+  fill      fill a typed hole with an expression from stdin
+  regen     regenerate generated code
+  deploy    deploy to an environment
+  status    show what an environment runs
+  rollback  go back to an earlier build
+  logs      print an environment's logs
+  restore   restore a database from a backup
+  silos     manage an environment's silos
+  ci        set up continuous integration
+  version   print alder's version and the Go it was built with
+  lsp       language server for editors, over stdio
+  explain   explain a diagnostic code
+  help      print usage
+
+alder <command> --help prints its usage; alder help --json prints the command tree
 ```
 
 Every command takes `--help` (or `-h`): `alder <command> --help` prints
 its usage line and exits 0, and `alder new <kind> --help` the
 generator's (`alder new page --help`); `alder help <command>` does the
 same.
+
+`alder check` prints nothing when the app is clean. On a terminal, after
+the diagnostics it did print, it ends with one line that counts them, such
+as `2 errors, 1 warning`; a pipe and `--json` get the diagnostics alone.
+
+On a terminal the output is coloured: status words (`ok`, `FAIL`), the
+locations and severities of diagnostics, summaries and labels carry colour
+and weight, and `alder test` ends a failing run with the names of the tests
+that failed. The bytes between the colours are the plain output, and
+nothing is styled when the output is a pipe or a file, when `NO_COLOR` is
+set to anything but empty, or when `TERM` is `dumb`; `--json` is never
+styled. `ALDER_COLOR=always` styles any output (so `alder test | less -R`
+keeps its colour; Windows terminals need it), and with it the count line of
+`alder check`, the failure recap of `alder test` and the wrapping of
+`alder explain` also appear in piped output; `ALDER_COLOR=never` styles
+none. Only the 16 ANSI colours are used, so the terminal's theme applies.
 
 `alder help --json` prints the command tree (commands, subcommands, arguments and flags, each with a one-line summary) as JSON; editors build completion from it. In Neovim, alder.nvim runs every generator with a preview of its diff (chapter 1, Editor support).
 
@@ -241,10 +253,11 @@ holes (W0002) with their types among them.
 | `alder edit table <T> rename-field <old> <new>` | the field renamed, with `@renamed "old"` (chapter 8), and its migration |
 | `alder edit table <T> drop-field <field>` | the field removed, and its migration |
 | `alder fill <Module>.<decl>[.<arm>] -` | the declaration's hole (`--hole ?name` when it has several) replaced by the expression on standard input; `Module."test name"` names a test, `Module.update.Msg` an arm, `Module.Fake.entry` a fake's entry. A module of the app the expression names qualified (`Member.x`) that the file does not import is imported: `added import Member to app/…` (`--json`: `"imports"`). `alder fill --list` lists every hole: `Home update.Clear ?clear : Task Nav` |
+| `alder fill <Module>.<decl>[.<arm>] --ai` | the same hole filled by a model: the expression it answers is placed and checked exactly as standard input's, and written only if the app then checks (holes it leaves are allowed). A refused answer is sent back with the checker's errors, three attempts in all, each `alder fill: attempt 2 of 3: E0003 …` on standard error; after the third, the errors and `the model's last expression:` are printed and nothing is written (exit 1). The model is the Anthropic API's (`ANTHROPIC_API_KEY`; `ALDER_FILL_MODEL`, default `claude-opus-5-5`; `ALDER_FILL_REFERENCE`, a file such as `site/reference.md` put before the prompt), or any command (`ALDER_FILL_COMMAND='claude -p'`: the prompt on its standard input, the expression on its standard output), which wins when both are set. `--json` adds `"expression"`, `"attempts"`, `"model"` and `"effects"`. An expression that reaches an effect its hole's type does not limit (a capability's entry, any `Http` request, `Session.put`, `Html.unsafe`, `Task.sleep`, or `Db.insert`, `Db.update`, `Db.delete`, which are not scoped to the session's rows), itself or through a value of the app it calls (`Mail.notify → Email.send`), is printed after the diff, with `alder fill: warning: the model's expression uses …` on standard error; a test's expectation gets the hint that `alder test --mutate` is the check that it tests something. `--prompt` prints what the first attempt would send, and sends nothing. What leaves the machine is the prompt: the module's source, its comments and string literals included, the names and types in scope (not other modules' bodies), the standard library's signatures and, on a retry, the errors. `ALDER_FILL_COMMAND` must be a plain text completer, with no tools and no permission bypass: the module's comments are part of the prompt, and to a tool-using agent they are instructions it may follow |
 | `alder fill --decl <Module>.<decl> -` | the declaration's whole body (a value's, a test's block, a `type`'s right-hand side) replaced by the one expression, or type, on standard input; its signature stays. Refused when the result does not check (an `update` that drops an arm the view sends). For what has no hole: a `Model`, a generated body or test that does not fit |
 | `alder new auth [--users User] [--role R] [--to Page]` | the login: `app/Auth/Login.alder` (`capability Password { verify, hash }`, its fake, `page "/login"`, the form `Credentials`, the arm that puts the user, and the role, in the session or rejects the form, a Log out button for a signed-in user, three tests); `App` edited at fixed places (the session's `user` and `role` after its fields, `login = Auth.Login`, `msg Logout` and its arm, a test of it); the user table when it does not exist, in `app/Table/User.alder` (`email @unique`, `name`, `passwordHash: Text.Secret`, the role, `created`) and its migration; and the adapter `adapters/auth/login_password.go` (PBKDF2-SHA256, 600,000 iterations, a 16-byte salt, a constant-time compare; stored as `pbkdf2-sha256$<iterations>$<salt>$<hash>`) with its Go tests. `R` must be a union of the user module (`alder new type`). Refused when the session has a `user` or an `Auth` module exists. A login goes to `--to`'s page, else the page at `/`, else the hole `?afterLogin` (filled once the page exists) |
 | `alder new type <Module> "<Name> = …"` | a union (`Status = Pending \| Done`), a brand (`Code = brand Text where …`) or a record (`Row = { … }`), after the module's type declarations; the module is created when it does not exist |
-| `alder new decl <Module> <name> "<Type>"` | `name : Type` and `name = ?name`, before the module's tests; a function's body is filled with a lambda |
+| `alder new decl <Module> <name> "<Type>"` (`<Module>` is a module's full path, `Table.Member`; a table's name alone, `Member`, stands for its module; so in `new test`, `fill` and `edit decl`) | `name : Type` and `name = ?name`, before the module's tests; a function's body is filled with a lambda |
 | `alder new test <Module> "<name>"` | `test "<name>" = { ?test }`, the hole a `Task Bool`; a block filled into it becomes the test's block |
 | `alder new page … --blank` | the page with `Model = { }` and the holes `?load` and `?view` (with `--show T`, its `/{id}` and `id` parameter), and its rules' tests; fill `Model` with `--decl`, then `load`, then `view` |
 | `alder new msg … --in-for <binder> [--when <expr>]` | the button at the end of the body element of the view's `{for <binder> in …}`, its class the message's name (`class="remove"`), its fields from the binder (`user: m.user`; a table's id from a row of that table, `u.id`) or holes; `--when` shows it only when the expression holds |
@@ -817,6 +830,18 @@ $ alder eval examples/todos --in Table.Todo 'countOpen []'
 0 : Int
 ```
 
+A diagnostic of the expression is positioned in the input (`input:1:5`). When a `let` redeclares
+a name the module declares, the earlier declaration is named by its file, since its line is not
+a line of the input: ``input:1:5: error[E0009]: `countOpen` is already declared in
+app/Table/Todo.alder:34``.
+
+`--in` is deliberately more permissive than `alder check` about one thing: eval infers the
+type of the module's own top-level values that have no signature (as it does the input's
+`let`s), where `check` reports E0007 for them. The input has no place for
+signatures, and the checker's inference switch (`InferModule`) applies to the whole module the
+input is appended to, so it covers the module's own unsigned values too. That is accepted:
+eval is for probing, and `alder check` gives the strict verdict.
+
 `--in` and `--module` do not combine (`alder eval: --in and --module do not combine: --in Name
 works inside module Name, --module names the scratch module`, exit 2). A module that declares
 `it` cannot host eval (exit 2).
@@ -854,9 +879,10 @@ is not under `app/` (`scratch.alder`, `probe.scratch.alder`,
 nearest directory up from the file that holds `app/*.alder`. Any other
 file is refused (exit 2). A scratch file given as a symbolic link is judged by its
 target (the CLI and the language server both resolve links): the target must be
-named `*scratch.alder` and live in an app's project. `alder fmt` skips scratch files when it walks a
-directory and refuses one named on its command line, because a file with
-`>` lines is not a module; the language server leaves them alone too.
+named `*scratch.alder` and live in an app's project. A file with `>` lines
+is not a module, so `alder fmt` formats a scratch file in a way of its own
+(this chapter, "Formatting"), and the language server analyses it on its
+own ("Scratch files in the editor", below).
 
 A line that starts with `> ` at column 1 is a watch: the rest of the line
 is an expression, and lines indented under it continue it. Everything
@@ -987,6 +1013,14 @@ ok   Todos.Index "Toggle by another user is not found"
 2 passed, 0 failed
 ```
 
+Every click and submit a test makes also checks the runtime's partial
+updates (chapter 5, "Partial updates"): the test's browser applies the
+answer as a browser would, region by region, and then compares the page
+it holds with a full render of the same page. A difference fails the
+step, naming where: `POST /_m/Todos.Index/Toggle: the patched page
+differs from a full render at body > main > ul#todos: …`. Your tests do
+not mention it; every suite proves the patches on its own pages.
+
 - `-run re` runs only the tests whose `Module "name"` matches the
   regular expression `re` (Go's syntax). A pattern that matches nothing
   runs nothing: `0 passed, 0 failed`, exit 0.
@@ -1032,6 +1066,10 @@ ok   Todos.Index "Toggle by another user is not found"
   `"tables":"ensure"` for a schema mutant) and `{"score":…, "killed":…,
   "survived":…, "suppressed":…, "skipped":…}`; the refusals go to
   standard error there.
+- `--mutate` caps the goroutine stack at 64 MB (Go's default is 1 GB), so
+  a mutant that recurses without end crashes quickly, whatever the load;
+  a suite that needs more stack than that fails its own run under
+  `--mutate` (and says so).
 - `--min R` (with `--mutate` only; `R` from 0 to 1, such as `0.8`) exits
   1 when the exact score is below `R`, after the same report. Without
   it, `--mutate`'s exit code is the tests'. `--min` without `--mutate`,
@@ -1071,6 +1109,77 @@ none of it, so a production binary carries no test code (chapter 13,
 "Fakes"). Ctrl-C stops
 the tests' process, and so does killing `alder test` in any way (the
 process exits when its standard input, a pipe `alder test` holds, closes).
+
+### `alder bench`
+
+```
+alder bench [dir] [-run re] [--count N] [-timeout d] [--json] [--build-dir DIR]
+```
+
+`alder bench` answers "what does a request of this page cost?" with the
+app's own tests as the scenarios. It builds the same test program as
+`alder test` (into `build/<app>/scratch/test/`), runs it with the
+environment variable `ALDER_TEST_BENCH=1`, and the program then measures
+every browser step a test takes (`Test.get`, `Test.open`, `Test.click`,
+`Test.submit`, `Test.submitRaw`, `Test.fetch`, chapter 10): what the
+server spent on the requests the step made. There is no new language and no
+second main: a scenario is a test, written with the app's types, fakes
+and steps, and `-run`, `--json`, `--build-dir`, `-timeout` and the exit
+codes are `alder test`'s. Pure and property tests are skipped (they make no
+request); `--mutate`, `--min`, `--fuzz` and `--seed` print the usage. Each
+selected test runs `--count` times (default 3), each run on its own fresh
+database as always, and a step's time and allocations are the median of
+the runs.
+
+After each test's `ok` line comes one row per step, named after its first
+request:
+
+```
+ok   Rows.Bench "toggle 1000"
+  step                                      ms     bytes               alloc  req loads steps   sql  n+1
+  GET /                                   5.25  811.3 kB    12.32 MB / 57.8k    1     1     1     1
+  POST /_m/Rows.Index/Toggle              6.67  808.4 kB    12.70 MB / 66.7k    1     2     3     4
+```
+
+| column | what it counts |
+|---|---|
+| `ms` | the wall time the router took to serve the step's requests (summed) |
+| `bytes` | the answers' bodies: the document of a GET, the event stream of a Datastar answer (the regions patched, or the body, title, history) |
+| `alloc` | bytes and objects the Go runtime allocated while the router served them (`runtime.MemStats`: `TotalAlloc` and `Mallocs` read just before and just after each request) |
+| `req` | requests the router served: 1, 2 when it followed a `Redirect` itself (chapter 6), more for each 303 the browser followed |
+| `loads` | how many times a page's `load` ran: a `Rerender` runs it twice (before `update`, to give it the model, and after, to render), and so does a followed `Redirect` (the message's page, then the target) |
+| `steps` | the effect steps the requests ran (their trace) |
+| `sql` | the SQL statements they ran |
+| `n+1` | the statements run in a loop (below): count and distinct argument sets |
+
+With `--json` each test's object carries `"bench": [{"step", "ms", "bytes",
+"alloc", "allocs", "requests", "loads", "steps", "sql", "repeats"}]`. The
+test's own effects (its seeding inserts, `Test.run`) are not measured, only
+the browser's requests. A test that fails is reported as `alder test`
+reports it, and its rows still follow (its steps ran).
+
+How the numbers are taken, so you know what they mean: a test's browser
+calls the app's real router in-process (chapter 10), so there is no
+network; each request's `Env` gets a recorder (`eff.Recorder`) that times
+every effect step and every statement, and the runtime counts each Query
+it runs on that `Env` (a page's `load` is the only Query a request runs).
+Just before and just after the router serves each request the program
+reads the clock and the Go runtime's memory statistics, so the test
+browser's own work (parsing the answer into a document, applying a
+Datastar patch to it) is not counted: that is the client's cost, which a
+real browser pays in the DOM. The requests run inside the test's transaction under a
+savepoint, on an in-memory database, with the recorder on, so the numbers
+are for comparing (before and after a change, N rows against 10N), not
+production latencies: the browser's time in the DOM is not in them at all.
+For a production-shaped profile write a Go benchmark in the emitted build
+(`alder build --emit`, below): a `bench_test.go` next to the generated
+code can call the router with `httptest` against a file database and run
+under `go test -bench . -cpuprofile`.
+
+The repository's fixture `testdata/bench/rows` (a page of N rows, a
+click, a form, a redirect, an N+1 page) is what the runtime's own baselines
+are measured on (`docs/perf/`); `go test ./cmd/alder` runs it once to check
+the columns' shape, never their times.
 
 ### `alder migrate`
 
@@ -1252,7 +1361,12 @@ the longest of all, so they run only with `ALDER_MUTATION_GATES=1`
 (`cmd/alder/gates_test.go`). CI runs them in a job of its own, `mutation`,
 every night (07:00 UTC), on a manual run and on a tag. `-short` skips the
 slowest of the rest as well: the out-of-tree builds, the drill and the twelve
-deploy end to ends.
+deploy end to ends. The formatter's two wall-clock tests (`TestSpeed_Examples`,
+`TestRender_Performance`) run only with `ALDER_SPEED_TESTS=1`, on a quiet
+machine: a time limit fails on a busy one whatever the code does. What always
+runs in their place counts allocations as the input grows, in length and in
+nesting depth (`TestScaling_Source`, `TestScaling_Render`,
+`TestScaling_Depth`), which no other load changes.
 
 The suite is slow to run in one piece, so `scripts/test.sh [go test flags]`
 runs it as CI does, in parallel: `cmd/alder` in four shards and every other
@@ -1548,9 +1662,39 @@ remembers the tab chosen last, so the next answer opens on it again. Its tabs:
   `x3 (bulk)` instead; a select per row outside a `Task.all` is still the
   flagged kind. Statements are counted per answer: the session's user
   selected by a message and again by the page it redirects to is not a
-  duplicate.
+  duplicate. Five or more runs of one statement in one run of a page's
+  `load` (or in what `update` itself ran) are an N+1, marked `N+1 x100`
+  instead of `duplicate` (a red badge, like the Errors tab's), and the bar
+  then shows `N+1` after the SQL count; the server's log gets a `warn` line
+  naming the request (`GET /slow: N+1: …`, the same text as below). Each
+  `load` run is counted on its own because a `Rerender` runs `load` twice in
+  one request: a page whose `load` selects the same thing three times is
+  not an N+1 when a click re-renders it, though the answer then holds six.
+  The rule (`eff.RepeatsCut`: the recorder marks where each `load` began and
+  ended, as it marks a redirect's hop) groups the statements by their text
+  (the arguments are bound with `?`, so the text is the statement's shape;
+  a `.in` list's `(?, ?)` and `(?, ?, ?)` count as one shape, `(?, …)`) and
+  takes every group of five or more, except a group of writes (`INSERT`,
+  `UPDATE`, `DELETE`) issued under one `Task.all`, the bulk action above. A
+  read under a `Task.all` is not excused: `Query.all (List.map (\r -> Db.get
+  Row r.id) rows)` is one round trip per row on a remote database (Turso,
+  chapter 15), where each statement crosses the network. Two to four are
+  left as duplicates: two records looked up by hand on one page is not a
+  loop. The warning says what to do (when every run had the same
+  arguments, it says instead that the same query ran N times and should run
+  once):
+
+  ```
+  N+1: SELECT "id", "title", … FROM "Table__Row__Row" WHERE "id" = ? ran 100 times (100 argument sets, 3.21 ms): one Db.get per row; read them together with Db.where (Row.id.in ids), or in the page's first query
+  ```
+
+  The same rule runs in `alder test` (a `warn:` line under the test,
+  chapter 10) and in `alder bench`'s `n+1` column.
 - Answer: page, rerender, redirect, not found, or an error with its text.
-- Patches: the events the answer sent (body, title, history, toast, panel).
+- Patches: the events the answer sent: each region a message's answer
+  patched (`#todo-7`) and `shown` (the page's new hash), or `body` when
+  the whole body was morphed, or `none` when nothing changed; then title,
+  history, toast and panel (chapter 5, "Partial updates").
 - History: the last 20 requests of this browser tab, newest first. The panel
   keeps them in the browser (`sessionStorage`, so a full page load keeps them
   too and another tab has its own); click one to read its Request, Trace, SQL,
@@ -1612,7 +1756,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 |---|---|---|
 | E0001 | parse error (also: an identifier with `__` in it, a module name segment ending in `_`) | — |
 | E0002 | unknown name | — (in a test step, a form of another page written unqualified, or a page's form or message written through its import's qualifier, `Login.Credentials`, gets its full path, `Auth.Login.Credentials`) |
-| E0003 | type mismatch (also: a `Db.insertMine` row that names the owner column ("`owner` is set by `Db.insertMine`") or is not a record literal in the call ("`Db.insertMine` takes its row as a record literal: write the record literal in the `Db.insertMine` call (its row is `Insert Todo` without `owner`)"), `==` or a `Dict` key on a function or an effect value, a column method on a column held in a variable, `.contains` or `.startsWith` on a column that is not `Text`, `@setNull` on a field that is not a `Maybe`, a `Db` function over a type parameter, a `fake` that lacks an entry of its capability or defines one it does not have, `Test.fake` outside a `test`, on an expression, or on a capability without a `fake`, `Session` in a fake's entry; a browser step outside a `test`, on something not written in place (`Test.get p`), piped into or not applied, its argument of the wrong kind ("`Submit` carries form `NewTodo`: use `Test.submit`", "`Toggle` posts no form: use `Test.click`", "`Rename` is posted by `Save` and `Draft`: write `Test.submit (Save { id: … }) { … }`", "`Test.get` needs a record `Model`: …"), `Test.login` with a record that is not the app's session; `Doc`, `Answer` or one of its constructors outside a `test`, chapter 10, section 9) | conversion such as `Text.fromInt (…)` where one exists |
+| E0003 | type mismatch (also: a `Db.insertMine` row that names the owner column ("`owner` is set by `Db.insertMine`") or is not a record literal in the call ("`Db.insertMine` takes its row as a record literal: write the record literal in the `Db.insertMine` call (its row is `Insert Todo` without `owner`)"), `==` or a `Dict` key on a function or an effect value, a column method on a column held in a variable, `.contains` or `.startsWith` on a column that is not `Text`, `@setNull` on a field that is not a `Maybe`, a `Db` function over a type parameter, a `fake` that lacks an entry of its capability or defines one it does not have, `Test.fake` outside a `test`, on an expression, or on a capability without a `fake`, `Session` in a fake's entry; a browser step outside a `test`, on something not written in place (`Test.get p`), piped into or not applied, its argument of the wrong kind ("`Submit` carries form `NewTodo`: use `Test.submit`", "`Toggle` posts no form: use `Test.click`", "`Rename` is posted by `Save` and `Draft`: write `Test.submit (Save { id: … }) { … }`", "`Test.get` needs a record `Model`: …"), `Test.login` with a record that is not the app's session; `Doc`, `Answer` or one of its constructors outside a `test`, chapter 10, section 9); a hint with the parenthesized form, written with your own expressions, for the two precedence traps: `a && m ?? d`, which is `(a && m) ?? d`, and `x |> f == y`, which is `x |> (f == y)` | conversion such as `Text.fromInt (…)` where one exists |
 | E0004 | non-exhaustive `match` | arm skeleton |
 | E0005 | module name does not match its file path | — |
 | E0006 | import cycle | — |
@@ -1628,11 +1772,14 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0017 | a module named like a standard-library module (`Test`, `List`, `Http`, …): the stdlib's would shadow it; uses of its names are not reported separately | — |
 | E0018 | a table declared in a module that does not end in its name, or a second table in a module (``a table is declared in a module named after it: `table Comment` belongs in `app/Table/Comment.alder` ``); reported once, at the declaration | — |
 | E0037 | two tables with one name in different modules (`Table.Entry` and `Entry`): table names are app-wide | — |
-| E0038 | a property argument or `Fuzz.any` whose type has no derivable generator (a function, an effect type, a type parameter, or not written): annotate it, or write the generator and use `Fuzz.forAll` | — |
+| E0038 | a property argument or `Fuzz.any` whose type has no derivable generator (a function, an effect type, a type parameter, a union with no constructor that ends the recursion, or not written): annotate it, or write the generator and use `Fuzz.forAll` | — |
 | E0039 | `Fuzz.forAll` or `Fuzz.forAllTask` anywhere but as a test's body: "`Fuzz.forAll` makes a Property, which only a test body can use" (a `Fuzzer` value may live in any module) | — |
+| E0040 | something only tests may use (`Test.*`, `Doc`, `Answer`, a fake's table, a test helper) where no test helper can be: a page's `load`/`view`/`update`, `App`'s values, a fake's entry, a brand check, a field default. "`fetchText` is a test helper (it uses `Test.fetch`): only a `test` or another test helper may use it"; "`Test.fetch` is only available in a `test` or a test helper: `view` is the page's view, not a helper" (chapter 10, "Test helpers") | — |
+| E0041 | a union constructor or brand (in its module and the modules importing it) named like a one-segment page module, where some module in that scope writes `Status { … }` and the constructor takes no record: "constructor `Status` (of `Types.Code`) shadows page `Status` in `Types` and the modules importing it: there `Status { … }` is the constructor, so the page cannot be linked or fetched; rename the constructor or the page module (for example `module StatusPage`)", reported at the constructor (W0011 when nothing breaks; a `msg` is always W0011) | — |
+| E0042 | a `theme` declaration the rules refuse (Appendix C, "Changing a token"): outside `App` or declared twice; a field twice in one record; `light` or `dark` not a record; a name that is not an alder-ui token ("`primray` is not a token of alder-ui v0.4.2; did you mean `primary` (`--primary`)?") or a removed `--al-*` one ("`alFontMono` was removed in alder-ui v0.4: write `fontMono`"); a colour at the top level or a theme-wide token under `light`/`dark`; a value of the wrong shape for its kind, a negative length, a `var()` of anything but a colour token, or colours whose `var()`s lead back to themselves | — |
 | E0019 | `migrations/` is behind the app or disagrees with itself, reported at `migrations/schema.json:1:1` by every command but `alder migrate`: the tables changed since the last migration (``the schema changed since migration 0003 (table Post: column body): run `alder migrate` ``); a storage format change (``the storage format changed (v1 → v2): this needs a rebuild migration of every table, which this `alder migrate` cannot write yet (`alder migrate --format` is planned); build with the compiler that wrote migrations/ until then``); `.sql` files but no `schema.json`; a `schema.json` or migration file that does not read; a malformed file (``migration 0002_x: line 6: a statement must end in `;` ``, a wrong first line, a header without `-- from` or `-- to`); two files with one number (``two migrations are numbered 0005 (likely two branches: 0005_a.sql, 0005_b.sql): keep the one already merged or deployed, delete the other, restore schema.json to its result, run `alder migrate` ``); a file that does not start where the one before it ends (``migration 0003_sub does not follow 0001_initial: a file is missing or edited; restore migrations/ from version control (`git checkout migrations/`)``); a last file that does not end at the snapshot (``migration 0003_sub does not lead to migrations/schema.json: a file is missing or edited; restore migrations/ from version control (`git checkout migrations/`)``) | — |
 | E0020 | a `fake` declared outside the module of its capability: "`fake Stripe` must be declared in the module that declares `capability Stripe`" (chapter 10, "Faking a capability") | — |
-| E0021 | a fake's table used outside a `test` and the fake's own entries (a value, a signature, a page's `load`, an app table's `@ref`): "`Charge` is a fake's table: only tests and `fake Stripe` may use it" | — |
+| E0021 | a fake's table used outside a `test`, a test helper and the fake's own entries (a page's `load`, another fake's entry, a type declaration, an app table's `@ref`): "`Charge` is a fake's table: only tests and `fake Stripe` may use it" | — |
 | E0022 | a table field's default that is not a literal (`count: Int = 1 + 1`): migrations write a table default into the database as SQL | — |
 | E0023 | a selector written as a literal in a test's query that is not one: "`#sumary x` is not a selector: unexpected `x` after `#sumary`; `x` is not an HTML element (a custom element has a hyphen) (a selector is a tag, `#id`, `.class`, `[attr]`, `[attr=value]`, combined with spaces or `>`)"; the other hints are "tags are lower case: `h1`" and "quote the value: `[href="/x"]`" (chapter 10, "Reading the page: queries") | — |
 | E0024 | an `@owner` the table cannot have (chapter 6, "Rules"): "`@owner` must mark a `@ref` column of the session's user type `User.UserId`; `price` is `Int`", "… `owner` is `User.UserId` without `@ref`", "a table has one `@owner` column: `Todo` marks `owner` and `editor`", "a field takes one `@owner`", "`@owner` needs a session with a `user` field: this app's session has none"; for `@partition k` (E0032) the texts are its own | — |
@@ -1675,6 +1822,9 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | W0006 | an adapter package reads (through `os.Getenv` or `os.LookupEnv` with a literal name) an environment variable that `deploy.requires` does not name (chapter 16): "adapter `auth` reads `SMTP_URL`, which `deploy.requires` does not name"; the runtime's own `ALDER_…` variables are never reported, and a name in `requires` that no adapter reads is fine | name it in `requires` |
 | W0007 | the language server's warning on line 1 of an open scratch file when the app has errors, so the file does not run (this chapter, "Scratch files in the editor"): "the app has errors; fix them and save"; the errors themselves are on the app's files | fix the app's errors and save |
 | W0008 | a GET `<form>` (`method="get"` or none, no `submit`) whose literal `action` is a page's path holds a plain `<input>`, `<select>` or `<textarea>` with a literal `name` that is one of the page's parameters declared with another wire name (chapter 6): "page `Wood` reads its parameter `electionId` from the query key `ElectionId`, so `name="electionId"` in this GET form sets nothing; use the wire name: `name="ElectionId"`" | the wire name as the `name` |
+| W0010 | a module that hides a capability of its name: a call `Clarity.latest` that resolved to module `Clarity`'s `latest` while an imported `capability Clarity` has that entry ("module `Clarity` shadows `capability Clarity` of `Feeds` in this module: `Clarity.latest` here is the module's `latest`, not the capability's entry; write `Feeds.Clarity.latest` for the capability, or rename module `Clarity` (for example to `ClarityModule`)"), reported at the import; or a capability named like a standard-library module, reported at the capability. A call the module lacks is E0002 with the hint instead | — (the E0002 of a hidden call gets the capability's spelling) |
+| W0011 | E0041's clash where nothing in the constructor's scope breaks (a role `Admin` beside `module Admin`, a `msg Go` beside `module Go`, or a Prelude constructor such as `Ok` naming a page): the program works, but the page cannot be linked or fetched from there | — |
+| W0009 | `render.yaml` or `fly.toml` (the files of `alder deploy init`) exists in the project and App.alder has no `deploy` block (chapter 16): "render.yaml deploys whatever is pushed, with no check, migration plan or backup: add a `deploy` block to App.alder (book chapter 16)"; with both files, "render.yaml and fly.toml deploy …"; a Dockerfile alone is not reported | add a `deploy` block |
 
 ## Editor support
 
@@ -1753,7 +1903,10 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   compiler's fix for a diagnostic on the cursor's line, such as ``Fix:
   module `Post` is not imported`` (the same fix that `alder check --json`
   carries, "Diagnostics" above), and then the generators that apply where
-  the cursor is. On `Posts.Index`, a page, those are `new form`, `new msg`,
+  the cursor is. A fix that is the one obvious repair comes first and is
+  marked preferred: on a page hook with the wrong signature, ``Change
+  signature to `Params -> Session -> Query Model` ``. The generators are
+  refactor actions, after every fix. On `Posts.Index`, a page, those are `new form`, `new msg`,
   `new decl`, `new test`, `edit page` and `remove page`, each with the page
   already filled in: `new msg (page = Posts.Index)`. Choosing one asks for
   the rest of its fields (a name, say), shows the diff it would make, and
@@ -1798,11 +1951,46 @@ shows E0019, "the schema changed since migration …". It is the diagnostic
 `alder check` would print for that state, and saving the migration makes it
 go away.
 
-`alder fill` stays a command-line tool, and it is what an agent uses. The
-editor needs no command for holes, because a hole is just text: put the
-cursor on `?delete`, hover to see the type it must have, ask for completion
-(the names whose type fits come first), and type the expression. The server
+A hole is just text, so you can fill it by hand: put the cursor on
+`?delete`, hover to see the type it must have, ask for completion (the
+names whose type fits come first), and type the expression. The server
 shows the hole as a hint until the line checks.
+
+Or let a model write it. On a hole, the code-action menu (`gra` in Neovim)
+offers `Fill ?delete with AI (Task Nav)`, first, before the generators. It
+runs the loop of `alder fill --ai` in the server, on your buffers: the
+model's expression is checked on a copy of the app, retried with the
+checker's errors up to three times, and only an expression that checks
+comes back. It arrives as one edit to the buffer, which `u` undoes in one
+step; nothing is saved. While it runs, the status line shows `alder:
+filling ?delete : Task Nav` and each retry (`attempt 2 of 3: E0003 …`). If
+you edit the buffer meanwhile, the server sends no edit and shows the
+expression instead, for you to paste. When no answer checks, a warning
+shows the errors and the model's last expression. One fill runs at a time.
+The server takes the model from the environment the editor was started in
+(`ANTHROPIC_API_KEY`, or `ALDER_FILL_COMMAND`); without either the action is
+still offered, and says which variable to set. After a generator is applied
+in the editor, the cursor is on the first hole it left, so the fill is one
+`gra` away.
+
+A model's expression never lands unseen. Each applied fill is shown in a
+message, `alder fill ?delete: …`. The hole's type says what the expression
+returns, not what it does on the way: `Task Nav` admits deleting any row.
+So an expression that calls a capability (host Go, which can do anything),
+makes an HTTP request, changes the session, writes raw HTML, pauses, or
+writes rows not scoped to the session (`Db.insert`, `Db.update`,
+`Db.delete`), itself or through a value of the app that does
+(`Mail.notify → Email.send`), is applied only when you answer `Apply` to the
+question the editor shows; an editor that cannot ask gets the expression
+in a warning, not applied. What leaves your machine is the prompt: the
+module's source with its comments and string literals, the names and types
+in scope, and the standard library's signatures; `alder fill <address>
+--prompt` prints it. `ALDER_FILL_COMMAND` must be a plain text completer,
+with no tools and no permission bypass: to a tool-using agent, a comment in
+your module is an instruction it may act on.
+
+`alder fill` without `--ai` stays a command-line tool, and it is what an
+agent uses: an agent writes the expression itself.
 
 ### Scratch files in the editor
 
@@ -1837,11 +2025,51 @@ bytes is cut and ends with `…`.
 
 `:AlderRepl` still opens `alder repl`, and says that it is deprecated.
 
-Not yet: hover, completion, go to definition and code actions inside a
-scratch file (the server analyses the app's modules, and a scratch file is not
-one), formatting a scratch file (`alder fmt` skips them), and inlay hints, for
-an editor without the plugin. Chapter 13, section 10, shows how the server
-runs a scratch file.
+Inside a scratch file the editor works as it does in an app module:
+
+- **Hover** shows the type of a name or an expression, in a watch or in a
+  definition: on `countOpen` in `> Todo.countOpen []` it shows
+  `Table.Todo.countOpen : List Todo -> Int`, with the doc comment when the
+  declaration has one.
+- **Go to definition** jumps to the file's own definitions and locals, and
+  into the app: from `Todo.countOpen` to its line in `app/Table/Todo.alder`.
+  After an `in Table.Todo` header the module's own names lead there too.
+- **Completion** offers the file's definitions, the app's modules and their
+  members after `Todo.`, fields, tags and the rest, as in a module. It keeps
+  working while the line you type does not parse yet, from the last text of
+  the file that did.
+- **Code actions** list the compiler's fixes for the file's diagnostics: on
+  `> Table.Todo.countOpen []` the fix rewrites it to `Todo.countOpen`. The
+  generators are not offered in a scratch file, since what they write belongs
+  in `app/`.
+- **Formatting** formats the file as `alder fmt` does (this chapter,
+  "Formatting").
+
+None of these waits for a run: they come from checking the file, which takes
+milliseconds, and they see the app as it is on disk, as a run does (an unsaved
+edit to an app module counts once it is saved).
+
+**Inlay hints** are for an editor without alder.nvim. An inlay hint is a short
+label the editor draws inside a line without it being part of the text (VS
+Code and Helix show them; Neovim does after `vim.lsp.inlay_hint.enable()`).
+The server offers one at the end of each watch, from the last run:
+
+```text
+> 1 + 1                          ⇒ 2 : Int
+> List.map (\x -> x * 2)
+    [1, 2]                       ⇒ [2, 4] : List Int
+> Db.from Todo |> Db.count       ⇒ <Query> : Query Int
+```
+
+The hint sits after the watch's last line. A value of several lines shows its
+first line and `…`, a watch that failed shows `✗` and the first line of its
+error, a watch that has only checked so far shows `: Int`, and a watch you
+have edited since the run has no hint until the next save. When the editor says it can refresh its hints, the
+server asks it to after each phase of a run. alder.nvim draws the same results
+as virtual text, so with the plugin leave inlay hints off for Alder, or each
+watch shows its value twice.
+
+Chapter 13, section 10, shows how the server runs and analyses a scratch file.
 
 ### Setting up Neovim
 
@@ -1871,8 +2099,13 @@ in `opts.keys`, and with which-key, `<leader>a` is the group "alder":
 `<leader>ag` (or `:AlderGenerate [id]`) opens the generator modal: a search
 over all the generators, those that apply at the cursor first, then the
 chosen generator's form beside a live preview of the diff, which updates as
-you type. `<CR>` applies when every field is valid, and `<C-o>` opens the
-full review, file by file. The plugin's README lists the options and the
+you type. The form starts filled: required fields at an example (or the
+first page or table, for one that must exist), so the preview shows a
+change as soon as it opens. The field under the cursor says what it means
+and gives an example. Flags that matter to agents rather than people
+(where `new msg` puts its button, `--strict`) are left out of the form;
+the command line still takes them. `<CR>` applies when every field is
+valid, and `<C-o>` opens the full review, file by file. The plugin's README lists the options and the
 rest of its commands. If you set `ALDER_LSP_LOG=/some/file` in Neovim's
 environment, the server writes every message it receives and sends to that
 file; the transcripts in chapter 13, section 10, were recorded that way.
@@ -1891,10 +2124,11 @@ error, so that a script reads "holes left" rather than "build failed" (the exit 
 0, as for any warning; `--json` carries each W0002 as an object and no summary).
 
 `alder fill --list` lists every hole with its module, declaration and
-type, and `alder fill` fills one (above, "The generators"). In an
-editor, hover on a hole shows the type it must have, and completion on it
-lists the names in scope, those whose type fits first (below, "Editor
-support"). A command that lists them is planned.
+type, and `alder fill` fills one, with an expression you give it or, with
+`--ai`, one a model writes (above, "The generators"). In an editor, hover
+on a hole shows the type it must have, completion on it lists the names in
+scope, those whose type fits first, and the code action `Fill ?name with
+AI` fills it (above, "Generators in the editor").
 
 ## Queries
 
@@ -1941,6 +2175,28 @@ stderr, `alder fmt: app/Broken.alder does not parse, so imports were not
 migrated; fix it and run again`, without changing the exit code.
 `--stdin` and a file outside an app project only format, and `--check`
 lists a file that would be migrated as one that would be reformatted.
+
+A scratch file (this chapter, "`alder scratch`") is formatted too, when fmt
+walks the project and when you name it. It is not a module, so fmt formats it
+the way the scratch runner reads it: each `> expr` watch as the right-hand
+side of a definition, written back with its `> `, every other declaration as
+in a module, and the `in` header kept first. Watches on consecutive lines stay
+on consecutive lines, since a run of watches is how a scratch file reads;
+anything else gets the blank lines a module has:
+
+```text
+-- before                        -- after
+x=1                              x = 1
+> x   +1
+> [x,2]                          > x + 1
+                                 > [x, 2]
+```
+
+A scratch file is never migrated (it is not one of the app's modules), and
+one with an error the scratch runner reports first (a `>!` line, a name such
+as `it1` that the watches take) is reported and left alone, exit 1, like a
+file that does not parse. A file named `*scratch.alder` under `app/` is not a
+scratch file and is formatted as a module.
 
 Rewriting prints one line per file it changed, and nothing when nothing
 changed. `--check` prints `<file> would be reformatted` for each file that is

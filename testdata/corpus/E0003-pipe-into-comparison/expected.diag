@@ -1,0 +1,5 @@
+app/Util.alder:8:17 E0003 cannot compare `Int -> Int` with `Int`: `==` needs both sides to have the same type
+app/Util.alder:8:17 E0003 right side of `|>` must be a function, got `Bool`; `|>` binds looser than `==`, so this reads as `x |> (double == 4)`; write `(x |> double) == 4`
+app/Util.alder:12:37 E0003 `List _ -> Int` is not ordered; comparison needs Int, Float, Text, Date, Time or a union without payloads
+app/Util.alder:12:37 E0003 right side of `|>` must be a function, got `Bool`; `|>` binds looser than `<`, so this reads as `xs |> List.map double |> (List.length < 3)`; write `(xs |> List.map double |> List.length) < 3`
+app/Util.alder:12:51 E0003 expected List _ -> Int, got Int

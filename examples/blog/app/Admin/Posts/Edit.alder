@@ -122,7 +122,7 @@ view model session =
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       -- @admin end
       <form submit={Save}>
         -- @admin begin inputs
@@ -184,16 +184,16 @@ test "saving changes every field" = {
       }) after,
       authors: Test.texts "select[name=author] option" page.doc,
     } == {
-        answer: Redirected (Admin.Posts.Show { id: post1 }),
-        row: Just {
-          slug: Post.Slug "slug-2",
-          title: Text.NonEmpty "title-2",
-          body: "body-2",
-          published: True,
-          author: user2,
-        },
-        authors: ["email-1@example.com", "email-2@example.com"],
-      }
+      answer: Redirected (Admin.Posts.Show { id: post1 }),
+      row: Just {
+        slug: Post.Slug "slug-2",
+        title: Text.NonEmpty "title-2",
+        body: "body-2",
+        published: True,
+        author: user2,
+      },
+      authors: ["email-1@example.com", "email-2@example.com"],
+    }
   )
 }
 
@@ -346,11 +346,11 @@ test "a long list of users offers 50, and the search narrows it" = {
       found: Test.count "select[name=author] option" found.doc <= 3,
       answer: r.answer,
     } == {
-        shown: 51,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Posts.Edit { id: post1, findAuthor: "zz" }),
-      }
+      shown: 51,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Posts.Edit { id: post1, findAuthor: "zz" }),
+    }
   )
 }
 
@@ -398,12 +398,12 @@ test "the row's own author is offered first when it sorts past the 50" = {
       once: List.length (List.filter (\o -> o.id == user2) page.model.authors),
       shown: List.length page.model.authors,
     } == {
-        answer: Redirected (Admin.Posts.Show { id: post1 }),
-        kept: Just user2,
-        first: Just user2,
-        once: 1,
-        shown: 51,
-      }
+      answer: Redirected (Admin.Posts.Show { id: post1 }),
+      kept: Just user2,
+      first: Just user2,
+      once: 1,
+      shown: 51,
+    }
   )
 }
 

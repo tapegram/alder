@@ -201,13 +201,13 @@ test "the page shows the row" = {
       assigneeLabel: assigneeLabel { page.model.labels | assignees: assigneesAll } user2,
       assignees: List.length page.model.labels.assignees,
     } == {
-        answer: Shown,
-        title: True,
-        projects: 1,
-        projectLabel: "name-1",
-        assigneeLabel: "email-2@example.com",
-        assignees: 0,
-      }
+      answer: Shown,
+      title: True,
+      projects: 1,
+      projectLabel: "name-1",
+      assigneeLabel: "email-2@example.com",
+      assignees: 0,
+    }
   )
 }
 

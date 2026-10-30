@@ -85,6 +85,15 @@ func TestRun_NotFoundShortCircuits(t *testing.T) {
 		t.Fatal(err, called)
 	}
 }
+func TestRun_RedirectShortCircuits(t *testing.T) {
+	called := false
+	prog := Bind(Redirect[int]("/b?seed=7"), func(int) Task[int] { called = true; return Pure(1) })
+	_, err := Run(env(&fakeStore{}), KTask, prog)
+	var rd *ErrRedirect
+	if !errors.As(err, &rd) || rd.Location != "/b?seed=7" || err.Error() != "redirected to /b?seed=7" || called {
+		t.Fatal(err, called)
+	}
+}
 func TestRun_QueryRefusesWrite(t *testing.T) {
 	s := &fakeStore{}
 	_, err := RunQuery(env(s), Q(Call("w", true, func(*Env) (int, error) { return 0, nil })))
@@ -228,6 +237,7 @@ func TestRun_RollbackOnCallErrorAndNotFound(t *testing.T) {
 		dbCall("x", true, func(*Env) (int, error) { return 0, boom }),
 		dbCall("x", true, func(*Env) (int, error) { return 0, ErrNotFound }),
 		Bind(dbCall("x", true, func(*Env) (int, error) { return 1, nil }), func(int) Task[int] { return NotFound[int]() }),
+		Bind(dbCall("x", true, func(*Env) (int, error) { return 1, nil }), func(int) Task[int] { return Redirect[int]("/b") }),
 	} {
 		s := &fakeStore{}
 		_, err := Run(env(s), KTask, prog)
@@ -510,6 +520,10 @@ func TestCapError(t *testing.T) {
 	f := &ErrFail{Msg: "no"}
 	if CapError("X.y", f) != error(f) || CapError("X.y", ErrNotFound) != ErrNotFound {
 		t.Fatal("failures pass through unchanged")
+	}
+	rd := &ErrRedirect{Location: "/b"}
+	if CapError("X.y", rd) != error(rd) {
+		t.Fatal("a redirect passes through unchanged")
 	}
 }
 

@@ -1,0 +1,9 @@
+module Digits
+
+-- A flat match lists every missing case and its fix adds every arm, however many (#2).
+type Digit = D0 | D1 | D2 | D3 | D4 | D5 | D6 | D7 | D8 | D9
+
+value : Digit -> Int
+value d = match d {
+  D0 -> 0,
+}

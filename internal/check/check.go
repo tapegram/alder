@@ -73,6 +73,12 @@ type Checker struct {
 	// (propagateScoped). insertRows are the scoped inserts insertScopedCall saw, by reference,
 	// and insertOps the op (“Db.insertMine”) of each row literal written in one.
 	scopedDirect map[string]map[string]string
+	// testDirect maps each value ("Module.name") that uses something only tests may use itself
+	// to the first such thing; testEdges are the references markTestHelpers follows; testReported
+	// the places E0040 was reported at (helpers.go).
+	testDirect   map[string]string
+	testEdges    []testEdge
+	testReported map[diag.Span]bool
 	scopedEdges  [][2]string
 	scopedUsing  map[string]map[string]string
 	insertRows   map[*syntax.Var]bool
@@ -150,6 +156,7 @@ type modCtx struct {
 	propBody syntax.Expr          // the body of a function-bodied test's lambda (its result is the property's)
 	runArgs  map[syntax.Expr]bool // the arguments of `Test.run` calls (their mismatches get a hint)
 	fake     string               // the capability whose `fake` entries are being checked
+	never    string               // why the code being checked (a brand check, a field default) is never a test helper
 	// cookieLit is the record literal `Test.login` is applied to: the cookie's value, so the
 	// session's defaults apply to it (a boundary, like an insert or a form).
 	cookieLit *syntax.RecordLit
@@ -244,7 +251,8 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 		c.ctx(prog.Modules[name]).checkBodies()
 		c.propagateScoped()
 	}
-	c.checkWriteSets() // one store per Task (E0031) needs every body checked
+	c.checkWriteSets()  // one store per Task (E0031) needs every body checked
+	c.markTestHelpers() // test helpers (E0040) need every body's references
 	// App rules need every module's bodies checked first (Session.put usage)
 	if app := prog.Modules["App"]; app != nil && !prog.Failed["App"] {
 		c.ctx(app).checkApp()
