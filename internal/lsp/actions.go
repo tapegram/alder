@@ -72,8 +72,11 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 	}
 	out := []codeAction{}
 	rel, ok := s.rel(p.TextDocument.URI)
-	if !ok || scratch.IsScratchFile(rel) {
+	if !ok {
 		return out, nil
+	}
+	if scratch.IsScratchFile(rel) {
+		return append(out, s.scratchActions(rel, p.Range)...), nil
 	}
 	now := strings.Split(s.text(rel), "\n")
 	if a := s.current(); a != nil {

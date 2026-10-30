@@ -53,6 +53,12 @@ func start(t *testing.T, root string) *client {
 // startWith is start with the server's options (Log is the test log when it is nil).
 func startWith(t *testing.T, root string, o Options) *client {
 	t.Helper()
+	return startCaps(t, root, o, map[string]any{})
+}
+
+// startCaps is startWith with the client capabilities initialize sends.
+func startCaps(t *testing.T, root string, o Options, caps map[string]any) *client {
+	t.Helper()
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	c := &client{
@@ -81,7 +87,7 @@ func startWith(t *testing.T, root string, o Options) *client {
 			t.Error("the server did not stop at EOF")
 		}
 	})
-	if e := c.call("initialize", map[string]any{"rootUri": c.uri(""), "capabilities": map[string]any{}}, &c.initResult); e != nil {
+	if e := c.call("initialize", map[string]any{"rootUri": c.uri(""), "capabilities": caps}, &c.initResult); e != nil {
 		t.Fatalf("initialize: %v", e)
 	}
 	c.notify("initialized", map[string]any{})
@@ -126,7 +132,7 @@ func (c *client) read(r io.Reader) {
 			close(c.publishing)
 			c.publishing = make(chan struct{})
 			c.mu.Unlock()
-		case m.ID == nil:
+		case m.ID == nil, m.Method != "": // a notification, or a request of the server's (unanswered)
 			select {
 			case c.notes <- m:
 			default:

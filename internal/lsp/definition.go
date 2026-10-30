@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"alder/internal/diag"
+	"alder/internal/scratch"
 	"alder/internal/syntax"
 	"alder/internal/types"
 )
@@ -19,6 +20,12 @@ func definitionReq(s *server, params json.RawMessage) (any, error) {
 	locs := []Location{}
 	rel, ok := s.rel(p.TextDocument.URI)
 	if !ok {
+		return locs, nil
+	}
+	if scratch.IsScratchFile(rel) {
+		if loc, ok := s.scratchDefinition(rel, p.Position); ok {
+			locs = append(locs, loc)
+		}
 		return locs, nil
 	}
 	a, m, path, pos, ok := s.at(rel, p.Position, true)

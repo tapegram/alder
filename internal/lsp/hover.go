@@ -9,6 +9,7 @@ import (
 	"alder/internal/check"
 	"alder/internal/diag"
 	"alder/internal/markup"
+	"alder/internal/scratch"
 	"alder/internal/syntax"
 	"alder/internal/types"
 )
@@ -25,11 +26,20 @@ func hoverReq(s *server, params json.RawMessage) (any, error) {
 	if !ok {
 		return nil, nil
 	}
-	a, m, path, pos, ok := s.at(rel, p.Position, true)
-	if !ok {
-		return nil, nil
+	var text string
+	if scratch.IsScratchFile(rel) {
+		pl, ok := s.scratchAt(rel, p.Position, true)
+		if !ok {
+			return nil, nil
+		}
+		text = hoverText(pl.v.a, pl.m, pl.path, pl.pos)
+	} else {
+		a, m, path, pos, ok := s.at(rel, p.Position, true)
+		if !ok {
+			return nil, nil
+		}
+		text = hoverText(a, m, path, pos)
 	}
-	text := hoverText(a, m, path, pos)
 	if text == "" {
 		return nil, nil
 	}

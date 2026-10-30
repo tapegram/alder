@@ -48,6 +48,7 @@ var (
 		"textDocument/completion": completionReq,
 		"textDocument/codeAction": codeActionReq,
 		"textDocument/formatting": formattingReq,
+		"textDocument/inlayHint":  inlayHintReq,
 		"alder/generators":        generatorsReq,
 		"alder/routes":            routesReq,
 	}
@@ -77,6 +78,10 @@ type server struct {
 	stop      chan struct{}            // closed when serve returns: stops the analysis and the poller
 	bg        sync.WaitGroup           // the analysis goroutine, the poller and the scratch runs
 	scratch   scratchRuns              // the runs of the open scratch documents
+	views     scratchViews             // the analyses of the open scratch documents' texts
+
+	inlayRefresh bool          // the client takes workspace/inlayHint/refresh; set by initialize
+	requests     atomic.Uint64 // the server's own requests, for their ids
 
 	// reader goroutine only
 	initialized bool
@@ -287,6 +292,7 @@ func (s *server) initialize(params json.RawMessage) (any, error) {
 		}
 		s.root, s.rootReal = root, real
 	}
+	s.inlayRefresh = p.Capabilities.Workspace.InlayHint.RefreshSupport
 	s.initialized = true
 	return map[string]any{
 		"capabilities": capabilities(),

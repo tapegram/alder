@@ -73,8 +73,15 @@ type scratchParams struct {
 }
 
 type initializeParams struct {
-	RootURI  string `json:"rootUri"`
-	RootPath string `json:"rootPath"`
+	RootURI      string `json:"rootUri"`
+	RootPath     string `json:"rootPath"`
+	Capabilities struct {
+		Workspace struct {
+			InlayHint struct {
+				RefreshSupport bool `json:"refreshSupport"`
+			} `json:"inlayHint"`
+		} `json:"workspace"`
+	} `json:"capabilities"`
 }
 
 type cancelParams struct {
@@ -99,6 +106,7 @@ func capabilities() map[string]any {
 		"textDocumentSync":           map[string]any{"openClose": true, "change": 1, "save": map[string]any{"includeText": false}},
 		"hoverProvider":              true,
 		"documentFormattingProvider": true,
+		"inlayHintProvider":          true,
 		"definitionProvider":         true,
 		"referencesProvider":         true,
 		"completionProvider":         map[string]any{"triggerCharacters": []string{".", "<", "?"}},
