@@ -3497,9 +3497,14 @@ fake table, no `FakeTables` or `Fakes`. Nor are the tests (section 8,
 so nothing in a production build uses a fake, a fake's table or
 `Test.fake`, and nothing imports `alder/rt/testing`. The `Test` nodes
 (`ir.TestRun`, `ir.TestTrace`, `ir.TestFake` and a test's recorded `==`,
-`ir.TestEq`) occur only in `test` bodies, so the emitter treats one
-reaching it in a production build as a bug in the compiler: `testNode`
-in `internal/gen/effects.go` panics, and `Emit` returns that as its
+`ir.TestEq`) occur only in `test` bodies and test helpers, and a
+production build omits every test helper (`ir.Value.TestOnly`, from the
+checker's `Result.TestOnly`, which `internal/check/helpers.go` computes
+from the values' references after every body is checked; it has refused,
+with E0040, each reference to a helper from code that runs in
+production). So the emitter treats a test node reaching it in a
+production build as a bug in the compiler: `testNode` in
+`internal/gen/effects.go` panics, and `Emit` returns that as its
 internal error instead of writing Go.
 
 ### The browser

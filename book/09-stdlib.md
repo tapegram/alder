@@ -461,8 +461,10 @@ any failed `Task`.
 
 ## Test
 
-Only a `test` may use these (chapter 10); anywhere else each is E0003
-"… is only available inside a `test`".
+Only a `test` or a test helper may use these (chapter 10, "Test
+helpers": a value that uses one becomes a helper); where no test can
+reach, such as a page's `view`, each is E0040 "… is only available in a
+`test` or a test helper".
 
 - `Test.run : Task a -> Task { value: Result Text a, trace: List Text }`
   runs a task that may fail: `value` is `Ok` with its result or `Err`
@@ -524,8 +526,9 @@ Test.fetch     : Page -> Task { status: Int, contentType: Text, body: Bytes, hea
   file page are checker errors (chapter 10, "`Test.fetch`: requesting a
   file").
 
-Two types of the Prelude exist only in tests (anywhere else, E0003
-"`Doc` is a test type"): `Doc`, a parsed page, which has `==`, and
+Two types of the Prelude exist only in tests and test helpers (in a
+type declaration, E0003 "`Doc` is a test type"; in a page's `view` and
+the other values that can never be helpers, E0040): `Doc`, a parsed page, which has `==`, and
 
 ```text
 type Answer = Shown | Rerendered | Redirected Page | FormRejected (List { field: Text, message: Text }) | PageMissing | RequestFailed Text

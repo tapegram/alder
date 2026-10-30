@@ -197,15 +197,15 @@ If the app does not compile, no test runs: `alder test` prints the
 diagnostics as `alder check` does and exits 1. A typed hole (`?todo`,
 chapter 11) compiles to nothing that can run either: its warning W0002 is
 followed by `alder test: no tests ran (fill the hole)` and the holes with their types, exit 1. Here the app has gained a
-module `Probe` that uses `Test.trace` outside a test (section 5) and
-declares `test "one" = { Task.succeed 1 }`, a block whose verdict is not
-a `Bool`:
+module `Probe` that declares `count : Int` as `count = "none"` and
+`test "one" = { Task.succeed 1 }`, a block whose verdict is not a
+`Bool`:
 
 ```text
 $ alder test examples/todos
-app/Probe.alder:4:9: error[E0003]: `Test.trace` is only available inside a `test`
-  steps = Test.trace
-          ^^^^^^^^^^
+app/Probe.alder:4:9: error[E0003]: expected Int, got Text
+  count = "none"
+          ^^^^^^
 app/Probe.alder:6:29: error[E0003]: expected Bool, got Int
   test "one" = { Task.succeed 1 }
                               ^
@@ -562,12 +562,21 @@ test "the steps so far" = {
 }
 ```
 
-`Test.run` and `Test.trace` exist only inside a `test`. Anywhere else
-they are an error, so no page can depend on them:
+`Test.run` and `Test.trace` are for tests only. A value that uses one
+is a *test helper* (section 9, "Test helpers"), which tests may call and
+production code may not:
 
-```alder error=E0003 "is only available inside a `test`"
+```alder
 steps : Task (List Text)
 steps = Test.trace
+```
+
+Where no test can reach (a page's `load`, `view` or `update`, `App`,
+a fake's entry, a brand's check, a field's default) it is E0040, so no
+page can depend on them:
+
+```alder error=E0040 "`Test.trace` is only available in a `test` or a test helper: a field default is not a helper"
+type Probe = { steps: Task (List Text) = Test.trace }
 ```
 
 ## 6. What a trace says
@@ -891,11 +900,13 @@ fake Stripe {
 - A table of `fake Stripe` in module `Payments` is the record type
   `Payments.Charge`, as an app table of that module would be. It is
   exempt from E0018 (a table in a module named after it).
-- Only a `test`, in any module, and the fake's own entries may use it,
-  its type or its columns. Anywhere else (a value, a signature, a page's
-  `load`, an app table's `@ref`) it is E0021: a value
-  `charges = Db.from Payments.Charge |> Db.count` in `Checkout` gets
-  "`Charge` is a fake's table: only tests and `fake Stripe` may use it".
+- Only a `test`, in any module, a test helper (section 9, "Test
+  helpers") and the fake's own entries may use it, its type or its
+  columns. A value `charges = Db.from Payments.Charge |> Db.count` in
+  `Checkout` becomes a test helper. Anywhere else (a page's `load`,
+  another fake's entry, a type declaration, an app table's `@ref`) it is
+  E0021: "`Charge` is a fake's table: only tests and `fake Stripe` may use
+  it".
 
 - In another module, the table and its columns carry the module's name,
   `Payments.Charge` and `Payments.Charge.cents`, and that module must
@@ -918,9 +929,10 @@ fake Stripe {
 
 **`Test.fake`.**
 
-- `Test.fake Stripe` is a `Task Unit`, available only inside a `test`
-  like the rest of `Test` (E0003 "`Test.fake` is only available inside
-  a `test`"). Its argument is a capability's name, `Stripe` or
+- `Test.fake Stripe` is a `Task Unit`, available only in a `test` or a
+  test helper like the rest of `Test` (section 9, "Test helpers"; in a
+  fake's entry, E0040 "`Test.fake` is only available in a `test` or a
+  test helper: a fake's entry is not a helper"). Its argument is a capability's name, `Stripe` or
   `Payments.Stripe`, not an expression (E0003 "`Test.fake` wants a
   capability name, got an expression"), and the capability must have a
   fake (E0003 "`Test.fake` wants a capability with a `fake`: `Stripe` has
@@ -1643,7 +1655,8 @@ these texts, and nothing is sent:
 
 And when the test compiles (E0003 unless named):
 
-- "`Test.get` is only available inside a `test`"; "`Test.get` needs an
+- E0040 "`Test.get` is only available in a `test` or a test helper:
+  `update` is the page's update, not a helper"; "`Test.get` needs an
   `App` module: the browser requests the app's routes, which an app
   without `App` does not serve".
 - "`Test.submit` takes its arguments directly, not through `|>`: …";
@@ -1664,8 +1677,8 @@ And when the test compiles (E0003 unless named):
   `Page`: follow a link with `Test.get` or `Test.open`".
 - E0002 "unknown constructor `NotFound`; the browser's 404 answer is
   `PageMissing`"; E0012 "`PageMissing` is a constructor of the Prelude's test
-  type `Answer`; …"; "`Doc` is a test type: it exists only inside a
-  `test`".
+  type `Answer`; …"; in a type declaration, "`Doc` is a test type: it
+  exists only inside a `test`".
 - E0023 "`#sumary x` is not a selector: unexpected `x` after `#sumary`;
   `x` is not an HTML element (a custom element has a hyphen)"; its other
   hints are "tags are lower case: `h1`" and "quote the value:
@@ -1675,8 +1688,8 @@ And when the test compiles (E0003 unless named):
 
 ### The rules
 
-- The steps exist only inside a `test`, each applied directly to all its
-  arguments (not piped into, not passed as a value); all but
+- The steps exist only inside a `test` or a test helper (below), each
+  applied directly to all its arguments (not piped into, not passed as a value); all but
   `Test.login` need an `App` module.
 - **Only what the page shows.** `Test.submit` and `Test.click` act on a
   form or button the held page renders, posting it exactly as rendered
@@ -1708,6 +1721,63 @@ A step's result also has `notices`, the list of toast texts the answer showed
 
     { answer: r.answer, notices: r.notices } == { answer: Rerendered, notices: ["Saved"] }
 
+### Test helpers
+
+Tests of one page often begin the same way: the same fakes, the same
+request, the same decoding of the body. That prologue can be written
+once, as an ordinary top-level value, in any module, and called from any
+test:
+
+```alder fragment
+fetchText : Text -> Task { status: Int, body: Text }
+fetchText cfg = {
+  let _ <- Test.fake Gate
+  let _ <- Test.fake MnSos
+  let r <- Test.fetch (Sites.MnSos { cfg: cfg })
+  Task.succeed { status: r.status, body: Bytes.toText r.body ?? "" }
+}
+
+test "at minute 400 the file is the final" = {
+  let r <- fetchText (at 400 "")
+  Task.succeed (r.status == 200 && Text.contains "final" r.body)
+}
+```
+
+`fetchText` is a *test helper*: a value that only tests may use. There
+is no keyword for it. A top-level value is a test helper when its
+signature or body uses something only a test may use:
+
+- anything of `Test`: the steps, `Test.run`, `Test.trace`, `Test.fake`,
+  `Test.login`, `Test.member`, and the queries `Test.text`, `Test.has`, …;
+- the Prelude's test types `Doc` and `Answer` (a `Doc -> Text` value is
+  a helper), or a constructor of `Answer`;
+- a fake's table (section 8);
+- another test helper.
+
+A `test`, or another test helper, in any module, may use one. Production
+code may not, and some values can never be helpers, because the compiler
+or the runtime calls them: a page's `load`, `view` and `update`, every
+value of `App`, a fake's entries, a brand's `where` check and a field's
+default. A reference from one of those to a helper is E0040, naming the
+helper and the first thing that makes it one:
+
+    `fetchText` is a test helper (it uses `Test.fetch`): only a `test` or another test helper may use it
+
+and along a chain, `` `at400` is a test helper (it uses `fetchText`, a
+test helper) ``. Using a test-only thing directly in one of them is E0040
+at the use: "`Test.fetch` is only available in a `test` or a test
+helper: `view` is the page's view, not a helper" (likewise "a fake's
+entry is not a helper", "a field default is not a helper", "a brand
+check is not a helper", "`App.update` is not a helper").
+
+`alder build` leaves every test helper out of the program, and `alder
+test --mutate` makes no mutant in one (section 11). The browser's rules
+still hold inside a helper: `Test.fetch (Sites.MnSos { cfg: cfg })` is a
+page written in place with the helper's parameter inside it, while
+`Test.fetch p`, with `p` a parameter, is refused as in a test. A fake is
+still declared in its capability's module (E0020); a helper shares the
+`Test.fake` call, not the fake. The editor's hover on a helper says
+which it is: "test helper (uses `Test.fetch`)".
 
 ## 10. How the browser works
 
@@ -2060,8 +2130,8 @@ every one. The whole run now ends `154 mutants: 154 killed, 0 survived
 
 Mutants are made only in the app's own code: the `load`, `update`,
 helpers and plain values of every module, and its tables. Never in a
-`test`, a `fake`, a `view` or a component (anything that makes `Html`),
-or the standard library.
+`test`, a `fake`, a test helper (section 9, "Test helpers"), a `view` or
+a component (anything that makes `Html`), or the standard library.
 
 Some changes are never made, and are not counted in the score. Two kinds
 are reported apart, in `--json`'s last object (below):
