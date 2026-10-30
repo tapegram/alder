@@ -24,6 +24,12 @@ func HookDoc(name string) (sig, role string, ok bool) {
 	return "", "", false
 }
 
+// hookSig is hook name's required signature as Alder text.
+func hookSig(name string) string {
+	sig, _, _ := HookDoc(name)
+	return sig
+}
+
 // hookMessage is checkPage's E-message for hook name: "`load` must have type `…`".
 func hookMessage(name string) string {
 	sig, _, _ := HookDoc(name)
