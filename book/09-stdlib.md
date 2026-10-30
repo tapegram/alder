@@ -129,7 +129,7 @@ for anything else than a plain decimal number (spaces, overflow, `"NaN"`).
 
 `Text.padLeft n pad s` makes `s` at least `n` code points long: a pad of
 several characters is repeated and cut at the outer edge, so
-`Text.padLeft 5 "ab" "x"` is `"babax"`, and `s` itself is never cut.
+`Text.padLeft 5 "ab" "x"` is `"ababx"`, and `s` itself is never cut.
 `Text.lines` splits on `\n`, removes a `\r` before it (so `\r\n` text works)
 and drops the empty line after a final newline: `Text.lines "a\nb\n"` is
 `["a", "b"]`. `Text.indexes needle haystack` lists every code-point offset
