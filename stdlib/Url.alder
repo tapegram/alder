@@ -1,3 +1,5 @@
 module Url
 
 external : Text -> Page
+
+absolute : Page -> Text

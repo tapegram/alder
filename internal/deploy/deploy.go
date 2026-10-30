@@ -42,6 +42,10 @@ const DefaultHealthTimeout = 60 * time.Second
 // key): every Target checks it with the declaration's `requires`.
 const SecretName = "ALDER_SECRET"
 
+// PublicURLName is the variable that tells the app its public address (Url.absolute's base):
+// each target sets it to the address it serves, unless the operator set it.
+const PublicURLName = "ALDER_PUBLIC_URL"
+
 // Options configure Deploy.
 type Options struct {
 	App, Env     string

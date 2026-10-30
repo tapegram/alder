@@ -310,7 +310,8 @@ The state of the environment lives at the box, under `path`:
 ```text
 <path>/builds/<id>/   app, static/, migrations/, alder-deploy.json   (the artifact)
                       run (a generated wrapper: reads <path>/env, sets ALDER_DB, ALDER_STATIC,
-                           ALDER_ADDR and ALDER_BACKUP_URL; holds no value)
+                           ALDER_ADDR and ALDER_BACKUP_URL, and ALDER_PUBLIC_URL=https://<domain>
+                           unless <path>/env sets it; holds no value)
                       addr, log, pid, backup.db, deployed.json
 <path>/current        the id of the build serving
 <path>/port           the port it serves on
@@ -1050,7 +1051,10 @@ a region. The target turns the artifact into one:
   organization `FLY_ORG`, default `personal`). It gives the app public addresses (`flyctl ips
   allocate-v4 --shared` and `allocate-v6`), and creates a 1 GB volume
   named `alder_data`, and one machine with the volume mounted at
-  `/data`, serving ports 80 and 443 of `https://<app>.fly.dev`.
+  `/data`, serving ports 80 and 443 of `https://<app>.fly.dev`. The
+  machine's environment sets `ALDER_PUBLIC_URL=https://<app>.fly.dev`,
+  so `Url.absolute` (chapter 9) gives that address; for a domain of your
+  own, set a Fly secret of the same name, which wins.
 - **Secrets.** Each `requires` name and `ALDER_SECRET` are read from
   **your** environment at deploy time (or the CI runner's) and set as Fly
   secrets with `flyctl secrets import`, the values on its standard input:
@@ -1173,8 +1177,15 @@ in a record, in `--json` or in an error. The service's environment
 variables are **merged**, not replaced (Render's call replaces the whole
 set): a variable you set in the dashboard stays, a `requires` name unset
 here but already at the service counts as set, and the values are never
-printed. The variables and the instance count are set just before the
-roll, so a refusal earlier (a missing name, a migration the gate stops)
+printed. `ALDER_PUBLIC_URL` (the base of `Url.absolute`, chapter 9) is
+added as the service's address when the service does not have it; a value
+set in the dashboard (for a custom domain) is kept. A new service gets the
+address it is expected to have, `https://<service>.onrender.com`; when
+Render names it otherwise (a suffix, because the name was taken), the
+first deploy corrects the variable once the service is live and rolls the
+same image again (`ALDER_PUBLIC_URL of blog set to the service's address
+(…); deploying again`). The variables and the
+instance count are set just before the roll, so a refusal earlier (a missing name, a migration the gate stops)
 has changed nothing at Render.
 
 ### A transcript
@@ -1402,6 +1413,13 @@ names the binary after the directory, so the app is named after yours.
   `/_alder/health`, which every Alder app serves.
 - **Secrets.** `render.yaml` has Render generate `ALDER_SECRET`; on Fly you set
   it with `fly secrets set` (the command prints it as the next step).
+- **The address.** `render.yaml` sets `ALDER_PUBLIC_URL` to
+  `https://<app>.onrender.com`, and `fly.toml` to `https://<app>.fly.dev`, the
+  base `Url.absolute` puts in front of a page's URL (chapter 9). Without it
+  the app would use the address it listens on (`http://localhost:10000` on
+  Render, `http://localhost:8080` on Fly).
+  Render may give the service another name when yours is taken; the line in
+  `render.yaml` says to change it then.
 
 `init` is a subcommand of `alder deploy`, so an environment named `init`
 cannot be deployed by name; pick another name for it.
@@ -1688,6 +1706,7 @@ and for unusual setups:
 | `ALDER_DEPLOY_CADDY_ADMIN` | the `host:port` of Caddy's admin API at the box (default `127.0.0.1:2019`) |
 | `ALDER_BACKUP_URL` | at the box (the environment file): stream the database to a directory or bucket without a `backup` in the declaration |
 | `ALDER_BACKUP_INTERVAL` | how often the runtime ships the database (default `10s`) |
+| `ALDER_PUBLIC_URL` | read by the app's executable: the site's address for `Url.absolute` (chapter 11). Each target sets it to the address it serves (`Ssh`: `https://<domain>`; `Fly`: `https://<app>.fly.dev`; `Render`: the service's address); set it yourself (the environment file, a Fly secret, Render's dashboard) to override |
 | `ALDER_ALLOW_DATA_LOSS` | read by the app's executable, never set by you: `1` lets `--migrate-only` apply a DROPS DATA migration; `alder deploy` sets it for one run with `--allow-data-loss` |
 | `RENDER_API_KEY` | the Render target's API key (the Render REST API) |
 | `ALDER_REGISTRY_TOKEN`, `ALDER_REGISTRY_USER` | the Render target's registry token (the image push and Render's pull credential) and user (default the first part of `image`) |

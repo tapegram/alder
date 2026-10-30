@@ -16,12 +16,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	"alder/rt"
 	"alder/rt/datastar"
 
 	"alder/internal/buildkit"
@@ -132,17 +134,8 @@ func runAddr(addr string) string {
 }
 
 // displayAddr is a listener's address for a person to open: an unspecified host (":8080")
-// is shown as localhost.
-func displayAddr(a net.Addr) string {
-	host, port, err := net.SplitHostPort(a.String())
-	if err != nil {
-		return a.String()
-	}
-	if ip := net.ParseIP(host); host == "" || ip != nil && ip.IsUnspecified() {
-		host = "localhost"
-	}
-	return net.JoinHostPort(host, port)
-}
+// is shown as localhost (rt.DisplayAddr, the rule the app's own public base follows).
+func displayAddr(a net.Addr) string { return rt.DisplayAddr(a.String()) }
 
 // devServer is `alder run`'s HTTP handler and the state behind it.
 //
@@ -432,7 +425,7 @@ func (d *devServer) rebuild() {
 	d.static = static
 	d.started++
 	gen := fmt.Sprintf("%s-%d", d.nonce, d.started)
-	c, err := startChild(binary, filepath.Join(dir, "dev.db"), static, gen, d.stderr)
+	c, err := startChild(binary, filepath.Join(dir, "dev.db"), static, gen, d.addr, d.stderr)
 	if err != nil {
 		d.fail("alder run: " + err.Error())
 		return
@@ -510,17 +503,32 @@ type child struct {
 // childStartTimeout is how long startChild waits for the `listening on` line.
 const childStartTimeout = 10 * time.Second
 
+// childEnv is the environment of an app startChild runs: environ (alder run's) with the
+// variables startChild names, and ALDER_PUBLIC_URL=http://<devAddr> (the dev server's displayed
+// address: the child listens on a free port behind it), unless environ sets ALDER_PUBLIC_URL (a
+// tunnel's address), which is passed through untouched.
+func childEnv(environ []string, dbPath, staticDir, gen, devAddr string) []string {
+	env := append(slices.Clip(environ), "ALDER_ADDR=127.0.0.1:0", "ALDER_DEV=1", "ALDER_RELOAD="+gen,
+		"ALDER_DB="+dbPath, "ALDER_STATIC="+staticDir, "ALDER_EXIT_ON_STDIN_EOF=1")
+	for _, kv := range environ {
+		if v, ok := strings.CutPrefix(kv, "ALDER_PUBLIC_URL="); ok && strings.TrimSpace(v) != "" {
+			return env
+		}
+	}
+	return append(env, "ALDER_PUBLIC_URL=http://"+devAddr)
+}
+
 // startChild runs the app executable binary in development mode with reloads on for the build
 // generation gen (ALDER_DEV=1, ALDER_RELOAD=<gen>) on a free port of 127.0.0.1, the database
 // dbPath and the static files of staticDir (ALDER_SECRET and the rest of the environment are
-// passed through), its output copied to logs; its standard input is a pipe the child keeps
+// passed through; ALDER_PUBLIC_URL=http://<devAddr> unless the environment sets it: childEnv), its
+// output copied to logs; its standard input is a pipe the child keeps
 // open (ALDER_EXIT_ON_STDIN_EOF=1: the app exits when the dev server dies). It waits (10 s at most) for its
 // `listening on <addr>` line; when the child exits first or does not print it in time (it is
 // then killed), the error holds the last overlayLines lines of its stderr.
-func startChild(binary, dbPath, staticDir, gen string, logs io.Writer) (*child, error) {
+func startChild(binary, dbPath, staticDir, gen, devAddr string, logs io.Writer) (*child, error) {
 	cmd := exec.Command(binary)
-	cmd.Env = append(os.Environ(), "ALDER_ADDR=127.0.0.1:0", "ALDER_DEV=1", "ALDER_RELOAD="+gen,
-		"ALDER_DB="+dbPath, "ALDER_STATIC="+staticDir, "ALDER_EXIT_ON_STDIN_EOF=1")
+	cmd.Env = childEnv(os.Environ(), dbPath, staticDir, gen, devAddr)
 	stdinR, stdinW, err := os.Pipe()
 	if err != nil {
 		return nil, err

@@ -68,6 +68,10 @@ type Render struct {
 	// Poll, when not zero, is how often Start asks Render about a deploy and Health asks again
 	// (0: renderPoll, 3 s). Tests shorten it.
 	Poll time.Duration
+	// ExpectedURL, when set, is the address a service named name is expected to get (Address
+	// before the service exists); nil is Render's https://<name>.onrender.com. Tests point it at
+	// the fake.
+	ExpectedURL func(name string) string
 
 	imageHost string // the image's registry host as declared (Render's registry kind)
 	imageErr  error
@@ -75,8 +79,12 @@ type Render struct {
 	svc       RenderService
 	have      bool        // the service exists
 	env       []RenderEnv // the service's environment as read: values never printed
-	allowLoss bool
-	dirs      map[string]string // artifact directories uploaded in this run, by build id
+	// publicDefault is the ALDER_PUBLIC_URL mergedEnv defaulted to the expected address ("": the
+	// service had one, or a `requires` value set it); publicURLFix corrects it once the service
+	// exists with another address
+	publicDefault string
+	allowLoss     bool
+	dirs          map[string]string // artifact directories uploaded in this run, by build id
 
 	st      *db.SQLite // the shared database, opened for stName
 	stName  string
@@ -146,6 +154,9 @@ func (r *Render) StreamsBackup(context.Context) (bool, error) { return true, nil
 func (r *Render) Address() string {
 	if r.have && r.svc.URL != "" {
 		return strings.TrimRight(r.svc.URL, "/")
+	}
+	if r.ExpectedURL != nil {
+		return r.ExpectedURL(r.Service)
 	}
 	return "https://" + r.Service + ".onrender.com"
 }
@@ -648,7 +659,8 @@ func (r *Render) cancelForeign(ctx context.Context, id string) error {
 
 // mergedEnv is the service's environment with alder's variables and the `requires` values set on
 // this machine laid over it (R3): a variable set only at the service (in the dashboard) is
-// kept, and ALDER_SECRET is the service's own, or a new one. changed reports whether it differs
+// kept, ALDER_SECRET is the service's own, or a new one, and ALDER_PUBLIC_URL the service's own,
+// or else its address (Address). changed reports whether it differs
 // from the service's. No value is ever printed.
 func (r *Render) mergedEnv(ctx context.Context) ([]RenderEnv, bool, error) {
 	host, err := r.DB.Host(ctx)
@@ -666,12 +678,31 @@ func (r *Render) mergedEnv(ctx context.Context) ([]RenderEnv, bool, error) {
 		"ALDER_DB": "libsql://" + host, db.EnvTursoOrg: r.DB.Org, db.EnvTursoGroup: r.DB.Group, db.EnvTursoApp: r.DB.App, db.EnvTursoDB: r.DB.SharedName(),
 		db.EnvTursoAPI: c.API, db.EnvTursoToken: c.Token, "ALDER_ADDR": RenderAddr, SecretName: secret,
 	}
+	r.publicDefault = ""
+	if r.envValue(PublicURLName) == "" {
+		set[PublicURLName] = r.Address() // a value set in the dashboard (a custom domain) is kept
+	}
 	for _, n := range r.Required {
 		if v := r.Getenv(n); v != "" && n != SecretName {
 			set[n] = v
 		}
 	}
+	if v, ok := set[PublicURLName]; ok && v == r.Address() && r.envValue(PublicURLName) == "" {
+		r.publicDefault = v // alder's default, not a value of the operator's
+	}
 	return overlay(r.env, set)
+}
+
+// publicURLFix is the service's environment with ALDER_PUBLIC_URL corrected to its address, when
+// mergedEnv wrote alder's default and the address turned out otherwise (a new service Render
+// named with a suffix); nil when there is nothing to correct. A value the operator set is never
+// touched.
+func (r *Render) publicURLFix() []RenderEnv {
+	if r.publicDefault == "" || r.AddressExpected() || r.Address() == r.publicDefault || r.envValue(PublicURLName) != r.publicDefault {
+		return nil
+	}
+	env, _, _ := overlay(r.env, map[string]string{PublicURLName: r.Address()})
+	return env
 }
 
 // overlay is env with set's values (new names appended in order); changed when it differs.
@@ -796,6 +827,27 @@ func (r *Render) Start(ctx context.Context, id string) (int, error) {
 		}
 		r.svc, r.have, r.env, dep = svc, true, env, d
 		fmt.Fprintf(r.Out, "Render service %s created (%s)\n", r.Service, r.Address())
+		if fix := r.publicURLFix(); fix != nil {
+			// Render named the service's address otherwise than expected (a suffix: the name was
+			// taken), so the ALDER_PUBLIC_URL alder wrote before it existed is wrong: once the
+			// first deploy is live, correct it and roll the same image again so it takes effect
+			if err := r.await(ctx, dep); err != nil {
+				return 0, err
+			}
+			if err := r.API.PutEnvVars(ctx, r.svc.ID, fix); err != nil {
+				return 0, fmt.Errorf("setting %s of the service %s: %w", PublicURLName, r.Service, err)
+			}
+			r.env = fix
+			fmt.Fprintf(r.Out, "%s of %s set to the service's address (%s); deploying again\n", PublicURLName, r.Service, r.Address())
+			d, err := r.API.CreateDeploy(ctx, r.svc.ID, r.ref(id))
+			if err != nil {
+				return 0, fmt.Errorf("deploying %s at Render: %w", r.ref(id), err)
+			}
+			if d.ID == "" {
+				return 0, fmt.Errorf("Render named no deploy of %s", r.ref(id))
+			}
+			dep = d.ID
+		}
 	} else {
 		if err := r.prepare(ctx, id); err != nil {
 			return 0, err

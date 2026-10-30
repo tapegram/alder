@@ -72,6 +72,58 @@ func TestRunScript(t *testing.T) {
 	}
 }
 
+// The run script defaults ALDER_PUBLIC_URL to https://<domain> (the --host host, which NewSsh
+// gets as the domain) after the operator's env file, so a value there wins; a wildcard domain
+// without a host writes no default.
+func TestRunScript_PublicURL(t *testing.T) {
+	const line = `: "${ALDER_PUBLIC_URL:=https://blog.example.com}"; export ALDER_PUBLIC_URL`
+	s := NewSsh("blog", "production", ir.Target{Host: "deploy@box", Path: "/srv/blog", Domain: "blog.example.com"}, &ir.Deploy{})
+	r := s.runScript("0123456789abcdef")
+	if i, j := strings.Index(r, line), strings.Index(r, "/srv/blog/env"); i < 0 || j < 0 || i < j {
+		t.Errorf("the run script lacks %q after the env file:\n%s", line, r)
+	}
+	host := NewSsh("blog", "preview-42.preview.example.com", ir.Target{Host: "box", Path: "/srv/blog/42.preview.example.com", Domain: "42.preview.example.com"}, &ir.Deploy{})
+	if r := host.runScript("0123456789abcdef"); !strings.Contains(r, `: "${ALDER_PUBLIC_URL:=https://42.preview.example.com}"; export ALDER_PUBLIC_URL`) {
+		t.Errorf("--host: no default with the host:\n%s", r)
+	}
+	for _, domain := range []string{"*.preview.example.com", ""} {
+		w := NewSsh("blog", "preview", ir.Target{Host: "box", Path: "/srv/blog", Domain: domain}, &ir.Deploy{})
+		if r := w.runScript("0123456789abcdef"); strings.Contains(r, "ALDER_PUBLIC_URL") {
+			t.Errorf("domain %q: a default:\n%s", domain, r)
+		}
+	}
+
+	// the wrapper itself, run by sh with a fake app that prints the variable
+	root := t.TempDir()
+	b := root + "/builds/0123456789abcdef"
+	if err := os.MkdirAll(b, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(b+"/app", []byte("#!/bin/sh\nprintf %s \"$ALDER_PUBLIC_URL\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s.Root = root
+	run := func() string {
+		t.Helper()
+		cmd := exec.Command("sh", "-c", s.runScript("0123456789abcdef"))
+		cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+		return string(out)
+	}
+	if got := run(); got != "https://blog.example.com" {
+		t.Errorf("without an env file: %q", got)
+	}
+	if err := os.WriteFile(root+"/env", []byte("ALDER_PUBLIC_URL=https://www.example.com\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := run(); got != "https://www.example.com" {
+		t.Errorf("the env file's value does not win: %q", got)
+	}
+}
+
 func TestCaddyRoute(t *testing.T) {
 	var r map[string]any
 	if err := json.Unmarshal([]byte(CaddyRoute("alder-blog-production", "blog.example.com", 41233)), &r); err != nil {
