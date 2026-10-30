@@ -127,7 +127,8 @@ has no `deploy` block: "render.yaml deploys whatever is pushed, with no
 check, migration plan or backup: add a `deploy` block to App.alder
 (book chapter 16)". Those files make the platform deploy whatever is
 pushed; the declaration is what gives you the gate, the migration plan,
-the backup and rollback. A Dockerfile alone is not reported.
+the backup and rollback. A Dockerfile alone is not reported. `alder deploy init`
+ends with the same advice when App has no `deploy` block.
 
 ## The command, step by step
 
