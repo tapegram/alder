@@ -64,10 +64,7 @@ theme {
     primaryForeground: "#ffffff",
     ring: "var(--primary)",
   },
-  dark: {
-    primary: "oklch(0.72 0.16 285)",
-    primaryForeground: "oklch(0.145 0 0)",
-  },
+  dark: { primary: "oklch(0.72 0.16 285)", primaryForeground: "oklch(0.145 0 0)" },
 }
 ```
 
