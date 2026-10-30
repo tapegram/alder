@@ -141,7 +141,7 @@ string` writes, in `Tokens` order (not source order, so the output is stable) **
 ```css
 /* theme: App */
 :root { --radius: 0.5rem; --font-sans: "Inter", system-ui, sans-serif; }
-:root, .light { --primary: oklch(0.55 0.22 285); --primary-foreground: #ffffff; --ring: var(--primary); }
+:where(:root:not(.dark)), .light { --primary: oklch(0.55 0.22 285); --primary-foreground: #ffffff; --ring: var(--primary); }
 .dark { --primary: oklch(0.72 0.16 285); --primary-foreground: oklch(0.145 0 0); }
 ```
 
@@ -149,6 +149,9 @@ An empty block is omitted; an empty theme gives `""`. Families are quoted unless
 (`serif sans-serif monospace system-ui ui-sans-serif ui-serif ui-monospace ui-rounded cursive
 fantasy math emoji fangsong`). The blocks are unlayered, so they beat alder-ui's `@layer al`
 values, and `.light` is named so a light subtree in a dark page gets the theme's light values.
+The root is written `:where(:root:not(.dark))` (fix round 1): a bare unlayered `:root` would beat
+alder-ui's layered `.dark` on `<html class="dark">`, so a colour set only under `light` would
+show in dark mode; `:where()` keeps the specificity of an app.css `:root`, which still wins.
 
 **Where the CSS goes: appended to `al.css`** **(call)**. The generated `Web()` carries it as
 `web.Options.Theme` (a Go string; the generated program never parses it); `NewRouter`, when

@@ -1,2 +1,2 @@
 app/App.alder:10:13 E0042 `fontSans` is a list of family names, such as `["Inter", "sans-serif"]`
-app/App.alder:11:13 E0042 `fontMono` is a list of family names, such as `["Inter", "sans-serif"]`: each a non-empty text without `"`, `;`, `{`, `}` or a line break
+app/App.alder:11:13 E0042 `fontMono` is a list of family names, such as `["Inter", "sans-serif"]`: each a non-empty text without `"`, `\`, `;`, `{`, `}` or a control character

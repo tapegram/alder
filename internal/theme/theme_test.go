@@ -67,7 +67,7 @@ func TestCSS_SpecExample(t *testing.T) {
 	)
 	want := `/* theme: App */
 :root { --radius: 0.5rem; --font-sans: "Inter", system-ui, sans-serif; }
-:root, .light { --primary: oklch(0.55 0.22 285); --primary-foreground: #ffffff; --ring: var(--primary); }
+:where(:root:not(.dark)), .light { --primary: oklch(0.55 0.22 285); --primary-foreground: #ffffff; --ring: var(--primary); }
 .dark { --primary: oklch(0.72 0.16 285); --primary-foreground: oklch(0.145 0 0); }
 `
 	if got != want {
@@ -85,7 +85,7 @@ func TestCSS_Empty(t *testing.T) {
 }
 
 func TestFontStack_QuotesNonGeneric(t *testing.T) {
-	if got := FontStack([]string{"Geist Mono", " monospace "}); got != `"Geist Mono", monospace` {
+	if got := FontStack([]string{"Geist Mono", " monospace ", "Serif"}); got != `"Geist Mono", monospace, Serif` {
 		t.Errorf("FontStack = %s", got)
 	}
 }
@@ -106,6 +106,7 @@ func TestValueShapes(t *testing.T) {
 		{LengthOK, "40%", true}, {LengthOK, "5", false}, {LengthOK, "-1rem", false}, {LengthOK, "1 rem", false},
 		{NegativeLength, "-1rem", true}, {NegativeLength, "1rem", false},
 		{FamilyOK, "Geist Mono", true}, {FamilyOK, "", false}, {FamilyOK, `a"b`, false}, {FamilyOK, "a;b", false},
+		{FamilyOK, `a\b`, false}, {FamilyOK, "a\tb", false}, {FamilyOK, "a\x7fb", false}, {FamilyOK, "a\nb", false},
 		{ShadowOK, "none", true}, {ShadowOK, "0 1px 2px 0 rgb(0 0 0 / 0.05)", true}, {ShadowOK, "0 0 #000", true},
 		{ShadowOK, "", false}, {ShadowOK, "0 0 red; }", false},
 	} {

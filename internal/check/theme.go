@@ -37,6 +37,8 @@ func (mc *modCtx) themeFields(fs []*syntax.DeployField, scheme string) {
 		in = "`" + scheme + "`"
 	}
 	seen := map[string]bool{}
+	var order []string                          // the CSS names of the aliasing fields, in source order
+	aliases := map[string]*syntax.DeployField{} // CSS name → a field of this record that is `var(--x)` of a colour
 	for _, f := range fs {
 		if seen[f.Name] {
 			bad(f.NameSpan, "`%s` is declared twice in %s: declare it once", f.Name, in)
@@ -77,6 +79,38 @@ func (mc *modCtx) themeFields(fs []*syntax.DeployField, scheme string) {
 		if v != nil {
 			if msg := themeValue(tok, v); msg != "" {
 				bad(v.Span, "%s", msg)
+			} else if _, ok := theme.Alias(strings.TrimSpace(v.Str)); ok && tok.Kind == theme.Colour {
+				aliases[tok.CSS] = f
+				order = append(order, tok.CSS)
+			}
+		}
+	}
+	mc.themeCycles(order, aliases, in)
+}
+
+// themeCycles refuses a colour of one record whose `var()` leads back to itself through the
+// record's own aliases: the browser would make every token of the cycle invalid.
+func (mc *modCtx) themeCycles(order []string, aliases map[string]*syntax.DeployField, in string) {
+	target := func(css string) string {
+		n, _ := theme.Alias(strings.TrimSpace(aliases[css].Value.Str))
+		return n
+	}
+	field := func(css string) string { t, _ := theme.ByCSS(css); return t.Field }
+	for _, start := range order {
+		chain := []string{field(start)}
+		for cur := target(start); ; cur = target(cur) {
+			chain = append(chain, field(cur))
+			if cur == start {
+				f := aliases[start]
+				if len(chain) == 2 {
+					mc.c.errorf(diag.ThemeDecl, f.Value.Span, "%s", fmt.Sprintf("`%s` is `var(%s)` in %s: a colour cannot be defined by itself; give it a colour value", f.Name, start, in))
+				} else {
+					mc.c.errorf(diag.ThemeDecl, f.Value.Span, "%s", fmt.Sprintf("`%s` leads back to itself in %s (%s): give one of them a colour value", f.Name, in, "`"+strings.Join(chain, "` → `")+"`"))
+				}
+				break
+			}
+			if aliases[cur] == nil || len(chain) > len(order)+1 {
+				break
 			}
 		}
 	}
@@ -121,7 +155,7 @@ func themeValue(tok theme.Token, v *syntax.DeployValue) string {
 		}
 		for _, e := range v.List {
 			if e.Kind != "string" || !theme.FamilyOK(e.Str) {
-				return shape + ": each a non-empty text without `\"`, `;`, `{`, `}` or a line break"
+				return shape + ": each a non-empty text without `\"`, `\\`, `;`, `{`, `}` or a control character"
 			}
 		}
 	case theme.Shadow:

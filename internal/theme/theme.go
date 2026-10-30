@@ -310,9 +310,18 @@ func NegativeLength(v string) bool {
 	return strings.HasPrefix(v, "-") && LengthOK(strings.TrimSpace(v[1:]))
 }
 
-// FamilyOK reports whether v is a font family name the CSS can carry quoted.
+// FamilyOK reports whether v is a font family name the CSS can carry quoted: not blank, and
+// without `"`, `\`, `;`, `{`, `}` or a control character.
 func FamilyOK(v string) bool {
-	return strings.TrimSpace(v) != "" && !strings.ContainsAny(v, "\";{}\n\r")
+	if strings.TrimSpace(v) == "" || strings.ContainsAny(v, "\"\\;{}") {
+		return false
+	}
+	for _, r := range v {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 // ShadowOK reports whether v is `none` or text of the shadow characters with balanced

@@ -147,7 +147,7 @@ func Web() web.Options {
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/",
 		DevMap:      "{\"pages\":[],\"tables\":[],\"caps\":[],\"session\":null}",
-		Theme:       "/* theme: App */\n:root { --radius: 0.5rem; --font-sans: \"Inter\", system-ui, sans-serif; }\n:root, .light { --primary: oklch(0.55 0.22 285); --primary-foreground: #ffffff; --ring: var(--primary); }\n.dark { --primary: oklch(0.72 0.16 285); --primary-foreground: oklch(0.145 0 0); }\n",
+		Theme:       "/* theme: App */\n:root { --radius: 0.5rem; --font-sans: \"Inter\", system-ui, sans-serif; }\n:where(:root:not(.dark)), .light { --primary: oklch(0.55 0.22 285); --primary-foreground: #ffffff; --ring: var(--primary); }\n.dark { --primary: oklch(0.72 0.16 285); --primary-foreground: oklch(0.145 0 0); }\n",
 	}
 }
 
