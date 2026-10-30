@@ -204,30 +204,47 @@ type Access struct {
 	Dur    time.Duration // from the request's arrival to the answer written
 	Bytes  int64         // the body bytes written
 	Quiet  bool          // a file answered 2xx/304: logged at Debug, not Info
-	Steps  int           // effect calls run; shown at Debug only
+	Steps  int           // effect calls run; shown at Debug only (and on a Slow line)
+	// Slow is set by the router when the request took ALDER_SLOW_MS or longer (web.Options.
+	// SlowAfter): the line is written at Warn with Route, Steps, Stmts and DBDur appended.
+	Slow  bool
+	Route string        // the matched route pattern, or the router's fixed name (a Slow line's route=)
+	Stmts int           // database statements run (eff.Stats; counted when metrics or slow is on)
+	DBDur time.Duration // their time
 }
 
-// Access writes a's line at Info (Debug when a.Quiet). As text:
+// Access writes a's line at Info (Debug when a.Quiet; Warn when a.Slow). As text:
 //
 //	GET /start?key=••••&seed=7 200 12.3ms 4821B rid=5f3a2c1e
 //
 // ending " steps=N" when the Logger's level is Debug. As JSON the message is the method and the
-// path, with method, path, status, ms, bytes and rid (and steps) as keys of their own.
+// path, with method, path, status, ms, bytes and rid (and steps) as keys of their own. A Slow
+// line ends with its breakdown, whatever the level:
+//
+//	GET /todos/3 200 812.4ms 4821B rid=5f3a2c1e slow route=/todos/{id} steps=12 db=9/640.1ms
+//
+// and as JSON carries slow, route, steps, db_stmts and db_ms.
 func (l *Logger) Access(a *Access) {
 	lv := Info
-	if a.Quiet {
+	switch {
+	case a.Slow:
+		lv = Warn
+	case a.Quiet:
 		lv = Debug
 	}
 	if !l.Enabled(lv) {
 		return
 	}
-	ms := math.Round(float64(a.Dur)/float64(time.Millisecond)*10) / 10
+	ms := tenths(a.Dur)
 	path := a.MaskedPath()
 	if l.format == JSON {
 		r := slog.NewRecord(l.now().UTC(), slogLevel(lv), a.Method+" "+path, 0)
 		r.AddAttrs(slog.String("method", a.Method), slog.String("path", path), slog.Int("status", a.Status),
 			slog.Float64("ms", ms), slog.Int64("bytes", a.Bytes), slog.String("rid", a.ID))
-		if l.min == Debug {
+		if a.Slow {
+			r.AddAttrs(slog.Bool("slow", true), slog.String("route", a.Route), slog.Int("steps", a.Steps),
+				slog.Int("db_stmts", a.Stmts), slog.Float64("db_ms", tenths(a.DBDur)))
+		} else if l.min == Debug {
 			r.AddAttrs(slog.Int("steps", a.Steps))
 		}
 		l.handle(r)
@@ -246,12 +263,48 @@ func (l *Logger) Access(a *Access) {
 	b = strconv.AppendInt(b, a.Bytes, 10)
 	b = append(b, "B rid="...)
 	b = append(b, a.ID...)
-	if l.min == Debug {
+	switch {
+	case a.Slow:
+		b = append(b, " slow route="...)
+		b = appendText(b, a.Route)
+		b = append(b, " steps="...)
+		b = strconv.AppendInt(b, int64(a.Steps), 10)
+		b = append(b, " db="...)
+		b = strconv.AppendInt(b, int64(a.Stmts), 10)
+		b = append(b, '/')
+		b = strconv.AppendFloat(b, tenths(a.DBDur), 'f', 1, 64)
+		b = append(b, "ms"...)
+	case l.min == Debug:
 		b = append(b, " steps="...)
 		b = strconv.AppendInt(b, int64(a.Steps), 10)
 	}
 	*bp = b
 	l.end(bp)
+}
+
+// tenths is d in milliseconds rounded to one decimal.
+func tenths(d time.Duration) float64 {
+	return math.Round(float64(d)/float64(time.Millisecond)*10) / 10
+}
+
+// SlowEnv is the variable SlowFromEnv reads.
+const SlowEnv = "ALDER_SLOW_MS"
+
+// SlowFromEnv is the threshold ALDER_SLOW_MS sets: a request that takes this long or longer is
+// a warn line with its breakdown (Access.Slow). Unset, empty or 0: 0, off. Anything but a whole
+// number of milliseconds is an error, which the generated main reports before serving.
+func SlowFromEnv() (time.Duration, error) { return slowFromEnv(os.Getenv) }
+
+func slowFromEnv(getenv func(string) string) (time.Duration, error) {
+	v := strings.TrimSpace(getenv(SlowEnv))
+	if v == "" {
+		return 0, nil
+	}
+	n, err := strconv.ParseUint(v, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("%s=%s: want a whole number of milliseconds (0: off)", SlowEnv, v)
+	}
+	return time.Duration(n) * time.Millisecond, nil
 }
 
 // MaxPath is the longest path an access line shows, in bytes: a longer one is cut, ending "…".
