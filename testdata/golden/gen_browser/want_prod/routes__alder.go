@@ -621,7 +621,7 @@ func Route__App__Send() web.Route {
 func route__fail(err error) web.Response {
 	var rd *eff.ErrRedirect
 	if errors.As(err, &rd) {
-		return web.RedirectResponse(rd.Location, nil)
+		return web.QueryRedirectResponse(rd.Location)
 	}
 	if errors.Is(err, eff.ErrNotFound) {
 		return web.NotFoundResponse(html.None())

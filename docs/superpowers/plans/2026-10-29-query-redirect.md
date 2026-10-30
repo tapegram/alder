@@ -33,8 +33,12 @@ test-first: write the failing test, run it red, write the code, run it green, co
     a value (`Maybe.map Query.redirect`) lowers through a Lambda and compiles.
   - `TestGen_QueryRedirectServes`: built app, GET answers 303 with Location `/b?seed=7`; under
     Datastar a page-of-this-app target is followed (history push, 200 SSE); a file page's
-    redirect is a plain 303; `Url.external "javascript:…"` is a 500 under Datastar, as
-    `Redirect` is.
+    redirect is a plain 303; a fragment target (`Url.external "javascript:…"`, which is `#`,
+    or `#frag`) is a 500 "refusing to navigate", with or without Datastar
+    (`web.QueryRedirectResponse`, called by `route__fail`): a GET's 303 to its own URL would
+    loop. The test browser stays on the page for a `#…` Location instead of requesting it
+    (`TestBrowser_FragmentRedirect`, which also covers `Redirect (Url.external bad)` from a
+    message).
 
 ## Task 4: mutation testing
 

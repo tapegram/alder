@@ -807,7 +807,7 @@ func encode__Projects__Index__NewProject(r Projects__Index__NewProject) rtesting
 func route__fail(err error) web.Response {
 	var rd *eff.ErrRedirect
 	if errors.As(err, &rd) {
-		return web.RedirectResponse(rd.Location, nil)
+		return web.QueryRedirectResponse(rd.Location)
 	}
 	if errors.Is(err, eff.ErrNotFound) {
 		return web.NotFoundResponse(html.None())

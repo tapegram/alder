@@ -12,6 +12,20 @@ import (
 	"alder/rt/html"
 )
 
+// A Query.redirect to a page is a 303 with the session left alone; to a fragment ("#", an
+// unsafe Url.external, or "#frag") a 500, since the GET would load itself again in a loop.
+func TestQueryRedirectResponse(t *testing.T) {
+	if r := QueryRedirectResponse("/builder/7"); r.Status != http.StatusSeeOther || r.Location != "/builder/7" || r.Session != nil {
+		t.Fatalf("%+v", r)
+	}
+	for _, loc := range []string{"#", "#frag"} {
+		r := QueryRedirectResponse(loc)
+		if r.Status != http.StatusInternalServerError || r.Location != "" || r.Err == nil || !strings.Contains(r.Err.Error(), "refusing to navigate to") {
+			t.Fatalf("%q: %+v", loc, r)
+		}
+	}
+}
+
 func one(method, pattern string, resp func(rq *Request) Response) []Route {
 	return []Route{{Method: method, Pattern: pattern, Handle: resp}}
 }

@@ -3845,8 +3845,15 @@ func TestProbe(t *testing.T) {
 	if w := do("/start?go=out&to="+url.QueryEscape("https://ex.com/x"), true); w.Code != 200 || !strings.Contains(w.Body.String(), `+"`"+`window.location.assign("https://ex.com/x")`+"`"+`) {
 		t.Fatalf("external under Datastar: %d %s", w.Code, w.Body.String())
 	}
-	if w := do("/start?go=out&to="+url.QueryEscape("javascript:alert(1)"), false); w.Code != 303 || w.Header().Get("Location") != "#" {
-		t.Fatalf("unsafe: %d %q", w.Code, w.Header().Get("Location"))
+	// "#" (an unsafe URL Url.external neutralised) or "#frag" would send a GET back to itself in
+	// a loop: refused with a 500, under Datastar too
+	for _, to := range []string{"javascript:alert(1)", "#frag"} {
+		for _, ds := range []bool{false, true} {
+			w := do("/start?go=out&to="+url.QueryEscape(to), ds)
+			if w.Code != 500 && w.Header().Get("Alder-Status") != "500" || w.Header().Get("Location") != "" || !strings.Contains(w.Body.String(), "refusing to navigate") {
+				t.Fatalf("unsafe %q (Datastar %v): %d %q %s", to, ds, w.Code, w.Header().Get("Location"), w.Body.String())
+			}
+		}
 	}
 	if w := do("/go.txt", false); w.Code != 303 || w.Header().Get("Location") != "/builder/9" {
 		t.Fatalf("file page: %d %q", w.Code, w.Header().Get("Location"))
