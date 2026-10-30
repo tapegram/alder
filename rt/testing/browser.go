@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -83,6 +84,10 @@ var TestSecret = []byte("alder-test-cookie-key: tests only")
 // cookieNow is the clock of the browser's router (cookie expiry only): fixed, so the cookies of
 // a test never expire and reading it does not advance the test's own clock.
 var cookieNow = func() time.Time { return defaultNow }
+
+// failHead is the start of the router's error line: the request's method and masked URL
+// (web's line).
+var failHead = regexp.MustCompile(`^[A-Z]+ [^ ]+: `)
 
 // redirectLimit is how many redirects in a row the browser follows before it gives up (RequestFailed).
 const redirectLimit = 10
@@ -794,14 +799,18 @@ func (b *Browser) hold(u, page string) error {
 	return nil
 }
 
-// failText is the error of the request just served, as the router logged it ("POST /x: boom"
-// and a stack for a panic): the message alone.
+// failText is the error of the request just served, as the router logged it ("POST /x?a=1: boom
+// rid=5f3a2c1e" and a stack for a panic): the message alone, without the request (its method and
+// masked URL, which holds no space), the id or the stack.
 func (b *Browser) failText() string {
 	msg := b.lastErr
 	if i := strings.Index(msg, "\ngoroutine "); i >= 0 {
 		msg = msg[:i]
 	}
-	msg = strings.TrimPrefix(msg, b.reqHead)
+	if i := strings.LastIndex(msg, " rid="); i >= 0 && !strings.ContainsAny(msg[i+1:], " \n") {
+		msg = msg[:i]
+	}
+	msg = failHead.ReplaceAllString(msg, "")
 	if msg == "" {
 		msg = "internal server error"
 	}

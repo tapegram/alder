@@ -232,7 +232,7 @@ func TestBoost_RedirectChains(t *testing.T) {
 	w = serve(h, req)
 	evs = events(w.Body.String())
 	last := "/loop/x" + strings.Repeat("x", redirectLimit+1)
-	want := "error: POST /_m/A/Loop: more than 10 redirects in a row (the last to " + last + ")"
+	want := "error: POST /_m/A/Loop: more than 10 redirects in a row (the last to " + last + ") rid=" + w.Header().Get("X-Request-Id")
 	if w.Header().Get(StatusHeader) != "500" || len(evs) != 1 || evs[0] != bodyEvent("<p>Something went wrong</p>") || logs[len(logs)-1] != want {
 		t.Fatalf("loop %q %q %q", w.Header().Get(StatusHeader), evs, logs)
 	}

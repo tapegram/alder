@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"alder/rt/applog"
 	"alder/rt/datastar"
 	"alder/rt/eff"
 )
@@ -91,7 +92,7 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 	// only the Request section is shown at first; the others are `hidden` until their tab is
 	// chosen (the panel's script keeps the chosen tab across later answers)
 	b.WriteString(`<section id="_alder_tab_request"><h3>Request</h3><pre>`)
-	fmt.Fprintf(&b, "%s %s\n", esc(r.Method), esc(r.URL.RequestURI()))
+	fmt.Fprintf(&b, "id %s\n%s %s\n", esc(tw.id), esc(r.Method), esc(applog.MaskURL(r.URL)))
 	if tw.rq != nil {
 		keys := make([]string, 0, len(tw.rq.Form))
 		for k := range tw.rq.Form {
@@ -210,18 +211,16 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 }
 
 // masked is the values of form field k as the panel shows them: a field whose name says it holds
-// a password (or a secret, a token) is shown as "••••", so the panel, its History and the curl
-// line never carry one.
+// a secret (applog.Sensitive: a password, a token, a key, a code…) is shown as "••••", so the
+// panel, its History and the curl line never carry one. The request's URL is shown masked the
+// way the log masks it (applog.MaskURL).
 func masked(k string, vs []string) []string {
-	n := strings.ToLower(k)
-	for _, w := range []string{"password", "passwd", "secret", "token"} {
-		if strings.Contains(n, w) {
-			out := make([]string, len(vs))
-			for i := range out {
-				out[i] = "••••"
-			}
-			return out
+	if applog.Sensitive(k) {
+		out := make([]string, len(vs))
+		for i := range out {
+			out[i] = applog.Mask
 		}
+		return out
 	}
 	return vs
 }
@@ -254,7 +253,7 @@ func shq(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'
 func curlLine(tw *tracker) string {
 	r := tw.r
 	var b strings.Builder
-	b.WriteString("curl -X " + r.Method + " " + shq("http://"+r.Host+r.URL.RequestURI()))
+	b.WriteString("curl -X " + r.Method + " " + shq("http://"+r.Host+applog.MaskURL(r.URL)))
 	b.WriteString(" -H " + shq("Cookie: "+CookieName+"=<your session cookie>"))
 	if tw.rq != nil && tw.rq.Datastar {
 		b.WriteString(" -H " + shq("Datastar-Request: true"))

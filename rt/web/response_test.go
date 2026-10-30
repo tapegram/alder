@@ -202,7 +202,7 @@ func TestResponse_ErrorHidesTextInProd(t *testing.T) {
 			} else if strings.Contains(body, "db is") || strings.Contains(body, "<!--") {
 				t.Fatalf("ds=%v prod body leaks the error: %q", ds, body)
 			}
-			if len(logs) != 1 || logs[0] != "error: POST /_m/A/B: db is -- down" {
+			if len(logs) != 1 || logs[0] != "error: POST /_m/A/B: db is -- down rid="+w.Header().Get("X-Request-Id") {
 				t.Fatalf("ds=%v dev=%v: logs %q", ds, dev, logs)
 			}
 		}
