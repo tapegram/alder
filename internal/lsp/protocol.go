@@ -9,8 +9,9 @@ import (
 	"alder/internal/scratch"
 )
 
-// Position is a place in a document: a 0-based line and a 0-based byte offset in that line
-// (positionEncoding utf-8).
+// Position is a place in a document: a 0-based line and a 0-based character offset in that line,
+// in the negotiated positionEncoding (utf-8 bytes or utf-16 code units; see encoding.go). Inside
+// the server a Position's offset is always a byte offset: it is converted where it crosses the wire.
 type Position struct {
 	Line      int `json:"line"`
 	Character int `json:"character"`
@@ -73,8 +74,13 @@ type scratchParams struct {
 }
 
 type initializeParams struct {
-	RootURI  string `json:"rootUri"`
-	RootPath string `json:"rootPath"`
+	RootURI      string `json:"rootUri"`
+	RootPath     string `json:"rootPath"`
+	Capabilities struct {
+		General struct {
+			PositionEncodings []string `json:"positionEncodings"`
+		} `json:"general"`
+	} `json:"capabilities"`
 }
 
 type cancelParams struct {
@@ -93,9 +99,9 @@ func uriPath(uri string) (string, error) {
 	return filepath.FromSlash(u.Path), nil
 }
 
-func capabilities() map[string]any {
+func capabilities(enc posEncoding) map[string]any {
 	return map[string]any{
-		"positionEncoding":           "utf-8",
+		"positionEncoding":           enc.String(),
 		"textDocumentSync":           map[string]any{"openClose": true, "change": 1, "save": map[string]any{"includeText": false}},
 		"hoverProvider":              true,
 		"documentFormattingProvider": true,

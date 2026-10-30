@@ -95,9 +95,17 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 				Edit: &workspaceEdit{DocumentChanges: []textDocumentEdit{{TextDocument: doc, Edits: []TextEdit{*ld.Data.Fix}}}},
 			})
 		}
-		out = append(out, disjointFixes(fixes)...)
+		built := a.lines[rel]
+		for _, f := range disjointFixes(fixes) { // bytes until here; wired on the way out
+			for i, dg := range f.Diagnostics {
+				f.Diagnostics[i] = s.enc.wireDiagnostic(built, dg)
+			}
+			ch := &f.Edit.DocumentChanges[0]
+			ch.Edits = []TextEdit{s.enc.wireEdit(built, ch.Edits[0])}
+			out = append(out, f)
+		}
 	}
-	start := p.Range.Start
+	start := s.byteAtLines(now, p.Range.Start)
 	if start.Line < 0 || start.Character < 0 {
 		return out, nil
 	}

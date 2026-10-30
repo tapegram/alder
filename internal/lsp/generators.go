@@ -76,7 +76,8 @@ func decodeGeneratorParams(params json.RawMessage) (generatorParams, error) {
 // as the compiler counts.
 func (s *server) cursor(p generatorParams) (string, diag.Pos) {
 	rel, _ := s.rel(p.TextDocument.URI)
-	return rel, diag.Pos{Line: p.Position.Line + 1, Col: p.Position.Character + 1}
+	bp := s.byteAt(rel, p.Position)
+	return rel, diag.Pos{Line: bp.Line + 1, Col: bp.Character + 1}
 }
 
 // hereAt is spec's prefill at pos in rel from the last good build, or nil: when spec is never
