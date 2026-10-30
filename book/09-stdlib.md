@@ -269,9 +269,16 @@ Date.format    : Text -> Date -> Text           -- Date.format "Jan 2, 2006" d
 Date.addDays   : Int -> Date -> Date
 Date.diffDays  : Date -> Date -> Int
 Date.year, Date.month, Date.day : Date -> Int
+Date.fromParts : { year: Int, month: Int, day: Int } -> Maybe Date
+Date.toParts   : Date -> { year: Int, month: Int, day: Int }
+Date.epoch     : Date                           -- 1970-01-01
+Date.weekday   : Date -> Int                    -- 1 = Monday ... 7 = Sunday
+Date.addMonths : Int -> Date -> Date
+Date.addYears  : Int -> Date -> Date
 
 Time.now       : Query Time
 Time.toDate    : Time -> Date
+Time.fromDate  : Date -> Time                   -- midnight UTC
 Time.format    : Text -> Time -> Text
 Time.ago       : Time -> Time -> Text           -- Time.ago now then = "3 hours ago"
 Time.toMillis  : Time -> Int                    -- milliseconds since 1970-01-01 00:00 UTC
@@ -283,6 +290,13 @@ Time.diffMillis : Time -> Time -> Int           -- Time.diffMillis a b = b − a
 `Date.diffDays a b` is the number of days from `a` to `b`, that is `b − a`:
 `Date.diffDays monday wednesday` is `2`, and it is negative when `b` comes
 first.
+
+`Date.fromParts` is `Nothing` for an impossible date (month 13, Feb 30); it
+never rolls over into the next month. `Date.weekday` is ISO-numbered, so
+Monday is `1` and Sunday is `7`, and `weekday d >= 6` means weekend.
+`Date.addMonths` clamps the day to the target month's length: one month after
+January 31 is February 28 (29 in a leap year). `Date.addYears 1` on February 29
+gives February 28.
 
 ```alder eval=Just "2026-10-09"
 Date.fromText "2026-10-08"

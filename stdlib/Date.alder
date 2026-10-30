@@ -9,3 +9,9 @@ diffDays : Date -> Date -> Int
 year : Date -> Int
 month : Date -> Int
 day : Date -> Int
+fromParts : { year: Int, month: Int, day: Int } -> Maybe Date -- Nothing for an impossible date
+toParts : Date -> { year: Int, month: Int, day: Int }
+epoch : Date -- 1970-01-01
+weekday : Date -> Int -- ISO: 1 = Monday ... 7 = Sunday
+addMonths : Int -> Date -> Date -- clamps the day to the target month's length
+addYears : Int -> Date -> Date -- Feb 29 becomes Feb 28 in a non-leap year
