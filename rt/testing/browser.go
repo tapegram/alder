@@ -116,6 +116,12 @@ type Browser struct {
 	cur     *eff.Within // the transaction it runs within
 	reqHead string      // "METHOD /decoded/path: ", how the router's log lines for it begin
 	lastErr string      // the router's last error log line for it
+
+	heads    map[*eff.Env]string // each request Env's "METHOD /path" (Options.Served)
+	step     *stepAcc            // the step running (track), nil between steps
+	bench    bool                // measure each step (`alder bench`)
+	warnings []string            // the N+1 warnings of the steps so far (CaseResult.Warnings)
+	measures []Measure           // with bench, each step's Measure (CaseResult.Bench)
 }
 
 // NewBrowser is a browser for the test running env, serving routes with opts: opts is the
@@ -125,7 +131,7 @@ type Browser struct {
 // Test.fake installed since applies), Now and Log, and runs Within env's transaction, begun
 // when the first request needs it (env.Transaction).
 func NewBrowser(env *eff.Env, routes []web.Route, opts web.Options) *Browser {
-	b := &Browser{env: env, codec: opts.Session, login: opts.Login}
+	b := &Browser{env: env, codec: opts.Session, login: opts.Login, heads: map[*eff.Env]string{}}
 	if len(opts.Secret) < 16 {
 		opts.Secret = TestSecret
 	}
@@ -142,13 +148,17 @@ func NewBrowser(env *eff.Env, routes []web.Route, opts web.Options) *Browser {
 	opts.Store, opts.Caps, opts.Now, opts.Dev, opts.Reload = env.Store, env.Caps, cookieNow, false, ""
 	opts.EnvFor = func(ctx context.Context, session any) *eff.Env {
 		e := &eff.Env{Ctx: ctx, Store: b.env.Store, Caps: b.env.Caps, Now: b.env.Now, Sleep: b.env.Sleep, Log: b.env.Log, Session: session, Within: b.cur,
-			Stores: b.env.Stores, CheckSession: b.env.CheckSession}
+			Stores: b.env.Stores, CheckSession: b.env.CheckSession,
+			Rec: &eff.Recorder{}} // its statements, for the N+1 warning (and `alder bench`)
 		b.reqEnvs = append(b.reqEnvs, e)
 		return e
 	}
 	served := opts.Served
 	opts.Served = func(rq *web.Request) {
 		b.model = rq.Model
+		if rq.Env != nil && rq.HTTP != nil {
+			b.heads[rq.Env] = rq.HTTP.Method + " " + rq.HTTP.URL.Path
+		}
 		if served != nil {
 			served(rq)
 		}
@@ -182,15 +192,16 @@ type browserSlot struct {
 	routes []web.Route
 	opts   web.Options
 	b      *Browser
+	bench  bool // the browser measures its steps (`alder bench`)
 }
 
 // withBrowser is env.Ctx carrying the slot BrowserOf makes env's browser in.
-func withBrowser(env *eff.Env, routes []web.Route, opts web.Options) context.Context {
+func withBrowser(env *eff.Env, routes []web.Route, opts web.Options, bench bool) context.Context {
 	ctx := env.Ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return context.WithValue(ctx, browserKey{}, &browserSlot{env: env, routes: routes, opts: opts})
+	return context.WithValue(ctx, browserKey{}, &browserSlot{env: env, routes: routes, opts: opts, bench: bench})
 }
 
 // BrowserOf is the browser of the test running env, made on first use: the test runner puts
@@ -205,7 +216,7 @@ func BrowserOf(env *eff.Env) *Browser {
 	if slot == nil {
 		panic("alder: this test has no browser (the test program was built without the app's routes)")
 	}
-	slot.once.Do(func() { slot.b = NewBrowser(slot.env, slot.routes, slot.opts) })
+	slot.once.Do(func() { slot.b = NewBrowser(slot.env, slot.routes, slot.opts); slot.b.bench = slot.bench })
 	return slot.b
 }
 
@@ -359,6 +370,7 @@ func MsgLabel(msgURL string) string {
 // reached), PageMissing (the not-found document held) or RequestFailed (the error document held, Text the
 // error). Its error is for internal failures only (a page that does not parse).
 func (b *Browser) Open(u string) (Result, error) {
+	defer b.track()()
 	ans, err := b.navigate(u, false)
 	if err != nil {
 		return Result{}, err
@@ -382,6 +394,7 @@ type Fetched = struct {
 // Content-Type, body and every header (sorted by name), a redirect not followed. The page the
 // browser holds, and the notices and model of the last step, stay as they were.
 func (b *Browser) Fetch(u string) (Fetched, error) {
+	defer b.track()()
 	notices, model := b.notices, b.model
 	defer func() { b.notices, b.model = notices, model }()
 	w, err := b.serve(http.MethodGet, u, nil, false)
@@ -426,6 +439,7 @@ func (b *Browser) Submit(msgURL string, fields url.Values) (Result, error) {
 
 // submit is Submit of fields, form the form's name for the errors.
 func (b *Browser) submit(msgURL, form string, fields Fields) (Result, error) {
+	defer b.track()()
 	target, f, ok := b.formFor(msgURL)
 	if !ok {
 		return Result{}, &NoControlError{Submit: true, Form: form, Msg: MsgLabel(msgURL), URL: msgURL, Page: b.url,
@@ -534,6 +548,7 @@ func Offered(msgURL string, urls []string) string {
 // `_p.` parameters, is what is posted. The answer is applied as for Submit. With no such control
 // the error is a *NoControlError and nothing is sent.
 func (b *Browser) Click(msgURL string) (Result, error) {
+	defer b.track()()
 	target, ok := b.control(msgURL)
 	if !ok {
 		return Result{}, &NoControlError{Msg: MsgLabel(msgURL), URL: msgURL, Page: b.url, Offers: Offered(msgURL, b.controlURLs(false))}
@@ -684,11 +699,13 @@ func (b *Browser) serve(method, target string, form url.Values, ds bool) (*httpt
 	b.reqEnvs, b.lastErr, b.cur, b.model = nil, "", cur, nil
 	b.reqHead = req.Method + " " + req.URL.Path + ": "
 	w := httptest.NewRecorder()
-	b.handler.ServeHTTP(w, req)
+	b.serveHTTP(w, req)
 	for _, e := range b.reqEnvs {
 		b.env.Trace = append(b.env.Trace, e.Trace...)
 	}
+	b.account(req.Method+" "+req.URL.Path, w.Body.Len())
 	b.reqEnvs = nil
+	clear(b.heads)
 	for _, c := range w.Result().Cookies() {
 		if c.Name == web.CookieName {
 			if c.MaxAge < 0 || c.Value == "" {

@@ -17,6 +17,7 @@ var commandUsages = map[string]string{
 	"eval":     evalUsage,
 	"scratch":  scratchUsage,
 	"test":     testUsage,
+	"bench":    benchUsage,
 	"migrate":  migrateUsage,
 	"repl":     replUsage,
 	"new":      newUsage,
@@ -95,6 +96,9 @@ func helpTo(args []string, w io.Writer) bool {
 		fmt.Fprintln(w, u)
 		if cmd == "test" {
 			fmt.Fprintln(w, testHelpNote)
+		}
+		if cmd == "bench" {
+			fmt.Fprintln(w, benchHelpNote)
 		}
 		return true
 	}
