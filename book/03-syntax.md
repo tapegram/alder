@@ -139,13 +139,13 @@ module `Status` wherever the constructor is in scope: its own module and
 every module importing it (a `msg Status` only in its own module, a Prelude
 constructor such as `Ok` everywhere). There the page has no other spelling,
 and `Status { cfg: "pa" }` builds the constructor. The compiler reports the
-clash at the constructor: an error (E0040) when some module in its scope
-writes `Status { … }` for the page, a warning (W0010) while nothing does.
+clash at the constructor: an error (E0041) when some module in its scope
+writes `Status { … }` for the page, a warning (W0011) while nothing does.
 Rename one of them, for example `module StatusPage`. Likewise a qualifier is
 looked up before a capability, so `import Clarity` beside a module whose
 `capability Clarity` has the entry `final` makes `Clarity.final` a name in
 module `Clarity`. The capability is still reached through its own module's
-qualifier (`DataClarity.final`); the import gets a warning (W0009) that
+qualifier (`DataClarity.final`); the import gets a warning (W0010) that
 says so, and a call that module `Clarity` lacks gets the spelling as its
 fix.
 

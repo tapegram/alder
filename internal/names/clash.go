@@ -14,14 +14,14 @@ import (
 // A qualifier is looked up before a capability (design rule 5), so a module whose qualifier is a
 // capability's name hides that capability's entries: `Clarity.final` is looked up in module
 // Clarity. The capability stays reachable through its own module's qualifier
-// (`DataClarity.final`), so the program can work: a warning at the import (W0009), and a hint on
+// (`DataClarity.final`), so the program can work: a warning at the import (W0010), and a hint on
 // the "has no" error the hidden call gets. A standard-library module, always in scope, hides a
 // capability of its name the same way: a warning at the capability.
 //
 // A constructor is looked up before a page (design rule 6), and a single-segment page has no
 // other spelling, so where a constructor named like it is in scope the page cannot be written at
 // all: `Status { cfg: "pa" }` builds the constructor. That is an error at the constructor's
-// declaration (E0040).
+// declaration (E0041).
 
 // capEntryNames is the entries of capability name declared in module path, in declaration order.
 func (p *Program) capEntryNames(path, name string) []string {
@@ -62,7 +62,7 @@ func (r *resolver) hiddenCapOwners(q, path string) []string {
 	return out
 }
 
-// shadowedCapabilities warns (W0009) at each import whose qualifier is the name of a capability
+// shadowedCapabilities warns (W0010) at each import whose qualifier is the name of a capability
 // another import declares, and at each capability of this module named like a standard-library
 // module.
 func (r *resolver) shadowedCapabilities() {
@@ -118,10 +118,10 @@ func (r *resolver) shadowedEntryHint(q, path, entry string) (hint, spelling stri
 // pageShadows reports each constructor named like a single-segment page module: in the
 // constructor's module and the modules importing it (everywhere, for a Prelude constructor) the
 // page cannot be written. A page with a dot in its name is written with its full path, which no
-// constructor can be. It is an error (E0040) when some module in that scope writes `Name { … }`
+// constructor can be. It is an error (E0041) when some module in that scope writes `Name { … }`
 // and the constructor takes no record, so that the page value written there became a
 // constructor that cannot take it (the use was already a type error); otherwise the program
-// works and it is a warning (W0010). It runs after every body is resolved (pageUses).
+// works and it is a warning (W0011). It runs after every body is resolved (pageUses).
 func (p *Program) pageShadows(bag *diag.Bag) {
 	var pages []string
 	for name := range p.Pages {

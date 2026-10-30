@@ -127,7 +127,7 @@ const (
 	DuplicateTable      = "E0037" // a table name declared by two app modules: table names are app-wide
 	NotDerivable        = "E0038" // a property's argument, or a `Fuzz.any`, whose type no generator can be derived for (not concrete, or a function)
 	PropertyOutsideTest = "E0039" // `Fuzz.forAll` or `Fuzz.forAllTask` anywhere but as a test's body
-	PageShadowed        = "E0040" // a constructor (or brand, or message) named like a single-segment page module, applied in its scope to a record it cannot take: there the page cannot be written
+	PageShadowed        = "E0041" // a constructor (or brand, or message) named like a single-segment page module, applied in its scope to a record it cannot take: there the page cannot be written
 	ImportAlias         = "E0204" // an import's `as` is missing, redundant or not its canonical qualifier
 	FullPath            = "E0205" // a name written with an imported module's full path instead of its qualifier
 	NoQualifier         = "E0206" // an import with no usable qualifier: every candidate is taken or shared
@@ -138,8 +138,8 @@ const (
 	UnnamedEnv          = "W0006" // an adapter reads an environment variable `deploy.requires` does not name
 	UnshownReject       = "W0005" // a message whose update may answer Reject, posted by a form without <Errors form />
 	FormWireName        = "W0008" // a GET form's input named after a page parameter that reads another query key (#63)
-	ShadowedCapability  = "W0009" // an import whose qualifier, or a stdlib module, is the name of a capability in scope: `Q.entry` reaches the module
-	PageShadowedWarn    = "W0010" // E0040's clash where no page value was written in the constructor's scope: the program works
+	ShadowedCapability  = "W0010" // an import whose qualifier, or a stdlib module, is the name of a capability in scope: `Q.entry` reaches the module
+	PageShadowedWarn    = "W0011" // E0041's clash where no page value was written in the constructor's scope: the program works
 
 	// ScratchAppErrors is the language server's warning at 1:1 of a scratch file the app's errors
 	// keep from running (internal/lsp publishScratch).

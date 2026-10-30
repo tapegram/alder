@@ -56,8 +56,8 @@ in chapter 12. Each is a compile error.
 17. A module, page or constructor named like another name in scope hides
     one of them. A constructor named like a one-segment page module
     (`Status Int` beside `module Status`) makes `Status { … }` the
-    constructor in its scope (E0040, or W0010 while nothing links the
+    constructor in its scope (E0041, or W0011 while nothing links the
     page); a module whose qualifier is a capability's name (`import
     Clarity` beside `capability Clarity`) makes `Clarity.final` a name of
-    the module (W0009; the capability is `DataClarity.final`). Rename one,
+    the module (W0010; the capability is `DataClarity.final`). Rename one,
     as the message suggests.

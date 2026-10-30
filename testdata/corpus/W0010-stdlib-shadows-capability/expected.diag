@@ -1,0 +1,1 @@
+app/Data/Http.alder:4:1 W0010 the standard-library module `Http` shadows `capability Http`: `Http.fetch` names the standard library's `Http`, here and in every module importing `Data.Http`; rename the capability (for example `HttpCapability`)
