@@ -111,7 +111,7 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 				if v, ok := n.(*syntax.Var); ok && v.Module != "" && a.prog.Modules[ref.Module] != nil {
 					name = ref.Module + "." + ref.Name // `Todo.find` is `Table.Todo.find` in full
 				}
-				return withDoc(sig(name, t), declDoc(a, ref))
+				return withDoc(sig(name, t)+helperLine(a, ref), declDoc(a, ref))
 			}
 		}
 	}
@@ -150,6 +150,14 @@ func declDoc(a *analysis, ref syntax.Ref) string {
 		return ""
 	}
 	return syntax.DocOf(mod.Lines, d.GetSpan().Start.Line)
+}
+
+// helperLine is the hover's note on a test helper (#4), "" for any other value.
+func helperLine(a *analysis, ref syntax.Ref) string {
+	if why := a.res.TestOnly[ref.Module+"."+ref.Name]; why != "" {
+		return "\n\ntest helper (uses " + why + ")"
+	}
+	return ""
 }
 
 // withDoc is sig followed by doc, when there is one, as its own paragraph.
