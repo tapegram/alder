@@ -36,7 +36,7 @@ func routesReq(s *server, _ json.RawMessage) (out any, err error) {
 		items = append(items, routeItem{
 			Kind: r.Kind, Path: r.Path, Module: r.Module, Name: r.Name,
 			URI:   s.uriOf(r.File),
-			Range: lspRange(r.Line, r.Col, r.EndLine, r.EndCol),
+			Range: s.enc.wireRange(a.lines[r.File], lspRange(r.Line, r.Col, r.EndLine, r.EndCol)),
 		})
 	}
 	return items, nil

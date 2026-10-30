@@ -102,6 +102,7 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 				Edit: &workspaceEdit{DocumentChanges: []textDocumentEdit{{TextDocument: doc, Edits: []TextEdit{*ld.Data.Fix}}}},
 			})
 		}
+		built := a.lines[rel]
 		fixes = disjointFixes(fixes)
 		// a preferred fix (the one obvious repair, as a hook's signature) is listed first
 		slices.SortStableFunc(fixes, func(a, b codeAction) int {
@@ -113,9 +114,16 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 			}
 			return 0
 		})
-		out = append(out, fixes...)
+		for _, f := range fixes { // bytes until here; wired on the way out
+			for i, dg := range f.Diagnostics {
+				f.Diagnostics[i] = s.enc.wireDiagnostic(built, dg)
+			}
+			ch := &f.Edit.DocumentChanges[0]
+			ch.Edits = []TextEdit{s.enc.wireEdit(built, ch.Edits[0])}
+			out = append(out, f)
+		}
 	}
-	start := p.Range.Start
+	start := s.byteAtLines(now, p.Range.Start)
 	if start.Line < 0 || start.Character < 0 {
 		return out, nil
 	}

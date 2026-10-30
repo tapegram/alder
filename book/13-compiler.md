@@ -4923,15 +4923,21 @@ server's copy for good. After `initialized` the editor opens the file with
 `didOpen` and sends its entire text, and the server, which has now built the
 app, publishes the file's diagnostics (none). Two messages in that exchange
 are the reason for two of the server's rules, which the next paragraphs
-explain: `"positionEncoding":"utf-8"` and the whole `text` in `didOpen`.
+explain: `"positionEncoding"` and the whole `text` in `didOpen`.
 
-**Why utf-8 positions.** An LSP position is a line and a character offset in
-that line, both counted from 0. The protocol's historical unit for the
-offset is the UTF-16 code unit, a unit that nothing in Alder uses. The
-compiler counts lines from 1 and columns from 1 in **bytes** of the UTF-8
-file (`diag.Pos`), the unit Go strings index by. Since LSP 3.17 a server can
-announce a different unit, so `alder lsp` announces UTF-8 bytes, and the
-conversion is `line-1` and `col-1`, both ways:
+**Why the server chooses the position encoding.** An LSP position is a line
+and a character offset in that line, both counted from 0. The protocol's
+historical unit for the offset is the UTF-16 code unit, a unit that nothing
+in Alder uses. The compiler counts lines from 1 and columns from 1 in
+**bytes** of the UTF-8 file (`diag.Pos`), the unit Go strings index by. Since
+LSP 3.17 the client lists the units it can count in
+`capabilities.general.positionEncodings` and the server picks one and
+announces it as `positionEncoding`. `alder lsp` picks `utf-8` when the client
+lists it (Neovim does), and otherwise `utf-16`, the default every client must
+support (`negotiate` in `internal/lsp/encoding.go`).
+
+Inside the server every column stays a byte column. With `utf-8` the
+conversion to the wire is `line-1` and `col-1`, both ways:
 
 ```go
 func lspRange(line, col, endLine, endCol int) Range {
@@ -4940,10 +4946,18 @@ func lspRange(line, col, endLine, endCol int) Range {
 }
 ```
 
-The alternative is converting to and from UTF-16 on every position, and a
-line like `"hé {name}"` is where such a conversion goes wrong. With bytes
-there is no conversion to get wrong. (A client that can only count UTF-16
-units is not served; Neovim speaks UTF-8.)
+With `utf-16` there is one more step, and it sits at the protocol boundary
+only: a position coming in is turned into a byte offset by reading the
+line's text (`fromWire`), and a range going out is turned into UTF-16 units
+the same way (`wireRange`, `toWire`). A character below U+10000 is one unit
+and a character above it, such as an emoji, is two (a surrogate pair), so
+on the line `"hé😀 {name}"` the `{` is at byte 9 and at UTF-16 character 6. A
+client that counts in UTF-16 and a server that counts in bytes disagree on
+every position after the `é`, which is why the server converts instead of
+assuming. The conversion needs the line's text, so a range is converted with
+the text it was computed from: the build's lines for diagnostics, fixes and
+locations, the current text for a cursor. With `utf-8` both directions are
+the identity, so the common case costs nothing.
 
 ### The overlay
 
