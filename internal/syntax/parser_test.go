@@ -619,3 +619,17 @@ func TestParse_PageParamWire(t *testing.T) {
 		}
 	}
 }
+
+// A bad `(` in a lambda's parameters reports that one error, not a second about the missing `->`.
+func TestParse_LambdaBadParenOneError(t *testing.T) {
+	for _, src := range []string{
+		"module M\n\nf = \\(1 : Int) -> 2\n",
+		"module M\n\nf = \\( -> 2\n",
+		"module M\n\nf = \\(x : Int) (] -> x\n",
+	} {
+		_, diags := ParseFile("t.alder", []byte(src))
+		if len(diags) != 1 || !strings.Contains(diags[0].Message, "expected a parameter name after `(`") {
+			t.Errorf("%q: diagnostics %+v, want just the parameter-name error", src, diags)
+		}
+	}
+}

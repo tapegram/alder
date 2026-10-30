@@ -308,7 +308,8 @@ func (p *Parser) parsePrimary() Expr {
 				p.advance()
 				if !p.at(LIdent) {
 					p.errorAt(p.tok, "expected a parameter name after `(`")
-					break
+					p.skipToDeclStayingOnLine() // what follows would only cascade
+					return p.unit(start)
 				}
 			}
 			t := p.advance()

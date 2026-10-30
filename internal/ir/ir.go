@@ -1081,7 +1081,7 @@ type GenTree struct {
 	Prim  string     // GenPrim: "Int", "Float", "Bool", "Text", "Unit", "Bytes", "Date", "Time" or "Id"
 	Elems []*GenTree // children in order: record fields, constructor payloads, the arguments of List, Maybe, Result, Dict; a brand's base
 	Names []string   // GenRecord: field names; GenUnion: constructor names
-	Rec   []bool     // GenUnion: constructor i's payload reaches the union again
+	Rec   []bool     // GenUnion: constructor i's payload reaches the union again; GenResult: Elems[i] reaches the Result again
 	Brand string     // GenBrand, GenStdBrand: "Module.Name"
 	Check bool       // GenBrand: the brand has a `where` check (check__M__B), which a drawn value must pass
 	Key   string     // types.String of the type (brands spelled out): the identity of the generated function
