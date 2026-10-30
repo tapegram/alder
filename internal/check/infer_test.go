@@ -61,7 +61,8 @@ func TestInferTopLevel_ScratchOnly(t *testing.T) {
 		"Scratch.none": "List a",
 		"Scratch.id":   "a -> a",
 		"Scratch.pair": "{ a: Int, b: Text, n: Int }",
-		"Scratch.it":   "{ l: List a, d: Dict b c }",
+		// an undecided record literal is not generalised: its first use decides it (#3)
+		"Scratch.it": "{ l: List _, d: Dict _ _ }",
 	}
 	for k, w := range want {
 		got, ok := res.Values[k]

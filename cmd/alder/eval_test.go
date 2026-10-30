@@ -540,13 +540,18 @@ func TestEval_RunWithAdapters(t *testing.T) {
 	}
 }
 
-// A let bound to a record literal is a structural record: where a table's record is expected,
-// the mismatch says to annotate it.
-func TestEval_StructuralRecordHint(t *testing.T) {
+// A let bound to a record literal takes the table's record where it is first expected (#3); one
+// with a field the record lacks says which.
+func TestEval_RecordLiteralTakesNamedType(t *testing.T) {
 	t.Parallel()
 	in := "let t = { id: Todo.TodoId \"a\", title: Text.NonEmpty \"x\", done: False, due: Nothing, owner: User.UserId \"u\", created: Time.epoch }\nTodo.countOpen [t]\n"
-	code, _, stderr := runEval(t, in, todosDir(t), "-")
-	if code != 1 || !strings.Contains(stderr, "; the record has Todo's fields: annotate the let (`let x : Todo = …`), or give the value a signature") {
+	code, stdout, stderr := runEval(t, in, todosDir(t), "-")
+	if code != 0 || stdout != "1 : Int\n" {
+		t.Errorf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	in = "let t = { id: Todo.TodoId \"a\", title: Text.NonEmpty \"x\", done: False, due: Nothing, owner: User.UserId \"u\", made: Time.epoch }\nTodo.countOpen [t]\n"
+	code, _, stderr = runEval(t, in, todosDir(t), "-")
+	if code != 1 || !strings.Contains(stderr, "; the record is missing Todo's `created`; `made` is not a field of Todo") {
 		t.Errorf("exit %d\nstderr: %s", code, stderr)
 	}
 }

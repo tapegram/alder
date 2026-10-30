@@ -209,7 +209,8 @@ func (mc *modCtx) inferTopLevel(d *syntax.ValueDecl) {
 		c.errorf(diag.MissingSig, d.Span, "the type of `%s` cannot be inferred: it uses itself at a different type; give it a type signature", d.Name)
 	}
 	t := c.u.Apply(sig)
-	for i, v := range freeVars(t) {
+	// an undecided record literal's variables are left to the use that decides it (#3)
+	for i, v := range freeVarsOutsideLiterals(t) {
 		c.u.Subst[v.ID] = &types.Param{Name: paramName(i)}
 	}
 	mc.reportHoles()
@@ -246,7 +247,14 @@ func errorCount(bag *diag.Bag) int {
 }
 
 // freeVars lists the unsolved variables of the applied type t, in order of first occurrence.
-func freeVars(t types.Type) []*types.Var {
+func freeVars(t types.Type) []*types.Var { return walkFreeVars(t, false) }
+
+// freeVarsOutsideLiterals is freeVars without the variables inside an undecided record literal
+// (a structural record with a handle): they are fixed by the named type the literal becomes, so
+// generalising them would leave the literal's own expressions at a parameter Go cannot name.
+func freeVarsOutsideLiterals(t types.Type) []*types.Var { return walkFreeVars(t, true) }
+
+func walkFreeVars(t types.Type, skipLiterals bool) []*types.Var {
 	var out []*types.Var
 	seen := map[int]bool{}
 	var walk func(types.Type)
@@ -271,7 +279,7 @@ func freeVars(t types.Type) []*types.Var {
 			}
 			walk(t.Result)
 		case *types.Record:
-			if t.Anonymous {
+			if t.Anonymous && !(skipLiterals && t.Flex != nil) {
 				for _, f := range t.Fields {
 					walk(f.Type)
 				}
@@ -453,11 +461,102 @@ func (mc *modCtx) mismatch(span diag.Span, got, expected types.Type) *diag.Diagn
 	if inner, ok := maybeOf(g); ok && c.u.Check(inner, e) == nil {
 		msg += "; match it: match m { Just x -> …, Nothing -> … }"
 	}
-	if sameFields(g, e) {
-		// a record literal bound without a signature (an eval or REPL let) is structural
-		msg += fmt.Sprintf("; the record has %s's fields: annotate the let (`let x : %s = …`), or give the value a signature", mc.ts(e), mc.ts(e))
-	}
+	msg += mc.recordDiff(g, e)
 	return c.errorf(diag.TypeMismatch, span, "%s", msg)
+}
+
+// recordDiff is the suffix of a mismatch between got and expected that says how a structural
+// record differs from the nominal one expected: the first pair of the two, at the top or at the
+// same place inside both (`List {…}` against `List Curve`). "" when there is no such pair.
+func (mc *modCtx) recordDiff(got, expected types.Type) string {
+	g, e := recordPair(mc.c.u.Apply(got), mc.c.u.Apply(expected))
+	if g == nil {
+		return ""
+	}
+	name := mc.ts(e)
+	if !sameFields(g, e) {
+		have := map[string]bool{}
+		for _, f := range g.Fields {
+			have[f.Name] = true
+		}
+		want := map[string]bool{}
+		var missing, extra []string
+		for _, f := range e.Fields {
+			want[f.Name] = true
+			if !have[f.Name] {
+				missing = append(missing, "`"+f.Name+"`")
+			}
+		}
+		for _, f := range g.Fields {
+			if !want[f.Name] {
+				extra = append(extra, "`"+f.Name+"`")
+			}
+		}
+		sort.Strings(missing)
+		sort.Strings(extra)
+		var out string
+		if len(missing) > 0 {
+			out += fmt.Sprintf("; the record is missing %s's %s", name, strings.Join(missing, ", "))
+		}
+		switch {
+		case len(extra) == 1:
+			out += fmt.Sprintf("; %s is not a field of %s", extra[0], name)
+		case len(extra) > 1:
+			out += fmt.Sprintf("; %s are not fields of %s", strings.Join(extra, ", "), name)
+		}
+		return out
+	}
+	byName := map[string]types.Type{}
+	for _, f := range e.Fields {
+		byName[f.Name] = f.Type
+	}
+	for _, f := range g.Fields {
+		if mc.c.u.Clone().Check(f.Type, byName[f.Name]) != nil {
+			return fmt.Sprintf("; field `%s` is %s, %s's is %s", f.Name, mc.ts(mc.c.u.Apply(f.Type)), name, mc.ts(mc.c.u.Apply(byName[f.Name])))
+		}
+	}
+	if g.Flex == nil {
+		// structural for good: a signature's inline record, or a literal that met one first
+		return fmt.Sprintf("; the record has %s's fields: declare it as %s where it is made (a signature's inline record type, or a let that already met a structural type)", name, name)
+	}
+	return ""
+}
+
+// recordPair finds the first place where got is a structural record and expected a nominal one,
+// at the top or inside both at the same position of the same constructor, list or function.
+func recordPair(got, expected types.Type) (*types.Record, *types.Record) {
+	switch g := got.(type) {
+	case *types.Record:
+		if e, ok := expected.(*types.Record); ok && g.Anonymous && !e.Anonymous {
+			return g, e
+		}
+	case *types.App:
+		if e, ok := expected.(*types.App); ok && g.Con == e.Con && len(g.Args) == len(e.Args) {
+			for i := range g.Args {
+				if r, n := recordPair(g.Args[i], e.Args[i]); r != nil {
+					return r, n
+				}
+			}
+		}
+	case *types.Union:
+		if e, ok := expected.(*types.Union); ok && g.Module == e.Module && g.Name == e.Name && len(g.Args) == len(e.Args) {
+			for i := range g.Args {
+				if r, n := recordPair(g.Args[i], e.Args[i]); r != nil {
+					return r, n
+				}
+			}
+		}
+	case *types.Fun:
+		if e, ok := expected.(*types.Fun); ok && len(g.Params) == len(e.Params) {
+			for i := range g.Params {
+				if r, n := recordPair(g.Params[i], e.Params[i]); r != nil {
+					return r, n
+				}
+			}
+			return recordPair(g.Result, e.Result)
+		}
+	}
+	return nil, nil
 }
 
 // sameFields reports whether got is a structural record with exactly the field names of the
@@ -1513,7 +1612,11 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 			r = c.u.Apply(mc.infer(x.R, env, eff))
 		}
 		if err := c.u.Unify(l, r); err != nil {
-			c.errorf(diag.TypeMismatch, x.Span, "cannot compare `%s` with `%s`: `==` needs both sides to have the same type", mc.ts(l), mc.ts(r))
+			suffix := mc.recordDiff(r, l)
+			if suffix == "" {
+				suffix = mc.recordDiff(l, r)
+			}
+			c.errorf(diag.TypeMismatch, x.Span, "cannot compare `%s` with `%s`: `==` needs both sides to have the same type%s", mc.ts(l), mc.ts(r), suffix)
 		} else if lt := c.u.Apply(l); containsFun(lt) {
 			if containsEffect(lt) {
 				c.errorf(diag.TypeMismatch, x.Span, "effect values cannot be compared: a `Query` or `Task` is a description of work, not its result; run it with `let x <-` and compare the results")
