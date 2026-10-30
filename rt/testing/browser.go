@@ -728,6 +728,11 @@ func (b *Browser) navigate(u string, redirected bool) (Answer, error) {
 			// as Url.external builds it
 			return Answer{Tag: Redirected, Page: rt.Page{Path: u}}, nil
 		}
+		if redirected && strings.HasPrefix(u, "#") {
+			// "#" (an unsafe URL Url.external neutralised) or "#frag": a browser stays on the
+			// page it has, so nothing is requested and the held page and URL stay
+			return Answer{Tag: Redirected, Page: rt.Page{Path: u}}, nil
+		}
 		w, err := b.serve(http.MethodGet, u, nil, false)
 		if err != nil {
 			return Answer{}, err

@@ -12,7 +12,7 @@ import (
 var ErrInternal = errors.New("internal error")
 
 // Run interprets t eagerly, node by node, and returns its result:
-// (value, nil) | (zero, *ErrFail) | (zero, ErrNotFound) | (zero, another
+// (value, nil) | (zero, *ErrFail) | (zero, ErrNotFound) | (zero, *ErrRedirect) | (zero, another
 // error from the context, the store or a Call).
 //
 // kind KTask: the transaction is begun lazily. Run begins none itself; the
@@ -240,6 +240,8 @@ func interpret(env *Env, kind Kind, n node) (any, error) {
 			return nil, &ErrFail{Msg: x.msg}
 		case notFound:
 			return nil, ErrNotFound
+		case redirect:
+			return nil, &ErrRedirect{Location: x.location}
 		default:
 			return nil, fmt.Errorf("eff: %w: invalid effect node %T (zero Task or Query?)", ErrInternal, n)
 		}
