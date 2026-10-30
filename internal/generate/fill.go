@@ -177,7 +177,7 @@ func fillImports(e *srcEdit, p *Program, m *Module, expr string, imports *[]stri
 	for _, im := range m.Syntax.Imports {
 		have[im.Module] = true
 	}
-	for _, q := range append(qualifiers(p, expr), short...) {
+	for _, q := range append(qualifiers(p, expr, moduleCtors(m.Syntax)...), short...) {
 		if !have[q] {
 			have[q] = true
 			*imports = append(*imports, q)
@@ -234,11 +234,13 @@ func blockBody(expr string) (string, bool) {
 // without an import; a table's module, named by the table's name as a qualifier (`User.UserId`
 // for Table.User); and a table's (or type's) module named bare, as its record type is
 // (`Db.from Team`). In first-use order.
-func qualifiers(p *Program, expr string) []string {
+//
+// A bare word in ctors is a constructor in scope, not a table's record type, whatever its name.
+func qualifiers(p *Program, expr string, ctors ...string) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, segs := range dottedNames(expr) {
-		if len(segs) == 1 { // a table's record type: `Db.from Team` (module Table.Team, or Team)
+		if len(segs) == 1 && !slices.Contains(ctors, segs[0]) { // a table's record type: `Db.from Team` (module Table.Team, or Team)
 			mod := ""
 			if t := p.TableNamed(segs[0]); t != nil {
 				mod = t.Module
@@ -267,6 +269,19 @@ func qualifiers(p *Program, expr string) []string {
 		if t := p.TableNamed(segs[0]); !found && len(segs) >= 2 && t != nil && !seen[t.Module] {
 			seen[t.Module] = true
 			out = append(out, t.Module)
+		}
+	}
+	return out
+}
+
+// moduleCtors are the constructors of the unions that module m declares.
+func moduleCtors(m *syntax.Module) []string {
+	var out []string
+	for _, d := range m.Decls {
+		if td, ok := d.(*syntax.TypeDecl); ok {
+			for _, c := range td.Union {
+				out = append(out, c.Name)
+			}
 		}
 	}
 	return out
@@ -404,15 +419,16 @@ func parseAddress(p *Program, address string) (mod, decl, arm string, err error)
 		if rest != "" {
 			return "", "", "", Refusef("`%s` is not a declaration: write `Module.decl`, `Module.update.Msg` or `Module.\"test name\"`", address)
 		}
-		if p.Modules[mod] == nil {
+		if p.Modules[p.ResolveModule(mod)] == nil {
 			return "", "", "", Refusef("there is no module `%s`", mod)
 		}
+		mod = p.ResolveModule(mod)
 		return mod, decl, "", nil
 	}
 	segs := strings.Split(address, ".")
 	for i := len(segs) - 1; i >= 1; i-- {
-		if p.Modules[strings.Join(segs[:i], ".")] != nil {
-			mod, rest := strings.Join(segs[:i], "."), segs[i:]
+		if cand := p.ResolveModule(strings.Join(segs[:i], ".")); p.Modules[cand] != nil {
+			mod, rest := cand, segs[i:]
 			if len(rest) > 2 {
 				return "", "", "", Refusef("`%s` is not a declaration: write `Module.decl`, `Module.update.Msg` or `Module.\"test name\"`", address)
 			}

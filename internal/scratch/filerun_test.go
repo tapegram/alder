@@ -397,10 +397,47 @@ func TestFilePurposeAbsolutizesRelativeNames(t *testing.T) {
 func TestRunFileDefaultOut(t *testing.T) {
 	needGo(t)
 	dir := todos(t)
+	work := t.TempDir()
+	t.Chdir(work) // the default build directory is relative to the working directory
 	f, _ := ParseFile("scratch.alder", "> 1 + 1\n")
 	r := RunFile(context.Background(), dir, f, FileOptions{})
 	if r.Err != nil || !r.Ran || r.Watches[0].Value != "2" {
 		t.Fatalf("err %v, ran %v, %+v", r.Err, r.Ran, r.Watches)
+	}
+	if !strings.HasPrefix(FilePurpose(f.Name), "file-") {
+		t.Fatalf("purpose %q", FilePurpose(f.Name))
+	}
+	built := filepath.Join(work, "build", filepath.Base(dir), "scratch", FilePurpose(f.Name))
+	if fi, err := os.Stat(built); err != nil || !fi.IsDir() {
+		t.Errorf("no build under %s: %v", built, err)
+	}
+}
+
+// Task and Select watches are typed and not run, as Query's are: the kind is the lower-cased
+// type constructor and the placeholder names it; a pure watch beside them still runs.
+func TestRunFileTaskAndSelectWatches(t *testing.T) {
+	needGo(t)
+	r := runFile(t, "> Task.succeed 1\n> Db.from Todo\n> 1 + 1\n", FileOptions{})
+	if r.Err != nil || !r.Ran || len(r.Watches) != 3 {
+		t.Fatalf("err %v, ran %v, note %q, %+v", r.Err, r.Ran, r.Note, r.Watches)
+	}
+	for i, c := range []struct{ kind, value, typ string }{
+		{"task", "<Task>", "Task Int"},
+		{"select", "<Select>", "Select Todo"},
+	} {
+		w := r.Watches[i]
+		if w.Kind != c.kind || w.Value != c.value || w.Type != c.typ || w.Note != effectNote || w.Error != "" {
+			t.Errorf("watch %d: %+v; want kind %q, value %q, type %q, note %q", i+1, w, c.kind, c.value, c.typ, effectNote)
+		}
+	}
+	want(t, r.Watches[2], 3, "Int", "2", "")
+	if r.Watches[2].Kind != "pure" {
+		t.Errorf("kind %q", r.Watches[2].Kind)
+	}
+	// all effects: nothing to build
+	r = runFile(t, "> Task.succeed 1\n> Db.from Todo\n", FileOptions{})
+	if r.Ran || r.Watches[0].Kind != "task" || r.Watches[1].Kind != "select" || !strings.Contains(r.Note, "all effects") {
+		t.Errorf("ran %v, note %q, %+v", r.Ran, r.Note, r.Watches)
 	}
 }
 

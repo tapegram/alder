@@ -12,6 +12,7 @@ import (
 	"alder/internal/markup"
 	"alder/internal/names"
 	"alder/internal/syntax"
+	"alder/internal/theme"
 	"alder/internal/types"
 )
 
@@ -46,12 +47,14 @@ var (
 	reTag      = regexp.MustCompile(`(?:^|[\s>({\[,])<([a-z0-9-]*)$`)
 	reHole     = regexp.MustCompile(`\?([a-z][A-Za-z0-9_]*)?$`)
 	reWord     = regexp.MustCompile(`[A-Za-z0-9_]*$`)
+	reTheme    = regexp.MustCompile(`^\s*([a-z][A-Za-z0-9]*?)$`)
 )
 
 // completion is one completion request: the open text as it is now, read once, and the last
 // good build with what it still says about the cursor (Ruling R11).
 type completion struct {
 	a      *analysis      // the last good build; nil before the first
+	enc    posEncoding    // the client's position unit, for the edits
 	m      *syntax.Module // rel's module in a; nil when a has none
 	lines  []string       // rel's current text
 	line   int            // the cursor's line, 0-based
@@ -90,11 +93,11 @@ func (s *server) completionAt(rel string, p Position) *completion {
 		return nil
 	}
 	line := lines[p.Line]
-	col := min(p.Character, len(line))
+	col := min(s.enc.fromWire(line, p.Character), len(line))
 	for col > 0 && col < len(line) && !utf8.RuneStart(line[col]) {
 		col--
 	}
-	cx := &completion{a: s.lastGood(), lines: lines, line: p.Line, col: col, prefix: line[:col],
+	cx := &completion{enc: s.enc, a: s.lastGood(), lines: lines, line: p.Line, col: col, prefix: line[:col],
 		pos: diag.Pos{Line: p.Line + 1, Col: col + 1}}
 	if cx.a != nil && cx.a.res != nil {
 		for _, x := range cx.a.prog.Modules {
@@ -114,7 +117,7 @@ func (s *server) completionAt(rel string, p Position) *completion {
 // items tries each context in the table's order; the first that applies answers.
 func (cx *completion) items() []completionItem {
 	for _, row := range []func() ([]completionItem, bool){
-		cx.imports, cx.members, cx.fields, cx.closeTag, cx.attrs, cx.tags, cx.hole, cx.patterns,
+		cx.theme, cx.imports, cx.members, cx.fields, cx.closeTag, cx.attrs, cx.tags, cx.hole, cx.patterns,
 	} {
 		if items, ok := row(); ok {
 			return items
@@ -125,7 +128,7 @@ func (cx *completion) items() []completionItem {
 
 // edit replaces the n bytes before the cursor with text.
 func (cx *completion) edit(n int, text string) TextEdit {
-	return TextEdit{Range: Range{Start: Position{cx.line, cx.col - n}, End: Position{cx.line, cx.col}}, NewText: text}
+	return cx.enc.wireEdit(cx.lines, TextEdit{Range: Range{Start: Position{cx.line, cx.col - n}, End: Position{cx.line, cx.col}}, NewText: text})
 }
 
 func (cx *completion) item(label string, kind int, detail string, n int) completionItem {
@@ -533,7 +536,7 @@ func (cx *completion) hole() ([]completionItem, bool) {
 			it.SortText = "0" + it.Label
 		}
 		if h != nil && h.Span.Start.Line == cx.pos.Line && h.Span.End.Line == cx.pos.Line {
-			it.TextEdit.Range = Range{Start: Position{cx.line, h.Span.Start.Col - 1}, End: Position{cx.line, max(h.Span.End.Col-1, cx.col)}}
+			it.TextEdit.Range = cx.enc.wireRange(cx.lines, Range{Start: Position{cx.line, h.Span.Start.Col - 1}, End: Position{cx.line, max(h.Span.End.Col-1, cx.col)}})
 		}
 		out = append(out, it)
 	}
@@ -696,4 +699,46 @@ func (cx *completion) otherwise() []completionItem {
 		add(cx.item(k, kindKeyword, "", n))
 	}
 	return out
+}
+
+// theme: a field name being typed on a line of its own inside App's `theme { … }` of the last
+// good build (the lines above unchanged): at the top level `light`, `dark` and the theme-wide
+// tokens, inside `light` or `dark` the colour tokens, each inserted as `name: ` with its CSS
+// name and kind as the detail.
+func (cx *completion) theme() ([]completionItem, bool) {
+	g := reTheme.FindStringSubmatch(cx.prefix)
+	if g == nil || cx.m == nil || !cx.fresh {
+		return nil, false
+	}
+	inside := func(sp diag.Span) bool { return sp.Start.Line < cx.pos.Line && cx.pos.Line <= sp.End.Line }
+	var d *syntax.ThemeDecl
+	for _, x := range cx.m.Decls {
+		if td, ok := x.(*syntax.ThemeDecl); ok && inside(td.Span) {
+			d = td
+		}
+	}
+	if d == nil {
+		return nil, false
+	}
+	colours := false
+	for _, f := range d.Fields {
+		if (f.Name == "light" || f.Name == "dark") && f.Value != nil && f.Value.Kind == "record" && inside(f.Value.Span) {
+			colours = true
+		}
+	}
+	n := len(g[1])
+	add := func(out []completionItem, label, detail string) []completionItem {
+		return append(out, completionItem{Label: label, Kind: kindProperty, Detail: detail, TextEdit: cx.edit(n, label+": ")})
+	}
+	var out []completionItem
+	if !colours {
+		out = add(out, "light", "the light scheme's colours (:root, .light)")
+		out = add(out, "dark", "the dark scheme's colours (.dark)")
+	}
+	for _, t := range theme.Tokens {
+		if (t.Kind == theme.Colour) == colours {
+			out = add(out, t.Field, t.CSS+" ("+t.Kind.String()+")")
+		}
+	}
+	return out, true
 }

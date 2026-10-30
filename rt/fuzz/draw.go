@@ -209,10 +209,14 @@ func signed(c *Choices, f float64) float64 {
 // side bit then a fraction t in [0, 1] step from the anchor toward max (side 0) or min.
 // Fresh: 15% the anchor, 15% the far end, 70% uniform t.
 func FloatRange(c *Choices, min, max float64) float64 {
-	if math.IsNaN(min) || math.IsNaN(max) || max <= min {
+	if math.IsNaN(min) || math.IsNaN(max) {
 		return min
 	}
-	min, max = math.Max(min, -math.MaxFloat64), math.Min(max, math.MaxFloat64)
+	finite := func(x float64) float64 { return math.Min(math.Max(x, -math.MaxFloat64), math.MaxFloat64) }
+	min, max = finite(min), finite(max) // before the empty check: {+Inf, +Inf} is {Max, Max}, not +Inf
+	if max <= min {
+		return min
+	}
 	anchor := math.Min(math.Max(0, min), max)
 	side := Bool(c, 0.5)
 	target := max

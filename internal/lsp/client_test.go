@@ -54,7 +54,13 @@ func start(t *testing.T, root string) *client {
 // startWith is start with the server's options (Log is the test log when it is nil).
 func startWith(t *testing.T, root string, o Options) *client {
 	t.Helper()
-	return startCaps(t, root, o, map[string]any{})
+	return startOffering(t, root, o, []string{"utf-8", "utf-16"})
+}
+
+// startOffering is startWith for a client whose general.positionEncodings is offered.
+func startOffering(t *testing.T, root string, o Options, offered []string) *client {
+	t.Helper()
+	return startCaps(t, root, o, map[string]any{"general": map[string]any{"positionEncodings": offered}})
 }
 
 // startCaps is startWith with the client's capabilities, as initialize sends them.

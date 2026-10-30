@@ -1,0 +1,19 @@
+module Json
+
+-- a JSON value: build it with the functions below, write it with encode or File.json
+type Value
+
+null   : Value
+bool   : Bool -> Value
+int    : Int -> Value
+-- NaN, +Inf and -Inf encode as null
+float  : Float -> Value
+-- escapes quotes, backslashes, control characters and < > & U+2028 U+2029 (safe in a script)
+string : Text -> Value
+list   : List Value -> Value
+-- keys in list order; a repeated key keeps its first position and its last value
+object : List { key: Text, value: Value } -> Value
+-- compact: no whitespace
+encode : Value -> Text
+-- n spaces per level; n <= 0 is encode
+encodeIndented : Int -> Value -> Text

@@ -71,17 +71,21 @@ func (c *Checker) resolveFuzzAny(show func(types.Type) string, inTest bool) {
 		case !concrete(t):
 			c.errorf(diag.NotDerivable, use.v.Span, "`Fuzz.any` needs a concrete type here")
 		default:
-			if path, ok := derivableIn(t, show); !ok {
-				c.notDerivable(use.v.Span, path)
-			}
+			c.checkDerivable(use.v.Span, t, show)
 		}
 	}
 	c.fuzzAny = nil
 }
 
-// notDerivable reports E0038 for the type path names, which has no generator.
-func (c *Checker) notDerivable(span diag.Span, path string) {
-	c.errorf(diag.NotDerivable, span, "%s cannot be generated; use `Fuzz.forAll` with a generator you write", path)
+// checkDerivable reports E0038 at span when the concrete type t has no generator: a part of it
+// that no generator can be derived for, or a recursive type with no value that ends the
+// recursion. show prints the types in the message.
+func (c *Checker) checkDerivable(span diag.Span, t types.Type, show func(types.Type) string) {
+	if path, ok := derivableIn(t, show); !ok {
+		c.errorf(diag.NotDerivable, span, "%s cannot be generated; use `Fuzz.forAll` with a generator you write", path)
+	} else if bad := endless(t, map[string]bool{}); bad != nil {
+		c.errorf(diag.NotDerivable, span, "`%s` cannot be generated: no constructor ends the recursion (give one a payload that can be empty, such as a `Maybe` or a `List`, or none); use `Fuzz.forAll` with a generator you write", show(bad))
+	}
 }
 
 // defaultInt sets every type variable free in the applied type t to Int (spec §4.4) and returns
@@ -172,9 +176,7 @@ func (mc *modCtx) endProperty(d *syntax.TestDecl, info PropInfo, params []types.
 			if poisoned(t) {
 				continue
 			}
-			if path, ok := derivableIn(t, mc.ts); !ok {
-				c.notDerivable(info.Params[i].Span, path)
-			}
+			c.checkDerivable(info.Params[i].Span, t, mc.ts)
 		}
 	}
 	c.res.Props[d] = info
@@ -213,14 +215,96 @@ func allConcrete(ts []types.Type) bool {
 	return true
 }
 
+// endless returns the first union or record in t (and below it, through lists and the like)
+// with no finite value: every constructor of a union, or a field of a record, needs the type
+// itself again, so the generator could never stop (a `type S = S { next: S }`). nil when every
+// one has a finite value. seen holds the types already examined.
+func endless(t types.Type, seen map[string]bool) types.Type {
+	switch x := t.(type) {
+	case *types.Brand:
+		return endless(x.Base, seen)
+	case *types.App:
+		for _, a := range x.Args {
+			if bad := endless(a, seen); bad != nil {
+				return bad
+			}
+		}
+	case *types.Record, *types.Union:
+		key := types.String(x)
+		if seen[key] {
+			return nil
+		}
+		seen[key] = true
+		if !finite(x, map[string]bool{}) {
+			return x
+		}
+		for _, part := range parts(x) {
+			if bad := endless(part, seen); bad != nil {
+				return bad
+			}
+		}
+	}
+	return nil
+}
+
+// parts are the types of a record's fields, or of a union's constructor payloads.
+func parts(t types.Type) (ps []types.Type) {
+	switch x := t.(type) {
+	case *types.Record:
+		for _, f := range x.Fields {
+			ps = append(ps, f.Type)
+		}
+	case *types.Union:
+		for _, ct := range x.Constructors() {
+			if arg, _ := types.CtorArg(x, ct.Name); arg != nil {
+				ps = append(ps, arg)
+			}
+		}
+	}
+	return ps
+}
+
+// finite reports whether t has a value that holds no value of a type on path (the types being
+// built): a list, a dict and a Maybe can be empty, a union needs one constructor that is finite,
+// a record needs every field finite. Types that derivable has already settled count as finite.
+func finite(t types.Type, path map[string]bool) bool {
+	switch x := t.(type) {
+	case *types.Brand:
+		return finite(x.Base, path)
+	case *types.Record, *types.Union:
+		key := types.String(x)
+		if path[key] {
+			return false
+		}
+		path[key] = true
+		defer delete(path, key)
+		if u, ok := x.(*types.Union); ok {
+			cts := u.Constructors()
+			if len(cts) == 0 {
+				return true
+			}
+			for _, ct := range cts {
+				if arg, _ := types.CtorArg(u, ct.Name); arg == nil || finite(arg, path) {
+					return true
+				}
+			}
+			return false
+		}
+		for _, part := range parts(x) {
+			if !finite(part, path) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // derivableCons are the builtin types with a generator of their own (spec §4).
 var derivableCons = map[string]bool{"Int": true, "Float": true, "Bool": true, "Text": true, "Unit": true, "Bytes": true, "Date": true, "Time": true}
 
-// derivable reports whether `alder test` can derive a generator for the concrete type t (spec
-// §4). When it cannot, path names the offending part, as in "`Html Msg` in field `view` of `Card`".
-func derivable(t types.Type) (path string, ok bool) { return derivableIn(t, types.String) }
-
-// derivableIn is derivable with the types in path printed by show.
+// derivableIn reports whether `alder test` can derive a generator for the concrete type t (spec
+// §4). When it cannot, path names the offending part, as in "`Html Msg` in field `view` of
+// `Card`", its types printed by show.
 func derivableIn(t types.Type, show func(types.Type) string) (string, bool) {
 	bad, where := derive(t, show, map[string]bool{})
 	if bad == nil {

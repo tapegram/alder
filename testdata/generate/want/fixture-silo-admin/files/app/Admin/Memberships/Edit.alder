@@ -143,14 +143,14 @@ view model session =
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       {if model.orgsTotal > 200 then
         <form submit={SearchOrg}>
           <al-input field="q" label="Find org" />
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       -- @admin end
       <form submit={Save}>
         -- @admin begin inputs

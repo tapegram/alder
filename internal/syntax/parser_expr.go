@@ -2,6 +2,8 @@
 package syntax
 
 import (
+	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -204,23 +206,55 @@ func (p *Parser) unit(start Token) Expr {
 	return e
 }
 
+// intLit builds an Int literal from its token. A literal that does not fit in 64 bits is a
+// diagnostic (E0001) at the literal and parses as 0. neg means the token is the 9223372036854775808
+// of `-9223372036854775808`, which is MinInt64.
+func (p *Parser) intLit(t Token, neg bool) *IntLit {
+	e := &IntLit{}
+	e.Span = p.spanTok(t)
+	if neg {
+		e.Value = math.MinInt64
+		return e
+	}
+	v, err := strconv.ParseInt(t.Text, 10, 64)
+	if err != nil {
+		p.errorAt(t, fmt.Sprintf("`%s` does not fit in an Int (64 bits, up to 9223372036854775807)", t.Text))
+		return e
+	}
+	e.Value = v
+	return e
+}
+
+// floatLit builds a Float literal; one that overflows to infinity is a diagnostic at the literal.
+func (p *Parser) floatLit(t Token) *FloatLit {
+	e := &FloatLit{}
+	e.Span = p.spanTok(t)
+	v, err := strconv.ParseFloat(t.Text, 64)
+	if err != nil && math.IsInf(v, 0) {
+		p.errorAt(t, fmt.Sprintf("`%s` does not fit in a Float (64 bits, up to about 1.7976931348623157e308)", t.Text))
+		return e
+	}
+	e.Value = v
+	return e
+}
+
 func (p *Parser) parsePrimary() Expr {
 	start := p.tok
 	switch p.tok.Kind {
 	case Int:
-		t := p.advance()
-		v, _ := strconv.ParseInt(t.Text, 10, 64)
-		e := &IntLit{Value: v}
-		e.Span = p.spanTok(t)
-		return e
+		return p.intLit(p.advance(), false)
 	case Float:
-		t := p.advance()
-		v, _ := strconv.ParseFloat(t.Text, 64)
-		e := &FloatLit{Value: v}
-		e.Span = p.spanTok(t)
-		return e
+		return p.floatLit(p.advance())
 	case Minus: // -1 only
 		p.advance()
+		if p.at(Int) && p.tok.Text != "" {
+			// -9223372036854775808 is MinInt64: the one place the literal alone does not fit.
+			if u, err := strconv.ParseUint(p.tok.Text, 10, 64); err == nil && u == 1<<63 {
+				e := p.intLit(p.advance(), true)
+				e.Span.Start = p.posOf(start)
+				return e
+			}
+		}
 		if p.at(Int) || p.at(Float) {
 			lit := p.parsePrimary()
 			switch l := lit.(type) { // the literal's span takes in its `-`
@@ -308,7 +342,8 @@ func (p *Parser) parsePrimary() Expr {
 				p.advance()
 				if !p.at(LIdent) {
 					p.errorAt(p.tok, "expected a parameter name after `(`")
-					break
+					p.skipBadLambda() // what follows would only cascade
+					return p.unit(start)
 				}
 			}
 			t := p.advance()
@@ -383,6 +418,34 @@ func (p *Parser) checkCaseOf(e Expr, start Token) Expr {
 		}
 	}
 	return e
+}
+
+// skipBadLambda consumes the rest of a lambda whose parameters did not parse, up to what the
+// enclosing parser must see: a close delimiter that nothing in the skipped text opened, a blank
+// line, or a token in column 1 (the next declaration). So a lambda inside parentheses, brackets
+// or braces leaves its `)`, `]` or `}` to them, and never swallows the next declaration.
+func (p *Parser) skipBadLambda() {
+	depth := 1 // the `(` of the parameter that failed is still open
+	for !p.at(EOF) {
+		switch {
+		case p.at(LParen), p.at(LBracket), p.at(LBrace):
+			depth++
+		case p.at(RParen), p.at(RBracket), p.at(RBrace):
+			if depth == 0 {
+				return
+			}
+			depth--
+		case p.at(NL):
+			save, saveTok := p.mark()
+			p.advance()
+			if p.at(NL) || p.at(EOF) || p.tok.Col == 1 {
+				p.restore(save, saveTok)
+				return
+			}
+			continue
+		}
+		p.advance()
+	}
 }
 
 // skipToDeclStayingOnLine consumes the rest of the current logical expression (to the next blank line or EOF).

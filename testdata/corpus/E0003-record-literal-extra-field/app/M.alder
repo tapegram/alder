@@ -1,0 +1,18 @@
+module M
+
+type Curve = { median: Float, sigma: Float, perDoubling: Float }
+
+reportTime : Curve -> Float -> Float
+reportTime c t = c.median + c.sigma * t + c.perDoubling
+
+clamped : Float -> Float
+clamped t = {
+  let wide = { median: 1.0, sigma: 2.0, perDoubling: 0.5, extra: 1 }
+  reportTime wide t
+}
+
+misspelt : Float -> Float
+misspelt t = {
+  let wide = { median: 1.0, sigma: 2.0, perDubling: 0.5 }
+  reportTime wide t
+}

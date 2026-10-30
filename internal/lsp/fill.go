@@ -34,7 +34,7 @@ func (s *server) fillAction(a *analysis, rel string, ctx generate.HereCtx, pos d
 		var ds []Diagnostic
 		for _, d := range a.diags {
 			if d.Code == "W0002" && d.Span == h.Span {
-				ds = append(ds, lspDiagnostic(d))
+				ds = append(ds, s.enc.wireDiagnostic(a.lines[rel], lspDiagnostic(d)))
 			}
 		}
 		arg := fillArgs{URI: s.uriOf(rel), Address: h.Address(), Hole: h.Name, Type: h.Type}
@@ -133,8 +133,9 @@ func (s *server) runFill(rel string, arg fillArgs, backend fill.Backend, model s
 			doc.Version = &v
 		}
 		var edits []TextEdit
+		before := strings.Split(*fc.Before, "\n")
 		for _, e := range generate.LineEdits(*fc.Before, *fc.After) {
-			edits = append(edits, TextEdit{Range: Range{Start: Position{Line: e.Start}, End: Position{Line: e.End}}, NewText: e.Text})
+			edits = append(edits, s.enc.wireEdit(before, TextEdit{Range: Range{Start: Position{Line: e.Start}, End: Position{Line: e.End}}, NewText: e.Text}))
 		}
 		changes = append(changes, textDocumentEdit{TextDocument: doc, Edits: edits})
 	}

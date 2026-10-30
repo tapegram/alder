@@ -425,6 +425,14 @@ func (p *Parser) parseDecl() Decl {
 		pop()
 		d.Span = p.spanFrom(start)
 		return d
+	case p.at(LIdent) && p.tok.Text == "theme" && p.peekIs(LBrace): // contextual, like `deploy`
+		p.advance()
+		p.advance()
+		pop := p.in("the theme declaration")
+		d := &ThemeDecl{Fields: p.parseDeployFields()}
+		pop()
+		d.Span = p.spanFrom(start)
+		return d
 	case p.atKeyword("login") && !(p.sigMode && p.peekIsColon()): // stdlib Test's `login : …` is a value
 		p.advance()
 		p.expect(Equal, "`=`")
@@ -1140,7 +1148,8 @@ func (p *Parser) parseDeployFields() []*DeployField {
 	}
 }
 
-// parseDeployValue parses a string, a number, `[value, …]`, or `Ctor ["text"] [{ fields }]`.
+// parseDeployValue parses a string, a number, `[value, …]`, `Ctor ["text"] [{ fields }]`, or
+// a bare `{ fields }` (a theme's `light` and `dark`).
 func (p *Parser) parseDeployValue() *DeployValue {
 	start := p.tok
 	switch {
@@ -1208,7 +1217,15 @@ func (p *Parser) parseDeployValue() *DeployValue {
 		}
 		v.Span = p.spanFrom(start)
 		return v
+	case p.at(LBrace):
+		p.advance()
+		v := &DeployValue{Kind: "record", Rec: p.parseDeployFields()}
+		if v.Rec == nil {
+			v.Rec = []*DeployField{}
+		}
+		v.Span = p.spanFrom(start)
+		return v
 	}
-	p.errorAt(p.tok, "expected a string, a number, a list or a constructor, got "+describe(p.tok))
+	p.errorAt(p.tok, "expected a string, a number, a list, a record or a constructor, got "+describe(p.tok))
 	return nil
 }
