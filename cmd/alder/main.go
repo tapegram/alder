@@ -58,6 +58,8 @@ func main() {
 		os.Exit(runScratchTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "test":
 		os.Exit(runTestTo(os.Args[2:], os.Stdout, os.Stderr))
+	case "bench":
+		os.Exit(runBenchTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "migrate":
 		os.Exit(runMigrateTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "repl":

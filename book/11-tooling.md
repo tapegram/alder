@@ -98,6 +98,7 @@ usage: alder <command> [arguments]
   eval      evaluate an expression in the app
   scratch   run a scratch file's watches against the app
   test      run the app's tests
+  bench     measure each browser step of the app's tests
   migrate   write the migration for a schema change
   repl      an interactive session in the app (deprecated: use alder scratch)
   new       create an app, or generate code in one
@@ -1053,6 +1054,77 @@ none of it, so a production binary carries no test code (chapter 13,
 the tests' process, and so does killing `alder test` in any way (the
 process exits when its standard input, a pipe `alder test` holds, closes).
 
+### `alder bench`
+
+```
+alder bench [dir] [-run re] [--count N] [-timeout d] [--json] [--build-dir DIR]
+```
+
+`alder bench` answers "what does a request of this page cost?" with the
+app's own tests as the scenarios. It builds the same test program as
+`alder test` (into `build/<app>/scratch/test/`), runs it with the
+environment variable `ALDER_TEST_BENCH=1`, and the program then measures
+every browser step a test takes (`Test.get`, `Test.open`, `Test.click`,
+`Test.submit`, `Test.submitRaw`, `Test.fetch`, chapter 10): what the
+server spent on the requests the step made. There is no new language and no
+second main: a scenario is a test, written with the app's types, fakes
+and steps, and `-run`, `--json`, `--build-dir`, `-timeout` and the exit
+codes are `alder test`'s. Pure and property tests are skipped (they make no
+request); `--mutate`, `--min`, `--fuzz` and `--seed` print the usage. Each
+selected test runs `--count` times (default 3), each run on its own fresh
+database as always, and a step's time and allocations are the median of
+the runs.
+
+After each test's `ok` line comes one row per step, named after its first
+request:
+
+```
+ok   Rows.Bench "toggle 1000"
+  step                                      ms     bytes               alloc  req loads steps   sql  n+1
+  GET /                                   5.25  811.3 kB    12.32 MB / 57.8k    1     1     1     1
+  POST /_m/Rows.Index/Toggle              6.67  808.4 kB    12.70 MB / 66.7k    1     2     3     4
+```
+
+| column | what it counts |
+|---|---|
+| `ms` | the wall time the router took to serve the step's requests (summed) |
+| `bytes` | the answers' bodies: the document of a GET, the event stream of a Datastar answer (the body patch, title, history) |
+| `alloc` | bytes and objects the Go runtime allocated while the router served them (`runtime.MemStats`: `TotalAlloc` and `Mallocs` read just before and just after each request) |
+| `req` | requests the router served: 1, 2 when it followed a `Redirect` itself (chapter 6), more for each 303 the browser followed |
+| `loads` | how many times a page's `load` ran: a `Rerender` runs it twice (before `update`, to give it the model, and after, to render), and so does a followed `Redirect` (the message's page, then the target) |
+| `steps` | the effect steps the requests ran (their trace) |
+| `sql` | the SQL statements they ran |
+| `n+1` | the statements run in a loop (below): count and distinct argument sets |
+
+With `--json` each test's object carries `"bench": [{"step", "ms", "bytes",
+"alloc", "allocs", "requests", "loads", "steps", "sql", "repeats"}]`. The
+test's own effects (its seeding inserts, `Test.run`) are not measured, only
+the browser's requests. A test that fails is reported as `alder test`
+reports it, and its rows still follow (its steps ran).
+
+How the numbers are taken, so you know what they mean: a test's browser
+calls the app's real router in-process (chapter 10), so there is no
+network; each request's `Env` gets a recorder (`eff.Recorder`) that times
+every effect step and every statement, and the runtime counts each Query
+it runs on that `Env` (a page's `load` is the only Query a request runs).
+Just before and just after the router serves each request the program
+reads the clock and the Go runtime's memory statistics, so the test
+browser's own work (parsing the answer into a document, applying a
+Datastar patch to it) is not counted: that is the client's cost, which a
+real browser pays in the DOM. The requests run inside the test's transaction under a
+savepoint, on an in-memory database, with the recorder on, so the numbers
+are for comparing (before and after a change, N rows against 10N), not
+production latencies: the browser's time in the DOM is not in them at all.
+For a production-shaped profile write a Go benchmark in the emitted build
+(`alder build --emit`, below): a `bench_test.go` next to the generated
+code can call the router with `httptest` against a file database and run
+under `go test -bench . -cpuprofile`.
+
+The repository's fixture `testdata/bench/rows` (a page of N rows, a
+click, a form, a redirect, an N+1 page) is what the runtime's own baselines
+are measured on (`docs/perf/`); `go test ./cmd/alder` runs it once to check
+the columns' shape, never their times.
+
 ### `alder migrate`
 
 `alder migrate [dir] [--name slug] [--dry-run]` writes the next
@@ -1534,7 +1606,34 @@ remembers the tab chosen last, so the next answer opens on it again. Its tabs:
   `x3 (bulk)` instead; a select per row outside a `Task.all` is still the
   flagged kind. Statements are counted per answer: the session's user
   selected by a message and again by the page it redirects to is not a
-  duplicate.
+  duplicate. Five or more runs of one statement in one run of a page's
+  `load` (or in what `update` itself ran) are an N+1, marked `N+1 x100`
+  instead of `duplicate` (a red badge, like the Errors tab's), and the bar
+  then shows `N+1` after the SQL count; the server's log gets a `warn` line
+  naming the request (`GET /slow: N+1: …`, the same text as below). Each
+  `load` run is counted on its own because a `Rerender` runs `load` twice in
+  one request: a page whose `load` selects the same thing three times is
+  not an N+1 when a click re-renders it, though the answer then holds six.
+  The rule (`eff.RepeatsCut`: the recorder marks where each `load` began and
+  ended, as it marks a redirect's hop) groups the statements by their text
+  (the arguments are bound with `?`, so the text is the statement's shape;
+  a `.in` list's `(?, ?)` and `(?, ?, ?)` count as one shape, `(?, …)`) and
+  takes every group of five or more, except a group of writes (`INSERT`,
+  `UPDATE`, `DELETE`) issued under one `Task.all`, the bulk action above. A
+  read under a `Task.all` is not excused: `Query.all (List.map (\r -> Db.get
+  Row r.id) rows)` is one round trip per row on a remote database (Turso,
+  chapter 15), where each statement crosses the network. Two to four are
+  left as duplicates: two records looked up by hand on one page is not a
+  loop. The warning says what to do (when every run had the same
+  arguments, it says instead that the same query ran N times and should run
+  once):
+
+  ```
+  N+1: SELECT "id", "title", … FROM "Table__Row__Row" WHERE "id" = ? ran 100 times (100 argument sets, 3.21 ms): one Db.get per row; read them together with Db.where (Row.id.in ids), or in the page's first query
+  ```
+
+  The same rule runs in `alder test` (a `warn:` line under the test,
+  chapter 10) and in `alder bench`'s `n+1` column.
 - Answer: page, rerender, redirect, not found, or an error with its text.
 - Patches: the events the answer sent (body, title, history, toast, panel).
 - History: the last 20 requests of this browser tab, newest first. The panel
