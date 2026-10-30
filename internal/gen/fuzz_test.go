@@ -82,9 +82,6 @@ func TestFuzz(t *testing.T) {
 			if p.Pure != nil && !p.Pure(vs) {
 				t.Errorf("%s does not hold for %v", name, lits)
 			}
-			if p.Task != nil {
-				p.Task(vs)
-			}
 			for _, v := range vs {
 				switch x := v.(type) {
 				case Todo__Tree:
@@ -178,7 +175,10 @@ func TestFuzz(t *testing.T) {
 	// slugs (a top-level Fuzz.any) draws Slugs
 	if _, ok := func() (s string, ok bool) {
 		defer func() {
-			if recover() != nil {
+			if r := recover(); r != nil {
+				if _, rej := r.(fuzz.Reject); !rej {
+					panic(r) // only a brand's rejection is the answer here
+				}
 				ok = false
 			}
 		}()
@@ -198,7 +198,7 @@ func TestRunProperties(t *testing.T) {
 			}
 			continue
 		}
-		if !r.OK {
+		if !r.OK || (r.Name != "plain" && r.Runs != 100) { // the Task properties run here: TestFuzz only draws
 			t.Errorf("%s fails: %+v", r.Name, r)
 		}
 	}
