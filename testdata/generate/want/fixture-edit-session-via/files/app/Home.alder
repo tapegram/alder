@@ -67,16 +67,16 @@ test "writing a post lists it, a draft" = {
         author: p.author,
       }) posts,
     } == {
-        answer: Redirected (Home {}),
-        listed: ["Hello"],
-        posts: [
-          {
-            status: Draft,
-            featured: False,
-            author: me,
-          },
-        ],
-      }
+      answer: Redirected (Home {}),
+      listed: ["Hello"],
+      posts: [
+        {
+          status: Draft,
+          featured: False,
+          author: me,
+        },
+      ],
+    }
   )
 }
 
@@ -127,9 +127,9 @@ test "logging out signs the user out" = {
       user: out.session.user,
       role: out.session.role,
     } == {
-        answer: Redirected (Auth.Login {}),
-        user: Nothing,
-        role: Reader,
-      }
+      answer: Redirected (Auth.Login {}),
+      user: Nothing,
+      role: Reader,
+    }
   )
 }

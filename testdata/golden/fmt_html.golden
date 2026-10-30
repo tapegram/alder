@@ -112,3 +112,29 @@ markupElseIf n =
   </div>
 
 markupElseIfFits n = <div>{if n == 0 then <p>a</p> else if n == 1 then <p>b</p> else <p>c</p>}</div>
+
+markupElseIfComment n =
+  <div>
+    {if n == 0 then
+      <p>a</p>
+    else
+      -- the other cases
+      if n == 1 then <p>b</p> else <p>c</p>}
+  </div>
+
+markupElseIfBlock n =
+  <div>
+    {if n == 0 then
+      <p>a</p>
+    else if n == 1 then {
+      let label = "one"
+      <p>{label}</p>
+    } else
+      <p>c</p>}
+  </div>
+
+selfClosingSpaced =
+  <div>
+    <br />
+    <img src="a.png" alt="" />
+  </div>

@@ -27,6 +27,7 @@ type client struct {
 	nextID     int
 	waits      map[int]chan *message
 	notes      chan *message // notifications other than publishDiagnostics
+	requests   chan *message // the server's requests (answer them with answer)
 	root       string
 	vers       map[string]int    // the version of each open document, by rel
 	texts      map[string]string // the text of each open document, by rel
@@ -53,11 +54,23 @@ func start(t *testing.T, root string) *client {
 // startWith is start with the server's options (Log is the test log when it is nil).
 func startWith(t *testing.T, root string, o Options) *client {
 	t.Helper()
+	return startOffering(t, root, o, []string{"utf-8", "utf-16"})
+}
+
+// startOffering is startWith for a client whose general.positionEncodings is offered.
+func startOffering(t *testing.T, root string, o Options, offered []string) *client {
+	t.Helper()
+	return startCaps(t, root, o, map[string]any{"general": map[string]any{"positionEncodings": offered}})
+}
+
+// startCaps is startWith with the client capabilities initialize sends.
+func startCaps(t *testing.T, root string, o Options, caps map[string]any) *client {
+	t.Helper()
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	c := &client{
 		t: t, w: inW, root: root,
-		waits: map[int]chan *message{}, notes: make(chan *message, 1024),
+		waits: map[int]chan *message{}, notes: make(chan *message, 1024), requests: make(chan *message, 64),
 		vers: map[string]int{}, texts: map[string]string{}, uriRel: map[string]string{},
 		published: map[string][]publishDiagnosticsParams{}, pubSeq: map[string][]int{}, publishing: make(chan struct{}),
 		done: make(chan struct{}),
@@ -81,7 +94,7 @@ func startWith(t *testing.T, root string, o Options) *client {
 			t.Error("the server did not stop at EOF")
 		}
 	})
-	if e := c.call("initialize", map[string]any{"rootUri": c.uri(""), "capabilities": map[string]any{}}, &c.initResult); e != nil {
+	if e := c.call("initialize", map[string]any{"rootUri": c.uri(""), "capabilities": caps}, &c.initResult); e != nil {
 		t.Fatalf("initialize: %v", e)
 	}
 	c.notify("initialized", map[string]any{})
@@ -106,6 +119,11 @@ func (c *client) read(r io.Reader) {
 			return
 		}
 		switch {
+		case m.ID != nil && m.Method != "":
+			select {
+			case c.requests <- m:
+			default:
+			}
 		case m.ID != nil && m.Method == "":
 			id, _ := strconv.Atoi(string(*m.ID))
 			c.mu.Lock()
@@ -126,7 +144,7 @@ func (c *client) read(r io.Reader) {
 			close(c.publishing)
 			c.publishing = make(chan struct{})
 			c.mu.Unlock()
-		case m.ID == nil:
+		case m.ID == nil, m.Method != "": // a notification, or a request of the server's (unanswered)
 			select {
 			case c.notes <- m:
 			default:
@@ -186,6 +204,33 @@ func (c *client) call(method string, params, out any) *rpcError {
 	case <-time.After(timeout):
 		c.t.Fatalf("%s: no response in %v", method, timeout)
 		return nil
+	}
+}
+
+// answer sends the response to the server's request id: result, or an error when result is an
+// *rpcError.
+func (c *client) answer(id *json.RawMessage, result any) {
+	if e, ok := result.(*rpcError); ok {
+		c.send(map[string]any{"jsonrpc": "2.0", "id": id, "error": e})
+		return
+	}
+	c.send(map[string]any{"jsonrpc": "2.0", "id": id, "result": result})
+}
+
+// request waits for the server's next request of method, dropping the others before it.
+func (c *client) request(method string) *message {
+	c.t.Helper()
+	deadline := time.After(noteTimeout)
+	for {
+		select {
+		case m := <-c.requests:
+			if m.Method == method {
+				return m
+			}
+		case <-deadline:
+			c.t.Fatalf("no %s request in %v", method, noteTimeout)
+			return nil
+		}
 	}
 }
 

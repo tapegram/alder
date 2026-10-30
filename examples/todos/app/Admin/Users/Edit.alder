@@ -122,13 +122,13 @@ test "saving changes every field" = {
         role: row.role,
       }) after,
     } == {
-        answer: Redirected (Admin.Users.Show { id: user2 }),
-        row: Just {
-          email: Text.Email "email-3@example.com",
-          name: Text.NonEmpty "name-3",
-          role: Admin,
-        },
-      }
+      answer: Redirected (Admin.Users.Show { id: user2 }),
+      row: Just {
+        email: Text.Email "email-3@example.com",
+        name: Text.NonEmpty "name-3",
+        role: Admin,
+      },
+    }
   )
 }
 
@@ -216,13 +216,13 @@ test "an Admin saves their own account, the role unchanged" = {
         role: row.role,
       }) after,
     } == {
-        answer: Redirected (Admin.Users.Show { id: me }),
-        row: Just {
-          email: Text.Email "email-2@example.com",
-          name: Text.NonEmpty "name-2",
-          role: Admin,
-        },
-      }
+      answer: Redirected (Admin.Users.Show { id: me }),
+      row: Just {
+        email: Text.Email "email-2@example.com",
+        name: Text.NonEmpty "name-2",
+        role: Admin,
+      },
+    }
   )
 }
 

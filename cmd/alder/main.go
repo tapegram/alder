@@ -13,6 +13,7 @@ import (
 
 	"alder/internal/buildkit"
 	"alder/internal/diag"
+	"alder/internal/style"
 )
 
 func main() {
@@ -57,6 +58,8 @@ func main() {
 		os.Exit(runScratchTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "test":
 		os.Exit(runTestTo(os.Args[2:], os.Stdout, os.Stderr))
+	case "bench":
+		os.Exit(runBenchTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "migrate":
 		os.Exit(runMigrateTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "repl":
@@ -114,22 +117,58 @@ func main() {
 			usage()
 			os.Exit(2)
 		}
-		text, ok := diag.Explain[os.Args[2]]
-		if !ok {
-			fmt.Fprintf(os.Stderr, "unknown diagnostic code %s\n", os.Args[2])
-			os.Exit(2)
-		}
-		fmt.Println(text)
+		os.Exit(explainTo(os.Args[2], os.Stdout, os.Stderr))
 	default:
 		usage()
 		os.Exit(2)
 	}
 }
 
+// explainTo is `alder explain <code>`: the explanation as one line, or on a terminal wrapped to
+// the terminal's width (at most 100 columns).
+func explainTo(code string, stdout, stderr io.Writer) int {
+	text, ok := diag.Explain[code]
+	if !ok {
+		fmt.Fprintf(stderr, "unknown diagnostic code %s\n", code)
+		return 2
+	}
+	if st := style.For(stdout); st.On() {
+		text = st.Wrap(text, min(st.Width(), 100))
+	}
+	fmt.Fprintln(stdout, text)
+	return 0
+}
+
+// errTag is the `alder <command>:` prefix of an error line on w, bold red on a terminal. It is
+// used by the commands that have no --json mode; the ones that have style nothing in JSON mode.
+func errTag(w io.Writer, tag string) string { return style.For(w).BoldRed(tag) }
+
 func usage() { usageTo(os.Stderr) }
 
+// usageTo prints the overall usage: one row per command of commandTree (the tree that
+// `alder help --json` serves), names bold on a terminal. A command's own usage is
+// `alder <command> --help`.
 func usageTo(w io.Writer) {
-	fmt.Fprintln(w, "usage: alder new <name> | alder new page|table|form|msg|capability|admin … | alder edit table|page|session … | alder remove page|table … | alder fill <Module>.<decl> - | alder regen admin | alder check [dir] [--json] | alder fmt [--check | --stdin] [path...] | alder build [--emit] [--build-dir DIR] [dir] | alder run [--build-dir DIR] [dir] | alder routes [dir] [--json] | alder dump [--tokens|--ast|--ir] <file.alder | dir> | alder eval [dir] [--run] [--json] [--build-dir DIR] [--in Name | --module Name] <expr | -> | alder scratch [file] [--watch] [--json] [--build-dir DIR] [--module Name] | alder test [dir] [-run re] [-timeout d] [--json] [--build-dir DIR] [--mutate [--min R]] | alder repl [dir] [--build-dir DIR] [--in Name | --module Name] (deprecated: use alder scratch) | alder migrate [dir] [--name slug] [--dry-run] | alder migrate silos <env> [--allow-data-loss] | alder deploy <env> [dir] [--build-dir DIR] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json] | alder deploy init render|fly [dir] [--force] [--dry-run] | alder status|logs <env> | alder rollback <env> [<id>] | alder restore <env> [--silo key:id] [--from url] [--to time] [--out file] | alder silos prune <env> [--yes] | alder ci init [dir] | alder lsp | alder explain <code> | alder version")
+	st := style.For(w)
+	fmt.Fprint(w, usageText(st))
+}
+
+// usageText is the overall usage as text; with style.Plain it is the book's Commands block.
+func usageText(st style.Style) string {
+	rows := make([][]string, len(commandTree))
+	for i, c := range commandTree {
+		rows[i] = []string{c.Name, c.Summary}
+	}
+	var sb strings.Builder
+	sb.WriteString("usage: alder <command> [arguments]\n\n")
+	sb.WriteString(style.ColumnsStyled("  ", rows, func(col int, cell string) string {
+		if col == 0 {
+			return st.Bold(cell)
+		}
+		return cell
+	}))
+	sb.WriteString("\nalder <command> --help prints its usage; alder help --json prints the command tree\n")
+	return sb.String()
 }
 
 func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {
@@ -185,15 +224,49 @@ func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {
 		if d.Severity == "warning" {
 			w = stderr
 		}
-		fmt.Fprint(w, diag.RenderText(d, sources[d.Span.File]))
+		fmt.Fprint(w, diag.RenderTextStyled(d, sources[d.Span.File], style.For(w)))
 	}
 	if holes := countHoles(bag.Items); holes > 0 && !jsonOut { // "holes left" is not "build failed"
 		fmt.Fprintf(stderr, "alder check: %d typed %s left\n", holes, map[bool]string{true: "hole", false: "holes"}[holes == 1])
+	}
+	if st := style.For(stderr); st.On() && !jsonOut && len(bag.Items) > 0 {
+		fmt.Fprintln(stderr, countLine(bag.Items, st))
 	}
 	if bag.HasErrors() {
 		return 1
 	}
 	return 0
+}
+
+// countLine is `2 errors, 1 warning` for ds, bold red when any is an error, else yellow: the
+// last line `alder check` prints on a terminal.
+func countLine(ds []diag.Diagnostic, st style.Style) string {
+	errs, warns := 0, 0
+	for _, d := range ds {
+		if d.Severity == "error" {
+			errs++
+		} else {
+			warns++
+		}
+	}
+	plural := func(n int, word string) string {
+		if n == 1 {
+			return fmt.Sprintf("1 %s", word)
+		}
+		return fmt.Sprintf("%d %ss", n, word)
+	}
+	var parts []string
+	if errs > 0 {
+		parts = append(parts, plural(errs, "error"))
+	}
+	if warns > 0 {
+		parts = append(parts, plural(warns, "warning"))
+	}
+	line := strings.Join(parts, ", ")
+	if errs > 0 {
+		return st.BoldRed(line)
+	}
+	return st.Yellow(line)
 }
 
 // countHoles is the number of typed holes (W0002) among ds.

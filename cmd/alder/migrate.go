@@ -18,6 +18,7 @@ import (
 	"alder/internal/diag"
 	"alder/internal/ir"
 	"alder/internal/migrate"
+	"alder/internal/style"
 )
 
 // migrateUsage is the usage line of `alder migrate`.
@@ -50,7 +51,7 @@ func runMigrateTo(args []string, stdout, stderr io.Writer) int {
 func runMigrateWith(args []string, stdout, stderr io.Writer, e *deployEnv) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(stderr, "alder migrate: internal error: %v\n", r)
+			fmt.Fprintf(stderr, "%s internal error: %v\n", errTag(stderr, "alder migrate:"), r)
 			code = 2
 		}
 	}()
@@ -83,7 +84,7 @@ func runMigrateWith(args []string, stdout, stderr io.Writer, e *deployEnv) (code
 		return 2
 	}
 	if len(prog.Modules) == 0 {
-		fmt.Fprintf(stderr, "alder migrate: no .alder files under %s/app\n", dir)
+		fmt.Fprintf(stderr, "%s no .alder files under %s/app\n", errTag(stderr, "alder migrate:"), dir)
 		return 2
 	}
 	sources := buildkit.Sources(prog)
@@ -92,7 +93,7 @@ func runMigrateWith(args []string, stdout, stderr io.Writer, e *deployEnv) (code
 		if d.Severity == "warning" {
 			w = stderr
 		}
-		fmt.Fprint(w, diag.RenderText(d, sources[d.Span.File]))
+		fmt.Fprint(w, diag.RenderTextStyled(d, sources[d.Span.File], style.For(w)))
 	}
 	if bag.HasErrors() || res == nil {
 		return 1
@@ -117,7 +118,7 @@ func writeMigration(dir string, cur migrate.Schema, name string, dry bool, stdou
 	if _, _, _, err := buildkit.MigrationsChain(dir); err != nil {
 		var sm *buildkit.SnapshotMismatch
 		if !errors.As(err, &sm) { // (previous has said that one its own way)
-			fmt.Fprintf(stderr, "alder migrate: %v\n", err)
+			fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder migrate:"), err)
 			return 1
 		}
 	}
@@ -138,11 +139,11 @@ func writeMigration(dir string, cur migrate.Schema, name string, dry bool, stdou
 		default:
 			fmt.Fprintf(stdout, "no changes since %s\n", last)
 			if changed, err := snapshotDiffers(snap, cur); err != nil {
-				fmt.Fprintf(stderr, "alder migrate: %v\n", err)
+				fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder migrate:"), err)
 				return 2
 			} else if changed { // the defaults (not in the database) changed: keep schema.json current
 				if err := migrate.WriteSnapshot(snap, cur); err != nil {
-					fmt.Fprintf(stderr, "alder migrate: %v\n", err)
+					fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder migrate:"), err)
 					return 2
 				}
 				fmt.Fprintf(stdout, "updated %s (defaults only)\n", snap)
@@ -159,7 +160,7 @@ func writeMigration(dir string, cur migrate.Schema, name string, dry bool, stdou
 		}
 	}
 	if m.Name, err = migrate.NextName(mdir, slug); err != nil {
-		fmt.Fprintf(stderr, "alder migrate: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder migrate:"), err)
 		return 2
 	}
 	text := migrate.Render(m)
@@ -170,26 +171,27 @@ func writeMigration(dir string, cur migrate.Schema, name string, dry bool, stdou
 		return 0
 	}
 	if err := os.MkdirAll(mdir, 0o755); err != nil {
-		fmt.Fprintf(stderr, "alder migrate: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder migrate:"), err)
 		return 2
 	}
 	if err := os.WriteFile(file, []byte(text), 0o644); err != nil {
-		fmt.Fprintf(stderr, "alder migrate: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder migrate:"), err)
 		return 2
 	}
 	if err := migrate.WriteSnapshot(snap, cur); err != nil {
 		os.Remove(file)
-		fmt.Fprintf(stderr, "alder migrate: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder migrate:"), err)
 		return 2
 	}
-	fmt.Fprintf(stdout, "wrote %s\n", file)
+	st := style.For(stdout)
+	fmt.Fprintf(stdout, "%s %s\n", st.Green("wrote"), file)
 	for _, s := range m.Steps {
 		fmt.Fprintf(stdout, "  %s\n", s)
 		if s.DropsData != "" {
-			fmt.Fprintf(stdout, "!! DROPS DATA: %s\n", s.DropsData)
+			fmt.Fprintf(stdout, "%s %s\n", st.BoldRed("!! DROPS DATA:"), s.DropsData)
 		}
 	}
-	fmt.Fprintf(stdout, "updated %s\n", snap)
+	fmt.Fprintf(stdout, "%s %s\n", st.Green("updated"), snap)
 	return 0
 }
 
@@ -202,7 +204,7 @@ var migrationFileRe = regexp.MustCompile(`^[0-9]{4}_.+\.sql$`)
 func previous(mdir string, stderr io.Writer) (migrate.Schema, string, int) {
 	entries, err := os.ReadDir(mdir)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		fmt.Fprintf(stderr, "alder migrate: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder migrate:"), err)
 		return migrate.Schema{}, "", 2
 	}
 	var files []string
@@ -218,10 +220,10 @@ func previous(mdir string, stderr io.Writer) (migrate.Schema, string, int) {
 	case len(files) == 0 && serr != nil:
 		return migrate.Schema{}, "", 0
 	case len(files) == 0:
-		fmt.Fprintf(stderr, "alder migrate: migrations/schema.json has no migration file: restore the migrations from version control, or delete schema.json to start again from 0001_initial\n")
+		fmt.Fprintf(stderr, "%s migrations/schema.json has no migration file: restore the migrations from version control, or delete schema.json to start again from 0001_initial\n", errTag(stderr, "alder migrate:"))
 		return migrate.Schema{}, "", 1
 	case serr != nil:
-		fmt.Fprintf(stderr, "alder migrate: migrations/ has migration files but no schema.json, the schema they lead to: restore it from version control\n")
+		fmt.Fprintf(stderr, "%s migrations/ has migration files but no schema.json, the schema they lead to: restore it from version control\n", errTag(stderr, "alder migrate:"))
 		return migrate.Schema{}, "", 1
 	}
 	lastFile := files[len(files)-1]
@@ -232,21 +234,21 @@ func previous(mdir string, stderr io.Writer) (migrate.Schema, string, int) {
 		hash, err = old.Hash()
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "alder migrate: migrations/schema.json does not read (%v): restore it from version control\n", err)
+		fmt.Fprintf(stderr, "%s migrations/schema.json does not read (%v): restore it from version control\n", errTag(stderr, "alder migrate:"), err)
 		return old, last, 1
 	}
 	b, err := os.ReadFile(filepath.Join(mdir, lastFile))
 	if err != nil {
-		fmt.Fprintf(stderr, "alder migrate: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder migrate:"), err)
 		return old, last, 2
 	}
 	_, _, to, _, err := migrate.ParseHeader(string(b))
 	if err != nil {
-		fmt.Fprintf(stderr, "alder migrate: migrations/%s: %v\n", lastFile, err)
+		fmt.Fprintf(stderr, "%s migrations/%s: %v\n", errTag(stderr, "alder migrate:"), lastFile, err)
 		return old, last, 1
 	}
 	if !strings.HasPrefix(hash, to) {
-		fmt.Fprintf(stderr, "alder migrate: migrations/schema.json does not match %s's result; restore migrations/schema.json from version control, or delete the last migration file and run `alder migrate` again (only if it has not run against a database you keep)\n", lastFile)
+		fmt.Fprintf(stderr, "%s migrations/schema.json does not match %s's result; restore migrations/schema.json from version control, or delete the last migration file and run `alder migrate` again (only if it has not run against a database you keep)\n", errTag(stderr, "alder migrate:"), lastFile)
 		return old, last, 1
 	}
 	return old, last, 0

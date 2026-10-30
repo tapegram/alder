@@ -131,10 +131,10 @@ test "the org's dashboard counts its projects, not another org's, and lists the 
       count: Test.text "#projects al-badge" page.doc,
       rows: Test.texts "#projects li" page.doc,
     } == {
-        name: Just "name-1",
-        count: Just "6",
-        rows: ["name-6", "name-5", "name-4", "name-3", "name-2"],
-      }
+      name: Just "name-1",
+      count: Just "6",
+      rows: ["name-6", "name-5", "name-4", "name-3", "name-2"],
+    }
   )
 }
 
@@ -175,10 +175,10 @@ test "the org's dashboard counts its todos, not another org's, and lists the new
       count: Test.text "#todos al-badge" page.doc,
       rows: Test.texts "#todos li" page.doc,
     } == {
-        name: Just "name-1",
-        count: Just "6",
-        rows: ["title-6", "title-5", "title-4", "title-3", "title-2"],
-      }
+      name: Just "name-1",
+      count: Just "6",
+      rows: ["title-6", "title-5", "title-4", "title-3", "title-2"],
+    }
   )
 }
 

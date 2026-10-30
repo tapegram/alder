@@ -202,11 +202,11 @@ test "the page shows the row" = {
       authors: List.length page.model.labels.authors,
       authorLabel: authorLabel page.model.labels me,
     } == {
-        answer: Shown,
-        title: True,
-        authors: 1,
-        authorLabel: "email-1@example.com",
-      }
+      answer: Shown,
+      title: True,
+      authors: 1,
+      authorLabel: "email-1@example.com",
+    }
   )
 }
 
@@ -243,10 +243,10 @@ test "deleting a post nothing refers to" = {
       gone: Maybe.map (\row -> row.id) gone,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-        answer: Redirected (Admin.Posts.Index {}),
-        gone: Nothing,
-        kept: Just post2,
-      }
+      answer: Redirected (Admin.Posts.Index {}),
+      gone: Nothing,
+      kept: Just post2,
+    }
   )
 }
 
@@ -304,13 +304,13 @@ test "a post that tags refer to is not deleted" = {
       answer: r.answer,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-        count: Just "1",
-        buttons: 0,
-        answer: FormRejected [
-          { field: "", message: "This post cannot be deleted while other rows refer to it." },
-        ],
-        kept: Just post1,
-      }
+      count: Just "1",
+      buttons: 0,
+      answer: FormRejected [
+        { field: "", message: "This post cannot be deleted while other rows refer to it." },
+      ],
+      kept: Just post1,
+    }
   )
 }
 

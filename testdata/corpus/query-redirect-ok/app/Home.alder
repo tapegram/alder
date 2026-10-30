@@ -1,0 +1,45 @@
+module Home
+
+import Note
+
+page "/" { }
+
+type Model = { notes: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let n <- Db.from Note |> Db.count
+  Query.succeed { notes: n }
+}
+
+-- A Task that binds Query.redirect fails: its write is undone, and the request is answered
+-- with the 303.
+saveThenGo : Task Nav
+saveThenGo = {
+  let _ <- Db.insert Note { title: "kept?" }
+  let _ <- Query.redirect (Builder { seed: "5", tab: "main" })
+  Task.succeed Rerender
+}
+
+msg Save
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Save p -> saveThenGo,
+}
+
+view : Model -> Session -> Html Msg
+view model session = <html><body><h1 id="home">Home</h1><p id="notes">{Text.fromInt model.notes}</p><button click={Save}>Save</button></body></html>
+
+test "Test.run of a Task that redirects is Err, its write undone" = {
+  let r <- Test.run saveThenGo
+  let n <- Db.from Note |> Db.count
+  Task.succeed (r.value == Err "redirected to /builder/5" && n == 0)
+}
+
+test "a message whose update redirects answers the 303" = {
+  let _ <- Test.get (Home {})
+  let r <- Test.click Save
+  let n <- Db.from Note |> Db.count
+  Task.succeed (r.answer == Redirected (Builder { seed: "5", tab: "main" }) && n == 0)
+}
