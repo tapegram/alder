@@ -39,7 +39,7 @@ func TestGen_MainLog(t *testing.T) {
 		t.Fatalf("build: %d\n%s%s", code, out, errs)
 	}
 	bin := filepath.Join(testBuildDir(t), "olog", "olog")
-	base := []string{"ALDER_DB=:memory:", "ALDER_DEV=", "ALDER_SECRET=" + strings.Repeat("s", 32), "ALDER_ADDR=127.0.0.1:0", "ALDER_PUBLIC_URL=", "ALDER_LOG=", "ALDER_LOG_FORMAT=", "ALDER_METRICS=", "ALDER_SLOW_MS="}
+	base := []string{"ALDER_DB=:memory:", "ALDER_DEV=", "ALDER_SECRET=" + strings.Repeat("s", 32), "ALDER_ADDR=127.0.0.1:0", "ALDER_PUBLIC_URL=", "ALDER_LOG=", "ALDER_LOG_FORMAT=", "ALDER_METRICS=", "ALDER_SLOW_MS=", "RENDER=", "FLY_APP_NAME=", "ALDER_DEPLOY_TARGET="}
 
 	t.Run("BadALDER_LOG", func(t *testing.T) {
 		t.Parallel()
@@ -142,8 +142,36 @@ func TestGen_MainLog(t *testing.T) {
 			!strings.Contains(body, `alder_http_requests_total{route="/",method="GET",status="2xx"} 1`) {
 			t.Errorf("status %d\n%s", code, body)
 		}
-		if errs := app.stop(t); strings.Contains(errs, "/_alder/metrics") {
+		errs := app.stop(t)
+		if strings.Contains(errs, ": GET /_alder/metrics 200 ") {
 			t.Errorf("a scrape logged:\n%s", errs)
+		}
+		if !strings.Contains(errs, " warn: ALDER_METRICS=open: GET /_alder/metrics answers anyone, unauthenticated") {
+			t.Errorf("no warn line for open:\n%s", errs)
+		}
+	})
+
+	t.Run("MetricsOpenRefused", func(t *testing.T) {
+		t.Parallel()
+		for _, marker := range []string{"RENDER=true", "FLY_APP_NAME=blog", "ALDER_DEPLOY_TARGET=ssh"} {
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			var out []byte
+			var err error
+			retryETXTBSY(func() error {
+				cmd := exec.CommandContext(ctx, bin)
+				cmd.Env = append(append(os.Environ(), base...), "ALDER_METRICS=open", marker)
+				out, err = cmd.CombinedOutput()
+				if errors.Is(err, syscall.ETXTBSY) {
+					return err
+				}
+				return nil
+			})
+			cancel()
+			var ee *exec.ExitError
+			if !errors.As(err, &ee) || ee.ExitCode() != 1 || !strings.HasPrefix(string(out), "alder: ALDER_METRICS=open on ") ||
+				!strings.Contains(string(out), "set a token of at least 16 characters instead") {
+				t.Errorf("%s: exit %v, output %q", marker, err, out)
+			}
 		}
 	})
 

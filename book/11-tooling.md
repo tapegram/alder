@@ -489,7 +489,7 @@ The executable reads eight environment variables
 | `ALDER_LOG` | the least level of the lines written to standard error: `debug`, `info`, `warn` or `error` (chapter 16, "Operating an app") | `info` |
 | `ALDER_LOG_FORMAT` | the lines' shape: `text` or `json` | `text` |
 | `ALDER_SLOW_MS` | a request that takes this many milliseconds or more is a `warn` line with its route, effect steps and database time (chapter 16, "Slow requests"); `0` is off | off |
-| `ALDER_METRICS` | `open`, or a token of at least 16 characters: `GET /_alder/metrics` answers Prometheus text, to anyone or to `Authorization: Bearer <token>` (chapter 16, "Metrics") | off: no endpoint |
+| `ALDER_METRICS` | `open`, or a token of at least 16 characters: `GET /_alder/metrics` answers Prometheus text, to `Authorization: Bearer <token>`, or with `open` to anyone, which a deploy target refuses (chapter 16, "Metrics") | off: no endpoint |
 
 Development mode shows a failed request's error text in the page (as an
 HTML comment), shows the dev panel (whose Trace tab has every effect

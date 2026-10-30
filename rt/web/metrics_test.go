@@ -141,13 +141,13 @@ func TestMetrics_Scrape(t *testing.T) {
 func TestMetrics_Token(t *testing.T) {
 	var s sink
 	h := NewRouter(one("GET", "/", page), s.opts(func(o *Options) { o.Metrics = metrics.New(metricsToken) }))
-	for _, auth := range []string{"", "Bearer wrong-token-0123456789", "Basic " + metricsToken} {
+	for i, auth := range []string{"", "Bearer wrong-token-0123456789", "Basic " + metricsToken} {
 		s.reset()
 		w := scrape(t, h, auth)
 		if w.Code != 401 || w.Header().Get("WWW-Authenticate") != `Bearer realm="alder"` || w.Body.String() != "unauthorized\n" {
 			t.Errorf("%q: %d %v %q", auth, w.Code, w.Header(), w.Body.String())
 		}
-		if a := s.one(t); a.Status != 401 || a.Path != MetricsPath || a.Quiet {
+		if a := s.one(t); a.Status != 401 || a.Path != MetricsPath || a.Quiet != (i > 0) {
 			t.Errorf("%q: record %+v", auth, a)
 		}
 	}

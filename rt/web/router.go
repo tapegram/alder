@@ -115,6 +115,10 @@ type router struct {
 	// healthDown is whether the last health check failed its SELECT 1: the error is logged
 	// when it starts failing and the recovery when it answers again, not on every check
 	healthDown atomic.Bool
+
+	// probeAt is when (unix seconds) a refused scrape's access line was last written at Info: one
+	// a minute is, the rest are Debug, so a scanner hammering /_alder/metrics cannot flood the log
+	probeAt atomic.Int64
 }
 
 // sessionMaxAge is the session cookie's lifetime in seconds: 30 days from the time the session
@@ -455,14 +459,18 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 				// writes the line: a filtered access line costs no allocation and no masking
 				w.acc = applog.Access{
 					ID: w.id, Method: r.Method, URL: r.URL, Masker: rt.masker, Status: w.status,
-					Dur: dur, Bytes: w.bytes, Quiet: quiet(r.URL.Path, w.status), Steps: w.steps,
+					Dur: dur, Bytes: w.bytes, Quiet: quiet(r.URL.Path, w.status) || scrape && !rt.probeInfo(), Steps: w.steps,
 					Route: label, Stmts: w.stats.Exec + w.stats.Query, DBDur: w.stats.ExecDur + w.stats.QueryDur,
 					Slow: rt.opts.SlowAfter > 0 && dur >= rt.opts.SlowAfter,
 				}
 				rt.opts.Access(&w.acc)
 			}
 			if m != nil {
-				m.Request(label, r.Method, w.status, dur)
+				status := w.status
+				if v == http.ErrAbortHandler && status == 0 {
+					status = http.StatusInternalServerError // aborted before writing anything: a failure, not a 2xx
+				}
+				m.Request(label, r.Method, status, dur)
 				m.Statements(&w.stats)
 				if !scrape {
 					m.InFlight(-1)
@@ -539,8 +547,9 @@ const MetricsPath = alderPrefix + "metrics"
 // (metrics.Collector.Authorized: an open Collector, or the right bearer token), else 401 with
 // WWW-Authenticate. Like the health check it is answered before anything else: no session is
 // read or set, no CSRF check, no dev panel. ok reports a 200: it gets no access line and is not
-// counted; a refused one gets both (a probe is worth seeing). The token is never written
-// anywhere: the access line has no headers.
+// counted; a refused one gets both (a probe is worth seeing), its line at Info for the first in a
+// minute and at Debug after (probeInfo). The token is never written anywhere: the access line
+// has no headers.
 func (rt *router) metrics(w http.ResponseWriter, r *http.Request) (ok bool) {
 	m := rt.opts.Metrics
 	h := w.Header()
@@ -560,6 +569,14 @@ func (rt *router) metrics(w http.ResponseWriter, r *http.Request) (ok bool) {
 		_ = m.Write(w, rt.opts.Build)
 	}
 	return true
+}
+
+// probeInfo reports whether a refused scrape's access line is written at Info: the first in a
+// minute is, later ones in that minute are Debug.
+func (rt *router) probeInfo() bool {
+	now := rt.now().Unix()
+	last := rt.probeAt.Load()
+	return now-last >= 60 && rt.probeAt.CompareAndSwap(last, now)
 }
 
 // routeLabel is a request's route label (metrics, a slow line's route=): the pattern serve

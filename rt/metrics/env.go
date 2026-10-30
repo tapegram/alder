@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -18,10 +19,23 @@ const MinToken = 16
 // errToken is FromEnv's refusal of a short token; it never holds the value.
 var errToken = errors.New(`ALDER_METRICS: want "open" or a token of at least 16 characters`)
 
+// DeployTargetEnv is set to "ssh" by an Ssh target's run script (alder deploy): the app is
+// behind the box's proxy, which forwards every path.
+const DeployTargetEnv = "ALDER_DEPLOY_TARGET"
+
+// OpenWarning is the line the generated main logs at warn when ALDER_METRICS=open is accepted.
+const OpenWarning = "ALDER_METRICS=open: GET /_alder/metrics answers anyone, unauthenticated (route patterns, step and table names, the build id, traffic): keep the port private or set a token"
+
 // FromEnv is the Collector ALDER_METRICS asks for: nil (no endpoint) when it is unset or empty,
 // one answering every scrape when it is "open", else one answering only a scrape that carries
 // the value (spaces trimmed) as its bearer token, which must be at least MinToken bytes. The
 // error never contains the value.
+//
+// "open" is refused on a deploy target whose one port is public: Render (RENDER set), Fly
+// (FLY_APP_NAME set: its proxy answers https://<app>.fly.dev/_alder/metrics) and a box deployed
+// by alder (ALDER_DEPLOY_TARGET=ssh: Caddy forwards every path). An open endpoint there would
+// show anyone every route pattern (unlinked admin pages too), table names through step names,
+// the build id and the traffic.
 func FromEnv() (*Collector, error) { return fromEnv(os.Getenv) }
 
 func fromEnv(getenv func(string) string) (*Collector, error) {
@@ -30,12 +44,31 @@ func fromEnv(getenv func(string) string) (*Collector, error) {
 	case v == "":
 		return nil, nil
 	case v == "open":
+		if where := publicTarget(getenv); where != "" {
+			return nil, fmt.Errorf(`ALDER_METRICS=open on %s: the endpoint would be public (route patterns, step and table names, the build id, traffic): set a token of at least 16 characters instead`, where)
+		}
 		return New(""), nil
 	case len(v) < MinToken:
 		return nil, errToken
 	}
 	return New(v), nil
 }
+
+// publicTarget names the deploy target the process runs on when its one port is public, else "".
+func publicTarget(getenv func(string) string) string {
+	switch {
+	case getenv("RENDER") != "":
+		return "Render"
+	case getenv("FLY_APP_NAME") != "":
+		return "Fly"
+	case getenv(DeployTargetEnv) == "ssh":
+		return "a box deployed by alder"
+	}
+	return ""
+}
+
+// Open reports whether c answers every scrape (ALDER_METRICS=open).
+func (c *Collector) Open() bool { return c.auth.open }
 
 // authorizer keeps a token's SHA-256 digest, never the token: a Collector printed with %v or
 // %+v, or marshalled, shows no secret.

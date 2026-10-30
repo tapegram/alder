@@ -630,6 +630,7 @@ export ALDER_TURSO_ORG=` + q(s.DB.Org) + ` ALDER_TURSO_GROUP=` + q(s.DB.Group) +
 set -e
 if [ -f ` + q(s.Root+"/env") + ` ]; then set -a; . ` + q(s.Root+"/env") + `; set +a; fi
 unset ALDER_DEV  # development mode never runs at a target
+export ALDER_DEPLOY_TARGET=ssh  # behind the proxy: ALDER_METRICS=open is refused (rt/metrics)
 ` + public + database + `export ALDER_STATIC=` + q(b+"/static") + `
 export ALDER_ADDR="$(cat ` + q(b+"/addr") + ` 2>/dev/null || echo 127.0.0.1:0)"
 ` + backup + `exec ` + q(b+"/app") + ` "$@"
@@ -1565,8 +1566,8 @@ exec ` + read + ` "$R/builds/$c/log"
 `
 	if follow { // across switches: when current changes, the new build's log from its start
 		script = `c=$(cat "$R/current" 2>/dev/null) || { echo "not deployed yet" >&2; exit 1; }
-` + read + ` "$R/builds/$c/log"
-off=$(wc -c < "$R/builds/$c/log" | tr -d ' ')
+off=$(wc -c < "$R/builds/$c/log" | tr -d ' ')  # measured first: a line appended meanwhile comes in the loop
+head -c "$off" "$R/builds/$c/log" | ` + read + `
 while kill -0 "$PPID" 2>/dev/null; do  # the session's sshd gone: stop
   n=$(cat "$R/current" 2>/dev/null)
   if [ -n "$n" ] && [ "$n" != "$c" ]; then c=$n; off=0; echo "--- alder logs: build $c is current"; fi

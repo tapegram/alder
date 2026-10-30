@@ -893,28 +893,48 @@ check is never slow: it has no access line.
 `ALDER_METRICS` turns on `GET /_alder/metrics`, which answers the
 counters below as Prometheus text (`text/plain; version=0.0.4`): what
 Prometheus, Grafana Agent, the OpenTelemetry Collector's `prometheus`
-receiver, Datadog's agent and Fly's own scraper read. Unset or empty,
-there is no endpoint: the path is a 404 like any page that does not
-exist.
+receiver and Datadog's agent read. Unset or empty, there is no
+endpoint: the path is a 404 like any page that does not exist.
 
-- `ALDER_METRICS=open` answers anyone. Use it where only something you
-  run can reach the port: a box whose firewall keeps the app's port
-  private, or Fly's scraper on its private network.
-- Any other value is a token of at least 16 characters, and only a
-  scrape that sends it is answered:
+The endpoint is served on the app's one port, the same one its pages
+are on, so on every deploy target it is as public as the site: Render
+serves that port to the internet, Fly's proxy answers
+`https://<app>.fly.dev/_alder/metrics`, and a box's Caddy forwards every
+path. What it answers is worth hiding: every route pattern, the admin
+pages nothing links to included; table names, through the steps
+(`Db.mine Secret`); the build id; and how much traffic and how many
+errors the app has. So:
+
+- On Render, Fly and a box `alder deploy` set up, use a **token** of at
+  least 16 characters. Only a scrape that sends it is answered:
 
   ```text
   curl -H 'Authorization: Bearer 7f1c…e09a' https://blog.example.com/_alder/metrics
   ```
 
-  Use it whenever the endpoint is on the public address. Anything else
-  gets a 401 with `WWW-Authenticate: Bearer realm="alder"`, and an
-  access line (a probe is worth seeing). The token is compared in
-  constant time and never written anywhere: not in a log line, not in
-  the answer, not in the error a short token gets
-  (`alder: ALDER_METRICS: want "open" or a token of at least 16
-  characters`, which stops the app before it serves). Make one with
-  `openssl rand -hex 24` and set it like any secret.
+  Make one with `openssl rand -hex 24` and set it like any secret
+  (Render's dashboard, `fly secrets set`, the box's environment file).
+  Anything else gets a 401 with `WWW-Authenticate: Bearer
+  realm="alder"`, and an access line: a probe is worth seeing, so the
+  first in a minute is an `info` line and the rest of that minute
+  `debug` lines, which a scanner hammering the path cannot turn into a
+  flood. The token is compared in constant time and never written
+  anywhere: not in a log line, not in the answer, not in the error a
+  short token gets (`alder: ALDER_METRICS: want "open" or a token of at
+  least 16 characters`, which stops the app before it serves).
+- `ALDER_METRICS=open` answers anyone, with no token. It is only for a
+  scraper on the same host or a private network you control, with the
+  app's port not reachable from anywhere else: an app you run by hand
+  behind your own firewall. The app refuses it, and stops before it
+  serves, where it can tell the port is public: on Render (`RENDER` is
+  set), on Fly (`FLY_APP_NAME`) and on a box `alder deploy` set up (its
+  run script sets `ALDER_DEPLOY_TARGET=ssh`). Anywhere else it starts
+  with a `warn` line saying the endpoint is unauthenticated.
+
+Fly's own metrics scraper reads a `[metrics]` port and path from
+`fly.toml` and sends no token; it needs the endpoint on a separate,
+private port, which the runtime does not have yet. Until it does, scrape
+a Fly app with a token like any other.
 
 | metric | type | labels |
 |---|---|---|
@@ -932,7 +952,9 @@ Every label comes from a set the program fixes, never from a request:
 `route` is the matched page's pattern (`/todos/{id}`, not `/todos/3`),
 or `/static/` (a static file), `/_alder/` (a runtime file), `/_dev`, or
 `(none)` (nothing matched); `method` is `GET`, `POST`, `HEAD` or
-`other`; `status` is the class, `2xx` to `5xx`; a step's name is a Call
+`other`; `status` is the class, `2xx` to `5xx` (a request the handler
+aborted before writing anything counts as `5xx`; one that wrote nothing
+otherwise, as `2xx`); a step's name is a Call
 name from the generated code (a `Task.sleep`'s milliseconds are left
 out). This is the cardinality rule: a counter per URL, per user or per
 query value would let anyone who sends requests grow the app's memory
@@ -980,8 +1002,9 @@ would contradict it); `-f` follows on after it, and `--grep` applies to
 what it keeps. How far back it reaches is the target's: Render's log
 API reads a time range, forward from T a page at a time (up to 2,000
 lines: past that `alder logs` says the rest is cut and to use a later
-`--since`); a box keeps the whole build's log, which `alder logs` reads
-in full; Fly keeps only recent lines, and `flyctl logs` has no time
+`--since`), and with `-f` the live stream takes over where the read
+ends, so a line logged at that moment can be missing or printed twice;
+a box keeps the whole build's log, which `alder logs` reads in full; Fly keeps only recent lines, and `flyctl logs` has no time
 flag, so `alder logs` gets what Fly still has. For a box and Fly,
 `alder logs` keeps a line by its stamp (the app's text or JSON stamp,
 or flyctl's), to the second; a line without one (a stack's
@@ -2033,7 +2056,7 @@ and for unusual setups:
 | `ALDER_LOG` | read by the app's executable: the least level it writes, `debug`, `info` (default), `warn` or `error` ("Operating an app"); `alder deploy` leaves it as the environment sets it |
 | `ALDER_LOG_FORMAT` | read by the app's executable: `text` (default) or `json` lines |
 | `ALDER_SLOW_MS` | read by the app's executable: a request that takes this many milliseconds or more is a `warn` line with its breakdown ("Slow requests"; unset or `0`: off); `alder deploy` leaves it as the environment sets it |
-| `ALDER_METRICS` | read by the app's executable: `open`, or a bearer token of at least 16 characters, turns on `GET /_alder/metrics` ("Metrics"; unset: no endpoint); `alder deploy` leaves it as the environment sets it |
+| `ALDER_METRICS` | read by the app's executable: a bearer token of at least 16 characters turns on `GET /_alder/metrics` ("Metrics"; unset: no endpoint); `open` (no token) is refused on Render, Fly and a box `alder deploy` set up, whose port is public; `alder deploy` leaves it as the environment sets it |
 | `ALDER_ALLOW_DATA_LOSS` | read by the app's executable, never set by you: `1` lets `--migrate-only` apply a DROPS DATA migration; `alder deploy` sets it for one run with `--allow-data-loss` |
 | `RENDER_API_KEY` | the Render target's API key (the Render REST API) |
 | `ALDER_REGISTRY_TOKEN`, `ALDER_REGISTRY_USER` | the Render target's registry token (the image push and Render's pull credential) and user (default the first part of `image`) |

@@ -125,3 +125,58 @@ func TestSsh_LogsSince(t *testing.T) {
 		}
 	}
 }
+
+// --since -f at a box: the whole log first (cat), then what is appended, and the build that
+// becomes current from its start; every line reaches alder logs' filter.
+func TestSsh_LogsSinceFollow(t *testing.T) {
+	t.Parallel()
+	ssh := filepath.Join(t.TempDir(), "ssh")
+	if err := os.WriteFile(ssh, []byte(loopbackSSH), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	for _, b := range []string{"b1", "b2"} {
+		if err := os.MkdirAll(filepath.Join(root, "builds", b), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var lines []string
+	for i := 1; i <= 150; i++ {
+		lines = append(lines, fmt.Sprintf("2026/10/29 16:%02d:%02d info: line %d", i/60, i%60, i))
+	}
+	log1 := filepath.Join(root, "builds", "b1", "log")
+	os.WriteFile(log1, []byte(strings.Join(lines, "\n")+"\n"), 0o600)
+	os.WriteFile(filepath.Join(root, "builds", "b2", "log"), []byte("2026/10/29 17:00:00 info: b2 first\n"), 0o600)
+	os.WriteFile(filepath.Join(root, "current"), []byte("b1\n"), 0o600)
+	s := NewSsh("blog", "production", ir.Target{Host: "deploy@box", Path: root}, &ir.Deploy{Proxy: "None"})
+	s.SSH, s.Poll = ssh, 50*time.Millisecond
+	var w syncBuffer
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Logs(ctx, true, 0, time.Date(2026, 10, 29, 16, 2, 0, 0, time.UTC), &w) }()
+	wait := func(what string) {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for !strings.Contains(w.String(), what) {
+			if time.Now().After(deadline) {
+				t.Fatalf("no %q within 10 s:\n%s", what, w.String())
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	wait("info: line 150\n")
+	if !strings.HasPrefix(w.String(), "2026/10/29 16:00:01 info: line 1\n") {
+		t.Errorf("not the whole log first:\n%.200s", w.String())
+	}
+	f, err := os.OpenFile(log1, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString("2026/10/29 16:03:00 info: appended\n")
+	f.Close()
+	wait("info: appended\n")
+	os.WriteFile(filepath.Join(root, "current"), []byte("b2\n"), 0o600)
+	wait("--- alder logs: build b2 is current\n2026/10/29 17:00:00 info: b2 first\n")
+	cancel()
+	<-done // the loopback's sh is killed: an error, which alder logs ignores once ctx has ended
+}

@@ -690,6 +690,7 @@ func (g *gen) sessionDefault(r *ir.RecordType) string {
 // ALDER_SLOW_MS (a whole number of milliseconds: a request that slow is a warn line with its
 // route, steps and database time; unset or 0: off) and ALDER_METRICS ("open", or a bearer token
 // of at least 16 characters: GET /_alder/metrics answers Prometheus text; unset: no endpoint;
+// "open" is refused on Render, Fly and a box alder deployed, and logged at warn elsewhere;
 // rt/metrics), each a bad value exiting 1 before serving; static
 // files are served from ALDER_STATIC, by default the static directory next to the executable
 // (alder build copies the app's static/ there). Before serving it prints "listening on
@@ -734,8 +735,9 @@ func Main(name string, withCaps, withSilos bool) []byte {
 // effect steps and database statements and time (unset or 0: off). ALDER_METRICS=open, or a
 // token of at least 16 characters (then sent as Authorization: Bearer <token>), turns on
 // GET /_alder/metrics: Prometheus text of requests by route, latency, database statements and
-// effect steps (unset: no endpoint). A bad value of any of these exits 1 before anything is
-// served. Static files are served under /static/
+// effect steps (unset: no endpoint). "open" (unauthenticated) is refused on Render, Fly and a
+// box alder deployed, whose port is public, and is a warn line elsewhere. A bad value of any of
+// these exits 1 before anything is served. Static files are served under /static/
 // from ALDER_STATIC, by default the static directory next to the executable. SIGINT or SIGTERM
 // shuts the server down gracefully: requests in flight get 5 s to finish. ALDER_EXIT_ON_STDIN_EOF=1
 // (set by alder run) makes the app stop the same way when its standard input reaches EOF, so it
@@ -798,6 +800,9 @@ func main() {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "alder:", err)
 		os.Exit(1)
+	}
+	if m != nil && m.Open() {
+		lg.Log("warn", metrics.OpenWarning)
 	}
 	static := os.Getenv("ALDER_STATIC")
 	if static == "" {
