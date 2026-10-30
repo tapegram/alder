@@ -474,7 +474,8 @@ func TestTest_FilePages(t *testing.T) {
 
 // TestTest_Clock runs clock-ok (#5): Test.setClock stands the clock still for Time.now and
 // Date.today on the pages a test fetches, Test.advance moves it (a negative advance is 0, a
-// ticking clock keeps its tick), a page's Query.delay moves a set clock, and the trace says so.
+// ticking clock keeps its tick), a page's Query.delay and the test's own Task.sleep and Query.delay
+// move a set clock, and the trace says so.
 func TestTest_Clock(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
@@ -485,7 +486,7 @@ func TestTest_Clock(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "clock-ok")
 	copyDir(t, src, dir)
 	code, stdout, stderr := runTest(t, dir)
-	if code != 0 || !strings.Contains(stdout, "7 passed, 0 failed\n") {
+	if code != 0 || !strings.Contains(stdout, "8 passed, 0 failed\n") {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 }

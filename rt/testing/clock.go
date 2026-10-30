@@ -2,6 +2,7 @@ package rtesting
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -74,10 +75,14 @@ func SetClock(t time.Time) eff.Task[struct{}] {
 	})
 }
 
+// maxAdvanceMs is the largest advance a time.Duration holds (about 292 years): a larger ms
+// saturates to it rather than wrapping into the past.
+const maxAdvanceMs = math.MaxInt64 / int64(time.Millisecond)
+
 // Advance is Test.advance: the clock moves ms milliseconds forward (a negative ms is 0; no
-// upper clamp), keeping its state, set or ticking.
+// upper clamp below maxAdvanceMs, where it saturates), keeping its state, set or ticking.
 func Advance(ms int64) eff.Task[struct{}] {
-	ms = max(ms, 0)
+	ms = min(max(ms, 0), maxAdvanceMs) // saturates: the clock only moves forward, never wraps
 	return eff.Call(fmt.Sprintf("Test.advance %dms", ms), false, func(e *eff.Env) (struct{}, error) {
 		clockOf(e).Advance(time.Duration(ms) * time.Millisecond)
 		return struct{}{}, nil

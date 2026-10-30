@@ -26,3 +26,12 @@ test "a delay after a set moves the clock" = {
   let trace <- Test.trace
   Task.succeed (Bytes.toText w.body == Just "20000" && Today.body r == "1772600787000 1772600787000 2026-03-04" && List.member "Query.delay 20000ms" trace)
 }
+
+-- In the test's own body too: Task.sleep and Query.delay move a set clock and leave it still.
+test "a sleep and a delay in the test move a set clock" = {
+  let _ <- Test.setClock Today.march
+  let _ <- Task.sleep 1000
+  let _ <- Query.delay 2000
+  let r <- Test.fetch (Today {})
+  Task.succeed (Today.body r == "1772600770000 1772600770000 2026-03-04")
+}

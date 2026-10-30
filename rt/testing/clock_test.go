@@ -2,6 +2,7 @@ package rtesting
 
 import (
 	"context"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
@@ -104,6 +105,27 @@ func TestRun_AdvanceClampsAndTraces(t *testing.T) {
 	want := []string{"Test.setClock 2026-03-04T05:06:07Z", "Test.advance 0ms", "Time.now", "Test.advance 6000ms", "Time.now"}
 	if !reflect.DeepEqual(trace, want) {
 		t.Fatalf("trace %q, want %q", trace, want)
+	}
+}
+
+// A huge advance saturates (about 292 years) instead of wrapping into the past.
+func TestRun_AdvanceSaturates(t *testing.T) {
+	for _, ms := range []int64{10000000000000, 20000000000000, math.MaxInt64} {
+		var reads []time.Time
+		var trace []string
+		rs := one(Case{Module: "M", Name: "huge", Task: func() eff.Task[bool] {
+			return then(SetClock(setAt), then(Advance(ms), then(readNow(&reads), traceInto(&trace))))
+		}})
+		if !rs[0].OK || len(reads) != 1 || !reads[0].After(setAt) {
+			t.Fatalf("ms=%d: %+v reads=%v (the clock went back)", ms, rs, reads)
+		}
+		want := setAt.Add(time.Duration(min(ms, maxAdvanceMs)) * time.Millisecond)
+		if !reads[0].Equal(want) {
+			t.Fatalf("ms=%d: read %v, want %v", ms, reads[0], want)
+		}
+		if ms > maxAdvanceMs && trace[1] != "Test.advance 9223372036854ms" {
+			t.Fatalf("ms=%d: trace %q", ms, trace)
+		}
 	}
 }
 
