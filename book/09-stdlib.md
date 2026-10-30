@@ -120,6 +120,7 @@ Text.words     : Text -> List Text
 Text.indexes   : Text -> Text -> List Int    -- Text.indexes needle haystack
 Text.toCodePoints   : Text -> List Int
 Text.fromCodePoints : List Int -> Text
+Text.hash      : Text -> Int                 -- stable forever, never negative, not cryptographic
 Text.NonEmpty, Text.Email, Text.Url, Text.Secret   -- refinement brands
 ```
 
@@ -151,6 +152,12 @@ and drops the empty line after a final newline: `Text.lines "a\nb\n"` is
 `["a", "b"]`. `Text.indexes needle haystack` lists every code-point offset
 where `needle` starts, overlapping matches included (`Text.indexes "aa" "aaa"`
 is `[0, 1]`). There is no `toChars`: `Text.split "" s` gives the characters.
+
+`Text.hash` is FNV-1a (64-bit) over the text's UTF-8 bytes with the top
+bit cleared, so it is never negative and `Text.hash s % n` is a bucket in
+`0..n-1`. Its values are fixed forever, on every platform: use it for
+seeds (see "Random"), buckets and cache keys. It is not cryptographic:
+never use it for passwords, tokens or anything an attacker may choose.
 
 ```alder eval=["de", "2", "3.5"]
 [Text.slice (-3) (-1) "abcdef", Text.fromFloat 2.0, Text.fromFloat 3.5]
@@ -397,6 +404,57 @@ count from the end, indices clamp, and `start >= end` gives `Bytes.empty`.
 Bytes.length (Text.toBytes "héllo")
 ```
 
+## Random
+
+`Random.int` and `Random.id` are effects (chapter 7): a fresh value on
+every run. The rest of `Random` is pure and seeded: the same seed gives
+the same values on every run, on every platform, in every Alder version.
+A `Random.Generator a` describes how to draw an `a`; `Random.step` draws
+it from a `Random.Seed` and gives back the seed to draw the next value
+from. Being pure, it works in `load`, in `view` and in any function.
+
+```text
+Random.seed       : Int -> Random.Seed       -- every Int is a seed, 0 and negatives too
+Random.step       : Random.Generator a -> Random.Seed -> { value: a, seed: Random.Seed }
+Random.constant   : a -> Random.Generator a
+Random.intRange   : { min: Int, max: Int } -> Random.Generator Int
+Random.floatRange : { min: Float, max: Float } -> Random.Generator Float
+Random.normal     : { mean: Float, sd: Float } -> Random.Generator Float
+Random.uniform    : a -> List a -> Random.Generator a   -- Random.uniform first rest
+Random.weighted   : { weight: Float, value: a } -> List { weight: Float, value: a } -> Random.Generator a
+Random.list       : Int -> Random.Generator a -> Random.Generator (List a)
+Random.map        : (a -> b) -> Random.Generator a -> Random.Generator b
+Random.map2       : (a -> b -> c) -> Random.Generator a -> Random.Generator b -> Random.Generator c
+Random.andThen    : (a -> Random.Generator b) -> Random.Generator a -> Random.Generator b
+```
+
+```alder eval={ value: 2, seed: Random.seed -7046029254386353089 }
+Random.step (Random.intRange { min: 1, max: 6 }) (Random.seed 42)
+```
+
+A seed prints as the expression that re-creates it. To make one from
+data, hash it: `Random.seed (Text.hash (Text.join "/" [county, key]))`
+gives every county and key its own stream, the same on every run.
+
+Where a value sits in the stream depends only on the program, never on
+the values drawn: `intRange`, `floatRange`, `normal`, `uniform` and
+`weighted` each take exactly one step (even `intRange { min: 5, max: 5 }`);
+`constant` and `map` take none; `list n g` takes `n` steps of `g` (none
+when `n <= 0`, which gives `[]`); `map2 f a b` runs `a`, then `b`;
+`andThen f a` runs `a`, then the generator `f` returns. So adding a draw
+at the end of a program does not change the draws before it.
+
+`intRange` and `floatRange` give `min` when `max <= min`; `floatRange`
+never gives `max` itself. `normal` is one uniform draw through Acklam's
+inverse of the normal distribution (accurate to about 1e-9). `uniform x
+xs` picks evenly from `x` and `xs`, so the list is never empty.
+`weighted` picks each item with probability proportional to its weight
+(a negative weight counts as its absolute value; all zero gives the
+first). The algorithms are part of the language and will not change:
+the generator is SplitMix64 (Steele, Lea and Flood, 2014), and the
+floats are computed the same way on every processor. Like `Text.hash`,
+none of this is cryptographic: for ids and secrets use `Random.id`.
+
 ## Query, Task, Db, Session, Log, Time, Random, Http
 
 See chapters 7 and 8. The column methods, written on a column in place
@@ -583,6 +641,7 @@ Fuzz.map        : (a -> b) -> Fuzz.Fuzzer a -> Fuzz.Fuzzer b
 Fuzz.map2       : (a -> b -> c) -> Fuzz.Fuzzer a -> Fuzz.Fuzzer b -> Fuzz.Fuzzer c
 Fuzz.andThen    : (a -> Fuzz.Fuzzer b) -> Fuzz.Fuzzer a -> Fuzz.Fuzzer b
 Fuzz.filter     : (a -> Bool) -> Fuzz.Fuzzer a -> Fuzz.Fuzzer a
+Fuzz.fromRandom : Random.Generator a -> Fuzz.Fuzzer a
 ```
 
 `Fuzz.any` is a special form, like `Test.fake`: the compiler gives it the
@@ -595,3 +654,10 @@ empty, and `textOf` and `char` count code points; `list` is biased to
 short lists, and `listOf` bounds the length. `filter` is subject to the
 health check: a predicate that rejects over 90% of the first 50 draws
 fails the test (chapter 10).
+
+`Fuzz.fromRandom g` turns a seeded generator (see "Random") into a
+fuzzer: it draws a random seed and gives `g`'s value at it. Shrinking
+lowers the seed toward `Random.seed 0`, never the value inside `g`, so a
+failure shrinks to a nearby seed, not to the simplest value: a
+`Fuzz.Fuzzer` written with `Fuzz.*` shrinks better and is the first
+choice; `fromRandom` is for reusing a generator the app already has.

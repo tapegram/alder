@@ -152,6 +152,12 @@ Http.post   : { url: Text, body: Text } -> Task (Result Http.HttpError Text)
 standard module other than the Prelude is always written qualified (a bare
 `HttpError` is E0202, with the fix).
 
+`Random.int` is a fresh number on every run. When the numbers must be the
+same every run (a seeded simulation, test data, a stable bucket), use the
+pure, seeded half of `Random` instead: `Random.step` with a `Random.Seed`,
+which is no effect at all, so `load` and plain functions can use it
+(chapter 9, "Random").
+
 Nothing else in the language touches the outside world. If a function's
 signature has no `Query` or `Task` in it, it is pure.
 
