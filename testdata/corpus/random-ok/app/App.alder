@@ -1,0 +1,11 @@
+module App
+
+session { n: Int = 0 }
+
+login = Home
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>nf</p>

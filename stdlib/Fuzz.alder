@@ -41,3 +41,5 @@ map2 : (a -> b -> c) -> Fuzzer a -> Fuzzer b -> Fuzzer c
 andThen : (a -> Fuzzer b) -> Fuzzer a -> Fuzzer b
 -- subject to the health check
 filter : (a -> Bool) -> Fuzzer a -> Fuzzer a
+-- draws a seed; shrinks the seed toward 0, never inside the generator
+fromRandom : Random.Generator a -> Fuzzer a

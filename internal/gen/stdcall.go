@@ -211,6 +211,7 @@ var StdCalls = map[string]string{
 	"Text.indexes":        "std.TextIndexes",
 	"Text.toCodePoints":   "std.TextToCodePoints",
 	"Text.fromCodePoints": "std.TextFromCodePoints",
+	"Text.hash":           "std.TextHash",
 	"Text.builder":        "std.TextBuilder",
 	"Text.add":            "std.TextAdd",
 	"Text.build":          "std.TextBuild",
@@ -224,6 +225,19 @@ var StdCalls = map[string]string{
 	"Time.fromMillis": "std.TimeFromMillis",
 	"Time.addMillis":  "std.TimeAddMillis",
 	"Time.diffMillis": "std.TimeDiffMillis",
+	// Random, the pure half (Random.int and Random.id are effects, below)
+	"Random.seed":       "std.RandomSeed",
+	"Random.step":       "std.RandomStep",
+	"Random.constant":   "std.RandomConstant",
+	"Random.intRange":   "std.RandomIntRange",
+	"Random.floatRange": "std.RandomFloatRange",
+	"Random.normal":     "std.RandomNormal",
+	"Random.uniform":    "std.RandomUniform",
+	"Random.weighted":   "std.RandomWeighted",
+	"Random.list":       "std.RandomList",
+	"Random.map":        "std.RandomMap",
+	"Random.map2":       "std.RandomMap2",
+	"Random.andThen":    "std.RandomAndThen",
 	// Notice
 	"Notice.with": "std.NavNoticed",
 	// Url
@@ -264,6 +278,7 @@ var StdCalls = map[string]string{
 	"Fuzz.map2":        "fuzz.Map2",
 	"Fuzz.andThen":     "fuzz.AndThen",
 	"Fuzz.filter":      "fuzz.FilterF",
+	"Fuzz.fromRandom":  "fuzz.FromRandom",
 	// Test's queries (test builds only: the checker allows Test.* only in a `test`)
 	"Test.text":  "rtesting.DocText",
 	"Test.texts": "rtesting.DocTexts",

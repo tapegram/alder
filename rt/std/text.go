@@ -1,6 +1,7 @@
 package std
 
 import (
+	"hash/fnv"
 	"math"
 	"regexp"
 	"strconv"
@@ -11,6 +12,15 @@ import (
 
 	"alder/rt"
 )
+
+// TextHash is Text.hash: FNV-1a 64 over the UTF-8 bytes with the top bit cleared, so the result
+// is in [0, 2^63). Pinned forever: a seeded run (Random.seed (Text.hash …)) reproduces across
+// versions and platforms. Not cryptographic.
+func TextHash(s string) int64 {
+	f := fnv.New64a()
+	f.Write([]byte(s))
+	return int64(f.Sum64() & 0x7FFFFFFFFFFFFFFF)
+}
 
 // TextLength counts Unicode code points.
 func TextLength(s string) int64 { return int64(utf8.RuneCountInString(s)) }

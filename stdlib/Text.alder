@@ -46,6 +46,9 @@ words : Text -> List Text
 indexes : Text -> Text -> List Int
 toCodePoints : Text -> List Int
 fromCodePoints : List Int -> Text
+-- FNV-1a 64 of the UTF-8 bytes, top bit cleared: stable across versions and platforms, never
+-- negative, not cryptographic (seeds, buckets, cache keys)
+hash : Text -> Int
 -- the empty Text.Builder
 builder : Builder
 -- Text.add piece b: b with piece after everything added so far

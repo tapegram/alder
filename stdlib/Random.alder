@@ -2,3 +2,32 @@ module Random
 
 int : { min: Int, max: Int } -> Task Int
 id : Task Text
+
+-- Pure, seeded randomness: the same seed gives the same values on every platform and in every
+-- version (SplitMix64; chapter 9, "Random").
+
+-- one 64-bit PRNG state
+type Seed
+-- a description of how to draw an a from a seed
+type Generator a
+
+-- every Int is a seed, 0 and negatives included
+seed : Int -> Seed
+step : Generator a -> Seed -> { value: a, seed: Seed }
+-- no step
+constant : a -> Generator a
+-- min when max <= min
+intRange : { min: Int, max: Int } -> Generator Int
+-- min when max <= min
+floatRange : { min: Float, max: Float } -> Generator Float
+-- Acklam's inverse normal CDF of one uniform draw
+normal : { mean: Float, sd: Float } -> Generator Float
+-- Random.uniform first rest
+uniform : a -> List a -> Generator a
+-- by absolute weight
+weighted : { weight: Float, value: a } -> List { weight: Float, value: a } -> Generator a
+-- [] when n <= 0
+list : Int -> Generator a -> Generator (List a)
+map : (a -> b) -> Generator a -> Generator b
+map2 : (a -> b -> c) -> Generator a -> Generator b -> Generator c
+andThen : (a -> Generator b) -> Generator a -> Generator b
