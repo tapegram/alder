@@ -1,9 +1,11 @@
 package fuzz
 
 import (
+	"math"
 	"math/rand/v2"
 
 	"alder/rt"
+	"alder/rt/std"
 )
 
 // The Go side of stdlib/Fuzz.alder, one function per declaration, in its order. As for every
@@ -11,6 +13,16 @@ import (
 // the anonymous struct gen emits for it, and the Alder types are those of gen's GoType.
 // Fuzz.any, Fuzz.forAll and Fuzz.forAllTask are not here: the compiler and the test runner
 // own them.
+
+// FromRandom is Fuzz.fromRandom: one choice over the full 64 bits is a Random.Seed's state,
+// and the value is g's at that seed. Shrinking lowers the seed toward 0 (it cannot see inside
+// g), so the simplest case is g's value at Random.seed 0.
+func FromRandom[A any](g std.Generator[A]) Fuzzer[A] {
+	return func(c *Choices) A {
+		v, _ := g(std.Seed{State: c.Choice(math.MaxUint64)})
+		return v
+	}
+}
 
 // Constant is Fuzz.constant: always a, with no choice.
 func Constant[A any](a A) Fuzzer[A] { return func(*Choices) A { return a } }

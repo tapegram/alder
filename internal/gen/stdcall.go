@@ -265,6 +265,7 @@ var StdCalls = map[string]string{
 	"Fuzz.map2":        "fuzz.Map2",
 	"Fuzz.andThen":     "fuzz.AndThen",
 	"Fuzz.filter":      "fuzz.FilterF",
+	"Fuzz.fromRandom":  "fuzz.FromRandom",
 	// Test's queries (test builds only: the checker allows Test.* only in a `test`)
 	"Test.text":  "rtesting.DocText",
 	"Test.texts": "rtesting.DocTexts",

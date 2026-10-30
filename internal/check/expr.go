@@ -1657,7 +1657,8 @@ func containsFunIn(t types.Type, seen map[any]bool) bool {
 	case *types.Fun:
 		return true
 	case *types.App:
-		if t.Con == "Query" || t.Con == "Task" {
+		// a Random.Generator or Fuzz.Fuzzer is a Go func underneath (rt.Eq would say False)
+		if t.Con == "Query" || t.Con == "Task" || t.Con == "Generator" || t.Con == "Fuzzer" {
 			return true
 		}
 		for _, a := range t.Args {

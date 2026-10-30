@@ -1,0 +1,35 @@
+module Home
+
+page "/" { }
+
+type Model = { rolls: List Int, delay: Float, county: Text }
+
+-- a seeded night: the same county and key give the same numbers on every run
+nightSeed : Text -> Text -> Random.Seed
+nightSeed county key = Random.seed (Text.hash (Text.join "/" [county, key]))
+
+delay : Random.Generator Float
+delay = Random.map2 (\a b -> a + b) (Random.normal { mean: 30.0, sd: 5.0 }) (Random.floatRange { min: 0.0, max: 1.0 })
+
+county : Random.Generator Text
+county =
+  Random.weighted { weight: 3.0, value: "Rock" } [{ weight: 1.0, value: "Wood" }]
+    |> Random.andThen (\c -> Random.uniform c ["Jefferson"])
+
+load : Params -> Session -> Query Model
+load params session = {
+  let s = nightSeed "Rock" "0005"
+  let rolls = Random.step (Random.list 3 (Random.intRange { min: 1, max: 6 })) s
+  let d = Random.step delay rolls.seed
+  let c = Random.step (Random.map Text.toUpper county) d.seed
+  Query.succeed { rolls: rolls.value, delay: d.value, county: c.value }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{model.county} {Text.fromFloat model.delay}</p>
+
+test "dice stay on the die" =
+  Fuzz.forAll (Fuzz.fromRandom (Random.intRange { min: 1, max: 6 })) (\n -> n >= 1 && n <= 6)
+
+test "a seed re-creates its stream" =
+  Random.step (Random.constant 1) (Random.seed 7) == { value: 1, seed: Random.seed 7 }
