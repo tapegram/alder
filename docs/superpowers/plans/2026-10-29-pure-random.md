@@ -45,7 +45,7 @@ in task 3 against the implementation.
 
 - Tests in `rt/std/random_test.go`:
   - `TestAcklam`: `q 0.5 == 0`, `q 0.975` within 1e-6 of 1.959964, `q 0.01` of -2.326348.
-  - `TestRandomNormal_Vector`: standard normal from 42 is `0.6481773615835269`.
+  - `TestRandomNormal_Vector`: standard normal from 42 is `0.6481773615835267`.
   - `TestRandomNormal_Moments`: 100 000 from seed 7: mean within 0.01 of 0, sd within 0.01 of 1.
   - `TestRandomUniform`: `uniform x []` is `x` and steps once; picks index `intRange 0..len xs`.
   - `TestRandomWeighted`: negative weight counts as its absolute value; all-zero gives the

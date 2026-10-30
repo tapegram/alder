@@ -133,7 +133,10 @@ tail formula outside, no refinement step; the coefficients are those in nightvot
 `Utils.Rng`, which are the published ones) **(call)** over Box–Muller: one step, monotone in the
 unit float, relative error 1.15e-9. Vectors: `q 0.5 == 0.0`, `q 0.975` within 1e-6 of
 `1.959964`, `q 0.01` of `-2.326348`; `normal { mean: 0.0, sd: 1.0 }` from seed `42` is
-`0.6481773615835269`.
+`0.6481773615835267`. Every product in `q`, `normal` and `floatRange` is rounded before it is
+added (no fused multiply-add, which Go uses on arm64 but not amd64), so the floats are the same
+on every platform; this vector is the unfused IEEE value (a Python check agrees), corrected by
+the builder from `…5269`, which was the fused arm64 result.
 
 **`uniform x xs`** picks index `intRange { min: 0, max: List.length xs }` of `x :: xs`.
 **`weighted w ws`** (Elm's) uses the absolute values of the weights: `t = unit * total`; walk
