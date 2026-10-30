@@ -1,0 +1,34 @@
+module R
+
+type Curve = { median: Float, sigma: Float, perDoubling: Float }
+
+type Summary = { t0: Int, label: Text }
+
+type Row = { name: Text, value: Float }
+
+type Shown = { name: Text, shown: Bool }
+
+reportTime : Curve -> Float -> Float
+reportTime c t = c.median + c.sigma * t + c.perDoubling
+
+-- the literal is typed before Curve is seen: it lowers as R.Curve
+clamped : Float -> Float
+clamped t = {
+  let wide = { median: 1.0, sigma: 2.0, perDoubling: 0.5 }
+  reportTime wide t
+}
+
+isExpected : Result Text Summary -> Bool
+isExpected r = r == Ok { t0: 1, label: "a" }
+
+shown : List Row -> List Shown
+shown rows =
+  rows
+    |> List.map (\r -> { name: r.name, shown: r.value > 0.0 })
+    |> List.filter (\s -> s.shown)
+
+guess : Bool -> Maybe Curve
+guess known = {
+  let m = Just { median: 1.0, sigma: 0.1, perDoubling: 0.0 }
+  if known then m else Nothing
+}

@@ -1,0 +1,1 @@
+app/App.alder:10:13 E0042 `shadowSm` is a shadow written as text, such as `"0 1px 2px 0 rgb(0 0 0 / 0.05)"` or `"none"`

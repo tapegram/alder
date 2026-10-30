@@ -134,13 +134,10 @@ func (g *gen) draw(t *ir.GenTree, c, depth string) string {
 		}
 		panic("gen: no generator for builtin type " + t.Prim)
 	case ir.GenStdBrand:
-		return "fuzz." + stdBrandFunc[t.Brand] + "(" + c + ")"
+		return "fuzz." + ir.StdBrandFunc[t.Brand] + "(" + c + ")"
 	}
 	return "fuzz__" + g.fuzzName(t) + "(" + c + ", " + depth + ")"
 }
-
-// stdBrandFunc is the rt/fuzz generator of each stdlib brand.
-var stdBrandFunc = map[string]string{"Text.NonEmpty": "NonEmpty", "Text.Email": "Email", "Text.Url": "URL", "Text.Secret": "Secret", "Int.Positive": "Positive", "Int.NonNegative": "NonNegative"}
 
 // lit is the Go expression printing the value v of t as an Alder literal.
 func (g *gen) lit(t *ir.GenTree, v string) string {
@@ -245,7 +242,21 @@ func (g *gen) fuzzFunc(w *strings.Builder, t *ir.GenTree) {
 		d := spend("rt.Nothing[" + GoType(t.Elems[0].Type) + "]()")
 		fmt.Fprintf(w, "return fuzz.Maybe(%s)(c)\n", g.drawFunc(t.Elems[0], d))
 	case ir.GenResult:
-		fmt.Fprintf(w, "return fuzz.Result(%s, %s)(c)\n", g.drawFunc(t.Elems[0], "depth"), g.drawFunc(t.Elems[1], "depth"))
+		if !t.Cyclic {
+			fmt.Fprintf(w, "return fuzz.Result(%s, %s)(c)\n", g.drawFunc(t.Elems[0], "depth"), g.drawFunc(t.Elems[1], "depth"))
+			break
+		}
+		// A Result on a cycle (a record that holds a Result of itself) draws its arm like a union
+		// constructor: the arm that reaches the Result again only above depth 0, with one less depth.
+		depthOf := func(i int) string {
+			if t.Rec[i] {
+				return "depth - 1"
+			}
+			return "depth"
+		}
+		fmt.Fprintf(w, "if fuzz.Ctor(c, []bool{%t, %t}, depth) == 1 {\nreturn rt.Err[%s, %s](%s)\n}\nreturn rt.Ok[%s](%s)\n",
+			t.Rec[1], t.Rec[0], GoType(t.Elems[0].Type), GoType(t.Elems[1].Type), g.draw(t.Elems[0], "c", depthOf(0)),
+			GoType(t.Elems[0].Type), g.draw(t.Elems[1], "c", depthOf(1)))
 	case ir.GenDict:
 		if d := spend(typ + "{}"); t.Cyclic {
 			fmt.Fprintf(w, "return fuzz.DictOf(int64(depth), %s, %s)(c)\n", g.drawFunc(t.Elems[0], d), g.drawFunc(t.Elems[1], d))

@@ -130,6 +130,8 @@ func goDecls(m *syntax.Module) (imports, decls []decl) {
 			decls = append(decls, decl{"session", "session"})
 		case *syntax.DeployDecl:
 			decls = append(decls, decl{"deploy", "deploy"})
+		case *syntax.ThemeDecl:
+			decls = append(decls, decl{"theme", "theme"})
 		case *syntax.SiloDecl:
 			decls = append(decls, decl{"silo", d.Key})
 		case *syntax.ChooseDecl:

@@ -12,6 +12,11 @@ login : Session -> Task Unit
 -- the membership a session field's `via` table records: a row of it for the user and the key's
 -- id (`Test.member me org`), so a Test.login or Session.put with that key passes the check
 member : u -> k -> Task Unit
+-- sets the clock: Time.now, Date.today and @created read t, and the clock stands still from
+-- here on (no one-second tick); Test.advance and the virtual waits still move it
+setClock : Time -> Task Unit
+-- moves the clock forward ms milliseconds (negative is 0); ticking or set, it keeps that state
+advance : Int -> Task Unit
 -- special form: the argument is a page value (`Todos.Index { filter: All }`); `model` is that
 -- page's `Model`, which must be a record; the test fails unless the page is shown
 get : Page -> Task { model: model, session: Session, doc: Doc }

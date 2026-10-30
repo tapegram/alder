@@ -1,0 +1,4 @@
+module Main
+
+p : Fuzz.Property
+p = Fuzz.forAllTask Fuzz.int (\n -> Task.succeed (n == n))

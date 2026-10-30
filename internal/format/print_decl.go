@@ -124,6 +124,8 @@ func (p *printer) decl(d syntax.Decl) Doc {
 		return Concat(Text("session "), p.fieldRecord(d, d.Fields))
 	case *syntax.DeployDecl:
 		return Concat(Text("deploy "), p.deployRecord(d, d.Fields))
+	case *syntax.ThemeDecl:
+		return Concat(Text("theme "), p.deployRecord(d, d.Fields))
 	case *syntax.LoginDecl:
 		return Text("login = " + d.Page)
 	case *syntax.SiloDecl:
@@ -352,6 +354,8 @@ func (p *printer) deployValue(v *syntax.DeployValue) Doc {
 			items[i], nodes[i] = p.deployValue(e), e
 		}
 		return p.bracketed(v, nodes, items)
+	case "record":
+		return p.deployRecord(v, v.Rec)
 	case "ctor":
 		doc := []Doc{Text(v.Ctor)}
 		if v.Arg != nil {

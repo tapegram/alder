@@ -1,0 +1,10 @@
+module Curve
+
+type Curve = { median: Float, sigma: Float, perDoubling: Float }
+
+type Shown = Hidden | Visible Float
+
+type Summary = { t0: Int, t1: Int, label: Text }
+
+reportTime : Curve -> Float -> Float
+reportTime c t = c.median + c.sigma * t + c.perDoubling
