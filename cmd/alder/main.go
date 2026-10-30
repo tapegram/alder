@@ -129,8 +129,30 @@ func main() {
 
 func usage() { usageTo(os.Stderr) }
 
+// usageTo prints the overall usage: one row per command of commandTree (the tree that
+// `alder help --json` serves), names bold on a terminal. A command's own usage is
+// `alder <command> --help`.
 func usageTo(w io.Writer) {
-	fmt.Fprintln(w, "usage: alder new <name> | alder new page|table|form|msg|capability|admin … | alder edit table|page|session … | alder remove page|table … | alder fill <Module>.<decl> - | alder regen admin | alder check [dir] [--json] | alder fmt [--check | --stdin] [path...] | alder build [--emit] [--build-dir DIR] [dir] | alder run [--build-dir DIR] [dir] | alder routes [dir] [--json] | alder dump [--tokens|--ast|--ir] <file.alder | dir> | alder eval [dir] [--run] [--json] [--build-dir DIR] [--in Name | --module Name] <expr | -> | alder scratch [file] [--watch] [--json] [--build-dir DIR] [--module Name] | alder test [dir] [-run re] [-timeout d] [--json] [--build-dir DIR] [--mutate [--min R]] | alder repl [dir] [--build-dir DIR] [--in Name | --module Name] (deprecated: use alder scratch) | alder migrate [dir] [--name slug] [--dry-run] | alder migrate silos <env> [--allow-data-loss] | alder deploy <env> [dir] [--build-dir DIR] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json] | alder deploy init render|fly [dir] [--force] [--dry-run] | alder status|logs <env> | alder rollback <env> [<id>] | alder restore <env> [--silo key:id] [--from url] [--to time] [--out file] | alder silos prune <env> [--yes] | alder ci init [dir] | alder lsp | alder explain <code> | alder version")
+	st := style.For(w)
+	fmt.Fprint(w, usageText(st))
+}
+
+// usageText is the overall usage as text; with style.Plain it is the book's Commands block.
+func usageText(st style.Style) string {
+	rows := make([][]string, len(commandTree))
+	for i, c := range commandTree {
+		rows[i] = []string{c.Name, c.Summary}
+	}
+	var sb strings.Builder
+	sb.WriteString("usage: alder <command> [arguments]\n\n")
+	sb.WriteString(style.ColumnsStyled("  ", rows, func(col int, cell string) string {
+		if col == 0 {
+			return st.Bold(cell)
+		}
+		return cell
+	}))
+	sb.WriteString("\nalder <command> --help prints its usage; alder help --json prints the command tree\n")
+	return sb.String()
 }
 
 func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {

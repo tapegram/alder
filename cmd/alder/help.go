@@ -78,6 +78,10 @@ func helpTo(args []string, w io.Writer) bool {
 		return false
 	}
 	cmd := args[0]
+	if cmd == "help" && len(args) == 1 { // `alder help`: the list of commands
+		usageTo(w)
+		return true
+	}
 	if cmd == "help" && len(args) > 1 {
 		cmd = args[1]
 		args = args[1:]
