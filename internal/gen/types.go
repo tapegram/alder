@@ -17,6 +17,7 @@ import (
 //	HttpError, Nav                   rt.HttpError, rt.Nav
 //	Doc, Answer (test builds only)   rtesting.Doc, rtesting.Answer
 //	Fuzz.Fuzzer a, Fuzz.Property     fuzz.Fuzzer[A], *rtesting.Property
+//	Text.Builder                     rt.TextBuilder
 //	List a, Dict k v, Html a         []A, rt.Dict[K, V], html.Node (whatever a is)
 //	Maybe a, Result e a              rt.Maybe[A], rt.Result[E, A]
 //	Query a, Task a                  eff.Query[A], eff.Task[A]
@@ -65,6 +66,10 @@ func GoType(t types.Type) string {
 		case "Property":
 			if t.Module == "Fuzz" {
 				return "*rtesting.Property"
+			}
+		case "Builder":
+			if t.Module == "Text" {
+				return "rt.TextBuilder"
 			}
 		}
 		return "any"
