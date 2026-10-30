@@ -524,7 +524,7 @@ you can choose a quiet moment.
 ```text
 alder status <env> [dir] [--host name]
 alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup [--yes]]
-alder logs <env> [dir] [--host name] [-f] [-n N] [--grep PATTERN]
+alder logs <env> [dir] [--host name] [-f] [-n N] [--since T] [--grep PATTERN]
 ```
 
 `alder status` reads the state at the target: the current build, the
@@ -677,8 +677,9 @@ it follows the **current** build, so after a deploy or rollback
 switches builds it goes on with the new current build's log (a line
 `--- alder logs: build <id> is current` marks the change). `--grep
 PATTERN` keeps only the lines a Go regular expression matches, on every
-target and with `-f` too; the next section says what is in a line and
-how to pick them out.
+target and with `-f` too, and `--since T` prints every line since a time
+instead of the last N; the next section says what is in a line and how
+to pick them out.
 
 ## Operating an app
 
@@ -763,7 +764,7 @@ production app pays nothing for the lines it does not write.
 | level | the runtime writes | the app writes |
 |---|---|---|
 | `error` | panics (with the stack), an answer that could not be written, a database the build cannot use at start | `Log.error` |
-| `warn` | a refused request (400 a query that does not parse, 413 a body over 1 MiB, 415 a multipart body), a 503 maintenance page, an oversized session cookie, the development key, a health check that starts or stops failing, a header a file page may not set | `Log.warn` |
+| `warn` | a refused request (400 a query that does not parse, 413 a body over 1 MiB, 415 a multipart body), a 503 maintenance page, an oversized session cookie, the development key, a health check that starts or stops failing, a header a file page may not set, a slow request's access line (`ALDER_SLOW_MS`) | `Log.warn` |
 | `info` (default) | the access lines (pages, and files that fail), migrations as they run, the backup shipper, a database ahead of this build | `Log.info` |
 | `debug` | the access lines of healthy files, every effect step (`effect Db.all Todo`), and `steps=N` at the end of each access line: how many effect steps the request ran | `Log.debug` |
 
@@ -856,6 +857,96 @@ level names are upper case, as Go's `log/slog` writes them; the objects
 come from its JSON handler, which escapes correctly and reuses its
 buffers.
 
+### Slow requests
+
+`ALDER_SLOW_MS=N` makes the access line of a request that took N
+milliseconds or more a `warn` line, with where the time went appended:
+
+```text
+2026/10/30 12:00:00 warn: GET /todos/3 200 812.4ms 4821B rid=5f3a2c1e slow route=/todos/{id} steps=12 db=9/640.1ms
+```
+
+`route=` is the page's pattern, so every slow `/todos/…` reads the
+same; `steps=` is how many effect steps the request ran (whatever the
+level), and `db=` how many database statements those steps sent and
+the time spent in them: 9 statements, 640.1 ms. Here the database is
+most of the 812 ms; a slow line with a small `db=` points at something
+else (a capability's call, a `Task.sleep`, the page's own work). A
+statement is counted from the moment it is sent until the driver
+answers, reading the rows of a query included only as far as the
+driver reads them in that call.
+
+Because it is a `warn` line, `ALDER_LOG=warn` keeps it while dropping
+every ordinary access line: a quiet production log that still names
+the slow pages. As JSON the line has the usual keys at level `WARN`
+plus `"slow":true`, `route`, `steps`, `db_stmts` and `db_ms`. A request
+under the threshold is written exactly as before, without a route.
+
+Unset, empty or `0` is off, and then nothing is timed: the database
+statements are counted only when this or `ALDER_METRICS` is set. A
+value that is not a whole number of milliseconds (`250ms`, `1.5`, `-1`)
+stops the app before it serves, like a bad `ALDER_LOG`. The health
+check is never slow: it has no access line.
+
+### Metrics
+
+`ALDER_METRICS` turns on `GET /_alder/metrics`, which answers the
+counters below as Prometheus text (`text/plain; version=0.0.4`): what
+Prometheus, Grafana Agent, the OpenTelemetry Collector's `prometheus`
+receiver, Datadog's agent and Fly's own scraper read. Unset or empty,
+there is no endpoint: the path is a 404 like any page that does not
+exist.
+
+- `ALDER_METRICS=open` answers anyone. Use it where only something you
+  run can reach the port: a box whose firewall keeps the app's port
+  private, or Fly's scraper on its private network.
+- Any other value is a token of at least 16 characters, and only a
+  scrape that sends it is answered:
+
+  ```text
+  curl -H 'Authorization: Bearer 7f1c…e09a' https://blog.example.com/_alder/metrics
+  ```
+
+  Use it whenever the endpoint is on the public address. Anything else
+  gets a 401 with `WWW-Authenticate: Bearer realm="alder"`, and an
+  access line (a probe is worth seeing). The token is compared in
+  constant time and never written anywhere: not in a log line, not in
+  the answer, not in the error a short token gets
+  (`alder: ALDER_METRICS: want "open" or a token of at least 16
+  characters`, which stops the app before it serves). Make one with
+  `openssl rand -hex 24` and set it like any secret.
+
+| metric | type | labels |
+|---|---|---|
+| `alder_http_requests_total` | counter | `route`, `method`, `status` |
+| `alder_http_request_duration_seconds` | histogram (5 ms to 10 s) | `route`, `method` |
+| `alder_http_requests_in_flight` | gauge | |
+| `alder_db_statements_total` | counter | `kind`: `exec` or `query` |
+| `alder_db_statement_seconds_total` | counter | `kind` |
+| `alder_effect_steps_total` | counter | `name`: the step (`Db.all Todo`) |
+| `alder_go_goroutines`, `alder_go_heap_bytes`, `alder_go_gc_cycles_total` | gauge, gauge, counter | |
+| `alder_process_start_time_seconds` | gauge | |
+| `alder_build_info` | gauge, always 1 | `build`: the build id |
+
+Every label comes from a set the program fixes, never from a request:
+`route` is the matched page's pattern (`/todos/{id}`, not `/todos/3`),
+or `/static/` (a static file), `/_alder/` (a runtime file), `/_dev`, or
+`(none)` (nothing matched); `method` is `GET`, `POST`, `HEAD` or
+`other`; `status` is the class, `2xx` to `5xx`; a step's name is a Call
+name from the generated code (a `Task.sleep`'s milliseconds are left
+out). This is the cardinality rule: a counter per URL, per user or per
+query value would let anyone who sends requests grow the app's memory
+and the metrics store's bill without bound, so none exists. Per-page
+latency is the histogram by `route`; an error rate is the `5xx` share
+of `alder_http_requests_total`.
+
+A 200 scrape is answered like the health check: before anything else,
+with no session read or cookie set, no CSRF check, nothing in the dev
+panel, no access line, and it is not counted. With `ALDER_METRICS` and
+`ALDER_SLOW_MS` both unset, nothing is counted or timed and nothing is
+allocated per request: an app that sets neither knob serves exactly as
+it would without them.
+
 ### Reading them back
 
 ```text
@@ -863,6 +954,8 @@ alder logs production                          the last 100 lines
 alder logs production -n 500                   the last 500
 alder logs production -f --grep ' (warn|error): '   follow, problems only
 alder logs production --grep rid=0a0b0c0d      one request
+alder logs production --since 2h               every line of the last two hours
+alder logs production --since 2026-10-30 -f    since midnight UTC, then follow
 ```
 
 `-n` is the target's: a box runs `tail -n N` on the build's log,
@@ -879,14 +972,31 @@ length). `--grep 'rid=abc\b'` (`\b`, a word boundary) rules out
 `rid=abcd`; since an id is followed by a space or ends the line,
 `--grep 'rid=abc( |$)'` matches that id and no other.
 
+`--since T` prints every line from T on instead of the last N: `T` is a
+duration ago (`30m`, `2h`, `48h`), an RFC 3339 time
+(`2026-10-30T09:00:00-04:00`) or a date (`2026-10-30`, midnight UTC).
+It does not combine with `-n` (it prints everything since T, so a count
+would contradict it); `-f` follows on after it, and `--grep` applies to
+what it keeps. How far back it reaches is the target's: Render's log
+API reads a time range, forward from T a page at a time (up to 2,000
+lines: past that `alder logs` says the rest is cut and to use a later
+`--since`); a box keeps the whole build's log, which `alder logs` reads
+in full; Fly keeps only recent lines, and `flyctl logs` has no time
+flag, so `alder logs` gets what Fly still has. For a box and Fly,
+`alder logs` keeps a line by its stamp (the app's text or JSON stamp,
+or flyctl's), to the second; a line without one (a stack's
+continuation, `listening on`) goes with the line before it.
+
 `GET /_alder/health` answers `{"build":"<id>","db":"ok"}` when the
 build is serving and its database answers a `SELECT 1` within five
 seconds, and 503 otherwise. It says "this process can serve", which is
 what a platform needs to decide whether to route to it. It does not say
 the app is being used: the access lines do.
 
-The app keeps no counters and sends no metrics: nothing scrapes an
-Alder app today, and the access line is what answers "is it alive?".
+The access lines answer "is it alive?"; the counters behind "how many,
+how slow, which page" are `ALDER_METRICS`'s ("Metrics", above), off
+unless you turn them on. Nothing is pushed anywhere: a scraper you run
+reads them.
 
 ## Backups and restore
 
@@ -1922,6 +2032,8 @@ and for unusual setups:
 | `ALDER_PUBLIC_URL` | read by the app's executable: the site's address for `Url.absolute` (chapter 11). Each target sets it to the address it serves (`Ssh`: `https://<domain>`; `Fly`: `https://<app>.fly.dev`; `Render`: the service's address); set it yourself (the environment file, a Fly secret, Render's dashboard) to override |
 | `ALDER_LOG` | read by the app's executable: the least level it writes, `debug`, `info` (default), `warn` or `error` ("Operating an app"); `alder deploy` leaves it as the environment sets it |
 | `ALDER_LOG_FORMAT` | read by the app's executable: `text` (default) or `json` lines |
+| `ALDER_SLOW_MS` | read by the app's executable: a request that takes this many milliseconds or more is a `warn` line with its breakdown ("Slow requests"; unset or `0`: off); `alder deploy` leaves it as the environment sets it |
+| `ALDER_METRICS` | read by the app's executable: `open`, or a bearer token of at least 16 characters, turns on `GET /_alder/metrics` ("Metrics"; unset: no endpoint); `alder deploy` leaves it as the environment sets it |
 | `ALDER_ALLOW_DATA_LOSS` | read by the app's executable, never set by you: `1` lets `--migrate-only` apply a DROPS DATA migration; `alder deploy` sets it for one run with `--allow-data-loss` |
 | `RENDER_API_KEY` | the Render target's API key (the Render REST API) |
 | `ALDER_REGISTRY_TOKEN`, `ALDER_REGISTRY_USER` | the Render target's registry token (the image push and Render's pull credential) and user (default the first part of `image`) |
