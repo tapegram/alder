@@ -239,6 +239,19 @@ func TestScratchInlayHintColumnIsBytes(t *testing.T) {
 	}
 }
 
+// A client that offers only utf-16 gets the hint column in UTF-16 units.
+func TestScratchInlayHintColumnUTF16(t *testing.T) {
+	fakeScratch(t, func(int, scratch.File) scratch.FileResult {
+		return scratch.FileResult{Ran: true, Watches: []scratch.WatchResult{{Line: 1, End: 1, Type: "Text", Value: `"😀"`}}}
+	})
+	c := startOffering(t, copyExample(t, "todos"), Options{}, []string{"utf-16"})
+	c.open("scratch.alder", "> \"😀\"\n")
+	c.scratchNote()
+	if hs := inlayHints(t, c, "scratch.alder"); len(hs) != 1 || hs[0].Position != (Position{0, 6}) {
+		t.Fatalf("hints %+v", hs)
+	}
+}
+
 // A client that supports it is asked to refresh its inlay hints after each phase of a run.
 func TestScratchInlayHintRefresh(t *testing.T) {
 	noScratchRuns(t)

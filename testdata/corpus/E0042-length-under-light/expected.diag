@@ -1,0 +1,1 @@
+app/App.alder:10:12 E0042 `radius` is theme-wide: set it outside `light` and `dark`

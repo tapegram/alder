@@ -65,8 +65,9 @@ const queueLen = 256
 type server struct {
 	o        Options
 	c        *conn
-	root     string // the root as the client names it
-	rootReal string // root with its symlinks resolved
+	enc      posEncoding // the negotiated position encoding; set by initialize, before any request runs
+	root     string      // the root as the client names it
+	rootReal string      // root with its symlinks resolved
 
 	fast, slow    chan *message
 	cancelled     sync.Map     // idKey → struct{}: requests to answer cancelled
@@ -293,9 +294,10 @@ func (s *server) initialize(params json.RawMessage) (any, error) {
 		s.root, s.rootReal = root, real
 	}
 	s.inlayRefresh = p.Capabilities.Workspace.InlayHint.RefreshSupport
+	s.enc = negotiate(p.Capabilities.General.PositionEncodings)
 	s.initialized = true
 	return map[string]any{
-		"capabilities": capabilities(),
+		"capabilities": capabilities(s.enc),
 		"serverInfo":   map[string]any{"name": "alder", "version": version.String()},
 	}, nil
 }

@@ -1,0 +1,2 @@
+app/Clock.alder:5:9 E0003 `Test.setClock` is only available inside a `test`
+app/Clock.alder:8:9 E0003 `Test.advance` is only available inside a `test`

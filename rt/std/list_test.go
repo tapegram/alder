@@ -27,7 +27,7 @@ func TestList_Batch6(t *testing.T) {
 	tin := []int64{1, 2}
 	tl := ListTail(tin)
 	eq(t, "tail", tl, rt.Just([]int64{2}))
-	tl.Val[0] = 99
+	_ = append(tl.Val, 99) // a view: never written in place, and an append reallocates
 	eq(t, "tail input", tin, []int64{1, 2})
 	eq(t, "tail empty", ListTail([]int64{}), rt.Nothing[[]int64]())
 	eq(t, "repeat", ListRepeat(3, "x"), []string{"x", "x", "x"})
@@ -37,8 +37,16 @@ func TestList_Batch6(t *testing.T) {
 	eq(t, "maximum empty", ListMaximum([]int64{}), rt.Nothing[int64]())
 	eq(t, "maximumFloat", ListMaximumFloat([]float64{0.5, 2.5}), rt.Just(2.5))
 	eq(t, "minimumFloat empty", ListMinimumFloat(nil), rt.Nothing[float64]())
-	ListMaximumFloat([]float64{math.NaN(), 1})
-	ListMinimumFloat([]float64{1, math.NaN()})
+	// NaN counts lowest (cmp.Compare): it never wins a maximum unless alone, and is the minimum.
+	eq(t, "maximumFloat skips NaN", ListMaximumFloat([]float64{math.NaN(), 1}), rt.Just(1.0))
+	eq(t, "maximumFloat NaN last", ListMaximumFloat([]float64{1, math.NaN()}), rt.Just(1.0))
+	if m := ListMaximumFloat([]float64{math.NaN(), math.NaN()}); !m.Ok || !math.IsNaN(m.Val) {
+		t.Error("maximumFloat all-NaN should be NaN")
+	}
+	if m := ListMinimumFloat([]float64{1, math.NaN()}); !m.Ok || !math.IsNaN(m.Val) {
+		t.Error("minimumFloat should be NaN when a NaN is present")
+	}
+	eq(t, "minimumFloat no NaN", ListMinimumFloat([]float64{2, 1}), rt.Just(1.0))
 }
 
 func TestList_Batch6SortByFloat(t *testing.T) {

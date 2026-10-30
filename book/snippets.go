@@ -280,6 +280,16 @@ func TableModule(s Snippet) string {
 	return m[0][1]
 }
 
+// TableModulePath is the module path of the table TableModule found: "Table." and its name
+// (the file app/Table/<Name>.alder), "" when s declares no single table. The verifier and the
+// book's tables agree on the prefix here.
+func TableModulePath(s Snippet) string {
+	if t := TableModule(s); t != "" {
+		return "Table." + t
+	}
+	return ""
+}
+
 // ModuleName is the name in a Module snippet's `module` line ("" for other kinds).
 func ModuleName(s Snippet) string {
 	l := firstCode(s.Source)

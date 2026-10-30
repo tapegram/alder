@@ -304,7 +304,7 @@
           (hexpr text
             (++ : Text (++ : Text "Choose at most " (call (std Text.fromInt) (global Admin.Comments.Bulk.maxRows)))
               " rows at a time.")))
-        (elem span))
+        (hexpr html (std Html.none)))
       (elem ul (attr id text "selected")
         (hfor row : Table.Comment.Comment
           (field rows (var model))
@@ -943,7 +943,7 @@
             (attr type text "submit")
             (attr variant text "secondary")
             (elem button (attr type text "submit") (htext "Find"))))
-        (elem span))
+        (hexpr html (std Html.none)))
       (form-el Admin.Comments.Edit.Save
         (attr submit submit
           (ctor Admin.Comments.Edit.Msg.Save (record SaveParams)))
@@ -2165,7 +2165,7 @@
             (attr type text "submit")
             (attr variant text "secondary")
             (elem button (attr type text "submit") (htext "Find"))))
-        (elem span))
+        (hexpr html (std Html.none)))
       (form-el Admin.Comments.New.Create
         (attr submit submit
           (ctor Admin.Comments.New.Msg.Create (record CreateParams)))
@@ -3352,7 +3352,7 @@
           (hexpr text
             (++ : Text (++ : Text "Choose at most " (call (std Text.fromInt) (global Admin.Posts.Bulk.maxRows)))
               " rows at a time.")))
-        (elem span))
+        (hexpr html (std Html.none)))
       (elem ul (attr id text "selected")
         (hfor row : Table.Post.Post
           (field rows (var model))
@@ -4128,7 +4128,7 @@
             (attr type text "submit")
             (attr variant text "secondary")
             (elem button (attr type text "submit") (htext "Find"))))
-        (elem span))
+        (hexpr html (std Html.none)))
       (form-el Admin.Posts.Edit.Save
         (attr submit submit
           (ctor Admin.Posts.Edit.Msg.Save (record SaveParams)))
@@ -5614,7 +5614,7 @@
             (attr type text "submit")
             (attr variant text "secondary")
             (elem button (attr type text "submit") (htext "Find"))))
-        (elem span))
+        (hexpr html (std Html.none)))
       (form-el Admin.Posts.New.Create
         (attr submit submit
           (ctor Admin.Posts.New.Msg.Create (record CreateParams)))
@@ -6573,7 +6573,7 @@
           (hexpr text
             (++ : Text (++ : Text "Choose at most " (call (std Text.fromInt) (global Admin.Users.Bulk.maxRows)))
               " rows at a time.")))
-        (elem span))
+        (hexpr html (std Html.none)))
       (elem ul (attr id text "selected")
         (hfor row : Table.User.User
           (field rows (var model))

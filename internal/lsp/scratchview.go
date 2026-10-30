@@ -358,7 +358,7 @@ func inlayHintReq(s *server, params json.RawMessage) (any, error) {
 		if line < p.Range.Start.Line || line > p.Range.End.Line {
 			continue
 		}
-		out = append(out, inlayHint{Position: Position{line, len(now[line])}, Label: label, PaddingLeft: true})
+		out = append(out, inlayHint{Position: Position{line, s.enc.toWire(now[line], len(now[line]))}, Label: label, PaddingLeft: true})
 	}
 	return out, nil
 }

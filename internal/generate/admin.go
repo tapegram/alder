@@ -1547,7 +1547,7 @@ func (g *adminGen) finders(at *adminTable, page string, edit bool) (decls, view,
 		name := "Search" + UpperFirst(c.Name)
 		form := "Find" + UpperFirst(c.Name)
 		decls = append(decls, "form "+form+" = { q: Text }", "", "msg "+name+" form "+form, "")
-		view = append(view, fmt.Sprintf(`{if model.%s > 200 then <form submit={%s}><al-input field="q" label=%s /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}`,
+		view = append(view, fmt.Sprintf(`{if model.%s > 200 then <form submit={%s}><al-input field="q" label=%s /><al-button type="submit" variant="secondary">Find</al-button></form> else Html.none}`,
 			totalField(c), name, quote("Find "+strings.ToLower(Humanize(c.Name)))))
 		args := findParam(c) + ": Text.slice 0 200 p.form.q"
 		if edit {

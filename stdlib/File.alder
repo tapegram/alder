@@ -7,7 +7,7 @@ bytes : { contentType: Text, body: Bytes } -> File
 -- text/html; charset=utf-8, rendered verbatim: no doctype unless the node has one
 html : Html Never -> File
 -- application/json
-json : Text -> File
+json : Json.Value -> File
 -- 200..599
 withStatus : Int -> File -> File
 -- Content-Disposition, Cache-Control, ETag, Last-Modified, Retry-After, Content-Language, X-…

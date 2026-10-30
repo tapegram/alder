@@ -32,22 +32,29 @@ List.append   : List a -> List a -> List a    -- same as ++
 List.unique   : List a -> List a
 List.groupBy  : (a -> Text) -> List a -> Dict Text (List a)
 List.indexedMap : (Int -> a -> b) -> List a -> List b
-List.map2 : (a -> b -> c) -> List a -> List b -> List c
-List.map3 : (a -> b -> c -> d) -> List a -> List b -> List c -> List d
-List.foldr : (a -> b -> b) -> b -> List a -> b
+List.map2     : (a -> b -> c) -> List a -> List b -> List c
+List.map3     : (a -> b -> c -> d) -> List a -> List b -> List c -> List d
+List.foldr    : (a -> b -> b) -> b -> List a -> b
 List.concatMap : (a -> List b) -> List a -> List b
 List.intersperse : a -> List a -> List a
 List.partition : (a -> Bool) -> List a -> { yes: List a, no: List a }
-List.tail : List a -> Maybe (List a)
-List.repeat : Int -> a -> List a
-List.maximum : List Int -> Maybe Int
-List.minimum : List Int -> Maybe Int
+List.tail     : List a -> Maybe (List a)
+List.repeat   : Int -> a -> List a
+List.maximum  : List Int -> Maybe Int
+List.minimum  : List Int -> Maybe Int
 List.maximumFloat : List Float -> Maybe Float
 List.minimumFloat : List Float -> Maybe Float
 List.sortByFloat : (a -> Float) -> List a -> List a
 ```
 
 `List.partition` returns a record with a `yes` field (the elements that satisfy the test) and a `no` field, each in input order. `List.map2` and `List.map3` stop at the shortest list.
+
+`List.take`, `List.drop` and `List.tail` cost nothing however long the list:
+the result shares the original's elements, which is safe because no list is
+ever changed. `++` copies both sides into a new list (unless one is empty), so
+a loop that grows a list with `acc ++ [x]` copies the whole list at every
+step; use `List.foldl`, `List.concatMap` or, for text, a `Text.Builder`
+(below) instead.
 
 ```alder eval=[10, 30, 50]
 List.range 1 5
@@ -118,7 +125,7 @@ Text.concat    : List Text -> Text           -- Text.join ""
 Text.lines     : Text -> List Text
 Text.words     : Text -> List Text
 Text.indexes   : Text -> Text -> List Int    -- Text.indexes needle haystack
-Text.toCodePoints   : Text -> List Int
+Text.toCodePoints : Text -> List Int
 Text.fromCodePoints : List Int -> Text
 Text.NonEmpty, Text.Email, Text.Url, Text.Secret   -- refinement brands
 ```
@@ -156,6 +163,40 @@ is `[0, 1]`). There is no `toChars`: `Text.split "" s` gives the characters.
 [Text.slice (-3) (-1) "abcdef", Text.fromFloat 2.0, Text.fromFloat 3.5]
 ```
 
+### Building a large Text
+
+```alder
+Text.Builder                                 -- an accumulator for a large Text
+Text.builder   : Text.Builder                -- empty
+Text.add       : Text -> Text.Builder -> Text.Builder   -- Text.add piece b
+Text.build     : Text.Builder -> Text
+```
+
+Interpolation and `Text.join` each make a new Text, copying every byte they
+are given. That is cheap for a heading, but a page that renders a large body
+by nesting them (rows joined into options, options into items, items into a
+file) copies each byte once per level: a 100 MB JSON file allocates close to
+a gigabyte. A `Text.Builder` avoids that. `Text.add` puts a piece after
+everything added so far without copying anything, and `Text.build` copies each
+byte once, into the finished Text. A builder is a value like any other:
+adding to it gives a new builder and leaves the old one as it was, so two
+builders can grow from the same start. Make each row with interpolation and
+add whole rows; adding many tiny pieces (a comma, a field) costs more than
+the copy it saves. There is no `addAll`: `List.foldl Text.add b pieces` adds a
+list of pieces in order.
+
+```alder eval="name,votes\nKent,3\nDane,5\n"
+[{ name: "Kent", votes: 3 }, { name: "Dane", votes: 5 }]
+  |> List.foldl (\r b -> b |> Text.add "{r.name},{Text.fromInt r.votes}\n") (Text.builder |> Text.add "name,votes\n")
+  |> Text.build
+```
+
+Under the hood a builder is a chain of the pieces, newest first, each link
+remembering the total length so far. `Text.build` allocates that many bytes
+once and fills them from the end, walking the chain back. A File page passes
+the result straight to `File.text`, which uses the Text's bytes as the body
+without copying them again.
+
 ## Int, Float
 
 ```alder
@@ -176,13 +217,13 @@ Float.sqrt   : Float -> Float
 Float.exp    : Float -> Float
 Float.log    : Float -> Float                   -- natural logarithm
 Float.pow    : Float -> Float -> Float          -- Float.pow base exponent
-Float.truncate   : Float -> Int                 -- rounds toward zero
-Float.clamp      : { min: Float, max: Float } -> Float -> Float
+Float.truncate : Float -> Int                   -- rounds toward zero
+Float.clamp  : { min: Float, max: Float } -> Float -> Float
 Float.pi, Float.e                               -- Float constants
 Float.isNaN, Float.isInfinite : Float -> Bool
-Float.logBase    : Float -> Float -> Float      -- Float.logBase base x
+Float.logBase : Float -> Float -> Float         -- Float.logBase base x
 Float.sin, Float.cos, Float.tan, Float.asin, Float.acos, Float.atan : Float -> Float
-Float.atan2      : Float -> Float -> Float      -- Float.atan2 y x
+Float.atan2  : Float -> Float -> Float          -- Float.atan2 y x
 ```
 
 `Int` arithmetic wraps on overflow; `/` truncates toward zero and `%` has
@@ -196,7 +237,10 @@ behaves as it does there. `Float.truncate` rounds toward zero.
 
 A `Float` literal may carry an exponent: `1.5e-3`, `1e6` and `2E+3`. Any
 literal with an exponent is a `Float`, including `1e6`. `Text.toFloat` reads
-the same form, and `Text.fromFloat` output is unchanged.
+the same form, and `Text.fromFloat` output is unchanged. An `Int` literal
+that does not fit in 64 bits (above `9223372036854775807`) is an error, and a
+`Float` literal that overflows to infinity is one too; the smallest `Int` is
+written `-9223372036854775808` (the `-` directly on the literal, not `-(…)`).
 
 `Float.round` rounds half away from zero: `Float.round 2.5` is `3` and
 `Float.round (-2.5)` is `-3`. `Float.format { decimals: n }` rounds the same
@@ -358,6 +402,57 @@ A `Page` compares by its address: `Todos.Index {} == Todos.Index
 Time.toMillis Time.epoch
 ```
 
+## Json
+
+A JSON answer is a `Json.Value`, built with the functions below and written
+by `Json.encode` or `File.json`. Never build JSON as `Text` by hand: the
+encoder escapes what a hand-built string forgets.
+
+```alder
+Json.null   : Json.Value
+Json.bool   : Bool -> Json.Value
+Json.int    : Int -> Json.Value
+Json.float  : Float -> Json.Value                               -- NaN, +Inf and -Inf encode as null
+Json.string : Text -> Json.Value
+Json.list   : List Json.Value -> Json.Value
+Json.object : List { key: Text, value: Json.Value } -> Json.Value  -- keys in list order
+Json.encode : Json.Value -> Text                                -- compact: no whitespace
+Json.encodeIndented : Int -> Json.Value -> Text                 -- n spaces per level; n <= 0 is encode
+```
+
+A list of values is a pipeline, `xs |> List.map Json.int |> Json.list`, and
+a `Dict Text Json.Value` becomes an object with
+`d |> Dict.toList |> Json.object`.
+
+`Json.float` writes the shortest decimal that reads back as the same
+number, without an exponent (`Json.float 1.0` is `1`), and writes `null` for
+NaN and the infinities, which JSON has no spelling for; test with
+`Float.isNaN` and `Float.isInfinite` first if you want something else.
+`Json.int` writes every digit, however large.
+
+`Json.object` keeps its keys in list order. A key given twice keeps its first
+position and takes its last value, as `Dict.insert` would, so the output never
+repeats a key:
+
+```alder eval={"name":"Grace","score":null}
+Json.object [{ key: "name", value: Json.string "Ada" }, { key: "score", value: Json.float (0.0 / 0.0) }, { key: "name", value: Json.string "Grace" }]
+```
+
+`Json.string` escapes `"`, `\` and the control characters, and also writes
+`<`, `>`, `&` and the line separators U+2028 and U+2029 as `\u` escapes
+(`<` is `\u003c`). The text means the same to any JSON reader, and a
+`Json.encode` placed inside a `<script>` element through `Html.unsafe` can
+never end the element or break a JavaScript string.
+
+`Json.encodeIndented 2` writes one array item or object member per line,
+indented two spaces per level, as `JSON.stringify(v, null, 2)` does;
+`Json.encodeIndented 0` (or less) is `Json.encode`.
+
+Two values are equal when they encode to the same text, so
+`Json.int 1 == Json.float 1.0`; a `Json.Value` can be a `Dict` key on the
+same rule, and it shows (in the REPL, `Log` and test failures) as its
+compact JSON, without the quotes a `Text` would have.
+
 ## File, Bytes
 
 A file page's `view` returns a `File` (chapter 6, "File pages"). `Bytes` is
@@ -369,7 +464,7 @@ bytes"); it has the few operations below, and a
 File.text       : { contentType: Text, body: Text } -> File      -- a 200 answer
 File.bytes      : { contentType: Text, body: Bytes } -> File     -- a 200 answer
 File.html       : Html Never -> File                             -- text/html; charset=utf-8, rendered verbatim: no doctype unless the node has one
-File.json       : Text -> File                                   -- application/json
+File.json       : Json.Value -> File                             -- application/json: Json.encode of the value
 File.withStatus : Int -> File -> File                            -- 200..599
 File.withHeader : { name: Text, value: Text } -> File -> File    -- Content-Disposition, Cache-Control, ETag, Last-Modified, Retry-After, Content-Language, X-…
 File.status      : File -> Int
@@ -485,6 +580,11 @@ Only a `test` may use these (chapter 10); anywhere else each is E0003
   user and the org of a `Membership`: `Membership.since` has no default;
   insert the row with `Db.insert Membership { … }`"), and so is an app
   without a `via` field (chapter 10, "Two orgs").
+- `Test.setClock : Time -> Task Unit` sets the test's clock to a time:
+  `Time.now`, `Date.today` and `@created` read it, and it stands still
+  (no one-second tick) until something moves it (chapter 10, "Setting the clock").
+- `Test.advance : Int -> Task Unit` moves the test's clock that many
+  milliseconds forward (a negative number is 0), set or ticking.
 
 ### Browser steps and queries
 

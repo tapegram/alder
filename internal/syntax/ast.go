@@ -203,16 +203,24 @@ type DeployField struct {
 	Value    *DeployValue
 }
 
-// DeployValue is a value of a deploy declaration: a string, a number, a list, or a constructor
-// with an optional string argument and an optional record (`Ssh "h" { domain: "d" }`).
+// ThemeDecl is `theme { name: value, … }` in App (Appendix C): alder-ui tokens the build
+// emits as CSS after al.css. Its fields are deploy-style; `light` and `dark` are records.
+type ThemeDecl struct {
+	Node
+	Fields []*DeployField
+}
+
+// DeployValue is a value of a deploy or theme declaration: a string, a number, a list, a
+// constructor with an optional string argument and an optional record (`Ssh "h" { domain: "d"
+// }`), or a bare record (`{ primary: "…" }`, Kind "record": Rec set, Ctor empty).
 type DeployValue struct {
 	Span diag.Span
-	Kind string // "string", "int", "float", "list", "ctor"
+	Kind string // "string", "int", "float", "list", "ctor", "record"
 	Str  string // a string's text; a number's source text
 	List []*DeployValue
 	Ctor string
 	Arg  *DeployValue   // a ctor's string argument, or nil
-	Rec  []*DeployField // a ctor's record, or nil
+	Rec  []*DeployField // a ctor's record, or nil; a record's fields (non-nil)
 }
 
 type LoginDecl struct {

@@ -21,8 +21,8 @@ func TestFormat(t *testing.T) {
 		{"module header kept", "module Probe\n\n> 1+1\n", "module Probe\n\n> 1 + 1\n"},
 		{"watch comment", "> 1 + 1  -- two\n", "> 1 + 1 -- two\n"},
 		{"multi-line watch",
-			"> List.map (\\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -> aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa + 1111111111111111111111111) [1,2,3,4,5,6,7,8,9,10]\n",
-			"> List.map (\\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ->\n  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa + 1111111111111111111111111\n) [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\n"},
+			"> List.map (\\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -> aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa + 1111111111111111111) [1,2,3,4,5,6,7,8,9,10]\n",
+			"> List.map (\\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ->\n  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa + 1111111111111111111\n) [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\n"},
 		{"empty file", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

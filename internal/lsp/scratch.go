@@ -207,7 +207,7 @@ func (s *server) publishScratch(x *doc, r scratch.FileResult) {
 	for _, d := range r.Diags {
 		switch {
 		case d.Span.File == x.Rel:
-			ds = append(ds, lspDiagnostic(d))
+			ds = append(ds, s.enc.wireDiagnostic(strings.Split(x.Text, "\n"), lspDiagnostic(d)))
 		case d.Severity == "error":
 			appErr = true
 		}
