@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"alder/internal/scaffold"
+	"alder/internal/style"
 )
 
 // newUsage is the usage line of `alder new`.
@@ -117,7 +118,8 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 		written = append(written, "migrations/0001_initial.sql", "migrations/schema.json")
 	}
 
-	fmt.Fprintf(stdout, "created %s/\n", dir)
+	st := style.For(stdout)
+	fmt.Fprintf(stdout, "%s %s/\n", st.Green("created"), dir)
 	slices.Sort(written)
 	for _, p := range written {
 		fmt.Fprintf(stdout, "  %s\n", p)
@@ -126,14 +128,14 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 		fmt.Fprintf(stdout, "go.mod keeps the app out of the Go module of %s\n", parent)
 	}
 	if bare {
-		fmt.Fprintf(stdout, "\nnext:\n  cd %s\n", dir)
+		fmt.Fprintf(stdout, "\n%s\n  cd %s\n", st.Bold("next:"), dir)
 		fmt.Fprintln(stdout, "  alder new table …      # the app's tables (chapter 15)")
 		fmt.Fprintln(stdout, "  alder new page …       # its pages")
 		fmt.Fprintln(stdout, "  alder new auth         # a login")
 		fmt.Fprintln(stdout, "  alder check            # type-check the app")
 		return 0
 	}
-	fmt.Fprintf(stdout, "\nnext:\n  cd %s\n", dir)
+	fmt.Fprintf(stdout, "\n%s\n  cd %s\n", st.Bold("next:"), dir)
 	fmt.Fprintln(stdout, "  alder check            # type-check the app")
 	fmt.Fprintln(stdout, "  alder test             # run its tests")
 	fmt.Fprintln(stdout, "  alder test --mutate    # measure the tests")

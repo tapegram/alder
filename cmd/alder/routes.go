@@ -11,6 +11,7 @@ import (
 
 	"alder/internal/buildkit"
 	"alder/internal/diag"
+	"alder/internal/style"
 )
 
 const routesUsage = "usage: alder routes [dir] [--json]"
@@ -57,7 +58,7 @@ func runRoutesTo(args []string, stdout, stderr io.Writer) (code int) {
 	}
 	sources := buildkit.Sources(prog)
 	for _, d := range bag.Items {
-		fmt.Fprint(stderr, diag.RenderText(d, sources[d.Span.File]))
+		fmt.Fprint(stderr, diag.RenderTextStyled(d, sources[d.Span.File], style.For(stderr)))
 	}
 	if bag.HasErrors() || res == nil {
 		return 1

@@ -15,6 +15,7 @@ import (
 	"alder/internal/gen"
 	"alder/internal/ir"
 	"alder/internal/names"
+	"alder/internal/style"
 	"alder/internal/version"
 )
 
@@ -131,7 +132,7 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 		if d.Severity == "warning" {
 			w = stderr
 		}
-		fmt.Fprint(w, diag.RenderText(d, sources[d.Span.File]))
+		fmt.Fprint(w, diag.RenderTextStyled(d, sources[d.Span.File], style.For(w)))
 	}
 	if bag.HasErrors() || res == nil {
 		return "", 1

@@ -13,6 +13,7 @@ import (
 	"alder/internal/format"
 	"alder/internal/names"
 	"alder/internal/scratch"
+	"alder/internal/style"
 	"alder/internal/syntax"
 	"alder/internal/types"
 )
@@ -224,7 +225,7 @@ func fmtResult(name string, src, out []byte, ds []diag.Diagnostic, err error, st
 		return 2
 	case out == nil:
 		for _, d := range ds {
-			fmt.Fprint(stderr, diag.RenderText(d, strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n")))
+			fmt.Fprint(stderr, diag.RenderTextStyled(d, strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n"), style.For(stderr)))
 		}
 		return 1
 	}

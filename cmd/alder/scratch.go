@@ -17,6 +17,7 @@ import (
 	"alder/internal/buildkit"
 	"alder/internal/diag"
 	"alder/internal/scratch"
+	"alder/internal/style"
 	"alder/internal/watch"
 )
 
@@ -318,7 +319,7 @@ func scratchRun(ctx context.Context, a scratchRunArgs, res *scratchResult, failf
 		if d.Span.File != f.Name {
 			lines = appSourceLines(a.appDir, appLines, d.Span.File)
 		}
-		fmt.Fprint(a.stderr, diag.RenderText(d, lines))
+		fmt.Fprint(a.stderr, diag.RenderTextStyled(d, lines, style.For(a.stderr)))
 	}
 	for _, w := range r.Watches {
 		if w.Error != "" {

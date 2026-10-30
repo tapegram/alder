@@ -19,6 +19,7 @@ import (
 	"alder/internal/buildkit"
 	"alder/internal/diag"
 	"alder/internal/scratch"
+	"alder/internal/style"
 	rtesting "alder/rt/testing"
 )
 
@@ -596,7 +597,7 @@ func testDiags(dir string, ds []diag.Diagnostic, stopped, jsonOut bool, stdout, 
 		if d.Severity == "warning" {
 			w = stderr
 		}
-		fmt.Fprint(w, diag.RenderText(d, lines))
+		fmt.Fprint(w, diag.RenderTextStyled(d, lines, style.For(w)))
 	}
 	return failed
 }

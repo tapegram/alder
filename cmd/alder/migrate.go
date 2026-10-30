@@ -18,6 +18,7 @@ import (
 	"alder/internal/diag"
 	"alder/internal/ir"
 	"alder/internal/migrate"
+	"alder/internal/style"
 )
 
 // migrateUsage is the usage line of `alder migrate`.
@@ -92,7 +93,7 @@ func runMigrateWith(args []string, stdout, stderr io.Writer, e *deployEnv) (code
 		if d.Severity == "warning" {
 			w = stderr
 		}
-		fmt.Fprint(w, diag.RenderText(d, sources[d.Span.File]))
+		fmt.Fprint(w, diag.RenderTextStyled(d, sources[d.Span.File], style.For(w)))
 	}
 	if bag.HasErrors() || res == nil {
 		return 1

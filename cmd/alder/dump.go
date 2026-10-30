@@ -12,6 +12,7 @@ import (
 	"alder/internal/buildkit"
 	"alder/internal/diag"
 	"alder/internal/ir"
+	"alder/internal/style"
 	"alder/internal/syntax"
 )
 
@@ -105,7 +106,7 @@ func runDumpTo(args []string, stdout, stderr io.Writer) (code int) {
 		}
 		lines := strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n")
 		for _, d := range diags {
-			fmt.Fprint(stderr, diag.RenderText(d, lines))
+			fmt.Fprint(stderr, diag.RenderTextStyled(d, lines, style.For(stderr)))
 			failed = true
 		}
 	}
@@ -134,7 +135,7 @@ func dumpIR(dir string, stdout, stderr io.Writer) int {
 	}
 	sources := buildkit.Sources(prog)
 	for _, d := range bag.Items {
-		fmt.Fprint(stderr, diag.RenderText(d, sources[d.Span.File]))
+		fmt.Fprint(stderr, diag.RenderTextStyled(d, sources[d.Span.File], style.For(stderr)))
 	}
 	if bag.HasErrors() || res == nil {
 		return 1

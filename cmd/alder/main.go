@@ -13,6 +13,7 @@ import (
 
 	"alder/internal/buildkit"
 	"alder/internal/diag"
+	"alder/internal/style"
 )
 
 func main() {
@@ -185,15 +186,49 @@ func runCheckTo(args []string, stdout, stderr io.Writer) (code int) {
 		if d.Severity == "warning" {
 			w = stderr
 		}
-		fmt.Fprint(w, diag.RenderText(d, sources[d.Span.File]))
+		fmt.Fprint(w, diag.RenderTextStyled(d, sources[d.Span.File], style.For(w)))
 	}
 	if holes := countHoles(bag.Items); holes > 0 && !jsonOut { // "holes left" is not "build failed"
 		fmt.Fprintf(stderr, "alder check: %d typed %s left\n", holes, map[bool]string{true: "hole", false: "holes"}[holes == 1])
+	}
+	if st := style.For(stderr); st.On() && !jsonOut && len(bag.Items) > 0 {
+		fmt.Fprintln(stderr, countLine(bag.Items, st))
 	}
 	if bag.HasErrors() {
 		return 1
 	}
 	return 0
+}
+
+// countLine is `2 errors, 1 warning` for ds, bold red when any is an error, else yellow: the
+// last line `alder check` prints on a terminal.
+func countLine(ds []diag.Diagnostic, st style.Style) string {
+	errs, warns := 0, 0
+	for _, d := range ds {
+		if d.Severity == "error" {
+			errs++
+		} else {
+			warns++
+		}
+	}
+	plural := func(n int, word string) string {
+		if n == 1 {
+			return fmt.Sprintf("1 %s", word)
+		}
+		return fmt.Sprintf("%d %ss", n, word)
+	}
+	var parts []string
+	if errs > 0 {
+		parts = append(parts, plural(errs, "error"))
+	}
+	if warns > 0 {
+		parts = append(parts, plural(warns, "warning"))
+	}
+	line := strings.Join(parts, ", ")
+	if errs > 0 {
+		return st.BoldRed(line)
+	}
+	return st.Yellow(line)
 }
 
 // countHoles is the number of typed holes (W0002) among ds.
