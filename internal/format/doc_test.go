@@ -200,13 +200,24 @@ func TestRender_ChoiceFirstLine(t *testing.T) {
 	eq(t, Render(d, 6), "x = head(\n  a long line here\n)") // neither fits: the first
 }
 
+// AtLine indents from the line it starts on, wherever the enclosing Nest is.
+func TestRender_AtLine(t *testing.T) {
+	list := Concat(Text("["), Nest(Concat(HardLine, Text("a"))), HardLine, Text("]"))
+	// starts on a line indented 4 inside a Nest of 2: contents at 6, close at 4
+	d := Concat(Text("x"), Nest(Concat(HardLine, Text("y"), Nest(Concat(HardLine, Text("== "), AtLine(list))))))
+	eq(t, Render(d, 100), "x\n  y\n    == [\n      a\n    ]")
+	// starts on an unindented line inside a Nest: contents at 2, close at 0
+	eq(t, Render(Concat(Text("}"), Nest(Concat(Text(" == "), AtLine(list)))), 100), "} == [\n  a\n]")
+}
+
 func TestRender_ChoiceInFlatGroupPrintsFirst(t *testing.T) {
 	d := Group(Concat(Text("a"), Line, Choice(Text("b"), Text("c"), false)))
 	eq(t, Render(d, 100), "a b")
 }
 
 // TestScaling_Render is TestRender_Performance's machine-independent guard: rendering four times
-// as many groups allocates at most 1.5 times more per group.
+// as many groups allocates at most 1.5 times more per group. Not parallel: AllocsPerRun would
+// count other tests' allocations.
 func TestScaling_Render(t *testing.T) {
 	doc := func(n int) Doc {
 		items := make([]Doc, 0, 2*n)

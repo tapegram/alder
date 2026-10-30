@@ -108,7 +108,9 @@ func (p *printer) after(e syntax.Expr) Doc {
 	if _, ok := e.(*syntax.App); ok && opensBody(e) {
 		// a call that hugs its last argument stays on the line unless its head alone (the line up
 		// to where it opens) is too long: then the call goes on the next line
-		return Choice(Concat(Text(" "), p.expr(e)), Group(Nest(Concat(Line, p.expr(e)))), true)
+		d := p.expr(e) // built once: both alternatives share it (building it twice doubles the
+		// work at every nested hugged call)
+		return Choice(Concat(Text(" "), d), Group(Nest(Concat(Line, d))), true)
 	}
 	if opensBody(e) {
 		return Concat(Text(" "), p.expr(e))
@@ -290,9 +292,16 @@ func (p *printer) binOp(e *syntax.BinOp) Doc {
 	}
 	var rest []Doc
 	for i := 1; i < len(operands); i++ {
+		if inline {
+			// an operand that opens on the operator's line indents one level from that line, not
+			// from the chain's start plus a Nest: `} == {` keeps its fields one level in, and an
+			// operand after an earlier one that broke deeper is not left of its own line
+			rest = append(rest, sep, Text(ops[i-1]+" "), AtLine(docs[i]))
+			continue
+		}
 		rest = append(rest, sep, Text(ops[i-1]+" "), docs[i])
 	}
-	if inline { // an operand that breaks indents from the chain's line, not one level more
+	if inline {
 		return Group(Concat(docs[0], Concat(rest...)))
 	}
 	return Group(Concat(docs[0], Nest(Concat(rest...))))

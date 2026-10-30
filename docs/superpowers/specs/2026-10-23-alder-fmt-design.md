@@ -239,8 +239,9 @@ it; the book is the reference corpus. Spacing as in the examples:
 - **Other binary operator chains**: one line if they fit, else one
   operator per line, operator leading (the grammar's continuation form).
   A chain with an operand that always spans lines (a vertical record, a
-  block) keeps its operators inline, `} == {`, and the operands' own lines
-  indent one level from the line the chain starts on, not two (#27).
+  block) keeps its operators inline, `} == {`, and an operand's own lines
+  indent one level from the line it opens on (not two, and never left of
+  that line when an earlier operand broke deeper) (#27).
 - **Application**: arguments stay on the function's line (grammar). If
   the line is too long, break inside the *last* argument when it is a
   record, list, lambda or parenthesised expression (Prettier's "hugging"),

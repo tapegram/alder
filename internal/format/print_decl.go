@@ -403,23 +403,21 @@ func (p *printer) typ(t syntax.Type) Doc {
 		// record in it, the record breaks first (K&R, `} -> R` on its closing line) and the arrows
 		// stay inline, unless a line is still too long. A function type inside another stays on
 		// its line.
-		arrows := func(sep Doc) Doc {
-			parts := []Doc{p.paramType(t.Params[0])}
-			for _, x := range t.Params[1:] {
-				parts = append(parts, sep, p.paramType(x))
-			}
-			return Concat(append(parts, sep, p.typ(t.Result))...)
+		// each part is built once and shared by both layouts
+		parts := make([]Doc, 0, len(t.Params)+1)
+		for _, x := range t.Params {
+			parts = append(parts, p.paramType(x))
 		}
-		inline := arrows(Text(" -> ")) // no Nest: a record that breaks indents from its own line
+		parts = append(parts, p.typ(t.Result))
+		inline := join(parts, Text(" -> ")) // no Nest: a record that breaks indents from its own line
 		if p.inFun > 1 {
 			return inline
 		}
 		var rest []Doc
-		for _, x := range t.Params[1:] {
-			rest = append(rest, Line, Text("-> "), p.paramType(x))
+		for _, x := range parts[1:] {
+			rest = append(rest, Line, Text("-> "), x)
 		}
-		rest = append(rest, Line, Text("-> "), p.typ(t.Result))
-		leading := Group(Concat(p.paramType(t.Params[0]), Nest(Concat(rest...))))
+		leading := Group(Concat(parts[0], Nest(Concat(rest...))))
 		if containsRecord(t) {
 			return Choice(inline, leading, false)
 		}

@@ -8,7 +8,8 @@
 //     broken.
 //   - HardLine is always a newline and forces every enclosing group broken.
 //     A Text containing "\n" behaves the same way.
-//   - Nest adds IndentWidth to the indentation of newlines inside it.
+//   - Nest adds IndentWidth to the indentation of newlines inside it; AtLine sets it to the
+//     indentation of the line where AtLine starts.
 //   - Flat prints its content flat whatever the width, unless it holds a hard break.
 //   - Trailing prints a line comment at the end of the line: it has no width (a comment never
 //     moves code to another line) and forces every enclosing group broken, like HardLine, so
@@ -64,9 +65,10 @@ type concat struct {
 }
 
 type nest struct {
-	d    Doc
-	flat int
-	hard bool
+	d      Doc
+	flat   int
+	hard   bool
+	atLine bool // AtLine: the indentation of the current line, not one level more
 }
 
 type group struct {
@@ -149,6 +151,14 @@ func Concat(ds ...Doc) Doc {
 func Nest(d Doc) Doc {
 	w, h := measure(d)
 	return nest{d: d, flat: w, hard: h}
+}
+
+// AtLine sets the indentation of newlines inside d to that of the line d starts on, so that what
+// d opens there (a record, a list) indents one level from that line and closes at its indent,
+// however deep the enclosing Nest is.
+func AtLine(d Doc) Doc {
+	w, h := measure(d)
+	return nest{d: d, flat: w, hard: h, atLine: true}
 }
 
 // Group prints d flat if it fits, otherwise broken.
@@ -237,6 +247,8 @@ type renderer struct {
 	wrote    bool // some text has been written
 	firstCol int  // a trial's: the width of the first line it wrote text on, once that ended; else -1
 	first    bool // a trial that stops once firstCol is known
+	// lineIndent is the indentation of the current line (AtLine)
+	lineIndent int
 }
 
 // endLine records the width of the line that ends at the current column.
@@ -279,6 +291,10 @@ func (r *renderer) run(stack []cmd) {
 		case trailing:
 			r.out = append(r.out, n.s...)
 		case nest:
+			if n.atLine {
+				stack = append(stack, cmd{r.lineIndent, c.flat, n.d})
+				continue
+			}
 			stack = append(stack, cmd{c.indent + IndentWidth, c.flat, n.d})
 		case group:
 			flat := c.flat || (!n.hard && fits(n, r.width-r.col, stack))
@@ -316,6 +332,7 @@ func (r *renderer) run(stack []cmd) {
 				r.out = append(r.out, '\n')
 				r.pending = c.indent
 				r.col = c.indent
+				r.lineIndent = c.indent
 			}
 		}
 	}
@@ -334,7 +351,7 @@ func (r *renderer) tryChoice(n choice, indent int, rest []cmd) bool {
 // line it writes text on (firstLine) or every line, the last one followed by the rest of the stack up to its first
 // possible line break.
 func (r *renderer) trial(d Doc, firstLine bool, indent int, rest []cmd) bool {
-	t := renderer{width: r.width, col: r.col, firstCol: -1, first: firstLine}
+	t := renderer{width: r.width, col: r.col, lineIndent: r.lineIndent, firstCol: -1, first: firstLine}
 	t.run([]cmd{{indent, false, d}})
 	switch {
 	case firstLine && t.firstCol >= 0:

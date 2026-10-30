@@ -204,8 +204,10 @@ func bigModule(t testing.TB, n int) []byte {
 }
 
 // TestScaling_Source guards against a formatter that does more than linear work, whatever the
-// machine's load: formatting a module four times as long allocates at most 1.5 times more per
-// byte. (Allocation counts are deterministic; wall-clock time is the opt-in TestSpeed_Examples.)
+// machine's load: formatting a module of at least 4000 lines rather than 1000 (about three times
+// the bytes) allocates at most 1.5 times more per byte. (Allocation counts are deterministic;
+// wall-clock time is the opt-in TestSpeed_Examples.) The scaling tests must not call t.Parallel:
+// AllocsPerRun counts every allocation in the process, so a parallel test's would be counted too.
 func TestScaling_Source(t *testing.T) {
 	if testing.Short() {
 		t.Skip("formats a 4000-line module")
@@ -223,5 +225,47 @@ func TestScaling_Source(t *testing.T) {
 	t.Logf("%d bytes: %.0f allocs; %d bytes: %.0f allocs; per-byte ratio %.2f", len(small), as, len(big), ab, perByte)
 	if perByte > 1.5 {
 		t.Errorf("allocations per byte grew %.2fx from a %d- to a %d-byte module, want at most 1.5x", perByte, len(small), len(big))
+	}
+}
+
+// deepModule nests depth levels of one shape whose bodies are hugged calls, each level going
+// through the printer's body layout (after) again: `let` statements calling with a record, match
+// arms calling with a lambda, and lambdas inside hugged lambdas.
+func deepModule(depth int, shape string) []byte {
+	body := "g"
+	for i := 0; i < depth; i++ {
+		switch shape {
+		case "let":
+			body = fmt.Sprintf("{\nlet a%d = f%d q { k: %s }\na%d\n}", i, i, body, i)
+		case "arm":
+			body = fmt.Sprintf("match x%d {\n_ -> f%d a (\\y -> %s),\n}", i, i, body)
+		case "lambda":
+			body = fmt.Sprintf("f%d q (\\y%d -> h%d r (\\z%d -> %s))", i, i, i, i, body)
+		}
+	}
+	return []byte("module Deep\n\nv = " + body + "\n")
+}
+
+// TestScaling_Depth guards against work that multiplies with nesting: a layout choice that built
+// its body once per alternative doubled the time at every level (depth 24 took over a minute).
+// Three times the depth must allocate at most twice as much per byte of input (doubling per level
+// would be 4096 times). The depths stay small so that such a regression fails fast instead of
+// hanging the test.
+func TestScaling_Depth(t *testing.T) {
+	for _, shape := range []string{"let", "arm", "lambda"} {
+		allocs := func(src []byte) float64 {
+			return testing.AllocsPerRun(1, func() {
+				if _, diags, err := Source("Deep.alder", src); err != nil || len(diags) > 0 {
+					t.Fatalf("%s: does not format: diags=%v err=%v", shape, diags, err)
+				}
+			})
+		}
+		small, big := deepModule(6, shape), deepModule(18, shape)
+		as, ab := allocs(small), allocs(big)
+		perByte := (ab / float64(len(big))) / (as / float64(len(small)))
+		t.Logf("%s: depth 6 %.0f allocs, depth 18 %.0f allocs, per-byte ratio %.2f", shape, as, ab, perByte)
+		if perByte > 2 {
+			t.Errorf("%s: allocations per byte grew %.2fx from depth 6 to 18, want at most 2x", shape, perByte)
+		}
 	}
 }

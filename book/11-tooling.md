@@ -1208,8 +1208,9 @@ slowest of the rest as well: the out-of-tree builds, the drill and the twelve
 deploy end to ends. The formatter's two wall-clock tests (`TestSpeed_Examples`,
 `TestRender_Performance`) run only with `ALDER_SPEED_TESTS=1`, on a quiet
 machine: a time limit fails on a busy one whatever the code does. What always
-runs in their place counts allocations as the input grows four times
-(`TestScaling_Source`, `TestScaling_Render`), which no other load changes.
+runs in their place counts allocations as the input grows, in length and in
+nesting depth (`TestScaling_Source`, `TestScaling_Render`,
+`TestScaling_Depth`), which no other load changes.
 
 The suite is slow to run in one piece, so `scripts/test.sh [go test flags]`
 runs it as CI does, in parallel: `cmd/alder` in four shards and every other
