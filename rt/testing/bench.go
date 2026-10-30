@@ -176,7 +176,7 @@ func benchJSON(ms []Measure) []jsonMeasure {
 }
 
 // benchRowFormat is a row of the text table under a test's result line (writeBench).
-const benchRowFormat = "  %-34s %9s %9s %17s %4s %5s %5s %5s  %s\n"
+const benchRowFormat = "  %-34s %9s %9s %19s %4s %5s %5s %5s  %s\n"
 
 func writeBench(b *strings.Builder, ms []Measure) {
 	if len(ms) == 0 {

@@ -1,0 +1,25 @@
+module Rows.Show
+
+import Table.Row
+
+page "/rows/{id}" { id: Row.RowId }
+
+type Model = { row: Row }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let found <- Db.get Row params.id
+  match found {
+    Just row -> Query.succeed { row: row },
+    Nothing -> Query.notFound,
+  }
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html>
+    <body>
+      <h1>{model.row.title}</h1>
+      <p id="n">{Text.fromInt model.row.n}</p>
+    </body>
+  </html>
