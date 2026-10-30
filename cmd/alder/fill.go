@@ -192,7 +192,7 @@ func fillAI(g genArgs, stdout, stderr io.Writer) int {
 		imports = []string{}
 	}
 	// the hole's type does not limit these: they are named, never applied silently
-	effects := fill.Effects(r.Expression)
+	effects := r.Effects
 	if effects == nil {
 		effects = []string{}
 	}

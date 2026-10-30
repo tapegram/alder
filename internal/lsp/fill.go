@@ -144,14 +144,14 @@ func (s *server) runFill(rel string, arg fillArgs, backend fill.Backend, model s
 	// The hole's type does not bound what the expression does: one that makes an HTTP request,
 	// changes the session, writes raw HTML, pauses, or writes rows outside the session's scope is
 	// applied only when the user says so, and never by a client that cannot be asked.
-	if effects := fill.Effects(r.Expression); len(effects) > 0 {
+	if effects := r.Effects; len(effects) > 0 {
 		head := fmt.Sprintf("alder fill ?%s: %s.", arg.Hole, fill.EffectsWarning(effects))
 		if !s.showMessageRequest {
 			s.showMessage(2, head+" Not applied (the editor cannot ask); the expression:\n"+fill.Short(r.Expression))
 			return
 		}
 		res, err := s.requestWithin("window/showMessageRequest", map[string]any{"type": 2,
-			"message": head + " Apply it?\n" + fill.Short(r.Expression),
+			"message": head + " Apply it?\n" + fill.Excerpt(r.Placed, r.EffectLines),
 			"actions": []map[string]string{{"title": "Apply"}, {"title": "Discard"}}}, askTimeout)
 		var choice struct {
 			Title string `json:"title"`

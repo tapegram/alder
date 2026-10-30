@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"slices"
+
 	"strings"
 	"testing"
 )
@@ -59,23 +59,6 @@ func TestAnthropic_HTTPSOnly(t *testing.T) {
 	a := NewAnthropic(fakeEnv(map[string]string{"ANTHROPIC_API_KEY": "k", "ALDER_ANTHROPIC_API": "http://api.example.com"}))
 	if _, err := a.Complete(context.Background(), "s", []Message{{"user", "x"}}); err == nil || !strings.Contains(err.Error(), "must be an https URL") || len(*reqs) != 0 {
 		t.Errorf("err %v", err)
-	}
-}
-
-func TestEffects(t *testing.T) {
-	for expr, want := range map[string][]string{
-		"Task.succeed Rerender": nil,
-		"{\n  let _ <- Db.deleteMine Post p.id\n  Task.succeed Rerender\n}":                                          nil,
-		"{\n  let _ <- Db.delete Post p.id\n  let _ <- Http.post { url: u, body: \"\" }\n  Task.succeed Rerender\n}": {"Db.delete", "Http.post"},
-		"{\n  let _ <- Session.put (\\s -> s)\n  let _ <- Task.sleep 10\n  Task.succeed Rerender\n}":                 {"Session.put", "Task.sleep"},
-		"Db.insert Post { } |> Task.map (\\_ -> Rerender)":                                                           {"Db.insert"},
-		"Db.update Post id f -- Http.get in a comment":                                                               {"Db.update"},
-		"<div>{Html.unsafe t}</div>":                                                                                 {"Html.unsafe"},
-		"Db.insertScoped T { } |> Db.updateMine":                                                                     nil,
-	} {
-		if got := Effects(expr); !slices.Equal(got, want) {
-			t.Errorf("Effects(%q) = %v, want %v", expr, got, want)
-		}
 	}
 }
 

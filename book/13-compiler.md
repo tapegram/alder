@@ -5630,12 +5630,24 @@ editor applies is one undo step.
 Before the edit goes, two more checks. The hole's type bounds what the
 expression returns, not what it does: an answer the module's own text talked
 the model into (a comment is part of the prompt) can be a `Task Nav` that
-deletes every row and still checks. `fill.Effects` finds, in the expression
-without its comments, the effects no hole of generated code needs: `Http.*`,
+deletes every row and still checks. So `fill.Run` checks the result once
+more with `generate.Probe`, which returns the checked copy, and
+`fill.Effects` reads the expression there: `generate.FillAt` says where the
+fill put it, and every name in it carries the resolver's answer (a
+`syntax.Ref`: a value of the app, a standard library value, a capability).
+Text would not do: an alias, or a helper in another module, hides a name
+from a search. It flags three things. A capability's entry, Query or Task
+alike, since each runs host Go (`capability Email.send`). The standard
+library's effects that reach beyond the page and its user's rows: `Http.*`,
 `Session.put`, `Html.unsafe`, `Task.sleep`, and `Db.insert`, `Db.update`,
-`Db.delete` (the `…Mine` and `…Scoped` ones keep to the session's rows). With
-any of them, the server asks `window/showMessageRequest` with `Apply` and
-`Discard`, and sends the edit only on `Apply`; a client that did not declare
+`Db.delete` (the `…Mine` and `…Scoped` ones keep to the session's rows). And
+any value of the app whose body reaches one of those, through as many other
+values as it takes, with the path (`Mail.notify → Email.send`). The walk
+over the values' bodies remembers each value's answer, and a value it is
+already inside counts as having none, so mutual recursion ends. With any of
+them, the server asks `window/showMessageRequest` with `Apply` and
+`Discard` (the whole expression when it is shorter than 40 lines, else the
+lines that hold a flagged name), and sends the edit only on `Apply`; a client that did not declare
 `window.showMessage` cannot be asked, so it gets the expression in a warning
 and no edit. And every edit applied is followed by a message that shows the
 expression, so nothing a model wrote lands unseen. `alder fill --ai` prints

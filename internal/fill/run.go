@@ -36,6 +36,13 @@ type Result struct {
 	Imports    []string
 	Holes      []generate.Hole
 	Attempts   int
+	// Effects are what the expression does that its hole's type does not limit (Effects), with
+	// Placed, its text as the fill placed it, and EffectLines, the lines of Placed (0 its
+	// first) that hold them. A probe that fails leaves one line saying so: unknown effects
+	// count as effects.
+	Effects     []string
+	Placed      string
+	EffectLines []int
 }
 
 // Failure is a fill that ended without an expression that checks: after the last refusal
@@ -109,7 +116,7 @@ func Run(ctx context.Context, b Backend, dir, address, hole string, report func(
 		expr := syntax.StripComments(StripFence(text)) // a comment is never placed, on any path
 		last = expr
 		msgs = append(msgs, Message{"assistant", text})
-		edits, _, imports, err := generate.Fill(p, address, hole, expr)
+		edits, _, imports, span, err := generate.FillAt(p, address, hole, expr)
 		var ref *generate.Refusal
 		if err != nil {
 			if !errors.As(err, &ref) {
@@ -122,7 +129,14 @@ func Run(ctx context.Context, b Backend, dir, address, hole string, report func(
 		}
 		res, err := generate.Apply(dir, edits, generate.Options{DryRun: true})
 		if err == nil {
-			return &Result{Expression: expr, Hole: *h, Edits: edits, Files: res.Files, Imports: imports, Holes: res.Holes, Attempts: n}, nil
+			r := &Result{Expression: expr, Hole: *h, Edits: edits, Files: res.Files, Imports: imports, Holes: res.Holes, Attempts: n}
+			r.Placed = spanText(edits[0].Body, span)
+			if probe, perr := generate.Probe(dir, edits); perr != nil {
+				r.Effects = []string{"unknown: the result could not be read back (" + perr.Error() + ")"}
+			} else {
+				r.Effects, r.EffectLines = effectsAt(probe, span)
+			}
+			return r, nil
 		}
 		if !errors.As(err, &ref) {
 			return nil, err
@@ -154,4 +168,25 @@ func refusalText(ref *generate.Refusal) (first, all string) {
 		return ref.Msg, ref.Msg
 	}
 	return first, b.String()
+}
+
+// spanText is the text of body that sp covers (1-based lines and columns, the end exclusive).
+func spanText(body string, sp diag.Span) string {
+	ls := strings.Split(body, "\n")
+	if sp.Start.Line < 1 || sp.End.Line > len(ls) || sp.Start.Line > sp.End.Line {
+		return ""
+	}
+	var out []string
+	for n := sp.Start.Line; n <= sp.End.Line; n++ {
+		l := ls[n-1]
+		lo, hi := 0, len(l)
+		if n == sp.Start.Line {
+			lo = min(max(sp.Start.Col-1, 0), len(l))
+		}
+		if n == sp.End.Line {
+			hi = min(max(sp.End.Col-1, lo), len(l))
+		}
+		out = append(out, l[lo:hi])
+	}
+	return strings.Join(out, "\n")
 }
