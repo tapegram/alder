@@ -1086,19 +1086,25 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n", open, at.title)
 	fmt.Fprintf(&b, `    <al-stack direction="row" gap="sm">
       <form method="get" action=%s>
-        <input type="search" name=%s value={model.q} aria-label="Search" />
-        {for f in filters model.filters ->
-          <al-select label={f.label}>
-            <label>{f.label}
-              <select name={f.name}>
-                <option value="" selected={f.value == ""}>any</option>
-                {for o in f.options -> <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
-              </select>
+        <al-stack direction="row" gap="sm">
+          <al-input>
+            <label>Search
+              <input type="search" name=%s value={model.q} />
             </label>
-          </al-select>}
-        <input type="hidden" name=%s value={model.sort} />
-        <input type="hidden" name=%s value={model.dir} />
-        <al-button type="submit" variant="secondary">Search</al-button>
+          </al-input>
+          {for f in filters model.filters ->
+            <al-select label={f.label}>
+              <label>{f.label}
+                <select name={f.name}>
+                  <option value="" selected={f.value == ""}>any</option>
+                  {for o in f.options -> <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
+                </select>
+              </label>
+            </al-select>}
+          <input type="hidden" name=%s value={model.sort} />
+          <input type="hidden" name=%s value={model.dir} />
+          <al-button type="submit" variant="secondary">Search</al-button>
+        </al-stack>
       </form>
       <al-button href={%s {}}>New %s</al-button>
     </al-stack>
@@ -1547,7 +1553,7 @@ func (g *adminGen) finders(at *adminTable, page string, edit bool) (decls, view,
 		name := "Search" + UpperFirst(c.Name)
 		form := "Find" + UpperFirst(c.Name)
 		decls = append(decls, "form "+form+" = { q: Text }", "", "msg "+name+" form "+form, "")
-		view = append(view, fmt.Sprintf(`{if model.%s > 200 then <form submit={%s}><al-input field="q" label=%s /><al-button type="submit" variant="secondary">Find</al-button></form> else <span></span>}`,
+		view = append(view, fmt.Sprintf(`{if model.%s > 200 then <form submit={%s}><al-input field="q" label=%s /><al-button type="submit" variant="secondary">Find</al-button></form> else Html.none}`,
 			totalField(c), name, quote("Find "+strings.ToLower(Humanize(c.Name)))))
 		args := findParam(c) + ": Text.slice 0 200 p.form.q"
 		if edit {

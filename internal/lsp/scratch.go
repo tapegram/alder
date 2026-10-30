@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"sync"
 
 	"alder/internal/diag"
@@ -33,6 +34,8 @@ type scratchRuns struct {
 	// documents were last rerun for a change to them; nil before the first such rerun.
 	sources map[string]watch.Stamp
 	vetted  bool // a scratch run has built (vetted) and run: later runs skip vet (NoVet); until then every run vets
+	// shown is what each open scratch document was last sent (alder/scratch), for inlay hints.
+	shown map[string]scratchShown
 }
 
 // scratchRun is one run of a scratch document.
@@ -125,6 +128,8 @@ func (s *server) stopScratch(rel, uri string) {
 		run.cancel()
 		delete(r.byRel, rel)
 	}
+	delete(r.shown, rel)
+	s.dropScratchView(rel)
 	s.notify("textDocument/publishDiagnostics", publishDiagnosticsParams{URI: uri, Diagnostics: []Diagnostic{}})
 }
 
@@ -170,6 +175,13 @@ func (s *server) scratchOnce(ctx context.Context, rel string, seq uint64) {
 			p.Error = r.Err.Error()
 		}
 		s.notify("alder/scratch", p)
+		if s.scratch.shown == nil {
+			s.scratch.shown = map[string]scratchShown{}
+		}
+		s.scratch.shown[rel] = scratchShown{lines: strings.Split(x.Text, "\n"), watches: p.Watches}
+		if s.inlayRefresh {
+			s.requestAsync("workspace/inlayHint/refresh", nil)
+		}
 	}
 	s.scratch.mu.Lock()
 	noVet := s.scratch.vetted // a concurrent first run of another document may vet too: harmless
@@ -195,7 +207,7 @@ func (s *server) publishScratch(x *doc, r scratch.FileResult) {
 	for _, d := range r.Diags {
 		switch {
 		case d.Span.File == x.Rel:
-			ds = append(ds, lspDiagnostic(d))
+			ds = append(ds, s.enc.wireDiagnostic(strings.Split(x.Text, "\n"), lspDiagnostic(d)))
 		case d.Severity == "error":
 			appErr = true
 		}
@@ -212,6 +224,19 @@ func (s *server) publishScratch(x *doc, r scratch.FileResult) {
 func (s *server) scratchOut(rel string) string {
 	abs := filepath.Join(s.rootReal, filepath.FromSlash(rel))
 	return filepath.Join(s.rootReal, "build", filepath.Base(s.rootReal), "scratch", scratch.FilePurpose(abs))
+}
+
+// requestAsync sends the server's request method with params, whose answer the reader drops (a
+// response the server does not wait for).
+func (s *server) requestAsync(method string, params any) {
+	id := fmt.Sprintf("alder-%d", s.reqSeq.Add(1))
+	m := map[string]any{"jsonrpc": "2.0", "id": id, "method": method}
+	if params != nil {
+		m["params"] = params
+	}
+	if err := s.c.send(m); err != nil {
+		fmt.Fprintf(s.o.Log, "alder lsp: %v\n", err)
+	}
 }
 
 // notify sends the notification method with params.

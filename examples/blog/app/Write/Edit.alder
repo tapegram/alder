@@ -123,11 +123,11 @@ test "deleting a post deletes its comments" = {
       posts: posts,
       comments: comments,
     } == {
-        value: Ok (Redirect (Write {})),
-        trace: ["Db.deleteMine Post"],
-        posts: 0,
-        comments: 0,
-      }
+      value: Ok (Redirect (Write {})),
+      trace: ["Db.deleteMine Post"],
+      posts: 0,
+      comments: 0,
+    }
   )
 }
 
@@ -195,10 +195,10 @@ test "a demoted author is turned away at once" = {
       stale: stale.answer,
       fresh: fresh.answer,
     } == {
-        before: Shown,
-        stale: PageMissing,
-        fresh: PageMissing,
-      }
+      before: Shown,
+      stale: PageMissing,
+      fresh: PageMissing,
+    }
   )
 }
 
@@ -289,11 +289,11 @@ test "saving changes the title and the body" = {
       status: Test.text "al-badge" r.doc,
       notices: r.notices,
     } == {
-        answer: Rerendered,
-        heading: Just "Hello again",
-        body: Just "More.",
-        status: Just "Draft",
-        notices: ["Saved"],
-      }
+      answer: Rerendered,
+      heading: Just "Hello again",
+      body: Just "More.",
+      status: Just "Draft",
+      notices: ["Saved"],
+    }
   )
 }

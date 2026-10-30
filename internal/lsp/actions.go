@@ -67,7 +67,9 @@ type generatorHere struct {
 // generator's action carries the client command alder.generate (Ruling R8), which the server
 // itself never runs. Fixes come first, the preferred ones (isPreferred) before the rest; the
 // generators, which are not about the text at the cursor, follow as kind refactor, so a client
-// that groups or filters by kind keeps them out of its quick-fix list (issue 45).
+// that groups or filters by kind keeps them out of its quick-fix list (issue 45). On a hole of
+// the build, `Fill ?h with AI (T)`: a quick fix on the hole's W0002 carrying alder.fill, which
+// the server runs (#46); offered only to a client that declared workspace.applyEdit.
 func codeActionReq(s *server, params json.RawMessage) (any, error) {
 	var p codeActionParams
 	if err := json.Unmarshal(params, &p); err != nil {
@@ -75,8 +77,11 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 	}
 	out := []codeAction{}
 	rel, ok := s.rel(p.TextDocument.URI)
-	if !ok || scratch.IsScratchFile(rel) {
+	if !ok {
 		return out, nil
+	}
+	if scratch.IsScratchFile(rel) {
+		return append(out, s.scratchActions(rel, p.Range)...), nil
 	}
 	now := strings.Split(s.text(rel), "\n")
 	if a := s.current(); a != nil {
@@ -102,6 +107,7 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 				Edit: &workspaceEdit{DocumentChanges: []textDocumentEdit{{TextDocument: doc, Edits: []TextEdit{*ld.Data.Fix}}}},
 			})
 		}
+		built := a.lines[rel]
 		fixes = disjointFixes(fixes)
 		// a preferred fix (the one obvious repair, as a hook's signature) is listed first
 		slices.SortStableFunc(fixes, func(a, b codeAction) int {
@@ -113,9 +119,16 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 			}
 			return 0
 		})
-		out = append(out, fixes...)
+		for _, f := range fixes { // bytes until here; wired on the way out
+			for i, dg := range f.Diagnostics {
+				f.Diagnostics[i] = s.enc.wireDiagnostic(built, dg)
+			}
+			ch := &f.Edit.DocumentChanges[0]
+			ch.Edits = []TextEdit{s.enc.wireEdit(built, ch.Edits[0])}
+			out = append(out, f)
+		}
 	}
-	start := p.Range.Start
+	start := s.byteAtLines(now, p.Range.Start)
 	if start.Line < 0 || start.Character < 0 {
 		return out, nil
 	}
@@ -123,7 +136,13 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 	if !freshLines(a, rel, now, start.Line+1, true) {
 		return out, nil // the line or one above it has changed since the last good build
 	}
-	ctx := hereCtx(a, rel, diag.Pos{Line: start.Line + 1, Col: start.Character + 1})
+	pos := diag.Pos{Line: start.Line + 1, Col: start.Character + 1}
+	ctx := hereCtx(a, rel, pos)
+	if ctx.Hole != "" && s.applyEdit { // the edit comes back as workspace/applyEdit: nothing else carries it
+		if act, ok := s.fillAction(a, rel, ctx, pos); ok {
+			out = append(out, act)
+		}
+	}
 	for _, spec := range generate.Specs() {
 		if spec.Here == nil {
 			continue
@@ -276,12 +295,16 @@ type executeCommandParams struct {
 	Arguments []json.RawMessage `json:"arguments"`
 }
 
-// executeCommandReq answers workspace/executeCommand. The one command is alder.explain [code]:
-// the code's explanation, as `alder explain` prints it, or its error for an unknown code.
+// executeCommandReq answers workspace/executeCommand: alder.explain [code], the code's
+// explanation, as `alder explain` prints it, or its error for an unknown code; alder.fill
+// [{uri, version, address, hole}], a fill started (fillCommand).
 func executeCommandReq(s *server, params json.RawMessage) (any, error) {
 	var p executeCommandParams
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, &rpcError{codeInvalidParams, err.Error()}
+	}
+	if p.Command == "alder.fill" {
+		return s.fillCommand(p.Arguments)
 	}
 	if p.Command != "alder.explain" {
 		return nil, &rpcError{codeInvalidParams, "unknown command " + p.Command}

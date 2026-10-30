@@ -15,7 +15,7 @@ load params session = {
 }
 
 view : Model -> Session -> File
-view model session = File.json (Text.fromInt model.waited)
+view model session = File.json (Json.int model.waited)
 
 -- A page's delay moves the test's clock, set or not: on a set clock the two readings are the
 -- delay apart (no tick), and the next page reads the moved clock.

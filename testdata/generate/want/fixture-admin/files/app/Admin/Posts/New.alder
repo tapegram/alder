@@ -88,7 +88,7 @@ view model session =
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
@@ -140,18 +140,18 @@ test "creating a post adds it, with the values submitted" = {
       }) rows,
       authors: Test.texts "select[name=author] option" page.doc,
     } == {
-        answers: [r.answer],
-        rows: [
-          {
-            title: Text.NonEmpty "title-1",
-            body: "body-1",
-            status: Published,
-            featured: True,
-            author: user2,
-          },
-        ],
-        authors: ["email-1@example.com", "email-2@example.com"],
-      }
+      answers: [r.answer],
+      rows: [
+        {
+          title: Text.NonEmpty "title-1",
+          body: "body-1",
+          status: Published,
+          featured: True,
+          author: user2,
+        },
+      ],
+      authors: ["email-1@example.com", "email-2@example.com"],
+    }
   )
 }
 
@@ -234,11 +234,11 @@ test "a long list of users offers 50, and the search narrows it" = {
       found: Test.texts "select[name=author] option" found.doc == ["email-203@example.com"],
       answer: r.answer,
     } == {
-        shown: 50,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Posts.New { findAuthor: "zz" }),
-      }
+      shown: 50,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Posts.New { findAuthor: "zz" }),
+    }
   )
 }
 

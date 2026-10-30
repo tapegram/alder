@@ -98,14 +98,14 @@ view model session =
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       {if model.orgsTotal > 200 then
         <form submit={SearchOrg}>
           <al-input field="q" label="Find org" />
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
@@ -152,11 +152,11 @@ test "creating a membership adds it, with the values submitted" = {
       users: Test.texts "select[name=user] option" page.doc,
       orgs: Test.texts "select[name=org] option" page.doc,
     } == {
-        answers: [r.answer],
-        rows: [{ user: user2, org: org2 }],
-        users: ["email-1@example.com", "email-2@example.com"],
-        orgs: ["name-1", "name-2"],
-      }
+      answers: [r.answer],
+      rows: [{ user: user2, org: org2 }],
+      users: ["email-1@example.com", "email-2@example.com"],
+      orgs: ["name-1", "name-2"],
+    }
   )
 }
 
@@ -285,11 +285,11 @@ test "a long list of users offers 50, and the search narrows it" = {
       found: Test.texts "select[name=user] option" found.doc == ["email-203@example.com"],
       answer: r.answer,
     } == {
-        shown: 50,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Memberships.New { findUser: "zz" }),
-      }
+      shown: 50,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Memberships.New { findUser: "zz" }),
+    }
   )
 }
 
@@ -397,11 +397,11 @@ test "a long list of orgs offers 50, and the search narrows it" = {
       found: Test.texts "select[name=org] option" found.doc == ["name-203"],
       answer: r.answer,
     } == {
-        shown: 50,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Memberships.New { findOrg: "zz" }),
-      }
+      shown: 50,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Memberships.New { findOrg: "zz" }),
+    }
   )
 }
 

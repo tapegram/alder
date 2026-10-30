@@ -1,0 +1,57 @@
+module Rows.Index
+
+import Table.Row
+
+page "/" { }
+
+type Model = { rows: List Row }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let rows <- Db.from Row |> Db.orderBy Row.created.asc |> Db.all
+  Query.succeed { rows: rows }
+}
+
+form NewRow = {
+  title: Text.NonEmpty,
+}
+
+msg Add form NewRow
+msg Toggle { id: Row.RowId }
+msg Jump { id: Row.RowId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insert Row { title: p.form.title, n: 0 }
+    Task.succeed Rerender
+  },
+  Toggle p -> {
+    let _ <- Db.update Row p.id (\r -> { r | done: not r.done })
+    Task.succeed Rerender
+  },
+  Jump p -> Task.succeed (Redirect (Rows.Show { id: p.id })),
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html>
+    <body>
+      <h1>Rows</h1>
+      <form submit={Add}>
+        <Errors form />
+        <Input field="title" label="Title" />
+        <Errors field="title" />
+        <button>Add</button>
+      </form>
+      <ul id="rows">
+        {for r in model.rows ->
+          <li class={if r.done then "done" else "open"}>
+            <span>{r.title}</span>
+            <span>{Text.fromInt r.n}</span>
+            <button click={Toggle { id: r.id }}>Toggle</button>
+            <button click={Jump { id: r.id }}>Open</button>
+          </li>}
+      </ul>
+    </body>
+  </html>

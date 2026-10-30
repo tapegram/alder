@@ -99,10 +99,10 @@ test "logging in through the form" = {
       user: r.session.user,
       title: Test.text "h1" r.doc,
     } == {
-        answer: Redirected (Todos.Index {}),
-        user: Just me,
-        title: Just "Todos",
-      }
+      answer: Redirected (Todos.Index {}),
+      user: Just me,
+      title: Just "Todos",
+    }
   )
 }
 
@@ -139,9 +139,9 @@ test "a visitor is sent to log in, and can log out" = {
       out: out.answer,
       user: out.session.user,
     } == {
-        visitor: Redirected (Auth.Login {}),
-        out: Redirected (Auth.Login {}),
-        user: Nothing,
-      }
+      visitor: Redirected (Auth.Login {}),
+      out: Redirected (Auth.Login {}),
+      user: Nothing,
+    }
   )
 }

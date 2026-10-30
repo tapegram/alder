@@ -372,8 +372,8 @@ func (p *printer) deployValue(v *syntax.DeployValue) Doc {
 // ---- types
 
 // typ prints a type. A function type that does not fit puts each further parameter and the
-// result on a line of its own, `->` first, unless it holds a record type (see below). Record
-// types inside a function type are width-based whatever their field count.
+// result on a line of its own, `->` first; one that holds a record type breaks the record first
+// (see below). Record types inside a function type are width-based whatever their field count.
 func (p *printer) typ(t syntax.Type) Doc {
 	switch t := t.(type) {
 	case *syntax.TypeName:
@@ -403,18 +403,29 @@ func (p *printer) typ(t syntax.Type) Doc {
 	case *syntax.FunType:
 		p.inFun++
 		defer func() { p.inFun-- }()
-		// With a record in it, the record breaks (K&R, `} -> R` on its closing line) and the
-		// arrows stay inline; otherwise the outermost function type's arrows break, `->` first.
-		sep := Concat(Line, Text("-> "))
-		if p.inFun > 1 || containsRecord(t) { // a function type inside another stays on its line
-			sep = Text(" -> ")
+		// The outermost function type's arrows break, `->` first, when it does not fit. With a
+		// record in it, the record breaks first (K&R, `} -> R` on its closing line) and the arrows
+		// stay inline, unless a line is still too long. A function type inside another stays on
+		// its line.
+		// each part is built once and shared by both layouts
+		parts := make([]Doc, 0, len(t.Params)+1)
+		for _, x := range t.Params {
+			parts = append(parts, p.paramType(x))
+		}
+		parts = append(parts, p.typ(t.Result))
+		inline := join(parts, Text(" -> ")) // no Nest: a record that breaks indents from its own line
+		if p.inFun > 1 {
+			return inline
 		}
 		var rest []Doc
-		for _, x := range t.Params[1:] {
-			rest = append(rest, sep, p.paramType(x))
+		for _, x := range parts[1:] {
+			rest = append(rest, Line, Text("-> "), x)
 		}
-		rest = append(rest, sep, p.typ(t.Result))
-		return Group(Concat(p.paramType(t.Params[0]), Nest(Concat(rest...))))
+		leading := Group(Concat(parts[0], Nest(Concat(rest...))))
+		if containsRecord(t) {
+			return Choice(inline, leading, false)
+		}
+		return leading
 	}
 	panic("format: unknown type")
 }

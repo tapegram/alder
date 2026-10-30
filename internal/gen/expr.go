@@ -302,7 +302,7 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 		return f.closure(e, s), precAtom
 	case *ir.Elem, *ir.Comp, *ir.HText, *ir.HExpr, *ir.HFor, *ir.HIf, *ir.HMatch, *ir.Input, *ir.FormEl:
 		return f.html(e, s), precAtom // html.go
-	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.CapCall,
+	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.EffRedirect, *ir.CapCall,
 		*ir.DbGet, *ir.DbSelect, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete,
 		*ir.DbScoped, *ir.DbGetScoped, *ir.DbUpdateScoped, *ir.DbDeleteScoped, *ir.DbInsertScoped,
 		*ir.ColumnRef, *ir.TableRef, *ir.Cond, *ir.Ord, *ir.TestRun, *ir.TestTrace, *ir.TestFake,

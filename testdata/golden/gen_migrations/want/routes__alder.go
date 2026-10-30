@@ -19,7 +19,8 @@ var Routes = []web.Route{
 // update__App runs App's update for msg and answers its Nav: Redirect p is a 303 to p; Rerender and
 // Reject t are a 303 back to the page that sent the message (the Referer, else /), as App has no
 // page of its own to render (a Reject's text is not shown). The session the Task leaves is stored;
-// a failed Task changes nothing: 500 (App.error), or 404 for Query.notFound or Task.notFound.
+// a failed Task changes nothing: 500 (App.error), 404 for Query.notFound or Task.notFound, or a 303
+// for Query.redirect.
 func update__App(rq *web.Request, msg App__Msg) web.Response {
 	nav, err := eff.Run(rq.Env, eff.KTask, App__update(msg, rq.Env.Session.(App__Session)))
 	if err != nil {
@@ -39,9 +40,13 @@ func Route__App__Logout() web.Route {
 	}}
 }
 
-// route__fail answers a load or update that did not succeed: 404 (App.notFound) for
-// Query.notFound and Task.notFound, else 500 (App.error).
+// route__fail answers a load or update that did not succeed: a 303 to the page for
+// Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
+	var rd *eff.ErrRedirect
+	if errors.As(err, &rd) {
+		return web.QueryRedirectResponse(rd.Location)
+	}
 	if errors.Is(err, eff.ErrNotFound) {
 		return web.NotFoundResponse(html.None())
 	}

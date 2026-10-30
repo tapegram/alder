@@ -125,10 +125,10 @@ test "deleting a project nothing refers to" = {
       gone: Maybe.map (\row -> row.id) gone,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-        answer: Redirected (Admin.Projects.Index { org: org }),
-        gone: Nothing,
-        kept: Just project2,
-      }
+      answer: Redirected (Admin.Projects.Index { org: org }),
+      gone: Nothing,
+      kept: Just project2,
+    }
   )
 }
 

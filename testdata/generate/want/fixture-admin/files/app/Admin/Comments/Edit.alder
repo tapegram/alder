@@ -148,14 +148,14 @@ view model session =
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       {if model.authorsTotal > 200 then
         <form submit={SearchAuthor}>
           <al-input field="q" label="Find author" />
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       -- @admin end
       <form submit={Save}>
         -- @admin begin inputs
@@ -223,15 +223,15 @@ test "saving changes every field" = {
       posts: Test.texts "select[name=post] option" page.doc,
       authors: Test.texts "select[name=author] option" page.doc,
     } == {
-        answer: Redirected (Admin.Comments.Show { id: comment1 }),
-        row: Just {
-          post: post2,
-          author: user2,
-          body: Text.NonEmpty "body-2",
-        },
-        posts: ["title-1", "title-2"],
-        authors: ["email-1@example.com", "email-2@example.com"],
-      }
+      answer: Redirected (Admin.Comments.Show { id: comment1 }),
+      row: Just {
+        post: post2,
+        author: user2,
+        body: Text.NonEmpty "body-2",
+      },
+      posts: ["title-1", "title-2"],
+      authors: ["email-1@example.com", "email-2@example.com"],
+    }
   )
 }
 
@@ -403,11 +403,11 @@ test "a long list of posts offers 50, and the search narrows it" = {
       found: Test.count "select[name=post] option" found.doc <= 3,
       answer: r.answer,
     } == {
-        shown: 51,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Comments.Edit { id: comment1, findPost: "zz" }),
-      }
+      shown: 51,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Comments.Edit { id: comment1, findPost: "zz" }),
+    }
   )
 }
 
@@ -451,12 +451,12 @@ test "the row's own post is offered first when it sorts past the 50" = {
       once: List.length (List.filter (\o -> o.id == post1) page.model.posts),
       shown: List.length page.model.posts,
     } == {
-        answer: Redirected (Admin.Comments.Show { id: comment1 }),
-        kept: Just post1,
-        first: Just post1,
-        once: 1,
-        shown: 51,
-      }
+      answer: Redirected (Admin.Comments.Show { id: comment1 }),
+      kept: Just post1,
+      first: Just post1,
+      once: 1,
+      shown: 51,
+    }
   )
 }
 
@@ -540,11 +540,11 @@ test "a long list of users offers 50, and the search narrows it" = {
       found: Test.count "select[name=author] option" found.doc <= 3,
       answer: r.answer,
     } == {
-        shown: 51,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Comments.Edit { id: comment1, findAuthor: "zz" }),
-      }
+      shown: 51,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Comments.Edit { id: comment1, findAuthor: "zz" }),
+    }
   )
 }
 
@@ -588,12 +588,12 @@ test "the row's own author is offered first when it sorts past the 50" = {
       once: List.length (List.filter (\o -> o.id == user2) page.model.authors),
       shown: List.length page.model.authors,
     } == {
-        answer: Redirected (Admin.Comments.Show { id: comment1 }),
-        kept: Just user2,
-        first: Just user2,
-        once: 1,
-        shown: 51,
-      }
+      answer: Redirected (Admin.Comments.Show { id: comment1 }),
+      kept: Just user2,
+      first: Just user2,
+      once: 1,
+      shown: 51,
+    }
   )
 }
 

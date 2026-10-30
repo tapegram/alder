@@ -188,7 +188,7 @@ func TestFmt_TempFileErrorOtherThanPermissionWritesNothing(t *testing.T) {
 	cache.hooks.createTemp = func(string, string) (*os.File, error) { return nil, syscall.ENOSPC }
 	cache.hooks.writeInPlace = func(string, []byte, os.FileMode) error { t.Error("wrote in place"); return nil }
 	var o, e bytes.Buffer
-	if code := fmtFile(p, false, cache, &o, &e); code != 2 || o.Len() != 0 {
+	if code := fmtFile(p, false, false, cache, &o, &e); code != 2 || o.Len() != 0 {
 		t.Fatalf("code %d out %q err %q", code, o.String(), e.String())
 	}
 	if got, _ := os.ReadFile(p); string(got) != fmtMessy {
@@ -213,7 +213,7 @@ func TestFmt_InPlaceFailureRestoresOriginal(t *testing.T) {
 		return os.WriteFile(path, data, mode)
 	}
 	var o, e bytes.Buffer
-	if code := fmtFile(p, false, cache, &o, &e); code != 2 || !strings.Contains(e.String(), "original restored") {
+	if code := fmtFile(p, false, false, cache, &o, &e); code != 2 || !strings.Contains(e.String(), "original restored") {
 		t.Fatalf("code %d err %q", code, e.String())
 	}
 	if got, _ := os.ReadFile(p); string(got) != fmtMessy {
@@ -234,7 +234,7 @@ func TestFmt_FileChangedBeforeRename(t *testing.T) {
 		}
 	}
 	var o, e bytes.Buffer
-	if code := fmtFile(p, false, cache, &o, &e); code != 2 || !strings.Contains(e.String(), "changed while it was being formatted") || o.Len() != 0 {
+	if code := fmtFile(p, false, false, cache, &o, &e); code != 2 || !strings.Contains(e.String(), "changed while it was being formatted") || o.Len() != 0 {
 		t.Fatalf("code %d out %q err %q", code, o.String(), e.String())
 	}
 	if got, _ := os.ReadFile(p); string(got) != edited {
@@ -285,28 +285,6 @@ func TestGenerated_IsFormatted(t *testing.T) {
 	}
 }
 
-func TestFmtSkipsScratchFiles(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	fmtWrite(t, dir, "app/Main.alder", fmtClean)
-	fmtWrite(t, dir, "scratch.alder", "> 1 + 1\n")
-	fmtWrite(t, dir, "notes/my_scratch.alder", "> 1   +1\n")
-	if code, out, errOut := fmtRun("--check", dir); code != 0 || out != "" || errOut != "" {
-		t.Fatalf("code %d out %q err %q", code, out, errOut)
-	}
-}
-
-func TestFmtRefusesScratchFile(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	fmtWrite(t, dir, "app/Main.alder", fmtClean)
-	p := fmtWrite(t, dir, "scratch.alder", "> 1 + 1\n")
-	code, _, errOut := fmtRun(p)
-	if code != 2 || !strings.Contains(errOut, "is a scratch file; scratch files are not formatted yet") {
-		t.Fatalf("code %d err %q", code, errOut)
-	}
-}
-
 func TestFmtWalkBelowAppKeepsScratchNamedModules(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -325,7 +303,7 @@ func TestFmtWalkBelowAppKeepsScratchNamedModules(t *testing.T) {
 }
 
 // A directory argument is judged against its own app root: the directory itself when it holds
-// app/*.alder, and a scratch file there is skipped even with the cwd elsewhere.
+// app/*.alder, and a scratch file there is judged against it even with the cwd elsewhere.
 func TestFmtAppRootStartsAtTheDirectory(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

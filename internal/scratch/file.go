@@ -76,10 +76,10 @@ func ParseFile(name, text string) (File, []diag.Diagnostic) {
 
 	first := true    // the next start is the file's first
 	cur := -1        // index in Watches of the watch the line continues
-	dropped := false // the item before is one with a diagnostic, blanked with its continuation lines
+	dropped := false // the item before is blanked (the header, or one with a diagnostic), with its continuation lines but not its comments
 	for i, l := range lines {
 		if !starts[i] {
-			if dropped {
+			if dropped && !strings.HasPrefix(strings.TrimSpace(l), "--") { // a comment line is a comment wherever it is: fmt keeps it
 				src[i] = ""
 			}
 			if cur >= 0 && strings.TrimSpace(l) != "" && !strings.HasPrefix(strings.TrimSpace(l), "--") {
