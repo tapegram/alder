@@ -301,7 +301,7 @@ func evalPrint(stdout io.Writer, jsonOut bool, res *evalResult, value, typ strin
 		res.Value, res.Type = value, typ
 		return 0
 	}
-	fmt.Fprintf(stdout, "%s : %s\n", value, typ)
+	fmt.Fprintf(stdout, "%s%s\n", value, style.For(stdout).Dim(" : "+typ))
 	return 0
 }
 

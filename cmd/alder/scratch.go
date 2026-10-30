@@ -358,11 +358,12 @@ func scratchRun(ctx context.Context, a scratchRunArgs, res *scratchResult, failf
 // printScratchWatch writes one watch: `file:line: first line of expr`, then its result.
 func printScratchWatch(w io.Writer, file string, r scratch.WatchResult) {
 	expr, _, _ := strings.Cut(r.Expr, "\n")
-	fmt.Fprintf(w, "%s:%d: %s\n", file, r.Line, expr)
+	st := style.For(w)
+	fmt.Fprintf(w, "%s %s\n", st.Bold(fmt.Sprintf("%s:%d:", file, r.Line)), expr)
 	indent := func(s string) string { return strings.ReplaceAll(s, "\n", "\n    ") }
 	switch {
 	case r.Error != "":
-		fmt.Fprintf(w, "  ✗ %s\n", indent(r.Error))
+		fmt.Fprintf(w, "  %s\n", st.Red("✗ "+indent(r.Error)))
 	case r.Note != "":
 		fmt.Fprintf(w, "  %s : %s   (%s)\n", r.Value, r.Type, r.Note)
 	case r.Value != "":
@@ -373,6 +374,6 @@ func printScratchWatch(w io.Writer, file string, r scratch.WatchResult) {
 	case r.Type != "":
 		fmt.Fprintf(w, "  : %s\n", r.Type)
 	default: // nothing ran and the file did not check far enough to type it
-		fmt.Fprintln(w, "  (not run)")
+		fmt.Fprintln(w, "  "+st.Dim("(not run)"))
 	}
 }

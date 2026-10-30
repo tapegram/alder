@@ -26,7 +26,7 @@ import (
 func runDumpTo(args []string, stdout, stderr io.Writer) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(stderr, "alder dump: internal error: %v\n", r)
+			fmt.Fprintf(stderr, "%s internal error: %v\n", errTag(stderr, "alder dump:"), r)
 			code = 2
 		}
 	}()
@@ -48,12 +48,12 @@ func runDumpTo(args []string, stdout, stderr io.Writer) (code int) {
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "alder dump: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder dump:"), err)
 		return 2
 	}
 	if mode == "--ir" {
 		if !info.IsDir() {
-			fmt.Fprintf(stderr, "alder dump: --ir needs an app directory, not a file: %s\n", path)
+			fmt.Fprintf(stderr, "%s --ir needs an app directory, not a file: %s\n", errTag(stderr, "alder dump:"), path)
 			return 2
 		}
 		return dumpIR(path, stdout, stderr)
@@ -71,11 +71,11 @@ func runDumpTo(args []string, stdout, stderr io.Writer) (code int) {
 			return nil
 		})
 		if werr != nil {
-			fmt.Fprintf(stderr, "alder dump: %v\n", werr)
+			fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder dump:"), werr)
 			return 2
 		}
 		if len(files) == 0 {
-			fmt.Fprintf(stderr, "alder dump: no .alder files under %s/app\n", path)
+			fmt.Fprintf(stderr, "%s no .alder files under %s/app\n", errTag(stderr, "alder dump:"), path)
 			return 2
 		}
 		sort.Strings(files)
@@ -84,7 +84,7 @@ func runDumpTo(args []string, stdout, stderr io.Writer) (code int) {
 	for _, f := range files {
 		src, err := os.ReadFile(f)
 		if err != nil {
-			fmt.Fprintf(stderr, "alder dump: %v\n", err)
+			fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder dump:"), err)
 			return 2
 		}
 		var diags []diag.Diagnostic
@@ -130,7 +130,7 @@ func dumpIR(dir string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if len(prog.Modules) == 0 {
-		fmt.Fprintf(stderr, "alder dump: no .alder files under %s/app\n", dir)
+		fmt.Fprintf(stderr, "%s no .alder files under %s/app\n", errTag(stderr, "alder dump:"), dir)
 		return 2
 	}
 	sources := buildkit.Sources(prog)
@@ -141,7 +141,7 @@ func dumpIR(dir string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if res.Holes > 0 {
-		fmt.Fprintf(stderr, "alder dump: the program has %d typed hole(s); fill them before dumping the IR\n", res.Holes)
+		fmt.Fprintf(stderr, "%s the program has %d typed hole(s); fill them before dumping the IR\n", errTag(stderr, "alder dump:"), res.Holes)
 		return 1
 	}
 	fmt.Fprint(stdout, ir.Dump(ir.Lower(prog, res)))

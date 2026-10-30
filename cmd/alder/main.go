@@ -137,6 +137,10 @@ func explainTo(code string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// errTag is the `alder <command>:` prefix of an error line on w, bold red on a terminal. It is
+// used by the commands that have no --json mode; the ones that have style nothing in JSON mode.
+func errTag(w io.Writer, tag string) string { return style.For(w).BoldRed(tag) }
+
 func usage() { usageTo(os.Stderr) }
 
 // usageTo prints the overall usage: one row per command of commandTree (the tree that
