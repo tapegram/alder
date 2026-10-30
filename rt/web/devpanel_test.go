@@ -313,6 +313,47 @@ func TestDevPanel_NPlusOne(t *testing.T) {
 	}
 }
 
+// A Rerender runs the page's load twice: a load that runs one select 3 times is not an N+1 on
+// the GET nor on the message (6 in the answer, but 3 per load run).
+func TestDevPanel_RerenderNotNPlusOne(t *testing.T) {
+	t.Setenv("ALDER_DEV", "1")
+	load := eff.Q(eff.Call("Db.all", false, func(e *eff.Env) (int, error) {
+		for range 3 {
+			e.Rec.AddSQL(eff.SQLRec{Stmt: "SELECT all", Args: []any{}, Rows: 1})
+		}
+		return 0, nil
+	}))
+	page := func(n int) func(rq *Request) Response {
+		return func(rq *Request) Response {
+			for range n {
+				if _, err := eff.RunQuery(rq.Env, load); err != nil {
+					panic(err)
+				}
+			}
+			return PageResponse(doc("p"), nil, nil, true)
+		}
+	}
+	var warns []string
+	h := NewRouter([]Route{{Method: "GET", Pattern: "/", Handle: page(1)}, {Method: "POST", Pattern: "/_m/P/Toggle", Handle: page(2)}},
+		testOpts(func(o *Options) {
+			o.Dev = true
+			o.Log = func(level, msg string) {
+				if level == "warn" {
+					warns = append(warns, msg)
+				}
+			}
+		}))
+	for _, req := range []*http.Request{httptest.NewRequest("GET", "/", nil), httptest.NewRequest("POST", "/_m/P/Toggle", nil)} {
+		req.Header.Set("Datastar-Request", "true")
+		if b := serve(h, req).Body.String(); strings.Contains(b, "N+1") {
+			t.Errorf("%s %s: marked N+1: %s", req.Method, req.URL.Path, b)
+		}
+	}
+	if len(warns) != 0 {
+		t.Errorf("warns %q", warns)
+	}
+}
+
 // The notice cookie is consumed by a page GET only: not by a 404 (a favicon), a /_alder/ or
 // /static/ path, or a HEAD.
 func TestNoticeOnlyForPageGET(t *testing.T) {

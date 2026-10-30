@@ -9,12 +9,18 @@ PR #83 (#37) is the micro layer (Go benchmarks under `rt/`); this is the layer a
 (Datastar fragments) measures with this harness first; nothing here designs #49. Everything
 marked **(call)** is the author's decision, not the user's.
 
+> **Not shipped: the statement cache.** It was built as designed below and measured: it saved
+> time per statement but raised allocations on every measured row (`alder bench` and
+> `BenchmarkSQLiteGetByID`), and the rule for keeping it was no regression in allocations or SQL
+> counts. It is not in the runtime; the numbers are in `docs/perf/2026-10-bench-baseline.md`, and
+> a lower-allocation attempt is #105. The parts below marked *(not shipped, #105)* describe it.
+
 ## Intent
 
 `alder bench` reports, per browser step of the app's own tests, what a request costs: time,
 payload bytes, allocations, requests served, loads, effect steps, SQL statements, and whether one
 statement ran in a loop. The same N+1 rule warns in the dev panel and after a test's `ok` line,
-before Turso turns the loop into N round trips. Reads prepare each statement once per connection.
+before Turso turns the loop into N round trips. Reads prepare each statement once per connection *(not shipped, #105)*.
 Baselines for 100, 1,000 and 10,000 rows are in the repo, so #49 and every later runtime change
 has a before.
 
@@ -26,7 +32,7 @@ has a before.
    rows, a click (Rerender), a form submit, a Redirect followed under Datastar, an N+1 load.
 3. One N+1 rule (`eff.Repeats`) with three surfaces: the dev panel's bar and SQL tab, a `warn:`
    line under a test's result, a column of `alder bench`.
-4. A prepared-statement cache in `db.SQLite`, invalidated on every DDL path, off on Turso.
+4. A prepared-statement cache in `db.SQLite`, invalidated on every DDL path, off on Turso *(not shipped, #105)*.
 5. `docs/perf/2026-10-bench-baseline.md` holds the first numbers, as a record, not a target.
 6. Existing programs, tests and the panel behave as before (`go test ./...` is the witness).
 
@@ -136,7 +142,7 @@ Surfaces:
    the `ok`/`FAIL` block; JSON: `"warnings": […]` (omitted when empty).
 3. `alder bench`: the `n+1` column, `Count` and `Args` only (the text is in the warn line).
 
-## The statement cache
+## The statement cache *(not shipped, #105)*
 
 `db.SQLite` gets `stmts map[string]*sql.Stmt` under a mutex **(call)**; `on(tx)` returns a
 querier whose `QueryContext`/`ExecContext`/`QueryRowContext` resolve the text through it:
@@ -222,7 +228,8 @@ length, `Requests` 2 and `Loads` 2 for a followed Redirect, `Loads` 2 for a Rere
 equal to the statements recorded; `--count 3` reports the median `Ms`; pure and property tests
 are skipped under `--bench`; `WriteResult` prints bench rows after `ok` and `warn:` lines.
 
-`rt/db`: a second `Query` of the same text reuses the `*sql.Stmt` (the map holds one entry);
+`rt/db` *(not shipped, #105; kept: the migration-then-query and dropped-table store tests and
+`BenchmarkSQLiteGetByID`, in `rt/db/prepare_test.go`)*: a second `Query` of the same text reuses the `*sql.Stmt` (the map holds one entry);
 `Ensure`, `MigrateLog`, `CreateTables` and `Close` empty it and close the handles (a closed stmt
 errors on use: the test keeps a pointer and checks); 257 distinct texts empty it once and the
 258th is cached; a statement cached before a migration that drops its table fails with the
@@ -241,7 +248,9 @@ where the `Served` counter lives.
 - `go test ./...` green, including `TestBench_Rows`, with `-race` on `rt/db`.
 - `docs/perf/2026-10-bench-baseline.md` committed with the numbers of an idle run, and the
   before/after rows for the statement cache in the PR body; neither `index 1000` nor `toggle
-  1000` slower with the cache.
+  1000` slower with the cache. *(As shipped: the user's rule was allocations and SQL counts, not
+  time; allocations rose, so the cache is out, #105. The baseline was taken under load and says
+  so; it is to be re-run idle with `--count 10`.)*
 - A scratch check (not committed): `alder bench` on nightvote-replay's current main (its own
   Alder pin permitting) reports its `Sites.*` pages and shows no `N+1`; if it shows one, that is
   a finding for the dev log, not a change here.

@@ -8,10 +8,12 @@
 >  1:03  up 21 days, 16:07, 5 users, load averages: 7.47 47.22 60.55      (before the cache runs)
 >  1:05  up 21 days, 16:09, 5 users, load averages: 11.64 35.25 54.00     (before the final run)
 >  1:05  up 21 days, 16:09, 5 users, load averages: 12.55 35.04 53.82     (after it)
+>  1:20  up 21 days, 16:24, 5 users, load averages: 4.43 10.63 29.08      (before the server-only re-run below)
+>  1:20  up 21 days, 16:24, 5 users, load averages: 4.24 10.48 28.92      (after it)
 > ```
 >
-> The `ms` column moved by up to 2x between two runs of the same build minutes apart (`toggle 1000`'s
-> `GET /`: 6.09 ms, then 10.12 ms). Before #49 or anything else compares against this file, re-run
+> The `ms` column moved by up to 2x between two runs of the same build minutes apart. Before #49
+> or anything else compares against this file, re-run
 > it on an idle machine and replace the tables below:
 >
 > ```
@@ -25,34 +27,40 @@
 A record, not a target. Machine: Apple M5 Pro, 18 cores, 64 GB, macOS (Darwin 27.0.0); Go 1.27.2
 (darwin/arm64). Code: branch `issue-48-perf-harness` at the commit that adds this file (the
 runtime without a statement cache, see below). Fixture: `testdata/bench/rows`; each test seeds its
-rows (not measured), then takes the steps its name says. `ms` and `alloc` are medians of 10 runs.
+rows (not measured), then takes the steps its name says. `ms` and `alloc` are medians of 10 runs,
+and count the server only: the time and allocations while the router served the step's requests,
+not the test browser parsing the answer or applying the patch.
 
 ## `alder bench testdata/bench/rows --count 10`
 
 | test | step | ms | bytes | alloc | req | loads | steps | sql | n+1 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---|
-| index 100 | GET / | 0.66 | 84.1 kB | 1.87 MB / 8.1k | 1 | 1 | 1 | 1 | |
-| index 1000 | GET / | 5.71 | 811.3 kB | 17.96 MB / 79.9k | 1 | 1 | 1 | 1 | |
-| index 10000 | GET / | 56.66 | 8.10 MB | 181.42 MB / 800.0k | 1 | 1 | 1 | 1 | |
-| toggle 1000 | GET / | 10.12 | 811.3 kB | 17.96 MB / 79.9k | 1 | 1 | 1 | 1 | |
-| toggle 1000 | POST /_m/Rows.Index/Toggle | 18.07 | 808.4 kB | 31.97 MB / 181.1k | 1 | 2 | 3 | 4 | |
-| add 1000 | GET / | 8.49 | 811.3 kB | 17.96 MB / 79.9k | 1 | 1 | 1 | 1 | |
-| add 1000 | POST /_m/Rows.Index/Add | 12.15 | 809.2 kB | 24.77 MB / 125.1k | 1 | 2 | 3 | 3 | |
-| jump 1000 | GET / | 11.65 | 811.3 kB | 17.95 MB / 79.9k | 1 | 1 | 1 | 1 | |
-| jump 1000 | POST /_m/Rows.Index/Jump | 6.86 | 766 B | 10.65 MB / 83.3k | 2 | 2 | 2 | 2 | |
-| slow 100 | GET /slow | 1.02 | 3.0 kB | 390.6 kB / 7.3k | 1 | 1 | 101 | 101 | 100x (100 args) |
+| index 100 | GET / | 0.39 | 84.1 kB | 1.25 MB / 5,766 | 1 | 1 | 1 | 1 | |
+| index 1000 | GET / | 3.94 | 811.3 kB | 12.32 MB / 57,822 | 1 | 1 | 1 | 1 | |
+| index 10000 | GET / | 36.49 | 8.10 MB | 123.53 MB / 579,839 | 1 | 1 | 1 | 1 | |
+| toggle 1000 | GET / | 3.90 | 811.3 kB | 12.32 MB / 57,822 | 1 | 1 | 1 | 1 | |
+| toggle 1000 | POST /_m/Rows.Index/Toggle | 4.20 | 808.4 kB | 12.70 MB / 66,739 | 1 | 2 | 3 | 4 | |
+| add 1000 | GET / | 3.88 | 811.3 kB | 12.32 MB / 57,822 | 1 | 1 | 1 | 1 | |
+| add 1000 | POST /_m/Rows.Index/Add | 4.42 | 809.2 kB | 12.70 MB / 66,749 | 1 | 2 | 3 | 3 | |
+| jump 1000 | GET / | 3.96 | 811.3 kB | 12.32 MB / 57,822 | 1 | 1 | 1 | 1 | |
+| jump 1000 | POST /_m/Rows.Index/Jump | 0.66 | 766 B | 431.9 kB / 9,018 | 2 | 2 | 2 | 2 | |
+| slow 100 | GET /slow | 0.68 | 3.0 kB | 329.0 kB / 6,858 | 1 | 1 | 101 | 101 | 100x (100 args) |
 
 What #49 reads first:
 
 - **A click sends the whole body.** `toggle 1000`'s answer is 808.4 kB for one flipped row, against
   `index 1000`'s 811.3 kB for the whole page: the Datastar patch is the body, so a click costs a
-  page.
+  page, on the wire and in the render (12.70 MB / 66.7k objects against 12.32 MB / 57.8k).
 - **A Rerender and a followed Redirect run `load` twice.** `loads` is 2 for `toggle` (before
-  `update`, and after it to render) and for `jump` (the message's page, then the target's).
-  `toggle`'s allocations (31.97 MB) are nearly two `index 1000` renders' worth (17.96 MB each).
+  `update`, and after it to render) and for `jump` (the message's page, then the target's). The
+  second `load` is cheap next to the render (+8.9k objects for `toggle` over a GET, which also
+  covers `update` and the 4 statements); the render runs once.
 - **The render is the cost, not the query.** `index 1000` against `index 10000`: 10x the rows is
-  about 10x the time, bytes and allocations (5.71 → 56.66 ms, 0.81 → 8.10 MB sent, 80k → 800k
+  about 10x the time, bytes and allocations (3.94 → 36.49 ms, 0.81 → 8.10 MB sent, 58k → 580k
   objects) with one SQL statement either way. A click on a 1,000-row page is mostly the render.
+- **The test browser's own share was large.** Measured over the whole step (as this file first
+  did), `toggle 1000`'s click was 181.1k objects and `jump`'s 83.4k: most of it parsing the
+  answer into a document and patching it, which is the client's cost, not the server's.
 - **The N+1 page** (`slow 100`, a `Db.get` per row): 101 statements and one repeat of 100, which
   `alder test` warns about and the dev panel marks.
 
@@ -78,7 +86,9 @@ allocations: the time is the load's, the allocations are not.)
 
 `alder bench`, `--count 10`, the same fixture with and without the cache (the cache's build
 prepared each text once per store, and inside a test's transaction on the `:memory:` database
-once per transaction):
+once per transaction). These were taken before `alder bench` measured the server only, so they
+include the test browser's work; the differences between the columns are the cache's all the
+same, since the browser's share is identical in both:
 
 | test | step | allocs without | allocs with | sql without | sql with | ms without | ms with |
 |---|---|---:|---:|---:|---:|---:|---:|
@@ -92,43 +102,44 @@ cold statement, +5 per statement on the N+1 page, +1 to +7 per statement warm in
 so it stays out. The time it saves (about 4 µs a statement here, 7 µs on an idle machine per the
 spec's probe) matters on the N+1 page (0.75 → 0.46 ms) and not against a 1,000-row render. A
 later attempt could lower its allocations (reusing the transaction's statement instead of
-`Tx.StmtContext` per call) and is measured against this file's re-run.
+`Tx.StmtContext` per call) and is measured against this file's re-run: #105.
 
 ## #49: fragments (a click patches what changed)
 
-`alder bench testdata/bench/rows --count 10`, before (branch `issue-48-perf-harness`, the fixture
-without row ids) and after (`issue-49-datastar`, rows `<li id={"row-" ++ r.id}>`), minutes
-apart on the same machine, under load again (`uptime` load averages 18 to 31 before, 11 after):
-the `ms` column is not comparable, every other column is.
+`alder bench testdata/bench/rows --count 10` (server only, as above), before (`issue-48-perf-harness`
+at de343dcd, the fixture without row ids) and after (`issue-49-datastar`, rows
+`<li id={"row-" ++ r.id}>`), minutes apart on the same machine, under load again (`uptime`
+load averages 24 to 66): the `ms` column is not comparable, every other column is.
 
 | test | step | bytes before | bytes after | alloc before | alloc after | req | loads | sql |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| index 100 | GET / | 84.1 kB | 93.9 kB | 1.87 MB / 8.1k | 2.09 MB / 8.3k | 1 | 1 | 1 |
-| index 1000 | GET / | 811.3 kB | 907.5 kB | 17.96 MB / 79.9k | 21.17 MB / 81.9k | 1 | 1 | 1 |
-| index 10000 | GET / | 8.10 MB | 9.06 MB | 181.42 MB / 800.0k | 213.15 MB / 820.0k | 1 | 1 | 1 |
-| toggle 1000 | POST /_m/Rows.Index/Toggle | 808.4 kB | **1.2 kB** | 31.97 MB / 181.1k | 36.41 MB / 217.2k | 1 | 2 | 4 |
-| add 1000 | POST /_m/Rows.Index/Add | 809.2 kB | 905.0 kB | 24.77 MB / 125.1k | 38.72 MB / 181.1k | 1 | 2 | 3 |
-| jump 1000 | POST /_m/Rows.Index/Jump | 766 B | 838 B | 10.65 MB / 83.3k | 11.04 MB / 87.4k | 2 | 2 | 2 |
-| slow 100 | GET /slow | 3.0 kB | 3.2 kB | 390.5 kB / 7.3k | 395.6 kB / 7.3k | 1 | 1 | 101 |
+| index 100 | GET / | 84.1 kB | 93.9 kB | 1.25 MB / 5.8k | 1.41 MB / 5.9k | 1 | 1 | 1 |
+| index 1000 | GET / | 811.3 kB | 907.5 kB | 12.32 MB / 57.8k | 15.02 MB / 58.8k | 1 | 1 | 1 |
+| index 10000 | GET / | 8.10 MB | 9.06 MB | 123.53 MB / 579.8k | 150.13 MB / 589.8k | 1 | 1 | 1 |
+| toggle 1000 | POST /_m/Rows.Index/Toggle | 808.4 kB | **1.2 kB** | 12.70 MB / 66.7k | 19.04 MB / 119.8k | 1 | 2 | 4 |
+| add 1000 | POST /_m/Rows.Index/Add | 809.2 kB | 905.0 kB | 12.70 MB / 66.7k | 21.76 MB / 119.8k | 1 | 2 | 3 |
+| jump 1000 | POST /_m/Rows.Index/Jump | 766 B | 838 B | 431.9 kB / 9.0k | 432.9 kB / 9.0k | 2 | 2 | 2 |
+| slow 100 | GET /slow | 3.0 kB | 3.2 kB | 329.0 kB / 6.9k | 331.0 kB / 6.9k | 1 | 1 | 101 |
 
 The keep rule holds: `toggle 1000` sends 1.2 kB (one `<li>` and the `al-shown` event) against
-the page's 907.5 kB, 0.13% (rule: at most 2%); its allocations are 1.14x the baseline (rule: at
-most 1.7x); `req`, `loads` and `sql` are unchanged on every row. `loads` stays 2: the
-before-view renders the model loaded before `update` (no query of its own).
+the page's 907.5 kB, 0.13% (rule: at most 2%); its allocations are 1.50x the baseline (rule: at
+most 1.7x; 1.48x against the old runtime serving the fixture with ids, 12.87 MB / 67.7k); `req`,
+`loads` and `sql` are unchanged on every row. `loads` stays 2: the before-view renders the
+model loaded before `update` and runs no query.
 
 Where the other numbers move:
 
+- **`toggle` and `add` render the page twice.** The before-view is a second view and render
+  (+53k objects, the same as a GET's tree). Its buffer is sized from the after-page up front
+  (`html.RenderTrackedSized`): grown step by step it cost 4 MB more, and `toggle` was 1.84x.
+  `add 1000` (1.71x) gains nothing in bytes for it: a row added changes `#rows`' children, so
+  the whole `<ul>` is sent (the keyed-diff follow-up).
 - **The page grew 96 kB (12%).** 30 kB is the fixture's new `id="row-…"` on 1,000 rows (the old
   runtime serves 841.3 kB for it). 66 kB is the `Alder-Shown` header on each post action,
   `headers: window._alderShown?.(), ` (33 bytes on each of the 2,000 buttons; the lookup itself
   lives once in the boost's `data-init`), and 60 B the `<al-shown>` element. With gzip at the host
   the repeated text costs little; without it, it is the price of the header on a list-heavy page.
-- **`index` allocates 3.2 MB more**, all strings: the longer attribute values rendered, copied
-  and parsed by the test browser (objects +2k: the ids). The browser takes the `al-shown` out of
-  the page it holds without a walk of the tree (`takeShown`).
-- **`add 1000` is 1.56x its allocations** for no gain in bytes: its before-view is rendered and
-  compared, and the answer is still the whole `<ul>` (a child was added: the keyed-diff
-  follow-up). `toggle`'s +4.4 MB is the same before-view and its regions, less the 800 kB body
-  the test browser no longer parses (it parses one `<li>`).
+- **`index` allocates 2.7 MB more** (12.47 MB for the old runtime on the fixture with ids): the
+  longer attribute strings and one more copy of the page to put the `<al-shown>` in it.
 - The equality check the test browser runs after every re-render (a parse and a diff of the
-  body) is outside the measured step.
+  body) is the browser's work, not measured.

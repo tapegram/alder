@@ -841,7 +841,7 @@ func (rt *router) fragments(w http.ResponseWriter, r *http.Request, resp Respons
 	if resp.State != nil {
 		plain = &html.FormState{PageParams: resp.State.PageParams}
 	}
-	before, ok := rt.renderBefore(r, resp.Before, plain)
+	before, ok := rt.renderBefore(r, resp.Before, plain, len(after.Page)+len(after.Page)/16)
 	if !ok {
 		return nil, false
 	}
@@ -861,16 +861,16 @@ func (rt *router) fragments(w http.ResponseWriter, r *http.Request, resp Respons
 	return ps, true
 }
 
-// renderBefore renders the page as it was before the message (Response.Before) with st; a panic
-// in it is logged and reported as not ok.
-func (rt *router) renderBefore(r *http.Request, before func() html.Node, st *html.FormState) (out html.Rendered, ok bool) {
+// renderBefore renders the page as it was before the message (Response.Before) with st, in a
+// buffer of size bytes (about the after-page's); a panic in it is logged and reported as not ok.
+func (rt *router) renderBefore(r *http.Request, before func() html.Node, st *html.FormState, size int) (out html.Rendered, ok bool) {
 	defer func() {
 		if p := recover(); p != nil {
 			rt.log("error", fmt.Sprintf("%s %s: rendering the page before the message: %v (the whole body is patched)", r.Method, r.URL.Path, p))
 			ok = false
 		}
 	}()
-	return html.RenderTracked(before(), st), true
+	return html.RenderTrackedSized(before(), st, size), true
 }
 
 // withShown is body with the <al-shown> element carrying its hash (datastar.ShownTag) at its end.

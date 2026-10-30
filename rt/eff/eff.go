@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -353,12 +354,59 @@ type Recorder struct {
 	// Loads counts the Queries run on the Env (RunQuery): in a request, a page's `load` (a
 	// Rerender runs it twice, before and after update). `alder bench` reports it.
 	Loads int
+	// Cuts are the indexes into SQL where a Query run (a page's `load`) began and ended: the N+1
+	// rule counts each run on its own (RepeatsCut), so a Rerender, whose load runs twice, does
+	// not double a load's statements, and update's own statements are counted apart from them.
+	Cuts []int
 
 	group, depth, groups int // the Task.all being run (0: none), its nesting, groups begun
 }
 
 // AddLoad counts a Query run (Loads).
 func (r *Recorder) AddLoad() { r.mu.Lock(); r.Loads++; r.mu.Unlock() }
+
+// Cut marks a load boundary at the statements recorded so far (Cuts).
+func (r *Recorder) Cut() {
+	r.mu.Lock()
+	if n := len(r.SQL); len(r.Cuts) == 0 || r.Cuts[len(r.Cuts)-1] != n {
+		r.Cuts = append(r.Cuts, n)
+	}
+	r.mu.Unlock()
+}
+
+// RepeatsCut is Repeats of each part of sql between the cuts (indexes into sql, ascending; those
+// outside it are ignored): one load run, or what ran between loads. A shape found in more than
+// one part is reported once, with its largest part's numbers.
+func RepeatsCut(sql []SQLRec, cuts []int, k int) []Repeat {
+	var out []Repeat
+	seen := map[string]int{}
+	start := 0
+	for _, c := range append(slices.Clone(cuts), len(sql)) {
+		if c <= start || c > len(sql) {
+			continue
+		}
+		for _, r := range Repeats(sql[start:c], k) {
+			if i, ok := seen[r.Stmt]; ok {
+				if r.Count > out[i].Count {
+					out[i] = r
+				}
+				continue
+			}
+			seen[r.Stmt] = len(out)
+			out = append(out, r)
+		}
+		start = c
+	}
+	slices.SortStableFunc(out, func(x, y Repeat) int { return y.Count - x.Count })
+	return out
+}
+
+// inList is a list of placeholders, `(?, ?, ?)`: a `.in` makes one per list length.
+var inList = regexp.MustCompile(`\(\?(?:, \?)+\)`)
+
+// Shape is stmt with each list of placeholders written `(?, …)`: `IN (?, ?)` and `IN (?, ?, ?)`
+// are one statement for the N+1 rule.
+func Shape(stmt string) string { return inList.ReplaceAllString(stmt, "(?, …)") }
 
 // RepeatThreshold is how many times one statement runs in one answer before Repeats calls it an
 // N+1: two to four identical selects are hand-written lookups (two records on one page), five a
@@ -390,11 +438,12 @@ func Repeats(sql []SQLRec, k int) []Repeat {
 	by := map[string]*acc{}
 	var order []string
 	for i, q := range sql {
-		a := by[q.Stmt]
+		shape := Shape(q.Stmt)
+		a := by[shape]
 		if a == nil {
-			a = &acc{r: Repeat{Stmt: q.Stmt}, args: map[string]bool{}, groups: map[int]bool{}, writes: true, first: i}
-			by[q.Stmt] = a
-			order = append(order, q.Stmt)
+			a = &acc{r: Repeat{Stmt: shape}, args: map[string]bool{}, groups: map[int]bool{}, writes: true, first: i}
+			by[shape] = a
+			order = append(order, shape)
 		}
 		a.r.Count++
 		a.r.Ms += q.Ms
@@ -430,7 +479,11 @@ func (r Repeat) String() string {
 	if r.Args == 1 {
 		sets = "argument set"
 	}
-	return fmt.Sprintf("N+1: %s ran %d times (%d %s, %.2f ms): %s", shortStmt(r.Stmt), r.Count, r.Args, sets, r.Ms, repeatHint(r.Stmt))
+	hint := repeatHint(r.Stmt)
+	if r.Args == 1 {
+		hint = fmt.Sprintf("the same query ran %d times with the same arguments; run it once and pass its result along", r.Count)
+	}
+	return fmt.Sprintf("N+1: %s ran %d times (%d %s, %.2f ms): %s", shortStmt(r.Stmt), r.Count, r.Args, sets, r.Ms, hint)
 }
 
 // shortStmt is stmt with a SELECT's column list cut to its first two names and "…".

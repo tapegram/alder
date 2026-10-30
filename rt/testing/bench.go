@@ -2,6 +2,7 @@ package rtesting
 
 import (
 	"fmt"
+	"net/http"
 	"runtime"
 	"slices"
 	"strconv"
@@ -12,14 +13,15 @@ import (
 )
 
 // Measure is what one browser step (Test.get, Test.open, Test.click, Test.submit,
-// Test.submitRaw, Test.fetch) cost, from its first request to its return: `alder bench`'s row.
-// Step is its first request, `GET /` or `POST /_m/Rows.Index/Toggle`; Ms the wall time (with
-// --count, the median over the runs); Bytes the answers' bodies (a document, or a Datastar
-// answer's SSE text); Alloc and Allocs the bytes and objects allocated meanwhile
-// (runtime.MemStats TotalAlloc and Mallocs); Requests the requests the router served (a redirect
-// it followed is a second; so is each 303 the browser followed); Loads the pages' `load` runs
-// (eff.Recorder.Loads: a Rerender runs it before and after update); Steps the effect Calls
-// (the requests' Env.Trace); SQL the statements; Repeats what eff.Repeats found in them.
+// Test.submitRaw, Test.fetch) cost the server: `alder bench`'s row. Step is its first request,
+// `GET /` or `POST /_m/Rows.Index/Toggle`; Ms, Alloc and Allocs the wall time and the bytes and
+// objects allocated (runtime.MemStats TotalAlloc and Mallocs) while the router served the step's
+// requests, summed over them (with --count, the median over the runs): the browser's own work
+// (parsing the answer, applying a patch) is left out; Bytes the answers' bodies (a document, or a
+// Datastar answer's SSE text); Requests the requests the router served (a redirect it followed
+// is a second; so is each 303 the browser followed); Loads the pages' `load` runs
+// (eff.Recorder.Loads: a Rerender runs it before and after update); Steps the effect Calls (the
+// requests' Env.Trace); SQL the statements; Repeats what eff.RepeatsCut found in them.
 type Measure struct {
 	Step     string
 	Ms       float64
@@ -34,38 +36,42 @@ type Measure struct {
 }
 
 // stepAcc accumulates one step's requests while it runs (Browser.track).
-type stepAcc struct {
-	m     Measure
-	start time.Time
-	mem   runtime.MemStats
-}
+type stepAcc struct{ m Measure }
 
-// track brackets a browser step: it returns the function that ends it, which turns the requests
-// the step made into its warnings (Browser.warnings: one per repeat eff.Repeats finds in one
-// request's statements, "<METHOD> <path>: " + Repeat.String()) and, when the browser measures
-// (bench), a Measure. A step made inside another (Get is Open) is part of it.
+// track brackets a browser step: it returns the function that ends it, which keeps the step's
+// Measure when the browser measures (bench). Its requests are added as they are served
+// (serveHTTP, account). A step made inside another (Get is Open) is part of it.
 func (b *Browser) track() func() {
 	if b.step != nil {
 		return func() {}
 	}
 	s := &stepAcc{}
 	b.step = s
-	if b.bench {
-		runtime.ReadMemStats(&s.mem)
-		s.start = time.Now()
-	}
 	return func() {
 		b.step = nil
-		if !b.bench || s.m.Step == "" {
-			return
+		if b.bench && s.m.Step != "" {
+			b.measures = append(b.measures, s.m)
 		}
-		ms := eff.Ms(time.Since(s.start))
-		var after runtime.MemStats
-		runtime.ReadMemStats(&after)
-		s.m.Ms = ms
-		s.m.Alloc, s.m.Allocs = after.TotalAlloc-s.mem.TotalAlloc, after.Mallocs-s.mem.Mallocs
-		b.measures = append(b.measures, s.m)
 	}
+}
+
+// serveHTTP has the router serve req; with bench, inside a step, the time and the allocations of
+// that alone are added to the step's Measure.
+func (b *Browser) serveHTTP(w http.ResponseWriter, req *http.Request) {
+	s := b.step
+	if !b.bench || s == nil {
+		b.handler.ServeHTTP(w, req)
+		return
+	}
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	start := time.Now()
+	b.handler.ServeHTTP(w, req)
+	ms := eff.Ms(time.Since(start))
+	runtime.ReadMemStats(&after)
+	s.m.Ms += ms
+	s.m.Alloc += after.TotalAlloc - before.TotalAlloc
+	s.m.Allocs += after.Mallocs - before.Mallocs
 }
 
 // account adds the request just served (its answer's body bytes, and the Envs it ran) to the
@@ -84,7 +90,7 @@ func (b *Browser) account(head string, bodyLen int) {
 			continue
 		}
 		sql := appSQL(e.Rec.SQL)
-		reps := eff.Repeats(sql, eff.RepeatThreshold)
+		reps := eff.RepeatsCut(e.Rec.SQL, e.Rec.Cuts, eff.RepeatThreshold) // each load run on its own
 		h := b.heads[e]
 		if h == "" {
 			h = strings.TrimSuffix(head, ": ")

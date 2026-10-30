@@ -1044,8 +1044,8 @@ app's own tests as the scenarios. It builds the same test program as
 `alder test` (into `build/<app>/scratch/test/`), runs it with the
 environment variable `ALDER_TEST_BENCH=1`, and the program then measures
 every browser step a test takes (`Test.get`, `Test.open`, `Test.click`,
-`Test.submit`, `Test.submitRaw`, `Test.fetch`, chapter 10), from the
-step's first request until it returns. There is no new language and no
+`Test.submit`, `Test.submitRaw`, `Test.fetch`, chapter 10): what the
+server spent on the requests the step made. There is no new language and no
 second main: a scenario is a test, written with the app's types, fakes
 and steps, and `-run`, `--json`, `--build-dir`, `-timeout` and the exit
 codes are `alder test`'s. Pure and property tests are skipped (they make no
@@ -1060,15 +1060,21 @@ request:
 ```
 ok   Rows.Bench "toggle 1000"
   step                                      ms     bytes               alloc  req loads steps   sql  n+1
-  GET /                                  11.77  811.3 kB    17.96 MB / 79.9k    1     1     1     1
-  POST /_m/Rows.Index/Toggle             15.26  808.4 kB   31.98 MB / 181.1k    1     2     3     4
+  GET /                                   5.25  811.3 kB    12.32 MB / 57.8k    1     1     1     1
+  POST /_m/Rows.Index/Toggle              6.67  808.4 kB    12.70 MB / 66.7k    1     2     3     4
 ```
 
 | column | what it counts |
 |---|---|
+<<<<<<< HEAD
 | `ms` | the step's wall time |
 | `bytes` | the answers' bodies: the document of a GET, the event stream of a Datastar answer (the regions patched, or the body, title, history) |
 | `alloc` | bytes and objects the Go runtime allocated during the step (`runtime.MemStats`: `TotalAlloc` and `Mallocs` before and after) |
+=======
+| `ms` | the wall time the router took to serve the step's requests (summed) |
+| `bytes` | the answers' bodies: the document of a GET, the event stream of a Datastar answer (the body patch, title, history) |
+| `alloc` | bytes and objects the Go runtime allocated while the router served them (`runtime.MemStats`: `TotalAlloc` and `Mallocs` read just before and just after each request) |
+>>>>>>> origin/issue-48-perf-harness
 | `req` | requests the router served: 1, 2 when it followed a `Redirect` itself (chapter 6), more for each 303 the browser followed |
 | `loads` | how many times a page's `load` ran: a `Rerender` runs it twice (before `update`, to give it the model, and after, to render), and so does a followed `Redirect` (the message's page, then the target) |
 | `steps` | the effect steps the requests ran (their trace) |
@@ -1086,8 +1092,11 @@ calls the app's real router in-process (chapter 10), so there is no
 network; each request's `Env` gets a recorder (`eff.Recorder`) that times
 every effect step and every statement, and the runtime counts each Query
 it runs on that `Env` (a page's `load` is the only Query a request runs).
-Before and after the step the program reads the Go runtime's memory
-statistics. The requests run inside the test's transaction under a
+Just before and just after the router serves each request the program
+reads the clock and the Go runtime's memory statistics, so the test
+browser's own work (parsing the answer into a document, applying a
+Datastar patch to it) is not counted: that is the client's cost, which a
+real browser pays in the DOM. The requests run inside the test's transaction under a
 savepoint, on an in-memory database, with the recorder on, so the numbers
 are for comparing (before and after a change, N rows against 10N), not
 production latencies: the browser's time in the DOM is not in them at all.
@@ -1577,19 +1586,27 @@ remembers the tab chosen last, so the next answer opens on it again. Its tabs:
   `x3 (bulk)` instead; a select per row outside a `Task.all` is still the
   flagged kind. Statements are counted per answer: the session's user
   selected by a message and again by the page it redirects to is not a
-  duplicate. Five or more runs of one statement in one answer are an N+1,
-  marked `N+1 x100` instead of `duplicate`, and the bar then shows `N+1`
-  after the SQL count; the server's log gets a `warn` line naming the
-  request (`GET /slow: N+1: …`, the same text as below). The rule
-  (`eff.Repeats`) groups the answer's statements by their text (the
-  arguments are bound with `?`, so the text is the statement's shape) and
+  duplicate. Five or more runs of one statement in one run of a page's
+  `load` (or in what `update` itself ran) are an N+1, marked `N+1 x100`
+  instead of `duplicate` (a red badge, like the Errors tab's), and the bar
+  then shows `N+1` after the SQL count; the server's log gets a `warn` line
+  naming the request (`GET /slow: N+1: …`, the same text as below). Each
+  `load` run is counted on its own because a `Rerender` runs `load` twice in
+  one request: a page whose `load` selects the same thing three times is
+  not an N+1 when a click re-renders it, though the answer then holds six.
+  The rule (`eff.RepeatsCut`: the recorder marks where each `load` began and
+  ended, as it marks a redirect's hop) groups the statements by their text
+  (the arguments are bound with `?`, so the text is the statement's shape;
+  a `.in` list's `(?, ?)` and `(?, ?, ?)` count as one shape, `(?, …)`) and
   takes every group of five or more, except a group of writes (`INSERT`,
   `UPDATE`, `DELETE`) issued under one `Task.all`, the bulk action above. A
   read under a `Task.all` is not excused: `Query.all (List.map (\r -> Db.get
   Row r.id) rows)` is one round trip per row on a remote database (Turso,
   chapter 15), where each statement crosses the network. Two to four are
   left as duplicates: two records looked up by hand on one page is not a
-  loop. The warning says what to do:
+  loop. The warning says what to do (when every run had the same
+  arguments, it says instead that the same query ran N times and should run
+  once):
 
   ```
   N+1: SELECT "id", "title", … FROM "Table__Row__Row" WHERE "id" = ? ran 100 times (100 argument sets, 3.21 ms): one Db.get per row; read them together with Db.where (Row.id.in ids), or in the page's first query

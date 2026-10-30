@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -720,7 +719,7 @@ func (b *Browser) serve(method, target string, form url.Values, ds bool) (*httpt
 	b.reqEnvs, b.lastErr, b.cur, b.model, b.rendered = nil, "", cur, nil, ""
 	b.reqHead = req.Method + " " + req.URL.Path + ": "
 	w := httptest.NewRecorder()
-	b.handler.ServeHTTP(w, req)
+	b.serveHTTP(w, req)
 	for _, e := range b.reqEnvs {
 		b.env.Trace = append(b.env.Trace, e.Trace...)
 	}
@@ -896,22 +895,10 @@ func (e *DriftError) Error() string {
 
 // checkPatched compares the held body with the full render of the page the last request
 // re-rendered (b.rendered), the router's implicit <al-toasts> region left out. It runs after
-// the measured request: with bench, its time and allocations are not the step's.
+// the request was served: `alder bench` measures the router alone (serveHTTP), not this.
 func (b *Browser) checkPatched() error {
 	if b.rendered == "" {
 		return nil
-	}
-	if s := b.step; b.bench && s != nil {
-		var m0 runtime.MemStats
-		runtime.ReadMemStats(&m0)
-		t0 := time.Now()
-		defer func() {
-			var m1 runtime.MemStats
-			runtime.ReadMemStats(&m1)
-			s.mem.TotalAlloc += m1.TotalAlloc - m0.TotalAlloc
-			s.mem.Mallocs += m1.Mallocs - m0.Mallocs
-			s.start = s.start.Add(time.Since(t0))
-		}()
 	}
 	want, err := html.Parse(b.rendered)
 	if err != nil {

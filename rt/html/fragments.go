@@ -1,7 +1,6 @@
 package html
 
 import (
-	"hash/fnv"
 	"strconv"
 	"strings"
 )
@@ -20,9 +19,12 @@ const ShownHeader = "Alder-Shown"
 // Hash is the shown hash of a rendered <body>: FNV-1a 64 of it, 16 lower-case hex digits. It
 // is not a secret: a client that lies only mispatches its own page.
 func Hash(body string) string {
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(body))
-	s := strconv.FormatUint(h.Sum64(), 16)
+	h := uint64(14695981039346656037) // FNV-1a 64 (hash/fnv's), over the string without a copy
+	for i := 0; i < len(body); i++ {
+		h ^= uint64(body[i])
+		h *= 1099511628211
+	}
+	s := strconv.FormatUint(h, 16)
 	return strings.Repeat("0", 16-len(s)) + s
 }
 

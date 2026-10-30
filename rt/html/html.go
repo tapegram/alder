@@ -187,8 +187,14 @@ type Region struct {
 
 // RenderTracked renders n as RenderWith(n, st) does and records each element with an id as it
 // writes it: no parse, no second walk.
-func RenderTracked(n Node, st *FormState) Rendered {
+func RenderTracked(n Node, st *FormState) Rendered { return RenderTrackedSized(n, st, 0) }
+
+// RenderTrackedSized is RenderTracked with room for size bytes made up front: a page rendered
+// for comparison with another of about that size (the before-view of a message's answer) grows
+// its buffer once instead of step by step.
+func RenderTrackedSized(n Node, st *FormState, size int) Rendered {
 	var b strings.Builder
+	b.Grow(size)
 	tr := &tracking{}
 	r := renderer{b: &b, st: st, track: tr}
 	r.render(n)

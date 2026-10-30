@@ -2,6 +2,7 @@ package eff
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -65,10 +66,60 @@ func TestRepeat_String(t *testing.T) {
 	if got := r.String(); got != want {
 		t.Fatalf("got\n%s\nwant\n%s", got, want)
 	}
-	r = Repeat{Stmt: `SELECT "id" FROM "Table__Tag" WHERE "row" = ?`, Count: 5, Args: 1, Ms: 1}
-	want = `N+1: SELECT "id" FROM "Table__Tag" WHERE "row" = ? ran 5 times (1 argument set, 1.00 ms): one query per row; read them together with Db.where (Tag.row.in values), or in the page's first query`
+	r = Repeat{Stmt: `SELECT "id" FROM "Table__Tag" WHERE "row" = ?`, Count: 5, Args: 2, Ms: 1}
+	want = `N+1: SELECT "id" FROM "Table__Tag" WHERE "row" = ? ran 5 times (2 argument sets, 1.00 ms): one query per row; read them together with Db.where (Tag.row.in values), or in the page's first query`
 	if got := r.String(); got != want {
 		t.Fatalf("got\n%s\nwant\n%s", got, want)
+	}
+}
+
+// The same query with the same arguments: the hint says so.
+func TestRepeat_StringOneArgumentSet(t *testing.T) {
+	r := Repeat{Stmt: byID, Count: 6, Args: 1, Ms: 1}
+	if got := r.String(); !strings.HasSuffix(got, "(1 argument set, 1.00 ms): the same query ran 6 times with the same arguments; run it once and pass its result along") {
+		t.Fatal(got)
+	}
+}
+
+// `IN (?, ?)` and `IN (?, ?, ?)` are one shape.
+func TestRepeats_InListsOneShape(t *testing.T) {
+	var recs []SQLRec
+	for n := 2; n <= 6; n++ {
+		recs = append(recs, SQLRec{Stmt: `SELECT "id" FROM "T" WHERE "id" IN (` + strings.TrimSuffix(strings.Repeat("?, ", n), ", ") + `)`, Args: []any{n}})
+	}
+	got := Repeats(recs, RepeatThreshold)
+	if len(got) != 1 || got[0].Count != 5 || got[0].Stmt != `SELECT "id" FROM "T" WHERE "id" IN (?, …)` {
+		t.Fatalf("%+v", got)
+	}
+}
+
+// Each load run is counted on its own: a load that runs a select 3 times, run twice (a
+// Rerender), is no repeat; statements between loads (update's) are a part of their own.
+func TestRepeatsCut(t *testing.T) {
+	env := &Env{Ctx: context.Background(), Rec: &Recorder{}}
+	load := Q(Call("Db.all", false, func(e *Env) (int, error) {
+		for range 3 {
+			e.Rec.AddSQL(SQLRec{Stmt: "SELECT all", Args: []any{}})
+		}
+		return 0, nil
+	}))
+	for range 2 {
+		if _, err := RunQuery(env, load); err != nil {
+			t.Fatal(err)
+		}
+		env.Rec.AddSQL(SQLRec{Stmt: "SELECT all", Args: []any{}}) // update's own, between
+	}
+	if got := RepeatsCut(env.Rec.SQL, env.Rec.Cuts, RepeatThreshold); len(got) != 0 {
+		t.Fatalf("%+v (cuts %v)", got, env.Rec.Cuts)
+	}
+	if got := Repeats(env.Rec.SQL, RepeatThreshold); len(got) != 1 {
+		t.Fatalf("uncut: %+v", got)
+	}
+	for range 5 {
+		env.Rec.AddSQL(SQLRec{Stmt: "SELECT all", Args: []any{}})
+	}
+	if got := RepeatsCut(env.Rec.SQL, env.Rec.Cuts, RepeatThreshold); len(got) != 1 || got[0].Count != 6 {
+		t.Fatalf("after 5 more: %+v", got)
 	}
 }
 
