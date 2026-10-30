@@ -1,1 +1,1 @@
-app/Shop.alder:7:19 E0021 `Charge` is a fake's table: only tests and `fake Stripe` may use it
+app/Shop.alder:11:19 E0021 in `fake Ledger`'s `total`: `Charge` is a fake's table: only tests and `fake Stripe` may use it

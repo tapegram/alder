@@ -97,6 +97,7 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 			mc.formComponent(x, env, eff)
 			return
 		}
+		mc.helperRef(x.Ref.Module, x.Ref.Name, x.Tag, x.Span)
 		mc.component(x, m, env, eff)
 		return
 	}

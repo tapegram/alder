@@ -814,6 +814,7 @@ func (l *lowerer) declareValues() {
 				panic(fmt.Sprintf("ir: no signature recorded for %s.%s at %s", name, vd.Name, pos(vd.Span)))
 			}
 			v := &Value{Module: name, Name: vd.Name, Type: sig, IsComponent: isUpper(vd.Name)}
+			_, v.TestOnly = l.res.TestOnly[key(name, vd.Name)]
 			v.Effect, v.IsEffect = effectKind(finalResult(sig))
 			for _, p := range vd.Params {
 				v.Params = append(v.Params, &Param{Name: p.Name, Type: l.bindType(p)})

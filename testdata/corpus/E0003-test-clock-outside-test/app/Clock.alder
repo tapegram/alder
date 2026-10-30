@@ -1,8 +1,0 @@
-module Clock
-
--- The clock steps are test-only, like every Test.* function.
-march : Task Unit
-march = Test.setClock (Time.fromMillis 1772600767000)
-
-later : Task Unit
-later = Test.advance 1000

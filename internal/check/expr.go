@@ -57,8 +57,10 @@ func (mc *modCtx) checkBodies() {
 		case *syntax.TypeDecl:
 			if d.Brand != nil && d.Brand.Check != nil {
 				mc.holes = nil
+				mc.never = "a brand check is not a helper"
 				mc.check(d.Brand.Check, &types.Fun{Params: []types.Type{baseType(d.Brand.Base)}, Result: types.Bool}, newEnv(), effect{})
 				mc.reportHoles()
+				mc.never = ""
 			}
 		}
 		c.resolveFuzzAny(mc.ts, false) // after the declaration: its Fuzz.any uses must be concrete
@@ -1159,8 +1161,7 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 		if isFuzzAny(x) {
 			return c.inferFuzzAny(x)
 		}
-		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Test" && !mc.inTest { // eval's module is not a test here: it cannot run Tasks
-			c.errorf(diag.TypeMismatch, x.Span, "`Test.%s` is only available inside a `test`", x.Ref.Name)
+		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Test" && !mc.testUse("`Test."+x.Ref.Name+"`", x.Span) {
 			return types.Err
 		}
 		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Test" && x.Ref.Name == "member" {
@@ -1186,6 +1187,7 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 		}
 		if x.Ref.Kind == syntax.RefValue {
 			mc.scopedRef(x)
+			mc.helperRef(x.Ref.Module, x.Ref.Name, written(x.Module, x.Name), x.Span)
 		}
 		if t, ok := c.values[c.key(x.Ref.Module, x.Ref.Name)]; ok {
 			t = c.u.Instantiate(t)
@@ -1291,8 +1293,7 @@ func (mc *modCtx) inferCtor(x *syntax.CtorRef, applied bool) types.Type {
 			return &types.App{Con: "Table", Args: []types.Type{info.Record}}
 		}
 	case syntax.RefCtor:
-		if x.Ref.Module == "Prelude" && answerCtors[x.Ref.Name] && !mc.inTest {
-			c.errorf(diag.TypeMismatch, x.Span, "`%s` is a constructor of the test type `Answer`: it exists only inside a `test`", x.Name)
+		if x.Ref.Module == "Prelude" && answerCtors[x.Ref.Name] && !mc.testUse("`"+x.Name+"`", x.Span) {
 			return types.Err
 		}
 		info, ok := c.ctors[c.key(x.Ref.Module, x.Ref.Name)]
@@ -1461,7 +1462,7 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Test" && IsTestStep(v.Ref.Name) {
 		return mc.inferTestStep(x, v, env, eff, pipe)
 	}
-	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Test" && mc.inTest {
+	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Test" && (mc.inTest || mc.helperBan() == "") {
 		mc.checkSelectorArg(v.Ref.Name, x.Args)
 	}
 	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "File" {

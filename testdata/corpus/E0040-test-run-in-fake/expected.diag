@@ -1,0 +1,1 @@
+app/Payments.alder:10:14 E0040 in `fake Stripe`'s `charge`: `Test.run` is only available in a `test` or a test helper: a fake's entry is not a helper

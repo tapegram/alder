@@ -1,0 +1,14 @@
+module Sites.MnSos
+
+page "/mnsos" { cfg: Text }
+
+type Model = { cfg: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { cfg: params.cfg }
+
+view : Model -> Session -> File
+view model session = File.text { contentType: "text/plain", body: label model.cfg }
+
+label : Text -> Text
+label cfg = if cfg == "" then "draft" else cfg

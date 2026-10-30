@@ -1,0 +1,13 @@
+module Checks
+
+import Helpers
+
+test "at minute 400 the file is the final" = {
+  let r <- Helpers.at 400 Helpers.final
+  Task.succeed (r.status == 200 && Text.contains "final" r.body)
+}
+
+test "before minute 400 the file is a draft" = {
+  let r <- Helpers.at 10 Helpers.final
+  Task.succeed (r.body == "draft")
+}

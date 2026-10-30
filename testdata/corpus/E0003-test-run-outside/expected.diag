@@ -1,1 +1,0 @@
-app/Main.alder:5:12 E0003 `Test.run` is only available inside a `test`

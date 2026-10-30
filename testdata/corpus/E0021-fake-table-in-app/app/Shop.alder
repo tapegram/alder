@@ -2,6 +2,11 @@ module Shop
 
 import Payments
 
--- App code cannot read the fake's table: it exists only in test databases.
-charged : Query Int
-charged = Db.from Payments.Charge |> Db.count
+capability Ledger {
+  total : Query Int,
+}
+
+-- Another capability's fake cannot read the fake's table: only tests and its own fake may.
+fake Ledger {
+  total = Db.from Payments.Charge |> Db.count
+}

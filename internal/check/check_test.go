@@ -229,8 +229,8 @@ func checkModule(t *testing.T, src string) []diag.Diagnostic {
 	return out
 }
 
-// A `test` whose body is a block is a Task Bool; any other body is a Bool. Test.* is only
-// available inside a test.
+// A `test` whose body is a block is a Task Bool; any other body is a Bool. Test.* outside a
+// test makes the value a test helper (#4).
 func TestTestBodies(t *testing.T) {
 	cases := []struct{ name, src, want string }{
 		{"bool", `test "t" = 1 == 1`, ""},
@@ -243,8 +243,8 @@ func TestTestBodies(t *testing.T) {
 		{"task not block", `test "t" = Task.succeed True`, "E0003 expected Bool, got Task Bool; a test of a Task is written as a block"},
 		{"pure block", "test \"t\" = {\n  let x = 1\n  x == 1\n}", "E0003 expected Task Bool, got Bool; a block test is a Task: end it with `Task.succeed (…)`"},
 		{"nested task", `test "t" = if Task.succeed True then True else False`, "E0003 expected Bool, got Task Bool"},
-		{"Test.run outside", "x : Task Int\nx = Task.map (\\r -> 1) (Test.run (Task.succeed 1))", "E0003"},
-		{"Test.trace outside", "x : Task (List Text)\nx = Test.trace", "E0003"},
+		{"Test.run in a value: a test helper", "x : Task Int\nx = Task.map (\\r -> 1) (Test.run (Task.succeed 1))", ""},
+		{"Test.trace in a value: a test helper", "x : Task (List Text)\nx = Test.trace", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -404,8 +404,8 @@ func fakeModule(rest string) string {
 func TestFakes(t *testing.T) {
 	cases := []struct{ name, src, want string }{
 		{"clean", fakeModule("test \"t\" = {\n  let _ <- Test.fake Stripe\n  let n <- Db.from Charge |> Db.where (Charge.cents.gt 1) |> Db.count\n  let c : List Charge <- Db.from Charge |> Db.all\n  Task.succeed (n == 0)\n}\n"), ""},
-		{"column in app code", fakeModule("big : Query Int\nbig = Db.from Charge |> Db.where (Charge.cents.gt 1) |> Db.count\n"), "E0021 `Charge` is a fake's table: only tests and `fake Stripe` may use it"},
-		{"type in a signature", fakeModule("first : List Charge -> Int\nfirst cs = List.length cs\n"), "E0021 `Charge` is a fake's table: only tests and `fake Stripe` may use it"},
+		{"column in a value: a test helper", fakeModule("big : Query Int\nbig = Db.from Charge |> Db.where (Charge.cents.gt 1) |> Db.count\n"), ""},
+		{"type in a signature: a test helper", fakeModule("first : List Charge -> Int\nfirst cs = List.length cs\n"), ""},
 		{"type in a record", fakeModule("type Receipt = { charge: Charge }\n"), "E0021 `Charge` is a fake's table: only tests and `fake Stripe` may use it"},
 		{"entry type mismatch", "module Payments\n\ncapability Stripe {\n  now : Query Int,\n}\n\nfake Stripe {\n  now = Query.succeed \"noon\"\n}\n", "E0003"},
 		{"entry params", "module Payments\n\ncapability Stripe {\n  now : Query Int,\n}\n\nfake Stripe {\n  now x = Query.succeed 1\n}\n", "E0008 in `fake Stripe`'s `now`: "},
