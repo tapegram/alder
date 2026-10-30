@@ -5558,10 +5558,15 @@ generator writes, drops the parentheses that are not needed, so
 A backend is one method, `Complete(ctx, system, messages) (text, error)`.
 `fill.Anthropic` posts the Messages API's JSON with `net/http`; the system
 prompt goes in a block marked `cache_control`, so the card is read from the
-API's cache on the second and third attempts. `fill.Command` runs
+API's cache on the second and third attempts. Its HTTP client follows no redirect (Go would
+send the `x-api-key` header on to whatever host a redirect names), and it
+refuses an `ALDER_ANTHROPIC_API` that is not `https`, except on the loopback
+host the tests use. `fill.Command` runs
 `ALDER_FILL_COMMAND` with `sh -c`, writing the conversation as plain text to
 its standard input and reading the expression from its standard output
-(at most 1 MB). The command runs in a process group of its own: when the
+(at most 1 MB). It must be a plain text completer: with tools, the prompt's
+comments become instructions to an agent that can act on them. The command
+runs in a process group of its own: when the
 attempt's time is up, or once the command has answered, the whole group is
 killed, so nothing it started in the background outlives the attempt or
 holds the server's shutdown.
@@ -5622,9 +5627,23 @@ requests waits at most 30 seconds for its answer, so an editor that never
 answers cannot hold the one fill forever. An edit the
 editor applies is one undo step.
 
-What leaves the machine is exactly the prompt: one module's source, names
-and types, the standard library's signatures and, on retries, the errors,
-which quote lines of that module. `alder fill <address> --prompt` prints
+Before the edit goes, two more checks. The hole's type bounds what the
+expression returns, not what it does: an answer the module's own text talked
+the model into (a comment is part of the prompt) can be a `Task Nav` that
+deletes every row and still checks. `fill.Effects` finds, in the expression
+without its comments, the effects no hole of generated code needs: `Http.*`,
+`Session.put`, `Html.unsafe`, `Task.sleep`, and `Db.insert`, `Db.update`,
+`Db.delete` (the `…Mine` and `…Scoped` ones keep to the session's rows). With
+any of them, the server asks `window/showMessageRequest` with `Apply` and
+`Discard`, and sends the edit only on `Apply`; a client that did not declare
+`window.showMessage` cannot be asked, so it gets the expression in a warning
+and no edit. And every edit applied is followed by a message that shows the
+expression, so nothing a model wrote lands unseen. `alder fill --ai` prints
+the expression and the same warning on the command line.
+
+What leaves the machine is exactly the prompt: one module's source (its
+comments and string literals too), names and types, the standard library's
+signatures and, on retries, the errors, which quote lines of that module. `alder fill <address> --prompt` prints
 it. With `ALDER_LSP_LOG` set, the server also writes each request body and
 each answer to the log, never a header, so never the key.
 

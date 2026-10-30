@@ -80,7 +80,8 @@ type initializeParams struct {
 			ApplyEdit bool `json:"applyEdit"`
 		} `json:"workspace"`
 		Window struct {
-			WorkDoneProgress bool `json:"workDoneProgress"`
+			WorkDoneProgress bool            `json:"workDoneProgress"`
+			ShowMessage      json.RawMessage `json:"showMessage"` // present: the client answers window/showMessageRequest
 		} `json:"window"`
 	} `json:"capabilities"`
 }

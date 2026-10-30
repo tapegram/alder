@@ -76,6 +76,8 @@ type genJSON struct {
 	Expression *string `json:"expression,omitempty"`
 	Attempts   *int    `json:"attempts,omitempty"`
 	Model      *string `json:"model,omitempty"`
+	// Effects are the effects of the expression its hole's type does not limit (fill.Effects).
+	Effects *[]string `json:"effects,omitempty"`
 }
 
 // runGeneratorWith ends every generator: it applies edits (computed by gen, from the loaded app)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -47,7 +48,30 @@ func NewAnthropic(getenv func(string) string) *Anthropic {
 	if model == "" {
 		model = DefaultModel
 	}
-	return &Anthropic{Base: base, Key: getenv("ANTHROPIC_API_KEY"), Model: model, Reference: getenv("ALDER_FILL_REFERENCE"), Client: http.DefaultClient}
+	return &Anthropic{Base: base, Key: getenv("ANTHROPIC_API_KEY"), Model: model, Reference: getenv("ALDER_FILL_REFERENCE"), Client: noRedirects()}
+}
+
+// noRedirects is the backend's HTTP client: it follows no redirect, since Go re-sends custom
+// headers (x-api-key among them) to a redirect's host, which may be another one. A redirect is
+// then an answer like any other non-2xx.
+func noRedirects() *http.Client {
+	return &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+}
+
+// checkBase refuses a base URL the key would travel to in clear text: https, or http only to
+// the loopback host (a local test server).
+func checkBase(base string) error {
+	u, err := url.Parse(base)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("ALDER_ANTHROPIC_API is not a URL: %q", base)
+	}
+	switch h := u.Hostname(); {
+	case u.Scheme == "https":
+		return nil
+	case u.Scheme == "http" && (h == "localhost" || h == "127.0.0.1" || h == "::1"):
+		return nil
+	}
+	return fmt.Errorf("ALDER_ANTHROPIC_API must be an https URL (http only for localhost): the key would travel in clear text to %s", u.Host)
 }
 
 // String and GoString never show the key.
@@ -101,6 +125,9 @@ func (a *Anthropic) reference() (string, error) {
 func (a *Anthropic) Complete(ctx context.Context, system string, messages []Message) (string, error) {
 	if a.Key == "" {
 		return "", NoBackend
+	}
+	if err := checkBase(a.Base); err != nil {
+		return "", err
 	}
 	ephemeral := map[string]string{"type": "ephemeral"}
 	req := messagesRequest{Model: a.Model, MaxTokens: 4096, Messages: messages}
@@ -178,7 +205,7 @@ func (a *Anthropic) post(ctx context.Context, body []byte) (status int, answer [
 	hreq.Header.Set("anthropic-version", "2023-06-01")
 	client := a.Client
 	if client == nil {
-		client = http.DefaultClient
+		client = noRedirects()
 	}
 	resp, err := client.Do(hreq)
 	if err != nil {

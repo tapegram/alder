@@ -11,7 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
+	"slices"
 	"strings"
+
+	"alder/internal/syntax"
 )
 
 // Message is one turn of the conversation: Role "user" or "assistant".
@@ -50,7 +54,7 @@ const DefaultModel = "claude-opus-5-5"
 // prompt). Neither is a nil Backend. The key is read here and nowhere else.
 func FromEnv(getenv func(string) string) (Backend, string) {
 	if c := getenv("ALDER_FILL_COMMAND"); strings.TrimSpace(c) != "" {
-		return &Command{Cmd: c}, "command"
+		return &Command{Cmd: c, Reference: getenv("ALDER_FILL_REFERENCE")}, "command"
 	}
 	key := getenv("ANTHROPIC_API_KEY")
 	if key == "" {
@@ -94,4 +98,48 @@ func Transcript(system string, messages []Message) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// effectRe finds, in an expression, the standard library's effects that reach beyond the page
+// and its user's rows: any HTTP request, a change to the session, raw HTML, a pause, and a
+// database write that is not scoped to the session (Db.insert, Db.update, Db.delete; the
+// `…Mine` and `…Scoped` ones are not matched).
+var effectRe = regexp.MustCompile(`\b(Http\.[a-z][A-Za-z0-9]*|Session\.put|Html\.unsafe|Task\.sleep|Db\.(?:insert|update|delete))\b`)
+
+// Effects are the effects of effectRe that expr names, sorted, each once (its comments aside).
+// The hole's type does not bound them: an answer of type Task Nav may delete any row. A caller
+// asks before it applies such an expression, or warns.
+func Effects(expr string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, m := range effectRe.FindAllString(syntax.StripComments(expr), -1) {
+		if !seen[m] {
+			seen[m] = true
+			out = append(out, m)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// EffectsWarning is the one line that names effects.
+func EffectsWarning(effects []string) string {
+	return "the model's expression uses " + strings.Join(effects, ", ") + ", effects its hole's type does not limit: review it"
+}
+
+// Short is expr for a message: at most 12 lines and 600 bytes, cut with "…".
+func Short(expr string) string {
+	lines := strings.Split(expr, "\n")
+	cut := false
+	if len(lines) > 12 {
+		lines, cut = lines[:12], true
+	}
+	s := strings.Join(lines, "\n")
+	if len(s) > 600 {
+		s, cut = s[:600], true
+	}
+	if cut {
+		s += "…"
+	}
+	return s
 }

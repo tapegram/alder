@@ -90,7 +90,7 @@ type server struct {
 	filling atomic.Bool // an alder.fill is running (one at a time)
 
 	// the client's capabilities, set by initialize (before any worker reads them)
-	applyEdit, workDoneProgress bool
+	applyEdit, workDoneProgress, showMessageRequest bool
 
 	// reader goroutine only
 	initialized bool
@@ -285,6 +285,11 @@ var requestTimeout = 30 * time.Second
 // error. It returns an error when the server stops first, or after requestTimeout. Workers and background goroutines
 // call it; the reader goroutine never does (it routes the response).
 func (s *server) request(method string, params any) (json.RawMessage, error) {
+	return s.requestWithin(method, params, requestTimeout)
+}
+
+// requestWithin is request with its own bound on the wait (a question to the user).
+func (s *server) requestWithin(method string, params any, d time.Duration) (json.RawMessage, error) {
 	id, _ := json.Marshal(fmt.Sprintf("alder-%d", s.reqSeq.Add(1)))
 	key := idKey(id)
 	ch := make(chan *message, 1)
@@ -299,7 +304,7 @@ func (s *server) request(method string, params any) (json.RawMessage, error) {
 	if err := s.c.send(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(id), "method": method, "params": params}); err != nil {
 		return nil, err
 	}
-	t := time.NewTimer(requestTimeout)
+	t := time.NewTimer(d)
 	defer t.Stop()
 	select {
 	case m := <-ch:
@@ -310,7 +315,7 @@ func (s *server) request(method string, params any) (json.RawMessage, error) {
 	case <-s.stop:
 		return nil, errors.New("the server stopped")
 	case <-t.C:
-		return nil, fmt.Errorf("the editor did not answer %s in %v", method, requestTimeout)
+		return nil, fmt.Errorf("the editor did not answer %s in %v", method, d)
 	}
 }
 
@@ -359,6 +364,9 @@ func (s *server) initialize(params json.RawMessage) (any, error) {
 	}
 	s.applyEdit = p.Capabilities.Workspace.ApplyEdit
 	s.workDoneProgress = p.Capabilities.Window.WorkDoneProgress
+	if sm := p.Capabilities.Window.ShowMessage; len(sm) > 0 && string(sm) != "null" {
+		s.showMessageRequest = true
+	}
 	s.initialized = true
 	return map[string]any{
 		"capabilities": capabilities(),

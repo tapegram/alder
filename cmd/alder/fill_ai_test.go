@@ -169,3 +169,30 @@ func TestFill_AIUsageErrors(t *testing.T) {
 		t.Errorf("no backend: exit %d, %q", code, errs)
 	}
 }
+
+// TestFill_AIEffectsWarned: an expression whose effects its hole's type does not limit is
+// printed with a warning (--json: "effects"), and a test's expectation gets the --mutate hint.
+func TestFill_AIEffectsWarned(t *testing.T) {
+	dir := clearApp(t)
+	fakeModel(t, "Session.put (\\s -> s) |> Task.map (\\u -> Rerender)")
+	code, out, errs := alderIn(t, dir, "", "fill", "Home.update.Clear", "--ai")
+	if code != 0 || !strings.Contains(out, "the model's expression:\nSession.put (\\s -> s) |> Task.map (\\u -> Rerender)\n") ||
+		errs != "alder fill: warning: the model's expression uses Session.put, effects its hole's type does not limit: review it\n" {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
+	}
+	fakeModel(t, "r.answer == Rerendered")
+	code, out, errs = alderIn(t, dir, "", "fill", `Home."pressing Clear"`, "--ai", "--json")
+	var got struct{ Effects []string }
+	if code != 0 || json.Unmarshal([]byte(out), &got) != nil || got.Effects == nil || len(got.Effects) != 0 {
+		t.Fatalf("json: exit %d\n%s%s", code, out, errs)
+	}
+}
+
+func TestFill_AITestHint(t *testing.T) {
+	dir := clearApp(t)
+	fakeModel(t, "r.answer == Rerendered")
+	code, out, errs := alderIn(t, dir, "", "fill", `Home."pressing Clear"`, "--ai")
+	if code != 0 || !strings.HasSuffix(out, "a model wrote this test's expectation: `alder test --mutate` is the check that it tests something\n") || strings.Contains(errs, "warning") {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
+	}
+}

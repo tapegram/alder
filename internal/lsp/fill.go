@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"alder/internal/diag"
 	"alder/internal/fill"
@@ -140,6 +141,29 @@ func (s *server) runFill(rel string, arg fillArgs, backend fill.Backend, model s
 	if len(changes) == 0 {
 		return
 	}
+	// The hole's type does not bound what the expression does: one that makes an HTTP request,
+	// changes the session, writes raw HTML, pauses, or writes rows outside the session's scope is
+	// applied only when the user says so, and never by a client that cannot be asked.
+	if effects := fill.Effects(r.Expression); len(effects) > 0 {
+		head := fmt.Sprintf("alder fill ?%s: %s.", arg.Hole, fill.EffectsWarning(effects))
+		if !s.showMessageRequest {
+			s.showMessage(2, head+" Not applied (the editor cannot ask); the expression:\n"+fill.Short(r.Expression))
+			return
+		}
+		res, err := s.requestWithin("window/showMessageRequest", map[string]any{"type": 2,
+			"message": head + " Apply it?\n" + fill.Short(r.Expression),
+			"actions": []map[string]string{{"title": "Apply"}, {"title": "Discard"}}}, askTimeout)
+		var choice struct {
+			Title string `json:"title"`
+		}
+		if err == nil {
+			json.Unmarshal(res, &choice)
+		}
+		if choice.Title != "Apply" {
+			s.showMessage(3, fmt.Sprintf("alder fill ?%s: discarded; the expression was:\n%s", arg.Hole, fill.Short(r.Expression)))
+			return
+		}
+	}
 	// A buffer edited since the snapshot gets no edit. Neovim does not refuse a versioned edit
 	// to a newer buffer (it prints "Buffer … newer than edits" and answers applied: true), so the
 	// server compares the versions itself before it sends.
@@ -166,8 +190,14 @@ func (s *server) runFill(rel string, arg fillArgs, backend fill.Backend, model s
 	json.Unmarshal(res, &applied)
 	if !applied.Applied { // a client that does refuse it
 		s.showMessage(2, fmt.Sprintf("alder fill: %s changed while filling; the expression was:\n%s", rel, r.Expression))
+		return
 	}
+	// what was applied, always said: nothing a model wrote lands unseen
+	s.showMessage(3, fmt.Sprintf("alder fill ?%s: %s", arg.Hole, fill.Short(r.Expression)))
 }
+
+// askTimeout bounds the wait for the user's Apply or Discard (a variable for tests).
+var askTimeout = 10 * time.Minute
 
 // showMessage sends window/showMessage (typ 1 error, 2 warning, 3 info).
 func (s *server) showMessage(typ int, msg string) {

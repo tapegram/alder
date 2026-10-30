@@ -169,7 +169,9 @@ func fillAI(g genArgs, stdout, stderr io.Writer) int {
 			writeJSON(stdout, map[string]any{"files": []any{}, "diff": "", "diagnostics": []any{}, "holes": []any{}, "written": false,
 				"error": f.Why, "errors": f.Errors, "expression": f.Expression, "attempts": f.Attempts, "model": model})
 		} else {
-			io.WriteString(stdout, f.Errors)
+			if f.Errors != "" {
+				io.WriteString(stdout, strings.TrimRight(f.Errors, "\n")+"\n")
+			}
 			if f.Expression != "" {
 				fmt.Fprintf(stdout, "the model's last expression:\n%s\n", f.Expression)
 			}
@@ -189,15 +191,27 @@ func fillAI(g genArgs, stdout, stderr io.Writer) int {
 	if imports == nil {
 		imports = []string{}
 	}
+	// the hole's type does not limit these: they are named, never applied silently
+	effects := fill.Effects(r.Expression)
+	if effects == nil {
+		effects = []string{}
+	}
 	res, err := generate.Apply(g.dir, r.Edits, generate.Options{DryRun: g.dry})
 	code := genReport("alder fill", g, res, err, func(out *genJSON) {
 		if out.Error != "" {
 			imports = []string{}
 		}
-		out.Imports, out.Expression, out.Attempts, out.Model = &imports, &r.Expression, &r.Attempts, &model
+		out.Imports, out.Expression, out.Attempts, out.Model, out.Effects = &imports, &r.Expression, &r.Attempts, &model, &effects
 	}, stdout, stderr)
 	if code == 0 && !g.json {
 		printImports(g, imports, r.Edits[0].Path, stdout)
+		if len(effects) > 0 {
+			fmt.Fprintf(stdout, "the model's expression:\n%s\n", r.Expression)
+			fmt.Fprintf(stderr, "alder fill: warning: %s\n", fill.EffectsWarning(effects))
+		}
+		if strings.HasPrefix(r.Hole.Decl, `"`) {
+			fmt.Fprintln(stdout, "a model wrote this test's expectation: `alder test --mutate` is the check that it tests something")
+		}
 	}
 	return code
 }

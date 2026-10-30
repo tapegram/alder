@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -24,6 +25,9 @@ var commandWaitDelay = time.Second
 // nothing it started outlives the attempt. `claude -p` works as is; a script is the tests' fake.
 type Command struct {
 	Cmd string
+	// Reference, when set, is a file whose text goes before the system prompt
+	// (ALDER_FILL_REFERENCE), as System puts it and `alder fill --prompt` prints it.
+	Reference string
 }
 
 // capped is a buffer that refuses to grow past maxCommandOutput.
@@ -43,6 +47,13 @@ func (c *capped) Write(p []byte) (int, error) {
 }
 
 func (c *Command) Complete(ctx context.Context, system string, messages []Message) (string, error) {
+	if c.Reference != "" {
+		b, err := os.ReadFile(c.Reference)
+		if err != nil {
+			return "", fmt.Errorf("ALDER_FILL_REFERENCE: %v", err)
+		}
+		system = strings.TrimRight(string(b), "\n") + "\n\n" + system
+	}
 	cmd := exec.CommandContext(ctx, "sh", "-c", c.Cmd)
 	cmd.Stdin = strings.NewReader(Transcript(system, messages))
 	var out, errb capped
