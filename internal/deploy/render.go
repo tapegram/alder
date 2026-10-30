@@ -1069,9 +1069,13 @@ func (r *Render) Info(ctx context.Context) (Info, error) {
 	return in, nil
 }
 
-// Logs writes the service's last 100 lines ("[instance] message"); with follow, the lines of
-// Render's log stream as they come, until ctx ends.
-func (r *Render) Logs(ctx context.Context, follow bool, w io.Writer) error {
+// renderLogMax is the most lines one read of Render's log API returns.
+const renderLogMax = 100
+
+// Logs writes the service's last n lines ("[instance] message"; at most renderLogMax, what
+// Render's API returns at once); with follow, the lines of Render's log stream as they come,
+// until ctx ends.
+func (r *Render) Logs(ctx context.Context, follow bool, n int, w io.Writer) error {
 	if !r.have {
 		// `alder logs` has not connected (status and the deploys do): look for the service
 		if _, err := r.Connect(ctx); err != nil {
@@ -1082,7 +1086,7 @@ func (r *Render) Logs(ctx context.Context, follow bool, w io.Writer) error {
 		return refuse("", "the service %s does not exist at Render yet: deploy first", r.Service)
 	}
 	if !follow {
-		logs, err := r.API.Tail(ctx, r.owner, r.svc.ID, 100)
+		logs, err := r.API.Tail(ctx, r.owner, r.svc.ID, min(max(n, 1), renderLogMax))
 		if err != nil {
 			return err
 		}

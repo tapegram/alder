@@ -1,8 +1,10 @@
 package deploy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -300,5 +302,35 @@ func TestSsh_PollAndClock(t *testing.T) {
 	setClock(s, nil, nil) // nothing set: the database keeps its clock
 	if s.DB.Now == nil || s.DB.Sleep == nil {
 		t.Error("an unset clock cleared the database's")
+	}
+}
+
+// Logs -n N tails the current build's log by N lines (the loopback ssh runs the script here).
+func TestSsh_LogsN(t *testing.T) {
+	t.Parallel()
+	ssh := filepath.Join(t.TempDir(), "ssh")
+	if err := os.WriteFile(ssh, []byte(loopbackSSH), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "builds", "b1"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	for i := 1; i <= 150; i++ {
+		lines = append(lines, fmt.Sprintf("line %d", i))
+	}
+	os.WriteFile(filepath.Join(root, "builds", "b1", "log"), []byte(strings.Join(lines, "\n")+"\n"), 0o600)
+	os.WriteFile(filepath.Join(root, "current"), []byte("b1\n"), 0o600)
+	s := NewSsh("blog", "production", ir.Target{Host: "deploy@box", Path: root}, &ir.Deploy{Proxy: "None"})
+	s.SSH = ssh
+	for _, n := range []int{3, 100, 150} {
+		var w bytes.Buffer
+		if err := s.Logs(context.Background(), false, n, &w); err != nil {
+			t.Fatal(err)
+		}
+		if want := strings.Join(lines[150-n:], "\n") + "\n"; w.String() != want {
+			t.Errorf("-n %d:\n%s", n, w.String())
+		}
 	}
 }

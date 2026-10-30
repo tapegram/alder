@@ -1026,17 +1026,22 @@ exit 0
 	return in, nil
 }
 
-// Logs is `flyctl logs` of the app: the recent lines, or followed until ctx ends.
-func (f *Fly) Logs(ctx context.Context, follow bool, w io.Writer) error {
+// Logs is `flyctl logs` of the app: the recent lines, of which the last n (`flyctl logs
+// --no-tail` has no count: they are kept here), or with follow everything flyctl prints until
+// ctx ends.
+func (f *Fly) Logs(ctx context.Context, follow bool, n int, w io.Writer) error {
 	if _, err := f.Connect(ctx); err != nil {
 		return err
 	}
+	args := []string{"logs", "--app", f.FlyApp}
+	if !follow {
+		args = append(args, "--no-tail")
+	}
 	if f.Flyctl != nil {
-		args := []string{"logs", "--app", f.FlyApp}
-		if !follow {
-			args = append(args, "--no-tail")
-		}
 		out, err := f.Flyctl(ctx, nil, args...)
+		if !follow {
+			out = tailLines(out, n)
+		}
 		io.WriteString(w, out)
 		return err
 	}
@@ -1044,14 +1049,34 @@ func (f *Fly) Logs(ctx context.Context, follow bool, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	args := []string{"logs", "--app", f.FlyApp}
-	if !follow {
-		args = append(args, "--no-tail")
-	}
 	cmd := exec.CommandContext(ctx, bin, args...)
-	cmd.Stdout, cmd.Stderr = w, w
 	cmd.Env = append(os.Environ(), EnvFlyToken+"="+f.Token)
-	return cmd.Run()
+	if follow {
+		cmd.Stdout, cmd.Stderr = w, w
+		return cmd.Run()
+	}
+	var out bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &out
+	err = cmd.Run()
+	io.WriteString(w, tailLines(out.String(), n))
+	return err
+}
+
+// tailLines is the last n lines of s, as written (all of it when it has no more; n < 1: all of it).
+func tailLines(s string, n int) string {
+	if n < 1 {
+		return s
+	}
+	t := strings.TrimSuffix(s, "\n")
+	i := len(t)
+	for k := 0; k < n; k++ {
+		j := strings.LastIndexByte(t[:i], '\n')
+		if j < 0 {
+			return s
+		}
+		i = j
+	}
+	return s[i+1:]
 }
 
 // restoreChunk is how many bytes of the database one exec carries (base64 in an argument).

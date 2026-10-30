@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -33,7 +34,7 @@ const (
 	deployUsage   = "usage: alder deploy <env> [dir] [--build-dir DIR] [--host name] [--allow-data-loss] [--unsafe-skip-tests] [--dry-run] [--json] | alder deploy init render|fly [dir] [--force] [--dry-run]"
 	statusUsage   = "usage: alder status <env> [dir] [--host name]"
 	rollbackUsage = "usage: alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup [--yes]]"
-	logsUsage     = "usage: alder logs <env> [dir] [--host name] [-f]"
+	logsUsage     = "usage: alder logs <env> [dir] [--host name] [-f] [-n N] [--grep PATTERN]"
 	restoreUsage  = "usage: alder restore <env> [--silo key:id] [--from url] [--to time] [--out file.db] [--dir dir] [--yes]"
 )
 
@@ -796,8 +797,10 @@ func runRollbackWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	return 0
 }
 
-// runLogsTo is `alder logs <env> [dir] [-f]`: the current build's log, the last lines, or with
-// -f followed until interrupted.
+// runLogsTo is `alder logs <env> [dir] [-f] [-n N] [--grep PATTERN]`: the current build's log,
+// its last N lines (default 100), or with -f followed until interrupted; with --grep only the
+// lines the Go regexp PATTERN matches (`--grep rid=5f3a2c1e`: one request's lines), on every
+// target.
 func runLogsTo(args []string, stdout, stderr io.Writer) int {
 	return runLogsWith(args, stdout, stderr, osDeployEnv())
 }
@@ -805,11 +808,46 @@ func runLogsTo(args []string, stdout, stderr io.Writer) int {
 // runLogsWith is runLogsTo with the environment e.
 func runLogsWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	var pos []string
-	follow, host := false, ""
+	follow, host, n := false, "", 100
+	var grep *regexp.Regexp
+	value := func(i *int, name string) (string, bool) { // `name V` or `name=V`
+		if v, ok := strings.CutPrefix(args[*i], name+"="); ok {
+			return v, true
+		}
+		if args[*i] == name && *i+1 < len(args) {
+			*i++
+			return args[*i], true
+		}
+		return "", false
+	}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if h, ok := hostFlag(args, &i); ok {
 			host = h
+			continue
+		}
+		if a == "-n" || strings.HasPrefix(a, "-n=") {
+			v, ok := value(&i, "-n")
+			k, err := strconv.Atoi(v)
+			if !ok || err != nil || k < 1 {
+				fmt.Fprintf(stderr, "alder logs: -n wants a number of lines, at least 1 (got %q)\n%s\n", v, logsUsage)
+				return 2
+			}
+			n = k
+			continue
+		}
+		if a == "--grep" || strings.HasPrefix(a, "--grep=") {
+			v, ok := value(&i, "--grep")
+			if !ok {
+				fmt.Fprintf(stderr, "alder logs: --grep wants a pattern\n%s\n", logsUsage)
+				return 2
+			}
+			re, err := regexp.Compile(v)
+			if err != nil {
+				fmt.Fprintf(stderr, "alder logs: --grep: %v\n", err)
+				return 2
+			}
+			grep = re
 			continue
 		}
 		switch {
@@ -838,11 +876,55 @@ func runLogsWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	defer t.Close()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := t.Logs(ctx, follow, stdout); err != nil && ctx.Err() == nil {
+	out := stdout
+	if grep != nil {
+		g := &grepWriter{w: stdout, re: grep}
+		defer g.Flush()
+		out = g
+	}
+	if err := t.Logs(ctx, follow, n, out); err != nil && ctx.Err() == nil {
 		fmt.Fprintf(stderr, "alder logs: %v\n", err)
 		return 1
 	}
 	return 0
+}
+
+// grepWriter writes to w the whole lines written to it that re matches (without their newline),
+// whatever the writes' boundaries; Flush judges a last line that has no newline.
+type grepWriter struct {
+	w   io.Writer
+	re  *regexp.Regexp
+	buf []byte
+}
+
+func (g *grepWriter) Write(p []byte) (int, error) {
+	g.buf = append(g.buf, p...)
+	for {
+		i := bytes.IndexByte(g.buf, '\n')
+		if i < 0 {
+			break
+		}
+		if g.re.Match(g.buf[:i]) {
+			if _, err := g.w.Write(g.buf[:i+1]); err != nil {
+				return 0, err
+			}
+		}
+		g.buf = g.buf[i+1:]
+	}
+	if len(g.buf) == 0 {
+		g.buf = nil
+	}
+	return len(p), nil
+}
+
+// Flush writes the pending line without a newline, with one, when re matches it.
+func (g *grepWriter) Flush() error {
+	defer func() { g.buf = nil }()
+	if len(g.buf) > 0 && g.re.Match(g.buf) {
+		_, err := g.w.Write(append(g.buf, '\n'))
+		return err
+	}
+	return nil
 }
 
 // runRestoreTo is `alder restore <env> [--from url] [--to time] [--out file.db] [--dir dir]`:
