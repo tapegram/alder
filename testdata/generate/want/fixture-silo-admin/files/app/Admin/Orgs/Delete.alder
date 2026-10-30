@@ -127,10 +127,10 @@ test "deleting an org nothing refers to" = {
       gone: Maybe.map (\row -> row.id) gone,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-        answer: Redirected (Admin.Orgs.Index {}),
-        gone: Nothing,
-        kept: Just org2,
-      }
+      answer: Redirected (Admin.Orgs.Index {}),
+      gone: Nothing,
+      kept: Just org2,
+    }
   )
 }
 

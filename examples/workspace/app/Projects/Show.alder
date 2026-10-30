@@ -114,10 +114,10 @@ test "the project's to-dos, oldest first, and adding one" = {
       before: Test.texts "#todos .title" page.doc,
       after: Test.texts "#todos .title" r.doc,
     } == {
-        name: Just "Rocket",
-        before: ["Fuel"],
-        after: ["Fuel", "Launch"],
-      }
+      name: Just "Rocket",
+      before: ["Fuel"],
+      after: ["Fuel", "Launch"],
+    }
   )
 }
 

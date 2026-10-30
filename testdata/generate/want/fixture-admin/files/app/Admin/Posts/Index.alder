@@ -384,10 +384,10 @@ test "the list shows every row, newest first, and the labels of the rows they re
       authors: List.length page.model.labels.authors,
       authorLabel: authorLabel page.model.labels me,
     } == {
-        rows: [post2, post1],
-        authors: 1,
-        authorLabel: "email-1@example.com",
-      }
+      rows: [post2, post1],
+      authors: 1,
+      authorLabel: "email-1@example.com",
+    }
   )
 }
 
@@ -416,10 +416,10 @@ test "sorting by title goes both ways" = {
       down: List.map (\row -> row.id) down.model.rows,
       toggles: [toggle up.model "title", toggle down.model "title", toggle up.model "body"],
     } == {
-        up: [post2, post1],
-        down: [post1, post2],
-        toggles: ["desc", "asc", "asc"],
-      }
+      up: [post2, post1],
+      down: [post1, post2],
+      toggles: ["desc", "asc", "asc"],
+    }
   )
 }
 
@@ -478,11 +478,11 @@ test "filtering by featured lists the rows with that value" = {
       count: yes.model.count == List.length yes.model.rows,
       chosen: Test.texts "select[name=featured] option[selected]" yes.doc,
     } == {
-        yes: [True, False],
-        no: [False, True],
-        count: True,
-        chosen: ["yes"],
-      }
+      yes: [True, False],
+      no: [False, True],
+      count: True,
+      chosen: ["yes"],
+    }
   )
 }
 
@@ -515,10 +515,10 @@ test "filtering by status lists the rows with that value" = {
       count: published.model.count == List.length published.model.rows,
       chosen: Test.texts "select[name=status] option[selected]" published.doc,
     } == {
-        published: [True, False],
-        count: True,
-        chosen: ["Published"],
-      }
+      published: [True, False],
+      count: True,
+      chosen: ["Published"],
+    }
   )
 }
 
@@ -562,12 +562,12 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
       count: Test.text "#count" first.doc,
       pages: Test.texts "al-pagination span" first.doc,
     } == {
-        first: 25,
-        second: 1,
-        past: { page: 2, rows: 1 },
-        count: Just "26 rows",
-        pages: ["Previous", "Page 1 of 2"],
-      }
+      first: 25,
+      second: 1,
+      past: { page: 2, rows: 1 },
+      count: Just "26 rows",
+      pages: ["Previous", "Page 1 of 2"],
+    }
   )
 }
 

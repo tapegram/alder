@@ -253,10 +253,10 @@ test "an empty comment is rejected" = {
       author: Test.attr "value" "input[name=author]" r.doc,
       comments: comments,
     } == {
-        answer: FormRejected [{ field: "body", message: "is not valid" }],
-        author: Just "Ann",
-        comments: 0,
-      }
+      answer: FormRejected [{ field: "body", message: "is not valid" }],
+      author: Just "Ann",
+      comments: 0,
+    }
   )
 }
 

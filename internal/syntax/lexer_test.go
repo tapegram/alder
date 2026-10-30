@@ -267,12 +267,16 @@ func TestLexer_CollectsComments(t *testing.T) {
 	wantText := []string{"-- head", "-- own line", "-- tail"}
 	wantLine := []int{1, 2, 4}
 	wantCol := []int{10, 1, 14}
+	wantOffset := []int{9, 17, 51} // byte offsets of the `--`
 	if len(m.Comments) != len(wantText) {
 		t.Fatalf("comments = %+v, want %d", m.Comments, len(wantText))
 	}
 	for i, c := range m.Comments {
-		if c.Text != wantText[i] || c.Line != wantLine[i] || c.Col != wantCol[i] {
-			t.Errorf("comment %d = %+v, want %q at %d:%d", i, c, wantText[i], wantLine[i], wantCol[i])
+		if c.Text != wantText[i] || c.Line != wantLine[i] || c.Col != wantCol[i] || c.Offset != wantOffset[i] {
+			t.Errorf("comment %d = %+v, want %q at %d:%d, offset %d", i, c, wantText[i], wantLine[i], wantCol[i], wantOffset[i])
+		}
+		if !strings.HasPrefix(commentsSrc[c.Offset:], c.Text) {
+			t.Errorf("comment %d: the source at offset %d is %q, not the comment", i, c.Offset, commentsSrc[c.Offset:])
 		}
 	}
 	sm, _ := ParseSignatures("m.alder", []byte("module M -- head\nf : Text -- sig\n"))

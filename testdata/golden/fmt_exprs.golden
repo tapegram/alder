@@ -153,3 +153,48 @@ updateLambdaBody = \r -> { r |
   published: p.form.value,
   title: p.form.titleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 }
+
+recordOperand =
+  someLongFunctionName aaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbb ccccccccccc == {
+    alpha: 1,
+    beta: 2,
+    gamma: 3,
+  }
+
+hugHeadTooLong =
+  someVeryLongFunctionNameThatIsReally aaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbb (\q ->
+    q + 1
+  )
+
+hugHeadNeverFits = someVeryLongFunctionNameThatIsReallyLong aaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb (\q ->
+  q + 1
+)
+
+-- an operand after one that broke onto a deeper line indents from its own line (nightvote-replay)
+test "parseOne takes a precinct for precinct faults only, after a county" =
+  List.map precinctOf [
+    parseOne "vote_correction:chesterpaenr:005@90",
+    parseOne "renumbered_precinct:chesterpaenr:010+Avondale@0",
+  ]
+    == [Ok "005", Ok "010 Avondale"] && ([
+      parseOne "stall:chesterpaenr:005@1",
+      parseOne "vote_correction::005@1",
+      parseOne "winners:a:b:c@1",
+    ] |> List.all (\r -> match r {
+      Ok _ -> False,
+      Err _ -> True,
+    }))
+
+-- five multi-line operands share one indentation: no staircase
+fiveOperands rows =
+  (rows
+    |> List.filter (\r -> r.id == "a")
+    |> List.map (\r -> r.n)) == [1] && (rows
+      |> List.filter (\r -> r.id == "b")
+      |> List.map (\r -> r.n)) == [2] && (rows
+      |> List.filter (\r -> r.id == "c")
+      |> List.map (\r -> r.n)) == [3] && (rows
+      |> List.filter (\r -> r.id == "d")
+      |> List.map (\r -> r.n)) == [4] && (rows
+      |> List.filter (\r -> r.id == "e")
+      |> List.map (\r -> r.n)) == [5]

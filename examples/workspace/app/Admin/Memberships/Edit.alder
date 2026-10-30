@@ -203,11 +203,11 @@ test "saving changes every field" = {
       users: Test.texts "select[name=user] option" page.doc,
       orgs: Test.texts "select[name=org] option" page.doc,
     } == {
-        answer: Redirected (Admin.Memberships.Show { id: membership1 }),
-        row: Just { user: user2, org: org2 },
-        users: ["email-1@example.com", "email-2@example.com"],
-        orgs: ["name-1", "name-2"],
-      }
+      answer: Redirected (Admin.Memberships.Show { id: membership1 }),
+      row: Just { user: user2, org: org2 },
+      users: ["email-1@example.com", "email-2@example.com"],
+      orgs: ["name-1", "name-2"],
+    }
   )
 }
 
@@ -354,11 +354,11 @@ test "a long list of users offers 50, and the search narrows it" = {
       found: Test.count "select[name=user] option" found.doc <= 3,
       answer: r.answer,
     } == {
-        shown: 51,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Memberships.Edit { id: membership1, findUser: "zz" }),
-      }
+      shown: 51,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Memberships.Edit { id: membership1, findUser: "zz" }),
+    }
   )
 }
 
@@ -400,12 +400,12 @@ test "the row's own user is offered first when it sorts past the 50" = {
       once: List.length (List.filter (\o -> o.id == user2) page.model.users),
       shown: List.length page.model.users,
     } == {
-        answer: Redirected (Admin.Memberships.Show { id: membership1 }),
-        kept: Just user2,
-        first: Just user2,
-        once: 1,
-        shown: 51,
-      }
+      answer: Redirected (Admin.Memberships.Show { id: membership1 }),
+      kept: Just user2,
+      first: Just user2,
+      once: 1,
+      shown: 51,
+    }
   )
 }
 
@@ -475,11 +475,11 @@ test "a long list of orgs offers 50, and the search narrows it" = {
       found: Test.count "select[name=org] option" found.doc <= 3,
       answer: r.answer,
     } == {
-        shown: 51,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Memberships.Edit { id: membership1, findOrg: "zz" }),
-      }
+      shown: 51,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Memberships.Edit { id: membership1, findOrg: "zz" }),
+    }
   )
 }
 
@@ -514,12 +514,12 @@ test "the row's own org is offered first when it sorts past the 50" = {
       once: List.length (List.filter (\o -> o.id == org1) page.model.orgs),
       shown: List.length page.model.orgs,
     } == {
-        answer: Redirected (Admin.Memberships.Show { id: membership1 }),
-        kept: Just org1,
-        first: Just org1,
-        once: 1,
-        shown: 51,
-      }
+      answer: Redirected (Admin.Memberships.Show { id: membership1 }),
+      kept: Just org1,
+      first: Just org1,
+      once: 1,
+      shown: 51,
+    }
   )
 }
 
