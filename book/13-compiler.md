@@ -388,6 +388,19 @@ checker can't guess which fields you need, and `?todo` is a typed hole.
 Applying the fix leaves you with a warning that tells you what to write:
 `warning[W0002]: hole ?todo has type Float`.
 
+A page hook with the wrong signature (`requireSig` in
+`internal/check/pages.go`) has a fix too: the required signature, as the
+hover text writes it (`HookDoc`), in place of the declared one. Write
+`load : Params -> Session -> Model` and the checker says
+`` `load` must have type `Params -> Session -> Query Model` `` with
+`fix: Params -> Session -> Query Model`. A `diag.Fix` may carry a `Title`
+and be `Preferred`: this one is titled ``Change signature to `…` `` and is
+preferred, because it is the one obvious repair. The command line ignores
+both; the language server uses the title for the code action, marks it
+`isPreferred`, and lists preferred fixes first, before the other fixes and
+before the generators, which are `refactor` actions and are not about the
+text under the cursor.
+
 **HTML** is checked element by element (`internal/check/html.go`). A
 lower-case tag must be one of the HTML5 tags listed in `htmlTags`; an
 attribute's value is checked against the type its name calls for (a
@@ -5397,24 +5410,40 @@ command line run the same one.
 `generate.Form` turns what the user has typed (`you`) over what `Here`
 prefilled into a list of fields, each valid or not and why, and `ready` is
 true when all are valid. The editor calls `alder/preview` as the form is
-filled, once per field. Here is the walk-through of the spec: `new msg` on
-`Posts.Index`, with the cursor on line 26. The first request has no values; the
-form comes back with `page` prefilled from the cursor and `name` required:
+filled, once per field.
+
+Each field also carries `help`, one line on what it means, and `example`, a
+value it accepts. Both are written once, on the `generate.Field` in
+`specs.go` (`Help`, `Example`; a flag's `help` is its `Summary` unless it
+has its own), so the command line's help and the editor's form cannot
+drift. A required field the cursor and the user leave empty starts filled
+(`startValue`): at the first choice when it names something that must exist
+(a page, a table, a declaration, one of its fixed choices), else at its
+example. So the form is usually ready as it opens and the preview shows a
+change at once; the user edits from there. A flag marked `Agent` (where
+`new msg` puts its button, `--strict` on a table edit) comes back with
+`"agent":true`, and the editor's form leaves it out: an agent needs that
+precision on the command line, a person sees the preview and edits by hand.
+
+Here is the walk-through of the spec: `new msg` on `Posts.Index`, with the
+cursor on line 26. The first request has no values; the form comes back with
+`page` prefilled from the cursor and `name` at its example:
 
 ```text
 -> {"jsonrpc":"2.0","id":9,"method":"alder/preview","params":{"sets":{},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"},"id":"new msg","position":{"line":25,"character":0}}}
-<- {"id":9,"jsonrpc":"2.0","result":{"fields":[{"name":"page","kind":"page","flag":false,"required":true,"value":"Posts.Index","source":"here","valid":true,"choices":["Admin.Comments.Bulk",…,"Posts.Index","Posts.Show","Write","Write.Edit"]},{"name":"name","kind":"text","flag":false,"required":true,"value":"","source":"","valid":false,"why":"required"},{"name":"fields","kind":"fieldList","flag":false,"required":false,"value":"","source":"","valid":true},…],"files":[],"diff":"","diagnostics":[],"holes":[],"ready":false,"error":""}}
+<- {"id":9,"jsonrpc":"2.0","result":{"fields":[{"name":"page","kind":"page","flag":false,"required":true,"value":"Posts.Index","source":"here","valid":true,"choices":["Admin.Comments.Bulk",…,"Posts.Index","Posts.Show","Write","Write.Edit"],"help":"the page the message belongs to","example":"Posts.Index"},{"name":"name","kind":"text","flag":false,"required":true,"value":"Archive","source":"default","valid":true,"help":"the message's name, a capitalised word","example":"Archive"},{"name":"fields","kind":"fieldList","flag":false,"required":false,"value":"","source":"","valid":true,"help":"the values the message carries, as name:Type words (none is fine)","example":"note:Text"},…],"files":[{"path":"app/Posts/Index.alder","action":"edited",…}],"diff":"…","diagnostics":[…],"holes":[…],"ready":true,"error":""}}
 ```
 
-`"source":"here"` says that `page` came from the cursor, not from the user.
-The user types `Delete`:
+`"source":"here"` says that `page` came from the cursor, not from the user;
+`"source":"default"` that `name` is the server's starting value, which the
+editor never sends back. The user types `Delete`:
 
 ```text
 -> {"jsonrpc":"2.0","id":10,"method":"alder/preview","params":{"sets":{"name":"Delete"},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"},"id":"new msg","position":{"line":25,"character":0}}}
 <- {"id":10,"jsonrpc":"2.0","result":{"fields":[…,{"name":"name","kind":"text","flag":false,"required":true,"value":"Delete","source":"you","valid":true},…],"files":[{"path":"app/Posts/Index.alder","action":"edited","added":17,"removed":0}],"diff":"--- a/app/Posts/Index.alder\n+++ b/app/Posts/Index.alder\n@@ -51,9 +51,12 @@\n …","diagnostics":[…],"holes":[{"module":"Posts.Index","decl":"update","arm":"Delete","name":"delete","type":"Task Nav","file":"app/Posts/Index.alder","line":59,"col":15},{"module":"Posts.Index","decl":"\"pressing Delete\"","name":"expected","type":"Bool","file":"app/Posts/Index.alder","line":213,"col":16}],"ready":true,"error":""}}
 ```
 
-Now `ready` is true, the copy checked, and `diff` is the unified diff, which
+`ready` is true, the copy checked, and `diff` is the unified diff, which
 the editor shows (here with its `\n` turned into line breaks):
 
 ```text

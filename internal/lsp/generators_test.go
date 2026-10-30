@@ -20,7 +20,8 @@ import (
 type preview struct {
 	Fields []struct {
 		Name, Value, Source, Why string
-		Valid                    bool
+		Help, Example            string
+		Valid, Agent             bool
 	}
 	Files []struct {
 		Path, Action   string
@@ -69,7 +70,7 @@ func TestPreview_NewMsgWalkThrough(t *testing.T) {
 	openClean(t, c, "app/Posts/Index.alder")
 	p := c.at("app/Posts/Index.alder", "load params", 0)
 	var pv preview
-	c.call("alder/preview", req(c, "app/Posts/Index.alder", p, map[string]any{"id": "new msg", "sets": map[string]string{}}), &pv)
+	c.call("alder/preview", req(c, "app/Posts/Index.alder", p, map[string]any{"id": "new msg", "sets": map[string]string{"name": ""}}), &pv)
 	if pv.Ready || pv.Fields[0].Value != "Posts.Index" || pv.Fields[0].Source != "here" || pv.Fields[1].Why != "required" {
 		t.Fatalf("empty form %+v", pv)
 	}
@@ -148,6 +149,32 @@ func TestPlan_DiagnosticsCLIShape(t *testing.T) {
 	d := plan.Diagnostics[0]
 	if d["file"] == nil || d["line"] == nil || d["col"] == nil || d["code"] == nil || d["range"] != nil {
 		t.Fatalf("diagnostic %+v is not the CLI's shape", d)
+	}
+}
+
+// Issue 45: a generator's form opens ready, its required fields at their examples or first
+// choices, so the preview shows the change at once; each field says what it means and gives an
+// example, and an agent-oriented flag is marked for the editor to leave out.
+func TestPreview_OpensReadyWithHelp(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	var pv preview
+	c.call("alder/preview", req(c, "app/Posts/Index.alder", Position{}, map[string]any{"id": "new capability", "sets": map[string]string{}}), &pv)
+	if !pv.Ready || pv.Error != "" || len(pv.Files) != 2 || pv.Files[1].Path != "app/Mailer.alder" {
+		t.Fatalf("new capability on open: %+v", pv)
+	}
+	for _, f := range pv.Fields {
+		if f.Help == "" || f.Example == "" || f.Source != "default" {
+			t.Errorf("field %+v", f)
+		}
+	}
+	c.call("alder/preview", req(c, "app/Posts/Index.alder", Position{}, map[string]any{"id": "new msg", "sets": map[string]string{}}), &pv)
+	agent := map[string]bool{}
+	for _, f := range pv.Fields {
+		agent[f.Name] = f.Agent
+	}
+	if !pv.Ready || !agent["when"] || agent["name"] {
+		t.Fatalf("new msg on open: ready %v agent %v", pv.Ready, agent)
 	}
 }
 
