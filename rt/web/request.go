@@ -57,6 +57,18 @@ type Response struct {
 	Session  any             // to store in the cookie (nil, or equal to the request's: unchanged, not stored)
 	Err      error           // Error
 	Raw      *rtpkg.File     // a file page's answer, written as given
+	// Before, set by a message's route, renders the page as it was before the message: the view
+	// of the model loaded before update (or, for a form that did not decode, the same model),
+	// rendered with the page's plain state (FormState{PageParams}). Under Datastar the router
+	// compares it with the answer and sends only the regions that differ (html.Fragments) when
+	// the client shows exactly that page (html.ShownHeader). nil: the whole body is morphed.
+	Before func() html.Node
+}
+
+// WithBefore is r with Before set to before.
+func (r Response) WithBefore(before func() html.Node) Response {
+	r.Before = before
+	return r
 }
 
 // PageResponse renders doc with st (200). When patch is set and the request came from

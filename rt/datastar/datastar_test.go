@@ -185,3 +185,38 @@ func TestPatchTitle(t *testing.T) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
+
+func TestPatchRegion_EventFormat(t *testing.T) {
+	rec := httptest.NewRecorder()
+	if err := PatchRegion(rec, "row-7", `<li id="row-7">a</li>`); err != nil {
+		t.Fatal(err)
+	}
+	want := "event: datastar-patch-elements\ndata: selector #row-7\ndata: mode outer\ndata: elements <li id=\"row-7\">a</li>\n\n"
+	if rec.Body.String() != want || rec.Header().Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("%q", rec.Body.String())
+	}
+}
+
+func TestPatchShown_EventFormat(t *testing.T) {
+	rec := httptest.NewRecorder()
+	if err := PatchShown(rec, "0123456789abcdef"); err != nil {
+		t.Fatal(err)
+	}
+	want := "event: datastar-patch-elements\ndata: selector #_alder_shown\ndata: mode outer\ndata: elements <al-shown id=\"_alder_shown\" data-h=\"0123456789abcdef\" hidden></al-shown>\n\n"
+	if rec.Body.String() != want {
+		t.Fatalf("%q", rec.Body.String())
+	}
+}
+
+// The boost's data-init defines the helper every message's post calls for its options
+// (html.PostOptions): the abort of the navigation in flight, the next one's controller, the
+// Alder-Shown header (the data-h of the page's al-shown, "" without one), the content type.
+func TestBoostInit_DefinesShown(t *testing.T) {
+	want := `window._alderO = (f) => { window._alderAC?.abort(); const o = {headers: {'Alder-Shown': document.getElementById('_alder_shown')?.dataset.h || ''}, requestCancellation: window._alderAC = new AbortController()}; if (f) o.contentType = f; return o };`
+	if !strings.Contains(BoostInit, want) {
+		t.Fatalf("BoostInit lacks %s:\n%s", want, BoostInit)
+	}
+	if !strings.Contains(BoostTag(), "window._alderO = (f) =&gt; {") {
+		t.Fatalf("BoostTag: %s", BoostTag())
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -57,11 +58,23 @@ func testOpts(edit func(*Options)) Options {
 	return o
 }
 
+// serve serves req and returns the answer without the <al-shown> element every page carries
+// (#49): the tests written before it compare the rest of the page. serveRaw keeps it.
 func serve(h http.Handler, req *http.Request) *httptest.ResponseRecorder {
+	w := serveRaw(h, req)
+	s := shownTag.ReplaceAllString(w.Body.String(), "")
+	w.Body.Reset()
+	w.Body.WriteString(s)
+	return w
+}
+
+func serveRaw(h http.Handler, req *http.Request) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	return w
 }
+
+var shownTag = regexp.MustCompile(`<al-shown id="_alder_shown" data-h="[0-9a-f]{16}" hidden></al-shown>`)
 
 func TestRouter_PathParams(t *testing.T) {
 	var got *Request
