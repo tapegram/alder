@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -86,6 +87,56 @@ func TestPublicURL_Binary(t *testing.T) {
 				t.Errorf("listening on %s: the page lacks %q: <body>%s", listen, want, b)
 			}
 		})
+	}
+}
+
+// alder run's child listens on 127.0.0.1:0 behind the dev server, so it is told the dev
+// server's address as its public base; a value in the shell (a tunnel) passes through untouched.
+func TestChildEnv_PublicURL(t *testing.T) {
+	t.Parallel()
+	last := func(env []string) (string, int) {
+		v, n := "", 0
+		for _, kv := range env {
+			if s, ok := strings.CutPrefix(kv, "ALDER_PUBLIC_URL="); ok {
+				v, n = s, n+1
+			}
+		}
+		return v, n
+	}
+	for _, c := range []struct {
+		environ []string
+		devAddr string
+		want    string
+	}{
+		{[]string{"HOME=/h"}, "localhost:8080", "http://localhost:8080"},
+		{[]string{"HOME=/h"}, "127.0.0.1:18765", "http://127.0.0.1:18765"},
+		{[]string{"ALDER_PUBLIC_URL=  "}, "localhost:8080", "http://localhost:8080"},
+		{[]string{"ALDER_PUBLIC_URL=https://x.ngrok.app"}, "localhost:8080", "https://x.ngrok.app"},
+	} {
+		env := childEnv(c.environ, "dev.db", "static", "g-1", c.devAddr)
+		if v, _ := last(env); v != c.want {
+			t.Errorf("%v on %s: ALDER_PUBLIC_URL %q, want %q (%v)", c.environ, c.devAddr, v, c.want, env)
+		}
+		for _, want := range []string{"ALDER_ADDR=127.0.0.1:0", "ALDER_DEV=1", "ALDER_RELOAD=g-1", "ALDER_DB=dev.db", "ALDER_STATIC=static", "ALDER_EXIT_ON_STDIN_EOF=1"} {
+			if !slices.Contains(env, want) {
+				t.Errorf("the child's environment lacks %s: %v", want, env)
+			}
+		}
+	}
+	if _, n := last(childEnv([]string{"ALDER_PUBLIC_URL=https://x.ngrok.app"}, "a", "b", "c", "localhost:8080")); n != 1 {
+		t.Errorf("the shell's ALDER_PUBLIC_URL is not passed through untouched: %d values", n)
+	}
+}
+
+// Inside alder test Url.absolute starts with http://localhost:8080 whatever the environment
+// holds: url-absolute-ok's tests expect it, and pass with ALDER_PUBLIC_URL set to another base.
+func TestPublicURL_TestRunnerIgnoresEnv(t *testing.T) {
+	needGoTool(t)
+	t.Setenv("ALDER_PUBLIC_URL", "https://elsewhere.example")
+	dir := tempAppAbs(t, "../../testdata/corpus/url-absolute-ok", "uabs")
+	code, stdout, stderr := runTest(t, dir)
+	if code != 0 || !strings.Contains(stdout, "3 passed, 0 failed\n") {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 }
 
