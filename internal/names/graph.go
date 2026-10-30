@@ -37,6 +37,9 @@ type Program struct {
 	// Refused are the app modules left out of the program by E0017, kept for their source lines.
 	Refused []*syntax.Module
 	quiet   map[string]bool // modules that used a stdNamed module's missing name: Failed, silently
+	// pageUses holds "Module.Ctor" for each constructor named like a single-segment page that
+	// some module applies to a record literal, as a page value is written (pageShadows).
+	pageUses map[string]bool
 	// ParseFailed is set by Load when any file had a syntax error; such a program must not be checked.
 	ParseFailed bool
 	// Unparsed lists, in load order, the files (relative to the project) that made ParseFailed

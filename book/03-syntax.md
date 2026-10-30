@@ -132,6 +132,23 @@ both a constructor of `User.Role` and a table: write `Member` for the
 constructor only where a `User.Role` is expected, or qualify the table
 `Member.Member`".
 
+Two other names can hide each other, because of the order in which a name
+is looked up. An unqualified constructor is looked up before a page, so a
+constructor `Status` (of `type Code = Status Int | Down`) hides the page
+module `Status` wherever the constructor is in scope: its own module and
+every module importing it (a `msg Status` only in its own module, a Prelude
+constructor such as `Ok` everywhere). There the page has no other spelling,
+and `Status { cfg: "pa" }` builds the constructor. The compiler reports the
+clash at the constructor: an error (E0040) when some module in its scope
+writes `Status { … }` for the page, a warning (W0010) while nothing does.
+Rename one of them, for example `module StatusPage`. Likewise a qualifier is
+looked up before a capability, so `import Clarity` beside a module whose
+`capability Clarity` has the entry `final` makes `Clarity.final` a name in
+module `Clarity`. The capability is still reached through its own module's
+qualifier (`DataClarity.final`); the import gets a warning (W0009) that
+says so, and a call that module `Clarity` lacks gets the spelling as its
+fix.
+
 Everything a module defines is visible to other modules, with one exception:
 a brand's constructor (see chapter 4). There is no `export` list.
 
@@ -269,6 +286,15 @@ annotated and plain parameters mix freely:
 
 Precedence, highest first: function application; `* / %`; `+ - ++`;
 `== != < <= > >=`; `&&`; `||`; `??`; `|>`. There is no user-defined operator.
+
+Two places in that order surprise people. `??` binds looser than `&&` and
+`||`, so `ready && m ?? True` is `(ready && m) ?? True`: the default
+applies to the whole Bool, and the checker answers "expected Maybe _, got
+Bool". Write `ready && (m ?? True)`. And `|>` binds looser than the
+comparisons, so `x |> f == y` is `x |> (f == y)`: a Bool on the right of
+the pipe, "right side of `|>` must be a function". Write `(x |> f) == y`.
+In both cases the error carries a hint that spells out how the line was
+read and the parenthesized form, built from the expressions you wrote.
 
 ## Records
 

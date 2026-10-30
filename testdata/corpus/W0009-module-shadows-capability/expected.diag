@@ -1,0 +1,4 @@
+app/Page.alder:3:1 W0009 module `Clarity` shadows `capability Clarity` of `Data.Clarity` in this module: `Clarity.final` is looked up in the module, not the capability; write `DataClarity.final`, or rename module `Clarity` (for example to `ClarityModule`)
+app/Page.alder:13:15 E0002 module `Clarity` has no `final`; `Clarity` here is module `Clarity`, which shadows `capability Clarity` of `Data.Clarity`: write `DataClarity.final`
+  fix 13:15-13:28 DataClarity.final
+app/Report.alder:3:1 W0009 module `Clarity` shadows `capability Clarity` of `Feeds` in this module: `Clarity.latest` is looked up in the module, not the capability; write `Feeds.Clarity.latest`, or rename module `Clarity` (for example to `ClarityModule`)

@@ -1,0 +1,3 @@
+app/Home.alder:13:31 E0003 expected Page, got Types.Code
+app/Home.alder:13:38 E0003 expected Int, got { cfg: Text }
+app/Types.alder:5:13 E0040 constructor `Status` (of `Types.Code`) shadows page `Status` in `Types` and the modules importing it: there `Status { … }` is the constructor, so the page cannot be linked or fetched; rename the constructor or the page module (for example `module StatusPage`)

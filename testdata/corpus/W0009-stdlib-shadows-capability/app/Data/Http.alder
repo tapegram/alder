@@ -1,0 +1,6 @@
+module Data.Http
+
+-- The standard-library module Http is always in scope, so `Http.fetch` is looked up there.
+capability Http {
+  fetch : Text -> Query Text,
+}

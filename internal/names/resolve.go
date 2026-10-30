@@ -193,6 +193,7 @@ func (p *Program) Resolve(bag *diag.Bag) {
 		r := &resolver{p: p, bag: bag, m: p.Modules[name], ms: p.scopes[name]}
 		r.module()
 	}
+	p.pageShadows(bag)
 	// stdlib signatures: resolve their type names so the checker can read them
 	var std []string
 	for name := range p.Std {
@@ -251,6 +252,7 @@ func (r *resolver) module() {
 		}
 	}
 	r.aliases()
+	r.shadowedCapabilities()
 	for _, d := range r.m.Decls {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
@@ -1121,6 +1123,11 @@ func (r *resolver) expr(e syntax.Expr, sc *Scope) {
 		r.expr(e.Expr, sc)
 	case *syntax.App:
 		r.expr(e.Fn, sc)
+		if ct, ok := e.Fn.(*syntax.CtorRef); ok && len(e.Args) == 1 {
+			if _, rec := e.Args[0].(*syntax.RecordLit); rec {
+				r.pageUse(ct)
+			}
+		}
 		for i, a := range e.Args {
 			if v, ok := e.Fn.(*syntax.Var); ok && i == 0 && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Test" {
 				switch v.Ref.Name {
@@ -1244,6 +1251,10 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 				d := r.bag.Error(diag.UnknownName, v.Span, "module `%s` has no `%s`%s", path, v.Name, entryHint(s, v.Name))
 				if c := s.entryCaps[v.Name]; c != "" {
 					d.Fix = diag.ReplaceSpan(v.Span, c+"."+v.Name)
+				}
+				if hint, spelling := r.shadowedEntryHint(mod, path, v.Name); hint != "" {
+					d.Message += hint
+					d.Fix = diag.ReplaceSpan(v.Span, spelling)
 				}
 			}
 		}

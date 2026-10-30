@@ -1,0 +1,5 @@
+module Clarity
+
+-- The site's own module, named like the capability `Clarity` of Data.Clarity.
+title : Text
+title = "Clarity"

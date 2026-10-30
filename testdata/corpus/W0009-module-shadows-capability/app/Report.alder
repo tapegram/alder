@@ -1,0 +1,8 @@
+module Report
+
+import Clarity
+import Feeds
+
+-- The long spelling reaches the capability past the module: this works, with the warning.
+latest : Query Text
+latest = Query.map (\t -> Clarity.title ++ t) Feeds.Clarity.latest
