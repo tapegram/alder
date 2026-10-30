@@ -1409,6 +1409,7 @@ func update__Todos__Index(rq *web.Request, params Todos__Index__Params, msg Todo
 	if stop != nil {
 		return *stop
 	}
+	model0, session0 := model, session // the page the client shows: Before
 	nav, err := eff.Run(rq.Env, eff.KTask, Todos__Index__update(msg, model, session))
 	if err != nil {
 		return route__fail(err)
@@ -1428,7 +1429,7 @@ func update__Todos__Index(rq *web.Request, params Todos__Index__Params, msg Todo
 	if stop != nil {
 		return *stop
 	}
-	return web.PageResponse(Todos__Index__view(model, session), st, rq.Env.Session, true)
+	return web.PageResponse(Todos__Index__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Todos__Index__view(model0, session0) })
 }
 ```
 
@@ -1452,14 +1453,47 @@ This is chapter 6's lifecycle, line by line:
    session the task left. `load` reads the database after the commit, so
    the new model has Milk done. If this second load fails, the 404 or 500
    still stores that session: what the task committed is not lost.
-5. `PageResponse(…, true)` asks for a patch.
+5. `PageResponse(…, true)` asks for a patch, and `WithBefore` hands the
+   router a way to draw the page as it was before the message: the view of
+   `model0`, the model the first load returned. It is a function, not a
+   page: nothing is rendered unless the router needs it, and no query runs
+   for it.
 
 The router's `write` sees a 200 with `Patch` set and `rq.Datastar` true.
-The task left the session as it was, so it sets no cookie. It renders
-the page, cuts out its `<body>…</body>`
-(`bodyOf`), and calls `datastar.PatchBody`, which writes one server-sent
-event: the event name, two lines that say what to replace and how, and one
-`data: elements` line for each line of the body. The answer is
+The task left the session as it was, so it sets no cookie. It renders the
+page with `html.RenderTracked`, which is `RenderWith` that also writes
+down, as it goes, where each element with an `id` starts and ends in the
+markup: here `<ul id="todos">` and `<p id="summary">`. These are the
+page's **regions**.
+
+Now the router asks one question: which page is the browser showing? It
+cannot know the browser's DOM, but it knows every page it sent, because
+each one ended its `<body>` with
+
+```html
+<al-shown id="_alder_shown" data-h="9c1f0e3b5a7d2c48" hidden></al-shown>
+```
+
+where `data-h` is `html.Hash` of the body: FNV-1a, a fast 64-bit hash, as
+16 hex digits. The click's `@post` sent it back in the `Alder-Shown`
+header (`headers: window._alderShown?.()` in the attribute above; the
+helper, defined once in the `<head>`, reads `data-h`). The router renders
+the before-view (`Before`, with the same page parameters), hashes its
+body, and compares. Equal means the browser shows exactly that page, so
+the router may send only the parts that differ. Anything else, and it
+falls back to sending the whole body: no header (a page without the
+script's helper), a different hash (the first click after a form showed
+errors, or a tab of an older build), a before-view that panics, or a
+toast that needs a region the page lacks.
+
+`html.Fragments` then compares the two renders region by region, starting
+with the body. A region whose markup is the same on both sides is left
+alone. A region whose markup differs only inside its child regions (the
+same children, in the same order, and the same text between them) is
+looked into, child by child. Any other changed region is sent whole. Here
+Milk leaves the Active list, so `#todos` changed and has no child regions
+to look into; the count changed, so `#summary` did too; nothing outside
+them changed. The answer is three small events:
 
 ```
 HTTP/1.1 200 OK
@@ -1467,21 +1501,41 @@ Cache-Control: no-cache
 Content-Type: text/event-stream
 
 event: datastar-patch-elements
-data: selector body
+data: selector #todos
 data: mode outer
-data: elements <body><main><h1>Todos</h1>…<ul id="todos"></ul><p id="summary">0 open</p>…</main></body>
+data: elements <ul id="todos"></ul>
+
+event: datastar-patch-elements
+data: selector #summary
+data: mode outer
+data: elements <p id="summary">0 open</p>
+
+event: datastar-patch-elements
+data: selector #_alder_shown
+data: mode outer
+data: elements <al-shown id="_alder_shown" data-h="4e0b7a19c2d36f85" hidden></al-shown>
 
 ```
 
-(without the `Date` and `Transfer-Encoding` headers, and shortened at each
-`…`). The rendered page has no line breaks, so the body
-is one `elements` line, and a blank line ends the event. (`PatchBody`
-turns every `\r\n` and lone `\r` into `\n` before it splits the lines, and
-the renderer writes a carriage return in text as `&#13;`: a line end
-inside your data can never end a `data:` line and start a field.) Datastar finds
-`body` in the page and morphs it into the new one: Milk is done, so it
-leaves the Active list, and the summary says `0 open`. No `<head>` and no
-doctype are sent.
+(without the `Date` and `Transfer-Encoding` headers). Each event is the
+event name, two lines that say what to replace and how, and one
+`data: elements` line for each line of the markup; the rendered page has
+no line breaks, so each is one line, and a blank line ends the event.
+(The writer turns every `\r\n` and lone `\r` into `\n` before it splits the
+lines, and the renderer writes a carriage return in text as `&#13;`: a
+line end inside your data can never end a `data:` line and start a
+field.) Datastar finds each element by its `id` and morphs it into the new
+one; the last event records which page the browser now shows, for the
+next click. The rest of the page is not touched at all: an open
+`<details>`, a half-typed input or the scroll position elsewhere stay as
+they were. No `<head>` and no doctype are sent.
+
+When the router falls back, or a change lies outside every region (a
+heading with no `id` around it), the answer is the one event of
+`datastar.PatchBody`: `data: selector body`, the whole `<body>…</body>`
+(`bodyOf`), its `<al-shown>` at the end, which Datastar morphs into the
+page. Either way the browser ends up with the same page: `alder test`
+checks this on every click and submit (chapter 11).
 
 The same `POST` without the `Datastar-Request` header goes through the
 same handler, up to the `switch`: there `Rerender` meets `!rq.Datastar`

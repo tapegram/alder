@@ -940,6 +940,14 @@ ok   Todos.Index "Toggle by another user is not found"
 2 passed, 0 failed
 ```
 
+Every click and submit a test makes also checks the runtime's partial
+updates (chapter 5, "Partial updates"): the test's browser applies the
+answer as a browser would, region by region, and then compares the page
+it holds with a full render of the same page. A difference fails the
+step, naming where: `POST /_m/Todos.Index/Toggle: the patched page
+differs from a full render at body > main > ul#todos: …`. Your tests do
+not mention it; every suite proves the patches on its own pages.
+
 - `-run re` runs only the tests whose `Module "name"` matches the
   regular expression `re` (Go's syntax). A pattern that matches nothing
   runs nothing: `0 passed, 0 failed`, exit 0.
@@ -1059,7 +1067,7 @@ ok   Rows.Bench "toggle 1000"
 | column | what it counts |
 |---|---|
 | `ms` | the step's wall time |
-| `bytes` | the answers' bodies: the document of a GET, the event stream of a Datastar answer (the body patch, title, history) |
+| `bytes` | the answers' bodies: the document of a GET, the event stream of a Datastar answer (the regions patched, or the body, title, history) |
 | `alloc` | bytes and objects the Go runtime allocated during the step (`runtime.MemStats`: `TotalAlloc` and `Mallocs` before and after) |
 | `req` | requests the router served: 1, 2 when it followed a `Redirect` itself (chapter 6), more for each 303 the browser followed |
 | `loads` | how many times a page's `load` ran: a `Rerender` runs it twice (before `update`, to give it the model, and after, to render), and so does a followed `Redirect` (the message's page, then the target) |
@@ -1590,7 +1598,10 @@ remembers the tab chosen last, so the next answer opens on it again. Its tabs:
   The same rule runs in `alder test` (a `warn:` line under the test,
   chapter 10) and in `alder bench`'s `n+1` column.
 - Answer: page, rerender, redirect, not found, or an error with its text.
-- Patches: the events the answer sent (body, title, history, toast, panel).
+- Patches: the events the answer sent: each region a message's answer
+  patched (`#todo-7`) and `shown` (the page's new hash), or `body` when
+  the whole body was morphed, or `none` when nothing changed; then title,
+  history, toast and panel (chapter 5, "Partial updates").
 - History: the last 20 requests of this browser tab, newest first. The panel
   keeps them in the browser (`sessionStorage`, so a full page load keeps them
   too and another tab has its own); click one to read its Request, Trace, SQL,
