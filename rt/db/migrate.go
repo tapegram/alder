@@ -253,6 +253,8 @@ func (s *SQLite) Migrate(ctx context.Context, tables []TableDesc, ms []Migration
 // (ErrDrift) or another storage Format, unless dev, which recreates the database as Ensure does
 // and records every migration of ms as applied (the fresh tables are where they lead).
 func (s *SQLite) MigrateLog(ctx context.Context, tables []TableDesc, ms []Migration, dev bool, logf func(string)) (applied []string, err error) {
+	s.resetStmts() // the schema may change: no prepared statement outlives it
+	defer s.resetStmts()
 	defer func() { err = lockedErr(err) }()
 	if logf == nil {
 		logf = func(string) {}

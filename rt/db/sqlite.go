@@ -30,6 +30,11 @@ type SQLite struct {
 	tables map[string]TableDesc // by Alder name; filled by Ensure
 
 	remote bool // a database on Turso (libsql.go), not a file
+	single bool // ":memory:": one connection, which a transaction holds while it is open
+
+	// the prepared statements, by text (stmtQ): nil until the first, never on Turso
+	stmtMu sync.Mutex
+	stmts  map[string]*sql.Stmt
 }
 
 // Remote reports whether the store is a database on Turso (ALDER_DB=libsql://…, or a silo's
@@ -93,11 +98,14 @@ func openSQLite(path string, reader bool) (*SQLite, error) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	return &SQLite{db: d, tables: map[string]TableDesc{}}, nil
+	return &SQLite{db: d, tables: map[string]TableDesc{}, single: path == ":memory:"}, nil
 }
 
-// Close closes the database.
-func (s *SQLite) Close() error { return s.db.Close() }
+// Close closes the database (and its prepared statements first).
+func (s *SQLite) Close() error {
+	s.resetStmts()
+	return s.db.Close()
+}
 
 // Ping runs SELECT 1 on the database: nil when it answers (the /_alder/health route of rt/web).
 func (s *SQLite) Ping(ctx context.Context) error {
@@ -105,7 +113,13 @@ func (s *SQLite) Ping(ctx context.Context) error {
 	return s.db.QueryRowContext(ctx, "SELECT 1").Scan(&n)
 }
 
-type sqliteTx struct{ tx *sql.Tx }
+// sqliteTx is a transaction; stmts are the statements it prepared itself (stmtQ: on the
+// single connection of a ":memory:" database), closed with it.
+type sqliteTx struct {
+	tx    *sql.Tx
+	mu    sync.Mutex
+	stmts map[string]*sql.Stmt
+}
 
 func (t *sqliteTx) Commit() error   { return t.tx.Commit() }
 func (t *sqliteTx) Rollback() error { return t.tx.Rollback() }
@@ -116,7 +130,7 @@ func (s *SQLite) Begin(ctx context.Context) (eff.Tx, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &sqliteTx{tx}, nil
+	return &sqliteTx{tx: tx}, nil
 }
 
 var _ Savepointer = (*SQLite)(nil)
@@ -158,9 +172,13 @@ type querier interface {
 }
 
 // on is tx's *sql.Tx, or the database itself when tx is nil.
+// Its statements go through the statement cache (stmtQ) except on Turso.
 func (s *SQLite) on(tx Tx) (querier, error) {
 	if tx == nil {
-		return recQ{s.db}, nil
+		if s.remote {
+			return recQ{s.db}, nil
+		}
+		return recQ{stmtQ{s: s}}, nil
 	}
 	if err := txErr(tx); err != nil {
 		return nil, err
@@ -169,7 +187,10 @@ func (s *SQLite) on(tx Tx) (querier, error) {
 	if !ok {
 		return nil, fmt.Errorf("db: transaction %T does not belong to the SQLite store", tx)
 	}
-	return recQ{t.tx}, nil
+	if s.remote {
+		return recQ{t.tx}, nil
+	}
+	return recQ{stmtQ{s: s, tx: t}}, nil
 }
 
 func (s *SQLite) desc(table string) (TableDesc, error) {
@@ -588,6 +609,8 @@ const Format = "1"
 //
 // Ensure is for an app without migrations; an app with them calls Migrate instead.
 func (s *SQLite) Ensure(ctx context.Context, tables []TableDesc, dev bool) (err error) {
+	s.resetStmts() // the schema may change: no prepared statement outlives it
+	defer s.resetStmts()
 	defer func() { err = lockedErr(err) }()
 	sc, err := schemaOf(tables)
 	if err != nil {
@@ -649,6 +672,8 @@ func (s *SQLite) Ensure(ctx context.Context, tables []TableDesc, dev bool) (err 
 // check would see extra as drift). A table of extra that already exists (or is one of app) is an
 // error, and nothing is created.
 func (s *SQLite) CreateTables(ctx context.Context, extra, app []TableDesc) (err error) {
+	s.resetStmts()
+	defer s.resetStmts()
 	defer func() { err = lockedErr(err) }()
 	if len(extra) == 0 {
 		return nil
@@ -725,6 +750,7 @@ func formatErr(oldFormat string) error {
 // recreate drops the tables existing and creates sc's (tables'), their @ref indexes and the
 // _alder_meta record, in one transaction with foreign keys off (recreateTx).
 func (s *SQLite) recreate(ctx context.Context, conn *sql.Conn, sc appSchema, tables []TableDesc, existing []string) (err error) {
+	s.resetStmts()
 	// Dropping a referenced table with foreign keys on would cascade checks;
 	// the pragma can only change outside a transaction.
 	restore, err := foreignKeysOff(ctx, conn)
@@ -878,4 +904,170 @@ func (r recQ) QueryRowContext(ctx context.Context, query string, args ...any) *s
 	row := r.q.QueryRowContext(ctx, query, args...)
 	rc.AddSQL(eff.SQLRec{Stmt: query, Args: args, Ms: eff.Ms(time.Since(t0)), Rows: -1})
 	return row
+}
+
+// stmtCap is how many statement texts the cache holds: the next one empties it first (a `.in`
+// list makes one text per list length, so the texts an app runs are not a finite set).
+const stmtCap = 256
+
+// stmtQ is the querier of a file or ":memory:" store (not Turso, whose driver prepares nothing):
+// each SELECT, INSERT, UPDATE or DELETE text is prepared once and the prepared statement reused.
+// Without a transaction it runs the store's statement (prepared on the pool, s.stmts); in one it
+// runs that statement on the transaction's connection (Tx.StmtContext, which database/sql keeps
+// prepared per connection) — except on a ":memory:" database, whose single connection the
+// transaction holds, so a statement prepared on the pool would wait for it: there the
+// transaction prepares its own, kept until it ends (sqliteTx.stmts). Any other statement (a
+// SAVEPOINT, DDL) runs unprepared.
+type stmtQ struct {
+	s  *SQLite
+	tx *sqliteTx // nil: none
+}
+
+// cacheable reports whether query is a statement the cache prepares.
+func cacheable(query string) bool {
+	for _, p := range []string{"SELECT ", "INSERT ", "UPDATE ", "DELETE "} {
+		if strings.HasPrefix(query, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// plain is the querier the statement runs on unprepared.
+func (q stmtQ) plain() querier {
+	if q.tx != nil {
+		return q.tx.tx
+	}
+	return q.s.db
+}
+
+// errStmtClosed is database/sql's error for a statement closed under its user (the cache was
+// emptied meanwhile): the statement is run again unprepared.
+func errStmtClosed(err error) bool { return err != nil && err.Error() == "sql: statement is closed" }
+
+// prepared is the statement to run query with on q.
+func (q stmtQ) prepared(ctx context.Context, query string) (*sql.Stmt, error) {
+	if q.tx == nil {
+		return q.s.stmt(ctx, query)
+	}
+	if !q.s.single {
+		st, err := q.s.stmt(ctx, query)
+		if err != nil {
+			return nil, err
+		}
+		return q.tx.tx.StmtContext(ctx, st), nil
+	}
+	if st := q.s.cached(query); st != nil { // prepared on the one connection before the transaction
+		return q.tx.tx.StmtContext(ctx, st), nil
+	}
+	t := q.tx
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if st := t.stmts[query]; st != nil {
+		return st, nil
+	}
+	st, err := t.tx.PrepareContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	if t.stmts == nil || len(t.stmts) >= stmtCap {
+		t.stmts = map[string]*sql.Stmt{} // the dropped ones close with the transaction
+	}
+	t.stmts[query] = st
+	return st, nil
+}
+
+func (q stmtQ) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	if !cacheable(query) {
+		return q.plain().ExecContext(ctx, query, args...)
+	}
+	st, err := q.prepared(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	res, err := st.ExecContext(ctx, args...)
+	if errStmtClosed(err) {
+		return q.plain().ExecContext(ctx, query, args...)
+	}
+	return res, err
+}
+
+func (q stmtQ) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	if !cacheable(query) {
+		return q.plain().QueryContext(ctx, query, args...)
+	}
+	st, err := q.prepared(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := st.QueryContext(ctx, args...)
+	if errStmtClosed(err) {
+		return q.plain().QueryContext(ctx, query, args...)
+	}
+	return rows, err
+}
+
+func (q stmtQ) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	if !cacheable(query) {
+		return q.plain().QueryRowContext(ctx, query, args...)
+	}
+	st, err := q.prepared(ctx, query)
+	if err != nil {
+		return q.plain().QueryRowContext(ctx, query, args...) // the same error, from the database
+	}
+	row := st.QueryRowContext(ctx, args...)
+	if errStmtClosed(row.Err()) {
+		return q.plain().QueryRowContext(ctx, query, args...)
+	}
+	return row
+}
+
+// cached is the store's prepared statement of query, nil when there is none.
+func (s *SQLite) cached(query string) *sql.Stmt {
+	s.stmtMu.Lock()
+	defer s.stmtMu.Unlock()
+	return s.stmts[query]
+}
+
+// stmt is the store's prepared statement of query, prepared on the pool and cached when it is
+// not yet. At stmtCap texts the cache is emptied (its statements closed) before this one goes in.
+func (s *SQLite) stmt(ctx context.Context, query string) (*sql.Stmt, error) {
+	if st := s.cached(query); st != nil {
+		return st, nil
+	}
+	st, err := s.db.PrepareContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	s.stmtMu.Lock()
+	if old := s.stmts[query]; old != nil { // prepared meanwhile by another request
+		s.stmtMu.Unlock()
+		st.Close()
+		return old, nil
+	}
+	var full map[string]*sql.Stmt
+	if s.stmts == nil || len(s.stmts) >= stmtCap {
+		full, s.stmts = s.stmts, map[string]*sql.Stmt{}
+	}
+	s.stmts[query] = st
+	s.stmtMu.Unlock()
+	closeStmts(full)
+	return st, nil
+}
+
+// resetStmts closes every cached statement and empties the cache: when the schema changes
+// (Ensure, MigrateLog, CreateTables, recreate) and on Close. SQLite re-prepares a statement whose
+// schema changed itself, so this is hygiene: no handle outlives the tables it was prepared for.
+func (s *SQLite) resetStmts() {
+	s.stmtMu.Lock()
+	old := s.stmts
+	s.stmts = nil
+	s.stmtMu.Unlock()
+	closeStmts(old)
+}
+
+func closeStmts(m map[string]*sql.Stmt) {
+	for _, st := range m {
+		st.Close()
+	}
 }

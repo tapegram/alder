@@ -160,7 +160,7 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 		if reps[k] { // an N+1 (eff.Repeats): five or more, not a bulk write
 			dup = fmt.Sprintf(` <strong data-nplus1>N+1 x%d</strong>`, count[k])
 		} else if bulk(k) {
-			dup =fmt.Sprintf(` <span data-bulk>x%d (bulk)</span>`, count[k])
+			dup = fmt.Sprintf(` <span data-bulk>x%d (bulk)</span>`, count[k])
 		} else if count[k] > 1 {
 			dup = fmt.Sprintf(` <strong data-dup>duplicate x%d</strong>`, count[k])
 		}

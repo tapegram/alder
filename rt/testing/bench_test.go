@@ -206,4 +206,3 @@ func TestMain_Bench(t *testing.T) {
 		t.Errorf("without --bench: %s", out)
 	}
 }
-
