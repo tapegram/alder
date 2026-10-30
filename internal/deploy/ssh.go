@@ -1572,6 +1572,7 @@ while kill -0 "$PPID" 2>/dev/null; do  # the session's sshd gone: stop
   n=$(cat "$R/current" 2>/dev/null)
   if [ -n "$n" ] && [ "$n" != "$c" ]; then c=$n; off=0; echo "--- alder logs: build $c is current"; fi
   size=$(wc -c < "$R/builds/$c/log" 2>/dev/null | tr -d ' ')
+  if [ -n "$size" ] && [ "$size" -lt "$off" ]; then off=0; fi  # trimmed (a build start past 10 MB): from its start
   if [ -n "$size" ] && [ "$size" -gt "$off" ]; then tail -c +$((off + 1)) "$R/builds/$c/log" | head -c $((size - off)); off=$size; fi
   sleep "${ALDER_POLL:-1}"
 done

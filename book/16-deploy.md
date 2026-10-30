@@ -1004,7 +1004,9 @@ API reads a time range, forward from T a page at a time (up to 2,000
 lines: past that `alder logs` says the rest is cut and to use a later
 `--since`), and with `-f` the live stream takes over where the read
 ends, so a line logged at that moment can be missing or printed twice;
-a box keeps the whole build's log, which `alder logs` reads in full; Fly keeps only recent lines, and `flyctl logs` has no time
+a box keeps the build's log, which `alder logs` reads in full (a
+build that starts with more than 10 MB of it trims it to the last MB,
+and `-f` then goes on from the trimmed file's start); Fly keeps only recent lines, and `flyctl logs` has no time
 flag, so `alder logs` gets what Fly still has. For a box and Fly,
 `alder logs` keeps a line by its stamp (the app's text or JSON stamp,
 or flyctl's), to the second; a line without one (a stack's

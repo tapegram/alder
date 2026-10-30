@@ -175,6 +175,23 @@ func TestSsh_LogsSinceFollow(t *testing.T) {
 	f.WriteString("2026/10/29 16:03:00 info: appended\n")
 	f.Close()
 	wait("info: appended\n")
+	// the log trimmed (a build start past 10 MB keeps its last MB): shorter than what was read,
+	// so the loop goes on from the trimmed file's start instead of stalling
+	trimmed := "--- alder deploy: the log passed 10 MB: trimmed to its last MB\n2026/10/29 16:04:00 info: after the trim\n"
+	if err := os.WriteFile(log1+".new", []byte(trimmed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(log1+".new", log1); err != nil {
+		t.Fatal(err)
+	}
+	wait(trimmed)
+	f, err = os.OpenFile(log1, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString("2026/10/29 16:05:00 info: appended after the trim\n")
+	f.Close()
+	wait("info: appended after the trim\n")
 	os.WriteFile(filepath.Join(root, "current"), []byte("b2\n"), 0o600)
 	wait("--- alder logs: build b2 is current\n2026/10/29 17:00:00 info: b2 first\n")
 	cancel()
