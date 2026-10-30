@@ -35,6 +35,9 @@ type FieldState struct {
 	Valid    bool     `json:"valid"`
 	Why      string   `json:"why,omitempty"`
 	Choices  []string `json:"choices,omitempty"`
+	Help     string   `json:"help"`              // one line on what the field means (Field.HelpText)
+	Example  string   `json:"example,omitempty"` // a value the field accepts
+	Agent    bool     `json:"agent,omitempty"`   // an agent-oriented flag the editor's form leaves out
 }
 
 func inPage(c HereCtx) *Match {
@@ -83,8 +86,13 @@ func Form(s *Spec, here *Match, you map[string]string, p *Program) ([]FieldState
 	}
 	for _, fs := range [][]Field{s.Args, s.Flags} {
 		for _, f := range fs {
-			if _, set := values[f.Name]; !set && f.Default != "" && !anySet(values, f.DefaultUnless) {
+			if _, set := values[f.Name]; set {
+				continue
+			}
+			if f.Default != "" && !anySet(values, f.DefaultUnless) {
 				values[f.Name], source[f.Name] = f.Default, "default"
+			} else if v := startValue(f, p); f.Required && v != "" {
+				values[f.Name], source[f.Name] = v, "default"
 			}
 		}
 	}
@@ -92,7 +100,8 @@ func Form(s *Spec, here *Match, you map[string]string, p *Program) ([]FieldState
 	var out []FieldState
 	add := func(f Field, flag bool) {
 		v := strings.TrimSpace(values[f.Name])
-		st := FieldState{Name: f.Name, Kind: f.Kind.String(), Flag: flag, Required: f.Required, Value: values[f.Name], Source: source[f.Name], Choices: choices(f, p)}
+		st := FieldState{Name: f.Name, Kind: f.Kind.String(), Flag: flag, Required: f.Required, Value: values[f.Name], Source: source[f.Name], Choices: choices(f, p),
+			Help: f.HelpText(), Example: f.Example, Agent: f.Agent}
 		st.Valid, st.Why = validate(f, v, st.Choices, p)
 		if !st.Valid {
 			ready = false
@@ -106,6 +115,20 @@ func Form(s *Spec, here *Match, you map[string]string, p *Program) ([]FieldState
 		add(f, true)
 	}
 	return out, SetsOf(s, values), ready
+}
+
+// startValue is a required field's starting value in the editor, so its preview shows something
+// as the form opens (issue 45): the first choice when the field names something that must
+// exist (a page, a table, a declaration, one of its choices, an Existing module), "" when there
+// is none; else the field's example.
+func startValue(f Field, p *Program) string {
+	if f.Kind == ArgPage || f.Kind == ArgTable || f.Kind == ArgDecl || f.Kind == ArgChoice || f.Kind == ArgModule && f.Existing {
+		if cs := choices(f, p); len(cs) > 0 {
+			return cs[0]
+		}
+		return ""
+	}
+	return f.Example
 }
 
 // anySet reports whether one of the named fields has a value in values: a bool counts only when

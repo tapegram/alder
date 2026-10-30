@@ -143,9 +143,10 @@ func IsDir(path string) bool {
 }
 
 // CopyStatic replaces dst with a copy of the directory src (nothing when src does not exist),
-// then writes the design system's assets into it (WriteDesignSystem): every build serves
-// /static/al/al.css, whether or not the app has a static directory of its own.
-func CopyStatic(src, dst string) error {
+// then writes the design system's assets into it (WriteDesignSystem, with theme, the CSS of
+// App's `theme`): every build serves /static/al/al.css, whether or not the app has a static
+// directory of its own.
+func CopyStatic(src, dst, theme string) error {
 	if err := os.RemoveAll(dst); err != nil {
 		return err
 	}
@@ -154,7 +155,7 @@ func CopyStatic(src, dst string) error {
 			return err
 		}
 	}
-	return WriteDesignSystem(dst)
+	return WriteDesignSystem(dst, theme)
 }
 
 // DesignSystemFiles are the `alder-ui` assets (rt/al/, vendored by scripts/vendor-al.sh) every
@@ -165,8 +166,9 @@ var DesignSystemFiles = []string{"al.css", "al.js", "custom-elements.json", "fon
 
 // WriteDesignSystem writes DesignSystemFiles into staticDir/al/ from the embedded runtime. The
 // directory is the compiler's: a file of the app's own static/al/ with one of these names is
-// replaced.
-func WriteDesignSystem(staticDir string) error {
+// replaced. A non-empty theme (ir.Theme's CSS) is appended to al.css after a newline: the bytes
+// the router serves (web.ThemedStylesheet), so the build directory and the served file agree.
+func WriteDesignSystem(staticDir, theme string) error {
 	dir := filepath.Join(staticDir, "al")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -175,6 +177,9 @@ func WriteDesignSystem(staticDir string) error {
 		b, err := rt.Files.ReadFile("al/" + name)
 		if err != nil {
 			return err
+		}
+		if name == "al.css" && theme != "" {
+			b = append(append(append([]byte{}, b...), '\n'), theme...)
 		}
 		dst := filepath.Join(dir, name)
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
@@ -185,6 +190,20 @@ func WriteDesignSystem(staticDir string) error {
 		}
 	}
 	return nil
+}
+
+// WrittenTheme is the theme a build appended to staticDir/al/al.css (WriteDesignSystem), "" for
+// none: `alder run` refreshes the static files between builds with it.
+func WrittenTheme(staticDir string) string {
+	b, err := os.ReadFile(filepath.Join(staticDir, "al", "al.css"))
+	if err != nil {
+		return ""
+	}
+	base, err := rt.Files.ReadFile("al/al.css")
+	if err != nil || !bytes.HasPrefix(b, base) || len(b) <= len(base)+1 {
+		return ""
+	}
+	return string(b[len(base)+1:])
 }
 
 // WriteGenerated replaces the generated files in dir with files: it deletes go.mod and every Go

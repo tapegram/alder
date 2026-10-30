@@ -46,6 +46,9 @@ func EditTable(p *Program, table, op string, args []string) ([]Edit, error) {
 		}
 		addImports(e, p, m.Syntax, imports.list())
 		if ownLine(e, after) == nil { // on a line of its own, as `alder fmt` writes 3 fields or more
+			if last := e.line(after.Span.End.Line); !strings.HasPrefix(strings.TrimSpace(last[min(len(last), after.Span.End.Col-1):]), ",") {
+				e.insertAt(after.Span.End.Line, after.Span.End.Col, ",") // the last field had no comma
+			}
 			e.insertBefore(after.Span.End.Line+1, indentOf(e.line(after.Span.Start.Line))+f.Source()+",")
 		} else { // `table T { id: TId @id, name: Text }` on one line
 			e.insertAt(after.Span.End.Line, after.Span.End.Col, ", "+f.Source())
@@ -149,7 +152,7 @@ func column(t *Table, name string) (*Column, error) {
 func ownLine(e *srcEdit, f *syntax.Field) error {
 	first, last := e.line(f.Span.Start.Line), e.line(f.Span.End.Line)
 	rest := strings.TrimSpace(last[min(len(last), f.Span.End.Col-1):])
-	if strings.TrimSpace(first[:f.Span.Start.Col-1]) != "" || !(rest == "," || rest == "" || strings.HasPrefix(rest, ", --") || strings.HasPrefix(rest, ",--")) {
+	if strings.TrimSpace(first[:f.Span.Start.Col-1]) != "" || !(rest == "," || rest == "" || strings.HasPrefix(rest, ", --") || strings.HasPrefix(rest, ",--") || strings.HasPrefix(rest, "--")) {
 		return Refusef("not one field per line")
 	}
 	return nil

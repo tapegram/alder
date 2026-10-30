@@ -3037,8 +3037,8 @@ app/Home.alder:51:11: warning[W0002]: hole ?perPage has type Int
 ```
 
 A function is a value of a function type, and its body a lambda
-(`alder new decl Member row "Team.TeamId -> User.UserId -> Query (Maybe
-Member)"`, then `\team user -> …`). And a test, whose whole body is the
+(`alder new decl Table.Member row "Team.TeamId -> User.UserId -> Query
+(Maybe Member)"`, then `\team user -> …`). And a test, whose whole body is the
 hole `?test : Task Bool`:
 
 ```text command=guestbook
@@ -3587,6 +3587,12 @@ alder fill 'Table.Member."row is the row of the user in that team"' - <<'EOF'
 }
 EOF
 ```
+
+A table's module is `Table.Member`, and that full path is the address
+the generators are taught with. When an address names no module but
+equals a table's name (table names are unique in an app), the generators
+take it for the table's module: `alder new decl Member row …`, `alder new
+test Member "…"` and `alder fill Member.row -` do the same.
 
 The pages, blank, all three at once: `/teams` links to `/teams/{id}`
 and `/invites`, and a view cannot name a page that does not exist yet:

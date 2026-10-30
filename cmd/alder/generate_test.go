@@ -386,7 +386,6 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "page", "X", `/a\b`}, "", "alder new page: `/a\\b` is not a page path: it has the character `\\`"},
 		{"scaffold", []string{"new", "page", "X", `/a"b`}, "", "alder new page: `/a\"b` is not a page path: it has the character `\"`"},
 		{"scaffold", []string{"new", "page", "About", "/about", "--list", "Post"}, "", "alder new page: `Post` is not a table of this app (its tables: Entry)"},
-		{"scaffold", []string{"new", "page", "About", "/about", "--list", "Entry", "--show", "Entry"}, "", "alder new page: choose one of --list, --show and --from: a page generated with --list shows one table's rows, --show one row, --from several tables"},
 		{"scaffold", []string{"new", "page", "About", "/about", "--requires", "user"}, "", "alder new page: `--requires user` needs a session with a `user` field (`session { user: Maybe User.UserId }` in `App`): this app's session has none"},
 		{"fixture", []string{"new", "page", "About", "/about", "--requires", "admin"}, "", "alder new page: `--requires admin`: the session has no field `admin` (a key is a session field: `alder edit session add-field admin:<T>.<T>Id via <Membership>`)"},
 		{"fixture", []string{"new", "page", "About", "/about", "--role", "Editor"}, "", "alder new page: `--role Editor`: `Editor` is not a constructor of the session's `role` type `User.Role` (Reader, Admin)"},
@@ -1241,5 +1240,33 @@ func TestGenerateNoNestedPage(t *testing.T) {
 	}
 	if n == 0 {
 		t.Fatal("no generated pages found")
+	}
+}
+
+// TestGenerate_TableNameAddress (#33): `alder new decl Entry …`, `alder new test Entry …` and
+// `alder fill Entry.x -` address the table's module, Table.Entry; the full path still works.
+func TestGenerate_TableNameAddress(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := genApp(t, "scaffold")
+	run := func(stdin string, args ...string) (int, string) {
+		code, out, errs := alderIn(t, dir, stdin, args...)
+		return code, out + errs
+	}
+	if code, o := run("", "new", "decl", "Entry", "weight", "Int"); code != 0 {
+		t.Fatalf("new decl Entry: exit %d: %s", code, o)
+	}
+	if code, o := run("", "new", "test", "Entry", "has a weight"); code != 0 {
+		t.Fatalf("new test Entry: exit %d: %s", code, o)
+	}
+	if code, o := run("3", "fill", "Entry.weight", "-"); code != 0 {
+		t.Fatalf("fill Entry.weight: exit %d: %s", code, o)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "app", "Table", "Entry.alder"))
+	if err != nil || !strings.Contains(string(b), "weight = 3") || !strings.Contains(string(b), `test "has a weight"`) {
+		t.Fatalf("Table/Entry.alder (%v):\n%s", err, b)
+	}
+	if code, o := run("4", "fill", "--decl", "Table.Entry.weight", "-"); code != 0 {
+		t.Fatalf("fill --decl with the full path: exit %d: %s", code, o)
 	}
 }

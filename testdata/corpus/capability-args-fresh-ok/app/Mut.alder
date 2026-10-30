@@ -1,0 +1,32 @@
+module Mut
+
+-- A Go adapter that writes into its arguments (internal/gen TestGen_CapabilityArgsAreFresh)
+-- must not change the caller's values: each List and Bytes argument is a copy (#37).
+
+capability Scribble {
+  shout : Bytes -> Task Int,
+  sortAll : List Text -> Task Int,
+  shoutRow : { label: Text, raw: Bytes, tags: List Text } -> Task Int,
+}
+
+greeting : Text -> Text
+greeting name = "hello {name}"
+
+-- a heap Text's own bytes, through File.body (File.text aliases them)
+shoutHeap : Text -> Task Text
+shoutHeap name = {
+  let t = greeting name
+  Scribble.shout (File.body (File.text { contentType: "text/plain", body: t })) |> Task.map (\n -> t)
+}
+
+-- a literal's bytes: read-only memory, so a write would fault
+shoutLiteral : Task Int
+shoutLiteral = Scribble.shout (File.body (File.text { contentType: "text/plain", body: "literal" }))
+
+-- a view: List.take shares the source's elements
+sortTake : List Text -> Task (List Text)
+sortTake src = Scribble.sortAll (List.take 3 src) |> Task.map (\n -> src)
+
+-- lists and bytes inside a record argument
+shoutRecord : Text -> List Text -> Task (List Text)
+shoutRecord t tags = Scribble.shoutRow { label: t, raw: Text.toBytes t, tags: List.drop 0 tags } |> Task.map (\n -> tags)

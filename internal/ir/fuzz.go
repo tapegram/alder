@@ -266,8 +266,10 @@ func forAllArgs(e Expr) (gen, fn Expr) {
 // derivedPrims are the builtin types with a generator of their own (spec §4).
 var derivedPrims = map[string]bool{"Int": true, "Float": true, "Bool": true, "Text": true, "Unit": true, "Bytes": true, "Date": true, "Time": true}
 
-// stdBrands are the stdlib refinement brands, which have generators of their own (spec §0a).
-var stdBrands = map[string]bool{"Text.NonEmpty": true, "Text.Email": true, "Text.Url": true, "Text.Secret": true, "Int.Positive": true, "Int.NonNegative": true}
+// StdBrandFunc is the stdlib refinement brands, which have generators of their own (spec
+// §0a), each with the name of its rt/fuzz generator. It is the one list: gen draws with it and
+// the lowerer tells a stdlib brand from a user's by it.
+var StdBrandFunc = map[string]string{"Text.NonEmpty": "NonEmpty", "Text.Email": "Email", "Text.Url": "URL", "Text.Secret": "Secret", "Int.Positive": "Positive", "Int.NonNegative": "NonNegative"}
 
 // genTree is the derived generator of the concrete type t (brands included), shared by Key with
 // every tree made before; ok is false when t has none (a function, Html, a type variable…).
@@ -290,6 +292,9 @@ func (l *lowerer) genTree(t types.Type) (g *GenTree, ok bool) {
 	g = b.tree(l.res.U.Apply(t))
 	for _, n := range b.made {
 		n.Cyclic = reaches(n.Elems, n)
+		if n.Kind == GenResult {
+			n.Rec = []bool{reaches(n.Elems[:1], n), reaches(n.Elems[1:], n)}
+		}
 		if n.Kind == GenUnion {
 			for i, e := range n.Elems {
 				n.Rec[i] = e != nil && reaches([]*GenTree{e}, n)
@@ -328,7 +333,7 @@ func (b *genBuild) tree(t types.Type) *GenTree {
 		g.Kind, g.Prim = GenPrim, x.Name
 	case *types.Brand:
 		k := x.Module + "." + x.Name
-		if stdBrands[k] {
+		if _, std := StdBrandFunc[k]; std {
 			g.Kind, g.Brand = GenStdBrand, k
 		} else { // its base, kept when it passes the check; printed with its constructor
 			g.Kind, g.Brand, g.Check = GenBrand, k, x.HasCheck

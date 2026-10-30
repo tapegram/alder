@@ -36,14 +36,20 @@ func clampLen(n int64, length int) int {
 	return int(min(max(n, 0), int64(length)))
 }
 
-// ListTake keeps the first n elements (none for n <= 0).
+// ListTake keeps the first n elements (none for n <= 0). The result is a view of xs: O(1),
+// no allocation (#37). Sharing is safe because no list Alder code can see is ever written to:
+// Alder has no assignment, gen never emits an index store on a list, and the runtime only
+// writes into slices it has just made (TestNoWritesToParameters in rt pins this). The view's
+// capacity is its length, so an append to it must reallocate rather than write into xs.
 func ListTake[A any](n int64, xs []A) []A {
-	return append([]A{}, xs[:clampLen(n, len(xs))]...)
+	k := clampLen(n, len(xs))
+	return xs[:k:k]
 }
 
-// ListDrop removes the first n elements (none for n <= 0).
+// ListDrop removes the first n elements (none for n <= 0): a view of xs, as ListTake.
 func ListDrop[A any](n int64, xs []A) []A {
-	return append([]A{}, xs[clampLen(n, len(xs)):]...)
+	k := clampLen(n, len(xs))
+	return xs[k:len(xs):len(xs)]
 }
 
 func ListReverse[A any](xs []A) []A {
@@ -298,7 +304,7 @@ func ListTail[A any](xs []A) rt.Maybe[[]A] {
 	if len(xs) == 0 {
 		return rt.Nothing[[]A]()
 	}
-	return rt.Just(append([]A{}, xs[1:]...))
+	return rt.Just(ListDrop(1, xs))
 }
 
 // ListRepeat makes n copies of x (none for n <= 0).
@@ -334,6 +340,9 @@ func ListMinimum(xs []int64) rt.Maybe[int64] {
 	return extreme(xs, func(a, b int64) bool { return a < b })
 }
 
+// NaN handling for ListMaximumFloat and ListMinimumFloat: cmp.Compare treats NaN as
+// less than every number, and equal to itself.
+//
 // ListMaximumFloat orders NaN lowest (as cmp.Compare does), so it only wins in an all-NaN list.
 func ListMaximumFloat(xs []float64) rt.Maybe[float64] {
 	return extreme(xs, func(a, b float64) bool { return cmp.Compare(a, b) > 0 })

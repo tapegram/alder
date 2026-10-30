@@ -1,0 +1,37 @@
+module Wait
+
+import Today
+
+page "/wait" { }
+
+type Model = { waited: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let before <- Time.now
+  let _ <- Query.delay 20000
+  let after <- Time.now
+  Query.succeed { waited: Time.diffMillis before after }
+}
+
+view : Model -> Session -> File
+view model session = File.json (Text.fromInt model.waited)
+
+-- A page's delay moves the test's clock, set or not: on a set clock the two readings are the
+-- delay apart (no tick), and the next page reads the moved clock.
+test "a delay after a set moves the clock" = {
+  let _ <- Test.setClock Today.march
+  let w <- Test.fetch (Wait {})
+  let r <- Test.fetch (Today {})
+  let trace <- Test.trace
+  Task.succeed (Bytes.toText w.body == Just "20000" && Today.body r == "1772600787000 1772600787000 2026-03-04" && List.member "Query.delay 20000ms" trace)
+}
+
+-- In the test's own body too: Task.sleep and Query.delay move a set clock and leave it still.
+test "a sleep and a delay in the test move a set clock" = {
+  let _ <- Test.setClock Today.march
+  let _ <- Task.sleep 1000
+  let _ <- Query.delay 2000
+  let r <- Test.fetch (Today {})
+  Task.succeed (Today.body r == "1772600770000 1772600770000 2026-03-04")
+}

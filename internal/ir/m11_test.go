@@ -24,7 +24,7 @@ import (
 //
 // plus the line breaks the longer forms move (both sides are compared with every run of
 // white space read as one space). A program without `silo` prints no store for its arms, and
-// `(requires user)` is printed as before.
+// `(requires user)` is printed as before. App's `theme` (#38) is left out of the dump.
 func TestIR_M11Unchanged(t *testing.T) {
 	for _, c := range []struct{ name, dir string }{
 		{"todos", ""}, // TestIR_Todos's copy, without the generated admin
@@ -40,7 +40,9 @@ func TestIR_M11Unchanged(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got := m11View(Dump(lowerDir(t, dir)))
+			prog := lowerDir(t, dir)
+			prog.Theme = nil // the blog's `theme` (#38) is newer than M11 and prints a form of its own
+			got := m11View(Dump(prog))
 			if w := spaces(string(want)); got != w {
 				i := 0
 				for i < len(got) && i < len(w) && got[i] == w[i] {
