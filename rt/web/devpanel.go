@@ -269,9 +269,9 @@ func (rt *router) warnRepeats(tw *tracker) {
 		return // a test's browser records too (Options.EnvFor), and warns in its own report
 	}
 	for s, rs := range segRepeats(tw.hops, tw.rq.Env.Rec) {
-		head := tw.r.Method + " " + tw.r.URL.Path
+		head := tw.r.Method + " " + rt.maskPath(tw.r.Method, tw.r.URL)
 		if s > 0 {
-			u, _, _ := strings.Cut(tw.hops[s-1].url, "?")
+			u, _, _ := strings.Cut(rt.maskRef(tw.hops[s-1].url), "?")
 			head = "GET " + u
 		}
 		for _, r := range rs {
