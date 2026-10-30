@@ -52,6 +52,10 @@ type Program struct {
 	// AdapterEnv are the environment variables the app's adapter packages read (ScanAdapterEnv),
 	// read by Load; the checker compares them with `deploy.requires` (W0006).
 	AdapterEnv []EnvRead
+	// DeployFiles are the platform files of `alder deploy init` (render.yaml, fly.toml) that exist
+	// in the project directory, in that order, read by Load; the checker warns when App has no
+	// `deploy` block (W0009). A Dockerfile alone is not one.
+	DeployFiles []string
 }
 
 // Load parses every .alder file under dir/app and adds the modules extra, parsed by the caller
@@ -137,6 +141,11 @@ func LoadOverlay(dir string, std map[string]*syntax.Module, overlay map[string][
 		ioErrs = append(ioErrs, err)
 	}
 	prog.AdapterEnv = ScanAdapterEnv(dir)
+	for _, f := range []string{"render.yaml", "fly.toml"} {
+		if st, err := os.Stat(filepath.Join(dir, f)); err == nil && !st.IsDir() {
+			prog.DeployFiles = append(prog.DeployFiles, f)
+		}
+	}
 	bag.Items = append(bag.Items, b2.Items...)
 	return prog, bag, ioErrs
 }

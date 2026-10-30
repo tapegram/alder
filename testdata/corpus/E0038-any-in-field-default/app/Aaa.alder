@@ -1,0 +1,4 @@
+module Aaa
+
+x : Int
+x = 1

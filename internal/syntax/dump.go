@@ -131,6 +131,13 @@ func dump(sb *strings.Builder, n any) {
 		sb.WriteString("(session")
 		dumpList(sb, x.Fields)
 		sb.WriteByte(')')
+	case *ThemeDecl:
+		sb.WriteString("(theme")
+		for _, f := range x.Fields {
+			sb.WriteByte(' ')
+			dumpDeployField(sb, f)
+		}
+		sb.WriteByte(')')
 	case *DeployDecl:
 		sb.WriteString("(deploy")
 		for _, f := range x.Fields {
@@ -418,6 +425,15 @@ func dumpDeployValue(sb *strings.Builder, v *DeployValue) {
 			dumpDeployValue(sb, e)
 		}
 		sb.WriteByte(']')
+	case "record":
+		sb.WriteByte('{')
+		for i, f := range v.Rec {
+			if i > 0 {
+				sb.WriteByte(' ')
+			}
+			dumpDeployField(sb, f)
+		}
+		sb.WriteByte('}')
 	case "ctor":
 		sb.WriteString(v.Ctor)
 		if v.Arg != nil {

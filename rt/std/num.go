@@ -59,7 +59,9 @@ func FloatLog(f float64) float64 { return math.Log(f) }
 // FloatPow is base raised to the power exp.
 func FloatPow(base, exp float64) float64 { return math.Pow(base, exp) }
 
-// FloatTruncate rounds toward zero.
+// FloatTruncate rounds toward zero. NaN, infinities and out-of-range values are
+// platform-dependent, exactly like FloatRound, FloatFloor and FloatCeil (Go leaves
+// float64 -> int64 conversion of those unspecified).
 func FloatTruncate(f float64) int64 { return int64(math.Trunc(f)) }
 
 // FloatClamp is `Float.clamp { min, max } f`, checked like IntClamp: below

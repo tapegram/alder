@@ -244,7 +244,7 @@ holes (W0002) with their types among them.
 | `alder fill --decl <Module>.<decl> -` | the declaration's whole body (a value's, a test's block, a `type`'s right-hand side) replaced by the one expression, or type, on standard input; its signature stays. Refused when the result does not check (an `update` that drops an arm the view sends). For what has no hole: a `Model`, a generated body or test that does not fit |
 | `alder new auth [--users User] [--role R] [--to Page]` | the login: `app/Auth/Login.alder` (`capability Password { verify, hash }`, its fake, `page "/login"`, the form `Credentials`, the arm that puts the user, and the role, in the session or rejects the form, a Log out button for a signed-in user, three tests); `App` edited at fixed places (the session's `user` and `role` after its fields, `login = Auth.Login`, `msg Logout` and its arm, a test of it); the user table when it does not exist, in `app/Table/User.alder` (`email @unique`, `name`, `passwordHash: Text.Secret`, the role, `created`) and its migration; and the adapter `adapters/auth/login_password.go` (PBKDF2-SHA256, 600,000 iterations, a 16-byte salt, a constant-time compare; stored as `pbkdf2-sha256$<iterations>$<salt>$<hash>`) with its Go tests. `R` must be a union of the user module (`alder new type`). Refused when the session has a `user` or an `Auth` module exists. A login goes to `--to`'s page, else the page at `/`, else the hole `?afterLogin` (filled once the page exists) |
 | `alder new type <Module> "<Name> = …"` | a union (`Status = Pending \| Done`), a brand (`Code = brand Text where …`) or a record (`Row = { … }`), after the module's type declarations; the module is created when it does not exist |
-| `alder new decl <Module> <name> "<Type>"` | `name : Type` and `name = ?name`, before the module's tests; a function's body is filled with a lambda |
+| `alder new decl <Module> <name> "<Type>"` (`<Module>` is a module's full path, `Table.Member`; a table's name alone, `Member`, stands for its module; so in `new test`, `fill` and `edit decl`) | `name : Type` and `name = ?name`, before the module's tests; a function's body is filled with a lambda |
 | `alder new test <Module> "<name>"` | `test "<name>" = { ?test }`, the hole a `Task Bool`; a block filled into it becomes the test's block |
 | `alder new page … --blank` | the page with `Model = { }` and the holes `?load` and `?view` (with `--show T`, its `/{id}` and `id` parameter), and its rules' tests; fill `Model` with `--decl`, then `load`, then `view` |
 | `alder new msg … --in-for <binder> [--when <expr>]` | the button at the end of the body element of the view's `{for <binder> in …}`, its class the message's name (`class="remove"`), its fields from the binder (`user: m.user`; a table's id from a row of that table, `u.id`) or holes; `--when` shows it only when the expression holds |
@@ -770,6 +770,18 @@ $ alder eval examples/todos --in Table.Todo 'countOpen []'
 0 : Int
 ```
 
+A diagnostic of the expression is positioned in the input (`input:1:5`). When a `let` redeclares
+a name the module declares, the earlier declaration is named by its file, since its line is not
+a line of the input: ``input:1:5: error[E0009]: `countOpen` is already declared in
+app/Table/Todo.alder:34``.
+
+`--in` is deliberately more permissive than `alder check` about one thing: eval infers the
+type of the module's own top-level values that have no signature (as it does the input's
+`let`s), where `check` reports E0007 for them. The input has no place for
+signatures, and the checker's inference switch (`InferModule`) applies to the whole module the
+input is appended to, so it covers the module's own unsigned values too. That is accepted:
+eval is for probing, and `alder check` gives the strict verdict.
+
 `--in` and `--module` do not combine (`alder eval: --in and --module do not combine: --in Name
 works inside module Name, --module names the scratch module`, exit 2). A module that declares
 `it` cannot host eval (exit 2).
@@ -985,6 +997,10 @@ ok   Todos.Index "Toggle by another user is not found"
   `"tables":"ensure"` for a schema mutant) and `{"score":…, "killed":…,
   "survived":…, "suppressed":…, "skipped":…}`; the refusals go to
   standard error there.
+- `--mutate` caps the goroutine stack at 64 MB (Go's default is 1 GB), so
+  a mutant that recurses without end crashes quickly, whatever the load;
+  a suite that needs more stack than that fails its own run under
+  `--mutate` (and says so).
 - `--min R` (with `--mutate` only; `R` from 0 to 1, such as `0.8`) exits
   1 when the exact score is below `R`, after the same report. Without
   it, `--mutate`'s exit code is the tests'. `--min` without `--mutate`,
@@ -1581,9 +1597,10 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0017 | a module named like a standard-library module (`Test`, `List`, `Http`, …): the stdlib's would shadow it; uses of its names are not reported separately | — |
 | E0018 | a table declared in a module that does not end in its name, or a second table in a module (``a table is declared in a module named after it: `table Comment` belongs in `app/Table/Comment.alder` ``); reported once, at the declaration | — |
 | E0037 | two tables with one name in different modules (`Table.Entry` and `Entry`): table names are app-wide | — |
-| E0038 | a property argument or `Fuzz.any` whose type has no derivable generator (a function, an effect type, a type parameter, or not written): annotate it, or write the generator and use `Fuzz.forAll` | — |
+| E0038 | a property argument or `Fuzz.any` whose type has no derivable generator (a function, an effect type, a type parameter, a union with no constructor that ends the recursion, or not written): annotate it, or write the generator and use `Fuzz.forAll` | — |
 | E0039 | `Fuzz.forAll` or `Fuzz.forAllTask` anywhere but as a test's body: "`Fuzz.forAll` makes a Property, which only a test body can use" (a `Fuzzer` value may live in any module) | — |
 | E0041 | a union constructor or brand (in its module and the modules importing it) named like a one-segment page module, where some module in that scope writes `Status { … }` and the constructor takes no record: "constructor `Status` (of `Types.Code`) shadows page `Status` in `Types` and the modules importing it: there `Status { … }` is the constructor, so the page cannot be linked or fetched; rename the constructor or the page module (for example `module StatusPage`)", reported at the constructor (W0011 when nothing breaks; a `msg` is always W0011) | — |
+| E0042 | a `theme` declaration the rules refuse (Appendix C, "Changing a token"): outside `App` or declared twice; a field twice in one record; `light` or `dark` not a record; a name that is not an alder-ui token ("`primray` is not a token of alder-ui v0.4.2; did you mean `primary` (`--primary`)?") or a removed `--al-*` one ("`alFontMono` was removed in alder-ui v0.4: write `fontMono`"); a colour at the top level or a theme-wide token under `light`/`dark`; a value of the wrong shape for its kind, a negative length, a `var()` of anything but a colour token, or colours whose `var()`s lead back to themselves | — |
 | E0019 | `migrations/` is behind the app or disagrees with itself, reported at `migrations/schema.json:1:1` by every command but `alder migrate`: the tables changed since the last migration (``the schema changed since migration 0003 (table Post: column body): run `alder migrate` ``); a storage format change (``the storage format changed (v1 → v2): this needs a rebuild migration of every table, which this `alder migrate` cannot write yet (`alder migrate --format` is planned); build with the compiler that wrote migrations/ until then``); `.sql` files but no `schema.json`; a `schema.json` or migration file that does not read; a malformed file (``migration 0002_x: line 6: a statement must end in `;` ``, a wrong first line, a header without `-- from` or `-- to`); two files with one number (``two migrations are numbered 0005 (likely two branches: 0005_a.sql, 0005_b.sql): keep the one already merged or deployed, delete the other, restore schema.json to its result, run `alder migrate` ``); a file that does not start where the one before it ends (``migration 0003_sub does not follow 0001_initial: a file is missing or edited; restore migrations/ from version control (`git checkout migrations/`)``); a last file that does not end at the snapshot (``migration 0003_sub does not lead to migrations/schema.json: a file is missing or edited; restore migrations/ from version control (`git checkout migrations/`)``) | — |
 | E0020 | a `fake` declared outside the module of its capability: "`fake Stripe` must be declared in the module that declares `capability Stripe`" (chapter 10, "Faking a capability") | — |
 | E0021 | a fake's table used outside a `test` and the fake's own entries (a value, a signature, a page's `load`, an app table's `@ref`): "`Charge` is a fake's table: only tests and `fake Stripe` may use it" | — |
@@ -1631,6 +1648,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | W0008 | a GET `<form>` (`method="get"` or none, no `submit`) whose literal `action` is a page's path holds a plain `<input>`, `<select>` or `<textarea>` with a literal `name` that is one of the page's parameters declared with another wire name (chapter 6): "page `Wood` reads its parameter `electionId` from the query key `ElectionId`, so `name="electionId"` in this GET form sets nothing; use the wire name: `name="ElectionId"`" | the wire name as the `name` |
 | W0010 | a module that hides a capability of its name: a call `Clarity.latest` that resolved to module `Clarity`'s `latest` while an imported `capability Clarity` has that entry ("module `Clarity` shadows `capability Clarity` of `Feeds` in this module: `Clarity.latest` here is the module's `latest`, not the capability's entry; write `Feeds.Clarity.latest` for the capability, or rename module `Clarity` (for example to `ClarityModule`)"), reported at the import; or a capability named like a standard-library module, reported at the capability. A call the module lacks is E0002 with the hint instead | — (the E0002 of a hidden call gets the capability's spelling) |
 | W0011 | E0041's clash where nothing in the constructor's scope breaks (a role `Admin` beside `module Admin`, a `msg Go` beside `module Go`, or a Prelude constructor such as `Ok` naming a page): the program works, but the page cannot be linked or fetched from there | — |
+| W0009 | `render.yaml` or `fly.toml` (the files of `alder deploy init`) exists in the project and App.alder has no `deploy` block (chapter 16): "render.yaml deploys whatever is pushed, with no check, migration plan or backup: add a `deploy` block to App.alder (book chapter 16)"; with both files, "render.yaml and fly.toml deploy …"; a Dockerfile alone is not reported | add a `deploy` block |
 
 ## Editor support
 
@@ -1709,7 +1727,10 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   compiler's fix for a diagnostic on the cursor's line, such as ``Fix:
   module `Post` is not imported`` (the same fix that `alder check --json`
   carries, "Diagnostics" above), and then the generators that apply where
-  the cursor is. On `Posts.Index`, a page, those are `new form`, `new msg`,
+  the cursor is. A fix that is the one obvious repair comes first and is
+  marked preferred: on a page hook with the wrong signature, ``Change
+  signature to `Params -> Session -> Query Model` ``. The generators are
+  refactor actions, after every fix. On `Posts.Index`, a page, those are `new form`, `new msg`,
   `new decl`, `new test`, `edit page` and `remove page`, each with the page
   already filled in: `new msg (page = Posts.Index)`. Choosing one asks for
   the rest of its fields (a name, say), shows the diff it would make, and
@@ -1827,8 +1848,13 @@ in `opts.keys`, and with which-key, `<leader>a` is the group "alder":
 `<leader>ag` (or `:AlderGenerate [id]`) opens the generator modal: a search
 over all the generators, those that apply at the cursor first, then the
 chosen generator's form beside a live preview of the diff, which updates as
-you type. `<CR>` applies when every field is valid, and `<C-o>` opens the
-full review, file by file. The plugin's README lists the options and the
+you type. The form starts filled: required fields at an example (or the
+first page or table, for one that must exist), so the preview shows a
+change as soon as it opens. The field under the cursor says what it means
+and gives an example. Flags that matter to agents rather than people
+(where `new msg` puts its button, `--strict`) are left out of the form;
+the command line still takes them. `<CR>` applies when every field is
+valid, and `<C-o>` opens the full review, file by file. The plugin's README lists the options and the
 rest of its commands. If you set `ALDER_LSP_LOG=/some/file` in Neovim's
 environment, the server writes every message it receives and sends to that
 file; the transcripts in chapter 13, section 10, were recorded that way.

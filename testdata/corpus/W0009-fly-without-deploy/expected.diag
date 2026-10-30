@@ -1,0 +1,1 @@
+app/App.alder:1:1 W0009 fly.toml deploys whatever is pushed, with no check, migration plan or backup: add a `deploy` block to App.alder (book chapter 16)

@@ -43,23 +43,58 @@ func Err[E, T any](e E) Result[E, T] { return Result[E, T]{Err: e} }
 // Insert and Remove return a new Dict and never change the receiver.
 //
 // A key may be of any Alder type (a List, a record, a Time, …), so the map
-// is keyed by the key's canonical encoding, Key(k): two keys are the same
+// is keyed by an encoding of the key, dictEnc(k): two keys are the same
 // key exactly when their encodings are equal, which is when they are Eq.
 type Dict[K, V any] struct {
 	m    map[string]V
 	keys []K
-	encs []string // Key of each of keys
+	encs []string // dictEnc of each of keys
+}
+
+// dictEnc is a Dict's map key for k. A Dict has one key type K, so the encoding only needs to
+// be injective within K (#37): a Text key (string: Text, its brands, Id t) is itself, an Int key
+// (int64: Int and its brands) its 8 bytes big-endian, anything else Key(k). The case is chosen
+// by K itself (the switch is on *K), so a Dict whose K is an interface type always uses Key.
+// Get and Has repeat the first two cases inline so that a lookup allocates nothing.
+func dictEnc[K any](k K) string {
+	switch p := any(&k).(type) {
+	case *string:
+		return *p
+	case *int64:
+		var buf [8]byte
+		putInt(&buf, *p)
+		return string(buf[:])
+	}
+	return Key(k)
+}
+
+func putInt(buf *[8]byte, n int64) {
+	u := uint64(n)
+	for i := 7; i >= 0; i-- {
+		buf[i] = byte(u)
+		u >>= 8
+	}
 }
 
 // Get looks a key up.
 func (d Dict[K, V]) Get(k K) (V, bool) {
+	switch p := any(&k).(type) {
+	case *string:
+		v, ok := d.m[*p]
+		return v, ok
+	case *int64:
+		var buf [8]byte
+		putInt(&buf, *p)
+		v, ok := d.m[string(buf[:])]
+		return v, ok
+	}
 	v, ok := d.m[Key(k)]
 	return v, ok
 }
 
 // Has reports whether the key is present.
 func (d Dict[K, V]) Has(k K) bool {
-	_, ok := d.m[Key(k)]
+	_, ok := d.Get(k)
 	return ok
 }
 
@@ -89,7 +124,7 @@ func (d Dict[K, V]) Insert(k K, v V) Dict[K, V] {
 
 // Remove returns a Dict without k.
 func (d Dict[K, V]) Remove(k K) Dict[K, V] {
-	enc := Key(k)
+	enc := dictEnc(k)
 	if _, ok := d.m[enc]; !ok {
 		return d
 	}
@@ -110,7 +145,7 @@ func (d *Dict[K, V]) Put(k K, v V) {
 	if d.m == nil {
 		d.m = map[string]V{}
 	}
-	enc := Key(k)
+	enc := dictEnc(k)
 	if _, ok := d.m[enc]; !ok {
 		d.keys = append(d.keys, k)
 		d.encs = append(d.encs, enc)
@@ -174,6 +209,12 @@ func (d Dict[K, V]) clone() Dict[K, V] {
 // of a generated record is exported, `_at` as U__at, so reflect hands Key
 // each field's value.)
 func Key(k any) string {
+	switch x := k.(type) { // the common key types, without reflect; the same forms as keyValue
+	case string:
+		return "s" + strconv.Itoa(len(x)) + ":" + x
+	case int64:
+		return "i" + strconv.FormatInt(x, 10) + ";"
+	}
 	var b strings.Builder
 	keyValue(&b, reflect.ValueOf(k))
 	return b.String()
@@ -638,8 +679,17 @@ func OrElse[T any](m Maybe[T], d T) T {
 	return d
 }
 
-// Append is `++` on lists. The result never shares storage with a or b.
+// Append is `++` on lists. It shares storage only when one side is empty (the result is then
+// the other side); the result's capacity is its length, so appending to it reallocates. Lists
+// are never written to (see std.ListTake), so the sharing is invisible. `acc ++ [x]` in a loop
+// is O(n) per step: List.foldl, List.concatMap or Text.Builder accumulate instead.
 func Append[T any](a, b []T) []T {
+	if len(a) == 0 {
+		return b[:len(b):len(b)]
+	}
+	if len(b) == 0 {
+		return a[:len(a):len(a)]
+	}
 	out := make([]T, 0, len(a)+len(b))
 	out = append(out, a...)
 	return append(out, b...)

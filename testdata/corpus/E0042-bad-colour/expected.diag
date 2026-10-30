@@ -1,0 +1,1 @@
+app/App.alder:10:21 E0042 `primary` is a colour written as text: `"oklch(0.55 0.22 285)"`, `"#4f46e5"` or `"var(--accent)"`

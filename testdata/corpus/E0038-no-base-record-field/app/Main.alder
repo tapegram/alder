@@ -1,0 +1,7 @@
+module Main
+
+type S = S { next: S }
+
+type Wrap = { inner: List S }
+
+test "wrap" = \(w : Wrap) -> True

@@ -201,6 +201,9 @@ var StdCalls = map[string]string{
 	"Text.indexes":        "std.TextIndexes",
 	"Text.toCodePoints":   "std.TextToCodePoints",
 	"Text.fromCodePoints": "std.TextFromCodePoints",
+	"Text.builder":        "std.TextBuilder",
+	"Text.add":            "std.TextAdd",
+	"Text.build":          "std.TextBuild",
 	// Time
 	"Time.fromDate":   "std.TimeFromDate",
 	"Time.epoch":      "std.TimeEpoch",
@@ -258,10 +261,13 @@ var StdCalls = map[string]string{
 	"Test.count": "rtesting.DocCount",
 	"Test.attr":  "rtesting.DocAttr",
 	"Test.doc":   "rtesting.ViewDoc",
+	// Test's clock steps: calls returning eff.Task[struct{}], as Query.delay and Task.sleep
+	"Test.setClock": "rtesting.SetClock",
+	"Test.advance":  "rtesting.Advance",
 }
 
 // Effectful lists the stdlib modules and functions that have no StdCalls entry (except the
-// StdCalls entries Query.delay and Task.sleep): Query.*, Task.*, Db.* and Test's run, trace, fake and browser steps, which Lower turns into effect, database
+// StdCalls entries Query.delay, Task.sleep, Test.setClock and Test.advance): Query.*, Task.*, Db.* and Test's run, trace, fake and browser steps, which Lower turns into effect, database
 // and test nodes (effects.go and browser.go emit them). A key is a module name (all of its
 // functions) or "Module.name".
 var Effectful = map[string]bool{
@@ -273,7 +279,7 @@ var Effectful = map[string]bool{
 
 func isEffectful(module, name string) bool {
 	if _, ok := StdCalls[module+"."+name]; ok {
-		return false // Query.delay, Task.sleep: calls, not effect nodes
+		return false // Query.delay, Task.sleep, Test.setClock, Test.advance: calls, not effect nodes
 	}
 	return Effectful[module] || Effectful[module+"."+name]
 }
