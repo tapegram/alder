@@ -174,6 +174,8 @@ var commandTree = []cmdSpec{
 			flagSpec{Name: "--hole", Value: "?name", Summary: "the hole to fill when the declaration has several"},
 			flagSpec{Name: "--decl", Summary: "replace the whole declaration body"},
 			flagSpec{Name: "--list", Summary: "list the app's holes"},
+			flagSpec{Name: "--ai", Summary: "fill the hole with a model's expression (ANTHROPIC_API_KEY or ALDER_FILL_COMMAND), written only if it checks"},
+			flagSpec{Name: "--prompt", Summary: "print what --ai would send the model, and send nothing"},
 		)},
 	{Name: "regen", Summary: "regenerate generated code", Usage: commandUsages["regen"],
 		Flags:       withGenFlags(specFlags(generate.SpecByID("regen admin"))...),

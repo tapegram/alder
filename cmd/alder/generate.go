@@ -71,6 +71,11 @@ type genJSON struct {
 	UpToDate *bool     `json:"upToDate,omitempty"`
 	// Imports are `alder fill`'s: the modules it imported for the expression.
 	Imports *[]string `json:"imports,omitempty"`
+	// Expression, Attempts and Model are `alder fill --ai`'s: the model's expression, how many
+	// answers it took, and the model (or "command").
+	Expression *string `json:"expression,omitempty"`
+	Attempts   *int    `json:"attempts,omitempty"`
+	Model      *string `json:"model,omitempty"`
 }
 
 // runGeneratorWith ends every generator: it applies edits (computed by gen, from the loaded app)
