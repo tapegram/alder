@@ -997,6 +997,10 @@ ok   Todos.Index "Toggle by another user is not found"
   `"tables":"ensure"` for a schema mutant) and `{"score":…, "killed":…,
   "survived":…, "suppressed":…, "skipped":…}`; the refusals go to
   standard error there.
+- `--mutate` caps the goroutine stack at 64 MB (Go's default is 1 GB), so
+  a mutant that recurses without end crashes quickly, whatever the load;
+  a suite that needs more stack than that fails its own run under
+  `--mutate` (and says so).
 - `--min R` (with `--mutate` only; `R` from 0 to 1, such as `0.8`) exits
   1 when the exact score is below `R`, after the same report. Without
   it, `--mutate`'s exit code is the tests'. `--min` without `--mutate`,
