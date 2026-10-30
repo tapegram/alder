@@ -19,6 +19,7 @@ import (
 	"alder/internal/buildkit"
 	"alder/internal/diag"
 	"alder/internal/scratch"
+	"alder/internal/style"
 	rtesting "alder/rt/testing"
 )
 
@@ -345,6 +346,17 @@ func runTests(b scratch.Build, runPat string, timeout time.Duration, mut *mutate
 	// kills the group and stops
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// on a terminal the report and the stderr lines are restyled, line by line (teststyle.go)
+	if st := style.For(stdout); st.On() && !jsonOut {
+		lw := style.Lines(stdout, (&reportStyler{st: st}).line)
+		defer lw.Flush()
+		stdout = lw
+	}
+	if st := style.For(stderr); st.On() && !jsonOut {
+		lw := style.Lines(stderr, stillRunning(st))
+		defer lw.Flush()
+		stderr = lw
+	}
 	counted := &resultCounter{w: stdout, json: jsonOut}
 	for from := 1; ; {
 		deadline := time.Now().Add(timeout)
@@ -635,7 +647,7 @@ func testDiags(dir string, ds []diag.Diagnostic, stopped, jsonOut bool, stdout, 
 		if d.Severity == "warning" {
 			w = stderr
 		}
-		fmt.Fprint(w, diag.RenderText(d, lines))
+		fmt.Fprint(w, diag.RenderTextStyled(d, lines, style.For(w)))
 	}
 	return failed
 }

@@ -87,49 +87,60 @@ and writes the app's own only when it finds one.
 ## Commands
 
 ```
-alder new <name>     write a new app, the guestbook, into the directory <name>
-                     (--bare: App, Layout and static/ only, no page or table)
-alder new <kind> …   generate a page, table, form, msg, capability, auth, type, decl or test
-alder new silo …     put tables in a database per value of a session key (App's `silo`)
-alder new admin      generate an admin of every table, under app/Admin/
-alder regen admin    rewrite the admin's owned regions after the tables change
-alder edit table …   add, rename or drop a table's field, with its migration
-alder edit page …    add a parameter to a page
-alder edit session … add a field to the session
-alder remove …       remove a page, or a table with its migration
-alder fill <decl> -  fill a typed hole with the expression on standard input
-alder fill <decl> --ai  fill it with a model's expression, written only if it checks
-alder check          type-check everything; milliseconds; no output on success
-alder fmt [path…]    rewrite .alder files in the one canonical format (--check: list what would change)
-alder build          check, generate Go, go build → ./build/myapp/myapp
-alder run            build and run with the dev database, reloading on change
-alder eval <expr>    evaluate an expression against the app: value : Type
-alder repl           (deprecated: use a scratch file) a session: let, evaluate, :type, :run
-alder test           run every `test`, each against a fresh database: ok/FAIL
-                     (--mutate: and once per mutant: the mutation score)
-alder migrate        write the next migration after a change to the tables
-alder migrate silos <env>  migrate every silo of an environment now
-alder deploy <env>   gate, build, plan and ship to an environment of App's `deploy`
-alder status <env>   the environment's current build, its last builds, its database
-                     (and, with silos, how many are ok, migrating, pending, ahead, failed)
-alder rollback <env> make an earlier build current again
-alder logs <env>     the current build's log (-f: follow it)
-alder restore <env>  rebuild the database from the streamed backup (--silo org:<id>: one silo)
-alder silos prune <env>  remove the silos whose key's row is gone (orphans)
-alder ci init        write .github/workflows/alder.yml from the declaration
-alder routes [dir]   list the app's routes, pages and messages, with where each is declared
-alder dump <path>    print a file's tokens, AST, or an app's IR
-alder explain <id>   explain a diagnostic code
-alder version        print alder's version and the Go it was built with
-alder help [cmd]     print usage (`alder help <command>` is `alder <command> --help`)
-alder help --json    print the command tree (commands, subcommands, arguments and flags,
-                     each with a one-line summary) as JSON; editors build completion from it
+usage: alder <command> [arguments]
+
+  check     type-check the app and print its diagnostics
+  fmt       format .alder files canonically
+  build     compile the app to a single binary
+  run       run the app with live reload
+  routes    list the app's routes: pages (GET) and messages (POST)
+  dump      print a file's tokens or syntax tree, or an app's IR
+  eval      evaluate an expression in the app
+  scratch   run a scratch file's watches against the app
+  test      run the app's tests
+  bench     measure each browser step of the app's tests
+  migrate   write the migration for a schema change
+  repl      an interactive session in the app (deprecated: use alder scratch)
+  new       create an app, or generate code in one
+  edit      change a table, page, declaration, auth or the session
+  remove    remove a page or a table
+  fill      fill a typed hole with an expression from stdin
+  regen     regenerate generated code
+  deploy    deploy to an environment
+  status    show what an environment runs
+  rollback  go back to an earlier build
+  logs      print an environment's logs
+  restore   restore a database from a backup
+  silos     manage an environment's silos
+  ci        set up continuous integration
+  version   print alder's version and the Go it was built with
+  lsp       language server for editors, over stdio
+  explain   explain a diagnostic code
+  help      print usage
+
+alder <command> --help prints its usage; alder help --json prints the command tree
 ```
 
 Every command takes `--help` (or `-h`): `alder <command> --help` prints
 its usage line and exits 0, and `alder new <kind> --help` the
 generator's (`alder new page --help`); `alder help <command>` does the
 same.
+
+`alder check` prints nothing when the app is clean. On a terminal, after
+the diagnostics it did print, it ends with one line that counts them, such
+as `2 errors, 1 warning`; a pipe and `--json` get the diagnostics alone.
+
+On a terminal the output is coloured: status words (`ok`, `FAIL`), the
+locations and severities of diagnostics, summaries and labels carry colour
+and weight, and `alder test` ends a failing run with the names of the tests
+that failed. The bytes between the colours are the plain output, and
+nothing is styled when the output is a pipe or a file, when `NO_COLOR` is
+set to anything but empty, or when `TERM` is `dumb`; `--json` is never
+styled. `ALDER_COLOR=always` styles any output (so `alder test | less -R`
+keeps its colour; Windows terminals need it), and with it the count line of
+`alder check`, the failure recap of `alder test` and the wrapping of
+`alder explain` also appear in piped output; `ALDER_COLOR=never` styles
+none. Only the 16 ANSI colours are used, so the terminal's theme applies.
 
 `alder help --json` prints the command tree (commands, subcommands, arguments and flags, each with a one-line summary) as JSON; editors build completion from it. In Neovim, alder.nvim runs every generator with a preview of its diff (chapter 1, Editor support).
 

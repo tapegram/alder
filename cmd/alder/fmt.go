@@ -15,6 +15,7 @@ import (
 	"alder/internal/format"
 	"alder/internal/names"
 	"alder/internal/scratch"
+	"alder/internal/style"
 	"alder/internal/syntax"
 	"alder/internal/types"
 )
@@ -26,7 +27,7 @@ const fmtUsage = "usage: alder fmt [--check | --stdin] [path...]"
 func runFmtTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(stderr, "alder fmt: internal error: %v\n", r)
+			fmt.Fprintf(stderr, "%s internal error: %v\n", errTag(stderr, "alder fmt:"), r)
 			code = 2
 		}
 	}()
@@ -39,14 +40,14 @@ func runFmtTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code in
 		case a == "--stdin":
 			useStdin = true
 		case strings.HasPrefix(a, "-"):
-			fmt.Fprintf(stderr, "alder fmt: unknown flag %s\n%s\n", a, fmtUsage)
+			fmt.Fprintf(stderr, "%s unknown flag %s\n%s\n", errTag(stderr, "alder fmt:"), a, fmtUsage)
 			return 2
 		default:
 			paths = append(paths, a)
 		}
 	}
 	if useStdin && (checkOnly || len(paths) > 0) {
-		fmt.Fprintf(stderr, "alder fmt: --stdin takes no paths and cannot be combined with --check\n%s\n", fmtUsage)
+		fmt.Fprintf(stderr, "%s --stdin takes no paths and cannot be combined with --check\n%s\n", errTag(stderr, "alder fmt:"), fmtUsage)
 		return 2
 	}
 	if useStdin {
@@ -59,7 +60,7 @@ func runFmtTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code in
 	for _, p := range paths {
 		found, err := fmtFiles(p)
 		if err != nil {
-			fmt.Fprintf(stderr, "alder fmt: %v\n", err)
+			fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder fmt:"), err)
 			return 2
 		}
 		files = append(files, found...)
@@ -80,13 +81,13 @@ func runFmtTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code in
 func fmtStdin(stdin io.Reader, stdout, stderr io.Writer) int {
 	src, err := io.ReadAll(stdin)
 	if err != nil {
-		fmt.Fprintf(stderr, "alder fmt: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder fmt:"), err)
 		return 2
 	}
 	out, ds, err := format.Source("<stdin>", src)
 	return fmtResult("<stdin>", src, out, ds, err, stderr, func(out []byte) int {
 		if _, err := stdout.Write(out); err != nil {
-			fmt.Fprintf(stderr, "alder fmt: %v\n", err)
+			fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder fmt:"), err)
 			return 2
 		}
 		return 0
@@ -118,7 +119,7 @@ type fmtProject struct {
 func fmtFile(path string, isScratch, checkOnly bool, cache *fmtCache, stdout, stderr io.Writer) int {
 	info, err := os.Stat(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "alder fmt: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder fmt:"), err)
 		return 2
 	}
 	target := path // a symbolic link is written through, not replaced
@@ -127,7 +128,7 @@ func fmtFile(path string, isScratch, checkOnly bool, cache *fmtCache, stdout, st
 	}
 	src, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "alder fmt: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder fmt:"), err)
 		return 2
 	}
 	// the formatter's safety check compares the migrated source with its output, so the
@@ -142,7 +143,7 @@ func fmtFile(path string, isScratch, checkOnly bool, cache *fmtCache, stdout, st
 		if len(broken) > 1 {
 			verb, them = "do", "them"
 		}
-		fmt.Fprintf(stderr, "alder fmt: %s %s not parse, so imports were not migrated; fix %s and run again\n", strings.Join(broken, ", "), verb, them)
+		fmt.Fprintf(stderr, "%s %s %s not parse, so imports were not migrated; fix %s and run again\n", errTag(stderr, "alder fmt:"), strings.Join(broken, ", "), verb, them)
 	}
 	formatSource := format.Source
 	if isScratch {
@@ -154,11 +155,11 @@ func fmtFile(path string, isScratch, checkOnly bool, cache *fmtCache, stdout, st
 			return 0
 		}
 		if checkOnly {
-			fmt.Fprintf(stdout, "%s would be reformatted\n", path)
+			fmt.Fprintf(stdout, "%s would be reformatted\n", style.For(stdout).Bold(path))
 			return 1
 		}
 		if err := writeFileAtomic(target, src, out, info.Mode().Perm(), &cache.hooks); err != nil {
-			fmt.Fprintf(stderr, "alder fmt: %v\n", err)
+			fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder fmt:"), err)
 			return 2
 		}
 		delete(cache.progs, root) // the project on disk has changed
@@ -195,7 +196,7 @@ func fmtMigrate(path string, src []byte, cache *fmtCache, stderr io.Writer) (out
 	}
 	out, _, err = format.Migrate(pr.bag, fmtRel(root, abs), src)
 	if err != nil {
-		fmt.Fprintf(stderr, "alder fmt: %s: imports were not migrated: %v\n", path, err)
+		fmt.Fprintf(stderr, "%s %s: imports were not migrated: %v\n", errTag(stderr, "alder fmt:"), path, err)
 		return src, root, nil
 	}
 	return out, root, nil
@@ -225,14 +226,14 @@ func loadFmtProject(root string, cache *fmtCache) *fmtProject {
 func fmtResult(name string, src, out []byte, ds []diag.Diagnostic, err error, stderr io.Writer, ok func([]byte) int) int {
 	switch {
 	case errors.Is(err, format.ErrUnsafe):
-		fmt.Fprintf(stderr, "alder fmt: %s: not formatted: the formatter cannot place a code comment here without changing the program (a known limitation, for example a code comment after a comment line in markup text); the file is left as it is\n", name)
+		fmt.Fprintf(stderr, "%s %s: not formatted: the formatter cannot place a code comment here without changing the program (a known limitation, for example a code comment after a comment line in markup text); the file is left as it is\n", errTag(stderr, "alder fmt:"), name)
 		return 2
 	case err != nil:
-		fmt.Fprintf(stderr, "alder fmt: %s: %v\n", name, err)
+		fmt.Fprintf(stderr, "%s %s: %v\n", errTag(stderr, "alder fmt:"), name, err)
 		return 2
 	case out == nil:
 		for _, d := range ds {
-			fmt.Fprint(stderr, diag.RenderText(d, strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n")))
+			fmt.Fprint(stderr, diag.RenderTextStyled(d, strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n"), style.For(stderr)))
 		}
 		return 1
 	}
