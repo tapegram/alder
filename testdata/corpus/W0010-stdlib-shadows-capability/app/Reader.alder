@@ -1,0 +1,7 @@
+module Reader
+
+import Data.Http as DataHttp
+
+-- Another module reaches the capability through its module's qualifier: `DataHttp.fetch`.
+home : Query Text
+home = Http.fetch "/"

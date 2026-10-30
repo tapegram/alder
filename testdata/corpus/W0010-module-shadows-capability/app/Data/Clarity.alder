@@ -1,0 +1,6 @@
+module Data.Clarity
+
+-- The data source: other modules call it as `Clarity.final` (or `DataClarity.final`).
+capability Clarity {
+  final : Text -> Query Text,
+}
