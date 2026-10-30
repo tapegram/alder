@@ -2251,9 +2251,11 @@ it the exit code is the tests'.
 ### Properties under `--mutate`
 
 A property (section 12) is one test here: a mutant is killed when it
-fails on any of the property's cases. A mutated run uses a fixed seed,
-does not shrink, and neither reads nor writes saved failures, so the same
-code gives the same score. A `Fuzzer` value gets no mutants.
+fails on any of the property's cases. A mutated run uses a fixed seed
+(0, or the one `--seed` gives), does not shrink, and neither reads nor
+writes saved failures, so the same code gives the same score. A `Fuzzer`
+value (a generator, such as `slugs` in section 12) is not part of the
+app's behaviour and gets no mutants.
 
 ### The exact score
 
@@ -2402,7 +2404,7 @@ without the type. There is no new declaration and no library: the
 property is a `test`, it is listed in the report like any other, and
 `-run` (section 7) picks it by name. The first one passes. The second is
 wrong, as the report below will show: rotating a list twice gives it
-back only when it has one or two elements.
+back only when it has at most two elements.
 
 ### Where the inputs come from
 
@@ -2426,9 +2428,11 @@ a stream of random choices. Every ordinary type has one:
   generators of their parts, and a list is short most of the time.
 - A record is each field's generator in turn.
 - A union is a choice of one constructor, then a generator for its
-  payload. A union that contains itself (a tree) has a depth budget: each
-  level down halves the chance of a constructor that recurses, and at
-  depth 4 only the others are drawn, so the values are finite.
+  payload. A union that contains itself (a tree) has a depth budget of four
+  levels: each level down halves the chance of a constructor that
+  recurses, and once the budget is spent only the others are drawn, so the
+  values are finite. (A union whose every constructor needs the union
+  again has no value to stop at: E0038, below.)
 - A brand draws its base type and, when it has a `where` predicate,
   keeps the value only if the predicate holds. Below.
 
@@ -2663,11 +2667,14 @@ instead:
 - **A filter or brand that is too tight.** More than 90% of the first 50
   attempts rejected by a `Fuzz.filter` or a brand's predicate (above).
 - **An attempt that is too slow.** One case took over 5 seconds. The
-  report names the run.
+  report says `stopped on run K` and keeps the case like a failure, so the
+  next run tries it first; the shrinker gives up on a case that is slow
+  as well.
 - **A generator that draws too much.** One case needed more than 8192
   random choices (a `Fuzz.andThen` that builds lists of lists of lists
-  with no bound): the report says `generator draws too much`. Bound the
-  size with `Fuzz.listOf { min: 0, max: 10 }`.
+  with no bound): the report says `stopped before run K`, because that
+  run never got its values, and `generator draws too much`. Bound the size
+  with `Fuzz.listOf { min: 0, max: 10 }`.
 
 A program that crashes outright (a function that recurses without end
 overflows the stack) takes `alder test` down with it, as in section 2.
@@ -2714,12 +2721,8 @@ write a shrinker, and no need.
 
 ### Properties and `--mutate`
 
-Under `--mutate` (section 11) a property counts as one test: a mutant is
-killed when the property fails on it. So that the property behaves the
-same against every mutant, the run uses a fixed seed, does not shrink,
-and reads and writes no saved failures. A `Fuzzer` value (such as
-`slugs` above) is a generator and not part of the app's behaviour, so it
-gets no mutants.
+Under `--mutate` a property counts as one test, with a fixed seed and no
+shrinking or saved failures; section 11 has the details.
 
 ### Two errors
 
@@ -2731,7 +2734,10 @@ test "a function is the same twice" = \(f : Int -> Int) -> f 1 == f 1
 ```
 
 A function type, an effect type (`Task`, `Query`), a type parameter and a
-value only the runtime can make have no generator. Annotate with a type
+value only the runtime can make have no generator, and neither has a
+union whose every constructor holds the union again (`type S = S { next:
+S }`: nothing ends the recursion; let one constructor hold a `Maybe` or a
+`List` of it, or nothing). Annotate with a type
 that has one, or write the generator with the `Fuzz` functions and give
 it to `Fuzz.forAll`.
 

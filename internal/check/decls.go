@@ -1041,6 +1041,7 @@ func (c *Checker) checkDefaults() {
 		mc := c.ctx(d.m)
 		mc.check(d.f.Default, d.t, newEnv(), effect{})
 		mc.reportHoles()
+		c.resolveFuzzAny(mc.ts, false) // here, so the module that wrote a `Fuzz.any` names its type
 	}
 	c.defaultsChecked = true
 }

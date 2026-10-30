@@ -240,7 +240,8 @@ type CaseResult struct {
 	Paste     string
 	Crash     bool
 
-	panicked bool // the case panicked (not a task's failure): a mutant it kills is "crashed"
+	stopped  string // a property a health check stopped, not a failing case (property.go: stoppedOn, stoppedBefore)
+	panicked bool   // the case panicked (not a task's failure): a mutant it kills is "crashed"
 }
 
 // Options configure Run. Run, when set, selects the cases whose `Module "Name"` it matches;
@@ -598,7 +599,7 @@ const (
 	EnvDeadline = "ALDER_TEST_DEADLINE"
 	// EnvTimeout is the -timeout the deadline came from (a Go duration), for the message.
 	EnvTimeout = "ALDER_TEST_TIMEOUT"
-	// EnvStatus names a file Main truncates and writes `Module\tName\n` to before each test (a property test adds `\tseed\trun`, ParseStatus),
+	// EnvStatus names a file Main truncates and writes `Module\tName\n` to before each test (a property test adds `\t\x00fuzz\tseed\trun`, ParseStatus),
 	// and empties when it returns: after a crash it names the test that crashed.
 	EnvStatus = "ALDER_TEST_STATUS"
 	// EnvFuzz is the runs per property test (--fuzz), EnvSeed the seed of their fresh draws

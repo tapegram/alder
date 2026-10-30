@@ -1,0 +1,7 @@
+module Main
+
+type Tree = Leaf | Node { kids: List Tree } | Wrap { inner: Maybe Tree }
+
+type S = S { next: Maybe S }
+
+test "ok" = \(t : Tree) (s : S) -> True
