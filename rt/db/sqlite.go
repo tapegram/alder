@@ -831,7 +831,8 @@ func rowsRead(ctx context.Context, stmt string, n int) {
 }
 
 // recQ wraps a querier: when the running effect has a dev Recorder (eff.Env.Rec) each statement is
-// recorded with its arguments and duration; otherwise it is a plain pass-through.
+// recorded with its arguments and duration, and when it has Stats (eff.Env.Stats: metrics or the
+// slow-request threshold) each is counted and timed; with neither it is a plain pass-through.
 type recQ struct{ q querier }
 
 func rec(ctx context.Context) *eff.Recorder {
@@ -841,41 +842,67 @@ func rec(ctx context.Context) *eff.Recorder {
 	return nil
 }
 
+// watch is the running effect's Recorder and Stats (either may be nil).
+func watch(ctx context.Context) (*eff.Recorder, *eff.Stats) {
+	if e := eff.EnvFrom(ctx); e != nil {
+		return e.Rec, e.Stats
+	}
+	return nil, nil
+}
+
 func (r recQ) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	rc := rec(ctx)
-	if rc == nil {
+	rc, st := watch(ctx)
+	if rc == nil && st == nil {
 		return r.q.ExecContext(ctx, query, args...)
 	}
 	t0 := time.Now()
 	res, err := r.q.ExecContext(ctx, query, args...)
-	n := int64(-1)
-	if err == nil {
-		if a, e := res.RowsAffected(); e == nil {
-			n = a
-		}
+	d := time.Since(t0)
+	if st != nil {
+		st.Add(false, d)
 	}
-	rc.AddSQL(eff.SQLRec{Stmt: query, Args: args, Ms: eff.Ms(time.Since(t0)), Rows: n})
+	if rc != nil {
+		n := int64(-1)
+		if err == nil {
+			if a, e := res.RowsAffected(); e == nil {
+				n = a
+			}
+		}
+		rc.AddSQL(eff.SQLRec{Stmt: query, Args: args, Ms: eff.Ms(d), Rows: n})
+	}
 	return res, err
 }
 
 func (r recQ) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	rc := rec(ctx)
-	if rc == nil {
+	rc, st := watch(ctx)
+	if rc == nil && st == nil {
 		return r.q.QueryContext(ctx, query, args...)
 	}
 	t0 := time.Now()
 	rows, err := r.q.QueryContext(ctx, query, args...)
-	rc.AddSQL(eff.SQLRec{Stmt: query, Args: args, Ms: eff.Ms(time.Since(t0)), Rows: -1})
+	d := time.Since(t0)
+	if st != nil {
+		st.Add(true, d)
+	}
+	if rc != nil {
+		rc.AddSQL(eff.SQLRec{Stmt: query, Args: args, Ms: eff.Ms(d), Rows: -1})
+	}
 	return rows, err
 }
 
 func (r recQ) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	rc := rec(ctx)
-	if rc == nil {
+	rc, st := watch(ctx)
+	if rc == nil && st == nil {
 		return r.q.QueryRowContext(ctx, query, args...)
 	}
 	t0 := time.Now()
 	row := r.q.QueryRowContext(ctx, query, args...)
-	rc.AddSQL(eff.SQLRec{Stmt: query, Args: args, Ms: eff.Ms(time.Since(t0)), Rows: -1})
+	d := time.Since(t0)
+	if st != nil {
+		st.Add(true, d)
+	}
+	if rc != nil {
+		rc.AddSQL(eff.SQLRec{Stmt: query, Args: args, Ms: eff.Ms(d), Rows: -1})
+	}
 	return row
 }
