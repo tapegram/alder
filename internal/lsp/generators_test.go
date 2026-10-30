@@ -26,10 +26,32 @@ type preview struct {
 		Path, Action   string
 		Added, Removed int
 	}
-	Diff  string
-	Holes []struct{ Name string }
-	Ready bool
-	Error string
+	Diff     string
+	Holes    []struct{ Name string }
+	Ready    bool
+	Error    string
+	Warnings []string
+}
+
+// TestPreview_CarriesWarnings (#28): Result.Warnings ("output not formatted") reach the editor.
+// The buffer being edited holds the formatter's known fail-closed shape (a code comment after
+// a comment line in markup text), so the generator's output cannot be formatted.
+func TestPreview_CarriesWarnings(t *testing.T) {
+	c := start(t, blogCopy(t))
+	text := c.disk("app/Posts/Index.alder") + "\nv : Bool\nv =\n  <p>\n    text\n    -- in the text\n  </p> == -- between operands\n    <p>x</p>\n"
+	c.open("app/Posts/Index.alder", text)
+	c.diags("app/Posts/Index.alder")
+	var pv preview
+	c.call("alder/preview", req(c, "app/Posts/Index.alder", Position{}, map[string]any{"id": "new msg", "sets": map[string]string{"module": "Posts.Index", "name": "Delete"}}), &pv)
+	if len(pv.Warnings) != 1 || !strings.Contains(pv.Warnings[0], "output not formatted") {
+		t.Fatalf("warnings %v (error %q)", pv.Warnings, pv.Error)
+	}
+	var clean preview
+	openClean(t, c, "app/Posts/Show.alder")
+	c.call("alder/preview", req(c, "app/Posts/Show.alder", Position{}, map[string]any{"id": "new page", "sets": map[string]string{"module": "Posts.Index", "path": "/x"}}), &clean)
+	if clean.Warnings == nil || len(clean.Warnings) != 0 {
+		t.Errorf("refused preview warnings %v, want []", clean.Warnings)
+	}
 }
 
 func req(c *client, rel string, p Position, extra map[string]any) map[string]any {
