@@ -463,6 +463,7 @@ module.exports = grammar({
         $.boolean,
         alias($._bare_constructor_pattern, $.constructor_pattern),
         $.record_pattern,
+        $.list_pattern,
         $.parenthesized_pattern,
       ),
     _bare_constructor_pattern: ($) => field('constructor', $.constructor),

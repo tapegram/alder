@@ -249,3 +249,60 @@ a5 = match if c then x else y {
         (arm
           pattern: (wildcard)
           body: (integer))))))
+
+================================================================================
+patterns nest at any depth: constructors in lists and records, a list as an argument
+================================================================================
+
+module M
+
+m = match x {
+  [Just m, Just s, Just p] -> 1,
+  Pair { left: Just a, right: _ } -> 2,
+  Just [a, ..rest] -> 3,
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (match_expr
+        subject: (identifier)
+        (arm
+          pattern: (list_pattern
+            (constructor_pattern
+              constructor: (constructor)
+              argument: (identifier))
+            (constructor_pattern
+              constructor: (constructor)
+              argument: (identifier))
+            (constructor_pattern
+              constructor: (constructor)
+              argument: (identifier)))
+          body: (integer))
+        (arm
+          pattern: (constructor_pattern
+            constructor: (constructor)
+            argument: (record_pattern
+              (field_pattern
+                name: (identifier)
+                pattern: (constructor_pattern
+                  constructor: (constructor)
+                  argument: (identifier)))
+              (field_pattern
+                name: (identifier)
+                pattern: (wildcard))))
+          body: (integer))
+        (arm
+          pattern: (constructor_pattern
+            constructor: (constructor)
+            argument: (list_pattern
+              (identifier)
+              (rest_pattern
+                name: (identifier))))
+          body: (integer))))))
