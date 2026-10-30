@@ -9,17 +9,15 @@ and `.dark` blocks), Appendix C of the book, memory notes "Design system configu
 ## Intent
 
 Today an app changes the look by writing CSS custom properties by hand in `static/app.css`
-over the shadcn token names (`--primary`, `--radius`, `--font-sans`, …). Nothing checks the
-names (a typo silently does nothing; a removed `--al-*` token silently does nothing), nothing
-checks the values, and a model writing Alder has no completion for them. After this change
-the app declares its look once, in `App`, in a form the compiler checks against the vendored
-design system and turns into the CSS itself; hand-written CSS keeps working beside it.
+over the shadcn token names. Nothing checks the names (a typo or a removed `--al-*` token
+silently does nothing) or the values, and a model writing Alder has no completion for them.
+After this change the app declares its look once, in `App`, in a form the compiler checks
+against the vendored design system and turns into the CSS; hand-written CSS keeps working.
 
-The issue is a large design, so it is split in phases. **Phase 1**, specified fully here, is the
-declaration, the checker, the CSS emission, the formatter, the grammar, the LSP's completion and
-hover, and the book. **Phase 2** is the interactive configurator and a CSS importer; **phase 3**
-is colour swatches in the editor. Phases 2 and 3 get their own specs when they come up; this
-document only fixes what phase 1 must leave in place for them (section "Later phases").
+**Phase 1**, specified fully here, is the declaration, checker, CSS emission, formatter,
+grammar, LSP completion and hover, and the book. **Phase 2** (the configurator and a CSS
+importer) and **phase 3** (editor swatches) get their own specs; the last section fixes only
+what phase 1 must leave in place for them.
 
 ## Goals
 
@@ -37,25 +35,20 @@ document only fixes what phase 1 must leave in place for them (section "Later ph
 
 ## Non-goals
 
-- The configurator (phase 2), `alder theme import` for a pasted CSS theme (phase 2), colour
-  swatches / `textDocument/documentColor` (phase 3), a TUI.
-- A per-Layout or per-page theme. The theme is the app's **(call)**: a Layout already picks
-  `al-page` width and `plain`; a subtree that needs the other scheme uses `.light`/`.dark`.
+- The configurator, `alder theme import` (phase 2), colour swatches (phase 3), a TUI.
+- A per-Layout or per-page theme. The theme is the app's **(call)**: a subtree that needs the
+  other scheme uses `.light`/`.dark`, as today.
 - New tokens (`--spacing`, `--tracking-*`, `--brand-*`): a token alder-ui does not define is not
-  a theme field; it goes in `app.css` as today.
+  a theme field; it goes in `app.css` as today. Checking `app.css` itself.
 - Expressions in values: no `calc()`, no Alder values, no `var()` except to alias one colour
   token to another. No colour literal type in the language.
-- Checking `static/app.css` (csscheck is for Alder's own CSS only).
 
 ## Anti-goals
 
-- A second way to write the same theme. Phase 2's configurator writes this declaration through
-  the formatter's printer; it must never need a format of its own, and it must never be the
-  only way in.
-- Emitting CSS the app did not write: a token the theme does not set keeps alder-ui's value;
-  an empty `theme { }` emits nothing.
-- A value that can break out of its declaration: every emitted value is drawn from a checked
-  character set.
+- A second way to write the same theme: phase 2's configurator writes this declaration through
+  the formatter's printer, and it is never the only way in.
+- Emitting CSS the app did not write: an unset token keeps alder-ui's value; `theme { }` emits
+  nothing. A value that can break out of its declaration: every value is from a checked set.
 
 ## The declaration
 
@@ -78,11 +71,10 @@ theme {
 }
 ```
 
-Alder syntax, not a data file **(call)**: the checker already loads the design system for
-E0028, `deploy` shows a checked data declaration in `App` works for people and agents, the
-formatter, grammar and LSP then cover it for free, and a data file would need its own loader,
-checker, formatter and completion. The AST reuses `DeployField`/`DeployValue` with one new value
-kind, `"record"` (a bare `{ fields }`, `Rec` set and `Ctor` empty), in a new `ThemeDecl` node.
+Alder syntax, not a data file **(call)**: `deploy` shows a checked data declaration in `App`
+works, and the formatter, grammar and LSP then cover it, where a data file would need its own
+loader, checker, formatter and completion. The AST reuses `DeployField`/`DeployValue` with one
+new value kind, `"record"` (a bare `{ fields }`, `Rec` set, `Ctor` empty), in a new `ThemeDecl`.
 `deploy` refuses a record value where it refuses any non-target today (no message change).
 
 **Field names** are the CSS names without `--`, in lowerCamel: `--muted-foreground` is
@@ -99,13 +91,11 @@ the mapping is mechanical both ways and the message for an unknown name shows th
 | shadow, top level only | `shadowXs`, `shadowSm`, `shadowMd`, `shadowLg` | text: `none`, or non-empty text from `[A-Za-z0-9 .%/,()#-]` |
 
 Values are text, not numbers or constructors **(call)**: a pasted `--primary: oklch(0.55 0.22
-285);` becomes `primary: "oklch(0.55 0.22 285)"` by inspection, the LSP can still parse the
-text for a swatch later, and a colour or length type in the language is a bigger change than
-the problem needs. Values are trimmed, otherwise emitted as written (no normalisation).
-`light` and `dark` are each optional and independent **(call)**: a colour set in one and not the
-other keeps alder-ui's value in the other (a light-only app sets `light` alone). Shadows are
-theme-wide **(call)**: shadcn's are the same in both schemes. The derived radii may be set
-explicitly for an app that does not want shadcn's ratios; `radius` alone keeps them.
+285);` becomes `primary: "oklch(0.55 0.22 285)"` by inspection, and a colour or length type in
+the language is more than the problem needs. Values are trimmed, otherwise emitted as written.
+`light` and `dark` are each optional and independent **(call)**: a colour set in one keeps
+alder-ui's value in the other (a light-only app sets `light` alone). Shadows are theme-wide
+**(call)**: shadcn's are the same in both schemes. `radius` alone keeps shadcn's derived ratios.
 
 ## Checking (E0040 `ThemeDecl`, one code as `deploy` has E0030)
 
@@ -136,14 +126,13 @@ Every refusal names the fix. In source order:
   length, not a colour"), are reported with the same code.
 
 The token table lives in a new package `internal/theme` **(call)**: a hand-written ordered list
-`Tokens` (field name, CSS name, kind, scope) and `Removed` (lowerCamel name → replacement text),
-plus `Defaults`, the light and dark values parsed once from the embedded `rt/al/al.css` (the
-first `:root, .light { … }` and `.dark { … }` blocks and the derived `:root` block, custom
-properties only). The manifest carries no `cssProperties`, so the stylesheet is the source of
-truth; a test holds the two together: every `--` name those blocks declare is in `Tokens`
-(except `--color-white`, `--color-black` and the private `--_al-*`), and every `Tokens` entry
-is declared there. Re-vendoring alder-ui with a new or dropped token fails that test until the
-table follows, which is the "checker knows the names from the design system" the issue asks for.
+`Tokens` (field name, CSS name, kind, scope), `Removed` (lowerCamel name → replacement text),
+and `Defaults`, the light and dark values parsed once from the embedded `rt/al/al.css` (its
+`:root, .light`, `.dark` and derived `:root` blocks, custom properties only). The manifest
+carries no `cssProperties`, so the stylesheet is the source of truth, and a test holds the two
+together: every `--` name those blocks declare is in `Tokens` (except `--color-white`,
+`--color-black` and the private `--_al-*`) and every entry is declared there. Re-vendoring
+alder-ui with a new or dropped token fails that test until the table follows.
 
 ## Emission
 
@@ -159,11 +148,10 @@ string` writes, in `Tokens` order (not source order, so the output is stable) **
 .dark { --primary: oklch(0.72 0.16 285); --primary-foreground: oklch(0.145 0 0); }
 ```
 
-A block with nothing in it is omitted; an empty theme gives `""`. Font families are quoted
-unless they are a generic keyword (`serif sans-serif monospace system-ui ui-sans-serif ui-serif
-ui-monospace ui-rounded cursive fantasy math emoji fangsong`). The blocks are unlayered, so they
-beat alder-ui's `@layer al` values whatever the selector, and `.light` is named so a light
-subtree in a dark page gets the theme's light values (Appendix C's rule for pasted themes).
+An empty block is omitted; an empty theme gives `""`. Families are quoted unless generic
+(`serif sans-serif monospace system-ui ui-sans-serif ui-serif ui-monospace ui-rounded cursive
+fantasy math emoji fangsong`). The blocks are unlayered, so they beat alder-ui's `@layer al`
+values, and `.light` is named so a light subtree in a dark page gets the theme's light values.
 
 **Where the CSS goes: appended to `al.css`** **(call)**. The generated `Web()` carries it as
 `web.Options.Theme` (a Go string; the generated program never parses it); `NewRouter`, when
@@ -245,15 +233,11 @@ The AA-strict border override (Appendix C) is two theme fields, `input` and `bor
 ## Later phases (fixed here so phase 1 leaves room)
 
 - **Phase 2, the configurator and the importer.** A page `alder run` serves at `/_dev/theme`
-  **(call)**: alder-ui's components rendered live, a control per token in the table (a colour
-  picker per scheme, a slider for `radius`, a font field), the page's own `.dark` toggle, the
-  current theme read from the last good build, and a "write" that edits `App.alder` through
-  `internal/format`'s printer (insert or replace the one `theme` declaration; nothing else in
-  the file moves). Preview swaps the theme block on the page without a rebuild. `alder theme
-  import <file.css>` reads a pasted shadcn/tweakcn export and writes the same declaration,
-  listing the properties it could not place (they stay for `app.css`). A web page over a TUI
-  **(call)**: the preview is the point and a terminal cannot show the components. Both reuse
-  `internal/theme` unchanged.
-- **Phase 3.** `textDocument/documentColor` from the theme's colour values; upstream alder-ui
-  may publish the tokens as `cssProperties` in its manifest, at which point `Tokens` is read
-  from `elements.Builtin` and the `al.css` parsing test goes.
+  **(call)**: alder-ui's components live, a control per token in the table, a `.dark` toggle,
+  the current theme from the last good build, and a "write" that edits `App.alder` through
+  `internal/format`'s printer (insert or replace the one `theme` declaration; nothing else
+  moves). A web page over a TUI **(call)**: the preview is the point and a terminal cannot show
+  the components. `alder theme import <file.css>` turns a pasted shadcn/tweakcn export into the
+  same declaration, listing what it could not place (that stays for `app.css`).
+- **Phase 3.** `textDocument/documentColor` from the theme's colours; if alder-ui publishes the
+  tokens as `cssProperties` in its manifest, `Tokens` is read from `elements.Builtin` instead.
