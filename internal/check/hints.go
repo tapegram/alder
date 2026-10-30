@@ -57,42 +57,64 @@ func (mc *modCtx) operand(e syntax.Expr, prec int) string {
 	return src
 }
 
-// pipeComparisonHint is the hint of `x |> f == y`, which reads as `x |> (f == y)`: "" unless the
-// right side of the pipe x is a comparison.
+// pipeComparisonHint is the hint of `x |> f == y`, which reads as `x |> (f == y)`: "" unless a
+// comparison lies on the leftmost spine of the pipe's right side (`x |> f == y && ok` too). The
+// rewrite pipes into the spine's leftmost operand, the function the pipe was meant for.
 func (mc *modCtx) pipeComparisonHint(x *syntax.BinOp) string {
-	cmp, ok := x.R.(*syntax.BinOp)
-	if !ok || !isComparison(cmp.Op) {
+	var cmp *syntax.BinOp
+	leaf := x.R
+	for {
+		b, ok := leaf.(*syntax.BinOp)
+		if !ok {
+			break
+		}
+		if cmp == nil && isComparison(b.Op) {
+			cmp = b
+		}
+		leaf = b.L
+	}
+	if cmp == nil {
 		return ""
 	}
-	piped, fn, rhs := mc.operand(x.L, 0), mc.operand(cmp.L, 1), mc.operand(cmp.R, 5)
-	if piped == "" || fn == "" || rhs == "" {
+	piped, fn, right := mc.operand(x.L, 0), mc.operand(leaf, 1), mc.source(x.R.GetSpan())
+	rewrite := ""
+	if piped != "" && fn != "" {
+		rewrite = mc.spliced(x.R.GetSpan(), leaf.GetSpan(), "("+piped+" |> "+fn+")")
+	}
+	if rewrite == "" || strings.Contains(right, "\n") {
 		return fmt.Sprintf("; `|>` binds looser than `%s`: put the pipe in parentheses, `(x |> f) %s y`", cmp.Op, cmp.Op)
 	}
-	return fmt.Sprintf("; `|>` binds looser than `%s`, so this reads as `%s |> (%s %s %s)`; write `(%s |> %s) %s %s`",
-		cmp.Op, piped, fn, cmp.Op, rhs, piped, fn, cmp.Op, rhs)
+	return fmt.Sprintf("; `|>` binds looser than `%s`, so this reads as `%s |> (%s)`; write `%s`", cmp.Op, piped, right, rewrite)
 }
 
+func isLogic(op string) bool { return op == "&&" || op == "||" }
+
 // defaultHint adds the hint of `a && m ?? d`, which reads as `(a && m) ?? d`, to the mismatches
-// reported at the left side of x (a `??`) since the bag held from diagnostics. The left side must
-// be a `&&` or `||`; the operand the default was meant for is its last one (descending into a
-// last `&&` or `||` not written in parentheses).
+// reported, since the bag held from diagnostics, at the left side of x (a `??`) and at the
+// operand the default was meant for. The left side must be a `&&` or `||`; that operand is the
+// last one of its trailing chain of `&&` and `||`, through any parentheses (`a && (b && m)`):
+// the innermost, which `&&` or `||` rejected as not a Bool.
 func (mc *modCtx) defaultHint(x *syntax.BinOp, from int) {
 	l, ok := x.L.(*syntax.BinOp)
-	if !ok || (l.Op != "&&" && l.Op != "||") {
+	if !ok || !isLogic(l.Op) {
 		return
 	}
 	parent, last := l, l.R
 	for {
 		b, ok := last.(*syntax.BinOp)
-		if !ok || (b.Op != "&&" && b.Op != "||") || b.Span.End != parent.Span.End {
+		if !ok || !isLogic(b.Op) {
 			break
 		}
 		parent, last = b, b.R
 	}
-	hint := mc.defaultHintText(x, l, parent, last)
-	// the left side is a Bool where a Maybe is expected, and its last operand, a Maybe, is
-	// where `&&` expects a Bool: both mismatches get the hint
 	items := mc.c.bag.Items
+	maybe := false // the operand was rejected: it is the Maybe the default belongs to
+	for i := from; i < len(items); i++ {
+		if items[i].Code == diag.TypeMismatch && items[i].Span == last.GetSpan() {
+			maybe = true
+		}
+	}
+	hint := mc.defaultHintText(x, l, parent, last, maybe)
 	for i := from; i < len(items); i++ {
 		if sp := items[i].Span; items[i].Code == diag.TypeMismatch && (sp == l.Span || sp == last.GetSpan()) {
 			items[i].Message += hint
@@ -100,32 +122,41 @@ func (mc *modCtx) defaultHint(x *syntax.BinOp, from int) {
 	}
 }
 
-// defaultHintText is defaultHint's text: last is the operand the default was meant for, and
-// parent the `&&` or `||` it is the right side of.
-func (mc *modCtx) defaultHintText(x, l, parent *syntax.BinOp, last syntax.Expr) string {
+// defaultHintText is defaultHint's text: last is the operand the default was meant for, parent
+// the `&&` or `||` it is the right side of, and maybe whether last was rejected as not a Bool
+// (without that, which operand was meant is not known and the hint gives only the rule).
+func (mc *modCtx) defaultHintText(x, l, parent *syntax.BinOp, last syntax.Expr, maybe bool) string {
 	generic := fmt.Sprintf("; `??` binds looser than `%s`: put the `??` and the value it defaults in parentheses", parent.Op)
-	whole, def := mc.operand(l, 0), mc.operand(x.R, 1)
-	opnd := mc.operand(last, 2)
-	// The text before the operand, less the parentheses the operand was written in: after the
-	// operand, up to the end of the left side, only those closing parentheses may follow.
-	file := l.Span.File
-	before := mc.source(diag.Span{File: file, Start: l.Span.Start, End: last.GetSpan().Start})
-	after := mc.source(diag.Span{File: file, Start: last.GetSpan().End, End: l.Span.End})
-	if whole == "" || def == "" || opnd == "" || before == "" || strings.Contains(before, "\n") || strings.Trim(after, ") ") != "" {
+	def, opnd, whole := mc.operand(x.R, 1), mc.operand(last, 2), mc.source(l.Span)
+	if !maybe || def == "" || opnd == "" || whole == "" || strings.Contains(whole, "\n") {
 		return generic
 	}
-	n := strings.Count(after, ")")
-	trimmed := strings.TrimRight(before, " ")
-	for i := 0; i < n; i++ {
-		if !strings.HasSuffix(trimmed, "(") {
-			return generic
+	rewrite := mc.spliced(l.Span, last.GetSpan(), "("+opnd+" ?? "+def+")")
+	if rewrite == "" {
+		return generic
+	}
+	return fmt.Sprintf("; `??` binds looser than `%s`, so this reads as `(%s) ?? %s`; write `%s`", parent.Op, whole, def, rewrite)
+}
+
+// spliced is outer's source text with inner's replaced by text, which brings its own
+// parentheses: any written around inner alone (`((m))`) are replaced too. "" unless both are
+// on one line.
+func (mc *modCtx) spliced(outer, inner diag.Span, text string) string {
+	if outer.Start.Line != outer.End.Line || inner.Start.Line != outer.Start.Line || inner.End.Line != outer.Start.Line {
+		return ""
+	}
+	line := lineOf(mc.m, outer.Start.Line)
+	os, oe, is, ie := outer.Start.Col-1, outer.End.Col-1, inner.Start.Col-1, inner.End.Col-1
+	if os < 0 || oe > len(line) || is < os || ie > oe || is > ie {
+		return ""
+	}
+	for {
+		before := strings.TrimRight(line[os:is], " ")
+		after := strings.TrimLeft(line[ie:oe], " ")
+		if !strings.HasSuffix(before, "(") || !strings.HasPrefix(after, ")") {
+			break
 		}
-		trimmed = strings.TrimRight(strings.TrimSuffix(trimmed, "("), " ")
+		is, ie = os+len(before)-1, oe-len(after)+1
 	}
-	if n > 0 {
-		opnd = mc.source(last.GetSpan())
-		opnd = strings.Repeat("(", n) + opnd + strings.Repeat(")", n)
-	}
-	return fmt.Sprintf("; `??` binds looser than `%s`, so this reads as `(%s) ?? %s`; write `%s (%s ?? %s)`",
-		parent.Op, mc.source(l.Span), def, trimmed, opnd, def)
+	return strings.TrimSpace(line[os:is] + text + line[ie:oe])
 }

@@ -3,6 +3,7 @@ module Report
 import Clarity
 import Feeds
 
--- The long spelling reaches the capability past the module: this works, with the warning.
+-- The long spelling reaches the capability past the module, and nothing here calls the
+-- capability through `Clarity`: no warning.
 latest : Query Text
 latest = Query.map (\t -> Clarity.title ++ t) Feeds.Clarity.latest

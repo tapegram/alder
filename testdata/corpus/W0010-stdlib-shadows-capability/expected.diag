@@ -1,1 +1,4 @@
 app/Data/Http.alder:4:1 W0010 the standard-library module `Http` shadows `capability Http`: `Http.fetch` names the standard library's `Http`, here and in every module importing `Data.Http`; rename the capability (for example `HttpCapability`)
+app/Data/Http.alder:10:8 E0002 module `Http` has no `fetch`; `Http` here is the standard-library module, which shadows `capability Http` of this module: rename the capability (for example `HttpCapability`)
+app/Reader.alder:7:8 E0002 module `Http` has no `fetch`; `Http` here is the standard-library module, which shadows `capability Http` of `Data.Http`: write `DataHttp.fetch`
+  fix 7:8-7:18 DataHttp.fetch

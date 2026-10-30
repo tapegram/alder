@@ -4,3 +4,7 @@ module Data.Http
 capability Http {
   fetch : Text -> Query Text,
 }
+
+-- Inside its own module the capability cannot be called: `Http.fetch` is the standard library's.
+home : Query Text
+home = Http.fetch "/"

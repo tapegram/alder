@@ -14,14 +14,15 @@ import (
 // A qualifier is looked up before a capability (design rule 5), so a module whose qualifier is a
 // capability's name hides that capability's entries: `Clarity.final` is looked up in module
 // Clarity. The capability stays reachable through its own module's qualifier
-// (`DataClarity.final`), so the program can work: a warning at the import (W0010), and a hint on
-// the "has no" error the hidden call gets. A standard-library module, always in scope, hides a
-// capability of its name the same way: a warning at the capability.
+// (`DataClarity.final`), so the program can work. A call the module lacks is E0002 with a hint
+// and the fix; a call the module has resolves to the module's value without a word, which is
+// the warning W0010 at the import. A standard-library module, always in scope, hides a
+// capability of its name the same way: W0010 at the capability, and the same E0002 hint.
 //
 // A constructor is looked up before a page (design rule 6), and a single-segment page has no
 // other spelling, so where a constructor named like it is in scope the page cannot be written at
-// all: `Status { cfg: "pa" }` builds the constructor. That is an error at the constructor's
-// declaration (E0041).
+// all: `Status { cfg: "pa" }` builds the constructor. That is E0041 at the constructor's
+// declaration when a use was broken by it, else the warning W0011 (pageShadows).
 
 // capEntryNames is the entries of capability name declared in module path, in declaration order.
 func (p *Program) capEntryNames(path, name string) []string {
@@ -50,43 +51,26 @@ func (r *resolver) capSpelling(owner, cap, entry string) string {
 	return r.qualFor(owner) + "." + cap + "." + entry
 }
 
-// hiddenCapOwners is the imported modules other than path declaring a capability named q, which
-// the import of path, whose qualifier is q, hides.
-func (r *resolver) hiddenCapOwners(q, path string) []string {
-	var out []string
+// hiddenEntryOwner is the first imported module other than path whose capability q, hidden by
+// the module path that q names here, has entry; "" when there is none.
+func (r *resolver) hiddenEntryOwner(q, path, entry string) string {
 	for _, o := range r.importedCapOwners(q) {
-		if o != path {
-			out = append(out, o)
+		if o == path {
+			continue
+		}
+		for _, e := range r.p.capEntryNames(o, q) {
+			if e == entry {
+				return o
+			}
 		}
 	}
-	return out
+	return ""
 }
 
-// shadowedCapabilities warns (W0010) at each import whose qualifier is the name of a capability
-// another import declares, and at each capability of this module named like a standard-library
-// module.
-func (r *resolver) shadowedCapabilities() {
-	for _, im := range r.m.Imports {
-		q := r.ms.quals[im.Module]
-		if q == "" || r.ms.imports[q] != im || r.p.isStd(im.Module) {
-			continue
-		}
-		owners := r.hiddenCapOwners(q, im.Module)
-		if len(owners) == 0 {
-			continue
-		}
-		o := owners[0]
-		named := fmt.Sprintf("module `%s`", im.Module)
-		if q != im.Module {
-			named = fmt.Sprintf("`%s` (module `%s`)", q, im.Module)
-		}
-		remedy := fmt.Sprintf("; rename module `%s` (for example to `%sModule`)", im.Module, im.Module)
-		if es := r.p.capEntryNames(o, q); len(es) > 0 {
-			remedy = fmt.Sprintf(": `%s.%s` is looked up in the module, not the capability; write `%s`, or rename module `%s` (for example to `%sModule`)",
-				q, es[0], r.capSpelling(o, q, es[0]), im.Module, im.Module)
-		}
-		r.bag.Warn(diag.ShadowedCapability, im.Span, "%s shadows `capability %s` of `%s` in this module%s", named, q, o, remedy)
-	}
+// stdShadowedCapabilities warns (W0010) at each capability of this module named like a
+// standard-library module: `Http.fetch` names the standard library's, here and in every module
+// importing this one.
+func (r *resolver) stdShadowedCapabilities() {
 	for _, d := range r.m.Decls {
 		if c, ok := d.(*syntax.CapDecl); ok && r.p.isStd(c.Name) {
 			example := ""
@@ -99,16 +83,56 @@ func (r *resolver) shadowedCapabilities() {
 	}
 }
 
+// shadowedValue notes `Clarity.latest` that resolved to module Clarity's value (path, through
+// qualifier q) while an imported capability Clarity, which the module hides, has the entry
+// `latest`: the first such use of each import is warned about at the import (shadowWarnings).
+func (r *resolver) shadowedValue(q, path, entry string) {
+	if r.p.isStd(path) || r.hiddenEntryOwner(q, path, entry) == "" {
+		return
+	}
+	if r.shadowUses == nil {
+		r.shadowUses = map[string]string{}
+	}
+	if _, seen := r.shadowUses[path]; !seen {
+		r.shadowUses[path] = entry
+	}
+}
+
+// shadowWarnings reports W0010 at each import a hidden capability's entry was called through.
+func (r *resolver) shadowWarnings() {
+	for _, im := range r.m.Imports {
+		entry, ok := r.shadowUses[im.Module]
+		q := r.ms.quals[im.Module]
+		if !ok || q == "" || r.ms.imports[q] != im {
+			continue
+		}
+		o := r.hiddenEntryOwner(q, im.Module, entry)
+		named := fmt.Sprintf("module `%s`", im.Module)
+		if q != im.Module {
+			named = fmt.Sprintf("`%s` (module `%s`)", q, im.Module)
+		}
+		r.bag.Warn(diag.ShadowedCapability, im.Span, "%s shadows `capability %s` of `%s` in this module: `%s.%s` here is the module's `%s`, not the capability's entry; write `%s` for the capability, or rename module `%s` (for example to `%sModule`)",
+			named, q, o, q, entry, entry, r.capSpelling(o, q, entry), im.Module, im.Module)
+	}
+}
+
 // shadowedEntryHint explains `Clarity.final` that module Clarity (path, through qualifier q)
-// lacks when an imported capability Clarity has the entry: the hint, and the spelling that
-// reaches the entry; "" when there is none.
+// lacks when a capability Clarity it hides has the entry: the hint, and the spelling that
+// reaches the entry ("" when none does: the module's own capability hidden by a stdlib module).
 func (r *resolver) shadowedEntryHint(q, path, entry string) (hint, spelling string) {
-	for _, o := range r.hiddenCapOwners(q, path) {
-		for _, e := range r.p.capEntryNames(o, q) {
+	if o := r.hiddenEntryOwner(q, path, entry); o != "" {
+		r.ms.used[o] = true // the use meant it: no W0001 besides
+		spelling = r.capSpelling(o, q, entry)
+		mod := fmt.Sprintf("module `%s`", path)
+		if r.p.isStd(path) {
+			mod = "the standard-library module"
+		}
+		return fmt.Sprintf("; `%s` here is %s, which shadows `capability %s` of `%s`: write `%s`", q, mod, q, o, spelling), spelling
+	}
+	if r.p.isStd(path) && r.ms.caps[q] {
+		for _, e := range r.p.capEntryNames(r.m.Name, q) {
 			if e == entry {
-				r.ms.used[o] = true // the use meant it: no W0001 besides
-				spelling = r.capSpelling(o, q, entry)
-				return fmt.Sprintf("; `%s` here is module `%s`, which shadows `capability %s` of `%s`: write `%s`", q, path, q, o, spelling), spelling
+				return fmt.Sprintf("; `%s` here is the standard-library module, which shadows `capability %s` of this module: rename the capability (for example `%sCapability`)", q, q, q), ""
 			}
 		}
 	}
@@ -119,7 +143,7 @@ func (r *resolver) shadowedEntryHint(q, path, entry string) (hint, spelling stri
 // constructor's module and the modules importing it (everywhere, for a Prelude constructor) the
 // page cannot be written. A page with a dot in its name is written with its full path, which no
 // constructor can be. It is an error (E0041) when some module in that scope writes `Name { … }`
-// and the constructor takes no record, so that the page value written there became a
+// and the constructor takes no record (never a `msg`, which always takes one), so that the page value written there became a
 // constructor that cannot take it (the use was already a type error); otherwise the program
 // works and it is a warning (W0011). It runs after every body is resolved (pageUses).
 func (p *Program) pageShadows(bag *diag.Bag) {
@@ -164,7 +188,9 @@ func (p *Program) pageShadows(bag *diag.Bag) {
 					}
 				case *syntax.MsgDecl:
 					if d.Name == page {
-						what, span, where, noun, record = fmt.Sprintf("message `%s`", page), d.Span, x+"`", "message", d.Params != nil
+						// a message always takes a record (its parameters, `{}`, or `{ form: … }`),
+						// so `Go {}` for it type-checks: a message clash is only ever W0011
+						what, span, where, noun, record = fmt.Sprintf("message `%s`", page), d.Span, x+"`", "message", true
 					}
 				}
 				if what != "" {

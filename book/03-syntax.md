@@ -140,14 +140,16 @@ every module importing it (a `msg Status` only in its own module, a Prelude
 constructor such as `Ok` everywhere). There the page has no other spelling,
 and `Status { cfg: "pa" }` builds the constructor. The compiler reports the
 clash at the constructor: an error (E0041) when some module in its scope
-writes `Status { … }` for the page, a warning (W0011) while nothing does.
+writes `Status { … }` for the page and the constructor takes no record, a
+warning (W0011) otherwise (always, for a `msg`, which takes a record).
 Rename one of them, for example `module StatusPage`. Likewise a qualifier is
 looked up before a capability, so `import Clarity` beside a module whose
-`capability Clarity` has the entry `final` makes `Clarity.final` a name in
+`capability Clarity` has the entry `latest` makes `Clarity.latest` a name in
 module `Clarity`. The capability is still reached through its own module's
-qualifier (`DataClarity.final`); the import gets a warning (W0010) that
-says so, and a call that module `Clarity` lacks gets the spelling as its
-fix.
+qualifier (`Feeds.Clarity.latest`, or `DataClarity.final` for a capability
+named like its module). A call that module `Clarity` lacks is an error
+whose fix is that spelling; a call it has compiles to the module's value,
+and the import gets a warning (W0010) that says so.
 
 Everything a module defines is visible to other modules, with one exception:
 a brand's constructor (see chapter 4). There is no `export` list.

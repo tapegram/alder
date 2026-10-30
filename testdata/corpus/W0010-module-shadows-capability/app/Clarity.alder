@@ -1,5 +1,9 @@
 module Clarity
 
--- The site's own module, named like the capability `Clarity` of Data.Clarity.
+-- The site's own module, named like the capability `Clarity` of Data.Clarity and of Feeds.
 title : Text
 title = "Clarity"
+
+-- Named like Feeds' entry `latest`: through the qualifier `Clarity`, this one is reached.
+latest : Query Text
+latest = Query.succeed "cached"

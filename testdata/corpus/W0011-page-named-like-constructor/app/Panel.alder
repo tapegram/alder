@@ -1,0 +1,33 @@
+module Panel
+
+page "/panel" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 1 }
+
+form Settings = {
+  key: Text,
+}
+
+-- Messages named like the pages Go and Stop. A message always takes a record, so `Go {}` and
+-- `Stop { form: … }` are the messages and type-check: a warning, never E0041.
+msg Go
+
+msg Stop form Settings
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Go p -> Task.succeed Rerender,
+  Stop p -> Task.succeed Rerender,
+}
+
+goMsg : Msg
+goMsg = Go {}
+
+stopMsg : Msg
+stopMsg = Stop { form: { key: "k" } }
+
+view : Model -> Session -> Html Msg
+view model session = <p>panel</p>

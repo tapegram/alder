@@ -146,6 +146,9 @@ type resolver struct {
 	unqual map[string]bool
 	// inTest is set while a `test` body is resolved.
 	inTest bool
+	// shadowUses maps an import's path to the first entry of a capability it hides that was
+	// called through it and resolved to the module's value (W0010, shadowWarnings).
+	shadowUses map[string]string
 }
 
 func (p *Program) Resolve(bag *diag.Bag) {
@@ -252,7 +255,7 @@ func (r *resolver) module() {
 		}
 	}
 	r.aliases()
-	r.shadowedCapabilities()
+	r.stdShadowedCapabilities()
 	for _, d := range r.m.Decls {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
@@ -318,6 +321,7 @@ func (r *resolver) module() {
 			r.inTest = false
 		}
 	}
+	r.shadowWarnings()
 	for _, name := range r.importNames() {
 		if !r.ms.used[name] {
 			r.bag.Warn(diag.UnusedImport, r.ms.imports[r.ms.quals[name]].Span, "import `%s` is unused", name)
@@ -1238,6 +1242,7 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 				kind = syntax.RefStd
 			}
 			v.Ref = syntax.Ref{Kind: kind, Module: path, Name: v.Name}
+			r.shadowedValue(mod, path, v.Name)
 		case path == "Fuzz" && v.Name == "any" && r.p.isStd(path):
 			// `any : Fuzzer a` is a special form (stdlib/Fuzz.alder): the checker types it and
 			// records the type at each use, from which the generator is derived
@@ -1254,7 +1259,9 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 				}
 				if hint, spelling := r.shadowedEntryHint(mod, path, v.Name); hint != "" {
 					d.Message += hint
-					d.Fix = diag.ReplaceSpan(v.Span, spelling)
+					if spelling != "" {
+						d.Fix = diag.ReplaceSpan(v.Span, spelling)
+					}
 				}
 			}
 		}
