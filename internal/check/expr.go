@@ -1637,13 +1637,15 @@ func (mc *modCtx) inferBinOp(x *syntax.BinOp, env *env, eff effect) types.Type {
 			return types.Err
 		}
 		if _, ok := fnT.(*types.Fun); !ok {
-			c.errorf(diag.TypeMismatch, x.R.GetSpan(), "right side of `|>` must be a function, got `%s`", mc.ts(fnT))
+			c.errorf(diag.TypeMismatch, x.R.GetSpan(), "right side of `|>` must be a function, got `%s`%s", mc.ts(fnT), mc.pipeComparisonHint(x))
 			return c.u.Fresh()
 		}
 		return mc.applyFn(x.R, fnT, nil, p, nil, x.Span, env, eff)
 	case "??":
 		inner := c.u.Fresh()
+		from := len(c.bag.Items)
 		mc.check(x.L, mc.maybeOf(inner), env, eff)
+		mc.defaultHint(x, from)
 		mc.check(x.R, inner, env, eff)
 		return inner
 	case "&&", "||":

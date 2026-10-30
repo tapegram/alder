@@ -49,3 +49,16 @@ in chapter 12. Each is a compile error.
     tests `List Int`), and passes without ever drawing the type you meant. The
     failure report marks the choice, `xs: [0, 1]  (xs : List Int)`; write
     `\(xs : List Text) -> …` to pick the type.
+16. `??` binds looser than `&&` and `||`, and `|>` looser than `==` and the
+    other comparisons: `a && m ?? True` is `(a && m) ?? True`, and
+    `x |> f == y` is `x |> (f == y)`. Write `a && (m ?? True)` and
+    `(x |> f) == y`; the E0003 hint shows the form with your expressions.
+17. A module, page or constructor named like another name in scope hides
+    one of them. A constructor named like a one-segment page module
+    (`Status Int` beside `module Status`) makes `Status { … }` the
+    constructor in its scope (E0041, or W0011 while nothing breaks; a
+    `msg` named like a page is always W0011); a module whose qualifier is a capability's name (`import
+    Clarity` beside `capability Clarity`) makes `Clarity.final` a name of
+    the module: E0002 with a fix when the module lacks `final`, W0010
+    when it has one (the capability is `DataClarity.final`). Rename one,
+    as the message suggests.

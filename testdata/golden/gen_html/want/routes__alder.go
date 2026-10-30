@@ -165,6 +165,7 @@ func update__M(rq *web.Request, params M__Params, msg M__Msg, st *html.FormState
 	if stop != nil {
 		return *stop
 	}
+	model0, session0 := model, session // the page the client shows: Before
 	nav, err := eff.Run(rq.Env, eff.KTask, M__update(msg, model, session))
 	if err != nil {
 		return route__fail(err)
@@ -185,7 +186,7 @@ func update__M(rq *web.Request, params M__Params, msg M__Msg, st *html.FormState
 	if stop != nil {
 		return *stop
 	}
-	return web.PageResponse(M__view(model, session), st, rq.Env.Session, true)
+	return web.PageResponse(M__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return M__view(model0, session0) })
 }
 
 // Route__M__page serves page M, GET /m/{id} (book 06): decode the parameters (404 when they do
@@ -228,7 +229,7 @@ func Route__M__Save() web.Route {
 			if stop != nil {
 				return *stop
 			}
-			return web.PageResponse(M__view(model, session), &html.FormState{Form: "M.Note", Msg: rt.MsgKey("/_m/M/Save", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__M(params)}, nil, true)
+			return web.PageResponse(M__view(model, session), &html.FormState{Form: "M.Note", Msg: rt.MsgKey("/_m/M/Save", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__M(params)}, nil, true).WithBefore(func() html.Node { return M__view(model, session) })
 		}
 		p.Form = form
 		return update__M(rq, params, M__Msg__Save__(p), &html.FormState{Form: "M.Note", Msg: rt.MsgKey("/_m/M/Save", rq.Query), Values: values})

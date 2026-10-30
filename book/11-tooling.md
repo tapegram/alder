@@ -966,6 +966,14 @@ ok   Todos.Index "Toggle by another user is not found"
 2 passed, 0 failed
 ```
 
+Every click and submit a test makes also checks the runtime's partial
+updates (chapter 5, "Partial updates"): the test's browser applies the
+answer as a browser would, region by region, and then compares the page
+it holds with a full render of the same page. A difference fails the
+step, naming where: `POST /_m/Todos.Index/Toggle: the patched page
+differs from a full render at body > main > ul#todos: …`. Your tests do
+not mention it; every suite proves the patches on its own pages.
+
 - `-run re` runs only the tests whose `Module "name"` matches the
   regular expression `re` (Go's syntax). A pattern that matches nothing
   runs nothing: `0 passed, 0 failed`, exit 0.
@@ -1089,7 +1097,7 @@ ok   Rows.Bench "toggle 1000"
 | column | what it counts |
 |---|---|
 | `ms` | the wall time the router took to serve the step's requests (summed) |
-| `bytes` | the answers' bodies: the document of a GET, the event stream of a Datastar answer (the body patch, title, history) |
+| `bytes` | the answers' bodies: the document of a GET, the event stream of a Datastar answer (the regions patched, or the body, title, history) |
 | `alloc` | bytes and objects the Go runtime allocated while the router served them (`runtime.MemStats`: `TotalAlloc` and `Mallocs` read just before and just after each request) |
 | `req` | requests the router served: 1, 2 when it followed a `Redirect` itself (chapter 6), more for each 303 the browser followed |
 | `loads` | how many times a page's `load` ran: a `Rerender` runs it twice (before `update`, to give it the model, and after, to render), and so does a followed `Redirect` (the message's page, then the target) |
@@ -1636,7 +1644,10 @@ remembers the tab chosen last, so the next answer opens on it again. Its tabs:
   The same rule runs in `alder test` (a `warn:` line under the test,
   chapter 10) and in `alder bench`'s `n+1` column.
 - Answer: page, rerender, redirect, not found, or an error with its text.
-- Patches: the events the answer sent (body, title, history, toast, panel).
+- Patches: the events the answer sent: each region a message's answer
+  patched (`#todo-7`) and `shown` (the page's new hash), or `body` when
+  the whole body was morphed, or `none` when nothing changed; then title,
+  history, toast and panel (chapter 5, "Partial updates").
 - History: the last 20 requests of this browser tab, newest first. The panel
   keeps them in the browser (`sessionStorage`, so a full page load keeps them
   too and another tab has its own); click one to read its Request, Trace, SQL,
@@ -1698,7 +1709,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 |---|---|---|
 | E0001 | parse error (also: an identifier with `__` in it, a module name segment ending in `_`) | — |
 | E0002 | unknown name | — (in a test step, a form of another page written unqualified, or a page's form or message written through its import's qualifier, `Login.Credentials`, gets its full path, `Auth.Login.Credentials`) |
-| E0003 | type mismatch (also: a `Db.insertMine` row that names the owner column ("`owner` is set by `Db.insertMine`") or is not a record literal in the call ("`Db.insertMine` takes its row as a record literal: write the record literal in the `Db.insertMine` call (its row is `Insert Todo` without `owner`)"), `==` or a `Dict` key on a function or an effect value, a column method on a column held in a variable, `.contains` or `.startsWith` on a column that is not `Text`, `@setNull` on a field that is not a `Maybe`, a `Db` function over a type parameter, a `fake` that lacks an entry of its capability or defines one it does not have, `Test.fake` outside a `test`, on an expression, or on a capability without a `fake`, `Session` in a fake's entry; a browser step outside a `test`, on something not written in place (`Test.get p`), piped into or not applied, its argument of the wrong kind ("`Submit` carries form `NewTodo`: use `Test.submit`", "`Toggle` posts no form: use `Test.click`", "`Rename` is posted by `Save` and `Draft`: write `Test.submit (Save { id: … }) { … }`", "`Test.get` needs a record `Model`: …"), `Test.login` with a record that is not the app's session; `Doc`, `Answer` or one of its constructors outside a `test`, chapter 10, section 9) | conversion such as `Text.fromInt (…)` where one exists |
+| E0003 | type mismatch (also: a `Db.insertMine` row that names the owner column ("`owner` is set by `Db.insertMine`") or is not a record literal in the call ("`Db.insertMine` takes its row as a record literal: write the record literal in the `Db.insertMine` call (its row is `Insert Todo` without `owner`)"), `==` or a `Dict` key on a function or an effect value, a column method on a column held in a variable, `.contains` or `.startsWith` on a column that is not `Text`, `@setNull` on a field that is not a `Maybe`, a `Db` function over a type parameter, a `fake` that lacks an entry of its capability or defines one it does not have, `Test.fake` outside a `test`, on an expression, or on a capability without a `fake`, `Session` in a fake's entry; a browser step outside a `test`, on something not written in place (`Test.get p`), piped into or not applied, its argument of the wrong kind ("`Submit` carries form `NewTodo`: use `Test.submit`", "`Toggle` posts no form: use `Test.click`", "`Rename` is posted by `Save` and `Draft`: write `Test.submit (Save { id: … }) { … }`", "`Test.get` needs a record `Model`: …"), `Test.login` with a record that is not the app's session; `Doc`, `Answer` or one of its constructors outside a `test`, chapter 10, section 9); a hint with the parenthesized form, written with your own expressions, for the two precedence traps: `a && m ?? d`, which is `(a && m) ?? d`, and `x |> f == y`, which is `x |> (f == y)` | conversion such as `Text.fromInt (…)` where one exists |
 | E0004 | non-exhaustive `match` | arm skeleton |
 | E0005 | module name does not match its file path | — |
 | E0006 | import cycle | — |
@@ -1716,6 +1727,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0037 | two tables with one name in different modules (`Table.Entry` and `Entry`): table names are app-wide | — |
 | E0038 | a property argument or `Fuzz.any` whose type has no derivable generator (a function, an effect type, a type parameter, a union with no constructor that ends the recursion, or not written): annotate it, or write the generator and use `Fuzz.forAll` | — |
 | E0039 | `Fuzz.forAll` or `Fuzz.forAllTask` anywhere but as a test's body: "`Fuzz.forAll` makes a Property, which only a test body can use" (a `Fuzzer` value may live in any module) | — |
+| E0041 | a union constructor or brand (in its module and the modules importing it) named like a one-segment page module, where some module in that scope writes `Status { … }` and the constructor takes no record: "constructor `Status` (of `Types.Code`) shadows page `Status` in `Types` and the modules importing it: there `Status { … }` is the constructor, so the page cannot be linked or fetched; rename the constructor or the page module (for example `module StatusPage`)", reported at the constructor (W0011 when nothing breaks; a `msg` is always W0011) | — |
 | E0042 | a `theme` declaration the rules refuse (Appendix C, "Changing a token"): outside `App` or declared twice; a field twice in one record; `light` or `dark` not a record; a name that is not an alder-ui token ("`primray` is not a token of alder-ui v0.4.2; did you mean `primary` (`--primary`)?") or a removed `--al-*` one ("`alFontMono` was removed in alder-ui v0.4: write `fontMono`"); a colour at the top level or a theme-wide token under `light`/`dark`; a value of the wrong shape for its kind, a negative length, a `var()` of anything but a colour token, or colours whose `var()`s lead back to themselves | — |
 | E0019 | `migrations/` is behind the app or disagrees with itself, reported at `migrations/schema.json:1:1` by every command but `alder migrate`: the tables changed since the last migration (``the schema changed since migration 0003 (table Post: column body): run `alder migrate` ``); a storage format change (``the storage format changed (v1 → v2): this needs a rebuild migration of every table, which this `alder migrate` cannot write yet (`alder migrate --format` is planned); build with the compiler that wrote migrations/ until then``); `.sql` files but no `schema.json`; a `schema.json` or migration file that does not read; a malformed file (``migration 0002_x: line 6: a statement must end in `;` ``, a wrong first line, a header without `-- from` or `-- to`); two files with one number (``two migrations are numbered 0005 (likely two branches: 0005_a.sql, 0005_b.sql): keep the one already merged or deployed, delete the other, restore schema.json to its result, run `alder migrate` ``); a file that does not start where the one before it ends (``migration 0003_sub does not follow 0001_initial: a file is missing or edited; restore migrations/ from version control (`git checkout migrations/`)``); a last file that does not end at the snapshot (``migration 0003_sub does not lead to migrations/schema.json: a file is missing or edited; restore migrations/ from version control (`git checkout migrations/`)``) | — |
 | E0020 | a `fake` declared outside the module of its capability: "`fake Stripe` must be declared in the module that declares `capability Stripe`" (chapter 10, "Faking a capability") | — |
@@ -1762,6 +1774,8 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | W0006 | an adapter package reads (through `os.Getenv` or `os.LookupEnv` with a literal name) an environment variable that `deploy.requires` does not name (chapter 16): "adapter `auth` reads `SMTP_URL`, which `deploy.requires` does not name"; the runtime's own `ALDER_…` variables are never reported, and a name in `requires` that no adapter reads is fine | name it in `requires` |
 | W0007 | the language server's warning on line 1 of an open scratch file when the app has errors, so the file does not run (this chapter, "Scratch files in the editor"): "the app has errors; fix them and save"; the errors themselves are on the app's files | fix the app's errors and save |
 | W0008 | a GET `<form>` (`method="get"` or none, no `submit`) whose literal `action` is a page's path holds a plain `<input>`, `<select>` or `<textarea>` with a literal `name` that is one of the page's parameters declared with another wire name (chapter 6): "page `Wood` reads its parameter `electionId` from the query key `ElectionId`, so `name="electionId"` in this GET form sets nothing; use the wire name: `name="ElectionId"`" | the wire name as the `name` |
+| W0010 | a module that hides a capability of its name: a call `Clarity.latest` that resolved to module `Clarity`'s `latest` while an imported `capability Clarity` has that entry ("module `Clarity` shadows `capability Clarity` of `Feeds` in this module: `Clarity.latest` here is the module's `latest`, not the capability's entry; write `Feeds.Clarity.latest` for the capability, or rename module `Clarity` (for example to `ClarityModule`)"), reported at the import; or a capability named like a standard-library module, reported at the capability. A call the module lacks is E0002 with the hint instead | — (the E0002 of a hidden call gets the capability's spelling) |
+| W0011 | E0041's clash where nothing in the constructor's scope breaks (a role `Admin` beside `module Admin`, a `msg Go` beside `module Go`, or a Prelude constructor such as `Ok` naming a page): the program works, but the page cannot be linked or fetched from there | — |
 | W0009 | `render.yaml` or `fly.toml` (the files of `alder deploy init`) exists in the project and App.alder has no `deploy` block (chapter 16): "render.yaml deploys whatever is pushed, with no check, migration plan or backup: add a `deploy` block to App.alder (book chapter 16)"; with both files, "render.yaml and fly.toml deploy …"; a Dockerfile alone is not reported | add a `deploy` block |
 
 ## Editor support
