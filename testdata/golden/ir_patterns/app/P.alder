@@ -23,7 +23,6 @@ firstTwo xs = match xs {
   [] -> 0,
   [x] -> x,
   [a, b, ..rest] -> a + b + List.length rest,
-  [x, ..more] -> x,
 }
 
 word : Int -> Text

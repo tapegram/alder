@@ -35,7 +35,6 @@ lst : List Int -> Int
 lst xs = match xs {
   [x, y, ..rest] -> x + y,
   [x] -> x,
-  [x, ..rest] -> 100,
   [] -> 0,
 }
 

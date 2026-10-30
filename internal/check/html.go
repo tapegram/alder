@@ -79,18 +79,12 @@ func (mc *modCtx) htmlNode(e syntax.Expr, m types.Type, env *env, eff effect) {
 		mc.htmlNode(x.Else, m, env, eff)
 	case *syntax.HtmlMatch:
 		subj := c.u.Apply(mc.infer(x.Subject, env, eff))
-		exh := newExhaustiveness(mc, subj)
 		for _, a := range x.Arms {
 			child := env.child()
-			if exh.closed {
-				c.errorf(diag.UnreachableArm, a.Span, "unreachable arm: every case is already handled")
-			}
 			mc.checkPattern(a.Pat, subj, child)
-			exh.refresh(subj)
-			exh.cover(a.Pat)
 			mc.htmlNode(a.Body, m, child, eff)
 		}
-		exh.report(&syntax.Match{Node: x.Node, Subject: x.Subject, Arms: x.Arms})
+		mc.checkArms(subj, &syntax.Match{Node: x.Node, Subject: x.Subject, Arms: x.Arms})
 	default:
 		mc.check(e, htmlT, env, eff)
 	}

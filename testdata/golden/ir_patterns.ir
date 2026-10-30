@@ -26,9 +26,7 @@
                   (var _m3)
                   (let rest : List Int
                     (var _m4)
-                    (+ (+ (var a) (var b)) (call (std List.length) (var rest)))))))
-            (default
-              (let x : Int (var _m1) (let more : List Int (var _m2) (var x))))))))))
+                    (+ (+ (var a) (var b)) (call (std List.length) (var rest)))))))))))))
 (value P.word : Int -> Text (n)
   (match lit (var n) (case 1 "one") (case 2 "two") (default "many")))
 (value P.greet : Text -> Text (name)

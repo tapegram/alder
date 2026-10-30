@@ -26,6 +26,13 @@ func Paste(m *syntax.Module, e syntax.Expr, holes map[*syntax.Var]int) (out stri
 	return strings.TrimRight(Render(p.expr(e), Width), "\n"), true
 }
 
+// Pattern prints pt, a pattern of module m, on one line as the formatter lays it out (the
+// checker quotes an unreachable arm's pattern with it).
+func Pattern(m *syntax.Module, pt syntax.Pattern) string {
+	p := newPrinter([]byte(strings.Join(m.Lines, "\n")))
+	return Render(Flat(p.pattern(pt)), Width)
+}
+
 // pastePlaces records the placeholder of each hole under n: atom says n stands where an
 // application needs parentheses, subject that it is inside a match subject. It reports false
 // for a hole inside a string literal or markup.

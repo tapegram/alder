@@ -352,11 +352,14 @@ func (m *matcher) witnesses(rows [][]*pat, t types.Type, max int) (ws []*pat, mo
 	}
 }
 
-// printWitness prints a witness as a pattern. At the top an unconstrained payload is named
-// (`Name x`, `Name p` in an update) and an unconstrained cons is `[x, ..rest]`, the spellings
-// flat matches always had; below the top an unconstrained part is `_` and a tail `..rest`.
+// printWitness prints a witness as a pattern, keeping the spellings flat matches always had at
+// the top: a constructor with an unconstrained payload is its bare name in a message (payload
+// "") and `Name x` (`Name p` in an update) in a fix's arm, and an unconstrained cons is
+// `[x, ..rest]`. Below the top an unconstrained part is `_` and a tail `..rest`.
 func printWitness(p *pat, payload string) string {
 	switch {
+	case p.union && len(p.args) == 1 && p.args[0].wild() && payload == "":
+		return p.tag
 	case p.union && len(p.args) == 1 && p.args[0].wild():
 		return p.tag + " " + payload
 	case p.tag == tagCons && p.args[0].wild() && p.args[1].wild():

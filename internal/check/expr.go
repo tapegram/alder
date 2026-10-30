@@ -755,18 +755,12 @@ func (c *Checker) boundaryRecord(rec *types.Record) bool {
 
 func (mc *modCtx) checkMatch(x *syntax.Match, expected types.Type, env *env, eff effect) {
 	subj := mc.c.u.Apply(mc.infer(x.Subject, env, eff))
-	ex := newExhaustiveness(mc, subj)
 	for _, a := range x.Arms {
 		child := env.child()
-		if ex.closed && ex.kind != "error" {
-			mc.c.errorf(diag.UnreachableArm, a.Span, "unreachable arm: every case is already handled")
-		}
 		mc.checkPattern(a.Pat, subj, child)
-		ex.refresh(subj)
-		ex.cover(a.Pat)
 		mc.check(a.Body, expected, child, eff)
 	}
-	ex.report(x)
+	mc.checkArms(subj, x)
 }
 
 func queryOrTask(t types.Type) (string, types.Type) {
