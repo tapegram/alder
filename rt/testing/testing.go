@@ -52,9 +52,10 @@ import (
 )
 
 // Inner runs t under a savepoint as Test.run does: ok is true with v on success; on *eff.ErrFail,
-// eff.ErrNotFound or *eff.ErrCapability (a capability's adapter returned an error) the
-// savepoint is rolled back, the session restored, and msg is the failure text ("not found" for
-// ErrNotFound, "<Name>: <msg>" for a capability's error); trace is the steps t performed. Any
+// eff.ErrNotFound, *eff.ErrRedirect (Query.redirect) or *eff.ErrCapability (a capability's
+// adapter returned an error) the savepoint is rolled back, the session restored, and msg is the
+// failure text ("not found" for ErrNotFound, "redirected to <url>" for a redirect, "<Name>:
+// <msg>" for a capability's error); trace is the steps t performed. Any
 // other error is returned.
 //
 // Inner is called from a Call's function while a Task runs (env.Kind is KTask); it begins the
@@ -121,6 +122,7 @@ func inner[T any](env *eff.Env, key string, arm bool, t eff.Task[T]) (v T, msg s
 	}
 	var f *eff.ErrFail
 	var c *eff.ErrCapability
+	var rd *eff.ErrRedirect
 	switch {
 	case errors.As(rerr, &c):
 		env.Session = session
@@ -131,6 +133,9 @@ func inner[T any](env *eff.Env, key string, arm bool, t eff.Task[T]) (v T, msg s
 	case errors.Is(rerr, eff.ErrNotFound):
 		env.Session = session
 		return v, "not found", false, trace, nil
+	case errors.As(rerr, &rd):
+		env.Session = session
+		return v, rd.Error(), false, trace, nil
 	}
 	return v, "", false, trace, rerr
 }

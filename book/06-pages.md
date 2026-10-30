@@ -549,8 +549,10 @@ that belong to the app stay the app's HTML pages: a `404` from
 `Query.notFound` or a parameter that does not decode (`App.notFound`), a
 failed `Task` or `load` (`App.error`), the maintenance `503`, and the
 redirect to the login page when the page `requires` something the session
-lacks. A file page that answers its own `503` (above) is different: that
-`503` is the page's own file.
+lacks. A file page's `load` that ends in `Query.redirect p` is a plain
+`303` to `p`, as its `Query.notFound` is the app's `404`. A file page that
+answers its own `503` (above) is different: that `503` is the page's own
+file.
 
 A file page has no messages. Its `view` returns a file, not a document, so
 nothing on it can post a message or a form, and a `msg`, `form` or
@@ -1251,7 +1253,8 @@ GET  /path
   1. decode route parameters      → 404 on failure
   2. check `requires`             → redirect to App.login on failure
      check `role R`, if declared  → 404 when the session's role is not R
-  3. load                         → Query, run by the runtime
+  3. load                         → Query, run by the runtime: 404 on
+                                    Query.notFound, 303 on Query.redirect
   4. view (with the session)      → HTML
 
 POST (generated message URL)
@@ -1268,7 +1271,7 @@ POST (generated message URL)
      history push; to another site, an event that navigates)
      Reject: load → view with the text on the form → patch
      Task failure: App.error → HTML, status 500 (404 for Query.notFound
-     and Task.notFound)
+     and Task.notFound, 303 for Query.redirect)
 ```
 
 ## The `App` module
@@ -1794,7 +1797,8 @@ not boosted: it loads its page as usual.
 
 A path no route matches, a page parameter that doesn't decode,
 `Query.notFound` and `Task.notFound` are answered with `App.notFound`,
-status 404. A failed
+status 404. `Query.redirect p` is not a failure page: it is a 303 to `p`,
+answered as a `Redirect p` is (under Datastar, the target morphed in). A failed
 `Task` is answered with `App.error`, status 500, and logged as an `error`
 line naming the request. With `ALDER_DEV=1` (chapter 11), the error's text
 is added at the end of the page's `<body>` as an HTML comment, such as

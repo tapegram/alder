@@ -142,8 +142,8 @@ func params__Index(_ Index__Params) []rt.KV {
 // a form (st, the state of the form that sent the message; nil for a message without one) load and
 // view again with t on the form (patched into the page under Datastar); for Rerender (and a Reject
 // without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh
-// does not post again). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound
-// or Task.notFound.
+// does not post again). A failed Task changes nothing: 500 (App.error), 404 for Query.notFound or
+// Task.notFound, or a 303 for Query.redirect.
 func update__Index(rq *web.Request, params Index__Params, msg Index__Msg, st *html.FormState) web.Response {
 	model, session, stop := page__Index(rq, params, nil)
 	if stop != nil {
@@ -180,8 +180,8 @@ func update__Index(rq *web.Request, params Index__Params, msg Index__Msg, st *ht
 }
 
 // Route__Index__page serves page Index, GET / (book 06): decode the parameters (404 when they do
-// not), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which a
-// test's browser reads).
+// not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
+// in rq.Model, which a test's browser reads).
 func Route__Index__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Index__Params(rq.Params, rq.Query)
@@ -236,9 +236,13 @@ func Route__Index__Clear() web.Route {
 	}}
 }
 
-// route__fail answers a load or update that did not succeed: 404 (App.notFound) for
-// Query.notFound and Task.notFound, else 500 (App.error).
+// route__fail answers a load or update that did not succeed: a 303 to the page for
+// Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
+	var rd *eff.ErrRedirect
+	if errors.As(err, &rd) {
+		return web.QueryRedirectResponse(rd.Location)
+	}
 	if errors.Is(err, eff.ErrNotFound) {
 		return web.NotFoundResponse(html.None())
 	}

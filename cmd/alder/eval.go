@@ -16,6 +16,7 @@ import (
 	"alder/internal/buildkit"
 	"alder/internal/diag"
 	"alder/internal/scratch"
+	"alder/internal/style"
 	"alder/internal/types"
 	"alder/rt/db"
 )
@@ -300,7 +301,7 @@ func evalPrint(stdout io.Writer, jsonOut bool, res *evalResult, value, typ strin
 		res.Value, res.Type = value, typ
 		return 0
 	}
-	fmt.Fprintf(stdout, "%s : %s\n", value, typ)
+	fmt.Fprintf(stdout, "%s%s\n", value, style.For(stdout).Dim(" : "+typ))
 	return 0
 }
 
@@ -324,7 +325,7 @@ func evalDiags(dir string, ds []diag.Diagnostic, mapLine func(diag.Diagnostic) (
 		if jsonOut {
 			res.Diagnostics = append(res.Diagnostics, json.RawMessage(diag.RenderJSON(d)))
 		} else {
-			fmt.Fprint(stderr, diag.RenderText(d, lines))
+			fmt.Fprint(stderr, diag.RenderTextStyled(d, lines, style.For(stderr)))
 		}
 	}
 	return failed

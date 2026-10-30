@@ -2,8 +2,11 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 
 	rtpkg "alder/rt"
 	"alder/rt/eff"
@@ -89,6 +92,18 @@ func FileResponse(f rtpkg.File, session any) Response {
 // non-nil session that differs from the request's is stored either way.
 func RedirectResponse(location string, session any) Response {
 	return Response{Status: http.StatusSeeOther, Location: location, Session: session}
+}
+
+// QueryRedirectResponse answers an effect that stopped with Query.redirect (eff.ErrRedirect): a
+// 303 to location, as RedirectResponse, leaving the session as it was. A location that is only a
+// fragment ("#", what Url.external makes of an unsafe URL, or "#frag") is refused with a 500
+// instead: it resolves to the request's own URL, so a browser would GET the same page again and
+// be redirected in a loop.
+func QueryRedirectResponse(location string) Response {
+	if strings.HasPrefix(location, "#") {
+		return ErrorResponse(html.None(), fmt.Errorf("%w: refusing to navigate to %s (a Query.redirect to a fragment loads the same page again)", eff.ErrInternal, strconv.Quote(location)))
+	}
+	return RedirectResponse(location, nil)
 }
 
 // NotFoundResponse renders doc (App.notFound) with status 404; a zero doc means

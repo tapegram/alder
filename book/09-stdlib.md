@@ -552,7 +552,9 @@ Task.sleep  : Int -> Task Unit                  -- the same, in a Task
 `Query.notFound` and `Task.notFound` (both
 `: Query a` / `: Task a`, no arguments) stop the effect and answer 404 with
 `App.notFound`; a `Task` that ends in `Task.notFound` is rolled back like
-any failed `Task`.
+any failed `Task`. `Query.redirect : Page -> Query a` stops the effect and
+answers a 303 to the page value, as `Redirect p` does (chapter 7,
+"Failure"): a page's `load` uses it to send the browser elsewhere.
 
 ## Test
 

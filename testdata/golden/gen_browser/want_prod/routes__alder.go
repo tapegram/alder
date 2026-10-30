@@ -80,8 +80,8 @@ func params__Auth__Login(_ Auth__Login__Params) []rt.KV {
 // Reject t on a form (st, the state of the form that sent the message; nil for a message without
 // one) load and view again with t on the form (patched into the page under Datastar); for Rerender
 // (and a Reject without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get:
-// a refresh does not post again). A failed Task changes nothing: 500 (App.error), or 404 for
-// Query.notFound or Task.notFound.
+// a refresh does not post again). A failed Task changes nothing: 500 (App.error), 404 for
+// Query.notFound or Task.notFound, or a 303 for Query.redirect.
 func update__Auth__Login(rq *web.Request, params Auth__Login__Params, msg Auth__Login__Msg, st *html.FormState) web.Response {
 	model, session, stop := page__Auth__Login(rq, params, nil)
 	if stop != nil {
@@ -112,8 +112,8 @@ func update__Auth__Login(rq *web.Request, params Auth__Login__Params, msg Auth__
 }
 
 // Route__Auth__Login__page serves page Auth.Login, GET /login (book 06): decode the parameters (404
-// when they do not), load (404 on Query.notFound, 500 on a failure), view (the model also in
-// rq.Model, which a test's browser reads).
+// when they do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view
+// (the model also in rq.Model, which a test's browser reads).
 func Route__Auth__Login__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/login", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Auth__Login__Params(rq.Params, rq.Query)
@@ -332,8 +332,8 @@ func params__Notes__Index(p Notes__Index__Params) []rt.KV {
 // Reject t on a form (st, the state of the form that sent the message; nil for a message without
 // one) load and view again with t on the form (patched into the page under Datastar); for Rerender
 // (and a Reject without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get:
-// a refresh does not post again). A failed Task changes nothing: 500 (App.error), or 404 for
-// Query.notFound or Task.notFound.
+// a refresh does not post again). A failed Task changes nothing: 500 (App.error), 404 for
+// Query.notFound or Task.notFound, or a 303 for Query.redirect.
 func update__Notes__Index(rq *web.Request, params Notes__Index__Params, msg Notes__Index__Msg, st *html.FormState) web.Response {
 	model, session, stop := page__Notes__Index(rq, params, nil)
 	if stop != nil {
@@ -364,8 +364,9 @@ func update__Notes__Index(rq *web.Request, params Notes__Index__Params, msg Note
 }
 
 // Route__Notes__Index__page serves page Notes.Index, GET / (book 06): decode the parameters (404
-// when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 500 on a failure),
-// view (the model also in rq.Model, which a test's browser reads).
+// when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on
+// Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser
+// reads).
 func Route__Notes__Index__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Index__Params(rq.Params, rq.Query)
@@ -549,8 +550,9 @@ func params__Notes__Show(p Notes__Show__Params) []rt.KV {
 }
 
 // Route__Notes__Show__page serves page Notes.Show, GET /notes/{id} (book 06): decode the parameters
-// (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 500 on a
-// failure), view (the model also in rq.Model, which a test's browser reads).
+// (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on
+// Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser
+// reads).
 func Route__Notes__Show__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/notes/{id}", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Show__Params(rq.Params, rq.Query)
@@ -580,7 +582,8 @@ func decode__App__Feedback(v url.Values) (r App__Feedback, errs []web.FieldError
 // update__App runs App's update for msg and answers its Nav: Redirect p is a 303 to p; Rerender and
 // Reject t are a 303 back to the page that sent the message (the Referer, else /), as App has no
 // page of its own to render (a Reject's text is not shown). The session the Task leaves is stored;
-// a failed Task changes nothing: 500 (App.error), or 404 for Query.notFound or Task.notFound.
+// a failed Task changes nothing: 500 (App.error), 404 for Query.notFound or Task.notFound, or a 303
+// for Query.redirect.
 func update__App(rq *web.Request, msg App__Msg) web.Response {
 	nav, err := eff.Run(rq.Env, eff.KTask, App__update(msg, rq.Env.Session.(App__Session)))
 	if err != nil {
@@ -615,9 +618,13 @@ func Route__App__Send() web.Route {
 	}}
 }
 
-// route__fail answers a load or update that did not succeed: 404 (App.notFound) for
-// Query.notFound and Task.notFound, else 500 (App.error).
+// route__fail answers a load or update that did not succeed: a 303 to the page for
+// Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
+	var rd *eff.ErrRedirect
+	if errors.As(err, &rd) {
+		return web.QueryRedirectResponse(rd.Location)
+	}
 	if errors.Is(err, eff.ErrNotFound) {
 		return web.NotFoundResponse(html.None())
 	}

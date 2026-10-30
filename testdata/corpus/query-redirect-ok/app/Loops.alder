@@ -1,0 +1,30 @@
+module Loops
+
+-- Redirects that end badly: at a page that is a 404, or in a loop.
+page "/loops/{to}" { to: Text }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session =
+  if params.to == "missing" then Query.redirect (Loops { to: "gone" })
+  else if params.to == "gone" then Query.notFound
+  else if params.to == "ping" then Query.redirect (Loops { to: "pong" })
+  else if params.to == "pong" then Query.redirect (Loops { to: "ping" })
+  else Query.succeed { }
+
+view : Model -> Session -> Html Msg
+view model session = <html><body><p>loops</p></body></html>
+
+test "a redirect to a page that is a 404" = {
+  let r <- Test.open (Loops { to: "missing" })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "two pages redirecting to each other" = {
+  let r <- Test.open (Loops { to: "ping" })
+  match r.answer {
+    RequestFailed t -> Task.succeed (Text.contains "more than 10 redirects in a row" t),
+    _ -> Task.succeed False,
+  }
+}

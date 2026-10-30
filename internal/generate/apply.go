@@ -12,6 +12,7 @@ import (
 
 	"alder/internal/buildkit"
 	"alder/internal/diag"
+	"alder/internal/style"
 	"alder/internal/syntax"
 )
 
@@ -406,11 +407,15 @@ func writeFile(path, text string) error {
 // its file, the diff of the edited files (under --dry-run also the created ones, in full), then
 // the diagnostics (as `alder check` renders them). A refused result (refused) is its
 // diagnostics alone: nothing was written, so no file is named.
-func (r *Result) RenderText(refused bool) string {
+func (r *Result) RenderText(refused bool) string { return r.RenderTextStyled(refused, style.Plain) }
+
+// RenderTextStyled is RenderText with colour from st: the verbs green (written) or cyan (would),
+// `next:` bold, the diagnostics as diag.RenderTextStyled. With style.Plain it is RenderText.
+func (r *Result) RenderTextStyled(refused bool, st style.Style) string {
 	var b strings.Builder
 	if refused {
 		for _, d := range r.Diagnostics {
-			b.WriteString(diag.RenderText(d, r.Sources[d.Span.File]))
+			b.WriteString(diag.RenderTextStyled(d, r.Sources[d.Span.File], st))
 		}
 		return b.String()
 	}
@@ -422,6 +427,11 @@ func (r *Result) RenderText(refused bool) string {
 			verb = map[bool]string{true: "edited", false: "would edit"}[r.Written]
 		case "removed":
 			verb = map[bool]string{true: "removed", false: "would remove"}[r.Written]
+		}
+		if r.Written {
+			verb = st.Green(verb)
+		} else {
+			verb = st.Cyan(verb)
 		}
 		fmt.Fprintf(&b, "%s %s\n", verb, f.Path)
 		if strings.HasPrefix(f.Path, "migrations/") && strings.HasSuffix(f.Path, ".sql") {
@@ -438,10 +448,10 @@ func (r *Result) RenderText(refused bool) string {
 	}
 	b.WriteString(r.Diff)
 	for _, d := range r.Diagnostics {
-		b.WriteString(diag.RenderText(d, r.Sources[d.Span.File]))
+		b.WriteString(diag.RenderTextStyled(d, r.Sources[d.Span.File], st))
 	}
 	if r.Next != "" {
-		fmt.Fprintf(&b, "next: %s\n", r.Next)
+		fmt.Fprintf(&b, "%s %s\n", st.Bold("next:"), r.Next)
 	}
 	return b.String()
 }
