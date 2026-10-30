@@ -307,12 +307,20 @@ func startScratchWatch(t *testing.T, text string, extra ...string) *scratchWatch
 	return w
 }
 
-// edit rewrites the file with a modification time later than every earlier write.
+// edit replaces the file with a modification time later than every earlier write, in one rename:
+// a write then a Chtimes of the file itself are two changes, which a poll between them (on a
+// loaded machine) reports apart, superseding a run the test does not expect (#65).
 func (w *scratchWatcher) edit(text string) {
 	w.t.Helper()
-	writeScratch(w.t, w.file, text)
+	tmp := w.file + ".tmp" // beside the file, outside the watched app/, adapters/ and static/
+	writeScratch(w.t, tmp, text)
 	w.stamp = w.stamp.Add(2 * time.Second)
-	os.Chtimes(w.file, w.stamp, w.stamp)
+	if err := os.Chtimes(tmp, w.stamp, w.stamp); err != nil {
+		w.t.Fatal(err)
+	}
+	if err := os.Rename(tmp, w.file); err != nil {
+		w.t.Fatal(err)
+	}
 }
 
 // waitFor waits until the stream holds want.
