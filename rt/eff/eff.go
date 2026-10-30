@@ -45,7 +45,7 @@ type Task[T any] struct{ node node }
 func (Query[T]) step() {}
 func (Task[T]) step()  {}
 
-// node is the untyped tree: one of pure, bind, call, fail, notFound.
+// node is the untyped tree: one of pure, bind, call, fail, notFound, redirect.
 type node interface{ isNode() }
 
 type pure struct{ v any }
@@ -65,6 +65,8 @@ type fail struct{ msg string }
 
 type notFound struct{}
 
+type redirect struct{ location string }
+
 // mark begins (on) or ends a Task.all, for the recorder.
 type mark struct{ on bool }
 
@@ -73,6 +75,7 @@ func (bind) isNode()     {}
 func (call) isNode()     {}
 func (fail) isNode()     {}
 func (notFound) isNode() {}
+func (redirect) isNode() {}
 func (mark) isNode()     {}
 
 // as unwraps a value carried through the untyped tree. A nil interface
@@ -138,6 +141,10 @@ func Fail[T any](msg string) Task[T] { return Task[T]{fail{msg}} }
 // NotFound is an effect that fails with ErrNotFound (a missing record).
 // Run rolls a Task's transaction back.
 func NotFound[T any]() Task[T] { return Task[T]{notFound{}} }
+
+// Redirect is an effect that stops with *ErrRedirect to location (Query.redirect, book 07): a
+// route answers it with a 303 to location. Run rolls a Task's transaction back, as for NotFound.
+func Redirect[T any](location string) Task[T] { return Task[T]{redirect{location}} }
 
 // Call is one effect step. name is for the log and Env.Trace ("Db.get
 // Todo", "Password.verify"); write says whether it may write (a write Call
@@ -298,6 +305,12 @@ func (e *ErrFail) Error() string { return e.Msg }
 // not there. Run returns this exact value, so err == ErrNotFound works.
 var ErrNotFound = errors.New("not found")
 
+// ErrRedirect is the error of an effect that stopped with Query.redirect: a route answers it
+// with a 303 to Location (route__fail); Test.run (rtesting.Inner) reports its Error text.
+type ErrRedirect struct{ Location string }
+
+func (e *ErrRedirect) Error() string { return "redirected to " + e.Location }
+
 // ErrCapability is the error of a capability whose implementation (an adapter) returned an
 // error: Name is the step ("Password.verify") and Err the adapter's error. Generated
 // capability Calls wrap with CapError. A route answers it as it answers any other error (500);
@@ -314,12 +327,14 @@ func (e *ErrCapability) Error() string { return e.Name + ": " + e.Err.Error() }
 func (e *ErrCapability) Unwrap() error { return e.Err }
 
 // CapError is what a generated capability Call returns for its adapter's error err: nil for
-// nil; err itself when it is already a failure (*ErrFail, ErrNotFound) or an ErrCapability;
+// nil; err itself when it is already a failure (*ErrFail, ErrNotFound, *ErrRedirect) or an
+// ErrCapability;
 // otherwise &ErrCapability{name, err}.
 func CapError(name string, err error) error {
 	var f *ErrFail
 	var c *ErrCapability
-	if err == nil || errors.Is(err, ErrNotFound) || errors.As(err, &f) || errors.As(err, &c) {
+	var rd *ErrRedirect
+	if err == nil || errors.Is(err, ErrNotFound) || errors.As(err, &f) || errors.As(err, &c) || errors.As(err, &rd) {
 		return err
 	}
 	return &ErrCapability{Name: name, Err: err}
