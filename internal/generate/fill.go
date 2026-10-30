@@ -363,15 +363,16 @@ func parseAddress(p *Program, address string) (mod, decl, arm string, err error)
 		if rest != "" {
 			return "", "", "", Refusef("`%s` is not a declaration: write `Module.decl`, `Module.update.Msg` or `Module.\"test name\"`", address)
 		}
-		if p.Modules[mod] == nil {
+		if p.Modules[p.ResolveModule(mod)] == nil {
 			return "", "", "", Refusef("there is no module `%s`", mod)
 		}
+		mod = p.ResolveModule(mod)
 		return mod, decl, "", nil
 	}
 	segs := strings.Split(address, ".")
 	for i := len(segs) - 1; i >= 1; i-- {
-		if p.Modules[strings.Join(segs[:i], ".")] != nil {
-			mod, rest := strings.Join(segs[:i], "."), segs[i:]
+		if cand := p.ResolveModule(strings.Join(segs[:i], ".")); p.Modules[cand] != nil {
+			mod, rest := cand, segs[i:]
 			if len(rest) > 2 {
 				return "", "", "", Refusef("`%s` is not a declaration: write `Module.decl`, `Module.update.Msg` or `Module.\"test name\"`", address)
 			}

@@ -1243,3 +1243,31 @@ func TestGenerateNoNestedPage(t *testing.T) {
 		t.Fatal("no generated pages found")
 	}
 }
+
+// TestGenerate_TableNameAddress (#33): `alder new decl Entry …`, `alder new test Entry …` and
+// `alder fill Entry.x -` address the table's module, Table.Entry; the full path still works.
+func TestGenerate_TableNameAddress(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := genApp(t, "scaffold")
+	run := func(stdin string, args ...string) (int, string) {
+		code, out, errs := alderIn(t, dir, stdin, args...)
+		return code, out + errs
+	}
+	if code, o := run("", "new", "decl", "Entry", "weight", "Int"); code != 0 {
+		t.Fatalf("new decl Entry: exit %d: %s", code, o)
+	}
+	if code, o := run("", "new", "test", "Entry", "has a weight"); code != 0 {
+		t.Fatalf("new test Entry: exit %d: %s", code, o)
+	}
+	if code, o := run("3", "fill", "Entry.weight", "-"); code != 0 {
+		t.Fatalf("fill Entry.weight: exit %d: %s", code, o)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "app", "Table", "Entry.alder"))
+	if err != nil || !strings.Contains(string(b), "weight = 3") || !strings.Contains(string(b), `test "has a weight"`) {
+		t.Fatalf("Table/Entry.alder (%v):\n%s", err, b)
+	}
+	if code, o := run("4", "fill", "--decl", "Table.Entry.weight", "-"); code != 0 {
+		t.Fatalf("fill --decl with the full path: exit %d: %s", code, o)
+	}
+}

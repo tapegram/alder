@@ -97,6 +97,7 @@ func parseTypeDecl(decl string) (*syntax.TypeDecl, error) {
 // (at its end when it has none). It refuses a name the module declares and a type that does
 // not parse.
 func NewDecl(p *Program, module, name, typ string) ([]Edit, error) {
+	module = p.ResolveModule(module)
 	m := p.Modules[module]
 	if m == nil {
 		return nil, Refusef("there is no module `%s` (`alder new type` or `alder new table` makes one)", module)
@@ -148,6 +149,7 @@ func insertBeforeTests(e *srcEdit, m *syntax.Module, text string) {
 // hole is the test's whole body, a `Task Bool` (a block filled by `alder fill` becomes the
 // test's block), at the end of the module. It refuses a name the module's tests have.
 func NewTest(p *Program, module, name string) ([]Edit, error) {
+	module = p.ResolveModule(module)
 	m := p.Modules[module]
 	if m == nil {
 		return nil, Refusef("there is no module `%s`: a test is written in the module it tests", module)
