@@ -124,6 +124,12 @@ func (l *Lexer) peek2() byte {
 	}
 	return l.src[l.pos+1]
 }
+func (l *Lexer) peekAt(n int) byte {
+	if l.pos+n >= len(l.src) {
+		return 0
+	}
+	return l.src[l.pos+n]
+}
 func (l *Lexer) tok(k Kind, text string, line, col, off int) Token {
 	return Token{Kind: k, Text: text, Line: line, Col: col, Offset: off}
 }
@@ -202,11 +208,32 @@ func (l *Lexer) next() Token {
 		for isDigit(l.peek()) {
 			l.advance()
 		}
+		isFloat := false
 		if l.peek() == '.' && isDigit(l.peek2()) {
 			l.advance()
 			for isDigit(l.peek()) {
 				l.advance()
 			}
+			isFloat = true
+		}
+		// An exponent needs e|E, an optional sign and at least one digit;
+		// otherwise the e is left for the next token (1e is Int, then LIdent).
+		if p := l.peek(); p == 'e' || p == 'E' {
+			n := 1
+			if q := l.peekAt(n); q == '+' || q == '-' {
+				n++
+			}
+			if isDigit(l.peekAt(n)) {
+				for i := 0; i < n; i++ {
+					l.advance()
+				}
+				for isDigit(l.peek()) {
+					l.advance()
+				}
+				isFloat = true
+			}
+		}
+		if isFloat {
 			return l.tok(Float, string(l.src[off:l.pos]), line, col, off)
 		}
 		return l.tok(Int, string(l.src[off:l.pos]), line, col, off)

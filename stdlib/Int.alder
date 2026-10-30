@@ -8,3 +8,4 @@ min : Int -> Int -> Int
 max : Int -> Int -> Int
 abs : Int -> Int
 clamp : { min: Int, max: Int } -> Int -> Int
+pow : Int -> Int -> Int -- Int.pow base exponent; a negative exponent gives 0

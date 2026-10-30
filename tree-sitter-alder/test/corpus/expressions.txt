@@ -210,3 +210,25 @@ update msg form = match msg {
         (arm
           pattern: (wildcard)
           body: (identifier))))))
+
+================================================================================
+exponent float literals
+================================================================================
+
+module M
+
+x = [1.5e-3, 1e6, 2E+3]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (value_decl
+    binding: (binding
+      name: (identifier)
+      body: (list
+        (float)
+        (float)
+        (float)))))

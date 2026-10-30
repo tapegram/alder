@@ -1,0 +1,24 @@
+module App
+
+error : Error -> Html Never
+error err = <h1>Something went wrong</h1>
+
+notFound : Html Never
+notFound = <h1>Not found</h1>
+
+-- Exponent literals are always Float (book chapter 9).
+
+small : Float
+small = 1.5e-3
+
+million : Float
+million = 1e6
+
+big : Float
+big = 2E+3
+
+sum : Float
+sum = small + million + big + Float.pi
+
+power : Int
+power = Int.pow 2 10

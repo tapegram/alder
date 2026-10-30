@@ -164,6 +164,7 @@ Int.min      : Int -> Int -> Int
 Int.max      : Int -> Int -> Int
 Int.abs      : Int -> Int
 Int.clamp    : { min: Int, max: Int } -> Int -> Int
+Int.pow      : Int -> Int -> Int                -- Int.pow base exponent
 Int.Positive, Int.NonNegative                -- refinement brands
 
 Float.round  : Float -> Int
@@ -175,11 +176,27 @@ Float.sqrt   : Float -> Float
 Float.exp    : Float -> Float
 Float.log    : Float -> Float                   -- natural logarithm
 Float.pow    : Float -> Float -> Float          -- Float.pow base exponent
+Float.truncate   : Float -> Int                 -- rounds toward zero
+Float.clamp      : { min: Float, max: Float } -> Float -> Float
+Float.pi, Float.e                               -- Float constants
+Float.isNaN, Float.isInfinite : Float -> Bool
+Float.logBase    : Float -> Float -> Float      -- Float.logBase base x
+Float.sin, Float.cos, Float.tan, Float.asin, Float.acos, Float.atan : Float -> Float
+Float.atan2      : Float -> Float -> Float      -- Float.atan2 y x
 ```
 
 `Int` arithmetic wraps on overflow; `/` truncates toward zero and `%` has
 the dividend's sign; an `Int` division or remainder by zero is a runtime
 failure (chapter 4). `Float` division by zero gives infinity or NaN.
+
+`Int.pow` wraps on overflow like `*`, and a negative exponent gives `0`
+(`Int.pow 2 (-1)` is `0`), never a failure. `Float.clamp` takes the same
+record as `Int.clamp` and checks in the same order, so `min` above `max`
+behaves as it does there. `Float.truncate` rounds toward zero.
+
+A `Float` literal may carry an exponent: `1.5e-3`, `1e6` and `2E+3`. Any
+literal with an exponent is a `Float`, including `1e6`. `Text.toFloat` reads
+the same form, and `Text.fromFloat` output is unchanged.
 
 `Float.round` rounds half away from zero: `Float.round 2.5` is `3` and
 `Float.round (-2.5)` is `-3`. `Float.format { decimals: n }` rounds the same
