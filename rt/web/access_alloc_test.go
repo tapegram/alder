@@ -1,14 +1,27 @@
 package web
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"alder/rt/applog"
 	"alder/rt/html"
 )
+
+// An error line names its URL cut at applog.MaxPath, as an access line does.
+func TestErrorLine_PathCapped(t *testing.T) {
+	var s sink
+	long := strings.Repeat("/abc", 1500)
+	h := NewRouter(nil, s.opts(func(o *Options) { o.SharedMaintenance = errors.New("ahead") }))
+	serve(h, httptest.NewRequest("GET", long, nil))
+	if len(s.lines) != 1 || !strings.HasPrefix(s.lines[0], "warn: GET "+long[:applog.MaxPath]+"…: maintenance: ahead rid=") {
+		t.Errorf("lines (%d): %.120q", len(s.lines), s.lines)
+	}
+}
 
 // fixedWriter is a ResponseWriter that allocates nothing per request (httptest's recorder does).
 type fixedWriter struct{ h http.Header }

@@ -175,11 +175,12 @@ func (t *tracker) Write(b []byte) (int, error) {
 	return n, err
 }
 
-// line is a log line about request r answered on w: "<method> <masked URL>: <what>", ending
+// line is a log line about request r answered on w: "<method> <masked URL>: <what>" (the URL
+// cut at applog.MaxPath like an access line's), ending
 // " rid=<id>" (the request's id) when w is the router's tracker. A stack, when there is one,
 // follows on the next lines (after the id).
 func line(w http.ResponseWriter, r *http.Request, what string) string {
-	s := r.Method + " " + applog.MaskURL(r.URL) + ": " + what
+	s := r.Method + " " + applog.CutPath(applog.MaskURL(r.URL)) + ": " + what
 	if tw, ok := w.(*tracker); ok && tw.id != "" {
 		s += " rid=" + tw.id
 	}

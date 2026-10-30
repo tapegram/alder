@@ -217,14 +217,20 @@ func (a *Access) MaskedPath() string {
 	if p == "" && a.URL != nil {
 		p = MaskURL(a.URL)
 	}
-	if len(p) > MaxPath {
-		i := MaxPath
-		for i > 0 && !utf8.RuneStart(p[i]) {
-			i--
-		}
-		p = p[:i] + "…"
+	return CutPath(p)
+}
+
+// CutPath is p cut at MaxPath bytes, on a character boundary, ending "…"; p itself when it is
+// not longer. Access lines and the router's error lines show a URL through it.
+func CutPath(p string) string {
+	if len(p) <= MaxPath {
+		return p
 	}
-	return p
+	i := MaxPath
+	for i > 0 && !utf8.RuneStart(p[i]) {
+		i--
+	}
+	return p[:i] + "…"
 }
 
 // bufs are the text lines' buffers.

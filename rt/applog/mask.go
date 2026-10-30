@@ -53,7 +53,11 @@ func containsFold(s, w string) bool {
 //   - 32 or more base64 or hex characters without a space;
 //   - 32 or more URL-safe token characters (letters, digits, `-`, `_`, `.`, and base64's `+`,
 //     `/`, `=`) holding an upper-case letter, a lower-case letter and a digit: a base64url
-//     token. A UUID (hex, one case), a slug or a file name has not all three.
+//     token. A UUID (hex, one case) or a slug has not all three. A name ending in a short file
+//     extension (a dot and 1 to 5 letters or digits: `.pdf`, `.png`, `.csv`) is a file name,
+//     not taken for this kind: it is a secret only when the part before the extension is
+//     itself a JWT or 32 or more base64, hex or base32 characters
+//     (`Quarterly_Report_2026_Final_v2.pdf` is readable, `<40 hex>.png` is not).
 //
 // A path (starting `/` or `./`, or with a `/` and no `=` or `+`) is never taken for the last two
 // kinds. The checker refuses such a literal in a `deploy` declaration (E0030); the log masks it.
@@ -72,11 +76,14 @@ func LooksSecret(s string) bool {
 			return true
 		}
 	}
-	if strings.HasPrefix(s, "eyJ") && strings.Count(s, ".") >= 2 && !strings.ContainsAny(s, " /") {
+	if isJWT(s) {
 		return true
 	}
 	if len(s) < 32 || strings.HasPrefix(s, "/") || strings.HasPrefix(s, "./") || (strings.Contains(s, "/") && !strings.ContainsAny(s, "=+")) {
 		return false
+	}
+	if stem, ok := cutExtension(s); ok {
+		return isJWT(stem) || (len(stem) >= 32 && base64Only(stem))
 	}
 	base64, upper, lower, digit := true, false, false, false
 	for i := 0; i < len(s); i++ {
@@ -96,6 +103,38 @@ func LooksSecret(s string) bool {
 		}
 	}
 	return base64 || upper && lower && digit
+}
+
+// isJWT reports whether s looks like a JWT: `eyJ` (a base64 JSON object) and two dots.
+func isJWT(s string) bool {
+	return strings.HasPrefix(s, "eyJ") && strings.Count(s, ".") >= 2 && !strings.ContainsAny(s, " /")
+}
+
+// cutExtension is s without a short file extension (a dot and 1 to 5 ASCII letters or digits
+// ending it), and whether it had one.
+func cutExtension(s string) (string, bool) {
+	i := strings.LastIndexByte(s, '.')
+	if i < 0 || len(s)-i-1 < 1 || len(s)-i-1 > 5 {
+		return "", false
+	}
+	for j := i + 1; j < len(s); j++ {
+		c := s[j]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
+			return "", false
+		}
+	}
+	return s[:i], true
+}
+
+// base64Only reports whether s is all base64 (and so hex and base32) characters.
+func base64Only(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '+' || c == '/' || c == '=') {
+			return false
+		}
+	}
+	return true
 }
 
 // MaskURL is u's path and query as a log line shows them, with every secret replaced by Mask:
@@ -174,13 +213,21 @@ func maskPair(b *strings.Builder, pair string, depth int) {
 var escapedMask = url.QueryEscape(Mask)
 
 // maskInner is s masked when s is a URL holding something to hide (its path, query or
-// fragment), and whether it was.
+// fragment), and whether it was. A URL with a query or fragment nested past maxDepth is
+// replaced whole by Mask.
 func maskInner(s string, depth int) (string, bool) {
-	if depth > maxDepth || !strings.ContainsAny(s, "/?#") {
+	if !strings.ContainsAny(s, "/?#") {
 		return "", false
 	}
 	u, err := url.Parse(s)
 	if err != nil || u.Opaque != "" {
+		return "", false
+	}
+	if depth > maxDepth {
+		// a URL nested deeper than MaskURL looks: hidden whole when it could hold anything
+		if u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+			return Mask, true
+		}
 		return "", false
 	}
 	var b strings.Builder
