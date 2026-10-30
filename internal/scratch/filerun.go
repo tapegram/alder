@@ -134,12 +134,7 @@ func RunFile(ctx context.Context, appDir string, f File, o FileOptions) (r FileR
 			appErr = appErr || d.Severity == "error"
 			continue
 		}
-		if inc, ok := f.incomplete(d, checked.MapDiag); ok {
-			d = inc
-		} else {
-			d = f.Map.Position(d, checked.MapDiag, f.Name)
-			d.Message = itPrefixRE.ReplaceAllString(d.Message, "")
-		}
+		d = f.Positioned(d, checked)
 		fileDiags = append(fileDiags, d)
 		fileErr = fileErr || d.Severity == "error"
 	}
@@ -333,6 +328,24 @@ func hasError(ds []diag.Diagnostic) bool {
 // errAt is an error diagnostic of the file at p.
 func (f File) errAt(p diag.Pos, msg string) diag.Diagnostic {
 	return diag.Diagnostic{Severity: "error", Message: msg, Span: diag.Span{File: f.Name, Start: p, End: p}}
+}
+
+// Positioned is d, a diagnostic of f's module in the program c checked (c.InSession(d)), as
+// RunFile reports it: positioned in the file, without the parser's "in the definition of `itK`"
+// prefix, and re-anchored at the end of an incomplete item that runs on into a watch.
+func (f File) Positioned(d diag.Diagnostic, c Checked) diag.Diagnostic {
+	if inc, ok := f.incomplete(d, c.MapDiag); ok {
+		return inc
+	}
+	d = f.Map.Position(d, c.MapDiag, f.Name)
+	d.Message = itPrefixRE.ReplaceAllString(d.Message, "")
+	return d
+}
+
+// ModuleName is the module f's `module` line declares, "" when it has none.
+func (f File) ModuleName() string {
+	_, declared, _ := headerLines(f.Source)
+	return declared
 }
 
 // incomplete re-anchors a diagnostic of the scratch module that falls inside a watch's

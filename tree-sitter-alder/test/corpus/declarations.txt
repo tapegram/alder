@@ -330,6 +330,69 @@ fake Markdown {
               argument: (identifier))))))))
 
 ================================================================================
+fake entry whose application ends in a name (#29)
+================================================================================
+
+module Mail
+
+fake Mail {
+  table Sent { id: SentId @id }
+
+  -- one row per message
+  send m = Db.insert Sent m
+  count = Db.count Sent
+}
+
+fake Clock { now = Task.succeed 0 }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (fake_decl
+    name: (constructor)
+    body: (fake_body
+      (table_decl
+        name: (constructor)
+        fields: (record_type
+          (field_decl
+            name: (identifier)
+            type: (type_name
+              (constructor))
+            attribute: (field_attribute
+              name: (identifier)))))
+      (comment)
+      (fake_entry
+        name: (identifier)
+        params: (parameters
+          (identifier))
+        body: (application
+          function: (qualified_name
+            module: (constructor)
+            name: (identifier))
+          argument: (constructor)
+          argument: (identifier)))
+      (fake_entry
+        name: (identifier)
+        body: (application
+          function: (qualified_name
+            module: (constructor)
+            name: (identifier))
+          argument: (constructor)))))
+  (fake_decl
+    name: (constructor)
+    body: (fake_body
+      (fake_entry
+        name: (identifier)
+        body: (application
+          function: (qualified_name
+            module: (constructor)
+            name: (identifier))
+          argument: (integer))))))
+
+================================================================================
 session, login, choose, silo, deploy, test
 ================================================================================
 

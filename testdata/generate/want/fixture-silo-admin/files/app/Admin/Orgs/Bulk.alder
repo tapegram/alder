@@ -129,10 +129,10 @@ test "deleting the chosen rows" = {
       gone: Maybe.map (\row -> row.id) gone,
       left: Maybe.map (\row -> row.id) left,
     } == {
-        answer: Redirected (Admin.Orgs.Index {}),
-        gone: Nothing,
-        left: Just org2,
-      }
+      answer: Redirected (Admin.Orgs.Index {}),
+      gone: Nothing,
+      left: Just org2,
+    }
   )
 }
 
@@ -160,10 +160,10 @@ test "25 chosen ids are taken" = {
       kept: Maybe.map (\row -> row.id) after,
       warned: Test.count "#too-many" page.doc,
     } == {
-        answer: Redirected (Admin.Orgs.Index {}),
-        kept: Nothing,
-        warned: 0,
-      }
+      answer: Redirected (Admin.Orgs.Index {}),
+      kept: Nothing,
+      warned: 0,
+    }
   )
 }
 
@@ -191,10 +191,10 @@ test "26 chosen ids are refused" = {
       kept: Maybe.map (\row -> row.id) after,
       warned: Test.count "#too-many" page.doc,
     } == {
-        answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
-        kept: Just org1,
-        warned: 1,
-      }
+      answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
+      kept: Just org1,
+      warned: 1,
+    }
   )
 }
 

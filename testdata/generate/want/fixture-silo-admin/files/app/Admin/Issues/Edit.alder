@@ -240,16 +240,16 @@ test "saving changes every field" = {
       projects: Test.texts "select[name=project] option" page.doc,
       assignees: Test.texts "select[name=assignee] option" page.doc,
     } == {
-        answer: Redirected (Admin.Issues.Show { org: org, id: issue1 }),
-        row: Just {
-          title: Text.NonEmpty "title-2",
-          project: project2,
-          status: Closed,
-          assignee: Just user2,
-        },
-        projects: ["name-1", "name-2"],
-        assignees: ["", "email-1@example.com", "email-2@example.com"],
-      }
+      answer: Redirected (Admin.Issues.Show { org: org, id: issue1 }),
+      row: Just {
+        title: Text.NonEmpty "title-2",
+        project: project2,
+        status: Closed,
+        assignee: Just user2,
+      },
+      projects: ["name-1", "name-2"],
+      assignees: ["", "email-1@example.com", "email-2@example.com"],
+    }
   )
 }
 
@@ -421,15 +421,15 @@ test "a long list of projects offers 50, and the search narrows it" = {
       found: Test.count "select[name=project] option" found.doc <= 3,
       answer: r.answer,
     } == {
-        shown: 51,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Issues.Edit {
-          org: org,
-          id: issue1,
-          findProject: "zz",
-        }),
-      }
+      shown: 51,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Issues.Edit {
+        org: org,
+        id: issue1,
+        findProject: "zz",
+      }),
+    }
   )
 }
 
@@ -476,12 +476,12 @@ test "the row's own project is offered first when it sorts past the 50" = {
       once: List.length (List.filter (\o -> o.id == project1) page.model.projects),
       shown: List.length page.model.projects,
     } == {
-        answer: Redirected (Admin.Issues.Show { org: org, id: issue1 }),
-        kept: Just project1,
-        first: Just project1,
-        once: 1,
-        shown: 51,
-      }
+      answer: Redirected (Admin.Issues.Show { org: org, id: issue1 }),
+      kept: Just project1,
+      first: Just project1,
+      once: 1,
+      shown: 51,
+    }
   )
 }
 
@@ -568,15 +568,15 @@ test "a long list of users offers 50, and the search narrows it" = {
       found: Test.count "select[name=assignee] option" found.doc <= 3,
       answer: r.answer,
     } == {
-        shown: 51,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Issues.Edit {
-          org: org,
-          id: issue1,
-          findAssignee: "zz",
-        }),
-      }
+      shown: 51,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Issues.Edit {
+        org: org,
+        id: issue1,
+        findAssignee: "zz",
+      }),
+    }
   )
 }
 
@@ -624,12 +624,12 @@ test "the row's own assignee is offered first when it sorts past the 50" = {
       once: List.length (List.filter (\o -> o.id == user2) page.model.assignees),
       shown: List.length page.model.assignees,
     } == {
-        answer: Redirected (Admin.Issues.Show { org: org, id: issue1 }),
-        kept: Just (Just user2),
-        first: Just user2,
-        once: 1,
-        shown: 51,
-      }
+      answer: Redirected (Admin.Issues.Show { org: org, id: issue1 }),
+      kept: Just (Just user2),
+      first: Just user2,
+      once: 1,
+      shown: 51,
+    }
   )
 }
 
