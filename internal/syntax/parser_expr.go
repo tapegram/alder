@@ -629,7 +629,7 @@ func (p *Parser) parsePattern() Pattern {
 			return l
 		}
 		c := &PCtor{Name: t.Text}
-		if p.at(LIdent) || p.at(Underscore) || p.at(LBrace) || p.at(LParen) || p.at(UIdent) || p.at(Int) || p.at(String) {
+		if p.at(LIdent) || p.at(Underscore) || p.at(LBrace) || p.at(LParen) || p.at(UIdent) || p.at(Int) || p.at(String) || p.at(LBracket) {
 			c.Arg = p.parsePattern1()
 		}
 		c.Span = p.spanFrom(start)
@@ -645,7 +645,7 @@ func (p *Parser) parsePattern() Pattern {
 				l.Rest = p.expect(LIdent, "rest name").Text
 				break
 			}
-			l.Elems = append(l.Elems, p.parsePattern1())
+			l.Elems = append(l.Elems, p.parsePattern())
 			if p.at(Comma) {
 				p.advance()
 			} else {
@@ -668,7 +668,8 @@ func (p *Parser) parsePattern() Pattern {
 	return w
 }
 
-// parsePattern1: a constructor argument — no bare constructor application (needs parens).
+// parsePattern1: a constructor argument — no constructor application (needs parens); list
+// elements and record fields take a full pattern.
 func (p *Parser) parsePattern1() Pattern {
 	if p.at(UIdent) {
 		t := p.advance()
@@ -698,7 +699,7 @@ func (p *Parser) parseRecordPattern() Pattern {
 		f := &PField{Name: ft.Text}
 		if p.at(Colon) {
 			p.advance()
-			f.Pat = p.parsePattern1()
+			f.Pat = p.parsePattern()
 		} else {
 			p.errorAt(p.tok, "record patterns are written `{ field: pattern }`")
 			f.Pat = &PWild{}
