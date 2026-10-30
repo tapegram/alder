@@ -633,3 +633,21 @@ func TestParse_LambdaBadParenOneError(t *testing.T) {
 		}
 	}
 }
+
+// A bad lambda parameter inside delimiters leaves them to the enclosing parser, and the next
+// declaration's own errors stay its own: exactly one error in `f` (the parameter) and one in
+// `g`.
+func TestParse_LambdaBadParenInsideDelimiters(t *testing.T) {
+	for name, src := range map[string]string{
+		"parens, blank line": "module M\n\nf = List.map (\\(1 x) -> x) [1]\n\ng : Int\ng = (1 +\n",
+		"block":              "module M\n\nf = {\n  let h = List.map (\\(1 x) -> x) [1]\n  h\n}\n\ng : Int\ng = (1 +\n",
+		"no blank line":      "module M\n\nf = List.map (\\(1 x) -> x) [1]\ng : Int\ng = (1 +\n",
+	} {
+		_, diags := ParseFile("t.alder", []byte(src))
+		if len(diags) != 2 ||
+			!strings.Contains(diags[0].Message, "in the definition of `f`: expected a parameter name after `(`") ||
+			!strings.Contains(diags[1].Message, "in the definition of `g`:") {
+			t.Errorf("%s: diagnostics %+v", name, diags)
+		}
+	}
+}

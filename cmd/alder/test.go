@@ -448,7 +448,7 @@ func (c *resultCounter) Write(p []byte) (int, error) {
 }
 
 // readStatus reads the status file the test program writes before each test: `Module\tName\n`,
-// for a property test then `Module\tName\tseed\trun\n` before each attempt (run from 1, or -1
+// for a property test then `Module\tName\t\x00fuzz\tseed\trun\n` before each attempt (run from 1, or -1
 // while its saved failure replays; 0 for a plain test), or nothing when no test was running.
 func readStatus(path string) (mod, name string, seed uint64, run int, ok bool) {
 	b, err := os.ReadFile(path)

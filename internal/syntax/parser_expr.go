@@ -308,7 +308,7 @@ func (p *Parser) parsePrimary() Expr {
 				p.advance()
 				if !p.at(LIdent) {
 					p.errorAt(p.tok, "expected a parameter name after `(`")
-					p.skipToDeclStayingOnLine() // what follows would only cascade
+					p.skipBadLambda() // what follows would only cascade
 					return p.unit(start)
 				}
 			}
@@ -384,6 +384,34 @@ func (p *Parser) checkCaseOf(e Expr, start Token) Expr {
 		}
 	}
 	return e
+}
+
+// skipBadLambda consumes the rest of a lambda whose parameters did not parse, up to what the
+// enclosing parser must see: a close delimiter that nothing in the skipped text opened, a blank
+// line, or a token in column 1 (the next declaration). So a lambda inside parentheses, brackets
+// or braces leaves its `)`, `]` or `}` to them, and never swallows the next declaration.
+func (p *Parser) skipBadLambda() {
+	depth := 1 // the `(` of the parameter that failed is still open
+	for !p.at(EOF) {
+		switch {
+		case p.at(LParen), p.at(LBracket), p.at(LBrace):
+			depth++
+		case p.at(RParen), p.at(RBracket), p.at(RBrace):
+			if depth == 0 {
+				return
+			}
+			depth--
+		case p.at(NL):
+			save, saveTok := p.mark()
+			p.advance()
+			if p.at(NL) || p.at(EOF) || p.tok.Col == 1 {
+				p.restore(save, saveTok)
+				return
+			}
+			continue
+		}
+		p.advance()
+	}
 }
 
 // skipToDeclStayingOnLine consumes the rest of the current logical expression (to the next blank line or EOF).
