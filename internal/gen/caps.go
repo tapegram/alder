@@ -1115,13 +1115,16 @@ import (
 // names, AdapterFunc(c.Module, c.Name), returning a value whose methods are the capability's
 // entries, as capDecl declares them, each returning its result's zero value and the error "not
 // implemented" until its author writes it (the step then fails with
-// "<Capability>.<entry>: not implemented"). It is gofmt'ed.
+// "<Capability>.<entry>: not implemented"). It is gofmt'ed. The stub's package comment tells the
+// author that a method's List and Bytes arguments are fresh copies (the generated call passes
+// them through rt.Fresh, #37): the method may write into them, and must not rely on sharing.
 func AdapterStub(c *ir.Capability, pkg string) ([]byte, error) {
 	fn := AdapterFunc(c.Module, c.Name)
 	impl := "adapter" + fn
 	var b strings.Builder
 	fmt.Fprintf(&b, "// Package %s holds the Go adapter of capability %s.%s, written by\n", pkg, c.Module, c.Name)
 	b.WriteString("// `alder new capability`: each method returns an error until you write it (the Alder book,\n// chapter 7, \"Implementing a capability\").\n")
+	b.WriteString("//\n// Each method's List and Bytes arguments are fresh copies made for the call: write into them\n// if you like, but do not rely on them sharing storage with the app.\n")
 	fmt.Fprintf(&b, "package %s\n\nIMPORTS\n\n", pkg)
 	fmt.Fprintf(&b, "// %s is the adapter of %s.%s.\nfunc %s() app.%s { return %s{} }\n\n", fn, c.Module, c.Name, fn, capName(c.Module, c.Name), impl)
 	fmt.Fprintf(&b, "// %s implements %s.%s.\ntype %s struct{}\n", impl, c.Module, c.Name, impl)
