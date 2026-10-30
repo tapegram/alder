@@ -24,7 +24,14 @@ func NewType(p *Program, module, decl string) ([]Edit, error) {
 	}
 	text := "type " + decl
 	imports := newImports(module, p.Std)
-	for _, q := range qualifiers(p, decl) {
+	var ctors []string // the declaration's own constructors are no table's record type
+	for _, c := range td.Union {
+		ctors = append(ctors, c.Name)
+	}
+	if m := p.Modules[module]; m != nil {
+		ctors = append(ctors, moduleCtors(m.Syntax)...)
+	}
+	for _, q := range qualifiers(p, decl, ctors...) {
 		imports.add(q)
 	}
 	m := p.Modules[module]

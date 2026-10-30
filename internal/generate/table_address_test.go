@@ -1,6 +1,7 @@
 package generate
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -73,4 +74,34 @@ func TestTableNameAddress(t *testing.T) {
 			t.Fatalf("err: %v", err)
 		}
 	})
+}
+
+// #35: a bare capitalised word that equals a table's name is the table's record type, and
+// imports its module, unless it is a constructor: of the type being declared, or of a union the
+// module declares.
+func TestBareTableNameConstructorNoImport(t *testing.T) {
+	p, err := Load(scaffoldApp(t, map[string]string{
+		"app/Table/User.alder": userTableModule,
+		"app/Kinds.alder":      "module Kinds\n\ntype Kind = User | Bot\n\nwho : Kind\nwho = ?who\n",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q := qualifiers(p, "Db.from User"); !slices.Equal(q, []string{"Table.User"}) {
+		t.Fatalf("the record type: qualifiers = %v", q)
+	}
+	edits, err := NewType(p, "Actors", "Kind = User | Bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := editAt(edits, "app/Actors.alder"); e == nil || strings.Contains(e.Body, "import Table.User") {
+		t.Errorf("new type imported the table for a constructor: %+v", edits)
+	}
+	edits, _, imports, err := Fill(p, "Kinds.who", "", "User")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(imports) != 0 || strings.Contains(edits[0].Body, "import Table.User") {
+		t.Errorf("fill imported the table for a constructor: %v", imports)
+	}
 }

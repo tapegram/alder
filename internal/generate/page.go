@@ -153,6 +153,9 @@ func NewPage(p *Program, o PageOptions) ([]Edit, error) {
 	if o.Module == "" && !strings.HasPrefix(o.Path, "/") && IsModuleName(o.Path) {
 		return nil, notAPath(o.Path)
 	}
+	if o.List != "" && o.Show != "" {
+		return nil, Refusef("--list and --show name different pages: give one of them")
+	}
 	if o.Module == "" {
 		kind, name := "", ""
 		switch {

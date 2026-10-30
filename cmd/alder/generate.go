@@ -288,6 +288,9 @@ func runSpecWith(s *generate.Spec, argv []string, usage string, seen func(*gener
 	if err != nil {
 		return genUsage(stderr, usage, err)
 	}
+	if s.ID == "new page" && sets.Has("list") && sets.Has("show") {
+		return genUsage(stderr, usage, errors.New("alder new page: --list and --show name different pages: give one of them"))
+	}
 	g := genArgs{dir: cli.Dir, json: cli.JSON, dry: cli.DryRun}
 	cmd := "alder " + s.ID
 	defer func() {
