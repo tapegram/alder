@@ -11,6 +11,7 @@ import (
 	"alder/internal/diag"
 	"alder/internal/markup"
 	"alder/internal/names"
+	"alder/internal/scratch"
 	"alder/internal/syntax"
 	"alder/internal/theme"
 	"alder/internal/types"
@@ -54,6 +55,7 @@ var (
 // good build with what it still says about the cursor (Ruling R11).
 type completion struct {
 	a      *analysis      // the last good build; nil before the first
+	enc    posEncoding    // the client's position unit, for the edits
 	m      *syntax.Module // rel's module in a; nil when a has none
 	lines  []string       // rel's current text
 	line   int            // the cursor's line, 0-based
@@ -77,7 +79,9 @@ func completionReq(s *server, params json.RawMessage) (any, error) {
 	}
 	items := []completionItem{}
 	rel, ok := s.rel(p.TextDocument.URI)
-	if ok {
+	if ok && scratch.IsScratchFile(rel) {
+		items = append(items, s.scratchCompletion(rel, p.Position)...)
+	} else if ok {
 		if cx := s.completionAt(rel, p.Position); cx != nil {
 			items = append(items, cx.items()...)
 		}
@@ -92,11 +96,11 @@ func (s *server) completionAt(rel string, p Position) *completion {
 		return nil
 	}
 	line := lines[p.Line]
-	col := min(p.Character, len(line))
+	col := min(s.enc.fromWire(line, p.Character), len(line))
 	for col > 0 && col < len(line) && !utf8.RuneStart(line[col]) {
 		col--
 	}
-	cx := &completion{a: s.lastGood(), lines: lines, line: p.Line, col: col, prefix: line[:col],
+	cx := &completion{enc: s.enc, a: s.lastGood(), lines: lines, line: p.Line, col: col, prefix: line[:col],
 		pos: diag.Pos{Line: p.Line + 1, Col: col + 1}}
 	if cx.a != nil && cx.a.res != nil {
 		for _, x := range cx.a.prog.Modules {
@@ -127,7 +131,7 @@ func (cx *completion) items() []completionItem {
 
 // edit replaces the n bytes before the cursor with text.
 func (cx *completion) edit(n int, text string) TextEdit {
-	return TextEdit{Range: Range{Start: Position{cx.line, cx.col - n}, End: Position{cx.line, cx.col}}, NewText: text}
+	return cx.enc.wireEdit(cx.lines, TextEdit{Range: Range{Start: Position{cx.line, cx.col - n}, End: Position{cx.line, cx.col}}, NewText: text})
 }
 
 func (cx *completion) item(label string, kind int, detail string, n int) completionItem {
@@ -535,7 +539,7 @@ func (cx *completion) hole() ([]completionItem, bool) {
 			it.SortText = "0" + it.Label
 		}
 		if h != nil && h.Span.Start.Line == cx.pos.Line && h.Span.End.Line == cx.pos.Line {
-			it.TextEdit.Range = Range{Start: Position{cx.line, h.Span.Start.Col - 1}, End: Position{cx.line, max(h.Span.End.Col-1, cx.col)}}
+			it.TextEdit.Range = cx.enc.wireRange(cx.lines, Range{Start: Position{cx.line, h.Span.Start.Col - 1}, End: Position{cx.line, max(h.Span.End.Col-1, cx.col)}})
 		}
 		out = append(out, it)
 	}

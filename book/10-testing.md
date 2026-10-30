@@ -189,6 +189,27 @@ A failing test is `FAIL`, followed by indented lines that say why:
   happened in, not the whole Go trace.
 - `trace:` is, for a block test, every step it performed (section 6).
 
+A test that passes or fails can be followed by `warn:` lines, which never
+fail it. Each is a statement a page ran in a loop during one of the test's
+browser steps (section 9): five or more runs of one SQL statement in one
+request, the mark of a `Db.get` per row (an "N+1": one query for the list,
+then N more, one per row):
+
+```text
+ok   Rows.Bench "slow 100"
+  warn: GET /slow: N+1: SELECT "id", "title", … FROM "Table__Row__Row" WHERE "id" = ? ran 100 times (100 argument sets, 0.29 ms): one Db.get per row; read them together with Db.where (Row.id.in ids), or in the page's first query
+```
+
+On a file database the loop is cheap; on a remote one (Turso, chapter 15)
+every statement is a round trip over the network, so the page that answers
+in a millisecond here takes a second there. The rule is the one the
+developer panel's SQL tab applies (chapter 11, "Developer mode", says how
+it is decided), run over each request a browser step made; the request
+line in front names which. With `--json` the test's object carries
+`"warnings": […]`. A warning is not a failure because the page may be
+right as it is (a handful of rows, a lookup you accept); the line is there
+so the cost is seen before it is paid in production.
+
 A test that runs for ten seconds is announced on standard error,
 `still running Todo "slow" (10s)`, and again every ten seconds, so a
 test that hangs is not mistaken for a quiet one.
@@ -1184,7 +1205,7 @@ load params session = {
 }
 
 view : Model -> Session -> File
-view model session = File.json (Text.fromInt model.waited)
+view model session = File.json (Json.int model.waited)
 
 -- The test clock moves one second at each Time.now reading, and the delay moves it 20 s
 -- without waiting, so the two readings are 21000 ms apart.

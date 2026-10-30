@@ -102,7 +102,7 @@ view model session =
           {"Choose at most " ++ Text.fromInt maxRows ++ " rows at a time."}
         </al-alert>
       else
-        <span></span>}
+        Html.none}
       <ul id="selected">
         {for row in model.rows ->
           <li>
@@ -166,10 +166,10 @@ test "deleting the chosen rows" = {
       gone: Maybe.map (\row -> row.id) gone,
       left: Maybe.map (\row -> row.id) left,
     } == {
-        answer: Redirected (Admin.Todos.Index { org: org }),
-        gone: Nothing,
-        left: Just todo2,
-      }
+      answer: Redirected (Admin.Todos.Index { org: org }),
+      gone: Nothing,
+      left: Just todo2,
+    }
   )
 }
 
@@ -208,10 +208,10 @@ test "setting done changes the chosen rows only" = {
       one: Maybe.map (\row -> row.done == True) one,
       other: Maybe.map (\row -> row.done == True) other,
     } == {
-        answer: Redirected (Admin.Todos.Index { org: org }),
-        one: Just True,
-        other: Just False,
-      }
+      answer: Redirected (Admin.Todos.Index { org: org }),
+      one: Just True,
+      other: Just False,
+    }
   )
 }
 
@@ -248,10 +248,10 @@ test "25 chosen ids are taken" = {
       kept: Maybe.map (\row -> row.id) after,
       warned: Test.count "#too-many" page.doc,
     } == {
-        answer: Redirected (Admin.Todos.Index { org: org }),
-        kept: Nothing,
-        warned: 0,
-      }
+      answer: Redirected (Admin.Todos.Index { org: org }),
+      kept: Nothing,
+      warned: 0,
+    }
   )
 }
 
@@ -288,10 +288,10 @@ test "26 chosen ids are refused" = {
       kept: Maybe.map (\row -> row.id) after,
       warned: Test.count "#too-many" page.doc,
     } == {
-        answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
-        kept: Just todo1,
-        warned: 1,
-      }
+      answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
+      kept: Just todo1,
+      warned: 1,
+    }
   )
 }
 
@@ -331,10 +331,10 @@ test "a bulk action stays inside one org" = {
       mine: List.length mineAfter.model.rows,
       theirs: List.map (\row -> row.id) theirsAfter.model.rows,
     } == {
-        chosen: [todo1],
-        mine: 0,
-        theirs: [todo2],
-      }
+      chosen: [todo1],
+      mine: 0,
+      theirs: [todo2],
+    }
   )
 }
 

@@ -222,21 +222,23 @@ view model session =
 
     <al-stack direction="row" gap="sm">
       <form method="get" action={"/admin/orgs/" ++ session.org ++ "/todo"}>
-        <input type="search" name="q" value={model.q} aria-label="Search" />
-        {for f in filters model.filters ->
-          <al-select label={f.label}>
-            <label>
-              {f.label}
-              <select name={f.name}>
-                <option value="" selected={f.value == ""}>any</option>
-                {for o in f.options ->
-                  <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
-              </select>
-            </label>
-          </al-select>}
-        <input type="hidden" name="sort" value={model.sort} />
-        <input type="hidden" name="dir" value={model.dir} />
-        <al-button type="submit" variant="secondary">Search</al-button>
+        <al-stack direction="row" gap="sm">
+          <al-input><label>Search<input type="search" name="q" value={model.q} /></label></al-input>
+          {for f in filters model.filters ->
+            <al-select label={f.label}>
+              <label>
+                {f.label}
+                <select name={f.name}>
+                  <option value="" selected={f.value == ""}>any</option>
+                  {for o in f.options ->
+                    <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
+                </select>
+              </label>
+            </al-select>}
+          <input type="hidden" name="sort" value={model.sort} />
+          <input type="hidden" name="dir" value={model.dir} />
+          <al-button type="submit" variant="secondary">Search</al-button>
+        </al-stack>
       </form>
       <al-button href={Admin.Todos.New { org: session.org }}>New todo</al-button>
     </al-stack>
@@ -346,10 +348,10 @@ test "the list shows every row, newest first, and the labels of the rows they re
       projects: List.length page.model.labels.projects,
       projectLabel: projectLabel page.model.labels project1,
     } == {
-        rows: [todo2, todo1],
-        projects: 1,
-        projectLabel: "name-1",
-      }
+      rows: [todo2, todo1],
+      projects: 1,
+      projectLabel: "name-1",
+    }
   )
 }
 
@@ -391,10 +393,10 @@ test "sorting by title goes both ways" = {
       down: List.map (\row -> row.id) down.model.rows,
       toggles: [toggle up.model "title", toggle down.model "title", toggle up.model "done"],
     } == {
-        up: [todo2, todo1],
-        down: [todo1, todo2],
-        toggles: ["desc", "asc", "asc"],
-      }
+      up: [todo2, todo1],
+      down: [todo1, todo2],
+      toggles: ["desc", "asc", "asc"],
+    }
   )
 }
 
@@ -469,11 +471,11 @@ test "filtering by done lists the rows with that value" = {
       count: yes.model.count == List.length yes.model.rows,
       chosen: Test.texts "select[name=done] option[selected]" yes.doc,
     } == {
-        yes: [True, False],
-        no: [False, True],
-        count: True,
-        chosen: ["yes"],
-      }
+      yes: [True, False],
+      no: [False, True],
+      count: True,
+      chosen: ["yes"],
+    }
   )
 }
 
@@ -532,12 +534,12 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
       count: Test.text "#count" first.doc,
       pages: Test.texts "al-pagination span" first.doc,
     } == {
-        first: 25,
-        second: 1,
-        past: { page: 2, rows: 1 },
-        count: Just "26 rows",
-        pages: ["Previous", "Page 1 of 2"],
-      }
+      first: 25,
+      second: 1,
+      past: { page: 2, rows: 1 },
+      count: Just "26 rows",
+      pages: ["Previous", "Page 1 of 2"],
+    }
   )
 }
 

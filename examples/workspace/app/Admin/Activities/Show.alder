@@ -155,11 +155,11 @@ test "the page shows the row" = {
       orgs: List.length page.model.labels.orgs,
       orgLabel: orgLabel page.model.labels org1,
     } == {
-        answer: Shown,
-        text: True,
-        orgs: 1,
-        orgLabel: "name-1",
-      }
+      answer: Shown,
+      text: True,
+      orgs: 1,
+      orgLabel: "name-1",
+    }
   )
 }
 

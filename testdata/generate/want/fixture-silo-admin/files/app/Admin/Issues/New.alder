@@ -118,14 +118,14 @@ view model session =
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       {if model.assigneesTotal > 200 then
         <form submit={SearchAssignee}>
           <al-input field="q" label="Find assignee" />
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
@@ -186,18 +186,18 @@ test "creating an issue adds it, with the values submitted" = {
       projects: Test.texts "select[name=project] option" page.doc,
       assignees: Test.texts "select[name=assignee] option" page.doc,
     } == {
-        answers: [r.answer],
-        rows: [
-          {
-            title: Text.NonEmpty "title-1",
-            project: project2,
-            status: Closed,
-            assignee: Just user2,
-          },
-        ],
-        projects: ["name-1", "name-2"],
-        assignees: ["", "email-1@example.com", "email-2@example.com"],
-      }
+      answers: [r.answer],
+      rows: [
+        {
+          title: Text.NonEmpty "title-1",
+          project: project2,
+          status: Closed,
+          assignee: Just user2,
+        },
+      ],
+      projects: ["name-1", "name-2"],
+      assignees: ["", "email-1@example.com", "email-2@example.com"],
+    }
   )
 }
 
@@ -340,11 +340,11 @@ test "a long list of projects offers 50, and the search narrows it" = {
       found: Test.texts "select[name=project] option" found.doc == ["name-203"],
       answer: r.answer,
     } == {
-        shown: 50,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Issues.New { org: org, findProject: "zz" }),
-      }
+      shown: 50,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Issues.New { org: org, findProject: "zz" }),
+    }
   )
 }
 
@@ -461,11 +461,11 @@ test "a long list of users offers 50, and the search narrows it" = {
       found: Test.texts "select[name=assignee] option" found.doc == ["", "email-203@example.com"],
       answer: r.answer,
     } == {
-        shown: 50,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Issues.New { org: org, findAssignee: "zz" }),
-      }
+      shown: 50,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Issues.New { org: org, findAssignee: "zz" }),
+    }
   )
 }
 

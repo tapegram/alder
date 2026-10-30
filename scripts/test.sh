@@ -7,7 +7,8 @@
 #
 # ALDER_TEST_SHARDS (default 4) sets the number of cmd/alder shards. More is slower on a laptop:
 # each shard's builds already use every core (6 shards at once took 665 s, 4 about 200 s).
-# The mutation quality gates run only with ALDER_MUTATION_GATES=1 (cmd/alder/gates_test.go).
+# The mutation quality gates run only with ALDER_MUTATION_GATES=1 (cmd/alder/gates_test.go), and
+# the formatter's wall-clock tests only with ALDER_SPEED_TESTS=1 (internal/format/corpus_test.go).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 n=${ALDER_TEST_SHARDS:-4}

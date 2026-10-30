@@ -38,6 +38,7 @@ import (
 	"os"
 	"regexp"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -228,6 +229,11 @@ type CaseResult struct {
 	Error        string
 	Trace        []string
 	Ms           float64
+	// Warnings are the N+1 warnings of the test's browser steps ("GET /slow: N+1: …", one per
+	// statement eff.Repeats finds in one request): reported after the result, never a failure.
+	Warnings []string
+	// Bench is each browser step's Measure, under `alder bench` (Options.Bench) only.
+	Bench []Measure
 
 	// A property test's result (property.go) also has Runs, the runs it was to make
 	// (Options.Fuzz, so Runs > 0 marks a property), and Seed, the seed of its fresh draws; when
@@ -289,6 +295,11 @@ type Options struct {
 	// Status is Main's status file (EnvStatus): a property test writes its seed and run there
 	// before each attempt (unless Mutating). "": none.
 	Status string
+	// Bench (`alder bench`, --bench) measures each browser step of the task tests (Measure);
+	// Main then skips pure and property tests and runs each selected test Count times (0: 1),
+	// reporting the median.
+	Bench bool
+	Count int
 
 	schemaErr string // why Migrations do not make Tables (set by defaults): every case fails with it
 }
@@ -396,6 +407,9 @@ func runCase(c Case, o Options) (r CaseResult) {
 		defer done()
 		ok, errText, r.panicked = guard(func() bool { return runTask(env, c.Task()) })
 		r.Trace = append([]string{}, env.Trace...)
+		if slot, _ := env.Ctx.Value(browserKey{}).(*browserSlot); slot != nil && slot.b != nil {
+			r.Warnings, r.Bench = slot.b.warnings, slot.b.measures
+		}
 	default:
 		errText = "test has no body"
 	}
@@ -451,7 +465,7 @@ func newCaseEnv(o Options) (env *eff.Env, done func(), err error) {
 		env.Store, env.Stores = db.TestStore{SQLite: store, Stores: stores}, stores
 	}
 	if o.Routes != nil {
-		env.Ctx = withBrowser(env, o.Routes, o.Web)
+		env.Ctx = withBrowser(env, o.Routes, o.Web, o.Bench)
 	}
 	return env, done, nil
 }
@@ -547,6 +561,10 @@ type jsonResult struct {
 	Error  string   `json:"error,omitempty"`
 	Trace  []string `json:"trace"`
 	Ms     float64  `json:"ms"`
+	// Warnings are the N+1 warnings (CaseResult.Warnings), Bench the steps' measures under
+	// `alder bench`; both left out when empty.
+	Warnings []string      `json:"warnings,omitempty"`
+	Bench    []jsonMeasure `json:"bench,omitempty"`
 	// Property is a property test's runs, seed and failing case (propertyJSON); nil otherwise.
 	Property *jsonProperty `json:"property,omitempty"`
 }
@@ -568,7 +586,8 @@ func WriteResult(w io.Writer, r CaseResult, asJSON bool) error {
 		enc := json.NewEncoder(w)
 		enc.SetEscapeHTML(false)
 		return enc.Encode(jsonResult{Module: r.Module, Name: r.Name, File: r.File, Line: r.Line, Col: r.Col, OK: r.OK,
-			Left: r.Left, Right: r.Right, Note: r.Note, Error: r.Error, Trace: tr, Ms: r.Ms, Property: propertyJSON(r)})
+			Left: r.Left, Right: r.Right, Note: r.Note, Error: r.Error, Trace: tr, Ms: r.Ms, Property: propertyJSON(r),
+			Warnings: r.Warnings, Bench: benchJSON(r.Bench)})
 	}
 	var b strings.Builder
 	if r.OK {
@@ -589,6 +608,10 @@ func WriteResult(w io.Writer, r CaseResult, asJSON bool) error {
 			fmt.Fprintf(&b, "  trace: %s\n", rt.Show(r.Trace))
 		}
 		writeSeed(&b, r)
+	}
+	writeBench(&b, r.Bench) // after the result: the bench rows, then the warnings
+	for _, w := range r.Warnings {
+		fmt.Fprintf(&b, "  warn: %s\n", w)
 	}
 	_, e := io.WriteString(w, b.String())
 	return e
@@ -616,6 +639,10 @@ const (
 	// input reaches end of file: `alder test` holds the pipe open while it runs, so the program
 	// dies with it.
 	EnvStdinEOF = "ALDER_TEST_STDIN_EOF"
+	// EnvBench=1 is --bench (`alder bench`: measure each browser step, Measure), EnvCount its
+	// --count (runs per test, the median reported).
+	EnvBench = "ALDER_TEST_BENCH"
+	EnvCount = "ALDER_TEST_COUNT"
 )
 
 // Main runs cases with the flags in args (-run re, --json, --fuzz n, --seed s) and env
@@ -660,7 +687,22 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 	fromText := fs.String("mutate-from", os.Getenv(EnvMutateFrom), "with --mutate, the id of the first mutant to run (above 1: the tests' own run is skipped)")
 	fuzzText := fs.String("fuzz", os.Getenv(EnvFuzz), "how many runs each property test makes (default 100)")
 	seedText := fs.String("seed", os.Getenv(EnvSeed), "the seed of the property tests' fresh draws (default random; saved failures are replayed first regardless)")
+	bench := fs.Bool("bench", os.Getenv(EnvBench) == "1", "measure each browser step of the task tests (alder bench)")
+	countText := fs.String("count", os.Getenv(EnvCount), "with --bench, how many times to run each test (default 1)")
 	if e := fs.Parse(args); e != nil {
+		return 2
+	}
+	benchCount := 1
+	if *countText != "" {
+		v, e := strconv.Atoi(*countText)
+		if e != nil || v < 1 || !*bench {
+			fmt.Fprintf(err, "alder test: bad --count %q: want a number of runs, such as 3, with --bench\n", *countText)
+			return 2
+		}
+		benchCount = v
+	}
+	if *bench && *mutating {
+		fmt.Fprintln(err, "alder test: --bench and --mutate do not go together")
 		return 2
 	}
 	if fs.NArg() > 0 {
@@ -716,7 +758,7 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 		}()
 	}
 	o := Options{Tables: tables, TestTables: testTables, Migrations: migrations, Caps: caps, Session: session, Now: defaultNow, Routes: routes, Web: webOpts,
-		FuzzDB: os.Getenv(EnvFuzzDB), Mutating: *mutating}
+		FuzzDB: os.Getenv(EnvFuzzDB), Mutating: *mutating, Bench: *bench, Count: benchCount}
 	if *fuzzText != "" {
 		v, e := strconv.Atoi(*fuzzText)
 		if e != nil || v < 1 {
@@ -761,6 +803,9 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 	o = defaults(o)
 
 	run := selected(cases, o)
+	if o.Bench { // pure and property tests make no request: nothing to measure
+		run = slices.DeleteFunc(run, func(c Case) bool { return c.Task == nil || c.Prop != nil })
+	}
 	passed, failed := 0, 0
 	// report writes a report line: on out, or with --json on err (out holds JSON only)
 	report := func(line string) {
@@ -790,7 +835,7 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 			}
 		}
 		done := make(chan CaseResult, 1)
-		go func() { done <- runCase(c, o) }()
+		go func() { done <- benchCase(c, o) }()
 		var r CaseResult
 		start := time.Now()
 		slow := time.NewTicker(slowAfter)
@@ -871,6 +916,22 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 		}
 	}
 	return mutate(run, o, mutantRun{timeout: mutantTimeout, baseline: baseline, status: status, log: mutantLog, from: from}, minScore, *asJSON, out, err)
+}
+
+// benchCase is runCase, under o.Bench run o.Count times: the last run's result, with each
+// step's time and allocations the median of the runs' (mergeRuns). A run that fails ends it.
+func benchCase(c Case, o Options) CaseResult {
+	r := runCase(c, o)
+	if !o.Bench || o.Count <= 1 {
+		return r
+	}
+	runs := [][]Measure{r.Bench}
+	for i := 1; i < o.Count && r.OK; i++ {
+		r = runCase(c, o)
+		runs = append(runs, r.Bench)
+	}
+	r.Bench = mergeRuns(runs)
+	return r
 }
 
 // mutate is Main's mutation run over the selected cases, after they passed: the mutants, the

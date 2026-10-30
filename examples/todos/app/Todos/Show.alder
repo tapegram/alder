@@ -91,10 +91,10 @@ test "saving changes the title and the due date" = {
       title: Maybe.map (\t -> t.title) after,
       due: Maybe.andThen (\t -> t.due) after,
     } == {
-        answer: Redirected (Todos.Index {}),
-        title: Just (Text.NonEmpty "Bread"),
-        due: Date.fromText "2026-10-12",
-      }
+      answer: Redirected (Todos.Index {}),
+      title: Just (Text.NonEmpty "Bread"),
+      due: Date.fromText "2026-10-12",
+    }
   )
 }
 

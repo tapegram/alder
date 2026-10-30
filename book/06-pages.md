@@ -438,7 +438,9 @@ view model session =
 
 `File.text` answers `200` with the text as the body, `File.bytes` does the
 same for `Bytes` (chapter 7, "A capability returning bytes"), and
-`File.json` takes a `Text` and labels it `application/json`. The
+`File.json` takes a `Json.Value` built with the `Json` module (chapter 9,
+"Json"), encodes it and labels it `application/json`; text that is already
+JSON goes through `File.text` with that content type. The
 `Content-Disposition` header, set with `File.withHeader`, asks the browser
 to save the answer as `todos.csv` instead of showing it.
 

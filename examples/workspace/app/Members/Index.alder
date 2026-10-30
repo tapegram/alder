@@ -170,11 +170,11 @@ test "adding a member by email lets them in, and logs it, newest first" = {
       activity: Test.texts "#activity li" r.doc,
       bob: bob.answer,
     } == {
-        answer: Rerendered,
-        members: ["Ann", "Bob"],
-        activity: ["Bob joined.", "Acme began."],
-        bob: Shown,
-      }
+      answer: Rerendered,
+      members: ["Ann", "Bob"],
+      activity: ["Bob joined.", "Acme began."],
+      bob: Shown,
+    }
   )
 }
 
@@ -212,10 +212,10 @@ test "an unknown email, and a member already, are refused" = {
       again: again.answer,
       rows: rows,
     } == {
-        unknown: FormRejected [{ field: "", message: "No user has that email." }],
-        again: FormRejected [{ field: "", message: "They are a member already." }],
-        rows: 2,
-      }
+      unknown: FormRejected [{ field: "", message: "No user has that email." }],
+      again: FormRejected [{ field: "", message: "They are a member already." }],
+      rows: 2,
+    }
   )
 }
 
@@ -273,13 +273,13 @@ test "removing a member logs it, and a removed member loses access at once" = {
       after: after.answer,
       log: log,
     } == {
-        members: ["Ann"],
-        activity: ["A member left.", "Acme began."],
-        cyLeft: 1,
-        self: PageMissing,
-        after: PageMissing,
-        log: 3,
-      }
+      members: ["Ann"],
+      activity: ["A member left.", "Acme began."],
+      cyLeft: 1,
+      self: PageMissing,
+      after: PageMissing,
+      log: 3,
+    }
   )
 }
 

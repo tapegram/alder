@@ -136,10 +136,10 @@ test "deleting a user nothing refers to" = {
       gone: Maybe.map (\row -> row.id) gone,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-        answer: Redirected (Admin.Users.Index {}),
-        gone: Nothing,
-        kept: Just user3,
-      }
+      answer: Redirected (Admin.Users.Index {}),
+      gone: Nothing,
+      kept: Just user3,
+    }
   )
 }
 
@@ -172,13 +172,13 @@ test "a user that posts refer to is not deleted" = {
       answer: r.answer,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-        count: Just "1",
-        buttons: 0,
-        answer: FormRejected [
-          { field: "", message: "This user cannot be deleted while other rows refer to it." },
-        ],
-        kept: Just user2,
-      }
+      count: Just "1",
+      buttons: 0,
+      answer: FormRejected [
+        { field: "", message: "This user cannot be deleted while other rows refer to it." },
+      ],
+      kept: Just user2,
+    }
   )
 }
 
@@ -200,11 +200,11 @@ test "an Admin cannot delete their own account" = {
       answer: r.answer,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-        says: ["You cannot delete your own account."],
-        buttons: 0,
-        answer: FormRejected [{ field: "", message: "You cannot delete your own account." }],
-        kept: Just me,
-      }
+      says: ["You cannot delete your own account."],
+      buttons: 0,
+      answer: FormRejected [{ field: "", message: "You cannot delete your own account." }],
+      kept: Just me,
+    }
   )
 }
 

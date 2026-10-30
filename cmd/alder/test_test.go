@@ -451,7 +451,7 @@ func (md) Render(_ context.Context, a app.Args__Markdown__Markdown__Render) (htm
 // not render, a field the form does not declare — and, with two inputs taken out of NewNote's
 // form, a field the form has no input for (C1): a defaulted field and an unticked box still
 // submit, a set field and a ticked box fail the step.
-// TestTest_FilePages runs file-ok (M17): Test.fetch on text, zip, byte-exact html, a 503, a
+// TestTest_FilePages runs file-ok (M17): Test.fetch on text, zip, byte-exact html, JSON (#1), a 503, a
 // 404, a requires redirect and a page whose load waits 20 s on the test clock, not the wall.
 func TestTest_FilePages(t *testing.T) {
 	t.Parallel()
@@ -464,7 +464,7 @@ func TestTest_FilePages(t *testing.T) {
 	copyDir(t, src, dir)
 	start := time.Now()
 	code, stdout, stderr := runTest(t, dir)
-	if code != 0 || !strings.Contains(stdout, "9 passed, 0 failed\n") {
+	if code != 0 || !strings.Contains(stdout, "13 passed, 0 failed\n") {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 	if time.Since(start) > 2*time.Minute {

@@ -121,11 +121,11 @@ test "logging in opens the org the user joined first, with their role" = {
       org: r.session.org,
       role: r.session.role,
     } == {
-        answer: Redirected (Projects.Index {}),
-        user: Just ann,
-        org: Just globex,
-        role: Admin,
-      }
+      answer: Redirected (Projects.Index {}),
+      user: Just ann,
+      org: Just globex,
+      role: Admin,
+    }
   )
 }
 
@@ -147,9 +147,9 @@ test "a user in no org logs in without one" = {
       org: r.session.org,
       role: r.session.role,
     } == {
-        user: Just bob,
-        org: Nothing,
-        role: Member,
-      }
+      user: Just bob,
+      org: Nothing,
+      role: Member,
+    }
   )
 }

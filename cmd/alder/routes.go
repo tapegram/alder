@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 
 	"alder/internal/buildkit"
 	"alder/internal/diag"
+	"alder/internal/style"
 )
 
 const routesUsage = "usage: alder routes [dir] [--json]"
@@ -57,7 +59,7 @@ func runRoutesTo(args []string, stdout, stderr io.Writer) (code int) {
 	}
 	sources := buildkit.Sources(prog)
 	for _, d := range bag.Items {
-		fmt.Fprint(stderr, diag.RenderText(d, sources[d.Span.File]))
+		fmt.Fprint(stderr, diag.RenderTextStyled(d, sources[d.Span.File], style.For(stderr)))
 	}
 	if bag.HasErrors() || res == nil {
 		return 1
@@ -86,7 +88,8 @@ func runRoutesTo(args []string, stdout, stderr io.Writer) (code int) {
 		fmt.Fprintln(stdout, string(b))
 		return 0
 	}
-	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	var table bytes.Buffer
+	tw := tabwriter.NewWriter(&table, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "KIND\tPATH\tMODULE.decl\tFILE:LINE")
 	for _, r := range rows {
 		fmt.Fprintf(tw, "%s\t%s\t%s.%s\t%s:%d\n", r.Kind, r.Path, r.Module, r.Name, r.File, r.Line)
@@ -95,5 +98,7 @@ func runRoutesTo(args []string, stdout, stderr io.Writer) (code int) {
 		fmt.Fprintf(os.Stderr, "alder routes: %v\n", err)
 		return 2
 	}
+	header, rest, _ := strings.Cut(table.String(), "\n") // the header bold on a terminal, the columns as the plain text aligned them
+	fmt.Fprintf(stdout, "%s\n%s", style.For(stdout).Bold(header), rest)
 	return 0
 }
