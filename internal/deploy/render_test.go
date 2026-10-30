@@ -115,6 +115,7 @@ func (g *renderRig) target() *Render {
 	r := NewRender("blog", "production", ir.Target{Kind: "render", Region: "oregon", Service: "blog", Plan: "starter", Instances: g.instances,
 		Database: &ir.Database{Kind: "turso", Org: "acme", App: "blog"}}, g.decl(), rImage)
 	r.Out = &g.out
+	r.ExpectedURL = func(name string) string { return g.render.URL + "/svc/" + name } // the fake's unsuffixed address
 	r.Artifact = func(id string) string { return filepath.Join(g.root, id) }
 	r.DB.Local = g.local(r)
 	if g.clock != nil {
@@ -429,7 +430,7 @@ func TestRender_FirstDeploy(t *testing.T) {
 	env := envOf(s)
 	want := map[string]string{"ALDER_DB": "libsql://" + host, "ALDER_TURSO_ORG": "acme", "ALDER_TURSO_GROUP": "default", "ALDER_TURSO_APP": "blog",
 		"ALDER_TURSO_DB": "blog", "ALDER_TURSO_API": g.turso.URL, "TURSO_API_TOKEN": g.turso.APIToken, "ALDER_ADDR": ":10000", "SMTP_URL": rSMTP,
-		"ALDER_PUBLIC_URL": "https://blog.onrender.com"} // the expected address: the service did not exist yet
+		"ALDER_PUBLIC_URL": g.render.URL + "/svc/blog"} // the expected address, which the service got
 	for k, v := range want {
 		if env[k] != v {
 			t.Errorf("env %s: got %d bytes, want %d", k, len(env[k]), len(v))
@@ -585,6 +586,32 @@ func TestRender_EnvPublicURL(t *testing.T) {
 	g.mustDeploy(g.target())
 	if got, want := envOf(g.render.Service("blog"))["ALDER_PUBLIC_URL"], g.render.URL+"/svc/blog"; got != want {
 		t.Errorf("added: %q, want the service's address %q", got, want)
+	}
+
+	// a new service Render names otherwise (blog-x1y2: the name was taken): the default written
+	// before it existed is corrected to its address, and the same image rolled again
+	s := newRenderRig(t)
+	s.render.URLSuffix = "-x1y2"
+	id := s.mustDeploy(s.target())
+	svc := s.render.Service("blog")
+	if got, want := envOf(svc)["ALDER_PUBLIC_URL"], s.render.URL+"/svc/blog-x1y2"; got != want {
+		t.Errorf("suffixed: %q, want %q", got, want)
+	}
+	if reqs := s.render.Requests(); count(reqs, "PUT /services/") != 1 || count(reqs, "POST /services/") != 1 || svc.Image != rImage+":"+id {
+		t.Errorf("suffixed: requests %v, image %q", nonGET(reqs), svc.Image)
+	}
+	if !strings.Contains(s.out.String(), "ALDER_PUBLIC_URL of blog set to the service's address") {
+		t.Errorf("suffixed: transcript:\n%s", s.out.String())
+	}
+	// a `requires` ALDER_PUBLIC_URL set here is the operator's: not corrected
+	o := newRenderRig(t)
+	o.render.URLSuffix = "-x1y2"
+	t.Setenv("ALDER_PUBLIC_URL", "https://www.example.com")
+	r := o.target()
+	r.Required = append(r.Required, "ALDER_PUBLIC_URL")
+	o.mustDeploy(r)
+	if got := envOf(o.render.Service("blog"))["ALDER_PUBLIC_URL"]; got != "https://www.example.com" || count(o.render.Requests(), "PUT /services/") != 0 {
+		t.Errorf("operator's value: %q, requests %v", got, nonGET(o.render.Requests()))
 	}
 
 	k := newRenderRig(t)

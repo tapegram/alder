@@ -1179,7 +1179,12 @@ set): a variable you set in the dashboard stays, a `requires` name unset
 here but already at the service counts as set, and the values are never
 printed. `ALDER_PUBLIC_URL` (the base of `Url.absolute`, chapter 9) is
 added as the service's address when the service does not have it; a value
-set in the dashboard (for a custom domain) is kept. The variables and the
+set in the dashboard (for a custom domain) is kept. A new service gets the
+address it is expected to have, `https://<service>.onrender.com`; when
+Render names it otherwise (a suffix, because the name was taken), the
+first deploy corrects the variable once the service is live and rolls the
+same image again (`ALDER_PUBLIC_URL of blog set to the service's address
+(…); deploying again`). The variables and the
 instance count are set just before the roll, so a refusal earlier (a missing name, a migration the gate stops)
 has changed nothing at Render.
 

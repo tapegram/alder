@@ -88,6 +88,9 @@ type svc struct {
 // Server is a running fake.
 type Server struct {
 	URL string // http://127.0.0.1:<port>
+	// URLSuffix, when set, is added to the name in the URL of a service created through the API
+	// (<URL>/svc/<name><suffix>), as Render suffixes a name taken elsewhere (blog-x1y2.onrender.com).
+	URLSuffix string
 
 	srv *httptest.Server
 
@@ -414,7 +417,12 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/svc/"), "/")
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	v := s.byName(parts[0])
+	var v *svc
+	for _, c := range s.services {
+		if c.URL == s.URL+"/svc/"+parts[0] { // the service's own URL, suffixed or not
+			v = c
+		}
+	}
 	if v == nil || len(parts) != 3 || parts[1] != "_alder" || parts[2] != "health" || len(v.InstanceImages) == 0 {
 		http.NotFound(w, r)
 		return
@@ -563,6 +571,7 @@ func (s *Server) createService(w http.ResponseWriter, body []byte) {
 		env = append(env, Env{e.Key, e.Value})
 	}
 	v := s.newSvc(in.Name, in.OwnerID, in.ServiceDetails.Region, plan, in.ServiceDetails.NumInstances, in.Image.RegistryCredentialID, env)
+	v.URL += s.URLSuffix
 	if in.ServiceDetails.HealthCheckPath != "" {
 		v.HealthCheckPath = in.ServiceDetails.HealthCheckPath
 	}

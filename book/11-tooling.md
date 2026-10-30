@@ -516,9 +516,11 @@ and keep it: changing it logs everyone out.
 reach the site, which the server cannot know by itself: behind a proxy it
 listens on one address and is reached at another. Only `Url.absolute`
 reads it (chapter 9). The value is a scheme, `http` or `https`, and a
-host with an optional port; trailing slashes are dropped, so
+host (letters, digits, `-` and `.`, or an IPv6 address in brackets) with
+an optional port from 1 to 65535; trailing slashes are dropped, so
 `https://todos.example.com/` is fine, but a path (`https://example.com/app`),
-a query, a fragment or a user name is refused before the server listens:
+a query, a fragment, a user name, an empty port (`https://example.com:`) or
+any other character is refused before the server listens:
 
 ```
 $ ALDER_PUBLIC_URL=todos.example.com ./build/todos/todos
@@ -528,7 +530,15 @@ alder: ALDER_PUBLIC_URL must be http(s)://host[:port], such as https://blog.exam
 and it exits 1. Unset, the address is `http://` and the one the server
 listens on, an unspecified host shown as `localhost` (as `alder run` shows
 it): `http://localhost:8080` for the default `:8080`, and with
-`ALDER_ADDR=127.0.0.1:0` the port the operating system picked. The server
+`ALDER_ADDR=127.0.0.1:0` the port the operating system picked.
+
+The server reads the variable as the program starts, before the app's
+own values are computed, so a top-level value built with `Url.absolute`
+(`home = Url.absolute (Index {})`) has the configured address too. The
+one exception is port 0 without `ALDER_PUBLIC_URL`: the port is only
+known once the server listens, which is after those values are made, so
+they keep `:0` while `Url.absolute` in a `view` or `load` has the real
+port. Set `ALDER_PUBLIC_URL`, or a fixed port, when that matters. The server
 never reads the request's `Host` header for this: a client can write any
 `Host`, and a page that printed it into a link (a password-reset email,
 say) would send the reader to the attacker's site.

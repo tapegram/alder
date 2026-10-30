@@ -362,9 +362,11 @@ listening address, `http://localhost:8080` by default. A page whose URL is
 not a path of this site is left as it is: `Url.absolute (Url.external
 "https://example.com/a")` is `https://example.com/a`, a fragment `#top`
 stays `#top`, and a sanitised `#` stays `#`, while `Url.external
-"/static/app.css"` gets the address in front. The address is set once when
-the server starts and never changes, so `Url.absolute` is an ordinary
-function, usable in a `view`. There is no way to build a full URL from
+"/static/app.css"` gets the address in front. The address is set as
+the server starts, before the app's own values are computed, and does
+not change while it serves, so `Url.absolute` is an ordinary function,
+usable in a `view` and in a top-level value (chapter 11 has the one
+exception, a port 0). There is no way to build a full URL from
 text: the only input is a `Page`, so a link to a page that does not exist
 is still a type error. In a test the address is always
 `http://localhost:8080` (chapter 10).
