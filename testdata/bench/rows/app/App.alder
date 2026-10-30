@@ -1,0 +1,10 @@
+module App
+
+-- The fixture of `alder bench` (#48): a page of N rows, a click that re-renders, a form, a
+-- redirect followed under Datastar and an N+1 page. Its tests in Rows.Bench are the scenarios.
+
+error : Error -> Html Never
+error err = <html><body><h1>Something went wrong</h1></body></html>
+
+notFound : Html Never
+notFound = <html><body><h1>Not found</h1></body></html>

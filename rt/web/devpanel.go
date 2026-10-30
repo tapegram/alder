@@ -70,9 +70,13 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 	for _, h := range tw.hops {
 		answer += ", then " + h.answer
 	}
+	reps := segRepeats(tw.hops, sqls)
 	var b strings.Builder
 	fmt.Fprintf(&b, `<nav data-rid="%d"><span data-bar>%s %s</span> <span>%s</span> <span data-ms>%.1f ms</span> <span>%d SQL</span>`,
 		tw.start.UnixNano(), esc(r.Method), esc(r.URL.Path), esc(answer), ms, len(sqls))
+	if len(reps) > 0 {
+		b.WriteString(` <span data-nplus1>N+1</span>`)
+	}
 	tabs := []string{"Request", "Trace", "SQL", "Answer", "Patches", "History"}
 	for i, t := range tabs {
 		fmt.Fprintf(&b, ` <button type="button" aria-controls="_alder_tab_%s" aria-selected="%t">%s</button>`, strings.ToLower(t), i == 0, t)
@@ -130,19 +134,8 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 	// a statement is counted per answer (the POST, then each redirect follow: the session's
 	// user is selected by each); one run per id by a single Task.all, each time with other
 	// arguments, is a bulk operation, not a repeated query: it is labelled, not flagged
-	seg := func(i int) int { // which answer statement i belongs to
-		n := 0
-		for _, h := range tw.hops {
-			if h.sql <= i {
-				n++
-			}
-		}
-		return n
-	}
-	type key struct {
-		seg  int
-		stmt string
-	}
+	seg := func(i int) int { return segOf(tw.hops, i) }
+	type key = segStmt
 	count := map[key]int{}
 	groups := map[key]map[int]bool{}
 	args1 := map[key]map[string]bool{}
@@ -164,7 +157,9 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 	for i, q := range sqls {
 		marker(i, func(h hopMark) int { return h.sql })
 		dup, k := "", key{seg(i), q.Stmt}
-		if bulk(k) {
+		if reps[k] { // an N+1 (eff.Repeats): five or more, not a bulk write
+			dup = fmt.Sprintf(` <strong data-nplus1>N+1 x%d</strong>`, count[k])
+		} else if bulk(k) {
 			dup = fmt.Sprintf(` <span data-bulk>x%d (bulk)</span>`, count[k])
 		} else if count[k] > 1 {
 			dup = fmt.Sprintf(` <strong data-dup>duplicate x%d</strong>`, count[k])
@@ -207,6 +202,63 @@ func (rt *router) panelInner(tw *tracker, status int) string {
 	b.WriteString(`</ul></section>`)
 	b.WriteString(`<section id="_alder_tab_history" hidden><h3>History</h3><p>The last 20 requests of this tab; click one to see its sections.</p><ol data-hist></ol><div data-past></div></section>`)
 	return b.String()
+}
+
+// segStmt is a statement's text in one answer segment (the request the client sent is 0, each
+// redirect follow served after it the next).
+type segStmt struct {
+	seg  int
+	stmt string
+}
+
+// segOf is the answer segment statement i belongs to.
+func segOf(hops []hopMark, i int) int {
+	n := 0
+	for _, h := range hops {
+		if h.sql <= i {
+			n++
+		}
+	}
+	return n
+}
+
+// segments splits sqls by answer segment: one slice per segment (the request, then each hop).
+func segments(hops []hopMark, sqls []eff.SQLRec) [][]eff.SQLRec {
+	out := make([][]eff.SQLRec, len(hops)+1)
+	for i, q := range sqls {
+		s := segOf(hops, i)
+		out[s] = append(out[s], q)
+	}
+	return out
+}
+
+// segRepeats is the statements eff.Repeats finds in each answer segment.
+func segRepeats(hops []hopMark, sqls []eff.SQLRec) map[segStmt]bool {
+	out := map[segStmt]bool{}
+	for s, qs := range segments(hops, sqls) {
+		for _, r := range eff.Repeats(qs, eff.RepeatThreshold) {
+			out[segStmt{s, r.Stmt}] = true
+		}
+	}
+	return out
+}
+
+// warnRepeats logs at warn each N+1 of the answer tw tracked, with the request line of its
+// segment: `GET /slow: N+1: …`. Dev mode only: a request has a Recorder only then.
+func (rt *router) warnRepeats(tw *tracker) {
+	if !rt.opts.Dev || tw.rq == nil || tw.rq.Env == nil || tw.rq.Env.Rec == nil {
+		return // a test's browser records too (Options.EnvFor), and warns in its own report
+	}
+	for s, qs := range segments(tw.hops, tw.rq.Env.Rec.SQL) {
+		head := tw.r.Method + " " + tw.r.URL.Path
+		if s > 0 {
+			u, _, _ := strings.Cut(tw.hops[s-1].url, "?")
+			head = "GET " + u
+		}
+		for _, r := range eff.Repeats(qs, eff.RepeatThreshold) {
+			rt.log("warn", head+": "+r.String())
+		}
+	}
 }
 
 // masked is the values of form field k as the panel shows them: a field whose name says it holds

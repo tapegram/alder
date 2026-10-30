@@ -139,6 +139,15 @@ var commandTree = []cmdSpec{
 			{Name: "--min", Value: "R", Summary: "with --mutate, fail below this mutation score"},
 			buildDirFlag,
 		}},
+	{Name: "bench", Summary: "measure each browser step of the app's tests", Usage: commandUsages["bench"],
+		Args: []string{"[dir]"},
+		Flags: []flagSpec{
+			{Name: "-run", Value: "re", Summary: "only the tests whose name matches"},
+			{Name: "--count", Value: "N", Summary: "runs per test, the median time reported (default 3)"},
+			{Name: "-timeout", Value: "d", Summary: "fail a test that runs longer"},
+			{Name: "--json", Summary: "one JSON object per result, with its \"bench\" rows"},
+			buildDirFlag,
+		}},
 	{Name: "migrate", Summary: "write the migration for a schema change", Usage: commandUsages["migrate"],
 		Args: []string{"[dir]"},
 		Flags: []flagSpec{

@@ -252,6 +252,67 @@ func TestDevPanel_BulkNotDuplicate(t *testing.T) {
 	}
 }
 
+// A page whose load runs one select per row is an N+1: its statements are marked `N+1 x100` in
+// the SQL tab, the bar says `N+1`, and the router logs one warn line naming the request; the same
+// 100 statements as DELETEs under one Task.all are a bulk action, which neither marks nor logs.
+func TestDevPanel_NPlusOne(t *testing.T) {
+	t.Setenv("ALDER_DEV", "1")
+	stmt := func(name, q string, arg any) eff.Task[int] {
+		return eff.Call(name, false, func(e *eff.Env) (int, error) {
+			e.Rec.AddSQL(eff.SQLRec{Stmt: q, Args: []any{arg}, Rows: 1})
+			return 0, nil
+		})
+	}
+	const get = `SELECT "id", "title", "n" FROM "Table__Row" WHERE "id" = ?`
+	routes := []Route{
+		{Method: "GET", Pattern: "/slow", Handle: func(rq *Request) Response {
+			for id := range 100 {
+				if _, err := eff.Run(rq.Env, eff.KQuery, stmt("Db.get", get, id)); err != nil {
+					panic(err)
+				}
+			}
+			return PageResponse(doc("slow"), nil, nil, false)
+		}},
+		{Method: "GET", Pattern: "/bulk", Handle: func(rq *Request) Response {
+			var ds []eff.Task[int]
+			for id := range 100 {
+				ds = append(ds, stmt("Db.delete", `DELETE FROM "Table__Row" WHERE "id" = ?`, id))
+			}
+			if _, err := eff.Run(rq.Env, eff.KTask, eff.All(ds)); err != nil {
+				panic(err)
+			}
+			return PageResponse(doc("bulk"), nil, nil, false)
+		}},
+	}
+	var warns []string
+	h := NewRouter(routes, testOpts(func(o *Options) {
+		o.Dev = true
+		o.Log = func(level, msg string) {
+			if level == "warn" {
+				warns = append(warns, msg)
+			}
+		}
+	}))
+	b := serve(h, httptest.NewRequest("GET", "/slow", nil)).Body.String()
+	if !strings.Contains(b, "N+1 x100") || strings.Contains(b, "duplicate x100") {
+		t.Errorf("the SQL tab does not mark the N+1: %s", b)
+	}
+	if !regexp.MustCompile(`<span>100 SQL</span> <span data-nplus1>N\+1</span>`).MatchString(b) {
+		t.Errorf("the bar does not say N+1: %s", b)
+	}
+	if len(warns) != 1 || !strings.HasPrefix(warns[0], "GET /slow: N+1: SELECT \"id\", \"title\", … FROM \"Table__Row\" WHERE \"id\" = ? ran 100 times (100 argument sets") {
+		t.Errorf("warn lines %q", warns)
+	}
+	warns = nil
+	b = serve(h, httptest.NewRequest("GET", "/bulk", nil)).Body.String()
+	if !strings.Contains(b, "x100 (bulk)") || strings.Contains(b, "N+1") {
+		t.Errorf("the bulk delete is marked: %s", b)
+	}
+	if len(warns) != 0 {
+		t.Errorf("warn lines for a bulk delete: %q", warns)
+	}
+}
+
 // The notice cookie is consumed by a page GET only: not by a 404 (a favicon), a /_alder/ or
 // /static/ path, or a HEAD.
 func TestNoticeOnlyForPageGET(t *testing.T) {

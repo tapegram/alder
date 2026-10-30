@@ -25,7 +25,7 @@ import "embed"
 //go:embed html/diff.go html/html.go html/parse.go html/state.go
 //go:embed selector/selector.go
 //go:embed std/bytes.go std/date.go std/dict.go std/effects.go std/file.go std/html.go std/list.go std/maybe.go std/num.go std/result.go std/text.go
-//go:embed testing/browser.go testing/mutate.go testing/property.go testing/steps.go testing/testing.go
+//go:embed testing/bench.go testing/browser.go testing/mutate.go testing/property.go testing/steps.go testing/testing.go
 //go:embed web/decode.go web/request.go web/router.go web/devpanel.go web/devpanel_ui.go web/session.go
 //go:embed dist/go.mod.txt dist/go.sum.txt
 var Files embed.FS
