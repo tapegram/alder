@@ -98,6 +98,7 @@ alder edit page …    add a parameter to a page
 alder edit session … add a field to the session
 alder remove …       remove a page, or a table with its migration
 alder fill <decl> -  fill a typed hole with the expression on standard input
+alder fill <decl> --ai  fill it with a model's expression, written only if it checks
 alder check          type-check everything; milliseconds; no output on success
 alder fmt [path…]    rewrite .alder files in the one canonical format (--check: list what would change)
 alder build          check, generate Go, go build → ./build/myapp/myapp
@@ -241,6 +242,7 @@ holes (W0002) with their types among them.
 | `alder edit table <T> rename-field <old> <new>` | the field renamed, with `@renamed "old"` (chapter 8), and its migration |
 | `alder edit table <T> drop-field <field>` | the field removed, and its migration |
 | `alder fill <Module>.<decl>[.<arm>] -` | the declaration's hole (`--hole ?name` when it has several) replaced by the expression on standard input; `Module."test name"` names a test, `Module.update.Msg` an arm, `Module.Fake.entry` a fake's entry. A module of the app the expression names qualified (`Member.x`) that the file does not import is imported: `added import Member to app/…` (`--json`: `"imports"`). `alder fill --list` lists every hole: `Home update.Clear ?clear : Task Nav` |
+| `alder fill <Module>.<decl>[.<arm>] --ai` | the same hole filled by a model: the expression it answers is placed and checked exactly as standard input's, and written only if the app then checks (holes it leaves are allowed). A refused answer is sent back with the checker's errors, three attempts in all, each `alder fill: attempt 2 of 3: E0003 …` on standard error; after the third, the errors and `the model's last expression:` are printed and nothing is written (exit 1). The model is the Anthropic API's (`ANTHROPIC_API_KEY`; `ALDER_FILL_MODEL`, default `claude-opus-5-5`; `ALDER_FILL_REFERENCE`, a file such as `site/reference.md` put before the prompt), or any command (`ALDER_FILL_COMMAND='claude -p'`: the prompt on its standard input, the expression on its standard output), which wins when both are set. `--json` adds `"expression"`, `"attempts"`, `"model"`. `--prompt` prints what the first attempt would send, and sends nothing. What leaves the machine is the prompt: the module's source, the names and types in scope (not other modules' bodies), the standard library's signatures and, on a retry, the errors |
 | `alder fill --decl <Module>.<decl> -` | the declaration's whole body (a value's, a test's block, a `type`'s right-hand side) replaced by the one expression, or type, on standard input; its signature stays. Refused when the result does not check (an `update` that drops an arm the view sends). For what has no hole: a `Model`, a generated body or test that does not fit |
 | `alder new auth [--users User] [--role R] [--to Page]` | the login: `app/Auth/Login.alder` (`capability Password { verify, hash }`, its fake, `page "/login"`, the form `Credentials`, the arm that puts the user, and the role, in the session or rejects the form, a Log out button for a signed-in user, three tests); `App` edited at fixed places (the session's `user` and `role` after its fields, `login = Auth.Login`, `msg Logout` and its arm, a test of it); the user table when it does not exist, in `app/Table/User.alder` (`email @unique`, `name`, `passwordHash: Text.Secret`, the role, `created`) and its migration; and the adapter `adapters/auth/login_password.go` (PBKDF2-SHA256, 600,000 iterations, a 16-byte salt, a constant-time compare; stored as `pbkdf2-sha256$<iterations>$<salt>$<hash>`) with its Go tests. `R` must be a union of the user module (`alder new type`). Refused when the session has a `user` or an `Auth` module exists. A login goes to `--to`'s page, else the page at `/`, else the hole `?afterLogin` (filled once the page exists) |
 | `alder new type <Module> "<Name> = …"` | a union (`Status = Pending \| Done`), a brand (`Code = brand Text where …`) or a record (`Row = { … }`), after the module's type declarations; the module is created when it does not exist |
@@ -1751,11 +1753,30 @@ shows E0019, "the schema changed since migration …". It is the diagnostic
 `alder check` would print for that state, and saving the migration makes it
 go away.
 
-`alder fill` stays a command-line tool, and it is what an agent uses. The
-editor needs no command for holes, because a hole is just text: put the
-cursor on `?delete`, hover to see the type it must have, ask for completion
-(the names whose type fits come first), and type the expression. The server
+A hole is just text, so you can fill it by hand: put the cursor on
+`?delete`, hover to see the type it must have, ask for completion (the
+names whose type fits come first), and type the expression. The server
 shows the hole as a hint until the line checks.
+
+Or let a model write it. On a hole, the code-action menu (`gra` in Neovim)
+offers `Fill ?delete with AI (Task Nav)`, first, before the generators. It
+runs the loop of `alder fill --ai` in the server, on your buffers: the
+model's expression is checked on a copy of the app, retried with the
+checker's errors up to three times, and only an expression that checks
+comes back. It arrives as one edit to the buffer, which `u` undoes in one
+step; nothing is saved. While it runs, the status line shows `alder:
+filling ?delete : Task Nav` and each retry (`attempt 2 of 3: E0003 …`). If
+you edit the buffer meanwhile, the editor refuses the edit and the server
+shows the expression, for you to paste. When no answer checks, a warning
+shows the errors and the model's last expression. One fill runs at a time.
+The server takes the model from the environment the editor was started in
+(`ANTHROPIC_API_KEY`, or `ALDER_FILL_COMMAND`); without either the action is
+still offered, and says which variable to set. After a generator is applied
+in the editor, the cursor is on the first hole it left, so the fill is one
+`gra` away.
+
+`alder fill` without `--ai` stays a command-line tool, and it is what an
+agent uses: an agent writes the expression itself.
 
 ### Scratch files in the editor
 
@@ -1844,10 +1865,11 @@ error, so that a script reads "holes left" rather than "build failed" (the exit 
 0, as for any warning; `--json` carries each W0002 as an object and no summary).
 
 `alder fill --list` lists every hole with its module, declaration and
-type, and `alder fill` fills one (above, "The generators"). In an
-editor, hover on a hole shows the type it must have, and completion on it
-lists the names in scope, those whose type fits first (below, "Editor
-support"). A command that lists them is planned.
+type, and `alder fill` fills one, with an expression you give it or, with
+`--ai`, one a model writes (above, "The generators"). In an editor, hover
+on a hole shows the type it must have, completion on it lists the names in
+scope, those whose type fits first, and the code action `Fill ?name with
+AI` fills it (above, "Generators in the editor").
 
 ## Queries
 
