@@ -145,8 +145,59 @@ func TestFmt_UnsafeSkipsWrite(t *testing.T) {
 		t.Error("write callback ran")
 		return 0
 	})
-	if code != 2 || !strings.Contains(e.String(), "alder fmt: internal error:") {
+	if code != 2 || !strings.Contains(e.String(), "a known limitation") || strings.Contains(e.String(), "file an issue") || strings.Contains(e.String(), "internal error") {
 		t.Fatalf("code %d err %q", code, e.String())
+	}
+}
+
+// TestFmt_ReadOnlyDirWritesInPlace (#28): where no temporary file can be made the file is written
+// in place, keeping its mode.
+func TestFmt_ReadOnlyDirWritesInPlace(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes anywhere")
+	}
+	dir := t.TempDir()
+	p := fmtWrite(t, dir, "app/Main.alder", fmtMessy)
+	if err := os.Chmod(p, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	ro := filepath.Dir(p)
+	if err := os.Chmod(ro, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(ro, 0o755) })
+	if code, _, errOut := fmtRun(p); code != 0 {
+		t.Fatalf("code %d err %q", code, errOut)
+	}
+	if got, _ := os.ReadFile(p); string(got) != fmtClean {
+		t.Fatalf("file %q", got)
+	}
+	if fi, _ := os.Stat(p); fi.Mode().Perm() != 0o640 {
+		t.Errorf("mode %v", fi.Mode().Perm())
+	}
+}
+
+// TestFmt_FileChangedBeforeRename (#28): a file changed after it was read is not replaced.
+func TestFmt_FileChangedBeforeRename(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := fmtWrite(t, dir, "app/Main.alder", fmtMessy)
+	const edited = "module Main\n\ny : Int\ny   =   2\n"
+	cache := &fmtCache{noted: map[string]bool{}, progs: map[string]*fmtProject{}}
+	cache.beforeCommit = func() {
+		if err := os.WriteFile(p, []byte(edited), 0o644); err != nil {
+			t.Error(err)
+		}
+	}
+	var o, e bytes.Buffer
+	if code := fmtFile(p, false, cache, &o, &e); code != 2 || !strings.Contains(e.String(), "changed while it was being formatted") || o.Len() != 0 {
+		t.Fatalf("code %d out %q err %q", code, o.String(), e.String())
+	}
+	if got, _ := os.ReadFile(p); string(got) != edited {
+		t.Errorf("file overwritten: %q", got)
+	}
+	if left, _ := filepath.Glob(filepath.Join(filepath.Dir(p), ".alder-fmt-*")); len(left) > 0 {
+		t.Errorf("temporary files left: %v", left)
 	}
 }
 

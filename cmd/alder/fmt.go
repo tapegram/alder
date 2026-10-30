@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -102,6 +103,8 @@ type fmtCache struct {
 	std   map[string]*syntax.Module
 	noted map[string]bool
 	progs map[string]*fmtProject
+
+	beforeCommit func() // a test hook: runs after the new text is ready, before the file is replaced
 }
 
 // fmtProject is a loaded app root; bag is nil when the project could not be loaded or has files
@@ -149,7 +152,7 @@ func fmtFile(path string, checkOnly bool, cache *fmtCache, stdout, stderr io.Wri
 			fmt.Fprintf(stdout, "%s would be reformatted\n", path)
 			return 1
 		}
-		if err := writeFileAtomic(target, out, info.Mode().Perm()); err != nil {
+		if err := writeFileAtomic(target, src, out, info.Mode().Perm(), cache.beforeCommit); err != nil {
 			fmt.Fprintf(stderr, "alder fmt: %v\n", err)
 			return 2
 		}
@@ -217,7 +220,7 @@ func loadFmtProject(root string, cache *fmtCache) *fmtProject {
 func fmtResult(name string, src, out []byte, ds []diag.Diagnostic, err error, stderr io.Writer, ok func([]byte) int) int {
 	switch {
 	case errors.Is(err, format.ErrUnsafe):
-		fmt.Fprintf(stderr, "alder fmt: internal error: %s: formatting changed the program; please file an issue\n", name)
+		fmt.Fprintf(stderr, "alder fmt: %s: not formatted: the formatter cannot place a code comment here without changing the program (a known limitation, for example a code comment after a comment line in markup text); the file is left as it is\n", name)
 		return 2
 	case err != nil:
 		fmt.Fprintf(stderr, "alder fmt: %s: %v\n", name, err)
@@ -297,12 +300,23 @@ func fmtFiles(path string) ([]string, error) {
 	return files, err
 }
 
-// writeFileAtomic replaces path with data through a temporary file in the same directory,
-// keeping the file's mode.
-func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
+// errChangedWhileFormatting is the refusal of a write over a file that changed since it was read.
+var errChangedWhileFormatting = errors.New("the file changed while it was being formatted; left as it is, run `alder fmt` again")
+
+// writeFileAtomic (before: a test hook, run before the file is checked for changes) replaces path, whose text is orig (what was formatted), with data through a
+// temporary file in the same directory, keeping the file's mode. When the file has changed since
+// it was read it is left alone and the error says so. When the directory does not allow a
+// temporary file (a read-only directory holding a writable file) the file is written in place.
+func writeFileAtomic(path string, orig, data []byte, mode os.FileMode, before func()) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".alder-fmt-*")
 	if err != nil {
-		return err
+		if before != nil {
+			before()
+		}
+		if err := fmtUnchanged(path, orig); err != nil {
+			return err
+		}
+		return os.WriteFile(path, data, mode) // keeps the mode of the file that exists
 	}
 	name := tmp.Name()
 	_, werr := tmp.Write(data)
@@ -311,9 +325,28 @@ func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
 		os.Remove(name)
 		return err
 	}
+	if before != nil {
+		before()
+	}
+	if err := fmtUnchanged(path, orig); err != nil {
+		os.Remove(name)
+		return err
+	}
 	if err := os.Rename(name, path); err != nil {
 		os.Remove(name)
 		return err
+	}
+	return nil
+}
+
+// fmtUnchanged is nil when path still holds orig.
+func fmtUnchanged(path string, orig []byte) error {
+	now, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(now, orig) {
+		return fmt.Errorf("%s: %w", path, errChangedWhileFormatting)
 	}
 	return nil
 }

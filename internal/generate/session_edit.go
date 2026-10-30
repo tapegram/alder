@@ -193,7 +193,7 @@ func completeSessionLiterals(p *Program, edits []Edit, field string) ([]Edit, er
 			order = append(order, d.Span.File)
 		}
 		if !closeRecord(se, d.Span, field) {
-			return nil, Refusef("internal error: the session record at %s:%d:%d is not where the checker says: add `%s` to it yourself", d.Span.File, d.Span.Start.Line, d.Span.Start.Col, field)
+			return nil, Refusef("the `Session` record at %s:%d:%d is not written as `{ … }` where `alder edit session` can add to it (it may be built by a function or another expression): nothing was written; add `%s` to it yourself, then run the edit again", d.Span.File, d.Span.Start.Line, d.Span.Start.Col, field)
 		}
 	}
 	for _, file := range order {
@@ -216,7 +216,15 @@ func completeSessionLiterals(p *Program, edits []Edit, field string) ([]Edit, er
 func closeRecord(e *srcEdit, span diag.Span, field string) bool {
 	end := span.End.Col - 2 // the literal's `}`
 	if l := e.current(span.End.Line); end < 0 || end >= len(l) || l[end] != '}' {
-		return false
+		// a span that runs past its `}` (blanks, a closing parenthesis): the last `}` before the
+		// span's end, when nothing but those follows it
+		end = min(span.End.Col-1, len(l)) - 1
+		for end >= 0 && (l[end] == ' ' || l[end] == '\t' || l[end] == ')') {
+			end--
+		}
+		if end < 0 || l[end] != '}' {
+			return false
+		}
 	}
 	for n := span.End.Line; n >= span.Start.Line; n-- {
 		l := e.current(n)
