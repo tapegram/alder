@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
+	"syscall"
 
 	"alder/internal/format"
 	"alder/internal/generate"
@@ -177,6 +179,48 @@ func TestFmt_ReadOnlyDirWritesInPlace(t *testing.T) {
 	}
 }
 
+// A full disk (no temporary file) must not fall back to truncating the file.
+func TestFmt_TempFileErrorOtherThanPermissionWritesNothing(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := fmtWrite(t, dir, "app/Main.alder", fmtMessy)
+	cache := &fmtCache{noted: map[string]bool{}, progs: map[string]*fmtProject{}}
+	cache.hooks.createTemp = func(string, string) (*os.File, error) { return nil, syscall.ENOSPC }
+	cache.hooks.writeInPlace = func(string, []byte, os.FileMode) error { t.Error("wrote in place"); return nil }
+	var o, e bytes.Buffer
+	if code := fmtFile(p, false, cache, &o, &e); code != 2 || o.Len() != 0 {
+		t.Fatalf("code %d out %q err %q", code, o.String(), e.String())
+	}
+	if got, _ := os.ReadFile(p); string(got) != fmtMessy {
+		t.Errorf("file %q", got)
+	}
+}
+
+// A failed in-place write (after the file was truncated) is put back.
+func TestFmt_InPlaceFailureRestoresOriginal(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := fmtWrite(t, dir, "app/Main.alder", fmtMessy)
+	cache := &fmtCache{noted: map[string]bool{}, progs: map[string]*fmtProject{}}
+	cache.hooks.createTemp = func(string, string) (*os.File, error) { return nil, fs.ErrPermission }
+	calls := 0
+	cache.hooks.writeInPlace = func(path string, data []byte, mode os.FileMode) error {
+		calls++
+		if calls == 1 {
+			os.WriteFile(path, data[:3], mode) // partial write, then failure
+			return syscall.EIO
+		}
+		return os.WriteFile(path, data, mode)
+	}
+	var o, e bytes.Buffer
+	if code := fmtFile(p, false, cache, &o, &e); code != 2 || !strings.Contains(e.String(), "original restored") {
+		t.Fatalf("code %d err %q", code, e.String())
+	}
+	if got, _ := os.ReadFile(p); string(got) != fmtMessy {
+		t.Errorf("file %q", got)
+	}
+}
+
 // TestFmt_FileChangedBeforeRename (#28): a file changed after it was read is not replaced.
 func TestFmt_FileChangedBeforeRename(t *testing.T) {
 	t.Parallel()
@@ -184,7 +228,7 @@ func TestFmt_FileChangedBeforeRename(t *testing.T) {
 	p := fmtWrite(t, dir, "app/Main.alder", fmtMessy)
 	const edited = "module Main\n\ny : Int\ny   =   2\n"
 	cache := &fmtCache{noted: map[string]bool{}, progs: map[string]*fmtProject{}}
-	cache.beforeCommit = func() {
+	cache.hooks.before = func() {
 		if err := os.WriteFile(p, []byte(edited), 0o644); err != nil {
 			t.Error(err)
 		}

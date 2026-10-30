@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"alder/internal/diag"
 	"alder/internal/format"
@@ -104,7 +105,7 @@ type fmtCache struct {
 	noted map[string]bool
 	progs map[string]*fmtProject
 
-	beforeCommit func() // a test hook: runs after the new text is ready, before the file is replaced
+	hooks fmtHooks // test seams
 }
 
 // fmtProject is a loaded app root; bag is nil when the project could not be loaded or has files
@@ -152,7 +153,7 @@ func fmtFile(path string, checkOnly bool, cache *fmtCache, stdout, stderr io.Wri
 			fmt.Fprintf(stdout, "%s would be reformatted\n", path)
 			return 1
 		}
-		if err := writeFileAtomic(target, src, out, info.Mode().Perm(), cache.beforeCommit); err != nil {
+		if err := writeFileAtomic(target, src, out, info.Mode().Perm(), &cache.hooks); err != nil {
 			fmt.Fprintf(stderr, "alder fmt: %v\n", err)
 			return 2
 		}
@@ -303,20 +304,53 @@ func fmtFiles(path string) ([]string, error) {
 // errChangedWhileFormatting is the refusal of a write over a file that changed since it was read.
 var errChangedWhileFormatting = errors.New("the file changed while it was being formatted; left as it is, run `alder fmt` again")
 
-// writeFileAtomic (before: a test hook, run before the file is checked for changes) replaces path, whose text is orig (what was formatted), with data through a
+// fmtHooks are the seams tests use; all nil in normal runs.
+type fmtHooks struct {
+	before       func()                                                 // runs after the new text is ready, before the file is checked and replaced
+	createTemp   func(dir, pattern string) (*os.File, error)            // os.CreateTemp
+	writeInPlace func(path string, data []byte, mode os.FileMode) error // os.WriteFile
+}
+
+// writeFileAtomic replaces path, whose text is orig (what was formatted), with data through a
 // temporary file in the same directory, keeping the file's mode. When the file has changed since
-// it was read it is left alone and the error says so. When the directory does not allow a
-// temporary file (a read-only directory holding a writable file) the file is written in place.
-func writeFileAtomic(path string, orig, data []byte, mode os.FileMode, before func()) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".alder-fmt-*")
+// it was read it is left alone and the error says so. When the temporary file cannot be made
+// because the directory is read-only or not writable (a writable file in such a directory) the
+// file is written in place; if that fails the original text is written back and the error says
+// whether that worked. Any other error making the temporary file (a full disk) writes nothing.
+func writeFileAtomic(path string, orig, data []byte, mode os.FileMode, h *fmtHooks) error {
+	if h == nil {
+		h = &fmtHooks{}
+	}
+	create, inPlace, before := h.createTemp, h.writeInPlace, h.before
+	if create == nil {
+		create = os.CreateTemp
+	}
+	if inPlace == nil {
+		inPlace = os.WriteFile
+	}
+	tmp, err := create(filepath.Dir(path), ".alder-fmt-*")
 	if err != nil {
+		if !errors.Is(err, fs.ErrPermission) && !errors.Is(err, syscall.EROFS) {
+			return err
+		}
 		if before != nil {
 			before()
 		}
 		if err := fmtUnchanged(path, orig); err != nil {
 			return err
 		}
-		return os.WriteFile(path, data, mode) // keeps the mode of the file that exists
+		werr := inPlace(path, data, mode) // keeps the mode of the file that exists
+		if werr == nil {
+			return nil
+		}
+		if rerr := inPlace(path, orig, mode); rerr != nil {
+			saved := filepath.Join(os.TempDir(), "alder-fmt-original-"+filepath.Base(path))
+			if serr := os.WriteFile(saved, orig, 0o600); serr != nil {
+				saved = "(a copy could not be saved either)"
+			}
+			return fmt.Errorf("could not write %s: %v; original could NOT be restored, it was saved in %s", path, werr, saved)
+		}
+		return fmt.Errorf("could not write %s: %v; original restored", path, werr)
 	}
 	name := tmp.Name()
 	_, werr := tmp.Write(data)
