@@ -485,6 +485,11 @@ Only a `test` may use these (chapter 10); anywhere else each is E0003
   user and the org of a `Membership`: `Membership.since` has no default;
   insert the row with `Db.insert Membership { … }`"), and so is an app
   without a `via` field (chapter 10, "Two orgs").
+- `Test.setClock : Time -> Task Unit` sets the test's clock to a time:
+  `Time.now`, `Date.today` and `@created` read it, and it stands still
+  (no one-second tick) until something moves it (chapter 10, "Setting the clock").
+- `Test.advance : Int -> Task Unit` moves the test's clock that many
+  milliseconds forward (a negative number is 0), set or ticking.
 
 ### Browser steps and queries
 
