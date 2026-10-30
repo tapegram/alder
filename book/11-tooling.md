@@ -136,7 +136,9 @@ that failed. The bytes between the colours are the plain output, and
 nothing is styled when the output is a pipe or a file, when `NO_COLOR` is
 set to anything but empty, or when `TERM` is `dumb`; `--json` is never
 styled. `ALDER_COLOR=always` styles any output (so `alder test | less -R`
-keeps its colour; Windows terminals need it), and `ALDER_COLOR=never` styles
+keeps its colour; Windows terminals need it), and with it the count line of
+`alder check`, the failure recap of `alder test` and the wrapping of
+`alder explain` also appear in piped output; `ALDER_COLOR=never` styles
 none. Only the 16 ANSI colours are used, so the terminal's theme applies.
 
 `alder help --json` prints the command tree (commands, subcommands, arguments and flags, each with a one-line summary) as JSON; editors build completion from it. In Neovim, alder.nvim runs every generator with a preview of its diff (chapter 1, Editor support).
