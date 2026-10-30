@@ -3324,7 +3324,9 @@ much" failure; on a replay it only means the candidate is not a value the
 generator can make, and the shrinker discards it. An attempt that took
 over 5 seconds fails too, which is checked after it finishes, since a Go
 function cannot be interrupted: a body that never returns is caught by
-the test timeout (`-timeout`, chapter 10).
+the test timeout (`-timeout`, chapter 10). The slow case is saved like a
+failing one, and a shrink candidate that is slow ends the shrinking with
+the best case so far.
 
 **The shrinker.** `fuzz.Shrink` (`rt/fuzz/shrink.go`) gets the recorded
 choices of the failing run and a function that replays a candidate and
