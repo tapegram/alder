@@ -1119,7 +1119,7 @@ type Answer = Shown
 |---|---|---|
 | `Shown` | `get`/`open`: the page was shown | that page |
 | `Rerendered` | `submit`/`click`: `update` answered `Rerender`; or `Reject` when the re-rendered page shows no errors (its form has no `<Errors form />`, or the page no longer draws that form) | the page re-rendered, with the new data |
-| `Redirected p` | a `Redirect p`, or a `requires` sending a visitor to the login page | `p`, which the browser requested in turn |
+| `Redirected p` | a `Redirect p`, a `load` ending in `Query.redirect p`, or a `requires` sending a visitor to the login page | `p`, which the browser requested in turn |
 | `FormRejected errors` | `submit`: the form did not decode, or `update` answered `Reject` and the re-rendered form shows the text in its `<Errors form />` | the page with the form re-rendered: the values typed and the errors |
 | `PageMissing` | a 404: `Query.notFound`, `Task.notFound`, no such page | `App.notFound` |
 | `RequestFailed text` | the request failed (a `Task.fail`, a Go panic): a 500 | `App.error` |
@@ -1150,8 +1150,18 @@ Test.fetch : Page -> Task { status: Int, contentType: Text, body: Bytes, headers
 explained in chapter 6), `body` the bytes, and `headers` every header of
 the answer, `Content-Type` included, sorted by name. It does not follow a redirect: a page that
 `requires` a user the cookie lacks answers `status: 303` and a
-`Location` header, and the test reads that. It does not change the page
-the browser holds, either, so it can be used between `Test.get`s.
+`Location` header, and the test reads that; so does a page whose `load`
+ends in `Query.redirect p` (chapter 7), with `p`'s address:
+
+```alder fragment
+test "start sends the builder its seed" = {
+  let r <- Test.fetch (Start { seed: "7" })
+  Task.succeed (r.status == 303 && List.member { name: "Location", value: "/builder/7" } r.headers)
+}
+```
+
+It does not change the page the browser holds, either, so it can be used
+between `Test.get`s.
 
 `Bytes` has almost no operations (chapter 9, "File, Bytes"), so a test
 reads a text body with `Bytes.toText`, which gives `Just text` when the
