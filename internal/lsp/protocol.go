@@ -78,10 +78,15 @@ type initializeParams struct {
 	RootPath     string `json:"rootPath"`
 	Capabilities struct {
 		Workspace struct {
+			ApplyEdit bool `json:"applyEdit"`
 			InlayHint struct {
 				RefreshSupport bool `json:"refreshSupport"`
 			} `json:"inlayHint"`
 		} `json:"workspace"`
+		Window struct {
+			WorkDoneProgress bool            `json:"workDoneProgress"`
+			ShowMessage      json.RawMessage `json:"showMessage"` // present: the client answers window/showMessageRequest
+		} `json:"window"`
 		General struct {
 			PositionEncodings []string `json:"positionEncodings"`
 		} `json:"general"`
@@ -115,7 +120,7 @@ func capabilities(enc posEncoding) map[string]any {
 		"referencesProvider":         true,
 		"completionProvider":         map[string]any{"triggerCharacters": []string{".", "<", "?"}},
 		"codeActionProvider":         map[string]any{"codeActionKinds": []string{"quickfix", "refactor"}},
-		"executeCommandProvider":     map[string]any{"commands": []string{"alder.explain"}},
+		"executeCommandProvider":     map[string]any{"commands": []string{"alder.explain", "alder.fill"}},
 		"experimental":               map[string]any{"alderScratch": true},
 	}
 }

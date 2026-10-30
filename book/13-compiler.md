@@ -5583,6 +5583,154 @@ answers a generator. At no point is a file of the project written or an
 analysis changed in place; the next change makes another snapshot, and the
 old one stays valid for whoever still holds it.
 
+### Filling a hole with a model
+
+Everything above answers the editor and then waits for the next question.
+One code action breaks that pattern: `Fill ?delete with AI (Task Nav)`
+(chapter 11, "Generators in the editor") takes up to three answers from a
+model, a minute or more, and its result has to reach a buffer. Four pieces
+make it work: the loop that checks the model's answers, the code action
+that offers it, a command the server runs in the background, and requests
+that go the other way, from the server to the editor.
+
+**The loop.** `internal/fill` holds what `alder fill --ai` and the server
+share. `fill.Run` loads the app with `generate.Load`, finds the hole with
+`generate.FindHole` (the same address `alder fill` takes,
+`App.update.Logout`), and builds the first message with `fill.Prompt`:
+where the hole is and its type, the comment above its declaration, the
+module's source, one `name : Type` line for each name in scope (the
+binders at the hole, read from the checker's `Binds` as hover reads them,
+the module's values, the values and types of the app modules it imports;
+the ones whose type unifies with the hole's on a clone of the unifier
+come first, as in completion), and the standard library's signature
+files that the module names. The system prompt is `internal/fill/card.md`,
+embedded in the binary: a page on what a hole is, the expression syntax and
+the idioms of `update` arms and tests. Then, up to three times: send the
+conversation to the backend, strip a code fence if the model wrote one,
+place the expression with `generate.Fill`, and run `generate.Apply` as a
+dry run, the same copy-and-check every generator ends in. An answer that
+checks is the result; a refused one goes back to the model as a new turn,
+`The checker refused it:` and the errors exactly as `alder check` prints
+them. `Run` writes nothing: it returns the edits and, for each changed
+file, the text before and after.
+
+The expression lands in the middle of a line, between the text before the
+hole and the text after it, and that text must keep its meaning. Two things
+in an answer could change it. A comment would comment out the rest of the
+line: `n -- ` in `bump n = ?a + 1 * n` would leave `bump n = n -- + 1 * n`,
+which checks, and has lost `+ 1 * n`. And an operator could bind
+differently from the hole: `1 + 1` in `?a * 2` would read `1 + 1 * 2`. So
+`generate.Fill` asks the lexer for the expression's comments and cuts them
+(`syntax.StripComments`: a regular expression would cut a `--` inside a
+string), and parenthesises any expression that is not atomic (a name, a
+literal, one bracketed whole). The formatter, which runs on every file a
+generator writes, drops the parentheses that are not needed, so
+`Clear p -> (Task.succeed Rerender),` is written without them.
+
+A backend is one method, `Complete(ctx, system, messages) (text, error)`.
+`fill.Anthropic` posts the Messages API's JSON with `net/http`; the system
+prompt goes in a block marked `cache_control`, so the card is read from the
+API's cache on the second and third attempts. Its HTTP client follows no redirect (Go would
+send the `x-api-key` header on to whatever host a redirect names), and it
+refuses an `ALDER_ANTHROPIC_API` that is not `https`, except on the loopback
+host the tests use. `fill.Command` runs
+`ALDER_FILL_COMMAND` with `sh -c`, writing the conversation as plain text to
+its standard input and reading the expression from its standard output
+(at most 1 MB). It must be a plain text completer: with tools, the prompt's
+comments become instructions to an agent that can act on them. The command
+runs in a process group of its own: when the
+attempt's time is up, or once the command has answered, the whole group is
+killed, so nothing it started in the background outlives the attempt or
+holds the server's shutdown.
+The command backend is also how the tests run the whole loop without a
+model: the backend is a shell script, or a Go function, that answers what
+the test needs.
+
+**The action.** `codeActionReq` already finds the hole under the cursor
+for the generators (`hereCtx`). When there is one, and the client said in
+`initialize` that it applies workspace edits (`workspace.applyEdit`, now a
+field of `initializeParams`), it adds a quick fix whose `diagnostics` are
+the hole's W0002 and whose `command` is `alder.fill`, with the document,
+the address and the hole as its argument. Unlike `alder.generate`, which
+the plugin runs, the server lists `alder.fill` in its
+`executeCommandProvider`, so the editor sends it back as
+`workspace/executeCommand`.
+
+**The command.** `executeCommandReq` runs on the slow worker, and a fill
+would hold it for minutes, blocking every preview and plan behind it. So
+`fillCommand` only checks the argument, refuses a second fill while one
+runs (an atomic flag; one at a time per server), starts a goroutine under
+`s.bg`, the group the scratch runs use, and answers `{"started": true}` at
+once. The goroutine takes the open documents and their versions in one
+snapshot, writes them over a temporary copy of the app with
+`generate.Materialise` (as a generator's dry run does, so the model sees
+the unsaved buffer), and calls `fill.Run` there.
+
+**Requests from the server.** Until now the server only answered requests
+and sent notifications. The fill needs two answers from the editor: a
+progress token, and whether the edit was applied. `s.request(method,
+params)` sends a request with an id of its own (`"alder-3"`), puts a channel
+in a map of pending requests under that id, and waits on the channel. On
+the reader goroutine, a message with an id and no method is a response;
+`dispatch` looks its id up in the map and hands it to the waiting
+goroutine. That is why `request` is never called on the reader goroutine:
+the reader is the one that would deliver the answer.
+
+With the first, `window/workDoneProgress/create`, the server gets a token
+and then sends `$/progress` notifications on it: `begin` with the title
+`alder: filling ?out : Task Nav` and the model's name, a `report` before
+each retry (`attempt 2 of 3: E0003 …`), and `end`. Neovim shows them in
+`vim.lsp.status()`, which status lines read. A client that did not declare
+`window.workDoneProgress` gets none of them.
+
+With the second, `workspace/applyEdit`, the server sends the result. It does
+not send the whole file: `generate.LineEdits` runs the diff behind
+`UnifiedDiff` without context and turns each run of changed lines into one
+`TextEdit` (lines `[start, end)` replaced by the new lines), so the filled
+hole and the import it needed are two small edits and the rest of the
+buffer is not touched. The edit names the document's version from the
+snapshot the fill read. If you typed in that buffer meanwhile, its version
+is higher, and the server does not send the edit at all: it shows the
+model's expression in a warning, for you to paste. It cannot leave that to
+the editor: Neovim, given an edit for an older version, prints `Buffer …
+newer than edits` and answers `applied: true` without applying it. (A client
+that answers `applied: false` gets the same warning.) Each of the server's
+requests waits at most 30 seconds for its answer, so an editor that never
+answers cannot hold the one fill forever. An edit the
+editor applies is one undo step.
+
+Before the edit goes, two more checks. The hole's type bounds what the
+expression returns, not what it does: an answer the module's own text talked
+the model into (a comment is part of the prompt) can be a `Task Nav` that
+deletes every row and still checks. So `fill.Run` checks the result once
+more with `generate.Probe`, which returns the checked copy, and
+`fill.Effects` reads the expression there: `generate.FillAt` says where the
+fill put it, and every name in it carries the resolver's answer (a
+`syntax.Ref`: a value of the app, a standard library value, a capability).
+Text would not do: an alias, or a helper in another module, hides a name
+from a search. It flags three things. A capability's entry, Query or Task
+alike, since each runs host Go (`capability Email.send`). The standard
+library's effects that reach beyond the page and its user's rows: `Http.*`,
+`Session.put`, `Html.unsafe`, `Task.sleep`, and `Db.insert`, `Db.update`,
+`Db.delete` (the `…Mine` and `…Scoped` ones keep to the session's rows). And
+any value of the app whose body reaches one of those, through as many other
+values as it takes, with the path (`Mail.notify → Email.send`). The walk
+over the values' bodies remembers each value's answer, and a value it is
+already inside counts as having none, so mutual recursion ends. With any of
+them, the server asks `window/showMessageRequest` with `Apply` and
+`Discard` (the whole expression when it is shorter than 40 lines, else the
+lines that hold a flagged name), and sends the edit only on `Apply`; a client that did not declare
+`window.showMessage` cannot be asked, so it gets the expression in a warning
+and no edit. And every edit applied is followed by a message that shows the
+expression, so nothing a model wrote lands unseen. `alder fill --ai` prints
+the expression and the same warning on the command line.
+
+What leaves the machine is exactly the prompt: one module's source (its
+comments and string literals too), names and types, the standard library's
+signatures and, on retries, the errors, which quote lines of that module. `alder fill <address> --prompt` prints
+it. With `ALDER_LSP_LOG` set, the server also writes each request body and
+each answer to the log, never a header, so never the key.
+
 ### Scratch files in the language server
 
 A scratch file is not a module, so the analysis of this section (a snapshot of

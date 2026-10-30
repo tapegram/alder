@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"alder/internal/fill"
 	"alder/internal/version"
 )
 
@@ -25,6 +26,10 @@ type Options struct {
 	Debounce time.Duration                            // rebuild delay after a change; 0 in tests
 	Poll     time.Duration                            // disk poll interval; 0 disables
 	Migrate  func(dir, slug string) ([]string, error) // generate.App.Migrate
+	// Fill gives the model backend of the alder.fill command and its name for the progress
+	// ("claude-opus-5-5"), read when a fill starts (fill.Env, so nothing reads a key before
+	// one): a nil Backend, or a nil Fill, when nothing is configured.
+	Fill func() (fill.Backend, string)
 }
 
 // handler answers one request: its result (nil is null), or an error (a *rpcError as is, any
@@ -81,8 +86,16 @@ type server struct {
 	scratch   scratchRuns              // the runs of the open scratch documents
 	views     scratchViews             // the analyses of the open scratch documents' texts
 
-	inlayRefresh bool          // the client takes workspace/inlayHint/refresh; set by initialize
-	requests     atomic.Uint64 // the server's own requests, for their ids
+	inlayRefresh bool // the client takes workspace/inlayHint/refresh; set by initialize
+
+	// the server's own requests to the client (request): the next id, and the waiters by idKey
+	reqSeq  atomic.Int64
+	pendMu  sync.Mutex
+	pending map[string]chan *message
+	filling atomic.Bool // an alder.fill is running (one at a time)
+
+	// the client's capabilities, set by initialize (before any worker reads them)
+	applyEdit, workDoneProgress, showMessageRequest bool
 
 	// reader goroutine only
 	initialized bool
@@ -105,7 +118,7 @@ func newServer(w io.Writer, o Options) *server {
 	}
 	return &server{o: o, c: &conn{w: w, wire: o.Wire},
 		fast: make(chan *message, queueLen), slow: make(chan *message, queueLen),
-		tokens: make(chan struct{}, 1), stop: make(chan struct{})}
+		tokens: make(chan struct{}, 1), stop: make(chan struct{}), pending: map[string]chan *message{}}
 }
 
 // serve is the reader loop. When it returns, the workers have answered every queued request and
@@ -150,10 +163,12 @@ func (s *server) dispatch(m *message) (exit bool) {
 	switch {
 	case m.Method == "" && m.JSONRPC == "" && m.Error != nil: // readMessage's parse error
 		s.reply(nil, nil, m.Error)
+	case m.Method == "" && m.ID != nil && s.answered(m):
+		// the response to one of the server's own requests
 	case m.Method == "" && m.ID != nil && m.Result == nil && m.Error == nil:
 		s.reply(m.ID, nil, &rpcError{codeInvalidRequest, "no method"})
 	case m.Method == "":
-		// a response: the server sends no requests
+		// a response to no request the server is waiting for
 	case m.ID == nil:
 		return s.notification(m)
 	case !s.initialized && m.Method != "initialize", s.shutdown:
@@ -266,6 +281,65 @@ func (s *server) reply(id *json.RawMessage, result any, err error) {
 	}
 }
 
+// requestTimeout bounds the wait for the client's answer to one of the server's requests (a
+// variable for tests): a client that never answers cannot hold a fill, and its one-fill flag,
+// forever.
+var requestTimeout = 30 * time.Second
+
+// request sends the client a request and waits for its response: the result, or the client's
+// error. It returns an error when the server stops first, or after requestTimeout. Workers and background goroutines
+// call it; the reader goroutine never does (it routes the response).
+func (s *server) request(method string, params any) (json.RawMessage, error) {
+	return s.requestWithin(method, params, requestTimeout)
+}
+
+// requestWithin is request with its own bound on the wait (a question to the user).
+func (s *server) requestWithin(method string, params any, d time.Duration) (json.RawMessage, error) {
+	id, _ := json.Marshal(fmt.Sprintf("alder-%d", s.reqSeq.Add(1)))
+	key := idKey(id)
+	ch := make(chan *message, 1)
+	s.pendMu.Lock()
+	s.pending[key] = ch
+	s.pendMu.Unlock()
+	defer func() {
+		s.pendMu.Lock()
+		delete(s.pending, key)
+		s.pendMu.Unlock()
+	}()
+	if err := s.c.send(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(id), "method": method, "params": params}); err != nil {
+		return nil, err
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case m := <-ch:
+		if m.Error != nil {
+			return nil, m.Error
+		}
+		return m.Result, nil
+	case <-s.stop:
+		return nil, errors.New("the server stopped")
+	case <-t.C:
+		return nil, fmt.Errorf("the editor did not answer %s in %v", method, d)
+	}
+}
+
+// answered hands a response to the request of the server's that waits for it, and reports
+// whether one did.
+func (s *server) answered(m *message) bool {
+	s.pendMu.Lock()
+	ch := s.pending[idKey(*m.ID)]
+	s.pendMu.Unlock()
+	if ch == nil {
+		return false
+	}
+	select {
+	case ch <- m:
+	default: // answered twice: the first answer counts
+	}
+	return true
+}
+
 // initialize records the root (rootUri, else rootPath) and answers the capabilities.
 func (s *server) initialize(params json.RawMessage) (any, error) {
 	if s.initialized {
@@ -292,6 +366,11 @@ func (s *server) initialize(params json.RawMessage) (any, error) {
 			return nil, &rpcError{codeInvalidParams, fmt.Sprintf("root: %v", err)}
 		}
 		s.root, s.rootReal = root, real
+	}
+	s.applyEdit = p.Capabilities.Workspace.ApplyEdit
+	s.workDoneProgress = p.Capabilities.Window.WorkDoneProgress
+	if sm := p.Capabilities.Window.ShowMessage; len(sm) > 0 && string(sm) != "null" {
+		s.showMessageRequest = true
 	}
 	s.inlayRefresh = p.Capabilities.Workspace.InlayHint.RefreshSupport
 	s.enc = negotiate(p.Capabilities.General.PositionEncodings)
