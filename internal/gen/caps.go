@@ -494,7 +494,7 @@ SILOWEB
 }
 
 // Web is the app's options for web.NewRouter that do not depend on how it runs: the session
-// codec, App.error, App.notFound and the page App.login names. Serve adds the store, the
+// codec, App.error, App.notFound, the page App.login names and App's theme. Serve adds the store, the
 // capabilities, the log, dev mode, the secret, the static directory and the reload generation;
 // alder test's browser routes the app with these options too.
 func Web() web.Options {
@@ -504,7 +504,7 @@ func Web() web.Options {
 		NotFoundDoc: ` + notFound + `,
 		Login:       ` + strconv.Quote(login) + `,
 		DevMap:      ` + strconv.Quote(devMapJSON(p)) + `,
-WEBEXTRA	}
+` + themeOption(p) + `WEBEXTRA	}
 }
 
 ` + g.sessionCodec(p.Session) + g.sessionVia(p))
@@ -1174,3 +1174,13 @@ var appName = regexp.MustCompile(`(^|[^.\w])([A-Z]\w*__\w+)`)
 
 // stubPkg finds the packages a stub's code uses.
 var stubPkg = regexp.MustCompile(`\b(rt|html|time|db|eff|app)\.[A-Z]`)
+
+// themeOption is Web()'s Theme field: the CSS of App's `theme` (web.Options.Theme, appended to
+// the served al.css); nothing when App has none or it sets nothing.
+func themeOption(p *ir.Program) string {
+	css := p.Theme.CSS()
+	if css == "" {
+		return ""
+	}
+	return "\t\tTheme: " + strconv.Quote(css) + ",\n"
+}

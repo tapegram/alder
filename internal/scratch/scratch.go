@@ -288,7 +288,7 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 		b.Err = err
 		return b
 	}
-	if err := buildkit.CopyStatic(filepath.Join(appDir, "static"), filepath.Join(b.Dir, "static")); err != nil {
+	if err := buildkit.CopyStatic(filepath.Join(appDir, "static"), filepath.Join(b.Dir, "static"), p.Theme.CSS()); err != nil {
 		b.Err = err
 		return b
 	}
