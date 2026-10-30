@@ -778,6 +778,13 @@ type EffFail struct {
 // route answers with 404 (App.notFound).
 type EffNotFound struct{ Typed }
 
+// EffRedirect is Query.redirect p: the effect stops with eff.ErrRedirect to p's URL (Page, of
+// type Page), which a route answers with a 303 (book 07).
+type EffRedirect struct {
+	Typed
+	Page Expr
+}
+
 // ---- Database operations: the Db.* functions, resolved to the table they act on.
 //
 // The table always comes from the checked type (Table t, Select t, …), so it is known

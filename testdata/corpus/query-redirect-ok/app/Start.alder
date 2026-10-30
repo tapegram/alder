@@ -1,0 +1,36 @@
+module Start
+
+-- A landing page whose load sends the browser on (#8): to the builder with the seed it was
+-- given, or to another site.
+page "/start" { key: Text = "", seed: Text = "1", go: Text = "" }
+
+type Model = { seed: Text }
+
+load : Params -> Session -> Query Model
+load params session =
+  if params.go == "builder" && params.key == "test" then Query.redirect (Builder { seed: params.seed, tab: "main" })
+  else if params.go == "out" then Query.redirect (Url.external "https://example.com/x")
+  else Query.succeed { seed: params.seed }
+
+view : Model -> Session -> Html Msg
+view model session = <html><body><h1 id="start">Start {model.seed}</h1></body></html>
+
+test "open follows the redirect" = {
+  let r <- Test.open (Start { key: "test", seed: "7", go: "builder" })
+  Task.succeed (r.answer == Redirected (Builder { seed: "7", tab: "main" }) && Test.text "#builder" r.doc == Just "Builder 7 (main)")
+}
+
+test "a load that does not redirect shows the page" = {
+  let r <- Test.get (Start { key: "", seed: "3", go: "builder" })
+  Task.succeed (r.model.seed == "3")
+}
+
+test "fetch shows the 303 and its Location" = {
+  let r <- Test.fetch (Start { key: "test", seed: "7", go: "builder" })
+  Task.succeed (r.status == 303 && List.member { name: "Location", value: "/builder/7" } r.headers)
+}
+
+test "a redirect to another site" = {
+  let r <- Test.fetch (Start { key: "", seed: "1", go: "out" })
+  Task.succeed (r.status == 303 && List.member { name: "Location", value: "https://example.com/x" } r.headers)
+}

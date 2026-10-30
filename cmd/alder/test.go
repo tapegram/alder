@@ -19,6 +19,7 @@ import (
 	"alder/internal/buildkit"
 	"alder/internal/diag"
 	"alder/internal/scratch"
+	"alder/internal/style"
 	rtesting "alder/rt/testing"
 )
 
@@ -120,10 +121,21 @@ func main() {
 // app serialize on build/<app>/scratch/test.lock (scratch.Compile's lock); Ctrl-C (SIGINT) or
 // SIGTERM kills the tests' process.
 func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
+	return runTestCmd(args, nil, stdout, stderr)
+}
+
+// runTestCmd is `alder test`, or with bench (non-nil) `alder bench` (bench.go): the same build
+// and run, the arguments parsed the same way, except that bench refuses the mutation and property
+// flags and reads --count.
+func runTestCmd(args []string, bench *benchRun, stdout, stderr io.Writer) (code int) {
+	cmd, usage := "alder test", testUsage
+	if bench != nil {
+		cmd, usage = "alder bench", benchUsage
+	}
 	jsonOut := false
 	// fail reports a problem that is not a test's: on stderr, and with --json as {"error": msg}.
 	fail := func(msg string) {
-		fmt.Fprintf(stderr, "alder test: %s\n", msg)
+		fmt.Fprintf(stderr, "%s: %s\n", cmd, msg)
 		if jsonOut {
 			enc := json.NewEncoder(stdout)
 			enc.SetEscapeHTML(false)
@@ -138,10 +150,19 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 	}()
 	dir, haveDir, runPat, timeout := ".", false, "", defaultTestTimeout
 	timeoutArg, mutate, minArg, bd := "", false, "", ""
-	fuzzArg, seedArg := "", ""
+	fuzzArg, seedArg, countArg := "", "", ""
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if bench != nil && (isFlag(a, "mutate") || isFlag(a, "min") || isFlag(a, "fuzz") || isFlag(a, "seed")) {
+			fmt.Fprintln(stderr, usage) // nothing to measure in a mutant or a property's draws
+			return 2
+		}
 		switch {
+		case bench != nil && (a == "--count" || a == "-count") && i+1 < len(args):
+			i++
+			countArg = args[i]
+		case bench != nil && (strings.HasPrefix(a, "-count=") || strings.HasPrefix(a, "--count=")):
+			_, countArg, _ = strings.Cut(a, "=")
 		case (a == "--fuzz" || a == "-fuzz") && i+1 < len(args):
 			i++
 			fuzzArg = args[i]
@@ -177,7 +198,7 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 		case strings.HasPrefix(a, "-timeout=") || strings.HasPrefix(a, "--timeout="):
 			_, timeoutArg, _ = strings.Cut(a, "=")
 		case strings.HasPrefix(a, "-") || haveDir:
-			fmt.Fprintln(stderr, testUsage)
+			fmt.Fprintln(stderr, usage)
 			return 2
 		default:
 			dir, haveDir = a, true
@@ -213,6 +234,17 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 	if _, err := strconv.ParseUint(seedArg, 10, 64); seedArg != "" && err != nil {
 		fail(fmt.Sprintf("bad --seed %q: want a whole number, such as 42", seedArg))
 		return 2
+	}
+	if bench != nil {
+		bench.count = defaultBenchCount
+		if countArg != "" {
+			v, err := strconv.Atoi(countArg)
+			if err != nil || v < 1 {
+				fail(fmt.Sprintf("bad --count %q: want a number of runs, such as 3", countArg))
+				return 2
+			}
+			bench.count = v
+		}
 	}
 	if _, err := regexp.Compile(runPat); err != nil { // before the build: a typo should fail at once
 		fail(fmt.Sprintf("bad -run pattern: %v", err))
@@ -257,6 +289,11 @@ func runTestTo(args []string, stdout, stderr io.Writer) (code int) {
 		return 2
 	}
 	props := []string{rtesting.EnvFuzz + "=" + fuzzArg, rtesting.EnvSeed + "=" + seedArg, rtesting.EnvFuzzDB + "=" + fuzzDB}
+	if bench != nil {
+		props = append(props, rtesting.EnvBench+"=1", rtesting.EnvCount+"="+strconv.Itoa(bench.count))
+	} else {
+		props = append(props, rtesting.EnvBench+"=", rtesting.EnvCount+"=")
+	}
 	return runTests(b, runPat, timeout, mut, props, jsonOut, stdout, stderr, fail)
 }
 
@@ -309,6 +346,17 @@ func runTests(b scratch.Build, runPat string, timeout time.Duration, mut *mutate
 	// kills the group and stops
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// on a terminal the report and the stderr lines are restyled, line by line (teststyle.go)
+	if st := style.For(stdout); st.On() && !jsonOut {
+		lw := style.Lines(stdout, (&reportStyler{st: st}).line)
+		defer lw.Flush()
+		stdout = lw
+	}
+	if st := style.For(stderr); st.On() && !jsonOut {
+		lw := style.Lines(stderr, stillRunning(st))
+		defer lw.Flush()
+		stderr = lw
+	}
 	counted := &resultCounter{w: stdout, json: jsonOut}
 	for from := 1; ; {
 		deadline := time.Now().Add(timeout)
@@ -599,7 +647,7 @@ func testDiags(dir string, ds []diag.Diagnostic, stopped, jsonOut bool, stdout, 
 		if d.Severity == "warning" {
 			w = stderr
 		}
-		fmt.Fprint(w, diag.RenderText(d, lines))
+		fmt.Fprint(w, diag.RenderTextStyled(d, lines, style.For(w)))
 	}
 	return failed
 }

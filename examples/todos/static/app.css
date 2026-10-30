@@ -24,6 +24,12 @@ ul#todos {
   padding: 0;
 }
 
+/* No list when there are no to-dos: an empty <ul> would still keep the
+   design system's margins, a blank band between the filters and the count. */
+ul#todos:not(:has(li)) {
+  display: none;
+}
+
 ul#todos li {
   display: flex;
   align-items: center;

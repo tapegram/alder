@@ -111,7 +111,7 @@ view model session =
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       -- @admin end
       <form submit={Save}>
         -- @admin begin inputs
@@ -157,10 +157,10 @@ test "saving changes every field" = {
       row: Maybe.map (\row -> { name: row.name, post: row.post }) after,
       posts: Test.texts "select[name=post] option" page.doc,
     } == {
-        answer: Redirected (Admin.Tags.Show { id: tag1 }),
-        row: Just { name: Text.NonEmpty "name-2", post: post2 },
-        posts: ["title-1", "title-2"],
-      }
+      answer: Redirected (Admin.Tags.Show { id: tag1 }),
+      row: Just { name: Text.NonEmpty "name-2", post: post2 },
+      posts: ["title-1", "title-2"],
+    }
   )
 }
 
@@ -292,11 +292,11 @@ test "a long list of posts offers 50, and the search narrows it" = {
       found: Test.count "select[name=post] option" found.doc <= 3,
       answer: r.answer,
     } == {
-        shown: 51,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Tags.Edit { id: tag1, findPost: "zz" }),
-      }
+      shown: 51,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Tags.Edit { id: tag1, findPost: "zz" }),
+    }
   )
 }
 
@@ -332,12 +332,12 @@ test "the row's own post is offered first when it sorts past the 50" = {
       once: List.length (List.filter (\o -> o.id == post1) page.model.posts),
       shown: List.length page.model.posts,
     } == {
-        answer: Redirected (Admin.Tags.Show { id: tag1 }),
-        kept: Just post1,
-        first: Just post1,
-        once: 1,
-        shown: 51,
-      }
+      answer: Redirected (Admin.Tags.Show { id: tag1 }),
+      kept: Just post1,
+      first: Just post1,
+      once: 1,
+      shown: 51,
+    }
   )
 }
 

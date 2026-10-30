@@ -89,10 +89,14 @@ func (g *gen) routesSource(p *ir.Program) string {
 		g.encoders(&b, p) // browser.go
 	}
 	if len(p.Silos) > 0 {
-		b.WriteString(`// route__fail answers a load or update that did not succeed: 404 (App.notFound) for
-// Query.notFound and Task.notFound, 503 (App.maintenance) for a silo that is not served, else
-// 500 (App.error).
+		b.WriteString(`// route__fail answers a load or update that did not succeed: a 303 to the page for
+// Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, 503 (App.maintenance)
+// for a silo that is not served, else 500 (App.error).
 func route__fail(err error) web.Response {
+	var rd *eff.ErrRedirect
+	if errors.As(err, &rd) {
+		return web.QueryRedirectResponse(rd.Location)
+	}
 	if errors.Is(err, eff.ErrNotFound) {
 		return web.NotFoundResponse(html.None())
 	}
@@ -105,9 +109,13 @@ func route__fail(err error) web.Response {
 
 `)
 	} else {
-		b.WriteString(`// route__fail answers a load or update that did not succeed: 404 (App.notFound) for
-// Query.notFound and Task.notFound, else 500 (App.error).
+		b.WriteString(`// route__fail answers a load or update that did not succeed: a 303 to the page for
+// Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
+	var rd *eff.ErrRedirect
+	if errors.As(err, &rd) {
+		return web.QueryRedirectResponse(rd.Location)
+	}
 	if errors.Is(err, eff.ErrNotFound) {
 		return web.NotFoundResponse(html.None())
 	}
@@ -194,7 +202,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 		enter = g.enter(b, p, pg)
 	}
 	if hasUpdate {
-		b.WriteString(comment(fmt.Sprintf("%s runs page %s's update for msg and answers its Nav (book 06): load, update (a Task, whose session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on a form (st, the state of the form that sent the message; nil for a message without one) load and view again with t on the form (patched into the page under Datastar); for Rerender (and a Reject without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh does not post again). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound or Task.notFound.", updateFunc(m), m)))
+		b.WriteString(comment(fmt.Sprintf("%s runs page %s's update for msg and answers its Nav (book 06): load, update (a Task, whose session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on a form (st, the state of the form that sent the message; nil for a message without one) load and view again with t on the form (patched into the page under Datastar); for Rerender (and a Reject without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh does not post again). A failed Task changes nothing: 500 (App.error), 404 for Query.notFound or Task.notFound, or a 303 for Query.redirect.", updateFunc(m), m)))
 		fmt.Fprintf(b, `func %[1]s(rq *web.Request, params %[2]s, msg %[3]s, st *html.FormState) web.Response {
 	model, session, stop := %[4]s(rq, params%[5]s)
 	if stop != nil {
@@ -224,12 +232,12 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	}
 
 	// the GET route
-	steps := "decode the parameters (404 when they do not), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
+	steps := "decode the parameters (404 when they do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
 	if len(pg.Requires) > 0 {
-		steps = "decode the parameters (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
+		steps = "decode the parameters (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
 	}
 	if pg.Roles != nil {
-		steps = "decode the parameters (404 when they do not), `requires` (303 to App.login), the role (404), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
+		steps = "decode the parameters (404 when they do not), `requires` (303 to App.login), the role (404), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser reads)."
 	}
 	fileField, respond := "", fmt.Sprintf("web.PageResponse(%s(model, session), &html.FormState{PageParams: %s(params)}, rq.Session, false)", GoName(m, "view"), paramsFunc(m))
 	if pg.File {
@@ -686,7 +694,7 @@ func (g *gen) appRoutes(b *strings.Builder, p *ir.Program) {
 		g.msgDecoders(b, "App", msg, forms)
 	}
 	app := GoName(p.Session.Module, p.Session.Name)
-	b.WriteString(comment(fmt.Sprintf("%s runs App's update for msg and answers its Nav: Redirect p is a 303 to p; Rerender and Reject t are a 303 back to the page that sent the message (the Referer, else /), as App has no page of its own to render (a Reject's text is not shown). The session the Task leaves is stored; a failed Task changes nothing: 500 (App.error), or 404 for Query.notFound or Task.notFound.", updateFunc("App"))))
+	b.WriteString(comment(fmt.Sprintf("%s runs App's update for msg and answers its Nav: Redirect p is a 303 to p; Rerender and Reject t are a 303 back to the page that sent the message (the Referer, else /), as App has no page of its own to render (a Reject's text is not shown). The session the Task leaves is stored; a failed Task changes nothing: 500 (App.error), 404 for Query.notFound or Task.notFound, or a 303 for Query.redirect.", updateFunc("App"))))
 	fmt.Fprintf(b, `func %s(rq *web.Request, msg %s) web.Response {
 	nav, err := eff.Run(rq.Env, eff.KTask, %s(msg, rq.Env.Session.(%s)))
 	if err != nil {

@@ -259,6 +259,8 @@ func (l *lowerer) build(h *effHead, args []Expr, t types.Type) Expr {
 		return &EffFail{Typed: Typed{t}, Message: args[0]}
 	case "Query.notFound", "Task.notFound":
 		return &EffNotFound{Typed: Typed{t}}
+	case "Query.redirect":
+		return &EffRedirect{Typed: Typed{t}, Page: args[0]}
 	case "Test.run":
 		return &TestRun{Typed: Typed{t}, Task: args[0]}
 	case "Test.trace":

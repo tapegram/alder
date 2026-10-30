@@ -254,6 +254,8 @@ func (p *printer) expr(e ir.Expr) string {
 		return effName(x.Kind) + ".all " + p.atom(x.Effects)
 	case *ir.EffFail:
 		return "Task.fail " + p.atom(x.Message)
+	case *ir.EffRedirect:
+		return "Query.redirect " + p.atom(x.Page)
 	case *ir.EffNotFound:
 		if app, ok := x.Ty.(*types.App); ok && app.Con == "Query" {
 			return "Query.notFound"

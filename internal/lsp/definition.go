@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"alder/internal/diag"
+	"alder/internal/scratch"
 	"alder/internal/syntax"
 	"alder/internal/types"
 )
@@ -19,6 +20,12 @@ func definitionReq(s *server, params json.RawMessage) (any, error) {
 	locs := []Location{}
 	rel, ok := s.rel(p.TextDocument.URI)
 	if !ok {
+		return locs, nil
+	}
+	if scratch.IsScratchFile(rel) {
+		if loc, ok := s.scratchDefinition(rel, p.Position); ok {
+			locs = append(locs, loc)
+		}
 		return locs, nil
 	}
 	a, m, path, pos, ok := s.at(rel, p.Position, true)
@@ -40,7 +47,7 @@ func (s *server) location(a *analysis, file string, sp diag.Span) (Location, boo
 	if !s.fresh(a, file, sp.End.Line, true) {
 		return Location{}, false
 	}
-	return Location{URI: s.uriOf(file), Range: spanRange(sp)}, true
+	return Location{URI: s.uriOf(file), Range: s.enc.wireRange(a.lines[file], spanRange(sp))}, true
 }
 
 // definition is the file and span of the declaration of what the cursor names: a field of a
