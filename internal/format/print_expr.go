@@ -499,16 +499,15 @@ func (p *printer) pattern(pt syntax.Pattern) Doc {
 	panic("format: unknown pattern")
 }
 
-// subPattern prints a constructor's argument (ctorArg) or a field's or list element's pattern:
-// a constructor with an argument in parentheses, and as a constructor's argument also a list or
-// a negative literal (the grammar does not start an argument with `[` or `-`).
+// subPattern prints a constructor's argument (ctorArg) or a field's or list element's pattern.
+// Only a constructor's argument is ever parenthesised: an applied constructor (`Just (Just x)`)
+// and a negative literal (`Num (-1)`, as `f -1` is subtraction). A list is a bare argument, and
+// list elements and record fields take any pattern bare.
 func (p *printer) subPattern(pt syntax.Pattern, ctorArg bool) Doc {
 	paren := false
 	switch x := pt.(type) {
 	case *syntax.PCtor:
-		paren = x.Arg != nil
-	case *syntax.PList:
-		paren = ctorArg
+		paren = ctorArg && x.Arg != nil
 	case *syntax.PLit:
 		paren = ctorArg && strings.HasPrefix(p.spanText(x.Span), "-")
 	}

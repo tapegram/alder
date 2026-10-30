@@ -18,7 +18,11 @@ pats = match v {
   Num (-1) -> 0,
   Wrapped ([]) -> 0,
   "text" -> 1,
-  True -> 2
+  True -> 2,
+  [Just m, Just (Ok s)] -> 3,
+  { a: Just x, b: [_, ..r] } -> 4,
+  Just [a, ..rest] -> 5,
+  Just ((-2)) -> 6
 }
 
 nested : Int
