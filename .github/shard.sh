@@ -14,10 +14,10 @@
 # (measured: `shard.sh weights`), every other test weighs 1. A test's weight is its Elapsed, or
 # for a parallel group (a test whose subtests call t.Parallel: its own Elapsed ends before they
 # run) the time from its first subtest starting (its "cont" event once t.Parallel lets it go, else
-# its "run") to its last subtest ending, whichever is longer; the tests of 2 s or more are listed. The tests, heaviest first
-# (ties by name), each go to the lightest shard so far (ties: the lowest k). Deterministic, and a
-# new or renamed test lands in some shard without anyone editing a file; a new slow test is worth
-# a line in shard-weights.
+# its "run") to its last subtest ending, whichever is longer; the tests of 2 s or more are listed.
+# The tests, heaviest first (ties by name), each go to the lightest shard so far (ties: the
+# lowest k). Deterministic, and a new or renamed test lands in some shard without anyone editing
+# a file; a new slow test is worth a line in shard-weights.
 set -euo pipefail
 if [ "$1" = weights ]; then
   exec python3 - "$2" <<'PY'

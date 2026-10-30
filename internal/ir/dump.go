@@ -138,6 +138,9 @@ func Dump(p *Program) string {
 	if p.Deploy != nil {
 		form(deployForm(p.Deploy))
 	}
+	if p.Theme != nil {
+		form(themeForm(p.Theme))
+	}
 	for _, c := range p.Caps {
 		d := &dumper{home: c.Module}
 		x := list(2, atom("capability"), atom(c.Module+"."+c.Name))

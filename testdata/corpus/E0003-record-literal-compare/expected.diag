@@ -1,0 +1,2 @@
+app/M.alder:9:10 E0003 cannot compare `Curve` with `{ median: Int, sigma: Float, perDoubling: Float }`: `==` needs both sides to have the same type; field `median` is Int, Curve's is Float
+app/M.alder:12:13 E0003 cannot compare `List Curve` with `List { median: Float, sigma: Float }`: `==` needs both sides to have the same type; the record is missing Curve's `perDoubling`

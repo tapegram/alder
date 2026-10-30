@@ -33,6 +33,7 @@ type Program struct {
 	Brands    []*Brand // the app's brands, in module order then declaration order
 	Login     string   // the path of the page App's `login` names; "" when App has none
 	Deploy    *Deploy  // App's `deploy` declaration (chapter 16); nil when App has none. Data only: nothing in the generated program reads it
+	Theme     *Theme   // App's `theme` declaration (Appendix C); nil when App has none. Its CSS goes into the generated Web()
 	// AppArms are the arms of App's `update` with the store each one's Task writes (M15); nil
 	// when App declares no update.
 	AppArms []*Arm
@@ -1088,7 +1089,7 @@ type GenTree struct {
 	Prim  string     // GenPrim: "Int", "Float", "Bool", "Text", "Unit", "Bytes", "Date", "Time" or "Id"
 	Elems []*GenTree // children in order: record fields, constructor payloads, the arguments of List, Maybe, Result, Dict; a brand's base
 	Names []string   // GenRecord: field names; GenUnion: constructor names
-	Rec   []bool     // GenUnion: constructor i's payload reaches the union again
+	Rec   []bool     // GenUnion: constructor i's payload reaches the union again; GenResult: Elems[i] reaches the Result again
 	Brand string     // GenBrand, GenStdBrand: "Module.Name"
 	Check bool       // GenBrand: the brand has a `where` check (check__M__B), which a drawn value must pass
 	Key   string     // types.String of the type (brands spelled out): the identity of the generated function

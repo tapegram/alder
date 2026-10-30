@@ -57,7 +57,8 @@ func TestForm_Validation(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := SpecByID("new msg")
-	fields, _, ready := Form(s, &Match{Sets: map[string]string{"page": "Home"}, Why: "x"}, nil, p)
+	// a required field starts at its example (issue 45); one you cleared is required again
+	fields, _, ready := Form(s, &Match{Sets: map[string]string{"page": "Home"}, Why: "x"}, map[string]string{"name": ""}, p)
 	if ready {
 		t.Fatal("ready without a name")
 	}

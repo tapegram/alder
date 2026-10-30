@@ -52,6 +52,26 @@ type Field struct {
 	DefaultUnless []string
 	Value         string // help --json: an arg's display ("<Module>") or a flag's placeholder ("T")
 	Summary       string // help --json: a flag's summary
+	// Help is the editor form's one line on what the field means; "" for a flag uses Summary
+	// (HelpText). Example is a value the field accepts, shown beside it, and the starting value
+	// of a required field that names something new (Form). Both live here, with the field, so
+	// the CLI's help and the editor never describe a field twice.
+	Help, Example string
+	// Existing marks an ArgModule that must name a module the app has (new decl, new test):
+	// Form starts it, when required and unset, at the first module rather than the example.
+	Existing bool
+	// Agent marks a flag the editor's form leaves out: a precision an agent needs on the
+	// command line (where a button goes, refusing instead of leaving a to-do list) and a person
+	// does by hand after seeing the preview. The CLI takes it as any other flag.
+	Agent bool
+}
+
+// HelpText is the field's one line for the editor: Help, else (a flag) its Summary.
+func (f Field) HelpText() string {
+	if f.Help != "" {
+		return f.Help
+	}
+	return f.Summary
 }
 
 // Sets are the parsed values of a generator's arguments and flags, by Field.Name.

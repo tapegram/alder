@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"alder/rt"
 	"alder/rt/eff"
@@ -75,6 +76,12 @@ const (
 	// predicate rejecting more than maxRejected of them fails the property.
 	healthAttempts = 50
 	maxRejected    = 0.9
+)
+
+// How a health check stopped a property (CaseResult.stopped); "" for a failing case.
+const (
+	stoppedOn     = "on"     // a run that was too slow
+	stoppedBefore = "before" // a draw that never made its run (it drew too much)
 )
 
 // attemptLimit is how long one attempt may take before it fails the property (a variable, so
@@ -175,9 +182,14 @@ func runProperty(c Case, o Options, r CaseResult) CaseResult {
 	ran := func(a attempt) bool {
 		runs++
 		if a.dur > attemptLimit {
-			r.Run = runs
+			r.Run, r.stopped = runs, stoppedOn
 			r.Error = fmt.Sprintf("run %d took %s, over the %s one case may take", runs, a.dur.Round(time.Millisecond), attemptLimit)
 			r.Args = argValues(p, a.vals)
+			if path != "" && !o.Mutating { // saved like a failure: the next run replays it first
+				if err := save(path, a.seq); err != nil {
+					r.Error += "\ncould not save the slow case: " + err.Error()
+				}
+			}
 			return true
 		}
 		if a.failed() {
@@ -193,28 +205,25 @@ func runProperty(c Case, o Options, r CaseResult) CaseResult {
 	if seq, ok := readSaved(path); ok {
 		st.at(savedRun)
 		if a := runAttempt(p, o, fuzz.Replay(seq)); !a.overrun && !a.rejected && ran(a) {
-			if failing != nil {
-				r.Run = savedRun // not a run of this seed: the report says so
-			}
+			r.Run = savedRun // not a run of this seed: the report says so
 			return finish(c, o, r, failing, path)
 		}
 	}
 	rejects := map[string]int{}
 	for i := 0; runs < o.Fuzz; i++ {
 		if i == healthAttempts || i == attemptsPerRun*o.Fuzz {
+			// At the cap fewer than o.Fuzz of the attempts made a run, so over 90% were
+			// rejected and the check always fails the property here.
 			if msg := filterTooTight(rejects, i); msg != "" {
 				r.Error = msg
 				return r
-			}
-			if i == attemptsPerRun*o.Fuzz {
-				break // a pass on the runs made: the predicates accept enough draws, rarely
 			}
 		}
 		st.at(runs + 1)
 		a := runAttempt(p, o, fuzz.Fresh(attemptSeed(r.Seed, i)))
 		switch {
 		case a.overrun:
-			r.Run = runs + 1
+			r.Run, r.stopped = runs+1, stoppedBefore
 			r.Error = fmt.Sprintf("generator draws too much: one case made over %d random choices; draw fewer or smaller values (Fuzz.listOf bounds a list)", fuzz.MaxChoices)
 			return r
 		case a.rejected:
@@ -246,8 +255,16 @@ func finish(c Case, o Options, r CaseResult, failing *attempt, path string) Case
 	}
 	final := *failing
 	if !o.Mutating {
+		tooSlow := false // a candidate ran over attemptLimit: the body is too slow to shrink on
 		best, steps := fuzz.Shrink(failing.seq, func(seq []uint64) bool {
+			if tooSlow {
+				return false
+			}
 			a := runAttempt(p, o, fuzz.Replay(seq))
+			if a.dur > attemptLimit {
+				tooSlow = true
+				return false
+			}
 			switch {
 			case a.overrun:
 				panic(fuzz.Overrun{})
@@ -277,6 +294,7 @@ func finish(c Case, o Options, r CaseResult, failing *attempt, path string) Case
 // one with a literal that is no Alder, is pasteFallback instead.
 const (
 	maxPasteLines = 20
+	pasteWidth    = 100 // a line wider than this counts as the lines it would wrap to
 	pasteFallback = "paste the values above into a plain test"
 )
 
@@ -294,10 +312,20 @@ func pasteCase(p *Property, vs []any) string {
 		}
 	}
 	s := p.Case(lits)
-	if strings.Count(s, "\n") >= maxPasteLines {
+	if pastedLines(s) > maxPasteLines {
 		return ""
 	}
 	return s
+}
+
+// pastedLines is the lines s takes, a line wider than pasteWidth code points counting once for
+// each pasteWidth of it, so a 500-element list on one line is a long case.
+func pastedLines(s string) int {
+	n := 0
+	for _, l := range strings.Split(strings.TrimSuffix(s, "\n"), "\n") {
+		n += max(1, (utf8.RuneCountInString(l)+pasteWidth-1)/pasteWidth)
+	}
+	return n
 }
 
 // Paste is the paste-ready case of template tmpl (the generated Property.Case's) with literal
@@ -327,7 +355,7 @@ func Paste(tmpl string, lits []string) string {
 		if mode == 'a' || mode == 'A' {
 			lit = fuzz.Atom(lit)
 		}
-		if (mode == 'A' || mode == 'P') && strings.HasPrefix(lit, "{") {
+		if (mode == 'A' || mode == 'P') && opensBraces(lit) {
 			lit = "(" + lit + ")"
 		}
 		b.WriteString(tmpl[:i])
@@ -336,12 +364,38 @@ func Paste(tmpl string, lits []string) string {
 	}
 }
 
+// opensBraces reports whether lit has a `{` outside any string, parentheses or brackets: in a
+// match subject it would read as the opening of the arms (`match Just { a: 1 } {`).
+func opensBraces(lit string) bool {
+	depth, inString := 0, false
+	for i := 0; i < len(lit); i++ {
+		switch c := lit[i]; {
+		case inString:
+			if c == '\\' {
+				i++
+			} else if c == '"' {
+				inString = false
+			}
+		case c == '"':
+			inString = true
+		case c == '(' || c == '[':
+			depth++
+		case c == ')' || c == ']':
+			depth--
+		case c == '{' && depth <= 0:
+			return true
+		}
+	}
+	return false
+}
+
 // savedRun is the run a status line gives while the saved failure is replayed: no seed and run
 // reproduce that attempt, the saved file does (it is replayed first again).
 const savedRun = -1
 
 // statusLine writes property test c's line of Main's status file (EnvStatus) before each
-// attempt: `Module\tName\tseed\trun`, the run being the one the attempt makes (or the failing
+// attempt: `Module\tName\t\x00fuzz\tseed\trun` (the \x00fuzz tag is what tells it from a plain
+// test whose name ends in two numbers), the run being the one the attempt makes (or the failing
 // run while it is shrunk; savedRun while the saved failure is replayed), so after a crash of
 // the whole program the report says how to reproduce it (ParseStatus). No path: nothing is
 // written.
@@ -357,23 +411,29 @@ func (s *statusLine) at(run int) {
 		return
 	}
 	s.run = run
-	os.WriteFile(s.path, []byte(fmt.Sprintf("%s\t%s\t%d\t%d\n", s.c.Module, s.c.Name, s.seed, run)), 0o644)
+	os.WriteFile(s.path, []byte(fmt.Sprintf("%s\t%s\t%s\t%d\t%d\n", s.c.Module, s.c.Name, statusTag, s.seed, run)), 0o644)
 }
 
+// statusTag marks a property test's status line, after its name (no test name has a NUL).
+const statusTag = "\x00fuzz"
+
 // ParseStatus reads a line of Main's status file: `Module\tName` before a test, followed by
-// `\tseed\trun` while a property test runs (run is then from 1, or savedRun while its saved
+// `\t<statusTag>\tseed\trun` while a property test runs (run is then from 1, or savedRun while its saved
 // failure is replayed; 0 for any other line). ok is false for an empty file.
 func ParseStatus(line string) (mod, name string, seed uint64, run int, ok bool) {
 	mod, name, ok = strings.Cut(strings.TrimSuffix(line, "\n"), "\t")
 	if !ok || mod == "" {
 		return "", "", 0, 0, false
 	}
-	parts := strings.Split(name, "\t") // a name may hold a tab: the numbers are the last two
-	if n := len(parts); n >= 3 {
-		s, e1 := strconv.ParseUint(parts[n-2], 10, 64)
-		r, e2 := strconv.Atoi(parts[n-1])
-		if e1 == nil && e2 == nil && (r > 0 || r == savedRun) {
-			return mod, strings.Join(parts[:n-2], "\t"), s, r, true
+	// a name may hold a tab: the tag, seed and run are the last three fields
+	if i := strings.LastIndex(name, "\t"+statusTag+"\t"); i >= 0 {
+		seedRun := strings.Split(name[i+len(statusTag)+2:], "\t")
+		if len(seedRun) == 2 {
+			s, e1 := strconv.ParseUint(seedRun[0], 10, 64)
+			r, e2 := strconv.Atoi(seedRun[1])
+			if e1 == nil && e2 == nil && (r > 0 || r == savedRun) {
+				return mod, name[:i], s, r, true
+			}
 		}
 	}
 	return mod, name, 0, 0, true
@@ -441,7 +501,7 @@ func attemptSeed(seed uint64, i int) uint64 {
 // is short to copy and exact as a JSON number.
 func randomSeed() uint64 {
 	var b [8]byte
-	rand.Read(b[:])
+	rand.Read(b[:]) // crypto/rand: it cannot fail (a failure crashes the program), so there is no error to handle
 	return binary.LittleEndian.Uint64(b[:]) % 1e10
 }
 
@@ -478,9 +538,19 @@ func propertyHeader(r CaseResult) string {
 	if r.Runs == 0 || r.Run == 0 {
 		return ""
 	}
-	s := fmt.Sprintf("  (failed on run %d of %d", r.Run, r.Runs)
+	verb := "failed on run"
+	switch r.stopped {
+	case stoppedOn:
+		verb = "stopped on run" // a run that was too slow
+	case stoppedBefore:
+		verb = "stopped before run" // a draw that never made its run
+	}
+	s := fmt.Sprintf("  (%s %d of %d", verb, r.Run, r.Runs)
 	if r.Run == savedRun {
 		s = "  (failed on the saved case"
+		if r.stopped == stoppedOn {
+			s = "  (stopped on the saved case"
+		}
 	}
 	if r.Shrinks > 0 {
 		s += fmt.Sprintf(", shrunk in %d steps", r.Shrinks)

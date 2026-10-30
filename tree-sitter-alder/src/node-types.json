@@ -2158,6 +2158,10 @@
             "named": true
           },
           {
+            "type": "deploy_record",
+            "named": true
+          },
+          {
             "type": "deploy_target",
             "named": true
           },
@@ -2191,6 +2195,10 @@
       "types": [
         {
           "type": "deploy_list",
+          "named": true
+        },
+        {
+          "type": "deploy_record",
           "named": true
         },
         {
@@ -6625,6 +6633,10 @@
           "named": true
         },
         {
+          "type": "theme_decl",
+          "named": true
+        },
+        {
           "type": "type_decl",
           "named": true
         },
@@ -6867,6 +6879,10 @@
           "named": true
         },
         {
+          "type": "theme_decl",
+          "named": true
+        },
+        {
           "type": "type_decl",
           "named": true
         },
@@ -7079,6 +7095,22 @@
         "types": [
           {
             "type": "string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "theme_decl",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "deploy_record",
             "named": true
           }
         ]
@@ -7744,6 +7776,10 @@
   },
   {
     "type": "test",
+    "named": false
+  },
+  {
+    "type": "theme",
     "named": false
   },
   {

@@ -1,0 +1,1 @@
+app/M.alder:14:28 E0003 expected Curve, got { median: Float, sigma: Float, perDoubling: Float }; the record has Curve's fields: declare it as Curve where it is made (a signature's inline record type, or a let that already met a structural type)

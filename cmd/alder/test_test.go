@@ -511,6 +511,25 @@ test "get a page that redirects" = {
 	}
 }
 
+// TestTest_Clock runs clock-ok (#5): Test.setClock stands the clock still for Time.now and
+// Date.today on the pages a test fetches, Test.advance moves it (a negative advance is 0, a
+// ticking clock keeps its tick), a page's Query.delay and the test's own Task.sleep and Query.delay
+// move a set clock, and the trace says so.
+func TestTest_Clock(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	src, err := filepath.Abs("../../testdata/corpus/clock-ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "clock-ok")
+	copyDir(t, src, dir)
+	code, stdout, stderr := runTest(t, dir)
+	if code != 0 || !strings.Contains(stdout, "8 passed, 0 failed\n") {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+}
+
 // An `<al-button href>` puts the attributes that describe its link on the `<a>` it renders:
 // `Test.has "#edit a[data-alder-reload]"` finds it there and not on the element.
 func TestTest_AlButtonAnchorAttrs(t *testing.T) {
@@ -1254,7 +1273,9 @@ func TestTest_MutateSuiteCrashes(t *testing.T) {
 // killed as crashed and the run goes on in a new program from the next mutant. A mutant that
 // computes for hours is killed at -timeout as timed out, and the run goes on too.
 func TestTest_MutateCrashAndHang(t *testing.T) {
-	// serial: timing: the 2s per-mutant -timeout must see the stack-overflow crash first; under parallel load it reports "timed out"
+	// parallel-safe: a mutation run caps the stack (rtesting.mutateMaxStack), so the overflow comes
+	// in milliseconds, far ahead of the 2s per-mutant -timeout
+	t.Parallel()
 	needGoTool(t)
 	src, err := filepath.Abs("../../testdata/corpus/mutate-crash")
 	if err != nil {

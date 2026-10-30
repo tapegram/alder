@@ -413,3 +413,32 @@ func TestHover_PageHeaderWire(t *testing.T) {
 		t.Errorf("a parameter without a wire name is listed:\n%s", got)
 	}
 }
+
+// A type written in a lambda parameter's annotation is a use like any other: hover, definition
+// and references work on it.
+func TestHover_LambdaAnnotationType(t *testing.T) {
+	c := start(t, blogCopy(t))
+	f := "app/Posts/Index.alder"
+	text := c.disk(f) + "\nsame : List Post -> List Post\nsame = List.map (\\(p : Post) -> p)\n"
+	c.open(f, text)
+	if ds := c.diags(f); len(ds) != 0 {
+		t.Fatalf("diagnostics %+v", ds)
+	}
+	p := c.at(f, "(p : Post)", len("(p : "))
+	for _, at := range []Position{c.at(f, "(p : Post)", 1), c.at(f, "-> p)", len("-> "))} { // the parameter, and its use
+		if got := hover(t, c, f, at); !strings.Contains(got, "p : Post") {
+			t.Errorf("hover on the annotated parameter: %q", got)
+		}
+	}
+	locs := definitionAt(t, c, f, p)
+	if len(locs) != 1 || !strings.HasSuffix(locs[0].URI, "app/Table/Post.alder") {
+		t.Errorf("definition on the annotation: %+v", locs)
+	}
+	found := false
+	for _, l := range refsAt(t, c, f, c.at(f, "List Post", len("List ")), false) {
+		found = found || l.Range.Start == p
+	}
+	if !found {
+		t.Errorf("the annotation's Post is not among the references")
+	}
+}

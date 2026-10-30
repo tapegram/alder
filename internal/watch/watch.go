@@ -37,6 +37,12 @@ func Watch(dir string, interval time.Duration, stop <-chan struct{}, changed cha
 // WatchWith is Watch that also compares the stamps of the files in extra (absolute paths, such as
 // a scratch file outside app/). A change to one, or its appearing or vanishing, is a SourceChange.
 func WatchWith(dir string, extra []string, interval time.Duration, stop <-chan struct{}, changed chan<- Change) {
+	WatchReady(dir, extra, interval, stop, changed, nil)
+}
+
+// WatchReady is WatchWith that calls ready (when not nil) once the first snapshot is taken: a
+// change made after that is seen, one made before it is part of the baseline.
+func WatchReady(dir string, extra []string, interval time.Duration, stop <-chan struct{}, changed chan<- Change, ready func()) {
 	snap := func() map[string]Stamp {
 		m := Snapshot(dir)
 		for _, f := range extra {
@@ -47,6 +53,9 @@ func WatchWith(dir string, extra []string, interval time.Duration, stop <-chan s
 		return m
 	}
 	prev := snap()
+	if ready != nil {
+		ready()
+	}
 	var pending Change
 	t := time.NewTicker(interval)
 	defer t.Stop()

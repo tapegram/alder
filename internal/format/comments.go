@@ -283,6 +283,8 @@ func (a *attacher) walk(n any) {
 		a.items(n, n.Span.Start, fakeItems(n), n.Span.End)
 	case *syntax.DeployDecl:
 		a.items(n, n.Span.Start, deployItems(n.Fields), n.Span.End)
+	case *syntax.ThemeDecl:
+		a.items(n, n.Span.Start, deployItems(n.Fields), n.Span.End)
 	case *syntax.DeployField:
 		a.walk(n.Value)
 	case *syntax.DeployValue:
