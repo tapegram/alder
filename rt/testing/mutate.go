@@ -86,6 +86,10 @@ const (
 // outcome is logged, and the run goes on in a new process from the next mutant.
 const ExitMutantTimedOut = 3
 
+// mutateMaxStack is the most stack a goroutine may grow to in a mutation run (Go's default is 1 GB):
+// 64 MB is room for recursion hundreds of thousands of frames deep.
+const mutateMaxStack = 64 << 20
+
 // defaultMutantTimeout is the per-mutant timeout when neither -timeout nor EnvTimeout says.
 const defaultMutantTimeout = 10 * time.Second
 

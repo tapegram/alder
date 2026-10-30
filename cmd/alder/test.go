@@ -384,6 +384,9 @@ func runTests(b scratch.Build, runPat string, timeout time.Duration, mut *mutate
 				fmt.Fprintf(stderr, "alder test: %v\n", errTimeout)
 			} else {
 				fmt.Fprintf(stderr, "alder test: the test program crashed running %s %s; no later test ran\n", mod, rtesting.QuoteName(name))
+				if mut != nil && strings.Contains(crash.summary(), "stack overflow") { // name the cap: the suite may pass without --mutate
+					fmt.Fprintln(stderr, "alder test: --mutate caps the stack at 64 MB; a suite that passes without --mutate may need more")
+				}
 			}
 			// the summary the program could not print: the results it streamed and this failure
 			summary := fmt.Sprintf("%d passed, %d failed\n", counted.passed, counted.failed+1)

@@ -18,10 +18,11 @@ import (
 
 // checkDeploy checks App's deploy declarations (decls: every one App declares).
 func (mc *modCtx) checkDeploy(decls []*syntax.DeployDecl) {
+	c := mc.c
 	if len(decls) == 0 {
+		mc.deployFilesWithoutBlock()
 		return
 	}
-	c := mc.c
 	for _, extra := range decls[1:] {
 		c.errorf(diag.DeployDecl, extra.Span, "`deploy` is declared once: merge this one into the first")
 	}
@@ -464,4 +465,21 @@ func looksSecret(s string) bool {
 		return true
 	}
 	return false
+}
+
+// deployFilesWithoutBlock warns (W0009, #25) when `alder deploy init` files (render.yaml,
+// fly.toml) sit in the project and App declares no `deploy`: the platform deploys whatever is
+// pushed, with none of what the declaration gives. A Dockerfile alone does not count: it is
+// also how an app is built for a box `alder deploy` itself reaches, which has a declaration.
+func (mc *modCtx) deployFilesWithoutBlock() {
+	files := mc.c.prog.DeployFiles
+	if len(files) == 0 {
+		return
+	}
+	verb := "deploys"
+	if len(files) > 1 {
+		verb = "deploy"
+	}
+	at := diag.Span{File: mc.m.File, Start: diag.Pos{Line: 1, Col: 1}, End: diag.Pos{Line: 1, Col: 1}}
+	mc.c.bag.Warn(diag.DeployFilesNoBlock, at, "%s %s whatever is pushed, with no check, migration plan or backup: add a `deploy` block to App.alder (book chapter 16)", strings.Join(files, " and "), verb)
 }

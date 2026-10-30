@@ -476,9 +476,10 @@ func TestRepl_InterruptDuringBuild(t *testing.T) {
 	needGoTool(t)
 	r := startRepl(t, todosDir(t))
 	r.send(t, longEval)
-	// building: the build's work directory exists once the eval has reached the compiler (the
-	// first build, vetted, in a new directory, takes longer than the interrupt)
-	work := filepath.Join(testBuildDir(t), "todos", "scratch", fmt.Sprintf("repl-%d", os.Getpid()))
+	// building: the build's work directory appears before go build starts; cmd/main.go is
+	// written just before it (the first build, vetted, in a new directory, takes longer than
+	// the interrupt)
+	work := filepath.Join(testBuildDir(t), "todos", "scratch", fmt.Sprintf("repl-%d", os.Getpid()), "cmd", "main.go")
 	deadline := time.Now().Add(60 * time.Second)
 	for {
 		if _, err := os.Stat(work); err == nil {
