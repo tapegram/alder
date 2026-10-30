@@ -15,6 +15,8 @@ func TestFormat(t *testing.T) {
 			"double : Int -> Int\ndouble n = n * 2\n\n> double 21\n"},
 		{"in header", "in Todo\n\n> 1+1\n", "in Todo\n\n> 1 + 1\n"},
 		{"comment before the in header", "-- notes\nin Todo\n> 1+1\n", "-- notes\nin Todo\n\n> 1 + 1\n"},
+		{"comment right after the in header", "in Main\n-- after header\n> x+1\n", "in Main\n\n-- after header\n> x + 1\n"},
+		{"comment a blank line after the in header", "in Main\n\n-- after\n> x+1\n", "in Main\n\n-- after\n> x + 1\n"},
 		{"leading comment without header", "-- A scratch file.\n\n> 1+1\n", "-- A scratch file.\n\n> 1 + 1\n"},
 		{"module header kept", "module Probe\n\n> 1+1\n", "module Probe\n\n> 1 + 1\n"},
 		{"watch comment", "> 1 + 1  -- two\n", "> 1 + 1 -- two\n"},
@@ -36,6 +38,37 @@ func TestFormat(t *testing.T) {
 				t.Fatalf("not idempotent: %q (%v)", again, err)
 			}
 		})
+	}
+}
+
+// commentsOf is every `--` comment of a scratch file, in order (the inputs hold no `--` in a
+// string).
+func commentsOf(text string) []string {
+	var out []string
+	for _, l := range strings.Split(text, "\n") {
+		if i := strings.Index(l, "--"); i >= 0 {
+			out = append(out, strings.TrimSpace(l[i:]))
+		}
+	}
+	return out
+}
+
+// Every comment of a scratch file survives fmt, in order, wherever it sits.
+func TestFormatKeepsEveryComment(t *testing.T) {
+	for _, in := range []string{
+		"-- top\nin Main\n-- after header\n\n-- before x\nx=1 -- trailing\n> x+1 -- on a watch\n-- between watches\n> x\n-- at the end\n",
+		"-- one\n-- two\n\nin Main\n\n\n-- three\n> [1,\n  2] -- four\n",
+		"-- a scratch file\ndouble : Int -> Int -- sig\ndouble n =\n  -- inside\n  n * 2\n> double 2\n> double 3 -- last\n",
+		"module Probe\n-- after module\n> 1\n",
+		"> 1\n-- only a comment after\n",
+	} {
+		out, ds, err := Format("scratch.alder", []byte(in))
+		if err != nil || len(ds) > 0 {
+			t.Fatalf("%q: err %v diags %+v", in, err, ds)
+		}
+		if got, want := commentsOf(string(out)), commentsOf(in); strings.Join(got, "\n") != strings.Join(want, "\n") {
+			t.Errorf("%q formats to %q: comments %q, want %q", in, out, got, want)
+		}
 	}
 }
 
