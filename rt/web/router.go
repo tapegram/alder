@@ -47,6 +47,9 @@ type Options struct {
 	DevMap      string   // the generator's JSON map of the app (pages, tables, session), shown by /_dev under ALDER_DEV=1 only
 	Migrations  []string // the migrations the database has (names), shown by /_dev
 	Reload      string   // under `alder run`, the build generation (ALDER_RELOAD); non-empty: every page carries the dev server's overlay and reload subscriber (withReload)
+	// Theme is the CSS of App's `theme` declaration (generated Web; "" without one): the served
+	// /static/al/al.css is the embedded stylesheet, a newline and this, with an ETag of its own.
+	Theme string
 	// EnvFor, when set, makes each request's Env instead of the router: it is called with the
 	// request's context and its decoded session, and the router then sets the Env's Session to
 	// that session. An Alder test's browser (rt/testing) supplies one sharing the test's Store,
@@ -90,6 +93,11 @@ type router struct {
 	now    func() time.Time
 	static http.Handler // nil without a StaticDir
 	script http.Handler
+
+	// alCSS and alETag are the served al.css with Options.Theme appended and its ETag; nil
+	// without a theme (the embedded file is served as it is)
+	alCSS  []byte
+	alETag string
 
 	bigCookie sync.Once // the oversized-cookie warning is logged once per router
 
@@ -210,6 +218,9 @@ func NewRouter(routes []Route, opts Options) http.Handler {
 	if len(rt.key) < minSecret {
 		rt.key = DevKey()
 		rt.log("warn", devWarning)
+	}
+	if opts.Theme != "" {
+		rt.alCSS, rt.alETag = ThemedStylesheet(opts.Theme)
 	}
 	if opts.StaticDir != "" {
 		rt.static = http.StripPrefix(strings.TrimSuffix(staticPrefix, "/"), http.FileServer(filesOnly{http.Dir(opts.StaticDir)}))
@@ -1303,9 +1314,18 @@ func (rt *router) serveStatic(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if data, etag, ok := al.File(strings.TrimPrefix(r.URL.Path, designSystemPrefix)); ok && strings.HasPrefix(r.URL.Path, designSystemPrefix) {
+	name := strings.TrimPrefix(r.URL.Path, designSystemPrefix)
+	if data, etag, ok := al.File(name); ok && strings.HasPrefix(r.URL.Path, designSystemPrefix) {
 		h := w.Header()
 		h.Set("Cache-Control", DesignSystemCache)
+		if name == "al.css" {
+			if rt.alCSS != nil {
+				data, etag = rt.alCSS, rt.alETag
+			}
+			if rt.opts.Reload != "" { // alder run: an edit to the theme shows on the next load
+				h.Set("Cache-Control", "no-cache")
+			}
+		}
 		h.Set("ETag", etag)
 		if strings.HasSuffix(r.URL.Path, ".woff2") {
 			h.Set("Content-Type", "font/woff2")
@@ -1314,6 +1334,17 @@ func (rt *router) serveStatic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rt.static.ServeHTTP(w, r)
+}
+
+// ThemedStylesheet is al.css as an app with the theme CSS serves and writes it (buildkit
+// WriteDesignSystem writes the same bytes): the embedded stylesheet, a newline and the theme;
+// and its strong ETag.
+func ThemedStylesheet(theme string) ([]byte, string) {
+	base, _, _ := al.File("al.css")
+	b := make([]byte, 0, len(base)+1+len(theme))
+	b = append(append(append(b, base...), '\n'), theme...)
+	sum := sha256.Sum256(b)
+	return b, `"` + hex.EncodeToString(sum[:16]) + `"`
 }
 
 // designSystemPrefix is where every build writes the `alder-ui` assets (buildkit

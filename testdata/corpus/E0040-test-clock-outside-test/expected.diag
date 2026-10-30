@@ -1,0 +1,2 @@
+app/Clock.alder:15:12 E0040 `Test.setClock` is only available in a `test` or a test helper: `update` is the page's update, not a helper
+app/Clock.alder:16:12 E0040 `Test.advance` is only available in a `test` or a test helper: `update` is the page's update, not a helper

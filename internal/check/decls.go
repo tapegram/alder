@@ -754,10 +754,13 @@ func (mc *modCtx) defineApp() {
 	c := mc.c
 	c.appMsg = &types.Union{Module: "App", Name: "Msg"}
 	var deploys []*syntax.DeployDecl
+	var themes []*syntax.ThemeDecl
 	for _, d := range c.live(mc.m) {
 		switch d := d.(type) {
 		case *syntax.DeployDecl:
 			deploys = append(deploys, d)
+		case *syntax.ThemeDecl:
+			themes = append(themes, d)
 		case *syntax.SessionDecl:
 			rec := c.session // the record types declared in pass 2 already point at
 			rec.Fields = nil
@@ -776,6 +779,7 @@ func (mc *modCtx) defineApp() {
 	}
 	mc.session = c.session
 	mc.checkDeploy(deploys)
+	mc.checkTheme(themes)
 	mc.reserveGenerated("the App module", map[string]string{"Msg": "App's messages", "Session": "the session"})
 }
 
@@ -1038,6 +1042,7 @@ func (c *Checker) checkDefaults() {
 		mc.never = "a field default is not a helper"
 		mc.check(d.f.Default, d.t, newEnv(), effect{})
 		mc.reportHoles()
+		c.resolveFuzzAny(mc.ts, false) // here, so the module that wrote a `Fuzz.any` names its type
 	}
 	c.defaultsChecked = true
 }

@@ -51,8 +51,10 @@ type Result struct {
 	// Props are the property tests (a function or `Fuzz.forAll` body), by declaration; a plain
 	// test has no entry.
 	Props map[*syntax.TestDecl]PropInfo
-	// FuzzAny is the concrete type at each `Fuzz.any` use (the `a` of its `Fuzzer a`), from which
-	// the generator is derived. Every use checked without error has an entry.
+	// FuzzAny is the type at each `Fuzz.any` use (the `a` of its `Fuzzer a`), from which the
+	// generator is derived: concrete and derivable for every use without an error. A use that got
+	// E0038 has an entry too (its type is not concrete or has no generator), but then the build
+	// stops, so nothing derives from it.
 	FuzzAny map[*syntax.Var]types.Type
 	// TestOnly are the test helpers (#4), "Module.name" → the first thing that makes each one
 	// (“`Test.fetch`”, or “`fetchText`, a test helper”): values only tests and other helpers use,

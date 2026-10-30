@@ -1,0 +1,21 @@
+module Clock
+
+page "/clock" { }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { n: 0 }
+
+msg Tick
+
+-- The clock steps are test-only, like every Test.* function, and `update` runs in production.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = {
+  let _ <- Test.setClock (Time.fromMillis 1772600767000)
+  let _ <- Test.advance 1000
+  Task.succeed Rerender
+}
+
+view : Model -> Session -> Html Msg
+view model session = <button click={Tick}>Tick</button>

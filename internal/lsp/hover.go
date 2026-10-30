@@ -10,6 +10,7 @@ import (
 	"alder/internal/diag"
 	"alder/internal/markup"
 	"alder/internal/syntax"
+	"alder/internal/theme"
 	"alder/internal/types"
 )
 
@@ -29,7 +30,12 @@ func hoverReq(s *server, params json.RawMessage) (any, error) {
 	if !ok {
 		return nil, nil
 	}
-	text := hoverText(a, m, path, pos)
+	var text string
+	if d, isTheme := declAt(m, pos).(*syntax.ThemeDecl); isTheme {
+		text = themeHover(d.Fields, pos)
+	} else if len(path) > 0 {
+		text = hoverText(a, m, path, pos)
+	}
 	if text == "" {
 		return nil, nil
 	}
@@ -224,4 +230,24 @@ func pageHover(a *analysis, m *syntax.Module, d *syntax.PageDecl) string {
 	return "```alder\n" + strings.Join(lines, "\n") + "\n```\n\n" +
 		"The page's route and what a request needs. `load`, `view` and `update` are its hooks; " +
 		"`Params` is this record, `Msg` its messages."
+}
+
+// themeHover is the hover of a token's name in App's theme (fs, or a record inside it): its CSS
+// name, kind and alder-ui's default values; "" elsewhere.
+func themeHover(fs []*syntax.DeployField, pos diag.Pos) string {
+	for _, f := range fs {
+		if f.Value != nil && f.Value.Kind == "record" && syntax.Contains(f.Value.Span, pos) {
+			return themeHover(f.Value.Rec, pos)
+		}
+		if !syntax.Contains(f.NameSpan, pos) {
+			continue
+		}
+		t, ok := theme.Lookup(f.Name)
+		if !ok {
+			return ""
+		}
+		d := theme.Defaults()[t.CSS]
+		return fmt.Sprintf("`%s`: `%s`, a %s token of alder-ui %s\n\nalder-ui's default: light `%s`, dark `%s`", t.Field, t.CSS, t.Kind, theme.Version(), d.Light, d.Dark)
+	}
+	return ""
 }

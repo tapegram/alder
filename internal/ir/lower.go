@@ -597,6 +597,10 @@ func (l *lowerer) declareTypes() {
 				if name == "App" && l.out.Deploy == nil {
 					l.out.Deploy = lowerDeploy(d)
 				}
+			case *syntax.ThemeDecl:
+				if name == "App" && l.out.Theme == nil {
+					l.out.Theme = lowerTheme(d)
+				}
 			}
 		}
 		if name == "App" {

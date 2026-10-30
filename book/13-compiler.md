@@ -344,6 +344,22 @@ app/M.alder:4:16: error[E0003]: expected Int, got Text
                  ^^^^^^
 ```
 
+A record literal is the same idea with a twist. When nothing expects a
+record where `{ median: 1.0, sigma: 2.0, perDoubling: 0.5 }` is written,
+say in `let wide = { … }`, the checker can't yet know which named type it
+is, so it gives the literal a structural type carrying a **handle**
+(`Record.Flex` in `types.go`), a fresh variable that stands for "the type
+this literal will turn out to be". When `wide` is later passed where a
+`Curve` is expected, `unify` sees a structural record with an unbound
+handle on one side and a named record on the other. If the field names are
+exactly the same and every field's type unifies, it records
+`handle = Curve`, just as it recorded `t1 = Int` above; from then on
+`Apply` returns `Curve` for the literal, so the generated Go builds a
+`Curve` struct. If the names differ or a field's type is wrong, the handle
+stays unbound and the error says which field. The first named type wins,
+so a literal used as a `Point` and then as a `Vec` (same fields, different
+names) is still a mismatch: records stay nominal.
+
 **Brands** show what the checker knows that the program doesn't. Given
 `type UserId = brand Text`, the checker refuses a `Text` where a `UserId`
 is required, but lets a `UserId` widen to `Text` (`Check` in `unify.go`).
@@ -387,6 +403,19 @@ ended in a comma. `Rect x` binds the whole payload to `x` because the
 checker can't guess which fields you need, and `?todo` is a typed hole.
 Applying the fix leaves you with a warning that tells you what to write:
 `warning[W0002]: hole ?todo has type Float`.
+
+A page hook with the wrong signature (`requireSig` in
+`internal/check/pages.go`) has a fix too: the required signature, as the
+hover text writes it (`HookDoc`), in place of the declared one. Write
+`load : Params -> Session -> Model` and the checker says
+`` `load` must have type `Params -> Session -> Query Model` `` with
+`fix: Params -> Session -> Query Model`. A `diag.Fix` may carry a `Title`
+and be `Preferred`: this one is titled ``Change signature to `…` `` and is
+preferred, because it is the one obvious repair. The command line ignores
+both; the language server uses the title for the code action, marks it
+`isPreferred`, and lists preferred fixes first, before the other fixes and
+before the generators, which are `refactor` actions and are not about the
+text under the cursor.
 
 **HTML** is checked element by element (`internal/check/html.go`). A
 lower-case tag must be one of the HTML5 tags listed in `htmlTags`; an
@@ -3324,7 +3353,9 @@ much" failure; on a replay it only means the candidate is not a value the
 generator can make, and the shrinker discards it. An attempt that took
 over 5 seconds fails too, which is checked after it finishes, since a Go
 function cannot be interrupted: a body that never returns is caught by
-the test timeout (`-timeout`, chapter 10).
+the test timeout (`-timeout`, chapter 10). The slow case is saved like a
+failing one, and a shrink candidate that is slow ends the shrinking with
+the best case so far.
 
 **The shrinker.** `fuzz.Shrink` (`rt/fuzz/shrink.go`) gets the recorded
 choices of the failing run and a function that replays a candidate and
@@ -4217,7 +4248,18 @@ before reloading the browser). The router (`serveStatic` in
 written runtime has them) with `web.DesignSystemCache`,
 `Cache-Control: public, max-age=300, stale-while-revalidate=86400`, and a
 strong `ETag`, a SHA-256 of the bytes computed once; `http.ServeContent`
-answers a matching `If-None-Match` with `304 Not Modified`. An immutable
+answers a matching `If-None-Match` with `304 Not Modified`. An app that
+declares a `theme` (Appendix C, "Changing a token") changes one file of
+these: the checker has held every field to `internal/theme`'s table of
+tokens (E0042), the IR keeps the settings by CSS name (`ir.Theme`), and
+`theme.CSS` writes them as three one-line rules in the table's order. The
+generated `Web()` carries that text as `web.Options.Theme`, and
+`NewRouter` builds the served `al.css` once from it
+(`web.ThemedStylesheet`: the embedded bytes, a newline, the theme) with
+an ETag of its own; `buildkit.WriteDesignSystem` writes the same bytes to
+`static/al/al.css`, so the build directory and the server agree. Under
+`alder run` (`Options.Reload` set) `al.css` is sent `no-cache`, so an edit
+to the theme shows on the next load. An immutable
 header would be wrong there: the address stays `/static/al/al.css` across
 compiler upgrades, so a browser would keep an old stylesheet for a year.
 `no-cache`, what Alder sent before M13, made every page load wait for a
@@ -5402,24 +5444,40 @@ command line run the same one.
 `generate.Form` turns what the user has typed (`you`) over what `Here`
 prefilled into a list of fields, each valid or not and why, and `ready` is
 true when all are valid. The editor calls `alder/preview` as the form is
-filled, once per field. Here is the walk-through of the spec: `new msg` on
-`Posts.Index`, with the cursor on line 26. The first request has no values; the
-form comes back with `page` prefilled from the cursor and `name` required:
+filled, once per field.
+
+Each field also carries `help`, one line on what it means, and `example`, a
+value it accepts. Both are written once, on the `generate.Field` in
+`specs.go` (`Help`, `Example`; a flag's `help` is its `Summary` unless it
+has its own), so the command line's help and the editor's form cannot
+drift. A required field the cursor and the user leave empty starts filled
+(`startValue`): at the first choice when it names something that must exist
+(a page, a table, a declaration, one of its fixed choices), else at its
+example. So the form is usually ready as it opens and the preview shows a
+change at once; the user edits from there. A flag marked `Agent` (where
+`new msg` puts its button, `--strict` on a table edit) comes back with
+`"agent":true`, and the editor's form leaves it out: an agent needs that
+precision on the command line, a person sees the preview and edits by hand.
+
+Here is the walk-through of the spec: `new msg` on `Posts.Index`, with the
+cursor on line 26. The first request has no values; the form comes back with
+`page` prefilled from the cursor and `name` at its example:
 
 ```text
 -> {"jsonrpc":"2.0","id":9,"method":"alder/preview","params":{"sets":{},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"},"id":"new msg","position":{"line":25,"character":0}}}
-<- {"id":9,"jsonrpc":"2.0","result":{"fields":[{"name":"page","kind":"page","flag":false,"required":true,"value":"Posts.Index","source":"here","valid":true,"choices":["Admin.Comments.Bulk",…,"Posts.Index","Posts.Show","Write","Write.Edit"]},{"name":"name","kind":"text","flag":false,"required":true,"value":"","source":"","valid":false,"why":"required"},{"name":"fields","kind":"fieldList","flag":false,"required":false,"value":"","source":"","valid":true},…],"files":[],"diff":"","diagnostics":[],"holes":[],"ready":false,"error":""}}
+<- {"id":9,"jsonrpc":"2.0","result":{"fields":[{"name":"page","kind":"page","flag":false,"required":true,"value":"Posts.Index","source":"here","valid":true,"choices":["Admin.Comments.Bulk",…,"Posts.Index","Posts.Show","Write","Write.Edit"],"help":"the page the message belongs to","example":"Posts.Index"},{"name":"name","kind":"text","flag":false,"required":true,"value":"Archive","source":"default","valid":true,"help":"the message's name, a capitalised word","example":"Archive"},{"name":"fields","kind":"fieldList","flag":false,"required":false,"value":"","source":"","valid":true,"help":"the values the message carries, as name:Type words (none is fine)","example":"note:Text"},…],"files":[{"path":"app/Posts/Index.alder","action":"edited",…}],"diff":"…","diagnostics":[…],"holes":[…],"ready":true,"error":""}}
 ```
 
-`"source":"here"` says that `page` came from the cursor, not from the user.
-The user types `Delete`:
+`"source":"here"` says that `page` came from the cursor, not from the user;
+`"source":"default"` that `name` is the server's starting value, which the
+editor never sends back. The user types `Delete`:
 
 ```text
 -> {"jsonrpc":"2.0","id":10,"method":"alder/preview","params":{"sets":{"name":"Delete"},"textDocument":{"uri":"file://…/blog/app/Posts/Index.alder"},"id":"new msg","position":{"line":25,"character":0}}}
 <- {"id":10,"jsonrpc":"2.0","result":{"fields":[…,{"name":"name","kind":"text","flag":false,"required":true,"value":"Delete","source":"you","valid":true},…],"files":[{"path":"app/Posts/Index.alder","action":"edited","added":17,"removed":0}],"diff":"--- a/app/Posts/Index.alder\n+++ b/app/Posts/Index.alder\n@@ -51,9 +51,12 @@\n …","diagnostics":[…],"holes":[{"module":"Posts.Index","decl":"update","arm":"Delete","name":"delete","type":"Task Nav","file":"app/Posts/Index.alder","line":59,"col":15},{"module":"Posts.Index","decl":"\"pressing Delete\"","name":"expected","type":"Bool","file":"app/Posts/Index.alder","line":213,"col":16}],"ready":true,"error":""}}
 ```
 
-Now `ready` is true, the copy checked, and `diff` is the unified diff, which
+`ready` is true, the copy checked, and `diff` is the unified diff, which
 the editor shows (here with its `\n` turned into line breaks):
 
 ```text

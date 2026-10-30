@@ -1,0 +1,1 @@
+app/App.alder:10:3 E0042 `alFontMono` was removed in alder-ui v0.4: write `fontMono`

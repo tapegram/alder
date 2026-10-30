@@ -451,7 +451,8 @@ like the page's. Things to know:
 - **A ticking clock.** `Time.now`, and the `@created` column a
   `Db.insert` fills, read a clock that starts at `2026-01-01T00:00:00Z`
   and advances one second each time it is read, so rows created in a
-  test are ordered, and a test gets the same times on every run. Time is
+  test are ordered, and a test gets the same times on every run, until
+  the test sets it: `Test.setClock`, section 9 ("Setting the clock"). Time is
   not transactional: a `Test.run` that fails rolls back its writes, but
   the clock keeps the ticks that run read.
 - **The app's capabilities.** When the app has adapters (Go under
@@ -1211,6 +1212,75 @@ is a page to read: the checker refuses them (E0003, "`Todos.Slow` is a file page
 use `Test.fetch`"). This is a check of the page's type, so it covers a
 `File.html` page too. As a second guard, a `Test.open` whose answer at run
 time is not HTML fails with `RequestFailed` and the same advice.
+
+### Setting the clock
+
+`Todos.Slow` above works out its answer from the ticking clock: 20000 ms
+of delay plus the one second the second reading adds. That is fine for
+one page, but a page whose output depends on the time (a countdown, a
+"closes in 3 hours", today's schedule) would make every expectation a
+sum of ticks, and one more `Time.now` on the page's path would shift them
+all by a second. Two steps let a test say what time it is and when time
+passes:
+
+```text
+Test.setClock : Time -> Task Unit
+Test.advance  : Int -> Task Unit
+```
+
+- `Test.setClock t` sets the test's clock to `t`, and from then on the
+  clock **stands still**: every `Time.now` and `Date.today` reads `t`
+  (the one-second tick is off for the rest of the test). A second
+  `setClock` moves it again, backwards too; the clock is the test's.
+- `Test.advance ms` moves the clock `ms` milliseconds forward, the unit
+  of `Time.toMillis` and `Query.delay`. A negative `ms` counts as 0 (to
+  go back, set the clock again), and there is no practical upper limit
+  (advancing a day is the point; anything past about 292 years stops
+  there rather than wrapping into the past). A clock that ticks keeps ticking after an advance,
+  and a set one stays still.
+- A `Query.delay` or `Task.sleep` still moves the clock by its delay,
+  set or not, and the pages a test requests through the browser read the
+  same clock, so a set applies to them too.
+- `@created` reads the clock as well, so rows inserted after a set all
+  get the same time. A test that sets the clock and then wants a list in
+  creation order calls `Test.advance 1000` between the inserts, or
+  inserts its rows before the set.
+- The session cookie's own clock does not move: a test that logged in
+  stays logged in however far it advances time.
+- Like the tick, a set or an advance is not undone by a `Test.run` that
+  fails. Both are on the trace, as `Test.setClock 2026-03-04T00:00:00Z`
+  (the time in UTC) and `Test.advance 86400000ms`.
+
+A test that never sets the clock is unchanged: it starts at
+`2026-01-01T00:00:00Z` and ticks. Here a page prints today's date, and
+the test sets the clock to a date, fetches it, advances a day and
+fetches again:
+
+```alder
+module Todos.Today
+
+page "/today" { }
+
+type Model = { today: Date }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let today <- Date.today
+  Query.succeed { today: today }
+}
+
+view : Model -> Session -> File
+view model session = File.text { contentType: "text/plain", body: Date.toText model.today }
+
+-- 1772582400000 is 2026-03-04T00:00:00Z.
+test "today follows the test's clock" = {
+  let _ <- Test.setClock (Time.fromMillis 1772582400000)
+  let before <- Test.fetch (Todos.Today {})
+  let _ <- Test.advance (24 * 60 * 60 * 1000)
+  let after <- Test.fetch (Todos.Today {})
+  Task.succeed ({ before: Bytes.toText before.body, after: Bytes.toText after.body } == { before: Just "2026-03-04", after: Just "2026-03-05" })
+}
+```
 
 ### `Test.login`, `requires`, and the session
 
@@ -2251,9 +2321,11 @@ it the exit code is the tests'.
 ### Properties under `--mutate`
 
 A property (section 12) is one test here: a mutant is killed when it
-fails on any of the property's cases. A mutated run uses a fixed seed,
-does not shrink, and neither reads nor writes saved failures, so the same
-code gives the same score. A `Fuzzer` value gets no mutants.
+fails on any of the property's cases. A mutated run uses a fixed seed
+(0, or the one `--seed` gives), does not shrink, and neither reads nor
+writes saved failures, so the same code gives the same score. A `Fuzzer`
+value (a generator, such as `slugs` in section 12) is not part of the
+app's behaviour and gets no mutants.
 
 ### The exact score
 
@@ -2402,7 +2474,7 @@ without the type. There is no new declaration and no library: the
 property is a `test`, it is listed in the report like any other, and
 `-run` (section 7) picks it by name. The first one passes. The second is
 wrong, as the report below will show: rotating a list twice gives it
-back only when it has one or two elements.
+back only when it has at most two elements.
 
 ### Where the inputs come from
 
@@ -2426,9 +2498,11 @@ a stream of random choices. Every ordinary type has one:
   generators of their parts, and a list is short most of the time.
 - A record is each field's generator in turn.
 - A union is a choice of one constructor, then a generator for its
-  payload. A union that contains itself (a tree) has a depth budget: each
-  level down halves the chance of a constructor that recurses, and at
-  depth 4 only the others are drawn, so the values are finite.
+  payload. A union that contains itself (a tree) has a depth budget of four
+  levels: each level down halves the chance of a constructor that
+  recurses, and once the budget is spent only the others are drawn, so the
+  values are finite. (A union whose every constructor needs the union
+  again has no value to stop at: E0038, below.)
 - A brand draws its base type and, when it has a `where` predicate,
   keeps the value only if the predicate holds. Below.
 
@@ -2663,11 +2737,14 @@ instead:
 - **A filter or brand that is too tight.** More than 90% of the first 50
   attempts rejected by a `Fuzz.filter` or a brand's predicate (above).
 - **An attempt that is too slow.** One case took over 5 seconds. The
-  report names the run.
+  report says `stopped on run K` and keeps the case like a failure, so the
+  next run tries it first; the shrinker gives up on a case that is slow
+  as well.
 - **A generator that draws too much.** One case needed more than 8192
   random choices (a `Fuzz.andThen` that builds lists of lists of lists
-  with no bound): the report says `generator draws too much`. Bound the
-  size with `Fuzz.listOf { min: 0, max: 10 }`.
+  with no bound): the report says `stopped before run K`, because that
+  run never got its values, and `generator draws too much`. Bound the size
+  with `Fuzz.listOf { min: 0, max: 10 }`.
 
 A program that crashes outright (a function that recurses without end
 overflows the stack) takes `alder test` down with it, as in section 2.
@@ -2714,12 +2791,8 @@ write a shrinker, and no need.
 
 ### Properties and `--mutate`
 
-Under `--mutate` (section 11) a property counts as one test: a mutant is
-killed when the property fails on it. So that the property behaves the
-same against every mutant, the run uses a fixed seed, does not shrink,
-and reads and writes no saved failures. A `Fuzzer` value (such as
-`slugs` above) is a generator and not part of the app's behaviour, so it
-gets no mutants.
+Under `--mutate` a property counts as one test, with a fixed seed and no
+shrinking or saved failures; section 11 has the details.
 
 ### Two errors
 
@@ -2731,7 +2804,10 @@ test "a function is the same twice" = \(f : Int -> Int) -> f 1 == f 1
 ```
 
 A function type, an effect type (`Task`, `Query`), a type parameter and a
-value only the runtime can make have no generator. Annotate with a type
+value only the runtime can make have no generator, and neither has a
+union whose every constructor holds the union again (`type S = S { next:
+S }`: nothing ends the recursion; let one constructor hold a `Maybe` or a
+`List` of it, or nothing). Annotate with a type
 that has one, or write the generator with the `Fuzz` functions and give
 it to `Fuzz.forAll`.
 

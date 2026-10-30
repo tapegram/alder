@@ -734,11 +734,37 @@ func mentions(line string, names map[string]bool) bool {
 		if i := strings.LastIndex(n, "__"); i >= 0 {
 			n = n[i+len("__"):]
 		}
-		if strings.Contains(line, "table "+n) || strings.Contains(line, n+".") {
+		if hasWord(line, "table "+n, false) || hasWord(line, n, true) {
 			return true
 		}
 	}
 	return false
+}
+
+// hasWord reports whether s holds w as whole identifiers: not preceded or followed (a dot
+// follows when dot is set: `Project.x`) by a letter, digit or `_`, so "Project" is not found in
+// "ProjectX" or "SubProject".
+func hasWord(s, w string, dot bool) bool {
+	if dot {
+		w += "."
+	}
+	for from := 0; ; {
+		i := strings.Index(s[from:], w)
+		if i < 0 {
+			return false
+		}
+		i += from
+		if i == 0 || !isIdentByte(s[i-1]) {
+			if dot || i+len(w) == len(s) || !isIdentByte(s[i+len(w)]) {
+				return true
+			}
+		}
+		from = i + 1
+	}
+}
+
+func isIdentByte(b byte) bool {
+	return b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
 }
 
 // check brings silo database st to this binary's schema when it can (apply false: only
@@ -833,7 +859,7 @@ func (s *Stores) check(ctx context.Context, st *SQLite, ss *siloSchema, allowDat
 var (
 	stmtTarget  = regexp.MustCompile(`^(?:CREATE TABLE(?: IF NOT EXISTS)?|ALTER TABLE|DROP TABLE(?: IF EXISTS)?|INSERT INTO|UPDATE|DELETE FROM)\s+"((?:[^"]|"")*)"`)
 	indexOn     = regexp.MustCompile(`^CREATE (?:UNIQUE )?INDEX .* ON "((?:[^"]|"")*)"`)
-	dropIndex   = regexp.MustCompile(`^DROP INDEX(?: IF EXISTS)? "((?:[^"]|"")*)__[^"_]+"`)
+	dropIndex   = regexp.MustCompile(`^DROP INDEX(?: IF EXISTS)? "((?:[^"]|"")*)"`)
 	dropTable   = regexp.MustCompile(`^DROP TABLE(?: IF EXISTS)? "((?:[^"]|"")*)"`)
 	renameTable = regexp.MustCompile(`^ALTER TABLE "((?:[^"]|"")*)" RENAME TO "((?:[^"]|"")*)"`)
 	references  = regexp.MustCompile(` REFERENCES "((?:[^"]|"")*)"\("(?:[^"]|"")*"\)(?: ON DELETE (?:CASCADE|SET NULL))?`)
@@ -854,20 +880,17 @@ func (ss *siloSchema) pendingNames(ms []Migration, have []string) []map[string]b
 	cur := maps.Clone(ss.sqlName)
 	for i := len(ms) - 1; i >= 0; i-- {
 		names := maps.Clone(cur)
-		var renames [][2]string // old, new
-		for _, st := range ms[i].statements() {
-			if x := renameTable.FindStringSubmatch(st); x != nil && cur[unquote(x[2])] && unquote(x[1]) != unquote(x[2])+RebuildSuffix {
+		// the statements back to front, so that a chain within the migration (A to B, B to C)
+		// is followed to A
+		sts := ms[i].statements()
+		for j := len(sts) - 1; j >= 0; j-- {
+			if x := renameTable.FindStringSubmatch(sts[j]); x != nil && cur[unquote(x[2])] && unquote(x[1]) != unquote(x[2])+RebuildSuffix {
 				names[unquote(x[1])] = true
-				renames = append(renames, [2]string{unquote(x[1]), unquote(x[2])})
+				delete(cur, unquote(x[2])) // before this statement the table has only its old name
+				cur[unquote(x[1])] = true
 			}
 		}
 		out[i] = names
-		for _, r := range renames { // before migration i the table has only its old name
-			delete(cur, r[1])
-		}
-		for _, r := range renames {
-			cur[r[0]] = true
-		}
 	}
 	held := map[string]bool{}
 	for _, n := range have {
@@ -903,7 +926,7 @@ func (ss *siloSchema) statements(m Migration, names map[string]bool) []string {
 		} else if x := indexOn.FindStringSubmatch(st); x != nil {
 			target = x[1]
 		} else if x := dropIndex.FindStringSubmatch(st); x != nil {
-			target = x[1]
+			target = indexTable(unquote(x[1]), names)
 		}
 		if !names[strings.TrimSuffix(unquote(target), RebuildSuffix)] {
 			continue
@@ -917,6 +940,21 @@ func (ss *siloSchema) statements(m Migration, names map[string]bool) []string {
 		out = append(out, st)
 	}
 	return out
+}
+
+// indexTable is the table an index named "T__col" belongs to: the longest prefix of name, before a
+// "__", that is one of names (a column may hold "_"); name's prefix before its last "__" when
+// none is, which no silo table matches.
+func indexTable(name string, names map[string]bool) string {
+	for i := len(name) - 2; i > 0; i-- {
+		if name[i:i+2] == "__" && names[name[:i]] {
+			return name[:i]
+		}
+	}
+	if i := strings.LastIndex(name, "__"); i > 0 {
+		return name[:i]
+	}
+	return name
 }
 
 // ---- routing
