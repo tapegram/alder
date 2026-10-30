@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"alder/internal/fill"
@@ -128,13 +129,19 @@ func printImports(g genArgs, imports []string, file string, stdout io.Writer) {
 var fillBackend = fill.Env
 
 // fillPrompt is `alder fill <address> --prompt`: the first attempt's conversation, exactly as
-// the command backend reads it; nothing is sent.
+// the command backend reads it, with the ALDER_FILL_REFERENCE file's text first when it is set;
+// nothing is sent.
 func fillPrompt(g genArgs, stdout, stderr io.Writer) int {
 	p, err := generate.Load(g.dir)
 	if err == nil {
 		var h *generate.Hole
 		if h, err = generate.FindHole(p, g.pos[0], g.flag("hole")); err == nil {
-			io.WriteString(stdout, fill.Transcript(fill.Card, []fill.Message{{Role: "user", Content: fill.Prompt(p, *h)}}))
+			system, err := fill.System(os.Getenv)
+			if err != nil {
+				fmt.Fprintf(stderr, "alder fill: %v\n", err)
+				return 2
+			}
+			io.WriteString(stdout, fill.Transcript(system, []fill.Message{{Role: "user", Content: fill.Prompt(p, *h)}}))
 			return 0
 		}
 	}

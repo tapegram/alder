@@ -82,8 +82,8 @@ func (s *server) fillCommand(args []json.RawMessage) (any, error) {
 
 // runFill is the fill itself, on its own goroutine: the app with the open documents overlaid
 // (as a dry run sees it), fill.Run with progress, then the edit, versioned at the version of
-// the hole's document the fill read, as one workspace/applyEdit. A refused edit, a failure or
-// an error is a warning.
+// the hole's document the fill read; not sent when that document has changed since. A
+// changed or refused edit, a failure or an error is a warning.
 func (s *server) runFill(rel string, arg fillArgs, backend fill.Backend, model string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -140,6 +140,17 @@ func (s *server) runFill(rel string, arg fillArgs, backend fill.Backend, model s
 	if len(changes) == 0 {
 		return
 	}
+	// A buffer edited since the snapshot gets no edit. Neovim does not refuse a versioned edit
+	// to a newer buffer (it prints "Buffer … newer than edits" and answers applied: true), so the
+	// server compares the versions itself before it sends.
+	for _, fc := range r.Files {
+		if v, open := vers[fc.Path]; open {
+			if now := s.docs.get(fc.Path); now == nil || now.Version != v {
+				s.showMessage(2, fmt.Sprintf("alder fill: %s changed while filling; the expression was:\n%s", fc.Path, r.Expression))
+				return
+			}
+		}
+	}
 	res, err := s.request("workspace/applyEdit", map[string]any{"label": "alder fill ?" + arg.Hole, "edit": workspaceEdit{DocumentChanges: changes}})
 	if err != nil {
 		select {
@@ -153,7 +164,7 @@ func (s *server) runFill(rel string, arg fillArgs, backend fill.Backend, model s
 		Applied bool `json:"applied"`
 	}
 	json.Unmarshal(res, &applied)
-	if !applied.Applied {
+	if !applied.Applied { // a client that does refuse it
 		s.showMessage(2, fmt.Sprintf("alder fill: %s changed while filling; the expression was:\n%s", rel, r.Expression))
 	}
 }

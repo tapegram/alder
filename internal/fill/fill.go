@@ -9,6 +9,7 @@ package fill
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 )
@@ -57,6 +58,21 @@ func FromEnv(getenv func(string) string) (Backend, string) {
 	}
 	a := NewAnthropic(getenv)
 	return a, a.Model
+}
+
+// System is the system prompt as the first attempt sends it: the card, after the text of the
+// reference file ALDER_FILL_REFERENCE names when getenv gives one (the Anthropic backend sends
+// it as a block of its own).
+func System(getenv func(string) string) (string, error) {
+	ref := getenv("ALDER_FILL_REFERENCE")
+	if ref == "" {
+		return Card, nil
+	}
+	b, err := os.ReadFile(ref)
+	if err != nil {
+		return "", fmt.Errorf("ALDER_FILL_REFERENCE: %v", err)
+	}
+	return strings.TrimRight(string(b), "\n") + "\n\n" + Card, nil
 }
 
 // Env is FromEnv over the process's environment.

@@ -5542,12 +5542,29 @@ checks is the result; a refused one goes back to the model as a new turn,
 them. `Run` writes nothing: it returns the edits and, for each changed
 file, the text before and after.
 
+The expression lands in the middle of a line, between the text before the
+hole and the text after it, and that text must keep its meaning. Two things
+in an answer could change it. A comment would comment out the rest of the
+line: `n -- ` in `bump n = ?a + 1 * n` would leave `bump n = n -- + 1 * n`,
+which checks, and has lost `+ 1 * n`. And an operator could bind
+differently from the hole: `1 + 1` in `?a * 2` would read `1 + 1 * 2`. So
+`generate.Fill` asks the lexer for the expression's comments and cuts them
+(`syntax.StripComments`: a regular expression would cut a `--` inside a
+string), and parenthesises any expression that is not atomic (a name, a
+literal, one bracketed whole). The formatter, which runs on every file a
+generator writes, drops the parentheses that are not needed, so
+`Clear p -> (Task.succeed Rerender),` is written without them.
+
 A backend is one method, `Complete(ctx, system, messages) (text, error)`.
 `fill.Anthropic` posts the Messages API's JSON with `net/http`; the system
 prompt goes in a block marked `cache_control`, so the card is read from the
 API's cache on the second and third attempts. `fill.Command` runs
 `ALDER_FILL_COMMAND` with `sh -c`, writing the conversation as plain text to
-its standard input and reading the expression from its standard output.
+its standard input and reading the expression from its standard output
+(at most 1 MB). The command runs in a process group of its own: when the
+attempt's time is up, or once the command has answered, the whole group is
+killed, so nothing it started in the background outlives the attempt or
+holds the server's shutdown.
 The command backend is also how the tests run the whole loop without a
 model: the backend is a shell script, or a Go function, that answers what
 the test needs.
@@ -5596,8 +5613,13 @@ not send the whole file: `generate.LineEdits` runs the diff behind
 hole and the import it needed are two small edits and the rest of the
 buffer is not touched. The edit names the document's version from the
 snapshot the fill read. If you typed in that buffer meanwhile, its version
-is higher and Neovim refuses the edit (`applied: false`); the server then
-shows the model's expression in a warning, for you to paste. An edit the
+is higher, and the server does not send the edit at all: it shows the
+model's expression in a warning, for you to paste. It cannot leave that to
+the editor: Neovim, given an edit for an older version, prints `Buffer …
+newer than edits` and answers `applied: true` without applying it. (A client
+that answers `applied: false` gets the same warning.) Each of the server's
+requests waits at most 30 seconds for its answer, so an editor that never
+answers cannot hold the one fill forever. An edit the
 editor applies is one undo step.
 
 What leaves the machine is exactly the prompt: one module's source, names

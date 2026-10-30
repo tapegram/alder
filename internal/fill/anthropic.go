@@ -10,7 +10,15 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
+
+// overloadedBackoff is the wait before the one retry of a 429 or 529 answer (a variable for
+// tests).
+var overloadedBackoff = 2 * time.Second
+
+// maxErrorText bounds the API's error text quoted in an error.
+const maxErrorText = 300
 
 // Anthropic is the Messages API backend, over net/http (as internal/deploy's Render client;
 // no SDK). The key travels only in the x-api-key header: it is in no error, log or String().
@@ -111,40 +119,31 @@ func (a *Anthropic) Complete(ctx context.Context, system string, messages []Mess
 	if a.Log != nil {
 		fmt.Fprintf(a.Log, "alder fill: POST %s/v1/messages %s\n", a.Base, body)
 	}
-	hreq, err := http.NewRequestWithContext(ctx, "POST", a.Base+"/v1/messages", bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	hreq.Header.Set("content-type", "application/json")
-	hreq.Header.Set("x-api-key", a.Key)
-	hreq.Header.Set("anthropic-version", "2023-06-01")
-	client := a.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(hreq)
-	if err != nil {
-		if ctx.Err() != nil {
+	status, rb, err := a.post(ctx, body)
+	if err == nil && (status == 429 || status == 529) { // rate-limited or overloaded: once more, shortly
+		t := time.NewTimer(overloadedBackoff)
+		select {
+		case <-t.C:
+		case <-ctx.Done():
+			t.Stop()
 			return "", ctx.Err()
 		}
-		return "", fmt.Errorf("the Anthropic API: %v", strings.ReplaceAll(err.Error(), a.Key, "…"))
+		status, rb, err = a.post(ctx, body)
 	}
-	defer resp.Body.Close()
-	rb, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
 		return "", err
-	}
-	if a.Log != nil {
-		fmt.Fprintf(a.Log, "alder fill: answer %d %s\n", resp.StatusCode, rb)
 	}
 	var r messagesResponse
 	jerr := json.Unmarshal(rb, &r)
-	if resp.StatusCode/100 != 2 {
+	if status/100 != 2 {
 		msg := strings.TrimSpace(string(rb))
 		if jerr == nil && r.Error != nil {
 			msg = r.Error.Message
 		}
-		return "", fmt.Errorf("the Anthropic API answered %d: %s", resp.StatusCode, msg)
+		if len(msg) > maxErrorText {
+			msg = msg[:maxErrorText] + "…"
+		}
+		return "", fmt.Errorf("the Anthropic API answered %d: %s", status, msg)
 	}
 	if jerr != nil {
 		return "", fmt.Errorf("the Anthropic API: %v", jerr)
@@ -165,4 +164,36 @@ func (a *Anthropic) Complete(ctx context.Context, system string, messages []Mess
 		}
 	}
 	return text.String(), nil
+}
+
+// post sends one request body and reads the answer (at most 4 MB). The error never quotes a
+// header, so never the key.
+func (a *Anthropic) post(ctx context.Context, body []byte) (status int, answer []byte, err error) {
+	hreq, err := http.NewRequestWithContext(ctx, "POST", a.Base+"/v1/messages", bytes.NewReader(body))
+	if err != nil {
+		return 0, nil, err
+	}
+	hreq.Header.Set("content-type", "application/json")
+	hreq.Header.Set("x-api-key", a.Key)
+	hreq.Header.Set("anthropic-version", "2023-06-01")
+	client := a.Client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(hreq)
+	if err != nil {
+		if ctx.Err() != nil {
+			return 0, nil, ctx.Err()
+		}
+		return 0, nil, fmt.Errorf("the Anthropic API: %v", strings.ReplaceAll(err.Error(), a.Key, "…"))
+	}
+	defer resp.Body.Close()
+	rb, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return 0, nil, err
+	}
+	if a.Log != nil {
+		fmt.Fprintf(a.Log, "alder fill: answer %d %s\n", resp.StatusCode, rb)
+	}
+	return resp.StatusCode, rb, nil
 }

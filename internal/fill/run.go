@@ -9,6 +9,7 @@ import (
 
 	"alder/internal/diag"
 	"alder/internal/generate"
+	"alder/internal/syntax"
 )
 
 // Attempts is how many answers Run checks before it gives up.
@@ -105,7 +106,7 @@ func Run(ctx context.Context, b Backend, dir, address, hole string, report func(
 			}
 			return nil, &Failure{Expression: last, Errors: errs, Why: why, Attempts: n}
 		}
-		expr := StripFence(text)
+		expr := syntax.StripComments(StripFence(text)) // a comment is never placed, on any path
 		last = expr
 		msgs = append(msgs, Message{"assistant", text})
 		edits, _, imports, err := generate.Fill(p, address, hole, expr)
@@ -114,7 +115,8 @@ func Run(ctx context.Context, b Backend, dir, address, hole string, report func(
 			if !errors.As(err, &ref) {
 				return nil, err
 			}
-			why, errs = ref.Msg, ref.Msg
+			msg := strings.ReplaceAll(ref.Msg, "standard input", "your answer")
+			why, errs = msg, msg
 			msgs = append(msgs, Message{"user", RetryTurn(errs)})
 			continue
 		}

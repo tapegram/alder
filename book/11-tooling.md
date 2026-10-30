@@ -1766,8 +1766,8 @@ checker's errors up to three times, and only an expression that checks
 comes back. It arrives as one edit to the buffer, which `u` undoes in one
 step; nothing is saved. While it runs, the status line shows `alder:
 filling ?delete : Task Nav` and each retry (`attempt 2 of 3: E0003 …`). If
-you edit the buffer meanwhile, the editor refuses the edit and the server
-shows the expression, for you to paste. When no answer checks, a warning
+you edit the buffer meanwhile, the server sends no edit and shows the
+expression instead, for you to paste. When no answer checks, a warning
 shows the errors and the model's last expression. One fill runs at a time.
 The server takes the model from the environment the editor was started in
 (`ANTHROPIC_API_KEY`, or `ALDER_FILL_COMMAND`); without either the action is

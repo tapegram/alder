@@ -134,6 +134,13 @@ func TestFill_Prompt(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(prompts, "count")); err == nil {
 		t.Error("--prompt ran the command")
 	}
+	// with ALDER_FILL_REFERENCE, the reference comes first, as the API is sent it
+	ref := filepath.Join(t.TempDir(), "reference.md")
+	os.WriteFile(ref, []byte("THE REFERENCE\n"), 0o644)
+	t.Setenv("ALDER_FILL_REFERENCE", ref)
+	if code, out, errs = alderIn(t, dir, "", "fill", `Home."pressing Clear"`, "--prompt"); code != 0 || !strings.HasPrefix(out, "THE REFERENCE\n\nYou fill one typed hole") {
+		t.Errorf("with a reference: exit %d\n%.200s\n%s", code, out, errs)
+	}
 }
 
 func TestFill_AIUsageErrors(t *testing.T) {

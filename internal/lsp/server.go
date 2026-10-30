@@ -276,8 +276,13 @@ func (s *server) reply(id *json.RawMessage, result any, err error) {
 	}
 }
 
+// requestTimeout bounds the wait for the client's answer to one of the server's requests (a
+// variable for tests): a client that never answers cannot hold a fill, and its one-fill flag,
+// forever.
+var requestTimeout = 30 * time.Second
+
 // request sends the client a request and waits for its response: the result, or the client's
-// error. It returns an error when the server stops first. Workers and background goroutines
+// error. It returns an error when the server stops first, or after requestTimeout. Workers and background goroutines
 // call it; the reader goroutine never does (it routes the response).
 func (s *server) request(method string, params any) (json.RawMessage, error) {
 	id, _ := json.Marshal(fmt.Sprintf("alder-%d", s.reqSeq.Add(1)))
@@ -294,6 +299,8 @@ func (s *server) request(method string, params any) (json.RawMessage, error) {
 	if err := s.c.send(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(id), "method": method, "params": params}); err != nil {
 		return nil, err
 	}
+	t := time.NewTimer(requestTimeout)
+	defer t.Stop()
 	select {
 	case m := <-ch:
 		if m.Error != nil {
@@ -302,6 +309,8 @@ func (s *server) request(method string, params any) (json.RawMessage, error) {
 		return m.Result, nil
 	case <-s.stop:
 		return nil, errors.New("the server stopped")
+	case <-t.C:
+		return nil, fmt.Errorf("the editor did not answer %s in %v", method, requestTimeout)
 	}
 }
 

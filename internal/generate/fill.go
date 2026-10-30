@@ -83,7 +83,16 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 		}
 		return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
 	}
-	if needsParens(before, after, expr) {
+	// The expression goes between the hole line's text before and after it. A comment in it would
+	// comment out the rest of that line (`n -- ` in `?a + 1 * n`), and an operator in it could bind
+	// differently from the hole (`1 + 1` in `?a * 2`): its comments are cut (by the lexer), and
+	// any expression but an atomic one is parenthesised; formatting drops the parentheses that
+	// are not needed.
+	expr = syntax.StripComments(expr)
+	if strings.TrimSpace(expr) == "" {
+		return nil, nil, nil, Refusef("standard input has only comments: write the expression that fills the hole")
+	}
+	if !atomic(expr) {
 		expr = "(" + expr + ")"
 	}
 	// a multi-line expression continues at the hole's line's indentation
@@ -414,35 +423,6 @@ func holeNames(hs []Hole) string {
 	return strings.Join(names, ", ")
 }
 
-// needsParens reports whether expr must be parenthesised to replace a hole between the texts
-// before and after it on its line: not when it is atomic (a name, a literal, one bracketed
-// whole), nor where any expression may stand (after `->`, `=`, `<-`, `:`, an opening bracket or
-// a comma, before a closing one, a comma or the end of the line); after an operator only when it
-// has an operator or a keyword of its own at its top level.
-func needsParens(before, after, expr string) bool {
-	if atomic(expr) {
-		return false
-	}
-	b := strings.TrimRight(before, " ")
-	a := strings.TrimLeft(after, " ")
-	opens := b == "" || strings.HasSuffix(b, "->") || strings.HasSuffix(b, "<-") || strings.HasSuffix(b, ":") ||
-		strings.HasSuffix(b, "{") || strings.HasSuffix(b, "(") || strings.HasSuffix(b, "[") || strings.HasSuffix(b, ",") ||
-		(strings.HasSuffix(b, "=") && !strings.HasSuffix(b, "==") && !strings.HasSuffix(b, "!=") && !strings.HasSuffix(b, "<=") && !strings.HasSuffix(b, ">="))
-	closes := a == "" || strings.HasPrefix(a, ",") || strings.HasPrefix(a, "}") || strings.HasPrefix(a, ")") || strings.HasPrefix(a, "]")
-	if opens && closes {
-		return false
-	}
-	last := rune(0)
-	if b != "" {
-		last = rune(b[len(b)-1])
-	}
-	application := unicode.IsLetter(last) || unicode.IsDigit(last) || last == ')' || last == ']' || last == '}' || last == '"' || last == '_'
-	if application {
-		return true
-	}
-	return topLevelOperator(expr)
-}
-
 // atomic reports whether expr is one name or number, or one bracketed whole (`( … )`, `[ … ]`,
 // `{ … }`) or string.
 func atomic(expr string) bool {
@@ -491,40 +471,6 @@ func closing(s string, i int) int {
 		}
 	}
 	return -1
-}
-
-// topLevelOperator reports whether expr has, outside brackets and strings, a binary operator, or
-// starts with a keyword (`if`, `match`, `let`) or a lambda.
-func topLevelOperator(expr string) bool {
-	t := strings.TrimSpace(expr)
-	for _, kw := range []string{"if ", "match ", "let ", "\\"} {
-		if strings.HasPrefix(t, kw) {
-			return true
-		}
-	}
-	depth, inStr := 0, false
-	for i := 0; i < len(t); i++ {
-		ch := t[i]
-		switch {
-		case inStr:
-			if ch == '\\' {
-				i++
-			} else if ch == '"' {
-				inStr = false
-			}
-		case ch == '"':
-			inStr = true
-		case ch == '(' || ch == '[' || ch == '{':
-			depth++
-		case ch == ')' || ch == ']' || ch == '}':
-			depth--
-		case depth == 0 && strings.ContainsRune("=!<>+*/%&|?", rune(ch)):
-			return true
-		case depth == 0 && ch == '-' && i > 0 && t[i-1] == ' ' && i+1 < len(t) && t[i+1] == ' ':
-			return true
-		}
-	}
-	return false
 }
 
 // onlyExpectedLeft reports whether, once h is filled, the holes of its declaration (in) left are

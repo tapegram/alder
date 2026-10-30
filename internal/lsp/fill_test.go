@@ -42,9 +42,16 @@ type answers struct {
 	list []string
 	seen [][]fill.Message
 	gate chan struct{}
+	// entered, when set, receives once when the first answer is asked for (the fill has read
+	// the buffers by then)
+	entered chan struct{}
+	once    sync.Once
 }
 
 func (a *answers) Complete(ctx context.Context, _ string, msgs []fill.Message) (string, error) {
+	if a.entered != nil {
+		a.once.Do(func() { close(a.entered) })
+	}
 	if a.gate != nil {
 		select {
 		case <-a.gate:
@@ -330,11 +337,54 @@ func TestFill_GivesUpShowsMessage(t *testing.T) {
 	}
 }
 
+// TestFill_ClientRefusesEdit: a buffer edited while the model answers gets no edit (Neovim
+// would apply a stale one), and the warning carries the expression.
 func TestFill_ClientRefusesEdit(t *testing.T) {
+	b := &answers{list: []string{"Task.succeed (Redirect (Auth.Login {}))"}, gate: make(chan struct{}), entered: make(chan struct{})}
+	c := fillClient(t, fillRoot(t), b, map[string]any{"workspace": map[string]any{"applyEdit": true}})
+	startFill(t, c)
+	<-b.entered
+	c.change(fillRel, c.disk(fillRel)+"\n-- typed meanwhile\n")
+	c.diags(fillRel)
+	close(b.gate)
+	if msg := showMessage(t, c); msg != "alder fill: app/App.alder changed while filling; the expression was:\nTask.succeed (Redirect (Auth.Login {}))" {
+		t.Errorf("message %q", msg)
+	}
+	select {
+	case m := <-c.requests:
+		t.Errorf("a request for a changed buffer: %s", m.Method)
+	default:
+	}
+}
+
+// TestFill_ClientAnswersNotApplied: a client that answers applied: false gets the same warning.
+func TestFill_ClientAnswersNotApplied(t *testing.T) {
 	c := fillClient(t, fillRoot(t), &answers{list: []string{"Task.succeed (Redirect (Auth.Login {}))"}}, map[string]any{"workspace": map[string]any{"applyEdit": true}})
 	startFill(t, c)
 	applyEdit(t, c, false)
 	if msg := showMessage(t, c); msg != "alder fill: app/App.alder changed while filling; the expression was:\nTask.succeed (Redirect (Auth.Login {}))" {
+		t.Errorf("message %q", msg)
+	}
+}
+
+// TestFill_SilentClientReleasesTheFill: a client that never answers the progress request does
+// not hold the one-fill flag past requestTimeout.
+func TestFill_SilentClientReleasesTheFill(t *testing.T) {
+	old := requestTimeout
+	requestTimeout = 200 * time.Millisecond
+	defer func() { requestTimeout = old }()
+	c := fillClient(t, fillRoot(t), &answers{list: []string{"Task.succeed (Redirect (Auth.Login {}))"}}, fullCaps)
+	startFill(t, c)
+	c.request("window/workDoneProgress/create") // never answered
+	c.request("workspace/applyEdit")            // nor this
+	deadline := time.Now().Add(timeout)
+	for c.srv.filling.Load() {
+		if time.Now().After(deadline) {
+			t.Fatal("the fill still holds the flag")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if msg := showMessage(t, c); !strings.Contains(msg, "did not answer workspace/applyEdit") {
 		t.Errorf("message %q", msg)
 	}
 }
