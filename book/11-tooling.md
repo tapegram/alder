@@ -807,9 +807,10 @@ is not under `app/` (`scratch.alder`, `probe.scratch.alder`,
 nearest directory up from the file that holds `app/*.alder`. Any other
 file is refused (exit 2). A scratch file given as a symbolic link is judged by its
 target (the CLI and the language server both resolve links): the target must be
-named `*scratch.alder` and live in an app's project. `alder fmt` skips scratch files when it walks a
-directory and refuses one named on its command line, because a file with
-`>` lines is not a module; the language server leaves them alone too.
+named `*scratch.alder` and live in an app's project. A file with `>` lines
+is not a module, so `alder fmt` formats a scratch file in a way of its own
+(this chapter, "Formatting"), and the language server analyses it on its
+own ("Scratch files in the editor", below).
 
 A line that starts with `> ` at column 1 is a watch: the rest of the line
 is an expression, and lines indented under it continue it. Everything
@@ -1790,11 +1791,51 @@ bytes is cut and ends with `…`.
 
 `:AlderRepl` still opens `alder repl`, and says that it is deprecated.
 
-Not yet: hover, completion, go to definition and code actions inside a
-scratch file (the server analyses the app's modules, and a scratch file is not
-one), formatting a scratch file (`alder fmt` skips them), and inlay hints, for
-an editor without the plugin. Chapter 13, section 10, shows how the server
-runs a scratch file.
+Inside a scratch file the editor works as it does in an app module:
+
+- **Hover** shows the type of a name or an expression, in a watch or in a
+  definition: on `countOpen` in `> Todo.countOpen []` it shows
+  `Table.Todo.countOpen : List Todo -> Int`, with the doc comment when the
+  declaration has one.
+- **Go to definition** jumps to the file's own definitions and locals, and
+  into the app: from `Todo.countOpen` to its line in `app/Table/Todo.alder`.
+  After an `in Table.Todo` header the module's own names lead there too.
+- **Completion** offers the file's definitions, the app's modules and their
+  members after `Todo.`, fields, tags and the rest, as in a module. It keeps
+  working while the line you type does not parse yet, from the last text of
+  the file that did.
+- **Code actions** list the compiler's fixes for the file's diagnostics: on
+  `> Table.Todo.countOpen []` the fix rewrites it to `Todo.countOpen`. The
+  generators are not offered in a scratch file, since what they write belongs
+  in `app/`.
+- **Formatting** formats the file as `alder fmt` does (this chapter,
+  "Formatting").
+
+None of these waits for a run: they come from checking the file, which takes
+milliseconds, and they see the app as it is on disk, as a run does (an unsaved
+edit to an app module counts once it is saved).
+
+**Inlay hints** are for an editor without alder.nvim. An inlay hint is a short
+label the editor draws inside a line without it being part of the text (VS
+Code and Helix show them; Neovim does after `vim.lsp.inlay_hint.enable()`).
+The server offers one at the end of each watch, from the last run:
+
+```text
+> 1 + 1                          ⇒ 2 : Int
+> List.map (\x -> x * 2)
+    [1, 2]                       ⇒ [2, 4] : List Int
+> Db.from Todo |> Db.count       ⇒ <Query> : Query Int
+```
+
+The hint sits after the watch's last line. A value of several lines shows its
+first line and `…`, a watch that failed shows `✗` and the first line of its
+error, a watch that has only checked so far shows `: Int`, and a watch you
+have edited since the run has no hint until the next save. When the editor says it can refresh its hints, the
+server asks it to after each phase of a run. alder.nvim draws the same results
+as virtual text, so with the plugin leave inlay hints off for Alder, or each
+watch shows its value twice.
+
+Chapter 13, section 10, shows how the server runs and analyses a scratch file.
 
 ### Setting up Neovim
 
@@ -1894,6 +1935,28 @@ stderr, `alder fmt: app/Broken.alder does not parse, so imports were not
 migrated; fix it and run again`, without changing the exit code.
 `--stdin` and a file outside an app project only format, and `--check`
 lists a file that would be migrated as one that would be reformatted.
+
+A scratch file (this chapter, "`alder scratch`") is formatted too, when fmt
+walks the project and when you name it. It is not a module, so fmt formats it
+the way the scratch runner reads it: each `> expr` watch as the right-hand
+side of a definition, written back with its `> `, every other declaration as
+in a module, and the `in` header kept first. Watches on consecutive lines stay
+on consecutive lines, since a run of watches is how a scratch file reads;
+anything else gets the blank lines a module has:
+
+```text
+-- before                        -- after
+x=1                              x = 1
+> x   +1
+> [x,2]                          > x + 1
+                                 > [x, 2]
+```
+
+A scratch file is never migrated (it is not one of the app's modules), and
+one with an error the scratch runner reports first (a `>!` line, a name such
+as `it1` that the watches take) is reported and left alone, exit 1, like a
+file that does not parse. A file named `*scratch.alder` under `app/` is not a
+scratch file and is formatted as a module.
 
 Rewriting prints one line per file it changed, and nothing when nothing
 changed. `--check` prints `<file> would be reformatted` for each file that is
