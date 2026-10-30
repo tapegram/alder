@@ -40,7 +40,7 @@ func (s *server) location(a *analysis, file string, sp diag.Span) (Location, boo
 	if !s.fresh(a, file, sp.End.Line, true) {
 		return Location{}, false
 	}
-	return Location{URI: s.uriOf(file), Range: spanRange(sp)}, true
+	return Location{URI: s.uriOf(file), Range: s.enc.wireRange(a.lines[file], spanRange(sp))}, true
 }
 
 // definition is the file and span of the declaration of what the cursor names: a field of a

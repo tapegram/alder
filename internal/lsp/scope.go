@@ -113,6 +113,7 @@ func (s *server) at(rel string, p Position, inclusive bool) (a *analysis, m *syn
 	if p.Line < 0 || p.Character < 0 {
 		return nil, nil, nil, pos, false
 	}
+	p = s.byteAt(rel, p)
 	a = s.lastGood()
 	if !s.fresh(a, rel, p.Line+1, inclusive) {
 		return nil, nil, nil, pos, false

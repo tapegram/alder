@@ -10,4 +10,4 @@ load params session = Query.succeed { }
 msg Poll
 
 view : Model -> Session -> File
-view model session = File.json "[]"
+view model session = File.json (Json.list [])

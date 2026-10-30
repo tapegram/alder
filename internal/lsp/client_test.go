@@ -53,6 +53,12 @@ func start(t *testing.T, root string) *client {
 // startWith is start with the server's options (Log is the test log when it is nil).
 func startWith(t *testing.T, root string, o Options) *client {
 	t.Helper()
+	return startOffering(t, root, o, []string{"utf-8", "utf-16"})
+}
+
+// startOffering is startWith for a client whose general.positionEncodings is offered.
+func startOffering(t *testing.T, root string, o Options, offered []string) *client {
+	t.Helper()
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	c := &client{
@@ -81,7 +87,7 @@ func startWith(t *testing.T, root string, o Options) *client {
 			t.Error("the server did not stop at EOF")
 		}
 	})
-	if e := c.call("initialize", map[string]any{"rootUri": c.uri(""), "capabilities": map[string]any{}}, &c.initResult); e != nil {
+	if e := c.call("initialize", map[string]any{"rootUri": c.uri(""), "capabilities": map[string]any{"general": map[string]any{"positionEncodings": offered}}}, &c.initResult); e != nil {
 		t.Fatalf("initialize: %v", e)
 	}
 	c.notify("initialized", map[string]any{})
