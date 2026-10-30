@@ -11,3 +11,17 @@ sqrt : Float -> Float
 exp : Float -> Float
 log : Float -> Float
 pow : Float -> Float -> Float -- Float.pow base exponent
+truncate : Float -> Int -- rounds toward zero
+clamp : { min: Float, max: Float } -> Float -> Float -- like Int.clamp: below min gives min, else above max gives max
+pi : Float
+e : Float
+isNaN : Float -> Bool
+isInfinite : Float -> Bool
+logBase : Float -> Float -> Float -- Float.logBase base x
+sin : Float -> Float
+cos : Float -> Float
+tan : Float -> Float
+asin : Float -> Float
+acos : Float -> Float
+atan : Float -> Float
+atan2 : Float -> Float -> Float -- Float.atan2 y x

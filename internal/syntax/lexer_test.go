@@ -33,6 +33,37 @@ func TestLexer_Basics(t *testing.T) {
 	}
 }
 
+func TestLexer_ExponentLiterals(t *testing.T) {
+	cases := []struct{ src, want string }{
+		{"1.5e-3", "Float(1.5e-3)"},
+		{"1e6", "Float(1e6)"},
+		{"2E+3", "Float(2E+3)"},
+		{"1e", "Int(1) LIdent(e)"},
+		{"1.5e", "Float(1.5) LIdent(e)"},
+		{"2e+", "Int(2) LIdent(e) Plus"},
+		{"e1", "LIdent(e1)"},
+	}
+	for _, c := range cases {
+		l := NewLexer("t.alder", []byte(c.src))
+		var out []string
+		for {
+			tk := l.Next()
+			if tk.Kind == EOF {
+				break
+			}
+			switch tk.Kind {
+			case Float, Int, LIdent:
+				out = append(out, tk.Kind.String()+"("+tk.Text+")")
+			default:
+				out = append(out, tk.Kind.String())
+			}
+		}
+		if got := strings.Join(out, " "); got != c.want {
+			t.Errorf("%q: got %s want %s", c.src, got, c.want)
+		}
+	}
+}
+
 func TestLexer_OperatorsAndKeywords(t *testing.T) {
 	got := kinds(`match x { Just y -> y ?? 0, _ -> [1, ..rest] } |> f <- g == != <= >= && || ++ \x ?hole @id 3.5 "s"`)
 	want := "Keyword(match) LIdent(x) LBrace UIdent(Just) LIdent(y) Arrow LIdent(y) Question2 Int(0) Comma Underscore Arrow LBracket Int(1) Comma DotDot LIdent(rest) RBracket RBrace PipeGt LIdent(f) LeftArrow LIdent(g) EqEq NotEq Le Ge AndAnd OrOr PlusPlus Backslash LIdent(x) Hole At LIdent(id) Float String(\"s\")"
