@@ -122,9 +122,9 @@ func (mc *modCtx) bindPoison(p syntax.Pattern, env *env) {
 
 // ---- exhaustiveness and redundancy
 
-// maxWitnesses caps the missing cases an E0004 or E0302 message lists when some case is nested;
-// past it the message ends `, …`. A flat match's message lists every case, as it always did, and
-// the fix always inserts an arm for every case, so applying it makes the match exhaustive.
+// maxWitnesses caps the missing cases an E0004 or E0302 lists when some case is nested: past it
+// the message ends `, …` and the fix inserts those cases and a `_ -> ?todo` arm (nested cases
+// can be exponentially many). A flat match lists every case, as it always did, with an arm each.
 const maxWitnesses = 8
 
 // checkArms reports, once every arm's pattern is checked against the subject's type subj, the
@@ -150,16 +150,9 @@ func (mc *modCtx) checkArms(subj types.Type, m *syntax.Match) {
 		}
 		rows = append(rows, []*pat{q})
 	}
-	ws := mt.witnesses(rows, subj)
+	ws, more := mt.witnesses(rows, subj, maxWitnesses)
 	if len(ws) == 0 {
 		return
-	}
-	shown, more := ws, false
-	for _, w := range ws {
-		if !w.flat() && len(ws) > maxWitnesses {
-			shown, more = ws[:maxWitnesses], true
-			break
-		}
 	}
 	un, _ := subj.(*types.Union)
 	isUpdate := un != nil && mc.inUpdate && un.Name == "Msg"
@@ -168,12 +161,13 @@ func (mc *modCtx) checkArms(subj types.Type, m *syntax.Match) {
 		payload = "p"
 	}
 	missing := make([]string, len(ws))
+	quoted := make([]string, len(ws))
 	for i, w := range ws {
 		missing[i] = printWitness(w, payload)
-	}
-	quoted := make([]string, len(shown))
-	for i, w := range shown {
 		quoted[i] = "`" + printWitness(w, "") + "`"
+	}
+	if more { // the fix ends with a catch-all, so applying it still makes the match exhaustive
+		missing = append(missing, "_")
 	}
 	list := strings.Join(quoted, ", ")
 	if more {

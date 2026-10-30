@@ -337,17 +337,23 @@ func (m *matcher) missing(rows [][]*pat, tys []types.Type, top bool) ([]*pat, bo
 	return concat([]*pat{head}, w), true
 }
 
-// witnesses lists every pattern of values of type t that no row matches, each covering what
-// the earlier ones do not, so they are disjoint. The loop ends: each witness added as a row
-// covers values no row did.
-func (m *matcher) witnesses(rows [][]*pat, t types.Type) []*pat {
+// witnesses lists patterns of values of type t that no row matches, each covering what the
+// earlier ones do not, so they are disjoint. Each witness added as a row covers values no row
+// did, so the loop ends; flat witnesses are at most the signature's constructors and are all
+// listed. Nested ones can be exponentially many (a record of n fields of a three-constructor
+// union has up to 3^n), so once one is nested the list stops at max and more reports the rest.
+func (m *matcher) witnesses(rows [][]*pat, t types.Type, max int) (ws []*pat, more bool) {
 	tys := []types.Type{t}
 	rows = append([][]*pat(nil), rows...)
-	var ws []*pat
+	nested := false
 	for {
 		w, ok := m.missing(rows, tys, true)
 		if !ok {
-			return ws
+			return ws, false
+		}
+		nested = nested || !w[0].flat()
+		if nested && len(ws) >= max {
+			return ws[:max], true
 		}
 		ws = append(ws, w[0])
 		rows = append(rows, w)

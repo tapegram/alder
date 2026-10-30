@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"alder/internal/syntax"
 	"alder/internal/types"
@@ -39,6 +40,12 @@ func rowsOf(m *matcher, t types.Type, ps ...syntax.Pattern) [][]*pat {
 	return rows
 }
 
+// witAll lists the witnesses with a cap no test reaches.
+func witAll(m *matcher, rows [][]*pat, t types.Type) []*pat {
+	ws, _ := m.witnesses(rows, t, 1000)
+	return ws
+}
+
 func printed(ws []*pat) string {
 	var out []string
 	for _, w := range ws {
@@ -51,7 +58,7 @@ func TestUseful_ListOfMaybe(t *testing.T) {
 	m := testMatcher()
 	ty := listOf(tMaybeInt)
 	rows := rowsOf(m, ty, pl("", pc("Just", pv("m")), pc("Just", pv("s")), pc("Just", pv("p"))))
-	ws := m.witnesses(rows, ty)
+	ws := witAll(m, rows, ty)
 	want := "[], [Nothing, ..rest], [Just _], [Just _, Nothing, ..rest], [Just _, Just _], " +
 		"[Just _, Just _, Nothing, ..rest], [Just _, Just _, Just _, _, ..rest]"
 	if got := printed(ws); got != want {
@@ -62,7 +69,7 @@ func TestUseful_ListOfMaybe(t *testing.T) {
 func TestUseful_FlatUnion(t *testing.T) {
 	m := testMatcher()
 	rows := rowsOf(m, tFilter, pc("All", nil))
-	if ws := m.witnesses(rows, tFilter); printed(ws) != "Active, Completed" {
+	if ws := witAll(m, rows, tFilter); printed(ws) != "Active, Completed" {
 		t.Fatalf("witnesses = %s", printed(ws))
 	}
 	if m.useful(rows, []*pat{m.normalise(pc("All", nil), tFilter)}, []types.Type{tFilter}) {
@@ -73,15 +80,15 @@ func TestUseful_FlatUnion(t *testing.T) {
 	}
 	// the top-level spellings of today's messages
 	rows = rowsOf(m, tMaybeInt)
-	if ws := m.witnesses(rows, tMaybeInt); printed(ws) != "Nothing, Just x" {
+	if ws := witAll(m, rows, tMaybeInt); printed(ws) != "Nothing, Just x" {
 		t.Fatalf("witnesses = %s", printed(ws))
 	}
 	rows = rowsOf(m, listOf(types.Int), pl(""))
-	if ws := m.witnesses(rows, listOf(types.Int)); printed(ws) != "[x, ..rest]" {
+	if ws := witAll(m, rows, listOf(types.Int)); printed(ws) != "[x, ..rest]" {
 		t.Fatalf("witnesses = %s", printed(ws))
 	}
 	rows = rowsOf(m, tBool, pb(true))
-	if ws := m.witnesses(rows, tBool); printed(ws) != "False" {
+	if ws := witAll(m, rows, tBool); printed(ws) != "False" {
 		t.Fatalf("witnesses = %s", printed(ws))
 	}
 }
@@ -89,7 +96,7 @@ func TestUseful_FlatUnion(t *testing.T) {
 func TestUseful_Literals(t *testing.T) {
 	m := testMatcher()
 	rows := rowsOf(m, types.Int, pi(0), pi(1))
-	if ws := m.witnesses(rows, types.Int); printed(ws) != "_" {
+	if ws := witAll(m, rows, types.Int); printed(ws) != "_" {
 		t.Fatalf("witnesses = %s", printed(ws))
 	}
 	tys := []types.Type{types.Int}
@@ -104,7 +111,7 @@ func TestUseful_Record(t *testing.T) {
 	rows := rowsOf(m, rec,
 		&syntax.PRecord{Fields: []*syntax.PField{{Name: "a", Pat: pc("Just", pv("x"))}}},
 		&syntax.PRecord{Fields: []*syntax.PField{{Name: "b", Pat: pb(true)}}})
-	if ws := m.witnesses(rows, rec); printed(ws) != "{ a: Nothing, b: False }" {
+	if ws := witAll(m, rows, rec); printed(ws) != "{ a: Nothing, b: False }" {
 		t.Fatalf("witnesses = %s", printed(ws))
 	}
 }
@@ -123,7 +130,7 @@ func TestUseful_Redundant(t *testing.T) {
 	// Just (Just x) after Just Nothing: Just (Just _) is still missing, then nothing is
 	mm := &types.Union{Name: "MM", Ctors: []types.Ctor{{Name: "Nothing"}, {Name: "Just", Arg: tMaybeInt}}}
 	rows = rowsOf(m, mm, pc("Nothing", nil), pc("Just", pc("Nothing", nil)))
-	if ws := m.witnesses(rows, mm); printed(ws) != "Just (Just _)" {
+	if ws := witAll(m, rows, mm); printed(ws) != "Just (Just _)" {
 		t.Fatalf("witnesses = %s", printed(ws))
 	}
 }
@@ -136,13 +143,35 @@ func TestWitnessesUncapped(t *testing.T) {
 	for i := range 10 {
 		u.Ctors = append(u.Ctors, types.Ctor{Name: fmt.Sprintf("C%d", i)})
 	}
-	ws := m.witnesses(nil, u)
+	ws := witAll(m, nil, u)
 	if len(ws) != 10 || printed(ws[:2]) != "C0, C1" {
 		t.Fatalf("witnesses = %s", printed(ws))
 	}
 	for _, w := range ws {
 		if !w.flat() {
 			t.Errorf("%s is not flat", printWitness(w, "x"))
+		}
+	}
+}
+
+// Nested witnesses can be exponentially many: a record of 2m fields of `A | B | D` with the m
+// arms `{ ai: A, bi: A }` has 4^m. The list stops at the cap, so checking stays fast (#2).
+func TestWitnessesStopAtCapWhenNested(t *testing.T) {
+	for _, m := range []int{7, 10} {
+		src := "module M\n\ntype C = A | B | D\n\nq : {"
+		var fields, arms []string
+		for i := range m {
+			fields = append(fields, fmt.Sprintf(" a%d: C, b%d: C", i, i))
+			arms = append(arms, fmt.Sprintf("{ a%d: A, b%d: A } -> %d", i, i, i))
+		}
+		src += strings.Join(fields, ",") + " } -> Int\nq r = match r { " + strings.Join(arms, ", ") + " }\n"
+		start := time.Now()
+		diags := checkModule(t, src)
+		if took := time.Since(start); took > 5*time.Second {
+			t.Errorf("m=%d: checking took %v", m, took)
+		}
+		if len(diags) != 1 || diags[0].Code != "E0004" || !strings.HasSuffix(diags[0].Message, ", …") || diags[0].Fix == nil {
+			t.Fatalf("m=%d: diagnostics %+v", m, diags)
 		}
 	}
 }
@@ -156,7 +185,7 @@ func TestWitnessRestsNumbered(t *testing.T) {
 		&syntax.PRecord{Fields: []*syntax.PField{{Name: "a", Pat: pl("r", pc("Just", pv("x")))}}},
 		&syntax.PRecord{Fields: []*syntax.PField{{Name: "b", Pat: pl("")}}},
 		&syntax.PRecord{Fields: []*syntax.PField{{Name: "b", Pat: pl("r", pc("Just", pv("x")))}}})
-	if ws := m.witnesses(rows, rec); printed(ws) != "{ a: [Nothing, ..rest], b: [Nothing, ..rest2] }" {
+	if ws := witAll(m, rows, rec); printed(ws) != "{ a: [Nothing, ..rest], b: [Nothing, ..rest2] }" {
 		t.Fatalf("witnesses = %s", printed(ws))
 	}
 }
@@ -174,10 +203,10 @@ func BenchmarkUseful(b *testing.B) {
 	}
 	flat := rowsOf(m, msg, arms...)
 	for b.Loop() {
-		m.witnesses(issue, ty)
+		witAll(m, issue, ty)
 		for i := range flat {
 			m.useful(flat[:i], flat[i], []types.Type{msg})
 		}
-		m.witnesses(flat, msg)
+		witAll(m, flat, msg)
 	}
 }
