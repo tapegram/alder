@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"alder/internal/syntax"
@@ -241,7 +242,9 @@ func concat[T any](a, b []T) []T {
 }
 
 // specialise is S(tag, P): the rows whose first column matches tag, that column replaced by
-// its n arguments.
+// its n arguments. A row with a bad tag (a pattern that does not fit its type, whose error is
+// already reported) matches no tag of the signature, so it is dropped here and covers nothing:
+// the arm it came from neither hides later arms nor makes the match exhaustive.
 func specialise(rows [][]*pat, tag string, n int) [][]*pat {
 	var out [][]*pat
 	for _, r := range rows {
@@ -334,28 +337,39 @@ func (m *matcher) missing(rows [][]*pat, tys []types.Type, top bool) ([]*pat, bo
 	return concat([]*pat{head}, w), true
 }
 
-// witnesses lists up to max patterns of values of type t that no row matches, each covering
-// what the earlier ones do not (so they are disjoint); more reports that there are others.
-func (m *matcher) witnesses(rows [][]*pat, t types.Type, max int) (ws []*pat, more bool) {
+// witnesses lists every pattern of values of type t that no row matches, each covering what
+// the earlier ones do not, so they are disjoint. The loop ends: each witness added as a row
+// covers values no row did.
+func (m *matcher) witnesses(rows [][]*pat, t types.Type) []*pat {
 	tys := []types.Type{t}
 	rows = append([][]*pat(nil), rows...)
+	var ws []*pat
 	for {
 		w, ok := m.missing(rows, tys, true)
 		if !ok {
-			return ws, false
-		}
-		if len(ws) == max {
-			return ws, true
+			return ws
 		}
 		ws = append(ws, w[0])
 		rows = append(rows, w)
 	}
 }
 
+// flat reports whether a witness constrains nothing below its top: a bare constructor, `[]`,
+// `[x, ..rest]`, True or False, or `_`.
+func (p *pat) flat() bool {
+	for _, a := range p.args {
+		if !a.wild() {
+			return false
+		}
+	}
+	return true
+}
+
 // printWitness prints a witness as a pattern, keeping the spellings flat matches always had at
 // the top: a constructor with an unconstrained payload is its bare name in a message (payload
 // "") and `Name x` (`Name p` in an update) in a fix's arm, and an unconstrained cons is
-// `[x, ..rest]`. Below the top an unconstrained part is `_` and a tail `..rest`.
+// `[x, ..rest]`. Below the top an unconstrained part is `_` and a tail `..rest`; a witness with
+// several tails numbers them left to right (`rest`, `rest2`, …) so its arm binds each once.
 func printWitness(p *pat, payload string) string {
 	switch {
 	case p.union && len(p.args) == 1 && p.args[0].wild() && payload == "":
@@ -365,10 +379,11 @@ func printWitness(p *pat, payload string) string {
 	case p.tag == tagCons && p.args[0].wild() && p.args[1].wild():
 		return "[x, ..rest]"
 	}
-	return printPat(p)
+	rests := 0
+	return printPat(p, &rests)
 }
 
-func printPat(p *pat) string {
+func printPat(p *pat, rests *int) string {
 	switch {
 	case p.wild():
 		return "_"
@@ -377,18 +392,23 @@ func printPat(p *pat) string {
 	case p.tag == tagCons:
 		var elems []string
 		for p.tag == tagCons {
-			elems = append(elems, printPat(p.args[0]))
+			elems = append(elems, printPat(p.args[0], rests))
 			p = p.args[1]
 		}
 		if p.wild() {
-			elems = append(elems, "..rest")
+			*rests++
+			name := "..rest"
+			if *rests > 1 {
+				name += strconv.Itoa(*rests)
+			}
+			elems = append(elems, name)
 		}
 		return "[" + strings.Join(elems, ", ") + "]"
 	case p.tag == tagRecord:
 		var fs []string
 		for i, a := range p.args {
 			if !a.wild() {
-				fs = append(fs, p.fields[i]+": "+printPat(a))
+				fs = append(fs, p.fields[i]+": "+printPat(a, rests))
 			}
 		}
 		if len(fs) == 0 {
@@ -396,7 +416,7 @@ func printPat(p *pat) string {
 		}
 		return "{ " + strings.Join(fs, ", ") + " }"
 	case len(p.args) == 1:
-		arg := printPat(p.args[0])
+		arg := printPat(p.args[0], rests)
 		if a := p.args[0]; a.union && len(a.args) == 1 {
 			arg = "(" + arg + ")"
 		}

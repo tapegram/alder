@@ -30,6 +30,7 @@ func Paste(m *syntax.Module, e syntax.Expr, holes map[*syntax.Var]int) (out stri
 // checker quotes an unreachable arm's pattern with it).
 func Pattern(m *syntax.Module, pt syntax.Pattern) string {
 	p := newPrinter([]byte(strings.Join(m.Lines, "\n")))
+	p.c = attach(m) // a record pattern's braces ask it for dangling comments
 	return Render(Flat(p.pattern(pt)), Width)
 }
 
