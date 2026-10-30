@@ -59,15 +59,26 @@ func startFakeCaddy(t *testing.T, box *sshBox) (string, string) {
 		return u, deploy.DefaultCaddyAdmin
 	}
 	// the box is this machine (the loopback box, or the private sshd): a process of the test
-	admin := fmt.Sprintf("127.0.0.1:%d", freePort(t))
-	public := fmt.Sprintf("127.0.0.1:%d", freePort(t))
-	cmd := exec.Command(bin, admin, public)
-	logFile, _ := os.Create(filepath.Join(t.TempDir(), "fakecaddy.log"))
-	cmd.Stdout, cmd.Stderr = logFile, logFile
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait(); logFile.Close() })
+	var admin, public string
+	onFreePort(t, func(port int) bool { // a fake Caddy that lost a port to another process exits: start it again
+		admin = fmt.Sprintf("127.0.0.1:%d", port)
+		public = fmt.Sprintf("127.0.0.1:%d", freePort(t))
+		cmd := exec.Command(bin, admin, public)
+		logFile, _ := os.Create(filepath.Join(t.TempDir(), "fakecaddy.log"))
+		cmd.Stdout, cmd.Stderr = logFile, logFile
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		exited := make(chan struct{})
+		go func() { cmd.Wait(); close(exited) }()
+		t.Cleanup(func() { cmd.Process.Kill(); <-exited; logFile.Close() })
+		select {
+		case <-exited:
+			return false
+		case <-time.After(300 * time.Millisecond): // one that cannot bind ends at once
+			return true
+		}
+	})
 	u := "http://" + public
 	waitHTTP(t, u)
 	return u, admin

@@ -1215,7 +1215,9 @@ func TestTest_MutateSuiteCrashes(t *testing.T) {
 // killed as crashed and the run goes on in a new program from the next mutant. A mutant that
 // computes for hours is killed at -timeout as timed out, and the run goes on too.
 func TestTest_MutateCrashAndHang(t *testing.T) {
-	// serial: timing: the 2s per-mutant -timeout must see the stack-overflow crash first; under parallel load it reports "timed out"
+	// parallel-safe: a mutation run caps the stack (rtesting.mutateMaxStack), so the overflow comes
+	// in milliseconds, far ahead of the 2s per-mutant -timeout
+	t.Parallel()
 	needGoTool(t)
 	src, err := filepath.Abs("../../testdata/corpus/mutate-crash")
 	if err != nil {
