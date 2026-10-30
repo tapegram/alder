@@ -79,6 +79,9 @@ type initializeParams struct {
 	Capabilities struct {
 		Workspace struct {
 			ApplyEdit bool `json:"applyEdit"`
+			InlayHint struct {
+				RefreshSupport bool `json:"refreshSupport"`
+			} `json:"inlayHint"`
 		} `json:"workspace"`
 		Window struct {
 			WorkDoneProgress bool            `json:"workDoneProgress"`
@@ -112,6 +115,7 @@ func capabilities(enc posEncoding) map[string]any {
 		"textDocumentSync":           map[string]any{"openClose": true, "change": 1, "save": map[string]any{"includeText": false}},
 		"hoverProvider":              true,
 		"documentFormattingProvider": true,
+		"inlayHintProvider":          true,
 		"definitionProvider":         true,
 		"referencesProvider":         true,
 		"completionProvider":         map[string]any{"triggerCharacters": []string{".", "<", "?"}},

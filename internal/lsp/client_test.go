@@ -63,7 +63,7 @@ func startOffering(t *testing.T, root string, o Options, offered []string) *clie
 	return startCaps(t, root, o, map[string]any{"general": map[string]any{"positionEncodings": offered}})
 }
 
-// startCaps is startWith with the client's capabilities, as initialize sends them.
+// startCaps is startWith with the client capabilities initialize sends.
 func startCaps(t *testing.T, root string, o Options, caps map[string]any) *client {
 	t.Helper()
 	inR, inW := io.Pipe()
@@ -144,7 +144,7 @@ func (c *client) read(r io.Reader) {
 			close(c.publishing)
 			c.publishing = make(chan struct{})
 			c.mu.Unlock()
-		case m.ID == nil:
+		case m.ID == nil, m.Method != "": // a notification, or a request of the server's (unanswered)
 			select {
 			case c.notes <- m:
 			default:

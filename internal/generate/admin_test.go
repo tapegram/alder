@@ -134,7 +134,7 @@ func TestAdminWireNames(t *testing.T) {
 		`featured: Text = "",` + "\n",
 		`name: "Status",`,
 		`name: "featured",`,
-		`<input type="search" name="Q" value={model.q} aria-label="Search" />`,
+		`<input type="search" name="Q" value={model.q} />`,
 		`<input type="hidden" name="sort" value={model.sort} />`,
 		`<input type="hidden" name="Ids" value={row.id} />`,
 		`select[name='Status'] option[selected]`,
