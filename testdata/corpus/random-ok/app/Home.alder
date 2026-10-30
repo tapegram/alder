@@ -2,7 +2,7 @@ module Home
 
 page "/" { }
 
-type Model = { rolls: List Int, delay: Float, county: Text }
+type Model = { hash: Int, rolls: List Int, delay: Float, county: Text }
 
 -- a seeded night: the same county and key give the same numbers on every run
 nightSeed : Text -> Text -> Random.Seed
@@ -22,11 +22,26 @@ load params session = {
   let rolls = Random.step (Random.list 3 (Random.intRange { min: 1, max: 6 })) s
   let d = Random.step delay rolls.seed
   let c = Random.step (Random.map Text.toUpper county) d.seed
-  Query.succeed { rolls: rolls.value, delay: d.value, county: c.value }
+  Query.succeed { hash: Text.hash "Rock/0005", rolls: rolls.value, delay: d.value, county: c.value }
 }
 
 view : Model -> Session -> Html Msg
-view model session = <p>{model.county} {Text.fromFloat model.delay}</p>
+view model session =
+  <div>
+    <p id="hash">{Text.fromInt model.hash}</p>
+    <p id="rolls">{Text.join "," (List.map Text.fromInt model.rolls)}</p>
+    <p id="delay">{Text.fromFloat model.delay}</p>
+    <p id="county">{model.county}</p>
+  </div>
+
+-- the numbers load draws are pinned forever: a change to Text.hash or Random fails here
+test "load's draws are pinned" = {
+  let page <- Test.get (Home {})
+  Task.succeed (
+    [Test.text "#hash" page.doc, Test.text "#rolls" page.doc, Test.text "#delay" page.doc, Test.text "#county" page.doc]
+      == [Just "1491793759679455914", Just "5,5,1", Just "29.198919720283012", Just "JEFFERSON"]
+  )
+}
 
 test "dice stay on the die" =
   Fuzz.forAll (Fuzz.fromRandom (Random.intRange { min: 1, max: 6 })) (\n -> n >= 1 && n <= 6)

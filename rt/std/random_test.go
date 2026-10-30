@@ -31,10 +31,10 @@ func TestRandomSeed_Show(t *testing.T) {
 	if s.State != uint64(math.MaxUint64-4) {
 		t.Fatalf("state %d", s.State)
 	}
-	if got := rt.Show(s); got != "Random.seed -5" {
+	if got := rt.Show(s); got != "Random.seed (-5)" {
 		t.Errorf("Show = %q", got)
 	}
-	if got := rt.Show(rt.Just(s)); got != "Just (Random.seed -5)" {
+	if got := rt.Show(rt.Just(s)); got != "Just (Random.seed (-5))" {
 		t.Errorf("Show Just = %q", got)
 	}
 	if got := rt.Show(RandomSeed(7)); got != "Random.seed 7" {
@@ -58,7 +58,7 @@ func TestRandomIntRange_Vectors(t *testing.T) {
 	if r.Value != 2 || r.Seed != RandomSeed(-7046029254386353089) {
 		t.Errorf("1..6 from 42 = %d, %s", r.Value, rt.Show(r.Seed))
 	}
-	if got := rt.Show(r); got != "{ value: 2, seed: Random.seed -7046029254386353089 }" {
+	if got := rt.Show(r); got != "{ value: 2, seed: Random.seed (-7046029254386353089) }" {
 		t.Errorf("Show = %s", got)
 	}
 	full := RandomStep(RandomIntRange(struct{ Min, Max int64 }{math.MinInt64, math.MaxInt64}), RandomSeed(0))
@@ -73,7 +73,7 @@ func TestRandomIntRange_Vectors(t *testing.T) {
 
 func TestRandomFloatRange_Vector(t *testing.T) {
 	r := RandomStep(RandomFloatRange(struct{ Min, Max float64 }{0, 1}), RandomSeed(42))
-	if r.Value != 0.74156487877182342 {
+	if r.Value != 0.7415648787718233 {
 		t.Errorf("0..1 from 42 = %v", r.Value)
 	}
 }
@@ -168,7 +168,7 @@ func TestAcklam(t *testing.T) {
 
 func TestRandomNormal_Vector(t *testing.T) {
 	r := RandomStep(RandomNormal(struct{ Mean, Sd float64 }{0, 1}), RandomSeed(42))
-	if r.Value != 0.6481773615835267 || r.Seed != stepped(RandomSeed(42)) {
+	if r.Value != 0.6481773615835266 || r.Seed != stepped(RandomSeed(42)) {
 		t.Errorf("normal from 42 = %v", r.Value)
 	}
 	scaled := RandomStep(RandomNormal(struct{ Mean, Sd float64 }{10, 2}), RandomSeed(42))
@@ -243,5 +243,68 @@ func TestRandomWeighted(t *testing.T) {
 	// rounding: a t past every weight gives the last
 	if got := pickWeighted(1.0000001, wv{0.5, "a"}, []wv{{0.5, "b"}}); got != "b" {
 		t.Errorf("rounding: %s", got)
+	}
+	// t = u * total is rounded before the subtraction: fused (FNMSUB on arm64) this picks 2
+	r := RandomStep(RandomWeighted(wv{0.3, "0"}, []wv{{0.09213983536241055, "1"}, {0.3, "2"}}), RandomSeed(1))
+	if r.Value != "1" {
+		t.Errorf("weighted from seed 1 = %s, want 1 (unfused)", r.Value)
+	}
+}
+
+// Pinned floats, each the unfused IEEE value (checked against a Python transcription): dev
+// machines are arm64 and CI amd64, so a platform difference fails here somewhere. The lower
+// tail goes through pinnedLog; on these seeds arm64's math.Log differs from it in the last bit.
+func TestRandomNormal_TailVectors(t *testing.T) {
+	g := RandomNormal(struct{ Mean, Sd float64 }{0, 1})
+	for seed, want := range map[int64][2]float64{ // pinnedLog of the unit, the normal
+		1853:  {-4.561072978965022, -2.3097557788667946},
+		9644:  {-3.727146966532986, -1.9762826664892639},
+		10963: {-3.8617956956797084, -2.0329220036779874},
+		76276: {-4.722901338046117, -2.370195117052575},
+	} {
+		o, _ := RandomSeed(seed).next()
+		if got := pinnedLog(unit(o)); got != want[0] {
+			t.Errorf("seed %d: log %v, want %v", seed, got, want[0])
+		}
+		if got, _ := g(RandomSeed(seed)); got != want[1] {
+			t.Errorf("seed %d: normal %v, want %v", seed, got, want[1])
+		}
+	}
+	// the upper tail is the lower one mirrored
+	if acklam(1-0.010450839394496092) != -acklam(0.010450839394496092) {
+		t.Error("upper tail is not the mirror of the lower")
+	}
+}
+
+// pinnedLog agrees with math.Log to within an ulp or so over the tail's whole range.
+func TestPinnedLog(t *testing.T) {
+	for p := 1e-17; p < 0.03; p *= 1.01 {
+		if got, want := pinnedLog(p), math.Log(p); math.Abs(got-want) > 2e-16*math.Abs(want) {
+			t.Fatalf("pinnedLog %v = %v, math.Log %v", p, got, want)
+		}
+	}
+}
+
+// The seed whose first output is all ones: unit stays below 1, so normal is finite and
+// floatRange never reaches max (a 53-bit unit rounded to exactly 1.0 here).
+func TestRandomMaxOutput(t *testing.T) {
+	s := RandomSeed(3558559446808474027)
+	if o, _ := s.next(); o != math.MaxUint64 {
+		t.Fatalf("output %x", o)
+	}
+	if u, _ := s.next(); unit(u) != 0.9999999999999999 {
+		t.Errorf("unit = %v", unit(u))
+	}
+	if n, _ := RandomNormal(struct{ Mean, Sd float64 }{0, 1})(s); n != 8.209536145151493 {
+		t.Errorf("normal = %v", n)
+	}
+	for _, hi := range []float64{1, 10} {
+		if f, _ := RandomFloatRange(struct{ Min, Max float64 }{0, hi})(s); !(f < hi) {
+			t.Errorf("floatRange 0..%v = %v", hi, f)
+		}
+	}
+	// and the smallest output: unit stays above 0
+	if unit(0) != 0x1p-53 {
+		t.Errorf("unit 0 = %v", unit(0))
 	}
 }

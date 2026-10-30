@@ -428,7 +428,7 @@ Random.map2       : (a -> b -> c) -> Random.Generator a -> Random.Generator b ->
 Random.andThen    : (a -> Random.Generator b) -> Random.Generator a -> Random.Generator b
 ```
 
-```alder eval={ value: 2, seed: Random.seed -7046029254386353089 }
+```alder eval={ value: 2, seed: Random.seed (-7046029254386353089) }
 Random.step (Random.intRange { min: 1, max: 6 }) (Random.seed 42)
 ```
 

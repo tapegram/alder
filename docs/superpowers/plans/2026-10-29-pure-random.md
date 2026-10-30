@@ -22,12 +22,12 @@ in task 3 against the implementation.
 
 - Test `rt/std/random_test.go`:
   - `TestSplitMix64_Vectors`: the three rows (first three outputs from seed 0, 1, 42).
-  - `TestRandomSeed_Show`: `rt.Show(RandomSeed(-5))` is `Random.seed -5`, as an argument
-    `Just (Random.seed -5)`; the state of `RandomSeed(n)` is `uint64(n)`.
+  - `TestRandomSeed_Show`: `rt.Show(RandomSeed(-5))` is `Random.seed (-5)`, as an argument
+    `Just (Random.seed (-5))`; the state of `RandomSeed(n)` is `uint64(n)`.
   - `TestRandomSeed_Eq`: two seeds with equal states are `rt.Eq`; different are not.
-  - `TestRandomIntRange_Vectors`: 1..6 from 42 is `{2, Random.seed -7046029254386353089}`;
+  - `TestRandomIntRange_Vectors`: 1..6 from 42 is `{2, Random.seed (-7046029254386353089)}`;
     full range from 0 is `-2152535657050944081`; `list 5 (1..6)` from 1 is `[6,2,1,6,4]`.
-  - `TestRandomFloatRange_Vector`: 0..1 from 42 is `0.74156487877182342`.
+  - `TestRandomFloatRange_Vector`: 0..1 from 42 is `0.7415648787718233`.
   - `TestRandomDegenerate`: `intRange {5,5}`, `{5,1}`, `floatRange {2,2}`, `{2,1}`, NaN bounds
     return `min` and the seed advanced by one step.
   - `TestRandomConstantNoStep`, `TestRandomListNonPositive` (`0`, `-3`: `[]`, seed unchanged).
@@ -45,7 +45,7 @@ in task 3 against the implementation.
 
 - Tests in `rt/std/random_test.go`:
   - `TestAcklam`: `q 0.5 == 0`, `q 0.975` within 1e-6 of 1.959964, `q 0.01` of -2.326348.
-  - `TestRandomNormal_Vector`: standard normal from 42 is `0.6481773615835267`.
+  - `TestRandomNormal_Vector`: standard normal from 42 is `0.6481773615835266`.
   - `TestRandomNormal_Moments`: 100 000 from seed 7: mean within 0.01 of 0, sd within 0.01 of 1.
   - `TestRandomUniform`: `uniform x []` is `x` and steps once; picks index `intRange 0..len xs`.
   - `TestRandomWeighted`: negative weight counts as its absolute value; all-zero gives the

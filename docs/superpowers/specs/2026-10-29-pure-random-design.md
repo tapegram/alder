@@ -89,7 +89,8 @@ surprise. Vectors: `Text.hash "" == 5472609002491880229`, `Text.hash "a" == 3414
 
 **`Seed`** is one 64-bit state; `Random.seed n` is the state `n` as an unsigned 64-bit value
 (two's complement), so every `Int` is a valid seed, including `0` and negatives. A `Seed` prints
-(`rt.Show`, the REPL, test failures) as `Random.seed N` with `N` the state as an `Int`, which
+(`rt.Show`, the REPL, test failures) as `Random.seed N` with `N` the state as an `Int`, in
+parentheses when negative (`Random.seed (-5)`: `Random.seed -5` parses as a subtraction), which
 re-creates it; two seeds are `==` when their states are.
 
 **The PRNG is SplitMix64** (Steele, Lea, Flood 2014) **(call)**: one step is
@@ -115,17 +116,20 @@ takes exactly one step, degenerate inputs included; `constant` takes none; `list
 value and the seed after those steps. So a value's position in the stream is a statement about
 the program, not about the values drawn.
 
-**The unit float** of an output `o` is `(Float (o >> 11) + 0.5) * 2^-53`: 53 bits, strictly in
-`(0, 1)` **(call)** (never `0`, so a log of it is finite). `floatRange { min, max }` is
+**The unit float** of an output `o` is `(Float (o >> 12) + 0.5) * 2^-52`: 52 bits, strictly in
+`(0, 1)` **(call)** (never `0`, so a log of it is finite; never `1`). Every step of it is exact.
+(Corrected by the builder after review: the first draft's `(o >> 11) + 0.5` over 53 bits rounds
+to even at the top and is exactly `1.0` for the output `2^64 - 1`, the first output of seed
+`3558559446808474027`, where `normal` was NaN and `floatRange` gave `max`.) `floatRange { min, max }` is
 `min + (max - min) * unit`; when `max <= min` (or either is NaN) it is `min`.
 
 **`intRange { min, max }`** is `min` when `max <= min`; else with `span = max - min` as
 `uint64`, it is `output` reinterpreted as `Int` when `span` is `2^64 - 1`, otherwise
 `min + output % (span + 1)` **(call)**: a modulo bias below 2^-40 for any range under 2^24 is
 nothing against a fixed one step per draw. Vectors from the table: `Random.step (Random.intRange
-{ min: 1, max: 6 }) (Random.seed 42)` is `{ value: 2, seed: Random.seed -7046029254386353089 }`;
+{ min: 1, max: 6 }) (Random.seed 42)` is `{ value: 2, seed: Random.seed (-7046029254386353089) }`;
 `Random.list 5 (Random.intRange { min: 1, max: 6 })` from `Random.seed 1` is `[6, 2, 1, 6, 4]`;
-`floatRange { min: 0.0, max: 1.0 }` from seed `42` is `0.74156487877182342`.
+`floatRange { min: 0.0, max: 1.0 }` from seed `42` is `0.7415648787718233`.
 
 **`normal { mean, sd }`** is `mean + sd * q(unit)` where `q` is Acklam's rational
 approximation of the inverse normal CDF (2003; central region for `0.02425 <= p <= 0.97575`,
@@ -133,10 +137,13 @@ tail formula outside, no refinement step; the coefficients are those in nightvot
 `Utils.Rng`, which are the published ones) **(call)** over Box–Muller: one step, monotone in the
 unit float, relative error 1.15e-9. Vectors: `q 0.5 == 0.0`, `q 0.975` within 1e-6 of
 `1.959964`, `q 0.01` of `-2.326348`; `normal { mean: 0.0, sd: 1.0 }` from seed `42` is
-`0.6481773615835267`. Every product in `q`, `normal` and `floatRange` is rounded before it is
-added (no fused multiply-add, which Go uses on arm64 but not amd64), so the floats are the same
-on every platform; this vector is the unfused IEEE value (a Python check agrees), corrected by
-the builder from `…5269`, which was the fused arm64 result.
+`0.6481773615835266`; in the lower tail, from seed `1853` it is `-2.3097557788667946`. Every
+product in `q`, `normal`, `floatRange` and `weighted` is rounded before it is added (no fused
+multiply-add, which Go uses on arm64 but not amd64), and the tail's logarithm is a vendored copy
+of Go's `math/log.go` algorithm written the same way (`math.Log` is assembly on amd64 and fused
+on arm64), so the floats are the same on every platform. The vectors are the unfused IEEE
+values (a Python transcription agrees), corrected by the builder from the first draft's fused
+arm64 results and 53-bit unit.
 
 **`uniform x xs`** picks index `intRange { min: 0, max: List.length xs }` of `x :: xs`.
 **`weighted w ws`** (Elm's) uses the absolute values of the weights: `t = unit * total`; walk
@@ -198,7 +205,7 @@ is E0038 (not derivable), as for `Html`; the builder confirms with a test rather
   a property `Fuzz.forAll (Fuzz.fromRandom (Random.intRange { min: 0, max: 100 })) (\n -> n < 50)`
   fails and shrinks to the smallest seed whose value is `>= 50` (checked against a direct scan).
 - Book: the `eval` fence in the new section (`Random.step (Random.intRange { min: 1, max: 6 })
-  (Random.seed 42)`) renders `{ value: 2, seed: Random.seed -7046029254386353089 }`.
+  (Random.seed 42)`) renders `{ value: 2, seed: Random.seed (-7046029254386353089) }`.
 
 ## Left to the builder
 
