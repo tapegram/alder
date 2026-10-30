@@ -334,6 +334,9 @@ func ListMinimum(xs []int64) rt.Maybe[int64] {
 	return extreme(xs, func(a, b int64) bool { return a < b })
 }
 
+// NaN handling for ListMaximumFloat and ListMinimumFloat: cmp.Compare treats NaN as
+// less than every number, and equal to itself.
+//
 // ListMaximumFloat orders NaN lowest (as cmp.Compare does), so it only wins in an all-NaN list.
 func ListMaximumFloat(xs []float64) rt.Maybe[float64] {
 	return extreme(xs, func(a, b float64) bool { return cmp.Compare(a, b) > 0 })

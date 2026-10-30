@@ -32,16 +32,16 @@ List.append   : List a -> List a -> List a    -- same as ++
 List.unique   : List a -> List a
 List.groupBy  : (a -> Text) -> List a -> Dict Text (List a)
 List.indexedMap : (Int -> a -> b) -> List a -> List b
-List.map2 : (a -> b -> c) -> List a -> List b -> List c
-List.map3 : (a -> b -> c -> d) -> List a -> List b -> List c -> List d
-List.foldr : (a -> b -> b) -> b -> List a -> b
+List.map2     : (a -> b -> c) -> List a -> List b -> List c
+List.map3     : (a -> b -> c -> d) -> List a -> List b -> List c -> List d
+List.foldr    : (a -> b -> b) -> b -> List a -> b
 List.concatMap : (a -> List b) -> List a -> List b
 List.intersperse : a -> List a -> List a
 List.partition : (a -> Bool) -> List a -> { yes: List a, no: List a }
-List.tail : List a -> Maybe (List a)
-List.repeat : Int -> a -> List a
-List.maximum : List Int -> Maybe Int
-List.minimum : List Int -> Maybe Int
+List.tail     : List a -> Maybe (List a)
+List.repeat   : Int -> a -> List a
+List.maximum  : List Int -> Maybe Int
+List.minimum  : List Int -> Maybe Int
 List.maximumFloat : List Float -> Maybe Float
 List.minimumFloat : List Float -> Maybe Float
 List.sortByFloat : (a -> Float) -> List a -> List a
@@ -118,7 +118,7 @@ Text.concat    : List Text -> Text           -- Text.join ""
 Text.lines     : Text -> List Text
 Text.words     : Text -> List Text
 Text.indexes   : Text -> Text -> List Int    -- Text.indexes needle haystack
-Text.toCodePoints   : Text -> List Int
+Text.toCodePoints : Text -> List Int
 Text.fromCodePoints : List Int -> Text
 Text.NonEmpty, Text.Email, Text.Url, Text.Secret   -- refinement brands
 ```
@@ -176,13 +176,13 @@ Float.sqrt   : Float -> Float
 Float.exp    : Float -> Float
 Float.log    : Float -> Float                   -- natural logarithm
 Float.pow    : Float -> Float -> Float          -- Float.pow base exponent
-Float.truncate   : Float -> Int                 -- rounds toward zero
-Float.clamp      : { min: Float, max: Float } -> Float -> Float
+Float.truncate : Float -> Int                   -- rounds toward zero
+Float.clamp  : { min: Float, max: Float } -> Float -> Float
 Float.pi, Float.e                               -- Float constants
 Float.isNaN, Float.isInfinite : Float -> Bool
-Float.logBase    : Float -> Float -> Float      -- Float.logBase base x
+Float.logBase : Float -> Float -> Float         -- Float.logBase base x
 Float.sin, Float.cos, Float.tan, Float.asin, Float.acos, Float.atan : Float -> Float
-Float.atan2      : Float -> Float -> Float      -- Float.atan2 y x
+Float.atan2  : Float -> Float -> Float          -- Float.atan2 y x
 ```
 
 `Int` arithmetic wraps on overflow; `/` truncates toward zero and `%` has

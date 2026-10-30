@@ -9,6 +9,8 @@ func TestText_Pad(t *testing.T) {
 	eq(t, "padLeft empty pad", TextPadLeft(5, "", "a"), "a")
 	eq(t, "padLeft multi pad cut at outer edge", TextPadLeft(5, "ab", "x"), "ababx")
 	eq(t, "padRight multi pad", TextPadRight(5, "ab", "x"), "xabab")
+	eq(t, "padLeft multi pad odd cut", TextPadLeft(6, "ab", "x"), "bababx")
+	eq(t, "padRight multi pad odd cut", TextPadRight(6, "ab", "x"), "xababa")
 	eq(t, "padLeft code points", TextPadLeft(3, "é", "a"), "ééa")
 }
 
@@ -17,6 +19,11 @@ func TestText_LeftRight(t *testing.T) {
 	eq(t, "left negative", TextLeft(-1, "abc"), "")
 	eq(t, "left past end", TextLeft(9, "abc"), "abc")
 	eq(t, "right", TextRight(2, "abc"), "bc")
+	eq(t, "right negative", TextRight(-1, "abc"), "")
+	eq(t, "right past start", TextRight(9, "abc"), "abc")
+	eq(t, "right non-ASCII", TextRight(2, "héllo€"), "o€")
+	eq(t, "dropLeft negative", TextDropLeft(-1, "abc"), "abc")
+	eq(t, "dropLeft non-ASCII", TextDropLeft(2, "héllo€"), "llo€")
 	eq(t, "dropLeft", TextDropLeft(1, "abc"), "bc")
 	eq(t, "dropRight", TextDropRight(1, "abc"), "ab")
 	eq(t, "dropRight past end", TextDropRight(9, "abc"), "")
