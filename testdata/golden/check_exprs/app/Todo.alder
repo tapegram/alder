@@ -114,3 +114,30 @@ type Msgish = Wrap Int
 
 ok8 : Msgish
 ok8 = Wrap 1
+
+-- nested patterns (#2)
+nest1 : List (Maybe Int) -> Int
+nest1 xs = match xs {
+  [Just m, Just s, Just p] -> m + s + p,
+}
+
+nest2 : List (Maybe Int) -> Int
+nest2 xs = match xs {
+  [Just x] -> x,
+  [Just 1] -> 1,
+  _ -> 0,
+}
+
+type Link = { v: Int, next: Maybe { v: Int, done: Bool } }
+
+nest3 : Link -> Int
+nest3 l = match l {
+  { next: Nothing } -> 0,
+  { next: Just { done: True } } -> 1,
+}
+
+nest4 : Maybe (Maybe Int) -> Int
+nest4 m = match m { Just (Just x) -> x, Just Nothing -> 0, Nothing -> 1, Just _ -> 2 }
+
+ok9 : Maybe (List Int) -> Int
+ok9 m = match m { Just [a, ..r] -> a, Just [] -> 0, Nothing -> 1 }

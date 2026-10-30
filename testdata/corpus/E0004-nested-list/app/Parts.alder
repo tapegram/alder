@@ -1,0 +1,7 @@
+module Parts
+
+-- The issue's match (#2): every missing case is a nested pattern.
+parse : Text -> Float
+parse s = match Text.words s |> List.map Text.toFloat {
+  [Just m, Just sec, Just p] -> m + sec + p,
+}
