@@ -103,6 +103,7 @@ func update__Edit(rq *web.Request, params Edit__Params, msg Edit__Msg, st *html.
 	if stop != nil {
 		return *stop
 	}
+	model0, session0 := model, session // the page the client shows: Before
 	nav, err := eff.Run(rq.Env, eff.KTask, Edit__update(msg, model, session))
 	if err != nil {
 		return route__fail(err)
@@ -123,7 +124,7 @@ func update__Edit(rq *web.Request, params Edit__Params, msg Edit__Msg, st *html.
 	if stop != nil {
 		return *stop
 	}
-	return web.PageResponse(Edit__view(model, session), st, rq.Env.Session, true)
+	return web.PageResponse(Edit__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Edit__view(model0, session0) })
 }
 
 // Route__Edit__page serves page Edit, GET /edit/{n} (book 06): decode the parameters (404 when they
@@ -166,7 +167,7 @@ func Route__Edit__Save() web.Route {
 			if stop != nil {
 				return *stop
 			}
-			return web.PageResponse(Edit__view(model, session), &html.FormState{Form: "Edit.Note", Msg: rt.MsgKey("/_m/Edit/Save", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Edit(params)}, nil, true)
+			return web.PageResponse(Edit__view(model, session), &html.FormState{Form: "Edit.Note", Msg: rt.MsgKey("/_m/Edit/Save", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Edit(params)}, nil, true).WithBefore(func() html.Node { return Edit__view(model, session) })
 		}
 		p.Form = form
 		return update__Edit(rq, params, Edit__Msg__Save__(p), &html.FormState{Form: "Edit.Note", Msg: rt.MsgKey("/_m/Edit/Save", rq.Query), Values: values})

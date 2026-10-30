@@ -120,6 +120,7 @@ func update__Admin__Projects(rq *web.Request, params Admin__Projects__Params, ms
 	if stop != nil {
 		return *stop
 	}
+	model0, session0 := model, session // the page the client shows: Before
 	if err := db.Enter(rq.Env, store__Admin__Projects(msg)); err != nil {
 		return route__fail(err)
 	}
@@ -150,7 +151,7 @@ func update__Admin__Projects(rq *web.Request, params Admin__Projects__Params, ms
 	if stop != nil {
 		return *stop
 	}
-	return web.PageResponse(Admin__Projects__view(model, session), st, rq.Env.Session, true)
+	return web.PageResponse(Admin__Projects__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Admin__Projects__view(model0, session0) })
 }
 
 // Route__Admin__Projects__page serves page Admin.Projects, GET /admin/orgs/{org}/projects (book
@@ -288,6 +289,7 @@ func update__Notes__Index(rq *web.Request, params Notes__Index__Params, msg Note
 	if stop != nil {
 		return *stop
 	}
+	model0, session0 := model, session // the page the client shows: Before
 	if err := db.Enter(rq.Env, store__Notes__Index(msg)); err != nil {
 		return route__fail(err)
 	}
@@ -318,7 +320,7 @@ func update__Notes__Index(rq *web.Request, params Notes__Index__Params, msg Note
 	if stop != nil {
 		return *stop
 	}
-	return web.PageResponse(Notes__Index__view(model, session), st, rq.Env.Session, true)
+	return web.PageResponse(Notes__Index__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Notes__Index__view(model0, session0) })
 }
 
 // Route__Notes__Index__page serves page Notes.Index, GET /notes (book 06): decode the parameters
@@ -428,6 +430,7 @@ func update__Orgs(rq *web.Request, params Orgs__Params, msg Orgs__Msg, st *html.
 	if stop != nil {
 		return *stop
 	}
+	model0, session0 := model, session // the page the client shows: Before
 	if err := db.Enter(rq.Env, store__Orgs(msg)); err != nil {
 		return route__fail(err)
 	}
@@ -458,7 +461,7 @@ func update__Orgs(rq *web.Request, params Orgs__Params, msg Orgs__Msg, st *html.
 	if stop != nil {
 		return *stop
 	}
-	return web.PageResponse(Orgs__view(model, session), st, rq.Env.Session, true)
+	return web.PageResponse(Orgs__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Orgs__view(model0, session0) })
 }
 
 // Route__Orgs__page serves page Orgs, GET /orgs (book 06): decode the parameters (404 when they do
@@ -515,7 +518,7 @@ func Route__Orgs__Switch() web.Route {
 			if stop != nil {
 				return *stop
 			}
-			return web.PageResponse(Orgs__view(model, session), &html.FormState{Form: "Orgs.SwitchOrg", Msg: rt.MsgKey("/_m/Orgs/Switch", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Orgs(params)}, nil, true)
+			return web.PageResponse(Orgs__view(model, session), &html.FormState{Form: "Orgs.SwitchOrg", Msg: rt.MsgKey("/_m/Orgs/Switch", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Orgs(params)}, nil, true).WithBefore(func() html.Node { return Orgs__view(model, session) })
 		}
 		p.Form = form
 		return update__Orgs(rq, params, Orgs__Msg__Switch__(p), &html.FormState{Form: "Orgs.SwitchOrg", Msg: rt.MsgKey("/_m/Orgs/Switch", rq.Query), Values: values})
@@ -618,6 +621,7 @@ func update__Projects__Index(rq *web.Request, params Projects__Index__Params, ms
 	if stop != nil {
 		return *stop
 	}
+	model0, session0 := model, session // the page the client shows: Before
 	if err := db.Enter(rq.Env, store__Projects__Index(msg)); err != nil {
 		return route__fail(err)
 	}
@@ -648,7 +652,7 @@ func update__Projects__Index(rq *web.Request, params Projects__Index__Params, ms
 	if stop != nil {
 		return *stop
 	}
-	return web.PageResponse(Projects__Index__view(model, session), st, rq.Env.Session, true)
+	return web.PageResponse(Projects__Index__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Projects__Index__view(model0, session0) })
 }
 
 // Route__Projects__Index__page serves page Projects.Index, GET /projects (book 06): decode the
@@ -688,7 +692,7 @@ func Route__Projects__Index__Add() web.Route {
 			if stop != nil {
 				return *stop
 			}
-			return web.PageResponse(Projects__Index__view(model, session), &html.FormState{Form: "Projects.Index.NewProject", Msg: rt.MsgKey("/_m/Projects.Index/Add", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Projects__Index(params)}, nil, true)
+			return web.PageResponse(Projects__Index__view(model, session), &html.FormState{Form: "Projects.Index.NewProject", Msg: rt.MsgKey("/_m/Projects.Index/Add", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Projects__Index(params)}, nil, true).WithBefore(func() html.Node { return Projects__Index__view(model, session) })
 		}
 		p.Form = form
 		return update__Projects__Index(rq, params, Projects__Index__Msg__Add__(p), &html.FormState{Form: "Projects.Index.NewProject", Msg: rt.MsgKey("/_m/Projects.Index/Add", rq.Query), Values: values})

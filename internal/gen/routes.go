@@ -182,7 +182,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 		checks = fmt.Sprintf(`	if st != nil {
 		if errs := %s(st.Form, st.Values, model, session); errs != nil {
 			st.Errors, st.PageParams = route__errors(errs), %s(params)
-			return web.PageResponse(%s(model, session), st, nil, true)
+			return web.PageResponse(%[3]s(model, session), st, nil, true).WithBefore(func() html.Node { return %[3]s(model, session) })
 		}
 	}
 `, optionsFunc(m), paramsFunc(m), GoName(m, "view"))
@@ -200,6 +200,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	if stop != nil {
 		return *stop
 	}
+	model0, session0 := model, session // the page the client shows: Before
 %[11]s%[12]s	nav, err := eff.Run(rq.Env, eff.KTask, %[6]s(msg, model, session))
 %[13]s	nav, rq.Notice = nav.Unnotice()
 	switch {
@@ -217,7 +218,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	if stop != nil {
 		return *stop
 	}
-	return web.PageResponse(%[8]s(model, session), st, rq.Env.Session, true)
+	return web.PageResponse(%[8]s(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return %[8]s(model0, session0) })
 }
 
 `, updateFunc(m), GoName(m, "Params"), GoName(m, "Msg"), pageFunc(m), keep("nil"), GoName(m, "update"), keep("rq.Env.Session"), GoName(m, "view"), paramsFunc(m), strconv.Quote(pg.Path), checks, enter, updateFailure(p))
@@ -280,7 +281,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 			if stop != nil {
 				return *stop
 			}
-			return web.PageResponse(%s(model, session), %s, nil, true)
+			return web.PageResponse(%[3]s(model, session), %[4]s, nil, true).WithBefore(func() html.Node { return %[3]s(model, session) })
 `, pageFunc(m), keep("nil"), GoName(m, "view"), st)
 		}, func(value, st string) string {
 			return fmt.Sprintf("return %s(rq, params, %s, %s)\n", updateFunc(m), value, st)

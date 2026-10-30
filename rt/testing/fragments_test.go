@@ -16,8 +16,8 @@ import (
 // generated update route does: Before is the view of the model before update.
 
 type rowsApp struct {
-	done []bool
-	lie  bool // Before renders a page the client never saw (TestBrowser_ReportsFragmentDrift)
+	done  []bool
+	shown []string // the Alder-Shown header of each Toggle
 }
 
 func (a *rowsApp) view(done []bool) html.Node {
@@ -42,9 +42,7 @@ func (a *rowsApp) routes() []web.Route {
 		}},
 		{Method: "POST", Pattern: "/_m/Rows/Toggle", Handle: func(rq *web.Request) web.Response {
 			before := append([]bool(nil), a.done...)
-			if a.lie {
-				before[0] = !before[0]
-			}
+			a.shown = append(a.shown, rq.HTTP.Header.Get(html.ShownHeader))
 			i, _ := strconv.Atoi(rq.Query.Get("id"))
 			a.done[i-1] = !a.done[i-1]
 			resp := web.PageResponse(a.view(a.done), &html.FormState{}, nil, true)
@@ -111,5 +109,55 @@ func TestBrowser_PatchedPageEqualsFullRender(t *testing.T) {
 	}
 	if clicked != fresh {
 		t.Errorf("the patched page differs from a fresh GET:\n%s\n%s", clicked, fresh)
+	}
+	// the click carried the hash of the page the GET served, so the router sent fragments
+	page := html.RenderWith(app.view(make([]bool, 10)), &html.FormState{})
+	if want := html.Hash(html.BodyOf(page)); len(app.shown) != 1 || app.shown[0] != want {
+		t.Errorf("Alder-Shown %q, want %s", app.shown, want)
+	}
+	if strings.Contains(clicked, "al-shown") {
+		t.Error("the held page shows the router's al-shown")
+	}
+}
+
+// TestBrowser_SendsShown: each post carries the hash of the page held, which a fragment answer
+// moves on (its #_alder_shown patch); a page held without one (no al-shown) sends none.
+func TestBrowser_SendsShown(t *testing.T) {
+	app := &rowsApp{done: make([]bool, 3)}
+	hashOf := func(done ...bool) string {
+		return html.Hash(html.BodyOf(html.RenderWith(app.view(done), &html.FormState{})))
+	}
+	res := browseRows(app,
+		func(b *Browser, e *eff.Env) error { _, err := b.Open("/"); return err },
+		func(b *Browser, e *eff.Env) error { _, err := b.Click("/_m/Rows/Toggle?id=1"); return err },
+		func(b *Browser, e *eff.Env) error { _, err := b.Click("/_m/Rows/Toggle?id=2"); return err })
+	if !res.OK {
+		t.Fatalf("the test failed: %s", res.Error)
+	}
+	if want := []string{hashOf(false, false, false), hashOf(true, false, false)}; strings.Join(app.shown, " ") != strings.Join(want, " ") {
+		t.Errorf("Alder-Shown %q, want %q", app.shown, want)
+	}
+}
+
+// TestBrowser_ReportsFragmentDrift: when the page the browser holds after applying an answer is
+// not the page a full render shows — here the held page drifted from the one the router served
+// while its hash stayed, as a client DOM changed by hand would — the step fails, naming where.
+func TestBrowser_ReportsFragmentDrift(t *testing.T) {
+	app := &rowsApp{done: make([]bool, 10)}
+	res := browseRows(app,
+		func(b *Browser, e *eff.Env) error {
+			if _, err := b.Open("/"); err != nil {
+				return err
+			}
+			li, _ := html.Parse(`<li id="row-3" class="open"><span>Row 3 (edited)</span></li>`)
+			b.doc, _ = html.ReplaceByID(b.doc, "row-3", li)
+			return nil
+		},
+		func(b *Browser, e *eff.Env) error { _, err := b.Click("/_m/Rows/Toggle?id=7"); return err })
+	if res.OK {
+		t.Fatal("the drift was not reported")
+	}
+	if !strings.Contains(res.Error, "POST /_m/Rows/Toggle: the patched page differs from a full render at body > ul#rows > li#row-3") {
+		t.Fatalf("error: %s", res.Error)
 	}
 }

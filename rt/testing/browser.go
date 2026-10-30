@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"alder/rt"
+	"alder/rt/datastar"
 	"alder/rt/eff"
 	"alder/rt/html"
 	"alder/rt/web"
@@ -111,6 +113,14 @@ type Browser struct {
 	hasDoc  bool
 	notices []string // the toasts of the step's requests (Result.Notices)
 
+	// shown is the hash of the body the held page shows (its <al-shown>, which the held doc
+	// leaves out), sent with every post as html.ShownHeader, as the page's script does
+	shown string
+	// rendered is the body a full render of the last request's page would have sent
+	// (web.Options.Rendered), "" when it re-rendered nothing: after applying the answer, the held
+	// body must equal it (checkPatched)
+	rendered string
+
 	model   any         // the model the last request's page GET rendered (web.Request.Model), nil for none
 	reqEnvs []*eff.Env  // the Envs of the request being served
 	cur     *eff.Within // the transaction it runs within
@@ -161,6 +171,13 @@ func NewBrowser(env *eff.Env, routes []web.Route, opts web.Options) *Browser {
 		}
 		if served != nil {
 			served(rq)
+		}
+	}
+	rendered := opts.Rendered
+	opts.Rendered = func(rq *web.Request, body string) {
+		b.rendered = body
+		if rendered != nil {
+			rendered(rq, body)
 		}
 	}
 	b.handler = web.NewRouter(routes, opts)
@@ -562,6 +579,7 @@ func (b *Browser) Click(msgURL string) (Result, error) {
 
 var (
 	selBody     = html.MustParseSelector("body")
+	selShown    = html.MustParseSelector("al-shown")
 	selForm     = html.MustParseSelector("form")
 	selAction   = html.MustParseSelector("[formaction]")
 	selClick    = html.MustParseSelector("[data-on:click]")
@@ -689,6 +707,9 @@ func (b *Browser) serve(method, target string, form url.Values, ds bool) (*httpt
 	}
 	if ds {
 		req.Header.Set("Datastar-Request", "true")
+		if method == http.MethodPost && b.shown != "" {
+			req.Header.Set(html.ShownHeader, b.shown)
+		}
 	}
 	if b.url != "" {
 		req.Header.Set("Referer", "http://example.com"+b.url)
@@ -696,7 +717,7 @@ func (b *Browser) serve(method, target string, form url.Values, ds bool) (*httpt
 	if b.cookie != "" {
 		req.AddCookie(&http.Cookie{Name: web.CookieName, Value: b.cookie})
 	}
-	b.reqEnvs, b.lastErr, b.cur, b.model = nil, "", cur, nil
+	b.reqEnvs, b.lastErr, b.cur, b.model, b.rendered = nil, "", cur, nil, ""
 	b.reqHead = req.Method + " " + req.URL.Path + ": "
 	w := httptest.NewRecorder()
 	b.handler.ServeHTTP(w, req)
@@ -807,7 +828,73 @@ func (b *Browser) hold(u, page string) error {
 	if err != nil {
 		return fmt.Errorf("the page at %s does not parse: %w", u, err)
 	}
-	b.url, b.doc, b.hasDoc = u, doc, true
+	b.url, b.hasDoc = u, true
+	b.doc, b.shown = takeShown(doc)
+	return nil
+}
+
+// takeShown is doc without the router's <al-shown> element, and the hash it carries ("" for none).
+func takeShown(doc html.Node) (html.Node, string) {
+	els := html.Select(doc, selShown)
+	if len(els) == 0 {
+		return doc, ""
+	}
+	h, _ := html.AttrOf(els[len(els)-1], "data-h")
+	return html.Without(doc, isShown), h
+}
+
+func isShown(n html.Node) bool {
+	id, _ := html.AttrOf(n, "id")
+	return n.Tag() == "al-shown" && id == datastar.ShownID
+}
+
+// DriftError is a step whose answer, applied to the page the browser held, did not give the
+// page a full render shows: the router's fragments (html.Fragments) or the page's Before are
+// wrong. Every click and submit of every test checks it.
+type DriftError struct {
+	Step string // "POST /_m/…"
+	Diff html.Difference
+}
+
+func (e *DriftError) Error() string {
+	return fmt.Sprintf("%s: the patched page differs from a full render at %s: %s\n  patched: %s\n  full:    %s",
+		e.Step, e.Diff.At, e.Diff.What, e.Diff.Left, e.Diff.Right)
+}
+
+// checkPatched compares the held body with the full render of the page the last request
+// re-rendered (b.rendered), the router's implicit <al-toasts> region left out. It runs after
+// the measured request: with bench, its time and allocations are not the step's.
+func (b *Browser) checkPatched() error {
+	if b.rendered == "" {
+		return nil
+	}
+	if s := b.step; b.bench && s != nil {
+		var m0 runtime.MemStats
+		runtime.ReadMemStats(&m0)
+		t0 := time.Now()
+		defer func() {
+			var m1 runtime.MemStats
+			runtime.ReadMemStats(&m1)
+			s.mem.TotalAlloc += m1.TotalAlloc - m0.TotalAlloc
+			s.mem.Mallocs += m1.Mallocs - m0.Mallocs
+			s.start = s.start.Add(time.Since(t0))
+		}()
+	}
+	want, err := html.Parse(b.rendered)
+	if err != nil {
+		return fmt.Errorf("the full render of the page does not parse: %w", err)
+	}
+	held := html.Select(b.doc, selBody)
+	if len(held) == 0 {
+		return errors.New("the held page has no <body>")
+	}
+	got := held[0]
+	if !strings.Contains(b.rendered, "<al-toasts") {
+		got = html.Without(got, func(n html.Node) bool { return n.Tag() == "al-toasts" })
+	}
+	if d, differ := html.Diff(got, want); differ {
+		return &DriftError{Step: strings.TrimSuffix(b.reqHead, ": "), Diff: d}
+	}
 	return nil
 }
 
@@ -882,6 +969,9 @@ func (b *Browser) post(target string, form url.Values) (Answer, error) {
 		return Answer{Tag: RequestFailed, Text: b.failText()}, nil
 	case "503":
 		return Answer{Tag: RequestFailed, Text: maintenanceText}, nil
+	}
+	if err := b.checkPatched(); err != nil {
+		return Answer{}, err
 	}
 	if errs := pageErrors(b.doc); len(errs) > 0 {
 		return Answer{Tag: FormRejected, Errors: errs}, nil
@@ -1012,6 +1102,18 @@ func (b *Browser) patch(ev sseEvent) error {
 	if sel == "#_alder_panel" {
 		return nil // the dev panel is not part of the page a test sees
 	}
+	if sel == "#"+datastar.ShownID {
+		_, b.shown = takeShown(els)
+		return nil
+	}
+	if id, ok := strings.CutPrefix(sel, "#"); ok && mode == "outer" {
+		doc, ok := html.ReplaceByID(b.doc, id, els)
+		if !ok {
+			return fmt.Errorf("a patch of %s: the held page has no element with that id", sel)
+		}
+		b.doc = doc
+		return nil
+	}
 	if sel == "al-toasts" && mode == "append" {
 		b.notices = append(b.notices, strings.TrimSpace(html.TextContent(els)))
 		return nil
@@ -1045,7 +1147,12 @@ func (b *Browser) patch(ev sseEvent) error {
 	if !ok {
 		return errors.New("the held page has no <body> to patch")
 	}
-	b.doc, b.hasDoc = doc, true
+	b.hasDoc = true
+	if mode == "append" {
+		b.doc = doc
+		return nil
+	}
+	b.doc, b.shown = takeShown(doc)
 	return nil
 }
 

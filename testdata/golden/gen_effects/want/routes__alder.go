@@ -114,6 +114,7 @@ func update__Index(rq *web.Request, params Index__Params, msg Index__Msg, st *ht
 	if stop != nil {
 		return *stop
 	}
+	model0, session0 := model, session // the page the client shows: Before
 	nav, err := eff.Run(rq.Env, eff.KTask, Index__update(msg, model, session))
 	if err != nil {
 		return route__fail(err)
@@ -134,7 +135,7 @@ func update__Index(rq *web.Request, params Index__Params, msg Index__Msg, st *ht
 	if stop != nil {
 		return *stop
 	}
-	return web.PageResponse(Index__view(model, session), st, rq.Env.Session, true)
+	return web.PageResponse(Index__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Index__view(model0, session0) })
 }
 
 // Route__Index__page serves page Index, GET /pair/{a}/{b} (book 06): decode the parameters (404

@@ -149,10 +149,11 @@ func update__Index(rq *web.Request, params Index__Params, msg Index__Msg, st *ht
 	if stop != nil {
 		return *stop
 	}
+	model0, session0 := model, session // the page the client shows: Before
 	if st != nil {
 		if errs := options__Index(st.Form, st.Values, model, session); errs != nil {
 			st.Errors, st.PageParams = route__errors(errs), params__Index(params)
-			return web.PageResponse(Index__view(model, session), st, nil, true)
+			return web.PageResponse(Index__view(model, session), st, nil, true).WithBefore(func() html.Node { return Index__view(model, session) })
 		}
 	}
 	nav, err := eff.Run(rq.Env, eff.KTask, Index__update(msg, model, session))
@@ -175,7 +176,7 @@ func update__Index(rq *web.Request, params Index__Params, msg Index__Msg, st *ht
 	if stop != nil {
 		return *stop
 	}
-	return web.PageResponse(Index__view(model, session), st, rq.Env.Session, true)
+	return web.PageResponse(Index__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Index__view(model0, session0) })
 }
 
 // Route__Index__page serves page Index, GET / (book 06): decode the parameters (404 when they do
@@ -215,7 +216,7 @@ func Route__Index__Submit() web.Route {
 			if stop != nil {
 				return *stop
 			}
-			return web.PageResponse(Index__view(model, session), &html.FormState{Form: "Index.NewPost", Msg: rt.MsgKey("/_m/Index/Submit", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Index(params)}, nil, true)
+			return web.PageResponse(Index__view(model, session), &html.FormState{Form: "Index.NewPost", Msg: rt.MsgKey("/_m/Index/Submit", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Index(params)}, nil, true).WithBefore(func() html.Node { return Index__view(model, session) })
 		}
 		p.Form = form
 		return update__Index(rq, params, Index__Msg__Submit__(p), &html.FormState{Form: "Index.NewPost", Msg: rt.MsgKey("/_m/Index/Submit", rq.Query), Values: values})

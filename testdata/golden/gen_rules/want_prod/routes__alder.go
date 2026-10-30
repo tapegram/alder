@@ -202,6 +202,7 @@ func update__Notes(rq *web.Request, params Notes__Params, msg Notes__Msg, st *ht
 	if stop != nil {
 		return *stop
 	}
+	model0, session0 := model, session // the page the client shows: Before
 	nav, err := eff.Run(rq.Env, eff.KTask, Notes__update(msg, model, session))
 	if err != nil {
 		return route__fail(err)
@@ -222,7 +223,7 @@ func update__Notes(rq *web.Request, params Notes__Params, msg Notes__Msg, st *ht
 	if stop != nil {
 		return *stop
 	}
-	return web.PageResponse(Notes__view(model, session), st, rq.Env.Session, true)
+	return web.PageResponse(Notes__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Notes__view(model0, session0) })
 }
 
 // Route__Notes__page serves page Notes, GET /notes (book 06): decode the parameters (404 when they
@@ -262,7 +263,7 @@ func Route__Notes__Add() web.Route {
 			if stop != nil {
 				return *stop
 			}
-			return web.PageResponse(Notes__view(model, session), &html.FormState{Form: "Notes.NewNote", Msg: rt.MsgKey("/_m/Notes/Add", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Notes(params)}, nil, true)
+			return web.PageResponse(Notes__view(model, session), &html.FormState{Form: "Notes.NewNote", Msg: rt.MsgKey("/_m/Notes/Add", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Notes(params)}, nil, true).WithBefore(func() html.Node { return Notes__view(model, session) })
 		}
 		p.Form = form
 		return update__Notes(rq, params, Notes__Msg__Add__(p), &html.FormState{Form: "Notes.NewNote", Msg: rt.MsgKey("/_m/Notes/Add", rq.Query), Values: values})
