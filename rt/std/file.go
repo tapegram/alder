@@ -26,9 +26,9 @@ func FileHtml(n html.Node) rt.File {
 	return rt.File{Status: 200, ContentType: "text/html; charset=utf-8", Body: []byte(html.Render(n))}
 }
 
-// FileJson is File.json.
-func FileJson(s string) rt.File {
-	return rt.File{Status: 200, ContentType: "application/json", Body: []byte(s)}
+// FileJson is File.json: the value's compact encoding, as application/json.
+func FileJson(v rt.JsonValue) rt.File {
+	return rt.File{Status: 200, ContentType: "application/json", Body: []byte(rt.JsonEncode(v))}
 }
 
 // FileWithStatus is File.withStatus; a code outside 200..599 is answered as the 500 page by
