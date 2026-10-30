@@ -46,7 +46,7 @@ func CSS(root, light, dark []Setting) string {
 			return
 		}
 		ss = slices.Clone(ss)
-		slices.SortStableFunc(ss, func(x, y Setting) int { return order(x.Name) - order(y.Name) })
+		slices.SortStableFunc(ss, func(x, y Setting) int { return Order(x.Name) - Order(y.Name) })
 		b.WriteString(sel + " {")
 		for _, s := range ss {
 			b.WriteString(" " + s.Name + ": " + s.Value + ";")
@@ -59,7 +59,8 @@ func CSS(root, light, dark []Setting) string {
 	return b.String()
 }
 
-func order(css string) int {
+// Order is the CSS name's index in Tokens (len(Tokens) for a name not in it).
+func Order(css string) int {
 	for i, t := range Tokens {
 		if t.CSS == css {
 			return i

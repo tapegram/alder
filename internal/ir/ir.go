@@ -33,6 +33,7 @@ type Program struct {
 	Brands    []*Brand // the app's brands, in module order then declaration order
 	Login     string   // the path of the page App's `login` names; "" when App has none
 	Deploy    *Deploy  // App's `deploy` declaration (chapter 16); nil when App has none. Data only: nothing in the generated program reads it
+	Theme     *Theme   // App's `theme` declaration (Appendix C); nil when App has none. Its CSS goes into the generated Web()
 	// AppArms are the arms of App's `update` with the store each one's Task writes (M15); nil
 	// when App declares no update.
 	AppArms []*Arm
