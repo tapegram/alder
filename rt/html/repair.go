@@ -43,7 +43,14 @@ var tableContent = map[string]map[string]bool{
 var selectContent = setOf("option optgroup hr script template")
 
 // textContentOf are the elements whose content the parser reads as text.
-var textContentOf = setOf("textarea title noscript")
+var textContentOf = setOf("textarea title noscript iframe noembed noframes xmp")
+
+// tableParts are the start tags the parser keeps only inside a table (or a <template>): in the
+// body it ignores them, so the element is not in the DOM and its content lands in the current
+// node. tableContext are the elements in which they are kept.
+var tableParts = setOf("caption col colgroup tbody thead tfoot tr td th")
+
+var tableContext = setOf("table tbody thead tfoot tr template")
 
 var headings = setOf("h1 h2 h3 h4 h5 h6")
 
@@ -89,6 +96,37 @@ func repairOf(open []string, tag string) (repair, int) {
 	}
 	if allowed, ok := tableContent[cur]; ok && !allowed[tag] {
 		return foster, 0
+	}
+	if tableParts[tag] {
+		// kept where a table or a template is the nearest of its kind; in a cell or a caption
+		// it closes that first (the structure changes), and outside a table it is dropped
+		for i := len(open) - 1; i >= 0; i-- {
+			o := open[i]
+			if tableContext[o] {
+				break
+			}
+			if o == "td" || o == "th" || o == "caption" {
+				// the cell (or caption) closes, and the tag is then read in the row, section or
+				// table around it, closing up to the element it may follow
+				want := map[string]string{"tr": "tr", "tbody": "tbody thead tfoot tr", "thead": "tbody thead tfoot tr",
+					"tfoot": "tbody thead tfoot tr", "caption": "table", "col": "table", "colgroup": "table"}[tag]
+				for j := i - 1; j >= 0 && want != ""; j-- {
+					if strings.Contains(" "+want+" ", " "+open[j]+" ") {
+						if open[j] == "table" {
+							return closes, j + 1
+						}
+						return closes, j
+					}
+				}
+				return closes, i
+			}
+			if i == 0 {
+				return drops, 0
+			}
+		}
+		if len(open) == 0 {
+			return drops, 0
+		}
 	}
 	if closesP[tag] {
 		if i := inScope(open, "p", nil); i >= 0 {
@@ -160,8 +198,14 @@ func textFosters(cur, text string) bool {
 // empty <p>), a dropped start tag leaves its content to the current node, foster-parented
 // content goes before the table, and elements inside textarea, title or noscript are their
 // markup as text. A test's browser holds pages repaired, as a browser does.
-func Repair(n Node) Node {
-	t := &builder{}
+func Repair(n Node) Node { return repairIn(n, nil) }
+
+// RepairFragment is Repair of the elements of a Datastar patch, which Datastar parses inside a
+// <template> (so a <tr> or a <td> of its own is kept).
+func RepairFragment(n Node) Node { return repairIn(n, []string{"template"}) }
+
+func repairIn(n Node, context []string) Node {
+	t := &builder{context: context}
 	root := &bnode{n: Node{kind: kFrag}}
 	t.stack = []*bnode{root}
 	t.node(n)
@@ -189,13 +233,14 @@ func (b *bnode) build() Node {
 }
 
 type builder struct {
-	stack []*bnode // stack[0] is the document; the open elements follow
+	context []string // the elements open around the markup (RepairFragment)
+	stack   []*bnode // stack[0] is the document; the open elements follow
 }
 
 func (t *builder) open() []string {
-	tags := make([]string, len(t.stack)-1)
-	for i, b := range t.stack[1:] {
-		tags[i] = b.n.tag
+	tags := append(make([]string, 0, len(t.context)+len(t.stack)-1), t.context...)
+	for _, b := range t.stack[1:] {
+		tags = append(tags, b.n.tag)
 	}
 	return tags
 }
@@ -245,6 +290,9 @@ func (t *builder) node(n Node) {
 			}
 			return
 		case closes:
+			if at -= len(t.context); at < 0 {
+				at = 0 // an element of the context: the parser closes none of the fragment's own
+			}
 			t.stack = t.stack[:at+1]
 		}
 		b := &bnode{n: Node{kind: kElem, tag: n.tag, attrs: n.attrs}}

@@ -810,6 +810,9 @@ func (rt *router) rerender(w http.ResponseWriter, r *http.Request, rq *Request, 
 			}
 			note(p.Selector)
 		}
+		// the shown hash last: an answer cut short (an aborted request, a dropped connection)
+		// leaves the old hash with regions already patched, so the next post's hash does not
+		// match its before-view and that answer morphs the whole body
 		if err == nil {
 			err = datastar.PatchShown(w, html.Hash(body))
 		}

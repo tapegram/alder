@@ -146,6 +146,10 @@ func applyPatches(t *testing.T, page string, ps []Patch) Node {
 	doc := domOf(t, page)
 	for _, p := range ps {
 		el := domOf(t, p.Elements)
+		if p.Selector != "body" {
+			n, _ := Parse(p.Elements)
+			el = RepairFragment(n)
+		}
 		var ok bool
 		if p.Selector == "body" {
 			doc, ok = ReplaceElement(doc, "body", el)
@@ -249,13 +253,84 @@ func TestWithout(t *testing.T) {
 
 // A click's and a form's post send the shown hash (Shown, read by datastar.BoostInit's helper).
 func TestClickPost_SendsShownHeader(t *testing.T) {
-	if got := ClickPost("/_m/M/T"); got != "(window._alderBusy||((e,p)=>p))(el, @post('/_m/M/T', window._alderO()))" {
+	if got := ClickPost("/_m/M/T"); got != "(window._alderBusy||((e,p)=>p))(el, @post('/_m/M/T', window._alderO?.()))" {
 		t.Fatal(got)
 	}
 }
 
 func TestSubmitPost_SendsShownHeader(t *testing.T) {
-	if got := SubmitPost("/_m/M/S"); got != "(window._alderBusy||((e,p)=>p))(el, @post('/_m/M/S', window._alderO('form')))" {
+	if got := SubmitPost("/_m/M/S"); got != "(window._alderBusy||((e,p)=>p))(el, @post('/_m/M/S', window._alderO?.('form')||{contentType: 'form'}))" {
 		t.Fatal(got)
 	}
+}
+
+// TestRepair_TablePartsOutsideTable: each table-part start tag outside a table is dropped by the
+// parser (its content stays, in the current node), so a region with one, and every region
+// around it, is not patched: the body is. Inside a table, and in a patch's <template>, they stay.
+func TestRepair_TablePartsOutsideTable(t *testing.T) {
+	for _, tag := range []string{"caption", "col", "colgroup", "tbody", "thead", "tfoot", "tr", "td", "th"} {
+		t.Run(tag, func(t *testing.T) {
+			el := func(n string) Node {
+				if void[tag] {
+					return El("div", []Attr{A("id", "o")}, Text(n), El(tag, []Attr{A("id", "x")}))
+				}
+				return El("div", []Attr{A("id", "o")}, El(tag, []Attr{A("id", "x")}, Text(n)))
+			}
+			before, after := RenderTracked(page(el("1")), nil), RenderTracked(page(el("2")), nil)
+			ps := Fragments(before, after)
+			if got := selectors(ps); !reflect.DeepEqual(got, []string{"body"}) {
+				t.Fatalf("patches = %v, want [body]", got)
+			}
+			if doc, want := applyPatches(t, before.Page, ps), domOf(t, after.Page); !doc.Equal(want) {
+				t.Fatalf("patched:\n%s\nwant:\n%s", Render(doc), Render(want))
+			}
+			// the parser drops the tag: no #x in the DOM
+			if _, ok := ReplaceByID(domOf(t, before.Page), "x", Text("")); ok {
+				t.Fatalf("#x is in the DOM: %s", Render(domOf(t, before.Page)))
+			}
+			// a #x patch finds nothing to morph: the DOM would keep the old text
+			if !void[tag] {
+				doc := domOf(t, before.Page)
+				if d, ok := ReplaceByID(doc, "x", RepairFragment(El(tag, []Attr{A("id", "x")}, Text("2")))); ok || !d.Equal(doc) {
+					t.Fatal("a #x patch found an element")
+				}
+				if doc.Equal(domOf(t, after.Page)) {
+					t.Fatal("before and after DOMs are equal")
+				}
+			}
+		})
+	}
+	in, _ := Parse(`<table><caption>c</caption><colgroup><col /></colgroup><thead><tr><th>h</th></tr></thead><tbody><tr id="r"><td>1</td></tr></tbody><tfoot><tr><td>f</td></tr></tfoot></table>`)
+	if got := Repair(in); !got.Equal(in) {
+		t.Fatalf("a table changed: %s", Render(got))
+	}
+	tr, _ := Parse(`<tr id="r"><td>2</td></tr>`)
+	if got := RepairFragment(tr); !got.Equal(tr) {
+		t.Fatalf("a patch's <tr> changed: %s", Render(got))
+	}
+	if got := Repair(tr); Render(got) != "2" {
+		t.Fatalf("a <tr> in the body: %s", Render(got))
+	}
+	// a table part in a cell closes the cell
+	cell, _ := Parse(`<body><table><tr><td>a<tr id="n"><td>b</td></tr></td></tr></table></body>`)
+	if got, want := Repair(cell), mustParse(t, `<body><table><tr><td>a</td></tr><tr id="n"><td>b</td></tr></table></body>`); !got.Equal(want) {
+		t.Fatalf("a row in a cell: %s", Render(got))
+	}
+	// an iframe's content is text
+	fr, _ := Parse(`<body><iframe><p id="i">x</p></iframe></body>`)
+	if got := Render(Repair(fr)); got != `<body><iframe>&lt;p id=&#34;i&#34;&gt;x&lt;/p&gt;</iframe></body>` {
+		t.Fatalf("iframe: %s", got)
+	}
+	if r := RenderTracked(page(El("iframe", nil, El("p", []Attr{A("id", "i")}, Text("x")))), nil); !r.Regions[0].Inert {
+		t.Fatal("an id in an iframe is a region")
+	}
+}
+
+func mustParse(t *testing.T, s string) Node {
+	t.Helper()
+	n, err := Parse(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
 }

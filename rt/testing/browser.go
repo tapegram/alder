@@ -1141,7 +1141,7 @@ func (b *Browser) patch(ev sseEvent) error {
 		b.doc = doc
 		// Datastar morphs the element into the nodes its parser builds from the patch; an id
 		// the DOM lacks patches nothing (the drift check then reports the difference)
-		if dom, ok := html.ReplaceByID(b.dom, id, html.Repair(els)); ok {
+		if dom, ok := html.ReplaceByID(b.dom, id, html.RepairFragment(els)); ok {
 			b.dom = dom
 		}
 		return nil

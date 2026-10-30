@@ -419,7 +419,7 @@ func (r *renderer) clickButton(n Node, m *rt.MsgRef, outer *Node) {
 		*r = saved
 		return
 	}
-	r.render(El("form", []Attr{A("method", "post"), A("action", url), A("class", "_alder-click"), A("data-on:submit", SubmitPost(url))}, button))
+	r.render(El("form", []Attr{A("method", "post"), A("action", url), A("class", "_alder-click"), A("data-on:submit", ClickFormPost(url))}, button))
 }
 
 // url is m's URL on the page being rendered (MsgAttr).
@@ -526,22 +526,30 @@ func FormTo(m rt.MsgRef, attrs []Attr, children ...Node) Node {
 }
 
 // SubmitPost is the Datastar action of a form's data-on:submit: post the form's fields
-// url-encoded to action with the message options (PostOptions, contentType 'form').
+// url-encoded to action with the message options (PostOptions, contentType 'form'; before the
+// helper exists, the content type alone).
 func SubmitPost(action string) string {
-	return busy("el", "@post('"+action+"', "+PostOptions+"('form'))")
+	return busy("el", "@post('"+action+"', "+PostOptions+"?.('form')||{contentType: 'form'})")
+}
+
+// ClickFormPost is the data-on:submit of a click button's own form (RenderWith): SubmitPost
+// without the fallback options, since a click posts no fields.
+func ClickFormPost(url string) string {
+	return busy("el", "@post('"+url+"', "+PostOptions+"?.('form'))")
 }
 
 // ClickPost is the Datastar action of a click that posts a message (a data-on:click, a submit
 // button's formaction): post to url with the message options (PostOptions).
 func ClickPost(url string) string {
-	return busy("el", "@post('"+url+"', "+PostOptions+"())")
+	return busy("el", "@post('"+url+"', "+PostOptions+"?.())")
 }
 
 // PostOptions is the helper a message's post calls for its request options,
 // window._alderO(contentType?) (datastar.BoostInit defines it, once, in the <head>, so each
-// button of a long list carries a call of 16 bytes): it aborts the navigation in flight and
-// starts the page's next one (Navigation), and sends ShownHeader, the hash the page's
-// <al-shown id="_alder_shown"> holds.
+// button of a long list carries a call of about 20 bytes): it aborts the navigation in flight
+// and starts the page's next one (Navigation), and sends ShownHeader, the hash the page's
+// <al-shown id="_alder_shown"> holds. It is called as `?.()`: a post made before the boost's
+// data-init ran sends no header, and its answer morphs the whole body.
 const PostOptions = "window._alderO"
 
 // Navigation is the request option every navigating Datastar request of a page shares — a

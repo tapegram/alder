@@ -114,24 +114,24 @@ load averages 24 to 66): the `ms` column is not comparable, every other column i
 | test | step | bytes before | bytes after | alloc before | alloc after | req | loads | sql |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | index 100 | GET / | 84.1 kB | 70.1 kB | 1.25 MB / 5.8k | 1.09 MB / 5.7k | 1 | 1 | 1 |
-| index 1000 | GET / | 811.3 kB | 669.5 kB | 12.32 MB / 57.8k | 10.78 MB / 56.8k | 1 | 1 | 1 |
+| index 1000 | GET / | 811.3 kB | 673.5 kB | 12.32 MB / 57.8k | 10.78 MB / 56.8k | 1 | 1 | 1 |
 | index 10000 | GET / | 8.10 MB | 6.68 MB | 123.53 MB / 579.8k | 108.64 MB / 569.8k | 1 | 1 | 1 |
-| toggle 1000 | POST /_m/Rows.Index/Toggle | 808.4 kB | **934 B** | 12.70 MB / 66.7k | 14.29 MB / 117.8k | 1 | 2 | 4 |
+| toggle 1000 | POST /_m/Rows.Index/Toggle | 808.4 kB | **938 B** | 12.70 MB / 66.7k | 14.29 MB / 117.8k | 1 | 2 | 4 |
 | add 1000 | POST /_m/Rows.Index/Add | 809.2 kB | 666.7 kB | 12.70 MB / 66.7k | 16.30 MB / 117.8k | 1 | 2 | 3 |
 | jump 1000 | POST /_m/Rows.Index/Jump | 766 B | 838 B | 431.9 kB / 9.0k | 432.9 kB / 9.0k | 2 | 2 | 2 |
 | slow 100 | GET /slow | 3.0 kB | 3.4 kB | 329.0 kB / 6.9k | 333.0 kB / 6.9k | 1 | 1 | 101 |
 
-(The "after" column is the PR's fix round 1, load averages 26 to 59.)
+(The "after" column is the PR's fix round 1, load averages 26 to 59; round 2's `?.` on the helper call adds 2 bytes a button: index 1000 is 673.5 kB, toggle 938 B, the allocations unchanged.)
 
-The keep rule holds: `toggle 1000` sends 934 B (one `<li>` and the `al-shown` event) against
-the page's 669.5 kB, 0.14% (rule: at most 2%); its allocations are 1.13x the baseline (rule: at
+The keep rule holds: `toggle 1000` sends 938 B (one `<li>` and the `al-shown` event) against
+the page's 673.5 kB, 0.14% (rule: at most 2%); its allocations are 1.13x the baseline (rule: at
 most 1.7x); `req`, `loads` and `sql` are unchanged on every row. `loads` stays 2: the
 before-view renders the model loaded before `update` and runs no query.
 
 Where the other numbers move:
 
-- **The page is 142 kB (17%) smaller**, ids and all. Every post action now calls one helper the
-  boost defines once in the `<head>`, `@post('<url>', window._alderO())` (`window._alderO('form')`
+- **The page is 138 kB (17%) smaller**, ids and all. Every post action now calls one helper the
+  boost defines once in the `<head>`, `@post('<url>', window._alderO?.())` (`window._alderO?.('form')`
   for a form): it aborts the navigation in flight, starts the next one's AbortController and adds
   the `Alder-Shown` header. That replaces the 86 bytes of abort and controller every button
   carried before (plus their escaping), and pays for the fixture's new `id="row-…"` on 1,000 rows
