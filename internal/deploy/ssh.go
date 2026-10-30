@@ -1545,19 +1545,27 @@ exit 0
 	return in, nil
 }
 
-// Logs writes the current build's last n log lines; with follow it goes on writing what is
-// appended, and when another build becomes current (a deploy, a rollback) that build's log.
-func (s *Ssh) Logs(ctx context.Context, follow bool, n int, w io.Writer) error {
+// Logs writes the current build's last n log lines (0, or with a since: all of it, `cat`;
+// `alder logs` keeps the lines from since on by their stamps); with follow it goes on writing
+// what is appended, and when another build becomes current (a deploy, a rollback) that build's
+// log.
+func (s *Ssh) Logs(ctx context.Context, follow bool, n int, since time.Time, w io.Writer) error {
 	if _, err := s.Connect(ctx); err != nil {
 		return err
 	}
-	n = max(n, 1)
+	if !since.IsZero() {
+		n = 0
+	}
+	read := `cat` // the whole log
+	if n > 0 {
+		read = `tail -n ` + strconv.Itoa(n)
+	}
 	script := `c=$(cat "$R/current" 2>/dev/null) || { echo "not deployed yet" >&2; exit 1; }
-exec tail -n ` + strconv.Itoa(n) + ` "$R/builds/$c/log"
+exec ` + read + ` "$R/builds/$c/log"
 `
 	if follow { // across switches: when current changes, the new build's log from its start
 		script = `c=$(cat "$R/current" 2>/dev/null) || { echo "not deployed yet" >&2; exit 1; }
-tail -n ` + strconv.Itoa(n) + ` "$R/builds/$c/log"
+` + read + ` "$R/builds/$c/log"
 off=$(wc -c < "$R/builds/$c/log" | tr -d ' ')
 while kill -0 "$PPID" 2>/dev/null; do  # the session's sshd gone: stop
   n=$(cat "$R/current" 2>/dev/null)

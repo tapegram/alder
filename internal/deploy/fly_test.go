@@ -654,7 +654,7 @@ func TestLogs_FlyLastN(t *testing.T) {
 		{500, ff.logs},
 	} {
 		var w bytes.Buffer
-		if err := f.Logs(context.Background(), false, c.n, &w); err != nil {
+		if err := f.Logs(context.Background(), false, c.n, time.Time{}, &w); err != nil {
 			t.Fatal(err)
 		}
 		if w.String() != c.want {
@@ -664,7 +664,7 @@ func TestLogs_FlyLastN(t *testing.T) {
 	// no trailing newline
 	ff.logs = "a\nb\nc"
 	var w bytes.Buffer
-	if err := f.Logs(context.Background(), false, 2, &w); err != nil || w.String() != "b\nc" {
+	if err := f.Logs(context.Background(), false, 2, time.Time{}, &w); err != nil || w.String() != "b\nc" {
 		t.Errorf("no final newline: %q %v", w.String(), err)
 	}
 }

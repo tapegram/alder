@@ -1074,10 +1074,15 @@ func (r *Render) Info(ctx context.Context) (Info, error) {
 // RenderLogMax is the most lines one read of Render's log API returns.
 const RenderLogMax = 100
 
+// RenderSincePages is the most pages of RenderLogMax lines Logs reads for a since.
+const RenderSincePages = 20
+
 // Logs writes the service's last n lines ("[instance] message"; at most RenderLogMax, what
-// Render's API returns at once); with follow, the lines of Render's log stream as they come,
-// until ctx ends.
-func (r *Render) Logs(ctx context.Context, follow bool, n int, w io.Writer) error {
+// Render's API returns at once; 0: RenderLogMax), or with a non-zero since the lines from since
+// on, read forward page by page (Render's time-ranged read) up to RenderSincePages pages, with a
+// note on Out when that cut them; with follow, then the lines of Render's log stream as they
+// come, until ctx ends.
+func (r *Render) Logs(ctx context.Context, follow bool, n int, since time.Time, w io.Writer) error {
 	if !r.have {
 		// `alder logs` has not connected (status and the deploys do): look for the service
 		if _, err := r.Connect(ctx); err != nil {
@@ -1087,7 +1092,14 @@ func (r *Render) Logs(ctx context.Context, follow bool, n int, w io.Writer) erro
 	if !r.have {
 		return refuse("", "the service %s does not exist at Render yet: deploy first", r.Service)
 	}
-	if !follow {
+	if !since.IsZero() {
+		if err := r.logsSince(ctx, since, w); err != nil {
+			return err
+		}
+	} else if !follow {
+		if n == 0 {
+			n = RenderLogMax
+		}
 		logs, err := r.API.Tail(ctx, r.owner, r.svc.ID, min(max(n, 1), RenderLogMax))
 		if err != nil {
 			return err
@@ -1095,6 +1107,9 @@ func (r *Render) Logs(ctx context.Context, follow bool, n int, w io.Writer) erro
 		for _, l := range logs {
 			fmt.Fprintln(w, logLine(l))
 		}
+		return nil
+	}
+	if !follow {
 		return nil
 	}
 	c, err := DialWS(ctx, r.API.LogsURL(r.owner, r.svc.ID), r.API.AuthHeader())
@@ -1128,6 +1143,33 @@ func (r *Render) Logs(ctx context.Context, follow bool, n int, w io.Writer) erro
 			}
 		}
 		fmt.Fprintln(w, logLine(l))
+	}
+}
+
+// logsSince writes the lines from since on: Render's log API read forward, a page of
+// RenderLogMax at a time from the start each page returns, while a page is full and the start
+// moves, at most RenderSincePages pages (then a note on Out says the rest is cut).
+func (r *Render) logsSince(ctx context.Context, since time.Time, w io.Writer) error {
+	start := since
+	for page := 1; ; page++ {
+		logs, next, err := r.API.Logs(ctx, r.owner, r.svc.ID, RenderLogMax, start)
+		if err != nil {
+			return err
+		}
+		for _, l := range logs {
+			fmt.Fprintln(w, logLine(l))
+		}
+		if len(logs) < RenderLogMax || !next.After(start) {
+			return nil
+		}
+		if page == RenderSincePages {
+			if r.Out != nil {
+				fmt.Fprintf(r.Out, "alder logs: Render gave %d lines since %s; the rest is cut: use a later --since\n",
+					RenderSincePages*RenderLogMax, since.UTC().Format(time.RFC3339))
+			}
+			return nil
+		}
+		start = next
 	}
 }
 

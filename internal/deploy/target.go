@@ -57,9 +57,11 @@ type Target interface {
 	Prune(ctx context.Context, keep int, protect []string) ([]string, error)
 	// Info is the database's size and its last backup.
 	Info(ctx context.Context) (Info, error)
-	// Logs writes the current build's log to w: its last n lines, and with follow what comes
-	// after them until ctx ends.
-	Logs(ctx context.Context, follow bool, n int, w io.Writer) error
+	// Logs writes the current build's log to w: its last n lines (0: all it keeps), or with a
+	// non-zero since the lines from then on (as far back as the target keeps; `alder logs`
+	// filters a target's lines by their stamps where it cannot ask for a time range itself), and
+	// with follow what comes after them until ctx ends.
+	Logs(ctx context.Context, follow bool, n int, since time.Time, w io.Writer) error
 	// Restore replaces the target's database with the local file db, stopping every running
 	// build first (none may keep the replaced file open) and starting the current build again on
 	// it, health checked and routed; a build that refuses the restored file brings the replaced

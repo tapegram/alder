@@ -326,7 +326,7 @@ func TestSsh_LogsN(t *testing.T) {
 	s.SSH = ssh
 	for _, n := range []int{3, 100, 150} {
 		var w bytes.Buffer
-		if err := s.Logs(context.Background(), false, n, &w); err != nil {
+		if err := s.Logs(context.Background(), false, n, time.Time{}, &w); err != nil {
 			t.Fatal(err)
 		}
 		if want := strings.Join(lines[150-n:], "\n") + "\n"; w.String() != want {
