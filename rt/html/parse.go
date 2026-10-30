@@ -596,17 +596,34 @@ func ReplaceByID(doc Node, id string, with Node) (Node, bool) {
 }
 
 // Without is n without the elements drop reports (with everything inside them).
+// Only the elements on the way to a dropped one are copied: the rest of the tree is shared.
 func Without(n Node, drop func(Node) bool) Node {
+	out, _ := without(n, drop)
+	return out
+}
+
+func without(n Node, drop func(Node) bool) (Node, bool) {
 	if n.kind != kElem && n.kind != kFrag {
-		return n
+		return n, false
 	}
-	cs := make([]Node, 0, len(n.children))
-	for _, c := range n.children {
-		if c.kind == kElem && drop(c) {
-			continue
+	var cs []Node // nil until a child changes
+	for i, c := range n.children {
+		dropped := c.kind == kElem && drop(c)
+		var nc Node
+		changed := dropped
+		if !dropped {
+			nc, changed = without(c, drop)
 		}
-		cs = append(cs, Without(c, drop))
+		if changed && cs == nil {
+			cs = append(make([]Node, 0, len(n.children)), n.children[:i]...)
+		}
+		if cs != nil && !dropped {
+			cs = append(cs, nc)
+		}
+	}
+	if cs == nil {
+		return n, false
 	}
 	n.children = cs
-	return n
+	return n, true
 }

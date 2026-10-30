@@ -93,3 +93,42 @@ so it stays out. The time it saves (about 4 µs a statement here, 7 µs on an id
 spec's probe) matters on the N+1 page (0.75 → 0.46 ms) and not against a 1,000-row render. A
 later attempt could lower its allocations (reusing the transaction's statement instead of
 `Tx.StmtContext` per call) and is measured against this file's re-run.
+
+## #49: fragments (a click patches what changed)
+
+`alder bench testdata/bench/rows --count 10`, before (branch `issue-48-perf-harness`, the fixture
+without row ids) and after (`issue-49-datastar`, rows `<li id={"row-" ++ r.id}>`), minutes
+apart on the same machine, under load again (`uptime` load averages 18 to 31 before, 11 after):
+the `ms` column is not comparable, every other column is.
+
+| test | step | bytes before | bytes after | alloc before | alloc after | req | loads | sql |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| index 100 | GET / | 84.1 kB | 93.9 kB | 1.87 MB / 8.1k | 2.09 MB / 8.3k | 1 | 1 | 1 |
+| index 1000 | GET / | 811.3 kB | 907.5 kB | 17.96 MB / 79.9k | 21.17 MB / 81.9k | 1 | 1 | 1 |
+| index 10000 | GET / | 8.10 MB | 9.06 MB | 181.42 MB / 800.0k | 213.15 MB / 820.0k | 1 | 1 | 1 |
+| toggle 1000 | POST /_m/Rows.Index/Toggle | 808.4 kB | **1.2 kB** | 31.97 MB / 181.1k | 36.41 MB / 217.2k | 1 | 2 | 4 |
+| add 1000 | POST /_m/Rows.Index/Add | 809.2 kB | 905.0 kB | 24.77 MB / 125.1k | 38.72 MB / 181.1k | 1 | 2 | 3 |
+| jump 1000 | POST /_m/Rows.Index/Jump | 766 B | 838 B | 10.65 MB / 83.3k | 11.04 MB / 87.4k | 2 | 2 | 2 |
+| slow 100 | GET /slow | 3.0 kB | 3.2 kB | 390.5 kB / 7.3k | 395.6 kB / 7.3k | 1 | 1 | 101 |
+
+The keep rule holds: `toggle 1000` sends 1.2 kB (one `<li>` and the `al-shown` event) against
+the page's 907.5 kB, 0.13% (rule: at most 2%); its allocations are 1.14x the baseline (rule: at
+most 1.7x); `req`, `loads` and `sql` are unchanged on every row. `loads` stays 2: the
+before-view renders the model loaded before `update` (no query of its own).
+
+Where the other numbers move:
+
+- **The page grew 96 kB (12%).** 30 kB is the fixture's new `id="row-…"` on 1,000 rows (the old
+  runtime serves 841.3 kB for it). 66 kB is the `Alder-Shown` header on each post action,
+  `headers: window._alderShown?.(), ` (33 bytes on each of the 2,000 buttons; the lookup itself
+  lives once in the boost's `data-init`), and 60 B the `<al-shown>` element. With gzip at the host
+  the repeated text costs little; without it, it is the price of the header on a list-heavy page.
+- **`index` allocates 3.2 MB more**, all strings: the longer attribute values rendered, copied
+  and parsed by the test browser (objects +2k: the ids). The browser takes the `al-shown` out of
+  the page it holds without a walk of the tree (`takeShown`).
+- **`add 1000` is 1.56x its allocations** for no gain in bytes: its before-view is rendered and
+  compared, and the answer is still the whole `<ul>` (a child was added: the keyed-diff
+  follow-up). `toggle`'s +4.4 MB is the same before-view and its regions, less the 800 kB body
+  the test browser no longer parses (it parses one `<li>`).
+- The equality check the test browser runs after every re-render (a parse and a diff of the
+  body) is outside the measured step.

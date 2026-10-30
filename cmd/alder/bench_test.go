@@ -80,6 +80,11 @@ func TestBench_Rows(t *testing.T) {
 	if m := byTest["toggle 1000"][1]; m.Loads != 2 || m.Requests != 1 {
 		t.Errorf("toggle: %+v", m)
 	}
+	// #49: a click on one row sends that row (and the shown hash), not the page: its bytes are
+	// under 2% of the page's (the toggle test's GET is the 1,000-row index)
+	if get, post := byTest["toggle 1000"][0], byTest["toggle 1000"][1]; post.Bytes*50 >= get.Bytes {
+		t.Errorf("toggle sends %d bytes for a page of %d: not under 2%%", post.Bytes, get.Bytes)
+	}
 	if m := byTest["jump 1000"][1]; m.Loads != 2 || m.Requests != 2 {
 		t.Errorf("jump: %+v", m)
 	}

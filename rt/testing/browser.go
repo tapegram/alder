@@ -834,13 +834,46 @@ func (b *Browser) hold(u, page string) error {
 }
 
 // takeShown is doc without the router's <al-shown> element, and the hash it carries ("" for none).
+// The router puts it at the end of the <body>: it is looked for there first, without a walk
+// of the whole page.
 func takeShown(doc html.Node) (html.Node, string) {
-	els := html.Select(doc, selShown)
-	if len(els) == 0 {
-		return doc, ""
+	var shown html.Node
+	if body, ok := bodyNode(doc, 2); ok {
+		cs := body.Children()
+		for i := len(cs) - 1; i >= 0 && i >= len(cs)-4; i-- {
+			if isShown(cs[i]) {
+				shown = cs[i]
+				break
+			}
+		}
 	}
-	h, _ := html.AttrOf(els[len(els)-1], "data-h")
+	if shown.Tag() == "" {
+		els := html.Select(doc, selShown)
+		if len(els) == 0 {
+			return doc, ""
+		}
+		shown = els[len(els)-1]
+	}
+	h, _ := html.AttrOf(shown, "data-h")
 	return html.Without(doc, isShown), h
+}
+
+// bodyNode is the <body> of n found within depth levels (n itself, its children, …).
+func bodyNode(n html.Node, depth int) (html.Node, bool) {
+	if n.Tag() == "body" {
+		return n, true
+	}
+	if depth == 0 {
+		return html.Node{}, false
+	}
+	for _, c := range n.Children() {
+		if c.Tag() == "body" || c.Tag() == "html" || c.Tag() == "" {
+			if b, ok := bodyNode(c, depth-1); ok {
+				return b, true
+			}
+		}
+	}
+	return html.Node{}, false
 }
 
 func isShown(n html.Node) bool {
