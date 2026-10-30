@@ -4,6 +4,7 @@ package app
 
 import (
 	"alder/rt"
+	"alder/rt/applog"
 	"alder/rt/db"
 	"alder/rt/eff"
 	"alder/rt/html"
@@ -66,6 +67,7 @@ type Options struct {
 	StaticDir string                  // the directory served under /static/; "" for none
 	Reload    string                  // under alder run, the build generation; non-empty: pages subscribe to the dev server's reloads and error overlay
 	Log       func(level, msg string) // nil: no log
+	Access    func(*applog.Access)    // one call per request routed (not the health check); nil: no access log
 	Build     string                  // the build's id (ALDER_BUILD, set by alder deploy), answered by /_alder/health
 }
 
@@ -153,6 +155,7 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	}
 	w := Web()
 	w.Store, w.Caps, w.Log, w.Dev, w.Secret, w.StaticDir, w.Reload = store, reg, o.Log, o.Dev, o.Secret, o.StaticDir, o.Reload
+	w.Access = o.Access
 	w.Build, w.SharedMaintenance = o.Build, shared
 	w.Stores = stores
 	for _, m := range Migrations {
