@@ -4501,6 +4501,17 @@ The experiment E11, "CLI-only development", measures this: an agent
 builds apps with these commands alone, reading their `--json` output,
 and never edits a file directly.
 
+The model need not be an agent driving the commands. `alder fill
+<address> --ai`, and the editor's code action `Fill ?name with AI` on a
+hole, run one loop: the model is shown the hole's type, its module, the
+names in scope and the standard library's signatures, it answers one
+expression, and the expression is placed and checked exactly as standard
+input's would be. A refused answer goes back with the checker's errors,
+three attempts in all, and only one that checks is written (chapter 11,
+"Generators in the editor"; chapter 13, "Filling a hole with a model").
+The model writes a body and nothing else, which is the design of this
+section, now one keystroke from the hole a generator left.
+
 Its first run (Haiku and Sonnet, the eight canonical tasks, one sample,
 each round's answer one script of commands;
 `experiments/e11-cli/findings.md`) confirms the first half and

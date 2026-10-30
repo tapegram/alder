@@ -259,7 +259,7 @@ func TestScratchInlayHintRefresh(t *testing.T) {
 		"workspace": map[string]any{"inlayHint": map[string]any{"refreshSupport": true}},
 	})
 	c.open("scratch.alder", "> 1\n")
-	c.note("workspace/inlayHint/refresh")
+	c.request("workspace/inlayHint/refresh")
 
 	plain := start(t, copyExample(t, "todos"))
 	plain.open("scratch.alder", "> 1\n")
@@ -267,7 +267,7 @@ func TestScratchInlayHintRefresh(t *testing.T) {
 	plain.sync()
 	for {
 		select {
-		case m := <-plain.notes:
+		case m := <-plain.requests:
 			if m.Method == "workspace/inlayHint/refresh" {
 				t.Fatal("refresh sent to a client without refreshSupport")
 			}

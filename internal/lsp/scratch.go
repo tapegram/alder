@@ -180,7 +180,7 @@ func (s *server) scratchOnce(ctx context.Context, rel string, seq uint64) {
 		}
 		s.scratch.shown[rel] = scratchShown{lines: strings.Split(x.Text, "\n"), watches: p.Watches}
 		if s.inlayRefresh {
-			s.request("workspace/inlayHint/refresh", nil)
+			s.requestAsync("workspace/inlayHint/refresh", nil)
 		}
 	}
 	s.scratch.mu.Lock()
@@ -226,10 +226,10 @@ func (s *server) scratchOut(rel string) string {
 	return filepath.Join(s.rootReal, "build", filepath.Base(s.rootReal), "scratch", scratch.FilePurpose(abs))
 }
 
-// request sends the server's request method with params, whose answer the reader drops (a
+// requestAsync sends the server's request method with params, whose answer the reader drops (a
 // response the server does not wait for).
-func (s *server) request(method string, params any) {
-	id := fmt.Sprintf("alder-%d", s.requests.Add(1))
+func (s *server) requestAsync(method string, params any) {
+	id := fmt.Sprintf("alder-%d", s.reqSeq.Add(1))
 	m := map[string]any{"jsonrpc": "2.0", "id": id, "method": method}
 	if params != nil {
 		m["params"] = params
