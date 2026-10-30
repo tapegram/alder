@@ -677,8 +677,9 @@ func (g *gen) sessionDefault(r *ir.RecordType) string {
 // is set (the app has capabilities), else with none. name is the app's name, the default database file's base name.
 // Configuration comes from the environment: ALDER_ADDR (default ":8080"), ALDER_DB (default
 // "<name>.db", in the working directory), ALDER_SECRET, ALDER_DEV=1, ALDER_STATIC and
-// ALDER_PUBLIC_URL (rt.ParsePublicURL; checked before serving, by default http:// and the bound
-// address as alder run shows it: rt.ListenPublicURL; set as rt.PublicURL before the first request); static
+// ALDER_PUBLIC_URL (rt.ResolvePublicURL, run by rt/publicurl's initialisation before package
+// app's, so top-level constants see it; a bad value exits 1 before serving; by default http://
+// and ALDER_ADDR as alder run shows it, with a port-0 address refined after Listen); static
 // files are served from ALDER_STATIC, by default the static directory next to the executable
 // (alder build copies the app's static/ there). Before serving it prints "listening on
 // <address>" with the bound address, so ALDER_ADDR=127.0.0.1:0 picks a free port that a caller
@@ -712,8 +713,9 @@ func Main(name string, withCaps, withSilos bool) []byte {
 // key is used) and ALDER_DEV=1 turns on development mode; ALDER_RELOAD (set by alder run to its
 // build generation) makes pages subscribe to the dev server's reloads. ALDER_PUBLIC_URL
 // (http(s)://host[:port]) is the base Url.absolute puts in front of a page's URL; a bad value
-// exits 1 before anything is served, and without one the base is http:// and the bound address
-// (an unspecified host shown as localhost). Static files are served under /static/
+// exits 1 before anything is served, and without one the base is http:// and ALDER_ADDR (an
+// unspecified host shown as localhost; with port 0, the port Listen picked, which a top-level
+// value computed before Listen does not see). Static files are served under /static/
 // from ALDER_STATIC, by default the static directory next to the executable. SIGINT or SIGTERM
 // shuts the server down gracefully: requests in flight get 5 s to finish. ALDER_EXIT_ON_STDIN_EOF=1
 // (set by alder run) makes the app stop the same way when its standard input reaches EOF, so it
@@ -742,13 +744,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
-	"alder/rt"
 	"alder/rt/backup"
 	"alder/rt/db"
+	"alder/rt/publicurl" // sets rt.PublicURL from the environment before package app initialises
 	"alder/rt/web"
 ` + imports + `)
 
@@ -758,13 +759,9 @@ func main() {
 	if len(os.Args) > 1 {
 		os.Exit(maintain(os.Args[1:], dbPath, dev))
 	}
-	public := ""
-	if v := os.Getenv("ALDER_PUBLIC_URL"); strings.TrimSpace(v) != "" {
-		var err error
-		if public, err = rt.ParsePublicURL(v); err != nil {
-			fmt.Fprintln(os.Stderr, "alder:", err)
-			os.Exit(1)
-		}
+	if publicurl.Err != nil { // a bad ALDER_PUBLIC_URL, read before package app initialised
+		fmt.Fprintln(os.Stderr, "alder:", publicurl.Err)
+		os.Exit(1)
 	}
 	static := os.Getenv("ALDER_STATIC")
 	if static == "" {
@@ -803,12 +800,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "alder:", err)
 		os.Exit(1)
 	}
-	if public == "" {
-		public = rt.ListenPublicURL(ln.Addr().String())
-	}
-	rt.PublicURL = public // set once, before the first request: Url.absolute's base
+	publicurl.Listened(ln.Addr().String()) // a port-0 address: the base's port is the one picked
 	fmt.Println("listening on " + ln.Addr().String())
-	srv :=&http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	if os.Getenv("ALDER_EXIT_ON_STDIN_EOF") == "1" {
 		os.Unsetenv("ALDER_EXIT_ON_STDIN_EOF") // not inherited by a process the app starts

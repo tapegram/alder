@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -61,13 +62,17 @@ func TestPublicURL_Binary(t *testing.T) {
 		}
 	})
 
+	// home is Url.absolute in the view; constant a top-level value, computed while the program
+	// initialises: it sees ALDER_PUBLIC_URL and a fixed ALDER_ADDR, but a port-0 address only as
+	// port 0 (the port is picked at Listen, after it)
 	for _, c := range []struct {
 		name, addr, public string
-		want               func(port string) string
+		home, constant     func(port string) string
 	}{
-		{"unset, loopback", "127.0.0.1:0", "", func(p string) string { return "http://127.0.0.1:" + p + "/" }},
-		{"unset, unspecified host", ":0", "", func(p string) string { return "http://localhost:" + p + "/" }},
-		{"set", "127.0.0.1:0", "https://ex.com/", func(string) string { return "https://ex.com/" }},
+		{"unset, loopback", "127.0.0.1:0", "", func(p string) string { return "http://127.0.0.1:" + p + "/" }, func(string) string { return "http://127.0.0.1:0/" }},
+		{"unset, unspecified host", ":0", "", func(p string) string { return "http://localhost:" + p + "/" }, func(string) string { return "http://localhost:0/" }},
+		{"unset, fixed port", "127.0.0.1:" + strconv.Itoa(freePort(t)), "", func(p string) string { return "http://127.0.0.1:" + p + "/" }, func(p string) string { return "http://127.0.0.1:" + p + "/" }},
+		{"set", "127.0.0.1:0", "https://ex.com/", func(string) string { return "https://ex.com/" }, func(string) string { return "https://ex.com/" }},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -82,9 +87,11 @@ func TestPublicURL_Binary(t *testing.T) {
 			}
 			body, _ := io.ReadAll(res.Body)
 			res.Body.Close()
-			if want := `<p id="home">` + c.want(port) + `</p>`; !strings.Contains(string(body), want) {
-				_, b, _ := strings.Cut(string(body), "<body>")
-				t.Errorf("listening on %s: the page lacks %q: <body>%s", listen, want, b)
+			for _, want := range []string{`<p id="home">` + c.home(port) + `</p>`, `<p id="const">` + c.constant(port) + `</p>`} {
+				if !strings.Contains(string(body), want) {
+					_, b, _ := strings.Cut(string(body), "<body>")
+					t.Errorf("listening on %s: the page lacks %q: <body>%s", listen, want, b)
+				}
 			}
 		})
 	}

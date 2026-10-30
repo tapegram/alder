@@ -407,23 +407,74 @@ type Page struct {
 // machine.
 const DefaultPublicURL = "http://localhost:8080"
 
-// PublicURL is the scheme and host in front of a page's URL in `Url.absolute`. The generated
-// main sets it once, before the first request, from ALDER_PUBLIC_URL (ParsePublicURL) or from
-// its listener's address (ListenPublicURL); nothing changes it afterwards, so Url.absolute is
-// pure for the life of the process.
+// PublicURL is the scheme and host in front of a page's URL in `Url.absolute`. Only the served
+// executable changes it, and before any of the app's own values are computed: its main imports
+// alder/rt/publicurl, whose initialisation (ahead of package app's, so a top-level constant
+// built with Url.absolute sees it too) sets it from the environment (ResolvePublicURL). Nothing
+// changes it afterwards but the one refinement after Listen of a port-0 address
+// (publicurl.Listened), so Url.absolute is pure for the life of the process.
 var PublicURL = DefaultPublicURL
 
+// ResolvePublicURL is the served executable's public base from its environment: ALDER_PUBLIC_URL
+// when it is set (ParsePublicURL; an error when it is bad), else "http://" and the address it
+// will listen on, ALDER_ADDR or the default ":8080", as alder run shows it (ListenPublicURL).
+// refine reports that the address's port is 0 (the operating system picks one at Listen), so
+// the base is only known after Listen: a top-level constant computed before then sees port 0.
+func ResolvePublicURL(getenv func(string) string) (base string, refine bool, err error) {
+	if v := getenv("ALDER_PUBLIC_URL"); strings.TrimSpace(v) != "" {
+		base, err = ParsePublicURL(v)
+		return base, false, err
+	}
+	addr := getenv("ALDER_ADDR")
+	if addr == "" {
+		addr = ":8080"
+	}
+	_, port, _ := net.SplitHostPort(addr)
+	return ListenPublicURL(addr), port == "0", nil
+}
+
 // ParsePublicURL is ALDER_PUBLIC_URL's rule: s trimmed of spaces and of every trailing "/" must
-// be http://host[:port] or https://host[:port], with no path, query, fragment or user info. The
-// answer has the scheme lowercased and the host and port as written.
+// be http://host[:port] or https://host[:port]: a host of letters, digits, "-" and "." (or an
+// IPv6 address in brackets), a port 1–65535 after a ":", and nothing else: no path, query,
+// fragment, parameters, user info, quotes or angle brackets. The answer has the scheme
+// lowercased and the host and port as written.
 func ParsePublicURL(s string) (string, error) {
 	bad := fmt.Errorf("ALDER_PUBLIC_URL must be http(s)://host[:port], such as https://blog.example.com (got %q)", s)
-	u, err := url.Parse(strings.TrimRight(strings.TrimSpace(s), "/"))
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Opaque != "" || u.Hostname() == "" ||
-		u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.Contains(u.Host, "/") {
+	t := strings.TrimRight(strings.TrimSpace(s), "/")
+	scheme, host, ok := strings.Cut(t, "://")
+	if !ok || strings.ContainsAny(host, "/?#;@\\\"'<> \t\r\n") {
 		return "", bad
 	}
+	u, err := url.Parse(t)
+	if err != nil || (strings.ToLower(scheme) != "http" && strings.ToLower(scheme) != "https") || u.Host != host ||
+		!publicHost(u.Hostname(), strings.HasPrefix(host, "[")) || strings.HasSuffix(host, ":") {
+		return "", bad
+	}
+	if p := u.Port(); p != "" {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 1 || n > 65535 || strings.Trim(p, "0123456789") != "" {
+			return "", bad
+		}
+	}
 	return u.Scheme + "://" + u.Host, nil
+}
+
+// publicHost reports whether h is a host ALDER_PUBLIC_URL accepts: an IPv6 address when it was
+// written in brackets, else letters, digits, "-" and ".", not empty.
+func publicHost(h string, bracketed bool) bool {
+	if bracketed {
+		ip := net.ParseIP(h)
+		return ip != nil && ip.To4() == nil
+	}
+	if h == "" {
+		return false
+	}
+	for _, c := range h {
+		if !('a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' || c == '-' || c == '.') {
+			return false
+		}
+	}
+	return true
 }
 
 // ListenPublicURL is the public base of a server listening on addr without ALDER_PUBLIC_URL:

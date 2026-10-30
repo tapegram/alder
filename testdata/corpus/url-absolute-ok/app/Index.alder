@@ -10,9 +10,13 @@ type Model = { q: Text }
 load : Params -> Session -> Query Model
 load params session = Query.succeed { q: params.q }
 
+-- a top-level constant: computed once as the program starts, with the configured base
+homeUrl : Text
+homeUrl = Url.absolute (Index {})
+
 view : Model -> Session -> Html Msg
 view model session =
-  <html><body><p id="self">{Url.absolute (Index { q: model.q })}</p><p id="home">{Url.absolute (Index {})}</p></body></html>
+  <html><body><p id="self">{Url.absolute (Index { q: model.q })}</p><p id="home">{Url.absolute (Index {})}</p><p id="const">{homeUrl}</p></body></html>
 
 test "the absolute URL of a page in a test starts with http://localhost:8080" =
   Url.absolute (Index { q: "a b" }) == "http://localhost:8080/?q=a+b"
