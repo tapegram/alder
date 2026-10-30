@@ -49,6 +49,13 @@ List.sortByFloat : (a -> Float) -> List a -> List a
 
 `List.partition` returns a record with a `yes` field (the elements that satisfy the test) and a `no` field, each in input order. `List.map2` and `List.map3` stop at the shortest list.
 
+`List.take`, `List.drop` and `List.tail` cost nothing however long the list:
+the result shares the original's elements, which is safe because no list is
+ever changed. `++` copies both sides into a new list (unless one is empty), so
+a loop that grows a list with `acc ++ [x]` copies the whole list at every
+step; use `List.foldl`, `List.concatMap` or, for text, a `Text.Builder`
+(below) instead.
+
 ```alder eval=[10, 30, 50]
 List.range 1 5
   |> List.filter (\n -> n % 2 == 1)
@@ -155,6 +162,40 @@ is `[0, 1]`). There is no `toChars`: `Text.split "" s` gives the characters.
 ```alder eval=["de", "2", "3.5"]
 [Text.slice (-3) (-1) "abcdef", Text.fromFloat 2.0, Text.fromFloat 3.5]
 ```
+
+### Building a large Text
+
+```alder
+Text.Builder                                 -- an accumulator for a large Text
+Text.builder   : Text.Builder                -- empty
+Text.add       : Text -> Text.Builder -> Text.Builder   -- Text.add piece b
+Text.build     : Text.Builder -> Text
+```
+
+Interpolation and `Text.join` each make a new Text, copying every byte they
+are given. That is cheap for a heading, but a page that renders a large body
+by nesting them (rows joined into options, options into items, items into a
+file) copies each byte once per level: a 100 MB JSON file allocates close to
+a gigabyte. A `Text.Builder` avoids that. `Text.add` puts a piece after
+everything added so far without copying anything, and `Text.build` copies each
+byte once, into the finished Text. A builder is a value like any other:
+adding to it gives a new builder and leaves the old one as it was, so two
+builders can grow from the same start. Make each row with interpolation and
+add whole rows; adding many tiny pieces (a comma, a field) costs more than
+the copy it saves. There is no `addAll`: `List.foldl Text.add b pieces` adds a
+list of pieces in order.
+
+```alder eval="name,votes\nKent,3\nDane,5\n"
+[{ name: "Kent", votes: 3 }, { name: "Dane", votes: 5 }]
+  |> List.foldl (\r b -> b |> Text.add "{r.name},{Text.fromInt r.votes}\n") (Text.builder |> Text.add "name,votes\n")
+  |> Text.build
+```
+
+Under the hood a builder is a chain of the pieces, newest first, each link
+remembering the total length so far. `Text.build` allocates that many bytes
+once and fills them from the end, walking the chain back. A File page passes
+the result straight to `File.text`, which uses the Text's bytes as the body
+without copying them again.
 
 ## Int, Float
 
@@ -488,6 +529,11 @@ Only a `test` may use these (chapter 10); anywhere else each is E0003
   user and the org of a `Membership`: `Membership.since` has no default;
   insert the row with `Db.insert Membership { … }`"), and so is an app
   without a `via` field (chapter 10, "Two orgs").
+- `Test.setClock : Time -> Task Unit` sets the test's clock to a time:
+  `Time.now`, `Date.today` and `@created` read it, and it stands still
+  (no one-second tick) until something moves it (chapter 10, "Setting the clock").
+- `Test.advance : Int -> Task Unit` moves the test's clock that many
+  milliseconds forward (a negative number is 0), set or ticking.
 
 ### Browser steps and queries
 

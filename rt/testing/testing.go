@@ -240,7 +240,8 @@ type CaseResult struct {
 	Paste     string
 	Crash     bool
 
-	panicked bool // the case panicked (not a task's failure): a mutant it kills is "crashed"
+	stopped  string // a property a health check stopped, not a failing case (property.go: stoppedOn, stoppedBefore)
+	panicked bool   // the case panicked (not a task's failure): a mutant it kills is "crashed"
 }
 
 // Options configure Run. Run, when set, selects the cases whose `Module "Name"` it matches;
@@ -295,35 +296,6 @@ const notTheSchema = "the migrations do not produce the app's schema: run `alder
 
 // defaultNow is when a test's clock starts unless told otherwise.
 var defaultNow = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-
-// Clock is a test's time: its first reading is start, and each later one is a second after
-// the one before; a delay (Env.Sleep) advances it by the delay at once. It is deterministic
-// (the same test reads the same times on every run), and the rows a test inserts get distinct
-// `@created` times in the order they were inserted, so a test can observe an ordering by
-// creation time (`Db.orderBy T.created.desc`).
-type Clock struct {
-	mu   sync.Mutex
-	next time.Time
-}
-
-func NewClock(start time.Time) *Clock { return &Clock{next: start} }
-
-func (c *Clock) Now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	t := c.next
-	c.next = c.next.Add(time.Second)
-	return t
-}
-
-func (c *Clock) Advance(d time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.next = c.next.Add(d)
-}
-
-// Ticking is a clock's Now: each reading advances it a second.
-func Ticking(start time.Time) func() time.Time { return NewClock(start).Now }
 
 // unwired is the panic message of a capability call that finds no implementation (as in
 // cmd/alder/eval.go).
@@ -462,6 +434,7 @@ func newCaseEnv(o Options) (env *eff.Env, done func(), err error) {
 		caps = map[string]any{}
 	}
 	clock := NewClock(o.Now)
+	ctx = context.WithValue(ctx, clockKey{}, clock) // Test.setClock and Test.advance find it here
 	env = &eff.Env{Ctx: ctx, Store: store, Caps: caps, Session: o.Session, Now: clock.Now, Sleep: clock.Advance, CheckSession: o.Web.SessionCheck}
 	if len(o.Web.Silos) > 0 { // a store per silo value the test touches, each in memory
 		stores, err := db.NewTestStores(store, db.StoresConfig{Silos: o.Web.Silos, Tables: o.Tables, Migrations: o.Migrations, Dev: true})
@@ -626,7 +599,7 @@ const (
 	EnvDeadline = "ALDER_TEST_DEADLINE"
 	// EnvTimeout is the -timeout the deadline came from (a Go duration), for the message.
 	EnvTimeout = "ALDER_TEST_TIMEOUT"
-	// EnvStatus names a file Main truncates and writes `Module\tName\n` to before each test (a property test adds `\tseed\trun`, ParseStatus),
+	// EnvStatus names a file Main truncates and writes `Module\tName\n` to before each test (a property test adds `\t\x00fuzz\tseed\trun`, ParseStatus),
 	// and empties when it returns: after a crash it names the test that crashed.
 	EnvStatus = "ALDER_TEST_STATUS"
 	// EnvFuzz is the runs per property test (--fuzz), EnvSeed the seed of their fresh draws

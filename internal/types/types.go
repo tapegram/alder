@@ -42,6 +42,11 @@ type Record struct {
 	Params       []string // declared parameter names
 	Args         []Type   // an instance's arguments, same length as Params
 	Def          *Record  // declaration this instance was made from (nil on the declaration)
+	// Flex is a record literal's handle (#3): set only on the structural type inferExpr gives a
+	// literal typed with no record expected, nil on every other record. It is the literal's
+	// substitution slot: the first record type the literal is unified with that has exactly its
+	// field names binds it (Subst[Flex.ID]), and Apply then returns that type.
+	Flex *Var
 }
 type Ctor struct {
 	Name string

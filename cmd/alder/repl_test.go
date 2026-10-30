@@ -205,7 +205,11 @@ func TestRepl_BuildDirs(t *testing.T) {
 	}
 	r := startRepl(t, todosDir(t))
 	r.send(t, "1 + 1")
-	r.waitOut(t, "2 : Int\n", 1, 30*time.Second)
+	// This REPL builds the app cold in a build directory of its own (a fresh go build and vet of
+	// the generated module), in parallel with every other test of the package doing the same, so
+	// on a loaded machine it outlasts 30 s (it once did). The wait is long on purpose; the
+	// package's build-time cost is tracked in #26.
+	r.waitOut(t, "2 : Int\n", 1, 120*time.Second)
 	own := filepath.Join(scratchDir, fmt.Sprintf("repl-%d", os.Getpid()))
 	if _, err := os.Stat(filepath.Join(own, "scratch")); err != nil {
 		t.Errorf("the REPL's build: %v", err)

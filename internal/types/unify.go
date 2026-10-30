@@ -128,11 +128,16 @@ func (u *Unifier) Apply(t Type) Type {
 			}
 			return t.WithArgs(args)
 		}
+		if t.Flex != nil {
+			if d, decided := u.Subst[t.Flex.ID]; decided {
+				return u.Apply(d)
+			}
+		}
 		fs := make([]Field, len(t.Fields))
 		for i, f := range t.Fields {
 			fs[i] = Field{Name: f.Name, Type: u.Apply(f.Type), HasDefault: f.HasDefault, Default: f.Default}
 		}
-		return &Record{Fields: fs, Anonymous: true}
+		return &Record{Fields: fs, Anonymous: true, Flex: t.Flex}
 	}
 	return t
 }
@@ -253,7 +258,25 @@ func (u *Unifier) unify(a, b Type, widen bool) error {
 					return err
 				}
 			}
+			// two literals decide together; a literal meeting a declared structural type is
+			// structural for good
+			switch {
+			case x.Flex != nil && y.Flex != nil:
+				if x.Flex.ID != y.Flex.ID {
+					u.Subst[x.Flex.ID] = y
+				}
+			case x.Flex != nil:
+				u.Subst[x.Flex.ID] = y
+			case y.Flex != nil:
+				u.Subst[y.Flex.ID] = x
+			}
 			return nil
+		}
+		if x.Anonymous && x.Flex != nil && !y.Anonymous {
+			return u.decide(x, y, a, b, widen, false)
+		}
+		if y.Anonymous && y.Flex != nil && !x.Anonymous {
+			return u.decide(y, x, a, b, widen, true)
 		}
 		if x.Module == y.Module && x.Name == y.Name && !x.Anonymous && !y.Anonymous && len(x.Args) == len(y.Args) {
 			for i := range x.Args {
@@ -300,6 +323,36 @@ func (u *Unifier) unify(a, b Type, widen bool) error {
 		return u.unify(x.Result, y.Result, widen)
 	}
 	return mismatch(a, b)
+}
+
+// decide makes the undecided literal lit the nominal record nom when it has exactly nom's field
+// names (in any order) and each field's type unifies with nom's; else it returns the mismatch and
+// leaves the handle unbound. litIsB says the literal is unify's expected side (b), so each field
+// pair is unified in the order a, b.
+func (u *Unifier) decide(lit, nom *Record, a, b Type, widen, litIsB bool) error {
+	if len(lit.Fields) != len(nom.Fields) {
+		return mismatch(a, b)
+	}
+	byName := make(map[string]Type, len(nom.Fields))
+	for _, f := range nom.Fields {
+		byName[f.Name] = f.Type
+	}
+	for _, f := range lit.Fields {
+		if _, ok := byName[f.Name]; !ok {
+			return mismatch(a, b)
+		}
+	}
+	for _, f := range lit.Fields {
+		fa, fb := f.Type, byName[f.Name]
+		if litIsB {
+			fa, fb = fb, fa
+		}
+		if err := u.unify(fa, fb, widen); err != nil {
+			return err
+		}
+	}
+	u.Subst[lit.Flex.ID] = nom
+	return nil
 }
 
 // Instantiate replaces every Param with a fresh Var, consistently.
@@ -352,7 +405,12 @@ func (u *Unifier) Instantiate(t Type) Type {
 			for i, f := range t.Fields {
 				fs[i] = Field{Name: f.Name, Type: inst(f.Type), HasDefault: f.HasDefault, Default: f.Default}
 			}
-			return &Record{Fields: fs, Anonymous: true}
+			flex := t.Flex
+			if flex != nil && hasParam(t) {
+				// each instance has its own field types, so no one handle can stand for them all
+				flex = nil
+			}
+			return &Record{Fields: fs, Anonymous: true, Flex: flex}
 		}
 		return t
 	}
@@ -427,7 +485,49 @@ func subst(t Type, idx map[string]Type, inProgress map[string]*Record) Type {
 		for i, f := range t.Fields {
 			fs[i] = Field{Name: f.Name, Type: subst(f.Type, idx, inProgress), HasDefault: f.HasDefault, Default: f.Default}
 		}
-		return &Record{Module: t.Module, Name: t.Name, Fields: fs, Anonymous: t.Anonymous}
+		return &Record{Module: t.Module, Name: t.Name, Fields: fs, Anonymous: t.Anonymous, Flex: t.Flex}
 	}
 	return t
+}
+
+// hasParam reports whether t mentions a type parameter (outside a nominal record's declaration).
+func hasParam(t Type) bool {
+	switch t := t.(type) {
+	case *Param:
+		return true
+	case *App:
+		for _, a := range t.Args {
+			if hasParam(a) {
+				return true
+			}
+		}
+	case *Union:
+		for _, a := range t.Args {
+			if hasParam(a) {
+				return true
+			}
+		}
+	case *Fun:
+		for _, p := range t.Params {
+			if hasParam(p) {
+				return true
+			}
+		}
+		return hasParam(t.Result)
+	case *Record:
+		if !t.Anonymous {
+			for _, a := range t.Args {
+				if hasParam(a) {
+					return true
+				}
+			}
+			return false
+		}
+		for _, f := range t.Fields {
+			if hasParam(f.Type) {
+				return true
+			}
+		}
+	}
+	return false
 }

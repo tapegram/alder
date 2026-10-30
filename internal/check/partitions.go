@@ -447,6 +447,8 @@ func (c *Checker) m15Placement(d syntax.Decl) {
 		c.errorf(diag.InvalidDecl, d.Span, "`silo` is only allowed in `App`")
 	case *syntax.ChooseDecl:
 		c.errorf(diag.InvalidDecl, d.Span, "`choose` is only allowed in `App`")
+	case *syntax.ThemeDecl:
+		c.errorf(diag.ThemeDecl, d.Span, "`theme` is only allowed in `App`")
 	}
 }
 

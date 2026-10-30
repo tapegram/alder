@@ -1,0 +1,1 @@
+app/App.alder:10:18 E0042 `ring` is `var(--ring)` in `light`: a colour cannot be defined by itself; give it a colour value
