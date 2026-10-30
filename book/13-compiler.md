@@ -4228,7 +4228,18 @@ before reloading the browser). The router (`serveStatic` in
 written runtime has them) with `web.DesignSystemCache`,
 `Cache-Control: public, max-age=300, stale-while-revalidate=86400`, and a
 strong `ETag`, a SHA-256 of the bytes computed once; `http.ServeContent`
-answers a matching `If-None-Match` with `304 Not Modified`. An immutable
+answers a matching `If-None-Match` with `304 Not Modified`. An app that
+declares a `theme` (Appendix C, "Changing a token") changes one file of
+these: the checker has held every field to `internal/theme`'s table of
+tokens (E0042), the IR keeps the settings by CSS name (`ir.Theme`), and
+`theme.CSS` writes them as three one-line rules in the table's order. The
+generated `Web()` carries that text as `web.Options.Theme`, and
+`NewRouter` builds the served `al.css` once from it
+(`web.ThemedStylesheet`: the embedded bytes, a newline, the theme) with
+an ETag of its own; `buildkit.WriteDesignSystem` writes the same bytes to
+`static/al/al.css`, so the build directory and the server agree. Under
+`alder run` (`Options.Reload` set) `al.css` is sent `no-cache`, so an edit
+to the theme shows on the next load. An immutable
 header would be wrong there: the address stays `/static/al/al.css` across
 compiler upgrades, so a browser would keep an old stylesheet for a year.
 `no-cache`, what Alder sent before M13, made every page load wait for a
