@@ -141,3 +141,24 @@ capList x xs = match xs {
   [(Just x), Nothing] -> x,
   _ -> x,
 }
+
+-- nested patterns at any depth (#2)
+sum3 : List (Maybe Int) -> Int
+sum3 xs = match xs {
+  [Just m, Just s, Just p] -> m + s + p,
+  _ -> -1,
+}
+
+inner : Maybe (Maybe Int) -> Int
+inner m = match m {
+  Just (Just x) -> x,
+  Just Nothing -> 0,
+  Nothing -> -1,
+}
+
+heads : Maybe (List Int) -> Int
+heads m = match m {
+  Just [a, ..rest] -> a,
+  Just [] -> 0,
+  Nothing -> -1,
+}

@@ -1598,6 +1598,18 @@ func TestPatterns(t *testing.T) {
 	ints("capRec Nothing, 0", capRec(none, 0), 1)
 	ints("capList [Just 4, Nothing]", P__capList(1, []rt.Maybe[int64]{just(4), none}), 4)
 	ints("capList [Just 4]", P__capList(1, []rt.Maybe[int64]{just(4)}), 1)
+	// nested patterns at any depth (#2)
+	ints("sum3 [Just 1, Just 2, Just 3]", P__sum3([]rt.Maybe[int64]{just(1), just(2), just(3)}), 6)
+	ints("sum3 [Just 1, Nothing, Just 3]", P__sum3([]rt.Maybe[int64]{just(1), none, just(3)}), -1)
+	ints("sum3 []", P__sum3(nil), -1)
+	ints("sum3 [Just 1]", P__sum3([]rt.Maybe[int64]{just(1)}), -1)
+	ints("sum3 [Just 1, Just 2, Just 3, Just 4]", P__sum3([]rt.Maybe[int64]{just(1), just(2), just(3), just(4)}), -1)
+	ints("inner Just (Just 4)", P__inner(rt.Just(just(4))), 4)
+	ints("inner Just Nothing", P__inner(rt.Just(none)), 0)
+	ints("inner Nothing", P__inner(rt.Nothing[rt.Maybe[int64]]()), -1)
+	ints("heads Just [7, 8]", P__heads(rt.Just([]int64{7, 8})), 7)
+	ints("heads Just []", P__heads(rt.Just([]int64{})), 0)
+	ints("heads Nothing", P__heads(rt.Nothing[[]int64]()), -1)
 
 	// adv8
 	ints("both Just 1, Nothing", M__both(just(1), none), 1)
@@ -1646,6 +1658,32 @@ import "testing"
 func TestPayload(t *testing.T) {
 	if M__got != 7 || M__boxedText != "t" || M__plain != 4 || M__chain != 2 {
 		t.Errorf("got, boxedText, plain, chain = %d, %q, %d, %d", M__got, M__boxedText, M__plain, M__chain)
+	}
+}
+`)
+}
+
+// Nested patterns at any depth run first-match-wins (#2); parse is the issue's match, which the
+// filterMap-and-length workaround used to spell.
+func TestGen_RunNestedPatterns(t *testing.T) {
+	runGo(t, emit(t, "../../testdata/golden/gen_vet/n1-nested-patterns"), `package app
+
+import (
+	"slices"
+	"testing"
+)
+
+func TestNested(t *testing.T) {
+	if want := []int64{6, 4, 5, 3, 2, 9, 2}; !slices.Equal(M__values, want) {
+		t.Errorf("values = %v, want %v", M__values, want)
+	}
+	for in, want := range map[string]float64{"1 2 3": 6, "1 x 3": -1, "": -1, "1 2 3 4": -1} {
+		if got := M__parse(in); got != want {
+			t.Errorf("parse %q = %v, want %v", in, got, want)
+		}
+	}
+	if M__texts[0] != "e" {
+		t.Errorf("texts = %q", M__texts)
 	}
 }
 `)
