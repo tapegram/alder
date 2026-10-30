@@ -1,0 +1,24 @@
+module Index
+
+-- #9: Url.absolute is a page's URL with the public base in front, usable in a view.
+page "/" {
+  q: Text = "",
+}
+
+type Model = { q: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { q: params.q }
+
+view : Model -> Session -> Html Msg
+view model session =
+  <html><body><p id="self">{Url.absolute (Index { q: model.q })}</p><p id="home">{Url.absolute (Index {})}</p></body></html>
+
+test "the absolute URL of a page in a test starts with http://localhost:8080" =
+  Url.absolute (Index { q: "a b" }) == "http://localhost:8080/?q=a+b"
+
+test "a page at its defaults leaves the parameter out" =
+  Url.absolute (Index {}) == "http://localhost:8080/"
+
+test "an external page is its URL" =
+  Url.absolute (Url.external "https://ex.com/a") == "https://ex.com/a"

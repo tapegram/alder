@@ -120,6 +120,17 @@ func UrlExternal(u string) rt.Page {
 	return rt.Page{Path: u}
 }
 
+// UrlAbsolute is `Url.absolute`: the page's URL (rt.PageURL, what `href` renders) with the
+// public base (rt.PublicURL) in front when it is a path of this site; any other page (an
+// external URL, a fragment, a sanitised "#") is its URL unchanged.
+func UrlAbsolute(p rt.Page) string {
+	u := rt.PageURL(p)
+	if strings.HasPrefix(u, "/") {
+		return rt.PublicURL + u
+	}
+	return u
+}
+
 // NavNoticed is `Nav.noticed text nav`: nav's answer with a toast showing text.
 func NavNoticed(t string, n rt.Nav) rt.Nav { return rt.Noticed(t, n) }
 

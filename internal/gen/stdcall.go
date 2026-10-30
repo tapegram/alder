@@ -215,6 +215,7 @@ var StdCalls = map[string]string{
 	"Notice.with": "std.NavNoticed",
 	// Url
 	"Url.external": "std.UrlExternal",
+	"Url.absolute": "std.UrlAbsolute",
 	// effects
 	"Session.put": "std.SessionPut",
 	"Log.info":    "std.LogInfo",
