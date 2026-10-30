@@ -1222,8 +1222,9 @@ Test.advance  : Int -> Task Unit
   `setClock` moves it again, backwards too; the clock is the test's.
 - `Test.advance ms` moves the clock `ms` milliseconds forward, the unit
   of `Time.toMillis` and `Query.delay`. A negative `ms` counts as 0 (to
-  go back, set the clock again), and there is no upper limit: advancing
-  a day is the point. A clock that ticks keeps ticking after an advance,
+  go back, set the clock again), and there is no practical upper limit
+  (advancing a day is the point; anything past about 292 years stops
+  there rather than wrapping into the past). A clock that ticks keeps ticking after an advance,
   and a set one stays still.
 - A `Query.delay` or `Task.sleep` still moves the clock by its delay,
   set or not, and the pages a test requests through the browser read the
