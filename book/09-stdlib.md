@@ -196,7 +196,10 @@ behaves as it does there. `Float.truncate` rounds toward zero.
 
 A `Float` literal may carry an exponent: `1.5e-3`, `1e6` and `2E+3`. Any
 literal with an exponent is a `Float`, including `1e6`. `Text.toFloat` reads
-the same form, and `Text.fromFloat` output is unchanged.
+the same form, and `Text.fromFloat` output is unchanged. An `Int` literal
+that does not fit in 64 bits (above `9223372036854775807`) is an error, and a
+`Float` literal that overflows to infinity is one too; the smallest `Int` is
+written `-9223372036854775808` (the `-` directly on the literal, not `-(…)`).
 
 `Float.round` rounds half away from zero: `Float.round 2.5` is `3` and
 `Float.round (-2.5)` is `-3`. `Float.format { decimals: n }` rounds the same
