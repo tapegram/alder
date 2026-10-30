@@ -97,7 +97,7 @@ the language is more than the problem needs. Values are trimmed, otherwise emitt
 alder-ui's value in the other (a light-only app sets `light` alone). Shadows are theme-wide
 **(call)**: shadcn's are the same in both schemes. `radius` alone keeps shadcn's derived ratios.
 
-## Checking (E0040 `ThemeDecl`, one code as `deploy` has E0030)
+## Checking (E0042 `ThemeDecl`, one code as `deploy` has E0030)
 
 Every refusal names the fix. In source order:
 
@@ -185,8 +185,8 @@ The AA-strict border override (Appendix C) is two theme fields, `input` and `bor
   `ThemeDecl` of the last good build: `light`, `dark` and the top-level tokens at depth 0, the
   colour tokens inside `light`/`dark`, each inserted as `name: ` with the CSS name and kind as
   detail. Hover on a theme field: the CSS name, kind, and alder-ui's default light and dark
-  values from `Defaults`. Diagnostics flow through `alder check` as E0040 does.
-- `internal/diag/explain.go`: the E0040 entry (what a theme is, the kinds, where colours go,
+  values from `Defaults`. Diagnostics flow through `alder check` as E0042 does.
+- `internal/diag/explain.go`: the E0042 entry (what a theme is, the kinds, where colours go,
   the removed-token answer).
 - Book: Appendix C "Changing a token" is rewritten to lead with `theme` (the example above, the
   table of fields and kinds, the cascade: layered al.css < theme < app.css, the AA-strict
@@ -201,13 +201,13 @@ The AA-strict border override (Appendix C) is two theme fields, `input` and `bor
 | layer | files |
 |---|---|
 | AST, parser | `internal/syntax/ast.go` (`ThemeDecl`; `DeployValue.Kind` `"record"`), `parser.go` (contextual `theme`, record value), `parser_test.go` |
-| checker | new `internal/check/theme.go` (as `deploy.go`), `decls.go` (collect in `defineApp`; App-only), `internal/diag/diag.go` (E0040), `explain.go` |
+| checker | new `internal/check/theme.go` (as `deploy.go`), `decls.go` (collect in `defineApp`; App-only), `internal/diag/diag.go` (E0042), `explain.go` |
 | token table | new `internal/theme/{theme.go,css.go,theme_test.go}` |
 | IR | `internal/ir/ir.go`, `lower.go`, new `lower_theme.go`, `dump.go` |
 | gen, runtime | `internal/gen/caps.go` (`Theme:` in `Web()`), `rt/web/router.go` (`Options.Theme`, served `al.css`, dev `no-cache`), `internal/buildkit/buildkit.go` and its three callers |
 | formatter, grammar | `internal/format/print_decl.go`, `format_test.go`; `tree-sitter-alder/grammar.js`, `queries/highlights.scm`, `test/corpus/declarations.txt` |
 | LSP | `internal/lsp/complete.go`, `hover.go`, tests |
-| corpus, goldens | `testdata/corpus/theme-ok`, `E0040-*` (one per message above), `testdata/golden/gen_theme`, `check_app` |
+| corpus, goldens | `testdata/corpus/theme-ok`, `E0042-*` (one per message above), `testdata/golden/gen_theme`, `check_app` |
 | book, examples | `book/C-design-system.md`, `03-syntax.md`, `appendix_test.go`, `book/site`; `examples/blog/app/App.alder` |
 
 ## Verification (tests named by behaviour)
