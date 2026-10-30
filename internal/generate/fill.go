@@ -42,33 +42,11 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 	} else if len(ds) > 0 {
 		return nil, nil, nil, Refusef("`alder fill` takes one expression; standard input does not parse as one: %s (line %d, column %d)", ds[0].Message, ds[0].Span.Start.Line, ds[0].Span.Start.Col)
 	}
-	mod, decl, arm, err := parseAddress(p, address)
+	h, in, err := findHole(p, address, hole)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	hole = strings.TrimPrefix(hole, "?")
-	var in, named []Hole
-	for _, h := range HoleIndex(p.Prog, p.Diags) {
-		if h.Module == mod && h.Decl == decl && (arm == "" || h.Arm == arm) {
-			in = append(in, h)
-			if hole == "" || h.Name == hole {
-				named = append(named, h)
-			}
-		}
-	}
-	switch {
-	case len(in) == 0 && arm != "":
-		return nil, nil, nil, Refusef("`%s` has no typed hole: a fill replaces a hole, and this arm has none; to rewrite it, give `alder fill --decl %s.update -` the whole `match msg { … }` (`alder fill --list` lists the app's holes)", address, mod)
-	case len(in) == 0:
-		return nil, nil, nil, Refusef("`%s` has no typed hole; to rewrite it whole, `alder fill --decl %s -` (`alder fill --list` lists the app's holes)", address, shellAddress(address))
-	case len(named) == 0:
-		return nil, nil, nil, Refusef("`%s` has no hole `?%s` (it has %s)", address, hole, holeNames(in))
-	case len(named) > 1 && hole == "":
-		return nil, nil, nil, Refusef("`%s` has %d holes (%s): name one with --hole", address, len(named), holeNames(named))
-	case len(named) > 1:
-		return nil, nil, nil, Refusef("`%s` has %d holes named `?%s`: fill them one at a time by naming a declaration that holds one", address, len(named), hole)
-	}
-	h = &named[0]
 	m := p.Modules[h.Module]
 	if err := fillShape(m, h, parsed, hole); err != nil {
 		return nil, nil, nil, err
@@ -122,6 +100,45 @@ func Fill(p *Program, address, hole, expr string) (edits []Edit, h *Hole, import
 		return nil, nil, nil, err
 	}
 	return []Edit{{Path: m.File, Body: e.result()}}, h, imports, nil
+}
+
+// FindHole is the typed hole that `alder fill <address>` (with --hole hole, "" for none, `?name`
+// or `name`) would fill, with Fill's refusals: an address that names no declaration with a
+// hole, a hole the declaration does not have, several holes and none named.
+func FindHole(p *Program, address, hole string) (*Hole, error) {
+	h, _, err := findHole(p, address, hole)
+	return h, err
+}
+
+// findHole is FindHole, with every hole of the declaration (in).
+func findHole(p *Program, address, hole string) (h *Hole, in []Hole, err error) {
+	mod, decl, arm, err := parseAddress(p, address)
+	if err != nil {
+		return nil, nil, err
+	}
+	hole = strings.TrimPrefix(hole, "?")
+	var named []Hole
+	for _, h := range HoleIndex(p.Prog, p.Diags) {
+		if h.Module == mod && h.Decl == decl && (arm == "" || h.Arm == arm) {
+			in = append(in, h)
+			if hole == "" || h.Name == hole {
+				named = append(named, h)
+			}
+		}
+	}
+	switch {
+	case len(in) == 0 && arm != "":
+		return nil, nil, Refusef("`%s` has no typed hole: a fill replaces a hole, and this arm has none; to rewrite it, give `alder fill --decl %s.update -` the whole `match msg { … }` (`alder fill --list` lists the app's holes)", address, mod)
+	case len(in) == 0:
+		return nil, nil, Refusef("`%s` has no typed hole; to rewrite it whole, `alder fill --decl %s -` (`alder fill --list` lists the app's holes)", address, shellAddress(address))
+	case len(named) == 0:
+		return nil, nil, Refusef("`%s` has no hole `?%s` (it has %s)", address, hole, holeNames(in))
+	case len(named) > 1 && hole == "":
+		return nil, nil, Refusef("`%s` has %d holes (%s): name one with --hole", address, len(named), holeNames(named))
+	case len(named) > 1:
+		return nil, nil, Refusef("`%s` has %d holes named `?%s`: fill them one at a time by naming a declaration that holds one", address, len(named), hole)
+	}
+	return &named[0], in, nil
 }
 
 // fillImports adds to e the imports of the modules of the app that expr names, by their full
