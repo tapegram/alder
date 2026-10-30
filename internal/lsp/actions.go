@@ -64,7 +64,9 @@ type generatorHere struct {
 // unchanged since that build through the fix's end line, then every generator that applies at
 // range.start in the last good build when range.start's line is unchanged too (as hereAt). A
 // generator's action carries the client command alder.generate (Ruling R8), which the server
-// itself never runs.
+// itself never runs. Before the generators, on a hole of that build, `Fill ?h with AI (T)`: a
+// quick fix on the hole's W0002 carrying alder.fill, which the server runs (#46); offered only
+// to a client that declared workspace.applyEdit.
 func codeActionReq(s *server, params json.RawMessage) (any, error) {
 	var p codeActionParams
 	if err := json.Unmarshal(params, &p); err != nil {
@@ -105,7 +107,13 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 	if !freshLines(a, rel, now, start.Line+1, true) {
 		return out, nil // the line or one above it has changed since the last good build
 	}
-	ctx := hereCtx(a, rel, diag.Pos{Line: start.Line + 1, Col: start.Character + 1})
+	pos := diag.Pos{Line: start.Line + 1, Col: start.Character + 1}
+	ctx := hereCtx(a, rel, pos)
+	if ctx.Hole != "" && s.applyEdit { // the edit comes back as workspace/applyEdit: nothing else carries it
+		if act, ok := s.fillAction(a, rel, ctx, pos); ok {
+			out = append(out, act)
+		}
+	}
 	for _, spec := range generate.Specs() {
 		if spec.Here == nil {
 			continue
@@ -258,12 +266,16 @@ type executeCommandParams struct {
 	Arguments []json.RawMessage `json:"arguments"`
 }
 
-// executeCommandReq answers workspace/executeCommand. The one command is alder.explain [code]:
-// the code's explanation, as `alder explain` prints it, or its error for an unknown code.
+// executeCommandReq answers workspace/executeCommand: alder.explain [code], the code's
+// explanation, as `alder explain` prints it, or its error for an unknown code; alder.fill
+// [{uri, version, address, hole}], a fill started (fillCommand).
 func executeCommandReq(s *server, params json.RawMessage) (any, error) {
 	var p executeCommandParams
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, &rpcError{codeInvalidParams, err.Error()}
+	}
+	if p.Command == "alder.fill" {
+		return s.fillCommand(p.Arguments)
 	}
 	if p.Command != "alder.explain" {
 		return nil, &rpcError{codeInvalidParams, "unknown command " + p.Command}

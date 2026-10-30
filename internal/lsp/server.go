@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"alder/internal/fill"
 	"alder/internal/version"
 )
 
@@ -25,6 +26,10 @@ type Options struct {
 	Debounce time.Duration                            // rebuild delay after a change; 0 in tests
 	Poll     time.Duration                            // disk poll interval; 0 disables
 	Migrate  func(dir, slug string) ([]string, error) // generate.App.Migrate
+	// Fill gives the model backend of the alder.fill command and its name for the progress
+	// ("claude-opus-5-5"), read when a fill starts (fill.Env, so nothing reads a key before
+	// one): a nil Backend, or a nil Fill, when nothing is configured.
+	Fill func() (fill.Backend, string)
 }
 
 // handler answers one request: its result (nil is null), or an error (a *rpcError as is, any
@@ -78,6 +83,15 @@ type server struct {
 	bg        sync.WaitGroup           // the analysis goroutine, the poller and the scratch runs
 	scratch   scratchRuns              // the runs of the open scratch documents
 
+	// the server's own requests to the client (request): the next id, and the waiters by idKey
+	reqSeq  atomic.Int64
+	pendMu  sync.Mutex
+	pending map[string]chan *message
+	filling atomic.Bool // an alder.fill is running (one at a time)
+
+	// the client's capabilities, set by initialize (before any worker reads them)
+	applyEdit, workDoneProgress bool
+
 	// reader goroutine only
 	initialized bool
 	started     bool // initialized has started the analysis goroutine
@@ -99,7 +113,7 @@ func newServer(w io.Writer, o Options) *server {
 	}
 	return &server{o: o, c: &conn{w: w, wire: o.Wire},
 		fast: make(chan *message, queueLen), slow: make(chan *message, queueLen),
-		tokens: make(chan struct{}, 1), stop: make(chan struct{})}
+		tokens: make(chan struct{}, 1), stop: make(chan struct{}), pending: map[string]chan *message{}}
 }
 
 // serve is the reader loop. When it returns, the workers have answered every queued request and
@@ -144,10 +158,12 @@ func (s *server) dispatch(m *message) (exit bool) {
 	switch {
 	case m.Method == "" && m.JSONRPC == "" && m.Error != nil: // readMessage's parse error
 		s.reply(nil, nil, m.Error)
+	case m.Method == "" && m.ID != nil && s.answered(m):
+		// the response to one of the server's own requests
 	case m.Method == "" && m.ID != nil && m.Result == nil && m.Error == nil:
 		s.reply(m.ID, nil, &rpcError{codeInvalidRequest, "no method"})
 	case m.Method == "":
-		// a response: the server sends no requests
+		// a response to no request the server is waiting for
 	case m.ID == nil:
 		return s.notification(m)
 	case !s.initialized && m.Method != "initialize", s.shutdown:
@@ -260,6 +276,51 @@ func (s *server) reply(id *json.RawMessage, result any, err error) {
 	}
 }
 
+// request sends the client a request and waits for its response: the result, or the client's
+// error. It returns an error when the server stops first. Workers and background goroutines
+// call it; the reader goroutine never does (it routes the response).
+func (s *server) request(method string, params any) (json.RawMessage, error) {
+	id, _ := json.Marshal(fmt.Sprintf("alder-%d", s.reqSeq.Add(1)))
+	key := idKey(id)
+	ch := make(chan *message, 1)
+	s.pendMu.Lock()
+	s.pending[key] = ch
+	s.pendMu.Unlock()
+	defer func() {
+		s.pendMu.Lock()
+		delete(s.pending, key)
+		s.pendMu.Unlock()
+	}()
+	if err := s.c.send(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(id), "method": method, "params": params}); err != nil {
+		return nil, err
+	}
+	select {
+	case m := <-ch:
+		if m.Error != nil {
+			return nil, m.Error
+		}
+		return m.Result, nil
+	case <-s.stop:
+		return nil, errors.New("the server stopped")
+	}
+}
+
+// answered hands a response to the request of the server's that waits for it, and reports
+// whether one did.
+func (s *server) answered(m *message) bool {
+	s.pendMu.Lock()
+	ch := s.pending[idKey(*m.ID)]
+	s.pendMu.Unlock()
+	if ch == nil {
+		return false
+	}
+	select {
+	case ch <- m:
+	default: // answered twice: the first answer counts
+	}
+	return true
+}
+
 // initialize records the root (rootUri, else rootPath) and answers the capabilities.
 func (s *server) initialize(params json.RawMessage) (any, error) {
 	if s.initialized {
@@ -287,6 +348,8 @@ func (s *server) initialize(params json.RawMessage) (any, error) {
 		}
 		s.root, s.rootReal = root, real
 	}
+	s.applyEdit = p.Capabilities.Workspace.ApplyEdit
+	s.workDoneProgress = p.Capabilities.Window.WorkDoneProgress
 	s.initialized = true
 	return map[string]any{
 		"capabilities": capabilities(),
