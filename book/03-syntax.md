@@ -359,8 +359,29 @@ match xs {
 }
 ```
 
-Patterns do not nest more than one level deep, except for records. Match on
-the inner value in a second `match`.
+Patterns nest at any depth: a constructor, list, record, literal, wildcard or
+variable may stand inside a list element, a record field or a constructor's
+argument.
+
+```alder eval=6
+let parts = Text.words "1 2 3" |> List.map Text.toInt
+match parts {
+  [Just a, Just b, Just c] -> a + b + c,   -- exactly three numbers
+  _ -> 0,
+}
+```
+
+List elements and record fields take any pattern bare: `[Just m, Nothing]`,
+`{ left: Just a, right: _ }`. A constructor's argument that is itself an
+applied constructor or a negative number needs parentheses, `Just (Just x)`,
+`Just (-1)`, as in an expression; a list argument does not, `Just [a, ..rest]`.
+Arms are tried top to bottom and the first whose whole pattern matches runs.
+
+The checker proves nested matches exhaustive too. Without the `_` arm above,
+the error lists every missing case as a pattern you can paste, `_` standing
+for any value and `..rest` for any tail: `` `[]` ``,
+`` `[Nothing, ..rest]` ``, `` `[Just _]` ``, … An arm that earlier arms already
+cover in full, such as `[Just 1]` after `[Just x]`, is an error (E0310).
 
 ## Blocks
 

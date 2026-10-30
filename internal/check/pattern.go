@@ -1,4 +1,4 @@
-// Pattern checking and exhaustiveness.
+// Pattern checking, exhaustiveness and redundancy.
 package check
 
 import (
@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"alder/internal/diag"
+	"alder/internal/format"
 	"alder/internal/syntax"
 	"alder/internal/types"
 )
@@ -57,10 +58,6 @@ func (mc *modCtx) checkPattern(p syntax.Pattern, t types.Type, env *env) {
 		}
 		if arg == nil {
 			c.errorf(diag.TypeMismatch, p.Span, "constructor `%s` carries no value", p.Name)
-			return
-		}
-		if inner, isCtor := p.Arg.(*syntax.PCtor); isCtor && inner.Arg != nil {
-			c.errorf(diag.ParseError, inner.Span, "patterns nest one level; match on `x` in a second `match`")
 			return
 		}
 		mc.checkPattern(p.Arg, arg, env)
@@ -123,164 +120,67 @@ func (mc *modCtx) bindPoison(p syntax.Pattern, env *env) {
 	}
 }
 
-// ---- exhaustiveness
+// ---- exhaustiveness and redundancy
 
-type exhaustiveness struct {
-	mc       *modCtx
-	subject  types.Type
-	ctors    map[string]bool // for unions: covered ctor names
-	bools    map[bool]bool
-	listNil  bool
-	listCons bool
-	closed   bool   // a wildcard/var arm has been seen, or every case is covered
-	kind     string // "union" | "bool" | "list" | "record" | "error" (poison subject) | "other"
-	all      []string
-}
+// maxWitnesses caps the missing cases an E0004 or E0302 lists when some case is nested: past it
+// the message ends `, …` and the fix inserts those cases and a `_ -> ?todo` arm (nested cases
+// can be exponentially many). A flat match lists every case, as it always did, with an arm each.
+const maxWitnesses = 8
 
-func newExhaustiveness(mc *modCtx, subject types.Type) *exhaustiveness {
-	ex := &exhaustiveness{mc: mc, subject: subject, ctors: map[string]bool{}, bools: map[bool]bool{}, kind: "other"}
-	if types.IsErr(subject) { // its error is already reported; no arm is missing or unreachable
-		ex.kind, ex.closed = "error", true
-		return ex
-	}
-	switch t := subject.(type) {
-	case *types.Union:
-		ex.kind = "union"
-		for _, ct := range t.Constructors() {
-			ex.all = append(ex.all, ct.Name)
-		}
-	case *types.Con:
-		if t.Name == "Bool" {
-			ex.kind = "bool"
-		}
-	case *types.App:
-		if t.Con == "List" {
-			ex.kind = "list"
-		}
-	case *types.Record:
-		ex.kind = "record"
-	}
-	return ex
-}
-
-// refresh re-derives the kind once pattern checking has refined an initially unbound subject type.
-func (ex *exhaustiveness) refresh(subject types.Type) {
-	if ex.kind != "other" || ex.closed {
+// checkArms reports, once every arm's pattern is checked against the subject's type subj, the
+// arms no value can reach (E0310) and the values no arm matches (E0004, or E0302 for a page's
+// `update` on its `Msg`), by usefulness (usefulness.go). A poison subject reports nothing.
+func (mc *modCtx) checkArms(subj types.Type, m *syntax.Match) {
+	c := mc.c
+	subj = c.u.Apply(subj)
+	if types.IsErr(subj) {
 		return
 	}
-	*ex = *newExhaustiveness(ex.mc, ex.mc.c.u.Apply(subject))
-}
-
-func (ex *exhaustiveness) cover(p syntax.Pattern) {
-	switch p := p.(type) {
-	case *syntax.PWild, *syntax.PVar:
-		ex.closed = true
-	case *syntax.PRecord:
-		if irrefutable(p) {
-			ex.closed = true
-		}
-	case *syntax.PCtor:
-		if ex.kind == "union" {
-			if !ex.closed && ex.ctors[p.Name] && irrefutable(p.Arg) {
-				ex.mc.c.errorf(diag.UnreachableArm, p.Span, "unreachable arm: `%s` is already handled", p.Name)
-			}
-			if irrefutable(p.Arg) {
-				ex.ctors[p.Name] = true
-			}
-			if len(ex.ctors) == len(ex.all) {
-				ex.closed = true
+	mt := &matcher{apply: c.u.Apply}
+	tys := []types.Type{subj}
+	var rows [][]*pat
+	for _, a := range m.Arms {
+		q := mt.normalise(a.Pat, subj)
+		if !q.bad() && !mt.useful(rows, []*pat{q}, tys) {
+			if _, open := mt.missing(rows, tys, true); !open {
+				c.errorf(diag.UnreachableArm, a.Span, "unreachable arm: every case is already handled")
+			} else {
+				c.errorf(diag.UnreachableArm, a.Pat.GetSpan(), "unreachable arm: `%s` is already handled", format.Pattern(mc.m, a.Pat))
 			}
 		}
-	case *syntax.PLit:
-		if b, ok := p.Lit.(*syntax.BoolLit); ok {
-			ex.bools[b.Value] = true
-			if ex.bools[true] && ex.bools[false] {
-				ex.closed = true
-			}
-		}
-	case *syntax.PList:
-		if len(p.Elems) == 0 && p.Rest == "" {
-			ex.listNil = true
-		} else if len(p.Elems) == 1 && p.Rest != "" && irrefutable(p.Elems[0]) {
-			ex.listCons = true
-		}
-		if ex.listNil && ex.listCons {
-			ex.closed = true
-		}
+		rows = append(rows, []*pat{q})
 	}
-}
-
-func irrefutable(p syntax.Pattern) bool {
-	switch p := p.(type) {
-	case nil, *syntax.PWild, *syntax.PVar:
-		return true
-	case *syntax.PRecord:
-		for _, f := range p.Fields {
-			if !irrefutable(f.Pat) {
-				return false
-			}
-		}
-		return true
-	}
-	return false
-}
-
-func (ex *exhaustiveness) report(m *syntax.Match) {
-	if ex.closed {
+	ws, more := mt.witnesses(rows, subj, maxWitnesses)
+	if len(ws) == 0 {
 		return
 	}
-	var missing []string
-	switch ex.kind {
-	case "union":
-		for _, n := range ex.all {
-			if !ex.ctors[n] {
-				missing = append(missing, n)
-			}
-		}
-	case "bool":
-		for _, b := range []bool{true, false} {
-			if !ex.bools[b] {
-				missing = append(missing, map[bool]string{true: "True", false: "False"}[b])
-			}
-		}
-	case "list":
-		if !ex.listNil {
-			missing = append(missing, "[]")
-		}
-		if !ex.listCons {
-			missing = append(missing, "[x, ..rest]")
-		}
-	case "record":
-		return
-	default:
+	un, _ := subj.(*types.Union)
+	isUpdate := un != nil && mc.inUpdate && un.Name == "Msg"
+	payload := "x"
+	if isUpdate {
+		payload = "p"
+	}
+	missing := make([]string, len(ws))
+	quoted := make([]string, len(ws))
+	for i, w := range ws {
+		missing[i] = printWitness(w, payload)
+		quoted[i] = "`" + printWitness(w, "") + "`"
+	}
+	if more { // the fix ends with a catch-all, so applying it still makes the match exhaustive
 		missing = append(missing, "_")
 	}
-	if len(missing) == 0 {
-		return
-	}
-	quoted := make([]string, len(missing))
-	for i, n := range missing {
-		quoted[i] = "`" + n + "`"
+	list := strings.Join(quoted, ", ")
+	if more {
+		list += ", …"
 	}
 	var d *diag.Diagnostic
-	isUpdate := false
-	if un, ok := ex.subject.(*types.Union); ok && ex.mc.inUpdate && un.Name == "Msg" {
-		isUpdate = true
-		d = ex.mc.c.errorf("E0302", m.Span, "`update` does not handle %s", strings.Join(quoted, ", "))
+	if isUpdate {
+		d = c.errorf("E0302", m.Span, "`update` does not handle %s", list)
 	} else {
-		d = ex.mc.c.errorf(diag.NonExhaustive, m.Span, "missing cases: %s", strings.Join(quoted, ", "))
+		d = c.errorf(diag.NonExhaustive, m.Span, "missing cases: %s", list)
 	}
 	var arms []string
 	for _, name := range missing {
-		if ex.kind == "union" {
-			if arg, _ := types.CtorArg(ex.subject.(*types.Union), name); arg != nil {
-				if isUpdate {
-					name += " p"
-				} else {
-					name += " x"
-				}
-			}
-		}
 		arms = append(arms, fmt.Sprintf("  %s -> ?todo,", name))
 	}
 	brace := diag.Pos{Line: m.Span.End.Line, Col: m.Span.End.Col - 1} // the closing `}`
@@ -300,7 +200,7 @@ func (ex *exhaustiveness) report(m *syntax.Match) {
 		text := ", " + strings.Join(trimmed, " ") + " "
 		if last.Span.End.Line < brace.Line {
 			indent := ""
-			if line := lineOf(ex.mc.m, brace.Line); brace.Col-1 <= len(line) && strings.TrimSpace(line[:brace.Col-1]) == "" {
+			if line := lineOf(mc.m, brace.Line); brace.Col-1 <= len(line) && strings.TrimSpace(line[:brace.Col-1]) == "" {
 				indent = line[:brace.Col-1]
 			}
 			text = ",\n" + strings.Join(arms, "\n") + "\n" + indent

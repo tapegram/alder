@@ -69,10 +69,10 @@ lparam      = lname | "(" lname ":" type ")" ;
 ifExpr      = "if" expr "then" expr "else" expr ;
 matchExpr   = "match" expr "{" {arm ","} [arm] "}" ;
 arm         = pattern "->" expr ;
-pattern     = "_" | literal | lname | uname [pattern1] | recordPat | listPat ;
-pattern1    = "_" | literal | lname | uname | recordPat ;
-recordPat   = "{" {lname ":" pattern1 ","} [lname ":" pattern1] "}" ;
-listPat     = "[" "]" | "[" lname {"," lname} ["," ".." lname] "]" ;
+pattern     = "_" | literal | lname | uname [pattern1] | recordPat | listPat | "(" pattern ")" ;
+pattern1    = "_" | literal | lname | uname | recordPat | listPat | "(" pattern ")" ;
+recordPat   = "{" {lname ":" pattern ","} [lname ":" pattern] "}" ;
+listPat     = "[" [pattern {"," pattern}] ["," ".." lname] "]" | "[" ".." lname "]" ;
 block       = "{" {stmt NL} expr "}" ;
 stmt        = "let" lname [":" type] ("=" | "<-") expr ;
 

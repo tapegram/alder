@@ -1,0 +1,8 @@
+module Shapes
+
+-- A record subject whose arms are all refutable is not exhaustive (#2); it used to pass.
+area : { w: Int, h: Maybe Int } -> Int
+area r = match r {
+  { w: 0 } -> 0,
+  { w: w, h: Just h } -> w * h,
+}
