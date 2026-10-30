@@ -24,3 +24,22 @@ toInt : Text -> Maybe Int
 toFloat : Text -> Maybe Float
 -- the text's UTF-8 bytes
 toBytes : Text -> Bytes
+padLeft : Int -> Text -> Text -> Text
+padRight : Int -> Text -> Text -> Text
+-- the first n code points
+left : Int -> Text -> Text
+-- the last n code points
+right : Int -> Text -> Text
+dropLeft : Int -> Text -> Text
+dropRight : Int -> Text -> Text
+repeat : Int -> Text -> Text
+reverse : Text -> Text
+trimLeft : Text -> Text
+trimRight : Text -> Text
+concat : List Text -> Text
+lines : Text -> List Text
+words : Text -> List Text
+-- Text.indexes needle haystack: every code-point offset, overlaps included
+indexes : Text -> Text -> List Int
+toCodePoints : Text -> List Int
+fromCodePoints : List Int -> Text

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 	"unicode/utf8"
 
 	"alder/rt"
@@ -118,3 +119,137 @@ func NavNoticed(t string, n rt.Nav) rt.Nav { return rt.Noticed(t, n) }
 
 // TextToBytes is the text's UTF-8 bytes.
 func TextToBytes(s string) []byte { return []byte(s) }
+
+func clampCount(n, length int64) int64 { return min(max(n, 0), length) }
+
+// TextPadLeft is `Text.padLeft n pad s`: Text.right n (repeat n pad ++ s)
+// unless s already has n code points or pad is empty.
+func TextPadLeft(n int64, pad, s string) string {
+	if pad == "" || int64(utf8.RuneCountInString(s)) >= n {
+		return s
+	}
+	return TextRight(n, TextRepeat(n, pad)+s)
+}
+
+// TextPadRight is `Text.padRight n pad s`: Text.left n (s ++ repeat n pad)
+// unless s already has n code points or pad is empty.
+func TextPadRight(n int64, pad, s string) string {
+	if pad == "" || int64(utf8.RuneCountInString(s)) >= n {
+		return s
+	}
+	return TextLeft(n, s+TextRepeat(n, pad))
+}
+
+// TextLeft is the first n code points.
+func TextLeft(n int64, s string) string {
+	rs := []rune(s)
+	return string(rs[:clampCount(n, int64(len(rs)))])
+}
+
+// TextRight is the last n code points.
+func TextRight(n int64, s string) string {
+	rs := []rune(s)
+	l := int64(len(rs))
+	return string(rs[l-clampCount(n, l):])
+}
+
+// TextDropLeft drops the first n code points.
+func TextDropLeft(n int64, s string) string {
+	rs := []rune(s)
+	return string(rs[clampCount(n, int64(len(rs))):])
+}
+
+// TextDropRight drops the last n code points.
+func TextDropRight(n int64, s string) string {
+	rs := []rune(s)
+	l := int64(len(rs))
+	return string(rs[:l-clampCount(n, l)])
+}
+
+// TextRepeat repeats s n times; n <= 0 gives "".
+func TextRepeat(n int64, s string) string {
+	if n <= 0 {
+		return ""
+	}
+	return strings.Repeat(s, int(n))
+}
+
+// TextReverse reverses the code points.
+func TextReverse(s string) string {
+	rs := []rune(s)
+	for i, j := 0, len(rs)-1; i < j; i, j = i+1, j-1 {
+		rs[i], rs[j] = rs[j], rs[i]
+	}
+	return string(rs)
+}
+
+func TextTrimLeft(s string) string { return strings.TrimLeftFunc(s, unicode.IsSpace) }
+
+func TextTrimRight(s string) string { return strings.TrimRightFunc(s, unicode.IsSpace) }
+
+// TextConcat is `Text.join ""`.
+func TextConcat(xs []string) string { return strings.Join(xs, "") }
+
+// TextLines splits on "\n", strips a trailing "\r" from each line and drops
+// the empty line after a final "\n".
+func TextLines(s string) []string {
+	if s == "" {
+		return []string{}
+	}
+	parts := strings.Split(s, "\n")
+	if parts[len(parts)-1] == "" {
+		parts = parts[:len(parts)-1]
+	}
+	for i, p := range parts {
+		parts[i] = strings.TrimSuffix(p, "\r")
+	}
+	return parts
+}
+
+// TextWords splits on runs of whitespace.
+func TextWords(s string) []string {
+	ws := strings.Fields(s)
+	if ws == nil {
+		return []string{}
+	}
+	return ws
+}
+
+// TextIndexes is `Text.indexes needle haystack`: every code-point offset
+// where needle starts, overlapping included; an empty needle gives [].
+func TextIndexes(needle, hay string) []int64 {
+	out := []int64{}
+	if needle == "" {
+		return out
+	}
+	h, nd := []rune(hay), []rune(needle)
+	for i := 0; i+len(nd) <= len(h); i++ {
+		if string(h[i:i+len(nd)]) == needle {
+			out = append(out, int64(i))
+		}
+	}
+	return out
+}
+
+// TextToCodePoints is the text's code points.
+func TextToCodePoints(s string) []int64 {
+	out := []int64{}
+	for _, r := range s {
+		out = append(out, int64(r))
+	}
+	return out
+}
+
+// TextFromCodePoints builds text from code points; invalid scalar values
+// become U+FFFD.
+func TextFromCodePoints(xs []int64) string {
+	var b strings.Builder
+	for _, x := range xs {
+		if x < 0 || x > unicode.MaxRune || (x >= 0xD800 && x <= 0xDFFF) {
+			b.WriteRune(utf8.RuneError)
+		} else {
+			b.WriteRune(rune(x))
+		}
+	}
+	return b.String()
+}

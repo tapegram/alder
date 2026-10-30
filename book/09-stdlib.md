@@ -88,6 +88,22 @@ Text.fromFloat : Float -> Text
 Text.toInt     : Text -> Maybe Int
 Text.toFloat   : Text -> Maybe Float
 Text.toBytes   : Text -> Bytes               -- the UTF-8 bytes (chapter 9, "File, Bytes")
+Text.padLeft   : Int -> Text -> Text -> Text -- Text.padLeft 2 "0" "7" == "07"
+Text.padRight  : Int -> Text -> Text -> Text
+Text.left      : Int -> Text -> Text         -- first n code points
+Text.right     : Int -> Text -> Text         -- last n code points
+Text.dropLeft  : Int -> Text -> Text
+Text.dropRight : Int -> Text -> Text
+Text.repeat    : Int -> Text -> Text
+Text.reverse   : Text -> Text
+Text.trimLeft  : Text -> Text
+Text.trimRight : Text -> Text
+Text.concat    : List Text -> Text           -- Text.join ""
+Text.lines     : Text -> List Text
+Text.words     : Text -> List Text
+Text.indexes   : Text -> Text -> List Int    -- Text.indexes needle haystack
+Text.toCodePoints   : Text -> List Int
+Text.fromCodePoints : List Int -> Text
 Text.NonEmpty, Text.Email, Text.Url, Text.Secret   -- refinement brands
 ```
 
@@ -110,6 +126,15 @@ shortest decimal that reads back as the same number, never an exponent
 (`2.0` is `"2"`, `3.5` is `"3.5"`); infinity is `"+Inf"` or `"-Inf"` and
 not-a-number is `"NaN"`. `Text.toInt` and `Text.toFloat` give `Nothing`
 for anything else than a plain decimal number (spaces, overflow, `"NaN"`).
+
+`Text.padLeft n pad s` makes `s` at least `n` code points long: a pad of
+several characters is repeated and cut at the outer edge, so
+`Text.padLeft 5 "ab" "x"` is `"babax"`, and `s` itself is never cut.
+`Text.lines` splits on `\n`, removes a `\r` before it (so `\r\n` text works)
+and drops the empty line after a final newline: `Text.lines "a\nb\n"` is
+`["a", "b"]`. `Text.indexes needle haystack` lists every code-point offset
+where `needle` starts, overlapping matches included (`Text.indexes "aa" "aaa"`
+is `[0, 1]`). There is no `toChars`: `Text.split "" s` gives the characters.
 
 ```alder eval=["de", "2", "3.5"]
 [Text.slice (-3) (-1) "abcdef", Text.fromFloat 2.0, Text.fromFloat 3.5]
