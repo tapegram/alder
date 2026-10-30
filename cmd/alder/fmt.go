@@ -53,13 +53,9 @@ func runFmtTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code in
 	if len(paths) == 0 {
 		paths = []string{"."}
 	}
-	var files []string
+	var files []fmtTarget
 	for _, p := range paths {
 		found, err := fmtFiles(p)
-		if errors.Is(err, errScratchFile) {
-			fmt.Fprintf(stderr, "alder fmt: %s is a scratch file; scratch files are not formatted yet\n", p)
-			return 2
-		}
 		if err != nil {
 			fmt.Fprintf(stderr, "alder fmt: %v\n", err)
 			return 2
@@ -74,7 +70,7 @@ func runFmtTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code in
 	}
 	cache := &fmtCache{noted: map[string]bool{}, progs: map[string]*fmtProject{}}
 	for _, f := range files {
-		raise(fmtFile(f, checkOnly, cache, stdout, stderr))
+		raise(fmtFile(f.path, f.scratch, checkOnly, cache, stdout, stderr))
 	}
 	return code
 }
@@ -113,8 +109,9 @@ type fmtProject struct {
 
 // fmtFile formats one file, reporting on stdout and problems on stderr; it returns the file's
 // exit code. When the file's project has a file that does not parse, migration is skipped and
-// stderr says so once per project.
-func fmtFile(path string, checkOnly bool, cache *fmtCache, stdout, stderr io.Writer) int {
+// stderr says so once per project. A scratch file (isScratch) is formatted by scratch.Format and
+// never migrated: it is not one of the app's modules.
+func fmtFile(path string, isScratch, checkOnly bool, cache *fmtCache, stdout, stderr io.Writer) int {
 	info, err := os.Stat(path)
 	if err != nil {
 		fmt.Fprintf(stderr, "alder fmt: %v\n", err)
@@ -131,7 +128,10 @@ func fmtFile(path string, checkOnly bool, cache *fmtCache, stdout, stderr io.Wri
 	}
 	// the formatter's safety check compares the migrated source with its output, so the
 	// migration is never judged by it; the file on disk is compared with the final output
-	migrated, root, broken := fmtMigrate(path, src, cache, stderr)
+	migrated, root, broken := src, "", []string(nil)
+	if !isScratch {
+		migrated, root, broken = fmtMigrate(path, src, cache, stderr)
+	}
 	if len(broken) > 0 && !cache.noted[root] {
 		cache.noted[root] = true
 		verb, them := "does", "it"
@@ -140,7 +140,11 @@ func fmtFile(path string, checkOnly bool, cache *fmtCache, stdout, stderr io.Wri
 		}
 		fmt.Fprintf(stderr, "alder fmt: %s %s not parse, so imports were not migrated; fix %s and run again\n", strings.Join(broken, ", "), verb, them)
 	}
-	out, ds, err := format.Source(path, migrated)
+	formatSource := format.Source
+	if isScratch {
+		formatSource = scratch.Format
+	}
+	out, ds, err := formatSource(path, migrated)
 	return fmtResult(path, src, out, ds, err, stderr, func(out []byte) int {
 		if string(out) == string(src) {
 			return 0
@@ -231,8 +235,6 @@ func fmtResult(name string, src, out []byte, ds []diag.Diagnostic, err error, st
 	return ok(out)
 }
 
-var errScratchFile = errors.New("scratch file")
-
 // fmtRel is p relative to root, slash-separated; p itself when it cannot be made relative.
 func fmtRel(root, p string) string {
 	if r, err := filepath.Rel(root, p); err == nil {
@@ -263,22 +265,26 @@ func fmtAppRoot(path string) string {
 	return cwd
 }
 
+// fmtTarget is a file to format, and whether it is a scratch file (scratch.IsScratchFile, judged
+// against its project root).
+type fmtTarget struct {
+	path    string
+	scratch bool
+}
+
 // fmtFiles is the .alder files path names: itself, or a directory's, skipping build/ and
 // dot-directories.
-func fmtFiles(path string) ([]string, error) {
+func fmtFiles(path string) ([]fmtTarget, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
 	}
 	if !info.IsDir() {
-		abs, _ := filepath.Abs(path)
-		if scratch.IsScratchFile(fmtRel(fmtAppRoot(abs), abs)) {
-			return nil, errScratchFile
-		}
-		return []string{path}, nil
+		abs := absPath(path)
+		return []fmtTarget{{path, scratch.IsScratchFile(fmtRel(fmtAppRoot(abs), abs))}}, nil
 	}
 	root := fmtAppRoot(path) // scratch files are judged relative to the project root, not the walked dir
-	var files []string
+	var files []fmtTarget
 	err = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -289,8 +295,8 @@ func fmtFiles(path string) ([]string, error) {
 			}
 			return nil
 		}
-		if strings.HasSuffix(p, ".alder") && !scratch.IsScratchFile(fmtRel(root, absPath(p))) {
-			files = append(files, p)
+		if strings.HasSuffix(p, ".alder") {
+			files = append(files, fmtTarget{p, scratch.IsScratchFile(fmtRel(root, absPath(p)))})
 		}
 		return nil
 	})
