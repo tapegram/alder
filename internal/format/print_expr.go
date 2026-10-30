@@ -292,17 +292,14 @@ func (p *printer) binOp(e *syntax.BinOp) Doc {
 	}
 	var rest []Doc
 	for i := 1; i < len(operands); i++ {
-		if inline {
-			// an operand that opens on the operator's line indents one level from that line, not
-			// from the chain's start plus a Nest: `} == {` keeps its fields one level in, and an
-			// operand after an earlier one that broke deeper is not left of its own line
-			rest = append(rest, sep, Text(ops[i-1]+" "), AtLine(docs[i]))
-			continue
-		}
 		rest = append(rest, sep, Text(ops[i-1]+" "), docs[i])
 	}
 	if inline {
-		return Group(Concat(docs[0], Concat(rest...)))
+		// The operands after the first share one indentation: that of the line the first one
+		// ends on. `} == {` keeps its fields one level in (not two), an operand after a first
+		// one that broke onto a deeper line is not left of it, and a long chain of multi-line
+		// operands does not step in further with each one.
+		return Group(Concat(docs[0], AtLine(Concat(rest...))))
 	}
 	return Group(Concat(docs[0], Nest(Concat(rest...))))
 }
