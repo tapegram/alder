@@ -105,11 +105,13 @@ Beyond the colours, the sheet defines the scales every element draws from:
 - **Page widths.** `--al-width-narrow`, `--al-width-normal` and `--al-width-wide`, the three widths of `al-page`. They are the only tokens still starting with `--al-`; the old ones are listed, with what replaced them, under "Migrating from v0.3.x" below.
 - **White and black.** `--color-white` and `--color-black`, for the text on a destructive button and the dimmed backdrop behind a dialog.
 
-Every text pairing the elements draw (a foreground on its background) meets WCAG AA contrast, 4.5:1, in both themes; the library's tests compute the ratios from the token values. Borders are different. shadcn's own `--border`, `--input` and `--ring` are pale on purpose and fall below the 3:1 that WCAG asks of the edge of a control, so a field's outline is hard to see for some people. alder-ui keeps shadcn's values so the look is the one you expect, and reports the shortfall as a warning. If you want the strict reading, override the two border tokens in your own stylesheet, like this:
+Every text pairing the elements draw (a foreground on its background) meets WCAG AA contrast, 4.5:1, in both themes; the library's tests compute the ratios from the token values. Borders are different. shadcn's own `--border`, `--input` and `--ring` are pale on purpose and fall below the 3:1 that WCAG asks of the edge of a control, so a field's outline is hard to see for some people. alder-ui keeps shadcn's values so the look is the one you expect, and reports the shortfall as a warning. If you want the strict reading, set the two border tokens in your app's `theme` (see "Changing a token", below):
 
-```css
-:root, .light { --input: oklch(0.65 0 0); --border: oklch(0.65 0 0); }
-.dark { --input: oklch(1 0 0 / 35%); --border: oklch(1 0 0 / 35%); }
+```alder fragment
+theme {
+  light: { input: "oklch(0.65 0 0)", border: "oklch(0.65 0 0)" },
+  dark: { input: "oklch(1 0 0 / 35%)", border: "oklch(1 0 0 / 35%)" },
+}
 ```
 
 ### Light and dark
@@ -150,17 +152,46 @@ Two more things keep the flash from happening between your own pages:
 
 ### Changing a token
 
-To change a token, set it in your own stylesheet:
+An app changes the look by declaring a `theme` in its `App` module, once. It names the tokens to change and leaves the rest alone:
 
-```css
-:root, .light {
-  --primary: oklch(0.55 0.22 285);
-  --radius: 0.25rem;
+```alder fragment
+theme {
+  radius: "0.5rem",
+  fontSans: ["Inter", "system-ui", "sans-serif"],
+  light: {
+    primary: "oklch(0.55 0.22 285)",
+    primaryForeground: "#ffffff",
+    ring: "var(--primary)",
+  },
+  dark: { primary: "oklch(0.72 0.16 285)", primaryForeground: "oklch(0.145 0 0)" },
 }
-.dark { --primary: oklch(0.72 0.16 285); }
 ```
 
-Your rules win without any `!important`, because the whole library sits in a *cascade layer*: `al.css` wraps everything in `@layer al { … }`, and CSS that is not in a layer always beats CSS that is, whatever the selectors. The trade-off is that a rule of yours cannot lose to the library by accident either: `button { padding: 0 }` in your stylesheet also removes the padding of the button inside every `<al-button>`. Write such rules with a narrower selector (`.toolbar button`), or put your own CSS in a layer declared after it (`@layer al, app;`).
+Each field is a token's CSS name without the `--` (and without the `al-` of the page widths), in lowerCamel: `--muted-foreground` is `mutedForeground`, `--chart-1` is `chart1`, `--al-width-narrow` is `widthNarrow`. Each value is text, written the way the CSS writes it, so a line copied from a stylesheet, `--primary: oklch(0.55 0.22 285);`, becomes `primary: "oklch(0.55 0.22 285)"`. The tokens come in four kinds, and the kind decides where a field goes and what its value may be:
+
+| Kind | Fields | Value |
+|---|---|---|
+| colour, under `light` or `dark` | `background`, `foreground`, `card`, `cardForeground`, `popover`, `popoverForeground`, `primary`, `primaryForeground`, `secondary`, `secondaryForeground`, `muted`, `mutedForeground`, `accent`, `accentForeground`, `destructive`, `destructiveForeground`, `border`, `input`, `ring`, `chart1`, `chart2`, `chart3`, `chart4`, `chart5`, `sidebar`, `sidebarForeground`, `sidebarPrimary`, `sidebarPrimaryForeground`, `sidebarAccent`, `sidebarAccentForeground`, `sidebarBorder`, `sidebarRing` | `"#4f46e5"` (3, 4, 6 or 8 hex digits), `"transparent"`, `"currentColor"`, a colour function (`oklch`, `oklab`, `lch`, `lab`, `hsl`, `hwb`, `rgb`, `rgba`, `hsla`, `color`, `color-mix`, `light-dark`), or `"var(--accent)"` to reuse another colour token |
+| length, at the top | `radius`, `radiusSm`, `radiusMd`, `radiusLg`, `radiusXl`, `widthNarrow`, `widthNormal`, `widthWide` | `"0"`, or a non-negative number with a unit: `rem`, `em`, `px`, `%`, `vw`, `vh`, `ch`, `lh` |
+| font stack, at the top | `fontSans`, `fontMono` | a list of family names, `["Inter", "sans-serif"]`; the generic families (`sans-serif`, `monospace`, `system-ui`, …) stay unquoted in the CSS, every other name is quoted |
+| shadow, at the top | `shadowXs`, `shadowSm`, `shadowMd`, `shadowLg` | `"none"`, or the shadow as CSS writes it, `"0 1px 2px 0 rgb(0 0 0 / 0.05)"` |
+
+`light` and `dark` are each optional: a colour set only under `light` keeps alder-ui's dark value, which suits an app that is only ever light. Shadows, radii, widths and fonts are the same in both schemes, as they are in shadcn/ui. `radius` alone is usually enough for the corners, because the other four radii are computed from it.
+
+The checker holds the declaration to the stylesheet (E0042). A name that is not a token is refused with the nearest one (`primray` is "did you mean `primary` (`--primary`)?"); one of the `--al-*` tokens of alder-ui v0.3, in lowerCamel, is answered with its replacement from "Removed tokens", below; a colour at the top level, a length under `light`, a value of the wrong shape, a negative length and a `var()` of anything but a colour token are refused, each with an example of what to write. Because every value is checked against a fixed set of characters, nothing in a theme can end its CSS declaration early and write a rule of its own. The list of tokens is the one `al.css` declares, and the compiler's tests compare the two, so a release of alder-ui that adds or drops a token cannot leave the checker behind. In the editor, the language server completes the field names (the colour tokens inside `light` and `dark`, the others at the top) and shows a token's CSS name and alder-ui's own light and dark values on hover.
+
+The build turns the declaration into three CSS rules and appends them to the `al.css` it serves and writes, so nothing new is linked and the layout does not change. The example above becomes:
+
+```css
+/* theme: App */
+:root { --radius: 0.5rem; --font-sans: "Inter", system-ui, sans-serif; }
+:root, .light { --primary: oklch(0.55 0.22 285); --primary-foreground: #ffffff; --ring: var(--primary); }
+.dark { --primary: oklch(0.72 0.16 285); --primary-foreground: oklch(0.145 0 0); }
+```
+
+The rules list the tokens in the stylesheet's order, not the declaration's, so the file is the same however the fields are arranged; an empty block is left out, and `theme { }` adds nothing. The light rule names `.light` too, so a `light` subtree inside a dark page gets the theme's light values. Under `alder run` the server tells the browser to revalidate `al.css` on every load (`Cache-Control: no-cache`), so a change to the theme shows on the next reload; a deployed app caches it as before, with an ETag of its own that changes when the theme does.
+
+Your rules win without any `!important`, because the whole library sits in a *cascade layer*: `al.css` wraps everything in `@layer al { … }`, and CSS that is not in a layer always beats CSS that is, whatever the selectors. The theme's rules are outside the layer, so they beat alder-ui's values. Your own stylesheet, `static/app.css`, is linked after `al.css` and is outside the layer too, so at equal specificity it beats the theme: the order is alder-ui, then the theme, then `app.css`. That stylesheet stays the place for what a theme cannot say: a token alder-ui does not have (`--tracking-normal`, a `--brand-*` of your own), a one-off rule, or a whole theme pasted from shadcn/ui or tweakcn (two blocks, written `:root, .light { … }` and `.dark { … }`, as "Light and dark" explains), which then overrides the declaration. The trade-off of the layer is that a rule of yours cannot lose to the library by accident either: `button { padding: 0 }` in your stylesheet also removes the padding of the button inside every `<al-button>`. Write such rules with a narrower selector (`.toolbar button`), or put your own CSS in a layer declared after it (`@layer al, app;`).
 
 ## The base layer and typography
 
