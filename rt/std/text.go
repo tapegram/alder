@@ -45,18 +45,24 @@ func TextJoin(sep string, parts []string) string { return strings.Join(parts, se
 // the end; indices are clamped to the text; start >= end gives "".
 func TextSlice(start, end int64, s string) string {
 	rs := []rune(s)
-	n := int64(len(rs))
+	a, b := sliceBounds(start, end, len(rs))
+	if a >= b {
+		return ""
+	}
+	return string(rs[a:b])
+}
+
+// sliceBounds normalises a [start, end) range over length items: negative
+// indices count from the end and both are clamped to [0, length].
+func sliceBounds(start, end int64, length int) (int, int) {
+	n := int64(length)
 	idx := func(i int64) int64 {
 		if i < 0 {
 			i += n
 		}
 		return min(max(i, 0), n)
 	}
-	a, b := idx(start), idx(end)
-	if a >= b {
-		return ""
-	}
-	return string(rs[a:b])
+	return int(idx(start)), int(idx(end))
 }
 
 var regexCache sync.Map // pattern string -> *regexp.Regexp (nil when invalid)

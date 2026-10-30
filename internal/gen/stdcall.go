@@ -30,6 +30,13 @@ var StdCalls = map[string]string{
 	"File.body":        "std.FileBody",
 	"Bytes.length":     "std.BytesLength",
 	"Bytes.toText":     "std.BytesToText",
+	"Bytes.empty":      "std.BytesEmpty",
+	"Bytes.isEmpty":    "std.BytesIsEmpty",
+	"Bytes.slice":      "std.BytesSlice",
+	"Bytes.append":     "std.BytesAppend",
+	"Bytes.concat":     "std.BytesConcat",
+	"Bytes.toList":     "std.BytesToList",
+	"Bytes.fromList":   "std.BytesFromList",
 	// Date
 	"Date.fromText":  "std.DateFromText",
 	"Date.toText":    "std.DateToText",

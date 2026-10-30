@@ -1,8 +1,6 @@
 package std
 
 import (
-	"unicode/utf8"
-
 	"alder/rt"
 	"alder/rt/html"
 )
@@ -66,14 +64,3 @@ func FileContentType(f rt.File) string {
 
 // FileBody is File.body.
 func FileBody(f rt.File) []byte { return f.Body }
-
-// BytesLength counts bytes, not code points (Text.length counts those).
-func BytesLength(b []byte) int64 { return int64(len(b)) }
-
-// BytesToText is Just the text when b is valid UTF-8.
-func BytesToText(b []byte) rt.Maybe[string] {
-	if !utf8.Valid(b) {
-		return rt.Nothing[string]()
-	}
-	return rt.Just(string(b))
-}
