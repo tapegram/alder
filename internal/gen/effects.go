@@ -27,6 +27,7 @@ import (
 //	EffAll             eff.All([]eff.Task[A]{task(e1), …}); a list that is no literal:
 //	                   eff.All(list) for Tasks, std.QueryAll(list) for Queries
 //	EffFail/NotFound   eff.Fail[T](msg), eff.NotFound[T]()
+//	EffRedirect        eff.Redirect[T](rt.PageURL(page))
 //	DbGet, DbSelect    eff.Call("Db.get Todo", false, func(_e *eff.Env) (R, error) {
 //	  (run), DbRun,      return db.GetRow(_e.Ctx, _e.Store.(db.Store), db.TxOf(_e), …) })
 //	  DbInsert, …      (write is true for insert, update, delete); Db.insert passes the row's
@@ -117,7 +118,7 @@ func effResult(t types.Type) types.Type {
 // isEffNode reports whether e is an effect node effNode renders.
 func isEffNode(e ir.Expr) bool {
 	switch x := e.(type) {
-	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.CapCall,
+	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.EffRedirect, *ir.CapCall,
 		*ir.DbGet, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete, *ir.TestRun, *ir.TestTrace, *ir.TestFake,
 		*ir.DbGetScoped, *ir.DbUpdateScoped, *ir.DbDeleteScoped, *ir.DbInsertScoped, *ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick:
 		return true
@@ -186,6 +187,8 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 		return "eff.Fail[" + GoType(effResult(x.Ty)) + "](" + f.code(x.Message, s) + ")", true
 	case *ir.EffNotFound:
 		return "eff.NotFound[" + GoType(effResult(x.Ty)) + "]()", true
+	case *ir.EffRedirect:
+		return "eff.Redirect[" + GoType(effResult(x.Ty)) + "](rt.PageURL(" + f.code(x.Page, s) + "))", true
 	case *ir.DbGet:
 		tb := x.Table
 		return f.dbCall("Db.get "+tb.Name, false, x.Ty, s, func(env string, c *scope) string {

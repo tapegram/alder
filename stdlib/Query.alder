@@ -6,3 +6,5 @@ map : (a -> b) -> Query a -> Query b
 delay : Int -> Query Unit
 all : List (Query a) -> Query (List a)
 notFound : Query a
+-- stop: answer 303 to a page (the same page with other parameters, another page, Url.external)
+redirect : Page -> Query a

@@ -3752,3 +3752,109 @@ func TestEmitNoFormat(t *testing.T) {
 		t.Error("NoFormat changed no module file")
 	}
 }
+
+// Query.redirect from a load (#8): a 303 to the page's URL as href renders it; under Datastar a
+// page of this app is followed and pushed, another site navigated to; a file page's redirect is a
+// plain 303; Url.external of an unsafe URL is "#", as for Redirect; Query.redirect as a value
+// compiles.
+func TestGen_QueryRedirect(t *testing.T) {
+	files := emitSource(t, map[string]string{
+		"App.alder": appModule,
+		"Builder.alder": `module Builder
+
+page "/builder/{seed}" { seed: Text, tab: Text = "main" }
+
+type Model = { seed: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { seed: params.seed }
+
+view : Model -> Session -> Html Msg
+view model session = <html><head><title>Builder</title></head><body><p>builder {model.seed}</p></body></html>
+`,
+		"Start.alder": `module Start
+
+page "/start" { go: Text = "", to: Text = "" }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session =
+  if params.go == "builder" then Query.redirect (Builder { seed: "7", tab: "main" })
+  else if params.go == "out" then Query.redirect (Url.external params.to)
+  else if params.go == "value" then Maybe.withDefault (Query.succeed { }) (Maybe.map Query.redirect (Just (Builder { seed: "a b", tab: "x" })))
+  else Query.succeed { }
+
+view : Model -> Session -> Html Msg
+view model session = <p>start</p>
+`,
+		"Go.alder": `module Go
+
+page "/go.txt" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.redirect (Builder { seed: "9", tab: "main" })
+
+view : Model -> Session -> File
+view model session = File.text { contentType: "text/plain", body: "never" }
+`,
+	})
+	contains(t, files["Start_alder.go"], `eff.Redirect[`)
+	contains(t, files["Start_alder.go"], `rt.PageURL(`)
+	runGo(t, files, `package app
+
+import (
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+)
+
+func TestProbe(t *testing.T) {
+	h, err := Serve(Caps{}, Options{DB: ":memory:", Dev: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	do := func(target string, ds bool) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", target, nil)
+		if ds {
+			r.Header.Set("Datastar-Request", "true")
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if w := do("/start?go=builder", false); w.Code != 303 || w.Header().Get("Location") != "/builder/7" || w.Body.Len() != 0 {
+		t.Fatalf("plain: %d %q %q", w.Code, w.Header().Get("Location"), w.Body.String())
+	}
+	if w := do("/start?go=value", false); w.Code != 303 || w.Header().Get("Location") != "/builder/a%20b?tab=x" {
+		t.Fatalf("as a value: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if w := do("/start", false); w.Code != 200 || !strings.Contains(w.Body.String(), "<p>start</p>") {
+		t.Fatalf("no redirect: %d %s", w.Code, w.Body.String())
+	}
+	w := do("/start?go=builder", true)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "builder 7") || !strings.Contains(w.Body.String(), "history.pushState") || !strings.Contains(w.Body.String(), `+"`"+`"/builder/7"`+"`"+`) {
+		t.Fatalf("Datastar: %d %s", w.Code, w.Body.String())
+	}
+	if w := do("/start?go=out&to="+url.QueryEscape("https://ex.com/x"), false); w.Code != 303 || w.Header().Get("Location") != "https://ex.com/x" {
+		t.Fatalf("external: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if w := do("/start?go=out&to="+url.QueryEscape("https://ex.com/x"), true); w.Code != 200 || !strings.Contains(w.Body.String(), `+"`"+`window.location.assign("https://ex.com/x")`+"`"+`) {
+		t.Fatalf("external under Datastar: %d %s", w.Code, w.Body.String())
+	}
+	if w := do("/start?go=out&to="+url.QueryEscape("javascript:alert(1)"), false); w.Code != 303 || w.Header().Get("Location") != "#" {
+		t.Fatalf("unsafe: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if w := do("/go.txt", false); w.Code != 303 || w.Header().Get("Location") != "/builder/9" {
+		t.Fatalf("file page: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	// under Datastar a file page is a real navigation before its load runs; that GET is the 303
+	if w := do("/go.txt", true); !strings.Contains(w.Body.String(), `+"`"+`window.location.assign("/go.txt")`+"`"+`) {
+		t.Fatalf("file page under Datastar: %d %s", w.Code, w.Body.String())
+	}
+}
+`)
+}

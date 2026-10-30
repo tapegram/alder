@@ -72,8 +72,8 @@ func params__Wood(p Wood__Params) []rt.KV {
 // (st, the state of the form that sent the message; nil for a message without one) load and view
 // again with t on the form (patched into the page under Datastar); for Rerender (and a Reject
 // without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh
-// does not post again). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound
-// or Task.notFound.
+// does not post again). A failed Task changes nothing: 500 (App.error), 404 for Query.notFound or
+// Task.notFound, or a 303 for Query.redirect.
 func update__Wood(rq *web.Request, params Wood__Params, msg Wood__Msg, st *html.FormState) web.Response {
 	model, session, stop := page__Wood(rq, params, nil)
 	if stop != nil {
@@ -103,8 +103,8 @@ func update__Wood(rq *web.Request, params Wood__Params, msg Wood__Msg, st *html.
 }
 
 // Route__Wood__page serves page Wood, GET /r/{cfg}/wood/Results (book 06): decode the parameters
-// (404 when they do not), load (404 on Query.notFound, 500 on a failure), view (the model also in
-// rq.Model, which a test's browser reads).
+// (404 when they do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure),
+// view (the model also in rq.Model, which a test's browser reads).
 func Route__Wood__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/r/{cfg}/wood/Results", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Wood__Params(rq.Params, rq.Query)
@@ -133,9 +133,13 @@ func Route__Wood__Bump() web.Route {
 	}}
 }
 
-// route__fail answers a load or update that did not succeed: 404 (App.notFound) for
-// Query.notFound and Task.notFound, else 500 (App.error).
+// route__fail answers a load or update that did not succeed: a 303 to the page for
+// Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
+	var rd *eff.ErrRedirect
+	if errors.As(err, &rd) {
+		return web.RedirectResponse(rd.Location, nil)
+	}
 	if errors.Is(err, eff.ErrNotFound) {
 		return web.NotFoundResponse(html.None())
 	}
