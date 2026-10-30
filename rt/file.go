@@ -9,6 +9,11 @@ import (
 // given, with no doctype, head tags or panel. Status 0 means 200; ContentType "" means
 // application/octet-stream. Headers keep what the page set, in order; the router sends only
 // the names FileHeaderAllowed accepts.
+//
+// Body may share its storage with a Text (File.text, File.json and File.html alias the string's
+// bytes rather than copy them, #37), so it must never be written to. That holds for every []byte
+// Alder code can see: the Bytes functions build fresh slices, the router only Writes a body,
+// and Test.fetch reads a recorded response. TestNoWritesToParameters (rt) pins the rule.
 type File struct {
 	Status      int
 	ContentType string

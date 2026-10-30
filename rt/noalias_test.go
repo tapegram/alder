@@ -31,10 +31,11 @@ func TestNoWritesToParameters(t *testing.T) {
 		"std/num.go: incDecimal index d": "called only on a fresh []byte",
 	}
 	var hits []string
-	// The packages whose functions take and return Alder values. rt/db, rt/eff, rt/testing and
+	// The packages whose functions take and return Alder values, and the router that writes a
+	// File's body (only ever with Write). rt/db, rt/eff, rt/testing and
 	// the rest handle Go-side state (rows, effect logs, browsers) that never reaches Alder code
 	// as a List or Bytes without passing through one of these.
-	dirs := map[string]bool{".": true, "std": true, "html": true}
+	dirs := map[string]bool{".": true, "std": true, "html": true, "web": true}
 	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
