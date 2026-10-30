@@ -225,15 +225,19 @@ func freePort(t *testing.T) int {
 
 // onFreePort calls try with a free port until it returns true (up to 5 tries). A server that
 // does not come up lost its port to another process in the gap freePort leaves, or failed for
-// another reason that the last try's own report shows.
-func onFreePort(t *testing.T, try func(port int) bool) int {
+// another reason: try returns false and the server's log, and the failure after 5 tries shows
+// the last one's.
+func onFreePort(t *testing.T, try func(port int) (ok bool, log string)) int {
 	t.Helper()
+	var log string
 	for i := 0; i < 5; i++ {
-		if port := freePort(t); try(port) {
+		port := freePort(t)
+		var ok bool
+		if ok, log = try(port); ok {
 			return port
 		}
 	}
-	t.Fatal("the server did not come up on any of 5 free ports")
+	t.Fatalf("the server did not come up on any of 5 free ports; the last try's log:\n%s", log)
 	return 0
 }
 
@@ -286,7 +290,7 @@ func localBox(t *testing.T) *sshBox {
 	pub, _ := os.ReadFile(key + ".pub")
 	writeFile(t, filepath.Join(dir, "authorized_keys"), string(pub))
 	var cfg string
-	onFreePort(t, func(port int) bool { // sshd that lost its port to another process exits: start it again
+	onFreePort(t, func(port int) (bool, string) { // sshd that lost its port to another process exits: start it again
 		writeFile(t, filepath.Join(dir, "sshd_config"), fmt.Sprintf(`Port %d
 ListenAddress 127.0.0.1
 HostKey %s
@@ -310,11 +314,11 @@ PidFile %s
 		cfg = writeSSHConfig(t, dir, port, u.Username, key)
 		select {
 		case <-exited:
-			return false
+			return false, logs.String()
 		case <-time.After(300 * time.Millisecond): // a sshd that cannot bind ends at once
 		}
 		waitSSH(t, cfg, logs.String)
-		return true
+		return true, ""
 	})
 	root := filepath.Join(evalSymlinks(t.TempDir()), "box")
 	killBuilds(t, root)
