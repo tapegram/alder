@@ -411,15 +411,7 @@ A few rules follow from the mapping:
   row, and `.in []` matches no row.
 
 Every value reaches SQLite as a parameter, never as part of the SQL text,
-so no input can change what a query does. It also means one query's text is
-the same for every value, so the store prepares each text once (SQLite
-parses and plans it into a program) and reuses the prepared statement on
-later runs, which saves about 7 µs a statement. The cache holds at most 256
-texts (a `.in` list makes one per list length) and is emptied whenever the
-tables may change (at start-up's table check and migrations), so a
-prepared statement never outlives the table it was planned for; a database
-on Turso (chapter 15) prepares nothing, since each statement is sent over
-the network anyway.
+so no input can change what a query does.
 
 ## Migrations
 
