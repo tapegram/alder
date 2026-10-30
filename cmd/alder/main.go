@@ -115,16 +115,26 @@ func main() {
 			usage()
 			os.Exit(2)
 		}
-		text, ok := diag.Explain[os.Args[2]]
-		if !ok {
-			fmt.Fprintf(os.Stderr, "unknown diagnostic code %s\n", os.Args[2])
-			os.Exit(2)
-		}
-		fmt.Println(text)
+		os.Exit(explainTo(os.Args[2], os.Stdout, os.Stderr))
 	default:
 		usage()
 		os.Exit(2)
 	}
+}
+
+// explainTo is `alder explain <code>`: the explanation as one line, or on a terminal wrapped to
+// the terminal's width (at most 100 columns).
+func explainTo(code string, stdout, stderr io.Writer) int {
+	text, ok := diag.Explain[code]
+	if !ok {
+		fmt.Fprintf(stderr, "unknown diagnostic code %s\n", code)
+		return 2
+	}
+	if st := style.For(stdout); st.On() {
+		text = st.Wrap(text, min(st.Width(), 100))
+	}
+	fmt.Fprintln(stdout, text)
+	return 0
 }
 
 func usage() { usageTo(os.Stderr) }

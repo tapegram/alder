@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,6 +26,7 @@ import (
 	"alder/rt/datastar"
 
 	"alder/internal/buildkit"
+	"alder/internal/style"
 	"alder/internal/watch"
 )
 
@@ -170,10 +172,12 @@ func displayAddr(a net.Addr) string {
 // streamed SSE answers alike), or answered 502 with the overlay while there is none.
 type devServer struct {
 	dir, app string
-	buildDir string    // --build-dir ("" is build)
-	addr     string    // the dev server's address, as displayed
-	stdout   io.Writer // the announcement
-	stderr   io.Writer // every check, build and crash message, and the child's output (locked)
+	buildDir string      // --build-dir ("" is build)
+	addr     string      // the dev server's address, as displayed
+	stdout   io.Writer   // the announcement
+	stderr   io.Writer   // every check, build and crash message, and the child's output (locked)
+	outSt    style.Style // the styles of the original stdout and stderr (Plain off a terminal)
+	errSt    style.Style
 	proxy    *httputil.ReverseProxy
 	done     chan struct{} // closed on stop
 	wg       sync.WaitGroup
@@ -196,6 +200,7 @@ func newDevServer(dir, app, addr string, stdout, stderr io.Writer) *devServer {
 	var nonce [4]byte
 	_, _ = rand.Read(nonce[:]) // never fails (crypto/rand)
 	d := &devServer{dir: dir, app: app, addr: addr, stdout: stdout, stderr: &lockedWriter{w: stderr},
+		outSt: style.For(stdout), errSt: style.For(stderr),
 		done: make(chan struct{}), clients: map[chan []byte]struct{}{}, nonce: hex.EncodeToString(nonce[:])}
 	d.proxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
@@ -362,13 +367,13 @@ func (d *devServer) report(text string, st errState) {
 // only, reloads the browsers) for each change, until done closes. Changes reported while a
 // rebuild runs are merged into one.
 func (d *devServer) work(changed <-chan watch.Change) {
-	fmt.Fprintf(d.stderr, "alder run: building %s\n", d.app)
+	fmt.Fprintln(d.stderr, d.errSt.Dim("alder run: building "+d.app))
 	d.rebuild()
 	d.mu.Lock()
 	up := d.child != nil
 	d.mu.Unlock()
 	if !up {
-		fmt.Fprintf(d.stderr, "alder run: dev server on %s; the app starts once it builds\n", d.addr)
+		fmt.Fprintln(d.stderr, d.errSt.Dim("alder run: dev server on "+d.addr+"; the app starts once it builds"))
 	}
 	for {
 		var k watch.Change
@@ -387,7 +392,7 @@ func (d *devServer) work(changed <-chan watch.Change) {
 			}
 		}
 		if k&watch.SourceChange != 0 {
-			fmt.Fprintf(d.stderr, "alder run: rebuilding %s\n", d.app)
+			fmt.Fprintln(d.stderr, d.errSt.Dim("alder run: rebuilding "+d.app))
 			d.rebuild()
 		} else {
 			if d.static != "" { // the child serves the build's copy: refresh it first
@@ -432,7 +437,7 @@ func (d *devServer) rebuild() {
 	d.static = static
 	d.started++
 	gen := fmt.Sprintf("%s-%d", d.nonce, d.started)
-	c, err := startChild(binary, filepath.Join(dir, "dev.db"), static, gen, d.stderr)
+	c, err := startChild(binary, filepath.Join(dir, "dev.db"), static, gen, d.stderr, d.errSt)
 	if err != nil {
 		d.fail("alder run: " + err.Error())
 		return
@@ -448,9 +453,9 @@ func (d *devServer) rebuild() {
 	d.wg.Add(1)
 	go d.monitor(c)
 	if announce {
-		fmt.Fprintf(d.stdout, "dev server on %s → app on %s\n", d.addr, c.addr)
+		fmt.Fprintln(d.stdout, d.outSt.Bold("dev server on "+d.addr+" → app on "+c.addr))
 	} else {
-		fmt.Fprintf(d.stderr, "alder run: rebuilt; app on %s\n", c.addr)
+		fmt.Fprintln(d.stderr, d.errSt.Dim("alder run: rebuilt; app on "+c.addr))
 	}
 	if old != nil {
 		old.stop()
@@ -517,7 +522,11 @@ const childStartTimeout = 10 * time.Second
 // open (ALDER_EXIT_ON_STDIN_EOF=1: the app exits when the dev server dies). It waits (10 s at most) for its
 // `listening on <addr>` line; when the child exits first or does not print it in time (it is
 // then killed), the error holds the last overlayLines lines of its stderr.
-func startChild(binary, dbPath, staticDir, gen string, logs io.Writer) (*child, error) {
+func startChild(binary, dbPath, staticDir, gen string, logs io.Writer, st style.Style) (*child, error) {
+	outLogs, errLogs := logs, logs
+	if st.On() { // one line writer per stream, so partial writes of the two never mix
+		outLogs, errLogs = style.Lines(logs, logLine(st)), style.Lines(logs, logLine(st))
+	}
 	cmd := exec.Command(binary)
 	cmd.Env = append(os.Environ(), "ALDER_ADDR=127.0.0.1:0", "ALDER_DEV=1", "ALDER_RELOAD="+gen,
 		"ALDER_DB="+dbPath, "ALDER_STATIC="+staticDir, "ALDER_EXIT_ON_STDIN_EOF=1")
@@ -527,7 +536,7 @@ func startChild(binary, dbPath, staticDir, gen string, logs io.Writer) (*child, 
 	}
 	c := &child{cmd: cmd, stdinW: stdinW, exited: make(chan struct{})}
 	cmd.Stdin = stdinR
-	cmd.Stderr = io.MultiWriter(&c.stderr, logs)
+	cmd.Stderr = io.MultiWriter(&c.stderr, errLogs)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		stdinR.Close()
@@ -548,10 +557,11 @@ func startChild(binary, dbPath, staticDir, gen string, logs io.Writer) (*child, 
 				addr <- a
 				break
 			}
-			fmt.Fprintln(logs, sc.Text())
+			fmt.Fprintln(outLogs, sc.Text())
 		}
-		_, _ = io.Copy(logs, stdout) // every read is done before Wait
+		_, _ = io.Copy(outLogs, stdout) // every read is done before Wait
 		_ = cmd.Wait()
+		flushLines(outLogs, errLogs)
 		stdinW.Close() // the child is gone; a second Close (stop's) is harmless
 		close(c.exited)
 	}()
@@ -615,4 +625,37 @@ func (t *tailBuffer) String() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return string(t.b)
+}
+
+// flushLines writes the partial last line of each of ws that buffers lines (style.Lines).
+func flushLines(ws ...io.Writer) {
+	for _, w := range ws {
+		if f, ok := w.(interface{ Flush() error }); ok {
+			_ = f.Flush()
+		}
+	}
+}
+
+// logLinePat is a line of the Go log package: `YYYY/MM/DD HH:MM:SS `, then the app's text.
+var logLinePat = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)? )(info:|warn:|error:)?(.*)$`)
+
+// logLine styles one line of the app's log on a terminal: the leading timestamp dim, then the
+// level word `info:` green, `warn:` yellow, `error:` red. Any other line is returned as it is.
+func logLine(st style.Style) func(string) string {
+	return func(l string) string {
+		m := logLinePat.FindStringSubmatch(l)
+		if m == nil {
+			return l
+		}
+		level := m[2]
+		switch level {
+		case "info:":
+			level = st.Green(level)
+		case "warn:":
+			level = st.Yellow(level)
+		case "error:":
+			level = st.Red(level)
+		}
+		return st.Dim(m[1]) + level + m[3]
+	}
 }
