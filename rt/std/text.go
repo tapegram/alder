@@ -280,3 +280,12 @@ func TextFromCodePoints(xs []int64) string {
 	}
 	return b.String()
 }
+
+// TextBuilder is the constant Text.builder: the empty builder (#37).
+func TextBuilder() rt.TextBuilder { return rt.TextBuilder{} }
+
+// TextAdd is `Text.add piece b`.
+func TextAdd(s string, b rt.TextBuilder) rt.TextBuilder { return b.Add(s) }
+
+// TextBuild is `Text.build b`.
+func TextBuild(b rt.TextBuilder) string { return b.Build() }

@@ -15,7 +15,7 @@ import "embed"
 // without being listed here fails. This file itself is not listed: the written copy of package
 // rt does not embed anything.
 //
-//go:embed core.go file.go nav.go show.go tether.go
+//go:embed builder.go core.go file.go fresh.go nav.go show.go tether.go
 //go:embed backup/bucket.go backup/lock_other.go backup/lock_unix.go backup/restore.go backup/s3.go backup/ship.go backup/silos.go backup/snapshot.go
 //go:embed al/al.go al/al.css al/al.js al/custom-elements.json al/VERSION al/fonts/Geist-Variable.woff2 al/fonts/GeistMono-Variable.woff2 al/fonts/OFL.txt
 //go:embed datastar/datastar.go datastar/datastar.js datastar/VERSION
