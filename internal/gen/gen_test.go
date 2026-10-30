@@ -249,7 +249,7 @@ func mapsKeys(m map[string][]byte) []string {
 
 // testBuildGoldens are the gen goldens whose want/ is a test build (Options.Tests) and whose
 // want_prod/ is the production build of the same app.
-var testBuildGoldens = map[string]bool{"gen_fakes": true, "gen_browser": true, "gen_fuzz": true, "gen_wire": true}
+var testBuildGoldens = map[string]bool{"gen_fakes": true, "gen_browser": true, "gen_fuzz": true, "gen_wire": true, "gen_helpers": true}
 
 // mutateBuildGoldens are the gen goldens whose want/ is a mutate build (Options.Mutate, a test
 // build) and whose want_prod/ is the production build of the same app.

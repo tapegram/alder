@@ -1,0 +1,9 @@
+module Gate
+
+capability Gate {
+  open : Task Bool,
+}
+
+fake Gate {
+  open = Task.succeed True
+}

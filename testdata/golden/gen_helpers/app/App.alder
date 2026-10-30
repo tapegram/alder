@@ -1,0 +1,7 @@
+module App
+
+error : Error -> Html Never
+error err = <html><body><h1>Error</h1></body></html>
+
+notFound : Html Never
+notFound = <html><body><h1>Not found</h1></body></html>

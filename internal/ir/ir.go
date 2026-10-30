@@ -255,6 +255,8 @@ type Value struct {
 	IsComponent  bool
 	IsEffect     bool
 	Effect       EffKind
+	// TestOnly marks a test helper (#4, check.Result.TestOnly): a production build omits it.
+	TestOnly bool
 }
 
 // Param is a named parameter of a Value or Lambda.
