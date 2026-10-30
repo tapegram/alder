@@ -1,0 +1,11 @@
+module Table.Row
+
+type RowId = brand Text
+
+table Row {
+  id: RowId @id,
+  title: Text.NonEmpty,
+  n: Int,
+  done: Bool = False,
+  created: Time @created,
+}

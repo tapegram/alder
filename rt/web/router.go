@@ -379,6 +379,7 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rt.serve(w, r, st)
+	rt.warnRepeats(w)
 }
 
 // alderPrefix is the runtime's own files' path (the Datastar script, datastar.ScriptPath).
