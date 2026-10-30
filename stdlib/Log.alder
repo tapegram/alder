@@ -1,4 +1,6 @@
 module Log
 
+debug : Text -> Task Unit
 info : Text -> Task Unit
 warn : Text -> Task Unit
+error : Text -> Task Unit

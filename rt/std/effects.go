@@ -79,6 +79,12 @@ func LogInfo(msg string) eff.Task[struct{}] { return logAt("Log.info", "info", m
 // LogWarn is Log.warn.
 func LogWarn(msg string) eff.Task[struct{}] { return logAt("Log.warn", "warn", msg) }
 
+// LogDebug is Log.debug: written only under ALDER_LOG=debug.
+func LogDebug(msg string) eff.Task[struct{}] { return logAt("Log.debug", "debug", msg) }
+
+// LogError is Log.error.
+func LogError(msg string) eff.Task[struct{}] { return logAt("Log.error", "error", msg) }
+
 func logAt(name, level, msg string) eff.Task[struct{}] {
 	return eff.Call(name, false, func(e *eff.Env) (struct{}, error) {
 		if e.Log != nil {

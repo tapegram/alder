@@ -220,6 +220,8 @@ var StdCalls = map[string]string{
 	"Session.put": "std.SessionPut",
 	"Log.info":    "std.LogInfo",
 	"Log.warn":    "std.LogWarn",
+	"Log.debug":   "std.LogDebug",
+	"Log.error":   "std.LogError",
 	"Random.int":  "std.RandomInt",
 	"Random.id":   "std.RandomId",
 	"Time.now":    "std.TimeNow",
