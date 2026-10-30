@@ -269,7 +269,7 @@ Time.toMillis Time.epoch
 
 A file page's `view` returns a `File` (chapter 6, "File pages"). `Bytes` is
 the type of a body that is not text (chapter 7, "A capability returning
-bytes"); it has no operations of its own beyond the two below, and a
+bytes"); it has the few operations below, and a
 `Text` becomes `Bytes` with `Text.toBytes`.
 
 ```alder
@@ -285,9 +285,20 @@ File.body        : File -> Bytes
 
 Bytes.length    : Bytes -> Int                                   -- the number of bytes
 Bytes.toText    : Bytes -> Maybe Text                            -- Just when the bytes are valid UTF-8
+Bytes.empty     : Bytes
+Bytes.isEmpty   : Bytes -> Bool
+Bytes.slice     : Int -> Int -> Bytes -> Bytes                   -- same index rules as Text.slice, in bytes
+Bytes.append    : Bytes -> Bytes -> Bytes
+Bytes.concat    : List Bytes -> Bytes
+Bytes.toList    : Bytes -> List Int                              -- each 0..255
+Bytes.fromList  : List Int -> Bytes                              -- the low eight bits of each Int
 ```
 
 `Bytes.length` counts bytes, not letters: `é` is two bytes in UTF-8.
+`Bytes.slice` follows `Text.slice`'s rule, counting bytes: negative indices
+count from the end, indices clamp, and `start >= end` gives `Bytes.empty`.
+`Bytes.fromList` keeps the low eight bits of each `Int`, so
+`Bytes.fromList [256]` is `Bytes.fromList [0]`.
 
 ```alder eval=6
 Bytes.length (Text.toBytes "héllo")
