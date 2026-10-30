@@ -451,7 +451,8 @@ like the page's. Things to know:
 - **A ticking clock.** `Time.now`, and the `@created` column a
   `Db.insert` fills, read a clock that starts at `2026-01-01T00:00:00Z`
   and advances one second each time it is read, so rows created in a
-  test are ordered, and a test gets the same times on every run. Time is
+  test are ordered, and a test gets the same times on every run, until
+  the test sets it: `Test.setClock`, section 9 ("Setting the clock"). Time is
   not transactional: a `Test.run` that fails rolls back its writes, but
   the clock keeps the ticks that run read.
 - **The app's capabilities.** When the app has adapters (Go under
@@ -1199,6 +1200,75 @@ is a page to read: the checker refuses them (E0003, "`Todos.Slow` is a file page
 use `Test.fetch`"). This is a check of the page's type, so it covers a
 `File.html` page too. As a second guard, a `Test.open` whose answer at run
 time is not HTML fails with `RequestFailed` and the same advice.
+
+### Setting the clock
+
+`Todos.Slow` above works out its answer from the ticking clock: 20000 ms
+of delay plus the one second the second reading adds. That is fine for
+one page, but a page whose output depends on the time (a countdown, a
+"closes in 3 hours", today's schedule) would make every expectation a
+sum of ticks, and one more `Time.now` on the page's path would shift them
+all by a second. Two steps let a test say what time it is and when time
+passes:
+
+```text
+Test.setClock : Time -> Task Unit
+Test.advance  : Int -> Task Unit
+```
+
+- `Test.setClock t` sets the test's clock to `t`, and from then on the
+  clock **stands still**: every `Time.now` and `Date.today` reads `t`
+  (the one-second tick is off for the rest of the test). A second
+  `setClock` moves it again, backwards too; the clock is the test's.
+- `Test.advance ms` moves the clock `ms` milliseconds forward, the unit
+  of `Time.toMillis` and `Query.delay`. A negative `ms` counts as 0 (to
+  go back, set the clock again), and there is no practical upper limit
+  (advancing a day is the point; anything past about 292 years stops
+  there rather than wrapping into the past). A clock that ticks keeps ticking after an advance,
+  and a set one stays still.
+- A `Query.delay` or `Task.sleep` still moves the clock by its delay,
+  set or not, and the pages a test requests through the browser read the
+  same clock, so a set applies to them too.
+- `@created` reads the clock as well, so rows inserted after a set all
+  get the same time. A test that sets the clock and then wants a list in
+  creation order calls `Test.advance 1000` between the inserts, or
+  inserts its rows before the set.
+- The session cookie's own clock does not move: a test that logged in
+  stays logged in however far it advances time.
+- Like the tick, a set or an advance is not undone by a `Test.run` that
+  fails. Both are on the trace, as `Test.setClock 2026-03-04T00:00:00Z`
+  (the time in UTC) and `Test.advance 86400000ms`.
+
+A test that never sets the clock is unchanged: it starts at
+`2026-01-01T00:00:00Z` and ticks. Here a page prints today's date, and
+the test sets the clock to a date, fetches it, advances a day and
+fetches again:
+
+```alder
+module Todos.Today
+
+page "/today" { }
+
+type Model = { today: Date }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let today <- Date.today
+  Query.succeed { today: today }
+}
+
+view : Model -> Session -> File
+view model session = File.text { contentType: "text/plain", body: Date.toText model.today }
+
+-- 1772582400000 is 2026-03-04T00:00:00Z.
+test "today follows the test's clock" = {
+  let _ <- Test.setClock (Time.fromMillis 1772582400000)
+  let before <- Test.fetch (Todos.Today {})
+  let _ <- Test.advance (24 * 60 * 60 * 1000)
+  let after <- Test.fetch (Todos.Today {})
+  Task.succeed ({ before: Bytes.toText before.body, after: Bytes.toText after.body } == { before: Just "2026-03-04", after: Just "2026-03-05" })
+}
+```
 
 ### `Test.login`, `requires`, and the session
 
