@@ -98,6 +98,7 @@ func renderYAML(s InitSpec) string {
 	b.WriteString("      - key: ALDER_ADDR\n        value: \":" + strconv.Itoa(initPort) + "\"\n")
 	b.WriteString("      - key: PORT\n        value: \"" + strconv.Itoa(initPort) + "\"\n")
 	b.WriteString("      - key: ALDER_SECRET\n        generateValue: true\n")
+	b.WriteString("      - key: ALDER_PUBLIC_URL\n        value: https://" + s.App + ".onrender.com # change if Render gave the service another name\n")
 	if s.Disk {
 		b.WriteString("      - key: ALDER_DB\n        value: " + InitDB + "\n")
 	}
@@ -135,6 +136,7 @@ func FlyToml(flyApp, region string, serve, volume bool) string {
 		return b.String()
 	}
 	b.WriteString("\n[env]\n  ALDER_ADDR = \":" + strconv.Itoa(FlyPort) + "\"\n")
+	b.WriteString("  ALDER_PUBLIC_URL = " + strconv.Quote("https://"+flyApp+".fly.dev") + "\n")
 	if volume {
 		b.WriteString("  ALDER_DB = \"" + InitDB + "\"\n")
 	}

@@ -428,7 +428,8 @@ func TestRender_FirstDeploy(t *testing.T) {
 	}
 	env := envOf(s)
 	want := map[string]string{"ALDER_DB": "libsql://" + host, "ALDER_TURSO_ORG": "acme", "ALDER_TURSO_GROUP": "default", "ALDER_TURSO_APP": "blog",
-		"ALDER_TURSO_DB": "blog", "ALDER_TURSO_API": g.turso.URL, "TURSO_API_TOKEN": g.turso.APIToken, "ALDER_ADDR": ":10000", "SMTP_URL": rSMTP}
+		"ALDER_TURSO_DB": "blog", "ALDER_TURSO_API": g.turso.URL, "TURSO_API_TOKEN": g.turso.APIToken, "ALDER_ADDR": ":10000", "SMTP_URL": rSMTP,
+		"ALDER_PUBLIC_URL": "https://blog.onrender.com"} // the expected address: the service did not exist yet
 	for k, v := range want {
 		if env[k] != v {
 			t.Errorf("env %s: got %d bytes, want %d", k, len(env[k]), len(v))
@@ -573,6 +574,24 @@ func TestRender_EnvMergeKeepsLateDashboardChange(t *testing.T) {
 	}
 	if g.current() != id {
 		t.Error("not current")
+	}
+}
+
+// ALDER_PUBLIC_URL is added only when the service lacks it, at the service's address: a value
+// set in the dashboard (a custom domain) is kept.
+func TestRender_EnvPublicURL(t *testing.T) {
+	g := newRenderRig(t)
+	g.render.AddService("blog", rImage+":0000000000000000", 1)
+	g.mustDeploy(g.target())
+	if got, want := envOf(g.render.Service("blog"))["ALDER_PUBLIC_URL"], g.render.URL+"/svc/blog"; got != want {
+		t.Errorf("added: %q, want the service's address %q", got, want)
+	}
+
+	k := newRenderRig(t)
+	k.render.AddService("blog", rImage+":0000000000000000", 1, renderfake.Env{Key: "ALDER_PUBLIC_URL", Value: "https://www.example.com"})
+	k.mustDeploy(k.target())
+	if got := envOf(k.render.Service("blog"))["ALDER_PUBLIC_URL"]; got != "https://www.example.com" {
+		t.Errorf("the dashboard's value replaced: %q", got)
 	}
 }
 

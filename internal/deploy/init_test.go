@@ -61,6 +61,22 @@ func TestInitFiles_Fly(t *testing.T) {
 	}
 }
 
+// render.yaml and fly.toml carry ALDER_PUBLIC_URL, the platform's address of the app: a
+// Blueprint or `fly deploy` app would otherwise derive http://localhost:<port>.
+func TestInitFiles_PublicURL(t *testing.T) {
+	r := initFiles(t, InitSpec{Target: "render", App: "blog", Ref: "v0.1.0"})
+	if want := "      - key: ALDER_PUBLIC_URL\n        value: https://blog.onrender.com # change if Render gave the service another name\n"; !strings.Contains(r["render.yaml"], want) {
+		t.Errorf("render.yaml lacks %q:\n%s", want, r["render.yaml"])
+	}
+	f := initFiles(t, InitSpec{Target: "fly", App: "blog", Ref: "v0.1.0"})
+	if want := "[env]\n  ALDER_ADDR = \":8080\"\n  ALDER_PUBLIC_URL = \"https://blog.fly.dev\"\n"; !strings.Contains(f["fly.toml"], want) {
+		t.Errorf("fly.toml lacks %q:\n%s", want, f["fly.toml"])
+	}
+	if strings.Contains(FlyToml("blog", "ord", false, false), "ALDER_PUBLIC_URL") {
+		t.Error("the image build's stub has an [env]")
+	}
+}
+
 func TestInitFiles_Placeholder(t *testing.T) {
 	m := initFiles(t, InitSpec{Target: "render", App: "blog"})
 	if !strings.Contains(m["Dockerfile"], "ARG ALDER_REF="+InitRefPlaceholder) || !strings.Contains(m["Dockerfile"], "REPLACE") {

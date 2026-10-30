@@ -648,7 +648,8 @@ func (r *Render) cancelForeign(ctx context.Context, id string) error {
 
 // mergedEnv is the service's environment with alder's variables and the `requires` values set on
 // this machine laid over it (R3): a variable set only at the service (in the dashboard) is
-// kept, and ALDER_SECRET is the service's own, or a new one. changed reports whether it differs
+// kept, ALDER_SECRET is the service's own, or a new one, and ALDER_PUBLIC_URL the service's own,
+// or else its address (Address). changed reports whether it differs
 // from the service's. No value is ever printed.
 func (r *Render) mergedEnv(ctx context.Context) ([]RenderEnv, bool, error) {
 	host, err := r.DB.Host(ctx)
@@ -665,6 +666,9 @@ func (r *Render) mergedEnv(ctx context.Context) ([]RenderEnv, bool, error) {
 	set := map[string]string{
 		"ALDER_DB": "libsql://" + host, db.EnvTursoOrg: r.DB.Org, db.EnvTursoGroup: r.DB.Group, db.EnvTursoApp: r.DB.App, db.EnvTursoDB: r.DB.SharedName(),
 		db.EnvTursoAPI: c.API, db.EnvTursoToken: c.Token, "ALDER_ADDR": RenderAddr, SecretName: secret,
+	}
+	if r.envValue(PublicURLName) == "" {
+		set[PublicURLName] = r.Address() // a value set in the dashboard (a custom domain) is kept
 	}
 	for _, n := range r.Required {
 		if v := r.Getenv(n); v != "" && n != SecretName {
