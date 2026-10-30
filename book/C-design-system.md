@@ -51,7 +51,9 @@ copy inside the compiler (a file of yours at `static/al/al.css` would be
 replaced). Their address stays the same when you upgrade Alder, so they
 are not cached for good: both are served with
 `Cache-Control: public, max-age=300, stale-while-revalidate=86400` and an
-`ETag`, a hash of their content. The browser uses its copy for five
+`ETag`, a hash of their content (under `alder run`, `al.css` is sent with
+`no-cache` instead, so a change to the app's `theme` shows on the next
+load: "Changing a token", below). The browser uses its copy for five
 minutes without asking, then keeps using it (for up to a day) while it
 asks in the background whether it is still current, and the server
 answers `304 Not Modified` (no body) until a new compiler ships a new
