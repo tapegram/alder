@@ -1,0 +1,1 @@
+app/Main.alder:3:45 E0039 `Fuzz.forAll` makes a Property, which only a test body can use

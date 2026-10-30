@@ -1,0 +1,23 @@
+module Export
+
+page "/export.csv" { }
+
+type Row = { name: Text, votes: Int }
+
+type Model = { rows: List Row }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { rows: [{ name: "Kent", votes: 3 }, { name: "Dane", votes: 5 }] }
+
+addRow : Row -> Text.Builder -> Text.Builder
+addRow row b = b |> Text.add "{row.name},{Text.fromInt row.votes}\n"
+
+header : Text.Builder
+header = Text.builder |> Text.add "name,votes\n"
+
+view : Model -> Session -> File
+view model session = {
+  let body = model.rows |> List.foldl addRow header
+  let parts = [body, Text.builder] |> List.map Text.build |> List.foldl Text.add Text.builder
+  File.text { contentType: "text/csv", body: Text.build parts }
+}

@@ -901,7 +901,7 @@ while :; do
     seen=$code
   fi
   if ! alive "$id"; then echo exited; break; fi
-  if [ "$(date +%s)" -ge "$end" ]; then
+  if [ "$(date +%s)" -gt "$end" ]; then
     if [ -n "$seen" ]; then echo "status $seen"; else echo timeout; fi
     break
   fi

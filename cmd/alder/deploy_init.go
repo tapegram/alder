@@ -121,6 +121,10 @@ func runDeployInitWith(args []string, stdout, stderr io.Writer, source func() ve
 	} else {
 		fmt.Fprintln(stdout, "the app has no tables: no disk or volume declared")
 	}
+	if r.decl == nil { // the platform deploys whatever is pushed; `alder check` warns the same (W0009)
+		platformFile := map[string]string{"render": "render.yaml", "fly": "fly.toml"}[target]
+		fmt.Fprintf(stdout, "%s deploys whatever is pushed; for a check, migration plan and backup, add a `deploy` block to App.alder (book chapter 16)\n", platformFile)
+	}
 	switch target {
 	case "render":
 		fmt.Fprintln(stdout, "next: commit these files, push, and connect the repo in Render (New > Blueprint)")

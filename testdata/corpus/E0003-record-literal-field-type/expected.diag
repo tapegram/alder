@@ -1,0 +1,1 @@
+app/M.alder:11:14 E0003 expected Curve, got { median: Int, sigma: Float, perDoubling: Float }; field `median` is Int, Curve's is Float

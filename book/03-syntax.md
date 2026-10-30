@@ -454,8 +454,9 @@ rules, so that the first draft already matches:
   declarations, a signature directly above its value. Lines break at 100
   columns where no rule below decides.
 - Imports are sorted, one per line.
-- A record, record type, form, table, page-params list, `session` or
-  `deploy` with 3 or more fields is always vertical, one field per line
+- A record, record type, form, table, page-params list, `session`,
+  `deploy` or `theme` (and each record inside it) with 3 or more fields is
+  always vertical, one field per line
   with a trailing comma; with 1 or 2 it stays on one line if it fits. The
   record type of a function's signature, a capability or a fake breaks
   only when too wide. An empty record expression or pattern is `{}`; an

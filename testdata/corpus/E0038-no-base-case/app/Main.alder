@@ -1,0 +1,5 @@
+module Main
+
+type S = S { next: S }
+
+test "chain" = \(s : S) -> True

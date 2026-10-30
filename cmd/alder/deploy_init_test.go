@@ -43,6 +43,23 @@ func noTables(t *testing.T) string {
 	return dir
 }
 
+// Init closes with a pointer to the `deploy` block when App declares none (the same advice as
+// `alder check`'s W0009), and stays quiet when it does.
+func TestDeployInit_PointsAtDeployBlock(t *testing.T) {
+	t.Parallel()
+	dir := noTables(t)
+	_, out, _ := runDeployInit("fly", dir)
+	want := "fly.toml deploys whatever is pushed; for a check, migration plan and backup, add a `deploy` block to App.alder (book chapter 16)"
+	if !strings.Contains(out, want) {
+		t.Errorf("output lacks %q:\n%s", want, out)
+	}
+	dir2 := deployScaffold(t, `deploy { production: Ssh "deploy@box.example.com" { domain: "x.example.com", path: "/srv/x" } }`, nil)
+	_, out2, _ := runDeployInit("render", dir2)
+	if strings.Contains(out2, "deploys whatever is pushed") {
+		t.Errorf("output points at a deploy block the app has:\n%s", out2)
+	}
+}
+
 // An app without tables: the three Render files, named after the directory, no disk; the
 // output says what was written and the next step.
 func TestDeployInit_Render(t *testing.T) {
@@ -168,9 +185,9 @@ func TestDeployInit_Pin(t *testing.T) {
 		notInOut   string
 		wantDocker bool
 	}{
-		{version.Source{Ref: "v0.3.0", Release: true}, "ARG ALDER_REF=v0.3.0", "pinned to v0.3.0", "is pushed", true},
+		{version.Source{Ref: "v0.3.0", Release: true}, "ARG ALDER_REF=v0.3.0", "pinned to v0.3.0", "pushed to the alder remote", true},
 		{version.Source{Ref: "abc123"}, "ARG ALDER_REF=abc123", "make sure abc123 is pushed to the alder remote", "", true},
-		{version.Source{Dirty: true}, "ARG ALDER_REF=" + deploy.InitRefPlaceholder, "uncommitted changes", "is pushed", true},
+		{version.Source{Dirty: true}, "ARG ALDER_REF=" + deploy.InitRefPlaceholder, "uncommitted changes", "pushed to the alder remote", true},
 	} {
 		src := c.src
 		dir := noTables(t)

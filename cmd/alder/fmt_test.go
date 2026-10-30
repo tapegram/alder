@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
+	"syscall"
 
 	"alder/internal/format"
 	"alder/internal/generate"
@@ -145,8 +147,101 @@ func TestFmt_UnsafeSkipsWrite(t *testing.T) {
 		t.Error("write callback ran")
 		return 0
 	})
-	if code != 2 || !strings.Contains(e.String(), "alder fmt: internal error:") {
+	if code != 2 || !strings.Contains(e.String(), "a known limitation") || strings.Contains(e.String(), "file an issue") || strings.Contains(e.String(), "internal error") {
 		t.Fatalf("code %d err %q", code, e.String())
+	}
+}
+
+// TestFmt_ReadOnlyDirWritesInPlace (#28): where no temporary file can be made the file is written
+// in place, keeping its mode.
+func TestFmt_ReadOnlyDirWritesInPlace(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes anywhere")
+	}
+	dir := t.TempDir()
+	p := fmtWrite(t, dir, "app/Main.alder", fmtMessy)
+	if err := os.Chmod(p, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	ro := filepath.Dir(p)
+	if err := os.Chmod(ro, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(ro, 0o755) })
+	if code, _, errOut := fmtRun(p); code != 0 {
+		t.Fatalf("code %d err %q", code, errOut)
+	}
+	if got, _ := os.ReadFile(p); string(got) != fmtClean {
+		t.Fatalf("file %q", got)
+	}
+	if fi, _ := os.Stat(p); fi.Mode().Perm() != 0o640 {
+		t.Errorf("mode %v", fi.Mode().Perm())
+	}
+}
+
+// A full disk (no temporary file) must not fall back to truncating the file.
+func TestFmt_TempFileErrorOtherThanPermissionWritesNothing(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := fmtWrite(t, dir, "app/Main.alder", fmtMessy)
+	cache := &fmtCache{noted: map[string]bool{}, progs: map[string]*fmtProject{}}
+	cache.hooks.createTemp = func(string, string) (*os.File, error) { return nil, syscall.ENOSPC }
+	cache.hooks.writeInPlace = func(string, []byte, os.FileMode) error { t.Error("wrote in place"); return nil }
+	var o, e bytes.Buffer
+	if code := fmtFile(p, false, cache, &o, &e); code != 2 || o.Len() != 0 {
+		t.Fatalf("code %d out %q err %q", code, o.String(), e.String())
+	}
+	if got, _ := os.ReadFile(p); string(got) != fmtMessy {
+		t.Errorf("file %q", got)
+	}
+}
+
+// A failed in-place write (after the file was truncated) is put back.
+func TestFmt_InPlaceFailureRestoresOriginal(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := fmtWrite(t, dir, "app/Main.alder", fmtMessy)
+	cache := &fmtCache{noted: map[string]bool{}, progs: map[string]*fmtProject{}}
+	cache.hooks.createTemp = func(string, string) (*os.File, error) { return nil, fs.ErrPermission }
+	calls := 0
+	cache.hooks.writeInPlace = func(path string, data []byte, mode os.FileMode) error {
+		calls++
+		if calls == 1 {
+			os.WriteFile(path, data[:3], mode) // partial write, then failure
+			return syscall.EIO
+		}
+		return os.WriteFile(path, data, mode)
+	}
+	var o, e bytes.Buffer
+	if code := fmtFile(p, false, cache, &o, &e); code != 2 || !strings.Contains(e.String(), "original restored") {
+		t.Fatalf("code %d err %q", code, e.String())
+	}
+	if got, _ := os.ReadFile(p); string(got) != fmtMessy {
+		t.Errorf("file %q", got)
+	}
+}
+
+// TestFmt_FileChangedBeforeRename (#28): a file changed after it was read is not replaced.
+func TestFmt_FileChangedBeforeRename(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := fmtWrite(t, dir, "app/Main.alder", fmtMessy)
+	const edited = "module Main\n\ny : Int\ny   =   2\n"
+	cache := &fmtCache{noted: map[string]bool{}, progs: map[string]*fmtProject{}}
+	cache.hooks.before = func() {
+		if err := os.WriteFile(p, []byte(edited), 0o644); err != nil {
+			t.Error(err)
+		}
+	}
+	var o, e bytes.Buffer
+	if code := fmtFile(p, false, cache, &o, &e); code != 2 || !strings.Contains(e.String(), "changed while it was being formatted") || o.Len() != 0 {
+		t.Fatalf("code %d out %q err %q", code, o.String(), e.String())
+	}
+	if got, _ := os.ReadFile(p); string(got) != edited {
+		t.Errorf("file overwritten: %q", got)
+	}
+	if left, _ := filepath.Glob(filepath.Join(filepath.Dir(p), ".alder-fmt-*")); len(left) > 0 {
+		t.Errorf("temporary files left: %v", left)
 	}
 }
 
@@ -250,8 +345,12 @@ func TestFmtAppRootStartsAtTheDirectory(t *testing.T) {
 	// an empty app/ directory is not an app, as for `alder scratch`
 	empty := t.TempDir()
 	os.MkdirAll(filepath.Join(empty, "app"), 0o755)
-	if got := fmtAppRoot(empty); got == empty {
-		t.Errorf("an app/ with no .alder file is taken as the root")
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fmtAppRoot(empty); got != cwd { // no app above it either: the current directory
+		t.Errorf("fmtAppRoot(empty app/) = %q, want the cwd %q", got, cwd)
 	}
 }
 
