@@ -1382,12 +1382,12 @@ Content-Type: text/html; charset=utf-8
 and has the Done button with its message URL:
 
 ```html
-<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()}))"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
+<form method="post" action="/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active" class="_alder-click" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos.Index/Toggle?id=Em2Gv4v9BaA0Wf9ujESN&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;, headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))"><al-button variant="secondary" size="sm"><button type="submit">Done</button></al-button></form>
 ```
 
 The `&#39;` and `&amp;` are the escaping of section 8's first part: the
 attribute holds
-`window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post('/_m/Todos.Index/Toggle?id=…&_p.filter=Active', {contentType: 'form', requestCancellation: window._alderAC = new AbortController()}))`:
+`window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post('/_m/Todos.Index/Toggle?id=…&_p.filter=Active', {contentType: 'form', headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))`:
 the abort and the shared AbortController make the newest navigation the only
 one whose answer is applied (chapter 6, "Links and navigation").
 

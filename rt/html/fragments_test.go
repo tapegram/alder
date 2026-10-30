@@ -174,3 +174,16 @@ func TestWithout(t *testing.T) {
 		t.Fatal(Render(got))
 	}
 }
+
+// A click's and a form's post send the shown hash (Shown, read by datastar.BoostInit's helper).
+func TestClickPost_SendsShownHeader(t *testing.T) {
+	if got := ClickPost("/_m/M/T"); !strings.Contains(got, "@post('/_m/M/T', {headers: window._alderShown?.(), requestCancellation:") {
+		t.Fatal(got)
+	}
+}
+
+func TestSubmitPost_SendsShownHeader(t *testing.T) {
+	if got := SubmitPost("/_m/M/S"); !strings.Contains(got, "@post('/_m/M/S', {contentType: 'form', headers: window._alderShown?.(), requestCancellation:") {
+		t.Fatal(got)
+	}
+}

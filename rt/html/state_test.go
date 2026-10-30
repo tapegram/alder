@@ -154,13 +154,13 @@ func TestRender_ClickButtons(t *testing.T) {
 	st := &FormState{PageParams: []rt.KV{{Key: "filter", Value: "Active"}}}
 	u := "/_m/Todos/Toggle?id=a+b&amp;_p.filter=Active"
 	got := RenderWith(El("div", nil, El("button", []Attr{A("type", "button"), MsgAttr("data-on:click", m), A("class", "x")}, Text("Done"))), st)
-	want := `<div><form method="post" action="` + u + `" class="_alder-click" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;` + u + `&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()}))">` +
+	want := `<div><form method="post" action="` + u + `" class="_alder-click" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;` + u + `&#39;, {contentType: &#39;form&#39;, headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))">` +
 		`<button type="submit" class="x">Done</button></form></div>`
 	if got != want {
 		t.Fatalf("outside a form:\n got %s\nwant %s", got, want)
 	}
 	got = RenderWith(FormTo(newTodo, nil, El("button", []Attr{MsgAttr("data-on:click", m)}, Text("Delete")), El("button", nil, Text("Save"))), st)
-	want = `<button type="submit" formaction="` + u + `" formmethod="post" formnovalidate data-on:click__prevent="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;` + u + `&#39;, {requestCancellation: window._alderAC = new AbortController()}))">Delete</button><button>Save</button></form>`
+	want = `<button type="submit" formaction="` + u + `" formmethod="post" formnovalidate data-on:click__prevent="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;` + u + `&#39;, {headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))">Delete</button><button>Save</button></form>`
 	if !strings.HasSuffix(got, want) || strings.Count(got, "<form") != 1 {
 		t.Fatalf("inside a form:\n got %s\nwant …%s", got, want)
 	}
@@ -169,18 +169,18 @@ func TestRender_ClickButtons(t *testing.T) {
 	alButton := El("al-button", []Attr{A("variant", "ghost"), B("disabled", false)},
 		El("button", []Attr{A("type", "button"), MsgAttr("data-on:click", m), B("disabled", false)}, Text("Done")))
 	got = RenderWith(alButton, st)
-	want = `<form method="post" action="` + u + `" class="_alder-click" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;` + u + `&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()}))">` +
+	want = `<form method="post" action="` + u + `" class="_alder-click" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;` + u + `&#39;, {contentType: &#39;form&#39;, headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))">` +
 		`<al-button variant="ghost"><button type="submit">Done</button></al-button></form>`
 	if got != want {
 		t.Fatalf("al-button outside a form:\n got %s\nwant %s", got, want)
 	}
 	got = RenderWith(FormTo(newTodo, nil, alButton), st)
-	want = `<al-button variant="ghost"><button type="submit" formaction="` + u + `" formmethod="post" formnovalidate data-on:click__prevent="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;` + u + `&#39;, {requestCancellation: window._alderAC = new AbortController()}))">Done</button></al-button></form>`
+	want = `<al-button variant="ghost"><button type="submit" formaction="` + u + `" formmethod="post" formnovalidate data-on:click__prevent="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;` + u + `&#39;, {headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))">Done</button></al-button></form>`
 	if !strings.HasSuffix(got, want) || strings.Count(got, "<form") != 1 {
 		t.Fatalf("al-button inside a form:\n got %s\nwant …%s", got, want)
 	}
 	got = RenderWith(El("li", []Attr{MsgAttr("data-on:click", m)}, Text("row")), st)
-	if got != `<li data-on:click="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;`+u+`&#39;, {requestCancellation: window._alderAC = new AbortController()}))">row</li>` {
+	if got != `<li data-on:click="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;`+u+`&#39;, {headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))">row</li>` {
 		t.Fatalf("a non-button: %s", got)
 	}
 }
@@ -240,7 +240,7 @@ func TestRenderWith_WrappedControl(t *testing.T) {
 		Input(Control{Kind: "input", Form: "F", Name: "done", Type: "checkbox", Wrap: "al-checkbox", WrapAttrs: []Attr{B("disabled", true)}}),
 		Input(Control{Kind: "select", Form: "F", Name: "kind", Label: "Kind", Required: true, Options: []string{"A", "B"}, Wrap: "al-select", WrapAttrs: []Attr{B("invalid", true)}}),
 	)
-	initial := `<form method="post" action="/_m/Todos/Add" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos/Add&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()}))">` +
+	initial := `<form method="post" action="/_m/Todos/Add" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos/Add&#39;, {contentType: &#39;form&#39;, headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))">` +
 		`<ul class="errors" data-errors="form"></ul>` +
 		`<al-input label="Title" placeholder="A title" help="Short"><label>Title<input name="title" type="text" required placeholder="A title" aria-describedby="help-title" /></label><small class="help" id="help-title">Short</small><ul class="errors" data-errors="title"></ul></al-input>` +
 		`<al-checkbox disabled><label><input name="done" type="checkbox" value="True" disabled /></label><ul class="errors" data-errors="done"></ul></al-checkbox>` +
@@ -251,7 +251,7 @@ func TestRenderWith_WrappedControl(t *testing.T) {
 	}
 	st := posted("F", newTodo, FormState{Values: map[string]string{"title": "", "done": "True"},
 		Errors: map[string][]string{"title": {"must not be empty"}}})
-	failed := `<form method="post" action="/_m/Todos/Add" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos/Add&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()}))">` +
+	failed := `<form method="post" action="/_m/Todos/Add" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/Todos/Add&#39;, {contentType: &#39;form&#39;, headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))">` +
 		`<ul class="errors" data-errors="form"></ul>` +
 		`<al-input label="Title" placeholder="A title" help="Short" invalid><label>Title<input name="title" type="text" required placeholder="A title" aria-invalid="true" aria-describedby="help-title errors-title" /></label><small class="help" id="help-title">Short</small><ul class="errors" data-errors="title" id="errors-title"><li>must not be empty</li></ul></al-input>` +
 		`<al-checkbox disabled><label><input name="done" type="checkbox" value="True" checked disabled /></label><ul class="errors" data-errors="done"></ul></al-checkbox>` +

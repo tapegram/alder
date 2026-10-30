@@ -148,7 +148,7 @@ A `<button click={…}>` works with and without JavaScript. Outside a form it
 is rendered inside a small form of its own that posts the message:
 
 ```html
-<form method="post" action="/_m/App/Logout" class="_alder-click" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/App/Logout&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()}))"><button type="submit">Log out</button></form>
+<form method="post" action="/_m/App/Logout" class="_alder-click" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/App/Logout&#39;, {contentType: &#39;form&#39;, headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))"><button type="submit">Log out</button></form>
 ```
 
 The design system's stylesheet (Appendix C) gives that wrapper

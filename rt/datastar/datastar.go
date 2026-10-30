@@ -201,6 +201,7 @@ const BoostPopstate = `if (location.pathname + location.search !== window._alder
 // shown, and its build is the one its <meta name="alder-build"> names ("" without one: no
 // check).
 const BoostInit = `window._alderAt = location.pathname + location.search;` +
+	` window._alderShown = () => ({'` + html.ShownHeader + `': document.getElementById('` + ShownID + `')?.dataset.h || ''});` +
 	` window._alderBuild = document.querySelector('meta[name=alder-build]')?.content || '';` +
 	` window._alderN = 0;` +
 	` window._alderBusy = (el, p) => { const f = el && el.closest ? el.closest('form') || el : null, h = document.documentElement, a = document.activeElement;` +
@@ -274,6 +275,29 @@ func lines(s string) []string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
 	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
+}
+
+// ShownID is the id of the <al-shown> element every page the router sends ends its <body> with
+// (ShownTag): its data-h is the html.Hash of the body the view rendered, which a message's post
+// sends back (html.ShownHeader).
+const ShownID = "_alder_shown"
+
+// ShownTag is the <al-shown> element carrying hash: an unregistered custom element, empty and
+// hidden.
+func ShownTag(hash string) string {
+	return `<al-shown id="` + ShownID + `" data-h="` + hash + `" hidden></al-shown>`
+}
+
+// PatchShown writes one event replacing the page's <al-shown> (#ShownID, outer) with
+// ShownTag(hash): after the region patches of a message's answer, the page shows that body.
+func PatchShown(w http.ResponseWriter, hash string) error {
+	return patch(w, "#"+ShownID, "outer", ShownTag(hash))
+}
+
+// PatchRegion writes one event morphing the element with id id (selector #id, mode outer) into
+// elements, its markup after the message (html.Fragments).
+func PatchRegion(w http.ResponseWriter, id, elements string) error {
+	return patch(w, "#"+id, "outer", elements)
 }
 
 // PanelID is the id of the dev panel's element: rendered into the body with data-ignore-morph (so

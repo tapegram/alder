@@ -475,16 +475,25 @@ func FormTo(m rt.MsgRef, attrs []Attr, children ...Node) Node {
 }
 
 // SubmitPost is the Datastar action of a form's data-on:submit: post the form's fields
-// url-encoded to action, on the page's one navigation signal (Navigation).
+// url-encoded to action, with the shown hash (Shown), on the page's one navigation signal
+// (Navigation).
 func SubmitPost(action string) string {
-	return abortNavigation + busy("el", "@post('"+action+"', {contentType: 'form', "+Navigation+"})")
+	return abortNavigation + busy("el", "@post('"+action+"', {contentType: 'form', "+Shown+", "+Navigation+"})")
 }
 
 // ClickPost is the Datastar action of a click that posts a message (a data-on:click, a submit
-// button's formaction): post to url, on the page's one navigation signal (Navigation).
+// button's formaction): post to url, with the shown hash (Shown), on the page's one navigation
+// signal (Navigation).
 func ClickPost(url string) string {
-	return abortNavigation + busy("el", "@post('"+url+"', {"+Navigation+"})")
+	return abortNavigation + busy("el", "@post('"+url+"', {"+Shown+", "+Navigation+"})")
 }
+
+// Shown is the request option of a message's post that sends ShownHeader: the hash the page's
+// <al-shown id="_alder_shown"> element holds, read by window._alderShown (datastar.BoostInit:
+// one helper in the <head>, so each button of a long list carries a call, not the lookup).
+// Without the helper (a page without the boost) no header is sent and the answer morphs the
+// whole body.
+const Shown = "headers: window._alderShown?.()"
 
 // Navigation is the request option every navigating Datastar request of a page shares — a
 // message's post (SubmitPost, ClickPost) and a boosted link's or a back/forward's GET

@@ -88,7 +88,7 @@ func TestHTML_Controls(t *testing.T) {
 
 func TestHTML_Form(t *testing.T) {
 	got := Render(Form("/_m/M/Save?id=1", []Attr{A("class", "f")}, El("button", nil, Text("Go"))))
-	want := `<form method="post" action="/_m/M/Save?id=1" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/M/Save?id=1&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()}))" class="f"><button>Go</button></form>`
+	want := `<form method="post" action="/_m/M/Save?id=1" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/M/Save?id=1&#39;, {contentType: &#39;form&#39;, headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))" class="f"><button>Go</button></form>`
 	if got != want {
 		t.Fatalf("got %s", got)
 	}
@@ -100,12 +100,12 @@ func TestHTML_Form(t *testing.T) {
 func TestMsgAttr(t *testing.T) {
 	m := rt.MsgRef{Module: "M", Msg: "Save", Params: []rt.KV{{Key: "id", Value: "1"}}}
 	n := FormTo(m, []Attr{A("class", "f")}, El("span", []Attr{MsgAttr("data-on:click", rt.MsgRef{Module: "App", Msg: "Logout"})}))
-	want := `<form method="post" action="/_m/M/Save?id=1" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/M/Save?id=1&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()}))" class="f"><span data-on:click="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/App/Logout&#39;, {requestCancellation: window._alderAC = new AbortController()}))"></span></form>`
+	want := `<form method="post" action="/_m/M/Save?id=1" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/M/Save?id=1&#39;, {contentType: &#39;form&#39;, headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))" class="f"><span data-on:click="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/App/Logout&#39;, {headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))"></span></form>`
 	if got := Render(n); got != want {
 		t.Errorf("Render =\n%s\nwant\n%s", got, want)
 	}
 	st := &FormState{PageParams: []rt.KV{{Key: "filter", Value: "Active"}, rt.QueryKV("q", "", "")}}
-	want = `<form method="post" action="/_m/M/Save?id=1&amp;_p.filter=Active" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/M/Save?id=1&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;, requestCancellation: window._alderAC = new AbortController()}))" class="f"><span data-on:click="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/App/Logout?_p.filter=Active&#39;, {requestCancellation: window._alderAC = new AbortController()}))"></span></form>`
+	want = `<form method="post" action="/_m/M/Save?id=1&amp;_p.filter=Active" data-on:submit="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/M/Save?id=1&amp;_p.filter=Active&#39;, {contentType: &#39;form&#39;, headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))" class="f"><span data-on:click="window._alderAC?.abort();(window._alderBusy||((e,p)=&gt;p))(el, @post(&#39;/_m/App/Logout?_p.filter=Active&#39;, {headers: window._alderShown?.(), requestCancellation: window._alderAC = new AbortController()}))"></span></form>`
 	if got := RenderWith(n, st); got != want {
 		t.Errorf("RenderWith =\n%s\nwant\n%s", got, want)
 	}
