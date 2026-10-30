@@ -9,3 +9,16 @@ remove : k -> Dict k v -> Dict k v
 keys : Dict k v -> List k
 values : Dict k v -> List v
 size : Dict k v -> Int
+singleton : k -> v -> Dict k v
+isEmpty : Dict k v -> Bool
+member : k -> Dict k v -> Bool
+-- Just binds the key (position kept, a new key is appended); Nothing removes it.
+update : k -> (Maybe v -> Maybe v) -> Dict k v -> Dict k v
+map : (k -> v -> w) -> Dict k v -> Dict k w
+filter : (k -> v -> Bool) -> Dict k v -> Dict k v
+foldl : (k -> v -> b -> b) -> b -> Dict k v -> b
+partition : (k -> v -> Bool) -> Dict k v -> { yes: Dict k v, no: Dict k v }
+-- Keeps the first dict's values and order; new keys from the second are appended.
+union : Dict k v -> Dict k v -> Dict k v
+intersect : Dict k v -> Dict k v -> Dict k v
+diff : Dict k v -> Dict k v -> Dict k v

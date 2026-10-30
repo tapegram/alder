@@ -224,7 +224,24 @@ Dict.remove   : k -> Dict k v -> Dict k v
 Dict.keys     : Dict k v -> List k
 Dict.values   : Dict k v -> List v
 Dict.size     : Dict k v -> Int
+Dict.singleton : k -> v -> Dict k v
+Dict.isEmpty  : Dict k v -> Bool
+Dict.member   : k -> Dict k v -> Bool
+Dict.update   : k -> (Maybe v -> Maybe v) -> Dict k v -> Dict k v
+Dict.map      : (k -> v -> w) -> Dict k v -> Dict k w
+Dict.filter   : (k -> v -> Bool) -> Dict k v -> Dict k v
+Dict.foldl    : (k -> v -> b -> b) -> b -> Dict k v -> b
+Dict.partition : (k -> v -> Bool) -> Dict k v -> { yes: Dict k v, no: Dict k v }
+Dict.union    : Dict k v -> Dict k v -> Dict k v
+Dict.intersect : Dict k v -> Dict k v -> Dict k v
+Dict.diff     : Dict k v -> Dict k v -> Dict k v
 ```
+
+`Dict.update` calls the function with `Just` the current value, or `Nothing`
+when the key is absent: `Just` keeps the key's position (a new key is
+appended) and `Nothing` removes it. `Dict.union a b` prefers the first dict's
+value and order, then appends the keys only `b` has. `map`, `filter`,
+`partition`, `intersect` and `diff` keep key order; `foldl` walks it.
 
 A key may be of any type `==` works on: a `List`, a record, a `Time`, but
 not a function or a type containing one. Two keys are the
