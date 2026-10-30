@@ -1,0 +1,31 @@
+(module R)
+(record R.Curve (median Float) (sigma Float) (perDoubling Float))
+(record R.Summary (t0 Int) (label Text))
+(record R.Row (name Text) (value Float))
+(record R.Shown (name Text) (shown Bool))
+(value R.reportTime : Curve -> Float -> Float (c t)
+  (+
+    (+ (field median (var c)) (* (field sigma (var c)) (var t)))
+    (field perDoubling (var c))))
+(value R.clamped : Float -> Float (t)
+  (let wide : Curve
+    (record Curve (median 1.0) (sigma 2.0) (perDoubling 0.5))
+    (call (global R.reportTime) (var wide) (var t))))
+(value R.isExpected : Result Text Summary -> Bool (r)
+  (== : Result Text Summary (var r)
+    (ctor Prelude.Result.Ok
+      (record (value (record Summary (t0 1) (label "a")))))))
+(value R.shown : List Row -> List Shown (rows)
+  (call (std List.filter)
+    (lambda (s : Shown) (field shown (var s)))
+    (call (std List.map)
+      (lambda (r : Row)
+        (record Shown
+          (name (field name (var r)))
+          (shown (> : Float (field value (var r)) 0.0))))
+      (var rows))))
+(value R.guess : Bool -> Maybe Curve (known)
+  (let m : Maybe Curve
+    (ctor Prelude.Maybe.Just
+      (record (value (record Curve (median 1.0) (sigma 0.1) (perDoubling 0.0)))))
+    (if (var known) (var m) (ctor Prelude.Maybe.Nothing))))
