@@ -30,7 +30,9 @@ func (s *sink) opts(edit func(*Options)) Options {
 		o.Access = func(a *applog.Access) {
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			s.access = append(s.access, *a)
+			c := *a
+			c.Path, c.URL = a.MaskedPath(), nil
+			s.access = append(s.access, c)
 		}
 		o.Log = func(level, msg string) {
 			s.mu.Lock()

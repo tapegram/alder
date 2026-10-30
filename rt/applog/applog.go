@@ -12,11 +12,13 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // Level is how much a line matters; a Logger writes the lines at or above its own.
@@ -150,7 +152,8 @@ func (l *Logger) Log(level, msg string) {
 // Access is one request's line (Logger.Access): what the router knows once it has answered.
 type Access struct {
 	ID           string        // the request id (RequestID)
-	Method, Path string        // Path is already masked (MaskURL)
+	Method, Path string        // Path is already masked (MaskURL); "": URL masked when the line is written
+	URL          *url.URL      // the request's URL, masked (MaskURL) only for a line that is written
 	Status       int           // 0: the handler wrote nothing
 	Dur          time.Duration // from the request's arrival to the answer written
 	Bytes        int64         // the body bytes written
@@ -173,9 +176,10 @@ func (l *Logger) Access(a *Access) {
 		return
 	}
 	ms := math.Round(float64(a.Dur)/float64(time.Millisecond)*10) / 10
+	path := a.MaskedPath()
 	if l.format == JSON {
-		r := slog.NewRecord(l.now().UTC(), slogLevel(lv), a.Method+" "+a.Path, 0)
-		r.AddAttrs(slog.String("method", a.Method), slog.String("path", a.Path), slog.Int("status", a.Status),
+		r := slog.NewRecord(l.now().UTC(), slogLevel(lv), a.Method+" "+path, 0)
+		r.AddAttrs(slog.String("method", a.Method), slog.String("path", path), slog.Int("status", a.Status),
 			slog.Float64("ms", ms), slog.Int64("bytes", a.Bytes), slog.String("rid", a.ID))
 		if l.min == Debug {
 			r.AddAttrs(slog.Int("steps", a.Steps))
@@ -187,7 +191,7 @@ func (l *Logger) Access(a *Access) {
 	b := *bp
 	b = append(b, a.Method...)
 	b = append(b, ' ')
-	b = append(b, a.Path...)
+	b = append(b, path...)
 	b = append(b, ' ')
 	b = strconv.AppendInt(b, int64(a.Status), 10)
 	b = append(b, ' ')
@@ -202,6 +206,25 @@ func (l *Logger) Access(a *Access) {
 	}
 	*bp = b
 	l.end(bp)
+}
+
+// MaxPath is the longest path an access line shows, in bytes: a longer one is cut, ending "…".
+const MaxPath = 4 << 10
+
+// MaskedPath is the path a's line shows: Path, or else URL masked (MaskURL), cut at MaxPath.
+func (a *Access) MaskedPath() string {
+	p := a.Path
+	if p == "" && a.URL != nil {
+		p = MaskURL(a.URL)
+	}
+	if len(p) > MaxPath {
+		i := MaxPath
+		for i > 0 && !utf8.RuneStart(p[i]) {
+			i--
+		}
+		p = p[:i] + "…"
+	}
+	return p
 }
 
 // bufs are the text lines' buffers.

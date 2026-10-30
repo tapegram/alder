@@ -57,6 +57,16 @@ func TestLogs_N(t *testing.T) {
 	if l := lastLimit(f); l != "100" {
 		t.Errorf("default limit %q", l)
 	}
+	// more than Render gives at once: the last 100, and a note on stderr saying so
+	var so, se bytes.Buffer
+	if code := c.logs([]string{"production", dir, "-n", "500"}, &so, &se); code != 0 || so.String() != "[i-1] one\n[i-1] two\n[i-1] three\n" ||
+		se.String() != "alder logs: Render returns at most 100 lines at once: these are the last 100\n" || lastLimit(f) != "100" {
+		t.Errorf("-n 500: exit %d\nstdout %q\nstderr %q", code, so.String(), se.String())
+	}
+	se.Reset()
+	if c.logs([]string{"production", dir, "-n", "100"}, &so, &se); se.Len() != 0 {
+		t.Errorf("-n 100 noted: %q", se.String())
+	}
 }
 
 // `alder logs --grep PATTERN` prints only the lines the regexp matches: a request id's lines.

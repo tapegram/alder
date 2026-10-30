@@ -123,6 +123,7 @@ type tracker struct {
 	bytes  int64
 	id     string
 	steps  int
+	acc    applog.Access // the record handed to Options.Access
 
 	// dev panel: the request, what it ran, how it was answered
 	r       *http.Request
@@ -367,10 +368,13 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if rt.opts.Access != nil && !health {
-			rt.opts.Access(&applog.Access{
-				ID: w.id, Method: r.Method, Path: applog.MaskURL(r.URL), Status: w.status,
+			// the record lives in the tracker, and the URL is masked only when the logger
+			// writes the line: a filtered access line costs no allocation and no masking
+			w.acc = applog.Access{
+				ID: w.id, Method: r.Method, URL: r.URL, Status: w.status,
 				Dur: time.Since(w.start), Bytes: w.bytes, Quiet: quiet(r.URL.Path, w.status), Steps: w.steps,
-			})
+			}
+			rt.opts.Access(&w.acc)
 		}
 		if v == http.ErrAbortHandler {
 			panic(v)

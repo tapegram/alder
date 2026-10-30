@@ -39,7 +39,8 @@ const IDHeader = "X-Request-Id"
 
 // RequestID is r's id: its X-Request-Id when that is 1 to 64 bytes of [A-Za-z0-9._-] (a
 // platform's own id, which then ties its log to the app's), else a new one (NewID). Anything else
-// is replaced, never echoed.
+// is replaced, never echoed. A kept id is client-controlled: any client may send one another
+// request has, so an id finds lines; it proves nothing about them.
 func RequestID(r *http.Request) string {
 	if v := r.Header.Get(IDHeader); validID(v) {
 		return v

@@ -876,6 +876,9 @@ func runLogsWith(args []string, stdout, stderr io.Writer, e deployEnv) int {
 	defer t.Close()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if _, ok := t.(*deploy.Render); ok && !follow && n > deploy.RenderLogMax {
+		fmt.Fprintf(stderr, "alder logs: Render returns at most %d lines at once: these are the last %d\n", deploy.RenderLogMax, deploy.RenderLogMax)
+	}
 	out := stdout
 	if grep != nil {
 		g := &grepWriter{w: stdout, re: grep}

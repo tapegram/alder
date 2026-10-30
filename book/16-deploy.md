@@ -742,13 +742,15 @@ received (the network tab shows it) has told you which lines to read.
 When the request already carries an `X-Request-Id` of 1 to 64 letters,
 digits, `.`, `_` or `-` (Fly's proxy sets one), the app keeps it, so
 its lines and the platform's share an id; anything else is replaced,
-never echoed back.
+never echoed back. An inbound id is the client's word, though: anyone
+can send `X-Request-Id: 0a0b0c0d` and have their request's lines carry
+an id another request has. Use it to find lines, not to trust them.
 
 ### Levels
 
 `ALDER_LOG` is the least level written; everything below it is dropped
-before it is formatted, so a quiet production app pays nothing for the
-lines it does not write.
+before it is formatted (and before its URL is masked), so a quiet
+production app pays nothing for the lines it does not write.
 
 | level | the runtime writes | the app writes |
 |---|---|---|
@@ -778,17 +780,29 @@ who would not be shown the app's data. So a URL goes into a line with
 its secrets replaced by `••••` (the dev panel's mask):
 
 - a query value whose parameter's name, in lowercase, contains `key`,
-  `token`, `secret`, `pass`, `auth`, `sig`, `code` or `session`
-  (`?key=…`, `access_token`, `Authorization`, `X-Amz-Signature`, an
-  OAuth `code`);
+  `token`, `secret`, `pass`, `auth`, `sig`, `code`, `session`, `pw`,
+  `jwt`, `otp`, `bearer` or `credential` (`?key=…`, `access_token`,
+  `Authorization`, `X-Amz-Signature`, an OAuth `code`, `pwd`);
 - a query value, a parameter name or a path segment that looks like a
   secret whatever its name: a URL with a password in it
   (`postgres://user:pass@…`), a known key prefix (`sk_`, `ghp_`, `AKIA`,
-  `xoxb-`, `xoxp-`, `-----BEGIN`), or 32 or more characters of base64 or
-  hex (a signed link's token in the path);
+  `xoxb-`, `xoxp-`, `-----BEGIN`), a JWT (`eyJ…` with two dots: a reset
+  link's `/reset/eyJ…`), 32 or more characters of base64 or hex (a
+  signed link's token in the path), or 32 or more URL-safe characters
+  (`-`, `_` and `.` too) mixing upper case, lower case and digits (a
+  base64url token). A UUID, a slug or a file name is none of these, so
+  `/u/550e8400-e29b-41d4-a716-446655440000/items/12345` stays readable;
+- inside a value that is itself a URL (`?next=https%3A%2F%2F…%3Fapi_key%3D…`),
+  the same rules applied to that URL's path, query and fragment: the
+  value keeps its shape, with its own secrets masked;
 - the value of a query pair that does not parse (a bad `%` escape, a raw
   `;`): the runtime cannot tell what it holds, so it hides it. The pair
   is kept, never dropped, so the line still shows the URL's shape.
+
+A byte that is not printable ASCII (a control character, or any byte of
+a non-ASCII character) is written `%`-escaped, so a request cannot put a
+terminal escape sequence into your log viewer, and a path is cut at
+4 KB, ending `…`.
 
 The parameter names, their order and every other value stay as written:
 `?key=s3cret&seed=7` becomes `?key=••••&seed=7`, which is enough to tell
@@ -831,8 +845,16 @@ alder logs production --grep rid=0a0b0c0d      one request
 `-n` is the target's: a box runs `tail -n N` on the build's log,
 Render's API returns at most 100 lines at once (so `-n` above 100
 prints 100), and `flyctl logs` has no count, so `alder logs` keeps the
-last N of what it prints. `--grep` is applied by `alder logs` itself to
-each line, whatever the target, before it reaches your terminal.
+last N of what it prints (`alder logs` says so on stderr when `-n` asks
+Render for more). `--grep` is applied by `alder logs` itself to each
+line, whatever the target, before it reaches your terminal. It matches
+lines, not entries: a panic's stack is several lines, and only its first
+(the one with the `rid=`) matches `--grep rid=…`. A pattern also
+matches inside longer text: `--grep rid=abc` finds `rid=abc`,
+`rid=abcd` and `rid=abc-2` alike (an id a client sent can be any
+length). `--grep 'rid=abc\b'` (`\b`, a word boundary) rules out
+`rid=abcd`; since an id is followed by a space or ends the line,
+`--grep 'rid=abc( |$)'` matches that id and no other.
 
 `GET /_alder/health` answers `{"build":"<id>","db":"ok"}` when the
 build is serving and its database answers a `SELECT 1` within five
