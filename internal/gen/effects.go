@@ -27,6 +27,7 @@ import (
 //	EffAll             eff.All([]eff.Task[A]{task(e1), …}); a list that is no literal:
 //	                   eff.All(list) for Tasks, std.QueryAll(list) for Queries
 //	EffFail/NotFound   eff.Fail[T](msg), eff.NotFound[T]()
+//	EffRedirect        eff.Redirect[T](rt.PageURL(page))
 //	DbGet, DbSelect    eff.Call("Db.get Todo", false, func(_e *eff.Env) (R, error) {
 //	  (run), DbRun,      return db.GetRow(_e.Ctx, _e.Store.(db.Store), db.TxOf(_e), …) })
 //	  DbInsert, …      (write is true for insert, update, delete); Db.insert passes the row's
@@ -117,7 +118,7 @@ func effResult(t types.Type) types.Type {
 // isEffNode reports whether e is an effect node effNode renders.
 func isEffNode(e ir.Expr) bool {
 	switch x := e.(type) {
-	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.CapCall,
+	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.EffRedirect, *ir.CapCall,
 		*ir.DbGet, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete, *ir.TestRun, *ir.TestTrace, *ir.TestFake,
 		*ir.DbGetScoped, *ir.DbUpdateScoped, *ir.DbDeleteScoped, *ir.DbInsertScoped, *ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick:
 		return true
@@ -186,6 +187,8 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 		return "eff.Fail[" + GoType(effResult(x.Ty)) + "](" + f.code(x.Message, s) + ")", true
 	case *ir.EffNotFound:
 		return "eff.NotFound[" + GoType(effResult(x.Ty)) + "]()", true
+	case *ir.EffRedirect:
+		return "eff.Redirect[" + GoType(effResult(x.Ty)) + "](rt.PageURL(" + f.code(x.Page, s) + "))", true
 	case *ir.DbGet:
 		tb := x.Table
 		return f.dbCall("Db.get "+tb.Name, false, x.Ty, s, func(env string, c *scope) string {
@@ -255,7 +258,13 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 			impl, ok, v, err := f.temp(c, "_c"), f.temp(c, "_ok"), f.temp(c, "_v"), f.temp(c, "_err")
 			args := []string{env + ".Ctx"}
 			for _, a := range x.Args {
-				args = append(args, f.code(a, c))
+				// A Go adapter gets copies of every list and Bytes it is handed (#37: the
+				// runtime shares storage, sound only while nothing writes to an Alder value).
+				if mayHoldSlice(a.Type()) {
+					args = append(args, "rt.Fresh("+f.code(a, c)+")")
+				} else {
+					args = append(args, f.code(a, c))
+				}
 			}
 			if len(x.Args) == 1 && capArgsWrapped(cp, x.Entry) { // Args__…{Value: v} (caps.go)
 				args[1] = argsName(cp.Module, cp.Name, x.Entry) + "{Value: " + args[1] + "}"
@@ -286,6 +295,35 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 		return f.browserStep(x, s), true // browser.go
 	}
 	panic(fmt.Sprintf("gen: %T is not an effect node", e))
+}
+
+// mayHoldSlice reports whether a value of type t can hold a Go slice (a List or Bytes, at the top
+// or inside a record, Maybe, Result, union or Dict): a capability argument of such a type is
+// passed through rt.Fresh. It is conservative: only the scalar types answer false, and rt.Fresh
+// returns a slice-free record unchanged.
+func mayHoldSlice(t types.Type) bool { return mayHoldSliceIn(t, 0) }
+
+func mayHoldSliceIn(t types.Type, depth int) bool {
+	if depth > 32 {
+		return true
+	}
+	switch t := t.(type) {
+	case *types.Brand:
+		return mayHoldSliceIn(t.Base, depth+1)
+	case *types.Record:
+		for _, f := range t.Fields {
+			if mayHoldSliceIn(f.Type, depth+1) {
+				return true
+			}
+		}
+		return false
+	case *types.Con:
+		switch t.Name {
+		case "Int", "Float", "Bool", "Text", "Unit", "Never", "Date", "Time", "Page":
+			return false
+		}
+	}
+	return true
 }
 
 // scopedFn is the rt/db function of a scoped operation written op: mine (M11's

@@ -2,3 +2,4 @@ app/Lam.alder:4:21 E0003 expected Text, got Int
 app/Lam.alder:4:21 E0003 expected Int, got Text
 app/Lam.alder:13:11 E0003 expected Text, got Int
   fix 13:11-13:12 Text.fromInt (1)
+app/Lam.alder:16:24 E0003 expected Int, got Text

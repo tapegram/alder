@@ -119,7 +119,7 @@ view model session =
           {"Choose at most " ++ Text.fromInt maxRows ++ " rows at a time."}
         </al-alert>
       else
-        <span></span>}
+        Html.none}
       <ul id="selected">
         {for row in model.rows ->
           <li>
@@ -190,12 +190,12 @@ test "deleting the chosen rows leaves the ones other rows refer to" = {
       kept: Maybe.map (\row -> row.id) kept,
       listed: Test.count "#selected li small" page.doc,
     } == {
-        answer: Redirected (Admin.Posts.Index {}),
-        gone: Nothing,
-        left: Just post3,
-        kept: Just post1,
-        listed: 1,
-      }
+      answer: Redirected (Admin.Posts.Index {}),
+      gone: Nothing,
+      left: Just post3,
+      kept: Just post1,
+      listed: 1,
+    }
   )
 }
 
@@ -226,10 +226,10 @@ test "setting status changes the chosen rows only" = {
       one: Maybe.map (\row -> row.status == Published) one,
       other: Maybe.map (\row -> row.status == Published) other,
     } == {
-        answer: Redirected (Admin.Posts.Index {}),
-        one: Just True,
-        other: Just False,
-      }
+      answer: Redirected (Admin.Posts.Index {}),
+      one: Just True,
+      other: Just False,
+    }
   )
 }
 
@@ -260,10 +260,10 @@ test "setting featured changes the chosen rows only" = {
       one: Maybe.map (\row -> row.featured == True) one,
       other: Maybe.map (\row -> row.featured == True) other,
     } == {
-        answer: Redirected (Admin.Posts.Index {}),
-        one: Just True,
-        other: Just False,
-      }
+      answer: Redirected (Admin.Posts.Index {}),
+      one: Just True,
+      other: Just False,
+    }
   )
 }
 
@@ -291,10 +291,10 @@ test "25 chosen ids are taken" = {
       kept: Maybe.map (\row -> row.id) after,
       warned: Test.count "#too-many" page.doc,
     } == {
-        answer: Redirected (Admin.Posts.Index {}),
-        kept: Nothing,
-        warned: 0,
-      }
+      answer: Redirected (Admin.Posts.Index {}),
+      kept: Nothing,
+      warned: 0,
+    }
   )
 }
 
@@ -322,10 +322,10 @@ test "26 chosen ids are refused" = {
       kept: Maybe.map (\row -> row.id) after,
       warned: Test.count "#too-many" page.doc,
     } == {
-        answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
-        kept: Just post1,
-        warned: 1,
-      }
+      answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
+      kept: Just post1,
+      warned: 1,
+    }
   )
 }
 

@@ -103,7 +103,7 @@ func runCiTo(args []string, stdout, stderr io.Writer) int {
 	if lint, err := exec.LookPath("actionlint"); err == nil {
 		cmd := exec.Command(lint, path)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			fmt.Fprintf(stderr, "alder ci init: actionlint finds problems in %s:\n%s", ciWorkflowPath, out)
+			fmt.Fprintf(stderr, "%s actionlint finds problems in %s:\n%s", errTag(stderr, "alder ci init:"), ciWorkflowPath, out)
 			return 1
 		}
 		fmt.Fprintln(stdout, "actionlint ok")

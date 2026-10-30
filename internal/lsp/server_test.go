@@ -73,7 +73,7 @@ func TestInitialize_Capabilities(t *testing.T) {
 		t.Fatalf("triggers %v", trig)
 	}
 	cmds := caps["executeCommandProvider"].(map[string]any)["commands"].([]any)
-	if len(cmds) != 1 || cmds[0] != "alder.explain" {
+	if len(cmds) != 2 || cmds[0] != "alder.explain" || cmds[1] != "alder.fill" {
 		t.Fatalf("commands %v", cmds)
 	}
 	if info := c.initResult["serverInfo"].(map[string]any); info["name"] != "alder" || info["version"] == "" {

@@ -502,8 +502,8 @@ func (c *collector) walk(e ir.Expr) {
 	}
 }
 
-// isGuard reports whether e (under any Lets) is Task.notFound, Query.notFound or Task.fail,
-// and which.
+// isGuard reports whether e (under any Lets) is Task.notFound, Query.notFound, Task.fail or
+// Query.redirect, and which.
 func isGuard(e ir.Expr) (string, bool) {
 	for {
 		l, ok := e.(*ir.Let)
@@ -517,6 +517,8 @@ func isGuard(e ir.Expr) (string, bool) {
 		return "notFound", true
 	case *ir.EffFail:
 		return "fail", true
+	case *ir.EffRedirect:
+		return "redirect", true
 	}
 	return "", false
 }

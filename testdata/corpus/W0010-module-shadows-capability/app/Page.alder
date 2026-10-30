@@ -1,0 +1,18 @@
+module Page
+
+import Clarity
+import Data.Clarity as DataClarity
+
+page "/" { }
+
+type Model = { title: Text, body: Text }
+
+-- `Clarity` here is the module Clarity, so `Clarity.final` is not the capability's entry.
+load : Params -> Session -> Query Model
+load params session = {
+  let body <- Clarity.final "PA"
+  Query.succeed { title: Clarity.title, body: body }
+}
+
+view : Model -> Session -> Html Msg
+view model session = <div>{model.title} {model.body}</div>

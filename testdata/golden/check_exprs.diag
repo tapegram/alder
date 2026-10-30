@@ -19,3 +19,13 @@ app/Todo.alder:99:31 E0310 unreachable arm: `All` is already handled
 app/Todo.alder:102:28 E0501 `Db.insert` never takes `id`; it is generated
 app/Todo.alder:108:11 E0004 missing cases: `Active`, `Completed`
   fix 108:29-108:30 , Active -> ?todo, Completed -> ?todo, 
+app/Todo.alder:120:12 E0004 missing cases: `[]`, `[Nothing, ..rest]`, `[Just _]`, `[Just _, Nothing, ..rest]`, `[Just _, Just _]`, `[Just _, Just _, Nothing, ..rest]`, `[Just _, Just _, Just _, _, ..rest]`
+  fix 121:40-122:1 ,⏎  [] -> ?todo,⏎  [Nothing, ..rest] -> ?todo,⏎  [Just _] -> ?todo,⏎  [Just _, Nothing, ..rest] -> ?todo,⏎  [Just _, Just _] -> ?todo,⏎  [Just _, Just _, Nothing, ..rest] -> ?todo,⏎  [Just _, Just _, Just _, _, ..rest] -> ?todo,⏎
+app/Todo.alder:127:3 E0310 unreachable arm: `[Just 1]` is already handled
+app/Todo.alder:134:11 E0004 missing cases: `{ next: Just { done: False } }`
+  fix 136:37-137:1 ,⏎  { next: Just { done: False } } -> ?todo,⏎
+app/Todo.alder:140:74 E0310 unreachable arm: every case is already handled
+app/Todo.alder:146:39 E0310 unreachable arm: `{ a: True }` is already handled
+app/Todo.alder:149:41 E0310 unreachable arm: `Just { a: 1 }` is already handled
+app/Todo.alder:152:12 E0004 missing cases: `[]`, `[Nothing, ..rest]`, `[Just _]`, `[Just _, Nothing, ..rest]`, `[Just _, Just _]`, `[Just _, Just _, Nothing, ..rest]`, `[Just _, Just _, Just _]`, `[Just _, Just _, Just _, Nothing, ..rest]`, …
+  fix 152:68-152:69 , [] -> ?todo, [Nothing, ..rest] -> ?todo, [Just _] -> ?todo, [Just _, Nothing, ..rest] -> ?todo, [Just _, Just _] -> ?todo, [Just _, Just _, Nothing, ..rest] -> ?todo, [Just _, Just _, Just _] -> ?todo, [Just _, Just _, Just _, Nothing, ..rest] -> ?todo, _ -> ?todo, 

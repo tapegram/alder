@@ -15,6 +15,7 @@ import (
 	"alder/internal/gen"
 	"alder/internal/ir"
 	"alder/internal/names"
+	"alder/internal/style"
 	"alder/internal/version"
 )
 
@@ -93,7 +94,7 @@ func buildApp(dir, out string, stderr io.Writer) (binary string, code int) {
 	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		fmt.Fprintf(stderr, "alder build: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder build:"), err)
 		return "", 2
 	}
 	return abs, 0
@@ -107,13 +108,13 @@ func buildApp(dir, out string, stderr io.Writer) (binary string, code int) {
 func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (written string, code int) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(stderr, "alder build: internal error: %v\n", r)
+			fmt.Fprintf(stderr, "%s internal error: %v\n", errTag(stderr, "alder build:"), r)
 			written, code = "", 2
 		}
 	}()
 	abs, err := filepath.Abs(dir)
 	if err != nil {
-		fmt.Fprintf(stderr, "alder build: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder build:"), err)
 		return "", 2
 	}
 
@@ -122,7 +123,7 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 		return "", 2
 	}
 	if len(prog.Modules) == 0 {
-		fmt.Fprintf(stderr, "alder build: no .alder files under %s/app\n", dir)
+		fmt.Fprintf(stderr, "%s no .alder files under %s/app\n", errTag(stderr, "alder build:"), dir)
 		return "", 2
 	}
 	sources := buildkit.Sources(prog)
@@ -131,13 +132,13 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 		if d.Severity == "warning" {
 			w = stderr
 		}
-		fmt.Fprint(w, diag.RenderText(d, sources[d.Span.File]))
+		fmt.Fprint(w, diag.RenderTextStyled(d, sources[d.Span.File], style.For(w)))
 	}
 	if bag.HasErrors() || res == nil {
 		return "", 1
 	}
 	if res.Holes > 0 {
-		fmt.Fprintf(stderr, "alder build: the program has %d typed hole(s); fill them before building\n", res.Holes)
+		fmt.Fprintf(stderr, "%s the program has %d typed hole(s); fill them before building\n", errTag(stderr, "alder build:"), res.Holes)
 		return "", 1
 	}
 
@@ -150,36 +151,36 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 	}
 	files, err := gen.Emit(p, gen.Options{Version: version.String(), Migrations: buildkit.HasMigrations(dir)})
 	if err != nil {
-		fmt.Fprintf(stderr, "alder build: internal error: %v\n", err)
+		fmt.Fprintf(stderr, "%s internal error: %v\n", errTag(stderr, "alder build:"), err)
 		return "", 2
 	}
 	if out == "" {
 		out = filepath.Join(buildRoot(""), name)
 	}
 	if err := buildkit.WriteGenerated(out, files); err != nil {
-		fmt.Fprintf(stderr, "alder build: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder build:"), err)
 		return "", 2
 	}
 	if err := buildkit.WriteRuntime(out); err != nil {
-		fmt.Fprintf(stderr, "alder build: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder build:"), err)
 		return "", 2
 	}
 	fetching := func() { fmt.Fprintln(stderr, buildkit.FetchingLine) }
 	if err := buildkit.DownloadDeps(context.Background(), out, fetching); err != nil {
-		fmt.Fprintf(stderr, "alder build: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder build:"), err)
 		if de := (*buildkit.DownloadError)(nil); errors.As(err, &de) {
 			return "", 1 // the machine's network or proxy, not the program or the compiler
 		}
 		return "", 2
 	}
 	if err := buildkit.CopyMigrations(filepath.Join(dir, "migrations"), filepath.Join(out, "migrations")); err != nil {
-		fmt.Fprintf(stderr, "alder build: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder build:"), err)
 		return "", 1
 	}
 	if emit {
 		// the app package alone: a cmd/, caps/ or adapters/ of an earlier full build is not vetted
 		if err := buildkit.VetApp(out, files, "."); err != nil {
-			fmt.Fprintf(stderr, "alder build: %v", err)
+			fmt.Fprintf(stderr, "%s %v", errTag(stderr, "alder build:"), err)
 			return "", 2
 		}
 		return out, 0
@@ -187,40 +188,40 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 
 	// the executable
 	if err := buildkit.CopyAdapters(adapters, filepath.Join(out, "adapters"), hasAdapters); err != nil {
-		fmt.Fprintf(stderr, "alder build: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder build:"), err)
 		return "", 2
 	}
-	if err := buildkit.CopyStatic(filepath.Join(dir, "static"), filepath.Join(out, "static")); err != nil {
-		fmt.Fprintf(stderr, "alder build: %v\n", err)
+	if err := buildkit.CopyStatic(filepath.Join(dir, "static"), filepath.Join(out, "static"), p.Theme.CSS()); err != nil {
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder build:"), err)
 		return "", 2
 	}
 	if err := os.MkdirAll(filepath.Join(out, "cmd"), 0o755); err != nil {
-		fmt.Fprintf(stderr, "alder build: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder build:"), err)
 		return "", 2
 	}
 	if err := os.WriteFile(filepath.Join(out, "cmd", "main.go"), gen.Main(name, len(p.Caps) > 0, len(p.Silos) > 0), 0o644); err != nil {
-		fmt.Fprintf(stderr, "alder build: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder build:"), err)
 		return "", 2
 	}
 	if err := os.WriteFile(filepath.Join(out, "cmd", "tzdata_deploy.go"), gen.TzdataDeploy(), 0o644); err != nil {
-		fmt.Fprintf(stderr, "alder build: %v\n", err)
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder build:"), err)
 		return "", 2
 	}
 	if vetOut, err := buildkit.GoCmd(out, "vet", "-mod=mod", "./..."); err != nil {
 		// the generated package first: when it does not vet, that is not the adapters' fault
 		if err := buildkit.VetApp(out, files, "."); err != nil {
-			fmt.Fprintf(stderr, "alder build: %v", err)
+			fmt.Fprintf(stderr, "%s %v", errTag(stderr, "alder build:"), err)
 			return "", 2
 		}
 		if hasAdapters || len(p.Caps) > 0 { // the adapters, or the wiring of their constructors
-			fmt.Fprintf(stderr, "alder build: %s", buildkit.AdaptersCompileMessage(name, filepath.Join(out, "adapters"), err, vetOut))
+			fmt.Fprintf(stderr, "%s %s", errTag(stderr, "alder build:"), buildkit.AdaptersCompileMessage(name, filepath.Join(out, "adapters"), err, vetOut))
 			return "", 1
 		}
-		fmt.Fprintf(stderr, "alder build: internal error: the generated Go in %s does not vet: %v\n%s", out, err, vetOut)
+		fmt.Fprintf(stderr, "%s internal error: the generated Go in %s does not vet: %v\n%s", errTag(stderr, "alder build:"), out, err, vetOut)
 		return "", 2
 	}
 	if buildOut, err := buildkit.GoCmd(out, "build", "-mod=mod", "-o", name, "./cmd"); err != nil {
-		fmt.Fprintf(stderr, "alder build: internal error: go build of %s failed: %v\n%s", out, err, buildOut)
+		fmt.Fprintf(stderr, "%s internal error: go build of %s failed: %v\n%s", errTag(stderr, "alder build:"), out, err, buildOut)
 		return "", 2
 	}
 	return filepath.Join(out, name), 0

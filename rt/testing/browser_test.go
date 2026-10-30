@@ -70,6 +70,7 @@ func indexView(filter string, s session, rows []row) html.Node {
 		html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("Index", "Boom"))}, html.Text("Boom")),
 		html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("App", "Logout"))}, html.Text("Log out")),
 		html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("Index", "Away"))}, html.Text("Away")),
+		html.El("button", []html.Attr{html.MsgAttr("data-on:click", msg("Index", "Hash"))}, html.Text("Hash")),
 		html.El("a", []html.Attr{html.A("href", "/?filter=Done")}, html.Text("Done")),
 	)
 }
@@ -164,6 +165,10 @@ func fixtureRoutes() []web.Route {
 		}},
 		{Method: "GET", Pattern: "/p/{slug}", Handle: func(rq *web.Request) web.Response {
 			return web.ErrorResponse(html.None(), errors.New("bad slug"))
+		}},
+		{Method: "GET", Pattern: "/hash", Handle: func(rq *web.Request) web.Response { return web.RedirectResponse("#top", nil) }},
+		{Method: "POST", Pattern: "/_m/Index/Hash", Handle: func(rq *web.Request) web.Response {
+			return web.RedirectResponse("#", rq.Env.Session) // Redirect (Url.external "javascript:…")
 		}},
 		{Method: "POST", Pattern: "/_m/Index/Away", Handle: func(rq *web.Request) web.Response {
 			return web.RedirectResponse("https://other.example/login", rq.Env.Session)
@@ -750,6 +755,28 @@ func TestBrowser_ExternalRedirect(t *testing.T) {
 		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Page{Path: "https://other.example/login"}})
 		if b.URL() != "/" || html.Render(r.Doc) != before {
 			t.Errorf("held after the navigate: %s %s", b.URL(), html.Render(r.Doc))
+		}
+	})
+}
+
+// TestBrowser_FragmentRedirect: a redirect to "#" (an unsafe Url.external the runtime
+// neutralised) or "#frag" stays on the page, as a browser does: Redirected with that target,
+// nothing requested, the held page and URL kept — for a GET's 303 and a message's alike.
+func TestBrowser_FragmentRedirect(t *testing.T) {
+	browse(t, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		b.Login(session{User: "ann"})
+		must(b.Get("/"))
+		before := html.Render(b.Doc())
+		r := must(b.Open("/hash"))
+		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Page{Path: "#top"}})
+		if b.URL() != "/" || html.Render(r.Doc) != before {
+			t.Errorf("held %s %s", b.URL(), html.Render(r.Doc))
+		}
+		r = must(b.Click("/_m/Index/Hash"))
+		wantAnswer(t, r, Answer{Tag: Redirected, Page: rt.Page{Path: "#"}})
+		if b.URL() != "/" || html.Render(r.Doc) != before {
+			t.Errorf("held after the message: %s %s", b.URL(), html.Render(r.Doc))
 		}
 	})
 }

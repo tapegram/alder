@@ -40,6 +40,16 @@ j = match s {
   _ -> "other",
 }
 
+jn : Text
+jn = match s {
+  [Just m, Just s] -> "two",
+  { a: Just x, b: [_, ..r] } -> "rec",
+  Just [a, ..rest] -> "list arg",
+  Just (Just x) -> "nested",
+  [[a], b] -> "lists",
+  _ -> "other",
+}
+
 k : Query Model
 k = {
   let todos <- Db.from Todo |> Db.all

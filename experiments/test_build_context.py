@@ -362,13 +362,15 @@ class BuildContextTests(unittest.TestCase):
         # membership), the silos and the one-store rule, `Test.member`, and the commands.
         # #22 (properties) raised it to 57k: the book's section 12, cut to its forms and commands, and the growth
         # #40's rewrite left (51.6k before #22). #6 (stdlib batch) raised it to 59k: ~75 stdlib signature
-        # lines and their one-sentence notes in chapter 9 (57.4k after #6).
+        # lines and their one-sentence notes in chapter 9 (57.4k after #6). The 2026-10-30 roadmap batch
+        # (#1 Json, #5 clock, #7 Random, #8 Query.redirect, #9 absolute URLs, #56 logs, #38 theme, ...)
+        # raised it to 64k: each adds its own stdlib and book lines.
         bc.HUMAN_SECTIONS, bc.KEEP_SUBSECTIONS = self.saved, self.saved_keep
         bc.DROP_SUBSECTIONS, bc.TRIMS = self.saved_drop, self.saved_trims
         code, out, _ = self.run_main("--reference", "--chapters", ",".join(bc.DEFAULT_CHAPTERS), "--book", str(bc.BOOK),
                                      "--example", str(bc.EXAMPLE))
         self.assertEqual(code, 0)
-        self.assertLessEqual(len(out) // 4, 59000, "the reference is at most 59k tokens (len/4)")
+        self.assertLessEqual(len(out) // 4, 64000, "the reference is at most 64k tokens (len/4)")
         # M17 (file pages) raised from 48000; see the M17 plan
         # M15: the partition rules, `via`, `silo`, the one-store rule and the commands are in; the
         # silo files, the open-time check and moving a table into a silo (the inside) are not

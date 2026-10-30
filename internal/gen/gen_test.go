@@ -1598,6 +1598,18 @@ func TestPatterns(t *testing.T) {
 	ints("capRec Nothing, 0", capRec(none, 0), 1)
 	ints("capList [Just 4, Nothing]", P__capList(1, []rt.Maybe[int64]{just(4), none}), 4)
 	ints("capList [Just 4]", P__capList(1, []rt.Maybe[int64]{just(4)}), 1)
+	// nested patterns at any depth (#2)
+	ints("sum3 [Just 1, Just 2, Just 3]", P__sum3([]rt.Maybe[int64]{just(1), just(2), just(3)}), 6)
+	ints("sum3 [Just 1, Nothing, Just 3]", P__sum3([]rt.Maybe[int64]{just(1), none, just(3)}), -1)
+	ints("sum3 []", P__sum3(nil), -1)
+	ints("sum3 [Just 1]", P__sum3([]rt.Maybe[int64]{just(1)}), -1)
+	ints("sum3 [Just 1, Just 2, Just 3, Just 4]", P__sum3([]rt.Maybe[int64]{just(1), just(2), just(3), just(4)}), -1)
+	ints("inner Just (Just 4)", P__inner(rt.Just(just(4))), 4)
+	ints("inner Just Nothing", P__inner(rt.Just(none)), 0)
+	ints("inner Nothing", P__inner(rt.Nothing[rt.Maybe[int64]]()), -1)
+	ints("heads Just [7, 8]", P__heads(rt.Just([]int64{7, 8})), 7)
+	ints("heads Just []", P__heads(rt.Just([]int64{})), 0)
+	ints("heads Nothing", P__heads(rt.Nothing[[]int64]()), -1)
 
 	// adv8
 	ints("both Just 1, Nothing", M__both(just(1), none), 1)
@@ -1646,6 +1658,32 @@ import "testing"
 func TestPayload(t *testing.T) {
 	if M__got != 7 || M__boxedText != "t" || M__plain != 4 || M__chain != 2 {
 		t.Errorf("got, boxedText, plain, chain = %d, %q, %d, %d", M__got, M__boxedText, M__plain, M__chain)
+	}
+}
+`)
+}
+
+// Nested patterns at any depth run first-match-wins (#2); parse is the issue's match, which the
+// filterMap-and-length workaround used to spell.
+func TestGen_RunNestedPatterns(t *testing.T) {
+	runGo(t, emit(t, "../../testdata/golden/gen_vet/n1-nested-patterns"), `package app
+
+import (
+	"slices"
+	"testing"
+)
+
+func TestNested(t *testing.T) {
+	if want := []int64{6, 4, 5, 3, 2, 9, 2}; !slices.Equal(M__values, want) {
+		t.Errorf("values = %v, want %v", M__values, want)
+	}
+	for in, want := range map[string]float64{"1 2 3": 6, "1 x 3": -1, "": -1, "1 2 3 4": -1} {
+		if got := M__parse(in); got != want {
+			t.Errorf("parse %q = %v, want %v", in, got, want)
+		}
+	}
+	if M__texts[0] != "e" {
+		t.Errorf("texts = %q", M__texts)
 	}
 }
 `)
@@ -3751,4 +3789,117 @@ func TestEmitNoFormat(t *testing.T) {
 	if !differs {
 		t.Error("NoFormat changed no module file")
 	}
+}
+
+// Query.redirect from a load (#8): a 303 to the page's URL as href renders it; under Datastar a
+// page of this app is followed and pushed, another site navigated to; a file page's redirect is a
+// plain 303; Url.external of an unsafe URL is "#", as for Redirect; Query.redirect as a value
+// compiles.
+func TestGen_QueryRedirect(t *testing.T) {
+	files := emitSource(t, map[string]string{
+		"App.alder": appModule,
+		"Builder.alder": `module Builder
+
+page "/builder/{seed}" { seed: Text, tab: Text = "main" }
+
+type Model = { seed: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { seed: params.seed }
+
+view : Model -> Session -> Html Msg
+view model session = <html><head><title>Builder</title></head><body><p>builder {model.seed}</p></body></html>
+`,
+		"Start.alder": `module Start
+
+page "/start" { go: Text = "", to: Text = "" }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session =
+  if params.go == "builder" then Query.redirect (Builder { seed: "7", tab: "main" })
+  else if params.go == "out" then Query.redirect (Url.external params.to)
+  else if params.go == "value" then Maybe.withDefault (Query.succeed { }) (Maybe.map Query.redirect (Just (Builder { seed: "a b", tab: "x" })))
+  else Query.succeed { }
+
+view : Model -> Session -> Html Msg
+view model session = <p>start</p>
+`,
+		"Go.alder": `module Go
+
+page "/go.txt" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.redirect (Builder { seed: "9", tab: "main" })
+
+view : Model -> Session -> File
+view model session = File.text { contentType: "text/plain", body: "never" }
+`,
+	})
+	contains(t, files["Start_alder.go"], `eff.Redirect[`)
+	contains(t, files["Start_alder.go"], `rt.PageURL(`)
+	runGo(t, files, `package app
+
+import (
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+)
+
+func TestProbe(t *testing.T) {
+	h, err := Serve(Caps{}, Options{DB: ":memory:", Dev: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	do := func(target string, ds bool) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", target, nil)
+		if ds {
+			r.Header.Set("Datastar-Request", "true")
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if w := do("/start?go=builder", false); w.Code != 303 || w.Header().Get("Location") != "/builder/7" || w.Body.Len() != 0 {
+		t.Fatalf("plain: %d %q %q", w.Code, w.Header().Get("Location"), w.Body.String())
+	}
+	if w := do("/start?go=value", false); w.Code != 303 || w.Header().Get("Location") != "/builder/a%20b?tab=x" {
+		t.Fatalf("as a value: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if w := do("/start", false); w.Code != 200 || !strings.Contains(w.Body.String(), "<p>start</p>") {
+		t.Fatalf("no redirect: %d %s", w.Code, w.Body.String())
+	}
+	w := do("/start?go=builder", true)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "builder 7") || !strings.Contains(w.Body.String(), "history.pushState") || !strings.Contains(w.Body.String(), `+"`"+`"/builder/7"`+"`"+`) {
+		t.Fatalf("Datastar: %d %s", w.Code, w.Body.String())
+	}
+	if w := do("/start?go=out&to="+url.QueryEscape("https://ex.com/x"), false); w.Code != 303 || w.Header().Get("Location") != "https://ex.com/x" {
+		t.Fatalf("external: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if w := do("/start?go=out&to="+url.QueryEscape("https://ex.com/x"), true); w.Code != 200 || !strings.Contains(w.Body.String(), `+"`"+`window.location.assign("https://ex.com/x")`+"`"+`) {
+		t.Fatalf("external under Datastar: %d %s", w.Code, w.Body.String())
+	}
+	// "#" (an unsafe URL Url.external neutralised) or "#frag" would send a GET back to itself in
+	// a loop: refused with a 500, under Datastar too
+	for _, to := range []string{"javascript:alert(1)", "#frag"} {
+		for _, ds := range []bool{false, true} {
+			w := do("/start?go=out&to="+url.QueryEscape(to), ds)
+			if w.Code != 500 && w.Header().Get("Alder-Status") != "500" || w.Header().Get("Location") != "" || !strings.Contains(w.Body.String(), "refusing to navigate") {
+				t.Fatalf("unsafe %q (Datastar %v): %d %q %s", to, ds, w.Code, w.Header().Get("Location"), w.Body.String())
+			}
+		}
+	}
+	if w := do("/go.txt", false); w.Code != 303 || w.Header().Get("Location") != "/builder/9" {
+		t.Fatalf("file page: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	// under Datastar a file page is a real navigation before its load runs; that GET is the 303
+	if w := do("/go.txt", true); !strings.Contains(w.Body.String(), `+"`"+`window.location.assign("/go.txt")`+"`"+`) {
+		t.Fatalf("file page under Datastar: %d %s", w.Code, w.Body.String())
+	}
+}
+`)
 }

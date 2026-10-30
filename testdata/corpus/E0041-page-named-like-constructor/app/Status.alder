@@ -1,0 +1,11 @@
+module Status
+
+page "/status" { cfg: Text }
+
+type Model = { cfg: Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { cfg: params.cfg }
+
+view : Model -> Session -> Html Msg
+view model session = <p>{model.cfg}</p>

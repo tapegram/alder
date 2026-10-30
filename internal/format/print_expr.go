@@ -105,6 +105,13 @@ func (p *printer) after(e syntax.Expr) Doc {
 	if p.hasLead(e) { // the comments go on lines of their own, the body after them
 		return Nest(Concat(HardLine, p.lead(e, true), p.expr(e)))
 	}
+	if _, ok := e.(*syntax.App); ok && opensBody(e) {
+		// a call that hugs its last argument stays on the line unless its head alone (the line up
+		// to where it opens) is too long: then the call goes on the next line
+		d := p.expr(e) // built once: both alternatives share it (building it twice doubles the
+		// work at every nested hugged call)
+		return Choice(Concat(Text(" "), d), Group(Nest(Concat(Line, d))), true)
+	}
 	if opensBody(e) {
 		return Concat(Text(" "), p.expr(e))
 	}
@@ -276,15 +283,23 @@ func (p *printer) binOp(e *syntax.BinOp) Doc {
 		multiline = multiline || hard
 	}
 	sep := Line
+	inline := false
 	switch {
 	case lv == levelPipe && len(ops) >= 2:
 		sep = HardLine
 	case multiline: // the operand's own lines break the expression: `[` … `] == 2`
-		sep = Text(" ")
+		sep, inline = Text(" "), true
 	}
 	var rest []Doc
 	for i := 1; i < len(operands); i++ {
 		rest = append(rest, sep, Text(ops[i-1]+" "), docs[i])
+	}
+	if inline {
+		// The operands after the first share one indentation: that of the line the first one
+		// ends on. `} == {` keeps its fields one level in (not two), an operand after a first
+		// one that broke onto a deeper line is not left of it, and a long chain of multi-line
+		// operands does not step in further with each one.
+		return Group(Concat(docs[0], AtLine(Concat(rest...))))
 	}
 	return Group(Concat(docs[0], Nest(Concat(rest...))))
 }
@@ -499,16 +514,15 @@ func (p *printer) pattern(pt syntax.Pattern) Doc {
 	panic("format: unknown pattern")
 }
 
-// subPattern prints a constructor's argument (ctorArg) or a field's or list element's pattern:
-// a constructor with an argument in parentheses, and as a constructor's argument also a list or
-// a negative literal (the grammar does not start an argument with `[` or `-`).
+// subPattern prints a constructor's argument (ctorArg) or a field's or list element's pattern.
+// Only a constructor's argument is ever parenthesised: an applied constructor (`Just (Just x)`)
+// and a negative literal (`Num (-1)`, as `f -1` is subtraction). A list is a bare argument, and
+// list elements and record fields take any pattern bare.
 func (p *printer) subPattern(pt syntax.Pattern, ctorArg bool) Doc {
 	paren := false
 	switch x := pt.(type) {
 	case *syntax.PCtor:
-		paren = x.Arg != nil
-	case *syntax.PList:
-		paren = ctorArg
+		paren = ctorArg && x.Arg != nil
 	case *syntax.PLit:
 		paren = ctorArg && strings.HasPrefix(p.spanText(x.Span), "-")
 	}

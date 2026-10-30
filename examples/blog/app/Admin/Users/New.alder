@@ -113,16 +113,16 @@ test "creating a user adds it, with the values submitted" = {
         passwordHash: row.passwordHash,
       }) rows,
     } == {
-        answers: [r.answer],
-        rows: [
-          {
-            email: Text.Email "email-2@example.com",
-            name: Text.NonEmpty "name-2",
-            role: Admin,
-            passwordHash: "",
-          },
-        ],
-      }
+      answers: [r.answer],
+      rows: [
+        {
+          email: Text.Email "email-2@example.com",
+          name: Text.NonEmpty "name-2",
+          role: Admin,
+          passwordHash: "",
+        },
+      ],
+    }
   )
 }
 

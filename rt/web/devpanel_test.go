@@ -252,6 +252,108 @@ func TestDevPanel_BulkNotDuplicate(t *testing.T) {
 	}
 }
 
+// A page whose load runs one select per row is an N+1: its statements are marked `N+1 x100` in
+// the SQL tab, the bar says `N+1`, and the router logs one warn line naming the request; the same
+// 100 statements as DELETEs under one Task.all are a bulk action, which neither marks nor logs.
+func TestDevPanel_NPlusOne(t *testing.T) {
+	t.Setenv("ALDER_DEV", "1")
+	stmt := func(name, q string, arg any) eff.Task[int] {
+		return eff.Call(name, false, func(e *eff.Env) (int, error) {
+			e.Rec.AddSQL(eff.SQLRec{Stmt: q, Args: []any{arg}, Rows: 1})
+			return 0, nil
+		})
+	}
+	const get = `SELECT "id", "title", "n" FROM "Table__Row" WHERE "id" = ?`
+	routes := []Route{
+		{Method: "GET", Pattern: "/slow", Handle: func(rq *Request) Response {
+			for id := range 100 {
+				if _, err := eff.Run(rq.Env, eff.KQuery, stmt("Db.get", get, id)); err != nil {
+					panic(err)
+				}
+			}
+			return PageResponse(doc("slow"), nil, nil, false)
+		}},
+		{Method: "GET", Pattern: "/bulk", Handle: func(rq *Request) Response {
+			var ds []eff.Task[int]
+			for id := range 100 {
+				ds = append(ds, stmt("Db.delete", `DELETE FROM "Table__Row" WHERE "id" = ?`, id))
+			}
+			if _, err := eff.Run(rq.Env, eff.KTask, eff.All(ds)); err != nil {
+				panic(err)
+			}
+			return PageResponse(doc("bulk"), nil, nil, false)
+		}},
+	}
+	var warns []string
+	h := NewRouter(routes, testOpts(func(o *Options) {
+		o.Dev = true
+		o.Log = func(level, msg string) {
+			if level == "warn" {
+				warns = append(warns, msg)
+			}
+		}
+	}))
+	b := serve(h, httptest.NewRequest("GET", "/slow", nil)).Body.String()
+	if !strings.Contains(b, "N+1 x100") || strings.Contains(b, "duplicate x100") {
+		t.Errorf("the SQL tab does not mark the N+1: %s", b)
+	}
+	if !regexp.MustCompile(`<span>100 SQL</span> <span data-nplus1>N\+1</span>`).MatchString(b) {
+		t.Errorf("the bar does not say N+1: %s", b)
+	}
+	if len(warns) != 1 || !strings.HasPrefix(warns[0], "GET /slow: N+1: SELECT \"id\", \"title\", … FROM \"Table__Row\" WHERE \"id\" = ? ran 100 times (100 argument sets") {
+		t.Errorf("warn lines %q", warns)
+	}
+	warns = nil
+	b = serve(h, httptest.NewRequest("GET", "/bulk", nil)).Body.String()
+	if !strings.Contains(b, "x100 (bulk)") || strings.Contains(b, "N+1") {
+		t.Errorf("the bulk delete is marked: %s", b)
+	}
+	if len(warns) != 0 {
+		t.Errorf("warn lines for a bulk delete: %q", warns)
+	}
+}
+
+// A Rerender runs the page's load twice: a load that runs one select 3 times is not an N+1 on
+// the GET nor on the message (6 in the answer, but 3 per load run).
+func TestDevPanel_RerenderNotNPlusOne(t *testing.T) {
+	t.Setenv("ALDER_DEV", "1")
+	load := eff.Q(eff.Call("Db.all", false, func(e *eff.Env) (int, error) {
+		for range 3 {
+			e.Rec.AddSQL(eff.SQLRec{Stmt: "SELECT all", Args: []any{}, Rows: 1})
+		}
+		return 0, nil
+	}))
+	page := func(n int) func(rq *Request) Response {
+		return func(rq *Request) Response {
+			for range n {
+				if _, err := eff.RunQuery(rq.Env, load); err != nil {
+					panic(err)
+				}
+			}
+			return PageResponse(doc("p"), nil, nil, true)
+		}
+	}
+	var warns []string
+	h := NewRouter([]Route{{Method: "GET", Pattern: "/", Handle: page(1)}, {Method: "POST", Pattern: "/_m/P/Toggle", Handle: page(2)}},
+		testOpts(func(o *Options) {
+			o.Dev = true
+			o.Log = func(level, msg string) {
+				if level == "warn" {
+					warns = append(warns, msg)
+				}
+			}
+		}))
+	for _, req := range []*http.Request{httptest.NewRequest("GET", "/", nil), httptest.NewRequest("POST", "/_m/P/Toggle", nil)} {
+		req.Header.Set("Datastar-Request", "true")
+		if b := serve(h, req).Body.String(); strings.Contains(b, "N+1") {
+			t.Errorf("%s %s: marked N+1: %s", req.Method, req.URL.Path, b)
+		}
+	}
+	if len(warns) != 0 {
+		t.Errorf("warns %q", warns)
+	}
+}
+
 // The notice cookie is consumed by a page GET only: not by a 404 (a favicon), a /_alder/ or
 // /static/ path, or a HEAD.
 func TestNoticeOnlyForPageGET(t *testing.T) {
@@ -303,19 +405,25 @@ func prodPages(t *testing.T) string {
 	t.Setenv("ALDER_DEV", "")
 	route := one("GET", "/x", func(rq *Request) Response { return PageResponse(doc("hi"), nil, nil, false) })
 	h := NewRouter(route, testOpts(func(o *Options) { o.Dev = false }))
-	full := serve(h, httptest.NewRequest("GET", "/x", nil)).Body.String()
+	full := serveRaw(h, httptest.NewRequest("GET", "/x", nil)).Body.String()
 	req := httptest.NewRequest("GET", "/x", nil)
 	req.Header.Set("Datastar-Request", "true")
-	patch := serve(h, req).Body.String()
+	patch := serveRaw(h, req).Body.String()
 	out := "== full page\n" + full + "\n== datastar request\n" + patch + "\n"
 	return regexp.MustCompile(`name="alder-build" content="[0-9a-f]+"`).ReplaceAllString(out, `name="alder-build" content="BUILD"`)
 }
 
 // Production output is byte for byte what it was before the dev panel's Errors tab, strip,
 // resizing and minimising: testdata/production_page.golden was generated from the commit before
-// them (168ad442), with the build id normalised to BUILD; the one change since is the pending
-// bar's token, now alder-ui v0.4's --primary (#21).
+// them (168ad442), with the build id normalised to BUILD; the changes since are the pending
+// bar's token, now alder-ui v0.4's --primary (#21), and the shown hash (#49): the boost's
+// window._alderO and the <al-shown> at the end of every body.
 func TestProductionPageHasNoDevUI(t *testing.T) {
+	if os.Getenv("UPDATE_GOLDEN") != "" {
+		if err := os.WriteFile("testdata/production_page.golden", []byte(prodPages(t)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	want, err := os.ReadFile("testdata/production_page.golden")
 	if err != nil {
 		t.Fatal(err)

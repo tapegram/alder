@@ -1,0 +1,2 @@
+app/Parts.alder:5:11 E0004 missing cases: `[]`, `[Nothing, ..rest]`, `[Just _]`, `[Just _, Nothing, ..rest]`, `[Just _, Just _]`, `[Just _, Just _, Nothing, ..rest]`, `[Just _, Just _, Just _, _, ..rest]`
+  fix 6:44-7:1 ,⏎  [] -> ?todo,⏎  [Nothing, ..rest] -> ?todo,⏎  [Just _] -> ?todo,⏎  [Just _, Nothing, ..rest] -> ?todo,⏎  [Just _, Just _] -> ?todo,⏎  [Just _, Just _, Nothing, ..rest] -> ?todo,⏎  [Just _, Just _, Just _, _, ..rest] -> ?todo,⏎

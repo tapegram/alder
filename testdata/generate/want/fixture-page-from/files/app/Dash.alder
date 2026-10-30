@@ -61,10 +61,10 @@ test "the page shows each table's rows" = {
       posts: Test.count "#posts li" page.doc,
       tags: Test.count "#tags li" page.doc,
     } == {
-        heading: Just "Dash",
-        posts: 1,
-        tags: 1,
-      }
+      heading: Just "Dash",
+      posts: 1,
+      tags: 1,
+    }
   )
 }
 

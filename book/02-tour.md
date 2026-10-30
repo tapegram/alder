@@ -100,8 +100,8 @@ page "/" { }
 
 `import` makes another module's names available: `Layout` for the HTML
 around the page, `Table.Entry` for the table (written `Entry` from here
-on). `page "/" { }` makes this module a page, served at `/`; the braces would list the address's parameters, and
-this page has none.
+on). `page "/" { }` makes this module a page, served at `/`; the braces
+would list the address's parameters, and this page has none.
 
 ```alder part=guestbook/Home
 type Model = { entries: List Entry }
@@ -683,8 +683,11 @@ view model session =
   </Layout.Page>
 ```
 
-`view` is HTML with expressions in braces. It also receives the session, which this page does not need (a page that shows a per-user setting kept in the session would; chapter 6's theme is one). `App.Logout` is an app-level message, which any page may send (chapter 6). `href` takes a page value, never
-a string, so a link to a page that doesn't exist, or with the wrong
+`view` is HTML with expressions in braces. It also receives the session,
+which this page does not need (a page that shows a per-user setting kept
+in the session would; chapter 6's theme is one). `App.Logout` is an
+app-level message, which any page may send (chapter 6). `href` takes a
+page value, never a string, so a link to a page that doesn't exist, or with the wrong
 parameters, is a compile error. `submit={Submit}` ties the form to its
 message, and `<al-input field="title">` is checked against `NewTodo`. If the
 submitted form is invalid, the runtime re-renders this page with the errors
@@ -821,10 +824,10 @@ test "adding a todo through the page" = {
       todos: List.map (\t -> t.title) page.model.todos,
       summary: Test.text "#summary" page.doc,
     } == {
-        answer: Redirected (Todos.Index {}),
-        todos: [Text.NonEmpty "Milk"],
-        summary: Just "1 open",
-      }
+      answer: Redirected (Todos.Index {}),
+      todos: [Text.NonEmpty "Milk"],
+      summary: Just "1 open",
+    }
   )
 }
 
@@ -848,10 +851,10 @@ test "toggling a todo through the page" = {
       done: Test.has "li.done" r.doc,
       summary: Test.text "#summary" r.doc,
     } == {
-        answer: Rerendered,
-        done: True,
-        summary: Just "0 open",
-      }
+      answer: Rerendered,
+      done: True,
+      summary: Just "0 open",
+    }
   )
 }
 

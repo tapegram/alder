@@ -46,8 +46,8 @@ func params__Login(_ Login__Params) []rt.KV {
 }
 
 // Route__Login__page serves page Login, GET /login (book 06): decode the parameters (404 when they
-// do not), load (404 on Query.notFound, 500 on a failure), view (the model also in rq.Model, which
-// a test's browser reads).
+// do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model
+// also in rq.Model, which a test's browser reads).
 func Route__Login__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/login", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Login__Params(rq.Params, rq.Query)
@@ -112,13 +112,14 @@ func params__Notes(_ Notes__Params) []rt.KV {
 // a form (st, the state of the form that sent the message; nil for a message without one) load and
 // view again with t on the form (patched into the page under Datastar); for Rerender (and a Reject
 // without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh
-// does not post again). A failed Task changes nothing: 500 (App.error), or 404 for Query.notFound
-// or Task.notFound.
+// does not post again). A failed Task changes nothing: 500 (App.error), 404 for Query.notFound or
+// Task.notFound, or a 303 for Query.redirect.
 func update__Notes(rq *web.Request, params Notes__Params, msg Notes__Msg, st *html.FormState) web.Response {
 	model, session, stop := page__Notes(rq, params, nil)
 	if stop != nil {
 		return *stop
 	}
+	model0, session0 := model, session // the page the client shows: Before
 	nav, err := eff.Run(rq.Env, eff.KTask, Notes__update(msg, model, session))
 	if err != nil {
 		return route__fail(err)
@@ -139,12 +140,12 @@ func update__Notes(rq *web.Request, params Notes__Params, msg Notes__Msg, st *ht
 	if stop != nil {
 		return *stop
 	}
-	return web.PageResponse(Notes__view(model, session), st, rq.Env.Session, true)
+	return web.PageResponse(Notes__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Notes__view(model0, session0) })
 }
 
 // Route__Notes__page serves page Notes, GET /notes (book 06): decode the parameters (404 when they
-// do not), `requires` (303 to App.login), load (404 on Query.notFound, 500 on a failure), view (the
-// model also in rq.Model, which a test's browser reads).
+// do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect, 500
+// on a failure), view (the model also in rq.Model, which a test's browser reads).
 func Route__Notes__page() web.Route {
 	return web.Route{Method: "GET", Pattern: "/notes", Handle: func(rq *web.Request) web.Response {
 		params, errs := decode__Notes__Params(rq.Params, rq.Query)
@@ -179,16 +180,20 @@ func Route__Notes__Add() web.Route {
 			if stop != nil {
 				return *stop
 			}
-			return web.PageResponse(Notes__view(model, session), &html.FormState{Form: "Notes.NewNote", Msg: rt.MsgKey("/_m/Notes/Add", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Notes(params)}, nil, true)
+			return web.PageResponse(Notes__view(model, session), &html.FormState{Form: "Notes.NewNote", Msg: rt.MsgKey("/_m/Notes/Add", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Notes(params)}, nil, true).WithBefore(func() html.Node { return Notes__view(model, session) })
 		}
 		p.Form = form
 		return update__Notes(rq, params, Notes__Msg__Add__(p), &html.FormState{Form: "Notes.NewNote", Msg: rt.MsgKey("/_m/Notes/Add", rq.Query), Values: values})
 	}}
 }
 
-// route__fail answers a load or update that did not succeed: 404 (App.notFound) for
-// Query.notFound and Task.notFound, else 500 (App.error).
+// route__fail answers a load or update that did not succeed: a 303 to the page for
+// Query.redirect, 404 (App.notFound) for Query.notFound and Task.notFound, else 500 (App.error).
 func route__fail(err error) web.Response {
+	var rd *eff.ErrRedirect
+	if errors.As(err, &rd) {
+		return web.QueryRedirectResponse(rd.Location)
+	}
 	if errors.Is(err, eff.ErrNotFound) {
 		return web.NotFoundResponse(html.None())
 	}

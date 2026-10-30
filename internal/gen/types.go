@@ -17,6 +17,9 @@ import (
 //	HttpError, Nav                   rt.HttpError, rt.Nav
 //	Doc, Answer (test builds only)   rtesting.Doc, rtesting.Answer
 //	Fuzz.Fuzzer a, Fuzz.Property     fuzz.Fuzzer[A], *rtesting.Property
+//	Random.Generator a, Random.Seed  std.Generator[A], std.Seed
+//	Json.Value                       rt.JsonValue
+//	Text.Builder                     rt.TextBuilder
 //	List a, Dict k v, Html a         []A, rt.Dict[K, V], html.Node (whatever a is)
 //	Maybe a, Result e a              rt.Maybe[A], rt.Result[E, A]
 //	Query a, Task a                  eff.Query[A], eff.Task[A]
@@ -66,6 +69,18 @@ func GoType(t types.Type) string {
 			if t.Module == "Fuzz" {
 				return "*rtesting.Property"
 			}
+		case "Seed":
+			if t.Module == "Random" {
+				return "std.Seed"
+			}
+		case "Value":
+			if t.Module == "Json" {
+				return "rt.JsonValue"
+			}
+		case "Builder":
+			if t.Module == "Text" {
+				return "rt.TextBuilder"
+			}
 		}
 		return "any"
 	case *types.Param:
@@ -94,6 +109,8 @@ func GoType(t types.Type) string {
 			return "string"
 		case "Fuzzer":
 			return "fuzz.Fuzzer[" + GoType(t.Args[0]) + "]"
+		case "Generator":
+			return "std.Generator[" + GoType(t.Args[0]) + "]"
 		case "Insert":
 			if r, ok := t.Args[0].(*types.Record); ok && r.Name != "" && !r.Anonymous {
 				return insertName(r.Module, r.Name)

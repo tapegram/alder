@@ -64,6 +64,8 @@ func Children(e Expr) []Expr {
 		return []Expr{x.Effects}
 	case *EffFail:
 		return []Expr{x.Message}
+	case *EffRedirect:
+		return []Expr{x.Page}
 	case *DbGet:
 		return []Expr{x.ID}
 	case *DbSelect:

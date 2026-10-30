@@ -138,6 +138,9 @@ func Dump(p *Program) string {
 	if p.Deploy != nil {
 		form(deployForm(p.Deploy))
 	}
+	if p.Theme != nil {
+		form(themeForm(p.Theme))
+	}
 	for _, c := range p.Caps {
 		d := &dumper{home: c.Module}
 		x := list(2, atom("capability"), atom(c.Module+"."+c.Name))
@@ -586,6 +589,8 @@ func (d *dumper) expr(e Expr) *sx {
 		return list(1, atom("fail"), d.expr(x.Message))
 	case *EffNotFound:
 		return atoms("not-found")
+	case *EffRedirect:
+		return list(1, atom("redirect"), d.expr(x.Page))
 	case *TestRun:
 		return list(1, atom("test-run"), d.expr(x.Task))
 	case *TestTrace:

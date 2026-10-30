@@ -53,6 +53,9 @@ type Options struct {
 	DevMap      string   // the generator's JSON map of the app (pages, tables, session), shown by /_dev under ALDER_DEV=1 only
 	Migrations  []string // the migrations the database has (names), shown by /_dev
 	Reload      string   // under `alder run`, the build generation (ALDER_RELOAD); non-empty: every page carries the dev server's overlay and reload subscriber (withReload)
+	// Theme is the CSS of App's `theme` declaration (generated Web; "" without one): the served
+	// /static/al/al.css is the embedded stylesheet, a newline and this, with an ETag of its own.
+	Theme string
 	// EnvFor, when set, makes each request's Env instead of the router: it is called with the
 	// request's context and its decoded session, and the router then sets the Env's Session to
 	// that session. An Alder test's browser (rt/testing) supplies one sharing the test's Store,
@@ -76,6 +79,10 @@ type Options struct {
 	MaintenanceDoc func() html.Node
 	// Build is the build's id (ALDER_BUILD, set by the deploy), answered by /_alder/health.
 	Build string
+	// Rendered, when set, is called for every Datastar answer to a message that re-renders the
+	// page (a body morph or region patches) with the <body> a full render sends: an Alder test's
+	// browser checks the page it holds after applying the answer against it. nil in production.
+	Rendered func(rq *Request, body string)
 	// SharedMaintenance, when set, is why the shared database cannot be served by this build
 	// (Serve: on Turso, a newer build migrated it, "ahead: <detail>"): every route answers the
 	// maintenance page (MaintenanceDoc) with 503, and /_alder/health 503 with its text.
@@ -96,6 +103,11 @@ type router struct {
 	now    func() time.Time
 	static http.Handler // nil without a StaticDir
 	script http.Handler
+
+	// alCSS and alETag are the served al.css with Options.Theme appended and its ETag; nil
+	// without a theme (the embedded file is served as it is)
+	alCSS  []byte
+	alETag string
 
 	bigCookie sync.Once // the oversized-cookie warning is logged once per router
 
@@ -270,6 +282,9 @@ func NewRouter(routes []Route, opts Options) http.Handler {
 	if len(rt.key) < minSecret {
 		rt.key = DevKey()
 		rt.log("warn", devWarning)
+	}
+	if opts.Theme != "" {
+		rt.alCSS, rt.alETag = ThemedStylesheet(opts.Theme)
 	}
 	if opts.StaticDir != "" {
 		rt.static = http.StripPrefix(strings.TrimSuffix(staticPrefix, "/"), http.FileServer(filesOnly{http.Dir(opts.StaticDir)}))
@@ -487,6 +502,7 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rt.serve(w, r, st)
+	rt.warnRepeats(w)
 }
 
 // alderPrefix is the runtime's own files' path (the Datastar script, datastar.ScriptPath).
@@ -867,20 +883,13 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 			w.WriteHeader(http.StatusSeeOther)
 			return
 		}
+		if st.url == "" && resp.Patch && rq.Datastar {
+			rt.rerender(w, r, rq, resp)
+			return
+		}
 		page := html.RenderWith(resp.Node, resp.State)
 		if st.url != "" {
 			rt.morph(w, r, st, http.StatusOK, page)
-			return
-		}
-		if resp.Patch && rq.Datastar {
-			if err := datastar.PatchBody(w, rt.shellBody(w, rt.dev(bodyOf(page)))); err != nil {
-				rt.log("error", line(w, r, fmt.Sprintf("writing the patch: %v", err)))
-			}
-			if tw, ok := w.(*tracker); ok {
-				tw.patches = append(tw.patches, "body")
-			}
-			rt.notify(w)
-			rt.patchPanel(w, http.StatusOK)
 			return
 		}
 		rt.document(w, http.StatusOK, page)
@@ -900,6 +909,117 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 	default:
 		rt.fail(w, r, st, html.None(), fmt.Errorf("handler returned a response with status %d", resp.Status), nil)
 	}
+}
+
+// rerender answers a Datastar request whose page re-renders (a message's Rerender or Reject, a
+// form that did not decode): with the elements that changed when the router can prove which page
+// the client shows (fragments), else with the whole body morphed in, as a boosted navigation's.
+// Options.Rendered gets the full render's body either way.
+func (rt *router) rerender(w http.ResponseWriter, r *http.Request, rq *Request, resp Response) {
+	var after html.Rendered
+	if resp.Before != nil && r.Header.Get(html.ShownHeader) != "" { // regions only when fragments may follow
+		after = html.RenderTracked(resp.Node, resp.State)
+	} else {
+		after.Page = html.RenderWith(resp.Node, resp.State)
+	}
+	body := bodyOf(after.Page)
+	if rt.opts.Rendered != nil {
+		rt.opts.Rendered(rq, body)
+	}
+	tw, _ := w.(*tracker)
+	note := func(p string) {
+		if tw != nil {
+			tw.patches = append(tw.patches, p)
+		}
+	}
+	patches, ok := rt.fragments(w, r, resp, after, body)
+	var err error
+	switch {
+	case !ok:
+		err = datastar.PatchBody(w, rt.shellBody(w, rt.dev(withShown(body))))
+		note("body")
+	case len(patches) == 0:
+		// nothing changed: no element event, and the shown hash stays what it was
+		h := w.Header()
+		h.Set("Content-Type", "text/event-stream")
+		h.Set("Cache-Control", "no-cache")
+		note("none")
+	default:
+		for _, p := range patches {
+			if err == nil {
+				err = datastar.PatchRegion(w, strings.TrimPrefix(p.Selector, "#"), p.Elements)
+			}
+			note(p.Selector)
+		}
+		// the shown hash last: an answer cut short (an aborted request, a dropped connection)
+		// leaves the old hash with regions already patched, so the next post's hash does not
+		// match its before-view and that answer morphs the whole body
+		if err == nil {
+			err = datastar.PatchShown(w, html.Hash(body))
+		}
+		note("shown")
+	}
+	if err != nil {
+		rt.log("error", line(w, r, fmt.Sprintf("writing the patch: %v", err)))
+	}
+	rt.notify(w)
+	rt.patchPanel(w, http.StatusOK)
+}
+
+// fragments is the region patches of a re-rendered page (html.Fragments), body its full
+// render's <body>; ok is false when only a body morph is safe: the route sets no Before (not a
+// message's answer), the request carries no shown hash (html.ShownHeader), a Noticed answer's
+// toast needs the implicit <al-toasts> region the page does not have, the before-view panics
+// (logged), the client shows another page than the before-view (the first click after a
+// rejected form, a load that reads the clock, a tab of an older build), or a change lies
+// outside every region.
+func (rt *router) fragments(w http.ResponseWriter, r *http.Request, resp Response, after html.Rendered, body string) (patches []html.Patch, ok bool) {
+	shown := r.Header.Get(html.ShownHeader)
+	if resp.Before == nil || shown == "" {
+		return nil, false
+	}
+	if tw, isT := w.(*tracker); isT && tw.notice != "" && !after.Toasts {
+		return nil, false
+	}
+	var plain *html.FormState
+	if resp.State != nil {
+		plain = &html.FormState{PageParams: resp.State.PageParams}
+	}
+	before, ok := rt.renderBefore(r, resp.Before, plain, len(after.Page)+len(after.Page)/16)
+	if !ok {
+		return nil, false
+	}
+	b := bodyOf(before.Page)
+	if html.Hash(b) != shown {
+		return nil, false
+	}
+	if b == body {
+		return []html.Patch{}, true
+	}
+	ps := html.Fragments(before, after)
+	for _, p := range ps {
+		if p.Selector == "body" {
+			return nil, false
+		}
+	}
+	return ps, true
+}
+
+// renderBefore renders the page as it was before the message (Response.Before) with st, in a
+// buffer of size bytes (about the after-page's); a panic in it is logged and reported as not ok.
+func (rt *router) renderBefore(r *http.Request, before func() html.Node, st *html.FormState, size int) (out html.Rendered, ok bool) {
+	defer func() {
+		if p := recover(); p != nil {
+			rt.log("error", fmt.Sprintf("%s %s: rendering the page before the message: %v (the whole body is patched)", r.Method, r.URL.Path, p))
+			ok = false
+		}
+	}()
+	return html.RenderTrackedSized(before(), st, size), true
+}
+
+// withShown is body with the <al-shown> element carrying its hash (datastar.ShownTag) at its end.
+func withShown(body string) string {
+	return endOfBody(body, datastar.ShownTag(html.Hash(body)))
 }
 
 // headerNewlines turns CR and LF in a file's header value into spaces: a value cannot end its
@@ -1046,7 +1166,7 @@ func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status i
 	if status != http.StatusOK {
 		w.Header().Set(StatusHeader, strconv.Itoa(status))
 	}
-	err := datastar.PatchBody(w, rt.shellBody(w, rt.dev(bodyOf(page))))
+	err := datastar.PatchBody(w, rt.shellBody(w, rt.dev(withShown(bodyOf(page)))))
 	if tw, ok := w.(*tracker); ok {
 		tw.patches = append(tw.patches, "body")
 	}
@@ -1090,11 +1210,14 @@ func titleOf(page string) (string, bool) {
 	return rest[:k], true
 }
 
-// document writes "<!doctype html>\n" + page, with the Datastar script tag injected, as HTML.
+// document writes "<!doctype html>\n" + page, with the Datastar script tag injected, as HTML,
+// its <body> ending with the <al-shown> of its hash (an alert the router adds is part of it: the
+// next message's before-view has none, so its answer morphs the body).
 func (rt *router) document(w http.ResponseWriter, status int, page string) {
 	if tw, ok := w.(*tracker); ok && tw.alert != "" {
 		page = startOfBody(page, `<al-alert variant="info" role="status">`+esc(tw.alert)+`</al-alert>`)
 	}
+	page = endOfBody(page, datastar.ShownTag(html.Hash(bodyOf(page))))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	_, _ = w.Write([]byte("<!doctype html>\n" + withScript(rt.inlinePanel(w, rt.dev(page), status))))
@@ -1447,9 +1570,18 @@ func (rt *router) serveStatic(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if data, etag, ok := al.File(strings.TrimPrefix(r.URL.Path, designSystemPrefix)); ok && strings.HasPrefix(r.URL.Path, designSystemPrefix) {
+	name := strings.TrimPrefix(r.URL.Path, designSystemPrefix)
+	if data, etag, ok := al.File(name); ok && strings.HasPrefix(r.URL.Path, designSystemPrefix) {
 		h := w.Header()
 		h.Set("Cache-Control", DesignSystemCache)
+		if name == "al.css" {
+			if rt.alCSS != nil {
+				data, etag = rt.alCSS, rt.alETag
+			}
+			if rt.opts.Reload != "" { // alder run: an edit to the theme shows on the next load
+				h.Set("Cache-Control", "no-cache")
+			}
+		}
 		h.Set("ETag", etag)
 		if strings.HasSuffix(r.URL.Path, ".woff2") {
 			h.Set("Content-Type", "font/woff2")
@@ -1458,6 +1590,17 @@ func (rt *router) serveStatic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rt.static.ServeHTTP(w, r)
+}
+
+// ThemedStylesheet is al.css as an app with the theme CSS serves and writes it (buildkit
+// WriteDesignSystem writes the same bytes): the embedded stylesheet, a newline and the theme;
+// and its strong ETag.
+func ThemedStylesheet(theme string) ([]byte, string) {
+	base, _, _ := al.File("al.css")
+	b := make([]byte, 0, len(base)+1+len(theme))
+	b = append(append(append(b, base...), '\n'), theme...)
+	sum := sha256.Sum256(b)
+	return b, `"` + hex.EncodeToString(sum[:16]) + `"`
 }
 
 // designSystemPrefix is where every build writes the `alder-ui` assets (buildkit

@@ -37,6 +37,8 @@ import (
 	"maps"
 	"os"
 	"regexp"
+	"runtime/debug"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -50,9 +52,10 @@ import (
 )
 
 // Inner runs t under a savepoint as Test.run does: ok is true with v on success; on *eff.ErrFail,
-// eff.ErrNotFound or *eff.ErrCapability (a capability's adapter returned an error) the
-// savepoint is rolled back, the session restored, and msg is the failure text ("not found" for
-// ErrNotFound, "<Name>: <msg>" for a capability's error); trace is the steps t performed. Any
+// eff.ErrNotFound, *eff.ErrRedirect (Query.redirect) or *eff.ErrCapability (a capability's
+// adapter returned an error) the savepoint is rolled back, the session restored, and msg is the
+// failure text ("not found" for ErrNotFound, "redirected to <url>" for a redirect, "<Name>:
+// <msg>" for a capability's error); trace is the steps t performed. Any
 // other error is returned.
 //
 // Inner is called from a Call's function while a Task runs (env.Kind is KTask); it begins the
@@ -119,6 +122,7 @@ func inner[T any](env *eff.Env, key string, arm bool, t eff.Task[T]) (v T, msg s
 	}
 	var f *eff.ErrFail
 	var c *eff.ErrCapability
+	var rd *eff.ErrRedirect
 	switch {
 	case errors.As(rerr, &c):
 		env.Session = session
@@ -129,6 +133,9 @@ func inner[T any](env *eff.Env, key string, arm bool, t eff.Task[T]) (v T, msg s
 	case errors.Is(rerr, eff.ErrNotFound):
 		env.Session = session
 		return v, "not found", false, trace, nil
+	case errors.As(rerr, &rd):
+		env.Session = session
+		return v, rd.Error(), false, trace, nil
 	}
 	return v, "", false, trace, rerr
 }
@@ -222,6 +229,11 @@ type CaseResult struct {
 	Error        string
 	Trace        []string
 	Ms           float64
+	// Warnings are the N+1 warnings of the test's browser steps ("GET /slow: N+1: …", one per
+	// statement eff.Repeats finds in one request): reported after the result, never a failure.
+	Warnings []string
+	// Bench is each browser step's Measure, under `alder bench` (Options.Bench) only.
+	Bench []Measure
 
 	// A property test's result (property.go) also has Runs, the runs it was to make
 	// (Options.Fuzz, so Runs > 0 marks a property), and Seed, the seed of its fresh draws; when
@@ -239,7 +251,8 @@ type CaseResult struct {
 	Paste     string
 	Crash     bool
 
-	panicked bool // the case panicked (not a task's failure): a mutant it kills is "crashed"
+	stopped  string // a property a health check stopped, not a failing case (property.go: stoppedOn, stoppedBefore)
+	panicked bool   // the case panicked (not a task's failure): a mutant it kills is "crashed"
 }
 
 // Options configure Run. Run, when set, selects the cases whose `Module "Name"` it matches;
@@ -282,6 +295,11 @@ type Options struct {
 	// Status is Main's status file (EnvStatus): a property test writes its seed and run there
 	// before each attempt (unless Mutating). "": none.
 	Status string
+	// Bench (`alder bench`, --bench) measures each browser step of the task tests (Measure);
+	// Main then skips pure and property tests and runs each selected test Count times (0: 1),
+	// reporting the median.
+	Bench bool
+	Count int
 
 	schemaErr string // why Migrations do not make Tables (set by defaults): every case fails with it
 }
@@ -294,35 +312,6 @@ const notTheSchema = "the migrations do not produce the app's schema: run `alder
 
 // defaultNow is when a test's clock starts unless told otherwise.
 var defaultNow = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-
-// Clock is a test's time: its first reading is start, and each later one is a second after
-// the one before; a delay (Env.Sleep) advances it by the delay at once. It is deterministic
-// (the same test reads the same times on every run), and the rows a test inserts get distinct
-// `@created` times in the order they were inserted, so a test can observe an ordering by
-// creation time (`Db.orderBy T.created.desc`).
-type Clock struct {
-	mu   sync.Mutex
-	next time.Time
-}
-
-func NewClock(start time.Time) *Clock { return &Clock{next: start} }
-
-func (c *Clock) Now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	t := c.next
-	c.next = c.next.Add(time.Second)
-	return t
-}
-
-func (c *Clock) Advance(d time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.next = c.next.Add(d)
-}
-
-// Ticking is a clock's Now: each reading advances it a second.
-func Ticking(start time.Time) func() time.Time { return NewClock(start).Now }
 
 // unwired is the panic message of a capability call that finds no implementation (as in
 // cmd/alder/eval.go).
@@ -418,6 +407,9 @@ func runCase(c Case, o Options) (r CaseResult) {
 		defer done()
 		ok, errText, r.panicked = guard(func() bool { return runTask(env, c.Task()) })
 		r.Trace = append([]string{}, env.Trace...)
+		if slot, _ := env.Ctx.Value(browserKey{}).(*browserSlot); slot != nil && slot.b != nil {
+			r.Warnings, r.Bench = slot.b.warnings, slot.b.measures
+		}
 	default:
 		errText = "test has no body"
 	}
@@ -461,6 +453,7 @@ func newCaseEnv(o Options) (env *eff.Env, done func(), err error) {
 		caps = map[string]any{}
 	}
 	clock := NewClock(o.Now)
+	ctx = context.WithValue(ctx, clockKey{}, clock) // Test.setClock and Test.advance find it here
 	env = &eff.Env{Ctx: ctx, Store: store, Caps: caps, Session: o.Session, Now: clock.Now, Sleep: clock.Advance, CheckSession: o.Web.SessionCheck}
 	if len(o.Web.Silos) > 0 { // a store per silo value the test touches, each in memory
 		stores, err := db.NewTestStores(store, db.StoresConfig{Silos: o.Web.Silos, Tables: o.Tables, Migrations: o.Migrations, Dev: true})
@@ -472,7 +465,7 @@ func newCaseEnv(o Options) (env *eff.Env, done func(), err error) {
 		env.Store, env.Stores = db.TestStore{SQLite: store, Stores: stores}, stores
 	}
 	if o.Routes != nil {
-		env.Ctx = withBrowser(env, o.Routes, o.Web)
+		env.Ctx = withBrowser(env, o.Routes, o.Web, o.Bench)
 	}
 	return env, done, nil
 }
@@ -568,6 +561,10 @@ type jsonResult struct {
 	Error  string   `json:"error,omitempty"`
 	Trace  []string `json:"trace"`
 	Ms     float64  `json:"ms"`
+	// Warnings are the N+1 warnings (CaseResult.Warnings), Bench the steps' measures under
+	// `alder bench`; both left out when empty.
+	Warnings []string      `json:"warnings,omitempty"`
+	Bench    []jsonMeasure `json:"bench,omitempty"`
 	// Property is a property test's runs, seed and failing case (propertyJSON); nil otherwise.
 	Property *jsonProperty `json:"property,omitempty"`
 }
@@ -589,7 +586,8 @@ func WriteResult(w io.Writer, r CaseResult, asJSON bool) error {
 		enc := json.NewEncoder(w)
 		enc.SetEscapeHTML(false)
 		return enc.Encode(jsonResult{Module: r.Module, Name: r.Name, File: r.File, Line: r.Line, Col: r.Col, OK: r.OK,
-			Left: r.Left, Right: r.Right, Note: r.Note, Error: r.Error, Trace: tr, Ms: r.Ms, Property: propertyJSON(r)})
+			Left: r.Left, Right: r.Right, Note: r.Note, Error: r.Error, Trace: tr, Ms: r.Ms, Property: propertyJSON(r),
+			Warnings: r.Warnings, Bench: benchJSON(r.Bench)})
 	}
 	var b strings.Builder
 	if r.OK {
@@ -611,6 +609,10 @@ func WriteResult(w io.Writer, r CaseResult, asJSON bool) error {
 		}
 		writeSeed(&b, r)
 	}
+	writeBench(&b, r.Bench) // after the result: the bench rows, then the warnings
+	for _, w := range r.Warnings {
+		fmt.Fprintf(&b, "  warn: %s\n", w)
+	}
 	_, e := io.WriteString(w, b.String())
 	return e
 }
@@ -625,7 +627,7 @@ const (
 	EnvDeadline = "ALDER_TEST_DEADLINE"
 	// EnvTimeout is the -timeout the deadline came from (a Go duration), for the message.
 	EnvTimeout = "ALDER_TEST_TIMEOUT"
-	// EnvStatus names a file Main truncates and writes `Module\tName\n` to before each test (a property test adds `\tseed\trun`, ParseStatus),
+	// EnvStatus names a file Main truncates and writes `Module\tName\n` to before each test (a property test adds `\t\x00fuzz\tseed\trun`, ParseStatus),
 	// and empties when it returns: after a crash it names the test that crashed.
 	EnvStatus = "ALDER_TEST_STATUS"
 	// EnvFuzz is the runs per property test (--fuzz), EnvSeed the seed of their fresh draws
@@ -637,6 +639,10 @@ const (
 	// input reaches end of file: `alder test` holds the pipe open while it runs, so the program
 	// dies with it.
 	EnvStdinEOF = "ALDER_TEST_STDIN_EOF"
+	// EnvBench=1 is --bench (`alder bench`: measure each browser step, Measure), EnvCount its
+	// --count (runs per test, the median reported).
+	EnvBench = "ALDER_TEST_BENCH"
+	EnvCount = "ALDER_TEST_COUNT"
 )
 
 // Main runs cases with the flags in args (-run re, --json, --fuzz n, --seed s) and env
@@ -681,7 +687,22 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 	fromText := fs.String("mutate-from", os.Getenv(EnvMutateFrom), "with --mutate, the id of the first mutant to run (above 1: the tests' own run is skipped)")
 	fuzzText := fs.String("fuzz", os.Getenv(EnvFuzz), "how many runs each property test makes (default 100)")
 	seedText := fs.String("seed", os.Getenv(EnvSeed), "the seed of the property tests' fresh draws (default random; saved failures are replayed first regardless)")
+	bench := fs.Bool("bench", os.Getenv(EnvBench) == "1", "measure each browser step of the task tests (alder bench)")
+	countText := fs.String("count", os.Getenv(EnvCount), "with --bench, how many times to run each test (default 1)")
 	if e := fs.Parse(args); e != nil {
+		return 2
+	}
+	benchCount := 1
+	if *countText != "" {
+		v, e := strconv.Atoi(*countText)
+		if e != nil || v < 1 || !*bench {
+			fmt.Fprintf(err, "alder test: bad --count %q: want a number of runs, such as 3, with --bench\n", *countText)
+			return 2
+		}
+		benchCount = v
+	}
+	if *bench && *mutating {
+		fmt.Fprintln(err, "alder test: --bench and --mutate do not go together")
 		return 2
 	}
 	if fs.NArg() > 0 {
@@ -722,6 +743,13 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 		fmt.Fprintln(err, "alder test: --min needs --mutate")
 		return 2
 	}
+	if *mutating {
+		// a mutant that recurses without end overflows the stack, which ends the program (see
+		// mutate.go); at Go's default 1 GB that takes seconds, long enough for a mutant's
+		// timeout to fire first and report "timed out" for a crash. A small limit makes the
+		// overflow come in milliseconds, whatever the load, far ahead of any timeout.
+		debug.SetMaxStack(mutateMaxStack)
+	}
 	if os.Getenv(EnvStdinEOF) == "1" {
 		go func() {
 			io.Copy(io.Discard, os.Stdin)
@@ -730,7 +758,7 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 		}()
 	}
 	o := Options{Tables: tables, TestTables: testTables, Migrations: migrations, Caps: caps, Session: session, Now: defaultNow, Routes: routes, Web: webOpts,
-		FuzzDB: os.Getenv(EnvFuzzDB), Mutating: *mutating}
+		FuzzDB: os.Getenv(EnvFuzzDB), Mutating: *mutating, Bench: *bench, Count: benchCount}
 	if *fuzzText != "" {
 		v, e := strconv.Atoi(*fuzzText)
 		if e != nil || v < 1 {
@@ -775,6 +803,9 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 	o = defaults(o)
 
 	run := selected(cases, o)
+	if o.Bench { // pure and property tests make no request: nothing to measure
+		run = slices.DeleteFunc(run, func(c Case) bool { return c.Task == nil || c.Prop != nil })
+	}
 	passed, failed := 0, 0
 	// report writes a report line: on out, or with --json on err (out holds JSON only)
 	report := func(line string) {
@@ -804,7 +835,7 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 			}
 		}
 		done := make(chan CaseResult, 1)
-		go func() { done <- runCase(c, o) }()
+		go func() { done <- benchCase(c, o) }()
 		var r CaseResult
 		start := time.Now()
 		slow := time.NewTicker(slowAfter)
@@ -885,6 +916,22 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 		}
 	}
 	return mutate(run, o, mutantRun{timeout: mutantTimeout, baseline: baseline, status: status, log: mutantLog, from: from}, minScore, *asJSON, out, err)
+}
+
+// benchCase is runCase, under o.Bench run o.Count times: the last run's result, with each
+// step's time and allocations the median of the runs' (mergeRuns). A run that fails ends it.
+func benchCase(c Case, o Options) CaseResult {
+	r := runCase(c, o)
+	if !o.Bench || o.Count <= 1 {
+		return r
+	}
+	runs := [][]Measure{r.Bench}
+	for i := 1; i < o.Count && r.OK; i++ {
+		r = runCase(c, o)
+		runs = append(runs, r.Bench)
+	}
+	r.Bench = mergeRuns(runs)
+	return r
 }
 
 // mutate is Main's mutation run over the selected cases, after they passed: the mutants, the

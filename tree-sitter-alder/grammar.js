@@ -228,6 +228,7 @@ module.exports = grammar({
         $.login_decl,
         $.test_decl,
         $.deploy_decl,
+        $.theme_decl,
         $.silo_decl,
         $.choose_decl,
       ),
@@ -329,7 +330,18 @@ module.exports = grammar({
     capability_decl: ($) => seq('capability', field('name', $.constructor), field('entries', $.record_type)),
 
     fake_decl: ($) => seq('fake', field('name', $.constructor), field('body', $.fake_body)),
-    fake_body: ($) => seq('{', repeat(choice($._newline, $.table_decl, $.fake_entry)), '}'),
+    // One item per line, as parser.go parseFakeDecl reads them: without the newline between
+    // items, an identifier after an application (`send m = Db.insert Sent m`) could start the
+    // next entry, and the parser ended the application there.
+    fake_body: ($) =>
+      seq(
+        '{',
+        optional($._fake_item),
+        repeat(seq($._newline, $._fake_item)),
+        optional($._newline),
+        '}',
+      ),
+    _fake_item: ($) => choice($.table_decl, $.fake_entry),
     fake_entry: ($) =>
       seq(field('name', $.identifier), optional(field('params', $.parameters)), '=', field('body', $._expression)),
 
@@ -347,7 +359,11 @@ module.exports = grammar({
         ':',
         field('value', $._deploy_value),
       ),
-    _deploy_value: ($) => choice($.string, $.integer, $.float, $.negative_number, $.deploy_list, $.deploy_target),
+    _deploy_value: ($) =>
+      choice($.string, $.integer, $.float, $.negative_number, $.deploy_list, $.deploy_target, $.deploy_record),
+
+    // App's `theme { … }` (Appendix C): deploy-style fields; `light` and `dark` are bare records.
+    theme_decl: ($) => seq('theme', field('body', $.deploy_record)),
     deploy_list: ($) => seq('[', commaSep($._deploy_value), ']'),
     deploy_target: ($) =>
       prec.right(
@@ -463,6 +479,7 @@ module.exports = grammar({
         $.boolean,
         alias($._bare_constructor_pattern, $.constructor_pattern),
         $.record_pattern,
+        $.list_pattern,
         $.parenthesized_pattern,
       ),
     _bare_constructor_pattern: ($) => field('constructor', $.constructor),

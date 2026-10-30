@@ -85,21 +85,21 @@ func newSpecs() []*Spec {
 		{
 			ID: "new page", Summary: "a page module",
 			Args: []Field{
-				{Name: "module", Kind: ArgModule, Value: "<Module>"},
-				{Name: "path", Kind: ArgRoute, Required: true, Value: "<path>"},
+				{Name: "module", Kind: ArgModule, Value: "<Module>", Default: "Archive", DefaultUnless: []string{"list", "show", "from"}, Help: "the page's module; may be left empty with --list, --show or --from, which name it", Example: "Archive"},
+				{Name: "path", Kind: ArgRoute, Required: true, Value: "<path>", Help: "the URL path the page answers, starting with / (`:name` segments are parameters)", Example: "/archive"},
 			},
 			Flags: []Field{
-				{Name: "list", Kind: ArgTable, Value: "T", Summary: "a page listing the rows of table T"},
-				{Name: "show", Kind: ArgTable, Value: "T", Summary: "a page showing one row of table T"},
-				{Name: "by", Kind: ArgText, Value: "column", Summary: "with --show, the unique column in the path"},
-				{Name: "from", Kind: ArgTable, Greedy: true, Value: "T…", Summary: "a card of every row of each table T; takes several tables up to the next flag (--from A B)"},
-				{Name: "blank", Kind: ArgBool, Summary: "an empty page with typed holes"},
+				{Name: "list", Kind: ArgTable, Value: "T", Summary: "a page listing the rows of table T", Example: "Post"},
+				{Name: "show", Kind: ArgTable, Value: "T", Summary: "a page showing one row of table T", Example: "Post"},
+				{Name: "by", Kind: ArgText, Value: "column", Summary: "with --show, the unique column in the path", Example: "slug"},
+				{Name: "from", Kind: ArgTable, Greedy: true, Value: "T…", Summary: "a card of every row of each table T; takes several tables up to the next flag (--from A B)", Example: "Post Comment"},
+				{Name: "blank", Kind: ArgBool, Summary: "an empty page with typed holes", Agent: true},
 				{Name: "file", Kind: ArgBool, Summary: "a file page: view returns File (text, CSV, JSON, a zip) instead of HTML"},
-				{Name: "type", Kind: ArgText, Value: "T", Summary: "with --file, the content type (default text/plain)"},
+				{Name: "type", Kind: ArgText, Value: "T", Summary: "with --file, the content type (default text/plain)", Example: "text/csv"},
 				{Name: "example", Kind: ArgBool, Default: "true", DefaultUnless: []string{"blank", "file", "list", "show", "from", "param"}, Summary: "a working example — state in a page parameter, a message, an update arm and a view that uses them — to delete once read"},
-				{Name: "param", Kind: ArgText, Variadic: true, Value: "name:Type", Summary: "a page parameter (repeatable)"},
-				{Name: "requires", Kind: ArgText, Value: "user", Summary: "require a signed-in user"},
-				{Name: "role", Kind: ArgText, Value: "R", Summary: "require role R"},
+				{Name: "param", Kind: ArgText, Variadic: true, Value: "name:Type", Summary: "a page parameter (repeatable)", Example: "q:Text"},
+				{Name: "requires", Kind: ArgText, Value: "user", Summary: "require a signed-in user", Example: "user"},
+				{Name: "role", Kind: ArgText, Value: "R", Summary: "require role R", Example: "Admin"},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				o := PageOptions{Module: s.One("module"), Path: s.One("path"), List: s.One("list"), Show: s.One("show"), From: s.All("from"),
@@ -111,8 +111,8 @@ func newSpecs() []*Spec {
 		{
 			ID: "new table", Summary: "a table and its migration",
 			Args: []Field{
-				{Name: "name", Kind: ArgModule, Required: true, Value: "<Name>"},
-				{Name: "fields", Kind: ArgFieldList, Variadic: true, Table: true, Value: "<field>:<Type>…"}, // not Required: `new table Tag` is accepted
+				{Name: "name", Kind: ArgModule, Required: true, Value: "<Name>", Help: "the table's name, a capitalised word; its module is Table.<Name>", Example: "Note"},
+				{Name: "fields", Kind: ArgFieldList, Variadic: true, Table: true, Value: "<field>:<Type>…", Help: "its columns as name:Type words; =default and @attributes (@unique) may follow", Example: "title:Text body:Text"}, // not Required: `new table Tag` is accepted
 			},
 			Flags: []Field{
 				{Name: "no-timestamps", Kind: ArgBool, Summary: "without created and updated columns"},
@@ -136,13 +136,13 @@ func newSpecs() []*Spec {
 		{
 			ID: "new form", Summary: "a form with its msg, handler and view",
 			Args: []Field{
-				{Name: "page", Kind: ArgPage, Required: true, Value: "<Page module>"},
-				{Name: "name", Kind: ArgText, Required: true, Value: "<Name>"},
-				{Name: "fields", Kind: ArgFieldList, Variadic: true, Value: "<field>:<Type>…"},
+				{Name: "page", Kind: ArgPage, Required: true, Value: "<Page module>", Help: "the page the form goes on", Example: "Posts.Index"},
+				{Name: "name", Kind: ArgText, Required: true, Value: "<Name>", Help: "the form's name, a capitalised word", Example: "NewComment"},
+				{Name: "fields", Kind: ArgFieldList, Variadic: true, Value: "<field>:<Type>…", Default: "body:Text", Help: "the form's inputs, as name:Type words (at least one)", Example: "body:Text"},
 			},
 			Flags: []Field{
-				{Name: "into", Kind: ArgTable, Value: "T", Summary: "insert the submitted form into table T"},
-				{Name: "msg", Kind: ArgText, Value: "Msg", Summary: "the msg's name"},
+				{Name: "into", Kind: ArgTable, Value: "T", Summary: "insert the submitted form into table T", Example: "Comment"},
+				{Name: "msg", Kind: ArgText, Value: "Msg", Summary: "the msg's name", Example: "Submit", Agent: true},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				fields, err := fieldList(s.All("fields"), false)
@@ -156,14 +156,14 @@ func newSpecs() []*Spec {
 		{
 			ID: "new msg", Summary: "a msg with its arm, button and test",
 			Args: []Field{
-				{Name: "page", Kind: ArgPage, Required: true, Value: "<Page module>"},
-				{Name: "name", Kind: ArgText, Required: true, Value: "<Name>"},
-				{Name: "fields", Kind: ArgFieldList, Variadic: true, Value: "<field>:<Type>…"},
+				{Name: "page", Kind: ArgPage, Required: true, Value: "<Page module>", Help: "the page the message belongs to", Example: "Posts.Index"},
+				{Name: "name", Kind: ArgText, Required: true, Value: "<Name>", Help: "the message's name, a capitalised word", Example: "Archive"},
+				{Name: "fields", Kind: ArgFieldList, Variadic: true, Value: "<field>:<Type>…", Help: "the values the message carries, as name:Type words (none is fine)", Example: "note:Text"},
 			},
 			Flags: []Field{
-				{Name: "in-for", Kind: ArgText, Value: "binder", Summary: "the button goes inside this for loop"},
-				{Name: "when", Kind: ArgText, Value: "Bool expression", Summary: "show the button only when this holds"},
-				{Name: "id", Kind: ArgText, Value: "id", Summary: "the button's id"},
+				{Name: "in-for", Kind: ArgText, Value: "binder", Summary: "the button goes inside this for loop", Example: "post", Agent: true},
+				{Name: "when", Kind: ArgText, Value: "Bool expression", Summary: "show the button only when this holds", Example: "model.canWrite", Agent: true},
+				{Name: "id", Kind: ArgText, Value: "id", Summary: "the button's id", Example: "archive", Agent: true},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				fields, err := fieldList(s.All("fields"), false)
@@ -178,9 +178,9 @@ func newSpecs() []*Spec {
 		{
 			ID: "new capability", Summary: "a capability entry with its fake and adapter",
 			Args: []Field{
-				{Name: "module", Kind: ArgModule, Required: true, Value: "<Module>"},
-				{Name: "entry", Kind: ArgText, Required: true, Value: "<entry>"},
-				{Name: "type", Kind: ArgType, Required: true, Value: "<Type>"},
+				{Name: "module", Kind: ArgModule, Required: true, Value: "<Module>", Help: "the module that declares the capability, created when new; its last word names it (Mailer: capability Mailer)", Example: "Mailer"},
+				{Name: "entry", Kind: ArgText, Required: true, Value: "<entry>", Help: "the capability's one operation, a lower-case name; more are added by hand", Example: "send"},
+				{Name: "type", Kind: ArgType, Required: true, Value: "<Type>", Help: "the operation's type: what it takes -> Task (or Query) of what it gives back", Example: "Text -> Task Bool"},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) {
@@ -191,8 +191,8 @@ func newSpecs() []*Spec {
 		{
 			ID: "new admin", Summary: "the admin pages for every table",
 			Flags: []Field{
-				{Name: "module", Kind: ArgModule, Value: "Admin", Summary: "the admin's module prefix"},
-				{Name: "path", Kind: ArgRoute, Value: "/admin", Summary: "the admin's path prefix"},
+				{Name: "module", Kind: ArgModule, Value: "Admin", Summary: "the admin's module prefix", Example: "Admin"},
+				{Name: "path", Kind: ArgRoute, Value: "/admin", Summary: "the admin's path prefix", Example: "/admin"},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				o := AdminOptions{Module: s.One("module"), Path: s.One("path")}
@@ -202,9 +202,9 @@ func newSpecs() []*Spec {
 		{
 			ID: "new auth", Summary: "sign-in, sign-out and the user table",
 			Flags: []Field{
-				{Name: "users", Kind: ArgTable, Value: "User", Summary: "the user table"},
-				{Name: "role", Kind: ArgText, Value: "Role", Summary: "the role type"},
-				{Name: "to", Kind: ArgPage, Value: "Page", Summary: "the page after sign-in"},
+				{Name: "users", Kind: ArgTable, Value: "User", Summary: "the user table", Example: "User"},
+				{Name: "role", Kind: ArgText, Value: "Role", Summary: "the role type", Example: "Role"},
+				{Name: "to", Kind: ArgPage, Value: "Page", Summary: "the page after sign-in", Example: "Posts.Index"},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				created := false
@@ -224,8 +224,8 @@ func newSpecs() []*Spec {
 		{
 			ID: "new type", Summary: "a type declaration",
 			Args: []Field{
-				{Name: "module", Kind: ArgModule, Required: true, Value: "<Module>"},
-				{Name: "decl", Kind: ArgType, Required: true, Value: "<declaration>"},
+				{Name: "module", Kind: ArgModule, Required: true, Value: "<Module>", Help: "the module the type goes in, created when new", Example: "Types"},
+				{Name: "decl", Kind: ArgType, Required: true, Value: "<declaration>", Help: "the declaration after `type`: a union, a brand or a record", Example: "Status = Draft | Published"},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return NewType(p, s.One("module"), s.One("decl")) })
@@ -234,9 +234,9 @@ func newSpecs() []*Spec {
 		{
 			ID: "new decl", Summary: "a value declaration with a typed hole for its body",
 			Args: []Field{
-				{Name: "module", Kind: ArgModule, Required: true, Value: "<Module>"},
-				{Name: "name", Kind: ArgText, Required: true, Value: "<name>"},
-				{Name: "type", Kind: ArgType, Required: true, Value: "<Type>"},
+				{Name: "module", Kind: ArgModule, Required: true, Value: "<Module>", Existing: true, Help: "the module the declaration goes in (one the app has)", Example: "Posts.Index"},
+				{Name: "name", Kind: ArgText, Required: true, Value: "<name>", Help: "the value's name, a lower-case identifier", Example: "maxItems"},
+				{Name: "type", Kind: ArgType, Required: true, Value: "<Type>", Help: "its type; the body starts as a typed hole to fill", Example: "Int"},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) {
@@ -247,8 +247,8 @@ func newSpecs() []*Spec {
 		{
 			ID: "new test", Summary: "a test skeleton",
 			Args: []Field{
-				{Name: "module", Kind: ArgModule, Required: true, Value: "<Module>"},
-				{Name: "name", Kind: ArgText, Required: true, Value: "<test name>"},
+				{Name: "module", Kind: ArgModule, Required: true, Value: "<Module>", Existing: true, Help: "the module the test goes in (one the app has)", Example: "Posts.Index"},
+				{Name: "name", Kind: ArgText, Required: true, Value: "<test name>", Help: "what the test checks, in plain words", Example: "a page has ten posts"},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return NewTest(p, s.One("module"), s.One("name")) })
@@ -257,8 +257,8 @@ func newSpecs() []*Spec {
 		{
 			ID: "new silo", Summary: "put tables in a database per value of a session key",
 			Args: []Field{
-				{Name: "key", Kind: ArgText, Required: true, Value: "<key>"},
-				{Name: "tables", Kind: ArgTable, Variadic: true, Value: "<Table>…"},
+				{Name: "key", Kind: ArgText, Required: true, Value: "<key>", Help: "the session field whose value picks the database", Example: "org"},
+				{Name: "tables", Kind: ArgTable, Variadic: true, Value: "<Table>…", Help: "the tables each silo's database holds", Example: "Project Task"},
 			},
 			Flags: []Field{{Name: "empty", Kind: ArgBool, Summary: "a silo with no tables yet"}},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
@@ -295,11 +295,11 @@ func editSpecs() []*Spec {
 		{
 			ID: "edit table", Summary: "add, rename or drop a field (and write the migration)",
 			Args: []Field{
-				{Name: "table", Kind: ArgTable, Required: true, Value: "<T>"},
-				{Name: "op", Kind: ArgChoice, Required: true, Choices: []string{"add-field", "rename-field", "drop-field"}, Value: "add-field|rename-field|drop-field"},
-				{Name: "args", Kind: ArgText, Variadic: true, Value: "…"}, // not Required: EditTable refuses a missing argument itself
+				{Name: "table", Kind: ArgTable, Required: true, Value: "<T>", Help: "the table to change", Example: "Post"},
+				{Name: "op", Kind: ArgChoice, Required: true, Choices: []string{"add-field", "rename-field", "drop-field"}, Value: "add-field|rename-field|drop-field", Help: "what to do to the table", Example: "add-field"},
+				{Name: "args", Kind: ArgText, Variadic: true, Value: "…", Default: "summary:Text", Help: "add-field: name:Type; rename-field: old new; drop-field: name", Example: "summary:Text"}, // not Required: EditTable refuses a missing argument itself
 			},
-			Flags: []Field{{Name: "strict", Kind: ArgBool, Summary: "refuse a change that breaks code"}},
+			Flags: []Field{{Name: "strict", Kind: ArgBool, Summary: "refuse a change that breaks code", Agent: true}},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				o := Options{Migrate: app.migrate(editTableSlug(s)), WriteDespiteErrors: !s.Has("strict")}
 				return runEdits(app, dry, o, nil, func(p *Program) ([]Edit, error) { return EditTable(p, s.One("table"), s.One("op"), s.All("args")) })
@@ -308,9 +308,9 @@ func editSpecs() []*Spec {
 		{
 			ID: "edit page", Summary: "add a page parameter",
 			Args: []Field{
-				{Name: "page", Kind: ArgPage, Required: true, Value: "<Page module>"},
-				{Name: "op", Kind: ArgChoice, Required: true, Choices: []string{"add-param"}, Value: "add-param"},
-				{Name: "field", Kind: ArgFieldList, Required: true, Value: "<name>:<Type>[=default]"},
+				{Name: "page", Kind: ArgPage, Required: true, Value: "<Page module>", Help: "the page to change", Example: "Posts.Index"},
+				{Name: "op", Kind: ArgChoice, Required: true, Choices: []string{"add-param"}, Value: "add-param", Help: "what to do to the page", Example: "add-param"},
+				{Name: "field", Kind: ArgFieldList, Required: true, Value: "<name>:<Type>[=default]", Help: "the parameter as name:Type; =default keeps old links working", Example: "sort:Text=\"new\""},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return EditPage(p, s.One("page"), s.One("op"), s.All("field")) })
@@ -319,9 +319,9 @@ func editSpecs() []*Spec {
 		{
 			ID: "edit decl", Summary: "add a component prop",
 			Args: []Field{
-				{Name: "address", Kind: ArgDecl, Required: true, Value: "<Module>.<Name>"},
-				{Name: "op", Kind: ArgChoice, Required: true, Choices: []string{"add-prop"}, Value: "add-prop"},
-				{Name: "field", Kind: ArgFieldList, Required: true, Value: "<name>:<Type>=<default>"},
+				{Name: "address", Kind: ArgDecl, Required: true, Value: "<Module>.<Name>", Help: "the component, as Module.name", Example: "Layout.page"},
+				{Name: "op", Kind: ArgChoice, Required: true, Choices: []string{"add-prop"}, Value: "add-prop", Help: "what to do to the component", Example: "add-prop"},
+				{Name: "field", Kind: ArgFieldList, Required: true, Value: "<name>:<Type>=<default>", Help: "the prop as name:Type=default; existing callers get the default", Example: "title:Text=\"\""},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return EditDecl(p, s.One("address"), s.One("op"), s.All("field")) })
@@ -329,7 +329,7 @@ func editSpecs() []*Spec {
 		},
 		{
 			ID: "edit auth", Summary: "change where sign-in leads",
-			Flags: []Field{{Name: "to", Kind: ArgPage, Value: "Page", Summary: "the page after sign-in"}},
+			Flags: []Field{{Name: "to", Kind: ArgPage, Required: true, Value: "Page", Summary: "the page after sign-in", Example: "Posts.Index"}},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return EditAuth(p, s.One("to")) })
 			},
@@ -337,12 +337,12 @@ func editSpecs() []*Spec {
 		{
 			ID: "edit session", Summary: "add a session field",
 			Args: []Field{
-				{Name: "op", Kind: ArgChoice, Required: true, Choices: []string{"add-field"}, Value: "add-field"},
-				{Name: "field", Kind: ArgText, Required: true, Variadic: true, Value: "<name>:<Type>=<default> | <key>:<T>.<T>Id via <Membership>"},
+				{Name: "op", Kind: ArgChoice, Required: true, Choices: []string{"add-field"}, Value: "add-field", Help: "what to do to the session", Example: "add-field"},
+				{Name: "field", Kind: ArgText, Required: true, Variadic: true, Value: "<name>:<Type>=<default> | <key>:<T>.<T>Id via <Membership>", Help: "the field as name:Type=default, or key:T.TId via Membership for a key", Example: "theme:Text=\"light\""},
 			},
 			Flags: []Field{
-				{Name: "choose", Kind: ArgPage, Value: "Page", Summary: "the page that chooses the key"},
-				{Name: "strict", Kind: ArgBool, Summary: "refuse a change that breaks code"},
+				{Name: "choose", Kind: ArgPage, Value: "Page", Summary: "the page that chooses the key", Example: "Orgs.Choose"},
+				{Name: "strict", Kind: ArgBool, Summary: "refuse a change that breaks code", Agent: true},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				// the session literals the new field breaks (a test's `{ user: me }`) are the to-do
@@ -359,14 +359,14 @@ func removeSpecs() []*Spec {
 	return []*Spec{
 		{
 			ID: "remove page", Summary: "remove a page module",
-			Args: []Field{{Name: "page", Kind: ArgPage, Required: true, Value: "<Page module>"}},
+			Args: []Field{{Name: "page", Kind: ArgPage, Required: true, Value: "<Page module>", Help: "the page to remove, with its module file", Example: "Posts.Index"}},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return RemovePage(p, s.One("page")) })
 			},
 		},
 		{
 			ID: "remove table", Summary: "remove a table (and write the migration)",
-			Args: []Field{{Name: "table", Kind: ArgTable, Required: true, Value: "<T>"}},
+			Args: []Field{{Name: "table", Kind: ArgTable, Required: true, Value: "<T>", Help: "the table to remove; a migration drops it", Example: "Comment"}},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				o := Options{Migrate: app.migrate("drop_" + Snake(s.One("table")))}
 				return runEdits(app, dry, o, nil, func(p *Program) ([]Edit, error) { return RemoveTable(p, s.One("table")) })
@@ -379,8 +379,8 @@ func regenSpecs() []*Spec {
 	return []*Spec{{
 		ID: "regen admin", Summary: "the admin pages",
 		Flags: []Field{
-			{Name: "module", Kind: ArgModule, Value: "Admin", Summary: "the admin's module prefix"},
-			{Name: "path", Kind: ArgRoute, Value: "/admin", Summary: "the admin's path prefix"},
+			{Name: "module", Kind: ArgModule, Value: "Admin", Summary: "the admin's module prefix", Example: "Admin"},
+			{Name: "path", Kind: ArgRoute, Value: "/admin", Summary: "the admin's path prefix", Example: "/admin"},
 			{Name: "all", Kind: ArgBool, Summary: "recreate the admin pages the author deleted"},
 		},
 		Run: func(s Sets, app App, dry bool) (*Result, error) {

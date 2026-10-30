@@ -69,7 +69,7 @@ func TestAccessLog_PageGET(t *testing.T) {
 	h := NewRouter(one("GET", "/start", func(rq *Request) Response {
 		return PageResponse(doc("start"), nil, nil, false)
 	}), s.opts(nil))
-	w := serve(h, httptest.NewRequest("GET", "/start?key=s3cret&seed=7", nil))
+	w := serveRaw(h, httptest.NewRequest("GET", "/start?key=s3cret&seed=7", nil))
 	a := s.one(t)
 	id := w.Header().Get("X-Request-Id")
 	if a.Method != "GET" || a.Path != "/start?key=••••&seed=7" || a.Status != 200 || a.Dur <= 0 || a.Bytes != int64(w.Body.Len()) || a.ID != id || a.Quiet {
@@ -245,7 +245,7 @@ func TestErrorLine_Masked(t *testing.T) {
 	h := NewRouter(one("GET", "/start", func(rq *Request) Response {
 		return ErrorResponse(html.None(), errors.New("db is down"))
 	}), s.opts(nil))
-	w := serve(h, httptest.NewRequest("GET", "/start?key=s3cret&seed=7", nil))
+	w := serveRaw(h, httptest.NewRequest("GET", "/start?key=s3cret&seed=7", nil))
 	want := "error: GET /start?key=••••&seed=7: db is down rid=" + w.Header().Get("X-Request-Id")
 	if len(s.lines) != 1 || s.lines[0] != want {
 		t.Errorf("lines %q, want %q", s.lines, want)

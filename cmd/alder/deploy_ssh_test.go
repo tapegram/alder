@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -193,14 +194,51 @@ func clientKey(t *testing.T, dir, name string) string {
 	return key
 }
 
+// handedPorts are the ports freePort has returned in this process, so parallel tests never get
+// the same one while the first has not bound it yet.
+var (
+	handedMu    sync.Mutex
+	handedPorts = map[int]bool{}
+)
+
+// freePort picks a port nothing listens on and no other test here was given. The port is
+// released before the caller's server binds it, so a server the test starts itself (sshd, the
+// fake Caddy) is started again on a new port when it fails to come up (see onFreePort).
 func freePort(t *testing.T) int {
 	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	for {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := l.Addr().(*net.TCPAddr).Port
+		l.Close()
+		handedMu.Lock()
+		taken := handedPorts[port]
+		handedPorts[port] = true
+		handedMu.Unlock()
+		if !taken {
+			return port
+		}
 	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
+}
+
+// onFreePort calls try with a free port until it returns true (up to 5 tries). A server that
+// does not come up lost its port to another process in the gap freePort leaves, or failed for
+// another reason: try returns false and the server's log, and the failure after 5 tries shows
+// the last one's.
+func onFreePort(t *testing.T, try func(port int) (ok bool, log string)) int {
+	t.Helper()
+	var log string
+	for i := 0; i < 5; i++ {
+		port := freePort(t)
+		var ok bool
+		if ok, log = try(port); ok {
+			return port
+		}
+	}
+	t.Fatalf("the server did not come up on any of 5 free ports; the last try's log:\n%s", log)
+	return 0
 }
 
 // writeSSHConfig writes the ssh_config of a box at 127.0.0.1:port as user with key.
@@ -251,8 +289,9 @@ func localBox(t *testing.T) *sshBox {
 	key := clientKey(t, dir, "client_key")
 	pub, _ := os.ReadFile(key + ".pub")
 	writeFile(t, filepath.Join(dir, "authorized_keys"), string(pub))
-	port := freePort(t)
-	writeFile(t, filepath.Join(dir, "sshd_config"), fmt.Sprintf(`Port %d
+	var cfg string
+	onFreePort(t, func(port int) (bool, string) { // sshd that lost its port to another process exits: start it again
+		writeFile(t, filepath.Join(dir, "sshd_config"), fmt.Sprintf(`Port %d
 ListenAddress 127.0.0.1
 HostKey %s
 AuthorizedKeysFile %s
@@ -262,16 +301,25 @@ UsePAM no
 StrictModes no
 PidFile %s
 `, port, host, filepath.Join(dir, "authorized_keys"), filepath.Join(dir, "sshd.pid")))
-	var logs bytes.Buffer
-	cmd := exec.Command(sshd, "-D", "-e", "-f", filepath.Join(dir, "sshd_config"))
-	cmd.Stdout, cmd.Stderr = &logs, &logs
-	cmd.WaitDelay = 3 * time.Second // a session child may hold the output a moment longer
-	if err := cmd.Start(); err != nil {
-		t.Skipf("starting sshd: %v", err)
-	}
-	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait() })
-	cfg := writeSSHConfig(t, dir, port, u.Username, key)
-	waitSSH(t, cfg, logs.String)
+		var logs bytes.Buffer
+		cmd := exec.Command(sshd, "-D", "-e", "-f", filepath.Join(dir, "sshd_config"))
+		cmd.Stdout, cmd.Stderr = &logs, &logs
+		cmd.WaitDelay = 3 * time.Second // a session child may hold the output a moment longer
+		if err := cmd.Start(); err != nil {
+			t.Skipf("starting sshd: %v", err)
+		}
+		exited := make(chan struct{})
+		go func() { cmd.Wait(); close(exited) }()
+		t.Cleanup(func() { cmd.Process.Kill(); <-exited })
+		cfg = writeSSHConfig(t, dir, port, u.Username, key)
+		select {
+		case <-exited:
+			return false, logs.String()
+		case <-time.After(300 * time.Millisecond): // a sshd that cannot bind ends at once
+		}
+		waitSSH(t, cfg, logs.String)
+		return true, ""
+	})
 	root := filepath.Join(evalSymlinks(t.TempDir()), "box")
 	killBuilds(t, root)
 	return &sshBox{bin: "ssh", config: cfg, host: "alder-test-box", root: root, port: freePort(t)}

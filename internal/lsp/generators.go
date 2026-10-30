@@ -41,6 +41,7 @@ type previewResult struct {
 	Fields      []generate.FieldState `json:"fields"`
 	Files       []previewFile         `json:"files"`
 	Diff        string                `json:"diff"`
+	Warnings    []string              `json:"warnings"` // Result.Warnings: a file written unformatted (never null)
 	Diagnostics []json.RawMessage     `json:"diagnostics"`
 	Holes       []generate.Hole       `json:"holes"`
 	Ready       bool                  `json:"ready"`
@@ -76,7 +77,8 @@ func decodeGeneratorParams(params json.RawMessage) (generatorParams, error) {
 // as the compiler counts.
 func (s *server) cursor(p generatorParams) (string, diag.Pos) {
 	rel, _ := s.rel(p.TextDocument.URI)
-	return rel, diag.Pos{Line: p.Position.Line + 1, Col: p.Position.Character + 1}
+	bp := s.byteAt(rel, p.Position)
+	return rel, diag.Pos{Line: bp.Line + 1, Col: bp.Character + 1}
 }
 
 // hereAt is spec's prefill at pos in rel from the last good build, or nil: when spec is never
@@ -223,12 +225,13 @@ func previewReq(s *server, params json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := previewResult{Fields: fields, Files: []previewFile{}, Diagnostics: o.diags, Holes: o.holes, Ready: ready && o.refusal == "", Error: o.refusal}
+	out := previewResult{Fields: fields, Files: []previewFile{}, Diagnostics: o.diags, Holes: o.holes, Ready: ready && o.refusal == "", Error: o.refusal, Warnings: []string{}}
 	if out.Fields == nil {
 		out.Fields = []generate.FieldState{}
 	}
 	if o.res != nil {
 		out.Diff = o.res.Diff
+		out.Warnings = append(out.Warnings, o.res.Warnings...)
 		for _, f := range o.res.Files {
 			add, rem := diffCounts(f.Path, f.Before, f.After)
 			out.Files = append(out.Files, previewFile{Path: f.Path, Action: f.Action, Added: add, Removed: rem})

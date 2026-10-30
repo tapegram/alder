@@ -1,0 +1,3 @@
+app/App.alder:11:11 E0042 `ring` leads back to itself in `dark` (`ring` → `primary` → `accent` → `ring`): give one of them a colour value
+app/App.alder:12:14 E0042 `primary` leads back to itself in `dark` (`primary` → `accent` → `ring` → `primary`): give one of them a colour value
+app/App.alder:13:13 E0042 `accent` leads back to itself in `dark` (`accent` → `ring` → `primary` → `accent`): give one of them a colour value

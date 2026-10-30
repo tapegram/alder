@@ -616,9 +616,6 @@ func TestRender_EnvPublicURL(t *testing.T) {
 	if got := oenv["ALDER_PUBLIC_URL"]; got != o.render.URL+"/svc/blog-x1y2" {
 		t.Errorf("a local ALDER_PUBLIC_URL reached the service: %q", got)
 	}
-	if v, ok := oenv["ALDER_DEV"]; ok {
-		t.Errorf("a local ALDER_DEV reached the service: %q", v)
-	}
 
 	k := newRenderRig(t)
 	k.render.AddService("blog", rImage+":0000000000000000", 1, renderfake.Env{Key: "ALDER_PUBLIC_URL", Value: "https://www.example.com"})

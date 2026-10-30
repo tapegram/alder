@@ -85,7 +85,7 @@ view model session =
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       -- @admin end
       <form submit={Create}>
         -- @admin begin inputs
@@ -140,16 +140,16 @@ test "creating a comment adds it, with the values submitted" = {
       }) rows,
       posts: Test.texts "select[name=post] option" page.doc,
     } == {
-        answers: [r.answer],
-        rows: [
-          {
-            post: post2,
-            author: Comment.Name "author-1",
-            body: Comment.Body "body-1",
-          },
-        ],
-        posts: ["slug-1", "slug-2"],
-      }
+      answers: [r.answer],
+      rows: [
+        {
+          post: post2,
+          author: Comment.Name "author-1",
+          body: Comment.Body "body-1",
+        },
+      ],
+      posts: ["slug-1", "slug-2"],
+    }
   )
 }
 
@@ -261,11 +261,11 @@ test "a long list of posts offers 50, and the search narrows it" = {
       found: Test.texts "select[name=post] option" found.doc == ["slug-203"],
       answer: r.answer,
     } == {
-        shown: 50,
-        total: 203,
-        found: True,
-        answer: Redirected (Admin.Comments.New { findPost: "zz" }),
-      }
+      shown: 50,
+      total: 203,
+      found: True,
+      answer: Redirected (Admin.Comments.New { findPost: "zz" }),
+    }
   )
 }
 
