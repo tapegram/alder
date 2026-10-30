@@ -145,7 +145,7 @@ func Collect(p *ir.Program) ([]Mutant, []Suppressed) {
 			}
 		}
 		for _, v := range m.Values {
-			if v.IsComponent || isHtml(v.Type) || isFuzzer(v.Type) || (pages[m.Name] != nil && !pages[m.Name].File && pages[m.Name].View == v) {
+			if v.IsComponent || isHtml(v.Type) || isFuzzer(v.Type) || v.TestOnly || (pages[m.Name] != nil && !pages[m.Name].File && pages[m.Name].View == v) {
 				continue
 			}
 			c.decl = v.Name
