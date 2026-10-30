@@ -37,6 +37,7 @@ import (
 	"maps"
 	"os"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -721,6 +722,13 @@ func Main(cases []Case, tables, testTables []db.TableDesc, migrations []db.Migra
 	} else if minScore >= 0 {
 		fmt.Fprintln(err, "alder test: --min needs --mutate")
 		return 2
+	}
+	if *mutating {
+		// a mutant that recurses without end overflows the stack, which ends the program (see
+		// mutate.go); at Go's default 1 GB that takes seconds, long enough for a mutant's
+		// timeout to fire first and report "timed out" for a crash. A small limit makes the
+		// overflow come in milliseconds, whatever the load, far ahead of any timeout.
+		debug.SetMaxStack(mutateMaxStack)
 	}
 	if os.Getenv(EnvStdinEOF) == "1" {
 		go func() {

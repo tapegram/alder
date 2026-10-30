@@ -2,6 +2,8 @@
 package syntax
 
 import (
+	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -204,23 +206,55 @@ func (p *Parser) unit(start Token) Expr {
 	return e
 }
 
+// intLit builds an Int literal from its token. A literal that does not fit in 64 bits is a
+// diagnostic (E0001) at the literal and parses as 0. neg means the token is the 9223372036854775808
+// of `-9223372036854775808`, which is MinInt64.
+func (p *Parser) intLit(t Token, neg bool) *IntLit {
+	e := &IntLit{}
+	e.Span = p.spanTok(t)
+	if neg {
+		e.Value = math.MinInt64
+		return e
+	}
+	v, err := strconv.ParseInt(t.Text, 10, 64)
+	if err != nil {
+		p.errorAt(t, fmt.Sprintf("`%s` does not fit in an Int (64 bits, up to 9223372036854775807)", t.Text))
+		return e
+	}
+	e.Value = v
+	return e
+}
+
+// floatLit builds a Float literal; one that overflows to infinity is a diagnostic at the literal.
+func (p *Parser) floatLit(t Token) *FloatLit {
+	e := &FloatLit{}
+	e.Span = p.spanTok(t)
+	v, err := strconv.ParseFloat(t.Text, 64)
+	if err != nil && math.IsInf(v, 0) {
+		p.errorAt(t, fmt.Sprintf("`%s` does not fit in a Float (64 bits, up to about 1.7976931348623157e308)", t.Text))
+		return e
+	}
+	e.Value = v
+	return e
+}
+
 func (p *Parser) parsePrimary() Expr {
 	start := p.tok
 	switch p.tok.Kind {
 	case Int:
-		t := p.advance()
-		v, _ := strconv.ParseInt(t.Text, 10, 64)
-		e := &IntLit{Value: v}
-		e.Span = p.spanTok(t)
-		return e
+		return p.intLit(p.advance(), false)
 	case Float:
-		t := p.advance()
-		v, _ := strconv.ParseFloat(t.Text, 64)
-		e := &FloatLit{Value: v}
-		e.Span = p.spanTok(t)
-		return e
+		return p.floatLit(p.advance())
 	case Minus: // -1 only
 		p.advance()
+		if p.at(Int) && p.tok.Text != "" {
+			// -9223372036854775808 is MinInt64: the one place the literal alone does not fit.
+			if u, err := strconv.ParseUint(p.tok.Text, 10, 64); err == nil && u == 1<<63 {
+				e := p.intLit(p.advance(), true)
+				e.Span.Start = p.posOf(start)
+				return e
+			}
+		}
 		if p.at(Int) || p.at(Float) {
 			lit := p.parsePrimary()
 			switch l := lit.(type) { // the literal's span takes in its `-`

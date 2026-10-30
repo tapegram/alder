@@ -770,6 +770,18 @@ $ alder eval examples/todos --in Table.Todo 'countOpen []'
 0 : Int
 ```
 
+A diagnostic of the expression is positioned in the input (`input:1:5`). When a `let` redeclares
+a name the module declares, the earlier declaration is named by its file, since its line is not
+a line of the input: ``input:1:5: error[E0009]: `countOpen` is already declared in
+app/Table/Todo.alder:34``.
+
+`--in` is deliberately more permissive than `alder check` about one thing: eval infers the
+type of the module's own top-level values that have no signature (as it does the input's
+`let`s), where `check` reports E0007 for them. The input has no place for
+signatures, and the checker's inference switch (`InferModule`) applies to the whole module the
+input is appended to, so it covers the module's own unsigned values too. That is accepted:
+eval is for probing, and `alder check` gives the strict verdict.
+
 `--in` and `--module` do not combine (`alder eval: --in and --module do not combine: --in Name
 works inside module Name, --module names the scratch module`, exit 2). A module that declares
 `it` cannot host eval (exit 2).
@@ -985,6 +997,10 @@ ok   Todos.Index "Toggle by another user is not found"
   `"tables":"ensure"` for a schema mutant) and `{"score":…, "killed":…,
   "survived":…, "suppressed":…, "skipped":…}`; the refusals go to
   standard error there.
+- `--mutate` caps the goroutine stack at 64 MB (Go's default is 1 GB), so
+  a mutant that recurses without end crashes quickly, whatever the load;
+  a suite that needs more stack than that fails its own run under
+  `--mutate` (and says so).
 - `--min R` (with `--mutate` only; `R` from 0 to 1, such as `0.8`) exits
   1 when the exact score is below `R`, after the same report. Without
   it, `--mutate`'s exit code is the tests'. `--min` without `--mutate`,
@@ -1628,6 +1644,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | W0006 | an adapter package reads (through `os.Getenv` or `os.LookupEnv` with a literal name) an environment variable that `deploy.requires` does not name (chapter 16): "adapter `auth` reads `SMTP_URL`, which `deploy.requires` does not name"; the runtime's own `ALDER_…` variables are never reported, and a name in `requires` that no adapter reads is fine | name it in `requires` |
 | W0007 | the language server's warning on line 1 of an open scratch file when the app has errors, so the file does not run (this chapter, "Scratch files in the editor"): "the app has errors; fix them and save"; the errors themselves are on the app's files | fix the app's errors and save |
 | W0008 | a GET `<form>` (`method="get"` or none, no `submit`) whose literal `action` is a page's path holds a plain `<input>`, `<select>` or `<textarea>` with a literal `name` that is one of the page's parameters declared with another wire name (chapter 6): "page `Wood` reads its parameter `electionId` from the query key `ElectionId`, so `name="electionId"` in this GET form sets nothing; use the wire name: `name="ElectionId"`" | the wire name as the `name` |
+| W0009 | `render.yaml` or `fly.toml` (the files of `alder deploy init`) exists in the project and App.alder has no `deploy` block (chapter 16): "render.yaml deploys whatever is pushed, with no check, migration plan or backup: add a `deploy` block to App.alder (book chapter 16)"; with both files, "render.yaml and fly.toml deploy …"; a Dockerfile alone is not reported | add a `deploy` block |
 
 ## Editor support
 

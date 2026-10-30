@@ -14,6 +14,12 @@ func TestBytes_Ops(t *testing.T) {
 	eq(t, "concat", BytesConcat([][]byte{{1}, {}, {2, 3}}), []byte{1, 2, 3})
 	eq(t, "concat empty", BytesConcat(nil), []byte{})
 	eq(t, "toList", BytesToList([]byte{0, 255}), []int64{0, 255})
+	eq(t, "toList empty", BytesToList([]byte{}), []int64{})
+	eq(t, "toList nil", BytesToList(nil), []int64{})
+	eq(t, "fromList empty", BytesFromList([]int64{}), []byte{})
+	eq(t, "fromList nil", BytesFromList(nil), []byte{})
+	eq(t, "slice of empty", BytesSlice(0, 5, []byte{}), []byte{})
+	eq(t, "slice of nil", BytesSlice(-1, 1, nil), []byte{})
 	eq(t, "fromList masks", BytesFromList([]int64{256, -1, 65}), []byte{0, 255, 65})
 }
 
