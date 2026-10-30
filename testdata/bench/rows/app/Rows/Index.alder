@@ -46,7 +46,7 @@ view model session =
       </form>
       <ul id="rows">
         {for r in model.rows ->
-          <li class={if r.done then "done" else "open"}>
+          <li id={"row-" ++ r.id} class={if r.done then "done" else "open"}>
             <span>{r.title}</span>
             <span>{Text.fromInt r.n}</span>
             <button click={Toggle { id: r.id }}>Toggle</button>

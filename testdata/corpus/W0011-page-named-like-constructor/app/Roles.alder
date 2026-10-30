@@ -1,0 +1,5 @@
+module Roles
+
+-- A role named like the page module Admin. Nothing in Roles, App or the modules importing Roles
+-- links to the page, so the program works: a warning, not an error.
+type Role = Reader | Admin

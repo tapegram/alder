@@ -1,0 +1,19 @@
+module App
+
+import Roles
+
+session { role: Roles.Role = Reader }
+
+-- An app-level message named like the page: inside App, `Admin` is the message.
+msg Admin
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Admin p -> Task.succeed Rerender,
+}
+
+error : Error -> Html Never
+error err = <p>error</p>
+
+notFound : Html Never
+notFound = <p>not found</p>
