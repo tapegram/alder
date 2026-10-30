@@ -565,3 +565,48 @@ func stripPageParams(u string) string {
 	}
 	return path + "?" + strings.Join(keep, "&")
 }
+
+// ReplaceByID is doc with its first element whose id is id (in document order) replaced by
+// with, and whether there was one: a Datastar `#id` patch in mode outer, as a test's browser
+// applies it.
+func ReplaceByID(doc Node, id string, with Node) (Node, bool) {
+	done := false
+	var walk func(n Node) Node
+	walk = func(n Node) Node {
+		if done {
+			return n
+		}
+		if n.kind == kElem {
+			if v, ok := AttrOf(n, "id"); ok && v == id {
+				done = true
+				return with
+			}
+		}
+		if n.kind == kElem || n.kind == kFrag {
+			cs := make([]Node, len(n.children))
+			for i, c := range n.children {
+				cs[i] = walk(c)
+			}
+			n.children = cs
+		}
+		return n
+	}
+	out := walk(doc)
+	return out, done
+}
+
+// Without is n without the elements drop reports (with everything inside them).
+func Without(n Node, drop func(Node) bool) Node {
+	if n.kind != kElem && n.kind != kFrag {
+		return n
+	}
+	cs := make([]Node, 0, len(n.children))
+	for _, c := range n.children {
+		if c.kind == kElem && drop(c) {
+			continue
+		}
+		cs = append(cs, Without(c, drop))
+	}
+	n.children = cs
+	return n
+}

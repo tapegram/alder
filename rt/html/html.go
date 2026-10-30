@@ -168,9 +168,44 @@ func RenderWith(n Node, st *FormState) string {
 	return b.String()
 }
 
+// Rendered is a page rendered with its regions recorded (RenderTracked).
+type Rendered struct {
+	Page    string
+	Regions []Region // every element with an id, in document order (by Start)
+	// RawIDs: Html.unsafe markup in the page holds an `id=`, whose element the renderer does not
+	// see: no id of the page can be proved unique, so it has no regions (Fragments).
+	RawIDs bool
+}
+
+// Region is an element with an id attribute: Page[Start:End] is its markup. Inert: it is inside
+// <head> or a <template> (counted for uniqueness, never patched).
+type Region struct {
+	ID         string
+	Start, End int
+	Inert      bool
+}
+
+// RenderTracked renders n as RenderWith(n, st) does and records each element with an id as it
+// writes it: no parse, no second walk.
+func RenderTracked(n Node, st *FormState) Rendered {
+	var b strings.Builder
+	tr := &tracking{}
+	r := renderer{b: &b, st: st, track: tr}
+	r.render(n)
+	return Rendered{Page: b.String(), Regions: tr.regions, RawIDs: tr.rawIDs}
+}
+
+// tracking is what RenderTracked records.
+type tracking struct {
+	regions []Region
+	inert   int // depth inside <head> or <template>
+	rawIDs  bool
+}
+
 // renderer is one rendering: the request's form state and where in the tree it is.
 type renderer struct {
 	b      *strings.Builder
+	track  *tracking // RenderTracked's record, nil otherwise
 	st     *FormState
 	inForm bool     // inside a <form> element
 	form   string   // the message key (rt.MsgRef.Key) of the enclosing <form>, "" for none
@@ -185,6 +220,9 @@ func (r *renderer) render(n Node) {
 	case kText:
 		b.WriteString(escape(n.text))
 	case kRaw:
+		if r.track != nil && hasIDAttr(n.text) {
+			r.track.rawIDs = true
+		}
 		b.WriteString(n.text)
 	case kRawText:
 		b.WriteString(escape(n.text)) // outside <script> and <style>: text
@@ -212,8 +250,22 @@ func (r *renderer) render(n Node) {
 				r.orphan = orphanErrors(n, st)
 			}
 		}
+		region := -1
+		if tr := r.track; tr != nil {
+			if id, ok := idOf(n.attrs, r.st); ok {
+				region = len(tr.regions)
+				tr.regions = append(tr.regions, Region{ID: id, Start: b.Len(), Inert: tr.inert > 0})
+			}
+			if n.tag == "head" || n.tag == "template" {
+				tr.inert++
+				defer func() { tr.inert-- }()
+			}
+		}
 		r.open(n.tag, n.attrs)
 		if void[n.tag] {
+			if region >= 0 {
+				r.track.regions[region].End = b.Len()
+			}
 			*r = saved
 			return
 		}
@@ -229,8 +281,36 @@ func (r *renderer) render(n Node) {
 		b.WriteString("</")
 		b.WriteString(n.tag)
 		b.WriteByte('>')
+		if region >= 0 {
+			r.track.regions[region].End = b.Len()
+		}
 		*r = saved
 	}
+}
+
+// idOf is the value of attrs' id attribute as rendered with st, if it renders one.
+func idOf(attrs []Attr, st *FormState) (string, bool) {
+	for _, a := range attrs {
+		if a.Name == "id" && !a.Omit && !a.Bool {
+			return a.value(st), true
+		}
+	}
+	return "", false
+}
+
+// hasIDAttr reports whether raw markup may hold an id attribute (`id=`, any case).
+func hasIDAttr(s string) bool {
+	for i := strings.IndexByte(s, '='); i >= 0; {
+		if i >= 2 && (s[i-2]|0x20) == 'i' && (s[i-1]|0x20) == 'd' {
+			return true
+		}
+		j := strings.IndexByte(s[i+1:], '=')
+		if j < 0 {
+			return false
+		}
+		i += 1 + j
+	}
+	return false
 }
 
 // open writes the start tag of tag with attrs (" />" for a void element).
