@@ -8,6 +8,7 @@ import (
 	"alder/rt/db"
 	"alder/rt/eff"
 	"alder/rt/html"
+	"alder/rt/metrics"
 	"alder/rt/web"
 	"context"
 	"encoding/json"
@@ -15,6 +16,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"time"
 )
 
 // Tables describes every table of the app, in module order then declaration order, for db.Ensure.
@@ -69,6 +71,8 @@ type Options struct {
 	Log       func(level, msg string) // nil: no log
 	Access    func(*applog.Access)    // one call per request routed (not the health check); nil: no access log
 	Build     string                  // the build's id (ALDER_BUILD, set by alder deploy), answered by /_alder/health
+	Metrics   *metrics.Collector      // ALDER_METRICS: answers /_alder/metrics and counts requests; nil: no endpoint
+	SlowAfter time.Duration           // ALDER_SLOW_MS: a request this slow is a warn line with its breakdown; 0: none
 }
 
 // Serve is the app's HTTP handler. It checks that o.Secret is at least 16 bytes outside dev
@@ -155,7 +159,7 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	}
 	w := Web()
 	w.Store, w.Caps, w.Log, w.Dev, w.Secret, w.StaticDir, w.Reload = store, reg, o.Log, o.Dev, o.Secret, o.StaticDir, o.Reload
-	w.Access = o.Access
+	w.Access, w.Metrics, w.SlowAfter = o.Access, o.Metrics, o.SlowAfter
 	w.Build, w.SharedMaintenance = o.Build, shared
 	w.Stores = stores
 	for _, m := range Migrations {
