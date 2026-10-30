@@ -57,10 +57,10 @@ func TestFormatLongWatchBreaksAfterTheName(t *testing.T) {
 
 func TestFormatRefusesBrokenFiles(t *testing.T) {
 	for _, in := range []string{
-		"> 1 +\n",                  // does not parse
-		">!Db.insert x\n",          // ParseFile's own error
-		"it1 = 2\n> 1\n",           // a reserved name
-		"in Todo\nin Todo\n> 1\n",  // a header out of place
+		"> 1 +\n",                 // does not parse
+		">!Db.insert x\n",         // ParseFile's own error
+		"it1 = 2\n> 1\n",          // a reserved name
+		"in Todo\nin Todo\n> 1\n", // a header out of place
 	} {
 		out, ds, err := Format("scratch.alder", []byte(in))
 		if err != nil || out != nil || len(ds) == 0 {
