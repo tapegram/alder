@@ -36,6 +36,7 @@ func TestScratchInterruptSignal(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { cmd.Process.Kill() }) // a no-op once it has exited
 	programs := "^" + filepath.Join(buildDir, "todos", "scratch") + "/"
 	running := func() bool { return exec.Command("pgrep", "-f", programs).Run() == nil }
 	deadline := time.Now().Add(2 * time.Minute)
@@ -50,7 +51,17 @@ func TestScratchInterruptSignal(t *testing.T) {
 	if err := cmd.Process.Signal(syscall.SIGINT); err != nil {
 		t.Fatal(err)
 	}
-	err := cmd.Wait()
+	waited := make(chan error, 1)
+	go func() { waited <- cmd.Wait() }()
+	var err error
+	select {
+	case err = <-waited:
+	case <-time.After(30 * time.Second):
+		cmd.Process.Kill()
+		<-waited
+		exec.Command("pkill", "-f", programs).Run()
+		t.Fatalf("scratch did not exit within 30 s of SIGINT\nstdout: %s\nstderr: %s", out.String(), errb.String())
+	}
 	if took := time.Since(start); took > 5*time.Second {
 		t.Errorf("scratch took %v to stop", took)
 	}

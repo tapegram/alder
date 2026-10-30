@@ -357,6 +357,26 @@ func TestScratchWatchReruns(t *testing.T) {
 	}
 }
 
+// await waits for ch, failing the test with step's name after 60 s.
+func await(t *testing.T, ch <-chan struct{}, step string) {
+	t.Helper()
+	select {
+	case <-ch:
+	case <-time.After(60 * time.Second):
+		t.Fatalf("timed out waiting for %s", step)
+	}
+}
+
+// awaitCtx is await for a context's end, for use inside a stub (where t.Fatal must not be called
+// from another goroutine): it reports the timeout with t.Errorf.
+func awaitCtx(t *testing.T, ctx context.Context, step string) {
+	select {
+	case <-ctx.Done():
+	case <-time.After(60 * time.Second):
+		t.Errorf("timed out waiting for %s", step)
+	}
+}
+
 // watchReady is closed when the next --watch has taken its first snapshot of the app.
 func watchReady(t *testing.T) <-chan struct{} {
 	t.Helper()
@@ -399,14 +419,14 @@ func TestScratchWatchMarksSupersededRun(t *testing.T) {
 	stubScratchFileWith(t, func(k int, ctx context.Context, f scratch.File) scratch.FileResult {
 		if k == 1 {
 			close(started)
-			<-ctx.Done() // runs until the edit cancels it
+			awaitCtx(t, ctx, "the edit to cancel the first run") // runs until the edit cancels it
 			return echoWatches(f)
 		}
 		return echoWatches(f)
 	})
 	w := startScratchWatch(t, "> 1\n")
-	<-started
-	<-ready
+	await(t, started, "the first run to start")
+	await(t, ready, "the watcher's first snapshot")
 	w.edit("> 2\n")
 	w.waitFor(w.out, "  (superseded)\n")
 	w.waitFor(w.out, "⇒ 2 : Int")
@@ -429,13 +449,13 @@ func TestScratchWatchKeepsRunFinishedAsChangeArrives(t *testing.T) {
 	scratchRunReturned = func(ctx context.Context) {
 		once.Do(func() { // the first run only
 			close(returned)
-			<-ctx.Done() // the change has cancelled the run
+			awaitCtx(t, ctx, "the change to cancel the first run") // the change has cancelled the run
 		})
 	}
 	t.Cleanup(func() { scratchRunReturned = real })
 	w := startScratchWatch(t, "> 1\n", "--json")
-	<-returned
-	<-ready
+	await(t, returned, "the first run to return")
+	await(t, ready, "the watcher's first snapshot")
 	w.edit("> 2\n")
 	w.waitFor(w.out, `"value":"2"`)
 	if code := w.stop(); code != 0 {
