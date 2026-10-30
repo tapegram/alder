@@ -357,10 +357,56 @@ func TestScratchWatchReruns(t *testing.T) {
 	}
 }
 
+// watchReady is closed when the next --watch has taken its first snapshot of the app.
+func watchReady(t *testing.T) <-chan struct{} {
+	t.Helper()
+	ready := make(chan struct{})
+	var once sync.Once
+	scratchWatchReady = func() { once.Do(func() { close(ready) }) }
+	t.Cleanup(func() { scratchWatchReady = nil })
+	return ready
+}
+
+// stubScratchFileWith replaces runScratchFile with fn, whose k-th call (from 1) it answers.
+func stubScratchFileWith(t *testing.T, fn func(k int, ctx context.Context, f scratch.File) scratch.FileResult) {
+	t.Helper()
+	var mu sync.Mutex
+	calls := 0
+	real := runScratchFile
+	runScratchFile = func(ctx context.Context, _ string, f scratch.File, _ scratch.FileOptions) scratch.FileResult {
+		mu.Lock()
+		calls++
+		k := calls
+		mu.Unlock()
+		return fn(k, ctx, f)
+	}
+	t.Cleanup(func() { runScratchFile = real })
+}
+
+// echoWatches is a run's result with each watch's expression as its Int value.
+func echoWatches(f scratch.File) scratch.FileResult {
+	r := scratch.FileResult{Watches: []scratch.WatchResult{}, Ran: true}
+	for _, w := range f.Watches {
+		r.Watches = append(r.Watches, scratch.WatchResult{Line: w.Line, End: w.Line, Expr: w.Expr, Type: "Int", Value: w.Expr, Kind: "pure"})
+	}
+	return r
+}
+
 // A change during a run cancels it: its header stays, marked superseded, and the next run follows.
+// The first run is held until the change cancels it, so the order is not up to build timing.
 func TestScratchWatchMarksSupersededRun(t *testing.T) {
+	started, ready := make(chan struct{}), watchReady(t)
+	stubScratchFileWith(t, func(k int, ctx context.Context, f scratch.File) scratch.FileResult {
+		if k == 1 {
+			close(started)
+			<-ctx.Done() // runs until the edit cancels it
+			return echoWatches(f)
+		}
+		return echoWatches(f)
+	})
 	w := startScratchWatch(t, "> 1\n")
-	w.waitFor(w.out, "── ") // the first run, building from scratch, has started
+	<-started
+	<-ready
 	w.edit("> 2\n")
 	w.waitFor(w.out, "  (superseded)\n")
 	w.waitFor(w.out, "⇒ 2 : Int")
@@ -369,6 +415,34 @@ func TestScratchWatchMarksSupersededRun(t *testing.T) {
 	}
 	if code := w.stop(); code != 0 {
 		t.Errorf("exit %d, stderr: %s", code, w.errb.String())
+	}
+}
+
+// A run that has reported its result when a change cancels it keeps that result (--json): the
+// cancel lands after scratchRun returns and before the loop reads whether the run finished,
+// held there by the scratchRunReturned hook.
+func TestScratchWatchKeepsRunFinishedAsChangeArrives(t *testing.T) {
+	stubScratchFileWith(t, func(_ int, _ context.Context, f scratch.File) scratch.FileResult { return echoWatches(f) })
+	returned, ready := make(chan struct{}), watchReady(t)
+	var once sync.Once
+	real := scratchRunReturned
+	scratchRunReturned = func(ctx context.Context) {
+		once.Do(func() { // the first run only
+			close(returned)
+			<-ctx.Done() // the change has cancelled the run
+		})
+	}
+	t.Cleanup(func() { scratchRunReturned = real })
+	w := startScratchWatch(t, "> 1\n", "--json")
+	<-returned
+	<-ready
+	w.edit("> 2\n")
+	w.waitFor(w.out, `"value":"2"`)
+	if code := w.stop(); code != 0 {
+		t.Errorf("exit %d, stderr: %s", code, w.errb.String())
+	}
+	if out := w.out.String(); !strings.Contains(out, `"value":"1"`) || strings.Index(out, `"value":"1"`) > strings.Index(out, `"value":"2"`) {
+		t.Errorf("the first run's finished result was dropped: %q", out)
 	}
 }
 

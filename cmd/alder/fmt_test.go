@@ -250,8 +250,12 @@ func TestFmtAppRootStartsAtTheDirectory(t *testing.T) {
 	// an empty app/ directory is not an app, as for `alder scratch`
 	empty := t.TempDir()
 	os.MkdirAll(filepath.Join(empty, "app"), 0o755)
-	if got := fmtAppRoot(empty); got == empty {
-		t.Errorf("an app/ with no .alder file is taken as the root")
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fmtAppRoot(empty); got != cwd { // no app above it either: the current directory
+		t.Errorf("fmtAppRoot(empty app/) = %q, want the cwd %q", got, cwd)
 	}
 }
 
