@@ -5,6 +5,7 @@ package rt
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"reflect"
 	"slices"
@@ -399,6 +400,47 @@ type HttpError struct {
 type Page struct {
 	Path  string
 	Query []KV
+}
+
+// DefaultPublicURL is the public base (PublicURL) of a process that is not told its own: the
+// test runner, alder eval and the REPL, so a test's expected absolute URL is the same on every
+// machine.
+const DefaultPublicURL = "http://localhost:8080"
+
+// PublicURL is the scheme and host in front of a page's URL in `Url.absolute`. The generated
+// main sets it once, before the first request, from ALDER_PUBLIC_URL (ParsePublicURL) or from
+// its listener's address (ListenPublicURL); nothing changes it afterwards, so Url.absolute is
+// pure for the life of the process.
+var PublicURL = DefaultPublicURL
+
+// ParsePublicURL is ALDER_PUBLIC_URL's rule: s trimmed of spaces and of every trailing "/" must
+// be http://host[:port] or https://host[:port], with no path, query, fragment or user info. The
+// answer has the scheme lowercased and the host and port as written.
+func ParsePublicURL(s string) (string, error) {
+	bad := fmt.Errorf("ALDER_PUBLIC_URL must be http(s)://host[:port], such as https://blog.example.com (got %q)", s)
+	u, err := url.Parse(strings.TrimRight(strings.TrimSpace(s), "/"))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Opaque != "" || u.Hostname() == "" ||
+		u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.Contains(u.Host, "/") {
+		return "", bad
+	}
+	return u.Scheme + "://" + u.Host, nil
+}
+
+// ListenPublicURL is the public base of a server listening on addr without ALDER_PUBLIC_URL:
+// "http://" and the address as alder run shows it (DisplayAddr).
+func ListenPublicURL(addr string) string { return "http://" + DisplayAddr(addr) }
+
+// DisplayAddr is a listener's address for a person to open: an unspecified host (":8080",
+// "0.0.0.0:8080", "[::]:8080") is shown as localhost; any other is kept.
+func DisplayAddr(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	if ip := net.ParseIP(host); host == "" || ip != nil && ip.IsUnspecified() {
+		host = "localhost"
+	}
+	return net.JoinHostPort(host, port)
 }
 
 // AlderEqual is Page's equality (Equaler): two pages are equal when they link to the same URL

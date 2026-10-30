@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"alder/rt"
 	"alder/rt/datastar"
 
 	"alder/internal/buildkit"
@@ -132,17 +133,8 @@ func runAddr(addr string) string {
 }
 
 // displayAddr is a listener's address for a person to open: an unspecified host (":8080")
-// is shown as localhost.
-func displayAddr(a net.Addr) string {
-	host, port, err := net.SplitHostPort(a.String())
-	if err != nil {
-		return a.String()
-	}
-	if ip := net.ParseIP(host); host == "" || ip != nil && ip.IsUnspecified() {
-		host = "localhost"
-	}
-	return net.JoinHostPort(host, port)
-}
+// is shown as localhost (rt.DisplayAddr, the rule the app's own public base follows).
+func displayAddr(a net.Addr) string { return rt.DisplayAddr(a.String()) }
 
 // devServer is `alder run`'s HTTP handler and the state behind it.
 //
