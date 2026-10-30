@@ -202,21 +202,23 @@ view model session =
 
     <al-stack direction="row" gap="sm">
       <form method="get" action="/admin/comment">
-        <input type="search" name="q" value={model.q} aria-label="Search" />
-        {for f in filters model.filters ->
-          <al-select label={f.label}>
-            <label>
-              {f.label}
-              <select name={f.name}>
-                <option value="" selected={f.value == ""}>any</option>
-                {for o in f.options ->
-                  <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
-              </select>
-            </label>
-          </al-select>}
-        <input type="hidden" name="sort" value={model.sort} />
-        <input type="hidden" name="dir" value={model.dir} />
-        <al-button type="submit" variant="secondary">Search</al-button>
+        <al-stack direction="row" gap="sm">
+          <al-input><label>Search<input type="search" name="q" value={model.q} /></label></al-input>
+          {for f in filters model.filters ->
+            <al-select label={f.label}>
+              <label>
+                {f.label}
+                <select name={f.name}>
+                  <option value="" selected={f.value == ""}>any</option>
+                  {for o in f.options ->
+                    <option value={o.value} selected={o.value == f.value}>{o.label}</option>}
+                </select>
+              </label>
+            </al-select>}
+          <input type="hidden" name="sort" value={model.sort} />
+          <input type="hidden" name="dir" value={model.dir} />
+          <al-button type="submit" variant="secondary">Search</al-button>
+        </al-stack>
       </form>
       <al-button href={Admin.Comments.New {}}>New comment</al-button>
     </al-stack>
