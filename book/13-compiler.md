@@ -1141,8 +1141,9 @@ the block" functions it has yet to call.
    `todos`) goes on the stack, and the loop moves to its first part.
 3. The node is the `call` named `Db.all Todo`. It isn't a write, so it may
    run in a `Query`. `Run` checks that the request hasn't been cancelled,
-   logs `effect: Db.all Todo`, appends the name to `env.Trace`, and calls
-   `fn`.
+   logs `Db.all Todo` at level `effect` (the app's logger writes it as
+   `debug: effect Db.all Todo`, under `ALDER_LOG=debug` only), appends the
+   name to `env.Trace`, and calls `fn`.
 4. `fn` calls `db.All`, which renders the `Select` (`Select.SQL` in
    `rt/db/table.go`) and asks the store for the rows. The SQLite store
    runs

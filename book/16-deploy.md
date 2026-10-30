@@ -524,7 +524,7 @@ you can choose a quiet moment.
 ```text
 alder status <env> [dir] [--host name]
 alder rollback <env> [<build id>] [--dir dir] [--host name] [--allow-schema-mismatch | --restore-backup [--yes]]
-alder logs <env> [dir] [--host name] [-f]
+alder logs <env> [dir] [--host name] [-f] [-n N] [--grep PATTERN]
 ```
 
 `alder status` reads the state at the target: the current build, the
@@ -671,11 +671,177 @@ The dropped column is back, the previous build serves and takes writes;
 the few seconds between the migration and the restore are in the kept
 file, if anything was written then.
 
-`alder logs` prints the last 100 lines of the current build's log, and
-`-f` follows it until you press Ctrl-C: it follows the **current**
-build, so after a deploy or rollback switches builds it goes on with
-the new current build's log (a line `--- alder logs: build <id> is
-current` marks the change).
+`alder logs` prints the last 100 lines of the current build's log
+(`-n N` for another count), and `-f` follows it until you press Ctrl-C:
+it follows the **current** build, so after a deploy or rollback
+switches builds it goes on with the new current build's log (a line
+`--- alder logs: build <id> is current` marks the change). `--grep
+PATTERN` keeps only the lines a Go regular expression matches, on every
+target and with `-f` too; the next section says what is in a line and
+how to pick them out.
+
+## Operating an app
+
+A deployed app is a process nobody watches. What it writes to standard
+error is how you know it is alive, what it did, and why a request
+failed; the platform keeps it (`builds/<id>/log` at a box, Fly's and
+Render's log viewers) and `alder logs` reads it back. This section is
+what the app writes there, and why.
+
+### One line per request
+
+Every request the app routes adds one line when its answer is written:
+
+```text
+2026/10/29 16:00:00 info: GET /start?key=••••&seed=7 200 12.3ms 4821B rid=5f3a2c1e
+```
+
+In order: the time (UTC, to the second), the level, the method, the URL
+(masked, below), the status, how long the answer took (from the request
+arriving to the last byte handed to the connection, in milliseconds),
+the body's size in bytes, and the request's id. A status of `0` means
+the handler wrote nothing at all. This is the line that tells a healthy
+app from a dead one: a platform's log viewer that shows nothing for an
+hour of traffic means the app is not being reached, not that it is
+quiet.
+
+Two kinds of request write no line at `info`:
+
+- **The health check**, `GET /_alder/health`. The platform asks it every
+  few seconds; a line per check would bury everything else. When the
+  database stops answering, it writes one `warn` line, and one more when
+  it answers again.
+- **Files that are fine**: the stylesheet, the fonts, the Datastar
+  script (`/static/…`, `/_alder/…`) answered 200 or 304. They are
+  `debug` lines. A missing file (404) is an `info` line like a page's,
+  since it usually means a broken link.
+
+The router builds the line in a `defer` that runs after its panic
+handler, so a request that panicked still gets one, with the status it
+was answered with (500, or whatever was already written when the panic
+came after the answer had started).
+
+### The request id
+
+Each request gets an id: 8 hex characters, a random start chosen when
+the process starts plus a counter, so two requests of the same process
+never share one. The app answers it in the `X-Request-Id` response
+header, puts it at the end of the access line (`rid=5f3a2c1e`) and at
+the end of the first line of every error or warning about that request:
+
+```text
+2026/10/29 16:00:01 error: GET /boom?key=••••: panic: kaboom rid=0a0b0c0d
+goroutine 42 [running]:
+…
+2026/10/29 16:00:01 info: GET /boom?key=•••• 500 0.4ms 1290B rid=0a0b0c0d
+```
+
+So `alder logs production --grep rid=0a0b0c0d` prints everything about
+one request, and a user who sends you the `X-Request-Id` their browser
+received (the network tab shows it) has told you which lines to read.
+When the request already carries an `X-Request-Id` of 1 to 64 letters,
+digits, `.`, `_` or `-` (Fly's proxy sets one), the app keeps it, so
+its lines and the platform's share an id; anything else is replaced,
+never echoed back.
+
+### Levels
+
+`ALDER_LOG` is the least level written; everything below it is dropped
+before it is formatted, so a quiet production app pays nothing for the
+lines it does not write.
+
+| level | the runtime writes | the app writes |
+|---|---|---|
+| `error` | panics (with the stack), an answer that could not be written, a database the build cannot use at start | `Log.error` |
+| `warn` | a refused request (400 a query that does not parse, 413 a body over 1 MiB, 415 a multipart body), a 503 maintenance page, an oversized session cookie, the development key, a health check that starts or stops failing, a header a file page may not set | `Log.warn` |
+| `info` (default) | the access lines (pages, and files that fail), migrations as they run, the backup shipper, a database ahead of this build | `Log.info` |
+| `debug` | the access lines of healthy files, every effect step (`effect Db.all Todo`), and `steps=N` at the end of each access line: how many effect steps the request ran | `Log.debug` |
+
+Each level includes the ones above it. `ALDER_LOG=warn` is a quiet
+production app: only what needs a look. `ALDER_LOG=debug alder run` is a
+debugging session: every query and capability call, as the dev panel's
+Trace tab shows them, but in the terminal. The default is `info`
+everywhere, development mode included; the dev panel is the same at
+every level.
+
+Set it where the app's environment is set: the environment file at a
+box, a Fly secret, the Render dashboard. `alder deploy` leaves both
+variables alone. An unknown value stops the app before it serves, with
+`alder: ALDER_LOG=verbose: want debug, info, warn or error`, as a bad
+`ALDER_PUBLIC_URL` does, so a typo shows at the deploy's health check
+rather than as a silent default.
+
+### What is never logged: the masking rule
+
+A log is kept for a long time, copied to platforms, and read by people
+who would not be shown the app's data. So a URL goes into a line with
+its secrets replaced by `••••` (the dev panel's mask):
+
+- a query value whose parameter's name, in lowercase, contains `key`,
+  `token`, `secret`, `pass`, `auth`, `sig`, `code` or `session`
+  (`?key=…`, `access_token`, `Authorization`, `X-Amz-Signature`, an
+  OAuth `code`);
+- a query value, a parameter name or a path segment that looks like a
+  secret whatever its name: a URL with a password in it
+  (`postgres://user:pass@…`), a known key prefix (`sk_`, `ghp_`, `AKIA`,
+  `xoxb-`, `xoxp-`, `-----BEGIN`), or 32 or more characters of base64 or
+  hex (a signed link's token in the path);
+- the value of a query pair that does not parse (a bad `%` escape, a raw
+  `;`): the runtime cannot tell what it holds, so it hides it. The pair
+  is kept, never dropped, so the line still shows the URL's shape.
+
+The parameter names, their order and every other value stay as written:
+`?key=s3cret&seed=7` becomes `?key=••••&seed=7`, which is enough to tell
+which page and which inputs a request had. The rule errs towards
+hiding: a parameter named `postcode` is masked too. A harmless value
+hidden costs a little reading; a secret shown cannot be taken back.
+
+Some things the runtime never hands to the log at all: request and
+response headers (`Authorization`, `Cookie`), cookies, request bodies,
+form fields and sessions. A `Log.info` text is the app's own: the
+runtime writes it as given, so log ids and outcomes, not what people
+typed (chapter 7).
+
+### JSON lines
+
+`ALDER_LOG_FORMAT=json` writes one JSON object per line instead, for a
+log platform that indexes fields:
+
+```text
+{"time":"2026-10-29T16:00:00.123Z","level":"INFO","msg":"GET /start?key=••••&seed=7","method":"GET","path":"/start?key=••••&seed=7","status":200,"ms":12.3,"bytes":4821,"rid":"5f3a2c1e"}
+{"time":"2026-10-29T16:00:01.002Z","level":"ERROR","msg":"GET /boom: panic: kaboom rid=0a0b0c0d\ngoroutine 42 [running]:\n…"}
+```
+
+An access line has the fields of the text line as keys of their own
+(`steps` too at `debug`); every other line is `time`, `level` and `msg`,
+with a panic's stack inside `msg`, so one line is always one event. The
+level names are upper case, as Go's `log/slog` writes them; the objects
+come from its JSON handler, which escapes correctly and reuses its
+buffers.
+
+### Reading them back
+
+```text
+alder logs production                          the last 100 lines
+alder logs production -n 500                   the last 500
+alder logs production -f --grep ' (warn|error): '   follow, problems only
+alder logs production --grep rid=0a0b0c0d      one request
+```
+
+`-n` is the target's: a box runs `tail -n N` on the build's log,
+Render's API returns at most 100 lines at once (so `-n` above 100
+prints 100), and `flyctl logs` has no count, so `alder logs` keeps the
+last N of what it prints. `--grep` is applied by `alder logs` itself to
+each line, whatever the target, before it reaches your terminal.
+
+`GET /_alder/health` answers `{"build":"<id>","db":"ok"}` when the
+build is serving and its database answers a `SELECT 1` within five
+seconds, and 503 otherwise. It says "this process can serve", which is
+what a platform needs to decide whether to route to it. It does not say
+the app is being used: the access lines do.
+
+The app keeps no counters and sends no metrics: nothing scrapes an
+Alder app today, and the access line is what answers "is it alive?".
 
 ## Backups and restore
 
@@ -1080,7 +1246,8 @@ on an existing database), a build that fails its health check (asked
 through the public address, `https://<app>.fly.dev/`, until the page
 names the build id) is replaced by the previous image again, and the refusal
 says the previous build still serves. A rollback is the same swap to an
-older image. `alder logs` is `flyctl logs`; `alder restore` sends the
+older image. `alder logs` is `flyctl logs` (of which it keeps the last
+`-n` lines itself); `alder restore` sends the
 database into the volume through the API and restarts the machine,
 whose start script puts it in place. Old images stay in Fly's registry:
 pruning removes only their directories on the volume.
@@ -1302,7 +1469,8 @@ and sets the new `ALDER_DB` in one call before the roll. `alder restore
 <env> --to <time>` (with `--silo` for one org) is the Turso restore
 above, with that call in place of `turso.env`. All of them are rolls, so
 none takes the site down. `alder logs <env>` prints the service's last
-lines, `[instance] message`; with `-f` it streams, over Render's log
+lines (at most 100: Render's API returns no more at once),
+`[instance] message`; with `-f` it streams, over Render's log
 websocket (a small RFC 6455 client in alder, no dependency), until you
 stop it.
 
@@ -1707,6 +1875,8 @@ and for unusual setups:
 | `ALDER_BACKUP_URL` | at the box (the environment file): stream the database to a directory or bucket without a `backup` in the declaration |
 | `ALDER_BACKUP_INTERVAL` | how often the runtime ships the database (default `10s`) |
 | `ALDER_PUBLIC_URL` | read by the app's executable: the site's address for `Url.absolute` (chapter 11). Each target sets it to the address it serves (`Ssh`: `https://<domain>`; `Fly`: `https://<app>.fly.dev`; `Render`: the service's address); set it yourself (the environment file, a Fly secret, Render's dashboard) to override |
+| `ALDER_LOG` | read by the app's executable: the least level it writes, `debug`, `info` (default), `warn` or `error` ("Operating an app"); `alder deploy` leaves it as the environment sets it |
+| `ALDER_LOG_FORMAT` | read by the app's executable: `text` (default) or `json` lines |
 | `ALDER_ALLOW_DATA_LOSS` | read by the app's executable, never set by you: `1` lets `--migrate-only` apply a DROPS DATA migration; `alder deploy` sets it for one run with `--allow-data-loss` |
 | `RENDER_API_KEY` | the Render target's API key (the Render REST API) |
 | `ALDER_REGISTRY_TOKEN`, `ALDER_REGISTRY_USER` | the Render target's registry token (the image push and Render's pull credential) and user (default the first part of `image`) |
