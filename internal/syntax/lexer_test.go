@@ -42,6 +42,8 @@ func TestLexer_ExponentLiterals(t *testing.T) {
 		{"1.5e", "Float(1.5) LIdent(e)"},
 		{"2e+", "Int(2) LIdent(e) Plus"},
 		{"e1", "LIdent(e1)"},
+		{"x.e", "LIdent(x) Dot LIdent(e)"},
+		{"Float.e", "UIdent Dot LIdent(e)"},
 	}
 	for _, c := range cases {
 		l := NewLexer("t.alder", []byte(c.src))

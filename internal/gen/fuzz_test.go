@@ -82,9 +82,6 @@ func TestFuzz(t *testing.T) {
 			if p.Pure != nil && !p.Pure(vs) {
 				t.Errorf("%s does not hold for %v", name, lits)
 			}
-			if p.Task != nil {
-				p.Task(vs)
-			}
 			for _, v := range vs {
 				switch x := v.(type) {
 				case Todo__Tree:
@@ -178,7 +175,10 @@ func TestFuzz(t *testing.T) {
 	// slugs (a top-level Fuzz.any) draws Slugs
 	if _, ok := func() (s string, ok bool) {
 		defer func() {
-			if recover() != nil {
+			if r := recover(); r != nil {
+				if _, rej := r.(fuzz.Reject); !rej {
+					panic(r) // only a brand's rejection is the answer here
+				}
 				ok = false
 			}
 		}()
@@ -198,7 +198,7 @@ func TestRunProperties(t *testing.T) {
 			}
 			continue
 		}
-		if !r.OK {
+		if !r.OK || (r.Name != "plain" && r.Runs != 100) { // the Task properties run here: TestFuzz only draws
 			t.Errorf("%s fails: %+v", r.Name, r)
 		}
 	}
@@ -256,6 +256,50 @@ import (
 func TestZero(t *testing.T) {
 	if !math.Signbit(Z__z) || Z__m(0) != 1 {
 		t.Fatalf("z = %v, m 0 = %d", Z__z, Z__m(0))
+	}
+}
+`)
+}
+
+// A record that cycles only through a Result spends depth like a list does: the simplest draw
+// ends (the Result takes its non-recursive arm), and no draw nests past the budget.
+func TestGen_FuzzCyclicResult(t *testing.T) {
+	files := emitSourceWith(t, map[string]string{"Chain.alder": `module Chain
+
+type Chain = { next: Result Int Chain }
+
+test "chains" = \(c : Chain) -> True
+`}, true)
+	runGo(t, files, `package app
+
+import (
+	"testing"
+
+	"alder/rt/fuzz"
+)
+
+func links(c Chain__Chain) int {
+	n := 0
+	for c.Next.IsOk {
+		n++
+		c = c.Next.Val
+	}
+	return n
+}
+
+func TestChain(t *testing.T) {
+	p := Tests[0].Prop
+	vs := p.Draw(fuzz.Replay(make([]uint64, 64))) // an Overrun panics the test
+	if n := links(vs[0].(Chain__Chain)); n != 0 {
+		t.Fatalf("the simplest chain has %d links", n)
+	}
+	deepest := 0
+	for seed := range uint64(300) {
+		vs := p.Draw(fuzz.Fresh(seed))
+		deepest = max(deepest, links(vs[0].(Chain__Chain)))
+	}
+	if deepest < 1 || deepest > fuzz.Depth {
+		t.Fatalf("deepest chain %d links, want within 1..%d", deepest, fuzz.Depth)
 	}
 }
 `)

@@ -414,6 +414,11 @@ deploy {
   proxy: None,
 }
 
+theme {
+  radius: "0.5rem",
+  light: { primary: "#4f46e5" },
+}
+
 test "one is one" = 1 == 1
 
 --------------------------------------------------------------------------------
@@ -488,6 +493,17 @@ test "one is one" = 1 == 1
         name: (identifier)
         value: (deploy_target
           kind: (constructor)))))
+  (theme_decl
+    body: (deploy_record
+      (deploy_field
+        name: (identifier)
+        value: (string))
+      (deploy_field
+        name: (identifier)
+        value: (deploy_record
+          (deploy_field
+            name: (identifier)
+            value: (string))))))
   (test_decl
     name: (string)
     body: (comparison_expr

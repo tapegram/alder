@@ -1,0 +1,11 @@
+module App
+
+error : Error -> Html Never
+error err = <h1>Something went wrong</h1>
+
+notFound : Html Never
+notFound = <h1>Not found</h1>
+
+theme {
+  light: "oklch(1 0 0)",
+}

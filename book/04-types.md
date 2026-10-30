@@ -54,8 +54,10 @@ type Point = { x: Float, y: Float }
 
 Record types are **nominal**: a `Point` is not interchangeable with another
 record type that happens to have the same fields. An anonymous record
-literal `{ x: 1.0, y: 2.0 }` is given the type the context expects. A
-signature may spell out a record type inline when it is used only once:
+literal `{ x: 1.0, y: 2.0 }` is given the type the context expects, even
+when the context is seen later (a `let`, one side of `==`, a lambda in a
+pipeline): it becomes the first record type it meets with exactly its
+field names. A signature may spell out a record type inline when it is used only once:
 
 ```alder
 area : { w: Float, h: Float } -> Float

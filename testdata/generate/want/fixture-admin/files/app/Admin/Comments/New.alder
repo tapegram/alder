@@ -106,14 +106,14 @@ view model session =
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       {if model.authorsTotal > 200 then
         <form submit={SearchAuthor}>
           <al-input field="q" label="Find author" />
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
-        <span></span>}
+        Html.none}
       -- @admin end
       <form submit={Create}>
         -- @admin begin inputs

@@ -32,3 +32,11 @@ notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 
 -- Where `alder deploy` ships the app (book 16). `local` runs a script; nothing here is a secret.
 deploy { local: Script "./scripts/deploy-local.sh" }
+
+-- The look (book Appendix C, "Changing a token"): the alder-ui tokens this app changes. The
+-- build appends them to al.css; everything not named here keeps alder-ui's value.
+theme {
+  radius: "0.5rem",
+  light: { primary: "oklch(0.51 0.23 277)", primaryForeground: "oklch(0.98 0 0)" },
+  dark: { primary: "oklch(0.68 0.16 277)", primaryForeground: "oklch(0.15 0 0)" },
+}

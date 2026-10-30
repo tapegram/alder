@@ -396,7 +396,7 @@ func TestDerivable(t *testing.T) {
 		{types.File, "`File`"},
 		{&types.Con{Name: "HttpError", Module: "Http"}, "`Http.HttpError`"},
 	} {
-		path, ok := derivable(tc.t)
+		path, ok := derivableIn(tc.t, types.String)
 		if path != tc.path || ok != (tc.path == "") {
 			t.Errorf("derivable(%s) = %q, %v; want %q", types.String(tc.t), path, ok, tc.path)
 		}

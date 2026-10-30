@@ -1,0 +1,35 @@
+module Report
+
+import Curve
+
+type Row = { name: Text, value: Float }
+
+type Clarity = { name: Text, shown: Curve.Shown }
+
+-- 1. `==` against a named type: the literal under `Ok` becomes Summary
+isExpected : Result Text Curve.Summary -> Bool
+isExpected r = r == Ok { t0: 1, t1: 2, label: "a" }
+
+-- 2. a lambda in a pipeline, and a two-step chain
+clarities : List Row -> List Clarity
+clarities rows = rows |> List.map (\r -> { name: r.name, shown: Visible r.value })
+
+visibleClarities : List Row -> List Clarity
+visibleClarities rows =
+  rows
+    |> List.map (\r -> { name: r.name, shown: Visible r.value })
+    |> List.filter (\c -> c.name != "")
+
+-- 3. an unannotated let passed where Curve is expected
+clamped : Float -> Float
+clamped t = {
+  let wide = { median: 1.0, sigma: 2.0, perDoubling: 0.5 }
+  Curve.reportTime wide t
+}
+
+-- 4. a constructor payload met late: bound by a let, returned as Maybe Curve
+guess : Bool -> Maybe Curve
+guess known = {
+  let m = Just { median: 1.0, sigma: 0.1, perDoubling: 0.0 }
+  if known then m else Nothing
+}

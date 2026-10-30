@@ -110,19 +110,26 @@ func TestCLI_HoleSpanJSON(t *testing.T) {
 	}
 }
 
-// TestLsp_InitializeOverStdio: `alder lsp` answers initialize on stdout and stops at exit.
+// TestLsp_InitializeOverStdio: `alder lsp` answers initialize on stdout and stops at exit, and
+// negotiates the position encoding: utf-8 only when the client offers it, else utf-16.
 func TestLsp_InitializeOverStdio(t *testing.T) {
 	t.Parallel()
 	frame := func(body string) string { return fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(body), body) }
-	in := frame(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`) +
-		frame(`{"jsonrpc":"2.0","method":"exit"}`)
+	for _, c := range []struct{ name, params, want string }{
+		{"offers utf-8", `{"capabilities":{"general":{"positionEncodings":["utf-8","utf-16"]}}}`, "utf-8"},
+		{"offers nothing", `{}`, "utf-16"},
+	} {
+		in := frame(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":`+c.params+`}`) +
+			frame(`{"jsonrpc":"2.0","method":"exit"}`)
+		var out, errb bytes.Buffer
+		if code := runLspTo(nil, strings.NewReader(in), &out, &errb); code != 0 {
+			t.Fatalf("%s: code %d: %s", c.name, code, errb.String())
+		}
+		if !strings.Contains(out.String(), `"positionEncoding":"`+c.want+`"`) {
+			t.Fatalf("%s: out %s", c.name, out.String())
+		}
+	}
 	var out, errb bytes.Buffer
-	if code := runLspTo(nil, strings.NewReader(in), &out, &errb); code != 0 {
-		t.Fatalf("code %d: %s", code, errb.String())
-	}
-	if !strings.Contains(out.String(), `"positionEncoding":"utf-8"`) {
-		t.Fatalf("out %s", out.String())
-	}
 	if code := runLspTo([]string{"x"}, strings.NewReader(""), &out, &errb); code != 2 || !strings.Contains(errb.String(), "usage: alder lsp") {
 		t.Fatalf("an argument: exit %d, %s", code, errb.String())
 	}
