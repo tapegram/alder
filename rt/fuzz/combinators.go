@@ -171,18 +171,18 @@ func Frequency[A any](ws []struct {
 	Weight int64
 	Fuzzer Fuzzer[A]
 }) Fuzzer[A] {
-	return func(c *Choices) A {
-		var live []Fuzzer[A]
-		var weights []uint64
-		var total uint64
-		for _, w := range ws {
-			if w.Weight > 0 {
-				live = append(live, w.Fuzzer)
-				wt := uint64(min(w.Weight, 1<<40)) // so the total cannot overflow
-				weights = append(weights, wt)
-				total += wt
-			}
+	var live []Fuzzer[A]
+	var weights []uint64
+	var total uint64
+	for _, w := range ws {
+		if w.Weight > 0 {
+			live = append(live, w.Fuzzer)
+			wt := uint64(min(w.Weight, 1<<40)) // so the total cannot overflow
+			weights = append(weights, wt)
+			total += wt
 		}
+	}
+	return func(c *Choices) A {
 		if len(live) == 0 {
 			panic("Fuzz.frequency: no fuzzer has a positive weight")
 		}

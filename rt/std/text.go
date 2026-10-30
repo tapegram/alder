@@ -138,13 +138,33 @@ func TextToBytes(s string) []byte { return []byte(s) }
 
 func clampCount(n, length int64) int64 { return min(max(n, 0), length) }
 
+// padRunes is k code points of pad repeated endlessly, starting at code point offset
+// start of pad (k > 0, pad not empty), built without allocating more than k code points.
+func padRunes(k, start int64, pad string) string {
+	pr := []rune(pad)
+	var b strings.Builder
+	for i := int64(0); i < k; i++ {
+		b.WriteRune(pr[(start+i)%int64(len(pr))])
+	}
+	return b.String()
+}
+
+// padPrefix is the first k code points of pad repeated.
+func padPrefix(k int64, pad string) string { return padRunes(k, 0, pad) }
+
+// padSuffix is the last k code points of pad repeated (a whole number of times).
+func padSuffix(k int64, pad string) string {
+	l := int64(utf8.RuneCountInString(pad))
+	return padRunes(k, (l-k%l)%l, pad)
+}
+
 // TextPadLeft is `Text.padLeft n pad s`: Text.right n (repeat n pad ++ s)
 // unless s already has n code points or pad is empty.
 func TextPadLeft(n int64, pad, s string) string {
 	if pad == "" || int64(utf8.RuneCountInString(s)) >= n {
 		return s
 	}
-	return TextRight(n, TextRepeat(n, pad)+s)
+	return padSuffix(n-int64(utf8.RuneCountInString(s)), pad) + s
 }
 
 // TextPadRight is `Text.padRight n pad s`: Text.left n (s ++ repeat n pad)
@@ -153,7 +173,7 @@ func TextPadRight(n int64, pad, s string) string {
 	if pad == "" || int64(utf8.RuneCountInString(s)) >= n {
 		return s
 	}
-	return TextLeft(n, s+TextRepeat(n, pad))
+	return s + padPrefix(n-int64(utf8.RuneCountInString(s)), pad)
 }
 
 // TextLeft is the first n code points.
@@ -182,7 +202,8 @@ func TextDropRight(n int64, s string) string {
 	return string(rs[:l-clampCount(n, l)])
 }
 
-// TextRepeat repeats s n times; n <= 0 gives "".
+// TextRepeat repeats s n times; n <= 0 gives "". An enormous n exhausts memory or
+// panics in strings.Repeat (the router recovers); this mirrors List.range.
 func TextRepeat(n int64, s string) string {
 	if n <= 0 {
 		return ""
@@ -269,3 +290,12 @@ func TextFromCodePoints(xs []int64) string {
 	}
 	return b.String()
 }
+
+// TextBuilder is the constant Text.builder: the empty builder (#37).
+func TextBuilder() rt.TextBuilder { return rt.TextBuilder{} }
+
+// TextAdd is `Text.add piece b`.
+func TextAdd(s string, b rt.TextBuilder) rt.TextBuilder { return b.Add(s) }
+
+// TextBuild is `Text.build b`.
+func TextBuild(b rt.TextBuilder) string { return b.Build() }

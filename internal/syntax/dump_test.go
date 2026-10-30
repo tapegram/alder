@@ -31,6 +31,37 @@ func TestParseDeploy(t *testing.T) {
 	}
 }
 
+func TestParse_ThemeDecl(t *testing.T) {
+	src := "module App\n\ntheme {\n  radius: \"0.5rem\",\n  fontSans: [\"Inter\", \"sans-serif\"],\n  light: {\n    primary: \"oklch(0.55 0.22 285)\",\n  },\n  dark: { },\n}\n"
+	m, ds := ParseFile("App.alder", []byte(src))
+	if len(ds) != 0 {
+		t.Fatalf("diagnostics: %v", ds)
+	}
+	got := Dump(m.Decls[0])
+	want := `(theme (radius "0.5rem") (fontSans ["Inter" "sans-serif"]) (light {(primary "oklch(0.55 0.22 285)")}) (dark {}))`
+	if got != want {
+		t.Fatalf("got %s", got)
+	}
+	d := m.Decls[0].(*ThemeDecl)
+	if v := d.Fields[3].Value; v.Kind != "record" || v.Rec == nil || v.Ctor != "" {
+		t.Errorf("an empty record value: %+v", v)
+	}
+}
+
+// `theme` is contextual: only `theme {` at the start of a declaration is the declaration.
+func TestParse_ThemeStaysAName(t *testing.T) {
+	src := "module M\n\ntheme : Int\ntheme = 1\n\nf : { theme: Int } -> Int\nf r = r.theme\n\ng : Int -> Int\ng theme = theme\n"
+	m, ds := ParseFile("M.alder", []byte(src))
+	if len(ds) != 0 {
+		t.Fatalf("diagnostics: %v", ds)
+	}
+	for _, d := range m.Decls {
+		if _, ok := d.(*ThemeDecl); ok {
+			t.Fatalf("a ThemeDecl in %s", Dump(m))
+		}
+	}
+}
+
 func TestDump_IgnoresComments(t *testing.T) {
 	with, _ := ParseFile("m.alder", []byte(commentsSrc))
 	m, _ := ParseFile("m.alder", []byte(commentsSrc))

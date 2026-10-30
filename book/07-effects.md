@@ -757,6 +757,21 @@ failure, with a 500; inside a test, `Test.run` gives it back as
 `Err "Password.verify: <the error>"` (chapter 10). A capability's error is
 a failure the test can observe.
 
+An adapter's arguments are its own. Every `List` and `Bytes` it is handed,
+directly or inside a record, a `Maybe` or a `Dict`, is a fresh copy made
+for that call (the generated call passes each such argument through
+`rt.Fresh`). The method may sort a slice, write into it or keep it, and
+the Alder caller sees no difference. This matters because the runtime
+shares storage wherever no one can tell. `List.take` gives a view of the
+original list, not a copy. `File.text` uses the bytes of the `Text` as the
+body. A Text written in the program's source lives in read-only memory,
+where a write would crash the server. Sharing is safe only because nothing
+ever writes to an Alder value, and Go code is the one place the compiler
+cannot check that, so the copy happens at the boundary. Do not rely on an
+argument sharing storage with anything: a change to it never reaches the
+app. The values a method returns are not copied. Return a slice the
+adapter will not touch again.
+
 The server refuses to start when a field of `Caps` is `nil` (a
 constructor that returned `nil`, say). `Serve`, in `app__alder.go`,
 checks every capability before it opens the database, and the binary

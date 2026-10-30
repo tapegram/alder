@@ -5,6 +5,9 @@ type Email = brand Text where True
 type Url = brand Text where True
 type Secret = brand Text where True
 
+-- an accumulator for a large Text: each add is O(1) and shares nothing; build copies once
+type Builder
+
 length : Text -> Int
 isEmpty : Text -> Bool
 trim : Text -> Text
@@ -46,3 +49,9 @@ fromCodePoints : List Int -> Text
 -- FNV-1a 64 of the UTF-8 bytes, top bit cleared: stable across versions and platforms, never
 -- negative, not cryptographic (seeds, buckets, cache keys)
 hash : Text -> Int
+-- the empty Text.Builder
+builder : Builder
+-- Text.add piece b: b with piece after everything added so far
+add : Text -> Builder -> Builder
+-- the Text of everything added, in order
+build : Builder -> Text

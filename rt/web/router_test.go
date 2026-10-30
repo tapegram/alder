@@ -643,6 +643,45 @@ func TestDesignSystemFontServed(t *testing.T) {
 	}
 }
 
+// App's theme (Options.Theme) is appended to the served al.css, with an ETag of its own;
+// every other design-system file is unchanged.
+func TestStatic_ThemeAppended(t *testing.T) {
+	const theme = "/* theme: App */\n:root { --radius: 0.5rem; }\n"
+	dir := t.TempDir()
+	bare := serve(NewRouter(nil, testOpts(func(o *Options) { o.StaticDir = dir })), httptest.NewRequest("GET", "/static/al/al.css", nil))
+	h := NewRouter(nil, testOpts(func(o *Options) { o.Theme, o.StaticDir = theme, dir }))
+	w := serve(h, httptest.NewRequest("GET", "/static/al/al.css", nil))
+	etag := w.Header().Get("ETag")
+	if w.Code != 200 || w.Body.String() != bare.Body.String()+"\n"+theme {
+		t.Fatalf("al.css: %d, ends %q", w.Code, w.Body.String()[max(0, w.Body.Len()-80):])
+	}
+	if etag == "" || etag == bare.Header().Get("ETag") || w.Header().Get("Cache-Control") != DesignSystemCache {
+		t.Fatalf("ETag %q (bare %q), Cache-Control %q", etag, bare.Header().Get("ETag"), w.Header().Get("Cache-Control"))
+	}
+	req := httptest.NewRequest("GET", "/static/al/al.css", nil)
+	req.Header.Set("If-None-Match", etag)
+	if w := serve(h, req); w.Code != http.StatusNotModified {
+		t.Fatalf("If-None-Match: %d", w.Code)
+	}
+	js := serve(h, httptest.NewRequest("GET", "/static/al/al.js", nil))
+	bareJS := serve(NewRouter(nil, testOpts(func(o *Options) { o.StaticDir = dir })), httptest.NewRequest("GET", "/static/al/al.js", nil))
+	if js.Body.String() != bareJS.Body.String() || js.Header().Get("ETag") != bareJS.Header().Get("ETag") {
+		t.Fatal("al.js changed with a theme")
+	}
+}
+
+// Under `alder run` (Options.Reload) al.css is revalidated on every load, so an edit to the
+// theme shows on the next one.
+func TestStatic_ThemeReloadNoCache(t *testing.T) {
+	h := NewRouter(nil, testOpts(func(o *Options) { o.Theme, o.Reload, o.StaticDir = ":root { --radius: 0; }\n", "1", t.TempDir() }))
+	if w := serve(h, httptest.NewRequest("GET", "/static/al/al.css", nil)); w.Header().Get("Cache-Control") != "no-cache" {
+		t.Fatalf("al.css under Reload: Cache-Control %q", w.Header().Get("Cache-Control"))
+	}
+	if w := serve(h, httptest.NewRequest("GET", "/static/al/al.js", nil)); w.Header().Get("Cache-Control") != DesignSystemCache {
+		t.Fatalf("al.js under Reload: Cache-Control %q", w.Header().Get("Cache-Control"))
+	}
+}
+
 // A query pair the router cannot parse — a raw `;`, which Go's url.ParseQuery refuses since
 // 1.17, or a bad escape — is a 400 naming the parameter, not a parameter silently dropped (#12).
 func TestRouter_BadQueryIs400(t *testing.T) {

@@ -1,0 +1,2 @@
+app/M.alder:11:14 E0003 expected Curve, got { median: Float, sigma: Float, perDoubling: Float, extra: Int }; `extra` is not a field of Curve
+app/M.alder:17:14 E0003 expected Curve, got { median: Float, sigma: Float, perDubling: Float }; the record is missing Curve's `perDoubling`; `perDubling` is not a field of Curve

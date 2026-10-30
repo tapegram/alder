@@ -11,3 +11,9 @@ amb = \(x : Text) -> x
 
 use : Text
 use = amb 1
+
+mism : List Text
+mism = List.map (\(n : Text) -> n) [1]
+
+poly : Int -> Int
+poly = \(x : a) -> x

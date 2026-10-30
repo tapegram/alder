@@ -3,7 +3,7 @@ module Fuzz
 -- a description of how to draw a value of type a from random choices
 type Fuzzer a
 
--- what a `test` body of `forAll` makes; only a test body can use it
+-- a property: what `forAll` makes, and the body of a property test; only a test body can use one
 type Property
 
 -- special form: any : Fuzzer a
