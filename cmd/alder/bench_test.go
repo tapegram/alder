@@ -34,11 +34,11 @@ func TestBench_Rows(t *testing.T) {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errs)
 	}
 	type measure struct {
-		Step                                string
-		Ms                                  float64
+		Step                               string
+		Ms                                 float64
 		Bytes, Requests, Loads, Steps, SQL int
-		Allocs                              uint64
-		Repeats                             []struct{ Count, Args int }
+		Allocs                             uint64
+		Repeats                            []struct{ Count, Args int }
 	}
 	byTest := map[string][]measure{}
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
