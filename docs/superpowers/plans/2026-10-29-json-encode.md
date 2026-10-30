@@ -52,9 +52,10 @@ golden output the corpus checks; confirm the old `File.json "[]"` is now a type 
 
 ## Task 4 — end-to-end compile check
 
-A corpus case `testdata/corpus/json-ok/` (in the existing ok layout) with a page that uses every
-`Json` function, `encodeIndented`, `==` on values, and a `Dict (Json.Value) Int`, so gen's
-mapping compiles in Go. Plus an Alder test file in it if the ok layout runs tests.
+A page `testdata/corpus/file-ok/app/Api.alder` (file-ok is already run by `alder test` in
+`TestTest_FilePages`, so no new runner) that uses every `Json` function, `encodeIndented`, `==`
+on values, and a `Dict (Json.Value) Text`, so gen's mapping compiles and runs in Go; the test's
+expected count goes from 9 to 13.
 
 ## Task 5 — book
 

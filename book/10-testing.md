@@ -1173,7 +1173,7 @@ load params session = {
 }
 
 view : Model -> Session -> File
-view model session = File.json (Text.fromInt model.waited)
+view model session = File.json (Json.int model.waited)
 
 -- The test clock moves one second at each Time.now reading, and the delay moves it 20 s
 -- without waiting, so the two readings are 21000 ms apart.

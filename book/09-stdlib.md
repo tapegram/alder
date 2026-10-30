@@ -358,6 +358,57 @@ A `Page` compares by its address: `Todos.Index {} == Todos.Index
 Time.toMillis Time.epoch
 ```
 
+## Json
+
+A JSON answer is a `Json.Value`, built with the functions below and written
+by `Json.encode` or `File.json`. Never build JSON as `Text` by hand: the
+encoder escapes what a hand-built string forgets.
+
+```alder
+Json.null   : Json.Value
+Json.bool   : Bool -> Json.Value
+Json.int    : Int -> Json.Value
+Json.float  : Float -> Json.Value                               -- NaN, +Inf and -Inf encode as null
+Json.string : Text -> Json.Value
+Json.list   : List Json.Value -> Json.Value
+Json.object : List { key: Text, value: Json.Value } -> Json.Value  -- keys in list order
+Json.encode : Json.Value -> Text                                -- compact: no whitespace
+Json.encodeIndented : Int -> Json.Value -> Text                 -- n spaces per level; n <= 0 is encode
+```
+
+A list of values is a pipeline, `xs |> List.map Json.int |> Json.list`, and
+a `Dict Text Json.Value` becomes an object with
+`d |> Dict.toList |> Json.object`.
+
+`Json.float` writes the shortest decimal that reads back as the same
+number, without an exponent (`Json.float 1.0` is `1`), and writes `null` for
+NaN and the infinities, which JSON has no spelling for; test with
+`Float.isNaN` and `Float.isInfinite` first if you want something else.
+`Json.int` writes every digit, however large.
+
+`Json.object` keeps its keys in list order. A key given twice keeps its first
+position and takes its last value, as `Dict.insert` would, so the output never
+repeats a key:
+
+```alder eval={"name":"Grace","score":null}
+Json.object [{ key: "name", value: Json.string "Ada" }, { key: "score", value: Json.float (0.0 / 0.0) }, { key: "name", value: Json.string "Grace" }]
+```
+
+`Json.string` escapes `"`, `\` and the control characters, and also writes
+`<`, `>`, `&` and the line separators U+2028 and U+2029 as `\u` escapes
+(`<` is `\u003c`). The text means the same to any JSON reader, and a
+`Json.encode` placed inside a `<script>` element through `Html.unsafe` can
+never end the element or break a JavaScript string.
+
+`Json.encodeIndented 2` writes one array item or object member per line,
+indented two spaces per level, as `JSON.stringify(v, null, 2)` does;
+`Json.encodeIndented 0` (or less) is `Json.encode`.
+
+Two values are equal when they encode to the same text, so
+`Json.int 1 == Json.float 1.0`; a `Json.Value` can be a `Dict` key on the
+same rule, and it shows (in the REPL, `Log` and test failures) as its
+compact JSON, without the quotes a `Text` would have.
+
 ## File, Bytes
 
 A file page's `view` returns a `File` (chapter 6, "File pages"). `Bytes` is
@@ -369,7 +420,7 @@ bytes"); it has the few operations below, and a
 File.text       : { contentType: Text, body: Text } -> File      -- a 200 answer
 File.bytes      : { contentType: Text, body: Bytes } -> File     -- a 200 answer
 File.html       : Html Never -> File                             -- text/html; charset=utf-8, rendered verbatim: no doctype unless the node has one
-File.json       : Text -> File                                   -- application/json
+File.json       : Json.Value -> File                             -- application/json: Json.encode of the value
 File.withStatus : Int -> File -> File                            -- 200..599
 File.withHeader : { name: Text, value: Text } -> File -> File    -- Content-Disposition, Cache-Control, ETag, Last-Modified, Retry-After, Content-Language, X-…
 File.status      : File -> Int
