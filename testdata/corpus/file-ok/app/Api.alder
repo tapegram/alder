@@ -1,0 +1,36 @@
+module Api
+
+page "/api/status.json" { }
+
+type Model = { name: Text, count: Int, ratio: Float, tags: List Text }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed { name: "say \"hi\" </script>", count: 3, ratio: 0.0 / 0.0, tags: ["a", "b"] }
+
+status : Model -> Json.Value
+status model = Json.object [
+  { key: "name", value: Json.string model.name },
+  { key: "count", value: Json.int model.count },
+  { key: "ratio", value: Json.float model.ratio },
+  { key: "ok", value: Json.bool True },
+  { key: "none", value: Json.null },
+  { key: "tags", value: model.tags |> List.map Json.string |> Json.list },
+  { key: "count", value: Json.int 4 }
+]
+
+view : Model -> Session -> File
+view model session = File.json (status model)
+
+test "the status is compact JSON with the HTML-safe escapes" = {
+  let r <- Test.fetch (Api {})
+  Task.succeed ({ type: r.contentType, body: Bytes.toText r.body } == { type: "application/json", body: Just "\{\"name\":\"say \\\"hi\\\" \\u003c/script\\u003e\",\"count\":4,\"ratio\":null,\"ok\":true,\"none\":null,\"tags\":[\"a\",\"b\"]}" })
+}
+
+test "encodeIndented 2 puts one member per line" = Json.encodeIndented 2 (Json.object [{ key: "a", value: Json.list [Json.int 1] }, { key: "b", value: Json.object [] }]) == "\{\n  \"a\": [\n    1\n  ],\n  \"b\": \{}\n}"
+
+test "equal values are the same JSON" = Json.int 1 == Json.float 1.0 && Json.float (0.0 / 0.0) == Json.null && Json.int 1 != Json.string "1"
+
+test "a Json.Value is a Dict key" = {
+  let d = Dict.fromList [{ key: Json.int 1, value: "one" }, { key: Json.float 1.0, value: "uno" }]
+  Task.succeed (Dict.size d == 1 && Dict.get (Json.int 1) d == Just "uno")
+}

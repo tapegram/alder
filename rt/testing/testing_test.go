@@ -156,6 +156,33 @@ func TestInner_NotFoundMessageAndSessionRestore(t *testing.T) {
 	}
 }
 
+// A Task that stops with a redirect is `Err "redirected to <url>"`, its session change undone.
+func TestInner_RedirectMessageAndSessionRestore(t *testing.T) {
+	var r res
+	var after any
+	setAndGo := then(eff.Call("Session.put", true, func(e *eff.Env) (struct{}, error) {
+		e.Session = "changed"
+		return struct{}{}, nil
+	}), eff.Redirect[int]("/builder?seed=7"))
+	task := eff.Bind(testRun(setAndGo), func(a res) eff.Task[bool] {
+		r = a
+		return eff.Call("Session.get", false, func(e *eff.Env) (bool, error) {
+			after = e.Session
+			return true, nil
+		})
+	})
+	rs := Run([]Case{{Module: "M", Name: "rd", Task: func() eff.Task[bool] { return task }}}, Options{Tables: tables, Session: "orig"})
+	if !rs[0].OK {
+		t.Fatalf("%+v", rs)
+	}
+	if r.ok || r.msg != "redirected to /builder?seed=7" {
+		t.Fatalf("Redirect: %+v", r)
+	}
+	if after != "orig" {
+		t.Fatalf("session after a redirected Test.run = %v, want orig", after)
+	}
+}
+
 // recSP is the SQLite store with its savepoint names recorded.
 type recSP struct {
 	*db.SQLite

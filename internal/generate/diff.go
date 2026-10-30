@@ -63,6 +63,44 @@ func UnifiedDiff(path, a, b string) string {
 	return out.String()
 }
 
+// LineEdit replaces lines [Start, End) of a text (0-based) with Text: whole lines, each ending
+// in a newline ("" removes them; Start == End inserts before line Start).
+type LineEdit struct {
+	Start, End int
+	Text       string
+}
+
+// LineEdits are the edits that turn before into after, one per run of changed lines of the
+// diff (no context), in order: an editor applies them as text edits, so a filled hole and the
+// import it added are two edits, and the lines between them are left as they are. Both texts
+// are taken to end in a newline (as every formatted file does).
+func LineEdits(before, after string) []LineEdit {
+	if before == after {
+		return nil
+	}
+	al, bl := splitLines(before), splitLines(after)
+	ops := diffLines(al, bl)
+	var out []LineEdit
+	for i := 0; i < len(ops); {
+		if ops[i].kind == ' ' {
+			i++
+			continue
+		}
+		e := LineEdit{Start: ops[i].ai, End: ops[i].ai}
+		var text strings.Builder
+		for ; i < len(ops) && ops[i].kind != ' '; i++ {
+			if ops[i].kind == '-' {
+				e.End = ops[i].ai + 1
+			} else {
+				text.WriteString(bl[ops[i].bi] + "\n")
+			}
+		}
+		e.Text = text.String()
+		out = append(out, e)
+	}
+	return out
+}
+
 // hunkRange is a hunk header's range: the first line (1-based) and the count, "n" alone when
 // the count is 1, and the line before when the count is 0.
 func hunkRange(start, n int) string {

@@ -119,6 +119,28 @@ func (e *srcEdit) result() string {
 	return strings.Join(out, "\n") + "\n"
 }
 
+// spanOf is where line n's replacement stands in result(), once every edit is made: from column
+// startCol of its first line to afterLen bytes before the end of its last (1-based columns, the
+// end exclusive).
+func (e *srcEdit) spanOf(file string, n, startCol, afterLen int) diag.Span {
+	line := 1
+	for _, in := range e.ins {
+		if in.before <= n {
+			line += len(in.text)
+		}
+	}
+	for k := 1; k < n; k++ {
+		if r, ok := e.repl[k]; !ok {
+			line++
+		} else if r != nil {
+			line += strings.Count(*r, "\n") + 1
+		}
+	}
+	rl := strings.Split(e.current(n), "\n")
+	last := line + len(rl) - 1
+	return diag.Span{File: file, Start: diag.Pos{Line: line, Col: startCol}, End: diag.Pos{Line: last, Col: len(rl[len(rl)-1]) - afterLen + 1}}
+}
+
 // indentOf is the leading spaces of line l.
 func indentOf(l string) string { return l[:len(l)-len(strings.TrimLeft(l, " "))] }
 

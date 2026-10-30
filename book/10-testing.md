@@ -189,6 +189,27 @@ A failing test is `FAIL`, followed by indented lines that say why:
   happened in, not the whole Go trace.
 - `trace:` is, for a block test, every step it performed (section 6).
 
+A test that passes or fails can be followed by `warn:` lines, which never
+fail it. Each is a statement a page ran in a loop during one of the test's
+browser steps (section 9): five or more runs of one SQL statement in one
+request, the mark of a `Db.get` per row (an "N+1": one query for the list,
+then N more, one per row):
+
+```text
+ok   Rows.Bench "slow 100"
+  warn: GET /slow: N+1: SELECT "id", "title", … FROM "Table__Row__Row" WHERE "id" = ? ran 100 times (100 argument sets, 0.29 ms): one Db.get per row; read them together with Db.where (Row.id.in ids), or in the page's first query
+```
+
+On a file database the loop is cheap; on a remote one (Turso, chapter 15)
+every statement is a round trip over the network, so the page that answers
+in a millisecond here takes a second there. The rule is the one the
+developer panel's SQL tab applies (chapter 11, "Developer mode", says how
+it is decided), run over each request a browser step made; the request
+line in front names which. With `--json` the test's object carries
+`"warnings": […]`. A warning is not a failure because the page may be
+right as it is (a handful of rows, a lookup you accept); the line is there
+so the cost is seen before it is paid in production.
+
 A test that runs for ten seconds is announced on standard error,
 `still running Todo "slow" (10s)`, and again every ten seconds, so a
 test that hangs is not mistaken for a quiet one.
@@ -1120,7 +1141,7 @@ type Answer = Shown
 |---|---|---|
 | `Shown` | `get`/`open`: the page was shown | that page |
 | `Rerendered` | `submit`/`click`: `update` answered `Rerender`; or `Reject` when the re-rendered page shows no errors (its form has no `<Errors form />`, or the page no longer draws that form) | the page re-rendered, with the new data |
-| `Redirected p` | a `Redirect p`, or a `requires` sending a visitor to the login page | `p`, which the browser requested in turn |
+| `Redirected p` | a `Redirect p`, a `load` ending in `Query.redirect p`, or a `requires` sending a visitor to the login page | `p`, which the browser requested in turn |
 | `FormRejected errors` | `submit`: the form did not decode, or `update` answered `Reject` and the re-rendered form shows the text in its `<Errors form />` | the page with the form re-rendered: the values typed and the errors |
 | `PageMissing` | a 404: `Query.notFound`, `Task.notFound`, no such page | `App.notFound` |
 | `RequestFailed text` | the request failed (a `Task.fail`, a Go panic): a 500 | `App.error` |
@@ -1151,8 +1172,18 @@ Test.fetch : Page -> Task { status: Int, contentType: Text, body: Bytes, headers
 explained in chapter 6), `body` the bytes, and `headers` every header of
 the answer, `Content-Type` included, sorted by name. It does not follow a redirect: a page that
 `requires` a user the cookie lacks answers `status: 303` and a
-`Location` header, and the test reads that. It does not change the page
-the browser holds, either, so it can be used between `Test.get`s.
+`Location` header, and the test reads that; so does a page whose `load`
+ends in `Query.redirect p` (chapter 7), with `p`'s address:
+
+```alder fragment
+test "start sends the builder its seed" = {
+  let r <- Test.fetch (Start { seed: "7" })
+  Task.succeed (r.status == 303 && List.member { name: "Location", value: "/builder/7" } r.headers)
+}
+```
+
+It does not change the page the browser holds, either, so it can be used
+between `Test.get`s.
 
 `Bytes` has almost no operations (chapter 9, "File, Bytes"), so a test
 reads a text body with `Bytes.toText`, which gives `Just text` when the
@@ -1174,7 +1205,7 @@ load params session = {
 }
 
 view : Model -> Session -> File
-view model session = File.json (Text.fromInt model.waited)
+view model session = File.json (Json.int model.waited)
 
 -- The test clock moves one second at each Time.now reading, and the delay moves it 20 s
 -- without waiting, so the two readings are 21000 ms apart.

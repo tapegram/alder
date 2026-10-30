@@ -8,3 +8,4 @@ build/
 /dist/
 /site/
 .worktrees/
+/cmd/alder/alder

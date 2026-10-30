@@ -139,10 +139,10 @@ test "deleting a post nothing refers to" = {
       gone: Maybe.map (\row -> row.id) gone,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-        answer: Redirected (Admin.Posts.Index {}),
-        gone: Nothing,
-        kept: Just post2,
-      }
+      answer: Redirected (Admin.Posts.Index {}),
+      gone: Nothing,
+      kept: Just post2,
+    }
   )
 }
 
@@ -200,13 +200,13 @@ test "a post that tags refer to is not deleted" = {
       answer: r.answer,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-        count: Just "1",
-        buttons: 0,
-        answer: FormRejected [
-          { field: "", message: "This post cannot be deleted while other rows refer to it." },
-        ],
-        kept: Just post1,
-      }
+      count: Just "1",
+      buttons: 0,
+      answer: FormRejected [
+        { field: "", message: "This post cannot be deleted while other rows refer to it." },
+      ],
+      kept: Just post1,
+    }
   )
 }
 
