@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -349,7 +350,127 @@ type Recorder struct {
 	Steps []StepRec
 	SQL   []SQLRec
 
+	// Loads counts the Queries run on the Env (RunQuery): in a request, a page's `load` (a
+	// Rerender runs it twice, before and after update). `alder bench` reports it.
+	Loads int
+
 	group, depth, groups int // the Task.all being run (0: none), its nesting, groups begun
+}
+
+// AddLoad counts a Query run (Loads).
+func (r *Recorder) AddLoad() { r.mu.Lock(); r.Loads++; r.mu.Unlock() }
+
+// RepeatThreshold is how many times one statement runs in one answer before Repeats calls it an
+// N+1: two to four identical selects are hand-written lookups (two records on one page), five a
+// loop.
+const RepeatThreshold = 5
+
+// Repeat is a statement Repeats found run in a loop: Stmt its text, Count the times it ran, Args
+// the distinct argument sets it ran with and Ms the time they took together.
+type Repeat struct {
+	Stmt  string
+	Count int
+	Args  int
+	Ms    float64
+}
+
+// Repeats is the statements of sql run k times or more (grouped by text: the arguments are bound,
+// so the text is the statement's shape), by Count, most first. A group whose statements are all
+// writes (INSERT, UPDATE, DELETE) issued under one Task.all (one nonzero SQLRec.Group) is a bulk
+// action, not a repeat; a read under a Task.all is: `Query.all` of `Db.get` is the N+1 that costs
+// N round trips on a remote database.
+func Repeats(sql []SQLRec, k int) []Repeat {
+	type acc struct {
+		r      Repeat
+		args   map[string]bool
+		groups map[int]bool
+		writes bool
+		first  int
+	}
+	by := map[string]*acc{}
+	var order []string
+	for i, q := range sql {
+		a := by[q.Stmt]
+		if a == nil {
+			a = &acc{r: Repeat{Stmt: q.Stmt}, args: map[string]bool{}, groups: map[int]bool{}, writes: true, first: i}
+			by[q.Stmt] = a
+			order = append(order, q.Stmt)
+		}
+		a.r.Count++
+		a.r.Ms += q.Ms
+		a.args[fmt.Sprint(q.Args)] = true
+		a.groups[q.Group] = true
+		if !isWrite(q.Stmt) {
+			a.writes = false
+		}
+	}
+	var out []Repeat
+	for _, s := range order {
+		a := by[s]
+		if a.r.Count < k || a.writes && len(a.groups) == 1 && !a.groups[0] {
+			continue
+		}
+		a.r.Args = len(a.args)
+		out = append(out, a.r)
+	}
+	slices.SortStableFunc(out, func(x, y Repeat) int { return y.Count - x.Count })
+	return out
+}
+
+// isWrite reports whether stmt is an INSERT, UPDATE or DELETE.
+func isWrite(stmt string) bool {
+	s := strings.ToUpper(strings.TrimSpace(stmt))
+	return strings.HasPrefix(s, "INSERT") || strings.HasPrefix(s, "UPDATE") || strings.HasPrefix(s, "DELETE")
+}
+
+// String is the warning: `N+1: <statement> ran 100 times (100 argument sets, 3.21 ms): <what to
+// do>`, the statement's column list cut to its first two names.
+func (r Repeat) String() string {
+	sets := "argument sets"
+	if r.Args == 1 {
+		sets = "argument set"
+	}
+	return fmt.Sprintf("N+1: %s ran %d times (%d %s, %.2f ms): %s", shortStmt(r.Stmt), r.Count, r.Args, sets, r.Ms, repeatHint(r.Stmt))
+}
+
+// shortStmt is stmt with a SELECT's column list cut to its first two names and "…".
+func shortStmt(stmt string) string {
+	rest, ok := strings.CutPrefix(stmt, "SELECT ")
+	if !ok {
+		return stmt
+	}
+	cols, from, ok := strings.Cut(rest, " FROM ")
+	if !ok {
+		return stmt
+	}
+	names := strings.Split(cols, ", ")
+	if len(names) <= 2 {
+		return stmt
+	}
+	return "SELECT " + names[0] + ", " + names[1] + ", … FROM " + from
+}
+
+// repeatHint is what to do about a repeat of stmt: for a select of one row by one column, read the
+// rows together with that column's `.in`.
+func repeatHint(stmt string) string {
+	const tail = "or in the page's first query"
+	_, rest, ok := strings.Cut(stmt, " FROM \"")
+	if !strings.HasPrefix(stmt, "SELECT ") || !ok {
+		return "the same statement for each row; do the work together, " + tail
+	}
+	table, where, _ := strings.Cut(rest, "\"")
+	if i := strings.LastIndex(table, "__"); i >= 0 {
+		table = table[i+2:]
+	}
+	col, ok1 := strings.CutPrefix(strings.TrimSpace(where), "WHERE \"")
+	col, eq, ok2 := strings.Cut(col, "\"")
+	if !ok1 || !ok2 || strings.TrimSpace(eq) != "= ?" {
+		return "one query per row; read the rows together, " + tail
+	}
+	if col == "id" {
+		return fmt.Sprintf("one Db.get per row; read them together with Db.where (%s.id.in ids), %s", table, tail)
+	}
+	return fmt.Sprintf("one query per row; read them together with Db.where (%s.%s.in values), %s", table, col, tail)
 }
 
 // BeginGroup marks the start of a Task.all: statements recorded until the matching EndGroup
