@@ -1200,6 +1200,13 @@ use `Test.fetch`"). This is a check of the page's type, so it covers a
 `File.html` page too. As a second guard, a `Test.open` whose answer at run
 time is not HTML fails with `RequestFailed` and the same advice.
 
+A page that shows its own full URL (`Url.absolute`, chapter 9) sees the
+same address in every test: `http://localhost:8080`. The test runner never
+reads `ALDER_PUBLIC_URL`, so a test can compare the text exactly and passes
+on every machine and in CI: `Url.absolute (Todos.Index {}) ==
+"http://localhost:8080/"`. The requests `Test.get` and `Test.fetch` send
+are unchanged; only the text `Url.absolute` gives is fixed.
+
 ### `Test.login`, `requires`, and the session
 
 `Test.login s` signs `s` into the browser's cookie, as the router would

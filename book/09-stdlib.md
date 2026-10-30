@@ -330,6 +330,7 @@ Html.text  : Text -> Html a
 Html.fragment : List (Html a) -> Html a         -- the nodes side by side, no wrapper element
 Html.toText : Html Never -> Text                -- the markup File.html serves
 Url.external : Text -> Page                     -- external URL for href, src or Redirect
+Url.absolute : Page -> Text                     -- the page's URL with the site's address in front
 ```
 
 `Html.toText` takes `Html Never`, a view that sends no messages, because the
@@ -349,6 +350,24 @@ one is answered with a 500 (`refusing to navigate to javascript:`).
 
 A `Page` compares by its address: `Todos.Index {} == Todos.Index
 { filter: All }`, since a defaulted parameter is left out of the URL.
+
+`Url.absolute p` is the page's full URL, for a program that is not a
+browser: a link in an email, or a URL another service will fetch. It is
+the text `href={p}` renders (`/todos?filter=Active`, a defaulted parameter
+left out, the query encoded) with the site's public address in front:
+`https://todos.example.com/todos?filter=Active`. The address comes from
+`ALDER_PUBLIC_URL` (chapter 11, `alder build`), which `alder deploy` sets
+to the address it serves (chapter 16); without it the server uses its own
+listening address, `http://localhost:8080` by default. A page whose URL is
+not a path of this site is left as it is: `Url.absolute (Url.external
+"https://example.com/a")` is `https://example.com/a`, a fragment `#top`
+stays `#top`, and a sanitised `#` stays `#`, while `Url.external
+"/static/app.css"` gets the address in front. The address is set once when
+the server starts and never changes, so `Url.absolute` is an ordinary
+function, usable in a `view`. There is no way to build a full URL from
+text: the only input is a `Page`, so a link to a page that does not exist
+is still a type error. In a test the address is always
+`http://localhost:8080` (chapter 10).
 
 `Time.toMillis` counts milliseconds from the epoch, the instant
 `Time.epoch`, and `Time.fromMillis` goes back. `Time.diffMillis a b` is

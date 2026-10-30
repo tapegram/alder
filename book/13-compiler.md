@@ -2139,7 +2139,7 @@ func (d *devServer) rebuild() {
 	}
 	d.started++
 	gen := fmt.Sprintf("%s-%d", d.nonce, d.started)
-	c, err := startChild(binary, filepath.Join(dir, "dev.db"), static, gen, d.stderr)
+	c, err := startChild(binary, filepath.Join(dir, "dev.db"), static, gen, d.addr, d.stderr)
 	if err != nil {
 		d.fail("alder run: " + err.Error())
 		return
@@ -2153,7 +2153,11 @@ server starts, then a dash and a count of the children started so far
 (`afcb2a7d-1`, `afcb2a7d-2`, …). "The subscriber" below is what it is for.
 `startChild` runs the executable with
 `ALDER_ADDR=127.0.0.1:0 ALDER_DEV=1 ALDER_RELOAD=<gen>`, the database
-`build/<app>/dev.db` and your `static/`, and reads the child's stdout
+`build/<app>/dev.db` and your `static/`, and `ALDER_PUBLIC_URL=http://<d.addr>`,
+the dev server's own address (`childEnv`): the child's port is not the one
+the browser opens, so its `Url.absolute` would be wrong without it. A
+`ALDER_PUBLIC_URL` already in `alder run`'s environment is passed on
+instead. It reads the child's stdout
 until the line `listening on <addr>` that every generated `main` prints
 once it has its port (chapter 11, "`alder build`"). That line is how the dev server learns
 the free port the operating system picked. If the line doesn't come
@@ -4440,7 +4444,10 @@ library: `ssh`, `sh`, `tar` and `curl` are the whole protocol. The
 upload is a tar stream Go writes (`archive/tar`) into a `.part`
 directory, renamed when complete. Each build gets a generated `run`
 wrapper that sources the operator's environment file and sets
-`ALDER_DB`, `ALDER_STATIC`, `ALDER_ADDR` and `ALDER_BACKUP_URL`; the
+`ALDER_DB`, `ALDER_STATIC`, `ALDER_ADDR` and `ALDER_BACKUP_URL`, and
+defaults `ALDER_PUBLIC_URL` to `https://<domain>` with the shell's
+`: "${ALDER_PUBLIC_URL:=…}"`, which keeps a value the environment file
+set (no default for a wildcard domain without `--host`); the
 wrapper holds names and paths, never a value, and `Requires` checks the
 environment file with `grep -Eq` so that only an exit status crosses the
 connection. Caddy is driven through its admin API on `localhost:2019`

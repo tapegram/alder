@@ -475,7 +475,7 @@ error of the compiler and is reported as one, with Go's output. (If
 `build/<app>/` holds Go files alder did not write, the message names them
 instead.)
 
-The executable reads five environment variables
+The executable reads six environment variables
 (`build/<app>/cmd/main.go`):
 
 | Variable | Meaning | Default |
@@ -485,6 +485,7 @@ The executable reads five environment variables
 | `ALDER_SECRET` | the session cookie key, at least 16 bytes | required; in development mode, unset or shorter means a public development key, with a warning |
 | `ALDER_DEV` | `1` turns on development mode | off |
 | `ALDER_STATIC` | the directory served under `/static/` | the `static/` directory next to the executable |
+| `ALDER_PUBLIC_URL` | the site's public address, `http(s)://host[:port]`, that `Url.absolute` puts in front of a page's URL | `http://` and the address it listens on |
 
 Development mode shows a failed request's error text in the page (as an
 HTML comment), logs every effect step, lets a database that is not
@@ -510,6 +511,27 @@ alder: ALDER_SECRET must be set to at least 16 bytes outside dev mode (ALDER_DEV
 
 and it exits 1. In production, set `ALDER_SECRET` to a long random string
 and keep it: changing it logs everyone out.
+
+`ALDER_PUBLIC_URL` is the address people (and other programs) use to
+reach the site, which the server cannot know by itself: behind a proxy it
+listens on one address and is reached at another. Only `Url.absolute`
+reads it (chapter 9). The value is a scheme, `http` or `https`, and a
+host with an optional port; trailing slashes are dropped, so
+`https://todos.example.com/` is fine, but a path (`https://example.com/app`),
+a query, a fragment or a user name is refused before the server listens:
+
+```
+$ ALDER_PUBLIC_URL=todos.example.com ./build/todos/todos
+alder: ALDER_PUBLIC_URL must be http(s)://host[:port], such as https://blog.example.com (got "todos.example.com")
+```
+
+and it exits 1. Unset, the address is `http://` and the one the server
+listens on, an unspecified host shown as `localhost` (as `alder run` shows
+it): `http://localhost:8080` for the default `:8080`, and with
+`ALDER_ADDR=127.0.0.1:0` the port the operating system picked. The server
+never reads the request's `Host` header for this: a client can write any
+`Host`, and a page that printed it into a link (a password-reset email,
+say) would send the reader to the attacker's site.
 
 The server waits at most 10 seconds for a request's headers. On `SIGINT`
 (Ctrl-C) or `SIGTERM` it stops accepting connections, gives the requests
@@ -552,7 +574,11 @@ in "`alder build`" above.) Open the first address,
   (a program the dev server started and will stop). The dev server
   starts it with `ALDER_ADDR=127.0.0.1:0`, and port 0 means "any free
   port", so the app gets a different port each time it starts
-  (`65295` above). You never open that address yourself.
+  (`65295` above). You never open that address yourself, so the dev
+  server also gives the app `ALDER_PUBLIC_URL=http://localhost:8080` (its
+  own address), and `Url.absolute` gives links you can open. If you set
+  `ALDER_PUBLIC_URL` yourself (the address of a tunnel to your machine,
+  say), it is passed on unchanged.
 
 The dev server is a *proxy*: it passes every request from the browser on
 to the app, and the app's answer back to the browser, unchanged (cookies,
