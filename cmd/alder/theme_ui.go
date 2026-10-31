@@ -6,6 +6,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,9 +23,6 @@ import (
 //
 // The write changes App.alder from a browser, so every route passes the gate (themeAllowed)
 // first, and a POST body is JSON (application/json) of at most themeBodyMax bytes.
-
-// themePage is the configurator's HTML (Task 6 replaces this stub).
-const themePage = "<!doctype html><title>theme</title>"
 
 // themeFile is the file the theme is read from and written to, relative to the app dir.
 const themeFile = "app/App.alder"
@@ -100,7 +98,10 @@ func (d *devServer) serveTheme(w http.ResponseWriter, r *http.Request) {
 	case "/_dev/theme":
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		_, _ = w.Write([]byte(themePage))
+		d.mu.Lock()
+		gen := d.gen
+		d.mu.Unlock()
+		_, _ = w.Write([]byte(strings.Replace(themePage, themeGenMark, url.QueryEscape(gen), 1)))
 	case "/_dev/theme/state":
 		writeThemeJSON(w, http.StatusOK, d.themeState())
 	case "/_dev/theme/import":
