@@ -104,6 +104,21 @@ func TestPrompt_Contents(t *testing.T) {
 	}
 }
 
+func TestPrompt_CoreStdAlwaysIncluded(t *testing.T) {
+	// a module that has not written `List.` or `Text.` anywhere
+	dir := holeApp(t, map[string]string{"app/Bare.alder": "module Bare\n\nanswer : Int\nanswer = ?n\n"})
+	p, h := loadHole(t, dir, "Bare.answer", "")
+	got := Prompt(p, h)
+	for _, mod := range []string{"List", "Maybe", "Result", "Text", "Int", "Float", "Dict"} {
+		if !strings.Contains(got, "module "+mod+"\n") {
+			t.Errorf("the prompt has no module %s", mod)
+		}
+	}
+	if strings.Contains(got, "module Json\n") {
+		t.Errorf("the prompt has Json, which nothing names")
+	}
+}
+
 func TestPrompt_TestHoleIncludesTest(t *testing.T) {
 	dir := holeApp(t, nil)
 	home := filepath.Join(dir, "app", "Home.alder")

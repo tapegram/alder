@@ -5799,7 +5799,7 @@ the expression and the same warning on the command line.
 
 What leaves the machine is exactly the prompt: one module's source (its
 comments and string literals too), names and types, the standard library's
-signatures and, on retries, the errors, which quote lines of that module. `alder fill <address> --prompt` prints
+signatures (the core modules List, Maybe, Result, Text, Int, Float, Dict, Bool, Task and Prelude always, any other module the hole's type or the source names) and, on retries, the errors, which quote lines of that module. `alder fill <address> --prompt` prints
 it. With `ALDER_LSP_LOG` set, the server also writes each request body and
 each answer to the log, never a header, so never the key.
 

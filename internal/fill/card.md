@@ -30,7 +30,7 @@ imports, and the standard library signatures the request includes. Nothing else 
 - Lambdas start with a backslash: `\p -> p.title`, `\a b -> a + b`. Never `fun` or `=>`.
 - `if c then a else b` (both branches, same type).
 - `match x { Just v -> v, Nothing -> 0 }`: arms separated by commas; patterns are constructors
-  (`Just v`, `Ok x`, `Err e`), records (`{ id: i }`), lists (`[]`, `[a, ...rest]`), literals
+  (`Just v`, `Ok x`, `Err e`), records (`{ id: i }`), lists (`[]`, `[a, ..rest]`), literals
   and `_`.
 - Blocks sequence effects and bind names:
 
