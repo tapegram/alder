@@ -11,7 +11,6 @@ import "testing"
 // theme across a navigation. ALDER_SHOTS_DIR keeps light and dark screenshots.
 func TestThemeUI_Browser(t *testing.T) {
 	t.Parallel()
-	playwrightEnv(t)
 	script := browserScript(t, "theme.cjs")
 	runBrowserScript(t, script, startRunApp(t, "blog"))
 }

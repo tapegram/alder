@@ -106,6 +106,7 @@ body{display:grid;grid-template-columns:22rem minmax(0,1fr);min-block-size:100vh
 #tp-import label{display:block;margin-block-end:.35rem;color:var(--tp-dim)}
 #tp-import textarea{display:block;inline-size:100%;min-block-size:9rem;resize:vertical;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}
 #tp-import-out p{margin:.6rem 0 .3rem}
+#tp-import-out .tp-unplaced{justify-content:space-between;margin-block:.6rem .3rem}
 #tp pre{margin:0;padding:.5rem;max-block-size:16rem;overflow:auto;white-space:pre-wrap;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--tp-fg);background:var(--tp-field);border:1px solid var(--tp-line);border-radius:5px}
 #tp-msgs:not(:empty){margin:.75rem 1rem 0;padding:.5rem .6rem;color:var(--tp-err);border:1px solid var(--tp-err);border-radius:6px}
 #tp-msgs p{margin:0}
@@ -375,7 +376,7 @@ if(hex)r.pick.value=v.toLowerCase();else if(h3)r.pick.value=("#"+h3[1]+h3[1]+h3[
 var ok=OKLCH.exec(v);r.ok.hidden=!ok;if(ok)r.ranges.forEach(function(x,i){if(document.activeElement!==x.rg)x.rg.value=ok[i+1];x.out.textContent=ok[i+1]})}
 function build(){var rb=$("tp-root"),cb=$("tp-colours");rb.textContent="";cb.textContent="";rows={};
 st.tokens.forEach(function(t){var r=row(t);rows[t.field]=r;(t.scope==="root"?rb:cb).appendChild(r.el)})}
-function syncAll(){Object.keys(rows).forEach(function(f){sync(rows[f])});
+function syncAll(){Object.keys(rows).forEach(function(f){sync(rows[f]);[].forEach.call(rows[f].diag.children,function(p){if(p.hasAttribute("data-msg"))p.textContent=diagText(p)})});
 $("tp-colours-h").textContent="Colours of the "+scheme+" scheme";var s=$("scheme");s.setAttribute("data-scheme",scheme);
 s.setAttribute("aria-label","Scheme: "+scheme+" (switch to "+(scheme==="light"?"dark":"light")+")")}
 function buttons(){var w=$("write");w.disabled=!st||broken||busy||st.building||same(working,committed);$("reset").disabled=!st||same(working,committed)}
@@ -387,8 +388,18 @@ function message(text,list){var m=$("tp-msgs");m.textContent="";if(text)m.append
 function fieldOf(msg){var names=Object.keys(rows).sort(function(a,b){return b.length-a.length});var bt=String.fromCharCode(96);
 for(var i=0;i<names.length;i++)if(msg.indexOf(bt+names[i]+bt)>=0)return names[i];
 for(i=0;i<names.length;i++)if(new RegExp("\\b"+names[i]+"\\b").test(msg))return names[i];return ""}
-function showRefusal(a){clearDiags();var rest=[];(a.diagnostics||[]).forEach(function(d){var f=fieldOf(d.message||"");
-if(f){var p=el("div",null,d.message);rows[f].diag.appendChild(p)}else{var li=el("li");li.appendChild(el("code",null,(d.file||"")+":"+d.line+":"+d.col+" "+(d.code||"")));li.appendChild(document.createTextNode(" "+d.message));rest.push(li)}});
+// the scheme a colour field's diagnostic is about: the diagnostics are located on the whole
+// declaration and come in record order (light, then dark), so it is the only scheme that sets the
+// field, else the n-th that does when each has one, else the one whose value the browser refuses
+function schemeOf(f,nth,count){var set=["light","dark"].filter(function(s){return working[s][f]});
+if(set.length===1)return set[0];if(set.length===count)return set[nth]||"";
+var bad=set.filter(function(s){var v=working[s][f];return !/^var\(/.test(v)&&!CSS.supports("color",v)});return bad.length===1?bad[0]:""}
+function diagText(p){var s=p.getAttribute("data-scheme");return (s&&s!==scheme?s+": ":"")+p.getAttribute("data-msg")}
+function showRefusal(a){clearDiags();var rest=[],ds=a.diagnostics||[],per={},seen={};
+ds.forEach(function(d){var f=fieldOf(d.message||"");if(f)per[f]=(per[f]||0)+1});
+ds.forEach(function(d){var f=fieldOf(d.message||"");
+if(f){var p=el("div",{"data-msg":d.message||""});if(rows[f].t.scope==="scheme"){var n=seen[f]||0;seen[f]=n+1;var sc=schemeOf(f,n,per[f]);if(sc)p.setAttribute("data-scheme",sc)}
+p.textContent=diagText(p);rows[f].diag.appendChild(p)}else{var li=el("li");li.appendChild(el("code",null,(d.file||"")+":"+d.line+":"+d.col+" "+(d.code||"")));li.appendChild(document.createTextNode(" "+d.message));rest.push(li)}});
 message(a.error||"Nothing was written.",rest)}
 
 function post(url,body){return fetch(url,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
@@ -411,7 +422,7 @@ $("reset").addEventListener("click",function(){working=copy(committed);save();sy
 $("write").addEventListener("click",function(){busy=true;buttons();status("writing…",true);
 post("/_dev/theme/write",{theme:working}).then(function(res){var a=res.body||{};
 if(a.written){wrote=true;st.building=true;clearDiags();status("written: rebuilding…",true);poll()}
-else if(a.unchanged){status(st.file+" already holds this theme");getState().then(init)}
+else if(a.unchanged){status(st.file+" already holds this theme");getState().then(init).catch(function(e){message("The theme state could not be read: "+e.message)})}
 else{status("");showRefusal(a)}}).catch(function(e){status("");message("The write failed: "+e.message)}).then(function(){busy=false;buttons()})});
 function toggleImport(open){var b=$("tp-import");b.hidden=!open;$("import").setAttribute("aria-expanded",String(open));if(open)$("import-css").focus()}
 $("import").addEventListener("click",function(){toggleImport($("tp-import").hidden)});
@@ -425,7 +436,11 @@ out.appendChild(el("p",null,"Imported "+n+" value"+(n===1?"":"s")+(sk.n?"; skipp
 var un=a.unplaced||[];if(!un.length)return;
 var groups=[],by={};un.forEach(function(u){if(!by[u.block]){by[u.block]=[];groups.push(u.block)}by[u.block].push(u)});
 var css=groups.map(function(g){return g+" {\n"+by[g].map(function(u){return "  /* "+u.reason.replace(/\*\//g,"* /")+" */\n  "+u.name+": "+u.value+";"}).join("\n")+"\n}"}).join("\n\n");
-out.appendChild(el("p",null,un.length+" not placed: paste them into static/app.css"));out.appendChild(el("pre",null,css))
+var cbtn=el("button",{type:"button",id:"import-copy"},"Copy"),head=el("div",{"class":"tp-bar tp-unplaced"});
+head.appendChild(el("span",null,un.length+" not placed: paste them into static/app.css"));head.appendChild(cbtn);
+cbtn.addEventListener("click",function(){var done=function(t){cbtn.textContent=t;setTimeout(function(){cbtn.textContent="Copy"},1500)};
+try{navigator.clipboard.writeText(css).then(function(){done("Copied")},function(){done("Copy failed")})}catch(e){done("Copy failed")}});
+out.appendChild(head);out.appendChild(el("pre",null,css))
 }).catch(function(e){out.appendChild(el("p",{"class":"tp-diag"},"The import failed: "+e.message))})});
 
 function tab(name){["gallery","app"].forEach(function(n){var on=n===name;$("tab-"+n).setAttribute("aria-selected",String(on));$(n==="app"?"app-pane":"gallery").hidden=!on});

@@ -121,6 +121,28 @@ const generation = async () => {
       return { cls: h.className, primary: h.style.getPropertyValue('--primary') }; });
     check('iframe-follows', /dark/.test(fr.cls) && fr.top && !/dark/.test(fr2.cls) && fr2.primary === '#00ff00', { fr, fr2 });
 
+    // diag-names-scheme: a refused dark value, shown while Light is selected, says it is dark's
+    await page.click('#tab-gallery');
+    await setScheme('dark');
+    await page.fill('[data-field="ring"] input.value', 'oklch(1 2');
+    await setScheme('light');
+    await page.click('#write');
+    await page.waitForFunction(() => document.querySelector('[data-field="ring"] .tp-diag').textContent !== '', null, { timeout: 10000 });
+    const ringDiag = await page.textContent('[data-field="ring"] .tp-diag');
+    await setScheme('dark');
+    const ringDiagDark = await page.textContent('[data-field="ring"] .tp-diag');
+    check('diag-names-scheme', /^dark: /.test(ringDiag) && !/^dark: /.test(ringDiagDark) && /ring/.test(ringDiagDark), { ringDiag, ringDiagDark });
+
+    // import-copy: importing the tweakcn fixture lists the unplaced block with a copy button
+    await page.click('#reset');
+    await page.click('#import');
+    await page.fill('#import-css', fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'internal', 'theme', 'testdata', 'import', 'tweakcn.css'), 'utf8'));
+    await page.click('#import-go');
+    await page.waitForSelector('#tp-import-out pre', { timeout: 10000 });
+    const imp = await page.evaluate(() => ({ copy: document.getElementById('import-copy')?.textContent, pre: document.querySelector('#tp-import-out pre').textContent,
+      write: document.getElementById('write').disabled }));
+    check('import-copy', imp.copy === 'Copy' && /--font-serif/.test(imp.pre) && !imp.write, imp);
+
     check('no page errors', errors.length === 0, errors);
   } finally {
     await browser.close();
