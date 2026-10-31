@@ -1,0 +1,1 @@
+{ "sets": { "base": { "sources": [{ "$ref": "../x.json" }] } }, "resolutionOrder": [{ "$ref": "#/sets/base" }] }

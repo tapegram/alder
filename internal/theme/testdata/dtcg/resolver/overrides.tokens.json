@@ -1,0 +1,8 @@
+{
+  "radius": {
+    "radius-sm": { "$type": "dimension", "$value": { "value": 0.25, "unit": "rem" } }
+  },
+  "shadow": {
+    "shadow-sm": { "$type": "shadow", "$value": { "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 1, "unit": "px" }, "blur": { "value": 2, "unit": "px" }, "spread": { "value": 0, "unit": "px" }, "color": "{color.brand}" } }
+  }
+}

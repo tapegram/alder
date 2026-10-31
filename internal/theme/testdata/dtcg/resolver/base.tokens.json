@@ -1,0 +1,14 @@
+{
+  "radius": {
+    "$type": "dimension",
+    "radius": { "$value": { "value": 0.625, "unit": "rem" }, "$description": "The base radius." },
+    "radius-sm": { "$value": { "value": 0.375, "unit": "rem" } }
+  },
+  "font": {
+    "sans": { "$type": "fontFamily", "$value": ["Inter", "sans-serif"] }
+  },
+  "color": {
+    "$type": "color",
+    "brand": { "$value": { "colorSpace": "oklch", "components": [0.5, 0.2, 260] } }
+  }
+}
