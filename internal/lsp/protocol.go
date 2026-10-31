@@ -116,6 +116,7 @@ func capabilities(enc posEncoding) map[string]any {
 		"hoverProvider":              true,
 		"documentFormattingProvider": true,
 		"inlayHintProvider":          true,
+		"colorProvider":              true,
 		"definitionProvider":         true,
 		"referencesProvider":         true,
 		"completionProvider":         map[string]any{"triggerCharacters": []string{".", "<", "?"}},
