@@ -166,7 +166,7 @@ Declaring every token by hand is a lot of work for a first look, so alder-ui shi
 
 `zinc` is what alder-ui already looks like, so an app with no `theme` declaration is a `zinc` app; the other four change the colours, the corner radii, the shadows, the fonts and (through `borderWidth`) how thick the borders are.
 
-A starting theme is taken *by copy*. Nothing in your app refers to `paper` afterwards: the command writes the whole declaration of "Changing a token" into `app/App.alder`, as plain text you can read, and from then on the app owns it. Change a value, delete a field, or switch to another theme; a later release of alder-ui that tweaks `paper` does not move your app. The same copy, check and write as an import applies, so a theme the checker refuses is never written.
+A starting theme is taken *by copy*. Nothing in your app refers to `paper` afterwards: the command writes the whole declaration of "Changing a token" into `app/App.alder`, as plain text you can read, and from then on the app owns it. Change a value, delete a field, or switch to another theme; a later release of alder-ui that tweaks `paper` does not move your app. It goes through the same copy, check and write as an import, so a theme the checker refuses is never written.
 
 ```
 $ alder theme use
@@ -182,7 +182,15 @@ $ alder theme use paper
 theme: paper → app/App.alder  (light 32, dark 32, theme-wide 15; replaced the theme that was there)
 ```
 
-With no name the command lists the themes and writes nothing. With one it replaces the app's whole `theme` declaration, as `alder theme import` does: what was there before is gone, not merged, and `--dry-run` prints the diff without writing. A name that is not one of the five is refused with the nearest (`no starting theme `papr`; did you mean `paper`?`) and the list. The summary counts the colour tokens set under `light` and under `dark` (32 each: every colour token of the table below) and the theme-wide ones (radii, widths, fonts, shadows and the border width: 15).
+With no name the command lists the themes and writes nothing. With one it replaces the app's whole `theme` declaration, as `alder theme import` does: what was there before is gone, not merged, and `--dry-run` prints the diff without writing. The summary counts the colour tokens set under `light` and under `dark` (32 each: every colour token of the table below) and the theme-wide ones (radii, widths, fonts, shadows and the border width: 15). A name that is not one of the five is refused with the nearest, then the list, and nothing is written:
+
+```
+$ alder theme use papr
+alder theme use: no starting theme `papr`; did you mean `paper`?
+starting themes (alder-ui v0.5.0):
+  zinc        Tools, dashboards, admin — the default, the safe choice.
+  …
+```
 
 A new app can start with one: `alder new shelf --theme paper` creates the app and then does what `alder theme use paper` does, adding one line, `theme: paper`, to the list of what was created. An unknown name fails before anything is created. Without the flag nothing is written, and the app is `zinc` because alder-ui is; `--theme zinc` writes zinc's declaration out, for a person who wants the values in front of them.
 

@@ -205,7 +205,7 @@ var commandTree = []cmdSpec{
 	{Name: "regen", Summary: "regenerate generated code", Usage: commandUsages["regen"],
 		Flags:       withGenFlags(specFlags(generate.SpecByID("regen admin"))...),
 		Subcommands: []cmdSpec{{Name: "admin", Summary: generate.SpecByID("regen admin").Summary}}},
-	{Name: "theme", Summary: "import a theme from a CSS export or DTCG tokens", Usage: commandUsages["theme"],
+	{Name: "theme", Summary: "start from a theme, or import one from CSS or DTCG tokens", Usage: commandUsages["theme"],
 		Flags:       withGenFlags(),
 		Subcommands: groupCmd("theme")},
 	{Name: "deploy", Summary: "deploy to an environment", Usage: commandUsages["deploy"],
