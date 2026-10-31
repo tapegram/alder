@@ -302,3 +302,14 @@ func TestUnplacedCSS_ReasonCannotCloseComment(t *testing.T) {
 		t.Errorf("comment closed early:\n%s", out)
 	}
 }
+
+func TestImport_NotDarkIsLight(t *testing.T) {
+	th, un, _ := mustImport(t, LightSelector+" { --primary: #111; --radius: 1rem }")
+	if th.Light["primary"] == "" || len(th.Dark) != 0 || th.Root["radius"] != "1rem" || len(un) != 0 {
+		t.Errorf("light %v dark %v root %v unplaced %v", th.Light, th.Dark, th.Root, un)
+	}
+	th, _, _ = mustImport(t, ":root:not(.dark) { --primary: #111 }")
+	if th.Light["primary"] == "" || len(th.Dark) != 0 {
+		t.Errorf("light %v dark %v", th.Light, th.Dark)
+	}
+}

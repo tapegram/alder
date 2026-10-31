@@ -129,6 +129,7 @@ func atKeyword(prelude string) (kw, rest string) {
 var (
 	reDarkSel  = regexp.MustCompile(`\.dark($|[^\w-])|\[\s*data-theme\s*=\s*["']?dark["']?\s*\]`)
 	reLightSel = regexp.MustCompile(`\.light($|[^\w-])|\[\s*data-theme\s*=\s*["']?light["']?\s*\]`)
+	reNot      = regexp.MustCompile(`:not\((?:[^()]|\([^()]*\))*\)`)
 	reRootSel  = regexp.MustCompile(`:root|(^|[\s>+~])html($|[^\w-])`)
 )
 
@@ -153,6 +154,7 @@ func (im *importer) rule(selector string, decls []decl, darkMedia bool) {
 	block := written
 	var light, dark bool
 	for _, s := range splitTop(selector, ',') {
+		s = reNot.ReplaceAllString(s, "") // `:root:not(.dark)` is the light block, not the dark one
 		switch {
 		case reDarkSel.MatchString(s):
 			dark = true

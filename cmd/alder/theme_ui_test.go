@@ -385,3 +385,17 @@ func TestThemeRoutePrefix(t *testing.T) {
 		t.Errorf("/_dev/themes: %d, want the proxy's 502", w.Code)
 	}
 }
+
+func TestThemeState_FirstDeclaration(t *testing.T) {
+	d, dir := themeServer(t)
+	p := filepath.Join(dir, "app", "App.alder")
+	src, _ := os.ReadFile(p)
+	extra := "\ntheme {\n  light: { primary: \"oklch(0.1 0.1 10)\" },\n}\n"
+	if err := os.WriteFile(p, append(src, extra...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st := d.themeState()
+	if st.Theme == nil || st.Theme.Light["primary"] == "oklch(0.1 0.1 10)" {
+		t.Errorf("theme %+v", st.Theme)
+	}
+}

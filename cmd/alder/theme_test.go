@@ -302,3 +302,25 @@ func TestThemeImport_JSONGarbageHasAllKeys(t *testing.T) {
 		}
 	}
 }
+
+// aliasCycleCSS is an export whose two colours alias each other: the write is refused (E0042).
+const aliasCycleCSS = ":root { --primary: var(--secondary); --secondary: var(--primary) }"
+
+func TestThemeImport_RefusedKeepsDiagnostics(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	before := readAppAlder(t, dir)
+	code, out, errb := themeImport(t, dir, aliasCycleCSS, "-")
+	if code != 1 || !strings.Contains(out, "E0042") {
+		t.Errorf("text: exit %d:\n%s%s", code, out, errb)
+	}
+	code, out, _ = themeImport(t, dir, aliasCycleCSS, "-", "--json")
+	var got struct {
+		Diagnostics []struct{ Code string }
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil || code != 1 || len(got.Diagnostics) == 0 || got.Diagnostics[0].Code != "E0042" {
+		t.Errorf("json: exit %d (%v):\n%s", code, err, out)
+	}
+	if readAppAlder(t, dir) != before {
+		t.Errorf("App.alder changed")
+	}
+}

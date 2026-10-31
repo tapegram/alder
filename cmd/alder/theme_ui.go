@@ -232,6 +232,7 @@ func (d *devServer) themeState() themeState {
 	for _, dc := range m.Decls {
 		if td, ok := dc.(*syntax.ThemeDecl); ok {
 			decl = td
+			break
 		}
 	}
 	th := themeMaps(generate.ThemeOf(decl))

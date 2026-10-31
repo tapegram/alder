@@ -44,7 +44,7 @@ func ImportTheme(app App, name string, css []byte, print, dryRun bool) (*Result,
 	if print {
 		text, err := ThemeText(th)
 		if inv := (*ThemeInvalid)(nil); errors.As(err, &inv) {
-			return &Result{Import: imp}, &Refusal{Msg: inv.Error(), Diags: inv.Diags}
+			return &Result{Import: imp, Diagnostics: inv.Diags}, &Refusal{Msg: inv.Error(), Diags: inv.Diags}
 		} else if err != nil {
 			return nil, err
 		}
@@ -65,11 +65,12 @@ func ImportTheme(app App, name string, css []byte, print, dryRun bool) (*Result,
 		}
 	}
 	res, err := WriteTheme(app, th, dryRun)
-	if inv := (*ThemeInvalid)(nil); errors.As(err, &inv) {
-		err = &Refusal{Msg: inv.Error(), Diags: inv.Diags}
-	}
 	if res == nil {
 		res = &Result{}
+	}
+	if inv := (*ThemeInvalid)(nil); errors.As(err, &inv) {
+		err = &Refusal{Msg: inv.Error(), Diags: inv.Diags}
+		res.Diagnostics = inv.Diags // the renderers show the result's, not the refusal's
 	}
 	res.Import = imp
 	return res, err
