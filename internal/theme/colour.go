@@ -124,7 +124,7 @@ func splitArgs(body string) (args []string, alpha string, ok bool) {
 
 // parseNumber reads a number, or a percentage scaled to ref (100% = ref).
 func parseNumber(s string, ref float64) (float64, bool) {
-	if s == "none" {
+	if strings.EqualFold(s, "none") {
 		return 0, true
 	}
 	if p, ok := strings.CutSuffix(s, "%"); ok {
@@ -137,7 +137,7 @@ func parseNumber(s string, ref float64) (float64, bool) {
 
 // parseHue reads an angle in degrees: a bare number, or one with deg, grad, rad or turn.
 func parseHue(s string) (float64, bool) {
-	if s == "none" {
+	if strings.EqualFold(s, "none") {
 		return 0, true
 	}
 	for _, u := range []struct {
@@ -161,6 +161,15 @@ func colourSpace(fn string, a []string) (r, g, b float64, ok bool) {
 		ok = ok && good
 		return v
 	}
+	// hsl and hwb take a bare number as a percentage (CSS Color 4).
+	pct := func(i int) float64 {
+		v, good := parseNumber(a[i], 1)
+		ok = ok && good
+		if !strings.HasSuffix(a[i], "%") && !strings.EqualFold(a[i], "none") {
+			v /= 100
+		}
+		return v
+	}
 	hue := func(i int) float64 {
 		v, good := parseHue(a[i])
 		ok = ok && good
@@ -171,10 +180,10 @@ func colourSpace(fn string, a []string) (r, g, b float64, ok bool) {
 	case "rgb", "rgba":
 		r, g, b = num(0, 255)/255, num(1, 255)/255, num(2, 255)/255
 	case "hsl", "hsla":
-		h, s, l := hue(0), num(1, 1), num(2, 1)
+		h, s, l := hue(0), pct(1), pct(2)
 		r, g, b = hslToRGB(h, s, l)
 	case "hwb":
-		h, w, bl := hue(0), num(1, 1), num(2, 1)
+		h, w, bl := hue(0), pct(1), pct(2)
 		if w+bl >= 1 {
 			v := w / (w + bl)
 			return v, v, v, ok
