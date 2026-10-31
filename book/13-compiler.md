@@ -434,9 +434,12 @@ with the runtime (`rt/embed.go`), and `internal/elements` parses it once
 touches the disk. `elements.Merge` puts them in one map by tag, the app's
 entry replacing the built-in one for a tag both declare. A manifest is a
 large format (classes, members, events, CSS parts); `internal/elements`
-decodes only the part the checker uses: each declaration's `tagName`,
-its attributes' names and `type.text` (`boolean` marks a boolean
-attribute), and its slots' names. `customElement` then looks the tag up
+decodes only the part the compiler uses: each declaration's `tagName`
+and `description`, its attributes' names, `type.text` (`boolean` marks a
+boolean attribute), defaults and descriptions, and its slots' names and
+descriptions. The checker reads the names and types; the descriptions and
+defaults are for the editor (section 10, "Completion"), and the merged table
+is kept on the check's result for it (`check.Result.Elements`). `customElement` then looks the tag up
 (E0028 when it is missing), checks each attribute against the entry or
 the short escape list of global attributes, the popover and invoker ones
 included (`elements.Escaped`; `submit`
@@ -5406,12 +5409,12 @@ and the facts from the build.
 
 `completionAt` takes the line up to the cursor (`prefix`) and tries the
 contexts in order: `import `, a module member (`Text.`), a field (`params.`),
-a closing tag (`</`), an attribute inside a tag, a tag (`<`), a hole (`?`), a
-pattern, and last everything else (names in scope, modules and keywords). The
-first whose regular expression matches the prefix wins. These are text matches
-on purpose; the parser has failed on this line, and its error is no help
-deciding what the user means to write. The expressions are anchored on the
-end of the prefix:
+a closing tag (`</`), an attribute's value (`variant="`), an attribute inside
+a tag, a tag (`<`), a hole (`?`), a pattern, and last everything else (names
+in scope, modules and keywords). The first that matches wins. These are text
+matches on purpose; the parser has failed on this line, and its error is no
+help deciding what the user means to write. Most of them look only at the
+prefix, with regular expressions anchored on its end:
 
 ```go
 	reMember   = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.])([A-Z][A-Za-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)*)\.([a-zA-Z0-9_]*)$`)
@@ -5430,6 +5433,74 @@ completions.
 Both are gated on freshness: if the lines above the cursor have changed since
 the build, the build's scope would be about different code and the server
 offers nothing from it.
+
+**Inside a tag.** The tag contexts cannot look at the prefix alone, because a
+start tag can run over several lines:
+
+```text
+  <al-button
+    variant="
+```
+
+The cursor's line holds no `<` at all, yet it is inside `<al-button`, and the
+completions are the six variants. So the closing tag, the attribute and the
+attribute's value ask `startTag`, which joins the declaration's lines from its
+first (`declStart`) up to the cursor and scans that text from the start
+(`scanTags`), keeping a stack of the tags open so far: `<tag …>` pushes it,
+`</tag>` pops back to it, and `<tag … />` or a void tag such as `<br>` pushes
+nothing. When the text ends before a start tag's `>`, the cursor is inside
+that tag, and the tags still on the stack are its parents. A `slot="` looks
+at the innermost parent: under `<al-pagination>` it offers that element's
+named slots, `prev` and `next`.
+
+Scanning text means guessing what the parser would see, and a `<` is not
+always a tag. `"see <b here"` is a string, `params.page <last` a comparison,
+and if either counted, every line typed after it would be "inside a tag" and
+get attribute names instead of the names in scope. The scanner therefore
+tells code from markup the way the lexer does. In code (outside any tag, or
+in a `{…}` inside one) it skips a string literal whole, with the lexer's own
+rule (`syntax.StringEnd`), and a `--` comment to the end of its line; among a
+tag's children the text is raw, and a `"` there is only a character. In code
+a `<name` on a line above the cursor's opens a tag only when the parser would
+accept the name there:
+
+```go
+		case c == '<':
+			name := tagNameAt(text, i+1)
+			if name == "" || code && i < cursorLine && !known(name) {
+				continue
+			}
+```
+
+`known` is an HTML tag, a custom element, or a capitalised name (a
+component). `last` is none of them, so `params.page <last` opens nothing. On
+the cursor's own line any name counts: there the user may be halfway through
+typing a tag the build has never seen. And a cursor inside an attribute's
+`{…}` (`<a href={Text.slice 0`) is in code again, so `startTag` says no and
+the names in scope complete there, as anywhere else in an expression.
+
+**Custom elements.** The tags and attributes of HTML are a table compiled
+into the server (`internal/markup`). Custom elements are the checker's
+(section 5, where HTML is checked): the merged manifest of `alder-ui` and the app,
+which the checker built and left on its result. Completion reads it from
+the last good build, `a.res.Elements`, so the app's manifest is the one that
+build parsed and the server never parses it a second time. When the newest build has no
+result because a file does not parse, the last good build still answers;
+with no good build yet, `elements.Builtin()` does, so `<al-` completes even in a file that has never compiled. After `<`
+the HTML tags come first, then the custom elements in tag order. Inside a
+custom element's start tag, its own attributes replace the HTML list (the
+global ones, `class`, `id` and the rest, are added after them), each with its
+type and default as the item's detail and its description as documentation.
+Inside an attribute's quotes, `Attr.Values` (the same list the checker
+checks a literal against) gives the choices; an attribute with no closed list
+completes nothing there.
+
+Hover on a tag uses the same table (`markupHover` in `hover.go`). A tag with
+a hyphen is looked up in the manifest first, and the hover is built from its
+entry: the description, a list of attributes with type, default and
+description, and a line of slots. An attribute of a custom element gets its
+own line. A capitalised tag is a component, a function the resolver knows,
+and hover shows its signature like any other declaration's.
 
 **Fitting a hole.** Put the cursor on `?n` in `Db.limit ?n`. The hole has a
 type the checker inferred, here `Int`, and the useful completions are the

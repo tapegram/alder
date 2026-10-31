@@ -202,8 +202,8 @@ func sectionDrift(tag string, lines []string, el *elements.Element) []string {
 		}
 	}
 	var wantSlots []string
-	for _, s := range el.Slots {
-		if s == "" {
+	for _, sl := range el.Slots {
+		if s := sl.Name; s == "" {
 			wantSlots = append(wantSlots, "default")
 		} else {
 			wantSlots = append(wantSlots, "`"+s+"`")

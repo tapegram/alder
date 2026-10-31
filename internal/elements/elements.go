@@ -5,7 +5,8 @@
 // elements and wins over the built-in one for a tag both declare (Merge).
 //
 // Only the part of the schema the checker needs is read: each module's declarations with a
-// tagName, their attributes (name, type.text, default, description) and their slots (name).
+// tagName and description, their attributes (name, type.text, default, description) and their
+// slots (name, description).
 // Everything else (CSS parts, events, members, paths) is ignored.
 package elements
 
@@ -34,10 +35,17 @@ type Manifest struct {
 
 // Element is one custom element's declaration.
 type Element struct {
-	Tag     string
-	Attrs   []Attr   // in manifest order
-	Slots   []string // in manifest order; "" is the default slot
-	Builtin bool     // declared by the embedded `alder-ui` manifest (not overridden by the app's)
+	Tag         string
+	Description string // the declaration's description; "" when it has none
+	Attrs       []Attr // in manifest order
+	Slots       []Slot // in manifest order
+	Builtin     bool   // declared by the embedded `alder-ui` manifest (not overridden by the app's)
+}
+
+// Slot is one declared slot.
+type Slot struct {
+	Name        string // "" is the default slot
+	Description string
 }
 
 // Attr is one declared attribute.
@@ -76,7 +84,7 @@ func (e *Element) Attr(name string) *Attr {
 // HasSlot reports whether e declares the slot name ("" for the default slot).
 func (e *Element) HasSlot(name string) bool {
 	for _, s := range e.Slots {
-		if s == name {
+		if s.Name == name {
 			return true
 		}
 	}
@@ -87,8 +95,8 @@ func (e *Element) HasSlot(name string) bool {
 func (e *Element) NamedSlots() []string {
 	var out []string
 	for _, s := range e.Slots {
-		if s != "" {
-			out = append(out, s)
+		if s.Name != "" {
+			out = append(out, s.Name)
 		}
 	}
 	return out
@@ -114,15 +122,17 @@ func (e *Error) Error() string { return e.Reason }
 type cemFile struct {
 	Modules *[]struct {
 		Declarations []struct {
-			TagName    string `json:"tagName"`
-			Attributes []struct {
+			TagName     string `json:"tagName"`
+			Description string `json:"description"`
+			Attributes  []struct {
 				Name        string                `json:"name"`
 				Type        struct{ Text string } `json:"type"`
 				Default     string                `json:"default"`
 				Description string                `json:"description"`
 			} `json:"attributes"`
 			Slots []struct {
-				Name string `json:"name"`
+				Name        string `json:"name"`
+				Description string `json:"description"`
 			} `json:"slots"`
 		} `json:"declarations"`
 	} `json:"modules"`
@@ -144,14 +154,14 @@ func Parse(data []byte) (*Manifest, error) {
 			if d.TagName == "" {
 				continue
 			}
-			el := &Element{Tag: d.TagName}
+			el := &Element{Tag: d.TagName, Description: d.Description}
 			for _, a := range d.Attributes {
 				if a.Name != "" {
 					el.Attrs = append(el.Attrs, Attr{Name: a.Name, Type: a.Type.Text, Default: a.Default, Description: a.Description})
 				}
 			}
 			for _, s := range d.Slots {
-				el.Slots = append(el.Slots, s.Name)
+				el.Slots = append(el.Slots, Slot{Name: s.Name, Description: s.Description})
 			}
 			m.Elements[el.Tag] = el
 		}

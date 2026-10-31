@@ -14,6 +14,7 @@ import (
 type item struct {
 	Label, Detail, SortText string
 	Kind                    int
+	Documentation           *struct{ Kind, Value string }
 	TextEdit                struct {
 		Range   Range
 		NewText string

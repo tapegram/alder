@@ -1,6 +1,7 @@
 package check
 
 import (
+	"alder/internal/elements"
 	"alder/internal/syntax"
 	"alder/internal/types"
 )
@@ -22,6 +23,9 @@ type Result struct {
 	Caps    map[string]map[string]types.Type // capability module → name → type
 	Session *types.Record
 	AppMsg  *types.Union
+	// Elements is the merged custom-elements manifest the checker used (the built-in
+	// `alder-ui` one and the app's), for the editor's completion and hover.
+	Elements *elements.Manifest
 	// DefaultModules maps the default expression of every anonymous-record field written in
 	// source (types.Field.Default) to the module it is written in, where it is lowered.
 	DefaultModules map[syntax.Expr]string
@@ -146,5 +150,6 @@ func (c *Checker) result() *Result {
 	r.Values, r.Decls, r.Tables, r.Forms, r.Caps = c.values, c.types, c.tables, c.forms, c.caps
 	r.Pages, r.Ctors, r.Session, r.AppMsg, r.U = c.pages, c.ctors, c.session, c.appMsg, c.u
 	r.Via, r.Silos, r.Choose = c.via, c.silos, c.choose
+	r.Elements = c.elements
 	return r
 }

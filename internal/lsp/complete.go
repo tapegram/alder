@@ -3,12 +3,14 @@ package lsp
 import (
 	"encoding/json"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"alder/internal/diag"
+	"alder/internal/elements"
 	"alder/internal/markup"
 	"alder/internal/names"
 	"alder/internal/scratch"
@@ -27,6 +29,7 @@ const (
 	kindModule      = 9
 	kindProperty    = 10
 	kindKeyword     = 14
+	kindEnumMember  = 20
 )
 
 type completionItem struct {
@@ -35,6 +38,22 @@ type completionItem struct {
 	Detail   string   `json:"detail,omitempty"`
 	SortText string   `json:"sortText,omitempty"`
 	TextEdit TextEdit `json:"textEdit"`
+
+	Documentation *markupContent `json:"documentation,omitempty"`
+}
+
+// markupContent is LSP MarkupContent: text with its format.
+type markupContent struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
+}
+
+// markdown is text as markdown documentation; nil for no text.
+func markdown(text string) *markupContent {
+	if text == "" {
+		return nil
+	}
+	return &markupContent{Kind: "markdown", Value: text}
 }
 
 // The contexts, matched against the cursor's line up to the cursor (completion's table, in
@@ -45,10 +64,12 @@ var (
 	reField    = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.])([a-z][A-Za-z0-9_]*)\.([a-zA-Z0-9_]*)$`)
 	reCloseTag = regexp.MustCompile(`</([a-z0-9-]*)$`)
 	reAttr     = regexp.MustCompile(`<([a-z][a-z0-9-]*)\s[^<>]*?\b([a-z-]*)$`)
-	reTag      = regexp.MustCompile(`(?:^|[\s>({\[,])<([a-z0-9-]*)$`)
-	reHole     = regexp.MustCompile(`\?([a-z][A-Za-z0-9_]*)?$`)
-	reWord     = regexp.MustCompile(`[A-Za-z0-9_]*$`)
-	reTheme    = regexp.MustCompile(`^\s*([a-z][A-Za-z0-9]*?)$`)
+	// reAttrValue: inside an attribute's quotes, the tag, the attribute and the typed value.
+	reAttrValue = regexp.MustCompile(`<([a-z][a-z0-9-]*)\s[^<>]*?\b([a-z-]+)="([^"]*)$`)
+	reTag       = regexp.MustCompile(`(?:^|[\s>({\[,])<([a-z0-9-]*)$`)
+	reHole      = regexp.MustCompile(`\?([a-z][A-Za-z0-9_]*)?$`)
+	reWord      = regexp.MustCompile(`[A-Za-z0-9_]*$`)
+	reTheme     = regexp.MustCompile(`^\s*([a-z][A-Za-z0-9]*?)$`)
 )
 
 // completion is one completion request: the open text as it is now, read once, and the last
@@ -120,7 +141,7 @@ func (s *server) completionAt(rel string, p Position) *completion {
 // items tries each context in the table's order; the first that applies answers.
 func (cx *completion) items() []completionItem {
 	for _, row := range []func() ([]completionItem, bool){
-		cx.theme, cx.imports, cx.members, cx.fields, cx.closeTag, cx.attrs, cx.tags, cx.hole, cx.patterns,
+		cx.theme, cx.imports, cx.members, cx.fields, cx.closeTag, cx.attrValues, cx.attrs, cx.tags, cx.hole, cx.patterns,
 	} {
 		if items, ok := row(); ok {
 			return items
@@ -378,12 +399,8 @@ func (cx *completion) closeTag() ([]completionItem, bool) {
 	if g == nil {
 		return nil, false
 	}
-	start := cx.declStart()
-	text := strings.Join(cx.lines[start:cx.line], "\n")
-	if start < cx.line {
-		text += "\n"
-	}
-	stack := openTags(text + cx.prefix[:len(cx.prefix)-len(g[0])])
+	text := cx.declText()
+	stack := cx.scanTags(text[:len(text)-len(g[0])]).open
 	if len(stack) == 0 {
 		return nil, true
 	}
@@ -413,36 +430,76 @@ func (cx *completion) declStart() int {
 var voidTags = map[string]bool{"area": true, "base": true, "br": true, "col": true, "embed": true,
 	"hr": true, "img": true, "input": true, "link": true, "meta": true, "source": true, "track": true, "wbr": true}
 
-// openTags is the stack of tags open at the end of text: `<tag …>` pushes, `</tag>` pops back
-// to the tag, and `<tag … />` (or a void tag) pushes nothing. Inside an open tag, `>` within an
-// attribute's `{…}` or quotes does not end it.
-func openTags(text string) []string {
-	var stack []string
-	for i := 0; i < len(text); i++ {
-		if text[i] != '<' {
-			continue
+// tagScan is what scanTags found in a declaration's text up to the cursor.
+type tagScan struct {
+	open  []string // the tags open at the end, outermost first
+	start int      // the `<` of the start tag the text ends inside; -1 when it ends outside one
+	expr  bool     // the text ends inside one of that start tag's attribute `{…}`s
+}
+
+// scanTags walks text, a declaration up to the cursor, roughly as the parser reads it. In code
+// (outside any tag, or in a `{…}` among a tag's children) a string literal or a `--` comment is
+// skipped, and a `<name` opens a tag only when the parser would accept name there (an HTML tag,
+// a custom element, a component) or it is on the cursor's line, where it may still be being
+// typed: so `"see <b here"` or `a <last` on a line above opens nothing. Among a tag's children
+// the text is raw, as the lexer reads it. `<tag …>` pushes, `</tag>` pops back to the tag, and
+// `<tag … />` (or a void tag) pushes nothing.
+func (cx *completion) scanTags(text string) tagScan {
+	known := func(name string) bool {
+		return 'A' <= name[0] && name[0] <= 'Z' || markup.HTML.Tag(name) != nil || cx.elements().Lookup(name) != nil
+	}
+	cursorLine := strings.LastIndexByte(text, '\n') + 1
+	var frames []string // the open tags, and "{" for each `{…}` open inside them or in code
+	tags := func() []string {
+		var out []string
+		for _, f := range frames {
+			if f != "{" {
+				out = append(out, f)
+			}
 		}
-		if strings.HasPrefix(text[i:], "</") {
+		return out
+	}
+	for i := 0; i < len(text); i++ {
+		code := len(frames) == 0 || frames[len(frames)-1] == "{"
+		switch c := text[i]; {
+		case code && c == '"':
+			i = syntax.StringEnd(text, i+1) - 1
+		case code && strings.HasPrefix(text[i:], "--"):
+			if k := strings.IndexByte(text[i:], '\n'); k >= 0 {
+				i += k
+			} else {
+				i = len(text)
+			}
+		case c == '{':
+			frames = append(frames, "{")
+		case c == '}':
+			if len(frames) > 0 && frames[len(frames)-1] == "{" {
+				frames = frames[:len(frames)-1]
+			}
+		case strings.HasPrefix(text[i:], "</"):
 			name := tagNameAt(text, i+2)
-			for k := len(stack) - 1; k >= 0; k-- {
-				if stack[k] == name {
-					stack = stack[:k]
+			for k := len(frames) - 1; k >= 0; k-- {
+				if frames[k] == name {
+					frames = frames[:k]
 					break
 				}
 			}
-			continue
+		case c == '<':
+			name := tagNameAt(text, i+1)
+			if name == "" || code && i < cursorLine && !known(name) {
+				continue
+			}
+			j, self, expr := openTagEnd(text, i+1+len(name))
+			if j >= len(text) {
+				return tagScan{open: tags(), start: i, expr: expr}
+			}
+			if !self && !voidTags[name] {
+				frames = append(frames, name)
+			}
+			i = j
 		}
-		name := tagNameAt(text, i+1)
-		if name == "" {
-			continue
-		}
-		j, self := openTagEnd(text, i+1+len(name))
-		if !self && !voidTags[name] {
-			stack = append(stack, name)
-		}
-		i = j
 	}
-	return stack
+	return tagScan{open: tags(), start: -1}
 }
 
 // tagNameAt is the tag or component name starting at text[i] (`div`, `al-input`,
@@ -459,8 +516,10 @@ func tagNameAt(text string, i int) string {
 }
 
 // openTagEnd scans an open tag from text[i] to its `>`, and returns its index (len(text) when
-// it does not end) and whether the tag closes itself (`/>`).
-func openTagEnd(text string, i int) (int, bool) {
+// it does not end), whether the tag closes itself (`/>`), and, when it does not end, whether
+// text ends inside one of its attribute `{…}`s. A `>` within an attribute's `{…}` or quotes does
+// not end the tag.
+func openTagEnd(text string, i int) (int, bool, bool) {
 	depth := 0
 	for ; i < len(text); i++ {
 		switch c := text[i]; {
@@ -468,38 +527,159 @@ func openTagEnd(text string, i int) (int, bool) {
 			if k := strings.IndexByte(text[i+1:], '"'); k >= 0 {
 				i += k + 1
 			} else {
-				return len(text), false
+				return len(text), false, depth > 0
 			}
 		case c == '{':
 			depth++
 		case c == '}':
 			depth--
 		case c == '>' && depth <= 0:
-			return i, i > 0 && text[i-1] == '/'
+			return i, i > 0 && text[i-1] == '/', false
 		}
 	}
-	return len(text), false
+	return len(text), false, depth > 0
 }
 
-// attrs: inside `<tag `, the tag's attributes and the global ones: `name=""`, or `name` for a
-// boolean one.
-func (cx *completion) attrs() ([]completionItem, bool) {
-	g := reAttr.FindStringSubmatch(cx.prefix)
+// elements is the custom elements to complete: what the last good build merged (the built-in
+// system and the app's manifest), else the built-in ones, so `al-*` completes before a build.
+func (cx *completion) elements() *elements.Manifest {
+	return manifestOf(cx.a)
+}
+
+// declText is the declaration around the cursor from its first line up to the cursor.
+func (cx *completion) declText() string {
+	start := cx.declStart()
+	text := strings.Join(cx.lines[start:cx.line], "\n")
+	if start < cx.line {
+		text += "\n"
+	}
+	return text + cx.prefix
+}
+
+// startTag is the start tag the cursor is inside, from its `<` to the cursor (across lines), and
+// the tags open before it; ok is false when the cursor is not inside a start tag, or is inside
+// one of its attribute `{…}`s, where names complete.
+func (cx *completion) startTag() (tag string, open []string, ok bool) {
+	text := cx.declText()
+	s := cx.scanTags(text)
+	if s.start < 0 || s.expr {
+		return "", nil, false
+	}
+	return text[s.start:], s.open, true
+}
+
+// parentSlots is the named slots of the custom element directly enclosing the start tag, whose
+// enclosing open tags are open.
+func (cx *completion) parentSlots(open []string) []elements.Slot {
+	if len(open) == 0 {
+		return nil
+	}
+	el := cx.elements().Lookup(open[len(open)-1])
+	if el == nil {
+		return nil
+	}
+	var out []elements.Slot
+	for _, s := range el.Slots {
+		if s.Name != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// attrValues: inside `attr="` of a custom element, the attribute's enumerated values, or for
+// `slot` the named slots of the enclosing custom element. Inside any other attribute's quotes
+// there is nothing to complete (not the tag's attribute names).
+func (cx *completion) attrValues() ([]completionItem, bool) {
+	tag, open, ok := cx.startTag()
+	if !ok {
+		return nil, false
+	}
+	g := reAttrValue.FindStringSubmatch(tag)
 	if g == nil {
 		return nil, false
 	}
+	n := min(len(g[3]), cx.col)
 	var out []completionItem
-	for _, at := range markup.HTML.AttrsOf(g[1]) {
-		it := cx.item(at.Name, kindProperty, at.Description, len(g[2]))
-		if !at.Boolean {
-			it.TextEdit.NewText = at.Name + `=""`
+	switch {
+	case g[2] == "slot":
+		for _, s := range cx.parentSlots(open) {
+			it := cx.item(s.Name, kindEnumMember, "", n)
+			it.Documentation = markdown(s.Description)
+			out = append(out, it)
 		}
-		out = append(out, it)
+	default:
+		el := cx.elements().Lookup(g[1])
+		if el == nil {
+			return nil, true
+		}
+		at := el.Attr(g[2])
+		if at == nil {
+			return nil, true
+		}
+		for _, v := range at.Values() {
+			it := cx.item(v, kindEnumMember, "", n)
+			it.Documentation = markdown(at.Description)
+			out = append(out, it)
+		}
 	}
 	return out, true
 }
 
-// tags: after `<`, the built-in tags.
+// attrs: inside `<tag `, the tag's attributes and the global ones: `name=""`, or `name` for a
+// boolean one. A custom element's own come from the manifest. `slot` is offered only directly
+// inside a custom element with named slots.
+func (cx *completion) attrs() ([]completionItem, bool) {
+	tag, open, ok := cx.startTag()
+	if !ok {
+		return nil, false
+	}
+	g := reAttr.FindStringSubmatch(tag)
+	if g == nil {
+		return nil, false
+	}
+	n := min(len(g[2]), cx.col)
+	var out []completionItem
+	own := map[string]bool{}
+	if el := cx.elements().Lookup(g[1]); el != nil {
+		for _, at := range el.Attrs {
+			own[at.Name] = true
+			it := cx.item(at.Name, kindProperty, at.Type, n)
+			if at.Default != "" {
+				it.Detail += " = " + at.Default
+			}
+			if !at.Boolean() {
+				it.TextEdit.NewText = at.Name + `=""`
+			}
+			it.Documentation = markdown(at.Description)
+			out = append(out, it)
+		}
+		for _, at := range markup.HTML.Global {
+			if !own[at.Name] {
+				out = append(out, cx.htmlAttr(at, n))
+			}
+		}
+	} else {
+		for _, at := range markup.HTML.AttrsOf(g[1]) {
+			out = append(out, cx.htmlAttr(at, n))
+		}
+	}
+	if len(cx.parentSlots(open)) == 0 {
+		out = slices.DeleteFunc(out, func(it completionItem) bool { return it.Label == "slot" })
+	}
+	return out, true
+}
+
+// htmlAttr is the built-in attribute at, replacing the n bytes before the cursor.
+func (cx *completion) htmlAttr(at markup.Attr, n int) completionItem {
+	it := cx.item(at.Name, kindProperty, at.Description, n)
+	if !at.Boolean {
+		it.TextEdit.NewText = at.Name + `=""`
+	}
+	return it
+}
+
+// tags: after `<`, the built-in tags, then the custom elements in tag order.
 func (cx *completion) tags() ([]completionItem, bool) {
 	g := reTag.FindStringSubmatch(cx.prefix)
 	if g == nil {
@@ -508,6 +688,17 @@ func (cx *completion) tags() ([]completionItem, bool) {
 	var out []completionItem
 	for _, t := range markup.HTML.Tags {
 		out = append(out, cx.item(t.Name, kindProperty, t.Description, len(g[1])))
+	}
+	m := cx.elements()
+	tags := make([]string, 0, len(m.Elements))
+	for tag := range m.Elements {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	for _, tag := range tags {
+		it := cx.item(tag, kindClass, tag, len(g[1]))
+		it.Documentation = markdown(m.Elements[tag].Description)
+		out = append(out, it)
 	}
 	return out, true
 }
