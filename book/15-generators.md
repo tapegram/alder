@@ -16,6 +16,7 @@ msg`, `alder new capability`, `alder new type`, `alder new decl` and
 `alder new test` each write one piece, and `alder new auth` the login.
 `alder edit table` changes a table and writes its migration, `alder edit
 page` a page's parameters. `alder fill` fills a gap the others leave.
+`alder theme import` is a different kind of generator: it turns a shadcn or tweakcn CSS export into the app's `theme` declaration (Appendix C, "Importing a theme"), by the same copy, check, write.
 `alder new admin` writes all of the pieces for every table at once: a complete admin, with a list, a page, a form and a delete page
 per table, and `alder regen admin` keeps that admin up to date as the
 tables change.

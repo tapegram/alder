@@ -1734,6 +1734,8 @@ has, the routes and the build id. `ALDER_DEV_PANEL=0` turns the panel off.
 None of this is served without `ALDER_DEV=1`: no panel, no trace is recorded,
 and `/_dev` is a 404.
 
+`alder run` also serves `/_dev/theme`, a page for trying a theme and writing it into `App.alder` (Appendix C, "Trying a look"). It is the dev server's, so it needs neither `ALDER_DEV=1` nor a running app.
+
 
 ## Diagnostics
 
