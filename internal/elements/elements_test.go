@@ -62,7 +62,8 @@ func TestBuiltin_FirstTier(t *testing.T) {
 				t.Errorf("%s %s: want a one-line description, got %q", tag, a.Name, a.Description)
 			}
 		}
-		for _, s := range el.Slots {
+		for _, sl := range el.Slots {
+			s := sl.Name
 			if s == "" {
 				s = "-"
 			}
@@ -186,5 +187,35 @@ func TestAttrValues(t *testing.T) {
 		if got := strings.Join(Attr{Type: typ}.Values(), ","); got != want {
 			t.Errorf("Values(%q) = %q, want %q", typ, got, want)
 		}
+	}
+}
+
+// Every built-in element and its default slot are described (the editor's hover text).
+func TestBuiltin_Descriptions(t *testing.T) {
+	for tag, el := range Builtin().Elements {
+		if el.Description == "" {
+			t.Errorf("%s has no description", tag)
+		}
+	}
+	var def *Slot
+	for i, s := range Builtin().Lookup("al-button").Slots {
+		if s.Name == "" {
+			def = &Builtin().Lookup("al-button").Slots[i]
+		}
+	}
+	if def == nil || def.Description == "" {
+		t.Errorf("al-button default slot %+v, want a description", def)
+	}
+}
+
+// An app manifest without descriptions parses with empty ones.
+func TestParse_NoDescriptions(t *testing.T) {
+	m, err := Parse([]byte(`{"modules":[{"declarations":[{"tagName":"x-a","attributes":[{"name":"n"}],"slots":[{"name":""},{"name":"s"}]}]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	el := m.Lookup("x-a")
+	if el.Description != "" || el.Attr("n").Description != "" || len(el.Slots) != 2 || el.Slots[0].Description != "" || el.Slots[1].Name != "s" {
+		t.Errorf("%+v", el)
 	}
 }
