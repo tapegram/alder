@@ -106,6 +106,7 @@ usage: alder <command> [arguments]
   remove    remove a page or a table
   fill      fill a typed hole with an expression from stdin
   regen     regenerate generated code
+  theme     import a theme from a CSS export
   deploy    deploy to an environment
   status    show what an environment runs
   rollback  go back to an earlier build
@@ -1732,6 +1733,8 @@ adapter or a fake is wired, the session's fields, the migrations the database
 has, the routes and the build id. `ALDER_DEV_PANEL=0` turns the panel off.
 None of this is served without `ALDER_DEV=1`: no panel, no trace is recorded,
 and `/_dev` is a 404.
+
+`alder run` also serves `/_dev/theme`, a page for trying a theme and writing it into `App.alder` (Appendix C, "Trying a look"). It is the dev server's, so it needs neither `ALDER_DEV=1` nor a running app.
 
 
 ## Diagnostics

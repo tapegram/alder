@@ -2152,7 +2152,7 @@ browser ──HTTP──▶ dev server (alder run, ALDER_ADDR) ──proxy──
 ```
 
 **The proxy.** The dev server's handler, `devServer.ServeHTTP`, answers
-`/_dev/reload` itself and hands every other request to Go's
+`/_dev/reload` and the `/_dev/theme` routes itself and hands every other request to Go's
 `httputil.ReverseProxy`, aimed at the current child's address. The
 address is read once per request, under a lock, so a request that started
 before a swap finishes on the child it started on. `FlushInterval: -1`
@@ -2160,6 +2160,10 @@ makes the proxy pass each piece of an answer on as soon as the app writes
 it, which a Datastar answer (a stream of server-sent events, "A request"
 above) needs. Cookies and `303`s are passed on untouched, and the
 `Host` header is kept, so the app sees the address the browser used.
+
+**The theme page.** `/_dev/theme` (`cmd/alder/theme_ui.go`, with the page's HTML, CSS and JavaScript as Go string constants in `theme_ui_assets.go`) is answered by this handler too, never proxied, so it works while the app is still building or does not build. A write is refused while the app has errors the checker cannot get past (an `App.alder` that does not parse, say); type errors elsewhere do not block it. That is also why it exists only under `alder run`: the supervisor is the one process that owns the app's directory and may write to it, and a built app carries no such routes. Before anything else each of its routes passes `themeAllowed`, which refuses a request from another site (`Sec-Fetch-Site`, `Origin`) or addressed to another name (`Host`), because a write to `App.alder` must not be reachable from a web page you merely visited. The write path has four steps. The page posts its theme as JSON; `generate.ThemeEdit` runs the checker's own theme check on it (the E0042 rules, so the page and `alder check` cannot disagree) and refuses a declaration that fails; the formatter prints the declaration (`format.Theme`, the same code `alder fmt` uses); and that text is spliced over the old `theme { … }` in `App.alder`, read afresh at that moment so an edit made in an editor since the page loaded is kept. The splice goes through `Apply`, chapter 15's copy, check, write: the result is checked in a copy before the file is touched. The watcher then sees the file change and rebuilds like for any edit. Printing the whole declaration is why a `--` comment inside `theme { … }` does not survive a write.
+
+**The importer.** `theme.Import` (`internal/theme/import.go`) reads CSS with a small scanner of its own, as the repository allows no CSS library. It drops `/* … */` comments outside strings, then `nodes` cuts the text into statements and `{ … }` blocks, tracking strings, parentheses and braces so a `;` inside `url(…)` or a `}` inside a quoted string does not end one (parentheses are tracked only for `;`). A block's selector decides where its `--name: value` lines go: `.dark` (or `[data-theme=dark]`) is the dark scheme, `:root` or `html` the light one, and a rule inside `@media (prefers-color-scheme: dark)` is dark; `@media`, `@layer` and `@supports` are walked into, and Tailwind's own at-rules (`@theme`, `@import`, `@custom-variant`) are counted and skipped. Each name is looked up in the token table (`theme.ByCSS`), the value is checked against the token's kind, and bare HSL channels are wrapped in `hsl()`. Whatever cannot be placed is kept with a reason (`Unplaced`) instead of being lost; `UnplacedCSS` prints those as the block to paste into `app.css`. The importer is a pure function from text to a theme: `alder theme import` and the page's Import… button both call it, and only the first writes.
 
 **The watcher.** `watch` polls rather than asking the operating system
 for change notifications, so the compiler needs no dependency beyond Go's

@@ -54,7 +54,7 @@ func TestSpecs_FieldParseErrorIsRefusal(t *testing.T) {
 
 func TestSpecs_AllIDs(t *testing.T) {
 	want := "new page,new table,new form,new msg,new capability,new admin,new auth,new type,new decl,new test,new silo," +
-		"edit table,edit page,edit decl,edit auth,edit session,remove page,remove table,regen admin"
+		"edit table,edit page,edit decl,edit auth,edit session,remove page,remove table,regen admin,theme import"
 	var ids []string
 	for _, s := range Specs() {
 		ids = append(ids, s.ID)

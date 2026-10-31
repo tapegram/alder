@@ -195,6 +195,44 @@ The rules list the tokens in the stylesheet's order, not the declaration's, so t
 
 Your rules win without any `!important`, because the whole library sits in a *cascade layer*: `al.css` wraps everything in `@layer al { … }`, and CSS that is not in a layer always beats CSS that is, whatever the selectors. The theme's rules are outside the layer, so they beat alder-ui's values. Your own stylesheet, `static/app.css`, is linked after `al.css` and is outside the layer too, so at equal specificity it beats the theme: the order is alder-ui, then the theme, then `app.css`. That stylesheet stays the place for what a theme cannot say: a token alder-ui does not have (`--tracking-normal`, a `--brand-*` of your own), a one-off rule, or a whole theme pasted from shadcn/ui or tweakcn (two blocks, written `:root, .light { … }` and `.dark { … }`, as "Light and dark" explains), which then overrides the declaration. The trade-off of the layer is that a rule of yours cannot lose to the library by accident either: `button { padding: 0 }` in your stylesheet also removes the padding of the button inside every `<al-button>`. Write such rules with a narrower selector (`.toolbar button`), or put your own CSS in a layer declared after it (`@layer al, app;`).
 
+### Trying a look: /_dev/theme
+
+Editing colour strings by hand is slow when the question is "what does this look like?". Under `alder run`, the address `/_dev/theme` (on the dev server's own port) is a page for trying a look and writing it into `App.alder` when you like it. It is a dev tool: a built or deployed app does not have it (chapter 11).
+
+The page has a panel and a preview. The panel has a Light/Dark switch, three buttons (Reset, Import…, Write to App.alder) and one control per token, laid out by the kinds of the table above. A colour is a text field with a swatch, a native colour picker and three sliders for its `oklch()` lightness, chroma and hue (the sliders appear only when the value is `oklch(L C H)` with plain numbers; any other notation gets the text field and the picker alone); a length is a number and a unit; a font stack is a comma-separated list; a shadow is text. The preview has two tabs, Gallery (every alder-ui element, in the scheme you chose) and App (your own app, in a frame). Moving a control changes the preview at once: the page sets the token as an inline custom property on the preview's `<html>`, so nothing is built and nothing is reloaded.
+
+Nothing is written until you press Write to App.alder. Until then the working state lives in the browser tab (`sessionStorage`), so a reload of the page keeps it, and Reset goes back to what `App.alder` holds. The panel itself is styled with a stylesheet of its own and never uses the theme's tokens, so a theme with white text on a white background does not make the controls unreadable.
+
+Write checks the declaration with the checker (E0042, the rules of "Changing a token"), and a declaration that fails is not written: the panel lists the errors instead. Otherwise it replaces the `theme` declaration in `app/App.alder` with the formatter's printing of the one on the page, and the watcher rebuilds the app. If the file has no declaration yet, the write inserts one (after `deploy`, `session` and the imports); if everything is cleared, it deletes the declaration. Because the declaration is printed again whole, a `--` comment *inside* `theme { … }` is dropped by a write; a comment above the declaration is kept. Write has no memory of how you laid the fields out either, so the file comes out the way `alder fmt` prints a theme (chapter 3).
+
+The write changes a file on your disk from a web page, so the dev server only answers this page's own routes to requests from its own address: a page on another site, or one that points its own name at 127.0.0.1, is refused.
+
+### Importing a theme
+
+The themes of shadcn/ui and tweakcn are CSS. `alder theme import` turns one into the `theme` declaration of "Changing a token":
+
+```
+$ alder theme import tweakcn.css
+theme: 59 tokens → app/App.alder  (light 32, dark 20, theme-wide 7; replaced the theme that was there)
+15 not placed — paste into static/app.css if you want them:
+  :root {
+    --font-serif: Lora, Georgia, serif; /* not a token of alder-ui v0.4.2 */
+    --tracking-normal: 0em; /* not a token of alder-ui v0.4.2 */
+    …
+  }
+
+  .dark {
+    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.4), … /* theme-wide in alder-ui; the dark value differs */
+  }
+skipped 1 block (@theme inline)
+```
+
+It reads the three shapes the exports come in: shadcn v4 (`oklch()` colours), shadcn v3 (bare HSL channels, `--primary: 222.2 47.4% 11.2%`, which the importer wraps in `hsl()`) and tweakcn's. The file is a `:root` block and a `.dark` block, or the same inside `@media (prefers-color-scheme: dark)`; `-` reads standard input, and `--dir` names the app. The import replaces the whole declaration: what was in `theme { … }` before is gone, not merged (the summary line says so), and `--dry-run` prints the diff without writing.
+
+Not everything in an export is a token of alder-ui. Those lines come back as a block for `static/app.css`, each with the reason: a token alder-ui does not have (`--font-serif`, `--tracking-normal`), a value of the wrong shape, a theme-wide token whose dark value differs from the light one (alder-ui has one value for those), or a block that is not a scheme. At-rules that carry no theme (`@theme`, `@import "tailwindcss"`, `@custom-variant`) are counted, not listed. Paste the unplaced block into `app.css` if you want it: that stylesheet comes after the theme, as "Changing a token" explains. A file with no token of alder-ui in it is refused and nothing is written. In the page above, the Import… button takes the same CSS, shows the same unplaced lines with a Copy button, and fills the controls without writing.
+
+For an agent, `--print` writes the declaration to standard output and nothing to disk, so the agent can read it and adjust a value before it puts it in `App.alder` itself; the unplaced lines go to standard error. `--print` cannot be combined with `--json`, and `-` is accepted only on the command line.
+
 ## The base layer and typography
 
 Two groups of rules in `al.css` are not about any one element.

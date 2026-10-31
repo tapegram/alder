@@ -25,6 +25,7 @@ var commandUsages = map[string]string{
 	"remove":   removeUsage,
 	"fill":     fillUsage,
 	"regen":    regenUsage,
+	"theme":    themeUsage,
 	"deploy":   deployUsage,
 	"status":   statusUsage,
 	"rollback": rollbackUsage,

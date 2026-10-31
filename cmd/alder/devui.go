@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"alder/internal/diag"
 )
 
 // errState is what the dev server shows for a failure: structured diagnostics from the checker
@@ -32,6 +34,15 @@ type diagItem struct {
 	Message  string `json:"message"`
 	Excerpt  string `json:"-"`
 }
+
+// diagItemOf is d as `alder check --json` prints it (no excerpt).
+func diagItemOf(d diag.Diagnostic) diagItem {
+	return diagItem{Code: d.Code, Severity: d.Severity, File: d.Span.File, Line: d.Span.Start.Line, Col: d.Span.Start.Col,
+		EndLine: d.Span.End.Line, EndCol: d.Span.End.Col, Message: d.Message}
+}
+
+// where is d's position as `file:line:col`.
+func (d diagItem) where() string { return fmt.Sprintf("%s:%d:%d", d.File, d.Line, d.Col) }
 
 // count is the number of errors the strip announces: one per diagnostic, or one for a block of
 // text.

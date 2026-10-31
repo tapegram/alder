@@ -3,6 +3,7 @@ package generate
 import (
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -95,6 +96,9 @@ func (s Sets) Has(name string) bool { return len(s[name]) > 0 }
 type App struct {
 	Dir     string
 	Migrate func(dir, slug string) ([]string, error) // slug "" = migrateCopy's default name
+	// Stdin is the command line's standard input; nil elsewhere (the language server's form
+	// preview), where a generator that reads `-` refuses.
+	Stdin io.Reader
 }
 
 // Spec describes one generator command: its ID ("new page"), its arguments and flags, and
