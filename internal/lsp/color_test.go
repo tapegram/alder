@@ -5,6 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"alder/internal/check"
+	"alder/internal/diag"
+	"alder/internal/names"
 	"alder/internal/theme"
 )
 
@@ -108,12 +111,52 @@ func TestDocumentColor_VarDefault(t *testing.T) {
 	}
 }
 
+// TestDocumentColor_VarFallback: `var(--x, fallback)` is --x when it resolves, else the fallback.
+func TestDocumentColor_VarFallback(t *testing.T) {
+	c := start(t, blogCopy(t))
+	withTheme(t, c, `theme {
+  light: { primary: "#ff0000", ring: "var(--nope, #00ff00)", border: "var(--primary, #0000ff)", accent: "var(--accent, #0000ff)" },
+}
+`)
+	got := documentColors(t, c, "app/App.alder")
+	want := []Color{{1, 0, 0, 1}, {0, 1, 0, 1}, {1, 0, 0, 1}, {0, 0, 1, 1}}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v", got)
+	}
+	for k, w := range want {
+		if got[k].Color != w {
+			t.Errorf("colour %d: %+v, want %+v", k, got[k].Color, w)
+		}
+	}
+}
+
+// TestDocumentColor_BeforeAnalysis: a request while the first build runs still finds App by its path.
+func TestDocumentColor_BeforeAnalysis(t *testing.T) {
+	release := make(chan struct{})
+	real := loadCheckedOverlay
+	loadCheckedOverlay = func(root string, over map[string][]byte) (*names.Program, *check.Result, *diag.Bag, []error) {
+		<-release
+		return real(root, over)
+	}
+	t.Cleanup(func() { loadCheckedOverlay = real })
+	c := start(t, blogCopy(t))
+	defer close(release) // before the cleanups, so the server can stop
+	c.open("app/App.alder", c.disk("app/App.alder"))
+	if got := documentColors(t, c, "app/App.alder"); len(got) != 4 {
+		t.Fatalf("before the first analysis: %+v", got)
+	}
+	c.open("app/Layout.alder", c.disk("app/Layout.alder"))
+	if got := documentColors(t, c, "app/Layout.alder"); got == nil || len(got) != 0 {
+		t.Fatalf("Layout before the first analysis: %+v", got)
+	}
+}
+
 func TestDocumentColor_Skips(t *testing.T) {
 	c := start(t, blogCopy(t))
 	withTheme(t, c, `theme {
   radius: "0.5rem",
   fontSans: "Inter, sans-serif",
-  light: { primary: "not a colour", ring: "var(--ring)", accent: "var(--border)", border: "var(--accent)" },
+  light: { primary: "not a colour", ring: "var(--ring)", accent: "var(--border)", border: "var(--accent)", radius: "#ff0000" },
 }
 `)
 	if got := documentColors(t, c, "app/App.alder"); got == nil || len(got) != 0 {

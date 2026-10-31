@@ -76,7 +76,8 @@ func documentColorReq(s *server, params json.RawMessage) (any, error) {
 	return out, nil
 }
 
-// isApp reports whether rel is the app's App module, in the latest analysis or the last good one.
+// isApp reports whether rel is the app's App module, in the latest analysis or the last good
+// one; before any analysis has it (a request while the first build runs), `app/App.alder`.
 func (s *server) isApp(rel string) bool {
 	for _, a := range []*analysis{s.current(), s.lastGood()} {
 		if a == nil || a.prog == nil {
@@ -86,7 +87,7 @@ func (s *server) isApp(rel string) bool {
 			return app.File == rel
 		}
 	}
-	return false
+	return rel == "app/App.alder"
 }
 
 // schemeColours are the swatches of one scheme record (scheme is "light" or "dark").
@@ -116,14 +117,26 @@ func (s *server) schemeColours(lines []string, scheme string, rec []*syntax.Depl
 }
 
 // resolveColour parses text, following a `var(--x)` to the record's own value for x, else
-// alder-ui's default for the scheme. seen holds the CSS names already followed: a cycle gives
-// no colour.
+// alder-ui's default for the scheme, else the var's fallback (`var(--x, fallback)`). seen holds
+// the CSS names already followed: a cycle gives no colour.
 func resolveColour(text, scheme string, own map[string]string, seen map[string]bool) (theme.RGBA, bool) {
 	t := strings.TrimSpace(text)
 	if len(t) < len("var()") || !strings.EqualFold(t[:4], "var(") || t[len(t)-1] != ')' {
 		return theme.ParseColour(t)
 	}
-	name := strings.TrimSpace(t[4 : len(t)-1])
+	name, fallback, hasFallback := strings.Cut(t[4:len(t)-1], ",")
+	name = strings.TrimSpace(name)
+	if c, ok := resolveVar(name, scheme, own, seen); ok {
+		return c, true
+	}
+	if hasFallback {
+		return resolveColour(fallback, scheme, own, seen)
+	}
+	return theme.RGBA{}, false
+}
+
+// resolveVar is resolveColour of the value the custom property name holds for the scheme.
+func resolveVar(name, scheme string, own map[string]string, seen map[string]bool) (theme.RGBA, bool) {
 	if !strings.HasPrefix(name, "--") || seen[name] {
 		return theme.RGBA{}, false
 	}
