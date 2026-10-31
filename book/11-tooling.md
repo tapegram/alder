@@ -1879,7 +1879,29 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   On a local such as `q` it shows its type, on a hole `?count` the type the
   hole must have, on a module name in an `import` the file and how many
   declarations the module has, and on a standard HTML tag or attribute its
-  description. On a page's `load`, `view` or `update`, hover also says what the
+  description. On a custom element (alder-ui's `al-*`, or one of the app's own
+  from `elements/custom-elements.json`) it shows what the Custom Elements
+  Manifest says about it (chapter 5, "Custom elements"): its description, each
+  attribute with its type and default, and its slots. On `<al-button` in the
+  blog's search form:
+
+  ```text
+  `<al-button>` — A button, styled by variant and size. …
+
+  **Attributes**
+  - `variant`: `"primary" | "secondary" | "outline" | "ghost" | "destructive" | "link"` = `"primary"` — The button's look: …
+  - `size`: `"sm" | "md" | "lg" | "xs" | "icon" | "icon-sm" | "icon-lg"` = `"md"` — The button's height and padding. …
+  - `disabled`: `boolean` = `false` — Shows the button as disabled and stops pointer clicks. …
+  - …
+
+  **Slots**: default — The button's label.
+  ```
+
+  The text is Markdown, so Neovim shows the backticked names as code. On one of
+  the element's attributes, such as `variant`, hover shows that attribute's
+  line alone. A component such as `<Layout.Page` is a function, not an
+  element, so hover shows its signature as for any other declaration. On a
+  page's `load`, `view` or `update`, hover also says what the
   hook does and what it must return; on the `page` line it shows the route, the
   parameter record and the `requires` clauses.
 - **Go to definition.** On a use of `lastPage` it jumps to `lastPage : Int`;
@@ -1892,8 +1914,17 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   program, in every module.
 - **Completion.** After `Text.` the functions and types of module `Text`;
   after `params.` the fields of `Params` (`page` and `q`); after `<` the
-  standard HTML tags, after `</` the tag to close, and inside a tag its
-  attributes; after `import ` the modules; on a hole, the names in scope,
+  standard HTML tags and then the custom elements, alder-ui's `al-*` and the
+  app's own, each with its description; after `</` the tag to close; and
+  inside a tag its attributes. A custom element's attributes come with their
+  type and default (`variant` shows `"primary" | "secondary" | … = "primary"`);
+  choosing one inserts `variant=""` with the cursor between the quotes, or the
+  bare name for a boolean such as `disabled`. Inside the quotes, an attribute
+  whose type is a list of choices completes them: after `<al-button
+  variant="` the six variants. After `slot="` on a child of a custom element,
+  the slots that element names: under `<al-pagination>`, `prev` and `next`.
+  The `slot` attribute itself is offered only there. After `import ` the
+  modules; on a hole, the names in scope,
   those whose type fits the hole first. Completion works on the line you
   are typing even though that line does not parse yet (chapter 13, section
   10). Neovim shows the items through your completion plugin (blink.cmp,
