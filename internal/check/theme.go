@@ -26,6 +26,16 @@ func (mc *modCtx) checkTheme(decls []*syntax.ThemeDecl) {
 	mc.themeFields(decls[0].Fields, "")
 }
 
+// ThemeFields checks a theme declaration's fields alone, as checkTheme does in App (same
+// messages, code E0042), reporting at the fields' spans: the configurator checks a theme it
+// built with it before printing one.
+func ThemeFields(fs []*syntax.DeployField) []diag.Diagnostic {
+	bag := &diag.Bag{}
+	mc := &modCtx{c: &Checker{bag: bag}}
+	mc.themeFields(fs, "")
+	return bag.Items
+}
+
 // themeFields checks one record of a theme: the top level (scheme "") or `light`/`dark`.
 func (mc *modCtx) themeFields(fs []*syntax.DeployField, scheme string) {
 	c := mc.c
