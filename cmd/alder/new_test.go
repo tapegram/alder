@@ -14,7 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"alder/internal/generate"
 	"alder/internal/scaffold"
+	"alder/internal/theme"
 )
 
 func runNew(t *testing.T, args ...string) (int, string, string) {
@@ -461,5 +463,110 @@ func TestNewAppScaffoldTable(t *testing.T) {
 	}
 	if code, out, errs := run(t, dir); code != 0 || out != "" || errs != "" {
 		t.Errorf("alder check: exit %d, %q %q", code, out, errs)
+	}
+}
+
+// themeDecl is the theme declaration text of the starting theme name.
+func themeDecl(t *testing.T, name string) string {
+	t.Helper()
+	p, ok := theme.PresetNamed(name)
+	if !ok {
+		t.Fatalf("no preset %q", name)
+	}
+	text, err := generate.ThemeText(p.Theme)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(text)
+}
+
+func TestNew_Theme(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "x")
+	code, out, errs := runNew(t, dir, "--theme", "pebble")
+	if code != 0 || errs != "" {
+		t.Fatalf("alder new --theme pebble: exit %d, stderr %q", code, errs)
+	}
+	if !strings.Contains(readFile(t, filepath.Join(dir, "app", "App.alder")), themeDecl(t, "pebble")) {
+		t.Error("App.alder lacks pebble's declaration")
+	}
+	if n := strings.Count(out, "theme: pebble\n"); n != 1 {
+		t.Errorf("the recap has %d `theme: pebble` lines:\n%s", n, out)
+	}
+	if strings.Contains(out, "light 32") {
+		t.Errorf("UsePreset's own output leaked into the recap:\n%s", out)
+	}
+	if code, out, errs := run(t, dir); code != 0 || out != "" || errs != "" {
+		t.Errorf("alder check: exit %d, %q %q", code, out, errs)
+	}
+	if code, out, errs := runBuild(t, dir); code != 0 {
+		t.Errorf("alder build: exit %d\n%s%s", code, out, errs)
+	}
+	// the `=` form
+	d2 := filepath.Join(t.TempDir(), "y")
+	if code, _, errs := runNew(t, "--theme=paper", d2); code != 0 {
+		t.Fatalf("--theme=paper: exit %d, %q", code, errs)
+	}
+}
+
+func TestNew_ThemeUnknown(t *testing.T) {
+	t.Parallel()
+	for _, bare := range []bool{false, true} {
+		dir := filepath.Join(t.TempDir(), "x")
+		args := []string{dir, "--theme", "papr"}
+		if bare {
+			args = append(args, "--bare")
+		}
+		code, out, errs := runNew(t, args...)
+		if code != 1 || out != "" {
+			t.Errorf("bare=%v: exit %d, stdout %q", bare, code, out)
+		}
+		if !strings.Contains(errs, "no starting theme `papr`; did you mean `paper`?") || !strings.Contains(errs, "starting themes (alder-ui") {
+			t.Errorf("bare=%v: stderr:\n%s", bare, errs)
+		}
+		if _, err := os.Stat(dir); err == nil {
+			t.Errorf("bare=%v: the directory was created", bare)
+		}
+	}
+	if code, _, errs := runNew(t, filepath.Join(t.TempDir(), "x"), "--theme"); code != 2 || !strings.Contains(errs, "usage:") {
+		t.Errorf("--theme without a name: exit %d, %q", code, errs)
+	}
+}
+
+func TestNew_ThemeZinc(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "x")
+	if code, _, errs := runNew(t, dir, "--theme", "zinc"); code != 0 {
+		t.Fatalf("exit %d, %q", code, errs)
+	}
+	if !strings.Contains(readFile(t, filepath.Join(dir, "app", "App.alder")), themeDecl(t, "zinc")) {
+		t.Error("App.alder lacks zinc's declaration")
+	}
+	// without the flag nothing is written
+	plain := filepath.Join(t.TempDir(), "p")
+	if code, _, _ := runNew(t, plain); code != 0 {
+		t.Fatal("alder new failed")
+	}
+	if strings.Contains(readFile(t, filepath.Join(plain, "app", "App.alder")), "theme {") {
+		t.Error("a theme declaration without --theme")
+	}
+}
+
+// A bare app has an App.alder, so --bare --theme writes the declaration into it and builds.
+func TestNew_BareTheme(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "x")
+	code, out, errs := runNew(t, dir, "--bare", "--theme", "paper")
+	if code != 0 || errs != "" {
+		t.Fatalf("exit %d, stderr %q", code, errs)
+	}
+	if !strings.Contains(readFile(t, filepath.Join(dir, "app", "App.alder")), themeDecl(t, "paper")) {
+		t.Error("App.alder lacks paper's declaration")
+	}
+	if strings.Count(out, "theme: paper\n") != 1 || strings.Count(out, "  app/App.alder\n") != 1 {
+		t.Errorf("recap:\n%s", out)
+	}
+	if code, out, errs := runBuild(t, dir); code != 0 {
+		t.Errorf("alder build: exit %d\n%s%s", code, out, errs)
 	}
 }

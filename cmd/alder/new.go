@@ -10,12 +10,14 @@ import (
 	"slices"
 	"strings"
 
+	"alder/internal/generate"
 	"alder/internal/scaffold"
 	"alder/internal/style"
+	"alder/internal/theme"
 )
 
 // newUsage is the usage line of `alder new`.
-const newUsage = "usage: alder new <name> [--bare]  (or a path ending in the name: alder new apps/<name>), or alder new page|table|form|msg|capability|admin|auth|type|decl|test|silo … (a generator)"
+const newUsage = "usage: alder new <name> [--bare] [--theme <name>]  (or a path ending in the name: alder new apps/<name>), or alder new page|table|form|msg|capability|admin|auth|type|decl|test|silo … (a generator)"
 
 // runNewTo is `alder new <dir>`: it writes the scaffold (internal/scaffold, the book's
 // guestbook) into dir, whose last element is the app's name, then runs the migration generator
@@ -39,14 +41,25 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 			return runSpec(s, args[1:], specUsage[s.ID], stdout, stderr)
 		}
 	}
-	bare := false
+	bare, hasTheme, themeName := false, false, ""
 	var rest []string
-	for _, a := range args {
-		if a == "--bare" || a == "-bare" {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--bare" || a == "-bare":
 			bare = true
-			continue
+		case a == "--theme" || a == "-theme":
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				fmt.Fprintln(stderr, newUsage)
+				return 2
+			}
+			hasTheme, themeName = true, args[i+1]
+			i++
+		case strings.HasPrefix(a, "--theme="):
+			hasTheme, themeName = true, strings.TrimPrefix(a, "--theme=")
+		default:
+			rest = append(rest, a)
 		}
-		rest = append(rest, a)
 	}
 	args = rest
 	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
@@ -66,6 +79,13 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 	if !scaffold.ValidName(name) {
 		fmt.Fprintf(stderr, "alder new: `%s` is not a valid app name: use letters, digits and `-`, starting with a letter (it names the directory, the built binary and the app's Go module)\n", name)
 		return 1
+	}
+	if hasTheme { // an unknown starting theme is refused before anything is created
+		if _, ok := theme.PresetNamed(themeName); !ok {
+			_, err := generate.UsePreset(generate.App{}, themeName, true, false)
+			fmt.Fprintf(stderr, "alder new: %v\n", err)
+			return 1
+		}
 	}
 	if err := scaffold.CheckTarget(dir); errors.Is(err, scaffold.ErrNotEmpty) {
 		fmt.Fprintf(stderr, "alder new: `%s` exists and is not empty: choose another name, or empty it first\n", dir)
@@ -110,6 +130,14 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 		}
 		written = append(written, f.Path)
 	}
+	if hasTheme { // its own output is dropped: the recap names the theme in one line
+		if _, err := generate.UsePreset(generate.App{Dir: dir, Migrate: migrateFor}, themeName, false, false); err != nil {
+			return fail(fmt.Errorf("the starting theme `%s` could not be written: %v", themeName, err))
+		}
+		if !slices.Contains(written, "app/App.alder") {
+			written = append(written, "app/App.alder")
+		}
+	}
 	var mout bytes.Buffer
 	if c := runMigrateTo([]string{dir}, style.NoStyle(&mout), style.NoStyle(&mout)); c != 0 {
 		return fail(fmt.Errorf("the migration generator failed on the scaffold:\n%s", mout.String()))
@@ -126,6 +154,9 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 	}
 	if parent != "" {
 		fmt.Fprintf(stdout, "go.mod keeps the app out of the Go module of %s\n", parent)
+	}
+	if hasTheme {
+		fmt.Fprintf(stdout, "theme: %s\n", themeName)
 	}
 	if bare {
 		fmt.Fprintf(stdout, "\n%s\n  cd %s\n", st.Bold("next:"), dir)
