@@ -1,0 +1,13 @@
+{
+  "name": "Foreign",
+  "sets": { "base": { "sources": [{ "$ref": "base.tokens.json" }] } },
+  "modifiers": {
+    "mode": {
+      "contexts": {
+        "light": [{ "$ref": "light.tokens.json" }],
+        "dark": [{ "$ref": "dark.tokens.json" }]
+      }
+    }
+  },
+  "resolutionOrder": [{ "$ref": "#/sets/base" }, { "$ref": "#/modifiers/mode" }]
+}

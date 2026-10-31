@@ -3,6 +3,7 @@
     "$type": "color",
     "background": { "$value": { "colorSpace": "oklch", "components": [1, 0, 0] }, "$description": "The page background." },
     "foreground": { "$value": { "colorSpace": "oklch", "components": [0.145, 0, 0] } },
-    "primary": { "$value": "{color.brand}" }
+    "primary": { "$value": "{color.brand}" },
+    "ring": { "$value": "{color.primary}" }
   }
 }

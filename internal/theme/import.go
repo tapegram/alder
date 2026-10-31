@@ -285,24 +285,32 @@ func check(tok Token, value string) (string, string) {
 
 // UnplacedCSS is the unplaced declarations as valid CSS, grouped by the block each came from in
 // first-seen order, each with its reason as a comment: the text to paste into an app's own
-// stylesheet.
+// stylesheet. The DTCG reader's blocks (`<file> <path>`) are grouped by file under `:root`, the
+// file named in a comment above and each token's path in front of its reason.
 func UnplacedCSS(us []Unplaced) string {
 	var order []string
 	groups := map[string][]Unplaced{}
 	for _, u := range us {
-		if _, ok := groups[u.Block]; !ok {
-			order = append(order, u.Block)
+		key := u.Block
+		if file, _, ok := dtcgBlock(u.Block); ok {
+			key = "\x00" + file // no selector starts with NUL
 		}
-		groups[u.Block] = append(groups[u.Block], u)
+		if _, ok := groups[key]; !ok {
+			order = append(order, key)
+		}
+		groups[key] = append(groups[key], u)
 	}
 	var b strings.Builder
-	for i, block := range order {
+	for i, key := range order {
 		if i > 0 {
 			b.WriteString("\n")
 		}
 		indent, closing := "", ""
-		sel := block
-		if rest, ok := strings.CutPrefix(block, "@media "); ok {
+		sel := key
+		if file, ok := strings.CutPrefix(key, "\x00"); ok {
+			b.WriteString("/* " + noCommentEnd(file) + " */\n")
+			sel = ":root"
+		} else if rest, ok := strings.CutPrefix(key, "@media "); ok {
 			if j := strings.Index(rest, " { "); j >= 0 && strings.HasSuffix(rest, " }") {
 				b.WriteString("@media " + rest[:j] + " {\n")
 				sel = rest[j+3 : len(rest)-2]
@@ -310,14 +318,25 @@ func UnplacedCSS(us []Unplaced) string {
 			}
 		}
 		b.WriteString(indent + sel + " {\n")
-		for _, u := range groups[block] {
-			reason := strings.ReplaceAll(u.Reason, "*/", "* /")
-			fmt.Fprintf(&b, "%s  %s: %s; /* %s */\n", indent, u.Name, u.Value, reason)
+		for _, u := range groups[key] {
+			reason := u.Reason
+			if _, path, ok := dtcgBlock(u.Block); ok {
+				reason = path + ": " + reason
+			}
+			fmt.Fprintf(&b, "%s  %s: %s; /* %s */\n", indent, u.Name, u.Value, noCommentEnd(reason))
 		}
 		b.WriteString(indent + "}\n" + closing)
 	}
 	return b.String()
 }
+
+// dtcgBlock splits an Unplaced.Block of the DTCG reader, `<file> <dotted path>`.
+func dtcgBlock(block string) (file, path string, ok bool) {
+	file, path, ok = strings.Cut(block, " ")
+	return file, path, ok && strings.HasSuffix(file, ".json")
+}
+
+func noCommentEnd(s string) string { return strings.ReplaceAll(s, "*/", "* /") }
 
 // ---- the scanner
 

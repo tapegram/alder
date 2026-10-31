@@ -311,6 +311,12 @@ func NegativeLength(v string) bool {
 	return strings.HasPrefix(v, "-") && LengthOK(strings.TrimSpace(v[1:]))
 }
 
+// NegativeLengthReason is the refusal of a negative value for the length token field, shared
+// by the checker and the DTCG reader.
+func NegativeLengthReason(field string) string {
+	return "`" + field + "` is a length and cannot be negative: write one such as `\"0.5rem\"`"
+}
+
 // FamilyOK reports whether v is a font family name the CSS can carry quoted: not blank, and
 // without `"`, `\`, `;`, `{`, `}` or a control character.
 func FamilyOK(v string) bool {

@@ -59,6 +59,7 @@ func TestLoadDTCG_Resolver(t *testing.T) {
 		`light.tokens.json color.background={ "colorSpace": "oklch", "components": [1, 0, 0] }`,
 		`light.tokens.json color.foreground={ "colorSpace": "oklch", "components": [0.145, 0, 0] }`,
 		`light.tokens.json color.primary="{color.brand}"`,
+		`light.tokens.json color.ring="{color.primary}"`,
 	}
 	if got := paths(doc.Light); !reflect.DeepEqual(got, wantLight) {
 		t.Errorf("Light =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(wantLight, "\n"))
@@ -329,5 +330,28 @@ func TestLoadDTCG_Subdirectory(t *testing.T) {
 	}
 	if got := paths(doc.Root); !reflect.DeepEqual(got, []string{"themes/x/a.json x=1"}) {
 		t.Errorf("Root = %q", got)
+	}
+}
+
+// Sets that each refer to the next twice expand exponentially: past dtcgMaxSources the loader
+// stops with an error instead of walking them all.
+func TestLoadDTCG_SourceCap(t *testing.T) {
+	chain := func(n int) fstest.MapFS {
+		var sets []string
+		for i := range n {
+			sets = append(sets, fmt.Sprintf(`"s%d": {"sources": [{"$ref": "#/sets/s%d"}, {"$ref": "#/sets/s%d"}]}`, i, i+1, i+1))
+		}
+		sets = append(sets, fmt.Sprintf(`"s%d": {"sources": [{"$ref": "a.json"}]}`, n))
+		return fstest.MapFS{
+			"theme.resolver.json": {Data: []byte(`{"sets": {` + strings.Join(sets, ",") + `}, "resolutionOrder": [{"$ref": "#/sets/s0"}]}`)},
+			"a.json":              {Data: []byte(`{"x": {"$type": "number", "$value": 1}}`)},
+		}
+	}
+	// 4 levels: 31 sets and 16 file refs, well inside the cap; the file is read once.
+	if doc, err := loadDTCG(chain(4), "theme.resolver.json"); err != nil || len(doc.Root) != 1 {
+		t.Errorf("4 levels: err = %v", err)
+	}
+	if _, err := loadDTCG(chain(10), "theme.resolver.json"); err == nil || !strings.Contains(err.Error(), "1024") {
+		t.Errorf("10 levels: err = %v, want the 1024-source cap", err)
 	}
 }

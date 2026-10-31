@@ -20,6 +20,10 @@ import (
 const (
 	dtcgMaxBytes = 1 << 20 // the largest document the reader accepts
 	dtcgMaxFiles = 32      // the most files one resolver may refer to
+	// dtcgMaxSources is the most file and set `$ref`s one document may expand, counting a
+	// source each time it is reached: it bounds a resolver whose sets refer to each other many
+	// times over.
+	dtcgMaxSources = 1024
 )
 
 // schemeModifierNames are the names a resolver's light/dark modifier may have, matched
@@ -64,7 +68,13 @@ func (d *dtcgDoc) lookup(dotted string, dark bool) (dtcgToken, bool) {
 // include light and dark supplies Light and Dark, and any other modifier is resolved at its
 // default context (else its first) into Root and counted in Skipped. Any other document is a
 // tokens file: its top-level `light` and `dark` groups are the schemes, the rest is Root.
-// `$ref`s resolve against name's directory and must stay inside fsys.
+// `$ref`s resolve against name's directory and must stay inside fsys. Each file is read and
+// walked once however often it is referred to, and more than dtcgMaxSources expanded sources
+// is an error.
+//
+// Root, Light and Dark are kept apart: a scheme's value for a path beats Root's wherever the
+// sets that supplied Root sit in resolutionOrder, since lookup and ImportDTCG read the
+// scheme before Root.
 func loadDTCG(fsys fs.FS, name string) (*dtcgDoc, error) {
 	if !fs.ValidPath(name) {
 		return nil, fmt.Errorf("`%s` is not a path inside the theme's directory", name)
@@ -83,7 +93,7 @@ func loadDTCG(fsys fs.FS, name string) (*dtcgDoc, error) {
 	if !ok {
 		return nil, fmt.Errorf("`%s` is not a JSON object", name)
 	}
-	l := &dtcgLoader{fsys: fsys, name: name, dir: path.Dir(name), files: map[string]bool{}}
+	l := &dtcgLoader{fsys: fsys, name: name, dir: path.Dir(name), files: map[string]bool{}, parsed: map[string][]dtcgToken{}}
 	doc := &dtcgDoc{}
 	if _, isResolver := member(top, "resolutionOrder"); isResolver {
 		err = l.resolver(top, doc)
@@ -102,8 +112,10 @@ func loadDTCG(fsys fs.FS, name string) (*dtcgDoc, error) {
 
 type dtcgLoader struct {
 	fsys              fs.FS
-	name, dir         string          // the document loadDTCG was given, and its directory
-	files             map[string]bool // the files `$ref`s have named so far
+	name, dir         string                 // the document loadDTCG was given, and its directory
+	files             map[string]bool        // the files `$ref`s have named so far
+	parsed            map[string][]dtcgToken // each file's tokens, walked once
+	expanded          int                    // the file and set sources expanded so far
 	root, light, dark tokenList
 	sk                Skipped
 	scheme            bool // the scheme modifier has been found
@@ -252,6 +264,9 @@ func (l *dtcgLoader) set(name string, list *tokenList) error {
 	if l.inSet[name] {
 		return fmt.Errorf("`%s`: set `%s` includes itself", l.name, name)
 	}
+	if err := l.expand(); err != nil {
+		return err
+	}
 	ms, ok, err := jsonMembers(raw)
 	if err != nil || !ok {
 		return fmt.Errorf("`%s`: set `%s` is not an object", l.name, name)
@@ -374,21 +389,53 @@ func (l *dtcgLoader) file(ref string, list *tokenList) error {
 			return fmt.Errorf("`%s` refers to more than %d files", l.name, dtcgMaxFiles)
 		}
 	}
+	if err := l.expand(); err != nil {
+		return err
+	}
+	toks, ok := l.parsed[p]
+	if !ok {
+		var err error
+		if toks, err = l.readTokens(p); err != nil {
+			return err
+		}
+		l.parsed[p] = toks
+	}
+	for _, t := range toks {
+		list.add(t)
+	}
+	return nil
+}
+
+// expand counts one more expanded source against dtcgMaxSources.
+func (l *dtcgLoader) expand() error {
+	l.expanded++
+	if l.expanded > dtcgMaxSources {
+		return fmt.Errorf("`%s` expands more than %d sources", l.name, dtcgMaxSources)
+	}
+	return nil
+}
+
+// readTokens reads and walks the tokens file at p, in file order.
+func (l *dtcgLoader) readTokens(p string) ([]dtcgToken, error) {
 	raw, err := readDTCGFile(l.fsys, p)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("`%s` refers to `%s`, which is not there", l.name, p)
+			return nil, fmt.Errorf("`%s` refers to `%s`, which is not there", l.name, p)
 		}
-		return err
+		return nil, err
 	}
 	ms, ok, err := jsonMembers(raw)
 	if err != nil {
-		return fmt.Errorf("`%s`: %v", p, err)
+		return nil, fmt.Errorf("`%s`: %v", p, err)
 	}
 	if !ok {
-		return fmt.Errorf("`%s` is not a JSON object", p)
+		return nil, fmt.Errorf("`%s` is not a JSON object", p)
 	}
-	return walkTokens(ms, nil, "", p, list)
+	var list tokenList
+	if err := walkTokens(ms, nil, "", p, &list); err != nil {
+		return nil, err
+	}
+	return list.toks, nil
 }
 
 // readDTCGFile reads one JSON document of at most dtcgMaxBytes, without a leading BOM.
