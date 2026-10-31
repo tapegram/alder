@@ -1,6 +1,7 @@
 package theme
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -353,5 +354,14 @@ func TestLoadDTCG_SourceCap(t *testing.T) {
 	}
 	if _, err := loadDTCG(chain(10), "theme.resolver.json"); err == nil || !strings.Contains(err.Error(), "1024") {
 		t.Errorf("10 levels: err = %v, want the 1024-source cap", err)
+	}
+}
+
+func TestLoadDTCG_MissingRefIsTyped(t *testing.T) {
+	fsys := fstest.MapFS{"r.json": {Data: []byte(`{"sets":{"a":{"sources":[{"$ref":"gone.tokens.json"}]}},"resolutionOrder":[{"$ref":"#/sets/a"}]}`)}}
+	_, err := loadDTCG(fsys, "r.json")
+	var mr *MissingRefError
+	if !errors.As(err, &mr) || mr.File != "gone.tokens.json" {
+		t.Fatalf("got %T %v", err, err)
 	}
 }

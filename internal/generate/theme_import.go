@@ -59,7 +59,7 @@ func ReadThemeSource(name string, src []byte, format string) (theme.Theme, []the
 		}
 		th, un, sk, err := theme.ImportDTCG(fsys, file)
 		if err != nil {
-			if loose && bytes.Contains(src, []byte(`"resolutionOrder"`)) && (strings.Contains(err.Error(), "is not there") || strings.Contains(err.Error(), "inside the theme")) {
+			if mr := (*theme.MissingRefError)(nil); loose && errors.As(err, &mr) {
 				err = errors.New("a resolver needs its files: run `alder theme import <dir>/theme.resolver.json`")
 			}
 			return th, un, sk, Refusef("%s", err.Error())

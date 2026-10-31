@@ -415,12 +415,20 @@ func (l *dtcgLoader) expand() error {
 	return nil
 }
 
+// MissingRefError is a resolver's `$ref` naming a file that is not there: the document was
+// read without its folder (standard input, pasted text) or the file was left out.
+type MissingRefError struct{ Doc, File string }
+
+func (e *MissingRefError) Error() string {
+	return fmt.Sprintf("`%s` refers to `%s`, which is not there", e.Doc, e.File)
+}
+
 // readTokens reads and walks the tokens file at p, in file order.
 func (l *dtcgLoader) readTokens(p string) ([]dtcgToken, error) {
 	raw, err := readDTCGFile(l.fsys, p)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("`%s` refers to `%s`, which is not there", l.name, p)
+			return nil, &MissingRefError{Doc: l.name, File: p}
 		}
 		return nil, err
 	}
