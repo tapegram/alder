@@ -37,7 +37,7 @@ const themePage = `<!doctype html>
 <div class="tp-bar">
 <label for="start-from" class="tp-dim">Start from</label>
 <select id="start-from" title="Replace the working theme with a preset's"><option value="">—</option></select>
-<span id="start-sw" hidden><span class="tp-sw" data-sw="primary" title="primary"></span><span class="tp-sw" data-sw="background" title="background"></span><span class="tp-sw" data-sw="accent" title="accent"></span><span class="tp-sw" data-sw="foreground" title="foreground"></span><span class="tp-sw" data-sw="destructive" title="destructive"></span></span>
+<span id="start-sw" aria-hidden="true" hidden><span class="tp-sw" data-sw="primary" title="primary"></span><span class="tp-sw" data-sw="background" title="background"></span><span class="tp-sw" data-sw="accent" title="accent"></span><span class="tp-sw" data-sw="foreground" title="foreground"></span><span class="tp-sw" data-sw="destructive" title="destructive"></span></span>
 </div>
 <div class="tp-bar">
 <button type="button" id="reset" title="Back to the theme in App.alder">Reset</button>
@@ -389,7 +389,7 @@ $("tp-colours-h").textContent="Colours of the "+scheme+" scheme";var s=$("scheme
 s.setAttribute("aria-label","Scheme: "+scheme+" (switch to "+(scheme==="light"?"dark":"light")+")");startSync()}
 // Start from: the preset the working theme is exactly ("—" when none), and its light swatches
 function preset(name){var p=null;(st.presets||[]).forEach(function(x){if(x.name===name)p=x});return p}
-function startSync(){var sel=$("start-from"),dash=sel.options[0],p=null;
+function startSync(){if(!st)return;var sel=$("start-from"),dash=sel.options[0],p=null;
 (st.presets||[]).forEach(function(x){if(!p&&same(x.theme,working))p=x});
 dash.hidden=!!p;sel.value=p?p.name:"";var sw=$("start-sw");sw.hidden=!p;
 [].forEach.call(sw.children,function(e){e.style.background=p?(p.theme.light[e.getAttribute("data-sw")]||""):""})}

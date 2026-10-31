@@ -172,9 +172,9 @@ const generation = async () => {
       JSON.stringify(startPick.options) === JSON.stringify(st2.presets.map((p) => [p.name, p.title, p.purpose])), startPick);
 
     await page.selectOption('#start-from', 'paper');
-    await page.waitForTimeout(300); // the buttons' colour transition
     const paperDiff = await holds(paper.theme);
     const paperPrimary = await computed(paper.theme.light.primary);
+    // wait out the buttons' colour transition; on a timeout, start-from-paper below fails with the details
     await page.waitForFunction((c) => getComputedStyle(document.querySelector('#g-primary > button')).backgroundColor === c, paperPrimary, { timeout: 3000 }).catch(() => {});
     const paperBg = await buttonBg();
     const paperSw = await swatches();
