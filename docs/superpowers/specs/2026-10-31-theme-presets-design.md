@@ -88,7 +88,7 @@ a shadcn export; it is never state.
 
 ## The five starting themes
 
-Each is a complete look: light and dark colours (the 35 colour tokens), `radius` and the four
+Each is a complete look: light and dark colours (the 32 colour tokens), `radius` and the four
 derived radii set explicitly, the three widths, both font stacks, the four shadows, and the new
 `borderWidth`. The values rendered in the brainstorm's mockup are the starting point and are in
 Appendix A. Where alder-ui's `test/check.py` reports a text pairing under AA, the builder tunes
@@ -133,8 +133,8 @@ if needed **(call)**.
 ```
 themes/paper/theme.resolver.json
 themes/paper/base.tokens.json      # theme-wide: radius, radius-*, al-width-*, font-*, shadow-*, al-border-width
-themes/paper/light.tokens.json     # the 35 colours, light
-themes/paper/dark.tokens.json      # the 35 colours, dark
+themes/paper/light.tokens.json     # the 32 colours, light
+themes/paper/dark.tokens.json      # the 32 colours, dark
 ```
 
 ```json
@@ -306,7 +306,7 @@ starting themes (alder-ui v0.5.0):
 alder theme use <name> writes one into app/App.alder; the app owns it from there.
 
 $ alder theme use paper
-theme: paper → app/App.alder  (light 35, dark 35, theme-wide 15; replaced the theme that was there)
+theme: paper → app/App.alder  (light 32, dark 32, theme-wide 15; replaced the theme that was there)
 ```
 
 An unknown name: "no starting theme `papr`; did you mean `paper`?" (edit distance, as
@@ -372,7 +372,7 @@ After the presets are vendored, `internal/theme` reads its table from
   `tokens.css` **(call)**. The base file's order is today's `Tokens` order — `radius`, the four
   derived radii, the three widths, the two fonts, the four shadows — with `al-border-width`
   appended, so `Order(css)` and every golden CSS stay as they are except for the one new token
-  (15 theme-wide tokens, 35 colours). `Token` gains `Description string` (the `$description`)
+  (15 theme-wide tokens, 32 colours). `Token` gains `Description string` (the `$description`)
   and keeps `Field`, `CSS`, `Kind` (from `$type`: `dimension` → Length, `color` → Colour,
   `fontFamily` → Font, `shadow` → Shadow). `Field` is derived from the CSS name: strip `--`,
   then `al-`; split on `-`; the first segment stays, each later segment that starts with a
