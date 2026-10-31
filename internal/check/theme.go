@@ -3,6 +3,7 @@ package check
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"alder/internal/diag"
 	"alder/internal/syntax"
@@ -27,13 +28,65 @@ func (mc *modCtx) checkTheme(decls []*syntax.ThemeDecl) {
 }
 
 // ThemeFields checks a theme declaration's fields alone, as checkTheme does in App (same
-// messages, code E0042), reporting at the fields' spans: the configurator checks a theme it
-// built with it before printing one.
+// messages, code E0042), reporting at the fields' spans. It is the gate for fields built in
+// memory (the configurator's) before format.Theme prints them: it also refuses a field with no
+// value, and a text with a control character or surrounding spaces, which the printer would
+// write as is (App's source keeps checking as before: themeValue trims). When it refuses one of
+// those, it reports only those.
 func ThemeFields(fs []*syntax.DeployField) []diag.Diagnostic {
 	bag := &diag.Bag{}
 	mc := &modCtx{c: &Checker{bag: bag}}
-	mc.themeFields(fs, "")
+	themeRaw(bag, fs)
+	if len(bag.Items) == 0 {
+		mc.themeFields(fs, "")
+	}
 	return bag.Items
+}
+
+// themeRaw refuses, in the fields of one record of a theme built in memory (and in `light`'s and
+// `dark`'s), a missing value and a text the printer cannot write back as the same value.
+func themeRaw(bag *diag.Bag, fs []*syntax.DeployField) {
+	bad := func(v *syntax.DeployValue) bool {
+		return v.Kind == "string" && (v.Str != strings.TrimSpace(v.Str) || strings.ContainsFunc(v.Str, unicode.IsControl))
+	}
+	for _, f := range fs {
+		v := f.Value
+		if v == nil {
+			bag.Error(diag.ThemeDecl, f.NameSpan, "`%s` has no value", f.Name)
+			continue
+		}
+		vs := []*syntax.DeployValue{v}
+		switch v.Kind {
+		case "record":
+			themeRaw(bag, v.Rec)
+			continue
+		case "list":
+			vs = v.List
+		}
+		for _, e := range vs {
+			if bad(e) {
+				bag.Error(diag.ThemeDecl, e.Span, "`%s` has a line break or surrounding spaces: write the value alone, such as %s", f.Name, themeExample(f.Name))
+				break
+			}
+		}
+	}
+}
+
+// themeExample is a value of the token called field, in backticks, for a message.
+func themeExample(field string) string {
+	tok, ok := theme.Lookup(field)
+	if !ok {
+		return "`\"…\"`"
+	}
+	switch tok.Kind {
+	case theme.Colour:
+		return "`\"#4f46e5\"`"
+	case theme.Length:
+		return "`\"0.5rem\"`"
+	case theme.Font:
+		return "`[\"Inter\", \"sans-serif\"]`"
+	}
+	return "`\"none\"`"
 }
 
 // themeFields checks one record of a theme: the top level (scheme "") or `light`/`dark`.
