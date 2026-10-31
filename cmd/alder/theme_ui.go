@@ -39,6 +39,15 @@ type themeState struct {
 	Defaults map[string]theme.Default `json:"defaults"`        // keyed by field name; a theme-wide token's in .Light (and .Dark)
 	Tokens   []themeToken             `json:"tokens"`          // theme.Tokens, in order
 	Building bool                     `json:"building"`        // a build, or a write's rebuild, has not finished (devServer.building)
+	Presets  []themePreset            `json:"presets"`         // theme.Presets, in order: the Start-from picker's themes
+}
+
+// themePreset is one theme.Preset as the page reads it; Theme has the shape of themeState.Theme.
+type themePreset struct {
+	Name    string      `json:"name"`
+	Title   string      `json:"title"`
+	Purpose string      `json:"purpose"`
+	Theme   theme.Theme `json:"theme"`
 }
 
 // themeToken is one row of theme.Tokens: Kind is Kind.String(), Scope "scheme" (a colour, set
@@ -210,6 +219,10 @@ func (d *devServer) themeState() themeState {
 		if v, ok := defaults[t.CSS]; ok {
 			st.Defaults[t.Field] = v
 		}
+	}
+	st.Presets = []themePreset{}
+	for _, p := range theme.Presets() {
+		st.Presets = append(st.Presets, themePreset{p.Name, p.Title, p.Purpose, themeMaps(p.Theme)})
 	}
 	d.mu.Lock()
 	st.Building = d.building

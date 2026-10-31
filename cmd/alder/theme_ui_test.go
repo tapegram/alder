@@ -411,3 +411,29 @@ func TestThemeState_FirstDeclaration(t *testing.T) {
 		t.Errorf("theme %+v", st.Theme)
 	}
 }
+
+func TestThemeState_Presets(t *testing.T) {
+	d, _ := themeServer(t)
+	var st themeState
+	if w := serve(t, d, themeReq("GET", "/_dev/theme/state", ""), &st); w.Code != 200 {
+		t.Fatalf("status %d: %s", w.Code, w.Body)
+	}
+	want := theme.Presets()
+	if len(st.Presets) != len(want) || len(st.Presets) != 5 {
+		t.Fatalf("%d presets, want %d", len(st.Presets), len(want))
+	}
+	if st.Presets[0].Name != "zinc" {
+		t.Errorf("first preset %q, want zinc", st.Presets[0].Name)
+	}
+	for i, p := range st.Presets {
+		if p.Name != want[i].Name || p.Title != want[i].Title || p.Purpose != want[i].Purpose {
+			t.Errorf("preset %d: %+v, want %s/%s/%s", i, p, want[i].Name, want[i].Title, want[i].Purpose)
+		}
+		if len(p.Theme.Light) != 32 || len(p.Theme.Dark) != 32 {
+			t.Errorf("%s: light %d, dark %d entries, want 32", p.Name, len(p.Theme.Light), len(p.Theme.Dark))
+		}
+		if len(p.Theme.Root) == 0 {
+			t.Errorf("%s: no root entries", p.Name)
+		}
+	}
+}
