@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"maps"
 	"sort"
 	"strings"
 	"sync"
@@ -19,7 +20,8 @@ type Preset struct {
 	Theme                Theme
 }
 
-// Presets is the embedded starting themes: zinc first, then by Name. It panics when a
+// Presets is the embedded starting themes: zinc first, then by Name. The result is cached and
+// shared, so it is read-only: take a copy with PresetNamed before changing a Theme. It panics when a
 // vendored preset fails to import or leaves a token unplaced, since that is a build defect.
 var Presets = sync.OnceValue(func() []Preset {
 	entries, err := fs.ReadDir(presetFS, "presets")
@@ -57,10 +59,12 @@ var Presets = sync.OnceValue(func() []Preset {
 	return out
 })
 
-// PresetNamed is the preset called name.
+// PresetNamed is the preset called name. Its Theme's maps are copies, so the caller may change
+// them without touching the cached presets.
 func PresetNamed(name string) (Preset, bool) {
 	for _, p := range Presets() {
 		if p.Name == name {
+			p.Theme = Theme{Root: maps.Clone(p.Theme.Root), Light: maps.Clone(p.Theme.Light), Dark: maps.Clone(p.Theme.Dark)}
 			return p, true
 		}
 	}

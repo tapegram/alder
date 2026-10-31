@@ -10,7 +10,11 @@ func TestPresets_AllPlaced(t *testing.T) {
 
 func TestPresets_Order(t *testing.T) {
 	want := []string{"zinc", "brutal", "catppuccin", "paper", "pebble"}
-	for i, p := range Presets() {
+	got := Presets()
+	if len(got) != len(want) {
+		t.Fatalf("%d presets, want %d", len(got), len(want))
+	}
+	for i, p := range got {
 		if p.Name != want[i] {
 			t.Errorf("preset %d = %q, want %q", i, p.Name, want[i])
 		}
@@ -58,5 +62,16 @@ func TestPresets_Counts(t *testing.T) {
 		if p.Name == "brutal" && p.Theme.Root["borderWidth"] != "2px" {
 			t.Errorf("brutal borderWidth = %q", p.Theme.Root["borderWidth"])
 		}
+	}
+}
+
+func TestPresetNamed_ReturnsCopy(t *testing.T) {
+	p, _ := PresetNamed("paper")
+	p.Theme.Root["radius"] = "mutated"
+	p.Theme.Light["primary"] = "mutated"
+	p.Theme.Dark["primary"] = "mutated"
+	q, _ := PresetNamed("paper")
+	if q.Theme.Root["radius"] == "mutated" || q.Theme.Light["primary"] == "mutated" || q.Theme.Dark["primary"] == "mutated" {
+		t.Error("PresetNamed shares its maps with the cache")
 	}
 }

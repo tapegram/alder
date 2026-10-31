@@ -421,3 +421,144 @@ func TestThemeImport_DTCGNothingPlaced(t *testing.T) {
 		t.Error("App.alder changed")
 	}
 }
+
+// themeUse runs `alder theme use args… --dir dir`.
+func themeUse(t *testing.T, dir string, args ...string) (int, string, string) {
+	t.Helper()
+	var out, errb bytes.Buffer
+	code := runThemeTo(append(append([]string{"use"}, args...), "--dir", dir), &out, &errb)
+	return code, out.String(), errb.String()
+}
+
+func TestThemeUse_List(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	code, out, errb := themeUse(t, dir)
+	if code != 0 || errb != "" {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	want := "starting themes (alder-ui " + theme.Version() + "):\n" +
+		"  zinc        Tools, dashboards, admin — the default, the safe choice.\n" +
+		"  brutal      Launch pages, portfolios, anything that should shout.\n" +
+		"  catppuccin  Developer-facing apps.\n" +
+		"  paper       Reading: blogs, docs, long-form.\n" +
+		"  pebble      Consumer, mobile-feel apps.\n" +
+		"alder theme use <name> writes one into app/App.alder; the app owns it from there.\n"
+	if out != want {
+		t.Errorf("got:\n%s\nwant:\n%s", out, want)
+	}
+}
+
+func TestThemeUse_WritesAndReplaces(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	code, out, errb := themeUse(t, dir, "paper")
+	if code != 0 {
+		t.Fatalf("exit %d: %s%s", code, out, errb)
+	}
+	if want := "theme: paper → app/App.alder  (light 32, dark 32, theme-wide 15)\n"; !strings.HasPrefix(out, want) {
+		t.Errorf("out %q, want prefix %q", out, want)
+	}
+	p, _ := theme.PresetNamed("paper")
+	text, err := generate.ThemeText(p.Theme)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(readAppAlder(t, dir), text) {
+		t.Errorf("App.alder lacks the paper declaration:\n%s", readAppAlder(t, dir))
+	}
+	code, out, errb = themeUse(t, dir, "pebble")
+	if code != 0 {
+		t.Fatalf("exit %d: %s%s", code, out, errb)
+	}
+	if want := "theme: pebble → app/App.alder  (light 32, dark 32, theme-wide 15; replaced the theme that was there)\n"; !strings.HasPrefix(out, want) {
+		t.Errorf("out %q", out)
+	}
+	if strings.Contains(out, "dropped") || strings.Contains(out, "tokens") {
+		t.Errorf("import-only wording in %q", out)
+	}
+}
+
+func TestThemeUse_PrintDryRun(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	before := readAppAlder(t, dir)
+	code, out, errb := themeUse(t, dir, "paper", "--print")
+	if code != 0 || !strings.HasPrefix(out, "theme {") || errb != "" || readAppAlder(t, dir) != before {
+		t.Errorf("print: exit %d out %q err %q", code, out, errb)
+	}
+	code, out, errb = themeUse(t, dir, "paper", "--dry-run")
+	if code != 0 || readAppAlder(t, dir) != before || !strings.Contains(out, "theme: paper") {
+		t.Errorf("dry-run: exit %d out %q err %q", code, out, errb)
+	}
+}
+
+func TestThemeUse_JSON(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	code, out, errb := themeUse(t, dir, "paper", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %s%s", code, out, errb)
+	}
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, k := range []string{"written", "file", "theme", "unplaced", "skipped", "diagnostics", "preset"} {
+		if _, ok := got[k]; !ok {
+			t.Errorf("no key %q in %s", k, out)
+		}
+	}
+	if string(got["preset"]) != `"paper"` {
+		t.Errorf("preset %s", got["preset"])
+	}
+}
+
+func TestThemeUse_Unknown(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	code, out, errb := themeUse(t, dir, "papr")
+	if code != 1 {
+		t.Errorf("exit %d", code)
+	}
+	all := out + errb
+	if !strings.Contains(all, "no starting theme `papr`; did you mean `paper`?") || !strings.Contains(all, "starting themes (alder-ui") {
+		t.Errorf("out %q err %q", out, errb)
+	}
+}
+
+func TestThemeUse_AppDoesNotParse(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	path := filepath.Join(dir, "app", "App.alder")
+	broken := readAppAlder(t, dir) + "\nthis is ((( not alder\n"
+	if err := os.WriteFile(path, []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errb := themeUse(t, dir, "paper")
+	if code == 0 || readAppAlder(t, dir) != broken {
+		t.Errorf("exit %d, file changed=%v: %s%s", code, readAppAlder(t, dir) != broken, out, errb)
+	}
+	if out+errb == "" {
+		t.Error("no message")
+	}
+}
+
+func TestHelpJSON_ThemeUse(t *testing.T) {
+	t.Parallel()
+	var out bytes.Buffer
+	if err := writeHelpJSON(&out); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Commands []struct {
+			Name        string
+			Subcommands []struct{ Name string }
+		}
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range got.Commands {
+		for _, s := range c.Subcommands {
+			if c.Name == "theme" && s.Name == "use" {
+				return
+			}
+		}
+	}
+	t.Fatal("`theme use` is not in help --json")
+}

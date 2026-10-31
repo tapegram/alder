@@ -26,6 +26,7 @@ type ThemeImport struct {
 	Replaced bool     // App had a theme before
 	Dropped  []string // fields the old theme set that the import does not (`radius`, `light.primary`)
 	Print    string   // --print: the declaration; nothing written
+	Preset   string   `json:"preset,omitempty"` // `theme use`: the starting theme's name
 }
 
 // detectFormat is "dtcg" when src, past a UTF-8 BOM and leading whitespace, starts with `{`,
@@ -164,6 +165,11 @@ func (t *ThemeImport) renderText(files []FileChange, st style.Style) string {
 	note := ""
 	if t.Replaced {
 		note = "; replaced the theme that was there"
+	}
+	if t.Preset != "" {
+		fmt.Fprintf(&b, "%s %s → %s  (light %d, dark %d, theme-wide %d%s)\n", st.Bold("theme:"), t.Preset, file,
+			t.Counts.Light, t.Counts.Dark, t.Counts.Wide, note)
+		return b.String()
 	}
 	fmt.Fprintf(&b, "%s %d tokens → %s  (light %d, dark %d, theme-wide %d%s)\n", st.Bold("theme:"),
 		t.Counts.Light+t.Counts.Dark+t.Counts.Wide, file, t.Counts.Light, t.Counts.Dark, t.Counts.Wide, note)
