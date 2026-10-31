@@ -704,7 +704,11 @@ func (p *Parser) parsePattern() Pattern {
 		l := &PList{}
 		for !p.at(RBracket) && !p.at(EOF) {
 			if p.at(DotDot) {
-				p.advance()
+				dd := p.advance()
+				if p.at(Dot) && p.tok.Line == dd.Line && p.tok.Col == dd.Col+2 {
+					p.errorCodeAt(dd, "E0603", "the rest of a list is written `..rest` (two dots), not `...rest`")
+					p.advance()
+				}
 				l.Rest = p.expect(LIdent, "rest name").Text
 				break
 			}

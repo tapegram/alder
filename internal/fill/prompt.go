@@ -263,11 +263,19 @@ func patternBinders(p syntax.Pattern, out []binder) []binder {
 // qualifierRe finds `Name.` in source and types: a module named before a member.
 var qualifierRe = regexp.MustCompile(`\b([A-Z][A-Za-z0-9]*)\.`)
 
-// stdFiles are the standard library signature files, comments kept, of the modules named in
-// the hole's type or in the module's source, with Task and Prelude always and Test in a test,
-// each in a fence, in name order.
+// coreStd are the standard modules almost every expression reaches for, always in the prompt
+// (together about 6 KB) whether or not the module has written `List.` or `Text.` yet: a model
+// that cannot see them leaves a hole instead of folding a list or comparing text.
+var coreStd = []string{"Task", "Prelude", "List", "Maybe", "Result", "Text", "Int", "Float", "Dict", "Bool"}
+
+// stdFiles are the standard library signature files, comments kept, of the core modules
+// (coreStd) always, of any other module named in the hole's type or in the module's source,
+// and Test in a test, each in a fence, in name order.
 func stdFiles(p *generate.Program, m *generate.Module, h generate.Hole) string {
-	want := map[string]bool{"Task": true, "Prelude": true}
+	want := map[string]bool{}
+	for _, n := range coreStd {
+		want[n] = true
+	}
 	if strings.HasPrefix(h.Decl, `"`) {
 		want["Test"] = true
 	}

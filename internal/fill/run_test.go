@@ -127,6 +127,19 @@ func TestRun_NotOneExpressionRetries(t *testing.T) {
 	}
 }
 
+func TestRun_ThreeDotRestRetries(t *testing.T) {
+	dir := holeApp(t, nil)
+	s := &script{answers: []string{"match [1] { [a, ...rest] -> Task.succeed Rerender, [] -> Task.succeed Rerender }", "Task.succeed Rerender"}}
+	var reports []Attempt
+	r, err := Run(context.Background(), s, dir, "Home.update.Submit", "", func(a Attempt) { reports = append(reports, a) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Attempts != 2 || len(reports) != 1 || !strings.Contains(s.seen[1][2].Content, "`..rest` (two dots)") {
+		t.Errorf("attempts %d, reports %+v, second %+v", r.Attempts, reports, s.seen[1])
+	}
+}
+
 func TestRun_AddsImport(t *testing.T) {
 	dir := holeApp(t, map[string]string{"app/Helpers.alder": "module Helpers\n\ngoHome : Task Nav\ngoHome = Task.succeed (Redirect (Home {}))\n"})
 	r, err := Run(context.Background(), &script{answers: []string{"Helpers.goHome"}}, dir, "Home.update.Submit", "", nil)

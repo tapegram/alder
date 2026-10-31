@@ -651,3 +651,15 @@ func TestParse_LambdaBadParenInsideDelimiters(t *testing.T) {
 		}
 	}
 }
+
+func TestParse_ThreeDotListRest(t *testing.T) {
+	src := "module A\n\nf : List Int -> Int\nf xs = match xs { [x, ...rest] -> x, [] -> 0 }\n"
+	_, diags := ParseFile("A.alder", []byte(src))
+	if len(diags) != 1 || diags[0].Code != "E0603" || !strings.Contains(diags[0].Message, "`..rest` (two dots)") {
+		t.Fatalf("diags %+v", diags)
+	}
+	_, diags = ParseFile("A.alder", []byte(strings.Replace(src, "...rest", "..rest", 1)))
+	if len(diags) != 0 {
+		t.Errorf("two dots: %+v", diags)
+	}
+}
