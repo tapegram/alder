@@ -161,7 +161,8 @@ func displayAddr(a net.Addr) string { return rt.DisplayAddr(a.String()) }
 // reconnects.
 //
 // Requests: /_dev/reload is an event stream of Datastar patches (the overlay, its clearing, the
-// reload); everything else is proxied to the current child unchanged (cookies, redirects and
+// reload); /_dev/theme and its routes are the theme configurator's (theme_ui.go), answered
+// with or without a child; everything else is proxied to the current child unchanged (cookies, redirects and
 // streamed SSE answers alike), or answered 502 with the overlay while there is none.
 type devServer struct {
 	dir, app string
@@ -214,6 +215,10 @@ func newDevServer(dir, app, addr string, stdout, stderr io.Writer) *devServer {
 func (d *devServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/_dev/reload" {
 		d.serveReload(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/_dev/theme") {
+		d.serveTheme(w, r)
 		return
 	}
 	d.mu.Lock()
