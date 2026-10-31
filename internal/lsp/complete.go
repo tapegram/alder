@@ -505,10 +505,7 @@ func openTagEnd(text string, i int) (int, bool) {
 // elements is the custom elements to complete: what the last good build merged (the built-in
 // system and the app's manifest), else the built-in ones, so `al-*` completes before a build.
 func (cx *completion) elements() *elements.Manifest {
-	if cx.a != nil && cx.a.res != nil && cx.a.res.Elements != nil {
-		return cx.a.res.Elements
-	}
-	return elements.Builtin()
+	return manifestOf(cx.a)
 }
 
 // startTag is the start tag the cursor is inside, from its `<` to the cursor (across lines), and

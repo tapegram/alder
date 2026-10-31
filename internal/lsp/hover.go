@@ -8,6 +8,7 @@ import (
 
 	"alder/internal/check"
 	"alder/internal/diag"
+	"alder/internal/elements"
 	"alder/internal/markup"
 	"alder/internal/scratch"
 	"alder/internal/syntax"
@@ -73,7 +74,7 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 		}
 		return ""
 	case *syntax.HtmlAttr, *syntax.Element:
-		if h := markupHover(path); h != "" {
+		if h := markupHover(manifestOf(a), path); h != "" {
 			return h
 		}
 	}
@@ -144,17 +145,32 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 }
 
 // markupHover is the hover of an element or an attribute named by the last node of path: the
-// manifest's description of a built-in tag or attribute, "" for a component, a custom element or
-// a name the manifest does not know.
-func markupHover(path []syntax.Spanned) string {
+// manifest's description of a custom element or its attribute, or of a built-in HTML tag or
+// attribute; "" for a component or a name neither knows.
+func markupHover(m *elements.Manifest, path []syntax.Spanned) string {
 	switch n := path[len(path)-1].(type) {
 	case *syntax.Element:
-		if t := markup.HTML.Tag(n.Tag); t != nil && n.Ref.Kind != syntax.RefComponent {
+		if n.Ref.Kind == syntax.RefComponent {
+			return ""
+		}
+		if strings.Contains(n.Tag, "-") {
+			if el := m.Lookup(n.Tag); el != nil {
+				return elementHover(el)
+			}
+		}
+		if t := markup.HTML.Tag(n.Tag); t != nil {
 			return "`<" + t.Name + ">` — " + t.Description
 		}
 	case *syntax.HtmlAttr:
 		for i := len(path) - 2; i >= 0; i-- {
 			if el, ok := path[i].(*syntax.Element); ok {
+				if strings.Contains(el.Tag, "-") {
+					if ce := m.Lookup(el.Tag); ce != nil {
+						if at := ce.Attr(n.Name); at != nil {
+							return attrLine(*at)
+						}
+					}
+				}
 				if a := markup.HTML.Attr(el.Tag, n.Name); a != nil {
 					return "`" + a.Name + "` — " + a.Description
 				}
@@ -163,6 +179,63 @@ func markupHover(path []syntax.Spanned) string {
 		}
 	}
 	return ""
+}
+
+// manifestOf is the custom elements manifest of the analysis: the checker's merged one, else the
+// built-in alder-ui.
+func manifestOf(a *analysis) *elements.Manifest {
+	if a != nil && a.res != nil && a.res.Elements != nil {
+		return a.res.Elements
+	}
+	return elements.Builtin()
+}
+
+// elementHover is the markdown hover of custom element el: its description, its attributes in
+// manifest order and its slots.
+func elementHover(el *elements.Element) string {
+	var b strings.Builder
+	b.WriteString("`<" + el.Tag + ">`")
+	if el.Description != "" {
+		b.WriteString(" — " + el.Description)
+	}
+	if len(el.Attrs) > 0 {
+		b.WriteString("\n\n**Attributes**")
+		for _, at := range el.Attrs {
+			b.WriteString("\n- " + attrLine(at))
+		}
+	}
+	if len(el.Slots) > 0 {
+		b.WriteString("\n\n**Slots**: ")
+		for i, s := range el.Slots {
+			if i > 0 {
+				b.WriteString("; ")
+			}
+			name := s.Name
+			if name == "" {
+				name = "default"
+			}
+			b.WriteString(name)
+			if s.Description != "" {
+				b.WriteString(" — " + s.Description)
+			}
+		}
+	}
+	return b.String()
+}
+
+// attrLine is "`name`: `type` = `default` — description", leaving out what the attribute lacks.
+func attrLine(at elements.Attr) string {
+	s := "`" + at.Name + "`"
+	if at.Type != "" {
+		s += ": `" + at.Type + "`"
+	}
+	if at.Default != "" {
+		s += " = `" + at.Default + "`"
+	}
+	if at.Description != "" {
+		s += " — " + at.Description
+	}
+	return s
 }
 
 // declDoc is the doc comment above the declaration of ref, in its app or stdlib module.

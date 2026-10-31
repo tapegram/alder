@@ -442,3 +442,37 @@ func TestHover_LambdaAnnotationType(t *testing.T) {
 		t.Errorf("the annotation's Post is not among the references")
 	}
 }
+
+func TestHover_CustomElement(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Write.alder")
+	got := hover(t, c, "app/Write.alder", c.at("app/Write.alder", "<al-button type", 1))
+	i, j, k := strings.Index(got, "`<al-button>` — "), strings.Index(got, "\n\n**Attributes**\n- `variant`: `"), strings.Index(got, "\n\n**Slots**: default")
+	if i != 0 || j < 0 || k < j {
+		t.Fatalf("hover %q", got)
+	}
+	if !strings.Contains(got, "= `\"primary\"` — ") {
+		t.Fatalf("variant line missing its default: %q", got)
+	}
+}
+
+func TestHover_CustomAttr(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Write.alder")
+	got := hover(t, c, "app/Write.alder", c.at("app/Write.alder", `variant="outline"`, 1))
+	if !strings.HasPrefix(got, "`variant`: `\"primary\" | ") || !strings.Contains(got, " = `\"primary\"` — ") {
+		t.Fatalf("hover %q", got)
+	}
+}
+
+func TestHover_DivAndComponentUnchanged(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, "app/Posts/Index.alder")
+	got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "<div class", 1))
+	if !strings.Contains(got, "`<div>` — ") || strings.Contains(got, "**Attributes**") {
+		t.Fatalf("div hover %q", got)
+	}
+	if got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", `rel="prev"`, 0)); !strings.HasPrefix(got, "`rel` — ") {
+		t.Fatalf("attr hover %q", got)
+	}
+}
