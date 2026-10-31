@@ -40,7 +40,7 @@ type themeState struct {
 	Error    string                   `json:"error,omitempty"` // why Theme is nil
 	Defaults map[string]theme.Default `json:"defaults"`        // keyed by field name; a theme-wide token's in .Light (and .Dark)
 	Tokens   []themeToken             `json:"tokens"`          // theme.Tokens, in order
-	Building bool                     `json:"building"`        // child == nil || errs.kind == "building"
+	Building bool                     `json:"building"`        // a build, or a write's rebuild, has not finished (devServer.building)
 }
 
 // themeToken is one row of theme.Tokens: Kind is Kind.String(), Scope "scheme" (a colour, set
@@ -66,9 +66,10 @@ type themeSkipped struct {
 }
 
 // themeWritten is POST /_dev/theme/write's answer: Written and File, or the refusal (Error, its
-// sentence, and the diagnostics, as the Errors tab lists them).
+// sentence, and the diagnostics, as the Errors tab lists them), or Unchanged.
 type themeWritten struct {
 	Written     bool       `json:"written"`
+	Unchanged   bool       `json:"unchanged,omitempty"` // the file already holds this theme: nothing to write
 	File        string     `json:"file,omitempty"`
 	Error       string     `json:"error,omitempty"`
 	Diagnostics []diagItem `json:"diagnostics,omitempty"`
@@ -210,7 +211,7 @@ func (d *devServer) themeState() themeState {
 		}
 	}
 	d.mu.Lock()
-	st.Building = d.child == nil || d.errs.kind == "building"
+	st.Building = d.building
 	d.mu.Unlock()
 
 	src, err := os.ReadFile(filepath.Join(d.dir, filepath.FromSlash(themeFile)))
@@ -238,10 +239,21 @@ func (d *devServer) themeState() themeState {
 }
 
 // writeTheme is the write: generate.WriteTheme on the app dir (App.alder read now, so an edit
-// made in an editor since the page loaded is kept), its refusal as the page shows it.
+// made in an editor since the page loaded is kept), its refusal as the page shows it. Writes
+// are one at a time (two tabs), and a write that changes the file sets building until the
+// rebuild the watcher starts for it ends.
 func (d *devServer) writeTheme(th theme.Theme) themeWritten {
+	d.themeMu.Lock()
+	defer d.themeMu.Unlock()
 	res, err := generate.WriteTheme(generate.App{Dir: d.dir, Migrate: migrateFor}, th, false)
 	if err == nil && res.Written {
+		if len(res.Files) == 0 {
+			return themeWritten{Unchanged: true}
+		}
+		d.mu.Lock()
+		d.writes++
+		d.building = true
+		d.mu.Unlock()
 		return themeWritten{Written: true, File: themeFile}
 	}
 	out := themeWritten{}
@@ -258,9 +270,8 @@ func (d *devServer) writeTheme(th theme.Theme) themeWritten {
 		if len(ds) == 0 && refusal.Result != nil {
 			ds = refusal.Result.Diagnostics
 		}
-		if strings.HasPrefix(refusal.Msg, "the app has errors") {
-			// load's refusal: under LoadWithErrors, only an app that does not parse
-			out.Error = "the theme cannot be written while the app does not parse (the errors below): fix them, then write again"
+		if refusal.AppErrors {
+			out.Error = "the theme cannot be written while the app has errors the checker cannot get past (the errors below): fix them, then write again"
 		}
 	case err != nil:
 		out.Error = err.Error()

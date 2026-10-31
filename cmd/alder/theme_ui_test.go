@@ -102,7 +102,9 @@ func TestThemeState_Blog(t *testing.T) {
 			t.Errorf("state lacks %s: %s", want, w.Body)
 		}
 	}
-	os.WriteFile(filepath.Join(d.dir, "app", "App.alder"), []byte("module App\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(d.dir, "app", "App.alder"), []byte("module App\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	w = serve(t, d, themeReq("GET", "/_dev/theme/state", ""), nil)
 	if !strings.Contains(w.Body.String(), `"theme":{"root":{},"light":{},"dark":{}}`) {
 		t.Errorf("an app without a theme: %s", w.Body)
@@ -128,7 +130,9 @@ func TestThemeState_ParseError(t *testing.T) {
 		t.Fatalf("status %d: %s", w.Code, w.Body)
 	}
 	var st themeState
-	json.Unmarshal(w.Body.Bytes(), &st)
+	if err := json.Unmarshal(w.Body.Bytes(), &st); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(st.Error, "app/App.alder") || len(st.Tokens) != len(theme.Tokens) {
 		t.Errorf("error %q, %d tokens", st.Error, len(st.Tokens))
 	}
@@ -141,7 +145,7 @@ func TestThemeWrite_ParseErrorRefused(t *testing.T) {
 	before := breakApp(t, dir)
 	var ans writeAnswer
 	serve(t, d, themeReq("POST", "/_dev/theme/write", writeBody(t, theme.Theme{Root: map[string]string{"radius": "1rem"}})), &ans)
-	if ans.Written || len(ans.Diagnostics) == 0 || !strings.Contains(ans.Error, "does not parse") {
+	if ans.Written || len(ans.Diagnostics) == 0 || !strings.Contains(ans.Error, "errors the checker cannot get past") {
 		t.Fatalf("answer %+v", ans)
 	}
 	if dg := ans.Diagnostics[0]; dg.Code != "E0001" || dg.File != "app/App.alder" || dg.Line == 0 {
@@ -316,5 +320,68 @@ func TestThemeGate_NamedHost(t *testing.T) {
 		if got := d.themeAllowed(r); got != want {
 			t.Errorf("%s: allowed %v, want %v", host, got, want)
 		}
+	}
+}
+
+// building: true until the first build ends; a write sets it, and only a build that began after
+// the write (the watcher's rebuild for it) clears it.
+func TestThemeState_BuildingAfterWrite(t *testing.T) {
+	d, _ := themeServer(t)
+	building := func() bool {
+		t.Helper()
+		var st themeState
+		serve(t, d, themeReq("GET", "/_dev/theme/state", ""), &st)
+		return st.Building
+	}
+	if !building() {
+		t.Fatal("not building before the first build")
+	}
+	d.endBuild(d.beginBuild())
+	if building() {
+		t.Fatal("building after the first build")
+	}
+	seen := d.beginBuild() // a rebuild already running when the write lands
+	var ans writeAnswer
+	serve(t, d, themeReq("POST", "/_dev/theme/write", `{"theme":{"root":{"radius":"1rem"}}}`), &ans)
+	if !ans.Written || !building() {
+		t.Fatalf("after the write: building %v, answer %+v", building(), ans)
+	}
+	d.endBuild(seen)
+	if !building() {
+		t.Fatal("the rebuild that began before the write cleared building")
+	}
+	d.endBuild(d.beginBuild()) // the watcher's rebuild for the write
+	if building() {
+		t.Fatal("building after the write's rebuild")
+	}
+}
+
+// A write of the theme the file already holds writes nothing and says so, without an error,
+// and leaves building alone.
+func TestThemeWrite_Unchanged(t *testing.T) {
+	d, dir := themeServer(t)
+	d.endBuild(d.beginBuild())
+	var st themeState
+	serve(t, d, themeReq("GET", "/_dev/theme/state", ""), &st)
+	before := readAppAlder(t, dir)
+	w := serve(t, d, themeReq("POST", "/_dev/theme/write", writeBody(t, *st.Theme)), nil)
+	if got := strings.TrimSpace(w.Body.String()); got != `{"written":false,"unchanged":true}` {
+		t.Errorf("answer %s", got)
+	}
+	if readAppAlder(t, dir) != before {
+		t.Errorf("App.alder changed")
+	}
+	serve(t, d, themeReq("GET", "/_dev/theme/state", ""), &st)
+	if st.Building {
+		t.Errorf("building after a write that changed nothing")
+	}
+}
+
+// Only /_dev/theme and the paths under it are the configurator's: /_dev/themes goes to the app
+// (here: no child, so the 502 page).
+func TestThemeRoutePrefix(t *testing.T) {
+	d, _ := themeServer(t)
+	if w := serve(t, d, themeReq("GET", "/_dev/themes", ""), nil); w.Code != http.StatusBadGateway {
+		t.Errorf("/_dev/themes: %d, want the proxy's 502", w.Code)
 	}
 }

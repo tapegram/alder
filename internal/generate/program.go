@@ -228,7 +228,7 @@ func LoadExcept(dir, under string) (*Program, error) {
 		}
 	}
 	if len(errs) > 0 {
-		return nil, &Refusal{Msg: "the app has errors (`alder check` lists them): fix them first, so that what is generated can be checked", Diags: errs, Sources: buildkit.Sources(p.Prog)}
+		return nil, &Refusal{Msg: "the app has errors (`alder check` lists them): fix them first, so that what is generated can be checked", Diags: errs, Sources: buildkit.Sources(p.Prog), AppErrors: true}
 	}
 	return p, nil
 }
@@ -242,7 +242,7 @@ func load(dir string, errorsOK bool) (*Program, error) {
 		return nil, Refusef("there are no .alder files under %s/app: run it in an app's directory, or name one with --dir", dir)
 	}
 	if (bag.HasErrors() && !errorsOK) || res == nil {
-		return nil, &Refusal{Msg: "the app has errors (`alder check` lists them): fix them first, so that what is generated can be checked", Diags: bag.Items, Sources: buildkit.Sources(prog)}
+		return nil, &Refusal{Msg: "the app has errors (`alder check` lists them): fix them first, so that what is generated can be checked", Diags: bag.Items, Sources: buildkit.Sources(prog), AppErrors: true}
 	}
 	return newProgram(dir, prog, res, bag.Items), nil
 }
@@ -606,6 +606,9 @@ type Refusal struct {
 	Diags   []diag.Diagnostic
 	Sources map[string][]string
 	Result  *Result // the copy's result, when the refusal comes from Apply
+	// AppErrors marks load's refusal: the app as it stands has errors the command cannot get
+	// past (under LoadWithErrors, an app that does not parse), before any edit was made.
+	AppErrors bool
 }
 
 func (r *Refusal) Error() string { return r.Msg }

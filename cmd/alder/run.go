@@ -185,6 +185,9 @@ type devServer struct {
 	errs      errState                 // what the strip and the Errors tab show: the last check/build/crash failure; the zero value after a good build
 	gen       string                   // the generation of the last child that came up (kept after it exits); "" before the first
 	announced bool                     // the stdout line has been printed
+	building  bool                     // a build is in progress, or a theme write's rebuild has not finished (beginBuild, endBuild)
+	writes    int                      // the theme writes so far (writeTheme): each one's rebuild ends building
+	themeMu   sync.Mutex               // serialises theme writes (two tabs)
 }
 
 // targetKey carries the child a request is proxied to, chosen once in ServeHTTP.
@@ -195,7 +198,8 @@ func newDevServer(dir, app, addr string, stdout, stderr io.Writer) *devServer {
 	_, _ = rand.Read(nonce[:]) // never fails (crypto/rand)
 	d := &devServer{dir: dir, app: app, addr: addr, stdout: stdout, stderr: &lockedWriter{w: stderr},
 		outSt: style.For(stdout), errSt: style.For(stderr),
-		done: make(chan struct{}), clients: map[chan []byte]struct{}{}, nonce: hex.EncodeToString(nonce[:])}
+		done: make(chan struct{}), clients: map[chan []byte]struct{}{}, nonce: hex.EncodeToString(nonce[:]),
+		building: true} // until the first build ends
 	d.proxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(pr.In.Context().Value(targetKey{}).(*url.URL))
@@ -217,7 +221,7 @@ func (d *devServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		d.serveReload(w, r)
 		return
 	}
-	if strings.HasPrefix(r.URL.Path, "/_dev/theme") {
+	if r.URL.Path == "/_dev/theme" || strings.HasPrefix(r.URL.Path, "/_dev/theme/") {
 		d.serveTheme(w, r)
 		return
 	}
@@ -366,7 +370,7 @@ func (d *devServer) report(text string, st errState) {
 // rebuild runs are merged into one.
 func (d *devServer) work(changed <-chan watch.Change) {
 	fmt.Fprintln(d.stderr, d.errSt.Dim("alder run: building "+d.app))
-	d.rebuild()
+	d.build()
 	d.mu.Lock()
 	up := d.child != nil
 	d.mu.Unlock()
@@ -391,7 +395,7 @@ func (d *devServer) work(changed <-chan watch.Change) {
 		}
 		if k&watch.SourceChange != 0 {
 			fmt.Fprintln(d.stderr, d.errSt.Dim("alder run: rebuilding "+d.app))
-			d.rebuild()
+			d.build()
 		} else {
 			if d.static != "" { // the child serves the build's copy: refresh it first, keeping the last build's theme
 				if err := buildkit.CopyStatic(filepath.Join(d.dir, "static"), d.static, buildkit.WrittenTheme(d.static)); err != nil {
@@ -404,6 +408,29 @@ func (d *devServer) work(changed <-chan watch.Change) {
 			d.mu.Unlock()
 		}
 	}
+}
+
+// build is rebuild with the building flag (the theme page's /state) set while it runs.
+func (d *devServer) build() {
+	seen := d.beginBuild()
+	defer d.endBuild(seen)
+	d.rebuild()
+}
+
+// beginBuild sets building and returns the theme writes made so far: the ones this build sees.
+func (d *devServer) beginBuild() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.building = true
+	return d.writes
+}
+
+// endBuild clears building, unless a theme write came after the build began (seen writes): the
+// watcher has yet to report it, so its rebuild is still to come.
+func (d *devServer) endBuild(seen int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.building = d.writes != seen
 }
 
 // rebuild checks and builds the app and, when both succeed, replaces the child with one running
