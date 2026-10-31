@@ -2,7 +2,7 @@ package main
 
 import "io"
 
-const themeUsage = "usage: alder theme import <file.css | -> [--print] [--dir app] [--json] [--dry-run]"
+const themeUsage = "usage: alder theme import <file.css | file.json | -> [--format css|dtcg] [--print] [--dir app] [--json] [--dry-run]"
 
 // runThemeTo is `alder theme import` (#38 phase 2): a shadcn or tweakcn CSS export becomes
 // App's `theme` declaration, and what alder-ui has no token for comes back as a block for

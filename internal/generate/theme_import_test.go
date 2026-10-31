@@ -17,3 +17,17 @@ func TestThemeImportSpec_Stdin(t *testing.T) {
 		t.Fatalf("reader: %v %+v", err, res)
 	}
 }
+
+func TestDetectFormat(t *testing.T) {
+	for src, want := range map[string]string{
+		"\xef\xbb\xbf\n\n{ \"a\": 1 }": "dtcg",
+		"{}":                           "dtcg",
+		":root {":                      "css",
+		"  /* c */ :root{":             "css",
+		"":                             "css",
+	} {
+		if got := detectFormat([]byte(src)); got != want {
+			t.Errorf("%q: %s, want %s", src, got, want)
+		}
+	}
+}

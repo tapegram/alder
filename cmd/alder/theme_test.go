@@ -245,7 +245,7 @@ func TestHelpJSON_ListsThemeImport(t *testing.T) {
 				for _, f := range s.Flags {
 					flags = append(flags, f.Name)
 				}
-				if len(s.Args) != 1 || s.Args[0] != "<file.css>" || !strings.Contains(strings.Join(flags, " "), "--print") {
+				if len(s.Args) != 1 || s.Args[0] != "<file.css | file.json>" || !strings.Contains(strings.Join(flags, " "), "--print") {
 					t.Errorf("args %v, flags %v", s.Args, flags)
 				}
 				return
@@ -322,5 +322,102 @@ func TestThemeImport_RefusedKeepsDiagnostics(t *testing.T) {
 	}
 	if readAppAlder(t, dir) != before {
 		t.Errorf("App.alder changed")
+	}
+}
+
+const dtcgOne = `{"color":{"$type":"color","primary":{"$value":{"colorSpace":"srgb","components":[0.2,0.4,0.8]}}}}`
+
+func copyPaper(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	src := "../../internal/theme/presets/paper"
+	ents, err := os.ReadDir(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range ents {
+		b, err := os.ReadFile(filepath.Join(src, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, e.Name()), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func TestThemeImport_DTCGResolver(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	tmp := copyPaper(t)
+	code, out, errb := themeImport(t, dir, "", filepath.Join(tmp, "theme.resolver.json"))
+	if code != 0 {
+		t.Fatalf("exit %d: %s%s", code, out, errb)
+	}
+	if !strings.Contains(out, "(light 32, dark 32, theme-wide 15") {
+		t.Errorf("summary: %s", out)
+	}
+}
+
+func TestThemeImport_DTCGSingleFile(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	f := filepath.Join(t.TempDir(), "x.tokens.json")
+	if err := os.WriteFile(f, []byte(dtcgOne), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errb := themeImport(t, dir, "", f)
+	if code != 0 {
+		t.Fatalf("exit %d: %s%s", code, out, errb)
+	}
+	if !strings.Contains(readAppAlder(t, dir), "primary:") {
+		t.Errorf("App.alder:\n%s", readAppAlder(t, dir))
+	}
+}
+
+func TestThemeImport_DTCGStdin(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	if code, out, errb := themeImport(t, dir, dtcgOne, "-"); code != 0 {
+		t.Fatalf("exit %d: %s%s", code, out, errb)
+	}
+	dir = genApp(t, "scaffold")
+	resolver, err := os.ReadFile(filepath.Join(copyPaper(t), "theme.resolver.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _, errb := themeImport(t, dir, string(resolver), "-")
+	if code != 1 || !strings.Contains(errb, "a resolver needs its files: run `alder theme import <dir>/theme.resolver.json`") {
+		t.Errorf("resolver on stdin: exit %d: %s", code, errb)
+	}
+}
+
+func TestThemeImport_FormatForced(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	f := filepath.Join(t.TempDir(), "x.tokens.json")
+	if err := os.WriteFile(f, []byte(dtcgOne), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, _, errb := themeImport(t, dir, "", f, "--format", "css")
+	if code != 1 || !strings.Contains(errb, "no theme in `x.tokens.json`") {
+		t.Errorf("css on json: exit %d: %s", code, errb)
+	}
+	code, _, errb = themeImport(t, dir, "", themeFixtures+"shadcn-v4.css", "--format", "dtcg")
+	if code != 1 || !strings.Contains(errb, "JSON") && !strings.Contains(errb, "json") {
+		t.Errorf("dtcg on css: exit %d: %s", code, errb)
+	}
+	code, _, errb = themeImport(t, dir, "", f, "--format", "yaml")
+	if code != 1 || !strings.Contains(errb, "`css` or `dtcg`") {
+		t.Errorf("bad format: exit %d: %s", code, errb)
+	}
+}
+
+func TestThemeImport_DTCGNothingPlaced(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	before := readAppAlder(t, dir)
+	code, _, errb := themeImport(t, dir, `{"nope":{"$type":"color","$value":"#fff"}}`, "-")
+	if code != 1 || !strings.Contains(errb, "no token of alder-ui") || strings.Contains(errb, ":root") {
+		t.Errorf("exit %d: %s", code, errb)
+	}
+	if readAppAlder(t, dir) != before {
+		t.Error("App.alder changed")
 	}
 }
