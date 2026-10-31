@@ -3,12 +3,14 @@ package lsp
 import (
 	"encoding/json"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"alder/internal/diag"
+	"alder/internal/elements"
 	"alder/internal/markup"
 	"alder/internal/names"
 	"alder/internal/scratch"
@@ -27,6 +29,7 @@ const (
 	kindModule      = 9
 	kindProperty    = 10
 	kindKeyword     = 14
+	kindEnumMember  = 20
 )
 
 type completionItem struct {
@@ -35,6 +38,22 @@ type completionItem struct {
 	Detail   string   `json:"detail,omitempty"`
 	SortText string   `json:"sortText,omitempty"`
 	TextEdit TextEdit `json:"textEdit"`
+
+	Documentation *markupContent `json:"documentation,omitempty"`
+}
+
+// markupContent is LSP MarkupContent: text with its format.
+type markupContent struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
+}
+
+// markdown is text as markdown documentation; nil for no text.
+func markdown(text string) *markupContent {
+	if text == "" {
+		return nil
+	}
+	return &markupContent{Kind: "markdown", Value: text}
 }
 
 // The contexts, matched against the cursor's line up to the cursor (completion's table, in
@@ -45,10 +64,12 @@ var (
 	reField    = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.])([a-z][A-Za-z0-9_]*)\.([a-zA-Z0-9_]*)$`)
 	reCloseTag = regexp.MustCompile(`</([a-z0-9-]*)$`)
 	reAttr     = regexp.MustCompile(`<([a-z][a-z0-9-]*)\s[^<>]*?\b([a-z-]*)$`)
-	reTag      = regexp.MustCompile(`(?:^|[\s>({\[,])<([a-z0-9-]*)$`)
-	reHole     = regexp.MustCompile(`\?([a-z][A-Za-z0-9_]*)?$`)
-	reWord     = regexp.MustCompile(`[A-Za-z0-9_]*$`)
-	reTheme    = regexp.MustCompile(`^\s*([a-z][A-Za-z0-9]*?)$`)
+	// reAttrValue: inside an attribute's quotes, the tag, the attribute and the typed value.
+	reAttrValue = regexp.MustCompile(`<([a-z][a-z0-9-]*)\s[^<>]*?\b([a-z-]+)="([^"]*)$`)
+	reTag       = regexp.MustCompile(`(?:^|[\s>({\[,])<([a-z0-9-]*)$`)
+	reHole      = regexp.MustCompile(`\?([a-z][A-Za-z0-9_]*)?$`)
+	reWord      = regexp.MustCompile(`[A-Za-z0-9_]*$`)
+	reTheme     = regexp.MustCompile(`^\s*([a-z][A-Za-z0-9]*?)$`)
 )
 
 // completion is one completion request: the open text as it is now, read once, and the last
@@ -120,7 +141,7 @@ func (s *server) completionAt(rel string, p Position) *completion {
 // items tries each context in the table's order; the first that applies answers.
 func (cx *completion) items() []completionItem {
 	for _, row := range []func() ([]completionItem, bool){
-		cx.theme, cx.imports, cx.members, cx.fields, cx.closeTag, cx.attrs, cx.tags, cx.hole, cx.patterns,
+		cx.theme, cx.imports, cx.members, cx.fields, cx.closeTag, cx.attrValues, cx.attrs, cx.tags, cx.hole, cx.patterns,
 	} {
 		if items, ok := row(); ok {
 			return items
@@ -481,25 +502,157 @@ func openTagEnd(text string, i int) (int, bool) {
 	return len(text), false
 }
 
-// attrs: inside `<tag `, the tag's attributes and the global ones: `name=""`, or `name` for a
-// boolean one.
-func (cx *completion) attrs() ([]completionItem, bool) {
-	g := reAttr.FindStringSubmatch(cx.prefix)
+// elements is the custom elements to complete: what the last good build merged (the built-in
+// system and the app's manifest), else the built-in ones, so `al-*` completes before a build.
+func (cx *completion) elements() *elements.Manifest {
+	if cx.a != nil && cx.a.res != nil && cx.a.res.Elements != nil {
+		return cx.a.res.Elements
+	}
+	return elements.Builtin()
+}
+
+// startTag is the start tag the cursor is inside, from its `<` to the cursor (across lines), and
+// the tags open before it; ok is false when the cursor is not inside a start tag.
+func (cx *completion) startTag() (tag string, open []string, ok bool) {
+	start := cx.declStart()
+	text := strings.Join(cx.lines[start:cx.line], "\n")
+	if start < cx.line {
+		text += "\n"
+	}
+	text += cx.prefix
+	last := -1
+	for i := 0; i < len(text); i++ {
+		if text[i] != '<' || strings.HasPrefix(text[i:], "</") {
+			continue
+		}
+		name := tagNameAt(text, i+1)
+		if name == "" {
+			continue
+		}
+		j, _ := openTagEnd(text, i+1+len(name))
+		if j >= len(text) {
+			last = i
+			break
+		}
+		i = j
+	}
+	if last < 0 {
+		return "", nil, false
+	}
+	return text[last:], openTags(text[:last]), true
+}
+
+// parentSlots is the named slots of the custom element directly enclosing the start tag, whose
+// enclosing open tags are open.
+func (cx *completion) parentSlots(open []string) []elements.Slot {
+	if len(open) == 0 {
+		return nil
+	}
+	el := cx.elements().Lookup(open[len(open)-1])
+	if el == nil {
+		return nil
+	}
+	var out []elements.Slot
+	for _, s := range el.Slots {
+		if s.Name != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// attrValues: inside `attr="` of a custom element, the attribute's enumerated values, or for
+// `slot` the named slots of the enclosing custom element.
+func (cx *completion) attrValues() ([]completionItem, bool) {
+	tag, open, ok := cx.startTag()
+	if !ok {
+		return nil, false
+	}
+	g := reAttrValue.FindStringSubmatch(tag)
 	if g == nil {
 		return nil, false
 	}
+	n := min(len(g[3]), cx.col)
 	var out []completionItem
-	for _, at := range markup.HTML.AttrsOf(g[1]) {
-		it := cx.item(at.Name, kindProperty, at.Description, len(g[2]))
-		if !at.Boolean {
-			it.TextEdit.NewText = at.Name + `=""`
+	switch {
+	case g[2] == "slot":
+		for _, s := range cx.parentSlots(open) {
+			it := cx.item(s.Name, kindEnumMember, "", n)
+			it.Documentation = markdown(s.Description)
+			out = append(out, it)
 		}
-		out = append(out, it)
+	default:
+		el := cx.elements().Lookup(g[1])
+		if el == nil {
+			return nil, false
+		}
+		at := el.Attr(g[2])
+		if at == nil {
+			return nil, false
+		}
+		for _, v := range at.Values() {
+			it := cx.item(v, kindEnumMember, "", n)
+			it.Documentation = markdown(at.Description)
+			out = append(out, it)
+		}
 	}
 	return out, true
 }
 
-// tags: after `<`, the built-in tags.
+// attrs: inside `<tag `, the tag's attributes and the global ones: `name=""`, or `name` for a
+// boolean one. A custom element's own come from the manifest. `slot` is offered only directly
+// inside a custom element with named slots.
+func (cx *completion) attrs() ([]completionItem, bool) {
+	tag, open, ok := cx.startTag()
+	if !ok {
+		return nil, false
+	}
+	g := reAttr.FindStringSubmatch(tag)
+	if g == nil {
+		return nil, false
+	}
+	n := min(len(g[2]), cx.col)
+	var out []completionItem
+	own := map[string]bool{}
+	if el := cx.elements().Lookup(g[1]); el != nil {
+		for _, at := range el.Attrs {
+			own[at.Name] = true
+			it := cx.item(at.Name, kindProperty, at.Type, n)
+			if at.Default != "" {
+				it.Detail += " = " + at.Default
+			}
+			if !at.Boolean() {
+				it.TextEdit.NewText = at.Name + `=""`
+			}
+			it.Documentation = markdown(at.Description)
+			out = append(out, it)
+		}
+		for _, at := range markup.HTML.Global {
+			if !own[at.Name] {
+				out = append(out, cx.htmlAttr(at, n))
+			}
+		}
+	} else {
+		for _, at := range markup.HTML.AttrsOf(g[1]) {
+			out = append(out, cx.htmlAttr(at, n))
+		}
+	}
+	if len(cx.parentSlots(open)) == 0 {
+		out = slices.DeleteFunc(out, func(it completionItem) bool { return it.Label == "slot" })
+	}
+	return out, true
+}
+
+// htmlAttr is the built-in attribute at, replacing the n bytes before the cursor.
+func (cx *completion) htmlAttr(at markup.Attr, n int) completionItem {
+	it := cx.item(at.Name, kindProperty, at.Description, n)
+	if !at.Boolean {
+		it.TextEdit.NewText = at.Name + `=""`
+	}
+	return it
+}
+
+// tags: after `<`, the built-in tags, then the custom elements in tag order.
 func (cx *completion) tags() ([]completionItem, bool) {
 	g := reTag.FindStringSubmatch(cx.prefix)
 	if g == nil {
@@ -508,6 +661,17 @@ func (cx *completion) tags() ([]completionItem, bool) {
 	var out []completionItem
 	for _, t := range markup.HTML.Tags {
 		out = append(out, cx.item(t.Name, kindProperty, t.Description, len(g[1])))
+	}
+	m := cx.elements()
+	tags := make([]string, 0, len(m.Elements))
+	for tag := range m.Elements {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	for _, tag := range tags {
+		it := cx.item(tag, kindClass, tag, len(g[1]))
+		it.Documentation = markdown(m.Elements[tag].Description)
+		out = append(out, it)
 	}
 	return out, true
 }
