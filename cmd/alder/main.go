@@ -92,6 +92,8 @@ func main() {
 		os.Exit(runFillTo(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	case "remove":
 		os.Exit(runRemoveTo(os.Args[2:], os.Stdout, os.Stderr))
+	case "theme":
+		os.Exit(runThemeTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "regen":
 		os.Exit(runRegenTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "deploy":

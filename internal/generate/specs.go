@@ -1,6 +1,11 @@
 package generate
 
-import "strings"
+import (
+	"errors"
+	"io"
+	"os"
+	"strings"
+)
 
 // The generators as Specs: the one description `alder help --json`, the CLI's argument parsing
 // and the language server all read. Value and Summary strings are the CLI's help text.
@@ -70,6 +75,7 @@ func init() {
 	specs = append(specs, editSpecs()...)
 	specs = append(specs, removeSpecs()...)
 	specs = append(specs, regenSpecs()...)
+	specs = append(specs, themeSpecs()...)
 	for id, h := range map[string]func(HereCtx) *Match{
 		"new msg": inPage, "new form": inPage, "edit page": inPage, "remove page": inPage,
 		"edit table": onTable, "remove table": onTable,
@@ -401,6 +407,41 @@ func regenSpecs() []*Spec {
 				res.Skipped, res.UpToDate = skipped, nothing
 			}
 			return res, err
+		},
+	}}
+}
+
+// themeImportMax caps what `alder theme import` reads: an export is a few KiB.
+const themeImportMax = 256 << 10
+
+func themeSpecs() []*Spec {
+	return []*Spec{{
+		ID: "theme import", Summary: "replace App's theme with a shadcn or tweakcn CSS export",
+		Args: []Field{
+			{Name: "file", Kind: ArgText, Required: true, Value: "<file.css>", Help: "the export, or - for stdin", Example: "theme.css"},
+		},
+		Flags: []Field{
+			{Name: "print", Kind: ArgBool, Summary: "write the declaration to stdout, not App.alder", Agent: true},
+		},
+		Run: func(s Sets, app App, dry bool) (*Result, error) {
+			name := s.One("file")
+			var src io.Reader = os.Stdin
+			if name != "-" {
+				f, err := os.Open(name)
+				if err != nil {
+					return nil, Refusef("cannot read `%s`: %v", name, errors.Unwrap(err))
+				}
+				defer f.Close()
+				src = f
+			}
+			css, err := io.ReadAll(io.LimitReader(src, themeImportMax+1))
+			if err != nil {
+				return nil, Refusef("cannot read `%s`: %v", name, err)
+			}
+			if len(css) > themeImportMax {
+				return nil, Refusef("`%s` is over 256 KiB: a theme export is a few KiB", name)
+			}
+			return ImportTheme(app, name, css, s.Has("print"), dry)
 		},
 	}}
 }

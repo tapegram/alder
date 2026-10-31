@@ -106,6 +106,7 @@ usage: alder <command> [arguments]
   remove    remove a page or a table
   fill      fill a typed hole with an expression from stdin
   regen     regenerate generated code
+  theme     import a theme from a CSS export
   deploy    deploy to an environment
   status    show what an environment runs
   rollback  go back to an earlier build

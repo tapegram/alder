@@ -74,7 +74,7 @@ func TestGenerators_HereFirst(t *testing.T) {
 		}
 	}
 	c.call("alder/generators", req(c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "load params", 0), nil), &out)
-	if len(out.Generators) != 19 || !out.Generators[0].Here {
+	if len(out.Generators) != 20 || !out.Generators[0].Here {
 		t.Fatalf("generators %+v", out.Generators)
 	}
 	seenRest := false

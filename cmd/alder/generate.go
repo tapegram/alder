@@ -14,6 +14,7 @@ import (
 	"alder/internal/ir"
 	"alder/internal/migrate"
 	"alder/internal/style"
+	"alder/internal/theme"
 )
 
 // The generators: `alder new page|table|form|msg|capability`, `alder edit table` and `alder
@@ -68,8 +69,8 @@ type genJSON struct {
 	Next string `json:"next,omitempty"`
 	// Skipped and UpToDate are `alder regen admin`'s: the pages it did not recreate (deleted;
 	// --all writes them), and whether it had nothing to do.
-	Skipped  *[]string `json:"skipped,omitempty"`
-	UpToDate *bool     `json:"upToDate,omitempty"`
+	Skipped  any   `json:"skipped,omitempty"` // regen admin: *[]string; theme import: *int (the at-rules skipped)
+	UpToDate *bool `json:"upToDate,omitempty"`
 	// Imports are `alder fill`'s: the modules it imported for the expression.
 	Imports *[]string `json:"imports,omitempty"`
 	// Expression, Attempts and Model are `alder fill --ai`'s: the model's expression, how many
@@ -79,6 +80,18 @@ type genJSON struct {
 	Model      *string `json:"model,omitempty"`
 	// Effects are the effects of the expression its hole's type does not limit (fill.Effects).
 	Effects *[]string `json:"effects,omitempty"`
+	// File, Theme and Unplaced are (with Skipped, a count) `alder theme import`'s: the file written, the
+	// theme, the declarations it could not place and the number of at-rules it skipped.
+	File     *string         `json:"file,omitempty"`
+	Theme    *theme.Theme    `json:"theme,omitempty"`
+	Unplaced *[]unplacedJSON `json:"unplaced,omitempty"`
+}
+
+type unplacedJSON struct {
+	Block  string `json:"block"`
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Reason string `json:"reason"`
 }
 
 // runGeneratorWith ends every generator: it applies edits (computed by gen, from the loaded app)
@@ -311,11 +324,22 @@ func runSpecWith(s *generate.Spec, argv []string, usage string, seen func(*gener
 	if seen != nil {
 		seen(res, cli)
 	}
+	if res != nil && res.Import != nil && res.Import.Print != "" && err == nil && !cli.JSON {
+		// theme import --print: the declaration alone on stdout; what it left out on stderr
+		io.WriteString(stdout, res.Import.Print+"\n")
+		if len(res.Import.Unplaced) > 0 {
+			fmt.Fprint(stderr, res.Import.RenderUnplaced(style.For(stderr)))
+		}
+		return 0
+	}
 	return genReport(cmd, g, res, err, specExtra(s, res), stdout, stderr)
 }
 
 // specExtra adds a Spec's own JSON fields (regen admin's skipped and upToDate); nil for others.
 func specExtra(s *generate.Spec, res *generate.Result) func(*genJSON) {
+	if s.ID == "theme import" {
+		return themeImportExtra(res)
+	}
 	if s.ID != "regen admin" {
 		return nil
 	}
@@ -340,3 +364,21 @@ func countTrue(bs ...bool) (n int) {
 
 // newGenerator is the Spec of `alder new <kind>`, or nil when kind is an app name.
 func newGenerator(kind string) *generate.Spec { return generate.SpecByID("new " + kind) }
+
+// themeImportExtra is `alder theme import`'s --json fields: file (the one written, "" when
+// none), theme, unplaced and skipped, present even when nothing was imported.
+func themeImportExtra(res *generate.Result) func(*genJSON) {
+	file, th, un, skipped := "", theme.Theme{}, []unplacedJSON{}, 0
+	if res != nil {
+		if len(res.Files) > 0 {
+			file = res.Files[0].Path
+		}
+		if imp := res.Import; imp != nil {
+			th, skipped = imp.Theme, imp.Skipped.N
+			for _, u := range imp.Unplaced {
+				un = append(un, unplacedJSON{Block: u.Block, Name: u.Name, Value: u.Value, Reason: u.Reason})
+			}
+		}
+	}
+	return func(out *genJSON) { out.File, out.Theme, out.Unplaced, out.Skipped = &file, &th, &un, &skipped }
+}

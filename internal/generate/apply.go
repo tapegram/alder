@@ -76,6 +76,8 @@ type Result struct {
 	// Next is the command to run next (`alder new table`'s page that lists the table), printed
 	// last as `next: …`; "" for none.
 	Next string
+	// Import is `alder theme import`'s: the theme, what it could not place, how it compares.
+	Import *ThemeImport
 }
 
 // FileChange is one file Apply writes: Action is "created", "edited" or "removed".
@@ -418,6 +420,9 @@ func (r *Result) RenderTextStyled(refused bool, st style.Style) string {
 			b.WriteString(diag.RenderTextStyled(d, r.Sources[d.Span.File], st))
 		}
 		return b.String()
+	}
+	if r.Import != nil && r.Import.Print == "" {
+		b.WriteString(r.Import.renderText(r.Files, st))
 	}
 	noted := false
 	for _, f := range r.Files {

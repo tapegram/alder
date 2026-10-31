@@ -33,7 +33,7 @@ func TestSpecs_EveryFieldHasHelpAndExample(t *testing.T) {
 
 // Issue 45: the editor's form hides the agent-oriented flags; the CLI still takes them.
 func TestSpecs_AgentFlags(t *testing.T) {
-	want := []string{"new page --blank", "new form --msg", "new msg --in-for", "new msg --when", "new msg --id", "edit table --strict", "edit session --strict"}
+	want := []string{"new page --blank", "new form --msg", "new msg --in-for", "new msg --when", "new msg --id", "edit table --strict", "edit session --strict", "theme import --print"}
 	var got []string
 	for _, s := range Specs() {
 		for _, f := range s.Args {
