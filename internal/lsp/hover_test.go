@@ -475,4 +475,8 @@ func TestHover_DivAndComponentUnchanged(t *testing.T) {
 	if got := hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", `rel="prev"`, 0)); !strings.HasPrefix(got, "`rel` — ") {
 		t.Fatalf("attr hover %q", got)
 	}
+	got = hover(t, c, "app/Posts/Index.alder", c.at("app/Posts/Index.alder", "<Layout.Page title", len("<Layout.")))
+	if !strings.HasPrefix(got, "```alder\nPage : { title: Text") || strings.Contains(got, "**Attributes**") {
+		t.Fatalf("component hover %q", got)
+	}
 }

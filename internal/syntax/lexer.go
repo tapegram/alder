@@ -405,6 +405,14 @@ func (l *Lexer) ScanRawText(tag string) Token {
 
 func isTagStart(c byte) bool { return isLower(c) || isUpper(c) || c == '/' || c == '!' }
 
+// StringEnd is where the string literal whose body starts at s[i], just after its opening quote,
+// ends: just past its closing quote, or at the newline (or end) that cuts it short, by the
+// lexer's own rule (so a `"` inside an interpolation does not end it).
+func StringEnd(s string, i int) int {
+	end, _ := scanString([]byte(s), i)
+	return end
+}
+
 // scanString scans a string literal's body starting at i, just after the opening quote. It returns
 // the index just past the closing quote, or, when the line or source ends first, the index of
 // that newline (or len(s)) and false. Inside an interpolation `{…}` a `"` opens a nested string

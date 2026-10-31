@@ -192,5 +192,60 @@ func TestComplete_BrokenAppManifest(t *testing.T) {
 	if _, ok := got["al-button"]; !ok {
 		t.Fatalf("al-button missing: %v", got)
 	}
-	// The last good build's merged manifest still answers, so x-chart stays until a build passes.
+	// The typed text does not parse, so its build has no check result and the last analysis
+	// with one (before the manifest broke) still answers: x-chart stays. A build that checks
+	// with the broken file merges the built-in manifest with none (loadElements), so then only
+	// the al-* elements remain.
+	if _, ok := got["x-chart"]; !ok {
+		t.Fatalf("x-chart dropped from the last good build: %v", got)
+	}
+}
+
+// A `<` that does not open a tag the parser would accept (one in a string, a comparison, or the
+// cursor inside an attribute's `{…}`) leaves the names to complete.
+func TestComplete_StrayLtKeepsNames(t *testing.T) {
+	for _, typed := range []string{
+		"  let w = \"see <b here\"\n  let v = per",
+		"  let w = if params.page <last then 1 else 2\n  let v = per",
+		"  let z = <a href={Text.slice 0\n    per",
+	} {
+		got := completeTyped(t, blogCopy(t), typed)
+		if _, ok := got["perPage"]; !ok {
+			t.Errorf("%q: no perPage in %v", typed, got)
+		}
+		if _, ok := got["class"]; ok {
+			t.Errorf("%q: attributes offered", typed)
+		}
+	}
+}
+
+func TestComplete_UnknownAttrValueOffersNothing(t *testing.T) {
+	for _, typed := range []string{`  let z = <al-button class="ab`, `  let z = <div class="ab`} {
+		if got := completeTyped(t, blogCopy(t), typed); len(got) != 0 {
+			t.Errorf("%q: %v", typed, got)
+		}
+	}
+}
+
+// Deep in a view, past strings in `{…}`, components and closed tags, a start tag still completes
+// its attributes and its enclosing tags.
+func TestComplete_AttrsDeepInView(t *testing.T) {
+	c := start(t, blogCopy(t))
+	openClean(t, c, idx)
+	p := typing(t, c, idx, "      </ul>}\n\n", "    <al-button v")
+	if _, ok := labels(complete(t, c, idx, p))["variant"]; !ok {
+		t.Fatal("no variant deep in the view")
+	}
+	c = start(t, blogCopy(t))
+	openClean(t, c, idx)
+	p = typing(t, c, idx, "      </ul>}\n\n", "    </")
+	if _, ok := labels(complete(t, c, idx, p))["Layout.Page"]; !ok {
+		t.Fatal("</ does not close Layout.Page")
+	}
+	c = start(t, blogCopy(t))
+	openClean(t, c, idx)
+	p = typing(t, c, idx, "        <span slot=\"next\" aria-disabled=\"true\">Older</span>}\n", `      <span slot="`)
+	if got := labels(complete(t, c, idx, p)); len(got) != 2 {
+		t.Fatalf("al-pagination's slots: %v", got)
+	}
 }

@@ -399,12 +399,8 @@ func (cx *completion) closeTag() ([]completionItem, bool) {
 	if g == nil {
 		return nil, false
 	}
-	start := cx.declStart()
-	text := strings.Join(cx.lines[start:cx.line], "\n")
-	if start < cx.line {
-		text += "\n"
-	}
-	stack := openTags(text + cx.prefix[:len(cx.prefix)-len(g[0])])
+	text := cx.declText()
+	stack := cx.scanTags(text[:len(text)-len(g[0])]).open
 	if len(stack) == 0 {
 		return nil, true
 	}
@@ -434,36 +430,76 @@ func (cx *completion) declStart() int {
 var voidTags = map[string]bool{"area": true, "base": true, "br": true, "col": true, "embed": true,
 	"hr": true, "img": true, "input": true, "link": true, "meta": true, "source": true, "track": true, "wbr": true}
 
-// openTags is the stack of tags open at the end of text: `<tag …>` pushes, `</tag>` pops back
-// to the tag, and `<tag … />` (or a void tag) pushes nothing. Inside an open tag, `>` within an
-// attribute's `{…}` or quotes does not end it.
-func openTags(text string) []string {
-	var stack []string
-	for i := 0; i < len(text); i++ {
-		if text[i] != '<' {
-			continue
+// tagScan is what scanTags found in a declaration's text up to the cursor.
+type tagScan struct {
+	open  []string // the tags open at the end, outermost first
+	start int      // the `<` of the start tag the text ends inside; -1 when it ends outside one
+	expr  bool     // the text ends inside one of that start tag's attribute `{…}`s
+}
+
+// scanTags walks text, a declaration up to the cursor, roughly as the parser reads it. In code
+// (outside any tag, or in a `{…}` among a tag's children) a string literal or a `--` comment is
+// skipped, and a `<name` opens a tag only when the parser would accept name there (an HTML tag,
+// a custom element, a component) or it is on the cursor's line, where it may still be being
+// typed: so `"see <b here"` or `a <last` on a line above opens nothing. Among a tag's children
+// the text is raw, as the lexer reads it. `<tag …>` pushes, `</tag>` pops back to the tag, and
+// `<tag … />` (or a void tag) pushes nothing.
+func (cx *completion) scanTags(text string) tagScan {
+	known := func(name string) bool {
+		return 'A' <= name[0] && name[0] <= 'Z' || markup.HTML.Tag(name) != nil || cx.elements().Lookup(name) != nil
+	}
+	cursorLine := strings.LastIndexByte(text, '\n') + 1
+	var frames []string // the open tags, and "{" for each `{…}` open inside them or in code
+	tags := func() []string {
+		var out []string
+		for _, f := range frames {
+			if f != "{" {
+				out = append(out, f)
+			}
 		}
-		if strings.HasPrefix(text[i:], "</") {
+		return out
+	}
+	for i := 0; i < len(text); i++ {
+		code := len(frames) == 0 || frames[len(frames)-1] == "{"
+		switch c := text[i]; {
+		case code && c == '"':
+			i = syntax.StringEnd(text, i+1) - 1
+		case code && strings.HasPrefix(text[i:], "--"):
+			if k := strings.IndexByte(text[i:], '\n'); k >= 0 {
+				i += k
+			} else {
+				i = len(text)
+			}
+		case c == '{':
+			frames = append(frames, "{")
+		case c == '}':
+			if len(frames) > 0 && frames[len(frames)-1] == "{" {
+				frames = frames[:len(frames)-1]
+			}
+		case strings.HasPrefix(text[i:], "</"):
 			name := tagNameAt(text, i+2)
-			for k := len(stack) - 1; k >= 0; k-- {
-				if stack[k] == name {
-					stack = stack[:k]
+			for k := len(frames) - 1; k >= 0; k-- {
+				if frames[k] == name {
+					frames = frames[:k]
 					break
 				}
 			}
-			continue
+		case c == '<':
+			name := tagNameAt(text, i+1)
+			if name == "" || code && i < cursorLine && !known(name) {
+				continue
+			}
+			j, self, expr := openTagEnd(text, i+1+len(name))
+			if j >= len(text) {
+				return tagScan{open: tags(), start: i, expr: expr}
+			}
+			if !self && !voidTags[name] {
+				frames = append(frames, name)
+			}
+			i = j
 		}
-		name := tagNameAt(text, i+1)
-		if name == "" {
-			continue
-		}
-		j, self := openTagEnd(text, i+1+len(name))
-		if !self && !voidTags[name] {
-			stack = append(stack, name)
-		}
-		i = j
 	}
-	return stack
+	return tagScan{open: tags(), start: -1}
 }
 
 // tagNameAt is the tag or component name starting at text[i] (`div`, `al-input`,
@@ -480,8 +516,10 @@ func tagNameAt(text string, i int) string {
 }
 
 // openTagEnd scans an open tag from text[i] to its `>`, and returns its index (len(text) when
-// it does not end) and whether the tag closes itself (`/>`).
-func openTagEnd(text string, i int) (int, bool) {
+// it does not end), whether the tag closes itself (`/>`), and, when it does not end, whether
+// text ends inside one of its attribute `{…}`s. A `>` within an attribute's `{…}` or quotes does
+// not end the tag.
+func openTagEnd(text string, i int) (int, bool, bool) {
 	depth := 0
 	for ; i < len(text); i++ {
 		switch c := text[i]; {
@@ -489,17 +527,17 @@ func openTagEnd(text string, i int) (int, bool) {
 			if k := strings.IndexByte(text[i+1:], '"'); k >= 0 {
 				i += k + 1
 			} else {
-				return len(text), false
+				return len(text), false, depth > 0
 			}
 		case c == '{':
 			depth++
 		case c == '}':
 			depth--
 		case c == '>' && depth <= 0:
-			return i, i > 0 && text[i-1] == '/'
+			return i, i > 0 && text[i-1] == '/', false
 		}
 	}
-	return len(text), false
+	return len(text), false, depth > 0
 }
 
 // elements is the custom elements to complete: what the last good build merged (the built-in
@@ -508,35 +546,26 @@ func (cx *completion) elements() *elements.Manifest {
 	return manifestOf(cx.a)
 }
 
-// startTag is the start tag the cursor is inside, from its `<` to the cursor (across lines), and
-// the tags open before it; ok is false when the cursor is not inside a start tag.
-func (cx *completion) startTag() (tag string, open []string, ok bool) {
+// declText is the declaration around the cursor from its first line up to the cursor.
+func (cx *completion) declText() string {
 	start := cx.declStart()
 	text := strings.Join(cx.lines[start:cx.line], "\n")
 	if start < cx.line {
 		text += "\n"
 	}
-	text += cx.prefix
-	last := -1
-	for i := 0; i < len(text); i++ {
-		if text[i] != '<' || strings.HasPrefix(text[i:], "</") {
-			continue
-		}
-		name := tagNameAt(text, i+1)
-		if name == "" {
-			continue
-		}
-		j, _ := openTagEnd(text, i+1+len(name))
-		if j >= len(text) {
-			last = i
-			break
-		}
-		i = j
-	}
-	if last < 0 {
+	return text + cx.prefix
+}
+
+// startTag is the start tag the cursor is inside, from its `<` to the cursor (across lines), and
+// the tags open before it; ok is false when the cursor is not inside a start tag, or is inside
+// one of its attribute `{…}`s, where names complete.
+func (cx *completion) startTag() (tag string, open []string, ok bool) {
+	text := cx.declText()
+	s := cx.scanTags(text)
+	if s.start < 0 || s.expr {
 		return "", nil, false
 	}
-	return text[last:], openTags(text[:last]), true
+	return text[s.start:], s.open, true
 }
 
 // parentSlots is the named slots of the custom element directly enclosing the start tag, whose
@@ -559,7 +588,8 @@ func (cx *completion) parentSlots(open []string) []elements.Slot {
 }
 
 // attrValues: inside `attr="` of a custom element, the attribute's enumerated values, or for
-// `slot` the named slots of the enclosing custom element.
+// `slot` the named slots of the enclosing custom element. Inside any other attribute's quotes
+// there is nothing to complete (not the tag's attribute names).
 func (cx *completion) attrValues() ([]completionItem, bool) {
 	tag, open, ok := cx.startTag()
 	if !ok {
@@ -581,11 +611,11 @@ func (cx *completion) attrValues() ([]completionItem, bool) {
 	default:
 		el := cx.elements().Lookup(g[1])
 		if el == nil {
-			return nil, false
+			return nil, true
 		}
 		at := el.Attr(g[2])
 		if at == nil {
-			return nil, false
+			return nil, true
 		}
 		for _, v := range at.Values() {
 			it := cx.item(v, kindEnumMember, "", n)
