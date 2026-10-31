@@ -1,0 +1,227 @@
+{
+  "radius": {
+    "$type": "dimension",
+    "radius": {
+      "$value": {
+        "value": 0.75,
+        "unit": "rem"
+      },
+      "$description": "The base corner radius every other radius derives from."
+    },
+    "radius-sm": {
+      "$value": {
+        "value": 0.45,
+        "unit": "rem"
+      },
+      "$description": "The small corner radius, for badges and other small controls."
+    },
+    "radius-md": {
+      "$value": {
+        "value": 0.6,
+        "unit": "rem"
+      },
+      "$description": "The medium corner radius, for buttons and inputs."
+    },
+    "radius-lg": {
+      "$value": {
+        "value": 0.75,
+        "unit": "rem"
+      },
+      "$description": "The large corner radius, for cards and popovers."
+    },
+    "radius-xl": {
+      "$value": {
+        "value": 1.05,
+        "unit": "rem"
+      },
+      "$description": "The extra-large corner radius, for dialogs and big surfaces."
+    }
+  },
+  "width": {
+    "$type": "dimension",
+    "al-width-narrow": {
+      "$value": {
+        "value": 40,
+        "unit": "rem"
+      },
+      "$description": "The width of a narrow al-page column."
+    },
+    "al-width-normal": {
+      "$value": {
+        "value": 56,
+        "unit": "rem"
+      },
+      "$description": "The width of a normal al-page column."
+    },
+    "al-width-wide": {
+      "$value": {
+        "value": 80,
+        "unit": "rem"
+      },
+      "$description": "The width of a wide al-page column."
+    }
+  },
+  "font": {
+    "$type": "fontFamily",
+    "font-sans": {
+      "$value": [
+        "Geist",
+        "ui-sans-serif",
+        "system-ui",
+        "sans-serif",
+        "Apple Color Emoji",
+        "Segoe UI Emoji",
+        "Segoe UI Symbol",
+        "Noto Color Emoji"
+      ],
+      "$description": "The font stack for body text and interface labels."
+    },
+    "font-mono": {
+      "$value": [
+        "Geist Mono",
+        "ui-monospace",
+        "SFMono-Regular",
+        "Menlo",
+        "Monaco",
+        "Consolas",
+        "Liberation Mono",
+        "Courier New",
+        "monospace"
+      ],
+      "$description": "The font stack for code and tabular figures."
+    }
+  },
+  "shadow": {
+    "$type": "shadow",
+    "shadow-xs": {
+      "$value": {
+        "color": {
+          "colorSpace": "srgb",
+          "components": [
+            0.298039,
+            0.309804,
+            0.411765
+          ],
+          "alpha": 0.06
+        },
+        "offsetX": {
+          "value": 0,
+          "unit": "px"
+        },
+        "offsetY": {
+          "value": 1,
+          "unit": "px"
+        },
+        "blur": {
+          "value": 2,
+          "unit": "px"
+        },
+        "spread": {
+          "value": 0,
+          "unit": "px"
+        }
+      },
+      "$description": "The extra-small shadow, under inputs and buttons."
+    },
+    "shadow-sm": {
+      "$value": {
+        "color": {
+          "colorSpace": "srgb",
+          "components": [
+            0.298039,
+            0.309804,
+            0.411765
+          ],
+          "alpha": 0.1
+        },
+        "offsetX": {
+          "value": 0,
+          "unit": "px"
+        },
+        "offsetY": {
+          "value": 2,
+          "unit": "px"
+        },
+        "blur": {
+          "value": 6,
+          "unit": "px"
+        },
+        "spread": {
+          "value": 0,
+          "unit": "px"
+        }
+      },
+      "$description": "The small shadow, under cards."
+    },
+    "shadow-md": {
+      "$value": {
+        "color": {
+          "colorSpace": "srgb",
+          "components": [
+            0.298039,
+            0.309804,
+            0.411765
+          ],
+          "alpha": 0.12
+        },
+        "offsetX": {
+          "value": 0,
+          "unit": "px"
+        },
+        "offsetY": {
+          "value": 6,
+          "unit": "px"
+        },
+        "blur": {
+          "value": 14,
+          "unit": "px"
+        },
+        "spread": {
+          "value": 0,
+          "unit": "px"
+        }
+      },
+      "$description": "The medium shadow, under menus and popovers."
+    },
+    "shadow-lg": {
+      "$value": {
+        "color": {
+          "colorSpace": "srgb",
+          "components": [
+            0.298039,
+            0.309804,
+            0.411765
+          ],
+          "alpha": 0.14
+        },
+        "offsetX": {
+          "value": 0,
+          "unit": "px"
+        },
+        "offsetY": {
+          "value": 12,
+          "unit": "px"
+        },
+        "blur": {
+          "value": 28,
+          "unit": "px"
+        },
+        "spread": {
+          "value": 0,
+          "unit": "px"
+        }
+      },
+      "$description": "The large shadow, under dialogs and toasts."
+    }
+  },
+  "border": {
+    "$type": "dimension",
+    "al-border-width": {
+      "$value": {
+        "value": 1,
+        "unit": "px"
+      },
+      "$description": "The thickness of component borders (separators keep 1px)."
+    }
+  }
+}

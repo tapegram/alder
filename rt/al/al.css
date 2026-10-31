@@ -1,4 +1,4 @@
-/*! alder-ui v0.4.2 | Apache-2.0 | https://github.com/tapegram/alder-ui
+/*! alder-ui v0.5.0 | Apache-2.0 | https://github.com/tapegram/alder-ui
  * Built by scripts/build.py from tokens.css, base.css, typography.css and components/;
  * do not edit. Geist and Geist Mono (SIL OFL 1.1) load from fonts/ beside this file. */
 
@@ -28,7 +28,8 @@
  * of shadcn's own pairings fall short; the tokens stay verbatim and the
  * check prints them as warnings.
  *
- * Of alder-ui's own tokens only the page widths remain (--al-width-*).
+ * Of alder-ui's own tokens only the page widths and the border width remain
+ * (--al-width-*, --al-border-width).
  * Components keep private properties under --_al-.
  */
 
@@ -129,6 +130,7 @@
   --al-width-narrow: 40rem;
   --al-width-normal: 56rem;
   --al-width-wide: 80rem;
+  --al-border-width: 1px;
 }
 
 /* ---- base.css ---- */
@@ -201,7 +203,7 @@ body {
 hr {
   height: 0;
   color: inherit;
-  border-top-width: 1px;
+  border-top-width: var(--al-border-width);
 }
 
 abbr:where([title]) {
@@ -435,7 +437,7 @@ input:where([type="button"], [type="reset"], [type="submit"]),
 :where(al-page:not([plain])) h2 {
   margin-top: 2.5rem;
   scroll-margin-top: 5rem;
-  border-bottom-width: 1px;
+  border-bottom-width: var(--al-border-width);
   padding-bottom: 0.5rem;
   font-size: 1.875rem;
   line-height: 2.25rem;
@@ -550,7 +552,7 @@ input:where([type="button"], [type="reset"], [type="submit"]),
 
 /* TableHeader: [&_tr]:border-b; TableRow: border-b transition-colors */
 :where(al-page:not([plain])) tr {
-  border-bottom-width: 1px;
+  border-bottom-width: var(--al-border-width);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -577,7 +579,7 @@ input:where([type="button"], [type="reset"], [type="submit"]),
 
 /* TableFooter: border-t bg-muted/50 font-medium [&>tr]:last:border-b-0 */
 :where(al-page:not([plain])) tfoot {
-  border-top-width: 1px;
+  border-top-width: var(--al-border-width);
   background: color-mix(in oklab, var(--muted) 50%, transparent);
   font-weight: 500;
 }
@@ -768,7 +770,8 @@ al-button[variant="secondary"] {
   --_al-hover-fg: var(--secondary-foreground);
 }
 
-/* ghost: hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 */
+/* ghost: hover:bg-accent hover:text-accent-foreground. Deliberately no dark:hover:bg-accent/50
+   (shadcn has it): half-strength accent under accent-foreground fails AA in dark themes */
 al-button[variant="ghost"] {
   --_al-bg: transparent;
   --_al-fg: var(--foreground);
@@ -776,16 +779,14 @@ al-button[variant="ghost"] {
   --_al-hover-fg: var(--accent-foreground);
 }
 
-.dark al-button[variant="ghost"] {
-  --_al-hover: color-mix(in oklab, var(--accent) 50%, transparent);
-}
-
-/* link: text-primary underline-offset-4 hover:underline */
+/* link: underline-offset-4 hover:underline. Deliberately foreground text with the
+   underline in --primary (shadcn's text-primary fails AA when a theme's primary is
+   light, e.g. a yellow or coral on a near-white page) */
 al-button[variant="link"] {
   --_al-bg: transparent;
-  --_al-fg: var(--primary);
+  --_al-fg: var(--foreground);
   --_al-hover: transparent;
-  --_al-hover-fg: var(--primary);
+  --_al-hover-fg: var(--foreground);
 }
 
 /* xs: h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5
@@ -873,7 +874,7 @@ al-button > :is(button, a) {
 /* outline: border */
 al-button[variant="outline"],
 al-button[variant="outline"] > :is(button, a) {
-  border-width: 1px;
+  border-width: var(--al-border-width);
 }
 
 al-button > :is(button, a) {
@@ -933,6 +934,7 @@ al-button > :is(button, a):hover {
 al-button[variant="link"]:not(:has(> :is(button, a))):hover,
 al-button[variant="link"] > :is(button, a):hover {
   text-decoration: underline;
+  text-decoration-color: var(--primary);
 }
 
 /* focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50
@@ -1035,7 +1037,7 @@ al-input input {
   height: 2.25rem;
   padding: 0.25rem 0.75rem;
   margin: 0;
-  border: 1px solid var(--_al-border);
+  border: var(--al-border-width) solid var(--_al-border);
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--foreground);
@@ -1214,7 +1216,7 @@ al-textarea textarea {
   padding: 0.5rem 0.75rem;
   margin: 0;
   resize: vertical;
-  border: 1px solid var(--_al-border);
+  border: var(--al-border-width) solid var(--_al-border);
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--foreground);
@@ -1412,7 +1414,7 @@ al-select select {
   height: 2.25rem;
   margin: 0;
   padding: 0.5rem 2rem 0.5rem 0.75rem;
-  border: 1px solid var(--_al-border);
+  border: var(--al-border-width) solid var(--_al-border);
   border-radius: var(--radius-md);
   background-color: transparent;
   color: var(--foreground);
@@ -1609,7 +1611,7 @@ al-checkbox input[type="checkbox"] {
   height: 1rem;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--_al-border);
+  border: var(--al-border-width) solid var(--_al-border);
   border-radius: 4px;
   background: transparent;
   color: var(--foreground);
@@ -1778,7 +1780,7 @@ al-table > table {
 /* TableHeader: [&_tr]:border-b; TableRow: border-b transition-colors
    hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted */
 al-table tr {
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--al-border-width) solid var(--border);
 }
 
 al-table tr:hover,
@@ -1803,7 +1805,7 @@ al-table tbody tr:last-child {
 
 /* TableFooter: border-t bg-muted/50 font-medium [&>tr]:last:border-b-0 */
 al-table tfoot {
-  border-top: 1px solid var(--border);
+  border-top: var(--al-border-width) solid var(--border);
   background: color-mix(in oklab, var(--muted) 50%, transparent);
   font-weight: 500;
 }
@@ -1906,7 +1908,7 @@ al-card {
   align-items: start;
   gap: 1.5rem;
   padding-block: 1.5rem;
-  border: 1px solid var(--border);
+  border: var(--al-border-width) solid var(--border);
   border-radius: var(--radius-xl);
   background: var(--card);
   color: var(--card-foreground);
@@ -2024,7 +2026,7 @@ al-badge {
   gap: 0.25rem;
   overflow: hidden;
   padding: 0.125rem 0.5rem;
-  border: 1px solid transparent;
+  border: var(--al-border-width) solid transparent;
   border-radius: calc(infinity * 1px);
   background: var(--primary);
   color: var(--primary-foreground);
@@ -2146,7 +2148,7 @@ al-alert {
   width: 100%;
   padding: 0.75rem 1rem;
   padding-inline-start: calc(1rem + 1rem + 0.75rem);
-  border: 1px solid var(--border);
+  border: var(--al-border-width) solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--card);
   color: var(--card-foreground);
@@ -2313,13 +2315,10 @@ al-alert > .al-alert-dismiss::before {
   mask: var(--_al-icon-x) center / contain no-repeat;
 }
 
+/* dark hover paints --accent at 100% too (not half-strength): AA in every theme, like the ghost button */
 al-alert > .al-alert-dismiss:hover {
   background: var(--accent);
   color: var(--accent-foreground);
-}
-
-.dark al-alert > .al-alert-dismiss:hover {
-  background: color-mix(in oklab, var(--accent) 50%, transparent);
 }
 
 al-alert > .al-alert-dismiss:focus-visible {
@@ -2501,11 +2500,9 @@ al-pagination > [slot="next"]::after {
   mask: var(--_al-icon-chevron-right) center / contain no-repeat;
 }
 
-.dark al-pagination > a,
-.dark al-pagination > [slot="prev"],
-.dark al-pagination > [slot="next"] {
-  --_al-hover: color-mix(in oklab, var(--accent) 50%, transparent);
-}
+/* shadcn's dark:hover:bg-accent/50 is dropped: --accent-foreground on half-strength accent
+   over a dark page fails AA in some themes (Brutal), so dark hover paints --accent
+   at 100%, like the ghost button. */
 
 /* active link: outline: border bg-background shadow-xs hover:bg-accent
    hover:text-accent-foreground dark:border-input dark:bg-input/30
@@ -2513,7 +2510,7 @@ al-pagination > [slot="next"]::after {
 al-pagination > a[aria-current="page"] {
   --_al-bg: var(--background);
   --_al-hover: var(--accent);
-  border-width: 1px;
+  border-width: var(--al-border-width);
   box-shadow: 0 0 transparent, 0 0 transparent, 0 0 transparent, 0 0 transparent, var(--shadow-xs);
 }
 
@@ -2707,7 +2704,7 @@ al-dialog > dialog {
   padding: 1.5rem;
   gap: 1rem;
   overflow: auto;
-  border: 1px solid var(--border);
+  border: var(--al-border-width) solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--background);
   color: var(--foreground);
@@ -2957,7 +2954,7 @@ al-popover {
   max-inline-size: calc(100dvw - 2rem);
   margin: 0.25rem;
   padding: 1rem;
-  border: 1px solid var(--border);
+  border: var(--al-border-width) solid var(--border);
   border-radius: var(--radius-md);
   background: var(--popover);
   color: var(--popover-foreground);
@@ -3090,7 +3087,7 @@ al-menu {
   padding: 0.25rem;
   overflow-x: hidden;
   overflow-y: auto;
-  border: 1px solid var(--border);
+  border: var(--al-border-width) solid var(--border);
   border-radius: var(--radius-md);
   background: var(--popover);
   color: var(--popover-foreground);
@@ -3172,6 +3169,13 @@ al-menu > [data-variant="destructive"] > svg {
 al-menu > [data-variant="destructive"]:is(:hover, :focus-visible) {
   background: color-mix(in oklab, var(--destructive) 10%, transparent);
   color: var(--destructive);
+}
+
+/* Dark hover text is --foreground, not shadcn's text-destructive: --destructive on its own
+   20% tint fails AA in some themes (Catppuccin, Paper). The icon follows the text. */
+.dark al-menu > [data-variant="destructive"]:is(:hover, :focus-visible),
+.dark al-menu > [data-variant="destructive"]:is(:hover, :focus-visible) > svg {
+  color: var(--foreground);
 }
 
 .dark al-menu > [data-variant="destructive"]:is(:hover, :focus-visible) {
@@ -3290,10 +3294,10 @@ al-tabs > [role="tablist"] > [role="tab"] {
   block-size: calc(100% - 1px);
   margin: 0;
   padding: 0.25rem 0.5rem;
-  border: 1px solid transparent;
+  border: var(--al-border-width) solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
-  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+  color: var(--muted-foreground);
   font-family: inherit;
   font-size: 0.875rem;
   font-weight: 500;
@@ -3412,7 +3416,7 @@ al-tabs > al-tab > label {
   position: relative;
   padding: 0.25rem 0.5rem;
   border-radius: var(--radius-md);
-  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+  color: var(--muted-foreground);
   font-weight: 500;
   cursor: pointer;
 }
@@ -3507,7 +3511,7 @@ al-toast {
   inline-size: 356px;
   max-inline-size: calc(100dvw - 48px);
   padding: 16px;
-  border: 1px solid var(--border);
+  border: var(--al-border-width) solid var(--border);
   border-radius: var(--radius);
   background: var(--popover);
   color: var(--popover-foreground);
@@ -3764,7 +3768,7 @@ al-devpanel {
   display: block;
   position: sticky;
   inset-block-end: 0;
-  border-top: 1px solid var(--border);
+  border-top: var(--al-border-width) solid var(--border);
   background: var(--card);
   color: var(--card-foreground);
   font-family: var(--font-mono);
@@ -3822,7 +3826,7 @@ al-devpanel > section {
   display: none;
   max-block-size: 50dvh;
   padding: 0.5rem 1rem;
-  border-top: 1px solid var(--border);
+  border-top: var(--al-border-width) solid var(--border);
   overflow: auto;
 }
 

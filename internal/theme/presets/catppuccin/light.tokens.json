@@ -1,0 +1,389 @@
+{
+  "color": {
+    "$type": "color",
+    "background": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.937255,
+          0.945098,
+          0.960784
+        ],
+        "hex": "#eff1f5"
+      },
+      "$description": "The page background."
+    },
+    "foreground": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.298039,
+          0.309804,
+          0.411765
+        ],
+        "hex": "#4c4f69"
+      },
+      "$description": "The default text colour on the page background."
+    },
+    "card": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "hex": "#ffffff"
+      },
+      "$description": "The background of cards."
+    },
+    "card-foreground": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.298039,
+          0.309804,
+          0.411765
+        ],
+        "hex": "#4c4f69"
+      },
+      "$description": "The text colour on cards."
+    },
+    "popover": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "hex": "#ffffff"
+      },
+      "$description": "The background of popovers, menus and dialogs."
+    },
+    "popover-foreground": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.298039,
+          0.309804,
+          0.411765
+        ],
+        "hex": "#4c4f69"
+      },
+      "$description": "The text colour on popovers, menus and dialogs."
+    },
+    "primary": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.533333,
+          0.223529,
+          0.937255
+        ],
+        "hex": "#8839ef"
+      },
+      "$description": "The background of primary buttons and selected controls."
+    },
+    "primary-foreground": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "hex": "#ffffff"
+      },
+      "$description": "The text colour on primary backgrounds."
+    },
+    "secondary": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.8,
+          0.815686,
+          0.854902
+        ],
+        "hex": "#ccd0da"
+      },
+      "$description": "The background of secondary buttons."
+    },
+    "secondary-foreground": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.298039,
+          0.309804,
+          0.411765
+        ],
+        "hex": "#4c4f69"
+      },
+      "$description": "The text colour on secondary backgrounds."
+    },
+    "muted": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.901961,
+          0.913725,
+          0.937255
+        ],
+        "hex": "#e6e9ef"
+      },
+      "$description": "The background of muted surfaces such as tabs lists and skeletons."
+    },
+    "muted-foreground": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.298039,
+          0.309804,
+          0.411765
+        ],
+        "hex": "#4c4f69"
+      },
+      "$description": "The colour of secondary text and placeholders."
+    },
+    "accent": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.862745,
+          0.878431,
+          0.909804
+        ],
+        "hex": "#dce0e8"
+      },
+      "$description": "The background of hovered and focused items."
+    },
+    "accent-foreground": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.298039,
+          0.309804,
+          0.411765
+        ],
+        "hex": "#4c4f69"
+      },
+      "$description": "The text colour on accent backgrounds."
+    },
+    "destructive": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.823529,
+          0.058824,
+          0.223529
+        ],
+        "hex": "#d20f39"
+      },
+      "$description": "The colour of destructive buttons, errors and invalid fields."
+    },
+    "destructive-foreground": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "hex": "#ffffff"
+      },
+      "$description": "The text colour on destructive backgrounds."
+    },
+    "border": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.737255,
+          0.752941,
+          0.8
+        ],
+        "hex": "#bcc0cc"
+      },
+      "$description": "The colour of borders and dividers."
+    },
+    "input": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.737255,
+          0.752941,
+          0.8
+        ],
+        "hex": "#bcc0cc"
+      },
+      "$description": "The border colour of form controls."
+    },
+    "ring": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.533333,
+          0.223529,
+          0.937255
+        ],
+        "hex": "#8839ef"
+      },
+      "$description": "The colour of focus rings."
+    },
+    "chart-1": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.117647,
+          0.4,
+          0.960784
+        ],
+        "hex": "#1e66f5"
+      },
+      "$description": "The first series colour in charts."
+    },
+    "chart-2": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.25098,
+          0.627451,
+          0.168627
+        ],
+        "hex": "#40a02b"
+      },
+      "$description": "The second series colour in charts."
+    },
+    "chart-3": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.87451,
+          0.556863,
+          0.113725
+        ],
+        "hex": "#df8e1d"
+      },
+      "$description": "The third series colour in charts."
+    },
+    "chart-4": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.996078,
+          0.392157,
+          0.043137
+        ],
+        "hex": "#fe640b"
+      },
+      "$description": "The fourth series colour in charts."
+    },
+    "chart-5": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.917647,
+          0.462745,
+          0.796078
+        ],
+        "hex": "#ea76cb"
+      },
+      "$description": "The fifth series colour in charts."
+    },
+    "sidebar": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.901961,
+          0.913725,
+          0.937255
+        ],
+        "hex": "#e6e9ef"
+      },
+      "$description": "The background of the sidebar."
+    },
+    "sidebar-foreground": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.298039,
+          0.309804,
+          0.411765
+        ],
+        "hex": "#4c4f69"
+      },
+      "$description": "The text colour in the sidebar."
+    },
+    "sidebar-primary": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.533333,
+          0.223529,
+          0.937255
+        ],
+        "hex": "#8839ef"
+      },
+      "$description": "The background of the sidebar's primary and selected items."
+    },
+    "sidebar-primary-foreground": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "hex": "#ffffff"
+      },
+      "$description": "The text colour on the sidebar's primary items."
+    },
+    "sidebar-accent": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.8,
+          0.815686,
+          0.854902
+        ],
+        "hex": "#ccd0da"
+      },
+      "$description": "The background of hovered items in the sidebar."
+    },
+    "sidebar-accent-foreground": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.298039,
+          0.309804,
+          0.411765
+        ],
+        "hex": "#4c4f69"
+      },
+      "$description": "The text colour on hovered sidebar items."
+    },
+    "sidebar-border": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.737255,
+          0.752941,
+          0.8
+        ],
+        "hex": "#bcc0cc"
+      },
+      "$description": "The colour of borders and dividers in the sidebar."
+    },
+    "sidebar-ring": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.533333,
+          0.223529,
+          0.937255
+        ],
+        "hex": "#8839ef"
+      },
+      "$description": "The colour of focus rings in the sidebar."
+    }
+  }
+}

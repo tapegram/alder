@@ -35,7 +35,7 @@ box", explains why):
   styles that box by its tag name and attributes. Every element works
   with JavaScript off.
 
-The version Alder ships is **v0.4.2**: the compiler embeds a copy of
+The version Alder ships is **v0.5.0**: the compiler embeds a copy of
 the library's stylesheet, scripts (`al.js`) and manifest at that tag (`rt/al/VERSION`;
 "Where it lives", below).
 
@@ -174,7 +174,7 @@ Each field is a token's CSS name without the `--` (and without the `al-` of the 
 | Kind | Fields | Value |
 |---|---|---|
 | colour, under `light` or `dark` | `background`, `foreground`, `card`, `cardForeground`, `popover`, `popoverForeground`, `primary`, `primaryForeground`, `secondary`, `secondaryForeground`, `muted`, `mutedForeground`, `accent`, `accentForeground`, `destructive`, `destructiveForeground`, `border`, `input`, `ring`, `chart1`, `chart2`, `chart3`, `chart4`, `chart5`, `sidebar`, `sidebarForeground`, `sidebarPrimary`, `sidebarPrimaryForeground`, `sidebarAccent`, `sidebarAccentForeground`, `sidebarBorder`, `sidebarRing` | `"#4f46e5"` (3, 4, 6 or 8 hex digits), `"transparent"`, `"currentColor"`, a colour function (`oklch`, `oklab`, `lch`, `lab`, `hsl`, `hwb`, `rgb`, `rgba`, `hsla`, `color`, `color-mix`, `light-dark`), or `"var(--accent)"` to reuse another colour token |
-| length, at the top | `radius`, `radiusSm`, `radiusMd`, `radiusLg`, `radiusXl`, `widthNarrow`, `widthNormal`, `widthWide` | `"0"`, or a non-negative number with a unit: `rem`, `em`, `px`, `%`, `vw`, `vh`, `ch`, `lh` |
+| length, at the top | `radius`, `radiusSm`, `radiusMd`, `radiusLg`, `radiusXl`, `widthNarrow`, `widthNormal`, `widthWide`, `borderWidth` | `"0"`, or a non-negative number with a unit: `rem`, `em`, `px`, `%`, `vw`, `vh`, `ch`, `lh` |
 | font stack, at the top | `fontSans`, `fontMono` | a list of family names, `["Inter", "sans-serif"]`; the generic families (`sans-serif`, `monospace`, `system-ui`, …) stay unquoted in the CSS, every other name is quoted |
 | shadow, at the top | `shadowXs`, `shadowSm`, `shadowMd`, `shadowLg` | `"none"`, or the shadow as CSS writes it, `"0 1px 2px 0 rgb(0 0 0 / 0.05)"` |
 
@@ -216,8 +216,8 @@ $ alder theme import tweakcn.css
 theme: 59 tokens → app/App.alder  (light 32, dark 20, theme-wide 7; replaced the theme that was there)
 15 not placed — paste into static/app.css if you want them:
   :root {
-    --font-serif: Lora, Georgia, serif; /* not a token of alder-ui v0.4.2 */
-    --tracking-normal: 0em; /* not a token of alder-ui v0.4.2 */
+    --font-serif: Lora, Georgia, serif; /* not a token of alder-ui v0.5.0 */
+    --tracking-normal: 0em; /* not a token of alder-ui v0.5.0 */
     …
   }
 
@@ -1255,7 +1255,7 @@ every colour pairing passes AA.
 Alder *vendors* it: the compiler's source keeps a copy of one tagged
 release in `rt/al/` (`al.css`, `al.js`, `custom-elements.json`, `VERSION`, a
 `fonts/` directory with the two Geist files and their licence, and the
-licences of the library and of the lucide icons it draws), at `v0.4.2`,
+licences of the library and of the lucide icons it draws), at `v0.5.0`,
 and embeds it, so a build never fetches anything. `scripts/vendor-al.sh
 <tag>` refreshes the copy from the library's repository; a test checks
 that `VERSION`, the manifest's `version` and the stylesheet's banner

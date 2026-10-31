@@ -61,6 +61,7 @@ var Tokens = []Token{
 	{"shadowSm", "--shadow-sm", Shadow},
 	{"shadowMd", "--shadow-md", Shadow},
 	{"shadowLg", "--shadow-lg", Shadow},
+	{"borderWidth", "--al-border-width", Length},
 	{"background", "--background", Colour},
 	{"foreground", "--foreground", Colour},
 	{"card", "--card", Colour},

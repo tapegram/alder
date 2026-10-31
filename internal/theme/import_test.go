@@ -275,13 +275,13 @@ func TestImport_CommentsAndStrings(t *testing.T) {
 
 func TestUnplacedCSS_Valid(t *testing.T) {
 	us := []Unplaced{
-		{Block: ":root, .light", Name: "--font-serif", Value: "Lora, Georgia, serif", Reason: "not a token of alder-ui v0.4.2"},
+		{Block: ":root, .light", Name: "--font-serif", Value: "Lora, Georgia, serif", Reason: "not a token of alder-ui v0.5.0"},
 		{Block: ".dark", Name: "--shadow-sm", Value: "0 1px 3px 0 hsl(0 0% 0% / 0.4)", Reason: "theme-wide in alder-ui; the dark value differs"},
-		{Block: ":root, .light", Name: "--tracking-normal", Value: "0em", Reason: "not a token of alder-ui v0.4.2"},
+		{Block: ":root, .light", Name: "--tracking-normal", Value: "0em", Reason: "not a token of alder-ui v0.5.0"},
 	}
 	want := `:root, .light {
-  --font-serif: Lora, Georgia, serif; /* not a token of alder-ui v0.4.2 */
-  --tracking-normal: 0em; /* not a token of alder-ui v0.4.2 */
+  --font-serif: Lora, Georgia, serif; /* not a token of alder-ui v0.5.0 */
+  --tracking-normal: 0em; /* not a token of alder-ui v0.5.0 */
 }
 
 .dark {
