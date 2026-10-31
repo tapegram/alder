@@ -6,3 +6,9 @@ TDD: RED = compile failure (runThemeTo undefined), GREEN = `go test ./cmd/alder/
 Pins updated: TestSpecs_AllIDs, TestSpecs_AgentFlags, lsp TestGenerators_HereFirst (19 -> 20), help.json golden, book Commands block.
 Full: `go test ./cmd/alder/ ./internal/generate/ ./internal/lsp/` ok; `go vet` clean.
 Not done: book/site regeneration (later task per spec).
+
+## Fix round 1
+- R7: `generate.App.Stdin io.Reader` (nil outside the CLI); cmd/alder sets os.Stdin; Run refuses `-` when nil. Tests: `TestThemeImportSpec_Stdin` (generate), nil refused / reader read.
+- R8: `--print` with `--json` is a usage error (exit 2); test `TestThemeImport_PrintJSONIsUsageError`.
+- Read error message uses `err`. Tests added: over 256 KiB, missing file, `--print` unplaced on stderr, `--json` on garbage has six keys.
+- `go test ./cmd/alder/ ./internal/generate/ ./internal/lsp/` ok; vet clean.

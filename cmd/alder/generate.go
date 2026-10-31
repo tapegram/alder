@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"alder/internal/buildkit"
@@ -312,6 +313,9 @@ func runSpecWith(s *generate.Spec, argv []string, usage string, seen func(*gener
 	if s.ID == "new page" && countTrue(sets.Has("list"), sets.Has("show"), sets.Has("from")) > 1 {
 		return genUsage(stderr, usage, errors.New("alder new page: choose one of --list, --show and --from: a page generated with --list shows one table's rows, --show one row, --from several tables"))
 	}
+	if s.ID == "theme import" && sets.Has("print") && cli.JSON {
+		return genUsage(stderr, usage, errors.New("alder theme import: choose one of --print and --json: --print writes the declaration, --json reports the result"))
+	}
 	g := genArgs{dir: cli.Dir, json: cli.JSON, dry: cli.DryRun}
 	cmd := "alder " + s.ID
 	defer func() {
@@ -320,7 +324,7 @@ func runSpecWith(s *generate.Spec, argv []string, usage string, seen func(*gener
 			code = 2
 		}
 	}()
-	res, err := s.Run(sets, generate.App{Dir: g.dir, Migrate: migrateFor}, g.dry)
+	res, err := s.Run(sets, generate.App{Dir: g.dir, Migrate: migrateFor, Stdin: os.Stdin}, g.dry)
 	if seen != nil {
 		seen(res, cli)
 	}

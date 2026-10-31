@@ -1,7 +1,6 @@
 package generate
 
 import (
-	"errors"
 	"io"
 	"os"
 	"strings"
@@ -425,11 +424,16 @@ func themeSpecs() []*Spec {
 		},
 		Run: func(s Sets, app App, dry bool) (*Result, error) {
 			name := s.One("file")
-			var src io.Reader = os.Stdin
-			if name != "-" {
+			var src io.Reader
+			if name == "-" {
+				if app.Stdin == nil {
+					return nil, Refusef("`-` reads stdin, which only the command line has: give the export's file")
+				}
+				src = app.Stdin
+			} else {
 				f, err := os.Open(name)
 				if err != nil {
-					return nil, Refusef("cannot read `%s`: %v", name, errors.Unwrap(err))
+					return nil, Refusef("cannot read `%s`: %v", name, err)
 				}
 				defer f.Close()
 				src = f

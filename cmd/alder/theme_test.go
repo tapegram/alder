@@ -254,3 +254,51 @@ func TestHelpJSON_ListsThemeImport(t *testing.T) {
 	}
 	t.Fatalf("`theme import` is not in help --json:\n%s", out.String())
 }
+
+func TestThemeImport_PrintJSONIsUsageError(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	code, out, errb := themeImport(t, dir, "", themeFixtures+"shadcn-v4.css", "--print", "--json")
+	if code != 2 || out != "" || !strings.Contains(errb, "choose one of --print and --json") {
+		t.Errorf("exit %d, stdout %q, stderr %q", code, out, errb)
+	}
+}
+
+func TestThemeImport_PrintUnplacedToStderr(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	code, out, errb := themeImport(t, dir, "", themeFixtures+"tweakcn.css", "--print")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	if !strings.HasPrefix(out, "theme {") || strings.Contains(out, "not placed") {
+		t.Errorf("stdout should be the declaration alone:\n%s", out)
+	}
+	if !strings.Contains(errb, "not placed — paste into static/app.css") || !strings.Contains(errb, "--font-serif") {
+		t.Errorf("stderr lacks the unplaced block:\n%s", errb)
+	}
+}
+
+func TestThemeImport_BadInput(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	code, _, errb := themeImport(t, dir, "", filepath.Join(t.TempDir(), "nope.css"))
+	if code != 1 || !strings.Contains(errb, "cannot read") || !strings.Contains(errb, "nope.css") {
+		t.Errorf("missing file: exit %d: %s", code, errb)
+	}
+	code, _, errb = themeImport(t, dir, strings.Repeat("a", 300<<10), "-")
+	if code != 1 || !strings.Contains(errb, "256 KiB") {
+		t.Errorf("too big: exit %d: %s", code, errb)
+	}
+}
+
+func TestThemeImport_JSONGarbageHasAllKeys(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	_, out, _ := themeImport(t, dir, "", themeFixtures+"garbage.css", "--json")
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, k := range []string{"written", "file", "theme", "unplaced", "skipped", "diagnostics"} {
+		if _, ok := got[k]; !ok {
+			t.Errorf("no key %q in %s", k, out)
+		}
+	}
+}
