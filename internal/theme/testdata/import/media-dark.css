@@ -1,0 +1,15 @@
+:root {
+  --background: #ffffff;
+  --foreground: #111111;
+  --primary: #4f46e5;
+  --radius: 0.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0b0b0f;
+    --foreground: #f5f5f5;
+    --primary: #818cf8;
+    --radius: 0.5rem;
+  }
+}
