@@ -33,7 +33,7 @@ func FontStack(families []string) string {
 
 // CSS is the stylesheet a checked theme becomes, appended to the served al.css: the theme-wide
 // settings on `:root`, the light colours on LightSelector, the dark on `.dark`, each block on
-// one line with its settings in Tokens order; an empty block is left out, and a theme that sets
+// one line with its settings in Tokens() order; an empty block is left out, and a theme that sets
 // nothing is "". The blocks are unlayered, so they win over alder-ui's `@layer al` values.
 //
 // The light block must not match a dark root: an unlayered `:root` would beat alder-ui's layered
@@ -67,12 +67,12 @@ func CSS(root, light, dark []Setting) string {
 // LightSelector is the light block's selector list (see CSS).
 const LightSelector = ":where(:root:not(.dark)), .light"
 
-// Order is the CSS name's index in Tokens (len(Tokens) for a name not in it).
+// Order is the CSS name's index in Tokens() (len(Tokens()) for a name not in it).
 func Order(css string) int {
-	for i, t := range Tokens {
+	for i, t := range Tokens() {
 		if t.CSS == css {
 			return i
 		}
 	}
-	return len(Tokens)
+	return len(Tokens())
 }

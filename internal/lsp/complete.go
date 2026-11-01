@@ -929,7 +929,7 @@ func (cx *completion) theme() ([]completionItem, bool) {
 		out = add(out, "light", "the light scheme's colours (:root, .light)")
 		out = add(out, "dark", "the dark scheme's colours (.dark)")
 	}
-	for _, t := range theme.Tokens {
+	for _, t := range theme.Tokens() {
 		if (t.Kind == theme.Colour) == colours {
 			out = add(out, t.Field, t.CSS+" ("+t.Kind.String()+")")
 		}

@@ -83,8 +83,8 @@ func TestThemeState_Blog(t *testing.T) {
 	if got := st.Theme.Root["radius"]; got != "0.5rem" {
 		t.Errorf("root.radius %q", got)
 	}
-	if len(st.Tokens) != len(theme.Tokens) {
-		t.Errorf("%d tokens, want %d", len(st.Tokens), len(theme.Tokens))
+	if len(st.Tokens) != len(theme.Tokens()) {
+		t.Errorf("%d tokens, want %d", len(st.Tokens), len(theme.Tokens()))
 	}
 	if st.Tokens[0] != (themeToken{Field: "radius", CSS: "--radius", Kind: "length", Scope: "root"}) {
 		t.Errorf("first token %+v", st.Tokens[0])
@@ -133,7 +133,7 @@ func TestThemeState_ParseError(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &st); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(st.Error, "app/App.alder") || len(st.Tokens) != len(theme.Tokens) {
+	if !strings.Contains(st.Error, "app/App.alder") || len(st.Tokens) != len(theme.Tokens()) {
 		t.Errorf("error %q, %d tokens", st.Error, len(st.Tokens))
 	}
 }

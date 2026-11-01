@@ -1,6 +1,10 @@
 package theme
 
 import (
+	"math"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -19,12 +23,12 @@ func TestTokens_MatchVendoredStylesheet(t *testing.T) {
 	}
 	for name := range declared {
 		if _, ok := ByCSS(name); !ok {
-			t.Errorf("al.css declares %s, which theme.Tokens lacks", name)
+			t.Errorf("al.css declares %s, which theme.Tokens() lacks", name)
 		}
 	}
-	for _, tok := range Tokens {
+	for _, tok := range Tokens() {
 		if !declared[tok.CSS] {
-			t.Errorf("theme.Tokens has %s, which al.css's token blocks do not declare", tok.CSS)
+			t.Errorf("theme.Tokens() has %s, which al.css's token blocks do not declare", tok.CSS)
 		}
 		if _, inDark := dark[tok.CSS]; inDark != (tok.Kind == Colour) {
 			t.Errorf("%s: kind %s, but declared in .dark = %v", tok.CSS, tok.Kind, inDark)
@@ -33,7 +37,7 @@ func TestTokens_MatchVendoredStylesheet(t *testing.T) {
 }
 
 func TestFieldName_Mechanical(t *testing.T) {
-	for _, tok := range Tokens {
+	for _, tok := range Tokens() {
 		if got := FieldName(tok.CSS); got != tok.Field {
 			t.Errorf("FieldName(%s) = %s, want %s", tok.CSS, got, tok.Field)
 		}
@@ -43,12 +47,123 @@ func TestFieldName_Mechanical(t *testing.T) {
 	}
 }
 
+// oldTable is the hand-written token table Tokens() replaced, as [CSS name, field] in order.
+var oldTable = [][2]string{
+	{"--radius", "radius"}, {"--radius-sm", "radiusSm"}, {"--radius-md", "radiusMd"},
+	{"--radius-lg", "radiusLg"}, {"--radius-xl", "radiusXl"},
+	{"--al-width-narrow", "widthNarrow"}, {"--al-width-normal", "widthNormal"}, {"--al-width-wide", "widthWide"},
+	{"--font-sans", "fontSans"}, {"--font-mono", "fontMono"},
+	{"--shadow-xs", "shadowXs"}, {"--shadow-sm", "shadowSm"}, {"--shadow-md", "shadowMd"}, {"--shadow-lg", "shadowLg"},
+	{"--al-border-width", "borderWidth"},
+	{"--background", "background"}, {"--foreground", "foreground"},
+	{"--card", "card"}, {"--card-foreground", "cardForeground"},
+	{"--popover", "popover"}, {"--popover-foreground", "popoverForeground"},
+	{"--primary", "primary"}, {"--primary-foreground", "primaryForeground"},
+	{"--secondary", "secondary"}, {"--secondary-foreground", "secondaryForeground"},
+	{"--muted", "muted"}, {"--muted-foreground", "mutedForeground"},
+	{"--accent", "accent"}, {"--accent-foreground", "accentForeground"},
+	{"--destructive", "destructive"}, {"--destructive-foreground", "destructiveForeground"},
+	{"--border", "border"}, {"--input", "input"}, {"--ring", "ring"},
+	{"--chart-1", "chart1"}, {"--chart-2", "chart2"}, {"--chart-3", "chart3"}, {"--chart-4", "chart4"}, {"--chart-5", "chart5"},
+	{"--sidebar", "sidebar"}, {"--sidebar-foreground", "sidebarForeground"},
+	{"--sidebar-primary", "sidebarPrimary"}, {"--sidebar-primary-foreground", "sidebarPrimaryForeground"},
+	{"--sidebar-accent", "sidebarAccent"}, {"--sidebar-accent-foreground", "sidebarAccentForeground"},
+	{"--sidebar-border", "sidebarBorder"}, {"--sidebar-ring", "sidebarRing"},
+}
+
+// The table is read from the vendored Zinc preset in file order, which is the old literal's.
+func TestTokens_FromZinc(t *testing.T) {
+	toks := Tokens()
+	if len(toks) != 47 || len(oldTable) != 47 {
+		t.Fatalf("%d tokens (old table %d), want 47", len(toks), len(oldTable))
+	}
+	themeWide := 0
+	for i, tok := range toks {
+		if tok.CSS != oldTable[i][0] || tok.Field != oldTable[i][1] {
+			t.Errorf("token %d is %s (%s), want %s (%s)", i, tok.CSS, tok.Field, oldTable[i][0], oldTable[i][1])
+		}
+		if tok.Description == "" {
+			t.Errorf("%s has no Description", tok.CSS)
+		}
+		if Order(tok.CSS) != i {
+			t.Errorf("Order(%s) = %d, want %d", tok.CSS, Order(tok.CSS), i)
+		}
+		if tok.Kind != Colour {
+			themeWide++
+		}
+	}
+	if themeWide != 15 {
+		t.Errorf("%d theme-wide tokens, want 15", themeWide)
+	}
+	if tok, ok := ByCSS("--al-border-width"); !ok || tok.Field != "borderWidth" || tok.Kind != Length {
+		t.Errorf("ByCSS(--al-border-width) = %+v, %v", tok, ok)
+	}
+	doc := zinc()
+	paths := func(ts []dtcgToken) []string {
+		var out []string
+		for _, tk := range ts {
+			out = append(out, strings.Join(tk.Path, "."))
+		}
+		slices.Sort(out)
+		return out
+	}
+	if l, d := paths(doc.Light), paths(doc.Dark); !slices.Equal(l, d) {
+		t.Errorf("zinc's light and dark files declare different colours:\nlight %v\ndark  %v", l, d)
+	}
+}
+
+// evalRadius evaluates al.css's derived radii at radius (in rem, 1rem = 16px): `var(--radius)`,
+// `calc(var(--radius) * N)` and `calc(var(--radius) ± Npx)`. Any other value comes back as it is.
+func evalRadius(t *testing.T, v, radius string) string {
+	m := regexp.MustCompile(`^(?:var\(--radius\)|calc\(var\(--radius\) ([-+*]) (\d+(?:\.\d+)?)(px)?\))$`).FindStringSubmatch(v)
+	if m == nil {
+		return v
+	}
+	r, err := strconv.ParseFloat(strings.TrimSuffix(radius, "rem"), 64)
+	if err != nil || !strings.HasSuffix(radius, "rem") {
+		t.Fatalf("--radius %q is not in rem", radius)
+	}
+	n, _ := strconv.ParseFloat(m[2], 64)
+	switch {
+	case m[1] == "":
+	case m[1] == "*" && m[3] == "":
+		r *= n
+	case m[1] == "+" && m[3] == "px":
+		r += n / 16
+	case m[1] == "-" && m[3] == "px":
+		r -= n / 16
+	default:
+		t.Fatalf("cannot evaluate %q", v)
+	}
+	return strconv.FormatFloat(math.Round(r*1e6)/1e6, 'f', -1, 64) + "rem"
+}
+
+// Zinc's values are alder-ui's own: each default is equivalent to what al.css declares.
 func TestDefaults_EveryToken(t *testing.T) {
 	d := Defaults()
-	for _, tok := range Tokens {
+	light, dark, root := Blocks()
+	radius := light["--radius"]
+	if radius == "" {
+		radius = root["--radius"]
+	}
+	for _, tok := range Tokens() {
 		v := d[tok.CSS]
-		if v.Light == "" || v.Dark == "" {
-			t.Errorf("%s: defaults %+v", tok.CSS, v)
+		wantL, wantD := root[tok.CSS], root[tok.CSS]
+		if s, ok := light[tok.CSS]; ok {
+			wantL, wantD = s, s
+		}
+		if s, ok := dark[tok.CSS]; ok {
+			wantD = s
+		}
+		wantL, wantD = evalRadius(t, wantL, radius), evalRadius(t, wantD, radius)
+		if !Equivalent(tok.Kind, v.Light, wantL) {
+			t.Errorf("%s light: default %q, al.css %q", tok.CSS, v.Light, wantL)
+		}
+		if !Equivalent(tok.Kind, v.Dark, wantD) {
+			t.Errorf("%s dark: default %q, al.css %q", tok.CSS, v.Dark, wantD)
+		}
+		if tok.Kind != Colour && v.Light != v.Dark {
+			t.Errorf("%s is theme-wide but its defaults differ: %+v", tok.CSS, v)
 		}
 	}
 	if p := d["--primary"]; p.Light != "oklch(0.205 0 0)" || p.Dark != "oklch(0.922 0 0)" {
@@ -56,6 +171,16 @@ func TestDefaults_EveryToken(t *testing.T) {
 	}
 	if r := d["--radius"]; r.Light != "0.625rem" || r.Dark != "0.625rem" {
 		t.Errorf("--radius defaults %+v", r)
+	}
+}
+
+// The derived radii are plain lengths, not al.css's calc().
+func TestDefaults_RadiiPlain(t *testing.T) {
+	d := Defaults()
+	for css, want := range map[string]string{"--radius-sm": "0.375rem", "--radius-md": "0.5rem", "--radius-lg": "0.625rem", "--radius-xl": "0.875rem"} {
+		if got := d[css]; got.Light != want || got.Dark != want {
+			t.Errorf("%s defaults %+v, want %s", css, got, want)
+		}
 	}
 }
 

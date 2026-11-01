@@ -43,7 +43,7 @@ func TestAppendixC_ThemeFragments(t *testing.T) {
 	}
 }
 
-// TestAppendixC_ThemeTable: "Changing a token" names every field of theme.Tokens, and its CSS
+// TestAppendixC_ThemeTable: "Changing a token" names every field of theme.Tokens(), and its CSS
 // block is the CSS the generator emits for the same theme (testdata/golden/gen_theme).
 func TestAppendixC_ThemeTable(t *testing.T) {
 	b, err := os.ReadFile("C-design-system.md")
@@ -52,7 +52,7 @@ func TestAppendixC_ThemeTable(t *testing.T) {
 	}
 	_, sec, _ := strings.Cut(string(b), "### Changing a token\n")
 	sec, _, _ = strings.Cut(sec, "\n## ")
-	for _, tok := range theme.Tokens {
+	for _, tok := range theme.Tokens() {
 		if !strings.Contains(sec, "`"+tok.Field+"`") {
 			t.Errorf("Changing a token does not name `%s` (%s)", tok.Field, tok.CSS)
 		}

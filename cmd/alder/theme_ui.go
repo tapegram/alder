@@ -37,7 +37,7 @@ type themeState struct {
 	Theme    *theme.Theme             `json:"theme"`           // nil when App does not parse
 	Error    string                   `json:"error,omitempty"` // why Theme is nil
 	Defaults map[string]theme.Default `json:"defaults"`        // keyed by field name; a theme-wide token's in .Light (and .Dark)
-	Tokens   []themeToken             `json:"tokens"`          // theme.Tokens, in order
+	Tokens   []themeToken             `json:"tokens"`          // theme.Tokens(), in order
 	Building bool                     `json:"building"`        // a build, or a write's rebuild, has not finished (devServer.building)
 	Presets  []themePreset            `json:"presets"`         // theme.Presets, in order: the Start-from picker's themes
 }
@@ -210,7 +210,7 @@ func writeThemeJSON(w http.ResponseWriter, status int, v any) {
 func (d *devServer) themeState() themeState {
 	st := themeState{Version: theme.Version(), File: themeFile, Defaults: map[string]theme.Default{}}
 	defaults := theme.Defaults()
-	for _, t := range theme.Tokens {
+	for _, t := range theme.Tokens() {
 		scope := "root"
 		if t.Kind == theme.Colour {
 			scope = "scheme"

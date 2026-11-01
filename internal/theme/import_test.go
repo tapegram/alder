@@ -60,7 +60,7 @@ func TestThemeEmpty(t *testing.T) {
 
 func TestImport_ShadcnV4(t *testing.T) {
 	th, un, sk := mustImport(t, fixture(t, "shadcn-v4"))
-	for _, tok := range Tokens {
+	for _, tok := range Tokens() {
 		if tok.Kind != Colour {
 			continue
 		}

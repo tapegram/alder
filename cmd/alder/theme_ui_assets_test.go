@@ -43,7 +43,7 @@ func TestGallery_MatchesManifest(t *testing.T) {
 // (spec "Layout").
 func TestPanelCSS_NoThemeTokens(t *testing.T) {
 	tokens := map[string]bool{}
-	for _, tk := range theme.Tokens {
+	for _, tk := range theme.Tokens() {
 		tokens[tk.CSS] = true
 	}
 	for _, m := range regexp.MustCompile(`var\(\s*(--[A-Za-z0-9_-]+)`).FindAllStringSubmatch(themeCSS, -1) {
