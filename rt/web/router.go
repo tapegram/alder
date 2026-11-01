@@ -164,9 +164,12 @@ type tracker struct {
 	// route is the pattern of the route serve matched first (the metrics' route label and a
 	// slow line's route=); stats the request's statements, counted when Options.Metrics or
 	// SlowAfter is set (eff.Env.Stats points here: no allocation)
-	route  string
-	stats  eff.Stats
-	masker func(method string, u *url.URL) string // the router's maskURL
+	route string
+	stats eff.Stats
+	// reps are the N+1s of each answer segment (tw.segRepeats), found once and kept
+	reps     [][]eff.Repeat
+	repsDone bool
+	masker   func(method string, u *url.URL) string // the router's maskURL
 
 	// dev panel: the request, what it ran, how it was answered
 	r       *http.Request
@@ -503,7 +506,11 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 					ID: w.id, Method: r.Method, URL: r.URL, Masker: rt.masker, Status: w.status,
 					Dur: dur, Bytes: w.bytes, Quiet: quiet(r.URL.Path, w.status) || scrape && !rt.probeInfo(), Steps: w.steps,
 					Route: label, Stmts: w.stats.Exec + w.stats.Query, DBDur: w.stats.ExecDur + w.stats.QueryDur,
-					Slow: rt.opts.SlowAfter > 0 && dur >= rt.opts.SlowAfter,
+					Slow:    rt.opts.SlowAfter > 0 && dur >= rt.opts.SlowAfter,
+					Counted: rt.statsOn(),
+				}
+				if w.acc.Counted && rt.opts.Dev {
+					w.acc.Repeats = repeatCount(w)
 				}
 				rt.opts.Access(&w.acc)
 			}
@@ -582,6 +589,12 @@ const alderPrefix = "/_alder/"
 
 // HealthPath is the health check every app answers (GET or HEAD), whatever its routes.
 const HealthPath = alderPrefix + "health"
+
+// statsOn is whether a request's database statements are counted (eff.Env.Stats): when metrics,
+// the slow threshold or the dev panel wants them.
+func (rt *router) statsOn() bool {
+	return rt.opts.Metrics != nil || rt.opts.SlowAfter > 0 || rt.panelOn()
+}
 
 // MetricsPath is where Options.Metrics is answered (GET or HEAD): Prometheus text.
 const MetricsPath = alderPrefix + "metrics"
@@ -785,7 +798,7 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 		if tw != nil {
 			rq.Env.Log = tw.log
 		}
-		if tw != nil && (rt.opts.Metrics != nil || rt.opts.SlowAfter > 0) {
+		if tw != nil && rt.statsOn() {
 			rq.Env.Stats = &tw.stats // the tracker's: no allocation; nil otherwise, nothing timed
 		}
 	}

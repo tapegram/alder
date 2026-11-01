@@ -416,3 +416,35 @@ func TestRouter_LogLinesCarryRid(t *testing.T) {
 		t.Errorf("LogID got %q, want %q; Log got %q", got, want, plain)
 	}
 }
+
+// In dev mode the router counts a request's statements and its N+1 groups into the access
+// record: five selects with different arguments are one group.
+func TestRouter_DevCountsRepeats(t *testing.T) {
+	t.Setenv("ALDER_DEV", "1")
+	const get = `SELECT "id" FROM "T" WHERE "id" = ?`
+	var s sink
+	h := NewRouter(one("GET", "/n1", func(rq *Request) Response {
+		for id := range 5 {
+			_, err := eff.Run(rq.Env, eff.KQuery, eff.Call("Db.get", false, func(e *eff.Env) (int, error) {
+				e.Rec.AddSQL(eff.SQLRec{Stmt: get, Args: []any{id}, Rows: 1})
+				e.Stats.Add(true, time.Millisecond)
+				return 0, nil
+			}))
+			if err != nil {
+				panic(err)
+			}
+		}
+		return PageResponse(doc("x"), nil, nil, false)
+	}), s.opts(func(o *Options) { o.Dev = true }))
+	serve(h, httptest.NewRequest("GET", "/n1", nil))
+	if a := s.one(t); !a.Counted || a.Stmts != 5 || a.Repeats != 1 {
+		t.Errorf("Counted %v, Stmts %d, Repeats %d; want true, 5, 1", a.Counted, a.Stmts, a.Repeats)
+	}
+	// production: nothing counted
+	s.reset()
+	h = NewRouter(one("GET", "/p", func(rq *Request) Response { return PageResponse(doc("x"), nil, nil, false) }), s.opts(nil))
+	serve(h, httptest.NewRequest("GET", "/p", nil))
+	if a := s.one(t); a.Counted || a.Repeats != 0 {
+		t.Errorf("production record counted: %+v", a)
+	}
+}

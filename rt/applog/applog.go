@@ -221,6 +221,11 @@ type Access struct {
 	Route string        // the matched route pattern, or the router's fixed name (a Slow line's route=)
 	Stmts int           // database statements run (eff.Stats; counted when metrics or slow is on)
 	DBDur time.Duration // their time
+	// Counted is set by the router when Stmts and DBDur were counted (metrics, the slow
+	// threshold or the dev panel is on); Repeats is the N+1 groups the request ran, found in dev
+	// mode only (0 otherwise). A Debug JSON record carries db_stmts, db_ms and repeats when Counted.
+	Counted bool
+	Repeats int
 }
 
 // Access writes a's line at Info (Debug when a.Quiet; Warn when a.Slow). As text:
@@ -233,7 +238,9 @@ type Access struct {
 //
 //	GET /todos/3 200 812.4ms 4821B rid=5f3a2c1e slow route=/todos/{id} steps=12 db=9/640.1ms
 //
-// and as JSON carries slow, route, steps, db_stmts and db_ms.
+// and as JSON carries slow, route, steps, db_stmts and db_ms. A JSON record at Debug whose
+// statements were counted (Counted) also carries repeats, and db_stmts and db_ms when it is not
+// Slow; the text of a line never shows them.
 func (l *Logger) Access(a *Access) {
 	lv := Info
 	switch {
@@ -254,8 +261,14 @@ func (l *Logger) Access(a *Access) {
 		if a.Slow {
 			r.AddAttrs(slog.Bool("slow", true), slog.String("route", a.Route), slog.Int("steps", a.Steps),
 				slog.Int("db_stmts", a.Stmts), slog.Float64("db_ms", tenths(a.DBDur)))
+			if l.min == Debug && a.Counted {
+				r.AddAttrs(slog.Int("repeats", a.Repeats))
+			}
 		} else if l.min == Debug {
 			r.AddAttrs(slog.Int("steps", a.Steps))
+			if a.Counted {
+				r.AddAttrs(slog.Int("db_stmts", a.Stmts), slog.Float64("db_ms", tenths(a.DBDur)), slog.Int("repeats", a.Repeats))
+			}
 		}
 		l.handle(r)
 		return

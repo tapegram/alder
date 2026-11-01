@@ -262,13 +262,35 @@ func repeatMarks(reps [][]eff.Repeat) map[segStmt]eff.Repeat {
 	return out
 }
 
+// repeatCount is the number of N+1 groups tw's answer ran, over its segments (segRepeats). Found
+// once per request: warnRepeats and the access record share it. Dev mode only: a request has a
+// Recorder only then, and 0 otherwise.
+func repeatCount(tw *tracker) int {
+	n := 0
+	for _, rs := range tw.segRepeats() {
+		n += len(rs)
+	}
+	return n
+}
+
+// segRepeats is the N+1s of each segment of tw's answer, found on the first call.
+func (tw *tracker) segRepeats() [][]eff.Repeat {
+	if !tw.repsDone {
+		tw.repsDone = true
+		if tw.rq != nil && tw.rq.Env != nil && tw.rq.Env.Rec != nil {
+			tw.reps = segRepeats(tw.hops, tw.rq.Env.Rec)
+		}
+	}
+	return tw.reps
+}
+
 // warnRepeats logs at warn each N+1 of the answer tw tracked, with the request line of its
 // segment: `GET /slow: N+1: …`. Dev mode only: a request has a Recorder only then.
 func (rt *router) warnRepeats(tw *tracker) {
 	if !rt.opts.Dev || tw.rq == nil || tw.rq.Env == nil || tw.rq.Env.Rec == nil {
 		return // a test's browser records too (Options.EnvFor), and warns in its own report
 	}
-	for s, rs := range segRepeats(tw.hops, tw.rq.Env.Rec) {
+	for s, rs := range tw.segRepeats() {
 		head := tw.r.Method + " " + rt.maskPath(tw.r.Method, tw.r.URL)
 		if s > 0 {
 			u, _, _ := strings.Cut(rt.maskRef(tw.hops[s-1].url), "?")
