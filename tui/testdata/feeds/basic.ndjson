@@ -1,0 +1,14 @@
+{"addr":"127.0.0.1:8080","alder":"v0.15.0","app":"shelf","boot":"5f0c1a2e","build":"ok","child":"127.0.0.1:52507","dir":"/Users/dev/shelf","first":1,"gen":"5f0c1a2e-1","seq":13,"since":"2026-11-01T14:02:09.318204Z","t":"2026-11-01T14:02:20.004417Z","type":"hello"}
+{"child":"127.0.0.1:52507","gen":"5f0c1a2e-1","ms":1409,"seq":1,"state":"ok","t":"2026-11-01T14:02:10.731562Z","type":"build"}
+{"child":"127.0.0.1:52507","seq":2,"state":"started","t":"2026-11-01T14:02:10.731601Z","type":"app"}
+{"seq":3,"t":"2026-11-01T14:02:10.731622Z","text":"dev server on 127.0.0.1:8080 → app on 127.0.0.1:52507","type":"run"}
+{"record":{"time":"2026-11-01T14:02:11.204118Z","level":"INFO","msg":"GET /","method":"GET","path":"/","status":200,"ms":4.2,"bytes":4821,"rid":"5f3a2c1e","steps":2,"db_stmts":1,"db_ms":0.3,"repeats":0},"seq":4,"t":"2026-11-01T14:02:11.204390Z","type":"log"}
+{"record":{"time":"2026-11-01T14:02:12.517003Z","level":"INFO","msg":"showing book 42","rid":"5f3a2c1f"},"seq":5,"t":"2026-11-01T14:02:12.517210Z","type":"log"}
+{"record":{"time":"2026-11-01T14:02:12.517540Z","level":"DEBUG","msg":"effect Books.find","rid":"5f3a2c1f"},"seq":6,"t":"2026-11-01T14:02:12.517702Z","type":"log"}
+{"record":{"time":"2026-11-01T14:02:12.523861Z","level":"WARN","msg":"book 42 has no cover image","rid":"5f3a2c1f"},"seq":7,"t":"2026-11-01T14:02:12.524015Z","type":"log"}
+{"record":{"time":"2026-11-01T14:02:12.529377Z","level":"INFO","msg":"GET /books/42","method":"GET","path":"/books/42","status":200,"ms":12.8,"bytes":6377,"rid":"5f3a2c1f","steps":5,"db_stmts":7,"db_ms":1.8,"repeats":1},"seq":8,"t":"2026-11-01T14:02:12.529560Z","type":"log"}
+{"record":{"time":"2026-11-01T14:02:14.880412Z","level":"INFO","msg":"POST /books/42/lend","method":"POST","path":"/books/42/lend","status":303,"ms":6.1,"bytes":0,"rid":"5f3a2c20","steps":3,"db_stmts":2,"db_ms":0.9,"repeats":0},"seq":9,"t":"2026-11-01T14:02:14.880633Z","type":"log"}
+{"record":{"time":"2026-11-01T14:02:15.902277Z","level":"INFO","msg":"GET /books/999","method":"GET","path":"/books/999","status":404,"ms":3.4,"bytes":16531,"rid":"5f3a2c21","steps":1,"db_stmts":1,"db_ms":0.2,"repeats":0},"seq":10,"t":"2026-11-01T14:02:15.902468Z","type":"log"}
+{"record":{"time":"2026-11-01T14:02:15.930019Z","level":"WARN","msg":"GET /search?q=••••","method":"GET","path":"/search?q=••••","status":500,"ms":812.4,"bytes":2140,"rid":"5f3a2c23","slow":true,"route":"/search","steps":12,"db_stmts":9,"db_ms":640.1,"repeats":0},"seq":11,"t":"2026-11-01T14:02:15.930228Z","type":"log"}
+{"record":{"time":"2026-11-01T14:02:16.910934Z","level":"DEBUG","msg":"GET /static/app.css","method":"GET","path":"/static/app.css","status":200,"ms":0.4,"bytes":1154,"rid":"5f3a2c22","steps":0,"db_stmts":0,"db_ms":0,"repeats":0},"seq":12,"t":"2026-11-01T14:02:16.911087Z","type":"log"}
+{"raw":"panic: runtime error: index out of range [3] with length 3","seq":13,"t":"2026-11-01T14:02:18.641305Z","type":"log"}
