@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -172,12 +173,28 @@ func (s *feedServer) requests() []string {
 	return append([]string(nil), s.afters...)
 }
 
-// serve is a script sending lines as events (with a ping between them), then ending the
-// stream when hold is false, or keeping it open until the client goes away.
+// serve is a script answering as a dev server whose hello and ring are lines (a hello first,
+// then the ring's events): the hello, then the events with a seq above the request's ?after, or
+// all of them when after is above the hello's seq, as run_events.go does (lines without a hello
+// are sent whole). A ping goes between events. It ends the stream when hold is false, or keeps
+// it open until the client goes away.
 func serve(lines [][]byte, hold bool) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		send := lines
+		if a := r.URL.Query().Get("after"); a != "" && len(lines) > 0 {
+			after, err := strconv.ParseInt(a, 10, 64)
+			hello, herr := Decode(lines[0])
+			if err == nil && herr == nil && hello.Type == "hello" && after <= hello.Seq {
+				send = [][]byte{lines[0]}
+				for _, l := range lines[1:] {
+					if ev, err := Decode(l); err == nil && ev.Seq > after {
+						send = append(send, l)
+					}
+				}
+			}
+		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		for _, l := range lines {
+		for _, l := range send {
 			fmt.Fprintf(w, "data: %s\n\n: ping\n\n", l)
 		}
 		w.(http.Flusher).Flush()
@@ -255,7 +272,7 @@ func TestConnect_Resumes(t *testing.T) {
 	hello, events := lines[0], lines[1:]
 	s, addr := startFeed(t,
 		serve(append([][]byte{hello}, events[:3]...), false),
-		serve(append([][]byte{hello}, events[3:]...), true),
+		serve(lines, true),
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -297,6 +314,43 @@ func TestConnect_NewBoot(t *testing.T) {
 	}
 	if r := s.requests(); !reflect.DeepEqual(r, []string{"", "3"}) {
 		t.Errorf("after of each request = %q", r)
+	}
+}
+
+// A new dev server that has already emitted as many events as the client saw on the old one
+// replays only the events above the old seq to ?after; the client opens its feed again without
+// after, so none of the new server's first events are lost.
+func TestConnect_NewBootAhead(t *testing.T) {
+	lines := fixture(t, "basic.ndjson")
+	hello, events := lines[0], lines[1:]
+	newHello := bytes.Replace(bytes.Replace(hello, []byte(`"boot":"5f0c1a2e"`), []byte(`"boot":"77aa0e19"`), 1),
+		[]byte(`"seq":13`), []byte(`"seq":5`), 1)
+	newRing := append([][]byte{newHello}, events[:5]...)
+	s, addr := startFeed(t,
+		serve(append([][]byte{hello}, events[:3]...), false),
+		serve(newRing, false),
+		serve(newRing, true),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch, err := Connect(ctx, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs := take(t, ch, 1+3+1+1+5)
+	if got, want := shape(evs), "hello:13 build:1 app:2 run:3 disconnected hello:5 build:1 app:2 run:3 log:4 log:5"; got != want {
+		t.Errorf("events:\n%s\nwant:\n%s", got, want)
+	}
+	if h := evs[5].Hello; h == nil || h.Boot != "77aa0e19" {
+		t.Errorf("second hello = %+v, want boot 77aa0e19", h)
+	}
+	select {
+	case ev := <-ch:
+		t.Errorf("extra event %s", shape([]Event{ev}))
+	case <-time.After(100 * time.Millisecond):
+	}
+	if r := s.requests(); !reflect.DeepEqual(r, []string{"", "3", ""}) {
+		t.Errorf("after of each request = %q, want [\"\" \"3\" \"\"]", r)
 	}
 }
 

@@ -29,8 +29,9 @@ const (
 // Afterwards a dropped stream is reopened with ?after=<the last seq seen>, waiting 250 ms before
 // the first attempt and doubling up to 5 s, and the channel carries one Event{Type:
 // "disconnected"} per outage, then the new stream's hello. A hello whose Boot differs from the
-// previous one (a new dev server, its seq starting again at 1) is passed through as is: its
-// events follow, and the reader resets on it. The channel is closed once ctx ends.
+// previous one (a new dev server, its seq starting again at 1) is passed through as is, followed
+// by the new server's whole ring (the client asks again without after when the new server
+// replayed only part of it), and the reader resets on it. The channel is closed once ctx ends.
 func Connect(ctx context.Context, addr string) (<-chan Event, error) {
 	c := &client{url: "http://" + addr + "/_dev/events"}
 	s, hello, err := c.open(ctx, -1)
@@ -129,8 +130,12 @@ func (c *client) run(ctx context.Context, ch chan<- Event, s *stream, hello Even
 			return false
 		}
 	}
-	var last int64 // the seq of the last event seen, the hello's aside (it is the server's current seq)
+	var last int64  // the seq of the last event seen, the hello's aside (it is the server's current seq)
+	var boot string // the boot of the dev server last talked to
 	for {
+		if hello.Hello.Boot != boot { // another dev server: its seqs are not the last one's
+			boot, last = hello.Hello.Boot, 0
+		}
 		if !send(hello) {
 			s.body.Close()
 			return
@@ -159,9 +164,23 @@ func (c *client) run(ctx context.Context, ch chan<- Event, s *stream, hello Even
 				return
 			case <-t.C:
 			}
-			if s, hello, err = c.open(ctx, last); err == nil {
+			if s, hello, err = c.reopen(ctx, last, boot); err == nil {
 				break
 			}
 		}
 	}
+}
+
+// reopen is open with ?after=last, the seq last seen on the dev server whose boot is boot. When
+// another dev server answers (a new alder run, its seq counting again from 1) and has emitted
+// last events or more (its hello's seq, its current one, is at least last), it replayed only the
+// events above last, so its first ones would be lost: reopen opens the feed again without after,
+// for its whole ring.
+func (c *client) reopen(ctx context.Context, last int64, boot string) (*stream, Event, error) {
+	s, hello, err := c.open(ctx, last)
+	if err != nil || hello.Hello.Boot == boot || last == 0 || last > hello.Seq {
+		return s, hello, err
+	}
+	s.body.Close()
+	return c.open(ctx, -1)
 }
