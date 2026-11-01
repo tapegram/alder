@@ -12,6 +12,7 @@ var commandUsages = map[string]string{
 	"fmt":      fmtUsage,
 	"build":    "usage: alder build [--emit] [--build-dir DIR] [dir]",
 	"run":      "usage: alder run [--build-dir DIR] [dir]",
+	"tui":      tuiUsage,
 	"routes":   routesUsage,
 	"dump":     "usage: alder dump [--tokens|--ast|--ir] <file.alder | dir>",
 	"eval":     evalUsage,

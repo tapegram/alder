@@ -63,6 +63,8 @@ func main() {
 			}()
 		}
 		os.Exit(runRunTo(os.Args[2:], os.Stdout, os.Stderr, stop))
+	case "tui":
+		os.Exit(runTuiTo(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	case "routes":
 		os.Exit(runRoutesTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "dump":
