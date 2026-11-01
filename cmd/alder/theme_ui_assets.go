@@ -41,8 +41,8 @@ const themePage = `<!doctype html>
 </div>
 </header>
 <div id="tp-import" hidden>
-<label for="import-css">Paste a shadcn or tweakcn theme (CSS)</label>
-<textarea id="import-css" spellcheck="false" placeholder=":root { --primary: oklch(0.55 0.22 285); … }&#10;.dark { … }"></textarea>
+<label for="import-css">Paste a shadcn or tweakcn theme (CSS or DTCG JSON)</label>
+<textarea id="import-css" spellcheck="false" placeholder="CSS or DTCG JSON&#10;:root { --primary: oklch(0.55 0.22 285); … }&#10;.dark { … }"></textarea>
 <div class="tp-bar"><button type="button" id="import-go" class="tp-primary">Import</button><button type="button" id="import-cancel">Close</button></div>
 <div id="tp-import-out"></div>
 </div>

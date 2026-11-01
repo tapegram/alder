@@ -1221,7 +1221,8 @@ An `<al-button>` no longer stretches in a grid or a column; add `full` to any bu
 | `--al-leading`, `--al-leading-tight` | literal `1.5`, `1.25` |
 | `--al-weight-normal`, `--al-weight-medium`, `--al-weight-semibold` | literal `400`, `500`, `600` |
 | `--al-control-h-sm`, `--al-control-h-md`, `--al-control-h-lg` | literal `2rem`, `2.25rem`, `2.5rem` (shadcn's h-8, h-9, h-10) |
-| `--al-checkbox-size`, `--al-border-width` | literal `1rem`, `1px` |
+| `--al-checkbox-size` | literal `1rem` |
+| `--al-border-width` | `--border-width` (`borderWidth`), a token again since v0.5.0 |
 | `--al-ring-width`, `--al-ring-offset` | none: the focus ring is `0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent)` |
 | `--al-disabled-opacity`, `--al-duration` | literal `0.5`, `150ms` |
 | `--al-info-soft`, `--al-success-soft`, `--al-warning-soft`, `--al-destructive-soft`, the same with `-foreground`, and `--al-info-border`, `--al-success-border`, `--al-warning-border`, `--al-destructive-border` | none: alerts use `--card`, `--card-foreground`, `--border` and `--destructive` |

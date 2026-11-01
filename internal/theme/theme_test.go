@@ -130,3 +130,29 @@ func TestSuggest(t *testing.T) {
 		t.Errorf("Version = %q", Version())
 	}
 }
+
+// A token that is live must not also be answered as removed: the checker consults Removed first.
+// A removed name that spells a live token's CSS name must point at it ("write `borderWidth`").
+func TestRemoved_NoLiveToken(t *testing.T) {
+	for name, msg := range Removed {
+		if tok, ok := Lookup(name); ok {
+			t.Errorf("Removed[%q] shadows the live token %s", name, tok.CSS)
+		}
+		css := "--al-" + strings.TrimPrefix(kebabOf(strings.TrimPrefix(name, "al")), "-")
+		if tok, ok := ByCSS(css); ok && !strings.Contains(msg, "`"+tok.Field+"`") {
+			t.Errorf("Removed[%q] names the live token %s but says %q", name, tok.CSS, msg)
+		}
+	}
+}
+
+func kebabOf(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r >= 'A' && r <= 'Z' {
+			b.WriteByte('-')
+			r += 'a' - 'A'
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}

@@ -157,7 +157,7 @@ var Removed = map[string]string{
 	"alControlHMd":                "it has none: control heights are literal rem values",
 	"alControlHLg":                "it has none: control heights are literal rem values",
 	"alCheckboxSize":              "it has none: the size is a literal `1rem`",
-	"alBorderWidth":               "it has none: borders are a literal `1px`",
+	"alBorderWidth":               "write `borderWidth`",
 	"alRingWidth":                 "it has none: the focus ring is drawn from `ring`",
 	"alRingOffset":                "it has none: the focus ring is drawn from `ring`",
 	"alDisabledOpacity":           "it has none: the opacity is a literal `0.5`",
