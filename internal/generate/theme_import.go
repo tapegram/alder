@@ -77,7 +77,7 @@ func ReadThemeSource(name string, src []byte, format string) (theme.Theme, []the
 	}
 	if format == "dtcg" {
 		if len(src) > theme.DTCGMaxBytes {
-			return theme.Theme{}, nil, theme.Skipped{}, Refusef("%s is over 1 MiB: a DTCG tokens file is one JSON document of at most 1 MiB", themeSourceName(name))
+			return theme.Theme{}, nil, theme.Skipped{}, Refusef("%s is over %d MiB, the limit for a DTCG tokens file", themeSourceName(name), theme.DTCGMaxBytes>>20)
 		}
 		var fsys fs.FS = fstest.MapFS{"stdin.json": {Data: src}}
 		file, loose := "stdin.json", name == "-" || name == ""
