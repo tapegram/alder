@@ -8,9 +8,7 @@
 (string) @string
 (integer) @number
 (float) @number.float
-(negative_number "-" @number)
 (boolean) @boolean
-(unit) @constant.builtin
 (hole) @variable.builtin
 (wildcard) @character.special
 
@@ -28,6 +26,9 @@
 ["|>" "??" "||" "&&" "==" "!=" "<" "<=" ">" ">=" "+" "-" "++" "*" "/" "%" "->" "<-" "="
  "|" ".."] @operator
 ["(" ")" "[" "]" "{" "}"] @punctuation.bracket
+; after the operators and brackets, so these win on their bytes (a later pattern wins)
+(negative_number "-" @number)
+(unit) @constant.builtin
 ["," ":" "."] @punctuation.delimiter
 
 ; ---- names in declarations
@@ -50,6 +51,7 @@
 
 ; ---- modules and qualified names
 (module_name (constructor) @module)
+(import_decl alias: (constructor) @module)
 (qualified_name module: (constructor) @module)
 (qualified_name name: (identifier) @function.call)
 

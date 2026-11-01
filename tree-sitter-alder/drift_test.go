@@ -259,12 +259,12 @@ func queryDecls(t *testing.T, cli, paths string) map[string][]decl {
 	return res
 }
 
-// queryCaptures runs test/drift.scm over the files and returns each file's captures, with
-// their positions, in source order.
-func queryCaptures(t *testing.T, cli, paths string) map[string][]capture {
+// runQuery runs the query file scm over the files listed in paths and calls each with every
+// other line of the output (patterns and captures) and the file it falls under.
+func runQuery(t *testing.T, cli, scm, paths string, each func(file, line string)) {
 	t.Helper()
 	args := append([]string{"query"}, libArgs(t, cli)...)
-	args = append(args, filepath.Join(grammarDir(t), "test", "drift.scm"), "--paths", paths)
+	args = append(args, scm, "--paths", paths)
 	cmd := exec.Command(cli, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -272,12 +272,6 @@ func queryCaptures(t *testing.T, cli, paths string) map[string][]capture {
 	if err != nil {
 		t.Fatalf("tree-sitter query: %v\n%s", err, stderr.String())
 	}
-	caps := map[string][]capture{}
-	type at struct {
-		file string
-		row  int
-	}
-	watchEnds := map[at]int{} // a watch's file and first row → its last row
 	file := ""
 	sc := bufio.NewScanner(bytes.NewReader(out))
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
@@ -287,9 +281,24 @@ func queryCaptures(t *testing.T, cli, paths string) map[string][]capture {
 			file = line
 			continue
 		}
+		each(file, line)
+	}
+}
+
+// queryCaptures runs test/drift.scm over the files and returns each file's captures, with
+// their positions, in source order.
+func queryCaptures(t *testing.T, cli, paths string) map[string][]capture {
+	t.Helper()
+	caps := map[string][]capture{}
+	type at struct {
+		file string
+		row  int
+	}
+	watchEnds := map[at]int{} // a watch's file and first row → its last row
+	runQuery(t, cli, filepath.Join(grammarDir(t), "test", "drift.scm"), paths, func(file, line string) {
 		m := captureRE.FindStringSubmatch(line)
 		if m == nil {
-			continue
+			return
 		}
 		row, _ := strconv.Atoi(m[2])
 		col, _ := strconv.Atoi(m[3])
@@ -298,12 +307,12 @@ func queryCaptures(t *testing.T, cli, paths string) map[string][]capture {
 		switch m[1] {
 		case "watchnode":
 			watchEnds[at{file, row}] = end
-			continue
+			return
 		case "page", "test":
 			name = strings.TrimSuffix(strings.TrimPrefix(name, `"`), `"`)
 		}
 		caps[file] = append(caps[file], capture{row: row, col: col, d: decl{m[1], name}})
-	}
+	})
 	for file, cs := range caps {
 		for i := range cs {
 			if cs[i].d.Kind == "watch" {
