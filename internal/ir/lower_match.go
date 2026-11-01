@@ -80,6 +80,9 @@ func (l *lowerer) match(subject syntax.Expr, arms []*syntax.Arm, t types.Type, h
 	m := &matcher{l: l, t: t, html: html, pos: at}
 	subj := l.expr(subject)
 	st := l.typeOf(subject)
+	if len(arms) == 0 {
+		return m.build(subj, st, matchKind(st), nil, nil)
+	}
 	var rows []row
 	named := false
 	vars := map[string]bool{}
