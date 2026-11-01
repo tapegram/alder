@@ -27,8 +27,10 @@ import (
 // themeFile is the file the theme is read from and written to, relative to the app dir.
 const themeFile = "app/App.alder"
 
-// themeBodyMax is the limit on a POST body (and so on the importer's input): over it is 413.
-const themeBodyMax = 256 << 10
+// themeBodyMax is the limit on a POST body: over it is 413. The import route's text is a JSON
+// string in it, so the limit is twice the largest input (a DTCG file, theme.DTCGMaxBytes) to
+// leave room for escaping; generate.ReadThemeSource then holds the text to its format's limit.
+const themeBodyMax = 2 * theme.DTCGMaxBytes
 
 // themeState is GET /_dev/theme/state.
 type themeState struct {
@@ -66,6 +68,7 @@ type themeUnplaced struct {
 	Name   string `json:"name"`
 	Value  string `json:"value"`
 	Reason string `json:"reason"`
+	Scheme string `json:"scheme,omitempty"`
 }
 
 type themeSkipped struct {
@@ -128,13 +131,13 @@ func (d *devServer) serveTheme(w http.ResponseWriter, r *http.Request) {
 		}
 		us := []themeUnplaced{}
 		for _, u := range unplaced {
-			us = append(us, themeUnplaced{u.Block, u.Name, u.Value, u.Reason})
+			us = append(us, themeUnplaced{u.Block, u.Name, u.Value, u.Reason, u.Scheme})
 		}
 		kinds := skipped.Kinds
 		if kinds == nil {
 			kinds = []string{}
 		}
-		writeThemeJSON(w, http.StatusOK, map[string]any{"theme": themeMaps(th), "unplaced": us, "skipped": themeSkipped{skipped.N, kinds}})
+		writeThemeJSON(w, http.StatusOK, map[string]any{"theme": themeMaps(th), "unplaced": us, "unplacedCss": theme.UnplacedCSS(unplaced), "skipped": themeSkipped{skipped.N, kinds}})
 	case "/_dev/theme/write":
 		var body struct {
 			Theme theme.Theme `json:"theme"`
@@ -190,7 +193,7 @@ func readThemeBody(w http.ResponseWriter, r *http.Request, v any) bool {
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, themeBodyMax)).Decode(v); err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
-			http.Error(w, "alder run: the body is over 256 KiB", http.StatusRequestEntityTooLarge)
+			http.Error(w, "alder run: the body is over 2 MiB", http.StatusRequestEntityTooLarge)
 		} else {
 			http.Error(w, "alder run: the body is not JSON: "+err.Error(), http.StatusBadRequest)
 		}

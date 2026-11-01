@@ -448,6 +448,42 @@ func TestThemeUse_List(t *testing.T) {
 	}
 }
 
+func TestThemeUse_ListJSON(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	before := readAppAlder(t, dir)
+	code, out, errb := themeUse(t, dir, "--json")
+	if code != 0 || errb != "" {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	var got struct {
+		Version string `json:"version"`
+		Presets []struct {
+			Name    string `json:"name"`
+			Title   string `json:"title"`
+			Purpose string `json:"purpose"`
+		} `json:"presets"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out)
+	}
+	if got.Version != theme.Version() {
+		t.Errorf("version %q, want %q", got.Version, theme.Version())
+	}
+	ps := theme.Presets()
+	if len(got.Presets) != len(ps) {
+		t.Fatalf("%d presets, want %d", len(got.Presets), len(ps))
+	}
+	for i, p := range ps {
+		g := got.Presets[i]
+		if g.Name != p.Name || g.Title != p.Title || g.Purpose != p.Purpose {
+			t.Errorf("preset %d: got %+v, want %s/%s/%s", i, g, p.Name, p.Title, p.Purpose)
+		}
+	}
+	if readAppAlder(t, dir) != before {
+		t.Error("App.alder changed")
+	}
+}
+
 func TestThemeUse_WritesAndReplaces(t *testing.T) {
 	dir := genApp(t, "scaffold")
 	code, out, errb := themeUse(t, dir, "paper")
@@ -561,4 +597,33 @@ func TestHelpJSON_ThemeUse(t *testing.T) {
 		}
 	}
 	t.Fatal("`theme use` is not in help --json")
+}
+
+func TestThemeImport_JSONDarkLeftoverScheme(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	src, err := filepath.Abs("../../internal/theme/testdata/dtcg/foreign-names")
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, out, errb := themeImport(t, dir, "", filepath.Join(src, "theme.resolver.json"), "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %s%s", code, out, errb)
+	}
+	var got struct {
+		Unplaced []struct{ Block, Scheme string } `json:"unplaced"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	var dark, other int
+	for _, u := range got.Unplaced {
+		if strings.HasPrefix(u.Block, "dark.tokens.json ") && u.Scheme == "dark" {
+			dark++
+		} else if u.Scheme != "" {
+			other++
+		}
+	}
+	if dark == 0 || other != 0 || !strings.Contains(out, `"scheme":"dark"`) {
+		t.Errorf("scheme missing or misplaced: %s", out)
+	}
 }

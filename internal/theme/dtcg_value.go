@@ -354,10 +354,11 @@ func dtcgSegment(path []string) string {
 // ---- ImportDTCG
 
 // ImportDTCG reads a DTCG resolver or tokens file (see loadDTCG) into a Theme, the tokens it
-// could not place and the modifiers it resolved at their default. A colour in Root goes to
-// both schemes, and a scheme's own value beats it. A theme-wide token in Light goes to Root;
-// one in Dark is placed only when it matches. Each token's name is looked up in alder-ui's
-// table; its value is converted (cssText, an alias to an alder-ui colour kept as its var())
+// could not place and the modifiers it resolved at their default. A colour in Root goes to both
+// schemes, and a scheme's own value beats it. A theme-wide token in Light goes to Root; one in
+// Dark is placed only when Root's value is equivalent (Equivalent), and unplaced as differing or,
+// with no Root value, as set only by the dark scheme. Each token's name is looked up in alder-
+// ui's table; its value is converted (cssText, an alias to an alder-ui colour kept as its var())
 // and checked as the CSS importer checks it. It is an error when no token was placed.
 func ImportDTCG(fsys fs.FS, name string) (Theme, []Unplaced, Skipped, error) {
 	d, err := loadDTCG(fsys, name)
@@ -376,7 +377,14 @@ func ImportDTCG(fsys fs.FS, name string) (Theme, []Unplaced, Skipped, error) {
 		}
 	}
 	for _, p := range im.pending {
-		if v, ok := im.th.Root[p.field]; !ok || v != p.val {
+		v, ok := im.th.Root[p.field]
+		tok, _ := Lookup(p.field)
+		switch {
+		case ok && Equivalent(tok.Kind, v, p.val):
+		case !ok:
+			p.u.Reason = "theme-wide in alder-ui; only the dark scheme sets it"
+			im.un = append(im.un, p.u)
+		default:
 			im.un = append(im.un, p.u)
 		}
 	}
@@ -418,6 +426,9 @@ func (im *dtcgImporter) place(t dtcgToken, scheme string) error {
 	seg := dtcgSegment(t.Path)
 	tok, known := dtcgName(seg)
 	u := Unplaced{Block: t.File + " " + strings.Join(t.Path, "."), Name: "--" + seg}
+	if scheme == "dark" {
+		u.Scheme = "dark"
+	}
 	if known {
 		u.Name = tok.CSS
 	}

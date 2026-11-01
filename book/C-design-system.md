@@ -182,7 +182,7 @@ $ alder theme use paper
 theme: paper → app/App.alder  (light 32, dark 32, theme-wide 15; replaced the theme that was there)
 ```
 
-With no name the command lists the themes and writes nothing. With one it replaces the app's whole `theme` declaration, as `alder theme import` does: what was there before is gone, not merged, and `--dry-run` prints the diff without writing. The summary counts the colour tokens set under `light` and under `dark` (32 each: every colour token of the table below) and the theme-wide ones (radii, widths, fonts, shadows and the border width: 15). A name that is not one of the five is refused with the nearest, then the list, and nothing is written:
+With no name the command lists the themes and writes nothing. With `--json` the list is `{"version":"v0.5.0","presets":[{"name","title","purpose"}]}`, for a script or an agent. With one it replaces the app's whole `theme` declaration, as `alder theme import` does: what was there before is gone, not merged, and `--dry-run` prints the diff without writing. The summary counts the colour tokens set under `light` and under `dark` (32 each: every colour token of the table below) and the theme-wide ones (radii, widths, fonts, shadows and the border width: 15). A name that is not one of the five is refused with the nearest, then the list, and nothing is written:
 
 ```
 $ alder theme use papr
