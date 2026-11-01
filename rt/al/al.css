@@ -1,4 +1,4 @@
-/*! alder-ui v0.5.0 | Apache-2.0 | https://github.com/tapegram/alder-ui
+/*! alder-ui v0.6.0 | Apache-2.0 | https://github.com/tapegram/alder-ui
  * Built by scripts/build.py from tokens.css, base.css, typography.css and components/;
  * do not edit. Geist and Geist Mono (SIL OFL 1.1) load from fonts/ beside this file. */
 
@@ -3758,6 +3758,10 @@ al-tooltip::after {
  * hides the other sections, re-applies that after DOM patches, and toggles `open`; without it, every section shows
  * when open. Monospace for SQL and other code.
  *
+ * The open panel is resizable by the grip along its top edge (al-devpanel.js
+ * creates it): it sets --devpanel-h and --devpanel-max, and without one the
+ * section grows with its content up to 50dvh.
+ *
  * Preflight (base.css) zeroes margins, borders, list markers and button
  * chrome. The panel states what it relies on (box-sizing, border, margin,
  * list-style, line-height, button background/font/colour) on its own rules,
@@ -3765,6 +3769,9 @@ al-tooltip::after {
  */
 
 al-devpanel {
+  /* the open section's height: unset until the grip sets one (al-devpanel.js) */
+  --devpanel-h: auto;
+  --devpanel-max: 50dvh;
   display: block;
   position: sticky;
   inset-block-end: 0;
@@ -3824,7 +3831,8 @@ al-devpanel > nav > button:focus-visible {
 
 al-devpanel > section {
   display: none;
-  max-block-size: 50dvh;
+  block-size: var(--devpanel-h);
+  max-block-size: var(--devpanel-max);
   padding: 0.5rem 1rem;
   border-top: var(--al-border-width) solid var(--border);
   overflow: auto;
@@ -3832,6 +3840,27 @@ al-devpanel > section {
 
 al-devpanel[open] > section:not([hidden]) {
   display: block;
+}
+
+/* the resize grip: only while open, since there is nothing to resize closed */
+al-devpanel > [data-grip] {
+  display: none;
+}
+
+al-devpanel[open] > [data-grip] {
+  display: block;
+  block-size: 0.5rem;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+al-devpanel[open] > [data-grip]:hover,
+al-devpanel[open] > [data-grip]:focus-visible {
+  background: color-mix(in oklab, var(--ring) 40%, transparent);
+}
+
+al-devpanel > [data-grip]:focus-visible {
+  outline: none;
 }
 
 al-devpanel pre,

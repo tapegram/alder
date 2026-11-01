@@ -35,7 +35,7 @@ box", explains why):
   styles that box by its tag name and attributes. Every element works
   with JavaScript off.
 
-The version Alder ships is **v0.5.0**: the compiler embeds a copy of
+The version Alder ships is **v0.6.0**: the compiler embeds a copy of
 the library's stylesheet, scripts (`al.js`) and manifest at that tag (`rt/al/VERSION`;
 "Where it lives", below).
 
@@ -170,7 +170,7 @@ A starting theme is taken *by copy*. Nothing in your app refers to `paper` after
 
 ```
 $ alder theme use
-starting themes (alder-ui v0.5.0):
+starting themes (alder-ui v0.6.0):
   zinc        Tools, dashboards, admin — the default, the safe choice.
   brutal      Launch pages, portfolios, anything that should shout.
   catppuccin  Developer-facing apps.
@@ -182,12 +182,12 @@ $ alder theme use paper
 theme: paper → app/App.alder  (light 32, dark 32, theme-wide 15; replaced the theme that was there)
 ```
 
-With no name the command lists the themes and writes nothing. With `--json` the list is `{"version":"v0.5.0","presets":[{"name","title","purpose"}]}`, for a script or an agent. With one it replaces the app's whole `theme` declaration, as `alder theme import` does: what was there before is gone, not merged, and `--dry-run` prints the diff without writing. The summary counts the colour tokens set under `light` and under `dark` (32 each: every colour token of the table below) and the theme-wide ones (radii, widths, fonts, shadows and the border width: 15). A name that is not one of the five is refused with the nearest, then the list, and nothing is written:
+With no name the command lists the themes and writes nothing. With `--json` the list is `{"version":"v0.6.0","presets":[{"name","title","purpose"}]}`, for a script or an agent. With one it replaces the app's whole `theme` declaration, as `alder theme import` does: what was there before is gone, not merged, and `--dry-run` prints the diff without writing. The summary counts the colour tokens set under `light` and under `dark` (32 each: every colour token of the table below) and the theme-wide ones (radii, widths, fonts, shadows and the border width: 15). A name that is not one of the five is refused with the nearest, then the list, and nothing is written:
 
 ```
 $ alder theme use papr
 alder theme use: no starting theme `papr`; did you mean `paper`?
-starting themes (alder-ui v0.5.0):
+starting themes (alder-ui v0.6.0):
   zinc        Tools, dashboards, admin — the default, the safe choice.
   …
 ```
@@ -260,8 +260,8 @@ $ alder theme import tweakcn.css
 theme: 59 tokens → app/App.alder  (light 32, dark 20, theme-wide 7; replaced the theme that was there)
 15 not placed — paste into static/app.css if you want them:
   :root {
-    --font-serif: Lora, Georgia, serif; /* not a token of alder-ui v0.5.0 */
-    --tracking-normal: 0em; /* not a token of alder-ui v0.5.0 */
+    --font-serif: Lora, Georgia, serif; /* not a token of alder-ui v0.6.0 */
+    --tracking-normal: 0em; /* not a token of alder-ui v0.6.0 */
     …
   }
 
@@ -1303,7 +1303,7 @@ Alder *vendors* it: the compiler's source keeps a copy of one tagged
 release in `rt/al/` (`al.css`, `al.js`, `custom-elements.json`, `VERSION`, a
 `fonts/` directory with the two Geist files and their licence, and the
 licences of the library, of the lucide icons it draws and of the
-Catppuccin palette that the `catppuccin` starting theme uses), at `v0.5.0`,
+Catppuccin palette that the `catppuccin` starting theme uses), at `v0.6.0`,
 and embeds it, so a build never fetches anything. `scripts/vendor-al.sh
 <tag>` refreshes the copy from the library's repository; a test checks
 that `VERSION`, the manifest's `version` and the stylesheet's banner
