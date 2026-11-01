@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -578,20 +579,35 @@ func stubScratchFileRan(t *testing.T, ran func(k int) bool) func() []bool {
 	}
 }
 
-func TestScratchWatchVetsFirstRunOnly(t *testing.T) {
-	calls := stubScratchFile(t)
-	w := startScratchWatch(t, "> 1\n")
-	waitCalls := func(n int) {
+// runsReturned counts the watch loop's runs as each returns (the scratchRunReturned hook); wait(n)
+// waits for the n-th. Once a run has returned, whether it finished (and so vetted) is decided: an
+// edit made then cannot supersede it. Waiting for the stubbed runScratchFile call instead left a
+// window, before scratchRun read its context, in which an edit's cancel undid the vet (#133).
+func runsReturned(t *testing.T) (wait func(n int)) {
+	t.Helper()
+	returned := make(chan struct{}, 100)
+	real := scratchRunReturned
+	scratchRunReturned = func(context.Context) { returned <- struct{}{} }
+	t.Cleanup(func() { scratchRunReturned = real })
+	seen := 0
+	return func(n int) {
 		t.Helper()
-		for deadline := time.Now().Add(90 * time.Second); len(calls()) < n; time.Sleep(10 * time.Millisecond) {
-			if time.Now().After(deadline) {
-				t.Fatalf("want %d runs, got %v", n, calls())
-			}
+		for ; seen < n; seen++ {
+			await(t, returned, "run "+strconv.Itoa(seen+1)+" to return")
 		}
 	}
-	waitCalls(1)
+}
+
+// Each edit waits for the watcher's first snapshot (an edit before it is the baseline, and no run
+// follows) and for the run before it to return.
+func TestScratchWatchVetsFirstRunOnly(t *testing.T) {
+	calls := stubScratchFile(t)
+	ready, returned := watchReady(t), runsReturned(t)
+	w := startScratchWatch(t, "> 1\n")
+	await(t, ready, "the watcher's first snapshot")
+	returned(1)
 	w.edit("> 2\n")
-	waitCalls(2)
+	returned(2)
 	w.stop()
 	if got := calls(); len(got) < 2 || got[0] || !got[1] {
 		t.Fatalf("NoVet per run = %v, want [false true]", got)
@@ -601,20 +617,14 @@ func TestScratchWatchVetsFirstRunOnly(t *testing.T) {
 // A first run that did not run (a parse error, app errors) has not vetted: the next one vets too.
 func TestScratchWatchVetsUntilARunBuilt(t *testing.T) {
 	calls := stubScratchFileRan(t, func(k int) bool { return k > 1 })
+	ready, returned := watchReady(t), runsReturned(t)
 	w := startScratchWatch(t, "> 1\n")
-	waitCalls := func(n int) {
-		t.Helper()
-		for deadline := time.Now().Add(90 * time.Second); len(calls()) < n; time.Sleep(10 * time.Millisecond) {
-			if time.Now().After(deadline) {
-				t.Fatalf("want %d runs, got %v", n, calls())
-			}
-		}
-	}
-	waitCalls(1)
+	await(t, ready, "the watcher's first snapshot")
+	returned(1)
 	w.edit("> 2\n")
-	waitCalls(2)
+	returned(2)
 	w.edit("> 3\n")
-	waitCalls(3)
+	returned(3)
 	w.stop()
 	if got := calls(); len(got) < 3 || got[0] || got[1] || !got[2] {
 		t.Fatalf("NoVet per run = %v, want [false false true]", got)
