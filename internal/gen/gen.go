@@ -10,6 +10,8 @@ import (
 	"go/parser"
 	"go/token"
 	"maps"
+	"os"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -78,7 +80,15 @@ type Options struct {
 func Emit(p *ir.Program, opts Options) (files map[string][]byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			files, err = nil, fmt.Errorf("%v", r)
+			// A panic here is a bug in gen. The stack is the only thing that locates it, and the
+			// caller turns the error into a one-line report, so keep it behind ALDER_DEBUG
+			// rather than discard it.
+			if os.Getenv("ALDER_DEBUG") != "" {
+				err = fmt.Errorf("%v\n%s", r, debug.Stack())
+			} else {
+				err = fmt.Errorf("%v", r)
+			}
+			files = nil
 		}
 	}()
 	g := newGen(p, opts.Thunks)

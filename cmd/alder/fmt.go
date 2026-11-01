@@ -27,7 +27,7 @@ const fmtUsage = "usage: alder fmt [--check | --stdin] [path...]"
 func runFmtTo(args []string, stdin io.Reader, stdout, stderr io.Writer) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(stderr, "%s internal error: %v\n", errTag(stderr, "alder fmt:"), r)
+			internalError(stderr, "alder fmt:", r)
 			code = 2
 		}
 	}()

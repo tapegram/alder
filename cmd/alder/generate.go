@@ -105,7 +105,7 @@ type unplacedJSON struct {
 func runGeneratorWith(cmd string, g genArgs, o generate.Options, load func(dir string) (*generate.Program, error), gen func(p *generate.Program) ([]generate.Edit, error), extra func(*genJSON), stdout, stderr io.Writer) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(stderr, "%s: internal error: %v\n", cmd, r)
+			internalError(stderr, cmd+":", r)
 			code = 2
 		}
 	}()
@@ -331,7 +331,7 @@ func runSpecWith(s *generate.Spec, argv []string, usage string, seen func(*gener
 	cmd := "alder " + s.ID
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(stderr, "%s: internal error: %v\n", cmd, r)
+			internalError(stderr, cmd+":", r)
 			code = 2
 		}
 	}()

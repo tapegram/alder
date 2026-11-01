@@ -14,6 +14,7 @@ import (
 	"alder/internal/buildkit"
 	"alder/internal/diag"
 	"alder/internal/style"
+	"alder/internal/version"
 )
 
 func main() {
@@ -144,6 +145,25 @@ func explainTo(code string, stdout, stderr io.Writer) int {
 // errTag is the `alder <command>:` prefix of an error line on w, bold red on a terminal. It is
 // used by the commands that have no --json mode; the ones that have style nothing in JSON mode.
 func errTag(w io.Writer, tag string) string { return style.For(w).BoldRed(tag) }
+
+// internalError reports a bug in alder itself on w: a panic a command recovered, or an error a
+// pass returns for a program it cannot handle. The user's program is not at fault, and saying so
+// is the point — an internal error surfaces in the dev panel beside ordinary diagnostics, where a
+// bare pass name ("gen: cannot emit <nil>") reads as "your code is broken and you cannot see how".
+//
+// detail is printed as it is, for the report. ALDER_DEBUG=1 adds the stack where one was kept.
+func internalError(w io.Writer, tag string, detail any) {
+	fmt.Fprintf(w, "%s internal error: %v\n", errTag(w, tag), detail)
+	fmt.Fprintf(w, "  This is a bug in alder, not in your program.\n")
+	fmt.Fprintf(w, "  alder %s (go %s)\n", version.String(), version.Go())
+	fmt.Fprintf(w, "  Please report it: %s\n", issueURL)
+	if os.Getenv("ALDER_DEBUG") == "" {
+		fmt.Fprintf(w, "  Re-run with ALDER_DEBUG=1 for a stack trace.\n")
+	}
+}
+
+// issueURL is where an internal error asks to be reported.
+const issueURL = "https://github.com/tapegram/alder/issues/new"
 
 func usage() { usageTo(os.Stderr) }
 
