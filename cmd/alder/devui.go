@@ -59,11 +59,14 @@ func (e errState) count() int {
 // parseDiags reads the lines of `alder check --json` (out) and keeps the errors, each with the
 // excerpt of its source line under dir. Lines that are not diagnostics (a text failure) are
 // skipped, so an empty result means "fall back to the text".
-func parseDiags(dir, out string) []diagItem {
+func parseDiags(dir, out string) []diagItem { return parseDiagsOf(dir, out, "error") }
+
+// parseDiagsOf is parseDiags keeping the diagnostics of severity ("error" or "warning").
+func parseDiagsOf(dir, out, severity string) []diagItem {
 	var ds []diagItem
 	for _, line := range strings.Split(out, "\n") {
 		var d diagItem
-		if !strings.HasPrefix(line, "{") || json.Unmarshal([]byte(line), &d) != nil || d.Severity != "error" || d.Code == "" {
+		if !strings.HasPrefix(line, "{") || json.Unmarshal([]byte(line), &d) != nil || d.Severity != severity || d.Code == "" {
 			continue
 		}
 		d.Excerpt = excerpt(dir, d)

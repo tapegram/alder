@@ -116,6 +116,8 @@ var commandTree = []cmdSpec{
 		Flags: []flagSpec{{Name: "--emit", Summary: "write the generated Go source and stop"}, buildDirFlag}},
 	{Name: "run", Summary: "run the app with live reload", Usage: commandUsages["run"], Args: []string{"[dir]"},
 		Flags: []flagSpec{buildDirFlag}},
+	{Name: "tui", Summary: "the terminal UI for alder run (the separate alder-tui program)", Usage: commandUsages["tui"],
+		Args: []string{"[alder-tui arguments]"}},
 	{Name: "routes", Summary: "list the app's routes: pages (GET) and messages (POST)", Usage: commandUsages["routes"],
 		Args:  []string{"[dir]"},
 		Flags: []flagSpec{{Name: "--json", Summary: "a JSON array of routes with file, line and col"}}},
