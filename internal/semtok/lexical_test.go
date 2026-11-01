@@ -1,4 +1,3 @@
-// internal/semtok/lexical_test.go
 package semtok
 
 import "testing"

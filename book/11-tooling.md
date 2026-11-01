@@ -2160,8 +2160,8 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   (VS Code, Zed, Helix) highlights Alder from these alone. It can also fold
   each declaration, block, `match`, element, record, list, comment block and
   the imports, and grow a selection outward one construct at a time (in VS
-  Code, Shift+Alt+→). Neovim keeps colouring with tree-sitter; the two agree
-  by construction (chapter 13, section 10).
+  Code, Shift+Alt+→). Neovim colours with tree-sitter, and a test keeps
+  the two in agreement (chapter 13, section 10).
 
 ### Routes in the editor
 

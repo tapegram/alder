@@ -1,4 +1,3 @@
-// internal/semtok/helpers_test.go
 package semtok
 
 import (

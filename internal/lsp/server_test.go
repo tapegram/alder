@@ -90,9 +90,6 @@ func TestInitialize_Capabilities(t *testing.T) {
 	if caps["selectionRangeProvider"] != true {
 		t.Fatalf("selectionRangeProvider %v", caps["selectionRangeProvider"])
 	}
-	if caps["selectionRangeProvider"] != true {
-		t.Fatalf("selectionRangeProvider %v", caps["selectionRangeProvider"])
-	}
 	if info := c.initResult["serverInfo"].(map[string]any); info["name"] != "alder" || info["version"] == "" {
 		t.Fatalf("serverInfo %v", info)
 	}

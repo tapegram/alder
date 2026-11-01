@@ -5923,8 +5923,10 @@ and not the other fails it. The one place it does not compare is inside
 colours the expression inside.
 
 Folding and expand selection come from the same parse. A folding range is
-the first and last line of a declaration, block, `match`, element, record,
-list or comment run. A selection range is the chain of nodes around the
+the first and last line of a declaration (a value, type, table, capability,
+fake, session, deploy, theme, test or form), block, `match`, element,
+record, list, scratch watch, run of `--` comment lines, or the run of
+imports. A selection range is the chain of nodes around the
 cursor, from the innermost outward (`syntax.NodeAt`).
 
 ### Scratch files in the language server

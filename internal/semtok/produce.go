@@ -1,4 +1,3 @@
-// internal/semtok/produce.go
 package semtok
 
 import (

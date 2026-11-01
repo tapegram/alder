@@ -1,5 +1,3 @@
-// internal/semtok/legend.go
-
 // Package semtok classifies the tokens of an Alder source for highlighting: the language
 // server's semantic tokens (internal/lsp/tokens.go) and the parity test against the tree-sitter
 // queries (tree-sitter-alder/highlights_test.go). It reads one parse (syntax.ParseTokens) and
