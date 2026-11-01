@@ -47,9 +47,19 @@ func ParseFile(file string, src []byte) (*Module, []diag.Diagnostic) {
 	return m, p.finish()
 }
 
+// ParseTokens parses a source file and returns its module (ParseFile's) and the tokens the
+// parser consumed (Tokens'), from one parse.
+func ParseTokens(file string, src []byte) (*Module, []Token, []diag.Diagnostic) {
+	var trace []Token
+	p := newParser(file, src, false, &trace)
+	m := p.parseModule()
+	return m, trace, p.finish()
+}
+
 // Tokens parses a source file and returns the tokens the parser consumed, in source order: the
 // lexer is driven by the parser, so HTML text runs appear as Text tokens and speculative
-// lookahead is not repeated. String literals are single tokens (interpolations included).
+// lookahead is not repeated. String literals are single tokens (interpolations included; see
+// Interpolations).
 func Tokens(file string, src []byte) ([]Token, []diag.Diagnostic) {
 	var trace []Token
 	p := newParser(file, src, false, &trace)
@@ -134,11 +144,7 @@ func (p *Parser) advance() Token {
 		p.prevEnd = diag.Pos{Line: p.lx.line, Col: p.lx.col}
 	}
 	p.tok = p.lx.Next()
-	// Declaration-head keywords are keywords only in column 1; elsewhere they are ordinary
-	// names (`update msg model session = ...`, `{ form: 1 }`).
-	if p.tok.Kind == Keyword && declKeywords[p.tok.Text] && p.tok.Col > 1 {
-		p.tok.Kind = LIdent
-	}
+	p.tok.Kind = ParserKind(p.tok)
 	return prev
 }
 func (p *Parser) at(k Kind) bool          { return p.tok.Kind == k }
@@ -206,6 +212,15 @@ func (p *Parser) restore(st LexState, tok Token) {
 	p.lx.Restore(st)
 	p.tok = tok
 	p.prevEnd = tok.prevEnd
+}
+
+// ParserKind is the kind the parser reads t as. Declaration-head keywords are keywords only in
+// column 1; elsewhere they are ordinary names (`update msg model session = ...`, `{ form: 1 }`).
+func ParserKind(t Token) Kind {
+	if t.Kind == Keyword && declKeywords[t.Text] && t.Col > 1 {
+		return LIdent
+	}
+	return t.Kind
 }
 
 var declKeywords = map[string]bool{"module": true, "import": true, "type": true, "page": true, "msg": true,
