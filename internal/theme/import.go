@@ -221,11 +221,12 @@ func (im *importer) place(block string, d decl, light, dark bool) {
 	}
 }
 
-// resolveDark accepts the theme-wide tokens of dark blocks that match root's value and
-// unplaces the rest.
+// resolveDark accepts the theme-wide tokens of dark blocks equivalent to root's value
+// (`0px` under `.dark` for a root `0`) and unplaces the rest.
 func (im *importer) resolveDark() {
 	for _, p := range im.pending {
-		if v, ok := im.th.Root[p.field]; ok && v == p.val {
+		tok, _ := Lookup(p.field)
+		if v, ok := im.th.Root[p.field]; ok && Equivalent(tok.Kind, v, p.val) {
 			continue
 		}
 		im.un = append(im.un, seqUnplaced{p.u, p.seq})
