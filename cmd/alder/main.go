@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 
 	"alder/internal/buildkit"
@@ -40,13 +41,27 @@ func main() {
 		os.Exit(runBuildTo(os.Args[2:], os.Stdout, os.Stderr))
 	case "run":
 		stop := make(chan struct{})
+		var once sync.Once
+		end := func() { once.Do(func() { close(stop) }) }
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 		go func() {
 			<-sig
 			signal.Stop(sig) // a second Ctrl-C kills alder run outright
-			close(stop)
+			end()
 		}()
+		// ALDER_EXIT_ON_STDIN_EOF=1 (set by a program that owns alder run, such as alder-tui, and
+		// holds the other end of its standard input) stops it as Ctrl-C does once standard input
+		// reaches EOF, so it never outlives its owner, even one killed with SIGKILL. The variable
+		// is cleared once read, so the app does not inherit it from here (childEnv sets it for the
+		// app's own stdin pipe).
+		if os.Getenv("ALDER_EXIT_ON_STDIN_EOF") == "1" {
+			os.Unsetenv("ALDER_EXIT_ON_STDIN_EOF")
+			go func() {
+				_, _ = io.Copy(io.Discard, os.Stdin)
+				end()
+			}()
+		}
 		os.Exit(runRunTo(os.Args[2:], os.Stdout, os.Stderr, stop))
 	case "routes":
 		os.Exit(runRoutesTo(os.Args[2:], os.Stdout, os.Stderr))

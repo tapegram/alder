@@ -174,7 +174,8 @@ func displayAddr(a net.Addr) string { return rt.DisplayAddr(a.String()) }
 // reconnects.
 //
 // Requests: /_dev/reload is an event stream of Datastar patches (the overlay, its clearing, the
-// reload); /_dev/events is the feed of the dev server's own events (run_events.go); /_dev/theme and its routes are the theme configurator's (theme_ui.go), answered
+// reload); /_dev/events is the feed of the dev server's own events (run_events.go); POST /_dev/restart
+// starts a fresh child from the last build (serveRestart); /_dev/theme and its routes are the theme configurator's (theme_ui.go), answered
 // with or without a child; everything else is proxied to the current child unchanged (cookies, redirects and
 // streamed SSE answers alike), or answered 502 with the overlay while there is none.
 type devServer struct {
@@ -190,11 +191,13 @@ type devServer struct {
 	proxy    *httputil.ReverseProxy
 	done     chan struct{} // closed on stop
 	wg       sync.WaitGroup
-	nonce    string    // this dev server's part of every generation
-	started  int       // children started so far (the worker's)
-	static   string    // the build's static directory the child serves (the worker's); "" before the first build
-	hub      *eventHub // the /_dev/events feed
-	since    time.Time // when the dev server started
+	nonce    string        // this dev server's part of every generation
+	started  int           // children started so far (the worker's)
+	static   string        // the build's static directory the child serves (the worker's); "" before the first build
+	binary   string        // the last executable built (the worker's): what a restart runs; "" before the first build
+	hub      *eventHub     // the /_dev/events feed
+	since    time.Time     // when the dev server started
+	restart  chan struct{} // a /_dev/restart the worker has yet to take (buffer 1: more while one waits are one)
 
 	mu        sync.Mutex
 	child     *child                   // the current child; nil before the first good build or after it exited
@@ -204,7 +207,7 @@ type devServer struct {
 	announced bool                     // the stdout line has been printed
 	building  bool                     // a build is in progress, or a theme write's rebuild has not finished (beginBuild, endBuild)
 	writes    int                      // the theme writes so far (writeTheme): each one's rebuild ends building
-	state     string                   // the build state /_dev/events reports: building, ok or failed
+	state     string                   // the build state /_dev/events reports: building, ok or failed (buildState)
 	themeMu   sync.Mutex               // serialises theme writes (two tabs)
 }
 
@@ -217,7 +220,7 @@ func newDevServer(dir, app, addr string, stdout, stderr io.Writer) *devServer {
 	d := &devServer{dir: dir, app: app, addr: addr, stdout: stdout, stderr: &lockedWriter{w: stderr},
 		outSt: style.For(stdout), errSt: style.For(stderr),
 		done: make(chan struct{}), clients: map[chan []byte]struct{}{}, nonce: hex.EncodeToString(nonce[:]),
-		building: true, state: "building", since: time.Now()} // until the first build ends
+		building: true, state: "building", since: time.Now(), restart: make(chan struct{}, 1)} // until the first build ends
 	d.hub = newEventHub(d.nonce, eventRing)
 	d.proxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
@@ -242,6 +245,10 @@ func (d *devServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/_dev/events" {
 		d.serveEvents(w, r)
+		return
+	}
+	if r.URL.Path == "/_dev/restart" {
+		d.serveRestart(w, r)
 		return
 	}
 	if r.URL.Path == "/_dev/theme" || strings.HasPrefix(r.URL.Path, "/_dev/theme/") {
@@ -388,23 +395,39 @@ func (d *devServer) report(text string, st errState) {
 	d.broadcast(overlayEvent(st))
 }
 
+// status prints text, one of the dev server's own lines (`alder run: …`), dim on stderr, and
+// emits it as a run event.
+func (d *devServer) status(text string) {
+	fmt.Fprintln(d.stderr, d.errSt.Dim(text))
+	d.hub.emit("run", map[string]any{"text": text})
+}
+
 // work is the worker: it builds the app, then rebuilds it (or, for a change to static files
-// only, reloads the browsers) for each change, until done closes. Changes reported while a
-// rebuild runs are merged into one.
+// only, reloads the browsers) for each change, and restarts the child for each /_dev/restart,
+// until done closes. Changes reported while a rebuild runs are merged into one.
 func (d *devServer) work(changed <-chan watch.Change) {
-	fmt.Fprintln(d.stderr, d.errSt.Dim("alder run: building "+d.app))
+	d.status("alder run: building " + d.app)
 	d.build()
 	d.mu.Lock()
 	up := d.child != nil
 	d.mu.Unlock()
 	if !up {
-		fmt.Fprintln(d.stderr, d.errSt.Dim("alder run: dev server on "+d.addr+"; the app starts once it builds"))
+		d.status("alder run: dev server on " + d.addr + "; the app starts once it builds")
 	}
 	for {
 		var k watch.Change
 		select {
 		case <-d.done:
 			return
+		case <-d.restart:
+			if d.binary == "" { // no build has succeeded yet: try again
+				d.status("alder run: restarting: building " + d.app)
+				d.build()
+			} else {
+				d.status("alder run: restarting " + d.app)
+				d.swapIn(d.binary, nil)
+			}
+			continue
 		case k = <-changed:
 		}
 	merge:
@@ -417,7 +440,7 @@ func (d *devServer) work(changed <-chan watch.Change) {
 			}
 		}
 		if k&watch.SourceChange != 0 {
-			fmt.Fprintln(d.stderr, d.errSt.Dim("alder run: rebuilding "+d.app))
+			d.status("alder run: rebuilding " + d.app)
 			d.build()
 		} else {
 			if d.static != "" { // the child serves the build's copy: refresh it first, keeping the last build's theme
@@ -425,6 +448,7 @@ func (d *devServer) work(changed <-chan watch.Change) {
 					d.fail("alder run: " + err.Error())
 					continue
 				}
+				d.hub.emit("static", nil)
 			}
 			d.mu.Lock()
 			d.broadcast(reloadEvent)
@@ -440,13 +464,29 @@ func (d *devServer) build() {
 	d.rebuild()
 }
 
-// beginBuild sets building and returns the theme writes made so far: the ones this build sees.
+// beginBuild sets building and the build state (a build event, of the generation the build
+// will start) and returns the theme writes made so far: the ones this build sees.
 func (d *devServer) beginBuild() int {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.building = true
+	d.buildState("building", map[string]any{"gen": d.nextGen()})
 	return d.writes
 }
+
+// buildState sets the build state to state and emits it as a build event with fields; the caller
+// holds mu, so a /_dev/events hello never reports a state the feed has not shown.
+func (d *devServer) buildState(state string, fields map[string]any) {
+	d.state = state
+	m := map[string]any{"state": state}
+	for k, v := range fields {
+		m[k] = v
+	}
+	d.hub.emit("build", m)
+}
+
+// nextGen is the generation of the next child to start (the worker's).
+func (d *devServer) nextGen() string { return fmt.Sprintf("%s-%d", d.nonce, d.started+1) }
 
 // endBuild clears building, unless a theme write came after the build began (seen writes): the
 // watcher has yet to report it, so its rebuild is still to come.
@@ -457,9 +497,16 @@ func (d *devServer) endBuild(seen int) {
 }
 
 // rebuild checks and builds the app and, when both succeed, replaces the child with one running
-// the new executable and reloads the browsers; otherwise it reports the failure (fail) and the
-// old child keeps serving. Only the worker calls it.
+// the new executable (swapIn); otherwise it reports the failure (fail, and a failed build event)
+// and the old child keeps serving. Only the worker calls it.
 func (d *devServer) rebuild() {
+	start, gen := time.Now(), d.nextGen()
+	failed := func(fields map[string]any) {
+		fields["gen"] = gen
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		d.buildState("failed", fields)
+	}
 	var out bytes.Buffer
 	if code := runCheckTo([]string{d.dir}, style.NoStyle(&out), style.NoStyle(&out)); code != 0 {
 		// the checker's structured output (what `alder check --json` prints), run again for the
@@ -468,18 +515,46 @@ func (d *devServer) rebuild() {
 		runCheckTo([]string{"--json", d.dir}, &js, io.Discard)
 		if ds := parseDiags(d.dir, js.String()); len(ds) > 0 {
 			d.report(out.String(), errState{kind: "check", diags: ds})
+			failed(map[string]any{"diagnostics": ds})
 		} else {
 			d.fail(out.String())
+			failed(map[string]any{"text": out.String()})
 		}
 		return
 	}
-	d.stderr.Write(out.Bytes()) // warnings
+	var warnings []diagItem
+	if out.Len() > 0 { // the check printed warnings: run it again for them, structured
+		d.stderr.Write(out.Bytes())
+		var js bytes.Buffer
+		runCheckTo([]string{"--json", d.dir}, &js, io.Discard)
+		warnings = parseDiagsOf(d.dir, js.String(), "warning")
+	}
 	out.Reset()
 	binary, code := buildApp(d.dir, filepath.Join(buildRoot(d.buildDir), d.app), style.NoStyle(&out))
 	if code != 0 {
 		d.fail(out.String())
+		failed(map[string]any{"text": out.String()})
 		return
 	}
+	d.binary = binary
+	d.swapIn(binary, &built{start: start, warnings: warnings})
+}
+
+// built is what a build that succeeded gives swapIn for its build event: when it started and
+// the check's warnings.
+type built struct {
+	start    time.Time
+	warnings []diagItem
+}
+
+// swapIn starts the executable binary as a new child (the next generation), swaps the proxy over
+// to it, announces it (the first one on stdout, the others as a run line), stops the old child,
+// clears the overlay and reloads the browsers. b is the build that made binary, nil for a restart
+// of the last build: with b, the swap is a build event (ok: the generation, the child's address,
+// the build's milliseconds and its warnings), then, either way, an app event (started). When the
+// child does not start, the failure is reported (fail, and a failed build event) and the old
+// child keeps serving. Only the worker calls it.
+func (d *devServer) swapIn(binary string, b *built) {
 	dir := filepath.Dir(binary)
 	static := filepath.Join(dir, "static") // the build's copy: the app's static/ and static/al/
 	d.static = static
@@ -489,7 +564,11 @@ func (d *devServer) rebuild() {
 		return newLogPipe(d.stderr, d.errSt, d.logLevel, d.logJSON, d.hub)
 	})
 	if err != nil {
-		d.fail("alder run: " + err.Error())
+		msg := "alder run: " + err.Error()
+		d.fail(msg)
+		d.mu.Lock()
+		d.buildState("failed", map[string]any{"gen": gen, "text": msg})
+		d.mu.Unlock()
 		return
 	}
 
@@ -499,13 +578,26 @@ func (d *devServer) rebuild() {
 	d.gen = gen
 	announce := !d.announced
 	d.announced = true
+	if b != nil {
+		ok := map[string]any{"gen": gen, "child": c.addr, "ms": time.Since(b.start).Milliseconds()}
+		if len(b.warnings) > 0 {
+			ok["warnings"] = b.warnings
+		}
+		d.buildState("ok", ok)
+	}
+	d.hub.emit("app", map[string]any{"state": "started", "child": c.addr})
 	d.mu.Unlock()
 	d.wg.Add(1)
 	go d.monitor(c)
-	if announce {
-		fmt.Fprintln(d.stdout, d.outSt.Bold("dev server on "+d.addr+" → app on "+c.addr))
-	} else {
-		fmt.Fprintln(d.stderr, d.errSt.Dim("alder run: rebuilt; app on "+c.addr))
+	switch {
+	case announce:
+		text := "dev server on " + d.addr + " → app on " + c.addr
+		fmt.Fprintln(d.stdout, d.outSt.Bold(text))
+		d.hub.emit("run", map[string]any{"text": text})
+	case b == nil:
+		d.status("alder run: restarted; app on " + c.addr)
+	default:
+		d.status("alder run: rebuilt; app on " + c.addr)
 	}
 	if old != nil {
 		old.stop()
@@ -516,7 +608,8 @@ func (d *devServer) rebuild() {
 	d.mu.Unlock()
 }
 
-// monitor reports c in the overlay when it exits without being stopped, and stops proxying to
+// monitor reports c in the overlay and as an app event (exited: its exit status and the last
+// overlayLines lines of its stderr) when it exits without being stopped, and stops proxying to
 // it.
 func (d *devServer) monitor(c *child) {
 	defer d.wg.Done()
@@ -533,8 +626,24 @@ func (d *devServer) monitor(c *child) {
 		d.child = nil
 	}
 	d.mu.Unlock()
-	msg := fmt.Sprintf("alder run: the app exited (%v); save a source file to rebuild it\n%s", c.cmd.ProcessState, lastLines(c.stderr.String(), overlayLines))
+	tail := lastLines(c.stderr.String(), overlayLines)
+	msg := fmt.Sprintf("alder run: the app exited (%v); save a source file to rebuild it\n%s", c.cmd.ProcessState, tail)
 	d.report(msg, errState{kind: "crash"})
+	lines := []string{}
+	if tail != "" {
+		lines = strings.Split(tail, "\n")
+	}
+	d.hub.emit("app", map[string]any{"state": "exited", "exit": exitStatus(c.cmd.ProcessState), "tail": lines})
+}
+
+// exitStatus is ps as an app event's exit: its code (-1 when a signal ended it) and the
+// signal's name (signal: "killed"), when there is one.
+func exitStatus(ps *os.ProcessState) map[string]any {
+	e := map[string]any{"code": ps.ExitCode()}
+	if ws, ok := ps.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+		e["signal"] = ws.Signal().String()
+	}
+	return e
 }
 
 // overlayLines is how many of a child's last stderr lines a crash report shows.

@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -755,4 +757,159 @@ func TestRun_CharsetEarly(t *testing.T) {
 	if i := strings.Index(page, `<meta charset="utf-8" />`); i < 0 || i+len(`<meta charset="utf-8" />`) > 1024 {
 		t.Fatalf("<meta charset> at byte %d:\n%.1200s", i, page)
 	}
+}
+
+// lifecycleEvents reads lines (an eventStream) until it has n build or app events, skipping the
+// others, and returns them; it fails when they do not come within timeout.
+func lifecycleEvents(t *testing.T, lines <-chan string, n int, timeout time.Duration) []map[string]any {
+	t.Helper()
+	var got []map[string]any
+	deadline := time.After(timeout)
+	for len(got) < n {
+		select {
+		case l, ok := <-lines:
+			if !ok {
+				t.Fatalf("the stream ended after %v", got)
+			}
+			data, ok := strings.CutPrefix(l, "data: ")
+			if !ok {
+				continue // a ping
+			}
+			var e map[string]any
+			if err := json.Unmarshal([]byte(data), &e); err != nil {
+				t.Fatalf("data %q: %v", data, err)
+			}
+			if e["type"] == "build" || e["type"] == "app" {
+				got = append(got, e)
+			}
+		case <-deadline:
+			t.Fatalf("%d of %d build/app events within %v: %v", len(got), n, timeout, got)
+		}
+	}
+	return got
+}
+
+// isEvent reports whether e is of type typ with the field state equal to state.
+func isEvent(e map[string]any, typ, state string) bool {
+	return e["type"] == typ && e["state"] == state
+}
+
+// A failed check and its fix show on the feed as build events (the failure with its diagnostics),
+// then the new child as an app event; hello's build state is that of the last build.
+func TestRun_FeedLifecycle(t *testing.T) {
+	t.Parallel()
+	r := startRun(t)
+	lines := eventStream(t, r.base+"/_dev/events")
+	hello := nextEvent(t, lines)
+	if hello["type"] != "hello" || hello["build"] != "ok" || hello["child"] != r.child {
+		t.Fatalf("hello = %v, want build ok and child %s", hello, r.child)
+	}
+	first := lifecycleEvents(t, lines, 3, 10*time.Second) // the first build, replayed
+	if !isEvent(first[0], "build", "building") || !isEvent(first[1], "build", "ok") || !isEvent(first[2], "app", "started") {
+		t.Fatalf("the first build's events: %v", first)
+	}
+	if first[1]["child"] != r.child || first[2]["child"] != r.child || first[0]["gen"] != first[1]["gen"] {
+		t.Fatalf("the first build's events: %v", first)
+	}
+	if _, ok := first[1]["ms"].(float64); !ok {
+		t.Fatalf("build ok has no ms: %v", first[1])
+	}
+
+	edit(t, r.dir, "app/App.alder", "notFound : Html Never", "notFound : Int")
+	got := lifecycleEvents(t, lines, 2, 60*time.Second)
+	if !isEvent(got[0], "build", "building") || !isEvent(got[1], "build", "failed") {
+		t.Fatalf("after the error: %v", got)
+	}
+	ds, _ := got[1]["diagnostics"].([]any)
+	if len(ds) == 0 {
+		t.Fatalf("build failed has no diagnostics: %v", got[1])
+	}
+	if d, _ := ds[0].(map[string]any); d["file"] != "app/App.alder" || d["line"] == nil || d["line"].(float64) < 1 {
+		t.Fatalf("the diagnostic lacks its file and line: %v", ds[0])
+	}
+	if b := nextHello(t, r); b != "failed" {
+		t.Fatalf("hello.build after the error = %q, want failed", b)
+	}
+
+	edit(t, r.dir, "app/App.alder", "notFound : Int", "notFound : Html Never")
+	got = lifecycleEvents(t, lines, 3, 120*time.Second)
+	if !isEvent(got[0], "build", "building") || !isEvent(got[1], "build", "ok") || !isEvent(got[2], "app", "started") {
+		t.Fatalf("after the fix: %v", got)
+	}
+	if c, _ := got[1]["child"].(string); c == "" || c == r.child || got[2]["child"] != c {
+		t.Fatalf("after the fix, no new child address: %v", got)
+	}
+}
+
+// liveEvents is an eventStream of r's feed from now on: the backlog and the hello are skipped.
+func liveEvents(t *testing.T, r *devRun) <-chan string {
+	t.Helper()
+	seq := nextEvent(t, eventStream(t, r.base+"/_dev/events"))["seq"].(float64)
+	lines := eventStream(t, fmt.Sprintf("%s/_dev/events?after=%d", r.base, int64(seq)))
+	nextEvent(t, lines) // hello
+	return lines
+}
+
+// nextHello is the build state the hello of a new /_dev/events stream reports.
+func nextHello(t *testing.T, r *devRun) any {
+	t.Helper()
+	return nextEvent(t, eventStream(t, r.base+"/_dev/events"))["build"]
+}
+
+// The dev server's own lines (`alder run: …`) are run events too.
+func TestRun_FeedRunLines(t *testing.T) {
+	t.Parallel()
+	r := startRun(t)
+	lines := eventStream(t, r.base+"/_dev/events")
+	nextEvent(t, lines) // hello
+	for {
+		e := nextEvent(t, lines) // the backlog first: it holds the first build's lines
+		if text, _ := e["text"].(string); e["type"] == "run" && strings.HasPrefix(text, "alder run: building ") {
+			return
+		}
+	}
+}
+
+// POST /_dev/restart starts a fresh child from the last good build; only a same-origin POST (or
+// one without Origin, as curl sends) is taken.
+func TestRun_Restart(t *testing.T) {
+	t.Parallel()
+	r := startRun(t)
+	lines := liveEvents(t, r)
+	post := func(origin string) int {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, r.base+"/_dev/restart", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	if code := post("http://evil.example"); code != http.StatusForbidden {
+		t.Fatalf("POST with a foreign Origin = %d, want 403", code)
+	}
+	getStatus(t, r.base+"/_dev/restart", http.StatusMethodNotAllowed)
+	if code := post(r.base); code != http.StatusAccepted {
+		t.Fatalf("POST /_dev/restart = %d, want 202", code)
+	}
+	for {
+		e := lifecycleEvents(t, lines, 1, 60*time.Second)[0]
+		if isEvent(e, "app", "started") {
+			if c, _ := e["child"].(string); c == "" || c == r.child {
+				t.Fatalf("app started without a new child: %v", e)
+			}
+			break
+		}
+		if e["type"] == "build" {
+			t.Fatalf("a restart with a good build rebuilt: %v", e)
+		}
+	}
+	get(t, r.base+"/login")
 }

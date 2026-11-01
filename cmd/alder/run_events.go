@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -198,4 +199,27 @@ func (d *devServer) serveEvents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+// serveRestart is POST /_dev/restart: 202, and the worker starts a fresh child from the last
+// build (swapIn), or builds the app when no build has succeeded yet. A request with an Origin
+// other than the dev server's own address (another site's page) is refused (403), as is any
+// other method (405).
+func (d *devServer) serveRestart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if o := r.Header.Get("Origin"); o != "" {
+		if u, err := url.Parse(o); err != nil || u.Host != d.addr {
+			http.Error(w, "forbidden: cross-origin restart", http.StatusForbidden)
+			return
+		}
+	}
+	select {
+	case d.restart <- struct{}{}:
+	default: // one is already waiting
+	}
+	w.WriteHeader(http.StatusAccepted)
 }

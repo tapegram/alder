@@ -176,3 +176,75 @@ func TestServer_IgnoresStdinEOF(t *testing.T) {
 		t.Error("the server did not stop on SIGTERM")
 	}
 }
+
+// A child that exits on its own shows on the feed as an app event with its exit status and the
+// end of its output.
+func TestRun_FeedAppExited(t *testing.T) {
+	t.Parallel()
+	r := startRun(t)
+	lines := liveEvents(t, r)
+	r.d.mu.Lock()
+	pid := r.d.child.cmd.Process.Pid
+	r.d.mu.Unlock()
+	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	e := lifecycleEvents(t, lines, 1, 30*time.Second)[0]
+	if !isEvent(e, "app", "exited") {
+		t.Fatalf("after the kill: %v, want app exited", e)
+	}
+	if exit, _ := e["exit"].(map[string]any); exit["signal"] != "killed" || exit["code"] != float64(-1) {
+		t.Fatalf("exit = %v, want signal killed, code -1", e["exit"])
+	}
+	if tail, _ := e["tail"].([]any); len(tail) == 0 { // the app logs its migrations on stderr at start
+		t.Fatalf("app exited has no tail: %v", e)
+	}
+}
+
+// With ALDER_EXIT_ON_STDIN_EOF=1 (a TUI that owns alder run sets it), alder run stops as on
+// Ctrl-C when its stdin reaches end of file, so it never outlives its owner, whose death (even
+// by SIGKILL) closes the pipe; it stops its app first.
+func TestRun_ExitsOnStdinEOF(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("spawns processes")
+	}
+	needGoTool(t)
+	bin := alderBinary(t)
+	work := t.TempDir()
+	copyDir(t, todosDir(t), filepath.Join(work, "todos"))
+	cmd := exec.Command(bin, "run", "todos")
+	cmd.Dir = work
+	cmd.Env = append(os.Environ(), "ALDER_ADDR=127.0.0.1:0", "ALDER_EXIT_ON_STDIN_EOF=1")
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	t.Cleanup(func() { _ = cmd.Process.Kill() })
+	waitForLine(t, out, "dev server on ", 120*time.Second)
+	childPID := childOf(t, cmd.Process.Pid)
+	t.Cleanup(func() { _ = syscall.Kill(childPID, syscall.SIGKILL) }) // when the test fails
+	go func() { exited <- cmd.Wait() }()
+	if err := stdin.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-exited:
+		if err != nil {
+			t.Fatalf("alder run after its stdin closed: %v, want exit 0", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("alder run still running 15 s after its stdin closed")
+	}
+	if processAlive(childPID) {
+		t.Fatalf("the app (pid %d) outlived alder run", childPID)
+	}
+}
