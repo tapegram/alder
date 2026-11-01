@@ -5878,6 +5878,55 @@ signatures (the core modules List, Maybe, Result, Text, Int, Float, Dict, Bool, 
 it. With `ALDER_LSP_LOG` set, the server also writes each request body and
 each answer to the log, never a header, so never the key.
 
+### Highlighting from the server
+
+An editor colours code by sorting its words into kinds: keyword, string,
+function, parameter, field. Most editors learn the kinds from a grammar of
+their own. Alder's server can tell them instead, through the protocol's
+**semantic tokens**: a list in which each entry is a place in the file (line,
+column, length) and a kind from a fixed list the server announced at
+`initialize`, its *legend*. The legend is in `internal/semtok/legend.go`:
+eighteen kinds (`namespace`, `type`, ... `tag`, `attribute`, `boolean`,
+`hole`) and three modifiers (`declaration` on a name where it is bound,
+`documentation` on a comment block above a declaration, and
+`defaultLibrary`, reserved and never set yet).
+
+The kinds come from one parse of the text on screen
+(`syntax.ParseTokens`), in two layers:
+
+- the **lexical** layer looks at each token alone: a keyword, an operator,
+  a number, a string, a hole;
+- the **structural** layer walks the syntax tree and says what a name is by
+  where it sits. The first name of a value declaration is a function being
+  declared; the last name of `post.title` is a field (the legend calls the
+  kind `property`); in `<Layout.Page title={...}>` `Layout` is a namespace,
+  `Page` a tag and `title` an attribute.
+
+The walk visits a node's children before the node, so the larger construct
+has the last word: in `xs.map f`, the access makes `map` a field, and then
+the application makes it a method. Nothing here needs the type checker,
+which is why the server can answer on every keystroke without waiting for
+a rebuild.
+
+On the wire the list is compressed into five integers per token: lines
+apart from the previous token, columns apart (on the same line), length,
+kind, modifiers. Columns and lengths are counted in the unit the editor
+asked for (see "The wire" above): VS Code counts UTF-16 units, so
+`é` counts one and `😀` two, though they are two and four bytes.
+
+Neovim colours Alder with tree-sitter (`tree-sitter-alder`). To keep the two
+editors alike, a test (`tree-sitter-alder/highlights_test.go`) runs nvim's
+highlight queries and the server's tokens over every module in the
+repository and compares the kind of every byte. A rule changed on one side
+and not the other fails it. The one place it does not compare is inside
+`{...}` in a string: tree-sitter sees one string there, while the server
+colours the expression inside.
+
+Folding and expand selection come from the same parse. A folding range is
+the first and last line of a declaration, block, `match`, element, record,
+list or comment run. A selection range is the chain of nodes around the
+cursor, from the innermost outward (`syntax.NodeAt`).
+
 ### Scratch files in the language server
 
 A scratch file is not a module, so the analysis of this section (a snapshot of
