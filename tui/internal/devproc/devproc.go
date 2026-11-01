@@ -208,16 +208,17 @@ func probe(ctx context.Context, connect func(context.Context, string) (<-chan fe
 			}
 			hello = ev
 		case <-fctx.Done():
+			err = fctx.Err()
 		}
 	}
-	if !timer.Stop() { // the timer fired and cancelled the feed
+	timer.Stop()
+	switch {
+	case ctx.Err() != nil: // the caller gave up, whatever the probe saw
 		cancel()
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
+		return nil, ctx.Err()
+	case fctx.Err() != nil: // the timer fired: no hello in time, or one whose feed it has just ended
 		return nil, errNoAnswer
-	}
-	if err != nil {
+	case err != nil:
 		cancel()
 		return nil, err
 	}

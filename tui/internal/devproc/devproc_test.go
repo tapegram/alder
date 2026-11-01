@@ -94,6 +94,26 @@ func TestOpen_NotAlderReal(t *testing.T) {
 	}
 }
 
+// TestOpen_CancelledDuringProbe cancels Open's ctx while the probe waits for the hello: Open
+// returns the ctx's error, neither panicking on the missing hello nor blaming the address.
+func TestOpen_CancelledDuringProbe(t *testing.T) {
+	for _, closed := range []bool{false, true} {
+		ctx, cancel := context.WithCancel(context.Background())
+		connect := func(context.Context, string) (<-chan feed.Event, error) {
+			ch := make(chan feed.Event)
+			if closed {
+				close(ch)
+			}
+			cancel()
+			return ch, nil
+		}
+		_, err := Open(ctx, Options{Dir: t.TempDir(), Addr: "localhost:8080", Alder: "alder", Connect: connect, Start: noStart(t)})
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("closed=%v: err = %v, want context.Canceled", closed, err)
+		}
+	}
+}
+
 func TestOpen_NoRun(t *testing.T) {
 	_, err := Open(context.Background(), Options{Dir: t.TempDir(), Addr: "localhost:8080", Alder: "alder", NoRun: true,
 		Connect: func(context.Context, string) (<-chan feed.Event, error) { return nil, refused },
