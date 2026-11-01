@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"alder/rt"
+	"alder/rt/applog"
 	"alder/rt/datastar"
 
 	"alder/internal/buildkit"
@@ -78,6 +79,11 @@ func runRunWith(args []string, stdout, stderr io.Writer, stop <-chan struct{}, o
 		fmt.Fprintf(stderr, "alder run: no app directory in %s\n", dir)
 		return 2
 	}
+	logLevel, logJSON, err := userLogging(os.Getenv)
+	if err != nil {
+		fmt.Fprintf(stderr, "alder run: %v\n", err)
+		return 2
+	}
 	ln, err := net.Listen("tcp", runAddr(opts.addr))
 	if err != nil {
 		fmt.Fprintf(stderr, "alder run: %v\n", err)
@@ -85,6 +91,7 @@ func runRunWith(args []string, stdout, stderr io.Writer, stop <-chan struct{}, o
 	}
 	d := newDevServer(dir, filepath.Base(abs), displayAddr(ln.Addr()), stdout, stderr)
 	d.buildDir = bd
+	d.logLevel, d.logJSON = logLevel, logJSON
 	if opts.onDevServer != nil {
 		opts.onDevServer(d)
 	}
@@ -178,6 +185,8 @@ type devServer struct {
 	stderr   io.Writer   // every check, build and crash message, and the child's output (locked)
 	outSt    style.Style // the styles of the original stdout and stderr (Plain off a terminal)
 	errSt    style.Style
+	logLevel applog.Level // the level the child's log is shown at (the person's ALDER_LOG: userLogging)
+	logJSON  bool         // the child's JSON lines are shown as they are (the person's ALDER_LOG_FORMAT=json)
 	proxy    *httputil.ReverseProxy
 	done     chan struct{} // closed on stop
 	wg       sync.WaitGroup
@@ -476,7 +485,9 @@ func (d *devServer) rebuild() {
 	d.static = static
 	d.started++
 	gen := fmt.Sprintf("%s-%d", d.nonce, d.started)
-	c, err := startChild(binary, filepath.Join(dir, "dev.db"), static, gen, d.addr, d.stderr, d.errSt)
+	c, err := startChild(binary, filepath.Join(dir, "dev.db"), static, gen, d.addr, func() *logPipe {
+		return newLogPipe(d.stderr, d.errSt, d.logLevel, d.logJSON, d.hub)
+	})
 	if err != nil {
 		d.fail("alder run: " + err.Error())
 		return
@@ -557,10 +568,13 @@ const childStartTimeout = 10 * time.Second
 // childEnv is the environment of an app startChild runs: environ (alder run's) with the
 // variables startChild names, and ALDER_PUBLIC_URL=http://<devAddr> (the dev server's displayed
 // address: the child listens on a free port behind it), unless environ sets ALDER_PUBLIC_URL (a
-// tunnel's address), which is passed through untouched.
+// tunnel's address), which is passed through untouched. The child always logs JSON at debug
+// (ALDER_LOG=debug, ALDER_LOG_FORMAT=json, after any of environ's: the last one counts): its
+// logPipes show the person the lines they asked for and feed every record as an event.
 func childEnv(environ []string, dbPath, staticDir, gen, devAddr string) []string {
 	env := append(slices.Clip(environ), "ALDER_ADDR=127.0.0.1:0", "ALDER_DEV=1", "ALDER_RELOAD="+gen,
-		"ALDER_DB="+dbPath, "ALDER_STATIC="+staticDir, "ALDER_EXIT_ON_STDIN_EOF=1")
+		"ALDER_DB="+dbPath, "ALDER_STATIC="+staticDir, "ALDER_EXIT_ON_STDIN_EOF=1",
+		"ALDER_LOG=debug", "ALDER_LOG_FORMAT=json")
 	for _, kv := range environ {
 		if v, ok := strings.CutPrefix(kv, "ALDER_PUBLIC_URL="); ok && strings.TrimSpace(v) != "" {
 			return env
@@ -573,15 +587,13 @@ func childEnv(environ []string, dbPath, staticDir, gen, devAddr string) []string
 // generation gen (ALDER_DEV=1, ALDER_RELOAD=<gen>) on a free port of 127.0.0.1, the database
 // dbPath and the static files of staticDir (ALDER_SECRET and the rest of the environment are
 // passed through; ALDER_PUBLIC_URL=http://<devAddr> unless the environment sets it: childEnv), its
-// output copied to logs; its standard input is a pipe the child keeps
+// stdout and stderr each through a logPipe of its own from logs (the child's tailBuffer gets
+// what the stderr one shows, so error reports hold text, not JSON); its standard input is a pipe the child keeps
 // open (ALDER_EXIT_ON_STDIN_EOF=1: the app exits when the dev server dies). It waits (10 s at most) for its
 // `listening on <addr>` line; when the child exits first or does not print it in time (it is
 // then killed), the error holds the last overlayLines lines of its stderr.
-func startChild(binary, dbPath, staticDir, gen, devAddr string, logs io.Writer, st style.Style) (*child, error) {
-	outLogs, errLogs := logs, logs
-	if st.On() { // one line writer per stream, so partial writes of the two never mix
-		outLogs, errLogs = style.Lines(logs, logLine(st)), style.Lines(logs, logLine(st))
-	}
+func startChild(binary, dbPath, staticDir, gen, devAddr string, logs func() *logPipe) (*child, error) {
+	outLogs, errLogs := logs(), logs() // one per stream, so partial lines of the two never mix
 	cmd := exec.Command(binary)
 	cmd.Env = childEnv(os.Environ(), dbPath, staticDir, gen, devAddr)
 	stdinR, stdinW, err := os.Pipe()
@@ -590,7 +602,8 @@ func startChild(binary, dbPath, staticDir, gen, devAddr string, logs io.Writer, 
 	}
 	c := &child{cmd: cmd, stdinW: stdinW, exited: make(chan struct{})}
 	cmd.Stdin = stdinR
-	cmd.Stderr = io.MultiWriter(&c.stderr, errLogs)
+	errLogs.tail = &c.stderr
+	cmd.Stderr = errLogs
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		stdinR.Close()
@@ -605,15 +618,19 @@ func startChild(binary, dbPath, staticDir, gen, devAddr string, logs io.Writer, 
 	}
 	addr := make(chan string, 1)
 	go func() {
-		sc := bufio.NewScanner(stdout)
-		for sc.Scan() {
-			if a, ok := strings.CutPrefix(sc.Text(), "listening on "); ok {
+		br := bufio.NewReader(stdout) // no limit on a line's length
+		for {
+			l, err := br.ReadString('\n')
+			if a, ok := strings.CutPrefix(strings.TrimRight(l, "\r\n"), "listening on "); ok && err == nil {
 				addr <- a
 				break
 			}
-			fmt.Fprintln(outLogs, sc.Text())
+			_, _ = io.WriteString(outLogs, l)
+			if err != nil {
+				break
+			}
 		}
-		_, _ = io.Copy(outLogs, stdout) // every read is done before Wait
+		_, _ = io.Copy(outLogs, br) // every read is done before Wait
 		_ = cmd.Wait()
 		flushLines(outLogs, errLogs)
 		stdinW.Close() // the child is gone; a second Close (stop's) is harmless

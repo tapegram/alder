@@ -287,6 +287,37 @@ func edit(t *testing.T, dir, rel, old, new string) {
 
 const wantReload = "event: datastar-patch-elements\ndata: selector body\ndata: mode append\ndata: elements <script data-effect=\"el.remove()\">location.reload()</script>"
 
+// The child logs JSON at debug; the dev server shows its lines on stderr as the text an info
+// child writes, and feeds each record, debug fields included, as a log event.
+func TestRun_LogsRenderedAndFed(t *testing.T) {
+	r := startRun(t)
+	lines := eventStream(t, r.base+"/_dev/events")
+	get(t, r.base+"/login")
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		e := nextEvent(t, lines)
+		if rec, ok := e["record"].(map[string]any); e["type"] == "log" && ok && rec["path"] == "/login" {
+			if _, ok := rec["steps"]; !ok {
+				t.Errorf("the /login record has no steps (the child is not at debug): %v", rec)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no log event with the /login record in 10 s")
+		}
+	}
+	access := regexp.MustCompile(`(?m)^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} info: GET /login 200 `)
+	for !access.MatchString(r.errs.String()) {
+		if time.Now().After(deadline) {
+			t.Fatalf("stderr lacks the /login access line:\n%s", r.errs.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if strings.Contains(r.errs.String(), `{"time"`) {
+		t.Errorf("stderr shows JSON:\n%s", r.errs.String())
+	}
+}
+
 // The dev server proxies the app, whose pages carry the overlay target (kept by Datastar's
 // morph) and the reload subscriber (naming the build generation, open while the tab is hidden);
 // /_dev/reload is an event stream.
