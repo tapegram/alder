@@ -39,6 +39,29 @@ func detectFormat(src []byte) string {
 	return "css"
 }
 
+// themeSourceName is how a refusal names the input: its file, `-`, or the pasted text.
+func themeSourceName(name string) string {
+	if name == "" {
+		return "the pasted text"
+	}
+	return "`" + name + "`"
+}
+
+// topOverlay is a directory whose one file, name, is served from data already read: the
+// importer's top document is read once, and the files a resolver refers to come from disk.
+type topOverlay struct {
+	fs.FS
+	name string
+	data []byte
+}
+
+func (o topOverlay) Open(name string) (fs.File, error) {
+	if name == o.name {
+		return fstest.MapFS{name: {Data: o.data}}.Open(name)
+	}
+	return o.FS.Open(name)
+}
+
 // ReadThemeSource turns an export into a theme: CSS through theme.Import, DTCG JSON through
 // theme.ImportDTCG. format is "css", "dtcg" or "" (detect it from src). name is the file src
 // was read from, "-" for standard input, or "" for text pasted into the page; a DTCG file is
@@ -53,10 +76,15 @@ func ReadThemeSource(name string, src []byte, format string) (theme.Theme, []the
 		return theme.Theme{}, nil, theme.Skipped{}, Refusef("--format is `css` or `dtcg`, not `%s`", format)
 	}
 	if format == "dtcg" {
+		if len(src) > theme.DTCGMaxBytes {
+			return theme.Theme{}, nil, theme.Skipped{}, Refusef("%s is over 1 MiB: a DTCG tokens file is one JSON document of at most 1 MiB", themeSourceName(name))
+		}
 		var fsys fs.FS = fstest.MapFS{"stdin.json": {Data: src}}
 		file, loose := "stdin.json", name == "-" || name == ""
 		if !loose {
-			fsys, file = os.DirFS(filepath.Dir(name)), filepath.Base(name)
+			// the file was read once already: serve those bytes for it, the directory for the rest
+			file = filepath.Base(name)
+			fsys = topOverlay{FS: os.DirFS(filepath.Dir(name)), name: file, data: src}
 		}
 		th, un, sk, err := theme.ImportDTCG(fsys, file)
 		if err != nil {
@@ -66,6 +94,9 @@ func ReadThemeSource(name string, src []byte, format string) (theme.Theme, []the
 			return th, un, sk, Refusef("%s", err.Error())
 		}
 		return th, un, sk, nil
+	}
+	if len(src) > themeCSSMax {
+		return theme.Theme{}, nil, theme.Skipped{}, Refusef("%s is over 256 KiB: a CSS theme export is a few KiB", themeSourceName(name))
 	}
 	th, un, sk, err := theme.Import(string(src))
 	if nt := (*theme.NoThemeError)(nil); errors.As(err, &nt) {

@@ -27,8 +27,10 @@ import (
 // themeFile is the file the theme is read from and written to, relative to the app dir.
 const themeFile = "app/App.alder"
 
-// themeBodyMax is the limit on a POST body (and so on the importer's input): over it is 413.
-const themeBodyMax = 256 << 10
+// themeBodyMax is the limit on a POST body: over it is 413. The import route's text is a JSON
+// string in it, so the limit is twice the largest input (a DTCG file, theme.DTCGMaxBytes) to
+// leave room for escaping; generate.ReadThemeSource then holds the text to its format's limit.
+const themeBodyMax = 2 * theme.DTCGMaxBytes
 
 // themeState is GET /_dev/theme/state.
 type themeState struct {
@@ -190,7 +192,7 @@ func readThemeBody(w http.ResponseWriter, r *http.Request, v any) bool {
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, themeBodyMax)).Decode(v); err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
-			http.Error(w, "alder run: the body is over 256 KiB", http.StatusRequestEntityTooLarge)
+			http.Error(w, "alder run: the body is over 2 MiB", http.StatusRequestEntityTooLarge)
 		} else {
 			http.Error(w, "alder run: the body is not JSON: "+err.Error(), http.StatusBadRequest)
 		}

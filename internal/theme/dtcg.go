@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	dtcgMaxBytes = 1 << 20 // the largest document the reader accepts
+	DTCGMaxBytes = 1 << 20 // the largest document the reader accepts
 	dtcgMaxFiles = 32      // the most files one resolver may refer to
 	// dtcgMaxSources is the most file and set `$ref`s one document may expand, counting a
 	// source each time it is reached: it bounds a resolver whose sets refer to each other many
@@ -446,18 +446,18 @@ func (l *dtcgLoader) readTokens(p string) ([]dtcgToken, error) {
 	return list.toks, nil
 }
 
-// readDTCGFile reads one JSON document of at most dtcgMaxBytes, without a leading BOM.
+// readDTCGFile reads one JSON document of at most DTCGMaxBytes, without a leading BOM.
 func readDTCGFile(fsys fs.FS, name string) (json.RawMessage, error) {
 	f, err := fsys.Open(name)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, dtcgMaxBytes+1))
+	b, err := io.ReadAll(io.LimitReader(f, DTCGMaxBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("`%s`: %v", name, err)
 	}
-	if len(b) > dtcgMaxBytes {
+	if len(b) > DTCGMaxBytes {
 		return nil, fmt.Errorf("`%s` is over 1 MiB", name)
 	}
 	b = bytes.TrimPrefix(b, []byte("\uFEFF"))

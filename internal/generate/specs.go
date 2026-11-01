@@ -4,6 +4,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"alder/internal/theme"
 )
 
 // The generators as Specs: the one description `alder help --json`, the CLI's argument parsing
@@ -410,8 +412,9 @@ func regenSpecs() []*Spec {
 	}}
 }
 
-// themeImportMax caps what `alder theme import` reads: an export is a few KiB.
-const themeImportMax = 256 << 10
+// themeCSSMax caps a CSS export `alder theme import` takes: it is a few KiB. A DTCG tokens file
+// may be as large as the reader accepts (theme.DTCGMaxBytes); ReadThemeSource enforces both.
+const themeCSSMax = 256 << 10
 
 func themeSpecs() []*Spec {
 	return []*Spec{{
@@ -439,14 +442,12 @@ func themeSpecs() []*Spec {
 				defer f.Close()
 				src = f
 			}
-			css, err := io.ReadAll(io.LimitReader(src, themeImportMax+1))
+			// read up to the larger limit: ReadThemeSource holds each format to its own
+			text, err := io.ReadAll(io.LimitReader(src, theme.DTCGMaxBytes+1))
 			if err != nil {
 				return nil, Refusef("cannot read `%s`: %v", name, err)
 			}
-			if len(css) > themeImportMax {
-				return nil, Refusef("`%s` is over 256 KiB: a theme export is a few KiB", name)
-			}
-			return ImportTheme(app, name, css, s.One("format"), s.Has("print"), dry)
+			return ImportTheme(app, name, text, s.One("format"), s.Has("print"), dry)
 		},
 	}, {
 		ID: "theme use", Summary: "replace App's theme with a starting theme (zinc, brutal, catppuccin, paper, pebble); no name lists them",

@@ -273,7 +273,7 @@ func TestThemeImport_Route_DTCG(t *testing.T) {
 func TestThemeGate(t *testing.T) {
 	d, _ := themeServer(t)
 	valid := `{"theme":{"root":{"radius":"0.5rem"},"light":{"primary":"oklch(0.51 0.23 277)","primaryForeground":"oklch(0.98 0 0)"},"dark":{"primary":"oklch(0.68 0.16 277)","primaryForeground":"oklch(0.15 0 0)"}}}`
-	big := `{"theme":{"root":{"radius":"` + strings.Repeat("x", 300<<10) + `"}}}`
+	big := `{"theme":{"root":{"radius":"` + strings.Repeat("x", 3<<20) + `"}}}`
 	cases := []struct {
 		name string
 		edit func(r *http.Request)
@@ -293,7 +293,7 @@ func TestThemeGate(t *testing.T) {
 			r.Header.Set("Origin", "http://localhost:9999")
 		}, valid, 403},
 		{"text/plain", func(r *http.Request) { r.Header.Set("Content-Type", "text/plain") }, valid, 415},
-		{"300 KiB", func(r *http.Request) {}, big, 413},
+		{"3 MiB", func(r *http.Request) {}, big, 413},
 		{"no fetch metadata, 127.0.0.1", func(r *http.Request) {
 			r.Header.Del("Sec-Fetch-Site")
 			r.Header.Del("Origin")
