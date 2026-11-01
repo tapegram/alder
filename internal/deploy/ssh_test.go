@@ -234,7 +234,7 @@ func (c *testClock) Sleep(d time.Duration) {
 }
 
 // Backup's point in time on Turso is the next whole second by the injected clock, waited for
-// with the injected Sleep (no real wait).
+// with the injected Sleep (no real wait: the fake records it and advances its own time).
 func TestSsh_BackupPITRUsesInjectedClock(t *testing.T) {
 	t.Parallel()
 	ssh := filepath.Join(t.TempDir(), "ssh")
@@ -256,14 +256,12 @@ func TestSsh_BackupPITRUsesInjectedClock(t *testing.T) {
 	s.SSH = ssh
 	s.DB = fakeTurso(t, f)
 	s.DB.Now, s.DB.Sleep = clock.Now, clock.Sleep
-	start := time.Now()
+	// No wall-clock bound here (#133): the run's own ssh and HTTP time stretched it under load.
+	// Turso.sleep calls time.Sleep only when Sleep is nil, so the one recorded call below is the
+	// proof that the wait went through the injected clock and not real time.
 	got, err := s.Backup(context.Background(), "b1")
-	elapsed := time.Since(start)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if elapsed >= 100*time.Millisecond {
-		t.Errorf("Backup waited %s in real time", elapsed)
 	}
 	clock.mu.Lock()
 	slept := clock.slept
