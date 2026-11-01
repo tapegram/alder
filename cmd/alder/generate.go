@@ -316,6 +316,10 @@ func runSpecWith(s *generate.Spec, argv []string, usage string, seen func(*gener
 		return genUsage(stderr, usage, errors.New("alder new page: choose one of --list, --show and --from: a page generated with --list shows one table's rows, --show one row, --from several tables"))
 	}
 	if s.ID == "theme use" && sets.One("name") == "" {
+		if cli.JSON {
+			writeJSON(stdout, presetListJSON())
+			return 0
+		}
 		io.WriteString(stdout, generate.PresetList())
 		return 0
 	}
@@ -343,6 +347,23 @@ func runSpecWith(s *generate.Spec, argv []string, usage string, seen func(*gener
 		return 0
 	}
 	return genReport(cmd, g, res, err, specExtra(s, res), stdout, stderr)
+}
+
+// presetListJSON is `alder theme use --json` with no name: the starting themes in Presets() order.
+func presetListJSON() any {
+	type preset struct {
+		Name    string `json:"name"`
+		Title   string `json:"title"`
+		Purpose string `json:"purpose"`
+	}
+	ps := []preset{}
+	for _, p := range theme.Presets() {
+		ps = append(ps, preset{p.Name, p.Title, p.Purpose})
+	}
+	return struct {
+		Version string   `json:"version"`
+		Presets []preset `json:"presets"`
+	}{theme.Version(), ps}
 }
 
 // specExtra adds a Spec's own JSON fields (regen admin's skipped and upToDate); nil for others.

@@ -448,6 +448,42 @@ func TestThemeUse_List(t *testing.T) {
 	}
 }
 
+func TestThemeUse_ListJSON(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	before := readAppAlder(t, dir)
+	code, out, errb := themeUse(t, dir, "--json")
+	if code != 0 || errb != "" {
+		t.Fatalf("exit %d: %s", code, errb)
+	}
+	var got struct {
+		Version string `json:"version"`
+		Presets []struct {
+			Name    string `json:"name"`
+			Title   string `json:"title"`
+			Purpose string `json:"purpose"`
+		} `json:"presets"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out)
+	}
+	if got.Version != theme.Version() {
+		t.Errorf("version %q, want %q", got.Version, theme.Version())
+	}
+	ps := theme.Presets()
+	if len(got.Presets) != len(ps) {
+		t.Fatalf("%d presets, want %d", len(got.Presets), len(ps))
+	}
+	for i, p := range ps {
+		g := got.Presets[i]
+		if g.Name != p.Name || g.Title != p.Title || g.Purpose != p.Purpose {
+			t.Errorf("preset %d: got %+v, want %s/%s/%s", i, g, p.Name, p.Title, p.Purpose)
+		}
+	}
+	if readAppAlder(t, dir) != before {
+		t.Error("App.alder changed")
+	}
+}
+
 func TestThemeUse_WritesAndReplaces(t *testing.T) {
 	dir := genApp(t, "scaffold")
 	code, out, errb := themeUse(t, dir, "paper")
