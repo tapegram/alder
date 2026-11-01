@@ -157,7 +157,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/login",
-		DevMap:      "{\"pages\":[{\"module\":\"Login\",\"path\":\"/login\"},{\"module\":\"Notes\",\"path\":\"/notes\",\"requires\":\"user\",\"msgs\":[\"Add\"]}],\"tables\":[{\"name\":\"User.User\",\"columns\":[\"id: Text\",\"name: Text\"],\"id\":\"id\"},{\"name\":\"Note.Note\",\"columns\":[\"id: Text\",\"title: Text\",\"pinned: Bool\",\"owner: Text\"],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"},\"onDelete\":{\"owner\":\"cascade\"}}],\"caps\":[],\"session\":[\"user: Maybe Text\"]}",
+		DevMap:      "{\"pages\":[{\"module\":\"Login\",\"path\":\"/login\"},{\"module\":\"Notes\",\"path\":\"/notes\",\"requires\":\"user\",\"msgs\":[\"Add\"]}],\"tables\":[{\"name\":\"User.User\",\"sql\":\"User__User\",\"columns\":[\"id: Text\",\"name: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"}],\"id\":\"id\"},{\"name\":\"Note.Note\",\"sql\":\"Note__Note\",\"columns\":[\"id: Text\",\"title: Text\",\"pinned: Bool\",\"owner: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"title\",\"type\":\"Text\",\"sql\":\"title\",\"sqlType\":\"TEXT\"},{\"name\":\"pinned\",\"type\":\"Bool\",\"sql\":\"pinned\",\"sqlType\":\"INTEGER\"},{\"name\":\"owner\",\"type\":\"Text\",\"sql\":\"owner\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"},\"onDelete\":{\"owner\":\"cascade\"}}],\"caps\":[],\"session\":[\"user: Maybe Text\"]}",
 	}
 }
 

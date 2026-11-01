@@ -570,6 +570,10 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		rt.devRequests(w, r)
 		return
 	}
+	if get && r.URL.Path == devMapJSON && rt.devOn() {
+		rt.serveMapJSON(w, r)
+		return
+	}
 	if get && r.URL.Path == "/_dev" && rt.devOn() {
 		rt.devMap(w, r)
 		return

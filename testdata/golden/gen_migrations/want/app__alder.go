@@ -160,7 +160,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/",
-		DevMap:      "{\"pages\":[],\"tables\":[{\"name\":\"Note.Note\",\"columns\":[\"id: Text\",\"title: Text\",\"created: Time\"],\"id\":\"id\",\"created\":\"created\"},{\"name\":\"Tag.Tag\",\"columns\":[\"id: Text\",\"note: Text\",\"label: Text\"],\"id\":\"id\",\"refs\":{\"note\":\"Note.Note\"},\"onDelete\":{\"note\":\"cascade\"}}],\"caps\":[],\"session\":[\"visits: Int\"],\"appMsgs\":[\"Logout\"]}",
+		DevMap:      "{\"pages\":[],\"tables\":[{\"name\":\"Note.Note\",\"sql\":\"Note__Note\",\"columns\":[\"id: Text\",\"title: Text\",\"created: Time\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"title\",\"type\":\"Text\",\"sql\":\"title\",\"sqlType\":\"TEXT\"},{\"name\":\"created\",\"type\":\"Time\",\"sql\":\"created\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"created\":\"created\"},{\"name\":\"Tag.Tag\",\"sql\":\"Tag__Tag\",\"columns\":[\"id: Text\",\"note: Text\",\"label: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"note\",\"type\":\"Text\",\"sql\":\"note\",\"sqlType\":\"TEXT\"},{\"name\":\"label\",\"type\":\"Text\",\"sql\":\"label\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"note\":\"Note.Note\"},\"onDelete\":{\"note\":\"cascade\"}}],\"caps\":[],\"session\":[\"visits: Int\"],\"appMsgs\":[\"Logout\"]}",
 	}
 }
 
