@@ -108,7 +108,7 @@ func buildApp(dir, out string, stderr io.Writer) (binary string, code int) {
 func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (written string, code int) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(stderr, "%s internal error: %v\n", errTag(stderr, "alder build:"), r)
+			internalError(stderr, "alder build:", r)
 			written, code = "", 2
 		}
 	}()
@@ -151,7 +151,7 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 	}
 	files, err := gen.Emit(p, gen.Options{Version: version.String(), Migrations: buildkit.HasMigrations(dir)})
 	if err != nil {
-		fmt.Fprintf(stderr, "%s internal error: %v\n", errTag(stderr, "alder build:"), err)
+		internalError(stderr, "alder build:", err)
 		return "", 2
 	}
 	if out == "" {

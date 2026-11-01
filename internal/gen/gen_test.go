@@ -476,6 +476,43 @@ node v = Node { value: v, size: 1 }
 	vet(t, files)
 }
 
+// A page that declares no messages has an empty Msg, so `match msg { }` is exhaustive with no
+// arms. Lowering used to return the match's (nil) fallback for no rows, which reached gen as a
+// nil expression and panicked with "gen: cannot emit <nil>".
+func TestGen_MatchNoArms(t *testing.T) {
+	files := emitSource(t, map[string]string{
+		"App.alder": `module App
+
+session { }
+
+error : Error -> Html Never
+error err = <html><head><title>E</title></head><body><p>e</p></body></html>
+
+notFound : Html Never
+notFound = <html><head><title>NF</title></head><body><p>nf</p></body></html>
+`,
+		"P.alder": `module P
+
+page "/" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed {}
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg { }
+
+view : Model -> Session -> Html Msg
+view model session = <html><head><title>P</title></head><body><p>p</p></body></html>
+`,
+	})
+	contains(t, files["P_alder.go"],
+		"func P__update(msg P__Msg, model P__Model, session App__Session) eff.Task[rt.Nav] {\n\tswitch msg.Tag {\n\t}\n\tpanic(\"unreachable\")\n}",
+	)
+	vet(t, files)
+}
+
 // Alder names that are Go keywords or clash with the generated shape are renamed.
 func TestGen_KeywordNames(t *testing.T) {
 	files := emitSource(t, map[string]string{"K.alder": `module K

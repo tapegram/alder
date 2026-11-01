@@ -80,6 +80,13 @@ func (l *lowerer) match(subject syntax.Expr, arms []*syntax.Arm, t types.Type, h
 	m := &matcher{l: l, t: t, html: html, pos: at}
 	subj := l.expr(subject)
 	st := l.typeOf(subject)
+	// No arms: the subject's type has no constructors (the checker rejects a match that misses a
+	// case, E0004), so nothing can reach this expression. compile returns its fallback for no
+	// rows, which would be nil here, so build the empty Match directly: gen emits the switch and
+	// the `panic("unreachable")` that follows a match with no default.
+	if len(arms) == 0 {
+		return m.build(subj, st, matchKind(st), nil, nil)
+	}
 	var rows []row
 	named := false
 	vars := map[string]bool{}
