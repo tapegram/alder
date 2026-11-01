@@ -183,3 +183,19 @@ func TestReset(t *testing.T) {
 		t.Error("ByRid finds a request after Reset")
 	}
 }
+
+func TestRequests_At(t *testing.T) {
+	rq := NewRequests(3)
+	for _, e := range fixture(t) {
+		rq.Add(e)
+	}
+	if rq.Len() != 3 {
+		t.Fatalf("Len = %d, want 3", rq.Len())
+	}
+	all := rq.All()
+	for i := range rq.Len() {
+		if rq.At(i).Rid != all[i].Rid {
+			t.Errorf("At(%d) = %s, want %s", i, rq.At(i).Rid, all[i].Rid)
+		}
+	}
+}

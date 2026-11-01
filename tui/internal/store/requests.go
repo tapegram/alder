@@ -36,6 +36,12 @@ func (q *Requests) All() []Request {
 	return out
 }
 
+// Len is the number of requests in the table.
+func (q *Requests) Len() int { return q.ring.n }
+
+// At is the i-th request, oldest first; i is in [0, Len()).
+func (q *Requests) At(i int) Request { return q.ring.at(i) }
+
 // ByRid is the newest request with the id rid.
 func (q *Requests) ByRid(rid string) (Request, bool) {
 	for i := q.ring.n - 1; i >= 0; i-- {

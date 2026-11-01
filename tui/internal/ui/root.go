@@ -121,7 +121,7 @@ func New(o Options) tea.Model {
 		ctx: &Ctx{Opts: o, Logs: store.NewLogs(logLines), Requests: store.NewRequests(requestRows),
 			LogFilter: store.Filter{Level: "info"}},
 		screens: []Screen{
-			requestsScreen{},
+			newRequestsScreen(),
 			logsScreen{},
 			placeholder{title: "Data", command: func(c *Ctx) string { return "sqlite3 build/" + appName(c) + "/dev.db" }},
 			placeholder{title: "Tests", command: func(*Ctx) string { return "alder test --json" }},
@@ -182,6 +182,12 @@ func (m *root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case flashMsg:
 		m.flash = string(msg)
+		return m, nil
+	case switchTabMsg:
+		if msg.rid != "" {
+			m.ctx.LogFilter.Rid = msg.rid
+		}
+		m.tab = msg.tab
 		return m, nil
 	case tea.KeyMsg:
 		return m, m.key(msg)
@@ -296,8 +302,11 @@ func (m *root) toCurrent(msg tea.Msg) tea.Cmd {
 }
 
 // copy copies s to the clipboard and says so in the footer.
-func (m *root) copy(s string) tea.Cmd {
-	cp := m.ctx.Opts.Copy
+func (m *root) copy(s string) tea.Cmd { return copyText(m.ctx, s) }
+
+// copyText copies s to the clipboard of c's options and says so in the footer.
+func copyText(c *Ctx, s string) tea.Cmd {
+	cp := c.Opts.Copy
 	return func() tea.Msg {
 		if cp == nil {
 			return flashMsg(look.Palette.Yellow("copy: no clipboard"))
@@ -397,25 +406,18 @@ func (p placeholder) View(int, int, *Ctx) string             { return "coming in
 func (p placeholder) Keys() []Key                            { return nil }
 func (p placeholder) Command(c *Ctx) string                  { return p.command(c) }
 
-// requestsScreen is the Requests tab until its table arrives: the count of answered requests.
-type requestsScreen struct{}
-
-func (requestsScreen) Title() string                            { return "Requests" }
-func (s requestsScreen) Update(tea.Msg, *Ctx) (Screen, tea.Cmd) { return s, nil }
-func (requestsScreen) View(_, _ int, c *Ctx) string {
-	return fmt.Sprintf("%d requests", len(c.Requests.All()))
-}
-func (requestsScreen) Keys() []Key         { return nil }
-func (requestsScreen) Command(*Ctx) string { return "alder run · ALDER_LOG=debug" }
-
-// logsScreen is the Logs tab until its scrollback view arrives: the count of lines at the level
-// filter.
+// logsScreen is the Logs tab until its scrollback view arrives: a strip of the active filters
+// (the level, and the rid when one is set), then the count of lines they show.
 type logsScreen struct{}
 
 func (logsScreen) Title() string                            { return "Logs" }
 func (s logsScreen) Update(tea.Msg, *Ctx) (Screen, tea.Cmd) { return s, nil }
 func (logsScreen) View(_, _ int, c *Ctx) string {
-	return fmt.Sprintf("%d lines", len(c.Logs.View(c.LogFilter)))
+	strip := "level " + c.LogFilter.Level
+	if c.LogFilter.Rid != "" {
+		strip += "  rid " + c.LogFilter.Rid
+	}
+	return strip + "\n" + fmt.Sprintf("%d lines", len(c.Logs.View(c.LogFilter)))
 }
 func (logsScreen) Keys() []Key { return nil }
 func (logsScreen) Command(c *Ctx) string {

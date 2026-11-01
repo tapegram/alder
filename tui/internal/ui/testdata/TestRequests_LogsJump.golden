@@ -1,0 +1,30 @@
+ shelf  [32m● ok[0m  localhost:8080  alder v0.6.0                1 Requests [1m2 Logs[0m 3 Data 4 Tests 5 Routes
+ level info  rid 5f3a2c1f
+ 3 lines
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ o browser  R restart  ? keys                                              [2mALDER_LOG=info alder run[0m

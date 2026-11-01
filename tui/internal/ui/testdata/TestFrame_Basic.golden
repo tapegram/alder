@@ -1,11 +1,11 @@
  shelf  [32m● ok[0m  localhost:8080  alder v0.6.0                [1m1 Requests[0m 2 Logs 3 Data 4 Tests 5 Routes
- 5 requests
-
-
-
-
-
-
+ last 60s  0.1 req/s  p50 6ms  p95 812ms  errors 20.0%
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+   14:02:11.204  GET   /               200    4.2ms   4.7K   2
+   14:02:12.529  GET   /books/42       200   12.8ms   6.2K   5  [33mn+1[0m
+   14:02:14.880  POST  /books/42/lend  [2m303[0m    6.1ms      0   3
+   14:02:15.902  GET   /books/999      [33m404[0m    3.4ms  16.1K   1
+ > 14:02:15.930  GET   /search?q=••••  [1;31m500[0m  [33m812.4ms[0m   2.1K  12  [33mslow[0m
 
 
 
@@ -27,4 +27,4 @@
 
 
  ──────────────────────────────────────────────────────────────────────────────────────────────────
- o browser  R restart  ? keys                                           [2malder run · ALDER_LOG=debug[0m
+ enter open  l logs  / filter  G follow  o browser  R restart  ? keys   [2malder run · ALDER_LOG=debug[0m

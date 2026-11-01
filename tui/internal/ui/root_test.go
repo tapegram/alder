@@ -20,9 +20,11 @@ import (
 )
 
 // TestMain forces the 16-colour ANSI profile, so that anything styled through lipgloss shows
-// the same escapes in the goldens as on a terminal.
+// the same escapes in the goldens as on a terminal, and makes local time UTC, so that the
+// Requests table shows the same times on every machine.
 func TestMain(m *testing.M) {
 	lipgloss.SetColorProfile(termenv.ANSI)
+	time.Local = time.UTC
 	os.Exit(m.Run())
 }
 
@@ -96,7 +98,7 @@ func finalFrame(t *testing.T, tm *teatest.TestModel) (*root, []byte) {
 func TestFrame_Basic(t *testing.T) {
 	events := make(chan feed.Event, 64)
 	tm := start(t, options(events), events, fixture(t, "basic")...)
-	waitText(t, tm, "5 requests")
+	waitText(t, tm, "/search")
 	_, frame := finalFrame(t, tm)
 	lines := strings.Split(string(frame), "\n")
 	if !strings.Contains(lines[0], "shelf  \x1b[32m● ok\x1b[0m  localhost:8080  alder v0.6.0") {
@@ -183,13 +185,13 @@ func TestFrame_NewBootResets(t *testing.T) {
 	events := make(chan feed.Event, 64)
 	evs := fixture(t, "basic")
 	tm := start(t, options(events), events, evs...)
-	waitText(t, tm, "5 requests")
+	waitText(t, tm, "/search")
 	hello := evs[0]
 	h := *hello.Hello
 	h.Boot, h.Gen = "a17e9b30", "a17e9b30-1"
 	hello.Hello, hello.Seq = &h, 1
 	events <- hello
-	waitText(t, tm, "0 requests")
+	waitText(t, tm, "no requests yet")
 	m, frame := finalFrame(t, tm)
 	if n := len(m.ctx.Requests.All()); n != 0 {
 		t.Errorf("the requests table kept %d requests across the new boot", n)
