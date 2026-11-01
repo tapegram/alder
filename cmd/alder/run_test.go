@@ -500,15 +500,7 @@ func TestRun_ErrorThenFixReloads(t *testing.T) {
 // (#137): each poll is a send, which returns once the poll before it is done.
 func TestRun_CoalescesSaves(t *testing.T) {
 	t.Parallel()
-	ticks := make(chan time.Time)
-	poll := func() {
-		t.Helper()
-		select {
-		case ticks <- time.Now():
-		case <-time.After(60 * time.Second):
-			t.Fatal("the watcher took no poll within 60 s")
-		}
-	}
+	ticks, poll := pollDriver(t)
 	r := startRunAppOpts(t, "todos", nil, runOpts{watchTicks: ticks})
 	events := r.subscribe(t)
 	edit(t, r.dir, "app/Layout.alder", `<main>`, `<main class="edited">`)
@@ -516,7 +508,55 @@ func TestRun_CoalescesSaves(t *testing.T) {
 	poll() // sees the saves
 	poll() // finds nothing new and reports them: one change
 	waitFor(t, events, "location.reload()", 60*time.Second)
-	poll() // nothing is left pending
+	assertOneRebuild(t, r, events, poll)
+}
+
+// Saves on consecutive polls are one change too: the watcher reports only on a poll that finds
+// nothing new, not on the first one that finds a change.
+func TestRun_CoalescesSavesAcrossPolls(t *testing.T) {
+	t.Parallel()
+	ticks, poll := pollDriver(t)
+	r := startRunAppOpts(t, "todos", nil, runOpts{watchTicks: ticks})
+	events := r.subscribe(t)
+	// noRebuildYet gives the poll just sent time to run (a stall only lets a broken watcher
+	// pass, never fails a working one) and fails if it reported the change.
+	noRebuildYet := func(after string) {
+		t.Helper()
+		time.Sleep(time.Second)
+		if strings.Contains(r.errs.String(), "rebuilding") {
+			t.Fatalf("a rebuild after %s, before a quiet poll; stderr:\n%s", after, r.errs.String())
+		}
+	}
+	edit(t, r.dir, "app/Layout.alder", `<main>`, `<main class="edited">`)
+	poll() // sees the first save
+	noRebuildYet("the first save's poll")
+	edit(t, r.dir, "app/Layout.alder", `</title>`, `!</title>`)
+	poll() // sees the second
+	noRebuildYet("the second save's poll")
+	poll() // finds nothing new and reports both: one change
+	waitFor(t, events, "location.reload()", 60*time.Second)
+	assertOneRebuild(t, r, events, poll)
+}
+
+// pollDriver is a tick channel for runOpts.watchTicks and poll, which sends one tick (60 s at
+// most): it returns once the watcher has taken the tick, and so finished every earlier poll.
+func pollDriver(t *testing.T) (chan time.Time, func()) {
+	ticks := make(chan time.Time)
+	return ticks, func() {
+		t.Helper()
+		select {
+		case ticks <- time.Now():
+		case <-time.After(60 * time.Second):
+			t.Fatal("the watcher took no poll within 60 s")
+		}
+	}
+}
+
+// assertOneRebuild polls once more (nothing is left pending), then fails on any further event
+// within 2 s or on other than one rebuild.
+func assertOneRebuild(t *testing.T, r *devRun, events <-chan string, poll func()) {
+	t.Helper()
+	poll()
 	select {
 	case e := <-events:
 		t.Fatalf("a second event after the reload: %q", e)
