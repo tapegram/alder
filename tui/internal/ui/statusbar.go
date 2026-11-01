@@ -40,9 +40,16 @@ func (m *root) statusBar() string {
 	return left + strings.Repeat(" ", gap) + right
 }
 
-// stateDot is the build state with its coloured dot; before the first hello it is a dim
+// stateDot is the build state with its coloured dot; while the TUI opens the dev server it is a
+// dim `starting`, a red `failed to start` once that has failed, and before the first hello a dim
 // `connecting`.
 func stateDot(c *Ctx) string {
+	switch {
+	case c.StartErr != nil:
+		return look.Palette.Red("● failed to start")
+	case c.Starting:
+		return look.Palette.Dim("● starting")
+	}
 	switch c.State {
 	case "ok":
 		return look.Palette.Green("● ok")

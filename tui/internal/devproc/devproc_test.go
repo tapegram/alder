@@ -159,11 +159,24 @@ func TestOpen_Owns(t *testing.T) {
 	var gotEnv []string
 	var gotDir string
 	var calls int
+	var mu sync.Mutex
+	var early []string
+	lines := func(l string) {
+		mu.Lock()
+		defer mu.Unlock()
+		early = append(early, l)
+	}
 	connect := func(ctx context.Context, addr string) (<-chan feed.Event, error) {
 		calls++
 		if calls <= 3 { // the probe, then two retries
 			return nil, refused
 		}
+		// The line the dev server printed has been handed on already, before the feed answered.
+		mu.Lock()
+		if !slices.Equal(early, []string{"alder run: building"}) {
+			t.Errorf("lines before the feed answered = %q", early)
+		}
+		mu.Unlock()
 		return helloFor(dir)(ctx, addr)
 	}
 	start := func(alder, d string, env []string) (Proc, error) {
@@ -172,7 +185,7 @@ func TestOpen_Owns(t *testing.T) {
 		return p, nil
 	}
 	s, err := Open(context.Background(), Options{Dir: dir, Addr: "localhost:8080", Alder: "alder",
-		Connect: connect, Start: start})
+		Connect: connect, Start: start, Lines: lines})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,13 +203,11 @@ func TestOpen_Owns(t *testing.T) {
 	if !s.Owned {
 		t.Error("Owned = false, want true")
 	}
-	var early []string
-	for l := range s.Early {
-		early = append(early, l)
-	}
+	mu.Lock()
 	if !slices.Equal(early, []string{"alder run: building"}) {
-		t.Errorf("Early = %q", early)
+		t.Errorf("lines = %q", early)
 	}
+	mu.Unlock()
 	if ev := <-s.Events; ev.Type != "hello" {
 		t.Errorf("first event = %+v, want the hello", ev)
 	}

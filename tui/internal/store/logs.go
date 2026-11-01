@@ -40,9 +40,12 @@ type Filter struct {
 	Re    *regexp.Regexp
 }
 
-// Logs is the log scrollback: a ring of the newest lines.
+// Logs is the log scrollback: a ring of the newest lines. Each line added gets the next
+// position, counted from 0 and never reused, even across Reset, so a reader can keep positions
+// and read only the lines added since it last looked.
 type Logs struct {
-	ring ring[Line]
+	ring  ring[Line]
+	added int64 // the lines ever added; the position the next one gets
 }
 
 // NewLogs is an empty scrollback keeping the last max lines.
@@ -52,40 +55,57 @@ func NewLogs(max int) *Logs { return &Logs{ring: newRing[Line](max)} }
 func (l *Logs) Add(e feed.Event) {
 	switch {
 	case e.Type == "run" && e.Run != nil:
-		l.ring.add(Line{Seq: e.Seq, T: e.T, Level: "info", Text: e.Run.Text, Run: true})
+		l.add(Line{Seq: e.Seq, T: e.T, Level: "info", Text: e.Run.Text, Run: true})
 	case e.Type == "log" && e.Log != nil && e.Log.Record != nil:
 		r := e.Log.Record
 		lv := strings.ToLower(r.Level)
 		ln := Line{Seq: e.Seq, T: r.Time, Level: lv, Rid: r.Rid, rec: r,
 			Effect: lv == "debug" && strings.HasPrefix(r.Msg, "effect "), Access: r.HasAccess}
 		ln.Text = renderText(r, false)
-		l.ring.add(ln)
+		l.add(ln)
 	case e.Type == "log" && e.Log != nil:
-		l.ring.add(Line{Seq: e.Seq, T: e.T, Level: "info", Text: e.Log.Raw})
+		l.add(Line{Seq: e.Seq, T: e.T, Level: "info", Text: e.Log.Raw})
 	}
+}
+
+func (l *Logs) add(ln Line) {
+	l.ring.add(ln)
+	l.added++
 }
 
 // View is the lines that pass f, oldest first.
 func (l *Logs) View(f Filter) []Line {
-	min := levelRank(f.Level)
-	debug := f.Level == "debug"
 	var out []Line
-	l.ring.each(func(ln Line) {
-		if levelRank(ln.Level) < min || f.Rid != "" && ln.Rid != f.Rid {
-			return
+	for i := l.Start(); i < l.End(); i++ {
+		if ln, ok := l.Get(i, f); ok {
+			out = append(out, ln)
 		}
-		if debug && ln.Access {
-			ln.Text = renderText(ln.rec, true)
-		}
-		if f.Re != nil && !f.Re.MatchString(ln.Text) {
-			return
-		}
-		out = append(out, ln)
-	})
+	}
 	return out
 }
 
-// Reset empties the scrollback.
+// Start is the position of the oldest line kept; End is the position the next line added gets.
+// The lines kept are those in [Start, End).
+func (l *Logs) Start() int64 { return l.added - int64(l.ring.n) }
+func (l *Logs) End() int64   { return l.added }
+
+// Get is the line at position i, which is in [Start, End), as f shows it, and whether it passes
+// f. A level of debug shows an access line with its steps.
+func (l *Logs) Get(i int64, f Filter) (Line, bool) {
+	ln := l.ring.at(int(i - l.Start()))
+	if levelRank(ln.Level) < levelRank(f.Level) || f.Rid != "" && ln.Rid != f.Rid {
+		return Line{}, false
+	}
+	if f.Level == "debug" && ln.Access {
+		ln.Text = renderText(ln.rec, true)
+	}
+	if f.Re != nil && !f.Re.MatchString(ln.Text) {
+		return Line{}, false
+	}
+	return ln, true
+}
+
+// Reset empties the scrollback. Positions go on from where they were.
 func (l *Logs) Reset() { l.ring.reset() }
 
 // levelRank orders the levels: debug (and anything unknown, or empty) 0, info 1, warn 2, error 3.

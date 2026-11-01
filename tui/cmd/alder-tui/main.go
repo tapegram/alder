@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -80,23 +82,53 @@ func run(args []string, stdout, stderr *os.File) int {
 		fmt.Fprintln(stderr, "alder-tui:", err)
 		return 1
 	}
-	// The feed lives as long as ctx, so ctx lasts until the program has exited.
+	// The program starts at once and opens the dev server off its update loop, so the terminal is
+	// not blank while an owned dev server builds the app. The feed lives as long as ctx, so ctx
+	// lasts until the program has exited; then stop waits for Open to return, if it was called,
+	// and closes its session. stop is deferred too, so that a panic cannot leave alder run running.
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	s, err := devproc.Open(ctx, devproc.Options{Dir: abs, Addr: *addr, Alder: bin, NoRun: *noRun})
-	if err != nil {
-		fmt.Fprintln(stderr, "alder-tui:", err)
-		return 1
+	var (
+		sess     *devproc.Session
+		called   atomic.Bool
+		opened   = make(chan struct{})
+		stopOnce sync.Once
+	)
+	open := func(line func(string)) (ui.Feed, error) {
+		called.Store(true)
+		defer close(opened)
+		s, err := devproc.Open(ctx, devproc.Options{Dir: abs, Addr: *addr, Alder: bin, NoRun: *noRun, Lines: line})
+		if err != nil {
+			return ui.Feed{}, err
+		}
+		sess = s
+		return ui.Feed{Events: s.Events, Owned: s.Owned}, nil
 	}
+	stop := func() {
+		stopOnce.Do(func() {
+			cancel()
+			if called.Load() {
+				<-opened
+			}
+			if sess == nil {
+				return
+			}
+			if err := sess.Close(); err != nil {
+				fmt.Fprintln(stderr, "alder-tui: stopping alder run:", err)
+			}
+		})
+	}
+	defer stop()
 	m := ui.New(ui.Options{
 		App: filepath.Base(abs), Dir: abs, Addr: *addr, Version: version, AlderVersion: have,
-		Events: s.Events, Early: s.Early, Runner: runner.Exec(bin),
-		HTTP: &http.Client{Timeout: 5 * time.Second}, Now: time.Now, Owned: s.Owned,
+		Open: open, Runner: runner.Exec(bin),
+		HTTP: &http.Client{Timeout: 5 * time.Second}, Now: time.Now,
 		OpenURL: openURL, Copy: copyText,
 	})
-	_, err = tea.NewProgram(m, tea.WithAltScreen(), tea.WithOutput(stdout)).Run()
-	if cerr := s.Close(); cerr != nil {
-		fmt.Fprintln(stderr, "alder-tui: stopping alder run:", cerr)
+	final, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithOutput(stdout)).Run()
+	stop()
+	if serr := ui.StartErr(final); serr != nil {
+		fmt.Fprintln(stderr, "alder-tui:", serr)
+		return 1
 	}
 	if err != nil && !errors.Is(err, tea.ErrInterrupted) {
 		fmt.Fprintln(stderr, "alder-tui:", err)

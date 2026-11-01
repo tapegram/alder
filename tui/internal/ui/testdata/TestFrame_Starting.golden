@@ -1,0 +1,30 @@
+ shelf  [2m● starting[0m  localhost:8080  alder v0.6.0          1 Requests [1m2 Logs[0m 3 Data 4 Tests 5 Routes
+ level info
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+   [2malder run: building shelf[0m
+ > [2malder run: dev server on localhost:8080; the app starts once it builds[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ enter open  L level  / regexp  x clear  G follow  o browser  R restart    [2mALDER_LOG=info alder run[0m

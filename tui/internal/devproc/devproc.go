@@ -45,11 +45,14 @@ const (
 var errNoAnswer = errors.New("no answer")
 
 // Options says which dev server Open wants: the app's directory, the dev server's address, the
-// alder binary to start one with, and whether starting one is forbidden (--no-run). Connect and
-// Start default to feed.Connect and Start; tests replace them.
+// alder binary to start one with, and whether starting one is forbidden (--no-run). Lines, when
+// set, is called with each stderr line of a dev server Open started, as it arrives, until its
+// feed answers; it is never called after Open has returned. Connect and Start default to
+// feed.Connect and Start; tests replace them.
 type Options struct {
 	Dir, Addr, Alder string
 	NoRun            bool
+	Lines            func(string)
 	Connect          func(ctx context.Context, addr string) (<-chan feed.Event, error)
 	Start            func(alder, dir string, env []string) (Proc, error)
 }
@@ -62,13 +65,11 @@ type Proc interface {
 	Exited() <-chan struct{}
 }
 
-// Session is the dev server's feed (its first event the hello), whether the TUI owns the dev
-// server, and, when it does, the stderr lines the dev server printed before its feed answered
-// (Early is closed; it is empty when the TUI attached).
+// Session is the dev server's feed (its first event the hello) and whether the TUI owns the dev
+// server.
 type Session struct {
 	Events <-chan feed.Event
 	Owned  bool
-	Early  <-chan string
 
 	cancel context.CancelFunc
 	proc   Proc
@@ -99,7 +100,7 @@ func Open(ctx context.Context, o Options) (*Session, error) {
 			s.cancel()
 			return nil, fmt.Errorf("%s is the dev server of %s; pass --addr", o.Addr, d)
 		}
-		return s.session(nil, nil), nil
+		return s.session(nil), nil
 	case errors.Is(err, feed.ErrNotAlder), errors.Is(err, errNoAnswer):
 		return nil, fmt.Errorf("%s is serving something that is not alder run; pass --addr", o.Addr)
 	case !errors.Is(err, syscall.ECONNREFUSED):
@@ -110,7 +111,8 @@ func Open(ctx context.Context, o Options) (*Session, error) {
 	return own(ctx, o, dir)
 }
 
-// own starts the dev server and waits for its feed, collecting its stderr meanwhile.
+// own starts the dev server and waits for its feed, collecting its stderr meanwhile and handing
+// each line to o.Lines.
 func own(ctx context.Context, o Options, dir string) (*Session, error) {
 	p, err := o.Start(o.Alder, dir, []string{"ALDER_ADDR=" + o.Addr, "ALDER_EXIT_ON_STDIN_EOF=1"})
 	if err != nil {
@@ -122,6 +124,9 @@ func own(ctx context.Context, o Options, dir string) (*Session, error) {
 			lines = lines[1:]
 		}
 		lines = append(lines, l)
+		if o.Lines != nil {
+			o.Lines(l)
+		}
 	}
 	fail := func(msg string) error {
 		tail := lines[max(0, len(lines)-tailLines):]
@@ -169,18 +174,13 @@ func own(ctx context.Context, o Options, dir string) (*Session, error) {
 			if err != nil {
 				continue
 			}
-			early := make(chan string, len(lines))
-			for _, l := range lines {
-				early <- l
-			}
-			close(early)
 			// The dev server's later stderr is read and dropped, so it never blocks on a full
 			// pipe; its feed carries what it prints from here on.
 			go func() {
 				for range p.Stderr() {
 				}
 			}()
-			return s.session(p, early), nil
+			return s.session(p), nil
 		}
 	}
 }
@@ -227,7 +227,7 @@ func probe(ctx context.Context, connect func(context.Context, string) (<-chan fe
 
 // session is the Session for the probed feed, owning p when it is not nil. Its Events carry the
 // hello again, then the feed's events.
-func (f *probed) session(p Proc, early chan string) *Session {
+func (f *probed) session(p Proc) *Session {
 	out := make(chan feed.Event, 64)
 	go func() {
 		defer close(out)
@@ -244,11 +244,7 @@ func (f *probed) session(p Proc, early chan string) *Session {
 			}
 		}
 	}()
-	if early == nil {
-		early = make(chan string)
-		close(early)
-	}
-	return &Session{Events: out, Owned: p != nil, Early: early, cancel: f.cancel, proc: p}
+	return &Session{Events: out, Owned: p != nil, cancel: f.cancel, proc: p}
 }
 
 // Close ends the feed and, when the TUI owns the dev server, stops it. Only the first call does

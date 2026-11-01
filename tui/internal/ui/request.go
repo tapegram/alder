@@ -107,6 +107,23 @@ func fetchDetail(c *Ctx, rid string) tea.Cmd {
 	}
 }
 
+// openRequest opens request r, whose row the detail shows until the dev server answers, and asks
+// the dev server for its detail.
+func openRequest(c *Ctx, r store.Request) (*requestView, tea.Cmd) {
+	return &requestView{req: r}, fetchDetail(c, r.Rid)
+}
+
+// detailClaims reports whether msg is a key an open request answers before the frame: tab and
+// shift-tab move between its sections, enter unfolds, y copies the rid, and esc, left or
+// backspace go back.
+func detailClaims(msg tea.KeyMsg) bool {
+	switch msg.String() {
+	case "tab", "shift+tab", "y", "enter", "esc", "left", "backspace":
+		return true
+	}
+	return false
+}
+
 // The detail's sections, in the order tab moves through them.
 const (
 	secSteps = iota

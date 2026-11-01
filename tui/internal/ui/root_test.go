@@ -3,6 +3,7 @@ package ui
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/muesli/termenv"
 
 	"alder/tui/internal/feed"
+	"alder/tui/internal/store"
 )
 
 // TestMain forces the 16-colour ANSI profile, so that anything styled through lipgloss shows
@@ -399,5 +401,76 @@ func TestKeys_OpenBrowser(t *testing.T) {
 	press(m, "o")
 	if strings.Join(opened, "|") != "http://localhost:8080/" {
 		t.Errorf("opened %q", opened)
+	}
+}
+
+// starting is the options of a TUI that starts its own dev server: Open prints lines, then waits
+// for release before it returns the feed events, or err when it is set.
+func starting(events chan feed.Event, release chan struct{}, err error, lines ...string) Options {
+	o := options(nil)
+	o.Open = func(line func(string)) (Feed, error) {
+		for _, l := range lines {
+			line(l)
+		}
+		<-release
+		if err != nil {
+			return Feed{}, err
+		}
+		return Feed{Events: events, Owned: true}, nil
+	}
+	return o
+}
+
+func TestFrame_Starting(t *testing.T) {
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	o := starting(nil, release, nil, "alder run: building shelf",
+		"alder run: dev server on localhost:8080; the app starts once it builds")
+	tm := teatest.NewTestModel(t, New(o), teatest.WithInitialTermSize(100, 30))
+	tm.Send(key("2"))
+	waitText(t, tm, "the app starts once it builds")
+	m, frame := finalFrame(t, tm)
+	if !strings.Contains(strings.Split(string(frame), "\n")[0], "shelf  \x1b[2m● starting\x1b[0m  localhost:8080") {
+		t.Errorf("status bar = %q", strings.Split(string(frame), "\n")[0])
+	}
+	if !m.ctx.Starting {
+		t.Error("Starting = false while Open has not returned")
+	}
+	teatest.RequireEqualOutput(t, frame)
+}
+
+func TestStart_EarlyLinesBeforeHello(t *testing.T) {
+	events, release := make(chan feed.Event, 64), make(chan struct{})
+	o := starting(events, release, nil, "alder run: building shelf")
+	tm := teatest.NewTestModel(t, New(o), teatest.WithInitialTermSize(100, 30))
+	tm.Send(key("2"))
+	waitText(t, tm, "building shelf")
+	close(release)
+	for _, ev := range fixture(t, "basic") {
+		events <- ev
+	}
+	waitText(t, tm, "panic: runtime error")
+	m, _ := finalFrame(t, tm)
+	all := m.ctx.Logs.View(store.Filter{})
+	if len(all) < 2 || !all[0].Run || all[0].Text != "alder run: building shelf" || !strings.Contains(all[1].Text, "dev server on") {
+		t.Errorf("the early line is not first in the scrollback: %+v", all)
+	}
+	if m.ctx.Starting || m.ctx.State != "ok" || !m.ctx.Opts.Owned {
+		t.Errorf("after the hello Starting=%v State=%q Owned=%v", m.ctx.Starting, m.ctx.State, m.ctx.Opts.Owned)
+	}
+}
+
+func TestStart_OpenFails(t *testing.T) {
+	release := make(chan struct{})
+	close(release)
+	want := errors.New("alder run exited before its feed answered on localhost:8080:\nbuild failed")
+	tm := teatest.NewTestModel(t, New(starting(nil, release, want, "build failed")),
+		teatest.WithInitialTermSize(100, 30))
+	fm := tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))
+	if err := StartErr(fm); err != want {
+		t.Errorf("StartErr = %v, want %v", err, want)
+	}
+	if err := StartErr(New(options(nil))); err != nil {
+		t.Errorf("StartErr of a model that has not failed = %v", err)
 	}
 }

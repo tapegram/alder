@@ -45,16 +45,7 @@ func (*requestsScreen) Title() string { return "Requests" }
 // and while a request is open the keys the detail answers: tab and shift-tab move between its
 // sections, enter unfolds, y copies the rid, and esc, left or backspace go back to the table.
 func (s *requestsScreen) Claims(msg tea.KeyMsg) bool {
-	if s.typing {
-		return true
-	}
-	if s.detail != nil {
-		switch msg.String() {
-		case "tab", "shift+tab", "y", "enter", "esc", "left", "backspace":
-			return true
-		}
-	}
-	return false
+	return s.typing || s.detail != nil && detailClaims(msg)
 }
 
 func (s *requestsScreen) Update(msg tea.Msg, c *Ctx) (Screen, tea.Cmd) {
@@ -133,9 +124,9 @@ func (s *requestsScreen) tableKey(k string, c *Ctx) tea.Cmd {
 		next := min(cur+1, n-1)
 		s.follow, s.sel = next == n-1, rs.at(next).Seq
 	case "enter":
-		r := rs.at(cur)
-		s.detail = &requestView{req: r}
-		return fetchDetail(c, r.Rid)
+		var cmd tea.Cmd
+		s.detail, cmd = openRequest(c, rs.at(cur))
+		return cmd
 	case "l":
 		rid := rs.at(cur).Rid // read here: the store is touched only in Update
 		return func() tea.Msg { return switchTabMsg{tab: 1, rid: rid} }

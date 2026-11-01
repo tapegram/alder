@@ -199,3 +199,41 @@ func TestRequests_At(t *testing.T) {
 		}
 	}
 }
+
+func TestLogs_Positions(t *testing.T) {
+	lg := NewLogs(3)
+	for i := int64(1); i <= 5; i++ {
+		lg.Add(feed.Event{Type: "run", Seq: i, Run: &feed.Run{Text: "r"}})
+	}
+	if lg.Start() != 2 || lg.End() != 5 {
+		t.Fatalf("Start, End = %d, %d, want 2, 5", lg.Start(), lg.End())
+	}
+	if l, ok := lg.Get(2, Filter{}); !ok || l.Seq != 3 {
+		t.Errorf("Get(2) = %+v, %v, want the line of seq 3", l, ok)
+	}
+	if _, ok := lg.Get(4, Filter{Level: "warn"}); ok {
+		t.Error("Get passes an info line through a warn filter")
+	}
+	lg.Reset()
+	if lg.Start() != 5 || lg.End() != 5 {
+		t.Errorf("after Reset Start, End = %d, %d, want 5, 5", lg.Start(), lg.End())
+	}
+	lg.Add(feed.Event{Type: "run", Seq: 1, Run: &feed.Run{Text: "again"}})
+	if l, ok := lg.Get(5, Filter{}); !ok || l.Text != "again" {
+		t.Errorf("Get(5) after Reset = %+v, %v", l, ok)
+	}
+	// An access line read at debug carries its steps, as in View.
+	lg = NewLogs(10)
+	for _, e := range fixture(t) {
+		lg.Add(e)
+	}
+	for i := lg.Start(); i < lg.End(); i++ {
+		if l, ok := lg.Get(i, Filter{Level: "debug", Re: regexp.MustCompile("lend")}); ok && l.Access {
+			if want := " steps=3"; len(l.Text) < len(want) || l.Text[len(l.Text)-len(want):] != want {
+				t.Errorf("the access line at debug = %q, want it to end with %q", l.Text, want)
+			}
+			return
+		}
+	}
+	t.Error("no access line matched lend at debug")
+}

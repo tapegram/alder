@@ -5,9 +5,9 @@ package ui
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -30,14 +30,20 @@ const (
 const restartTimeout = 5 * time.Second
 
 // Options is what the program is given: the app's name and directory, the dev server's address,
-// alder-tui's own version and alder's (from `alder help --json`), the dev server's feed, the
-// lines an owned dev server printed before its feed answered, the runner for alder subprocesses,
-// the HTTP client for the dev server's endpoints, the clock, whether the TUI owns the dev server,
-// and how to open a URL in the browser and copy text to the clipboard.
+// alder-tui's own version and alder's (from `alder help --json`), the dev server's feed or how to
+// open it, the runner for alder subprocesses, the HTTP client for the dev server's endpoints, the
+// clock, whether the TUI owns the dev server, and how to open a URL in the browser and copy text
+// to the clipboard.
+//
+// Open, when set, opens the dev server once the program has started, off the update loop, so the
+// terminal is not blank while a dev server the TUI started builds the app. It is given a function
+// that takes each line the dev server prints before its feed answers, which the Logs screen shows
+// as they arrive, and returns the feed, or the error the program then quits with (see StartErr).
+// Without Open the program reads Events.
 type Options struct {
 	App, Dir, Addr, Version, AlderVersion string
 	Events                                <-chan feed.Event
-	Early                                 <-chan string
+	Open                                  func(line func(string)) (Feed, error)
 	Runner                                runner.Runner
 	HTTP                                  *http.Client
 	Now                                   func() time.Time
@@ -46,13 +52,23 @@ type Options struct {
 	Copy                                  func(string) error
 }
 
-// Ctx is the state the screens share: the options, the stores, the last hello, the last build
-// event of the dev server's current boot and the build state, the app's exit when it has exited,
-// whether the feed is disconnected, and the active filters of the Logs and Requests screens.
+// Feed is the dev server's feed as Options.Open returns it, and whether the TUI owns the dev
+// server.
+type Feed struct {
+	Events <-chan feed.Event
+	Owned  bool
+}
+
+// Ctx is the state the screens share: the options, the stores, whether Options.Open has yet to
+// return and its error when it failed, the last hello, the last build event of the dev server's
+// current boot and the build state, the app's exit when it has exited, whether the feed is
+// disconnected, and the active filters of the Logs and Requests screens.
 type Ctx struct {
 	Opts         Options
 	Logs         *store.Logs
 	Requests     *store.Requests
+	Starting     bool
+	StartErr     error
 	Hello        *feed.Hello
 	Build        *feed.Build
 	State        string
@@ -80,11 +96,10 @@ type Claimer interface {
 	Claims(msg tea.KeyMsg) bool
 }
 
-// The messages the program sends itself: a feed event, the early lines of an owned dev server,
-// the end of the feed, and a line for the footer (the outcome of a copy, an open or a restart).
+// The messages the program sends itself: a feed event, the end of the feed, and a line for the
+// footer (the outcome of a copy, an open or a restart).
 type (
 	eventMsg      feed.Event
-	earlyMsg      []string
 	feedClosedMsg struct{}
 	flashMsg      string
 )
@@ -107,6 +122,7 @@ type root struct {
 	width   int
 	height  int
 	probs   problems
+	start   *startQueue // what Options.Open reports, while it runs
 }
 
 // New is the program's model for o. Its screens are Requests, Logs, Data, Tests and Routes.
@@ -117,35 +133,98 @@ func New(o Options) tea.Model {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	return &root{
+	m := &root{
 		ctx: &Ctx{Opts: o, Logs: store.NewLogs(logLines), Requests: store.NewRequests(requestRows),
-			LogFilter: store.Filter{Level: "info"}},
+			Starting: o.Open != nil, LogFilter: store.Filter{Level: "info"}},
 		screens: []Screen{
 			newRequestsScreen(),
-			logsScreen{},
+			newLogsScreen(),
 			placeholder{title: "Data", command: func(c *Ctx) string { return "sqlite3 build/" + appName(c) + "/dev.db" }},
 			placeholder{title: "Tests", command: func(*Ctx) string { return "alder test --json" }},
 			placeholder{title: "Routes", command: func(*Ctx) string { return "alder routes --json" }},
 		},
 	}
+	if o.Open != nil {
+		m.start = &startQueue{ready: make(chan struct{}, 1)}
+	}
+	return m
 }
 
-// Init reads the early lines of an owned dev server, then the feed.
+// StartErr is why the program of model m quit without a dev server: the error Options.Open
+// returned, or nil.
+func StartErr(m tea.Model) error {
+	if r, ok := m.(*root); ok {
+		return r.ctx.StartErr
+	}
+	return nil
+}
+
+// Init opens the dev server when the options say how, reading what Open reports as it reports
+// it; otherwise it reads the feed.
 func (m *root) Init() tea.Cmd {
-	if m.ctx.Opts.Early != nil {
-		return readEarly(m.ctx.Opts.Early)
+	if q := m.start; q != nil {
+		open := m.ctx.Opts.Open
+		return tea.Batch(func() tea.Msg {
+			f, err := open(q.line)
+			q.finish(f, err)
+			return nil
+		}, q.next())
 	}
 	return readEvent(m.ctx.Opts.Events)
 }
 
-// readEarly reads the early lines until their channel is closed.
-func readEarly(ch <-chan string) tea.Cmd {
+// startQueue carries what Options.Open reports to the update loop, in order: the lines the dev
+// server prints, then Open's outcome. Open never waits on the loop to hand a line on, so it
+// returns even once the program has quit and nothing reads the queue any more.
+type startQueue struct {
+	mu    sync.Mutex
+	lines []string
+	done  *startMsg
+	ready chan struct{} // holds a token while there is something to read
+}
+
+// startMsg is what the queue held when it was read: the lines, then Open's outcome once it has
+// returned (done is set).
+type startMsg struct {
+	lines []string
+	done  bool
+	feed  Feed
+	err   error
+}
+
+func (q *startQueue) line(l string) {
+	q.mu.Lock()
+	q.lines = append(q.lines, l)
+	q.mu.Unlock()
+	q.signal()
+}
+
+func (q *startQueue) finish(f Feed, err error) {
+	q.mu.Lock()
+	q.done = &startMsg{done: true, feed: f, err: err}
+	q.mu.Unlock()
+	q.signal()
+}
+
+func (q *startQueue) signal() {
+	select {
+	case q.ready <- struct{}{}:
+	default:
+	}
+}
+
+// next waits for the queue to hold something and takes all of it.
+func (q *startQueue) next() tea.Cmd {
 	return func() tea.Msg {
-		var lines []string
-		for l := range ch {
-			lines = append(lines, l)
+		<-q.ready
+		q.mu.Lock()
+		defer q.mu.Unlock()
+		msg := startMsg{lines: q.lines}
+		if q.done != nil {
+			msg.done, msg.feed, msg.err = true, q.done.feed, q.done.err
 		}
-		return earlyMsg(lines)
+		q.lines = nil
+		return msg
 	}
 }
 
@@ -169,11 +248,8 @@ func (m *root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
-	case earlyMsg:
-		for _, l := range msg {
-			m.ctx.Logs.Add(feed.Event{Type: "run", T: m.ctx.Opts.Now().UTC(), Run: &feed.Run{Text: l}})
-		}
-		return m, readEvent(m.ctx.Opts.Events)
+	case startMsg:
+		return m, m.started(msg)
 	case eventMsg:
 		m.apply(feed.Event(msg))
 		cmd := m.toScreens(msg)
@@ -193,6 +269,25 @@ func (m *root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.key(msg)
 	}
 	return m, m.toScreens(msg)
+}
+
+// started records what Options.Open reported: each line as a run line, then, once Open has
+// returned, its feed, which the program reads from then on, or its error, which quits.
+func (m *root) started(msg startMsg) tea.Cmd {
+	c := m.ctx
+	for _, l := range msg.lines {
+		c.Logs.Add(feed.Event{Type: "run", T: c.Opts.Now().UTC(), Run: &feed.Run{Text: l}})
+	}
+	if !msg.done {
+		return m.start.next()
+	}
+	m.start, c.Starting = nil, false
+	if msg.err != nil {
+		c.StartErr = msg.err
+		return tea.Quit
+	}
+	c.Opts.Events, c.Opts.Owned = msg.feed.Events, msg.feed.Owned
+	return readEvent(c.Opts.Events)
 }
 
 // apply records an event: a hello from another boot (another dev server) resets the stores and
@@ -405,21 +500,3 @@ func (p placeholder) Update(tea.Msg, *Ctx) (Screen, tea.Cmd) { return p, nil }
 func (p placeholder) View(int, int, *Ctx) string             { return "coming in the next PR" }
 func (p placeholder) Keys() []Key                            { return nil }
 func (p placeholder) Command(c *Ctx) string                  { return p.command(c) }
-
-// logsScreen is the Logs tab until its scrollback view arrives: a strip of the active filters
-// (the level, and the rid when one is set), then the count of lines they show.
-type logsScreen struct{}
-
-func (logsScreen) Title() string                            { return "Logs" }
-func (s logsScreen) Update(tea.Msg, *Ctx) (Screen, tea.Cmd) { return s, nil }
-func (logsScreen) View(_, _ int, c *Ctx) string {
-	strip := "level " + c.LogFilter.Level
-	if c.LogFilter.Rid != "" {
-		strip += "  rid " + c.LogFilter.Rid
-	}
-	return strip + "\n" + fmt.Sprintf("%d lines", len(c.Logs.View(c.LogFilter)))
-}
-func (logsScreen) Keys() []Key { return nil }
-func (logsScreen) Command(c *Ctx) string {
-	return "ALDER_LOG=" + c.LogFilter.Level + " alder run"
-}
