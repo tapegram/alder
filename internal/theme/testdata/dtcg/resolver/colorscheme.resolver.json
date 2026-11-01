@@ -1,0 +1,14 @@
+{
+  "version": "2025.10",
+  "name": "Color scheme",
+  "modifiers": {
+    "colorScheme": {
+      "default": "Light",
+      "contexts": {
+        "Light": [{ "color": { "$type": "color", "background": { "$value": "#fafafa" } } }],
+        "DARK": [{ "color": { "$type": "color", "background": { "$value": "#0a0a0a" } } }]
+      }
+    }
+  },
+  "resolutionOrder": [{ "$ref": "#/modifiers/colorScheme" }]
+}

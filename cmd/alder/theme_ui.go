@@ -111,7 +111,7 @@ func (d *devServer) serveTheme(w http.ResponseWriter, r *http.Request) {
 		if !readThemeBody(w, r, &body) {
 			return
 		}
-		th, unplaced, skipped, err := theme.Import(body.CSS)
+		th, unplaced, skipped, err := generate.ReadThemeSource("", []byte(body.CSS), "")
 		if err != nil {
 			writeThemeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 			return

@@ -1,0 +1,7 @@
+{
+  "color": {
+    "$type": "color",
+    "brand-500": { "$value": { "colorSpace": "oklch", "components": [0.6, 0.2, 30] } },
+    "primary_foreground": { "$value": { "colorSpace": "oklch", "components": [0.98, 0, 0] } }
+  }
+}

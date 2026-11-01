@@ -1,0 +1,34 @@
+{
+  "version": "2025.10",
+  "name": "Modes",
+  "sets": {
+    "base": { "sources": [{ "color": { "brand": { "$type": "color", "$value": "#336699" } } }] }
+  },
+  "modifiers": {
+    "density": {
+      "default": "compact",
+      "contexts": {
+        "comfortable": [{ "spacing": { "gap": { "$type": "dimension", "$value": { "value": 1, "unit": "rem" } } } }],
+        "compact": [{ "spacing": { "gap": { "$type": "dimension", "$value": { "value": 0.5, "unit": "rem" } } } }]
+      }
+    },
+    "Mode": {
+      "contexts": {
+        "Light": [{ "color": { "background": { "$type": "color", "$value": "#ffffff" } } }],
+        "DARK": [{ "color": { "background": { "$type": "color", "$value": "#000000" } } }]
+      }
+    },
+    "contrast": {
+      "contexts": {
+        "normal": [{ "color": { "border": { "$type": "color", "$value": "#cccccc" } } }],
+        "high": [{ "color": { "border": { "$type": "color", "$value": "#000000" } } }]
+      }
+    }
+  },
+  "resolutionOrder": [
+    { "$ref": "#/sets/base" },
+    { "$ref": "#/modifiers/density" },
+    { "$ref": "#/modifiers/Mode" },
+    { "$ref": "#/modifiers/contrast" }
+  ]
+}

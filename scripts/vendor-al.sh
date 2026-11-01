@@ -3,7 +3,7 @@
 #
 # A plain copy at a tag: al.css and al.js (the bundles), custom-elements.json (the
 # manifest the checker reads), the Geist fonts with their OFL.txt (fonts/), and the
-# LICENSE and LICENSE-lucide files, with the tag written to rt/al/VERSION. Nothing
+# LICENSE and LICENSE-lucide files, and the themes/ presets (into internal/theme/presets/), with the tag written to rt/al/VERSION. Nothing
 # fetches at build time; the copy is committed and embedded by rt/embed.go.
 # Uses `gh repo clone` when gh is installed (the repository may be private),
 # else `git clone`. Reads the manifest's version with python3's json module.
@@ -41,5 +41,7 @@ cp "$tmp/alder-ui/fonts/GeistMono-Variable.woff2" "$dest/fonts/GeistMono-Variabl
 cp "$tmp/alder-ui/fonts/OFL.txt" "$dest/fonts/OFL.txt"
 cp "$tmp/alder-ui/LICENSE" "$dest/LICENSE"
 cp "$tmp/alder-ui/LICENSE-lucide" "$dest/LICENSE-lucide"
+rm -rf "$here/internal/theme/presets"
+cp -R "$tmp/alder-ui/themes" "$here/internal/theme/presets"
 printf '%s\n' "$tag" >"$dest/VERSION"
 echo "vendored alder-ui $tag into rt/al/"

@@ -207,7 +207,7 @@ func themeValue(tok theme.Token, v *syntax.DeployValue) string {
 		case v.Kind != "string":
 			return shape
 		case theme.NegativeLength(text):
-			return fmt.Sprintf("`%s` is a length and cannot be negative: write one such as `\"0.5rem\"`", tok.Field)
+			return theme.NegativeLengthReason(tok.Field)
 		case !theme.LengthOK(text):
 			return shape
 		}

@@ -256,6 +256,18 @@ func TestThemeImport_Route(t *testing.T) {
 	}
 }
 
+func TestThemeImport_Route_DTCG(t *testing.T) {
+	d, _ := themeServer(t)
+	body, _ := json.Marshal(map[string]string{"css": "\xef\xbb\xbf\n" + dtcgOne})
+	var ans struct {
+		Theme *theme.Theme `json:"theme"`
+	}
+	w := serve(t, d, themeReq("POST", "/_dev/theme/import", string(body)), &ans)
+	if w.Code != 200 || ans.Theme == nil || ans.Theme.Light["primary"] == "" {
+		t.Fatalf("status %d: %s", w.Code, w.Body)
+	}
+}
+
 // The gate: a cross-site request, a foreign origin, a rebound host, a body that is not JSON or
 // too big are refused; the page's own request passes.
 func TestThemeGate(t *testing.T) {

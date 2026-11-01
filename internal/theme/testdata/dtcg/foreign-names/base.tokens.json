@@ -1,0 +1,14 @@
+{
+  "width": {
+    "$type": "dimension",
+    "width-narrow": { "$value": { "value": 36, "unit": "rem" } }
+  },
+  "border": {
+    "$type": "dimension",
+    "border-width": { "$value": { "value": 2, "unit": "px" } }
+  },
+  "radius": {
+    "$type": "dimension",
+    "al-radius-sm": { "$value": { "value": 0.25, "unit": "rem" } }
+  }
+}

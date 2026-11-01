@@ -1,0 +1,360 @@
+{
+  "color": {
+    "$type": "color",
+    "background": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.145,
+          0,
+          0
+        ]
+      },
+      "$description": "The page background."
+    },
+    "foreground": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.985,
+          0,
+          0
+        ]
+      },
+      "$description": "The default text colour on the page background."
+    },
+    "card": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.205,
+          0,
+          0
+        ]
+      },
+      "$description": "The background of cards."
+    },
+    "card-foreground": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.985,
+          0,
+          0
+        ]
+      },
+      "$description": "The text colour on cards."
+    },
+    "popover": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.205,
+          0,
+          0
+        ]
+      },
+      "$description": "The background of popovers, menus and dialogs."
+    },
+    "popover-foreground": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.985,
+          0,
+          0
+        ]
+      },
+      "$description": "The text colour on popovers, menus and dialogs."
+    },
+    "primary": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.922,
+          0,
+          0
+        ]
+      },
+      "$description": "The background of primary buttons and selected controls."
+    },
+    "primary-foreground": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.205,
+          0,
+          0
+        ]
+      },
+      "$description": "The text colour on primary backgrounds."
+    },
+    "secondary": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.269,
+          0,
+          0
+        ]
+      },
+      "$description": "The background of secondary buttons."
+    },
+    "secondary-foreground": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.985,
+          0,
+          0
+        ]
+      },
+      "$description": "The text colour on secondary backgrounds."
+    },
+    "muted": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.269,
+          0,
+          0
+        ]
+      },
+      "$description": "The background of muted surfaces such as tabs lists and skeletons."
+    },
+    "muted-foreground": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.708,
+          0,
+          0
+        ]
+      },
+      "$description": "The colour of secondary text and placeholders."
+    },
+    "accent": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.269,
+          0,
+          0
+        ]
+      },
+      "$description": "The background of hovered and focused items."
+    },
+    "accent-foreground": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.985,
+          0,
+          0
+        ]
+      },
+      "$description": "The text colour on accent backgrounds."
+    },
+    "destructive": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.704,
+          0.191,
+          22.216
+        ]
+      },
+      "$description": "The colour of destructive buttons, errors and invalid fields."
+    },
+    "destructive-foreground": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.58,
+          0.22,
+          27
+        ]
+      },
+      "$description": "The text colour on destructive backgrounds."
+    },
+    "border": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          1,
+          0,
+          0
+        ],
+        "alpha": 0.1
+      },
+      "$description": "The colour of borders and dividers."
+    },
+    "input": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          1,
+          0,
+          0
+        ],
+        "alpha": 0.15
+      },
+      "$description": "The border colour of form controls."
+    },
+    "ring": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.556,
+          0,
+          0
+        ]
+      },
+      "$description": "The colour of focus rings."
+    },
+    "chart-1": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.488,
+          0.243,
+          264.376
+        ]
+      },
+      "$description": "The first series colour in charts."
+    },
+    "chart-2": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.696,
+          0.17,
+          162.48
+        ]
+      },
+      "$description": "The second series colour in charts."
+    },
+    "chart-3": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.769,
+          0.188,
+          70.08
+        ]
+      },
+      "$description": "The third series colour in charts."
+    },
+    "chart-4": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.627,
+          0.265,
+          303.9
+        ]
+      },
+      "$description": "The fourth series colour in charts."
+    },
+    "chart-5": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.645,
+          0.246,
+          16.439
+        ]
+      },
+      "$description": "The fifth series colour in charts."
+    },
+    "sidebar": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.205,
+          0,
+          0
+        ]
+      },
+      "$description": "The background of the sidebar."
+    },
+    "sidebar-foreground": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.985,
+          0,
+          0
+        ]
+      },
+      "$description": "The text colour in the sidebar."
+    },
+    "sidebar-primary": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.488,
+          0.243,
+          264.376
+        ]
+      },
+      "$description": "The background of the sidebar's primary and selected items."
+    },
+    "sidebar-primary-foreground": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.985,
+          0,
+          0
+        ]
+      },
+      "$description": "The text colour on the sidebar's primary items."
+    },
+    "sidebar-accent": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.269,
+          0,
+          0
+        ]
+      },
+      "$description": "The background of hovered items in the sidebar."
+    },
+    "sidebar-accent-foreground": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.985,
+          0,
+          0
+        ]
+      },
+      "$description": "The text colour on hovered sidebar items."
+    },
+    "sidebar-border": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          1,
+          0,
+          0
+        ],
+        "alpha": 0.1
+      },
+      "$description": "The colour of borders and dividers in the sidebar."
+    },
+    "sidebar-ring": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [
+          0.556,
+          0,
+          0
+        ]
+      },
+      "$description": "The colour of focus rings in the sidebar."
+    }
+  }
+}

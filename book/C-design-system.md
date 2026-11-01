@@ -35,7 +35,7 @@ box", explains why):
   styles that box by its tag name and attributes. Every element works
   with JavaScript off.
 
-The version Alder ships is **v0.4.2**: the compiler embeds a copy of
+The version Alder ships is **v0.5.0**: the compiler embeds a copy of
 the library's stylesheet, scripts (`al.js`) and manifest at that tag (`rt/al/VERSION`;
 "Where it lives", below).
 
@@ -174,7 +174,7 @@ Each field is a token's CSS name without the `--` (and without the `al-` of the 
 | Kind | Fields | Value |
 |---|---|---|
 | colour, under `light` or `dark` | `background`, `foreground`, `card`, `cardForeground`, `popover`, `popoverForeground`, `primary`, `primaryForeground`, `secondary`, `secondaryForeground`, `muted`, `mutedForeground`, `accent`, `accentForeground`, `destructive`, `destructiveForeground`, `border`, `input`, `ring`, `chart1`, `chart2`, `chart3`, `chart4`, `chart5`, `sidebar`, `sidebarForeground`, `sidebarPrimary`, `sidebarPrimaryForeground`, `sidebarAccent`, `sidebarAccentForeground`, `sidebarBorder`, `sidebarRing` | `"#4f46e5"` (3, 4, 6 or 8 hex digits), `"transparent"`, `"currentColor"`, a colour function (`oklch`, `oklab`, `lch`, `lab`, `hsl`, `hwb`, `rgb`, `rgba`, `hsla`, `color`, `color-mix`, `light-dark`), or `"var(--accent)"` to reuse another colour token |
-| length, at the top | `radius`, `radiusSm`, `radiusMd`, `radiusLg`, `radiusXl`, `widthNarrow`, `widthNormal`, `widthWide` | `"0"`, or a non-negative number with a unit: `rem`, `em`, `px`, `%`, `vw`, `vh`, `ch`, `lh` |
+| length, at the top | `radius`, `radiusSm`, `radiusMd`, `radiusLg`, `radiusXl`, `widthNarrow`, `widthNormal`, `widthWide`, `borderWidth` | `"0"`, or a non-negative number with a unit: `rem`, `em`, `px`, `%`, `vw`, `vh`, `ch`, `lh` |
 | font stack, at the top | `fontSans`, `fontMono` | a list of family names, `["Inter", "sans-serif"]`; the generic families (`sans-serif`, `monospace`, `system-ui`, …) stay unquoted in the CSS, every other name is quoted |
 | shadow, at the top | `shadowXs`, `shadowSm`, `shadowMd`, `shadowLg` | `"none"`, or the shadow as CSS writes it, `"0 1px 2px 0 rgb(0 0 0 / 0.05)"` |
 
@@ -216,8 +216,8 @@ $ alder theme import tweakcn.css
 theme: 59 tokens → app/App.alder  (light 32, dark 20, theme-wide 7; replaced the theme that was there)
 15 not placed — paste into static/app.css if you want them:
   :root {
-    --font-serif: Lora, Georgia, serif; /* not a token of alder-ui v0.4.2 */
-    --tracking-normal: 0em; /* not a token of alder-ui v0.4.2 */
+    --font-serif: Lora, Georgia, serif; /* not a token of alder-ui v0.5.0 */
+    --tracking-normal: 0em; /* not a token of alder-ui v0.5.0 */
     …
   }
 
@@ -230,6 +230,8 @@ skipped 1 block (@theme inline)
 It reads the three shapes the exports come in: shadcn v4 (`oklch()` colours), shadcn v3 (bare HSL channels, `--primary: 222.2 47.4% 11.2%`, which the importer wraps in `hsl()`) and tweakcn's. The file is a `:root` block and a `.dark` block, or the same inside `@media (prefers-color-scheme: dark)`; `-` reads standard input, and `--dir` names the app. The import replaces the whole declaration: what was in `theme { … }` before is gone, not merged (the summary line says so), and `--dry-run` prints the diff without writing.
 
 Not everything in an export is a token of alder-ui. Those lines come back as a block for `static/app.css`, each with the reason: a token alder-ui does not have (`--font-serif`, `--tracking-normal`), a value of the wrong shape, a theme-wide token whose dark value differs from the light one (alder-ui has one value for those), or a block that is not a scheme. At-rules that carry no theme (`@theme`, `@import "tailwindcss"`, `@custom-variant`) are counted, not listed. Paste the unplaced block into `app.css` if you want it: that stylesheet comes after the theme, as "Changing a token" explains. A file with no token of alder-ui in it is refused and nothing is written. In the page above, the Import… button takes the same CSS, shows the same unplaced lines with a Copy button, and fills the controls without writing.
+
+The same command reads design tokens in the W3C DTCG format (`tokens.json`), which Figma, Tokens Studio and Style Dictionary export. The file's first character decides: a `{` is JSON, anything else is CSS, and `--format css` or `--format dtcg` overrides the guess. A DTCG theme is either one tokens file, whose top-level `light` and `dark` groups are the two schemes and whose other groups are theme-wide, or a resolver (`theme.resolver.json`) that names token files in its `sets` and picks the scheme with a modifier. Give a resolver's path and the files it refers to are read from beside it (never from outside that folder); `-` and the paste box take one self-contained file, because a resolver on standard input has no folder to find its files in. A token is placed by its path (`color.primary`, `radius`) when that is a token of alder-ui and its `$type` fits it; what is not placed comes back in the same block as above, with the reason (`no $type`, `` `radius` is a length; the file says `color` ``, `` `{color.brand.500}` is not a token ``).
 
 For an agent, `--print` writes the declaration to standard output and nothing to disk, so the agent can read it and adjust a value before it puts it in `App.alder` itself; the unplaced lines go to standard error. `--print` cannot be combined with `--json`, and `-` is accepted only on the command line.
 
@@ -1219,7 +1221,8 @@ An `<al-button>` no longer stretches in a grid or a column; add `full` to any bu
 | `--al-leading`, `--al-leading-tight` | literal `1.5`, `1.25` |
 | `--al-weight-normal`, `--al-weight-medium`, `--al-weight-semibold` | literal `400`, `500`, `600` |
 | `--al-control-h-sm`, `--al-control-h-md`, `--al-control-h-lg` | literal `2rem`, `2.25rem`, `2.5rem` (shadcn's h-8, h-9, h-10) |
-| `--al-checkbox-size`, `--al-border-width` | literal `1rem`, `1px` |
+| `--al-checkbox-size` | literal `1rem` |
+| `--al-border-width` | `--border-width` (`borderWidth`), a token again since v0.5.0 |
 | `--al-ring-width`, `--al-ring-offset` | none: the focus ring is `0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent)` |
 | `--al-disabled-opacity`, `--al-duration` | literal `0.5`, `150ms` |
 | `--al-info-soft`, `--al-success-soft`, `--al-warning-soft`, `--al-destructive-soft`, the same with `-foreground`, and `--al-info-border`, `--al-success-border`, `--al-warning-border`, `--al-destructive-border` | none: alerts use `--card`, `--card-foreground`, `--border` and `--destructive` |
@@ -1255,7 +1258,7 @@ every colour pairing passes AA.
 Alder *vendors* it: the compiler's source keeps a copy of one tagged
 release in `rt/al/` (`al.css`, `al.js`, `custom-elements.json`, `VERSION`, a
 `fonts/` directory with the two Geist files and their licence, and the
-licences of the library and of the lucide icons it draws), at `v0.4.2`,
+licences of the library and of the lucide icons it draws), at `v0.5.0`,
 and embeds it, so a build never fetches anything. `scripts/vendor-al.sh
 <tag>` refreshes the copy from the library's repository; a test checks
 that `VERSION`, the manifest's `version` and the stylesheet's banner

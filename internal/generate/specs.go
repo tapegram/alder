@@ -415,12 +415,13 @@ const themeImportMax = 256 << 10
 
 func themeSpecs() []*Spec {
 	return []*Spec{{
-		ID: "theme import", Summary: "replace App's theme with a shadcn or tweakcn CSS export",
+		ID: "theme import", Summary: "replace App's theme with a shadcn or tweakcn CSS export, or DTCG tokens",
 		Args: []Field{
-			{Name: "file", Kind: ArgText, Required: true, Value: "<file.css>", Help: "the export, or - for stdin", Example: "theme.css"},
+			{Name: "file", Kind: ArgText, Required: true, Value: "<file.css | file.json>", Help: "the export (CSS or DTCG JSON), or - for stdin", Example: "theme.css"},
 		},
 		Flags: []Field{
 			{Name: "print", Kind: ArgBool, Summary: "write the declaration to stdout, not App.alder", Agent: true},
+			{Name: "format", Kind: ArgText, Value: "css|dtcg", Summary: "the input's format (default: detected from the file)", Example: "dtcg"},
 		},
 		Run: func(s Sets, app App, dry bool) (*Result, error) {
 			name := s.One("file")
@@ -445,7 +446,7 @@ func themeSpecs() []*Spec {
 			if len(css) > themeImportMax {
 				return nil, Refusef("`%s` is over 256 KiB: a theme export is a few KiB", name)
 			}
-			return ImportTheme(app, name, css, s.Has("print"), dry)
+			return ImportTheme(app, name, css, s.One("format"), s.Has("print"), dry)
 		},
 	}}
 }
