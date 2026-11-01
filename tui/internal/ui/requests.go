@@ -102,7 +102,8 @@ func (s *requestsScreen) input(msg tea.KeyMsg) {
 	}
 }
 
-// tableKey answers a key on the table: j/k and the arrows move the cursor (up stops following),
+// tableKey answers a key on the table: j/k and the arrows move the cursor (up stops following,
+// down onto the newest row follows again),
 // G follows again, `/` opens the filter input, esc clears the filter, enter opens the request
 // under the cursor and l switches to Logs filtered to it.
 func (s *requestsScreen) tableKey(k string, c *Ctx) tea.Cmd {
@@ -129,7 +130,8 @@ func (s *requestsScreen) tableKey(k string, c *Ctx) tea.Cmd {
 	case "k", "up":
 		s.follow, s.sel = false, rs.at(max(cur-1, 0)).Seq
 	case "j", "down":
-		s.follow, s.sel = false, rs.at(min(cur+1, n-1)).Seq
+		next := min(cur+1, n-1)
+		s.follow, s.sel = next == n-1, rs.at(next).Seq
 	case "enter":
 		r := rs.at(cur)
 		s.detail = &requestView{req: r}

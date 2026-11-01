@@ -8,15 +8,15 @@
    render         2.4ms
 
 
- SQL (11, 1 repeat group)
-   ▸ select * from books where id=?                      ×1      0.9ms  1 row
-   ▸ select * from loans where book=?                    ×9 [33mn+1[0m  8.1ms  9 rows
-   ▸ select count(*) from reviews where book=?           ×1      0.6ms  1 row
+ [1mSQL (11, 1 repeat group)[0m
+   ▸ select * from books where id=?                        ×1     0.9ms 1 row
+   ▸ select * from loans where book=?                      ×9 [33mn+1[0m 8.1ms 9 rows
+   ▸ select count(*) from reviews where book=?             ×1     0.6ms 1 row
 
 
 
 
- Logs (2)
+ [1mLogs (2)[0m
    info: showing book 42
    [33mwarn[0m: book 42 has no cover image
 

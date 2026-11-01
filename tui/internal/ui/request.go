@@ -115,6 +115,10 @@ const (
 	sections
 )
 
+// logsFloor is the narrowest the Logs section gets side by side: SQL, whose statements the
+// detail is mostly read for, takes its full width first.
+const logsFloor = 8
+
 // detailKeys are the keys the footer lists while a request is open.
 var detailKeys = []Key{{"tab", "section"}, {"enter", "unfold"}, {"y", "copy rid"}, {"esc", "back"}}
 
@@ -257,12 +261,12 @@ func (v *requestView) view(width, height int, c *Ctx) string {
 	}
 	h := max(height-1, 3)
 	if width+2 >= 80 {
-		// Steps is as wide as its rows (up to a third), Logs takes 30% of the rest of the room and
-		// SQL what is left.
+		// Steps is as wide as its rows (up to a third of the room), SQL as wide as its rows within
+		// what Steps and the floor of Logs leave, and Logs takes the rest.
 		room := width - 6
 		sw := min(v.stepsWidth(), room/3)
-		lw := (room - sw) * 3 / 10
-		qw := room - sw - lw
+		qw := max(min(v.sqlWidth(), room-sw-logsFloor), 0)
+		lw := room - sw - qw
 		cols := [sections][]string{v.sectionLines(secSteps, sw, h), v.sectionLines(secSQL, qw, h), v.sectionLines(secLogs, lw, h)}
 		bar := " " + look.Palette.Dim("│") + " "
 		for i := range h {
@@ -306,8 +310,7 @@ func (v *requestView) stepLines(mark func(int) string) []string {
 	return out
 }
 
-// sectionLines is section s in exactly h lines of w cells: its heading (bold when focused), then its
-// rows, scrolled to keep the cursor in view; the focused section marks the row under its cursor.
+// sectionLines is section s in exactly h lines of w cells: its heading in bold, then its rows, scrolled to keep the cursor in view; the focused section marks the row under its cursor.
 // The Logs rows are `level: message` without a stamp: a request's lines share their second.
 func (v *requestView) sectionLines(s, w, h int) []string {
 	var title string
@@ -337,9 +340,7 @@ func (v *requestView) sectionLines(s, w, h int) []string {
 			body = append(body, mark(i)+levelWord(l.Level)+": "+clean(l.Msg))
 		}
 	}
-	if s == v.section {
-		title = look.Palette.Bold(title)
-	}
+	title = look.Palette.Bold(title)
 	if len(body) == 0 {
 		body = []string{"  " + look.Palette.Dim("none")}
 	}
@@ -359,11 +360,13 @@ func (v *requestView) sectionLines(s, w, h int) []string {
 	return out[:h]
 }
 
-// sqlLines are the SQL section's lines in w cells: each row as its fold mark (▸ folded, ▾
-// unfolded, for a row with arguments), its statement cut to fit, `×N` and `n+1` for an N+1
-// group, its milliseconds and rows. An unfolded row is followed by its statement in full when it
-// was cut, then its statements' arguments, wrapped.
-func (v *requestView) sqlLines(w int, mark func(int) string) []string {
+// sqlChrome is the cells of a SQL row that are not its text: the mark, the fold mark and its
+// space, two spaces after the statement and one between the count, milliseconds and rows.
+const sqlChrome = 2 + 2 + 2 + 1 + 1
+
+// sqlCells are each SQL row's count (`×N`, then `n+1` for an N+1 group), milliseconds and rows,
+// and the width of each of those columns.
+func (v *requestView) sqlCells() ([][]string, []int) {
 	cs := make([][]string, len(v.sql))
 	tw := make([]int, 3)
 	for i, r := range v.sql {
@@ -380,7 +383,26 @@ func (v *requestView) sqlLines(w int, mark func(int) string) []string {
 			tw[j] = max(tw[j], ansi.StringWidth(x))
 		}
 	}
-	stmtW := max(w-4-tw[0]-tw[1]-tw[2]-6, 8)
+	return cs, tw
+}
+
+// sqlWidth is the width of the SQL section with no statement cut: its widest row, or its heading.
+func (v *requestView) sqlWidth() int {
+	_, tw := v.sqlCells()
+	w := 0
+	for _, r := range v.sql {
+		w = max(w, ansi.StringWidth(r.stmt))
+	}
+	return max(w+sqlChrome+tw[0]+tw[1]+tw[2], len("SQL (")+20)
+}
+
+// sqlLines are the SQL section's lines in w cells: each row as its fold mark (▸ folded, ▾
+// unfolded, for a row with arguments), its statement cut to fit, `×N` and `n+1` for an N+1
+// group, its milliseconds and rows. An unfolded row is followed by its statement in full when it
+// was cut, then its statements' arguments, wrapped.
+func (v *requestView) sqlLines(w int, mark func(int) string) []string {
+	cs, tw := v.sqlCells()
+	stmtW := max(w-sqlChrome-tw[0]-tw[1]-tw[2], 8)
 	var out []string
 	for i, r := range v.sql {
 		fold := " "
@@ -396,7 +418,7 @@ func (v *requestView) sqlLines(w int, mark func(int) string) []string {
 			count = strings.Replace(count, "n+1", look.Palette.Yellow("n+1"), 1)
 		}
 		out = append(out, mark(i)+fold+" "+padRight(ansi.Truncate(r.stmt, stmtW, "…"), stmtW)+"  "+count+
-			"  "+padLeft(c[1], tw[1])+"  "+c[2])
+			" "+padLeft(c[1], tw[1])+" "+c[2])
 		if v.open[i] {
 			if ansi.StringWidth(r.stmt) > stmtW {
 				out = append(out, wrap("      ", r.stmt, w)...)

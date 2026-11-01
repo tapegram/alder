@@ -110,6 +110,11 @@ func TestRequests_Follow(t *testing.T) {
 	if c := cursorRow(m.View()); !strings.Contains(c, "/about") {
 		t.Errorf("G does not keep following: the cursor is on %q", c)
 	}
+	press(m, "k", "j")
+	m.Update(eventMsg(access(16, clock, "5f3a2c26", "/contact")))
+	if c := cursorRow(m.View()); !strings.Contains(c, "/contact") {
+		t.Errorf("j back onto the newest row does not follow: the cursor is on %q", c)
+	}
 	teatest.RequireEqualOutput(t, []byte(frame))
 }
 
@@ -174,10 +179,12 @@ func TestRequest_Detail(t *testing.T) {
 	}
 	for _, want := range []string{
 		"← GET /books/42  200  12.8ms  rid 5f3a2c1f  route /books/{id}  steps 5  db 11/9.6ms",
-		"SQL (11, 1 repeat group)",
-		"Logs (2)",
-		"info: showing",
-		"\x1b[33mwarn\x1b[0m: book 42",
+		"\x1b[1mSteps\x1b[0m",
+		"\x1b[1mSQL (11, 1 repeat group)\x1b[0m",
+		"\x1b[1mLogs (2)\x1b[0m",
+		"select * from loans where book=? ",
+		"info:",
+		"\x1b[33mwarn\x1b[0m:",
 	} {
 		if !strings.Contains(frame, want) {
 			t.Errorf("the detail has no %q:\n%s", want, frame)
