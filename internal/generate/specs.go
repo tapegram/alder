@@ -448,5 +448,16 @@ func themeSpecs() []*Spec {
 			}
 			return ImportTheme(app, name, css, s.One("format"), s.Has("print"), dry)
 		},
+	}, {
+		ID: "theme use", Summary: "replace App's theme with a starting theme (zinc, brutal, catppuccin, paper, pebble); no name lists them",
+		Args: []Field{
+			{Name: "name", Kind: ArgText, Value: "<name>", Help: "the starting theme; omit to list them", Example: "paper"},
+		},
+		Flags: []Field{
+			{Name: "print", Kind: ArgBool, Summary: "write the declaration to stdout, not App.alder", Agent: true},
+		},
+		Run: func(s Sets, app App, dry bool) (*Result, error) {
+			return UsePreset(app, s.One("name"), s.Has("print"), dry)
+		},
 	}}
 }

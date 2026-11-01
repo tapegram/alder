@@ -83,7 +83,9 @@ type genJSON struct {
 	Effects *[]string `json:"effects,omitempty"`
 	// File, Theme and Unplaced are (with Skipped, a count) `alder theme import`'s: the file written, the
 	// theme, the declarations it could not place and the number of at-rules it skipped.
-	File     *string         `json:"file,omitempty"`
+	File *string `json:"file,omitempty"`
+	// Preset is `alder theme use`'s: the starting theme's name.
+	Preset   string          `json:"preset,omitempty"`
 	Theme    *theme.Theme    `json:"theme,omitempty"`
 	Unplaced *[]unplacedJSON `json:"unplaced,omitempty"`
 }
@@ -313,8 +315,12 @@ func runSpecWith(s *generate.Spec, argv []string, usage string, seen func(*gener
 	if s.ID == "new page" && countTrue(sets.Has("list"), sets.Has("show"), sets.Has("from")) > 1 {
 		return genUsage(stderr, usage, errors.New("alder new page: choose one of --list, --show and --from: a page generated with --list shows one table's rows, --show one row, --from several tables"))
 	}
-	if s.ID == "theme import" && sets.Has("print") && cli.JSON {
-		return genUsage(stderr, usage, errors.New("alder theme import: choose one of --print and --json: --print writes the declaration, --json reports the result"))
+	if s.ID == "theme use" && sets.One("name") == "" {
+		io.WriteString(stdout, generate.PresetList())
+		return 0
+	}
+	if (s.ID == "theme import" || s.ID == "theme use") && sets.Has("print") && cli.JSON {
+		return genUsage(stderr, usage, errors.New("alder "+s.ID+": choose one of --print and --json: --print writes the declaration, --json reports the result"))
 	}
 	g := genArgs{dir: cli.Dir, json: cli.JSON, dry: cli.DryRun}
 	cmd := "alder " + s.ID
@@ -341,7 +347,7 @@ func runSpecWith(s *generate.Spec, argv []string, usage string, seen func(*gener
 
 // specExtra adds a Spec's own JSON fields (regen admin's skipped and upToDate); nil for others.
 func specExtra(s *generate.Spec, res *generate.Result) func(*genJSON) {
-	if s.ID == "theme import" {
+	if s.ID == "theme import" || s.ID == "theme use" {
 		return themeImportExtra(res)
 	}
 	if s.ID != "regen admin" {
@@ -384,5 +390,10 @@ func themeImportExtra(res *generate.Result) func(*genJSON) {
 			}
 		}
 	}
-	return func(out *genJSON) { out.File, out.Theme, out.Unplaced, out.Skipped = &file, &th, &un, &skipped }
+	return func(out *genJSON) {
+		out.File, out.Theme, out.Unplaced, out.Skipped = &file, &th, &un, &skipped
+		if res != nil && res.Import != nil {
+			out.Preset = res.Import.Preset
+		}
+	}
 }

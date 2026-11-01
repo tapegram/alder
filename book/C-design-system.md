@@ -152,6 +152,48 @@ Two more things keep the flash from happening between your own pages:
 
   which opts every page into *cross-document view transitions*: when the browser goes from one document of the site to another of the same origin (a link with `data-alder-reload`, a form that submits with `GET`, Back or Forward to a page that was loaded rather than boosted), it cross-fades from the old page to the new one. A first visit and a reload have no old page of the site to fade from, so they get no transition. (While a new document loads, the browser keeps showing the old one until the new one can paint; that is the browser's paint holding, which happens with or without the rule.) Chrome and Edge (126 and later) and Safari (18.2 and later) support it; other browsers ignore the rule.
 
+### Starting from a theme
+
+Declaring every token by hand is a lot of work for a first look, so alder-ui ships five starting themes, each a complete `theme { … }` written by someone who checked that the colours read well together:
+
+| Theme | For |
+|---|---|
+| `zinc` | Tools, dashboards, admin: the default, the safe choice. |
+| `brutal` | Launch pages, portfolios, anything that should shout. |
+| `catppuccin` | Developer-facing apps. |
+| `paper` | Reading: blogs, docs, long-form. |
+| `pebble` | Consumer, mobile-feel apps. |
+
+`zinc` is what alder-ui already looks like, so an app with no `theme` declaration is a `zinc` app; the other four change the colours, the corner radii, the shadows, the fonts and (through `borderWidth`) how thick the borders are.
+
+A starting theme is taken *by copy*. Nothing in your app refers to `paper` afterwards: the command writes the whole declaration of "Changing a token" into `app/App.alder`, as plain text you can read, and from then on the app owns it. Change a value, delete a field, or switch to another theme; a later release of alder-ui that tweaks `paper` does not move your app. It goes through the same copy, check and write as an import, so a theme the checker refuses is never written.
+
+```
+$ alder theme use
+starting themes (alder-ui v0.5.0):
+  zinc        Tools, dashboards, admin — the default, the safe choice.
+  brutal      Launch pages, portfolios, anything that should shout.
+  catppuccin  Developer-facing apps.
+  paper       Reading: blogs, docs, long-form.
+  pebble      Consumer, mobile-feel apps.
+alder theme use <name> writes one into app/App.alder; the app owns it from there.
+
+$ alder theme use paper
+theme: paper → app/App.alder  (light 32, dark 32, theme-wide 15; replaced the theme that was there)
+```
+
+With no name the command lists the themes and writes nothing. With one it replaces the app's whole `theme` declaration, as `alder theme import` does: what was there before is gone, not merged, and `--dry-run` prints the diff without writing. The summary counts the colour tokens set under `light` and under `dark` (32 each: every colour token of the table below) and the theme-wide ones (radii, widths, fonts, shadows and the border width: 15). A name that is not one of the five is refused with the nearest, then the list, and nothing is written:
+
+```
+$ alder theme use papr
+alder theme use: no starting theme `papr`; did you mean `paper`?
+starting themes (alder-ui v0.5.0):
+  zinc        Tools, dashboards, admin — the default, the safe choice.
+  …
+```
+
+A new app can start with one: `alder new shelf --theme paper` creates the app and then does what `alder theme use paper` does, adding one line, `theme: paper`, to the list of what was created. An unknown name fails before anything is created. Without the flag nothing is written, and the app is `zinc` because alder-ui is; `--theme zinc` writes zinc's declaration out, for a person who wants the values in front of them.
+
 ### Changing a token
 
 An app changes the look by declaring a `theme` in its `App` module, once. It names the tokens to change and leaves the rest alone:
@@ -1258,7 +1300,8 @@ every colour pairing passes AA.
 Alder *vendors* it: the compiler's source keeps a copy of one tagged
 release in `rt/al/` (`al.css`, `al.js`, `custom-elements.json`, `VERSION`, a
 `fonts/` directory with the two Geist files and their licence, and the
-licences of the library and of the lucide icons it draws), at `v0.5.0`,
+licences of the library, of the lucide icons it draws and of the
+Catppuccin palette that the `catppuccin` starting theme uses), at `v0.5.0`,
 and embeds it, so a build never fetches anything. `scripts/vendor-al.sh
 <tag>` refreshes the copy from the library's repository; a test checks
 that `VERSION`, the manifest's `version` and the stylesheet's banner

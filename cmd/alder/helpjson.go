@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"alder/internal/generate"
+	"alder/internal/theme"
 	"alder/internal/version"
 )
 
@@ -184,7 +185,7 @@ var commandTree = []cmdSpec{
 		}},
 	{Name: "new", Summary: "create an app, or generate code in one", Usage: commandUsages["new"],
 		Args:        []string{"<name>"},
-		Flags:       []flagSpec{{Name: "--bare", Summary: "the app without its starter pages"}},
+		Flags:       []flagSpec{{Name: "--bare", Summary: "the app without its starter pages"}, {Name: "--theme", Value: "name", Summary: "start from a theme (" + strings.Join(theme.PresetNames(), ", ") + ")"}},
 		Subcommands: groupCmd("new")},
 	{Name: "edit", Summary: "change a table, page, declaration, auth or the session", Usage: commandUsages["edit"],
 		Flags:       withGenFlags(),
@@ -204,7 +205,7 @@ var commandTree = []cmdSpec{
 	{Name: "regen", Summary: "regenerate generated code", Usage: commandUsages["regen"],
 		Flags:       withGenFlags(specFlags(generate.SpecByID("regen admin"))...),
 		Subcommands: []cmdSpec{{Name: "admin", Summary: generate.SpecByID("regen admin").Summary}}},
-	{Name: "theme", Summary: "import a theme from a CSS export or DTCG tokens", Usage: commandUsages["theme"],
+	{Name: "theme", Summary: "start from a theme, or import one from CSS or DTCG tokens", Usage: commandUsages["theme"],
 		Flags:       withGenFlags(),
 		Subcommands: groupCmd("theme")},
 	{Name: "deploy", Summary: "deploy to an environment", Usage: commandUsages["deploy"],
