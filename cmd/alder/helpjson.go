@@ -185,7 +185,7 @@ var commandTree = []cmdSpec{
 		}},
 	{Name: "new", Summary: "create an app, or generate code in one", Usage: commandUsages["new"],
 		Args:        []string{"<name>"},
-		Flags:       []flagSpec{{Name: "--bare", Summary: "the app without its starter pages"}, {Name: "--theme", Value: "name", Summary: newThemeSummary()}},
+		Flags:       []flagSpec{{Name: "--bare", Summary: "the app without its starter pages"}, {Name: "--theme", Value: "name", Summary: "start from a theme (" + strings.Join(theme.PresetNames(), ", ") + ")"}},
 		Subcommands: groupCmd("new")},
 	{Name: "edit", Summary: "change a table, page, declaration, auth or the session", Usage: commandUsages["edit"],
 		Flags:       withGenFlags(),
@@ -301,13 +301,4 @@ func writeHelpJSON(w io.Writer) error {
 		Version  string    `json:"version"`
 		Commands []cmdSpec `json:"commands"`
 	}{version.String(), filled(commandTree)})
-}
-
-// newThemeSummary is `alder new --theme`'s help: the starting themes, read from the presets.
-func newThemeSummary() string {
-	var names []string
-	for _, p := range theme.Presets() {
-		names = append(names, p.Name)
-	}
-	return "start from a theme (" + strings.Join(names, ", ") + ")"
 }

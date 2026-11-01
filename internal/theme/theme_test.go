@@ -156,3 +156,13 @@ func kebabOf(s string) string {
 	}
 	return b.String()
 }
+
+func TestPresetNames_MatchPresets(t *testing.T) {
+	var want []string
+	for _, p := range Presets() {
+		want = append(want, p.Name)
+	}
+	if got := PresetNames(); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("PresetNames = %v, Presets order = %v", got, want)
+	}
+}

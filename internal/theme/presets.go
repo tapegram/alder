@@ -81,3 +81,26 @@ func SuggestPreset(name string) (string, bool) {
 	}
 	return best, bestD <= 2
 }
+
+// PresetNames lists the embedded presets' names in Presets' order (zinc first, then by name)
+// from the directory alone, without importing any of them: it is cheap enough for help text and
+// cannot panic on a bad preset.
+func PresetNames() []string {
+	entries, err := fs.ReadDir(presetFS, "presets")
+	if err != nil {
+		panic(fmt.Sprintf("theme: reading presets: %v", err))
+	}
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() {
+			out = append(out, e.Name())
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if (out[i] == "zinc") != (out[j] == "zinc") {
+			return out[i] == "zinc"
+		}
+		return out[i] < out[j]
+	})
+	return out
+}
