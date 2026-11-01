@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -75,6 +76,13 @@ func TestInitialize_Capabilities(t *testing.T) {
 	cmds := caps["executeCommandProvider"].(map[string]any)["commands"].([]any)
 	if len(cmds) != 2 || cmds[0] != "alder.explain" || cmds[1] != "alder.fill" {
 		t.Fatalf("commands %v", cmds)
+	}
+	stp, _ := caps["semanticTokensProvider"].(map[string]any)
+	legend, _ := stp["legend"].(map[string]any)
+	if stp["full"] != true || stp["range"] != true ||
+		fmt.Sprint(legend["tokenTypes"]) != "[namespace type enumMember function method parameter variable property keyword operator string number comment decorator tag attribute boolean hole]" ||
+		fmt.Sprint(legend["tokenModifiers"]) != "[declaration documentation defaultLibrary]" {
+		t.Fatalf("semanticTokensProvider %v", caps["semanticTokensProvider"])
 	}
 	if info := c.initResult["serverInfo"].(map[string]any); info["name"] != "alder" || info["version"] == "" {
 		t.Fatalf("serverInfo %v", info)
