@@ -1,0 +1,38 @@
+{
+  "format": "1",
+  "tables": [
+    {
+      "name": "Table.Book.Book",
+      "id": "id",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "title",
+          "type": "Text"
+        },
+        {
+          "name": "author",
+          "type": "Text"
+        }
+      ]
+    },
+    {
+      "name": "Table.Loan.Loan",
+      "id": "id",
+      "columns": [
+        {
+          "name": "id",
+          "type": "Text"
+        },
+        {
+          "name": "book",
+          "type": "Text",
+          "ref": "Table.Book.Book"
+        }
+      ]
+    }
+  ]
+}

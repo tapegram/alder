@@ -1,0 +1,9 @@
+module Table.Book
+
+type BookId = brand Text
+
+table Book {
+  id: BookId @id,
+  title: Text.NonEmpty,
+  author: Text,
+}

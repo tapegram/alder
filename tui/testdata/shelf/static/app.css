@@ -1,0 +1,3 @@
+/* The shelf's own rules, served at /static/app.css. The design system, /static/al/al.css,
+   styles the page, the table and the buttons. */
+.lent { color: var(--al-muted-foreground, gray); }

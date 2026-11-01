@@ -950,6 +950,47 @@ stops the app, above, one level up: whatever happens to the owner, even
 no app) is left holding the port. Without the variable, `alder run` ignores
 its standard input.
 
+### Using alder tui
+
+Run `alder tui` in the app's directory, where you would run `alder run`. If
+a dev server for this app is already listening on the address
+(`localhost:8080`, or `--addr host:port`, or `ALDER_ADDR`), the TUI attaches
+to it and leaves it running when it quits; otherwise it starts one, and
+stops it when it quits (`--no-run` forbids that, and only attaches). If the
+address answers but is not `alder run`, or is the dev server of another
+app, the TUI says so and stops: pass another `--addr`.
+
+The top line shows the app, the build state, the address, the `alder`
+version and the tabs; `1` to `5`, `tab` and `shift-tab` switch between
+them. The bottom line lists the current screen's keys, and on its right the
+command that gives the same data without the TUI, such as `curl
+localhost:8080/_dev/requests/5f3a2c1e`: nothing in the TUI is only in the
+TUI. `F` focuses that line and `y` then copies the command. `?` lists every
+key of the current screen.
+
+- **Requests** shows the last minute (requests a second, the median and the
+  95th percentile time, the share of errors) and a table of the requests the
+  app answered, newest at the bottom, with `n+1` on a request that ran one
+  statement again and again and `slow` on a slow one. `j` and `k` (or the
+  arrows) move; the cursor follows each new request until you move up, and
+  `G` follows again. `/` filters the rows by their text. `enter` opens the
+  request; `l` shows its lines in Logs.
+- **A request**, opened with `enter`, has three sections, the steps it ran,
+  its SQL and the lines it logged: `tab` and `shift-tab` move between them,
+  `j` and `k` within one. The statements of an N+1 are folded into one row;
+  `enter` unfolds it, to show each run with its arguments. `y` copies the
+  request id; `esc` goes back.
+- **Logs** is the app's log as `alder run` prints it. `L` steps through the
+  levels shown, debug, info, warn and error (info at the start). `/` keeps
+  only the lines that match a regular expression, and `x` clears it and the
+  request filter that Requests' `l` set. `enter` on a line logged while a
+  request was answered opens that request. `G` follows the newest line.
+
+Everywhere, `p` shows the problems (the last build's diagnostics, or how the
+app exited), `R` restarts the app, `o` opens it in the browser, and `q`
+quits. While you type into a filter, every key goes to the filter except
+`enter` (keep it), `esc` (cancel) and Ctrl-C.
+
 ### `alder eval`
 
 `alder eval [dir] <expr>` evaluates one expression in the context of the

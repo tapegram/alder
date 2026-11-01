@@ -20,7 +20,8 @@
 # and a real Caddy, on the runner's own VM); the two deploy jobs run on main, tags, the nightly
 # run and when a deploy path changed. `mutation` (the mutation quality gates, too slow for every
 # push) runs nightly at 07:00 UTC, on a manual run and on tags. `tui` (the terminal UI's own
-# module: gofmt, vet, tests) runs on main, tags, the nightly run and when tui/ changed.
+# module: gofmt, vet, tests, the live test against an alder built from the commit, and the
+# fixture app's check and tests) runs on main, tags, the nightly run and when tui/ changed.
 #
 # Branch pushes run on Linux only; pushes to main and tags also run `warm`, `test` and
 # `examples` on macOS (the `os` lists below), so a release is tested on both.
@@ -407,7 +408,16 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: tui/go.mod
-          cache-dependency-path: tui/go.sum
+          cache-dependency-path: |
+            tui/go.sum
+            go.sum
+      # alder from this commit (the root module has the same Go version as tui/), so that
+      # TestLive_HelloAndFirstRequest runs `alder run` on the fixture app instead of skipping
+      - name: build alder
+        working-directory: .
+        run: |
+          go build -o "$RUNNER_TEMP/bin/alder" ./cmd/alder
+          echo "ALDER_BIN=$RUNNER_TEMP/bin/alder" >> "$GITHUB_ENV"
       - name: gofmt
         run: |
           out=$(gofmt -l .)
@@ -416,6 +426,9 @@ jobs:
         run: go vet ./...
       - name: go test
         run: go test ./...
+      - name: the fixture app (testdata/shelf)
+        working-directory: tui/testdata/shelf
+        run: $ALDER_BIN check . && $ALDER_BIN test .
 
   # The mutation quality gates (cmd/alder/gates_test.go): every mutant of the admin fixtures and
   # the example apps, against the scores and mutant counts the examples record. Nightly, on a

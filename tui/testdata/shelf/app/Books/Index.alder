@@ -1,0 +1,63 @@
+module Books.Index
+
+import Layout
+import Table.Book
+import Table.Loan
+
+page "/" { }
+
+type Model = { books: List Book }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let books <-
+    Db.from Book
+      |> Db.orderBy Book.title.asc
+      |> Db.all
+  Query.succeed { books: books }
+}
+
+msg Lend { id: Book.BookId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Lend p -> {
+    let _ <- Db.insert Loan { book: p.id }
+    Task.succeed (Redirect (Books.Show { id: p.id }))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Shelf">
+    <h1>Shelf</h1>
+    <ul id="books">
+      {for book in model.books ->
+        <li>
+          <a href={Books.Show { id: book.id }}>{book.title}</a>
+          {" by " ++ book.author}
+          <al-button variant="ghost" size="sm" click={Lend { id: book.id }}>Lend</al-button>
+        </li>}
+    </ul>
+  </Layout.Page>
+
+test "the shelf lists its books by title" = {
+  let page <- Test.get (Books.Index {})
+  Task.succeed (
+    Test.texts "li a" page.doc
+      == ["Bleak House", "Middlemarch", "Moby-Dick", "Persuasion", "The Leopard"]
+  )
+}
+
+test "lending a book records a loan and opens the book" = {
+  let _ <- Test.get (Books.Index {})
+  let r <- Test.click (Lend { id: Book.BookId "3" })
+  let loans <-
+    Db.from Loan
+      |> Db.where (Loan.book.eq (Book.BookId "3"))
+      |> Db.count
+  Task.succeed (
+    { answer: r.answer, loans: loans }
+      == { answer: Redirected (Books.Show { id: Book.BookId "3" }), loans: 1 }
+  )
+}

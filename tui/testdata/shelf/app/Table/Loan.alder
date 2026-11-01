@@ -1,0 +1,15 @@
+module Table.Loan
+
+import Table.Book
+
+type LoanId = brand Text
+
+table Loan { id: LoanId @id, book: Book.BookId @ref Book }
+
+test "a Loan keeps its book from being deleted" = {
+  let target <- Db.insert Book { title: Text.NonEmpty "title-1", author: "author-1" }
+  let _ <- Db.insert Loan { book: target }
+  let r <- Test.run (Db.delete Book target)
+  let left <- Db.from Loan |> Db.count
+  Task.succeed ({ deleted: Result.toMaybe r.value, left: left } == { deleted: Nothing, left: 1 })
+}
