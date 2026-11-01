@@ -167,7 +167,7 @@ func displayAddr(a net.Addr) string { return rt.DisplayAddr(a.String()) }
 // reconnects.
 //
 // Requests: /_dev/reload is an event stream of Datastar patches (the overlay, its clearing, the
-// reload); /_dev/theme and its routes are the theme configurator's (theme_ui.go), answered
+// reload); /_dev/events is the feed of the dev server's own events (run_events.go); /_dev/theme and its routes are the theme configurator's (theme_ui.go), answered
 // with or without a child; everything else is proxied to the current child unchanged (cookies, redirects and
 // streamed SSE answers alike), or answered 502 with the overlay while there is none.
 type devServer struct {
@@ -181,9 +181,11 @@ type devServer struct {
 	proxy    *httputil.ReverseProxy
 	done     chan struct{} // closed on stop
 	wg       sync.WaitGroup
-	nonce    string // this dev server's part of every generation
-	started  int    // children started so far (the worker's)
-	static   string // the build's static directory the child serves (the worker's); "" before the first build
+	nonce    string    // this dev server's part of every generation
+	started  int       // children started so far (the worker's)
+	static   string    // the build's static directory the child serves (the worker's); "" before the first build
+	hub      *eventHub // the /_dev/events feed
+	since    time.Time // when the dev server started
 
 	mu        sync.Mutex
 	child     *child                   // the current child; nil before the first good build or after it exited
@@ -193,6 +195,7 @@ type devServer struct {
 	announced bool                     // the stdout line has been printed
 	building  bool                     // a build is in progress, or a theme write's rebuild has not finished (beginBuild, endBuild)
 	writes    int                      // the theme writes so far (writeTheme): each one's rebuild ends building
+	state     string                   // the build state /_dev/events reports: building, ok or failed
 	themeMu   sync.Mutex               // serialises theme writes (two tabs)
 }
 
@@ -205,7 +208,8 @@ func newDevServer(dir, app, addr string, stdout, stderr io.Writer) *devServer {
 	d := &devServer{dir: dir, app: app, addr: addr, stdout: stdout, stderr: &lockedWriter{w: stderr},
 		outSt: style.For(stdout), errSt: style.For(stderr),
 		done: make(chan struct{}), clients: map[chan []byte]struct{}{}, nonce: hex.EncodeToString(nonce[:]),
-		building: true} // until the first build ends
+		building: true, state: "building", since: time.Now()} // until the first build ends
+	d.hub = newEventHub(d.nonce, eventRing)
 	d.proxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(pr.In.Context().Value(targetKey{}).(*url.URL))
@@ -225,6 +229,10 @@ func newDevServer(dir, app, addr string, stdout, stderr io.Writer) *devServer {
 func (d *devServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/_dev/reload" {
 		d.serveReload(w, r)
+		return
+	}
+	if r.URL.Path == "/_dev/events" {
+		d.serveEvents(w, r)
 		return
 	}
 	if r.URL.Path == "/_dev/theme" || strings.HasPrefix(r.URL.Path, "/_dev/theme/") {
