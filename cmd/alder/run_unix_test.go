@@ -5,6 +5,7 @@ package main
 import (
 	"bufio"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -246,5 +247,51 @@ func TestRun_ExitsOnStdinEOF(t *testing.T) {
 	}
 	if processAlive(childPID) {
 		t.Fatalf("the app (pid %d) outlived alder run", childPID)
+	}
+}
+
+// A restart whose child does not start leaves the build state failed; the next restart that
+// comes up makes it ok again (a build ok event without ms, then app started), as the overlay
+// clears.
+func TestRun_RestartAfterFailedStart(t *testing.T) {
+	t.Parallel()
+	r := startRun(t)
+	lines := liveEvents(t, r)
+	bin := r.d.binary // written before the announcement startRun waited for
+	restart := func() {
+		t.Helper()
+		res, err := http.Post(r.base+"/_dev/restart", "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusAccepted {
+			t.Fatalf("POST /_dev/restart = %d, want 202", res.StatusCode)
+		}
+	}
+	// the running child keeps its executable (the inode) when the path is renamed away
+	if err := os.Rename(bin, bin+".real"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho broken >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	restart()
+	if e := lifecycleEvents(t, lines, 1, 30*time.Second)[0]; !isEvent(e, "build", "failed") || e["text"] == nil {
+		t.Fatalf("a restart whose child does not start: %v, want build failed with text", e)
+	}
+	if b := nextHello(t, r); b != "failed" {
+		t.Fatalf("hello.build after the failed restart = %q, want failed", b)
+	}
+	if err := os.Rename(bin+".real", bin); err != nil {
+		t.Fatal(err)
+	}
+	restart()
+	got := lifecycleEvents(t, lines, 2, 30*time.Second)
+	if !isEvent(got[0], "build", "ok") || !isEvent(got[1], "app", "started") || got[0]["child"] != got[1]["child"] {
+		t.Fatalf("the restart that comes up: %v, want build ok then app started", got)
+	}
+	if b := nextHello(t, r); b != "ok" {
+		t.Fatalf("hello.build after the good restart = %q, want ok", b)
 	}
 }

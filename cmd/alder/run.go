@@ -551,7 +551,9 @@ type built struct {
 // to it, announces it (the first one on stdout, the others as a run line), stops the old child,
 // clears the overlay and reloads the browsers. b is the build that made binary, nil for a restart
 // of the last build: with b, the swap is a build event (ok: the generation, the child's address,
-// the build's milliseconds and its warnings), then, either way, an app event (started). When the
+// the build's milliseconds and its warnings; without b, only when the state was not ok, as after
+// a restart whose child did not start, and with neither), then, either way, an app event
+// (started). When the
 // child does not start, the failure is reported (fail, and a failed build event) and the old
 // child keeps serving. Only the worker calls it.
 func (d *devServer) swapIn(binary string, b *built) {
@@ -584,6 +586,8 @@ func (d *devServer) swapIn(binary string, b *built) {
 			ok["warnings"] = b.warnings
 		}
 		d.buildState("ok", ok)
+	} else if d.state != "ok" { // a restart after a child that did not start: the overlay clears below, so the state does too
+		d.buildState("ok", map[string]any{"gen": gen, "child": c.addr})
 	}
 	d.hub.emit("app", map[string]any{"state": "started", "child": c.addr})
 	d.mu.Unlock()
