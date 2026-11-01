@@ -755,8 +755,7 @@ the exact messages and the code.
 
 `alder tui` opens a terminal UI for `alder run`: the build state and the
 app's log on one screen, instead of a scroll of text. It is a separate
-program, `alder-tui`, installed by the same Homebrew formula as `alder` and
-found on your `PATH`. `alder tui [arguments]` runs it with the arguments you
+program, `alder-tui`, found on your `PATH`. `alder tui [arguments]` runs it with the arguments you
 gave, hands it the terminal, and exits with its exit code. `alder` gives it
 `ALDER_BIN`, the path of the `alder` that ran it, so the TUI starts that same
 `alder`, and `ALDER_TUI` names another `alder-tui` to run (a build you are
@@ -777,31 +776,33 @@ one line of JSON, and an empty line.
 
 ```text
 $ curl -N localhost:8080/_dev/events
-data: {"addr":"localhost:8080","alder":"v0.9.0","app":"todos","boot":"afcb2a7d","build":"ok","child":"127.0.0.1:65295","dir":"/home/you/todos","first":1,"gen":"afcb2a7d-1","seq":5,"since":"2026-11-01T12:00:00.1Z","t":"2026-11-01T12:00:41.5Z","type":"hello"}
+data: {"addr":"localhost:8080","alder":"v0.9.0","app":"todos","boot":"afcb2a7d","build":"ok","child":"127.0.0.1:65295","dir":"/home/you/todos","first":1,"gen":"afcb2a7d-1","seq":5,"since":"2026-11-01T12:00:00.0Z","t":"2026-11-01T12:00:41.5Z","type":"hello"}
 
-data: {"seq":1,"state":"building","gen":"afcb2a7d-1","t":"2026-11-01T12:00:00.2Z","type":"build"}
+data: {"seq":1,"t":"2026-11-01T12:00:00.1Z","text":"alder run: building todos","type":"run"}
 …
 ```
 
 (Your addresses, build id and times will differ.) Every event is one JSON
-object with three keys of its own and then its fields: `type`, the kind of
+object with three keys of its own besides its fields: `type`, the kind of
 event; `t`, when it happened, as an RFC 3339 time in UTC with fractions of a
-second; and `seq`, its number. The first event the dev server emits is number
+second; and `seq`, its number. The keys come in alphabetical order, but
+order carries no meaning in JSON, so a client looks them up by name. The first event the dev server emits is number
 1, the next 2, and so on, counting since `alder run` started. A client that
 notes the last `seq` it has seen can always say where it stopped.
 
 The types, with an example of each:
 
 ```json
-{"type":"run","seq":4,"t":"2026-11-01T12:00:02.4Z","text":"dev server on localhost:8080 → app on 127.0.0.1:65295"}
-{"type":"build","seq":1,"t":"2026-11-01T12:00:00.2Z","state":"building","gen":"afcb2a7d-1"}
-{"type":"build","seq":3,"t":"2026-11-01T12:00:02.3Z","state":"ok","gen":"afcb2a7d-1","child":"127.0.0.1:65295","ms":2105}
-{"type":"build","seq":8,"t":"2026-11-01T12:03:10.0Z","state":"failed","gen":"afcb2a7d-2","diagnostics":[{"code":"E0003","severity":"error","file":"app/Layout.alder","line":10,"col":15,"endLine":10,"endCol":16,"message":"expected Text, Html or List Html in `{…}`, got Int"}]}
-{"type":"app","seq":5,"t":"2026-11-01T12:00:02.3Z","state":"started","child":"127.0.0.1:65295"}
-{"type":"app","seq":12,"t":"2026-11-01T12:09:00.0Z","state":"exited","exit":{"code":2},"tail":["panic: …"]}
-{"type":"static","seq":15,"t":"2026-11-01T12:11:00.0Z"}
-{"type":"log","seq":2,"t":"2026-11-01T12:00:02.3Z","record":{"time":"2026-11-01T12:00:02.3Z","level":"INFO","msg":"listening on 127.0.0.1:65295"}}
-{"type":"log","seq":6,"t":"2026-11-01T12:00:02.3Z","raw":"goroutine 1 [running]:"}
+{"seq":1,"t":"2026-11-01T12:00:00.1Z","text":"alder run: building todos","type":"run"}
+{"gen":"afcb2a7d-1","seq":2,"state":"building","t":"2026-11-01T12:00:00.2Z","type":"build"}
+{"child":"127.0.0.1:65295","gen":"afcb2a7d-1","ms":2105,"seq":3,"state":"ok","t":"2026-11-01T12:00:02.3Z","type":"build"}
+{"child":"127.0.0.1:65295","seq":4,"state":"started","t":"2026-11-01T12:00:02.3Z","type":"app"}
+{"seq":5,"t":"2026-11-01T12:00:02.4Z","text":"dev server on localhost:8080 → app on 127.0.0.1:65295","type":"run"}
+{"record":{"time":"2026-11-01T12:00:05.1Z","level":"INFO","msg":"GET /","method":"GET","path":"/","status":200,"ms":1.4,"bytes":2311,"rid":"5f3a2c1e","steps":3},"seq":6,"t":"2026-11-01T12:00:05.1Z","type":"log"}
+{"diagnostics":[{"code":"E0003","severity":"error","file":"app/Layout.alder","line":10,"col":15,"endLine":10,"endCol":16,"message":"expected Text, Html or List Html in `{…}`, got Int"}],"gen":"afcb2a7d-2","seq":8,"state":"failed","t":"2026-11-01T12:03:10.0Z","type":"build"}
+{"raw":"goroutine 1 [running]:","seq":11,"t":"2026-11-01T12:09:00.0Z","type":"log"}
+{"exit":{"code":2},"seq":12,"state":"exited","t":"2026-11-01T12:09:00.0Z","tail":["panic: …"],"type":"app"}
+{"seq":15,"t":"2026-11-01T12:11:00.0Z","type":"static"}
 ```
 
 - **`run`** is one of the dev server's own lines (`alder run: …`, and the
@@ -852,9 +853,9 @@ are already gone, it gets the oldest ones kept, and `first` (below) tells it
 where they start. The dev server also drops a client that does not read fast
 enough (it holds 256 events for each client), rather than wait for it: the
 build and the app must never wait for a viewer. The client sees its stream
-end and resumes with `?after`. When there is nothing to send for 15 seconds,
-the dev server writes the comment line `: ping`, so a client can tell a quiet
-stream from a dead one.
+end and resumes with `?after`. Every 15 seconds the dev server also writes
+the comment line `: ping`, whether or not events are flowing, so a client can
+tell a quiet stream from a dead one.
 
 Every stream starts with a `hello`. It is not in the ring and not one of the
 numbered events (its `seq` is the current number), and it lets a client draw
