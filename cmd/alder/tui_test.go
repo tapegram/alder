@@ -71,3 +71,21 @@ func TestTui_Override(t *testing.T) {
 		t.Fatalf("exit %d, want 3 (stderr %q)", code, errb.String())
 	}
 }
+
+// alder survives Ctrl-C while the TUI runs, but the TUI starts with SIGINT at its default (not
+// ignored, which exec would carry over): a script that sends itself SIGINT dies of it.
+func TestTui_ChildGetsDefaultSigint(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a shell script and SIGINT")
+	}
+	p := filepath.Join(t.TempDir(), "alder-tui")
+	if err := os.WriteFile(p, []byte("#!/bin/sh\nkill -INT $$\necho survived\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	code := runTuiWith(nil, strings.NewReader(""), &out, &errb, noEnv,
+		func(string) (string, error) { return p, nil })
+	if strings.Contains(out.String(), "survived") || code == 0 {
+		t.Fatalf("the TUI survived its SIGINT (exit %d, stdout %q): it inherited SIGINT ignored", code, out.String())
+	}
+}

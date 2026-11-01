@@ -21,9 +21,11 @@ func runTuiTo(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 // runTuiWith hands the terminal to the separate alder-tui program: the one ALDER_TUI names, else
 // the one lookPath finds as "alder-tui". It runs it as a child process with args, the
 // environment plus ALDER_BIN (this alder's own path, so the TUI starts the alder that started
-// it), and the given standard streams, and returns its exit code. While it runs, alder ignores
-// SIGINT: the TUI handles Ctrl-C itself, and the whole foreground process group gets the signal.
-// With no alder-tui to run it prints how to get one and returns 1.
+// it), and the given standard streams, and returns its exit code. While it runs, alder catches
+// SIGINT and discards it: the TUI handles Ctrl-C itself, and the whole foreground process group
+// gets the signal. alder catches it rather than ignoring it (signal.Ignore) because an ignored
+// signal stays ignored across exec, in alder-tui and every program it starts; a caught one is
+// reset to the default there. With no alder-tui to run it prints how to get one and returns 1.
 func runTuiWith(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string, lookPath func(string) (string, error)) int {
 	bin := getenv("ALDER_TUI")
 	if bin == "" {
@@ -42,8 +44,20 @@ func runTuiWith(args []string, stdin io.Reader, stdout, stderr io.Writer, getenv
 	cmd := exec.Command(bin, args...)
 	cmd.Env = append(os.Environ(), "ALDER_BIN="+self)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
-	signal.Ignore(os.Interrupt)
-	defer signal.Reset(os.Interrupt)
+	sigint := make(chan os.Signal, 1)
+	signal.Notify(sigint, os.Interrupt)
+	done := make(chan struct{})
+	go func() { // discard each Ctrl-C while the TUI runs
+		for {
+			select {
+			case <-sigint:
+			case <-done:
+				return
+			}
+		}
+	}()
+	defer close(done)
+	defer signal.Stop(sigint)
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(stderr, "alder tui: %v\n", err)
 		return 1
