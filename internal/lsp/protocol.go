@@ -124,6 +124,7 @@ func capabilities(enc posEncoding) map[string]any {
 		"executeCommandProvider":     map[string]any{"commands": []string{"alder.explain", "alder.fill"}},
 		"semanticTokensProvider":     semanticTokensProvider(),
 		"foldingRangeProvider":       true,
+		"selectionRangeProvider":     true,
 		"experimental":               map[string]any{"alderScratch": true},
 	}
 }
