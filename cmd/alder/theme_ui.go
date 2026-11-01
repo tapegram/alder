@@ -50,13 +50,14 @@ type themePreset struct {
 	Theme   theme.Theme `json:"theme"`
 }
 
-// themeToken is one row of theme.Tokens: Kind is Kind.String(), Scope "scheme" (a colour, set
+// themeToken is one row of theme.Tokens(): Kind is Kind.String(), Scope "scheme" (a colour, set
 // under `light` and `dark`) or "root" (theme-wide).
 type themeToken struct {
 	Field string `json:"field"`
 	CSS   string `json:"css"`
 	Kind  string `json:"kind"`
 	Scope string `json:"scope"`
+	Desc  string `json:"desc"`
 }
 
 // themeUnplaced and themeSkipped are theme.Unplaced and theme.Skipped as the page reads them.
@@ -215,7 +216,7 @@ func (d *devServer) themeState() themeState {
 		if t.Kind == theme.Colour {
 			scope = "scheme"
 		}
-		st.Tokens = append(st.Tokens, themeToken{t.Field, t.CSS, t.Kind.String(), scope})
+		st.Tokens = append(st.Tokens, themeToken{t.Field, t.CSS, t.Kind.String(), scope, t.Description})
 		if v, ok := defaults[t.CSS]; ok {
 			st.Defaults[t.Field] = v
 		}

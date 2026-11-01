@@ -322,7 +322,7 @@ func pageHover(a *analysis, m *syntax.Module, d *syntax.PageDecl) string {
 }
 
 // themeHover is the hover of a token's name in App's theme (fs, or a record inside it): its CSS
-// name, kind and alder-ui's default values; "" elsewhere.
+// name, kind, description and alder-ui's default values; "" elsewhere.
 func themeHover(fs []*syntax.DeployField, pos diag.Pos) string {
 	for _, f := range fs {
 		if f.Value != nil && f.Value.Kind == "record" && syntax.Contains(f.Value.Span, pos) {
@@ -336,7 +336,7 @@ func themeHover(fs []*syntax.DeployField, pos diag.Pos) string {
 			return ""
 		}
 		d := theme.Defaults()[t.CSS]
-		return fmt.Sprintf("`%s`: `%s`, a %s token of alder-ui %s\n\nalder-ui's default: light `%s`, dark `%s`", t.Field, t.CSS, t.Kind, theme.Version(), d.Light, d.Dark)
+		return fmt.Sprintf("`%s`: `%s`, a %s token of alder-ui %s\n\n%s\n\nalder-ui's default: light `%s`, dark `%s`", t.Field, t.CSS, t.Kind, theme.Version(), t.Description, d.Light, d.Dark)
 	}
 	return ""
 }

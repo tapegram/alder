@@ -3,6 +3,8 @@ package lsp
 import (
 	"strings"
 	"testing"
+
+	"alder/internal/theme"
 )
 
 // openThemeApp opens the blog's App with its theme's `light` written one field per line.
@@ -19,6 +21,16 @@ func openThemeApp(t *testing.T) *client {
 	return c
 }
 
+// tokenDesc is the Description of the token with this field, which must be non-empty.
+func tokenDesc(t *testing.T, field string) string {
+	t.Helper()
+	tok, ok := theme.Lookup(field)
+	if !ok || tok.Description == "" {
+		t.Fatalf("token %q: found %v, description %q", field, ok, tok.Description)
+	}
+	return tok.Description
+}
+
 func TestComplete_ThemeLight(t *testing.T) {
 	c := openThemeApp(t)
 	p := typing(t, c, "app/App.alder", "    primary: \"oklch(0.51 0.23 277)\",\n", "    pri")
@@ -27,7 +39,7 @@ func TestComplete_ThemeLight(t *testing.T) {
 	if !ok || got["radius"].Label != "" || got["light"].Label != "" {
 		t.Fatalf("inside light: %v", got)
 	}
-	if it.Detail != "--primary-foreground (colour)" || it.TextEdit.NewText != "primaryForeground: " || it.TextEdit.Range.Start.Character != p.Character-3 {
+	if it.Detail != tokenDesc(t, "primaryForeground") || it.TextEdit.NewText != "primaryForeground: " || it.TextEdit.Range.Start.Character != p.Character-3 {
 		t.Fatalf("primaryForeground: %+v", it)
 	}
 }
@@ -39,7 +51,7 @@ func TestComplete_ThemeTop(t *testing.T) {
 	if _, ok := got["radius"]; !ok || got["light"].Label == "" || got["primary"].Label != "" {
 		t.Fatalf("at the top of theme: %v", got)
 	}
-	if got["fontSans"].Detail != "--font-sans (font stack)" {
+	if got["fontSans"].Detail != tokenDesc(t, "fontSans") {
 		t.Fatalf("fontSans: %+v", got["fontSans"])
 	}
 }
@@ -47,7 +59,7 @@ func TestComplete_ThemeTop(t *testing.T) {
 func TestHover_ThemeField(t *testing.T) {
 	c := openThemeApp(t)
 	got := hover(t, c, "app/App.alder", c.at("app/App.alder", "primary: \"oklch(0.51", 2))
-	for _, want := range []string{"`--primary`", "colour", "light `oklch(0.205 0 0)`", "dark `oklch(0.922 0 0)`"} {
+	for _, want := range []string{"`--primary`", "colour", "light `oklch(0.205 0 0)`", "dark `oklch(0.922 0 0)`", tokenDesc(t, "primary")} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("hover %q lacks %q", got, want)
 		}

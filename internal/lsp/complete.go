@@ -931,7 +931,7 @@ func (cx *completion) theme() ([]completionItem, bool) {
 	}
 	for _, t := range theme.Tokens() {
 		if (t.Kind == theme.Colour) == colours {
-			out = add(out, t.Field, t.CSS+" ("+t.Kind.String()+")")
+			out = add(out, t.Field, t.Description)
 		}
 	}
 	return out, true

@@ -340,7 +340,7 @@ save();apply();Object.keys(rows).forEach(function(f){sync(rows[f])});startSync()
 function row(t){var r={t:t},e=el("div",{"class":"tp-row tp-"+t.kind.replace(" ","-"),"data-field":t.field,title:t.css}),id="tp-in-"+t.field;
 var head=el("div",{"class":"tp-head"}),ctl=el("div",{"class":"tp-ctl"});r.el=e;
 if(t.kind==="colour"){r.sw=el("span",{"class":"tp-sw","aria-hidden":"true"});head.appendChild(r.sw)}
-head.appendChild(el("label",{"class":"tp-name","for":id},t.field));
+head.appendChild(el("label",{"class":"tp-name","for":id,title:t.desc},t.field));
 r.clear=el("button",{type:"button","class":"clear","aria-label":"Clear "+t.field,title:"Clear: alder-ui's value"},"×");head.appendChild(r.clear);
 r.clear.addEventListener("click",function(){set(t,"")});
 e.appendChild(head);e.appendChild(ctl);
