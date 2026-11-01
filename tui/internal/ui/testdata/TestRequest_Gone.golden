@@ -1,0 +1,30 @@
+ shelf  [32m● ok[0m  localhost:8080  alder v0.15.0               [1m1 Requests[0m 2 Logs 3 Data 4 Tests 5 Routes
+ ← GET /books/42  200  12.8ms  rid 5f3a2c1f  steps 5  db 7/1.8ms
+
+ the dev server no longer has this request (the last 200 are kept, and a restart clears them)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ tab section  enter unfold  y copy rid  esc back         [2mcurl localhost:8080/_dev/requests/5f3a2c1f[0m

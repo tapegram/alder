@@ -950,6 +950,47 @@ stops the app, above, one level up: whatever happens to the owner, even
 no app) is left holding the port. Without the variable, `alder run` ignores
 its standard input.
 
+### Using alder tui
+
+Run `alder tui` in the app's directory, where you would run `alder run`. If
+a dev server for this app is already listening on the address
+(`localhost:8080`, or `--addr host:port`, or `ALDER_ADDR`), the TUI attaches
+to it and leaves it running when it quits; otherwise it starts one, and
+stops it when it quits (`--no-run` forbids that, and only attaches). If the
+address answers but is not `alder run`, or is the dev server of another
+app, the TUI says so and stops: pass another `--addr`.
+
+The top line shows the app, the build state, the address, the `alder`
+version and the tabs; `1` to `5`, `tab` and `shift-tab` switch between
+them. The bottom line lists the current screen's keys, and on its right the
+command that gives the same data without the TUI, such as `curl
+localhost:8080/_dev/requests/5f3a2c1e`: nothing in the TUI is only in the
+TUI. `F` focuses that line and `y` then copies the command. `?` lists every
+key of the current screen.
+
+- **Requests** shows the last minute (requests a second, the median and the
+  95th percentile time, the share of errors) and a table of the requests the
+  app answered, newest at the bottom, with `n+1` on a request that ran one
+  statement again and again and `slow` on a slow one. `j` and `k` (or the
+  arrows) move; the cursor follows each new request until you move up, and
+  `G` follows again. `/` filters the rows by their text. `enter` opens the
+  request; `l` shows its lines in Logs.
+- **A request**, opened with `enter`, has three sections, the steps it ran,
+  its SQL and the lines it logged: `tab` and `shift-tab` move between them,
+  `j` and `k` within one. The statements of an N+1 are folded into one row;
+  `enter` unfolds it, to show each run with its arguments. `y` copies the
+  request id; `esc` goes back.
+- **Logs** is the app's log as `alder run` prints it. `L` steps through the
+  levels shown, debug, info, warn and error (info at the start). `/` keeps
+  only the lines that match a regular expression, and `x` clears it and the
+  request filter that Requests' `l` set. `enter` on a line logged while a
+  request was answered opens that request. `G` follows the newest line.
+
+Everywhere, `p` shows the problems (the last build's diagnostics, or how the
+app exited), `R` restarts the app, `o` opens it in the browser, and `q`
+quits. While you type into a filter, every key goes to the filter except
+`enter` (keep it), `esc` (cancel) and Ctrl-C.
+
 ### `alder eval`
 
 `alder eval [dir] <expr>` evaluates one expression in the context of the
@@ -1801,17 +1842,20 @@ v0.1.0`. The tag starts `.github/workflows/release.yml`, which runs
 GoReleaser with `.goreleaser.yaml`. It builds `cmd/alder` with
 `CGO_ENABLED=0` (the SQLite driver is pure Go) for macOS and Linux on
 amd64 and arm64, and for Windows on amd64 (it builds; running alder on
-Windows is untested). Each binary goes into an archive named
-`alder_<version>_<os>_<arch>.tar.gz` (`.zip` for Windows) with the LICENSE
-and README, listed in `alder_<version>_checksums.txt`. GoReleaser then
+Windows is untested). The terminal UI, `alder-tui` (its own module in `tui/`), is built beside it. The
+archive `alder_<version>_<os>_<arch>.tar.gz` (`.zip` for Windows) holds both
+binaries with the LICENSE and README, and `alder-tui_<version>_<os>_<arch>.tar.gz`
+holds the terminal UI alone; all are listed in `alder_<version>_checksums.txt`. GoReleaser then
 writes the GitHub release, its notes taken from the commits since the
 previous tag; pushes a Homebrew formula to `tapegram/homebrew-alder` (so
-`brew install tapegram/alder/alder` works, and the formula's test runs
-`alder version`); and pushes the container image
+`brew install tapegram/alder/alder` works and installs `alder-tui` beside
+`alder`, and the formula's test runs `alder version`); and pushes the container image
 `ghcr.io/tapegram/alder:<version>`, Go's official image plus the binary,
-for CI pipelines that run `alder test` and `alder build`. No `-ldflags`
-are passed: the go command records the tag as the module version when it
-builds at a clean tag, which is what `alder version` prints. CI
+for CI pipelines that run `alder test` and `alder build`. `alder` gets no
+`-ldflags`: the go command records the tag as the module version when it
+builds at a clean tag, which is what `alder version` prints. Only
+`alder-tui` is built with `-X main.version`, because it is a nested module
+and its build information does not carry the root tag. CI
 (`.github/workflows/ci.yml`) runs on Linux for every branch push that
 changes code or the book, and also on macOS for `main` and tags, so every
 tag is tested on both. A green push on `main` no longer includes the

@@ -1,0 +1,30 @@
+ shelf  [32m● ok[0m  localhost:8080  alder v0.15.0               [1m1 Requests[0m 2 Logs 3 Data 4 Tests 5 Routes
+ ← GET /books/42  200  12.8ms  rid 5f3a2c1f  route /books/{id}  steps 5  db 11/9.6ms
+ [1mSteps[0m                      [2m│[0m [1mSQL (11, 1 repeat group)[0m                    [2m│[0m [1mLogs (2)[0m
+   load           0.4ms  db [2m│[0m   ▸ select * from boo…  ×1     0.9ms 1 row  [2m│[0m   info: showing book 42
+   Books.find     0.9ms  db [2m│[0m > ▾ select * from loa…  ×9 [33mn+1[0m 8.1ms 9 rows [2m│[0m   [33mwarn[0m: book 42 has no…
+   Loans.for      8.1ms  db [2m│[0m       select * from loans where book=?      [2m│[0m
+   Reviews.count  0.6ms  db [2m│[0m       args [42] [42] [42] [42] [42] [42]    [2m│[0m
+   render         2.4ms     [2m│[0m            [42] [42] [42]                   [2m│[0m
+                            [2m│[0m   ▸ select count(*) f…  ×1     0.6ms 1 row  [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+                            [2m│[0m                                             [2m│[0m
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ tab section  enter unfold  y copy rid  esc back         [2mcurl localhost:8080/_dev/requests/5f3a2c1f[0m

@@ -1,0 +1,30 @@
+ shelf  [32m● ok[0m  localhost:8080  alder v0.15.0               1 Requests [1m2 Logs[0m 3 Data 4 Tests 5 Routes
+ level info
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+   [2malder run: dev server on 127.0.0.1:8080 → app on 127.0.0.1:52507[0m
+   [2m2026/11/01 14:02:11 [0m[32minfo:[0m GET / 200 4.2ms 4821B rid=5f3a2c1e
+   [2m2026/11/01 14:02:12 [0m[32minfo:[0m showing book 42
+   [2m2026/11/01 14:02:12 [0m[33mwarn:[0m book 42 has no cover image
+   [2m2026/11/01 14:02:12 [0m[32minfo:[0m GET /books/42 200 12.8ms 6377B rid=5f3a2c1f
+   [2m2026/11/01 14:02:14 [0m[32minfo:[0m POST /books/42/lend 303 6.1ms 0B rid=5f3a2c20
+   [2m2026/11/01 14:02:15 [0m[32minfo:[0m GET /books/999 404 3.4ms 16531B rid=5f3a2c21
+   [2m2026/11/01 14:02:15 [0m[33mwarn:[0m GET /search?q=•••• 500 812.4ms 2140B rid=5f3a2c23 slow route=/search …
+ > panic: runtime error: index out of range [3] with length 3
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ enter open  L level  / regexp  x clear  G follow  o browser  R restart    [2mALDER_LOG=info alder run[0m

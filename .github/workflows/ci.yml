@@ -19,7 +19,9 @@
 # sshd: go test -tags deploy) and `deploy-systemd` (the default production path: systemd units
 # and a real Caddy, on the runner's own VM); the two deploy jobs run on main, tags, the nightly
 # run and when a deploy path changed. `mutation` (the mutation quality gates, too slow for every
-# push) runs nightly at 07:00 UTC, on a manual run and on tags.
+# push) runs nightly at 07:00 UTC, on a manual run and on tags. `tui` (the terminal UI's own
+# module: gofmt, vet, tests, the live test against an alder built from the commit, and the
+# fixture app's check and tests) runs on main, tags, the nightly run and when tui/ changed.
 #
 # Branch pushes run on Linux only; pushes to main and tags also run `warm`, `test` and
 # `examples` on macOS (the `os` lists below), so a release is tested on both.
@@ -56,6 +58,7 @@ jobs:
       code: ${{ steps.all.outputs.all == 'true' || steps.filter.outputs.code == 'true' || steps.paths.outputs.drill == 'true' }}
       book: ${{ steps.all.outputs.all == 'true' || steps.paths.outputs.book == 'true' }}
       deploy: ${{ steps.all.outputs.all == 'true' || github.ref == 'refs/heads/main' || steps.paths.outputs.deploy == 'true' }}
+      tui: ${{ steps.all.outputs.all == 'true' || github.ref == 'refs/heads/main' || steps.paths.outputs.tui == 'true' }}
     steps:
       - uses: actions/checkout@v4
       - id: all
@@ -91,6 +94,15 @@ jobs:
               - 'internal/deploy/**'
               - 'rt/backup/**'
               - 'Dockerfile'
+              - '.github/workflows/ci.yml'
+            tui:
+              - 'tui/**'
+              # The feed alder-tui reads (the live test runs against it): its producers.
+              - 'cmd/alder/run.go'
+              - 'cmd/alder/run_events.go'
+              - 'cmd/alder/run_logs.go'
+              - 'rt/web/devrequests.go'
+              - 'rt/applog/**'
               - '.github/workflows/ci.yml'
 
   # Fills the Go build cache (GOCACHE) and the module cache once per OS and commit, and saves
@@ -384,6 +396,45 @@ jobs:
           ALDER_DEPLOY_SYSTEMD: "1"
           ALDER_SSH_CONFIG: ${{ runner.temp }}/ssh_config
         run: go test ./cmd/alder -run '^TestDeploySystemd_' -count=1 -timeout 15m -v
+
+  # The terminal UI (tui/, a nested Go module with its own dependencies): gofmt, vet and its
+  # tests. Runs on main, tags, the nightly run and when tui/, this file or a producer of the feed
+  # it reads changed. The root `lint` job's gofmt already covers tui/'s files; the live test
+  # builds alder from the root module.
+  tui:
+    needs: changes
+    if: needs.changes.outputs.tui == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: tui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tui/go.mod
+          cache-dependency-path: |
+            tui/go.sum
+            go.sum
+      # alder from this commit (the root module has the same Go version as tui/), so that
+      # TestLive_HelloAndFirstRequest runs `alder run` on the fixture app instead of skipping
+      - name: build alder
+        working-directory: .
+        run: |
+          go build -o "$RUNNER_TEMP/bin/alder" ./cmd/alder
+          echo "ALDER_BIN=$RUNNER_TEMP/bin/alder" >> "$GITHUB_ENV"
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then echo "::error::gofmt needed:"; echo "$out"; exit 1; fi
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test ./...
+      - name: the fixture app (testdata/shelf)
+        working-directory: tui/testdata/shelf
+        run: $ALDER_BIN check . && $ALDER_BIN test .
 
   # The mutation quality gates (cmd/alder/gates_test.go): every mutant of the admin fixtures and
   # the example apps, against the scores and mutant counts the examples record. Nightly, on a
