@@ -36,7 +36,7 @@ func main() {
 func run(args []string, stdout, stderr *os.File) int {
 	fs := flag.NewFlagSet("alder-tui", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	addr := fs.String("addr", "", "the address of the dev server to attach to, or to start `alder run` on (default $ALDER_ADDR, else localhost:8080)")
+	addr := fs.String("addr", "", "the address of the dev server to attach to, or to start alder run on (default $ALDER_ADDR, else localhost:8080)")
 	noRun := fs.Bool("no-run", false, "attach to a dev server that is already running; never start one")
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	if err := fs.Parse(args); err != nil {

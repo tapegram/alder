@@ -132,9 +132,10 @@ const (
 	sections
 )
 
-// logsFloor is the narrowest the Logs section gets side by side: SQL, whose statements the
-// detail is mostly read for, takes its full width first.
-const logsFloor = 8
+// logsFloor is the narrowest the Logs section gets side by side: a quarter of the room, but never
+// under 8 cells. SQL, whose statements the detail is mostly read for, takes its natural width
+// first, up to 55% of the room; an unfolded row shows its statement in full below.
+func logsFloor(room int) int { return max(8, room/4) }
 
 // detailKeys are the keys the footer lists while a request is open.
 var detailKeys = []Key{{"tab", "section"}, {"enter", "unfold"}, {"y", "copy rid"}, {"esc", "back"}}
@@ -282,7 +283,7 @@ func (v *requestView) view(width, height int, c *Ctx) string {
 		// what Steps and the floor of Logs leave, and Logs takes the rest.
 		room := width - 6
 		sw := min(v.stepsWidth(), room/3)
-		qw := max(min(v.sqlWidth(), room-sw-logsFloor), 0)
+		qw := max(min(v.sqlWidth(), room*55/100, room-sw-logsFloor(room)), 0)
 		lw := room - sw - qw
 		cols := [sections][]string{v.sectionLines(secSteps, sw, h), v.sectionLines(secSQL, qw, h), v.sectionLines(secLogs, lw, h)}
 		bar := " " + look.Palette.Dim("│") + " "
@@ -327,7 +328,8 @@ func (v *requestView) stepLines(mark func(int) string) []string {
 	return out
 }
 
-// sectionLines is section s in exactly h lines of w cells: its heading in bold, then its rows, scrolled to keep the cursor in view; the focused section marks the row under its cursor.
+// sectionLines is section s in exactly h lines of w cells: its heading in bold, then its rows,
+// scrolled to keep the cursor in view; the focused section marks the row under its cursor.
 // The Logs rows are `level: message` without a stamp: a request's lines share their second.
 func (v *requestView) sectionLines(s, w, h int) []string {
 	var title string

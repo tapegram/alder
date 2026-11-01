@@ -58,11 +58,11 @@ func fixture(t *testing.T, name string) []feed.Event {
 }
 
 // options is the Options every test starts from: the app shelf on localhost:8080, alder-tui and
-// alder both v0.6.0, the fixed clock, and an events channel the test feeds.
+// alder both v0.15.0 (the version the fixtures' hello names), the fixed clock, and an events channel the test feeds.
 func options(events chan feed.Event) Options {
 	return Options{
 		App: "shelf", Dir: "/Users/dev/shelf", Addr: "localhost:8080",
-		Version: "v0.6.0", AlderVersion: "v0.6.0",
+		Version: "v0.15.0", AlderVersion: "v0.15.0",
 		Events:  events,
 		Now:     func() time.Time { return clock },
 		OpenURL: func(string) error { return nil },
@@ -103,7 +103,7 @@ func TestFrame_Basic(t *testing.T) {
 	waitText(t, tm, "/search")
 	_, frame := finalFrame(t, tm)
 	lines := strings.Split(string(frame), "\n")
-	if !strings.Contains(lines[0], "shelf  \x1b[32m● ok\x1b[0m  localhost:8080  alder v0.6.0") {
+	if !strings.Contains(lines[0], "shelf  \x1b[32m● ok\x1b[0m  localhost:8080  alder v0.15.0") {
 		t.Errorf("status bar = %q", lines[0])
 	}
 	if !strings.Contains(lines[0], "\x1b[1m1 Requests\x1b[0m") {
@@ -173,14 +173,39 @@ func TestFrame_Exited(t *testing.T) {
 func TestFrame_Mismatch(t *testing.T) {
 	events := make(chan feed.Event, 64)
 	o := options(events)
-	o.AlderVersion = "v0.5.0"
+	o.Version = "v0.9.0"
 	tm := start(t, o, events, fixture(t, "basic")[0])
-	waitText(t, tm, "upgrade both together")
+	waitText(t, tm, "upgrade both")
 	_, frame := finalFrame(t, tm)
-	if !bytes.Contains(frame, []byte("\x1b[33malder-tui v0.6.0 with alder v0.5.0: upgrade both together\x1b[0m")) {
+	if !bytes.Contains(frame, []byte("\x1b[33malder-tui v0.9.0 with alder v0.15.0: upgrade both togeth…\x1b[0m")) {
 		t.Errorf("no yellow mismatch warning in\n%s", frame)
 	}
 	teatest.RequireEqualOutput(t, frame)
+}
+
+// The mismatch is judged against the alder producing the feed once a hello has arrived, not the
+// alder on PATH: a PATH alder of another version is no warning when the feed's alder matches.
+func TestFrame_MismatchUsesHello(t *testing.T) {
+	events := make(chan feed.Event, 64)
+	o := options(events)
+	o.AlderVersion = "v0.5.0" // the alder on PATH; the feed's is v0.15.0, as is the TUI
+	tm := start(t, o, events, fixture(t, "basic")[0])
+	waitText(t, tm, "alder v0.15.0")
+	m, frame := finalFrame(t, tm)
+	if bytes.Contains(frame, []byte("upgrade both together")) {
+		t.Errorf("a warning although the feed's alder matches:\n%s", frame)
+	}
+	if got := versionPart(m.ctx); got != "alder v0.15.0" {
+		t.Errorf("versionPart = %q, want the hello's version", got)
+	}
+}
+
+// Before a hello arrives the version comes from `alder help --json`.
+func TestVersionPart_BeforeHello(t *testing.T) {
+	c := &Ctx{Opts: Options{Version: "v0.15.0", AlderVersion: "v0.5.0"}}
+	if got := versionPart(c); !strings.Contains(got, "alder-tui v0.15.0 with alder v0.5.0") {
+		t.Errorf("versionPart = %q, want the PATH alder's mismatch", got)
+	}
 }
 
 func TestFrame_NewBootResets(t *testing.T) {

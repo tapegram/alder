@@ -97,6 +97,12 @@ jobs:
               - '.github/workflows/ci.yml'
             tui:
               - 'tui/**'
+              # The feed alder-tui reads (the live test runs against it): its producers.
+              - 'cmd/alder/run.go'
+              - 'cmd/alder/run_events.go'
+              - 'cmd/alder/run_logs.go'
+              - 'rt/web/devrequests.go'
+              - 'rt/applog/**'
               - '.github/workflows/ci.yml'
 
   # Fills the Go build cache (GOCACHE) and the module cache once per OS and commit, and saves
@@ -392,9 +398,9 @@ jobs:
         run: go test ./cmd/alder -run '^TestDeploySystemd_' -count=1 -timeout 15m -v
 
   # The terminal UI (tui/, a nested Go module with its own dependencies): gofmt, vet and its
-  # tests. Runs on main, tags, the nightly run and when tui/ or this file changed. The root
-  # `lint` job's gofmt already covers tui/'s files; this job needs no checkout of the root
-  # module's cache.
+  # tests. Runs on main, tags, the nightly run and when tui/, this file or a producer of the feed
+  # it reads changed. The root `lint` job's gofmt already covers tui/'s files; the live test
+  # builds alder from the root module.
   tui:
     needs: changes
     if: needs.changes.outputs.tui == 'true'

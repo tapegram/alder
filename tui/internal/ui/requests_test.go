@@ -182,9 +182,9 @@ func TestRequest_Detail(t *testing.T) {
 		"\x1b[1mSteps\x1b[0m",
 		"\x1b[1mSQL (11, 1 repeat group)\x1b[0m",
 		"\x1b[1mLogs (2)\x1b[0m",
-		"select * from loans where book=? ",
-		"info:",
-		"\x1b[33mwarn\x1b[0m:",
+		"select * from loa…",
+		"info: showing book 42",
+		"\x1b[33mwarn\x1b[0m: book 42 has no",
 	} {
 		if !strings.Contains(frame, want) {
 			t.Errorf("the detail has no %q:\n%s", want, frame)

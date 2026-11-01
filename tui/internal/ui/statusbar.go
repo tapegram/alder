@@ -66,23 +66,22 @@ func stateDot(c *Ctx) string {
 	return "● " + c.State
 }
 
-// versionPart is `alder <version>`, the version being alder's own (from `alder help --json`),
-// else the hello's; or `disconnected`, or the mismatch warning, in yellow.
+// versionPart is `alder <version>`, or `disconnected`, or the mismatch warning, in yellow. The
+// version is that of the alder producing the feed (the hello's) once a hello has arrived, and
+// until then the one `alder help --json` reports for the alder on PATH.
 func versionPart(c *Ctx) string {
 	if c.Disconnected {
 		return look.Palette.Yellow("disconnected")
 	}
-	if c.Opts.AlderVersion != "" {
-		if w := alderbin.Mismatch(c.Opts.Version, c.Opts.AlderVersion); w != "" {
-			return look.Palette.Yellow(w)
-		}
-	}
 	v := c.Opts.AlderVersion
-	if v == "" && c.Hello != nil {
+	if c.Hello != nil && c.Hello.Alder != "" {
 		v = c.Hello.Alder
 	}
 	if v == "" {
 		return ""
+	}
+	if w := alderbin.Mismatch(c.Opts.Version, v); w != "" {
+		return look.Palette.Yellow(w)
 	}
 	return "alder " + v
 }

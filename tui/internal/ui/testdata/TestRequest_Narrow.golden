@@ -1,4 +1,4 @@
- shelf  [32m● ok[0m  localhost:8080  alder v0.6.0                          [1m1 Requests[0m
+ shelf  [32m● ok[0m  localhost:8080  alder v0.15.0                         [1m1 Requests[0m
  ← GET /books/42  200  12.8ms  rid 5f3a2c1f  route /books/{id}  steps 5  db 11…
  [1mSteps[0m
  > load           0.4ms  db

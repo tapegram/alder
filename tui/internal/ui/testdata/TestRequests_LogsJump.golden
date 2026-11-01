@@ -1,4 +1,4 @@
- shelf  [32m● ok[0m  localhost:8080  alder v0.6.0                1 Requests [1m2 Logs[0m 3 Data 4 Tests 5 Routes
+ shelf  [32m● ok[0m  localhost:8080  alder v0.15.0               1 Requests [1m2 Logs[0m 3 Data 4 Tests 5 Routes
  level info  rid 5f3a2c1f
  ──────────────────────────────────────────────────────────────────────────────────────────────────
    [2m2026/11/01 14:02:12 [0m[32minfo:[0m showing book 42

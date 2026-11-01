@@ -8,9 +8,14 @@
 # Locally: `goreleaser release --snapshot --clean --skip=docker` builds everything into dist/
 # and publishes nothing.
 #
-# alder-tui (tui/, its own module) is built beside alder and shipped in the same Homebrew
-# formula. alder passes no -ldflags: `alder version` reads the version from the build information the go command
-# records (internal/version). A build at a clean tag records the tag as the module version.
+# alder-tui (tui/, its own module) is built beside alder. The alder archive carries both binaries
+# (the Homebrew formula reads that one archive, because the brew pipe takes exactly one archive
+# per OS and architecture), and alder-tui also has an archive of its own.
+#
+# alder passes no -ldflags: `alder version` reads the version from the build information the go
+# command records (internal/version), and a build at a clean tag records the tag as the module
+# version. alder-tui gets -X main.version, because it is a nested module: its build information
+# does not carry the root module's tag.
 version: 2
 
 project_name: alder
@@ -54,7 +59,7 @@ builds:
 
 archives:
   - id: alder
-    ids: [alder]
+    ids: [alder, alder-tui] # both binaries: the Homebrew formula reads this archive
     name_template: "alder_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
     format_overrides:
@@ -100,7 +105,7 @@ release:
 # tapegram/alder (GITHUB_TOKEN reaches only the repository the workflow runs in).
 brews:
   - name: alder
-    ids: [alder, alder-tui]
+    ids: [alder] # the archive holding alder and alder-tui
     repository:
       owner: tapegram
       name: homebrew-alder

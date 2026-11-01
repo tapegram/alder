@@ -1,4 +1,4 @@
- shelf  [32m● ok[0m  localhost:8080  alder v0.6.0                1 Requests [1m2 Logs[0m 3 Data 4 Tests 5 Routes
+ shelf  [32m● ok[0m  localhost:8080  alder v0.15.0               1 Requests [1m2 Logs[0m 3 Data 4 Tests 5 Routes
  level info
  ──────────────────────────────────────────────────────────────────────────────────────────────────
    [2malder run: dev server on 127.0.0.1:8080 → app on 127.0.0.1:52507[0m

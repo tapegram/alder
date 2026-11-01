@@ -1842,17 +1842,20 @@ v0.1.0`. The tag starts `.github/workflows/release.yml`, which runs
 GoReleaser with `.goreleaser.yaml`. It builds `cmd/alder` with
 `CGO_ENABLED=0` (the SQLite driver is pure Go) for macOS and Linux on
 amd64 and arm64, and for Windows on amd64 (it builds; running alder on
-Windows is untested). Each binary goes into an archive named
-`alder_<version>_<os>_<arch>.tar.gz` (`.zip` for Windows) with the LICENSE
-and README, listed in `alder_<version>_checksums.txt`. GoReleaser then
+Windows is untested). The terminal UI, `alder-tui` (its own module in `tui/`), is built beside it. The
+archive `alder_<version>_<os>_<arch>.tar.gz` (`.zip` for Windows) holds both
+binaries with the LICENSE and README, and `alder-tui_<version>_<os>_<arch>.tar.gz`
+holds the terminal UI alone; all are listed in `alder_<version>_checksums.txt`. GoReleaser then
 writes the GitHub release, its notes taken from the commits since the
 previous tag; pushes a Homebrew formula to `tapegram/homebrew-alder` (so
 `brew install tapegram/alder/alder` works and installs `alder-tui` beside
 `alder`, and the formula's test runs `alder version`); and pushes the container image
 `ghcr.io/tapegram/alder:<version>`, Go's official image plus the binary,
-for CI pipelines that run `alder test` and `alder build`. No `-ldflags`
-are passed: the go command records the tag as the module version when it
-builds at a clean tag, which is what `alder version` prints. CI
+for CI pipelines that run `alder test` and `alder build`. `alder` gets no
+`-ldflags`: the go command records the tag as the module version when it
+builds at a clean tag, which is what `alder version` prints. Only
+`alder-tui` is built with `-X main.version`, because it is a nested module
+and its build information does not carry the root tag. CI
 (`.github/workflows/ci.yml`) runs on Linux for every branch push that
 changes code or the book, and also on macOS for `main` and tags, so every
 tag is tested on both. A green push on `main` no longer includes the
