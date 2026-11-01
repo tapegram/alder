@@ -181,7 +181,9 @@ func quiet(t *testing.T, events <-chan string, d time.Duration) {
 }
 
 // sse subscribes to url and yields each event block (its lines, without the blank line that
-// ends it). The subscription is closed when the test ends.
+// ends it), but the ": ping" keepalives, which come by wall time and are not the dev server's
+// answer to anything: quiet and the other "no further event" checks must not see them. The
+// subscription is closed when the test ends.
 func sse(t *testing.T, url string) <-chan string {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -214,6 +216,10 @@ func sse(t *testing.T, url string) <-chan string {
 		for sc.Scan() {
 			if sc.Text() != "" {
 				block = append(block, sc.Text())
+				continue
+			}
+			if len(block) == 1 && block[0] == ": ping" {
+				block = nil // the keepalive: a stream open past 15 s (a loaded machine's rebuild) has one (#133)
 				continue
 			}
 			if len(block) > 0 {
