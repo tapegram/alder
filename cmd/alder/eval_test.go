@@ -631,7 +631,10 @@ func TestEval_WaitsForLock(t *testing.T) {
 	var stdout, stderr syncBuffer
 	done := make(chan int, 1)
 	go func() { done <- runEvalTo([]string{"--build-dir", bd, todosDir(t), "1 + 1"}, nil, &stdout, &stderr) }()
-	deadline := time.Now().Add(10 * time.Second)
+	// The message comes once eval has type-checked the app and found the lock held: an
+	// "eventually", bounded like the suite's other waits (#133); with only TestEval_* and CPU
+	// load it already took 20x its idle 90ms.
+	deadline := time.Now().Add(90 * time.Second)
 	for !strings.Contains(stderr.String(), "alder eval: waiting for another alder eval of this app…\n") {
 		if time.Now().After(deadline) {
 			held.Close()
@@ -650,7 +653,7 @@ func TestEval_WaitsForLock(t *testing.T) {
 		if code != 0 || stdout.String() != "2 : Int\n" {
 			t.Errorf("exit %d, stdout %q\nstderr: %s", code, stdout.String(), stderr.String())
 		}
-	case <-time.After(30 * time.Second):
+	case <-time.After(120 * time.Second): // eval builds the app now: bounded like the suite's other builds (#133)
 		t.Fatal("eval did not finish after the lock was released")
 	}
 }
