@@ -35,6 +35,13 @@ type walker struct {
 func pos(t syntax.Token) diag.Pos { return diag.Pos{Line: t.Line, Col: t.Col} }
 func before(a, b diag.Pos) bool   { return a.Line < b.Line || a.Line == b.Line && a.Col < b.Col }
 
+// sortOut orders ts by position.
+func sortOut(ts []Token) {
+	sort.SliceStable(ts, func(i, j int) bool {
+		return ts[i].Line < ts[j].Line || ts[i].Line == ts[j].Line && ts[i].Col < ts[j].Col
+	})
+}
+
 // sortTokens orders ts by position.
 func sortTokens(ts []syntax.Token) {
 	sort.SliceStable(ts, func(i, j int) bool { return before(pos(ts[i]), pos(ts[j])) })
@@ -162,9 +169,7 @@ func (w *walker) emit() []Token {
 		}
 	}
 	out = append(out, w.comments()...)
-	sort.SliceStable(out, func(i, j int) bool {
-		return out[i].Line < out[j].Line || out[i].Line == out[j].Line && out[i].Col < out[j].Col
-	})
+	sortOut(out)
 	kept := out[:0]
 	for _, k := range out {
 		if n := len(kept); k.Len <= 0 || n > 0 && kept[n-1].Line == k.Line && kept[n-1].Col+kept[n-1].Len > k.Col {
