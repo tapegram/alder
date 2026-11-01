@@ -61,7 +61,8 @@ func (s *syncBuffer) String() string {
 
 // startRun copies examples/todos into a temporary directory (the test's working directory),
 // runs runRunTo on it with ALDER_ADDR=127.0.0.1:0, and waits (120 s at most) for its
-// `dev server on <addr> → app on <child>` line. The dev server and its child are stopped when
+// `dev server on <addr> → app on <child>` line and for the watcher's first snapshot (an edit
+// before it would be the baseline, not a change). The dev server and its child are stopped when
 // the test ends.
 func startRun(t *testing.T) *devRun {
 	t.Helper()
@@ -77,6 +78,13 @@ func startRunApp(t *testing.T, app string) *devRun {
 // startRunAppWith is startRunApp with files (path in the app → content) added to the copy
 // before it is served.
 func startRunAppWith(t *testing.T, app string, files map[string]string) *devRun {
+	t.Helper()
+	return startRunAppOpts(t, app, files, runOpts{})
+}
+
+// startRunAppOpts is startRunAppWith with opts given to runRunWith (its addr, onDevServer and
+// watchReady are set here).
+func startRunAppOpts(t *testing.T, app string, files map[string]string, opts runOpts) *devRun {
 	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go is not on PATH")
@@ -94,11 +102,11 @@ func startRunAppWith(t *testing.T, app string, files map[string]string) *devRun 
 	}
 	r := &devRun{dir: filepath.Join(tmp, app), out: &syncBuffer{}, errs: &syncBuffer{},
 		done: make(chan struct{}), stopCh: make(chan struct{})}
-	devs := make(chan *devServer, 1)
+	devs, ready := make(chan *devServer, 1), make(chan struct{})
+	opts.addr, opts.onDevServer, opts.watchReady = "127.0.0.1:0", func(d *devServer) { devs <- d }, func() { close(ready) }
 	go func() {
 		defer close(r.done)
-		r.code = runRunWith([]string{"--build-dir", filepath.Join(tmp, "build"), filepath.Join(tmp, app)}, r.out, r.errs, r.stopCh,
-			runOpts{addr: "127.0.0.1:0", onDevServer: func(d *devServer) { devs <- d }})
+		r.code = runRunWith([]string{"--build-dir", filepath.Join(tmp, "build"), filepath.Join(tmp, app)}, r.out, r.errs, r.stopCh, opts)
 	}()
 	t.Cleanup(func() { r.stop(t) })
 	deadline := time.Now().Add(120 * time.Second)
@@ -110,6 +118,7 @@ func startRunAppWith(t *testing.T, app string, files map[string]string) *devRun 
 					t.Fatalf("malformed line %q", line)
 				}
 				r.base, r.child, r.d = "http://"+dev, child, <-devs
+				await(t, ready, "the watcher's first snapshot")
 				return r
 			}
 		}
@@ -486,15 +495,68 @@ func TestRun_ErrorThenFixReloads(t *testing.T) {
 	}
 }
 
-// Two saves in quick succession make one rebuild and one reload.
+// Two saves with no poll between them make one rebuild and one reload. The test drives the
+// watcher's polls (runOpts.watchTicks), so a stall between the saves cannot put a poll there
+// (#137): each poll is a send, which returns once the poll before it is done.
 func TestRun_CoalescesSaves(t *testing.T) {
 	t.Parallel()
-	r := startRun(t)
+	ticks, poll := pollDriver(t)
+	r := startRunAppOpts(t, "todos", nil, runOpts{watchTicks: ticks})
 	events := r.subscribe(t)
 	edit(t, r.dir, "app/Layout.alder", `<main>`, `<main class="edited">`)
-	time.Sleep(50 * time.Millisecond)
 	edit(t, r.dir, "app/Layout.alder", `</title>`, `!</title>`)
+	poll() // sees the saves
+	poll() // finds nothing new and reports them: one change
 	waitFor(t, events, "location.reload()", 60*time.Second)
+	assertOneRebuild(t, r, events, poll)
+}
+
+// Saves on consecutive polls are one change too: the watcher reports only on a poll that finds
+// nothing new, not on the first one that finds a change.
+func TestRun_CoalescesSavesAcrossPolls(t *testing.T) {
+	t.Parallel()
+	ticks, poll := pollDriver(t)
+	r := startRunAppOpts(t, "todos", nil, runOpts{watchTicks: ticks})
+	events := r.subscribe(t)
+	// noRebuildYet gives the poll just sent time to run (a stall only lets a broken watcher
+	// pass, never fails a working one) and fails if it reported the change.
+	noRebuildYet := func(after string) {
+		t.Helper()
+		time.Sleep(time.Second)
+		if strings.Contains(r.errs.String(), "rebuilding") {
+			t.Fatalf("a rebuild after %s, before a quiet poll; stderr:\n%s", after, r.errs.String())
+		}
+	}
+	edit(t, r.dir, "app/Layout.alder", `<main>`, `<main class="edited">`)
+	poll() // sees the first save
+	noRebuildYet("the first save's poll")
+	edit(t, r.dir, "app/Layout.alder", `</title>`, `!</title>`)
+	poll() // sees the second
+	noRebuildYet("the second save's poll")
+	poll() // finds nothing new and reports both: one change
+	waitFor(t, events, "location.reload()", 60*time.Second)
+	assertOneRebuild(t, r, events, poll)
+}
+
+// pollDriver is a tick channel for runOpts.watchTicks and poll, which sends one tick (60 s at
+// most): it returns once the watcher has taken the tick, and so finished every earlier poll.
+func pollDriver(t *testing.T) (chan time.Time, func()) {
+	ticks := make(chan time.Time)
+	return ticks, func() {
+		t.Helper()
+		select {
+		case ticks <- time.Now():
+		case <-time.After(60 * time.Second):
+			t.Fatal("the watcher took no poll within 60 s")
+		}
+	}
+}
+
+// assertOneRebuild polls once more (nothing is left pending), then fails on any further event
+// within 2 s or on other than one rebuild.
+func assertOneRebuild(t *testing.T, r *devRun, events <-chan string, poll func()) {
+	t.Helper()
+	poll()
 	select {
 	case e := <-events:
 		t.Fatalf("a second event after the reload: %q", e)
