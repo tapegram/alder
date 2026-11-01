@@ -90,6 +90,19 @@ func TestSelectionRange_Edges(t *testing.T) {
 	const bare = "app/Bare.alder"
 	c.open(bare, "x = 1\ny = 2\n")
 	ps := []Position{{0, 1}, {1, 2}}
+	// What the lexer takes for a module: a BOM, a tab and a bare `module` line are modules.
+	for name, text := range map[string]string{
+		"bom":  "\uFEFFmodule BomMod\n\nx = 1\n",
+		"tab":  "module\tTabMod\n\nx = 1\n",
+		"bare": "module\n\nx = 1\n",
+	} {
+		rel := "app/" + name + ".alder"
+		c.open(rel, text)
+		out := selectionRanges(t, c, rel, Position{2, 4})
+		if len(out) != 1 || out[0].Parent == nil {
+			t.Errorf("%s: want a chain, got %+v", name, out)
+		}
+	}
 	for name, uri := range map[string]string{
 		"outside the root": "file:///nowhere/x.alder",
 		"unknown":          c.uri("app/Unknown.alder"),

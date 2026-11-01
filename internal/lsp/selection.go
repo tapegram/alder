@@ -69,19 +69,20 @@ func selectionRangeReq(s *server, params json.RawMessage) (any, error) {
 	return out, nil
 }
 
-// hasModuleLine is whether the document starts (after blanks and comments) with its `module`
-// line; without one the parser recovers a fragment whose nodes are not worth selecting. A scratch
-// file always parses behind its own `module Scratch`.
+// hasModuleLine is whether the document's first token is the keyword `module` (the parser's
+// own test, so a BOM, tabs and a bare `module` line count as the lexer counts them); without one
+// the parser recovers a fragment whose nodes are not worth selecting. A scratch file always
+// parses behind its own `module Scratch`.
 func (d syntaxDoc) hasModuleLine() bool {
 	if d.scratch != nil {
 		return true
 	}
-	for _, l := range d.lines {
-		l = strings.TrimSpace(l)
-		if l == "" || strings.HasPrefix(l, "--") {
+	lx := syntax.NewLexer("", []byte(strings.Join(d.lines, "\n")))
+	for {
+		t := lx.Next()
+		if t.Kind == syntax.NL {
 			continue
 		}
-		return strings.HasPrefix(l, "module ")
+		return t.Kind == syntax.Keyword && t.Text == "module"
 	}
-	return false
 }
