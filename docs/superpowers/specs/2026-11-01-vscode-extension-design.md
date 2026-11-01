@@ -280,7 +280,7 @@ rather than a hope.
 
 ### Repository and layout
 
-**(call)** A new repository, `tapegram/alder-vscode`, as alder.nvim is its own: a Marketplace
+**(confirmed by the user, 2026-11-01)** A new repository, `tapegram/alder-vscode`, as alder.nvim is its own: a Marketplace
 and Open VSX listing want a repository URL, README and CHANGELOG of their own; its CI is
 Node-only and builds `alder` from a checkout of `tapegram/alder` at the ref in `.alder-ref`
 (alder.nvim's workflow does exactly this: checkout, `go build -o $RUNNER_TEMP/bin/alder
