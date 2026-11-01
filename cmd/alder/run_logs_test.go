@@ -122,6 +122,29 @@ func TestLogPipe_Styled(t *testing.T) {
 	}
 }
 
+// A record whose message spans several lines is styled line by line, as the app's text log was.
+func TestLogPipe_StyledMultiline(t *testing.T) {
+	var term bytes.Buffer
+	st := style.ForEnv(&term, func(k string) string { return map[string]string{"ALDER_COLOR": "always"}[k] })
+	p := newLogPipe(&term, st, applog.Info, false, newEventHub("b00t", eventRing))
+	rec := `{"time":"2026-11-01T12:00:00Z","level":"WARN","msg":"first\nsecond\nthird"}`
+	p.Write([]byte(rec + "\n"))
+	text := rendered(t, rec, applog.Info)
+	if strings.Count(text, "\n") < 3 {
+		t.Fatalf("Render(%q) = %q, want several lines", rec, text)
+	}
+	var want strings.Builder
+	for l := range strings.Lines(text) {
+		want.WriteString(logLine(st)(strings.TrimSuffix(l, "\n")) + "\n")
+	}
+	if term.String() != want.String() {
+		t.Errorf("terminal = %q, want %q", term.String(), want.String())
+	}
+	if !strings.Contains(term.String(), st.Yellow("warn:")) {
+		t.Errorf("terminal = %q: the level word is not styled", term.String())
+	}
+}
+
 func TestLogPipe_PassesJSONWhenAsked(t *testing.T) {
 	var term bytes.Buffer
 	h := newEventHub("b00t", eventRing)

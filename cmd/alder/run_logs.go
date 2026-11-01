@@ -117,13 +117,17 @@ func (p *logPipe) line(l []byte, nl bool) {
 	if p.tail != nil {
 		_, _ = p.tail.Write(out)
 	}
-	if p.st.On() {
-		s, hadNL := strings.CutSuffix(string(out), "\n")
-		s = logLine(p.st)(s)
-		if hadNL {
-			s += "\n"
+	if p.st.On() { // each terminal line on its own, as style.Lines did: a record's message may span several
+		var sb strings.Builder
+		style := logLine(p.st)
+		for l := range strings.Lines(string(out)) {
+			s, hadNL := strings.CutSuffix(l, "\n")
+			sb.WriteString(style(s))
+			if hadNL {
+				sb.WriteByte('\n')
+			}
 		}
-		_, _ = io.WriteString(p.term, s)
+		_, _ = io.WriteString(p.term, sb.String())
 		return
 	}
 	_, _ = p.term.Write(out)
