@@ -58,6 +58,7 @@ var (
 		"textDocument/colorPresentation":    colorPresentationReq,
 		"textDocument/semanticTokens/full":  semanticTokensFullReq,
 		"textDocument/semanticTokens/range": semanticTokensRangeReq,
+		"textDocument/foldingRange":         foldingRangeReq,
 		"alder/generators":                  generatorsReq,
 		"alder/routes":                      routesReq,
 	}

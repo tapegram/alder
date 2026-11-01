@@ -123,6 +123,7 @@ func capabilities(enc posEncoding) map[string]any {
 		"codeActionProvider":         map[string]any{"codeActionKinds": []string{"quickfix", "refactor"}},
 		"executeCommandProvider":     map[string]any{"commands": []string{"alder.explain", "alder.fill"}},
 		"semanticTokensProvider":     semanticTokensProvider(),
+		"foldingRangeProvider":       true,
 		"experimental":               map[string]any{"alderScratch": true},
 	}
 }

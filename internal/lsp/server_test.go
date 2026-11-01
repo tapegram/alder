@@ -84,6 +84,9 @@ func TestInitialize_Capabilities(t *testing.T) {
 		fmt.Sprint(legend["tokenModifiers"]) != "[declaration documentation defaultLibrary]" {
 		t.Fatalf("semanticTokensProvider %v", caps["semanticTokensProvider"])
 	}
+	if caps["foldingRangeProvider"] != true {
+		t.Fatalf("foldingRangeProvider %v", caps["foldingRangeProvider"])
+	}
 	if info := c.initResult["serverInfo"].(map[string]any); info["name"] != "alder" || info["version"] == "" {
 		t.Fatalf("serverInfo %v", info)
 	}
