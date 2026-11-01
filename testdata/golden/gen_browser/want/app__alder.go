@@ -97,16 +97,17 @@ var capAdapters = map[string]string{
 
 // Options configure Serve. The generated cmd/main.go fills them from the environment.
 type Options struct {
-	DB        string                  // the SQLite database file; ":memory:" or "" for a database in memory
-	Dev       bool                    // development mode: a changed schema recreates the tables; error pages show the error
-	Secret    []byte                  // the session cookie key: at least 16 bytes (in dev mode, shorter means the public development key)
-	StaticDir string                  // the directory served under /static/; "" for none
-	Reload    string                  // under alder run, the build generation; non-empty: pages subscribe to the dev server's reloads and error overlay
-	Log       func(level, msg string) // nil: no log
-	Access    func(*applog.Access)    // one call per request routed (not the health check); nil: no access log
-	Build     string                  // the build's id (ALDER_BUILD, set by alder deploy), answered by /_alder/health
-	Metrics   *metrics.Collector      // ALDER_METRICS: answers /_alder/metrics and counts requests; nil: no endpoint
-	SlowAfter time.Duration           // ALDER_SLOW_MS: a request this slow is a warn line with its breakdown; 0: none
+	DB        string                      // the SQLite database file; ":memory:" or "" for a database in memory
+	Dev       bool                        // development mode: a changed schema recreates the tables; error pages show the error
+	Secret    []byte                      // the session cookie key: at least 16 bytes (in dev mode, shorter means the public development key)
+	StaticDir string                      // the directory served under /static/; "" for none
+	Reload    string                      // under alder run, the build generation; non-empty: pages subscribe to the dev server's reloads and error overlay
+	Log       func(level, msg string)     // nil: no log
+	LogID     func(id, level, msg string) // as Log, for a line during a request: its id; nil: Log
+	Access    func(*applog.Access)        // one call per request routed (not the health check); nil: no access log
+	Build     string                      // the build's id (ALDER_BUILD, set by alder deploy), answered by /_alder/health
+	Metrics   *metrics.Collector          // ALDER_METRICS: answers /_alder/metrics and counts requests; nil: no endpoint
+	SlowAfter time.Duration               // ALDER_SLOW_MS: a request this slow is a warn line with its breakdown; 0: none
 }
 
 // Serve is the app's HTTP handler. It checks that o.Secret is at least 16 bytes outside dev
@@ -181,7 +182,7 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	}
 	w := Web()
 	w.Store, w.Caps, w.Log, w.Dev, w.Secret, w.StaticDir, w.Reload = store, reg, o.Log, o.Dev, o.Secret, o.StaticDir, o.Reload
-	w.Access, w.Metrics, w.SlowAfter = o.Access, o.Metrics, o.SlowAfter
+	w.LogID, w.Access, w.Metrics, w.SlowAfter = o.LogID, o.Access, o.Metrics, o.SlowAfter
 	w.Build, w.SharedMaintenance = o.Build, shared
 	for _, m := range Migrations {
 		w.Migrations = append(w.Migrations, m.Name)

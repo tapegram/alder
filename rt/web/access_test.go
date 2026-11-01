@@ -385,3 +385,34 @@ func TestDevPanel_MasksQuery(t *testing.T) {
 		t.Errorf("panel %s", panel)
 	}
 }
+
+// A line the app or the runtime logs during a request reaches Options.LogID with the request's
+// id (the X-Request-Id the response carries), an effect step's line included; Options.Log is
+// not called for it.
+func TestRouter_LogLinesCarryRid(t *testing.T) {
+	var mu sync.Mutex
+	var got []string
+	var plain []string
+	h := NewRouter(one("GET", "/x", func(rq *Request) Response {
+		rq.Env.Log("info", "x")
+		rq.Env.Log("effect", "Db.all Todo")
+		return PageResponse(doc("x"), nil, nil, false)
+	}), testOpts(func(o *Options) {
+		o.LogID = func(id, level, msg string) {
+			mu.Lock()
+			defer mu.Unlock()
+			got = append(got, id+" "+level+" "+msg)
+		}
+		o.Log = func(level, msg string) {
+			mu.Lock()
+			defer mu.Unlock()
+			plain = append(plain, level+" "+msg)
+		}
+	}))
+	w := serveRaw(h, httptest.NewRequest("GET", "/x", nil))
+	id := w.Header().Get("X-Request-Id")
+	want := []string{id + " info x", id + " effect Db.all Todo"}
+	if id == "" || strings.Join(got, "|") != strings.Join(want, "|") || len(plain) != 0 {
+		t.Errorf("LogID got %q, want %q; Log got %q", got, want, plain)
+	}
+}

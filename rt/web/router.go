@@ -39,6 +39,10 @@ type Options struct {
 	Caps  map[string]any          // capability implementations, copied into every Env
 	Now   func() time.Time        // nil: time.Now
 	Log   func(level, msg string) // nil: no log
+	// LogID, when set, is the hook for a line logged during a request (the app's Log.*, an
+	// effect step, a router error about the request), called with the request's id
+	// (applog.Logger.LogID); Log stays the hook for the lines outside one. nil: Log serves both.
+	LogID func(id, level, msg string)
 	// Access, when set, is called once for every request the router answers except the health
 	// check (HealthPath), after the answer is written (a panic's included): its id, method,
 	// masked URL, status, duration, body bytes and effect steps (applog.Logger.Access). nil: no
@@ -153,6 +157,10 @@ type tracker struct {
 	id     string
 	steps  int
 	acc    applog.Access // the record handed to Options.Access
+	rt     *router       // log's hooks
+	// logs are the lines logged during the request, kept while the dev panel records it (a
+	// request with a Recorder), for the dev server's request detail
+	logs []logLine
 	// route is the pattern of the route serve matched first (the metrics' route label and a
 	// slow line's route=); stats the request's statements, counted when Options.Metrics or
 	// SlowAfter is set (eff.Env.Stats points here: no allocation)
@@ -175,6 +183,25 @@ type tracker struct {
 	// alert is a Noticed answer's text for a request without Datastar (no toast without the
 	// script): rendered as an <al-alert> at the top of the page (document)
 	alert string
+}
+
+// logLine is one line the request logged: when, at which level (as Env.Log names it) and what.
+type logLine struct {
+	t          time.Time
+	level, msg string
+}
+
+// log is the Env.Log of a routed request: it keeps the line while the request is recorded, then
+// writes it through Options.LogID with the request's id, or through Options.Log without one.
+func (t *tracker) log(level, msg string) {
+	if t.rq != nil && t.rq.Env != nil && t.rq.Env.Rec != nil {
+		t.logs = append(t.logs, logLine{time.Now(), level, msg})
+	}
+	if t.rt.opts.LogID != nil {
+		t.rt.opts.LogID(t.id, level, msg)
+		return
+	}
+	t.rt.log(level, msg)
 }
 
 type hopMark struct {
@@ -447,7 +474,7 @@ func splitPath(escaped string) ([]string, bool) {
 }
 
 func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-	w := &tracker{ResponseWriter: rw, r: r, start: time.Now(), id: applog.RequestID(r), masker: rt.masker}
+	w := &tracker{ResponseWriter: rw, r: r, start: time.Now(), id: applog.RequestID(r), masker: rt.masker, rt: rt}
 	rw.Header().Set(applog.IDHeader, w.id)
 	st := hop{origin: r}
 	get := r.Method == http.MethodGet || r.Method == http.MethodHead
@@ -755,6 +782,9 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 			rq.Env.Stores = rt.opts.Stores
 		}
 		rq.Env.CheckSession = rt.opts.SessionCheck
+		if tw != nil {
+			rq.Env.Log = tw.log
+		}
 		if tw != nil && (rt.opts.Metrics != nil || rt.opts.SlowAfter > 0) {
 			rq.Env.Stats = &tw.stats // the tracker's: no allocation; nil otherwise, nothing timed
 		}

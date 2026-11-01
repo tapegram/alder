@@ -410,6 +410,7 @@ type Options struct {
 	StaticDir string                  // the directory served under /static/; "" for none
 	Reload    string                  // under alder run, the build generation; non-empty: pages subscribe to the dev server's reloads and error overlay
 	Log       func(level, msg string) // nil: no log
+	LogID     func(id, level, msg string) // as Log, for a line during a request: its id; nil: Log
 	Access    func(*applog.Access)    // one call per request routed (not the health check); nil: no access log
 	Build     string                  // the build's id (ALDER_BUILD, set by alder deploy), answered by /_alder/health
 	Metrics   *metrics.Collector      // ALDER_METRICS: answers /_alder/metrics and counts requests; nil: no endpoint
@@ -488,7 +489,7 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	}
 SILOSTORES	w := Web()
 	w.Store, w.Caps, w.Log, w.Dev, w.Secret, w.StaticDir, w.Reload = store, reg, o.Log, o.Dev, o.Secret, o.StaticDir, o.Reload
-	w.Access, w.Metrics, w.SlowAfter = o.Access, o.Metrics, o.SlowAfter
+	w.LogID, w.Access, w.Metrics, w.SlowAfter = o.LogID, o.Access, o.Metrics, o.SlowAfter
 	w.Build, w.SharedMaintenance = o.Build, shared
 SILOWEB
 	for _, m := range Migrations {
@@ -819,6 +820,7 @@ func main() {
 		Reload:    os.Getenv("ALDER_RELOAD"),
 		Build:     os.Getenv("ALDER_BUILD"),
 		Log:       lg.Log,
+		LogID:     lg.LogID,
 		Access:    lg.Access,
 		Metrics:   m,
 		SlowAfter: slow,

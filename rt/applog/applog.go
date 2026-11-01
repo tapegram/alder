@@ -120,8 +120,14 @@ func (l *Logger) Enabled(level Level) bool { return level >= l.min }
 
 // Log writes msg at the level named level: debug, info, warn or error, or "effect" (an effect
 // step, written at Debug as "effect <msg>"). An unknown level is written at Info with its name
-// kept in the text ("<level>: <msg>"), so nothing is lost. It is the runtime's Env.Log hook.
-func (l *Logger) Log(level, msg string) {
+// kept in the text ("<level>: <msg>"), so nothing is lost. It is the runtime's Env.Log hook for
+// a line outside a request.
+func (l *Logger) Log(level, msg string) { l.LogID("", level, msg) }
+
+// LogID is Log for a line written during the request whose id is id (RequestID): as JSON the
+// record carries it as "rid", the key the request's access record has. A text line is the same
+// as Log's, without the id, and so is a record with an empty id.
+func (l *Logger) LogID(id, level, msg string) {
 	lv, prefix := Info, ""
 	switch level {
 	case "debug":
@@ -140,7 +146,11 @@ func (l *Logger) Log(level, msg string) {
 		return
 	}
 	if l.format == JSON {
-		l.handle(slog.NewRecord(l.now().UTC(), slogLevel(lv), prefix+msg, 0))
+		r := slog.NewRecord(l.now().UTC(), slogLevel(lv), prefix+msg, 0)
+		if id != "" {
+			r.AddAttrs(slog.String("rid", id))
+		}
+		l.handle(r)
 		return
 	}
 	bp := l.start(lv)
