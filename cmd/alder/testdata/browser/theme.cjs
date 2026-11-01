@@ -143,6 +143,75 @@ const generation = async () => {
       write: document.getElementById('write').disabled }));
     check('import-copy', imp.copy === 'Copy' && /--font-serif/.test(imp.pre) && !imp.write, imp);
 
+    // start-from: choosing a preset replaces the whole working theme, previews it and writes nothing;
+    // a reload keeps it (sessionStorage); Reset returns to the committed theme; Write writes it
+    await page.click('#import-cancel');
+    await page.click('#reset');
+    const appFile = path.join(APPDIR, 'app', 'App.alder');
+    const srcBefore = fs.readFileSync(appFile, 'utf8');
+    const st2 = await page.evaluate(() => fetch('/_dev/theme/state').then((r) => r.json()));
+    const presetOf = (name) => st2.presets.find((p) => p.name === name);
+    const paper = presetOf('paper'), brutal = presetOf('brutal');
+    // every control's text for one scheme, field to value
+    const controls = (s) => page.evaluate(async (s) => {
+      const b = document.getElementById('scheme');
+      if (b.getAttribute('data-scheme') !== s) b.click();
+      const o = {};
+      document.querySelectorAll('.tp-row').forEach((r) => { o[r.getAttribute('data-field')] = r.querySelector('input.value').value; });
+      return o;
+    }, s);
+    // the theme's text for every token, in one scheme
+    const wantOf = (theme, s) => { const o = {}; st2.tokens.forEach((t) => { o[t.field] = (t.scope === 'root' ? theme.root : theme[s])[t.field] || ''; }); return o; };
+    const diff = (got, w) => Object.keys(w).filter((f) => got[f] !== w[f]).map((f) => f + ': ' + got[f] + ' != ' + w[f]);
+    const holds = async (theme) => [...diff(await controls('dark'), wantOf(theme, 'dark')), ...diff(await controls('light'), wantOf(theme, 'light'))];
+    const swatches = () => page.evaluate(() => [...document.querySelectorAll('#start-sw .tp-sw')].filter((e) => !e.closest('[hidden]')).map((e) => getComputedStyle(e).backgroundColor));
+    const startPick = await page.evaluate(() => ({ value: document.getElementById('start-from').value,
+      text: document.getElementById('start-from').selectedOptions[0].textContent,
+      options: [...document.getElementById('start-from').options].filter((o) => o.value).map((o) => [o.value, o.textContent, o.title]) }));
+    check('start-from-options', startPick.value === '' && startPick.text === '—' &&
+      JSON.stringify(startPick.options) === JSON.stringify(st2.presets.map((p) => [p.name, p.title, p.purpose])), startPick);
+
+    await page.selectOption('#start-from', 'paper');
+    const paperDiff = await holds(paper.theme);
+    const paperPrimary = await computed(paper.theme.light.primary);
+    // wait out the buttons' colour transition; on a timeout, start-from-paper below fails with the details
+    await page.waitForFunction((c) => getComputedStyle(document.querySelector('#g-primary > button')).backgroundColor === c, paperPrimary, { timeout: 3000 }).catch(() => {});
+    const paperBg = await buttonBg();
+    const paperSw = await swatches();
+    const wantSw = [];
+    for (const f of ['primary', 'background', 'accent', 'foreground', 'destructive']) wantSw.push(await computed(paper.theme.light[f]));
+    const chose = await page.evaluate(() => ({ write: document.getElementById('write').disabled, value: document.getElementById('start-from').value }));
+    check('start-from-paper', paperDiff.length === 0 && paperBg === paperPrimary && JSON.stringify(paperSw) === JSON.stringify(wantSw) &&
+      !chose.write && chose.value === 'paper' && fs.readFileSync(appFile, 'utf8') === srcBefore, { paperDiff, paperBg, paperPrimary, paperSw, wantSw, chose });
+
+    await page.reload();
+    await open();
+    const reValue = await page.evaluate(() => document.getElementById('start-from').value);
+    const reDiff = await holds(paper.theme);
+    check('start-from-reload', reValue === 'paper' && reDiff.length === 0 && fs.readFileSync(appFile, 'utf8') === srcBefore, { reValue, reDiff });
+
+    await page.click('#reset');
+    const resetDiff = await holds(st2.theme);
+    const resetPick = await page.evaluate(() => ({ value: document.getElementById('start-from').value, text: document.getElementById('start-from').selectedOptions[0].textContent }));
+    const resetSw = await swatches();
+    check('start-from-reset', resetDiff.length === 0 && resetPick.value === '' && resetPick.text === '—' && resetSw.length === 0, { resetDiff, resetPick, resetSw });
+
+    await page.selectOption('#start-from', 'brutal');
+    const reloaded2 = page.waitForEvent('load', { timeout: 120000 });
+    await page.click('#write');
+    await reloaded2;
+    await open();
+    await page.waitForFunction(() => document.getElementById('write').disabled && !document.getElementById('tp-status').hasAttribute('data-busy'), null, { timeout: 60000 });
+    const brutalSrc = fs.readFileSync(appFile, 'utf8');
+    const brutalDecl = (/theme \{[\s\S]*?\n\}/.exec(brutalSrc) || [''])[0];
+    // App.alder as /state reads it back holds every token of Brutal's theme, and nothing else
+    const st3 = await page.evaluate(() => fetch('/_dev/theme/state').then((r) => r.json()));
+    const canon = (t) => JSON.stringify(['root', 'light', 'dark'].map((b) => Object.entries(t[b] || {}).sort()));
+    const brutalLight = (/\n  light: \{[\s\S]*?\n  \}/.exec(brutalDecl) || [''])[0];
+    const brutalPick = await page.evaluate(() => document.getElementById('start-from').value);
+    check('start-from-write', canon(st3.theme) === canon(brutal.theme) && brutalLight.includes('primary: ' + JSON.stringify(brutal.theme.light.primary)) && brutalPick === 'brutal',
+      { brutalPick, brutalDecl, committed: st3.theme });
+
     check('no page errors', errors.length === 0, errors);
   } finally {
     await browser.close();

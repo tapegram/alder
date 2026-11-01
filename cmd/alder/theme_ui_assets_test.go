@@ -76,3 +76,14 @@ func TestThemePage_Links(t *testing.T) {
 		t.Errorf("the page served does not subscribe as of the generation:\n%s", body)
 	}
 }
+
+// The panel header has the Start-from select between the Light/Dark switch and Reset (spec
+// "The configurator's Start from").
+func TestPanel_StartFrom(t *testing.T) {
+	d, _ := themeServer(t)
+	body := serve(t, d, themeReq("GET", "/_dev/theme", ""), nil).Body.String()
+	scheme, start, reset := strings.Index(body, `id="scheme"`), strings.Index(body, `<select id="start-from"`), strings.Index(body, `id="reset"`)
+	if scheme < 0 || start < 0 || reset < 0 || !(scheme < start && start < reset) {
+		t.Errorf("want #scheme < #start-from < #reset in the page; got %d, %d, %d", scheme, start, reset)
+	}
+}

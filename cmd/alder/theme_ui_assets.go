@@ -35,6 +35,11 @@ const themePage = `<!doctype html>
 <span id="tp-status" class="tp-status" role="status"></span>
 </div>
 <div class="tp-bar">
+<label for="start-from" class="tp-dim">Start from</label>
+<select id="start-from" title="Replace the working theme with a preset's"><option value="">—</option></select>
+<span id="start-sw" aria-hidden="true" hidden><span class="tp-sw" data-sw="primary" title="primary"></span><span class="tp-sw" data-sw="background" title="background"></span><span class="tp-sw" data-sw="accent" title="accent"></span><span class="tp-sw" data-sw="foreground" title="foreground"></span><span class="tp-sw" data-sw="destructive" title="destructive"></span></span>
+</div>
+<div class="tp-bar">
 <button type="button" id="reset" title="Back to the theme in App.alder">Reset</button>
 <button type="button" id="import" aria-expanded="false" aria-controls="tp-import">Import…</button>
 <button type="button" id="write" class="tp-primary" disabled>Write to App.alder</button>
@@ -100,6 +105,9 @@ body{display:grid;grid-template-columns:22rem minmax(0,1fr);min-block-size:100vh
 #scheme span{padding:.15rem .6rem;border-radius:4px}
 #scheme[data-scheme="light"] span[data-s="light"],#scheme[data-scheme="dark"] span[data-s="dark"]{color:var(--tp-acc-fg);background:var(--tp-acc)}
 .tp-status{color:var(--tp-dim);font-size:12px}
+#tp .tp-dim{color:var(--tp-dim)}
+#start-sw{display:inline-flex;gap:3px}
+#start-sw[hidden]{display:none}
 .tp-status[data-busy]::before{content:"";display:inline-block;inline-size:.55rem;block-size:.55rem;margin-inline-end:.35rem;border-radius:50%;background:var(--tp-acc);animation:tp-pulse 1s ease-in-out infinite alternate}
 @keyframes tp-pulse{from{opacity:.25}to{opacity:1}}
 #tp-import{padding:.75rem 1rem;border-block-end:1px solid var(--tp-line)}
@@ -328,7 +336,7 @@ function apply(){if(!st)return;applyTo(html);if(appShown){try{var d=$("app").con
 
 // the controls
 function set(t,v){var b=bucket(t);v=(v||"").trim();if(v)working[b][t.field]=v;else delete working[b][t.field];
-save();apply();Object.keys(rows).forEach(function(f){sync(rows[f])});buttons()}
+save();apply();Object.keys(rows).forEach(function(f){sync(rows[f])});startSync();buttons()}
 function row(t){var r={t:t},e=el("div",{"class":"tp-row tp-"+t.kind.replace(" ","-"),"data-field":t.field,title:t.css}),id="tp-in-"+t.field;
 var head=el("div",{"class":"tp-head"}),ctl=el("div",{"class":"tp-ctl"});r.el=e;
 if(t.kind==="colour"){r.sw=el("span",{"class":"tp-sw","aria-hidden":"true"});head.appendChild(r.sw)}
@@ -378,7 +386,15 @@ function build(){var rb=$("tp-root"),cb=$("tp-colours");rb.textContent="";cb.tex
 st.tokens.forEach(function(t){var r=row(t);rows[t.field]=r;(t.scope==="root"?rb:cb).appendChild(r.el)})}
 function syncAll(){Object.keys(rows).forEach(function(f){sync(rows[f]);[].forEach.call(rows[f].diag.children,function(p){if(p.hasAttribute("data-msg"))p.textContent=diagText(p)})});
 $("tp-colours-h").textContent="Colours of the "+scheme+" scheme";var s=$("scheme");s.setAttribute("data-scheme",scheme);
-s.setAttribute("aria-label","Scheme: "+scheme+" (switch to "+(scheme==="light"?"dark":"light")+")")}
+s.setAttribute("aria-label","Scheme: "+scheme+" (switch to "+(scheme==="light"?"dark":"light")+")");startSync()}
+// Start from: the preset the working theme is exactly ("—" when none), and its light swatches
+function preset(name){var p=null;(st.presets||[]).forEach(function(x){if(x.name===name)p=x});return p}
+function startSync(){if(!st)return;var sel=$("start-from"),dash=sel.options[0],p=null;
+(st.presets||[]).forEach(function(x){if(!p&&same(x.theme,working))p=x});
+dash.hidden=!!p;sel.value=p?p.name:"";var sw=$("start-sw");sw.hidden=!p;
+[].forEach.call(sw.children,function(e){e.style.background=p?(p.theme.light[e.getAttribute("data-sw")]||""):""})}
+function buildStart(){var sel=$("start-from");while(sel.options.length>1)sel.remove(1);
+(st.presets||[]).forEach(function(p){sel.appendChild(el("option",{value:p.name,title:p.purpose},p.title))})}
 function buttons(){var w=$("write");w.disabled=!st||broken||busy||st.building||same(working,committed);$("reset").disabled=!st||same(working,committed)}
 function status(text,on){var s=$("tp-status");s.textContent=text||"";s.toggleAttribute("data-busy",!!on)}
 function clearDiags(){$("tp-msgs").textContent="";Object.keys(rows).forEach(function(f){rows[f].diag.textContent=""})}
@@ -413,11 +429,13 @@ if(s.building){st.building=true;buttons();return tick()}polling=false;if(wrote||
 
 function init(s){st=s;$("tp-version").textContent=s.version;$("tp-file").textContent=s.file;$("write").textContent="Write to "+s.file.split("/").pop();
 broken=!s.theme;committed=norm(s.theme);working=restore()||copy(committed);
-if(!Object.keys(rows).length)build();syncAll();apply();buttons();
+if(!Object.keys(rows).length)build();buildStart();syncAll();apply();buttons();
 if(broken)message(s.error||(s.file+" cannot be read"));else if(!wrote)clearDiags();
 if(s.building){status("building…",true);poll()}else status(same(working,committed)?"":"unsaved changes")}
 
 $("scheme").addEventListener("click",function(){scheme=scheme==="light"?"dark":"light";syncAll();apply()});
+$("start-from").addEventListener("change",function(){var p=preset(this.value);if(!p)return;
+working=norm(p.theme);save();syncAll();apply();buttons();clearDiags();status(same(working,committed)?"":"unsaved changes")});
 $("reset").addEventListener("click",function(){working=copy(committed);save();syncAll();apply();buttons();clearDiags();status("")});
 $("write").addEventListener("click",function(){busy=true;buttons();status("writing…",true);
 post("/_dev/theme/write",{theme:working}).then(function(res){var a=res.body||{};
