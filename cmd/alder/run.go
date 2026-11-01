@@ -48,9 +48,11 @@ func runRunTo(args []string, stdout, stderr io.Writer, stop <-chan struct{}) int
 type runOpts struct {
 	addr        string           // the address to listen on; "" is localhost:8080
 	onDevServer func(*devServer) // when set, called with the devServer before it starts
+	watchTicks  <-chan time.Time // when set, the watcher polls once per tick instead of every watch.DefaultInterval
+	watchReady  func()           // when set, called once the watcher has taken its first snapshot
 }
 
-// runRunWith is runRunTo with its address and dev-server hook given in opts.
+// runRunWith is runRunTo with its address, dev-server hook and watcher seams given in opts.
 func runRunWith(args []string, stdout, stderr io.Writer, stop <-chan struct{}, opts runOpts) int {
 	dir, haveDir, bd := ".", false, ""
 	for i := 0; i < len(args); i++ {
@@ -98,7 +100,11 @@ func runRunWith(args []string, stdout, stderr io.Writer, stop <-chan struct{}, o
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		watch.Watch(dir, watch.DefaultInterval, d.done, changed)
+		if opts.watchTicks != nil {
+			watch.WatchTicks(dir, nil, opts.watchTicks, d.done, changed, opts.watchReady)
+		} else {
+			watch.WatchReady(dir, nil, watch.DefaultInterval, d.done, changed, opts.watchReady)
+		}
 	}()
 	go func() {
 		defer wg.Done()

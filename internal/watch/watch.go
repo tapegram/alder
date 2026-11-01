@@ -43,6 +43,15 @@ func WatchWith(dir string, extra []string, interval time.Duration, stop <-chan s
 // WatchReady is WatchWith that calls ready (when not nil) once the first snapshot is taken: a
 // change made after that is seen, one made before it is part of the baseline.
 func WatchReady(dir string, extra []string, interval time.Duration, stop <-chan struct{}, changed chan<- Change, ready func()) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	WatchTicks(dir, extra, t.C, stop, changed, ready)
+}
+
+// WatchTicks is WatchReady polling once per value received from ticks instead of every interval:
+// a test's way to drive the polls. A send on an unbuffered ticks returns once the first snapshot
+// and every earlier poll are done.
+func WatchTicks(dir string, extra []string, ticks <-chan time.Time, stop <-chan struct{}, changed chan<- Change, ready func()) {
 	snap := func() map[string]Stamp {
 		m := Snapshot(dir)
 		for _, f := range extra {
@@ -57,13 +66,11 @@ func WatchReady(dir string, extra []string, interval time.Duration, stop <-chan 
 		ready()
 	}
 	var pending Change
-	t := time.NewTicker(interval)
-	defer t.Stop()
 	for {
 		select {
 		case <-stop:
 			return
-		case <-t.C:
+		case <-ticks:
 		}
 		cur := snap()
 		if k := Diff(prev, cur); k != 0 {
