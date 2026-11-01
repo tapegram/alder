@@ -343,3 +343,118 @@ func BenchmarkAccess_JSON(b *testing.B) {
 		l.Access(&a)
 	}
 }
+
+func TestLogID_JSONCarriesRid(t *testing.T) {
+	var buf bytes.Buffer
+	l := newAt(&buf, Debug, JSON)
+	l.LogID("5f3a2c1e", "info", "hi")
+	l.Log("info", "hi")
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("%d lines: %q", len(lines), buf.String())
+	}
+	var with, without map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &with); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(lines[1]), &without); err != nil {
+		t.Fatal(err)
+	}
+	if with["rid"] != "5f3a2c1e" || with["msg"] != "hi" {
+		t.Errorf("LogID record %v", with)
+	}
+	if _, ok := without["rid"]; ok {
+		t.Errorf("Log record has a rid: %v", without)
+	}
+}
+
+func TestLogID_TextUnchanged(t *testing.T) {
+	var a, b bytes.Buffer
+	la, lb := newAt(&a, Debug, Text), newAt(&b, Debug, Text)
+	for _, lv := range []string{"info", "warn", "effect", "odd"} {
+		la.LogID("5f3a2c1e", lv, "hi\nthere")
+		lb.Log(lv, "hi\nthere")
+	}
+	if a.String() != b.String() || strings.Contains(a.String(), "5f3a2c1e") {
+		t.Errorf("LogID wrote\n%s\nLog wrote\n%s", a.String(), b.String())
+	}
+}
+
+// dbSample is sample with its statements counted, as the router does in dev mode.
+func dbSample() Access {
+	a := sample
+	a.Counted, a.Stmts, a.DBDur, a.Repeats = true, 11, 31200*time.Microsecond, 1
+	return a
+}
+
+func decodeLine(t *testing.T, b *bytes.Buffer) map[string]any {
+	t.Helper()
+	var got map[string]any
+	dec := json.NewDecoder(b)
+	dec.UseNumber()
+	if err := dec.Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func TestAccess_DebugJSONCarriesDB(t *testing.T) {
+	var b bytes.Buffer
+	a := dbSample()
+	newAt(&b, Debug, JSON).Access(&a)
+	got := decodeLine(t, &b)
+	for k, v := range map[string]json.Number{"db_stmts": "11", "db_ms": "31.2", "repeats": "1", "steps": "4"} {
+		if got[k] != v {
+			t.Errorf("%s = %#v, want %v (%v)", k, got[k], v, got)
+		}
+	}
+	// a slow record keeps its keys and gains repeats at Debug only
+	for _, min := range []Level{Info, Debug} {
+		b.Reset()
+		s := dbSample()
+		s.Slow, s.Route = true, "/x"
+		newAt(&b, min, JSON).Access(&s)
+		got := decodeLine(t, &b)
+		_, has := got["repeats"]
+		if has != (min == Debug) || got["db_stmts"] != json.Number("11") || got["slow"] != true {
+			t.Errorf("slow at %v: %v", min, got)
+		}
+	}
+}
+
+func TestAccess_InfoJSONUnchanged(t *testing.T) {
+	var b bytes.Buffer
+	a := dbSample()
+	newAt(&b, Info, JSON).Access(&a)
+	got := decodeLine(t, &b)
+	for _, k := range []string{"db_stmts", "db_ms", "repeats"} {
+		if _, ok := got[k]; ok {
+			t.Errorf("Info record has %s: %v", k, got)
+		}
+	}
+}
+
+func TestAccess_NotCountedNoDB(t *testing.T) {
+	var b bytes.Buffer
+	a := dbSample()
+	a.Counted = false
+	newAt(&b, Debug, JSON).Access(&a)
+	got := decodeLine(t, &b)
+	for _, k := range []string{"db_stmts", "db_ms", "repeats"} {
+		if _, ok := got[k]; ok {
+			t.Errorf("uncounted record has %s: %v", k, got)
+		}
+	}
+}
+
+// The text of a Debug line is the same whether or not its JSON twin carries the db keys.
+func TestAccess_DebugJSONRendersAsText(t *testing.T) {
+	var j, x bytes.Buffer
+	a := dbSample()
+	newAt(&j, Debug, JSON).Access(&a)
+	newAt(&x, Debug, Text).Access(&a)
+	got, ok := Render(j.Bytes(), Debug)
+	if !ok || string(got) != x.String() {
+		t.Errorf("rendered %q, text %q", got, x.String())
+	}
+}

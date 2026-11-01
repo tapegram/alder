@@ -798,7 +798,7 @@ The types, with an example of each:
 {"child":"127.0.0.1:65295","gen":"afcb2a7d-1","ms":2105,"seq":3,"state":"ok","t":"2026-11-01T12:00:02.3Z","type":"build"}
 {"child":"127.0.0.1:65295","seq":4,"state":"started","t":"2026-11-01T12:00:02.3Z","type":"app"}
 {"seq":5,"t":"2026-11-01T12:00:02.4Z","text":"dev server on localhost:8080 → app on 127.0.0.1:65295","type":"run"}
-{"record":{"time":"2026-11-01T12:00:05.1Z","level":"INFO","msg":"GET /","method":"GET","path":"/","status":200,"ms":1.4,"bytes":2311,"rid":"5f3a2c1e","steps":3},"seq":6,"t":"2026-11-01T12:00:05.1Z","type":"log"}
+{"record":{"time":"2026-11-01T12:00:05.1Z","level":"INFO","msg":"GET /","method":"GET","path":"/","status":200,"ms":1.4,"bytes":2311,"rid":"5f3a2c1e","steps":3,"db_stmts":2,"db_ms":0.5,"repeats":0},"seq":6,"t":"2026-11-01T12:00:05.1Z","type":"log"}
 {"diagnostics":[{"code":"E0003","severity":"error","file":"app/Layout.alder","line":10,"col":15,"endLine":10,"endCol":16,"message":"expected Text, Html or List Html in `{…}`, got Int"}],"gen":"afcb2a7d-2","seq":8,"state":"failed","t":"2026-11-01T12:03:10.0Z","type":"build"}
 {"raw":"goroutine 1 [running]:","seq":11,"t":"2026-11-01T12:09:00.0Z","type":"log"}
 {"exit":{"code":2},"seq":12,"state":"exited","t":"2026-11-01T12:09:00.0Z","tail":["panic: …"],"type":"app"}
@@ -821,7 +821,10 @@ The types, with an example of each:
 - **`log`** is one line the app wrote. It has `record`, the line's JSON
   object, when it is a record the app's logger writes (with a `time`, a
   `level` and a `msg`), and otherwise `raw`, the line as it is, such as a line
-  of a panic's stack.
+  of a panic's stack. A record written while a request was being answered has
+  `rid`, that request's id, so a client groups the lines of one request by it;
+  the request's access record is the one that also has `status`, and under
+  `alder run` it carries `db_stmts`, `db_ms` and `repeats` too.
 
 **The app logs JSON at debug, and you never notice.** Under `alder run` the
 app always starts with `ALDER_LOG=debug` and `ALDER_LOG_FORMAT=json`,
@@ -873,6 +876,62 @@ were none. And `hello` carries `boot`, a random string chosen when the dev
 server starts: a client that sees a `boot` other than the one it knew knows
 that every number it holds, and everything it showed from the old events,
 belongs to another dev server, and starts again from nothing.
+
+**The requests the app served: `/_dev/requests`.** The feed's `log` events
+say that a request happened; this endpoint says what it did. The app keeps the
+last 200 requests in a ring buffer of its own (the same idea as the feed's
+ring, but inside the app's process, not the dev server's), and for each one
+the steps it ran, every SQL statement with its arguments, the time each took,
+and the lines it logged. The ring exists only in dev: the app fills it for the
+same requests the dev panel at the foot of a page shows, which is why it is
+there only under `alder run`; a production app never allocates it. The
+dev server passes the request through, so you ask the address you already
+use. `GET /_dev/requests` lists the requests, newest first, one summary
+each, and `GET /_dev/requests/{rid}` gives one request in full, where `rid` is
+the request id that the `log` event for it carries (and `X-Request-Id`
+answers).
+
+```text
+$ curl localhost:8080/_dev/requests
+[{"rid":"5f3a2c1e","t":"2026-11-01T12:00:05.1Z","method":"GET","path":"/","route":"/","status":200,"ms":1.4,"bytes":2311,"steps":3,"stmts":2,"repeats":0,"slow":false}]
+$ curl localhost:8080/_dev/requests/5f3a2c1e
+{"rid":"5f3a2c1e","t":"2026-11-01T12:00:05.1Z","method":"GET","path":"/","route":"/","status":200,"ms":1.4,"bytes":2311,"steps":[{"name":"Db.query","ms":0.3,"cap":""}],"sql":[{"stmt":"SELECT id, title FROM Todo__Todo","args":[],"ms":0.2,"rows":3,"group":0}],"loads":1,"cuts":[],"logs":[],"slow":false,"warnings":[]}
+```
+
+(Trimmed; a real record has every step and statement.) `repeats` counts the
+groups of the same statement run again and again in one request, the "N+1"
+pattern; `warnings` says each in words. A request that has left the ring (or
+that an earlier run of the app served) answers 404 with `{"error": …}`. The
+requests to `/_dev/requests` and `/_dev/map.json` are never recorded, so
+looking does not change what you see.
+
+**The map of the app: `/_dev/map.json`.** `GET /_dev/map.json` is the page at
+`/_dev`, as data. The compiler knows the app's pages, tables and silos, and
+writes them into the program as one JSON text; the running app adds what only
+it knows: the build id, the migrations applied, which capabilities have a real
+adapter and which a fake, and the routes. A tool that wants to show your
+tables, such as the TUI's Data screen, reads this and never your source.
+
+```text
+$ curl localhost:8080/_dev/map.json
+{"build":"afcb2a7d","map":{"pages":[…],"tables":[{"name":"Todo.Todo","sql":"Todo__Todo","columns":["id: Text","title: Text","done: Bool"],"cols":[{"name":"id","type":"Text","sql":"id","sqlType":"TEXT"},{"name":"done","type":"Bool","sql":"done","sqlType":"INTEGER"}],"id":"id"}],"session":[]},"caps":[{"name":"Auth.Login.Password","kind":"adapter"}],"migrations":["0001_init"],"routes":[{"method":"GET","pat":"/"}]}
+```
+
+(Trimmed; a real map has every page, table and column.)
+
+A table has two names. `name` is the Alder name, `Module.Name`; `sql` is the
+SQL table it is stored in, the same with `__` for the dot, which is what you
+write in a query in a SQLite shell. Each entry of `cols` gives the column's
+`name` and Alder `type`, its `sql` name and its `sqlType`: `TEXT`, `INTEGER`
+(Int and Bool) or `REAL` (Float); a Date, a Time and an enum are `TEXT`. An
+app with silos (chapter 16) also has `silos`: each has the `key`, the `ref`
+(the table whose ids are the key's values), its `tables`, and `path`, where
+the database file of one value lives under the shared database's directory.
+`silos/org/{value}.db` is not the id itself: `{value}` stands for the id's
+text in lowercase base32 (the "hex" alphabet, `0-9a-v`), because ids are case
+sensitive and a file system may not be. The table of a silo says so in `silo`.
+Like the ring, the map is served only under `ALDER_DEV=1`; a production app
+answers `/_dev/map.json` as it answers any page that is not there.
 
 **Restarting the app.** `POST /_dev/restart` starts a new app from the last
 build without a rebuild (or builds, when no build has succeeded yet), as a

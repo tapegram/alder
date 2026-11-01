@@ -179,5 +179,7 @@ func TestAccessLog_FilteredNoCost(t *testing.T) {
 
 // offAllocs is what TestAccessLog_FilteredNoCost's request allocates with no access hook, no
 // metrics and no slow threshold: the count main has with #93 and its masking fixes (go1.27). Metrics and ALDER_SLOW_MS (#92)
-// must not move it; a Go upgrade that does is re-pinned here deliberately.
-const offAllocs = 54
+// must not move it; a Go upgrade that does is re-pinned here deliberately. 55: the router's
+// Env.Log is the tracker's log method (one method-value allocation, for the request detail's log
+// lines).
+const offAllocs = 55

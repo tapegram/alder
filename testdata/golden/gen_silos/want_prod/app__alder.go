@@ -63,16 +63,17 @@ var capAdapters = map[string]string{}
 
 // Options configure Serve. The generated cmd/main.go fills them from the environment.
 type Options struct {
-	DB        string                  // the SQLite database file; ":memory:" or "" for a database in memory
-	Dev       bool                    // development mode: a changed schema recreates the tables; error pages show the error
-	Secret    []byte                  // the session cookie key: at least 16 bytes (in dev mode, shorter means the public development key)
-	StaticDir string                  // the directory served under /static/; "" for none
-	Reload    string                  // under alder run, the build generation; non-empty: pages subscribe to the dev server's reloads and error overlay
-	Log       func(level, msg string) // nil: no log
-	Access    func(*applog.Access)    // one call per request routed (not the health check); nil: no access log
-	Build     string                  // the build's id (ALDER_BUILD, set by alder deploy), answered by /_alder/health
-	Metrics   *metrics.Collector      // ALDER_METRICS: answers /_alder/metrics and counts requests; nil: no endpoint
-	SlowAfter time.Duration           // ALDER_SLOW_MS: a request this slow is a warn line with its breakdown; 0: none
+	DB        string                      // the SQLite database file; ":memory:" or "" for a database in memory
+	Dev       bool                        // development mode: a changed schema recreates the tables; error pages show the error
+	Secret    []byte                      // the session cookie key: at least 16 bytes (in dev mode, shorter means the public development key)
+	StaticDir string                      // the directory served under /static/; "" for none
+	Reload    string                      // under alder run, the build generation; non-empty: pages subscribe to the dev server's reloads and error overlay
+	Log       func(level, msg string)     // nil: no log
+	LogID     func(id, level, msg string) // as Log, for a line during a request: its id; nil: Log
+	Access    func(*applog.Access)        // one call per request routed (not the health check); nil: no access log
+	Build     string                      // the build's id (ALDER_BUILD, set by alder deploy), answered by /_alder/health
+	Metrics   *metrics.Collector          // ALDER_METRICS: answers /_alder/metrics and counts requests; nil: no endpoint
+	SlowAfter time.Duration               // ALDER_SLOW_MS: a request this slow is a warn line with its breakdown; 0: none
 }
 
 // Serve is the app's HTTP handler. It checks that o.Secret is at least 16 bytes outside dev
@@ -159,7 +160,7 @@ func Serve(caps Caps, o Options) (http.Handler, error) {
 	}
 	w := Web()
 	w.Store, w.Caps, w.Log, w.Dev, w.Secret, w.StaticDir, w.Reload = store, reg, o.Log, o.Dev, o.Secret, o.StaticDir, o.Reload
-	w.Access, w.Metrics, w.SlowAfter = o.Access, o.Metrics, o.SlowAfter
+	w.LogID, w.Access, w.Metrics, w.SlowAfter = o.LogID, o.Access, o.Metrics, o.SlowAfter
 	w.Build, w.SharedMaintenance = o.Build, shared
 	w.Stores = stores
 	for _, m := range Migrations {
@@ -178,7 +179,7 @@ func Web() web.Options {
 		ErrorDoc:       App__error,
 		NotFoundDoc:    func() html.Node { return App__notFound },
 		Login:          "/login",
-		DevMap:         "{\"pages\":[{\"module\":\"Admin.Projects\",\"path\":\"/admin/orgs/{org}/projects\",\"requires\":\"user\",\"roles\":[\"Admin\"],\"params\":[\"org: Text\"],\"msgs\":[\"Remove\"]},{\"module\":\"Login\",\"path\":\"/login\"},{\"module\":\"Notes.Index\",\"path\":\"/notes\",\"requires\":\"user\",\"msgs\":[\"Add\"]},{\"module\":\"Orgs\",\"path\":\"/orgs\",\"requires\":\"user\",\"msgs\":[\"Pick\",\"Switch\"]},{\"module\":\"Projects.Index\",\"path\":\"/projects\",\"requires\":\"user, org\",\"msgs\":[\"Add\",\"Rename\",\"Remove\",\"Seed\",\"Tag\"]}],\"tables\":[{\"name\":\"Org.Org\",\"columns\":[\"id: Text\",\"name: Text\"],\"id\":\"id\"},{\"name\":\"Project.Project\",\"columns\":[\"id: Text\",\"name: Text\",\"org: Text\"],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\"}},{\"name\":\"User.User\",\"columns\":[\"id: Text\",\"name: Text\"],\"id\":\"id\"},{\"name\":\"Label.Label\",\"columns\":[\"id: Text\",\"name: Text\",\"org: Text\"],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\"}},{\"name\":\"Note.Note\",\"columns\":[\"id: Text\",\"text: Text\",\"owner: Text\"],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"},\"owner\":\"owner\"},{\"name\":\"Membership.Membership\",\"columns\":[\"id: Text\",\"user: Text\",\"org: Text\"],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\",\"user\":\"User.User\"},\"onDelete\":{\"org\":\"cascade\",\"user\":\"cascade\"}}],\"caps\":[],\"session\":[\"user: Maybe Text\",\"org: Maybe Text\",\"role: User.Role\"],\"appMsgs\":[\"Leave\"]}",
+		DevMap:         "{\"pages\":[{\"module\":\"Admin.Projects\",\"path\":\"/admin/orgs/{org}/projects\",\"requires\":\"user\",\"roles\":[\"Admin\"],\"params\":[\"org: Text\"],\"msgs\":[\"Remove\"]},{\"module\":\"Login\",\"path\":\"/login\"},{\"module\":\"Notes.Index\",\"path\":\"/notes\",\"requires\":\"user\",\"msgs\":[\"Add\"]},{\"module\":\"Orgs\",\"path\":\"/orgs\",\"requires\":\"user\",\"msgs\":[\"Pick\",\"Switch\"]},{\"module\":\"Projects.Index\",\"path\":\"/projects\",\"requires\":\"user, org\",\"msgs\":[\"Add\",\"Rename\",\"Remove\",\"Seed\",\"Tag\"]}],\"tables\":[{\"name\":\"Org.Org\",\"sql\":\"Org__Org\",\"columns\":[\"id: Text\",\"name: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"}],\"id\":\"id\"},{\"name\":\"Project.Project\",\"sql\":\"Project__Project\",\"columns\":[\"id: Text\",\"name: Text\",\"org: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"},{\"name\":\"org\",\"type\":\"Text\",\"sql\":\"org\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\"},\"silo\":\"org\"},{\"name\":\"User.User\",\"sql\":\"User__User\",\"columns\":[\"id: Text\",\"name: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"}],\"id\":\"id\"},{\"name\":\"Label.Label\",\"sql\":\"Label__Label\",\"columns\":[\"id: Text\",\"name: Text\",\"org: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"},{\"name\":\"org\",\"type\":\"Text\",\"sql\":\"org\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\"}},{\"name\":\"Note.Note\",\"sql\":\"Note__Note\",\"columns\":[\"id: Text\",\"text: Text\",\"owner: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"text\",\"type\":\"Text\",\"sql\":\"text\",\"sqlType\":\"TEXT\"},{\"name\":\"owner\",\"type\":\"Text\",\"sql\":\"owner\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"},\"owner\":\"owner\"},{\"name\":\"Membership.Membership\",\"sql\":\"Membership__Membership\",\"columns\":[\"id: Text\",\"user: Text\",\"org: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"user\",\"type\":\"Text\",\"sql\":\"user\",\"sqlType\":\"TEXT\"},{\"name\":\"org\",\"type\":\"Text\",\"sql\":\"org\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\",\"user\":\"User.User\"},\"onDelete\":{\"org\":\"cascade\",\"user\":\"cascade\"}}],\"caps\":[],\"session\":[\"user: Maybe Text\",\"org: Maybe Text\",\"role: User.Role\"],\"appMsgs\":[\"Leave\"],\"silos\":[{\"key\":\"org\",\"ref\":\"Org.Org\",\"tables\":[\"Project.Project\"],\"path\":\"silos/org/{value}.db\"}]}",
 		Silos:          Silos,
 		MaintenanceDoc: func() html.Node { return App__maintenance },
 		SessionCheck:   session__via,

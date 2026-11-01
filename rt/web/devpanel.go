@@ -262,13 +262,35 @@ func repeatMarks(reps [][]eff.Repeat) map[segStmt]eff.Repeat {
 	return out
 }
 
+// repeatCount is the number of N+1 groups tw's answer ran, over its segments (segRepeats). Found
+// once per request: warnRepeats and the access record share it. Dev mode only: a request has a
+// Recorder only then, and 0 otherwise.
+func repeatCount(tw *tracker) int {
+	n := 0
+	for _, rs := range tw.segRepeats() {
+		n += len(rs)
+	}
+	return n
+}
+
+// segRepeats is the N+1s of each segment of tw's answer, found on the first call.
+func (tw *tracker) segRepeats() [][]eff.Repeat {
+	if !tw.repsDone {
+		tw.repsDone = true
+		if tw.rq != nil && tw.rq.Env != nil && tw.rq.Env.Rec != nil {
+			tw.reps = segRepeats(tw.hops, tw.rq.Env.Rec)
+		}
+	}
+	return tw.reps
+}
+
 // warnRepeats logs at warn each N+1 of the answer tw tracked, with the request line of its
 // segment: `GET /slow: N+1: …`. Dev mode only: a request has a Recorder only then.
 func (rt *router) warnRepeats(tw *tracker) {
 	if !rt.opts.Dev || tw.rq == nil || tw.rq.Env == nil || tw.rq.Env.Rec == nil {
 		return // a test's browser records too (Options.EnvFor), and warns in its own report
 	}
-	for s, rs := range segRepeats(tw.hops, tw.rq.Env.Rec) {
+	for s, rs := range tw.segRepeats() {
 		head := tw.r.Method + " " + rt.maskPath(tw.r.Method, tw.r.URL)
 		if s > 0 {
 			u, _, _ := strings.Cut(rt.maskRef(tw.hops[s-1].url), "?")
@@ -423,43 +445,87 @@ var devPage = template.Must(template.New("dev").Parse(`<!doctype html><html><hea
 <ul>{{range .Routes}}<li>{{if .Link}}{{.Method}} <a href="{{.Pat}}">{{.Pat}}</a>{{else}}{{.Method}} <code>{{.Pat}}</code>{{end}}</li>{{end}}</ul>
 </body></html>`))
 
+// devMapData is the generator's map (internal/gen's devMap) as the runtime reads it. /_dev shows
+// it and /_dev/map.json re-encodes it, so every field the generator writes is named here.
 type devMapData struct {
 	Pages   []devMapPage  `json:"pages"`
 	Tables  []devMapTable `json:"tables"`
+	Caps    []string      `json:"caps,omitempty"`
 	Session []string      `json:"session"`
-	AppMsgs []string      `json:"appMsgs"`
+	AppMsgs []string      `json:"appMsgs,omitempty"`
+	Silos   []devMapSilo  `json:"silos,omitempty"`
 }
 
 type devMapPage struct {
-	Module, Path, Requires string
-	Roles, Params, Msgs    []string
-	Link                   bool `json:"-"`
+	Module   string   `json:"module"`
+	Path     string   `json:"path"`
+	Requires string   `json:"requires,omitempty"`
+	Roles    []string `json:"roles,omitempty"`
+	Params   []string `json:"params,omitempty"`
+	Msgs     []string `json:"msgs,omitempty"`
+	Link     bool     `json:"-"`
 }
 
 type devMapTable struct {
-	Name                        string
-	Columns                     []string
-	ID, Created, Updated, Owner string
-	Unique                      []string
-	Refs, OnDelete              map[string]string
+	Name     string            `json:"name"`
+	SQL      string            `json:"sql,omitempty"`
+	Columns  []string          `json:"columns"`
+	Cols     []devMapCol       `json:"cols,omitempty"`
+	ID       string            `json:"id,omitempty"`
+	Created  string            `json:"created,omitempty"`
+	Updated  string            `json:"updated,omitempty"`
+	Unique   []string          `json:"unique,omitempty"`
+	Refs     map[string]string `json:"refs,omitempty"`
+	OnDelete map[string]string `json:"onDelete,omitempty"`
+	Owner    string            `json:"owner,omitempty"`
+	Silo     string            `json:"silo,omitempty"`
 }
 
-type devCap struct{ Name, Kind string }
+// devMapCol is one column of a table: its Alder name and type, its SQL name and its SQL storage
+// type (TEXT, INTEGER or REAL).
+type devMapCol struct {
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	SQL     string `json:"sql"`
+	SQLType string `json:"sqlType"`
+}
+
+// devMapSilo is one `silo` declaration: its key, the table the key's values are ids of, its
+// tables and the path of a value's database file relative to the shared database's directory.
+type devMapSilo struct {
+	Key    string   `json:"key"`
+	Ref    string   `json:"ref"`
+	Tables []string `json:"tables"`
+	Path   string   `json:"path"`
+}
+
+type devCap struct {
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+}
 type devRoute struct {
-	Method, Pat string
-	Link        bool
+	Method string `json:"method"`
+	Pat    string `json:"pat"`
+	Link   bool   `json:"-"`
 }
 
-// devMap serves /_dev: the running app's pages, messages, tables, capabilities (adapter or fake
-// wired), session shape, migrations applied, routes and build id.
-func (rt *router) devMap(w http.ResponseWriter, r *http.Request) {
-	data := struct {
-		Build      string
-		Map        devMapData
-		Caps       []devCap
-		Migrations []string
-		Routes     []devRoute
-	}{Build: BuildID(), Migrations: rt.opts.Migrations}
+// devMapView is what /_dev shows and /_dev/map.json encodes: the generator's map and what only the
+// running router knows.
+type devMapView struct {
+	Build      string     `json:"build"`
+	Map        devMapData `json:"map"`
+	Caps       []devCap   `json:"caps"`
+	Migrations []string   `json:"migrations"`
+	Routes     []devRoute `json:"routes"`
+}
+
+// devMapView collects the running app's map: the generator's (Options.DevMap), the capabilities
+// (adapter or fake wired), the migrations applied, the routes and the build id.
+func (rt *router) devMapView() devMapView {
+	data := devMapView{Build: BuildID(), Migrations: rt.opts.Migrations, Caps: []devCap{}, Routes: []devRoute{}}
+	if data.Migrations == nil {
+		data.Migrations = []string{}
+	}
 	if rt.opts.DevMap != "" {
 		if err := json.Unmarshal([]byte(rt.opts.DevMap), &data.Map); err != nil {
 			rt.log("error", "reading the dev map: "+err.Error())
@@ -494,13 +560,33 @@ func (rt *router) devMap(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Caps = append(data.Caps, devCap{k, kind})
 	}
+	return data
+}
+
+// devMap serves /_dev: the running app's pages, messages, tables, capabilities (adapter or fake
+// wired), session shape, migrations applied, routes and build id.
+func (rt *router) devMap(w http.ResponseWriter, r *http.Request) {
 	var b bytes.Buffer
-	if err := devPage.Execute(&b, data); err != nil {
+	if err := devPage.Execute(&b, rt.devMapView()); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(b.Bytes())
+}
+
+// serveMapJSON serves /_dev/map.json: /_dev's data as JSON, for the dev server's tools. The
+// generator's map is decoded and encoded again, so the fields it adds (SQL names, silos) pass
+// through.
+func (rt *router) serveMapJSON(w http.ResponseWriter, r *http.Request) {
+	b, err := json.Marshal(rt.devMapView())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(append(b, '\n'))
 }
 
 // maskPath is the path of u (a request with method's URL) as the panel's bar shows it: masked

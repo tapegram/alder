@@ -120,8 +120,14 @@ func (l *Logger) Enabled(level Level) bool { return level >= l.min }
 
 // Log writes msg at the level named level: debug, info, warn or error, or "effect" (an effect
 // step, written at Debug as "effect <msg>"). An unknown level is written at Info with its name
-// kept in the text ("<level>: <msg>"), so nothing is lost. It is the runtime's Env.Log hook.
-func (l *Logger) Log(level, msg string) {
+// kept in the text ("<level>: <msg>"), so nothing is lost. It is the runtime's Env.Log hook for
+// a line outside a request.
+func (l *Logger) Log(level, msg string) { l.LogID("", level, msg) }
+
+// LogID is Log for a line written during the request whose id is id (RequestID): as JSON the
+// record carries it as "rid", the key the request's access record has. A text line is the same
+// as Log's, without the id, and so is a record with an empty id.
+func (l *Logger) LogID(id, level, msg string) {
 	lv, prefix := Info, ""
 	switch level {
 	case "debug":
@@ -140,7 +146,11 @@ func (l *Logger) Log(level, msg string) {
 		return
 	}
 	if l.format == JSON {
-		l.handle(slog.NewRecord(l.now().UTC(), slogLevel(lv), prefix+msg, 0))
+		r := slog.NewRecord(l.now().UTC(), slogLevel(lv), prefix+msg, 0)
+		if id != "" {
+			r.AddAttrs(slog.String("rid", id))
+		}
+		l.handle(r)
 		return
 	}
 	bp := l.start(lv)
@@ -209,8 +219,13 @@ type Access struct {
 	// SlowAfter): the line is written at Warn with Route, Steps, Stmts and DBDur appended.
 	Slow  bool
 	Route string        // the matched route pattern, or the router's fixed name (a Slow line's route=)
-	Stmts int           // database statements run (eff.Stats; counted when metrics or slow is on)
+	Stmts int           // database statements run (eff.Stats; counted when metrics, slow or the dev panel is on)
 	DBDur time.Duration // their time
+	// Counted is set by the router when Stmts and DBDur were counted (metrics, the slow
+	// threshold or the dev panel is on); Repeats is the N+1 groups the request ran, found in dev
+	// mode only (0 otherwise). A Debug JSON record carries db_stmts, db_ms and repeats when Counted.
+	Counted bool
+	Repeats int
 }
 
 // Access writes a's line at Info (Debug when a.Quiet; Warn when a.Slow). As text:
@@ -223,7 +238,9 @@ type Access struct {
 //
 //	GET /todos/3 200 812.4ms 4821B rid=5f3a2c1e slow route=/todos/{id} steps=12 db=9/640.1ms
 //
-// and as JSON carries slow, route, steps, db_stmts and db_ms.
+// and as JSON carries slow, route, steps, db_stmts and db_ms. A JSON record at Debug whose
+// statements were counted (Counted) also carries repeats, and db_stmts and db_ms when it is not
+// Slow; the text of a line never shows them.
 func (l *Logger) Access(a *Access) {
 	lv := Info
 	switch {
@@ -244,8 +261,14 @@ func (l *Logger) Access(a *Access) {
 		if a.Slow {
 			r.AddAttrs(slog.Bool("slow", true), slog.String("route", a.Route), slog.Int("steps", a.Steps),
 				slog.Int("db_stmts", a.Stmts), slog.Float64("db_ms", tenths(a.DBDur)))
+			if l.min == Debug && a.Counted {
+				r.AddAttrs(slog.Int("repeats", a.Repeats))
+			}
 		} else if l.min == Debug {
 			r.AddAttrs(slog.Int("steps", a.Steps))
+			if a.Counted {
+				r.AddAttrs(slog.Int("db_stmts", a.Stmts), slog.Float64("db_ms", tenths(a.DBDur)), slog.Int("repeats", a.Repeats))
+			}
 		}
 		l.handle(r)
 		return

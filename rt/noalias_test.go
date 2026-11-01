@@ -33,6 +33,12 @@ func TestNoWritesToParameters(t *testing.T) {
 		"std/num.go: incDecimal index d": "called only on a fresh []byte",
 		// Datastar region tracking: the renderer's own tracker, never an Alder value.
 		"html/html.go: (*renderer).render append tr": "tr is the renderer's own region tracker (regions, open tags); Go-side only",
+		// The router's tracker keeps the lines a recorded request logs for the dev server's
+		// request detail: its own slice of Go strings, never an Alder value.
+		"web/router.go: (*tracker).log append t": "t.logs is the tracker's own record of the request's log lines",
+		// The dev server's request ring stores records the router built from a finished request:
+		// its own array and lookup of Go values, never an Alder value.
+		"web/devrequests.go: (*reqRing).add index g": "g is the router's request ring; its slots and lookup are its own",
 		// Repair's tree builder: bnodes and the stack are created by the builder itself.
 		"html/repair.go: (*bnode).build index n":           "n is a copy of the builder's own node; children is a fresh make",
 		"html/repair.go: (*builder).fosterParent append p": "p is a builder-owned bnode, never an Alder value",
