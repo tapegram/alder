@@ -37,7 +37,7 @@ type themeState struct {
 	Theme    *theme.Theme             `json:"theme"`           // nil when App does not parse
 	Error    string                   `json:"error,omitempty"` // why Theme is nil
 	Defaults map[string]theme.Default `json:"defaults"`        // keyed by field name; a theme-wide token's in .Light (and .Dark)
-	Tokens   []themeToken             `json:"tokens"`          // theme.Tokens, in order
+	Tokens   []themeToken             `json:"tokens"`          // theme.Tokens(), in order
 	Building bool                     `json:"building"`        // a build, or a write's rebuild, has not finished (devServer.building)
 	Presets  []themePreset            `json:"presets"`         // theme.Presets, in order: the Start-from picker's themes
 }
@@ -50,13 +50,14 @@ type themePreset struct {
 	Theme   theme.Theme `json:"theme"`
 }
 
-// themeToken is one row of theme.Tokens: Kind is Kind.String(), Scope "scheme" (a colour, set
+// themeToken is one row of theme.Tokens(): Kind is Kind.String(), Scope "scheme" (a colour, set
 // under `light` and `dark`) or "root" (theme-wide).
 type themeToken struct {
 	Field string `json:"field"`
 	CSS   string `json:"css"`
 	Kind  string `json:"kind"`
 	Scope string `json:"scope"`
+	Desc  string `json:"desc"`
 }
 
 // themeUnplaced and themeSkipped are theme.Unplaced and theme.Skipped as the page reads them.
@@ -210,12 +211,12 @@ func writeThemeJSON(w http.ResponseWriter, status int, v any) {
 func (d *devServer) themeState() themeState {
 	st := themeState{Version: theme.Version(), File: themeFile, Defaults: map[string]theme.Default{}}
 	defaults := theme.Defaults()
-	for _, t := range theme.Tokens {
+	for _, t := range theme.Tokens() {
 		scope := "root"
 		if t.Kind == theme.Colour {
 			scope = "scheme"
 		}
-		st.Tokens = append(st.Tokens, themeToken{t.Field, t.CSS, t.Kind.String(), scope})
+		st.Tokens = append(st.Tokens, themeToken{t.Field, t.CSS, t.Kind.String(), scope, t.Description})
 		if v, ok := defaults[t.CSS]; ok {
 			st.Defaults[t.Field] = v
 		}

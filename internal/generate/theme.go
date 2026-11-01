@@ -89,7 +89,7 @@ func ThemeText(th theme.Theme) (string, error) {
 	return format.Theme(fs), nil
 }
 
-// themeFields are th's fields in theme.Tokens order: the top-level ones, then `light`, then
+// themeFields are th's fields in theme.Tokens() order: the top-level ones, then `light`, then
 // `dark` (an empty record left out). A name that is not a token follows the tokens, sorted,
 // for check.ThemeFields to refuse. Values are trimmed; a Font token's value is a list of its
 // families.
@@ -108,7 +108,7 @@ func themeFields(th theme.Theme) []*syntax.DeployField {
 			fs = append(fs, &syntax.DeployField{Name: name, Value: val})
 		}
 		known := map[string]bool{}
-		for _, t := range theme.Tokens {
+		for _, t := range theme.Tokens() {
 			known[t.Field] = true
 			if _, ok := m[t.Field]; ok {
 				add(t.Field, t.Kind == theme.Font)

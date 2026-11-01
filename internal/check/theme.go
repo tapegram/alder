@@ -11,7 +11,7 @@ import (
 )
 
 // The `theme` declaration (Appendix C, "Changing a token"): alder-ui tokens App sets, emitted as
-// CSS after al.css (internal/theme). The checker holds every name to theme.Tokens and every
+// CSS after al.css (internal/theme). The checker holds every name to theme.Tokens() and every
 // value to its kind's shape (E0042), so nothing the build writes can break out of its
 // declaration.
 

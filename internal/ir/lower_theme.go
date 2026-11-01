@@ -11,7 +11,7 @@ import (
 
 // Theme is App's `theme { … }` (Appendix C): the alder-ui tokens it sets, by block: the
 // theme-wide ones (`:root`), the light colours (`:root, .light`) and the dark (`.dark`), each in
-// theme.Tokens order. The generated Web() carries its CSS (web.Options.Theme).
+// theme.Tokens() order. The generated Web() carries its CSS (web.Options.Theme).
 type Theme struct {
 	Root, Light, Dark []Setting
 }

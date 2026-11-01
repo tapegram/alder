@@ -83,10 +83,10 @@ func TestThemeState_Blog(t *testing.T) {
 	if got := st.Theme.Root["radius"]; got != "0.5rem" {
 		t.Errorf("root.radius %q", got)
 	}
-	if len(st.Tokens) != len(theme.Tokens) {
-		t.Errorf("%d tokens, want %d", len(st.Tokens), len(theme.Tokens))
+	if len(st.Tokens) != len(theme.Tokens()) {
+		t.Errorf("%d tokens, want %d", len(st.Tokens), len(theme.Tokens()))
 	}
-	if st.Tokens[0] != (themeToken{Field: "radius", CSS: "--radius", Kind: "length", Scope: "root"}) {
+	if r, _ := theme.Lookup("radius"); r.Description == "" || st.Tokens[0] != (themeToken{Field: "radius", CSS: "--radius", Kind: "length", Scope: "root", Desc: r.Description}) {
 		t.Errorf("first token %+v", st.Tokens[0])
 	}
 	if st.Defaults["primary"].Light == "" || st.Defaults["radius"].Light == "" {
@@ -97,7 +97,7 @@ func TestThemeState_Blog(t *testing.T) {
 	}
 	// the JSON keys are lowercase, and an empty map is {}, never null
 	w := serve(t, d, themeReq("GET", "/_dev/theme/state", ""), nil)
-	for _, want := range []string{`"field":"radius"`, `"scope":"scheme"`, `"defaults":{`} {
+	for _, want := range []string{`"field":"radius"`, `"scope":"scheme"`, `"desc":"`, `"defaults":{`} {
 		if !strings.Contains(w.Body.String(), want) {
 			t.Errorf("state lacks %s: %s", want, w.Body)
 		}
@@ -133,7 +133,7 @@ func TestThemeState_ParseError(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &st); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(st.Error, "app/App.alder") || len(st.Tokens) != len(theme.Tokens) {
+	if !strings.Contains(st.Error, "app/App.alder") || len(st.Tokens) != len(theme.Tokens()) {
 		t.Errorf("error %q, %d tokens", st.Error, len(st.Tokens))
 	}
 }

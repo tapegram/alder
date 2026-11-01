@@ -1,12 +1,16 @@
 // Package theme is the table of alder-ui's tokens an app may set in App's `theme { … }`
 // declaration (book Appendix C, "Changing a token"): each token's field name, CSS name, kind and
-// where it may appear, the tokens alder-ui v0.4 removed, alder-ui's own values (Defaults, read
-// from the vendored rt/al/al.css), the shapes a value may take, and the CSS a checked theme
-// becomes (css.go). The checker, the IR lowering, the LSP and the build all read it.
+// where it may appear, and alder-ui's own values (Defaults), all read from the vendored Zinc
+// preset (presets/zinc); the tokens alder-ui v0.4 removed; the shapes a value may take; and the
+// CSS a checked theme becomes (css.go). The checker, the IR lowering, the LSP and the build all
+// read it.
 package theme
 
 import (
+	"fmt"
+	"io/fs"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
@@ -36,69 +40,53 @@ func (k Kind) String() string {
 }
 
 // Token is one settable token: its field name in `theme` (lowerCamel), its CSS name (with the
-// leading `--`) and its kind. A colour is set under `light` or `dark`; every other kind at the
-// top level of the declaration.
+// leading `--`), its kind and what it is for (the Zinc file's `$description`). A colour is set
+// under `light` or `dark`; every other kind at the top level of the declaration.
 type Token struct {
-	Field string
-	CSS   string
-	Kind  Kind
+	Field       string
+	CSS         string
+	Kind        Kind
+	Description string
 }
 
-// Tokens are alder-ui's settable tokens, in the order the emitted CSS lists them. A test holds
-// them to the custom properties rt/al/al.css declares in its token blocks.
-var Tokens = []Token{
-	{"radius", "--radius", Length},
-	{"radiusSm", "--radius-sm", Length},
-	{"radiusMd", "--radius-md", Length},
-	{"radiusLg", "--radius-lg", Length},
-	{"radiusXl", "--radius-xl", Length},
-	{"widthNarrow", "--al-width-narrow", Length},
-	{"widthNormal", "--al-width-normal", Length},
-	{"widthWide", "--al-width-wide", Length},
-	{"fontSans", "--font-sans", Font},
-	{"fontMono", "--font-mono", Font},
-	{"shadowXs", "--shadow-xs", Shadow},
-	{"shadowSm", "--shadow-sm", Shadow},
-	{"shadowMd", "--shadow-md", Shadow},
-	{"shadowLg", "--shadow-lg", Shadow},
-	{"borderWidth", "--al-border-width", Length},
-	{"background", "--background", Colour},
-	{"foreground", "--foreground", Colour},
-	{"card", "--card", Colour},
-	{"cardForeground", "--card-foreground", Colour},
-	{"popover", "--popover", Colour},
-	{"popoverForeground", "--popover-foreground", Colour},
-	{"primary", "--primary", Colour},
-	{"primaryForeground", "--primary-foreground", Colour},
-	{"secondary", "--secondary", Colour},
-	{"secondaryForeground", "--secondary-foreground", Colour},
-	{"muted", "--muted", Colour},
-	{"mutedForeground", "--muted-foreground", Colour},
-	{"accent", "--accent", Colour},
-	{"accentForeground", "--accent-foreground", Colour},
-	{"destructive", "--destructive", Colour},
-	{"destructiveForeground", "--destructive-foreground", Colour},
-	{"border", "--border", Colour},
-	{"input", "--input", Colour},
-	{"ring", "--ring", Colour},
-	{"chart1", "--chart-1", Colour},
-	{"chart2", "--chart-2", Colour},
-	{"chart3", "--chart-3", Colour},
-	{"chart4", "--chart-4", Colour},
-	{"chart5", "--chart-5", Colour},
-	{"sidebar", "--sidebar", Colour},
-	{"sidebarForeground", "--sidebar-foreground", Colour},
-	{"sidebarPrimary", "--sidebar-primary", Colour},
-	{"sidebarPrimaryForeground", "--sidebar-primary-foreground", Colour},
-	{"sidebarAccent", "--sidebar-accent", Colour},
-	{"sidebarAccentForeground", "--sidebar-accent-foreground", Colour},
-	{"sidebarBorder", "--sidebar-border", Colour},
-	{"sidebarRing", "--sidebar-ring", Colour},
-}
+// zinc is the vendored Zinc preset as the DTCG reader loads it: the source of Tokens and
+// Defaults. It is read with loadDTCG and converted with cssText only, never through ImportDTCG
+// or Presets, which look names up in Tokens. It panics when the preset does not load, since
+// that is a build defect.
+var zinc = sync.OnceValue(func() *dtcgDoc {
+	sub, err := fs.Sub(presetFS, "presets/zinc")
+	if err != nil {
+		panic("theme: preset zinc: " + err.Error())
+	}
+	doc, err := loadDTCG(sub, "theme.resolver.json")
+	if err != nil {
+		panic("theme: preset zinc: " + err.Error())
+	}
+	return doc
+})
+
+// Tokens are alder-ui's settable tokens, in the order the emitted CSS lists them: the vendored
+// Zinc preset's tokens in file order, its base file (the theme-wide tokens) first, then its
+// light file (the colours). The CSS name is `--` and the token's name, Field is FieldName of
+// it, Kind follows `$type`. A test holds them to the custom properties rt/al/al.css declares in
+// its token blocks. The result is shared: do not change it.
+var Tokens = sync.OnceValue(func() []Token {
+	doc := zinc()
+	var out []Token
+	for _, t := range slices.Concat(doc.Root, doc.Light) {
+		css := "--" + dtcgSegment(t.Path)
+		k, ok := dtcgTypeKinds[t.Type]
+		if !ok {
+			panic(fmt.Sprintf("theme: preset zinc: %s has $type %q", css, t.Type))
+		}
+		out = append(out, Token{Field: FieldName(css), CSS: css, Kind: k, Description: t.Description})
+	}
+	return out
+})
 
 // Lookup is the token whose field name is field.
 func Lookup(field string) (Token, bool) {
-	for _, t := range Tokens {
+	for _, t := range Tokens() {
 		if t.Field == field {
 			return t, true
 		}
@@ -108,7 +96,7 @@ func Lookup(field string) (Token, bool) {
 
 // ByCSS is the token whose CSS name (with `--`) is name.
 func ByCSS(name string) (Token, bool) {
-	for _, t := range Tokens {
+	for _, t := range Tokens() {
 		if t.CSS == name {
 			return t, true
 		}
@@ -192,26 +180,34 @@ var Version = sync.OnceValue(func() string {
 // theme-wide token).
 type Default struct{ Light, Dark string }
 
-// Defaults are alder-ui's values by CSS name, read once from the vendored stylesheet's token
-// blocks: `:root, .light`, `.dark` and the theme-independent `:root`.
+// Defaults are alder-ui's values by CSS name: the vendored Zinc preset's values as CSS text,
+// a theme-wide token's the same in both schemes. A test holds them equivalent to the values
+// rt/al/al.css declares (whose derived radii are calc()s of --radius; these are plain lengths).
 var Defaults = sync.OnceValue(func() map[string]Default {
-	light, dark, root := Blocks()
-	out := map[string]Default{}
-	for name, v := range root {
-		out[name] = Default{v, v}
-	}
-	for name, v := range light {
-		d := out[name]
-		d.Light = v
-		if _, ok := dark[name]; !ok {
-			d.Dark = v // --radius: in the light block, theme-wide
+	doc := zinc()
+	text := func(t dtcgToken, scheme string) (css, v string) {
+		v, err := doc.cssText(t, scheme)
+		if err != nil {
+			panic("theme: preset zinc: " + err.Error())
 		}
-		out[name] = d
+		return "--" + dtcgSegment(t.Path), v
 	}
-	for name, v := range dark {
-		d := out[name]
+	out := map[string]Default{}
+	for _, t := range doc.Root {
+		css, v := text(t, "")
+		out[css] = Default{v, v}
+	}
+	for _, t := range doc.Light {
+		css, v := text(t, "light")
+		d := out[css]
+		d.Light = v
+		out[css] = d
+	}
+	for _, t := range doc.Dark {
+		css, v := text(t, "dark")
+		d := out[css]
 		d.Dark = v
-		out[name] = d
+		out[css] = d
 	}
 	return out
 })
@@ -245,7 +241,7 @@ func Blocks() (light, dark, root map[string]string) {
 // Suggest is the field name nearest to name by edit distance, if it is at most 2 away.
 func Suggest(name string) (Token, bool) {
 	best, bestD := Token{}, 3
-	for _, t := range Tokens {
+	for _, t := range Tokens() {
 		if d := distance(strings.ToLower(name), strings.ToLower(t.Field)); d < bestD {
 			best, bestD = t, d
 		}
