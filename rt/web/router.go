@@ -135,6 +135,9 @@ type router struct {
 	// probeAt is when (unix seconds) a refused scrape's access line was last written at Info: one
 	// a minute is, the rest are Debug, so a scanner hammering /_alder/metrics cannot flood the log
 	probeAt atomic.Int64
+
+	// reqs is the last requestRing requests the dev panel recorded, for /_dev/requests
+	reqs reqRing
 }
 
 // sessionMaxAge is the session cookie's lifetime in seconds: 30 days from the time the session
@@ -260,10 +263,14 @@ func line(w http.ResponseWriter, r *http.Request, what string) string {
 
 // quiet reports whether the request for path answered status is a healthy file — the
 // Datastar script or another runtime file (/_alder/), a static one (/static/) answered 2xx or
-// 304, or the dev map (/_dev) answered 200 — whose access line is Debug, not Info.
+// 304, the dev map (/_dev) answered 200, or a dev endpoint (devFeed: the request ring, the map
+// as JSON) answered 2xx — whose access line is Debug, not Info.
 func quiet(path string, status int) bool {
 	if path == "/_dev" {
 		return status == http.StatusOK
+	}
+	if devFeed(path) {
+		return status >= 200 && status < 300
 	}
 	return (strings.HasPrefix(path, staticPrefix) || strings.HasPrefix(path, alderPrefix)) &&
 		(status >= 200 && status < 300 || status == http.StatusNotModified)
@@ -496,8 +503,8 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 				rt.fail(w, r, st, html.None(), err, debug.Stack())
 			}
 		}
+		dur := time.Since(w.start)
 		if !unseen && (rt.opts.Access != nil || m != nil) {
-			dur := time.Since(w.start)
 			label := routeLabel(w.route, r.URL.Path)
 			if rt.opts.Access != nil {
 				// the record lives in the tracker, and the URL is masked only when the logger
@@ -525,6 +532,9 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 					m.InFlight(-1)
 				}
 			}
+		}
+		if !unseen {
+			rt.recordRequest(w, dur) // the dev server's request detail: dev panel only
 		}
 		if v == http.ErrAbortHandler {
 			panic(v)
@@ -555,6 +565,10 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			rt.reload(w, r)
 			return
 		}
+	}
+	if get && (r.URL.Path == devRequestsPath || strings.HasPrefix(r.URL.Path, devRequestsPath+"/")) && rt.panelOn() {
+		rt.devRequests(w, r)
+		return
 	}
 	if get && r.URL.Path == "/_dev" && rt.devOn() {
 		rt.devMap(w, r)
