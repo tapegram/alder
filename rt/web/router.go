@@ -41,7 +41,7 @@ type Options struct {
 	Log   func(level, msg string) // nil: no log
 	// LogID, when set, is the hook for a line logged during a request (the app's Log.*, an
 	// effect step, a router error about the request), called with the request's id
-	// (applog.Logger.LogID); Log stays the hook for the lines outside one. nil: Log serves both.
+	// (applog.Logger.LogID; the router's own lines about the request included); Log stays the hook for the lines outside one. nil: Log serves both.
 	LogID func(id, level, msg string)
 	// Access, when set, is called once for every request the router answers except the health
 	// check (HealthPath), after the answer is written (a panic's included): its id, method,
@@ -201,13 +201,24 @@ type logLine struct {
 // writes it through Options.LogID with the request's id, or through Options.Log without one.
 func (t *tracker) log(level, msg string) {
 	if t.rq != nil && t.rq.Env != nil && t.rq.Env.Rec != nil {
-		t.logs = append(t.logs, logLine{time.Now(), level, msg})
+		t.logs = append(t.logs, logLine{t.rt.now().UTC(), level, msg})
 	}
 	if t.rt.opts.LogID != nil {
 		t.rt.opts.LogID(t.id, level, msg)
 		return
 	}
 	t.rt.log(level, msg)
+}
+
+// logReq logs a line about the request w answers: through the request's tracker (so it carries
+// the request's id and is kept in its record) when w is the router's own writer, through
+// Options.Log otherwise.
+func (rt *router) logReq(w http.ResponseWriter, level, msg string) {
+	if tw, ok := w.(*tracker); ok {
+		tw.log(level, msg)
+		return
+	}
+	rt.log(level, msg)
 }
 
 type hopMark struct {
@@ -498,7 +509,7 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			err := fmt.Errorf("panic: %v", v)
 			// The stack goes to the log only, never to the page.
 			if w.started {
-				rt.log("error", line(w, r, fmt.Sprintf("%v (after the response started)", err))+"\n"+string(debug.Stack()))
+				rt.logReq(w, "error", line(w, r, fmt.Sprintf("%v (after the response started)", err))+"\n"+string(debug.Stack()))
 			} else {
 				rt.fail(w, r, st, html.None(), err, debug.Stack())
 			}
@@ -720,7 +731,7 @@ func (rt *router) health(w http.ResponseWriter, r *http.Request) {
 func (rt *router) reload(w http.ResponseWriter, r *http.Request) {
 	dropSignals(r.URL)
 	if err := datastar.Navigate(w, r.URL.RequestURI(), datastar.Assign); err != nil {
-		rt.log("error", line(w, r, fmt.Sprintf("writing the navigation: %v", err)))
+		rt.logReq(w, "error", line(w, r, fmt.Sprintf("writing the navigation: %v", err)))
 	}
 }
 
@@ -769,7 +780,7 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 		// a file is a document of its own: a real navigation, its load not run. Not rt.reload:
 		// ServeHTTP has already dropped the boost's signals parameter from r.URL.
 		if err := datastar.Navigate(w, r.URL.RequestURI(), datastar.Assign); err != nil {
-			rt.log("error", line(w, r, fmt.Sprintf("writing the navigation: %v", err)))
+			rt.logReq(w, "error", line(w, r, fmt.Sprintf("writing the navigation: %v", err)))
 		}
 		return
 	}
@@ -786,7 +797,7 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 	if method == http.MethodPost {
 		form, status := readForm(w, r)
 		if status != 0 {
-			rt.log("warn", line(w, r, refusal[status]))
+			rt.logReq(w, "warn", line(w, r, refusal[status]))
 			http.Error(w, http.StatusText(status), status)
 			return
 		}
@@ -1045,7 +1056,7 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 				// another site: the client's fetch would follow a 303 itself and patch the new
 				// page into the old URL; navigate the browser instead
 				if err := datastar.Navigate(w, resp.Location, datastar.Assign); err != nil {
-					rt.log("error", line(w, r, fmt.Sprintf("writing the navigation: %v", err)))
+					rt.logReq(w, "error", line(w, r, fmt.Sprintf("writing the navigation: %v", err)))
 				}
 				return
 			}
@@ -1072,7 +1083,7 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 		// a non-nil session here is one a successful Task left before a later step failed
 		// (the re-load after update): it is stored all the same
 		if err := rt.setSession(w, r, rq, resp.Session); err != nil {
-			rt.log("error", line(w, r, err.Error()))
+			rt.logReq(w, "error", line(w, r, err.Error()))
 		}
 		if resp.Status == http.StatusNotFound {
 			rt.notFound(w, r, st, resp.Node)
@@ -1133,7 +1144,7 @@ func (rt *router) rerender(w http.ResponseWriter, r *http.Request, rq *Request, 
 		note("shown")
 	}
 	if err != nil {
-		rt.log("error", line(w, r, fmt.Sprintf("writing the patch: %v", err)))
+		rt.logReq(w, "error", line(w, r, fmt.Sprintf("writing the patch: %v", err)))
 	}
 	rt.notify(w)
 	rt.patchPanel(w, http.StatusOK)
@@ -1183,7 +1194,7 @@ func (rt *router) fragments(w http.ResponseWriter, r *http.Request, resp Respons
 func (rt *router) renderBefore(w http.ResponseWriter, r *http.Request, before func() html.Node, st *html.FormState, size int) (out html.Rendered, ok bool) {
 	defer func() {
 		if p := recover(); p != nil {
-			rt.log("error", line(w, r, fmt.Sprintf("rendering the page before the message: %v (the whole body is patched)", p)))
+			rt.logReq(w, "error", line(w, r, fmt.Sprintf("rendering the page before the message: %v (the whole body is patched)", p)))
 			ok = false
 		}
 	}()
@@ -1224,7 +1235,7 @@ func (rt *router) writeFile(w http.ResponseWriter, r *http.Request, st hop, rq *
 	for _, h := range f.Headers {
 		name, ok := rtpkg.FileHeaderAllowed(h[0])
 		if !ok {
-			rt.log("warn", line(w, r, fmt.Sprintf("header %q cannot be set from a page; dropped", h[0])))
+			rt.logReq(w, "warn", line(w, r, fmt.Sprintf("header %q cannot be set from a page; dropped", h[0])))
 			continue
 		}
 		if strings.HasPrefix(name, "X-") { // an X- header may repeat; the others are single-valued: the last wins
@@ -1354,7 +1365,7 @@ func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status i
 		}
 	}
 	if err != nil {
-		rt.log("error", line(w, r, fmt.Sprintf("writing the patch: %v", err)))
+		rt.logReq(w, "error", line(w, r, fmt.Sprintf("writing the patch: %v", err)))
 	}
 	rt.notify(w)
 	rt.patchPanel(w, status)
@@ -1445,7 +1456,7 @@ func badQueryText(raw string, log bool) string {
 // badRequest answers a request whose query does not parse (why, from badQuery) with status 400
 // and a page saying so, or as a body patch for a Datastar request; logged at warn.
 func (rt *router) badRequest(w http.ResponseWriter, r *http.Request, st hop, why string) {
-	rt.log("warn", line(w, r, badQueryLog(r.URL.RawQuery)))
+	rt.logReq(w, "warn", line(w, r, badQueryLog(r.URL.RawQuery)))
 	if tw, ok := w.(*tracker); ok {
 		tw.setAnswer("bad request")
 	}
@@ -1472,7 +1483,7 @@ func (rt *router) notFound(w http.ResponseWriter, r *http.Request, st hop, doc h
 // Alder-Status: 503 (on every answer, not only a Datastar one), or as a body patch for a
 // Datastar request: a request on a silo that is not served (err says which and why; logged).
 func (rt *router) maintenance(w http.ResponseWriter, r *http.Request, st hop, err error) {
-	rt.log("warn", line(w, r, fmt.Sprintf("maintenance: %v", err)))
+	rt.logReq(w, "warn", line(w, r, fmt.Sprintf("maintenance: %v", err)))
 	if tw, ok := w.(*tracker); ok {
 		tw.setAnswer("maintenance")
 	}
@@ -1498,7 +1509,7 @@ func (rt *router) fail(w http.ResponseWriter, r *http.Request, st hop, doc html.
 	if stack != nil {
 		msg += "\n" + string(stack)
 	}
-	rt.log("error", msg)
+	rt.logReq(w, "error", msg)
 	if tw, ok := w.(*tracker); ok {
 		tw.setAnswer("error")
 		tw.detail = fmt.Sprintf("%v\n%s", err, stack)

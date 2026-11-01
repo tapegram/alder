@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
@@ -144,6 +145,12 @@ type ReqSummary struct {
 	Slow    bool      `json:"slow"`
 }
 
+// tenthsMs is d in milliseconds rounded to tenths, as the access line shows it, so the two
+// records of one request agree.
+func tenthsMs(d time.Duration) float64 {
+	return math.Round(float64(d)/float64(time.Millisecond)*10) / 10
+}
+
 // summary is rec as the list shows it. Its Repeats is the number of rec's N+1 groups
 // (repeatCount): the router warns once per group, so it is the number of rec's warnings.
 func (rec *ReqRecord) summary() ReqSummary {
@@ -174,8 +181,8 @@ func (rt *router) recordRequest(tw *tracker, dur time.Duration) {
 	rec := tw.rq.Env.Rec
 	acc := applog.Access{Method: r.Method, URL: r.URL, Masker: rt.masker}
 	out := &ReqRecord{
-		RID: tw.id, T: tw.start, Method: r.Method, Path: acc.MaskedPath(), Route: routeLabel(tw.route, r.URL.Path),
-		Status: tw.status, Ms: eff.Ms(dur), Bytes: tw.bytes, Loads: rec.Loads, Cuts: append([]int{}, rec.Cuts...),
+		RID: tw.id, T: rt.now().Add(-dur).UTC(), Method: r.Method, Path: acc.MaskedPath(), Route: routeLabel(tw.route, r.URL.Path),
+		Status: tw.status, Ms: tenthsMs(dur), Bytes: tw.bytes, Loads: rec.Loads, Cuts: append([]int{}, rec.Cuts...),
 		Slow:  rt.opts.SlowAfter > 0 && dur >= rt.opts.SlowAfter,
 		Steps: make([]ReqStep, 0, len(rec.Steps)), SQL: make([]ReqSQL, 0, len(rec.SQL)),
 		Logs: make([]ReqLog, 0, len(tw.logs)), Warnings: []string{},

@@ -860,8 +860,17 @@ log platform that indexes fields:
 ```
 
 An access line has the fields of the text line as keys of their own
-(`steps` too at `debug`); every other line is `time`, `level` and `msg`,
-with a panic's stack inside `msg`, so one line is always one event. The
+(`steps` too at `debug`). At `debug`, once the app counts its database
+statements (see "Slow requests" below), the access line also has `db_stmts`
+and `db_ms`, and under `alder run`, where the dev panel is on, `repeats`: the
+number of groups of one statement run again and again in the request (the
+"N+1" pattern). Every other line is `time`, `level` and `msg`, with a
+panic's stack inside `msg`, so one line is always one event. A line written
+while a request is being answered (the app's `Log` calls, an effect step's
+line, the router's own error about the request) also has `rid`, the same
+request id as the access line's and the `X-Request-Id` header, in
+production too. Filter on it in your log platform and you have everything one
+request said, in order. The
 level names are upper case, as Go's `log/slog` writes them; the objects
 come from its JSON handler, which escapes correctly and reuses its
 buffers.
@@ -892,7 +901,8 @@ plus `"slow":true`, `route`, `steps`, `db_stmts` and `db_ms`. A request
 under the threshold is written exactly as before, without a route.
 
 Unset, empty or `0` is off, and then nothing is timed: the database
-statements are counted only when this or `ALDER_METRICS` is set. A
+statements are counted only when this, `ALDER_METRICS` or the dev panel
+(`alder run`) is on. A
 value that is not a whole number of milliseconds (`250ms`, `1.5`, `-1`)
 stops the app before it serves, like a bad `ALDER_LOG`. The health
 check is never slow: it has no access line.

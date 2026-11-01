@@ -798,7 +798,7 @@ The types, with an example of each:
 {"child":"127.0.0.1:65295","gen":"afcb2a7d-1","ms":2105,"seq":3,"state":"ok","t":"2026-11-01T12:00:02.3Z","type":"build"}
 {"child":"127.0.0.1:65295","seq":4,"state":"started","t":"2026-11-01T12:00:02.3Z","type":"app"}
 {"seq":5,"t":"2026-11-01T12:00:02.4Z","text":"dev server on localhost:8080 → app on 127.0.0.1:65295","type":"run"}
-{"record":{"time":"2026-11-01T12:00:05.1Z","level":"INFO","msg":"GET /","method":"GET","path":"/","status":200,"ms":1.4,"bytes":2311,"rid":"5f3a2c1e","steps":3},"seq":6,"t":"2026-11-01T12:00:05.1Z","type":"log"}
+{"record":{"time":"2026-11-01T12:00:05.1Z","level":"INFO","msg":"GET /","method":"GET","path":"/","status":200,"ms":1.4,"bytes":2311,"rid":"5f3a2c1e","steps":3,"db_stmts":2,"db_ms":0.5,"repeats":0},"seq":6,"t":"2026-11-01T12:00:05.1Z","type":"log"}
 {"diagnostics":[{"code":"E0003","severity":"error","file":"app/Layout.alder","line":10,"col":15,"endLine":10,"endCol":16,"message":"expected Text, Html or List Html in `{…}`, got Int"}],"gen":"afcb2a7d-2","seq":8,"state":"failed","t":"2026-11-01T12:03:10.0Z","type":"build"}
 {"raw":"goroutine 1 [running]:","seq":11,"t":"2026-11-01T12:09:00.0Z","type":"log"}
 {"exit":{"code":2},"seq":12,"state":"exited","t":"2026-11-01T12:09:00.0Z","tail":["panic: …"],"type":"app"}
@@ -821,7 +821,10 @@ The types, with an example of each:
 - **`log`** is one line the app wrote. It has `record`, the line's JSON
   object, when it is a record the app's logger writes (with a `time`, a
   `level` and a `msg`), and otherwise `raw`, the line as it is, such as a line
-  of a panic's stack.
+  of a panic's stack. A record written while a request was being answered has
+  `rid`, that request's id, so a client groups the lines of one request by it;
+  the request's access record is the one that also has `status`, and under
+  `alder run` it carries `db_stmts`, `db_ms` and `repeats` too.
 
 **The app logs JSON at debug, and you never notice.** Under `alder run` the
 app always starts with `ALDER_LOG=debug` and `ALDER_LOG_FORMAT=json`,
@@ -913,6 +916,8 @@ tables, such as the TUI's Data screen, reads this and never your source.
 $ curl localhost:8080/_dev/map.json
 {"build":"afcb2a7d","map":{"pages":[…],"tables":[{"name":"Todo.Todo","sql":"Todo__Todo","columns":["id: Text","title: Text","done: Bool"],"cols":[{"name":"id","type":"Text","sql":"id","sqlType":"TEXT"},{"name":"done","type":"Bool","sql":"done","sqlType":"INTEGER"}],"id":"id"}],"session":[]},"caps":[{"name":"Auth.Login.Password","kind":"adapter"}],"migrations":["0001_init"],"routes":[{"method":"GET","pat":"/"}]}
 ```
+
+(Trimmed; a real map has every page, table and column.)
 
 A table has two names. `name` is the Alder name, `Module.Name`; `sql` is the
 SQL table it is stored in, the same with `__` for the dot, which is what you

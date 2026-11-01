@@ -219,7 +219,7 @@ type Access struct {
 	// SlowAfter): the line is written at Warn with Route, Steps, Stmts and DBDur appended.
 	Slow  bool
 	Route string        // the matched route pattern, or the router's fixed name (a Slow line's route=)
-	Stmts int           // database statements run (eff.Stats; counted when metrics or slow is on)
+	Stmts int           // database statements run (eff.Stats; counted when metrics, slow or the dev panel is on)
 	DBDur time.Duration // their time
 	// Counted is set by the router when Stmts and DBDur were counted (metrics, the slow
 	// threshold or the dev panel is on); Repeats is the N+1 groups the request ran, found in dev

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"alder/rt/eff"
@@ -212,5 +213,46 @@ func TestDevRequests_Quiet(t *testing.T) {
 		if got := quiet(c.path, c.status); got != c.want {
 			t.Errorf("quiet(%q, %d) = %t", c.path, c.status, got)
 		}
+	}
+}
+
+// The router's own line about a request (a handler's panic) goes through Options.LogID with the
+// request's id and is in the record's logs, so the detail of a 500 says why.
+func TestDevRequests_PanicLineCarriesRidAndIsRecorded(t *testing.T) {
+	var mu sync.Mutex
+	var got []string
+	h := devRouter(t, []Route{{Method: "GET", Pattern: "/boom", Handle: func(rq *Request) Response { panic("kaboom") }}}, func(o *Options) {
+		o.LogID = func(id, level, msg string) {
+			mu.Lock()
+			defer mu.Unlock()
+			got = append(got, id+" "+level+" "+msg)
+		}
+	})
+	rid := serve(h, httptest.NewRequest("GET", "/boom", nil)).Header().Get("X-Request-Id")
+	mu.Lock()
+	if len(got) != 1 || !strings.HasPrefix(got[0], rid+" error ") || !strings.Contains(got[0], "kaboom") {
+		t.Errorf("LogID got %q, want one error line for %s", got, rid)
+	}
+	mu.Unlock()
+	w := serve(h, httptest.NewRequest("GET", "/_dev/requests/"+rid, nil))
+	var rec ReqRecord
+	if err := json.Unmarshal(w.Body.Bytes(), &rec); err != nil {
+		t.Fatalf("%v: %s", err, w.Body.String())
+	}
+	if rec.Status != 500 || len(rec.Logs) != 1 || rec.Logs[0].Level != "error" || !strings.Contains(rec.Logs[0].Msg, "kaboom") {
+		t.Errorf("record %d logs %+v, want the panic line", rec.Status, rec.Logs)
+	}
+}
+
+// A refusal (a router warning about the request) is in the record's logs and carries the rid too.
+func TestDevRequests_RefusalLineCarriesRid(t *testing.T) {
+	var got []string
+	h := devRouter(t, []Route{pageRoute("/p")}, func(o *Options) {
+		o.LogID = func(id, level, msg string) { got = append(got, id+" "+level) }
+	})
+	w := serve(h, httptest.NewRequest("GET", "/p?%zz", nil))
+	rid := w.Header().Get("X-Request-Id")
+	if len(got) == 0 || got[0] != rid+" warn" {
+		t.Errorf("LogID got %q, want a warn line for %s (status %d)", got, rid, w.Code)
 	}
 }
