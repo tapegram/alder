@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"alder/tui/internal/alderbin"
+	"alder/tui/internal/runner"
 )
 
 // version is the release this binary was built as. GoReleaser sets it with -ldflags, since a
@@ -46,7 +48,14 @@ func run(args []string, stdout, stderr *os.File) int {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	have, err := alderbin.Version(ctx, func(ctx context.Context, args ...string) ([]byte, error) {
-		return exec.CommandContext(ctx, bin, args...).Output()
+		res, err := runner.Exec(bin).Run(ctx, dir, args...)
+		if err != nil {
+			return nil, err
+		}
+		if res.Code != 0 {
+			return nil, fmt.Errorf("alder %s exited %d: %s", strings.Join(args, " "), res.Code, strings.TrimSpace(string(res.Stderr)))
+		}
+		return res.Stdout, nil
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, "alder-tui:", err)
