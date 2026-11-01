@@ -251,14 +251,37 @@ func (l *Logger) Access(a *Access) {
 		return
 	}
 	bp := l.start(lv)
-	b := *bp
+	*bp = appendAccess(*bp, &accessText{
+		Method: a.Method, Path: path, Status: a.Status, Ms: ms, Bytes: a.Bytes, ID: a.ID,
+		Slow: a.Slow, Route: a.Route, Steps: a.Steps, Stmts: a.Stmts, DBMs: tenths(a.DBDur),
+		Debug: l.min == Debug,
+	})
+	l.end(bp)
+}
+
+// accessText is what an access line's text shows; Render fills it from a JSON record.
+type accessText struct {
+	Method, Path string
+	Status       int
+	Ms           float64
+	Bytes        int64
+	ID           string
+	Slow         bool
+	Route        string
+	Steps, Stmts int
+	DBMs         float64
+	Debug        bool // the line's level is Debug: a line that is not Slow ends with its steps
+}
+
+// appendAccess appends a's text (everything after "<stamp> <level>: ") to b.
+func appendAccess(b []byte, a *accessText) []byte {
 	b = append(b, a.Method...)
 	b = append(b, ' ')
-	b = append(b, path...)
+	b = append(b, a.Path...)
 	b = append(b, ' ')
 	b = strconv.AppendInt(b, int64(a.Status), 10)
 	b = append(b, ' ')
-	b = strconv.AppendFloat(b, ms, 'f', 1, 64)
+	b = strconv.AppendFloat(b, a.Ms, 'f', 1, 64)
 	b = append(b, "ms "...)
 	b = strconv.AppendInt(b, a.Bytes, 10)
 	b = append(b, "B rid="...)
@@ -272,14 +295,13 @@ func (l *Logger) Access(a *Access) {
 		b = append(b, " db="...)
 		b = strconv.AppendInt(b, int64(a.Stmts), 10)
 		b = append(b, '/')
-		b = strconv.AppendFloat(b, tenths(a.DBDur), 'f', 1, 64)
+		b = strconv.AppendFloat(b, a.DBMs, 'f', 1, 64)
 		b = append(b, "ms"...)
-	case l.min == Debug:
+	case a.Debug:
 		b = append(b, " steps="...)
 		b = strconv.AppendInt(b, int64(a.Steps), 10)
 	}
-	*bp = b
-	l.end(bp)
+	return b
 }
 
 // tenths is d in milliseconds rounded to one decimal.
