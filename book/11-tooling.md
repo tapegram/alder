@@ -1806,8 +1806,8 @@ Windows is untested). Each binary goes into an archive named
 and README, listed in `alder_<version>_checksums.txt`. GoReleaser then
 writes the GitHub release, its notes taken from the commits since the
 previous tag; pushes a Homebrew formula to `tapegram/homebrew-alder` (so
-`brew install tapegram/alder/alder` works, and the formula's test runs
-`alder version`); and pushes the container image
+`brew install tapegram/alder/alder` works and installs `alder-tui` beside
+`alder`, and the formula's test runs `alder version`); and pushes the container image
 `ghcr.io/tapegram/alder:<version>`, Go's official image plus the binary,
 for CI pipelines that run `alder test` and `alder build`. No `-ldflags`
 are passed: the go command records the tag as the module version when it
