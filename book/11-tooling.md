@@ -1947,6 +1947,12 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   the rest of its fields (a name, say), shows the diff it would make, and
   applies it when you press `<CR>`. Choosing a generator opens the generator
   modal (below) with its fields filled from the cursor.
+- **Colour swatches.** In `app/App.alder`, each colour string inside the
+  `light { … }` and `dark { … }` blocks of the `theme` declaration is
+  offered to the editor as a colour, so the editor can paint it next to the
+  text; picking another colour in an editor that has a picker rewrites the
+  string (`#4f46e5`, say). Neovim 0.12 does this natively once you call
+  `vim.lsp.document_color.enable(true)`.
 
 ### Routes in the editor
 
