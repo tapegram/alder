@@ -1,1 +1,1 @@
-app/App.alder:10:3 E0042 `brandColour` is not a token of alder-ui v0.5.0; the tokens are listed in Appendix C
+app/App.alder:10:3 E0042 `brandColour` is not a token of alder-ui v0.6.0; the tokens are listed in Appendix C
