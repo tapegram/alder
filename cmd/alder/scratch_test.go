@@ -345,9 +345,13 @@ func (w *scratchWatcher) stop() int {
 	return w.code
 }
 
+// Each test that edits waits for the watcher's first snapshot first: an edit before it is the
+// baseline, and no run follows (#137).
 func TestScratchWatchReruns(t *testing.T) {
+	ready := watchReady(t)
 	w := startScratchWatch(t, "> 1\n")
 	w.waitFor(w.out, "⇒ 1 : Int")
+	await(t, ready, "the watcher's first snapshot")
 	w.edit("> 2\n")
 	w.waitFor(w.out, "⇒ 2 : Int")
 	if !strings.Contains(w.out.String(), "── ") {
@@ -468,8 +472,10 @@ func TestScratchWatchKeepsRunFinishedAsChangeArrives(t *testing.T) {
 }
 
 func TestScratchWatchSurvivesBadSave(t *testing.T) {
+	ready := watchReady(t)
 	w := startScratchWatch(t, "> 1\n")
 	w.waitFor(w.out, "⇒ 1 : Int")
+	await(t, ready, "the watcher's first snapshot")
 	w.edit("> 1 +\n")
 	w.waitFor(w.errb, "scratch.alder:2:1: error")
 	w.edit("> 3\n")
@@ -496,8 +502,10 @@ func TestScratchWatchJSONFailsWithOneLine(t *testing.T) {
 }
 
 func TestScratchWatchJSONStreams(t *testing.T) {
+	ready := watchReady(t)
 	w := startScratchWatch(t, "> 1\n", "--json")
 	w.waitFor(w.out, `"value":"1"`)
+	await(t, ready, "the watcher's first snapshot")
 	w.edit("> 2\n")
 	w.waitFor(w.out, `"value":"2"`)
 	if code := w.stop(); code != 0 {

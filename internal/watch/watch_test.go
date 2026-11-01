@@ -15,8 +15,9 @@ func TestWatch_SourceChange(t *testing.T) {
 	stop := make(chan struct{})
 	defer close(stop)
 	ch := make(chan Change, 1)
-	go Watch(dir, 10*time.Millisecond, stop, ch)
-	time.Sleep(30 * time.Millisecond)
+	ready := make(chan struct{})
+	go WatchReady(dir, nil, 10*time.Millisecond, stop, ch, func() { close(ready) })
+	<-ready // a file added before the first snapshot is the baseline, not a change (#137)
 	os.WriteFile(filepath.Join(dir, "app", "B.alder"), []byte("module B\n"), 0o644)
 	select {
 	case c := <-ch:
