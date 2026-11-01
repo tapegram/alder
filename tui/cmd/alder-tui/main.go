@@ -4,15 +4,23 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"alder/tui/internal/alderbin"
+	"alder/tui/internal/devproc"
 	"alder/tui/internal/runner"
+	"alder/tui/internal/ui"
 )
 
 // version is the release this binary was built as. GoReleaser sets it with -ldflags, since a
@@ -51,9 +59,8 @@ func run(args []string, stdout, stderr *os.File) int {
 		fmt.Fprintln(stderr, "alder-tui:", err)
 		return 1
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	have, err := alderbin.Version(ctx, func(ctx context.Context, args ...string) ([]byte, error) {
+	vctx, vcancel := context.WithTimeout(context.Background(), 10*time.Second)
+	have, err := alderbin.Version(vctx, func(ctx context.Context, args ...string) ([]byte, error) {
 		res, err := runner.Exec(bin).Run(ctx, dir, args...)
 		if err != nil {
 			return nil, err
@@ -63,13 +70,74 @@ func run(args []string, stdout, stderr *os.File) int {
 		}
 		return res.Stdout, nil
 	})
+	vcancel()
 	if err != nil {
 		fmt.Fprintln(stderr, "alder-tui:", err)
 		return 1
 	}
-	if m := alderbin.Mismatch(version, have); m != "" {
-		fmt.Fprintln(stderr, "alder-tui:", m)
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		fmt.Fprintln(stderr, "alder-tui:", err)
+		return 1
 	}
-	_, _, _ = addr, noRun, dir // the screens arrive in the tasks that follow
+	// The feed lives as long as ctx, so ctx lasts until the program has exited.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s, err := devproc.Open(ctx, devproc.Options{Dir: abs, Addr: *addr, Alder: bin, NoRun: *noRun})
+	if err != nil {
+		fmt.Fprintln(stderr, "alder-tui:", err)
+		return 1
+	}
+	m := ui.New(ui.Options{
+		App: filepath.Base(abs), Dir: abs, Addr: *addr, Version: version, AlderVersion: have,
+		Events: s.Events, Early: s.Early, Runner: runner.Exec(bin),
+		HTTP: &http.Client{Timeout: 5 * time.Second}, Now: time.Now, Owned: s.Owned,
+		OpenURL: openURL, Copy: copyText,
+	})
+	_, err = tea.NewProgram(m, tea.WithAltScreen(), tea.WithOutput(stdout)).Run()
+	if cerr := s.Close(); cerr != nil {
+		fmt.Fprintln(stderr, "alder-tui: stopping alder run:", cerr)
+	}
+	if err != nil && !errors.Is(err, tea.ErrInterrupted) {
+		fmt.Fprintln(stderr, "alder-tui:", err)
+		return 1
+	}
 	return 0
+}
+
+// openURL opens url in the default browser.
+func openURL(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	return cmd.Run()
+}
+
+// copyText puts text on the clipboard with the platform's tool: pbcopy on macOS, clip on
+// Windows, and wl-copy, xclip or xsel elsewhere, the first one found.
+func copyText(text string) error {
+	var tools [][]string
+	switch runtime.GOOS {
+	case "darwin":
+		tools = [][]string{{"pbcopy"}}
+	case "windows":
+		tools = [][]string{{"clip"}}
+	default:
+		tools = [][]string{{"wl-copy"}, {"xclip", "-selection", "clipboard"}, {"xsel", "--clipboard", "--input"}}
+	}
+	for _, t := range tools {
+		if _, err := exec.LookPath(t[0]); err != nil {
+			continue
+		}
+		cmd := exec.Command(t[0], t[1:]...)
+		cmd.Stdin = strings.NewReader(text)
+		return cmd.Run()
+	}
+	return errors.New("no clipboard tool found")
 }

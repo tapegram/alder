@@ -1,0 +1,30 @@
+ shelf  [2m● connecting[0m  localhost:8080  alder v0.6.0        [1m1 Requests[0m 2 Logs 3 Data 4 Tests 5 Routes
+ [1mProblems[0m
+
+   the app exited (code 2)
+     2026/11/01 14:20:05 info: migrating dev.db
+     2026/11/01 14:20:05 error: migration 0003_loans.sql: table loans already exists
+     alder: the app stopped: migrations failed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ esc close                                                                              [2malder check[0m

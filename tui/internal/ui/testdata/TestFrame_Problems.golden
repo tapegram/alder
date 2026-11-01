@@ -1,0 +1,30 @@
+ shelf  [31m● failed (2)[0m  localhost:8080  alder v0.6.0        [1m1 Requests[0m 2 Logs 3 Data 4 Tests 5 Routes
+ [1mProblems[0m
+
+ > [1mapp/Books.al:14:12:[0m [1;31merror[E0002][0m: unknown name `findBook`
+   [1mapp/Main.al:31:5:[0m [1;31merror[E0003][0m: type mismatch: expected Html Msg, found String
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ j/k move  enter copy file:line:col  esc close                                          [2malder check[0m
