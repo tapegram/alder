@@ -195,6 +195,7 @@ type devServer struct {
 	started  int           // children started so far (the worker's)
 	static   string        // the build's static directory the child serves (the worker's); "" before the first build
 	binary   string        // the last executable built (the worker's): what a restart runs; "" before the first build
+	startErr bool          // the failed build state is a child that did not start (the source built), not a failed check or build (the worker's; buildState, swapIn)
 	hub      *eventHub     // the /_dev/events feed
 	since    time.Time     // when the dev server started
 	restart  chan struct{} // a /_dev/restart the worker has yet to take (buffer 1: more while one waits are one)
@@ -420,7 +421,12 @@ func (d *devServer) work(changed <-chan watch.Change) {
 		case <-d.done:
 			return
 		case <-d.restart:
-			if d.binary == "" { // no build has succeeded yet: try again
+			// A restart rebuilds from source when no build has succeeded yet, or when the last
+			// check or build failed: d.binary is then an older build than the source, and
+			// running it would report ok while the source is broken. When the failure was a
+			// child that did not start (startErr), the source built, so the restart retries
+			// d.binary. The worker alone writes state and startErr, so it reads them unlocked.
+			if d.binary == "" || d.state == "failed" && !d.startErr {
 				d.status("alder run: restarting: building " + d.app)
 				d.build()
 			} else {
@@ -478,6 +484,7 @@ func (d *devServer) beginBuild() int {
 // holds mu, so a /_dev/events hello never reports a state the feed has not shown.
 func (d *devServer) buildState(state string, fields map[string]any) {
 	d.state = state
+	d.startErr = false // swapIn sets it again after a failed start
 	m := map[string]any{"state": state}
 	for k, v := range fields {
 		m[k] = v
@@ -570,6 +577,7 @@ func (d *devServer) swapIn(binary string, b *built) {
 		d.fail(msg)
 		d.mu.Lock()
 		d.buildState("failed", map[string]any{"gen": gen, "text": msg})
+		d.startErr = true
 		d.mu.Unlock()
 		return
 	}
@@ -586,7 +594,7 @@ func (d *devServer) swapIn(binary string, b *built) {
 			ok["warnings"] = b.warnings
 		}
 		d.buildState("ok", ok)
-	} else if d.state != "ok" { // a restart after a child that did not start: the overlay clears below, so the state does too
+	} else if d.state != "ok" { // a restart after a child that did not start (the only failed state a restart swaps in from): the overlay clears below, so the state does too
 		d.buildState("ok", map[string]any{"gen": gen, "child": c.addr})
 	}
 	d.hub.emit("app", map[string]any{"state": "started", "child": c.addr})

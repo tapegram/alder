@@ -913,3 +913,39 @@ func TestRun_Restart(t *testing.T) {
 	}
 	get(t, r.base+"/login")
 }
+
+// A restart after a failed check rebuilds from source: it does not run the last good build and
+// report it ok while the source is broken, so the errors and the failed state stay.
+func TestRun_RestartAfterFailedCheck(t *testing.T) {
+	t.Parallel()
+	r := startRun(t)
+	lines := liveEvents(t, r)
+	edit(t, r.dir, "app/App.alder", "notFound : Html Never", "notFound : Int")
+	if got := lifecycleEvents(t, lines, 2, 60*time.Second); !isEvent(got[1], "build", "failed") {
+		t.Fatalf("after the error: %v", got)
+	}
+	res, err := http.Post(r.base+"/_dev/restart", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusAccepted {
+		t.Fatalf("POST /_dev/restart = %d, want 202", res.StatusCode)
+	}
+	got := lifecycleEvents(t, lines, 2, 60*time.Second)
+	if !isEvent(got[0], "build", "building") || !isEvent(got[1], "build", "failed") {
+		t.Fatalf("a restart of broken source: %v, want build building then failed", got)
+	}
+	if ds, _ := got[1]["diagnostics"].([]any); len(ds) == 0 {
+		t.Fatalf("the restart's build failed has no diagnostics: %v", got[1])
+	}
+	if b := nextHello(t, r); b != "failed" {
+		t.Fatalf("hello.build after the restart = %q, want failed", b)
+	}
+	r.d.mu.Lock()
+	kind := r.d.errs.kind
+	r.d.mu.Unlock()
+	if kind != "check" {
+		t.Fatalf("the overlay after the restart is %q, want the check's errors", kind)
+	}
+}
