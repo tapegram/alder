@@ -95,6 +95,7 @@ type unplacedJSON struct {
 	Name   string `json:"name"`
 	Value  string `json:"value"`
 	Reason string `json:"reason"`
+	Scheme string `json:"scheme,omitempty"`
 }
 
 // runGeneratorWith ends every generator: it applies edits (computed by gen, from the loaded app)
@@ -407,7 +408,7 @@ func themeImportExtra(res *generate.Result) func(*genJSON) {
 		if imp := res.Import; imp != nil {
 			th, skipped = imp.Theme, imp.Skipped.N
 			for _, u := range imp.Unplaced {
-				un = append(un, unplacedJSON{Block: u.Block, Name: u.Name, Value: u.Value, Reason: u.Reason})
+				un = append(un, unplacedJSON{Block: u.Block, Name: u.Name, Value: u.Value, Reason: u.Reason, Scheme: u.Scheme})
 			}
 		}
 	}

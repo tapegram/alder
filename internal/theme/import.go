@@ -291,8 +291,9 @@ func check(tok Token, value string) (string, string) {
 
 // UnplacedCSS is the unplaced declarations as valid CSS, grouped by the block each came from in
 // first-seen order, each with its reason as a comment: the text to paste into an app's own
-// stylesheet. The DTCG reader's blocks (`<file> <path>`) are grouped by file under `:root` (`.dark` for the dark scheme's), the
-// file named in a comment above and each token's path in front of its reason.
+// stylesheet. The DTCG reader's blocks (`<file> <path>`) are grouped by file under `:root`
+// (`.dark` for the dark scheme's), the file named in a comment above and each token's path in
+// front of its reason.
 func UnplacedCSS(us []Unplaced) string {
 	var order []string
 	groups := map[string][]Unplaced{}

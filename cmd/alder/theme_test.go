@@ -598,3 +598,32 @@ func TestHelpJSON_ThemeUse(t *testing.T) {
 	}
 	t.Fatal("`theme use` is not in help --json")
 }
+
+func TestThemeImport_JSONDarkLeftoverScheme(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	src, err := filepath.Abs("../../internal/theme/testdata/dtcg/foreign-names")
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, out, errb := themeImport(t, dir, "", filepath.Join(src, "theme.resolver.json"), "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %s%s", code, out, errb)
+	}
+	var got struct {
+		Unplaced []struct{ Block, Scheme string } `json:"unplaced"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	var dark, other int
+	for _, u := range got.Unplaced {
+		if strings.HasPrefix(u.Block, "dark.tokens.json ") && u.Scheme == "dark" {
+			dark++
+		} else if u.Scheme != "" {
+			other++
+		}
+	}
+	if dark == 0 || other != 0 || !strings.Contains(out, `"scheme":"dark"`) {
+		t.Errorf("scheme missing or misplaced: %s", out)
+	}
+}

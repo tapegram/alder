@@ -246,6 +246,12 @@ func TestThemeImport_Route(t *testing.T) {
 	if !strings.Contains(w.Body.String(), `"block":".sidebar"`) || !strings.Contains(w.Body.String(), `"reason":`) {
 		t.Errorf("unplaced: %s", w.Body)
 	}
+	var cssAns struct {
+		UnplacedCSS string `json:"unplacedCss"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &cssAns); err != nil || !strings.Contains(cssAns.UnplacedCSS, ".sidebar {\n") {
+		t.Errorf("unplacedCss: %q (%v)", cssAns.UnplacedCSS, err)
+	}
 	if readAppAlder(t, dir) != before {
 		t.Errorf("App.alder changed")
 	}

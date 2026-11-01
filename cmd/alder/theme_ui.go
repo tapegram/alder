@@ -68,6 +68,7 @@ type themeUnplaced struct {
 	Name   string `json:"name"`
 	Value  string `json:"value"`
 	Reason string `json:"reason"`
+	Scheme string `json:"scheme,omitempty"`
 }
 
 type themeSkipped struct {
@@ -130,13 +131,13 @@ func (d *devServer) serveTheme(w http.ResponseWriter, r *http.Request) {
 		}
 		us := []themeUnplaced{}
 		for _, u := range unplaced {
-			us = append(us, themeUnplaced{u.Block, u.Name, u.Value, u.Reason})
+			us = append(us, themeUnplaced{u.Block, u.Name, u.Value, u.Reason, u.Scheme})
 		}
 		kinds := skipped.Kinds
 		if kinds == nil {
 			kinds = []string{}
 		}
-		writeThemeJSON(w, http.StatusOK, map[string]any{"theme": themeMaps(th), "unplaced": us, "skipped": themeSkipped{skipped.N, kinds}})
+		writeThemeJSON(w, http.StatusOK, map[string]any{"theme": themeMaps(th), "unplaced": us, "unplacedCss": theme.UnplacedCSS(unplaced), "skipped": themeSkipped{skipped.N, kinds}})
 	case "/_dev/theme/write":
 		var body struct {
 			Theme theme.Theme `json:"theme"`

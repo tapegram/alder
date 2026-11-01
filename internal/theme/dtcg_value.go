@@ -354,10 +354,11 @@ func dtcgSegment(path []string) string {
 // ---- ImportDTCG
 
 // ImportDTCG reads a DTCG resolver or tokens file (see loadDTCG) into a Theme, the tokens it
-// could not place and the modifiers it resolved at their default. A colour in Root goes to
-// both schemes, and a scheme's own value beats it. A theme-wide token in Light goes to Root;
-// one in Dark is placed only when Root's value is equivalent (Equivalent), and unplaced as differing or, with no Root value, as set only by the dark scheme. Each token's name is looked up in alder-ui's
-// table; its value is converted (cssText, an alias to an alder-ui colour kept as its var())
+// could not place and the modifiers it resolved at their default. A colour in Root goes to both
+// schemes, and a scheme's own value beats it. A theme-wide token in Light goes to Root; one in
+// Dark is placed only when Root's value is equivalent (Equivalent), and unplaced as differing or,
+// with no Root value, as set only by the dark scheme. Each token's name is looked up in alder-
+// ui's table; its value is converted (cssText, an alias to an alder-ui colour kept as its var())
 // and checked as the CSS importer checks it. It is an error when no token was placed.
 func ImportDTCG(fsys fs.FS, name string) (Theme, []Unplaced, Skipped, error) {
 	d, err := loadDTCG(fsys, name)
