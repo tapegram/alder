@@ -198,6 +198,80 @@ func (w *walker) rule(n syntax.Spanned) {
 	case *syntax.ThemeDecl:
 		w.keywordAt(n.Span)
 		w.deployFields(n.Fields)
+	case *syntax.Var: // `A.B.f`: the module segments, then the value (qualified_name name: @function.call)
+		if n.Module != "" {
+			ts := w.in(n.Span)
+			for i, t := range ts {
+				if t.Kind == syntax.UIdent {
+					w.set(t, TNamespace, 0)
+				} else if t.Kind == syntax.LIdent && i == len(ts)-1 {
+					w.set(t, TFunction, 0)
+				}
+			}
+		}
+	case *syntax.CtorRef: // `A.B.C`
+		if n.Module != "" {
+			w.dotted(run(w.in(n.Span)), TEnumMember)
+		}
+	case *syntax.BoolLit:
+		w.setAt(n.Span.Start, TBoolean, 0)
+	case *syntax.PLit:
+		if _, ok := n.Lit.(*syntax.BoolLit); ok { // the pattern's BoolLit has no span of its own
+			w.setAt(n.Span.Start, TBoolean, 0)
+		}
+	case *syntax.UnitLit: // `()`: one token over both parens
+		if ts := w.in(n.Span); len(ts) == 2 && ts[0].Kind == syntax.LParen && n.Span.End.Line == ts[0].Line {
+			w.cls[pos(ts[0])] = class{kind: TEnumMember, end: n.Span.End}
+		}
+	case *syntax.IntLit:
+		w.negative(n.Span)
+	case *syntax.FloatLit:
+		w.negative(n.Span)
+	case *syntax.Access: // `e.f`: the field is the span's last token
+		if ts := w.in(n.Span); len(ts) > 0 && ts[len(ts)-1].Kind == syntax.LIdent {
+			w.set(ts[len(ts)-1], TProperty, 0)
+		}
+	case *syntax.App: // after its children: the function's name wins over what they made it
+		switch f := n.Fn.(type) {
+		case *syntax.Var:
+			if ts := w.in(f.Span); len(ts) > 0 {
+				w.set(ts[len(ts)-1], TFunction, 0)
+			}
+		case *syntax.Access:
+			if ts := w.in(f.Span); len(ts) > 0 {
+				w.set(ts[len(ts)-1], TMethod, 0)
+			}
+		}
+	case *syntax.Lambda:
+		for _, p := range n.Params {
+			w.setAt(p.Span.Start, TParameter, Declaration)
+		}
+	case *syntax.LetStmt: // `let x [: T] = e` / `let x <- e`
+		if ts := w.in(n.Span); len(ts) > 1 && ts[1].Kind == syntax.LIdent {
+			w.set(ts[1], TVariable, Declaration)
+		}
+	case *syntax.FieldInit:
+		if t, ok := w.first(n.Span); ok {
+			w.set(t, TProperty, 0)
+		}
+	case *syntax.PField:
+		if t, ok := w.first(n.Span); ok {
+			w.set(t, TProperty, 0)
+		}
+	case *syntax.Element:
+		w.element(n)
+	case *syntax.HtmlAttr:
+		if t, ok := w.first(n.Span); ok {
+			w.set(t, TAttribute, 0)
+		}
+	case *syntax.HtmlFor: // `{for x in xs -> …}`: x is bound here
+		ts := w.in(n.Span)
+		for i, t := range ts {
+			if t.Kind == syntax.Keyword && t.Text == "for" && i+1 < len(ts) && ts[i+1].Kind == syntax.LIdent {
+				w.set(ts[i+1], TParameter, Declaration)
+				break
+			}
+		}
 	}
 }
 
@@ -243,4 +317,59 @@ func (w *walker) deployValue(v *syntax.DeployValue) {
 			w.deployValue(e)
 		}
 	}
+}
+
+// element colours an element's tags: the tokens of its span outside its attributes and children
+// are `<`, `>`, `/` (no colour) and the tag names after `<` and `</`.
+func (w *walker) element(el *syntax.Element) {
+	var inner []diag.Span
+	for _, a := range el.Attrs {
+		inner = append(inner, a.Span)
+	}
+	for _, c := range el.Children {
+		inner = append(inner, c.GetSpan())
+	}
+	ts := w.own(el.Span, inner)
+	for i := 0; i < len(ts); i++ {
+		switch ts[i].Kind {
+		case syntax.Lt, syntax.Gt, syntax.Slash:
+			w.set(ts[i], none, 0)
+			if ts[i].Kind != syntax.Gt {
+				if name := tagName(ts[i+1:]); len(name) > 0 {
+					w.dotted(name, TTag) // `Layout.` is a namespace, `Page` the tag
+					i += len(name)
+				}
+			}
+		}
+	}
+}
+
+// tagName is the tag name at the start of ts: a dotted component name, or one lower-case or
+// keyword token (`div`, `al-alert`, `form`).
+func tagName(ts []syntax.Token) []syntax.Token {
+	if name := run(ts); len(name) > 0 {
+		return name
+	}
+	if len(ts) > 0 && (ts[0].Kind == syntax.LIdent || ts[0].Kind == syntax.Keyword) {
+		return ts[:1]
+	}
+	return nil
+}
+
+// own is the tokens of sp that are inside none of inner.
+func (w *walker) own(sp diag.Span, inner []diag.Span) []syntax.Token {
+	var out []syntax.Token
+	for _, t := range w.in(sp) {
+		inside := false
+		for _, s := range inner {
+			if !before(pos(t), s.Start) && before(pos(t), s.End) {
+				inside = true
+				break
+			}
+		}
+		if !inside {
+			out = append(out, t)
+		}
+	}
+	return out
 }
