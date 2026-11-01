@@ -11,7 +11,12 @@ import (
 // Unplaced is a declaration the importer could not put in a Theme, with why. Block is the
 // selector text as written (`:root, .light`); for a rule inside `@media (prefers-color-scheme:
 // dark)` it is `@media (prefers-color-scheme: dark) { :root }`, so the CSS stays faithful.
-type Unplaced struct{ Block, Name, Value, Reason string }
+type Unplaced struct {
+	Block, Name, Value, Reason string
+	// Scheme is "dark" for a DTCG token of the dark scheme, which UnplacedCSS puts under `.dark`;
+	// the CSS importer keeps the scheme in Block instead.
+	Scheme string `json:",omitempty"`
+}
 
 // Skipped counts the at-rules the importer dropped silently (`@theme`, `@custom-variant`, …):
 // N of them, and Kinds names each kind once, in source order (`@theme inline`).
@@ -78,7 +83,7 @@ type decl struct{ name, value string }
 
 func (im *importer) unplace(block, name, value, reason string) {
 	im.seq++
-	im.un = append(im.un, seqUnplaced{Unplaced{block, name, value, reason}, im.seq})
+	im.un = append(im.un, seqUnplaced{Unplaced{Block: block, Name: name, Value: value, Reason: reason}, im.seq})
 }
 
 // skipKeywords are the at-rules that carry no theme: Tailwind's and its build's.
@@ -210,7 +215,7 @@ func (im *importer) place(block string, d decl, light, dark bool) {
 	}
 	if dark && !light {
 		im.seq++
-		p := pendingDark{tok.Field, val, Unplaced{block, d.name, value, "theme-wide in alder-ui; the dark value differs"}, im.seq}
+		p := pendingDark{tok.Field, val, Unplaced{Block: block, Name: d.name, Value: value, Reason: "theme-wide in alder-ui; the dark value differs"}, im.seq}
 		for i, q := range im.pending { // the last declaration across dark blocks wins
 			if q.field == tok.Field {
 				im.pending[i] = p
@@ -286,7 +291,7 @@ func check(tok Token, value string) (string, string) {
 
 // UnplacedCSS is the unplaced declarations as valid CSS, grouped by the block each came from in
 // first-seen order, each with its reason as a comment: the text to paste into an app's own
-// stylesheet. The DTCG reader's blocks (`<file> <path>`) are grouped by file under `:root`, the
+// stylesheet. The DTCG reader's blocks (`<file> <path>`) are grouped by file under `:root` (`.dark` for the dark scheme's), the
 // file named in a comment above and each token's path in front of its reason.
 func UnplacedCSS(us []Unplaced) string {
 	var order []string
@@ -295,6 +300,9 @@ func UnplacedCSS(us []Unplaced) string {
 		key := u.Block
 		if file, _, ok := dtcgBlock(u.Block); ok {
 			key = "\x00" + file // no selector starts with NUL
+			if u.Scheme == "dark" {
+				key = "\x01" + file // a dark file's leftovers get their own group, under `.dark`
+			}
 		}
 		if _, ok := groups[key]; !ok {
 			order = append(order, key)
@@ -311,6 +319,9 @@ func UnplacedCSS(us []Unplaced) string {
 		if file, ok := strings.CutPrefix(key, "\x00"); ok {
 			b.WriteString("/* " + noCommentEnd(file) + " */\n")
 			sel = ":root"
+		} else if file, ok := strings.CutPrefix(key, "\x01"); ok {
+			b.WriteString("/* " + noCommentEnd(file) + " */\n")
+			sel = ".dark"
 		} else if rest, ok := strings.CutPrefix(key, "@media "); ok {
 			if j := strings.Index(rest, " { "); j >= 0 && strings.HasSuffix(rest, " }") {
 				b.WriteString("@media " + rest[:j] + " {\n")

@@ -276,6 +276,42 @@ func TestImportDTCG_ThemeWideInScheme(t *testing.T) {
 	}
 }
 
+func TestImportDTCG_DarkCheckByMeaning(t *testing.T) {
+	layer := func(colour string) string {
+		z := `{"value": 0, "unit": "px"}`
+		return `{"$type": "shadow", "$value": {"color": ` + colour + `, "offsetX": ` + z + `, "offsetY": {"value": 1, "unit": "px"}, "blur": ` + z + `, "spread": ` + z + `}}`
+	}
+	th, un := importDoc(t, `{
+		"light": {"shadow-sm": `+layer(`{"colorSpace": "srgb", "components": [0, 0, 0], "hex": "#000000"}`)+`},
+		"dark": {"shadow-sm": `+layer(`{"colorSpace": "srgb", "components": [0, 0, 0]}`)+`}
+	}`)
+	if len(un) != 0 || th.Root["shadowSm"] == "" {
+		t.Errorf("Root = %v, unplaced = %+v; want the shadow placed, none unplaced", th.Root, un)
+	}
+}
+
+func TestImportDTCG_DarkOnlyThemeWide(t *testing.T) {
+	_, un := importDoc(t, `{
+		"light": {"color": {"$type": "color", "primary": {"$value": {"colorSpace": "oklch", "components": [0.5, 0.1, 260]}}}},
+		"dark": {"radius": {"$type": "dimension", "$value": {"value": 1, "unit": "rem"}}}
+	}`)
+	if len(un) != 1 || un[0].Reason != "theme-wide in alder-ui; only the dark scheme sets it" || un[0].Scheme != "dark" {
+		t.Errorf("unplaced = %+v", un)
+	}
+}
+
+func TestUnplacedCSS_DTCGSchemes(t *testing.T) {
+	us := []Unplaced{
+		{Block: "base.tokens.json a", Name: "--a", Value: "1", Reason: "r"},
+		{Block: "dark.tokens.json b", Name: "--b", Value: "2", Reason: "r", Scheme: "dark"},
+		{Block: "dark.tokens.json c", Name: "--c", Value: "3", Reason: "r", Scheme: "dark"},
+	}
+	want := "/* base.tokens.json */\n:root {\n  --a: 1; /* a: r */\n}\n\n/* dark.tokens.json */\n.dark {\n  --b: 2; /* b: r */\n  --c: 3; /* c: r */\n}\n"
+	if got := UnplacedCSS(us); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestImportDTCG_NoTheme(t *testing.T) {
 	_, _, _, err := ImportDTCG(fstest.MapFS{"t.json": {Data: []byte(`{"color": {"$type": "color", "brand": {"$value": {"colorSpace": "oklch", "components": [0.5, 0, 0]}}}}`)}}, "t.json")
 	if err == nil || !strings.Contains(err.Error(), "t.json") {
@@ -314,7 +350,7 @@ func TestUnplacedCSS_DTCG(t *testing.T) {
 }
 
 /* dark.tokens.json */
-:root {
+.dark {
   --brand-500: oklch(0.7 0.2 30); /* color.brand-500: not a token of alder-ui %s */
 }
 `, v, v)
