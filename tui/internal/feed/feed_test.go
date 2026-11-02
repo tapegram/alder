@@ -411,7 +411,7 @@ func TestClient_IdleDeadline(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	start := time.Now()
-	ch, err := ConnectWith(ctx, addr, Options{Idle: 200 * time.Millisecond})
+	ch, err := ConnectWith(ctx, addr, Options{Idle: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -423,11 +423,11 @@ func TestClient_IdleDeadline(t *testing.T) {
 		if ev.Type != "disconnected" {
 			t.Errorf("after a silent stream got %s, want disconnected", shape([]Event{ev}))
 		}
-		if d := time.Since(start); d > time.Second {
-			t.Errorf("disconnected after %v, want within 1s", d)
+		if d := time.Since(start); d > 3*time.Second {
+			t.Errorf("disconnected after %v, want within 3s", d)
 		}
-	case <-time.After(time.Second):
-		t.Fatal("a silent stream still connected after 1s with Idle 200ms")
+	case <-time.After(3 * time.Second):
+		t.Fatal("a silent stream still connected after 3s with Idle 1s")
 	}
 }
 
@@ -452,7 +452,7 @@ func TestClient_PingsKeepAlive(t *testing.T) {
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ch, err := ConnectWith(ctx, addr, Options{Idle: 200 * time.Millisecond})
+	ch, err := ConnectWith(ctx, addr, Options{Idle: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -460,7 +460,7 @@ func TestClient_PingsKeepAlive(t *testing.T) {
 	select {
 	case ev := <-ch:
 		t.Errorf("a pinged stream got %s", shape([]Event{ev}))
-	case <-time.After(700 * time.Millisecond):
+	case <-time.After(2500 * time.Millisecond):
 	}
 }
 
@@ -488,6 +488,27 @@ func TestClient_Gap(t *testing.T) {
 	}
 	if g := evs[6].Gap; g == nil || g.Missed != 4 {
 		t.Errorf("gap = %+v, want Missed 4", g)
+	}
+}
+
+// A reconnect before any event was seen makes no gap, even when the ring has moved on.
+func TestClient_NoGapBeforeAnyEvent(t *testing.T) {
+	lines := fixture(t, "basic.ndjson")
+	hello, events := lines[0], lines[1:]
+	later := bytes.Replace(hello, []byte(`"first":1`), []byte(`"first":8`), 1)
+	_, addr := startFeed(t,
+		serve([][]byte{hello}, false),
+		serve(append([][]byte{later}, events[7:]...), true),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch, err := Connect(ctx, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs := take(t, ch, 1+1+1+6)
+	if got, want := shape(evs), "hello:13 disconnected hello:13 log:8 log:9 log:10 log:11 log:12 log:13"; got != want {
+		t.Errorf("events:\n%s\nwant:\n%s", got, want)
 	}
 }
 

@@ -58,3 +58,13 @@ func TestFooter_Fit(t *testing.T) {
 		t.Errorf("tiny: left %q, cmd %q", left, cmd)
 	}
 }
+
+// joinFooter never makes a line wider than the terminal, however narrow it is.
+func TestFooter_VeryNarrow(t *testing.T) {
+	keys := []Key{{"enter", "open"}, {"esc", "back"}, {"o", "browser"}, {"R", "restart"}, {"?", "keys"}}
+	left, cmd := fitFooter(keys, strings.Repeat("c", 80), 20)
+	line := joinFooter(left, cmd, func(s string) string { return "\x1b[2m" + s + "\x1b[0m" }, 20)
+	if w := ansi.StringWidth(line); w > 20 {
+		t.Errorf("footer is %d cells at width 20: %q", w, ansi.Strip(line))
+	}
+}

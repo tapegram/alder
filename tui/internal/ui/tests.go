@@ -147,6 +147,7 @@ func (s *testsScreen) Stop() {
 		case <-done:
 		case <-time.After(stopWait):
 		}
+		s.stream = nil
 	}
 	if s.watching {
 		s.watching = false

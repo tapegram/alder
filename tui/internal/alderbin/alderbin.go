@@ -44,8 +44,9 @@ func Version(ctx context.Context, run func(ctx context.Context, args ...string) 
 	return help.Version, nil
 }
 
-// Mismatch is the short warning (`alder 0.6.0 ≠ tui 0.5.0`) to show when alder-tui and alder are different versions, and "" when
-// they are the same or either is a development build (version "(devel)").
+// Mismatch is the short warning (`alder 0.6.0 ≠ tui 0.5.0`) to show when alder-tui and alder are
+// different versions, and "" when they are the same or either is a development build (version
+// "(devel)").
 func Mismatch(tui, alder string) string {
 	if tui == alder || tui == "(devel)" || alder == "(devel)" {
 		return ""

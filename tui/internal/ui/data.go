@@ -123,7 +123,7 @@ type dataScreen struct {
 	detail  bool
 	dtop    int // the first line of the row view drawn
 
-	width, height int // the body's size, as of the last tea.WindowSizeMsg
+	width, height int // View's inner width and the body's height, as of the last WindowSizeMsg
 
 	typing   bool
 	input    string

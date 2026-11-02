@@ -104,8 +104,8 @@ type kind struct {
 
 // Parse reads one line of `alder test --json` into r: a test's result is appended to the
 // results; {"diagnostics": […]} sets the diagnostics, {"error": …} the error, {"mutants": […]}
-// the mutants, and {"score": …, "killed": …} the score. A diagnostics or mutants line whose list
-// does not read sets the error instead, so a run that reported them never shows as clean. A
+// the mutants, and {"score": …, "killed": …} the score. A diagnostics or mutants line whose
+// list does not read sets the error instead, so a run that reported them never shows as clean. A
 // blank line, or one that is not one of these objects, changes nothing.
 func Parse(text string, r *Run) {
 	text = strings.TrimSpace(text)

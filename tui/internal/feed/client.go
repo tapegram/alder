@@ -199,7 +199,7 @@ func (c *client) run(ctx context.Context, ch chan<- Event, s *stream, hello Even
 		switch {
 		case hello.Hello.Boot != boot: // another dev server: its seqs are not the last one's
 			boot, last = hello.Hello.Boot, 0
-		case reconnect && hello.Hello.First > last+1: // the ring dropped last+1 to First-1
+		case reconnect && last > 0 && hello.Hello.First > last+1: // the ring dropped last+1 to First-1
 			missed = uint64(hello.Hello.First - last - 1)
 		}
 		if !send(hello) || missed > 0 && !send(Event{Type: "gap", T: time.Now().UTC(), Gap: &Gap{Missed: missed}}) {

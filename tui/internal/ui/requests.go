@@ -426,7 +426,8 @@ func (s *requestsScreen) row(r store.Request, cs []string, w []int) string {
 }
 
 // strip is the last minute as ` last 60s  12.4 req/s  p50 8ms  p95 41ms  errors 0.0%`, then the
-// filter when one is set (bold while it is being typed). Only the requests of the window are counted.
+// filter when one is set (bold while it is being typed). Only the requests of the window are
+// counted.
 func (s *requestsScreen) strip(c *Ctx) string {
 	now := c.Opts.Now()
 	var recent []store.Request

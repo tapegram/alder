@@ -411,17 +411,19 @@ func TestSession_Exited(t *testing.T) {
 		code       int
 		tail       string
 	}{
-		{"killed", "echo started >&2\nwhile :; do sleep 0.05; done", true, 128 + int(syscall.SIGKILL), ""},
-		{"crashed", "echo started >&2\nsleep 0.3\necho 'panic: boom' >&2\necho 'goroutine 1' >&2\nexit 4", false, 4,
+		{"killed", "while :; do sleep 0.05; done", true, 128 + int(syscall.SIGKILL), ""},
+		// The crash waits for the gate file, which the test creates once Open has returned.
+		{"crashed", "while [ ! -e \"$GATE\" ]; do sleep 0.01; done\necho 'panic: boom' >&2\necho 'goroutine 1' >&2\nexit 4", false, 4,
 			"panic: boom\ngoroutine 1"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			alder := script(t, c.body)
 			dir := t.TempDir()
+			gate := filepath.Join(t.TempDir(), "gate")
 			var p Proc
 			start := func(alder, dir string, env []string) (Proc, error) {
 				var err error
-				p, err = Start(alder, dir, env)
+				p, err = Start(alder, dir, append(env, "GATE="+gate))
 				return p, err
 			}
 			var calls int
@@ -439,6 +441,9 @@ func TestSession_Exited(t *testing.T) {
 			defer s.Close()
 			if c.kill {
 				p.(*proc).cmd.Process.Kill()
+			}
+			if err := os.WriteFile(gate, nil, 0o644); err != nil {
+				t.Fatal(err)
 			}
 			select {
 			case e, ok := <-s.Exited():

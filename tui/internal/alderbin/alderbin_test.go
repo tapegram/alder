@@ -101,14 +101,7 @@ func TestFind_RelativePath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "rel", "alder"), []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Chdir(wd) })
+	t.Chdir(dir)
 	t.Setenv("PATH", "rel")
 	got, err := Find(func(string) string { return "" }, exec.LookPath)
 	if err != nil || !filepath.IsAbs(got) || filepath.Base(got) != "alder" {

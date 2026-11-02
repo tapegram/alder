@@ -67,8 +67,9 @@ type Feed struct {
 // return and its error when it failed, the last hello, the last build event of the dev server's
 // current boot and the build state, the app's exit when it has exited, the owned dev server's
 // exit when it has died (until a hello comes again), whether the feed is disconnected, the
-// active filters of the Logs and Requests screens, the current tab, and the app's routes as the Routes screen last
-// loaded them, with the route the Requests screen is filtered to (nil for none). RouteFilter is separate from ReqFilter, the text filter, and both apply.
+// active filters of the Logs and Requests screens, the current tab, and the app's routes as the
+// Routes screen last loaded them, with the route the Requests screen is filtered to (nil for
+// none). RouteFilter is separate from ReqFilter, the text filter, and both apply.
 type Ctx struct {
 	Opts         Options
 	Logs         *store.Logs

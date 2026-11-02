@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -373,6 +374,18 @@ func TestTests_StopCancels(t *testing.T) {
 		st := s.stream
 		s.Stop()
 		canceled(t, st)
+	})
+	t.Run("Stop twice", func(t *testing.T) {
+		_, s := streaming(t)
+		s.Stop()
+		if s.stream != nil {
+			t.Error("the stream is still held after Stop")
+		}
+		start := time.Now()
+		s.Stop()
+		if d := time.Since(start); d > 100*time.Millisecond {
+			t.Errorf("the second Stop took %v, want it to return at once", d)
+		}
 	})
 	for _, k := range []string{"q", "ctrl+c"} {
 		t.Run(k, func(t *testing.T) {

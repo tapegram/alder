@@ -238,8 +238,8 @@ func TestLive_Screens(t *testing.T) {
 	}
 }
 
-// copyApp copies the app in src to dst, leaving out its build directory and the SQLite files (*.db, *-wal, *-shm), which a
-// local `alder test` of the fixture may have left behind.
+// copyApp copies the app in src to dst, leaving out its build directory and the SQLite files
+// (*.db, *-wal, *-shm), which a local `alder test` of the fixture may have left behind.
 func copyApp(t *testing.T, src, dst string) {
 	t.Helper()
 	err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {

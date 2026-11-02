@@ -96,5 +96,5 @@ func fitFooter(keys []Key, cmd string, width int) (string, string) {
 // joinFooter puts the command at the right of left, at least two cells away.
 func joinFooter(left, cmd string, style func(string) string, width int) string {
 	gap := max(width-ansi.StringWidth(left)-ansi.StringWidth(cmd)-1, 2)
-	return left + strings.Repeat(" ", gap) + style(cmd)
+	return ansi.Truncate(left+strings.Repeat(" ", gap)+style(cmd), max(width, 0), "")
 }
