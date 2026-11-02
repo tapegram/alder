@@ -19,6 +19,7 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/muesli/termenv"
 
+	"alder/tui/internal/devproc"
 	"alder/tui/internal/feed"
 	"alder/tui/internal/store"
 )
@@ -453,6 +454,57 @@ func TestProblems_BuildText(t *testing.T) {
 
 func TestStatus_Disconnected(t *testing.T) {
 	m := newRoot(options(nil), fixture(t, "basic")[0], feed.Event{Type: "disconnected"})
+	if !strings.Contains(m.View(), "\x1b[33mdisconnected\x1b[0m") {
+		t.Errorf("no yellow disconnected in the status bar:\n%s", m.View())
+	}
+}
+
+// TestRoot_ExitedStatus has the owned dev server die after its feed answered: the status bar
+// says so in red with its exit code, in place of the feed's disconnected, and the Logs screen
+// shows the lines it printed last as errors.
+func TestRoot_ExitedStatus(t *testing.T) {
+	events, exited, release := make(chan feed.Event, 64), make(chan devproc.Exit, 1), make(chan struct{})
+	close(release)
+	o := starting(events, release, nil)
+	open := o.Open
+	o.Open = func(line func(string)) (Feed, error) {
+		f, err := open(line)
+		f.Exited = exited
+		return f, err
+	}
+	tm := teatest.NewTestModel(t, New(o), teatest.WithInitialTermSize(100, 30))
+	for _, ev := range fixture(t, "basic") {
+		events <- ev
+	}
+	tm.Send(key("2"))
+	waitText(t, tm, "panic: runtime error")
+	events <- feed.Event{Type: "disconnected"}
+	exited <- devproc.Exit{Code: 4, StderrTail: "panic: boom\ngoroutine 1 [running]"}
+	waitText(t, tm, "alder run exited (code 4)")
+	m, frame := finalFrame(t, tm)
+	bar := strings.Split(string(frame), "\n")[0]
+	if !strings.Contains(bar, "\x1b[31malder run exited (code 4)\x1b[0m") || strings.Contains(bar, "disconnected") {
+		t.Errorf("status bar = %q, want the red exit in place of disconnected", bar)
+	}
+	var errs []string
+	for _, l := range m.ctx.Logs.View(store.Filter{Level: "error"}) {
+		errs = append(errs, l.Text)
+	}
+	if got := strings.Join(errs, "|"); !strings.Contains(got, "error: panic: boom|") ||
+		!strings.Contains(got, "error: goroutine 1 [running]|") || !strings.HasSuffix(got, "error: alder run exited (code 4)") {
+		t.Errorf("error lines = %q, want the stderr tail and the exit", errs)
+	}
+	// A hello, from a dev server started again on the address, clears it.
+	m.Update(eventMsg(fixture(t, "basic")[0]))
+	if bar := strings.Split(m.View(), "\n")[0]; strings.Contains(bar, "exited") {
+		t.Errorf("status bar after a new hello = %q", bar)
+	}
+}
+
+// TestRoot_FeedClosed ends the feed: the status bar says disconnected.
+func TestRoot_FeedClosed(t *testing.T) {
+	m := newRoot(options(nil), fixture(t, "basic")[0])
+	run(m, feedClosedMsg{})
 	if !strings.Contains(m.View(), "\x1b[33mdisconnected\x1b[0m") {
 		t.Errorf("no yellow disconnected in the status bar:\n%s", m.View())
 	}

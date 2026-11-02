@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -52,6 +53,9 @@ func TestOpen_AttachSameDir(t *testing.T) {
 	ev := <-s.Events
 	if ev.Type != "hello" || ev.Hello.Dir != dir {
 		t.Errorf("first event = %+v, want the hello", ev)
+	}
+	if s.Exited() != nil {
+		t.Error("Exited() of an attached session is not nil")
 	}
 }
 
@@ -138,12 +142,14 @@ func TestOpen_NoRun(t *testing.T) {
 type fakeProc struct {
 	stderr chan string
 	exited chan struct{}
+	code   int
 	mu     sync.Mutex
 	stops  int
 }
 
 func (p *fakeProc) Stderr() <-chan string   { return p.stderr }
 func (p *fakeProc) Exited() <-chan struct{} { return p.exited }
+func (p *fakeProc) Code() int               { return p.code }
 func (p *fakeProc) Stop() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -217,6 +223,15 @@ func TestOpen_Owns(t *testing.T) {
 	if p.stops != 1 {
 		t.Errorf("Stop called %d times, want 1", p.stops)
 	}
+	// Closing is no exit of the dev server's own: Exited closes without a value.
+	select {
+	case e, ok := <-s.Exited():
+		if ok {
+			t.Errorf("Exited delivered %+v after Close", e)
+		}
+	case <-time.After(time.Second):
+		t.Error("Exited still open 1 s after Close")
+	}
 }
 
 // The child runs in the app's directory, so that alder run's build lands in <dir>/build.
@@ -270,5 +285,172 @@ func TestProc_DiesWithParentPipe(t *testing.T) {
 	case <-time.After(time.Second):
 		p.Stop()
 		t.Fatal("still running 1 s after its stdin closed")
+	}
+}
+
+// script is an executable shell script with body, standing in for alder.
+func script(t *testing.T, body string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("unix only")
+	}
+	path := filepath.Join(t.TempDir(), "alder")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// refusing is a Connect for an address nothing listens on.
+func refusing(context.Context, string) (<-chan feed.Event, error) { return nil, refused }
+
+func TestOpen_StartTimeout(t *testing.T) {
+	p := &fakeProc{stderr: make(chan string, 2), exited: make(chan struct{})}
+	p.stderr <- "alder run: building"
+	p.stderr <- "alder run: stuck"
+	start := func(string, string, []string) (Proc, error) { return p, nil }
+	began := time.Now()
+	_, err := Open(context.Background(), Options{Dir: t.TempDir(), Addr: "localhost:8080", Alder: "alder",
+		Connect: refusing, Start: start, StartTimeout: 300 * time.Millisecond})
+	if took := time.Since(began); took > 5*time.Second {
+		t.Errorf("Open took %s with a 300ms start timeout", took)
+	}
+	want := "alder run did not answer on localhost:8080 within 300ms:\nalder run: building\nalder run: stuck"
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+	if p.stops != 1 {
+		t.Errorf("Stop called %d times, want 1", p.stops)
+	}
+}
+
+func TestOpen_ChildExitsEarly(t *testing.T) {
+	alder := script(t, "echo 'error: shelf.alder:3: no such type' >&2\nexit 3")
+	_, err := Open(context.Background(), Options{Dir: t.TempDir(), Addr: "localhost:8080", Alder: alder,
+		Connect: refusing})
+	want := "alder run exited (code 3) before its feed answered on localhost:8080:\nerror: shelf.alder:3: no such type"
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+}
+
+// TestOpen_NoGoroutineLeak fails Open on its start timeout against a dev server that, once told
+// to stop, prints more lines than the stderr channel holds: the goroutine reading them must not
+// stay blocked once Open has returned.
+func TestOpen_NoGoroutineLeak(t *testing.T) {
+	alder := script(t, `trap 'i=0; while [ $i -lt 300 ]; do echo "stopping $i" >&2; i=$((i+1)); done; exit 0' TERM
+echo started >&2
+while :; do sleep 0.05; done`)
+	base := runtime.NumGoroutine()
+	_, err := Open(context.Background(), Options{Dir: t.TempDir(), Addr: "localhost:8080", Alder: alder,
+		Connect: refusing, StartTimeout: 300 * time.Millisecond})
+	if err == nil || !strings.Contains(err.Error(), "did not answer") {
+		t.Fatalf("err = %v, want the start timeout", err)
+	}
+	n := runtime.NumGoroutine()
+	for deadline := time.Now().Add(3 * time.Second); n > base && time.Now().Before(deadline); n = runtime.NumGoroutine() {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if n > base {
+		buf := make([]byte, 1<<16)
+		t.Errorf("%d goroutines after the failed Open, %d before:\n%s", n, base, buf[:runtime.Stack(buf, true)])
+	}
+}
+
+// TestDirCheck_Symlink attaches to a dev server whose hello names the app's directory by another
+// path through a symlink: t.TempDir is under /var on macOS, which is /private/var.
+func TestDirCheck_Symlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix only")
+	}
+	dir := t.TempDir()
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(dir, link); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ dir, hello string }{{dir, real}, {real, dir}, {link, real}, {real, link}, {dir, dir}} {
+		s, err := Open(context.Background(), Options{Dir: c.dir, Addr: "localhost:8080", Alder: "alder",
+			Connect: helloFor(c.hello), Start: noStart(t)})
+		if err != nil {
+			t.Errorf("dir %s, hello %s: %v", c.dir, c.hello, err)
+			continue
+		}
+		s.Close()
+	}
+}
+
+// TestProbe_HelloBeatsTimer has the probe's deadline pass in the same tick as the hello arrives:
+// the hello counts, every time.
+func TestProbe_HelloBeatsTimer(t *testing.T) {
+	old := probeAfter
+	t.Cleanup(func() { probeAfter = old })
+	probeAfter = func(time.Duration) <-chan time.Time {
+		c := make(chan time.Time, 1)
+		c <- time.Now()
+		return c
+	}
+	dir := t.TempDir()
+	for i := range 100 {
+		s, err := Open(context.Background(), Options{Dir: dir, Addr: "localhost:8080", Alder: "alder",
+			Connect: helloFor(dir), Start: noStart(t)})
+		if err != nil {
+			t.Fatalf("try %d: %v", i, err)
+		}
+		s.Close()
+	}
+}
+
+func TestSession_Exited(t *testing.T) {
+	for _, c := range []struct {
+		name, body string
+		kill       bool
+		code       int
+		tail       string
+	}{
+		{"killed", "echo started >&2\nwhile :; do sleep 0.05; done", true, 128 + int(syscall.SIGKILL), ""},
+		{"crashed", "echo started >&2\nsleep 0.3\necho 'panic: boom' >&2\necho 'goroutine 1' >&2\nexit 4", false, 4,
+			"panic: boom\ngoroutine 1"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			alder := script(t, c.body)
+			dir := t.TempDir()
+			var p Proc
+			start := func(alder, dir string, env []string) (Proc, error) {
+				var err error
+				p, err = Start(alder, dir, env)
+				return p, err
+			}
+			var calls int
+			connect := func(ctx context.Context, addr string) (<-chan feed.Event, error) {
+				if calls++; calls == 1 {
+					return nil, refused
+				}
+				return helloFor(dir)(ctx, addr)
+			}
+			s, err := Open(context.Background(), Options{Dir: dir, Addr: "localhost:8080", Alder: alder,
+				Connect: connect, Start: start})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			if c.kill {
+				p.(*proc).cmd.Process.Kill()
+			}
+			select {
+			case e, ok := <-s.Exited():
+				if !ok {
+					t.Fatal("Exited closed without an Exit")
+				}
+				if e.Code != c.code || e.StderrTail != c.tail {
+					t.Errorf("Exit = %+v, want code %d and tail %q", e, c.code, c.tail)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("no Exit 5 s after the dev server died")
+			}
+		})
 	}
 }

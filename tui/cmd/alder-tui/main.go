@@ -113,7 +113,7 @@ func run(args []string, stdout, stderr *os.File) int {
 			return ui.Feed{}, err
 		}
 		sess = s
-		return ui.Feed{Events: s.Events, Owned: s.Owned}, nil
+		return ui.Feed{Events: s.Events, Owned: s.Owned, Exited: s.Exited()}, nil
 	}
 	stop := func() {
 		stopOnce.Do(func() {
