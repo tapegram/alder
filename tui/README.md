@@ -102,7 +102,7 @@ Data:
 | `j`/`k`, arrows | move between tables (left) or rows (right) |
 | `enter`, `l` | move into a table's rows |
 | `h`/`l`, arrows | in the rows, move between columns |
-| `enter` | in the rows, show the row vertically with long text unfolded; `esc`, `h`, `enter` or `backspace` go back |
+| `enter` | in the rows, show the row vertically with long text unfolded; `esc`, `h`, `left`, `enter` or `backspace` go back |
 | `esc` | in the rows, clear a query's result, else go back to the tables |
 | `[` / `]` | previous or next page of rows |
 | `s` | sort by the column under the cursor; again for descending |
