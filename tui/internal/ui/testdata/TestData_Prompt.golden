@@ -1,0 +1,30 @@
+ shelf  [2m● connecting[0m  localhost:8080  alder v0.15.0       1 Requests 2 Logs [1m3 Data[0m 4 Tests 5 Routes
+ [1mTables[0m             │ [1mquery[0m  [2mdelete from x[0m
+ > Books.Book    3  │ [1;31monly select, with and explain run here (the database is opened read-only)[0m
+   Lending.Loan  1  │
+                    │
+ [1mMigrations[0m         │
+   [2m0001_init.sql[0m    │
+   [2m0002_loans.sql[0m   │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ enter row  : sql  esc back  o browser  R restart        [2msqlite3 build/shelf/dev.db 'delete from x'[0m

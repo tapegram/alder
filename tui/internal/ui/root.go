@@ -156,7 +156,7 @@ func New(o Options) tea.Model {
 		screens: []Screen{
 			newRequestsScreen(),
 			newLogsScreen(),
-			placeholder{title: "Data", command: func(c *Ctx) string { return "sqlite3 build/" + appName(c) + "/dev.db" }},
+			newDataScreen(),
 			newTestsScreen(),
 			newRoutesScreen(),
 		},

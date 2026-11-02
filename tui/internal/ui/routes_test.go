@@ -86,17 +86,17 @@ func TestRoutes_RefreshOnBuild(t *testing.T) {
 	if len(f.Calls()) != 1 {
 		t.Fatalf("calls = %q", f.Calls())
 	}
-	run(m, eventMsg(buildEvent("building")))
+	runAll(m, eventMsg(buildEvent("building")))
 	if len(f.Calls()) != 1 {
 		t.Errorf("a build that has started refreshed the routes: %q", f.Calls())
 	}
-	run(m, eventMsg(buildEvent("ok")))
+	runAll(m, eventMsg(buildEvent("ok")))
 	if want := []string{"routes --json", "routes --json"}; !reflect.DeepEqual(f.Calls(), want) {
 		t.Errorf("a build ok called %q, want %q", f.Calls(), want)
 	}
 	// The new routes replace the old ones.
 	f.On("routes --json", `[{"kind":"page","path":"/about","module":"About","name":"page","file":"app/About.al","line":1,"col":1}]`, 0)
-	run(m, eventMsg(buildEvent("ok")))
+	runAll(m, eventMsg(buildEvent("ok")))
 	if frame := m.View(); !strings.Contains(frame, "/about") || strings.Contains(frame, "/books/{id}") {
 		t.Errorf("the routes were not replaced:\n%s", frame)
 	}
@@ -106,7 +106,7 @@ func TestRoutes_RefreshOnBuild(t *testing.T) {
 func TestRoutes_LoadsOnStart(t *testing.T) {
 	o, f := routesOptions()
 	m := newRoot(o)
-	run(m, m.Init()())
+	runAll(m, m.Init()())
 	if len(f.Calls()) != 1 {
 		t.Fatalf("starting called %q, want one routes --json", f.Calls())
 	}
