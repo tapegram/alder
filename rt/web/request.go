@@ -37,6 +37,8 @@ type Request struct {
 	Dev      bool       // Options.Dev
 	Login    string     // Options.Login: where a failed `requires` redirects
 	Notice   string     // the toast text of a Noticed answer (set by the generated update route)
+	// NoticeKind is the variant of Notice's toast (set with it; "" shows as info)
+	NoticeKind rtpkg.NoticeKind
 	// Model is the model a page's GET route rendered (set by the generated route, nil for any
 	// other request): Options.Served hands it to an Alder test's browser, so Test.get gives the
 	// model the page showed without running its load again.

@@ -2658,13 +2658,13 @@ with its row, "Choose hello-world", for a screen reader.)
   listed with "(kept: other rows refer to it)" and left, and the rest
   are deleted. On the user table, the admin's own row is refused too,
   listed with "(kept: your own account)". The
-  answer is `Notice.with "Deleted 2 of 3"` on a redirect to the list, so
+  answer is `Notice.success "Deleted 2 of 3"` on a redirect to the list, so
   the person sees a toast (chapter 6, "Notices and in-flight"). As with
   every message, `load` runs first and reads the rows again, so what is
   deleted is what the database holds now, not what the list showed.
 - **Set** a `Bool` column, or a column of a union with no payloads: one
   form per such column (`BulkSetPublished`, `BulkSetDone`), which updates
-  every chosen row and answers `Notice.with "Updated 3"`.
+  every chosen row and answers `Notice.success "Updated 3"`.
 
 An action takes at most one page of the list, 25 rows (`maxRows`, the
 list's `perPage`): the page reads the first 25 ids it is given, says so

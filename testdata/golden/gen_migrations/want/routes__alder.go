@@ -26,7 +26,7 @@ func update__App(rq *web.Request, msg App__Msg) web.Response {
 	if err != nil {
 		return route__fail(err)
 	}
-	nav, rq.Notice = nav.Unnotice()
+	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
 	if nav.Tag == rt.NavRedirect {
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
 	}

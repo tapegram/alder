@@ -128,7 +128,7 @@ func Notes__Index__update(msg Notes__Index__Msg, model Notes__Index__Model, sess
 		return eff.Bind(eff.Call("Db.insert Note", true, func(_e1 *eff.Env) (string, error) {
 			return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, insertvals__Note__Note(insert__Note__Note{Title: p.Form.Title, Done: false, Owner: session.User}), _e1.Now())
 		}), func(_ string) eff.Task[rt.Nav] {
-			return eff.Pure(rt.Redirect(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[model.Filter.Tag], "All")}}))
+			return eff.Pure(std.NoticeSuccess("Saved", rt.Redirect(rt.Page{Path: "/", Query: []rt.KV{rt.QueryKV("filter", []string{"All", "Open", "Done"}[model.Filter.Tag], "All")}})))
 		})
 	case is__Notes__Index__Msg__Toggle:
 		p := *msg.Toggle

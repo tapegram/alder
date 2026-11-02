@@ -61,6 +61,10 @@ func test__Wood__1() eff.Task[bool] {
 		Session App__Session
 		Doc     rtesting.Doc
 		Notices []string
+		Toasts  []struct {
+			Kind string
+			Text string
+		}
 	}, error) {
 		var _p2 Wood__Params = Wood__Params{Cfg: "c", ElectionId: "17", ContestId: rt.Just[int64](5)}
 		_u3 := rt.PageURL(rt.Page{Path: rt.Concat("/r/", rt.PathSegment(_p2.Cfg), "/wood/Results"), Query: []rt.KV{rt.QueryKV("ElectionId", _p2.ElectionId, ""), rt.QueryKV("ContestId", rt.MaybeText(_p2.ContestId, std.TextFromInt), "")}})
@@ -72,6 +76,10 @@ func test__Wood__1() eff.Task[bool] {
 				Session App__Session
 				Doc     rtesting.Doc
 				Notices []string
+				Toasts  []struct {
+					Kind string
+					Text string
+				}
 			}
 			return _z7, _err6
 		}
@@ -82,6 +90,10 @@ func test__Wood__1() eff.Task[bool] {
 				Session App__Session
 				Doc     rtesting.Doc
 				Notices []string
+				Toasts  []struct {
+					Kind string
+					Text string
+				}
 			}
 			return _z9, _err6
 		}
@@ -90,18 +102,30 @@ func test__Wood__1() eff.Task[bool] {
 			Session App__Session
 			Doc     rtesting.Doc
 			Notices []string
-		}{Model: _m8, Session: rtesting.SessionOf[App__Session](_r5.Session), Doc: rtesting.DocOf(_r5.Doc), Notices: _r5.Notices}, nil
+			Toasts  []struct {
+				Kind string
+				Text string
+			}
+		}{Model: _m8, Session: rtesting.SessionOf[App__Session](_r5.Session), Doc: rtesting.DocOf(_r5.Doc), Notices: _r5.Notices, Toasts: _r5.Toasts}, nil
 	}), func(page struct {
 		Model   Wood__Model
 		Session App__Session
 		Doc     rtesting.Doc
 		Notices []string
+		Toasts  []struct {
+			Kind string
+			Text string
+		}
 	}) eff.Task[bool] {
 		return eff.Bind(eff.Call("Test.click Wood.Bump", true, func(_e10 *eff.Env) (struct {
 			Answer  rtesting.Answer
 			Session App__Session
 			Doc     rtesting.Doc
 			Notices []string
+			Toasts  []struct {
+				Kind string
+				Text string
+			}
 		}, error) {
 			_r11, _err12 := rtesting.BrowserOf(_e10).ClickMsg(rt.MsgURL("Wood", "Bump"), rtesting.MsgName("Wood.Bump", nil))
 			if _err12 != nil {
@@ -110,6 +134,10 @@ func test__Wood__1() eff.Task[bool] {
 					Session App__Session
 					Doc     rtesting.Doc
 					Notices []string
+					Toasts  []struct {
+						Kind string
+						Text string
+					}
 				}
 				return _z13, _err12
 			}
@@ -118,12 +146,20 @@ func test__Wood__1() eff.Task[bool] {
 				Session App__Session
 				Doc     rtesting.Doc
 				Notices []string
-			}{Answer: _r11.Answer, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc), Notices: _r11.Notices}, nil
+				Toasts  []struct {
+					Kind string
+					Text string
+				}
+			}{Answer: _r11.Answer, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc), Notices: _r11.Notices, Toasts: _r11.Toasts}, nil
 		}), func(r struct {
 			Answer  rtesting.Answer
 			Session App__Session
 			Doc     rtesting.Doc
 			Notices []string
+			Toasts  []struct {
+				Kind string
+				Text string
+			}
 		}) eff.Task[bool] {
 			return eff.Pure(rtesting.Eq(struct {
 				Election string

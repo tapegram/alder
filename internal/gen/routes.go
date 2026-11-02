@@ -210,7 +210,7 @@ func (g *gen) pageRoutes(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 	}
 	model0, session0 := model, session // the page the client shows: Before
 %[11]s%[12]s	nav, err := eff.Run(rq.Env, eff.KTask, %[6]s(msg, model, session))
-%[13]s	nav, rq.Notice = nav.Unnotice()
+%[13]s	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
 	switch {
 	case nav.Tag == rt.NavRedirect:
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
@@ -701,7 +701,7 @@ func (g *gen) appRoutes(b *strings.Builder, p *ir.Program) {
 	if err != nil {
 		return route__fail(err)
 	}
-	nav, rq.Notice = nav.Unnotice()
+	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
 	if nav.Tag == rt.NavRedirect {
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
 	}

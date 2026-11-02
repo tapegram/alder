@@ -1148,17 +1148,25 @@ toast Alder's runtime patches in already does.
 
 You rarely write one. A message that answers `Notice.with "Saved"
 Rerender` (chapter 6, "Notices and in-flight") makes Alder's runtime
-patch an `<al-toast variant="info" timeout="5000">` into the page's
-`<al-toasts>`, after the body update, so the toast survives the morph; the
-scaffold's guestbook does this for "Signed".
+patch an `<al-toast>` into the page's `<al-toasts>`, after the body
+update, so the toast survives the morph; the scaffold's guestbook does
+this for "Signed".
 
 Without JavaScript the region stays hidden, so a toast is never seen.
 Alder covers the `Notice` answer itself: a request made without the
 script (a form posted with JavaScript off) gets its notice as an
-`<al-alert variant="info" role="status">` at the top of the page that
-answers it, the page itself on a `Rerender`, the next page on a
-`Redirect` (the text rides a signed cookie, `alder_notice`, for that one
-page).
+`<al-alert>` at the top of the page that answers it, the page itself on a
+`Rerender`, the next page on a `Redirect` (the kind and text ride a signed
+cookie, `alder_notice`, for that one page).
+
+Each `Notice` function gives its own toast and alert:
+
+| Function | kind | `al-toast` `variant` | toast `timeout` | `al-alert` `variant` | `al-alert` `role` |
+|---|---|---|---|---|---|
+| `Notice.with` | info | `info` | `5000` | `info` | `status` |
+| `Notice.success` | success | `success` | `5000` | `success` | `status` |
+| `Notice.warning` | warning | `warning` | `5000` | `warning` | `alert` |
+| `Notice.error` | error | `destructive` | `0` | `destructive` | `alert` |
 
 ### `al-toasts`
 

@@ -64,7 +64,7 @@ update msg model session =
         let allowed = List.filter (\row -> refused model session row == False) model.rows
         let _ <- Task.all (List.map (\row -> Db.delete Activity row.id) allowed)
         Task.succeed (
-          Notice.with ("Deleted " ++ Text.fromInt (List.length allowed) ++ " of " ++ Text.fromInt (List.length model.rows)) (
+          Notice.success ("Deleted " ++ Text.fromInt (List.length allowed) ++ " of " ++ Text.fromInt (List.length model.rows)) (
             Redirect (Admin.Activities.Index {})
           )
         )

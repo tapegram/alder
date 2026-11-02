@@ -131,7 +131,7 @@ func update__Admin__Projects(rq *web.Request, params Admin__Projects__Params, ms
 		}
 		nav = rt.Reject("You are not a member of that workspace.")
 	}
-	nav, rq.Notice = nav.Unnotice()
+	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
 	switch {
 	case nav.Tag == rt.NavRedirect:
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
@@ -297,7 +297,7 @@ func update__Notes__Index(rq *web.Request, params Notes__Index__Params, msg Note
 		}
 		nav = rt.Reject("You are not a member of that workspace.")
 	}
-	nav, rq.Notice = nav.Unnotice()
+	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
 	switch {
 	case nav.Tag == rt.NavRedirect:
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
@@ -436,7 +436,7 @@ func update__Orgs(rq *web.Request, params Orgs__Params, msg Orgs__Msg, st *html.
 		}
 		nav = rt.Reject("You are not a member of that workspace.")
 	}
-	nav, rq.Notice = nav.Unnotice()
+	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
 	switch {
 	case nav.Tag == rt.NavRedirect:
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
@@ -627,7 +627,7 @@ func update__Projects__Index(rq *web.Request, params Projects__Index__Params, ms
 		}
 		nav = rt.Reject("You are not a member of that workspace.")
 	}
-	nav, rq.Notice = nav.Unnotice()
+	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
 	switch {
 	case nav.Tag == rt.NavRedirect:
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
@@ -763,7 +763,7 @@ func update__App(rq *web.Request, msg App__Msg) web.Response {
 	if err != nil {
 		return route__fail(err)
 	}
-	nav, rq.Notice = nav.Unnotice()
+	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
 	if nav.Tag == rt.NavRedirect {
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
 	}

@@ -1829,6 +1829,13 @@ A step's result also has `notices`, the list of toast texts the answer showed
 
     { answer: r.answer, notices: r.notices } == { answer: Rerendered, notices: ["Saved"] }
 
+It also has `toasts`, the same toasts in the same order with their kind
+(`"info"`, `"success"`, `"warning"` or `"error"`, chapter 6), for a test
+that checks which kind the answer showed. `Notice.success "Saved" (Redirect
+(Todos.Index {}))` gives:
+
+    r.toasts == [{ kind: "success", text: "Saved" }]
+
 ### Test helpers
 
 Tests of one page often begin the same way: the same fakes, the same

@@ -324,7 +324,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const afterReload = await p2.evaluate(() => document.querySelectorAll('#_alder_tab_history ol[data-hist] button').length);
     check('history: it survives a full page load (sessionStorage)', afterReload >= 4, afterReload);
 
-    // a toast from Notice.with: bulk delete of one chosen user, its notice on the list
+    // a toast from Notice.success: bulk delete of one chosen user, its notice on the list
     await p2.goto(BASE + '/admin/user?q=u17%40example.com');
     await p2.evaluate(() => { window.__m = 1; });
     await p2.check('input[name=ids]');
@@ -341,7 +341,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const t = document.querySelector('al-toast'), r = document.querySelector('al-toasts');
       return t && { text: t.textContent, shown: r.matches(':popover-open'), role: t.getAttribute('role') };
     });
-    check('toast: Notice.with shows an al-toast in the open region', toast && /Deleted 1 of 1/.test(toast.text) && toast.shown && toast.role === 'status', toast);
+    check('toast: Notice.success shows an al-toast in the open region', toast && /Deleted 1 of 1/.test(toast.text) && toast.shown && toast.role === 'status', toast);
     const hop = await p2.evaluate(() => {
       const p = document.querySelector('al-devpanel'), sql = document.getElementById('_alder_tab_sql').textContent;
       return {
