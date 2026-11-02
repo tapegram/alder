@@ -86,7 +86,7 @@ func openTemp(t *testing.T, n int) *DB {
 func TestOpen_ReadOnly(t *testing.T) {
 	db := openTemp(t, 3)
 	ctx := context.Background()
-	cols, rows, err := db.Query(ctx, `select id, year from "Books__Book" order by id`)
+	cols, rows, _, err := db.Query(ctx, `select id, year from "Books__Book" order by id`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,14 +96,12 @@ func TestOpen_ReadOnly(t *testing.T) {
 	if want := [][]string{{"b000", "1900"}, {"b001", "1901"}, {"b002", "1902"}}; !reflect.DeepEqual(rows, want) {
 		t.Errorf("rows = %q, want %q", rows, want)
 	}
-	if _, _, err := db.Query(ctx, `delete from "Books__Book"`); err == nil {
+	if _, _, _, err := db.Query(ctx, `delete from "Books__Book"`); err == nil {
 		t.Error("Query ran a delete")
 	}
 	// A write through the handle itself, past Guard, is refused by SQLite.
-	err = db.exec(ctx, `delete from "Books__Book"`)
-	if err == nil || !strings.Contains(err.Error(), "readonly") && !strings.Contains(err.Error(), "read-only") &&
-		!strings.Contains(err.Error(), "query_only") {
-		t.Errorf("a write through the handle = %v, want a read-only error", err)
+	if err := db.exec(ctx, `delete from "Books__Book"`); err == nil {
+		t.Error("a write through the handle succeeded")
 	}
 	if n, err := db.Count(ctx, books); err != nil || n != 3 {
 		t.Errorf("after the refused write Count = %d, %v; want 3", n, err)
@@ -132,12 +130,27 @@ func TestOpen_OddPath(t *testing.T) {
 
 func TestQuery_Limit(t *testing.T) {
 	db := openTemp(t, 0)
-	_, rows, err := db.Query(context.Background(), "with recursive n(i) as (select 1 union all select i+1 from n where i < 1500) select i from n")
+	_, rows, trunc, err := db.Query(context.Background(), "with recursive n(i) as (select 1 union all select i+1 from n where i < 1500) select i from n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != QueryRows {
-		t.Errorf("rows = %d, want %d", len(rows), QueryRows)
+	if len(rows) != QueryRows || !trunc {
+		t.Errorf("rows = %d, truncated = %v; want %d, true", len(rows), trunc, QueryRows)
+	}
+}
+
+// A result of exactly QueryRows rows is whole; one more row is a cut result.
+func TestQuery_Exactly1000(t *testing.T) {
+	db := openTemp(t, 0)
+	for n, want := range map[int]bool{QueryRows - 1: false, QueryRows: false, QueryRows + 1: true} {
+		stmt := "with recursive n(i) as (select 1 union all select i+1 from n where i < " + strconv.Itoa(n) + ") select i from n"
+		_, rows, trunc, err := db.Query(context.Background(), stmt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != min(n, QueryRows) || trunc != want {
+			t.Errorf("%d rows: got %d rows, truncated = %v; want %d, %v", n, len(rows), trunc, min(n, QueryRows), want)
+		}
 	}
 }
 
@@ -255,3 +268,61 @@ func TestParseMap(t *testing.T) {
 		t.Error("ParseMap of HTML succeeded")
 	}
 }
+
+// refuses opens the 3-row database with the layers given and checks that a write past Guard
+// fails and changes nothing, and that query_only is as set.
+func refuses(t *testing.T, readOnly, queryOnly bool) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "dev.db")
+	makeDB(t, path, 3)
+	db, err := open(path, readOnly, queryOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	var qo int
+	if err := db.db.QueryRowContext(ctx, "PRAGMA query_only").Scan(&qo); err != nil || (qo == 1) != queryOnly {
+		t.Fatalf("query_only = %d, %v; want set = %v", qo, err, queryOnly)
+	}
+	err = db.exec(ctx, `delete from "Books__Book"`)
+	if err == nil || !strings.Contains(err.Error(), "readonly") {
+		t.Errorf("a write = %v, want a readonly error", err)
+	}
+	if n, err := db.Count(ctx, books); err != nil || n != 3 {
+		t.Errorf("after the refused write Count = %d, %v; want 3", n, err)
+	}
+}
+
+// The file opened read-only refuses a write without query_only.
+func TestOpen_ReadOnlyMode(t *testing.T) { refuses(t, true, false) }
+
+// query_only refuses a write on a file opened read-write.
+func TestOpen_QueryOnly(t *testing.T) { refuses(t, false, true) }
+
+func TestDatabases_DecodedLabel(t *testing.T) {
+	dir := t.TempDir()
+	// The runtime's file names for the ids "org-1" and "Ab_9", and a stem that is not an encoding.
+	files := []string{"silos/org/" + siloName("org-1") + ".db", "silos/org/" + siloName("Ab_9") + ".db", "silos/org/zz9.db"}
+	for _, f := range files {
+		p := filepath.Join(dir, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := Map{Silos: []Silo{{Key: "org", Path: "silos/org/{value}.db"}}}
+	labels := map[string]bool{}
+	for _, c := range Databases(dir, m) {
+		labels[c.Label] = true
+	}
+	want := map[string]bool{"shared": true, "org/org-1": true, "org/Ab_9": true, "org/zz9": true}
+	if !reflect.DeepEqual(labels, want) {
+		t.Errorf("labels = %v, want %v", labels, want)
+	}
+}
+
+// siloName is the runtime's file stem for the id (rt/db SiloFileName without .db).
+func siloName(id string) string { return strings.ToLower(siloEnc.EncodeToString([]byte(id))) }

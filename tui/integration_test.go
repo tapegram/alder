@@ -185,7 +185,7 @@ func TestLive_Screens(t *testing.T) {
 		t.Fatalf("data.Open(%s): %v", dbs[0].Path, err)
 	}
 	defer db.Close()
-	_, rows, err := db.Query(ctx, "SELECT name FROM sqlite_master WHERE type = 'table'")
+	_, rows, _, err := db.Query(ctx, "SELECT name FROM sqlite_master WHERE type = 'table'")
 	if err != nil {
 		t.Fatalf("listing the tables of %s: %v", dbs[0].Path, err)
 	}
