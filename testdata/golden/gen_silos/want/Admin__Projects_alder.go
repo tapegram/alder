@@ -112,6 +112,10 @@ func test__Admin__Projects__1() eff.Task[bool] {
 						Session App__Session
 						Doc     rtesting.Doc
 						Notices []string
+						Toasts  []struct {
+							Kind string
+							Text string
+						}
 					}, error) {
 						var _p9 Admin__Projects__Params = Admin__Projects__Params{Org: b}
 						_u10 := rt.PageURL(rt.Page{Path: rt.Concat("/admin/orgs/", rt.PathSegment(_p9.Org), "/projects")})
@@ -123,6 +127,10 @@ func test__Admin__Projects__1() eff.Task[bool] {
 								Session App__Session
 								Doc     rtesting.Doc
 								Notices []string
+								Toasts  []struct {
+									Kind string
+									Text string
+								}
 							}
 							return _z14, _err13
 						}
@@ -133,6 +141,10 @@ func test__Admin__Projects__1() eff.Task[bool] {
 								Session App__Session
 								Doc     rtesting.Doc
 								Notices []string
+								Toasts  []struct {
+									Kind string
+									Text string
+								}
 							}
 							return _z16, _err13
 						}
@@ -141,12 +153,20 @@ func test__Admin__Projects__1() eff.Task[bool] {
 							Session App__Session
 							Doc     rtesting.Doc
 							Notices []string
-						}{Model: _m15, Session: rtesting.SessionOf[App__Session](_r12.Session), Doc: rtesting.DocOf(_r12.Doc), Notices: _r12.Notices}, nil
+							Toasts  []struct {
+								Kind string
+								Text string
+							}
+						}{Model: _m15, Session: rtesting.SessionOf[App__Session](_r12.Session), Doc: rtesting.DocOf(_r12.Doc), Notices: _r12.Notices, Toasts: _r12.Toasts}, nil
 					}), func(page struct {
 						Model   Admin__Projects__Model
 						Session App__Session
 						Doc     rtesting.Doc
 						Notices []string
+						Toasts  []struct {
+							Kind string
+							Text string
+						}
 					}) eff.Task[bool] {
 						return eff.Bind(eff.Pure(std.ListMap(func(p Project__Project) string {
 							return p.Id
@@ -156,12 +176,20 @@ func test__Admin__Projects__1() eff.Task[bool] {
 								Session App__Session
 								Doc     rtesting.Doc
 								Notices []string
+								Toasts  []struct {
+									Kind string
+									Text string
+								}
 							}] {
 								return eff.Call("Test.click Admin.Projects.Remove", true, func(_e17 *eff.Env) (struct {
 									Answer  rtesting.Answer
 									Session App__Session
 									Doc     rtesting.Doc
 									Notices []string
+									Toasts  []struct {
+										Kind string
+										Text string
+									}
 								}, error) {
 									_m18 := Admin__Projects__RemoveParams{Id: id}
 									_r19, _err20 := rtesting.BrowserOf(_e17).ClickMsg(rt.MsgRef{Module: "Admin.Projects", Msg: "Remove", Params: []rt.KV{{Key: "id", Value: _m18.Id}}}.URL(nil), rtesting.MsgName("Admin.Projects.Remove", _m18))
@@ -171,6 +199,10 @@ func test__Admin__Projects__1() eff.Task[bool] {
 											Session App__Session
 											Doc     rtesting.Doc
 											Notices []string
+											Toasts  []struct {
+												Kind string
+												Text string
+											}
 										}
 										return _z21, _err20
 									}
@@ -179,19 +211,31 @@ func test__Admin__Projects__1() eff.Task[bool] {
 										Session App__Session
 										Doc     rtesting.Doc
 										Notices []string
-									}{Answer: _r19.Answer, Session: rtesting.SessionOf[App__Session](_r19.Session), Doc: rtesting.DocOf(_r19.Doc), Notices: _r19.Notices}, nil
+										Toasts  []struct {
+											Kind string
+											Text string
+										}
+									}{Answer: _r19.Answer, Session: rtesting.SessionOf[App__Session](_r19.Session), Doc: rtesting.DocOf(_r19.Doc), Notices: _r19.Notices, Toasts: _r19.Toasts}, nil
 								})
 							}, ids)), func(_ []struct {
 								Answer  rtesting.Answer
 								Session App__Session
 								Doc     rtesting.Doc
 								Notices []string
+								Toasts  []struct {
+									Kind string
+									Text string
+								}
 							}) eff.Task[bool] {
 								return eff.Bind(eff.Call("Test.get Admin.Projects", true, func(_e22 *eff.Env) (struct {
 									Model   Admin__Projects__Model
 									Session App__Session
 									Doc     rtesting.Doc
 									Notices []string
+									Toasts  []struct {
+										Kind string
+										Text string
+									}
 								}, error) {
 									var _p23 Admin__Projects__Params = Admin__Projects__Params{Org: b}
 									_u24 := rt.PageURL(rt.Page{Path: rt.Concat("/admin/orgs/", rt.PathSegment(_p23.Org), "/projects")})
@@ -203,6 +247,10 @@ func test__Admin__Projects__1() eff.Task[bool] {
 											Session App__Session
 											Doc     rtesting.Doc
 											Notices []string
+											Toasts  []struct {
+												Kind string
+												Text string
+											}
 										}
 										return _z28, _err27
 									}
@@ -213,6 +261,10 @@ func test__Admin__Projects__1() eff.Task[bool] {
 											Session App__Session
 											Doc     rtesting.Doc
 											Notices []string
+											Toasts  []struct {
+												Kind string
+												Text string
+											}
 										}
 										return _z30, _err27
 									}
@@ -221,12 +273,20 @@ func test__Admin__Projects__1() eff.Task[bool] {
 										Session App__Session
 										Doc     rtesting.Doc
 										Notices []string
-									}{Model: _m29, Session: rtesting.SessionOf[App__Session](_r26.Session), Doc: rtesting.DocOf(_r26.Doc), Notices: _r26.Notices}, nil
+										Toasts  []struct {
+											Kind string
+											Text string
+										}
+									}{Model: _m29, Session: rtesting.SessionOf[App__Session](_r26.Session), Doc: rtesting.DocOf(_r26.Doc), Notices: _r26.Notices, Toasts: _r26.Toasts}, nil
 								}), func(after struct {
 									Model   Admin__Projects__Model
 									Session App__Session
 									Doc     rtesting.Doc
 									Notices []string
+									Toasts  []struct {
+										Kind string
+										Text string
+									}
 								}) eff.Task[bool] {
 									return eff.Pure(rtesting.Eq(struct {
 										Before []string
@@ -272,6 +332,10 @@ func test__Admin__Projects__2() eff.Task[bool] {
 					Session App__Session
 					Doc     rtesting.Doc
 					Notices []string
+					Toasts  []struct {
+						Kind string
+						Text string
+					}
 				}, error) {
 					var _p8 Admin__Projects__Params = Admin__Projects__Params{Org: b}
 					_u9 := rt.PageURL(rt.Page{Path: rt.Concat("/admin/orgs/", rt.PathSegment(_p8.Org), "/projects")})
@@ -283,6 +347,10 @@ func test__Admin__Projects__2() eff.Task[bool] {
 							Session App__Session
 							Doc     rtesting.Doc
 							Notices []string
+							Toasts  []struct {
+								Kind string
+								Text string
+							}
 						}
 						return _z13, _err12
 					}
@@ -291,12 +359,20 @@ func test__Admin__Projects__2() eff.Task[bool] {
 						Session App__Session
 						Doc     rtesting.Doc
 						Notices []string
-					}{Answer: _r11.Answer, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc), Notices: _r11.Notices}, nil
+						Toasts  []struct {
+							Kind string
+							Text string
+						}
+					}{Answer: _r11.Answer, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc), Notices: _r11.Notices, Toasts: _r11.Toasts}, nil
 				}), func(r struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
 					Notices []string
+					Toasts  []struct {
+						Kind string
+						Text string
+					}
 				}) eff.Task[bool] {
 					return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.PageMissing}))
 				})
@@ -315,6 +391,10 @@ func test__Admin__Projects__3() eff.Task[bool] {
 			Session App__Session
 			Doc     rtesting.Doc
 			Notices []string
+			Toasts  []struct {
+				Kind string
+				Text string
+			}
 		}, error) {
 			var _p3 Admin__Projects__Params = Admin__Projects__Params{Org: b}
 			_u4 := rt.PageURL(rt.Page{Path: rt.Concat("/admin/orgs/", rt.PathSegment(_p3.Org), "/projects")})
@@ -326,6 +406,10 @@ func test__Admin__Projects__3() eff.Task[bool] {
 					Session App__Session
 					Doc     rtesting.Doc
 					Notices []string
+					Toasts  []struct {
+						Kind string
+						Text string
+					}
 				}
 				return _z8, _err7
 			}
@@ -334,12 +418,20 @@ func test__Admin__Projects__3() eff.Task[bool] {
 				Session App__Session
 				Doc     rtesting.Doc
 				Notices []string
-			}{Answer: _r6.Answer, Session: rtesting.SessionOf[App__Session](_r6.Session), Doc: rtesting.DocOf(_r6.Doc), Notices: _r6.Notices}, nil
+				Toasts  []struct {
+					Kind string
+					Text string
+				}
+			}{Answer: _r6.Answer, Session: rtesting.SessionOf[App__Session](_r6.Session), Doc: rtesting.DocOf(_r6.Doc), Notices: _r6.Notices, Toasts: _r6.Toasts}, nil
 		}), func(r struct {
 			Answer  rtesting.Answer
 			Session App__Session
 			Doc     rtesting.Doc
 			Notices []string
+			Toasts  []struct {
+				Kind string
+				Text string
+			}
 		}) eff.Task[bool] {
 			return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}))
 		})

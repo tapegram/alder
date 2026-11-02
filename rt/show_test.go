@@ -137,6 +137,9 @@ func TestShow(t *testing.T) {
 		{"Rerender", rt.Rerender(), "Rerender"},
 		{"Redirect", rt.Redirect(rt.Page{Path: "/x"}), "Redirect /x"},
 		{"Reject", rt.Reject("no"), `Reject "no"`},
+		{"Noticed info", rt.Noticed(rt.NoticeInfo, "hi", rt.Rerender()), `Noticed "hi" Rerender`},
+		{"Noticed success", rt.Noticed(rt.NoticeSuccess, "hi", rt.Rerender()), `Noticed success "hi" Rerender`},
+		{"Noticed error", rt.Noticed(rt.NoticeError, "hi", rt.Rerender()), `Noticed error "hi" Rerender`},
 		{"function", func() {}, "<function>"},
 		{"HttpError", rt.HttpError{Status: 404, Message: "nf"}, `{ status: 404, message: "nf" }`},
 	}

@@ -274,7 +274,7 @@
                     (db-delete Table.Comment.Comment (field id (var row))))
                   (var allowed)))
               (pure task
-                (call (std Notice.with)
+                (call (std Notice.success)
                   (++ : Text (++ : Text (++ : Text "Deleted " (call (std Text.fromInt) (call (std List.length) (var allowed)))) " of ")
                     (call (std Text.fromInt)
                       (call (std List.length) (field rows (var model)))))
@@ -365,7 +365,7 @@
             (bind task _
               (test-get Admin.Comments.Bulk
                 (record Params (ids (list (var comment1)))))
-              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-submit Admin.Comments.Bulk.Confirm BulkDelete
                   (record Confirm))
                 (bind task gone : Maybe Table.Comment.Comment
@@ -425,7 +425,7 @@
         (bind task comment1 : Text
           (db-insert Table.Comment.Comment
             (record (post (var post1)) (author "author-1") (body "body-1")))
-          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Comments.Bulk
               (record Params
                 (ids
@@ -434,7 +434,7 @@
                       (lambda (n : Int)
                         (++ : Text "none-" (call (std Text.fromInt) (var n))))
                       (call (std List.range) 1 24))))))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-submit Admin.Comments.Bulk.Confirm BulkDelete
                 (record Confirm))
               (bind task after : Maybe Table.Comment.Comment
@@ -489,7 +489,7 @@
         (bind task comment1 : Text
           (db-insert Table.Comment.Comment
             (record (post (var post1)) (author "author-1") (body "body-1")))
-          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Comments.Bulk
               (record Params
                 (ids
@@ -498,7 +498,7 @@
                       (lambda (n : Int)
                         (++ : Text "none-" (call (std Text.fromInt) (var n))))
                       (call (std List.range) 1 25))))))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-submit Admin.Comments.Bulk.Confirm BulkDelete
                 (record Confirm))
               (bind task after : Maybe Table.Comment.Comment
@@ -548,7 +548,7 @@
       (bind task comment1 : Text
         (db-insert Table.Comment.Comment
           (record (post (var post1)) (author "author-1") (body "body-1")))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Comments.Bulk
             (record Params (ids (list (var comment1)))))
           (pure task
@@ -581,7 +581,7 @@
         (bind task comment1 : Text
           (db-insert Table.Comment.Comment
             (record (post (var post1)) (author "author-1") (body "body-1")))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-open Admin.Comments.Bulk
               (record Params (ids (list (var comment1)))))
             (pure task
@@ -610,7 +610,7 @@
         (bind task comment1 : Text
           (db-insert Table.Comment.Comment
             (record (post (var post1)) (author "author-1") (body "body-1")))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-open Admin.Comments.Bulk
               (record Params (ids (list (var comment1)))))
             (pure task
@@ -706,7 +706,7 @@
             (record (post (var post1)) (author "author-1") (body "body-1")))
           (bind task _
             (test-get Admin.Comments.Delete (record Params (id (var comment1))))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-submit Admin.Comments.Delete.Confirm Remove
                 (record Confirm))
               (bind task gone : Maybe Table.Comment.Comment
@@ -745,7 +745,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Comments.Delete (record Params (id "missing")))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
@@ -768,7 +768,7 @@
       (bind task comment1 : Text
         (db-insert Table.Comment.Comment
           (record (post (var post1)) (author "author-1") (body "body-1")))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Comments.Delete (record Params (id (var comment1))))
           (pure task
             (test-eq
@@ -800,7 +800,7 @@
         (bind task comment1 : Text
           (db-insert Table.Comment.Comment
             (record (post (var post1)) (author "author-1") (body "body-1")))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-open Admin.Comments.Delete
               (record Params (id (var comment1))))
             (pure task
@@ -829,7 +829,7 @@
         (bind task comment1 : Text
           (db-insert Table.Comment.Comment
             (record (post (var post1)) (author "author-1") (body "body-1")))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-open Admin.Comments.Delete
               (record Params (id (var comment1))))
             (pure task
@@ -1005,10 +1005,10 @@
                 (body "body-2")
                 (published False)
                 (author (var me))))
-            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Comments.Edit
                 (record Params (id (var comment1)) (findPost "")))
-              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-submit Admin.Comments.Edit.CommentForm Save
                   (record CommentForm
                     (post (var post2))
@@ -1081,10 +1081,10 @@
                 (body "body-2")
                 (published False)
                 (author (var me))))
-            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Comments.Edit
                 (record Params (id (var comment1)) (findPost "")))
-              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-submit-raw Admin.Comments.Edit.CommentForm Save
                   (list
                     (record (name "post") (value "missing"))
@@ -1159,7 +1159,7 @@
                         (published False)
                         (author (var me)))))
                   (call (std List.range) 3 200)))
-              (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+              (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-get Admin.Comments.Edit
                   (record Params (id (var comment1)) (findPost "")))
                 (pure task
@@ -1214,13 +1214,13 @@
                         (published False)
                         (author (var me)))))
                   (call (std List.range) 3 203)))
-              (bind task all : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+              (bind task all : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-get Admin.Comments.Edit
                   (record Params (id (var comment1)) (findPost "")))
-                (bind task found : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+                (bind task found : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                   (test-get Admin.Comments.Edit
                     (record Params (id (var comment1)) (findPost "slug-203")))
-                  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+                  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                     (test-submit Admin.Comments.Edit.FindPost SearchPost
                       (record FindPost (q "zz")))
                     (pure task
@@ -1285,10 +1285,10 @@
                       (published False)
                       (author (var me)))))
                 (call (std List.range) 2 202)))
-            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Comments.Edit
                 (record Params (id (var comment1)) (findPost "")))
-              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-submit Admin.Comments.Edit.CommentForm Save
                   (record CommentForm
                     (post (field post (field row (field model (var page)))))
@@ -1346,7 +1346,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Comments.Edit
           (record Params (id "missing") (findPost "")))
         (pure task
@@ -1370,7 +1370,7 @@
       (bind task comment1 : Text
         (db-insert Table.Comment.Comment
           (record (post (var post1)) (author "author-1") (body "body-1")))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Comments.Edit
             (record Params (id (var comment1)) (findPost "")))
           (pure task
@@ -1403,7 +1403,7 @@
         (bind task comment1 : Text
           (db-insert Table.Comment.Comment
             (record (post (var post1)) (author "author-1") (body "body-1")))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-open Admin.Comments.Edit
               (record Params (id (var comment1)) (findPost "")))
             (pure task
@@ -1432,7 +1432,7 @@
         (bind task comment1 : Text
           (db-insert Table.Comment.Comment
             (record (post (var post1)) (author "author-1") (body "body-1")))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-open Admin.Comments.Edit
               (record Params (id (var comment1)) (findPost "")))
             (pure task
@@ -1815,7 +1815,7 @@
                   (body "body-2")
                   (published False)
                   (author (var me))))
-              (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+              (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-get Admin.Comments.Index
                   (record Params (q "") (sort "created") (dir "desc") (page 1)))
                 (pure task
@@ -1864,10 +1864,10 @@
           (bind task comment2 : Text
             (db-insert Table.Comment.Comment
               (record (post (var post1)) (author "author-1") (body "body-2")))
-            (bind task up : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task up : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Comments.Index
                 (record Params (q "") (sort "author") (dir "asc") (page 1)))
-              (bind task down : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+              (bind task down : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-get Admin.Comments.Index
                   (record Params (q "") (sort "author") (dir "desc") (page 1)))
                 (pure task
@@ -1925,7 +1925,7 @@
           (bind task comment2 : Text
             (db-insert Table.Comment.Comment
               (record (post (var post1)) (author "author-2") (body "body-2")))
-            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Comments.Index
                 (record Params
                   (q "author-2")
@@ -1964,7 +1964,7 @@
           (call (std List.map)
             (lambda (n : Int) "z")
             (call (std List.range) 1 20000)))
-        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-get Admin.Comments.Index
             (record Params
               (q (var long))
@@ -2010,13 +2010,13 @@
                       (++ : Text "author-" (call (std Text.fromInt) (var n))))
                     (body (++ : Text "body-" (call (std Text.fromInt) (var n)))))))
               (call (std List.range) 1 26)))
-          (bind task first : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task first : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Comments.Index
               (record Params (q "") (sort "created") (dir "desc") (page 1)))
-            (bind task second : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task second : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Comments.Index
                 (record Params (q "") (sort "created") (dir "desc") (page 2)))
-              (bind task past : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+              (bind task past : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-get Admin.Comments.Index
                   (record Params (q "") (sort "created") (dir "desc") (page 9)))
                 (pure task
@@ -2048,7 +2048,7 @@
                         (ctor Prelude.Maybe.Just (record (value "26 rows"))))
                       (pages (list "Previous" "Page 1 of 2")))))))))))))
 (test "a visitor is sent to log in" task
-  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
     (test-open Admin.Comments.Index
       (record Params (q "") (sort "created") (dir "desc") (page 1)))
     (pure task
@@ -2069,7 +2069,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Reader))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Comments.Index
           (record Params (q "") (sort "created") (dir "desc") (page 1)))
         (pure task
@@ -2087,7 +2087,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Comments.Index
           (record Params (q "") (sort "created") (dir "desc") (page 1)))
         (pure task
@@ -2216,9 +2216,9 @@
               (body "body-2")
               (published False)
               (author (var me))))
-          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Comments.New (record Params (findPost "")))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-submit Admin.Comments.New.CommentForm Create
                 (record CommentForm
                   (post (var post2))
@@ -2289,9 +2289,9 @@
               (body "body-2")
               (published False)
               (author (var me))))
-          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Comments.New (record Params (findPost "")))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-submit-raw Admin.Comments.New.CommentForm Create
                 (list
                   (record (name "post") (value "missing"))
@@ -2356,7 +2356,7 @@
                       (published False)
                       (author (var me)))))
                 (call (std List.range) 3 200)))
-            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Comments.New (record Params (findPost "")))
               (pure task
                 (test-eq
@@ -2407,12 +2407,12 @@
                       (published False)
                       (author (var me)))))
                 (call (std List.range) 3 203)))
-            (bind task all : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task all : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Comments.New (record Params (findPost "")))
-              (bind task found : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+              (bind task found : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-get Admin.Comments.New
                   (record Params (findPost "slug-203")))
-                (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+                (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                   (test-submit Admin.Comments.New.FindPost SearchPost
                     (record FindPost (q "zz")))
                   (pure task
@@ -2480,12 +2480,12 @@
                       (published False)
                       (author (var me)))))
                 (call (std List.range) 3 203)))
-            (bind task all : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task all : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Comments.New (record Params (findPost "")))
-              (bind task found : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+              (bind task found : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-get Admin.Comments.New
                   (record Params (findPost "slug-203")))
-                (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+                (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                   (test-submit Admin.Comments.New.FindPost SearchPost
                     (record FindPost (q "zz")))
                   (let pick : Text
@@ -2495,10 +2495,10 @@
                         "value"
                         "select[name=post] option"
                         (field doc (var found))))
-                    (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+                    (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                       (test-get Admin.Comments.New
                         (record Params (findPost "")))
-                      (bind task sent : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+                      (bind task sent : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                         (test-submit-raw Admin.Comments.New.CommentForm Create
                           (list
                             (record (name "post") (value (var pick)))
@@ -2523,7 +2523,7 @@
                                               "must be one of the options")))))))
                                 (rows 0)))))))))))))))))
 (test "a visitor is sent to log in" task
-  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
     (test-open Admin.Comments.New (record Params (findPost "")))
     (pure task
       (test-eq
@@ -2543,7 +2543,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Reader))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Comments.New (record Params (findPost "")))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
@@ -2560,7 +2560,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Comments.New (record Params (findPost "")))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
@@ -2747,10 +2747,10 @@
                 (body "body-2")
                 (published False)
                 (author (var me))))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-open Admin.Comments.Show
                 (record Params (id (var comment1))))
-              (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+              (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-get Admin.Comments.Show
                   (record Params (id (var comment1))))
                 (pure task
@@ -2801,7 +2801,7 @@
             (record (post (var post1)) (author "author-1") (body "body-1")))
           (bind task _
             (test-get Admin.Comments.Show (record Params (id (var comment1))))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-submit Admin.Comments.Show.Confirm Remove (record Confirm))
               (bind task gone : Maybe Table.Comment.Comment
                 (db-get Table.Comment.Comment (var comment1))
@@ -2839,7 +2839,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Comments.Show (record Params (id "missing")))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
@@ -2862,7 +2862,7 @@
       (bind task comment1 : Text
         (db-insert Table.Comment.Comment
           (record (post (var post1)) (author "author-1") (body "body-1")))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Comments.Show (record Params (id (var comment1))))
           (pure task
             (test-eq
@@ -2894,7 +2894,7 @@
         (bind task comment1 : Text
           (db-insert Table.Comment.Comment
             (record (post (var post1)) (author "author-1") (body "body-1")))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-open Admin.Comments.Show (record Params (id (var comment1))))
             (pure task
               (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))))
@@ -2922,7 +2922,7 @@
         (bind task comment1 : Text
           (db-insert Table.Comment.Comment
             (record (post (var post1)) (author "author-1") (body "body-1")))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-open Admin.Comments.Show (record Params (id (var comment1))))
             (pure task
               (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))))
@@ -3085,7 +3085,7 @@
                       (++ : Text "author-" (call (std Text.fromInt) (var n))))
                     (body (++ : Text "body-" (call (std Text.fromInt) (var n)))))))
               (call (std List.range) 1 6)))
-          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Index (record Params))
             (pure task
               (test-eq
@@ -3132,7 +3132,7 @@
                   (published False)
                   (author (var me)))))
             (call (std List.range) 1 6)))
-        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-get Admin.Index (record Params))
           (pure task
             (test-eq
@@ -3174,7 +3174,7 @@
                       (call (std Text.fromInt) (var n))))
                   (role (ctor Table.User.Role.Reader)))))
             (call (std List.range) 2 7)))
-        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-get Admin.Index (record Params))
           (pure task
             (test-eq
@@ -3195,7 +3195,7 @@
                     "email-4@example.com"
                     "email-3@example.com"))))))))))
 (test "a visitor is sent to log in" task
-  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
     (test-open Admin.Index (record Params))
     (pure task
       (test-eq
@@ -3215,7 +3215,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Reader))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Index (record Params))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
@@ -3232,7 +3232,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Index (record Params))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
@@ -3296,7 +3296,7 @@
                     (db-delete Table.Post.Post (field id (var row))))
                   (var allowed)))
               (pure task
-                (call (std Notice.with)
+                (call (std Notice.success)
                   (++ : Text (++ : Text (++ : Text "Deleted " (call (std Text.fromInt) (call (std List.length) (var allowed)))) " of ")
                     (call (std Text.fromInt)
                       (call (std List.length) (field rows (var model)))))
@@ -3324,7 +3324,7 @@
                         (published (field value (field form (var p))))))))
                 (field rows (var model))))
             (pure task
-              (call (std Notice.with)
+              (call (std Notice.success)
                 (++ : Text "Updated "
                   (call (std Text.fromInt)
                     (call (std List.length) (field rows (var model)))))
@@ -3431,7 +3431,7 @@
               (author (var me))))
           (bind task _
             (test-get Admin.Posts.Bulk (record Params (ids (list (var post1)))))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-submit Admin.Posts.Bulk.Confirm BulkDelete (record Confirm))
               (bind task gone : Maybe Table.Post.Post
                 (db-get Table.Post.Post (var post1))
@@ -3497,7 +3497,7 @@
               (author (var me))))
           (bind task _
             (test-get Admin.Posts.Bulk (record Params (ids (list (var post1)))))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-submit Admin.Posts.Bulk.SetPublished BulkSetPublished
                 (record SetPublished (value True)))
               (bind task one : Maybe Table.Post.Post
@@ -3553,7 +3553,7 @@
             (body "body-1")
             (published False)
             (author (var me))))
-        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-get Admin.Posts.Bulk
             (record Params
               (ids
@@ -3562,7 +3562,7 @@
                     (lambda (n : Int)
                       (++ : Text "none-" (call (std Text.fromInt) (var n))))
                     (call (std List.range) 1 24))))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-submit Admin.Posts.Bulk.Confirm BulkDelete (record Confirm))
             (bind task after : Maybe Table.Post.Post
               (db-get Table.Post.Post (var post1))
@@ -3611,7 +3611,7 @@
             (body "body-1")
             (published False)
             (author (var me))))
-        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-get Admin.Posts.Bulk
             (record Params
               (ids
@@ -3620,7 +3620,7 @@
                     (lambda (n : Int)
                       (++ : Text "none-" (call (std Text.fromInt) (var n))))
                     (call (std List.range) 1 25))))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-submit Admin.Posts.Bulk.Confirm BulkDelete (record Confirm))
             (bind task after : Maybe Table.Post.Post
               (db-get Table.Post.Post (var post1))
@@ -3662,7 +3662,7 @@
           (body "body-1")
           (published False)
           (author (var me))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Posts.Bulk (record Params (ids (list (var post1)))))
         (pure task
           (test-eq
@@ -3690,7 +3690,7 @@
             (body "body-1")
             (published False)
             (author (var me))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Posts.Bulk (record Params (ids (list (var post1)))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -3715,7 +3715,7 @@
             (body "body-1")
             (published False)
             (author (var me))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Posts.Bulk (record Params (ids (list (var post1)))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -3828,7 +3828,7 @@
               (record (post (var post2)) (author "author-1") (body "body-1")))
             (bind task _
               (test-get Admin.Posts.Delete (record Params (id (var post1))))
-              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-submit Admin.Posts.Delete.Confirm Remove (record Confirm))
                 (bind task gone : Maybe Table.Post.Post
                   (db-get Table.Post.Post (var post1))
@@ -3899,7 +3899,7 @@
             (bind task _
               (db-insert Table.Comment.Comment
                 (record (post (var post2)) (author "author-2") (body "body-2")))
-              (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+              (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-get Admin.Posts.Delete (record Params (id (var post1))))
                 (pure task
                   (test-eq
@@ -3923,7 +3923,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Posts.Delete (record Params (id "missing")))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
@@ -3943,7 +3943,7 @@
           (body "body-1")
           (published False)
           (author (var me))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Posts.Delete (record Params (id (var post1))))
         (pure task
           (test-eq
@@ -3971,7 +3971,7 @@
             (body "body-1")
             (published False)
             (author (var me))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Posts.Delete (record Params (id (var post1))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -3996,7 +3996,7 @@
             (body "body-1")
             (published False)
             (author (var me))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Posts.Delete (record Params (id (var post1))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -4197,10 +4197,10 @@
               (name "name-2")
               (passwordHash "passwordhash-2")
               (role (ctor Table.User.Role.Reader))))
-          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Posts.Edit
               (record Params (id (var post1)) (findAuthor "")))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-submit Admin.Posts.Edit.PostForm Save
                 (record PostForm
                   (slug "slug-2")
@@ -4289,7 +4289,7 @@
               (bind task _
                 (test-get Admin.Posts.Edit
                   (record Params (id (var post1)) (findAuthor "")))
-                (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+                (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                   (test-submit Admin.Posts.Edit.PostForm Save
                     (record PostForm
                       (slug "slug-2")
@@ -4342,10 +4342,10 @@
               (name "name-2")
               (passwordHash "passwordhash-2")
               (role (ctor Table.User.Role.Reader))))
-          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Posts.Edit
               (record Params (id (var post1)) (findAuthor "")))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-submit-raw Admin.Posts.Edit.PostForm Save
                 (list
                   (record (name "slug") (value "x"))
@@ -4419,7 +4419,7 @@
                           (call (std Text.fromInt) (var n))))
                       (role (ctor Table.User.Role.Reader)))))
                 (call (std List.range) 3 200)))
-            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Posts.Edit
                 (record Params (id (var post1)) (findAuthor "")))
               (pure task
@@ -4471,15 +4471,15 @@
                           (call (std Text.fromInt) (var n))))
                       (role (ctor Table.User.Role.Reader)))))
                 (call (std List.range) 3 203)))
-            (bind task all : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task all : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Posts.Edit
                 (record Params (id (var post1)) (findAuthor "")))
-              (bind task found : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+              (bind task found : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-get Admin.Posts.Edit
                   (record Params
                     (id (var post1))
                     (findAuthor "email-203@example.com")))
-                (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+                (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                   (test-submit Admin.Posts.Edit.FindAuthor SearchAuthor
                     (record FindAuthor (q "zz")))
                   (pure task
@@ -4549,10 +4549,10 @@
                           (call (std Text.fromInt) (var n))))
                       (role (ctor Table.User.Role.Reader)))))
                 (call (std List.range) 3 203)))
-            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Posts.Edit
                 (record Params (id (var post1)) (findAuthor "")))
-              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-submit Admin.Posts.Edit.PostForm Save
                   (record PostForm
                     (slug (field slug (field row (field model (var page)))))
@@ -4613,7 +4613,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Posts.Edit
           (record Params (id "missing") (findAuthor "")))
         (pure task
@@ -4634,7 +4634,7 @@
           (body "body-1")
           (published False)
           (author (var me))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Posts.Edit
           (record Params (id (var post1)) (findAuthor "")))
         (pure task
@@ -4663,7 +4663,7 @@
             (body "body-1")
             (published False)
             (author (var me))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Posts.Edit
             (record Params (id (var post1)) (findAuthor "")))
           (pure task
@@ -4689,7 +4689,7 @@
             (body "body-1")
             (published False)
             (author (var me))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Posts.Edit
             (record Params (id (var post1)) (findAuthor "")))
           (pure task
@@ -5128,7 +5128,7 @@
                 (name "name-2")
                 (passwordHash "passwordhash-2")
                 (role (ctor Table.User.Role.Reader))))
-            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Posts.Index
                 (record Params
                   (q "")
@@ -5183,7 +5183,7 @@
               (body "body-2")
               (published False)
               (author (var me))))
-          (bind task up : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task up : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Posts.Index
               (record Params
                 (q "")
@@ -5191,7 +5191,7 @@
                 (sort "slug")
                 (dir "asc")
                 (page 1)))
-            (bind task down : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task down : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Posts.Index
                 (record Params
                   (q "")
@@ -5254,7 +5254,7 @@
               (body "body-2")
               (published False)
               (author (var me))))
-          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Posts.Index
               (record Params
                 (q "slug-2")
@@ -5302,7 +5302,7 @@
               (body "body-2")
               (published False)
               (author (var me))))
-          (bind task yes : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task yes : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Posts.Index
               (record Params
                 (q "")
@@ -5310,7 +5310,7 @@
                 (sort "created")
                 (dir "desc")
                 (page 1)))
-            (bind task no : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task no : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Posts.Index
                 (record Params
                   (q "")
@@ -5373,7 +5373,7 @@
           (call (std List.map)
             (lambda (n : Int) "z")
             (call (std List.range) 1 20000)))
-        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-get Admin.Posts.Index
             (record Params
               (q (var long))
@@ -5413,7 +5413,7 @@
                   (published False)
                   (author (var me)))))
             (call (std List.range) 1 26)))
-        (bind task first : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+        (bind task first : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-get Admin.Posts.Index
             (record Params
               (q "")
@@ -5421,7 +5421,7 @@
               (sort "created")
               (dir "desc")
               (page 1)))
-          (bind task second : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task second : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Posts.Index
               (record Params
                 (q "")
@@ -5429,7 +5429,7 @@
                 (sort "created")
                 (dir "desc")
                 (page 2)))
-            (bind task past : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task past : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Posts.Index
                 (record Params
                   (q "")
@@ -5465,7 +5465,7 @@
                     (count (ctor Prelude.Maybe.Just (record (value "26 rows"))))
                     (pages (list "Previous" "Page 1 of 2"))))))))))))
 (test "a visitor is sent to log in" task
-  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
     (test-open Admin.Posts.Index
       (record Params
         (q "")
@@ -5491,7 +5491,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Reader))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Posts.Index
           (record Params
             (q "")
@@ -5514,7 +5514,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Posts.Index
           (record Params
             (q "")
@@ -5673,9 +5673,9 @@
               (body "body-1")
               (published False)
               (author (var me))))
-          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Posts.New (record Params (findAuthor "")))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-submit Admin.Posts.New.PostForm Create
                 (record PostForm
                   (slug "slug-2")
@@ -5756,7 +5756,7 @@
               (author (var me))))
           (bind task _
             (test-get Admin.Posts.New (record Params (findAuthor "")))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-submit Admin.Posts.New.PostForm Create
                 (record PostForm
                   (slug "slug-1")
@@ -5799,9 +5799,9 @@
             (name "name-2")
             (passwordHash "passwordhash-2")
             (role (ctor Table.User.Role.Reader))))
-        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-get Admin.Posts.New (record Params (findAuthor "")))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-submit-raw Admin.Posts.New.PostForm Create
               (list
                 (record (name "slug") (value "x"))
@@ -5859,7 +5859,7 @@
                         (call (std Text.fromInt) (var n))))
                     (role (ctor Table.User.Role.Reader)))))
               (call (std List.range) 3 200)))
-          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Posts.New (record Params (findAuthor "")))
             (pure task
               (test-eq
@@ -5901,12 +5901,12 @@
                         (call (std Text.fromInt) (var n))))
                     (role (ctor Table.User.Role.Reader)))))
               (call (std List.range) 3 203)))
-          (bind task all : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task all : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Posts.New (record Params (findAuthor "")))
-            (bind task found : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task found : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Posts.New
                 (record Params (findAuthor "email-203@example.com")))
-              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-submit Admin.Posts.New.FindAuthor SearchAuthor
                   (record FindAuthor (q "zz")))
                 (pure task
@@ -5965,12 +5965,12 @@
                         (call (std Text.fromInt) (var n))))
                     (role (ctor Table.User.Role.Reader)))))
               (call (std List.range) 3 203)))
-          (bind task all : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task all : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Posts.New (record Params (findAuthor "")))
-            (bind task found : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task found : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Posts.New
                 (record Params (findAuthor "email-203@example.com")))
-              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-submit Admin.Posts.New.FindAuthor SearchAuthor
                   (record FindAuthor (q "zz")))
                 (let pick : Text
@@ -5980,9 +5980,9 @@
                       "value"
                       "select[name=author] option"
                       (field doc (var found))))
-                  (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+                  (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                     (test-get Admin.Posts.New (record Params (findAuthor "")))
-                    (bind task sent : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+                    (bind task sent : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                       (test-submit-raw Admin.Posts.New.PostForm Create
                         (list
                           (record (name "slug") (value "x"))
@@ -6008,7 +6008,7 @@
                                           (message "must be one of the options")))))))
                               (rows 0))))))))))))))))
 (test "a visitor is sent to log in" task
-  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
     (test-open Admin.Posts.New (record Params (findAuthor "")))
     (pure task
       (test-eq
@@ -6028,7 +6028,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Reader))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Posts.New (record Params (findAuthor "")))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
@@ -6045,7 +6045,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Posts.New (record Params (findAuthor "")))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
@@ -6251,9 +6251,9 @@
               (name "name-2")
               (passwordHash "passwordhash-2")
               (role (ctor Table.User.Role.Reader))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-open Admin.Posts.Show (record Params (id (var post1))))
-            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Posts.Show (record Params (id (var post1))))
               (pure task
                 (test-eq
@@ -6309,7 +6309,7 @@
               (record (post (var post2)) (author "author-1") (body "body-1")))
             (bind task _
               (test-get Admin.Posts.Show (record Params (id (var post1))))
-              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-submit Admin.Posts.Show.Confirm Remove (record Confirm))
                 (bind task gone : Maybe Table.Post.Post
                   (db-get Table.Post.Post (var post1))
@@ -6380,7 +6380,7 @@
             (bind task _
               (db-insert Table.Comment.Comment
                 (record (post (var post2)) (author "author-2") (body "body-2")))
-              (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+              (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-get Admin.Posts.Show (record Params (id (var post1))))
                 (pure task
                   (test-eq
@@ -6404,7 +6404,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Posts.Show (record Params (id "missing")))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
@@ -6424,7 +6424,7 @@
           (body "body-1")
           (published False)
           (author (var me))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Posts.Show (record Params (id (var post1))))
         (pure task
           (test-eq
@@ -6452,7 +6452,7 @@
             (body "body-1")
             (published False)
             (author (var me))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Posts.Show (record Params (id (var post1))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -6477,7 +6477,7 @@
             (body "body-1")
             (published False)
             (author (var me))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Posts.Show (record Params (id (var post1))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -6548,7 +6548,7 @@
                     (db-delete Table.User.User (field id (var row))))
                   (var allowed)))
               (pure task
-                (call (std Notice.with)
+                (call (std Notice.success)
                   (++ : Text (++ : Text (++ : Text "Deleted " (call (std Text.fromInt) (call (std List.length) (var allowed)))) " of ")
                     (call (std Text.fromInt)
                       (call (std List.length) (field rows (var model)))))
@@ -6659,7 +6659,7 @@
               (bind task _
                 (test-get Admin.Users.Bulk
                   (record Params (ids (list (var user2) (var user3)))))
-                (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+                (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                   (test-submit Admin.Users.Bulk.Confirm BulkDelete
                     (record Confirm))
                   (bind task gone : Maybe Table.User.User
@@ -6668,7 +6668,7 @@
                       (db-get Table.User.User (var user4))
                       (bind task kept : Maybe Table.User.User
                         (db-get Table.User.User (var user2))
-                        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+                        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                           (test-get Admin.Users.Bulk
                             (record Params (ids (list (var user2) (var user3)))))
                           (pure task
@@ -6727,9 +6727,9 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+      (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-get Admin.Users.Bulk (record Params (ids (list (var me)))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-submit Admin.Users.Bulk.Confirm BulkDelete (record Confirm))
           (bind task kept : Maybe Table.User.User
             (db-get Table.User.User (var me))
@@ -6767,7 +6767,7 @@
             (name "name-2")
             (passwordHash "passwordhash-2")
             (role (ctor Table.User.Role.Reader))))
-        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-get Admin.Users.Bulk
             (record Params
               (ids
@@ -6776,7 +6776,7 @@
                     (lambda (n : Int)
                       (++ : Text "none-" (call (std Text.fromInt) (var n))))
                     (call (std List.range) 1 24))))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-submit Admin.Users.Bulk.Confirm BulkDelete (record Confirm))
             (bind task after : Maybe Table.User.User
               (db-get Table.User.User (var user2))
@@ -6824,7 +6824,7 @@
             (name "name-2")
             (passwordHash "passwordhash-2")
             (role (ctor Table.User.Role.Reader))))
-        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-get Admin.Users.Bulk
             (record Params
               (ids
@@ -6833,7 +6833,7 @@
                     (lambda (n : Int)
                       (++ : Text "none-" (call (std Text.fromInt) (var n))))
                     (call (std List.range) 1 25))))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-submit Admin.Users.Bulk.Confirm BulkDelete (record Confirm))
             (bind task after : Maybe Table.User.User
               (db-get Table.User.User (var user2))
@@ -6867,7 +6867,7 @@
         (name "name-1")
         (passwordHash "passwordhash-1")
         (role (ctor Table.User.Role.Reader))))
-    (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+    (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
       (test-open Admin.Users.Bulk (record Params (ids (list (var user1)))))
       (pure task
         (test-eq
@@ -6894,7 +6894,7 @@
             (name "name-2")
             (passwordHash "passwordhash-2")
             (role (ctor Table.User.Role.Reader))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Users.Bulk (record Params (ids (list (var user2)))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -6918,7 +6918,7 @@
             (name "name-2")
             (passwordHash "passwordhash-2")
             (role (ctor Table.User.Role.Reader))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Users.Bulk (record Params (ids (list (var user2)))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -7054,7 +7054,7 @@
                 (author (var user3))))
             (bind task _
               (test-get Admin.Users.Delete (record Params (id (var user2))))
-              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-submit Admin.Users.Delete.Confirm Remove (record Confirm))
                 (bind task gone : Maybe Table.User.User
                   (db-get Table.User.User (var user2))
@@ -7118,9 +7118,9 @@
               (body "body-1")
               (published False)
               (author (var user2))))
-          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Users.Delete (record Params (id (var user2))))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-submit Admin.Users.Delete.Confirm Remove (record Confirm))
               (bind task kept : Maybe Table.User.User
                 (db-get Table.User.User (var user2))
@@ -7165,9 +7165,9 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+      (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-get Admin.Users.Delete (record Params (id (var me))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-submit Admin.Users.Delete.Confirm Remove (record Confirm))
           (bind task kept : Maybe Table.User.User
             (db-get Table.User.User (var me))
@@ -7210,7 +7210,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Users.Delete (record Params (id "missing")))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
@@ -7222,7 +7222,7 @@
         (name "name-1")
         (passwordHash "passwordhash-1")
         (role (ctor Table.User.Role.Reader))))
-    (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+    (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
       (test-open Admin.Users.Delete (record Params (id (var user1))))
       (pure task
         (test-eq
@@ -7249,7 +7249,7 @@
             (name "name-2")
             (passwordHash "passwordhash-2")
             (role (ctor Table.User.Role.Reader))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Users.Delete (record Params (id (var user2))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -7273,7 +7273,7 @@
             (name "name-2")
             (passwordHash "passwordhash-2")
             (role (ctor Table.User.Role.Reader))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Users.Delete (record Params (id (var user2))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -7388,9 +7388,9 @@
             (name "name-2")
             (passwordHash "passwordhash-2")
             (role (ctor Table.User.Role.Reader))))
-        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-get Admin.Users.Edit (record Params (id (var user2))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-submit Admin.Users.Edit.UserForm Save
               (record UserForm
                 (email "email-3@example.com")
@@ -7456,7 +7456,7 @@
             (db-get Table.User.User (var user2))
             (bind task _
               (test-get Admin.Users.Edit (record Params (id (var user2))))
-              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-submit Admin.Users.Edit.UserForm Save
                   (record UserForm
                     (email "email-3@example.com")
@@ -7494,7 +7494,7 @@
         (db-get Table.User.User (var me))
         (bind task _
           (test-get Admin.Users.Edit (record Params (id (var me))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-submit Admin.Users.Edit.UserForm Save
               (record UserForm
                 (email "email-2@example.com")
@@ -7530,7 +7530,7 @@
           (role (ctor Table.User.Role.Admin))))
       (bind task _
         (test-get Admin.Users.Edit (record Params (id (var me))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-submit Admin.Users.Edit.UserForm Save
             (record UserForm
               (email "email-2@example.com")
@@ -7587,7 +7587,7 @@
             (role (ctor Table.User.Role.Admin))))
         (bind task _
           (test-get Admin.Users.Edit (record Params (id (var admin))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-submit Admin.Users.Edit.UserForm Save
               (record UserForm
                 (email "email-3@example.com")
@@ -7626,7 +7626,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Users.Edit (record Params (id "missing")))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
@@ -7638,7 +7638,7 @@
         (name "name-1")
         (passwordHash "passwordhash-1")
         (role (ctor Table.User.Role.Reader))))
-    (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+    (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
       (test-open Admin.Users.Edit (record Params (id (var user1))))
       (pure task
         (test-eq
@@ -7665,7 +7665,7 @@
             (name "name-2")
             (passwordHash "passwordhash-2")
             (role (ctor Table.User.Role.Reader))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Users.Edit (record Params (id (var user2))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -7689,7 +7689,7 @@
             (name "name-2")
             (passwordHash "passwordhash-2")
             (role (ctor Table.User.Role.Reader))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Users.Edit (record Params (id (var user2))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -8070,7 +8070,7 @@
               (name "name-3")
               (passwordHash "passwordhash-3")
               (role (ctor Table.User.Role.Reader))))
-          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Users.Index
               (record Params
                 (q "")
@@ -8113,7 +8113,7 @@
               (name "name-3")
               (passwordHash "passwordhash-3")
               (role (ctor Table.User.Role.Reader))))
-          (bind task up : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task up : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Users.Index
               (record Params
                 (q "")
@@ -8121,7 +8121,7 @@
                 (sort "email")
                 (dir "asc")
                 (page 1)))
-            (bind task down : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task down : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Users.Index
                 (record Params
                   (q "")
@@ -8182,7 +8182,7 @@
               (name "name-3")
               (passwordHash "passwordhash-3")
               (role (ctor Table.User.Role.Reader))))
-          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Users.Index
               (record Params
                 (q "email-3@example.com")
@@ -8228,7 +8228,7 @@
               (name "name-3")
               (passwordHash "passwordhash-3")
               (role (ctor Table.User.Role.Reader))))
-          (bind task admin : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task admin : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Users.Index
               (record Params
                 (q "")
@@ -8280,7 +8280,7 @@
           (call (std List.map)
             (lambda (n : Int) "z")
             (call (std List.range) 1 20000)))
-        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+        (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-get Admin.Users.Index
             (record Params
               (q (var long))
@@ -8323,7 +8323,7 @@
                       (call (std Text.fromInt) (var n))))
                   (role (ctor Table.User.Role.Reader)))))
             (call (std List.range) 2 27)))
-        (bind task first : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+        (bind task first : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-get Admin.Users.Index
             (record Params
               (q "")
@@ -8331,7 +8331,7 @@
               (sort "created")
               (dir "desc")
               (page 1)))
-          (bind task second : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task second : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Users.Index
               (record Params
                 (q "")
@@ -8339,7 +8339,7 @@
                 (sort "created")
                 (dir "desc")
                 (page 2)))
-            (bind task past : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task past : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Admin.Users.Index
                 (record Params
                   (q "")
@@ -8375,7 +8375,7 @@
                     (count (ctor Prelude.Maybe.Just (record (value "27 rows"))))
                     (pages (list "Previous" "Page 1 of 2"))))))))))))
 (test "a visitor is sent to log in" task
-  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
     (test-open Admin.Users.Index
       (record Params (q "") (role "") (sort "created") (dir "desc") (page 1)))
     (pure task
@@ -8396,7 +8396,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Reader))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Users.Index
           (record Params
             (q "")
@@ -8419,7 +8419,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Users.Index
           (record Params
             (q "")
@@ -8504,9 +8504,9 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+      (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-get Admin.Users.New (record Params))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-submit Admin.Users.New.UserForm Create
             (record UserForm
               (email "email-2@example.com")
@@ -8570,7 +8570,7 @@
             (role (ctor Table.User.Role.Reader))))
         (bind task _
           (test-get Admin.Users.New (record Params))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-submit Admin.Users.New.UserForm Create
               (record UserForm
                 (email "email-2@example.com")
@@ -8592,7 +8592,7 @@
                                 (message "A user with this email exists.")))))))
                     (rows 2)))))))))))
 (test "a visitor is sent to log in" task
-  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+  (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
     (test-open Admin.Users.New (record Params))
     (pure task
       (test-eq
@@ -8612,7 +8612,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Reader))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Users.New (record Params))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
@@ -8629,7 +8629,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Users.New (record Params))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
@@ -8819,7 +8819,7 @@
             (name "name-2")
             (passwordHash "passwordhash-2")
             (role (ctor Table.User.Role.Reader))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Users.Show (record Params (id (var user2))))
           (pure task
             (test-eq
@@ -8867,7 +8867,7 @@
                 (author (var user3))))
             (bind task _
               (test-get Admin.Users.Show (record Params (id (var user2))))
-              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+              (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                 (test-submit Admin.Users.Show.Confirm Remove (record Confirm))
                 (bind task gone : Maybe Table.User.User
                   (db-get Table.User.User (var user2))
@@ -8931,9 +8931,9 @@
               (body "body-1")
               (published False)
               (author (var user2))))
-          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Admin.Users.Show (record Params (id (var user2))))
-            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-submit Admin.Users.Show.Confirm Remove (record Confirm))
               (bind task kept : Maybe Table.User.User
                 (db-get Table.User.User (var user2))
@@ -8978,9 +8978,9 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+      (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-get Admin.Users.Show (record Params (id (var me))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-submit Admin.Users.Show.Confirm Remove (record Confirm))
           (bind task kept : Maybe Table.User.User
             (db-get Table.User.User (var me))
@@ -9023,7 +9023,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Admin))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Admin.Users.Show (record Params (id "missing")))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
@@ -9035,7 +9035,7 @@
         (name "name-1")
         (passwordHash "passwordhash-1")
         (role (ctor Table.User.Role.Reader))))
-    (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+    (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
       (test-open Admin.Users.Show (record Params (id (var user1))))
       (pure task
         (test-eq
@@ -9062,7 +9062,7 @@
             (name "name-2")
             (passwordHash "passwordhash-2")
             (role (ctor Table.User.Role.Reader))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Users.Show (record Params (id (var user2))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -9086,7 +9086,7 @@
             (name "name-2")
             (passwordHash "passwordhash-2")
             (role (ctor Table.User.Role.Reader))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Admin.Users.Show (record Params (id (var user2))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -9183,7 +9183,7 @@
     (test-fake Auth.Login.Password)
     (bind task _
       (test-get Auth.Login (record Params))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-submit Auth.Login.Credentials Submit
           (record Credentials (email "nobody@example.com") (password "secret")))
         (pure task
@@ -9213,7 +9213,7 @@
           (role (ctor Table.User.Role.Author))))
       (bind task _
         (test-get Auth.Login (record Params))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-submit Auth.Login.Credentials Submit
             (record Credentials (email "me@example.com") (password "secret")))
           (pure task
@@ -9698,9 +9698,9 @@
                 (published True)
                 (author (var author)))))
           (call (std List.range) 1 11)))
-      (bind task first : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+      (bind task first : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-get Posts.Index (record Params (page 1) (q "")))
-        (bind task second : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+        (bind task second : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-get Posts.Index (record Params (page 2) (q "")))
           (pure task
             (test-eq
@@ -9753,7 +9753,7 @@
             (author (var author))))
         (bind task _
           (test-get Posts.Index (record Params (page 1) (q "")))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-submit Posts.Index.SearchForm Search
               (record SearchForm (q "tomato")))
             (pure task
@@ -9823,7 +9823,7 @@
           (role (ctor Table.User.Role.Author))))
       (bind task _
         (test-get Posts.Index (record Params (page 1) (q "")))
-        (bind task out : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task out : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-click App.Logout)
           (pure task
             (test-eq
@@ -10155,7 +10155,7 @@
           (author (var author))))
       (bind task _
         (test-get Posts.Show (record Params (slug "hello")))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-submit-raw Posts.Show.NewComment AddComment
             (list
               (record (name "author") (value "Ann"))
@@ -10199,10 +10199,10 @@
           (author (var author))))
       (bind task _
         (test-get Posts.Show (record Params (slug "hello")))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-submit Posts.Show.NewComment AddComment
             (record NewComment (author "Ann") (body "First!")))
-          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+          (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-get Posts.Show (record Params (slug "hello")))
             (pure task
               (test-eq
@@ -10327,14 +10327,14 @@
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value (var reader)))))
             (role (ctor Table.User.Role.Reader))))
-        (bind task asReader : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task asReader : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Write (record Params))
           (bind task _
             (test-login
               (record App.Session
                 (user (ctor Prelude.Maybe.Just (record (value (var author)))))
                 (role (ctor Table.User.Role.Author))))
-            (bind task asAuthor : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task asAuthor : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-open Write (record Params))
               (pure task
                 (test-eq
@@ -10454,14 +10454,14 @@
         (name "Reader")
         (passwordHash "")
         (role (ctor Table.User.Role.Reader))))
-    (bind task visitor : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+    (bind task visitor : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
       (test-open Write (record Params))
       (bind task _
         (test-login
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value (var reader)))))
             (role (ctor Table.User.Role.Reader))))
-        (bind task asReader : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task asReader : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Write (record Params))
           (pure task
             (test-eq
@@ -10492,7 +10492,7 @@
           (var author)
           (lambda (u : Table.User.User)
             (update (var u) (role (ctor Table.User.Role.Reader)))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Write (record Params))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -10509,7 +10509,7 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var me)))))
           (role (ctor Table.User.Role.Reader))))
-      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Write (record Params))
         (pure task
           (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))
@@ -10526,9 +10526,9 @@
         (record App.Session
           (user (ctor Prelude.Maybe.Just (record (value (var author)))))
           (role (ctor Table.User.Role.Author))))
-      (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+      (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-get Write (record Params))
-        (bind task out : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task out : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-click App.Logout)
           (pure task
             (test-eq
@@ -10790,7 +10790,7 @@
             (record App.Session
               (user (ctor Prelude.Maybe.Just (record (value (var other)))))
               (role (ctor Table.User.Role.Author))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-open Write.Edit (record Params (id (var id))))
             (pure task
               (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing)))))))))
@@ -10819,14 +10819,14 @@
               (record Auth.Login.Credentials
                 (email "author@example.com")
                 (password "secret")))
-            (bind task before : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+            (bind task before : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-open Write.Edit (record Params (id (var id))))
               (bind task _
                 (db-update Table.User.User
                   (var author)
                   (lambda (u : Table.User.User)
                     (update (var u) (role (ctor Table.User.Role.Reader)))))
-                (bind task stale : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+                (bind task stale : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                   (test-open Write.Edit (record Params (id (var id))))
                   (bind task _
                     (test-get Auth.Login (record Auth.Login.Params))
@@ -10835,7 +10835,7 @@
                         (record Auth.Login.Credentials
                           (email "author@example.com")
                           (password "secret")))
-                      (bind task fresh : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+                      (bind task fresh : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
                         (test-open Write.Edit (record Params (id (var id))))
                         (pure task
                           (test-eq
@@ -10868,7 +10868,7 @@
           (record App.Session
             (user (ctor Prelude.Maybe.Just (record (value (var me)))))
             (role (ctor Table.User.Role.Reader))))
-        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+        (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
           (test-open Write.Edit (record Params (id (var id))))
           (pure task
             (test-eq (field answer (var r)) (ctor Prelude.Answer.PageMissing))))))))
@@ -10957,7 +10957,7 @@
           (body "")
           (published False)
           (author (var author))))
-      (bind task visitor : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+      (bind task visitor : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
         (test-open Write.Edit (record Params (id (var id))))
         (pure task
           (test-eq
@@ -10987,7 +10987,7 @@
             (role (ctor Table.User.Role.Author))))
         (bind task _
           (test-get Write.Edit (record Params (id (var id))))
-          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text }
+          (bind task r : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
             (test-submit Write.Edit.EditPost Save
               (record EditPost (title "Hello again") (body "More.")))
             (pure task

@@ -189,6 +189,7 @@ type tracker struct {
 	// alert is a Noticed answer's text for a request without Datastar (no toast without the
 	// script): rendered as an <al-alert> at the top of the page (document)
 	alert string
+	kind  rtpkg.NoticeKind // the variant of notice or alert (only one is set)
 }
 
 // logLine is one line the request logged: when, at which level (as Env.Log names it) and what.
@@ -833,7 +834,7 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 	}
 	if tw, ok := w.(*tracker); ok {
 		if !rq.Datastar && r.Method == http.MethodGet && !hit.file { // an HTML page GET only: not a HEAD, which shows nothing, nor a file, which shows no notice
-			tw.alert = rt.takeNotice(w, r)
+			tw.alert, tw.kind = rt.takeNotice(w, r)
 		}
 		if rt.panelOn() {
 			if tw.rq == nil {
@@ -1018,9 +1019,9 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 	}
 	if tw, ok := w.(*tracker); ok {
 		if rq.Notice != "" && rq.Datastar {
-			tw.notice = rq.Notice
+			tw.notice, tw.kind = rq.Notice, rq.NoticeKind
 		} else if rq.Notice != "" {
-			tw.alert = rq.Notice // a Rerender's page shows it; a Redirect's stores it (below)
+			tw.alert, tw.kind = rq.Notice, rq.NoticeKind // a Rerender's page shows it; a Redirect's stores it (below)
 		}
 		switch {
 		case resp.Status == http.StatusSeeOther:
@@ -1061,7 +1062,7 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 				return
 			}
 			if tw, ok := w.(*tracker); ok && tw.alert != "" {
-				rt.storeNotice(w, r, tw.alert) // the next page shows it (takeNotice)
+				rt.storeNotice(w, r, tw.kind, tw.alert) // the next page shows it (takeNotice)
 			}
 			w.Header().Set("Location", resp.Location)
 			w.WriteHeader(http.StatusSeeOther)
@@ -1399,7 +1400,8 @@ func titleOf(page string) (string, bool) {
 // next message's before-view has none, so its answer morphs the body).
 func (rt *router) document(w http.ResponseWriter, status int, page string) {
 	if tw, ok := w.(*tracker); ok && tw.alert != "" {
-		page = startOfBody(page, `<al-alert variant="info" role="status">`+esc(tw.alert)+`</al-alert>`)
+		variant, _, role := noticeLook(tw.kind)
+		page = startOfBody(page, `<al-alert variant="`+variant+`" role="`+role+`">`+esc(tw.alert)+`</al-alert>`)
 	}
 	page = endOfBody(page, datastar.ShownTag(html.Hash(bodyOf(page))))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -1567,28 +1569,58 @@ func startOfBody(page, s string) string {
 // Datastar (a form posted with the script off), signed with the session key, for one page.
 const NoticeCookie = "alder_notice"
 
-// storeNotice sets NoticeCookie to text for the page the redirect goes to.
-func (rt *router) storeNotice(w http.ResponseWriter, r *http.Request, text string) {
+// storeNotice sets NoticeCookie to the kind and text (notice:<kind>:<text>) for the page the
+// redirect goes to.
+func (rt *router) storeNotice(w http.ResponseWriter, r *http.Request, kind rtpkg.NoticeKind, text string) {
+	kind = knownKind(kind)
 	http.SetCookie(w, &http.Cookie{
-		Name: NoticeCookie, Value: Sign(rt.key, []byte("notice:"+text)), Path: "/", MaxAge: 60,
+		Name: NoticeCookie, Value: Sign(rt.key, []byte("notice:"+string(kind)+":"+text)), Path: "/", MaxAge: 60,
 		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
 	})
 }
 
-// takeNotice is the text NoticeCookie carries ("" for none, or one not signed by this app),
-// clearing the cookie: the notice is shown once.
-func (rt *router) takeNotice(w http.ResponseWriter, r *http.Request) string {
+// takeNotice is the text and kind NoticeCookie carries ("" for none, or one not signed by this
+// app), clearing the cookie: the notice is shown once. A payload whose segment after "notice:"
+// is no kind (a cookie set before kinds) is all text, of kind info.
+func (rt *router) takeNotice(w http.ResponseWriter, r *http.Request) (string, rtpkg.NoticeKind) {
 	c, err := r.Cookie(NoticeCookie)
 	if err != nil {
-		return ""
+		return "", rtpkg.NoticeInfo
 	}
 	http.SetCookie(w, &http.Cookie{Name: NoticeCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 	p, ok := Verify(rt.key, c.Value)
 	text, isNotice := strings.CutPrefix(string(p), "notice:")
 	if !ok || !isNotice {
-		return ""
+		return "", rtpkg.NoticeInfo
 	}
-	return text
+	if k, rest, found := strings.Cut(text, ":"); found && knownKind(rtpkg.NoticeKind(k)) == rtpkg.NoticeKind(k) {
+		return rest, rtpkg.NoticeKind(k)
+	}
+	return text, rtpkg.NoticeInfo
+}
+
+// knownKind is k when it is a kind of notice, else info (the kind of Notice.with).
+func knownKind(k rtpkg.NoticeKind) rtpkg.NoticeKind {
+	switch k {
+	case rtpkg.NoticeSuccess, rtpkg.NoticeWarning, rtpkg.NoticeError:
+		return k
+	}
+	return rtpkg.NoticeInfo
+}
+
+// noticeLook is how a notice of kind k shows: the variant of its <al-toast> and <al-alert>
+// (al's "destructive" for error), the toast's timeout in ms (10000 for an error, so it
+// stays twice as long as the rest) and the alert's role (alert, read out at once, for a warning or an error).
+func noticeLook(k rtpkg.NoticeKind) (variant, timeout, role string) {
+	switch knownKind(k) {
+	case rtpkg.NoticeSuccess:
+		return "success", "5000", "status"
+	case rtpkg.NoticeWarning:
+		return "warning", "5000", "alert"
+	case rtpkg.NoticeError:
+		return "destructive", "10000", "alert"
+	}
+	return "info", "5000", "status"
 }
 
 // commentSafe makes s safe inside an HTML comment: no "--" (which could end it).

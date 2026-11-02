@@ -1706,7 +1706,7 @@ Playwright (a browser-automation library for Node.js) with the script
   are morphed in with the panel answering not found and error, its tabs working;
 - the panel's History lists the tab's requests (newest first, at most 20, kept
   across a page load), a click reopens one, and Copy as curl copies the line;
-- a bulk delete's `Notice.with` shows a toast in the open region and it times
+- a bulk delete's `Notice.success` shows a toast in the open region and it times
   out, and the panel after it is the delete's: its `DELETE`s, then "then GET
   /admin/user", on the tab chosen before;
 - on 205 users, the admin's new-post form offers 50 authors and a search form;

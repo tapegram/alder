@@ -1328,13 +1328,32 @@ runtime appends `<al-toast variant="info" timeout="5000">Saved</al-toast>` to
 the page's `<al-toasts>` region as an event of its own, so a later morph does
 not show it again. Put `<al-toasts>` in the layout, outside anything a
 message re-renders; a page without one gets a region the runtime adds to the
-body of the answer. Without JavaScript there is no toast (the region is
+body of the answer.
+
+`Notice` has four functions, each `Text -> Nav -> Nav`, one per kind of
+toast:
+
+- `Notice.with`, an `info` toast: news that is neither good nor bad
+  ("Showing archived posts").
+- `Notice.success`: what the person asked for was done ("Saved", "Deleted 2
+  of 3").
+- `Notice.warning`: it was done, with something to look at ("Saved, but the
+  image was too large and was left out").
+- `Notice.error`: it was not done ("Error: try again"). An error toast
+  stays for ten seconds (`timeout="10000"`); the others close after
+  five seconds. A form's own problems are better told with `Reject`, next
+  to the form.
+
+Without JavaScript there is no toast (the region is
 hidden), so a request made without the script (a form posted with
-JavaScript off) gets its notice as an `<al-alert variant="info"
-role="status">` at the top of the page that answers it: the page itself on a
-`Rerender`, the next page on a `Redirect` (the text rides a cookie signed with
-the app's key, `alder_notice`, for that one page). A browser test reads the
-toasts of a step as `r.notices`.
+JavaScript off) gets its notice as an `<al-alert>` of the same kind at the top
+of the page that answers it (`role="alert"` for a warning or an error, so a
+screen reader reads it out at once, else `role="status"`): the page itself on
+a `Rerender`, the next page on a `Redirect` (the kind and text ride a cookie
+signed with the app's key, `alder_notice`, for that one page). Appendix C
+lists the exact markup of each kind. A browser test reads the toasts of a
+step as `r.notices`, their texts, and `r.toasts`, their kinds and texts
+(chapter 10).
 
 While a message is pending, the form (or the form around a `click` button)
 that sent it is `inert` and `aria-busy="true"`, and a two-pixel bar runs along

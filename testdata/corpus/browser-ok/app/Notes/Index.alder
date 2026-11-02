@@ -1,6 +1,7 @@
 module Notes.Index
 
 import Note
+import Notice
 import User
 
 page "/" { filter: Note.Filter = All } requires user
@@ -54,7 +55,7 @@ update : Msg -> Model -> Session -> Task Nav
 update msg model session = match msg {
   Submit p -> {
     let _ <- Db.insert Note { title: p.form.title, owner: session.user }
-    Task.succeed (Redirect (Notes.Index { filter: model.filter }))
+    Task.succeed (Notice.success "Saved" (Redirect (Notes.Index { filter: model.filter })))
   },
   Toggle p -> {
     let found <- Db.get Note p.id
@@ -139,7 +140,7 @@ test "adding a note through the form" = {
   let _ <- Test.login { user: Just me }
   let page <- Test.get (Notes.Index {})
   let after <- Test.submit NewNote { title: Text.NonEmpty "Milk", due: Nothing, urgent: False, contact: Nothing }
-  Task.succeed ({ before: page.model.notes, answer: after.answer, summary: Test.text "#summary" after.doc, items: Test.texts "#notes .toggle" after.doc, done: Test.has "li.done" after.doc } == { before: [], answer: Redirected (Notes.Index {}), summary: Just "1 shown", items: ["Milk"], done: False })
+  Task.succeed ({ before: page.model.notes, answer: after.answer, summary: Test.text "#summary" after.doc, items: Test.texts "#notes .toggle" after.doc, done: Test.has "li.done" after.doc, notices: after.notices, toasts: after.toasts } == { before: [], answer: Redirected (Notes.Index {}), summary: Just "1 shown", items: ["Milk"], done: False, notices: ["Saved"], toasts: [{ kind: "success", text: "Saved" }] })
 }
 
 -- RF3: a click on a page opened with a parameter keeps the parameter.

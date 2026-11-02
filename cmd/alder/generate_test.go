@@ -37,6 +37,19 @@ func genApp(t *testing.T, base string) string {
 		if code := runNewTo([]string{dir}, &out, &errb); code != 0 {
 			t.Fatalf("alder new: exit %d: %s", code, errb.String())
 		}
+	case "scaffold-update-oneline", "scaffold-update-body": // #159: an `update` that is no match over several lines
+		var out, errb bytes.Buffer
+		if code := runNewTo([]string{dir}, &out, &errb); code != 0 {
+			t.Fatalf("alder new: exit %d: %s", code, errb.String())
+		}
+		app := "\nmsg Ping\n\nupdate : Msg -> Session -> Task Nav\nupdate msg session = match msg { Ping p -> Task.succeed Rerender }\n"
+		if base == "scaffold-update-body" {
+			app = "\nupdate : Msg -> Session -> Task Nav\nupdate msg session = Task.succeed Rerender\n"
+		} else {
+			replaceIn(t, filepath.Join(dir, "app", "Home.alder"), "update msg model session = match msg {\n  Submit p -> {\n    let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }\n    Task.succeed (Notice.with \"Signed\" (Redirect (Home {})))\n  },\n}\n",
+				"update msg model session = match msg { Submit p -> Task.succeed (Redirect (Home {})) }\n")
+		}
+		replaceIn(t, filepath.Join(dir, "app", "App.alder"), "\nsession { }\n", "\nsession { }\n"+app)
 	case "fixture":
 		copyDir(t, "../../testdata/generate/fixture", dir)
 	case "fixture-silo": // M15: an org key with `via`, a silo of two tables, a partitioned shared table
@@ -251,6 +264,10 @@ var genCases = []genCase{
 		fills: [][2]string{{"Home.update.Clear", "Task.succeed Rerender"}, {`Home."pressing Clear"`, "{ answer: r.answer, button: Test.has \"#clear\" after.doc } == { answer: Rerendered, button: True }"}}},
 	{name: "fixture-edit-session", base: "fixture", args: []string{"edit", "session", "add-field", `theme:Text="light"`}, test: true},
 	{name: "remove-page", base: "scaffold", args: []string{"remove", "page", "Home"}},
+	// #159: an `update` on one line is laid out over several for the new arm
+	{name: "form-update-oneline", base: "scaffold-update-oneline", args: []string{"new", "form", "Home", "Quick", "name:Text.NonEmpty", "message:Text.NonEmpty"}},
+	{name: "app-msg-update-oneline", base: "scaffold-update-oneline", args: []string{"new", "msg", "App", "Pong"}},
+	{name: "auth-update-oneline", base: "scaffold-update-oneline", args: []string{"new", "auth"}},
 	{name: "fixture-remove-table", base: "fixture", args: []string{"remove", "table", "Comment"}, test: true},
 }
 
@@ -401,6 +418,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "form", "Home", "Contact", "name:Text", "--into", "Post"}, "", "alder new form: `--into Post`: `Post` is not a table of this app (its tables: Entry)"},
 		{"scaffold", []string{"new", "msg", "Home", "Submit"}, "", "alder new msg: `Home` already declares `Submit`: choose another message name"},
 		{"scaffold", []string{"new", "msg", "Nowhere", "Go"}, "", "alder new msg: there is no page `Nowhere`: `alder new page Nowhere /path` makes one"},
+		{"scaffold-update-body", []string{"new", "msg", "App", "Ping"}, "", "alder new msg: `update` handles no message yet, and its body is not a hole: write it as `match msg { … }` yourself"},
 		{"scaffold", []string{"new", "capability", "Weather", "now", "Query Float ->"}, "", "alder new capability: `Query Float ->` is not a type: "},
 		{"scaffold", []string{"edit", "table", "Entry", "drop-field", "id"}, "", "alder edit table: `id` is the id of `Entry`: a table keeps its id"},
 		{"scaffold", []string{"edit", "table", "Entry", "drop-field", "nope"}, "", "alder edit table: `Entry` has no field `nope` (its fields: id, name, message, created)"},

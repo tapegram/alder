@@ -439,22 +439,140 @@ func findViewSpot(e *srcEdit, m *syntax.Module, rootOnly bool) (viewSpot, bool) 
 	return viewSpot{Line: close, Indent: indentOf(l) + "  ", InCard: inCard}, true
 }
 
-// updateArmSpot is the line before which a new arm of m's `update` goes (the `}` closing its
-// `match msg { … }`) and the arms' indentation; ok is false when m has no `update` or it is not
-// such a match.
+// updateArmSpot is the line before which a new arm of m's `update` goes (a trailing `_` arm of
+// its `match msg { … }`, where the new arm is reachable, else the `}` closing it) and the arms'
+// indentation; ok is false when m has no `update` or it is not such a match (matchifyUpdate
+// makes it one).
 func updateArmSpot(e *srcEdit, m *syntax.Module) (line int, ind string, has, ok bool) {
 	v := valueDecl(m, "update")
 	if v == nil {
 		return 0, "", false, true
 	}
 	mt, isMatch := v.Body.(*syntax.Match)
-	if !isMatch {
+	if !isMatch || needsReflow(e.lines, mt) {
 		return 0, "", true, false
 	}
 	close := mt.Span.End.Line
-	l := e.line(close)
-	if strings.TrimSpace(l) != "}" || close == mt.Span.Start.Line {
-		return 0, "", true, false
+	ind = indentOf(e.line(close)) + "  "
+	if a := catchAll(mt); a != nil {
+		return a.Span.Start.Line, ind, true, true
 	}
-	return close, indentOf(l) + "  ", true, true
+	return close, ind, true, true
+}
+
+// matchifyUpdate is src with module m's `update` written as `match <p> { … }` over several
+// lines, its closing `}` on a line of its own, so that updateArmSpot finds where the arm of a
+// message the generator adds goes (#159); src as it is when `update` is such a match already,
+// or m has none. added are the constructors of Msg this generator run adds. A match on one line,
+// or one whose `}` shares a line with an arm, is laid out an arm a line (refused when a comment
+// is inside it). Another body B becomes `match <p> { _ -> B, }` when Msg has a constructor other
+// than added, for the new arm to go before the `_`; when it has none, a hole becomes the empty
+// `match <p> { }` (the new arm replaces it) and any other body is refused.
+func matchifyUpdate(src string, m *syntax.Module, added []string) (string, error) {
+	v := valueDecl(m, "update")
+	if v == nil || v.Body == nil || len(v.Params) == 0 {
+		return src, nil
+	}
+	lines := strings.Split(src, "\n")
+	ind := indentOf(lines[v.Span.Start.Line-1])
+	var text string
+	if mt, ok := v.Body.(*syntax.Match); ok {
+		if !needsReflow(lines, mt) {
+			return src, nil
+		}
+		for _, c := range m.Comments {
+			if inSpan(mt.Span, c.Line, c.Col) {
+				return "", Refusef("`update` is a `match` with a comment inside it and an arm on the line of its `{` or `}`: put each arm, and the closing `}`, on a line of its own")
+			}
+		}
+		text = "match " + sliceSpan(lines, mt.Subject.GetSpan()) + " {\n"
+		for _, a := range mt.Arms {
+			text += ind + "  " + sliceSpan(lines, a.Span) + ",\n"
+		}
+		text += ind + "}"
+	} else {
+		p := v.Params[0].Name
+		_, hole := v.Body.(*syntax.HoleExpr)
+		switch {
+		case otherMsg(m, added):
+			body := strings.ReplaceAll(sliceSpan(lines, v.Body.GetSpan()), "\n", "\n  ")
+			text = "match " + p + " {\n" + ind + "  _ -> " + body + ",\n" + ind + "}"
+		case hole:
+			text = "match " + p + " {\n" + ind + "}"
+		default:
+			return "", Refusef("`update` handles no message yet, and its body is not a hole: write it as `match msg { … }` yourself")
+		}
+	}
+	sp := v.Body.GetSpan()
+	return src[:offsetOf(lines, sp.Start)] + text + src[offsetOf(lines, sp.End):], nil
+}
+
+// needsReflow reports whether match mt (in lines) does not take several lines with its
+// closing `}` alone on its line (a comment may follow it), or its trailing `_` arm starts on its
+// first line, where no arm can go before it.
+func needsReflow(lines []string, mt *syntax.Match) bool {
+	start, close := mt.Span.Start.Line, mt.Span.End.Line
+	if close < 1 || close > len(lines) {
+		return true
+	}
+	l := lines[close-1]
+	if close == start || strings.TrimSpace(l[:min(max(mt.Span.End.Col-1, 0), len(l))]) != "}" {
+		return true
+	}
+	a := catchAll(mt)
+	return a != nil && a.Span.Start.Line == start
+}
+
+// catchAll is mt's last arm when its pattern is `_`, else nil.
+func catchAll(mt *syntax.Match) *syntax.Arm {
+	if len(mt.Arms) == 0 {
+		return nil
+	}
+	a := mt.Arms[len(mt.Arms)-1]
+	if _, ok := a.Pat.(*syntax.PWild); !ok {
+		return nil
+	}
+	return a
+}
+
+// otherMsg reports whether module m declares a message not among added.
+func otherMsg(m *syntax.Module, added []string) bool {
+	for _, d := range m.Decls {
+		if md, ok := d.(*syntax.MsgDecl); ok && !slices.Contains(added, md.Name) {
+			return true
+		}
+	}
+	return false
+}
+
+// inSpan reports whether line and col (1-based) are inside sp.
+func inSpan(sp diag.Span, line, col int) bool {
+	after := line > sp.Start.Line || line == sp.Start.Line && col >= sp.Start.Col
+	before := line < sp.End.Line || line == sp.End.Line && col < sp.End.Col
+	return after && before
+}
+
+// offsetOf is the byte offset of pos in the text whose lines are lines.
+func offsetOf(lines []string, pos diag.Pos) int {
+	n := 0
+	for i := 0; i < pos.Line-1 && i < len(lines); i++ {
+		n += len(lines[i]) + 1
+	}
+	return n + min(max(pos.Col-1, 0), len(lines[pos.Line-1]))
+}
+
+// withUpdateMatch is m with its `update` rewritten by matchifyUpdate (added as there): a copy
+// parsed again from the rewritten source, or m itself when nothing changed.
+func withUpdateMatch(m *Module, added ...string) (*Module, error) {
+	src, err := matchifyUpdate(m.Source, m.Syntax, added)
+	if err != nil || src == m.Source {
+		return m, err
+	}
+	sm, ds := syntax.ParseFile(m.File, []byte(src))
+	if sm == nil || len(ds) > 0 {
+		return nil, Refusef("internal error: `%s`'s `update`, rewritten into a match, does not parse", m.Name)
+	}
+	c := *m
+	c.Source, c.Syntax = src, sm
+	return &c, nil
 }

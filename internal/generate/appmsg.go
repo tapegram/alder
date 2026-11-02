@@ -38,11 +38,15 @@ func newAppMsg(p *Program, name string, fields []FieldSpec) ([]Edit, error) {
 		args = append(args, f.Name+": ?"+LowerFirst(name)+UpperFirst(f.Name))
 	}
 	d := MsgData{Name: name, Fields: decl}
+	app, err := withUpdateMatch(app, name)
+	if err != nil {
+		return nil, err
+	}
 	e := newSrcEdit(app.Source)
 	arm := name + " p -> ?" + LowerFirst(name) + ","
 	line, ind, has, ok := updateArmSpot(e, app.Syntax)
 	if !ok {
-		return nil, Refusef("`App`'s `update` is not `match msg { … }` written over several lines: add the arm yourself")
+		return nil, Refusef("`App`'s `update` is not a `match` a new arm can go in: add the arm yourself")
 	}
 	if has {
 		e.insertBefore(declStart(e, valueDecl(app.Syntax, "update")), snippet("msg_decl", d)+"\n")

@@ -408,7 +408,8 @@ func (rt *router) notify(w http.ResponseWriter) {
 	if !ok || tw.notice == "" {
 		return
 	}
-	toast := `<al-toast variant="info" timeout="5000">` + esc(tw.notice) + `</al-toast>`
+	variant, timeout, _ := noticeLook(tw.kind)
+	toast := `<al-toast variant="` + variant + `" timeout="` + timeout + `">` + esc(tw.notice) + `</al-toast>`
 	tw.patches = append(tw.patches, "toast")
 	tw.notice = ""
 	if err := datastar.PatchToast(w, toast); err != nil {

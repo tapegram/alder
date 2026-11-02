@@ -109,6 +109,10 @@ func test__Notes__Index__1() eff.Task[bool] {
 						Session App__Session
 						Doc     rtesting.Doc
 						Notices []string
+						Toasts  []struct {
+							Kind string
+							Text string
+						}
 					}, error) {
 						_u10 := rt.PageURL(rt.Page{Path: "/notes"})
 						_b11 := rtesting.BrowserOf(_e8)
@@ -119,6 +123,10 @@ func test__Notes__Index__1() eff.Task[bool] {
 								Session App__Session
 								Doc     rtesting.Doc
 								Notices []string
+								Toasts  []struct {
+									Kind string
+									Text string
+								}
 							}
 							return _z14, _err13
 						}
@@ -129,6 +137,10 @@ func test__Notes__Index__1() eff.Task[bool] {
 								Session App__Session
 								Doc     rtesting.Doc
 								Notices []string
+								Toasts  []struct {
+									Kind string
+									Text string
+								}
 							}
 							return _z16, _err13
 						}
@@ -137,18 +149,30 @@ func test__Notes__Index__1() eff.Task[bool] {
 							Session App__Session
 							Doc     rtesting.Doc
 							Notices []string
-						}{Model: _m15, Session: rtesting.SessionOf[App__Session](_r12.Session), Doc: rtesting.DocOf(_r12.Doc), Notices: _r12.Notices}, nil
+							Toasts  []struct {
+								Kind string
+								Text string
+							}
+						}{Model: _m15, Session: rtesting.SessionOf[App__Session](_r12.Session), Doc: rtesting.DocOf(_r12.Doc), Notices: _r12.Notices, Toasts: _r12.Toasts}, nil
 					}), func(_ struct {
 						Model   Notes__Index__Model
 						Session App__Session
 						Doc     rtesting.Doc
 						Notices []string
+						Toasts  []struct {
+							Kind string
+							Text string
+						}
 					}) eff.Task[bool] {
 						return eff.Bind(eff.Call("Test.click Notes.Index.Add", true, func(_e17 *eff.Env) (struct {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
 							Notices []string
+							Toasts  []struct {
+								Kind string
+								Text string
+							}
 						}, error) {
 							_r18, _err19 := rtesting.BrowserOf(_e17).ClickMsg(rt.MsgURL("Notes.Index", "Add"), rtesting.MsgName("Notes.Index.Add", nil))
 							if _err19 != nil {
@@ -157,6 +181,10 @@ func test__Notes__Index__1() eff.Task[bool] {
 									Session App__Session
 									Doc     rtesting.Doc
 									Notices []string
+									Toasts  []struct {
+										Kind string
+										Text string
+									}
 								}
 								return _z20, _err19
 							}
@@ -165,12 +193,20 @@ func test__Notes__Index__1() eff.Task[bool] {
 								Session App__Session
 								Doc     rtesting.Doc
 								Notices []string
-							}{Answer: _r18.Answer, Session: rtesting.SessionOf[App__Session](_r18.Session), Doc: rtesting.DocOf(_r18.Doc), Notices: _r18.Notices}, nil
+								Toasts  []struct {
+									Kind string
+									Text string
+								}
+							}{Answer: _r18.Answer, Session: rtesting.SessionOf[App__Session](_r18.Session), Doc: rtesting.DocOf(_r18.Doc), Notices: _r18.Notices, Toasts: _r18.Toasts}, nil
 						}), func(r struct {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
 							Notices []string
+							Toasts  []struct {
+								Kind string
+								Text string
+							}
 						}) eff.Task[bool] {
 							return eff.Pure(rtesting.Eq(rtesting.DocTextsSel(selector__1, r.Doc), []string{"a"}))
 						})
@@ -203,6 +239,10 @@ func test__Notes__Index__2() eff.Task[bool] {
 				Session App__Session
 				Doc     rtesting.Doc
 				Notices []string
+				Toasts  []struct {
+					Kind string
+					Text string
+				}
 			}, error) {
 				_u8 := rt.PageURL(rt.Page{Path: "/notes"})
 				_b9 := rtesting.BrowserOf(_e6)
@@ -213,6 +253,10 @@ func test__Notes__Index__2() eff.Task[bool] {
 						Session App__Session
 						Doc     rtesting.Doc
 						Notices []string
+						Toasts  []struct {
+							Kind string
+							Text string
+						}
 					}
 					return _z12, _err11
 				}
@@ -223,6 +267,10 @@ func test__Notes__Index__2() eff.Task[bool] {
 						Session App__Session
 						Doc     rtesting.Doc
 						Notices []string
+						Toasts  []struct {
+							Kind string
+							Text string
+						}
 					}
 					return _z14, _err11
 				}
@@ -231,18 +279,30 @@ func test__Notes__Index__2() eff.Task[bool] {
 					Session App__Session
 					Doc     rtesting.Doc
 					Notices []string
-				}{Model: _m13, Session: rtesting.SessionOf[App__Session](_r10.Session), Doc: rtesting.DocOf(_r10.Doc), Notices: _r10.Notices}, nil
+					Toasts  []struct {
+						Kind string
+						Text string
+					}
+				}{Model: _m13, Session: rtesting.SessionOf[App__Session](_r10.Session), Doc: rtesting.DocOf(_r10.Doc), Notices: _r10.Notices, Toasts: _r10.Toasts}, nil
 			}), func(_ struct {
 				Model   Notes__Index__Model
 				Session App__Session
 				Doc     rtesting.Doc
 				Notices []string
+				Toasts  []struct {
+					Kind string
+					Text string
+				}
 			}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.click App.Leave", true, func(_e15 *eff.Env) (struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
 					Notices []string
+					Toasts  []struct {
+						Kind string
+						Text string
+					}
 				}, error) {
 					_r16, _err17 := rtesting.BrowserOf(_e15).ClickMsg(rt.MsgURL("App", "Leave"), rtesting.MsgName("App.Leave", nil))
 					if _err17 != nil {
@@ -251,6 +311,10 @@ func test__Notes__Index__2() eff.Task[bool] {
 							Session App__Session
 							Doc     rtesting.Doc
 							Notices []string
+							Toasts  []struct {
+								Kind string
+								Text string
+							}
 						}
 						return _z18, _err17
 					}
@@ -259,12 +323,20 @@ func test__Notes__Index__2() eff.Task[bool] {
 						Session App__Session
 						Doc     rtesting.Doc
 						Notices []string
-					}{Answer: _r16.Answer, Session: rtesting.SessionOf[App__Session](_r16.Session), Doc: rtesting.DocOf(_r16.Doc), Notices: _r16.Notices}, nil
+						Toasts  []struct {
+							Kind string
+							Text string
+						}
+					}{Answer: _r16.Answer, Session: rtesting.SessionOf[App__Session](_r16.Session), Doc: rtesting.DocOf(_r16.Doc), Notices: _r16.Notices, Toasts: _r16.Toasts}, nil
 				}), func(r struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
 					Notices []string
+					Toasts  []struct {
+						Kind string
+						Text string
+					}
 				}) eff.Task[bool] {
 					return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/orgs"}}))
 				})
@@ -280,6 +352,10 @@ func test__Notes__Index__3() eff.Task[bool] {
 		Session App__Session
 		Doc     rtesting.Doc
 		Notices []string
+		Toasts  []struct {
+			Kind string
+			Text string
+		}
 	}, error) {
 		_u3 := rt.PageURL(rt.Page{Path: "/notes"})
 		_b4 := rtesting.BrowserOf(_e1)
@@ -290,6 +366,10 @@ func test__Notes__Index__3() eff.Task[bool] {
 				Session App__Session
 				Doc     rtesting.Doc
 				Notices []string
+				Toasts  []struct {
+					Kind string
+					Text string
+				}
 			}
 			return _z7, _err6
 		}
@@ -298,12 +378,20 @@ func test__Notes__Index__3() eff.Task[bool] {
 			Session App__Session
 			Doc     rtesting.Doc
 			Notices []string
-		}{Answer: _r5.Answer, Session: rtesting.SessionOf[App__Session](_r5.Session), Doc: rtesting.DocOf(_r5.Doc), Notices: _r5.Notices}, nil
+			Toasts  []struct {
+				Kind string
+				Text string
+			}
+		}{Answer: _r5.Answer, Session: rtesting.SessionOf[App__Session](_r5.Session), Doc: rtesting.DocOf(_r5.Doc), Notices: _r5.Notices, Toasts: _r5.Toasts}, nil
 	}), func(r struct {
 		Answer  rtesting.Answer
 		Session App__Session
 		Doc     rtesting.Doc
 		Notices []string
+		Toasts  []struct {
+			Kind string
+			Text string
+		}
 	}) eff.Task[bool] {
 		return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}))
 	})

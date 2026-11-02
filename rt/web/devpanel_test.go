@@ -6,6 +6,7 @@ import (
 	"regexp"
 
 	"alder/internal/csscheck"
+	rtpkg "alder/rt"
 	"alder/rt/eff"
 	"net/http/httptest"
 	"strings"
@@ -83,6 +84,26 @@ func TestNoticedToast(t *testing.T) {
 	// the toast comes after the body patch, so a morph does not show it again
 	if strings.Index(body, "selector body") > strings.Index(body, "selector al-toasts") {
 		t.Errorf("order: %q", body)
+	}
+}
+
+// Each kind of notice has its own toast: error stays for 10 seconds (timeout 10000).
+func TestNoticedToast_Kinds(t *testing.T) {
+	for kind, want := range map[rtpkg.NoticeKind]string{
+		rtpkg.NoticeInfo:    `<al-toast variant="info" timeout="5000">Saved</al-toast>`,
+		rtpkg.NoticeSuccess: `<al-toast variant="success" timeout="5000">Saved</al-toast>`,
+		rtpkg.NoticeWarning: `<al-toast variant="warning" timeout="5000">Saved</al-toast>`,
+		rtpkg.NoticeError:   `<al-toast variant="destructive" timeout="10000">Saved</al-toast>`,
+	} {
+		h := NewRouter(one("POST", "/_m/A/B", func(rq *Request) Response {
+			rq.Notice, rq.NoticeKind = "Saved", kind
+			return PageResponse(doc("hi"), nil, nil, true)
+		}), testOpts(nil))
+		req := httptest.NewRequest("POST", "/_m/A/B", nil)
+		req.Header.Set("Datastar-Request", "true")
+		if body := serve(h, req).Body.String(); !strings.Contains(body, "data: elements "+want+"\n") {
+			t.Errorf("%s: missing %q in %q", kind, want, body)
+		}
 	}
 }
 
@@ -193,6 +214,69 @@ func TestNoticedWithoutScript(t *testing.T) {
 	}
 	if b := serve(h, httptest.NewRequest("POST", "/_m/A/Stay", nil)).Body.String(); !strings.Contains(b, `<al-alert variant="info" role="status">Saved</al-alert>`) {
 		t.Errorf("no alert on the re-rendered page: %s", b)
+	}
+}
+
+// The kind of a notice rides in the signed cookie with its text (notice:<kind>:<text>), and the
+// alert of the next page shows it; a payload whose second segment is no kind (an older
+// cookie's, or text with a colon) is all text, shown as info.
+func TestNoticedWithoutScript_Kinds(t *testing.T) {
+	for _, tc := range []struct {
+		kind       rtpkg.NoticeKind
+		text, want string
+	}{
+		{rtpkg.NoticeInfo, "a:b:c", `<al-alert variant="info" role="status">a:b:c</al-alert>`},
+		{rtpkg.NoticeSuccess, "Saved", `<al-alert variant="success" role="status">Saved</al-alert>`},
+		{rtpkg.NoticeWarning, "Careful", `<al-alert variant="warning" role="alert">Careful</al-alert>`},
+		{rtpkg.NoticeError, "Error: try again", `<al-alert variant="destructive" role="alert">Error: try again</al-alert>`},
+	} {
+		routes := []Route{
+			{Method: "POST", Pattern: "/_m/A/Go", Handle: func(rq *Request) Response {
+				rq.Notice, rq.NoticeKind = tc.text, tc.kind
+				return RedirectResponse("/list", nil)
+			}},
+			{Method: "POST", Pattern: "/_m/A/Stay", Handle: func(rq *Request) Response {
+				rq.Notice, rq.NoticeKind = tc.text, tc.kind
+				return PageResponse(doc("here"), nil, nil, true)
+			}},
+			{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response { return PageResponse(doc("list"), nil, nil, false) }},
+		}
+		h := NewRouter(routes, testOpts(nil))
+		var c *http.Cookie
+		for _, k := range serve(h, httptest.NewRequest("POST", "/_m/A/Go", nil)).Result().Cookies() {
+			if k.Name == NoticeCookie {
+				c = k
+			}
+		}
+		if c == nil {
+			t.Fatalf("%s: no cookie", tc.kind)
+		}
+		get := httptest.NewRequest("GET", "/list", nil)
+		get.AddCookie(c)
+		if b := serve(h, get).Body.String(); !strings.Contains(b, "<body>"+tc.want) {
+			t.Errorf("%s: missing %q in %s", tc.kind, tc.want, b)
+		}
+		if b := serve(h, httptest.NewRequest("POST", "/_m/A/Stay", nil)).Body.String(); !strings.Contains(b, "<body>"+tc.want) {
+			t.Errorf("%s, in place: missing %q in %s", tc.kind, tc.want, b)
+		}
+	}
+	// an older cookie, a second segment that is no kind, and malformed payloads
+	h := NewRouter([]Route{{Method: "GET", Pattern: "/list", Handle: func(rq *Request) Response { return PageResponse(doc("list"), nil, nil, false) }}}, testOpts(nil))
+	for payload, want := range map[string]string{
+		"notice:Saved":          `<al-alert variant="info" role="status">Saved</al-alert>`,
+		"notice:error":          `<al-alert variant="info" role="status">error</al-alert>`,
+		"notice:bogus:x":        `<al-alert variant="info" role="status">bogus:x</al-alert>`,
+		"notice:success:a:b:c:": `<al-alert variant="success" role="status">a:b:c:</al-alert>`,
+		"notice:warning:":       "",
+		"notice:":               "",
+		"something:else":        "",
+	} {
+		get := httptest.NewRequest("GET", "/list", nil)
+		get.AddCookie(&http.Cookie{Name: NoticeCookie, Value: Sign(testOpts(nil).Secret, []byte(payload))})
+		b := serve(h, get).Body.String()
+		if want == "" && strings.Contains(b, "al-alert") || want != "" && !strings.Contains(b, "<body>"+want) {
+			t.Errorf("%q: want %q in %s", payload, want, b)
+		}
 	}
 }
 

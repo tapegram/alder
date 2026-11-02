@@ -99,7 +99,7 @@ func (g *adminGen) bulk(at *adminTable) {
 			"BulkDelete p -> {",
 			"  let allowed = List.filter (\\row -> refused model session row == False) model.rows",
 			"  let _ <- Task.all (List.map (\\row -> Db.delete "+t.Name+" row."+id+") allowed)",
-			"  Task.succeed (Notice.with (\"Deleted \" ++ Text.fromInt (List.length allowed) ++ \" of \" ++ Text.fromInt (List.length model.rows)) (Redirect ("+at.page("Index")+" {})))",
+			"  Task.succeed (Notice.success (\"Deleted \" ++ Text.fromInt (List.length allowed) ++ \" of \" ++ Text.fromInt (List.length model.rows)) (Redirect ("+at.page("Index")+" {})))",
 			"},")
 		views = append(views, `<form id="bulk-delete" submit={BulkDelete}>`,
 			`  <al-alert variant="destructive"><Errors form /></al-alert>`,
@@ -113,7 +113,7 @@ func (g *adminGen) bulk(at *adminTable) {
 		arms = append(arms,
 			"BulkSet"+name+" p -> {",
 			"  let _ <- Task.all (List.map (\\row -> Db.update "+t.Name+" row."+id+" (\\r -> { r | "+c.Name+": p.form.value })) model.rows)",
-			"  Task.succeed (Notice.with (\"Updated \" ++ Text.fromInt (List.length model.rows)) (Redirect ("+at.page("Index")+" {})))",
+			"  Task.succeed (Notice.success (\"Updated \" ++ Text.fromInt (List.length model.rows)) (Redirect ("+at.page("Index")+" {})))",
 			"},")
 		tag := "al-select"
 		if c.Kind == KindBool {

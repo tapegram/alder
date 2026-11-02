@@ -141,8 +141,21 @@ func UrlAbsolute(p rt.Page) string {
 	return u
 }
 
-// NavNoticed is `Nav.noticed text nav`: nav's answer with a toast showing text.
-func NavNoticed(t string, n rt.Nav) rt.Nav { return rt.Noticed(t, n) }
+// NavNoticed is nav's answer with a toast of kind k showing text: `Notice.with` (info),
+// `Notice.success`, `Notice.warning` and `Notice.error` (below).
+func NavNoticed(k rt.NoticeKind, t string, n rt.Nav) rt.Nav { return rt.Noticed(k, t, n) }
+
+// NoticeWith is `Notice.with text nav`, an info toast.
+func NoticeWith(t string, n rt.Nav) rt.Nav { return NavNoticed(rt.NoticeInfo, t, n) }
+
+// NoticeSuccess is `Notice.success text nav`.
+func NoticeSuccess(t string, n rt.Nav) rt.Nav { return NavNoticed(rt.NoticeSuccess, t, n) }
+
+// NoticeWarning is `Notice.warning text nav`.
+func NoticeWarning(t string, n rt.Nav) rt.Nav { return NavNoticed(rt.NoticeWarning, t, n) }
+
+// NoticeError is `Notice.error text nav`.
+func NoticeError(t string, n rt.Nav) rt.Nav { return NavNoticed(rt.NoticeError, t, n) }
 
 // TextToBytes is the text's UTF-8 bytes.
 func TextToBytes(s string) []byte { return []byte(s) }

@@ -3,6 +3,7 @@ package ui
 import (
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -275,13 +276,21 @@ func cutRunes(s string, limit int) string {
 }
 
 // strip is the active filters, ` level info  rid 5f3a2c1e  /lend/`: the level always, the rid
-// and the regexp when set; while the input is active the regexp being typed, bold; and the error
+// and the regexp when set (the rid then says how many newer lines it hides, if any); while the input is active the regexp being typed, bold; and the error
 // of a regexp just refused, yellow.
 func (s *logsScreen) strip(c *Ctx) string {
 	f := c.LogFilter
 	parts := []string{"level " + f.Level}
 	if f.Rid != "" {
-		parts = append(parts, "rid "+clean(f.Rid))
+		rid := "rid " + clean(f.Rid)
+		switch n := c.Logs.HiddenNewer(f); n {
+		case 0:
+		case 1:
+			rid += " · 1 newer line hidden (x to clear)"
+		default:
+			rid += " · " + strconv.Itoa(n) + " newer lines hidden (x to clear)"
+		}
+		parts = append(parts, rid)
 	}
 	switch {
 	case s.typing:

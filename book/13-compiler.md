@@ -4699,7 +4699,8 @@ running server knows (the build id, the migrations the database has, how each
 capability is wired, the routes). Neither is served without `ALDER_DEV=1`:
 `/_dev` is a 404 and no page carries the panel or its script (a test builds
 an example, runs it without `ALDER_DEV` and checks both). A `Noticed` answer is unwrapped by the generated route
-(`Nav.Unnotice`), the text kept on the request, and the toast patched after the
+(`Nav.Unnotice`), the text and the kind kept on the request (across a no-JS redirect they ride
+in the signed cookie as `notice:<kind>:<text>`), and the toast patched after the
 body.
 
 

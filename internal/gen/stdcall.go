@@ -239,7 +239,10 @@ var StdCalls = map[string]string{
 	"Random.map2":       "std.RandomMap2",
 	"Random.andThen":    "std.RandomAndThen",
 	// Notice
-	"Notice.with": "std.NavNoticed",
+	"Notice.with":    "std.NoticeWith",
+	"Notice.success": "std.NoticeSuccess",
+	"Notice.warning": "std.NoticeWarning",
+	"Notice.error":   "std.NoticeError",
 	// Url
 	"Url.external": "std.UrlExternal",
 	"Url.absolute": "std.UrlAbsolute",

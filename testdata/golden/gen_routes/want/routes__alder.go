@@ -108,7 +108,7 @@ func update__Edit(rq *web.Request, params Edit__Params, msg Edit__Msg, st *html.
 	if err != nil {
 		return route__fail(err)
 	}
-	nav, rq.Notice = nav.Unnotice()
+	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
 	switch {
 	case nav.Tag == rt.NavRedirect:
 		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)

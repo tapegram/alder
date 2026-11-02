@@ -276,7 +276,7 @@
                 (user (ctor Prelude.Maybe.Just (record (value (var me)))))
                 (org (ctor Prelude.Maybe.Just (record (value (var o)))))
                 (role (ctor User.Role.Reader))))
-            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text }
+            (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text } }
               (test-get Projects.Index (record Params))
               (pure task
                 (test-eq

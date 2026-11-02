@@ -71,8 +71,10 @@ type Result struct {
 	Answer  Answer
 	Session any
 	Doc     html.Node
-	// Notices are the toasts the step's answer showed (a Noticed answer), in order.
+	// Notices are the toasts the step's answer showed (a Noticed answer), in order: their text.
 	Notices []string
+	// Toasts are the same toasts with their kind (rt.NoticeKind: info, success, warning, error).
+	Toasts []Toast
 	// Model is the model the page held was rendered from when the last request the step made
 	// was a page's GET (web.Request.Model; Test.get's typed model), nil otherwise.
 	Model any
@@ -111,11 +113,11 @@ type Browser struct {
 	key     []byte
 	login   string
 
-	cookie  string    // the session cookie's value, "" for none
-	url     string    // the URL of the page held, "" before the first
-	doc     html.Node // the page held (without the router's doctype and script tag)
-	hasDoc  bool
-	notices []string // the toasts of the step's requests (Result.Notices)
+	cookie string    // the session cookie's value, "" for none
+	url    string    // the URL of the page held, "" before the first
+	doc    html.Node // the page held (without the router's doctype and script tag)
+	hasDoc bool
+	toasts []Toast // the toasts of the step's requests (Result.Toasts and Notices)
 
 	// dom is the held page as a browser's parser builds it and Datastar patches it (html.Repair):
 	// the page the drift check compares (checkPatched). doc stays the markup as the router sent
@@ -420,8 +422,8 @@ type Fetched = struct {
 // browser holds, and the notices and model of the last step, stay as they were.
 func (b *Browser) Fetch(u string) (Fetched, error) {
 	defer b.track()()
-	notices, model := b.notices, b.model
-	defer func() { b.notices, b.model = notices, model }()
+	toasts, model := b.toasts, b.model
+	defer func() { b.toasts, b.model = toasts, model }()
 	w, err := b.serve(http.MethodGet, u, nil, false)
 	if err != nil {
 		return Fetched{}, err
@@ -691,14 +693,18 @@ func postURL(action string) string {
 
 // result is ans with the session the cookie now carries and the document held.
 func (b *Browser) result(ans Answer) Result {
-	return Result{Answer: ans, Session: b.Session(), Doc: b.doc, Model: b.model, Notices: b.notices}
+	var notices []string
+	for _, t := range b.toasts {
+		notices = append(notices, t.Text)
+	}
+	return Result{Answer: ans, Session: b.Session(), Doc: b.doc, Model: b.model, Notices: notices, Toasts: b.toasts}
 }
 
 // serve sends one request through the router: with the cookie, the held page as Referer (an App
 // message redirects back to it), and for a Datastar request its header; it then keeps the cookie
 // the answer sets and appends the effects the request ran to the test's trace.
 func (b *Browser) serve(method, target string, form url.Values, ds bool) (*httptest.ResponseRecorder, error) {
-	b.notices = nil
+	b.toasts = nil
 	cur, err := b.within()
 	if err != nil {
 		return nil, err
@@ -1118,6 +1124,23 @@ func pushOf(ev sseEvent) (string, bool) {
 	return u, true
 }
 
+// Toast is one toast a step's answer showed: a test's `{ kind : Text, text : Text }` (an alias,
+// so the generated code's struct of those fields is this type).
+type Toast = struct {
+	Kind string
+	Text string
+}
+
+// toastOf is the toast the router's <al-toast> el shows: its kind read back from its variant
+// (al's "destructive" is an error).
+func toastOf(el html.Node) Toast {
+	kind, _ := html.AttrOf(el, "variant")
+	if kind == "destructive" {
+		kind = string(rt.NoticeError)
+	}
+	return Toast{Kind: kind, Text: strings.TrimSpace(html.TextContent(el))}
+}
+
 // patch applies a datastar-patch-elements event to the held document: the router patches the
 // <body> (outer: replace it; inner: replace its children; append: add to them) and, after a
 // followed redirect, the <title> (selector `head > title`: replaced, when the page has one).
@@ -1161,15 +1184,11 @@ func (b *Browser) patch(ev sseEvent) error {
 		return nil
 	}
 	if sel == "al-toasts" && mode == "append" {
-		b.notices = append(b.notices, strings.TrimSpace(html.TextContent(els)))
+		b.toasts = append(b.toasts, toastOf(els))
 		return nil
 	}
 	if sel != "body" {
 		return fmt.Errorf("a patch of %q: the browser only patches the body", sel)
-	}
-	if sel == "al-toasts" && mode == "append" {
-		b.notices = append(b.notices, strings.TrimSpace(html.TextContent(els)))
-		return nil
 	}
 	doc := b.doc
 	if !b.hasDoc {

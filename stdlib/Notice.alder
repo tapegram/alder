@@ -1,3 +1,9 @@
 module Notice
 
 with : Text -> Nav -> Nav
+
+success : Text -> Nav -> Nav
+
+warning : Text -> Nav -> Nav
+
+error : Text -> Nav -> Nav

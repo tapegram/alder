@@ -67,7 +67,7 @@ update msg model session =
         let allowed = List.filter (\row -> refused model session row == False) model.rows
         let _ <- Task.all (List.map (\row -> Db.delete Todo row.id) allowed)
         Task.succeed (
-          Notice.with ("Deleted " ++ Text.fromInt (List.length allowed) ++ " of " ++ Text.fromInt (List.length model.rows)) (
+          Notice.success ("Deleted " ++ Text.fromInt (List.length allowed) ++ " of " ++ Text.fromInt (List.length model.rows)) (
             Redirect (Admin.Todos.Index {})
           )
         )
@@ -78,7 +78,7 @@ update msg model session =
             List.map (\row -> Db.update Todo row.id (\r -> { r | done: p.form.value })) model.rows
           )
         Task.succeed (
-          Notice.with ("Updated " ++ Text.fromInt (List.length model.rows)) (
+          Notice.success ("Updated " ++ Text.fromInt (List.length model.rows)) (
             Redirect (Admin.Todos.Index {})
           )
         )
