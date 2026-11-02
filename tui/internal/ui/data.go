@@ -285,7 +285,9 @@ func (s *dataScreen) Update(msg tea.Msg, c *Ctx) (Screen, tea.Cmd) {
 func (s *dataScreen) update(msg tea.Msg, c *Ctx) (Screen, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		s.width, s.height = msg.Width, max(msg.Height-3, 0) // the frame keeps the status bar, a rule and the footer
+		// The size View is given: the frame keeps the status bar, a rule and the footer, and a
+		// one-cell margin on each side.
+		s.width, s.height = max(msg.Width-2, 0), max(msg.Height-3, 0)
 	case dataMapMsg:
 		if msg.gen != s.mapGen {
 			return s, nil

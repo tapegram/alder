@@ -468,3 +468,38 @@ func TestQuery_Exactly1000(t *testing.T) {
 		t.Errorf("1001 rows:\n%s", f)
 	}
 }
+
+// The last lines of a long wrapped value in the row view can be scrolled to: the scroll limit is
+// computed at the width View wraps at.
+func TestData_RowViewScrollsToEnd(t *testing.T) {
+	o, _ := dataApp(t, strings.Replace(shelfMap, "%s", "", 1))
+	m := newRoot(o)
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
+	// One unbroken value, the only column, so the number of lines it wraps to depends on the width.
+	press(m, "3", ":", "select '"+strings.Repeat("x", 495)+"END' as v", "enter", "enter")
+	for range 80 {
+		press(m, "j")
+	}
+	if f := ansi.Strip(m.View()); !strings.Contains(f, "END") {
+		t.Errorf("the last line of the value is out of reach:\n%s", f)
+	}
+}
+
+// A query's result, which has a count line under its heading, scrolls its last row into view.
+func TestData_QueryScrollsToEnd(t *testing.T) {
+	o, _ := dataApp(t, strings.Replace(shelfMap, "%s", "", 1))
+	m := newRoot(o)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 12})
+	press(m, "3", ":", "with recursive n(i) as (select 1 union all select i+1 from n where i < 50) select i from n", "enter")
+	for range 60 {
+		press(m, "j")
+	}
+	lines := strings.Split(ansi.Strip(m.View()), "\n")
+	found := false
+	for _, l := range lines {
+		found = found || strings.HasSuffix(strings.TrimSpace(l), "> 50")
+	}
+	if !found {
+		t.Errorf("the last row is not under the cursor in view:\n%s", strings.Join(lines, "\n"))
+	}
+}
