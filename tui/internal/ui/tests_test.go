@@ -6,8 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/charmbracelet/x/exp/teatest"
 
@@ -206,4 +209,76 @@ func TestTests_Mutate(t *testing.T) {
 		t.Errorf("footer = %q", m.footer())
 	}
 	teatest.RequireEqualOutput(t, []byte(frame))
+}
+
+// pressViewing presses keys as the program does, drawing the frame after each one, and returns
+// the last frame.
+func pressViewing(m *root, keys ...string) string {
+	frame := m.View()
+	for _, k := range keys {
+		press(m, k)
+		frame = m.View()
+	}
+	return frame
+}
+
+// js is n presses of j.
+func js(n int) []string {
+	keys := make([]string, n)
+	for i := range keys {
+		keys[i] = "j"
+	}
+	return keys
+}
+
+func TestTests_ScrollPastList(t *testing.T) {
+	o, f := testsOptions("")
+	var lines []string
+	for i := range 30 {
+		lines = append(lines, strings.Replace(passLend, "lend a book", "lend book "+strconv.Itoa(i), 1))
+	}
+	f.On("test --json --mutate", strings.Join(append(lines, mutantsLine, scoreLine), "\n"), 0)
+	long := strings.Replace(failTwice, `"trace":["Books.lend app/Books.al:14","Books.update app/Books.al:31"]`,
+		`"trace":["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10","t11","t12","t13","t14","t15","t16","t17","t18","t19","t20","t21","t22","t23","t24","t25"]`, 1)
+	f.On("test --json", strings.Join(append(lines[:29:29], long), "\n"), 1)
+	m := newRoot(o, fixture(t, "basic")...)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	press(m, "4", "m")
+	frame := m.View()
+	if strings.Contains(frame, "score 0.50") {
+		t.Fatalf("the mutation block fits at 80x24 already; the test needs a longer list:\n%s", frame)
+	}
+	// j through the list reaches the last row, under which the mutation block now shows.
+	frame = pressViewing(m, js(30)...)
+	for _, want := range []string{"score 0.50  killed 1  survived 1  suppressed 2  skipped 3", "app/Books.al:16  n > 0 → n >= 0"} {
+		if !strings.Contains(frame, want) {
+			t.Errorf("no %q after moving to the last row:\n%s", want, frame)
+		}
+	}
+	if !strings.Contains(m.footer(), "alder test --json --mutate") {
+		t.Errorf("footer = %q", m.footer())
+	}
+	if cur := cursorRow(pressViewing(m, "k")); !strings.Contains(cur, "lend book 28") {
+		t.Errorf("k from the last row puts the cursor on %q, want lend book 28", cur)
+	}
+
+	// An unfolded trace longer than the pane on the last row: j scrolls to its tail, and further
+	// j stays there.
+	press(m, "r")
+	frame = pressViewing(m, append(js(29), "enter")...)
+	if !strings.Contains(frame, "left:  Lent 2") || strings.Contains(frame, "t25") {
+		t.Fatalf("the unfolded failure is not shown from its top:\n%s", frame)
+	}
+	frame = pressViewing(m, js(30)...)
+	if !strings.Contains(frame, "    t25") {
+		t.Errorf("the trace's tail is unreachable:\n%s", frame)
+	}
+	// k scrolls back up the trace to the row before it moves the cursor.
+	frame = pressViewing(m, "k", "k", "k", "k", "k", "k", "k", "k", "k", "k", "k")
+	if cur := cursorRow(frame); !strings.Contains(cur, `"lend (twice)"`) || !strings.Contains(frame, "left:  Lent 2") {
+		t.Errorf("k does not scroll back to the unfolded row:\n%s", frame)
+	}
+	if cur := cursorRow(pressViewing(m, "k")); !strings.Contains(cur, "lend book 28") {
+		t.Errorf("k from the top of the block puts the cursor on %q, want lend book 28", cur)
+	}
 }

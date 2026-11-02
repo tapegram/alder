@@ -71,6 +71,8 @@ type testsScreen struct {
 	cursor   int    // the row under the cursor
 	unfolded string // the key of the unfolded failure, or ""
 	top      int    // the first line of the list drawn
+	tail     int    // how many lines j has scrolled past the cursor's row into its block
+	height   int    // the height of the list when it was last drawn
 
 	watching bool
 	watchID  int // counts the watches started, so a stopped one's signals are dropped
@@ -101,7 +103,7 @@ func (s *testsScreen) start(c *Ctx, one *testrun.Result, mutate bool) tea.Cmd {
 	s.run = &testrun.Run{Args: testrun.Args(one, mutate)}
 	s.single, s.running, s.stderr = one != nil, true, ""
 	if one == nil {
-		s.rows, s.cursor, s.unfolded, s.top = nil, 0, "", 0
+		s.rows, s.cursor, s.unfolded, s.top, s.tail = nil, 0, "", 0, 0
 	}
 	gen, r, dir, args := s.gen, c.Opts.Runner, c.Opts.Dir, s.run.Args
 	return func() tea.Msg {
@@ -209,7 +211,9 @@ func (s *testsScreen) ended(c *Ctx, code int) tea.Cmd {
 
 // key answers a key: r runs the suite (or queues it behind the run in flight), m runs the
 // mutation tests, w toggles the watch, j/k and the arrows move the cursor, and enter unfolds the
-// failure under the cursor or, when it is unfolded, reruns it.
+// failure under the cursor or, when it is unfolded, reruns it. While the cursor's block (its
+// unfolded failure, and under the last row the mutation block too) runs past the bottom of the
+// list, j scrolls it a line instead of moving on, and k scrolls back before moving up.
 func (s *testsScreen) key(k string, c *Ctx) tea.Cmd {
 	switch k {
 	case "r":
@@ -226,9 +230,19 @@ func (s *testsScreen) key(k string, c *Ctx) tea.Cmd {
 	case "w":
 		return s.toggleWatch(c)
 	case "k", "up":
+		if s.tail > 0 {
+			s.tail--
+			return nil
+		}
 		s.cursor = max(s.cursor-1, 0)
 	case "j", "down":
-		s.cursor = max(min(s.cursor+1, len(s.rows)-1), 0)
+		if at, end := block(s.body(c), s.cursor); s.height > 0 && at+s.tail+s.height-1 < end {
+			s.tail++
+			return nil
+		}
+		if s.cursor < len(s.rows)-1 {
+			s.cursor, s.tail = s.cursor+1, 0
+		}
 	case "enter":
 		if s.cursor >= len(s.rows) || s.rows[s.cursor].OK {
 			return nil
@@ -261,21 +275,43 @@ func (s *testsScreen) toggleWatch(c *Ctx) tea.Cmd {
 	return waitChange(s.watchID, s.changes)
 }
 
-// View draws the summary, a rule, and the list, keeping the cursor's row in view.
+// block is the first and last line in body of row's block: the row's own line and its unfolded
+// failure, and for the last row every line after it (the mutation block). Both are 0 when there
+// is no such row.
+func block(body []testsLine, row int) (at, end int) {
+	last := -1
+	for i, b := range body {
+		if b.row == row && b.cursor {
+			at = i
+		}
+		if b.row == row {
+			end = i
+		}
+		last = max(last, b.row)
+	}
+	if row == last && len(body) > 0 {
+		end = len(body) - 1
+	}
+	return at, end
+}
+
+// View draws the summary, a rule, and the list. It shows as much of the cursor's block as fits,
+// from the line tail lines below the row's own line, so the row stays in view until j scrolls
+// past it.
 func (s *testsScreen) View(width, height int, c *Ctx) string {
 	head := []string{s.summary(), strings.Repeat("─", width)}
 	body := s.body(c)
 	h := max(height-len(head), 1)
-	at := 0 // the line of the cursor's row in body
-	for i, b := range body {
-		if b.row == s.cursor && b.cursor {
-			at = i
-		}
+	s.height = h
+	at, end := block(body, s.cursor)
+	s.tail = max(min(s.tail, end-at-h+1), 0)
+	first := at + s.tail
+	last := min(first+h-1, end)
+	s.top = max(min(s.top, len(body)-h), 0)
+	if last >= s.top+h {
+		s.top = last - h + 1
 	}
-	s.top = max(min(s.top, at, len(body)-h), 0)
-	if at >= s.top+h {
-		s.top = at - h + 1
-	}
+	s.top = min(s.top, first)
 	lines := head
 	for _, b := range body[s.top:min(s.top+h, len(body))] {
 		lines = append(lines, ansi.Truncate(b.text, width, "…"))
