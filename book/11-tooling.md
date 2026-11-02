@@ -985,29 +985,29 @@ key of the current screen.
   only the lines that match a regular expression, and `x` clears it and the
   request filter that Requests' `l` set. `enter` on a line logged while a
   request was answered opens that request. `G` follows the newest line.
-
 - **Data** lists the app's tables on the left, by their Alder names, each
   with its row count, and below them the migrations applied. It learns the
   tables from `/_dev/map.json` and reads the rows from the SQLite file in
   `build/<app>/`, which it opens read-only each time it reads, so it cannot
-  change your data. `enter` moves into the selected table's rows, a hundred at
-  a time (`[` and `]` turn the pages); there `j` and `k` move between rows, `h`
-  and `l` between columns, `s` sorts by the column under the cursor (press it
-  again for the other direction), and `enter` shows one row down the screen
-  with long text unfolded. `esc` goes back. `:` opens a prompt for a SQL
-  statement that only reads (one that begins with `SELECT`, `WITH` or
-  `EXPLAIN`); its rows replace the
-  table's until you press `esc`. An app with silos has a database for each
-  silo value, and `d` switches between them. The footer names the `sqlite3`
-  command for the same database, with your statement when you typed one.
+  change your data. `enter` (or `l`) moves into the selected table's rows, a
+  hundred at a time (`[` and `]` turn the pages); there `j` and `k` move
+  between rows, `h` and `l` between columns, `s` sorts by the column under the
+  cursor (press it again for the other direction), and `enter` shows one row
+  down the screen with long text unfolded. `esc` goes back. `:` opens a prompt
+  for a SQL statement that only reads (one that begins with `SELECT`, `WITH`
+  or `EXPLAIN`); its rows replace the table's until you press `esc`. An app
+  with silos has a database for each silo value, and `d` switches between
+  them. The footer names the `sqlite3` command for the same database, with
+  your statement when you typed one.
 - **Tests** runs `alder test --json` the first time you open it and shows a
   row for each test with the time it took and `ok` or `FAIL`. `enter` on a
   failed test unfolds what it expected, what it got and where; `enter` again
   runs that one test on its own. `r` runs the whole suite again, and `w` turns
   on watching: the suite then reruns whenever a file of the app changes. `m`
   runs the mutation tests (`alder test --mutate`) and adds their score and the
-  mutants no test noticed. A run is never cut short: if you ask for another
-  while one is going, it waits its turn. The footer names the command that
+  mutants no test noticed. A run is never cut short: `r`, or a change to the app while
+  watching, during a run queues one more run of the suite for when it ends,
+  and `enter` and `m` do nothing until it is over. The footer names the command that
   made the list.
 - **Routes** lists the routes from `alder routes --json`: whether each is a
   page or a message, its path, the declaration that handles it, where that is
