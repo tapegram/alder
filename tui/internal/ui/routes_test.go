@@ -1,6 +1,8 @@
 package ui
 
 import (
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"reflect"
 	"strings"
 	"testing"
@@ -212,5 +214,53 @@ func TestRoutes_Failure(t *testing.T) {
 	press(m, "5") // no runner must not panic
 	if frame := m.View(); !strings.Contains(frame, "no alder to run") {
 		t.Errorf("no runner is not reported:\n%s", frame)
+	}
+}
+
+// A hello from another boot restarts the counts even when the new table's seqs are past the
+// ones the screen had scanned.
+func TestRoutes_RestartByBoot(t *testing.T) {
+	o, _ := routesOptions()
+	m := newRoot(o, fixture(t, "basic")...)
+	press(m, "5")
+	if s := strings.Split(m.View(), "\n")[1]; s != " 5 routes  4 hits" {
+		t.Fatalf("summary = %q", s)
+	}
+	hello := fixture(t, "basic")[0]
+	h := *hello.Hello
+	h.Boot = "a17e9b30"
+	hello.Hello, hello.Seq = &h, 1
+	// The new server's requests arrive with seqs above the old scan, and the screen sees the
+	// table only after them (it was not told of the hello), so only the boot tells it apart.
+	m.apply(hello)
+	m.apply(access(500, clock, "aaaa0001", "/search"))
+	m.Update(eventMsg(access(501, clock, "aaaa0002", "/search")))
+	if s := strings.Split(m.View(), "\n")[1]; s != " 5 routes  2 hits" {
+		t.Errorf("after the restart the summary = %q, want 2 hits", s)
+	}
+}
+
+func TestRoutes_Narrow60(t *testing.T) {
+	o, _ := routesOptions()
+	m := newRoot(o, fixture(t, "basic")...)
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 30})
+	press(m, "5")
+	for _, l := range strings.Split(m.View(), "\n") {
+		if w := ansi.StringWidth(l); w > 60 {
+			t.Errorf("line is %d wide: %q", w, l)
+		}
+	}
+}
+
+func TestRoutes_OpenHint(t *testing.T) {
+	o, _ := routesOptions()
+	m := newRoot(o, fixture(t, "basic")...)
+	press(m, "5") // "/", a page
+	if f := wideFooter(m); !strings.Contains(f, "o open") {
+		t.Errorf("no o hint on an openable route: %q", f)
+	}
+	press(m, "j") // a message
+	if f := wideFooter(m); strings.Contains(f, "o open") {
+		t.Errorf("o hint on a message route: %q", f)
 	}
 }

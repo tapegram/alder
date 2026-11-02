@@ -34,8 +34,10 @@ type routesScreen struct {
 	err     string         // why the last run failed, or ""
 	cursor  int
 	top     int
-	hits    []int // the requests each route of Ctx.Routes answered
-	scanned int64 // the seq of the newest request counted in hits
+	height  int    // the rows the body has, as of the last tea.WindowSizeMsg
+	boot    string // the dev server boot hits were counted for
+	hits    []int  // the requests each route of Ctx.Routes answered
+	scanned int64  // the seq of the newest request counted in hits
 }
 
 func newRoutesScreen() *routesScreen { return &routesScreen{} }
@@ -86,8 +88,43 @@ func (s *routesScreen) load(c *Ctx) tea.Cmd {
 	}
 }
 
+// Update answers msg and then clamps the cursor and the scroll position View reads, so View never
+// writes them.
 func (s *routesScreen) Update(msg tea.Msg, c *Ctx) (Screen, tea.Cmd) {
+	next, cmd := s.update(msg, c)
+	s.clamp()
+	return next, cmd
+}
+
+// headerRows is how many lines View puts above the routes: the summary, the rule and the error.
+func (s *routesScreen) headerRows() int {
+	if s.err != "" {
+		return 3
+	}
+	return 2
+}
+
+// bodyRows is how many routes fit under the header.
+func (s *routesScreen) bodyRows() int { return max(s.height-s.headerRows(), 1) }
+
+// clamp keeps the cursor on a route and top where keeps the cursor in view.
+func (s *routesScreen) clamp() {
+	if len(s.rs) == 0 {
+		s.cursor, s.top = 0, 0
+		return
+	}
+	h := s.bodyRows()
+	s.cursor = max(min(s.cursor, len(s.rs)-1), 0)
+	s.top = max(min(s.top, s.cursor, len(s.rs)-h), 0)
+	if s.cursor >= s.top+h {
+		s.top = s.cursor - h + 1
+	}
+}
+
+func (s *routesScreen) update(msg tea.Msg, c *Ctx) (Screen, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		s.height = max(msg.Height-3, 0) // the frame keeps the status bar, a rule and the footer
 	case routesLoadedMsg:
 		if msg.gen != s.gen {
 			return s, nil
@@ -148,6 +185,13 @@ func (s *routesScreen) key(k string, c *Ctx) tea.Cmd {
 // counted anew, and when the table starts over (another boot of the dev server) so do the counts.
 func (s *routesScreen) count(c *Ctx) {
 	n := c.Requests.Len()
+	// Another boot of the dev server starts the seqs over, so a seq compare alone can miss it.
+	if c.Hello != nil {
+		if s.boot != "" && c.Hello.Boot != s.boot {
+			s.hits, s.scanned = nil, 0
+		}
+		s.boot = c.Hello.Boot
+	}
 	if n == 0 || c.Requests.At(n-1).Seq < s.scanned {
 		s.hits, s.scanned = nil, 0
 	}
@@ -193,11 +237,7 @@ func (s *routesScreen) View(width, height int, c *Ctx) string {
 		return strings.Join(lines, "\n")
 	}
 	h := max(height-len(lines), 1)
-	s.cursor = max(min(s.cursor, len(s.rs)-1), 0)
-	s.top = max(min(s.top, s.cursor, len(s.rs)-h), 0)
-	if s.cursor >= s.top+h {
-		s.top = s.cursor - h + 1
-	}
+	top := max(min(s.top, len(s.rs)-1), 0) // clamp has already run; View never writes it
 	// The columns are as wide as their widest cell over all the routes, so they do not move as
 	// the list scrolls; the path takes what the others leave.
 	cells := make([][]string, len(s.rs))
@@ -214,7 +254,7 @@ func (s *routesScreen) View(width, height int, c *Ctx) string {
 		}
 	}
 	w[1] = max(min(w[1], width-(2+w[0]+w[2]+w[3]+w[4]+2*4)), 4)
-	for i := s.top; i < min(s.top+h, len(s.rs)); i++ {
+	for i := top; i < min(top+h, len(s.rs)); i++ {
 		mark := "  "
 		if i == s.cursor {
 			mark = "> "
@@ -226,12 +266,15 @@ func (s *routesScreen) View(width, height int, c *Ctx) string {
 		}
 		row := strings.Join([]string{padRight(cs[0], w[0]), padRight(ansi.Truncate(cs[1], w[1], "…"), w[1]),
 			padRight(cs[2], w[2]), padRight(cs[3], w[3]), hits}, "  ")
-		lines = append(lines, mark+row)
+		lines = append(lines, ansi.Truncate(mark+row, width, ""))
 	}
 	return strings.Join(lines, "\n")
 }
 
 func (s *routesScreen) Keys() []Key {
+	if s.cursor < len(s.rs) && s.rs[s.cursor].Openable() {
+		return []Key{{"enter", "requests"}, {"o", "open"}}
+	}
 	return []Key{{"enter", "requests"}}
 }
 
