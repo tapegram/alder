@@ -434,7 +434,9 @@ jobs:
         run: go test ./...
       - name: the fixture app (testdata/shelf)
         working-directory: tui/testdata/shelf
-        run: "$ALDER_BIN" check . && "$ALDER_BIN" test .
+        run: |
+          "$ALDER_BIN" check .
+          "$ALDER_BIN" test .
 
   # The mutation quality gates (cmd/alder/gates_test.go): every mutant of the admin fixtures and
   # the example apps, against the scores and mutant counts the examples record. Nightly, on a
