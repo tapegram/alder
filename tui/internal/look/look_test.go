@@ -1,6 +1,9 @@
 package look
 
 import (
+	"strings"
+
+	"github.com/charmbracelet/x/ansi"
 	"reflect"
 	"strconv"
 	"testing"
@@ -44,5 +47,15 @@ func TestColumns(t *testing.T) {
 	}
 	if got := Columns([][]string{{"a", ""}, {"bb", "c"}}, 1); !reflect.DeepEqual(got, []string{"a", "bb c"}) {
 		t.Errorf("trailing spaces: %q", got)
+	}
+}
+
+// A styled cell, a wide rune and a plain cell start the next column at the same cell.
+func TestColumns_Styled(t *testing.T) {
+	rows := [][]string{{"ok", "a"}, {Palette.Green("ok"), "b"}, {"界界", "c"}, {Palette.BoldRed("FAIL"), "d"}}
+	for i, l := range Columns(rows, 2) {
+		if got := ansi.StringWidth(l[:strings.LastIndex(l, rows[i][1])]); got != 4+2 {
+			t.Errorf("row %d: the second column starts at cell %d, want 6: %q", i, got, l)
+		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -333,16 +334,172 @@ func TestData_Silos(t *testing.T) {
 	}
 	press(m, "d")
 	f = ansi.Strip(m.View())
-	if rowOf(f, "database org/c4") == "" || rowOf(f, "> Issues.Issue  2") == "" || rowOf(f, "Books.Book") != "" {
+	if rowOf(f, "database org/a") == "" || rowOf(f, "> Issues.Issue  2") == "" || rowOf(f, "Books.Book") != "" {
 		t.Errorf("the silo's view:\n%s", f)
 	}
 	lines := strings.Split(f, "\n")
-	if len(lines) != 24 || !strings.HasSuffix(lines[23], "sqlite3 build/shelf/silos/org/c4.db") {
+	if wf := ansi.Strip(wideFooter(m)); len(lines) != 24 || !strings.HasSuffix(wf, "sqlite3 build/shelf/silos/org/c4.db") {
 		t.Errorf("%d lines, footer %q", len(lines), lines[len(lines)-1])
 	}
 	for i, l := range lines {
 		if w := ansi.StringWidth(l); w > 80 {
 			t.Errorf("line %d is %d wide: %q", i, w, l)
 		}
+	}
+}
+
+// A refused query has no rows to open, so the footer does not offer enter row.
+func TestData_NoEnterAfterRefused(t *testing.T) {
+	o, _ := dataApp(t, strings.Replace(shelfMap, "%s", "", 1))
+	m := newRoot(o)
+	press(m, "3", ":", "delete from x", "enter")
+	if f := wideFooter(m); strings.Contains(f, "enter row") || !strings.Contains(f, "esc back") {
+		t.Errorf("footer after a refused query = %q", f)
+	}
+	press(m, "esc", ":", "select title from Books__Book", "enter")
+	if f := wideFooter(m); !strings.Contains(f, "enter row") {
+		t.Errorf("footer after a query with rows = %q", f)
+	}
+	press(m, ":", "select title from Books__Book where 0", "enter")
+	if f := wideFooter(m); strings.Contains(f, "enter row") {
+		t.Errorf("footer after a query with no rows = %q", f)
+	}
+}
+
+// manyBooks adds n more books to the database at path.
+func manyBooks(t *testing.T, path string, n int) {
+	t.Helper()
+	var stmts []string
+	for i := range n {
+		stmts = append(stmts, `INSERT INTO "Books__Book" VALUES ('x`+strings.Repeat("0", 3-len(strconv.Itoa(i)))+strconv.Itoa(i)+`', 'T', 2000)`)
+	}
+	execDB(t, path, stmts...)
+}
+
+// View draws the state as it is: it neither clamps a cursor or scroll position that is out of
+// range nor moves one, and the clamping happens in Update.
+func TestData_ViewPure(t *testing.T) {
+	o, path := dataApp(t, strings.Replace(shelfMap, "%s", "", 1))
+	manyBooks(t, path, 40)
+	m := newRoot(o)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+	press(m, "3", "enter")
+	s := dataScreenOf(m)
+	for range 12 {
+		press(m, "j")
+	}
+	if s.row != 12 || s.top == 0 {
+		t.Fatalf("row = %d, top = %d: Update did not scroll the grid to the cursor", s.row, s.top)
+	}
+	state := func() [5]int { return [5]int{s.row, s.col, s.top, s.dtop, s.cursor} }
+	// Out-of-range state, set from outside Update.
+	s.top, s.dtop, s.row = 99, 99, 99
+	before := state()
+	m.View()
+	m.View()
+	if got := state(); got != before {
+		t.Errorf("View changed the state from %v to %v", before, got)
+	}
+	// The row view too.
+	s.detail = true
+	before = state()
+	m.View()
+	if got := state(); got != before {
+		t.Errorf("View of the row view changed the state from %v to %v", before, got)
+	}
+	s.detail = false
+	// Update clamps, on a key, and on a resize.
+	press(m, "k")
+	if s.row >= 43 || s.top > s.row { // 43 rows in the table
+		t.Errorf("a key left row = %d, top = %d out of range", s.row, s.top)
+	}
+	s.top = 99
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	if s.top > s.row {
+		t.Errorf("a resize left top = %d past row = %d", s.top, s.row)
+	}
+}
+
+// A refetch of the map that fails after the first one shows a yellow line and keeps the tables.
+func TestData_MapRefetchError(t *testing.T) {
+	o, _ := dataApp(t, "")
+	fail := false
+	o.HTTP = &http.Client{Transport: handlerTransport(func(w http.ResponseWriter, r *http.Request) {
+		if fail {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(strings.Replace(shelfMap, "%s", "", 1)))
+	})}
+	m := newRoot(o)
+	press(m, "3")
+	fail = true
+	runAll(m, eventMsg(buildEvent("ok")))
+	frame := m.View()
+	line := rowOf(frame, "map not updated")
+	if !strings.Contains(line, "\x1b[33m") || !strings.Contains(ansi.Strip(frame), "500") {
+		t.Errorf("no yellow line with the reason: %q\n%s", line, frame)
+	}
+	for _, want := range []string{"Books.Book", "Lending.Loan", "0001_init.sql", "Middlemarch"} {
+		if rowOf(frame, want) == "" {
+			t.Errorf("the old map lost %q:\n%s", want, frame)
+		}
+	}
+	fail = false
+	runAll(m, eventMsg(buildEvent("ok")))
+	if rowOf(m.View(), "map not updated") != "" {
+		t.Errorf("the line stayed after a fetch that worked:\n%s", m.View())
+	}
+}
+
+// A result of exactly 1000 rows is the whole result; one of 1001 is cut, and says so.
+func TestQuery_Exactly1000(t *testing.T) {
+	o, _ := dataApp(t, strings.Replace(shelfMap, "%s", "", 1))
+	m := newRoot(o)
+	count := func(n int) string {
+		return "with recursive n(i) as (select 1 union all select i+1 from n where i < " + strconv.Itoa(n) + ") select i from n"
+	}
+	press(m, "3", ":", count(1000), "enter")
+	if f := m.View(); rowOf(f, "1000 rows") == "" || rowOf(f, "the first") != "" {
+		t.Errorf("1000 rows:\n%s", f)
+	}
+	press(m, "esc", ":", count(1001), "enter")
+	if f := m.View(); rowOf(f, "the first 1000 rows") == "" {
+		t.Errorf("1001 rows:\n%s", f)
+	}
+}
+
+// The last lines of a long wrapped value in the row view can be scrolled to: the scroll limit is
+// computed at the width View wraps at.
+func TestData_RowViewScrollsToEnd(t *testing.T) {
+	o, _ := dataApp(t, strings.Replace(shelfMap, "%s", "", 1))
+	m := newRoot(o)
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
+	// One unbroken value, the only column, so the number of lines it wraps to depends on the width.
+	press(m, "3", ":", "select '"+strings.Repeat("x", 495)+"END' as v", "enter", "enter")
+	for range 80 {
+		press(m, "j")
+	}
+	if f := ansi.Strip(m.View()); !strings.Contains(f, "END") {
+		t.Errorf("the last line of the value is out of reach:\n%s", f)
+	}
+}
+
+// A query's result, which has a count line under its heading, scrolls its last row into view.
+func TestData_QueryScrollsToEnd(t *testing.T) {
+	o, _ := dataApp(t, strings.Replace(shelfMap, "%s", "", 1))
+	m := newRoot(o)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 12})
+	press(m, "3", ":", "with recursive n(i) as (select 1 union all select i+1 from n where i < 50) select i from n", "enter")
+	for range 60 {
+		press(m, "j")
+	}
+	lines := strings.Split(ansi.Strip(m.View()), "\n")
+	found := false
+	for _, l := range lines {
+		found = found || strings.HasSuffix(strings.TrimSpace(l), "> 50")
+	}
+	if !found {
+		t.Errorf("the last row is not under the cursor in view:\n%s", strings.Join(lines, "\n"))
 	}
 }

@@ -30,7 +30,8 @@ const (
 )
 
 // The messages of a run and of the watch: the stream of run gen has started (or could not), it
-// gave a line, it has ended; and the watch with the given id saw a change.
+// gave a line, it has ended (with err when it could not be reaped, or was cancelled); and the
+// watch with the given id saw a change.
 type (
 	testsStartedMsg struct {
 		gen    int
@@ -44,7 +45,8 @@ type (
 	testsDoneMsg struct {
 		gen    int
 		code   int
-		stderr []byte
+		stderr string
+		err    error
 	}
 	testsChangeMsg struct{ id int }
 )
@@ -56,8 +58,8 @@ type (
 // the old one in the list. w toggles the watch, which reruns the suite when the app's files
 // change; m runs the mutation tests.
 //
-// A run is never killed: r or a change while a run is in flight queues one rerun of the suite
-// for when it ends, and enter or m then do nothing.
+// A run is killed only when the program quits (Stop): r or a change while a run is in flight
+// queues one rerun of the suite for when it ends, and enter or m then do nothing.
 type testsScreen struct {
 	opened   bool
 	run      *testrun.Run     // the last run, or the one in flight; nil before the first
@@ -67,6 +69,7 @@ type testsScreen struct {
 	running  bool
 	queued   bool // a rerun of the suite waits for the run in flight to end
 	stream   runner.Stream
+	cancel   context.CancelFunc
 	stderr   string // what the last run wrote to stderr, shown when it failed with nothing else to show
 	cursor   int    // the row under the cursor
 	unfolded string // the key of the unfolded failure, or ""
@@ -97,21 +100,59 @@ func (s *testsScreen) Open(c *Ctx) tea.Cmd {
 }
 
 // start starts a run of `alder test` with testrun.Args(one, mutate) and asks for its stream. The
-// list starts over, unless the run is of one test.
+// list starts over, unless the run is of one test, which keeps the last run's diagnostics,
+// mutants and score.
 func (s *testsScreen) start(c *Ctx, one *testrun.Result, mutate bool) tea.Cmd {
 	s.gen++
+	prev := s.run
 	s.run = &testrun.Run{Args: testrun.Args(one, mutate)}
+	if one != nil && prev != nil {
+		s.run.Diagnostics, s.run.Mutants, s.run.Score = prev.Diagnostics, prev.Mutants, prev.Score
+	}
 	s.single, s.running, s.stderr = one != nil, true, ""
 	if one == nil {
 		s.rows, s.cursor, s.unfolded, s.top, s.tail = nil, 0, "", 0, 0
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.cancel = cancel
 	gen, r, dir, args := s.gen, c.Opts.Runner, c.Opts.Dir, s.run.Args
 	return func() tea.Msg {
 		if r == nil {
 			return testsStartedMsg{gen: gen, err: fmt.Errorf("no alder to run")}
 		}
-		st, err := r.Stream(context.Background(), dir, args...)
+		st, err := r.Stream(ctx, dir, args...)
 		return testsStartedMsg{gen: gen, stream: st, err: err}
+	}
+}
+
+// stopWait is how long Stop waits for a cancelled run to be reaped: longer than the 2s the runner
+// gives alder after SIGTERM before it kills alder's process group.
+const stopWait = 3 * time.Second
+
+// Stop kills the run in flight, and everything it started, and waits up to stopWait for it to be
+// reaped, so that quitting leaves no alder test running; and it stops the watch. The root calls
+// it as the program quits.
+func (s *testsScreen) Stop() {
+	if s.cancel != nil {
+		s.cancel()
+		s.cancel = nil
+	}
+	if st := s.stream; st != nil {
+		done := make(chan struct{})
+		go func() {
+			st.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(stopWait):
+		}
+		s.stream = nil
+	}
+	if s.watching {
+		s.watching = false
+		s.stop()
+		s.stop, s.changes = nil, nil
 	}
 }
 
@@ -121,8 +162,8 @@ func nextLine(gen int, st runner.Stream) tea.Cmd {
 		if l, ok := <-st.Lines(); ok {
 			return testsLineMsg{gen: gen, line: l}
 		}
-		code, stderr := st.Wait()
-		return testsDoneMsg{gen: gen, code: code, stderr: stderr}
+		code, stderr, err := st.Wait()
+		return testsDoneMsg{gen: gen, code: code, stderr: stderr, err: err}
 	}
 }
 
@@ -163,7 +204,10 @@ func (s *testsScreen) Update(msg tea.Msg, c *Ctx) (Screen, tea.Cmd) {
 		if msg.gen != s.gen {
 			return s, nil
 		}
-		s.stderr = strings.TrimSpace(string(msg.stderr))
+		s.stderr = strings.TrimSpace(msg.stderr)
+		if msg.err != nil && s.run.Error == "" {
+			s.run.Error = msg.err.Error()
+		}
 		return s, s.ended(c, msg.code)
 	case testsChangeMsg:
 		if !s.watching || msg.id != s.watchID {
@@ -202,6 +246,10 @@ func (s *testsScreen) add(r testrun.Result) {
 // one.
 func (s *testsScreen) ended(c *Ctx, code int) tea.Cmd {
 	s.run.Code, s.run.Done, s.running, s.stream = code, true, false, nil
+	if s.cancel != nil {
+		s.cancel()
+		s.cancel = nil
+	}
 	if s.queued {
 		s.queued = false
 		return s.start(c, nil, false)
@@ -244,10 +292,10 @@ func (s *testsScreen) key(k string, c *Ctx) tea.Cmd {
 			s.cursor, s.tail = s.cursor+1, 0
 		}
 	case "enter":
-		if s.cursor >= len(s.rows) || s.rows[s.cursor].OK {
+		r, ok := s.cur()
+		if !ok || r.OK {
 			return nil
 		}
-		r := s.rows[s.cursor]
 		if s.unfolded != rowKey(r) {
 			s.unfolded = rowKey(r)
 			return nil
@@ -258,6 +306,14 @@ func (s *testsScreen) key(k string, c *Ctx) tea.Cmd {
 		return s.start(c, &r, false)
 	}
 	return nil
+}
+
+// cur is the result under the cursor, if the list has one there.
+func (s *testsScreen) cur() (testrun.Result, bool) {
+	if s.cursor < 0 || s.cursor >= len(s.rows) {
+		return testrun.Result{}, false
+	}
+	return s.rows[s.cursor], true
 }
 
 // toggleWatch starts the watch on the app's directory, or stops it.
@@ -460,7 +516,7 @@ func (s *testsScreen) summary() string {
 
 func (s *testsScreen) Keys() []Key {
 	enter := Key{"enter", "unfold"}
-	if s.cursor < len(s.rows) && s.unfolded == rowKey(s.rows[s.cursor]) {
+	if r, ok := s.cur(); ok && s.unfolded == rowKey(r) {
 		enter = Key{"enter", "rerun"}
 	}
 	w := Key{"w", "watch"}

@@ -185,7 +185,7 @@ func TestLive_Screens(t *testing.T) {
 		t.Fatalf("data.Open(%s): %v", dbs[0].Path, err)
 	}
 	defer db.Close()
-	_, rows, err := db.Query(ctx, "SELECT name FROM sqlite_master WHERE type = 'table'")
+	_, rows, _, err := db.Query(ctx, "SELECT name FROM sqlite_master WHERE type = 'table'")
 	if err != nil {
 		t.Fatalf("listing the tables of %s: %v", dbs[0].Path, err)
 	}
@@ -238,8 +238,8 @@ func TestLive_Screens(t *testing.T) {
 	}
 }
 
-// copyApp copies the app in src to dst, leaving out its build directory, which a local `alder
-// test` of the fixture may have left behind.
+// copyApp copies the app in src to dst, leaving out its build directory and the SQLite files
+// (*.db, *-wal, *-shm), which a local `alder test` of the fixture may have left behind.
 func copyApp(t *testing.T, src, dst string) {
 	t.Helper()
 	err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
@@ -255,6 +255,9 @@ func copyApp(t *testing.T, src, dst string) {
 				return filepath.SkipDir
 			}
 			return os.MkdirAll(filepath.Join(dst, rel), 0o755)
+		}
+		if n := d.Name(); strings.HasSuffix(n, ".db") || strings.HasSuffix(n, "-wal") || strings.HasSuffix(n, "-shm") {
+			return nil
 		}
 		b, err := os.ReadFile(path)
 		if err != nil {

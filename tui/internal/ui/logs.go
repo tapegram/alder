@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -229,14 +230,12 @@ func (s *logsScreen) View(width, height int, c *Ctx) string {
 
 // renderLine is a line as `alder run` shows it on a terminal, cut to about width cells first so
 // that a huge line costs no more than a short one: a run line dim, after `alder run: ` when it
-// does not start with it; an effect line dim; any other line with its stamp dim and its level
-// word coloured, `info:` green, `warn:` yellow, `error:` red. The app's text is cleaned of
-// control characters before it is styled.
+// does not start with it; an effect line and a gap marker dim; any other line with its stamp dim
+// and its level word coloured, `info:` green, `warn:` yellow, `error:` red. The app's text is
+// cleaned of control characters before it is styled.
 func renderLine(ln store.Line, width int) string {
 	text := ln.Text
-	if limit := 4*width + 64; len(text) > limit {
-		text = text[:limit]
-	}
+	text = cutRunes(text, 4*width+64)
 	text = clean(text)
 	switch {
 	case ln.Run:
@@ -244,7 +243,7 @@ func renderLine(ln store.Line, width int) string {
 			text = "alder run: " + text
 		}
 		return look.Palette.Dim(text)
-	case ln.Effect:
+	case ln.Effect, ln.Gap:
 		return look.Palette.Dim(text)
 	}
 	m := logLinePat.FindStringSubmatch(text)
@@ -263,6 +262,18 @@ func renderLine(ln store.Line, width int) string {
 	return look.Palette.Dim(m[1]) + level + m[3]
 }
 
+// cutRunes is s cut to at most limit bytes, backed up to a rune boundary so that the result is
+// valid UTF-8 when s is.
+func cutRunes(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	for limit > 0 && !utf8.RuneStart(s[limit]) {
+		limit--
+	}
+	return s[:limit]
+}
+
 // strip is the active filters, ` level info  rid 5f3a2c1e  /lend/`: the level always, the rid
 // and the regexp when set; while the input is active the regexp being typed, bold; and the error
 // of a regexp just refused, yellow.
@@ -274,12 +285,12 @@ func (s *logsScreen) strip(c *Ctx) string {
 	}
 	switch {
 	case s.typing:
-		parts = append(parts, look.Palette.Bold("/"+s.input))
+		parts = append(parts, look.Palette.Bold(clean("/"+s.input)))
 	case f.Re != nil:
-		parts = append(parts, "/"+f.Re.String()+"/")
+		parts = append(parts, clean("/"+f.Re.String()+"/"))
 	}
 	if s.reErr != "" {
-		parts = append(parts, look.Palette.Yellow(s.reErr))
+		parts = append(parts, look.Palette.Yellow(clean(s.reErr)))
 	}
 	return strings.Join(parts, "  ")
 }

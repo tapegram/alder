@@ -9,7 +9,7 @@ page "/books/{id}" { id: Book.BookId }
 type Model = { book: Book, shelf: List { book: Book, lent: Bool } }
 
 -- load looks up each book's loan on its own, one query per book under a Query.all: an N+1 on
--- purpose. alder-tui's live test opens this page to see the dev panel report it (book 11).
+-- purpose. alder-tui's live test opens this page to see the dev panel report it.
 load : Params -> Session -> Query Model
 load params session = {
   let found <- Db.get Book params.id

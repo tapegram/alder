@@ -10,11 +10,13 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -28,6 +30,10 @@ import (
 // version is the release this binary was built as. GoReleaser sets it with -ldflags, since a
 // nested module's build information does not carry the root module's tag.
 var version = "(devel)"
+
+// extraOptions are added to the program's options. Tests set tea.WithInput so that the program
+// reads keys from a pipe instead of opening /dev/tty.
+var extraOptions []tea.ProgramOption
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -56,6 +62,12 @@ func run(args []string, stdout, stderr *os.File) int {
 	if fs.NArg() > 0 {
 		dir = fs.Arg(0)
 	}
+	// dir is checked first, since the version check below runs in no particular directory and a bad
+	// dir would otherwise show as an opaque chdir error.
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		fmt.Fprintf(stderr, "alder-tui: %s: not a directory\n", dir)
+		return 1
+	}
 	bin, err := alderbin.Find(os.Getenv, exec.LookPath)
 	if err != nil {
 		fmt.Fprintln(stderr, "alder-tui:", err)
@@ -63,7 +75,7 @@ func run(args []string, stdout, stderr *os.File) int {
 	}
 	vctx, vcancel := context.WithTimeout(context.Background(), 10*time.Second)
 	have, err := alderbin.Version(vctx, func(ctx context.Context, args ...string) ([]byte, error) {
-		res, err := runner.Exec(bin).Run(ctx, dir, args...)
+		res, err := runner.Exec(bin).Run(ctx, "", args...)
 		if err != nil {
 			return nil, err
 		}
@@ -101,7 +113,7 @@ func run(args []string, stdout, stderr *os.File) int {
 			return ui.Feed{}, err
 		}
 		sess = s
-		return ui.Feed{Events: s.Events, Owned: s.Owned}, nil
+		return ui.Feed{Events: s.Events, Owned: s.Owned, Exited: s.Exited()}, nil
 	}
 	stop := func() {
 		stopOnce.Do(func() {
@@ -124,7 +136,25 @@ func run(args []string, stdout, stderr *os.File) int {
 		HTTP: &http.Client{Timeout: 5 * time.Second}, Now: time.Now,
 		OpenURL: openURL, Copy: copyText,
 	})
-	final, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithOutput(stdout)).Run()
+	// The program's own signal handler is off: it catches SIGINT and SIGTERM only, and only the
+	// first, so a SIGHUP (the terminal closed) or a second signal would kill the process before the
+	// screens' runs and alder run are stopped. Here every such signal, for as long as run lasts,
+	// quits the program, and the stops below still run.
+	p := tea.NewProgram(m, append([]tea.ProgramOption{tea.WithAltScreen(), tea.WithOutput(stdout), tea.WithoutSignalHandler()}, extraOptions...)...)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigs)
+	ran := make(chan struct{})
+	go func() {
+		select {
+		case <-sigs:
+			p.Quit()
+		case <-ran:
+		}
+	}()
+	final, err := p.Run()
+	close(ran)
+	ui.Stop(final)
 	stop()
 	if serr := ui.StartErr(final); serr != nil {
 		fmt.Fprintln(stderr, "alder-tui:", serr)

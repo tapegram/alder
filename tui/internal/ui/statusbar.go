@@ -12,8 +12,9 @@ import (
 
 // statusBar is the frame's first line: ` <app>  ● <state>  <addr>  alder <version>`, then the
 // tab names right-aligned with the current one bold. The dot and its state are yellow while
-// building, green when ok and red when failed, with the count of diagnostics. A disconnected
-// feed, or else a version mismatch between alder-tui and alder, replaces the version in yellow.
+// building, green when ok and red when failed, with the count of diagnostics. The death of the
+// owned dev server replaces the version in red; else a disconnected feed, or a version mismatch
+// between alder-tui and alder, replaces it in yellow.
 // When the tabs do not fit, only the current one is shown; when even that does not fit, the left
 // part is cut.
 func (m *root) statusBar() string {
@@ -66,10 +67,14 @@ func stateDot(c *Ctx) string {
 	return "● " + c.State
 }
 
-// versionPart is `alder <version>`, or `disconnected`, or the mismatch warning, in yellow. The
-// version is that of the alder producing the feed (the hello's) once a hello has arrived, and
-// until then the one `alder help --json` reports for the alder on PATH.
+// versionPart is `alder <version>`; or `alder run exited (code N)` in red; or `disconnected`, or
+// the mismatch warning, in yellow. The version is that of the alder producing the feed (the
+// hello's) once a hello has arrived, and until then the one `alder help --json` reports for the
+// alder on PATH.
 func versionPart(c *Ctx) string {
+	if c.RunExited != nil {
+		return look.Palette.Red(runExitText(*c.RunExited))
+	}
 	if c.Disconnected {
 		return look.Palette.Yellow("disconnected")
 	}

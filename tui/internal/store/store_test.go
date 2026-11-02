@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -236,4 +237,45 @@ func TestLogs_Positions(t *testing.T) {
 		}
 	}
 	t.Error("no access line matched lend at debug")
+}
+
+// A gap in the feed is one dim marker line with the count of the events missed; every level
+// filter shows it.
+func TestLogs_GapMarker(t *testing.T) {
+	lg := NewLogs(10)
+	lg.Add(feed.Event{Type: "run", Seq: 3, Run: &feed.Run{Text: "before"}})
+	lg.Add(feed.Event{Type: "gap", T: time.Unix(0, 0), Gap: &feed.Gap{Missed: 4}})
+	ls := lg.View(Filter{})
+	if len(ls) != 2 {
+		t.Fatalf("lines = %q, want 2", texts(ls))
+	}
+	if g := ls[1]; !g.Gap || g.Text != "… 4 events missed (ring overflow)" {
+		t.Errorf("marker = %+v", g)
+	}
+	if ls := lg.View(Filter{Level: "error"}); len(ls) != 1 || !ls[0].Gap {
+		t.Errorf("at error = %q, want the marker alone", texts(ls))
+	}
+}
+
+// The rid, the regexp and the debug rendering hold together: only the request's own access line
+// passes, with its steps.
+func TestLogs_RidRegexDebug(t *testing.T) {
+	lg := NewLogs(50)
+	for _, e := range fixture(t) {
+		lg.Add(e)
+	}
+	f := Filter{Level: "debug", Rid: "5f3a2c1f", Re: regexp.MustCompile(`steps=\d+`)}
+	ls := lg.View(f)
+	if len(ls) != 1 || !ls[0].Access || ls[0].Rid != "5f3a2c1f" {
+		t.Fatalf("lines = %q, want the one access line of 5f3a2c1f", texts(ls))
+	}
+	if !strings.Contains(ls[0].Text, " steps=") {
+		t.Errorf("the line has no steps at debug: %q", ls[0].Text)
+	}
+	f.Rid = "5f3a2c20"
+	for _, l := range lg.View(f) {
+		if l.Rid != "5f3a2c20" || !strings.Contains(l.Text, "steps=") {
+			t.Errorf("line %q does not hold the rid and the regexp", l.Text)
+		}
+	}
 }

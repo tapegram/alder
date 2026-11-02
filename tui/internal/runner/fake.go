@@ -16,18 +16,26 @@ type Fake struct {
 }
 
 type fakeReply struct {
-	out  string
-	code int
+	out, stderr string
+	code        int
 }
 
-// On scripts the reply to a call whose arguments, joined by spaces, equal args.
-func (f *Fake) On(args string, out string, code int) {
+// On scripts the reply to a call whose arguments, joined by spaces, equal args: out on stdout
+// and the exit status code.
+func (f *Fake) On(args string, out string, code int) { f.set(args, fakeReply{out: out, code: code}) }
+
+// OnStderr scripts a reply that writes nothing to stdout, stderr to stderr, and exits code.
+func (f *Fake) OnStderr(args string, stderr string, code int) {
+	f.set(args, fakeReply{stderr: stderr, code: code})
+}
+
+func (f *Fake) set(args string, r fakeReply) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.on == nil {
 		f.on = map[string]fakeReply{}
 	}
-	f.on[args] = fakeReply{out, code}
+	f.on[args] = r
 }
 
 // Calls returns the arguments of every call so far, each joined by spaces, in order.
@@ -49,17 +57,27 @@ func (f *Fake) reply(args []string) (fakeReply, error) {
 	return r, nil
 }
 
-func (f *Fake) Run(_ context.Context, _ string, args ...string) (Result, error) {
+// Run answers as Exec would: ctx.Err() once ctx has ended, else the scripted reply.
+func (f *Fake) Run(ctx context.Context, _ string, args ...string) (Result, error) {
 	r, err := f.reply(args)
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Stdout: []byte(r.out), Code: r.code}, nil
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
+	}
+	return Result{Stdout: []byte(r.out), Stderr: []byte(r.stderr), Code: r.code}, nil
 }
 
-func (f *Fake) Stream(_ context.Context, _ string, args ...string) (Stream, error) {
+// Stream answers as Exec would: its lines are the scripted stdout's, split on "\n" with a
+// trailing "\r" cut, and its Wait gives ctx.Err() once ctx has ended, else the scripted exit
+// status and stderr.
+func (f *Fake) Stream(ctx context.Context, _ string, args ...string) (Stream, error) {
 	r, err := f.reply(args)
 	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	var lines []string
@@ -68,16 +86,23 @@ func (f *Fake) Stream(_ context.Context, _ string, args ...string) (Stream, erro
 	}
 	ch := make(chan string, len(lines))
 	for _, l := range lines {
-		ch <- l
+		ch <- strings.TrimSuffix(l, "\r")
 	}
 	close(ch)
-	return fakeStream{ch: ch, code: r.code}, nil
+	return fakeStream{ctx: ctx, ch: ch, reply: r}, nil
 }
 
 type fakeStream struct {
-	ch   chan string
-	code int
+	ctx   context.Context
+	ch    chan string
+	reply fakeReply
 }
 
 func (s fakeStream) Lines() <-chan string { return s.ch }
-func (s fakeStream) Wait() (int, []byte)  { return s.code, nil }
+
+func (s fakeStream) Wait() (int, string, error) {
+	if err := s.ctx.Err(); err != nil {
+		return -1, "", err
+	}
+	return s.reply.code, s.reply.stderr, nil
+}

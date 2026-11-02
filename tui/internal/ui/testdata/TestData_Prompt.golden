@@ -27,4 +27,4 @@
                     │
                     │
  ──────────────────────────────────────────────────────────────────────────────────────────────────
- enter row  : sql  esc back  o browser  R restart        [2msqlite3 build/shelf/dev.db 'delete from x'[0m
+ : sql  esc back  o browser  R restart  ? keys           [2msqlite3 build/shelf/dev.db 'delete from x'[0m

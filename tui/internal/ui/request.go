@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -65,6 +67,10 @@ type reqLog struct {
 // detailTimeout bounds the GET of a request's detail.
 const detailTimeout = 5 * time.Second
 
+// detailCap is the most of a request's detail the screen reads: 4 MiB, far beyond what the dev
+// server keeps for a request. A longer answer is an error, not something to hold in memory.
+const detailCap = 4 << 20
+
 // goneNote is what the detail says when the dev server no longer has the request.
 const goneNote = "the dev server no longer has this request (the last 200 are kept, and a restart clears them)"
 
@@ -80,11 +86,11 @@ type detailMsg struct {
 // fetchDetail gets request rid's detail, GET http://<addr>/_dev/requests/<rid>, off the update
 // loop.
 func fetchDetail(c *Ctx, rid string) tea.Cmd {
-	client, url := c.Opts.HTTP, "http://"+c.Opts.Addr+"/_dev/requests/"+rid
+	client, target := c.Opts.HTTP, "http://"+c.Opts.Addr+"/_dev/requests/"+url.PathEscape(rid)
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), detailTimeout)
 		defer cancel()
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 		if err != nil {
 			return detailMsg{rid: rid, err: err}
 		}
@@ -99,8 +105,15 @@ func fetchDetail(c *Ctx, rid string) tea.Cmd {
 		case resp.StatusCode/100 != 2:
 			return detailMsg{rid: rid, err: errors.New(resp.Status)}
 		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, detailCap+1))
+		if err != nil {
+			return detailMsg{rid: rid, err: err}
+		}
+		if len(body) > detailCap {
+			return detailMsg{rid: rid, err: errors.New("the answer is over 4 MiB")}
+		}
 		var d reqDetail
-		if err := json.NewDecoder(resp.Body).Decode(&d); err != nil {
+		if err := json.Unmarshal(body, &d); err != nil {
 			return detailMsg{rid: rid, err: err}
 		}
 		return detailMsg{rid: rid, d: &d}
@@ -243,8 +256,9 @@ func (v *requestView) count(s int) int {
 
 // header is ` ← METHOD path  status  ms  rid R  route P  steps N  db S/Tms`, from the detail once
 // it has arrived and from the table's row before (or when the dev server no longer has it). A
-// request without a route leaves it out.
-func (v *requestView) header() string {
+// request without a route leaves it out. It is one line when it fits width cells; else it wraps
+// between fields, the next line indented, so the db figures at its end are not cut off.
+func (v *requestView) header(width int) []string {
 	r := v.req
 	method, path, route, status, ms := r.Method, r.Path, r.Route, r.Status, r.Ms
 	steps, stmts, dbms := r.Steps, r.DBStmts, r.DBMs
@@ -255,12 +269,30 @@ func (v *requestView) header() string {
 			dbms += q.Ms
 		}
 	}
-	h := "← " + method + " " + clean(path) + "  " + look.StatusClass(status)(strconv.Itoa(status)) + "  " + fmtMs(ms) +
-		"  rid " + r.Rid
+	fields := []string{"← " + method + " " + clean(path), look.StatusClass(status)(strconv.Itoa(status)), fmtMs(ms),
+		"rid " + clean(r.Rid)}
 	if route != "" {
-		h += "  route " + clean(route)
+		fields = append(fields, "route "+clean(route))
 	}
-	return h + "  steps " + strconv.Itoa(steps) + "  db " + strconv.Itoa(stmts) + "/" + fmtMs(dbms)
+	fields = append(fields, "steps "+strconv.Itoa(steps), "db "+strconv.Itoa(stmts)+"/"+fmtMs(dbms))
+	var lines []string
+	line := ""
+	for _, f := range fields {
+		switch {
+		case line == "":
+			line = f
+		case ansi.StringWidth(line)+2+ansi.StringWidth(f) > width:
+			lines = append(lines, line)
+			line = "  " + f
+		default:
+			line += "  " + f
+		}
+	}
+	lines = append(lines, line)
+	for i, l := range lines {
+		lines[i] = ansi.Truncate(l, width, "…")
+	}
+	return lines
 }
 
 // view draws the header, then the three sections: side by side, with a border between them, when
@@ -268,16 +300,16 @@ func (v *requestView) header() string {
 // Before the detail arrives it says so; when the dev server no longer has the request, it says
 // that instead.
 func (v *requestView) view(width, height int, c *Ctx) string {
-	lines := []string{v.header()}
+	lines := v.header(width)
 	switch {
 	case v.gone:
 		return strings.Join(append(lines, "", goneNote), "\n")
 	case v.err != "":
-		return strings.Join(append(lines, "", look.Palette.Yellow("GET /_dev/requests/"+v.req.Rid+": "+v.err)), "\n")
+		return strings.Join(append(lines, "", look.Palette.Yellow("GET /_dev/requests/"+url.PathEscape(v.req.Rid)+": "+v.err)), "\n")
 	case v.d == nil:
-		return strings.Join(append(lines, "", look.Palette.Dim("loading /_dev/requests/"+v.req.Rid+" …")), "\n")
+		return strings.Join(append(lines, "", look.Palette.Dim("loading…")), "\n")
 	}
-	h := max(height-1, 3)
+	h := max(height-len(lines), 3)
 	if width+2 >= 80 {
 		// Steps is as wide as its rows (up to a third of the room), SQL as wide as its rows within
 		// what Steps and the floor of Logs leave, and Logs takes the rest.
@@ -380,8 +412,8 @@ func (v *requestView) sectionLines(s, w, h int) []string {
 }
 
 // sqlChrome is the cells of a SQL row that are not its text: the mark, the fold mark and its
-// space, two spaces after the statement and one between the count, milliseconds and rows.
-const sqlChrome = 2 + 2 + 2 + 1 + 1
+// space, two spaces after the statement and two between the count, milliseconds and rows.
+const sqlChrome = 2 + 2 + 2 + 2 + 2
 
 // sqlCells are each SQL row's count (`×N`, then `n+1` for an N+1 group), milliseconds and rows,
 // and the width of each of those columns.
@@ -437,7 +469,7 @@ func (v *requestView) sqlLines(w int, mark func(int) string) []string {
 			count = strings.Replace(count, "n+1", look.Palette.Yellow("n+1"), 1)
 		}
 		out = append(out, mark(i)+fold+" "+padRight(ansi.Truncate(r.stmt, stmtW, "…"), stmtW)+"  "+count+
-			" "+padLeft(c[1], tw[1])+" "+c[2])
+			"  "+padLeft(c[1], tw[1])+"  "+c[2])
 		if v.open[i] {
 			if ansi.StringWidth(r.stmt) > stmtW {
 				out = append(out, wrap("      ", r.stmt, w)...)

@@ -6,6 +6,7 @@ package testrun
 
 import (
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -103,8 +104,9 @@ type kind struct {
 
 // Parse reads one line of `alder test --json` into r: a test's result is appended to the
 // results; {"diagnostics": […]} sets the diagnostics, {"error": …} the error, {"mutants": […]}
-// the mutants, and {"score": …, "killed": …} the score. A blank line, or one that is not one of
-// these objects, changes nothing.
+// the mutants, and {"score": …, "killed": …} the score. A diagnostics or mutants line whose
+// list does not read sets the error instead, so a run that reported them never shows as clean. A
+// blank line, or one that is not one of these objects, changes nothing.
 func Parse(text string, r *Run) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -121,9 +123,19 @@ func Parse(text string, r *Run) {
 			r.Results = append(r.Results, res)
 		}
 	case k.Diagnostics != nil:
-		json.Unmarshal(*k.Diagnostics, &r.Diagnostics)
+		var ds []feed.Diag
+		if err := json.Unmarshal(*k.Diagnostics, &ds); err != nil {
+			r.Error = fmt.Sprintf("alder test: unreadable diagnostics: %v", err)
+		} else {
+			r.Diagnostics = ds
+		}
 	case k.Mutants != nil:
-		json.Unmarshal(*k.Mutants, &r.Mutants)
+		var ms []Mutant
+		if err := json.Unmarshal(*k.Mutants, &ms); err != nil {
+			r.Error = fmt.Sprintf("alder test: unreadable mutants: %v", err)
+		} else {
+			r.Mutants = ms
+		}
 	case k.Score != nil:
 		var sc Score
 		if json.Unmarshal([]byte(text), &sc) == nil {

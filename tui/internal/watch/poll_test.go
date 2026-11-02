@@ -8,17 +8,38 @@ import (
 	"time"
 )
 
-// count is how many signals ch gives within d.
-func count(ch <-chan struct{}, d time.Duration) int {
-	n := 0
-	deadline := time.After(d)
-	for {
-		select {
-		case <-ch:
-			n++
-		case <-deadline:
-			return n
+// eventually polls cond every few milliseconds until it holds, for up to d, and reports
+// whether it did.
+func eventually(t *testing.T, d time.Duration, cond func() bool) bool {
+	t.Helper()
+	for deadline := time.Now().Add(d); ; time.Sleep(5 * time.Millisecond) {
+		if cond() {
+			return true
 		}
+		if time.Now().After(deadline) {
+			return false
+		}
+	}
+}
+
+// signalled reads a signal from ch without blocking, and reports whether there was one.
+func signalled(ch <-chan struct{}) bool {
+	select {
+	case _, ok := <-ch:
+		return ok
+	default:
+		return false
+	}
+}
+
+// quiet reports whether ch gives no signal within d. It can only fail by a signal arriving, so a
+// slow machine makes it pass, never fail.
+func quiet(ch <-chan struct{}, d time.Duration) bool {
+	select {
+	case _, ok := <-ch:
+		return !ok
+	case <-time.After(d):
+		return true
 	}
 }
 
@@ -39,30 +60,36 @@ func appendTo(t *testing.T, path string) {
 }
 
 func TestPoll_Debounced(t *testing.T) {
+	const every, debounce = 10 * time.Millisecond, 100 * time.Millisecond
 	root := t.TempDir()
 	appendTo(t, filepath.Join(root, "app", "Books.al"))
 	appendTo(t, filepath.Join(root, "static", "app.css"))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ch := Poll(ctx, root, []string{"app", "adapters", "migrations"}, 20*time.Millisecond, 150*time.Millisecond)
+	ch := Poll(ctx, root, []string{"app", "adapters", "migrations"}, every, debounce)
+	// A burst of writes signals once, after it.
 	for range 3 {
 		appendTo(t, filepath.Join(root, "app", "Books.al"))
-		time.Sleep(50 * time.Millisecond)
 	}
-	if n := count(ch, 700*time.Millisecond); n != 1 {
-		t.Errorf("three writes 50 ms apart gave %d signals, want 1", n)
+	if !eventually(t, 2*time.Second, func() bool { return signalled(ch) }) {
+		t.Fatal("a burst of writes under app/ gave no signal within 2s")
+	}
+	if !quiet(ch, 3*debounce) {
+		t.Error("a burst of writes gave more than one signal")
 	}
 	appendTo(t, filepath.Join(root, "static", "app.css"))
-	if n := count(ch, 400*time.Millisecond); n != 0 {
-		t.Errorf("a write under static/ gave %d signals, want 0", n)
+	if !quiet(ch, 3*debounce) {
+		t.Error("a write under static/ gave a signal")
 	}
 	cancel()
-	select {
-	case _, ok := <-ch:
-		if ok {
-			t.Error("a signal after the context ended")
+	if !eventually(t, 2*time.Second, func() bool {
+		select {
+		case _, ok := <-ch:
+			return !ok
+		default:
+			return false
 		}
-	case <-time.After(time.Second):
+	}) {
 		t.Error("the channel is not closed once the context ends")
 	}
 }

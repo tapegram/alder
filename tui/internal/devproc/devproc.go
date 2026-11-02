@@ -24,14 +24,19 @@ import (
 
 // A probe of the feed that has not answered with its hello within probeTimeout is abandoned, so
 // a listener that accepts connections but never answers cannot hang Open. After starting its own
-// dev server, Open probes every retryEvery until it answers, for at most startTimeout. Stop waits
-// stopGrace after SIGTERM before it kills.
+// dev server, Open probes every retryEvery until it answers, for at most Options.StartTimeout
+// (defaultStartTimeout when zero). Stop waits stopGrace after SIGTERM before it kills. Once a dev
+// server has exited, the lines it printed last are read for at most drainFor.
 const (
-	probeTimeout = 2 * time.Second
-	retryEvery   = 200 * time.Millisecond
-	startTimeout = 30 * time.Second
-	stopGrace    = 5 * time.Second
+	probeTimeout        = 2 * time.Second
+	retryEvery          = 200 * time.Millisecond
+	defaultStartTimeout = 30 * time.Second
+	stopGrace           = 5 * time.Second
+	drainFor            = 100 * time.Millisecond
 )
+
+// probeAfter is the probe's clock for the hello's deadline; tests replace it.
+var probeAfter = time.After
 
 // Open keeps the last earlyMax stderr lines of an owned dev server that has not answered yet, and
 // its error names the last tailLines of them.
@@ -47,22 +52,25 @@ var errNoAnswer = errors.New("no answer")
 // Options says which dev server Open wants: the app's directory, the dev server's address, the
 // alder binary to start one with, and whether starting one is forbidden (--no-run). Lines, when
 // set, is called with each stderr line of a dev server Open started, as it arrives, until its
-// feed answers; it is never called after Open has returned. Connect and Start default to
-// feed.Connect and Start; tests replace them.
+// feed answers; it is never called after Open has returned. StartTimeout is how long a dev
+// server Open started has to answer; zero is 30 s. Connect and Start default to feed.Connect and
+// Start; tests replace them.
 type Options struct {
 	Dir, Addr, Alder string
 	NoRun            bool
 	Lines            func(string)
+	StartTimeout     time.Duration
 	Connect          func(ctx context.Context, addr string) (<-chan feed.Event, error)
 	Start            func(alder, dir string, env []string) (Proc, error)
 }
 
-// Proc is a dev server the TUI started: its stderr lines, Stop, and a channel closed once it has
-// exited.
+// Proc is a dev server the TUI started: its stderr lines, Stop, a channel closed once it has
+// exited, and then its exit code.
 type Proc interface {
 	Stderr() <-chan string
 	Stop() error
 	Exited() <-chan struct{}
+	Code() int
 }
 
 // Session is the dev server's feed (its first event the hello) and whether the TUI owns the dev
@@ -73,21 +81,34 @@ type Session struct {
 
 	cancel context.CancelFunc
 	proc   Proc
+	exited chan Exit
 	once   sync.Once
 	err    error
+}
+
+// Exit is how an owned dev server ended after its feed had answered: its exit code (128 plus the
+// signal's number when a signal killed it) and the last stderr lines it printed after its feed
+// answered, joined by newlines.
+type Exit struct {
+	Code       int
+	StderrTail string
 }
 
 // Open attaches to the dev server on o.Addr when its hello names o.Dir (made absolute), and fails
 // when the address serves another app's dev server or something that is not a dev server at all.
 // When nothing listens on the address it starts `alder run o.Dir` there (unless o.NoRun) and
-// probes it every 200 ms until its feed answers; it fails after 30 s, or once the dev server has
-// exited, with the dev server's last stderr lines. The feed lives until Close or until ctx ends.
+// probes it every 200 ms until its feed answers; it fails after o.StartTimeout, or once the dev
+// server has exited, with the dev server's last stderr lines. The directories compare with their
+// symlinks resolved. The feed lives until Close or until ctx ends.
 func Open(ctx context.Context, o Options) (*Session, error) {
 	if o.Connect == nil {
 		o.Connect = feed.Connect
 	}
 	if o.Start == nil {
 		o.Start = Start
+	}
+	if o.StartTimeout <= 0 {
+		o.StartTimeout = defaultStartTimeout
 	}
 	dir, err := filepath.Abs(o.Dir)
 	if err != nil {
@@ -96,7 +117,7 @@ func Open(ctx context.Context, o Options) (*Session, error) {
 	s, err := probe(ctx, o.Connect, o.Addr)
 	switch {
 	case err == nil:
-		if d := s.hello.Hello.Dir; filepath.Clean(d) != dir {
+		if d := s.hello.Hello.Dir; resolved(d) != resolved(dir) {
 			s.cancel()
 			return nil, fmt.Errorf("%s is the dev server of %s; pass --addr", o.Addr, d)
 		}
@@ -111,8 +132,18 @@ func Open(ctx context.Context, o Options) (*Session, error) {
 	return own(ctx, o, dir)
 }
 
+// resolved is path with its symlinks resolved, or only cleaned when that fails (it does not
+// exist, say).
+func resolved(path string) string {
+	if r, err := filepath.EvalSymlinks(path); err == nil {
+		return r
+	}
+	return filepath.Clean(path)
+}
+
 // own starts the dev server and waits for its feed, collecting its stderr meanwhile and handing
-// each line to o.Lines.
+// each line to o.Lines. However it fails, the dev server's stderr is read to its end, so the
+// goroutine reading it never stays blocked.
 func own(ctx context.Context, o Options, dir string) (*Session, error) {
 	p, err := o.Start(o.Alder, dir, []string{"ALDER_ADDR=" + o.Addr, "ALDER_EXIT_ON_STDIN_EOF=1"})
 	if err != nil {
@@ -135,7 +166,7 @@ func own(ctx context.Context, o Options, dir string) (*Session, error) {
 		}
 		return fmt.Errorf("%s:\n%s", msg, strings.Join(tail, "\n"))
 	}
-	deadline := time.NewTimer(startTimeout)
+	deadline := time.NewTimer(o.StartTimeout)
 	defer deadline.Stop()
 	tick := time.NewTicker(retryEvery)
 	defer tick.Stop()
@@ -149,40 +180,50 @@ func own(ctx context.Context, o Options, dir string) (*Session, error) {
 			}
 			add(l)
 		case <-p.Exited():
-			// The lines it printed last may still be in the pipe.
-			for drain := time.After(100 * time.Millisecond); stderr != nil; {
-				select {
-				case l, ok := <-stderr:
-					if !ok {
-						stderr = nil
-						break
-					}
-					add(l)
-				case <-drain:
-					stderr = nil
-				}
-			}
-			return nil, fail("alder run exited before its feed answered on " + o.Addr)
+			drain(stderr, add)
+			discard(p)
+			return nil, fail(fmt.Sprintf("alder run exited (code %d) before its feed answered on %s", p.Code(), o.Addr))
 		case <-deadline.C:
 			p.Stop()
-			return nil, fail(fmt.Sprintf("alder run did not answer on %s within %s", o.Addr, startTimeout))
+			discard(p)
+			return nil, fail(fmt.Sprintf("alder run did not answer on %s within %s", o.Addr, o.StartTimeout))
 		case <-ctx.Done():
 			p.Stop()
+			discard(p)
 			return nil, ctx.Err()
 		case <-tick.C:
 			s, err := probe(ctx, o.Connect, o.Addr)
 			if err != nil {
 				continue
 			}
-			// The dev server's later stderr is read and dropped, so it never blocks on a full
-			// pipe; its feed carries what it prints from here on.
-			go func() {
-				for range p.Stderr() {
-				}
-			}()
 			return s.session(p), nil
 		}
 	}
+}
+
+// drain hands add the lines a dev server that has exited printed last, which may still be in the
+// pipe, reading them for at most drainFor: a child of the dev server may hold the pipe open.
+func drain(stderr <-chan string, add func(string)) {
+	for until := time.After(drainFor); stderr != nil; {
+		select {
+		case l, ok := <-stderr:
+			if !ok {
+				return
+			}
+			add(l)
+		case <-until:
+			return
+		}
+	}
+}
+
+// discard reads p's stderr to its end in the background and drops it, so the goroutine that
+// reads the pipe never blocks on a full channel once nothing else reads it.
+func discard(p Proc) {
+	go func() {
+		for range p.Stderr() {
+		}
+	}()
 }
 
 // probed is a feed that answered: its hello, the rest of its events, and the cancel that ends it.
@@ -195,29 +236,43 @@ type probed struct {
 
 // probe connects to the feed on addr and reads its hello, giving up after probeTimeout. The feed
 // of a probe that succeeds lives until its cancel (or ctx's end); a failed probe's is ended.
+//
+// While connect runs, the deadline cancels the feed, which is how a connect that never answers
+// returns. Once connect has returned the deadline only ends the wait for the hello, and a hello
+// that is there when it passes still counts.
 func probe(ctx context.Context, connect func(context.Context, string) (<-chan feed.Event, error), addr string) (*probed, error) {
+	began := time.Now()
 	fctx, cancel := context.WithCancel(ctx)
 	timer := time.AfterFunc(probeTimeout, cancel)
 	ch, err := connect(fctx, addr)
+	if !timer.Stop() && ctx.Err() == nil { // the deadline passed while connecting, and ended the feed
+		return nil, errNoAnswer
+	}
 	var hello feed.Event
 	if err == nil {
-		select {
-		case ev, ok := <-ch:
+		got := func(ev feed.Event, ok bool) {
 			if !ok || ev.Type != "hello" || ev.Hello == nil {
 				err = feed.ErrNotAlder
 			}
 			hello = ev
-		case <-fctx.Done():
-			err = fctx.Err()
+		}
+		select {
+		case ev, ok := <-ch:
+			got(ev, ok)
+		case <-probeAfter(probeTimeout - time.Since(began)):
+			select {
+			case ev, ok := <-ch:
+				got(ev, ok)
+			default:
+				err = errNoAnswer
+			}
+		case <-ctx.Done():
 		}
 	}
-	timer.Stop()
 	switch {
 	case ctx.Err() != nil: // the caller gave up, whatever the probe saw
 		cancel()
 		return nil, ctx.Err()
-	case fctx.Err() != nil: // the timer fired: no hello in time, or one whose feed it has just ended
-		return nil, errNoAnswer
 	case err != nil:
 		cancel()
 		return nil, err
@@ -226,7 +281,7 @@ func probe(ctx context.Context, connect func(context.Context, string) (<-chan fe
 }
 
 // session is the Session for the probed feed, owning p when it is not nil. Its Events carry the
-// hello again, then the feed's events.
+// hello again, then the feed's events. An owned dev server is watched for its exit.
 func (f *probed) session(p Proc) *Session {
 	out := make(chan feed.Event, 64)
 	go func() {
@@ -244,8 +299,52 @@ func (f *probed) session(p Proc) *Session {
 			}
 		}
 	}()
-	return &Session{Events: out, Owned: p != nil, cancel: f.cancel, proc: p}
+	s := &Session{Events: out, Owned: p != nil, cancel: f.cancel, proc: p}
+	if p != nil {
+		s.exited = make(chan Exit, 1)
+		go watch(f.ctx, p, s.exited)
+	}
+	return s
 }
+
+// watch keeps the last tailLines stderr lines of the owned dev server p, and sends its Exit on
+// out once it exits, then closes out. When ctx ends first (Close, or the TUI's end), p's exit is
+// the TUI's doing, so out is closed with no Exit.
+func watch(ctx context.Context, p Proc, out chan<- Exit) {
+	defer close(out)
+	var tail []string
+	add := func(l string) {
+		if len(tail) == tailLines {
+			tail = tail[1:]
+		}
+		tail = append(tail, l)
+	}
+	defer discard(p)
+	stderr := p.Stderr()
+	for {
+		select {
+		case l, ok := <-stderr:
+			if !ok {
+				stderr = nil
+				continue
+			}
+			add(l)
+		case <-p.Exited():
+			drain(stderr, add)
+			if ctx.Err() == nil {
+				out <- Exit{Code: p.Code(), StderrTail: strings.Join(tail, "\n")}
+			}
+			return
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// Exited carries the Exit of an owned dev server that exits on its own after its feed answered,
+// then is closed; it is closed with no Exit once the session is closed first. It is nil when
+// the TUI does not own the dev server.
+func (s *Session) Exited() <-chan Exit { return s.exited }
 
 // Close ends the feed and, when the TUI owns the dev server, stops it. Only the first call does
 // anything; later ones return its error.
@@ -266,6 +365,7 @@ type proc struct {
 	stdin  *os.File
 	stderr chan string
 	exited chan struct{}
+	code   int
 }
 
 // Start runs `alder run dir` in dir (which must be absolute: alder resolves its build directory
@@ -317,6 +417,7 @@ func Start(alder, dir string, env []string) (Proc, error) {
 	go func() {
 		_ = cmd.Wait()
 		inW.Close()
+		p.code = exitCode(cmd.ProcessState)
 		close(p.exited)
 	}()
 	return p, nil
@@ -324,6 +425,18 @@ func Start(alder, dir string, env []string) (Proc, error) {
 
 func (p *proc) Stderr() <-chan string   { return p.stderr }
 func (p *proc) Exited() <-chan struct{} { return p.exited }
+
+// Code is the child's exit code once Exited is closed.
+func (p *proc) Code() int { return p.code }
+
+// exitCode is the exit code of a child that has exited, as a shell gives it: 128 plus the
+// signal's number when a signal killed it.
+func exitCode(ps *os.ProcessState) int {
+	if ws, ok := ps.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+		return 128 + int(ws.Signal())
+	}
+	return ps.ExitCode()
+}
 
 // Stop sends SIGTERM and waits for the child to exit, killing it after 5 s; on Windows, which has
 // no SIGTERM, it kills it at once. It returns once the child has exited.

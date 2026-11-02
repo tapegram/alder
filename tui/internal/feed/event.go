@@ -12,8 +12,9 @@ import (
 
 // Event is one event of the feed: its type, its time T and its seq (counting from 1 since the dev
 // server started), with the payload of its type. A static event has no payload, nor does an event
-// of a type this package does not know. The client adds one synthetic type, "disconnected" (no
-// seq), when the stream drops.
+// of a type this package does not know. The client adds two synthetic types, without a seq:
+// "disconnected" when the stream drops, and "gap" (with Gap) when a reconnect finds that the dev
+// server no longer keeps some of the events the client has not seen.
 type Event struct {
 	Type  string
 	T     time.Time
@@ -23,6 +24,7 @@ type Event struct {
 	App   *App
 	Log   *Log
 	Run   *Run
+	Gap   *Gap
 }
 
 // Hello is the first event of every stream: the dev server's app, its directory, alder's version,
@@ -92,6 +94,13 @@ type Record struct {
 	HasAccess                       bool
 }
 
+// Gap is a gap event: the client reconnected to the same dev server, but the oldest event its
+// ring keeps comes after the next one the client lacks, so Missed events are lost (the ring
+// overflowed while the client was away).
+type Gap struct {
+	Missed uint64
+}
+
 // Run is a run event: one of the dev server's own status lines.
 type Run struct {
 	Text string
@@ -145,8 +154,9 @@ type record struct {
 	Slow    bool      `json:"slow"`
 }
 
-// Decode is the event whose JSON is line. It fails when line is not a JSON object with a type,
-// or when a log event's record is not an object.
+// Decode is the event whose JSON is line. It fails when line is not a JSON object with a type. A
+// log event whose record does not decode (not an object, or a key of the wrong type) is kept as
+// a raw line, the record's JSON, with no Record.
 func Decode(line []byte) (Event, error) {
 	var w wire
 	if err := json.Unmarshal(line, &w); err != nil {
@@ -176,7 +186,10 @@ func Decode(line []byte) (Event, error) {
 		if len(w.Record) > 0 && string(w.Record) != "null" {
 			var r record
 			if err := json.Unmarshal(w.Record, &r); err != nil {
-				return Event{}, fmt.Errorf("feed: log record: %w", err)
+				if ev.Log.Raw == "" {
+					ev.Log.Raw = string(w.Record)
+				}
+				return ev, nil
 			}
 			ev.Log.Record = &Record{Time: r.Time, Level: r.Level, Msg: r.Msg, Rid: deref(r.Rid),
 				Method: deref(r.Method), Path: deref(r.Path), Route: r.Route, Ms: r.Ms, Bytes: r.Bytes,

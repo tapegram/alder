@@ -2,8 +2,8 @@
  [1mProblems[0m
 
    the app exited (code 2)
-     2026/11/01 14:20:05 info: migrating dev.db
-     2026/11/01 14:20:05 error: migration 0003_loans.sql: table loans already exists
+     [2m2026/11/01 14:20:05 [0m[32minfo:[0m migrating dev.db
+     [2m2026/11/01 14:20:05 [0m[31merror:[0m migration 0003_loans.sql: table loans already exists
      alder: the app stopped: migrations failed
 
 

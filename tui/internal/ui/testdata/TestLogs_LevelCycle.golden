@@ -27,4 +27,4 @@
 
 
  ──────────────────────────────────────────────────────────────────────────────────────────────────
- enter open  L level  / regexp  x clear  G follow  o browser  R restart   [2mALDER_LOG=debug alder run[0m
+ enter open  L level  / regexp  x clear  G follow  o browser  R restart  ? keys  [2mALDER_LOG=debug al…[0m

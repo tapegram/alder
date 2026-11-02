@@ -35,9 +35,10 @@ const (
 // query's result; and the debounce of the write with the given id has passed.
 type (
 	dataMapMsg struct {
-		gen int
-		m   data.Map
-		err string
+		gen     int
+		m       data.Map
+		choices []data.Choice // the databases of the map's app, listed in the fetch command
+		err     string
 	}
 	dataLoadedMsg struct {
 		gen, pageGen int
@@ -67,6 +68,8 @@ type dataPage struct {
 	cols []string
 	rows [][]string
 	err  string
+	// truncated is set when a query had more rows than it shows.
+	truncated bool
 }
 
 // dataQuery is a statement typed at the prompt and its result, once it has come.
@@ -120,6 +123,8 @@ type dataScreen struct {
 	detail  bool
 	dtop    int // the first line of the row view drawn
 
+	width, height int // View's inner width and the body's height, as of the last WindowSizeMsg
+
 	typing   bool
 	input    string
 	query    *dataQuery // the query shown in place of the table, or nil
@@ -156,7 +161,7 @@ func buildDir(c *Ctx) string { return filepath.Join(c.Opts.Dir, "build", appName
 // fetch gets the map, GET http://<addr>/_dev/map.json.
 func (s *dataScreen) fetch(c *Ctx) tea.Cmd {
 	s.mapGen++
-	gen, client, addr := s.mapGen, c.Opts.HTTP, c.Opts.Addr
+	gen, client, addr, dir := s.mapGen, c.Opts.HTTP, c.Opts.Addr, buildDir(c)
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), mapTimeout)
 		defer cancel()
@@ -164,7 +169,8 @@ func (s *dataScreen) fetch(c *Ctx) tea.Cmd {
 		if err != nil {
 			return dataMapMsg{gen: gen, err: err.Error()}
 		}
-		return dataMapMsg{gen: gen, m: m}
+		// The listing of the silo directories reads the disk, so it is done here, not in Update.
+		return dataMapMsg{gen: gen, m: m, choices: data.Databases(dir, m)}
 	}
 }
 
@@ -260,16 +266,28 @@ func (s *dataScreen) runQuery(stmt string) tea.Cmd {
 			return dataQueryMsg{gen: gen, page: dataPage{err: data.Message(err)}}
 		}
 		defer db.Close()
-		cols, rows, err := db.Query(context.Background(), stmt)
+		cols, rows, truncated, err := db.Query(context.Background(), stmt)
 		if err != nil {
 			return dataQueryMsg{gen: gen, page: dataPage{err: data.Message(err)}}
 		}
-		return dataQueryMsg{gen: gen, page: dataPage{cols: cols, rows: rows}}
+		return dataQueryMsg{gen: gen, page: dataPage{cols: cols, rows: rows, truncated: truncated}}
 	}
 }
 
+// Update answers msg and then clamps the state View reads (the cursor and the scroll positions),
+// so View never writes it.
 func (s *dataScreen) Update(msg tea.Msg, c *Ctx) (Screen, tea.Cmd) {
+	next, cmd := s.update(msg, c)
+	s.clamp()
+	return next, cmd
+}
+
+func (s *dataScreen) update(msg tea.Msg, c *Ctx) (Screen, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		// The size View is given: the frame keeps the status bar, a rule and the footer, and a
+		// one-cell margin on each side.
+		s.width, s.height = max(msg.Width-2, 0), max(msg.Height-3, 0)
 	case dataMapMsg:
 		if msg.gen != s.mapGen {
 			return s, nil
@@ -279,7 +297,7 @@ func (s *dataScreen) Update(msg tea.Msg, c *Ctx) (Screen, tea.Cmd) {
 			return s, nil
 		}
 		s.mapErr, s.loaded = "", true
-		s.setMap(msg.m, c)
+		s.setMap(msg.m, msg.choices)
 		return s, s.load()
 	case dataLoadedMsg:
 		if msg.gen == s.loadGen {
@@ -341,7 +359,7 @@ func wrote(method string, stmts int) bool {
 
 // setMap takes a new map: the databases (staying on the one shown, by its label, when it is still
 // there), its tables and the selected table (staying on it, by its name, when it is still there).
-func (s *dataScreen) setMap(m data.Map, c *Ctx) {
+func (s *dataScreen) setMap(m data.Map, choices []data.Choice) {
 	label, name := "", ""
 	if s.db < len(s.dbs) {
 		label = s.dbs[s.db].Label
@@ -349,7 +367,7 @@ func (s *dataScreen) setMap(m data.Map, c *Ctx) {
 	if t, ok := s.selected(); ok {
 		name = t.Name
 	}
-	s.m, s.dbs, s.db = m, data.Databases(buildDir(c), m), 0
+	s.m, s.dbs, s.db = m, choices, 0
 	for i, d := range s.dbs {
 		if d.Label == label {
 			s.db = i
@@ -552,12 +570,15 @@ func (s *dataScreen) View(width, height int, c *Ctx) string {
 		return "loading the map"
 	}
 	left := s.leftPane(width)
-	lw := 0
-	for _, l := range left {
-		lw = max(lw, ansi.StringWidth(l))
+	lw, rw := s.paneWidths(width, left)
+	if s.mapErr != "" {
+		// A refetch failed: the map it had stays, with the reason on top (R3).
+		warn := strings.Split(ansi.Hardwrap("map not updated: "+clean(s.mapErr), lw, true), "\n")
+		for i := range warn[:min(len(warn), 4)] {
+			warn[i] = look.Palette.Yellow(warn[i])
+		}
+		left = append(warn[:min(len(warn), 4)], left...)
 	}
-	lw = max(min(lw, dataLeftMax, width/2), min(dataLeftMin, width/2))
-	rw := max(width-lw-3, 1)
 	var right []string
 	if s.detail {
 		right = s.rowView(rw, height)
@@ -579,6 +600,45 @@ func (s *dataScreen) View(width, height int, c *Ctx) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// paneWidths is the width of the tables pane, given its lines, and that of the rows pane.
+func (s *dataScreen) paneWidths(width int, left []string) (int, int) {
+	lw := 0
+	for _, l := range left {
+		lw = max(lw, ansi.StringWidth(l))
+	}
+	lw = max(min(lw, dataLeftMax, width/2), min(dataLeftMin, width/2))
+	return lw, max(width-lw-3, 1)
+}
+
+// clamp keeps the cursors and the scroll positions View reads where the page, the size of the
+// body and the cursor put them: the row and column within the page, the first row drawn so that
+// the row is in view, and the first line of the row view so that it shows lines. The frame runs
+// it at the end of every Update, so View only reads them.
+func (s *dataScreen) clamp() {
+	p := s.shown()
+	s.row = max(min(s.row, len(p.rows)-1), 0)
+	s.col = max(min(s.col, len(p.cols)-1), 0)
+	if !s.loaded {
+		return
+	}
+	if s.detail {
+		left := s.leftPane(s.width)
+		_, rw := s.paneWidths(s.width, left)
+		s.dtop = max(min(s.dtop, len(s.rowBody(rw))-(s.height-1)), 0)
+		return
+	}
+	// The rows pane starts with its heading, and a query's result with the count of its rows too.
+	head := 1
+	if s.query != nil {
+		head = 2
+	}
+	h := max(max(s.height-head, 2)-1, 1) // the grid keeps a line for its header
+	s.top = max(min(s.top, s.row, len(p.rows)-h), 0)
+	if s.row >= s.top+h {
+		s.top = s.row - h + 1
+	}
 }
 
 // leftPane is the tables pane's lines: the database shown when there are silos, the tables with
@@ -668,7 +728,7 @@ func (s *dataScreen) rightPane(width, height int) []string {
 		if len(p.rows) == 1 {
 			n = "1 row"
 		}
-		if len(p.rows) == data.QueryRows {
+		if p.truncated {
 			n = "the first " + n
 		}
 		lines = append(lines, n)
@@ -722,11 +782,8 @@ func (s *dataScreen) grid(p dataPage, width, height int) []string {
 	})
 	lines := []string{"  " + header}
 	h := max(height-1, 1)
-	s.top = max(min(s.top, s.row, len(p.rows)-h), 0)
-	if s.row >= s.top+h {
-		s.top = s.row - h + 1
-	}
-	for i := s.top; i < min(s.top+h, len(p.rows)); i++ {
+	top := max(min(s.top, len(p.rows)-1), 0) // clamp has already run; View never writes it
+	for i := top; i < min(top+h, len(p.rows)); i++ {
 		mark := "  "
 		if s.right && i == s.row {
 			mark = "> "
@@ -737,7 +794,7 @@ func (s *dataScreen) grid(p dataPage, width, height int) []string {
 }
 
 // rowView is the row under the cursor, one column per line: its name, then its value unfolded
-// over as many lines as it takes.
+// over as many lines as it takes, from the line dtop. clamp has already put dtop in range.
 func (s *dataScreen) rowView(width, height int) []string {
 	p := s.shown()
 	if s.row >= len(p.rows) {
@@ -748,6 +805,18 @@ func (s *dataScreen) rowView(width, height int) []string {
 		title, n = clean(t.Name), s.offset+s.row+1
 	}
 	lines := []string{look.Palette.Bold(title) + "  row " + strconv.Itoa(n)}
+	body := s.rowBody(width)
+	dtop := max(min(s.dtop, len(body)-(height-1)), 0)
+	return append(lines, body[dtop:]...)
+}
+
+// rowBody is the lines of the row under the cursor: each column's name and its value, unfolded
+// to fit width.
+func (s *dataScreen) rowBody(width int) []string {
+	p := s.shown()
+	if s.row >= len(p.rows) {
+		return nil
+	}
 	nw := 0
 	for _, cl := range p.cols {
 		nw = max(nw, ansi.StringWidth(clean(cl)))
@@ -767,8 +836,7 @@ func (s *dataScreen) rowView(width, height int) []string {
 			body = append(body, strings.TrimRight(padRight(look.Palette.Bold(clean(cl)), nw)+"  "+v, " "))
 		}
 	}
-	s.dtop = max(min(s.dtop, len(body)-(height-1)), 0)
-	return append(lines, body[s.dtop:]...)
+	return body
 }
 
 func (s *dataScreen) Keys() []Key {
@@ -778,6 +846,9 @@ func (s *dataScreen) Keys() []Key {
 	case s.detail:
 		return []Key{{"j/k", "scroll"}, {"esc", "back"}}
 	case s.right && s.query != nil:
+		if p := s.query.page; p.err != "" || len(p.rows) == 0 {
+			return []Key{{":", "sql"}, {"esc", "back"}}
+		}
 		return []Key{{"enter", "row"}, {":", "sql"}, {"esc", "back"}}
 	case s.right:
 		return []Key{{"enter", "row"}, {"s", "sort"}, {"[ ]", "page"}, {":", "sql"}, {"esc", "back"}}

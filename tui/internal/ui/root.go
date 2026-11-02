@@ -6,6 +6,7 @@ package ui
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
+	"alder/tui/internal/devproc"
 	"alder/tui/internal/feed"
 	"alder/tui/internal/look"
 	"alder/tui/internal/routes"
@@ -53,19 +55,21 @@ type Options struct {
 	Copy                                  func(string) error
 }
 
-// Feed is the dev server's feed as Options.Open returns it, and whether the TUI owns the dev
-// server.
+// Feed is the dev server's feed as Options.Open returns it, whether the TUI owns the dev server,
+// and, when it does, the channel that carries its exit should it die (see devproc.Session.Exited).
 type Feed struct {
 	Events <-chan feed.Event
 	Owned  bool
+	Exited <-chan devproc.Exit
 }
 
 // Ctx is the state the screens share: the options, the stores, whether Options.Open has yet to
 // return and its error when it failed, the last hello, the last build event of the dev server's
-// current boot and the build state, the app's exit when it has exited, whether the feed is
-// disconnected, the active filters of the Logs and Requests screens, and the app's routes as
-// the Routes screen last loaded them, with the route the Requests screen is filtered to (nil
-// for none). RouteFilter is separate from ReqFilter, the text filter, and both apply.
+// current boot and the build state, the app's exit when it has exited, the owned dev server's
+// exit when it has died (until a hello comes again), whether the feed is disconnected, the
+// active filters of the Logs and Requests screens, the current tab, and the app's routes as the
+// Routes screen last loaded them, with the route the Requests screen is filtered to (nil for
+// none). RouteFilter is separate from ReqFilter, the text filter, and both apply.
 type Ctx struct {
 	Opts         Options
 	Logs         *store.Logs
@@ -76,11 +80,13 @@ type Ctx struct {
 	Build        *feed.Build
 	State        string
 	Exited       *feed.App
+	RunExited    *devproc.Exit
 	Disconnected bool
 	LogFilter    store.Filter
 	ReqFilter    string
 	Routes       []routes.Route
 	RouteFilter  *routes.Route
+	Tab          int // the current tab, as of the end of the last Update
 }
 
 // Screen is one tab. Update gets every key the frame does not keep for itself and every other
@@ -113,11 +119,18 @@ type Starter interface {
 	Start(c *Ctx) tea.Cmd
 }
 
-// The messages the program sends itself: a feed event, the end of the feed, and a line for the
-// footer (the outcome of a copy, an open or a restart).
+// Stopper is a Screen that has something to end when the program quits, such as the Tests
+// screen, which kills the run in flight so that no alder test outlives the program.
+type Stopper interface {
+	Stop()
+}
+
+// The messages the program sends itself: a feed event, the end of the feed, the exit of the
+// owned dev server, and a line for the footer (the outcome of a copy, an open or a restart).
 type (
 	eventMsg      feed.Event
 	feedClosedMsg struct{}
+	runExitedMsg  devproc.Exit
 	flashMsg      string
 )
 
@@ -174,6 +187,15 @@ func StartErr(m tea.Model) error {
 		return r.ctx.StartErr
 	}
 	return nil
+}
+
+// Stop stops every screen of the program's model m that is a Stopper, as quitting from a key
+// does. main calls it once the program has returned, however it ended, so that a signal also
+// leaves no alder test running. Stopping twice is harmless.
+func Stop(m tea.Model) {
+	if r, ok := m.(*root); ok {
+		r.stopScreens()
+	}
 }
 
 // Init opens the dev server when the options say how, reading what Open reports as it reports
@@ -266,11 +288,20 @@ func readEvent(ch <-chan feed.Event) tea.Cmd {
 	}
 }
 
+// Update answers msg and then clamps the state View reads (the Problems cursor), so View never
+// has to.
 func (m *root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	model, cmd := m.update(msg)
+	m.ctx.Tab = m.tab
+	m.probs.clamp(m.ctx)
+	return model, cmd
+}
+
+func (m *root) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		return m, nil
+		return m, m.toScreens(msg)
 	case startMsg:
 		return m, m.started(msg)
 	case eventMsg:
@@ -278,7 +309,11 @@ func (m *root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.toScreens(msg)
 		return m, tea.Batch(cmd, readEvent(m.ctx.Opts.Events))
 	case feedClosedMsg:
+		m.ctx.Disconnected = true
 		return m, nil
+	case runExitedMsg:
+		m.runExited(devproc.Exit(msg))
+		return m, m.toScreens(msg)
 	case flashMsg:
 		m.flash = string(msg)
 		return m, nil
@@ -315,14 +350,49 @@ func (m *root) started(msg startMsg) tea.Cmd {
 	m.start, c.Starting = nil, false
 	if msg.err != nil {
 		c.StartErr = msg.err
-		return tea.Quit
+		return m.quit()
 	}
 	c.Opts.Events, c.Opts.Owned = msg.feed.Events, msg.feed.Owned
-	return readEvent(c.Opts.Events)
+	return tea.Batch(readEvent(c.Opts.Events), readExit(msg.feed.Exited))
+}
+
+// readExit waits for the owned dev server's exit; a channel closed with no exit (the TUI stopped
+// it) sends nothing.
+func readExit(ch <-chan devproc.Exit) tea.Cmd {
+	if ch == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		if e, ok := <-ch; ok {
+			return runExitedMsg(e)
+		}
+		return nil
+	}
+}
+
+// runExited records the owned dev server's death: the status bar shows it, and the scrollback
+// gets the stderr lines it printed last and then the exit, as errors.
+func (m *root) runExited(e devproc.Exit) {
+	c := m.ctx
+	c.RunExited = &e
+	var lines []string
+	if e.StderrTail != "" {
+		lines = strings.Split(e.StderrTail, "\n")
+	}
+	for _, l := range append(lines, runExitText(e)) {
+		c.Logs.Add(feed.Event{Type: "log", T: c.Opts.Now().UTC(),
+			Log: &feed.Log{Record: &feed.Record{Time: c.Opts.Now().UTC(), Level: "ERROR", Msg: l}}})
+	}
+}
+
+// runExitText is the line that says the owned dev server died: `alder run exited (code N)`.
+func runExitText(e devproc.Exit) string {
+	return "alder run exited (code " + strconv.Itoa(e.Code) + ")"
 }
 
 // apply records an event: a hello from another boot (another dev server) resets the stores and
-// the build and exit it knew; the build state follows the hello, then each build event.
+// the build and exit it knew, and any hello clears the dev server's death; the build state
+// follows the hello, then each build event.
 func (m *root) apply(e feed.Event) {
 	c := m.ctx
 	switch {
@@ -332,7 +402,7 @@ func (m *root) apply(e feed.Event) {
 			c.Requests.Reset()
 			c.Build, c.Exited = nil, nil
 		}
-		c.Hello, c.State, c.Disconnected = e.Hello, e.Hello.Build, false
+		c.Hello, c.State, c.Disconnected, c.RunExited = e.Hello, e.Hello.Build, false, nil
 	case e.Type == "disconnected":
 		c.Disconnected = true
 	case e.Type == "build" && e.Build != nil:
@@ -368,7 +438,7 @@ func (m *root) key(msg tea.KeyMsg) tea.Cmd {
 	m.flash = ""
 	k := msg.String()
 	if k == "ctrl+c" {
-		return tea.Quit
+		return m.quit()
 	}
 	switch m.overlay {
 	case overlayKeys:
@@ -376,7 +446,7 @@ func (m *root) key(msg tea.KeyMsg) tea.Cmd {
 		case "esc", "?":
 			m.overlay = overlayNone
 		case "q":
-			return tea.Quit
+			return m.quit()
 		}
 		return nil
 	case overlayProblems:
@@ -413,11 +483,27 @@ func (m *root) key(msg tea.KeyMsg) tea.Cmd {
 	case "F":
 		m.focus = true
 	case "q":
-		return tea.Quit
+		return m.quit()
 	default:
 		return m.toCurrent(msg)
 	}
 	return nil
+}
+
+// quit stops every screen that is a Stopper, then quits the program. Every way out from a key or
+// the feed goes through it; a signal goes through main's call of Stop.
+func (m *root) quit() tea.Cmd {
+	m.stopScreens()
+	return tea.Quit
+}
+
+// stopScreens calls Stop on every screen that is a Stopper.
+func (m *root) stopScreens() {
+	for _, s := range m.screens {
+		if st, ok := s.(Stopper); ok {
+			st.Stop()
+		}
+	}
 }
 
 // opened tells the current screen it has been opened, when it is an Opener and the tab was prev
@@ -509,7 +595,7 @@ func (m *root) View() string {
 	case overlayKeys:
 		body = keysView(m.screens[m.tab])
 	case overlayProblems:
-		body = m.probs.view(m.ctx, bodyH)
+		body = m.probs.view(m.ctx, inner, bodyH)
 	default:
 		body = m.screens[m.tab].View(inner, bodyH, m.ctx)
 	}

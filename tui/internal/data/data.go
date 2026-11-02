@@ -7,6 +7,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"encoding/base32"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	_ "modernc.org/sqlite" // the "sqlite" driver
 )
@@ -140,7 +142,8 @@ type Choice struct {
 // Databases is the databases of the app built in buildDir: the shared one, dev.db, then for each
 // of m's silos, in the map's order, one per database file of that silo, by file name. A silo's
 // files are where the silo's path rule puts them (silos/<key>/{value}.db); the label shows the
-// file's name without .db, which is the value's file name rather than its id.
+// id the file's name stands for (the runtime names a silo file by its id in lowercase base32hex),
+// or the name without .db when it is not such an encoding.
 func Databases(buildDir string, m Map) []Choice {
 	out := []Choice{{Label: "shared", Path: filepath.Join(buildDir, "dev.db")}}
 	for _, s := range m.Silos {
@@ -163,11 +166,26 @@ func Databases(buildDir string, m Map) []Choice {
 		}
 		slices.Sort(names)
 		for _, n := range names {
-			value := strings.TrimSuffix(strings.TrimPrefix(n, before), after)
+			value := siloID(strings.TrimSuffix(strings.TrimPrefix(n, before), after))
 			out = append(out, Choice{Label: s.Key + "/" + value, Path: filepath.Join(dir, n), Silo: s.Key})
 		}
 	}
 	return out
+}
+
+// siloEnc is how the runtime names a silo's file after its id (rt/db SiloFileName): base32hex
+// without padding, lowercased.
+var siloEnc = base32.HexEncoding.WithPadding(base32.NoPadding)
+
+// siloID is the id the silo file stem stands for, or stem itself when it is not the lowercase
+// base32hex of any text (the encoding must round-trip, which also rules out stray bits and
+// upper case).
+func siloID(stem string) string {
+	b, err := siloEnc.DecodeString(strings.ToUpper(stem))
+	if err != nil || len(b) == 0 || !utf8.Valid(b) || strings.ToLower(siloEnc.EncodeToString(b)) != stem {
+		return stem
+	}
+	return string(b)
 }
 
 // TablesFor is the tables of m that the database c holds: the siloed tables of c's silo for a
@@ -190,8 +208,20 @@ type DB struct {
 
 // Open opens the database file at path read-only with query_only set, waiting at most 200 ms for
 // a lock. A missing file is an error, not a new empty database.
-func Open(path string) (*DB, error) {
-	db, err := sql.Open("sqlite", "file:"+uriPath(path)+"?mode=ro&_pragma=query_only(1)&_pragma=busy_timeout(200)")
+func Open(path string) (*DB, error) { return open(path, true, true) }
+
+// open is Open with each of its two layers of protection on or off: the file opened read-only
+// (SQLite's mode=ro, else mode=rw, which still never creates the file) and query_only set. The
+// tests turn one off to show that the other refuses a write by itself.
+func open(path string, readOnly, queryOnly bool) (*DB, error) {
+	mode, qo := "rw", 0
+	if readOnly {
+		mode = "ro"
+	}
+	if queryOnly {
+		qo = 1
+	}
+	db, err := sql.Open("sqlite", "file:"+uriPath(path)+"?mode="+mode+"&_pragma=query_only("+strconv.Itoa(qo)+")&_pragma=busy_timeout(200)")
 	if err != nil {
 		return nil, err
 	}
@@ -235,14 +265,15 @@ func (db *DB) Page(ctx context.Context, t Table, orderBy string, desc bool, offs
 		by += " DESC"
 	}
 	stmt := "SELECT * FROM " + quote(t.SQL) + " ORDER BY " + by + " LIMIT " + strconv.Itoa(PageRows) + " OFFSET " + strconv.Itoa(max(offset, 0))
-	return db.rows(ctx, stmt, PageRows)
+	cols, rows, _, err := db.rows(ctx, stmt, PageRows)
+	return cols, rows, err
 }
 
-// Query runs stmt, which Guard must accept, and is its columns and at most QueryRows of its rows.
-// It gives up after five seconds.
-func (db *DB) Query(ctx context.Context, stmt string) ([]string, [][]string, error) {
+// Query runs stmt, which Guard must accept, and is its columns and at most QueryRows of its rows,
+// and whether the result had more rows than that. It gives up after five seconds.
+func (db *DB) Query(ctx context.Context, stmt string) ([]string, [][]string, bool, error) {
 	if err := Guard(stmt); err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
@@ -250,16 +281,16 @@ func (db *DB) Query(ctx context.Context, stmt string) ([]string, [][]string, err
 }
 
 // rows runs stmt and is its columns and at most limit rows, each value as text: NULL as "NULL",
-// a blob as its bytes.
-func (db *DB) rows(ctx context.Context, stmt string, limit int) ([]string, [][]string, error) {
+// a blob as its bytes. It reads one row more than limit to tell whether it cut the result short.
+func (db *DB) rows(ctx context.Context, stmt string, limit int) ([]string, [][]string, bool, error) {
 	rs, err := db.db.QueryContext(ctx, stmt)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	defer rs.Close()
 	cols, err := rs.Columns()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	var out [][]string
 	vals := make([]any, len(cols))
@@ -267,9 +298,14 @@ func (db *DB) rows(ctx context.Context, stmt string, limit int) ([]string, [][]s
 	for i := range vals {
 		ptrs[i] = &vals[i]
 	}
-	for len(out) < limit && rs.Next() {
+	truncated := false
+	for rs.Next() {
+		if len(out) == limit {
+			truncated = true
+			break
+		}
 		if err := rs.Scan(ptrs...); err != nil {
-			return nil, nil, err
+			return nil, nil, false, err
 		}
 		row := make([]string, len(cols))
 		for i, v := range vals {
@@ -278,9 +314,9 @@ func (db *DB) rows(ctx context.Context, stmt string, limit int) ([]string, [][]s
 		out = append(out, row)
 	}
 	if err := rs.Err(); err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
-	return cols, out, nil
+	return cols, out, truncated, nil
 }
 
 // exec runs stmt without Guard. Only the tests use it, to show that SQLite itself refuses a
