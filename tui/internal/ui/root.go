@@ -15,6 +15,7 @@ import (
 
 	"alder/tui/internal/feed"
 	"alder/tui/internal/look"
+	"alder/tui/internal/routes"
 	"alder/tui/internal/runner"
 	"alder/tui/internal/store"
 )
@@ -62,7 +63,9 @@ type Feed struct {
 // Ctx is the state the screens share: the options, the stores, whether Options.Open has yet to
 // return and its error when it failed, the last hello, the last build event of the dev server's
 // current boot and the build state, the app's exit when it has exited, whether the feed is
-// disconnected, and the active filters of the Logs and Requests screens.
+// disconnected, the active filters of the Logs and Requests screens, and the app's routes as
+// the Routes screen last loaded them, with the route the Requests screen is filtered to (nil
+// for none). RouteFilter is separate from ReqFilter, the text filter, and both apply.
 type Ctx struct {
 	Opts         Options
 	Logs         *store.Logs
@@ -76,6 +79,8 @@ type Ctx struct {
 	Disconnected bool
 	LogFilter    store.Filter
 	ReqFilter    string
+	Routes       []routes.Route
+	RouteFilter  *routes.Route
 }
 
 // Screen is one tab. Update gets every key the frame does not keep for itself and every other
@@ -100,6 +105,12 @@ type Claimer interface {
 // Tests screen, which runs the suite the first time.
 type Opener interface {
 	Open(c *Ctx) tea.Cmd
+}
+
+// Starter is a Screen that does something when the program starts, such as the Routes screen,
+// which loads the routes so they are there when its tab is opened.
+type Starter interface {
+	Start(c *Ctx) tea.Cmd
 }
 
 // The messages the program sends itself: a feed event, the end of the feed, and a line for the
@@ -147,7 +158,7 @@ func New(o Options) tea.Model {
 			newLogsScreen(),
 			placeholder{title: "Data", command: func(c *Ctx) string { return "sqlite3 build/" + appName(c) + "/dev.db" }},
 			newTestsScreen(),
-			placeholder{title: "Routes", command: func(*Ctx) string { return "alder routes --json" }},
+			newRoutesScreen(),
 		},
 	}
 	if o.Open != nil {
@@ -168,15 +179,21 @@ func StartErr(m tea.Model) error {
 // Init opens the dev server when the options say how, reading what Open reports as it reports
 // it; otherwise it reads the feed.
 func (m *root) Init() tea.Cmd {
+	var cmds []tea.Cmd
+	for _, s := range m.screens {
+		if st, ok := s.(Starter); ok {
+			cmds = append(cmds, st.Start(m.ctx))
+		}
+	}
 	if q := m.start; q != nil {
 		open := m.ctx.Opts.Open
-		return tea.Batch(func() tea.Msg {
+		return tea.Batch(append(cmds, func() tea.Msg {
 			f, err := open(q.line)
 			q.finish(f, err)
 			return nil
-		}, q.next())
+		}, q.next())...)
 	}
-	return readEvent(m.ctx.Opts.Events)
+	return tea.Batch(append(cmds, readEvent(m.ctx.Opts.Events))...)
 }
 
 // startQueue carries what Options.Open reports to the update loop, in order: the lines the dev
@@ -269,9 +286,14 @@ func (m *root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.rid != "" {
 			m.ctx.LogFilter.Rid = msg.rid
 		}
+		var told tea.Cmd
+		if msg.route != nil {
+			m.ctx.RouteFilter = msg.route
+			told = m.toScreens(routeFilterMsg{})
+		}
 		prev := m.tab
 		m.tab = msg.tab
-		return m, m.opened(prev)
+		return m, tea.Batch(told, m.opened(prev))
 	case tea.KeyMsg:
 		prev := m.tab
 		cmd := m.key(msg)
@@ -435,8 +457,11 @@ func copyText(c *Ctx, s string) tea.Cmd {
 }
 
 // open opens url in the browser; the footer shows a failure.
-func (m *root) open(url string) tea.Cmd {
-	op := m.ctx.Opts.OpenURL
+func (m *root) open(url string) tea.Cmd { return openURL(m.ctx, url) }
+
+// openURL opens url in the browser of c's options; the footer shows a failure.
+func openURL(c *Ctx, url string) tea.Cmd {
+	op := c.Opts.OpenURL
 	return func() tea.Msg {
 		if op == nil {
 			return flashMsg(look.Palette.Yellow("open: no browser"))
