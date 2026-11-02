@@ -8,12 +8,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/muesli/termenv"
 
@@ -185,12 +187,31 @@ func TestFrame_Mismatch(t *testing.T) {
 	o := options(events)
 	o.Version = "v0.9.0"
 	tm := start(t, o, events, fixture(t, "basic")[0])
-	waitText(t, tm, "upgrade both")
+	waitText(t, tm, "≠ tui")
 	_, frame := finalFrame(t, tm)
-	if !bytes.Contains(frame, []byte("\x1b[33malder-tui v0.9.0 with alder v0.15.0: upgrade both togeth…\x1b[0m")) {
+	if !bytes.Contains(frame, []byte("\x1b[33malder v0.15.0 ≠ tui v0.9.0\x1b[0m")) {
 		t.Errorf("no yellow mismatch warning in\n%s", frame)
 	}
 	teatest.RequireEqualOutput(t, frame)
+}
+
+// With a version mismatch at 100 columns the warning is short enough that all five tabs show.
+func TestStatusBar_Mismatch100(t *testing.T) {
+	o := options(nil)
+	o.Version = "v0.9.0"
+	m := newRoot(o, fixture(t, "basic")[0])
+	bar := ansi.Strip(m.statusBar())
+	if !strings.Contains(bar, "≠ tui v0.9.0") {
+		t.Fatalf("no mismatch warning in %q", bar)
+	}
+	for i, s := range m.screens {
+		if label := strconv.Itoa(i+1) + " " + s.Title(); !strings.Contains(bar, label) {
+			t.Errorf("tab %q is not in %q", label, bar)
+		}
+	}
+	if w := ansi.StringWidth(m.statusBar()); w > 100 {
+		t.Errorf("status bar is %d cols, want at most 100", w)
+	}
 }
 
 // The mismatch is judged against the alder producing the feed once a hello has arrived, not the
@@ -202,7 +223,7 @@ func TestFrame_MismatchUsesHello(t *testing.T) {
 	tm := start(t, o, events, fixture(t, "basic")[0])
 	waitText(t, tm, "alder v0.15.0")
 	m, frame := finalFrame(t, tm)
-	if bytes.Contains(frame, []byte("upgrade both together")) {
+	if bytes.Contains(frame, []byte("≠ tui")) {
 		t.Errorf("a warning although the feed's alder matches:\n%s", frame)
 	}
 	if got := versionPart(m.ctx); got != "alder v0.15.0" {
@@ -213,7 +234,7 @@ func TestFrame_MismatchUsesHello(t *testing.T) {
 // Before a hello arrives the version comes from `alder help --json`.
 func TestVersionPart_BeforeHello(t *testing.T) {
 	c := &Ctx{Opts: Options{Version: "v0.15.0", AlderVersion: "v0.5.0"}}
-	if got := versionPart(c); !strings.Contains(got, "alder-tui v0.15.0 with alder v0.5.0") {
+	if got := versionPart(c); !strings.Contains(got, "alder v0.5.0 ≠ tui v0.15.0") {
 		t.Errorf("versionPart = %q, want the PATH alder's mismatch", got)
 	}
 }

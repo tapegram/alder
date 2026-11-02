@@ -56,6 +56,12 @@ func run(args []string, stdout, stderr *os.File) int {
 	if fs.NArg() > 0 {
 		dir = fs.Arg(0)
 	}
+	// dir is checked first, since the version check below runs in no particular directory and a bad
+	// dir would otherwise show as an opaque chdir error.
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		fmt.Fprintf(stderr, "alder-tui: %s: not a directory\n", dir)
+		return 1
+	}
 	bin, err := alderbin.Find(os.Getenv, exec.LookPath)
 	if err != nil {
 		fmt.Fprintln(stderr, "alder-tui:", err)
@@ -63,7 +69,7 @@ func run(args []string, stdout, stderr *os.File) int {
 	}
 	vctx, vcancel := context.WithTimeout(context.Background(), 10*time.Second)
 	have, err := alderbin.Version(vctx, func(ctx context.Context, args ...string) ([]byte, error) {
-		res, err := runner.Exec(bin).Run(ctx, dir, args...)
+		res, err := runner.Exec(bin).Run(ctx, "", args...)
 		if err != nil {
 			return nil, err
 		}
