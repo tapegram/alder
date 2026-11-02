@@ -10,11 +10,13 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -28,6 +30,10 @@ import (
 // version is the release this binary was built as. GoReleaser sets it with -ldflags, since a
 // nested module's build information does not carry the root module's tag.
 var version = "(devel)"
+
+// extraOptions are added to the program's options. Tests set tea.WithInput so that the program
+// reads keys from a pipe instead of opening /dev/tty.
+var extraOptions []tea.ProgramOption
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -130,7 +136,25 @@ func run(args []string, stdout, stderr *os.File) int {
 		HTTP: &http.Client{Timeout: 5 * time.Second}, Now: time.Now,
 		OpenURL: openURL, Copy: copyText,
 	})
-	final, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithOutput(stdout)).Run()
+	// The program's own signal handler is off: it catches SIGINT and SIGTERM only, and only the
+	// first, so a SIGHUP (the terminal closed) or a second signal would kill the process before the
+	// screens' runs and alder run are stopped. Here every such signal, for as long as run lasts,
+	// quits the program, and the stops below still run.
+	p := tea.NewProgram(m, append([]tea.ProgramOption{tea.WithAltScreen(), tea.WithOutput(stdout), tea.WithoutSignalHandler()}, extraOptions...)...)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigs)
+	ran := make(chan struct{})
+	go func() {
+		select {
+		case <-sigs:
+			p.Quit()
+		case <-ran:
+		}
+	}()
+	final, err := p.Run()
+	close(ran)
+	ui.Stop(final)
 	stop()
 	if serr := ui.StartErr(final); serr != nil {
 		fmt.Fprintln(stderr, "alder-tui:", serr)

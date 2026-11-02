@@ -182,6 +182,15 @@ func StartErr(m tea.Model) error {
 	return nil
 }
 
+// Stop stops every screen of the program's model m that is a Stopper, as quitting from a key
+// does. main calls it once the program has returned, however it ended, so that a signal also
+// leaves no alder test running. Stopping twice is harmless.
+func Stop(m tea.Model) {
+	if r, ok := m.(*root); ok {
+		r.stopScreens()
+	}
+}
+
 // Init opens the dev server when the options say how, reading what Open reports as it reports
 // it; otherwise it reads the feed.
 func (m *root) Init() tea.Cmd {
@@ -426,15 +435,20 @@ func (m *root) key(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// quit stops every screen that is a Stopper, then quits the program. Every way out goes through
-// it.
+// quit stops every screen that is a Stopper, then quits the program. Every way out from a key or
+// the feed goes through it; a signal goes through main's call of Stop.
 func (m *root) quit() tea.Cmd {
+	m.stopScreens()
+	return tea.Quit
+}
+
+// stopScreens calls Stop on every screen that is a Stopper.
+func (m *root) stopScreens() {
 	for _, s := range m.screens {
 		if st, ok := s.(Stopper); ok {
 			st.Stop()
 		}
 	}
-	return tea.Quit
 }
 
 // opened tells the current screen it has been opened, when it is an Opener and the tab was prev
