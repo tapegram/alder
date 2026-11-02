@@ -12,6 +12,7 @@ type Request struct {
 // debug level (quiet static and dev hits) are left out.
 type Requests struct {
 	ring ring[Request]
+	end  int64
 }
 
 // NewRequests is an empty table keeping the last max requests.
@@ -27,6 +28,7 @@ func (q *Requests) Add(e feed.Event) {
 		return
 	}
 	q.ring.add(Request{Record: *r, Seq: e.Seq})
+	q.end++
 }
 
 // All is the requests, oldest first.
@@ -52,5 +54,9 @@ func (q *Requests) ByRid(rid string) (Request, bool) {
 	return Request{}, false
 }
 
+// End counts the changes to the table: it rises with every request added and every Reset, and
+// never falls, so a reader can tell that the table is the one it last saw.
+func (q *Requests) End() int64 { return q.end }
+
 // Reset empties the table.
-func (q *Requests) Reset() { q.ring.reset() }
+func (q *Requests) Reset() { q.ring.reset(); q.end++ }

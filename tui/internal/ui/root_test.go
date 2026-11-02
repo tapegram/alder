@@ -331,6 +331,9 @@ func run(m *root, msg tea.Msg) {
 // newRoot is the root model of o, sized 100×30, with evs applied.
 func newRoot(o Options, evs ...feed.Event) *root {
 	m := New(o).(*root)
+	// The strip's clock would make press and run wait a second and then loop; tests that want it
+	// set their own seam.
+	m.screens[0].(*requestsScreen).after = func(time.Duration, tea.Msg) tea.Cmd { return nil }
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	for _, ev := range evs {
 		m.Update(eventMsg(ev))

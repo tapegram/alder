@@ -1,5 +1,6 @@
  shelf  [32m● ok[0m  localhost:8080  alder v0.15.0                         [1m1 Requests[0m
- ← GET /books/42  200  12.8ms  rid 5f3a2c1f  route /books/{id}  steps 5  db 11…
+ ← GET /books/42  200  12.8ms  rid 5f3a2c1f  route /books/{id}  steps 5
+   db 11/9.6ms
  [1mSteps[0m
  > load           0.4ms  db
    Books.find     0.9ms  db
@@ -9,9 +10,9 @@
 
 
  [1mSQL (11, 1 repeat group)[0m
-   ▸ select * from books where id=?                        ×1     0.9ms 1 row
-   ▸ select * from loans where book=?                      ×9 [33mn+1[0m 8.1ms 9 rows
-   ▸ select count(*) from reviews where book=?             ×1     0.6ms 1 row
+   ▸ select * from books where id=?                      ×1      0.9ms  1 row
+   ▸ select * from loans where book=?                    ×9 [33mn+1[0m  8.1ms  9 rows
+   ▸ select count(*) from reviews where book=?           ×1      0.6ms  1 row
 
 
 
@@ -19,7 +20,6 @@
  [1mLogs (2)[0m
    info: showing book 42
    [33mwarn[0m: book 42 has no cover image
-
 
 
 

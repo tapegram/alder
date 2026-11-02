@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +18,14 @@ import (
 
 // stripWindow is the span the stats strip covers.
 const stripWindow = 60 * time.Second
+
+// stripTick is how often the strip is redrawn while the Requests tab is open, so its window slides
+// and its figures decay when no request arrives.
+const stripTick = time.Second
+
+// stripTickMsg is the strip's clock. gen is the generation of the chain that sent it; a chain
+// ends when its tick finds another tab open or a newer chain started.
+type stripTickMsg struct{ gen int }
 
 // switchTabMsg asks the frame to switch to tab (0 is Requests), and when rid is set to filter
 // the Logs screen to that request, and when route is set to filter the Requests screen to that
@@ -42,10 +52,58 @@ type requestsScreen struct {
 	typing bool         // the `/` input is active and takes the keys
 	routed bool         // Ctx.RouteFilter is set, so the footer offers esc to clear it
 	detail *requestView // the open request, or nil
+	height int          // the rows the body has, as of the last tea.WindowSizeMsg
+
+	gen   int                                              // the generation of the live strip tick chain
+	after func(d time.Duration, msg tea.Msg) tea.Cmd       // sends msg after d; a seam for tests
+	match func([]routes.Route, string, string) (int, bool) // the router's match; a seam for tests
+	memo  rowsMemo                                         // the rows last computed
+}
+
+// rowsKey is what the rows of the table depend on: the text filter, the route filter, the table
+// (End moves with every request added) and the routes the router matches against.
+type rowsKey struct {
+	filter  string
+	routed  bool
+	route   routes.Route
+	end     int64
+	nroutes int
+	first   *routes.Route
+}
+
+// rowsMemo is the rows computed for key, and once the table has been drawn the width of each of
+// its columns over all rows.
+type rowsMemo struct {
+	ok   bool
+	key  rowsKey
+	rows rows
+	w    []int
 }
 
 // newRequestsScreen is the Requests tab, following the newest row.
-func newRequestsScreen() *requestsScreen { return &requestsScreen{follow: true} }
+func newRequestsScreen() *requestsScreen {
+	return &requestsScreen{follow: true, match: routes.MatchRequest,
+		after: func(d time.Duration, msg tea.Msg) tea.Cmd {
+			return tea.Tick(d, func(time.Time) tea.Msg { return msg })
+		}}
+}
+
+// Start begins the strip's clock when the Requests tab is the one the program opens on.
+func (s *requestsScreen) Start(c *Ctx) tea.Cmd {
+	if c.Tab != 0 {
+		return nil
+	}
+	return s.tick()
+}
+
+// Open begins the strip's clock each time the Requests tab becomes the current one.
+func (s *requestsScreen) Open(*Ctx) tea.Cmd { return s.tick() }
+
+// tick starts a new chain of strip ticks, ending the previous one.
+func (s *requestsScreen) tick() tea.Cmd {
+	s.gen++
+	return s.after(stripTick, stripTickMsg{s.gen})
+}
 
 func (*requestsScreen) Title() string { return "Requests" }
 
@@ -56,8 +114,22 @@ func (s *requestsScreen) Claims(msg tea.KeyMsg) bool {
 	return s.typing || s.detail != nil && detailClaims(msg)
 }
 
+// Update answers msg and then clamps the state View reads (the scroll position), so View never
+// writes it.
 func (s *requestsScreen) Update(msg tea.Msg, c *Ctx) (Screen, tea.Cmd) {
+	next, cmd := s.update(msg, c)
+	s.clamp(c)
+	return next, cmd
+}
+
+func (s *requestsScreen) update(msg tea.Msg, c *Ctx) (Screen, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		s.height = max(msg.Height-3, 0) // the frame keeps the status bar, a rule and the footer
+	case stripTickMsg:
+		if msg.gen == s.gen && c.Tab == 0 {
+			return s, s.after(stripTick, stripTickMsg{s.gen})
+		}
 	case routeFilterMsg:
 		s.detail, s.typing, s.routed, s.follow, s.top = nil, false, true, true, 0
 	case detailMsg:
@@ -165,23 +237,34 @@ func (r rows) at(i int) store.Request {
 }
 
 // rows are the requests that hold the text filter and are answered by the route filter's route.
-// Without either they are the table itself, read in place.
+// Without either they are the table itself, read in place. They are kept until the filters, the
+// table or the routes change, so a key or a frame does not match every row again.
 func (s *requestsScreen) rows(c *Ctx) rows {
+	key := rowsKey{filter: s.filter, end: c.Requests.End(), nroutes: len(c.Routes)}
+	if len(c.Routes) > 0 {
+		key.first = &c.Routes[0]
+	}
+	if c.RouteFilter != nil {
+		key.routed, key.route = true, *c.RouteFilter
+	}
+	if s.memo.ok && s.memo.key == key {
+		return s.memo.rows
+	}
 	rs := rows{q: c.Requests}
-	if s.filter == "" && c.RouteFilter == nil {
-		return rs
-	}
-	needle := strings.ToLower(s.filter)
-	rs.idx = []int{}
-	for i := range c.Requests.Len() {
-		r := c.Requests.At(i)
-		if c.RouteFilter != nil && !answeredBy(c, r, *c.RouteFilter) {
-			continue
+	if s.filter != "" || c.RouteFilter != nil {
+		needle := strings.ToLower(s.filter)
+		rs.idx = []int{}
+		for i := range c.Requests.Len() {
+			r := c.Requests.At(i)
+			if c.RouteFilter != nil && !s.answeredBy(c, r, *c.RouteFilter) {
+				continue
+			}
+			if strings.Contains(strings.ToLower(strings.Join(cells(r), " ")), needle) {
+				rs.idx = append(rs.idx, i)
+			}
 		}
-		if strings.Contains(strings.ToLower(strings.Join(cells(r), " ")), needle) {
-			rs.idx = append(rs.idx, i)
-		}
 	}
+	s.memo = rowsMemo{ok: true, key: key, rows: rs}
 	return rs
 }
 
@@ -189,13 +272,36 @@ func (s *requestsScreen) rows(c *Ctx) rows {
 // routes the Routes screen loaded. Routes are the same when their kind, path, module and name are:
 // the position of the declaration moves with every edit above it, and the filter outlives the
 // reload that follows each build.
-func answeredBy(c *Ctx, r store.Request, want routes.Route) bool {
-	i, ok := routes.MatchRequest(c.Routes, r.Method, r.Path)
+func (s *requestsScreen) answeredBy(c *Ctx, r store.Request, want routes.Route) bool {
+	i, ok := s.match(c.Routes, r.Method, r.Path)
 	if !ok {
 		return false
 	}
 	got := c.Routes[i]
 	return got.Kind == want.Kind && got.Path == want.Path && got.Module == want.Module && got.Name == want.Name
+}
+
+// bodyRows is how many table rows fit under the strip and its rule.
+func (s *requestsScreen) bodyRows() int { return max(s.height-2, 1) }
+
+// clamp keeps top where the rows and the cursor put it: at the first row of the last page while
+// following, else no lower than the cursor and no higher than keeps it in view. The frame runs it
+// at the end of every Update (a key, a resize, a request arriving), so View only reads it.
+func (s *requestsScreen) clamp(c *Ctx) {
+	rs := s.rows(c)
+	n, h := rs.len(), s.bodyRows()
+	if n == 0 {
+		s.top = 0
+		return
+	}
+	cur := s.cursor(rs)
+	if s.follow {
+		s.top = n - h
+	}
+	s.top = max(min(s.top, cur, n-h), 0)
+	if cur >= s.top+h {
+		s.top = cur - h + 1
+	}
 }
 
 // cursor is the position of the row under the cursor: the newest while following, else the row
@@ -249,32 +355,21 @@ func (s *requestsScreen) View(width, height int, c *Ctx) string {
 		msg := "no requests yet"
 		switch {
 		case s.filter != "" && c.RouteFilter != nil:
-			msg = "no requests match route " + c.RouteFilter.Path + " and /" + s.filter
+			msg = "no requests match route " + clean(c.RouteFilter.Path) + " and /" + clean(s.filter)
 		case s.filter != "":
-			msg = "no requests match /" + s.filter
+			msg = "no requests match /" + clean(s.filter)
 		case c.RouteFilter != nil:
-			msg = "no requests match route " + c.RouteFilter.Path
+			msg = "no requests match route " + clean(c.RouteFilter.Path)
 		}
 		return strings.Join(append(lines, "  "+look.Palette.Dim(msg)), "\n")
 	}
 	cur := s.cursor(rs)
-	if s.follow {
-		s.top = n - h
-	}
-	s.top = max(min(s.top, cur, n-h), 0)
-	if cur >= s.top+h {
-		s.top = cur - h + 1
-	}
+	top := min(s.top, n-1) // clamp has already run; View never writes it
 	vis := make([][]string, 0, h)
-	for i := s.top; i < min(s.top+h, n); i++ {
+	for i := top; i < min(top+h, n); i++ {
 		vis = append(vis, cells(rs.at(i)))
 	}
-	w := make([]int, colFlags+1)
-	for _, cs := range vis {
-		for i, cl := range cs {
-			w[i] = max(w[i], ansi.StringWidth(cl))
-		}
-	}
+	w := slices.Clone(s.widths(rs))
 	// The path takes what the other columns and their gutters leave.
 	rest := 2 + 2*colFlags
 	for i, x := range w {
@@ -284,7 +379,7 @@ func (s *requestsScreen) View(width, height int, c *Ctx) string {
 	}
 	w[colPath] = max(min(w[colPath], width-rest), 4)
 	for k, cs := range vis {
-		i := s.top + k
+		i := top + k
 		mark := "  "
 		if i == cur {
 			mark = "> "
@@ -292,6 +387,22 @@ func (s *requestsScreen) View(width, height int, c *Ctx) string {
 		lines = append(lines, mark+s.row(rs.at(i), cs, w))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// widths are the width of each column over all rows, so the columns do not move as the table
+// scrolls. They are kept with the rows.
+func (s *requestsScreen) widths(rs rows) []int {
+	if s.memo.w != nil {
+		return s.memo.w
+	}
+	w := make([]int, colFlags+1)
+	for i := range rs.len() {
+		for k, cl := range cells(rs.at(i)) {
+			w[k] = max(w[k], ansi.StringWidth(cl))
+		}
+	}
+	s.memo.w = w
+	return w
 }
 
 // row is one table row laid out in the column widths w: the cells are padded first, then styled,
@@ -315,15 +426,14 @@ func (s *requestsScreen) row(r store.Request, cs []string, w []int) string {
 }
 
 // strip is the last minute as ` last 60s  12.4 req/s  p50 8ms  p95 41ms  errors 0.0%`, then the
-// filter when one is set (bold while it is being typed). Only the requests of the window are read,
-// from the newest back.
+// filter when one is set (bold while it is being typed). Only the requests of the window are counted.
 func (s *requestsScreen) strip(c *Ctx) string {
 	now := c.Opts.Now()
 	var recent []store.Request
 	for i := c.Requests.Len() - 1; i >= 0; i-- {
 		r := c.Requests.At(i)
 		if !r.Time.After(now.Add(-stripWindow)) {
-			break
+			continue // arrival is not time order: a later row can still be inside the window
 		}
 		recent = append(recent, r)
 	}
@@ -358,7 +468,7 @@ func (s *requestsScreen) Keys() []Key {
 
 func (s *requestsScreen) Command(c *Ctx) string {
 	if s.detail != nil {
-		return "curl " + c.Opts.Addr + "/_dev/requests/" + s.detail.req.Rid
+		return "curl " + c.Opts.Addr + "/_dev/requests/" + url.PathEscape(s.detail.req.Rid)
 	}
 	return "alder run · ALDER_LOG=debug"
 }
