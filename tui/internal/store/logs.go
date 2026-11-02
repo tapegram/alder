@@ -17,8 +17,9 @@ const stampLayout = "2006/01/02 15:04:05"
 // Line is one line of the log scrollback. Text is the line as `alder run` renders it: the stamp,
 // the level, then the message, or for an access line the text logger's form. Level is the
 // lower-case level name (debug, info, warn or error); a run line and a raw line are info. Effect
-// marks an effect step, Run one of the dev server's own status lines and Access the line of an
-// answered request. Rid is the request the line belongs to, if any.
+// marks an effect step, Run one of the dev server's own status lines, Access the line of an
+// answered request and Gap the marker of events the feed lost (at level error, so that every
+// level filter shows it). Rid is the request the line belongs to, if any.
 type Line struct {
 	Seq                 int64
 	T                   time.Time
@@ -26,6 +27,7 @@ type Line struct {
 	Text                string
 	Rid                 string
 	Effect, Run, Access bool
+	Gap                 bool
 
 	rec *feed.Record // the record behind the line, to render an access line again at debug
 }
@@ -51,9 +53,12 @@ type Logs struct {
 // NewLogs is an empty scrollback keeping the last max lines.
 func NewLogs(max int) *Logs { return &Logs{ring: newRing[Line](max)} }
 
-// Add appends the line of a log or run event; any other event is ignored.
+// Add appends the line of a log, run or gap event; any other event is ignored.
 func (l *Logs) Add(e feed.Event) {
 	switch {
+	case e.Type == "gap" && e.Gap != nil:
+		l.add(Line{Seq: e.Seq, T: e.T, Level: "error", Gap: true,
+			Text: "… " + strconv.FormatUint(e.Gap.Missed, 10) + " events missed (ring overflow)"})
 	case e.Type == "run" && e.Run != nil:
 		l.add(Line{Seq: e.Seq, T: e.T, Level: "info", Text: e.Run.Text, Run: true})
 	case e.Type == "log" && e.Log != nil && e.Log.Record != nil:

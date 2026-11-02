@@ -229,7 +229,7 @@ func (s *logsScreen) View(width, height int, c *Ctx) string {
 
 // renderLine is a line as `alder run` shows it on a terminal, cut to about width cells first so
 // that a huge line costs no more than a short one: a run line dim, after `alder run: ` when it
-// does not start with it; an effect line dim; any other line with its stamp dim and its level
+// does not start with it; an effect line and a gap marker dim; any other line with its stamp dim and its level
 // word coloured, `info:` green, `warn:` yellow, `error:` red. The app's text is cleaned of
 // control characters before it is styled.
 func renderLine(ln store.Line, width int) string {
@@ -244,7 +244,7 @@ func renderLine(ln store.Line, width int) string {
 			text = "alder run: " + text
 		}
 		return look.Palette.Dim(text)
-	case ln.Effect:
+	case ln.Effect, ln.Gap:
 		return look.Palette.Dim(text)
 	}
 	m := logLinePat.FindStringSubmatch(text)

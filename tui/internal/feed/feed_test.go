@@ -381,3 +381,134 @@ func TestConnect_NotAlder(t *testing.T) {
 		t.Errorf("Connect(nothing listening) = %v, want a connection error", err)
 	}
 }
+
+// A log record whose typed decode fails (a key of the wrong type) is kept as raw text, the
+// record's JSON, rather than dropped.
+func TestDecode_BadAttrKeepsRaw(t *testing.T) {
+	rec := `{"time":"2026-11-01T14:02:11Z","level":"INFO","msg":"hi","repeats":"x"}`
+	ev, err := Decode([]byte(`{"type":"log","seq":4,"t":"2026-11-01T14:02:11Z","record":` + rec + `}`))
+	if err != nil {
+		t.Fatalf("Decode = %v, want the log kept", err)
+	}
+	if ev.Type != "log" || ev.Seq != 4 || ev.Log == nil || ev.Log.Record != nil || ev.Log.Raw != rec {
+		t.Errorf("Decode = %+v (log %+v), want a log with Raw %s and no record", ev, ev.Log, rec)
+	}
+}
+
+// helloOnly is a script answering with a hello and then nothing at all, no pings either, until
+// the client goes away: a half-open connection, as the client sees it.
+func helloOnly(hello []byte) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "data: %s\n\n", hello)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}
+}
+
+func TestClient_IdleDeadline(t *testing.T) {
+	_, addr := startFeed(t, helloOnly(fixture(t, "basic.ndjson")[0]))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	start := time.Now()
+	ch, err := ConnectWith(ctx, addr, Options{Idle: 200 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev := take(t, ch, 1)[0]; ev.Type != "hello" {
+		t.Fatalf("first event = %s, want hello", shape([]Event{ev}))
+	}
+	select {
+	case ev := <-ch:
+		if ev.Type != "disconnected" {
+			t.Errorf("after a silent stream got %s, want disconnected", shape([]Event{ev}))
+		}
+		if d := time.Since(start); d > time.Second {
+			t.Errorf("disconnected after %v, want within 1s", d)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("a silent stream still connected after 1s with Idle 200ms")
+	}
+}
+
+// Pings alone push the idle deadline back: a stream that carries only pings stays connected.
+func TestClient_PingsKeepAlive(t *testing.T) {
+	hello := fixture(t, "basic.ndjson")[0]
+	_, addr := startFeed(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "data: %s\n\n", hello)
+		w.(http.Flusher).Flush()
+		tick := time.NewTicker(50 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-tick.C:
+				fmt.Fprint(w, ": ping\n\n")
+				w.(http.Flusher).Flush()
+			}
+		}
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch, err := ConnectWith(ctx, addr, Options{Idle: 200 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	take(t, ch, 1)
+	select {
+	case ev := <-ch:
+		t.Errorf("a pinged stream got %s", shape([]Event{ev}))
+	case <-time.After(700 * time.Millisecond):
+	}
+}
+
+// A reconnect to the same dev server whose ring no longer holds the events after the last one
+// seen (its hello's first is above last+1) gets a gap event, after the hello, with the count of
+// the events lost.
+func TestClient_Gap(t *testing.T) {
+	lines := fixture(t, "basic.ndjson")
+	hello, events := lines[0], lines[1:]
+	// The client saw seqs 1 to 3; meanwhile the ring moved on and keeps 8 to 13 (last+5).
+	later := bytes.Replace(hello, []byte(`"first":1`), []byte(`"first":8`), 1)
+	_, addr := startFeed(t,
+		serve(append([][]byte{hello}, events[:3]...), false),
+		serve(append([][]byte{later}, events[7:]...), true),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch, err := Connect(ctx, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs := take(t, ch, 1+3+1+1+1+6)
+	if got, want := shape(evs), "hello:13 build:1 app:2 run:3 disconnected hello:13 gap:0 log:8 log:9 log:10 log:11 log:12 log:13"; got != want {
+		t.Errorf("events:\n%s\nwant:\n%s", got, want)
+	}
+	if g := evs[6].Gap; g == nil || g.Missed != 4 {
+		t.Errorf("gap = %+v, want Missed 4", g)
+	}
+}
+
+// Neither a reconnect whose ring still holds the next event, nor the first connection to a dev
+// server whose ring has already moved on, makes a gap.
+func TestClient_NoGap(t *testing.T) {
+	lines := fixture(t, "basic.ndjson")
+	hello, events := lines[0], lines[1:]
+	moved := bytes.Replace(hello, []byte(`"first":1`), []byte(`"first":4`), 1)
+	_, addr := startFeed(t,
+		serve(append([][]byte{moved}, events[3:5]...), false),
+		serve(append([][]byte{moved}, events[3:]...), true),
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch, err := Connect(ctx, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs := take(t, ch, 1+2+1+1+8)
+	if got, want := shape(evs), "hello:13 log:4 log:5 disconnected hello:13 log:6 log:7 log:8 log:9 log:10 log:11 log:12 log:13"; got != want {
+		t.Errorf("events:\n%s\nwant:\n%s", got, want)
+	}
+}
