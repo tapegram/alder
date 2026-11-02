@@ -264,3 +264,17 @@ func TestRoutes_OpenHint(t *testing.T) {
 		t.Errorf("o hint on a message route: %q", f)
 	}
 }
+
+// A key the screen lists itself hides the global hint of the same key.
+func TestFooter_ShadowedGlobal(t *testing.T) {
+	o, _ := routesOptions()
+	m := newRoot(o, fixture(t, "basic")...)
+	press(m, "5") // an openable route
+	if f := wideFooter(m); !strings.Contains(f, "o open") || strings.Contains(f, "o browser") {
+		t.Errorf("footer = %q, want o open and no o browser", f)
+	}
+	press(m, "j") // a message: o is the frame's
+	if f := wideFooter(m); strings.Contains(f, "o open") || !strings.Contains(f, "o browser") {
+		t.Errorf("footer = %q, want o browser and no o open", f)
+	}
+}

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -35,7 +36,14 @@ func (m *root) footer() string {
 	case m.focus:
 		keys, style = []Key{{"y", "copy"}, {"esc", "back"}}, look.Palette.Bold
 	default:
-		keys = append(append(keys, m.screens[m.tab].Keys()...), footerKeys...)
+		own := m.screens[m.tab].Keys()
+		keys = append(keys, own...)
+		for _, g := range footerKeys {
+			// A key the screen lists itself shadows the global one.
+			if !slices.ContainsFunc(own, func(k Key) bool { return k.Key == g.Key }) {
+				keys = append(keys, g)
+			}
+		}
 	}
 	if m.flash != "" {
 		cmd = ansi.Truncate(cmd, max(m.width-2, 0), "…")
