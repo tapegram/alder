@@ -3,6 +3,7 @@ package alderbin
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -32,6 +33,14 @@ func TestFind(t *testing.T) {
 	_, err = Find(func(string) string { return "" }, none)
 	if err == nil || err.Error() != "alder is not on PATH; install it or set ALDER_BIN" {
 		t.Fatalf("missing: got %v", err)
+	}
+}
+
+// A relative ALDER_BIN is made absolute, since alder run starts in the app's directory.
+func TestFind_RelativeALDERBIN(t *testing.T) {
+	got, err := Find(func(string) string { return "./alder" }, nil)
+	if err != nil || !filepath.IsAbs(got) || filepath.Base(got) != "alder" {
+		t.Fatalf("relative ALDER_BIN: got %q, %v", got, err)
 	}
 }
 

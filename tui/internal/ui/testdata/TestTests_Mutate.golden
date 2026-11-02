@@ -1,0 +1,30 @@
+ shelf  [32m● ok[0m  localhost:8080  alder v0.15.0               1 Requests 2 Logs 3 Data [1m4 Tests[0m 5 Routes
+ 4 passed, 0 failed  0.04s
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ > Books   "lend a book"     1.2ms   [32mok[0m
+   Books   "lend (twice)"    2.9ms   [32mok[0m
+   Search  "finds by title"  38.0ms  [32mok[0m
+   Search  "empty query"     0.8ms   [32mok[0m
+
+ [1mMutation[0m
+   score 0.50  killed 1  survived 1  suppressed 2  skipped 3
+   app/Books.al:16  n > 0 → n >= 0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ enter unfold  r run  w watch  m mutate  o browser  R restart  ? keys    [2malder test --json --mutate[0m

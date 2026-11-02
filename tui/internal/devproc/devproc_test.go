@@ -219,6 +219,29 @@ func TestOpen_Owns(t *testing.T) {
 	}
 }
 
+// The child runs in the app's directory, so that alder run's build lands in <dir>/build.
+func TestStart_WorkingDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix only")
+	}
+	script := filepath.Join(t.TempDir(), "alder")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\npwd -P >&2\ncat >/dev/null\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := Start(script, dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+	if l := <-p.Stderr(); l != dir {
+		t.Errorf("working directory = %q, want %q", l, dir)
+	}
+}
+
 func TestProc_DiesWithParentPipe(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unix only")
@@ -229,7 +252,7 @@ func TestProc_DiesWithParentPipe(t *testing.T) {
 	if err := os.WriteFile(script, []byte("#!/bin/sh\necho \"started $1 $ALDER_EXIT_ON_STDIN_EOF\" >&2\ncat >/dev/null\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	p, err := Start(script, "/app", []string{"ALDER_EXIT_ON_STDIN_EOF=1"})
+	p, err := Start(script, t.TempDir(), []string{"ALDER_EXIT_ON_STDIN_EOF=1"})
 	if err != nil {
 		t.Fatal(err)
 	}

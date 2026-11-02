@@ -268,7 +268,9 @@ type proc struct {
 	exited chan struct{}
 }
 
-// Start runs `alder run dir` with env added to the TUI's environment, its stdin a pipe whose
+// Start runs `alder run dir` in dir (which must be absolute: alder resolves its build directory
+// against the working directory, so the build lands in dir/build, where the Data and Tests
+// screens look) with env added to the TUI's environment, its stdin a pipe whose
 // write end only this process holds (so the child sees EOF when the TUI dies, however it dies),
 // its stdout discarded and its stderr read line by line, each line whole however long.
 func Start(alder, dir string, env []string) (Proc, error) {
@@ -283,6 +285,7 @@ func Start(alder, dir string, env []string) (Proc, error) {
 		return nil, err
 	}
 	cmd := exec.Command(alder, "run", dir)
+	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)
 	cmd.Stdin, cmd.Stderr = inR, errW
 	err = cmd.Start()

@@ -1,0 +1,30 @@
+ shelf  [2m● connecting[0m  localhost:8080  alder v0.15.0       1 Requests 2 Logs [1m3 Data[0m 4 Tests 5 Routes
+ [1mTables[0m             │ [1mBooks.Book[0m  rows 1–3 of 3
+ > Books.Book    3  │   [1mid[0m  [1mtitle[0m        [1myear[0m
+   Lending.Loan  1  │   b1  Middlemarch  1871
+                    │   b2  Dune         1965
+ [1mMigrations[0m         │   b3  Beloved      1987
+   [2m0001_init.sql[0m    │
+   [2m0002_loans.sql[0m   │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+                    │
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ enter rows  [ ] page  : sql  o browser  R restart  ? keys               [2msqlite3 build/shelf/dev.db[0m

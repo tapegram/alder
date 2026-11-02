@@ -31,8 +31,24 @@ command that prints the same data (`F` focuses it, then `y` copies it).
 - **Logs** (`2`): the app's log as `alder run` prints it, at a level you choose, filtered by a
   request id (from Requests' `l`) and a regexp; the strip under the status bar shows the
   filters in force.
-- **Data**, **Tests**, **Routes** (`3`–`5`): not yet; the footer names the command to use
-  meanwhile.
+- **Data** (`3`): the app's tables, by their Alder names, each with its row count, and the
+  migrations applied, on the left; the selected table's rows on the right, a page of 100 at a
+  time. The tables come from `GET /_dev/map.json` and the rows from the database file under
+  `build/<app>/`, opened read-only for each read. An app with silos has one database per silo
+  value, and `d` switches between them. `:` takes a statement (one that reads: it must begin
+  with `SELECT`, `WITH` or `EXPLAIN`) and shows its rows in place of the table's. The footer
+  names `sqlite3 build/<app>/dev.db`, with the statement when there is one.
+- **Tests** (`4`): runs `alder test --json` when the tab is first opened and shows a summary
+  line and a row per test (module, name, time, `ok` or `FAIL`). `enter` on a failure unfolds
+  its sides, note, error and trace; `enter` on the unfolded failure runs that test alone. `w`
+  watches the app's files and reruns the suite on a change; `m` runs the mutation tests
+  (`--mutate`) and adds the score and the surviving mutants. A run is never killed: `r` or a
+  change during one queues a rerun for when it ends. The footer names the command of the last
+  run.
+- **Routes** (`5`): the app's routes from `alder routes --json`, one row each (page or msg, path,
+  `module.name`, `file:line`, and how many requests it answered this session). `enter` shows
+  that route's requests in Requests; `o` opens a page with no parameter in the browser. The
+  footer names `alder routes --json`.
 
 ## Keys
 
@@ -79,13 +95,48 @@ Logs:
 | `x` | clear the request id and the regexp |
 | `enter` | open the request of the line, if it has one |
 
+Data:
+
+| Key | |
+|---|---|
+| `j`/`k`, arrows | move between tables (left) or rows (right) |
+| `enter`, `l` | move into a table's rows |
+| `h`/`l`, arrows | in the rows, move between columns |
+| `enter` | in the rows, show the row vertically with long text unfolded; `esc`, `h`, `enter` or `backspace` go back |
+| `esc` | in the rows, clear a query's result, else go back to the tables |
+| `[` / `]` | previous or next page of rows |
+| `s` | sort by the column under the cursor; again for descending |
+| `d` | next database (only when the app has silos) |
+| `:` | type a read-only SQL statement; `enter` runs it, `esc` cancels |
+
+Tests:
+
+| Key | |
+|---|---|
+| `j`/`k`, arrows | move; `j` scrolls a long unfolded failure before moving on |
+| `enter` | unfold the failure; again, rerun that test alone |
+| `r` | run the suite (queued behind a run in flight) |
+| `w` | start or stop watching the app's files |
+| `m` | run the mutation tests |
+
+Routes:
+
+| Key | |
+|---|---|
+| `j`/`k`, arrows | move |
+| `enter` | show the route's requests in Requests |
+| `o` | open the page in the browser (a page with no parameter) |
+
 ## Developing
 
 Build and test from this directory: `go build ./cmd/alder-tui`, `go test ./...`.
 
-`TestLive_HelloAndFirstRequest` (`integration_test.go`) runs a real `alder run` on a copy of
-`testdata/shelf`, a small app whose `/books/{id}` looks up each book's loan on its own (an N+1
-on purpose), and checks the feed and the dev endpoints against it. It runs when `alder` is on
+`TestLive_HelloAndFirstRequest` and `TestLive_Screens` (`integration_test.go`) run a real
+`alder run` on a copy of `testdata/shelf`, a small app whose `/books/{id}` looks up each book's
+loan on its own (an N+1 on purpose). The first checks the feed and the dev endpoints against it;
+the second checks what the Tests, Routes and Data screens read: `alder test --json` has a passing
+test, `alder routes --json` lists `/books/{id}`, and the SQL name the map gives the `Book` table
+is in the database file. It runs when `alder` is on
 `PATH` or `ALDER_BIN` names it, and is skipped under `-short`. Build `alder` from the same
 commit, since the test needs its dev feed:
 

@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"alder/tui/internal/look"
+	"alder/tui/internal/routes"
 	"alder/tui/internal/store"
 )
 
@@ -17,11 +18,17 @@ import (
 const stripWindow = 60 * time.Second
 
 // switchTabMsg asks the frame to switch to tab (0 is Requests), and when rid is set to filter
-// the Logs screen to that request.
+// the Logs screen to that request, and when route is set to filter the Requests screen to that
+// route.
 type switchTabMsg struct {
-	tab int
-	rid string
+	tab   int
+	rid   string
+	route *routes.Route
 }
+
+// routeFilterMsg tells the screens that Ctx.RouteFilter was set, so the Requests screen closes
+// its open request and follows the newest row of the filtered table.
+type routeFilterMsg struct{}
 
 // requestsScreen is the Requests tab: the strip of the last minute, a rule, and the table of
 // answered requests, newest at the bottom. The cursor follows the newest row until it moves up;
@@ -33,6 +40,7 @@ type requestsScreen struct {
 	top    int          // the position of the first row drawn
 	filter string       // the text every row shown holds, ignoring case
 	typing bool         // the `/` input is active and takes the keys
+	routed bool         // Ctx.RouteFilter is set, so the footer offers esc to clear it
 	detail *requestView // the open request, or nil
 }
 
@@ -50,6 +58,8 @@ func (s *requestsScreen) Claims(msg tea.KeyMsg) bool {
 
 func (s *requestsScreen) Update(msg tea.Msg, c *Ctx) (Screen, tea.Cmd) {
 	switch msg := msg.(type) {
+	case routeFilterMsg:
+		s.detail, s.typing, s.routed, s.follow, s.top = nil, false, true, true, 0
 	case detailMsg:
 		if s.detail != nil && s.detail.req.Rid == msg.rid {
 			s.detail.set(msg)
@@ -95,8 +105,8 @@ func (s *requestsScreen) input(msg tea.KeyMsg) {
 
 // tableKey answers a key on the table: j/k and the arrows move the cursor (up stops following,
 // down onto the newest row follows again),
-// G follows again, `/` opens the filter input, esc clears the filter, enter opens the request
-// under the cursor and l switches to Logs filtered to it.
+// G follows again, `/` opens the filter input, esc clears the text filter and the route filter,
+// enter opens the request under the cursor and l switches to Logs filtered to it.
 func (s *requestsScreen) tableKey(k string, c *Ctx) tea.Cmd {
 	rs := s.rows(c)
 	n := rs.len()
@@ -105,8 +115,8 @@ func (s *requestsScreen) tableKey(k string, c *Ctx) tea.Cmd {
 		s.typing = true
 		return nil
 	case "esc":
-		if s.filter != "" {
-			s.filter, s.follow, s.top = "", true, 0
+		if s.filter != "" || c.RouteFilter != nil {
+			s.filter, c.RouteFilter, s.routed, s.follow, s.top = "", nil, false, true, 0
 		}
 		return nil
 	case "G":
@@ -154,21 +164,38 @@ func (r rows) at(i int) store.Request {
 	return r.q.At(r.idx[i])
 }
 
-// rows are the requests that hold the filter. Without one they are the table itself, read in
-// place.
+// rows are the requests that hold the text filter and are answered by the route filter's route.
+// Without either they are the table itself, read in place.
 func (s *requestsScreen) rows(c *Ctx) rows {
 	rs := rows{q: c.Requests}
-	if s.filter == "" {
+	if s.filter == "" && c.RouteFilter == nil {
 		return rs
 	}
 	needle := strings.ToLower(s.filter)
 	rs.idx = []int{}
 	for i := range c.Requests.Len() {
-		if strings.Contains(strings.ToLower(strings.Join(cells(c.Requests.At(i)), " ")), needle) {
+		r := c.Requests.At(i)
+		if c.RouteFilter != nil && !answeredBy(c, r, *c.RouteFilter) {
+			continue
+		}
+		if strings.Contains(strings.ToLower(strings.Join(cells(r), " ")), needle) {
 			rs.idx = append(rs.idx, i)
 		}
 	}
 	return rs
+}
+
+// answeredBy reports whether the router would have answered r with the route want, among the
+// routes the Routes screen loaded. Routes are the same when their kind, path, module and name are:
+// the position of the declaration moves with every edit above it, and the filter outlives the
+// reload that follows each build.
+func answeredBy(c *Ctx, r store.Request, want routes.Route) bool {
+	i, ok := routes.MatchRequest(c.Routes, r.Method, r.Path)
+	if !ok {
+		return false
+	}
+	got := c.Routes[i]
+	return got.Kind == want.Kind && got.Path == want.Path && got.Module == want.Module && got.Name == want.Name
 }
 
 // cursor is the position of the row under the cursor: the newest while following, else the row
@@ -220,8 +247,13 @@ func (s *requestsScreen) View(width, height int, c *Ctx) string {
 	n, h := rs.len(), max(height-2, 1)
 	if n == 0 {
 		msg := "no requests yet"
-		if s.filter != "" {
+		switch {
+		case s.filter != "" && c.RouteFilter != nil:
+			msg = "no requests match route " + c.RouteFilter.Path + " and /" + s.filter
+		case s.filter != "":
 			msg = "no requests match /" + s.filter
+		case c.RouteFilter != nil:
+			msg = "no requests match route " + c.RouteFilter.Path
 		}
 		return strings.Join(append(lines, "  "+look.Palette.Dim(msg)), "\n")
 	}
@@ -298,6 +330,9 @@ func (s *requestsScreen) strip(c *Ctx) string {
 	st := store.Stats(recent, now)
 	line := "last 60s  " + strconv.FormatFloat(st.ReqPerSec, 'f', 1, 64) + " req/s  p50 " + fmtStripMs(st.P50) +
 		"  p95 " + fmtStripMs(st.P95) + "  errors " + strconv.FormatFloat(st.ErrPct, 'f', 1, 64) + "%"
+	if c.RouteFilter != nil {
+		line += "  route " + clean(c.RouteFilter.Path)
+	}
 	switch {
 	case s.typing:
 		line += "  " + look.Palette.Bold("/"+s.filter)
@@ -314,7 +349,11 @@ func (s *requestsScreen) Keys() []Key {
 	case s.typing:
 		return []Key{{"enter", "apply"}, {"esc", "clear"}}
 	}
-	return []Key{{"enter", "open"}, {"l", "logs"}, {"/", "filter"}, {"G", "follow"}}
+	keys := []Key{{"enter", "open"}, {"l", "logs"}, {"/", "filter"}, {"G", "follow"}}
+	if s.routed {
+		keys = append(keys, Key{"esc", "clear filters"})
+	}
+	return keys
 }
 
 func (s *requestsScreen) Command(c *Ctx) string {

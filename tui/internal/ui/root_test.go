@@ -58,16 +58,26 @@ func fixture(t *testing.T, name string) []feed.Event {
 }
 
 // options is the Options every test starts from: the app shelf on localhost:8080, alder-tui and
-// alder both v0.15.0 (the version the fixtures' hello names), the fixed clock, and an events channel the test feeds.
+// alder both v0.15.0 (the version the fixtures' hello names), the fixed clock, an events channel
+// the test feeds, and an HTTP client that reaches no dev server (so a test never talks to one
+// running on the machine).
 func options(events chan feed.Event) Options {
 	return Options{
 		App: "shelf", Dir: "/Users/dev/shelf", Addr: "localhost:8080",
 		Version: "v0.15.0", AlderVersion: "v0.15.0",
 		Events:  events,
 		Now:     func() time.Time { return clock },
+		HTTP:    &http.Client{Transport: offline{}},
 		OpenURL: func(string) error { return nil },
 		Copy:    func(string) error { return nil },
 	}
+}
+
+// offline is a transport that answers every request with an error.
+type offline struct{}
+
+func (offline) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("no dev server in the tests")
 }
 
 // start runs the model of o in a 100×30 terminal and sends evs on its events channel.
@@ -232,6 +242,11 @@ func TestFrame_NewBootResets(t *testing.T) {
 func TestFrame_Restart(t *testing.T) {
 	got := make(chan string, 1)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The Data screen's GET of the map at start is not the restart.
+		if r.Method == http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
 		got <- r.Method + " " + r.URL.Path
 		w.WriteHeader(http.StatusAccepted)
 	}))
@@ -307,8 +322,8 @@ func TestKeys_Tabs(t *testing.T) {
 	if m.tab != 2 {
 		t.Fatalf("after 3 the tab is %d", m.tab+1)
 	}
-	if !strings.Contains(m.View(), "coming in the next PR") {
-		t.Errorf("the Data placeholder does not say it is coming:\n%s", m.View())
+	if _, ok := m.screens[2].(*dataScreen); !ok {
+		t.Errorf("tab 3 is %T, want the Data screen", m.screens[2])
 	}
 	press(m, "tab", "tab", "tab")
 	if m.tab != 0 {
@@ -323,10 +338,14 @@ func TestKeys_Tabs(t *testing.T) {
 // claimer is a screen that claims every key while it is set, as Request detail and a text input
 // do, and records the keys it was given.
 type claimer struct {
-	placeholder
 	claim bool
 	got   []string
 }
+
+func (*claimer) Title() string              { return "Requests" }
+func (*claimer) View(int, int, *Ctx) string { return "" }
+func (*claimer) Keys() []Key                { return nil }
+func (*claimer) Command(*Ctx) string        { return "" }
 
 func (s *claimer) Claims(msg tea.KeyMsg) bool { return s.claim }
 
@@ -339,7 +358,7 @@ func (s *claimer) Update(msg tea.Msg, c *Ctx) (Screen, tea.Cmd) {
 
 func TestKeys_ScreenClaimsBeforeGlobals(t *testing.T) {
 	m := newRoot(options(nil))
-	s := &claimer{placeholder: placeholder{title: "Requests", command: func(*Ctx) string { return "" }}, claim: true}
+	s := &claimer{claim: true}
 	m.screens[0] = s
 	press(m, "2", "p", "tab", "q")
 	if m.tab != 0 || m.overlay != overlayNone {
