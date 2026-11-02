@@ -249,3 +249,25 @@ func TestLogs_RingWrap(t *testing.T) {
 		t.Errorf("following: cursor row %q", cur)
 	}
 }
+
+func TestLogs_RidStripHiddenCount(t *testing.T) {
+	m := newRoot(options(nil), fixture(t, "basic")...)
+	press(m, "1", "k", "k", "k", "l")
+	strip := func() string { return strings.Split(m.View(), "\n")[1] }
+	// The fixture already has four newer lines of other requests.
+	if s := strip(); s != " level info  rid 5f3a2c1f · 4 newer lines hidden (x to clear)" {
+		t.Fatalf("strip = %q", s)
+	}
+	m.Update(eventMsg(access(100, clock, "other001", "/a")))
+	if s := strip(); !strings.Contains(s, "rid 5f3a2c1f · 5 newer lines hidden (x to clear)") {
+		t.Errorf("strip with five hidden = %q", s)
+	}
+	m.Update(eventMsg(access(101, clock, "other001", "/b")))
+	if s := strip(); !strings.Contains(s, "rid 5f3a2c1f · 6 newer lines hidden (x to clear)") {
+		t.Errorf("strip with six hidden = %q", s)
+	}
+	press(m, "x")
+	if s := strip(); strings.Contains(s, "rid") {
+		t.Errorf("strip after x = %q", s)
+	}
+}

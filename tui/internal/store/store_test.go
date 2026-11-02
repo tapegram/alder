@@ -279,3 +279,50 @@ func TestLogs_RidRegexDebug(t *testing.T) {
 		}
 	}
 }
+
+// recLine is a log event of one request's line at level lv.
+func recLine(seq int64, lv, rid string) feed.Event {
+	return feed.Event{Type: "log", Seq: seq, Log: &feed.Log{Record: &feed.Record{Level: lv, Rid: rid, Msg: "m"}}}
+}
+
+func addAll(lg *Logs, evs ...feed.Event) {
+	for _, e := range evs {
+		lg.Add(e)
+	}
+}
+
+func TestHiddenNewer_Counts(t *testing.T) {
+	lg := NewLogs(50)
+	addAll(lg, recLine(1, "INFO", "a"), recLine(2, "INFO", "b"), recLine(3, "WARN", "b"), recLine(4, "INFO", "c"))
+	if n := lg.HiddenNewer(Filter{Level: "info", Rid: "a"}); n != 3 {
+		t.Errorf("HiddenNewer = %d, want 3", n)
+	}
+	// With no line of the rid shown, every line the rid alone hides counts.
+	if n := lg.HiddenNewer(Filter{Level: "info", Rid: "zz"}); n != 4 {
+		t.Errorf("HiddenNewer with no match = %d, want 4", n)
+	}
+}
+
+func TestHiddenNewer_OlderNotCounted(t *testing.T) {
+	lg := NewLogs(50)
+	addAll(lg, recLine(1, "INFO", "b"), recLine(2, "INFO", "c"), recLine(3, "INFO", "a"))
+	if n := lg.HiddenNewer(Filter{Level: "info", Rid: "a"}); n != 0 {
+		t.Errorf("HiddenNewer = %d, want 0", n)
+	}
+}
+
+func TestHiddenNewer_LevelExcluded(t *testing.T) {
+	lg := NewLogs(50)
+	addAll(lg, recLine(1, "INFO", "a"), recLine(2, "DEBUG", "b"))
+	if n := lg.HiddenNewer(Filter{Level: "info", Rid: "a"}); n != 0 {
+		t.Errorf("HiddenNewer = %d, want 0", n)
+	}
+}
+
+func TestHiddenNewer_NoRid(t *testing.T) {
+	lg := NewLogs(50)
+	addAll(lg, recLine(1, "INFO", "a"), recLine(2, "INFO", "b"))
+	if n := lg.HiddenNewer(Filter{Level: "info"}); n != 0 {
+		t.Errorf("HiddenNewer = %d, want 0", n)
+	}
+}

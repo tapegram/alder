@@ -119,6 +119,31 @@ func (l *Logs) Get(i int64, f Filter) (Line, bool) {
 	return ln, true
 }
 
+// HiddenNewer is how many lines newer than the newest line f shows pass f's level and regexp but
+// have another rid, so that only the rid hides them; with no line shown, all the lines the rid
+// alone hides. It is 0 when f has no rid.
+func (l *Logs) HiddenNewer(f Filter) int {
+	if f.Rid == "" {
+		return 0
+	}
+	other := f
+	other.Rid = ""
+	from := l.Start()
+	for i := l.End() - 1; i >= l.Start(); i-- {
+		if _, ok := l.Get(i, f); ok {
+			from = i + 1
+			break
+		}
+	}
+	n := 0
+	for i := from; i < l.End(); i++ {
+		if ln, ok := l.Get(i, other); ok && ln.Rid != f.Rid {
+			n++
+		}
+	}
+	return n
+}
+
 // Reset empties the scrollback. Positions go on from where they were.
 func (l *Logs) Reset() { l.ring.reset() }
 
