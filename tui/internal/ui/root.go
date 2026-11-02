@@ -96,6 +96,12 @@ type Claimer interface {
 	Claims(msg tea.KeyMsg) bool
 }
 
+// Opener is a Screen that does something each time it becomes the current tab, such as the
+// Tests screen, which runs the suite the first time.
+type Opener interface {
+	Open(c *Ctx) tea.Cmd
+}
+
 // The messages the program sends itself: a feed event, the end of the feed, and a line for the
 // footer (the outcome of a copy, an open or a restart).
 type (
@@ -140,7 +146,7 @@ func New(o Options) tea.Model {
 			newRequestsScreen(),
 			newLogsScreen(),
 			placeholder{title: "Data", command: func(c *Ctx) string { return "sqlite3 build/" + appName(c) + "/dev.db" }},
-			placeholder{title: "Tests", command: func(*Ctx) string { return "alder test --json" }},
+			newTestsScreen(),
 			placeholder{title: "Routes", command: func(*Ctx) string { return "alder routes --json" }},
 		},
 	}
@@ -263,10 +269,13 @@ func (m *root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.rid != "" {
 			m.ctx.LogFilter.Rid = msg.rid
 		}
+		prev := m.tab
 		m.tab = msg.tab
-		return m, nil
+		return m, m.opened(prev)
 	case tea.KeyMsg:
-		return m, m.key(msg)
+		prev := m.tab
+		cmd := m.key(msg)
+		return m, tea.Batch(cmd, m.opened(prev))
 	}
 	return m, m.toScreens(msg)
 }
@@ -385,6 +394,18 @@ func (m *root) key(msg tea.KeyMsg) tea.Cmd {
 		return tea.Quit
 	default:
 		return m.toCurrent(msg)
+	}
+	return nil
+}
+
+// opened tells the current screen it has been opened, when it is an Opener and the tab was prev
+// before.
+func (m *root) opened(prev int) tea.Cmd {
+	if m.tab == prev {
+		return nil
+	}
+	if o, ok := m.screens[m.tab].(Opener); ok {
+		return o.Open(m.ctx)
 	}
 	return nil
 }
