@@ -150,9 +150,6 @@ func TestLive_Screens(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "shelf")
 	copyApp(t, "testdata/shelf", dir)
 	addr := freeAddr(t)
-	// `alder run` writes its build under the working directory, so, as in a terminal in the app's
-	// directory, the test works there: build/shelf/dev.db is then the database Data reads.
-	t.Chdir(dir)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*buildWait+time.Minute)
 	defer cancel()

@@ -186,10 +186,16 @@ func (s *requestsScreen) rows(c *Ctx) rows {
 }
 
 // answeredBy reports whether the router would have answered r with the route want, among the
-// routes the Routes screen loaded.
+// routes the Routes screen loaded. Routes are the same when their kind, path, module and name are:
+// the position of the declaration moves with every edit above it, and the filter outlives the
+// reload that follows each build.
 func answeredBy(c *Ctx, r store.Request, want routes.Route) bool {
 	i, ok := routes.MatchRequest(c.Routes, r.Method, r.Path)
-	return ok && c.Routes[i] == want
+	if !ok {
+		return false
+	}
+	got := c.Routes[i]
+	return got.Kind == want.Kind && got.Path == want.Path && got.Module == want.Module && got.Name == want.Name
 }
 
 // cursor is the position of the row under the cursor: the newest while following, else the row

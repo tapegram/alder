@@ -149,6 +149,21 @@ func TestRoutes_Jump(t *testing.T) {
 	}
 }
 
+// A rebuild that moves the declaration (a new Line) keeps the route filter's rows.
+func TestRoutes_FilterSurvivesReload(t *testing.T) {
+	o, f := routesOptions()
+	m := newRoot(o, fixture(t, "basic")...)
+	press(m, "5", "j", "j", "j", "enter")
+	if rowOf(m.View(), "/books/42") == "" {
+		t.Fatalf("no filtered rows before the reload:\n%s", m.View())
+	}
+	f.On("routes --json", strings.ReplaceAll(shelfRoutes, `"line":8,`, `"line":12,`), 0)
+	runAll(m, eventMsg(buildEvent("ok")))
+	if frame := m.View(); rowOf(frame, "/books/42") == "" || rowOf(frame, "/search") != "" {
+		t.Errorf("a reload that shifts Line changed the filtered rows:\n%s", frame)
+	}
+}
+
 // The text filter and the route filter both apply, and a route no request has hit says so.
 func TestRoutes_FilterWithText(t *testing.T) {
 	o, _ := routesOptions()

@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 )
 
-// Find returns the path of the alder binary: ALDER_BIN when set, else alder on PATH.
+// Find returns the path of the alder binary: ALDER_BIN when set (made absolute, so that it names
+// the same file from the working directory of a child), else alder on PATH.
 func Find(getenv func(string) string, lookPath func(string) (string, error)) (string, error) {
 	if p := getenv("ALDER_BIN"); p != "" {
-		return p, nil
+		return filepath.Abs(p)
 	}
 	p, err := lookPath("alder")
 	if err != nil {

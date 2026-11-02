@@ -1005,10 +1005,10 @@ key of the current screen.
   runs that one test on its own. `r` runs the whole suite again, and `w` turns
   on watching: the suite then reruns whenever a file of the app changes. `m`
   runs the mutation tests (`alder test --mutate`) and adds their score and the
-  mutants no test noticed. A run is never cut short: `r`, or a change to the app while
-  watching, during a run queues one more run of the suite for when it ends,
-  and `enter` and `m` do nothing until it is over. The footer names the command that
-  made the list.
+  mutants no test noticed. A run is never cut short: `r`, or a change to the
+  app while watching, during a run queues one more run of the suite for when
+  it ends, and `enter` and `m` do nothing until it is over. The footer names
+  the command that made the list.
 - **Routes** lists the routes from `alder routes --json`: whether each is a
   page or a message, its path, the declaration that handles it, where that is
   in your source, and how many requests it has answered since the TUI started.
