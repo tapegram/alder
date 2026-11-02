@@ -227,10 +227,17 @@ through those nodes already.
 Neovim 0.11 enables semantic tokens for any server that advertises them, at a higher priority
 than tree-sitter, and refreshes them after the server's debounce. Phase 1 tokens say nothing
 tree-sitter does not, so they would only add a flicker between two identical colourings.
-**(call)** alder.nvim's next release disables them for its client (`on_attach`:
-`vim.lsp.semantic_tokens.enable(false, { bufnr = b })`, behind `opts.semantic_tokens = false`),
-keeping tree-sitter its one source; revisit when phase 2 gives the tokens something tree-sitter
-cannot know. Folding and selection are ignored by alder.nvim (its ftplugin sets the tree-sitter
+**(call, revised 2026-11-01)** alder.nvim's next release disables them for its client, behind
+`opts.semantic_tokens = false` (the default), keeping tree-sitter its one source; revisit when
+phase 2 gives the tokens something tree-sitter cannot know. The mechanism is the opt-out
+Neovim's own client code names: `on_init` records whether the server offered
+`semanticTokensProvider` (for `:checkhealth`) and deletes it from `client.server_capabilities`.
+Not `vim.lsp.semantic_tokens.enable(false, …)`: that function is Neovim 0.12, and alder.nvim's
+floor is 0.11, which has only `start`/`stop`; both versions schedule the token start after
+`on_attach`, so the deletion is honoured on both, and `on_init` runs once per client before any
+buffer attaches, so no buffer is coloured twice. Health reports the server's offer (`info` when
+ignored by default, `ok` when `opts.semantic_tokens = true`, `warn` when opted in and the server
+has none). Folding and selection are ignored by alder.nvim (its ftplugin sets the tree-sitter
 foldexpr), so they change nothing there.
 
 ### Server tests (`internal/lsp`)
