@@ -190,8 +190,8 @@ func TestRequest_Detail(t *testing.T) {
 			t.Errorf("the detail has no %q:\n%s", want, frame)
 		}
 	}
-	if !strings.Contains(m.footer(), "curl localhost:8080/_dev/requests/5f3a2c1f") {
-		t.Errorf("footer = %q", m.footer())
+	if !strings.Contains(wideFooter(m), "curl localhost:8080/_dev/requests/5f3a2c1f") {
+		t.Errorf("footer = %q", wideFooter(m))
 	}
 	if strings.Count(frame, "×9 \x1b[33mn+1\x1b[0m") != 1 || strings.Count(frame, "×1") != 2 {
 		t.Errorf("the nine loans selects are not folded into one row:\n%s", frame)

@@ -27,4 +27,4 @@
                             [2m│[0m                                             [2m│[0m
                             [2m│[0m                                             [2m│[0m
  ──────────────────────────────────────────────────────────────────────────────────────────────────
- tab section  enter unfold  y copy rid  esc back         [2mcurl localhost:8080/_dev/requests/5f3a2c1f[0m
+ tab section  enter unfold  y copy rid  esc back  o browser  R restart  ? keys  [2mcurl localhost:8080…[0m

@@ -1,8 +1,12 @@
 package ui
 
 import (
+	"alder/tui/internal/store"
+	"fmt"
+	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/x/exp/teatest"
 
@@ -56,8 +60,8 @@ func TestLogs_Follow(t *testing.T) {
 	if last := ls[len(ls)-1]; !strings.HasPrefix(last, " > panic: runtime error") {
 		t.Errorf("the cursor does not follow the newest line: %q", last)
 	}
-	if !strings.HasSuffix(lines[len(lines)-1], "\x1b[2mALDER_LOG=info alder run\x1b[0m") {
-		t.Errorf("footer = %q", lines[len(lines)-1])
+	if !strings.HasSuffix(wideFooter(m), "\x1b[2mALDER_LOG=info alder run\x1b[0m") {
+		t.Errorf("footer = %q", wideFooter(m))
 	}
 	// Moved up, the cursor stays on its line as lines arrive; G follows the newest again.
 	press(m, "k")
@@ -94,8 +98,8 @@ func TestLogs_LevelCycle(t *testing.T) {
 	if len(scrollback(frame)) != 11 {
 		t.Errorf("%d lines at debug, want 11:\n%s", len(scrollback(frame)), frame)
 	}
-	if !strings.Contains(m.footer(), "ALDER_LOG=debug alder run") {
-		t.Errorf("footer = %q", m.footer())
+	if !strings.Contains(wideFooter(m), "ALDER_LOG=debug alder run") {
+		t.Errorf("footer = %q", wideFooter(m))
 	}
 	press(m, "L")
 	if strip := strings.Split(m.View(), "\n")[1]; strip != " level info" {
@@ -129,8 +133,11 @@ func TestLogs_Regex(t *testing.T) {
 	if got := scrollback(after); strings.Join(got, "\n") != strings.Join(ls, "\n") {
 		t.Errorf("an invalid regexp changed the view:\n%s", after)
 	}
-	// x clears the regexp and the rid.
-	m.ctx.LogFilter.Rid = "5f3a2c1f"
+	// x clears the regexp and the rid; the rid comes from Requests' l key.
+	press(m, "1", "k", "k", "k", "l")
+	if m.tab != 1 || !strings.Contains(strings.Split(m.View(), "\n")[1], "rid 5f3a2c1f") {
+		t.Fatalf("l did not set the rid filter on tab %d:\n%s", m.tab+1, m.View())
+	}
 	press(m, "x")
 	if strip := strings.Split(m.View(), "\n")[1]; strip != " level info" {
 		t.Errorf("strip after x = %q", strip)
@@ -158,8 +165,8 @@ func TestLogs_OpenRequest(t *testing.T) {
 	if !strings.Contains(frame, "← GET /books/42  200  12.8ms  rid 5f3a2c1f  route /books/{id}") {
 		t.Errorf("enter does not open the request:\n%s", frame)
 	}
-	if !strings.Contains(m.footer(), "curl localhost:8080/_dev/requests/5f3a2c1f") {
-		t.Errorf("footer = %q", m.footer())
+	if !strings.Contains(wideFooter(m), "curl localhost:8080/_dev/requests/5f3a2c1f") {
+		t.Errorf("footer = %q", wideFooter(m))
 	}
 	press(m, "esc")
 	if !strings.Contains(strings.Split(m.View(), "\n")[1], "level info") {
@@ -169,5 +176,76 @@ func TestLogs_OpenRequest(t *testing.T) {
 	press(m, "G", "enter")
 	if strings.Contains(m.View(), "←") || len(*asked) != 1 {
 		t.Errorf("enter on a line without a rid opened a request:\n%s", m.View())
+	}
+}
+
+func TestLogs_TruncateRune(t *testing.T) {
+	text := strings.Repeat("界", 100)
+	for _, limit := range []int{1, 2, 3, 4, 5, 31, 100, 299, 300, 301} {
+		got := cutRunes(text, limit)
+		if !utf8.ValidString(got) || len(got) > limit {
+			t.Errorf("cutRunes(limit %d) = %d bytes, valid %v", limit, len(got), utf8.ValidString(got))
+		}
+	}
+	// A line far wider than the terminal renders as valid UTF-8 and fits the width.
+	ln := store.Line{Text: strings.Repeat("界", 5000), Run: true}
+	for _, w := range []int{7, 20, 79} {
+		out := renderLine(ln, w)
+		if !utf8.ValidString(out) {
+			t.Errorf("width %d: invalid UTF-8", w)
+		}
+		if ansi.StringWidth(ansi.Truncate(out, w, "…")) > w {
+			t.Errorf("width %d: cut line is wider", w)
+		}
+	}
+}
+
+// With a ring of 3 and 5 lines, the lines the ring drops leave no stale position, and the cursor
+// stays on a line, whether it follows or sits on a line that is overwritten.
+func TestLogs_RingWrap(t *testing.T) {
+	m := newRoot(options(nil))
+	m.ctx.Logs = store.NewLogs(3)
+	press(m, "2")
+	add := func(i int) {
+		run(m, eventMsg(feed.Event{Type: "run", Seq: int64(i), Run: &feed.Run{Text: fmt.Sprintf("alder run: line %d", i)}}))
+		m.View()
+	}
+	s := m.screens[1].(*logsScreen)
+	check := func(when string) {
+		t.Helper()
+		lg := m.ctx.Logs
+		if len(s.idx) > 3 {
+			t.Errorf("%s: idx = %v, more than the ring keeps", when, s.idx)
+		}
+		for _, p := range s.idx {
+			if p < lg.Start() || p >= lg.End() {
+				t.Errorf("%s: idx %v holds %d outside [%d,%d)", when, s.idx, p, lg.Start(), lg.End())
+			}
+		}
+		if c := s.cursor(); len(s.idx) > 0 && (c < 0 || c >= len(s.idx)) {
+			t.Errorf("%s: cursor %d out of idx %v", when, c, s.idx)
+		}
+	}
+	for i := 1; i <= 3; i++ {
+		add(i)
+	}
+	press(m, "k", "k")
+	m.View()
+	for i := 4; i <= 5; i++ {
+		add(i)
+		check(fmt.Sprintf("after line %d", i))
+	}
+	frame := m.View()
+	if strings.Contains(frame, "line 1") || strings.Contains(frame, "line 2") || !strings.Contains(frame, "line 3") {
+		t.Errorf("the frame is not the ring's three lines:\n%s", frame)
+	}
+	if cur := cursorRow(frame); !strings.Contains(cur, "line 3") {
+		t.Errorf("the cursor of an overwritten line should land on the oldest kept, got %q", cur)
+	}
+	press(m, "G")
+	add(6)
+	check("following")
+	if cur := cursorRow(m.View()); !strings.Contains(cur, "line 6") {
+		t.Errorf("following: cursor row %q", cur)
 	}
 }

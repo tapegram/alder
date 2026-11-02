@@ -286,7 +286,15 @@ func readEvent(ch <-chan feed.Event) tea.Cmd {
 	}
 }
 
+// Update answers msg and then clamps the state View reads (the Problems cursor), so View never
+// has to.
 func (m *root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	model, cmd := m.update(msg)
+	m.probs.clamp(m.ctx)
+	return model, cmd
+}
+
+func (m *root) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -584,7 +592,7 @@ func (m *root) View() string {
 	case overlayKeys:
 		body = keysView(m.screens[m.tab])
 	case overlayProblems:
-		body = m.probs.view(m.ctx, bodyH)
+		body = m.probs.view(m.ctx, inner, bodyH)
 	default:
 		body = m.screens[m.tab].View(inner, bodyH, m.ctx)
 	}

@@ -55,22 +55,31 @@ func NewLogs(max int) *Logs { return &Logs{ring: newRing[Line](max)} }
 
 // Add appends the line of a log, run or gap event; any other event is ignored.
 func (l *Logs) Add(e feed.Event) {
+	if ln, ok := LineOf(e); ok {
+		l.add(ln)
+	}
+}
+
+// LineOf is the scrollback line of a log, run or gap event, and whether e is one; it needs no
+// Logs, so a caller can render a single event.
+func LineOf(e feed.Event) (Line, bool) {
 	switch {
 	case e.Type == "gap" && e.Gap != nil:
-		l.add(Line{Seq: e.Seq, T: e.T, Level: "error", Gap: true,
-			Text: "… " + strconv.FormatUint(e.Gap.Missed, 10) + " events missed (ring overflow)"})
+		return Line{Seq: e.Seq, T: e.T, Level: "error", Gap: true,
+			Text: "… " + strconv.FormatUint(e.Gap.Missed, 10) + " events missed (ring overflow)"}, true
 	case e.Type == "run" && e.Run != nil:
-		l.add(Line{Seq: e.Seq, T: e.T, Level: "info", Text: e.Run.Text, Run: true})
+		return Line{Seq: e.Seq, T: e.T, Level: "info", Text: e.Run.Text, Run: true}, true
 	case e.Type == "log" && e.Log != nil && e.Log.Record != nil:
 		r := e.Log.Record
 		lv := strings.ToLower(r.Level)
 		ln := Line{Seq: e.Seq, T: r.Time, Level: lv, Rid: r.Rid, rec: r,
 			Effect: lv == "debug" && strings.HasPrefix(r.Msg, "effect "), Access: r.HasAccess}
 		ln.Text = renderText(r, false)
-		l.add(ln)
+		return ln, true
 	case e.Type == "log" && e.Log != nil:
-		l.add(Line{Seq: e.Seq, T: e.T, Level: "info", Text: e.Log.Raw})
+		return Line{Seq: e.Seq, T: e.T, Level: "info", Text: e.Log.Raw}, true
 	}
+	return Line{}, false
 }
 
 func (l *Logs) add(ln Line) {

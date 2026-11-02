@@ -591,3 +591,11 @@ func TestStart_OpenFails(t *testing.T) {
 		t.Errorf("StartErr of a model that has not failed = %v", err)
 	}
 }
+
+// wideFooter is the footer at 200 columns, where no command is cut.
+func wideFooter(m *root) string {
+	w := m.width
+	m.width = 200
+	defer func() { m.width = w }()
+	return m.footer()
+}

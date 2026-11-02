@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -253,5 +254,28 @@ func TestLogs_GapMarker(t *testing.T) {
 	}
 	if ls := lg.View(Filter{Level: "error"}); len(ls) != 1 || !ls[0].Gap {
 		t.Errorf("at error = %q, want the marker alone", texts(ls))
+	}
+}
+
+// The rid, the regexp and the debug rendering hold together: only the request's own access line
+// passes, with its steps.
+func TestLogs_RidRegexDebug(t *testing.T) {
+	lg := NewLogs(50)
+	for _, e := range fixture(t) {
+		lg.Add(e)
+	}
+	f := Filter{Level: "debug", Rid: "5f3a2c1f", Re: regexp.MustCompile(`steps=\d+`)}
+	ls := lg.View(f)
+	if len(ls) != 1 || !ls[0].Access || ls[0].Rid != "5f3a2c1f" {
+		t.Fatalf("lines = %q, want the one access line of 5f3a2c1f", texts(ls))
+	}
+	if !strings.Contains(ls[0].Text, " steps=") {
+		t.Errorf("the line has no steps at debug: %q", ls[0].Text)
+	}
+	f.Rid = "5f3a2c20"
+	for _, l := range lg.View(f) {
+		if l.Rid != "5f3a2c20" || !strings.Contains(l.Text, "steps=") {
+			t.Errorf("line %q does not hold the rid and the regexp", l.Text)
+		}
 	}
 }

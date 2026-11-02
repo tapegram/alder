@@ -335,9 +335,9 @@ func (s *requestsScreen) strip(c *Ctx) string {
 	}
 	switch {
 	case s.typing:
-		line += "  " + look.Palette.Bold("/"+s.filter)
+		line += "  " + look.Palette.Bold(clean("/"+s.filter))
 	case s.filter != "":
-		line += "  /" + s.filter
+		line += "  /" + clean(s.filter)
 	}
 	return line
 }

@@ -7,7 +7,8 @@ package look
 
 import (
 	"strings"
-	"unicode/utf8"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Style is the palette: each field wraps text in its sequence, and leaves empty text alone.
@@ -65,7 +66,8 @@ func StatusClass(code int) func(string) string {
 	return func(s string) string { return s }
 }
 
-// Columns lays rows out left-aligned, each column as wide as its widest cell by rune count,
+// Columns lays rows out left-aligned, each column as wide as its widest cell in terminal cells
+// (escape sequences take none, wide runes take two),
 // gutter spaces between, one string per row with no trailing spaces.
 func Columns(rows [][]string, gutter int) []string {
 	var widths []int
@@ -74,7 +76,7 @@ func Columns(rows [][]string, gutter int) []string {
 			if i >= len(widths) {
 				widths = append(widths, 0)
 			}
-			widths[i] = max(widths[i], utf8.RuneCountInString(c))
+			widths[i] = max(widths[i], ansi.StringWidth(c))
 		}
 	}
 	lines := make([]string, 0, len(rows))
@@ -83,7 +85,7 @@ func Columns(rows [][]string, gutter int) []string {
 		for i, c := range r {
 			sb.WriteString(c)
 			if i < len(r)-1 {
-				sb.WriteString(strings.Repeat(" ", widths[i]-utf8.RuneCountInString(c)+gutter))
+				sb.WriteString(strings.Repeat(" ", widths[i]-ansi.StringWidth(c)+gutter))
 			}
 		}
 		lines = append(lines, strings.TrimRight(sb.String(), " "))

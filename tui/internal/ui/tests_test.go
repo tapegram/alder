@@ -121,8 +121,8 @@ func TestTests_Unfold(t *testing.T) {
 	if strings.Split(after, "\n")[1] != " 3 passed, 1 failed  0.05s" {
 		t.Errorf("summary after the rerun = %q", strings.Split(after, "\n")[1])
 	}
-	if want := `alder test --json -run '^Books "lend \(twice\)"$'`; !strings.Contains(m.footer(), want) {
-		t.Errorf("footer = %q, want %q", m.footer(), want)
+	if want := `alder test --json -run '^Books "lend \(twice\)"$'`; !strings.Contains(wideFooter(m), want) {
+		t.Errorf("footer = %q, want %q", wideFooter(m), want)
 	}
 }
 
@@ -207,8 +207,8 @@ func TestTests_Mutate(t *testing.T) {
 	if strings.Contains(frame, "n + 1 → n - 1") {
 		t.Errorf("a killed mutant is listed:\n%s", frame)
 	}
-	if !strings.Contains(m.footer(), "alder test --json --mutate") {
-		t.Errorf("footer = %q", m.footer())
+	if !strings.Contains(wideFooter(m), "alder test --json --mutate") {
+		t.Errorf("footer = %q", wideFooter(m))
 	}
 	teatest.RequireEqualOutput(t, []byte(frame))
 }
@@ -257,8 +257,8 @@ func TestTests_ScrollPastList(t *testing.T) {
 			t.Errorf("no %q after moving to the last row:\n%s", want, frame)
 		}
 	}
-	if !strings.Contains(m.footer(), "alder test --json --mutate") {
-		t.Errorf("footer = %q", m.footer())
+	if !strings.Contains(wideFooter(m), "alder test --json --mutate") {
+		t.Errorf("footer = %q", wideFooter(m))
 	}
 	if cur := cursorRow(pressViewing(m, "k")); !strings.Contains(cur, "lend book 28") {
 		t.Errorf("k from the last row puts the cursor on %q, want lend book 28", cur)

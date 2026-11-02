@@ -70,17 +70,23 @@ func (m *root) problemsKey(k string) tea.Cmd {
 	return nil
 }
 
+// clamp keeps the cursor on a diagnostic. The frame runs it at the end of every Update, so a new
+// build event, a resize or a key never leaves it past the end, and view only reads it.
+func (p *problems) clamp(c *Ctx) {
+	p.cursor = max(min(p.cursor, len(diags(c))-1), 0)
+}
+
 // view is the overlay in height lines: the heading, each diagnostic (the one under the cursor
 // marked), a failure's text when the build failed without diagnostics, and after the app exited
 // its exit and the last lines of its stderr. The lines scroll to keep the cursor in view.
-func (p *problems) view(c *Ctx, height int) string {
+func (p *problems) view(c *Ctx, width, height int) string {
 	var lines []string
 	at := 0 // the line of the cursor
 	ds := diags(c)
-	p.cursor = min(p.cursor, max(len(ds)-1, 0))
+	cursor := min(p.cursor, max(len(ds)-1, 0)) // clamp has already run; View never writes it
 	for i, d := range ds {
 		mark := "  "
-		if i == p.cursor {
+		if i == cursor {
 			mark, at = "> ", len(lines)
 		}
 		lines = append(lines, mark+diagLine(d))
@@ -96,7 +102,7 @@ func (p *problems) view(c *Ctx, height int) string {
 		}
 		lines = append(lines, "  "+exitLine(e))
 		for _, l := range e.Tail {
-			lines = append(lines, "    "+tailLine(l))
+			lines = append(lines, "    "+tailLine(l, width))
 		}
 	}
 	if len(lines) == 0 {
@@ -123,14 +129,15 @@ func exitLine(a *feed.App) string {
 	return "the app exited (code " + strconv.Itoa(a.Exit.Code) + ")"
 }
 
-// tailLine is a line of an exited app's stderr as `alder run` shows it: a JSON log record (the
-// child logs JSON under the dev server) as its text line, anything else as it is.
-func tailLine(raw string) string {
+// tailLine is a line of an exited app's stderr as Logs shows it, cut to about width cells: a JSON
+// log record (the child logs JSON under the dev server) as its text line with its level
+// coloured, anything else as it is.
+func tailLine(raw string, width int) string {
 	ev, err := feed.Decode([]byte(`{"type":"log","record":` + raw + `}`))
-	if err != nil || ev.Log == nil || ev.Log.Record == nil || ev.Log.Record.Level == "" {
-		return raw
+	if err == nil && ev.Log != nil && ev.Log.Record != nil && ev.Log.Record.Level != "" {
+		if ln, ok := store.LineOf(ev); ok {
+			return renderLine(ln, width)
+		}
 	}
-	l := store.NewLogs(1)
-	l.Add(ev)
-	return l.View(store.Filter{})[0].Text
+	return renderLine(store.Line{Text: raw}, width)
 }

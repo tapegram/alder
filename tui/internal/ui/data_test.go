@@ -337,7 +337,7 @@ func TestData_Silos(t *testing.T) {
 		t.Errorf("the silo's view:\n%s", f)
 	}
 	lines := strings.Split(f, "\n")
-	if len(lines) != 24 || !strings.HasSuffix(lines[23], "sqlite3 build/shelf/silos/org/c4.db") {
+	if wf := ansi.Strip(wideFooter(m)); len(lines) != 24 || !strings.HasSuffix(wf, "sqlite3 build/shelf/silos/org/c4.db") {
 		t.Errorf("%d lines, footer %q", len(lines), lines[len(lines)-1])
 	}
 	for i, l := range lines {
