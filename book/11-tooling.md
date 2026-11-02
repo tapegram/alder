@@ -2197,6 +2197,15 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   text; picking another colour in an editor that has a picker rewrites the
   string (`#4f46e5`, say). Neovim 0.12 does this natively once you call
   `vim.lsp.document_color.enable(true)`.
+- **Highlighting, folding and expand selection.** The server colours the
+  file itself: it sends each name's kind (a function where it is defined, a
+  parameter, a field, a tag, a constructor) as *semantic tokens*, read from
+  the text as it is now, saved or not. An editor without an Alder grammar
+  (VS Code, Zed, Helix) highlights Alder from these alone. It can also fold
+  each declaration, block, `match`, element, record, list, comment block and
+  the imports, and grow a selection outward one construct at a time (in VS
+  Code, Shift+Alt+→). Neovim colours with tree-sitter, and a test keeps
+  the two in agreement (chapter 13, section 10).
 
 ### Routes in the editor
 
