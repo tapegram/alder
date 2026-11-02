@@ -1609,8 +1609,8 @@ func knownKind(k rtpkg.NoticeKind) rtpkg.NoticeKind {
 }
 
 // noticeLook is how a notice of kind k shows: the variant of its <al-toast> and <al-alert>
-// (al's "destructive" for error), the toast's timeout in ms (0, an error, stays until it is
-// closed) and the alert's role (alert, read out at once, for a warning or an error).
+// (al's "destructive" for error), the toast's timeout in ms (10000 for an error, so it
+// stays twice as long as the rest) and the alert's role (alert, read out at once, for a warning or an error).
 func noticeLook(k rtpkg.NoticeKind) (variant, timeout, role string) {
 	switch knownKind(k) {
 	case rtpkg.NoticeSuccess:
@@ -1618,7 +1618,7 @@ func noticeLook(k rtpkg.NoticeKind) (variant, timeout, role string) {
 	case rtpkg.NoticeWarning:
 		return "warning", "5000", "alert"
 	case rtpkg.NoticeError:
-		return "destructive", "0", "alert"
+		return "destructive", "10000", "alert"
 	}
 	return "info", "5000", "status"
 }

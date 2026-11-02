@@ -87,13 +87,13 @@ func TestNoticedToast(t *testing.T) {
 	}
 }
 
-// Each kind of notice has its own toast: error stays until it is closed (timeout 0).
+// Each kind of notice has its own toast: error stays for 10 seconds (timeout 10000).
 func TestNoticedToast_Kinds(t *testing.T) {
 	for kind, want := range map[rtpkg.NoticeKind]string{
 		rtpkg.NoticeInfo:    `<al-toast variant="info" timeout="5000">Saved</al-toast>`,
 		rtpkg.NoticeSuccess: `<al-toast variant="success" timeout="5000">Saved</al-toast>`,
 		rtpkg.NoticeWarning: `<al-toast variant="warning" timeout="5000">Saved</al-toast>`,
-		rtpkg.NoticeError:   `<al-toast variant="destructive" timeout="0">Saved</al-toast>`,
+		rtpkg.NoticeError:   `<al-toast variant="destructive" timeout="10000">Saved</al-toast>`,
 	} {
 		h := NewRouter(one("POST", "/_m/A/B", func(rq *Request) Response {
 			rq.Notice, rq.NoticeKind = "Saved", kind

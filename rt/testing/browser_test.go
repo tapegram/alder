@@ -906,3 +906,21 @@ func TestBrowser_Fetch(t *testing.T) {
 		wantAnswer(t, o, Answer{Tag: RequestFailed, Text: "GET /r.csv: a file page (text/csv): use `Test.fetch`"})
 	})
 }
+
+// A destructive toast (the markup of Notice.error) reads back as kind "error"; the other
+// variants read back as they are written.
+func TestToastOf_DestructiveReadsBackAsError(t *testing.T) {
+	for variant, want := range map[string]string{
+		"destructive": string(rt.NoticeError),
+		"success":     "success",
+		"info":        "info",
+	} {
+		els, err := html.Parse(`<al-toast variant="` + variant + `" timeout="5000"> Saved </al-toast>`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := toastOf(els); got.Kind != want || got.Text != "Saved" {
+			t.Errorf("%s: toastOf = %+v, want kind %q text %q", variant, got, want, "Saved")
+		}
+	}
+}

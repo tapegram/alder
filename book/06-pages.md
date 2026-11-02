@@ -1340,7 +1340,7 @@ toast:
 - `Notice.warning`: it was done, with something to look at ("Saved, but the
   image was too large and was left out").
 - `Notice.error`: it was not done ("Error: try again"). An error toast
-  stays until the person closes it (`timeout="0"`); the others close after
+  stays for ten seconds (`timeout="10000"`); the others close after
   five seconds. A form's own problems are better told with `Reject`, next
   to the form.
 
