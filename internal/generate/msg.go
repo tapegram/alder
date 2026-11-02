@@ -109,6 +109,12 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]
 	if len(holes) > 0 {
 		d.Click = name + " { " + strings.Join(holes, ", ") + " }"
 	}
+	if m, err = withUpdateMatch(m, name); err != nil {
+		return nil, err
+	}
+	if loop != nil { // the same loop, where the rewritten source has it
+		loop, _ = findFor(m.Syntax, o.InFor)
+	}
 	e := newSrcEdit(m.Source)
 	arm := fmt.Sprintf("%s p -> ?%s,", name, LowerFirst(name))
 	if err := addDecls(e, m, page, snippet("msg_decl", d), arm); err != nil {

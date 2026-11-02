@@ -282,6 +282,10 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 // `update`, or in one created after `login`), the user module imported, and a test of Logout at
 // the end. Nothing else moves.
 func editApp(p *Program, app *Module, users *Table, idType, roleField string, ctors []string) (Edit, error) {
+	app, err := withUpdateMatch(app, "Logout")
+	if err != nil {
+		return Edit{}, err
+	}
 	e := newSrcEdit(app.Source)
 	newFields := []string{"user: Maybe " + idType}
 	if roleField != "" {
@@ -301,7 +305,7 @@ func editApp(p *Program, app *Module, users *Table, idType, roleField string, ct
 	arm := "Logout p -> {\n  let _ <- Session.put (\\s -> " + put + ")\n  Task.succeed (Redirect (Auth.Login {}))\n},"
 	line, ind, hasUpdate, ok := updateArmSpot(e, app.Syntax)
 	if !ok {
-		return Edit{}, Refusef("`App`'s `update` is not `match msg { … }` written over several lines: add the Logout arm yourself")
+		return Edit{}, Refusef("`App`'s `update` is not a `match` a new arm can go in: add the Logout arm yourself")
 	}
 	var after string // what follows the session
 	if hasUpdate {

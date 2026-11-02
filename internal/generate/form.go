@@ -149,6 +149,11 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 		}
 	}
 
+	if attach == nil { // the new message gets an arm: `update` must be a match it can go in
+		if m, err = withUpdateMatch(m, msg); err != nil {
+			return nil, err
+		}
+	}
 	e = newSrcEdit(m.Source)
 	redirect, answer := "Rerender", "Rerendered"
 	if !hasRequiredParams(pg) {
@@ -393,7 +398,7 @@ func viewIsHole(m *syntax.Module) bool {
 func addDecls(e *srcEdit, m *Module, page, decls, arm string) error {
 	line, ind, has, ok := updateArmSpot(e, m.Syntax)
 	if !ok {
-		return Refusef("`%s`'s `update` is not `match msg { … }` written over several lines: add the arm yourself", page)
+		return Refusef("`%s`'s `update` is not a `match` a new arm can go in: add the arm yourself", page)
 	}
 	if has {
 		if last := lastArmLine(e, m.Syntax, line); last > 0 {
