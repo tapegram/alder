@@ -113,6 +113,12 @@ type Starter interface {
 	Start(c *Ctx) tea.Cmd
 }
 
+// Stopper is a Screen that has something to end when the program quits, such as the Tests
+// screen, which kills the run in flight so that no alder test outlives the program.
+type Stopper interface {
+	Stop()
+}
+
 // The messages the program sends itself: a feed event, the end of the feed, and a line for the
 // footer (the outcome of a copy, an open or a restart).
 type (
@@ -315,7 +321,7 @@ func (m *root) started(msg startMsg) tea.Cmd {
 	m.start, c.Starting = nil, false
 	if msg.err != nil {
 		c.StartErr = msg.err
-		return tea.Quit
+		return m.quit()
 	}
 	c.Opts.Events, c.Opts.Owned = msg.feed.Events, msg.feed.Owned
 	return readEvent(c.Opts.Events)
@@ -368,7 +374,7 @@ func (m *root) key(msg tea.KeyMsg) tea.Cmd {
 	m.flash = ""
 	k := msg.String()
 	if k == "ctrl+c" {
-		return tea.Quit
+		return m.quit()
 	}
 	switch m.overlay {
 	case overlayKeys:
@@ -376,7 +382,7 @@ func (m *root) key(msg tea.KeyMsg) tea.Cmd {
 		case "esc", "?":
 			m.overlay = overlayNone
 		case "q":
-			return tea.Quit
+			return m.quit()
 		}
 		return nil
 	case overlayProblems:
@@ -413,11 +419,22 @@ func (m *root) key(msg tea.KeyMsg) tea.Cmd {
 	case "F":
 		m.focus = true
 	case "q":
-		return tea.Quit
+		return m.quit()
 	default:
 		return m.toCurrent(msg)
 	}
 	return nil
+}
+
+// quit stops every screen that is a Stopper, then quits the program. Every way out goes through
+// it.
+func (m *root) quit() tea.Cmd {
+	for _, s := range m.screens {
+		if st, ok := s.(Stopper); ok {
+			st.Stop()
+		}
+	}
+	return tea.Quit
 }
 
 // opened tells the current screen it has been opened, when it is an Opener and the tab was prev

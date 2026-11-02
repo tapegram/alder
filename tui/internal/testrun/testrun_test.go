@@ -99,3 +99,20 @@ func TestArgs_One(t *testing.T) {
 		t.Errorf("Args(nil, mutate) = %q, want %q", got, want)
 	}
 }
+
+func TestParse_BadDiagnostic(t *testing.T) {
+	for _, line := range []string{
+		`{"diagnostics":5}`,
+		`{"diagnostics":[{"line":"ten"}]}`,
+		`{"mutants":{"id":1}}`,
+	} {
+		var r Run
+		Parse(line, &r)
+		if r.Error == "" {
+			t.Errorf("Parse(%s) left no error", line)
+		}
+		if r.Diagnostics != nil || r.Mutants != nil {
+			t.Errorf("Parse(%s) kept a half-read value: %+v %+v", line, r.Diagnostics, r.Mutants)
+		}
+	}
+}

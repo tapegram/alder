@@ -57,7 +57,7 @@ func (m *root) problemsKey(k string) tea.Cmd {
 	case "?":
 		m.overlay = overlayKeys
 	case "q":
-		return tea.Quit
+		return m.quit()
 	case "j", "down":
 		m.probs.cursor = min(m.probs.cursor+1, max(len(ds)-1, 0))
 	case "k", "up":

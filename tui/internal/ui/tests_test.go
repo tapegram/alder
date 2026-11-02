@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"context"
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -280,5 +282,110 @@ func TestTests_ScrollPastList(t *testing.T) {
 	}
 	if cur := cursorRow(pressViewing(m, "k")); !strings.Contains(cur, "lend book 28") {
 		t.Errorf("k from the top of the block puts the cursor on %q, want lend book 28", cur)
+	}
+}
+
+func TestTests_RerunKeepsScore(t *testing.T) {
+	o, f := testsOptions("")
+	diag := `{"diagnostics":[{"code":"W1","severity":"warning","file":"app/Books.al","line":3,"col":1,"message":"unused import"}]}`
+	f.On("test --json --mutate", strings.Join([]string{diag, passLend, failTwice, passProp, passEmpty, mutantsLine, scoreLine}, "\n"), 1)
+	f.On(`test --json -run ^Books "lend \(twice\)"$`, passTwice, 0)
+	m := newRoot(o, fixture(t, "basic")...)
+	press(m, "4", "m", "j", "enter", "enter")
+	if want := []string{"test --json", "test --json --mutate", `test --json -run ^Books "lend \(twice\)"$`}; !reflect.DeepEqual(f.Calls(), want) {
+		t.Fatalf("calls %q, want %q", f.Calls(), want)
+	}
+	frame := m.View()
+	for _, want := range []string{
+		"score 0.50  killed 1  survived 1  suppressed 2  skipped 3",
+		"app/Books.al:16  n > 0 → n >= 0",
+		"app/Books.al:3:1  unused import",
+	} {
+		if !strings.Contains(frame, want) {
+			t.Errorf("no %q after rerunning one test:\n%s", want, frame)
+		}
+	}
+	if row := rowOf(frame, `"lend (twice)"`); !strings.Contains(row, "2.9ms") {
+		t.Errorf("the rerun's result is not in the list: %q", row)
+	}
+}
+
+func TestTests_Empty(t *testing.T) {
+	o, f := testsOptions("")
+	f.On("test --json", "", 0)
+	m := newRoot(o, fixture(t, "basic")...)
+	press(m, "4")
+	if frame := m.View(); !strings.Contains(frame, "no tests") {
+		t.Errorf("an empty run does not say no tests:\n%s", frame)
+	}
+	// enter on an empty list does nothing, and the footer still offers unfold.
+	press(m, "enter")
+	if len(f.Calls()) != 1 {
+		t.Errorf("enter on an empty list ran %q", f.Calls())
+	}
+	if k := m.screens[3].Keys()[0]; k != (Key{"enter", "unfold"}) {
+		t.Errorf("enter key on an empty list = %+v", k)
+	}
+}
+
+func TestTests_Error(t *testing.T) {
+	t.Run("stderr", func(t *testing.T) {
+		o, f := testsOptions("")
+		f.OnStderr("test --json", "alder: no app.al in /Users/dev/shelf\n", 1)
+		m := newRoot(o, fixture(t, "basic")...)
+		press(m, "4")
+		if frame := m.View(); !strings.Contains(frame, "alder: no app.al in /Users/dev/shelf") {
+			t.Errorf("a run that failed with only stderr does not show it:\n%s", frame)
+		}
+	})
+	t.Run("missing binary", func(t *testing.T) {
+		o, _ := testsOptions("")
+		o.Runner, o.Dir = runner.Exec("/nonexistent/alder"), t.TempDir()
+		m := newRoot(o, fixture(t, "basic")...)
+		press(m, "4")
+		if frame := m.View(); !strings.Contains(frame, "/nonexistent/alder") || strings.Contains(frame, "running") {
+			t.Errorf("a missing alder does not show why:\n%s", frame)
+		}
+	})
+}
+
+func TestTests_StopCancels(t *testing.T) {
+	// streaming is a root whose Tests screen has its suite's stream open, not yet read.
+	streaming := func(t *testing.T) (*root, *testsScreen) {
+		o, _ := testsOptions("")
+		m := newRoot(o, fixture(t, "basic")...)
+		s := m.screens[3].(*testsScreen)
+		_, cmd := m.Update(key("4"))
+		m.Update(cmd())
+		if s.stream == nil {
+			t.Fatal("no stream open after opening Tests")
+		}
+		return m, s
+	}
+	canceled := func(t *testing.T, st runner.Stream) {
+		t.Helper()
+		if _, _, err := st.Wait(); !errors.Is(err, context.Canceled) {
+			t.Errorf("the stream's Wait = %v, want context.Canceled", err)
+		}
+	}
+	t.Run("Stop", func(t *testing.T) {
+		_, s := streaming(t)
+		st := s.stream
+		s.Stop()
+		canceled(t, st)
+	})
+	for _, k := range []string{"q", "ctrl+c"} {
+		t.Run(k, func(t *testing.T) {
+			m, s := streaming(t)
+			st := s.stream
+			_, cmd := m.Update(key(k))
+			if cmd == nil {
+				t.Fatalf("%s does not quit", k)
+			}
+			if _, ok := cmd().(tea.QuitMsg); !ok {
+				t.Fatalf("%s does not quit", k)
+			}
+			canceled(t, st)
+		})
 	}
 }
