@@ -338,10 +338,14 @@ func TestKeys_Tabs(t *testing.T) {
 // claimer is a screen that claims every key while it is set, as Request detail and a text input
 // do, and records the keys it was given.
 type claimer struct {
-	placeholder
 	claim bool
 	got   []string
 }
+
+func (*claimer) Title() string              { return "Requests" }
+func (*claimer) View(int, int, *Ctx) string { return "" }
+func (*claimer) Keys() []Key                { return nil }
+func (*claimer) Command(*Ctx) string        { return "" }
 
 func (s *claimer) Claims(msg tea.KeyMsg) bool { return s.claim }
 
@@ -354,7 +358,7 @@ func (s *claimer) Update(msg tea.Msg, c *Ctx) (Screen, tea.Cmd) {
 
 func TestKeys_ScreenClaimsBeforeGlobals(t *testing.T) {
 	m := newRoot(options(nil))
-	s := &claimer{placeholder: placeholder{title: "Requests", command: func(*Ctx) string { return "" }}, claim: true}
+	s := &claimer{claim: true}
 	m.screens[0] = s
 	press(m, "2", "p", "tab", "q")
 	if m.tab != 0 || m.overlay != overlayNone {

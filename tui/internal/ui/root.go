@@ -534,15 +534,3 @@ func appName(c *Ctx) string {
 	}
 	return c.Opts.App
 }
-
-// placeholder is a tab whose screen comes in the next PR.
-type placeholder struct {
-	title   string
-	command func(c *Ctx) string
-}
-
-func (p placeholder) Title() string                          { return p.title }
-func (p placeholder) Update(tea.Msg, *Ctx) (Screen, tea.Cmd) { return p, nil }
-func (p placeholder) View(int, int, *Ctx) string             { return "coming in the next PR" }
-func (p placeholder) Keys() []Key                            { return nil }
-func (p placeholder) Command(c *Ctx) string                  { return p.command(c) }

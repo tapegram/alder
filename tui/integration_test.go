@@ -16,11 +16,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	"alder/tui/internal/data"
 	"alder/tui/internal/devproc"
 	"alder/tui/internal/feed"
+	"alder/tui/internal/routes"
+	"alder/tui/internal/runner"
+	"alder/tui/internal/testrun"
 )
 
 // buildWait bounds the wait for the first build: a cold Go cache compiles the app's SQLite driver.
@@ -123,6 +128,116 @@ func TestLive_HelloAndFirstRequest(t *testing.T) {
 			t.Fatalf("%s is still taken 10 s after Close: %v", addr, err)
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// TestLive_Screens checks what the Tests, Routes and Data screens read against a real alder and
+// a real `alder run` of a copy of the shelf app: `alder test --json` through runner.Exec gives at
+// least one passing result, `alder routes --json` lists /books/{id}, and the SQL name that
+// /_dev/map.json gives the Book table is one that sqlite_master of build/shelf/dev.db lists.
+func TestLive_Screens(t *testing.T) {
+	if testing.Short() {
+		t.Skip("the live test runs alder run; skipped under -short")
+	}
+	alder := os.Getenv("ALDER_BIN")
+	if alder == "" {
+		p, err := exec.LookPath("alder")
+		if err != nil {
+			t.Skip("alder is not on PATH and ALDER_BIN is not set")
+		}
+		alder = p
+	}
+	dir := filepath.Join(t.TempDir(), "shelf")
+	copyApp(t, "testdata/shelf", dir)
+	addr := freeAddr(t)
+	// `alder run` writes its build under the working directory, so, as in a terminal in the app's
+	// directory, the test works there: build/shelf/dev.db is then the database Data reads.
+	t.Chdir(dir)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*buildWait+time.Minute)
+	defer cancel()
+	s, err := devproc.Open(ctx, devproc.Options{Dir: dir, Addr: addr, Alder: alder})
+	if err != nil {
+		t.Fatalf("devproc.Open: %v", err)
+	}
+	defer s.Close()
+	next(t, s.Events, buildWait, func(ev feed.Event) bool {
+		if ev.Type == "build" && ev.Build.State == "failed" {
+			t.Fatalf("the build failed: %s %+v", ev.Build.Text, ev.Build.Diagnostics)
+		}
+		return ev.Type == "hello" && ev.Hello.Build == "ok" || ev.Type == "build" && ev.Build.State == "ok"
+	})
+
+	// The Data screen: the map's SQL name for Book is a table of the database file.
+	m, err := data.FetchMap(ctx, http.DefaultClient, addr)
+	if err != nil {
+		t.Fatalf("data.FetchMap: %v", err)
+	}
+	var book *data.Table
+	for i, tb := range m.Tables {
+		if strings.HasSuffix(tb.Name, ".Book") {
+			book = &m.Tables[i]
+		}
+	}
+	if book == nil || book.SQL == "" {
+		t.Fatalf("the map has no Book table with an SQL name: %+v", m.Tables)
+	}
+	dbs := data.Databases(filepath.Join(dir, "build", "shelf"), m)
+	db, err := data.Open(dbs[0].Path)
+	if err != nil {
+		t.Fatalf("data.Open(%s): %v", dbs[0].Path, err)
+	}
+	defer db.Close()
+	_, rows, err := db.Query(ctx, "SELECT name FROM sqlite_master WHERE type = 'table'")
+	if err != nil {
+		t.Fatalf("listing the tables of %s: %v", dbs[0].Path, err)
+	}
+	listed := false
+	for _, row := range rows {
+		listed = listed || len(row) == 1 && row[0] == book.SQL
+	}
+	if !listed {
+		t.Errorf("sqlite_master lists %v, not the map's SQL name %q for %s", rows, book.SQL, book.Name)
+	}
+	if n, err := db.Count(ctx, *book); err != nil || n < 1 {
+		t.Errorf("Count(%s) = %d, %v; want the seeded books", book.SQL, n, err)
+	}
+
+	// The Tests screen: the suite, as the screen starts it.
+	r := runner.Exec(alder)
+	res, err := r.Run(ctx, dir, testrun.Args(nil, false)...)
+	if err != nil {
+		t.Fatalf("alder test --json: %v", err)
+	}
+	var run testrun.Run
+	for _, line := range strings.Split(string(res.Stdout), "\n") {
+		testrun.Parse(line, &run)
+	}
+	passed := 0
+	for _, tr := range run.Results {
+		if tr.OK {
+			passed++
+		}
+	}
+	if passed < 1 {
+		t.Errorf("alder test --json gave %d passing results (exit %d, error %q):\n%s%s", passed, res.Code, run.Error, res.Stdout, res.Stderr)
+	}
+
+	// The Routes screen.
+	res, err = r.Run(ctx, dir, "routes", "--json")
+	if err != nil || res.Code != 0 {
+		t.Fatalf("alder routes --json: %v (exit %d):\n%s", err, res.Code, res.Stderr)
+	}
+	rs, err := routes.Parse(res.Stdout)
+	if err != nil {
+		t.Fatalf("routes.Parse: %v\n%s", err, res.Stdout)
+	}
+	found := false
+	for _, rt := range rs {
+		found = found || rt.Kind == "page" && rt.Path == "/books/{id}"
+	}
+	if !found {
+		t.Errorf("alder routes --json lacks the page /books/{id}: %+v", rs)
 	}
 }
 
