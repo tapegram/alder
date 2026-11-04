@@ -874,29 +874,7 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 	} else {
 		rq.Session, rq.sessionEnc = rt.decodeSession(r)
 	}
-	if rt.opts.EnvFor != nil {
-		rq.Env = rt.opts.EnvFor(r.Context(), rq.Session)
-		rq.Env.Session = rq.Session
-	} else {
-		rq.Env = &eff.Env{
-			Ctx:     r.Context(),
-			Store:   rt.opts.Store,
-			Caps:    rt.opts.Caps,
-			Now:     rt.now,
-			Log:     rt.log,
-			Session: rq.Session,
-		}
-		if rt.opts.Stores != nil {
-			rq.Env.Stores = rt.opts.Stores
-		}
-		rq.Env.CheckSession = rt.opts.SessionCheck
-		if tw != nil {
-			rq.Env.Log = tw.log
-		}
-		if tw != nil && rt.statsOn() {
-			rq.Env.Stats = &tw.stats // the tracker's: no allocation; nil otherwise, nothing timed
-		}
-	}
+	rq.Env = rt.newEnv(r.Context(), rq.Session, tw)
 	if tw, ok := w.(*tracker); ok {
 		if !rq.Datastar && r.Method == http.MethodGet && !hit.file { // an HTML page GET only: not a HEAD, which shows nothing, nor a file, which shows no notice
 			tw.alert, tw.kind = rt.takeNotice(w, r)
@@ -927,6 +905,30 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 		return
 	}
 	rt.write(w, r, st, rq, resp)
+}
+
+// newEnv is the Env a request runs with: Options.EnvFor's, else one of the router's store,
+// capabilities and clock, logging through tw (the request's tracker, when there is one) and
+// counting its statements there when they are counted (statsOn). A GET run in-process for a
+// write (runShown) gets a fresh one too: never the write's narrowing, binding or SessionPut.
+func (rt *router) newEnv(ctx context.Context, session any, tw *tracker) *eff.Env {
+	if rt.opts.EnvFor != nil {
+		env := rt.opts.EnvFor(ctx, session)
+		env.Session = session
+		return env
+	}
+	env := &eff.Env{Ctx: ctx, Store: rt.opts.Store, Caps: rt.opts.Caps, Now: rt.now, Log: rt.log, Session: session}
+	if rt.opts.Stores != nil {
+		env.Stores = rt.opts.Stores
+	}
+	env.CheckSession = rt.opts.SessionCheck
+	if tw != nil {
+		env.Log = tw.log
+	}
+	if tw != nil && rt.statsOn() {
+		env.Stats = &tw.stats // the tracker's: no allocation; nil otherwise, nothing timed
+	}
+	return env
 }
 
 // find is the route serve picks for method and the path's segments (the routes are sorted most

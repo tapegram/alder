@@ -2,14 +2,12 @@ package web
 
 import (
 	"fmt"
-	"maps"
 	"net/http"
 	"net/url"
 	"strings"
 
 	rtpkg "alder/rt"
 	"alder/rt/datastar"
-	"alder/rt/eff"
 	"alder/rt/html"
 )
 
@@ -79,9 +77,11 @@ func (rq *Request) RenderShown(st *html.FormState) (*Shown, Response) {
 
 // runShown runs the GET route that matches raw (a path and query, rt.BackURL's) for parent, a
 // write's request, with session (enc its encoding) and st as its FormState; ok is false when no
-// GET route that is not a file page's matches. The sub-request shares parent's context, headers,
-// store, capabilities, recorder and statement counts; its Env is a copy, so a narrowing the page
-// makes (db.Narrow) does not leak into the write, and its steps are appended to parent's trace.
+// GET route that is not a file page's matches. The sub-request shares parent's context and
+// headers; its Env is a fresh one, as a GET request's (newEnv), so no write-scoped state (a
+// db.Narrow or db.Enter, SessionPut, a transaction) reaches the page and none of the page's
+// reaches the write. Only the request's log, recorder and statement counts are shared, and its
+// steps are appended to parent's trace.
 // A panic in the route is answered as a 500 (Err "panic: …").
 func (rt *router) runShown(parent *Request, raw string, session any, enc []byte, st *html.FormState) (sub *Request, resp Response, ok bool) {
 	u, err := url.Parse(raw)
@@ -96,13 +96,11 @@ func (rt *router) runShown(parent *Request, raw string, session any, enc []byte,
 	if hit == nil || hit.file {
 		return nil, Response{}, false
 	}
-	env := new(eff.Env)
+	tw, _ := parent.w.(*tracker)
+	env := rt.newEnv(parent.HTTP.Context(), session, tw)
 	if parent.Env != nil {
-		*env = *parent.Env
-		env.Keys = maps.Clone(parent.Env.Keys)
+		env.Rec = parent.Env.Rec // the dev panel's trace of the request goes on
 	}
-	env.Session = session
-	n := len(env.Trace)
 	sub = &Request{
 		Ctx: parent.Ctx, HTTP: getOf(parent.HTTP, u, false), Params: params, Query: u.Query(),
 		Session: session, Env: env, Datastar: parent.Datastar, Dev: parent.Dev, Login: parent.Login,
@@ -110,7 +108,7 @@ func (rt *router) runShown(parent *Request, raw string, session any, enc []byte,
 	}
 	defer func() {
 		if parent.Env != nil {
-			parent.Env.Trace = append(parent.Env.Trace, env.Trace[n:]...)
+			parent.Env.Trace = append(parent.Env.Trace, env.Trace...)
 		}
 		if p := recover(); p != nil {
 			resp, ok = ErrorResponse(html.None(), fmt.Errorf("panic: %v", p)), true

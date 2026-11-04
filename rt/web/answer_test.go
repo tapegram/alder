@@ -410,3 +410,46 @@ func TestAnswer_ToastOn303Survives(t *testing.T) {
 		t.Fatalf("%s", w.Body.String())
 	}
 }
+
+// The shown page's GET runs with an Env of its own, as a GET request's (serve): never the write's
+// narrowing, store binding, SessionPut or trace state, only the session the write left. Both the
+// before-view and the after-view run so.
+func TestAnswer_ShownRunsWithFreshEnv(t *testing.T) {
+	type seen struct {
+		keys       map[string]string
+		siloKey    string
+		bound, put bool
+		session    any
+	}
+	var runs []seen
+	routes := []Route{
+		{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response {
+			e := rq.Env
+			runs = append(runs, seen{keys: e.Keys, siloKey: e.SiloKey, bound: e.Bound, put: e.SessionPut, session: e.Session})
+			return PageResponse(doc("p"), &html.FormState{}, nil, false)
+		}},
+		{Method: "POST", Pattern: "/w", Handle: func(rq *Request) Response {
+			// what db.Narrow and db.Enter leave on a write's Env, before its before-view
+			rq.Env.Keys = map[string]string{"org": "A"}
+			rq.Env.SiloKey, rq.Env.SiloValue, rq.Env.Bound = "org", "A", true
+			before, _ := rq.RenderShown(nil)
+			// the update: Session.put switches to user B
+			rq.Env.SessionPut = true
+			rq.Env.Session = testSession{User: "B"}
+			return AnswerResponse(rt.Refresh(), before, testSession{User: "B"})
+		}},
+	}
+	h := NewRouter(routes, testOpts(nil))
+	ansPost(h, "/w", "/", nil)
+	if len(runs) != 2 {
+		t.Fatalf("runs %+v", runs)
+	}
+	for i, s := range runs {
+		if len(s.keys) != 0 || s.siloKey != "" || s.bound || s.put {
+			t.Errorf("run %d saw the write's Env: %+v", i, s)
+		}
+	}
+	if runs[0].session != (testSession{}) || runs[1].session != (testSession{User: "B"}) {
+		t.Fatalf("sessions %v, %v", runs[0].session, runs[1].session)
+	}
+}
