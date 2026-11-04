@@ -212,7 +212,7 @@ func TestPatchShown_EventFormat(t *testing.T) {
 // (html.PostOptions): the abort of the navigation in flight, the next one's controller, the
 // Alder-Shown header (the data-h of the page's al-shown, "" without one), the content type.
 func TestBoostInit_DefinesShown(t *testing.T) {
-	want := `window._alderO = (f) => { window._alderAC?.abort(); const o = {headers: {'Alder-Shown': document.getElementById('_alder_shown')?.dataset.h || '', 'Alder-Page': location.pathname + location.search, 'Alder-Build': window._alderBuild}, requestCancellation: window._alderAC = new AbortController()}; if (f) o.contentType = f; return o };`
+	want := `window._alderO = (f) => { window._alderAC?.abort(); const o = {payload: {}, headers: {'Alder-Shown': document.getElementById('_alder_shown')?.dataset.h || '', 'Alder-Page': location.pathname + location.search, 'Alder-Build': window._alderBuild}, requestCancellation: window._alderAC = new AbortController()}; if (f) o.contentType = f; return o };`
 	if !strings.Contains(BoostInit, want) {
 		t.Fatalf("BoostInit lacks %s:\n%s", want, BoostInit)
 	}
@@ -229,7 +229,7 @@ func TestBoostInit_SendsPageAndBuild(t *testing.T) {
 	for _, want := range []string{
 		`'Alder-Page': location.pathname + location.search`,
 		`'Alder-Build': window._alderBuild`,
-		`window._alderF = () =&gt; ({headers: {'Alder-Fetch': '1', 'Alder-Build': window._alderBuild}})`,
+		`window._alderF = () =&gt; ({payload: {}, headers: {'Alder-Fetch': '1', 'Alder-Page': location.pathname + location.search, 'Alder-Build': window._alderBuild}})`,
 	} {
 		if !strings.Contains(tag, want) {
 			t.Fatalf("BoostTag lacks %s:\n%s", want, tag)
@@ -237,7 +237,7 @@ func TestBoostInit_SendsPageAndBuild(t *testing.T) {
 	}
 	o := BoostInit[strings.Index(BoostInit, "window._alderO"):]
 	o = o[:strings.Index(o, "};")]
-	if !strings.Contains(o, "'Alder-Page'") || !strings.Contains(o, "'Alder-Build'") {
+	if !strings.Contains(o, "'Alder-Page'") || !strings.Contains(o, "'Alder-Build'") || !strings.Contains(o, "payload: {}") {
 		t.Fatalf("_alderO: %s", o)
 	}
 	f := BoostInit[strings.Index(BoostInit, "window._alderF"):]

@@ -508,9 +508,12 @@ func (r *renderer) clickButton(n Node, c *Attr, outer *Node) {
 // a POST); for a GET route `<form method="get" …>` with the route's query in hidden fields (a GET
 // form replaces its action's query with its fields) and an element fetch (FetchOptions), so
 // without JavaScript the button navigates to the route. Inside a <form>, a write route's button
-// carries the route as formaction and formmethod, and its _method as its own name and value; a
-// GET route's is type="button" with a data-on:click and needs JavaScript (a formmethod="get"
-// would put every field of the enclosing form, a Secret one too, in the URL).
+// carries the route as formaction and formmethod, and its _method as its own name and value
+// (unless the author gave it a name: HTML keeps an attribute's first value, and the author's is
+// never silently replaced, so such a button sends no _method without JavaScript); a GET route's
+// is type="button" with a data-on:click and needs JavaScript (a formmethod="get" would put every
+// field of the enclosing form, a Secret one too, in the URL). A DELETE route's own form posts
+// with JavaScript too (routeRequest).
 func (r *renderer) routeButton(n Node, route rt.Route, outer *Node) {
 	url := rt.RouteURL(route)
 	get := route.Method == "GET"
@@ -524,8 +527,10 @@ func (r *renderer) routeButton(n Node, route rt.Route, outer *Node) {
 		attrs = []Attr{A("type", "button")}
 	case r.inForm:
 		attrs = append(attrs, A("formaction", url), A("formmethod", formMethod), B("formnovalidate", true))
-		if m := overrideMethod(route.Method); m != "" {
-			attrs = append(attrs, A("name", methodField), A("value", m))
+		if _, named := attrValue(n.attrs, "name"); !named {
+			if m := overrideMethod(route.Method); m != "" {
+				attrs = append(attrs, A("name", methodField), A("value", m))
+			}
 		}
 		attrs = append(attrs, A("data-on:click__prevent", RouteClick(route)))
 	}
@@ -563,7 +568,7 @@ func (r *renderer) routeButton(n Node, route rt.Route, outer *Node) {
 	if get {
 		submit = RouteClick(route)
 	} else {
-		submit = busy("el", routeRequest(route, PostOptions+"?.('form')"))
+		submit = busy("el", routeRequest(route, PostOptions+"?.('form')", true))
 	}
 	r.render(El("form", []Attr{A("method", formMethod), RouteAttr("action", route), A("class", "_alder-click"), A("data-on:submit", submit)},
 		append(fields, button)...))
@@ -594,9 +599,11 @@ func hidden(name, value string) Node {
 //
 // For PUT, PATCH and DELETE the form's own submit buttons (ownSubmits) carry the method as
 // name="_method", so a click button inside the form sends only its own override, or none. A form
-// without such a button (submitted by Enter in a field) falls back to a hidden _method field; a
-// click button inside that form sends it too without JavaScript (a second _method for a
-// PUT/PATCH/DELETE route, 400; a POST route or a message then routed as the form's method).
+// without such a button (submitted by Enter in a field), or with one that has a name of its own
+// (HTML keeps the first name attribute, so the button cannot carry both), falls back to a hidden
+// _method field; a click button inside that form sends it too without JavaScript (a second
+// _method for a PUT/PATCH/DELETE route, 400; a POST route or a message then routed as the form's
+// method). With JavaScript a DELETE form posts too, the _method in its body (routeRequest).
 func FormToRoute(r rt.Route, attrs []Attr, children ...Node) Node {
 	all := append([]Attr{A("method", "post"), RouteAttr("action", r), RouteAttr("data-on:submit", r)}, attrs...)
 	if m := overrideMethod(r.Method); m != "" {
@@ -610,14 +617,20 @@ func FormToRoute(r rt.Route, attrs []Attr, children ...Node) Node {
 
 // ownSubmits is ns with name="_method" value=m on each of the form's own submit buttons — a
 // <button> with no type or type="submit" and no click (clickOf), at any depth of elements and
-// fragments — and whether there was one. The nodes are copied, never changed in place.
+// fragments — and whether there was one. When one of them has a name of its own (two submit
+// buttons, action=save and action=close), none is changed and the result is false: a second
+// name attribute would be ignored, and the hidden field alone must carry the method (a button's
+// _method beside it would be a second one). The nodes are copied, never changed in place.
 func ownSubmits(ns []Node, m string) ([]Node, bool) {
+	if namedSubmit(ns) {
+		return ns, false
+	}
 	found := false
 	out := make([]Node, len(ns))
 	for i, n := range ns {
 		switch {
 		case n.kind == kElem && n.tag == "button":
-			if typ, ok := attrValue(n.attrs, "type"); (!ok || typ == "submit") && clickOf(n.attrs) == nil {
+			if isOwnSubmit(n) {
 				n.attrs = append(slices.Clone(n.attrs), A("name", methodField), A("value", m))
 				found = true
 			}
@@ -632,6 +645,31 @@ func ownSubmits(ns []Node, m string) ([]Node, bool) {
 	return out, found
 }
 
+// isOwnSubmit reports whether button n submits its form itself: no type or type="submit", and no
+// click (clickOf).
+func isOwnSubmit(n Node) bool {
+	typ, ok := attrValue(n.attrs, "type")
+	return (!ok || typ == "submit") && clickOf(n.attrs) == nil
+}
+
+// namedSubmit reports whether one of ns's own submit buttons (isOwnSubmit, at any depth of
+// elements and fragments) has a name attribute of its own.
+func namedSubmit(ns []Node) bool {
+	for _, n := range ns {
+		switch {
+		case n.kind == kElem && n.tag == "button":
+			if _, named := attrValue(n.attrs, "name"); named && isOwnSubmit(n) {
+				return true
+			}
+		case n.kind == kElem || n.kind == kFrag:
+			if namedSubmit(n.children) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // attrValue is the value of attrs' plain attribute name, if it renders one.
 func attrValue(attrs []Attr, name string) (string, bool) {
 	for _, a := range attrs {
@@ -643,26 +681,42 @@ func attrValue(attrs []Attr, name string) (string, bool) {
 }
 
 // RouteSubmit is the data-on:submit of a form sending route r: its fields url-encoded with r's
-// method and the message options (SubmitPost's, with the route's method).
+// method (a DELETE's posted, routeRequest) and the message options (SubmitPost's, with the
+// route's method).
 func RouteSubmit(r rt.Route) string {
-	return busy("el", routeRequest(r, PostOptions+"?.('form')||{contentType: 'form'}"))
+	return busy("el", routeRequest(r, PostOptions+"?.('form')||{contentType: 'form'}", true))
 }
 
 // RouteClick is the Datastar action of a click requesting route r: a write route's request
 // with the message options (PostOptions), a GET route's an element fetch (FetchOptions).
 func RouteClick(r rt.Route) string {
 	if r.Method == "GET" {
-		return busy("el", routeRequest(r, FetchOptions+"?.()"))
+		return busy("el", routeRequest(r, FetchOptions+"?.()", false))
 	}
-	return busy("el", routeRequest(r, PostOptions+"?.()"))
+	return busy("el", routeRequest(r, PostOptions+"?.()", false))
 }
 
 // routeRequest is Datastar's action for r's method ("@patch('<url>', opts)"). The URL is
 // rt.RouteURL(r) with each "'" as %27, which would otherwise end the string: rt.PathSegment
 // escapes it already, so this is defence in depth for a literal Route.Path.
-func routeRequest(r rt.Route, opts string) string {
+//
+// form says opts send a form (contentType 'form'). Datastar v1.0.0 treats a DELETE as a GET
+// (`!["GET","DELETE"].includes(method)` decides whether a request has a body): a form's fields,
+// _method=DELETE among them, would go in the URL — into logs, and never decoded, since a write
+// decodes its body — and no body would be sent. So a DELETE that sends a form is "@post", its
+// _method=DELETE in the url-encoded body (the form's hidden field, or its submit button's name and
+// value, which Datastar appends to `new FormData(form)` for the submit event's submitter;
+// TestBrowser_RouteDeleteBody pins both). The router never honours a _method in the query (R7).
+// A DELETE without a form (a click, JSON content) stays "@delete": its only query is
+// `datastar={}`, which rt/web drops. PUT and PATCH keep their own verbs; future helpers that
+// send a form (input=, load=, …) must not use "@delete" either.
+func routeRequest(r rt.Route, opts string, form bool) string {
 	u := strings.ReplaceAll(rt.RouteURL(r), "'", "%27")
-	return "@" + strings.ToLower(r.Method) + "('" + u + "', " + opts + ")"
+	verb := strings.ToLower(r.Method)
+	if form && r.Method == "DELETE" {
+		verb = "post"
+	}
+	return "@" + verb + "('" + u + "', " + opts + ")"
 }
 
 // url is m's URL on the page being rendered (MsgAttr).

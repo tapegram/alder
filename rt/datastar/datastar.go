@@ -208,12 +208,15 @@ const BoostPopstate = `if (location.pathname + location.search !== window._alder
 // shown, and its build is the one its <meta name="alder-build"> names ("" without one: no
 // check). It defines the options of the page's requests: window._alderO(f), a post's (the
 // navigation in flight aborted, the shown hash, the page it is made from as html.PageHeader, the
-// build as BuildHeader, content type f), and window._alderF(), an element fetch's (FetchHeader
-// and the build; no navigation controller, so Datastar's own per-element cancellation applies).
+// build as BuildHeader, content type f), and window._alderF(), an element fetch's (FetchHeader,
+// the page as html.PageHeader, so a stale one reloads that page without relying on Referer, and
+// the build; no navigation controller, so Datastar's own per-element cancellation applies).
+// Both send the empty payload {}, as BoostClick does: never the page's signals, which Datastar
+// would put in a GET's or DELETE's URL (and rt/web drops only `datastar={}`).
 // rt/web answers any Datastar request whose build is not its own with a reload.
 const BoostInit = `window._alderAt = location.pathname + location.search;` +
-	` window._alderO = (f) => { window._alderAC?.abort(); const o = {headers: {'` + html.ShownHeader + `': document.getElementById('` + ShownID + `')?.dataset.h || '', '` + html.PageHeader + `': location.pathname + location.search, '` + BuildHeader + `': window._alderBuild}, ` + html.Navigation + `}; if (f) o.contentType = f; return o };` +
-	` window._alderF = () => ({headers: {'` + FetchHeader + `': '1', '` + BuildHeader + `': window._alderBuild}});` +
+	` window._alderO = (f) => { window._alderAC?.abort(); const o = {payload: {}, headers: {'` + html.ShownHeader + `': document.getElementById('` + ShownID + `')?.dataset.h || '', '` + html.PageHeader + `': location.pathname + location.search, '` + BuildHeader + `': window._alderBuild}, ` + html.Navigation + `}; if (f) o.contentType = f; return o };` +
+	` window._alderF = () => ({payload: {}, headers: {'` + FetchHeader + `': '1', '` + html.PageHeader + `': location.pathname + location.search, '` + BuildHeader + `': window._alderBuild}});` +
 	` window._alderBuild = document.querySelector('meta[name=alder-build]')?.content || '';` +
 	` window._alderN = 0;` +
 	` window._alderBusy = (el, p) => { const f = el && el.closest ? el.closest('form') || el : null, h = document.documentElement, a = document.activeElement;` +

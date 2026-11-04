@@ -502,7 +502,8 @@ func prodPages(t *testing.T) string {
 // them (168ad442), with the build id normalised to BUILD; the changes since are the pending
 // bar's token, now alder-ui v0.4's --primary (#21), and the shown hash (#49): the boost's
 // window._alderO and the <al-shown> at the end of every body; and #160: _alderO's Alder-Page and
-// Alder-Build headers and window._alderF.
+// Alder-Build headers and window._alderF, and both helpers' empty payload (and _alderF's
+// Alder-Page).
 func TestProductionPageHasNoDevUI(t *testing.T) {
 	if os.Getenv("UPDATE_GOLDEN") != "" {
 		if err := os.WriteFile("testdata/production_page.golden", []byte(prodPages(t)), 0o644); err != nil {

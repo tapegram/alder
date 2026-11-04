@@ -649,7 +649,8 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		rt.maintenance(w, r, st, rt.opts.SharedMaintenance)
 		return
 	}
-	if get && datastar.IsDatastar(r) {
+	if datastar.IsDatastar(r) {
+		// every method: Datastar puts the signals in a DELETE's query as in a GET's
 		dropSignals(r.URL)
 	}
 	if get && datastar.IsDatastar(r) && !elementFetch(r) {
@@ -1343,8 +1344,9 @@ func (rt *router) isFileRoute(p string) bool {
 	return hit != nil && hit.file
 }
 
-// dropSignals removes the `datastar` query parameter Datastar adds to every GET — its signals,
-// as JSON, which for the boost's GETs is the empty payload {} — from u, leaving the other
+// dropSignals removes the `datastar` query parameter Datastar adds to every GET and DELETE —
+// its signals, as JSON, which for the boost's and the page's requests is the empty payload {} —
+// from u, leaving the other
 // parameters as they were, in their order. Only that one is dropped: a `datastar` parameter of
 // the page's own URL (/search?datastar=x) is kept.
 func dropSignals(u *url.URL) {

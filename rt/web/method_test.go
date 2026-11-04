@@ -268,3 +268,40 @@ func TestAccessLog_MasksOverriddenRoute(t *testing.T) {
 		}
 	}
 }
+
+// Datastar adds its signals as a `datastar` query parameter to a GET and, alike, to a DELETE (a
+// click on a DELETE route: `?datastar=%7B%7D`); the router drops it from every Datastar request,
+// whatever its method, so the handler's query and the log line are the page's own. A
+// `_method=DELETE` that Datastar puts in a DELETE's query is never honoured (R7).
+func TestRouter_DatastarDropsSignalsEveryMethod(t *testing.T) {
+	for _, m := range []string{"GET", "POST", "PUT", "PATCH", "DELETE"} {
+		var query, raw string
+		h := NewRouter([]Route{{Method: m, Pattern: "/x", Handle: func(rq *Request) Response {
+			query, raw = rq.Query.Encode(), rq.HTTP.URL.RawQuery
+			if m == http.MethodGet {
+				return PageResponse(doc(m), nil, nil, false)
+			}
+			return RedirectResponse("/", nil)
+		}}}, testOpts(nil))
+		req := formReq(m, "/x?a=1&datastar=%7B%7D", "")
+		req.Header.Set("Datastar-Request", "true")
+		serve(h, req)
+		if query != "a=1" || raw != "a=1" {
+			t.Errorf("%s: query %q (raw %q), want a=1", m, query, raw)
+		}
+	}
+	// a DELETE's query _method changes nothing; a POST's query _method neither
+	var hit string
+	h := NewRouter(methodRoutes(&hit, map[string][]string{"/r": {"POST", "PUT", "DELETE"}}), testOpts(nil))
+	for _, c := range []struct{ method, target, want string }{
+		{"DELETE", "/r?_method=PUT", "DELETE /r"}, {"POST", "/r?_method=DELETE", "POST /r"},
+	} {
+		hit = ""
+		req := formReq(c.method, c.target, "")
+		req.Header.Set("Datastar-Request", "true")
+		serve(h, req)
+		if hit != c.want {
+			t.Errorf("%s %s: hit %q, want %q", c.method, c.target, hit, c.want)
+		}
+	}
+}

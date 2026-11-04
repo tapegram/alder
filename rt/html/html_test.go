@@ -280,7 +280,13 @@ func TestRender_ClickWriteRoute(t *testing.T) {
 		r := r
 		r.Method = m
 		got := Render(El("button", []Attr{RouteAttr("data-on:click", r)}, Text("Go")))
-		if !strings.Contains(got, `<input type="hidden" name="_method" value="`+m+`" />`) || !strings.Contains(got, "@"+strings.ToLower(m)+"(&#39;"+u) {
+		// Datastar sends a DELETE's form in the URL (as a GET's): a DELETE posts, its _method
+		// in the body
+		verb := strings.ToLower(m)
+		if m == "DELETE" {
+			verb = "post"
+		}
+		if !strings.Contains(got, `<input type="hidden" name="_method" value="`+m+`" />`) || !strings.Contains(got, "@"+verb+"(&#39;"+u) {
 			t.Errorf("%s: %s", m, got)
 		}
 	}
@@ -303,6 +309,12 @@ func TestRender_ClickWriteRoute(t *testing.T) {
 	want = `<button type="submit" formaction="` + u + `" formmethod="post" formnovalidate name="_method" value="PATCH" data-on:click__prevent="` + busyQ("@patch('"+u+"', window._alderO?.())") + `">Done</button></form>`
 	if !strings.HasSuffix(got, want) || strings.Count(got, "<form") != 1 {
 		t.Fatalf("inside a form:\n got %s\nwant …%s", got, want)
+	}
+	// inside a form, a button with a name of its own keeps it (HTML keeps an attribute's first
+	// value): no _method of its own
+	got = Render(FormTo(rt.MsgRef{Module: "M", Msg: "Save"}, nil, El("button", []Attr{A("name", "action"), A("value", "done"), RouteAttr("data-on:click", rowRoute("7"))}, Text("Done"))))
+	if strings.Count(got, ` name="`) != 1 || !strings.Contains(got, `name="action" value="done"`) {
+		t.Fatalf("named, inside a form: %s", got)
 	}
 	// a non-button
 	got = Render(El("li", []Attr{RouteAttr("data-on:click", rowRoute("7"))}, Text("row")))
@@ -380,6 +392,37 @@ func TestRender_SubmitRoute(t *testing.T) {
 	if got != want {
 		t.Fatalf("fallback:\n got %s\nwant %s", got, want)
 	}
+	// DELETE: a POST (Datastar would put a DELETE's fields in the URL), the method in the body
+	// from the own submit button; PUT keeps its own verb
+	del := rowRoute("7")
+	del.Method = "DELETE"
+	got = Render(FormToRoute(del, nil, El("input", []Attr{A("name", "title")}), El("button", nil, Text("Delete"))))
+	want = `<form method="post" action="` + u + `" data-on:submit="` + busyQ("@post('"+u+"', window._alderO?.('form')||{contentType: 'form'})") + `">` +
+		`<input name="title" /><button name="_method" value="DELETE">Delete</button></form>`
+	if got != want {
+		t.Fatalf("DELETE:\n got %s\nwant %s", got, want)
+	}
+	put := rowRoute("7")
+	put.Method = "PUT"
+	if got := Render(FormToRoute(put, nil)); !strings.Contains(got, "@put(&#39;"+u) {
+		t.Fatalf("PUT: %s", got)
+	}
+	// a submit button with a name of its own keeps it, and is not an own submit: the hidden
+	// field carries the method (two name attributes would drop _method without JavaScript)
+	got = Render(FormToRoute(rowRoute("7"), nil, El("button", []Attr{A("name", "action"), A("value", "save")}, Text("Save")),
+		El("button", []Attr{A("name", "action"), A("value", "close")}, Text("Close"))))
+	want = `<form method="post" action="` + u + `" data-on:submit="` + busyQ("@patch('"+u+"', window._alderO?.('form')||{contentType: 'form'})") + `">` +
+		`<input type="hidden" name="_method" value="PATCH" /><button name="action" value="save">Save</button><button name="action" value="close">Close</button></form>`
+	if got != want {
+		t.Fatalf("named button:\n got %s\nwant %s", got, want)
+	}
+	// a named button beside an unnamed one: the hidden field alone (the unnamed one naming the
+	// method too would send a second _method), both buttons untouched
+	got = Render(FormToRoute(rowRoute("7"), nil, El("button", []Attr{A("name", "action"), A("value", "save")}, Text("Save")), El("button", nil, Text("Go"))))
+	if strings.Count(got, `name="_method"`) != 1 || !strings.Contains(got, `<input type="hidden" name="_method" value="PATCH" />`) ||
+		!strings.Contains(got, `<button name="action" value="save">Save</button><button>Go</button>`) {
+		t.Fatalf("named and unnamed buttons: %s", got)
+	}
 	r := rowRoute("7")
 	r.Method = "POST"
 	got = Render(FormToRoute(r, nil))
@@ -447,7 +490,8 @@ func TestRender_RouteRawQuoteInPath(t *testing.T) {
 	r := rt.Route{Method: "DELETE", Path: "/it's"}
 	for _, n := range []Node{El("li", []Attr{RouteAttr("data-on:click", r)}), FormToRoute(r, nil)} {
 		got := Render(n)
-		if !strings.Contains(got, "@delete(&#39;/it%27s&#39;, ") {
+		// a click @delete, a form @post (a DELETE that sends a form posts)
+		if !strings.Contains(got, "@delete(&#39;/it%27s&#39;, ") && !strings.Contains(got, "@post(&#39;/it%27s&#39;, ") {
 			t.Errorf("quote not escaped: %s", got)
 		}
 	}

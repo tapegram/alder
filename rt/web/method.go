@@ -39,6 +39,12 @@ var errOverride = errors.New(`"_method" must be one value: PUT, PATCH or DELETE`
 // routed by it. That _method must be exactly one value, "PUT", "PATCH" or "DELETE" (case
 // matters); any other, an empty one or several, is errOverride. On any method but POST
 // _method is ignored.
+//
+// A _method in the query string is never honoured, on any method (R7): only a POST's body can
+// change its method, so a top-level cross-site GET (the one request SameSite=Lax lets the session
+// cookie ride on) can never become a write. Datastar puts a DELETE's form fields in its query
+// (`?_method=DELETE` among them), which is why rt/html renders a form's DELETE as a POST; do not
+// "fix" this by reading the query.
 func effectiveMethod(r *http.Request, form url.Values) (string, error) {
 	switch r.Method {
 	case http.MethodHead:
