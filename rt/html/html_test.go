@@ -331,10 +331,23 @@ func TestRender_ClickGetRoute(t *testing.T) {
 	if got != want {
 		t.Fatalf("outside a form:\n got %s\nwant %s", got, want)
 	}
-	got = Render(FormTo(rt.MsgRef{Module: "M", Msg: "Save"}, nil, El("button", []Attr{RouteAttr("data-on:click", listRoute)}, Text("More"))))
-	want = `<button type="submit" formaction="` + u + `" formmethod="get" formnovalidate data-on:click__prevent="` + busyQ("@get('"+u+"', window._alderF?.())") + `">More</button></form>`
-	if !strings.HasSuffix(got, want) {
-		t.Fatalf("inside a form:\n got %s\nwant …%s", got, want)
+	// inside a form: JavaScript only (type="button", no formaction or formmethod), so without it
+	// the button is inert and no field of the enclosing form can reach a URL
+	inner := []Node{Input(Control{Kind: "input", Form: "F", Name: "pw", Type: "text", Secret: true}),
+		El("button", []Attr{RouteAttr("data-on:click", listRoute), A("class", "x")}, Text("More")),
+		El("al-button", nil, El("button", []Attr{RouteAttr("data-on:click", listRoute)}, Text("All")))}
+	for _, form := range []Node{FormTo(rt.MsgRef{Module: "M", Msg: "Save"}, nil, inner...), FormToRoute(rowRoute("7"), nil, inner...)} {
+		got = Render(form)
+		want = `<button type="button" class="x" data-on:click="` + busyQ("@get('"+u+"', window._alderF?.())") + `">More</button>` +
+			`<al-button><button type="button" data-on:click="` + busyQ("@get('"+u+"', window._alderF?.())") + `">All</button></al-button></form>`
+		if !strings.HasSuffix(got, want) || strings.Count(got, "<form") != 1 {
+			t.Fatalf("inside a form:\n got %s\nwant …%s", got, want)
+		}
+		for _, bad := range []string{`formmethod="get"`, `method="get"`, "formaction", `type="submit"`} {
+			if strings.Contains(got, bad) {
+				t.Errorf("inside a form: %s in %s", bad, got)
+			}
+		}
 	}
 	got = Render(El("div", []Attr{RouteAttr("data-on:click", listRoute)}))
 	if want := `<div data-on:click="` + busyQ("@get('"+u+"', window._alderF?.())") + `"></div>`; got != want {
@@ -350,11 +363,22 @@ func TestRender_ClickGetRoute(t *testing.T) {
 // with JavaScript the route's own method with the fields url-encoded.
 func TestRender_SubmitRoute(t *testing.T) {
 	u := "/todos/7?tab=a+b"
-	got := Render(FormToRoute(rowRoute("7"), []Attr{A("class", "f")}, El("button", nil, Text("Save"))))
+	// the form's own submit buttons (no type, or type="submit", no click; at any depth) name the
+	// method; a type="button" or a click button does not
+	got := Render(FormToRoute(rowRoute("7"), []Attr{A("class", "f")}, El("button", nil, Text("Save")),
+		El("p", nil, El("al-button", nil, El("button", []Attr{A("type", "submit")}, Text("Go")))), El("button", []Attr{A("type", "button")}, Text("No"))))
 	want := `<form method="post" action="` + u + `" data-on:submit="` + busyQ("@patch('"+u+"', window._alderO?.('form')||{contentType: 'form'})") + `" class="f">` +
-		`<input type="hidden" name="_method" value="PATCH" /><button>Save</button></form>`
+		`<button name="_method" value="PATCH">Save</button><p><al-button><button type="submit" name="_method" value="PATCH">Go</button></al-button></p><button type="button">No</button></form>`
 	if got != want {
 		t.Fatalf("PATCH:\n got %s\nwant %s", got, want)
+	}
+	// no own submit button (Enter in a field submits it): the hidden field, which a click button
+	// inside the form would send too (the documented limitation)
+	got = Render(FormToRoute(rowRoute("7"), nil, El("input", []Attr{A("name", "title")})))
+	want = `<form method="post" action="` + u + `" data-on:submit="` + busyQ("@patch('"+u+"', window._alderO?.('form')||{contentType: 'form'})") + `">` +
+		`<input type="hidden" name="_method" value="PATCH" /><input name="title" /></form>`
+	if got != want {
+		t.Fatalf("fallback:\n got %s\nwant %s", got, want)
 	}
 	r := rowRoute("7")
 	r.Method = "POST"
@@ -386,5 +410,45 @@ func TestRender_FormStateByRouteKey(t *testing.T) {
 	}
 	if i, j := strings.Index(got, "is required"), strings.Index(got, `action="/todos/2`); j < 0 || i < j {
 		t.Fatalf("errors not on row 2's form: %s", got)
+	}
+}
+
+// Inside a PATCH FormToRoute with its own submit button, each click button sends exactly its own
+// _method without JavaScript: a POST route's and a message's none, a DELETE route's DELETE.
+func TestRender_ClickInRouteFormOwnMethod(t *testing.T) {
+	post := rowRoute("7")
+	post.Method = "POST"
+	del := rowRoute("7")
+	del.Method = "DELETE"
+	got := Render(FormToRoute(rowRoute("7"), nil,
+		El("button", []Attr{RouteAttr("data-on:click", post)}, Text("P")),
+		El("button", []Attr{MsgAttr("data-on:click", rt.MsgRef{Module: "M", Msg: "Go"})}, Text("M")),
+		El("button", []Attr{RouteAttr("data-on:click", del)}, Text("D")),
+		El("button", nil, Text("Save"))))
+	if strings.Contains(got, `type="hidden"`) {
+		t.Fatalf("a hidden _method field: %s", got)
+	}
+	for label, want := range map[string]int{"P": 0, "M": 0, "D": 1, "Save": 1} {
+		i := strings.Index(got, ">"+label+"</button>")
+		start := strings.LastIndex(got[:i], "<button")
+		tag := got[start:i]
+		if n := strings.Count(tag, `name="_method"`); n != want {
+			t.Errorf("%s: %d _method, want %d: %s", label, n, want, tag)
+		}
+	}
+	if !strings.Contains(got, `name="_method" value="DELETE"`) || !strings.Contains(got, `<button name="_method" value="PATCH">Save`) {
+		t.Fatalf("own methods: %s", got)
+	}
+}
+
+// A literal quote in Route.Path (not built by rt.PathSegment, which escapes it) still cannot end
+// the Datastar string.
+func TestRender_RouteRawQuoteInPath(t *testing.T) {
+	r := rt.Route{Method: "DELETE", Path: "/it's"}
+	for _, n := range []Node{El("li", []Attr{RouteAttr("data-on:click", r)}), FormToRoute(r, nil)} {
+		got := Render(n)
+		if !strings.Contains(got, "@delete(&#39;/it%27s&#39;, ") {
+			t.Errorf("quote not escaped: %s", got)
+		}
 	}
 }
