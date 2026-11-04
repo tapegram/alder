@@ -17,7 +17,7 @@ import (
 // "/todos/{id}" ({name} matches one non-empty segment); messages use "/_m/<Module>/<Msg>".
 // Handle gets the request with the matched path params and returns a Response.
 type Route struct {
-	Method  string // "GET" | "POST"
+	Method  string // "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; a POST is routed by its form's _method (effectiveMethod)
 	Pattern string
 	File    bool // a file page's GET: answered raw; never morphed or followed
 	Handle  func(rq *Request) Response
@@ -30,7 +30,7 @@ type Request struct {
 	HTTP     *http.Request
 	Params   map[string]string // path params, unescaped
 	Query    url.Values
-	Form     url.Values // POST body (parsed when url-encoded, else empty); nil for GET
+	Form     url.Values // POST/PUT/PATCH/DELETE body (parsed when url-encoded, else empty); nil for GET/HEAD
 	Session  any        // decoded from the cookie via Options.Session; its Default when absent or invalid
 	Env      *eff.Env   // Ctx = HTTP.Context(); Store, Caps, Now, Log and Session set
 	Datastar bool       // sent by the Datastar client (header Datastar-Request: true)

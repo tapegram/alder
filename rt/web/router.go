@@ -316,8 +316,10 @@ type segment struct {
 // ErrorDoc); serves the Datastar script at datastar.ScriptPath (versioned, immutable),
 // Options.StaticDir under /static/, and the design system at /static/al/ (DesignSystemCache, ETag); matches method and pattern, the most specific pattern first (a literal segment
 // before a parameter, left to right; equally specific ones in declaration order), a trailing
-// slash tolerated (anything unmatched, including a GET to a POST-only path, is a 404 rendered
-// with NotFoundDoc); reads a POST body
+// slash tolerated (a path no route matches is a 404 rendered with NotFoundDoc; one matched for
+// another method only, a 405 with Allow, HEAD served by GET); routes a POST by its url-encoded
+// body's _method (effectiveMethod: PUT, PATCH or DELETE, else 400); reads a POST, PUT, PATCH or
+// DELETE body
 // (at most 1 MiB, else 413; url-encoded forms are parsed, multipart is refused with 415);
 // decodes the session cookie; builds the Request and its Env; calls the route's Handle; and
 // writes the Response. Patterns are compiled here; a malformed one panics, as does a Secret
@@ -357,8 +359,8 @@ func NewRouter(routes []Route, opts Options) http.Handler {
 		rt.static = http.StripPrefix(strings.TrimSuffix(staticPrefix, "/"), http.FileServer(filesOnly{http.Dir(opts.StaticDir)}))
 	}
 	for _, r := range routes {
-		if r.Method != http.MethodGet && r.Method != http.MethodPost {
-			panic(fmt.Sprintf("web: route %q: method %q is not GET or POST", r.Pattern, r.Method))
+		if !declarable(r.Method) {
+			panic(fmt.Sprintf("web: route %q: method %q is not GET, POST, PUT, PATCH or DELETE", r.Pattern, r.Method))
 		}
 		ro := route{method: r.Method, pattern: r.Pattern, segs: compile(r.Pattern), file: r.File, handle: r.Handle}
 		for i, s := range ro.segs {
@@ -417,24 +419,58 @@ func compile(pattern string) []segment {
 // maskURL is u, a request with method's URL, as a log line shows it: applog.MaskURL, and the
 // value of each path parameter of the route it matches whose name is Sensitive masked whatever
 // it looks like (a Random.id token in `/reset/{token}` is too short to look like a secret).
+// For a POST, which its _method may route to another method's route, and for a method no route
+// of the path declares (a 405), the parameters masked are those of every route matching the
+// path, whatever its method.
 func (rt *router) maskURL(method string, u *url.URL) string {
 	if rt.anyHide {
 		if method == http.MethodHead {
 			method = http.MethodGet
 		}
 		if segs, ok := splitPath(u.EscapedPath()); ok {
+			var hide []bool
+			found := false
 			for i := range rt.routes {
 				r := &rt.routes[i]
 				if r.method == method && r.matches(segs) {
-					if r.hide != nil {
-						return applog.MaskURLSegments(u, r.hide)
-					}
+					hide, found = r.hide, true
 					break
 				}
+			}
+			if !found || method == http.MethodPost {
+				hide = rt.hideAny(segs, hide)
+			}
+			if hide != nil {
+				return applog.MaskURLSegments(u, hide)
 			}
 		}
 	}
 	return applog.MaskURL(u)
+}
+
+// hideAny is hide with the Sensitive segments of every route matching segs added (a copy when
+// one is added; hide itself is never written).
+func (rt *router) hideAny(segs []string, hide []bool) []bool {
+	owned := false
+	for i := range rt.routes {
+		r := &rt.routes[i]
+		if r.hide == nil || !r.matches(segs) {
+			continue
+		}
+		if hide == nil {
+			hide = r.hide
+			continue
+		}
+		for j, h := range r.hide {
+			if h && !hide[j] {
+				if !owned {
+					hide, owned = slices.Clone(hide), true
+				}
+				hide[j] = true
+			}
+		}
+	}
+	return hide
 }
 
 // matches is match without the params.
@@ -762,20 +798,49 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 	}
 	var hit *route
 	var params map[string]string
-	if segs, ok := pathSegments(r); ok {
-		hit, params = rt.find(method, segs)
+	var declared map[string]bool
+	segs, ok := pathSegments(r)
+	if ok {
+		hit, params, declared = rt.find(method, segs)
 	}
-	tw, _ := w.(*tracker)
-	if hit != nil && tw != nil && tw.route == "" { // a redirect follow keeps the first request's
-		tw.route = hit.pattern
-	}
-	if hit == nil {
+	if hit == nil && declared == nil {
 		rt.notFound(w, r, st, html.None())
+		return
+	}
+	if hit == nil && r.Method != http.MethodPost { // a POST's _method may yet name a declared method
+		rt.notAllowed(w, r, st, method, declared)
 		return
 	}
 	if why := badQuery(r.URL.RawQuery); why != "" {
 		rt.badRequest(w, r, st, why)
 		return
+	}
+	var form url.Values
+	if hasBody(r.Method) {
+		var status int
+		form, status = readForm(w, r)
+		if status != 0 {
+			rt.logReq(w, "warn", line(w, r, refusal[status]))
+			http.Error(w, http.StatusText(status), status)
+			return
+		}
+		m, err := effectiveMethod(r, form)
+		if err != nil {
+			rt.badOverride(w, r, st, err)
+			return
+		}
+		if m != method {
+			method = m
+			hit, params, declared = rt.find(method, segs)
+		}
+		if hit == nil {
+			rt.notAllowed(w, r, st, method, declared)
+			return
+		}
+	}
+	tw, _ := w.(*tracker)
+	if tw != nil && tw.route == "" { // a redirect follow keeps the first request's
+		tw.route = hit.pattern
 	}
 	if hit.file && datastar.IsDatastar(r) {
 		// a file is a document of its own: a real navigation, its load not run. Not rt.reload:
@@ -795,15 +860,7 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 		Dev:      rt.opts.Dev,
 		Login:    rt.opts.Login,
 	}
-	if method == http.MethodPost {
-		form, status := readForm(w, r)
-		if status != 0 {
-			rt.logReq(w, "warn", line(w, r, refusal[status]))
-			http.Error(w, http.StatusText(status), status)
-			return
-		}
-		rq.Form = form
-	}
+	rq.Form = form // nil for a GET or HEAD
 	if st.has {
 		rq.Session, rq.sessionEnc = st.session, st.enc
 	} else {
@@ -861,17 +918,26 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 }
 
 // find is the route serve picks for method and the path's segments (the routes are sorted most
-// specific first), and its params; nil when none matches.
-func (rt *router) find(method string, segs []string) (*route, map[string]string) {
+// specific first), and its params. When none matches, declared is the set of methods the routes
+// whose pattern matches the path declare (a 405's Allow), nil when there is none (a 404).
+func (rt *router) find(method string, segs []string) (hit *route, params map[string]string, declared map[string]bool) {
 	for i := range rt.routes {
 		if rt.routes[i].method != method {
 			continue
 		}
 		if p, ok := rt.routes[i].match(segs); ok {
-			return &rt.routes[i], p
+			return &rt.routes[i], p, nil
 		}
 	}
-	return nil, nil
+	for i := range rt.routes {
+		if rt.routes[i].matches(segs) {
+			if declared == nil {
+				declared = map[string]bool{}
+			}
+			declared[rt.routes[i].method] = true
+		}
+	}
+	return nil, nil, declared
 }
 
 // refusal is the warn line's text of each status readForm answers.
@@ -881,22 +947,29 @@ var refusal = map[int]string{
 	http.StatusBadRequest:            "400: the form body does not parse",
 }
 
-// readForm reads a POST body: url-encoded forms are parsed, any other body except multipart
-// gives an empty form (a Datastar post without a form sends its signals as JSON). status is
-// non-zero on failure: 413 too large, 415 multipart, 400 malformed.
+// readForm reads the body of a POST, PUT, PATCH or DELETE (hasBody): url-encoded forms are
+// parsed (the body only, never the query), any other body except multipart gives an empty form
+// (a Datastar post without a form sends its signals as JSON). status is non-zero on failure:
+// 413 too large, 415 multipart, 400 malformed.
 func readForm(w http.ResponseWriter, r *http.Request) (url.Values, int) {
 	ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	switch {
 	case ct == "application/x-www-form-urlencoded":
-		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
-		if err := r.ParseForm(); err != nil {
+		// read here, not by r.ParseForm, which leaves a DELETE's body unread
+		b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
+		if err != nil {
 			var tooBig *http.MaxBytesError
 			if errors.As(err, &tooBig) {
 				return nil, http.StatusRequestEntityTooLarge
 			}
 			return nil, http.StatusBadRequest
 		}
-		return r.PostForm, 0
+		form, err := url.ParseQuery(string(b))
+		if err != nil {
+			return nil, http.StatusBadRequest
+		}
+		r.PostForm = form
+		return form, 0
 	case strings.HasPrefix(ct, "multipart/"):
 		return nil, http.StatusUnsupportedMediaType
 	default:
@@ -1315,7 +1388,7 @@ func (rt *router) isFileRoute(p string) bool {
 	if !ok {
 		return false
 	}
-	hit, _ := rt.find(http.MethodGet, segs)
+	hit, _, _ := rt.find(http.MethodGet, segs)
 	return hit != nil && hit.file
 }
 
