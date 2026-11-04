@@ -1602,7 +1602,7 @@ func (rt *router) fail(w http.ResponseWriter, r *http.Request, st hop, doc html.
 	rt.failure(w, r, st, http.StatusInternalServerError, page)
 }
 
-// failure writes a 400/404/500/503 page: a full document with that status, or, for a Datastar
+// failure writes a 400/404/405/500/503 page: a full document with that status, or, for a Datastar
 // request, a 200 SSE patch of its body (the Datastar client ignores non-2xx answers) whose
 // StatusHeader names the status, so a client that is not a browser (an Alder test's) can tell
 // it from a re-rendered page; for a boosted navigation (st.url) also its title and the history
@@ -1616,7 +1616,7 @@ func (rt *router) failure(w http.ResponseWriter, r *http.Request, st hop, status
 }
 
 // StatusHeader is the response header of a Datastar answer to a request that failed: "400",
-// "404", "500" or "503" (the answer itself is a 200 body patch).
+// "404", "405", "500" or "503" (the answer itself is a 200 body patch).
 const StatusHeader = "Alder-Status"
 
 // endOfBody inserts s just before the last </body> of page, or appends it when there is none.
