@@ -190,6 +190,7 @@ type tracker struct {
 	// script): rendered as an <al-alert> at the top of the page (document)
 	alert string
 	kind  rtpkg.NoticeKind // the variant of notice or alert (only one is set)
+	more  []rtpkg.Toast    // a write's answer's toasts after the first (notice), patched in after it
 }
 
 // logLine is one line the request logged: when, at which level (as Env.Log names it) and what.
@@ -790,6 +791,9 @@ type hop struct {
 	has     bool
 	session any
 	enc     []byte
+	// render is set for the element GET of a write's `render r` (answerRender): a target that does
+	// not answer its view is never patched in (renderFailed)
+	render bool
 }
 
 // serve routes r (not the Datastar script, not static/) and writes the handler's answer.
@@ -861,6 +865,8 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 		Datastar: datastar.IsDatastar(r),
 		Dev:      rt.opts.Dev,
 		Login:    rt.opts.Login,
+		rt:       rt,
+		w:        w,
 	}
 	rq.Form = form // nil for a GET or HEAD
 	if st.has {
@@ -1092,6 +1098,10 @@ func (rt *router) setSession(w http.ResponseWriter, r *http.Request, rq *Request
 }
 
 func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
+	if resp.Answer != nil {
+		rt.answer(w, r, st, rq, resp)
+		return
+	}
 	if resp.Raw != nil {
 		rt.writeFile(w, r, st, rq, resp)
 		return
@@ -1176,97 +1186,24 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 }
 
 // rerender answers a Datastar request whose page re-renders (a message's Rerender or Reject, a
-// form that did not decode): with the elements that changed when the router can prove which page
-// the client shows (fragments), else with the whole body morphed in, as a boosted navigation's.
-// Options.Rendered gets the full render's body either way.
+// form that did not decode): with the regions that changed between the page as it was before the
+// message (Response.Before) and its answer (patchRegions), else with the whole body morphed in,
+// as a boosted navigation's.
 func (rt *router) rerender(w http.ResponseWriter, r *http.Request, rq *Request, resp Response) {
-	var after html.Rendered
-	if resp.Before != nil && r.Header.Get(html.ShownHeader) != "" { // regions only when fragments may follow
-		after = html.RenderTracked(resp.Node, resp.State)
-	} else {
-		after.Page = html.RenderWith(resp.Node, resp.State)
+	if resp.Before == nil || r.Header.Get(html.ShownHeader) == "" { // regions only when fragments may follow
+		rt.patchRegions(w, r, rq, nil, html.Rendered{Page: html.RenderWith(resp.Node, resp.State)}, http.StatusOK)
+		return
 	}
-	body := bodyOf(after.Page)
-	if rt.opts.Rendered != nil {
-		rt.opts.Rendered(rq, body)
-	}
-	tw, _ := w.(*tracker)
-	note := func(p string) {
-		if tw != nil {
-			tw.patches = append(tw.patches, p)
-		}
-	}
-	patches, ok := rt.fragments(w, r, resp, after, body)
-	var err error
-	switch {
-	case !ok:
-		err = datastar.PatchBody(w, rt.shellBody(w, rt.dev(withShown(body))))
-		note("body")
-	case len(patches) == 0:
-		// nothing changed: no element event, and the shown hash stays what it was
-		h := w.Header()
-		h.Set("Content-Type", "text/event-stream")
-		h.Set("Cache-Control", "no-cache")
-		note("none")
-	default:
-		for _, p := range patches {
-			if err == nil {
-				err = datastar.PatchRegion(w, strings.TrimPrefix(p.Selector, "#"), p.Elements)
-			}
-			note(p.Selector)
-		}
-		// the shown hash last: an answer cut short (an aborted request, a dropped connection)
-		// leaves the old hash with regions already patched, so the next post's hash does not
-		// match its before-view and that answer morphs the whole body
-		if err == nil {
-			err = datastar.PatchShown(w, html.Hash(body))
-		}
-		note("shown")
-	}
-	if err != nil {
-		rt.logReq(w, "error", line(w, r, fmt.Sprintf("writing the patch: %v", err)))
-	}
-	rt.notify(w)
-	rt.patchPanel(w, http.StatusOK)
-}
-
-// fragments is the region patches of a re-rendered page (html.Fragments), body its full
-// render's <body>; ok is false when only a body morph is safe: the route sets no Before (not a
-// message's answer), the request carries no shown hash (html.ShownHeader), a Noticed answer's
-// toast needs the implicit <al-toasts> region the page does not have, the before-view panics
-// (logged), the client shows another page than the before-view (the first click after a
-// rejected form, a load that reads the clock, a tab of an older build), or a change lies
-// outside every region.
-func (rt *router) fragments(w http.ResponseWriter, r *http.Request, resp Response, after html.Rendered, body string) (patches []html.Patch, ok bool) {
-	shown := r.Header.Get(html.ShownHeader)
-	if resp.Before == nil || shown == "" {
-		return nil, false
-	}
-	if tw, isT := w.(*tracker); isT && tw.notice != "" && !after.Toasts {
-		return nil, false
-	}
+	after := html.RenderTracked(resp.Node, resp.State)
 	var plain *html.FormState
 	if resp.State != nil {
 		plain = &html.FormState{PageParams: resp.State.PageParams}
 	}
-	before, ok := rt.renderBefore(w, r, resp.Before, plain, len(after.Page)+len(after.Page)/16)
-	if !ok {
-		return nil, false
+	var before *html.Rendered
+	if b, ok := rt.renderBefore(w, r, resp.Before, plain, len(after.Page)+len(after.Page)/16); ok {
+		before = &b
 	}
-	b := bodyOf(before.Page)
-	if html.Hash(b) != shown {
-		return nil, false
-	}
-	if b == body {
-		return []html.Patch{}, true
-	}
-	ps := html.Fragments(before, after)
-	for _, p := range ps {
-		if p.Selector == "body" {
-			return nil, false
-		}
-	}
-	return ps, true
+	rt.patchRegions(w, r, rq, before, after, http.StatusOK)
 }
 
 // renderBefore renders the page as it was before the message (Response.Before) with st, in a
@@ -1353,23 +1290,12 @@ func (rt *router) follow(w http.ResponseWriter, r *http.Request, st hop, rq *Req
 		rt.fail(w, r, st, html.None(), err, nil)
 		return
 	}
-	next := hop{origin: st.origin, url: resp.Location, mode: st.mode, gets: st.gets + 1, has: true, session: rq.Session, enc: rq.sessionEnc}
+	next := hop{origin: st.origin, url: resp.Location, mode: st.mode, gets: st.gets + 1, has: true}
+	next.session, next.enc = rt.sessionLeft(rq, resp)
 	if st.url == "" {
 		next.mode = datastar.Push
 	}
-	if resp.Session != nil {
-		next.session, next.enc = resp.Session, nil
-		if rt.opts.Session != nil {
-			next.enc, _ = rt.opts.Session.Encode(resp.Session)
-		}
-	}
-	r2 := r.Clone(r.Context())
-	r2.Method, r2.URL, r2.RequestURI = http.MethodGet, u, u.RequestURI()
-	r2.Body, r2.ContentLength, r2.Form, r2.PostForm = http.NoBody, 0, nil, nil
-	r2.Header.Del("Content-Type")
-	r2.Header.Del("Content-Length")
-	r2.Header.Del(datastar.FetchHeader) // the page redirected to is a navigation, not an element
-	rt.serve(w, r2, next)
+	rt.serve(w, getOf(r, u, false), next) // the page redirected to is a navigation, not an element
 }
 
 // followable reports whether a redirect to loc is to a page of this app the router can serve

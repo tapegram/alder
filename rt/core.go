@@ -718,12 +718,30 @@ func PageParams(query url.Values) (map[string]string, url.Values) {
 	return params, q
 }
 
-// BackURL is where a redirect back to the page that sent a request goes: the path and query of
-// referer (the Referer header), or "/" when there is none. Scheme and host are dropped, so it
-// never leads out of the app.
-func BackURL(referer string) string {
-	u, err := url.Parse(referer)
-	if err != nil || referer == "" {
+// BackURL is where a redirect back to the page that sent a request goes, and which page a write
+// answers for (#160): the path and query of raw — the Referer header, or Alder-Page (the path and
+// query the page's post helper sends) — or "/" when there is none. Scheme and host are dropped, so
+// it never leads out of the app: raw must be a path ("/…") or an absolute http(s) URL, and
+// anything that could name another host is "/" — a path starting "//" (the raw value's or the
+// URL's), a backslash anywhere (browsers read "/\" as "//"), a control byte, a value over
+// backURLMax bytes, another scheme, a value that does not parse.
+func BackURL(raw string) string {
+	if raw == "" || len(raw) > backURLMax || strings.HasPrefix(raw, "//") {
+		return "/"
+	}
+	for i := 0; i < len(raw); i++ {
+		if c := raw[i]; c < 0x20 || c == 0x7f || c == '\\' {
+			return "/"
+		}
+	}
+	if !strings.HasPrefix(raw, "/") {
+		l := strings.ToLower(raw)
+		if !strings.HasPrefix(l, "http://") && !strings.HasPrefix(l, "https://") {
+			return "/"
+		}
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
 		return "/"
 	}
 	p := u.EscapedPath()
@@ -733,8 +751,14 @@ func BackURL(referer string) string {
 	if u.RawQuery != "" {
 		p += "?" + u.RawQuery
 	}
+	if len(p) > backURLMax {
+		return "/"
+	}
 	return p
 }
+
+// backURLMax is the longest value BackURL reads (and returns): a longer one is "/".
+const backURLMax = 2048
 
 // MaybeText is a Maybe's value as text, "" for Nothing. The generated code uses it for message
 // parameters and form values of a Maybe type.

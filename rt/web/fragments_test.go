@@ -205,14 +205,23 @@ func TestRerender_SkeletonChangeMorphsBody(t *testing.T) {
 	}
 }
 
-// Without the header, or with a hash of another page, the body is morphed.
-func TestRerender_ShownMismatchMorphsBody(t *testing.T) {
-	for _, shown := range []string{"", "0123456789abcdef"} {
-		a := newFrApp(3)
-		w := post(t, a, testOpts(nil), "/_m/R/Toggle?id=1", nil, shown)
-		if !isBodyMorph(t, w) || len(events(w.Body.String())) != 1 {
-			t.Fatalf("shown %q: %q", shown, w.Body.String())
-		}
+// Without the header (a post made before the boost ran) the body is morphed.
+func TestRerender_NoShownMorphsBody(t *testing.T) {
+	a := newFrApp(3)
+	w := post(t, a, testOpts(nil), "/_m/R/Toggle?id=1", nil, "")
+	if !isBodyMorph(t, w) || len(events(w.Body.String())) != 1 {
+		t.Fatalf("%q", w.Body.String())
+	}
+}
+
+// A stale hash (the client's al-shown after an element patch) no longer forces a body morph
+// (#160): the regions the server changed are patched, the others left as the browser has them.
+func TestRerender_StaleShownPatchesRegions(t *testing.T) {
+	a := newFrApp(3)
+	w := post(t, a, testOpts(nil), "/_m/R/Toggle?id=1", nil, "0123456789abcdef")
+	evs := events(w.Body.String())
+	if len(evs) != 2 || evs[0] != regionEvent("row-1", `<li id="row-1" class="done">Row 1</li>`) || !strings.Contains(evs[1], "selector #_alder_shown") {
+		t.Fatalf("%q", evs)
 	}
 }
 
@@ -270,9 +279,9 @@ func TestRerender_NoticeWithoutToastsMorphsBody(t *testing.T) {
 	}
 }
 
-// A form that does not decode re-renders with its errors: one patch of the form (it has an id);
-// the next click's before-view (plain state) is not the page shown (with errors), so it morphs
-// the body.
+// A form that does not decode re-renders with its errors: one patch of the form (it has an id).
+// The next click patches only what it changed (#160): the form, which the server renders plain
+// before and after, is left as the browser has it.
 func TestRerender_RejectedFormPatchesItsRegion(t *testing.T) {
 	a := newFrApp(3)
 	w := post(t, a, testOpts(nil), "/_m/R/Add", url.Values{"title": {""}}, shownNow(t, a, testOpts(nil)))
@@ -282,8 +291,9 @@ func TestRerender_RejectedFormPatchesItsRegion(t *testing.T) {
 	}
 	shown := shownOf(evs[1])
 	w = post(t, a, testOpts(nil), "/_m/R/Toggle?id=1", nil, shown)
-	if !isBodyMorph(t, w) || strings.Contains(w.Body.String(), "must not be empty") {
-		t.Fatalf("%q", w.Body.String())
+	evs = events(w.Body.String())
+	if len(evs) != 2 || evs[0] != regionEvent("row-1", `<li id="row-1" class="done">Row 1</li>`) || strings.Contains(w.Body.String(), "#add") {
+		t.Fatalf("%q", evs)
 	}
 }
 

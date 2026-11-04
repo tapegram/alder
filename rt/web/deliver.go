@@ -33,8 +33,13 @@ func elementFetch(r *http.Request) bool {
 // morphed in with a history push, a failure's page is morphed into the body.
 //
 // It is also how a write's `render r` is delivered (an in-process element GET of r, with the
-// session the write left in st): w is the write's own answer.
+// session the write left in st, st.render set): w is the write's own answer, and a target that
+// answers neither its view nor a redirect is never patched in (renderFailed).
 func (rt *router) deliverElement(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
+	if st.render && !renderOK(resp) {
+		rt.renderFailed(w, r, rq, resp)
+		return
+	}
 	if resp.Raw != nil || resp.Status != http.StatusOK {
 		rt.write(w, r, st, rq, resp)
 		return

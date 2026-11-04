@@ -36,6 +36,10 @@ func TestNoWritesToParameters(t *testing.T) {
 		// The router's tracker keeps the lines a recorded request logs for the dev server's
 		// request detail: its own slice of Go strings, never an Alder value.
 		"web/router.go: (*tracker).log append t": "t.logs is the tracker's own record of the request's log lines",
+		// A write's answer's toasts after the first: the tracker's own slice of Go values.
+		"web/answer.go: (*tracker).addToast append t": "t.more is the tracker's own list of the answer's toasts",
+		// The shown page's GET runs on a copy of the write's Env; its steps join the write's trace.
+		"web/shown.go: (*router).runShown append parent": "parent.Env.Trace is the request's own log of effect names (Go strings)",
 		// The dev server's request ring stores records the router built from a finished request:
 		// its own array and lookup of Go values, never an Alder value.
 		"web/devrequests.go: (*reqRing).add index g": "g is the router's request ring; its slots and lookup are its own",

@@ -43,8 +43,17 @@ type Request struct {
 	// other request): Options.Served hands it to an Alder test's browser, so Test.get gives the
 	// model the page showed without running its load again.
 	Model any
+	// FormState, when set, is the state a GET route's view renders with instead of its plain
+	// one: the posted form's values and errors when a write's `invalid` (or a form that did not
+	// decode) re-renders the page the browser is on (RenderShown). nil for any other request.
+	FormState *html.FormState
 
 	sessionEnc []byte // the codec's encoding of Session: a response's session equal to it is not stored again
+
+	// the router serving the request and its writer: RenderShown runs the shown page's GET route
+	// with them (nil for a Request not built by the router)
+	rt *router
+	w  http.ResponseWriter
 }
 
 // Response is what a handler returns; build it with the constructors below. Status decides its
@@ -63,8 +72,17 @@ type Response struct {
 	// of the model loaded before update (or, for a form that did not decode, the same model),
 	// rendered with the page's plain state (FormState{PageParams}). Under Datastar the router
 	// compares it with the answer and sends only the regions that differ (html.Fragments) when
-	// the client shows exactly that page (html.ShownHeader). nil: the whole body is morphed.
+	// the post carries html.ShownHeader (its value is not compared since #160: patchRegions).
+	// nil: the whole body is morphed.
 	Before func() html.Node
+	// Answer is a write route's answer (#160), set by AnswerResponse and InvalidResponse; nil for
+	// every other response. When it is set the router answers by its kind (answer.go) and the
+	// fields above but Session and State are not read.
+	Answer *rtpkg.Response
+	// Shown is the page the browser was on, rendered before the write's update (RenderShown):
+	// the before-view a `refresh` or `invalid` answer is diffed against. nil: the whole body is
+	// morphed. `redirect` and `render` never read it.
+	Shown *Shown
 }
 
 // WithBefore is r with Before set to before.
