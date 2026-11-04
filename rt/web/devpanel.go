@@ -353,6 +353,9 @@ func curlLine(tw *tracker) string {
 	b.WriteString(" -H " + shq("Cookie: "+CookieName+"=<your session cookie>"))
 	if tw.rq != nil && tw.rq.Datastar {
 		b.WriteString(" -H " + shq("Datastar-Request: true"))
+		if elementFetch(r) {
+			b.WriteString(" -H " + shq(datastar.FetchHeader+": 1"))
+		}
 	}
 	if tw.rq != nil {
 		keys := make([]string, 0, len(tw.rq.Form))

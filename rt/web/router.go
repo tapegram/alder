@@ -639,8 +639,10 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if get && datastar.IsDatastar(r) {
-		// a boosted link or a back/forward: answered with a morph and a history step
 		dropSignals(r.URL)
+	}
+	if get && datastar.IsDatastar(r) && !elementFetch(r) {
+		// a boosted link or a back/forward: answered with a morph and a history step
 		st.gets, st.url, st.mode = 1, r.URL.RequestURI(), datastar.Push
 		if r.Header.Get(datastar.HistoryHeader) == "replace" {
 			st.mode = datastar.Replace
@@ -913,6 +915,10 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 	}
 	if rt.opts.Served != nil {
 		rt.opts.Served(rq)
+	}
+	if elementFetch(r) {
+		rt.deliverElement(w, r, st, rq, resp)
+		return
 	}
 	rt.write(w, r, st, rq, resp)
 }
@@ -1362,6 +1368,7 @@ func (rt *router) follow(w http.ResponseWriter, r *http.Request, st hop, rq *Req
 	r2.Body, r2.ContentLength, r2.Form, r2.PostForm = http.NoBody, 0, nil, nil
 	r2.Header.Del("Content-Type")
 	r2.Header.Del("Content-Length")
+	r2.Header.Del(datastar.FetchHeader) // the page redirected to is a navigation, not an element
 	rt.serve(w, r2, next)
 }
 

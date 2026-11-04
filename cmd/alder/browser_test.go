@@ -4,12 +4,18 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"alder/rt/datastar"
+	"alder/rt/html"
 )
 
 // The project's real-browser smoke test (M13), behind the build tag `browser`:
@@ -139,4 +145,60 @@ func playwrightEnv(t *testing.T) (node string, env []string) {
 		t.Skipf("Playwright's Chromium is not installed (%s): run `NODE_PATH=%s npx playwright install chromium`", exe, nodePath)
 	}
 	return node, env
+}
+
+// TestBrowser_DatastarMultiRoot checks what Datastar v1.0.0 does with several top-level
+// elements in one `datastar-patch-elements` event on one selector in mode outer
+// (testdata/browser/multiroot.cjs): `<li id="a">1</li><li id="b">2</li>` onto #a. It decides
+// the shape html.RootID accepts for an element delivery (#160): when both land, several roots
+// are allowed and the first root's id is the target ("load more": the next rows and a new
+// sentinel replace the old sentinel).
+func TestBrowser_DatastarMultiRoot(t *testing.T) {
+	t.Parallel()
+	node, env := playwrightEnv(t)
+	script, err := filepath.Abs(filepath.Join("testdata", "browser", "multiroot.cjs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.Handle(datastar.ScriptPath, datastar.Handler())
+	mux.HandleFunc("/patch", func(w http.ResponseWriter, r *http.Request) {
+		if err := datastar.PatchRegion(w, "a", `<li id="a">1</li><li id="b">2</li>`); err != nil {
+			t.Error(err)
+		}
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<!doctype html><html><head><title>multiroot</title>%s</head><body>`+
+			`<ul id="list"><li id="a">old</li></ul>`+
+			`<button id="go" data-on:click="@get('/patch')">go</button></body></html>`, html.Render(datastar.ScriptTag()))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cmd := exec.Command(node, script, srv.URL)
+	cmd.Env = env
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("multiroot.cjs: %v\n%s\n%s", err, out, stderr.String())
+	}
+	var res struct {
+		Checks []struct {
+			Name string
+			OK   bool
+			Got  string
+		}
+		List string
+	}
+	if err := json.Unmarshal(out, &res); err != nil || len(res.Checks) == 0 {
+		t.Fatalf("multiroot.cjs printed %q (%v)\n%s", out, err, stderr.String())
+	}
+	for _, c := range res.Checks {
+		if !c.OK {
+			t.Errorf("%s: got %s", c.Name, c.Got)
+		}
+	}
+	t.Logf("the list after the patch: %s", res.List)
 }

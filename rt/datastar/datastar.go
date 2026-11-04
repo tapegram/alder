@@ -182,6 +182,12 @@ const abortNavigation = `window._alderAC?.abort();`
 // reloads once, on its next click, and has the new head.
 const BuildHeader = "Alder-Build"
 
+// FetchHeader is the request header an element fetch carries (value "1"): a Datastar GET of a
+// route from an element, answered with one patch of the view by its root's id (rt/web). A
+// Datastar GET without it is a boosted navigation, so a tab of an older build, which never sends
+// it, keeps working.
+const FetchHeader = "Alder-Fetch"
+
 // BoostScroll is the expression of the boost's data-on:scroll__window__throttle.200ms.trailing
 // attribute: the scroll position, kept in the state of the current history entry (alderY) as
 // the page scrolls (at most every 200 ms, and once after the last scroll), so Back and Forward

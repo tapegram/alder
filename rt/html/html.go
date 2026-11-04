@@ -106,6 +106,58 @@ func Nodes(ns ...Node) Node { return Node{kind: kFrag, children: ns} }
 // None renders nothing.
 func None() Node { return Node{} }
 
+// RootID is the id an element delivery patches n by (rt/web: a GET route's view answered to an
+// element fetch, #160): the id of n's first root element, the top-level elements once fragments
+// are flattened and whitespace-only text is ignored. Datastar v1.0.0 morphs every top-level
+// element of one patch onto its selector (cmd/alder: TestBrowser_DatastarMultiRoot), so several
+// roots are allowed and the first one's id is the target ("load more": the next rows and a new
+// sentinel replace the old sentinel). ok is false when there is no root element, when the first
+// one has no id (or an empty one), or when a root is other text, raw markup or a form control.
+func RootID(n Node) (id string, ok bool) {
+	first, seen := true, false
+	var walk func(n Node) bool
+	walk = func(n Node) bool {
+		switch n.kind {
+		case kNone:
+			return true
+		case kFrag:
+			for _, c := range n.children {
+				if !walk(c) {
+					return false
+				}
+			}
+			return true
+		case kText, kRawText:
+			return strings.TrimLeft(n.text, " \t\n\r\f") == ""
+		case kElem:
+			if first {
+				first = false
+				id, seen = idOf(n.attrs, nil)
+				if wrapped(n) {
+					return false
+				}
+			}
+			return true
+		default: // raw markup or a control: its root and id are not known before rendering
+			return false
+		}
+	}
+	if !walk(n) || !seen || id == "" {
+		return "", false
+	}
+	return id, true
+}
+
+// wrapped reports whether element n renders inside a <form> of the renderer's own when it is not
+// in a form: a click button (a <button> with a data-on:click MsgAttr, or the <al-button> around
+// one), whose root is then that form, without n's id.
+func wrapped(n Node) bool {
+	if n.tag == "button" {
+		return clickMsg(n.attrs) != nil
+	}
+	return n.tag == "al-button" && len(n.children) == 1 && n.children[0].kind == kElem && n.children[0].tag == "button" && clickMsg(n.children[0].attrs) != nil
+}
+
 // A is a text attribute.
 func A(name, value string) Attr { return Attr{Name: name, Value: value} }
 

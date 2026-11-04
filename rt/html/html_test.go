@@ -218,3 +218,35 @@ func TestHTML_RawTextElements(t *testing.T) {
 		}
 	}
 }
+
+// RootID is the id an element delivery patches by (#160): its first root element's, whitespace
+// text ignored. Datastar v1.0.0 morphs several top-level elements onto one selector, so several
+// roots are allowed and the first one's id is the target.
+func TestRootID(t *testing.T) {
+	li := func(attrs ...Attr) Node { return El("li", attrs, Text("x")) }
+	for _, c := range []struct {
+		name string
+		n    Node
+		id   string
+		ok   bool
+	}{
+		{"one root", li(A("id", "todo-7")), "todo-7", true},
+		{"whitespace and fragments around it", Nodes(Text("\n "), Nodes(Nodes(li(A("id", "a")))), Text("\t")), "a", true},
+		{"several roots", Nodes(li(A("id", "a")), li(), li(A("id", "b"))), "a", true},
+		{"no id", li(), "", false},
+		{"an omitted id", li(Attr{Name: "id", Value: "a", Omit: true}), "", false},
+		{"a first root without an id", Nodes(li(), li(A("id", "b"))), "", false},
+		{"text before the root", Nodes(Text("hi"), li(A("id", "a"))), "", false},
+		{"text after the root", Nodes(li(A("id", "a")), Text("hi")), "", false},
+		{"raw markup", Raw(`<li id="a">x</li>`), "", false},
+		{"nothing", None(), "", false},
+		{"an empty id", li(A("id", "")), "", false},
+		{"a click button (rendered in a form of its own)", El("button", []Attr{A("id", "b"), MsgAttr("data-on:click", rt.MsgRef{Module: "M", Msg: "Go"})}, Text("Go")), "", false},
+		{"a plain button", El("button", []Attr{A("id", "b")}, Text("Go")), "b", true},
+	} {
+		id, ok := RootID(c.n)
+		if id != c.id || ok != c.ok {
+			t.Errorf("%s: got %q %v, want %q %v", c.name, id, ok, c.id, c.ok)
+		}
+	}
+}
