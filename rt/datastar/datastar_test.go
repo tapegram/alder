@@ -212,11 +212,37 @@ func TestPatchShown_EventFormat(t *testing.T) {
 // (html.PostOptions): the abort of the navigation in flight, the next one's controller, the
 // Alder-Shown header (the data-h of the page's al-shown, "" without one), the content type.
 func TestBoostInit_DefinesShown(t *testing.T) {
-	want := `window._alderO = (f) => { window._alderAC?.abort(); const o = {headers: {'Alder-Shown': document.getElementById('_alder_shown')?.dataset.h || ''}, requestCancellation: window._alderAC = new AbortController()}; if (f) o.contentType = f; return o };`
+	want := `window._alderO = (f) => { window._alderAC?.abort(); const o = {headers: {'Alder-Shown': document.getElementById('_alder_shown')?.dataset.h || '', 'Alder-Page': location.pathname + location.search, 'Alder-Build': window._alderBuild}, requestCancellation: window._alderAC = new AbortController()}; if (f) o.contentType = f; return o };`
 	if !strings.Contains(BoostInit, want) {
 		t.Fatalf("BoostInit lacks %s:\n%s", want, BoostInit)
 	}
 	if !strings.Contains(BoostTag(), "window._alderO = (f) =&gt; {") {
 		t.Fatalf("BoostTag: %s", BoostTag())
+	}
+}
+
+// Every post the page makes sends the page it was made from (Alder-Page) and the page's build
+// (Alder-Build); an element fetch's options (window._alderF) send Alder-Fetch and the build,
+// without the navigation's abort controller (Datastar's own per-element cancellation applies).
+func TestBoostInit_SendsPageAndBuild(t *testing.T) {
+	tag := BoostTag()
+	for _, want := range []string{
+		`'Alder-Page': location.pathname + location.search`,
+		`'Alder-Build': window._alderBuild`,
+		`window._alderF = () =&gt; ({headers: {'Alder-Fetch': '1', 'Alder-Build': window._alderBuild}})`,
+	} {
+		if !strings.Contains(tag, want) {
+			t.Fatalf("BoostTag lacks %s:\n%s", want, tag)
+		}
+	}
+	o := BoostInit[strings.Index(BoostInit, "window._alderO"):]
+	o = o[:strings.Index(o, "};")]
+	if !strings.Contains(o, "'Alder-Page'") || !strings.Contains(o, "'Alder-Build'") {
+		t.Fatalf("_alderO: %s", o)
+	}
+	f := BoostInit[strings.Index(BoostInit, "window._alderF"):]
+	f = f[:strings.Index(f, ";")]
+	if strings.Contains(f, "AbortController") || strings.Contains(f, "_alderAC") {
+		t.Fatalf("_alderF: %s", f)
 	}
 }

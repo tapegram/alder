@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"alder/rt"
+	"alder/rt/datastar"
 	"alder/rt/html"
 )
 
@@ -366,6 +367,11 @@ func TestAnswer_ShownPageUnmatched(t *testing.T) {
 	if len(evs) != 1 || !strings.Contains(evs[0], `window.location.assign("/gone?x=1")`) || a.loads != 0 || !a.done[0] {
 		t.Fatalf("loads %d %q", a.loads, evs)
 	}
+	// its toast is kept in the notice cookie for the page loaded, not patched into the one left
+	w = ansPost(h, "/w/refresh?toast=Saved", "/gone", nil)
+	if evs := events(w.Body.String()); len(evs) != 1 || noticeOf(w) == nil {
+		t.Fatalf("toast: notice %v %q", noticeOf(w), evs)
+	}
 }
 
 // render leaves al-shown as it is; a refresh that morphs the whole body carries the new one.
@@ -451,5 +457,198 @@ func TestAnswer_ShownRunsWithFreshEnv(t *testing.T) {
 	}
 	if runs[0].session != (testSession{}) || runs[1].session != (testSession{User: "B"}) {
 		t.Fatalf("sessions %v, %v", runs[0].session, runs[1].session)
+	}
+}
+
+// noticeOf is the notice cookie w sets, or nil.
+func noticeOf(w *httptest.ResponseRecorder) *http.Cookie {
+	for _, c := range w.Result().Cookies() {
+		if c.Name == NoticeCookie && c.MaxAge > 0 {
+			return c
+		}
+	}
+	return nil
+}
+
+// plainPost is a post of target without JavaScript, sent from referer ("" sends none).
+func plainPost(h http.Handler, target, referer string, fields url.Values) *httptest.ResponseRecorder {
+	req := httptest.NewRequest("POST", target, strings.NewReader(fields.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if referer != "" {
+		req.Header.Set("Referer", referer)
+	}
+	return serveRaw(h, req)
+}
+
+// Without JavaScript each answer is plain HTTP: redirect r a 303 to r; refresh a 303 to the
+// Referer's path and query, else "/"; render r a 303 to the Referer (the partial has nowhere to
+// go without a page); invalid t a 422 with the referring page rendered, the form kept, the error
+// shown. A toast of a 303 is stored in the notice cookie; a 422 page shows it as an alert. A
+// Referer naming another host is "/".
+func TestAnswerPlain_Each(t *testing.T) {
+	a := newAnsApp(3)
+	h := NewRouter(a.routes(), testOpts(nil))
+	see := func(name string, w *httptest.ResponseRecorder, loc string) {
+		t.Helper()
+		if w.Code != http.StatusSeeOther || w.Header().Get("Location") != loc || strings.Contains(w.Body.String(), "datastar") {
+			t.Fatalf("%s: %d %q %q", name, w.Code, w.Header().Get("Location"), w.Body.String())
+		}
+	}
+	see("redirect", plainPost(h, "/w/redirect?to=/other", "http://example.com/", nil), "/other")
+
+	w := plainPost(h, "/w/refresh?id=1&toast=Saved", "http://example.com/other?x=1", nil)
+	see("refresh", w, "/other?x=1")
+	if !a.done[0] || noticeOf(w) == nil {
+		t.Fatalf("refresh: done %v, notice %v", a.done, noticeOf(w))
+	}
+	see("refresh, no Referer", plainPost(h, "/w/refresh", "", nil), "/")
+	see("refresh, forged", plainPost(h, "/w/refresh", "https://evil.example//evil.example/x", nil), "/")
+	see("refresh, backslash", plainPost(h, "/w/refresh", `/\evil.example`, nil), "/")
+
+	rows := a.rowLoads
+	w = plainPost(h, "/w/render?id=2&toast=Saved", "http://example.com/other", nil)
+	see("render", w, "/other")
+	if !a.done[1] || a.rowLoads != rows || noticeOf(w) == nil {
+		t.Fatalf("render: done %v, row loads %d, notice %v", a.done, a.rowLoads-rows, noticeOf(w))
+	}
+
+	w = plainPost(h, "/w/invalid?id=3&toast=Careful", "http://example.com/", url.Values{"title": {"dup"}})
+	body := w.Body.String()
+	if w.Code != http.StatusUnprocessableEntity || !strings.HasPrefix(body, "<!doctype html>") || !strings.Contains(body, `value="dup"`) ||
+		!strings.Contains(body, "Title taken") || !strings.Contains(body, `<li id="row-3" class="done">`) || !strings.Contains(body, ">Careful</al-alert>") {
+		t.Fatalf("invalid: %d %s", w.Code, body)
+	}
+	if w.Header().Get("Location") != "" || !a.done[2] {
+		t.Fatalf("invalid: %q done %v", w.Header().Get("Location"), a.done)
+	}
+	// a form that did not decode: the same, with its field errors, update not called
+	w = plainPost(h, "/add", "http://example.com/", url.Values{"title": {""}})
+	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "must not be empty") || len(a.done) != 3 {
+		t.Fatalf("add: %d %s", w.Code, w.Body.String())
+	}
+	// a referring page no GET route matches: a 303 there, the toast stored
+	w = plainPost(h, "/w/invalid?toast=Careful", "http://example.com/gone", url.Values{"title": {"dup"}})
+	see("invalid, unmatched", w, "/gone")
+	if noticeOf(w) == nil {
+		t.Fatalf("invalid, unmatched: no notice")
+	}
+}
+
+// staleBuild is an Alder-Build no binary has: a tab open across a deploy.
+const staleBuild = "0123456789abcdef-old"
+
+// Plan call 9: a write from a tab of another build runs (its decoders guard it), and its answer is
+// a reload, never a patch: `redirect r` navigates to r, anything else reloads the page the
+// browser is on (Alder-Page, through rt.BackURL). A toast is stored in the notice cookie so the
+// reloaded page shows it. Without Alder-Build (a hand-made request) or with this build's, the
+// usual patches.
+func TestBuild_StaleWrite(t *testing.T) {
+	a := newAnsApp(3)
+	h := NewRouter(a.routes(), testOpts(nil))
+	post := func(target, page, build string, fields url.Values) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", target, strings.NewReader(fields.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Datastar-Request", "true")
+		req.Header.Set(html.ShownHeader, staleShown)
+		req.Header.Set(html.PageHeader, page)
+		if build != "" {
+			req.Header.Set(datastar.BuildHeader, build)
+		}
+		return serveRaw(h, req)
+	}
+	reload := func(name string, w *httptest.ResponseRecorder, to string) {
+		t.Helper()
+		evs := events(w.Body.String())
+		if len(evs) != 1 || !strings.Contains(evs[0], `window.location.assign("`+to+`")`) || strings.Contains(w.Body.String(), "history.pushState") {
+			t.Fatalf("%s: %q", name, evs)
+		}
+		if w.Header().Get(StatusHeader) != "" {
+			t.Fatalf("%s: status header %q", name, w.Header().Get(StatusHeader))
+		}
+	}
+	w := post("/w/refresh?id=1&toast=Saved", "/?x=1", staleBuild, nil)
+	reload("refresh", w, "/?x=1")
+	if !a.done[0] || noticeOf(w) == nil || a.loads != 1 {
+		t.Fatalf("refresh: done %v notice %v loads %d (want 1: the before-view only)", a.done, noticeOf(w), a.loads)
+	}
+	w = post("/w/redirect?to=/other&toast=Moved", "/", staleBuild, nil)
+	reload("redirect", w, "/other")
+	if noticeOf(w) == nil {
+		t.Fatalf("redirect: no notice")
+	}
+	rows := a.rowLoads
+	w = post("/w/render?id=2", "/other", staleBuild, nil)
+	reload("render", w, "/other")
+	if !a.done[1] || a.rowLoads != rows {
+		t.Fatalf("render: done %v row loads %d", a.done, a.rowLoads-rows)
+	}
+	reload("invalid", post("/w/invalid?id=3", "/", staleBuild, url.Values{"title": {"dup"}}), "/")
+	if !a.done[2] {
+		t.Fatalf("invalid: the write did not run")
+	}
+	reload("forged page", post("/w/refresh", "//evil.example/x", staleBuild, nil), "/")
+	reload("unmatched page", post("/w/refresh", "/gone", staleBuild, nil), "/gone")
+
+	// this build's, or none: the usual region patches
+	for _, b := range []string{BuildID(), ""} {
+		w = post("/w/refresh?id=1", "/", b, nil)
+		if evs := events(w.Body.String()); len(evs) != 2 || evs[0] != regionEvent("row-1", `<li id="row-1" class="open">Row 1</li>`) {
+			t.Fatalf("build %q: %q", b, evs)
+		}
+		a.done[0] = true
+	}
+}
+
+// A write of the message runtime (a handler's PageResponse or redirect) from a tab of another
+// build is a reload too: the page shown, or the redirect's target.
+func TestBuild_StaleMessage(t *testing.T) {
+	ran := 0
+	routes := []Route{
+		{Method: "GET", Pattern: "/", Handle: func(rq *Request) Response { return PageResponse(doc("p"), &html.FormState{}, nil, false) }},
+		{Method: "POST", Pattern: "/_m/M/Save", Handle: func(rq *Request) Response {
+			ran++
+			return PageResponse(doc("p2"), &html.FormState{}, nil, true)
+		}},
+		{Method: "POST", Pattern: "/_m/M/Go", Handle: func(rq *Request) Response {
+			ran++
+			return RedirectResponse("/", nil)
+		}},
+	}
+	h := NewRouter(routes, testOpts(nil))
+	for _, c := range []struct{ path, to string }{{"/_m/M/Save", "/?a=1"}, {"/_m/M/Go", "/"}} {
+		req := httptest.NewRequest("POST", c.path, strings.NewReader(""))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Datastar-Request", "true")
+		req.Header.Set(html.ShownHeader, staleShown)
+		req.Header.Set(html.PageHeader, "/?a=1")
+		req.Header.Set(datastar.BuildHeader, staleBuild)
+		w := serveRaw(h, req)
+		if evs := events(w.Body.String()); len(evs) != 1 || !strings.Contains(evs[0], `window.location.assign("`+c.to+`")`) {
+			t.Fatalf("%s: %q", c.path, evs)
+		}
+	}
+	if ran != 2 {
+		t.Fatalf("ran %d", ran)
+	}
+}
+
+// An element fetch from a tab of another build reloads the page it was made from (its Referer),
+// never the fetched URL, which is a fragment and not a page.
+func TestBuild_StaleFetch(t *testing.T) {
+	a := newAnsApp(3)
+	h := NewRouter(a.routes(), testOpts(nil))
+	req := httptest.NewRequest("GET", "/rows/2?datastar=%7B%7D", nil)
+	req.Header.Set("Datastar-Request", "true")
+	req.Header.Set(datastar.FetchHeader, "1")
+	req.Header.Set(datastar.BuildHeader, staleBuild)
+	req.Header.Set("Referer", "http://example.com/other?q=1")
+	w := serveRaw(h, req)
+	if evs := events(w.Body.String()); len(evs) != 1 || !strings.Contains(evs[0], `window.location.assign("/other?q=1")`) || a.rowLoads != 0 {
+		t.Fatalf("row loads %d %q", a.rowLoads, evs)
+	}
+	req.Header.Set("Referer", "https://evil.example//x")
+	w = serveRaw(h, req)
+	if evs := events(w.Body.String()); len(evs) != 1 || !strings.Contains(evs[0], `window.location.assign("/")`) {
+		t.Fatalf("forged: %q", evs)
 	}
 }

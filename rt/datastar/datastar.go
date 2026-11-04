@@ -174,12 +174,13 @@ const BoostClick = `if (evt.defaultPrevented || evt.button !== 0 || evt.metaKey 
 // abortNavigation aborts the navigating request in flight (html.Navigation).
 const abortNavigation = `window._alderAC?.abort();`
 
-// BuildHeader is the request header a boosted GET carries (BoostClick, BoostPopstate): the
-// build of the page that sent it, as its <meta name="alder-build"> says (rt/web: BuildMeta). The
-// <head> is never patched, so a tab open across a deploy keeps the old build's head — its
-// stylesheet link, its Datastar script, this boost — until a real page load; rt/web answers a
-// boosted GET whose build is not its own with a navigation (datastar.Assign), so the tab
-// reloads once, on its next click, and has the new head.
+// BuildHeader is the request header every Datastar request of a page carries (BoostClick,
+// BoostPopstate, and a post's and an element fetch's options, BoostInit): the build of the page
+// that sent it, as its <meta name="alder-build"> says (rt/web: BuildMeta). The <head> is never
+// patched, so a tab open across a deploy keeps the old build's head — its stylesheet link, its
+// Datastar script, this boost — until a real page load; rt/web answers a request whose build is
+// not its own with a navigation (datastar.Assign), never a patch, so the tab reloads once, on
+// its next request, and has the new head. A write still runs first.
 const BuildHeader = "Alder-Build"
 
 // FetchHeader is the request header an element fetch carries (value "1"): a Datastar GET of a
@@ -205,9 +206,14 @@ const BoostPopstate = `if (location.pathname + location.search !== window._alder
 
 // BoostInit is the expression of the boost's data-init attribute: the page loaded is the one
 // shown, and its build is the one its <meta name="alder-build"> names ("" without one: no
-// check).
+// check). It defines the options of the page's requests: window._alderO(f), a post's (the
+// navigation in flight aborted, the shown hash, the page it is made from as html.PageHeader, the
+// build as BuildHeader, content type f), and window._alderF(), an element fetch's (FetchHeader
+// and the build; no navigation controller, so Datastar's own per-element cancellation applies).
+// rt/web answers any Datastar request whose build is not its own with a reload.
 const BoostInit = `window._alderAt = location.pathname + location.search;` +
-	` window._alderO = (f) => { window._alderAC?.abort(); const o = {headers: {'` + html.ShownHeader + `': document.getElementById('` + ShownID + `')?.dataset.h || ''}, ` + html.Navigation + `}; if (f) o.contentType = f; return o };` +
+	` window._alderO = (f) => { window._alderAC?.abort(); const o = {headers: {'` + html.ShownHeader + `': document.getElementById('` + ShownID + `')?.dataset.h || '', '` + html.PageHeader + `': location.pathname + location.search, '` + BuildHeader + `': window._alderBuild}, ` + html.Navigation + `}; if (f) o.contentType = f; return o };` +
+	` window._alderF = () => ({headers: {'` + FetchHeader + `': '1', '` + BuildHeader + `': window._alderBuild}});` +
 	` window._alderBuild = document.querySelector('meta[name=alder-build]')?.content || '';` +
 	` window._alderN = 0;` +
 	` window._alderBusy = (el, p) => { const f = el && el.closest ? el.closest('form') || el : null, h = document.documentElement, a = document.activeElement;` +

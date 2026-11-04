@@ -607,12 +607,22 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		rt.reload(w, r)
 		return
 	}
-	if get && datastar.IsDatastar(r) {
+	if datastar.IsDatastar(r) {
 		if b := r.Header.Get(datastar.BuildHeader); b != "" && b != BuildID() {
 			// a tab of another build: its <head> (stylesheet, scripts, boost) is that build's,
-			// and a morph keeps it; a real load of the URL brings this build's
-			rt.reload(w, r)
-			return
+			// and a morph keeps it; a real load brings this build's. A navigation loads its URL;
+			// an element fetch, a fragment and not a page, the page it was made from; a write
+			// runs and its answer is such a load (staleReload). Without the header (a hand-made
+			// request) no check.
+			switch {
+			case get && elementFetch(r):
+				rt.navigateAway(w, r, "reload (another build)", shownURLOf(r))
+				return
+			case get:
+				rt.reload(w, r)
+				return
+			}
+			st.stale = true
 		}
 	}
 	if get && (r.URL.Path == devRequestsPath || strings.HasPrefix(r.URL.Path, devRequestsPath+"/")) && rt.panelOn() {
@@ -794,6 +804,9 @@ type hop struct {
 	// render is set for the element GET of a write's `render r` (answerRender): a target that does
 	// not answer its view is never patched in (renderFailed)
 	render bool
+	// stale is set for a Datastar write from a tab of another build (its datastar.BuildHeader is
+	// not BuildID): its answer is a reload, never a patch (staleReload)
+	stale bool
 }
 
 // serve routes r (not the Datastar script, not static/) and writes the handler's answer.
@@ -1100,6 +1113,9 @@ func (rt *router) setSession(w http.ResponseWriter, r *http.Request, rq *Request
 }
 
 func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
+	if st.stale && rq.Datastar && rt.staleReload(w, r, st, rq, resp) {
+		return
+	}
 	if resp.Answer != nil {
 		rt.answer(w, r, st, rq, resp)
 		return

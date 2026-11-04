@@ -42,9 +42,14 @@ func (rq *Request) ShownURL() string {
 	if rq.HTTP == nil {
 		return "/"
 	}
-	raw := rq.HTTP.Header.Get(html.PageHeader)
+	return shownURLOf(rq.HTTP)
+}
+
+// shownURLOf is the page r was sent from: html.PageHeader, else Referer, through rt.BackURL.
+func shownURLOf(r *http.Request) string {
+	raw := r.Header.Get(html.PageHeader)
 	if raw == "" {
-		raw = rq.HTTP.Referer()
+		raw = r.Referer()
 	}
 	return rtpkg.BackURL(raw)
 }
