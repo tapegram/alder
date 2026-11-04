@@ -139,9 +139,10 @@ func TestBrowser_SendsShown(t *testing.T) {
 	}
 }
 
-// TestBrowser_ReportsFragmentDrift: when the page the browser holds after applying an answer is
-// not the page a full render shows — here the held page drifted from the one the router served
-// while its hash stayed, as a client DOM changed by hand would — the step fails, naming where.
+// TestBrowser_ReportsFragmentDrift: when a region an answer patched is not that region of the
+// full render, the step fails, naming where. A region the answer did not send is not compared
+// (#160, R17: every region the server sent is right; the rest stays as the browser has it): a
+// row edited by hand, or held stale, is left alone by a click on another row.
 func TestBrowser_ReportsFragmentDrift(t *testing.T) {
 	app := &rowsApp{done: make([]bool, 10)}
 	res := browseRows(app,
@@ -154,10 +155,31 @@ func TestBrowser_ReportsFragmentDrift(t *testing.T) {
 			return nil
 		},
 		func(b *Browser, e *eff.Env) error { _, err := b.Click("/_m/Rows/Toggle?id=7"); return err })
+	if !res.OK {
+		t.Fatalf("a region the answer did not send was compared: %s", res.Error)
+	}
+
+	app = &rowsApp{done: make([]bool, 10)}
+	res = browseRows(app,
+		func(b *Browser, e *eff.Env) error { _, err := b.Open("/"); return err },
+		func(b *Browser, e *eff.Env) error {
+			done := make([]bool, 10)
+			done[6] = true
+			b.rendered = html.BodyOf(html.RenderWith(app.view(done), &html.FormState{}))
+			b.reqHead, b.domBefore, b.regions = "POST /_m/Rows/Toggle: ", b.dom, nil
+			ev, err := sseEvents("event: datastar-patch-elements\ndata: selector #row-7\ndata: mode outer\ndata: elements <li id=\"row-7\" class=\"open\"><span>Row 7</span></li>\n\n")
+			if err != nil {
+				return err
+			}
+			if err := b.patch(ev[0]); err != nil {
+				return err
+			}
+			return b.checkPatched()
+		})
 	if res.OK {
 		t.Fatal("the drift was not reported")
 	}
-	if !strings.Contains(res.Error, "POST /_m/Rows/Toggle: the patched page differs from a full render at body > ul#rows > li#row-3") {
+	if !strings.Contains(res.Error, "POST /_m/Rows/Toggle: the patched page differs from a full render at body > ul#rows > li#row-7") {
 		t.Fatalf("error: %s", res.Error)
 	}
 }
@@ -210,6 +232,7 @@ func TestBrowser_RepairedPageFallsBack(t *testing.T) {
 	n = 1
 	res = browseMsg(&n, func(b *Browser) error { _, err := b.Open("/"); return err }, func(b *Browser) error {
 		b.rendered = html.BodyOf(html.Render(msgPage(2)))
+		b.domBefore, b.regions, b.morphed = b.dom, nil, false
 		ev, err := sseEvents("event: datastar-patch-elements\ndata: selector #msg\ndata: mode outer\ndata: elements <p id=\"msg\">2<div>x</div></p>\n\n")
 		if err != nil {
 			return err
@@ -219,7 +242,7 @@ func TestBrowser_RepairedPageFallsBack(t *testing.T) {
 		}
 		return b.checkPatched()
 	})
-	if res.OK || !strings.Contains(res.Error, "the patched page differs from a full render") {
+	if res.OK || !strings.Contains(res.Error, "the patched page differs from a full render") || strings.Contains(res.Error, "lacks") {
 		t.Fatalf("the misplaced patch was not caught: %+v", res)
 	}
 }
