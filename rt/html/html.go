@@ -508,9 +508,9 @@ func (r *renderer) clickButton(n Node, c *Attr, outer *Node) {
 // a POST); for a GET route `<form method="get" …>` with the route's query in hidden fields (a GET
 // form replaces its action's query with its fields) and an element fetch (FetchOptions), so
 // without JavaScript the button navigates to the route. Inside a <form>, a write route's button
-// carries the route as formaction and formmethod, and its _method as its own name and value
-// (unless the author gave it a name: HTML keeps an attribute's first value, and the author's is
-// never silently replaced, so such a button sends no _method without JavaScript); a GET route's
+// carries the route as formaction and formmethod, and its _method as its own name and value (an
+// author's own name and value on it are dropped, R16: keeping them would lose the override
+// without JavaScript, which is worse than losing the author's field); a GET route's
 // is type="button" with a data-on:click and needs JavaScript (a formmethod="get" would put every
 // field of the enclosing form, a Secret one too, in the URL). A DELETE route's own form posts
 // with JavaScript too (routeRequest).
@@ -522,20 +522,20 @@ func (r *renderer) routeButton(n Node, route rt.Route, outer *Node) {
 		formMethod = "get"
 	}
 	attrs := []Attr{A("type", "submit")}
+	override := false
 	switch {
 	case r.inForm && get:
 		attrs = []Attr{A("type", "button")}
 	case r.inForm:
 		attrs = append(attrs, A("formaction", url), A("formmethod", formMethod), B("formnovalidate", true))
-		if _, named := attrValue(n.attrs, "name"); !named {
-			if m := overrideMethod(route.Method); m != "" {
-				attrs = append(attrs, A("name", methodField), A("value", m))
-			}
+		if m := overrideMethod(route.Method); m != "" {
+			attrs = append(attrs, A("name", methodField), A("value", m))
+			override = true
 		}
 		attrs = append(attrs, A("data-on:click__prevent", RouteClick(route)))
 	}
 	for _, a := range n.attrs {
-		if a.Name != "type" && a.Name != "data-on:click" {
+		if a.Name != "type" && a.Name != "data-on:click" && !(override && (a.Name == "name" || a.Name == "value")) {
 			attrs = append(attrs, a)
 		}
 	}

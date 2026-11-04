@@ -310,11 +310,18 @@ func TestRender_ClickWriteRoute(t *testing.T) {
 	if !strings.HasSuffix(got, want) || strings.Count(got, "<form") != 1 {
 		t.Fatalf("inside a form:\n got %s\nwant …%s", got, want)
 	}
-	// inside a form, a button with a name of its own keeps it (HTML keeps an attribute's first
-	// value): no _method of its own
+	// inside a form, a button with a name of its own (R16): the override comes first and the
+	// author's name and value are dropped (keeping them would lose _method without JavaScript)
 	got = Render(FormTo(rt.MsgRef{Module: "M", Msg: "Save"}, nil, El("button", []Attr{A("name", "action"), A("value", "done"), RouteAttr("data-on:click", rowRoute("7"))}, Text("Done"))))
-	if strings.Count(got, ` name="`) != 1 || !strings.Contains(got, `name="action" value="done"`) {
+	if strings.Count(got, ` name="`) != 1 || strings.Count(got, ` value="`) != 1 || !strings.Contains(got, `formnovalidate name="_method" value="PATCH"`) {
 		t.Fatalf("named, inside a form: %s", got)
+	}
+	// a POST route's button has no override: its own name and value stay
+	post := rowRoute("7")
+	post.Method = "POST"
+	got = Render(FormTo(rt.MsgRef{Module: "M", Msg: "Save"}, nil, El("button", []Attr{A("name", "action"), A("value", "done"), RouteAttr("data-on:click", post)}, Text("Done"))))
+	if strings.Contains(got, "_method") || !strings.Contains(got, `name="action" value="done"`) {
+		t.Fatalf("named POST, inside a form: %s", got)
 	}
 	// a non-button
 	got = Render(El("li", []Attr{RouteAttr("data-on:click", rowRoute("7"))}, Text("row")))
