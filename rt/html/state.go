@@ -7,16 +7,17 @@ import (
 )
 
 // FormState is what a re-render after a failed form decode or a Reject carries. Form is the
-// Alder form's name ("Todos.Index.NewTodo") and Msg the key of the message that posted it
-// (rt.MsgKey: its path and its own parameters, as sent); Values are the submitted raw strings by
+// Alder form's name ("Todos.Index.NewTodo") and Msg the key of the request that posted it: a
+// message's rt.MsgKey (its path and its own parameters, as sent), a route's rt.RouteKey (its
+// method, then that key: FormToRoute, #160); Values are the submitted raw strings by
 // field name (an unchecked checkbox is simply absent, as browsers do not submit it); Errors are
 // the messages by field name; FormError is the form-level message (the Reject text, or "").
 // rt/web must never put a Secret field's value in Values; the renderer ignores it anyway.
 //
-// A FormState applies only to the controls of form Form inside the <form> that posts message
-// Msg (FormTo, whose MsgRef.Key equals it): every other form on the page — another form type, or
-// a per-row form of the same type posting another row's message — renders its initial values
-// and empty error lists, exactly as Render does. A state without Form or Msg matches no control.
+// A FormState applies only to the controls of form Form inside the <form> that sends request
+// Msg (FormTo, whose MsgRef.Key equals it, or FormToRoute, whose rt.RouteKey does): every other
+// form on the page — another form type, or a per-row form of the same type sending another row's
+// request — renders its initial values and empty error lists, exactly as Render does. A state without Form or Msg matches no control.
 type FormState struct {
 	Form      string
 	Msg       string

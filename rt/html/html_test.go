@@ -1,6 +1,7 @@
 package html
 
 import (
+	"strings"
 	"testing"
 
 	"alder/rt"
@@ -248,5 +249,142 @@ func TestRootID(t *testing.T) {
 		if id != c.id || ok != c.ok {
 			t.Errorf("%s: got %q %v, want %q %v", c.name, id, ok, c.id, c.ok)
 		}
+	}
+}
+
+// busyQ is busy(el, req) as rendered in an attribute: its quotes and arrow escaped.
+func busyQ(req string) string {
+	return `(window._alderBusy||((e,p)=&gt;p))(el, ` + strings.ReplaceAll(req, "'", "&#39;") + `)`
+}
+
+var (
+	rowRoute = func(id string) rt.Route {
+		return rt.Route{Name: "Todos.Row", Method: "PATCH", Path: "/todos/" + rt.PathSegment(id), Query: []rt.KV{{Key: "tab", Value: "a b"}}}
+	}
+	listRoute = rt.Route{Name: "Todos.Index", Method: "GET", Path: "/todos", Query: []rt.KV{{Key: "filter", Value: "Active"}, rt.QueryKV("q", "", "")}}
+)
+
+// `click` on a write route (#160): a form of its own posting to the route's URL, the method in a
+// hidden _method field for PUT, PATCH and DELETE (the router honours it on a POST), and with
+// JavaScript the route's own method. A path segment's quote cannot end the Datastar string.
+func TestRender_ClickWriteRoute(t *testing.T) {
+	r := rowRoute("7")
+	u := "/todos/7?tab=a+b"
+	got := Render(El("button", []Attr{A("type", "button"), RouteAttr("data-on:click", r), A("class", "x")}, Text("Done")))
+	want := `<form method="post" action="` + u + `" class="_alder-click" data-on:submit="` + busyQ("@patch('"+u+"', window._alderO?.('form'))") + `">` +
+		`<input type="hidden" name="_method" value="PATCH" /><button type="submit" class="x">Done</button></form>`
+	if got != want {
+		t.Fatalf("PATCH:\n got %s\nwant %s", got, want)
+	}
+	for _, m := range []string{"PUT", "DELETE"} {
+		r := r
+		r.Method = m
+		got := Render(El("button", []Attr{RouteAttr("data-on:click", r)}, Text("Go")))
+		if !strings.Contains(got, `<input type="hidden" name="_method" value="`+m+`" />`) || !strings.Contains(got, "@"+strings.ToLower(m)+"(&#39;"+u) {
+			t.Errorf("%s: %s", m, got)
+		}
+	}
+	r.Method = "POST"
+	got = Render(El("button", []Attr{RouteAttr("data-on:click", r)}, Text("Go")))
+	want = `<form method="post" action="` + u + `" class="_alder-click" data-on:submit="` + busyQ("@post('"+u+"', window._alderO?.('form'))") + `"><button type="submit">Go</button></form>`
+	if got != want {
+		t.Fatalf("POST:\n got %s\nwant %s", got, want)
+	}
+	// the design system's button: the form goes around the <al-button>
+	got = Render(El("al-button", []Attr{A("variant", "ghost")}, El("button", []Attr{RouteAttr("data-on:click", rowRoute("7"))}, Text("Done"))))
+	want = `<form method="post" action="` + u + `" class="_alder-click" data-on:submit="` + busyQ("@patch('"+u+"', window._alderO?.('form'))") + `">` +
+		`<input type="hidden" name="_method" value="PATCH" /><al-button variant="ghost"><button type="submit">Done</button></al-button></form>`
+	if got != want {
+		t.Fatalf("al-button:\n got %s\nwant %s", got, want)
+	}
+	// inside a form: the button names the method itself (name="_method"), so no field of the
+	// enclosing form is needed
+	got = Render(FormTo(rt.MsgRef{Module: "M", Msg: "Save"}, nil, El("button", []Attr{RouteAttr("data-on:click", rowRoute("7"))}, Text("Done"))))
+	want = `<button type="submit" formaction="` + u + `" formmethod="post" formnovalidate name="_method" value="PATCH" data-on:click__prevent="` + busyQ("@patch('"+u+"', window._alderO?.())") + `">Done</button></form>`
+	if !strings.HasSuffix(got, want) || strings.Count(got, "<form") != 1 {
+		t.Fatalf("inside a form:\n got %s\nwant …%s", got, want)
+	}
+	// a non-button
+	got = Render(El("li", []Attr{RouteAttr("data-on:click", rowRoute("7"))}, Text("row")))
+	if want := `<li data-on:click="` + busyQ("@patch('"+u+"', window._alderO?.())") + `">row</li>`; got != want {
+		t.Fatalf("a non-button:\n got %s\nwant %s", got, want)
+	}
+	// a quote in a path segment stays inside the Datastar string
+	got = Render(El("button", []Attr{RouteAttr("data-on:click", rowRoute("x');alert(1);('"))}, Text("Go")))
+	if strings.Contains(got, "@patch(&#39;/todos/x&#39;") || !strings.Contains(got, "/todos/x%27") {
+		t.Fatalf("a quote in the path: %s", got)
+	}
+	// RootID: a route click button renders in a form of its own too
+	if _, ok := RootID(El("button", []Attr{A("id", "b"), RouteAttr("data-on:click", rowRoute("7"))}, Text("Go"))); ok {
+		t.Fatal("RootID accepted a route click button")
+	}
+}
+
+// `click` on a GET route: a form of its own with method="get", so without JavaScript the button
+// navigates to the route (its query in hidden fields, as a GET form replaces the action's
+// query); with it, an element fetch (window._alderF).
+func TestRender_ClickGetRoute(t *testing.T) {
+	u := "/todos?filter=Active"
+	got := Render(El("button", []Attr{RouteAttr("data-on:click", listRoute)}, Text("More")))
+	want := `<form method="get" action="` + u + `" class="_alder-click" data-on:submit="` + busyQ("@get('"+u+"', window._alderF?.())") + `">` +
+		`<input type="hidden" name="filter" value="Active" /><button type="submit">More</button></form>`
+	if got != want {
+		t.Fatalf("outside a form:\n got %s\nwant %s", got, want)
+	}
+	got = Render(FormTo(rt.MsgRef{Module: "M", Msg: "Save"}, nil, El("button", []Attr{RouteAttr("data-on:click", listRoute)}, Text("More"))))
+	want = `<button type="submit" formaction="` + u + `" formmethod="get" formnovalidate data-on:click__prevent="` + busyQ("@get('"+u+"', window._alderF?.())") + `">More</button></form>`
+	if !strings.HasSuffix(got, want) {
+		t.Fatalf("inside a form:\n got %s\nwant …%s", got, want)
+	}
+	got = Render(El("div", []Attr{RouteAttr("data-on:click", listRoute)}))
+	if want := `<div data-on:click="` + busyQ("@get('"+u+"', window._alderF?.())") + `"></div>`; got != want {
+		t.Fatalf("a non-button:\n got %s\nwant %s", got, want)
+	}
+	// href to a GET route: its URL (rt.RouteURL)
+	if got := Render(El("a", []Attr{RouteAttr("href", listRoute)}, Text("All"))); got != `<a href="/todos?filter=Active">All</a>` {
+		t.Fatalf("href: %s", got)
+	}
+}
+
+// `submit` on <form>: posted to the route's URL, the _method field for PUT/PATCH/DELETE, and
+// with JavaScript the route's own method with the fields url-encoded.
+func TestRender_SubmitRoute(t *testing.T) {
+	u := "/todos/7?tab=a+b"
+	got := Render(FormToRoute(rowRoute("7"), []Attr{A("class", "f")}, El("button", nil, Text("Save"))))
+	want := `<form method="post" action="` + u + `" data-on:submit="` + busyQ("@patch('"+u+"', window._alderO?.('form')||{contentType: 'form'})") + `" class="f">` +
+		`<input type="hidden" name="_method" value="PATCH" /><button>Save</button></form>`
+	if got != want {
+		t.Fatalf("PATCH:\n got %s\nwant %s", got, want)
+	}
+	r := rowRoute("7")
+	r.Method = "POST"
+	got = Render(FormToRoute(r, nil))
+	want = `<form method="post" action="` + u + `" data-on:submit="` + busyQ("@post('"+u+"', window._alderO?.('form')||{contentType: 'form'})") + `"></form>`
+	if got != want {
+		t.Fatalf("POST:\n got %s\nwant %s", got, want)
+	}
+	// WithoutPageParams leaves a route's URLs alone (they carry no page parameters)
+	n := Nodes(FormToRoute(rowRoute("7"), nil, El("button", []Attr{RouteAttr("data-on:click", listRoute)})), El("li", []Attr{RouteAttr("data-on:click", rowRoute("7"))}))
+	stripped := Render(WithoutPageParams(n))
+	for _, want := range []string{`action="` + u + `"`, `@patch(&#39;` + u + `&#39;, window._alderO?.(&#39;form&#39;)`, `action="/todos?filter=Active"`,
+		`@get(&#39;/todos?filter=Active&#39;, window._alderF?.())`, `@patch(&#39;` + u + `&#39;, window._alderO?.())`} {
+		if !strings.Contains(stripped, want) {
+			t.Errorf("WithoutPageParams lost %s:\n%s", want, stripped)
+		}
+	}
+}
+
+// Two per-row forms of one PATCH route: the state (Msg = rt.RouteKey of the posted request)
+// shows only on the form that sent it.
+func TestRender_FormStateByRouteKey(t *testing.T) {
+	ctl := Input(Control{Kind: "errors", Form: "Todos.Edit", Name: "title"})
+	n := Nodes(FormToRoute(rowRoute("1"), nil, ctl), FormToRoute(rowRoute("2"), nil, ctl))
+	st := &FormState{Form: "Todos.Edit", Msg: rt.RouteKey(rowRoute("2")), Errors: map[string][]string{"title": {"is required"}}}
+	got := RenderWith(n, st)
+	if strings.Count(got, "is required") != 1 {
+		t.Fatalf("errors shown %d times: %s", strings.Count(got, "is required"), got)
+	}
+	if i, j := strings.Index(got, "is required"), strings.Index(got, `action="/todos/2`); j < 0 || i < j {
+		t.Fatalf("errors not on row 2's form: %s", got)
 	}
 }

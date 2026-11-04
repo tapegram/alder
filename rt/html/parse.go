@@ -293,7 +293,7 @@ func normalize(ns []Node) []Node {
 		case kRaw, kRawText:
 			out = append(out, n)
 		case kElem:
-			if n.tag == "button" && clickMsg(n.attrs) != nil {
+			if n.tag == "button" && clickOf(n.attrs) != nil {
 				if p, err := Parse(Render(n)); err == nil {
 					add(p)
 				}
@@ -516,7 +516,8 @@ func (n Node) Children() []Node {
 // message URLs: the `_p.` keys of every /_m/ URL in an `action` or `formaction` attribute and in
 // the `@post('…')` of a `data-on:*` attribute. A page as the browser holds it was rendered with
 // its request's state, whose message URLs carry the page's parameters; the same view rendered
-// without a state (Test.doc) has none. Comparing both without them compares the documents.
+// without a state (Test.doc) has none. Comparing both without them compares the documents. A
+// route's URL (RouteAttr, #160) carries no page parameters and is left alone.
 func WithoutPageParams(n Node) Node {
 	return Nodes(stripNodes(normalize([]Node{n}))...)
 }
