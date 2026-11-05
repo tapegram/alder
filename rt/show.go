@@ -30,7 +30,8 @@ func RegisterUnion(tagType reflect.Type, names []string) {
 // 2026-10-09, a Time in RFC 3339 UTC, a record { title: "Milk", _at: … } (field names are the
 // inverse of gen's Field: the Go field with its first letter lower-cased, U__at as _at), a
 // registered union Name / Name 3 / Name { w: 1.0 }, Html as its markup, <Query> / <Task>, the
-// Db builder's values as <Select> / <Table> / <Condition> / <Order>, a Page as its URL, a Nav
+// Db builder's values as <Select> / <Table> / <Condition> / <Order>, a Page as its URL (a named
+// Route as Todos.Index /todos), a Response as its builders, a Nav
 // as Rerender / Redirect <url> / Reject "text". NaN, +Inf and -Inf are not Alder literals; they
 // print as is. A constructor's argument is parenthesized when it is itself an application or
 // negative: Just (Rect { w: 1.0 }), Just (-1).
@@ -79,7 +80,10 @@ func show(v reflect.Value) (string, bool) {
 		return "<time>", false
 	case dateType:
 		return fmt.Sprintf("%04d-%02d-%02d", v.Field(0).Int(), v.Field(1).Int(), v.Field(2).Int()), false
-	case pageType:
+	case pageType: // a Route: its Name applied to its URL, or the bare URL with no Name
+		if name := v.FieldByName("Name").String(); name != "" {
+			return name + " " + pageURL(v), true
+		}
 		return pageURL(v), false
 	case navType:
 		switch NavTag(v.FieldByName("Tag").Uint()) {

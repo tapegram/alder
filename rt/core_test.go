@@ -301,6 +301,64 @@ func TestBackURL(t *testing.T) {
 	}
 }
 
+// BackURL also reads Alder-Page (#160): a same-origin path and query is kept; anything that
+// could name another host, or is over 2048 bytes, is "/".
+func TestBackURL_Refuses(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"/", "/"},
+		{"/todos?filter=Active&page=2", "/todos?filter=Active&page=2"},
+		{"/todos?q=a%20b#frag", "/todos?q=a%20b"},
+		{"https://app.example/todos?x=1", "/todos?x=1"},
+		{"HTTPS://evil.example/x", "/x"},
+		{"https://evil.example", "/"},
+		{"//evil.example/x", "/"},
+		{"///evil.example/x", "/"},
+		{`/\evil`, "/"},
+		{`/\/evil`, "/"},
+		{`\\evil.example`, "/"},
+		{`/a\b`, "/"},
+		{"https://evil.example//x", "/"},
+		{"https://evil.example/\\x", "/"},
+		{"/\t/evil.example", "/"},
+		{"/\n/evil.example", "/"},
+		{"/x\x7f", "/"},
+		{" /x", "/"},
+		{"todos", "/"},
+		{"javascript:alert(1)", "/"},
+		{"data:text/html,x", "/"},
+		{"mailto:a@b", "/"},
+		{"ftp://host/x", "/"},
+		{"/%zz", "/"},
+		{"/" + strings.Repeat("a", 2047), "/" + strings.Repeat("a", 2047)},
+		{"/" + strings.Repeat("a", 2048), "/"},
+		{"/" + strings.Repeat("a", 9000), "/"},
+	} {
+		if got := BackURL(c.in); got != c.want {
+			n := c.in
+			if len(n) > 40 {
+				n = n[:40] + "…"
+			}
+			if len(got) > 40 {
+				got = got[:40] + "…"
+			}
+			t.Errorf("BackURL(%q) = %q, want %q", n, got, c.want)
+		}
+	}
+}
+
+// Whatever BackURL returns is a same-origin path SafeURL accepts.
+func FuzzBackURL(f *testing.F) {
+	for _, s := range []string{"/", "//x", `/\x`, "https://h/p?q", "/a?b#c", "\x00"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, in string) {
+		got := BackURL(in)
+		if !SafeURL(got) || !strings.HasPrefix(got, "/") || strings.HasPrefix(got, "//") || strings.ContainsRune(got, '\\') || len(got) > 2048 {
+			t.Fatalf("BackURL(%q) = %q", in, got)
+		}
+	})
+}
+
 // PageAt rebuilds a page's URL from its pattern and its parameters as text: path parameters
 // escaped into their segments, the others as the query, defaults left out (I2's PRG target).
 func TestPageAt(t *testing.T) {

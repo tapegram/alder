@@ -127,9 +127,15 @@ type Browser struct {
 	// leaves out), sent with every post as html.ShownHeader, as the page's script does
 	shown string
 	// rendered is the body a full render of the last request's page would have sent
-	// (web.Options.Rendered), "" when it re-rendered nothing: after applying the answer, the held
-	// body must equal it (checkPatched)
+	// (web.Options.Rendered), "" when it re-rendered nothing: after applying the answer, every
+	// region the answer patched must equal it (checkPatched)
 	rendered string
+	// morphed is whether the last request's answer replaced the whole body, regions the ids of
+	// the elements it patched (`#id`, mode outer) in order, and domBefore dom before the answer:
+	// what checkPatched compares
+	morphed   bool
+	regions   []string
+	domBefore html.Node
 
 	model   any         // the model the last request's page GET rendered (web.Request.Model), nil for none
 	reqEnvs []*eff.Env  // the Envs of the request being served
@@ -732,6 +738,7 @@ func (b *Browser) serve(method, target string, form url.Values, ds bool) (*httpt
 		req.AddCookie(&http.Cookie{Name: web.CookieName, Value: b.cookie})
 	}
 	b.reqEnvs, b.lastErr, b.cur, b.model, b.rendered = nil, "", cur, nil, ""
+	b.morphed, b.regions, b.domBefore = false, nil, b.dom
 	b.reqHead = req.Method + " " + req.URL.Path + ": "
 	w := httptest.NewRecorder()
 	b.serveHTTP(w, req)
@@ -914,12 +921,16 @@ func (e *DriftError) Error() string {
 		e.Step, e.Diff.At, e.Diff.What, e.Diff.Left, e.Diff.Right)
 }
 
-// checkPatched compares the held body, as the browser built and patched it (dom), with the full
-// render, as the browser's parser builds it, of the page the last request
-// re-rendered (b.rendered), the router's implicit <al-toasts> region left out. It runs after
+// checkPatched compares what the last request's answer patched into the held page, as the
+// browser built and patched it (dom), with the full render, as the browser's parser builds it,
+// of the page the request re-rendered (b.rendered): the whole body when the answer morphed it
+// (the router's implicit <al-toasts> region left out), else each region it patched (`#id`),
+// by id. A region the answer did not send is not compared: the spec guarantees every region the
+// server sent is right, and leaves the rest as the browser has them (#160, the user's 2026-11-04
+// decision: no shown-hash gate), so a page held stale keeps its stale regions. It runs after
 // the request was served: `alder bench` measures the router alone (serveHTTP), not this.
 func (b *Browser) checkPatched() error {
-	if b.rendered == "" {
+	if b.rendered == "" || (!b.morphed && len(b.regions) == 0) {
 		return nil
 	}
 	full, err := html.Parse(b.rendered)
@@ -927,6 +938,24 @@ func (b *Browser) checkPatched() error {
 		return fmt.Errorf("the full render of the page does not parse: %w", err)
 	}
 	want := html.Repair(full)
+	step := strings.TrimSuffix(b.reqHead, ": ")
+	if !b.morphed {
+		// the page as it should be: the one held before the answer, each region the answer
+		// patched as the full render has it. Compared whole, so a patch whose markup the
+		// parser moves outside its element (html.Repair) is caught as well.
+		expect := b.domBefore
+		for _, id := range b.regions {
+			w, ok := elementByID(want, id)
+			if ok {
+				expect, ok = html.ReplaceByID(expect, id, w)
+			}
+			if !ok {
+				return &DriftError{Step: step, Diff: html.Difference{At: "#" + id,
+					What: "the answer patched a region that the held page or the full render lacks"}}
+			}
+		}
+		want = expect
+	}
 	held := html.Select(b.dom, selBody)
 	if len(held) == 0 {
 		return errors.New("the held page has no <body>")
@@ -935,10 +964,29 @@ func (b *Browser) checkPatched() error {
 	if !strings.Contains(b.rendered, "<al-toasts") {
 		got = html.Without(got, func(n html.Node) bool { return n.Tag() == "al-toasts" })
 	}
+	if bs := html.Select(want, selBody); !b.morphed && len(bs) > 0 {
+		want = bs[0]
+		if !strings.Contains(b.rendered, "<al-toasts") {
+			want = html.Without(want, func(n html.Node) bool { return n.Tag() == "al-toasts" })
+		}
+	}
 	if d, differ := html.Diff(got, want); differ {
-		return &DriftError{Step: strings.TrimSuffix(b.reqHead, ": "), Diff: d}
+		return &DriftError{Step: step, Diff: d}
 	}
 	return nil
+}
+
+// elementByID is n's first element whose id is id, in document order.
+func elementByID(n html.Node, id string) (html.Node, bool) {
+	if v, ok := html.AttrOf(n, "id"); ok && v == id && n.Tag() != "" {
+		return n, true
+	}
+	for _, c := range n.Children() {
+		if e, ok := elementByID(c, id); ok {
+			return e, true
+		}
+	}
+	return html.Node{}, false
 }
 
 // failText is the error of the request just served, as the router logged it ("POST /x?a=1: boom
@@ -1176,6 +1224,7 @@ func (b *Browser) patch(ev sseEvent) error {
 			return fmt.Errorf("a patch of %s: the held page has no element with that id", sel)
 		}
 		b.doc = doc
+		b.regions = append(b.regions, id)
 		// Datastar morphs the element into the nodes its parser builds from the patch; an id
 		// the DOM lacks patches nothing (the drift check then reports the difference)
 		if dom, ok := html.ReplaceByID(b.dom, id, html.RepairFragment(els)); ok {
@@ -1217,6 +1266,7 @@ func (b *Browser) patch(ev sseEvent) error {
 		b.doc = doc
 	} else {
 		b.doc, b.shown = takeShown(doc)
+		b.morphed = true
 	}
 	b.dom = html.Repair(b.doc)
 	return nil

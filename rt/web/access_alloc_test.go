@@ -181,5 +181,6 @@ func TestAccessLog_FilteredNoCost(t *testing.T) {
 // metrics and no slow threshold: the count main has with #93 and its masking fixes (go1.27). Metrics and ALDER_SLOW_MS (#92)
 // must not move it; a Go upgrade that does is re-pinned here deliberately. 55: the router's
 // Env.Log is the tracker's log method (one method-value allocation, for the request detail's log
-// lines).
-const offAllocs = 55
+// lines). 54 (#160): the boost tag grew (the helpers' payload and _alderF's Alder-Page), and the
+// page's buffer grows in one step fewer — the count follows the page's size, not the hooks.
+const offAllocs = 54

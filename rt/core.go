@@ -437,11 +437,9 @@ type HttpError struct {
 
 // Page is a link target: a page's path with its path parameters filled in (each segment
 // escaped), and its other parameters as Query, in declaration order. Url.external is a Page
-// with the URL as Path and no Query.
-type Page struct {
-	Path  string
-	Query []KV
-}
+// with the URL as Path and no Query. It is a Route (with no Name or Method) until pages go
+// (#160).
+type Page = Route
 
 // DefaultPublicURL is the public base (PublicURL) of a process that is not told its own: the
 // test runner, alder eval and the REPL, so a test's expected absolute URL is the same on every
@@ -535,18 +533,8 @@ func DisplayAddr(addr string) string {
 	return net.JoinHostPort(host, port)
 }
 
-// AlderEqual is Page's equality (Equaler): two pages are equal when they link to the same URL
-// (PageURL), so a page built with a parameter at its default (left out of the URL) equals the
-// page read back from that URL, and `==` agrees with Show, which prints a page as its URL.
-func (p Page) AlderEqual(other any) bool { return PageURL(p) == PageURL(other.(Page)) }
-
-// AlderKey is Page's Dict key (Keyer): its URL, so two pages equal under AlderEqual are one key.
-func (p Page) AlderKey() string { return PageURL(p) }
-
-// PageURL is the URL a link to p points at: `href={…}` and `Redirect` render it. It is p's
-// Path, then the Query parameters that are not Omit as an URL-encoded query string
-// ("/?filter=Active").
-func PageURL(p Page) string { return p.Path + queryString(p.Query) }
+// PageURL is the URL a link to p points at: `href={…}` and `Redirect` render it (RouteURL).
+func PageURL(p Page) string { return RouteURL(p) }
 
 // PageAt is the URL of a page from its path pattern ("/todos/{id}") and its parameters as text
 // (the generated params__M, in declaration order): each {name} segment is the parameter of that
@@ -730,12 +718,30 @@ func PageParams(query url.Values) (map[string]string, url.Values) {
 	return params, q
 }
 
-// BackURL is where a redirect back to the page that sent a request goes: the path and query of
-// referer (the Referer header), or "/" when there is none. Scheme and host are dropped, so it
-// never leads out of the app.
-func BackURL(referer string) string {
-	u, err := url.Parse(referer)
-	if err != nil || referer == "" {
+// BackURL is where a redirect back to the page that sent a request goes, and which page a write
+// answers for (#160): the path and query of raw — the Referer header, or Alder-Page (the path and
+// query the page's post helper sends) — or "/" when there is none. Scheme and host are dropped, so
+// it never leads out of the app: raw must be a path ("/…") or an absolute http(s) URL, and
+// anything that could name another host is "/" — a path starting "//" (the raw value's or the
+// URL's), a backslash anywhere (browsers read "/\" as "//"), a control byte, a value over
+// backURLMax bytes, another scheme, a value that does not parse.
+func BackURL(raw string) string {
+	if raw == "" || len(raw) > backURLMax || strings.HasPrefix(raw, "//") {
+		return "/"
+	}
+	for i := 0; i < len(raw); i++ {
+		if c := raw[i]; c < 0x20 || c == 0x7f || c == '\\' {
+			return "/"
+		}
+	}
+	if !strings.HasPrefix(raw, "/") {
+		l := strings.ToLower(raw)
+		if !strings.HasPrefix(l, "http://") && !strings.HasPrefix(l, "https://") {
+			return "/"
+		}
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
 		return "/"
 	}
 	p := u.EscapedPath()
@@ -745,8 +751,14 @@ func BackURL(referer string) string {
 	if u.RawQuery != "" {
 		p += "?" + u.RawQuery
 	}
+	if len(p) > backURLMax {
+		return "/"
+	}
 	return p
 }
+
+// backURLMax is the longest value BackURL reads (and returns): a longer one is "/".
+const backURLMax = 2048
 
 // MaybeText is a Maybe's value as text, "" for Nothing. The generated code uses it for message
 // parameters and form values of a Maybe type.

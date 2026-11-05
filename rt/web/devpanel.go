@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	rtpkg "alder/rt"
 	"alder/rt/applog"
 	"alder/rt/datastar"
 	"alder/rt/eff"
@@ -353,6 +354,9 @@ func curlLine(tw *tracker) string {
 	b.WriteString(" -H " + shq("Cookie: "+CookieName+"=<your session cookie>"))
 	if tw.rq != nil && tw.rq.Datastar {
 		b.WriteString(" -H " + shq("Datastar-Request: true"))
+		if elementFetch(r) {
+			b.WriteString(" -H " + shq(datastar.FetchHeader+": 1"))
+		}
 	}
 	if tw.rq != nil {
 		keys := make([]string, 0, len(tw.rq.Form))
@@ -401,19 +405,24 @@ func (rt *router) patchPanel(w http.ResponseWriter, status int) {
 	}
 }
 
-// notify patches the toast of a Noticed answer into the page's <al-toasts> region, as its own
-// event after the body's, so a later morph does not show it again.
+// notify patches the toast of a Noticed answer (and a write's answer's further toasts) into the
+// page's <al-toasts> region, each as its own event after the body's, so a later morph does not
+// show it again.
 func (rt *router) notify(w http.ResponseWriter) {
 	tw, ok := w.(*tracker)
 	if !ok || tw.notice == "" {
 		return
 	}
-	variant, timeout, _ := noticeLook(tw.kind)
-	toast := `<al-toast variant="` + variant + `" timeout="` + timeout + `">` + esc(tw.notice) + `</al-toast>`
-	tw.patches = append(tw.patches, "toast")
-	tw.notice = ""
-	if err := datastar.PatchToast(w, toast); err != nil {
-		rt.log("error", "writing the toast patch: "+err.Error())
+	toasts := append([]rtpkg.Toast{{Kind: tw.kind, Text: tw.notice}}, tw.more...)
+	tw.notice, tw.more = "", nil
+	for _, t := range toasts {
+		variant, timeout, _ := noticeLook(t.Kind)
+		toast := `<al-toast variant="` + variant + `" timeout="` + timeout + `">` + esc(t.Text) + `</al-toast>`
+		tw.patches = append(tw.patches, "toast")
+		if err := datastar.PatchToast(w, toast); err != nil {
+			rt.log("error", "writing the toast patch: "+err.Error())
+			return
+		}
 	}
 }
 

@@ -190,6 +190,7 @@ type tracker struct {
 	// script): rendered as an <al-alert> at the top of the page (document)
 	alert string
 	kind  rtpkg.NoticeKind // the variant of notice or alert (only one is set)
+	more  []rtpkg.Toast    // a write's answer's toasts after the first (notice), patched in after it
 }
 
 // logLine is one line the request logged: when, at which level (as Env.Log names it) and what.
@@ -316,8 +317,10 @@ type segment struct {
 // ErrorDoc); serves the Datastar script at datastar.ScriptPath (versioned, immutable),
 // Options.StaticDir under /static/, and the design system at /static/al/ (DesignSystemCache, ETag); matches method and pattern, the most specific pattern first (a literal segment
 // before a parameter, left to right; equally specific ones in declaration order), a trailing
-// slash tolerated (anything unmatched, including a GET to a POST-only path, is a 404 rendered
-// with NotFoundDoc); reads a POST body
+// slash tolerated (a path no route matches is a 404 rendered with NotFoundDoc; one matched for
+// another method only, a 405 with Allow, HEAD served by GET); routes a POST by its url-encoded
+// body's _method (effectiveMethod: PUT, PATCH or DELETE, else 400); reads a POST, PUT, PATCH or
+// DELETE body
 // (at most 1 MiB, else 413; url-encoded forms are parsed, multipart is refused with 415);
 // decodes the session cookie; builds the Request and its Env; calls the route's Handle; and
 // writes the Response. Patterns are compiled here; a malformed one panics, as does a Secret
@@ -357,8 +360,8 @@ func NewRouter(routes []Route, opts Options) http.Handler {
 		rt.static = http.StripPrefix(strings.TrimSuffix(staticPrefix, "/"), http.FileServer(filesOnly{http.Dir(opts.StaticDir)}))
 	}
 	for _, r := range routes {
-		if r.Method != http.MethodGet && r.Method != http.MethodPost {
-			panic(fmt.Sprintf("web: route %q: method %q is not GET or POST", r.Pattern, r.Method))
+		if !declarable(r.Method) {
+			panic(fmt.Sprintf("web: route %q: method %q is not GET, POST, PUT, PATCH or DELETE", r.Pattern, r.Method))
 		}
 		ro := route{method: r.Method, pattern: r.Pattern, segs: compile(r.Pattern), file: r.File, handle: r.Handle}
 		for i, s := range ro.segs {
@@ -417,24 +420,58 @@ func compile(pattern string) []segment {
 // maskURL is u, a request with method's URL, as a log line shows it: applog.MaskURL, and the
 // value of each path parameter of the route it matches whose name is Sensitive masked whatever
 // it looks like (a Random.id token in `/reset/{token}` is too short to look like a secret).
+// For a POST, which its _method may route to another method's route, and for a method no route
+// of the path declares (a 405), the parameters masked are those of every route matching the
+// path, whatever its method.
 func (rt *router) maskURL(method string, u *url.URL) string {
 	if rt.anyHide {
 		if method == http.MethodHead {
 			method = http.MethodGet
 		}
 		if segs, ok := splitPath(u.EscapedPath()); ok {
+			var hide []bool
+			found := false
 			for i := range rt.routes {
 				r := &rt.routes[i]
 				if r.method == method && r.matches(segs) {
-					if r.hide != nil {
-						return applog.MaskURLSegments(u, r.hide)
-					}
+					hide, found = r.hide, true
 					break
 				}
+			}
+			if !found || method == http.MethodPost {
+				hide = rt.hideAny(segs, hide)
+			}
+			if hide != nil {
+				return applog.MaskURLSegments(u, hide)
 			}
 		}
 	}
 	return applog.MaskURL(u)
+}
+
+// hideAny is hide with the Sensitive segments of every route matching segs added (a copy when
+// one is added; hide itself is never written).
+func (rt *router) hideAny(segs []string, hide []bool) []bool {
+	owned := false
+	for i := range rt.routes {
+		r := &rt.routes[i]
+		if r.hide == nil || !r.matches(segs) {
+			continue
+		}
+		if hide == nil {
+			hide = r.hide
+			continue
+		}
+		for j, h := range r.hide {
+			if h && !hide[j] {
+				if !owned {
+					hide, owned = slices.Clone(hide), true
+				}
+				hide[j] = true
+			}
+		}
+	}
+	return hide
 }
 
 // matches is match without the params.
@@ -570,12 +607,22 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		rt.reload(w, r)
 		return
 	}
-	if get && datastar.IsDatastar(r) {
+	if datastar.IsDatastar(r) {
 		if b := r.Header.Get(datastar.BuildHeader); b != "" && b != BuildID() {
 			// a tab of another build: its <head> (stylesheet, scripts, boost) is that build's,
-			// and a morph keeps it; a real load of the URL brings this build's
-			rt.reload(w, r)
-			return
+			// and a morph keeps it; a real load brings this build's. A navigation loads its URL;
+			// an element fetch, a fragment and not a page, the page it was made from; a write
+			// runs and its answer is such a load (staleReload). Without the header (a hand-made
+			// request) no check.
+			switch {
+			case get && elementFetch(r):
+				rt.navigateAway(w, r, "reload (another build)", shownURLOf(r))
+				return
+			case get:
+				rt.reload(w, r)
+				return
+			}
+			st.stale = true
 		}
 	}
 	if get && (r.URL.Path == devRequestsPath || strings.HasPrefix(r.URL.Path, devRequestsPath+"/")) && rt.panelOn() {
@@ -602,9 +649,12 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		rt.maintenance(w, r, st, rt.opts.SharedMaintenance)
 		return
 	}
-	if get && datastar.IsDatastar(r) {
-		// a boosted link or a back/forward: answered with a morph and a history step
+	if datastar.IsDatastar(r) {
+		// every method: Datastar puts the signals in a DELETE's query as in a GET's
 		dropSignals(r.URL)
+	}
+	if get && datastar.IsDatastar(r) && !elementFetch(r) {
+		// a boosted link or a back/forward: answered with a morph and a history step
 		st.gets, st.url, st.mode = 1, r.URL.RequestURI(), datastar.Push
 		if r.Header.Get(datastar.HistoryHeader) == "replace" {
 			st.mode = datastar.Replace
@@ -752,6 +802,12 @@ type hop struct {
 	has     bool
 	session any
 	enc     []byte
+	// render is set for the element GET of a write's `render r` (answerRender): a target that does
+	// not answer its view is never patched in (renderFailed)
+	render bool
+	// stale is set for a Datastar write from a tab of another build (its datastar.BuildHeader is
+	// not BuildID): its answer is a reload, never a patch (staleReload)
+	stale bool
 }
 
 // serve routes r (not the Datastar script, not static/) and writes the handler's answer.
@@ -762,20 +818,49 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 	}
 	var hit *route
 	var params map[string]string
-	if segs, ok := pathSegments(r); ok {
-		hit, params = rt.find(method, segs)
+	var declared map[string]bool
+	segs, ok := pathSegments(r)
+	if ok {
+		hit, params, declared = rt.find(method, segs)
 	}
-	tw, _ := w.(*tracker)
-	if hit != nil && tw != nil && tw.route == "" { // a redirect follow keeps the first request's
-		tw.route = hit.pattern
-	}
-	if hit == nil {
+	if hit == nil && declared == nil {
 		rt.notFound(w, r, st, html.None())
+		return
+	}
+	if hit == nil && r.Method != http.MethodPost { // a POST's _method may yet name a declared method
+		rt.notAllowed(w, r, st, method, declared)
 		return
 	}
 	if why := badQuery(r.URL.RawQuery); why != "" {
 		rt.badRequest(w, r, st, why)
 		return
+	}
+	var form url.Values
+	if hasBody(r.Method) {
+		var status int
+		form, status = readForm(w, r)
+		if status != 0 {
+			rt.logReq(w, "warn", line(w, r, refusal[status]))
+			http.Error(w, http.StatusText(status), status)
+			return
+		}
+		m, err := effectiveMethod(r, form)
+		if err != nil {
+			rt.badOverride(w, r, st, err)
+			return
+		}
+		if m != method {
+			method = m
+			hit, params, declared = rt.find(method, segs)
+		}
+		if hit == nil {
+			rt.notAllowed(w, r, st, method, declared)
+			return
+		}
+	}
+	tw, _ := w.(*tracker)
+	if tw != nil && tw.route == "" { // a redirect follow keeps the first request's
+		tw.route = hit.pattern
 	}
 	if hit.file && datastar.IsDatastar(r) {
 		// a file is a document of its own: a real navigation, its load not run. Not rt.reload:
@@ -794,44 +879,16 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 		Datastar: datastar.IsDatastar(r),
 		Dev:      rt.opts.Dev,
 		Login:    rt.opts.Login,
+		rt:       rt,
+		w:        w,
 	}
-	if method == http.MethodPost {
-		form, status := readForm(w, r)
-		if status != 0 {
-			rt.logReq(w, "warn", line(w, r, refusal[status]))
-			http.Error(w, http.StatusText(status), status)
-			return
-		}
-		rq.Form = form
-	}
+	rq.Form = form // nil for a GET or HEAD
 	if st.has {
 		rq.Session, rq.sessionEnc = st.session, st.enc
 	} else {
 		rq.Session, rq.sessionEnc = rt.decodeSession(r)
 	}
-	if rt.opts.EnvFor != nil {
-		rq.Env = rt.opts.EnvFor(r.Context(), rq.Session)
-		rq.Env.Session = rq.Session
-	} else {
-		rq.Env = &eff.Env{
-			Ctx:     r.Context(),
-			Store:   rt.opts.Store,
-			Caps:    rt.opts.Caps,
-			Now:     rt.now,
-			Log:     rt.log,
-			Session: rq.Session,
-		}
-		if rt.opts.Stores != nil {
-			rq.Env.Stores = rt.opts.Stores
-		}
-		rq.Env.CheckSession = rt.opts.SessionCheck
-		if tw != nil {
-			rq.Env.Log = tw.log
-		}
-		if tw != nil && rt.statsOn() {
-			rq.Env.Stats = &tw.stats // the tracker's: no allocation; nil otherwise, nothing timed
-		}
-	}
+	rq.Env = rt.newEnv(r.Context(), rq.Session, tw)
 	if tw, ok := w.(*tracker); ok {
 		if !rq.Datastar && r.Method == http.MethodGet && !hit.file { // an HTML page GET only: not a HEAD, which shows nothing, nor a file, which shows no notice
 			tw.alert, tw.kind = rt.takeNotice(w, r)
@@ -857,21 +914,58 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 	if rt.opts.Served != nil {
 		rt.opts.Served(rq)
 	}
+	if elementFetch(r) {
+		rt.deliverElement(w, r, st, rq, resp)
+		return
+	}
 	rt.write(w, r, st, rq, resp)
 }
 
+// newEnv is the Env a request runs with: Options.EnvFor's, else one of the router's store,
+// capabilities and clock, logging through tw (the request's tracker, when there is one) and
+// counting its statements there when they are counted (statsOn). A GET run in-process for a
+// write (runShown) gets a fresh one too: never the write's narrowing, binding or SessionPut.
+func (rt *router) newEnv(ctx context.Context, session any, tw *tracker) *eff.Env {
+	if rt.opts.EnvFor != nil {
+		env := rt.opts.EnvFor(ctx, session)
+		env.Session = session
+		return env
+	}
+	env := &eff.Env{Ctx: ctx, Store: rt.opts.Store, Caps: rt.opts.Caps, Now: rt.now, Log: rt.log, Session: session}
+	if rt.opts.Stores != nil {
+		env.Stores = rt.opts.Stores
+	}
+	env.CheckSession = rt.opts.SessionCheck
+	if tw != nil {
+		env.Log = tw.log
+	}
+	if tw != nil && rt.statsOn() {
+		env.Stats = &tw.stats // the tracker's: no allocation; nil otherwise, nothing timed
+	}
+	return env
+}
+
 // find is the route serve picks for method and the path's segments (the routes are sorted most
-// specific first), and its params; nil when none matches.
-func (rt *router) find(method string, segs []string) (*route, map[string]string) {
+// specific first), and its params. When none matches, declared is the set of methods the routes
+// whose pattern matches the path declare (a 405's Allow), nil when there is none (a 404).
+func (rt *router) find(method string, segs []string) (hit *route, params map[string]string, declared map[string]bool) {
 	for i := range rt.routes {
 		if rt.routes[i].method != method {
 			continue
 		}
 		if p, ok := rt.routes[i].match(segs); ok {
-			return &rt.routes[i], p
+			return &rt.routes[i], p, nil
 		}
 	}
-	return nil, nil
+	for i := range rt.routes {
+		if rt.routes[i].matches(segs) {
+			if declared == nil {
+				declared = map[string]bool{}
+			}
+			declared[rt.routes[i].method] = true
+		}
+	}
+	return nil, nil, declared
 }
 
 // refusal is the warn line's text of each status readForm answers.
@@ -881,22 +975,29 @@ var refusal = map[int]string{
 	http.StatusBadRequest:            "400: the form body does not parse",
 }
 
-// readForm reads a POST body: url-encoded forms are parsed, any other body except multipart
-// gives an empty form (a Datastar post without a form sends its signals as JSON). status is
-// non-zero on failure: 413 too large, 415 multipart, 400 malformed.
+// readForm reads the body of a POST, PUT, PATCH or DELETE (hasBody): url-encoded forms are
+// parsed (the body only, never the query), any other body except multipart gives an empty form
+// (a Datastar post without a form sends its signals as JSON). status is non-zero on failure:
+// 413 too large, 415 multipart, 400 malformed.
 func readForm(w http.ResponseWriter, r *http.Request) (url.Values, int) {
 	ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	switch {
 	case ct == "application/x-www-form-urlencoded":
-		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
-		if err := r.ParseForm(); err != nil {
+		// read here, not by r.ParseForm, which leaves a DELETE's body unread
+		b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
+		if err != nil {
 			var tooBig *http.MaxBytesError
 			if errors.As(err, &tooBig) {
 				return nil, http.StatusRequestEntityTooLarge
 			}
 			return nil, http.StatusBadRequest
 		}
-		return r.PostForm, 0
+		form, err := url.ParseQuery(string(b))
+		if err != nil {
+			return nil, http.StatusBadRequest
+		}
+		r.PostForm = form
+		return form, 0
 	case strings.HasPrefix(ct, "multipart/"):
 		return nil, http.StatusUnsupportedMediaType
 	default:
@@ -1013,6 +1114,13 @@ func (rt *router) setSession(w http.ResponseWriter, r *http.Request, rq *Request
 }
 
 func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
+	if st.stale && rq.Datastar && rt.staleReload(w, r, st, rq, resp) {
+		return
+	}
+	if resp.Answer != nil {
+		rt.answer(w, r, st, rq, resp)
+		return
+	}
 	if resp.Raw != nil {
 		rt.writeFile(w, r, st, rq, resp)
 		return
@@ -1097,97 +1205,24 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 }
 
 // rerender answers a Datastar request whose page re-renders (a message's Rerender or Reject, a
-// form that did not decode): with the elements that changed when the router can prove which page
-// the client shows (fragments), else with the whole body morphed in, as a boosted navigation's.
-// Options.Rendered gets the full render's body either way.
+// form that did not decode): with the regions that changed between the page as it was before the
+// message (Response.Before) and its answer (patchRegions), else with the whole body morphed in,
+// as a boosted navigation's.
 func (rt *router) rerender(w http.ResponseWriter, r *http.Request, rq *Request, resp Response) {
-	var after html.Rendered
-	if resp.Before != nil && r.Header.Get(html.ShownHeader) != "" { // regions only when fragments may follow
-		after = html.RenderTracked(resp.Node, resp.State)
-	} else {
-		after.Page = html.RenderWith(resp.Node, resp.State)
+	if resp.Before == nil || r.Header.Get(html.ShownHeader) == "" { // regions only when fragments may follow
+		rt.patchRegions(w, r, rq, nil, html.Rendered{Page: html.RenderWith(resp.Node, resp.State)}, http.StatusOK)
+		return
 	}
-	body := bodyOf(after.Page)
-	if rt.opts.Rendered != nil {
-		rt.opts.Rendered(rq, body)
-	}
-	tw, _ := w.(*tracker)
-	note := func(p string) {
-		if tw != nil {
-			tw.patches = append(tw.patches, p)
-		}
-	}
-	patches, ok := rt.fragments(w, r, resp, after, body)
-	var err error
-	switch {
-	case !ok:
-		err = datastar.PatchBody(w, rt.shellBody(w, rt.dev(withShown(body))))
-		note("body")
-	case len(patches) == 0:
-		// nothing changed: no element event, and the shown hash stays what it was
-		h := w.Header()
-		h.Set("Content-Type", "text/event-stream")
-		h.Set("Cache-Control", "no-cache")
-		note("none")
-	default:
-		for _, p := range patches {
-			if err == nil {
-				err = datastar.PatchRegion(w, strings.TrimPrefix(p.Selector, "#"), p.Elements)
-			}
-			note(p.Selector)
-		}
-		// the shown hash last: an answer cut short (an aborted request, a dropped connection)
-		// leaves the old hash with regions already patched, so the next post's hash does not
-		// match its before-view and that answer morphs the whole body
-		if err == nil {
-			err = datastar.PatchShown(w, html.Hash(body))
-		}
-		note("shown")
-	}
-	if err != nil {
-		rt.logReq(w, "error", line(w, r, fmt.Sprintf("writing the patch: %v", err)))
-	}
-	rt.notify(w)
-	rt.patchPanel(w, http.StatusOK)
-}
-
-// fragments is the region patches of a re-rendered page (html.Fragments), body its full
-// render's <body>; ok is false when only a body morph is safe: the route sets no Before (not a
-// message's answer), the request carries no shown hash (html.ShownHeader), a Noticed answer's
-// toast needs the implicit <al-toasts> region the page does not have, the before-view panics
-// (logged), the client shows another page than the before-view (the first click after a
-// rejected form, a load that reads the clock, a tab of an older build), or a change lies
-// outside every region.
-func (rt *router) fragments(w http.ResponseWriter, r *http.Request, resp Response, after html.Rendered, body string) (patches []html.Patch, ok bool) {
-	shown := r.Header.Get(html.ShownHeader)
-	if resp.Before == nil || shown == "" {
-		return nil, false
-	}
-	if tw, isT := w.(*tracker); isT && tw.notice != "" && !after.Toasts {
-		return nil, false
-	}
+	after := html.RenderTracked(resp.Node, resp.State)
 	var plain *html.FormState
 	if resp.State != nil {
 		plain = &html.FormState{PageParams: resp.State.PageParams}
 	}
-	before, ok := rt.renderBefore(w, r, resp.Before, plain, len(after.Page)+len(after.Page)/16)
-	if !ok {
-		return nil, false
+	var before *html.Rendered
+	if b, ok := rt.renderBefore(w, r, resp.Before, plain, len(after.Page)+len(after.Page)/16); ok {
+		before = &b
 	}
-	b := bodyOf(before.Page)
-	if html.Hash(b) != shown {
-		return nil, false
-	}
-	if b == body {
-		return []html.Patch{}, true
-	}
-	ps := html.Fragments(before, after)
-	for _, p := range ps {
-		if p.Selector == "body" {
-			return nil, false
-		}
-	}
-	return ps, true
+	rt.patchRegions(w, r, rq, before, after, http.StatusOK)
 }
 
 // renderBefore renders the page as it was before the message (Response.Before) with st, in a
@@ -1274,22 +1309,12 @@ func (rt *router) follow(w http.ResponseWriter, r *http.Request, st hop, rq *Req
 		rt.fail(w, r, st, html.None(), err, nil)
 		return
 	}
-	next := hop{origin: st.origin, url: resp.Location, mode: st.mode, gets: st.gets + 1, has: true, session: rq.Session, enc: rq.sessionEnc}
+	next := hop{origin: st.origin, url: resp.Location, mode: st.mode, gets: st.gets + 1, has: true}
+	next.session, next.enc = rt.sessionLeft(rq, resp)
 	if st.url == "" {
 		next.mode = datastar.Push
 	}
-	if resp.Session != nil {
-		next.session, next.enc = resp.Session, nil
-		if rt.opts.Session != nil {
-			next.enc, _ = rt.opts.Session.Encode(resp.Session)
-		}
-	}
-	r2 := r.Clone(r.Context())
-	r2.Method, r2.URL, r2.RequestURI = http.MethodGet, u, u.RequestURI()
-	r2.Body, r2.ContentLength, r2.Form, r2.PostForm = http.NoBody, 0, nil, nil
-	r2.Header.Del("Content-Type")
-	r2.Header.Del("Content-Length")
-	rt.serve(w, r2, next)
+	rt.serve(w, getOf(r, u, false), next) // the page redirected to is a navigation, not an element
 }
 
 // followable reports whether a redirect to loc is to a page of this app the router can serve
@@ -1315,12 +1340,13 @@ func (rt *router) isFileRoute(p string) bool {
 	if !ok {
 		return false
 	}
-	hit, _ := rt.find(http.MethodGet, segs)
+	hit, _, _ := rt.find(http.MethodGet, segs)
 	return hit != nil && hit.file
 }
 
-// dropSignals removes the `datastar` query parameter Datastar adds to every GET — its signals,
-// as JSON, which for the boost's GETs is the empty payload {} — from u, leaving the other
+// dropSignals removes the `datastar` query parameter Datastar adds to every GET and DELETE —
+// its signals, as JSON, which for the boost's and the page's requests is the empty payload {} —
+// from u, leaving the other
 // parameters as they were, in their order. Only that one is dropped: a `datastar` parameter of
 // the page's own URL (/search?datastar=x) is kept.
 func dropSignals(u *url.URL) {
@@ -1529,7 +1555,7 @@ func (rt *router) fail(w http.ResponseWriter, r *http.Request, st hop, doc html.
 	rt.failure(w, r, st, http.StatusInternalServerError, page)
 }
 
-// failure writes a 400/404/500/503 page: a full document with that status, or, for a Datastar
+// failure writes a 400/404/405/500/503 page: a full document with that status, or, for a Datastar
 // request, a 200 SSE patch of its body (the Datastar client ignores non-2xx answers) whose
 // StatusHeader names the status, so a client that is not a browser (an Alder test's) can tell
 // it from a re-rendered page; for a boosted navigation (st.url) also its title and the history
@@ -1543,7 +1569,7 @@ func (rt *router) failure(w http.ResponseWriter, r *http.Request, st hop, status
 }
 
 // StatusHeader is the response header of a Datastar answer to a request that failed: "400",
-// "404", "500" or "503" (the answer itself is a 200 body patch).
+// "404", "405", "500" or "503" (the answer itself is a 200 body patch).
 const StatusHeader = "Alder-Status"
 
 // endOfBody inserts s just before the last </body> of page, or appends it when there is none.

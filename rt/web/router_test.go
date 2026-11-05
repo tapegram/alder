@@ -147,10 +147,10 @@ func TestRouter_MethodDispatch(t *testing.T) {
 		method, path string
 		code         int
 	}{
-		{"GET", "/_m/Todos/Add", 404},
-		{"POST", "/todos", 404},
+		{"GET", "/_m/Todos/Add", 405}, // a path declared for another method only (#160)
+		{"POST", "/todos", 405},
 		{"POST", "/_m/Todos/Remove", 404},
-		{"PUT", "/todos", 404},
+		{"PUT", "/todos", 405},
 		{"GET", "/todos", 200},
 		{"POST", "/_m/Todos/Add", 303},
 	}

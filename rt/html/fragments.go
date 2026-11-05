@@ -16,6 +16,12 @@ type Patch struct {
 // of the <body> the page shows, as its <al-shown> element (datastar.ShownTag) says; "" for none.
 const ShownHeader = "Alder-Shown"
 
+// PageHeader is the request header a write sent from the page carries (#160): the path and
+// query of the page the browser is on (location.pathname + location.search). A write's
+// `refresh` and `invalid` answer for that page; the router reads it through rt.BackURL, so it
+// never names another host. Without it (no JavaScript) the router reads Referer.
+const PageHeader = "Alder-Page"
+
 // Hash is the shown hash of a rendered <body>: FNV-1a 64 of it, 16 lower-case hex digits. It
 // is not a secret: a client that lies only mispatches its own page.
 func Hash(body string) string {
