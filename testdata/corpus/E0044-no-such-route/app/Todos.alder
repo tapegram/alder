@@ -1,0 +1,6 @@
+module Todos
+
+route Index = GET "/" { }
+
+Indx.title : Index.Params -> Text
+Indx.title params = "Todos"

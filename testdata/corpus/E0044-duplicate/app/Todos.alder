@@ -1,0 +1,4 @@
+module Todos
+
+route Row = GET "/todos/{id}" { id: Int }
+route Row = GET "/rows/{id}" { id: Int }

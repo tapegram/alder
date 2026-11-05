@@ -1,0 +1,1 @@
+app/Todos.alder:5:7 E0044 route `Todo` is named like the qualifier of `import Table.Todo`: `Todo.view` would name that module's `view`; rename the route

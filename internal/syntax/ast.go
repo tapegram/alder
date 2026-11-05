@@ -22,6 +22,7 @@ const (
 	RefComponent          // capitalized function used as element
 	RefCapability         // capability module (Password.verify)
 	RefStd                // standard library value
+	RefRoute              // route constructor: `Row { id }`, `Todos.Row { id }` (Module "Todos", Name "Row")
 )
 
 type Ref struct {

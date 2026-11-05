@@ -1,0 +1,13 @@
+module Todos
+
+route Index = GET "/" { }
+route Row = GET "/todos/{id}" { id: Int }
+
+Index.title : Index.Params -> Text
+Index.title params = "Todos"
+
+Row.item : Int -> Html a
+Row.item n = <li>{Text.fromInt n}</li>
+
+Row.link : Row.Params -> Html a
+Row.link params = <a href={Row { id: params.id }}>{Row.item params.id}</a>

@@ -1,0 +1,3 @@
+app/Todos.alder:7:7 E0044 route `Active` is named like the constructor `Active` (of `Todos.Filter`): `Active { … }` cannot mean both; rename the route
+app/Todos.alder:8:7 E0044 route `TodoId` is named like the brand `TodoId` (of `Todos`): `TodoId { … }` cannot mean both; rename the route
+app/Todos.alder:9:7 E0044 route `Nothing` is named like the Prelude constructor `Nothing` (of `Maybe`): `Nothing { … }` cannot mean both; rename the route

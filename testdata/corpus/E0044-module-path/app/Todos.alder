@@ -1,0 +1,4 @@
+module Todos
+
+route Index = GET "/" { }
+route Row = GET "/todos/{id}" { id: Int }

@@ -1,0 +1,9 @@
+module Todos
+
+type Filter = All | Active
+
+type TodoId = brand Text
+
+route Active = GET "/active" { }
+route TodoId = GET "/todos/{id}" { id: TodoId }
+route Nothing = GET "/nothing" { }
