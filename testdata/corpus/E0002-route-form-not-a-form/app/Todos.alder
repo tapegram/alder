@@ -1,0 +1,15 @@
+module Todos
+
+type TodoList = { items: List Text }
+
+route Index  = GET  "/"      { }
+route Create = POST "/todos" { } form TodoList
+
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session = <p>{Text.fromInt n}</p>
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update params session = Task.succeed Response.refresh

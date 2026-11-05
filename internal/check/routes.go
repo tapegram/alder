@@ -134,6 +134,8 @@ func (mc *modCtx) defineRoutes() {
 				c.errorf(diag.RouteDecl, d.FormSpan, "route `%s` is a GET route, which has no form to post: `form %s` is for a write route (POST, PUT, PATCH or DELETE)", d.Name, d.Form)
 			} else if rec, ok := c.forms[c.key(mc.m.Name, d.Form)]; ok {
 				info.Params.Fields = append(info.Params.Fields, types.Field{Name: "form", Type: rec})
+			} else {
+				c.errorf(diag.UnknownName, d.FormSpan, "unknown form `%s`", d.Form)
 			}
 		}
 		segs := pathParams(d.Path)

@@ -746,3 +746,14 @@ func TestParse_QualifiedDeclMismatch(t *testing.T) {
 		t.Errorf("%v", diags)
 	}
 }
+
+// A route line with a bad method returns early; its Params is an empty record, never nil, so
+// Dump (and every other consumer) does not dereference nil.
+func TestParse_RouteBadMethodParams(t *testing.T) {
+	m, _ := ParseFile("m.alder", []byte("module M\n\nroute R = get \"/x\" { }\n"))
+	d, ok := m.Decls[0].(*RouteDecl)
+	if !ok || d.Params == nil {
+		t.Fatalf("decl %#v", m.Decls[0])
+	}
+	_ = Dump(m) // must not panic
+}

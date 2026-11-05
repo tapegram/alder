@@ -1111,7 +1111,11 @@ func (c *Checker) checkPagePaths() {
 			if why := PagePathProblem(pd.Path); why != "" {
 				c.errorf(diag.PagePath, pd.Span, "page path `%s` %s; %s", pd.Path, why, PagePathRule)
 			} else if first, ok := seen["GET "+pathShape(pd.Path)]; ok {
-				c.errorf(diag.DuplicatePage, pd.Span, "pages `%s` and `%s` both answer `%s`; give one of them another path", first.name, name, pd.Path)
+				if first.route {
+					c.errorf(diag.DuplicatePage, pd.Span, "page `%s` and route `%s` both answer `%s`; give one of them another path", name, first.name, pd.Path)
+				} else {
+					c.errorf(diag.DuplicatePage, pd.Span, "pages `%s` and `%s` both answer `%s`; give one of them another path", first.name, name, pd.Path)
+				}
 			} else {
 				seen["GET "+pathShape(pd.Path)] = answer{name, false}
 			}

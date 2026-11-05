@@ -1,0 +1,9 @@
+module Todos
+
+route Index = GET "/todos" { }
+
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session = <p>{Text.fromInt n}</p>

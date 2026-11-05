@@ -389,6 +389,7 @@ func (p *Parser) parseDecl() Decl {
 		} else {
 			p.errorAt(mt, "expected GET, POST, PUT, PATCH or DELETE, got "+describe(mt))
 			p.skipLine()
+			d.Params = &RecordType{} // no consumer sees a nil Params
 			d.Span = p.spanFrom(start)
 			return d
 		}

@@ -1504,6 +1504,19 @@ func (mc *modCtx) inferApp(x *syntax.App, env *env, eff effect, pipe *pipeArg, w
 	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Test" && (mc.inTest || mc.helperBan() == "") {
 		mc.checkSelectorArg(v.Ref.Name, x.Args)
 	}
+	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Response" && (v.Ref.Name == "redirect" || v.Ref.Name == "render") {
+		var arg syntax.Expr
+		if len(x.Args) > 0 {
+			arg = x.Args[0]
+		} else if pipe != nil {
+			arg = pipe.expr
+		}
+		if arg != nil {
+			if ct, r := mc.routeTarget(arg); r != nil && isWrite(r.Method) {
+				c.errorf(diag.RouteTarget, arg.GetSpan(), "`Response.%s` shows a GET route; `%s` is %s", v.Ref.Name, ct.Name, r.Method)
+			}
+		}
+	}
 	if v, ok := x.Fn.(*syntax.Var); ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "File" {
 		mc.checkFileArg(v.Ref.Name, x.Args)
 	}

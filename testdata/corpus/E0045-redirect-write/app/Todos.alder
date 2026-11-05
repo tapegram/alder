@@ -1,0 +1,18 @@
+module Todos
+
+route Index  = GET  "/"            { }
+route Poke   = POST "/poke"        { }
+route Poke2  = POST "/poke2"       { }
+
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session = <p>{Text.fromInt n}</p>
+
+-- a redirect or a render shows a GET route; a write route has no view
+Poke.update : Poke.Params -> Session -> Task Response
+Poke.update params session = Task.succeed (Response.redirect Poke)
+
+Poke2.update : Poke2.Params -> Session -> Task Response
+Poke2.update params session = Task.succeed (Response.render Poke)
