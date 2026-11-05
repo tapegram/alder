@@ -184,7 +184,7 @@ func (c *Checker) mayReject(module, msg string) bool {
 	}
 	for _, d := range m.Decls {
 		vd, ok := d.(*syntax.ValueDecl)
-		if !ok || vd.Name != "update" || vd.Body == nil {
+		if !ok || vd.Name != "update" || vd.Route != "" || vd.Body == nil {
 			continue
 		}
 		if mt, ok := vd.Body.(*syntax.Match); ok && len(vd.Params) > 0 {
@@ -259,14 +259,27 @@ func (mc *modCtx) formOf(e syntax.Expr) *formCtx {
 			ct = r
 		}
 	}
-	if ct == nil || ct.Ref.Kind != syntax.RefCtor {
+	if ct == nil {
 		return nil
 	}
-	info, ok := c.ctors[c.key(ct.Ref.Module, ct.Ref.Name)]
-	if !ok {
+	var arg types.Type
+	switch ct.Ref.Kind {
+	case syntax.RefCtor:
+		info, ok := c.ctors[c.key(ct.Ref.Module, ct.Ref.Name)]
+		if !ok {
+			return nil
+		}
+		arg = info.Arg
+	case syntax.RefRoute: // a write route's `form F` is its parameters' field `form`
+		info := c.route(ct.Ref.Module, ct.Ref.Name)
+		if info == nil {
+			return nil
+		}
+		arg = info.Params
+	default:
 		return nil
 	}
-	if rec, ok := info.Arg.(*types.Record); ok {
+	if rec, ok := arg.(*types.Record); ok {
 		for _, f := range rec.Fields {
 			if f.Name == "form" {
 				if fr, ok := f.Type.(*types.Record); ok {

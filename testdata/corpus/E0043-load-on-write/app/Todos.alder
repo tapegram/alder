@@ -1,0 +1,12 @@
+module Todos
+
+route Toggle = PATCH "/todos/{id}/toggle" { id: Int }
+
+Toggle.load : Toggle.Params -> Session -> Query Int
+Toggle.load params session = Query.succeed params.id
+
+Toggle.view : Int -> Session -> Html
+Toggle.view n session = <p>{Text.fromInt n}</p>
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update params session = Task.succeed Response.refresh

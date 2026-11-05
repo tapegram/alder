@@ -1,0 +1,16 @@
+module Todos
+
+route One = GET "/x" { }
+route Two = GET "/x/" { }
+
+One.load : One.Params -> Session -> Query Int
+One.load params session = Query.succeed 1
+
+One.view : Int -> Session -> Html
+One.view n session = <p>one</p>
+
+Two.load : Two.Params -> Session -> Query Int
+Two.load params session = Query.succeed 2
+
+Two.view : Int -> Session -> Html
+Two.view n session = <p>two</p>

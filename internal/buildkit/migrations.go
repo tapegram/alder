@@ -239,7 +239,7 @@ func firstChange(old, cur migrate.Schema) string {
 // lowering that panics is a compiler bug: the panic surfaces (the command reports an internal
 // error), as one in the checker does.
 func AddSchemaDrift(dir string, prog *names.Program, res *check.Result, bag *diag.Bag) {
-	if res == nil || bag.HasErrors() {
+	if res == nil || bag.HasErrors() || ir.Lowerable(prog) != nil { // a route program is not lowered until #160 PR 3
 		return
 	}
 	if !HasMigrations(dir) && len(migrationFiles(dir)) == 0 {

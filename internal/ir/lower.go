@@ -12,9 +12,28 @@ import (
 	"alder/internal/types"
 )
 
+// ErrRoutesNotBuilt is why a program that declares a route is not lowered: PR 2 of #160 checks
+// routes, and nothing lowers or generates them yet. PR 3 removes it.
+var ErrRoutesNotBuilt = fmt.Errorf("routes are not built yet (#160 PR 3)")
+
+// Lowerable is ErrRoutesNotBuilt when prog declares a route, else nil. Every caller of Lower
+// asks it first: Lower has no lowering for a route constructor.
+func Lowerable(prog *names.Program) error {
+	for _, name := range prog.Order {
+		if prog.IsRouteModule(name) {
+			return ErrRoutesNotBuilt
+		}
+	}
+	return nil
+}
+
 // Lower builds the IR of a program the checker accepted without errors. A missing recorded type
-// is a checker bug and panics with the node and its position.
+// is a checker bug and panics with the node and its position, as does a program that declares a
+// route (see Lowerable).
 func Lower(prog *names.Program, res *check.Result) *Program {
+	if err := Lowerable(prog); err != nil {
+		panic(err)
+	}
 	l := newLowerer(prog, res)
 	l.declareTypes()
 	l.declareValues()

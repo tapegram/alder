@@ -2,12 +2,25 @@ module Todos
 
 route Index = GET "/" { }
 route Row = GET "/todos/{id}" { id: Int }
+route Bump = POST "/todos/{id}/bump" { id: Int }
 
-Index.title : Index.Params -> Text
-Index.title params = "Todos"
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 3
+
+Index.view : Int -> Session -> Html
+Index.view n session = <ul>{Row.item n}</ul>
+
+Row.load : Row.Params -> Row.Session -> Query Int
+Row.load params session = Query.succeed params.id
+
+Row.view : Int -> Session -> Html
+Row.view n session = <div>{Row.item n}<button click={Bump { id: n }}>+</button></div>
 
 Row.item : Int -> Html a
 Row.item n = <li>{Text.fromInt n}</li>
 
 Row.link : Row.Params -> Html a
 Row.link params = <a href={Row { id: params.id }}>{Row.item params.id}</a>
+
+Bump.update : Bump.Params -> Session -> Task Response
+Bump.update params session = Task.succeed (Response.redirect (Row { id: params.id }))

@@ -597,7 +597,7 @@ func TestGoType(t *testing.T) {
 		{types.Unit, "struct{}"},
 		{types.Date, "rt.Date"},
 		{types.Time, "time.Time"},
-		{types.Page, "rt.Page"},
+		{types.Page, "rt.Route"}, // Page is Route until PR 9 of #160
 		{types.Bytes, "[]byte"},
 		{types.File, "rt.File"},
 		{list(maybe(types.Int)), "[]rt.Maybe[int64]"},

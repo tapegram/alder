@@ -357,17 +357,30 @@ func (c *Checker) checkChoose() {
 	if sd == nil {
 		return
 	}
-	pages := make([]string, 0, len(c.pages))
-	for name := range c.pages {
-		pages = append(pages, name)
+	requires := map[string][]string{} // each page module, and each route ("Todos.Row"), → its requires
+	for name, p := range c.pages {
+		if !c.prog.Failed[name] {
+			requires[name] = p.Requires
+		}
 	}
-	sort.Strings(pages)
+	for name, rs := range c.routes {
+		for _, r := range rs {
+			if !c.prog.Failed[name] {
+				requires[name+"."+r.Name] = r.Requires
+			}
+		}
+	}
+	guarded := make([]string, 0, len(requires))
+	for name := range requires {
+		guarded = append(guarded, name)
+	}
+	sort.Strings(guarded)
 	for _, f := range sd.Fields {
 		if c.via[f.Name] == "" || c.choose[f.Name] != "" || c.chooseDeclared(f.Name) {
 			continue
 		}
-		for _, name := range pages {
-			if c.prog.Failed[name] || !slices.Contains(c.pages[name].Requires, f.Name) {
+		for _, name := range guarded {
+			if !slices.Contains(requires[name], f.Name) {
 				continue
 			}
 			c.errorf(diag.PartitionDecl, f.ViaSpan, "`%s` is `via %s` and `%s` `requires %s`: `App` needs `choose %s = Page`, the page a request without `%s` is sent to (it picks one)", f.Name, f.Via, name, f.Name, f.Name, f.Name)
@@ -386,10 +399,11 @@ func (c *Checker) chooseDeclared(k string) bool {
 	return false
 }
 
-// checkRequiresM15 checks the M15 rules of page pd's `requires` once its fields are checked:
-// a field named twice, a key with `via` before `user` (E0027), and the admin form `silo k`
-// (E0033). It returns the fields the page's session narrows: the required ones and the silo key.
-func (mc *modCtx) checkRequiresM15(pd *syntax.PageDecl, info *pageInfo) []string {
+// checkRequiresM15 checks the M15 rules of the `requires` of pd, the guard of a page or route
+// (noun) with parameters params, once its fields are checked: a field named twice, a key with
+// `via` before `user` (E0027), and the admin form `silo k` (E0033). It returns the fields the
+// session narrows (the required ones and the silo key) and the silo key when it is valid.
+func (mc *modCtx) checkRequiresM15(pd *syntax.Guard, params *types.Record, noun string) (narrowed []string, silo string) {
 	c := mc.c
 	seen := map[string]bool{}
 	for i, req := range pd.Requires {
@@ -406,38 +420,37 @@ func (mc *modCtx) checkRequiresM15(pd *syntax.PageDecl, info *pageInfo) []string
 			c.errorf(diag.RoleClause, at, "`%s` needs `user` first: `%s` is `via %s`, a membership of the signed-in user; write `requires user, %s`", req, req, via, req)
 		}
 	}
-	narrowed := slices.Clone(pd.Requires)
+	narrowed = slices.Clone(pd.Requires)
 	if pd.Silo == "" {
-		return narrowed
+		return narrowed, ""
 	}
 	k, at := pd.Silo, pd.SiloSpan
 	kt, has := c.sessionKey(k)
 	_, isMaybe := c.fieldMaybe(k)
 	var param *types.Field
-	for i := range info.Params.Fields {
-		if info.Params.Fields[i].Name == k {
-			param = &info.Params.Fields[i]
+	for i := range params.Fields {
+		if params.Fields[i].Name == k {
+			param = &params.Fields[i]
 		}
 	}
 	switch {
 	case len(pd.Roles) == 0:
-		c.errorf(diag.SiloDecl, at, "`silo %s` needs a role check: the page takes `%s` from its parameter, which only the role check guards; write `requires user, role Admin, silo %s`", k, k, k)
+		c.errorf(diag.SiloDecl, at, "`silo %s` needs a role check: the %s takes `%s` from its parameter, which only the role check guards; write `requires user, role Admin, silo %s`", k, noun, k, k)
 	case !has:
 		c.errorf(diag.SiloDecl, at, "`silo %s`: the session has no field `%s`", k, k)
 	case !isMaybe:
 		c.errorf(diag.SiloDecl, at, "`silo %s`: session field `%s` must be a `Maybe`", k, k)
 	case seen[k]:
-		c.errorf(diag.SiloDecl, at, "`silo %s` and `requires %s` both name `%s`: the admin form takes `%s` from the page's parameter, not the session", k, k, k, k)
+		c.errorf(diag.SiloDecl, at, "`silo %s` and `requires %s` both name `%s`: the admin form takes `%s` from the %s's parameter, not the session", k, k, k, k, noun)
 	case param == nil:
-		c.errorf(diag.SiloDecl, at, "`silo %s` takes `%s` from the page's parameter: add `%s: %s` to the page's parameters", k, k, k, mc.ts(kt))
+		c.errorf(diag.SiloDecl, at, "`silo %s` takes `%s` from the %s's parameter: add `%s: %s` to the %s's parameters", k, k, noun, k, mc.ts(kt), noun)
 	case types.IsErr(param.Type):
 	case c.u.Unify(param.Type, kt) != nil:
-		c.errorf(diag.SiloDecl, at, "the page's parameter `%s` is `%s`; `silo %s` needs `%s`, the type of the session's `%s`", k, mc.ts(param.Type), k, mc.ts(kt), k)
+		c.errorf(diag.SiloDecl, at, "the %s's parameter `%s` is `%s`; `silo %s` needs `%s`, the type of the session's `%s`", noun, k, mc.ts(param.Type), k, mc.ts(kt), k)
 	default:
-		info.Silo = k
-		return append(narrowed, k)
+		return append(narrowed, k), k
 	}
-	return narrowed
+	return narrowed, ""
 }
 
 // m15Placement reports `silo` and `choose` outside App (InvalidDecl, like `login`).

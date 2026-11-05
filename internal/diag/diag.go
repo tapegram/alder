@@ -136,6 +136,7 @@ const (
 	TestOnly            = "E0040" // something only tests may use (`Test.*`, `Doc`, `Answer`, a fake's table, a test helper) where no test helper can be
 	PageShadowed        = "E0041" // a constructor (or brand, or message) named like a single-segment page module, applied in its scope to a record it cannot take: there the page cannot be written
 	ThemeDecl           = "E0042" // a `theme` declaration the rules refuse: outside App, twice, an unknown or removed token, a value of the wrong kind or shape
+	RouteDecl           = "E0043" // a route declaration the rules refuse: `form` on GET, a missing or extra member, a member of the wrong type, a path two routes answer with one method, a path segment with no parameter, a module with both `page` and `route`
 	RouteName           = "E0044" // a route name that cannot be told apart (a module's, an import qualifier's, a constructor's in scope, another route's) or a qualified declaration naming no route
 	ImportAlias         = "E0204" // an import's `as` is missing, redundant or not its canonical qualifier
 	FullPath            = "E0205" // a name written with an imported module's full path instead of its qualifier

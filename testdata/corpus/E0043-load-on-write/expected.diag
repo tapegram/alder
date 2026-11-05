@@ -1,0 +1,2 @@
+app/Todos.alder:5:1 E0043 route `Toggle` is a PATCH route, which has no `load`: a write route has only `Toggle.update : Toggle.Params -> Session -> Task Response`; `load` and `view` belong to a GET route
+app/Todos.alder:8:1 E0043 route `Toggle` is a PATCH route, which has no `view`: a write route has only `Toggle.update : Toggle.Params -> Session -> Task Response`; `load` and `view` belong to a GET route

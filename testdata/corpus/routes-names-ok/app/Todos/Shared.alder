@@ -4,3 +4,6 @@ import Todos
 
 row : Todos.Row.Params -> Html a
 row params = Todos.Row.item params.id
+
+shown : Todos.Row.Session -> Html Route
+shown session = Todos.Row.view 1 session

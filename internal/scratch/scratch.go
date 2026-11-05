@@ -239,6 +239,10 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 		}
 	}()
 
+	if err := ir.Lowerable(prog); err != nil {
+		b.Err = err
+		return b
+	}
 	p := ir.Lower(prog, res)
 	adapters := filepath.Join(appDir, "adapters")
 	hasAdapters := buildkit.HasAdapters(appDir)

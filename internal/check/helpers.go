@@ -7,6 +7,7 @@ package check
 
 import (
 	"sort"
+	"strings"
 
 	"alder/internal/diag"
 )
@@ -35,6 +36,10 @@ func (mc *modCtx) helperBan() string {
 		return "`App." + mc.value + "` is not a helper"
 	case mc.page != nil && (mc.value == "load" || mc.value == "view" || mc.value == "update"):
 		return "`" + mc.value + "` is the page's " + mc.value + ", not a helper"
+	case mc.route != nil:
+		if _, member, _ := strings.Cut(mc.value, "."); member == "load" || member == "view" || member == "update" {
+			return "`" + mc.value + "` is the route's " + member + ", not a helper"
+		}
 	}
 	return ""
 }

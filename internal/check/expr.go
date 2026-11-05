@@ -47,8 +47,10 @@ func (mc *modCtx) checkBodies() {
 	for _, d := range c.live(mc.m) {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
-			mc.value = d.Name
+			mc.value = d.FullName()
+			restore := mc.enterMember(d)
 			mc.checkValueDecl(d)
+			restore()
 			mc.value = ""
 		case *syntax.FakeDecl:
 			mc.checkFakeEntries(d)
@@ -65,7 +67,8 @@ func (mc *modCtx) checkBodies() {
 		}
 		c.resolveFuzzAny(mc.ts, false) // after the declaration: its Fuzz.any uses must be concrete
 	}
-	mc.checkPage() // Task 11; no-op for non-page modules
+	mc.checkPage()   // Task 11; no-op for non-page modules
+	mc.checkRoutes() // no-op for a module without routes
 	c.resolveFuzzAny(mc.ts, false)
 }
 
@@ -103,7 +106,7 @@ func (mc *modCtx) checkValueDecl(d *syntax.ValueDecl) {
 		mc.inferSig(d)
 		return
 	}
-	sig, ok := c.values[c.key(mc.m.Name, d.Name)]
+	sig, ok := c.values[c.key(mc.m.Name, d.FullName())]
 	if !ok || d.Body == nil {
 		return
 	}
@@ -120,7 +123,7 @@ func (mc *modCtx) checkValue(d *syntax.ValueDecl, sig types.Type) {
 	body := sig
 	if fn, isFn := sig.(*types.Fun); isFn {
 		if len(d.Params) > len(fn.Params) {
-			c.errorf(diag.Arity, d.Span, "`%s` takes %d parameters but %d are named", d.Name, len(fn.Params), len(d.Params))
+			c.errorf(diag.Arity, d.Span, "`%s` takes %d parameters but %d are named", d.FullName(), len(fn.Params), len(d.Params))
 			return
 		}
 		for i, p := range d.Params {
@@ -132,7 +135,7 @@ func (mc *modCtx) checkValue(d *syntax.ValueDecl, sig types.Type) {
 			body = fn.Result
 		}
 	} else if len(d.Params) > 0 {
-		c.errorf(diag.Arity, d.Span, "`%s` has type `%s`, which takes no parameters", d.Name, mc.ts(sig))
+		c.errorf(diag.Arity, d.Span, "`%s` has type `%s`, which takes no parameters", d.FullName(), mc.ts(sig))
 		return
 	}
 	mc.check(d.Body, body, env, effect{})
@@ -184,7 +187,8 @@ func (mc *modCtx) infersTopLevel() bool {
 // inside it must not reach Lower.
 func (mc *modCtx) inferTopLevel(d *syntax.ValueDecl) {
 	c := mc.c
-	key := c.key(mc.m.Name, d.Name)
+	name := d.FullName()
+	key := c.key(mc.m.Name, name)
 	errs := errorCount(c.bag)
 	c.usedPoisoned = false
 	c.forwardRef = ""
@@ -208,7 +212,7 @@ func (mc *modCtx) inferTopLevel(d *syntax.ValueDecl) {
 	}
 	if c.u.Unify(self, sig) != nil {
 		// the value uses itself at a type its body does not have (`f = \x -> f`)
-		c.errorf(diag.MissingSig, d.Span, "the type of `%s` cannot be inferred: it uses itself at a different type; give it a type signature", d.Name)
+		c.errorf(diag.MissingSig, d.Span, "the type of `%s` cannot be inferred: it uses itself at a different type; give it a type signature", name)
 	}
 	t := c.u.Apply(sig)
 	free := freeVars(t)
@@ -225,12 +229,12 @@ func (mc *modCtx) inferTopLevel(d *syntax.ValueDecl) {
 		}
 		c.poisonedTop[key] = true
 		if errorCount(c.bag) == errs && !c.usedPoisoned { // else the error is reported already
-			if c.forwardRef == d.Name {
-				c.errorf(diag.MissingSig, d.Span, "the type of `%s` cannot be inferred: it uses itself, and only a function may", d.Name)
+			if c.forwardRef == name {
+				c.errorf(diag.MissingSig, d.Span, "the type of `%s` cannot be inferred: it uses itself, and only a function may", name)
 			} else if c.forwardRef != "" {
-				c.errorf(diag.MissingSig, d.Span, "the type of `%s` cannot be inferred: it uses `%s`, a value defined after it; move `%s` above it or give `%s` a type signature", d.Name, c.forwardRef, c.forwardRef, d.Name)
+				c.errorf(diag.MissingSig, d.Span, "the type of `%s` cannot be inferred: it uses `%s`, a value defined after it; move `%s` above it or give `%s` a type signature", name, c.forwardRef, c.forwardRef, name)
 			} else {
-				c.errorf(diag.MissingSig, d.Span, "the type of `%s` cannot be inferred; give it a type signature", d.Name)
+				c.errorf(diag.MissingSig, d.Span, "the type of `%s` cannot be inferred; give it a type signature", name)
 			}
 		}
 		return
@@ -357,8 +361,9 @@ func paramName(i int) string {
 
 // missingSig reports E0007 for d with a fix that inserts `name : sig` on the line before it.
 func (mc *modCtx) missingSig(d *syntax.ValueDecl, sig string) {
-	mc.c.errorf(diag.MissingSig, d.Span, "`%s` has no type signature; write `%s : %s` on the line before it", d.Name, d.Name, sig).Fix =
-		diag.InsertAt(d.Span.Start.Line, 1, d.Name+" : "+sig+"\n")
+	name := d.FullName()
+	mc.c.errorf(diag.MissingSig, d.Span, "`%s` has no type signature; write `%s : %s` on the line before it", name, name, sig).Fix =
+		diag.InsertAt(d.Span.Start.Line, 1, name+" : "+sig+"\n")
 }
 
 // reportHoles ends a body: it reports its holes and the Dict keys it infers to hold a function.
@@ -654,14 +659,31 @@ func (mc *modCtx) check(e syntax.Expr, expected types.Type, env *env, eff effect
 	mc.c.record(e, expected)
 }
 
-// narrowedSession reports whether t is the narrowed Session of a `requires` page.
+// narrowedSession reports whether t is the narrowed Session of a `requires` page or route.
 func (c *Checker) narrowedSession(t types.Type) bool {
+	_, ok := c.sessionRequires(t)
+	return ok
+}
+
+// sessionRequires is the `requires` of the page or route whose narrowed Session t is, and whether
+// t is one.
+func (c *Checker) sessionRequires(t types.Type) ([]string, bool) {
 	r, ok := t.(*types.Record)
-	if !ok || r.Anonymous || r.Name != "Session" {
-		return false
+	if !ok || r.Anonymous {
+		return nil, false
 	}
-	p := c.pages[r.Module]
-	return p != nil && p.Session != nil
+	if r.Name == "Session" {
+		if p := c.pages[r.Module]; p != nil && p.Session != nil {
+			return p.Requires, true
+		}
+		return nil, false
+	}
+	for _, rt := range c.routes[r.Module] {
+		if rt.Session == r {
+			return rt.Requires, true
+		}
+	}
+	return nil, false
 }
 
 // appSession reports whether t is App's Session record.
@@ -756,9 +778,12 @@ func (mc *modCtx) checkExpr(e syntax.Expr, expected types.Type, env *env, eff ef
 	}
 	if err := c.u.Check(got, expected); err != nil {
 		if g, ex := c.u.Apply(got), c.u.Apply(expected); appSession(g) && c.narrowedSession(ex) {
-			r := ex.(*types.Record)
-			req := c.pages[r.Module].Requires
-			c.errorf(diag.TypeMismatch, e.GetSpan(), "expected this page's `Session`, got `App.Session`: the page `requires %s`, so its session has `%s` for certain, and App's session may not; a page's session widens to App's, never the other way", strings.Join(req, ", "), strings.Join(req, "` and `"))
+			req, _ := c.sessionRequires(ex)
+			what := "page"
+			if ex.(*types.Record).Name != "Session" {
+				what = "route"
+			}
+			c.errorf(diag.TypeMismatch, e.GetSpan(), "expected this %s's `Session`, got `App.Session`: the %s `requires %s`, so its session has `%s` for certain, and App's session may not; a %s's session widens to App's, never the other way", what, what, strings.Join(req, ", "), strings.Join(req, "` and `"), what)
 			return
 		}
 		d := mc.mismatch(e.GetSpan(), got, expected)
@@ -1287,6 +1312,17 @@ func (mc *modCtx) inferCtor(x *syntax.CtorRef, applied bool) types.Type {
 			return types.Page
 		}
 		return &types.Fun{Params: []types.Type{info.Params}, Result: types.Page}
+	case syntax.RefRoute:
+		// a route constructor builds a Route from its parameters; written bare, a route whose
+		// parameters are none (or only its form) is the Route itself, as a page's or message's
+		info := c.route(x.Ref.Module, x.Ref.Name)
+		if info == nil {
+			return types.Err // a route of a module that also declares a page: E0043
+		}
+		if !applied && messageLike(info.Params) {
+			return types.Route
+		}
+		return &types.Fun{Params: []types.Type{info.Params}, Result: types.Route}
 	case syntax.RefTable:
 		mc.fakeTableUse(c.key(x.Ref.Module, x.Ref.Name), x.Ref.Name, x.Span)
 		if info, ok := c.tables[c.key(x.Ref.Module, x.Ref.Name)]; ok {

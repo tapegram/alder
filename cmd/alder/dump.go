@@ -144,6 +144,10 @@ func dumpIR(dir string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s the program has %d typed hole(s); fill them before dumping the IR\n", errTag(stderr, "alder dump:"), res.Holes)
 		return 1
 	}
+	if err := ir.Lowerable(prog); err != nil {
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder dump:"), err)
+		return 1
+	}
 	fmt.Fprint(stdout, ir.Dump(ir.Lower(prog, res)))
 	return 0
 }

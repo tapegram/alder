@@ -480,3 +480,45 @@ func TestHover_DivAndComponentUnchanged(t *testing.T) {
 		t.Fatalf("component hover %q", got)
 	}
 }
+
+// TestRouteFile_Answers: the editor works on a route module (#160) without failing a request:
+// diagnostics are clean, and hover, definition, references, completion, semantic tokens and
+// code actions answer on a route constructor, a route member and a route's type. Their full
+// support for routes is PR 5's.
+func TestRouteFile_Answers(t *testing.T) {
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS("../../testdata/corpus/routes-ok")); err != nil {
+		t.Fatal(err)
+	}
+	c := start(t, root)
+	const rel = "app/Todos.alder"
+	c.open(rel, c.disk(rel))
+	if ds := c.diags(rel); len(ds) != 0 {
+		t.Fatalf("diagnostics %+v", ds)
+	}
+	doc := map[string]any{"uri": c.uri(rel)}
+	for _, p := range []Position{
+		c.at(rel, "Toggle { id: t.id }", 0),           // a route constructor
+		c.at(rel, "Row.view t session}", len("Row.")), // a route member
+		c.at(rel, "Row.Params ->", len("Row.")),       // a route's type
+		c.at(rel, "route Row", len("route ")),         // a route's declaration
+		c.at(rel, "Index.load params", len("Index.")), // a member's definition
+	} {
+		hover(t, c, rel, p)
+		definitionAt(t, c, rel, p)
+		var out any
+		for method, params := range map[string]map[string]any{
+			"textDocument/references": {"textDocument": doc, "position": p, "context": map[string]any{"includeDeclaration": true}},
+			"textDocument/completion": {"textDocument": doc, "position": p},
+			"textDocument/codeAction": {"textDocument": doc, "range": map[string]any{"start": p, "end": p}, "context": map[string]any{"diagnostics": []any{}}},
+		} {
+			if e := c.call(method, params, &out); e != nil {
+				t.Fatalf("%s at %+v: %v", method, p, e)
+			}
+		}
+	}
+	var out any
+	if e := c.call("textDocument/semanticTokens/full", map[string]any{"textDocument": doc}, &out); e != nil {
+		t.Fatalf("semantic tokens: %v", e)
+	}
+}

@@ -1,0 +1,9 @@
+module Todos
+
+route Row = GET "/todos/{id}" { }
+
+Row.load : Row.Params -> Session -> Query Int
+Row.load params session = Query.succeed 1
+
+Row.view : Int -> Session -> Html
+Row.view n session = <p>row</p>
