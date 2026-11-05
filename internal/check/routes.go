@@ -4,6 +4,7 @@
 package check
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 
@@ -228,7 +229,51 @@ func (mc *modCtx) checkWriteRoute(r *RouteInfo, members map[string]*syntax.Value
 		return
 	}
 	want := &types.Fun{Params: []types.Type{r.Params, mc.session}, Result: &types.App{Con: "Task", Args: []types.Type{types.Response}}}
-	mc.routeSig(d, want, sig)
+	if mc.routeSig(d, want, sig) {
+		r.NeedsShown = mc.needsShown(d)
+	}
+}
+
+// needsShown reports whether write route update d may answer with the page the request came
+// from rendered again (plan call 12): its body mentions `Response.refresh` or `Response.invalid`,
+// or calls an app function whose type's result contains `Response`. A function is judged by its
+// type, not its name, so a helper that wraps or builds a Response counts, and one that does not
+// (`Text.trim`, a predicate) does not.
+func (mc *modCtx) needsShown(d *syntax.ValueDecl) bool {
+	if d.Body == nil {
+		return false
+	}
+	c := mc.c
+	return mentions(reflect.ValueOf(d.Body), func(n any) bool {
+		v, ok := n.(*syntax.Var)
+		if !ok {
+			return false
+		}
+		switch v.Ref.Kind {
+		case syntax.RefStd:
+			return v.Ref.Module == "Response" && (v.Ref.Name == "refresh" || v.Ref.Name == "invalid")
+		case syntax.RefValue:
+			t, ok := c.values[c.key(v.Ref.Module, v.Ref.Name)]
+			return ok && resultHasResponse(c.u.Apply(t))
+		}
+		return false
+	})
+}
+
+// resultHasResponse reports whether t, or the result a function type finally gives, is
+// `Response` or holds it (`Task Response`, `Maybe Response`).
+func resultHasResponse(t types.Type) bool {
+	switch t := t.(type) {
+	case *types.Con:
+		return t == types.Response
+	case *types.App:
+		return slices.ContainsFunc(t.Args, resultHasResponse)
+	case *types.Union:
+		return slices.ContainsFunc(t.Args, resultHasResponse)
+	case *types.Fun:
+		return resultHasResponse(t.Result)
+	}
+	return false
 }
 
 func (mc *modCtx) checkGetRoute(r *RouteInfo, members map[string]*syntax.ValueDecl) {

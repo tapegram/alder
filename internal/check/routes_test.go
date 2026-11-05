@@ -208,3 +208,46 @@ func TestRoutes_Steps(t *testing.T) {
 		t.Errorf("errors = %q, want only those four", errs)
 	}
 }
+
+// TestNeedsShown: a write route needs the page it was sent from rendered again (plan call 12)
+// when its `update` mentions Response.refresh or Response.invalid, or calls an app function
+// whose type's result contains Response; the function is judged by its type, not its name.
+func TestNeedsShown(t *testing.T) {
+	cases := []struct {
+		name, body string
+		want       bool
+	}{
+		{"render", "Task.succeed (Response.render (Row {}))", false},
+		{"redirect", "Task.succeed (Response.redirect (Row {}))", false},
+		{"refresh in one branch", "if params.flag then Task.succeed (Response.redirect (Row {})) else Task.succeed Response.refresh", true},
+		{"invalid through toast", "Task.succeed (Response.invalid \"x\" |> Response.toast \"y\")", true},
+		{"helper returning Response", "Task.succeed (answer params.flag)", true},
+		{"helper returning Task Response", "later params.flag", true},
+		{"helper with a Response in a Maybe", "Task.succeed (Maybe.withDefault (Response.redirect (Row {})) (pick params.flag))", true},
+		{"Text.trim", "Task.succeed (if Text.trim \"x\" == \"\" then Response.redirect (Row {}) else Response.render (Row {}))", false},
+		{"helper not returning Response", "Task.succeed (if same params.flag then Response.redirect (Row {}) else Response.redirect (Row {}))", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			src := "module Todos\n\nroute Row = GET \"/row\" { }\nroute Go = POST \"/go\" { flag: Bool }\n\n" + getRoute("Row", "<p>r</p>") +
+				"answer : Bool -> Response\nanswer b = Response.refresh\n\n" +
+				"later : Bool -> Task Response\nlater b = Task.succeed Response.refresh\n\n" +
+				"pick : Bool -> Maybe Response\npick b = Nothing\n\n" +
+				"same : Bool -> Bool\nsame b = b\n\n" +
+				"Go.update : Go.Params -> Session -> Task Response\nGo.update params session = " + tc.body + "\n"
+			res, errs := checkFiles(t, routeApp(src))
+			if len(errs) != 0 {
+				t.Fatalf("errors = %q", errs)
+			}
+			var got *RouteInfo
+			for _, r := range res.Routes["Todos"] {
+				if r.Name == "Go" {
+					got = r
+				}
+			}
+			if got == nil || got.NeedsShown != tc.want {
+				t.Errorf("Go.NeedsShown = %v, want %v", got != nil && got.NeedsShown, tc.want)
+			}
+		})
+	}
+}
