@@ -200,3 +200,37 @@ func TestSource_MarkupCommentThenHoistIsUnsafe(t *testing.T) {
 		t.Fatalf("err = %v, want ErrUnsafe", err)
 	}
 }
+
+func TestFormat_Routes(t *testing.T) {
+	in, err := os.ReadFile("testdata/routes/in.alder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile("testdata/routes/out.alder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := format(t, "routes.alder", in)
+	if string(got) != string(want) {
+		t.Fatalf("golden mismatch\n--- got:\n%s\n--- want:\n%s", got, want)
+	}
+	if again := format(t, "routes.alder", got); string(again) != string(got) {
+		t.Fatalf("not idempotent\n--- first:\n%s\n--- second:\n%s", got, again)
+	}
+}
+
+func TestFormat_RoutesLongLineNotWrapped(t *testing.T) {
+	src := "module M\n\nroute Index = GET \"/a/very/long/path/that/goes/on/and/on/{id}\" { id: Todo.TodoId, other: Text = \"default value\", more: Int = 12 } form SomeFormName requires user, role Admin | Owner\n"
+	got := string(format(t, "m.alder", []byte(src)))
+	if strings.Count(got, "\n") != 3 {
+		t.Fatalf("route line wrapped:\n%s", got)
+	}
+}
+
+func TestFormat_RoutesMoveCommentsWithThem(t *testing.T) {
+	src := "module M\n\nroute A = GET \"/a\" { }\n\n-- about T\ntype T = { x: Int }\n\n-- about B\nroute B = GET \"/b\" { }\n"
+	want := "module M\n\nroute A = GET \"/a\" { }\n-- about B\nroute B = GET \"/b\" { }\n\n-- about T\ntype T = { x: Int }\n"
+	if got := string(format(t, "m.alder", []byte(src))); got != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+}

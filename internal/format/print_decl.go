@@ -3,6 +3,7 @@ package format
 import (
 	"cmp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"alder/internal/syntax"
@@ -61,12 +62,23 @@ func (p *printer) module(m *syntax.Module) Doc {
 			out = append(out, Text(line), p.trail(same[0]))
 		}
 	}
-	for _, d := range m.Decls {
+	decls := groupRoutes(m.Decls)
+	for i := 0; i < len(decls); i++ {
+		d := decls[i]
 		// one blank line before a declaration and its comments; when the comments stand apart
 		// from it (`-- @admin end`), the blank line between them separates it instead
 		out = append(out, HardLine)
 		if cs := p.c.leading[d]; len(cs) == 0 || p.blankAbove(cs[0].Line) || !p.blankBetween(cs[len(cs)-1].Line, d.GetSpan().Start.Line) {
 			out = append(out, HardLine)
+		}
+		if _, ok := d.(*syntax.RouteDecl); ok {
+			var run []*syntax.RouteDecl
+			for ; i < len(decls) && isRoute(decls[i]); i++ {
+				run = append(run, decls[i].(*syntax.RouteDecl))
+			}
+			i--
+			out = append(out, p.routeLines(run))
+			continue
 		}
 		out = append(out, p.withComments(d, p.decl(d)))
 	}
@@ -146,7 +158,7 @@ func (p *printer) decl(d syntax.Decl) Doc {
 func (p *printer) valueDecl(d *syntax.ValueDecl) Doc {
 	var doc []Doc
 	if d.Sig != nil {
-		doc = append(doc, Text(d.Name+" : "), p.typ(d.Sig), p.trail(d.Sig), p.dangle(d.Sig, true, nil))
+		doc = append(doc, Text(d.FullName()+" : "), p.typ(d.Sig), p.trail(d.Sig), p.dangle(d.Sig, true, nil))
 		if d.Body == nil {
 			return Concat(doc...)
 		}
@@ -157,7 +169,7 @@ func (p *printer) valueDecl(d *syntax.ValueDecl) Doc {
 
 // definition prints `name params = body`.
 func (p *printer) definition(d *syntax.ValueDecl) Doc {
-	head := d.Name
+	head := d.FullName()
 	for _, x := range d.Params {
 		head += " " + x.Name
 	}
@@ -200,6 +212,14 @@ func (p *printer) typeDecl(d *syntax.TypeDecl) Doc {
 
 func (p *printer) pageDecl(d *syntax.PageDecl) Doc {
 	doc := Concat(Text("page \""+d.Path+"\" "), p.fieldRecord(d.Params, d.Params.Fields))
+	if g := guardText(&d.Guard); g != "" {
+		return Concat(doc, Text(" "+g))
+	}
+	return doc
+}
+
+// guardText is a page's or route's `requires …` clause, "" for none.
+func guardText(d *syntax.Guard) string {
 	var clauses []string
 	if len(d.Requires) > 0 {
 		clauses = append(clauses, strings.Join(d.Requires, ", "))
@@ -211,9 +231,75 @@ func (p *printer) pageDecl(d *syntax.PageDecl) Doc {
 		clauses = append(clauses, "silo "+d.Silo)
 	}
 	if len(clauses) == 0 {
-		return doc
+		return ""
 	}
-	return Concat(doc, Text(" requires "+strings.Join(clauses, ", ")))
+	return "requires " + strings.Join(clauses, ", ")
+}
+
+// groupRoutes moves the route lines together, to where the first one is, in their order; every
+// other declaration keeps its place.
+func groupRoutes(decls []syntax.Decl) []syntax.Decl {
+	first := slices.IndexFunc(decls, isRoute)
+	if first < 0 {
+		return decls
+	}
+	out := slices.Clone(decls[:first])
+	for _, d := range decls[first:] {
+		if isRoute(d) {
+			out = append(out, d)
+		}
+	}
+	for _, d := range decls[first:] {
+		if !isRoute(d) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+func isRoute(d syntax.Decl) bool { _, ok := d.(*syntax.RouteDecl); return ok }
+
+// routeLines prints a run of route lines with their comments, one line each, never wrapped, in
+// columns: name, method, path, `{ params }` with ` form F`, then `requires …`. A column is padded
+// only when something follows it, so a line has no trailing spaces.
+func (p *printer) routeLines(rs []*syntax.RouteDecl) Doc {
+	const cols = 4
+	rows := make([][cols + 1]string, len(rs))
+	var width [cols]int
+	for i, r := range rs {
+		params := "{ }"
+		if len(r.Params.Fields) > 0 {
+			fs := make([]string, len(r.Params.Fields))
+			for j, f := range r.Params.Fields {
+				fs[j] = Render(p.field(f), 1<<30)
+			}
+			params = "{ " + strings.Join(fs, ", ") + " }"
+		}
+		if r.Form != "" {
+			params += " form " + r.Form
+		}
+		rows[i] = [cols + 1]string{"route " + r.Name, "= " + r.Method, strconv.Quote(r.Path), params, guardText(&r.Guard)}
+		for c := range cols {
+			width[c] = max(width[c], len(rows[i][c]))
+		}
+	}
+	var out []Doc
+	for i, r := range rs {
+		if i > 0 {
+			out = append(out, HardLine)
+		}
+		row := rows[i]
+		var line strings.Builder
+		for c := range cols {
+			line.WriteString(row[c])
+			if row[cols] != "" || c < cols-1 {
+				line.WriteString(strings.Repeat(" ", width[c]-len(row[c])+1))
+			}
+		}
+		line.WriteString(row[cols])
+		out = append(out, p.lead(r, true), Text(strings.TrimRight(line.String(), " ")), p.trail(r))
+	}
+	return Concat(out...)
 }
 
 func (p *printer) tableDecl(d *syntax.TableDecl) Doc {
