@@ -1,0 +1,2 @@
+app/Results.alder:15:14 W0008 route `Results.Index` reads its parameter `electionId` from the query key `ElectionId`, so `name="electionId"` in this GET form sets nothing; use the wire name: `name="ElectionId"`
+  fix 15:19-15:31 "ElectionId"

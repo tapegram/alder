@@ -1,0 +1,3 @@
+app/Todos.alder:17:22 E0045 `Test.get` requests a GET route; `Toggle` is PATCH: use `Test.click`
+app/Todos.alder:18:23 E0045 `Test.open` requests a GET route; `Toggle` is PATCH: use `Test.click`
+app/Todos.alder:19:24 E0045 `Test.fetch` requests a GET route; `Toggle` is PATCH: use `Test.click`

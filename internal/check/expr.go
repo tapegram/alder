@@ -1189,6 +1189,9 @@ func (mc *modCtx) inferVar(x *syntax.Var, env *env) types.Type {
 		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Test" && !mc.testUse("`Test."+x.Ref.Name+"`", x.Span) {
 			return types.Err
 		}
+		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Test" && x.Ref.Name == "refresh" {
+			return mc.testRefresh(x)
+		}
 		if x.Ref.Kind == syntax.RefStd && x.Ref.Module == "Test" && x.Ref.Name == "member" {
 			c.memberCheck(x.Span)
 		}

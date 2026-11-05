@@ -132,6 +132,9 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 			}
 			pushed.submit = submitText(a.Value, mc.source(a.Value.GetSpan()))
 			pushed.msg = msgCtor(a.Value)
+			if _, r := mc.routeTarget(a.Value); r != nil && isWrite(r.Method) {
+				pushed.route = r
+			}
 		}
 	}
 	saved := mc.form
@@ -151,6 +154,9 @@ func (mc *modCtx) element(x *syntax.Element, m types.Type, env *env, eff effect)
 	}
 	if pushed != nil && !pushed.formErrors && pushed.msg != nil && c.mayReject(pushed.msg.Ref.Module, pushed.msg.Ref.Name) {
 		c.bag.Warn(diag.UnshownReject, x.Span, "`%s` can answer `Reject`, but this form has no `<Errors form />`: the user never sees the rejection text", pushed.msg.Ref.Name)
+	}
+	if pushed != nil && !pushed.formErrors && pushed.route != nil && c.mayInvalid(pushed.route) {
+		c.bag.Warn(diag.UnshownReject, x.Span, "`%s` can answer `Response.invalid`, but this form has no `<Errors form />`: the user never sees its text", pushed.route.Name)
 	}
 	if pushed != nil && pushed.name != "" && !pushed.formErrors {
 		for _, f := range pushed.rec.Fields {
@@ -193,38 +199,58 @@ func (c *Checker) mayReject(module, msg string) bool {
 					if pc, ok := arm.Pat.(*syntax.PCtor); ok && pc.Name != msg {
 						continue
 					}
-					if mentionsReject(reflect.ValueOf(arm.Body)) {
+					if mentions(reflect.ValueOf(arm.Body), isReject) {
 						return true
 					}
 				}
 				return false
 			}
 		}
-		return mentionsReject(reflect.ValueOf(vd.Body))
+		return mentions(reflect.ValueOf(vd.Body), isReject)
 	}
 	return false
 }
 
-// mentionsReject reports whether the syntax tree v holds the Prelude's `Reject`.
-func mentionsReject(v reflect.Value) bool {
+// mayInvalid reports whether write route r's `update` can answer `Response.invalid` (W0005):
+// whether its body mentions it. A `Response.invalid` built by a function `update` calls is not
+// seen.
+func (c *Checker) mayInvalid(r *RouteInfo) bool {
+	vd := c.routeMembers(c.prog.Modules[r.Module], r.Name)["update"]
+	return vd != nil && vd.Body != nil && mentions(reflect.ValueOf(vd.Body), isInvalid)
+}
+
+// isReject reports whether syntax node n is the Prelude's `Reject`.
+func isReject(n any) bool {
+	ct, ok := n.(*syntax.CtorRef)
+	return ok && ct.Ref.Kind == syntax.RefCtor && ct.Ref.Module == "Prelude" && ct.Ref.Name == "Reject"
+}
+
+// isInvalid reports whether syntax node n is `Response.invalid`.
+func isInvalid(n any) bool {
+	v, ok := n.(*syntax.Var)
+	return ok && v.Ref.Kind == syntax.RefStd && v.Ref.Module == "Response" && v.Ref.Name == "invalid"
+}
+
+// mentions reports whether the syntax tree v holds a node that is reports.
+func mentions(v reflect.Value, is func(any) bool) bool {
 	switch v.Kind() {
 	case reflect.Pointer, reflect.Interface:
 		if v.IsNil() {
 			return false
 		}
-		if ct, ok := v.Interface().(*syntax.CtorRef); ok {
-			return ct.Ref.Kind == syntax.RefCtor && ct.Ref.Module == "Prelude" && ct.Ref.Name == "Reject"
+		if is(v.Interface()) {
+			return true
 		}
-		return mentionsReject(v.Elem())
+		return mentions(v.Elem(), is)
 	case reflect.Struct:
 		for i := range v.NumField() {
-			if v.Type().Field(i).IsExported() && mentionsReject(v.Field(i)) {
+			if v.Type().Field(i).IsExported() && mentions(v.Field(i), is) {
 				return true
 			}
 		}
 	case reflect.Slice:
 		for i := range v.Len() {
-			if mentionsReject(v.Index(i)) {
+			if mentions(v.Index(i), is) {
 				return true
 			}
 		}
@@ -312,6 +338,11 @@ func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effe
 			hrefText()
 			return
 		}
+		if ct, r := mc.routeTarget(a.Value); r != nil && isWrite(r.Method) {
+			c.errorf(diag.RouteTarget, a.Value.GetSpan(), "`href` goes to a GET route; `%s` is %s: use `click`", ct.Name, r.Method)
+			mc.infer(a.Value, env, eff)
+			return
+		}
 		got := c.u.Apply(mc.infer(a.Value, env, eff))
 		if b, isBrand := got.(*types.Brand); isCon(got, "Text") || (isBrand && isCon(b.Base, "Text")) {
 			hrefText() // a computed string such as `"/todos/" ++ x`
@@ -321,6 +352,11 @@ func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effe
 			mc.mismatch(a.Value.GetSpan(), got, types.Page)
 		}
 	case a.Name == "click" || a.Name == "submit":
+		if ct, r := mc.routeTarget(a.Value); a.Name == "submit" && r != nil && !isWrite(r.Method) {
+			c.errorf(diag.RouteTarget, a.Value.GetSpan(), "`submit` posts to a write route; `%s` is GET: link to it with `href`", ct.Name)
+			mc.infer(a.Value, env, eff)
+			return
+		}
 		mc.checkMessage(a.Value, m, env, eff)
 	case boolAttrs[a.Name]:
 		mc.check(a.Value, types.Bool, env, eff)
@@ -484,7 +520,11 @@ func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.Ht
 		}
 	}
 	if mc.form.name == "" {
-		c.errorf("E0304", x.Span, "`<form submit={%s}>` has no form type; `<%s>` needs a message declared with `form F`", mc.form.submit, x.Tag)
+		what := "a message"
+		if mc.form.route != nil {
+			what = "a route"
+		}
+		c.errorf("E0304", x.Span, "`<form submit={%s}>` has no form type; `<%s>` needs %s declared with `form F`", mc.form.submit, x.Tag, what)
 		return
 	}
 	if kind == "Errors" && bareForm {
@@ -539,8 +579,12 @@ func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.Ht
 		case options != nil:
 			// the options are the values the field may take, each with its label; a submitted value
 			// that is not one of them is refused, so the runtime computes them again on submit
-			if mc.page == nil || mc.value != "view" {
-				c.errorf("E0304", options.GetSpan(), "`options` must be written in the page's `view`, which the runtime runs again from the model to check a submitted value; `<%s>` is in `%s`", x.Tag, map[bool]string{true: mc.value, false: "a component"}[mc.value != ""])
+			if !mc.inShownView() {
+				where := "the page's `view`"
+				if mc.c.routes[mc.m.Name] != nil {
+					where = "a GET route's `view`"
+				}
+				c.errorf("E0304", options.GetSpan(), "`options` must be written in %s, which the runtime runs again from the model to check a submitted value; `<%s>` is in `%s`", where, x.Tag, map[bool]string{true: mc.value, false: "a component"}[mc.value != ""])
 			}
 			mc.options, mc.optionsBad = env, map[string]bool{}
 			mc.check(options, &types.App{Con: "List", Args: []types.Type{&types.Record{Anonymous: true, Fields: []types.Field{{Name: "value", Type: inner}, {Name: "label", Type: types.Text}}}}}, env, eff)

@@ -167,6 +167,8 @@ func test__Orgs__1() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}, error) {
 						_u9 := rt.PageURL(rt.Page{Path: "/orgs"})
 						_b10 := rtesting.BrowserOf(_e7)
@@ -181,6 +183,8 @@ func test__Orgs__1() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}
 							return _z13, _err12
 						}
@@ -195,6 +199,8 @@ func test__Orgs__1() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}
 							return _z15, _err12
 						}
@@ -207,7 +213,9 @@ func test__Orgs__1() eff.Task[bool] {
 								Kind string
 								Text string
 							}
-						}{Model: _m14, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc), Notices: _r11.Notices, Toasts: _r11.Toasts}, nil
+							Url    string
+							Status int64
+						}{Model: _m14, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc), Notices: _r11.Notices, Toasts: _r11.Toasts, Url: _r11.URL, Status: _r11.Status}, nil
 					}), func(_ struct {
 						Model   Orgs__Model
 						Session App__Session
@@ -217,6 +225,8 @@ func test__Orgs__1() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}) eff.Task[bool] {
 						return eff.Bind(eff.Call("Test.click Orgs.Pick", true, func(_e16 *eff.Env) (struct {
 							Answer  rtesting.Answer
@@ -227,6 +237,8 @@ func test__Orgs__1() eff.Task[bool] {
 								Kind string
 								Text string
 							}
+							Url    string
+							Status int64
 						}, error) {
 							_m17 := Orgs__PickParams{Org: a}
 							_r18, _err19 := rtesting.BrowserOf(_e16).ClickMsg(rt.MsgRef{Module: "Orgs", Msg: "Pick", Params: []rt.KV{{Key: "org", Value: _m17.Org}}}.URL(nil), rtesting.MsgName("Orgs.Pick", _m17))
@@ -240,6 +252,8 @@ func test__Orgs__1() eff.Task[bool] {
 										Kind string
 										Text string
 									}
+									Url    string
+									Status int64
 								}
 								return _z20, _err19
 							}
@@ -252,7 +266,9 @@ func test__Orgs__1() eff.Task[bool] {
 									Kind string
 									Text string
 								}
-							}{Answer: _r18.Answer, Session: rtesting.SessionOf[App__Session](_r18.Session), Doc: rtesting.DocOf(_r18.Doc), Notices: _r18.Notices, Toasts: _r18.Toasts}, nil
+								Url    string
+								Status int64
+							}{Answer: _r18.Answer, Session: rtesting.SessionOf[App__Session](_r18.Session), Doc: rtesting.DocOf(_r18.Doc), Notices: _r18.Notices, Toasts: _r18.Toasts, Url: _r18.URL, Status: _r18.Status}, nil
 						}), func(r struct {
 							Answer  rtesting.Answer
 							Session App__Session
@@ -262,6 +278,8 @@ func test__Orgs__1() eff.Task[bool] {
 								Kind string
 								Text string
 							}
+							Url    string
+							Status int64
 						}) eff.Task[bool] {
 							return eff.Pure(rt.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/projects"}}) && rt.Eq(r.Session.Org, rt.Just[string](a)))
 						})
@@ -406,6 +424,8 @@ func test__Orgs__3() eff.Task[bool] {
 								Kind string
 								Text string
 							}
+							Url    string
+							Status int64
 						}, error) {
 							_u10 := rt.PageURL(rt.Page{Path: "/orgs"})
 							_b11 := rtesting.BrowserOf(_e8)
@@ -420,6 +440,8 @@ func test__Orgs__3() eff.Task[bool] {
 										Kind string
 										Text string
 									}
+									Url    string
+									Status int64
 								}
 								return _z14, _err13
 							}
@@ -434,6 +456,8 @@ func test__Orgs__3() eff.Task[bool] {
 										Kind string
 										Text string
 									}
+									Url    string
+									Status int64
 								}
 								return _z16, _err13
 							}
@@ -446,7 +470,9 @@ func test__Orgs__3() eff.Task[bool] {
 									Kind string
 									Text string
 								}
-							}{Model: _m15, Session: rtesting.SessionOf[App__Session](_r12.Session), Doc: rtesting.DocOf(_r12.Doc), Notices: _r12.Notices, Toasts: _r12.Toasts}, nil
+								Url    string
+								Status int64
+							}{Model: _m15, Session: rtesting.SessionOf[App__Session](_r12.Session), Doc: rtesting.DocOf(_r12.Doc), Notices: _r12.Notices, Toasts: _r12.Toasts, Url: _r12.URL, Status: _r12.Status}, nil
 						}), func(_ struct {
 							Model   Orgs__Model
 							Session App__Session
@@ -456,6 +482,8 @@ func test__Orgs__3() eff.Task[bool] {
 								Kind string
 								Text string
 							}
+							Url    string
+							Status int64
 						}) eff.Task[bool] {
 							return eff.Bind(eff.Call("Test.submit SwitchOrg", true, func(_e17 *eff.Env) (struct {
 								Answer  rtesting.Answer
@@ -466,6 +494,8 @@ func test__Orgs__3() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}, error) {
 								_r18, _err19 := rtesting.BrowserOf(_e17).SubmitForm("/_m/Orgs/Switch", "SwitchOrg", encode__Orgs__SwitchOrg(Orgs__SwitchOrg{Org: b}))
 								if _err19 != nil {
@@ -478,6 +508,8 @@ func test__Orgs__3() eff.Task[bool] {
 											Kind string
 											Text string
 										}
+										Url    string
+										Status int64
 									}
 									return _z20, _err19
 								}
@@ -490,7 +522,9 @@ func test__Orgs__3() eff.Task[bool] {
 										Kind string
 										Text string
 									}
-								}{Answer: _r18.Answer, Session: rtesting.SessionOf[App__Session](_r18.Session), Doc: rtesting.DocOf(_r18.Doc), Notices: _r18.Notices, Toasts: _r18.Toasts}, nil
+									Url    string
+									Status int64
+								}{Answer: _r18.Answer, Session: rtesting.SessionOf[App__Session](_r18.Session), Doc: rtesting.DocOf(_r18.Doc), Notices: _r18.Notices, Toasts: _r18.Toasts, Url: _r18.URL, Status: _r18.Status}, nil
 							}), func(r struct {
 								Answer  rtesting.Answer
 								Session App__Session
@@ -500,6 +534,8 @@ func test__Orgs__3() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}) eff.Task[bool] {
 								return eff.Bind(eff.Call("Test.submit SwitchOrg", true, func(_e21 *eff.Env) (struct {
 									Answer  rtesting.Answer
@@ -510,6 +546,8 @@ func test__Orgs__3() eff.Task[bool] {
 										Kind string
 										Text string
 									}
+									Url    string
+									Status int64
 								}, error) {
 									_r22, _err23 := rtesting.BrowserOf(_e21).SubmitForm("/_m/Orgs/Switch", "SwitchOrg", encode__Orgs__SwitchOrg(Orgs__SwitchOrg{Org: a}))
 									if _err23 != nil {
@@ -522,6 +560,8 @@ func test__Orgs__3() eff.Task[bool] {
 												Kind string
 												Text string
 											}
+											Url    string
+											Status int64
 										}
 										return _z24, _err23
 									}
@@ -534,7 +574,9 @@ func test__Orgs__3() eff.Task[bool] {
 											Kind string
 											Text string
 										}
-									}{Answer: _r22.Answer, Session: rtesting.SessionOf[App__Session](_r22.Session), Doc: rtesting.DocOf(_r22.Doc), Notices: _r22.Notices, Toasts: _r22.Toasts}, nil
+										Url    string
+										Status int64
+									}{Answer: _r22.Answer, Session: rtesting.SessionOf[App__Session](_r22.Session), Doc: rtesting.DocOf(_r22.Doc), Notices: _r22.Notices, Toasts: _r22.Toasts, Url: _r22.URL, Status: _r22.Status}, nil
 								}), func(ok struct {
 									Answer  rtesting.Answer
 									Session App__Session
@@ -544,6 +586,8 @@ func test__Orgs__3() eff.Task[bool] {
 										Kind string
 										Text string
 									}
+									Url    string
+									Status int64
 								}) eff.Task[bool] {
 									return eff.Pure(rtesting.Eq(struct {
 										Answer rtesting.Answer
@@ -666,6 +710,8 @@ func test__Orgs__5() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}, error) {
 						_u9 := rt.PageURL(rt.Page{Path: "/orgs"})
 						_b10 := rtesting.BrowserOf(_e7)
@@ -680,6 +726,8 @@ func test__Orgs__5() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}
 							return _z13, _err12
 						}
@@ -694,6 +742,8 @@ func test__Orgs__5() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}
 							return _z15, _err12
 						}
@@ -706,7 +756,9 @@ func test__Orgs__5() eff.Task[bool] {
 								Kind string
 								Text string
 							}
-						}{Model: _m14, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc), Notices: _r11.Notices, Toasts: _r11.Toasts}, nil
+							Url    string
+							Status int64
+						}{Model: _m14, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc), Notices: _r11.Notices, Toasts: _r11.Toasts, Url: _r11.URL, Status: _r11.Status}, nil
 					}), func(_ struct {
 						Model   Orgs__Model
 						Session App__Session
@@ -716,6 +768,8 @@ func test__Orgs__5() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}) eff.Task[bool] {
 						return eff.Bind(eff.Call("Test.click App.Leave", true, func(_e16 *eff.Env) (struct {
 							Answer  rtesting.Answer
@@ -726,6 +780,8 @@ func test__Orgs__5() eff.Task[bool] {
 								Kind string
 								Text string
 							}
+							Url    string
+							Status int64
 						}, error) {
 							_r17, _err18 := rtesting.BrowserOf(_e16).ClickMsg(rt.MsgURL("App", "Leave"), rtesting.MsgName("App.Leave", nil))
 							if _err18 != nil {
@@ -738,6 +794,8 @@ func test__Orgs__5() eff.Task[bool] {
 										Kind string
 										Text string
 									}
+									Url    string
+									Status int64
 								}
 								return _z19, _err18
 							}
@@ -750,7 +808,9 @@ func test__Orgs__5() eff.Task[bool] {
 									Kind string
 									Text string
 								}
-							}{Answer: _r17.Answer, Session: rtesting.SessionOf[App__Session](_r17.Session), Doc: rtesting.DocOf(_r17.Doc), Notices: _r17.Notices, Toasts: _r17.Toasts}, nil
+								Url    string
+								Status int64
+							}{Answer: _r17.Answer, Session: rtesting.SessionOf[App__Session](_r17.Session), Doc: rtesting.DocOf(_r17.Doc), Notices: _r17.Notices, Toasts: _r17.Toasts, Url: _r17.URL, Status: _r17.Status}, nil
 						}), func(r struct {
 							Answer  rtesting.Answer
 							Session App__Session
@@ -760,6 +820,8 @@ func test__Orgs__5() eff.Task[bool] {
 								Kind string
 								Text string
 							}
+							Url    string
+							Status int64
 						}) eff.Task[bool] {
 							return eff.Pure(rt.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/orgs"}}) && rt.Eq(r.Session.Org, rt.Nothing[string]()))
 						})
@@ -813,6 +875,8 @@ func test__Orgs__6() eff.Task[bool] {
 										Kind string
 										Text string
 									}
+									Url    string
+									Status int64
 								}, error) {
 									_u11 := rt.PageURL(rt.Page{Path: "/orgs"})
 									_b12 := rtesting.BrowserOf(_e9)
@@ -827,6 +891,8 @@ func test__Orgs__6() eff.Task[bool] {
 												Kind string
 												Text string
 											}
+											Url    string
+											Status int64
 										}
 										return _z15, _err14
 									}
@@ -841,6 +907,8 @@ func test__Orgs__6() eff.Task[bool] {
 												Kind string
 												Text string
 											}
+											Url    string
+											Status int64
 										}
 										return _z17, _err14
 									}
@@ -853,7 +921,9 @@ func test__Orgs__6() eff.Task[bool] {
 											Kind string
 											Text string
 										}
-									}{Model: _m16, Session: rtesting.SessionOf[App__Session](_r13.Session), Doc: rtesting.DocOf(_r13.Doc), Notices: _r13.Notices, Toasts: _r13.Toasts}, nil
+										Url    string
+										Status int64
+									}{Model: _m16, Session: rtesting.SessionOf[App__Session](_r13.Session), Doc: rtesting.DocOf(_r13.Doc), Notices: _r13.Notices, Toasts: _r13.Toasts, Url: _r13.URL, Status: _r13.Status}, nil
 								}), func(page struct {
 									Model   Orgs__Model
 									Session App__Session
@@ -863,6 +933,8 @@ func test__Orgs__6() eff.Task[bool] {
 										Kind string
 										Text string
 									}
+									Url    string
+									Status int64
 								}) eff.Task[bool] {
 									return eff.Pure(rtesting.Eq(std.ListMap(func(m Membership__Membership) string {
 										return m.Org
@@ -888,6 +960,8 @@ func test__Orgs__7() eff.Task[bool] {
 			Kind string
 			Text string
 		}
+		Url    string
+		Status int64
 	}, error) {
 		_u3 := rt.PageURL(rt.Page{Path: "/orgs"})
 		_b4 := rtesting.BrowserOf(_e1)
@@ -902,6 +976,8 @@ func test__Orgs__7() eff.Task[bool] {
 					Kind string
 					Text string
 				}
+				Url    string
+				Status int64
 			}
 			return _z7, _err6
 		}
@@ -914,7 +990,9 @@ func test__Orgs__7() eff.Task[bool] {
 				Kind string
 				Text string
 			}
-		}{Answer: _r5.Answer, Session: rtesting.SessionOf[App__Session](_r5.Session), Doc: rtesting.DocOf(_r5.Doc), Notices: _r5.Notices, Toasts: _r5.Toasts}, nil
+			Url    string
+			Status int64
+		}{Answer: _r5.Answer, Session: rtesting.SessionOf[App__Session](_r5.Session), Doc: rtesting.DocOf(_r5.Doc), Notices: _r5.Notices, Toasts: _r5.Toasts, Url: _r5.URL, Status: _r5.Status}, nil
 	}), func(r struct {
 		Answer  rtesting.Answer
 		Session App__Session
@@ -924,6 +1002,8 @@ func test__Orgs__7() eff.Task[bool] {
 			Kind string
 			Text string
 		}
+		Url    string
+		Status int64
 	}) eff.Task[bool] {
 		return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}))
 	})

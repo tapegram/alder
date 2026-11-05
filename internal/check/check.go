@@ -134,6 +134,7 @@ type formCtx struct {
 	wrapped   map[string]string
 	errorsFor []errorsAt
 	msg       *syntax.CtorRef // the submit message's constructor (W0005), nil when not a message
+	route     *RouteInfo      // the write route the form posts to (W0005), nil when not a route
 }
 
 // errorsAt is an `<Errors field="…">` in a form: its field and where it is.

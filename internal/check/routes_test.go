@@ -161,3 +161,50 @@ func TestRoutes_HtmlNoArgument(t *testing.T) {
 		t.Fatalf("errors = %q, want only Shared's `Html` without its argument", errs)
 	}
 }
+
+// TestRoutes_SelectOptions: `<Select options>` is written in a GET route's `view` (plan call 11),
+// from its parameters only; in a helper of a route module it is refused, as in a page's.
+func TestRoutes_SelectOptions(t *testing.T) {
+	src := "module Todos\n\nroute A = GET \"/a\" { }\nroute Pick = POST \"/pick\" { } form Choice\n\nform Choice = { list: Text }\n\n" +
+		"opts : List { value: Text, label: Text }\nopts = [{ value: \"a\", label: \"A\" }]\n\n" +
+		"Picker : { n: Int } -> Html\nPicker props = <form submit={Pick}><Errors form /><Select field=\"list\" options={opts} /></form>\n\n" +
+		getRoute("A", "<div><form submit={Pick}><Errors form /><Select field=\"list\" options={[{ value: Text.fromInt n, label: \"N\" }]} /></form>"+
+			"{for x in [1] -> <form submit={Pick}><Errors form /><Select field=\"list\" options={[{ value: Text.fromInt x, label: \"X\" }]} /></form>}"+
+			"<Picker n={n} /></div>") +
+		"Pick.update : Pick.Params -> Session -> Task Response\nPick.update params session = Task.succeed Response.refresh\n"
+	_, errs := checkFiles(t, routeApp(src))
+	if !hasError(errs, "E0304", "`options` must be written in a GET route's `view`") {
+		t.Errorf("errors = %q, want the helper's options refused", errs)
+	}
+	if !hasError(errs, "E0304", "`options` may use only the view's parameters (`model`, `session`): `x` is bound inside the view") {
+		t.Errorf("errors = %q, want the `for` variable refused", errs)
+	}
+	if len(errs) != 2 {
+		t.Errorf("errors = %q, want only those two: options from the view's parameters are fine", errs)
+	}
+}
+
+// TestRoutes_Steps: the browser steps' rules on routes beyond the corpus's: a form route is
+// submitted, not clicked; a file route is fetched; a route's form is posted by naming the route.
+func TestRoutes_Steps(t *testing.T) {
+	src := "module Todos\n\nroute A = GET \"/a\" { }\nroute Csv = GET \"/a.csv\" { }\nroute Add = POST \"/add\" { } form NewTodo\n\nform NewTodo = { title: Text }\n\n" +
+		getRoute("A", "<p>a</p>") +
+		"Csv.load : Csv.Params -> Session -> Query Int\nCsv.load params session = Query.succeed 1\n\n" +
+		"Csv.view : Int -> Session -> File\nCsv.view n session = File.text { contentType: \"text/csv\", body: \"\" }\n\n" +
+		"Add.update : Add.Params -> Session -> Task Response\nAdd.update params session = Task.succeed Response.refresh\n\n" +
+		"test \"steps\" = {\n  let a <- Test.click Add\n  let b <- Test.get (Csv {})\n  let c <- Test.submit NewTodo { title: \"x\" }\n  let d <- Test.submit (A {}) { title: \"x\" }\n  Task.succeed True\n}\n"
+	_, errs := checkFiles(t, routeApp(src))
+	for _, want := range [][2]string{
+		{"E0045", "`Test.click` sends a route without a form; `Add` posts form `NewTodo`: use `Test.submit Add { … }`"},
+		{"E0003", "`Csv` is a file route: use `Test.fetch`"},
+		{"E0003", "`Test.submit` names the route that posts a form: write `Test.submit Add …`"},
+		{"E0045", "`Test.submit` posts a route's form; `A` is GET: use `Test.get`"},
+	} {
+		if !hasError(errs, want[0], want[1]) {
+			t.Errorf("errors = %q, want %s %s", errs, want[0], want[1])
+		}
+	}
+	if len(errs) != 4 {
+		t.Errorf("errors = %q, want only those four", errs)
+	}
+}

@@ -1305,3 +1305,33 @@ func TestTest_MutateCrashAndHang(t *testing.T) {
 		t.Fatalf("stdout:\n%s\nwant mutants:\n%s", stdout, want)
 	}
 }
+
+// TestTest_StepURLAndStatus (#160, plan call 15): every step's result of an old page's test
+// carries the URL the browser holds after it and the code of its last response; Test.refresh
+// type-checks and fails its step until #160 PR 4 builds it.
+func TestTest_StepURLAndStatus(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := tempTodos(t, "Todos/Index.alder", `
+test "a step's url and status" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let page <- Test.get (Todos.Index { filter: Active })
+  let r <- Test.click (Toggle { id: id })
+  let added <- Test.submit NewTodo { title: Text.NonEmpty "Bread", due: Nothing }
+  Task.succeed ({ getUrl: page.url, getStatus: page.status, clickUrl: r.url, clickStatus: r.status, addedUrl: added.url, addedStatus: added.status }
+    == { getUrl: "/?filter=Active", getStatus: 200, clickUrl: "/?filter=Active", clickStatus: 200, addedUrl: "/?filter=Active", addedStatus: 200 })
+}
+
+test "Test.refresh is not built yet" = {
+  let _ <- Test.refresh
+  Task.succeed True
+}
+`)
+	code, stdout, stderr := runTest(t, dir)
+	if code != 1 || !strings.Contains(stdout, `ok   Todos.Index "a step's url and status"`) ||
+		!strings.Contains(stdout, "FAIL Todos.Index \"Test.refresh is not built yet\"\n  error: Test.refresh is not built yet (#160 PR 4)\n") {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+}

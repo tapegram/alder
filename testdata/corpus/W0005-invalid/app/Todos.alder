@@ -1,0 +1,36 @@
+module Todos
+
+route Index  = GET  "/"        { }
+route Create = POST "/todos"   { } form NewTodo
+route Rename = POST "/rename"  { } form NewTodo
+
+form NewTodo = { title: Text }
+
+-- Create can answer Response.invalid, and its first form has no <Errors form />: the warning.
+-- Rename never answers it; the second Create form shows the text.
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session =
+  <div>
+    <form submit={Create}>
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+    </form>
+    <form submit={Rename}>
+      <Input field="title" label="Title" />
+      <Errors field="title" />
+    </form>
+    <form submit={Create}>
+      <Errors form />
+      <Input field="title" label="Title" />
+    </form>
+  </div>
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update params session =
+  if params.form.title == "x" then Task.succeed (Response.invalid "No x, please.") else Task.succeed Response.refresh
+
+Rename.update : Rename.Params -> Session -> Task Response
+Rename.update params session = Task.succeed Response.refresh

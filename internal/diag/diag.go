@@ -138,6 +138,7 @@ const (
 	ThemeDecl           = "E0042" // a `theme` declaration the rules refuse: outside App, twice, an unknown or removed token, a value of the wrong kind or shape
 	RouteDecl           = "E0043" // a route declaration the rules refuse: `form` on GET, a missing or extra member, a member of the wrong type, a path two routes answer with one method, a path segment with no parameter, a module with both `page` and `route`
 	RouteName           = "E0044" // a route name that cannot be told apart (a module's, an import qualifier's, a constructor's in scope, another route's) or a qualified declaration naming no route
+	RouteTarget         = "E0045" // a route requested in a way its method refuses: `href`, `Test.get`/`open`/`fetch` to a write route, `submit` to a GET route, `Test.submit` of a route without `form`, `Test.click` of one with it
 	ImportAlias         = "E0204" // an import's `as` is missing, redundant or not its canonical qualifier
 	FullPath            = "E0205" // a name written with an imported module's full path instead of its qualifier
 	NoQualifier         = "E0206" // an import with no usable qualifier: every candidate is taken or shared
@@ -146,7 +147,7 @@ const (
 	UnshownErrors       = "W0003"
 	PlainDefault        = "W0004"
 	UnnamedEnv          = "W0006" // an adapter reads an environment variable `deploy.requires` does not name
-	UnshownReject       = "W0005" // a message whose update may answer Reject, posted by a form without <Errors form />
+	UnshownReject       = "W0005" // a message whose update may answer Reject, or a write route whose update may answer Response.invalid, posted by a form without <Errors form />
 	FormWireName        = "W0008" // a GET form's input named after a page parameter that reads another query key (#63)
 	ShadowedCapability  = "W0010" // an import whose qualifier, or a stdlib module, is the name of a capability in scope: `Q.entry` reaches the module
 	PageShadowedWarn    = "W0011" // E0041's clash where no page value was written in the constructor's scope: the program works

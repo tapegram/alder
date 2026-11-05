@@ -52,6 +52,59 @@ func (c *Checker) route(module, name string) *RouteInfo {
 	return nil
 }
 
+// routeTarget is the route constructor heading e (`Row`, `Row { id }`, `Todos.Row { id }`) and
+// its route; nil, nil when e is not written as a route, or its route is not defined.
+func (mc *modCtx) routeTarget(e syntax.Expr) (*syntax.CtorRef, *RouteInfo) {
+	if app, ok := e.(*syntax.App); ok && len(app.Args) == 1 {
+		e = app.Fn
+	}
+	ct, ok := e.(*syntax.CtorRef)
+	if !ok || ct.Ref.Kind != syntax.RefRoute {
+		return nil, nil
+	}
+	if r := mc.c.route(ct.Ref.Module, ct.Ref.Name); r != nil {
+		return ct, r
+	}
+	return nil, nil
+}
+
+// routeModel is GET route r's model, what its `load`'s signature says it gives, nil when that
+// is not known (no `load`, or a signature E0043 refuses). It is read from the signature, not
+// from Model, so a test checked before the route's module has its bodies checked sees it.
+func (c *Checker) routeModel(r *RouteInfo) types.Type {
+	if r.Model != nil {
+		return r.Model
+	}
+	fn, ok := c.values[c.key(r.Module, r.Name+".load")].(*types.Fun)
+	if !ok || len(fn.Params) != 2 {
+		return nil
+	}
+	if q, ok := fn.Result.(*types.App); ok && q.Con == "Query" && len(q.Args) == 1 && !types.IsErr(q.Args[0]) {
+		return q.Args[0]
+	}
+	return nil
+}
+
+// routeFile reports whether GET route r is a file route (its `view` returns File), read from
+// its signature as routeModel is.
+func (c *Checker) routeFile(r *RouteInfo) bool {
+	if r.File {
+		return true
+	}
+	view := c.routeMembers(c.prog.Modules[r.Module], r.Name)["view"]
+	return view != nil && sigReturnsFile(view)
+}
+
+// inShownView reports whether the markup being checked is in the view the runtime renders
+// again from the model to check a submitted `<Select options>` value (plan call 11): a page's
+// `view`, or a GET route's `R.view`.
+func (mc *modCtx) inShownView() bool {
+	if mc.route != nil {
+		return !isWrite(mc.route.Method) && mc.value == mc.route.Name+".view"
+	}
+	return mc.page != nil && mc.value == "view"
+}
+
 // defineRoutes defines the routes of a route module: each route's Params and Session (as the
 // types `R.Params` and `R.Session`), and checks its declaration. A module that also declares a
 // `page` is E0043, and its routes are left undefined.

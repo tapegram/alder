@@ -392,6 +392,8 @@ func test__Projects__Index__1() eff.Task[bool] {
 					Kind string
 					Text string
 				}
+				Url    string
+				Status int64
 			}, error) {
 				_u7 := rt.PageURL(rt.Page{Path: "/projects"})
 				_b8 := rtesting.BrowserOf(_e5)
@@ -406,6 +408,8 @@ func test__Projects__Index__1() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}
 					return _z11, _err10
 				}
@@ -420,6 +424,8 @@ func test__Projects__Index__1() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}
 					return _z13, _err10
 				}
@@ -432,7 +438,9 @@ func test__Projects__Index__1() eff.Task[bool] {
 						Kind string
 						Text string
 					}
-				}{Model: _m12, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc), Notices: _r9.Notices, Toasts: _r9.Toasts}, nil
+					Url    string
+					Status int64
+				}{Model: _m12, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc), Notices: _r9.Notices, Toasts: _r9.Toasts, Url: _r9.URL, Status: _r9.Status}, nil
 			}), func(_ struct {
 				Model   Projects__Index__Model
 				Session App__Session
@@ -442,6 +450,8 @@ func test__Projects__Index__1() eff.Task[bool] {
 					Kind string
 					Text string
 				}
+				Url    string
+				Status int64
 			}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.submit NewProject", true, func(_e14 *eff.Env) (struct {
 					Answer  rtesting.Answer
@@ -452,6 +462,8 @@ func test__Projects__Index__1() eff.Task[bool] {
 						Kind string
 						Text string
 					}
+					Url    string
+					Status int64
 				}, error) {
 					_r15, _err16 := rtesting.BrowserOf(_e14).SubmitForm("/_m/Projects.Index/Add", "NewProject", encode__Projects__Index__NewProject(Projects__Index__NewProject{Name: "mine"}))
 					if _err16 != nil {
@@ -464,6 +476,8 @@ func test__Projects__Index__1() eff.Task[bool] {
 								Kind string
 								Text string
 							}
+							Url    string
+							Status int64
 						}
 						return _z17, _err16
 					}
@@ -476,7 +490,9 @@ func test__Projects__Index__1() eff.Task[bool] {
 							Kind string
 							Text string
 						}
-					}{Answer: _r15.Answer, Session: rtesting.SessionOf[App__Session](_r15.Session), Doc: rtesting.DocOf(_r15.Doc), Notices: _r15.Notices, Toasts: _r15.Toasts}, nil
+						Url    string
+						Status int64
+					}{Answer: _r15.Answer, Session: rtesting.SessionOf[App__Session](_r15.Session), Doc: rtesting.DocOf(_r15.Doc), Notices: _r15.Notices, Toasts: _r15.Toasts, Url: _r15.URL, Status: _r15.Status}, nil
 				}), func(_ struct {
 					Answer  rtesting.Answer
 					Session App__Session
@@ -486,6 +502,8 @@ func test__Projects__Index__1() eff.Task[bool] {
 						Kind string
 						Text string
 					}
+					Url    string
+					Status int64
 				}) eff.Task[bool] {
 					return eff.Bind(eff.Call("Test.get Projects.Index", true, func(_e18 *eff.Env) (struct {
 						Model   Projects__Index__Model
@@ -496,6 +514,8 @@ func test__Projects__Index__1() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}, error) {
 						_u20 := rt.PageURL(rt.Page{Path: "/projects"})
 						_b21 := rtesting.BrowserOf(_e18)
@@ -510,6 +530,8 @@ func test__Projects__Index__1() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}
 							return _z24, _err23
 						}
@@ -524,6 +546,8 @@ func test__Projects__Index__1() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}
 							return _z26, _err23
 						}
@@ -536,7 +560,9 @@ func test__Projects__Index__1() eff.Task[bool] {
 								Kind string
 								Text string
 							}
-						}{Model: _m25, Session: rtesting.SessionOf[App__Session](_r22.Session), Doc: rtesting.DocOf(_r22.Doc), Notices: _r22.Notices, Toasts: _r22.Toasts}, nil
+							Url    string
+							Status int64
+						}{Model: _m25, Session: rtesting.SessionOf[App__Session](_r22.Session), Doc: rtesting.DocOf(_r22.Doc), Notices: _r22.Notices, Toasts: _r22.Toasts, Url: _r22.URL, Status: _r22.Status}, nil
 					}), func(page struct {
 						Model   Projects__Index__Model
 						Session App__Session
@@ -546,6 +572,8 @@ func test__Projects__Index__1() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}) eff.Task[bool] {
 						return eff.Pure(rtesting.Eq(struct {
 							Names []string
@@ -590,6 +618,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 					Kind string
 					Text string
 				}
+				Url    string
+				Status int64
 			}, error) {
 				_u7 := rt.PageURL(rt.Page{Path: "/projects"})
 				_b8 := rtesting.BrowserOf(_e5)
@@ -604,6 +634,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}
 					return _z11, _err10
 				}
@@ -618,6 +650,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}
 					return _z13, _err10
 				}
@@ -630,7 +664,9 @@ func test__Projects__Index__2() eff.Task[bool] {
 						Kind string
 						Text string
 					}
-				}{Model: _m12, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc), Notices: _r9.Notices, Toasts: _r9.Toasts}, nil
+					Url    string
+					Status int64
+				}{Model: _m12, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc), Notices: _r9.Notices, Toasts: _r9.Toasts, Url: _r9.URL, Status: _r9.Status}, nil
 			}), func(_ struct {
 				Model   Projects__Index__Model
 				Session App__Session
@@ -640,6 +676,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 					Kind string
 					Text string
 				}
+				Url    string
+				Status int64
 			}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.submit NewProject", true, func(_e14 *eff.Env) (struct {
 					Answer  rtesting.Answer
@@ -650,6 +688,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 						Kind string
 						Text string
 					}
+					Url    string
+					Status int64
 				}, error) {
 					_r15, _err16 := rtesting.BrowserOf(_e14).SubmitForm("/_m/Projects.Index/Add", "NewProject", encode__Projects__Index__NewProject(Projects__Index__NewProject{Name: "p"}))
 					if _err16 != nil {
@@ -662,6 +702,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 								Kind string
 								Text string
 							}
+							Url    string
+							Status int64
 						}
 						return _z17, _err16
 					}
@@ -674,7 +716,9 @@ func test__Projects__Index__2() eff.Task[bool] {
 							Kind string
 							Text string
 						}
-					}{Answer: _r15.Answer, Session: rtesting.SessionOf[App__Session](_r15.Session), Doc: rtesting.DocOf(_r15.Doc), Notices: _r15.Notices, Toasts: _r15.Toasts}, nil
+						Url    string
+						Status int64
+					}{Answer: _r15.Answer, Session: rtesting.SessionOf[App__Session](_r15.Session), Doc: rtesting.DocOf(_r15.Doc), Notices: _r15.Notices, Toasts: _r15.Toasts, Url: _r15.URL, Status: _r15.Status}, nil
 				}), func(_ struct {
 					Answer  rtesting.Answer
 					Session App__Session
@@ -684,6 +728,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 						Kind string
 						Text string
 					}
+					Url    string
+					Status int64
 				}) eff.Task[bool] {
 					return eff.Bind(eff.Call("Test.get Projects.Index", true, func(_e18 *eff.Env) (struct {
 						Model   Projects__Index__Model
@@ -694,6 +740,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}, error) {
 						_u20 := rt.PageURL(rt.Page{Path: "/projects"})
 						_b21 := rtesting.BrowserOf(_e18)
@@ -708,6 +756,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}
 							return _z24, _err23
 						}
@@ -722,6 +772,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}
 							return _z26, _err23
 						}
@@ -734,7 +786,9 @@ func test__Projects__Index__2() eff.Task[bool] {
 								Kind string
 								Text string
 							}
-						}{Model: _m25, Session: rtesting.SessionOf[App__Session](_r22.Session), Doc: rtesting.DocOf(_r22.Doc), Notices: _r22.Notices, Toasts: _r22.Toasts}, nil
+							Url    string
+							Status int64
+						}{Model: _m25, Session: rtesting.SessionOf[App__Session](_r22.Session), Doc: rtesting.DocOf(_r22.Doc), Notices: _r22.Notices, Toasts: _r22.Toasts, Url: _r22.URL, Status: _r22.Status}, nil
 					}), func(page struct {
 						Model   Projects__Index__Model
 						Session App__Session
@@ -744,6 +798,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}) eff.Task[bool] {
 						return eff.Bind(eff.Pure(std.ListMap(func(p Project__Project) string {
 							return p.Id
@@ -757,6 +813,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}] {
 								return eff.Call("Test.click Projects.Index.Rename", true, func(_e27 *eff.Env) (struct {
 									Answer  rtesting.Answer
@@ -767,6 +825,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 										Kind string
 										Text string
 									}
+									Url    string
+									Status int64
 								}, error) {
 									_m28 := Projects__Index__RenameParams{Id: id}
 									_r29, _err30 := rtesting.BrowserOf(_e27).ClickMsg(rt.MsgRef{Module: "Projects.Index", Msg: "Rename", Params: []rt.KV{{Key: "id", Value: _m28.Id}}}.URL(nil), rtesting.MsgName("Projects.Index.Rename", _m28))
@@ -780,6 +840,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 												Kind string
 												Text string
 											}
+											Url    string
+											Status int64
 										}
 										return _z31, _err30
 									}
@@ -792,7 +854,9 @@ func test__Projects__Index__2() eff.Task[bool] {
 											Kind string
 											Text string
 										}
-									}{Answer: _r29.Answer, Session: rtesting.SessionOf[App__Session](_r29.Session), Doc: rtesting.DocOf(_r29.Doc), Notices: _r29.Notices, Toasts: _r29.Toasts}, nil
+										Url    string
+										Status int64
+									}{Answer: _r29.Answer, Session: rtesting.SessionOf[App__Session](_r29.Session), Doc: rtesting.DocOf(_r29.Doc), Notices: _r29.Notices, Toasts: _r29.Toasts, Url: _r29.URL, Status: _r29.Status}, nil
 								})
 							}, ids)), func(renamed []struct {
 								Answer  rtesting.Answer
@@ -803,6 +867,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}) eff.Task[bool] {
 								return eff.Bind(eff.Call("Test.get Projects.Index", true, func(_e32 *eff.Env) (struct {
 									Model   Projects__Index__Model
@@ -813,6 +879,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 										Kind string
 										Text string
 									}
+									Url    string
+									Status int64
 								}, error) {
 									_u34 := rt.PageURL(rt.Page{Path: "/projects"})
 									_b35 := rtesting.BrowserOf(_e32)
@@ -827,6 +895,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 												Kind string
 												Text string
 											}
+											Url    string
+											Status int64
 										}
 										return _z38, _err37
 									}
@@ -841,6 +911,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 												Kind string
 												Text string
 											}
+											Url    string
+											Status int64
 										}
 										return _z40, _err37
 									}
@@ -853,7 +925,9 @@ func test__Projects__Index__2() eff.Task[bool] {
 											Kind string
 											Text string
 										}
-									}{Model: _m39, Session: rtesting.SessionOf[App__Session](_r36.Session), Doc: rtesting.DocOf(_r36.Doc), Notices: _r36.Notices, Toasts: _r36.Toasts}, nil
+										Url    string
+										Status int64
+									}{Model: _m39, Session: rtesting.SessionOf[App__Session](_r36.Session), Doc: rtesting.DocOf(_r36.Doc), Notices: _r36.Notices, Toasts: _r36.Toasts, Url: _r36.URL, Status: _r36.Status}, nil
 								}), func(after struct {
 									Model   Projects__Index__Model
 									Session App__Session
@@ -863,6 +937,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 										Kind string
 										Text string
 									}
+									Url    string
+									Status int64
 								}) eff.Task[bool] {
 									return eff.Bind(eff.All(std.ListMap(func(id string) eff.Task[struct {
 										Answer  rtesting.Answer
@@ -873,6 +949,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 											Kind string
 											Text string
 										}
+										Url    string
+										Status int64
 									}] {
 										return eff.Call("Test.click Projects.Index.Remove", true, func(_e41 *eff.Env) (struct {
 											Answer  rtesting.Answer
@@ -883,6 +961,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 												Kind string
 												Text string
 											}
+											Url    string
+											Status int64
 										}, error) {
 											_m42 := Projects__Index__RemoveParams{Id: id}
 											_r43, _err44 := rtesting.BrowserOf(_e41).ClickMsg(rt.MsgRef{Module: "Projects.Index", Msg: "Remove", Params: []rt.KV{{Key: "id", Value: _m42.Id}}}.URL(nil), rtesting.MsgName("Projects.Index.Remove", _m42))
@@ -896,6 +976,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 														Kind string
 														Text string
 													}
+													Url    string
+													Status int64
 												}
 												return _z45, _err44
 											}
@@ -908,7 +990,9 @@ func test__Projects__Index__2() eff.Task[bool] {
 													Kind string
 													Text string
 												}
-											}{Answer: _r43.Answer, Session: rtesting.SessionOf[App__Session](_r43.Session), Doc: rtesting.DocOf(_r43.Doc), Notices: _r43.Notices, Toasts: _r43.Toasts}, nil
+												Url    string
+												Status int64
+											}{Answer: _r43.Answer, Session: rtesting.SessionOf[App__Session](_r43.Session), Doc: rtesting.DocOf(_r43.Doc), Notices: _r43.Notices, Toasts: _r43.Toasts, Url: _r43.URL, Status: _r43.Status}, nil
 										})
 									}, ids)), func(_ []struct {
 										Answer  rtesting.Answer
@@ -919,6 +1003,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 											Kind string
 											Text string
 										}
+										Url    string
+										Status int64
 									}) eff.Task[bool] {
 										return eff.Bind(eff.Call("Test.get Projects.Index", true, func(_e46 *eff.Env) (struct {
 											Model   Projects__Index__Model
@@ -929,6 +1015,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 												Kind string
 												Text string
 											}
+											Url    string
+											Status int64
 										}, error) {
 											_u48 := rt.PageURL(rt.Page{Path: "/projects"})
 											_b49 := rtesting.BrowserOf(_e46)
@@ -943,6 +1031,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 														Kind string
 														Text string
 													}
+													Url    string
+													Status int64
 												}
 												return _z52, _err51
 											}
@@ -957,6 +1047,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 														Kind string
 														Text string
 													}
+													Url    string
+													Status int64
 												}
 												return _z54, _err51
 											}
@@ -969,7 +1061,9 @@ func test__Projects__Index__2() eff.Task[bool] {
 													Kind string
 													Text string
 												}
-											}{Model: _m53, Session: rtesting.SessionOf[App__Session](_r50.Session), Doc: rtesting.DocOf(_r50.Doc), Notices: _r50.Notices, Toasts: _r50.Toasts}, nil
+												Url    string
+												Status int64
+											}{Model: _m53, Session: rtesting.SessionOf[App__Session](_r50.Session), Doc: rtesting.DocOf(_r50.Doc), Notices: _r50.Notices, Toasts: _r50.Toasts, Url: _r50.URL, Status: _r50.Status}, nil
 										}), func(gone struct {
 											Model   Projects__Index__Model
 											Session App__Session
@@ -979,6 +1073,8 @@ func test__Projects__Index__2() eff.Task[bool] {
 												Kind string
 												Text string
 											}
+											Url    string
+											Status int64
 										}) eff.Task[bool] {
 											return eff.Pure(rtesting.Eq(struct {
 												Renamed []string
@@ -1028,6 +1124,8 @@ func test__Projects__Index__3() eff.Task[bool] {
 					Kind string
 					Text string
 				}
+				Url    string
+				Status int64
 			}, error) {
 				_u7 := rt.PageURL(rt.Page{Path: "/projects"})
 				_b8 := rtesting.BrowserOf(_e5)
@@ -1042,6 +1140,8 @@ func test__Projects__Index__3() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}
 					return _z11, _err10
 				}
@@ -1056,6 +1156,8 @@ func test__Projects__Index__3() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}
 					return _z13, _err10
 				}
@@ -1068,7 +1170,9 @@ func test__Projects__Index__3() eff.Task[bool] {
 						Kind string
 						Text string
 					}
-				}{Model: _m12, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc), Notices: _r9.Notices, Toasts: _r9.Toasts}, nil
+					Url    string
+					Status int64
+				}{Model: _m12, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc), Notices: _r9.Notices, Toasts: _r9.Toasts, Url: _r9.URL, Status: _r9.Status}, nil
 			}), func(theirs struct {
 				Model   Projects__Index__Model
 				Session App__Session
@@ -1078,6 +1182,8 @@ func test__Projects__Index__3() eff.Task[bool] {
 					Kind string
 					Text string
 				}
+				Url    string
+				Status int64
 			}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.login", true, func(_e14 *eff.Env) (struct{}, error) {
 					_s16 := App__Session{User: rt.Just[string](s.Me), Org: rt.Just[string](s.A), Role: User__Role__Reader__}
@@ -1181,6 +1287,8 @@ func test__Projects__Index__3() eff.Task[bool] {
 											Kind string
 											Text string
 										}
+										Url    string
+										Status int64
 									}, error) {
 										_u42 := rt.PageURL(rt.Page{Path: "/projects"})
 										_b43 := rtesting.BrowserOf(_e40)
@@ -1195,6 +1303,8 @@ func test__Projects__Index__3() eff.Task[bool] {
 													Kind string
 													Text string
 												}
+												Url    string
+												Status int64
 											}
 											return _z46, _err45
 										}
@@ -1209,6 +1319,8 @@ func test__Projects__Index__3() eff.Task[bool] {
 													Kind string
 													Text string
 												}
+												Url    string
+												Status int64
 											}
 											return _z48, _err45
 										}
@@ -1221,7 +1333,9 @@ func test__Projects__Index__3() eff.Task[bool] {
 												Kind string
 												Text string
 											}
-										}{Model: _m47, Session: rtesting.SessionOf[App__Session](_r44.Session), Doc: rtesting.DocOf(_r44.Doc), Notices: _r44.Notices, Toasts: _r44.Toasts}, nil
+											Url    string
+											Status int64
+										}{Model: _m47, Session: rtesting.SessionOf[App__Session](_r44.Session), Doc: rtesting.DocOf(_r44.Doc), Notices: _r44.Notices, Toasts: _r44.Toasts, Url: _r44.URL, Status: _r44.Status}, nil
 									}), func(still struct {
 										Model   Projects__Index__Model
 										Session App__Session
@@ -1231,6 +1345,8 @@ func test__Projects__Index__3() eff.Task[bool] {
 											Kind string
 											Text string
 										}
+										Url    string
+										Status int64
 									}) eff.Task[bool] {
 										return eff.Pure(rtesting.Eq(struct {
 											Removed []rt.Result[string, rt.Nav]
@@ -1291,6 +1407,8 @@ func test__Projects__Index__4() eff.Task[bool] {
 					Kind string
 					Text string
 				}
+				Url    string
+				Status int64
 			}, error) {
 				_u7 := rt.PageURL(rt.Page{Path: "/projects"})
 				_b8 := rtesting.BrowserOf(_e5)
@@ -1305,6 +1423,8 @@ func test__Projects__Index__4() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}
 					return _z11, _err10
 				}
@@ -1319,6 +1439,8 @@ func test__Projects__Index__4() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}
 					return _z13, _err10
 				}
@@ -1331,7 +1453,9 @@ func test__Projects__Index__4() eff.Task[bool] {
 						Kind string
 						Text string
 					}
-				}{Model: _m12, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc), Notices: _r9.Notices, Toasts: _r9.Toasts}, nil
+					Url    string
+					Status int64
+				}{Model: _m12, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc), Notices: _r9.Notices, Toasts: _r9.Toasts, Url: _r9.URL, Status: _r9.Status}, nil
 			}), func(_ struct {
 				Model   Projects__Index__Model
 				Session App__Session
@@ -1341,6 +1465,8 @@ func test__Projects__Index__4() eff.Task[bool] {
 					Kind string
 					Text string
 				}
+				Url    string
+				Status int64
 			}) eff.Task[bool] {
 				return eff.Bind(eff.Call("Test.click Projects.Index.Seed", true, func(_e14 *eff.Env) (struct {
 					Answer  rtesting.Answer
@@ -1351,6 +1477,8 @@ func test__Projects__Index__4() eff.Task[bool] {
 						Kind string
 						Text string
 					}
+					Url    string
+					Status int64
 				}, error) {
 					_r15, _err16 := rtesting.BrowserOf(_e14).ClickMsg(rt.MsgURL("Projects.Index", "Seed"), rtesting.MsgName("Projects.Index.Seed", nil))
 					if _err16 != nil {
@@ -1363,6 +1491,8 @@ func test__Projects__Index__4() eff.Task[bool] {
 								Kind string
 								Text string
 							}
+							Url    string
+							Status int64
 						}
 						return _z17, _err16
 					}
@@ -1375,7 +1505,9 @@ func test__Projects__Index__4() eff.Task[bool] {
 							Kind string
 							Text string
 						}
-					}{Answer: _r15.Answer, Session: rtesting.SessionOf[App__Session](_r15.Session), Doc: rtesting.DocOf(_r15.Doc), Notices: _r15.Notices, Toasts: _r15.Toasts}, nil
+						Url    string
+						Status int64
+					}{Answer: _r15.Answer, Session: rtesting.SessionOf[App__Session](_r15.Session), Doc: rtesting.DocOf(_r15.Doc), Notices: _r15.Notices, Toasts: _r15.Toasts, Url: _r15.URL, Status: _r15.Status}, nil
 				}), func(_ struct {
 					Answer  rtesting.Answer
 					Session App__Session
@@ -1385,6 +1517,8 @@ func test__Projects__Index__4() eff.Task[bool] {
 						Kind string
 						Text string
 					}
+					Url    string
+					Status int64
 				}) eff.Task[bool] {
 					return eff.Bind(eff.Call("Test.get Projects.Index", true, func(_e18 *eff.Env) (struct {
 						Model   Projects__Index__Model
@@ -1395,6 +1529,8 @@ func test__Projects__Index__4() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}, error) {
 						_u20 := rt.PageURL(rt.Page{Path: "/projects"})
 						_b21 := rtesting.BrowserOf(_e18)
@@ -1409,6 +1545,8 @@ func test__Projects__Index__4() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}
 							return _z24, _err23
 						}
@@ -1423,6 +1561,8 @@ func test__Projects__Index__4() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}
 							return _z26, _err23
 						}
@@ -1435,7 +1575,9 @@ func test__Projects__Index__4() eff.Task[bool] {
 								Kind string
 								Text string
 							}
-						}{Model: _m25, Session: rtesting.SessionOf[App__Session](_r22.Session), Doc: rtesting.DocOf(_r22.Doc), Notices: _r22.Notices, Toasts: _r22.Toasts}, nil
+							Url    string
+							Status int64
+						}{Model: _m25, Session: rtesting.SessionOf[App__Session](_r22.Session), Doc: rtesting.DocOf(_r22.Doc), Notices: _r22.Notices, Toasts: _r22.Toasts, Url: _r22.URL, Status: _r22.Status}, nil
 					}), func(page struct {
 						Model   Projects__Index__Model
 						Session App__Session
@@ -1445,6 +1587,8 @@ func test__Projects__Index__4() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}) eff.Task[bool] {
 						return eff.Pure(rtesting.Eq(Projects__Index__names(page.Model.Projects), []string{"x", "y"}))
 					})
@@ -1486,6 +1630,8 @@ func test__Projects__Index__5() eff.Task[bool] {
 						Kind string
 						Text string
 					}
+					Url    string
+					Status int64
 				}, error) {
 					_u8 := rt.PageURL(rt.Page{Path: "/projects"})
 					_b9 := rtesting.BrowserOf(_e6)
@@ -1500,6 +1646,8 @@ func test__Projects__Index__5() eff.Task[bool] {
 								Kind string
 								Text string
 							}
+							Url    string
+							Status int64
 						}
 						return _z12, _err11
 					}
@@ -1514,6 +1662,8 @@ func test__Projects__Index__5() eff.Task[bool] {
 								Kind string
 								Text string
 							}
+							Url    string
+							Status int64
 						}
 						return _z14, _err11
 					}
@@ -1526,7 +1676,9 @@ func test__Projects__Index__5() eff.Task[bool] {
 							Kind string
 							Text string
 						}
-					}{Model: _m13, Session: rtesting.SessionOf[App__Session](_r10.Session), Doc: rtesting.DocOf(_r10.Doc), Notices: _r10.Notices, Toasts: _r10.Toasts}, nil
+						Url    string
+						Status int64
+					}{Model: _m13, Session: rtesting.SessionOf[App__Session](_r10.Session), Doc: rtesting.DocOf(_r10.Doc), Notices: _r10.Notices, Toasts: _r10.Toasts, Url: _r10.URL, Status: _r10.Status}, nil
 				}), func(_ struct {
 					Model   Projects__Index__Model
 					Session App__Session
@@ -1536,6 +1688,8 @@ func test__Projects__Index__5() eff.Task[bool] {
 						Kind string
 						Text string
 					}
+					Url    string
+					Status int64
 				}) eff.Task[bool] {
 					return eff.Bind(eff.Call("Test.click Projects.Index.Tag", true, func(_e15 *eff.Env) (struct {
 						Answer  rtesting.Answer
@@ -1546,6 +1700,8 @@ func test__Projects__Index__5() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}, error) {
 						_r16, _err17 := rtesting.BrowserOf(_e15).ClickMsg(rt.MsgURL("Projects.Index", "Tag"), rtesting.MsgName("Projects.Index.Tag", nil))
 						if _err17 != nil {
@@ -1558,6 +1714,8 @@ func test__Projects__Index__5() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}
 							return _z18, _err17
 						}
@@ -1570,7 +1728,9 @@ func test__Projects__Index__5() eff.Task[bool] {
 								Kind string
 								Text string
 							}
-						}{Answer: _r16.Answer, Session: rtesting.SessionOf[App__Session](_r16.Session), Doc: rtesting.DocOf(_r16.Doc), Notices: _r16.Notices, Toasts: _r16.Toasts}, nil
+							Url    string
+							Status int64
+						}{Answer: _r16.Answer, Session: rtesting.SessionOf[App__Session](_r16.Session), Doc: rtesting.DocOf(_r16.Doc), Notices: _r16.Notices, Toasts: _r16.Toasts, Url: _r16.URL, Status: _r16.Status}, nil
 					}), func(r struct {
 						Answer  rtesting.Answer
 						Session App__Session
@@ -1580,6 +1740,8 @@ func test__Projects__Index__5() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}) eff.Task[bool] {
 						return eff.Pure(rtesting.Eq(rtesting.DocTextSel(selector__3, r.Doc), rt.Just[string]("1")))
 					})
@@ -1674,6 +1836,8 @@ func test__Projects__Index__6() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}, error) {
 						_u25 := rt.PageURL(rt.Page{Path: "/projects"})
 						_b26 := rtesting.BrowserOf(_e23)
@@ -1688,6 +1852,8 @@ func test__Projects__Index__6() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}
 							return _z29, _err28
 						}
@@ -1702,6 +1868,8 @@ func test__Projects__Index__6() eff.Task[bool] {
 									Kind string
 									Text string
 								}
+								Url    string
+								Status int64
 							}
 							return _z31, _err28
 						}
@@ -1714,7 +1882,9 @@ func test__Projects__Index__6() eff.Task[bool] {
 								Kind string
 								Text string
 							}
-						}{Model: _m30, Session: rtesting.SessionOf[App__Session](_r27.Session), Doc: rtesting.DocOf(_r27.Doc), Notices: _r27.Notices, Toasts: _r27.Toasts}, nil
+							Url    string
+							Status int64
+						}{Model: _m30, Session: rtesting.SessionOf[App__Session](_r27.Session), Doc: rtesting.DocOf(_r27.Doc), Notices: _r27.Notices, Toasts: _r27.Toasts, Url: _r27.URL, Status: _r27.Status}, nil
 					}), func(page struct {
 						Model   Projects__Index__Model
 						Session App__Session
@@ -1724,6 +1894,8 @@ func test__Projects__Index__6() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}) eff.Task[bool] {
 						return eff.Pure(rtesting.Eq(struct {
 							Tag      rt.Result[string, rt.Nav]
@@ -1772,6 +1944,8 @@ func test__Projects__Index__7() eff.Task[bool] {
 					Kind string
 					Text string
 				}
+				Url    string
+				Status int64
 			}, error) {
 				_u7 := rt.PageURL(rt.Page{Path: "/projects"})
 				_b8 := rtesting.BrowserOf(_e5)
@@ -1786,6 +1960,8 @@ func test__Projects__Index__7() eff.Task[bool] {
 							Kind string
 							Text string
 						}
+						Url    string
+						Status int64
 					}
 					return _z11, _err10
 				}
@@ -1798,7 +1974,9 @@ func test__Projects__Index__7() eff.Task[bool] {
 						Kind string
 						Text string
 					}
-				}{Answer: _r9.Answer, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc), Notices: _r9.Notices, Toasts: _r9.Toasts}, nil
+					Url    string
+					Status int64
+				}{Answer: _r9.Answer, Session: rtesting.SessionOf[App__Session](_r9.Session), Doc: rtesting.DocOf(_r9.Doc), Notices: _r9.Notices, Toasts: _r9.Toasts, Url: _r9.URL, Status: _r9.Status}, nil
 			}), func(r struct {
 				Answer  rtesting.Answer
 				Session App__Session
@@ -1808,6 +1986,8 @@ func test__Projects__Index__7() eff.Task[bool] {
 					Kind string
 					Text string
 				}
+				Url    string
+				Status int64
 			}) eff.Task[bool] {
 				return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/orgs"}}))
 			})
@@ -1826,6 +2006,8 @@ func test__Projects__Index__8() eff.Task[bool] {
 			Kind string
 			Text string
 		}
+		Url    string
+		Status int64
 	}, error) {
 		_u3 := rt.PageURL(rt.Page{Path: "/projects"})
 		_b4 := rtesting.BrowserOf(_e1)
@@ -1840,6 +2022,8 @@ func test__Projects__Index__8() eff.Task[bool] {
 					Kind string
 					Text string
 				}
+				Url    string
+				Status int64
 			}
 			return _z7, _err6
 		}
@@ -1852,7 +2036,9 @@ func test__Projects__Index__8() eff.Task[bool] {
 				Kind string
 				Text string
 			}
-		}{Answer: _r5.Answer, Session: rtesting.SessionOf[App__Session](_r5.Session), Doc: rtesting.DocOf(_r5.Doc), Notices: _r5.Notices, Toasts: _r5.Toasts}, nil
+			Url    string
+			Status int64
+		}{Answer: _r5.Answer, Session: rtesting.SessionOf[App__Session](_r5.Session), Doc: rtesting.DocOf(_r5.Doc), Notices: _r5.Notices, Toasts: _r5.Toasts, Url: _r5.URL, Status: _r5.Status}, nil
 	}), func(r struct {
 		Answer  rtesting.Answer
 		Session App__Session
@@ -1862,6 +2048,8 @@ func test__Projects__Index__8() eff.Task[bool] {
 			Kind string
 			Text string
 		}
+		Url    string
+		Status int64
 	}) eff.Task[bool] {
 		return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}))
 	})

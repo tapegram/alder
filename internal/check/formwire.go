@@ -8,7 +8,7 @@ import (
 )
 
 // formWireNames warns (W0008, #63) about a GET `<form>` (method "get" or none, and no `submit`
-// message) whose literal `action` is the path of a page, when a plain `<input>`, `<select>` or
+// message) whose literal `action` is the path of a page or of a GET route, when a plain `<input>`, `<select>` or
 // `<textarea>` inside it (without a `form` attribute naming another form) has a literal `name`
 // that is one of the page's query parameters declared with another wire name, and no key the
 // page reads (`electionId: Text = "" as "ElectionId"`): the browser sends
@@ -40,13 +40,13 @@ func (mc *modCtx) formWireNames(x *syntax.Element) {
 	if !hasAction || method != "get" {
 		return
 	}
-	page, pd := mc.c.pageAt(action)
-	if pd == nil || pd.Params == nil {
+	page, params := mc.c.pageAt(action)
+	if params == nil {
 		return
 	}
 	wires := map[string]string{} // a parameter's name → its wire name, where they differ
 	reads := map[string]bool{}   // every key the page reads: a wire name, or a name without one
-	for _, f := range pd.Params.Fields {
+	for _, f := range params.Fields {
 		if f.Wire != "" && f.Wire != f.Name {
 			wires[f.Name] = f.Wire
 		}
@@ -67,7 +67,8 @@ func (mc *modCtx) formWireNames(x *syntax.Element) {
 	}
 }
 
-// formInputWires walks e, markup inside a GET form to page, for the inputs formWireNames reports.
+// formInputWires walks e, markup inside a GET form to page (`page \`Wood\“ or
+// `route \`Results.Index\“, as messages name it), for the inputs formWireNames reports.
 func (mc *modCtx) formInputWires(e syntax.Expr, page string, wires map[string]string) {
 	switch x := e.(type) {
 	case *syntax.Element:
@@ -85,7 +86,7 @@ func (mc *modCtx) formInputWires(e syntax.Expr, page string, wires map[string]st
 					continue
 				}
 				if w, ok := wires[name]; ok {
-					d := mc.c.bag.Warn(diag.FormWireName, a.Span, "page `%s` reads its parameter `%s` from the query key `%s`, so `name=\"%s\"` in this GET form sets nothing; use the wire name: `name=\"%s\"`", page, name, w, name, w)
+					d := mc.c.bag.Warn(diag.FormWireName, a.Span, "%s reads its parameter `%s` from the query key `%s`, so `name=\"%s\"` in this GET form sets nothing; use the wire name: `name=\"%s\"`", page, name, w, name, w)
 					d.Fix = diag.ReplaceSpan(a.Value.GetSpan(), `"`+w+`"`)
 				}
 			}
@@ -105,11 +106,12 @@ func (mc *modCtx) formInputWires(e syntax.Expr, page string, wires map[string]st
 	}
 }
 
-// pageAt is the page module, and its declaration, whose path a form's literal `action` names
+// pageAt is the page module or GET route whose path a form's literal `action` names
 // (`/r/17/wood/Results`; a query or fragment and a trailing slash are ignored, and a `{param}`
-// segment takes any one segment), or "" and nil for none. As the router does, a literal segment
-// wins over a parameter, left to right (`/todos/new` before `/todos/{id}`).
-func (c *Checker) pageAt(action string) (string, *syntax.PageDecl) {
+// segment takes any one segment), as messages name it (`page \`Wood\“, `route
+// \`Results.Index\“), and its declared parameters; "" and nil for none. As the router does, a
+// literal segment wins over a parameter, left to right (`/todos/new` before `/todos/{id}`).
+func (c *Checker) pageAt(action string) (string, *syntax.RecordType) {
 	if i := strings.IndexAny(action, "?#"); i >= 0 {
 		action = action[:i]
 	}
@@ -118,12 +120,24 @@ func (c *Checker) pageAt(action string) (string, *syntax.PageDecl) {
 	}
 	want := strings.Split(strings.TrimSuffix(action, "/"), "/")
 	best, bestRank := "", ""
+	var bestParams *syntax.RecordType
+	type target struct {
+		name, path string
+		params     *syntax.RecordType
+	}
+	var targets []target
 	for _, name := range c.prog.Order {
-		pd := c.prog.Pages[name]
-		if pd == nil || !c.prog.IsPageModule(name) {
-			continue
+		if pd := c.prog.Pages[name]; pd != nil && c.prog.IsPageModule(name) {
+			targets = append(targets, target{"page `" + name + "`", pd.Path, pd.Params})
 		}
-		segs := strings.Split(strings.TrimSuffix(pd.Path, "/"), "/")
+		for _, r := range c.routes[name] {
+			if !isWrite(r.Method) {
+				targets = append(targets, target{"route `" + name + "." + r.Name + "`", r.Path, r.Decl.Params})
+			}
+		}
+	}
+	for _, t := range targets {
+		segs := strings.Split(strings.TrimSuffix(t.path, "/"), "/")
 		if len(segs) != len(want) {
 			continue
 		}
@@ -140,11 +154,8 @@ func (c *Checker) pageAt(action string) (string, *syntax.PageDecl) {
 			}
 		}
 		if match && (best == "" || string(rank) > bestRank) {
-			best, bestRank = name, string(rank)
+			best, bestRank, bestParams = t.name, string(rank), t.params
 		}
 	}
-	if best == "" {
-		return "", nil
-	}
-	return best, c.prog.Pages[best]
+	return best, bestParams
 }

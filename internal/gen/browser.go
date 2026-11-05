@@ -14,7 +14,7 @@ import (
 // The browser steps of a test (test builds only; testNode refuses them in a production build).
 // Each is an eff.Call named as the trace shows it, whose function drives the test's browser
 // (rtesting.BrowserOf(_e)); the effects of the requests it makes follow it on the trace. R is
-// the step's result record ({ model | answer, session, doc }), S App's Session (struct{}
+// the step's result record ({ model | answer, session, doc, notices, toasts, url, status }), S App's Session (struct{}
 // without an App module):
 //
 //	TestLogin      "Test.login": BrowserOf(_e).Login(session), and the test's own session becomes
@@ -84,7 +84,7 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 	t := x.Type()
 	r := GoType(effResult(t))
 	result := func(c *scope, first, value, res string) string {
-		return "return " + r + "{" + first + ": " + value + ", Session: rtesting.SessionOf[" + f.sessionGo(t) + "](" + res + ".Session), Doc: rtesting.DocOf(" + res + ".Doc), Notices: " + res + ".Notices, Toasts: " + res + ".Toasts}, nil\n"
+		return "return " + r + "{" + first + ": " + value + ", Session: rtesting.SessionOf[" + f.sessionGo(t) + "](" + res + ".Session), Doc: rtesting.DocOf(" + res + ".Doc), Notices: " + res + ".Notices, Toasts: " + res + ".Toasts, Url: " + res + ".URL, Status: " + res + ".Status}, nil\n"
 	}
 	fail := func(c *scope, err string) string {
 		z := f.temp(c, "_z")
