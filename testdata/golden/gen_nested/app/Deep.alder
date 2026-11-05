@@ -53,8 +53,8 @@ pick r = match r {
   _ -> 0,
 }
 
-route : Hops -> Task Int
-route h = match h {
+hop : Hops -> Task Int
+hop h = match h {
   { h0: (Ok a), h1: (Ok b) } -> Task.succeed (a + b + 100),
   { h1: (Ok a), h2: (Ok b) } -> Task.succeed (a + b + 200),
   { h2: (Ok a), h3: (Ok b) } -> Task.succeed (a + b + 300),

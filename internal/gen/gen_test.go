@@ -3514,7 +3514,7 @@ func check(t *testing.T, name string, set []int, want int64) {
 	if got := Deep__pick(row(set...)); got != want {
 		t.Errorf("pick %s %v = %d, want %d", name, set, got, want)
 	}
-	got, err := eff.Run(&eff.Env{}, eff.KTask, Deep__route(hops(set...)))
+	got, err := eff.Run(&eff.Env{}, eff.KTask, Deep__hop(hops(set...)))
 	switch {
 	case want == 0 && err != eff.ErrNotFound:
 		t.Errorf("route %s %v = %d, %v, want not found", name, set, got, err)

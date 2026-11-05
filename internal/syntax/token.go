@@ -69,7 +69,7 @@ type Token struct {
 	prevEnd diag.Pos // parser bookkeeping, set only by Parser.mark
 }
 
-var keywords = map[string]bool{"module": true, "import": true, "type": true, "brand": true, "where": true, "page": true, "msg": true, "form": true, "table": true, "capability": true, "fake": true, "session": true, "login": true, "test": true, "let": true, "match": true, "if": true, "then": true, "else": true, "for": true, "in": true, "requires": true}
+var keywords = map[string]bool{"module": true, "import": true, "type": true, "brand": true, "where": true, "page": true, "route": true, "msg": true, "form": true, "table": true, "capability": true, "fake": true, "session": true, "login": true, "test": true, "let": true, "match": true, "if": true, "then": true, "else": true, "for": true, "in": true, "requires": true}
 
 // Keywords is the language's reserved words, sorted.
 func Keywords() []string {

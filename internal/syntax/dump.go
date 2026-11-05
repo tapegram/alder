@@ -36,7 +36,7 @@ func dump(sb *strings.Builder, n any) {
 		dumpList(sb, x.Decls)
 		sb.WriteByte(')')
 	case *ValueDecl:
-		fmt.Fprintf(sb, "(val %s", x.Name)
+		fmt.Fprintf(sb, "(val %s", x.FullName())
 		if x.Sig != nil {
 			sb.WriteString(" : ")
 			dump(sb, x.Sig)
@@ -81,15 +81,15 @@ func dump(sb *strings.Builder, n any) {
 	case *PageDecl:
 		fmt.Fprintf(sb, "(page %q ", x.Path)
 		dump(sb, x.Params)
-		if len(x.Requires) > 0 {
-			sb.WriteString(" requires " + strings.Join(x.Requires, ", "))
+		dumpGuard(sb, &x.Guard)
+		sb.WriteByte(')')
+	case *RouteDecl:
+		fmt.Fprintf(sb, "(route %s %s %q ", x.Name, x.Method, x.Path)
+		dump(sb, x.Params)
+		if x.Form != "" {
+			sb.WriteString(" form " + x.Form)
 		}
-		if len(x.Roles) > 0 {
-			sb.WriteString(" role " + strings.Join(x.Roles, " | "))
-		}
-		if x.Silo != "" {
-			sb.WriteString(" silo " + x.Silo)
-		}
+		dumpGuard(sb, &x.Guard)
 		sb.WriteByte(')')
 	case *MsgDecl:
 		fmt.Fprintf(sb, "(msg %s", x.Name)
@@ -452,5 +452,18 @@ func dumpDeployValue(sb *strings.Builder, v *DeployValue) {
 		}
 	default:
 		sb.WriteString(v.Str)
+	}
+}
+
+// dumpGuard writes a page's or route's `requires` clause, if it has one.
+func dumpGuard(sb *strings.Builder, g *Guard) {
+	if len(g.Requires) > 0 {
+		sb.WriteString(" requires " + strings.Join(g.Requires, ", "))
+	}
+	if len(g.Roles) > 0 {
+		sb.WriteString(" role " + strings.Join(g.Roles, " | "))
+	}
+	if g.Silo != "" {
+		sb.WriteString(" silo " + g.Silo)
 	}
 }

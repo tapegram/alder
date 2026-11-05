@@ -223,7 +223,7 @@ func ParserKind(t Token) Kind {
 	return t.Kind
 }
 
-var declKeywords = map[string]bool{"module": true, "import": true, "type": true, "page": true, "msg": true,
+var declKeywords = map[string]bool{"module": true, "import": true, "type": true, "page": true, "route": true, "msg": true,
 	"form": true, "table": true, "capability": true, "fake": true, "session": true, "login": true, "test": true}
 
 func (p *Parser) expect(k Kind, what string) Token {
@@ -356,6 +356,8 @@ func (p *Parser) checkModSegment(t Token) {
 
 // ---- declarations
 
+var routeMethods = map[string]bool{"GET": true, "POST": true, "PUT": true, "PATCH": true, "DELETE": true}
+
 func (p *Parser) parseDecl() Decl {
 	start := p.tok
 	switch {
@@ -370,7 +372,39 @@ func (p *Parser) parseDecl() Decl {
 		p.pageParams = false
 		pop()
 		if p.atKeyword("requires") {
-			p.parseRequires(d)
+			p.parseRequires(&d.Guard)
+		}
+		d.Span = p.spanFrom(start)
+		return d
+	case p.atKeyword("route"):
+		p.advance()
+		d := &RouteDecl{}
+		nt := p.expect(UIdent, "route name")
+		d.Name, d.NameSpan = nt.Text, p.spanTok(nt)
+		p.expect(Equal, "`=`")
+		mt := p.tok
+		if p.at(UIdent) && routeMethods[mt.Text] {
+			p.advance()
+			d.Method, d.MethodSpan = mt.Text, p.spanTok(mt)
+		} else {
+			p.errorAt(mt, "expected GET, POST, PUT, PATCH or DELETE, got "+describe(mt))
+			p.skipLine()
+			d.Span = p.spanFrom(start)
+			return d
+		}
+		d.Path = p.parseStringText()
+		pop := p.in("route parameters")
+		p.pageParams = true
+		d.Params = p.parseRecordType()
+		p.pageParams = false
+		pop()
+		if p.at(LIdent) && p.tok.Text == "form" {
+			ft := p.advance()
+			d.Form = p.expect(UIdent, "form name").Text
+			d.FormSpan = p.spanFrom(ft)
+		}
+		if p.atKeyword("requires") {
+			p.parseRequires(&d.Guard)
 		}
 		d.Span = p.spanFrom(start)
 		return d
@@ -603,7 +637,38 @@ func (p *Parser) parseValueDecl() Decl {
 	start := p.tok
 	nameTok := p.advance()
 	d := &ValueDecl{Name: nameTok.Text}
-	defer p.in("the definition of `" + nameTok.Text + "`")()
+	// `Index.load`: a declaration qualified by its route
+	if nameTok.Kind == UIdent && p.at(Dot) && p.peekIs(LIdent) {
+		p.advance()
+		d.Route, d.RouteSpan = nameTok.Text, p.spanTok(nameTok)
+		d.Name = p.advance().Text
+	}
+	full := d.FullName()
+	// atName reports whether the parser is at this declaration's name, written again.
+	atName := func() bool {
+		if d.Route == "" {
+			return p.tok.Kind == nameTok.Kind && p.tok.Text == nameTok.Text
+		}
+		if p.tok.Kind != UIdent || p.tok.Text != d.Route {
+			return false
+		}
+		st, tok := p.mark()
+		defer p.restore(st, tok)
+		p.advance()
+		if !p.at(Dot) {
+			return false
+		}
+		p.advance()
+		return p.at(LIdent) && p.tok.Text == d.Name
+	}
+	skipName := func() {
+		p.advance()
+		if d.Route != "" {
+			p.advance()
+			p.advance()
+		}
+	}
+	defer p.in("the definition of `" + full + "`")()
 	if p.at(Colon) {
 		p.advance()
 		p.skipNL() // the type may start on the line after `:`
@@ -612,20 +677,20 @@ func (p *Parser) parseValueDecl() Decl {
 			// peek: is the next non-blank line this name's definition?
 			save, saveTok := p.mark()
 			p.skipNL()
-			if !(p.tok.Kind == nameTok.Kind && p.tok.Text == nameTok.Text) {
+			if !atName() {
 				p.restore(save, saveTok)
 				d.Span = p.spanFrom(start)
 				return d
 			}
-			p.advance()
+			skipName()
 		} else {
 			p.skipNL()
-			if !(p.tok.Kind == nameTok.Kind && p.tok.Text == nameTok.Text) {
-				p.errorAt(p.tok, "expected definition of `"+nameTok.Text+"` after its signature")
+			if !atName() {
+				p.errorAt(p.tok, "expected definition of `"+full+"` after its signature")
 				d.Span = p.spanFrom(start)
 				return d
 			}
-			p.advance()
+			skipName()
 		}
 	}
 	for p.at(LIdent) {
@@ -729,7 +794,7 @@ func (p *Parser) parseTypeDecl() Decl {
 // parseRequires parses a page's `requires` clause at `requires`: session fields (`requires
 // user, org`), then an optional `role R | S`, then an optional `silo k` (the admin form,
 // `requires user, role Admin, silo org`).
-func (p *Parser) parseRequires(d *PageDecl) {
+func (p *Parser) parseRequires(d *Guard) {
 	rt := p.advance()
 	for !p.atRole() && !p.atSilo() {
 		ft := p.tok
