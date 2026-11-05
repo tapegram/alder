@@ -1,5 +1,5 @@
 module Url
 
-external : Text -> Page
+external : Text -> Route
 
 absolute : Page -> Text

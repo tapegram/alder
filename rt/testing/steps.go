@@ -156,7 +156,7 @@ func (a Answer) AlderEqual(other any) bool {
 		return false
 	}
 	switch a.Tag {
-	case Redirected:
+	case Redirected, Rendered:
 		return rt.PageURL(a.Page) == rt.PageURL(b.Page)
 	case FormRejected:
 		return rt.Eq(a.FieldErrors(), b.FieldErrors())
@@ -175,6 +175,8 @@ func (a Answer) AlderShow() (string, bool) {
 	switch a.Tag {
 	case Redirected:
 		return "Redirected " + rt.PageURL(a.Page), true
+	case Rendered:
+		return "Rendered " + rt.PageURL(a.Page), true
 	case FormRejected:
 		return "FormRejected " + rt.Show(a.FieldErrors()), true
 	case RequestFailed:

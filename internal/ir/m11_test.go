@@ -73,6 +73,7 @@ func spaces(s string) string { return wsRun.ReplaceAllString(s, " ") }
 func m11View(s string) string {
 	s = spaces(s)
 	s = partition.ReplaceAllString(s, "(owner $1)")
+	s = strings.ReplaceAll(s, " Route", " Page") // the type of a page value is printed Route since #160
 	return scopedOld.Replace(s)
 }
 

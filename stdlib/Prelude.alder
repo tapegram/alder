@@ -8,7 +8,12 @@ type Date
 type Time
 type Never
 type Error
+-- a request to one of the app's routes: an href, or the target of a redirect
+type Route
+-- until the old syntax goes, a Route written as a page
 type Page
+-- what a write route's update answers: where to go or what to show, and toasts
+type Response
 -- a page's answer when its view returns File: a status, a content type, headers and a body, written as given
 type File
 -- a sequence of bytes, such as the body of a File
@@ -36,6 +41,8 @@ type Nav = Rerender | Redirect Page | Reject Text
 type Doc
 type Answer = Shown
             | Rerendered
+            | Rendered Route
+            | Refreshed
             | Redirected Page
             | FormRejected (List { field: Text, message: Text })
             | PageMissing

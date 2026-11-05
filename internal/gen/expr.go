@@ -597,10 +597,10 @@ func (f *fn) ctor(x *ir.Ctor, s *scope) string {
 			return "rt.Redirect(" + inner() + ")"
 		case "Reject":
 			return "rt.Reject(" + inner() + ")"
-		case "Shown", "Rerendered", "PageMissing":
+		case "Shown", "Rerendered", "Refreshed", "PageMissing":
 			return "rtesting.Answer{Tag: rtesting." + x.Name + "}"
-		case "Redirected":
-			return "rtesting.Answer{Tag: rtesting.Redirected, Page: " + inner() + "}"
+		case "Redirected", "Rendered":
+			return "rtesting.Answer{Tag: rtesting." + x.Name + ", Page: " + inner() + "}"
 		case "FormRejected":
 			return "rtesting.FormRejectedAnswer(" + inner() + ")"
 		case "RequestFailed":

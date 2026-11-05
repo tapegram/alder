@@ -311,7 +311,7 @@ func (l *lowerer) attr(a *syntax.HtmlAttr) HAttr {
 			switch {
 			case t.Name == "Bool":
 				kind = AttrBool
-			case t.Name == "Page" && a.Name == "src": // `src={Url.external "…"}`: its URL
+			case t.Name == "Route" && a.Name == "src": // `src={Url.external "…"}`: its URL
 				kind = AttrHref
 			}
 		case *types.Union:

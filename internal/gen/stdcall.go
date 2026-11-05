@@ -243,6 +243,15 @@ var StdCalls = map[string]string{
 	"Notice.success": "std.NoticeSuccess",
 	"Notice.warning": "std.NoticeWarning",
 	"Notice.error":   "std.NoticeError",
+	// Response (#160)
+	"Response.redirect": "std.ResponseRedirect",
+	"Response.render":   "std.ResponseRender",
+	"Response.refresh":  "std.ResponseRefresh",
+	"Response.invalid":  "std.ResponseInvalid",
+	"Response.toast":    "std.ResponseToast",
+	"Response.success":  "std.ResponseSuccess",
+	"Response.warning":  "std.ResponseWarning",
+	"Response.error":    "std.ResponseError",
 	// Url
 	"Url.external": "std.UrlExternal",
 	"Url.absolute": "std.UrlAbsolute",

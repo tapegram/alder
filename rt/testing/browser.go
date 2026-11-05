@@ -34,6 +34,8 @@ const (
 	FormRejected                   // a form came back with errors (Answer.Errors)
 	PageMissing                    // 404: the not-found document is held
 	RequestFailed                  // 500 (or a request the router refused): Answer.Text says why
+	Rendered                       // a write route answered Response.render; Answer.Page is the route
+	Refreshed                      // a write route answered Response.refresh
 )
 
 func (t AnswerTag) String() string {
@@ -50,6 +52,10 @@ func (t AnswerTag) String() string {
 		return "PageMissing"
 	case RequestFailed:
 		return "RequestFailed"
+	case Rendered:
+		return "Rendered"
+	case Refreshed:
+		return "Refreshed"
 	}
 	return "AnswerTag(" + strconv.Itoa(int(t)) + ")"
 }

@@ -352,9 +352,10 @@ func (c *Checker) errorf(code string, span diag.Span, format string, args ...any
 
 // declareStd maps Prelude's opaque types to their canonical representation.
 func (c *Checker) declareStd() {
-	for _, t := range []*types.Con{types.Int, types.Float, types.Bool, types.Text, types.Unit, types.Date, types.Time, types.Never, types.Error, types.Page, types.File, types.Bytes} {
+	for _, t := range []*types.Con{types.Int, types.Float, types.Bool, types.Text, types.Unit, types.Date, types.Time, types.Never, types.Error, types.Route, types.Response, types.File, types.Bytes} {
 		c.types[c.key("Prelude", t.Name)] = t // canonical singletons, so identity comparisons (e.g. `ft == types.Time`) hold
 	}
+	c.types[c.key("Prelude", "Page")] = types.Page // until PR 9 of #160: the Prelude's `Page` is `Route`
 }
 
 // isCon reports whether t is the builtin type constructor called name (compared by name, not identity).

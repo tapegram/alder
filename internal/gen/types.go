@@ -12,7 +12,7 @@ import (
 // GoType is the Go type of an Alder type:
 //
 //	Int Float Bool Text Unit         int64 float64 bool string struct{}
-//	Date Time Page Error Never       rt.Date time.Time rt.Page error struct{}
+//	Date Time Route Error Never      rt.Date time.Time rt.Route error struct{}
 //	File, Bytes                      rt.File, []byte
 //	HttpError, Nav                   rt.HttpError, rt.Nav
 //	Doc, Answer (test builds only)   rtesting.Doc, rtesting.Answer
@@ -53,8 +53,10 @@ func GoType(t types.Type) string {
 			return "rt.Date"
 		case "Time":
 			return "time.Time"
-		case "Page":
-			return "rt.Page"
+		case "Route":
+			return "rt.Route"
+		case "Response":
+			return "rt.Response"
 		case "Error":
 			return "error"
 		case "Bytes":

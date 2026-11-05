@@ -327,7 +327,7 @@ func TestEval_LetRecAndInlineLambda(t *testing.T) {
 func TestEval_BrandConstructors(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
-	evalOK(t, "/todos/x : Page\n", `Todos.Show { id: TodoId "x" }`)
+	evalOK(t, "/todos/x : Route\n", `Todos.Show { id: TodoId "x" }`)
 	evalOK(t, "\"x\" : Text.NonEmpty\n", `Text.NonEmpty "x"`)
 }
 

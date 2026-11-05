@@ -219,7 +219,7 @@ func (f *fn) partAccess(x *ir.Match, tag, field, subj string) string {
 	case ir.MatchUnion:
 		if u, ok := x.Subject.Type().(*types.Union); ok && u.Module == "Prelude" {
 			switch tag {
-			case "Redirect", "Redirected":
+			case "Redirect", "Redirected", "Rendered":
 				return subj + ".Page"
 			case "Reject", "RequestFailed":
 				return subj + ".Text"

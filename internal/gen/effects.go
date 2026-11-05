@@ -319,7 +319,7 @@ func mayHoldSliceIn(t types.Type, depth int) bool {
 		return false
 	case *types.Con:
 		switch t.Name {
-		case "Int", "Float", "Bool", "Text", "Unit", "Never", "Date", "Time", "Page":
+		case "Int", "Float", "Bool", "Text", "Unit", "Never", "Date", "Time", "Route":
 			return false
 		}
 	}
