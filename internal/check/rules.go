@@ -158,14 +158,14 @@ func (c *Checker) fieldMaybe(k string) (types.Type, bool) {
 	return nil, false
 }
 
-// checkRoles validates the `role R | S` clause of page pd (E0027) and records its roles in
-// info when it is well-formed: it follows `requires user`, and each role is a constructor of
-// the union that App's session field `role` has.
-func (mc *modCtx) checkRoles(pd *syntax.PageDecl, info *pageInfo) {
+// checkRoles validates the `role R | S` clause of a page's or route's guard pd (E0027) and
+// returns its roles when it is well-formed (nil otherwise): it follows `requires user`, and each
+// role is a constructor of the union that App's session field `role` has.
+func (mc *modCtx) checkRoles(pd *syntax.Guard) []string {
 	c := mc.c
 	if len(pd.Requires) == 0 || pd.Requires[0] != "user" {
 		c.errorf(diag.RoleClause, pd.RolesSpan, "`role` needs `user` first")
-		return
+		return nil
 	}
 	var role *types.Field
 	for i, f := range c.session.Fields {
@@ -175,18 +175,18 @@ func (mc *modCtx) checkRoles(pd *syntax.PageDecl, info *pageInfo) {
 	}
 	if role == nil {
 		c.errorf(diag.RoleClause, pd.RolesSpan, "this session has no `role` field")
-		return
+		return nil
 	}
 	un, ok := role.Type.(*types.Union)
 	switch {
 	case types.IsErr(role.Type):
-		return
+		return nil
 	case ok && un.Name == "Maybe" && un.Module == "Prelude":
 		c.errorf(diag.RoleClause, pd.RolesSpan, "this session's `role` field is `%s`: the role must be a union, not `Maybe`", mc.ts(role.Type))
-		return
+		return nil
 	case !ok:
 		c.errorf(diag.RoleClause, pd.RolesSpan, "this session's `role` field is `%s`, not a union: write `role: Role = …` with `type Role = Reader | Author`", mc.ts(role.Type))
-		return
+		return nil
 	}
 	seen := map[string]bool{}
 	for _, r := range pd.Roles {
@@ -210,9 +210,10 @@ func (mc *modCtx) checkRoles(pd *syntax.PageDecl, info *pageInfo) {
 			c.errorf(diag.RoleClause, pd.RolesSpan, "`%s` is not a constructor of this session's `role` type `%s` (%s)", r, mc.ts(un), strings.Join(names, ", "))
 		}
 	}
-	if !bad {
-		info.Roles = pd.Roles
+	if bad {
+		return nil
 	}
+	return pd.Roles
 }
 
 // inferScoped types a reference to a scoped operation `Db.<name>`: its stdlib signature, with
@@ -275,16 +276,29 @@ func (c *Checker) reportScoped(at diag.Span, msg string) {
 
 // narrowed reports whether the session's field key is certainly there where mc is checking: in
 // a page module whose page `requires` key (any of its values), or takes it from its parameter
-// (`silo key`, the admin form), and in a `test` (a test has a session, from `Test.login` or
-// `Session.put`; a scoped operation without the field fails when it runs). Never in a fake.
+// (`silo key`, the admin form), in a member of a route that does, and in a `test` (a test has a
+// session, from `Test.login` or `Session.put`; a scoped operation without the field fails when
+// it runs). Never in a fake. A top-level value of a route module that is no route's member (a
+// helper) may use the operation: each route member that uses the helper is checked instead
+// (checkRouteRefs), as another module's use of a page module's value is.
 func (mc *modCtx) narrowed(key string) bool {
 	switch {
 	case mc.fake != "":
 		return false
 	case mc.inTest:
 		return true
+	case mc.route != nil:
+		return slices.Contains(mc.route.narrowed, key)
+	case mc.routeHelper():
+		return true
 	}
 	return mc.page != nil && (slices.Contains(mc.page.Requires, key) || mc.page.Decl != nil && mc.page.Decl.Silo == key)
+}
+
+// routeHelper reports whether mc is checking a top-level value of a route module that belongs to
+// no route.
+func (mc *modCtx) routeHelper() bool {
+	return mc.route == nil && mc.value != "" && !strings.Contains(mc.value, ".") && mc.c.routes[mc.m.Name] != nil
 }
 
 // scopedRefusal is E0026's message for subject (“`Db.mine`”, “`Db.scoped Project`”, or
@@ -297,6 +311,10 @@ func (mc *modCtx) scopedRefusal(subject, key string) string {
 		return subject + " cannot be used in a fake: a fake has no session"
 	case mc.narrowed(key):
 		return ""
+	case mc.route != nil:
+		return subject + " needs a route that `requires " + key + "`: `" + mc.route.Name + "` does not"
+	case mc.c.routes[mc.m.Name] != nil:
+		return subject + " needs a route that `requires " + key + "`: this is not a member of one"
 	case mc.page != nil:
 		return subject + " needs a page that `requires " + key + "`: `" + mc.m.Name + "` does not"
 	}
@@ -332,6 +350,10 @@ func (mc *modCtx) scopedRef(x *syntax.Var) {
 	if x.Ref.Module == mc.m.Name {
 		if mc.value != "" && !mc.inTest && mc.fake == "" {
 			c.scopedEdges = append(c.scopedEdges, [2]string{c.key(mc.m.Name, mc.value), k})
+		}
+		if mc.route != nil && !mc.inTest && mc.fake == "" {
+			// what the value uses is known once the module's bodies are (checkRouteRefs)
+			c.routeRefs = append(c.routeRefs, routeRef{x, mc.route})
 		}
 		return
 	}

@@ -34,6 +34,8 @@ const (
 	FormRejected                   // a form came back with errors (Answer.Errors)
 	PageMissing                    // 404: the not-found document is held
 	RequestFailed                  // 500 (or a request the router refused): Answer.Text says why
+	Rendered                       // a write route answered Response.render; Answer.Page is the route
+	Refreshed                      // a write route answered Response.refresh
 )
 
 func (t AnswerTag) String() string {
@@ -50,6 +52,10 @@ func (t AnswerTag) String() string {
 		return "PageMissing"
 	case RequestFailed:
 		return "RequestFailed"
+	case Rendered:
+		return "Rendered"
+	case Refreshed:
+		return "Refreshed"
 	}
 	return "AnswerTag(" + strconv.Itoa(int(t)) + ")"
 }
@@ -78,6 +84,10 @@ type Result struct {
 	// Model is the model the page held was rendered from when the last request the step made
 	// was a page's GET (web.Request.Model; Test.get's typed model), nil otherwise.
 	Model any
+	// URL is the URL of the page the browser holds after the step, Status the code of the step's
+	// last response (a Datastar answer's Alder-Status when it carries one).
+	URL    string
+	Status int64
 }
 
 // TestSecret is the cookie key of a test's router when its options carry none (the router
@@ -118,6 +128,7 @@ type Browser struct {
 	doc    html.Node // the page held (without the router's doctype and script tag)
 	hasDoc bool
 	toasts []Toast // the toasts of the step's requests (Result.Toasts and Notices)
+	status int64   // the code of the last response (Result.Status)
 
 	// dom is the held page as a browser's parser builds it and Datastar patches it (html.Repair):
 	// the page the drift check compares (checkPatched). doc stays the markup as the router sent
@@ -703,7 +714,7 @@ func (b *Browser) result(ans Answer) Result {
 	for _, t := range b.toasts {
 		notices = append(notices, t.Text)
 	}
-	return Result{Answer: ans, Session: b.Session(), Doc: b.doc, Model: b.model, Notices: notices, Toasts: b.toasts}
+	return Result{Answer: ans, Session: b.Session(), Doc: b.doc, Model: b.model, Notices: notices, Toasts: b.toasts, URL: b.url, Status: b.status}
 }
 
 // serve sends one request through the router: with the cookie, the held page as Referer (an App
@@ -746,6 +757,10 @@ func (b *Browser) serve(method, target string, form url.Values, ds bool) (*httpt
 		b.env.Trace = append(b.env.Trace, e.Trace...)
 	}
 	b.account(req.Method+" "+req.URL.Path, w.Body.Len())
+	b.status = int64(w.Code)
+	if code, err := strconv.Atoi(w.Header().Get(web.StatusHeader)); err == nil {
+		b.status = int64(code)
+	}
 	b.reqEnvs = nil
 	clear(b.heads)
 	for _, c := range w.Result().Cookies() {

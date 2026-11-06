@@ -1,0 +1,22 @@
+module Results
+
+-- #63 on routes: a GET form whose action is a GET route's path sends its inputs' names as the
+-- query keys, so an input named after a parameter with a wire name sets nothing.
+route Index = GET "/results" { electionId: Text = "" as "ElectionId" }
+route Save  = POST "/results" { electionId: Text = "" as "ElectionId" }
+
+Index.load : Index.Params -> Session -> Query Text
+Index.load params session = Query.succeed params.electionId
+
+Index.view : Text -> Session -> Html
+Index.view id session =
+  <div>
+    <form method="get" action="/results">
+      <input name="electionId" />
+      <input name="ElectionId" />
+    </form>
+    <form method="post" action="/results"><input name="electionId" /></form>
+  </div>
+
+Save.update : Save.Params -> Session -> Task Response
+Save.update params session = Task.succeed Response.refresh

@@ -223,7 +223,7 @@ func Deep__pick(r Deep__Row) int64 {
 	return _fb1()
 }
 
-func Deep__route(h Deep__Hops) eff.Task[int64] {
+func Deep__hop(h Deep__Hops) eff.Task[int64] {
 	_fb1 := func() eff.Task[int64] {
 		_fb2 := func() eff.Task[int64] {
 			_fb3 := func() eff.Task[int64] {

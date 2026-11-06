@@ -243,6 +243,15 @@ var StdCalls = map[string]string{
 	"Notice.success": "std.NoticeSuccess",
 	"Notice.warning": "std.NoticeWarning",
 	"Notice.error":   "std.NoticeError",
+	// Response (#160)
+	"Response.redirect": "std.ResponseRedirect",
+	"Response.render":   "std.ResponseRender",
+	"Response.refresh":  "std.ResponseRefresh",
+	"Response.invalid":  "std.ResponseInvalid",
+	"Response.toast":    "std.ResponseToast",
+	"Response.success":  "std.ResponseSuccess",
+	"Response.warning":  "std.ResponseWarning",
+	"Response.error":    "std.ResponseError",
 	// Url
 	"Url.external": "std.UrlExternal",
 	"Url.absolute": "std.UrlAbsolute",
@@ -305,7 +314,8 @@ var Effectful = map[string]bool{
 	"Query": true, "Task": true, "Db": true,
 	"Test.run": true, "Test.trace": true, "Test.fake": true, "Test.login": true, "Test.get": true,
 	"Test.open": true, "Test.fetch": true, "Test.submit": true, "Test.submitRaw": true, "Test.click": true,
-	"Test.member": true, // a call gen writes itself (member, browser.go): its table is the `via` field's
+	"Test.refresh": true,
+	"Test.member":  true, // a call gen writes itself (member, browser.go): its table is the `via` field's
 }
 
 func isEffectful(module, name string) bool {

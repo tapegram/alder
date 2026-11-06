@@ -147,6 +147,23 @@ func goDecls(m *syntax.Module) (imports, decls []decl) {
 	return imports, decls
 }
 
+// usesRoutes reports whether m has a `route` line or a declaration qualified by its route
+// (`Index.load`), which the grammar learns only in Task 5.1 of the routes plan (#160). Until then
+// such files are left out of the drift and highlight tests; Task 5.1 removes this filter.
+func usesRoutes(m *syntax.Module) bool {
+	for _, d := range m.Decls {
+		switch d := d.(type) {
+		case *syntax.RouteDecl:
+			return true
+		case *syntax.ValueDecl:
+			if d.Route != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // sources is every .alder file under examples/, stdlib/ and testdata/, and every book snippet
 // that is a whole module, that the Go parser parses without a diagnostic. stdlib/ is read the
 // way the compiler reads it, with ParseSignatures. Snippets are written into dir.
@@ -168,7 +185,7 @@ func sources(t *testing.T, dir string) []source {
 				parse = syntax.ParseSignatures
 			}
 			m, diags := parse(path, src)
-			if len(diags) > 0 || m == nil {
+			if len(diags) > 0 || m == nil || usesRoutes(m) {
 				return nil
 			}
 			abs, err := filepath.Abs(path)

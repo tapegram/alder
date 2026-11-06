@@ -10,7 +10,7 @@ import (
 	"alder/internal/syntax"
 )
 
-var preludeTypes = map[string]bool{"Int": true, "Float": true, "Bool": true, "Text": true, "Unit": true, "Date": true, "Time": true, "List": true, "Maybe": true, "Result": true, "Dict": true, "Html": true, "Never": true, "Query": true, "Task": true, "Nav": true, "Error": true, "Form": true, "Table": true, "Id": true, "Insert": true, "Select": true, "Condition": true, "Order": true, "Page": true, "Doc": true, "Answer": true, "File": true, "Bytes": true}
+var preludeTypes = map[string]bool{"Int": true, "Float": true, "Bool": true, "Text": true, "Unit": true, "Date": true, "Time": true, "List": true, "Maybe": true, "Result": true, "Dict": true, "Html": true, "Never": true, "Query": true, "Task": true, "Nav": true, "Error": true, "Form": true, "Table": true, "Id": true, "Insert": true, "Select": true, "Condition": true, "Order": true, "Page": true, "Route": true, "Response": true, "Doc": true, "Answer": true, "File": true, "Bytes": true}
 var generatedTypes = map[string]bool{"Params": true, "Msg": true, "Session": true}
 
 // moduleScope indexes one module's declarations.
@@ -33,8 +33,11 @@ type moduleScope struct {
 	// entryCaps maps each entry name of any of its capabilities to the first capability
 	// declaring it: `Mail.send` for `capability Mailer { send … }` says to write `Mailer.send`.
 	entryCaps map[string]string
-	comps     map[string]bool            // capitalized value names
-	columns   map[string]map[string]bool // table → field set
+	comps     map[string]bool // capitalized value names
+	// routes holds the module's route names. Its qualified declarations are in values under
+	// their full names (`Row.view`).
+	routes  map[string]bool
+	columns map[string]map[string]bool // table → field set
 	// imports holds the module's imports by canonical qualifier (design rule 3), whatever alias
 	// is written: the written alias is only checked (E0204), so references keep resolving while
 	// it is wrong. An import with no usable qualifier (E0206) is not here.
@@ -44,7 +47,7 @@ type moduleScope struct {
 }
 
 func (p *Program) index(m *syntax.Module) *moduleScope {
-	s := &moduleScope{name: m.Name, values: map[string]bool{}, types: map[string]bool{}, forms: map[string]bool{}, ctors: map[string]string{}, brands: map[string]bool{}, tables: map[string]bool{}, fakeTables: map[string]string{}, caps: map[string]bool{}, capEntries: map[string]bool{}, entryCaps: map[string]string{}, comps: map[string]bool{}, columns: map[string]map[string]bool{}, imports: map[string]*syntax.Import{}, used: map[string]bool{}}
+	s := &moduleScope{name: m.Name, values: map[string]bool{}, types: map[string]bool{}, forms: map[string]bool{}, ctors: map[string]string{}, brands: map[string]bool{}, tables: map[string]bool{}, fakeTables: map[string]string{}, caps: map[string]bool{}, capEntries: map[string]bool{}, entryCaps: map[string]string{}, comps: map[string]bool{}, columns: map[string]map[string]bool{}, routes: map[string]bool{}, imports: map[string]*syntax.Import{}, used: map[string]bool{}}
 	s.quals = p.qualifiers(m)
 	for _, im := range m.Imports {
 		if q := s.quals[im.Module]; q != "" {
@@ -54,10 +57,10 @@ func (p *Program) index(m *syntax.Module) *moduleScope {
 	for _, d := range m.Decls {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
-			if isUpper(d.Name) {
+			if isUpper(d.Name) && d.Route == "" {
 				s.comps[d.Name] = true
 			}
-			s.values[d.Name] = true
+			s.values[d.FullName()] = true
 		case *syntax.TypeDecl:
 			s.types[d.Name] = true
 			if d.Brand != nil {
@@ -92,6 +95,8 @@ func (p *Program) index(m *syntax.Module) *moduleScope {
 			s.ctors[d.Name] = "Msg"
 		case *syntax.PageDecl:
 			s.types["Params"] = true
+		case *syntax.RouteDecl:
+			s.routes[d.Name] = true
 		}
 	}
 	if m.Name == "App" {
@@ -256,9 +261,13 @@ func (r *resolver) module() {
 	}
 	r.aliases()
 	r.stdShadowedCapabilities()
+	r.routeClashes()
 	for _, d := range r.m.Decls {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
+			if d.Route != "" && !r.ms.routes[d.Route] {
+				r.noSuchRoute(d)
+			}
 			if d.Sig != nil {
 				r.typ(d.Sig)
 			}
@@ -283,6 +292,11 @@ func (r *resolver) module() {
 			}
 		case *syntax.PageDecl:
 			r.recordType(d.Params)
+		case *syntax.RouteDecl:
+			r.recordType(d.Params)
+			if d.Form != "" && !r.ms.types[d.Form] {
+				r.bag.Error(diag.UnknownName, d.FormSpan, "unknown form `%s`", d.Form)
+			}
 		case *syntax.MsgDecl:
 			if d.Params != nil {
 				r.recordType(d.Params)
@@ -982,6 +996,10 @@ func (r *resolver) typ(t syntax.Type) {
 				}
 				return
 			}
+			if path, route, ok := r.routeQualifier(mod); ok { // `Row.Params`, `Todos.Row.Params`
+				r.routeMember(t.Span, mod, path, route, name, func(ref syntax.Ref) { t.Ref = ref }, true)
+				return
+			}
 			if r.p.IsPageModule(t.Module) {
 				t.Ref = syntax.Ref{Kind: syntax.RefPage, Module: t.Module + "." + t.Name}
 				return
@@ -1267,6 +1285,10 @@ func (r *resolver) variable(v *syntax.Var, sc *Scope) {
 		}
 		return
 	}
+	if path, route, ok := r.routeQualifier(mod); ok { // `Row.view`, `Todos.Row.view`
+		r.routeMember(v.Span, mod, path, route, v.Name, func(ref syntax.Ref) { v.Ref = ref }, false)
+		return
+	}
 	// capability declared in this or an imported module: Password.verify
 	if r.ms.caps[mod] {
 		v.Ref = syntax.Ref{Kind: syntax.RefCapability, Module: r.m.Name, Name: mod + "." + v.Name}
@@ -1535,6 +1557,10 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 			c.Table = r.tableAlt(c.Name)
 			return
 		}
+		if r.ms.routes[c.Name] { // after constructors, as a page: E0044 refuses the clash
+			c.Ref = syntax.Ref{Kind: syntax.RefRoute, Module: r.m.Name, Name: c.Name}
+			return
+		}
 		if r.p.IsPageModule(c.Name) {
 			c.Ref = syntax.Ref{Kind: syntax.RefPage, Module: c.Name}
 			return
@@ -1563,6 +1589,19 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 		c.Ref = syntax.Ref{Kind: syntax.RefPage, Module: full}
 		return
 	}
+	// another module's route, written with the module's path and no import (plan call 5)
+	if c.Module != r.m.Name && r.p.Modules[c.Module] != nil && r.p.Route(c.Module, c.Name) != nil {
+		c.Ref = syntax.Ref{Kind: syntax.RefRoute, Module: c.Module, Name: c.Name}
+		return
+	}
+	if path, ok := r.routeByQualifier(c.Module, c.Name); ok {
+		r.ms.used[path] = true // one error, not a W0001 besides
+		full := path + "." + c.Name
+		d := r.bag.Error(diag.UnknownName, c.Span, "write `%s`: a route is written with its module's full path, like a page", full)
+		d.Fix = diag.ReplaceSpan(c.Span, full)
+		c.Ref = syntax.Ref{Kind: syntax.RefRoute, Module: path, Name: c.Name}
+		return
+	}
 	if c.Module == "App" {
 		if _, ok := r.p.AppMsgs[c.Name]; ok {
 			c.Ref = syntax.Ref{Kind: syntax.RefCtor, Module: "App", Name: c.Name}
@@ -1578,7 +1617,7 @@ func (r *resolver) ctor(c *syntax.CtorRef) {
 	}
 	if c.Module == r.m.Name { // `Notes.Show.Save` inside Notes.Show
 		_, isCtor := r.ms.ctors[c.Name]
-		r.ownQualified(c.Span, c.Name, isCtor || r.ms.brands[c.Name] || r.ms.tables[c.Name], true)
+		r.ownQualified(c.Span, c.Name, isCtor || r.ms.brands[c.Name] || r.ms.tables[c.Name] || r.ms.routes[c.Name], true)
 		return
 	}
 	if r.missing[c.Module] || r.isUnqual(c.Module) { // reported at the import
@@ -1722,4 +1761,74 @@ func (r *resolver) tagStarts(e *syntax.Element, written string) []diag.Pos {
 		}
 	}
 	return out
+}
+
+// ---- routes
+
+// routeTypes are the types every route generates: `Row.Params`, and `Row.Session`, the route's
+// session narrowed by its `requires` (plan call 4).
+var routeTypes = map[string]bool{"Params": true, "Session": true}
+
+// routeQualifier reads mod, the qualifier part of a dotted name, as a route (design: Names): a
+// route of this module (`Row` in `Row.view`), or `Q.Row` for route Row of the module that Q (an
+// import's qualifier, this module's name or a module's path) names. The caller has already
+// tried mod as a module.
+func (r *resolver) routeQualifier(mod string) (path, route string, ok bool) {
+	i := strings.LastIndexByte(mod, '.')
+	if i < 0 {
+		return r.m.Name, mod, r.ms.routes[mod]
+	}
+	owner, route := mod[:i], mod[i+1:]
+	path = owner
+	if im, ok := r.ms.imports[owner]; ok {
+		path = im.Module
+	}
+	if r.p.Modules[path] == nil || r.p.Route(path, route) == nil {
+		return "", "", false
+	}
+	return path, route, true
+}
+
+// routeMember resolves member name of route `route` of module path, written `mod.name` (mod as
+// routeQualifier read it): a value declared `Row.name`, or with typ a generated type
+// (`Row.Params`). Another module's member needs its import, like any value or type (plan call
+// 5); this module's is written without the module.
+func (r *resolver) routeMember(span diag.Span, mod, path, route, name string, set func(syntax.Ref), typ bool) {
+	full := route + "." + name
+	declared := r.p.scopes[path].values[full]
+	if typ {
+		declared = routeTypes[name]
+	}
+	if i := strings.LastIndexByte(mod, '.'); i >= 0 {
+		switch {
+		case path == r.m.Name:
+			r.ownQualified(span, full, declared, !typ)
+			return
+		case r.ms.imports[mod[:i]] == nil:
+			r.notImported(span, path)
+			return
+		}
+		r.ms.used[path] = true
+	}
+	switch {
+	case !declared && typ:
+		r.bag.Error(diag.UnknownName, span, "route `%s` of `%s` has no type `%s`", route, path, name)
+	case !declared:
+		r.bag.Error(diag.UnknownName, span, "route `%s` of `%s` has no `%s`", route, path, name)
+	case typ:
+		set(syntax.Ref{Kind: syntax.RefType, Module: path, Name: full})
+	default:
+		set(syntax.Ref{Kind: syntax.RefValue, Module: path, Name: full})
+	}
+}
+
+// routeByQualifier reports the path of the imported module whose qualifier q is not its path and
+// that declares route name (`Todos.Row` for `import Admin.Todos`): a route constructor is
+// written with its module's full path, like a page (design rule 6).
+func (r *resolver) routeByQualifier(q, name string) (string, bool) {
+	im, ok := r.ms.imports[q]
+	if !ok || im.Module == q || r.p.Route(im.Module, name) == nil {
+		return "", false
+	}
+	return im.Module, true
 }

@@ -1,0 +1,20 @@
+module Todos
+
+route Index  = GET    "/"            { }
+route Delete = DELETE "/todos/{id}"  { id: Text }
+
+Index.load : Index.Params -> Session -> Query Int
+Index.load params session = Query.succeed 1
+
+Index.view : Int -> Session -> Html
+Index.view n session = <button click={Delete { id: "1" }}>Delete</button>
+
+Delete.update : Delete.Params -> Session -> Task Response
+Delete.update params session = Task.succeed (Response.redirect (Index {}))
+
+-- Test.submit posts a route's form: a route without `form` is clicked
+test "submit a route without a form" = {
+  let r <- Test.submit Delete {}
+  let s <- Test.submit (Delete { id: "1" }) {}
+  Task.succeed True
+}

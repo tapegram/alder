@@ -35,9 +35,13 @@ type Checker struct {
 	fakeTables map[string]string
 	fakeUses   map[diag.Span]bool
 	pages      map[string]*pageInfo
-	session    *types.Record
-	appMsg     *types.Union
-	losers     map[syntax.Decl]bool
+	// routes are each route module's routes, in declaration order (routes.go); routeRefs the
+	// references from route members to values of their module, for checkRouteRefs
+	routes    map[string][]*RouteInfo
+	routeRefs []routeRef
+	session   *types.Record
+	appMsg    *types.Union
+	losers    map[syntax.Decl]bool
 	// elements are the custom elements a program may use: the embedded `alder-ui` manifest's
 	// and the app's elements/custom-elements.json's (loadElements); appElementsBad is set when
 	// the app's file does not parse, so elements only it could declare are not reported again
@@ -130,6 +134,7 @@ type formCtx struct {
 	wrapped   map[string]string
 	errorsFor []errorsAt
 	msg       *syntax.CtorRef // the submit message's constructor (W0005), nil when not a message
+	route     *RouteInfo      // the write route the form posts to (W0005), nil when not a route
 }
 
 // errorsAt is an `<Errors field="…">` in a form: its field and where it is.
@@ -142,6 +147,7 @@ type modCtx struct {
 	c        *Checker
 	m        *syntax.Module
 	page     *pageInfo
+	route    *RouteInfo // the route of the member being checked (`Row.view`), nil outside one
 	session  *types.Record
 	isApp    bool
 	holes    []holeNote
@@ -187,7 +193,7 @@ func Program(prog *names.Program, bag *diag.Bag) *Result {
 func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 	c := &Checker{prog: prog, bag: bag, u: &types.Unifier{Subst: types.Subst{}}, opts: o,
 		types: map[string]types.Type{}, values: map[string]types.Type{}, ctors: map[string]*ctorInfo{},
-		tables: map[string]*types.TableInfo{}, forms: map[string]*types.Record{}, paramRecs: map[string]bool{}, caps: map[string]map[string]types.Type{}, pages: map[string]*pageInfo{}, losers: map[syntax.Decl]bool{},
+		tables: map[string]*types.TableInfo{}, forms: map[string]*types.Record{}, paramRecs: map[string]bool{}, caps: map[string]map[string]types.Type{}, pages: map[string]*pageInfo{}, routes: map[string][]*RouteInfo{}, losers: map[syntax.Decl]bool{},
 		anonDefaults: map[*syntax.Field]bool{}, fakes: map[string]*syntax.FakeDecl{}, fakeTables: map[string]string{}, fakeUses: map[diag.Span]bool{},
 		res:         &Result{Types: map[syntax.Expr]types.Type{}, Binds: map[any]types.Type{}, DefaultModules: map[syntax.Expr]string{}, Widened: map[syntax.Expr]*types.Record{}, Wrapped: map[*syntax.Element]string{}, Rendered: map[*syntax.Element]string{}, Props: map[*syntax.TestDecl]PropInfo{}, FuzzAny: map[*syntax.Var]types.Type{}},
 		widenedFrom: map[syntax.Expr]types.Type{}, ambiguousErr: map[*syntax.CtorRef]bool{}}
@@ -232,6 +238,9 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 		if prog.IsPageModule(name) {
 			mc.definePage()
 		}
+		if prog.IsRouteModule(name) {
+			mc.defineRoutes()
+		}
 		mc.defineCapabilities()
 	}
 	for _, name := range prog.Order {
@@ -250,6 +259,7 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 		}
 		c.ctx(prog.Modules[name]).checkBodies()
 		c.propagateScoped()
+		c.checkRouteRefs()
 	}
 	c.checkWriteSets()  // one store per Task (E0031) needs every body checked
 	c.markTestHelpers() // test helpers (E0040) need every body's references
@@ -285,11 +295,12 @@ func (c *Checker) ctx(m *syntax.Module) *modCtx {
 	return mc
 }
 
-// narrow returns the session of `requires f, g` page module page: a record of its own,
-// <page>.Session, with App's session fields but each of fs's `Maybe a` replaced by `a`. It is a
-// distinct nominal type that widens implicitly to App.Session (see widen) and never narrows back.
-func narrow(s *types.Record, fs []string, page string) *types.Record {
-	out := &types.Record{Module: page, Name: "Session"}
+// narrow returns the session of `requires f, g` page module page (name "Session") or of a route
+// of module page (name "Row.Session"): a record of its own, page.name, with App's session fields
+// but each of fs's `Maybe a` replaced by `a`. It is a distinct nominal type that widens
+// implicitly to App.Session (see widen) and never narrows back.
+func narrow(s *types.Record, fs []string, page, name string) *types.Record {
+	out := &types.Record{Module: page, Name: name}
 	for _, fl := range s.Fields {
 		if slices.Contains(fs, fl.Name) {
 			if un, ok := fl.Type.(*types.Union); ok && un.Name == "Maybe" && len(un.Args) == 1 {
@@ -352,9 +363,10 @@ func (c *Checker) errorf(code string, span diag.Span, format string, args ...any
 
 // declareStd maps Prelude's opaque types to their canonical representation.
 func (c *Checker) declareStd() {
-	for _, t := range []*types.Con{types.Int, types.Float, types.Bool, types.Text, types.Unit, types.Date, types.Time, types.Never, types.Error, types.Page, types.File, types.Bytes} {
+	for _, t := range []*types.Con{types.Int, types.Float, types.Bool, types.Text, types.Unit, types.Date, types.Time, types.Never, types.Error, types.Route, types.Response, types.File, types.Bytes} {
 		c.types[c.key("Prelude", t.Name)] = t // canonical singletons, so identity comparisons (e.g. `ft == types.Time`) hold
 	}
+	c.types[c.key("Prelude", "Page")] = types.Page // until PR 9 of #160: the Prelude's `Page` is `Route`
 }
 
 // isCon reports whether t is the builtin type constructor called name (compared by name, not identity).

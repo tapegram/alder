@@ -244,3 +244,119 @@ func (r *resolver) pageUse(ct *syntax.CtorRef) {
 	}
 	r.p.pageUses[ct.Ref.Module+"."+ct.Name] = true
 }
+
+// routeClashes reports (E0044) each route of this module whose name cannot be told apart: a
+// second route of a name; a module named by this module's path and the route (`Todos.Row`
+// beside route Row in `Todos`); an import's qualifier or a standard-library module, which a
+// dotted name reaches first; a constructor, brand or table in scope, which `Row { … }` would
+// also be. One error per route, the first that applies.
+func (r *resolver) routeClashes() {
+	seen := map[string]int{}
+	for _, d := range r.m.Decls {
+		rd, ok := d.(*syntax.RouteDecl)
+		if !ok {
+			continue
+		}
+		name, sp := rd.Name, rd.NameSpan
+		if line, dup := seen[name]; dup {
+			r.bag.Error(diag.RouteName, sp, "route `%s` is already declared at line %d", name, line)
+			continue
+		}
+		seen[name] = rd.Span.Start.Line
+		if mod := r.m.Name + "." + name; r.p.Modules[mod] != nil {
+			r.bag.Error(diag.RouteName, sp, "route `%s` of `%s` and the module `%s` have one name: `%s.view` could name either; rename the route or the module", name, r.m.Name, mod, mod)
+			continue
+		}
+		member := r.firstMember(name)
+		if r.p.isStd(name) {
+			r.bag.Error(diag.RouteName, sp, "route `%s` is named like the standard-library module `%s`: `%s.%s` would name that module's `%s`; rename the route", name, name, name, member, member)
+			continue
+		}
+		if im, ok := r.ms.imports[name]; ok {
+			r.bag.Error(diag.RouteName, sp, "route `%s` is named like the qualifier of `import %s`: `%s.%s` would name that module's `%s`; rename the route", name, im.Module, name, member, member)
+			continue
+		}
+		if what := r.ctorInScope(name); what != "" {
+			r.bag.Error(diag.RouteName, sp, "route `%s` is named like %s: `%s { … }` cannot mean both; rename the route", name, what, name)
+		}
+	}
+}
+
+// firstMember is the name of the first declaration of route `route` in this module (`load` for
+// `Row.load`), or "view" when it has none: an example for a message.
+func (r *resolver) firstMember(route string) string {
+	for _, d := range r.m.Decls {
+		if v, ok := d.(*syntax.ValueDecl); ok && v.Route == route {
+			return v.Name
+		}
+	}
+	return "view"
+}
+
+// ctorInScope describes the constructor, brand or table written `name` that this module sees
+// unqualified ("the constructor `Active` (of `Todos.Filter`)"), or "" when there is none.
+func (r *resolver) ctorInScope(name string) string {
+	switch {
+	case r.ms.ctors[name] != "":
+		return fmt.Sprintf("the constructor `%s` (of `%s.%s`)", name, r.m.Name, r.ms.ctors[name])
+	case r.ms.brands[name]:
+		return fmt.Sprintf("the brand `%s` (of `%s`)", name, r.m.Name)
+	case r.ms.tables[name]:
+		return fmt.Sprintf("the table `%s` (of `%s`)", name, r.m.Name)
+	}
+	if prel := r.p.scopes["Prelude"]; prel != nil && prel.ctors[name] != "" {
+		return fmt.Sprintf("the Prelude constructor `%s` (of `%s`)", name, prel.ctors[name])
+	}
+	for _, x := range r.importNames() {
+		s := r.p.scopes[x]
+		switch {
+		case s == nil:
+		case s.ctors[name] != "" && s.ctors[name] != "Msg":
+			return fmt.Sprintf("the constructor `%s` (of `%s.%s`)", name, x, s.ctors[name])
+		case s.brands[name]:
+			return fmt.Sprintf("the brand `%s` (of `%s`)", name, x)
+		}
+	}
+	return ""
+}
+
+// noSuchRoute reports (E0044) declaration d, written `Route.name`, whose route this module does
+// not declare, with the nearest route's name when one is close.
+func (r *resolver) noSuchRoute(d *syntax.ValueDecl) {
+	msg := fmt.Sprintf("module `%s` has no route `%s`", r.m.Name, d.Route)
+	best, bestD := "", 3
+	var names []string
+	for n := range r.ms.routes {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		if dist := editDistance(strings.ToLower(d.Route), strings.ToLower(n)); dist < bestD {
+			best, bestD = n, dist
+		}
+	}
+	if best != "" {
+		msg += fmt.Sprintf("; did you mean `%s`?", best)
+	}
+	r.bag.Error(diag.RouteName, d.RouteSpan, "%s", msg)
+}
+
+// editDistance is the Levenshtein distance between a and b.
+func editDistance(a, b string) int {
+	prev, cur := make([]int, len(b)+1), make([]int, len(b)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		cur[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev, cur = cur, prev
+	}
+	return prev[len(b)]
+}

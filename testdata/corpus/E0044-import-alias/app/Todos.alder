@@ -1,0 +1,5 @@
+module Todos
+
+import Table.Todo
+
+route Todo = GET "/todos/{id}" { id: Todo.TodoId }

@@ -1,0 +1,13 @@
+module Todos
+
+type Todo = { id: Int, title: Text }
+
+type TodoList = { todos: List Todo }
+
+route Row = GET "/todos/{id}" { id: Int }
+
+Row.load : Row.Params -> Session -> Query Todo
+Row.load params session = Query.succeed { id: params.id, title: "x" }
+
+Row.view : TodoList -> Session -> Html
+Row.view model session = <p>{Text.fromInt (List.length model.todos)}</p>

@@ -558,6 +558,9 @@ func TestBrowser_MissingAndFailed(t *testing.T) {
 		must := mustOf(t)
 		r := must(b.Open("/nope"))
 		wantAnswer(t, r, Answer{Tag: PageMissing})
+		if r.Status != 404 || r.URL != "/nope" { // #160: the step's last response and the URL held
+			t.Errorf("Status %d, URL %q; want 404, /nope", r.Status, r.URL)
+		}
 		if text(t, r.Doc, "h1") != "Not found" || b.URL() != "/nope" {
 			t.Errorf("held %s", html.Render(r.Doc))
 		}
@@ -566,6 +569,9 @@ func TestBrowser_MissingAndFailed(t *testing.T) {
 		}
 		r = must(b.Open("/broken"))
 		wantAnswer(t, r, Answer{Tag: RequestFailed, Text: "kaput"})
+		if r.Status != 500 {
+			t.Errorf("Status %d, want 500", r.Status)
+		}
 		if text(t, r.Doc, "h1") != "Something went wrong" {
 			t.Errorf("held %s", html.Render(r.Doc))
 		}
@@ -596,6 +602,9 @@ func TestBrowser_MissingAndFailed(t *testing.T) {
 		}
 		r = must(b.Click("/_m/Index/Delete?id=" + url.QueryEscape(id)))
 		wantAnswer(t, r, Answer{Tag: PageMissing})
+		if r.Status != 404 { // a Datastar answer's code is its Alder-Status
+			t.Errorf("Status %d after a Datastar 404, want 404", r.Status)
+		}
 		if text(t, r.Doc, "h1") != "Not found" {
 			t.Errorf("held after a Datastar 404: %s", html.Render(r.Doc))
 		}

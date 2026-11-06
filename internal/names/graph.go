@@ -18,6 +18,11 @@ type Program struct {
 	Modules map[string]*syntax.Module
 	Order   []string
 	Pages   map[string]*syntax.PageDecl
+	// routes maps a module to its routes by name (the first of a name; a second is E0044). A
+	// route constructor names its module's route from anywhere without an import (plan call 5),
+	// so references to one add no import edge; its members are values and types of the module,
+	// reached through `import` like any other.
+	routes  map[string]map[string]*syntax.RouteDecl
 	AppMsgs map[string]*syntax.MsgDecl
 	Std     map[string]*syntax.Module
 	scopes  map[string]*moduleScope
@@ -157,7 +162,7 @@ var ReservedModules = []string{"Args", "Cap", "Route"}
 
 func Build(mods []*syntax.Module, std map[string]*syntax.Module) (*Program, *diag.Bag) {
 	bag := &diag.Bag{}
-	p := &Program{Modules: map[string]*syntax.Module{}, Pages: map[string]*syntax.PageDecl{}, AppMsgs: map[string]*syntax.MsgDecl{}, Std: std, scopes: map[string]*moduleScope{},
+	p := &Program{Modules: map[string]*syntax.Module{}, Pages: map[string]*syntax.PageDecl{}, routes: map[string]map[string]*syntax.RouteDecl{}, AppMsgs: map[string]*syntax.MsgDecl{}, Std: std, scopes: map[string]*moduleScope{},
 		stdNamed: map[string]bool{}, quiet: map[string]bool{}}
 	folded := map[string]*syntax.Module{} // by lower-cased name
 	for _, m := range mods {
@@ -195,6 +200,13 @@ func Build(mods []*syntax.Module, std map[string]*syntax.Module) (*Program, *dia
 			switch d := d.(type) {
 			case *syntax.PageDecl:
 				p.Pages[m.Name] = d
+			case *syntax.RouteDecl:
+				if p.routes[m.Name] == nil {
+					p.routes[m.Name] = map[string]*syntax.RouteDecl{}
+				}
+				if _, dup := p.routes[m.Name][d.Name]; !dup {
+					p.routes[m.Name][d.Name] = d
+				}
 			case *syntax.MsgDecl:
 				if m.Name == "App" {
 					p.AppMsgs[d.Name] = d
@@ -321,6 +333,12 @@ func segmentFor(s string) string {
 type ctorOwner struct{ Module, Type string }
 
 func (p *Program) IsPageModule(name string) bool { _, ok := p.Pages[name]; return ok }
+
+// Route is route name of module, the first one declared with that name; nil when there is none.
+func (p *Program) Route(module, name string) *syntax.RouteDecl { return p.routes[module][name] }
+
+// IsRouteModule reports whether module m declares a route.
+func (p *Program) IsRouteModule(m string) bool { return len(p.routes[m]) > 0 }
 
 // topoSort orders modules dependencies-first; reports one E0006 per cycle and still returns every module.
 func (p *Program) topoSort(bag *diag.Bag) []string {

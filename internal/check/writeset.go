@@ -24,7 +24,8 @@
 //     arm whose tables are in two stores is E0031, naming the arm, the tables and their stores;
 //     otherwise its store is recorded (Result.Arms) for Lower's Arm.Store: the silo's, or shared
 //     (also for an arm that writes nothing).
-//  4. A fake's entry is checked the same way (as one arm).
+//  4. A fake's entry is checked the same way (as one arm), and so is a write route's `update`
+//     (`Toggle.update`: one arm, recorded under the route's module with Msg the route's name).
 //
 // Session.put and capability calls are not writes to either store (the cookie; the adapter).
 //
@@ -47,8 +48,8 @@ import (
 
 // ArmStore is one arm of an `update` and the store its Task writes (Result.Arms): Msg is the
 // constructor it matches ("" for the others, or for an update that is not a match on its
-// message), Silo the silo key of the store ("" for the shared store), Span the arm's pattern
-// (the update's declaration for Msg "").
+// message; a write route's name for its `update`), Silo the silo key of the store ("" for the
+// shared store), Span the arm's pattern (the update's declaration for Msg "" and for a route).
 type ArmStore struct {
 	Msg  string
 	Silo string
@@ -105,7 +106,7 @@ func (c *Checker) checkWriteSets() {
 			switch d := d.(type) {
 			case *syntax.ValueDecl:
 				if d.Body != nil {
-					direct[c.key(name, d.Name)] = c.bodyFacts(d.Body)
+					direct[c.key(name, d.FullName())] = c.bodyFacts(d.Body)
 				}
 			case *syntax.FakeDecl:
 				if c.fakes[d.Ref.Name] != d {
@@ -155,15 +156,26 @@ func (c *Checker) checkWriteSets() {
 		if c.prog.Failed[name] {
 			continue
 		}
-		if c.pages[name] == nil && name != "App" {
-			continue
-		}
 		for _, d := range c.live(c.prog.Modules[name]) {
 			vd, ok := d.(*syntax.ValueDecl)
-			if !ok || vd.Name != "update" || vd.Body == nil {
+			if !ok || vd.Name != "update" || vd.Route != "" || vd.Body == nil || c.pages[name] == nil && name != "App" {
 				continue
 			}
 			c.res.Arms[name] = c.updateArms(vd, writesOf)
+		}
+		for _, r := range c.routes[name] {
+			vd := c.routeMembers(c.prog.Modules[name], r.Name)["update"]
+			if !isWrite(r.Method) || vd == nil || vd.Body == nil {
+				continue
+			}
+			st := ArmStore{Msg: r.Name, Span: vd.Span}
+			switch groups := c.storeGroups(writesOf(vd.Body)); {
+			case len(groups) > 1:
+				c.errorf(diag.WriteStores, vd.Span, "%s", c.mixMessage("`"+vd.FullName()+"`", groups))
+			case len(groups) == 1:
+				st.Silo = groups[0].silo
+			}
+			c.res.Arms[name] = append(c.res.Arms[name], st)
 		}
 	}
 	for _, fe := range fakes {

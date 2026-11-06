@@ -111,7 +111,7 @@ func Children(e Expr) []Expr {
 	case *TestClick:
 		return []Expr{x.Params}
 	}
-	return nil // Lit, Var, Hole, HText, EffNotFound, ColumnRef, TableRef, Ord, TestTrace, TestFake, DbScoped, FuzzDerive
+	return nil // Lit, Var, Hole, HText, EffNotFound, ColumnRef, TableRef, Ord, TestTrace, TestRefresh, TestFake, DbScoped, FuzzDerive
 }
 
 func matchChildren(x *Match) []Expr {

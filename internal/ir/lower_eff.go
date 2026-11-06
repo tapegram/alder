@@ -40,7 +40,7 @@ func (l *lowerer) effHead(fn syntax.Expr) *effHead {
 				}
 				return &effHead{name: x.Ref.Module + "." + x.Ref.Name, ft: l.typeOf(x), at: pos(x.Span), pos: posOf(x.Span)}
 			case "Test":
-				if x.Ref.Name == "run" || x.Ref.Name == "trace" { // the queries are ordinary calls
+				if x.Ref.Name == "run" || x.Ref.Name == "trace" || x.Ref.Name == "refresh" { // the queries are ordinary calls
 					return &effHead{name: x.Ref.Module + "." + x.Ref.Name, ft: l.typeOf(x), at: pos(x.Span), pos: posOf(x.Span)}
 				}
 			}
@@ -265,6 +265,8 @@ func (l *lowerer) build(h *effHead, args []Expr, t types.Type) Expr {
 		return &TestRun{Typed: Typed{t}, Task: args[0]}
 	case "Test.trace":
 		return &TestTrace{Typed: Typed{t}}
+	case "Test.refresh":
+		return &TestRefresh{Typed: Typed{t}}
 	case "Db.get":
 		return &DbGet{Typed: Typed{t}, Table: table(0), ID: args[1]}
 	case "Db.from":

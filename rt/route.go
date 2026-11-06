@@ -28,21 +28,26 @@ func RouteKey(r Route) string {
 	return r.Method + " " + MsgKey(r.Path, q)
 }
 
-// AlderEqual is Route's equality (Equaler): two routes are equal when they have the same Method
+// AlderEqual is Route's equality (Equaler): two routes are equal when they have the same Method (empty is GET)
 // and link to the same URL (RouteURL), so a route built with a parameter at its default (left
 // out of the URL) equals the route read back from that URL.
 func (r Route) AlderEqual(other any) bool {
 	o := other.(Route)
-	return r.Method == o.Method && RouteURL(r) == RouteURL(o)
+	return routeMethod(r) == routeMethod(o) && RouteURL(r) == RouteURL(o)
 }
 
 // AlderKey is Route's Dict key (Keyer): its Method and URL, so two routes equal under
-// AlderEqual are one key. A Page (no Method) is keyed by its URL alone.
+// AlderEqual are one key. An empty Method is "GET", so a Page value and Url.external of one URL are one key.
 func (r Route) AlderKey() string {
+	return routeMethod(r) + " " + RouteURL(r)
+}
+
+// routeMethod is r's Method, "GET" when empty: a Page value carries no Method and is a GET.
+func routeMethod(r Route) string {
 	if r.Method == "" {
-		return RouteURL(r)
+		return "GET"
 	}
-	return r.Method + " " + RouteURL(r)
+	return r.Method
 }
 
 // showRoute is r as Alder: its Name applied to its URL ("Todos.Index /todos"), or the bare URL

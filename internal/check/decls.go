@@ -69,7 +69,7 @@ func (c *Checker) declareTypeNames(m *syntax.Module) {
 		case *syntax.FakeDecl:
 			c.declareFake(m, d, dup, &cur)
 		case *syntax.ValueDecl:
-			dup(d.Name, d.Span)
+			dup(d.FullName(), d.Span) // a route's member by its full name: `Index.load` and `Row.load` are two
 		case *syntax.MsgDecl:
 			dup(d.Name, d.Span)
 		case *syntax.TestDecl: // test names are a namespace of their own
@@ -130,7 +130,9 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 		case syntax.RefPage:
 			return types.Page
 		case syntax.RefType:
-			if t.Ref.Module == mc.m.Name || t.Ref.Module == "App" || c.prog.IsPageModule(t.Ref.Module) {
+			// a route's `Row.Params` and `Row.Session` (Ref.Name "Row.Params") are its module's
+			// declared types (defineRoutes), not these
+			if (t.Ref.Module == mc.m.Name || t.Ref.Module == "App" || c.prog.IsPageModule(t.Ref.Module)) && !strings.Contains(t.Ref.Name, ".") {
 				switch t.Name {
 				case "Params":
 					if mc.page != nil && t.Ref.Module == mc.m.Name {
@@ -172,8 +174,15 @@ func (mc *modCtx) typeOf(t syntax.Type, params map[string]bool) types.Type {
 			if t.Ref.Module == "Prelude" && testTypes[name] {
 				mc.testTypeUse(name, t.Span)
 			}
+			if t.Ref.Module == "Prelude" && name == "Html" && len(args) == 0 && c.prog.IsRouteModule(mc.m.Name) {
+				args = []types.Type{types.Route} // plan call 2: a route module's `Html` is `Html Route`
+			}
 			decl, ok := c.types[c.key(t.Ref.Module, name)]
 			if !ok {
+				if r, member, isMember := strings.Cut(name, "."); isMember && c.prog.Route(t.Ref.Module, r) != nil && !c.typesDefined {
+					// a type declaration, resolved before the route's types are known
+					c.errorf(diag.TypeMismatch, t.Span, "`%s.%s` is a route's generated type and cannot be stored in another type; copy the fields you need", r, member)
+				}
 				return types.Err
 			}
 			if n := typeArity(decl); len(args) != n {
@@ -819,50 +828,23 @@ func (mc *modCtx) definePage() {
 	c.pages[mc.m.Name] = info
 	mc.page = info
 	segs := pathParams(pd.Path)
-	declared := map[string]bool{}
-	for _, f := range pd.Params.Fields {
-		ft := mc.typeOf(f.Type, nil)
-		declared[f.Name] = true
-		if !urlRepresentable(ft) {
-			c.errorf(diag.InvalidDecl, f.Span, "page parameter `%s` has type `%s`, which cannot appear in a URL", f.Name, mc.ts(ft))
-		}
-		mc.deferDefault(f, ft)
-		info.Params.Fields = append(info.Params.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
-	}
+	declared := mc.defineParams(pd.Params, info.Params, "page")
 	for _, s := range segs {
 		if !declared[s] {
 			c.errorf(diag.InvalidDecl, pd.Span, "path segment `{%s}` has no matching parameter", s)
 		}
 	}
-	mc.checkWireNames(pd, segs)
+	mc.checkWireNames(pd.Params, segs, "page")
 	if len(pd.Requires) > 0 || pd.Silo != "" {
 		info.Requires = pd.Requires
-		for i, req := range pd.Requires {
-			found := false
-			for _, f := range c.session.Fields {
-				if f.Name == req {
-					found = true
-					if _, ok := maybeOf(f.Type); !ok {
-						c.errorf(diag.InvalidDecl, pd.Span, "`requires %s`: session field `%s` must be a `Maybe`", req, req)
-					}
-				}
-			}
-			if !found {
-				sp := pd.RequiresSpan
-				if i > 0 && i < len(pd.FieldSpans) {
-					sp = pd.FieldSpans[i]
-				}
-				if sp.File == "" {
-					sp = pd.Span
-				}
-				c.errorf(diag.InvalidDecl, sp, "`requires %s`: the session has no field `%s`", req, req)
-			}
-		}
-		info.Session = narrow(c.session, mc.checkRequiresM15(pd, info), mc.m.Name)
+		mc.checkRequires(&pd.Guard, pd.Span)
+		fields, silo := mc.checkRequiresM15(&pd.Guard, info.Params, "page")
+		info.Silo = silo
+		info.Session = narrow(c.session, fields, mc.m.Name, "Session")
 		mc.session = info.Session
 	}
 	if len(pd.Roles) > 0 {
-		mc.checkRoles(pd, info)
+		info.Roles = mc.checkRoles(&pd.Guard)
 	}
 	for _, d := range c.live(mc.m) {
 		if md, ok := d.(*syntax.MsgDecl); ok {
@@ -874,27 +856,63 @@ func (mc *modCtx) definePage() {
 		"Params": "the page's parameters", "Msg": "the page's messages", "Session": "the page's session"})
 }
 
+// defineParams fills rec with the fields of params, the `{ … }` of a page or route (noun), and
+// returns the names declared.
+func (mc *modCtx) defineParams(params *syntax.RecordType, rec *types.Record, noun string) map[string]bool {
+	c := mc.c
+	declared := map[string]bool{}
+	if params == nil {
+		return declared
+	}
+	for _, f := range params.Fields {
+		ft := mc.typeOf(f.Type, nil)
+		declared[f.Name] = true
+		if !urlRepresentable(ft) {
+			c.errorf(diag.InvalidDecl, f.Span, "%s parameter `%s` has type `%s`, which cannot appear in a URL", noun, f.Name, mc.ts(ft))
+		}
+		mc.deferDefault(f, ft)
+		rec.Fields = append(rec.Fields, types.Field{Name: f.Name, Type: ft, HasDefault: f.Default != nil})
+	}
+	return declared
+}
+
+// checkRequires checks that each field of g's `requires` is a `Maybe` field of App's session;
+// at is the declaration's span, for a field without a span of its own.
+func (mc *modCtx) checkRequires(g *syntax.Guard, at diag.Span) {
+	c := mc.c
+	for i, req := range g.Requires {
+		found := false
+		for _, f := range c.session.Fields {
+			if f.Name == req {
+				found = true
+				if _, ok := maybeOf(f.Type); !ok {
+					c.errorf(diag.InvalidDecl, at, "`requires %s`: session field `%s` must be a `Maybe`", req, req)
+				}
+			}
+		}
+		if !found {
+			sp := g.RequiresSpan
+			if i > 0 && i < len(g.FieldSpans) {
+				sp = g.FieldSpans[i]
+			}
+			if sp.File == "" {
+				sp = at
+			}
+			c.errorf(diag.InvalidDecl, sp, "`requires %s`: the session has no field `%s`", req, req)
+		}
+	}
+}
+
 // viewReturnsFile reports whether a page module's declared `view` returns File. It reads the
 // signature's syntax, so every module knows it before bodies are checked; `File` is a
 // reserved Prelude name (E0012), so the name decides.
 func viewReturnsFile(decls []syntax.Decl) bool {
 	for _, d := range decls {
 		vd, ok := d.(*syntax.ValueDecl)
-		if !ok || vd.Name != "view" || vd.Sig == nil {
+		if !ok || vd.Name != "view" || vd.Route != "" || vd.Sig == nil {
 			continue
 		}
-		t := vd.Sig
-		for {
-			ft, ok := t.(*syntax.FunType)
-			if !ok {
-				break
-			}
-			t = ft.Result
-		}
-		tn, ok := t.(*syntax.TypeName)
-		// the written module: the stdlib's Prelude is written by its name (a stdlib module's
-		// qualifier is its name), and an unqualified `File` is the Prelude's unless declared here
-		return ok && tn.Name == "File" && (tn.Module == "" || tn.Module == "Prelude") && len(tn.Args) == 0
+		return sigReturnsFile(vd)
 	}
 	return false
 }
@@ -925,7 +943,9 @@ func (mc *modCtx) reserveGenerated(where string, fixed map[string]string) {
 		case *syntax.FormDecl:
 			name = d.Name
 		case *syntax.ValueDecl: // a component: a capitalized value
-			name = d.Name
+			if d.Route == "" {
+				name = d.Name
+			}
 		}
 		if what, ok := reserved[name]; ok && name != "" {
 			c.errorf(ReservedName, d.GetSpan(), "`%s` is reserved in %s (generated for %s); rename it", name, where, what)
@@ -942,7 +962,7 @@ func (mc *modCtx) reserveGenerated(where string, fixed map[string]string) {
 var preludeReserved = map[string]bool{
 	"Query": true, "Task": true, "Html": true, "Maybe": true, "Result": true, "Nav": true,
 	"List": true, "Dict": true, "Int": true, "Float": true, "Text": true, "Bool": true,
-	"Unit": true, "Date": true, "Time": true, "Never": true, "Error": true, "Doc": true, "Answer": true, "File": true, "Bytes": true,
+	"Unit": true, "Date": true, "Time": true, "Never": true, "Error": true, "Doc": true, "Answer": true, "File": true, "Bytes": true, "Route": true, "Response": true,
 }
 
 // reservePrelude reports E0012 for a type, table, form or union of an app module that takes a
@@ -1077,24 +1097,44 @@ func lineOf(m *syntax.Module, line int) string {
 
 // checkPagePaths reports E0016 for a page whose path answers the same requests as an earlier
 // page's (in module order): the same segments, with any parameter names, ignoring a trailing
-// slash, as rt/web matches them.
+// slash, as rt/web matches them. A route answers its method at its path: two routes that answer
+// one method and path are E0043, a GET route and a page that answer one path E0016; routes that
+// differ in method may share a path.
 func (c *Checker) checkPagePaths() {
-	seen := map[string]string{}
+	type answer struct {
+		name  string
+		route bool
+	}
+	seen := map[string]answer{} // method and path shape → its first page or route
 	for _, name := range c.prog.Order {
-		pd := c.prog.Pages[name]
-		if pd == nil || !c.prog.IsPageModule(name) {
-			continue
+		if pd := c.prog.Pages[name]; pd != nil && c.prog.IsPageModule(name) {
+			if why := PagePathProblem(pd.Path); why != "" {
+				c.errorf(diag.PagePath, pd.Span, "page path `%s` %s; %s", pd.Path, why, PagePathRule)
+			} else if first, ok := seen["GET "+pathShape(pd.Path)]; ok {
+				if first.route {
+					c.errorf(diag.DuplicatePage, pd.Span, "page `%s` and route `%s` both answer `%s`; give one of them another path", name, first.name, pd.Path)
+				} else {
+					c.errorf(diag.DuplicatePage, pd.Span, "pages `%s` and `%s` both answer `%s`; give one of them another path", first.name, name, pd.Path)
+				}
+			} else {
+				seen["GET "+pathShape(pd.Path)] = answer{name, false}
+			}
 		}
-		if why := PagePathProblem(pd.Path); why != "" {
-			c.errorf(diag.PagePath, pd.Span, "page path `%s` %s; %s", pd.Path, why, PagePathRule)
-			continue
+		for _, r := range c.routes[name] {
+			d, full := r.Decl, name+"."+r.Name
+			k := r.Method + " " + pathShape(r.Path)
+			first, dup := seen[k]
+			switch why := PagePathProblem(r.Path); {
+			case why != "":
+				c.errorf(diag.PagePath, d.Span, "route path `%s` %s; %s", r.Path, why, PagePathRule)
+			case dup && first.route:
+				c.errorf(diag.RouteDecl, d.Span, "routes `%s` and `%s` both answer `%s %s`; give one of them another path or method", first.name, full, r.Method, r.Path)
+			case dup:
+				c.errorf(diag.DuplicatePage, d.Span, "page `%s` and route `%s` both answer `%s`; give one of them another path", first.name, full, r.Path)
+			default:
+				seen[k] = answer{full, true}
+			}
 		}
-		shape := pathShape(pd.Path)
-		if first, ok := seen[shape]; ok {
-			c.errorf(diag.DuplicatePage, pd.Span, "pages `%s` and `%s` both answer `%s`; give one of them another path", first, name, pd.Path)
-			continue
-		}
-		seen[shape] = name
 	}
 }
 
@@ -1149,36 +1189,39 @@ func PagePathProblem(path string) string {
 	return ""
 }
 
-// checkWireNames checks the wire names of page pd's parameters (`e: Text = "" as "ElectionId"`,
-// #55): only a query parameter (not a `{segment}` of path segments segs) takes one, it is a
-// plain query key outside the message URLs' `_p.` keys, and no two query parameters read one
-// key (a parameter without a wire name reads its name).
-func (mc *modCtx) checkWireNames(pd *syntax.PageDecl, segs []string) {
+// checkWireNames checks the wire names of params, the parameters of a page or route (noun)
+// (`e: Text = "" as "ElectionId"`, #55): only a query parameter (not a `{segment}` of path
+// segments segs) takes one, it is a plain query key outside the message URLs' `_p.` keys, and no
+// two query parameters read one key (a parameter without a wire name reads its name).
+func (mc *modCtx) checkWireNames(params *syntax.RecordType, segs []string, noun string) {
 	c := mc.c
 	inPath := map[string]bool{}
 	for _, s := range segs {
 		inPath[s] = true
 	}
 	keys := map[string]string{} // query key → the parameter reading it
-	for _, f := range pd.Params.Fields {
+	if params == nil {
+		return
+	}
+	for _, f := range params.Fields {
 		if f.Wire != "" || f.WireSpan.File != "" {
 			sp := f.WireSpan
 			switch {
 			case inPath[f.Name]:
-				c.errorf(diag.InvalidDecl, sp, "page parameter `%s` is the path segment `{%s}`, not a query parameter: only a query parameter takes a wire name (`as %q`)", f.Name, f.Name, f.Wire)
+				c.errorf(diag.InvalidDecl, sp, "%s parameter `%s` is the path segment `{%s}`, not a query parameter: only a query parameter takes a wire name (`as %q`)", noun, f.Name, f.Name, f.Wire)
 				continue
 			case f.Wire == "":
-				c.errorf(diag.InvalidDecl, sp, "the wire name of page parameter `%s` is empty: write the query key the URL carries (`as \"Id\"`), or leave the `as` out", f.Name)
+				c.errorf(diag.InvalidDecl, sp, "the wire name of %s parameter `%s` is empty: write the query key the URL carries (`as \"Id\"`), or leave the `as` out", noun, f.Name)
 				continue
 			case !plainQueryKey(f.Wire):
-				c.errorf(diag.InvalidDecl, sp, "the wire name `%s` of page parameter `%s` is not a plain query key: use letters, digits, `-`, `_`, `.` and `~`", f.Wire, f.Name)
+				c.errorf(diag.InvalidDecl, sp, "the wire name `%s` of %s parameter `%s` is not a plain query key: use letters, digits, `-`, `_`, `.` and `~`", f.Wire, noun, f.Name)
 				continue
 			case strings.HasPrefix(f.Wire, "_p."):
-				c.errorf(diag.InvalidDecl, sp, "the wire name `%s` of page parameter `%s` starts with `_p.`, which Alder keeps for message URLs (they carry the page's parameters as `_p.<key>`)", f.Wire, f.Name)
+				c.errorf(diag.InvalidDecl, sp, "the wire name `%s` of %s parameter `%s` starts with `_p.`, which Alder keeps for message URLs (they carry the page's parameters as `_p.<key>`)", f.Wire, noun, f.Name)
 				continue
 			case inPath[f.Wire]:
 				// message URLs carry path parameters as `_p.<name>` too: the two would share a key
-				c.errorf(diag.InvalidDecl, sp, "the wire name `%s` of page parameter `%s` is the path segment `{%s}`: give `%s` another wire name", f.Wire, f.Name, f.Wire, f.Name)
+				c.errorf(diag.InvalidDecl, sp, "the wire name `%s` of %s parameter `%s` is the path segment `{%s}`: give `%s` another wire name", f.Wire, noun, f.Name, f.Wire, f.Name)
 				continue
 			}
 		}
@@ -1190,7 +1233,7 @@ func (mc *modCtx) checkWireNames(pd *syntax.PageDecl, segs []string) {
 			key, sp = f.Wire, f.WireSpan
 		}
 		if prev, ok := keys[key]; ok {
-			c.errorf(diag.InvalidDecl, sp, "page parameters `%s` and `%s` both read the query key `%s`: give one of them another wire name (`as \"…\"`)", prev, f.Name, key)
+			c.errorf(diag.InvalidDecl, sp, "%s parameters `%s` and `%s` both read the query key `%s`: give one of them another wire name (`as \"…\"`)", noun, prev, f.Name, key)
 			continue
 		}
 		keys[key] = f.Name
@@ -1290,7 +1333,7 @@ func (mc *modCtx) declareValues() {
 		if !ok {
 			continue
 		}
-		has[vd.Name] = true
+		has[vd.FullName()] = true
 		if vd.Sig == nil {
 			if c.prog.Failed[mc.m.Name] && c.prog.Std[mc.m.Name] == nil && !mc.infersTopLevel() {
 				mc.missingSig(vd, "?type") // bodies of this module are not checked, so nothing is inferred
@@ -1298,8 +1341,10 @@ func (mc *modCtx) declareValues() {
 			continue
 		}
 		params := map[string]bool{}
-		mc.value = vd.Name // a test type in the signature makes the value a test helper
-		c.values[c.key(mc.m.Name, vd.Name)] = mc.typeOf(vd.Sig, params)
+		mc.value = vd.FullName() // a test type in the signature makes the value a test helper
+		restore := mc.enterMember(vd)
+		c.values[c.key(mc.m.Name, mc.value)] = mc.typeOf(vd.Sig, params)
+		restore()
 		mc.value = ""
 	}
 	if !mc.isApp && c.prog.Std[mc.m.Name] == nil {

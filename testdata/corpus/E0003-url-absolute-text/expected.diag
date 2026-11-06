@@ -1,1 +1,1 @@
-app/Index.alder:11:39 E0003 expected Page, got Text
+app/Index.alder:11:39 E0003 expected Route, got Text

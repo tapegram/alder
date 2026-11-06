@@ -1011,6 +1011,10 @@ type TestFake struct {
 // TestTrace is `Test.trace`: a Task (List Text) of the enclosing test's steps so far.
 type TestTrace struct{ Typed }
 
+// TestRefresh is `Test.refresh`: a step's result (as Test.open's) of GETting the URL the
+// browser holds. Its runtime is #160 PR 4: the step fails (rtesting.Refresh).
+type TestRefresh struct{ Typed }
+
 // The browser steps of a test (module Test's special forms): each is a Task of the step's result
 // record (its type), made by the test's browser (rtesting.BrowserOf) against the app's routes.
 

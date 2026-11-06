@@ -1,0 +1,8 @@
+module Todos
+
+type Todo = { id: Int, title: Text }
+
+route Row = GET "/todos/{id}" { id: Int }
+
+Row.load : Row.Params -> Session -> Query Todo
+Row.load params session = Query.succeed { id: params.id, title: "x" }

@@ -1,0 +1,2 @@
+app/Todos.alder:15:62 E0045 `Response.redirect` shows a GET route; `Poke` is POST
+app/Todos.alder:18:61 E0045 `Response.render` shows a GET route; `Poke` is POST

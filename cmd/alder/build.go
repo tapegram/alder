@@ -142,6 +142,10 @@ func buildTo(dir string, emit bool, out string, stdout, stderr io.Writer) (writt
 		return "", 1
 	}
 
+	if err := ir.Lowerable(prog); err != nil {
+		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder build:"), err)
+		return "", 1
+	}
 	p := ir.Lower(prog, res)
 	name := filepath.Base(abs)
 	adapters := filepath.Join(dir, "adapters")

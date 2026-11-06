@@ -22,6 +22,7 @@ const (
 	RefComponent          // capitalized function used as element
 	RefCapability         // capability module (Password.verify)
 	RefStd                // standard library value
+	RefRoute              // route constructor: `Row { id }`, `Todos.Row { id }` (Module "Todos", Name "Row")
 )
 
 type Ref struct {
@@ -62,11 +63,24 @@ type Decl interface{ GetSpan() diag.Span }
 
 type ValueDecl struct {
 	Node
-	Name   string
-	Sig    Type // nil only in stdlib signature files (body nil) or when missing (E0007)
-	Params []*Ident
-	Body   Expr // nil in stdlib signature files
+	// Route is the route a qualified declaration belongs to: `Index.load` has Route "Index" and
+	// Name "load"; "" for an unqualified declaration. RouteSpan is the `Index` part.
+	Route     string
+	RouteSpan diag.Span
+	Name      string
+	Sig       Type // nil only in stdlib signature files (body nil) or when missing (E0007)
+	Params    []*Ident
+	Body      Expr // nil in stdlib signature files
 }
+
+// FullName is the declaration's name as written: "Index.load", or Name when Route is "".
+func (d *ValueDecl) FullName() string {
+	if d.Route == "" {
+		return d.Name
+	}
+	return d.Route + "." + d.Name
+}
+
 type Ident struct {
 	Node
 	Name string
@@ -114,6 +128,11 @@ type PageDecl struct {
 	Node
 	Path   string
 	Params *RecordType
+	Guard
+}
+
+// Guard is the `requires` clause shared by a page and a route.
+type Guard struct {
 	// Requires are the session fields of `requires user, org` (["user", "org"]), nil for none.
 	// RequiresSpan is the `requires field` clause of the first; FieldSpans has each field's
 	// name (FieldSpans[0] is RequiresSpan), parallel to Requires.
@@ -128,6 +147,21 @@ type PageDecl struct {
 	// reads `session.org` from its parameter `org`, "" for none; SiloSpan is the clause.
 	Silo     string
 	SiloSpan diag.Span
+}
+
+// RouteDecl is `route NAME = METHOD "path" { params } [form F] [requires …]`. The parser takes
+// `form` after any method; the checker limits it to write routes.
+type RouteDecl struct {
+	Node
+	Name       string
+	NameSpan   diag.Span
+	Method     string // GET | POST | PUT | PATCH | DELETE
+	MethodSpan diag.Span
+	Path       string
+	Params     *RecordType
+	Form       string // "" = no form
+	FormSpan   diag.Span
+	Guard
 }
 
 // SiloDecl is `silo org { Project, Task }` in App (M15): the tables stored in one database per

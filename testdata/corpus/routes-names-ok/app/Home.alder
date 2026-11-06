@@ -1,0 +1,4 @@
+module Home
+
+link : Html a
+link = <a href={Todos.Row { id: 1 }}>first</a>

@@ -113,7 +113,7 @@ func (mc *modCtx) requireSig(name string, want types.Type, sig, msg string) {
 	c := mc.c
 	for _, d := range c.live(mc.m) {
 		vd, ok := d.(*syntax.ValueDecl)
-		if !ok || vd.Name != name || vd.Sig == nil {
+		if !ok || vd.Name != name || vd.Route != "" || vd.Sig == nil {
 			continue
 		}
 		got, ok := c.values[c.key(mc.m.Name, name)]
@@ -148,7 +148,9 @@ func (mc *modCtx) checkApp() {
 	for _, d := range c.live(mc.m) {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
-			has[d.Name] = d
+			if d.Route == "" {
+				has[d.Name] = d
+			}
 		case *syntax.LoginDecl:
 			hasLogin = true
 		case *syntax.SessionDecl:
@@ -177,20 +179,27 @@ func (mc *modCtx) checkApp() {
 	if has["update"] != nil {
 		mc.requireSig("update", &types.Fun{Params: []types.Type{c.appMsg, c.session}, Result: &types.App{Con: "Task", Args: []types.Type{c.navType()}}}, "Msg -> Session -> Task Nav", "`update` must have type `Msg -> Session -> Task Nav`")
 	}
-	anyRequires := false
+	anyRequires := ""
 	for name, p := range c.pages {
 		if c.prog.Failed[name] {
 			continue
 		}
 		if len(p.Requires) > 0 {
-			anyRequires = true
+			anyRequires = "a page"
 		}
 	}
-	if anyRequires && !hasLogin {
-		c.errorf(diag.MissingDecl, mc.m.Span, "a page uses `requires`, but `App` has no `login`")
+	for name, rs := range c.routes {
+		for _, r := range rs {
+			if anyRequires == "" && !c.prog.Failed[name] && len(r.Requires) > 0 {
+				anyRequires = "a route"
+			}
+		}
 	}
-	if anyRequires && !hasSession {
-		c.errorf(diag.MissingDecl, mc.m.Span, "a page uses `requires`, but `App` has no `session`")
+	if anyRequires != "" && !hasLogin {
+		c.errorf(diag.MissingDecl, mc.m.Span, "%s uses `requires`, but `App` has no `login`", anyRequires)
+	}
+	if anyRequires != "" && !hasSession {
+		c.errorf(diag.MissingDecl, mc.m.Span, "%s uses `requires`, but `App` has no `session`", anyRequires)
 	}
 	if c.usesSessionPut && !hasSession {
 		c.errorf(diag.MissingDecl, mc.m.Span, "`Session.put` is used, but `App` has no `session`")

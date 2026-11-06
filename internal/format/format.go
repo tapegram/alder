@@ -46,7 +46,16 @@ func samePrograms(file string, m *syntax.Module, out []byte) bool {
 	if len(diags) > 0 {
 		return false
 	}
-	return programDump(m) == programDump(m2) && slices.Equal(commentTexts(m), commentTexts(m2))
+	if programDump(m) != programDump(m2) {
+		return false
+	}
+	want, got := commentTexts(m), commentTexts(m2)
+	if !slices.Equal(groupRoutes(m.Decls), m.Decls) {
+		// route lines moved, and their comments with them: only the order of comments changes
+		slices.Sort(want)
+		slices.Sort(got)
+	}
+	return slices.Equal(want, got)
 }
 
 // programDump is the module's Dump with its imports sorted and de-duplicated: the formatter
@@ -54,6 +63,7 @@ func samePrograms(file string, m *syntax.Module, out []byte) bool {
 func programDump(m *syntax.Module) string {
 	c := *m
 	c.Imports = sortedImports(m.Imports)
+	c.Decls = groupRoutes(m.Decls)
 	return syntax.Dump(&c)
 }
 

@@ -595,6 +595,8 @@ func (d *dumper) expr(e Expr) *sx {
 		return list(1, atom("test-run"), d.expr(x.Task))
 	case *TestTrace:
 		return atoms("test-trace")
+	case *TestRefresh:
+		return atoms("test-refresh")
 	case *TestFake:
 		return atoms("test-fake", x.Fake.Capability.Module+"."+x.Fake.Capability.Name)
 	case *TestEq:

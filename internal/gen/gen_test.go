@@ -597,7 +597,7 @@ func TestGoType(t *testing.T) {
 		{types.Unit, "struct{}"},
 		{types.Date, "rt.Date"},
 		{types.Time, "time.Time"},
-		{types.Page, "rt.Page"},
+		{types.Page, "rt.Route"}, // Page is Route until PR 9 of #160
 		{types.Bytes, "[]byte"},
 		{types.File, "rt.File"},
 		{list(maybe(types.Int)), "[]rt.Maybe[int64]"},
@@ -3514,7 +3514,7 @@ func check(t *testing.T, name string, set []int, want int64) {
 	if got := Deep__pick(row(set...)); got != want {
 		t.Errorf("pick %s %v = %d, want %d", name, set, got, want)
 	}
-	got, err := eff.Run(&eff.Env{}, eff.KTask, Deep__route(hops(set...)))
+	got, err := eff.Run(&eff.Env{}, eff.KTask, Deep__hop(hops(set...)))
 	switch {
 	case want == 0 && err != eff.ErrNotFound:
 		t.Errorf("route %s %v = %d, %v, want not found", name, set, got, err)
@@ -3939,4 +3939,25 @@ func TestProbe(t *testing.T) {
 	}
 }
 `)
+}
+
+// The Response builders and Url.external emit calls of rt/std's wrappers, and the program vets
+// (their Go signatures are the types gen emits): `Response.redirect (Url.external "/x") |>
+// Response.success "ok"` is a Response with one success toast.
+func TestGen_ResponseBuilders(t *testing.T) {
+	files := emitSource(t, map[string]string{
+		"App.alder": "module App\n\nerror : Error -> Html Never\nerror err = <html><body></body></html>\n\nnotFound : Html Never\nnotFound = <html><body></body></html>\n",
+		"R.alder": "module R\n\n" +
+			"done : Response\ndone = Response.redirect (Url.external \"/x\") |> Response.success \"ok\"\n\n" +
+			"again : Response\nagain = Response.refresh |> Response.toast \"a\" |> Response.warning \"b\" |> Response.error \"c\"\n\n" +
+			"shown : Route -> Response\nshown r = Response.render r\n\n" +
+			"bad : Response\nbad = Response.invalid \"no\"\n",
+	})
+	contains(t, files["R_alder.go"],
+		`std.ResponseSuccess("ok", std.ResponseRedirect(std.UrlExternal("/x")))`,
+		`std.ResponseError("c", std.ResponseWarning("b", std.ResponseToast("a", std.ResponseRefresh())))`,
+		"func R__shown(r rt.Route) rt.Response {",
+		`std.ResponseInvalid("no")`,
+	)
+	vet(t, files)
 }

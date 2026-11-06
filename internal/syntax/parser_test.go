@@ -663,3 +663,97 @@ func TestParse_ThreeDotListRest(t *testing.T) {
 		t.Errorf("two dots: %+v", diags)
 	}
 }
+
+func TestParse_RouteEachMethod(t *testing.T) {
+	for _, method := range []string{"GET", "POST", "PUT", "PATCH", "DELETE"} {
+		src := "module M\n\nroute R = " + method + " \"/r/{id}\" { id: Int } form F requires user, role A | B\n"
+		m, diags := ParseFile("m.alder", []byte(src))
+		if len(diags) != 0 {
+			t.Fatalf("%s: %v", method, diags)
+		}
+		d, ok := m.Decls[0].(*RouteDecl)
+		if !ok {
+			t.Fatalf("%s: decl is %T", method, m.Decls[0])
+		}
+		if d.Name != "R" || d.Method != method || d.Path != "/r/{id}" || d.Form != "F" {
+			t.Errorf("%s: %+v", method, d)
+		}
+		if d.Params == nil || len(d.Params.Fields) != 1 {
+			t.Errorf("%s: params %+v", method, d.Params)
+		}
+		if len(d.Requires) != 1 || d.Requires[0] != "user" || len(d.Roles) != 2 {
+			t.Errorf("%s: guard %+v", method, d.Guard)
+		}
+		if d.NameSpan.Start.Col != 7 || d.MethodSpan.Start.Col != 11 || d.FormSpan.Start.Col == 0 {
+			t.Errorf("%s: spans name %+v method %+v form %+v", method, d.NameSpan, d.MethodSpan, d.FormSpan)
+		}
+	}
+}
+
+func TestParse_RouteForm(t *testing.T) {
+	m, diags := ParseFile("m.alder", []byte("module M\n\nroute Create = POST \"/todos\" { } form NewTodo requires user\nroute Index = GET \"/\" { }\n"))
+	if len(diags) != 0 {
+		t.Fatal(diags)
+	}
+	d := m.Decls[0].(*RouteDecl)
+	if d.Form != "NewTodo" || len(d.Requires) != 1 || d.Requires[0] != "user" {
+		t.Errorf("%+v", d)
+	}
+	if got := Dump(m); !strings.Contains(got, `(route Create POST "/todos" {} form NewTodo requires user)`) || !strings.Contains(got, `(route Index GET "/" {})`) {
+		t.Errorf("dump %s", got)
+	}
+	// a route name is not a keyword elsewhere: `route` mid-line is an ordinary name
+	_, diags = ParseFile("m.alder", []byte("module M\n\nf : Int -> Int\nf route = route\n"))
+	if len(diags) != 0 {
+		t.Errorf("route as a name: %v", diags)
+	}
+}
+
+func TestParse_RouteBadMethod(t *testing.T) {
+	for _, m := range []string{"get", "FETCH"} {
+		_, diags := ParseFile("m.alder", []byte("module M\n\nroute R = "+m+" \"/\" { }\n"))
+		if len(diags) == 0 || !strings.Contains(diags[0].Message, "expected GET, POST, PUT, PATCH or DELETE") {
+			t.Errorf("%s: %v", m, diags)
+		}
+	}
+}
+
+func TestParse_QualifiedDecl(t *testing.T) {
+	src := "module M\n\nIndex.load : Index.Params -> Session -> Query Int\nIndex.load params session = 1\n"
+	m, diags := ParseFile("m.alder", []byte(src))
+	if len(diags) != 0 {
+		t.Fatal(diags)
+	}
+	d := m.Decls[0].(*ValueDecl)
+	if d.Route != "Index" || d.Name != "load" || d.FullName() != "Index.load" || d.RouteSpan.Start.Col != 1 || d.RouteSpan.End.Col != 6 {
+		t.Errorf("%+v", d)
+	}
+	if len(d.Params) != 2 || d.Sig == nil {
+		t.Errorf("params %v sig %v", d.Params, d.Sig)
+	}
+	if got := Dump(m); !strings.Contains(got, "(val Index.load : ") {
+		t.Errorf("dump %s", got)
+	}
+	if (&ValueDecl{Name: "f"}).FullName() != "f" {
+		t.Error("FullName without a route")
+	}
+}
+
+func TestParse_QualifiedDeclMismatch(t *testing.T) {
+	src := "module M\n\nIndex.load : Int\nRow.load = 1\n"
+	_, diags := ParseFile("m.alder", []byte(src))
+	if len(diags) == 0 || !strings.Contains(diags[0].Message, "expected definition of `Index.load` after its signature") {
+		t.Errorf("%v", diags)
+	}
+}
+
+// A route line with a bad method returns early; its Params is an empty record, never nil, so
+// Dump (and every other consumer) does not dereference nil.
+func TestParse_RouteBadMethodParams(t *testing.T) {
+	m, _ := ParseFile("m.alder", []byte("module M\n\nroute R = get \"/x\" { }\n"))
+	d, ok := m.Decls[0].(*RouteDecl)
+	if !ok || d.Params == nil {
+		t.Fatalf("decl %#v", m.Decls[0])
+	}
+	_ = Dump(m) // must not panic
+}

@@ -1,0 +1,23 @@
+module Todos
+
+import Layout
+import Table.Todo
+
+route Index  = GET    "/"                  { filter: Todo.Filter = All } requires user
+route Row    = GET    "/todos/{id}"        { id: Todo.TodoId }           requires user
+-- flips the done flag
+route Toggle = PATCH  "/todos/{id}/toggle" { id: Todo.TodoId }           requires user
+route Create = POST   "/todos"             { } form NewTodo              requires user
+route Delete = DELETE "/todos/{id}"        { id: Todo.TodoId }           requires user -- gone for good
+route Export = GET    "/export.csv"        { }                           requires user
+route Open   = GET    "/open"              { }
+
+type TodoList = { filter: Todo.Filter, todos: List Todo }
+
+Index.load : Index.Params -> Session -> Query TodoList
+Index.load params session = Query.succeed { filter: params.filter, todos: [] }
+
+Row.load params session = Query.succeed 1
+
+helper : Int -> Int
+helper n = n

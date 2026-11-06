@@ -305,7 +305,7 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 	case *ir.EffPure, *ir.EffBind, *ir.EffMap, *ir.EffAll, *ir.EffFail, *ir.EffNotFound, *ir.EffRedirect, *ir.CapCall,
 		*ir.DbGet, *ir.DbSelect, *ir.DbRun, *ir.DbInsert, *ir.DbUpdate, *ir.DbDelete,
 		*ir.DbScoped, *ir.DbGetScoped, *ir.DbUpdateScoped, *ir.DbDeleteScoped, *ir.DbInsertScoped,
-		*ir.ColumnRef, *ir.TableRef, *ir.Cond, *ir.Ord, *ir.TestRun, *ir.TestTrace, *ir.TestFake,
+		*ir.ColumnRef, *ir.TableRef, *ir.Cond, *ir.Ord, *ir.TestRun, *ir.TestTrace, *ir.TestRefresh, *ir.TestFake,
 		*ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick:
 		return f.effect(e, s), precAtom // effects.go
 	case *ir.FuzzDerive:
@@ -597,10 +597,10 @@ func (f *fn) ctor(x *ir.Ctor, s *scope) string {
 			return "rt.Redirect(" + inner() + ")"
 		case "Reject":
 			return "rt.Reject(" + inner() + ")"
-		case "Shown", "Rerendered", "PageMissing":
+		case "Shown", "Rerendered", "Refreshed", "PageMissing":
 			return "rtesting.Answer{Tag: rtesting." + x.Name + "}"
-		case "Redirected":
-			return "rtesting.Answer{Tag: rtesting.Redirected, Page: " + inner() + "}"
+		case "Redirected", "Rendered":
+			return "rtesting.Answer{Tag: rtesting." + x.Name + ", Page: " + inner() + "}"
 		case "FormRejected":
 			return "rtesting.FormRejectedAnswer(" + inner() + ")"
 		case "RequestFailed":

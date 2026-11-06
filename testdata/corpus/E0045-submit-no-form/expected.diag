@@ -1,0 +1,2 @@
+app/Todos.alder:17:24 E0045 `Test.submit` posts a route's form; `Delete` has no `form`: use `Test.click (Delete { id: … })`
+app/Todos.alder:18:25 E0045 `Test.submit` posts a route's form; `Delete` has no `form`: use `Test.click (Delete { id: … })`

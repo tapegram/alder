@@ -577,3 +577,22 @@ func TestBuild_DefaultBuildDir(t *testing.T) {
 		t.Errorf("no executable: %v", err)
 	}
 }
+
+// TestBuild_RoutesNotBuilt: until #160 PR 3 a route program checks, while `alder build` and
+// `alder dump` (anything that lowers it) stop with one line and exit 1.
+func TestBuild_RoutesNotBuilt(t *testing.T) {
+	t.Parallel()
+	const app = "../../testdata/corpus/routes-ok"
+	var out, errb bytes.Buffer
+	if code := runCheckTo([]string{app}, &out, &errb); code != 0 {
+		t.Fatalf("alder check: code %d\n%s%s", code, out.String(), errb.String())
+	}
+	code, stdout, stderr := runBuild(t, app)
+	if code != 1 || stdout != "" || stderr != "alder build: routes are not built yet (#160 PR 3)\n" {
+		t.Fatalf("alder build: code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	code, stdout, stderr = runDump("--ir", app)
+	if code != 1 || stdout != "" || stderr != "alder dump: routes are not built yet (#160 PR 3)\n" {
+		t.Fatalf("alder dump: code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+}

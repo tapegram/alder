@@ -1,0 +1,1 @@
+app/Todos.alder:5:27 E0043 route `Index` is a GET route, which has no form to post: `form NewTodo` is for a write route (POST, PUT, PATCH or DELETE)

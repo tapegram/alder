@@ -123,11 +123,11 @@ func TextToFloat(s string) rt.Maybe[float64] {
 // (rt.SafeURL); anything else —
 // javascript:, data:, other schemes, protocol-relative or whitespace-prefixed URLs — becomes
 // "#", a link and a redirect that go nowhere.
-func UrlExternal(u string) rt.Page {
+func UrlExternal(u string) rt.Route {
 	if !rt.SafeURL(u) {
-		return rt.Page{Path: "#"}
+		return rt.Route{Method: "GET", Path: "#"}
 	}
-	return rt.Page{Path: u}
+	return rt.Route{Method: "GET", Path: u}
 }
 
 // UrlAbsolute is `Url.absolute`: the page's URL (rt.PageURL, what `href` renders) with the

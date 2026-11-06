@@ -88,9 +88,13 @@ var (
 	Time  = &Con{Name: "Time"}
 	Never = &Con{Name: "Never"}
 	Error = &Con{Name: "Error"}
-	Page  = &Con{Name: "Page"}
-	File  = &Con{Name: "File"}
-	Bytes = &Con{Name: "Bytes"}
+	Route = &Con{Name: "Route"}
+	// Page is Route until PR 9 of #160 removes `page`: one canonical type, so a page value and a
+	// route value are the same type (the Prelude's `Page` names it too, see declareStd)
+	Page     = Route
+	Response = &Con{Name: "Response"}
+	File     = &Con{Name: "File"}
+	Bytes    = &Con{Name: "Bytes"}
 )
 
 // Err is the poison type: the type of a reference that could not be resolved. An error has
