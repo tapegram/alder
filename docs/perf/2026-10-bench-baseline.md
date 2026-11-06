@@ -168,7 +168,7 @@ Before (main b6e880ca):
 (The old fixture has no delete; the PR 3 hand-over measured one on a temporary copy: `delete 1000`,
 Rerender after a toggle, page 967.8 kB, 10.90 ms, 963.1 kB, 23.71 MB / 159.6k, req 1, loads 2, sql 3.)
 
-After (routes-test-browser at 2b42aa67 plus the fixture):
+After (routes-test-browser at 46c194f4: the fixture and the shared-recorder count fix):
 
 | test | step | ms | bytes | alloc | req | loads | steps | sql |
 |---|---|---:|---:|---|---:|---:|---:|---:|
@@ -204,7 +204,7 @@ The keep rule (R-P4, against today's 938 B and 2% of today's page):
   23.71 MB / 159.6k (8% more bytes, 21% fewer objects) and takes 10.35 ms against 10.90 ms.
   That it is on the regions path (not a whole-body morph) is **inferred** from these numbers
   (the same loads and statements, bytes below the 973.8 kB page, the same size as before),
-  not asserted: the test browser does not expose the answer's kind to a bench step.
+  not measured: the answer is asserted `Refreshed`, but that it went the regions path is inferred.
 - `add 1000` allocates 25.55 MB against 16.60 MB (+54%), 125.9k objects against 117.8k, loads
   2 and sql 3 as before: the fixture's page is 300 kB larger (the Delete button on every row),
   which accounts for the bytes (a 45% bigger page rendered twice) rather than the objects.

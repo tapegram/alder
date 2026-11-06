@@ -1255,7 +1255,8 @@ func (e *ElementError) Error() string {
 // cookie), and the element the held page now has must equal the view that fetch answers, as the
 // browser's parser builds both. Equal by construction; the check proves it. The fetch runs in a
 // savepoint of the test's transaction that is rolled back (quietly): it sees the step's writes
-// and leaves none, and it is not part of the step.
+// and leaves none, and it is not part of the step. The savepoint undoes database writes only: a
+// `load` that calls a Query capability runs the test's fake a second time.
 func (b *Browser) checkElement(r rt.Route) error {
 	id := b.regions[len(b.regions)-1]
 	u := rt.RouteURL(r)

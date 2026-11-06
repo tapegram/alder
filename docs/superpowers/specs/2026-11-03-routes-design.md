@@ -477,7 +477,7 @@ short. Recorded as open for #161's recipes; not solved here **(call)**.
 - Migration: goldens for a page module with messages, a page with `model` in an arm (hole emitted),
   a file page, the layout (`Html a` → `Html`), `Notice.with` → `toast`; every fixture rewritten
   and checking.
-- Bench: `toggle 1000` via `render` — `loads` 0 for the page, `sql` 2 (one update, one read),
+- Bench: `toggle 1000` via `render` — `loads` 0 for the page, `sql` 3 (`Db.update` is two statements, plus the render's `Item.load`),
   `bytes` ≈ one `<li>`; `delete` via `refresh` matches today's `Rerender` numbers, with a stale
   hash too. Recorded in `docs/perf/2026-10-bench-baseline.md` as a "#160" section.
 
