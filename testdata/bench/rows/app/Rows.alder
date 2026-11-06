@@ -1,0 +1,121 @@
+module Rows
+
+import Table.Row
+
+route Index  = GET    "/"             { }
+route Item   = GET    "/rows/{id}"    { id: Row.RowId }
+route Add    = POST   "/rows"         { } form NewRow
+route Toggle = PATCH  "/rows/{id}"    { id: Row.RowId }
+route Jump   = POST   "/rows/{id}/jump" { id: Row.RowId }
+route Delete = DELETE "/rows/{id}"    { id: Row.RowId }
+route Slow   = GET    "/slow"         { }
+route Show   = GET    "/rows/{id}/show" { id: Row.RowId }
+
+type Model = { rows: List Row }
+
+type SlowModel = { rows: List (Maybe Row) }
+
+type ShowModel = { row: Row }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let rows <- Db.from Row |> Db.orderBy Row.created.asc |> Db.all
+  Query.succeed { rows: rows }
+}
+
+form NewRow = {
+  title: Text.NonEmpty,
+}
+
+Item.load : Item.Params -> Session -> Query Row
+Item.load params session = {
+  let found <- Db.get Row params.id
+  match found {
+    Just row -> Query.succeed row,
+    Nothing -> Query.notFound,
+  }
+}
+
+Item.view : Row -> Session -> Html
+Item.view r session =
+  <li id={"row-" ++ r.id} class={if r.done then "done" else "open"}>
+    <span>{r.title}</span>
+    <span>{Text.fromInt r.n}</span>
+    <button click={Toggle { id: r.id }}>Toggle</button>
+    <button click={Jump { id: r.id }}>Open</button>
+    <button click={Delete { id: r.id }}>Delete</button>
+  </li>
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update params session = {
+  let _ <- Db.insert Row { title: params.form.title, n: 0 }
+  Task.succeed Response.refresh
+}
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update params session = {
+  let _ <- Db.update Row params.id (\r -> { r | done: not r.done })
+  Task.succeed (Response.render (Item { id: params.id }))
+}
+
+Jump.update : Jump.Params -> Session -> Task Response
+Jump.update params session = Task.succeed (Response.redirect (Show { id: params.id }))
+
+Delete.update : Delete.Params -> Session -> Task Response
+Delete.update params session = {
+  let _ <- Db.delete Row params.id
+  Task.succeed Response.refresh
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <html>
+    <body>
+      <h1>Rows</h1>
+      <form submit={Add}>
+        <Errors form />
+        <Input field="title" label="Title" />
+        <Errors field="title" />
+        <button>Add</button>
+      </form>
+      <ul id="rows">
+        {for r in model.rows -> Item.view r session}
+      </ul>
+    </body>
+  </html>
+
+-- The page a Jump lands on.
+Show.load : Show.Params -> Session -> Query ShowModel
+Show.load params session = {
+  let found <- Db.get Row params.id
+  match found {
+    Just row -> Query.succeed { row: row },
+    Nothing -> Query.notFound,
+  }
+}
+
+Show.view : ShowModel -> Session -> Html
+Show.view model session =
+  <html>
+    <body>
+      <h1>{model.row.title}</h1>
+      <p id="n">{Text.fromInt model.row.n}</p>
+    </body>
+  </html>
+
+-- The N+1 the rule must catch: the rows, then each one again by id (one SELECT per row).
+Slow.load : Slow.Params -> Session -> Query SlowModel
+Slow.load params session = {
+  let rows <- Db.from Row |> Db.all
+  let again <- Query.all (List.map (\r -> Db.get Row r.id) rows)
+  Query.succeed { rows: again }
+}
+
+Slow.view : SlowModel -> Session -> Html
+Slow.view model session =
+  <html>
+    <body>
+      <h1>Slow</h1>
+      <p id="count">{Text.fromInt (List.length model.rows)}</p>
+    </body>
+  </html>

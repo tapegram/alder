@@ -28,7 +28,7 @@ func TestBench_Rows(t *testing.T) {
 	}
 	dir := filepath.Join(t.TempDir(), "rows")
 	copyDir(t, src, dir)
-	const sel = `"index 100"|toggle|add|jump|slow`
+	const sel = `"index 100"|toggle|add|delete|jump|slow`
 	code, out, errs := runBench(t, dir, "-run", sel, "--count", "1", "--json")
 	if code != 0 {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errs)
@@ -58,9 +58,10 @@ func TestBench_Rows(t *testing.T) {
 	}
 	steps := map[string][]string{
 		"index 100":   {"GET /"},
-		"toggle 1000": {"GET /", "POST /_m/Rows.Index/Toggle"},
-		"add 1000":    {"GET /", "POST /_m/Rows.Index/Add"},
-		"jump 1000":   {"GET /", "POST /_m/Rows.Index/Jump"},
+		"toggle 1000": {"GET /", "PATCH /rows/*"},
+		"add 1000":    {"GET /", "POST /rows"},
+		"delete 1000": {"GET /", "PATCH /rows/*", "POST /rows/*"},
+		"jump 1000":   {"GET /", "POST /rows/*/jump"},
 		"slow 100":    {"GET /slow"},
 	}
 	if len(byTest) != len(steps) {
@@ -72,12 +73,14 @@ func TestBench_Rows(t *testing.T) {
 			t.Fatalf("%s: %+v", name, ms)
 		}
 		for i, m := range ms {
-			if m.Step != want[i] || m.Bytes == 0 || m.Allocs == 0 || m.Requests < 1 {
+			if !stepIs(m.Step, want[i]) || m.Bytes == 0 || m.Allocs == 0 || m.Requests < 1 {
 				t.Errorf("%s step %d: %+v", name, i, m)
 			}
 		}
 	}
-	if m := byTest["toggle 1000"][1]; m.Loads != 2 || m.Requests != 1 {
+	// #160: a toggle answers `render (Item {id})`: the write (no page load) and the row's own
+	// view (its one load), not the page's.
+	if m := byTest["toggle 1000"][1]; m.Loads != 1 || m.Requests != 2 {
 		t.Errorf("toggle: %+v", m)
 	}
 	// #49: a click on one row sends that row (and the shown hash), not the page: its bytes are
@@ -85,7 +88,7 @@ func TestBench_Rows(t *testing.T) {
 	if get, post := byTest["toggle 1000"][0], byTest["toggle 1000"][1]; post.Bytes*50 >= get.Bytes {
 		t.Errorf("toggle sends %d bytes for a page of %d: not under 2%%", post.Bytes, get.Bytes)
 	}
-	if m := byTest["jump 1000"][1]; m.Loads != 2 || m.Requests != 2 {
+	if m := byTest["jump 1000"][1]; m.Loads != 1 || m.Requests != 2 {
 		t.Errorf("jump: %+v", m)
 	}
 	if m := byTest["slow 100"][0]; m.SQL != 101 || len(m.Repeats) != 1 || m.Repeats[0].Count != 100 || m.Repeats[0].Args != 100 {
@@ -96,12 +99,12 @@ func TestBench_Rows(t *testing.T) {
 	}
 
 	code, out, errs = runBench(t, dir, "-run", sel, "--count", "1")
-	if code != 0 || !strings.Contains(out, "5 passed, 0 failed") {
+	if code != 0 || !strings.Contains(out, "6 passed, 0 failed") {
 		t.Fatalf("text: exit %d\n%s\n%s", code, out, errs)
 	}
 	for _, want := range []string{
 		"ok   Rows.Bench \"toggle 1000\"\n  step ",
-		"\n  POST /_m/Rows.Index/Jump ",
+		"\n  POST /rows/",
 		"\n  warn: GET /slow: N+1: SELECT ",
 		"100x (100 args)",
 	} {
@@ -134,4 +137,14 @@ func TestHelp_Bench(t *testing.T) {
 	if !strings.Contains(out.String(), `"name":"bench"`) {
 		t.Error("help --json has no bench")
 	}
+}
+
+// stepIs reports whether step is want; a "*" in want matches the generated id of a row in a
+// route's URL.
+func stepIs(step, want string) bool {
+	pre, post, ok := strings.Cut(want, "*")
+	if !ok {
+		return step == want
+	}
+	return len(step) >= len(pre)+len(post) && strings.HasPrefix(step, pre) && strings.HasSuffix(step, post)
 }
