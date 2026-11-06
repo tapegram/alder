@@ -93,8 +93,8 @@ test "a row is fetched, toggled, moved and refreshed" = {
   let toggled <- Test.click (Toggle { id: id })
   let moved <- Test.submit (Move { id: id }) { list: "home" }
   let added <- Test.submit Create { title: "Bread" }
-  let raw <- Test.submitRaw Create [{ name: "title", value: "" }]
   let again <- Test.refresh
+  let raw <- Test.submitRaw Create [{ name: "title", value: "" }]
   let csv <- Test.fetch (Export {})
   let shown <- Test.open (Index { filter: Done })
   Task.succeed ({ n: List.length page.model.todos, title: row.model.title, fetched: fetched.status, toggled: toggled.answer, moved: moved.status, added: added.answer, raw: raw.status, url: again.url, again: again.answer, csv: csv.status, shown: shown.url }

@@ -1307,8 +1307,9 @@ func TestTest_MutateCrashAndHang(t *testing.T) {
 }
 
 // TestTest_StepURLAndStatus (#160, plan call 15): every step's result of an old page's test
-// carries the URL the browser holds after it and the code of its last response; Test.refresh
-// type-checks and fails its step until #160 PR 4 builds it.
+// carries the URL the browser holds after it and the code of its last response. Test.refresh
+// (Task 4.3) loads the held page again and passes when its body is the one held (Refreshed, the
+// URL kept); before any page it fails the step.
 func TestTest_StepURLAndStatus(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
@@ -1324,21 +1325,31 @@ test "a step's url and status" = {
     == { getUrl: "/?filter=Active", getStatus: 200, clickUrl: "/?filter=Active", clickStatus: 200, addedUrl: "/?filter=Active", addedStatus: 200 })
 }
 
-test "Test.refresh is not built yet" = {
+test "a refresh after a toggle shows the same page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index { filter: All })
+  let _ <- Test.click (Toggle { id: id })
+  let r <- Test.refresh
+  Task.succeed ({ answer: r.answer, url: r.url, status: r.status } == { answer: Refreshed, url: "/", status: 200 })
+}
+
+test "Test.refresh before any page" = {
   let _ <- Test.refresh
   Task.succeed True
 }
 `)
 	code, stdout, stderr := runTest(t, dir)
 	if code != 1 || !strings.Contains(stdout, `ok   Todos.Index "a step's url and status"`) ||
-		!strings.Contains(stdout, "FAIL Todos.Index \"Test.refresh is not built yet\"\n  error: Test.refresh is not built yet (#160 PR 4)\n") {
+		!strings.Contains(stdout, `ok   Todos.Index "a refresh after a toggle shows the same page"`) ||
+		!strings.Contains(stdout, "FAIL Todos.Index \"Test.refresh before any page\"\n  error: Test.refresh: the browser holds no page yet\n") {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 }
 
 // TestTest_RouteSteps (#160 PR 4): `alder test` builds the browser steps on routes. The corpus
-// app browser-routes-ok runs, its test failing only at Test.refresh (built by Task 4.3); a
-// test of the same steps without it passes: Test.get of a GET route holds its model, Test.click
+// app browser-routes-ok passes, Test.refresh included; a test of the same steps passes: Test.get of a GET route holds its model, Test.click
 // of a GET route is an element fetch (Rendered), of a write route answering `render` Rendered,
 // Test.submit of a route's form Refreshed, Redirected (with the toast and the target's URL)
 // or, for a form that does not decode, status 422.
@@ -1376,8 +1387,8 @@ test "route steps answer as the route does" = {
 		t.Fatal(err)
 	}
 	code, stdout, stderr := runTest(t, dir)
-	if code != 1 || !strings.Contains(stdout, `ok   Todos "route steps answer as the route does"`) ||
-		!strings.Contains(stdout, "FAIL Todos \"a row is fetched, toggled, moved and refreshed\"\n  error: Test.refresh is not built yet (#160 PR 4)\n") ||
+	if code != 0 || !strings.Contains(stdout, `ok   Todos "route steps answer as the route does"`) ||
+		!strings.Contains(stdout, `ok   Todos "a row is fetched, toggled, moved and refreshed"`) ||
 		strings.Contains(stderr, "internal error") || strings.Contains(stderr, "goroutine ") {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}

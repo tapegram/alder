@@ -150,11 +150,6 @@ func Step(env *eff.Env, name string) {
 	env.Trace = append(env.Trace, name)
 }
 
-// Refresh is `Test.refresh`'s step until #160 PR 4 builds it: the error that fails the step.
-func Refresh(env *eff.Env) error {
-	return errors.New("Test.refresh is not built yet (#160 PR 4)")
-}
-
 // Trace is the enclosing run's trace so far, without the Test.trace step itself.
 func Trace(env *eff.Env) []string {
 	if len(env.Trace) == 0 {

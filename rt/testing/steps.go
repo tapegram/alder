@@ -393,6 +393,63 @@ func (b *Browser) SubmitRoute(r rt.Route, form string, fields Fields) (Result, e
 	return b.result(ans), nil
 }
 
+// Refresh is `Test.refresh` (#160), the developer's whole-page honesty check: a plain GET of the
+// held URL (no Datastar, as a browser's reload; a redirect followed), whose page becomes the
+// held one. Its body must equal the body held before it, compared as Doc equality compares
+// (the page's parameters left out: html.WithoutPageParams) and without the toasts (<al-toasts>,
+// what a step's toasts were delivered into, which a reload may fill from a notice): the
+// answer is then Refreshed. A page not shown again (PageMissing, RequestFailed, Redirected
+// elsewhere) or a body that differs is a *RefreshError, as is a browser holding no page.
+func (b *Browser) Refresh() (Result, error) {
+	defer b.track()()
+	if !b.hasDoc {
+		return Result{}, &RefreshError{}
+	}
+	u, held := b.url, b.doc
+	ans, err := b.navigate(u, false)
+	if err != nil {
+		return Result{}, err
+	}
+	if ans.Tag != Shown {
+		return Result{}, &RefreshError{URL: u, NotShown: &NotShownError{URL: u, Answer: ans}}
+	}
+	if d, differ := html.Diff(refreshBody(held), refreshBody(b.doc)); differ {
+		return Result{}, &RefreshError{URL: u, Diff: &d}
+	}
+	return b.result(Answer{Tag: Refreshed}), nil
+}
+
+// refreshBody is what Refresh compares of document d: its <body> (d itself without one) without
+// the page's parameters and the <al-toasts> region.
+func refreshBody(d html.Node) html.Node {
+	if bs := html.Select(d, selBody); len(bs) > 0 {
+		d = bs[0]
+	}
+	return html.Without(html.WithoutPageParams(d), func(n html.Node) bool { return n.Tag() == "al-toasts" })
+}
+
+// RefreshError is Test.refresh's failure: no page held (URL ""), the held URL not shown again
+// (NotShown), or the page loaded again unlike the one held (Diff, where they first differ).
+type RefreshError struct {
+	URL      string
+	NotShown *NotShownError
+	Diff     *html.Difference
+}
+
+// Error is "Test.refresh: GET /: the page held differs from the page loaded again at body >
+// main > p#n: <what>" with each side's markup, "Test.refresh: GET /: not found" (NotShownError's
+// text) or "Test.refresh: the browser holds no page yet".
+func (e *RefreshError) Error() string {
+	switch {
+	case e.NotShown != nil:
+		return "Test.refresh: " + e.NotShown.Error()
+	case e.Diff != nil:
+		return fmt.Sprintf("Test.refresh: GET %s: the page held differs from the page loaded again at %s: %s\n  held:   %s\n  loaded: %s",
+			e.URL, e.Diff.At, e.Diff.What, e.Diff.Left, e.Diff.Right)
+	}
+	return "Test.refresh: the browser holds no page yet"
+}
+
 // methodField is the url-encoded field a POST names its route's method by (rt/web honours it).
 const methodField = "_method"
 

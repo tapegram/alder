@@ -34,6 +34,8 @@ import (
 //	TestClick      "Test.click M.Msg": _b.ClickMsg(rt.MsgRef{…}.URL(nil), rtesting.MsgName("M.Msg",
 //	               params)) — the message's URL with its own parameters only: the browser posts
 //	               the URL the held page renders for it, which carries the page's parameters
+//	TestRefresh    "Test.refresh": _r, _err := rtesting.BrowserOf(_e).Refresh() (#160); R{Answer:
+//	               _r.Answer, …}
 //
 // On a route (#160) each names the route value, an rt.Route literal (routeRef) with its
 // parameters bound once (routeTarget): Test.get/open/fetch "Test.get M.R" request rt.RouteURL
@@ -207,6 +209,11 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 			fmt.Fprintf(&w, "%s, %s := rtesting.BrowserOf(%s).ClickMsg(%s, %s)\n%s", res, err, env, u, label, fail(c, err))
 			w.WriteString(result(c, "Answer", res+".Answer", res))
 			return w.String()
+		})
+	case *ir.TestRefresh:
+		return f.callStmts("Test.refresh", true, t, s, func(env string, c *scope) string {
+			res, err := f.temp(c, "_r"), f.temp(c, "_err")
+			return res + ", " + err + " := rtesting.BrowserOf(" + env + ").Refresh()\n" + fail(c, err) + result(c, "Answer", res+".Answer", res)
 		})
 	}
 	panic(fmt.Sprintf("gen: %T is not a browser step", x))

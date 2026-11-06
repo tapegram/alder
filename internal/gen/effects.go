@@ -57,8 +57,7 @@ import (
 //	                   _err := rtesting.Inner(_e, task(t)); …; R{Value: rt.Ok/Err…, Trace: _tr} })
 //	                   (R the result record { value: Result Text a, trace: List Text })
 //	TestTrace          eff.Call("Test.trace", false, func(_e) { return rtesting.Trace(_e), nil })
-//	TestRefresh        eff.Call("Test.refresh", true, func(_e) { var _z R; return _z, rtesting.Refresh(_e) }):
-//	                   the step fails until #160 PR 4 builds it
+//	TestRefresh        a browser step (browser.go): BrowserOf(_e).Refresh()
 //	TestFake           eff.Call("Test.fake Stripe", false, func(_e) { _e.Caps["Payments.Stripe"] =
 //	                   Fakes["Payments.Stripe"](); return struct{}{}, nil }) in a test build (the
 //	                   Caps of the running test, its own copy: rtesting)
@@ -284,12 +283,6 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 		return f.callStmts("Test.trace", false, x.Ty, s, func(env string, c *scope) string {
 			return "return rtesting.Trace(" + env + "), nil\n"
 		}), true
-	case *ir.TestRefresh:
-		f.g.testNode(x)
-		return f.callStmts("Test.refresh", true, x.Ty, s, func(env string, c *scope) string {
-			z := f.temp(c, "_z")
-			return "var " + z + " " + GoType(effResult(x.Ty)) + "\nreturn " + z + ", rtesting.Refresh(" + env + ")\n"
-		}), true
 	case *ir.TestFake:
 		f.g.testNode(x)
 		cp := x.Fake.Capability
@@ -298,7 +291,7 @@ func (f *fn) effNode(e ir.Expr, s *scope) (string, bool) {
 			return "if " + env + ".Caps == nil {\n" + env + ".Caps = map[string]any{}\n}\n" +
 				env + ".Caps[" + key + "] = Fakes[" + key + "]()\nreturn struct{}{}, nil\n"
 		}), true
-	case *ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick:
+	case *ir.TestLogin, *ir.TestGet, *ir.TestSubmit, *ir.TestSubmitRaw, *ir.TestClick, *ir.TestRefresh:
 		f.g.testNode(x)
 		return f.browserStep(x, s), true // browser.go
 	}

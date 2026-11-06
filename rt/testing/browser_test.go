@@ -948,6 +948,9 @@ type routeApp struct {
 	// lie, when set, is the title the next load of R.Row shows instead of the row's own, once: a
 	// route whose view the element check catches (Task 4.2)
 	lie string
+	// summary, when set, adds to the index a count of the rows toggled (`<p id="toggled">`), which
+	// R.Toggle's `render` does not patch: a render that lies about the page (Task 4.3)
+	summary bool
 }
 
 type seenReq struct {
@@ -999,15 +1002,25 @@ func (a *routeApp) index() html.Node {
 			items = append(items, a.row(i+1))
 		}
 	}
-	return layout("Rows",
+	var summary []html.Node
+	if a.summary {
+		n := 0
+		for _, t := range a.rows {
+			if strings.HasSuffix(t, "!") {
+				n++
+			}
+		}
+		summary = append(summary, html.El("p", []html.Attr{html.A("id", "toggled")}, html.Text(strconv.Itoa(n)+" toggled")))
+	}
+	return layout("Rows", append([]html.Node{
 		html.El("h1", nil, html.Text("Rows")),
-		html.El("ul", []html.Attr{html.A("id", "rows")}, items...),
+		html.El("ul", []html.Attr{html.A("id", "rows")}, items...)}, append(summary,
 		html.FormToRoute(rAdd(), []html.Attr{html.A("id", "add")},
 			html.Input(html.Control{Kind: "errors", Form: newRowRoute}),
 			html.Input(html.Control{Kind: "input", Form: newRowRoute, Name: "title", Label: "Title"}),
 			html.Input(html.Control{Kind: "errors", Form: newRowRoute, Name: "title"}),
 			html.El("button", nil, html.Text("Add")),
-			html.El("button", []html.Attr{html.RouteAttr("data-on:click", rPurge())}, html.Text("Purge"))))
+			html.El("button", []html.Attr{html.RouteAttr("data-on:click", rPurge())}, html.Text("Purge"))))...)...)
 }
 
 func (a *routeApp) see(rq *web.Request, name string) {
@@ -1528,4 +1541,55 @@ func TestCheck_ElementRollbackFails(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Test.refresh (#160): a plain GET of the held URL whose body must equal the held one, compared
+// as Doc equality compares. After a toggle whose `render` patched all the page shows of it, the
+// refresh passes: Refreshed, the URL held, 200, the fresh page held. Before any page it fails.
+func TestRefresh_PassesAfterToggle(t *testing.T) {
+	app := newRouteApp("one", "two")
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		if _, err := b.Refresh(); err == nil || err.Error() != "Test.refresh: the browser holds no page yet" {
+			t.Errorf("before any page: %v", err)
+		}
+		must := mustOf(t)
+		must(b.Get("/r"))
+		must(b.ClickRoute(rToggle(1), `R.Toggle { id: "1" }`))
+		r := must(b.Refresh())
+		wantAnswer(t, r, Answer{Tag: Refreshed})
+		if r.URL != "/r" || r.Status != 200 || b.URL() != "/r" {
+			t.Errorf("url %q (held %q), status %d", r.URL, b.URL(), r.Status)
+		}
+		if got := text(t, r.Doc, "#row-1"); !strings.HasPrefix(got, "one!") {
+			t.Errorf("#row-1 = %q after the refresh", got)
+		}
+		if s := app.seen["Row"]; s.method != "GET" {
+			t.Errorf("the element check did not fetch R.Row: %+v", s)
+		}
+	})
+}
+
+// A route whose `render` lies about the page (R.Toggle patches the row, but the page's count of
+// toggled rows changes too and stays stale) passes the element check and fails Test.refresh,
+// the failure naming where the held body and the fresh one differ, with both sides.
+func TestRefresh_FailsWhenRenderLies(t *testing.T) {
+	app := newRouteApp("one", "two")
+	app.summary = true
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/r"))
+		must(b.ClickRoute(rToggle(1), `R.Toggle { id: "1" }`))
+		_, err := b.Refresh()
+		want := "Test.refresh: GET /r: the page held differs from the page loaded again at body > main > p#toggled: "
+		if err == nil || !strings.HasPrefix(err.Error(), want) ||
+			!strings.Contains(err.Error(), "\n  held:   <p id=\"toggled\">0 toggled</p>") ||
+			!strings.Contains(err.Error(), "\n  loaded: <p id=\"toggled\">1 toggled</p>") {
+			t.Errorf("err = %v, want %q and both sides", err, want)
+		}
+		must(b.Get("/r/rows/2"))
+		app.rows[1] = "" // gone: the page is not shown again
+		if _, err := b.Refresh(); err == nil || err.Error() != "Test.refresh: GET /r/rows/2: not found" {
+			t.Errorf("a page gone: %v", err)
+		}
+	})
 }
