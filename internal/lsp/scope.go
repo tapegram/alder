@@ -147,7 +147,9 @@ func declAt(m *syntax.Module, pos diag.Pos) syntax.Decl {
 func declName(d syntax.Spanned) (name string, skip int, ok bool) {
 	switch d := d.(type) {
 	case *syntax.ValueDecl:
-		return d.Name, 0, true
+		return d.FullName(), 0, true // `Row.view` for a route's member
+	case *syntax.RouteDecl:
+		return d.Name, len("route"), true
 	case *syntax.TypeDecl:
 		return d.Name, len("type"), true
 	case *syntax.TableDecl:
@@ -176,6 +178,9 @@ func nameSpan(d syntax.Spanned, m *syntax.Module) diag.Span {
 	sp := d.GetSpan()
 	if fd, ok := d.(*syntax.FakeDecl); ok && fd.NameSpan.Start.Line > 0 {
 		return fd.NameSpan
+	}
+	if rd, ok := d.(*syntax.RouteDecl); ok && rd.NameSpan.Start.Line > 0 {
+		return rd.NameSpan
 	}
 	name, skip, ok := declName(d)
 	if !ok {
@@ -264,6 +269,9 @@ func target(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Pos) 
 		if onQualifier(a, m, n.Module, n.Span, pos) {
 			return syntax.Ref{Kind: syntax.RefNone, Module: qualifiedModule(a, m, n.Module)}, nil, true
 		}
+		if r, ok := routeQualifierAt(a, n.Module, n.Span, n.Ref, pos); ok {
+			return r, nil, true
+		}
 		return resolved(n.Ref, n.Name)
 	case *syntax.CtorRef:
 		if onQualifier(a, m, n.Module, n.Span, pos) {
@@ -273,6 +281,9 @@ func target(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Pos) 
 	case *syntax.TypeName:
 		if onQualifier(a, m, n.Module, n.Span, pos) {
 			return syntax.Ref{Kind: syntax.RefNone, Module: qualifiedModule(a, m, n.Module)}, nil, true
+		}
+		if r, ok := routeQualifierAt(a, n.Module, n.Span, n.Ref, pos); ok {
+			return r, nil, true
 		}
 		return resolved(n.Ref, n.Name)
 	case *syntax.PCtor:
@@ -289,6 +300,9 @@ func target(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Pos) 
 		if b := binderAt(m, n, pos); b != nil {
 			return syntax.Ref{Kind: syntax.RefLocal, Name: b.Name}, b, true
 		}
+	}
+	if d, ok := declAt(m, pos).(*syntax.ValueDecl); ok && d.Route != "" && onRoutePart(d, m, pos) {
+		return syntax.Ref{Kind: syntax.RefRoute, Module: m.Name, Name: d.Route}, nil, true
 	}
 	if d := declAt(m, pos); d != nil && (syntax.Contains(nameSpan(d, m), pos) || syntax.Contains(defNameSpan(d, m), pos)) {
 		if ref, ok := declRef(m.Name, d); ok {
@@ -333,18 +347,47 @@ func defNameSpan(d syntax.Decl, m *syntax.Module) diag.Span {
 		return diag.Span{}
 	}
 	for l := vd.Sig.GetSpan().End.Line + 1; l <= vd.Span.End.Line && l <= len(m.Lines); l++ {
-		if isWordAt(m.Lines[l-1], 0, vd.Name) {
-			return lineSpan(vd.Span.File, l, 1, len(vd.Name))
+		if isWordAt(m.Lines[l-1], 0, vd.FullName()) {
+			return lineSpan(vd.Span.File, l, 1, len(vd.FullName()))
 		}
 	}
 	return diag.Span{}
+}
+
+// onRoutePart reports whether pos is on the route part (`Row` of `Row.view`) of qualified
+// declaration d's name, in its signature or on its definition line.
+func onRoutePart(d *syntax.ValueDecl, m *syntax.Module, pos diag.Pos) bool {
+	if syntax.Contains(d.RouteSpan, pos) {
+		return true
+	}
+	def := defNameSpan(d, m)
+	return def.Start.Line > 0 && pos.Line == def.Start.Line && pos.Col >= def.Start.Col && pos.Col < def.Start.Col+len(d.Route)
+}
+
+// routeQualifierAt is, for a name written `Row.view` or `Todos.Row.Params` (qual its qualifier,
+// spanning sp, whose use resolved to ref) with pos on the route part of the qualifier, the
+// reference to the route itself; ok is false anywhere else.
+func routeQualifierAt(a *analysis, qual string, sp diag.Span, ref syntax.Ref, pos diag.Pos) (syntax.Ref, bool) {
+	if qual == "" || pos.Line != sp.Start.Line || pos.Col < sp.Start.Col || pos.Col >= sp.Start.Col+len(qual) {
+		return syntax.Ref{}, false
+	}
+	i := strings.LastIndexByte(ref.Name, '.')
+	if i < 0 || (ref.Kind != syntax.RefValue && ref.Kind != syntax.RefType) || a.prog.Route(ref.Module, ref.Name[:i]) == nil {
+		return syntax.Ref{}, false
+	}
+	if j := strings.LastIndexByte(qual, '.'); j >= 0 && pos.Col < sp.Start.Col+j+1 {
+		return syntax.Ref{Kind: syntax.RefNone, Module: ref.Module}, true // the module part of `Todos.Row`
+	}
+	return syntax.Ref{Kind: syntax.RefRoute, Module: ref.Module, Name: ref.Name[:i]}, true
 }
 
 // declRef is the Ref the resolver gives a use of declaration d of module mod.
 func declRef(mod string, d syntax.Decl) (syntax.Ref, bool) {
 	switch d := d.(type) {
 	case *syntax.ValueDecl:
-		return syntax.Ref{Kind: syntax.RefValue, Module: mod, Name: d.Name}, true
+		return syntax.Ref{Kind: syntax.RefValue, Module: mod, Name: d.FullName()}, true
+	case *syntax.RouteDecl:
+		return syntax.Ref{Kind: syntax.RefRoute, Module: mod, Name: d.Name}, true
 	case *syntax.TypeDecl:
 		return syntax.Ref{Kind: syntax.RefType, Module: mod, Name: d.Name}, true
 	case *syntax.TableDecl:
@@ -414,7 +457,12 @@ func findDecl(a *analysis, ref syntax.Ref) (*syntax.Module, syntax.Spanned) {
 	for _, d := range mod.Decls {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
-			if (ref.Kind == syntax.RefValue || ref.Kind == syntax.RefStd || ref.Kind == syntax.RefComponent) && d.Name == ref.Name {
+			if (ref.Kind == syntax.RefValue || ref.Kind == syntax.RefStd || ref.Kind == syntax.RefComponent) && d.FullName() == ref.Name {
+				return mod, d
+			}
+		case *syntax.RouteDecl:
+			// a route's constructor, or its generated type (`Row.Params`, `Row.Session`)
+			if ref.Kind == syntax.RefRoute && d.Name == ref.Name || ref.Kind == syntax.RefType && strings.HasPrefix(ref.Name, d.Name+".") {
 				return mod, d
 			}
 		case *syntax.TypeDecl:

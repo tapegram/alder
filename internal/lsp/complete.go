@@ -228,9 +228,57 @@ func (cx *completion) members() ([]completionItem, bool) {
 	}
 	mod := moduleNamed(cx.a, cx.m, g[1])
 	if mod == nil {
+		if rm, r := cx.routeNamed(g[1]); r != nil {
+			return cx.routeMembers(rm, r, len(g[2])), true
+		}
 		return nil, false
 	}
 	return cx.declItems(mod, len(g[2])), true
+}
+
+// routeNamed is the route a written qualifier q names in the module being edited (`Row`, or
+// `Todos.Row` through an import's qualifier or a module's path) and its module; nil when q
+// names no route.
+func (cx *completion) routeNamed(q string) (*syntax.Module, *syntax.RouteDecl) {
+	owner, name := cx.m.Name, q
+	if i := strings.LastIndexByte(q, '.'); i >= 0 {
+		om := moduleNamed(cx.a, cx.m, q[:i])
+		if om == nil {
+			return nil, nil
+		}
+		owner, name = om.Name, q[i+1:]
+	}
+	if r := cx.a.prog.Route(owner, name); r != nil {
+		return cx.a.prog.Modules[owner], r
+	}
+	return nil, nil
+}
+
+// routeMembers is what follows `Row.` for route r of mod (the spec's Names section): a GET
+// route's `load`, `view`, `Params` and `Session`, a write route's `update` and `Params`. A
+// member the module declares shows its signature as written, one it lacks the signature it needs.
+func (cx *completion) routeMembers(mod *syntax.Module, r *syntax.RouteDecl, n int) []completionItem {
+	member := func(name, sig string) completionItem {
+		for _, d := range mod.Decls {
+			if vd, ok := d.(*syntax.ValueDecl); ok && vd.Route == r.Name && vd.Name == name && vd.Sig != nil {
+				sig = spanText(mod.Lines, vd.Sig.GetSpan())
+			}
+		}
+		return cx.item(name, kindFunction, name+" : "+sig, n)
+	}
+	out := []completionItem{}
+	if r.Method == "GET" {
+		out = append(out,
+			member("load", r.Name+".Params -> Session -> Query m"),
+			member("view", "m -> Session -> Html"))
+	} else {
+		out = append(out, member("update", r.Name+".Params -> Session -> Task Response"))
+	}
+	out = append(out, cx.item("Params", kindClass, "type "+r.Name+".Params", n))
+	if r.Method == "GET" {
+		out = append(out, cx.item("Session", kindClass, "type "+r.Name+".Session", n))
+	}
+	return out
 }
 
 // declItems is mod's declarations: values, types (tables, forms, records, unions, brands) and
@@ -240,7 +288,11 @@ func (cx *completion) declItems(mod *syntax.Module, n int) []completionItem {
 	for _, d := range mod.Decls {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
-			out = append(out, cx.valueItem(d.Name, cx.a.res.Values[mod.Name+"."+d.Name], n))
+			if d.Route == "" { // a route's members are reached through the route: `Row.view`
+				out = append(out, cx.valueItem(d.Name, cx.a.res.Values[mod.Name+"."+d.Name], n))
+			}
+		case *syntax.RouteDecl: // a constructor, with the route line as its detail
+			out = append(out, cx.item(d.Name, kindConstructor, spanText(mod.Lines, d.Span), n))
 		case *syntax.TypeDecl:
 			out = append(out, cx.item(d.Name, kindClass, "", n))
 			for _, c := range d.Union {
