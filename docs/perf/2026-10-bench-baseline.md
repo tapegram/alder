@@ -150,7 +150,8 @@ Where the other numbers move:
 fixture's `msg` pages) and after on `routes-test-browser` (the fixture as one route module:
 `Index = GET /`, `Item = GET /rows/{id}`, `Toggle = PATCH …` answering `render (Item {id})`,
 `Delete = DELETE …` and `Add` answering `refresh`). Both runs on a quiet machine: `uptime` 1-min
-load 1.76 (before) and 1.73 (after).
+load 1.76 (before) and 2.41 (after, the re-run with the recorder fix below; the first,
+uncorrected run was at 1.73).
 
 Before (main b6e880ca):
 
@@ -175,32 +176,38 @@ After (routes-test-browser at 2b42aa67 plus the fixture):
 | index 1000 | GET / | 4.92 | 973.8 kB | 14.89 MB / 60.8k | 1 | 1 | 1 | 1 |
 | index 10000 | GET / | 48.03 | 9.72 MB | 148.84 MB / 609.8k | 1 | 1 | 1 | 1 |
 | toggle 1000 | PATCH /rows/{id} | 0.11 | 1.1 kB | 26.6 kB / 321 | 2 | 1 | 2 | 3 |
-| add 1000 | POST /rows | 10.23 | 971.0 kB | 25.55 MB / 125.9k | 3 | 6 | 5 | 9 |
-| delete 1000 (after a toggle) | POST … (DELETE /rows/{id}) | 10.09 | 969.1 kB | 25.54 MB / 125.7k | 3 | 6 | 5 | 9 |
+| add 1000 | POST /rows | 10.43 | 971.0 kB | 25.55 MB / 125.9k | 3 | 2 | 5 | 3 |
+| delete 1000 (after a toggle) | POST … (DELETE /rows/{id}) | 10.35 | 969.1 kB | 25.54 MB / 125.7k | 3 | 2 | 5 | 3 |
 | jump 1000 | POST /rows/{id}/jump | 0.08 | 843 B | 19.9 kB / 204 | 2 | 1 | 1 | 1 |
 | slow 100 | GET /slow | 0.63 | 3.6 kB | 332.7 kB / 6.9k | 1 | 1 | 101 | 101 |
 
 (The `delete` and `toggle` rows' step label is the method the browser sent, `PATCH`/`POST`.)
 
+The refresh's Envs share one recorder, and `alder bench` used to add the recorder once per Env,
+which showed `add` and `delete` as loads 6, sql 9. The sum now counts a shared recorder once
+(`rt/testing/bench.go`, `TestBench_SharedRecorderCountsOnce`); the other columns are unchanged.
+`req` is still the number of Envs the request ran (3 for a refresh: the write and the page's
+before and after renders).
+
 The keep rule (R-P4, against today's 938 B and 2% of today's page):
 
-- **`toggle 1000` holds.** It sends 1.1 kB, one `<li>` (now with a Delete button: +160 B) and
-  the event, against 13.5 kB (2% of the old page; 19.5 kB of the new 973.8 kB one): 0.11%. It
-  allocates 26.6 kB / 321 objects against 14.58 MB / 117.8k, and runs in 0.11 ms against 7.59 ms.
-  The page's `load` runs 0 times. The `loads` column's 1 is the render's own `Item.load` (the
-  second Env of the request: 0 loads and 2 statements for the write, 1 load and 1 statement for
-  the render), and `sql` is 3, not 2: the write's `Db.update` is 2 statements, `Item.load` one
-  more. `req` 2 is those two Envs.
-- **`delete 1000` via `refresh` after a toggle stays on the regions path** (969.1 kB sent, the
-  `#rows` region, not an extra navigation; PR 3's Rerender row sent 963.1 kB): 25.54 MB / 125.7k
-  against 23.71 MB / 159.6k (8% more bytes, 21% fewer objects), 10.09 ms against 10.90 ms.
-- `req` 3, `loads` 6, `sql` 9 on `add` and `delete` are **not** more work: the refresh's three
-  Envs share one recorder, and `alder bench` adds the recorder once per Env (`rt/testing/bench.go`,
-  `s.m.Loads += e.Rec.Loads`). Counted once: loads 2, sql 3, the same as before. The bench Go
-  code is unchanged; this double count is a follow-up to fix there.
-- `add 1000` allocates 25.55 MB against 16.60 MB (+54%), 125.9k objects against 117.8k: the
-  fixture's page is 300 kB larger (the Delete button on every row), which accounts for the
-  bytes (a 30% bigger page rendered twice), not for the objects.
+- **`toggle 1000` holds.** It sends 1.1 kB against the old fixture's 938 B (938 B -> 1.1 kB: the
+  row `<li>` now carries a Delete button, so it is larger, still one `<li>` and the event),
+  and against 13.5 kB (2% of the old page; 19.5 kB of the new 973.8 kB one): 0.11% of the page.
+  It allocates 26.6 kB / 321 objects against 14.58 MB / 117.8k, and runs in 0.10 ms against
+  7.59 ms. The page's `load` runs 0 times. The `loads` column's 1 is the render's own
+  `Item.load` (the second of the request's two Envs: the write has 0 loads and 2 statements,
+  the render 1 load and 1 statement), and `sql` is 3, not 2: the write's `Db.update` is 2
+  statements, `Item.load` one more.
+- **`delete 1000` via `refresh` after a toggle: loads 2, sql 3, as the PR 3 Rerender row
+  (loads 2, sql 3).** It sends 969.1 kB against 963.1 kB, allocates 25.54 MB / 125.7k against
+  23.71 MB / 159.6k (8% more bytes, 21% fewer objects) and takes 10.35 ms against 10.90 ms.
+  That it is on the regions path (not a whole-body morph) is **inferred** from these numbers
+  (the same loads and statements, bytes below the 973.8 kB page, the same size as before),
+  not asserted: the test browser does not expose the answer's kind to a bench step.
+- `add 1000` allocates 25.55 MB against 16.60 MB (+54%), 125.9k objects against 117.8k, loads
+  2 and sql 3 as before: the fixture's page is 300 kB larger (the Delete button on every row),
+  which accounts for the bytes (a 45% bigger page rendered twice) rather than the objects.
 - The index page grew from 673.8 kB to 973.8 kB for the same reason (the Delete button, 300 B a
   row); `index` times and allocations scale with it.
 - `checkOptionRoutes` (a DFS per GET route) does not show on this fixture: `alder check` takes

@@ -85,10 +85,18 @@ func (b *Browser) account(head string, bodyLen int) {
 		s.m.Requests += max(1, len(b.reqEnvs))
 		s.m.Bytes += bodyLen
 	}
+	counted := map[*eff.Recorder]bool{}
 	for _, e := range b.reqEnvs {
 		if e.Rec == nil {
 			continue
 		}
+		if counted[e.Rec] { // a refresh's Envs share one recorder: its loads and statements count once
+			if s != nil {
+				s.m.Steps += len(e.Trace)
+			}
+			continue
+		}
+		counted[e.Rec] = true
 		sql := appSQL(e.Rec.SQL)
 		reps := eff.RepeatsCut(e.Rec.SQL, e.Rec.Cuts, eff.RepeatThreshold) // each load run on its own
 		h := b.heads[e]

@@ -88,6 +88,13 @@ func TestBench_Rows(t *testing.T) {
 	if get, post := byTest["toggle 1000"][0], byTest["toggle 1000"][1]; post.Bytes*50 >= get.Bytes {
 		t.Errorf("toggle sends %d bytes for a page of %d: not under 2%%", post.Bytes, get.Bytes)
 	}
+	// a refresh's Envs share one recorder, counted once: the page's two loads, three statements
+	for _, name := range []string{"add 1000", "delete 1000"} {
+		ms := byTest[name]
+		if m := ms[len(ms)-1]; m.Loads != 2 || m.SQL != 3 {
+			t.Errorf("%s: %+v", name, m)
+		}
+	}
 	if m := byTest["jump 1000"][1]; m.Loads != 1 || m.Requests != 2 {
 		t.Errorf("jump: %+v", m)
 	}
