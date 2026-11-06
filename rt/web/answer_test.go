@@ -815,4 +815,19 @@ func TestAnswer_RedirectExternal(t *testing.T) {
 	if w.Header().Get(StatusHeader) != "500" || strings.Contains(w.Body.String(), "location.assign") {
 		t.Fatalf("#: %q %q", w.Header().Get(StatusHeader), w.Body.String())
 	}
+	// Unsafe URLs never navigate or redirect off-site, with or without JavaScript.
+	for _, to := range []string{"javascript:alert(1)", "//evil.example/x", "/\\evil"} {
+		target := "/w/redirect?noname=1&to=" + url.QueryEscape(to)
+		w := ansPost(h, target, "/", nil)
+		if body := w.Body.String(); w.Header().Get(StatusHeader) != "500" || strings.Contains(body, "location.assign") || strings.Contains(body, "evil") || strings.Contains(body, "javascript:") {
+			t.Fatalf("%s: %q %q", to, w.Header().Get(StatusHeader), body)
+		}
+		w = serveRaw(h, httptest.NewRequest("POST", target, nil))
+		if loc := w.Header().Get("Location"); loc != "" && (loc == to || strings.Contains(loc, "evil") || strings.HasPrefix(loc, "javascript:")) {
+			t.Fatalf("%s without JavaScript: %d %q", to, w.Code, loc)
+		}
+		if w.Code == http.StatusSeeOther {
+			t.Fatalf("%s without JavaScript: a 303 to %q", to, w.Header().Get("Location"))
+		}
+	}
 }

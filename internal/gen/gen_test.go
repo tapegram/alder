@@ -3977,7 +3977,13 @@ const routeHandlersApp = "../../testdata/golden/gen_route_handlers"
 // app's log) and as (the signed session cookie of uid with a role).
 func runRouteApp(t *testing.T, body string) {
 	t.Helper()
-	runGo(t, emit(t, routeHandlersApp), `package app
+	runRouteAppIn(t, routeHandlersApp, body)
+}
+
+// runRouteAppIn is runRouteApp for the app in dir (the golden's, or a copy of it).
+func runRouteAppIn(t *testing.T, dir, body string) {
+	t.Helper()
+	runGo(t, emit(t, dir), `package app
 
 import (
 	"context"
@@ -4165,6 +4171,86 @@ func TestGenRoute_Requires(t *testing.T) {
 	`)
 }
 
+// copyRouteApp copies the route handlers' golden app to a temp dir, with edit applied to the
+// text of app/Todos.alder.
+func copyRouteApp(t *testing.T, edit func(string) string) string {
+	t.Helper()
+	dst := t.TempDir()
+	err := filepath.WalkDir(routeHandlersApp+"/app", func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(routeHandlersApp, p)
+		if d.IsDir() {
+			return os.MkdirAll(filepath.Join(dst, rel), 0o755)
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if rel == filepath.Join("app", "Todos.alder") {
+			b = []byte(edit(string(b)))
+		}
+		return os.WriteFile(filepath.Join(dst, rel), b, 0o644)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dst
+}
+
+// A write route's guard runs before anything else (#160 final review, M1): without the session
+// field it requires, a 303 to App.login; as a role it does not name, a 404; and in neither case
+// does the update run (the row is not toggled, not deleted, nothing loaded).
+func TestGenRoute_WriteRequires(t *testing.T) {
+	t.Parallel()
+	dir := copyRouteApp(t, func(s string) string {
+		old := `route Toggle = PATCH  "/todos/{id}/toggle" { id: Todo.TodoId }           requires user`
+		if !strings.Contains(s, old) {
+			t.Fatal("Toggle route not found in the fixture")
+		}
+		s = strings.Replace(s, old, old+", role Admin", 1)
+		old = `route Delete = DELETE "/todos/{id}"        { id: Todo.TodoId }           requires user`
+		if !strings.Contains(s, old) {
+			t.Fatal("Delete route not found in the fixture")
+		}
+		return strings.Replace(s, old, old+", role Admin", 1)
+	})
+	runRouteAppIn(t, dir, `
+	toggle, del := "/todos/"+todo+"/toggle", "/todos/"+todo
+	for _, c := range []struct{ method, target string }{{"PATCH", toggle}, {"DELETE", del}} {
+		if w := send(c.method, c.target, "", nil); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/login" {
+			t.Errorf("%s %s without a user: %d %q", c.method, c.target, w.Code, w.Header().Get("Location"))
+		}
+		if w := send(c.method, c.target, as(Table__User__Role__Reader__), nil); w.Code != http.StatusNotFound {
+			t.Errorf("%s %s as a reader: %d %q", c.method, c.target, w.Code, w.Body.String())
+		}
+		// Under Datastar the same answers are delivered as a navigation and a not-found body.
+		if w := send(c.method, c.target, "", nil, ds...); strings.Contains(w.Body.String(), "event: datastar-patch-elements") && !strings.Contains(w.Body.String(), "/login") {
+			t.Errorf("%s %s without a user under Datastar: %d %q", c.method, c.target, w.Code, w.Body.String())
+		}
+		if w := send(c.method, c.target, as(Table__User__Role__Reader__), nil, ds...); !strings.Contains(w.Body.String(), "Not found") || strings.Contains(w.Body.String(), "Milk") {
+			t.Errorf("%s %s as a reader under Datastar: %d %q", c.method, c.target, w.Code, w.Body.String())
+		}
+	}
+	if w := send("POST", toggle, as(Table__User__Role__Reader__), url.Values{"_method": {"PATCH"}}); w.Code != http.StatusNotFound {
+		t.Errorf("no-JS toggle as a reader: %d", w.Code)
+	}
+	if n := ran("Db.getMine Todo"); n != 0 {
+		t.Errorf("the update ran (%d row loads)", n)
+	}
+	if w := get("/?filter=Done", as(Table__User__Role__Admin__)); strings.Contains(w.Body.String(), "Milk") {
+		t.Errorf("the row was toggled: %q", w.Body.String())
+	}
+	if w := get("/todos/"+todo, as(Table__User__Role__Admin__)); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Milk") {
+		t.Errorf("the row was deleted: %d %q", w.Code, w.Body.String())
+	}
+	if w := send("PATCH", toggle, as(Table__User__Role__Admin__), nil, ds...); w.Code != http.StatusOK || ran("Db.getMine Todo") == 0 {
+		t.Errorf("toggle as an admin: %d, row loads %d", w.Code, ran("Db.getMine Todo"))
+	}
+	`)
+}
+
 // An element fetch whose route answers 404 (its load finds no row, its parameters do not
 // decode) patches nothing and toasts "Not found", as a `render` of a row that is gone does.
 func TestGenRoute_ElementNotFound(t *testing.T) {
@@ -4318,6 +4404,20 @@ func TestGenRoute_OptionsFromShownPage(t *testing.T) {
 	w = send("POST", move, me, url.Values{"list": {"home"}}, "Referer", "http://example.com/about")
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("no-JS from /about: %d %q", w.Code, w.Body.String())
+	}
+	// Neither Alder-Page nor Referer: the page is "/", which shows the row's select, so a
+	// forged option is a 422 and an offered one runs the update.
+	w = send("POST", move, me, url.Values{"list": {"bogus"}}, "Datastar-Request", "true")
+	if w.Header().Get(web.StatusHeader) != "422" || !strings.Contains(w.Body.String(), web.MsgOption) || strings.Contains(w.Body.String(), "Moved to") {
+		t.Fatalf("no page header, forged option: %d %q %q", w.Code, w.Header().Get(web.StatusHeader), w.Body.String())
+	}
+	w = send("POST", move, me, url.Values{"list": {"home"}}, "Datastar-Request", "true")
+	if w.Code != http.StatusOK || w.Header().Get(web.StatusHeader) != "" || !strings.Contains(w.Body.String(), "Moved to home") {
+		t.Fatalf("no page header, offered option: %d %q %q", w.Code, w.Header().Get(web.StatusHeader), w.Body.String())
+	}
+	w = send("POST", move, me, url.Values{"list": {"bogus"}})
+	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), web.MsgOption) {
+		t.Fatalf("no JS, no Referer, forged option: %d %q", w.Code, w.Body.String())
 	}
 	`)
 }
