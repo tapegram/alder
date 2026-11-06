@@ -86,9 +86,6 @@ func NewCapability(p *Program, module, entry, typ string) ([]Edit, error) {
 	if r := probe.errorsIn(edit.Path); r != nil {
 		return nil, r
 	}
-	if err := ir.Lowerable(probe.Prog); err != nil {
-		return nil, err
-	}
 	var c *ir.Capability
 	for _, x := range ir.Lower(probe.Prog, probe.Res).Caps {
 		if x.Module == module && x.Name == d.Name {

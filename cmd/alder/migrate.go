@@ -98,10 +98,6 @@ func runMigrateWith(args []string, stdout, stderr io.Writer, e *deployEnv) (code
 	if bag.HasErrors() || res == nil {
 		return 1
 	}
-	if err := ir.Lowerable(prog); err != nil {
-		fmt.Fprintf(stderr, "%s %v\n", errTag(stderr, "alder migrate:"), err)
-		return 1
-	}
 	return writeMigration(dir, migrate.FromProgram(ir.Lower(prog, res)), name, dry, stdout, stderr)
 }
 

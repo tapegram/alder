@@ -26,9 +26,6 @@ type Route struct {
 // layer's route table from, sorted by path (pages before messages at a path, then module and
 // name). res must be the result of a clean check (no errors, no holes).
 func Routes(prog *names.Program, res *check.Result) []Route {
-	if ir.Lowerable(prog) != nil {
-		return nil // a route program lists nothing until #160 PR 3 lowers it
-	}
 	p := ir.Lower(prog, res)
 	var out []Route
 	add := func(kind, path, module, name string) {

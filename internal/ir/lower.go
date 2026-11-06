@@ -12,21 +12,6 @@ import (
 	"alder/internal/types"
 )
 
-// ErrRoutesNotBuilt is why a program that declares a route is not built: Lower lowers routes,
-// and the code generator does not generate them yet (#160 PR 3, Task 3.3 removes it).
-var ErrRoutesNotBuilt = fmt.Errorf("routes are not built yet (#160 PR 3)")
-
-// Lowerable is ErrRoutesNotBuilt when prog declares a route, else nil. The commands that
-// generate code from Lower's IR ask it first until the generator builds routes.
-func Lowerable(prog *names.Program) error {
-	for _, name := range prog.Order {
-		if prog.IsRouteModule(name) {
-			return ErrRoutesNotBuilt
-		}
-	}
-	return nil
-}
-
 // Lower builds the IR of a program the checker accepted without errors. A missing recorded type
 // is a checker bug and panics with the node and its position.
 func Lower(prog *names.Program, res *check.Result) *Program {
