@@ -668,13 +668,14 @@ func TestBuild_StaleFetch(t *testing.T) {
 	}
 }
 
-// A redirect or render whose target is not a GET route of the app's — a Route with no Name (as
-// Url.external makes) or a write route held in a variable, which E0045 cannot see — is never
-// followed or patched in: logged, and answered as an error (Alder-Status 500 and the error toast
-// under Datastar, nothing patched; a 500 page without JavaScript). Nothing is loaded. An old
-// page's value (rt.Page) is a GET of this app, and followed.
+// A redirect or render whose target it cannot deliver (ruling R10) — a write route held in a
+// variable, which E0045 cannot see; for render also a Url.external URL or an old page's value,
+// which have no element to patch — is never followed or patched in: logged, and answered as an
+// error (Alder-Status 500 and the error toast under Datastar, nothing patched; a 500 page without
+// JavaScript). Nothing is loaded. A redirect to an old page's value (rt.Page) is a GET of this
+// app, and followed.
 func TestAnswer_TargetNotGET(t *testing.T) {
-	for _, target := range []string{"/w/redirect?noname=1&to=/other", "/w/redirect?method=PATCH&to=/w/render", "/w/render?id=1&noname=1", "/w/render?id=1&method=DELETE"} {
+	for _, target := range []string{"/w/redirect?method=PATCH&to=/w/render", "/w/redirect?noname=1&method=DELETE&to=/w/render", "/w/render?id=1&noname=1", "/w/render?id=1&page=1", "/w/render?id=1&method=DELETE"} {
 		a := newAnsApp(3)
 		a.toasts = true
 		var logged []string
@@ -687,7 +688,7 @@ func TestAnswer_TargetNotGET(t *testing.T) {
 		if a.loads != 0 || a.rowLoads != 0 {
 			t.Fatalf("%s: loads %d, row loads %d", target, a.loads, a.rowLoads)
 		}
-		if len(logged) != 1 || !strings.HasPrefix(logged[0], "error ") || !strings.Contains(logged[0], "not a GET route of this app") {
+		if len(logged) != 1 || !strings.HasPrefix(logged[0], "error ") || !strings.Contains(logged[0], "not a GET route") {
 			t.Fatalf("%s: logged %q", target, logged)
 		}
 		w = serveRaw(h, httptest.NewRequest("POST", target, nil))
@@ -780,5 +781,38 @@ func TestWithPageParams(t *testing.T) {
 	got := WithPageParams(st, []rt.KV{{Key: "filter", Value: "Done"}})
 	if got == st || st.PageParams != nil || got.Form != "R.New" || got.Msg != "POST /todos" || got.Values["title"] != "x" || len(got.PageParams) != 1 || got.PageParams[0].Value != "Done" {
 		t.Fatalf("%+v from %+v", got, st)
+	}
+}
+
+// A redirect to a Url.external URL (no name, Method GET) is delivered (ruling R10: OAuth and the
+// like): under Datastar a real navigation to it, even to a path of this app, never a morph, its
+// toast kept in the notice cookie for the page loaded; without JavaScript a 303 there. Nothing of
+// this app is loaded. Url.external's "#" (an unsafe URL) is refused.
+func TestAnswer_RedirectExternal(t *testing.T) {
+	for _, to := range []string{"https://auth.example.com/authorize?x=1", "/other"} {
+		a := newAnsApp(3)
+		h := NewRouter(a.routes(), testOpts(nil))
+		target := "/w/redirect?noname=1&toast=Bye&to=" + url.QueryEscape(to)
+		w := ansPost(h, target, "/", nil)
+		body := w.Body.String()
+		if w.Code != 200 || !strings.Contains(body, "window.location.assign("+strconv.Quote(to)+")") || strings.Contains(body, "selector body\ndata: mode outer") || strings.Contains(body, "pushState") {
+			t.Fatalf("%s: %d %q", to, w.Code, body)
+		}
+		if !strings.Contains(strings.Join(w.Header().Values("Set-Cookie"), "\n"), NoticeCookie+"=") || strings.Contains(body, "al-toast") {
+			t.Fatalf("%s: toast not kept for the next page: %q %q", to, w.Header().Values("Set-Cookie"), body)
+		}
+		w = serveRaw(h, httptest.NewRequest("POST", target, nil))
+		if w.Code != http.StatusSeeOther || w.Header().Get("Location") != to {
+			t.Fatalf("%s without JavaScript: %d %q", to, w.Code, w.Header().Get("Location"))
+		}
+		if a.loads != 0 {
+			t.Fatalf("%s: loads %d", to, a.loads)
+		}
+	}
+	a := newAnsApp(3)
+	h := NewRouter(a.routes(), testOpts(nil))
+	w := ansPost(h, "/w/redirect?noname=1&to=%23", "/", nil)
+	if w.Header().Get(StatusHeader) != "500" || strings.Contains(w.Body.String(), "location.assign") {
+		t.Fatalf("#: %q %q", w.Header().Get(StatusHeader), w.Body.String())
 	}
 }
