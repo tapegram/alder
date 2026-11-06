@@ -1,0 +1,573 @@
+================================================================================
+routes: the Todos module, route lines and qualified declarations
+================================================================================
+
+module Todos
+
+import Table.Todo
+import Layout
+
+route Index  = GET   "/"                  { filter: Todo.Filter = All } requires user
+route Row    = GET   "/todos/{id}"        { id: Todo.TodoId }           requires user
+route Toggle = PATCH "/todos/{id}/toggle" { id: Todo.TodoId }           requires user
+route Create = POST  "/todos"             { } form NewTodo              requires user
+
+type TodoList = { filter: Todo.Filter, todos: List Todo }
+
+Index.load : Index.Params -> Session -> Query TodoList
+Index.load params session = {
+  let todos <- Db.mine Todo |> Db.where (Todo.matches params.filter) |> Db.all
+  Query.succeed { filter: params.filter, todos: todos }
+}
+
+Index.view : TodoList -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Todos" theme={session.theme}>
+    <nav>
+      <a href={Index { filter: All }}>All</a>
+      <a href={Index { filter: Done }}>Done</a>
+    </nav>
+    <ul id="todos">{for t in model.todos -> Row.view t session}</ul>
+    <form submit={Create}><Input field="title" /><Errors form /><button>Add</button></form>
+  </Layout.Page>
+
+Row.load : Row.Params -> Session -> Query Todo
+Row.load params session = Db.getMine Todo params.id
+
+Row.view : Todo -> Session -> Html
+Row.view t session =
+  <li id={"todo-" ++ t.id}>
+    <button click={Toggle { id: t.id }}>{t.title}</button>
+  </li>
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update params session = {
+  let _ <- Db.updateMine Todo params.id (\t -> { t | done: not t.done })
+  Task.succeed (Response.render (Row { id: params.id }))
+}
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update params session = {
+  let _ <- Db.insertMine Todo { title: params.form.title, due: Nothing }
+  Task.succeed (Response.redirect (Index { filter: All }) |> Response.toast "Added")
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (import_decl
+    module: (module_name
+      (constructor)
+      (constructor)))
+  (import_decl
+    module: (module_name
+      (constructor)))
+  (route_decl
+    name: (constructor)
+    method: (route_method)
+    path: (string)
+    params: (record_type
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor)
+          (constructor))
+        default: (constructor)))
+    requires: (requires_clause
+      (session_key)))
+  (route_decl
+    name: (constructor)
+    method: (route_method)
+    path: (string)
+    params: (record_type
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor)
+          (constructor))))
+    requires: (requires_clause
+      (session_key)))
+  (route_decl
+    name: (constructor)
+    method: (route_method)
+    path: (string)
+    params: (record_type
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor)
+          (constructor))))
+    requires: (requires_clause
+      (session_key)))
+  (route_decl
+    name: (constructor)
+    method: (route_method)
+    path: (string)
+    params: (record_type)
+    form: (constructor)
+    requires: (requires_clause
+      (session_key)))
+  (type_decl
+    name: (constructor)
+    body: (record_type
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor)
+          (constructor)))
+      (field_decl
+        name: (identifier)
+        type: (type_app
+          constructor: (type_name
+            (constructor))
+          argument: (type_name
+            (constructor))))))
+  (value_decl
+    signature: (signature
+      name: (qualified_decl_name
+        route: (constructor)
+        name: (identifier))
+      type: (type_arrow
+        parameter: (type_name
+          (constructor)
+          (constructor))
+        result: (type_arrow
+          parameter: (type_name
+            (constructor))
+          result: (type_app
+            constructor: (type_name
+              (constructor))
+            argument: (type_name
+              (constructor))))))
+    binding: (binding
+      name: (qualified_decl_name
+        route: (constructor)
+        name: (identifier))
+      params: (parameters
+        (identifier)
+        (identifier))
+      body: (block
+        (bind_stmt
+          name: (identifier)
+          value: (pipe_expr
+            left: (pipe_expr
+              left: (application
+                function: (qualified_name
+                  module: (constructor)
+                  name: (identifier))
+                argument: (constructor))
+              right: (application
+                function: (qualified_name
+                  module: (constructor)
+                  name: (identifier))
+                argument: (parenthesized_expression
+                  (application
+                    function: (qualified_name
+                      module: (constructor)
+                      name: (identifier))
+                    argument: (field_access
+                      value: (identifier)
+                      field: (identifier))))))
+            right: (qualified_name
+              module: (constructor)
+              name: (identifier))))
+        result: (application
+          function: (qualified_name
+            module: (constructor)
+            name: (identifier))
+          argument: (record
+            (field_init
+              name: (identifier)
+              value: (field_access
+                value: (identifier)
+                field: (identifier)))
+            (field_init
+              name: (identifier)
+              value: (identifier)))))))
+  (value_decl
+    signature: (signature
+      name: (qualified_decl_name
+        route: (constructor)
+        name: (identifier))
+      type: (type_arrow
+        parameter: (type_name
+          (constructor))
+        result: (type_arrow
+          parameter: (type_name
+            (constructor))
+          result: (type_name
+            (constructor)))))
+    binding: (binding
+      name: (qualified_decl_name
+        route: (constructor)
+        name: (identifier))
+      params: (parameters
+        (identifier)
+        (identifier))
+      body: (element
+        open: (start_tag
+          tag: (component_name
+            (constructor)
+            (constructor))
+          (attribute
+            name: (attribute_name)
+            value: (string))
+          (attribute
+            name: (attribute_name)
+            value: (interpolation
+              expression: (field_access
+                value: (identifier)
+                field: (identifier)))))
+        (html_text)
+        (element
+          open: (start_tag
+            tag: (tag_name))
+          (html_text)
+          (element
+            open: (start_tag
+              tag: (tag_name)
+              (attribute
+                name: (attribute_name)
+                value: (interpolation
+                  expression: (application
+                    function: (constructor)
+                    argument: (record
+                      (field_init
+                        name: (identifier)
+                        value: (constructor)))))))
+            (html_text)
+            close: (end_tag
+              tag: (tag_name)))
+          (html_text)
+          (element
+            open: (start_tag
+              tag: (tag_name)
+              (attribute
+                name: (attribute_name)
+                value: (interpolation
+                  expression: (application
+                    function: (constructor)
+                    argument: (record
+                      (field_init
+                        name: (identifier)
+                        value: (constructor)))))))
+            (html_text)
+            close: (end_tag
+              tag: (tag_name)))
+          (html_text)
+          close: (end_tag
+            tag: (tag_name)))
+        (html_text)
+        (element
+          open: (start_tag
+            tag: (tag_name)
+            (attribute
+              name: (attribute_name)
+              value: (string)))
+          (html_for
+            binder: (identifier)
+            items: (field_access
+              value: (identifier)
+              field: (identifier))
+            body: (application
+              function: (qualified_name
+                module: (constructor)
+                name: (identifier))
+              argument: (identifier)
+              argument: (identifier)))
+          close: (end_tag
+            tag: (tag_name)))
+        (html_text)
+        (element
+          open: (start_tag
+            tag: (tag_name)
+            (attribute
+              name: (attribute_name)
+              value: (interpolation
+                expression: (constructor))))
+          (self_closing_element
+            tag: (component_name
+              (constructor))
+            (attribute
+              name: (attribute_name)
+              value: (string)))
+          (self_closing_element
+            tag: (component_name
+              (constructor))
+            (attribute
+              name: (attribute_name)))
+          (element
+            open: (start_tag
+              tag: (tag_name))
+            (html_text)
+            close: (end_tag
+              tag: (tag_name)))
+          close: (end_tag
+            tag: (tag_name)))
+        (html_text)
+        close: (end_tag
+          tag: (component_name
+            (constructor)
+            (constructor))))))
+  (value_decl
+    signature: (signature
+      name: (qualified_decl_name
+        route: (constructor)
+        name: (identifier))
+      type: (type_arrow
+        parameter: (type_name
+          (constructor)
+          (constructor))
+        result: (type_arrow
+          parameter: (type_name
+            (constructor))
+          result: (type_app
+            constructor: (type_name
+              (constructor))
+            argument: (type_name
+              (constructor))))))
+    binding: (binding
+      name: (qualified_decl_name
+        route: (constructor)
+        name: (identifier))
+      params: (parameters
+        (identifier)
+        (identifier))
+      body: (application
+        function: (qualified_name
+          module: (constructor)
+          name: (identifier))
+        argument: (constructor)
+        argument: (field_access
+          value: (identifier)
+          field: (identifier)))))
+  (value_decl
+    signature: (signature
+      name: (qualified_decl_name
+        route: (constructor)
+        name: (identifier))
+      type: (type_arrow
+        parameter: (type_name
+          (constructor))
+        result: (type_arrow
+          parameter: (type_name
+            (constructor))
+          result: (type_name
+            (constructor)))))
+    binding: (binding
+      name: (qualified_decl_name
+        route: (constructor)
+        name: (identifier))
+      params: (parameters
+        (identifier)
+        (identifier))
+      body: (element
+        open: (start_tag
+          tag: (tag_name)
+          (attribute
+            name: (attribute_name)
+            value: (interpolation
+              expression: (additive_expr
+                left: (string)
+                right: (field_access
+                  value: (identifier)
+                  field: (identifier))))))
+        (html_text)
+        (element
+          open: (start_tag
+            tag: (tag_name)
+            (attribute
+              name: (attribute_name)
+              value: (interpolation
+                expression: (application
+                  function: (constructor)
+                  argument: (record
+                    (field_init
+                      name: (identifier)
+                      value: (field_access
+                        value: (identifier)
+                        field: (identifier))))))))
+          (interpolation
+            expression: (field_access
+              value: (identifier)
+              field: (identifier)))
+          close: (end_tag
+            tag: (tag_name)))
+        (html_text)
+        close: (end_tag
+          tag: (tag_name)))))
+  (value_decl
+    signature: (signature
+      name: (qualified_decl_name
+        route: (constructor)
+        name: (identifier))
+      type: (type_arrow
+        parameter: (type_name
+          (constructor)
+          (constructor))
+        result: (type_arrow
+          parameter: (type_name
+            (constructor))
+          result: (type_app
+            constructor: (type_name
+              (constructor))
+            argument: (type_name
+              (constructor))))))
+    binding: (binding
+      name: (qualified_decl_name
+        route: (constructor)
+        name: (identifier))
+      params: (parameters
+        (identifier)
+        (identifier))
+      body: (block
+        (bind_stmt
+          name: (wildcard)
+          value: (application
+            function: (qualified_name
+              module: (constructor)
+              name: (identifier))
+            argument: (constructor)
+            argument: (field_access
+              value: (identifier)
+              field: (identifier))
+            argument: (parenthesized_expression
+              (lambda
+                param: (identifier)
+                body: (record_update
+                  record: (identifier)
+                  (field_init
+                    name: (identifier)
+                    value: (application
+                      function: (identifier)
+                      argument: (field_access
+                        value: (identifier)
+                        field: (identifier)))))))))
+        result: (application
+          function: (qualified_name
+            module: (constructor)
+            name: (identifier))
+          argument: (parenthesized_expression
+            (application
+              function: (qualified_name
+                module: (constructor)
+                name: (identifier))
+              argument: (parenthesized_expression
+                (application
+                  function: (constructor)
+                  argument: (record
+                    (field_init
+                      name: (identifier)
+                      value: (field_access
+                        value: (identifier)
+                        field: (identifier))))))))))))
+  (value_decl
+    signature: (signature
+      name: (qualified_decl_name
+        route: (constructor)
+        name: (identifier))
+      type: (type_arrow
+        parameter: (type_name
+          (constructor)
+          (constructor))
+        result: (type_arrow
+          parameter: (type_name
+            (constructor))
+          result: (type_app
+            constructor: (type_name
+              (constructor))
+            argument: (type_name
+              (constructor))))))
+    binding: (binding
+      name: (qualified_decl_name
+        route: (constructor)
+        name: (identifier))
+      params: (parameters
+        (identifier)
+        (identifier))
+      body: (block
+        (bind_stmt
+          name: (wildcard)
+          value: (application
+            function: (qualified_name
+              module: (constructor)
+              name: (identifier))
+            argument: (constructor)
+            argument: (record
+              (field_init
+                name: (identifier)
+                value: (field_access
+                  value: (field_access
+                    value: (identifier)
+                    field: (identifier))
+                  field: (identifier)))
+              (field_init
+                name: (identifier)
+                value: (constructor)))))
+        result: (application
+          function: (qualified_name
+            module: (constructor)
+            name: (identifier))
+          argument: (parenthesized_expression
+            (pipe_expr
+              left: (application
+                function: (qualified_name
+                  module: (constructor)
+                  name: (identifier))
+                argument: (parenthesized_expression
+                  (application
+                    function: (constructor)
+                    argument: (record
+                      (field_init
+                        name: (identifier)
+                        value: (constructor))))))
+              right: (application
+                function: (qualified_name
+                  module: (constructor)
+                  name: (identifier))
+                argument: (string)))))))))
+
+================================================================================
+routes: every method, form and requires clause
+================================================================================
+
+module M
+
+route A = GET "/"  { } 
+route B = DELETE "/b/{id}" { id: Int } form F requires user, role Admin | Owner
+route C = PUT "/c" { }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (module_decl
+    name: (module_name
+      (constructor)))
+  (route_decl
+    name: (constructor)
+    method: (route_method)
+    path: (string)
+    params: (record_type))
+  (route_decl
+    name: (constructor)
+    method: (route_method)
+    path: (string)
+    params: (record_type
+      (field_decl
+        name: (identifier)
+        type: (type_name
+          (constructor))))
+    form: (constructor)
+    requires: (requires_clause
+      (session_key)
+      (role_clause
+        role: (constructor)
+        role: (constructor))))
+  (route_decl
+    name: (constructor)
+    method: (route_method)
+    path: (string)
+    params: (record_type)))

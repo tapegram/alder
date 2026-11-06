@@ -131,3 +131,38 @@ func TestDecls(t *testing.T) {
 	wantNone(t, s, toks, "floor: -1", 8)
 	wantLen(t, s, toks, `"/p/{slug}"`, 0, TString, 11)
 }
+
+const routeSrc = `module Todos
+
+route Create = POST "/todos" { } form NewTodo requires user, role Admin
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update params session = Task.succeed (Response.refresh)
+`
+
+func TestRouteDecls(t *testing.T) {
+	if _, ds := syntax.ParseFile("t.alder", []byte(routeSrc)); len(ds) > 0 {
+		t.Fatalf("the fixture does not parse: %v", ds)
+	}
+	toks := Module("t.alder", []byte(routeSrc))
+	checkInvariants(t, "routeSrc", routeSrc, toks)
+	for _, c := range []struct {
+		needle string
+		off    int
+		kind   Kind
+		mods   int
+	}{
+		{"route Create", 0, TKeyword, 0},
+		{"Create =", 0, TEnumMember, 0},
+		{"POST", 0, TEnumMember, 0},
+		{"form NewTodo", 0, TKeyword, 0},
+		{"requires user", 9, TProperty, 0},
+		{"role Admin", 0, TKeyword, 0},
+		{"Create.update :", 0, TNamespace, 0},
+		{"Create.update :", 7, TFunction, Declaration},
+		{"Create.update params", 0, TNamespace, 0},
+		{"Create.update params", 7, TFunction, Declaration},
+	} {
+		want(t, routeSrc, toks, c.needle, c.off, c.kind, c.mods)
+	}
+}

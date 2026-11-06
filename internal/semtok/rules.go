@@ -80,12 +80,12 @@ func (w *walker) rule(n syntax.Spanned) {
 		if len(ts) == 0 {
 			break
 		}
-		w.set(ts[0], TFunction, Declaration)
+		w.declName(ts, n.Route != "")
 		if n.Sig != nil {
 			end := n.Sig.GetSpan().End
-			for _, t := range ts {
+			for i, t := range ts {
 				if !before(pos(t), end) && t.Kind == ts[0].Kind && t.Text == ts[0].Text {
-					w.set(t, TFunction, Declaration) // the definition line's name
+					w.declName(ts[i:], n.Route != "") // the definition line's name
 					break
 				}
 			}
@@ -146,21 +146,7 @@ func (w *walker) rule(n syntax.Spanned) {
 			}
 		}
 	case *syntax.PageDecl: // `requires user, org, role R | S, silo k`
-		for i, sp := range n.FieldSpans {
-			ts := w.in(sp)
-			if i == 0 && len(ts) > 1 { // FieldSpans[0] is RequiresSpan, from `requires`
-				w.set(ts[1], TProperty, 0)
-			} else if i > 0 && len(ts) > 0 {
-				w.set(ts[0], TProperty, 0)
-			}
-		}
-		if n.Roles != nil {
-			w.keywordAt(n.RolesSpan)
-		}
-		if ts := w.in(n.SiloSpan); n.Silo != "" && len(ts) > 1 {
-			w.set(ts[0], TKeyword, 0)
-			w.set(ts[1], TProperty, 0)
-		}
+		w.guard(&n.Guard)
 	case *syntax.SiloDecl: // `silo k { T, U }`
 		w.keywordAt(n.Span)
 		if t, ok := w.first(n.KeySpan); ok {
@@ -179,6 +165,11 @@ func (w *walker) rule(n syntax.Spanned) {
 		w.pageAfterEqual(n.Span)
 	case *syntax.LoginDecl: // `login = A.B`
 		w.pageAfterEqual(n.Span)
+	case *syntax.RouteDecl: // `route R = GET "/p" { … } form F requires …`: `form` is not reserved
+		if n.Form != "" {
+			w.keywordAt(n.FormSpan)
+		}
+		w.guard(&n.Guard)
 	case *syntax.MsgDecl: // `msg M [{ … }] [form F]`
 		ts := w.in(n.Span)
 		from := diag.Pos{}
@@ -273,6 +264,37 @@ func (w *walker) rule(n syntax.Spanned) {
 			}
 		}
 	}
+}
+
+// guard colours a page's or route's `requires user, org, role R | S, silo k` clause.
+func (w *walker) guard(g *syntax.Guard) {
+	for i, sp := range g.FieldSpans {
+		ts := w.in(sp)
+		if i == 0 && len(ts) > 1 { // FieldSpans[0] is RequiresSpan, from `requires`
+			w.set(ts[1], TProperty, 0)
+		} else if i > 0 && len(ts) > 0 {
+			w.set(ts[0], TProperty, 0)
+		}
+	}
+	if g.Roles != nil {
+		w.keywordAt(g.RolesSpan)
+	}
+	if ts := w.in(g.SiloSpan); g.Silo != "" && len(ts) > 1 {
+		w.set(ts[0], TKeyword, 0)
+		w.set(ts[1], TProperty, 0)
+	}
+}
+
+// declName colours the name at the start of ts: a function declaration, or for a declaration
+// qualified by its route (`Index.load`) the route as a namespace, as in a qualified_name, and the
+// name after it as the function.
+func (w *walker) declName(ts []syntax.Token, qualified bool) {
+	if !qualified || len(ts) < 3 {
+		w.set(ts[0], TFunction, Declaration)
+		return
+	}
+	w.set(ts[0], TNamespace, 0)
+	w.set(ts[2], TFunction, Declaration)
 }
 
 // pageAfterEqual colours the dotted module name after the `=` of sp's tokens as namespaces.

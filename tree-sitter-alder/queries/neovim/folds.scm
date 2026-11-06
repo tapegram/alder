@@ -9,6 +9,7 @@
   (deploy_decl)
   (theme_decl)
   (test_decl)
+  (route_decl)
   (form_decl)
   (block)
   (match_expr)
