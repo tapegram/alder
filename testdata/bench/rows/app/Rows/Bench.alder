@@ -29,8 +29,8 @@ test "toggle 1000" = {
   let _ <- Test.get (Rows.Index {})
   match List.head ids {
     Just id -> {
-      let r <- Test.click (Rows.Index.Toggle { id: id })
-      Task.succeed (r.answer == Rerendered)
+      let r <- Test.click (Rows.Toggle { id: id })
+      Task.succeed (r.answer == Rendered (Rows.Item { id: id }))
     },
     Nothing -> Task.succeed False,
   }
@@ -39,8 +39,21 @@ test "toggle 1000" = {
 test "add 1000" = {
   let _ <- Task.all (List.map (\i -> Db.insert Row { title: Text.NonEmpty ("row " ++ Text.fromInt i), n: i }) (List.range 1 1000))
   let _ <- Test.get (Rows.Index {})
-  let r <- Test.submit Rows.Index.NewRow { title: Text.NonEmpty "new" }
-  Task.succeed (r.answer == Rerendered)
+  let r <- Test.submit Rows.Add { title: Text.NonEmpty "new" }
+  Task.succeed (r.answer == Refreshed)
+}
+
+test "delete 1000" = {
+  let ids <- Task.all (List.map (\i -> Db.insert Row { title: Text.NonEmpty ("row " ++ Text.fromInt i), n: i }) (List.range 1 1000))
+  let _ <- Test.get (Rows.Index {})
+  match List.head ids {
+    Just id -> {
+      let t <- Test.click (Rows.Toggle { id: id })
+      let r <- Test.click (Rows.Delete { id: id })
+      Task.succeed (r.answer == Refreshed)
+    },
+    Nothing -> Task.succeed False,
+  }
 }
 
 test "jump 1000" = {
@@ -48,7 +61,7 @@ test "jump 1000" = {
   let _ <- Test.get (Rows.Index {})
   match List.head ids {
     Just id -> {
-      let r <- Test.click (Rows.Index.Jump { id: id })
+      let r <- Test.click (Rows.Jump { id: id })
       Task.succeed (r.answer == Redirected (Rows.Show { id: id }))
     },
     Nothing -> Task.succeed False,

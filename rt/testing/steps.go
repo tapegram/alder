@@ -3,7 +3,9 @@ package rtesting
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -332,4 +334,290 @@ func CheckSession(e *eff.Env, next any) (any, error) {
 		return next, nil
 	}
 	return e.CheckSession(e, e.Session, next)
+}
+
+// ClickRoute is Test.click of route r (#160): the held page's control for it — matched as
+// rt.RouteKey(r), its method and its URL's path and own query — sent the way the page's script
+// sends it (routeRequest of rt/html): a GET route as an element fetch (Alder-Fetch), whose
+// answer replaces the element with its root's id; a write route as its control does, with the
+// fields of the form the control submits (a click button's own form: its `_method`; another
+// form's submit button: that form's fields) or, for a click button inside another form, the
+// script's empty payload. Every request carries Alder-Page (the held URL) and Alder-Build (the
+// held page's build); a write's, Alder-Shown. The body is never the test's: a route with
+// `form F` clicked gets what the page sends, and F decodes as it can (ruling R-P2). The
+// answer: Rendered (a GET route's element, or a write's `render r`), Refreshed, FormRejected
+// (`invalid`, a form that did not decode: status 422), Redirected (the target held, the
+// result's URL its URL), PageMissing, RequestFailed. With no control the error is a
+// *NoControlError naming label, the route as the test wrote it, and nothing is sent.
+func (b *Browser) ClickRoute(r rt.Route, label string) (Result, error) {
+	defer b.track()()
+	c, ok := b.routeControl(r, false)
+	if !ok {
+		return Result{}, &NoControlError{Msg: label, URL: rt.RouteURL(r), Page: b.url}
+	}
+	var fields url.Values
+	if c.hasForm {
+		fields = formData(c.form)
+	}
+	ans, err := b.sendRoute(c, r, fields)
+	if err != nil {
+		return Result{}, err
+	}
+	return b.result(ans), nil
+}
+
+// SubmitRoute is Test.submit of write route r's form (named form, for the errors): fields
+// posted to the held page's form for r (not a click button's own) as Submit posts a message's
+// (only the fields the form has inputs for: Fields.For), with the form's `_method` (its hidden
+// field, or its submit button's name and value) as the page's script sends it, and the headers
+// and answers of ClickRoute. With no such form the error is a *NoControlError naming form and
+// r ("the page / has no form NewTodo (Todos.Create)"); with a field the form has no input
+// for, a *NoInputError. Either way nothing is sent.
+func (b *Browser) SubmitRoute(r rt.Route, form string, fields Fields) (Result, error) {
+	defer b.track()()
+	c, ok := b.routeControl(r, true)
+	if !ok {
+		return Result{}, &NoControlError{Submit: true, Form: form, Msg: r.Name, URL: rt.RouteURL(r), Page: b.url}
+	}
+	send, err := fields.For(c.form, form)
+	if err != nil {
+		return Result{}, err
+	}
+	if m, ok := formData(c.form)[methodField]; ok {
+		send[methodField] = m
+	}
+	ans, err := b.sendRoute(c, r, send)
+	if err != nil {
+		return Result{}, err
+	}
+	return b.result(ans), nil
+}
+
+// Refresh is `Test.refresh` (#160), the developer's whole-page honesty check: a plain GET of the
+// held URL (no Datastar, as a browser's reload; a redirect followed), whose page becomes the
+// held one. Its body must equal the body held before it, compared as Doc equality compares
+// (the page's parameters left out: html.WithoutPageParams) and without the toasts (<al-toasts>,
+// what a step's toasts were delivered into, which a reload may fill from a notice): the
+// answer is then Refreshed. A page not shown again (PageMissing, RequestFailed, Redirected
+// elsewhere) or a body that differs is a *RefreshError, as is a browser holding no page.
+func (b *Browser) Refresh() (Result, error) {
+	defer b.track()()
+	if !b.hasDoc {
+		return Result{}, &RefreshError{}
+	}
+	u, held := b.url, b.doc
+	ans, err := b.navigate(u, false)
+	if err != nil {
+		return Result{}, err
+	}
+	if ans.Tag != Shown {
+		return Result{}, &RefreshError{URL: u, NotShown: &NotShownError{URL: u, Answer: ans}}
+	}
+	if d, differ := html.Diff(refreshBody(held), refreshBody(b.doc)); differ {
+		return Result{}, &RefreshError{URL: u, Diff: &d}
+	}
+	return b.result(Answer{Tag: Refreshed}), nil
+}
+
+// refreshBody is what Refresh compares of document d: its <body> (d itself without one) without
+// the page's parameters and the <al-toasts> region.
+func refreshBody(d html.Node) html.Node {
+	if bs := html.Select(d, selBody); len(bs) > 0 {
+		d = bs[0]
+	}
+	return html.Without(html.WithoutPageParams(d), func(n html.Node) bool { return n.Tag() == "al-toasts" })
+}
+
+// RefreshError is Test.refresh's failure: no page held (URL ""), the held URL not shown again
+// (NotShown), or the page loaded again unlike the one held (Diff, where they first differ).
+type RefreshError struct {
+	URL      string
+	NotShown *NotShownError
+	Diff     *html.Difference
+}
+
+// Error is "Test.refresh: GET /: the page held differs from the page loaded again at body >
+// main > p#n: <what>" with each side's markup, "Test.refresh: GET /: not found" (NotShownError's
+// text) or "Test.refresh: the browser holds no page yet".
+func (e *RefreshError) Error() string {
+	switch {
+	case e.NotShown != nil:
+		return "Test.refresh: " + e.NotShown.Error()
+	case e.Diff != nil:
+		return fmt.Sprintf("Test.refresh: GET %s: the page held differs from the page loaded again at %s: %s\n  held:   %s\n  loaded: %s",
+			e.URL, e.Diff.At, e.Diff.What, e.Diff.Left, e.Diff.Right)
+	}
+	return "Test.refresh: the browser holds no page yet"
+}
+
+// methodField is the url-encoded field a POST names its route's method by (rt/web honours it).
+const methodField = "_method"
+
+// routeAction is a Datastar action the page's script runs to request a route (rt/html
+// RouteClick, RouteSubmit): `@<verb>('<url>', window._alder<O|F>?.(<'form'>))`, F an element
+// fetch's options, 'form' a request that sends a form's fields.
+var routeAction = regexp.MustCompile(`@(get|post|put|patch|delete)\('([^']*)', window\._alder([OF])\?\.\(('form')?\)`)
+
+// routeCtl is a control of the held page that requests a route: the request it makes.
+type routeCtl struct {
+	method  string    // the request's method: Datastar's verb (a DELETE that sends a form is a POST)
+	url     string    // the URL, as the page renders it
+	fetch   bool      // an element fetch (a GET route)
+	form    html.Node // the form whose fields it sends, when hasForm
+	hasForm bool
+}
+
+// routeControl is the held page's first control, in document order, requesting r: for a
+// submit (submit set) a form posting r that is not a click button's own; for a click, also a
+// click button's own form and any element whose data-on:click requests r. A control's route is
+// its method — a form's `_method` for a POST that sends one — and its URL (routeKeyOf).
+func (b *Browser) routeControl(r rt.Route, submit bool) (routeCtl, bool) {
+	if !b.hasDoc {
+		return routeCtl{}, false
+	}
+	method := r.Method
+	if method == "" {
+		method = http.MethodGet
+	}
+	want, ok := routeKeyOf(method, rt.RouteURL(r))
+	if !ok {
+		return routeCtl{}, false
+	}
+	var found routeCtl
+	var walk func(n html.Node) bool
+	walk = func(n html.Node) bool {
+		if n.Tag() == "form" && (!submit || !clickForm(n)) {
+			if a, ok := html.AttrOf(n, "data-on:submit"); ok {
+				if c, ok := parseRouteAction(a); ok {
+					c.form = n
+					m := c.method
+					if v := formData(n)[methodField]; c.hasForm && m == http.MethodPost && len(v) == 1 {
+						m = v[0]
+					}
+					if k, ok := routeKeyOf(m, c.url); ok && k == want {
+						found = c
+						return true
+					}
+				}
+			}
+		}
+		if !submit && n.Tag() != "" {
+			for _, name := range []string{"data-on:click", "data-on:click__prevent"} {
+				if a, ok := html.AttrOf(n, name); ok {
+					if c, ok := parseRouteAction(a); ok && !c.hasForm {
+						if k, ok := routeKeyOf(c.method, c.url); ok && k == want {
+							found = c
+							return true
+						}
+					}
+				}
+			}
+		}
+		for _, ch := range n.Children() {
+			if walk(ch) {
+				return true
+			}
+		}
+		return false
+	}
+	return found, walk(b.doc)
+}
+
+// parseRouteAction is the request of Datastar action a when it requests a route (routeAction).
+func parseRouteAction(a string) (routeCtl, bool) {
+	m := routeAction.FindStringSubmatch(a)
+	if m == nil {
+		return routeCtl{}, false
+	}
+	return routeCtl{method: strings.ToUpper(m[1]), url: m[2], fetch: m[3] == "F", hasForm: m[4] != ""}, true
+}
+
+// routeKeyOf is rt.RouteKey of a request of method to URL u: the method, and the URL's path
+// and own query (rt.MsgKey).
+func routeKeyOf(method, u string) (string, bool) {
+	p, err := url.Parse(u)
+	if err != nil || p.Path == "" {
+		return "", false
+	}
+	return method + " " + rt.MsgKey(p.Path, p.Query()), true
+}
+
+// formData is what Datastar sends for form f, as `new FormData(f)` and the submitter: each
+// named control in document order — an input but a button-like one, a checkbox or radio only
+// when checked ("on" without a value), a select's selected options (else its first), a
+// textarea's text — none that is disabled; then the name and value of f's submit button, its
+// first <button> (or input) of type submit without a formaction of its own, when it has a name.
+func formData(f html.Node) url.Values {
+	out := url.Values{}
+	var submitter html.Node
+	var walk func(n html.Node)
+	walk = func(n html.Node) {
+		tag := n.Tag()
+		_, disabled := html.AttrOf(n, "disabled")
+		name, named := html.AttrOf(n, "name")
+		typ, _ := html.AttrOf(n, "type")
+		typ = strings.ToLower(typ)
+		_, formaction := html.AttrOf(n, "formaction")
+		switch {
+		case (tag == "button" && (typ == "" || typ == "submit")) || (tag == "input" && typ == "submit"):
+			if submitter.Tag() == "" && !formaction && !disabled {
+				submitter = n
+			}
+		case tag == "input" && named && !disabled:
+			value, hasValue := html.AttrOf(n, "value")
+			switch typ {
+			case "button", "reset", "image", "file":
+			case "checkbox", "radio":
+				if _, checked := html.AttrOf(n, "checked"); checked {
+					if !hasValue {
+						value = "on"
+					}
+					out.Add(name, value)
+				}
+			default:
+				out.Add(name, value)
+			}
+		case tag == "select" && named && !disabled:
+			var options, selected []string
+			var opts func(n html.Node)
+			opts = func(n html.Node) {
+				if n.Tag() == "option" {
+					v, ok := html.AttrOf(n, "value")
+					if !ok {
+						v = html.TextContent(n)
+					}
+					options = append(options, v)
+					if _, sel := html.AttrOf(n, "selected"); sel {
+						selected = append(selected, v)
+					}
+					return
+				}
+				for _, c := range n.Children() {
+					opts(c)
+				}
+			}
+			opts(n)
+			if _, multiple := html.AttrOf(n, "multiple"); len(selected) == 0 && !multiple && len(options) > 0 {
+				selected = options[:1]
+			}
+			for _, v := range selected {
+				out.Add(name, v)
+			}
+			return
+		case tag == "textarea" && named && !disabled:
+			out.Add(name, html.TextContent(n))
+			return
+		}
+		for _, c := range n.Children() {
+			walk(c)
+		}
+	}
+	for _, c := range f.Children() {
+		walk(c)
+	}
+	if name, ok := html.AttrOf(submitter, "name"); ok {
+		value, _ := html.AttrOf(submitter, "value")
+		out.Add(name, value)
+	}
+	return out
 }

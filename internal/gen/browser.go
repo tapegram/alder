@@ -1,7 +1,6 @@
 package gen
 
 import (
-	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -35,6 +34,15 @@ import (
 //	TestClick      "Test.click M.Msg": _b.ClickMsg(rt.MsgRef{…}.URL(nil), rtesting.MsgName("M.Msg",
 //	               params)) — the message's URL with its own parameters only: the browser posts
 //	               the URL the held page renders for it, which carries the page's parameters
+//	TestRefresh    "Test.refresh": _r, _err := rtesting.BrowserOf(_e).Refresh() (#160); R{Answer:
+//	               _r.Answer, …}
+//
+// On a route (#160) each names the route value, an rt.Route literal (routeRef) with its
+// parameters bound once (routeTarget): Test.get/open/fetch "Test.get M.R" request rt.RouteURL
+// of it (get's model the route's Model, its first `requires` in GetPage); Test.click "Test.click
+// M.R" is _b.ClickRoute(route, rtesting.MsgName("M.R", params)); Test.submit and submitRaw of a
+// route's form are _b.SubmitRoute(route, "F", fields), the fields encode__M__F (a route's form
+// has an encoder too) or RawFields.
 //
 // A query (Test.text, texts, has, count, attr) whose selector is a literal calls the Sel form of
 // its rtesting function with the selector parsed once, a package variable selector__N
@@ -80,31 +88,8 @@ func (f *fn) member(x *ir.Call, s *scope) string {
 		", []any{" + strings.Join(vals, ", ") + "}, _e.Now())\nreturn err\n}, " + f.code(x.Args[0], s) + ", " + f.code(x.Args[1], s) + ")"
 }
 
-// ErrRouteTests is why a test build of a program whose tests drive a route (Test.get, open,
-// fetch, click, submit or submitRaw of a route) is not built: the browser steps on routes come
-// with #160 PR 4, which removes it. Emit returns it as it is (browserStep panics with it).
-var ErrRouteTests = errors.New("tests on routes are not built yet (#160 PR 4)")
-
 // browserStep is step x (a Test* browser node of effect type x.Type()).
 func (f *fn) browserStep(x ir.Expr, s *scope) string {
-	switch x := x.(type) { // #160 PR 4 builds these (ruling R8: a clear stop until then)
-	case *ir.TestGet:
-		if x.Route != nil {
-			panic(ErrRouteTests)
-		}
-	case *ir.TestSubmit:
-		if x.Route != nil {
-			panic(ErrRouteTests)
-		}
-	case *ir.TestSubmitRaw:
-		if x.Route != nil {
-			panic(ErrRouteTests)
-		}
-	case *ir.TestClick:
-		if x.Route != nil {
-			panic(ErrRouteTests)
-		}
-	}
 	t := x.Type()
 	r := GoType(effResult(t))
 	result := func(c *scope, first, value, res string) string {
@@ -138,6 +123,9 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 		}
 		if x.Fetch {
 			name = "Test.fetch "
+		}
+		if x.Route != nil {
+			return f.routeGet(name, x, t, s, fail, result)
 		}
 		return f.callStmts(name+x.Page.Module, true, t, s, func(env string, c *scope) string {
 			var w strings.Builder
@@ -179,6 +167,10 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 		return f.callStmts("Test.submit "+x.Form.Name, true, t, s, func(env string, c *scope) string {
 			var w strings.Builder
 			fields := encodeName(x.Form.Module, x.Form.Name) + "(" + f.code(x.Record, c) + ")"
+			if x.Route != nil {
+				f.submitRoute(&w, c, env, x.Form, x.Route, x.Params, fields, fail, result)
+				return w.String()
+			}
 			f.submit(&w, c, env, x.Form, x.Msg, x.Page, x.Params, fields, fail, result)
 			return w.String()
 		})
@@ -191,10 +183,24 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 			}
 			fs, err := f.temp(c, "_f"), f.temp(c, "_err")
 			fmt.Fprintf(&w, "%s, %s := rtesting.RawFields(%s, []string{%s}, %s)\n%s", fs, err, strconv.Quote(x.Form.Name), strings.Join(names, ", "), f.code(x.Fields, c), fail(c, err))
+			if x.Route != nil {
+				f.submitRoute(&w, c, env, x.Form, x.Route, x.Params, fs, fail, result)
+				return w.String()
+			}
 			f.submit(&w, c, env, x.Form, x.Msg, x.Page, x.Params, fs, fail, result)
 			return w.String()
 		})
 	case *ir.TestClick:
+		if x.Route != nil {
+			return f.callStmts("Test.click "+x.Route.Module+"."+x.Route.Name, true, t, s, func(env string, c *scope) string {
+				var w strings.Builder
+				r, label := f.routeTarget(&w, c, x.Route, x.Params)
+				res, err := f.temp(c, "_r"), f.temp(c, "_err")
+				fmt.Fprintf(&w, "%s, %s := rtesting.BrowserOf(%s).ClickRoute(%s, %s)\n%s", res, err, env, r, label, fail(c, err))
+				w.WriteString(result(c, "Answer", res+".Answer", res))
+				return w.String()
+			})
+		}
 		owner := stepOwner(x.Page)
 		return f.callStmts("Test.click "+owner+"."+x.Msg.Name, true, t, s, func(env string, c *scope) string {
 			var w strings.Builder
@@ -203,6 +209,11 @@ func (f *fn) browserStep(x ir.Expr, s *scope) string {
 			fmt.Fprintf(&w, "%s, %s := rtesting.BrowserOf(%s).ClickMsg(%s, %s)\n%s", res, err, env, u, label, fail(c, err))
 			w.WriteString(result(c, "Answer", res+".Answer", res))
 			return w.String()
+		})
+	case *ir.TestRefresh:
+		return f.callStmts("Test.refresh", true, t, s, func(env string, c *scope) string {
+			res, err := f.temp(c, "_r"), f.temp(c, "_err")
+			return res + ", " + err + " := rtesting.BrowserOf(" + env + ").Refresh()\n" + fail(c, err) + result(c, "Answer", res+".Answer", res)
 		})
 	}
 	panic(fmt.Sprintf("gen: %T is not a browser step", x))
@@ -223,6 +234,69 @@ func (f *fn) submit(w *strings.Builder, c *scope, env string, form *ir.Form, msg
 		fmt.Fprintf(w, "%s, %s := rtesting.BrowserOf(%s).SubmitMsg(%s, %s, %s, %s)\n%s", res, err, env, u, strconv.Quote(form.Name), label, fields, fail(c, err))
 	}
 	w.WriteString(result(c, "Answer", res+".Answer", res))
+}
+
+// routeGet is Test.get, open or fetch (name, "Test.get ") of a GET route: as of a page, the URL
+// the route value builds (rt.RouteURL), its first `requires` named in a redirect to the login
+// page, and get's model the route's Model.
+func (f *fn) routeGet(name string, x *ir.TestGet, t types.Type, s *scope, fail func(*scope, string) string, result func(*scope, string, string, string) string) string {
+	r := x.Route
+	return f.callStmts(name+r.Module+"."+r.Name, true, t, s, func(env string, c *scope) string {
+		var w strings.Builder
+		route, _ := f.routeTarget(&w, c, r, x.Params)
+		u, b, res, err := f.temp(c, "_u"), f.temp(c, "_b"), f.temp(c, "_r"), f.temp(c, "_err")
+		fmt.Fprintf(&w, "%s := rt.RouteURL(%s)\n%s := rtesting.BrowserOf(%s)\n", u, route, b, env)
+		switch {
+		case x.Fetch: // the record's Go type is rtesting.Fetched
+			fmt.Fprintf(&w, "%s, %s := %s.Fetch(%s)\n%sreturn %s, nil\n", res, err, b, u, fail(c, err), res)
+		case x.Open:
+			fmt.Fprintf(&w, "%s, %s := %s.Open(%s)\n%s", res, err, b, u, fail(c, err))
+			w.WriteString(result(c, "Answer", res+".Answer", res))
+		default:
+			requires := ""
+			if len(r.Requires) > 0 {
+				requires = r.Requires[0]
+			}
+			fmt.Fprintf(&w, "%s, %s := %s.GetPage(%s, %s)\n%s", res, err, b, u, strconv.Quote(requires), fail(c, err))
+			m := f.temp(c, "_m")
+			fmt.Fprintf(&w, "%s, %s := rtesting.ModelOf[%s](%s, %s)\n%s", m, err, GoType(r.Model), u, res, fail(c, err))
+			w.WriteString(result(c, "Model", m, res))
+		}
+		return w.String()
+	})
+}
+
+// submitRoute writes the request of Test.submit or submitRaw posting fields (rtesting.Fields)
+// to the held page's form for write route r with its parameters params (without `form`; nil
+// for a route without parameters), and the return of the step's result.
+func (f *fn) submitRoute(w *strings.Builder, c *scope, env string, form *ir.Form, r *ir.Route, params ir.Expr, fields string,
+	fail func(*scope, string) string, result func(*scope, string, string, string) string) {
+	route, _ := f.routeTarget(w, c, r, params)
+	res, err := f.temp(c, "_r"), f.temp(c, "_err")
+	fmt.Fprintf(w, "%s, %s := rtesting.BrowserOf(%s).SubmitRoute(%s, %s, %s)\n%s", res, err, env, route, strconv.Quote(form.Name), fields, fail(c, err))
+	w.WriteString(result(c, "Answer", res+".Answer", res))
+}
+
+// routeTarget writes the statement binding route r's parameters params (nil for a route
+// without parameters) and returns the Go expressions of the route value (an rt.Route literal,
+// routeRef) and of its label, the route as Alder writes it with its module (MsgName):
+// `Todos.Toggle { id: "a" }`, `Todos.Export` for a route whose only parameter is its form or
+// that has none.
+func (f *fn) routeTarget(w *strings.Builder, c *scope, r *ir.Route, params ir.Expr) (string, string) {
+	name := strconv.Quote(r.Module + "." + r.Name)
+	own := false
+	if r.Params != nil {
+		for _, fd := range r.Params.Fields {
+			own = own || fd.Name != "form"
+		}
+	}
+	if params == nil || !own {
+		return f.routeRef(&ir.RouteRef{Typed: ir.Typed{Ty: types.Route}, Route: r}, c), "rtesting.MsgName(" + name + ", nil)"
+	}
+	key, m := f.tempVar(c, "_m")
+	fmt.Fprintf(w, "%s := %s\n", m, f.code(params, c))
+	mv := &ir.Var{Typed: ir.Typed{Ty: params.Type()}, Kind: ir.VarLocal, Name: key}
+	return f.routeRef(&ir.RouteRef{Typed: ir.Typed{Ty: types.Route}, Route: r, Params: mv}, c), "rtesting.MsgName(" + name + ", " + m + ")"
 }
 
 // msgTarget writes the statements binding message msg's parameters params (its payload record;
@@ -339,8 +413,8 @@ func (g *gen) selectorVars(b *strings.Builder) {
 	b.WriteString(")\n\n")
 }
 
-// encoders writes, for a test build, encode__M__F for every form a message of a page or of App
-// posts: the form's record as the browser's inputs submit it, the inverse of decode__M__F (the
+// encoders writes, for a test build, encode__M__F for every form a message of a page or of App,
+// or a write route, posts: the form's record as the browser's inputs submit it, the inverse of decode__M__F (the
 // rules at the top of routes.go): Text as given, Int and Float as digits, Bool as a checkbox
 // ("True" when checked, absent when not), Date as YYYY-MM-DD, a union by its constructor's
 // name, Maybe blank for Nothing (a cleared input; absent would give a field with a default its
@@ -364,6 +438,12 @@ func (g *gen) encoders(b *strings.Builder, p *ir.Program) {
 		add(pg.Msgs)
 	}
 	add(p.AppMsgs)
+	for _, r := range p.Routes { // a write route's `form F` (#160)
+		if r.Form != nil && !seen[r.Form] {
+			seen[r.Form] = true
+			forms = append(forms, r.Form)
+		}
+	}
 	for _, fm := range forms {
 		b.WriteString(comment(fmt.Sprintf("%s is form %s as the browser's inputs submit it, for Test.submit (test builds): the inverse of %s.", encodeName(fm.Module, fm.Name), fm.Name, decodeName(fm.Module, fm.Name))))
 		r := "r"

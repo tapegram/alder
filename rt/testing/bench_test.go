@@ -252,3 +252,17 @@ func TestMain_Bench(t *testing.T) {
 		t.Errorf("without --bench: %s", out)
 	}
 }
+
+// Envs that share one recorder (a write's `refresh` runs its page's loads on Envs of the
+// request) count its loads and statements once.
+func TestBench_SharedRecorderCountsOnce(t *testing.T) {
+	rec := &eff.Recorder{Loads: 2, SQL: []eff.SQLRec{{Stmt: "SELECT 1"}, {Stmt: "SELECT 2"}, {Stmt: "UPDATE t"}}}
+	other := &eff.Recorder{Loads: 1, SQL: []eff.SQLRec{{Stmt: "SELECT 3"}}}
+	b := &Browser{bench: true, step: &stepAcc{}, heads: map[*eff.Env]string{}}
+	b.reqEnvs = []*eff.Env{{Rec: rec}, {Rec: rec}, {Rec: rec}, {Rec: other}}
+	b.account("POST /rows: ", 10)
+	m := b.step.m
+	if m.Requests != 4 || m.Loads != 3 || m.SQL != 4 {
+		t.Errorf("requests %d, loads %d, sql %d; want 4, 3, 4", m.Requests, m.Loads, m.SQL)
+	}
+}

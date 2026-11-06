@@ -80,10 +80,6 @@ type Options struct {
 func Emit(p *ir.Program, opts Options) (files map[string][]byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			if r == ErrRouteTests { // not a bug: a stop until #160 PR 4
-				files, err = nil, ErrRouteTests
-				return
-			}
 			// A panic here is a bug in gen. The stack is the only thing that locates it, and the
 			// caller turns the error into a one-line report, so keep it behind ALDER_DEBUG
 			// rather than discard it.

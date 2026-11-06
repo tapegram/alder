@@ -831,3 +831,42 @@ func TestAnswer_RedirectExternal(t *testing.T) {
 		}
 	}
 }
+
+// Options.Answered reports the answer the router delivers: a write's answer that a stale build's
+// reload (staleReload) or a target it cannot deliver (targetProblem) replaces is not reported,
+// so a test never reads `Refreshed` off an answer that was a reload or an error.
+func TestAnswer_AnsweredOnlyWhenDelivered(t *testing.T) {
+	a := newAnsApp(3)
+	var got []string
+	h := NewRouter(a.routes(), testOpts(func(o *Options) {
+		o.Answered = func(rq *Request, r rt.Response) { got = append(got, kindName(r.Kind)) }
+	}))
+	ansPost(h, "/w/refresh?id=1", "/", nil)
+	if len(got) != 1 || got[0] != "refresh" {
+		t.Fatalf("delivered: %q", got)
+	}
+	got = nil
+	req := httptest.NewRequest("POST", "/w/refresh?id=2", nil)
+	req.Header.Set("Datastar-Request", "true")
+	req.Header.Set(html.PageHeader, "/")
+	req.Header.Set(datastar.BuildHeader, staleBuild)
+	if w := serveRaw(h, req); !strings.Contains(w.Body.String(), "window.location.assign") || len(got) != 0 {
+		t.Fatalf("stale build: reported %q, answered %q", got, w.Body.String())
+	}
+	if w := ansPost(h, "/w/render?id=1&method=DELETE", "/", nil); w.Header().Get(StatusHeader) != "500" || len(got) != 0 {
+		t.Fatalf("bad target: reported %q, status %q", got, w.Header().Get(StatusHeader))
+	}
+}
+
+// Options.Rendered gets the body of the page a followed redirect morphs in (`redirect r`, a
+// handler's 303), as it does a refresh's: the test browser's region check compares the morphed
+// body against it.
+func TestAnswer_RedirectReportsRendered(t *testing.T) {
+	a := newAnsApp(3)
+	var bodies []string
+	h := NewRouter(a.routes(), testOpts(func(o *Options) { o.Rendered = func(rq *Request, body string) { bodies = append(bodies, body) } }))
+	ansPost(h, "/w/redirect?to=/other&id=1", "/", nil)
+	if len(bodies) != 1 || !strings.Contains(bodies[0], "<h1>Other</h1>") || !strings.HasPrefix(bodies[0], "<body") {
+		t.Fatalf("rendered %q", bodies)
+	}
+}

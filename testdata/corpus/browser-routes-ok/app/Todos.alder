@@ -42,6 +42,7 @@ Row.view : Todo -> Session -> Html
 Row.view t session =
   <li id={"todo-" ++ t.id}>
     <button click={Toggle { id: t.id }}>{t.title}</button>
+    <button click={Row { id: t.id }}>Reload</button>
     <form submit={Move { id: t.id }}>
       <Errors form />
       <Select field="list" options={[{ value: "home", label: "Home" }, { value: t.title, label: "Its own" }]} />
@@ -55,10 +56,12 @@ Toggle.update params session = {
 }
 
 Create.update : Create.Params -> Session -> Task Response
-Create.update params session = {
-  let _ <- Db.insertMine Todo { title: params.form.title, due: Nothing }
-  Task.succeed (Response.redirect (Index { filter: All }) |> Response.toast "Added")
-}
+Create.update params session =
+  if params.form.title == "" then Task.succeed (Response.invalid "Write a title.")
+  else {
+    let _ <- Db.insertMine Todo { title: params.form.title, due: Nothing }
+    Task.succeed (Response.redirect (Index { filter: All }) |> Response.toast "Added")
+  }
 
 Delete.update : Delete.Params -> Row.Session -> Task Response
 Delete.update params session = {
@@ -84,14 +87,14 @@ test "a row is fetched, toggled, moved and refreshed" = {
   let me <- Db.insert User { email: "me@example.com" }
   let _ <- Test.login { user: Just me }
   let id <- Db.insert Todo { title: "Milk", due: Nothing, owner: me }
-  let page <- Test.get (Index { filter: All })
   let row <- Test.get (Row { id: id })
+  let page <- Test.get (Index { filter: All })
   let fetched <- Test.click (Row { id: id })
   let toggled <- Test.click (Toggle { id: id })
   let moved <- Test.submit (Move { id: id }) { list: "home" }
   let added <- Test.submit Create { title: "Bread" }
-  let raw <- Test.submitRaw Create [{ name: "title", value: "" }]
   let again <- Test.refresh
+  let raw <- Test.submitRaw Create [{ name: "title", value: "" }]
   let csv <- Test.fetch (Export {})
   let shown <- Test.open (Index { filter: Done })
   Task.succeed ({ n: List.length page.model.todos, title: row.model.title, fetched: fetched.status, toggled: toggled.answer, moved: moved.status, added: added.answer, raw: raw.status, url: again.url, again: again.answer, csv: csv.status, shown: shown.url }

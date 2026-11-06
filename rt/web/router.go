@@ -85,9 +85,16 @@ type Options struct {
 	// Build is the build's id (ALDER_BUILD, set by the deploy), answered by /_alder/health.
 	Build string
 	// Rendered, when set, is called for every Datastar answer to a message that re-renders the
-	// page (a body morph or region patches) with the <body> a full render sends: an Alder test's
-	// browser checks the page it holds after applying the answer against it. nil in production.
+	// page (a body morph or region patches; a route's refresh or invalid) and for the page a
+	// boosted navigation or a followed redirect morphs in (rq nil), with the <body> a full render
+	// sends: an Alder test's browser checks the
+	// page it holds after applying the answer against it. nil in production.
 	Rendered func(rq *Request, body string)
+	// Answered, when set, is called with a write route's answer (Response.Answer) before the
+	// router delivers it — not when a stale build's reload or a target it cannot deliver replaces
+	// it: an Alder test's browser reads its kind and target from it (a step's `Rendered r`,
+	// `Refreshed`). nil in production.
+	Answered func(rq *Request, a rtpkg.Response)
 	// SharedMaintenance, when set, is why the shared database cannot be served by this build
 	// (Serve: on Turso, a newer build migrated it, "ahead: <detail>"): every route answers the
 	// maintenance page (MaintenanceDoc) with 503, and /_alder/health 503 with its text.
@@ -836,6 +843,11 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 		hit, params, declared = rt.find(method, segs)
 	}
 	if hit == nil && declared == nil {
+		if elementFetch(r) {
+			// as a route's 404 (deliverElement): the not-found page never replaces the element
+			rt.renderFailed(w, r, nil, NotFoundResponse(html.None()), "element fetch")
+			return
+		}
 		rt.notFound(w, r, st, html.None())
 		return
 	}
@@ -1136,6 +1148,9 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 		return
 	}
 	if resp.Answer != nil {
+		if rt.opts.Answered != nil { // the answer delivered: not one a reload or an error replaced
+			rt.opts.Answered(rq, *resp.Answer)
+		}
 		rt.answer(w, r, st, rq, resp)
 		return
 	}
@@ -1397,7 +1412,11 @@ func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status i
 	if status != http.StatusOK {
 		w.Header().Set(StatusHeader, strconv.Itoa(status))
 	}
-	err := datastar.PatchBody(w, rt.shellBody(w, rt.dev(withShown(bodyOf(page)))))
+	body := bodyOf(page)
+	if rt.opts.Rendered != nil && st.url != "" && status == http.StatusOK {
+		rt.opts.Rendered(nil, body) // the page morphed in (a followed redirect's): no Request of its own here
+	}
+	err := datastar.PatchBody(w, rt.shellBody(w, rt.dev(withShown(body))))
 	if tw, ok := w.(*tracker); ok {
 		tw.patches = append(tw.patches, tw.patchName("body"))
 	}

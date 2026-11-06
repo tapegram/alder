@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"alder/internal/syntax"
 	"alder/internal/types"
 )
 
@@ -297,5 +298,48 @@ func TestNeedsShown(t *testing.T) {
 				t.Errorf("Go.NeedsShown = %v, want %v", got != nil && got.NeedsShown, tc.want)
 			}
 		})
+	}
+}
+
+// TestRoutes_StepParams (#160 R4): the type recorded for `Test.submit` and `Test.submitRaw` on a
+// route is a function of the types its arguments were checked at — the route value (`Route`),
+// then the route's form record or the raw fields — never Unit for the route: a form's name is
+// not a value, a route is.
+func TestRoutes_StepParams(t *testing.T) {
+	src := "module Todos\n\nroute A = GET \"/a\" { }\nroute Add = POST \"/add\" { } form NewTodo\nroute Move = POST \"/m/{id}\" { id: Text } form NewTodo\n\nform NewTodo = { title: Text }\n\n" +
+		getRoute("A", "<p>a</p>") +
+		"Add.update : Add.Params -> Session -> Task Response\nAdd.update params session = Task.succeed Response.refresh\n\n" +
+		"Move.update : Move.Params -> Session -> Task Response\nMove.update params session = Task.succeed Response.refresh\n\n" +
+		"test \"steps\" = {\n  let a <- Test.submit Add { title: \"x\" }\n  let b <- Test.submit (Move { id: \"1\" }) { title: \"x\" }\n" +
+		"  let c <- Test.submitRaw Add [{ name: \"title\", value: \"\" }]\n  Task.succeed True\n}\n"
+	res, errs := checkFiles(t, routeApp(src))
+	if len(errs) != 0 {
+		t.Fatalf("errors = %q", errs)
+	}
+	n := 0
+	for e, ty := range res.Types {
+		v, ok := e.(*syntax.Var)
+		if !ok || v.Ref.Module != "Test" || (v.Ref.Name != "submit" && v.Ref.Name != "submitRaw") {
+			continue
+		}
+		n++
+		fn, ok := res.U.Apply(ty).(*types.Fun)
+		if !ok || len(fn.Params) != 2 {
+			t.Errorf("Test.%s at %v: %s, want a function of two arguments", v.Ref.Name, v.Span.Start, types.String(res.U.Apply(ty)))
+			continue
+		}
+		if got := types.String(res.U.Apply(fn.Params[0])); got != "Route" {
+			t.Errorf("Test.%s at %v: first argument %s, want Route", v.Ref.Name, v.Span.Start, got)
+		}
+		want := "Todos.NewTodo"
+		if v.Ref.Name == "submitRaw" {
+			want = "List { name: Text, value: Text }"
+		}
+		if got := types.String(res.U.Apply(fn.Params[1])); got != want {
+			t.Errorf("Test.%s at %v: second argument %s, want %s", v.Ref.Name, v.Span.Start, got, want)
+		}
+	}
+	if n != 3 {
+		t.Errorf("%d steps recorded, want 3", n)
 	}
 }

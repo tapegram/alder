@@ -1307,8 +1307,9 @@ func TestTest_MutateCrashAndHang(t *testing.T) {
 }
 
 // TestTest_StepURLAndStatus (#160, plan call 15): every step's result of an old page's test
-// carries the URL the browser holds after it and the code of its last response; Test.refresh
-// type-checks and fails its step until #160 PR 4 builds it.
+// carries the URL the browser holds after it and the code of its last response. Test.refresh
+// (Task 4.3) loads the held page again and passes when its body is the one held (Refreshed, the
+// URL kept); before any page it fails the step.
 func TestTest_StepURLAndStatus(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
@@ -1324,27 +1325,70 @@ test "a step's url and status" = {
     == { getUrl: "/?filter=Active", getStatus: 200, clickUrl: "/?filter=Active", clickStatus: 200, addedUrl: "/?filter=Active", addedStatus: 200 })
 }
 
-test "Test.refresh is not built yet" = {
+test "a refresh after a toggle shows the same page" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index { filter: All })
+  let _ <- Test.click (Toggle { id: id })
+  let r <- Test.refresh
+  Task.succeed ({ answer: r.answer, url: r.url, status: r.status } == { answer: Refreshed, url: "/", status: 200 })
+}
+
+test "Test.refresh before any page" = {
   let _ <- Test.refresh
   Task.succeed True
 }
 `)
 	code, stdout, stderr := runTest(t, dir)
 	if code != 1 || !strings.Contains(stdout, `ok   Todos.Index "a step's url and status"`) ||
-		!strings.Contains(stdout, "FAIL Todos.Index \"Test.refresh is not built yet\"\n  error: Test.refresh is not built yet (#160 PR 4)\n") {
+		!strings.Contains(stdout, `ok   Todos.Index "a refresh after a toggle shows the same page"`) ||
+		!strings.Contains(stdout, "FAIL Todos.Index \"Test.refresh before any page\"\n  error: Test.refresh: the browser holds no page yet\n") {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 }
 
-// TestTest_RouteStepsNotBuilt (#160 PR 3, ruling R8): until PR 4 builds the browser steps on
-// routes, `alder test` of an app whose tests drive a route stops with one clear line and a
-// non-zero exit, never an internal error or a crash.
-func TestTest_RouteStepsNotBuilt(t *testing.T) {
+// TestTest_RouteSteps (#160 PR 4): `alder test` builds the browser steps on routes. The corpus
+// app browser-routes-ok passes, Test.refresh included; a test of the same steps passes: Test.get of a GET route holds its model, Test.click
+// of a GET route is an element fetch (Rendered), of a write route answering `render` Rendered,
+// Test.submit of a route's form Refreshed, Redirected (with the toast and the target's URL)
+// or, for a form that does not decode, status 422.
+func TestTest_RouteSteps(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
 	dir := tempAppAbs(t, "../../testdata/corpus/browser-routes-ok", "todos")
+	path := filepath.Join(dir, "app", "Todos.alder")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	extra := `
+test "route steps answer as the route does" = {
+  let me <- Db.insert User { email: "me@example.com" }
+  let _ <- Test.login { user: Just me }
+  let id <- Db.insert Todo { title: "Milk", due: Nothing, owner: me }
+  let page <- Test.get (Index { filter: All })
+  let fetched <- Test.click (Row { id: id })
+  let toggled <- Test.click (Toggle { id: id })
+  let moved <- Test.submit (Move { id: id }) { list: "home" }
+  let added <- Test.submit Create { title: "Bread" }
+  let raw <- Test.submitRaw Create [{ name: "title", value: "" }]
+  let csv <- Test.fetch (Export {})
+  let shown <- Test.open (Index { filter: Done })
+  Task.succeed ({ n: List.length page.model.todos, fetched: fetched.answer, fetchedStatus: fetched.status, fetchedUrl: fetched.url,
+      toggled: toggled.answer, moved: moved.answer, movedStatus: moved.status, added: added.answer, notices: added.notices,
+      addedUrl: added.url, raw: raw.status, csv: csv.status, shown: shown.answer, shownUrl: shown.url }
+    == { n: 1, fetched: Rendered (Row { id: id }), fetchedStatus: 200, fetchedUrl: "/",
+      toggled: Rendered (Row { id: id }), moved: Refreshed, movedStatus: 200, added: Redirected (Index { filter: All }), notices: ["Added"],
+      addedUrl: "/", raw: 422, csv: 200, shown: Shown, shownUrl: "/?filter=Done" })
+}
+`
+	if err := os.WriteFile(path, append(b, []byte(extra)...), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	code, stdout, stderr := runTest(t, dir)
-	if code != 1 || !strings.Contains(stderr, "tests on routes are not built yet (#160 PR 4)") ||
+	if code != 0 || !strings.Contains(stdout, `ok   Todos "route steps answer as the route does"`) ||
+		!strings.Contains(stdout, `ok   Todos "a row is fetched, toggled, moved and refreshed"`) ||
 		strings.Contains(stderr, "internal error") || strings.Contains(stderr, "goroutine ") {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}

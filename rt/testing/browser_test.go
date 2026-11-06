@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"reflect"
 	"slices"
@@ -932,4 +934,662 @@ func TestToastOf_DestructiveReadsBackAsError(t *testing.T) {
 			t.Errorf("%s: toastOf = %+v, want kind %q text %q", variant, got, want, "Saved")
 		}
 	}
+}
+
+// The route fixture (#160): what a generated route app answers, written by hand, under /r so
+// it sits beside the page fixture. GET /r (R.Index) lists rows, each `<li id="row-N">` with
+// click buttons for R.Toggle (PATCH, render), R.Delete (DELETE, redirect), R.Row (GET, an
+// element fetch) and R.Rename (POST with `form RenameF`), and a form #add posting R.Add (POST
+// `form NewRow`: refresh, invalid) with a click of R.Purge (DELETE `form PurgeF`) inside it.
+// seen records what each write route received, as the page's script sends it.
+type routeApp struct {
+	rows []string // the rows' titles; "" a deleted row
+	seen map[string]seenReq
+	// lie, when set, is the title the next load of R.Row shows instead of the row's own, once: a
+	// route whose view the element check catches (Task 4.2)
+	lie string
+	// summary, when set, adds to the index a count of the rows toggled (`<p id="toggled">`), which
+	// R.Toggle's `render` does not patch: a render that lies about the page (Task 4.3)
+	summary bool
+}
+
+type seenReq struct {
+	method, query, ctype, body                string
+	form                                      url.Values
+	page, build, fetch, datastar, shownHeader string
+}
+
+const (
+	newRowRoute  = "R.NewRow"
+	renameFRoute = "R.RenameF"
+)
+
+func newRouteApp(titles ...string) *routeApp {
+	return &routeApp{rows: titles, seen: map[string]seenReq{}}
+}
+
+func rIndex() rt.Route { return rt.Route{Name: "R.Index", Method: "GET", Path: "/r"} }
+func rRow(i int) rt.Route {
+	return rt.Route{Name: "R.Row", Method: "GET", Path: "/r/rows/" + strconv.Itoa(i)}
+}
+func rToggle(i int) rt.Route {
+	return rt.Route{Name: "R.Toggle", Method: "PATCH", Path: "/r/rows/" + strconv.Itoa(i)}
+}
+func rDelete(i int) rt.Route {
+	return rt.Route{Name: "R.Delete", Method: "DELETE", Path: "/r/rows/" + strconv.Itoa(i)}
+}
+func rRename(i int) rt.Route {
+	return rt.Route{Name: "R.Rename", Method: "POST", Path: "/r/rows/" + strconv.Itoa(i) + "/rename"}
+}
+func rAdd() rt.Route   { return rt.Route{Name: "R.Add", Method: "POST", Path: "/r/rows"} }
+func rPurge() rt.Route { return rt.Route{Name: "R.Purge", Method: "DELETE", Path: "/r/purge"} }
+
+// rGone is a GET route of no app: the page /r/few renders a control for it.
+func rGone() rt.Route { return rt.Route{Name: "R.Gone", Method: "GET", Path: "/r/gone/1"} }
+
+func (a *routeApp) row(i int) html.Node {
+	return html.El("li", []html.Attr{html.A("id", "row-"+strconv.Itoa(i))}, html.Text(a.rows[i-1]),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rToggle(i))}, html.Text("Toggle")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rDelete(i))}, html.Text("Delete")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rRow(i))}, html.Text("Show")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rRename(i))}, html.Text("Rename")))
+}
+
+func (a *routeApp) index() html.Node {
+	var items []html.Node
+	for i, t := range a.rows {
+		if t != "" {
+			items = append(items, a.row(i+1))
+		}
+	}
+	var summary []html.Node
+	if a.summary {
+		n := 0
+		for _, t := range a.rows {
+			if strings.HasSuffix(t, "!") {
+				n++
+			}
+		}
+		summary = append(summary, html.El("p", []html.Attr{html.A("id", "toggled")}, html.Text(strconv.Itoa(n)+" toggled")))
+	}
+	return layout("Rows", append([]html.Node{
+		html.El("h1", nil, html.Text("Rows")),
+		html.El("ul", []html.Attr{html.A("id", "rows")}, items...)}, append(summary,
+		html.FormToRoute(rAdd(), []html.Attr{html.A("id", "add")},
+			html.Input(html.Control{Kind: "errors", Form: newRowRoute}),
+			html.Input(html.Control{Kind: "input", Form: newRowRoute, Name: "title", Label: "Title"}),
+			html.Input(html.Control{Kind: "errors", Form: newRowRoute, Name: "title"}),
+			html.El("button", nil, html.Text("Add")),
+			html.El("button", []html.Attr{html.RouteAttr("data-on:click", rPurge())}, html.Text("Purge"))))...)...)
+}
+
+func (a *routeApp) see(rq *web.Request, name string) {
+	r := rq.HTTP
+	body := ""
+	if r.Body != nil {
+		b, _ := io.ReadAll(r.Body) // a url-encoded body was read by the router (rq.Form)
+		body = string(b)
+	}
+	a.seen[name] = seenReq{method: r.Method, query: r.URL.RawQuery, ctype: r.Header.Get("Content-Type"), body: body, form: rq.Form,
+		page: r.Header.Get("Alder-Page"), build: r.Header.Get("Alder-Build"), fetch: r.Header.Get("Alder-Fetch"),
+		datastar: r.Header.Get("Datastar-Request"), shownHeader: r.Header.Get(html.ShownHeader)}
+}
+
+func (a *routeApp) id(rq *web.Request) (int, bool) {
+	i, err := strconv.Atoi(rq.Params["id"])
+	return i, err == nil && i >= 1 && i <= len(a.rows) && a.rows[i-1] != ""
+}
+
+func (a *routeApp) routes() []web.Route {
+	return []web.Route{
+		{Method: "GET", Pattern: "/r", Handle: func(rq *web.Request) web.Response {
+			st := rq.FormState
+			if st == nil {
+				st = &html.FormState{}
+			}
+			return web.PageResponse(a.index(), st, nil, false)
+		}},
+		{Method: "GET", Pattern: "/r/rows/{id}", Handle: func(rq *web.Request) web.Response {
+			a.see(rq, "Row")
+			i, ok := a.id(rq)
+			if !ok {
+				return web.NotFoundResponse(html.None())
+			}
+			if a.lie != "" {
+				title := a.rows[i-1]
+				a.rows[i-1], a.lie = a.lie, ""
+				defer func() { a.rows[i-1] = title }()
+			}
+			return web.PageResponse(a.row(i), &html.FormState{}, nil, false)
+		}},
+		// a page of row 1 alone, with controls for row 2 (which it does not show) and R.Gone
+		{Method: "GET", Pattern: "/r/few", Handle: func(rq *web.Request) web.Response {
+			return web.PageResponse(layout("Few",
+				html.El("ul", []html.Attr{html.A("id", "rows")}, a.row(1)),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rToggle(2))}, html.Text("Toggle 2")),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rGone())}, html.Text("Gone"))), &html.FormState{}, nil, false)
+		}},
+		{Method: "PATCH", Pattern: "/r/rows/{id}", Handle: func(rq *web.Request) web.Response {
+			a.see(rq, "Toggle")
+			i, ok := a.id(rq)
+			if !ok {
+				return web.NotFoundResponse(html.None())
+			}
+			a.rows[i-1] += "!"
+			return web.AnswerResponse(rt.Render(rRow(i)), nil, nil)
+		}},
+		{Method: "DELETE", Pattern: "/r/rows/{id}", Handle: func(rq *web.Request) web.Response {
+			a.see(rq, "Delete")
+			i, ok := a.id(rq)
+			if !ok {
+				return web.NotFoundResponse(html.None())
+			}
+			a.rows[i-1] = ""
+			to := rIndex()
+			to.Query = []rt.KV{{Key: "after", Value: "delete"}}
+			return web.AnswerResponse(rt.RedirectTo(to), nil, nil)
+		}},
+		{Method: "POST", Pattern: "/r/rows/{id}/rename", Handle: func(rq *web.Request) web.Response {
+			a.see(rq, "Rename")
+			i, ok := a.id(rq)
+			if !ok {
+				return web.NotFoundResponse(html.None())
+			}
+			before, _ := rq.RenderShown(nil)
+			name := rq.Form.Get("name")
+			if name == "" { // RenameF { name: Text } did not decode
+				resp := web.InvalidResponse(&html.FormState{Form: renameFRoute, Msg: rt.RouteKey(rRename(i)), Values: map[string]string{"name": ""},
+					Errors: map[string][]string{"name": {"is required"}}}, nil)
+				resp.Shown = before
+				return resp
+			}
+			a.rows[i-1] = name
+			return web.AnswerResponse(rt.Render(rRow(i)), nil, nil)
+		}},
+		{Method: "POST", Pattern: "/r/rows", Handle: func(rq *web.Request) web.Response {
+			a.see(rq, "Add")
+			before, _ := rq.RenderShown(nil)
+			title := rq.Form.Get("title")
+			st := &html.FormState{Form: newRowRoute, Msg: rt.RouteKey(rAdd()), Values: map[string]string{"title": title}}
+			switch title {
+			case "": // NewRow { title: Text } did not decode
+				st.Errors = map[string][]string{"title": {"must not be empty"}}
+				resp := web.InvalidResponse(st, nil)
+				resp.Shown = before
+				return resp
+			case "dup":
+				resp := web.AnswerResponse(rt.Invalid("that title is taken"), before, nil)
+				resp.State = st
+				return resp
+			}
+			a.rows = append(a.rows, title)
+			return web.AnswerResponse(rt.WithToast(rt.NoticeSuccess, "Added", rt.Refresh()), before, nil)
+		}},
+		{Method: "DELETE", Pattern: "/r/purge", Handle: func(rq *web.Request) web.Response {
+			a.see(rq, "Purge")
+			before, _ := rq.RenderShown(nil)
+			resp := web.InvalidResponse(&html.FormState{Form: "R.PurgeF", Msg: rt.RouteKey(rPurge()), Values: map[string]string{"why": ""},
+				Errors: map[string][]string{"why": {"is required"}}}, nil)
+			resp.Shown = before
+			return resp
+		}},
+	}
+}
+
+// browseRoutes runs steps against app's routes, beside the page fixture's.
+func browseRoutes(t *testing.T, app *routeApp, steps ...func(b *Browser, e *eff.Env)) CaseResult {
+	t.Helper()
+	return browseOpts(t, Options{}, app.routes(), steps...)
+}
+
+// A click of a GET route is an element fetch, as the page's script makes it (Alder-Fetch,
+// Alder-Page the held URL, Alder-Build): its answer, the route's view, replaces the element
+// with its root's id in the held page, and the URL held stays. A route that answers 404
+// patches nothing: PageMissing, the "Not found" toast.
+func TestBrowser_ClickGetRoutePatches(t *testing.T) {
+	app := newRouteApp("one", "two")
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/r"))
+		app.rows[1] = "TWO" // changed behind the page's back: only the fetched element shows it
+		r := must(b.ClickRoute(rRow(2), `R.Row { id: "2" }`))
+		wantAnswer(t, r, Answer{Tag: Rendered, Page: rRow(2)})
+		if r.Status != 200 || r.URL != "/r" || b.URL() != "/r" {
+			t.Errorf("status %d, url %q", r.Status, r.URL)
+		}
+		if got := text(t, r.Doc, "#row-2"); !strings.HasPrefix(got, "TWO") {
+			t.Errorf("#row-2 = %q, want the fetched row", got)
+		}
+		s := app.seen["Row"]
+		if s.method != "GET" || s.fetch != "1" || s.page != "/r" || s.build != web.BuildID() || s.datastar != "true" || s.query != "" {
+			t.Errorf("the fetch sent %+v", s)
+		}
+		app.rows[0] = "" // gone: the route answers 404, nothing is patched and a toast says so
+		before := html.Render(b.Doc())
+		r = must(b.ClickRoute(rRow(1), `R.Row { id: "1" }`))
+		wantAnswer(t, r, Answer{Tag: PageMissing})
+		if html.Render(r.Doc) != before || len(r.Toasts) != 1 || r.Toasts[0] != (Toast{Kind: "error", Text: "Not found"}) {
+			t.Errorf("toasts %v, doc changed: %v", r.Toasts, html.Render(r.Doc) != before)
+		}
+	})
+}
+
+// A click of a write route answering `render r`: Rendered r, status 200, r's view patched in by
+// its id. A PATCH outside any form is its own form's @patch, the form's _method in the body.
+func TestBrowser_ClickWriteRender(t *testing.T) {
+	app := newRouteApp("one", "two")
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/r"))
+		r := must(b.ClickRoute(rToggle(1), `R.Toggle { id: "1" }`))
+		wantAnswer(t, r, Answer{Tag: Rendered, Page: rRow(1)})
+		if r.Status != 200 || r.URL != "/r" {
+			t.Errorf("status %d, url %q", r.Status, r.URL)
+		}
+		if got := text(t, r.Doc, "#row-1"); !strings.HasPrefix(got, "one!") {
+			t.Errorf("#row-1 = %q, want the rendered row", got)
+		}
+		s := app.seen["Toggle"]
+		if s.method != "PATCH" || s.ctype != "application/x-www-form-urlencoded" || s.form.Encode() != "_method=PATCH" ||
+			s.page != "/r" || s.build != web.BuildID() || s.fetch != "" || s.datastar != "true" {
+			t.Errorf("the click sent %+v", s)
+		}
+		if !(Answer{Tag: Rendered, Page: rRow(1)}).AlderEqual(r.Answer) {
+			t.Error("Rendered (Row 1) is not equal to the answer")
+		}
+	})
+}
+
+// A write route answering `redirect r`: the target is fetched and held, Redirected r, and the
+// result's URL is the target's. A DELETE outside any form is a POST, _method=DELETE in its body.
+func TestBrowser_RedirectURL(t *testing.T) {
+	app := newRouteApp("one", "two")
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/r"))
+		r := must(b.ClickRoute(rDelete(1), `R.Delete { id: "1" }`))
+		wantAnswer(t, r, Answer{Tag: Redirected, Page: pageOf("/r?after=delete")})
+		if r.URL != "/r?after=delete" || b.URL() != "/r?after=delete" || r.Status != 200 {
+			t.Errorf("url %q (held %q), status %d", r.URL, b.URL(), r.Status)
+		}
+		if html.Select(r.Doc, html.MustParseSelector("#row-1")) != nil {
+			t.Errorf("the deleted row is still held: %s", html.Render(r.Doc))
+		}
+		s := app.seen["Delete"]
+		if s.method != "POST" || s.form.Encode() != "_method=DELETE" || s.page != "/r" || s.build != web.BuildID() {
+			t.Errorf("the click sent %+v", s)
+		}
+	})
+}
+
+// `invalid t` and a form that does not decode: status 422, FormRejected with what the page
+// shows; a refresh is Refreshed, 200, the page re-rendered with the new row.
+func TestBrowser_InvalidStatus(t *testing.T) {
+	app := newRouteApp("one")
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/r"))
+		r := must(b.SubmitRoute(rAdd(), "NewRow", Fields{Values: url.Values{"title": {"dup"}}}))
+		wantAnswer(t, r, Answer{Tag: FormRejected, Errors: []web.FieldError{{Field: "", Message: "that title is taken"}}})
+		if r.Status != 422 || r.URL != "/r" {
+			t.Errorf("status %d, url %q", r.Status, r.URL)
+		}
+		s := app.seen["Add"]
+		if s.method != "POST" || s.form.Encode() != "title=dup" || s.page != "/r" || s.build != web.BuildID() || s.datastar != "true" {
+			t.Errorf("the submit sent %+v", s)
+		}
+		r = must(b.SubmitRoute(rAdd(), "NewRow", Fields{Values: url.Values{"title": {""}}}))
+		wantAnswer(t, r, Answer{Tag: FormRejected, Errors: []web.FieldError{{Field: "title", Message: "must not be empty"}}})
+		if r.Status != 422 {
+			t.Errorf("status %d", r.Status)
+		}
+		r = must(b.SubmitRoute(rAdd(), "NewRow", Fields{Values: url.Values{"title": {"two"}}}))
+		wantAnswer(t, r, Answer{Tag: Refreshed})
+		if r.Status != 200 || r.URL != "/r" || len(r.Notices) != 1 || r.Notices[0] != "Added" {
+			t.Errorf("status %d, url %q, notices %q", r.Status, r.URL, r.Notices)
+		}
+		if got := text(t, r.Doc, "#row-2"); !strings.HasPrefix(got, "two") {
+			t.Errorf("#row-2 = %q after the refresh", got)
+		}
+		_, err := b.SubmitRoute(rAdd(), "NewRow", Fields{Values: url.Values{"colour": {"red"}}})
+		var ni *NoInputError
+		if !errors.As(err, &ni) || err.Error() != "the page's form NewRow has no input `colour`" {
+			t.Errorf("a field the form has no input for: %v", err)
+		}
+	})
+}
+
+// A route the held page renders no control for is the NoControlError of a message, naming
+// the route as the test wrote it; nothing is sent.
+func TestBrowser_NoControlRoute(t *testing.T) {
+	app := newRouteApp("one")
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/r"))
+		_, err := b.ClickRoute(rToggle(9), `R.Toggle { id: "9" }`)
+		var nc *NoControlError
+		if !errors.As(err, &nc) || err.Error() != `the page /r has no button or form for R.Toggle { id: "9" }` {
+			t.Errorf("click: %v", err)
+		}
+		_, err = b.SubmitRoute(rRename(1), "RenameF", Fields{Values: url.Values{"name": {"x"}}})
+		if !errors.As(err, &nc) || err.Error() != "the page /r has no form RenameF (R.Rename)" {
+			t.Errorf("submit: %v", err)
+		}
+		if _, ok := app.seen["Toggle"]; ok {
+			t.Error("a request was sent")
+		}
+	})
+}
+
+// Ruling R-P2: a click of a write route with `form F` sends what the page's control sends, never
+// a body of the test's: outside any form its own form's fields (a POST: none), inside another
+// form the script's empty JSON payload (a DELETE: `datastar={}` in the query, which rt/web
+// drops, and no body) — F
+// decodes empty, and the answer is the form's invalid page, 422.
+func TestBrowser_ClickFormRouteSendsThePageBody(t *testing.T) {
+	app := newRouteApp("one")
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/r"))
+		r := must(b.ClickRoute(rRename(1), `R.Rename { id: "1" }`))
+		if r.Answer.Tag != FormRejected || r.Status != 422 {
+			t.Errorf("answer %v, status %d", r.Answer, r.Status)
+		}
+		s := app.seen["Rename"]
+		if s.method != "POST" || s.ctype != "application/x-www-form-urlencoded" || len(s.form) != 0 || s.page != "/r" || s.build != web.BuildID() {
+			t.Errorf("the click sent %+v", s)
+		}
+		r = must(b.ClickRoute(rPurge(), "R.Purge"))
+		if r.Answer.Tag != FormRejected || r.Status != 422 {
+			t.Errorf("purge: answer %v, status %d", r.Answer, r.Status)
+		}
+		s = app.seen["Purge"]
+		if s.method != "DELETE" || s.query != "" || s.body != "" || len(s.form) != 0 || s.page != "/r" || s.build != web.BuildID() {
+			t.Errorf("the in-form click sent %+v", s)
+		}
+	})
+}
+
+// tamper makes b's router answer as it does, with old replaced by new in each answer's body: a
+// router whose patches are wrong, which the checks must catch.
+func tamper(b *Browser, old, new string) {
+	inner := b.handler
+	b.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec := httptest.NewRecorder()
+		inner.ServeHTTP(rec, r)
+		for k, vs := range rec.Header() {
+			w.Header()[k] = vs
+		}
+		w.WriteHeader(rec.Code)
+		_, _ = io.WriteString(w, strings.Replace(rec.Body.String(), old, new, 1))
+	})
+}
+
+// The region check (#160) runs after `refresh`, `invalid` and `redirect`: every region the
+// answer patched must equal that region of the full render the server made; a step whose patch
+// differs fails, naming the region. Untampered, each passes.
+func TestCheck_RegionsAfterRefresh(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		old, new string
+		step     func(b *Browser) (Result, error)
+		want     string
+	}{
+		{"refresh", `<li id="row-2">two`, `<li id="row-2">TWO`,
+			func(b *Browser) (Result, error) {
+				return b.SubmitRoute(rAdd(), "NewRow", Fields{Values: url.Values{"title": {"two"}}})
+			},
+			"POST /r/rows: the patched page differs from a full render at body > main > ul#rows > li#row-2"},
+		{"invalid", `that title is taken`, `that title is free`,
+			func(b *Browser) (Result, error) {
+				return b.SubmitRoute(rAdd(), "NewRow", Fields{Values: url.Values{"title": {"dup"}}})
+			},
+			"POST /r/rows: the patched page differs from a full render at body > main > form#add"},
+		{"redirect", `<h1>Rows</h1>`, `<h1>Rose</h1>`,
+			func(b *Browser) (Result, error) { return b.ClickRoute(rDelete(1), `R.Delete { id: "1" }`) },
+			"GET /r: the patched page differs from a full render at body > main > h1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, lie := range []bool{false, true} {
+				app := newRouteApp("one")
+				browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+					if _, err := b.Get("/r"); err != nil {
+						t.Fatal(err)
+					}
+					if lie {
+						tamper(b, tc.old, tc.new)
+					}
+					_, err := tc.step(b)
+					switch {
+					case !lie && err != nil:
+						t.Errorf("untampered: %v", err)
+					case lie && (err == nil || !strings.Contains(err.Error(), tc.want)):
+						t.Errorf("tampered: %v, want %q", err, tc.want)
+					}
+				})
+			}
+		})
+	}
+}
+
+// The element check (#160): after `render r` and an element fetch, the element patched in must
+// equal r's view of r's load rendered on its own (r's URL fetched again as an element). A route
+// whose render lies fails the step, naming the element and the route; the check's own fetch
+// changes nothing the step reports.
+func TestCheck_ElementAfterRender(t *testing.T) {
+	app := newRouteApp("one", "two")
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/r"))
+		r := must(b.ClickRoute(rToggle(1), `R.Toggle { id: "1" }`))
+		wantAnswer(t, r, Answer{Tag: Rendered, Page: rRow(1)})
+		if r.Status != 200 || len(r.Toasts) != 0 {
+			t.Errorf("status %d, toasts %v", r.Status, r.Toasts)
+		}
+		must(b.ClickRoute(rRow(2), `R.Row { id: "2" }`))
+
+		app.lie = "fake"
+		_, err := b.ClickRoute(rToggle(1), `R.Toggle { id: "1" }`)
+		want := "PATCH /r/rows/1: the answer patched #row-1 unlike R.Row's view rendered on its own (GET /r/rows/1) at li#row-1"
+		if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "fake") {
+			t.Errorf("render: %v, want %q", err, want)
+		}
+		app.lie = "fake"
+		_, err = b.ClickRoute(rRow(2), `R.Row { id: "2" }`)
+		want = "GET /r/rows/2: the answer patched #row-2 unlike R.Row's view rendered on its own (GET /r/rows/2) at li#row-2"
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("element fetch: %v, want %q", err, want)
+		}
+	})
+}
+
+// Review Focus: a `render` whose root id the held page lacks (the row was filtered out) is
+// dropped silently by a real browser; a test fails the step naming the id.
+func TestCheck_RenderTargetMissing(t *testing.T) {
+	app := newRouteApp("one", "two")
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		if _, err := b.Get("/r/few"); err != nil {
+			t.Fatal(err)
+		}
+		_, err := b.ClickRoute(rToggle(2), "R.Toggle")
+		if err == nil || !strings.Contains(err.Error(), "the answer patched `#row-2`, which the page does not have") {
+			t.Errorf("err = %v", err)
+		}
+	})
+}
+
+// Ruling R-P3: an element fetch of a URL no route matches patches nothing, as a route's 404
+// does: PageMissing, the "Not found" toast, the held page unchanged.
+func TestBrowser_ClickUnmatchedGetRoute(t *testing.T) {
+	app := newRouteApp("one")
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/r/few"))
+		before := html.Render(b.Doc())
+		r := must(b.ClickRoute(rGone(), "R.Gone"))
+		wantAnswer(t, r, Answer{Tag: PageMissing})
+		if html.Render(r.Doc) != before || len(r.Toasts) != 1 || r.Toasts[0] != (Toast{Kind: "error", Text: "Not found"}) {
+			t.Errorf("toasts %v, doc changed: %v\n%s", r.Toasts, html.Render(r.Doc) != before, html.Render(r.Doc))
+		}
+	})
+}
+
+// dbRenderRoutes is a page /d with one element #d and a button for PATCH /d/1, which inserts a
+// row "written" and answers `render` of GET /d/1. GET /d/1's load reads how many "written" rows
+// it sees, and — a load that writes, which a Query cannot, but a hand-made route can — inserts a
+// row "loaded" each time it runs.
+func dbRenderRoutes() []web.Route {
+	dRow := rt.Route{Name: "D.Row", Method: "GET", Path: "/d/1"}
+	dTouch := rt.Route{Name: "D.Touch", Method: "PATCH", Path: "/d/1"}
+	item := func(rq *web.Request) (html.Node, error) {
+		rows, err := loadIndex(rq)
+		if err != nil {
+			return html.None(), err
+		}
+		n := 0
+		for _, r := range rows {
+			if r.Title == "written" {
+				n++
+			}
+		}
+		return html.El("li", []html.Attr{html.A("id", "d")}, html.Text("written: "+strconv.Itoa(n))), nil
+	}
+	return []web.Route{
+		{Method: "GET", Pattern: "/d", Handle: func(rq *web.Request) web.Response {
+			li, err := item(rq)
+			if err != nil {
+				return fail(err)
+			}
+			return web.PageResponse(layout("D", html.El("ul", nil, li),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", dTouch)}, html.Text("Touch"))), &html.FormState{}, nil, false)
+		}},
+		{Method: "GET", Pattern: "/d/1", Handle: func(rq *web.Request) web.Response {
+			li, err := item(rq)
+			if err == nil {
+				_, err = eff.Run(rq.Env, eff.KTask, insertTask("loaded"))
+			}
+			if err != nil {
+				return fail(err)
+			}
+			return web.PageResponse(li, &html.FormState{}, nil, false)
+		}},
+		{Method: "PATCH", Pattern: "/d/1", Handle: func(rq *web.Request) web.Response {
+			if _, err := eff.Run(rq.Env, eff.KTask, insertTask("written")); err != nil {
+				return fail(err)
+			}
+			return web.AnswerResponse(rt.Render(dRow), nil, nil)
+		}},
+	}
+}
+
+// The element check's fetch runs over the test's real database in a savepoint that is rolled
+// back: it sees the step's write (its view counts it, as the render's did, so the check passes)
+// and leaves none of its own — the one "loaded" row is the render's, not the check's.
+func TestCheck_ElementFetchRolledBack(t *testing.T) {
+	res := browseOpts(t, Options{}, dbRenderRoutes(), func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/d"))
+		r := must(b.ClickRoute(rt.Route{Name: "D.Touch", Method: "PATCH", Path: "/d/1"}, "D.Touch"))
+		wantAnswer(t, r, Answer{Tag: Rendered, Page: rt.Route{Name: "D.Row", Method: "GET", Path: "/d/1"}})
+		if got := text(t, r.Doc, "#d"); got != "written: 1" {
+			t.Errorf("#d = %q", got)
+		}
+		if got := strings.Join(titles(t, e), ","); got != "loaded,written" {
+			t.Errorf("rows %q, want the render's load and the write only", got)
+		}
+	})
+	if !res.OK {
+		t.Fatalf("the test failed: %s", res.Error)
+	}
+}
+
+// failingSavepoints is a Savepointer whose RollbackTo (and, when release is set, only Release)
+// fails.
+type failingSavepoints struct {
+	eff.Savepointer
+	release bool
+}
+
+func (f failingSavepoints) RollbackTo(ctx context.Context, tx eff.Tx, name string) error {
+	if f.release {
+		return f.Savepointer.RollbackTo(ctx, tx, name)
+	}
+	return errors.New("disk I/O error")
+}
+
+func (f failingSavepoints) Release(ctx context.Context, tx eff.Tx, name string) error {
+	if f.release {
+		return errors.New("disk I/O error")
+	}
+	return f.Savepointer.Release(ctx, tx, name)
+}
+
+// A savepoint the element check cannot roll back or release fails the step, never silently.
+func TestCheck_ElementRollbackFails(t *testing.T) {
+	for _, release := range []bool{false, true} {
+		browseOpts(t, Options{}, dbRenderRoutes(), func(b *Browser, e *eff.Env) {
+			must := mustOf(t)
+			must(b.Get("/d"))
+			cur, err := b.within()
+			if err != nil || cur == nil || cur.Savepoints == nil {
+				t.Fatalf("no savepoints: %v", err)
+			}
+			b.cur = &eff.Within{Tx: cur.Tx, Savepoints: failingSavepoints{cur.Savepoints, release}}
+			_, err = b.quietly(context.Background(), httptest.NewRequest("GET", "/d/1", nil))
+			if err == nil || !strings.Contains(err.Error(), "the element check: undoing its fetch: disk I/O error") {
+				t.Errorf("release %v: err = %v", release, err)
+			}
+		})
+	}
+}
+
+// Test.refresh (#160): a plain GET of the held URL whose body must equal the held one, compared
+// as Doc equality compares. After a toggle whose `render` patched all the page shows of it, the
+// refresh passes: Refreshed, the URL held, 200, the fresh page held. Before any page it fails.
+func TestRefresh_PassesAfterToggle(t *testing.T) {
+	app := newRouteApp("one", "two")
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		if _, err := b.Refresh(); err == nil || err.Error() != "Test.refresh: the browser holds no page yet" {
+			t.Errorf("before any page: %v", err)
+		}
+		must := mustOf(t)
+		must(b.Get("/r"))
+		must(b.ClickRoute(rToggle(1), `R.Toggle { id: "1" }`))
+		r := must(b.Refresh())
+		wantAnswer(t, r, Answer{Tag: Refreshed})
+		if r.URL != "/r" || r.Status != 200 || b.URL() != "/r" {
+			t.Errorf("url %q (held %q), status %d", r.URL, b.URL(), r.Status)
+		}
+		if got := text(t, r.Doc, "#row-1"); !strings.HasPrefix(got, "one!") {
+			t.Errorf("#row-1 = %q after the refresh", got)
+		}
+		if s := app.seen["Row"]; s.method != "GET" {
+			t.Errorf("the element check did not fetch R.Row: %+v", s)
+		}
+	})
+}
+
+// A route whose `render` lies about the page (R.Toggle patches the row, but the page's count of
+// toggled rows changes too and stays stale) passes the element check and fails Test.refresh,
+// the failure naming where the held body and the fresh one differ, with both sides.
+func TestRefresh_FailsWhenRenderLies(t *testing.T) {
+	app := newRouteApp("one", "two")
+	app.summary = true
+	browseRoutes(t, app, func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/r"))
+		must(b.ClickRoute(rToggle(1), `R.Toggle { id: "1" }`))
+		_, err := b.Refresh()
+		want := "Test.refresh: GET /r: the page held differs from the page loaded again at body > main > p#toggled: "
+		if err == nil || !strings.HasPrefix(err.Error(), want) ||
+			!strings.Contains(err.Error(), "\n  held:   <p id=\"toggled\">0 toggled</p>") ||
+			!strings.Contains(err.Error(), "\n  loaded: <p id=\"toggled\">1 toggled</p>") {
+			t.Errorf("err = %v, want %q and both sides", err, want)
+		}
+		must(b.Get("/r/rows/2"))
+		app.rows[1] = "" // gone: the page is not shown again
+		if _, err := b.Refresh(); err == nil || err.Error() != "Test.refresh: GET /r/rows/2: not found" {
+			t.Errorf("a page gone: %v", err)
+		}
+	})
 }

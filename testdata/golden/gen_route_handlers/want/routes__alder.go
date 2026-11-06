@@ -6,6 +6,8 @@ import (
 	"alder/rt"
 	"alder/rt/eff"
 	"alder/rt/html"
+	"alder/rt/std"
+	rtesting "alder/rt/testing"
 	"alder/rt/web"
 	"errors"
 	"net/url"
@@ -608,6 +610,32 @@ func Route__Todos__Export() web.Route {
 		rq.Model = model
 		return web.FileResponse(Todos__Export__view(model, session), rq.Session)
 	}}
+}
+
+// encode__Todos__NewTodo is form NewTodo as the browser's inputs submit it, for Test.submit (test
+// builds): the inverse of decode__Todos__NewTodo.
+func encode__Todos__NewTodo(r Todos__NewTodo) rtesting.Fields {
+	v := url.Values{}
+	var absent []string
+	v.Set("title", r.Title)
+	if r.Due.Ok {
+		v.Set("due", std.DateToText(r.Due.Val))
+	} else {
+		v.Set("due", "")
+	}
+	if !r.Due.Ok {
+		absent = append(absent, "due")
+	}
+	return rtesting.Fields{Values: v, Absent: absent}
+}
+
+// encode__Todos__MoveTo is form MoveTo as the browser's inputs submit it, for Test.submit (test
+// builds): the inverse of decode__Todos__MoveTo.
+func encode__Todos__MoveTo(r Todos__MoveTo) rtesting.Fields {
+	v := url.Values{}
+	var absent []string
+	v.Set("list", r.List)
+	return rtesting.Fields{Values: v, Absent: absent}
 }
 
 // route__fail answers a load or update that did not succeed: a 303 to the page for
