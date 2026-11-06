@@ -102,6 +102,15 @@ func targetProblem(a rtpkg.Response) string {
 	return ""
 }
 
+// viaName is how the Patches tab names the answer `kind` to target: "render Row", the route's
+// own name (the part after its module); just the kind for a page's value, which has no name.
+func viaName(kind string, target rtpkg.Route) string {
+	if target.Name == "" {
+		return kind
+	}
+	return kind + " " + target.Name[strings.LastIndex(target.Name, ".")+1:]
+}
+
 // targetName is r's name for a log line: its Name, else its URL.
 func targetName(r rtpkg.Route) string {
 	if r.Name != "" {
@@ -190,6 +199,9 @@ func (rt *router) answerRedirect(w http.ResponseWriter, r *http.Request, st hop,
 		rt.write(w, r, st, rq, QueryRedirectResponse(loc)) // a 500: never a navigation in place
 		return
 	}
+	if tw, ok := w.(*tracker); ok && !ext {
+		tw.via = viaName("redirect", resp.Answer.Target)
+	}
 	if !ext || !rq.Datastar {
 		rt.write(w, r, st, rq, RedirectResponse(loc, resp.Session))
 		return
@@ -221,6 +233,9 @@ func (rt *router) answerRender(w http.ResponseWriter, r *http.Request, st hop, r
 	if !ok {
 		rt.renderFailed(w, r2, rq, NotFoundResponse(html.None()), "render")
 		return
+	}
+	if tw, ok := w.(*tracker); ok {
+		tw.via = viaName("render", resp.Answer.Target)
 	}
 	next := hop{origin: st.origin, gets: st.gets + 1, has: true, render: true}
 	next.session, next.enc = rt.sessionLeft(rq, resp)

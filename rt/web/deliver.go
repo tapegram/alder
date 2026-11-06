@@ -75,7 +75,7 @@ func (rt *router) deliverElement(w http.ResponseWriter, r *http.Request, st hop,
 	}
 	if tw != nil {
 		tw.setAnswer("element #" + id)
-		tw.patches = append(tw.patches, "#"+id)
+		tw.patches = append(tw.patches, tw.patchName("#"+id))
 	}
 	if err := datastar.PatchRegion(w, id, html.RenderWith(resp.Node, resp.State)); err != nil {
 		rt.logReq(w, "error", line(w, r, fmt.Sprintf("writing the patch: %v", err)))

@@ -19,6 +19,7 @@ const routesUsage = "usage: alder routes [dir] [--json]"
 
 type routeJSON struct {
 	Kind   string `json:"kind"`
+	Method string `json:"method"`
 	Path   string `json:"path"`
 	Module string `json:"module"`
 	Name   string `json:"name"`
@@ -27,8 +28,8 @@ type routeJSON struct {
 	Col    int    `json:"col"`
 }
 
-// runRoutesTo is `alder routes [dir] [--json]`: the app's routes, pages (GET) and messages
-// (POST), sorted by path, as an aligned table or a JSON array. Diagnostics of a program that
+// runRoutesTo is `alder routes [dir] [--json]`: the app's routes, pages (GET), messages
+// (POST) and routes (their methods), old ones sorted by path, routes in program order, as an aligned table or a JSON array. Diagnostics of a program that
 // does not check go to stderr as `alder check` prints them, and the exit status is 1.
 func runRoutesTo(args []string, stdout, stderr io.Writer) (code int) {
 	defer func() {
@@ -77,7 +78,7 @@ func runRoutesTo(args []string, stdout, stderr io.Writer) (code int) {
 				file = rel
 			}
 		}
-		rows = append(rows, routeJSON{r.Kind, r.Path, r.Module, r.Name, filepath.ToSlash(file), r.Line, r.Col})
+		rows = append(rows, routeJSON{r.Kind, r.Method, r.Path, r.Module, r.Name, filepath.ToSlash(file), r.Line, r.Col})
 	}
 	if jsonOut {
 		b, err := json.Marshal(rows)
@@ -90,9 +91,9 @@ func runRoutesTo(args []string, stdout, stderr io.Writer) (code int) {
 	}
 	var table bytes.Buffer
 	tw := tabwriter.NewWriter(&table, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "KIND\tPATH\tMODULE.decl\tFILE:LINE")
+	fmt.Fprintln(tw, "METHOD\tPATH\tMODULE.decl\tFILE:LINE")
 	for _, r := range rows {
-		fmt.Fprintf(tw, "%s\t%s\t%s.%s\t%s:%d\n", r.Kind, r.Path, r.Module, r.Name, r.File, r.Line)
+		fmt.Fprintf(tw, "%s\t%s\t%s.%s\t%s:%d\n", r.Method, r.Path, r.Module, r.Name, r.File, r.Line)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintf(os.Stderr, "alder routes: %v\n", err)

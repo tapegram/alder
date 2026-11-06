@@ -180,7 +180,7 @@ func (rt *router) patchRegions(w http.ResponseWriter, r *http.Request, rq *Reque
 	tw, _ := w.(*tracker)
 	note := func(p string) {
 		if tw != nil {
-			tw.patches = append(tw.patches, p)
+			tw.patches = append(tw.patches, tw.patchName(p))
 		}
 	}
 	patches, ok := rt.regions(w, r, before, after, body)

@@ -13,6 +13,7 @@ import (
 // handle it and where that is.
 type Route struct {
 	Kind   string `json:"kind"`
+	Method string `json:"method"`
 	Path   string `json:"path"`
 	Module string `json:"module"`
 	Name   string `json:"name"`
@@ -33,7 +34,7 @@ func Parse(out []byte) ([]Route, error) {
 // Openable reports whether the route is a page with no parameter, which a browser can open
 // without being given a value.
 func (r Route) Openable() bool {
-	return r.Kind == "page" && !strings.Contains(r.Path, "{")
+	return r.MethodOf() == "GET" && !strings.Contains(r.Path, "{")
 }
 
 // Match is the index in routes of the route that a request for path hits, as the router picks
@@ -45,17 +46,25 @@ func Match(routes []Route, path string) (int, bool) {
 	return match(routes, path, func(Route) bool { return true })
 }
 
-// MatchRequest is Match for a request with the given method: only a page answers a GET and only
-// a message answers a POST, so a request of any other method hits no route.
-func MatchRequest(routes []Route, method, path string) (int, bool) {
-	kind := ""
-	switch method {
-	case "GET":
-		kind = "page"
-	case "POST":
-		kind = "msg"
+// MethodOf is the HTTP method the route answers: its Method, or for a list from an older
+// `alder routes` (no method) GET for a page and POST for a message.
+func (r Route) MethodOf() string {
+	switch {
+	case r.Method != "":
+		return r.Method
+	case r.Kind == "page":
+		return "GET"
+	case r.Kind == "msg":
+		return "POST"
 	}
-	return match(routes, path, func(r Route) bool { return kind != "" && r.Kind == kind })
+	return ""
+}
+
+// MatchRequest is Match for a request with the given method: only a route of that method
+// answers it, so DELETE /todos/7 hits the DELETE route, not the GET at the same path, and a
+// method no route has hits none.
+func MatchRequest(routes []Route, method, path string) (int, bool) {
+	return match(routes, path, func(r Route) bool { return method != "" && r.MethodOf() == method })
 }
 
 func match(routes []Route, path string, ok func(Route) bool) (int, bool) {

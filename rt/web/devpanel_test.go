@@ -540,3 +540,34 @@ func TestInjectedCSSTokens(t *testing.T) {
 		}
 	}
 }
+
+// The Patches tab names what a write route's answer caused: an element fetched by `render`
+// (#row-7 (render Row)), the body morphed in by `redirect` (body (redirect Page)), and the
+// region selectors of `refresh`.
+func TestDevPanel_PatchLabels(t *testing.T) {
+	t.Setenv("ALDER_DEV", "1")
+	for _, c := range []struct {
+		target string
+		want   string
+		not    string
+	}{
+		{"/w/render?id=7", "<li>#row-7 (render Row)</li>", ""},
+		{"/w/redirect?to=/other", "<li>body (redirect Page)</li><li>title</li><li>history /other</li>", ""},
+		{"/w/refresh?id=7", "<li>#row-7</li>", "(refresh"},
+	} {
+		a := newAnsApp(10)
+		h := NewRouter(a.routes(), testOpts(func(o *Options) { o.Dev = true }))
+		body := ansPost(h, c.target, "/", nil).Body.String()
+		i := strings.Index(body, "_alder_tab_patches")
+		if i < 0 {
+			t.Fatalf("%s: no Patches tab in %s", c.target, body)
+		}
+		patches := body[i:]
+		if !strings.Contains(patches, c.want) {
+			t.Errorf("%s: missing %q in %s", c.target, c.want, patches)
+		}
+		if c.not != "" && strings.Contains(patches, c.not) {
+			t.Errorf("%s: has %q in %s", c.target, c.not, patches)
+		}
+	}
+}

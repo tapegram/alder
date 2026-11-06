@@ -181,7 +181,10 @@ type tracker struct {
 	answer  string
 	detail  string
 	patches []string
-	notice  string // a Noticed answer's toast text, patched in after the body
+	// via names the write route's answer that caused the patches ("render Row", "redirect Index"),
+	// for the Patches tab; the first patch takes it (patchName)
+	via    string
+	notice string // a Noticed answer's toast text, patched in after the body
 	// hops are the redirects follow served in this same answer, after the request the client
 	// sent (whose rq and recorder the panel keeps): each one's URL, where its steps and
 	// statements start in the recorder, and how it was answered
@@ -226,6 +229,15 @@ func (rt *router) logReq(w http.ResponseWriter, level, msg string) {
 type hopMark struct {
 	url, answer string
 	steps, sql  int
+}
+
+// patchName is the Patches tab's name for the patch p: the first patch after a write route's
+// answer carries that answer's name, as in "#todo-7 (render Row)".
+func (t *tracker) patchName(p string) string {
+	if t.via != "" && len(t.patches) == 0 {
+		return p + " (" + t.via + ")"
+	}
+	return p
 }
 
 // setAnswer records how the request was answered for the panel: the first request's answer is
@@ -1387,7 +1399,7 @@ func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status i
 	}
 	err := datastar.PatchBody(w, rt.shellBody(w, rt.dev(withShown(bodyOf(page)))))
 	if tw, ok := w.(*tracker); ok {
-		tw.patches = append(tw.patches, "body")
+		tw.patches = append(tw.patches, tw.patchName("body"))
 	}
 	if err == nil && st.url != "" {
 		t, _ := titleOf(page) // a page without a <title> empties the old one
