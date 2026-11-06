@@ -18,7 +18,6 @@ import (
 
 	"alder/internal/buildkit"
 	"alder/internal/diag"
-	"alder/internal/gen"
 	"alder/internal/scratch"
 	"alder/internal/style"
 	rtesting "alder/rt/testing"
@@ -271,9 +270,6 @@ func runTestCmd(args []string, bench *benchRun, stdout, stderr io.Writer) (code 
 		}
 		if de := (*buildkit.DownloadError)(nil); errors.As(b.Err, &de) {
 			return 1 // the machine's network, as alder build says
-		}
-		if errors.Is(b.Err, gen.ErrRouteTests) {
-			return 1 // the program's tests drive routes (#160 PR 4)
 		}
 		return 2
 	}

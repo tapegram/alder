@@ -140,12 +140,17 @@ func (mc *modCtx) inferTestStep(x *syntax.App, v *syntax.Var, env *env, eff effe
 }
 
 // stepParams are the types the arguments of a step were checked at, for the record of the
-// step's own type.
+// step's own type. The first argument of a submit is Unit when it names a form (not a value);
+// a route or a message, written with its parameters, is the value it was checked as (#160 R4).
 func (mc *modCtx) stepParams(name string, args []syntax.Expr) []types.Type {
 	var ps []types.Type
 	for i, a := range args {
 		if (name == "submit" || name == "submitRaw") && i == 0 {
-			ps = append(ps, types.Unit) // a form name: not a value
+			t, ok := mc.c.res.Types[a]
+			if !ok {
+				t = types.Unit // a form name: not a value
+			}
+			ps = append(ps, t)
 			continue
 		}
 		if t, ok := mc.c.res.Types[a]; ok {

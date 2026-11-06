@@ -129,6 +129,13 @@ type Browser struct {
 	hasDoc bool
 	toasts []Toast // the toasts of the step's requests (Result.Toasts and Notices)
 	status int64   // the code of the last response (Result.Status)
+	// build is the build the held page names (its <meta name="alder-build">, which the router's
+	// head tags carry: web.BuildMeta), "" for none: the page's script sends it with every
+	// request it makes for a route (datastar.BuildHeader)
+	build string
+	// answered is the answer of the write route the last request ran (web.Options.Answered),
+	// nil for none: what a step on a route reads its kind and target from
+	answered *rt.Response
 
 	// dom is the held page as a browser's parser builds it and Datastar patches it (html.Repair):
 	// the page the drift check compares (checkPatched). doc stays the markup as the router sent
@@ -205,6 +212,13 @@ func NewBrowser(env *eff.Env, routes []web.Route, opts web.Options) *Browser {
 		b.rendered = body
 		if rendered != nil {
 			rendered(rq, body)
+		}
+	}
+	answered := opts.Answered
+	opts.Answered = func(rq *web.Request, a rt.Response) {
+		b.answered = &a
+		if answered != nil {
+			answered(rq, a)
 		}
 	}
 	b.handler = web.NewRouter(routes, opts)
@@ -721,26 +735,48 @@ func (b *Browser) result(ans Answer) Result {
 // message redirects back to it), and for a Datastar request its header; it then keeps the cookie
 // the answer sets and appends the effects the request ran to the test's trace.
 func (b *Browser) serve(method, target string, form url.Values, ds bool) (*httptest.ResponseRecorder, error) {
+	o := outgoing{method: method, target: target, ds: ds}
+	if method == http.MethodPost {
+		o.body, o.ctype = form.Encode(), "application/x-www-form-urlencoded"
+		if ds && b.shown != "" {
+			o.header = http.Header{html.ShownHeader: {b.shown}}
+		}
+	}
+	return b.send(o)
+}
+
+// outgoing is one request the browser sends: its method and target, its body of type ctype
+// (none when ctype is ""), its own headers, and ds for a Datastar request (Datastar-Request:
+// true).
+type outgoing struct {
+	method, target string
+	body, ctype    string
+	header         http.Header
+	ds             bool
+}
+
+// send is serve of request o.
+func (b *Browser) send(o outgoing) (*httptest.ResponseRecorder, error) {
 	b.toasts = nil
 	cur, err := b.within()
 	if err != nil {
 		return nil, err
 	}
 	var req *http.Request
-	if method == http.MethodPost {
-		req = httptest.NewRequest(method, target, strings.NewReader(form.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if o.ctype != "" {
+		req = httptest.NewRequest(o.method, o.target, strings.NewReader(o.body))
+		req.Header.Set("Content-Type", o.ctype)
 	} else {
-		req = httptest.NewRequest(method, target, nil)
+		req = httptest.NewRequest(o.method, o.target, nil)
 	}
 	if b.env.Ctx != nil {
 		req = req.WithContext(b.env.Ctx)
 	}
-	if ds {
+	if o.ds {
 		req.Header.Set("Datastar-Request", "true")
-		if method == http.MethodPost && b.shown != "" {
-			req.Header.Set(html.ShownHeader, b.shown)
-		}
+	}
+	for k, vs := range o.header {
+		req.Header[k] = vs
 	}
 	if b.url != "" {
 		req.Header.Set("Referer", "http://example.com"+b.url)
@@ -748,7 +784,7 @@ func (b *Browser) serve(method, target string, form url.Values, ds bool) (*httpt
 	if b.cookie != "" {
 		req.AddCookie(&http.Cookie{Name: web.CookieName, Value: b.cookie})
 	}
-	b.reqEnvs, b.lastErr, b.cur, b.model, b.rendered = nil, "", cur, nil, ""
+	b.reqEnvs, b.lastErr, b.cur, b.model, b.rendered, b.answered = nil, "", cur, nil, "", nil
 	b.morphed, b.regions, b.domBefore = false, nil, b.dom
 	b.reqHead = req.Method + " " + req.URL.Path + ": "
 	w := httptest.NewRecorder()
@@ -862,14 +898,19 @@ const maintenanceText = "503 maintenance"
 
 // hold makes page (a document the router served for u) the held one: its doctype and the
 // Datastar script tag the router injected are left out, so it is the page as the view renders it.
+// The build its head names is kept (Browser.build), as the page's script reads it.
 func (b *Browser) hold(u, page string) error {
 	page = strings.TrimPrefix(page, "<!doctype html>\n")
+	build := ""
+	if strings.Contains(page, web.BuildMeta()) {
+		build = web.BuildID()
+	}
 	page = web.StripHeadTags(page)
 	doc, err := html.Parse(page)
 	if err != nil {
 		return fmt.Errorf("the page at %s does not parse: %w", u, err)
 	}
-	b.url, b.hasDoc = u, true
+	b.url, b.hasDoc, b.build = u, true, build
 	b.doc, b.shown = takeShown(doc)
 	b.dom = html.Repair(b.doc)
 	return nil
@@ -1028,6 +1069,14 @@ func (b *Browser) post(target string, form url.Values) (Answer, error) {
 	if err != nil {
 		return Answer{}, err
 	}
+	return b.apply(w)
+}
+
+// apply applies w, the answer to a Datastar request, to the held page: a redirect followed, a
+// navigation made, the patches applied (and checked: checkPatched). Its Answer is RequestFailed
+// or PageMissing for the error an Alder-Status names, Redirected for a redirect, else
+// FormRejected when the page shows errors and Rerendered when it does not.
+func (b *Browser) apply(w *httptest.ResponseRecorder) (Answer, error) {
 	if w.Code == http.StatusSeeOther { // not under Datastar, but a client follows it all the same
 		return b.navigate(w.Header().Get("Location"), true)
 	}
@@ -1087,6 +1136,78 @@ func (b *Browser) post(target string, form url.Values) (Answer, error) {
 		return Answer{Tag: FormRejected, Errors: errs}, nil
 	}
 	return Answer{Tag: Rerendered}, nil
+}
+
+// sendRoute sends c's request for route r (routeControl) as the page's script does, with
+// fields — url-encoded when c sends a form — and applies its answer. Its headers are the
+// script's: Datastar-Request, Alder-Page (the held URL: location.pathname + location.search),
+// Alder-Build (the held page's build, "" for none) and, for an element fetch (window._alderF)
+// Alder-Fetch, else (window._alderO) Alder-Shown. Without a form, Datastar puts its empty
+// payload in the query of a GET or DELETE (`datastar={}`, which rt/web drops) and sends it as a
+// JSON body otherwise. The answer (apply) is then what the route answered: an element fetch's
+// and a write's `render r` Rendered (PageMissing or RequestFailed when the element was not
+// patched: the route's 404 or failure, toasted), `refresh` Refreshed, `invalid` (and a form
+// that did not decode) FormRejected with the errors the page shows.
+func (b *Browser) sendRoute(c routeCtl, r rt.Route, fields url.Values) (Answer, error) {
+	o := outgoing{method: c.method, target: c.url, ds: true, header: http.Header{}}
+	o.header.Set(html.PageHeader, b.url)
+	o.header.Set(datastar.BuildHeader, b.build)
+	if c.fetch {
+		o.header.Set(datastar.FetchHeader, "1")
+	} else {
+		o.header.Set(html.ShownHeader, b.shown)
+	}
+	switch {
+	case c.hasForm:
+		o.body, o.ctype = fields.Encode(), "application/x-www-form-urlencoded"
+	case c.method == http.MethodGet || c.method == http.MethodDelete:
+		sep := "?"
+		if strings.Contains(o.target, "?") {
+			sep = "&"
+		}
+		o.target += sep + "datastar=" + url.QueryEscape("{}")
+	default:
+		o.body, o.ctype = "{}", "application/json"
+	}
+	w, err := b.send(o)
+	if err != nil {
+		return Answer{}, err
+	}
+	ans, err := b.apply(w)
+	if err != nil || (ans.Tag != Rerendered && ans.Tag != FormRejected) {
+		return ans, err // a redirect followed, a navigation, a failure
+	}
+	if c.fetch {
+		return b.elementAnswer(r), nil
+	}
+	if a := b.answered; a != nil {
+		switch a.Kind {
+		case rt.RespRender:
+			return b.elementAnswer(a.Target), nil
+		case rt.RespRefresh:
+			return Answer{Tag: Refreshed}, nil
+		case rt.RespInvalid:
+			errs := pageErrors(b.doc)
+			if errs == nil {
+				errs = []web.FieldError{}
+			}
+			return Answer{Tag: FormRejected, Errors: errs}, nil
+		}
+	}
+	return ans, nil
+}
+
+// elementAnswer is the answer of a request whose answer patches route r's view in by its id:
+// Rendered r when it patched an element; else (rt/web's renderFailed: the route answered no
+// view, and a toast says so) RequestFailed with the error logged, or PageMissing without one.
+func (b *Browser) elementAnswer(r rt.Route) Answer {
+	switch {
+	case len(b.regions) > 0:
+		return Answer{Tag: Rendered, Page: r}
+	case b.lastErr != "":
+		return Answer{Tag: RequestFailed, Text: b.failText()}
+	}
+	return Answer{Tag: PageMissing}
 }
 
 // pageErrors is the errors a page shows: the items of each `<ul class="errors" data-errors>`

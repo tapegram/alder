@@ -88,6 +88,10 @@ type Options struct {
 	// page (a body morph or region patches) with the <body> a full render sends: an Alder test's
 	// browser checks the page it holds after applying the answer against it. nil in production.
 	Rendered func(rq *Request, body string)
+	// Answered, when set, is called with a write route's answer (Response.Answer) before the
+	// router delivers it: an Alder test's browser reads its kind and target from it (a step's
+	// `Rendered r`, `Refreshed`). nil in production.
+	Answered func(rq *Request, a rtpkg.Response)
 	// SharedMaintenance, when set, is why the shared database cannot be served by this build
 	// (Serve: on Turso, a newer build migrated it, "ahead: <detail>"): every route answers the
 	// maintenance page (MaintenanceDoc) with 503, and /_alder/health 503 with its text.
@@ -1127,6 +1131,9 @@ func (rt *router) setSession(w http.ResponseWriter, r *http.Request, rq *Request
 
 func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
 	if resp.Answer != nil {
+		if rt.opts.Answered != nil {
+			rt.opts.Answered(rq, *resp.Answer)
+		}
 		if why := targetProblem(*resp.Answer); why != "" {
 			rt.badTarget(w, r, st, rq, resp, why)
 			return

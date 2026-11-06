@@ -265,10 +265,6 @@ func CompileCheckedWith(ctx context.Context, c Checked, mainGo string, purpose, 
 		}
 	}
 	files, err := gen.Emit(p, gen.Options{Version: version.String(), Migrations: buildkit.HasMigrations(appDir), Tests: o.Tests, Mutate: o.Mutate, Unwired: unwired, Thunks: o.Thunks, NoFormat: o.NoFormat})
-	if errors.Is(err, gen.ErrRouteTests) {
-		b.Err = err // the program's tests, not a bug: said as it is
-		return b
-	}
 	if err != nil {
 		b.Err = fmt.Errorf("internal error: %v", err)
 		return b
