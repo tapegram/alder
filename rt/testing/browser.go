@@ -1334,8 +1334,9 @@ func (b *Browser) checkElement(r rt.Route) error {
 // transaction that is rolled back afterwards. It is not part of the step: what the request's
 // hooks record (its Envs, so its trace and statements; the model; the render; the answer; an
 // error logged) is put back as the step left it, it is not measured, and a cookie it sets is not
-// kept.
-func (b *Browser) quietly(ctx context.Context, req *http.Request) (*httptest.ResponseRecorder, error) {
+// kept. A savepoint that cannot be rolled back or released is the check's error: the step
+// fails rather than go on in a transaction holding the fetch's writes.
+func (b *Browser) quietly(ctx context.Context, req *http.Request) (_ *httptest.ResponseRecorder, err error) {
 	reqEnvs, model, rendered, answered, lastErr := b.reqEnvs, b.model, b.rendered, b.answered, b.lastErr
 	defer func() {
 		b.reqEnvs, b.model, b.rendered, b.answered, b.lastErr = reqEnvs, model, rendered, answered, lastErr
@@ -1347,8 +1348,12 @@ func (b *Browser) quietly(ctx context.Context, req *http.Request) (*httptest.Res
 			return nil, fmt.Errorf("the element check: %w", err)
 		}
 		defer func() {
-			if err := w.Savepoints.RollbackTo(ctx, w.Tx, sp); err == nil {
-				_ = w.Savepoints.Release(ctx, w.Tx, sp)
+			rerr := w.Savepoints.RollbackTo(ctx, w.Tx, sp)
+			if rerr == nil {
+				rerr = w.Savepoints.Release(ctx, w.Tx, sp)
+			}
+			if rerr != nil && err == nil {
+				err = fmt.Errorf("the element check: undoing its fetch: %w", rerr)
 			}
 		}()
 	}

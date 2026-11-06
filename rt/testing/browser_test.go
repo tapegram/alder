@@ -1420,3 +1420,112 @@ func TestBrowser_ClickUnmatchedGetRoute(t *testing.T) {
 		}
 	})
 }
+
+// dbRenderRoutes is a page /d with one element #d and a button for PATCH /d/1, which inserts a
+// row "written" and answers `render` of GET /d/1. GET /d/1's load reads how many "written" rows
+// it sees, and — a load that writes, which a Query cannot, but a hand-made route can — inserts a
+// row "loaded" each time it runs.
+func dbRenderRoutes() []web.Route {
+	dRow := rt.Route{Name: "D.Row", Method: "GET", Path: "/d/1"}
+	dTouch := rt.Route{Name: "D.Touch", Method: "PATCH", Path: "/d/1"}
+	item := func(rq *web.Request) (html.Node, error) {
+		rows, err := loadIndex(rq)
+		if err != nil {
+			return html.None(), err
+		}
+		n := 0
+		for _, r := range rows {
+			if r.Title == "written" {
+				n++
+			}
+		}
+		return html.El("li", []html.Attr{html.A("id", "d")}, html.Text("written: "+strconv.Itoa(n))), nil
+	}
+	return []web.Route{
+		{Method: "GET", Pattern: "/d", Handle: func(rq *web.Request) web.Response {
+			li, err := item(rq)
+			if err != nil {
+				return fail(err)
+			}
+			return web.PageResponse(layout("D", html.El("ul", nil, li),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", dTouch)}, html.Text("Touch"))), &html.FormState{}, nil, false)
+		}},
+		{Method: "GET", Pattern: "/d/1", Handle: func(rq *web.Request) web.Response {
+			li, err := item(rq)
+			if err == nil {
+				_, err = eff.Run(rq.Env, eff.KTask, insertTask("loaded"))
+			}
+			if err != nil {
+				return fail(err)
+			}
+			return web.PageResponse(li, &html.FormState{}, nil, false)
+		}},
+		{Method: "PATCH", Pattern: "/d/1", Handle: func(rq *web.Request) web.Response {
+			if _, err := eff.Run(rq.Env, eff.KTask, insertTask("written")); err != nil {
+				return fail(err)
+			}
+			return web.AnswerResponse(rt.Render(dRow), nil, nil)
+		}},
+	}
+}
+
+// The element check's fetch runs over the test's real database in a savepoint that is rolled
+// back: it sees the step's write (its view counts it, as the render's did, so the check passes)
+// and leaves none of its own — the one "loaded" row is the render's, not the check's.
+func TestCheck_ElementFetchRolledBack(t *testing.T) {
+	res := browseOpts(t, Options{}, dbRenderRoutes(), func(b *Browser, e *eff.Env) {
+		must := mustOf(t)
+		must(b.Get("/d"))
+		r := must(b.ClickRoute(rt.Route{Name: "D.Touch", Method: "PATCH", Path: "/d/1"}, "D.Touch"))
+		wantAnswer(t, r, Answer{Tag: Rendered, Page: rt.Route{Name: "D.Row", Method: "GET", Path: "/d/1"}})
+		if got := text(t, r.Doc, "#d"); got != "written: 1" {
+			t.Errorf("#d = %q", got)
+		}
+		if got := strings.Join(titles(t, e), ","); got != "loaded,written" {
+			t.Errorf("rows %q, want the render's load and the write only", got)
+		}
+	})
+	if !res.OK {
+		t.Fatalf("the test failed: %s", res.Error)
+	}
+}
+
+// failingSavepoints is a Savepointer whose RollbackTo (and, when release is set, only Release)
+// fails.
+type failingSavepoints struct {
+	eff.Savepointer
+	release bool
+}
+
+func (f failingSavepoints) RollbackTo(ctx context.Context, tx eff.Tx, name string) error {
+	if f.release {
+		return f.Savepointer.RollbackTo(ctx, tx, name)
+	}
+	return errors.New("disk I/O error")
+}
+
+func (f failingSavepoints) Release(ctx context.Context, tx eff.Tx, name string) error {
+	if f.release {
+		return errors.New("disk I/O error")
+	}
+	return f.Savepointer.Release(ctx, tx, name)
+}
+
+// A savepoint the element check cannot roll back or release fails the step, never silently.
+func TestCheck_ElementRollbackFails(t *testing.T) {
+	for _, release := range []bool{false, true} {
+		browseOpts(t, Options{}, dbRenderRoutes(), func(b *Browser, e *eff.Env) {
+			must := mustOf(t)
+			must(b.Get("/d"))
+			cur, err := b.within()
+			if err != nil || cur == nil || cur.Savepoints == nil {
+				t.Fatalf("no savepoints: %v", err)
+			}
+			b.cur = &eff.Within{Tx: cur.Tx, Savepoints: failingSavepoints{cur.Savepoints, release}}
+			_, err = b.quietly(context.Background(), httptest.NewRequest("GET", "/d/1", nil))
+			if err == nil || !strings.Contains(err.Error(), "the element check: undoing its fetch: disk I/O error") {
+				t.Errorf("release %v: err = %v", release, err)
+			}
+		})
+	}
+}
