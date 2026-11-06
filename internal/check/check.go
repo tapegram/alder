@@ -261,8 +261,9 @@ func ProgramWith(prog *names.Program, bag *diag.Bag, o Options) *Result {
 		c.propagateScoped()
 		c.checkRouteRefs()
 	}
-	c.checkWriteSets()  // one store per Task (E0031) needs every body checked
-	c.markTestHelpers() // test helpers (E0040) need every body's references
+	c.checkWriteSets()    // one store per Task (E0031) needs every body checked
+	c.checkOptionRoutes() // a write route's option views reach through every body's references
+	c.markTestHelpers()   // test helpers (E0040) need every body's references
 	// App rules need every module's bodies checked first (Session.put usage)
 	if app := prog.Modules["App"]; app != nil && !prog.Failed["App"] {
 		c.ctx(app).checkApp()

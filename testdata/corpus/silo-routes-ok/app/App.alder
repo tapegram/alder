@@ -1,0 +1,20 @@
+module App
+
+import User
+import Org
+
+-- Routes with silos (#160): `choose org` names a GET route, Project lives in one database per
+-- org, and the admin routes read the org from their parameter (`silo org`).
+session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Reader }
+
+login = Login
+
+choose org = Orgs.Pick
+
+silo org { Project }
+
+error : Error -> Html Never
+error err = <html><body><h1>error</h1></body></html>
+
+notFound : Html Never
+notFound = <html><body><h1>not found</h1></body></html>

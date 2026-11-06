@@ -1,0 +1,21 @@
+module Admin.Projects
+
+import Org
+import Project
+
+-- The admin form on routes: the org comes from the parameter, the role check gates the route.
+route Manage = GET    "/admin/orgs/{org}/projects"      { org: Org.OrgId }                         requires user, role Admin, silo org
+route Remove = DELETE "/admin/orgs/{org}/projects/{id}" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
+
+Manage.load : Manage.Params -> Session -> Query (List Project)
+Manage.load params session = Db.from Project |> Db.all
+
+Manage.view : List Project -> Session -> Html
+Manage.view projects session =
+  <ul>{for p in projects -> <li>{p.name}<button click={Remove { org: p.org, id: p.id }}>remove</button></li>}</ul>
+
+Remove.update : Remove.Params -> Session -> Task Response
+Remove.update params session = {
+  let _ <- Db.delete Project params.id
+  Task.succeed (Response.redirect (Manage { org: params.org }))
+}

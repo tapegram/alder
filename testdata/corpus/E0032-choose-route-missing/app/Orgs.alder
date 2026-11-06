@@ -1,0 +1,12 @@
+module Orgs
+
+import Membership
+
+-- `choose org`'s route: it requires the user, not the org.
+route Pick = GET "/orgs" { } requires user
+
+Pick.load : Pick.Params -> Session -> Query (List Membership)
+Pick.load params session = Db.from Membership |> Db.where (Membership.user.eq session.user) |> Db.all
+
+Pick.view : List Membership -> Session -> Html
+Pick.view mine session = <ul>{for m in mine -> <li>{m.org}</li>}</ul>

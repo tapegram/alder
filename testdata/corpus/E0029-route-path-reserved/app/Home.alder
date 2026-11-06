@@ -1,0 +1,21 @@
+module Home
+
+-- `/_m/` is the prefix of the pages' message URLs: no route path is under it.
+route Index = GET  "/"             { }
+route Send  = POST "/_m/Home/Send" { }
+route Bare  = GET  "/_m"           { }
+
+Index.load : Index.Params -> Session -> Query Unit
+Index.load params session = Query.succeed ()
+
+Index.view : Unit -> Session -> Html
+Index.view model session = <button click={Send}>send</button>
+
+Send.update : Send.Params -> Session -> Task Response
+Send.update params session = Task.succeed Response.refresh
+
+Bare.load : Bare.Params -> Session -> Query Unit
+Bare.load params session = Query.succeed ()
+
+Bare.view : Unit -> Session -> Html
+Bare.view model session = <p>ok</p>

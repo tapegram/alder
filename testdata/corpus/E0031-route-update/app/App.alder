@@ -1,0 +1,20 @@
+module App
+
+import User
+import Org
+
+-- A write route's update is one Task: it writes one store (E0031).
+
+session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Reader }
+
+login = Login
+
+choose org = Orgs.Pick
+
+silo org { Project }
+
+error : Error -> Html Never
+error err = <html><body><h1>error</h1></body></html>
+
+notFound : Html Never
+notFound = <html><body><h1>not found</h1></body></html>

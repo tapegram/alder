@@ -1,0 +1,17 @@
+module App
+
+import User
+import Org
+
+-- A route that `requires org`, a `via` key, needs App's `choose org`.
+session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Reader }
+
+login = Login
+
+silo org { Project }
+
+error : Error -> Html Never
+error err = <html><body><h1>error</h1></body></html>
+
+notFound : Html Never
+notFound = <html><body><h1>not found</h1></body></html>

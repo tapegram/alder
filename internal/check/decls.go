@@ -1124,7 +1124,9 @@ func (c *Checker) checkPagePaths() {
 			d, full := r.Decl, name+"."+r.Name
 			k := r.Method + " " + pathShape(r.Path)
 			first, dup := seen[k]
-			switch why := PagePathProblem(r.Path); {
+			switch why := RoutePathProblem(r.Path); {
+			case why != "" && PagePathProblem(r.Path) == "": // a well-formed path under `/_m/`
+				c.errorf(diag.PagePath, d.Span, "route path `%s` %s; give the route another path", r.Path, why)
 			case why != "":
 				c.errorf(diag.PagePath, d.Span, "route path `%s` %s; %s", r.Path, why, PagePathRule)
 			case dup && first.route:
@@ -1185,6 +1187,18 @@ func PagePathProblem(path string) string {
 				}
 			}
 		}
+	}
+	return ""
+}
+
+// RoutePathProblem is PagePathProblem for a route's path, which also may not be under `/_m/`:
+// the prefix of the pages' message URLs (`/_m/<Module>/<Msg>`) while pages remain (#160).
+func RoutePathProblem(path string) string {
+	if why := PagePathProblem(path); why != "" {
+		return why
+	}
+	if strings.HasPrefix(path, "/_m/") {
+		return "is under `/_m/`, which is reserved for the messages of pages"
 	}
 	return ""
 }

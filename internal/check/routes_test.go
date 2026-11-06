@@ -184,6 +184,38 @@ func TestRoutes_SelectOptions(t *testing.T) {
 	}
 }
 
+// TestRoutes_OptionRoutes (plan call 11): a write route's OptionRoutes are the GET routes whose
+// view writes a `<Select options>` of its form, or reaches one through the values it uses
+// (`Index.view` calls `rows`, which calls `Row.view`), in declaration order; a GET route that
+// reaches none (Other) is not one, nor is a form without options (Plain's).
+func TestRoutes_OptionRoutes(t *testing.T) {
+	src := "module Todos\n\nroute Index = GET \"/\" { }\nroute Row = GET \"/row\" { }\nroute Other = GET \"/other\" { }\n" +
+		"route Pick = POST \"/pick\" { } form Choice\nroute Plain = POST \"/plain\" { } form Choice\n\nform Choice = { list: Text }\n\n" +
+		"rows : Int -> Session -> Html\nrows n session = <ul>{Row.view n session}</ul>\n\n" +
+		getRoute("Index", "rows n session") +
+		getRoute("Row", "<li><form submit={Pick}><Select field=\"list\" options={[{ value: Text.fromInt n, label: \"N\" }]} /></form></li>") +
+		getRoute("Other", "<form submit={Plain}><Input field=\"list\" /></form>") +
+		"Pick.update : Pick.Params -> Session -> Task Response\nPick.update params session = Task.succeed Response.refresh\n\n" +
+		"Plain.update : Plain.Params -> Session -> Task Response\nPlain.update params session = Task.succeed Response.refresh\n"
+	res, errs := checkFiles(t, routeApp(src))
+	if len(errs) != 0 {
+		t.Fatalf("errors = %q", errs)
+	}
+	names := func(rs []*RouteInfo) []string {
+		var out []string
+		for _, r := range rs {
+			out = append(out, r.Name)
+		}
+		return out
+	}
+	for _, r := range res.Routes["Todos"] {
+		want := map[string][]string{"Pick": {"Index", "Row"}}[r.Name]
+		if got := names(r.OptionRoutes); !slices.Equal(got, want) {
+			t.Errorf("%s.OptionRoutes = %q, want %q", r.Name, got, want)
+		}
+	}
+}
+
 // TestRoutes_Steps: the browser steps' rules on routes beyond the corpus's: a form route is
 // submitted, not clicked; a file route is fetched; a route's form is posted by naming the route.
 func TestRoutes_Steps(t *testing.T) {

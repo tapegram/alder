@@ -171,7 +171,7 @@ func (c *Checker) checkWriteSets() {
 			st := ArmStore{Msg: r.Name, Span: vd.Span}
 			switch groups := c.storeGroups(writesOf(vd.Body)); {
 			case len(groups) > 1:
-				c.errorf(diag.WriteStores, vd.Span, "%s", c.mixMessage("`"+vd.FullName()+"`", groups))
+				c.errorf(diag.WriteStores, vd.Span, "%s", c.mixMessage("`"+vd.FullName()+"`", "route", groups))
 			case len(groups) == 1:
 				st.Silo = groups[0].silo
 			}
@@ -180,7 +180,7 @@ func (c *Checker) checkWriteSets() {
 	}
 	for _, fe := range fakes {
 		if groups := c.storeGroups(writesOf(fe.d.Body)); len(groups) > 1 {
-			c.errorf(diag.WriteStores, fe.d.Span, "in `fake %s`'s `%s`: %s", fe.fake, fe.d.Name, c.mixMessage("`"+fe.d.Name+"`", groups))
+			c.errorf(diag.WriteStores, fe.d.Span, "in `fake %s`'s `%s`: %s", fe.fake, fe.d.Name, c.mixMessage("`"+fe.d.Name+"`", "message", groups))
 		}
 	}
 }
@@ -227,7 +227,7 @@ func (c *Checker) updateArms(vd *syntax.ValueDecl, writesOf func(syntax.Expr) ma
 			case a.msg == "":
 				name = "the `_` arm"
 			}
-			c.errorf(diag.WriteStores, a.span, "%s", c.mixMessage(name, groups))
+			c.errorf(diag.WriteStores, a.span, "%s", c.mixMessage(name, "message", groups))
 		case len(groups) == 1:
 			st.Silo = groups[0].silo
 		}
@@ -274,8 +274,9 @@ func (c *Checker) storeGroups(writes map[string]bool) []storeGroup {
 }
 
 // mixMessage is E0031's text for arm name writing groups (two or more): "`Create` writes
-// `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. …".
-func (c *Checker) mixMessage(name string, groups []storeGroup) string {
+// `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. …"; the hint
+// sends a write from its own `from` ("message", or "route" for a write route's update).
+func (c *Checker) mixMessage(name, from string, groups []storeGroup) string {
 	parts := make([]string, len(groups))
 	shared := ""
 	for i, g := range groups {
@@ -291,9 +292,9 @@ func (c *Checker) mixMessage(name string, groups []storeGroup) string {
 		}
 		parts[i] = andList(ts) + " " + where
 	}
-	hint := "Send one of the writes from its own message."
+	hint := "Send one of the writes from its own " + from + "."
 	if shared != "" {
-		hint = "Write " + shared + " inside the silo, or send it from its own message."
+		hint = "Write " + shared + " inside the silo, or send it from its own " + from + "."
 	}
 	return name + " writes " + andList(parts) + ": a Task writes to one store. " + hint
 }
