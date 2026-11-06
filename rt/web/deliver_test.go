@@ -192,3 +192,21 @@ func TestDeliver_ElementRedirectNavigates(t *testing.T) {
 	}
 	historyEvent(t, ev[2], pushOpen, `"/login"`)
 }
+
+// Ruling R-P3: an element fetch of a URL no route matches patches nothing, as a route's 404
+// does: one "Not found" toast, never the router's 404 page morphed into the body. A plain GET
+// and a boosted link still get the 404 page.
+func TestDeliver_ElementUnmatched(t *testing.T) {
+	h := NewRouter(todoRoute(todoItem(html.A("id", "todo-7"))), testOpts(nil))
+	w := serve(h, elementGet("/nope/7?datastar=%7B%7D"))
+	ev := events(w.Body.String())
+	if w.Code != http.StatusOK || len(ev) != 1 || ev[0] != toastEvent("destructive", "10000", "Not found") {
+		t.Fatalf("got %d %q", w.Code, w.Body.String())
+	}
+	if w := serve(h, httptest.NewRequest("GET", "/nope/7", nil)); w.Code != http.StatusNotFound {
+		t.Fatalf("plain: %d", w.Code)
+	}
+	if w := serve(h, dsGet("/nope/7")); !strings.Contains(w.Body.String(), "selector body") {
+		t.Fatalf("boosted: %q", w.Body.String())
+	}
+}

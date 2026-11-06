@@ -1117,6 +1117,9 @@ func (b *Browser) apply(w *httptest.ResponseRecorder) (Answer, error) {
 		case "503":
 			return Answer{Tag: RequestFailed, Text: maintenanceText}, nil
 		}
+		if err := b.checkPatched(); err != nil { // the page morphed in, against its full render
+			return Answer{}, err
+		}
 		return Answer{Tag: Redirected, Page: pageOf(pushed)}, nil
 	}
 	switch w.Header().Get(web.StatusHeader) {
@@ -1178,12 +1181,12 @@ func (b *Browser) sendRoute(c routeCtl, r rt.Route, fields url.Values) (Answer, 
 		return ans, err // a redirect followed, a navigation, a failure
 	}
 	if c.fetch {
-		return b.elementAnswer(r), nil
+		return b.checkedElement(r)
 	}
 	if a := b.answered; a != nil {
 		switch a.Kind {
 		case rt.RespRender:
-			return b.elementAnswer(a.Target), nil
+			return b.checkedElement(a.Target)
 		case rt.RespRefresh:
 			return Answer{Tag: Refreshed}, nil
 		case rt.RespInvalid:
@@ -1208,6 +1211,150 @@ func (b *Browser) elementAnswer(r rt.Route) Answer {
 		return Answer{Tag: RequestFailed, Text: b.failText()}
 	}
 	return Answer{Tag: PageMissing}
+}
+
+// checkedElement is elementAnswer(r), and when it is Rendered r, the element check
+// (checkElement) has passed.
+func (b *Browser) checkedElement(r rt.Route) (Answer, error) {
+	ans := b.elementAnswer(r)
+	if ans.Tag != Rendered {
+		return ans, nil
+	}
+	if err := b.checkElement(r); err != nil {
+		return Answer{}, err
+	}
+	return ans, nil
+}
+
+// ElementError is the element check's failure (#160): the element an answer patched in for
+// route Route is not Route's view of its load rendered on its own (Fetch: Route's URL fetched
+// again as an element), as the browser's parser builds both. Diff says what differs; without
+// one, Why says why the fetch gave no view to compare.
+type ElementError struct {
+	Step  string // the step's request, "POST /r/rows/1"
+	ID    string // the element patched, "row-1"
+	Route string // the route's name, "R.Row"
+	Fetch string // "GET /r/rows/1"
+	Why   string
+	Diff  *html.Difference
+}
+
+// Error is "POST /r/rows/1: the answer patched #row-1 unlike R.Row's view rendered on its own
+// (GET /r/rows/1) at li#row-1: <what>", then the two elements' markup.
+func (e *ElementError) Error() string {
+	head := fmt.Sprintf("%s: the answer patched #%s unlike %s's view rendered on its own (%s)", e.Step, e.ID, e.Route, e.Fetch)
+	if e.Diff == nil {
+		return head + ": " + e.Why
+	}
+	return fmt.Sprintf("%s at %s: %s\n  patched: %s\n  alone:   %s", head, e.Diff.At, e.Diff.What, e.Diff.Left, e.Diff.Right)
+}
+
+// checkElement is the element check (#160): after an answer that patched route r's view in by
+// its root id (an element fetch, a write's `render r`), r's URL is fetched again as the page's
+// script fetches an element (Alder-Fetch, the held page's Alder-Page and Alder-Build, the
+// cookie), and the element the held page now has must equal the view that fetch answers, as the
+// browser's parser builds both. Equal by construction; the check proves it. The fetch runs in a
+// savepoint of the test's transaction that is rolled back (quietly): it sees the step's writes
+// and leaves none, and it is not part of the step.
+func (b *Browser) checkElement(r rt.Route) error {
+	id := b.regions[len(b.regions)-1]
+	u := rt.RouteURL(r)
+	sep := "?"
+	if strings.Contains(u, "?") {
+		sep = "&"
+	}
+	ctx := b.env.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req := httptest.NewRequest(http.MethodGet, u+sep+"datastar="+url.QueryEscape("{}"), nil).WithContext(ctx)
+	req.Header.Set("Datastar-Request", "true")
+	req.Header.Set(datastar.FetchHeader, "1")
+	req.Header.Set(html.PageHeader, b.url)
+	req.Header.Set(datastar.BuildHeader, b.build)
+	if b.url != "" {
+		req.Header.Set("Referer", "http://example.com"+b.url)
+	}
+	if b.cookie != "" {
+		req.AddCookie(&http.Cookie{Name: web.CookieName, Value: b.cookie})
+	}
+	fail := &ElementError{Step: strings.TrimSuffix(b.reqHead, ": "), ID: id, Route: r.Name, Fetch: http.MethodGet + " " + u}
+	if fail.Route == "" {
+		fail.Route = u
+	}
+	w, err := b.quietly(ctx, req)
+	if err != nil {
+		return err
+	}
+	var alone html.Node
+	found := false
+	if strings.HasPrefix(w.Header().Get("Content-Type"), "text/event-stream") {
+		events, err := sseEvents(w.Body.String())
+		if err != nil {
+			return err
+		}
+		for _, ev := range events {
+			sel := ev.field("selector")
+			if ev.typ != "datastar-patch-elements" || ev.field("mode") != "outer" || !strings.HasPrefix(sel, "#") || sel == "#_alder_panel" {
+				continue
+			}
+			if sel != "#"+id {
+				fail.Why = "on its own its root is " + sel
+				return fail
+			}
+			n, err := html.Parse(ev.field("elements"))
+			if err != nil {
+				return fmt.Errorf("the element check: the view %s answers does not parse: %w", fail.Fetch, err)
+			}
+			alone, found = html.RepairFragment(n), true
+		}
+	}
+	if !found {
+		status := strconv.Itoa(w.Code)
+		if s := w.Header().Get(web.StatusHeader); s != "" {
+			status = s
+		}
+		fail.Why = "on its own it answered no view (status " + status + ")"
+		return fail
+	}
+	want, _ := elementByID(alone, id)
+	got, ok := elementByID(b.dom, id)
+	if !ok {
+		fail.Why = "the page the browser built has no element with that id"
+		return fail
+	}
+	if d, differ := html.Diff(got, want); differ {
+		fail.Diff = &d
+		return fail
+	}
+	return nil
+}
+
+// quietly has the router serve req, the element check's fetch, within a savepoint of the test's
+// transaction that is rolled back afterwards. It is not part of the step: what the request's
+// hooks record (its Envs, so its trace and statements; the model; the render; the answer; an
+// error logged) is put back as the step left it, it is not measured, and a cookie it sets is not
+// kept.
+func (b *Browser) quietly(ctx context.Context, req *http.Request) (*httptest.ResponseRecorder, error) {
+	reqEnvs, model, rendered, answered, lastErr := b.reqEnvs, b.model, b.rendered, b.answered, b.lastErr
+	defer func() {
+		b.reqEnvs, b.model, b.rendered, b.answered, b.lastErr = reqEnvs, model, rendered, answered, lastErr
+		clear(b.heads)
+	}()
+	if w := b.cur; w != nil && w.Savepoints != nil {
+		sp := eff.SavepointName()
+		if err := w.Savepoints.Savepoint(ctx, w.Tx, sp); err != nil {
+			return nil, fmt.Errorf("the element check: %w", err)
+		}
+		defer func() {
+			if err := w.Savepoints.RollbackTo(ctx, w.Tx, sp); err == nil {
+				_ = w.Savepoints.Release(ctx, w.Tx, sp)
+			}
+		}()
+	}
+	rec := httptest.NewRecorder()
+	b.handler.ServeHTTP(rec, req)
+	return rec, nil
 }
 
 // pageErrors is the errors a page shows: the items of each `<ul class="errors" data-errors>`
@@ -1357,7 +1504,9 @@ func (b *Browser) patch(ev sseEvent) error {
 	if id, ok := strings.CutPrefix(sel, "#"); ok && mode == "outer" {
 		doc, ok := html.ReplaceByID(b.doc, id, els)
 		if !ok {
-			return fmt.Errorf("a patch of %s: the held page has no element with that id", sel)
+			// a real browser drops it silently (a `render` of a row the page filtered out): a
+			// test fails the step, naming the id
+			return fmt.Errorf("%sthe answer patched `%s`, which the page does not have", b.reqHead, sel)
 		}
 		b.doc = doc
 		b.regions = append(b.regions, id)
