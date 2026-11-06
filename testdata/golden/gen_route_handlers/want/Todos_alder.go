@@ -12,6 +12,11 @@ import (
 
 type Todos__NewTodo struct {
 	Title string
+	Due   rt.Maybe[rt.Date]
+}
+
+type Todos__MoveTo struct {
+	List string
 }
 
 type Todos__TodoList struct {
@@ -33,6 +38,15 @@ type Todos__Toggle__Params struct {
 
 type Todos__Create__Params struct {
 	Form Todos__NewTodo
+}
+
+type Todos__Delete__Params struct {
+	Id string
+}
+
+type Todos__Move__Params struct {
+	Id   string
+	Form Todos__MoveTo
 }
 
 type Todos__Export__Params struct{}
@@ -81,7 +95,28 @@ func Todos__Row__load(params Todos__Row__Params, session Todos__Index__Session) 
 }
 
 func Todos__Row__view(t Table__Todo__Todo, session Todos__Index__Session) html.Node {
-	return html.El("li", []html.Attr{html.A("id", "todo-"+t.Id)}, html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Todos.Toggle", Method: "PATCH", Path: rt.Concat("/todos/", rt.PathSegment(t.Id), "/toggle")})}, html.Text(t.Title)))
+	return html.El("li", []html.Attr{html.A("id", "todo-"+t.Id)},
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Todos.Toggle", Method: "PATCH", Path: rt.Concat("/todos/", rt.PathSegment(t.Id), "/toggle")})}, html.Text(t.Title)),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Todos.Delete", Method: "DELETE", Path: rt.Concat("/todos/", rt.PathSegment(t.Id))})}, html.Text("Delete")),
+		html.FormToRoute(rt.Route{Name: "Todos.Move", Method: "POST", Path: rt.Concat("/todos/", rt.PathSegment(t.Id), "/move")}, nil,
+			html.Input(html.Control{Kind: "errors", Form: "Todos.MoveTo"}),
+			html.Input(html.Control{Kind: "select", Form: "Todos.MoveTo", Name: "list", Choices: html.Choices([]struct {
+				Value string
+				Label string
+			}{struct {
+				Value string
+				Label string
+			}{Value: "home", Label: "Home"}, struct {
+				Value string
+				Label string
+			}{Value: t.Title, Label: "Its own"}}, func(_o struct {
+				Value string
+				Label string
+			}) html.Choice {
+				return html.Choice{Value: _o.Value, Label: _o.Label}
+			})}),
+		),
+	)
 }
 
 func Todos__Toggle__update(params Todos__Toggle__Params, session Todos__Index__Session) eff.Task[rt.Response] {
@@ -96,10 +131,25 @@ func Todos__Toggle__update(params Todos__Toggle__Params, session Todos__Index__S
 
 func Todos__Create__update(params Todos__Create__Params, session Todos__Index__Session) eff.Task[rt.Response] {
 	return eff.Bind(eff.Call("Db.insertMine Todo", true, func(_e1 *eff.Env) (string, error) {
-		return db.InsertMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Table__Todo__Todo, insertminevals__Table__Todo__Todo(insertmine__Table__Todo__Todo{Title: params.Form.Title, Done: false, Due: rt.Nothing[rt.Date]()}), _e1.Now())
+		return db.InsertMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Table__Todo__Todo, insertminevals__Table__Todo__Todo(insertmine__Table__Todo__Todo{Title: params.Form.Title, Done: false, Due: params.Form.Due}), _e1.Now())
 	}), func(_ string) eff.Task[rt.Response] {
+		if params.Form.Title == "Again" {
+			return eff.Pure(std.ResponseInvalid("Already there"))
+		}
 		return eff.Pure(std.ResponseToast("Added", std.ResponseRedirect(rt.Route{Name: "Todos.Index", Method: "GET", Path: "/", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}})))
 	})
+}
+
+func Todos__Delete__update(params Todos__Delete__Params, session Todos__Index__Session) eff.Task[rt.Response] {
+	return eff.Bind(eff.Call("Db.deleteMine Todo", true, func(_e1 *eff.Env) (struct{}, error) {
+		return struct{}{}, db.DeleteMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Table__Todo__Todo, params.Id)
+	}), func(_ struct{}) eff.Task[rt.Response] {
+		return eff.Pure(std.ResponseRefresh())
+	})
+}
+
+func Todos__Move__update(params Todos__Move__Params, session Todos__Index__Session) eff.Task[rt.Response] {
+	return eff.Pure(std.ResponseToast("Moved to "+params.Form.List, std.ResponseRender(rt.Route{Name: "Todos.Row", Method: "GET", Path: rt.Concat("/todos/", rt.PathSegment(params.Id))})))
 }
 
 func Todos__Export__load(params Todos__Export__Params, session Todos__Index__Session) eff.Query[[]Table__Todo__Todo] {

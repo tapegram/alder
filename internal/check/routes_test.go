@@ -258,16 +258,32 @@ func TestNeedsShown(t *testing.T) {
 		{"helper with a Response in a Maybe", "Task.succeed (Maybe.withDefault (Response.redirect (Row {})) (pick params.flag))", true},
 		{"Text.trim", "Task.succeed (if Text.trim \"x\" == \"\" then Response.redirect (Row {}) else Response.render (Row {}))", false},
 		{"helper not returning Response", "Task.succeed (if same params.flag then Response.redirect (Row {}) else Response.redirect (Row {}))", false},
+		{"refresh in a match arm", "match params.flag {\n  True -> Task.succeed Response.refresh,\n  False -> Task.succeed (Response.redirect (Row {})),\n}", true},
+		{"helper returning a record holding a Response", "Task.succeed (outcome params.flag).response", true},
+		{"helper returning a union holding a Response", "match decide params.flag {\n  Answer r -> Task.succeed r,\n  Stay -> Task.succeed (Response.redirect (Row {})),\n}", true},
+		{"helper of another module returning Response", "Task.succeed (Answers.again params.flag)", true},
+		{"helper of another module returning a record holding one", "Task.succeed (Answers.wrapped params.flag).response", true},
+		{"helper of another module not returning Response", "Task.succeed (if Answers.yes params.flag then Response.redirect (Row {}) else Response.render (Row {}))", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			src := "module Todos\n\nroute Row = GET \"/row\" { }\nroute Go = POST \"/go\" { flag: Bool }\n\n" + getRoute("Row", "<p>r</p>") +
+			src := "module Todos\n\nimport Answers\n\nroute Row = GET \"/row\" { }\nroute Go = POST \"/go\" { flag: Bool }\n\n" + getRoute("Row", "<p>r</p>") +
+				"type Outcome = { response: Response, note: Text }\n\n" +
+				"outcome : Bool -> Outcome\noutcome b = { response: Response.refresh, note: \"x\" }\n\n" +
+				"type Decision = Answer Response | Stay\n\n" +
+				"decide : Bool -> Decision\ndecide b = Stay\n\n" +
 				"answer : Bool -> Response\nanswer b = Response.refresh\n\n" +
 				"later : Bool -> Task Response\nlater b = Task.succeed Response.refresh\n\n" +
 				"pick : Bool -> Maybe Response\npick b = Nothing\n\n" +
 				"same : Bool -> Bool\nsame b = b\n\n" +
 				"Go.update : Go.Params -> Session -> Task Response\nGo.update params session = " + tc.body + "\n"
-			res, errs := checkFiles(t, routeApp(src))
+			files := routeApp(src)
+			files["Answers.alder"] = "module Answers\n\n" +
+				"type Wrapped = { response: Response }\n\n" +
+				"again : Bool -> Response\nagain b = Response.refresh\n\n" +
+				"wrapped : Bool -> Wrapped\nwrapped b = { response: Response.refresh }\n\n" +
+				"yes : Bool -> Bool\nyes b = b\n"
+			res, errs := checkFiles(t, files)
 			if len(errs) != 0 {
 				t.Fatalf("errors = %q", errs)
 			}

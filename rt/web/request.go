@@ -50,6 +50,8 @@ type Request struct {
 
 	sessionEnc []byte // the codec's encoding of Session: a response's session equal to it is not stored again
 
+	pattern string // the Pattern of the GET route a shown page's sub-request runs (runShown); "" otherwise
+
 	// the router serving the request and its writer: RenderShown runs the shown page's GET route
 	// with them (nil for a Request not built by the router)
 	rt *router
@@ -137,6 +139,13 @@ func NotFoundResponse(doc html.Node) Response {
 // *db.MaintenanceError): Options.MaintenanceDoc with status 503 and Alder-Status: 503.
 func MaintenanceResponse(err error) Response {
 	return Response{Status: http.StatusServiceUnavailable, Err: err}
+}
+
+// BadRequestResponse is a 400 Bad Request for why (a write whose form was posted from a page that
+// does not offer its options: CheckOptions): logged at warn with why, answered with a page saying
+// so (a body patch under Datastar, Alder-Status 400). The session is left unchanged.
+func BadRequestResponse(why error) Response {
+	return Response{Status: http.StatusBadRequest, Err: why}
 }
 
 // ErrorResponse renders doc (App.error) with status 500; a zero doc means Options.ErrorDoc(err).

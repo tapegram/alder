@@ -261,3 +261,39 @@ func TestRenderWith_WrappedControl(t *testing.T) {
 		t.Errorf("with errors:\n got %s\nwant %s", got, failed)
 	}
 }
+
+// Offers are the options the selects with options={…} of a form offer inside the <form>s that
+// send one request (its key): another row's form of the same type, a select of another form and
+// a union select (Options, no Choices) are not counted; two selects of one field add up, and a
+// blank is allowed when either allows it.
+func TestOffers_ByFormAndKey(t *testing.T) {
+	row := func(id string, extra ...Node) Node {
+		r := rt.Route{Name: "T.Move", Method: "POST", Path: "/t/" + id + "/move"}
+		kids := append([]Node{Input(Control{Kind: "select", Form: "T.MoveTo", Name: "list", Choices: []Choice{{"home", "Home"}, {id, "Own"}}})}, extra...)
+		return El("li", nil, FormToRoute(r, nil, kids...))
+	}
+	page := El("ul", nil,
+		row("a", El("div", nil, Input(Control{Kind: "select", Form: "T.MoveTo", Name: "list", Blank: true, Choices: []Choice{{"work", "Work"}}})),
+			Input(Control{Kind: "select", Form: "T.MoveTo", Name: "tag", Options: []string{"Red", "Blue"}}),
+			Input(Control{Kind: "select", Form: "T.Other", Name: "list", Choices: []Choice{{"x", "X"}}})),
+		row("b"))
+	got, found := Offers(page, "T.MoveTo", "POST /t/a/move")
+	if !found || len(got) != 1 || !got["list"].Blank || len(got["list"].Choices) != 3 {
+		t.Fatalf("a: %v %+v", found, got)
+	}
+	for _, v := range []string{"home", "a", "work", ""} {
+		if !Offered(v, got["list"].Choices, got["list"].Blank) {
+			t.Errorf("a: %q not offered", v)
+		}
+	}
+	if Offered("b", got["list"].Choices, got["list"].Blank) {
+		t.Errorf("a: row b's option offered")
+	}
+	got, found = Offers(page, "T.MoveTo", "POST /t/b/move")
+	if !found || got["list"].Blank || len(got["list"].Choices) != 2 {
+		t.Fatalf("b: %v %+v", found, got)
+	}
+	if _, found = Offers(page, "T.MoveTo", "POST /t/c/move"); found {
+		t.Fatal("c: no such form on the page")
+	}
+}

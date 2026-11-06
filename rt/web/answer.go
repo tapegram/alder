@@ -73,6 +73,57 @@ func (rt *router) answer(w http.ResponseWriter, r *http.Request, st hop, rq *Req
 	rt.answerShown(w, r, st, rq, resp)
 }
 
+// targetProblem is why a, a write's answer, cannot be delivered, "" when it can: a `redirect` or
+// `render` whose target is not a GET route of the app's. The checker refuses a write route
+// written in place (E0045), but not one held in a variable or made by a helper, nor a Route with
+// no name (Url.external's: Method "GET"), which names no route of this app. A value of an old
+// `page` (no name, no Method: rt.Page) is a GET of this app and is delivered (#160 plan call 1:
+// pages and routes side by side until PR 9).
+func targetProblem(a rtpkg.Response) string {
+	if a.Kind != rtpkg.RespRedirect && a.Kind != rtpkg.RespRender {
+		return ""
+	}
+	t := a.Target
+	switch {
+	case t.Name == "" && t.Method == "":
+		return "" // a page
+	case t.Name == "":
+		return "a Route with no name (Url.external makes one) is not a GET route of this app"
+	case t.Method != "" && t.Method != http.MethodGet:
+		return t.Name + " is a " + t.Method + " route, not a GET route of this app"
+	}
+	return ""
+}
+
+// badTarget answers a write whose answer's target is not a GET route (targetProblem: why): never
+// followed or patched in. It is logged and answered as an error: without JavaScript the 500 page
+// (App.error); under Datastar no patch, the error toast and Alder-Status 500, as a `render`
+// whose target failed (renderFailed). The update committed, so the session it left is stored.
+func (rt *router) badTarget(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response, why string) {
+	a := resp.Answer
+	err := fmt.Errorf("%w: %s to %s: %s (nothing delivered)", eff.ErrInternal, kindName(a.Kind), strconv.Quote(rtpkg.RouteURL(a.Target)), why)
+	if serr := rt.setSession(w, r, rq, resp.Session); serr != nil {
+		rt.logReq(w, "error", line(w, r, serr.Error()))
+	}
+	if !rq.Datastar {
+		rt.fail(w, r, st, html.None(), err, nil)
+		return
+	}
+	rt.logReq(w, "error", line(w, r, err.Error()))
+	if tw, ok := w.(*tracker); ok {
+		tw.setAnswer("error")
+		tw.detail = err.Error()
+		tw.addToast(rtpkg.NoticeError, "Something went wrong")
+	}
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-cache")
+	h.Set(StatusHeader, strconv.Itoa(http.StatusInternalServerError))
+	w.WriteHeader(http.StatusOK)
+	rt.notify(w)
+	rt.patchPanel(w, http.StatusInternalServerError)
+}
+
 // kindName is k as the Prelude names it, for a log line.
 func kindName(k rtpkg.ResponseKind) string {
 	switch k {

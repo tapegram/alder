@@ -2,8 +2,7 @@ module App
 
 import Table.User
 
--- GET routes (#160 PR 3): the app of the route handlers' golden. Its write routes are generated
--- by Task 3.3.
+-- Routes (#160 PR 3): the app of the route handlers' golden, GET and write routes.
 session { user: Maybe User.UserId, theme: Text = "light", role: User.Role = Reader }
 
 login = Auth.Login

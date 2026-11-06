@@ -1114,6 +1114,12 @@ func (rt *router) setSession(w http.ResponseWriter, r *http.Request, rq *Request
 }
 
 func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
+	if resp.Answer != nil {
+		if why := targetProblem(*resp.Answer); why != "" {
+			rt.badTarget(w, r, st, rq, resp, why)
+			return
+		}
+	}
 	if st.stale && rq.Datastar && rt.staleReload(w, r, st, rq, resp) {
 		return
 	}
@@ -1188,6 +1194,8 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 		rt.document(w, http.StatusOK, page)
 	case http.StatusServiceUnavailable:
 		rt.maintenance(w, r, st, resp.Err)
+	case http.StatusBadRequest:
+		rt.refused(w, r, st, resp.Err)
 	case http.StatusNotFound, http.StatusInternalServerError:
 		// a non-nil session here is one a successful Task left before a later step failed
 		// (the re-load after update): it is stored all the same
@@ -1489,6 +1497,16 @@ func (rt *router) badRequest(w http.ResponseWriter, r *http.Request, st hop, why
 		tw.setAnswer("bad request")
 	}
 	rt.failure(w, r, st, http.StatusBadRequest, "<p>400 bad request: "+esc(why)+"</p>")
+}
+
+// refused answers a handler's BadRequestResponse: why logged at warn, then status 400 and a page
+// saying so, or as a body patch for a Datastar request (Alder-Status 400).
+func (rt *router) refused(w http.ResponseWriter, r *http.Request, st hop, why error) {
+	rt.logReq(w, "warn", line(w, r, fmt.Sprintf("bad request: %v", why)))
+	if tw, ok := w.(*tracker); ok {
+		tw.setAnswer("bad request")
+	}
+	rt.failure(w, r, st, http.StatusBadRequest, "<p>400 bad request</p>")
 }
 
 // notFound writes doc (or, when it renders empty, Options.NotFoundDoc) with status 404, or as

@@ -15,9 +15,10 @@ type Route struct {
 // the Query parameters that are not Omit as an URL-encoded query string ("/?filter=Active").
 func RouteURL(r Route) string { return r.Path + queryString(r.Query) }
 
-// RouteKey identifies the request r makes, as a form's FormState: its Method, a space, and
-// MsgKey of its Path and its own query (the parameters that are not Omit), so only the form
-// that sent this very request (a per-row form's row id included) shows its values and errors.
+// RouteKey identifies the request r makes, as a form's FormState: its Method ("GET" when empty,
+// as AlderEqual reads it), a space, and MsgKey of its Path and its own query (the parameters
+// that are not Omit), so only the form that sent this very request (a per-row form's row id
+// included) shows its values and errors.
 func RouteKey(r Route) string {
 	q := url.Values{}
 	for _, kv := range r.Query {
@@ -25,7 +26,7 @@ func RouteKey(r Route) string {
 			q[kv.Key] = append(q[kv.Key], kv.Value)
 		}
 	}
-	return r.Method + " " + MsgKey(r.Path, q)
+	return routeMethod(r) + " " + MsgKey(r.Path, q)
 }
 
 // AlderEqual is Route's equality (Equaler): two routes are equal when they have the same Method (empty is GET)

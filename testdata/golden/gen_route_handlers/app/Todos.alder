@@ -7,9 +7,13 @@ route Index  = GET    "/"                  { filter: Todo.Filter = All } require
 route Row    = GET    "/todos/{id}"        { id: Todo.TodoId }           requires user
 route Toggle = PATCH  "/todos/{id}/toggle" { id: Todo.TodoId }           requires user
 route Create = POST   "/todos"             { } form NewTodo              requires user
+route Delete = DELETE "/todos/{id}"        { id: Todo.TodoId }           requires user
+route Move   = POST   "/todos/{id}/move"   { id: Todo.TodoId } form MoveTo requires user
 route Export = GET    "/export.csv"        { }                           requires user
 
-form NewTodo = { title: Text }
+form NewTodo = { title: Text, due: Maybe Date }
+
+form MoveTo = { list: Text }
 
 type TodoList = { filter: Todo.Filter, todos: List Todo }
 
@@ -39,6 +43,11 @@ Row.view : Todo -> Session -> Html
 Row.view t session =
   <li id={"todo-" ++ t.id}>
     <button click={Toggle { id: t.id }}>{t.title}</button>
+    <button click={Delete { id: t.id }}>Delete</button>
+    <form submit={Move { id: t.id }}>
+      <Errors form />
+      <Select field="list" options={[{ value: "home", label: "Home" }, { value: t.title, label: "Its own" }]} />
+    </form>
   </li>
 
 Toggle.update : Toggle.Params -> Session -> Task Response
@@ -49,9 +58,21 @@ Toggle.update params session = {
 
 Create.update : Create.Params -> Session -> Task Response
 Create.update params session = {
-  let _ <- Db.insertMine Todo { title: params.form.title, due: Nothing }
-  Task.succeed (Response.redirect (Index { filter: All }) |> Response.toast "Added")
+  let _ <- Db.insertMine Todo { title: params.form.title, due: params.form.due }
+  if params.form.title == "Again"
+    then Task.succeed (Response.invalid "Already there")
+    else Task.succeed (Response.redirect (Index { filter: All }) |> Response.toast "Added")
 }
+
+Delete.update : Delete.Params -> Session -> Task Response
+Delete.update params session = {
+  let _ <- Db.deleteMine Todo params.id
+  Task.succeed Response.refresh
+}
+
+Move.update : Move.Params -> Session -> Task Response
+Move.update params session =
+  Task.succeed (Response.render (Row { id: params.id }) |> Response.toast ("Moved to " ++ params.form.list))
 
 Export.load : Export.Params -> Export.Session -> Query (List Todo)
 Export.load params session = Db.mine Todo |> Db.all

@@ -151,6 +151,10 @@ func (f *fn) attrs(as []ir.HAttr, s *scope) string {
 			}
 			out = append(out, `html.MsgAttr("data-on:click", `+f.msgRef(a.Value, s)+`)`)
 		case ir.AttrSubmit: // on an element Lower did not make a FormEl
+			// Lower makes every <form submit> a FormEl (html.FormToRoute, with the _method
+			// override), so this is an element that is not a <form>: it never submits without
+			// JavaScript (method="post" is inert on it), and with it RouteAttr sends the route's
+			// own method. No _method override is needed (#160 PR 3, ruling R9).
 			if isRoute(a.Value) {
 				ref := f.code(a.Value, s)
 				out = append(out, `html.A("method", "post")`, `html.RouteAttr("action", `+ref+`)`,

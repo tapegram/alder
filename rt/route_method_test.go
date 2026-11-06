@@ -15,4 +15,7 @@ func TestRoute_EmptyMethodIsGET(t *testing.T) {
 	if Eq(page, Route{Method: "POST", Path: "/x"}) {
 		t.Errorf("a POST route equals a page")
 	}
+	if RouteKey(page) != RouteKey(ext) || RouteKey(page) != "GET /x" {
+		t.Errorf("RouteKey: %q vs %q", RouteKey(page), RouteKey(ext))
+	}
 }

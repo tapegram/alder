@@ -26,14 +26,18 @@ import (
 // event. A request without the header (a post made before the boost ran) is answered with the
 // whole body.
 
-// Shown is the page the browser is on, rendered: its URL (Request.ShownURL), the status its GET
-// route answered and, for a 200, its render with the regions (html.RenderTracked). A write route
-// that may answer `refresh` or `invalid` renders it before its update (Request.RenderShown) and
-// hands it to the router as Response.Shown, which diffs the after-view against it.
+// Shown is the page the browser is on, rendered: its URL (Request.ShownURL), the Pattern of the
+// GET route that matched it, the status that route answered and, for a 200, its render with the
+// regions (html.RenderTracked). A write route that may answer `refresh` or `invalid` renders it
+// before its update (Request.RenderShown) and hands it to the router as Response.Shown, which
+// diffs the after-view against it; a write route whose form has selects with `options={…}`
+// checks the posted values against it (CheckOptions).
 type Shown struct {
 	URL      string
+	Pattern  string
 	Status   int
 	Rendered html.Rendered
+	node     html.Node // the view rendered, for a 200 (CheckOptions)
 }
 
 // ShownURL is the path and query of the page the browser is on: html.PageHeader, else Referer,
@@ -73,11 +77,24 @@ func (rq *Request) RenderShown(st *html.FormState) (*Shown, Response) {
 		// the before-view is lost, not the write: its answer morphs the whole body
 		rq.rt.logReq(rq.w, "error", line(rq.w, sub.HTTP, fmt.Sprintf("rendering the page before the write: %v", resp.Err)))
 	}
-	sh := &Shown{URL: u, Status: resp.Status}
+	sh := &Shown{URL: u, Pattern: sub.pattern, Status: resp.Status}
 	if resp.Raw == nil && resp.Status == http.StatusOK {
-		sh.Rendered = html.RenderTracked(resp.Node, resp.State)
+		sh.Rendered, sh.node = html.RenderTracked(resp.Node, resp.State), resp.Node
 	}
 	return sh, resp
+}
+
+// WithPageParams is st, the form state a GET route's view renders with (Request.FormState: the
+// posted form's when a write renders the page the browser is on again), with that route's
+// parameters as its PageParams, as a page's plain state carries them; nil (the route's own
+// request) stays nil. st is not changed.
+func WithPageParams(st *html.FormState, page []rtpkg.KV) *html.FormState {
+	if st == nil {
+		return nil
+	}
+	s := *st
+	s.PageParams = page
+	return &s
 }
 
 // runShown runs the GET route that matches raw (a path and query, rt.BackURL's) for parent, a
@@ -109,7 +126,7 @@ func (rt *router) runShown(parent *Request, raw string, session any, enc []byte,
 	sub = &Request{
 		Ctx: parent.Ctx, HTTP: getOf(parent.HTTP, u, false), Params: params, Query: u.Query(),
 		Session: session, Env: env, Datastar: parent.Datastar, Dev: parent.Dev, Login: parent.Login,
-		FormState: st, sessionEnc: enc, rt: rt, w: parent.w,
+		FormState: st, sessionEnc: enc, rt: rt, w: parent.w, pattern: hit.pattern,
 	}
 	defer func() {
 		if parent.Env != nil {

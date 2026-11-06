@@ -642,20 +642,21 @@ func (f *fn) ctor(x *ir.Ctor, s *scope) string {
 // order: rt.KV for a required one; rt.QueryKV, which leaves it out at its default (a Maybe
 // without one: at Nothing), for the others; rt.QueryKVs for a List (one key per element).
 func (f *fn) pageRef(x *ir.PageRef, s *scope) string {
-	return f.routeLit("", "", x.Page.Path, x.Page.Params, x.Params, s)
+	return f.routeLit("", "", x.Page.Path, x.Page.Params, x.Params, false, s)
 }
 
 // routeRef is a route value (#160): an rt.Route with the route's qualified Name and Method, and
-// its path and query as pageRef builds them. A write route's `form` parameter is not part of its
-// URL: the submitted form supplies it.
+// its path and query as pageRef builds them. The `form` field of a route with `form F` is not
+// part of its URL: the submitted form supplies it.
 func (f *fn) routeRef(x *ir.RouteRef, s *scope) string {
 	r := x.Route
-	return f.routeLit(r.Module+"."+r.Name, r.Method, r.Path, r.Params, x.Params, s)
+	return f.routeLit(r.Module+"."+r.Name, r.Method, r.Path, r.Params, x.Params, r.Form != nil, s)
 }
 
 // routeLit is an rt.Route literal (rt.Page, its alias, for a page: name and method "") of
-// pattern path with the parameters params (decl, the declared record) filled in.
-func (f *fn) routeLit(name, method, path string, decl *ir.RecordType, params ir.Expr, s *scope) string {
+// pattern path with the parameters params (decl, the declared record) filled in. form says decl's
+// field `form` is the route's submitted form (`form F`), left out of the URL.
+func (f *fn) routeLit(name, method, path string, decl *ir.RecordType, params ir.Expr, form bool, s *scope) string {
 	typ := "rt.Page{"
 	if name != "" {
 		typ = "rt.Route{Name: " + strconv.Quote(name) + ", Method: " + strconv.Quote(method) + ", "
@@ -691,7 +692,7 @@ func (f *fn) routeLit(name, method, path string, decl *ir.RecordType, params ir.
 	}
 	var items []kvItem
 	for _, fd := range decl.Fields {
-		if !inPath[fd.Name] && !(name != "" && fd.Name == "form") {
+		if !inPath[fd.Name] && !(form && fd.Name == "form") {
 			items = append(items, kvItem{name: fd.Key(), t: fd.Type, v: f.pageParam(params, fd.Name), def: fd.Default, omitBlank: true})
 		}
 	}

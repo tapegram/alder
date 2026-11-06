@@ -328,17 +328,45 @@ func (mc *modCtx) needsShown(d *syntax.ValueDecl) bool {
 }
 
 // resultHasResponse reports whether t, or the result a function type finally gives, is
-// `Response` or holds it (`Task Response`, `Maybe Response`).
+// `Response` or holds it: as an argument (`Task Response`, `Maybe Response`), a record's field
+// (`{ response: Response, … }`) or a constructor's payload (`Answer Response | Stay`), at any
+// depth. A recursive type is visited once.
 func resultHasResponse(t types.Type) bool {
+	return holdsResponse(t, map[types.Type]bool{})
+}
+
+func holdsResponse(t types.Type, seen map[types.Type]bool) bool {
+	holds := func(t types.Type) bool { return holdsResponse(t, seen) }
 	switch t := t.(type) {
 	case *types.Con:
 		return t == types.Response
 	case *types.App:
-		return slices.ContainsFunc(t.Args, resultHasResponse)
-	case *types.Union:
-		return slices.ContainsFunc(t.Args, resultHasResponse)
+		return slices.ContainsFunc(t.Args, holds)
 	case *types.Fun:
-		return resultHasResponse(t.Result)
+		return holds(t.Result)
+	case *types.Record:
+		if seen[t] {
+			return false
+		}
+		seen[t] = true
+		for _, f := range t.Fields {
+			if holds(f.Type) {
+				return true
+			}
+		}
+	case *types.Union:
+		if seen[t] {
+			return false
+		}
+		seen[t] = true
+		if slices.ContainsFunc(t.Args, holds) {
+			return true
+		}
+		for _, c := range t.Ctors {
+			if c.Arg != nil && holds(c.Arg) {
+				return true
+			}
+		}
 	}
 	return false
 }

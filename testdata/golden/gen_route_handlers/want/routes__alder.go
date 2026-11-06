@@ -12,14 +12,19 @@ import (
 	"strings"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every GET route, then
-// every message of the pages and of App (POST), in module order.
+// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
+// write routes, in declaration order), then every message of the pages and of App (POST), in module
+// order.
 var Routes = []web.Route{
 	Route__Auth__Login__page(),
 	Route__About__Show(),
 	Route__Admin__Stats(),
 	Route__Todos__Index(),
 	Route__Todos__Row(),
+	Route__Todos__Toggle(),
+	Route__Todos__Create(),
+	Route__Todos__Delete(),
+	Route__Todos__Move(),
 	Route__Todos__Export(),
 }
 
@@ -92,6 +97,12 @@ func page__About__Show(rq *web.Request, params About__Show__Params, keep any) (s
 	return model, session, nil
 }
 
+// params__About__Show are route About.Show's parameters as text (html.FormState.PageParams), for
+// the posted form's state its view renders with when a write renders it again.
+func params__About__Show(p About__Show__Params) []rt.KV {
+	return []rt.KV{rt.QueryKV("tab", p.Tab, "team")}
+}
+
 // Route__About__Show serves route About.Show, GET /about: decode the parameters (404 when they do
 // not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
 // in rq.Model, which a test's browser reads).
@@ -106,7 +117,7 @@ func Route__About__Show() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(About__Show__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(About__Show__view(model, session), web.WithPageParams(rq.FormState, params__About__Show(params)), rq.Session, false)
 	}}
 }
 
@@ -144,6 +155,12 @@ func page__Admin__Stats(rq *web.Request, params Admin__Stats__Params, keep any) 
 	return model, session, nil
 }
 
+// params__Admin__Stats are route Admin.Stats's parameters as text (html.FormState.PageParams), for
+// the posted form's state its view renders with when a write renders it again.
+func params__Admin__Stats(_ Admin__Stats__Params) []rt.KV {
+	return nil
+}
+
 // Route__Admin__Stats serves route Admin.Stats, GET /admin/stats: decode the parameters (404 when
 // they do not), `requires` (303 to App.login), the role (404), load (404 on Query.notFound, 303 on
 // Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser
@@ -159,7 +176,7 @@ func Route__Admin__Stats() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Admin__Stats__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Admin__Stats__view(model, session), web.WithPageParams(rq.FormState, params__Admin__Stats(params)), rq.Session, false)
 	}}
 }
 
@@ -197,6 +214,12 @@ func page__Todos__Index(rq *web.Request, params Todos__Index__Params, keep any) 
 	return model, session, nil
 }
 
+// params__Todos__Index are route Todos.Index's parameters as text (html.FormState.PageParams), for
+// the posted form's state its view renders with when a write renders it again.
+func params__Todos__Index(p Todos__Index__Params) []rt.KV {
+	return []rt.KV{rt.QueryKV("filter", []string{"All", "Done"}[p.Filter.Tag], "All")}
+}
+
 // Route__Todos__Index serves route Todos.Index, GET /: decode the parameters (404 when they do
 // not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect, 500 on a
 // failure), view (the model also in rq.Model, which a test's browser reads).
@@ -211,7 +234,7 @@ func Route__Todos__Index() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Todos__Index__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Todos__Index__view(model, session), web.WithPageParams(rq.FormState, params__Todos__Index(params)), rq.Session, false)
 	}}
 }
 
@@ -251,6 +274,12 @@ func page__Todos__Row(rq *web.Request, params Todos__Row__Params, keep any) (Tab
 	return model, session, nil
 }
 
+// params__Todos__Row are route Todos.Row's parameters as text (html.FormState.PageParams), for the
+// posted form's state its view renders with when a write renders it again.
+func params__Todos__Row(p Todos__Row__Params) []rt.KV {
+	return []rt.KV{{Key: "id", Value: p.Id}}
+}
+
 // Route__Todos__Row serves route Todos.Row, GET /todos/{id}: decode the parameters (404 when they
 // do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect, 500
 // on a failure), view (the model also in rq.Model, which a test's browser reads).
@@ -265,7 +294,273 @@ func Route__Todos__Row() web.Route {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Todos__Row__view(model, session), rq.FormState, rq.Session, false)
+		return web.PageResponse(Todos__Row__view(model, session), web.WithPageParams(rq.FormState, params__Todos__Row(params)), rq.Session, false)
+	}}
+}
+
+// decode__Todos__Toggle__Params decodes route Todos.Toggle's parameters: the path's from params,
+// the others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Todos__Toggle__Params(params map[string]string, _ url.Values) (r Todos__Toggle__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, ok := web.Text(pv, "id", false); !ok {
+		errs = append(errs, web.Missing("id"))
+	} else {
+		r.Id = s
+	}
+	return r, errs
+}
+
+// guard__Todos__Toggle runs the guard of route Todos.Toggle for rq: `requires user` (a 303 to
+// App.login when the session's user is Nothing). It returns the session the route's update takes,
+// or the response that ends the request.
+func guard__Todos__Toggle(rq *web.Request, params Todos__Toggle__Params) (Todos__Index__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Todos__Index__Session{}, &r
+	}
+	return Todos__Index__Session{User: app.User.Val, Theme: app.Theme, Role: app.Role}, nil
+}
+
+// Route__Todos__Toggle serves route Todos.Toggle, PATCH /todos/{id}/toggle: decode the parameters
+// (404 when they do not); `requires` (303 to App.login); run the update and answer its Response (a
+// failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+func Route__Todos__Toggle() web.Route {
+	return web.Route{Method: "PATCH", Pattern: "/todos/{id}/toggle", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Todos__Toggle__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		session, stop := guard__Todos__Toggle(rq, params)
+		if stop != nil {
+			return *stop
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Toggle__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		return web.AnswerResponse(resp, nil, rq.Env.Session)
+	}}
+}
+
+// decode__Todos__Create__Params decodes route Todos.Create's parameters: the path's from params,
+// the others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Todos__Create__Params(_ map[string]string, _ url.Values) (r Todos__Create__Params, errs []web.FieldError) {
+	return r, errs
+}
+
+// guard__Todos__Create runs the guard of route Todos.Create for rq: `requires user` (a 303 to
+// App.login when the session's user is Nothing). It returns the session the route's update takes,
+// or the response that ends the request.
+func guard__Todos__Create(rq *web.Request, params Todos__Create__Params) (Todos__Index__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Todos__Index__Session{}, &r
+	}
+	return Todos__Index__Session{User: app.User.Val, Theme: app.Theme, Role: app.Role}, nil
+}
+
+// decode__Todos__NewTodo decodes form NewTodo from a request body v. Its errors are shown on the
+// re-rendered form.
+func decode__Todos__NewTodo(v url.Values) (r Todos__NewTodo, errs []web.FieldError) {
+	if s, ok := web.Text(v, "title", false); !ok {
+		errs = append(errs, web.Missing("title"))
+	} else {
+		r.Title = s
+	}
+	if s, _ := web.Text(v, "due", false); strings.TrimSpace(s) != "" {
+		if x, msg := web.Date(v, "due"); msg != "" {
+			errs = append(errs, web.FieldError{Field: "due", Message: msg})
+		} else {
+			r.Due = rt.Just(x)
+		}
+	}
+	return r, errs
+}
+
+// Route__Todos__Create serves route Todos.Create, POST /todos: decode the parameters (404 when they
+// do not); `requires` (303 to App.login); decode form NewTodo from the body (when it does not: 422,
+// the page the browser is on rendered again with the submitted values, no Text.Secret field, and
+// the errors, without calling update); render the page the browser is on before the update (refresh
+// and invalid are diffed against it); run the update and answer its Response (a failed Task: 500,
+// 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+func Route__Todos__Create() web.Route {
+	return web.Route{Method: "POST", Pattern: "/todos", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Todos__Create__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		session, stop := guard__Todos__Create(rq, params)
+		if stop != nil {
+			return *stop
+		}
+		key := rt.RouteKey(rt.Route{Name: "Todos.Create", Method: "POST", Path: "/todos"})
+		values := route__values(rq.Form)
+		form, errs := decode__Todos__NewTodo(rq.Form)
+		if errs != nil {
+			resp := web.InvalidResponse(&html.FormState{Form: "Todos.NewTodo", Msg: key, Values: values, Errors: route__errors(errs)}, nil)
+			if rq.Datastar {
+				resp.Shown, _ = rq.RenderShown(nil)
+			}
+			return resp
+		}
+		params.Form = form
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Create__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		ans := web.AnswerResponse(resp, before, rq.Env.Session)
+		if resp.Kind == rt.RespInvalid {
+			ans.State = &html.FormState{Form: "Todos.NewTodo", Msg: key, Values: values}
+		}
+		return ans
+	}}
+}
+
+// decode__Todos__Delete__Params decodes route Todos.Delete's parameters: the path's from params,
+// the others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Todos__Delete__Params(params map[string]string, _ url.Values) (r Todos__Delete__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, ok := web.Text(pv, "id", false); !ok {
+		errs = append(errs, web.Missing("id"))
+	} else {
+		r.Id = s
+	}
+	return r, errs
+}
+
+// guard__Todos__Delete runs the guard of route Todos.Delete for rq: `requires user` (a 303 to
+// App.login when the session's user is Nothing). It returns the session the route's update takes,
+// or the response that ends the request.
+func guard__Todos__Delete(rq *web.Request, params Todos__Delete__Params) (Todos__Index__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Todos__Index__Session{}, &r
+	}
+	return Todos__Index__Session{User: app.User.Val, Theme: app.Theme, Role: app.Role}, nil
+}
+
+// Route__Todos__Delete serves route Todos.Delete, DELETE /todos/{id}: decode the parameters (404
+// when they do not); `requires` (303 to App.login); render the page the browser is on before the
+// update (refresh and invalid are diffed against it); run the update and answer its Response (a
+// failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+func Route__Todos__Delete() web.Route {
+	return web.Route{Method: "DELETE", Pattern: "/todos/{id}", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Todos__Delete__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		session, stop := guard__Todos__Delete(rq, params)
+		if stop != nil {
+			return *stop
+		}
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Delete__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		return web.AnswerResponse(resp, before, rq.Env.Session)
+	}}
+}
+
+// decode__Todos__Move__Params decodes route Todos.Move's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Todos__Move__Params(params map[string]string, _ url.Values) (r Todos__Move__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, ok := web.Text(pv, "id", false); !ok {
+		errs = append(errs, web.Missing("id"))
+	} else {
+		r.Id = s
+	}
+	return r, errs
+}
+
+// guard__Todos__Move runs the guard of route Todos.Move for rq: `requires user` (a 303 to App.login
+// when the session's user is Nothing). It returns the session the route's update takes, or the
+// response that ends the request.
+func guard__Todos__Move(rq *web.Request, params Todos__Move__Params) (Todos__Index__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Todos__Index__Session{}, &r
+	}
+	return Todos__Index__Session{User: app.User.Val, Theme: app.Theme, Role: app.Role}, nil
+}
+
+// decode__Todos__MoveTo decodes form MoveTo from a request body v. Its errors are shown on the
+// re-rendered form.
+func decode__Todos__MoveTo(v url.Values) (r Todos__MoveTo, errs []web.FieldError) {
+	if s, ok := web.Text(v, "list", false); !ok {
+		errs = append(errs, web.Missing("list"))
+	} else {
+		r.List = s
+	}
+	return r, errs
+}
+
+// Route__Todos__Move serves route Todos.Move, POST /todos/{id}/move: decode the parameters (404
+// when they do not); `requires` (303 to App.login); decode form MoveTo from the body (when it does
+// not: 422, the page the browser is on rendered again with the submitted values, no Text.Secret
+// field, and the errors, without calling update); check its options against the page it was posted
+// from (a value that page did not offer: as a form that does not decode; posted from another page:
+// 400); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
+// Task.notFound, 303 for Query.redirect).
+func Route__Todos__Move() web.Route {
+	return web.Route{Method: "POST", Pattern: "/todos/{id}/move", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Todos__Move__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		session, stop := guard__Todos__Move(rq, params)
+		if stop != nil {
+			return *stop
+		}
+		key := rt.RouteKey(rt.Route{Name: "Todos.Move", Method: "POST", Path: rt.Concat("/todos/", rt.PathSegment(params.Id), "/move")})
+		values := route__values(rq.Form)
+		form, errs := decode__Todos__MoveTo(rq.Form)
+		if errs != nil {
+			resp := web.InvalidResponse(&html.FormState{Form: "Todos.MoveTo", Msg: key, Values: values, Errors: route__errors(errs)}, nil)
+			if rq.Datastar {
+				resp.Shown, _ = rq.RenderShown(nil)
+			}
+			return resp
+		}
+		params.Form = form
+		shown, _ := rq.RenderShown(nil)
+		if errs, bad := rq.CheckOptions(shown, []string{"/", "/todos/{id}"}, "Todos.MoveTo", key, values); bad != nil {
+			return *bad
+		} else if errs != nil {
+			resp := web.InvalidResponse(&html.FormState{Form: "Todos.MoveTo", Msg: key, Values: values, Errors: route__errors(errs)}, nil)
+			resp.Shown = shown
+			return resp
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Todos__Move__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		ans := web.AnswerResponse(resp, nil, rq.Env.Session)
+		if resp.Kind == rt.RespInvalid {
+			ans.State = &html.FormState{Form: "Todos.MoveTo", Msg: key, Values: values}
+		}
+		return ans
 	}}
 }
 
@@ -326,4 +621,28 @@ func route__fail(err error) web.Response {
 		return web.NotFoundResponse(html.None())
 	}
 	return web.ErrorResponse(html.None(), err)
+}
+
+// route__values are the submitted fields of a form as its re-render shows them: the first value
+// of each field, without the Text.Secret fields named in secrets.
+func route__values(v url.Values, secrets ...string) map[string]string {
+	out := map[string]string{}
+	for k, vs := range v {
+		if len(vs) > 0 {
+			out[k] = vs[0]
+		}
+	}
+	for _, s := range secrets {
+		delete(out, s)
+	}
+	return out
+}
+
+// route__errors are a form's decoding errors by field, for html.FormState.
+func route__errors(errs []web.FieldError) map[string][]string {
+	out := map[string][]string{}
+	for _, e := range errs {
+		out[e.Field] = append(out[e.Field], e.Message)
+	}
+	return out
 }

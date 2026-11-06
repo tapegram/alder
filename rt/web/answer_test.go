@@ -98,7 +98,7 @@ func (a *ansApp) routes() []Route {
 		{Method: "POST", Pattern: "/w/{kind}", Handle: func(rq *Request) Response {
 			kind := rq.Params["kind"]
 			var before *Shown
-			if kind == "refresh" || kind == "invalid" {
+			if (kind == "refresh" || kind == "invalid") && rq.Query.Get("nobefore") == "" {
 				before, _ = rq.RenderShown(nil)
 			}
 			id, _ := strconv.Atoi(rq.Query.Get("id"))
@@ -115,13 +115,13 @@ func (a *ansApp) routes() []Route {
 				if to == "" {
 					to = "/"
 				}
-				ans = rt.RedirectTo(rt.Route{Name: "R.Page", Method: "GET", Path: to})
+				ans = rt.RedirectTo(targetOf(rq, rt.Route{Name: "R.Page", Method: "GET", Path: to}))
 			case "render":
 				target := rowRoute(id)
 				if p := rq.Query.Get("path"); p != "" {
 					target.Path = p
 				}
-				ans = rt.Render(target)
+				ans = rt.Render(targetOf(rq, target))
 			case "refresh":
 				ans = rt.Refresh()
 			case "invalid":
@@ -149,6 +149,21 @@ func (a *ansApp) routes() []Route {
 			return AnswerResponse(rt.Refresh(), before, nil)
 		}},
 	}
+}
+
+// targetOf is r as the request asks: without its Name (noname, as Url.external makes one), with
+// another Method (method), or a page value (page: neither, as rt.Page has).
+func targetOf(rq *Request, r rt.Route) rt.Route {
+	if rq.Query.Get("noname") != "" {
+		r.Name = ""
+	}
+	if rq.Query.Get("page") != "" {
+		r.Name, r.Method = "", ""
+	}
+	if m := rq.Query.Get("method"); m != "" {
+		r.Method = m
+	}
+	return r
 }
 
 // staleShown is an Alder-Shown hash no page has: the client's al-shown after an element patch.
@@ -650,5 +665,120 @@ func TestBuild_StaleFetch(t *testing.T) {
 	w = serveRaw(h, req)
 	if evs := events(w.Body.String()); len(evs) != 1 || !strings.Contains(evs[0], `window.location.assign("/")`) {
 		t.Fatalf("forged: %q", evs)
+	}
+}
+
+// A redirect or render whose target is not a GET route of the app's — a Route with no Name (as
+// Url.external makes) or a write route held in a variable, which E0045 cannot see — is never
+// followed or patched in: logged, and answered as an error (Alder-Status 500 and the error toast
+// under Datastar, nothing patched; a 500 page without JavaScript). Nothing is loaded. An old
+// page's value (rt.Page) is a GET of this app, and followed.
+func TestAnswer_TargetNotGET(t *testing.T) {
+	for _, target := range []string{"/w/redirect?noname=1&to=/other", "/w/redirect?method=PATCH&to=/w/render", "/w/render?id=1&noname=1", "/w/render?id=1&method=DELETE"} {
+		a := newAnsApp(3)
+		a.toasts = true
+		var logged []string
+		h := NewRouter(a.routes(), testOpts(func(o *Options) { o.Log = func(level, msg string) { logged = append(logged, level+" "+msg) } }))
+		w := ansPost(h, target, "/", nil)
+		evs := events(w.Body.String())
+		if w.Code != 200 || w.Header().Get(StatusHeader) != "500" || len(evs) != 1 || evs[0] != toastEvent("destructive", "10000", "Something went wrong") {
+			t.Fatalf("%s: %d %q %q", target, w.Code, w.Header().Get(StatusHeader), evs)
+		}
+		if a.loads != 0 || a.rowLoads != 0 {
+			t.Fatalf("%s: loads %d, row loads %d", target, a.loads, a.rowLoads)
+		}
+		if len(logged) != 1 || !strings.HasPrefix(logged[0], "error ") || !strings.Contains(logged[0], "not a GET route of this app") {
+			t.Fatalf("%s: logged %q", target, logged)
+		}
+		w = serveRaw(h, httptest.NewRequest("POST", target, nil))
+		if w.Code != http.StatusInternalServerError || w.Header().Get("Location") != "" {
+			t.Fatalf("%s without JavaScript: %d %q", target, w.Code, w.Header().Get("Location"))
+		}
+	}
+	// an old page's value (rt.Page: no name, no method) is a GET of this app: followed
+	a := newAnsApp(3)
+	h := NewRouter(a.routes(), testOpts(nil))
+	w := ansPost(h, "/w/redirect?page=1&to=/other", "/", nil)
+	if evs := events(w.Body.String()); len(evs) != 3 || !strings.Contains(evs[0], "<h1>Other</h1>") || !pushTo(evs[2], "/other") {
+		t.Fatalf("page: %q", evs)
+	}
+}
+
+// refresh and invalid from a route that rendered no before-view (its NeedsShown was false: the
+// checker could not see them coming) degrade to a whole-body morph of the page the browser is on,
+// never a panic; invalid keeps its 422 and its text on the form.
+func TestAnswer_NoBeforeView(t *testing.T) {
+	a := newAnsApp(3)
+	h := NewRouter(a.routes(), testOpts(nil))
+	w := ansPost(h, "/w/refresh?id=1&nobefore=1", "/", nil)
+	if w.Code != 200 || !isBodyMorph(t, w) || !strings.Contains(w.Body.String(), `<li id="row-1" class="done">`) || a.loads != 1 {
+		t.Fatalf("refresh: %d %q loads %d", w.Code, w.Body.String(), a.loads)
+	}
+	w = ansPost(h, "/w/invalid?id=2&nobefore=1", "/", url.Values{"title": {"dup"}})
+	if w.Header().Get(StatusHeader) != "422" || !isBodyMorph(t, w) || !strings.Contains(w.Body.String(), "Title taken") || !strings.Contains(w.Body.String(), `value="dup"`) {
+		t.Fatalf("invalid: %q %q", w.Header().Get(StatusHeader), w.Body.String())
+	}
+}
+
+// The options check of a write route's form (plan call 11), against the page it was posted from
+// (RenderShown): posted from one of the GET routes whose view renders the form's selects, a value
+// they did not offer is a field error; from another page, a page no GET route matches, a page that
+// did not render, or one without the form that sent the post, a 400 with the reason.
+func TestCheckOptions(t *testing.T) {
+	move := rt.Route{Name: "R.Move", Method: "POST", Path: "/m/1"}
+	key := rt.RouteKey(move)
+	page := func(rq *Request) Response {
+		sel := html.Input(html.Control{Kind: "select", Form: "R.MoveTo", Name: "list", Choices: []html.Choice{{Value: "home", Label: "Home"}}})
+		return PageResponse(html.El("html", nil, html.El("body", nil, html.FormToRoute(move, nil, sel))), nil, nil, false)
+	}
+	var got []FieldError
+	var bad *Response
+	routes := []Route{
+		{Method: "GET", Pattern: "/", Handle: page},
+		{Method: "GET", Pattern: "/gone", Handle: func(rq *Request) Response { return NotFoundResponse(html.None()) }},
+		{Method: "GET", Pattern: "/plain", Handle: func(rq *Request) Response { return PageResponse(titled("Plain"), nil, nil, false) }},
+		{Method: "POST", Pattern: "/m/1", Handle: func(rq *Request) Response {
+			sh, _ := rq.RenderShown(nil)
+			got, bad = rq.CheckOptions(sh, []string{"/", "/gone"}, "R.MoveTo", key, map[string]string{"list": rq.Form.Get("list")})
+			if bad != nil {
+				return *bad
+			}
+			return AnswerResponse(rt.Refresh(), nil, nil)
+		}},
+	}
+	var logged []string
+	h := NewRouter(routes, testOpts(func(o *Options) { o.Log = func(level, msg string) { logged = append(logged, level+" "+msg) } }))
+	post := func(from, list string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "/m/1", strings.NewReader(url.Values{"list": {list}}.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Referer", "http://example.com"+from)
+		return serveRaw(h, req)
+	}
+	if post("/", "home"); bad != nil || got != nil {
+		t.Fatalf("offered: %v %v", got, bad)
+	}
+	if post("/", "work"); bad != nil || len(got) != 1 || got[0] != (FieldError{Field: "list", Message: MsgOption}) {
+		t.Fatalf("not offered: %v %v", got, bad)
+	}
+	for _, from := range []string{"/plain", "/nowhere", "/gone"} {
+		logged = nil
+		w := post(from, "home")
+		if bad == nil || w.Code != http.StatusBadRequest || len(logged) != 1 || !strings.HasPrefix(logged[0], "warn ") || !strings.Contains(logged[0], "R.MoveTo") || !strings.Contains(logged[0], from) {
+			t.Fatalf("from %s: %d %q", from, w.Code, logged)
+		}
+	}
+}
+
+// WithPageParams gives a GET route's view the posted form's state with that route's parameters
+// as its PageParams (#160: a write renders the page the browser is on again); the route's own
+// request (no state) stays without one, and the write's state is not changed.
+func TestWithPageParams(t *testing.T) {
+	if WithPageParams(nil, []rt.KV{{Key: "filter", Value: "Done"}}) != nil {
+		t.Fatal("a state made up for the route's own request")
+	}
+	st := &html.FormState{Form: "R.New", Msg: "POST /todos", Values: map[string]string{"title": "x"}}
+	got := WithPageParams(st, []rt.KV{{Key: "filter", Value: "Done"}})
+	if got == st || st.PageParams != nil || got.Form != "R.New" || got.Msg != "POST /todos" || got.Values["title"] != "x" || len(got.PageParams) != 1 || got.PageParams[0].Value != "Done" {
+		t.Fatalf("%+v from %+v", got, st)
 	}
 }
