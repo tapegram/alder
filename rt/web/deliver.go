@@ -27,17 +27,24 @@ func elementFetch(r *http.Request) bool {
 // deliverElement answers an element fetch with resp, the GET route's answer. A 200 view is
 // patched in by its root's id (html.RootID: several roots morph in together, the first one's id
 // the target). A view without one is a runtime error: logged at error naming the route, noted
-// in the dev panel, and answered with an empty event stream, so the page is left as it was. Any
-// other answer (a redirect, a 404, a 500, a file) is written as write writes it for a Datastar
-// request that is not a navigation (st.url ""): a redirect to a page of this app is followed and
-// morphed in with a history push, a failure's page is morphed into the body.
+// in the dev panel, and answered with an empty event stream, so the page is left as it was. A 404
+// patches nothing and toasts "Not found" (renderFailed). Any other answer (a redirect, a 500, a
+// file) is written as write writes it for a Datastar request that is not a navigation (st.url
+// ""): a redirect to a page of this app is followed and morphed in with a history push, a
+// failure's page is morphed into the body.
 //
 // It is also how a write's `render r` is delivered (an in-process element GET of r, with the
 // session the write left in st, st.render set): w is the write's own answer, and a target that
 // answers neither its view nor a redirect is never patched in (renderFailed).
 func (rt *router) deliverElement(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
 	if st.render && !renderOK(resp) {
-		rt.renderFailed(w, r, rq, resp)
+		rt.renderFailed(w, r, rq, resp, "render")
+		return
+	}
+	if resp.Raw == nil && resp.Status == http.StatusNotFound {
+		// the route's parameters did not decode or its load found no row: the not-found page
+		// never replaces the element, a toast says so, as for a `render` of a row that is gone
+		rt.renderFailed(w, r, rq, resp, "element fetch")
 		return
 	}
 	if resp.Raw != nil || resp.Status != http.StatusOK {

@@ -249,7 +249,7 @@ func mapsKeys(m map[string][]byte) []string {
 
 // testBuildGoldens are the gen goldens whose want/ is a test build (Options.Tests) and whose
 // want_prod/ is the production build of the same app.
-var testBuildGoldens = map[string]bool{"gen_fakes": true, "gen_browser": true, "gen_fuzz": true, "gen_wire": true, "gen_helpers": true}
+var testBuildGoldens = map[string]bool{"gen_fakes": true, "gen_browser": true, "gen_fuzz": true, "gen_wire": true, "gen_helpers": true, "gen_route_handlers": true}
 
 // mutateBuildGoldens are the gen goldens whose want/ is a mutate build (Options.Mutate, a test
 // build) and whose want_prod/ is the production build of the same app.
@@ -3958,6 +3958,208 @@ func TestGen_ResponseBuilders(t *testing.T) {
 		`std.ResponseError("c", std.ResponseWarning("b", std.ResponseToast("a", std.ResponseRefresh())))`,
 		"func R__shown(r rt.Route) rt.Response {",
 		`std.ResponseInvalid("no")`,
+	)
+	vet(t, files)
+}
+
+// ---- GET route handlers (#160 PR 3)
+
+// routeHandlersApp is the app of the route handlers' golden: GET routes with and without
+// `requires`, a role, a file route, and write routes (Task 3.3).
+const routeHandlersApp = "../../testdata/golden/gen_route_handlers"
+
+// runRouteApp runs body, the statements of a Go test function, against the generated
+// routeHandlersApp served with a database file: in scope are h (Serve's handler), uid (a user)
+// and todo (a todo of uid's titled "Milk"), get (a GET of target with a cookie, "" for none, and
+// headers as name, value pairs) and as (the signed session cookie of uid with a role).
+func runRouteApp(t *testing.T, body string) {
+	t.Helper()
+	runGo(t, emit(t, routeHandlersApp), `package app
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"alder/rt"
+	"alder/rt/db"
+	"alder/rt/eff"
+	"alder/rt/web"
+)
+
+var _ = strings.Contains
+var _ = http.StatusOK
+
+func TestRoute(t *testing.T) {
+	secret := []byte("0123456789abcdef0123456789abcdef")
+	path := filepath.Join(t.TempDir(), "app.db")
+	h, err := Serve(Caps{}, Options{DB: path, Secret: secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	store, err := db.OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	env := &eff.Env{Ctx: ctx, Store: store, Caps: map[string]any{}, Now: time.Now, Log: func(string, string) {}}
+	uid, err := eff.Run(env, eff.KTask, eff.Call("Db.insert User", true, func(e *eff.Env) (string, error) {
+		return db.InsertRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), table__Table__User__User,
+			insertvals__Table__User__User(insert__Table__User__User{Email: "a@b.c"}), e.Now())
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	todo, err := eff.Run(env, eff.KTask, eff.Call("Db.insert Todo", true, func(e *eff.Env) (string, error) {
+		return db.InsertRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), table__Table__Todo__Todo,
+			insertvals__Table__Todo__Todo(insert__Table__Todo__Todo{Title: "Milk", Due: rt.Nothing[rt.Date](), Owner: uid}), e.Now())
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	as := func(role Table__User__Role) string {
+		c, err := web.SessionCookie(secret, session__codec{}, App__Session{User: rt.Just(uid), Theme: "dark", Role: role}, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return web.CookieName + "=" + c
+	}
+	get := func(target, cookie string, headers ...string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", target, nil)
+		if cookie != "" {
+			r.Header.Set("Cookie", cookie)
+		}
+		for i := 0; i+1 < len(headers); i += 2 {
+			r.Header.Set(headers[i], headers[i+1])
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	_, _, _ = as, get, todo
+`+body+`
+}
+`)
+}
+
+// A GET route answers a plain request with its view as a document: the route's load and view
+// with the narrowed session (requires user), a route without `requires` with App's session,
+// links to routes rendered as their URLs, a parameter at its default left out of them.
+func TestGenRoute_GetDocument(t *testing.T) {
+	t.Parallel()
+	runRouteApp(t, `
+	me := as(Table__User__Role__Reader__)
+	w := get("/todos/"+todo, me)
+	body := w.Body.String()
+	if w.Code != http.StatusOK || !strings.HasPrefix(body, "<!doctype html>") || !strings.Contains(body, "<li id=\"todo-"+todo+"\">") || !strings.Contains(body, "Milk") {
+		t.Fatalf("GET /todos/id: %d %q", w.Code, body)
+	}
+	w = get("/", me)
+	body = w.Body.String()
+	for _, s := range []string{"<title>Todos</title>", "<body class=\"dark\">", "<li id=\"todo-"+todo+"\">", "href=\"/?filter=Done\"", "href=\"/about\"", "action=\"/todos\"", "<a href=\"/export.csv\" data-alder-reload=\"true\">CSV</a>"} {
+		if !strings.Contains(body, s) {
+			t.Errorf("GET /: no %q in %q", s, body)
+		}
+	}
+	if w.Code != http.StatusOK || strings.Contains(body, "href=\"/?filter=All\"") {
+		t.Fatalf("GET /: %d %q", w.Code, body)
+	}
+	if w := get("/?filter=Done", me); w.Code != http.StatusOK || strings.Contains(w.Body.String(), "Milk") {
+		t.Fatalf("GET /?filter=Done: %d %q", w.Code, w.Body.String())
+	}
+	if w := get("/about?tab=jobs", ""); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "About: jobs (light)") {
+		t.Fatalf("GET /about: %d %q", w.Code, w.Body.String())
+	}
+	`)
+}
+
+// An element fetch (Datastar, Alder-Fetch: 1) of a GET route is its view as one patch by its
+// root's id: no document, no body morph, no history step.
+func TestGenRoute_GetElement(t *testing.T) {
+	t.Parallel()
+	runRouteApp(t, `
+	w := get("/todos/"+todo, as(Table__User__Role__Reader__), "Datastar-Request", "true", "Alder-Fetch", "1")
+	body := w.Body.String()
+	if w.Code != http.StatusOK || strings.Count(body, "event: datastar-patch-elements") != 1 || !strings.Contains(body, "data: selector #todo-"+todo+"\n") || !strings.Contains(body, "data: mode outer\n") {
+		t.Fatalf("element fetch: %d %q", w.Code, body)
+	}
+	if !strings.Contains(body, "Milk") || strings.Contains(body, "<html") || strings.Contains(body, "<body") || strings.Contains(body, "history.") {
+		t.Fatalf("element fetch: %q", body)
+	}
+	`)
+}
+
+// A GET route whose view is a File answers it raw: its content type and body, never a page.
+func TestGenRoute_File(t *testing.T) {
+	t.Parallel()
+	runRouteApp(t, `
+	w := get("/export.csv", as(Table__User__Role__Reader__))
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "text/csv" || w.Body.String() != "Milk" {
+		t.Fatalf("GET /export.csv: %d %q %q", w.Code, w.Header().Get("Content-Type"), w.Body.String())
+	}
+	`)
+}
+
+// A GET route's guard: without the session field it requires, a 303 to App.login; a role it
+// does not name, a 404 (as a missing row); parameters that do not decode, a 404; a load that
+// finds no row, a 404.
+func TestGenRoute_Requires(t *testing.T) {
+	t.Parallel()
+	runRouteApp(t, `
+	for _, target := range []string{"/", "/todos/"+todo, "/export.csv", "/admin/stats"} {
+		if w := get(target, ""); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/login" {
+			t.Errorf("GET %s without a user: %d %q", target, w.Code, w.Header().Get("Location"))
+		}
+	}
+	if w := get("/admin/stats", as(Table__User__Role__Reader__)); w.Code != http.StatusNotFound {
+		t.Errorf("GET /admin/stats as a reader: %d", w.Code)
+	}
+	if w := get("/admin/stats", as(Table__User__Role__Admin__)); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "42 todos") {
+		t.Errorf("GET /admin/stats as an admin: %d %q", w.Code, w.Body.String())
+	}
+	if w := get("/?filter=Bogus", as(Table__User__Role__Reader__)); w.Code != http.StatusNotFound {
+		t.Errorf("GET /?filter=Bogus: %d", w.Code)
+	}
+	if w := get("/todos/nope", as(Table__User__Role__Reader__)); w.Code != http.StatusNotFound || !strings.Contains(w.Body.String(), "Not found") {
+		t.Errorf("GET /todos/nope: %d %q", w.Code, w.Body.String())
+	}
+	`)
+}
+
+// An element fetch whose route answers 404 (its load finds no row, its parameters do not
+// decode) patches nothing and toasts "Not found", as a `render` of a row that is gone does.
+func TestGenRoute_ElementNotFound(t *testing.T) {
+	t.Parallel()
+	runRouteApp(t, `
+	me := as(Table__User__Role__Reader__)
+	for _, target := range []string{"/todos/nope", "/?filter=Bogus"} {
+		w := get(target, me, "Datastar-Request", "true", "Alder-Fetch", "1")
+		body := w.Body.String()
+		if w.Code != http.StatusOK || strings.Count(body, "event: datastar-patch-elements") != 1 || !strings.Contains(body, "data: selector al-toasts\n") || !strings.Contains(body, ">Not found</al-toast>") {
+			t.Errorf("element fetch of %s: %d %q", target, w.Code, body)
+		}
+	}
+	`)
+}
+
+// The guard of GET routes in an app with silos (silo-routes-ok): `requires org` narrows the
+// store to the session's org and, without one, redirects to the GET route `choose org` names;
+// the admin route's `silo org` narrows to its parameter and checks the role. The app vets.
+func TestGenRoute_Silos(t *testing.T) {
+	t.Parallel()
+	files := emit(t, "../../testdata/corpus/silo-routes-ok")
+	contains(t, files["routes__alder.go"],
+		`func Route__Projects__Index() web.Route {`,
+		`r := web.RedirectResponse("/orgs", keep)`,
+		`db.Narrow(rq.Env, "org", app.Org.Val)`,
+		`func Route__Admin__Projects__Manage() web.Route {`,
+		`if app.Role.Tag != is__User__Role__Admin {`,
+		`db.Narrow(rq.Env, "org", params.Org)`,
 	)
 	vet(t, files)
 }

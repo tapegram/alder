@@ -133,7 +133,7 @@ func (rt *router) answerRender(w http.ResponseWriter, r *http.Request, st hop, r
 		ok = hit != nil
 	}
 	if !ok {
-		rt.renderFailed(w, r2, rq, NotFoundResponse(html.None()))
+		rt.renderFailed(w, r2, rq, NotFoundResponse(html.None()), "render")
 		return
 	}
 	next := hop{origin: st.origin, gets: st.gets + 1, has: true, render: true}
@@ -150,12 +150,13 @@ func renderOK(resp Response) bool {
 // renderFailed answers a `render` whose target (r, its GET) did not answer its view: no element
 // is patched — the failure page never replaces the element — and an error toast follows the
 // answer's own: "Not found" for a 404 (the row was deleted meanwhile), else "Something went
-// wrong", with the target's error logged.
-func (rt *router) renderFailed(w http.ResponseWriter, r *http.Request, rq *Request, resp Response) {
+// wrong", with the target's error logged. It also answers an element fetch whose route answered
+// 404 (deliverElement): what names the request in the dev panel, "render" or "element fetch".
+func (rt *router) renderFailed(w http.ResponseWriter, r *http.Request, rq *Request, resp Response, what string) {
 	text := "Not found"
-	answer := "render: not found, no element patched"
+	answer := what + ": not found, no element patched"
 	if resp.Raw != nil || resp.Status != http.StatusNotFound {
-		text, answer = "Something went wrong", "render: error, no element patched"
+		text, answer = "Something went wrong", what+": error, no element patched"
 		why := resp.Err
 		if why == nil {
 			why = fmt.Errorf("answered status %d", resp.Status)
@@ -163,7 +164,7 @@ func (rt *router) renderFailed(w http.ResponseWriter, r *http.Request, rq *Reque
 		if resp.Raw != nil {
 			why = fmt.Errorf("answered a file, not a view")
 		}
-		rt.logReq(w, "error", line(w, r, fmt.Sprintf("render: %v (no element patched)", why)))
+		rt.logReq(w, "error", line(w, r, fmt.Sprintf("%s: %v (no element patched)", what, why)))
 	}
 	if tw, ok := w.(*tracker); ok {
 		tw.setAnswer(answer)

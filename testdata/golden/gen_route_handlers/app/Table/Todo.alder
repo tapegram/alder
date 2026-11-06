@@ -1,0 +1,21 @@
+module Table.Todo
+
+import Table.User
+
+type TodoId = brand Text
+
+type Filter = All | Done
+
+table Todo {
+  id: TodoId @id,
+  title: Text,
+  done: Bool = False,
+  due: Maybe Date,
+  owner: User.UserId @ref User @owner,
+}
+
+matches : Filter -> Condition Todo
+matches filter = match filter {
+  All -> Db.and [],
+  Done -> Todo.done.eq True,
+}

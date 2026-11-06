@@ -125,9 +125,13 @@ import (
 // system) are rejected by the names graph (E0014).
 
 // GoName is the package-level Go name of top-level Alder name in module: the module's segments,
-// then the name, joined by "__" ("Todos.Index", "view" → "Todos__Index__view").
+// then the name's, joined by "__" ("Todos.Index", "view" → "Todos__Index__view"). A route's
+// member or type is a dotted name inside its module ("Row.view", "Row.Params" in Todos, #160):
+// its segments are split the same way, so it is "Todos__Row__view", the name `GoName("Todos.Row",
+// "view")` gives. The two cannot clash: a module Todos.Row and a route Row of module Todos
+// cannot both exist (the names graph refuses it).
 func GoName(module, name string) string {
-	return strings.ReplaceAll(module, ".", "__") + "__" + name
+	return strings.ReplaceAll(module, ".", "__") + "__" + strings.ReplaceAll(name, ".", "__")
 }
 
 // fileName is the Go file a module is emitted to: its segments joined by "__", then "_alder.go"

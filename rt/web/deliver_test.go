@@ -99,16 +99,20 @@ func TestDeliver_ElementPatch(t *testing.T) {
 	}
 }
 
-// An element fetch whose route answers a 404 morphs the not-found page into the body, as a
-// message's 404 does: no history step to the element's URL.
+// An element fetch whose route answers a 404 (its parameters do not decode, its load found no
+// row) patches nothing: the not-found page never replaces the element or the body. An error
+// toast "Not found" says so, as for a `render` whose target is gone (renderFailed).
 func TestDeliver_ElementNotFound(t *testing.T) {
 	h := NewRouter(one("GET", "/todos/{id}", func(rq *Request) Response {
 		return Response{Status: http.StatusNotFound, Node: doc("No such todo")}
 	}), testOpts(nil))
 	w := serve(h, elementGet("/todos/7"))
 	ev := events(w.Body.String())
-	if w.Code != http.StatusOK || len(ev) != 1 || ev[0] != bodyEvent("<p>No such todo</p>") {
+	if w.Code != http.StatusOK || len(ev) != 1 || ev[0] != toastEvent("destructive", "10000", "Not found") {
 		t.Fatalf("got %d %q", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("Content-Type %q", ct)
 	}
 }
 
