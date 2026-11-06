@@ -578,8 +578,8 @@ func TestBuild_DefaultBuildDir(t *testing.T) {
 	}
 }
 
-// TestBuild_RoutesNotBuilt: until #160 PR 3 a route program checks, while `alder build` and
-// `alder dump` (anything that lowers it) stop with one line and exit 1.
+// TestBuild_RoutesNotBuilt: until #160 PR 3 generates routes a route program checks and `alder
+// dump` shows its IR, while `alder build` stops with one line and exits 1.
 func TestBuild_RoutesNotBuilt(t *testing.T) {
 	t.Parallel()
 	const app = "../../testdata/corpus/routes-ok"
@@ -592,7 +592,7 @@ func TestBuild_RoutesNotBuilt(t *testing.T) {
 		t.Fatalf("alder build: code %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
 	code, stdout, stderr = runDump("--ir", app)
-	if code != 1 || stdout != "" || stderr != "alder dump: routes are not built yet (#160 PR 3)\n" {
+	if code != 0 || !strings.Contains(stdout, "(route Todos.Index GET \"/\"") || stderr != "" {
 		t.Fatalf("alder dump: code %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
 }

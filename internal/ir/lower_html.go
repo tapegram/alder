@@ -69,10 +69,16 @@ func (l *lowerer) element(x *syntax.Element) Expr {
 	}
 	out := &FormEl{Typed: Typed{t}, Attrs: attrs}
 	out.Msg, out.Page = l.submitted(submit.Value)
+	if out.Msg == nil {
+		out.Route = l.submittedRoute(submit.Value)
+	}
 	saved := l.form
 	l.form = nil
-	if out.Msg != nil {
+	switch {
+	case out.Msg != nil:
 		l.form = out.Msg.Form
+	case out.Route != nil:
+		l.form = out.Route.Form
 	}
 	out.Children = l.children(x.Children)
 	l.form = saved
@@ -290,6 +296,18 @@ func (l *lowerer) submitted(e syntax.Expr) (*Msg, *Page) {
 		return nil, nil
 	}
 	return msg, l.pages[ct.Ref.Module]
+}
+
+// submittedRoute finds the write route a submit value names: a route constructor, bare or
+// applied; nil for anything else.
+func (l *lowerer) submittedRoute(e syntax.Expr) *Route {
+	if app, ok := e.(*syntax.App); ok {
+		e = app.Fn
+	}
+	if ct, ok := e.(*syntax.CtorRef); ok && ct.Ref.Kind == syntax.RefRoute {
+		return l.route(ct.Ref.Module, ct.Ref.Name)
+	}
+	return nil
 }
 
 func (l *lowerer) attr(a *syntax.HtmlAttr) HAttr {

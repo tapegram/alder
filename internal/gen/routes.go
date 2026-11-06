@@ -546,7 +546,7 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, pg *ir.Page) {
 		r := web.RedirectResponse(%[3]s, keep)
 		return model, %[2]s{}, &r
 	}
-`, Field(req), session, strconv.Quote(ch.Path))
+`, Field(req), session, strconv.Quote(ch.TargetPath()))
 		default:
 			fmt.Fprintf(b, `	if !app.%[1]s.Ok {
 		r := web.NotFoundResponse(html.None())

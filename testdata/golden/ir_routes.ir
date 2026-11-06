@@ -1,0 +1,301 @@
+(module Table.User)
+(record Table.User.User (id Text) (email Text))
+(module App)
+(record App.Session (user Maybe Text) (theme Text = "light"))
+(union App.Msg)
+(value App.error : Error -> Html Never (err)
+  (elem html (elem body (elem h1 (htext "Something went wrong")))))
+(value App.notFound : Html Never ()
+  (elem html (elem body (elem h1 (htext "Not found")))))
+(module Table.Todo)
+(union Table.Todo.Filter (All) (Done))
+(record Table.Todo.Todo
+  (id Text)
+  (title Text)
+  (done Bool = False)
+  (due Maybe Date)
+  (owner Text))
+(value Table.Todo.matches : Filter -> Condition Todo (filter)
+  (match union (var filter)
+    (case All (cond and))
+    (case Done (cond eq (col Table.Todo.Todo done) True))))
+(module Auth.Login)
+(record Auth.Login.Model)
+(record Auth.Login.Params)
+(union Auth.Login.Msg)
+(value Auth.Login.load : Params -> App.Session -> Query Model (params session)
+  (pure query (record Model)))
+(value Auth.Login.view : Model -> App.Session -> Html Msg (model session)
+  (elem html
+    (elem body
+      (elem a
+        (attr href href
+          (route-ref Todos.Index
+            (record Todos.Index.Params (filter (ctor Table.Todo.Filter.All)))))
+        (htext "Todos")))))
+(module Layout)
+(component Layout.Page : { title: Text, theme: Text, children: List (Html a) } -> Html a (props)
+  (elem html
+    (elem head (elem title (hexpr text (field title (var props)))))
+    (elem body (attr class text (field theme (var props)))
+      (hexpr list (field children (var props))))))
+(module Todos)
+(record Todos.NewTodo (title Text))
+(record Todos.MoveTo (list Text))
+(record Todos.TodoList (filter Table.Todo.Filter) (todos List Table.Todo.Todo))
+(record Todos.Index.Params
+  (filter Table.Todo.Filter = (ctor Table.Todo.Filter.All)))
+(record Todos.Row.Params (id Text))
+(record Todos.Toggle.Params (id Text))
+(record Todos.Create.Params (form NewTodo))
+(record Todos.Delete.Params (id Text))
+(record Todos.Export.Params)
+(record Todos.Move.Params (id Text) (form MoveTo))
+(record Todos.About.Params)
+(record Todos.Index.Session (user Text) (theme Text))
+(value Todos.Index.load : Index.Params -> Index.Session -> Query TodoList (params session)
+  (bind query todos : List Table.Todo.Todo
+    (db-select Table.Todo.Todo
+      (base (db-scoped Db.mine user Table.Todo.Todo))
+      (where (call (global Table.Todo.matches) (field filter (var params))))
+      all)
+    (pure query
+      (record TodoList (filter (field filter (var params))) (todos (var todos))))))
+(value Todos.Index.view : TodoList -> Index.Session -> Html Route (model session)
+  (comp Layout.Page
+    (record (title "Todos") (theme (field theme (var session))))
+    (elem nav
+      (elem a
+        (attr href href
+          (route-ref Todos.Index
+            (record Index.Params (filter (ctor Table.Todo.Filter.All)))))
+        (htext "All"))
+      (elem a
+        (attr href href
+          (route-ref Todos.Index
+            (record Index.Params (filter (ctor Table.Todo.Filter.Done)))))
+        (htext "Done")))
+    (elem ul (attr id text "todos")
+      (hfor t : Table.Todo.Todo
+        (field todos (var model))
+        (hexpr html (call (global Todos.Row.view) (var t) (var session)))))
+    (form-el (route Todos.Create) (attr submit submit (route-ref Todos.Create))
+      (input Input NewTodo field=title)
+      (input Errors NewTodo form)
+      (elem button (htext "Add")))))
+(value Todos.Row.load : Row.Params -> Index.Session -> Query Table.Todo.Todo (params session)
+  (db-get-scoped Db.getMine user Table.Todo.Todo (field id (var params))))
+(value Todos.Row.view : Table.Todo.Todo -> Index.Session -> Html Route (t session)
+  (elem li (attr id text (++ : Text "todo-" (field id (var t))))
+    (elem button
+      (attr click click
+        (route-ref Todos.Toggle (record Toggle.Params (id (field id (var t))))))
+      (hexpr text (field title (var t))))
+    (form-el (route Todos.Move)
+      (attr submit submit
+        (route-ref Todos.Move (record Move.Params (id (field id (var t))))))
+      (input Errors MoveTo form)
+      (input Select MoveTo field=list
+        (options
+          (list
+            (record (value "home") (label "Home"))
+            (record (value (field title (var t))) (label "Its own"))))))))
+(value Todos.Toggle.update : Toggle.Params -> Index.Session -> Task Response (params session)
+  (bind task _
+    (db-update-scoped Db.updateMine user Table.Todo.Todo
+      (field id (var params))
+      (lambda (t : Table.Todo.Todo)
+        (update (var t) (done (call (std Prelude.not) (field done (var t)))))))
+    (pure task
+      (call (std Response.render)
+        (route-ref Todos.Row (record Row.Params (id (field id (var params)))))))))
+(value Todos.Create.update : Create.Params -> Index.Session -> Task Response (params session)
+  (bind task _
+    (db-insert-scoped Db.insertMine user Table.Todo.Todo
+      (record
+        (title (field title (field form (var params))))
+        (done False)
+        (due (ctor Prelude.Maybe.Nothing))))
+    (pure task
+      (call (std Response.toast)
+        "Added"
+        (call (std Response.redirect)
+          (route-ref Todos.Index
+            (record Index.Params (filter (ctor Table.Todo.Filter.All)))))))))
+(value Todos.Delete.update : Delete.Params -> Index.Session -> Task Response (params session)
+  (bind task _
+    (db-delete-scoped Db.deleteMine user Table.Todo.Todo
+      (field id (var params)))
+    (pure task
+      (call (std Response.redirect)
+        (route-ref Todos.Index
+          (record Index.Params (filter (ctor Table.Todo.Filter.All))))))))
+(value Todos.Export.load : Export.Params -> Index.Session -> Query (List Table.Todo.Todo) (params session)
+  (db-run all (db-scoped Db.mine user Table.Todo.Todo)))
+(value Todos.Export.view : List Table.Todo.Todo -> Index.Session -> File (todos session)
+  (call (std File.text)
+    (record
+      (contentType "text/csv")
+      (body
+        (call (std Text.join)
+          "\n"
+          (call (std List.map)
+            (lambda (t : Table.Todo.Todo) (field title (var t)))
+            (var todos)))))))
+(value Todos.Move.update : Move.Params -> Index.Session -> Task Response (params session)
+  (if (== : Text (field list (field form (var params))) "")
+    (pure task (call (std Response.invalid) "Pick a list."))
+    (pure task (std Response.refresh))))
+(value Todos.About.load : About.Params -> App.Session -> Query Unit (params session)
+  (pure query ()))
+(value Todos.About.view : Unit -> App.Session -> Html Route (model session)
+  (elem p (htext "Todos, by ") (hexpr text (field theme (var session)))))
+(test "a row is fetched, toggled, moved and refreshed" task
+  (bind task me : Text
+    (db-insert Table.User.User (record (email "me@example.com")))
+    (bind task _
+      (test-login
+        (record App.Session
+          (user (ctor Prelude.Maybe.Just (record (value (var me)))))
+          (theme "light")))
+      (bind task id : Text
+        (db-insert Table.Todo.Todo
+          (record
+            (title "Milk")
+            (done False)
+            (due (ctor Prelude.Maybe.Nothing))
+            (owner (var me))))
+        (bind task page : { model: TodoList, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
+          (test-get (route Todos.Index)
+            (record Index.Params (filter (ctor Table.Todo.Filter.All))))
+          (bind task row : { model: Table.Todo.Todo, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
+            (test-get (route Todos.Row) (record Row.Params (id (var id))))
+            (bind task fetched : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
+              (test-click (route Todos.Row) (record Row.Params (id (var id))))
+              (bind task toggled : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
+                (test-click (route Todos.Toggle)
+                  (record Toggle.Params (id (var id))))
+                (bind task moved : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
+                  (test-submit Todos.MoveTo (route Todos.Move)
+                    (params (record Move.Params (id (var id))))
+                    (record MoveTo (list "home")))
+                  (bind task added : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
+                    (test-submit Todos.NewTodo (route Todos.Create)
+                      (record NewTodo (title "Bread")))
+                    (bind task raw : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
+                      (test-submit-raw Todos.NewTodo (route Todos.Create)
+                        (list (record (name "title") (value ""))))
+                      (bind task again : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
+                        (test-refresh)
+                        (bind task csv : { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }
+                          (test-fetch (route Todos.Export)
+                            (record Export.Params))
+                          (bind task shown : { answer: Answer, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
+                            (test-open (route Todos.Index)
+                              (record Index.Params
+                                (filter (ctor Table.Todo.Filter.Done))))
+                            (pure task
+                              (test-eq
+                                (record
+                                  (n
+                                    (call (std List.length)
+                                      (field todos (field model (var page)))))
+                                  (title (field title (field model (var row))))
+                                  (fetched (field status (var fetched)))
+                                  (toggled (field answer (var toggled)))
+                                  (moved (field status (var moved)))
+                                  (added (field answer (var added)))
+                                  (raw (field status (var raw)))
+                                  (url (field url (var again)))
+                                  (again (field answer (var again)))
+                                  (csv (field status (var csv)))
+                                  (shown (field url (var shown))))
+                                (record
+                                  (n 1)
+                                  (title "Milk")
+                                  (fetched 200)
+                                  (toggled
+                                    (ctor Prelude.Answer.Rendered
+                                      (record
+                                        (value
+                                          (route-ref Todos.Row
+                                            (record Row.Params (id (var id))))))))
+                                  (moved 200)
+                                  (added
+                                    (ctor Prelude.Answer.Redirected
+                                      (record
+                                        (value
+                                          (route-ref Todos.Index
+                                            (record Index.Params
+                                              (filter
+                                                (ctor Table.Todo.Filter.All))))))))
+                                  (raw 422)
+                                  (url "/")
+                                  (again (ctor Prelude.Answer.Refreshed))
+                                  (csv 200)
+                                  (shown "/?filter=Done"))))))))))))))))))
+(table Table.User.User (id id) (insert email))
+(table Table.Todo.Todo
+  (id id)
+  (partition user owner)
+  (ref owner Table.User.User)
+  (insert title done due owner))
+(form Todos.NewTodo)
+(form Todos.MoveTo)
+(page Auth.Login "/login"
+  (params Params)
+  (model Model)
+  (view Auth.Login.view)
+  (load Auth.Login.load))
+(route Todos.Index GET "/"
+  (params Index.Params)
+  (requires user)
+  (session Index.Session)
+  (model TodoList)
+  (load Todos.Index.load)
+  (view Todos.Index.view))
+(route Todos.Row GET "/todos/{id}"
+  (params Row.Params)
+  (requires user)
+  (session Index.Session)
+  (model Table.Todo.Todo)
+  (load Todos.Row.load)
+  (view Todos.Row.view))
+(route Todos.Toggle PATCH "/todos/{id}/toggle"
+  (params Toggle.Params)
+  (requires user)
+  (session Index.Session)
+  (update Todos.Toggle.update))
+(route Todos.Create POST "/todos"
+  (params Create.Params)
+  (form NewTodo)
+  (requires user)
+  (session Index.Session)
+  (update Todos.Create.update))
+(route Todos.Delete DELETE "/todos/{id}"
+  (params Delete.Params)
+  (requires user)
+  (session Index.Session)
+  (update Todos.Delete.update))
+(route Todos.Export GET "/export.csv"
+  (params Export.Params)
+  (requires user)
+  (session Index.Session)
+  (model List Table.Todo.Todo)
+  (file)
+  (load Todos.Export.load)
+  (view Todos.Export.view))
+(route Todos.Move POST "/todos/{id}/move"
+  (params Move.Params)
+  (form MoveTo)
+  (requires user)
+  (session Index.Session)
+  (update Todos.Move.update)
+  (needs-shown)
+  (option-routes Todos.Index Todos.Row))
+(route Todos.About GET "/about"
+  (params About.Params)
+  (model Unit)
+  (load Todos.About.load)
+  (view Todos.About.view))
+(session App.Session)

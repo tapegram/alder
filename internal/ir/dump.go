@@ -15,17 +15,17 @@ import (
 //
 // Forms: (module M); (record M.T fields…) with fields (name Type) or (name Type = default);
 // (union M.T params… (Ctor payload?)…); (value|component M.name : Type (params) body);
-// then (table …), (form …), (page …) with (view|load|update M.name), (app-msg …),
+// then (table …), (form …), (page …) with (view|load|update M.name), (route …) (routeForm), (app-msg …),
 // (app-update App.update), (session …), (capability …), (fake M.Cap (tables (record …)
 // (table …)…) (entries (entry M.name : Type (params) body)…)). Expressions: literals bare (1, 3.14, "s", True, ()), (var x), (global M.f),
 // (std List.map), (call f args…), (partial f given… (missing n)), (lambda (x : T) body),
 // (record M.T? (field value)…), (update base (field value)…), (field name expr),
-// (ctor M.Union.Ctor payload?), (list elems…), (page-ref M params?), (hole name),
+// (ctor M.Union.Ctor payload?), (list elems…), (page-ref M params?), (route-ref M.R params?), (hole name),
 // (match kind subject (case Tag (bind name field : T)… body)… (default body)?),
 // (if c t e), (let x : T value body), (op l r) or (op : OperandT l r) for comparisons, `++` and
 // `??`, (str parts…); HTML: (elem tag (attr name kind value)… children…), (comp M.C props children…),
 // (htext "…"), (hexpr kind expr), (hfor x : T list body), (hif c t e), (hmatch …),
-// (input Kind Form field=f label="…" [label-expr] [(value e)] [form]), (form-el M.Msg attrs… children…).
+// (input Kind Form field=f label="…" [label-expr] [(value e)] [form]), (form-el M.Msg|(route M.R) attrs… children…).
 // Effects (kind is query or task): (pure kind v), (bind kind x : T effect body) or
 // (bind kind _ effect body), (map kind fn effect), (all kind effects), (fail msg), (not-found),
 // (cap M.Cap entry args…). Tests, after a module's values and components: (test "name" pure|task
@@ -40,7 +40,7 @@ import (
 // (db-insert-scoped Op key M.T row), Op the function as written (Db.mine, Db.scoped, …). A
 // table's partition is (partition key column); a page's `requires` (requires f…), its admin
 // form (silo k), and, in a program with silos, its arms (arms (Msg shared|silo k)…). After the
-// session: (via f M.T)…, (silo k M.T…)…, (choose k M.Page)…, (app-arms …) in a program with
+// session: (via f M.T)…, (silo k M.T…)…, (choose k M.Page|M.Route)…, (app-arms …) in a program with
 // silos. Then App's deploy declaration, when it has one:
 // (deploy (env NAME ssh|fly|render|script (host "h")…)… (image "path")? (floor f)? (checks "c"…)? (requires "N"…)?
 // (backup s3 "url")? (keep n)? (proxy Caddy|None)).
@@ -110,6 +110,9 @@ func Dump(p *Program) string {
 		}
 		form(x)
 	}
+	for _, r := range p.Routes {
+		form(routeForm(p, r))
+	}
 	for _, m := range p.AppMsgs {
 		form((&dumper{home: "App"}).msg("app-msg", m))
 	}
@@ -130,7 +133,12 @@ func Dump(p *Program) string {
 		form(atoms(ss...))
 	}
 	for _, k := range sortedKeys(p.Choose) {
-		form(atoms("choose", k, p.Choose[k].Module))
+		switch t := p.Choose[k].(type) {
+		case *Page:
+			form(atoms("choose", k, t.Module))
+		case *Route:
+			form(atoms("choose", k, t.Module+"."+t.Name))
+		}
 	}
 	if p.Silos != nil && len(p.AppArms) > 0 {
 		form(armsForm("app-arms", p.AppArms))
@@ -162,6 +170,57 @@ func Dump(p *Program) string {
 		form(list(2, atom("fake"), atom(f.Capability.Module+"."+f.Capability.Name), tables, entries))
 	}
 	return sb.String()
+}
+
+// routeForm is (route M.R METHOD "path" (params T) (form F)? (requires f…)? (roles R…)? (silo k)?
+// (session T)? (model T)? (file)? (load|view|update M.R.member)… (store …)? (needs-shown)?
+// (option-routes M.R…)?): session only when it is not App's, store in a program with silos.
+func routeForm(p *Program, r *Route) *sx {
+	d := &dumper{home: r.Module}
+	x := list(4, atom("route"), atom(r.Module+"."+r.Name), atom(r.Method), atom(strconv.Quote(r.Path)), atoms("params", d.rt(r.Params)))
+	if r.Form != nil {
+		x.items = append(x.items, atoms("form", d.ty(&types.Record{Module: r.Form.Module, Name: r.Form.Name})))
+	}
+	if len(r.Requires) > 0 {
+		x.items = append(x.items, atoms(append([]string{"requires"}, r.Requires...)...))
+	}
+	if len(r.Roles) > 0 {
+		x.items = append(x.items, atoms(append([]string{"roles"}, r.Roles...)...))
+	}
+	if r.Silo != "" {
+		x.items = append(x.items, atoms("silo", r.Silo))
+	}
+	if r.Session != nil && r.Session != p.Session {
+		x.items = append(x.items, atoms("session", d.rt(r.Session)))
+	}
+	if r.Model != nil {
+		x.items = append(x.items, atoms("model", d.ty(r.Model)))
+	}
+	if r.File {
+		x.items = append(x.items, atoms("file"))
+	}
+	for _, v := range []struct {
+		kind string
+		v    *Value
+	}{{"load", r.Load}, {"view", r.View}, {"update", r.Update}} {
+		if v.v != nil {
+			x.items = append(x.items, atoms(v.kind, v.v.Module+"."+v.v.Name))
+		}
+	}
+	if p.Silos != nil && r.Update != nil {
+		x.items = append(x.items, atoms("store", r.Store.String()))
+	}
+	if r.NeedsShown {
+		x.items = append(x.items, atoms("needs-shown"))
+	}
+	if len(r.OptionRoutes) > 0 {
+		ss := []string{"option-routes"}
+		for _, o := range r.OptionRoutes {
+			ss = append(ss, o.Module+"."+o.Name)
+		}
+		x.items = append(x.items, atoms(ss...))
+	}
+	return x
 }
 
 // deployForm is (deploy (env NAME KIND (k "v")…)… (floor 0.95)? (checks "c"…)? (requires "N"…)?
@@ -504,6 +563,12 @@ func (d *dumper) expr(e Expr) *sx {
 			return atoms("page-ref", x.Page.Module)
 		}
 		return list(2, atom("page-ref"), atom(x.Page.Module), d.expr(x.Params))
+	case *RouteRef:
+		name := x.Route.Module + "." + x.Route.Name
+		if x.Params == nil {
+			return atoms("route-ref", name)
+		}
+		return list(2, atom("route-ref"), atom(name), d.expr(x.Params))
 	case *Hole:
 		return atoms("hole", x.Name)
 	case *Match:
@@ -627,21 +692,27 @@ func (d *dumper) expr(e Expr) *sx {
 		if x.Fetch {
 			name = "test-fetch"
 		}
-		items := []*sx{atom(name), atom(x.Page.Module)}
+		items := []*sx{atom(name), atom(stepTarget(x.Page, x.Route))}
 		if x.Params != nil {
 			items = append(items, d.expr(x.Params))
 		}
 		return list(2, items...)
 	case *TestSubmit:
-		return list(3, d.submitItems("test-submit", x.Form, x.Msg, x.Params, x.Record)...)
+		return list(3, d.submitItems("test-submit", x.Form, x.Msg, x.Route, x.Params, x.Record)...)
 	case *TestSubmitRaw:
-		return list(3, d.submitItems("test-submit-raw", x.Form, x.Msg, x.Params, x.Fields)...)
+		return list(3, d.submitItems("test-submit-raw", x.Form, x.Msg, x.Route, x.Params, x.Fields)...)
 	case *TestClick:
-		owner := "App"
-		if x.Page != nil {
-			owner = x.Page.Module
+		var target string
+		if x.Route != nil {
+			target = stepTarget(nil, x.Route)
+		} else {
+			owner := "App"
+			if x.Page != nil {
+				owner = x.Page.Module
+			}
+			target = owner + "." + x.Msg.Name
 		}
-		items := []*sx{atom("test-click"), atom(owner + "." + x.Msg.Name)}
+		items := []*sx{atom("test-click"), atom(target)}
 		if x.Params != nil {
 			items = append(items, d.expr(x.Params))
 		}
@@ -719,6 +790,9 @@ func (d *dumper) expr(e Expr) *sx {
 			}
 			msg = owner + "." + x.Msg.Name
 		}
+		if x.Route != nil {
+			msg = "(route " + x.Route.Module + "." + x.Route.Name + ")"
+		}
 		items := []*sx{atom("form-el"), atom(msg)}
 		items = append(items, d.attrs(x.Attrs)...)
 		el := list(len(items), append(items, d.exprs(x.Children)...)...)
@@ -766,12 +840,26 @@ var effKinds = []string{"query", "task"}
 
 var selTerminals = []string{"select", "all", "first", "count"}
 
+// stepTarget is what a browser step goes to: page module M, or (route M.R).
+func stepTarget(pg *Page, r *Route) string {
+	if r != nil {
+		return "(route " + r.Module + "." + r.Name + ")"
+	}
+	return pg.Module
+}
+
 func tableName(t *Table) string { return t.Module + "." + t.Name }
 
 // submitItems are the items of a test-submit or test-submit-raw: the form, the message (with
 // its parameters when the test wrote them) and the value posted.
-func (d *dumper) submitItems(name string, form *Form, msg *Msg, params, value Expr) []*sx {
-	items := []*sx{atom(name), atom(form.Module + "." + form.Name), atom(msg.Name)}
+func (d *dumper) submitItems(name string, form *Form, msg *Msg, route *Route, params, value Expr) []*sx {
+	var target string
+	if route != nil {
+		target = stepTarget(nil, route)
+	} else {
+		target = msg.Name
+	}
+	items := []*sx{atom(name), atom(form.Module + "." + form.Name), atom(target)}
 	if params != nil {
 		items = append(items, list(1, atom("params"), d.expr(params)))
 	}

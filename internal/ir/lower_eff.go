@@ -101,12 +101,27 @@ func (l *lowerer) testStep(fn syntax.Expr, args []syntax.Expr, t types.Type) Exp
 	case "login":
 		return &TestLogin{Typed: Typed{t}, Session: l.expr(args[0])}
 	case "get", "open", "fetch":
-		ref, ok := l.expr(args[0]).(*PageRef)
-		if !ok {
-			return bug("not a page value")
+		get := &TestGet{Typed: Typed{t}, Open: v.Ref.Name == "open", Fetch: v.Ref.Name == "fetch"}
+		switch ref := l.expr(args[0]).(type) {
+		case *PageRef:
+			get.Page, get.Params = ref.Page, ref.Params
+		case *RouteRef:
+			get.Route, get.Params = ref.Route, ref.Params
+		default:
+			return bug("not a page or route value")
 		}
-		return &TestGet{Typed: Typed{t}, Page: ref.Page, Params: ref.Params, Open: v.Ref.Name == "open", Fetch: v.Ref.Name == "fetch"}
+		return get
 	case "submit", "submitRaw":
+		if l.submittedRoute(args[0]) != nil { // a route's form, posted by naming the route
+			ref, ok := l.expr(args[0]).(*RouteRef)
+			if !ok || ref.Route.Form == nil {
+				return bug("a route without a form")
+			}
+			if v.Ref.Name == "submit" {
+				return &TestSubmit{Typed: Typed{t}, Form: ref.Route.Form, Route: ref.Route, Params: ref.Params, Record: l.expr(args[1])}
+			}
+			return &TestSubmitRaw{Typed: Typed{t}, Form: ref.Route.Form, Route: ref.Route, Params: ref.Params, Fields: l.expr(args[1])}
+		}
 		var form *Form
 		var msg *Msg
 		var page *Page
@@ -151,7 +166,11 @@ func (l *lowerer) testStep(fn syntax.Expr, args []syntax.Expr, t types.Type) Exp
 		}
 		return &TestSubmitRaw{Typed: Typed{t}, Form: form, Msg: msg, Page: page, Params: params, Fields: l.expr(args[1])}
 	case "click":
-		c, ok := l.expr(args[0]).(*Ctor)
+		arg := l.expr(args[0])
+		if ref, ok := arg.(*RouteRef); ok {
+			return &TestClick{Typed: Typed{t}, Route: ref.Route, Params: ref.Params}
+		}
+		c, ok := arg.(*Ctor)
 		if !ok {
 			return bug("not a message")
 		}
