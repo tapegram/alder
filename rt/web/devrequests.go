@@ -179,9 +179,9 @@ func (rt *router) recordRequest(tw *tracker, dur time.Duration) {
 		return
 	}
 	rec := tw.rq.Env.Rec
-	acc := applog.Access{Method: r.Method, URL: r.URL, Masker: rt.masker}
+	acc := applog.Access{Method: tw.loggedMethod(), URL: r.URL, Masker: rt.masker}
 	out := &ReqRecord{
-		RID: tw.id, T: rt.now().Add(-dur).UTC(), Method: r.Method, Path: acc.MaskedPath(), Route: routeLabel(tw.route, r.URL.Path),
+		RID: tw.id, T: rt.now().Add(-dur).UTC(), Method: tw.loggedMethod(), Path: acc.MaskedPath(), Route: routeLabel(tw.route, r.URL.Path),
 		Status: tw.status, Ms: tenthsMs(dur), Bytes: tw.bytes, Loads: rec.Loads, Cuts: append([]int{}, rec.Cuts...),
 		Slow:  rt.opts.SlowAfter > 0 && dur >= rt.opts.SlowAfter,
 		Steps: make([]ReqStep, 0, len(rec.Steps)), SQL: make([]ReqSQL, 0, len(rec.SQL)),
@@ -239,4 +239,13 @@ func (rt *router) devRequests(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_, _ = w.Write(b)
+}
+
+// loggedMethod is the method the request's log lines carry: the one it was routed by (a POST's
+// _method), else the one it was sent with.
+func (tw *tracker) loggedMethod() string {
+	if tw.method != "" {
+		return tw.method
+	}
+	return tw.r.Method
 }
