@@ -1174,6 +1174,10 @@
           {
             "type": "identifier",
             "named": true
+          },
+          {
+            "type": "qualified_decl_name",
+            "named": true
           }
         ]
       },
@@ -6253,6 +6257,32 @@
     }
   },
   {
+    "type": "qualified_decl_name",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "route": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "constructor",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "qualified_name",
     "named": true,
     "fields": {
@@ -6573,6 +6603,77 @@
     }
   },
   {
+    "type": "route_decl",
+    "named": true,
+    "fields": {
+      "form": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "constructor",
+            "named": true
+          }
+        ]
+      },
+      "method": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "route_method",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "constructor",
+            "named": true
+          }
+        ]
+      },
+      "params": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "record_type",
+            "named": true
+          }
+        ]
+      },
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      },
+      "requires": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "requires_clause",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "route_method",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "scratch_file",
     "named": true,
     "fields": {},
@@ -6614,6 +6715,10 @@
         },
         {
           "type": "page_decl",
+          "named": true
+        },
+        {
+          "type": "route_decl",
           "named": true
         },
         {
@@ -6731,6 +6836,10 @@
           },
           {
             "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "qualified_decl_name",
             "named": true
           }
         ]
@@ -6860,6 +6969,10 @@
         },
         {
           "type": "page_decl",
+          "named": true
+        },
+        {
+          "type": "route_decl",
           "named": true
         },
         {
@@ -7618,7 +7731,27 @@
     "named": false
   },
   {
+    "type": "DELETE",
+    "named": false
+  },
+  {
     "type": "False",
+    "named": false
+  },
+  {
+    "type": "GET",
+    "named": false
+  },
+  {
+    "type": "PATCH",
+    "named": false
+  },
+  {
+    "type": "POST",
+    "named": false
+  },
+  {
+    "type": "PUT",
     "named": false
   },
   {
@@ -7752,6 +7885,10 @@
   },
   {
     "type": "role",
+    "named": false
+  },
+  {
+    "type": "route",
     "named": false
   },
   {

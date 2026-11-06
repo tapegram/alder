@@ -119,12 +119,17 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 			}
 			return 0
 		})
+		routeActs := routeSignatureActions(a, rel, now, p.Range, doc)
 		for _, f := range fixes { // bytes until here; wired on the way out
 			for i, dg := range f.Diagnostics {
 				f.Diagnostics[i] = s.enc.wireDiagnostic(built, dg)
 			}
 			ch := &f.Edit.DocumentChanges[0]
 			ch.Edits = []TextEdit{s.enc.wireEdit(built, ch.Edits[0])}
+			out = append(out, f)
+		}
+		for _, f := range routeActs { // computed from the text as it is now: already in wire units
+			f.Edit.DocumentChanges[0].Edits[0] = s.enc.wireEdit(now, f.Edit.DocumentChanges[0].Edits[0])
 			out = append(out, f)
 		}
 	}
@@ -159,6 +164,109 @@ func codeActionReq(s *server, params json.RawMessage) (any, error) {
 		})
 	}
 	return out, nil
+}
+
+// routeSignatureActions offers, on the lines of a `route` of rel's module in the current build,
+// to write the signatures of the members the route lacks (`Row.load` and `Row.view` for a GET
+// route, `Row.update` for a write route; the checker's E0043 says they are needed), after the
+// route's last member or else at the end of the file. The model of a GET route is `m`, unless
+// its `load` or `view` is already written, which gives it. The build must still hold for the
+// whole file (the edit's place and the route's module are read from it), else nothing is offered.
+// Edits are in compiler (byte) positions of now.
+func routeSignatureActions(a *analysis, rel string, now []string, rng Range, doc versionedDocument) []codeAction {
+	var m *syntax.Module
+	for _, x := range a.prog.Modules {
+		if x.File == rel {
+			m = x
+		}
+	}
+	if m == nil || len(m.Lines) != len(now) || !freshLines(a, rel, now, len(now), true) {
+		return nil
+	}
+	var out []codeAction
+	for _, d := range m.Decls {
+		r, ok := d.(*syntax.RouteDecl)
+		if !ok || !linesOverlap(rng, spanRange(r.Span)) {
+			continue
+		}
+		have := map[string]*syntax.ValueDecl{}
+		last := 0
+		for _, x := range m.Decls {
+			if v, ok := x.(*syntax.ValueDecl); ok && v.Route == r.Name {
+				have[v.Name] = v
+				last = max(last, v.Span.End.Line)
+			}
+		}
+		var sigs []string
+		if r.Method == "GET" {
+			model := routeModelText(m, have)
+			if have["load"] == nil {
+				sigs = append(sigs, r.Name+".load : "+r.Name+".Params -> Session -> Query "+model)
+			}
+			if have["view"] == nil {
+				sigs = append(sigs, r.Name+".view : "+model+" -> Session -> Html")
+			}
+		} else if have["update"] == nil {
+			sigs = append(sigs, r.Name+".update : "+r.Name+".Params -> Session -> Task Response")
+		}
+		if len(sigs) == 0 {
+			continue
+		}
+		body := strings.Join(sigs, "\n")
+		var at Position
+		var text string
+		switch {
+		case last > 0: // after the route's last member, a blank line between
+			at, text = Position{Line: last - 1, Character: len(now[last-1])}, "\n\n"+body
+		case now[len(now)-1] == "": // the file ends with a line break
+			at, text = Position{Line: len(now) - 1}, "\n"+body+"\n"
+		default:
+			at, text = Position{Line: len(now) - 1, Character: len(now[len(now)-1])}, "\n\n"+body+"\n"
+		}
+		title := "Insert " + strings.Join(missingNames(sigs), ", ") + " for route " + r.Name
+		out = append(out, codeAction{
+			Title: title, Kind: "quickfix",
+			Edit: &workspaceEdit{DocumentChanges: []textDocumentEdit{{TextDocument: doc, Edits: []TextEdit{{Range: Range{Start: at, End: at}, NewText: text}}}}},
+		})
+	}
+	return out
+}
+
+// missingNames is the member names of signatures sigs (`Row.load : …` gives `load`).
+func missingNames(sigs []string) []string {
+	var out []string
+	for _, s := range sigs {
+		head, _, _ := strings.Cut(s, " : ")
+		_, name, _ := strings.Cut(head, ".")
+		out = append(out, name)
+	}
+	return out
+}
+
+// routeModelText is the model type of a GET route whose members are have, as a signature writes
+// it: what its written `load` gives (the argument of `Query`), else what its written `view`
+// takes, else `m`.
+func routeModelText(m *syntax.Module, have map[string]*syntax.ValueDecl) string {
+	wrap := func(t syntax.Type) string {
+		s := spanText(m.Lines, t.GetSpan())
+		if strings.Contains(s, " ") && !strings.HasPrefix(s, "(") && !strings.HasPrefix(s, "{") {
+			s = "(" + s + ")"
+		}
+		return s
+	}
+	if d := have["load"]; d != nil && d.Sig != nil {
+		if ft, ok := d.Sig.(*syntax.FunType); ok {
+			if q, ok := ft.Result.(*syntax.TypeName); ok && q.Name == "Query" && len(q.Args) == 1 {
+				return wrap(q.Args[0])
+			}
+		}
+	}
+	if d := have["view"]; d != nil && d.Sig != nil {
+		if ft, ok := d.Sig.(*syntax.FunType); ok && len(ft.Params) > 0 {
+			return wrap(ft.Params[0])
+		}
+	}
+	return "m"
 }
 
 // disjointFixes drops the quick fixes whose edit overlaps another's, so a client is never offered

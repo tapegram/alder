@@ -305,3 +305,35 @@ func TestRouter_DatastarDropsSignalsEveryMethod(t *testing.T) {
 		}
 	}
 }
+
+// A POST carrying _method is logged by the method it is routed by, in the access line and in the
+// dev panel's request record, so a reader matching a logged request to a route (the TUI) finds
+// the PUT/PATCH/DELETE route and not a POST one. A plain POST stays POST; a refused _method (400)
+// never reached a route and is logged as the POST it was.
+func TestRequestLog_EffectiveMethod(t *testing.T) {
+	var s sink
+	routes := []Route{
+		{Method: "GET", Pattern: "/t/{id}", Handle: func(rq *Request) Response { return PageResponse(doc("t"), nil, nil, false) }},
+		{Method: "DELETE", Pattern: "/t/{id}", Handle: func(rq *Request) Response { return RedirectResponse("/", nil) }},
+		{Method: "PATCH", Pattern: "/t/{id}", Handle: func(rq *Request) Response { return RedirectResponse("/", nil) }},
+		{Method: "POST", Pattern: "/t", Handle: func(rq *Request) Response { return RedirectResponse("/", nil) }},
+	}
+	t.Setenv("ALDER_DEV", "1")
+	dev := NewRouter(routes, s.opts(func(o *Options) { o.Dev = true })).(*router)
+	for _, c := range []struct{ path, body, want string }{
+		{"/t/7", "_method=DELETE", "DELETE"},
+		{"/t/7", "_method=PATCH", "PATCH"},
+		{"/t", "", "POST"},
+		{"/t/7", "_method=GET", "POST"}, // 400: refused, never routed
+	} {
+		s.reset()
+		serve(dev, formReq("POST", c.path, c.body))
+		if a := s.one(t); a.Method != c.want {
+			t.Errorf("access line of POST %s %q: method %q, want %q", c.path, c.body, a.Method, c.want)
+		}
+		got := summaries(t, dev)
+		if len(got) == 0 || got[0].Method != c.want {
+			t.Errorf("dev record of POST %s %q: %+v, want method %q", c.path, c.body, got, c.want)
+		}
+	}
+}

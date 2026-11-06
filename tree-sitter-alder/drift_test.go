@@ -111,11 +111,13 @@ func goDecls(m *syntax.Module) (imports, decls []decl) {
 	for _, d := range m.Decls {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
-			decls = append(decls, decl{"value", d.Name})
+			decls = append(decls, decl{"value", d.FullName()})
 		case *syntax.TypeDecl:
 			decls = append(decls, decl{"type", d.Name})
 		case *syntax.PageDecl:
 			decls = append(decls, decl{"page", d.Path})
+		case *syntax.RouteDecl:
+			decls = append(decls, decl{"route", d.Name})
 		case *syntax.MsgDecl:
 			decls = append(decls, decl{"msg", d.Name})
 		case *syntax.FormDecl:
@@ -147,23 +149,6 @@ func goDecls(m *syntax.Module) (imports, decls []decl) {
 	return imports, decls
 }
 
-// usesRoutes reports whether m has a `route` line or a declaration qualified by its route
-// (`Index.load`), which the grammar learns only in Task 5.1 of the routes plan (#160). Until then
-// such files are left out of the drift and highlight tests; Task 5.1 removes this filter.
-func usesRoutes(m *syntax.Module) bool {
-	for _, d := range m.Decls {
-		switch d := d.(type) {
-		case *syntax.RouteDecl:
-			return true
-		case *syntax.ValueDecl:
-			if d.Route != "" {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // sources is every .alder file under examples/, stdlib/ and testdata/, and every book snippet
 // that is a whole module, that the Go parser parses without a diagnostic. stdlib/ is read the
 // way the compiler reads it, with ParseSignatures. Snippets are written into dir.
@@ -185,7 +170,7 @@ func sources(t *testing.T, dir string) []source {
 				parse = syntax.ParseSignatures
 			}
 			m, diags := parse(path, src)
-			if len(diags) > 0 || m == nil || usesRoutes(m) {
+			if len(diags) > 0 || m == nil {
 				return nil
 			}
 			abs, err := filepath.Abs(path)

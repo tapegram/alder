@@ -175,7 +175,11 @@ type tracker struct {
 	// slow line's route=); stats the request's statements, counted when Options.Metrics or
 	// SlowAfter is set (eff.Env.Stats points here: no allocation)
 	route string
-	stats eff.Stats
+	// method is the method the request was routed by when that is not r.Method: a POST's
+	// _method (effectiveMethod). The access line and the dev panel's record log it, so a log
+	// reader finds the route the request ran.
+	method string
+	stats  eff.Stats
 	// reps are the N+1s of each answer segment (tw.segRepeats), found once and kept
 	reps     [][]eff.Repeat
 	repsDone bool
@@ -578,7 +582,7 @@ func (rt *router) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 				// the record lives in the tracker, and the URL is masked only when the logger
 				// writes the line: a filtered access line costs no allocation and no masking
 				w.acc = applog.Access{
-					ID: w.id, Method: r.Method, URL: r.URL, Masker: rt.masker, Status: w.status,
+					ID: w.id, Method: w.loggedMethod(), URL: r.URL, Masker: rt.masker, Status: w.status,
 					Dur: dur, Bytes: w.bytes, Quiet: quiet(r.URL.Path, w.status) || scrape && !rt.probeInfo(), Steps: w.steps,
 					Route: label, Stmts: w.stats.Exec + w.stats.Query, DBDur: w.stats.ExecDur + w.stats.QueryDur,
 					Slow:    rt.opts.SlowAfter > 0 && dur >= rt.opts.SlowAfter,
@@ -875,6 +879,9 @@ func (rt *router) serve(w http.ResponseWriter, r *http.Request, st hop) {
 		}
 		if m != method {
 			method = m
+			if tw, ok := w.(*tracker); ok && m != r.Method {
+				tw.method = m
+			}
 			hit, params, declared = rt.find(method, segs)
 		}
 		if hit == nil {

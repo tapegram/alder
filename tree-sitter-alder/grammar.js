@@ -219,6 +219,7 @@ module.exports = grammar({
         $.value_decl,
         $.type_decl,
         $.page_decl,
+        $.route_decl,
         $.msg_decl,
         $.form_decl,
         $.table_decl,
@@ -250,7 +251,9 @@ module.exports = grammar({
     parameters: ($) => repeat1($.identifier),
 
     // Components are uppercase values.
-    _value_name: ($) => choice($.identifier, $.constructor),
+    _value_name: ($) => choice($.identifier, $.constructor, $.qualified_decl_name),
+    // `Index.load`: a declaration qualified by its route (parser.go parseValueDecl).
+    qualified_decl_name: ($) => seq(field('route', $.constructor), '.', field('name', $.identifier)),
     // Stdlib signature files name values after keywords (`fake : …`, `login : …`); the Go
     // parser reads them as values only when `:` follows (parser.go peekIsColon), never in a
     // binding, so `login = Page` stays a login declaration.
@@ -313,6 +316,21 @@ module.exports = grammar({
       seq('requires', sep1(choice(alias($.identifier, $.session_key), $.role_clause, $.silo_clause), ',')),
     role_clause: ($) => seq('role', sep1(field('role', $.constructor), '|')),
     silo_clause: ($) => seq('silo', field('key', $.identifier)),
+
+    // `route Row = GET "/todos/{id}" { id: Todo.TodoId } form F requires user` (parser.go
+    // parseDecl): `form` is allowed after any method (the checker limits it to write routes).
+    route_decl: ($) =>
+      seq(
+        'route',
+        field('name', $.constructor),
+        '=',
+        field('method', $.route_method),
+        field('path', $.string),
+        field('params', $.record_type),
+        optional(seq('form', field('form', $.constructor))),
+        optional(field('requires', $.requires_clause)),
+      ),
+    route_method: ($) => choice('GET', 'POST', 'PUT', 'PATCH', 'DELETE'),
 
     msg_decl: ($) =>
       seq(

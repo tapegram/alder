@@ -101,6 +101,12 @@ func hoverText(a *analysis, m *syntax.Module, path []syntax.Spanned, pos diag.Po
 			}
 		case ref.Kind == syntax.RefNone:
 			return moduleHover(a, ref.Module)
+		case ref.Kind == syntax.RefRoute:
+			if mod, d := findDecl(a, ref); d != nil {
+				if rd, ok := d.(*syntax.RouteDecl); ok {
+					return withDoc("```alder\n"+routeHover(mod, rd)+"\n```", syntax.DocOf(mod.Lines, rd.Span.Start.Line))
+				}
+			}
 		case ref.Kind == syntax.RefType:
 			// a type reached through a qualifier hovers with its module's full path
 			if tn, ok := n.(*syntax.TypeName); ok && tn.Module != "" && a.prog.Modules[ref.Module] != nil {
@@ -290,6 +296,62 @@ func hookHover(a *analysis, mod, name string) string {
 		}
 	}
 	return "```alder\n" + name + " : " + sig + "\n```\n\n" + role
+}
+
+// routeHover is a route's method, path, parameters, form and guard, as `PATCH /todos/{id}/toggle
+// { id: Todo.TodoId }  requires user` (two spaces between the parts).
+func routeHover(mod *syntax.Module, d *syntax.RouteDecl) string {
+	parts := []string{d.Method + " " + d.Path}
+	if d.Params != nil {
+		parts = append(parts, spanText(mod.Lines, d.Params.Span))
+	}
+	if d.Form != "" {
+		parts = append(parts, "form "+d.Form)
+	}
+	if g := guardText(d.Guard); g != "" {
+		parts = append(parts, g)
+	}
+	return strings.Join(parts, "  ")
+}
+
+// guardText is a `requires` clause as written: `requires user, org, role Admin | Mod, silo org`;
+// "" for none.
+func guardText(g syntax.Guard) string {
+	var cl []string
+	if len(g.Requires) > 0 {
+		cl = append(cl, strings.Join(g.Requires, ", "))
+	}
+	if len(g.Roles) > 0 {
+		cl = append(cl, "role "+strings.Join(g.Roles, " | "))
+	}
+	if g.Silo != "" {
+		cl = append(cl, "silo "+g.Silo)
+	}
+	if len(cl) == 0 {
+		return ""
+	}
+	return "requires " + strings.Join(cl, ", ")
+}
+
+// spanText is the source text of sp in lines, its whitespace (line breaks too) folded to single
+// spaces; "" when sp is outside lines.
+func spanText(lines []string, sp diag.Span) string {
+	if sp.Start.Line < 1 || sp.End.Line > len(lines) || sp.End.Line < sp.Start.Line {
+		return ""
+	}
+	var b strings.Builder
+	for l := sp.Start.Line; l <= sp.End.Line; l++ {
+		line := lines[l-1]
+		lo, hi := 0, len(line)
+		if l == sp.Start.Line {
+			lo = min(max(sp.Start.Col-1, 0), len(line))
+		}
+		if l == sp.End.Line {
+			hi = min(max(sp.End.Col-1, lo), len(line))
+		}
+		b.WriteString(line[lo:hi] + " ")
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
 }
 
 // pageHover is the hover of a page header: its path, parameter record and `requires`, `role` and `silo` clauses.

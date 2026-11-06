@@ -16,7 +16,7 @@
 ["module" "import" "as"] @keyword.import
 (field_decl "as" @keyword) ; a page parameter's wire name: `id: Text as "Id"`
 ["type" "brand" "where"] @keyword.type
-["page" "msg" "form" "table" "capability" "fake" "session" "login" "test" "deploy" "theme" "silo"
+["page" "route" "msg" "form" "table" "capability" "fake" "session" "login" "test" "deploy" "theme" "silo"
  "choose" "requires" "role" "via" "let"] @keyword
 ["if" "then" "else" "match"] @keyword.conditional
 ["for" "in"] @keyword.repeat
@@ -36,6 +36,8 @@
 (signature name: (constructor) @function)
 (binding name: (identifier) @function)
 (binding name: (constructor) @function)
+(signature name: (qualified_decl_name route: (constructor) @module name: (identifier) @function))
+(binding name: (qualified_decl_name route: (constructor) @module name: (identifier) @function))
 (fake_entry name: (identifier) @function)
 (parameters (identifier) @variable.parameter)
 (lambda param: (identifier) @variable.parameter)
@@ -71,8 +73,11 @@
 (field_attribute argument: (type_name (constructor) @type))
 (field_attribute argument: (identifier) @property)
 
-; ---- page, requires, silos
+; ---- page, route, requires, silos
 (page_decl path: (string) @string.special.url)
+(route_decl path: (string) @string.special.url)
+(route_decl "form" @keyword) ; `form` is a name, not a keyword, elsewhere
+(route_method) @constructor
 (session_key) @variable.member
 (role_clause role: (constructor) @constructor)
 (silo_clause key: (identifier) @variable.member)

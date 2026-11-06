@@ -13,6 +13,7 @@
   (table_decl)
   (capability_decl)
   (page_decl)
+  (route_decl)
   (msg_decl)
   (form_decl)
 ] @class.outer
@@ -21,6 +22,7 @@
 (capability_decl entries: (_) @class.inner)
 (form_decl fields: (_) @class.inner)
 (page_decl params: (_) @class.inner)
+(route_decl params: (_) @class.inner)
 
 (parameters (identifier) @parameter.inner @parameter.outer)
 (lambda param: (identifier) @parameter.inner @parameter.outer)
