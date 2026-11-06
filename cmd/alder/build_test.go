@@ -578,21 +578,25 @@ func TestBuild_DefaultBuildDir(t *testing.T) {
 	}
 }
 
-// TestBuild_RoutesNotBuilt: until #160 PR 3 a route program checks, while `alder build` and
-// `alder dump` (anything that lowers it) stop with one line and exit 1.
-func TestBuild_RoutesNotBuilt(t *testing.T) {
+// TestBuild_Routes (#160 PR 3): a route program checks, `alder dump` shows its IR, and `alder
+// build` builds it (GET and write route handlers are generated).
+func TestBuild_Routes(t *testing.T) {
 	t.Parallel()
+	needGoTool(t)
 	const app = "../../testdata/corpus/routes-ok"
 	var out, errb bytes.Buffer
 	if code := runCheckTo([]string{app}, &out, &errb); code != 0 {
 		t.Fatalf("alder check: code %d\n%s%s", code, out.String(), errb.String())
 	}
 	code, stdout, stderr := runBuild(t, app)
-	if code != 1 || stdout != "" || stderr != "alder build: routes are not built yet (#160 PR 3)\n" {
+	if code != 0 || !strings.HasPrefix(stdout, "wrote ") || stderr != "" {
 		t.Fatalf("alder build: code %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
+	if _, err := os.Stat(strings.TrimSpace(strings.TrimPrefix(stdout, "wrote "))); err != nil {
+		t.Fatalf("no executable: %v", err)
+	}
 	code, stdout, stderr = runDump("--ir", app)
-	if code != 1 || stdout != "" || stderr != "alder dump: routes are not built yet (#160 PR 3)\n" {
+	if code != 0 || !strings.Contains(stdout, "(route Todos.Index GET \"/\"") || stderr != "" {
 		t.Fatalf("alder dump: code %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
 }

@@ -585,6 +585,8 @@ func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.Ht
 					where = "a GET route's `view`"
 				}
 				c.errorf("E0304", options.GetSpan(), "`options` must be written in %s, which the runtime runs again from the model to check a submitted value; `<%s>` is in `%s`", where, x.Tag, map[bool]string{true: mc.value, false: "a component"}[mc.value != ""])
+			} else {
+				mc.recordOptions(mc.form.route)
 			}
 			mc.options, mc.optionsBad = env, map[string]bool{}
 			mc.check(options, &types.App{Con: "List", Args: []types.Type{&types.Record{Anonymous: true, Fields: []types.Field{{Name: "value", Type: inner}, {Name: "label", Type: types.Text}}}}}, env, eff)

@@ -1,0 +1,14 @@
+module App
+
+import Table.User
+
+-- Routes (#160 PR 3): the app of the route handlers' golden, GET and write routes.
+session { user: Maybe User.UserId, theme: Text = "light", role: User.Role = Reader }
+
+login = Auth.Login
+
+error : Error -> Html Never
+error err = <html><body><h1>Something went wrong</h1></body></html>
+
+notFound : Html Never
+notFound = <html><body><h1>Not found</h1></body></html>

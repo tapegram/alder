@@ -1,0 +1,82 @@
+module Todos
+
+import Table.Todo
+import Layout
+
+route Index  = GET    "/"                  { filter: Todo.Filter = All } requires user
+route Row    = GET    "/todos/{id}"        { id: Todo.TodoId }           requires user
+route Toggle = PATCH  "/todos/{id}/toggle" { id: Todo.TodoId }           requires user
+route Create = POST   "/todos"             { } form NewTodo              requires user
+route Delete = DELETE "/todos/{id}"        { id: Todo.TodoId }           requires user
+route Move   = POST   "/todos/{id}/move"   { id: Todo.TodoId } form MoveTo requires user
+route Export = GET    "/export.csv"        { }                           requires user
+
+form NewTodo = { title: Text, due: Maybe Date }
+
+form MoveTo = { list: Text }
+
+type TodoList = { filter: Todo.Filter, todos: List Todo }
+
+Index.load : Index.Params -> Session -> Query TodoList
+Index.load params session = {
+  let todos <- Db.mine Todo |> Db.where (Todo.matches params.filter) |> Db.all
+  Query.succeed { filter: params.filter, todos: todos }
+}
+
+Index.view : TodoList -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Todos" theme={session.theme}>
+    <nav>
+      <a href={Index { filter: All }}>All</a>
+      <a href={Index { filter: Done }}>Done</a>
+      <a href={About.Show { tab: "team" }}>About</a>
+      <a href={Export {}}>CSV</a>
+    </nav>
+    <ul id="todos">{for t in model.todos -> Row.view t session}</ul>
+    <form submit={Create}><Input field="title" /><Errors form /><button>Add</button></form>
+  </Layout.Page>
+
+Row.load : Row.Params -> Session -> Query Todo
+Row.load params session = Db.getMine Todo params.id
+
+Row.view : Todo -> Session -> Html
+Row.view t session =
+  <li id={"todo-" ++ t.id}>
+    <button click={Toggle { id: t.id }}>{t.title}</button>
+    <button click={Delete { id: t.id }}>Delete</button>
+    <form submit={Move { id: t.id }}>
+      <Errors form />
+      <Select field="list" options={[{ value: "home", label: "Home" }, { value: t.title, label: "Its own" }]} />
+    </form>
+  </li>
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update params session = {
+  let _ <- Db.updateMine Todo params.id (\t -> { t | done: not t.done })
+  Task.succeed (Response.render (Row { id: params.id }))
+}
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update params session = {
+  let _ <- Db.insertMine Todo { title: params.form.title, due: params.form.due }
+  if params.form.title == "Again"
+    then Task.succeed (Response.invalid "Already there")
+    else Task.succeed (Response.redirect (Index { filter: All }) |> Response.toast "Added")
+}
+
+Delete.update : Delete.Params -> Session -> Task Response
+Delete.update params session = {
+  let _ <- Db.deleteMine Todo params.id
+  Task.succeed Response.refresh
+}
+
+Move.update : Move.Params -> Session -> Task Response
+Move.update params session =
+  Task.succeed (Response.render (Row { id: params.id }) |> Response.toast ("Moved to " ++ params.form.list))
+
+Export.load : Export.Params -> Export.Session -> Query (List Todo)
+Export.load params session = Db.mine Todo |> Db.all
+
+Export.view : List Todo -> Session -> File
+Export.view todos session =
+  File.text { contentType: "text/csv", body: Text.join "\n" (List.map (\t -> t.title) todos) }

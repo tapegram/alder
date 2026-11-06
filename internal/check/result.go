@@ -46,7 +46,8 @@ type Result struct {
 	Rendered map[*syntax.Element]string
 	// Via, Silos and Choose are App's valid M15 declarations: each `via` session field's
 	// membership table ("Membership.Membership"), each silo key's tables in the order written
-	// ("Project.Project"), each `choose` key's page module. Nil when there are none.
+	// ("Project.Project"), each `choose` key's page module, or GET route as `Module.Route`. Nil
+	// when there are none.
 	Via    map[string]string
 	Silos  map[string][]string
 	Choose map[string]string

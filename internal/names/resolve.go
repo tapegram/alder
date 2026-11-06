@@ -325,8 +325,8 @@ func (r *resolver) module() {
 			if !r.p.IsPageModule(d.Page) {
 				r.bag.Error(diag.UnknownName, d.Span, "unknown page `%s`", d.Page)
 			}
-		case *syntax.ChooseDecl:
-			if !r.p.IsPageModule(d.Page) {
+		case *syntax.ChooseDecl: // a page module, or a route written `Module.Route`
+			if !r.p.IsPageModule(d.Page) && r.p.RouteAt(d.Page) == nil {
 				r.bag.Error(diag.UnknownName, d.Span, "unknown page `%s`", d.Page)
 			}
 		case *syntax.TestDecl:

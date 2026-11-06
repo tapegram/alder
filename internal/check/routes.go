@@ -35,8 +35,16 @@ type RouteInfo struct {
 	// NeedsShown is set for a write route whose `update` may answer with the page it was sent
 	// from rendered again (plan call 12; Task 2.7).
 	NeedsShown bool
+	// OptionRoutes are, for a write route with a form, the GET routes whose view renders a
+	// `<Select options>` of the form, written in the view itself or in a view it reaches through
+	// the values it uses (`Row.view` called in `Index.view`), in module order, then declaration
+	// order (plan call 11): the views the runtime renders again to check a submitted option.
+	OptionRoutes []*RouteInfo
 	// narrowed are the session fields the route's session narrows: Requires and Silo.
 	narrowed []string
+	// optionViews are the GET routes whose own view writes a `<Select options>` of this write
+	// route's form (recorded where inShownView allows one), from which OptionRoutes are found.
+	optionViews []*RouteInfo
 }
 
 // isWrite reports whether method is a write route's (anything but GET).
@@ -104,6 +112,63 @@ func (mc *modCtx) inShownView() bool {
 		return !isWrite(mc.route.Method) && mc.value == mc.route.Name+".view"
 	}
 	return mc.page != nil && mc.value == "view"
+}
+
+// recordOptions notes that the view being checked, a GET route's, writes a `<Select options>`
+// of the form posting to write route w (nil when the form posts to no route).
+func (mc *modCtx) recordOptions(w *RouteInfo) {
+	if w != nil && mc.route != nil && !slices.Contains(w.optionViews, mc.route) {
+		w.optionViews = append(w.optionViews, mc.route)
+	}
+}
+
+// checkOptionRoutes sets each write route's OptionRoutes once every body is checked: the GET
+// routes whose view is, or reaches through the values it refers to, a view that recorded a
+// `<Select options>` of the route's form.
+func (c *Checker) checkOptionRoutes() {
+	var writes, gets []*RouteInfo
+	for _, name := range c.prog.Order {
+		for _, r := range c.routes[name] {
+			if len(r.optionViews) > 0 {
+				writes = append(writes, r)
+			}
+			if !isWrite(r.Method) {
+				gets = append(gets, r)
+			}
+		}
+	}
+	if len(writes) == 0 {
+		return
+	}
+	refs := map[string]map[string]bool{} // "Module.value" → the values its body refers to
+	for _, name := range c.prog.Order {
+		for _, d := range c.live(c.prog.Modules[name]) {
+			if vd, ok := d.(*syntax.ValueDecl); ok && vd.Body != nil {
+				refs[c.key(name, vd.FullName())] = c.bodyFacts(vd.Body).refs
+			}
+		}
+	}
+	viewKey := func(r *RouteInfo) string { return c.key(r.Module, r.Name+".view") }
+	for _, g := range gets {
+		reached := map[string]bool{}
+		stack := []string{viewKey(g)}
+		for len(stack) > 0 {
+			k := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if reached[k] {
+				continue
+			}
+			reached[k] = true
+			for r := range refs[k] {
+				stack = append(stack, r)
+			}
+		}
+		for _, w := range writes {
+			if slices.ContainsFunc(w.optionViews, func(v *RouteInfo) bool { return reached[viewKey(v)] }) {
+				w.OptionRoutes = append(w.OptionRoutes, g)
+			}
+		}
+	}
 }
 
 // defineRoutes defines the routes of a route module: each route's Params and Session (as the
@@ -263,17 +328,45 @@ func (mc *modCtx) needsShown(d *syntax.ValueDecl) bool {
 }
 
 // resultHasResponse reports whether t, or the result a function type finally gives, is
-// `Response` or holds it (`Task Response`, `Maybe Response`).
+// `Response` or holds it: as an argument (`Task Response`, `Maybe Response`), a record's field
+// (`{ response: Response, … }`) or a constructor's payload (`Answer Response | Stay`), at any
+// depth. A recursive type is visited once.
 func resultHasResponse(t types.Type) bool {
+	return holdsResponse(t, map[types.Type]bool{})
+}
+
+func holdsResponse(t types.Type, seen map[types.Type]bool) bool {
+	holds := func(t types.Type) bool { return holdsResponse(t, seen) }
 	switch t := t.(type) {
 	case *types.Con:
 		return t == types.Response
 	case *types.App:
-		return slices.ContainsFunc(t.Args, resultHasResponse)
-	case *types.Union:
-		return slices.ContainsFunc(t.Args, resultHasResponse)
+		return slices.ContainsFunc(t.Args, holds)
 	case *types.Fun:
-		return resultHasResponse(t.Result)
+		return holds(t.Result)
+	case *types.Record:
+		if seen[t] {
+			return false
+		}
+		seen[t] = true
+		for _, f := range t.Fields {
+			if holds(f.Type) {
+				return true
+			}
+		}
+	case *types.Union:
+		if seen[t] {
+			return false
+		}
+		seen[t] = true
+		if slices.ContainsFunc(t.Args, holds) {
+			return true
+		}
+		for _, c := range t.Ctors {
+			if c.Arg != nil && holds(c.Arg) {
+				return true
+			}
+		}
 	}
 	return false
 }

@@ -288,6 +288,8 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 		return GoType(x.Ty) + "{" + strings.Join(es, ", ") + "}", precAtom
 	case *ir.PageRef:
 		return f.pageRef(x, s), precAtom
+	case *ir.RouteRef:
+		return f.routeRef(x, s), precAtom
 	case *ir.Op:
 		return f.op(x, s)
 	case *ir.Str:
@@ -640,7 +642,26 @@ func (f *fn) ctor(x *ir.Ctor, s *scope) string {
 // order: rt.KV for a required one; rt.QueryKV, which leaves it out at its default (a Maybe
 // without one: at Nothing), for the others; rt.QueryKVs for a List (one key per element).
 func (f *fn) pageRef(x *ir.PageRef, s *scope) string {
-	path := x.Page.Path
+	return f.routeLit("", "", x.Page.Path, x.Page.Params, x.Params, false, s)
+}
+
+// routeRef is a route value (#160): an rt.Route with the route's qualified Name and Method, and
+// its path and query as pageRef builds them. The `form` field of a route with `form F` is not
+// part of its URL: the submitted form supplies it.
+func (f *fn) routeRef(x *ir.RouteRef, s *scope) string {
+	r := x.Route
+	return f.routeLit(r.Module+"."+r.Name, r.Method, r.Path, r.Params, x.Params, r.Form != nil, s)
+}
+
+// routeLit is an rt.Route literal (rt.Page, its alias, for a page: name and method "") of
+// pattern path with the parameters params (decl, the declared record) filled in. form says decl's
+// field `form` is the route's submitted form (`form F`), left out of the URL.
+func (f *fn) routeLit(name, method, path string, decl *ir.RecordType, params ir.Expr, form bool, s *scope) string {
+	typ := "rt.Page{"
+	if name != "" {
+		typ = "rt.Route{Name: " + strconv.Quote(name) + ", Method: " + strconv.Quote(method) + ", "
+	}
+	pattern := path
 	inPath := map[string]bool{}
 	var parts []string
 	for path != "" {
@@ -653,32 +674,32 @@ func (f *fn) pageRef(x *ir.PageRef, s *scope) string {
 		if i > 0 {
 			parts = append(parts, strconv.Quote(path[:i]))
 		}
-		name := path[i+1 : j]
-		inPath[name] = true
+		seg := path[i+1 : j]
+		inPath[seg] = true
 		v := `""`
-		if x.Params != nil {
-			v = "rt.PathSegment(" + f.text(f.pageParam(x.Params, name), s) + ")"
+		if params != nil {
+			v = "rt.PathSegment(" + f.text(f.pageParam(params, seg), s) + ")"
 		}
 		parts = append(parts, v)
 		path = path[j+1:]
 	}
-	p := strconv.Quote(x.Page.Path)
+	p := strconv.Quote(pattern)
 	if len(parts) > 1 || (len(parts) == 1 && parts[0] != p) {
 		p = "rt.Concat(" + strings.Join(parts, ", ") + ")"
 	}
-	if x.Params == nil {
-		return "rt.Page{Path: " + p + "}"
+	if params == nil {
+		return typ + "Path: " + p + "}"
 	}
 	var items []kvItem
-	for _, fd := range x.Page.Params.Fields {
-		if !inPath[fd.Name] {
-			items = append(items, kvItem{name: fd.Key(), t: fd.Type, v: f.pageParam(x.Params, fd.Name), def: fd.Default, omitBlank: true})
+	for _, fd := range decl.Fields {
+		if !inPath[fd.Name] && !(form && fd.Name == "form") {
+			items = append(items, kvItem{name: fd.Key(), t: fd.Type, v: f.pageParam(params, fd.Name), def: fd.Default, omitBlank: true})
 		}
 	}
 	if q := f.kvList(items, s); q != "nil" {
-		return "rt.Page{Path: " + p + ", Query: " + q + "}"
+		return typ + "Path: " + p + ", Query: " + q + "}"
 	}
-	return "rt.Page{Path: " + p + "}"
+	return typ + "Path: " + p + "}"
 }
 
 // pageParam is page parameter name of params: the field's value when params is a record

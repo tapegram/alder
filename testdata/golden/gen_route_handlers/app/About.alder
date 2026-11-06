@@ -1,0 +1,10 @@
+module About
+
+-- A route without `requires`: its members see App's Session.
+route Show = GET "/about" { tab: Text = "team" }
+
+Show.load : Show.Params -> Session -> Query Text
+Show.load params session = Query.succeed params.tab
+
+Show.view : Text -> Session -> Html
+Show.view tab session = <p id="about">About: {tab} ({session.theme})</p>

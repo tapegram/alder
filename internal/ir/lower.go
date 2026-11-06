@@ -12,28 +12,9 @@ import (
 	"alder/internal/types"
 )
 
-// ErrRoutesNotBuilt is why a program that declares a route is not lowered: PR 2 of #160 checks
-// routes, and nothing lowers or generates them yet. PR 3 removes it.
-var ErrRoutesNotBuilt = fmt.Errorf("routes are not built yet (#160 PR 3)")
-
-// Lowerable is ErrRoutesNotBuilt when prog declares a route, else nil. Every caller of Lower
-// asks it first: Lower has no lowering for a route constructor.
-func Lowerable(prog *names.Program) error {
-	for _, name := range prog.Order {
-		if prog.IsRouteModule(name) {
-			return ErrRoutesNotBuilt
-		}
-	}
-	return nil
-}
-
 // Lower builds the IR of a program the checker accepted without errors. A missing recorded type
-// is a checker bug and panics with the node and its position, as does a program that declares a
-// route (see Lowerable).
+// is a checker bug and panics with the node and its position.
 func Lower(prog *names.Program, res *check.Result) *Program {
-	if err := Lowerable(prog); err != nil {
-		panic(err)
-	}
 	l := newLowerer(prog, res)
 	l.declareTypes()
 	l.declareValues()
@@ -75,7 +56,7 @@ func LowerTables(prog *names.Program, res *check.Result) (p *Program, err error)
 func newLowerer(prog *names.Program, res *check.Result) *lowerer {
 	return &lowerer{prog: prog, res: res, out: &Program{},
 		records: map[string]*RecordType{}, unions: map[string]*UnionType{}, values: map[string]*Value{},
-		pages: map[string]*Page{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, tables: map[string]*Table{}, caps: map[string]*Capability{}, fakes: map[*syntax.FakeDecl]*Fake{}, fakesByCap: map[string]*Fake{}, inserts: map[*types.Record]insertOf{}, insertRTs: map[insertOf]*RecordType{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, brands: map[string]*Brand{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, anonDefaults: map[syntax.Expr]Expr{}}
+		pages: map[string]*Page{}, routes: map[string]*Route{}, routeOf: map[*check.RouteInfo]*Route{}, forms: map[string]*Form{}, msgs: map[string]*Msg{}, tables: map[string]*Table{}, caps: map[string]*Capability{}, fakes: map[*syntax.FakeDecl]*Fake{}, fakesByCap: map[string]*Fake{}, inserts: map[*types.Record]insertOf{}, insertRTs: map[insertOf]*RecordType{}, erased: map[*types.Record]*types.Record{}, erasedU: map[*types.Union]*types.Union{}, brands: map[string]*Brand{}, wrappers: map[*RecordType]bool{}, msgPayloads: map[*RecordType]bool{}, anonDefaults: map[syntax.Expr]Expr{}}
 }
 
 // lowerTests lowers every module's `test` declarations into Module.Tests, marking the `==` each
@@ -153,6 +134,8 @@ type lowerer struct {
 	unions  map[string]*UnionType  // "Module.Name" → union (Prelude unions created on first use)
 	values  map[string]*Value      // "Module.name"
 	pages   map[string]*Page       // page module name
+	routes  map[string]*Route      // "Module.Route"
+	routeOf map[*check.RouteInfo]*Route
 	forms   map[string]*Form       // "Module.Form"
 	msgs    map[string]*Msg        // "Owner.Msg": owner is the page module or App
 	tables  map[string]*Table      // "Module.Table"
@@ -170,7 +153,8 @@ type lowerer struct {
 	erasedU   map[*types.Union]*types.Union
 	// wrappers are the { value: T } payload records made for non-record constructor arguments
 	wrappers map[*RecordType]bool
-	// msgPayloads are the generated `<Msg>Params` records, whose `form` field a literal omits
+	// msgPayloads are the generated `<Msg>Params` records and a form route's `R.Params`, whose
+	// `form` field a literal omits
 	msgPayloads map[*RecordType]bool
 	// anonDefaults are the lowered defaults of anonymous record fields (anonDefault)
 	anonDefaults map[syntax.Expr]Expr
@@ -645,8 +629,43 @@ func (l *lowerer) declareTypes() {
 			l.pages[name] = pg
 			l.out.Pages = append(l.out.Pages, pg)
 		}
+		for _, info := range l.res.Routes[name] {
+			d := info.Decl
+			r := &Route{Module: name, Name: info.Name, Method: info.Method, Path: info.Path, Requires: info.Requires,
+				Roles: info.Roles, Silo: info.Silo, File: info.File, NeedsShown: info.NeedsShown}
+			if len(info.Requires) > 0 {
+				r.RequiresPos = posOf(d.RequiresSpan)
+			}
+			if len(info.Roles) > 0 {
+				r.RolesPos = posOf(d.RolesSpan)
+			}
+			if info.Silo != "" {
+				r.SiloPos = posOf(d.SiloSpan)
+			}
+			if info.Model != nil {
+				r.Model = l.erase(info.Model)
+			}
+			var fields []*syntax.Field
+			if d.Params != nil {
+				fields = d.Params.Fields
+			}
+			r.Params = addRecord(info.Params.Name, info.Params, fields)
+			if d.Form != "" {
+				r.Form = l.forms[key(name, d.Form)]
+				l.msgPayloads[r.Params] = true
+			}
+			l.routes[key(name, info.Name)] = r
+			l.routeOf[info] = r
+			l.out.Routes = append(l.out.Routes, r)
+		}
 	}
 	l.declarePageSessions()
+	l.declareRouteSessions()
+	for info, r := range l.routeOf {
+		for _, o := range info.OptionRoutes {
+			r.OptionRoutes = append(r.OptionRoutes, l.routeOf[o])
+		}
+	}
 	if app := l.prog.Modules["App"]; app != nil {
 		for _, d := range app.Decls {
 			if ld, ok := d.(*syntax.LoginDecl); ok && l.pages[ld.Page] != nil {
@@ -673,17 +692,31 @@ func (l *lowerer) declareTypes() {
 		for i, a := range arms {
 			out[i] = &Arm{Msg: a.Msg, Store: StoreSilo(a.Silo), Pos: posOf(a.Span)}
 		}
-		if name == "App" {
+		switch pg := l.pages[name]; {
+		case name == "App":
 			l.out.AppArms = out
-		} else if pg := l.pages[name]; pg != nil {
+		case pg != nil:
 			pg.Arms = out
+		default: // a route module: one arm per write route, named after it
+			for _, a := range out {
+				if r := l.routes[key(name, a.Msg)]; r != nil {
+					r.Store = a.Store
+				}
+			}
 		}
 	}
-	for k, pg := range l.res.Choose {
+	for k, target := range l.res.Choose {
 		if l.out.Choose == nil {
-			l.out.Choose = map[string]*Page{}
+			l.out.Choose = map[string]ChooseTarget{}
 		}
-		l.out.Choose[k] = l.pages[pg]
+		switch pg, r := l.pages[target], l.routes[target]; {
+		case pg != nil:
+			l.out.Choose[k] = pg
+		case r != nil:
+			l.out.Choose[k] = r
+		default:
+			panic(fmt.Sprintf("ir: choose %s names no page or route %s (checker bug)", k, target))
+		}
 	}
 	for _, r := range refs {
 		cands := []string{r.m.Name}
@@ -730,6 +763,33 @@ func (l *lowerer) declarePageSessions() {
 		mod := l.out.Modules[i]
 		mod.Types = append(mod.Types, &TypeDecl{Module: name, Name: "Session", Record: rt})
 		pg.Session = rt
+	}
+}
+
+// declareRouteSessions gives each route its Session: App's record, or the checker's narrowed
+// record of the route's module for a route that `requires` (or has a `silo`), declared once in
+// the module's Types under its own name ("Index.Session"): routes of a module that narrow the
+// same fields share it. The route's code names that record; where it is used as App's session,
+// Lower wraps the value in a Widen.
+func (l *lowerer) declareRouteSessions() {
+	for i, name := range l.prog.Order {
+		for _, info := range l.res.Routes[name] {
+			r := l.routeOf[info]
+			r.Session = l.out.Session
+			if info.Session == nil || l.out.Session == nil {
+				continue
+			}
+			k := key(name, info.Session.Name)
+			rt := l.records[k]
+			if rt == nil {
+				rt = &RecordType{Module: name, Name: info.Session.Name}
+				l.recordFields(name, rt, info.Session, nil)
+				l.records[k] = rt
+				mod := l.out.Modules[i]
+				mod.Types = append(mod.Types, &TypeDecl{Module: name, Name: rt.Name, Record: rt})
+			}
+			r.Session = rt
+		}
 	}
 }
 
@@ -828,24 +888,34 @@ func (l *lowerer) declareValues() {
 			if !ok || vd.Body == nil {
 				continue
 			}
-			sig := l.erase(l.res.Values[key(name, vd.Name)])
+			full := vd.FullName() // a route member is "Index.view"
+			sig := l.erase(l.res.Values[key(name, full)])
 			if sig == nil {
-				panic(fmt.Sprintf("ir: no signature recorded for %s.%s at %s", name, vd.Name, pos(vd.Span)))
+				panic(fmt.Sprintf("ir: no signature recorded for %s.%s at %s", name, full, pos(vd.Span)))
 			}
-			v := &Value{Module: name, Name: vd.Name, Type: sig, IsComponent: isUpper(vd.Name)}
-			_, v.TestOnly = l.res.TestOnly[key(name, vd.Name)]
+			v := &Value{Module: name, Name: full, Type: sig, IsComponent: isUpper(vd.Name)}
+			_, v.TestOnly = l.res.TestOnly[key(name, full)]
 			v.Effect, v.IsEffect = effectKind(finalResult(sig))
 			for _, p := range vd.Params {
 				v.Params = append(v.Params, &Param{Name: p.Name, Type: l.bindType(p)})
 			}
-			l.values[key(name, vd.Name)] = v
+			l.values[key(name, full)] = v
 			if v.IsComponent {
 				mod.Components = append(mod.Components, v)
 			} else {
 				mod.Values = append(mod.Values, v)
 			}
 			l.bodies = append(l.bodies, pendingBody{v, vd})
-			if pg := l.pages[name]; pg != nil {
+			if r := l.routes[key(name, vd.Route)]; vd.Route != "" && r != nil {
+				switch vd.Name {
+				case "load":
+					r.Load = v
+				case "view":
+					r.View = v
+				case "update":
+					r.Update = v
+				}
+			} else if pg := l.pages[name]; pg != nil {
 				switch vd.Name {
 				case "view":
 					pg.View = v

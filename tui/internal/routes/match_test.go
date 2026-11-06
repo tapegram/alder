@@ -85,3 +85,28 @@ func TestRoute_Openable(t *testing.T) {
 		}
 	}
 }
+
+func TestMatch_MethodAndPath(t *testing.T) {
+	rs := []Route{
+		{Method: "GET", Kind: "page", Path: "/todos/{id}", Name: "Row"},
+		{Method: "DELETE", Kind: "msg", Path: "/todos/{id}", Name: "Delete"},
+		{Method: "PATCH", Kind: "msg", Path: "/todos/{id}/toggle", Name: "Toggle"},
+		{Method: "POST", Kind: "msg", Path: "/todos", Name: "Create"},
+	}
+	for _, c := range []struct {
+		method, path string
+		want         int
+	}{
+		{"GET", "/todos/7", 0},
+		{"DELETE", "/todos/7", 1},
+		{"PATCH", "/todos/7/toggle", 2},
+		{"POST", "/todos", 3},
+		{"PUT", "/todos/7", -1},
+		{"GET", "/todos", -1},
+	} {
+		got, ok := MatchRequest(rs, c.method, c.path)
+		if c.want < 0 && ok || c.want >= 0 && (!ok || got != c.want) {
+			t.Errorf("MatchRequest(%s %q) = %d, %v; want %d", c.method, c.path, got, ok, c.want)
+		}
+	}
+}

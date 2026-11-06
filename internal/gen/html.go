@@ -35,6 +35,10 @@ import (
 //	Submit   method="post", html.MsgAttr("action", ref) and html.MsgAttr("data-on:submit", ref)
 //	         (html.FormTo adds them itself)
 //
+// A click or submit whose value is a Route (#160) is html.RouteAttr of that rt.Route instead,
+// and a form posting to one is html.FormToRoute (the method override for a write route that is
+// not POST).
+//
 // where ref is rt.MsgRef{Module: "<Module>", Msg: "<Msg>", Params: …}: the message's parameters
 // in declaration order, as text, without the submitted form (kvList). rt/html resolves it when
 // rendering, appending the rendered page's parameters as "_p." keys (FormState.PageParams), so
@@ -71,16 +75,19 @@ func (f *fn) html(e ir.Expr, s *scope) string {
 	case *ir.Input:
 		return f.input(x, s)
 	case *ir.FormEl:
-		ref := "rt.MsgRef{}"
+		ref, to := "rt.MsgRef{}", "html.FormTo("
 		var rest []ir.HAttr
 		for _, a := range x.Attrs {
-			if a.Kind == ir.AttrSubmit {
+			switch {
+			case a.Kind == ir.AttrSubmit && isRoute(a.Value):
+				ref, to = f.code(a.Value, s), "html.FormToRoute("
+			case a.Kind == ir.AttrSubmit:
 				ref = f.msgRef(a.Value, s)
-			} else {
+			default:
 				rest = append(rest, a)
 			}
 		}
-		return "html.FormTo(" + ref + ", " + f.attrs(rest, s) + f.nodeArgs(x.Children, s)
+		return to + ref + ", " + f.attrs(rest, s) + f.nodeArgs(x.Children, s)
 	}
 	panic("gen: not an HTML node")
 }
@@ -134,18 +141,51 @@ func (f *fn) attrs(as []ir.HAttr, s *scope) string {
 			out = append(out, "html.M("+name+", "+f.code(a.Value, s)+")")
 		case ir.AttrHref:
 			out = append(out, "html.A("+name+", rt.PageURL("+f.code(a.Value, s)+"))")
-			if pr, ok := a.Value.(*ir.PageRef); ok && pr.Page != nil && pr.Page.File && !slices.ContainsFunc(as, func(b ir.HAttr) bool { return b.Name == "data-alder-reload" }) {
+			if fileLink(a.Value) && !slices.ContainsFunc(as, func(b ir.HAttr) bool { return b.Name == "data-alder-reload" }) {
 				out = append(out, `html.A("data-alder-reload", "true")`)
 			}
 		case ir.AttrClick:
+			if isRoute(a.Value) {
+				out = append(out, `html.RouteAttr("data-on:click", `+f.code(a.Value, s)+`)`)
+				continue
+			}
 			out = append(out, `html.MsgAttr("data-on:click", `+f.msgRef(a.Value, s)+`)`)
 		case ir.AttrSubmit: // on an element Lower did not make a FormEl
+			// Lower makes every <form submit> a FormEl (html.FormToRoute, with the _method
+			// override), so this is an element that is not a <form>: it never submits without
+			// JavaScript (method="post" is inert on it), and with it RouteAttr sends the route's
+			// own method. No _method override is needed (#160 PR 3, ruling R9).
+			if isRoute(a.Value) {
+				ref := f.code(a.Value, s)
+				out = append(out, `html.A("method", "post")`, `html.RouteAttr("action", `+ref+`)`,
+					`html.RouteAttr("data-on:submit", `+ref+`)`)
+				continue
+			}
 			ref := f.msgRef(a.Value, s)
 			out = append(out, `html.A("method", "post")`, `html.MsgAttr("action", `+ref+`)`,
 				`html.MsgAttr("data-on:submit", `+ref+`)`)
 		}
 	}
 	return "[]html.Attr{" + strings.Join(out, ", ") + "}"
+}
+
+// fileLink reports whether an href's value is a file page or a file GET route written in place:
+// the boost must leave it to the browser (data-alder-reload), as a file is never morphed in.
+func fileLink(e ir.Expr) bool {
+	switch x := e.(type) {
+	case *ir.PageRef:
+		return x.Page != nil && x.Page.File
+	case *ir.RouteRef:
+		return x.Route.File
+	}
+	return false
+}
+
+// isRoute reports whether the value of a click or submit attribute is a route (#160), not a
+// message: its type is Route.
+func isRoute(e ir.Expr) bool {
+	c, ok := e.Type().(*types.Con)
+	return ok && c.Name == "Route"
 }
 
 // msgRef is message value e as an rt.MsgRef, which rt/html resolves to the URL it posts to

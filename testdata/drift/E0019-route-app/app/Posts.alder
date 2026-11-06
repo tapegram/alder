@@ -1,0 +1,12 @@
+module Posts
+
+import Post
+
+-- A route app is lowered to read its tables, as a page app is: Post's new column is drift.
+route Index = GET "/" { }
+
+Index.load : Index.Params -> Session -> Query (List Post)
+Index.load params session = Db.from Post |> Db.all
+
+Index.view : List Post -> Session -> Html
+Index.view posts session = <ul>{for p in posts -> <li>{p.title}: {p.body}</li>}</ul>

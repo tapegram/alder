@@ -1,0 +1,2 @@
+app/App.alder:11:1 E0032 `choose org = Orgs.Leave`: `Orgs.Leave` is a POST route; a request without `org` is sent to a GET route
+app/App.alder:12:1 E0032 `choose team = Orgs.Team`: `Orgs.Team` `requires team` itself, so a request without `team` would be sent back to it

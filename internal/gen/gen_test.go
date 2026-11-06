@@ -249,7 +249,7 @@ func mapsKeys(m map[string][]byte) []string {
 
 // testBuildGoldens are the gen goldens whose want/ is a test build (Options.Tests) and whose
 // want_prod/ is the production build of the same app.
-var testBuildGoldens = map[string]bool{"gen_fakes": true, "gen_browser": true, "gen_fuzz": true, "gen_wire": true, "gen_helpers": true}
+var testBuildGoldens = map[string]bool{"gen_fakes": true, "gen_browser": true, "gen_fuzz": true, "gen_wire": true, "gen_helpers": true, "gen_route_handlers": true}
 
 // mutateBuildGoldens are the gen goldens whose want/ is a mutate build (Options.Mutate, a test
 // build) and whose want_prod/ is the production build of the same app.
@@ -3958,6 +3958,549 @@ func TestGen_ResponseBuilders(t *testing.T) {
 		`std.ResponseError("c", std.ResponseWarning("b", std.ResponseToast("a", std.ResponseRefresh())))`,
 		"func R__shown(r rt.Route) rt.Response {",
 		`std.ResponseInvalid("no")`,
+	)
+	vet(t, files)
+}
+
+// ---- GET route handlers (#160 PR 3)
+
+// routeHandlersApp is the app of the route handlers' golden: GET routes with and without
+// `requires`, a role, a file route, and write routes (Task 3.3).
+const routeHandlersApp = "../../testdata/golden/gen_route_handlers"
+
+// runRouteApp runs body, the statements of a Go test function, against the generated
+// routeHandlersApp served with a database file: in scope are h (Serve's handler), uid (a user)
+// and todo (a todo of uid's titled "Milk"), get (a GET of target with a cookie, "" for none, and
+// headers as name, value pairs), send (a request of method with a url-encoded form body, the
+// same way), ds (the headers of a Datastar post from the page "/": Datastar-Request, Alder-Page
+// and a stale Alder-Shown), ran (how many times an effect step named so has run, counted from the
+// app's log) and as (the signed session cookie of uid with a role).
+func runRouteApp(t *testing.T, body string) {
+	t.Helper()
+	runRouteAppIn(t, routeHandlersApp, body)
+}
+
+// runRouteAppIn is runRouteApp for the app in dir (the golden's, or a copy of it).
+func runRouteAppIn(t *testing.T, dir, body string) {
+	t.Helper()
+	runGo(t, emit(t, dir), `package app
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"alder/rt"
+	"alder/rt/db"
+	"alder/rt/eff"
+	"alder/rt/web"
+)
+
+var _ = strings.Contains
+var _ = http.StatusOK
+var _ url.Values
+
+func TestRoute(t *testing.T) {
+	secret := []byte("0123456789abcdef0123456789abcdef")
+	path := filepath.Join(t.TempDir(), "app.db")
+	var mu sync.Mutex
+	steps := map[string]int{}
+	logged := func(level, msg string) {
+		if level == "effect" {
+			mu.Lock()
+			steps[msg]++
+			mu.Unlock()
+		}
+	}
+	ran := func(step string) int {
+		mu.Lock()
+		defer mu.Unlock()
+		return steps[step]
+	}
+	h, err := Serve(Caps{}, Options{DB: path, Secret: secret, Log: logged, LogID: func(_, level, msg string) { logged(level, msg) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	store, err := db.OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	env := &eff.Env{Ctx: ctx, Store: store, Caps: map[string]any{}, Now: time.Now, Log: func(string, string) {}}
+	uid, err := eff.Run(env, eff.KTask, eff.Call("Db.insert User", true, func(e *eff.Env) (string, error) {
+		return db.InsertRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), table__Table__User__User,
+			insertvals__Table__User__User(insert__Table__User__User{Email: "a@b.c"}), e.Now())
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	todo, err := eff.Run(env, eff.KTask, eff.Call("Db.insert Todo", true, func(e *eff.Env) (string, error) {
+		return db.InsertRow(e.Ctx, e.Store.(db.Store), db.TxOf(e), table__Table__Todo__Todo,
+			insertvals__Table__Todo__Todo(insert__Table__Todo__Todo{Title: "Milk", Due: rt.Nothing[rt.Date](), Owner: uid}), e.Now())
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	as := func(role Table__User__Role) string {
+		c, err := web.SessionCookie(secret, session__codec{}, App__Session{User: rt.Just(uid), Theme: "dark", Role: role}, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return web.CookieName + "=" + c
+	}
+	get := func(target, cookie string, headers ...string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", target, nil)
+		if cookie != "" {
+			r.Header.Set("Cookie", cookie)
+		}
+		for i := 0; i+1 < len(headers); i += 2 {
+			r.Header.Set(headers[i], headers[i+1])
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	send := func(method, target, cookie string, form url.Values, headers ...string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, target, strings.NewReader(form.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if cookie != "" {
+			r.Header.Set("Cookie", cookie)
+		}
+		for i := 0; i+1 < len(headers); i += 2 {
+			r.Header.Set(headers[i], headers[i+1])
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	ds := []string{"Datastar-Request", "true", "Alder-Page", "/", "Alder-Shown", "0123456789abcdef"}
+	_, _, _, _, _, _ = as, get, todo, send, ds, ran
+`+body+`
+}
+`)
+}
+
+// A GET route answers a plain request with its view as a document: the route's load and view
+// with the narrowed session (requires user), a route without `requires` with App's session,
+// links to routes rendered as their URLs, a parameter at its default left out of them.
+func TestGenRoute_GetDocument(t *testing.T) {
+	t.Parallel()
+	runRouteApp(t, `
+	me := as(Table__User__Role__Reader__)
+	w := get("/todos/"+todo, me)
+	body := w.Body.String()
+	if w.Code != http.StatusOK || !strings.HasPrefix(body, "<!doctype html>") || !strings.Contains(body, "<li id=\"todo-"+todo+"\">") || !strings.Contains(body, "Milk") {
+		t.Fatalf("GET /todos/id: %d %q", w.Code, body)
+	}
+	w = get("/", me)
+	body = w.Body.String()
+	for _, s := range []string{"<title>Todos</title>", "<body class=\"dark\">", "<li id=\"todo-"+todo+"\">", "href=\"/?filter=Done\"", "href=\"/about\"", "action=\"/todos\"", "<a href=\"/export.csv\" data-alder-reload=\"true\">CSV</a>"} {
+		if !strings.Contains(body, s) {
+			t.Errorf("GET /: no %q in %q", s, body)
+		}
+	}
+	if w.Code != http.StatusOK || strings.Contains(body, "href=\"/?filter=All\"") {
+		t.Fatalf("GET /: %d %q", w.Code, body)
+	}
+	if w := get("/?filter=Done", me); w.Code != http.StatusOK || strings.Contains(w.Body.String(), "Milk") {
+		t.Fatalf("GET /?filter=Done: %d %q", w.Code, w.Body.String())
+	}
+	if w := get("/about?tab=jobs", ""); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "About: jobs (light)") {
+		t.Fatalf("GET /about: %d %q", w.Code, w.Body.String())
+	}
+	`)
+}
+
+// An element fetch (Datastar, Alder-Fetch: 1) of a GET route is its view as one patch by its
+// root's id: no document, no body morph, no history step.
+func TestGenRoute_GetElement(t *testing.T) {
+	t.Parallel()
+	runRouteApp(t, `
+	w := get("/todos/"+todo, as(Table__User__Role__Reader__), "Datastar-Request", "true", "Alder-Fetch", "1")
+	body := w.Body.String()
+	if w.Code != http.StatusOK || strings.Count(body, "event: datastar-patch-elements") != 1 || !strings.Contains(body, "data: selector #todo-"+todo+"\n") || !strings.Contains(body, "data: mode outer\n") {
+		t.Fatalf("element fetch: %d %q", w.Code, body)
+	}
+	if !strings.Contains(body, "Milk") || strings.Contains(body, "<html") || strings.Contains(body, "<body") || strings.Contains(body, "history.") {
+		t.Fatalf("element fetch: %q", body)
+	}
+	`)
+}
+
+// A GET route whose view is a File answers it raw: its content type and body, never a page.
+func TestGenRoute_File(t *testing.T) {
+	t.Parallel()
+	runRouteApp(t, `
+	w := get("/export.csv", as(Table__User__Role__Reader__))
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "text/csv" || w.Body.String() != "Milk" {
+		t.Fatalf("GET /export.csv: %d %q %q", w.Code, w.Header().Get("Content-Type"), w.Body.String())
+	}
+	`)
+}
+
+// A GET route's guard: without the session field it requires, a 303 to App.login; a role it
+// does not name, a 404 (as a missing row); parameters that do not decode, a 404; a load that
+// finds no row, a 404.
+func TestGenRoute_Requires(t *testing.T) {
+	t.Parallel()
+	runRouteApp(t, `
+	for _, target := range []string{"/", "/todos/"+todo, "/export.csv", "/admin/stats"} {
+		if w := get(target, ""); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/login" {
+			t.Errorf("GET %s without a user: %d %q", target, w.Code, w.Header().Get("Location"))
+		}
+	}
+	if w := get("/admin/stats", as(Table__User__Role__Reader__)); w.Code != http.StatusNotFound {
+		t.Errorf("GET /admin/stats as a reader: %d", w.Code)
+	}
+	if w := get("/admin/stats", as(Table__User__Role__Admin__)); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "42 todos") {
+		t.Errorf("GET /admin/stats as an admin: %d %q", w.Code, w.Body.String())
+	}
+	if w := get("/?filter=Bogus", as(Table__User__Role__Reader__)); w.Code != http.StatusNotFound {
+		t.Errorf("GET /?filter=Bogus: %d", w.Code)
+	}
+	if w := get("/todos/nope", as(Table__User__Role__Reader__)); w.Code != http.StatusNotFound || !strings.Contains(w.Body.String(), "Not found") {
+		t.Errorf("GET /todos/nope: %d %q", w.Code, w.Body.String())
+	}
+	`)
+}
+
+// copyRouteApp copies the route handlers' golden app to a temp dir, with edit applied to the
+// text of app/Todos.alder.
+func copyRouteApp(t *testing.T, edit func(string) string) string {
+	t.Helper()
+	dst := t.TempDir()
+	err := filepath.WalkDir(routeHandlersApp+"/app", func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(routeHandlersApp, p)
+		if d.IsDir() {
+			return os.MkdirAll(filepath.Join(dst, rel), 0o755)
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if rel == filepath.Join("app", "Todos.alder") {
+			b = []byte(edit(string(b)))
+		}
+		return os.WriteFile(filepath.Join(dst, rel), b, 0o644)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dst
+}
+
+// A write route's guard runs before anything else (#160 final review, M1): without the session
+// field it requires, a 303 to App.login; as a role it does not name, a 404; and in neither case
+// does the update run (the row is not toggled, not deleted, nothing loaded).
+func TestGenRoute_WriteRequires(t *testing.T) {
+	t.Parallel()
+	dir := copyRouteApp(t, func(s string) string {
+		old := `route Toggle = PATCH  "/todos/{id}/toggle" { id: Todo.TodoId }           requires user`
+		if !strings.Contains(s, old) {
+			t.Fatal("Toggle route not found in the fixture")
+		}
+		s = strings.Replace(s, old, old+", role Admin", 1)
+		old = `route Delete = DELETE "/todos/{id}"        { id: Todo.TodoId }           requires user`
+		if !strings.Contains(s, old) {
+			t.Fatal("Delete route not found in the fixture")
+		}
+		return strings.Replace(s, old, old+", role Admin", 1)
+	})
+	runRouteAppIn(t, dir, `
+	toggle, del := "/todos/"+todo+"/toggle", "/todos/"+todo
+	for _, c := range []struct{ method, target string }{{"PATCH", toggle}, {"DELETE", del}} {
+		if w := send(c.method, c.target, "", nil); w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/login" {
+			t.Errorf("%s %s without a user: %d %q", c.method, c.target, w.Code, w.Header().Get("Location"))
+		}
+		if w := send(c.method, c.target, as(Table__User__Role__Reader__), nil); w.Code != http.StatusNotFound {
+			t.Errorf("%s %s as a reader: %d %q", c.method, c.target, w.Code, w.Body.String())
+		}
+		// Under Datastar the same answers are delivered as a navigation and a not-found body.
+		if w := send(c.method, c.target, "", nil, ds...); strings.Contains(w.Body.String(), "event: datastar-patch-elements") && !strings.Contains(w.Body.String(), "/login") {
+			t.Errorf("%s %s without a user under Datastar: %d %q", c.method, c.target, w.Code, w.Body.String())
+		}
+		if w := send(c.method, c.target, as(Table__User__Role__Reader__), nil, ds...); !strings.Contains(w.Body.String(), "Not found") || strings.Contains(w.Body.String(), "Milk") {
+			t.Errorf("%s %s as a reader under Datastar: %d %q", c.method, c.target, w.Code, w.Body.String())
+		}
+	}
+	if w := send("POST", toggle, as(Table__User__Role__Reader__), url.Values{"_method": {"PATCH"}}); w.Code != http.StatusNotFound {
+		t.Errorf("no-JS toggle as a reader: %d", w.Code)
+	}
+	if n := ran("Db.getMine Todo"); n != 0 {
+		t.Errorf("the update ran (%d row loads)", n)
+	}
+	if w := get("/?filter=Done", as(Table__User__Role__Admin__)); strings.Contains(w.Body.String(), "Milk") {
+		t.Errorf("the row was toggled: %q", w.Body.String())
+	}
+	if w := get("/todos/"+todo, as(Table__User__Role__Admin__)); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Milk") {
+		t.Errorf("the row was deleted: %d %q", w.Code, w.Body.String())
+	}
+	if w := send("PATCH", toggle, as(Table__User__Role__Admin__), nil, ds...); w.Code != http.StatusOK || ran("Db.getMine Todo") == 0 {
+		t.Errorf("toggle as an admin: %d, row loads %d", w.Code, ran("Db.getMine Todo"))
+	}
+	`)
+}
+
+// An element fetch whose route answers 404 (its load finds no row, its parameters do not
+// decode) patches nothing and toasts "Not found", as a `render` of a row that is gone does.
+func TestGenRoute_ElementNotFound(t *testing.T) {
+	t.Parallel()
+	runRouteApp(t, `
+	me := as(Table__User__Role__Reader__)
+	for _, target := range []string{"/todos/nope", "/?filter=Bogus"} {
+		w := get(target, me, "Datastar-Request", "true", "Alder-Fetch", "1")
+		body := w.Body.String()
+		if w.Code != http.StatusOK || strings.Count(body, "event: datastar-patch-elements") != 1 || !strings.Contains(body, "data: selector al-toasts\n") || !strings.Contains(body, ">Not found</al-toast>") {
+			t.Errorf("element fetch of %s: %d %q", target, w.Code, body)
+		}
+	}
+	`)
+}
+
+// The guard of GET routes in an app with silos (silo-routes-ok): `requires org` narrows the
+// store to the session's org and, without one, redirects to the GET route `choose org` names;
+// the admin route's `silo org` narrows to its parameter and checks the role. The app vets.
+func TestGenRoute_Silos(t *testing.T) {
+	t.Parallel()
+	files := emit(t, "../../testdata/corpus/silo-routes-ok")
+	contains(t, files["routes__alder.go"],
+		`func Route__Projects__Index() web.Route {`,
+		`r := web.RedirectResponse("/orgs", keep)`,
+		`db.Narrow(rq.Env, "org", app.Org.Val)`,
+		`func Route__Admin__Projects__Manage() web.Route {`,
+		`if app.Role.Tag != is__User__Role__Admin {`,
+		`db.Narrow(rq.Env, "org", params.Org)`,
+	)
+	vet(t, files)
+}
+
+// ---- write route handlers (#160 PR 3)
+
+// A write route answering `render r` under Datastar: one patch of r's view by its root id, mode
+// outer, then its toasts; the page the browser is on is neither loaded nor rendered (Index.load's
+// Db.all never runs). Without JavaScript a POST with _method=PATCH is the route too, answered
+// with a 303 back to the referring page.
+func TestGenRoute_ToggleRender(t *testing.T) {
+	t.Parallel()
+	runRouteApp(t, `
+	me := as(Table__User__Role__Reader__)
+	w := send("PATCH", "/todos/"+todo+"/toggle", me, nil, ds...)
+	body := w.Body.String()
+	if w.Code != http.StatusOK || strings.Count(body, "event: datastar-patch-elements") != 1 || !strings.Contains(body, "data: selector #todo-"+todo+"\n") || !strings.Contains(body, "data: mode outer\n") || strings.Contains(body, "selector body") {
+		t.Fatalf("PATCH toggle: %d %q", w.Code, body)
+	}
+	if n := ran("Db.all Todo"); n != 0 {
+		t.Fatalf("the page's load ran %d times", n)
+	}
+	if w := get("/?filter=Done", me); !strings.Contains(w.Body.String(), "Milk") {
+		t.Fatalf("not toggled: %q", w.Body.String())
+	}
+	w = send("POST", "/todos/"+todo+"/toggle", me, url.Values{"_method": {"PATCH"}}, "Referer", "http://example.com/?filter=Done")
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/?filter=Done" {
+		t.Fatalf("no-JS toggle: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	if w := get("/?filter=Done", me); strings.Contains(w.Body.String(), "Milk") {
+		t.Fatalf("not toggled back: %q", w.Body.String())
+	}
+	`)
+}
+
+// A write route answering `refresh`: the page the browser is on rendered before the update and
+// after it, and only the regions that changed sent (#todos), never the whole body.
+func TestGenRoute_DeleteRefresh(t *testing.T) {
+	t.Parallel()
+	runRouteApp(t, `
+	me := as(Table__User__Role__Reader__)
+	w := send("DELETE", "/todos/"+todo, me, nil, ds...)
+	body := w.Body.String()
+	if w.Code != http.StatusOK || !strings.Contains(body, "data: selector #todos\n") || strings.Contains(body, "selector body") || strings.Contains(body, "Milk") {
+		t.Fatalf("DELETE: %d %q", w.Code, body)
+	}
+	if n := ran("Db.all Todo"); n != 2 {
+		t.Fatalf("the page's load ran %d times, want 2 (before and after)", n)
+	}
+	`)
+}
+
+// A write route whose update cannot answer refresh or invalid (Toggle: render only) renders no
+// before-view: its handler never calls RenderShown, so the page the browser is on is not run.
+// One that can (Delete: refresh) does.
+func TestGenRoute_NoBeforeWhenUnreachable(t *testing.T) {
+	t.Parallel()
+	src := string(emit(t, routeHandlersApp)["routes__alder.go"])
+	toggle, del := goFunc(t, src, "Route__Todos__Toggle"), goFunc(t, src, "Route__Todos__Delete")
+	if strings.Contains(toggle, "RenderShown") || !strings.Contains(del, "RenderShown") {
+		t.Fatalf("Toggle:\n%s\nDelete:\n%s", toggle, del)
+	}
+	runRouteApp(t, `
+	w := send("PATCH", "/todos/"+todo+"/toggle", as(Table__User__Role__Reader__), nil, ds...)
+	if w.Code != http.StatusOK || ran("Db.all Todo") != 0 || ran("Db.getMine Todo") != 1 {
+		t.Fatalf("%d, page loads %d, row loads %d", w.Code, ran("Db.all Todo"), ran("Db.getMine Todo"))
+	}
+	`)
+}
+
+// A form that does not decode (a malformed date) is answered as `invalid` with the field errors:
+// 422, the page the browser is on rendered again with the posted values and the errors, and the
+// update not called (no row inserted). Without JavaScript the same page as a 422 document.
+func TestGenRoute_FormDecodeFails(t *testing.T) {
+	t.Parallel()
+	runRouteApp(t, `
+	me := as(Table__User__Role__Reader__)
+	bad := url.Values{"title": {"Bread"}, "due": {"soon"}}
+	w := send("POST", "/todos", me, bad, ds...)
+	body := w.Body.String()
+	if w.Code != http.StatusOK || w.Header().Get(web.StatusHeader) != "422" || !strings.Contains(body, web.MsgDate) || !strings.Contains(body, "value=\"Bread\"") {
+		t.Fatalf("POST /todos: %d %q %q", w.Code, w.Header().Get(web.StatusHeader), body)
+	}
+	if ran("Db.insertMine Todo") != 0 {
+		t.Fatal("update ran")
+	}
+	w = send("POST", "/todos", me, bad, "Referer", "http://example.com/")
+	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), web.MsgDate) || !strings.Contains(w.Body.String(), "<!doctype html>") {
+		t.Fatalf("no-JS POST /todos: %d %q", w.Code, w.Body.String())
+	}
+	if w := get("/", me); strings.Contains(w.Body.String(), "Bread") || ran("Db.insertMine Todo") != 0 {
+		t.Fatalf("a row was inserted: %q", w.Body.String())
+	}
+	`)
+}
+
+// The options check of a form posted from a page (plan call 11): a value the page's select did
+// not offer is a 422 with the field error on the row's form, update not called; an offered one
+// (the row's own title included) runs it. Posted from a page that shows no such select (or from
+// another app's page), a 400.
+func TestGenRoute_OptionsFromShownPage(t *testing.T) {
+	t.Parallel()
+	runRouteApp(t, `
+	me := as(Table__User__Role__Reader__)
+	move := "/todos/"+todo+"/move"
+	w := send("POST", move, me, url.Values{"list": {"bogus"}}, ds...)
+	body := w.Body.String()
+	if w.Code != http.StatusOK || w.Header().Get(web.StatusHeader) != "422" || !strings.Contains(body, web.MsgOption) || strings.Contains(body, "Moved to") {
+		t.Fatalf("forged option: %d %q %q", w.Code, w.Header().Get(web.StatusHeader), body)
+	}
+	for _, list := range []string{"home", "Milk"} {
+		w = send("POST", move, me, url.Values{"list": {list}}, ds...)
+		body = w.Body.String()
+		if w.Code != http.StatusOK || w.Header().Get(web.StatusHeader) != "" || !strings.Contains(body, "data: selector #todo-"+todo+"\n") || !strings.Contains(body, "Moved to "+list) {
+			t.Fatalf("option %s: %d %q", list, w.Code, body)
+		}
+	}
+	w = send("POST", move, me, url.Values{"list": {"home"}}, "Datastar-Request", "true", "Alder-Page", "/about")
+	if w.Header().Get(web.StatusHeader) != "400" || strings.Contains(w.Body.String(), "Moved to") {
+		t.Fatalf("from /about: %d %q %q", w.Code, w.Header().Get(web.StatusHeader), w.Body.String())
+	}
+	w = send("POST", move, me, url.Values{"list": {"home"}}, "Referer", "http://example.com/about")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("no-JS from /about: %d %q", w.Code, w.Body.String())
+	}
+	// Neither Alder-Page nor Referer: the page is "/", which shows the row's select, so a
+	// forged option is a 422 and an offered one runs the update.
+	w = send("POST", move, me, url.Values{"list": {"bogus"}}, "Datastar-Request", "true")
+	if w.Header().Get(web.StatusHeader) != "422" || !strings.Contains(w.Body.String(), web.MsgOption) || strings.Contains(w.Body.String(), "Moved to") {
+		t.Fatalf("no page header, forged option: %d %q %q", w.Code, w.Header().Get(web.StatusHeader), w.Body.String())
+	}
+	w = send("POST", move, me, url.Values{"list": {"home"}}, "Datastar-Request", "true")
+	if w.Code != http.StatusOK || w.Header().Get(web.StatusHeader) != "" || !strings.Contains(w.Body.String(), "Moved to home") {
+		t.Fatalf("no page header, offered option: %d %q %q", w.Code, w.Header().Get(web.StatusHeader), w.Body.String())
+	}
+	w = send("POST", move, me, url.Values{"list": {"bogus"}})
+	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), web.MsgOption) {
+		t.Fatalf("no JS, no Referer, forged option: %d %q", w.Code, w.Body.String())
+	}
+	`)
+}
+
+// Response.invalid is a committed success: a row inserted before it is kept, and the page the
+// browser is on is rendered again with the posted values and the text on the form (its state
+// keyed to the route: FormState.Msg is the route's rt.RouteKey).
+func TestGenRoute_InvalidCommits(t *testing.T) {
+	t.Parallel()
+	runRouteApp(t, `
+	me := as(Table__User__Role__Reader__)
+	w := send("POST", "/todos", me, url.Values{"title": {"Again"}}, ds...)
+	body := w.Body.String()
+	if w.Code != http.StatusOK || w.Header().Get(web.StatusHeader) != "422" || !strings.Contains(body, "Already there") || !strings.Contains(body, "value=\"Again\"") {
+		t.Fatalf("POST /todos: %d %q %q", w.Code, w.Header().Get(web.StatusHeader), body)
+	}
+	if w := get("/", me); !strings.Contains(w.Body.String(), ">Again</button>") {
+		t.Fatalf("the row is not kept: %q", w.Body.String())
+	}
+	w = send("POST", "/todos", me, url.Values{"title": {"Again"}}, "Referer", "http://example.com/")
+	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), "Already there") {
+		t.Fatalf("no-JS: %d %q", w.Code, w.Body.String())
+	}
+	w = send("POST", "/todos", me, url.Values{"title": {"Bread"}}, "Referer", "http://example.com/")
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/" {
+		t.Fatalf("redirect: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	`)
+}
+
+// goFunc is the source of Go function name in src, up to the next top-level declaration.
+func goFunc(t *testing.T, src, name string) string {
+	t.Helper()
+	i := strings.Index(src, "func "+name+"(")
+	if i < 0 {
+		t.Fatalf("no func %s in\n%s", name, src)
+	}
+	rest := src[i:]
+	if j := strings.Index(rest, "\n}\n"); j >= 0 {
+		return rest[:j+3]
+	}
+	return rest
+}
+
+// routeFormApp is a route app with a GET route whose parameter is named `form` (not a submitted
+// form: it is part of the route's URL) and a PATCH route with `form Entry` sent from a bare
+// `submit` attribute on an element that is not a <form>.
+var routeFormApp = map[string]string{
+	"App.alder": "module App\n\nsession { theme: Text = \"light\" }\n\nerror : Error -> Html Never\nerror err = <p>error</p>\n\nnotFound : Html Never\nnotFound = <p>not found</p>\n",
+	"Search.alder": `module Search
+
+route Find = GET   "/find"      { form: Text = "" }
+route Save = PATCH "/save/{id}" { id: Text } form Entry
+
+form Entry = { list: Text }
+
+Find.load : Find.Params -> Session -> Query Text
+Find.load params session = Query.succeed params.form
+
+Find.view : Text -> Session -> Html
+Find.view q session =
+  <div id="find">
+    <a href={Find { form: "x" }}>again</a>
+    <form submit={Save { id: "a" }}><button>Save</button></form>
+    <div submit={Save { id: "b" }}>bare</div>
+  </div>
+
+Save.update : Save.Params -> Session -> Task Response
+Save.update params session = Task.succeed (Response.render (Find { form: params.form.list }))
+`,
+}
+
+// A route's URL leaves out the `form` field only of a route with `form F` (its submitted form):
+// a GET route's parameter named form is in its links (ruling R9). A <form> posting to a PATCH
+// route carries the _method override (html.FormToRoute); a bare `submit` on another element is
+// RouteAttr only, with no override (it never submits without JavaScript).
+func TestGenRoute_FormParamAndOverride(t *testing.T) {
+	t.Parallel()
+	files := emitSource(t, routeFormApp)
+	contains(t, files["Search_alder.go"],
+		`rt.Route{Name: "Search.Find", Method: "GET", Path: "/find", Query: []rt.KV{rt.QueryKV("form", "x", "")}}`,
+		`html.FormToRoute(rt.Route{Name: "Search.Save", Method: "PATCH", Path: rt.Concat("/save/", rt.PathSegment("a"))}`,
+		`html.RouteAttr("data-on:submit", rt.Route{Name: "Search.Save", Method: "PATCH", Path: rt.Concat("/save/", rt.PathSegment("b"))})`,
 	)
 	vet(t, files)
 }

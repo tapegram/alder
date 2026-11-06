@@ -1,0 +1,10 @@
+module Admin
+
+-- A route with a role: any other role is a 404.
+route Stats = GET "/admin/stats" { } requires user, role Admin
+
+Stats.load : Stats.Params -> Session -> Query Int
+Stats.load params session = Query.succeed 42
+
+Stats.view : Int -> Session -> Html
+Stats.view n session = <p id="stats">{Text.fromInt n} todos</p>

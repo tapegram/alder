@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	rtpkg "alder/rt"
 	"alder/rt/datastar"
@@ -73,6 +74,84 @@ func (rt *router) answer(w http.ResponseWriter, r *http.Request, st hop, rq *Req
 	rt.answerShown(w, r, st, rq, resp)
 }
 
+// targetProblem is why a, a write's answer, cannot be delivered, "" when it can (#160 ruling
+// R10). The checker refuses a write route written in place (E0045), but not one held in a
+// variable or made by a helper:
+//   - `redirect` goes to a GET: a named GET route, an old `page`'s value (no name, no Method:
+//     rt.Page; pages and routes live side by side until PR 9) or a Url.external URL (no name,
+//     Method "GET": isExternal, a full navigation); a route of another method is refused;
+//   - `render` patches in a named GET route's view only: a page's value or an external URL has
+//     no element to patch, and is refused, as a route of another method is.
+func targetProblem(a rtpkg.Response) string {
+	t := a.Target
+	switch a.Kind {
+	case rtpkg.RespRedirect:
+		if t.Method != "" && t.Method != http.MethodGet {
+			return targetName(t) + " is a " + t.Method + " route, not a GET route of this app"
+		}
+	case rtpkg.RespRender:
+		switch {
+		case t.Name == "" && t.Method == "":
+			return "a page's value is not a GET route: render takes a route whose view is patched in"
+		case t.Name == "":
+			return "a Route with no name (Url.external makes one) is not a GET route of this app"
+		case t.Method != "" && t.Method != http.MethodGet:
+			return t.Name + " is a " + t.Method + " route, not a GET route of this app"
+		}
+	}
+	return ""
+}
+
+// viaName is how the Patches tab names the answer `kind` to target: "render Row", the route's
+// own name (the part after its module); just the kind for a page's value, which has no name.
+func viaName(kind string, target rtpkg.Route) string {
+	if target.Name == "" {
+		return kind
+	}
+	return kind + " " + target.Name[strings.LastIndex(target.Name, ".")+1:]
+}
+
+// targetName is r's name for a log line: its Name, else its URL.
+func targetName(r rtpkg.Route) string {
+	if r.Name != "" {
+		return r.Name
+	}
+	return strconv.Quote(rtpkg.RouteURL(r))
+}
+
+// isExternal reports whether r is a Url.external URL (no name, Method "GET"), not a route or a
+// page of this app.
+func isExternal(r rtpkg.Route) bool { return r.Name == "" && r.Method == http.MethodGet }
+
+// badTarget answers a write whose answer's target is not a GET route (targetProblem: why): never
+// followed or patched in. It is logged and answered as an error: without JavaScript the 500 page
+// (App.error); under Datastar no patch, the error toast and Alder-Status 500, as a `render`
+// whose target failed (renderFailed). The update committed, so the session it left is stored.
+func (rt *router) badTarget(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response, why string) {
+	a := resp.Answer
+	err := fmt.Errorf("%w: %s to %s: %s (nothing delivered)", eff.ErrInternal, kindName(a.Kind), strconv.Quote(rtpkg.RouteURL(a.Target)), why)
+	if serr := rt.setSession(w, r, rq, resp.Session); serr != nil {
+		rt.logReq(w, "error", line(w, r, serr.Error()))
+	}
+	if !rq.Datastar {
+		rt.fail(w, r, st, html.None(), err, nil)
+		return
+	}
+	rt.logReq(w, "error", line(w, r, err.Error()))
+	if tw, ok := w.(*tracker); ok {
+		tw.setAnswer("error")
+		tw.detail = err.Error()
+		tw.addToast(rtpkg.NoticeError, "Something went wrong")
+	}
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-cache")
+	h.Set(StatusHeader, strconv.Itoa(http.StatusInternalServerError))
+	w.WriteHeader(http.StatusOK)
+	rt.notify(w)
+	rt.patchPanel(w, http.StatusInternalServerError)
+}
+
 // kindName is k as the Prelude names it, for a log line.
 func kindName(k rtpkg.ResponseKind) string {
 	switch k {
@@ -110,9 +189,28 @@ func (t *tracker) addToast(kind rtpkg.NoticeKind, text string) {
 }
 
 // answerRedirect answers `redirect r`: a 303 to r's URL, written as a handler's redirect is
-// (write): followed and morphed in under Datastar, or a 303 with the toast stored.
+// (write): followed and morphed in under Datastar, or a 303 with the toast stored. A Url.external
+// target (isExternal) is a real navigation under Datastar (navigateAway: the toast kept in the
+// notice cookie), even to a path of this app, never a morph (ruling R10); without JavaScript the
+// same 303. An unsafe URL (Url.external's "#") is refused as a handler's redirect is.
 func (rt *router) answerRedirect(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
-	rt.write(w, r, st, rq, RedirectResponse(rtpkg.RouteURL(resp.Answer.Target), resp.Session))
+	loc, ext := rtpkg.RouteURL(resp.Answer.Target), isExternal(resp.Answer.Target)
+	if ext && (strings.HasPrefix(loc, "#") || !rtpkg.SafeURL(loc)) {
+		rt.write(w, r, st, rq, QueryRedirectResponse(loc)) // a 500: never a navigation in place
+		return
+	}
+	if tw, ok := w.(*tracker); ok && !ext {
+		tw.via = viaName("redirect", resp.Answer.Target)
+	}
+	if !ext || !rq.Datastar {
+		rt.write(w, r, st, rq, RedirectResponse(loc, resp.Session))
+		return
+	}
+	if err := rt.setSession(w, r, rq, resp.Session); err != nil {
+		rt.fail(w, r, st, html.None(), err, nil)
+		return
+	}
+	rt.navigateAway(w, r, "redirect", loc)
 }
 
 // answerRender answers `render r`: an element GET of r's URL served in-process (serve, with the
@@ -133,8 +231,11 @@ func (rt *router) answerRender(w http.ResponseWriter, r *http.Request, st hop, r
 		ok = hit != nil
 	}
 	if !ok {
-		rt.renderFailed(w, r2, rq, NotFoundResponse(html.None()))
+		rt.renderFailed(w, r2, rq, NotFoundResponse(html.None()), "render")
 		return
+	}
+	if tw, ok := w.(*tracker); ok {
+		tw.via = viaName("render", resp.Answer.Target)
 	}
 	next := hop{origin: st.origin, gets: st.gets + 1, has: true, render: true}
 	next.session, next.enc = rt.sessionLeft(rq, resp)
@@ -150,12 +251,13 @@ func renderOK(resp Response) bool {
 // renderFailed answers a `render` whose target (r, its GET) did not answer its view: no element
 // is patched — the failure page never replaces the element — and an error toast follows the
 // answer's own: "Not found" for a 404 (the row was deleted meanwhile), else "Something went
-// wrong", with the target's error logged.
-func (rt *router) renderFailed(w http.ResponseWriter, r *http.Request, rq *Request, resp Response) {
+// wrong", with the target's error logged. It also answers an element fetch whose route answered
+// 404 (deliverElement): what names the request in the dev panel, "render" or "element fetch".
+func (rt *router) renderFailed(w http.ResponseWriter, r *http.Request, rq *Request, resp Response, what string) {
 	text := "Not found"
-	answer := "render: not found, no element patched"
+	answer := what + ": not found, no element patched"
 	if resp.Raw != nil || resp.Status != http.StatusNotFound {
-		text, answer = "Something went wrong", "render: error, no element patched"
+		text, answer = "Something went wrong", what+": error, no element patched"
 		why := resp.Err
 		if why == nil {
 			why = fmt.Errorf("answered status %d", resp.Status)
@@ -163,7 +265,7 @@ func (rt *router) renderFailed(w http.ResponseWriter, r *http.Request, rq *Reque
 		if resp.Raw != nil {
 			why = fmt.Errorf("answered a file, not a view")
 		}
-		rt.logReq(w, "error", line(w, r, fmt.Sprintf("render: %v (no element patched)", why)))
+		rt.logReq(w, "error", line(w, r, fmt.Sprintf("%s: %v (no element patched)", what, why)))
 	}
 	if tw, ok := w.(*tracker); ok {
 		tw.setAnswer(answer)

@@ -37,6 +37,22 @@ func identifiers(first, alphabet string, n int, segment bool) []string {
 // TestGoNameInjective checks the naming scheme's injectivity proof (names.go) exhaustively on
 // small identifiers, and on a corpus of names that collided under earlier schemes: no two
 // different Alder entities get the same Go name, whatever their kind.
+// A route's member or type is a dotted name inside its module (#160, plan call 6): GoName splits
+// it, so Row.view of module Todos is the name a module Todos.Row's view would have (the names
+// graph lets only one of them exist). A page's names do not change.
+func TestGoName_RouteMember(t *testing.T) {
+	for _, c := range [][3]string{
+		{"Todos", "Row.view", "Todos__Row__view"},
+		{"Todos.Row", "view", "Todos__Row__view"},
+		{"Admin.Projects", "Manage.Params", "Admin__Projects__Manage__Params"},
+		{"Todos.Index", "view", "Todos__Index__view"},
+	} {
+		if got := GoName(c[0], c[1]); got != c[2] {
+			t.Errorf("GoName(%q, %q) = %q, want %q", c[0], c[1], got, c[2])
+		}
+	}
+}
+
 func TestGoNameInjective(t *testing.T) {
 	segs := identifiers("AB", "AB_x", 3, true)
 	var modules []string

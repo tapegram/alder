@@ -1,6 +1,7 @@
 package gen
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -79,8 +80,31 @@ func (f *fn) member(x *ir.Call, s *scope) string {
 		", []any{" + strings.Join(vals, ", ") + "}, _e.Now())\nreturn err\n}, " + f.code(x.Args[0], s) + ", " + f.code(x.Args[1], s) + ")"
 }
 
+// ErrRouteTests is why a test build of a program whose tests drive a route (Test.get, open,
+// fetch, click, submit or submitRaw of a route) is not built: the browser steps on routes come
+// with #160 PR 4, which removes it. Emit returns it as it is (browserStep panics with it).
+var ErrRouteTests = errors.New("tests on routes are not built yet (#160 PR 4)")
+
 // browserStep is step x (a Test* browser node of effect type x.Type()).
 func (f *fn) browserStep(x ir.Expr, s *scope) string {
+	switch x := x.(type) { // #160 PR 4 builds these (ruling R8: a clear stop until then)
+	case *ir.TestGet:
+		if x.Route != nil {
+			panic(ErrRouteTests)
+		}
+	case *ir.TestSubmit:
+		if x.Route != nil {
+			panic(ErrRouteTests)
+		}
+	case *ir.TestSubmitRaw:
+		if x.Route != nil {
+			panic(ErrRouteTests)
+		}
+	case *ir.TestClick:
+		if x.Route != nil {
+			panic(ErrRouteTests)
+		}
+	}
 	t := x.Type()
 	r := GoType(effResult(t))
 	result := func(c *scope, first, value, res string) string {

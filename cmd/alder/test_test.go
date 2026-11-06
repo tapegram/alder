@@ -1335,3 +1335,17 @@ test "Test.refresh is not built yet" = {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 }
+
+// TestTest_RouteStepsNotBuilt (#160 PR 3, ruling R8): until PR 4 builds the browser steps on
+// routes, `alder test` of an app whose tests drive a route stops with one clear line and a
+// non-zero exit, never an internal error or a crash.
+func TestTest_RouteStepsNotBuilt(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := tempAppAbs(t, "../../testdata/corpus/browser-routes-ok", "todos")
+	code, stdout, stderr := runTest(t, dir)
+	if code != 1 || !strings.Contains(stderr, "tests on routes are not built yet (#160 PR 4)") ||
+		strings.Contains(stderr, "internal error") || strings.Contains(stderr, "goroutine ") {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+}

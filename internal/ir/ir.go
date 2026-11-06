@@ -25,6 +25,7 @@ type Program struct {
 	Tables    []*Table
 	Forms     []*Form
 	Pages     []*Page
+	Routes    []*Route    // every route, in module order, then declaration order
 	AppMsgs   []*Msg      // App's `msg` declarations, in order
 	AppUpdate *Value      // App's `update` (a Task effect); nil when App declares none
 	Session   *RecordType // App's `session` record (empty when App declares none); nil without an App module
@@ -40,12 +41,22 @@ type Program struct {
 	// Partitions and silos (M15, book 06 "Partitions", 08). Via maps each session field
 	// declared `via T` to its membership table T (one `@ref` to the user table, one to the
 	// key's table). Silos maps each `silo k { … }` key to its tables, in the order written;
-	// a table in no silo is in the shared store. Choose maps each `choose k = Page` key to that
-	// page. Each is nil when the app declares none.
+	// a table in no silo is in the shared store. Choose maps each `choose k = …` key to the page
+	// or route it names. Each is nil when the app declares none.
 	Via    map[string]*Table
 	Silos  map[string][]*Table
-	Choose map[string]*Page
+	Choose map[string]ChooseTarget
 }
+
+// ChooseTarget is what App's `choose k = …` names: a *Page or a GET *Route (#160; PR 9 leaves
+// only routes). TargetPath is the path a request without k is sent to.
+type ChooseTarget interface{ TargetPath() string }
+
+// TargetPath is the page's path.
+func (pg *Page) TargetPath() string { return pg.Path }
+
+// TargetPath is the route's path.
+func (r *Route) TargetPath() string { return r.Path }
 
 // Store is where a Task writes (M15): the shared store (StoreShared, Silo "") or the store of
 // one silo key's value (StoreSilo(k)), chosen at run time by the session's k.
@@ -340,6 +351,39 @@ type Page struct {
 	Load, Update *Value
 }
 
+// Route is a `route Name = METHOD "path" { params } [form F] [requires …]` declaration (#160)
+// of module Module. Params is the record `Name.Params` in the module's Types (with a field
+// `form` holding the form when Form is set). Requires, Roles, Silo and their positions are the
+// route's guard, as a Page's. Session is the session its members see: App's Session record, or,
+// for a route that `requires` (or has a `silo`), the checker's narrowed record of the module
+// (named after the first route of the module that narrows the same fields, "Index.Session", and
+// in the module's Types), which routes narrowing the same fields share.
+//
+// A GET route has Load (a Query of Model) and View (Html, or File when File is set); a write
+// route (POST, PUT, PATCH, DELETE) has Update (a Task Response) and Store, where that Task
+// writes (see Arm). NeedsShown is set for a write route whose update may answer with the page it
+// was sent from rendered again (Response.refresh, Response.invalid, or an app function giving a
+// Response). OptionRoutes are, for a write route with a form, the GET routes whose view renders
+// a `<Select options>` of that form, itself or through a view it calls (`Row.view` inside
+// `Index.view`): the views the runtime renders again to check a submitted option. Members are
+// Values of the module named "Name.load", "Name.view" and "Name.update".
+type Route struct {
+	Module, Name, Method, Path string
+	Params                     *RecordType
+	Form                       *Form
+	Requires, Roles            []string
+	RequiresPos, RolesPos      Pos
+	Silo                       string
+	SiloPos                    Pos
+	Session                    *RecordType
+	Model                      types.Type // GET: what Load gives; nil for a write route
+	File                       bool
+	Load, View, Update         *Value
+	Store                      Store
+	NeedsShown                 bool
+	OptionRoutes               []*Route
+}
+
 // Msg is a `msg` declaration. Params is the payload record of the message's constructor in its
 // Msg union (named "<Msg>Params"): the declared parameters, then a field `form` holding the form
 // when Form is set. Params is nil when the message has neither parameters nor a form.
@@ -503,6 +547,15 @@ type PageRef struct {
 	Params Expr
 }
 
+// RouteRef is a route value (`Todos.Row { id: x }`), of type Route: Route with its Params
+// record, nil when the route is written bare (no parameters but its form, which the runtime
+// supplies).
+type RouteRef struct {
+	Typed
+	Route  *Route
+	Params Expr
+}
+
 // Hole is a typed hole `?name`, which `alder build` rejects before code generation.
 type Hole struct {
 	Typed
@@ -601,8 +654,8 @@ const (
 	AttrText   AttrKind = iota // Value is Text
 	AttrBool                   // Value is Bool: present when True (a bare attribute is Lit True)
 	AttrMaybe                  // Value is Maybe Text: present when Just
-	AttrHref                   // Value is a Page (PageRef or Url.external): an href, or a src given a page
-	AttrClick                  // Value is a message: a Ctor of a page's Msg union or App's
+	AttrHref                   // Value is a Page (PageRef, RouteRef or Url.external): an href, or a src given a page
+	AttrClick                  // Value is a message (a Ctor of a page's Msg union or App's) or a Route (RouteRef or any Route value)
 	AttrSubmit                 // as AttrClick, on a <form>
 )
 
@@ -706,11 +759,14 @@ type Input struct {
 
 // FormEl is `<form submit={…}>`. Attrs include the AttrSubmit attribute holding the message
 // value. Msg is the message it submits and Page the page declaring it (nil for an App message);
-// both are nil when the submit value is not a constructor written in place.
+// both are nil when the submit value is not a constructor written in place. Route is the write
+// route it posts to when the submit value is a route constructor written in place (Msg and Page
+// are then nil).
 type FormEl struct {
 	Typed
 	Msg      *Msg
 	Page     *Page
+	Route    *Route
 	Attrs    []HAttr
 	Children []Expr
 }
@@ -1028,10 +1084,12 @@ type TestLogin struct {
 // TestGet is `Test.get p` (Open unset: a Task { model: M, session, doc }, failing unless the
 // page is shown; M is Page's Model), `Test.open p` (Open set: { answer, session, doc }) or
 // `Test.fetch p` (Fetch set: the raw answer { status, contentType, body, headers }), for the
-// page value Page with Params (nil for a page without parameters).
+// page value Page with Params (nil for a page without parameters), or for the GET route value
+// Route (Page nil; M is the route's Model) with its Params.
 type TestGet struct {
 	Typed
 	Page   *Page
+	Route  *Route
 	Params Expr
 	Open   bool
 	Fetch  bool
@@ -1040,35 +1098,41 @@ type TestGet struct {
 // TestSubmit is `Test.submit F r`: Record (F's record) posted to Msg, the message that posts
 // form Form, of Page (nil for App's form): a Task { answer, session, doc }. Params is the
 // message's payload when the test wrote the message (`Test.submit (Save { id: id }) r`), nil
-// when it wrote the form: the form is then found by the message alone.
+// when it wrote the form: the form is then found by the message alone. A route's form is posted
+// to Route, the write route the test names (`Test.submit (Move { id: id }) r`; Msg and Page
+// nil), with Params its parameters record without `form` (nil when written bare).
 type TestSubmit struct {
 	Typed
 	Form   *Form
 	Msg    *Msg
 	Page   *Page
+	Route  *Route
 	Params Expr
 	Record Expr
 }
 
 // TestSubmitRaw is `Test.submitRaw F fields`: Fields (a List { name: Text, value: Text })
 // posted as text to Msg, the message that posts form Form, of Page (nil for App's form);
-// Params as for TestSubmit.
+// Route and Params as for TestSubmit.
 type TestSubmitRaw struct {
 	Typed
 	Form   *Form
 	Msg    *Msg
 	Page   *Page
+	Route  *Route
 	Params Expr
 	Fields Expr
 }
 
 // TestClick is `Test.click m`: message Msg of Page (nil for App's) with its parameters Params
 // (Msg's payload record; nil for a message without parameters) posted as the held page's
-// control for it would.
+// control for it would; or the route value Route (a GET route fetched, or a write route without
+// a form sent; Page and Msg nil) with its Params (nil when written bare).
 type TestClick struct {
 	Typed
 	Page   *Page
 	Msg    *Msg
+	Route  *Route
 	Params Expr
 }
 

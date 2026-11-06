@@ -10,6 +10,7 @@ import (
 // the declaration's place as a file URI and an LSP range (0-based) in place of file, line, col.
 type routeItem struct {
 	Kind   string `json:"kind"`
+	Method string `json:"method"`
 	Path   string `json:"path"`
 	Module string `json:"module"`
 	Name   string `json:"name"`
@@ -34,7 +35,7 @@ func routesReq(s *server, _ json.RawMessage) (out any, err error) {
 	}
 	for _, r := range buildkit.Routes(a.prog, a.res) {
 		items = append(items, routeItem{
-			Kind: r.Kind, Path: r.Path, Module: r.Module, Name: r.Name,
+			Kind: r.Kind, Method: r.Method, Path: r.Path, Module: r.Module, Name: r.Name,
 			URI:   s.uriOf(r.File),
 			Range: s.enc.wireRange(a.lines[r.File], lspRange(r.Line, r.Col, r.EndLine, r.EndCol)),
 		})

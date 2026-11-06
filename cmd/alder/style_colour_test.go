@@ -26,7 +26,7 @@ func TestColourOnly_StripEqualsPlain(t *testing.T) {
 	}{
 		{"routes", func() cliRun {
 			return runIn(func(o, e *bytes.Buffer) int { return runRoutesTo([]string{todos}, o, e) })
-		}, "KIND"},
+		}, "METHOD"},
 		{"eval", func() cliRun {
 			return runIn(func(o, e *bytes.Buffer) int {
 				return runEvalTo([]string{"--build-dir", bd, todos, "1 + 1"}, strings.NewReader(""), o, e)

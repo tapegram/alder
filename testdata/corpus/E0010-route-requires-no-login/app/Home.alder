@@ -1,0 +1,9 @@
+module Home
+
+route Index = GET "/" { } requires user
+
+Index.load : Index.Params -> Session -> Query Text
+Index.load params session = Query.succeed session.user
+
+Index.view : Text -> Session -> Html
+Index.view user session = <p>{user}</p>

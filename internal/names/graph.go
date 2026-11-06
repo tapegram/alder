@@ -337,6 +337,16 @@ func (p *Program) IsPageModule(name string) bool { _, ok := p.Pages[name]; retur
 // Route is route name of module, the first one declared with that name; nil when there is none.
 func (p *Program) Route(module, name string) *syntax.RouteDecl { return p.routes[module][name] }
 
+// RouteAt is the route a full name `Module.Route` names (`Orgs.Pick.Pick`), as App's `choose`
+// writes one; nil when there is none.
+func (p *Program) RouteAt(full string) *syntax.RouteDecl {
+	i := strings.LastIndexByte(full, '.')
+	if i < 0 {
+		return nil
+	}
+	return p.Route(full[:i], full[i+1:])
+}
+
 // IsRouteModule reports whether module m declares a route.
 func (p *Program) IsRouteModule(m string) bool { return len(p.routes[m]) > 0 }
 

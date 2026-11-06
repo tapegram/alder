@@ -1,0 +1,25 @@
+module Projects
+
+import Project
+
+route Index = GET  "/projects" { } requires user, org
+route Add   = POST "/projects" { } form NewProject requires user, org
+
+form NewProject = { name: Text }
+
+Index.load : Index.Params -> Session -> Query (List Project)
+Index.load params session = Db.scoped Project |> Db.all
+
+Index.view : List Project -> Session -> Html
+Index.view projects session =
+  <div>
+    <ul>{for p in projects -> <li>{p.name}</li>}</ul>
+    <form submit={Add}><Input field="name" /><Errors form /><button>Add</button></form>
+  </div>
+
+-- Add writes the org's database only: one store
+Add.update : Add.Params -> Session -> Task Response
+Add.update params session = {
+  let _ <- Db.insertScoped Project { name: params.form.name }
+  Task.succeed (Response.redirect Index)
+}

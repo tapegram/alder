@@ -1,0 +1,23 @@
+module Orgs
+
+import Membership
+
+-- `choose org`'s route: it requires the user, not the org.
+route Pick  = GET  "/orgs"       { } requires user
+route Leave = POST "/orgs/leave" { } requires user
+route Team  = GET  "/team"       { } requires user, team
+
+Pick.load : Pick.Params -> Session -> Query (List Membership)
+Pick.load params session = Db.from Membership |> Db.where (Membership.user.eq session.user) |> Db.all
+
+Pick.view : List Membership -> Session -> Html
+Pick.view mine session = <ul>{for m in mine -> <li>{m.org}</li>}</ul>
+
+Leave.update : Leave.Params -> Session -> Task Response
+Leave.update params session = Task.succeed (Response.redirect (Pick {}))
+
+Team.load : Team.Params -> Session -> Query Text
+Team.load params session = Query.succeed session.team
+
+Team.view : Text -> Session -> Html
+Team.view team session = <p>{team}</p>

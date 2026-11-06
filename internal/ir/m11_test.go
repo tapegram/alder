@@ -108,7 +108,7 @@ func TestIR_Partitions(t *testing.T) {
 	if strings.Join(silo, " ") != "Project Issue" || len(p.Silos) != 1 {
 		t.Errorf("silos: %v", p.Silos)
 	}
-	if p.Choose["org"] == nil || p.Choose["org"].Module != "Orgs.Index" {
+	if pg, ok := p.Choose["org"].(*Page); !ok || pg.Module != "Orgs.Index" {
 		t.Errorf("choose: %v", p.Choose)
 	}
 	stores := map[string]string{}
@@ -158,5 +158,29 @@ func TestIR_Partitions(t *testing.T) {
 	}
 	if fmt.Sprint(seen) != "map[Db.deleteScoped org:1 Db.getScoped org:2 Db.insertMine user:1 Db.insertScoped org:4 Db.insertScoped user:1 Db.mine user:1 Db.scoped org:3 Db.scoped user:1 Db.updateScoped org:2]" {
 		t.Errorf("scoped nodes: %v", seen)
+	}
+}
+
+// TestIR_RouteSilos (#160): the corpus app silo-routes-ok lowers `choose org` naming a GET route,
+// each write route's store, the admin form `silo org` on routes, and the narrowed sessions the
+// routes of one module share.
+func TestIR_RouteSilos(t *testing.T) {
+	p := lowerDir(t, "../../testdata/corpus/silo-routes-ok")
+	if r, ok := p.Choose["org"].(*Route); !ok || r.Module != "Orgs" || r.Name != "Pick" || r.TargetPath() != "/orgs" {
+		t.Errorf("choose: %v", p.Choose)
+	}
+	got := map[string]string{}
+	for _, r := range p.Routes {
+		got[r.Module+"."+r.Name] = fmt.Sprintf("%s %s silo=%q session=%s", r.Method, r.Store, r.Silo, r.Session.Name)
+	}
+	want := map[string]string{
+		"Orgs.Pick":             `GET shared silo="" session=Pick.Session`,
+		"Projects.Index":        `GET shared silo="" session=Index.Session`,
+		"Projects.Add":          `POST silo org silo="" session=Index.Session`,
+		"Admin.Projects.Manage": `GET shared silo="org" session=Manage.Session`,
+		"Admin.Projects.Remove": `DELETE silo org silo="org" session=Manage.Session`,
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("routes:\n got %v\nwant %v", got, want)
 	}
 }

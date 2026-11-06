@@ -319,8 +319,9 @@ func (c *Checker) checkVia() {
 	}
 }
 
-// checkChoose validates App's `choose k = Page` declarations (E0032) once pages are defined, and
-// that every key with `via` that a page `requires` has one.
+// checkChoose validates App's `choose k = Page` (or `choose k = Module.Route`, a GET route)
+// declarations (E0032) once pages and routes are defined, and that every key with `via` that a
+// page or route `requires` has one.
 func (c *Checker) checkChoose() {
 	app := c.prog.Modules["App"]
 	if app == nil {
@@ -333,7 +334,17 @@ func (c *Checker) checkChoose() {
 			continue
 		}
 		_, has := c.sessionKey(cd.Key)
-		pg := c.pages[cd.Page]
+		var requires []string // the page's or route's own `requires`
+		known := false
+		if pg := c.pages[cd.Page]; pg != nil {
+			requires, known = pg.Requires, true
+		}
+		var route *RouteInfo // a route written `Module.Route`
+		if i := strings.LastIndexByte(cd.Page, '.'); !known && i >= 0 {
+			if route = c.route(cd.Page[:i], cd.Page[i+1:]); route != nil {
+				requires, known = route.Requires, true
+			}
+		}
 		twice := seen[cd.Key]
 		seen[cd.Key] = true
 		switch {
@@ -343,8 +354,10 @@ func (c *Checker) checkChoose() {
 			c.errorf(diag.PartitionDecl, cd.KeySpan, "`choose user`: the signed-in user is chosen by `login`; `choose` names the page for another key")
 		case !has:
 			c.errorf(diag.PartitionDecl, cd.KeySpan, "`choose %s`: the session has no field `%s`", cd.Key, cd.Key)
-		case pg == nil: // names reported the unknown page
-		case slices.Contains(pg.Requires, cd.Key):
+		case !known: // names reported the unknown page or route
+		case route != nil && isWrite(route.Method):
+			c.errorf(diag.PartitionDecl, cd.Span, "`choose %s = %s`: `%s` is a %s route; a request without `%s` is sent to a GET route", cd.Key, cd.Page, cd.Page, route.Method, cd.Key)
+		case slices.Contains(requires, cd.Key):
 			c.errorf(diag.PartitionDecl, cd.Span, "`choose %s = %s`: `%s` `requires %s` itself, so a request without `%s` would be sent back to it", cd.Key, cd.Page, cd.Page, cd.Key, cd.Key)
 		default:
 			if c.choose == nil {

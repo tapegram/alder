@@ -229,3 +229,41 @@ func (c *Control) forwarded() []Attr {
 	}
 	return out
 }
+
+// Offer is what the selects with `options={…}` of one form field offer (Offers): their choices
+// together, and whether a blank value is allowed by any of them.
+type Offer struct {
+	Choices []Choice
+	Blank   bool
+}
+
+// Offers are the options the selects with `options={…}` of Alder form form offer in n, by
+// field, counting only those inside a <form> that sends request key (its formKey: FormTo's
+// MsgRef.Key, FormToRoute's rt.RouteKey), so another row's form of the same type offers nothing
+// to this one. found reports whether n has such a form with at least one of them. A select of
+// a union (Options, no Choices) is checked by its decoder, not here.
+func Offers(n Node, form, key string) (offers map[string]Offer, found bool) {
+	offers = map[string]Offer{}
+	var walk func(n Node, in bool)
+	walk = func(n Node, in bool) {
+		switch n.kind {
+		case kCtrl:
+			if c := n.control; in && c.Kind == "select" && c.Form == form && c.Choices != nil {
+				o := offers[c.Name]
+				o.Choices = append(o.Choices, c.Choices...)
+				o.Blank = o.Blank || c.Blank
+				offers[c.Name] = o
+				found = true
+			}
+		case kElem, kFrag:
+			if n.kind == kElem && n.tag == "form" {
+				in = formKey(n.attrs) == key
+			}
+			for _, c := range n.children {
+				walk(c, in)
+			}
+		}
+	}
+	walk(n, false)
+	return offers, found
+}

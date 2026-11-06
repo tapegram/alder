@@ -156,7 +156,7 @@ func (l *lowerer) variable(x *syntax.Var) Expr {
 	panic(fmt.Sprintf("ir: cannot lower reference %s.%s at %s", x.Module, x.Name, pos(x.Span)))
 }
 
-// ctorRef lowers a constructor, page or brand name used as a value (not applied).
+// ctorRef lowers a constructor, page, route or brand name used as a value (not applied).
 func (l *lowerer) ctorRef(x *syntax.CtorRef) Expr {
 	t := l.typeOf(x)
 	fn, isFn := t.(*types.Fun)
@@ -166,6 +166,12 @@ func (l *lowerer) ctorRef(x *syntax.CtorRef) Expr {
 			return &PageRef{Typed: Typed{t}, Page: l.page(x.Ref.Module)}
 		}
 		return l.eta(fn, func(arg Expr) Expr { return &PageRef{Typed: Typed{fn.Result}, Page: l.page(x.Ref.Module), Params: arg} })
+	case syntax.RefRoute:
+		r := l.route(x.Ref.Module, x.Ref.Name)
+		if !isFn { // a route whose parameters are none or only its form
+			return &RouteRef{Typed: Typed{t}, Route: r}
+		}
+		return l.eta(fn, func(arg Expr) Expr { return &RouteRef{Typed: Typed{fn.Result}, Route: r, Params: arg} })
 	case syntax.RefCtor:
 		info := l.res.Ctors[key(x.Ref.Module, x.Ref.Name)]
 		if info == nil { // a brand constructor: erased to the identity
@@ -205,6 +211,13 @@ func (l *lowerer) page(module string) *Page {
 		return pg
 	}
 	panic(fmt.Sprintf("ir: unknown page %s", module))
+}
+
+func (l *lowerer) route(module, name string) *Route {
+	if r := l.routes[key(module, name)]; r != nil {
+		return r
+	}
+	panic(fmt.Sprintf("ir: unknown route %s.%s", module, name))
 }
 
 // payloadType is the type of constructor name's payload in union type t (with its arguments).
@@ -263,6 +276,8 @@ func (l *lowerer) app(fn syntax.Expr, args []syntax.Expr, piped Expr, t types.Ty
 		switch ct.Ref.Kind {
 		case syntax.RefPage:
 			return &PageRef{Typed: Typed{t}, Page: l.page(ct.Ref.Module), Params: lower()[0]}
+		case syntax.RefRoute:
+			return &RouteRef{Typed: Typed{t}, Route: l.route(ct.Ref.Module, ct.Ref.Name), Params: lower()[0]}
 		case syntax.RefCtor:
 			if l.res.Ctors[key(ct.Ref.Module, ct.Ref.Name)] == nil {
 				return lower()[0] // a brand constructor is erased

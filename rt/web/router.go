@@ -181,7 +181,10 @@ type tracker struct {
 	answer  string
 	detail  string
 	patches []string
-	notice  string // a Noticed answer's toast text, patched in after the body
+	// via names the write route's answer that caused the patches ("render Row", "redirect Index"),
+	// for the Patches tab; the first patch takes it (patchName)
+	via    string
+	notice string // a Noticed answer's toast text, patched in after the body
 	// hops are the redirects follow served in this same answer, after the request the client
 	// sent (whose rq and recorder the panel keeps): each one's URL, where its steps and
 	// statements start in the recorder, and how it was answered
@@ -226,6 +229,15 @@ func (rt *router) logReq(w http.ResponseWriter, level, msg string) {
 type hopMark struct {
 	url, answer string
 	steps, sql  int
+}
+
+// patchName is the Patches tab's name for the patch p: the first patch after a write route's
+// answer carries that answer's name, as in "#todo-7 (render Row)".
+func (t *tracker) patchName(p string) string {
+	if t.via != "" && len(t.patches) == 0 {
+		return p + " (" + t.via + ")"
+	}
+	return p
 }
 
 // setAnswer records how the request was answered for the panel: the first request's answer is
@@ -1114,6 +1126,12 @@ func (rt *router) setSession(w http.ResponseWriter, r *http.Request, rq *Request
 }
 
 func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Request, resp Response) {
+	if resp.Answer != nil {
+		if why := targetProblem(*resp.Answer); why != "" {
+			rt.badTarget(w, r, st, rq, resp, why)
+			return
+		}
+	}
 	if st.stale && rq.Datastar && rt.staleReload(w, r, st, rq, resp) {
 		return
 	}
@@ -1188,6 +1206,8 @@ func (rt *router) write(w http.ResponseWriter, r *http.Request, st hop, rq *Requ
 		rt.document(w, http.StatusOK, page)
 	case http.StatusServiceUnavailable:
 		rt.maintenance(w, r, st, resp.Err)
+	case http.StatusBadRequest:
+		rt.refused(w, r, st, resp.Err)
 	case http.StatusNotFound, http.StatusInternalServerError:
 		// a non-nil session here is one a successful Task left before a later step failed
 		// (the re-load after update): it is stored all the same
@@ -1379,7 +1399,7 @@ func (rt *router) morph(w http.ResponseWriter, r *http.Request, st hop, status i
 	}
 	err := datastar.PatchBody(w, rt.shellBody(w, rt.dev(withShown(bodyOf(page)))))
 	if tw, ok := w.(*tracker); ok {
-		tw.patches = append(tw.patches, "body")
+		tw.patches = append(tw.patches, tw.patchName("body"))
 	}
 	if err == nil && st.url != "" {
 		t, _ := titleOf(page) // a page without a <title> empties the old one
@@ -1489,6 +1509,16 @@ func (rt *router) badRequest(w http.ResponseWriter, r *http.Request, st hop, why
 		tw.setAnswer("bad request")
 	}
 	rt.failure(w, r, st, http.StatusBadRequest, "<p>400 bad request: "+esc(why)+"</p>")
+}
+
+// refused answers a handler's BadRequestResponse: why logged at warn, then status 400 and a page
+// saying so, or as a body patch for a Datastar request (Alder-Status 400).
+func (rt *router) refused(w http.ResponseWriter, r *http.Request, st hop, why error) {
+	rt.logReq(w, "warn", line(w, r, fmt.Sprintf("bad request: %v", why)))
+	if tw, ok := w.(*tracker); ok {
+		tw.setAnswer("bad request")
+	}
+	rt.failure(w, r, st, http.StatusBadRequest, "<p>400 bad request</p>")
 }
 
 // notFound writes doc (or, when it renders empty, Options.NotFoundDoc) with status 404, or as
