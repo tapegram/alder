@@ -111,7 +111,7 @@ func TestDefinition_FromClick(t *testing.T) {
 	}
 }
 
-// `R.` offers a GET route's load, view, Params and Session, and a write route's update and Params.
+// `R.` offers a GET route's load, view, Params and Session, and a write route's update, Params and Session.
 func TestComplete_RouteMembers(t *testing.T) {
 	c, rel := routesCopy(t)
 	const after = "  let _ <- Db.updateMine Todo params.id (\\t -> { t | done: not t.done })\n"
@@ -127,10 +127,10 @@ func TestComplete_RouteMembers(t *testing.T) {
 	}
 	p = typing(t, c, rel, after, "  let z = Toggle.")
 	got = labels(complete(t, c, rel, p))
-	if len(got) != 2 {
-		t.Errorf("Toggle. offers %v, want update and Params only", got)
+	if len(got) != 3 {
+		t.Errorf("Toggle. offers %v, want update, Params and Session only", got)
 	}
-	for _, name := range []string{"update", "Params"} {
+	for _, name := range []string{"update", "Params", "Session"} {
 		if _, ok := got[name]; !ok {
 			t.Errorf("Toggle. lacks %s: %v", name, got)
 		}

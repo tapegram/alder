@@ -255,7 +255,7 @@ func (cx *completion) routeNamed(q string) (*syntax.Module, *syntax.RouteDecl) {
 }
 
 // routeMembers is what follows `Row.` for route r of mod (the spec's Names section): a GET
-// route's `load`, `view`, `Params` and `Session`, a write route's `update` and `Params`. A
+// route's `load`, `view`, `Params` and `Session`, a write route's `update`, `Params` and `Session`. A
 // member the module declares shows its signature as written, one it lacks the signature it needs.
 func (cx *completion) routeMembers(mod *syntax.Module, r *syntax.RouteDecl, n int) []completionItem {
 	member := func(name, sig string) completionItem {
@@ -275,9 +275,7 @@ func (cx *completion) routeMembers(mod *syntax.Module, r *syntax.RouteDecl, n in
 		out = append(out, member("update", r.Name+".Params -> Session -> Task Response"))
 	}
 	out = append(out, cx.item("Params", kindClass, "type "+r.Name+".Params", n))
-	if r.Method == "GET" {
-		out = append(out, cx.item("Session", kindClass, "type "+r.Name+".Session", n))
-	}
+	out = append(out, cx.item("Session", kindClass, "type "+r.Name+".Session", n))
 	return out
 }
 
