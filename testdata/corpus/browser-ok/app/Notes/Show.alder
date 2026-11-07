@@ -2,19 +2,18 @@ module Notes.Show
 
 import Note
 
-route Show = GET "/notes/{id}" { id: Note.NoteId } requires user
+page "/notes/{id}" { id: Note.NoteId } requires user
 
 type Model = { note: Note }
 
-Show.load : Show.Params -> Session -> Query Model
-Show.load params session = {
+load : Params -> Session -> Query Model
+load params session = {
   let found <- Db.get Note params.id
   match found {
-    Just note ->
-      if note.owner == session.user then Query.succeed { note: note } else Query.notFound,
+    Just note -> if note.owner == session.user then Query.succeed { note: note } else Query.notFound,
     Nothing -> Query.notFound,
   }
 }
 
-Show.view : Model -> Session -> Html
-Show.view model session = <html><body><h1>{model.note.title}</h1></body></html>
+view : Model -> Session -> Html Msg
+view model session = <html><body><h1>{model.note.title}</h1></body></html>

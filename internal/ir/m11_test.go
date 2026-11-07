@@ -174,6 +174,7 @@ func TestIR_RouteSilos(t *testing.T) {
 		got[r.Module+"."+r.Name] = fmt.Sprintf("%s %s silo=%q session=%s", r.Method, r.Store, r.Silo, r.Session.Name)
 	}
 	want := map[string]string{
+		"Login.Login":           `GET shared silo="" session=Session`,
 		"Orgs.Pick":             `GET shared silo="" session=Pick.Session`,
 		"Projects.Index":        `GET shared silo="" session=Index.Session`,
 		"Projects.Add":          `POST silo org silo="" session=Index.Session`,
