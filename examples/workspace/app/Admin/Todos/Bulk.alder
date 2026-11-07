@@ -311,6 +311,64 @@ test "26 chosen ids are refused" = {
   )
 }
 
+test "a demoted Admin cannot delete the chosen rows" = {
+  let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.member me org
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
+  let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    project: project1,
+    org: org,
+  }
+  let _ <- Test.get (Bulk { org: org, ids: [todo1] })
+  let _ <- Db.update User me (\u -> { u | role: Member })
+  let r <- Test.submit (BulkDelete { org: org, ids: [todo1] }) {}
+  let kept <- Db.get Todo todo1
+  Task.succeed (
+    { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
+      == { answer: PageMissing, kept: Just todo1 }
+  )
+}
+
+test "a demoted Admin cannot set done on the chosen rows" = {
+  let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.member me org
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
+  let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    project: project1,
+    org: org,
+  }
+  let before <- Db.get Todo todo1
+  let _ <- Test.get (Bulk { org: org, ids: [todo1] })
+  let _ <- Db.update User me (\u -> { u | role: Member })
+  let r <- Test.submit (BulkSetDone { org: org, ids: [todo1] }) { value: True }
+  let after <- Db.get Todo todo1
+  Task.succeed ({ answer: r.answer, row: after } == { answer: PageMissing, row: before })
+}
+
 test "a bulk action stays inside one org" = {
   let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let me <- Db.insert User {

@@ -241,6 +241,27 @@ func (g *adminGen) bulk(at *adminTable) {
 		tests = append(tests, TestData{Name: quote(name), Lines: tb.lines,
 			Result: fmt.Sprintf("{ answer: r.answer, %s, warned: Test.count \"#too-many\" page.doc } == { answer: %s, %s, warned: %s }", lhs, answer, rhs, warned)})
 	}
+	// each action refuses an Admin demoted since the page was opened
+	if at.bulkDel {
+		tests = append(tests, g.writeGate(mod, imports, "delete the chosen rows", false, func(tb *testBuilder) (string, string, func() (string, string)) {
+			a := tb.insertRow(t, "", nil, false)
+			return pageLit("Bulk", []string{ids(a)}), fmt.Sprintf("Test.submit (%s) { }", pageLit("BulkDelete", []string{ids(a)})), func() (string, string) {
+				tb.let("let kept <- Db.get %s %s", t.Name, a)
+				return "kept: Maybe.map (\\row -> row." + id + ") kept", "kept: Just " + a
+			}
+		})...)
+	}
+	for _, c := range at.bulkSet {
+		tests = append(tests, g.writeGate(mod, imports, "set "+strings.ToLower(Humanize(c.Name))+" on the chosen rows", false, func(tb *testBuilder) (string, string, func() (string, string)) {
+			a := tb.insertRow(t, "", nil, false)
+			v := g.changedValue(tb, at, c, 1)
+			tb.let("let before <- Db.get %s %s", t.Name, a)
+			return pageLit("Bulk", []string{ids(a)}), fmt.Sprintf("Test.submit (%s) { value: %s }", pageLit("BulkSet"+UpperFirst(c.Name), []string{ids(a)}), v), func() (string, string) {
+				tb.let("let after <- Db.get %s %s", t.Name, a)
+				return "row: after", "row: before"
+			}
+		})...)
+	}
 	if at.silo != nil {
 		tests = append(tests, g.siloBulkTest(at, mod, imports))
 	}

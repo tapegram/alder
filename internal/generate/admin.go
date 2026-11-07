@@ -886,6 +886,38 @@ func (g *adminGen) gateTests(mod string, imports *importSet, pageOf func(tb *tes
 	return tests
 }
 
+// writeGate is the test that a write route refuses an Admin demoted since the page holding its
+// form was opened (the cookie still says Admin, the row no longer does): its update's adminOnly
+// answers 404 and nothing is written. A form with a select of a table's rows (refs) is refused
+// before that, 400: the runtime checks the options against the page it was posted from (Plan call
+// 11), whose load adminOnly refuses too. build inserts the rows and returns the page to open, the
+// step that sends the write, and check, which reads what must not have changed (the left and right
+// sides' fields). None without a role column to read again (the cookie's role is the check).
+func (g *adminGen) writeGate(mod string, imports *importSet, what string, refs bool, build func(tb *testBuilder) (get, send string, check func() (string, string))) []TestData {
+	if g.role == nil {
+		return nil
+	}
+	tb := g.tb(mod, imports, true)
+	get, send, check := build(tb)
+	tb.let("let _ <- Test.get (%s)", get)
+	ut := g.p.TableNamed(g.p.Session.UserTable)
+	other := ""
+	for _, c := range g.role.Ctors {
+		if c != "Admin" && other == "" {
+			other = c
+		}
+	}
+	tb.let("let _ <- Db.update %s %s (\\u -> { u | %s: %s })", ut.Name, tb.user(), g.role.Name, maybeJust(g.role, other))
+	tb.let("let r <- %s", send)
+	l, r := check()
+	answer := "PageMissing"
+	if refs {
+		answer = `RequestFailed "400 bad request"`
+	}
+	return []TestData{{Name: quote("a demoted Admin cannot " + what), Lines: tb.lines,
+		Result: "{ answer: r.answer, " + l + " } == { answer: " + answer + ", " + r + " }"}}
+}
+
 // testsText renders the generated tests, in the region `tests` at the end of the file: regen
 // rewrites them as the schema changes, and a test the author adds after the region stays.
 func testsText(tests []TestData) string {
@@ -1856,6 +1888,21 @@ func (g *adminGen) newPage(at *adminTable) {
 	tests = append(tests, g.uniqueTests(at, mod, imports, false)...)
 	tests = append(tests, g.notOffered(at, mod, imports, false)...)
 	tests = append(tests, g.findTests(at, mod, imports, false)...)
+	tests = append(tests, g.writeGate(mod, imports, "create "+article(at.noun), len(at.refs) > 0, func(tb *testBuilder) (string, string, func() (string, string)) {
+		g.optionRows(tb, at)
+		if len(at.uniques()) > 0 && tb.counts[t.Module] == 0 {
+			tb.insertRow(t, "_", nil, false)
+		}
+		k := tb.counts[t.Module]
+		var values []string
+		for _, c := range at.editable {
+			values = append(values, c.Name+": "+g.submitValue(tb, at, c, k+1))
+		}
+		return "New {}", fmt.Sprintf("Test.submit %s { %s }", at.own("Create", true), strings.Join(values, ", ")), func() (string, string) {
+			tb.let("let rows <- Db.from %s |> Db.count", t.Name)
+			return "rows: rows", fmt.Sprintf("rows: %d", k)
+		}
+	})...)
 	tests = append(tests, g.gateTests(mod, imports, func(*testBuilder) string { return "New {}" })...)
 	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
@@ -2170,6 +2217,20 @@ func (g *adminGen) edit(at *adminTable) {
 	}
 	tests = append(tests, g.notOffered(at, mod, imports, true)...)
 	tests = append(tests, g.findTests(at, mod, imports, true)...)
+	tests = append(tests, g.writeGate(mod, imports, "save "+article(at.noun), len(at.refs) > 0, func(tb *testBuilder) (string, string, func() (string, string)) {
+		target := tb.insertRow(t, "", nil, false)
+		g.optionRows(tb, at)
+		k := tb.counts[t.Module]
+		var values []string
+		for _, c := range at.editable {
+			values = append(values, c.Name+": "+g.changedValue(tb, at, c, k+1))
+		}
+		tb.let("let before <- Db.get %s %s", t.Name, target)
+		return pageLit("Edit", []string{"id: " + target}), fmt.Sprintf("Test.submit %s { %s }", at.formRoute(true, target), strings.Join(values, ", ")), func() (string, string) {
+			tb.let("let after <- Db.get %s %s", t.Name, target)
+			return "row: after", "row: before"
+		}
+	})...)
 	tests = append(tests, g.missingTest(at, mod, "Edit", imports))
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
 		return pageLit("Edit", []string{"id: " + tb.insertRow(t, "", nil, false)})
@@ -2467,6 +2528,13 @@ func (g *adminGen) delete(at *adminTable) {
 	fmt.Fprintf(&b, "  %s\n", close)
 
 	tests := g.deleteTests(at, mod, "Delete", imports, pl)
+	tests = append(tests, g.writeGate(mod, imports, "delete "+article(at.noun), false, func(tb *testBuilder) (string, string, func() (string, string)) {
+		target := tb.insertRow(t, "", nil, false)
+		return pageLit("Delete", []string{"id: " + target}), fmt.Sprintf("Test.submit (Destroy { id: %s }) { }", target), func() (string, string) {
+			tb.let("let kept <- Db.get %s %s", t.Name, target)
+			return "kept: Maybe.map (\\row -> row." + t.IDField + ") kept", "kept: Just " + target
+		}
+	})...)
 	tests = append(tests, g.missingTest(at, mod, "Delete", imports))
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
 		return pageLit("Delete", []string{"id: " + tb.insertRow(t, "", nil, false)})
