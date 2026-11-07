@@ -157,20 +157,21 @@ func newSpecs() []*Spec {
 		{
 			ID: "new form", Summary: "a form with its msg, handler and view",
 			Args: []Field{
-				{Name: "page", Kind: ArgPage, Required: true, Value: "<Page module>", Help: "the page the form goes on", Example: "Posts.Index"},
+				{Name: "page", Kind: ArgPage, Required: true, Value: "<Route module>", Help: "the route module the form goes on", Example: "Posts.Index"},
 				{Name: "name", Kind: ArgText, Required: true, Value: "<Name>", Help: "the form's name, a capitalised word", Example: "NewComment"},
 				{Name: "fields", Kind: ArgFieldList, Variadic: true, Value: "<field>:<Type>…", Default: "body:Text", Help: "the form's inputs, as name:Type words (at least one)", Example: "body:Text"},
 			},
 			Flags: []Field{
 				{Name: "into", Kind: ArgTable, Value: "T", Summary: "insert the submitted form into table T", Example: "Comment"},
-				{Name: "msg", Kind: ArgText, Value: "Msg", Summary: "the msg's name", Example: "Submit", Agent: true},
+				{Name: "msg", Kind: ArgText, Value: "Msg", Summary: "the msg's name (on a route module, the route's name, the form's by default)", Example: "Submit", Agent: true},
+				{Name: "hole", Kind: ArgBool, Summary: "leave the route's `update` body a hole (?answer) instead of inserting into a table"},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				fields, err := fieldList(s.All("fields"), false)
 				if err != nil {
 					return nil, err
 				}
-				o := FormOptions{Page: s.One("page"), Name: s.One("name"), Fields: fields, Into: s.One("into"), Msg: s.One("msg")}
+				o := FormOptions{Page: s.One("page"), Name: s.One("name"), Fields: fields, Into: s.One("into"), Msg: s.One("msg"), Hole: s.Has("hole")}
 				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return NewForm(p, o) })
 			},
 		},

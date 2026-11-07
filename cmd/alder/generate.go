@@ -273,7 +273,7 @@ const newTableUsage = "usage: alder new table <Name> <field>:<Type>[=default][@a
 
 const newAdminUsage = "usage: alder new admin [--module Admin] [--path /admin] [--dir app] [--json] [--dry-run]"
 
-const newFormUsage = "usage: alder new form <Page module> <Name> <field>:<Type>[=default] … [--into T] [--msg <Msg>] [--dir app] [--json] [--dry-run]"
+const newFormUsage = "usage: alder new form <Route module> <Name> <field>:<Type>[=default] … [--into T] [--hole] [--msg <Msg>] [--dir app] [--json] [--dry-run]"
 
 const newMsgUsage = "usage: alder new msg <Page module> <Name> [<field>:<Type> …] [--in-for <binder>] [--when <Bool expression>] [--id <id>] [--dir app] [--json] [--dry-run]"
 

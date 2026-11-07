@@ -33,10 +33,11 @@ type FormOptions struct {
 	Name   string
 	Fields []FieldSpec
 	Into   string // --into T: the table the arm inserts into
-	Msg    string // --msg M: the message that posts the form ("Submit<Name>" by default)
+	Msg    string // --msg M: the message that posts the form ("Submit<Name>" by default); on a route module, the route's name
+	Hole   bool   // --hole: on a route module, the `update` body is the hole ?answer
 }
 
-// NewForm generates `alder new form`: in the page module, `form <Name>`, `msg Submit<Name> form
+// NewForm generates `alder new form`; on a route module, newRouteForm's POST route. In the page module, `form <Name>`, `msg Submit<Name> form
 // <Name>` (or --msg's name), an `update` arm (an insert into the table the fields match by name and type, or
 // --into's; else the typed hole `?submit<Name>` : Task Nav), the form in `view` (inside its last
 // `al-card`, or in a card of its own at the end of the root element), and two browser tests: a
@@ -44,6 +45,12 @@ type FormOptions struct {
 // (FormRejected, nothing inserted). A page whose `view` is still the hole ?view is refused: fill
 // it first.
 func NewForm(p *Program, o FormOptions) ([]Edit, error) {
+	if len(p.RoutesOf(o.Page)) > 0 {
+		return newRouteForm(p, o)
+	}
+	if o.Hole {
+		return nil, Refusef("--hole belongs to a route module (`alder new route`); `%s` is a page, whose arm is a hole when no table fits", o.Page)
+	}
 	pg, m, err := pageModule(p, o.Page)
 	if err != nil {
 		return nil, err

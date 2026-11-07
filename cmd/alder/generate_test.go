@@ -206,6 +206,12 @@ var genCases = []genCase{
 	{name: "form-insert", base: "scaffold", args: []string{"new", "form", "Home", "Quick", "name:Text.NonEmpty", "message:Text.NonEmpty"}, test: true},
 	{name: "form-hole", base: "scaffold", args: []string{"new", "form", "Home", "Contact", "email:Text.Email", "topic:Text"}, test: true,
 		fills: [][2]string{{"Home.update.SubmitContact", "Task.succeed Rerender"}, {`Home."submitting Contact"`, "Rerendered"}}},
+	// #160: new form on a route module adds the form, a POST route, its update and the markup
+	{name: "form-route", base: "fixture", pre: [][]string{{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--requires", "user"}}, args: []string{"new", "form", "Posts.Index", "Quick", "title:Text.NonEmpty", "body:Text"}, test: true},
+	{name: "form-route-ref", base: "fixture", pre: [][]string{{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--requires", "user"}}, args: []string{"new", "form", "Posts.Index", "Tagging", "name:Text.NonEmpty", "post:Post.PostId"}, test: true},
+	{name: "form-route-hole", base: "fixture", pre: [][]string{{"new", "route", "Posts.Index", "/posts", "--list", "Post", "--requires", "user"}}, args: []string{"new", "form", "Posts.Index", "NewComment", "body:Text", "--hole"}, test: true,
+		fills: [][2]string{{"Posts.Index.update --hole ?answer", "Task.succeed (Response.refresh |> Response.success \"Saved\")"}, {`Posts.Index."submitting NewComment"`, "Refreshed"}}},
+	{name: "form-route-show", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}}, args: []string{"new", "form", "Posts.Show", "Reply", "body:Text", "--hole", "--msg", "SendReply"}},
 	{name: "msg", base: "scaffold", args: []string{"new", "msg", "Home", "Clear"}, test: true,
 		fills: [][2]string{{"Home.update.Clear", "{\n  let _ <- Log.info \"cleared\"\n  Task.succeed Rerender\n}"}, {`Home."pressing Clear"`, "{ answer: r.answer, page: after.answer, entries: Test.count \"#entries li\" after.doc } == { answer: Rerendered, page: Shown, entries: 0 }"}}},
 	{name: "capability", base: "scaffold", args: []string{"new", "capability", "Weather", "current", "{ city: Text } -> Query (Maybe Float)"}, test: true,
@@ -1401,6 +1407,10 @@ func TestGenerate_RouteMsgRefusals(t *testing.T) {
 		{[]string{"new", "msg", "Posts.Show", "feature"}, "alder new msg: `feature` is not a route name: a route is named by a capitalised identifier, such as `Archive`\n"},
 		{[]string{"new", "msg", "Posts.Show", "Feature", "id:Text"}, "alder new msg: field `id` is a parameter of the page's path already, with another type (`Post.PostId`): the route takes it from there\n"},
 		{[]string{"new", "msg", "Posts.Edit", "Feature"}, "alder new msg: `Posts.Edit`'s `view` is a hole: fill `view` first (`alder fill Posts.Edit.view -`), then add the route's button\n"},
+		{[]string{"new", "form", "Posts.Show", "Reply", "body:Text", "--msg", "Reply"}, "alder new form: `--msg Reply` names the form itself: the form and its route need two names\n"},
+		{[]string{"new", "form", "Posts.Show", "Reply", "body:Text", "--hole", "--into", "Comment"}, "alder new form: --hole leaves the `update` body a hole and --into Comment fills it with an insert: give one of them\n"},
+		{[]string{"new", "form", "Posts.Show", "Show", "body:Text"}, "alder new form: `Posts.Show` already declares `Show`: choose another name\n"},
+		{[]string{"new", "form", "Like", "Reply", "body:Text"}, "alder new form: `Like` has no GET route: a form is posted from a route's `view`; `alder new route Like /path` makes one\n"},
 		{[]string{"new", "msg", "Like", "Again"}, "alder new msg: `Like` has no GET route: a message is a button on a route's `view`; `alder new route Like /path --method POST` makes a write route without one\n"},
 	} {
 		before := appFiles(t, dir)
