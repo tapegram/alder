@@ -1,25 +1,15 @@
 module Projects.Index
 
-import Issue
-import Label
-import Membership
 import Org
 import Project
+import Issue
+import Label
 import User
+import Membership
 
-route Index  = GET  "/projects"          { }                       requires user, org
-route Add    = POST "/projects/_/Add"    { } form NewProject       requires user, org
-route Rename = POST "/projects/_/Rename" { id: Project.ProjectId } requires user, org
-route Remove = POST "/projects/_/Remove" { id: Project.ProjectId } requires user, org
-route Seed   = POST "/projects/_/Seed"   { }                       requires user, org
-route Both   = POST "/projects/_/Both"   { id: Project.ProjectId } requires user, org
-route Tag    = POST "/projects/_/Tag"    { }                       requires user, org
+page "/projects" { } requires user, org
 
-type Model = {
-  org: Text,
-  projects: List Project,
-  labels: Int,
-}
+type Model = { org: Text, projects: List Project, labels: Int }
 
 -- a helper of a `requires org` page module may use the scoped operations
 recent : Select Project
@@ -33,85 +23,80 @@ seed name = {
   Task.succeed ()
 }
 
-Index.load : Index.Params -> Session -> Query Model
-Index.load params session = {
+load : Params -> Session -> Query Model
+load params session = {
   -- a cross-store read: Org is shared, the page's Task writes to the silo
   let org <- Db.get Org session.org
   let projects <- recent |> Db.all
   let labels <- Db.scoped Label |> Db.count
-  Query.succeed {
-    org: Maybe.withDefault "" (Maybe.map (\o -> o.name) org),
-    projects: projects,
-    labels: labels,
-  }
+  Query.succeed { org: Maybe.withDefault "" (Maybe.map (\o -> o.name) org), projects: projects, labels: labels }
 }
 
-form NewProject = { name: Text }
-
-Add.update : Add.Params -> Session -> Task Response
-Add.update p session = {
-  let _ <- Db.insertScoped Project { name: p.form.name }
-  Task.succeed Response.refresh
+form NewProject = {
+  name: Text,
 }
 
-Rename.update : Rename.Params -> Session -> Task Response
-Rename.update p session = {
-  let pr <- Db.getScoped Project p.id
-  let _ <- Db.updateScoped Project pr.id (\x -> { x | name: "renamed" })
-  Task.succeed Response.refresh
+msg Add form NewProject
+msg Rename { id: Project.ProjectId }
+msg Remove { id: Project.ProjectId }
+msg Seed
+msg Both { id: Project.ProjectId }
+msg Tag
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add p -> {
+    let _ <- Db.insertScoped Project { name: p.form.name }
+    Task.succeed Rerender
+  },
+  Rename p -> {
+    let pr <- Db.getScoped Project p.id
+    let _ <- Db.updateScoped Project pr.id (\x -> { x | name: "renamed" })
+    Task.succeed Rerender
+  },
+  Remove p -> {
+    let _ <- p.id |> Db.deleteScoped Project
+    Task.succeed Rerender
+  },
+  Seed _ -> {
+    let _ <- Task.all (List.map seed ["a", "b"])
+    Task.succeed Rerender
+  },
+  -- reads the shared store (Org, Membership), writes the silo: one store
+  Both p -> {
+    let _ <- Db.get Org session.org
+    let n <- Db.from Membership |> Db.count
+    let _ <- Db.updateScoped Project p.id (\x -> { x | name: Text.fromInt n })
+    Task.succeed Rerender
+  },
+  -- a shared write (Label is partitioned but in no silo)
+  Tag _ -> {
+    let _ <- Db.insertScoped Label { name: "new" }
+    Task.succeed Rerender
+  },
 }
 
-Remove.update : Remove.Params -> Session -> Task Response
-Remove.update p session = {
-  let _ <- p.id |> Db.deleteScoped Project
-  Task.succeed Response.refresh
-}
-
-Seed.update : Seed.Params -> Session -> Task Response
-Seed.update params session = {
-  let _ <- Task.all (List.map seed ["a", "b"])
-  Task.succeed Response.refresh
-}
-
--- reads the shared store (Org, Membership), writes the silo: one store
-Both.update : Both.Params -> Session -> Task Response
-Both.update p session = {
-  let _ <- Db.get Org session.org
-  let n <- Db.from Membership |> Db.count
-  let _ <- Db.updateScoped Project p.id (\x -> { x | name: Text.fromInt n })
-  Task.succeed Response.refresh
-}
-
--- a shared write (Label is partitioned but in no silo)
-Tag.update : Tag.Params -> Session -> Task Response
-Tag.update params session = {
-  let _ <- Db.insertScoped Label { name: "new" }
-  Task.succeed Response.refresh
-}
-
-Index.view : Model -> Session -> Html
-Index.view model session =
-  <html>
-    <body>
-      <h1>{model.org}</h1>
-      <form submit={Add}>
-        <Input field="name" label="Name" />
-        <Errors form />
-        <button>Add</button>
-      </form>
-      <ul>
-        {for p in model.projects ->
-          <li>
-            <span>{p.name}</span>
-            <button click={Rename { id: p.id }}>rename</button>
-            <button click={Remove { id: p.id }}>remove</button>
-            <button click={Both { id: p.id }}>both</button>
-          </li>}
-      </ul>
-      <button click={Seed}>seed</button>
-      <button click={Tag}>tag</button>
-    </body>
-  </html>
+view : Model -> Session -> Html Msg
+view model session =
+  <html><body>
+    <h1>{model.org}</h1>
+    <form submit={Add}>
+      <Input field="name" label="Name" />
+      <Errors form />
+      <button>Add</button>
+    </form>
+    <ul>
+      {for p in model.projects ->
+        <li>
+          <span>{p.name}</span>
+          <button click={Rename { id: p.id }}>rename</button>
+          <button click={Remove { id: p.id }}>remove</button>
+          <button click={Both { id: p.id }}>both</button>
+        </li>}
+    </ul>
+    <button click={Seed}>seed</button>
+    <button click={Tag}>tag</button>
+  </body></html>
 
 test "an org's member sees its projects" = {
   let me <- Db.insert User { name: "Me" }
@@ -119,6 +104,6 @@ test "an org's member sees its projects" = {
   let _ <- Db.insert Membership { user: me, org: o }
   let _ <- Db.insert Project { name: "p", org: o }
   let _ <- Test.login { user: Just me, org: Just o }
-  let page <- Test.get (Index {})
+  let page <- Test.get (Projects.Index {})
   Task.succeed (List.length page.model.projects == 1)
 }

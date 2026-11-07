@@ -3,25 +3,28 @@ module Notes.Index
 import Note
 
 -- the user key: M11's `mine` family and the generic one, on one `@owner` table
-route Index = GET  "/notes"       { } requires user
-route Add   = POST "/notes/_/Add" { } requires user
+page "/notes" { } requires user
 
 type Model = { notes: List Note, n: Int }
 
-Index.load : Index.Params -> Session -> Query Model
-Index.load params session = {
+load : Params -> Session -> Query Model
+load params session = {
   let notes <- Db.mine Note |> Db.all
   let n <- Db.scoped Note |> Db.count
   Query.succeed { notes: notes, n: n }
 }
 
-Add.update : Add.Params -> Session -> Task Response
-Add.update params session = {
-  let _ <- Db.insertMine Note { text: "a" }
-  let _ <- Db.insertScoped Note { text: "b" }
-  let _ <- Session.put (\s -> { s | org: Nothing })
-  Task.succeed Response.refresh
+msg Add
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Add _ -> {
+    let _ <- Db.insertMine Note { text: "a" }
+    let _ <- Db.insertScoped Note { text: "b" }
+    let _ <- Session.put (\s -> { s | org: Nothing })
+    Task.succeed Rerender
+  },
 }
 
-Index.view : Model -> Session -> Html
-Index.view model session = <html><body><button click={Add}>add</button></body></html>
+view : Model -> Session -> Html Msg
+view model session = <html><body><button click={Add}>add</button></body></html>

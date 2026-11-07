@@ -11,7 +11,17 @@ import (
 // expr lowers an expression.
 func (l *lowerer) expr(e syntax.Expr) Expr {
 	if to, ok := l.res.Widened[e]; ok {
-		return &Widen{Typed: Typed{l.erase(to)}, Expr: l.exprOf(e), Page: l.pages[l.typeOf(e).(*types.Record).Module]}
+		rec := l.typeOf(e).(*types.Record)
+		w := &Widen{Typed: Typed{l.erase(to)}, Expr: l.exprOf(e), Page: l.pages[rec.Module]}
+		if w.Page == nil { // a route's narrowed Session: the first route of the module that has it
+			for _, info := range l.res.Routes[rec.Module] {
+				if info.Session != nil && info.Session.Name == rec.Name {
+					w.Route = l.routeOf[info]
+					break
+				}
+			}
+		}
+		return w
 	}
 	return l.exprOf(e)
 }

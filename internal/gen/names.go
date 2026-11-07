@@ -209,9 +209,9 @@ func ctorName(module, union, ctor string) string {
 	return GoName(module, union) + "__" + ctor + "__"
 }
 
-// widenName is the function that widens page module page's narrowed Session to App's
-// ("widen__Home__Session").
-func widenName(page string) string { return "widen__" + GoName(page, "Session") }
+// widenName is the function that widens module's narrowed Session record rec (a page's
+// "Session", a route's "Home.Session") to App's ("widen__Home__Session", "widen__Home__Home__Session").
+func widenName(module, rec string) string { return "widen__" + GoName(module, rec) }
 
 // ctorField is the union struct's field holding constructor ctor's payload.
 func ctorField(ctor string) string {

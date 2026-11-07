@@ -299,7 +299,10 @@ func (f *fn) expr(e ir.Expr, s *scope) (string, int) {
 		}
 		return "rt.Concat(" + strings.Join(ps, ", ") + ")", precAtom
 	case *ir.Widen:
-		return widenName(x.Page.Module) + "(" + f.code(x.Expr, s) + ")", precAtom
+		if x.Route != nil {
+			return widenName(x.Route.Module, x.Route.Session.Name) + "(" + f.code(x.Expr, s) + ")", precAtom
+		}
+		return widenName(x.Page.Module, "Session") + "(" + f.code(x.Expr, s) + ")", precAtom
 	case *ir.Let, *ir.Match, *ir.If, *ir.Hole:
 		return f.closure(e, s), precAtom
 	case *ir.Elem, *ir.Comp, *ir.HText, *ir.HExpr, *ir.HFor, *ir.HIf, *ir.HMatch, *ir.Input, *ir.FormEl:

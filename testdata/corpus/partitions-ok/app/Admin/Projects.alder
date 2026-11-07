@@ -5,23 +5,26 @@ import Project
 
 -- The admin form: the org comes from the page's parameter, the role check gates the page (an
 -- Admin need not be a member); unscoped and scoped operations on the silo are legal here.
-route Projects = GET  "/admin/orgs/{org}/projects"          { org: Org.OrgId }                        requires user, role Admin, silo org
-route Remove   = POST "/admin/orgs/{org}/projects/_/Remove" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
+page "/admin/orgs/{org}/projects" { org: Org.OrgId } requires user, role Admin, silo org
 
 type Model = { projects: List Project, n: Int }
 
-Projects.load : Projects.Params -> Session -> Query Model
-Projects.load params session = {
+load : Params -> Session -> Query Model
+load params session = {
   let projects <- Db.from Project |> Db.all
   let n <- Db.scoped Project |> Db.count
   Query.succeed { projects: projects, n: n }
 }
 
-Remove.update : Remove.Params -> Session -> Task Response
-Remove.update p session = {
-  let _ <- Db.delete Project p.id
-  Task.succeed Response.refresh
+msg Remove { id: Project.ProjectId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Remove p -> {
+    let _ <- Db.delete Project p.id
+    Task.succeed Rerender
+  },
 }
 
-Projects.view : Model -> Session -> Html
-Projects.view model session = <html><body><p>{Text.fromInt model.n}</p></body></html>
+view : Model -> Session -> Html Msg
+view model session = <html><body><p>{Text.fromInt model.n}</p></body></html>

@@ -1,11 +1,11 @@
 module Export
 
-route Export = GET "/export.txt" { }
+page "/export.txt" { }
 
 type Model = { }
 
-Export.load : Export.Params -> Session -> Query Model
-Export.load params session = Query.succeed {}
+load : Params -> Session -> Query Model
+load params session = Query.succeed { }
 
-Export.view : Model -> Session -> File
-Export.view model session = File.text { contentType: "text/plain", body: "export" }
+view : Model -> Session -> File
+view model session = File.text { contentType: "text/plain", body: "export" }

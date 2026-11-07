@@ -3,17 +3,17 @@ module Projects.Show
 import Project
 import Projects.Index
 
-route Show = GET "/projects/{id}" { id: Project.ProjectId } requires user, org
+page "/projects/{id}" { id: Project.ProjectId } requires user, org
 
 type Model = { project: Project, others: List Project }
 
 -- another `requires org` page module may use Projects.Index's scoped values
-Show.load : Show.Params -> Session -> Query Model
-Show.load params session = {
+load : Params -> Session -> Query Model
+load params session = {
   let project <- Db.getScoped Project params.id
   let others <- Index.recent |> Db.all
   Query.succeed { project: project, others: others }
 }
 
-Show.view : Model -> Session -> Html
-Show.view model session = <html><body><h1>{model.project.name}</h1></body></html>
+view : Model -> Session -> Html Msg
+view model session = <html><body><h1>{model.project.name}</h1></body></html>
