@@ -1,0 +1,36 @@
+module Dash
+
+import Layout
+import Table.Entry
+
+route Dash = GET "/dash" { }
+
+type Model = { entries: List Entry }
+
+Dash.load : Dash.Params -> Session -> Query Model
+Dash.load params session = {
+  let entries <- Db.from Entry |> Db.all
+  Query.succeed { entries: entries }
+}
+
+Dash.view : Model -> Session -> Html
+Dash.view model session =
+  <Layout.Page title="Dash">
+    <h1>Dash</h1>
+
+    <al-card>
+      <h2 slot="header">Entries</h2>
+      <ul id="entries">
+        {for row in model.entries -> <li>{row.name}</li>}
+      </ul>
+    </al-card>
+  </Layout.Page>
+
+test "the page shows each table's rows" = {
+  let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
+  let page <- Test.get (Dash {})
+  Task.succeed (
+    { heading: Test.text "h1" page.doc, entries: Test.count "#entries li" page.doc }
+      == { heading: Just "Dash", entries: 1 }
+  )
+}

@@ -10,15 +10,17 @@ import Table.Org
 import Table.User
 -- @admin end
 
-page "/admin" { } requires user, role Admin
+-- @admin begin routes
+route Index = GET "/admin" { } requires user, role Admin
+-- @admin end
 
 -- A card of the dashboard: a table's count and its newest rows, each linking to its page.
 type Card = {
   key: Text,
   title: Text,
-  href: Page,
+  href: Route,
   count: Int,
-  rows: List { label: Text, href: Page },
+  rows: List { label: Text, href: Route },
 }
 
 type Model = { cards: List Card }
@@ -27,93 +29,93 @@ type Model = { cards: List Card }
 recent : Int
 recent = 5
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin cards
-    let activities <-
-      Db.from Activity
-        |> Db.orderBy Activity.created.desc
-        |> Db.limit recent
-        |> Db.all
-    let activityCount <- Db.from Activity |> Db.count
-    let memberships <-
-      Db.from Membership
-        |> Db.orderBy Membership.created.desc
-        |> Db.limit recent
-        |> Db.all
-    let membershipCount <- Db.from Membership |> Db.count
-    let orgs <-
-      Db.from Org
-        |> Db.orderBy Org.created.desc
-        |> Db.limit recent
-        |> Db.all
-    let orgCount <- Db.from Org |> Db.count
-    let users <-
-      Db.from User
-        |> Db.orderBy User.created.desc
-        |> Db.limit recent
-        |> Db.all
-    let userCount <- Db.from User |> Db.count
-    Query.succeed {
-      cards: [
-        {
-          key: "activities",
-          title: "Activities",
-          href: Admin.Activities.Index {},
-          count: activityCount,
-          rows: List.map (\row -> {
-            label: row.text,
-            href: Admin.Activities.Show { id: row.id },
-          }) activities,
-        },
-        {
-          key: "memberships",
-          title: "Memberships",
-          href: Admin.Memberships.Index {},
-          count: membershipCount,
-          rows: List.map (\row -> {
-            label: row.id,
-            href: Admin.Memberships.Show { id: row.id },
-          }) memberships,
-        },
-        {
-          key: "orgs",
-          title: "Orgs",
-          href: Admin.Orgs.Index {},
-          count: orgCount,
-          rows: List.map (\row -> { label: row.name, href: Admin.Orgs.Show { id: row.id } }) orgs,
-        },
-        {
-          key: "users",
-          title: "Users",
-          href: Admin.Users.Index {},
-          count: userCount,
-          rows: List.map (\row -> {
-            label: row.email,
-            href: Admin.Users.Show { id: row.id },
-          }) users,
-        },
-        {
-          key: "silo-org",
-          title: "Projects and todos, by org",
-          href: Admin.Orgs.Pick {},
-          count: orgCount,
-          rows: List.map (\row -> {
-            label: row.name,
-            href: Admin.Orgs.Dashboard { org: row.id },
-          }) orgs,
-        },
-      ],
-    }
-    -- @admin end
-  } else
-    Query.notFound
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin cards
+  let activities <-
+    Db.from Activity
+      |> Db.orderBy Activity.created.desc
+      |> Db.limit recent
+      |> Db.all
+  let activityCount <- Db.from Activity |> Db.count
+  let memberships <-
+    Db.from Membership
+      |> Db.orderBy Membership.created.desc
+      |> Db.limit recent
+      |> Db.all
+  let membershipCount <- Db.from Membership |> Db.count
+  let orgs <-
+    Db.from Org
+      |> Db.orderBy Org.created.desc
+      |> Db.limit recent
+      |> Db.all
+  let orgCount <- Db.from Org |> Db.count
+  let users <-
+    Db.from User
+      |> Db.orderBy User.created.desc
+      |> Db.limit recent
+      |> Db.all
+  let userCount <- Db.from User |> Db.count
+  Query.succeed {
+    cards: [
+      {
+        key: "activities",
+        title: "Activities",
+        href: Admin.Activities.Index.Index {},
+        count: activityCount,
+        rows: List.map (\row -> {
+          label: row.text,
+          href: Admin.Activities.Show.Show { id: row.id },
+        }) activities,
+      },
+      {
+        key: "memberships",
+        title: "Memberships",
+        href: Admin.Memberships.Index.Index {},
+        count: membershipCount,
+        rows: List.map (\row -> {
+          label: row.id,
+          href: Admin.Memberships.Show.Show { id: row.id },
+        }) memberships,
+      },
+      {
+        key: "orgs",
+        title: "Orgs",
+        href: Admin.Orgs.Index.Index {},
+        count: orgCount,
+        rows: List.map (\row -> {
+          label: row.name,
+          href: Admin.Orgs.Show.Show { id: row.id },
+        }) orgs,
+      },
+      {
+        key: "users",
+        title: "Users",
+        href: Admin.Users.Index.Index {},
+        count: userCount,
+        rows: List.map (\row -> {
+          label: row.email,
+          href: Admin.Users.Show.Show { id: row.id },
+        }) users,
+      },
+      {
+        key: "silo-org",
+        title: "Projects and todos, by org",
+        href: Admin.Orgs.Pick.Pick {},
+        count: orgCount,
+        rows: List.map (\row -> {
+          label: row.name,
+          href: Admin.Orgs.Dashboard.Dashboard { org: row.id },
+        }) orgs,
+      },
+    ],
+  }
+  -- @admin end
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <Layout.Page title="Dashboard">
     <h1>Admin</h1>
 
@@ -150,7 +152,7 @@ test "the dashboard counts the activities and lists the newest five" = {
         List.range 1 6
       )
     )
-  let page <- Test.get (Admin.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (
     { count: Test.text "#activities al-badge" page.doc, rows: Test.texts "#activities li" page.doc }
       == { count: Just "6", rows: ["text-6", "text-5", "text-4", "text-3", "text-2"] }
@@ -171,7 +173,7 @@ test "the dashboard counts the memberships and lists the newest five" = {
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let _ <- Task.all (List.map (\n -> Db.insert Membership { user: me, org: org1 }) (List.range 1 6))
-  let page <- Test.get (Admin.Index {})
+  let page <- Test.get (Index {})
   let newest <-
     Db.from Membership
       |> Db.orderBy Membership.created.desc
@@ -186,7 +188,7 @@ test "the dashboard counts the memberships and lists the newest five" = {
     }
       == {
         count: Just "6",
-        rows: [List.map (\row -> Admin.Memberships.Show { id: row.id }) newest],
+        rows: [List.map (\row -> Admin.Memberships.Show.Show { id: row.id }) newest],
       }
   )
 }
@@ -209,7 +211,7 @@ test "the dashboard counts the orgs and lists the newest five" = {
         List.range 1 6
       )
     )
-  let page <- Test.get (Admin.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (
     { count: Test.text "#orgs al-badge" page.doc, rows: Test.texts "#orgs li" page.doc }
       == { count: Just "6", rows: ["name-6", "name-5", "name-4", "name-3", "name-2"] }
@@ -236,7 +238,7 @@ test "the dashboard counts the users and lists the newest five" = {
         passwordHash: "passwordhash-" ++ Text.fromInt n,
       }) (List.range 2 7)
     )
-  let page <- Test.get (Admin.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (
     { count: Test.text "#users al-badge" page.doc, rows: Test.texts "#users li" page.doc }
       == {
@@ -270,7 +272,7 @@ test "the dashboard lists the newest orgs, each opening its projects and todos" 
         List.range 1 6
       )
     )
-  let page <- Test.get (Admin.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (
     { count: Test.text "#silo-org al-badge" page.doc, rows: Test.texts "#silo-org li" page.doc }
       == { count: Just "6", rows: ["name-6", "name-5", "name-4", "name-3", "name-2"] }
@@ -278,7 +280,7 @@ test "the dashboard lists the newest orgs, each opening its projects and todos" 
 }
 
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Admin.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -294,7 +296,7 @@ test "a Member gets no page, even one made Admin since logging in" = {
     org: Nothing,
     role: Member,
   }
-  let r <- Test.open (Admin.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -310,7 +312,7 @@ test "a demoted Admin is refused at once" = {
     org: Nothing,
     role: Admin,
   }
-  let r <- Test.open (Admin.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

@@ -142,8 +142,8 @@ func scopeLines(p *generate.Program, m *generate.Module, h generate.Hole) []stri
 		add(bs[i].name, res.Binds[bs[i].key])
 	}
 	for _, d := range m.Syntax.Decls {
-		if v, ok := d.(*syntax.ValueDecl); ok {
-			add(v.Name, res.Values[m.Name+"."+v.Name])
+		if v, ok := d.(*syntax.ValueDecl); ok { // a route's member by its full name, `Index.load`
+			add(v.FullName(), res.Values[m.Name+"."+v.FullName()])
 		}
 	}
 	var typeLines []string
@@ -159,7 +159,7 @@ func scopeLines(p *generate.Program, m *generate.Module, h generate.Hole) []stri
 		for _, d := range other.Syntax.Decls {
 			switch d := d.(type) {
 			case *syntax.ValueDecl:
-				add(qual+"."+d.Name, res.Values[im+"."+d.Name])
+				add(qual+"."+d.FullName(), res.Values[im+"."+d.FullName()])
 			case *syntax.TypeDecl:
 				line := "type " + qual + "." + d.Name
 				if len(d.Union) > 0 {
@@ -260,6 +260,9 @@ func patternBinders(p syntax.Pattern, out []binder) []binder {
 	return out
 }
 
+// responseType finds the type `Response` in a hole's type (`Task Response`).
+var responseType = regexp.MustCompile(`\bResponse\b`)
+
 // qualifierRe finds `Name.` in source and types: a module named before a member.
 var qualifierRe = regexp.MustCompile(`\b([A-Z][A-Za-z0-9]*)\.`)
 
@@ -270,7 +273,8 @@ var coreStd = []string{"Task", "Prelude", "List", "Maybe", "Result", "Text", "In
 
 // stdFiles are the standard library signature files, comments kept, of the core modules
 // (coreStd) always, of any other module named in the hole's type or in the module's source,
-// and Test in a test, each in a fence, in name order.
+// Test in a test and Response for a hole whose type has `Response`, each in a fence, in name
+// order.
 func stdFiles(p *generate.Program, m *generate.Module, h generate.Hole) string {
 	want := map[string]bool{}
 	for _, n := range coreStd {
@@ -278,6 +282,9 @@ func stdFiles(p *generate.Program, m *generate.Module, h generate.Hole) string {
 	}
 	if strings.HasPrefix(h.Decl, `"`) {
 		want["Test"] = true
+	}
+	if responseType.MatchString(h.Type) { // a route's `update` answers with Response's builders
+		want["Response"] = true
 	}
 	for _, src := range []string{h.Type, m.Source} {
 		for _, g := range qualifierRe.FindAllStringSubmatch(src, -1) {

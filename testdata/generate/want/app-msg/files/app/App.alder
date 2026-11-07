@@ -4,6 +4,8 @@ import Layout
 
 session { }
 
+route ToggleTheme = POST "/_/ToggleTheme" { dark: Bool }
+
 error : Error -> Html Never
 error err =
   <Layout.Page title="Error">
@@ -14,17 +16,13 @@ error err =
 notFound : Html Never
 notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 
-msg ToggleTheme { dark: Bool }
+ToggleTheme.update : ToggleTheme.Params -> Session -> Task Response
+ToggleTheme.update params session = Task.succeed Response.refresh
 
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  ToggleTheme p -> ?toggleTheme,
-}
-
--- A message of App is sent from any page (`click={App.ToggleTheme}`), so the test calls update itself.
--- Fill ?expected with what ToggleTheme must do, as `{ value: r.value, trace: r.trace } ==
--- { value: Ok Rerender, trace: ["Session.put"] }`: its answer and the effects it ran.
+-- ToggleTheme is sent from any page (`click={App.ToggleTheme}`): put an `al-button` with it in the view of
+-- the page this test opens, or open the page that has it. Until a page does, the click finds no control.
 test "pressing ToggleTheme" = {
-  let r <- Test.run (update (ToggleTheme { dark: ?toggleThemeDark }) {})
-  Task.succeed ?expected
+  let _ <- Test.get (Home.Home {})
+  let r <- Test.click (ToggleTheme { dark: ?toggleThemeDark })
+  Task.succeed (r.answer == Refreshed)
 }

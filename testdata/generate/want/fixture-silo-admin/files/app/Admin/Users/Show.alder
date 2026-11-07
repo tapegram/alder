@@ -9,7 +9,9 @@ import Org
 import User
 -- @admin end
 
-page "/admin/user/{id}" { id: User.UserId } requires user, role Admin
+-- @admin begin routes
+route Show = GET "/admin/user/{id}" { id: User.UserId } requires user, role Admin
+-- @admin end
 
 -- The row, the labels of the rows it refers to, and (for the delete dialog) how many rows of
 -- each table refer to it.
@@ -17,36 +19,31 @@ type Model = {
   row: User,
   labels: Labels,
   -- @admin begin model
-  own: Bool,
   memberships: Int,
   -- @admin end
 }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    let found <- Db.get User params.id
-    let memberships <-
-      Db.from Membership
-        |> Db.where (Membership.user.eq params.id)
-        |> Db.count
-    match found {
-      Just row -> {
-        let labels <- labelsOf [row]
-        Query.succeed {
-          row: row,
-          labels: labels,
-          own: session.user == row.id,
-          memberships: memberships,
-        }
-      },
-      Nothing -> Query.notFound,
-    }
-    -- @admin end
-  } else
-    Query.notFound
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin load
+  let found <- Db.get User params.id
+  let memberships <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq params.id)
+      |> Db.count
+  match found {
+    Just row -> {
+      let labels <- labelsOf [row]
+      Query.succeed {
+        row: row,
+        labels: labels,
+        memberships: memberships,
+      }
+    },
+    Nothing -> Query.notFound,
+  }
+  -- @admin end
 }
 
 -- @admin begin labels
@@ -64,29 +61,8 @@ blockers : Model -> Int
 blockers model = 0
 -- @admin end
 
--- The delete dialog's form: no input, the button and the place a refusal is shown.
-form Confirm = { }
-
-msg Remove form Confirm
-
--- Remove deletes the row, unless rows refer to it that keep it (load counted them, as it does
--- before every message), as the Delete page does.
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Remove p -> {
-    -- @admin begin remove
-    if model.own then
-      Task.succeed (Reject "You cannot delete your own account.")
-    else {
-      let _ <- Db.delete User model.row.id
-      Task.succeed (Redirect (Admin.Users.Index {}))
-    }
-    -- @admin end
-  },
-}
-
-view : Model -> Session -> Html Msg
-view model session =
+Show.view : Model -> Session -> Html
+Show.view model session =
   <Layout.Page title="User">
     <h1>User</h1>
 
@@ -113,7 +89,7 @@ view model session =
         -- @admin end
       </dl>
       <div slot="actions">
-        <al-button href={Admin.Users.Edit { id: model.row.id }}>Edit</al-button>
+        <al-button href={Admin.Users.Edit.Edit { id: model.row.id }}>Edit</al-button>
         <al-button variant="destructive">
           <button type="button" commandfor="delete-dialog" command="show-modal">Delete</button>
         </al-button>
@@ -126,9 +102,9 @@ view model session =
         <dd id="memberships">{Text.fromInt model.memberships}</dd>
         -- @admin end
       </dl>
-      <form id="delete" submit={Remove}>
+      <form id="delete" submit={Admin.Users.Delete.Destroy { id: model.row.id }}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        {if model.own then
+        {if session.user == model.row.id then
           <p>You cannot delete your own account.</p>
         else if blockers model > 0 then
           <p>It cannot be deleted while other rows refer to it.</p>
@@ -136,10 +112,10 @@ view model session =
           <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
       <div slot="actions">
-        <a href={Admin.Users.Delete { id: model.row.id }}>See the details</a>
+        <a href={Admin.Users.Delete.Delete { id: model.row.id }}>See the details</a>
       </div>
     </al-dialog>
-    <a href={Admin.Users.Index {}}>All users</a>
+    <a href={Admin.Users.Index.Index {}}>All users</a>
   </Layout.Page>
 
 -- @admin begin tests
@@ -158,7 +134,7 @@ test "the page shows the row" = {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let r <- Test.open (Admin.Users.Show { id: user2 })
+  let r <- Test.open (Show { id: user2 })
   Task.succeed (
     { answer: r.answer, email: List.member "email-2@example.com" (Test.texts "#fields dd" r.doc) }
       == { answer: Shown, email: True }
@@ -186,17 +162,19 @@ test "deleting a user nothing refers to" = {
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let _ <- Db.insert Membership { user: user3, org: org1 }
-  let _ <- Test.get (Admin.Users.Show { id: user2 })
-  let r <- Test.submit Confirm {}
+  let page <- Test.get (Show { id: user2 })
+  let r <- Test.submit (Admin.Users.Delete.Destroy { id: user2 }) {}
   let gone <- Db.get User user2
   let kept <- Db.get User user3
   Task.succeed (
     {
+      button: Test.count "#delete al-button" page.doc,
       answer: r.answer,
       gone: Maybe.map (\row -> row.id) gone,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-      answer: Redirected (Admin.Users.Index {}),
+      button: 1,
+      answer: Redirected (Admin.Users.Index.Index {}),
       gone: Nothing,
       kept: Just user3,
     }
@@ -225,7 +203,7 @@ test "the page counts the rows that go with it" = {
     name: Text.NonEmpty "name-3",
   }
   let _ <- Db.insert Membership { user: user3, org: org1 }
-  let page <- Test.get (Admin.Users.Show { id: user2 })
+  let page <- Test.get (Show { id: user2 })
   Task.succeed ({ memberships: Test.text "#memberships" page.doc } == { memberships: Just "1" })
 }
 
@@ -240,8 +218,8 @@ test "an Admin cannot delete their own account" = {
     org: Nothing,
     role: Admin,
   }
-  let page <- Test.get (Admin.Users.Show { id: me })
-  let r <- Test.submit Confirm {}
+  let page <- Test.get (Show { id: me })
+  let r <- Test.submit (Admin.Users.Delete.Destroy { id: me }) {}
   let kept <- Db.get User me
   Task.succeed (
     {
@@ -269,7 +247,7 @@ test "a missing row is not found" = {
     org: Nothing,
     role: Admin,
   }
-  let r <- Test.open (Admin.Users.Show { id: User.UserId "missing" })
+  let r <- Test.open (Show { id: User.UserId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -278,7 +256,7 @@ test "a visitor is sent to log in" = {
     email: Text.Email "email-1@example.com",
     name: Text.NonEmpty "name-1",
   }
-  let r <- Test.open (Admin.Users.Show { id: user1 })
+  let r <- Test.open (Show { id: user1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -297,7 +275,7 @@ test "a Member gets no page, even one made Admin since logging in" = {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let r <- Test.open (Admin.Users.Show { id: user2 })
+  let r <- Test.open (Show { id: user2 })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -316,7 +294,7 @@ test "a demoted Admin is refused at once" = {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let r <- Test.open (Admin.Users.Show { id: user2 })
+  let r <- Test.open (Show { id: user2 })
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

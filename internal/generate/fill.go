@@ -230,8 +230,8 @@ func blockBody(expr string) (string, bool) {
 // qualifiers are the modules of the app (not the standard library's) that expr names a value,
 // type or constructor of, qualified (`Member.x`, `Admin.Layout.isAdmin`): for each dotted name
 // outside strings and comments, the longest prefix of its capitalised segments that is a
-// module of the app, followed by one more segment, but App and the pages, which are named
-// without an import; a table's module, named by the table's name as a qualifier (`User.UserId`
+// module of the app, followed by one more segment, but App, the pages and the routes
+// (`Notes.Index.Index`), which are named without an import; a table's module, named by the table's name as a qualifier (`User.UserId`
 // for Table.User); and a table's (or type's) module named bare, as its record type is
 // (`Db.from Team`). In first-use order.
 //
@@ -256,8 +256,10 @@ func qualifiers(p *Program, expr string, ctors ...string) []string {
 		for k := len(segs) - 1; k >= 1; k-- {
 			name := strings.Join(segs[:k], ".")
 			if p.Modules[name] != nil && !p.Std[name] {
-				// App and the pages are named without an import (`App.Logout`, `Teams.Show.Remove`)
-				if !seen[name] && name != "App" && p.PageNamed(name) == nil {
+				// App and the pages are named without an import (`App.Logout`, `Teams.Show.Remove`),
+				// and so is a route (`Notes.Index.Index { … }`, #160)
+				route := k == len(segs)-1 && routeDecl(p.Modules[name].Syntax, segs[k]) != nil
+				if !seen[name] && name != "App" && p.PageNamed(name) == nil && !route {
 					seen[name] = true
 					out = append(out, name)
 				}
@@ -406,7 +408,10 @@ func isNameByte(b byte) bool {
 }
 
 // parseAddress splits `Module.decl[.arm]`: the module is the longest prefix naming one of the
-// app's modules; decl is a value's name, a fake's, or a test's name in double quotes.
+// app's modules; decl is a value's name, a fake's, or a test's name in double quotes, or a
+// route's member by its full name (`Module.Route.member` gives decl `Route.member`, #160). A
+// member named bare (`Module.update`) in a route module is the one route's that has it; with
+// several, the address is refused, naming them.
 func parseAddress(p *Program, address string) (mod, decl, arm string, err error) {
 	if i := strings.Index(address, `."`); i > 0 {
 		mod = address[:i]
@@ -429,10 +434,26 @@ func parseAddress(p *Program, address string) (mod, decl, arm string, err error)
 	for i := len(segs) - 1; i >= 1; i-- {
 		if cand := p.ResolveModule(strings.Join(segs[:i], ".")); p.Modules[cand] != nil {
 			mod, rest := cand, segs[i:]
+			if len(rest) == 2 && routeDecl(p.Modules[mod].Syntax, rest[0]) != nil { // `Module.Route.member` (#160)
+				return mod, rest[0] + "." + rest[1], "", nil
+			}
 			if len(rest) > 2 {
-				return "", "", "", Refusef("`%s` is not a declaration: write `Module.decl`, `Module.update.Msg` or `Module.\"test name\"`", address)
+				return "", "", "", Refusef("`%s` is not a declaration: write `Module.decl`, `Module.Route.member`, `Module.update.Msg` or `Module.\"test name\"`", address)
 			}
 			decl = rest[0]
+			if len(rest) == 1 && valueDecl(p.Modules[mod].Syntax, decl) != nil && !ownValue(p.Modules[mod].Syntax, decl) {
+				// a route's member named bare (`Notes.update`): the one route that has it
+				var full []string
+				for _, d := range p.Modules[mod].Syntax.Decls {
+					if v, ok := d.(*syntax.ValueDecl); ok && v.Route != "" && v.Name == decl {
+						full = append(full, v.FullName())
+					}
+				}
+				if len(full) > 1 {
+					return "", "", "", Refusef("`%s`: %s: name the route, `%s`", address, routeMembers(mod, full), mod+"."+full[0])
+				}
+				decl = full[0]
+			}
 			if len(rest) == 1 && strings.Contains(decl, " ") { // `Mod."test name"` unquoted by the shell
 				decl = `"` + decl + `"`
 			}
@@ -576,7 +597,7 @@ func shellAddress(address string) string {
 // the parameters the declaration binds already (when the hole is its whole body), and a block of
 // a test (a `Task Bool`) in a hole that is not a Task, such as a generated test's `?expected`.
 func fillShape(m *Module, h *Hole, expr syntax.Expr, hole string) error {
-	if v := valueDecl(m.Syntax, h.Decl); v != nil && h.Arm == "" {
+	if v := valueDeclFull(m.Syntax, h.Decl); v != nil && h.Arm == "" {
 		if _, whole := v.Body.(*syntax.HoleExpr); whole {
 			if err := boundLambda(expr, v); err != nil {
 				return err
@@ -609,4 +630,44 @@ func boundLambda(expr syntax.Expr, v *syntax.ValueDecl) error {
 	}
 	list := strings.Join(names, " ")
 	return Refusef("the parameters `%s` are bound already: send the body without `\\%s ->`", list, list)
+}
+
+// routeDecl is module m's route named name, or nil.
+func routeDecl(m *syntax.Module, name string) *syntax.RouteDecl {
+	for _, d := range m.Decls {
+		if r, ok := d.(*syntax.RouteDecl); ok && r.Name == name {
+			return r
+		}
+	}
+	return nil
+}
+
+// ownValue reports whether module m declares an unqualified value name (not a route's member).
+func ownValue(m *syntax.Module, name string) bool {
+	for _, d := range m.Decls {
+		if v, ok := d.(*syntax.ValueDecl); ok && v.Route == "" && v.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// valueDeclFull is module m's value declaration by its full name (`update`, `Clear.update`), or nil.
+func valueDeclFull(m *syntax.Module, full string) *syntax.ValueDecl {
+	for _, d := range m.Decls {
+		if v, ok := d.(*syntax.ValueDecl); ok && v.FullName() == full {
+			return v
+		}
+	}
+	return nil
+}
+
+// routeMembers says which routes of mod have a member: "`Notes.Clear.update`, `Notes.Pin.update`
+// are both `update`".
+func routeMembers(mod string, full []string) string {
+	var qs []string
+	for _, f := range full {
+		qs = append(qs, "`"+mod+"."+f+"`")
+	}
+	return strings.Join(qs, ", ") + " each have `" + full[0][strings.LastIndex(full[0], ".")+1:] + "`"
 }

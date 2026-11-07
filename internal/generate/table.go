@@ -42,9 +42,9 @@ func NewTable(p *Program, name string, fields []FieldSpec) ([]Edit, error) {
 }
 
 // TableNext is the command `alder new table` suggests next: a page listing the table's rows,
-// at its name in the plural (`alder new page /todos --list Todo`).
+// at its name in the plural (`alder new route /todos --list Todo`).
 func TableNext(name string) string {
-	return "alder new page /" + Plural(strings.ToLower(name)) + " --list " + name
+	return "alder new route /" + Plural(strings.ToLower(name)) + " --list " + name
 }
 
 // NewTableWith is NewTable with options: with NoTimestamps the table has no `created` and

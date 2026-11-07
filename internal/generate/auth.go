@@ -40,15 +40,18 @@ type AuthData struct {
 // hashColumn is the column a user table keeps its password hash in.
 const hashColumn = "passwordHash"
 
-// NewAuth generates `alder new auth`: the login page app/Auth/Login.alder (the capability
-// Password { verify, hash }, its fake, `page "/login"`, the form Credentials, the Submit arm that
-// puts the user (and the role) in the session or rejects the form, the view, two tests), the
-// edits of App (the session's `user` and `role` fields, `login = Auth.Login`, `msg Logout` and
-// its arm, a test of it), the user table when it does not exist (with its migration, the
-// caller's Options.Migrate), and the Go adapter adapters/auth/login_password.go (PBKDF2-SHA256)
-// with its tests. The login goes to --to's page, else the page at `/`, else (an app with no
-// page yet: `alder new <app> --bare`, whose pages come after the login they require) the typed
-// hole ?afterLogin, in Submit's arm and in its test, filled once the page exists. It refuses an app whose session has a `user`, that has an Auth module or a
+// NewAuth generates `alder new auth` (#160: routes): the login module app/Auth/Login.alder (the
+// capability Password { verify, hash }, its fake, `route Login = GET "/login"` with its view, the
+// form Credentials and `route SignIn = POST "/login/_/SignIn" { } form Credentials`, whose
+// update puts the user (and the role) in the session and redirects, or answers
+// Response.invalid; two tests), the edits of App (the session's `user` and `role` fields,
+// `login = Auth.Login.Login`, `route Logout = POST "/_/Logout"` and its update, a test of it:
+// editApp), the user table when it does not exist (with its migration, the caller's
+// Options.Migrate), and the Go adapter adapters/auth/login_password.go (PBKDF2-SHA256) with its
+// tests. The login goes to --to's route (loginTarget), else the GET route (or page) at `/`, else
+// (an app with no route yet: `alder new <app> --bare`, whose routes come after the login they
+// require) the typed hole ?afterLogin, in SignIn.update and in its test, filled once the route
+// exists (EditAuth). It refuses an app whose session has a `user`, that has an Auth module or a
 // `login`, a user table without `email` and `passwordHash`, and a role that is not a union of
 // the user module (`alder new type` makes one) or that the table has no column of.
 func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
@@ -73,28 +76,34 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 	if hasField(p.Session, "role") && o.Role != "" {
 		return nil, false, Refusef("the session already has a `role` field: leave out --role, or remove it first")
 	}
-	if declared(app.Syntax, "Logout") {
+	if declared(app.Syntax, "Logout") || routeDecl(app.Syntax, "Logout") != nil {
 		return nil, false, Refusef("`App` already declares `Logout`")
 	}
 	if !IsUpperIdent(o.Users) {
 		return nil, false, Refusef("`--users %s`: a table is named by one capitalised identifier, such as `User`", o.Users)
 	}
 
-	// the page a login goes to
-	var home *Page
+	// the page a login goes to: a GET route (or a page module written before routes)
+	home, homeParams := "", false
 	if o.To != "" {
-		if home = p.PageNamed(o.To); home == nil {
-			return nil, false, Refusef("`--to %s` is not a page of this app", o.To)
+		var ok bool
+		if home, homeParams, ok = loginTarget(p, o.To, "Auth.Login"); !ok {
+			return nil, false, Refusef("`--to %s` is not a page of this app: name a route module (`Home`) or a GET route (`Posts.Index.Index`)", o.To)
 		}
 	} else {
+		for _, r := range p.Routes {
+			if !r.Write() && r.Path == "/" && home == "" {
+				home, homeParams = r.Ref("Auth.Login")+" {}", routeHasRequiredParams(r)
+			}
+		}
 		for _, pg := range p.Pages {
-			if pg.Path == "/" {
-				home = pg
+			if pg.Path == "/" && home == "" {
+				home, homeParams = pageLit(pg.Module, nil), hasRequiredParams(pg)
 			}
 		}
 	}
-	if home != nil && hasRequiredParams(home) {
-		return nil, false, Refusef("`%s` has parameters: a login goes to a page without, name one with `--to <Page>`", home.Module)
+	if home != "" && homeParams {
+		return nil, false, Refusef("`%s` has parameters: a login goes to a page without, name one with `--to <Page>`", strings.TrimSuffix(home, " {}"))
 	}
 
 	var edits []Edit
@@ -192,8 +201,8 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 	d := AuthData{Dir: gen.AdapterPkg(module), Func: gen.AdapterFunc(module, "Password"), Table: users.Name,
 		TableName: fmt.Sprintf("%q", users.Module+"."+users.Name), HashColumn: hashColumn, HashColumnQ: fmt.Sprintf("%q", hashColumn),
 		IDType: types.StringIn(users.IDType, module), Role: role != nil, RoleColumn: roleColumn, Home: "?afterLogin", Iterations: 600000}
-	if home != nil {
-		d.Home = pageLit(home.Module, nil)
+	if home != "" {
+		d.Home = home
 	}
 	if role != nil {
 		d.RoleDefault = ctors[0]
@@ -201,8 +210,8 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 	d.Open, d.Close = rootTags(p, "Log in", imports)
 	tb := newTestBuilder(probe, module, imports)
 	tb.let("let _ <- Test.fake Password")
-	tb.let("let _ <- Test.get (Auth.Login {})")
-	tb.let("let r <- Test.submit Credentials { email: Text.Email \"nobody@example.com\", password: Text.Secret \"secret\" }")
+	tb.let("let _ <- Test.get (Login {})")
+	tb.let("let r <- Test.submit SignIn { email: Text.Email \"nobody@example.com\", password: Text.Secret \"secret\" }")
 	role1 := ""
 	if role != nil {
 		role1 = " and their role"
@@ -221,27 +230,9 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 		lhs, rhs = lhs+", role: r.session.role", rhs+", role: "+r
 	}
 	me := tb.insertRow(users, "me", over, true)
-	tb.let("let _ <- Test.get (Auth.Login {})")
-	tb.let("let r <- Test.submit Credentials { email: Text.Email \"me@example.com\", password: Text.Secret \"secret\" }")
+	tb.let("let _ <- Test.get (Login {})")
+	tb.let("let r <- Test.submit SignIn { email: Text.Email \"me@example.com\", password: Text.Secret \"secret\" }")
 	d.Tests = append(d.Tests, TestData{Name: quote("logging in through the form"), Lines: tb.lines, Result: strings.Replace(lhs+" } == "+rhs+" }", "Just me", "Just "+me, 1)})
-	// logging out, from this page: App's Logout empties the session's user (and role)
-	tb = newTestBuilder(probe, module, imports)
-	over = map[string]string{}
-	loginRole, outRole := "", ""
-	if role != nil {
-		over[roleColumn] = ctors[len(ctors)-1]
-		loginRole, outRole = ", role: "+ctors[len(ctors)-1], ", role: r.session.role"
-	}
-	me = tb.insertRow(users, "me", over, true)
-	tb.let("let _ <- Test.login { user: Just %s%s }", me, loginRole)
-	tb.let("let _ <- Test.get (Auth.Login {})")
-	tb.let("let r <- Test.click App.Logout")
-	want := "{ answer: Redirected (Auth.Login {}), user: Nothing"
-	if role != nil {
-		want += ", role: " + ctors[0]
-	}
-	d.Tests = append(d.Tests, TestData{Name: quote("a signed-in user logs out here"), Lines: tb.lines,
-		Result: "{ answer: r.answer, user: r.session.user" + outRole + " } == " + want + " }"})
 	d.Imports = imports.list()
 	loginBody, err := canonical(probe, FileOf(module), render("auth_login.tmpl", d)) // probe: it knows a user table created here (its name, recordName)
 	if err != nil {
@@ -255,7 +246,7 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 		roleType = types.StringIn(role, "App")
 		roleField = "role: " + roleType + " = " + ctors[0]
 	}
-	appEdit, err := editApp(probe, app, users, idType, roleField, ctors) // probe: it knows a user table created here
+	appEdit, err := editApp(probe, app, users, idType, roleField, roleColumn, ctors) // probe: it knows a user table created here
 	if err != nil {
 		return nil, false, err
 	}
@@ -278,14 +269,12 @@ func NewAuth(p *Program, o AuthOptions) ([]Edit, bool, error) {
 }
 
 // editApp is App with a login (RF1, chapter 15): the session's `user` (and role) fields after
-// its others, `login = Auth.Login` after the session, `msg Logout` and its arm (in App's
-// `update`, or in one created after `login`), the user module imported, and a test of Logout at
-// the end. Nothing else moves.
-func editApp(p *Program, app *Module, users *Table, idType, roleField string, ctors []string) (Edit, error) {
-	app, err := withUpdateMatch(app, "Logout")
-	if err != nil {
-		return Edit{}, err
-	}
+// its others, `login = Auth.Login.Login` and `route Logout = POST "/_/Logout" { }` after the
+// session, the user module imported, and at the end `Logout.update` (it empties the session's
+// user and role and goes to log in) and a test of it. Nothing else moves. Logout is a `POST`:
+// a button `click={App.Logout}` sends it, a form posting to /_/Logout without JavaScript, so a
+// link (a GET) can never log anyone out.
+func editApp(p *Program, app *Module, users *Table, idType, roleField, roleColumn string, ctors []string) (Edit, error) {
 	e := newSrcEdit(app.Source)
 	newFields := []string{"user: Maybe " + idType}
 	if roleField != "" {
@@ -297,24 +286,7 @@ func editApp(p *Program, app *Module, users *Table, idType, roleField string, ct
 			sd = s
 		}
 	}
-	login := "login = Auth.Login"
-	put := "{ s | user: Nothing }"
-	if roleField != "" {
-		put = "{ s | user: Nothing, role: " + ctors[0] + " }"
-	}
-	arm := "Logout p -> {\n  let _ <- Session.put (\\s -> " + put + ")\n  Task.succeed (Redirect (Auth.Login {}))\n},"
-	line, ind, hasUpdate, ok := updateArmSpot(e, app.Syntax)
-	if !ok {
-		return Edit{}, Refusef("`App`'s `update` is not a `match` a new arm can go in: add the Logout arm yourself")
-	}
-	var after string // what follows the session
-	if hasUpdate {
-		after = "\n" + login
-		e.insertBefore(declStart(e, valueDecl(app.Syntax, "update")), "msg Logout\n")
-		e.insertBefore(line, indent(arm, ind))
-	} else {
-		after = "\n" + login + "\n\nmsg Logout\n\nupdate : Msg -> Session -> Task Nav\nupdate msg session = match msg {\n" + indent(arm, "  ") + "\n}"
-	}
+	after := "\nlogin = " + loginRoute + "\n\nroute Logout = POST \"/_/Logout\" { }" // what follows the session
 	switch {
 	case sd == nil:
 		at := len(e.lines) + 1
@@ -356,42 +328,80 @@ func editApp(p *Program, app *Module, users *Table, idType, roleField string, ct
 		e.insertBefore(end+1, after)
 	}
 
-	// the test of Logout: it calls update itself, as every Log out button is on a page that
-	// requires a user (book 10, "The logout redirect")
-	sess := []string{"user: Just (" + idType + " \"me\")"}
+	put := "{ s | user: Nothing }"
 	if roleField != "" {
-		sess = append(sess, "role: "+ctors[len(ctors)-1])
+		put = "{ s | user: Nothing, role: " + ctors[0] + " }"
 	}
+	e.appendText("\n-- Logout empties the session's user and goes to log in: a `POST`, sent by a button\n" +
+		"-- (`click={App.Logout}`), a form without JavaScript.\n" +
+		"Logout.update : Logout.Params -> Session -> Task Response\n" +
+		"Logout.update params session = {\n  let _ <- Session.put (\\s -> " + put + ")\n  Task.succeed (Response.redirect (" + loginRoute + " {}))\n}")
+
+	// the test of Logout: from the login page, which a visitor may open, so the redirect is
+	// told from the page shown again (on a page that requires a user both end at the login)
 	imports := newImports("App", p.Std)
 	imports.add(users.Module)
 	tb := newTestBuilder(p, "App", imports)
-	for i, f := range p.Session.Fields { // a record literal names every field: a default's value, else a sample
-		if f.Name == "user" || f.Name == "role" {
-			continue
-		}
-		v := ""
-		if sd != nil && i < len(sd.Fields) && sd.Fields[i].Default != nil {
-			v = sliceSpan(app.Syntax.Lines, sd.Fields[i].Default.GetSpan())
-		}
-		if v == "" {
-			v = tb.sample(f.Type, f.Name, 1)
-		}
-		sess = append(sess, f.Name+": "+v)
+	over := map[string]string{}
+	loginRole, outRole, want := "", "", "{ answer: Redirected ("+loginRoute+" {}), user: Nothing"
+	if roleField != "" {
+		r := ctors[len(ctors)-1]
+		over[roleColumn] = r
+		loginRole, outRole, want = ", role: "+r, ", role: r.session.role", want+", role: "+ctors[0]
 	}
+	me := tb.insertRow(users, "me", over, true)
+	tb.let("let _ <- Test.login { user: Just %s%s }", me, loginRole)
+	tb.let("let _ <- Test.get (%s {})", loginRoute)
+	tb.let("let r <- Test.click Logout")
 	e.appendText("\n" + snippet("test", TestData{Name: quote("Logout clears the user and goes to log in"),
-		Comment: []string{"Every Log out button is on a page that requires a user, so a browser test cannot tell this",
-			"Redirect from a Rerender (book 10, \"The logout redirect\"): the test calls update itself."},
-		Lines:  []string{"let r <- Test.run (update Logout { " + strings.Join(sess, ", ") + " })"},
-		Result: "{ value: r.value, trace: r.trace } == { value: Ok (Redirect (Auth.Login {})), trace: [\"Session.put\"] }"}))
+		Comment: []string{"Logging out from the login page, which a visitor may open: the answer is the redirect,",
+			"not the page shown again."},
+		Lines:  tb.lines,
+		Result: "{ answer: r.answer, user: r.session.user" + outRole + " } == " + want + " }"}))
 	addImports(e, p, app.Syntax, imports.list())
 	return Edit{Path: app.File, Body: e.result()}, nil
+}
+
+// loginRoute is the route `alder new auth` writes for App's `login`.
+const loginRoute = "Auth.Login.Login"
+
+// loginTarget is the route value a login goes to, written in module home, for name: a route
+// module (its GET route, Plan call 14), a GET route `Module.Route`, or a page module written
+// before routes; hasParams when it has a parameter without a default; ok false when name is
+// none of these.
+func loginTarget(p *Program, name, home string) (lit string, hasParams, ok bool) {
+	if pg := p.PageNamed(name); pg != nil {
+		return pageLit(name, nil), hasRequiredParams(pg), true
+	}
+	r := p.RouteModule(name)
+	if r == nil {
+		for _, c := range p.Routes {
+			if !c.Write() && c.Module+"."+c.Name == name {
+				r = c
+			}
+		}
+	}
+	if r == nil {
+		return "", false, false
+	}
+	return r.Ref(home) + " {}", routeHasRequiredParams(r), true
+}
+
+// routeHasRequiredParams reports whether route r has a parameter without a default.
+func routeHasRequiredParams(r *Route) bool {
+	for _, par := range r.Params {
+		if !par.HasDefault {
+			return true
+		}
+	}
+	return false
 }
 
 // goesTo says where a login goes in a test's comment: the page, or, for the hole ?afterLogin
 // (an app with no page yet), the page that hole will name.
 func goesTo(home string) string {
 	if strings.HasPrefix(home, "?") {
-		return "the page " + home + " names (fill it, here and in Submit's arm, once the page exists)"
+		return "the page " + home + " names (fill it, here and in SignIn.update, once the page exists)"
 	}
 	return home
 }

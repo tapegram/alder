@@ -1,0 +1,54 @@
+edited app/Posts/Index.alder
+--- a/app/Posts/Index.alder
++++ b/app/Posts/Index.alder
+@@ -4,7 +4,8 @@
+ import Table.Post
+ import Table.User
+ 
+-route Index = GET "/posts" { page: Int = 1 } requires user
++route Index            = GET  "/posts"                    { page: Int = 1 }   requires user
++route SubmitNewComment = POST "/posts/_/SubmitNewComment" { } form NewComment requires user
+ 
+ type Model = {
+   rows: List Post,
+@@ -93,8 +94,22 @@
+       else
+         <span slot="next" aria-disabled="true">Next</span>}
+     </al-pagination>
++
++    <al-card>
++      <h2 slot="header">New comment</h2>
++      <form submit={SubmitNewComment}>
++        <al-textarea field="body" label="Body" />
++        <al-alert variant="destructive"><Errors form /></al-alert>
++        <al-button type="submit">New comment</al-button>
++      </form>
++    </al-card>
+   </Layout.Page>
+ 
++form NewComment = { body: Text }
++
++SubmitNewComment.update : SubmitNewComment.Params -> Session -> Task Response
++SubmitNewComment.update params session = ?answer
++
+ test "the list shows my rows, newest first" = {
+   let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+   let _ <- Test.login { user: Just me }
+@@ -163,3 +178,11 @@
+   let r <- Test.open (Index {})
+   Task.succeed (r.answer == Redirected (Auth.Login {}))
+ }
++
++test "submitting NewComment" = {
++  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
++  let _ <- Test.login { user: Just me }
++  let _ <- Test.get (Index {})
++  let r <- Test.submit SubmitNewComment { body: "body-1" }
++  Task.succeed (r.answer == ?expected)
++}
+app/Posts/Index.alder:111:42: warning[W0002]: hole ?answer has type Task Response
+  SubmitNewComment.update params session = ?answer
+                                           ^^^^^^^
+app/Posts/Index.alder:187:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^

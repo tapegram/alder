@@ -1444,19 +1444,19 @@ func TestBook_CommandParts(t *testing.T) {
 // app are a failure each.
 func TestBook_CommandsFail(t *testing.T) {
 	bin := alder(t)
-	about := "module About\n\nimport Layout\n\npage \"/about\" { }\n\ntype Model = { }\n\n" +
-		"load : Params -> Session -> Query Model\nload params session = Query.succeed {}\n\n" +
-		"view : Model -> Session -> Html Msg\nview model session = <Layout.Page title=\"About\"><h1>About</h1></Layout.Page>\n\n" +
+	about := "module About\n\nimport Layout\n\nroute About = GET \"/about\" { }\n\ntype Model = { }\n\n" +
+		"About.load : About.Params -> Session -> Query Model\nAbout.load params session = Query.succeed {}\n\n" +
+		"About.view : Model -> Session -> Html\nAbout.view model session = <Layout.Page title=\"About\"><h1>About</h1></Layout.Page>\n\n" +
 		"test \"the page is shown\" = {\n  let r <- Test.open (About {})\n" +
 		"  Task.succeed (\n    { answer: r.answer, heading: Test.text \"h1\" r.doc } == { answer: Shown, heading: Just \"About\" }\n  )\n}\n"
-	newPage := "```text command=guestbook\n$ alder new page About /about\nwrote app/About.alder\n```\n\n"
+	newPage := "```text command=guestbook\n$ alder new route About /about\nwrote app/About.alder\n```\n\n"
 	ch := filepath.Join(t.TempDir(), "15-x.md")
 	for _, c := range []struct {
 		name, chapter string
 		fails         int
 	}{
 		{"right", newPage + "```alder written=guestbook/app/About.alder\n" + about + "```\n\n```text command=guestbook\n$ alder check\n```\n", 0},
-		{"wrong output", "```text command=guestbook\n$ alder new page About /about\nwrote app/Home.alder\n```\n", 1},
+		{"wrong output", "```text command=guestbook\n$ alder new route About /about\nwrote app/Home.alder\n```\n", 1},
 		{"wrong file", newPage + "```alder written=guestbook/app/About.alder\n" + strings.Replace(about, "<h1>About</h1>", "<h1>Us</h1>", 1) + "```\n", 1},
 		{"no such state", "```text command=nowhere\n$ alder check\n```\n", 1},
 	} {

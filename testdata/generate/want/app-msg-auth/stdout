@@ -1,0 +1,33 @@
+edited app/App.alder
+--- a/app/App.alder
++++ b/app/App.alder
+@@ -8,6 +8,7 @@
+ login = Auth.Login.Login
+ 
+ route Logout = POST "/_/Logout" { }
++route Ping   = POST "/_/Ping"   { }
+ 
+ error : Error -> Html Never
+ error err =
+@@ -27,6 +28,9 @@
+   Task.succeed (Response.redirect (Auth.Login.Login {}))
+ }
+ 
++Ping.update : Ping.Params -> Session -> Task Response
++Ping.update params session = Task.succeed Response.refresh
++
+ -- Logging out from the login page, which a visitor may open: the answer is the redirect,
+ -- not the page shown again.
+ test "Logout clears the user and goes to log in" = {
+@@ -43,3 +47,11 @@
+       == { answer: Redirected (Auth.Login.Login {}), user: Nothing }
+   )
+ }
++
++-- Ping is sent from any page (`click={App.Ping}`): put an `al-button` with it in the view of
++-- the page this test opens, or open the page that has it. Until a page does, the click finds no control.
++test "pressing Ping" = {
++  let _ <- Test.get (Auth.Login.Login {})
++  let r <- Test.click Ping
++  Task.succeed (r.answer == Refreshed)
++}

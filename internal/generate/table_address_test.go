@@ -82,7 +82,7 @@ func TestNewPageListAndShowRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = NewPage(p, PageOptions{Path: "/both", List: "Entry", Show: "Entry"})
+	_, err = NewRoute(p, RouteOptions{Path: "/both", List: "Entry", Show: "Entry"})
 	if err == nil || !strings.Contains(err.Error(), "choose one of --list, --show and --from") {
 		t.Fatalf("err: %v", err)
 	}

@@ -1,0 +1,10 @@
+module Like
+
+import Table.Post
+
+route Like = POST "/like" { postId: Post.PostId }
+
+-- Press Like from a page that has its button to test it: `Test.get` that page, then
+-- `Test.click (Like { … })`, and `r.answer` is Refreshed until `update` says otherwise.
+Like.update : Like.Params -> Session -> Task Response
+Like.update params session = Task.succeed Response.refresh

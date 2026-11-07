@@ -49,7 +49,7 @@ func TestPreview_CarriesWarnings(t *testing.T) {
 	}
 	var clean preview
 	openClean(t, c, "app/Posts/Show.alder")
-	c.call("alder/preview", req(c, "app/Posts/Show.alder", Position{}, map[string]any{"id": "new page", "sets": map[string]string{"module": "Posts.Index", "path": "/x"}}), &clean)
+	c.call("alder/preview", req(c, "app/Posts/Show.alder", Position{}, map[string]any{"id": "new route", "sets": map[string]string{"module": "Posts.Index", "path": "/x"}}), &clean)
 	if clean.Warnings == nil || len(clean.Warnings) != 0 {
 		t.Errorf("refused preview warnings %v, want []", clean.Warnings)
 	}
@@ -123,15 +123,15 @@ func TestPlan_UsesUnsavedBuffer(t *testing.T) {
 	}
 }
 
-// refusedPage is new page's refusal for a module that exists (internal/generate/page.go).
-const refusedPage = "module `Posts.Index` exists (`app/Posts/Index.alder`): a generator never overwrites a file; choose another module name"
+// refusedRoute is new route's refusal for a module that exists (internal/generate/route.go).
+const refusedRoute = "module `Posts.Index` exists (`app/Posts/Index.alder`): a generator never overwrites a file; choose another module name"
 
 func TestPreview_RefusalText(t *testing.T) {
 	c := start(t, blogCopy(t))
 	openClean(t, c, "app/Posts/Index.alder")
 	var pv preview
-	c.call("alder/preview", req(c, "app/Posts/Index.alder", Position{}, map[string]any{"id": "new page", "sets": map[string]string{"module": "Posts.Index", "path": "/x"}}), &pv)
-	if pv.Ready || pv.Error != refusedPage || len(pv.Files) != 0 {
+	c.call("alder/preview", req(c, "app/Posts/Index.alder", Position{}, map[string]any{"id": "new route", "sets": map[string]string{"module": "Posts.Index", "path": "/x"}}), &pv)
+	if pv.Ready || pv.Error != refusedRoute || len(pv.Files) != 0 {
 		t.Fatalf("refusal %+v", pv)
 	}
 }
@@ -141,10 +141,10 @@ func TestPlan_Refusal(t *testing.T) {
 	c := start(t, blogCopy(t))
 	openClean(t, c, "app/Posts/Index.alder")
 	var raw map[string]json.RawMessage
-	c.call("alder/plan", req(c, "app/Posts/Index.alder", Position{}, map[string]any{"id": "new page", "sets": map[string]string{"module": "Posts.Index", "path": "/x"}}), &raw)
+	c.call("alder/plan", req(c, "app/Posts/Index.alder", Position{}, map[string]any{"id": "new route", "sets": map[string]string{"module": "Posts.Index", "path": "/x"}}), &raw)
 	var msg string
 	json.Unmarshal(raw["error"], &msg)
-	if msg != refusedPage {
+	if msg != refusedRoute {
 		t.Fatalf("error %s", raw["error"])
 	}
 	for _, k := range []string{"files", "diagnostics", "holes", "imports", "migration"} {

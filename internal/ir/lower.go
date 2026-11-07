@@ -668,8 +668,13 @@ func (l *lowerer) declareTypes() {
 	}
 	if app := l.prog.Modules["App"]; app != nil {
 		for _, d := range app.Decls {
-			if ld, ok := d.(*syntax.LoginDecl); ok && l.pages[ld.Page] != nil {
-				l.out.Login = l.pages[ld.Page].Path
+			if ld, ok := d.(*syntax.LoginDecl); ok {
+				switch pg, r := l.pages[ld.Page], l.routes[ld.Page]; {
+				case pg != nil:
+					l.out.Login = pg.Path
+				case r != nil: // `login = Auth.Login.Login`, a GET route (#160)
+					l.out.Login = r.Path
+				}
 			}
 		}
 	}

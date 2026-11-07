@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"strings"
 )
 
 // commandUsages are the usage lines `alder <command> --help` prints, by command; `alder new
@@ -41,16 +42,18 @@ var commandUsages = map[string]string{
 }
 
 var newGeneratorUsages = map[string]string{
-	"page": newPageUsage, "table": newTableUsage, "form": newFormUsage, "msg": newMsgUsage,
+	"route": newRouteUsage, "table": newTableUsage, "form": newFormUsage, "msg": newMsgUsage,
 	"capability": newCapabilityUsage, "admin": newAdminUsage, "auth": newAuthUsage,
 	"type": newTypeUsage, "decl": newDeclUsage, "test": newTestUsage, "silo": newSiloUsage,
 }
 
-// newPageHelpNote follows `alder new page --help`'s usage line: how a module name maps to a file.
-const newPageHelpNote = `
+// newRouteHelpNote follows `alder new route --help`'s usage line: how a module name maps to a file.
+const newRouteHelpNote = `
 A dotted module name is a nested module: each dot is a directory.
-  alder new page Sites.Clarity.Index /sites/clarity
-writes app/Sites/Clarity/Index.alder (a name without dots, About, writes app/About.alder).`
+  alder new route Sites.Clarity.Index /sites/clarity
+writes app/Sites/Clarity/Index.alder, whose route is named Index (a name without dots, About,
+writes app/About.alder with the route About). A write route has only update:
+  alder new route Like /like --method POST --param postId:Post.PostId`
 
 const helpUsage = "usage: alder help [<command> [<generator>]] [--json]"
 
@@ -90,10 +93,14 @@ func helpTo(args []string, w io.Writer) bool {
 		args = args[1:]
 	}
 	if cmd == "new" && len(args) > 1 {
-		if u, ok := newGeneratorUsages[args[1]]; ok {
+		kind := args[1]
+		if s := newGenerator(kind); s != nil { // an alias (`page`) answers as its generator
+			kind = strings.TrimPrefix(s.ID, "new ")
+		}
+		if u, ok := newGeneratorUsages[kind]; ok {
 			fmt.Fprintln(w, u)
-			if args[1] == "page" {
-				fmt.Fprintln(w, newPageHelpNote)
+			if kind == "route" {
+				fmt.Fprintln(w, newRouteHelpNote)
 			}
 			return true
 		}

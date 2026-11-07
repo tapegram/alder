@@ -27,7 +27,7 @@ type MsgOptions struct {
 	ID    string // --id: the button's id attribute
 }
 
-// NewMsg generates `alder new msg`: `msg <Name> { … }` in the page module, an `update` arm
+// NewMsg generates `alder new msg`; on a route module, newRouteMsg's write route. For a page module: `msg <Name> { … }` in the page module, an `update` arm
 // whose body is the typed hole `?<name>` : Task Nav, an `al-button` sending it at the end of
 // the view's root element (its parameters' values are holes `?<name><Field>`), and a browser
 // test that presses it (a parameter that is a table's id names a row the test inserts), reads
@@ -46,7 +46,13 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]
 		if o.InFor != "" || o.When != "" || o.ID != "" {
 			return nil, Refusef("`alder new msg App` adds a message without a button: --in-for, --when and --id belong to a page")
 		}
+		if app := p.Modules["App"]; app != nil && !appHasLegacyMsg(app.Syntax) {
+			return newAppRouteMsg(p, name, fields)
+		}
 		return newAppMsg(p, name, fields)
+	}
+	if len(p.RoutesOf(page)) > 0 {
+		return newRouteMsg(p, page, name, fields, o)
 	}
 	pg, m, err := pageModule(p, page)
 	if err != nil {

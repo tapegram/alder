@@ -1,6 +1,8 @@
 package generate
 
 import (
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -111,27 +113,27 @@ func TestAdminLayoutPageStack(t *testing.T) {
 }
 
 // TestAdminWireNames (#63): when the admin's pages already name a query parameter's wire key
-// (`q: Text = "" as "Q"`, as on regen after the author added it), the regenerated page line
+// (`q: Text = "" as "Q"`, as on regen after the author added it), the regenerated route line
 // keeps it, and the GET forms and the list's filter selects and tests write the key the target
-// page reads (the list's own `q` and filters, the bulk page's `ids`), not the field name.
+// route reads (the list's own `q` and filters, the bulk page's `ids`), not the field name.
 func TestAdminWireNames(t *testing.T) {
 	p, err := Load("../../testdata/generate/fixture")
 	if err != nil {
 		t.Fatal(err)
 	}
-	index, bulk := p.PageNamed("Admin.Posts.Index"), p.PageNamed("Admin.Posts.Bulk")
+	index, bulk := p.RouteModule("Admin.Posts.Index"), p.RouteModule("Admin.Posts.Bulk")
 	if index != nil || bulk != nil {
 		t.Fatal("the fixture has an admin already")
 	}
-	p.Pages = append(p.Pages,
-		&Page{Module: "Admin.Posts.Index", Params: []*Param{{Name: "q", Wire: "Q"}, {Name: "status", Wire: "Status"}, {Name: "featured"}}},
-		&Page{Module: "Admin.Posts.Bulk", Params: []*Param{{Name: "ids", Wire: "Ids"}}})
+	p.Routes = append(p.Routes,
+		&Route{Module: "Admin.Posts.Index", Name: "Index", Method: "GET", Params: []*Param{{Name: "q", Wire: "Q"}, {Name: "status", Wire: "Status"}, {Name: "featured"}}},
+		&Route{Module: "Admin.Posts.Bulk", Name: "Bulk", Method: "GET", Params: []*Param{{Name: "ids", Wire: "Ids"}}})
 	files, _ := AdminFiles(p, AdminOptions{Module: "Admin", Path: "/admin"})
 	src := files["app/Admin/Posts/Index.alder"]
 	for _, want := range []string{
 		`q: Text = "" as "Q"`,
 		`status: Text = "" as "Status"`,
-		`featured: Text = "",` + "\n",
+		`featured: Text = "", `,
 		`name: "Status",`,
 		`name: "featured",`,
 		`<input type="search" name="Q" value={model.q} />`,
@@ -170,6 +172,86 @@ func TestAdminFormsNoEmptySpan(t *testing.T) {
 		}
 		if n == 0 {
 			t.Errorf("%s: no New or Edit pages", app)
+		}
+	}
+}
+
+// routeLineRe is a `route NAME = METHOD "path" …` line: its name and method.
+var routeLineRe = regexp.MustCompile(`(?m)^route (\w+) += (GET|POST|PUT|PATCH|DELETE) +"([^"]*)"(.*)$`)
+
+// TestAdminRoutes (#160): every page of the admin is a route module, written with routes and
+// Response, never with `page`, `msg` or `Nav`. Each table's modules have the routes their job
+// needs: the list a GET; New a GET and a POST with the form that redirects to the row; Edit a GET
+// and a PUT that redirects; Show a GET; Delete a GET (the confirm page) and a DELETE that
+// redirects to the list with a success toast; the bulk page a GET with POST routes (a form each
+// for a set) that answer refresh. The write routes are named for their action, so none shares a
+// name with a form of its module or its GET route.
+func TestAdminRoutes(t *testing.T) {
+	for _, app := range []string{"fixture", "fixture-silo"} {
+		p, err := Load("../../testdata/generate/" + app)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files, order := AdminFiles(p, AdminOptions{Module: "Admin", Path: "/admin"})
+		for _, path := range order {
+			src := files[path]
+			code, _, _ := strings.Cut(src, RegionBegin+"tests\n")
+			for _, old := range []string{"\npage ", "\nmsg ", "Task Nav", "Html Msg", "Redirect (", "Reject ", "Notice."} {
+				if strings.Contains(code, old) {
+					t.Errorf("%s/%s still has %q", app, path, strings.TrimSpace(old))
+				}
+			}
+			if path == "app/Admin/Layout.alder" {
+				continue
+			}
+			got := map[string]string{}
+			var names []string
+			for _, m := range routeLineRe.FindAllStringSubmatch(src, -1) {
+				got[m[1]] = m[2] + m[4]
+				names = append(names, m[1])
+			}
+			kind := strings.TrimSuffix(path[strings.LastIndex(path, "/")+1:], ".alder")
+			if len(names) == 0 || names[0] != kind || !strings.HasPrefix(got[kind], "GET") {
+				t.Errorf("%s/%s: the first route is not GET %s: %v", app, path, kind, got)
+			}
+			for _, name := range names {
+				if strings.Contains(src, "\nform "+name+" ") {
+					t.Errorf("%s/%s: route %s shares its name with a form", app, path, name)
+				}
+			}
+			wantWrites := map[string][]string{
+				"Index": nil, "Show": nil, "Pick": nil, "Dashboard": nil,
+				"New":    {"Create"},
+				"Edit":   {"Save"},
+				"Delete": {"Destroy"},
+			}[kind]
+			writes := slices.DeleteFunc(slices.Clone(names), func(n string) bool { return strings.HasPrefix(got[n], "GET") || strings.HasPrefix(n, "Search") })
+			if kind != "Bulk" && !slices.Equal(writes, wantWrites) {
+				t.Errorf("%s/%s: write routes %v, want %v", app, path, writes, wantWrites)
+			}
+			switch kind {
+			case "New":
+				if !strings.HasPrefix(got["Create"], "POST") || !strings.Contains(got["Create"], " form ") || !strings.Contains(src, "Task.succeed (Response.redirect (") {
+					t.Errorf("%s/%s: Create is not a POST with a form that redirects: %q", app, path, got["Create"])
+				}
+			case "Edit":
+				if !strings.HasPrefix(got["Save"], "PUT") || !strings.Contains(got["Save"], " form ") || !strings.Contains(src, "Response.redirect (") {
+					t.Errorf("%s/%s: Save is not a PUT with a form that redirects: %q", app, path, got["Save"])
+				}
+			case "Delete":
+				if !strings.HasPrefix(got["Destroy"], "DELETE") || !strings.Contains(src, "|> Response.success ") {
+					t.Errorf("%s/%s: Destroy is not a DELETE that redirects with a success toast: %q", app, path, got["Destroy"])
+				}
+			case "Bulk":
+				if len(writes) == 0 || !strings.Contains(src, "Response.refresh") {
+					t.Errorf("%s/%s: no bulk write route answering refresh: %v", app, path, got)
+				}
+				for _, w := range writes {
+					if !strings.HasPrefix(got[w], "POST") || (strings.HasPrefix(w, "BulkSet") && !strings.Contains(got[w], " form Set")) {
+						t.Errorf("%s/%s: %s is not a POST (with its form, for a set): %q", app, path, w, got[w])
+					}
+				}
+			}
 		}
 	}
 }

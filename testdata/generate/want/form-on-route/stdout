@@ -1,0 +1,56 @@
+edited app/Home.alder
+--- a/app/Home.alder
++++ b/app/Home.alder
+@@ -5,7 +5,7 @@
+ 
+ route Home   = GET  "/"         { }
+ route Submit = POST "/_/Submit" { } form Sign
+-route Clear  = POST "/_/Clear"  { }
++route Clear  = POST "/_/Clear"  { } form Reason
+ 
+ type Model = { entries: List Entry }
+ 
+@@ -30,13 +30,16 @@
+         <al-input field="message" label="Message" />
+         <al-button type="submit">Sign</al-button>
+       </form>
++      <form submit={Clear}>
++        <al-input field="why" label="Why" />
++        <al-alert variant="destructive"><Errors form /></al-alert>
++        <al-button type="submit">Reason</al-button>
++      </form>
+     </al-card>
+ 
+     <ul id="entries">
+       {for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}
+     </ul>
+-
+-    <al-button click={Clear}>Clear</al-button>
+   </Layout.Page>
+ 
+ form Sign = { name: Text.NonEmpty, message: Text.NonEmpty }
+@@ -50,6 +53,9 @@
+ Clear.update : Clear.Params -> Session -> Task Response
+ Clear.update params session = Task.succeed Response.refresh
+ 
++-- Clear.update reads the posted fields as params.form (params.form : Reason, such as params.form.why)
++form Reason = { why: Text.NonEmpty }
++
+ test "signing adds an entry" = {
+   let _ <- Test.get (Home {})
+   let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
+@@ -68,8 +74,8 @@
+   Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
+ }
+ 
+-test "pressing Clear" = {
++test "submitting Reason" = {
+   let _ <- Test.get (Home {})
+-  let r <- Test.click Clear
+-  Task.succeed (r.answer == Refreshed)
++  let r <- Test.submit Clear { why: Text.NonEmpty "why-1" }
++  Task.succeed (r.answer == ?expected)
+ }
+app/Home.alder:80:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^

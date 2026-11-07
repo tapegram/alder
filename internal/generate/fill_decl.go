@@ -39,7 +39,7 @@ func FillDecl(p *Program, address, src string) (edits []Edit, imports []string, 
 	for _, d := range m.Syntax.Decls {
 		switch d := d.(type) {
 		case *syntax.ValueDecl:
-			if d.Name == decl && d.Body != nil {
+			if d.FullName() == decl && d.Body != nil {
 				span = d.Body.GetSpan()
 				_, isElement = d.Body.(*syntax.Element)
 			}
@@ -64,7 +64,7 @@ func FillDecl(p *Program, address, src string) (edits []Edit, imports []string, 
 		return nil, nil, Refusef("`alder fill --decl` takes one expression; found more after it: %s at line %d, column %d of standard input", more, at.Line, at.Col)
 	} else if len(ds) > 0 {
 		return nil, nil, Refusef("`alder fill --decl` takes one expression; standard input does not parse as one: %s (line %d, column %d)", ds[0].Message, ds[0].Span.Start.Line, ds[0].Span.Start.Col)
-	} else if v := valueDecl(m.Syntax, decl); v != nil {
+	} else if v := valueDeclFull(m.Syntax, decl); v != nil {
 		if err := boundLambda(parsed, v); err != nil {
 			return nil, nil, err
 		}

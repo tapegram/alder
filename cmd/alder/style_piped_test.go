@@ -27,7 +27,7 @@ func TestCLI_PipedUnchanged(t *testing.T) {
 	dir := tempTodos(t, "Table/Todo.alder", "\ntest \"wrong\" = countOpen [] == 1\n")
 	code, out, errs := runTest(t, dir)
 	if code != 1 || errs != "" || strings.Contains(out, "\x1b") || strings.Contains(out, "\n  FAIL ") ||
-		!strings.Contains(out, "FAIL Table.Todo \"wrong\"\n  left:  0\n  right: 1\n") || !strings.HasSuffix(out, "116 passed, 1 failed\n") {
+		!strings.Contains(out, "FAIL Table.Todo \"wrong\"\n  left:  0\n  right: 1\n") || !strings.HasSuffix(out, "125 passed, 1 failed\n") {
 		t.Errorf("test (exit %d):\n%s\n%s", code, out, errs)
 	}
 

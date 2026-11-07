@@ -1,0 +1,10 @@
+[[- template "header" .]]
+
+type Model = { }
+
+[[.Route]].load : [[.Route]].Params -> Session -> Query Model
+[[.Route]].load params session = [[if .LoadHole]]?load[[else]]Query.succeed {}[[end]]
+
+[[.Route]].view : Model -> Session -> File
+[[.Route]].view model session = File.text { contentType: [[.ContentType]], body: ?body }
+[[template "tests" .]]

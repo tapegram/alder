@@ -10,10 +10,11 @@ import Table.Todo
 import Table.User
 -- @admin end
 
-page "/admin/orgs/{org}/todo/new" {
-  org: Org.OrgId,
-  findProject: Text = "",
-} requires user, role Admin, silo org
+-- @admin begin routes
+route New           = GET  "/admin/orgs/{org}/todo/new"                 { org: Org.OrgId, findProject: Text = "" } requires user, role Admin, silo org
+route Create        = POST "/admin/orgs/{org}/todo/new/_/Create"        { org: Org.OrgId } form TodoForm           requires user, role Admin, silo org
+route SearchProject = POST "/admin/orgs/{org}/todo/new/_/SearchProject" { org: Org.OrgId } form FindProject        requires user, role Admin, silo org
+-- @admin end
 
 type Model = {
   -- @admin begin model
@@ -22,23 +23,20 @@ type Model = {
   -- @admin end
 }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    let findProject = Text.slice 0 200 params.findProject
-    let projectsTotal <- Db.from Project |> Db.count
-    let projects <-
-      Db.from Project
-        |> Db.orderBy Project.name.asc
-        |> Db.where (if projectsTotal > 200 then Project.name.contains findProject else Db.and [])
-        |> Db.limit (if projectsTotal > 200 then 50 else 200)
-        |> Db.all
-    Query.succeed { projects: projects, projectsTotal: projectsTotal }
-    -- @admin end
-  } else
-    Query.notFound
+New.load : New.Params -> Session -> Query Model
+New.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin load
+  let findProject = Text.slice 0 200 params.findProject
+  let projectsTotal <- Db.from Project |> Db.count
+  let projects <-
+    Db.from Project
+      |> Db.orderBy Project.name.asc
+      |> Db.where (if projectsTotal > 200 then Project.name.contains findProject else Db.and [])
+      |> Db.limit (if projectsTotal > 200 then 50 else 200)
+      |> Db.all
+  Query.succeed { projects: projects, projectsTotal: projectsTotal }
+  -- @admin end
 }
 
 -- @admin begin form
@@ -52,49 +50,46 @@ form TodoForm = {
 -- @admin begin search
 form FindProject = { q: Text }
 
-msg SearchProject form FindProject
+-- SearchProject answers the page again at the text.
+SearchProject.update : SearchProject.Params -> Session -> Task Response
+SearchProject.update params session =
+  Task.succeed (
+    Response.redirect (New { org: session.org, findProject: Text.slice 0 200 params.form.q })
+  )
 
 -- @admin end
 
-msg Create form TodoForm
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  -- @admin begin finds
-  SearchProject p ->
-    Task.succeed (
-      Redirect (Admin.Todos.New { org: session.org, findProject: Text.slice 0 200 p.form.q })
-    ),
+-- Create adds the row and goes to its page.
+Create.update : Create.Params -> Session -> Task Response
+Create.update params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin insert
+  let id <- Db.insert Todo {
+    title: params.form.title,
+    done: params.form.done,
+    project: params.form.project,
+    org: session.org,
+  }
+  Task.succeed (Response.redirect (Admin.Todos.Show.Show { org: session.org, id: id }))
   -- @admin end
-  Create p -> {
-    -- @admin begin insert
-    let id <- Db.insert Todo {
-      title: p.form.title,
-      done: p.form.done,
-      project: p.form.project,
-      org: session.org,
-    }
-    Task.succeed (Redirect (Admin.Todos.Show { org: session.org, id: id }))
-    -- @admin end
-  },
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+New.view : Model -> Session -> Html
+New.view model session =
   <Layout.Page title="New todo">
     <h1>New todo</h1>
 
     <al-card>
       -- @admin begin finder
       {if model.projectsTotal > 200 then
-        <form submit={SearchProject}>
+        <form submit={SearchProject { org: session.org }}>
           <al-input field="q" label="Find project" />
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
         Html.none}
       -- @admin end
-      <form submit={Create}>
+      <form submit={Create { org: session.org }}>
         -- @admin begin inputs
         <al-input field="title" label="Title" />
         <al-checkbox field="done" label="Done" value={False} />
@@ -126,8 +121,8 @@ test "creating a todo adds it, with the values submitted" = {
   }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
   let project2 <- Db.insert Project { name: Text.NonEmpty "name-2", org: org }
-  let page <- Test.get (Admin.Todos.New { org: org })
-  let r <- Test.submit TodoForm {
+  let page <- Test.get (New { org: org })
+  let r <- Test.submit (Create { org: org }) {
     title: Text.NonEmpty "title-1",
     done: True,
     project: project2,
@@ -135,7 +130,7 @@ test "creating a todo adds it, with the values submitted" = {
   let rows <- Db.from Todo |> Db.all
   Task.succeed (
     {
-      answers: List.map (\row -> Redirected (Admin.Todos.Show { org: org, id: row.id })) rows,
+      answers: List.map (\row -> Redirected (Admin.Todos.Show.Show { org: org, id: row.id })) rows,
       rows: List.map (\row -> {
         title: row.title,
         done: row.done,
@@ -172,8 +167,8 @@ test "a project not offered is refused" = {
   }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
   let project2 <- Db.insert Project { name: Text.NonEmpty "name-2", org: org }
-  let page <- Test.get (Admin.Todos.New { org: org })
-  let r <- Test.submitRaw TodoForm [
+  let page <- Test.get (New { org: org })
+  let r <- Test.submitRaw (Create { org: org }) [
     { name: "title", value: "x" },
     { name: "done", value: "True" },
     { name: "project", value: "missing" },
@@ -211,7 +206,7 @@ test "a list of 200 projects is offered whole" = {
         org: org,
       }) (List.range 3 200)
     )
-  let page <- Test.get (Admin.Todos.New { org: org })
+  let page <- Test.get (New { org: org })
   Task.succeed (List.length page.model.projects == 200)
 }
 
@@ -238,9 +233,9 @@ test "a long list of projects offers 50, and the search narrows it" = {
         org: org,
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Todos.New { org: org })
-  let found <- Test.get (Admin.Todos.New { org: org, findProject: "name-203" })
-  let r <- Test.submit FindProject { q: "zz" }
+  let all <- Test.get (New { org: org })
+  let found <- Test.get (New { org: org, findProject: "name-203" })
+  let r <- Test.submit (SearchProject { org: org }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.projects,
@@ -251,7 +246,7 @@ test "a long list of projects offers 50, and the search narrows it" = {
       shown: 50,
       total: 203,
       found: True,
-      answer: Redirected (Admin.Todos.New { org: org, findProject: "zz" }),
+      answer: Redirected (New { org: org, findProject: "zz" }),
     }
   )
 }
@@ -279,12 +274,12 @@ test "a project outside the narrowed list is refused" = {
         org: org,
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Todos.New { org: org })
-  let found <- Test.get (Admin.Todos.New { org: org, findProject: "name-203" })
-  let r <- Test.submit FindProject { q: "zz" }
+  let all <- Test.get (New { org: org })
+  let found <- Test.get (New { org: org, findProject: "name-203" })
+  let r <- Test.submit (SearchProject { org: org }) { q: "zz" }
   let pick = Maybe.withDefault "" (Test.attr "value" "select[name=project] option" found.doc)
-  let page <- Test.get (Admin.Todos.New { org: org })
-  let sent <- Test.submitRaw TodoForm [
+  let page <- Test.get (New { org: org })
+  let sent <- Test.submitRaw (Create { org: org }) [
     { name: "title", value: "x" },
     { name: "done", value: "True" },
     { name: "project", value: pick },
@@ -299,9 +294,38 @@ test "a project outside the narrowed list is refused" = {
   )
 }
 
+test "a demoted Admin cannot create a todo" = {
+  let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.member me org
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
+  let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
+  let project2 <- Db.insert Project { name: Text.NonEmpty "name-2", org: org }
+  let _ <- Test.get (New { org: org })
+  let _ <- Db.update User me (\u -> { u | role: Member })
+  let r <- Test.submit (Create { org: org }) {
+    title: Text.NonEmpty "title-1",
+    done: True,
+    project: project2,
+  }
+  let rows <- Db.from Todo |> Db.count
+  Task.succeed (
+    { answer: r.answer, rows: rows } == { answer: RequestFailed "400 bad request", rows: 0 }
+  )
+}
+
 test "a visitor is sent to log in" = {
   let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
-  let r <- Test.open (Admin.Todos.New { org: org })
+  let r <- Test.open (New { org: org })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -318,7 +342,7 @@ test "a Member gets no page, even one made Admin since logging in" = {
     org: Nothing,
     role: Member,
   }
-  let r <- Test.open (Admin.Todos.New { org: org })
+  let r <- Test.open (New { org: org })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -336,7 +360,7 @@ test "a demoted Admin is refused at once" = {
     org: Just org,
     role: Admin,
   }
-  let r <- Test.open (Admin.Todos.New { org: org })
+  let r <- Test.open (New { org: org })
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

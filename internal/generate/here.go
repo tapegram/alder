@@ -186,6 +186,14 @@ func choices(f Field, p *Program) []string {
 		for _, pg := range p.Pages {
 			out = append(out, pg.Module)
 		}
+		for _, r := range p.Routes {
+			if r.Module == "App" && !f.AppOK {
+				continue
+			}
+			if len(out) == 0 || out[len(out)-1] != r.Module {
+				out = append(out, r.Module)
+			}
+		}
 	case ArgTable:
 		for _, t := range p.Tables {
 			out = append(out, t.Name)
@@ -200,8 +208,8 @@ func choices(f Field, p *Program) []string {
 				continue
 			}
 			for _, d := range m.Syntax.Decls {
-				if vd, ok := d.(*syntax.ValueDecl); ok {
-					out = append(out, name+"."+vd.Name)
+				if vd, ok := d.(*syntax.ValueDecl); ok { // a route's member by its full name
+					out = append(out, name+"."+vd.FullName())
 				}
 			}
 		}
@@ -226,7 +234,7 @@ func validate(f Field, v string, choices []string, p *Program) (bool, string) {
 		}
 	case ArgPage:
 		if p != nil && !slices.Contains(choices, v) {
-			return false, "no page `" + v + "`"
+			return false, "no route or page module `" + v + "`"
 		}
 	case ArgTable:
 		if p != nil && !slices.Contains(choices, v) {

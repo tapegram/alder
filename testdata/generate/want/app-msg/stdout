@@ -1,31 +1,30 @@
 edited app/App.alder
 --- a/app/App.alder
 +++ b/app/App.alder
-@@ -13,3 +13,18 @@
+@@ -4,6 +4,8 @@
+ 
+ session { }
+ 
++route ToggleTheme = POST "/_/ToggleTheme" { dark: Bool }
++
+ error : Error -> Html Never
+ error err =
+   <Layout.Page title="Error">
+@@ -13,3 +15,14 @@
  
  notFound : Html Never
  notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 +
-+msg ToggleTheme { dark: Bool }
++ToggleTheme.update : ToggleTheme.Params -> Session -> Task Response
++ToggleTheme.update params session = Task.succeed Response.refresh
 +
-+update : Msg -> Session -> Task Nav
-+update msg session = match msg {
-+  ToggleTheme p -> ?toggleTheme,
-+}
-+
-+-- A message of App is sent from any page (`click={App.ToggleTheme}`), so the test calls update itself.
-+-- Fill ?expected with what ToggleTheme must do, as `{ value: r.value, trace: r.trace } ==
-+-- { value: Ok Rerender, trace: ["Session.put"] }`: its answer and the effects it ran.
++-- ToggleTheme is sent from any page (`click={App.ToggleTheme}`): put an `al-button` with it in the view of
++-- the page this test opens, or open the page that has it. Until a page does, the click finds no control.
 +test "pressing ToggleTheme" = {
-+  let r <- Test.run (update (ToggleTheme { dark: ?toggleThemeDark }) {})
-+  Task.succeed ?expected
++  let _ <- Test.get (Home.Home {})
++  let r <- Test.click (ToggleTheme { dark: ?toggleThemeDark })
++  Task.succeed (r.answer == Refreshed)
 +}
-app/App.alder:21:20: warning[W0002]: hole ?toggleTheme has type Task Nav
-    ToggleTheme p -> ?toggleTheme,
-                     ^^^^^^^^^^^^
-app/App.alder:28:50: warning[W0002]: hole ?toggleThemeDark has type Bool
-    let r <- Test.run (update (ToggleTheme { dark: ?toggleThemeDark }) {})
-                                                   ^^^^^^^^^^^^^^^^
-app/App.alder:29:16: warning[W0002]: hole ?expected has type Bool
-    Task.succeed ?expected
-                 ^^^^^^^^^
+app/App.alder:26:44: warning[W0002]: hole ?toggleThemeDark has type Bool
+    let r <- Test.click (ToggleTheme { dark: ?toggleThemeDark })
+                                             ^^^^^^^^^^^^^^^^

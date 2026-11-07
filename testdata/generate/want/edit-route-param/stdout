@@ -1,0 +1,12 @@
+edited app/Home.alder
+--- a/app/Home.alder
++++ b/app/Home.alder
+@@ -3,7 +3,7 @@
+ import Layout
+ import Table.Entry
+ 
+-route Home   = GET  "/"         { }
++route Home   = GET  "/"         { q: Text = "" }
+ route Submit = POST "/_/Submit" { } form Sign
+ 
+ type Model = { entries: List Entry }

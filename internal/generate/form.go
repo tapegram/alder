@@ -33,10 +33,11 @@ type FormOptions struct {
 	Name   string
 	Fields []FieldSpec
 	Into   string // --into T: the table the arm inserts into
-	Msg    string // --msg M: the message that posts the form ("Submit<Name>" by default)
+	Msg    string // --msg M: the message that posts the form ("Submit<Name>" by default); on a route module, the route's name
+	Hole   bool   // --hole: on a route module, the `update` body is the hole ?answer
 }
 
-// NewForm generates `alder new form`: in the page module, `form <Name>`, `msg Submit<Name> form
+// NewForm generates `alder new form`; on a route module, newRouteForm's POST route. In the page module, `form <Name>`, `msg Submit<Name> form
 // <Name>` (or --msg's name), an `update` arm (an insert into the table the fields match by name and type, or
 // --into's; else the typed hole `?submit<Name>` : Task Nav), the form in `view` (inside its last
 // `al-card`, or in a card of its own at the end of the root element), and two browser tests: a
@@ -44,6 +45,12 @@ type FormOptions struct {
 // (FormRejected, nothing inserted). A page whose `view` is still the hole ?view is refused: fill
 // it first.
 func NewForm(p *Program, o FormOptions) ([]Edit, error) {
+	if len(p.RoutesOf(o.Page)) > 0 {
+		return newRouteForm(p, o)
+	}
+	if o.Hole {
+		return nil, Refusef("--hole belongs to a route module (`alder new route`); `%s` is a page, whose arm is a hole when no table fits", o.Page)
+	}
 	pg, m, err := pageModule(p, o.Page)
 	if err != nil {
 		return nil, err
@@ -183,34 +190,7 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 	if attach != nil {
 		e.insertAt(attach.Span.End.Line, attach.Span.End.Col, " form "+o.Name) // after its parameters, on one line or several
 		e.insertBefore(attach.Span.Start.Line, "-- "+msg+"'s arm reads the posted fields as p.form (p.form : "+o.Name+", such as p.form."+o.Fields[0].Name+")\n"+snippet("form_decl", d)+"\n")
-		// the message's own button and its "pressing" test (Test.click cannot post a form) give way to the form
-		for n := 1; n <= len(m.Syntax.Lines); n++ { // on one line, or over several (`alder fmt` breaks a long one)
-			if !strings.HasPrefix(strings.TrimSpace(m.Syntax.Lines[n-1]), "<al-button") {
-				continue
-			}
-			end, text := n, strings.TrimSpace(m.Syntax.Lines[n-1])
-			for !strings.HasSuffix(strings.TrimSpace(m.Syntax.Lines[end-1]), "</al-button>") && end < len(m.Syntax.Lines) {
-				end++
-				text += " " + strings.TrimSpace(m.Syntax.Lines[end-1])
-			}
-			if strings.HasSuffix(text, "</al-button>") && strings.Count(text, "<al-button") == 1 && strings.Contains(text, "click={"+msg+" ") {
-				for k := n; k <= end; k++ {
-					e.deleteLine(k)
-				}
-				n = end
-			}
-		}
-		for _, dc := range m.Syntax.Decls {
-			if t, ok := dc.(*syntax.TestDecl); ok && t.Name == "pressing "+msg {
-				first := declStart(e, t)
-				if first > 1 && strings.TrimSpace(e.line(first-1)) == "" {
-					first--
-				}
-				for n := first; n <= t.Span.End.Line; n++ {
-					e.deleteLine(n)
-				}
-			}
-		}
+		dropMsgControls(e, m, msg)
 		if attach.Params != nil {
 			var holes []string
 			for _, f := range attach.Params.Fields {
@@ -232,15 +212,6 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 		tb.login(roleOf(pg))
 	}
 	page := tb.pageValue(pg)
-	setup := tb.lines
-	rowsBefore := 0
-	if into != nil {
-		rowsBefore = tb.counts[into.Module]
-	}
-	var values []string
-	for _, f := range rec.Fields {
-		values = append(values, f.Name+": "+tb.sample(f.Type, f.Name, 1))
-	}
 	submitted := o.Name
 	if attach != nil && attach.Params != nil {
 		var holes []string
@@ -249,69 +220,45 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 		}
 		submitted = "(" + msg + " { " + strings.Join(holes, ", ") + " })"
 	}
-	valid := append(append([]string{}, tb.lines...), "let _ <- Test.get ("+page+")", fmt.Sprintf("let r <- Test.submit %s { %s }", submitted, strings.Join(values, ", ")))
-	tests := []TestData{}
-	switch {
-	case into != nil && rowsBefore == 0:
-		// the row as inserted: each field's value, and the defaults of the columns the form leaves out
-		var got, want []string
-		for i, f := range rec.Fields {
-			if into.Column(f.Name) != nil {
-				got = append(got, f.Name+": row."+f.Name)
-				want = append(want, values[i])
-			}
-		}
-		for _, c := range into.Columns {
-			if c.HasDefault && !c.ID && !c.Created && !c.Updated && ftypes[c.Name] == nil {
-				if c.Union != nil {
-					imports.add(c.Union.Module)
-				}
-				got = append(got, c.Name+": row."+c.Name)
-				want = append(want, c.Name+": "+c.Default)
-			}
-		}
-		valid = append(valid, "let rows <- Db.from "+recordName(into, o.Page)+" |> Db.all")
-		tests = append(tests, TestData{Name: quote("submitting " + o.Name + " adds a row"), Lines: valid,
-			Result: fmt.Sprintf("{ answer: r.answer, rows: List.map (\\row -> { %s }) rows } == { answer: %s, rows: [{ %s }] }", strings.Join(got, ", "), answer, strings.Join(want, ", "))})
-	case into != nil:
-		valid = append(valid, "let rows <- Db.from "+recordName(into, o.Page)+" |> Db.count")
-		tests = append(tests, TestData{Name: quote("submitting " + o.Name + " adds a row"), Lines: valid,
-			Result: fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", answer, rowsBefore+1)})
-	default:
-		tests = append(tests, TestData{Name: quote("submitting " + o.Name), Lines: valid, Result: "r.answer == ?expected"})
-	}
-	// an empty required field
-	for _, f := range rec.Fields {
-		if attach != nil {
-			break
-		}
-		msgText := emptyMessage(f.Type)
-		if msgText == "" {
-			continue
-		}
-		var raw []string
-		for _, g := range rec.Fields {
-			v := rawSample(g.Type)
-			if g.Name == f.Name {
-				v = ""
-			}
-			raw = append(raw, fmt.Sprintf("{ name: %s, value: %s }", quote(g.Name), quote(v)))
-		}
-		lines := append(append([]string{}, setup...), "let _ <- Test.get ("+page+")", fmt.Sprintf("let r <- Test.submitRaw %s [%s]", o.Name, strings.Join(raw, ", ")))
-		rejected := fmt.Sprintf("FormRejected [{ field: %s, message: %s }]", quote(f.Name), quote(msgText))
-		res := "r.answer == " + rejected
-		if into != nil {
-			lines = append(lines, "let rows <- Db.from "+recordName(into, o.Page)+" |> Db.count")
-			res = fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", rejected, rowsBefore)
-		}
-		tests = append(tests, TestData{Name: quote(o.Name + " refuses an empty " + f.Name), Lines: lines, Result: res})
-		break
-	}
+	tests := formTests(formTestSpec{Form: o.Name, Page: o.Page, Open: page, Submit: submitted, Raw: o.Name, Answer: answer,
+		Fields: rec.Fields, Types: ftypes, Into: into, NoEmpty: attach != nil}, tb, imports)
 	if err := addTests(e, m, tests); err != nil {
 		return nil, err
 	}
 	addImports(e, p, m.Syntax, imports.list())
 	return []Edit{{Path: m.File, Body: e.result()}}, nil
+}
+
+// dropMsgControls deletes msg's own button in the view of m and its "pressing <msg>" test from e:
+// Test.click cannot post a form, so they give way to the form that replaces them.
+func dropMsgControls(e *srcEdit, m *Module, msg string) {
+	for n := 1; n <= len(m.Syntax.Lines); n++ { // on one line, or over several (`alder fmt` breaks a long one)
+		if !strings.HasPrefix(strings.TrimSpace(m.Syntax.Lines[n-1]), "<al-button") {
+			continue
+		}
+		end, text := n, strings.TrimSpace(m.Syntax.Lines[n-1])
+		for !strings.HasSuffix(strings.TrimSpace(m.Syntax.Lines[end-1]), "</al-button>") && end < len(m.Syntax.Lines) {
+			end++
+			text += " " + strings.TrimSpace(m.Syntax.Lines[end-1])
+		}
+		if strings.HasSuffix(text, "</al-button>") && strings.Count(text, "<al-button") == 1 && (strings.Contains(text, "click={"+msg+" ") || strings.Contains(text, "click={"+msg+"}")) {
+			for k := n; k <= end; k++ {
+				e.deleteLine(k)
+			}
+			n = end
+		}
+	}
+	for _, dc := range m.Syntax.Decls {
+		if t, ok := dc.(*syntax.TestDecl); ok && t.Name == "pressing "+msg {
+			first := declStart(e, t)
+			if first > 1 && strings.TrimSpace(e.line(first-1)) == "" {
+				first--
+			}
+			for n := first; n <= t.Span.End.Line; n++ {
+				e.deleteLine(n)
+			}
+		}
+	}
 }
 
 // pageModule is page module name, refused when it is not one of the app's pages.
@@ -497,4 +444,92 @@ func addTests(e *srcEdit, m *Module, tests []TestData) error {
 		e.appendText("\n" + snippet("test", t))
 	}
 	return nil
+}
+
+// formTestSpec is what formTests needs to know of the form it tests.
+type formTestSpec struct {
+	Form    string        // the form's name
+	Page    string        // the module, for record names
+	Open    string        // the page value the test opens
+	Submit  string        // what `Test.submit` posts to: the form, or a route with its parameters
+	Raw     string        // the same for `Test.submitRaw`
+	Answer  string        // the answer of a valid submission
+	Fields  []types.Field // the form's fields
+	Types   map[string]types.Type
+	Into    *Table // the table the update inserts into, or nil
+	NoEmpty bool   // no test of an empty required field
+}
+
+// formTests are the tests of a form: a valid submission (its answer, and the row inserted into
+// s.Into, or the hole ?expected without a table) and an empty required field (FormRejected,
+// nothing inserted). tb has logged in and made the setup of the page s.Open.
+func formTests(s formTestSpec, tb *testBuilder, imports *importSet) []TestData {
+	setup := tb.lines
+	into, answer := s.Into, s.Answer
+	rowsBefore := 0
+	if into != nil {
+		rowsBefore = tb.counts[into.Module]
+	}
+	var values []string
+	for _, f := range s.Fields {
+		values = append(values, f.Name+": "+tb.sample(f.Type, f.Name, 1))
+	}
+	valid := append(append([]string{}, tb.lines...), "let _ <- Test.get ("+s.Open+")", fmt.Sprintf("let r <- Test.submit %s { %s }", s.Submit, strings.Join(values, ", ")))
+	tests := []TestData{}
+	switch {
+	case into != nil && rowsBefore == 0:
+		// the row as inserted: each field's value, and the defaults of the columns the form leaves out
+		var got, want []string
+		for i, f := range s.Fields {
+			if into.Column(f.Name) != nil {
+				got = append(got, f.Name+": row."+f.Name)
+				want = append(want, values[i])
+			}
+		}
+		for _, c := range into.Columns {
+			if c.HasDefault && !c.ID && !c.Created && !c.Updated && s.Types[c.Name] == nil {
+				if c.Union != nil {
+					imports.add(c.Union.Module)
+				}
+				got = append(got, c.Name+": row."+c.Name)
+				want = append(want, c.Name+": "+c.Default)
+			}
+		}
+		valid = append(valid, "let rows <- Db.from "+recordName(into, s.Page)+" |> Db.all")
+		tests = append(tests, TestData{Name: quote("submitting " + s.Form + " adds a row"), Lines: valid,
+			Result: fmt.Sprintf("{ answer: r.answer, rows: List.map (\\row -> { %s }) rows } == { answer: %s, rows: [{ %s }] }", strings.Join(got, ", "), answer, strings.Join(want, ", "))})
+	case into != nil:
+		valid = append(valid, "let rows <- Db.from "+recordName(into, s.Page)+" |> Db.count")
+		tests = append(tests, TestData{Name: quote("submitting " + s.Form + " adds a row"), Lines: valid,
+			Result: fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", answer, rowsBefore+1)})
+	default:
+		tests = append(tests, TestData{Name: quote("submitting " + s.Form), Lines: valid, Result: "r.answer == ?expected"})
+	}
+	if s.NoEmpty {
+		return tests
+	}
+	for _, f := range s.Fields { // the first required field, empty
+		msgText := emptyMessage(f.Type)
+		if msgText == "" {
+			continue
+		}
+		var raw []string
+		for _, g := range s.Fields {
+			v := rawSample(g.Type)
+			if g.Name == f.Name {
+				v = ""
+			}
+			raw = append(raw, fmt.Sprintf("{ name: %s, value: %s }", quote(g.Name), quote(v)))
+		}
+		lines := append(append([]string{}, setup...), "let _ <- Test.get ("+s.Open+")", fmt.Sprintf("let r <- Test.submitRaw %s [%s]", s.Raw, strings.Join(raw, ", ")))
+		rejected := fmt.Sprintf("FormRejected [{ field: %s, message: %s }]", quote(f.Name), quote(msgText))
+		res := "r.answer == " + rejected
+		if into != nil {
+			lines = append(lines, "let rows <- Db.from "+recordName(into, s.Page)+" |> Db.count")
+			res = fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", rejected, rowsBefore)
+		}
+		tests = append(tests, TestData{Name: quote(s.Form + " refuses an empty " + f.Name), Lines: lines, Result: res})
+		break
+	}
+	return tests
 }

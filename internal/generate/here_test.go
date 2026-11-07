@@ -24,7 +24,7 @@ func TestHere_PerSpec(t *testing.T) {
 		{table, "new msg", nil},
 		{plain, "new decl", map[string]string{"module": "Markdown"}},
 		{plain, "edit decl", nil},
-		{plain, "new page", nil},
+		{plain, "new route", nil},
 	}
 	for _, c := range cases {
 		s := SpecByID(c.id)
@@ -83,7 +83,7 @@ func TestForm_Validation(t *testing.T) {
 }
 
 func TestForm_NoProgram(t *testing.T) {
-	fields, _, ready := Form(SpecByID("new page"), nil, map[string]string{"module": "posts", "path": "x"}, nil)
+	fields, _, ready := Form(SpecByID("new route"), nil, map[string]string{"module": "posts", "path": "x"}, nil)
 	if ready {
 		t.Fatal("ready with a bad module and route")
 	}
@@ -144,19 +144,19 @@ func TestForm_Default(t *testing.T) {
 	if !sets.Has("example") {
 		t.Fatalf("blank false and list empty must leave the default: %v", sets)
 	}
-	// the real `new page` spec
+	// the real `new route` spec
 	var page *Spec
 	for _, sp := range Specs() {
-		if sp.ID == "new page" {
+		if sp.ID == "new route" {
 			page = sp
 		}
 	}
 	_, sets, _ = Form(page, nil, map[string]string{"module": "Posts", "list": "Post"}, p)
 	if sets.Has("example") {
-		t.Fatalf("new page --list starts with example: %v", sets)
+		t.Fatalf("new route --list starts with example: %v", sets)
 	}
 	_, sets, _ = Form(page, nil, map[string]string{"module": "Posts"}, p)
 	if !sets.Has("example") {
-		t.Fatalf("plain new page lost its example default: %v", sets)
+		t.Fatalf("plain new route lost its example default: %v", sets)
 	}
 }

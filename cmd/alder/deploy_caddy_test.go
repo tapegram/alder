@@ -220,7 +220,7 @@ func sshScaffoldCaddy(t *testing.T, box *sshBox) (string, string, *deployCmds) {
 // postVia posts an entry through the public address u.
 func postVia(t *testing.T, u, name string) {
 	t.Helper()
-	req, _ := http.NewRequest("POST", u+"/_m/Home/Submit", strings.NewReader(url.Values{"name": {name}, "message": {"hello"}}.Encode()))
+	req, _ := http.NewRequest("POST", u+"/_/Submit", strings.NewReader(url.Values{"name": {name}, "message": {"hello"}}.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Origin", u)
 	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)

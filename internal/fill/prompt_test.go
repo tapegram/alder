@@ -157,3 +157,37 @@ func TestStripFence(t *testing.T) {
 		}
 	}
 }
+
+// TestPrompt_RouteMember (#160): a hole in a route's member is named by its full name, its
+// binders and the module's route members are in scope by their full names, and the card says
+// what routes and `Response` are.
+func TestPrompt_RouteMember(t *testing.T) {
+	dir := holeApp(t, map[string]string{"app/Notes.alder": "module Notes\n\nroute Notes = GET \"/notes\" { }\nroute Clear = POST \"/notes/_/Clear\" { }\n\n" +
+		"Notes.load : Notes.Params -> Session -> Query Int\nNotes.load params session = Query.succeed 1\n\n" +
+		"Notes.view : Int -> Session -> Html\nNotes.view n session = <p>n</p>\n\n" +
+		"Clear.update : Clear.Params -> Session -> Task Response\nClear.update params session = ?clear\n"})
+	p, h := loadHole(t, dir, "Notes.Clear.update", "")
+	got := Prompt(p, h)
+	if !strings.Contains(got, "Fill the typed hole ?clear in Clear.update of module Notes (app/Notes.alder).\nIt must have type: Task Response\n") {
+		t.Errorf("the prompt does not name the hole's member:\n%s", got)
+	}
+	if !strings.Contains(got, "```alder\nmodule Response\n") {
+		t.Errorf("the prompt has no Response signatures for a `Task Response` hole")
+	}
+	scope := got[strings.Index(got, "Names in scope"):]
+	for _, want := range []string{"\nparams : ", "\nNotes.load : Notes.Params -> App.Session -> Query Int\n"} {
+		if !strings.Contains(scope, want) {
+			t.Errorf("the names in scope have no %q:\n%s", want, scope)
+		}
+	}
+	for _, want := range []string{
+		"route Create = POST",
+		"Response.redirect", "Response.render", "Response.refresh", "Response.invalid", "Response.toast",
+		"If you would want it back after a refresh, it goes in the URL. If it is secret, it goes in the session. Everything else rides in the HTML or is a row.",
+		"`Test.submit Create {",
+	} {
+		if !strings.Contains(Card, want) {
+			t.Errorf("the card has no %q", want)
+		}
+	}
+}

@@ -101,11 +101,11 @@ import Theme
 -- the theme is the visitor's choice
 session { theme: Theme.Theme = Light, user: Maybe User.UserId }
 
-login = Auth.Login
+login = Auth.Login.Login
+
+route Logout = POST "/_/Logout" { }
 
 msg Toggle
-
-msg Logout
 
 -- Toggle switches the theme.
 update : Msg -> Session -> Task Nav
@@ -114,15 +114,12 @@ update msg session = match msg {
     let _ <- Session.put (\s -> { s | theme: Theme.flip s.theme })
     Task.succeed Rerender
   },
-  Logout p -> {
-    let _ <- Session.put (\s -> { s | user: Nothing })
-    Task.succeed (Redirect (Auth.Login {}))
-  },
 }
 `
-	if !strings.HasPrefix(app, want) || !strings.Contains(app, "\nnotFound : Html Never\n") ||
-		!strings.HasSuffix(app, "  Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok (Redirect (Auth.Login {})), trace: [\"Session.put\"] })\n}\n") {
-		t.Errorf("App:\n%s\nwant it to start:\n%s", app, want)
+	logout := "\n-- Logout empties the session's user and goes to log in: a `POST`, sent by a button\n-- (`click={App.Logout}`), a form without JavaScript.\nLogout.update : Logout.Params -> Session -> Task Response\nLogout.update params session = {\n  let _ <- Session.put (\\s -> { s | user: Nothing })\n  Task.succeed (Response.redirect (Auth.Login.Login {}))\n}\n"
+	if !strings.HasPrefix(app, want) || !strings.Contains(app, "\nnotFound : Html Never\n") || !strings.Contains(app, logout) ||
+		!strings.Contains(app, "test \"Logout clears the user and goes to log in\"") || !strings.Contains(app, "let r <- Test.click Logout\n") {
+		t.Errorf("App:\n%s\nwant it to start:\n%s\nand have:\n%s", app, want, logout)
 	}
 	if res, err := Apply(dir, edits, Options{}); err != nil {
 		t.Fatalf("Apply: %v\n%s", err, res.RenderText(true))
@@ -138,7 +135,7 @@ update msg session = match msg {
 		t.Fatal(err)
 	}
 	for _, e := range edits {
-		if e.Path == "app/App.alder" && !strings.Contains(e.Body, "session {\n  theme: Theme.Theme = Light,\n  user: Maybe User.UserId,\n}\n\nlogin = Auth.Login\n\nmsg Toggle\n") {
+		if e.Path == "app/App.alder" && !strings.Contains(e.Body, "session {\n  theme: Theme.Theme = Light,\n  user: Maybe User.UserId,\n}\n\nlogin = Auth.Login.Login\n\nroute Logout = POST \"/_/Logout\" { }\n\nmsg Toggle\n") {
 			t.Errorf("multi-line session:\n%s", e.Body)
 		}
 	}
@@ -155,7 +152,7 @@ update msg session = match msg {
 		t.Fatal(err)
 	}
 	for _, e := range edits {
-		if e.Path == "app/App.alder" && !strings.HasPrefix(e.Body, "module App\n\nimport Layout\nimport Table.User\n\nsession { user: Maybe User.UserId }\n\nlogin = Auth.Login\n\nmsg Logout\n\nupdate : Msg -> Session -> Task Nav\nupdate msg session = match msg {\n  Logout p -> {\n") {
+		if e.Path == "app/App.alder" && !strings.HasPrefix(e.Body, "module App\n\nimport Layout\nimport Table.User\n\nsession { user: Maybe User.UserId }\n\nlogin = Auth.Login.Login\n\nroute Logout = POST \"/_/Logout\" { }\n\nerror : Error") {
 			t.Errorf("scaffold's App:\n%s", e.Body)
 		}
 	}
@@ -203,7 +200,7 @@ func TestNewAuth_NoHomePage(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range edits {
-		if e.Path == "app/Auth/Login.alder" && (!strings.Contains(e.Body, "Task.succeed (Redirect (?afterLogin))") || !strings.Contains(e.Body, "answer: Redirected (?afterLogin)")) {
+		if e.Path == "app/Auth/Login.alder" && (!strings.Contains(e.Body, "Task.succeed (Response.redirect (?afterLogin))") || !strings.Contains(e.Body, "answer: Redirected (?afterLogin)")) {
 			t.Errorf("Auth.Login:\n%s", e.Body)
 		}
 	}

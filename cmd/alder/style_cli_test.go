@@ -54,9 +54,9 @@ func jsonCommands(t *testing.T) map[string]func() cliRun {
 				return runEvalTo([]string{"--build-dir", bd, "--json", todos, "1 + 1"}, strings.NewReader(""), o, e)
 			})
 		},
-		"new page --dry-run --json": func() cliRun {
+		"new route --dry-run --json": func() cliRun {
 			return runIn(func(o, e *bytes.Buffer) int {
-				return runNewTo([]string{"page", "About", "/about", "--dir", newApp, "--dry-run", "--json"}, o, e)
+				return runNewTo([]string{"route", "About", "/about", "--dir", newApp, "--dry-run", "--json"}, o, e)
 			})
 		},
 		"test --json": func() cliRun {

@@ -31,11 +31,11 @@ printf '%s\n' "$a"
 	return dir
 }
 
-// clearApp is the scaffold with `alder new msg Home Clear`: holes ?clear (Home.update.Clear)
-// and ?expected (the test "pressing Clear").
+// clearApp is the scaffold (its guestbook a page module, #160) with `alder new msg Home Clear`:
+// holes ?clear (Home.update.Clear) and ?expected (the test "pressing Clear").
 func clearApp(t *testing.T) string {
 	t.Helper()
-	dir := genApp(t, "scaffold")
+	dir := genApp(t, "scaffold-page")
 	if code, out, errs := alderIn(t, dir, "", "new", "msg", "Home", "Clear"); code != 0 {
 		t.Fatalf("new msg: exit %d\n%s%s", code, out, errs)
 	}
@@ -194,5 +194,22 @@ func TestFill_AITestHint(t *testing.T) {
 	code, out, errs := alderIn(t, dir, "", "fill", `Home."pressing Clear"`, "--ai")
 	if code != 0 || !strings.HasSuffix(out, "a model wrote this test's expectation: `alder test --mutate` is the check that it tests something\n") || strings.Contains(errs, "warning") {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, out, errs)
+	}
+}
+
+// TestFill_AIRoute (#160): a hole in a route's member is addressed `Module.Route.member`, and
+// the model is asked for it by that name.
+func TestFill_AIRoute(t *testing.T) {
+	dir := genApp(t, "scaffold")
+	if code, out, errs := alderIn(t, dir, "", "new", "form", "Home", "Contact", "email:Text.Email", "topic:Text"); code != 0 {
+		t.Fatalf("new form: exit %d\n%s%s", code, out, errs)
+	}
+	prompts := fakeModel(t, "Task.succeed Response.refresh")
+	code, out, errs := alderIn(t, dir, "", "fill", "Home.SubmitContact.update", "--ai")
+	if code != 0 || !strings.Contains(homeOf(t, dir), "SubmitContact.update params session = Task.succeed Response.refresh\n") {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s\n%s", code, out, errs, homeOf(t, dir))
+	}
+	if b, _ := os.ReadFile(filepath.Join(prompts, "stdin.1")); !strings.Contains(string(b), "in SubmitContact.update of module Home") {
+		t.Errorf("the prompt:\n%s", b)
 	}
 }

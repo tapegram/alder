@@ -8,22 +8,22 @@ import Org
 import User
 -- @admin end
 
-page "/admin/org/new" { } requires user, role Admin
+-- @admin begin routes
+route New    = GET  "/admin/org/new"          { }              requires user, role Admin
+route Create = POST "/admin/org/new/_/Create" { } form OrgForm requires user, role Admin
+-- @admin end
 
 type Model = {
   -- @admin begin model
   -- @admin end
 }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    Query.succeed {}
-    -- @admin end
-  } else
-    Query.notFound
+New.load : New.Params -> Session -> Query Model
+New.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin load
+  Query.succeed {}
+  -- @admin end
 }
 
 -- @admin begin form
@@ -33,22 +33,18 @@ form OrgForm = { name: Text.NonEmpty }
 -- @admin begin search
 -- @admin end
 
-msg Create form OrgForm
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  -- @admin begin finds
+-- Create adds the row and goes to its page.
+Create.update : Create.Params -> Session -> Task Response
+Create.update params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin insert
+  let id <- Db.insert Org { name: params.form.name }
+  Task.succeed (Response.redirect (Admin.Orgs.Show.Show { id: id }))
   -- @admin end
-  Create p -> {
-    -- @admin begin insert
-    let id <- Db.insert Org { name: p.form.name }
-    Task.succeed (Redirect (Admin.Orgs.Show { id: id }))
-    -- @admin end
-  },
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+New.view : Model -> Session -> Html
+New.view model session =
   <Layout.Page title="New org">
     <h1>New org</h1>
 
@@ -77,20 +73,38 @@ test "creating an org adds it, with the values submitted" = {
     org: Nothing,
     role: Admin,
   }
-  let page <- Test.get (Admin.Orgs.New {})
-  let r <- Test.submit OrgForm { name: Text.NonEmpty "name-1" }
+  let page <- Test.get (New {})
+  let r <- Test.submit Create { name: Text.NonEmpty "name-1" }
   let rows <- Db.from Org |> Db.all
   Task.succeed (
     {
-      answers: List.map (\row -> Redirected (Admin.Orgs.Show { id: row.id })) rows,
+      answers: List.map (\row -> Redirected (Admin.Orgs.Show.Show { id: row.id })) rows,
       rows: List.map (\row -> { name: row.name }) rows,
     }
       == { answers: [r.answer], rows: [{ name: Text.NonEmpty "name-1" }] }
   )
 }
 
+test "a demoted Admin cannot create an org" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
+  let _ <- Test.get (New {})
+  let _ <- Db.update User me (\u -> { u | role: Member })
+  let r <- Test.submit Create { name: Text.NonEmpty "name-1" }
+  let rows <- Db.from Org |> Db.count
+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: PageMissing, rows: 0 })
+}
+
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Admin.Orgs.New {})
+  let r <- Test.open (New {})
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -105,7 +119,7 @@ test "a Member gets no page, even one made Admin since logging in" = {
     org: Nothing,
     role: Member,
   }
-  let r <- Test.open (Admin.Orgs.New {})
+  let r <- Test.open (New {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -120,7 +134,7 @@ test "a demoted Admin is refused at once" = {
     org: Nothing,
     role: Admin,
   }
-  let r <- Test.open (Admin.Orgs.New {})
+  let r <- Test.open (New {})
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

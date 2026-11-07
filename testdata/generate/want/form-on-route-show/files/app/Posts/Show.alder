@@ -1,0 +1,100 @@
+module Posts.Show
+
+import Layout
+import Table.Post
+import Table.User
+
+route Show    = GET  "/posts/{id}"           { id: Post.PostId }
+route Feature = POST "/posts/{id}/_/Feature" { id: Post.PostId, note: Text } form Reason
+
+type Model = { row: Post }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let found <- Db.get Post params.id
+  match found {
+    Just row -> Query.succeed { row: row },
+    Nothing -> Query.notFound,
+  }
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title="Post">
+    <h1>Post</h1>
+
+    <al-card>
+      <dl>
+        <dt>Id</dt>
+        <dd>{model.row.id}</dd>
+        <dt>Title</dt>
+        <dd>{model.row.title}</dd>
+        <dt>Body</dt>
+        <dd>{model.row.body}</dd>
+        <dt>Status</dt>
+        <dd>
+          <al-badge>
+            {match model.row.status {
+              Draft -> "Draft",
+              Published -> "Published",
+            }}
+          </al-badge>
+        </dd>
+        <dt>Featured</dt>
+        <dd>
+          {if model.row.featured then
+            <al-badge>Yes</al-badge>
+          else
+            <al-badge variant="secondary">No</al-badge>}
+        </dd>
+        <dt>Author</dt>
+        <dd>{model.row.author}</dd>
+        <dt>Created</dt>
+        <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
+        <dt>Updated</dt>
+        <dd>{Time.format "Jan 2, 2006" model.row.updated}</dd>
+      </dl>
+      <form submit={Feature { id: ?featureId, note: ?featureNote }}>
+        <al-input field="why" label="Why" />
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-button type="submit">Reason</al-button>
+      </form>
+    </al-card>
+  </Layout.Page>
+
+Feature.update : Feature.Params -> Session -> Task Response
+Feature.update params session = Task.succeed Response.refresh
+
+-- Feature.update reads the posted fields as params.form (params.form : Reason, such as params.form.why)
+form Reason = { why: Text.NonEmpty }
+
+test "the page shows the row" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let r <- Test.open (Show { id: post1 })
+  Task.succeed (
+    { answer: r.answer, title: List.member "title-1" (Test.texts "dd" r.doc) }
+      == { answer: Shown, title: True }
+  )
+}
+
+test "a missing row is not found" = {
+  let r <- Test.open (Show { id: Post.PostId "missing" })
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "submitting Reason" = {
+  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+  let post1 <- Db.insert Post {
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let _ <- Test.get (Show { id: post1 })
+  let r <- Test.submit (Feature { id: post1, note: ?featureNote }) { why: Text.NonEmpty "why-1" }
+  Task.succeed (r.answer == ?expected)
+}

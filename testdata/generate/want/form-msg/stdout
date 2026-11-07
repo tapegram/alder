@@ -1,28 +1,15 @@
 edited app/Home.alder
 --- a/app/Home.alder
 +++ b/app/Home.alder
-@@ -20,12 +20,20 @@
+@@ -5,6 +5,7 @@
  
- msg Submit form Sign
+ route Home   = GET  "/"         { }
+ route Submit = POST "/_/Submit" { } form Sign
++route Sign2  = POST "/_/Sign2"  { } form Quick
  
-+form Quick = { name: Text.NonEmpty, message: Text.NonEmpty }
-+
-+msg Sign2 form Quick
-+
- update : Msg -> Model -> Session -> Task Nav
- update msg model session = match msg {
-   Submit p -> {
-     let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
-     Task.succeed (Notice.with "Signed" (Redirect (Home {})))
-   },
-+  Sign2 p -> {
-+    let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
-+    Task.succeed (Redirect (Home {}))
-+  },
- }
+ type Model = { entries: List Entry }
  
- view : Model -> Session -> Html Msg
-@@ -40,6 +48,12 @@
+@@ -29,6 +30,12 @@
          <al-input field="message" label="Message" />
          <al-button type="submit">Sign</al-button>
        </form>
@@ -35,14 +22,29 @@ edited app/Home.alder
      </al-card>
  
      <ul id="entries">
-@@ -64,3 +78,26 @@
+@@ -44,6 +51,14 @@
+   Task.succeed (Response.redirect (Home {}) |> Response.success "Signed")
+ }
+ 
++form Quick = { name: Text.NonEmpty, message: Text.NonEmpty }
++
++Sign2.update : Sign2.Params -> Session -> Task Response
++Sign2.update params session = {
++  let _ <- Db.insert Entry { name: params.form.name, message: params.form.message }
++  Task.succeed (Response.redirect (Home {}) |> Response.success "Saved")
++}
++
+ test "signing adds an entry" = {
+   let _ <- Test.get (Home {})
+   let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
+@@ -61,3 +76,26 @@
    let page <- Test.get (Home {})
    Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
  }
 +
 +test "submitting Quick adds a row" = {
 +  let _ <- Test.get (Home {})
-+  let r <- Test.submit Quick { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
++  let r <- Test.submit Sign2 { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
 +  let rows <- Db.from Entry |> Db.all
 +  Task.succeed (
 +    { answer: r.answer, rows: List.map (\row -> { name: row.name, message: row.message }) rows }
@@ -55,7 +57,7 @@ edited app/Home.alder
 +
 +test "Quick refuses an empty name" = {
 +  let _ <- Test.get (Home {})
-+  let r <- Test.submitRaw Quick [{ name: "name", value: "" }, { name: "message", value: "x" }]
++  let r <- Test.submitRaw Sign2 [{ name: "name", value: "" }, { name: "message", value: "x" }]
 +  let rows <- Db.from Entry |> Db.count
 +  Task.succeed (
 +    { answer: r.answer, rows: rows }

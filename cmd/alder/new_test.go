@@ -370,9 +370,9 @@ func TestNew_OutOfTree(t *testing.T) {
 
 // TestNew_Bare: `alder new <name> --bare` writes the scaffold without the guestbook (App,
 // Layout, the stylesheet, adapters/, .gitignore: no page, no table, no migration), and the
-// sequence a task like T5 takes from it — the tables, the login, then its page at `/`, which
-// requires the user — reaches `page "/"` without a second page there (E0016), and checks and
-// passes its tests once the holes are filled.
+// sequence a task like T5 takes from it — the tables, the login, then its route at `/`, which
+// requires the user — reaches `route Index = GET "/"` without a second route there (E0016), and
+// checks and passes its tests once the holes are filled.
 func TestNew_Bare(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
@@ -394,11 +394,11 @@ func TestNew_Bare(t *testing.T) {
 		{"", []string{"new", "table", "User", "email:Text.Email@unique", "name:Text.NonEmpty", "passwordHash:Text", "created:Time@created", "--no-timestamps"}},
 		{"", []string{"new", "table", "Note", "title:Text.NonEmpty", "body:Text", "owner:User.UserId@ref=User", "created:Time@created", "--no-timestamps"}},
 		{"", []string{"new", "auth"}},
-		{"", []string{"new", "page", "Notes.Index", "/", "--blank", "--requires", "user"}},
-		{"Notes.Index {}", []string{"fill", "Auth.Login.update.Submit", "-"}},
-		{"Notes.Index {}", []string{"fill", `Auth.Login."logging in through the form"`, "-"}},
-		{"Query.succeed { }", []string{"fill", "Notes.Index.load", "-"}},
-		{`<Layout.Page title="Notes"><h1>Notes</h1></Layout.Page>`, []string{"fill", "Notes.Index.view", "-"}},
+		{"", []string{"new", "route", "Notes.Index", "/", "--blank", "--requires", "user"}},
+		{"Notes.Index.Index {}", []string{"fill", "Auth.Login.SignIn.update", "-"}},
+		{"Notes.Index.Index {}", []string{"fill", `Auth.Login."logging in through the form"`, "-"}},
+		{"Query.succeed { }", []string{"fill", "Notes.Index.Index.load", "-"}},
+		{`<Layout.Page title="Notes"><h1>Notes</h1></Layout.Page>`, []string{"fill", "Notes.Index.Index.view", "-"}},
 	} {
 		if code, out, errs := alderIn(t, dir, st.stdin, st.args...); code != 0 {
 			t.Fatalf("alder %s: exit %d\n%s%s", strings.Join(st.args, " "), code, out, errs)
@@ -411,7 +411,7 @@ func TestNew_Bare(t *testing.T) {
 		t.Fatalf("alder test: exit %d\n%s%s", code, out, errs)
 	}
 	app, _ := os.ReadFile(filepath.Join(dir, "app", "App.alder"))
-	if !strings.Contains(string(app), "session { user: Maybe User.UserId }\n\nlogin = Auth.Login\n\nmsg Logout\n") {
+	if !strings.Contains(string(app), "session { user: Maybe User.UserId }\n\nlogin = Auth.Login.Login\n\nroute Logout = POST \"/_/Logout\" { }\n") {
 		t.Errorf("App:\n%s", app)
 	}
 }

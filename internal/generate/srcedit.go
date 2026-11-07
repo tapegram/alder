@@ -343,6 +343,10 @@ func declared(m *syntax.Module, name string) bool {
 			if d.Name == name {
 				return true
 			}
+		case *syntax.RouteDecl:
+			if d.Name == name {
+				return true
+			}
 		case *syntax.CapDecl:
 			if d.Name == name {
 				return true

@@ -89,7 +89,7 @@ func TestAdmin_ShortQualifiers(t *testing.T) {
 		if e.Path != "app/Admin/Posts/Index.alder" {
 			continue
 		}
-		for _, w := range []string{"import Admin.Layout\n", "<Layout.Page ", "Layout.isAdmin", "Admin.Posts.Show {"} {
+		for _, w := range []string{"import Admin.Layout\n", "<Layout.Page ", "Layout.adminOnly", "Admin.Posts.Show.Show {"} {
 			if !strings.Contains(e.Body, w) {
 				t.Errorf("missing %q in:\n%s", w, e.Body)
 			}

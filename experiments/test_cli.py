@@ -31,7 +31,7 @@ def alder_bin():
 
 class ParseTests(unittest.TestCase):
     def test_the_two_drills(self):
-        for task, n, heredocs in (("t10-teams", 64, 36), ("t9-bookings", 52, 29)):
+        for task, n, heredocs in (("t10-teams", 66, 37), ("t9-bookings", 54, 31)):
             steps, refusal = rl.parse_script(drill(task))
             self.assertIsNone(refusal, task)
             self.assertEqual(len(steps), n, task)

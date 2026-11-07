@@ -24,8 +24,10 @@ func EditSession(p *Program, op string, args []string) ([]Edit, error) {
 // EditSessionChoose is EditSession with `alder edit session`'s --choose: a key field (`org:
 // Org.OrgId via Membership`, M15) is written `org: Maybe Org.OrgId via Membership` (a session
 // starts without one: no default), its membership table checked (one `@ref` to the user table,
-// one to the key's: the checker's E0032), and with choose (a page module) App gains `choose org
-// = <Page>`, the page a request without the key is sent to (book 6, "Partitions").
+// one to the key's: the checker's E0032), and with choose App gains `choose org = <Route>`, the
+// GET route a request without the key is sent to (book 6, "Partitions"): choose names a route
+// module (its GET route, `Orgs.Index` gives `Orgs.Index.Index`, Plan call 14), a GET route
+// `Module.Route`, or a page module written before routes.
 func EditSessionChoose(p *Program, op string, args []string, choose string) ([]Edit, error) {
 	arg := strings.Join(args, " ")
 	via := ""
@@ -72,8 +74,12 @@ func EditSessionChoose(p *Program, op string, args []string, choose string) ([]E
 		for k := range p.Via {
 			return nil, Refusef("the session's `%s` is `via %s` already: one `via` field per session (for now)", k, p.Via[k])
 		}
-		if choose != "" && p.PageNamed(choose) == nil {
-			return nil, Refusef("--choose %s: `%s` is not a page of this app", choose, choose)
+		if choose != "" {
+			target, ok := chooseTarget(p, choose)
+			if !ok {
+				return nil, Refusef("--choose %s: `%s` is not a page of this app: name a route module (`Orgs.Index`) or a GET route (`Orgs.Index.Index`)", choose, choose)
+			}
+			choose = target
 		}
 	}
 	var sd *syntax.SessionDecl
@@ -116,7 +122,7 @@ func EditSessionChoose(p *Program, op string, args []string, choose string) ([]E
 		}
 		e.insertBefore(end, ind+field+",")
 	}
-	if choose != "" { // after the session: `choose org = Orgs.Index`
+	if choose != "" { // after the session: `choose org = Orgs.Index.Index`
 		e.insertBefore(sd.Span.End.Line+1, "\n-- a page that `requires "+f.Name+"` sends a session without one here, to pick one\nchoose "+f.Name+" = "+choose)
 	}
 	imports := newImports("App", p.Std)
@@ -263,4 +269,22 @@ func codeOf(line string) string {
 		}
 	}
 	return line
+}
+
+// chooseTarget is what App's `choose k = …` names for --choose name: a page module as it is, a
+// route module's GET route (`Orgs.Index.Index`), or a GET route `Module.Route` as it is; ok
+// false when name is none of these.
+func chooseTarget(p *Program, name string) (string, bool) {
+	if p.PageNamed(name) != nil {
+		return name, true
+	}
+	if r := p.RouteModule(name); r != nil {
+		return r.Module + "." + r.Name, true
+	}
+	for _, r := range p.Routes {
+		if !r.Write() && r.Module+"."+r.Name == name {
+			return name, true
+		}
+	}
+	return "", false
 }

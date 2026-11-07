@@ -63,7 +63,45 @@ imports, and the standard library signatures the request includes. Nothing else 
 - Columns are values of the table's module: `Post.created.desc` orders, `Post.title.eq x` is
   a condition.
 
-# Pages, messages and `update`
+# Routes and `Response`
+
+- A route module declares its routes first: `route NAME = METHOD "path" { params } [form F]
+  [requires …]`, methods `GET`, `POST`, `PUT`, `PATCH`, `DELETE`:
+
+  ```
+  route Index  = GET   "/todos"             { filter: Todo.Filter = All } requires user
+  route Toggle = PATCH "/todos/{id}/toggle" { id: Todo.TodoId }           requires user
+  route Create = POST  "/todos/_/Create"    { } form NewTodo              requires user
+  ```
+
+- Every declaration of a route is qualified by its name. A GET route has
+  `Index.load : Index.Params -> Session -> Query m` and `Index.view : m -> Session -> Html`; a
+  write route has `Create.update : Create.Params -> Session -> Task Response`. `params.id` is a
+  parameter, `params.form.title` a field of the route's form. There is no `Msg` and no `model`
+  in `update`: it reads again what it needs.
+- A route is a value with its parameters: `Index { filter: All }`, from another module
+  `Todos.Index {}`. `href={Index {}}` links to a GET route; `click={Toggle { id: t.id }}` and
+  `<form submit={Create}>` send a write route.
+- `update` answers with a `Response`, built by:
+  - `Response.redirect (Index {})`: go there (303);
+  - `Response.render (Row { id: params.id })`: that GET route's view, for something already on the page;
+  - `Response.refresh`: the page the browser is on, again, for things that appear or disappear;
+  - `Response.invalid "reason"`: refuse the form, shown on it (422; writes before it are kept);
+  - `Response.toast "Saved"` (and `Response.success`, `Response.warning`, `Response.error`),
+    piped onto any of them: `Response.redirect (Index {}) |> Response.success "Saved"`.
+
+  ```
+  {
+    let _ <- Db.insertMine Todo { title: params.form.title }
+    Task.succeed (Response.redirect (Index { filter: All }) |> Response.toast "Added")
+  }
+  ```
+
+- Where state goes:
+
+  > If you would want it back after a refresh, it goes in the URL. If it is secret, it goes in the session. Everything else rides in the HTML or is a row.
+
+# Pages, messages and `update` (modules written before routes)
 
 - A page module declares `page "/path" { params }`, a `Model`, `load`, `msg`s, `update` and
   `view`. `update msg model session` matches each message to an arm.
@@ -92,13 +130,15 @@ imports, and the standard library signatures the request includes. Nothing else 
 # Tests
 
 - A `test "name" = { … }` is a `Task Bool` block. It runs the app's real routes in a transaction.
-- Steps: `Test.get (Home {})` (the page must be shown; gives `{ model, session, doc }`),
-  `Test.open (Page {})` (gives `{ answer, session, doc }`, whatever the page answers),
-  `Test.click Clear` or `Test.click (Delete { id: id })` (send a message),
-  `Test.submit Write { title: Text.NonEmpty "Hi", body: "" }` (post a form),
+- Steps: `Test.get (Index {})` (the page must be shown; gives `{ model, session, doc }`),
+  `Test.open (Index {})` (gives `{ answer, session, doc }`, whatever the route answers),
+  `Test.click (Toggle { id: id })` (send a write route, as its button does),
+  `Test.submit Create { title: Text.NonEmpty "Hi" }` (post a route's form; on a page written
+  before routes, the form's name: `Test.submit Write { … }`; `Test.click Clear` sends a message),
   `Test.login { user: Just me }`.
-- An `answer` is `Shown`, `Rerendered`, `Redirected (Some.Page { … })`, `FormRejected […]`,
-  `PageMissing` or `RequestFailed "…"`.
+- An `answer` is `Shown`, `Redirected (Index { … })` (a `Response.redirect`), `Refreshed` (a
+  `Response.refresh`), `Rendered (Row { … })` (a `Response.render`), `FormRejected […]` (a
+  `Response.invalid`), `Rerendered` (a page's `Rerender`), `PageMissing` or `RequestFailed "…"`.
 - Read a document with `Test.texts "#posts li" doc`, `Test.count "li" doc`,
   `Test.has ".empty" doc`, `Test.text "h1" doc`.
 - A test ends in one comparison, records compared whole so a failure shows every field:
@@ -106,7 +146,7 @@ imports, and the standard library signatures the request includes. Nothing else 
   ```
   Task.succeed (
     { answer: r.answer, items: Test.count "#entries li" after.doc }
-      == { answer: Rerendered, items: 0 }
+      == { answer: Refreshed, items: 0 }
   )
   ```
 

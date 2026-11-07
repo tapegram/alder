@@ -1,0 +1,85 @@
+edited app/Posts/Index.alder
+--- a/app/Posts/Index.alder
++++ b/app/Posts/Index.alder
+@@ -4,7 +4,8 @@
+ import Table.Post
+ import Table.User
+ 
+-route Index = GET "/posts" { page: Int = 1 } requires user
++route Index       = GET  "/posts"               { page: Int = 1 } requires user
++route SubmitQuick = POST "/posts/_/SubmitQuick" { } form Quick    requires user
+ 
+ type Model = {
+   rows: List Post,
+@@ -93,8 +94,26 @@
+       else
+         <span slot="next" aria-disabled="true">Next</span>}
+     </al-pagination>
++
++    <al-card>
++      <h2 slot="header">Quick</h2>
++      <form submit={SubmitQuick}>
++        <al-input field="title" label="Title" />
++        <al-textarea field="body" label="Body" />
++        <al-alert variant="destructive"><Errors form /></al-alert>
++        <al-button type="submit">Quick</al-button>
++      </form>
++    </al-card>
+   </Layout.Page>
+ 
++form Quick = { title: Text.NonEmpty, body: Text }
++
++SubmitQuick.update : SubmitQuick.Params -> Session -> Task Response
++SubmitQuick.update params session = {
++  let _ <- Db.insertMine Post { title: params.form.title, body: params.form.body }
++  Task.succeed (Response.redirect (Index {}) |> Response.success "Saved")
++}
++
+ test "the list shows my rows, newest first" = {
+   let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+   let _ <- Test.login { user: Just me }
+@@ -163,3 +182,44 @@
+   let r <- Test.open (Index {})
+   Task.succeed (r.answer == Redirected (Auth.Login {}))
+ }
++
++test "submitting Quick adds a row" = {
++  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
++  let _ <- Test.login { user: Just me }
++  let _ <- Test.get (Index {})
++  let r <- Test.submit SubmitQuick { title: Text.NonEmpty "title-1", body: "body-1" }
++  let rows <- Db.from Post |> Db.all
++  Task.succeed (
++    {
++      answer: r.answer,
++      rows: List.map (\row -> {
++        title: row.title,
++        body: row.body,
++        status: row.status,
++        featured: row.featured,
++      }) rows,
++    } == {
++      answer: Redirected (Index {}),
++      rows: [
++        {
++          title: Text.NonEmpty "title-1",
++          body: "body-1",
++          status: Draft,
++          featured: False,
++        },
++      ],
++    }
++  )
++}
++
++test "Quick refuses an empty title" = {
++  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
++  let _ <- Test.login { user: Just me }
++  let _ <- Test.get (Index {})
++  let r <- Test.submitRaw SubmitQuick [{ name: "title", value: "" }, { name: "body", value: "x" }]
++  let rows <- Db.from Post |> Db.count
++  Task.succeed (
++    { answer: r.answer, rows: rows }
++      == { answer: FormRejected [{ field: "title", message: "must not be empty" }], rows: 0 }
++  )
++}

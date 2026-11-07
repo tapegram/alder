@@ -1,0 +1,52 @@
+edited app/Posts/Index.alder
+--- a/app/Posts/Index.alder
++++ b/app/Posts/Index.alder
+@@ -4,7 +4,8 @@
+ import Table.Post
+ import Table.User
+ 
+-route Index = GET "/posts" { page: Int = 1 }
++route Index = GET  "/posts"       { page: Int = 1 }
++route Pin   = POST "/posts/_/Pin" { id: Post.PostId }
+ 
+ type Model = {
+   rows: List Post,
+@@ -77,6 +78,7 @@
+               <td>{row.author}</td>
+               <td>{Time.format "Jan 2, 2006" row.created}</td>
+               <td>{Time.format "Jan 2, 2006" row.updated}</td>
++              <al-button class="pin" click={Pin { id: row.id }}>Pin</al-button>
+             </tr>}
+         </tbody>
+       </table>
+@@ -95,6 +97,9 @@
+     </al-pagination>
+   </Layout.Page>
+ 
++Pin.update : Pin.Params -> Session -> Task Response
++Pin.update params session = Task.succeed Response.refresh
++
+ test "the list shows the rows, newest first" = {
+   let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
+   let post1 <- Db.insert Post {
+@@ -135,3 +140,17 @@
+     }
+   )
+ }
++
++-- The button is in the view's `{for row in model.rows …}`: insert rows so that the
++-- signed-in user sees the row this clicks, and fill ?pinId with that row's values.
++test "pressing Pin" = {
++  let me <- Db.insert User { email: Text.Email "email-1@example.com", name: Text.NonEmpty "name-1" }
++  let post1 <- Db.insert Post {
++    title: Text.NonEmpty "title-1",
++    body: "body-1",
++    author: me,
++  }
++  let _ <- Test.get (Index {})
++  let r <- Test.click (Pin { id: ?pinId })
++  Task.succeed (r.answer == Refreshed)
++}
+app/Posts/Index.alder:154:34: warning[W0002]: hole ?pinId has type Post.PostId
+    let r <- Test.click (Pin { id: ?pinId })
+                                   ^^^^^^

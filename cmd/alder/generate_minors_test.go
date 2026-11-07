@@ -49,12 +49,12 @@ func TestGenerate_NewPageListAndShowConflict(t *testing.T) {
 	needGoTool(t)
 	dir := genApp(t, "scaffold")
 	for _, args := range [][]string{
-		{"new", "page", "/both", "--list", "Entry", "--show", "Entry"},
-		{"new", "page", "About", "/about", "--list", "Entry", "--show", "Entry"},
-		{"new", "page", "About", "/about", "--show", "Entry", "--from", "Entry"},
+		{"new", "route", "/both", "--list", "Entry", "--show", "Entry"},
+		{"new", "route", "About", "/about", "--list", "Entry", "--show", "Entry"},
+		{"new", "route", "About", "/about", "--show", "Entry", "--from", "Entry"},
 	} {
 		code, out, errs := alderIn(t, dir, "", args...)
-		if code != 2 || !strings.Contains(errs, "choose one of --list, --show and --from") || !strings.Contains(errs, "usage: alder new page") {
+		if code != 2 || !strings.Contains(errs, "choose one of --list, --show and --from") || !strings.Contains(errs, "usage: alder new route") {
 			t.Errorf("%v: exit %d\n%s%s", args, code, out, errs)
 		}
 	}

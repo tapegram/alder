@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -13,12 +14,17 @@ import (
 )
 
 // The built-in admin (`alder new admin`, `alder regen admin`; book chapter 15): for every table
-// T, five pages under the admin's module (`Admin.T.Index`, `.Show`, `.New`, `.Edit`,
-// `.Delete`), a dashboard (`Admin.Index`) and a layout (`Admin.Layout.Page`, the app's layout
-// around a nav of every table). Every page `requires user, role Admin` and reads and writes with
-// the unscoped `Db.*`: an admin acts on everyone's rows, and the role on the `page` line is the
-// rule (chapter 6, "When to use the unscoped forms"). Each page carries its browser tests, which
-// kill the mutants of its code (`alder test --mutate`).
+// T, route modules under the admin's module (`Admin.Ts.Index`, `.Show`, `.New`, `.Edit`,
+// `.Delete`, `.Bulk`), a dashboard (`Admin.Index`) and a layout (`Admin.Layout.Page`, the app's
+// layout around a nav of every table). Each module's GET route takes the module's last segment
+// (`Admin.Posts.Show.Show { id }`, #160); its writes are routes of their own, named for what
+// they do: New's `Create` (POST with the form, redirecting to the row), Edit's `Save` (PUT,
+// redirecting), Delete's `Destroy` (DELETE, to the list with a success toast; Show's dialog posts
+// it too), the bulk page's `BulkDelete` and `BulkSet…` (POST, answering refresh). Every route
+// `requires user, role Admin` and reads and writes with the unscoped `Db.*`: an admin acts on
+// everyone's rows, and the role on the `route` line is the rule (chapter 6, "When to use the
+// unscoped forms"); every `load` and `update` asks the layout's isAdmin too. Each module carries
+// its browser tests, which kill the mutants of its code (`alder test --mutate`).
 //
 // The parts of a file that follow the schema are owned regions (regions.go): `alder regen
 // admin` regenerates every file and writes back only their regions, so what the author changed
@@ -168,17 +174,23 @@ func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []s
 		return nil, nil, Refusef("admin is in the old layout (%s): folders are plural now (%s). Delete %s and run `alder new admin` again; move any code you added outside `-- @admin` regions first",
 			strings.Join(oldDirs, ", "), strings.Join(newDirs, ", "), dir)
 	}
-	tableOf := map[string]string{} // a table page's path: the expression of its list page
+	// an admin written before routes (#160): its files have `page` lines, which no region holds
+	for _, path := range order {
+		if b, err := os.ReadFile(filepath.Join(p.Dir, filepath.FromSlash(path))); err == nil && pageLine.Match(b) {
+			return nil, nil, Refusef("admin is written with pages (`%s` has a `page` line): it is written with routes now. Delete %s and run `alder new admin` again; move any code you added outside `-- @admin` regions first", path, dir)
+		}
+	}
+	tableOf := map[string]string{} // a table page's path: the expression of its list route
 	siloOf := map[string]string{}  // a siloed table page's path: its silo's dashboard
 	for _, t := range p.Tables {
 		tmod := adminTableModule(o, t)
 		for _, kind := range []string{"Index", "Show", "New", "Edit", "Delete", "Bulk"} {
 			if t.Silo != "" { // new when the dashboard of one value does not link to its list
 				siloOf[FileOf(tmod+"."+kind)] = FileOf(o.Module + "." + UpperFirst(Plural(t.Silo)) + ".Dashboard")
-				tableOf[FileOf(tmod+"."+kind)] = tmod + ".Index {"
+				tableOf[FileOf(tmod+"."+kind)] = routeOf(tmod+".Index") + " {"
 				continue
 			}
-			tableOf[FileOf(tmod+"."+kind)] = tmod + ".Index {}"
+			tableOf[FileOf(tmod+"."+kind)] = routeOf(tmod+".Index") + " {}"
 		}
 	}
 	exists := func(path string) bool {
@@ -239,7 +251,7 @@ func RegenAdmin(p *Program, o AdminOptions, all bool) (edits []Edit, skipped []s
 
 // AdminFiles is every file of the admin, by path, and the paths in the order they are written.
 func AdminFiles(p *Program, o AdminOptions) (map[string]string, []string) {
-	g := &adminGen{p: p, o: o, files: map[string]string{}, role: p.RoleColumn()}
+	g := &adminGen{p: p, o: o, files: map[string]string{}, names: map[string][]string{}, role: p.RoleColumn()}
 	for _, t := range p.Tables {
 		g.tables = append(g.tables, g.table(t))
 	}
@@ -267,9 +279,10 @@ func AdminFiles(p *Program, o AdminOptions) (map[string]string, []string) {
 type adminGen struct {
 	p      *Program
 	o      AdminOptions
-	role   *Column // the user table's role column, which every page's load reads again; nil for none
+	role   *Column // the user table's role column, which every route's adminOnly reads again; nil for none
 	tables []*adminTable
-	silo   []*adminSilo // the app's silos (admin_silo.go)
+	silo   []*adminSilo        // the app's silos (admin_silo.go)
+	names  map[string][]string // each module's routes, by name: its code writes them bare
 	files  map[string]string
 	order  []string
 }
@@ -497,13 +510,27 @@ func (g *adminGen) file(module string, imports *importSet, body string) {
 	b.WriteString("-- `-- @admin begin <name>` / `-- @admin end` are rewritten by `alder regen admin`\n")
 	fmt.Fprintf(&b, "module %s\n\n", module)
 	b.WriteString(regionAt("", "imports", strings.Split(strings.TrimSuffix(imports.lines(), "\n"), "\n")) + "\n\n")
-	b.WriteString(g.siloCode(module, body))
+	b.WriteString(g.siloCode(module, ownBare(module, g.names[module], body)))
 	path := FileOf(module)
 	// formatted here, not only by Apply: regen compares these regions with the file's, formatted
 	// a text that does not parse is kept as it is: Apply formats it again, warns and the tests catch it
 	text, _ := canonical(g.p, path, b.String())
 	g.files[path], _ = Formatted(path, text)
 	g.order = append(g.order, path)
+}
+
+// ownBare is body with the routes names of module written bare, as its own code must write them
+// (a table that refers to itself links its Show page to another row: `Show { id: v }`).
+func ownBare(module string, names []string, body string) string {
+	if len(names) == 0 {
+		return body
+	}
+	var alts []string
+	for _, n := range names {
+		alts = append(alts, regexp.QuoteMeta(n))
+	}
+	re := regexp.MustCompile(`(^|[^A-Za-z0-9_.])` + regexp.QuoteMeta(module) + `\.(` + strings.Join(alts, "|") + `)\b`)
+	return re.ReplaceAllString(body, "$1$2")
 }
 
 // regionAt is an owned region: its markers at indentation ind, around lines (each indented by
@@ -518,28 +545,68 @@ func regionAt(ind, name string, lines []string) string {
 	return b.String()
 }
 
-// load is a page's `load`, with body its statements (indented two spaces), run only for a user
-// the layout's isAdmin lets in (its region `access`: when the user table holds the role, a user
-// whose row says Admin now); any other gets a 404. The session's role is the one read at login,
-// which lasts until logout or the cookie's 30 days (chapter 6, "Rules"); load runs before every
-// message too.
-func (g *adminGen) load(body string) string {
-	return "load : Params -> Session -> Query Model\nload params session = {\n  let admin <- " + g.o.Module +
-		".Layout.isAdmin session.user\n  if admin then {\n" + indent(body, "  ") + "\n  } else Query.notFound\n}\n\n"
+// load is GET route r's `load`, with body its statements (indented two spaces), run only for a
+// user the layout's adminOnly lets in (isAdmin, its region `access`: when the user table holds
+// the role, a user whose row says Admin now); any other gets a 404. The session's role is the one
+// read at login, which lasts until logout or the cookie's 30 days (chapter 6, "Rules"); every
+// write route's `update` begins the same way (update).
+func (g *adminGen) load(r, body string) string {
+	return r + ".load : " + r + ".Params -> Session -> Query Model\n" + r + ".load params session = {\n  let _ <- " + g.o.Module +
+		".Layout.adminOnly session.user\n" + body + "\n}\n\n"
 }
 
-// requires is the `page` line's clause of every admin page.
+// update is write route r's `update`, with body its statements (indented two spaces), run only
+// for a user the layout's adminOnly lets in, as load; any other gets a 404.
+func (g *adminGen) update(r, body string) string {
+	return r + ".update : " + r + ".Params -> Session -> Task Response\n" + r + ".update params session = {\n  let _ <- " + g.o.Module +
+		".Layout.adminOnly session.user\n" + body + "\n}\n\n"
+}
+
+// viewHead is the signature and head of GET route r's `view`.
+func viewHead(r string) string {
+	return r + ".view : Model -> Session -> Html\n" + r + ".view model session =\n"
+}
+
+// requires is the `route` line's clause of every admin route.
 const adminRequires = " requires user, role Admin"
 
-// wire is the query key page module page reads parameter name from: its wire name when the
-// page, as the app has it now, declares one (`q: Text = "" as "Q"`, #55), else the name. A GET
-// form to the page names its inputs by it.
+// pageLine is a `page` line: a module written before routes (#160).
+var pageLine = regexp.MustCompile(`(?m)^page "`)
+
+// routeOf is the GET route of route module mod as another module writes it: the module and the
+// route, which takes its last segment (`Admin.Posts.Show.Show`, Plan call 14).
+func routeOf(mod string) string { return mod + "." + mod[strings.LastIndex(mod, ".")+1:] }
+
+// routeLine is a `route` line: name = method "path" { params } [form F], and the requires
+// clause req (" requires …").
+func routeLine(name, method, path string, params []string, form, req string) string {
+	ps := "{ }"
+	if len(params) > 0 {
+		ps = "{ " + strings.Join(params, ", ") + " }"
+	}
+	if form != "" {
+		ps += " form " + form
+	}
+	return "route " + name + " = " + method + " " + pathLit(path) + " " + ps + req
+}
+
+// writePath is the path of the write route named name of a module whose GET route is at path
+// (Plan call 13).
+func writePath(path, name string) string { return path + "/_/" + name }
+
+// wire is the query key the GET route of module page reads parameter name from: its wire name
+// when the route, as the app has it now, declares one (`q: Text = "" as "Q"`, #55), else the
+// name. A GET form to the route names its inputs by it.
 func (g *adminGen) wire(page, name string) string {
-	if pg := g.p.PageNamed(page); pg != nil {
-		for _, par := range pg.Params {
-			if par.Name == name && par.Wire != "" {
-				return par.Wire
-			}
+	var params []*Param
+	if r := g.p.RouteModule(page); r != nil {
+		params = r.Params
+	} else if pg := g.p.PageNamed(page); pg != nil {
+		params = pg.Params
+	}
+	for _, par := range params {
+		if par.Name == name && par.Wire != "" {
+			return par.Wire
 		}
 	}
 	return name
@@ -554,8 +621,8 @@ func (g *adminGen) wireSel(page, name string) string {
 	return name
 }
 
-// keepWires adds to each of page's parameters ("q: Text = \"\"") the wire name the page, as the
-// app has it now, gives it: a regenerated `page` line keeps an `as "Key"` the author added.
+// keepWires adds to each of page's parameters ("q: Text = \"\"") the wire name its GET route, as
+// the app has it now, gives it: a regenerated `route` line keeps an `as "Key"` the author added.
 func (g *adminGen) keepWires(page string, params []string) []string {
 	out := make([]string, len(params))
 	for i, par := range params {
@@ -569,8 +636,24 @@ func (g *adminGen) keepWires(page string, params []string) []string {
 	return out
 }
 
-// page is the page module of table at's page kind ("Index", "Show", …).
+// page is the route module of table at's page kind ("Index", "Show", …).
 func (at *adminTable) page(kind string) string { return at.mod + "." + kind }
+
+// route is the GET route of table at's page kind as another module writes it:
+// `Admin.Posts.Show.Show`.
+func (at *adminTable) route(kind string) string { return routeOf(at.page(kind)) }
+
+// own is a route of the module being written, with no parameters but a siloed table's key: its
+// name, or `name {}` (siloLits gives it the key), in parentheses when paren is set.
+func (at *adminTable) own(name string, paren bool) string {
+	if at.silo == nil {
+		return name
+	}
+	if paren {
+		return "(" + name + " {})"
+	}
+	return name + " {}"
+}
 
 // layoutOpen is the root element of an admin page's view.
 func (g *adminGen) layoutOpen(title string, imports *importSet) (string, string) {
@@ -586,17 +669,17 @@ func (g *adminGen) layout() {
 	var nav []string
 	for _, at := range g.tables {
 		if at.silo == nil {
-			nav = append(nav, fmt.Sprintf("<a href={%s {}}>%s</a>", at.page("Index"), at.title))
+			nav = append(nav, fmt.Sprintf("<a href={%s {}}>%s</a>", at.route("Index"), at.title))
 		}
 	}
 	for _, s := range g.silo { // a database per value: the picker, then a value's pages
-		nav = append(nav, fmt.Sprintf("<a href={%s {}}>%s, by %s</a>", s.picker, s.title, s.key))
+		nav = append(nav, fmt.Sprintf("<a href={%s {}}>%s, by %s</a>", routeOf(s.picker), s.title, s.key))
 	}
 	var b strings.Builder
 	b.WriteString("-- The admin's frame: the app's layout around a nav of every table's list.\n")
 	b.WriteString("Page : { title: Text, children: List (Html a) } -> Html a\n")
 	b.WriteString("Page props =\n")
-	navBlock := "<nav aria-label=\"Admin\">\n  <al-stack direction=\"row\" gap=\"sm\">\n    <a href={" + g.o.Module + ".Index {}}>Dashboard</a>\n" +
+	navBlock := "<nav aria-label=\"Admin\">\n  <al-stack direction=\"row\" gap=\"sm\">\n    <a href={" + routeOf(g.o.Module+".Index") + " {}}>Dashboard</a>\n" +
 		regionAt("    ", "nav", nav) + "\n  </al-stack>\n</nav>"
 	if g.p.Layout {
 		imports.add("Layout")
@@ -614,10 +697,10 @@ func (g *adminGen) layout() {
 	id, _ := unMaybe(g.p.Session.User.Type)
 	importTypes(imports, id)
 	access := []string{
-		"-- isAdmin is whether the signed-in user may use the admin, which every page's load asks (it runs",
-		"-- before every message too). The session's role is the one read at login, and lasts until",
-		"-- logout or the cookie's 30 days (chapter 6, \"Rules\"): the user table holds the role, so it is",
-		"-- read again, and a user demoted or deleted since gets a 404 at once.",
+		"-- isAdmin is whether the signed-in user may use the admin, which every route's load and update",
+		"-- asks (adminOnly). The session's role is the one read at login, and lasts until logout or the",
+		"-- cookie's 30 days (chapter 6, \"Rules\"): the user table holds the role, so it is read again,",
+		"-- and a user demoted or deleted since gets a 404 at once.",
 		"isAdmin : " + types.StringIn(id, mod) + " -> Query Bool",
 	}
 	if g.role != nil {
@@ -628,16 +711,25 @@ func (g *adminGen) layout() {
 			"  Query.succeed (Maybe.map (\\u -> u."+g.role.Name+") me == Just Admin)",
 			"}")
 	} else {
-		access[2] = "-- logout or the cookie's 30 days (chapter 6, \"Rules\"): the user table has no role column to"
-		access[3] = "-- read again, so the role on each page's line is the whole check."
+		access[2] = "-- cookie's 30 days (chapter 6, \"Rules\"): the user table has no role column to read again, so"
+		access[3] = "-- the role on each route's line is the whole check."
 		access = append(access, "isAdmin id = Query.succeed True")
 	}
 	b.WriteString("\n" + regionAt("", "access", access) + "\n")
+	b.WriteString(`
+-- adminOnly stops a route with a 404 unless isAdmin: every route's load and update begins with it.
+adminOnly : ` + types.StringIn(id, mod) + ` -> Query Unit
+adminOnly id = {
+  let admin <- isAdmin id
+  if admin then Query.succeed () else Query.notFound
+}
+`)
 	g.file(mod, imports, b.String())
 }
 
 func (g *adminGen) dashboard() {
 	mod := g.o.Module + ".Index"
+	g.names[mod] = []string{"Index"}
 	imports := newImports(mod, g.p.Std)
 	open, close := g.layoutOpen("Dashboard", imports)
 	var loads, cards []string
@@ -655,25 +747,25 @@ func (g *adminGen) dashboard() {
 			fmt.Sprintf("let %s <- %s |> Db.limit recent |> Db.all", at.plural, sel),
 			fmt.Sprintf("let %sCount <- Db.from %s |> Db.count", LowerFirst(t.Name), t.Name))
 		cards = append(cards, fmt.Sprintf("  { key: %s, title: %s, href: %s {}, count: %sCount, rows: List.map (\\row -> { label: row.%s, href: %s { id: row.%s } }) %s },",
-			quote(at.plural), quote(at.title), at.page("Index"), LowerFirst(t.Name), at.label.Name, at.page("Show"), t.IDField, at.plural))
+			quote(at.plural), quote(at.title), at.route("Index"), LowerFirst(t.Name), at.label.Name, at.route("Show"), t.IDField, at.plural))
 	}
 	for _, s := range g.silo { // the key's newest rows (its own card's), each opening its dashboard
 		kat := g.adminOf(s.kt)
 		cards = append(cards, fmt.Sprintf("  { key: %s, title: %s, href: %s {}, count: %sCount, rows: List.map (\\row -> { label: %s, href: %s { %s: row.%s } }) %s },",
-			quote("silo-"+s.key), quote(s.title+", by "+s.key), s.picker, LowerFirst(s.kt.Name), textOf(kat.label, "row."+kat.label.Name), s.dash, s.key, s.kt.IDField, kat.plural))
+			quote("silo-"+s.key), quote(s.title+", by "+s.key), routeOf(s.picker), LowerFirst(s.kt.Name), textOf(kat.label, "row."+kat.label.Name), routeOf(s.dash), s.key, s.kt.IDField, kat.plural))
 	}
 	body := append(loads, "Query.succeed { cards: [")
 	body = append(body, cards...)
 	body = append(body, "] }")
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "page %s { }%s\n\n", quote(g.o.Path), adminRequires)
+	b.WriteString(regionAt("", "routes", []string{routeLine("Index", "GET", g.o.Path, nil, "", adminRequires)}) + "\n\n")
 	b.WriteString("-- A card of the dashboard: a table's count and its newest rows, each linking to its page.\n")
-	b.WriteString("type Card = { key: Text, title: Text, href: Page, count: Int, rows: List { label: Text, href: Page } }\n\n")
+	b.WriteString("type Card = { key: Text, title: Text, href: Route, count: Int, rows: List { label: Text, href: Route } }\n\n")
 	b.WriteString("type Model = { cards: List Card }\n\n")
 	b.WriteString("-- recent is how many of a table's newest rows its card lists.\nrecent : Int\nrecent = 5\n\n")
-	b.WriteString(g.load(regionAt("  ", "cards", wrapAll(body))))
-	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
+	b.WriteString(g.load("Index", regionAt("  ", "cards", wrapAll(body))))
+	b.WriteString(viewHead("Index"))
 	fmt.Fprintf(&b, "  %s\n    <h1>Admin</h1>\n\n", open)
 	b.WriteString(`    <al-stack gap="md">
       {for card in model.cards ->
@@ -695,26 +787,26 @@ func (g *adminGen) dashboard() {
 		before := tb.counts[t.Module]
 		tb.bulkInsert(t, recentRows+1, "")
 		total := len(tb.visible(t, false)) + tb.bulk[t.Module]
-		tb.let("let page <- Test.get (%s {})", mod)
+		tb.let("let page <- Test.get (Index {})")
 		lhs, rhs := g.cardChecks(tb, at, key, before, total, show)
 		tests = append(tests, TestData{Name: quote(name), Lines: tb.lines, Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
 	}
 	for _, at := range g.tables {
 		if at.silo == nil {
 			card(at, at.plural, "the dashboard counts the "+Plural(at.noun)+" and lists the newest five", func(row string) string {
-				return at.page("Show") + " { id: " + row + " }"
+				return at.route("Show") + " { id: " + row + " }"
 			})
 		}
 	}
 	for _, s := range g.silo {
 		card(g.adminOf(s.kt), "silo-"+s.key, "the dashboard lists the newest "+Plural(s.key)+", each opening its "+strings.ToLower(s.title), func(row string) string {
-			return s.dash + " { " + s.key + ": " + row + " }"
+			return routeOf(s.dash) + " { " + s.key + ": " + row + " }"
 		})
 	}
 	if g.role == nil { // a role is read at login (chapter 6): the cookie, not a row, opens the admin
 		tb := g.tb(mod, imports, false)
 		tb.login("Admin")
-		tb.let("let r <- Test.open (%s {})", mod)
+		tb.let("let r <- Test.open (Index {})")
 		tests = append(tests, TestData{Name: quote("an Admin's role is the one the cookie got at login"), Lines: tb.lines, Result: "r.answer == Shown",
 			Comment: []string{
 				"`requires user, role Admin` reads the role in the session cookie, the one it got at login",
@@ -722,7 +814,7 @@ func (g *adminGen) dashboard() {
 				"demoted since keeps the admin until they log out, or for the cookie's 30 days.",
 			}})
 	}
-	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string { return mod + " {}" })...)
+	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string { return "Index {}" })...)
 	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
 }
@@ -794,6 +886,38 @@ func (g *adminGen) gateTests(mod string, imports *importSet, pageOf func(tb *tes
 	return tests
 }
 
+// writeGate is the test that a write route refuses an Admin demoted since the page holding its
+// form was opened (the cookie still says Admin, the row no longer does): its update's adminOnly
+// answers 404 and nothing is written. A form with a select of a table's rows (refs) is refused
+// before that, 400: the runtime checks the options against the page it was posted from (Plan call
+// 11), whose load adminOnly refuses too. build inserts the rows and returns the page to open, the
+// step that sends the write, and check, which reads what must not have changed (the left and right
+// sides' fields). None without a role column to read again (the cookie's role is the check).
+func (g *adminGen) writeGate(mod string, imports *importSet, what string, refs bool, build func(tb *testBuilder) (get, send string, check func() (string, string))) []TestData {
+	if g.role == nil {
+		return nil
+	}
+	tb := g.tb(mod, imports, true)
+	get, send, check := build(tb)
+	tb.let("let _ <- Test.get (%s)", get)
+	ut := g.p.TableNamed(g.p.Session.UserTable)
+	other := ""
+	for _, c := range g.role.Ctors {
+		if c != "Admin" && other == "" {
+			other = c
+		}
+	}
+	tb.let("let _ <- Db.update %s %s (\\u -> { u | %s: %s })", ut.Name, tb.user(), g.role.Name, maybeJust(g.role, other))
+	tb.let("let r <- %s", send)
+	l, r := check()
+	answer := "PageMissing"
+	if refs {
+		answer = `RequestFailed "400 bad request"`
+	}
+	return []TestData{{Name: quote("a demoted Admin cannot " + what), Lines: tb.lines,
+		Result: "{ answer: r.answer, " + l + " } == { answer: " + answer + ", " + r + " }"}}
+}
+
 // testsText renders the generated tests, in the region `tests` at the end of the file: regen
 // rewrites them as the schema changes, and a test the author adds after the region stays.
 func testsText(tests []TestData) string {
@@ -813,7 +937,7 @@ func testsText(tests []TestData) string {
 func (g *adminGen) adminCell(c *Column, row string, imports *importSet) string {
 	if c.Ref != "" {
 		if rt := g.p.TableNamed(c.Ref); rt != nil {
-			show := adminTableModule(g.o, rt) + ".Show"
+			show := routeOf(adminTableModule(g.o, rt) + ".Show")
 			text := func(id string) string {
 				if rt.Label().ID {
 					return id
@@ -952,6 +1076,7 @@ func (g *adminGen) labelChecks(tb *testBuilder, at *adminTable, model string, pa
 func (g *adminGen) index(at *adminTable) {
 	t := at.t
 	mod := at.page("Index")
+	g.names[mod] = []string{"Index"}
 	imports := newImports(mod, g.p.Std)
 	imports.add(t.Module)
 	open, close := g.layoutOpen(at.title, imports)
@@ -998,7 +1123,7 @@ func (g *adminGen) index(at *adminTable) {
 		headers = append(headers, fmt.Sprintf("<th><a href={listAt model %s (toggle model %s) 1}>%s</a></th>", quote(c.Name), quote(c.Name), Humanize(c.Name)))
 		cellText := g.adminCell(c, "row", imports)
 		if c == at.label {
-			cellText = "<a href={" + at.page("Show") + " { id: row." + t.IDField + " }}>{" + textOf(c, "row."+c.Name) + "}</a>"
+			cellText = "<a href={" + at.route("Show") + " { id: row." + t.IDField + " }}>{" + textOf(c, "row."+c.Name) + "}</a>"
 		}
 		cells = append(cells, "<td>"+cellText+"</td>")
 	}
@@ -1015,7 +1140,7 @@ func (g *adminGen) index(at *adminTable) {
 	params = append(params, "sort: Text = "+quote(order), "dir: Text = \"desc\"", "page: Int = 1")
 
 	var b strings.Builder
-	b.WriteString(regionAt("", "params", wrapAll([]string{fmt.Sprintf("page %s { %s }%s", pathLit(at.path), strings.Join(g.keepWires(mod, at.params(mod, imports, params)), ", "), at.requires())})) + "\n\n")
+	b.WriteString(regionAt("", "routes", []string{routeLine("Index", "GET", at.path, g.keepWires(mod, at.params(mod, imports, params)), "", at.requires())}) + "\n\n")
 	keyField, keyInit := "", ""
 	if at.silo != nil { // the key, for the links listAt makes (it has the model, not the session)
 		keyField = "  " + at.silo.key + ": " + at.silo.keyType(mod, imports) + ",\n"
@@ -1053,11 +1178,11 @@ order sort dir = match List.find (\s -> s.name == sort) sorts {
 toggle : Model -> Text -> Text
 toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else "asc"
 
--- load reads how many rows match the search and the filters, and one page of them (the last, for
--- a page past it), in the order asked for. The search text is cut to 200 characters (Text.slice):
+-- Index.load reads how many rows match the search and the filters, and one page of them (the last,
+-- for a page past it), in the order asked for. The search text is cut to 200 characters (Text.slice):
 -- a text over 10,000 bytes would fail the query (chapter 8, "Search").
 `, t.Name, t.Name, order)
-	b.WriteString(g.load(fmt.Sprintf(`  let q = Text.slice 0 200 params.q
+	b.WriteString(g.load("Index", fmt.Sprintf(`  let q = Text.slice 0 200 params.q
   let f = chosen params
   let count <- Db.from %s |> Db.where (Db.and [search q, filtered (filters f)]) |> Db.count
   let pages = Int.max 1 ((count + perPage - 1) / perPage)
@@ -1082,7 +1207,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
     count: count,
   }`, t.Name, t.Name, keyInit)))
 	b.WriteString(regionAt("", "labels", wrapAll(g.labels(at, mod, imports))) + "\n\n")
-	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
+	b.WriteString(viewHead("Index"))
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n", open, at.title)
 	fmt.Fprintf(&b, `    <al-stack direction="row" gap="sm">
       <form method="get" action=%s>
@@ -1132,7 +1257,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
       <span>Page {Text.fromInt model.page} of {Text.fromInt model.pages}</span>
       {if model.page < model.pages then <a slot="next" href={listAt model model.sort model.dir (model.page + 1)} rel="next">Next</a> else <span slot="next" aria-disabled="true">Next</span>}
     </al-pagination>
-`, at.action(""), quote(g.wire(mod, "q")), quote(g.wire(mod, "sort")), quote(g.wire(mod, "dir")), at.page("New"), at.noun, regionAt("            ", "headers", headers), regionAt("              ", "cells", cells), g.bulkForms(at))
+`, at.action(""), quote(g.wire(mod, "q")), quote(g.wire(mod, "sort")), quote(g.wire(mod, "dir")), at.route("New"), at.noun, regionAt("            ", "headers", headers), regionAt("              ", "cells", cells), g.bulkForms(at))
 	fmt.Fprintf(&b, "  %s\n", close)
 
 	// the tests
@@ -1144,7 +1269,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 	over, parents := g.selfParents(tb, at)
 	tb.insertRow(t, "", over, true)
 	checks := g.labelChecks(tb, at, "page.model", parents)
-	tb.let("let page <- Test.get (%s {})", mod)
+	tb.let("let page <- Test.get (Index {})")
 	lhs, rhs := []string{"rows: " + ids("page")}, []string{"rows: [" + strings.Join(tb.visible(t, false), ", ") + "]"}
 	name := "the list shows every row, newest first"
 	if t.Created == "" {
@@ -1164,8 +1289,8 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 		k := tb.counts[t.Module]
 		first := tb.insertRow(t, "", map[string]string{sc.Name: tb.sample(sc.Type, sc.Name, k+2)}, true)
 		second := tb.insertRow(t, "", map[string]string{sc.Name: tb.sample(sc.Type, sc.Name, k+1)}, true)
-		tb.let("let up <- Test.get (%s)", pageLit(mod, []string{"sort: " + quote(sc.Name), "dir: \"asc\""}))
-		tb.let("let down <- Test.get (%s)", pageLit(mod, []string{"sort: " + quote(sc.Name)}))
+		tb.let("let up <- Test.get (%s)", pageLit("Index", []string{"sort: " + quote(sc.Name), "dir: \"asc\""}))
+		tb.let("let down <- Test.get (%s)", pageLit("Index", []string{"sort: " + quote(sc.Name)}))
 		others := slices.DeleteFunc(slices.Clone(tb.visible(t, false)), func(v string) bool { return v == first || v == second })
 		// ascending: second (sample k+1) then first (k+2), the rows inserted before around them
 		up := []string{second, first}
@@ -1197,7 +1322,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 		tb.insert(t, true)
 		match := tb.insert(t, true)
 		q := rawText(sc, tb.counts[t.Module])
-		tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"q: " + quote(q)}))
+		tb.let("let page <- Test.get (%s)", pageLit("Index", []string{"q: " + quote(q)}))
 		tests = append(tests, TestData{Name: quote("searching finds the rows that contain the text"), Lines: tb.lines,
 			Result: fmt.Sprintf("{ rows: %s, count: Test.text \"#count\" page.doc } == { rows: [%s], count: Just \"1 row\" }", ids("page"), match)})
 	}
@@ -1207,7 +1332,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 	// a search text too long for the database is cut, not a failure
 	tb = g.tb(mod, imports, true)
 	tb.let("let long = Text.join \"\" (List.map (\\n -> \"z\") (List.range 1 20000))")
-	tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"q: long"}))
+	tb.let("let page <- Test.get (%s)", pageLit("Index", []string{"q: long"}))
 	tests = append(tests, TestData{Name: quote("a search text of 20,000 characters is cut to 200"), Lines: tb.lines,
 		Result: "{ q: Text.length page.model.q, rows: List.length page.model.rows } == { q: 200, rows: 0 }"})
 
@@ -1215,9 +1340,9 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 	tb = g.tb(mod, imports, true)
 	tb.bulkInsert(t, 26, "")
 	total := len(tb.visible(t, false)) + tb.bulk[t.Module]
-	tb.let("let first <- Test.get (%s {})", mod)
-	tb.let("let second <- Test.get (%s)", pageLit(mod, []string{"page: 2"}))
-	tb.let("let past <- Test.get (%s)", pageLit(mod, []string{"page: 9"}))
+	tb.let("let first <- Test.get (Index {})")
+	tb.let("let second <- Test.get (%s)", pageLit("Index", []string{"page: 2"}))
+	tb.let("let past <- Test.get (%s)", pageLit("Index", []string{"page: 9"}))
 	tests = append(tests, TestData{Name: quote("the list has 25 rows a page, and a page past the last is the last"), Lines: tb.lines,
 		Result: fmt.Sprintf("{ first: List.length first.model.rows, second: List.length second.model.rows, past: { page: past.model.page, rows: List.length past.model.rows }, count: Test.text \"#count\" first.doc, pages: Test.texts \"al-pagination span\" first.doc } == { first: 25, second: %d, past: { page: %d, rows: %d }, count: Just \"%d rows\", pages: [\"Previous\", \"Page 1 of %d\"] }",
 			total-25, (total+24)/25, total-25, total, (total+24)/25)})
@@ -1225,7 +1350,7 @@ toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else
 	if at.silo != nil {
 		tests = append(tests, g.siloListTest(at, mod, imports))
 	}
-	tests = append(tests, g.gateTests(mod, imports, func(*testBuilder) string { return mod + " {}" })...)
+	tests = append(tests, g.gateTests(mod, imports, func(*testBuilder) string { return "Index {}" })...)
 	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
 }
@@ -1293,7 +1418,7 @@ func (g *adminGen) filters(at *adminTable, mod string, cols []*Column, imports *
 		"type Filters = " + rec(fields),
 		"",
 		"-- chosen is the filters' options in params.",
-		"chosen : Params -> Filters",
+		"chosen : Index.Params -> Filters",
 		"chosen params = " + rec(from),
 		"",
 		"-- filters are the list's filters, each with the option f has chosen.",
@@ -1333,8 +1458,8 @@ func (g *adminGen) filters(at *adminTable, mod string, cols []*Column, imports *
 	}
 	out = append(out, "",
 		"-- listAt is this list with the model's search and filters, sorted by sort and dir, at page n.",
-		"listAt : Model -> Text -> Text -> Int -> Page",
-		"listAt model sort dir n = "+mod+" "+rec(keep))
+		"listAt : Model -> Text -> Text -> Int -> Route",
+		"listAt model sort dir n = Index "+rec(keep))
 	return wrapAll(out)
 }
 
@@ -1375,11 +1500,11 @@ func (g *adminGen) filterTest(at *adminTable, mod string, imports *importSet, c 
 		return fmt.Sprintf("List.map (\\id -> List.member id (List.map (\\row -> row.%s) %s.model.rows)) [%s, %s]", t.IDField, page, first, second)
 	}
 	page := LowerFirst(strings.ReplaceAll(pick.value, " ", ""))
-	tb.let("let %s <- Test.get (%s)", page, pageLit(mod, []string{c.Name + ": " + quote(pick.value)}))
+	tb.let("let %s <- Test.get (%s)", page, pageLit("Index", []string{c.Name + ": " + quote(pick.value)}))
 	lhs := []string{page + ": " + listed(page)}
 	rhs := []string{page + ": [True, False]"}
 	if c.Union == nil {
-		tb.let("let %s <- Test.get (%s)", other.value, pageLit(mod, []string{c.Name + ": " + quote(other.value)}))
+		tb.let("let %s <- Test.get (%s)", other.value, pageLit("Index", []string{c.Name + ": " + quote(other.value)}))
 		lhs = append(lhs, other.value+": "+listed(other.value))
 		rhs = append(rhs, other.value+": [False, True]")
 	}
@@ -1420,6 +1545,7 @@ func sortedSample(others []string, first, second string) ([]string, []string) {
 func (g *adminGen) show(at *adminTable) {
 	t := at.t
 	mod := at.page("Show")
+	g.names[mod] = []string{"Show"}
 	imports := newImports(mod, g.p.Std)
 	imports.add(t.Module)
 	importTypes(imports, t.IDType)
@@ -1429,33 +1555,21 @@ func (g *adminGen) show(at *adminTable) {
 	for _, c := range shown(t, true) {
 		fields = append(fields, "<dt>"+Humanize(c.Name)+"</dt>", "<dd>"+g.adminCell(c, "model.row", imports)+"</dd>")
 	}
-	// the delete dialog: the Delete page's counts and its Remove, declared here too (a message
-	// belongs to the page that declares it); the Delete page stays, for the details and for a
-	// browser that cannot open the dialog
-	pl := g.deletePlan(at, imports)
+	// the delete dialog: the Delete page's counts, and a form posting its Destroy route; the
+	// Delete page stays, for the details and for a browser that cannot open the dialog
+	pl := g.deletePlan(at, imports, "params.id")
 	loads := append([]string{"let found <- Db.get " + t.Name + " params.id"}, pl.loads...)
 	loads = append(loads, "match found {", "  Just row -> {", "    let labels <- labelsOf [row]",
 		"    Query.succeed { "+strings.Join(append([]string{"row: row", "labels: labels"}, pl.fields...), ", ")+" }",
 		"  },", "  Nothing -> Query.notFound,", "}")
 	var b strings.Builder
-	fmt.Fprintf(&b, "page %s { %s }%s\n\n", pathLit(at.path+"/{id}"), strings.Join(at.params(mod, imports, []string{"id: " + types.StringIn(t.IDType, mod)}), ", "), at.requires())
+	b.WriteString(regionAt("", "routes", []string{routeLine("Show", "GET", at.path+"/{id}", g.keepWires(mod, at.params(mod, imports, []string{"id: " + types.StringIn(t.IDType, mod)})), "", at.requires())}) + "\n\n")
 	b.WriteString("-- The row, the labels of the rows it refers to, and (for the delete dialog) how many rows of\n-- each table refer to it.\n")
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n  labels: Labels,\n" + regionAt("  ", "model", pl.model) + "\n}\n\n")
-	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
+	b.WriteString(g.load("Show", regionAt("  ", "load", wrapAll(loads))))
 	b.WriteString(regionAt("", "labels", wrapAll(g.labels(at, mod, imports))) + "\n\n")
 	b.WriteString(regionAt("", "blockers", pl.block) + "\n\n")
-	b.WriteString("-- The delete dialog's form: no input, the button and the place a refusal is shown.\nform Confirm = { }\n\nmsg Remove form Confirm\n\n")
-	b.WriteString(`-- Remove deletes the row, unless rows refer to it that keep it (load counted them, as it does
--- before every message), as the Delete page does.
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Remove p -> {
-` + regionAt("    ", "remove", wrapAll(pl.remove)) + `
-  },
-}
-
-`)
-	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
+	b.WriteString(viewHead("Show"))
 	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n      <dl id=\"fields\">\n%s\n      </dl>\n", open, title, regionAt("        ", "fields", fields))
 	fmt.Fprintf(&b, `      <div slot="actions">
         <al-button href={%s { id: model.row.%s }}>Edit</al-button>
@@ -1466,7 +1580,7 @@ update msg model session = match msg {
       <dl>
 %s
       </dl>
-      <form id="delete" submit={Remove}>
+      <form id="delete" submit={%s { id: model.row.%s }}>
         <al-alert variant="destructive"><Errors form /></al-alert>
         `+pl.button+`
       </form>
@@ -1475,7 +1589,7 @@ update msg model session = match msg {
       </div>
     </al-dialog>
     <a href={%s {}}>All %s</a>
-`, at.page("Edit"), t.IDField, at.noun, regionAt("        ", "counts", pl.counts), at.page("Delete"), t.IDField, at.page("Index"), Plural(at.noun))
+`, at.route("Edit"), t.IDField, at.noun, regionAt("        ", "counts", pl.counts), at.destroy(), t.IDField, at.route("Delete"), t.IDField, at.route("Index"), Plural(at.noun))
 	fmt.Fprintf(&b, "  %s\n", close)
 
 	var tests []TestData
@@ -1484,35 +1598,47 @@ update msg model session = match msg {
 	row := tb.insertRow(t, "", over, false)
 	k := tb.counts[t.Module]
 	checks := g.labelChecks(tb, at, "page.model", parents)
-	tb.let("let r <- Test.open (%s)", pageLit(mod, []string{"id: " + row}))
+	tb.let("let r <- Test.open (%s)", pageLit("Show", []string{"id: " + row}))
 	lhs, rhs := []string{"answer: r.answer", "fields: Test.count \"#fields dd\" r.doc"}, []string{"answer: Shown", fmt.Sprintf("fields: %d", len(shown(t, true)))}
 	if !at.label.ID {
 		lhs[1], rhs[1] = fmt.Sprintf("%s: List.member %s (Test.texts \"#fields dd\" r.doc)", at.label.Name, quote(rawText(at.label, k))), at.label.Name+": True"
 	}
 	if len(checks[0]) > 0 { // the model, for the labels it loaded
-		tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"id: " + row}))
+		tb.let("let page <- Test.get (%s)", pageLit("Show", []string{"id: " + row}))
 	}
 	lhs, rhs = append(lhs, checks[0]...), append(rhs, checks[1]...)
 	tests = append(tests, TestData{Name: quote("the page shows the row"), Lines: tb.lines, Result: "{ " + strings.Join(lhs, ", ") + " } == { " + strings.Join(rhs, ", ") + " }"})
-	tests = append(tests, g.deleteTests(at, mod, imports, pl)...)
-	tests = append(tests, g.missingTest(at, mod, imports))
+	tests = append(tests, g.deleteTests(at, mod, "Show", imports, pl)...)
+	tests = append(tests, g.missingTest(at, mod, "Show", imports))
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
-		return pageLit(mod, []string{"id: " + tb.insertRow(t, "", nil, false)})
+		return pageLit("Show", []string{"id: " + tb.insertRow(t, "", nil, false)})
 	})...)
 	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
 }
 
-// missingTest is the test that a page of a row that does not exist is a 404.
-func (g *adminGen) missingTest(at *adminTable, mod string, imports *importSet) TestData {
+// destroy is the Delete page's Destroy route, as another module writes it.
+func (at *adminTable) destroy() string { return at.page("Delete") + ".Destroy" }
+
+// missingTest is the test that GET route r of module mod, for a row that does not exist, is a 404.
+func (g *adminGen) missingTest(at *adminTable, mod, r string, imports *importSet) TestData {
 	tb := g.tb(mod, imports, true)
 	missing := tb.brandCtor(at.t.IDType.(*types.Brand)) + " " + quote("missing")
-	tb.let("let r <- Test.open (%s)", pageLit(mod, []string{"id: " + missing}))
+	tb.let("let r <- Test.open (%s)", pageLit(r, []string{"id: " + missing}))
 	return TestData{Name: quote("a missing row is not found"), Lines: tb.lines, Result: "r.answer == PageMissing"}
 }
 
 // formName is the name of the form of a table's New and Edit pages: "PostForm".
 func (at *adminTable) formName() string { return at.t.Name + "Form" }
+
+// formRoute is the write route a test of at's New page posts the form to (Create), or of its Edit
+// page for the row target (Save), as the test's Test.submit names it.
+func (at *adminTable) formRoute(edit bool, target string) string {
+	if edit {
+		return "(Save { id: " + target + " })"
+	}
+	return at.own("Create", true)
+}
 
 // optionsField is the model field holding the rows a reference column's select offers.
 func optionsField(c *Column) string { return Plural(c.Name) }
@@ -1541,25 +1667,33 @@ func (g *adminGen) findParams(at *adminTable) []string {
 	return out
 }
 
-// finders are the Search messages of at's page: the declarations (region `search`), the forms
-// above the page's form that show while a list is long, and the update's arms (region `finds`).
-// A search answers with the page again at the text (the narrowed list must survive the load that
-// runs before every message, so the text is a parameter of the page).
-func (g *adminGen) finders(at *adminTable, page string, edit bool) (decls, view, arms []string) {
+// finders are the search routes of at's New or Edit page (module mod, its GET route at path,
+// edit for Edit): their `route` lines, their forms and updates (region `search`), and the forms
+// above the page's form that show while a list is long. A search answers with the page again at
+// the text (the narrowed list is the page's parameter, so it is in the URL).
+func (g *adminGen) finders(at *adminTable, mod, path string, imports *importSet, edit bool) (routes, decls, view []string) {
+	get := strings.TrimPrefix(mod, at.mod+".")
 	for _, c := range at.refs {
 		if !g.finds(c) {
 			continue
 		}
 		name := "Search" + UpperFirst(c.Name)
 		form := "Find" + UpperFirst(c.Name)
-		decls = append(decls, "form "+form+" = { q: Text }", "", "msg "+name+" form "+form, "")
-		view = append(view, fmt.Sprintf(`{if model.%s > 200 then <form submit={%s}><al-input field="q" label=%s /><al-button type="submit" variant="secondary">Find</al-button></form> else Html.none}`,
-			totalField(c), name, quote("Find "+strings.ToLower(Humanize(c.Name)))))
-		args := findParam(c) + ": Text.slice 0 200 p.form.q"
+		g.names[mod] = append(g.names[mod], name)
+		var params []string
+		target, args := at.own(name, false), findParam(c)+": Text.slice 0 200 params.form.q"
 		if edit {
-			args = "id: model.row." + at.t.IDField + ", " + args
+			params = []string{"id: " + types.StringIn(at.t.IDType, mod)}
+			target = name + " { id: model.row." + at.t.IDField + " }"
+			args = "id: params.id, " + args
 		}
-		arms = append(arms, name+" p -> Task.succeed (Redirect ("+page+" { "+args+" })),")
+		routes = append(routes, routeLine(name, "POST", writePath(path, name), at.params(mod, imports, params), form, at.requires()))
+		decls = append(decls, "form "+form+" = { q: Text }", "",
+			"-- "+name+" answers the page again at the text.",
+			name+".update : "+name+".Params -> Session -> Task Response",
+			name+".update params session = Task.succeed (Response.redirect ("+get+" { "+args+" }))", "")
+		view = append(view, fmt.Sprintf(`{if model.%s > 200 then <form submit={%s}><al-input field="q" label=%s /><al-button type="submit" variant="secondary">Find</al-button></form> else Html.none}`,
+			totalField(c), target, quote("Find "+strings.ToLower(Humanize(c.Name)))))
 	}
 	return
 }
@@ -1645,6 +1779,7 @@ func (g *adminGen) formParts(at *adminTable, mod string, imports *importSet, edi
 func (g *adminGen) newPage(at *adminTable) {
 	t := at.t
 	mod := at.page("New")
+	g.names[mod] = []string{"New", "Create"}
 	imports := newImports(mod, g.p.Std)
 	imports.add(t.Module)
 	title := "New " + at.noun
@@ -1667,7 +1802,7 @@ func (g *adminGen) newPage(at *adminTable) {
 		insert = append(insert, "let now <- Time.now")
 	}
 	for _, c := range at.editable {
-		inits = append(inits, c.Name+": p.form."+c.Name)
+		inits = append(inits, c.Name+": params.form."+c.Name)
 	}
 	for _, c := range at.nowCols {
 		inits = append(inits, c.Name+": now")
@@ -1688,25 +1823,25 @@ func (g *adminGen) newPage(at *adminTable) {
 	}
 	insert = append(insert, g.unique(at, "", []string{
 		fmt.Sprintf("let id <- Db.insert %s { %s }", t.Name, strings.Join(inits, ", ")),
-		fmt.Sprintf("Task.succeed (Redirect (%s { id: id }))", at.page("Show")),
+		fmt.Sprintf("Task.succeed (Response.redirect (%s { id: id }))", at.route("Show")),
 	})...)
 
 	var b strings.Builder
-	pageParams := "{ }"
-	if fp := at.params(mod, imports, g.findParams(at)); len(fp) > 0 {
-		pageParams = "{ " + strings.Join(fp, ", ") + " }"
-	}
-	decls, finder, arms := g.finders(at, at.page("New"), false)
-	fmt.Fprintf(&b, "page %s %s%s\n\n", pathLit(at.path+"/new"), pageParams, at.requires())
+	path := at.path + "/new"
+	routes, decls, finder := g.finders(at, mod, path, imports, false)
+	routes = append([]string{
+		routeLine("New", "GET", path, g.keepWires(mod, at.params(mod, imports, g.findParams(at))), "", at.requires()),
+		routeLine("Create", "POST", writePath(path, "Create"), at.params(mod, imports, nil), at.formName(), at.requires()),
+	}, routes...)
+	b.WriteString(regionAt("", "routes", routes) + "\n\n")
 	b.WriteString("type Model = {\n" + regionAt("  ", "model", model) + "\n}\n\n")
-	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
+	b.WriteString(g.load("New", regionAt("  ", "load", wrapAll(loads))))
 	b.WriteString(regionAt("", "form", form) + "\n\n")
 	b.WriteString(regionAt("", "search", decls) + "\n\n")
-	fmt.Fprintf(&b, "msg Create form %s\n\n", at.formName())
-	b.WriteString("update : Msg -> Model -> Session -> Task Nav\nupdate msg model session = match msg {\n" + regionAt("  ", "finds", arms) + "\n  Create p -> {\n")
-	b.WriteString(regionAt("    ", "insert", wrapAll(insert)) + "\n  },\n}\n\n")
-	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
-	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n%s\n      <form submit={Create}>\n%s\n", open, UpperFirst(title), regionAt("      ", "finder", finder), regionAt("        ", "inputs", inputs))
+	b.WriteString("-- Create adds the row and goes to its page.\n")
+	b.WriteString(g.update("Create", regionAt("  ", "insert", wrapAll(insert))))
+	b.WriteString(viewHead("New"))
+	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n%s\n      <form submit={%s}>\n%s\n", open, UpperFirst(title), regionAt("      ", "finder", finder), at.own("Create", false), regionAt("        ", "inputs", inputs))
 	b.WriteString("        <al-alert variant=\"destructive\"><Errors form /></al-alert>\n        <al-button type=\"submit\">Create</al-button>\n      </form>\n    </al-card>\n")
 	fmt.Fprintf(&b, "  %s\n", close)
 
@@ -1730,8 +1865,8 @@ func (g *adminGen) newPage(at *adminTable) {
 		got = append(got, c.Name+": row."+c.Name)
 		want = append(want, c.Name+": "+v)
 	}
-	tb.let("let page <- Test.get (%s {})", mod)
-	tb.let("let r <- Test.submit %s { %s }", at.formName(), strings.Join(values, ", "))
+	tb.let("let page <- Test.get (New {})")
+	tb.let("let r <- Test.submit %s { %s }", at.own("Create", true), strings.Join(values, ", "))
 	sel := "Db.from " + t.Name
 	if k > 0 && !at.label.ID { // rows of the table were inserted before (the signed-in user): the new one by its label
 		v := valueOf(values, at.label.Name)
@@ -1741,7 +1876,7 @@ func (g *adminGen) newPage(at *adminTable) {
 		sel += fmt.Sprintf(" |> Db.where (%s.%s.eq %s)", t.Name, at.label.Name, v)
 	}
 	tb.let("let rows <- %s |> Db.all", sel)
-	lhs := []string{fmt.Sprintf("answers: List.map (\\row -> Redirected (%s { id: row.%s })) rows", at.page("Show"), t.IDField),
+	lhs := []string{fmt.Sprintf("answers: List.map (\\row -> Redirected (%s { id: row.%s })) rows", at.route("Show"), t.IDField),
 		"rows: List.map (\\row -> { " + strings.Join(got, ", ") + " }) rows"}
 	rhs := []string{"answers: [r.answer]", "rows: [{ " + strings.Join(want, ", ") + " }]"}
 	lhs, rhs = append(lhs, optLines[0]...), append(rhs, optLines[1]...)
@@ -1753,7 +1888,22 @@ func (g *adminGen) newPage(at *adminTable) {
 	tests = append(tests, g.uniqueTests(at, mod, imports, false)...)
 	tests = append(tests, g.notOffered(at, mod, imports, false)...)
 	tests = append(tests, g.findTests(at, mod, imports, false)...)
-	tests = append(tests, g.gateTests(mod, imports, func(*testBuilder) string { return mod + " {}" })...)
+	tests = append(tests, g.writeGate(mod, imports, "create "+article(at.noun), len(at.refs) > 0, func(tb *testBuilder) (string, string, func() (string, string)) {
+		g.optionRows(tb, at)
+		if len(at.uniques()) > 0 && tb.counts[t.Module] == 0 {
+			tb.insertRow(t, "_", nil, false)
+		}
+		k := tb.counts[t.Module]
+		var values []string
+		for _, c := range at.editable {
+			values = append(values, c.Name+": "+g.submitValue(tb, at, c, k+1))
+		}
+		return "New {}", fmt.Sprintf("Test.submit %s { %s }", at.own("Create", true), strings.Join(values, ", ")), func() (string, string) {
+			tb.let("let rows <- Db.from %s |> Db.count", t.Name)
+			return "rows: rows", fmt.Sprintf("rows: %d", k)
+		}
+	})...)
+	tests = append(tests, g.gateTests(mod, imports, func(*testBuilder) string { return "New {}" })...)
 	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
 }
@@ -1766,11 +1916,11 @@ func (g *adminGen) notOffered(at *adminTable, mod string, imports *importSet, ed
 	var tests []TestData
 	for _, c := range at.refs {
 		tb := g.tb(mod, imports, true)
-		page := mod + " {}"
+		page := "New {}"
 		target := ""
 		if edit {
 			target = tb.insertRow(at.t, "", nil, false)
-			page = pageLit(mod, []string{"id: " + target})
+			page = pageLit("Edit", []string{"id: " + target})
 		}
 		g.optionRows(tb, at)
 		tb.let("let page <- Test.get (%s)", page)
@@ -1786,7 +1936,7 @@ func (g *adminGen) notOffered(at *adminTable, mod string, imports *importSet, ed
 			}
 			raw = append(raw, fmt.Sprintf("{ name: %s, value: %s }", quote(d.Name), v))
 		}
-		tb.let("let r <- Test.submitRaw %s [%s]", at.formName(), strings.Join(raw, ", "))
+		tb.let("let r <- Test.submitRaw %s [%s]", at.formRoute(edit, target), strings.Join(raw, ", "))
 		rejected := fmt.Sprintf("FormRejected [{ field: %s, message: \"must be one of the options\" }]", quote(c.Name))
 		result := ""
 		if edit {
@@ -1824,9 +1974,10 @@ func takenText(at *adminTable, c *Column) string {
 
 // unique is an arm's body, write (the write and the redirect), guarded for each `@unique`
 // column of at's form by a count of the rows that already hold the submitted value (other than
-// the row self, on an Edit page): such a value answers `Reject`, which the form shows, where the
+// the row self, on an Edit page): such a value answers `Response.invalid`, which the form shows, where the
 // database would refuse the write with an error (a 500).
 func (g *adminGen) unique(at *adminTable, self string, write []string) []string {
+	// answers Response.invalid, which the form shows
 	cols := at.uniques()
 	if len(cols) == 0 {
 		return write
@@ -1834,7 +1985,7 @@ func (g *adminGen) unique(at *adminTable, self string, write []string) []string 
 	t := at.t
 	var out []string
 	for _, c := range cols {
-		conds := []string{t.Name + "." + c.Name + ".eq p.form." + c.Name}
+		conds := []string{t.Name + "." + c.Name + ".eq params.form." + c.Name}
 		if c.Maybe { // no value is never taken: `.ne Nothing` matches no row without one
 			conds = append(conds, t.Name+"."+c.Name+".ne Nothing")
 		}
@@ -1852,7 +2003,7 @@ func (g *adminGen) unique(at *adminTable, self string, write []string) []string 
 		if i == 0 {
 			lead = "if"
 		}
-		out = append(out, fmt.Sprintf("%s %sTaken > 0 then", lead, c.Name), "  Task.succeed (Reject "+quote(takenText(at, c))+")")
+		out = append(out, fmt.Sprintf("%s %sTaken > 0 then", lead, c.Name), "  Task.succeed (Response.invalid "+quote(takenText(at, c))+")")
 	}
 	out = append(out, "else {")
 	out = append(out, indentAll(write, "  ")...)
@@ -1866,11 +2017,11 @@ func (g *adminGen) uniqueTests(at *adminTable, mod string, imports *importSet, e
 	t := at.t
 	for _, c := range at.uniques() {
 		tb := g.tb(mod, imports, true)
-		page := mod + " {}"
+		page := "New {}"
 		target := ""
 		if edit {
 			target = tb.insertRow(t, "", nil, false)
-			page = pageLit(mod, []string{"id: " + target})
+			page = pageLit("Edit", []string{"id: " + target})
 		}
 		g.optionRows(tb, at)
 		taken := g.submitValue(tb, at, c, tb.counts[t.Module]+1)
@@ -1891,7 +2042,7 @@ func (g *adminGen) uniqueTests(at *adminTable, mod string, imports *importSet, e
 			tb.let("let before <- Db.get %s %s", t.Name, target)
 		}
 		tb.let("let _ <- Test.get (%s)", page)
-		tb.let("let r <- Test.submit %s { %s }", at.formName(), strings.Join(values, ", "))
+		tb.let("let r <- Test.submit %s { %s }", at.formRoute(edit, target), strings.Join(values, ", "))
 		rejected := fmt.Sprintf("FormRejected [{ field: \"\", message: %s }]", quote(takenText(at, c)))
 		col := strings.ToLower(Humanize(c.Name))
 		if edit {
@@ -1979,6 +2130,7 @@ func (g *adminGen) submitValue(tb *testBuilder, at *adminTable, c *Column, n int
 func (g *adminGen) edit(at *adminTable) {
 	t := at.t
 	mod := at.page("Edit")
+	g.names[mod] = []string{"Edit", "Save"}
 	imports := newImports(mod, g.p.Std)
 	imports.add(t.Module)
 	importTypes(imports, t.IDType)
@@ -1997,37 +2149,42 @@ func (g *adminGen) edit(at *adminTable) {
 		append(indentAll(loads, "    "), "    Query.succeed { "+strings.Join(fields, ", ")+" }", "  },", "  Nothing -> Query.notFound,", "}")...)
 	var sets []string
 	for _, c := range at.editable {
-		sets = append(sets, c.Name+": p.form."+c.Name)
+		sets = append(sets, c.Name+": params.form."+c.Name)
 	}
-	upd := fmt.Sprintf("let _ <- Db.update %s model.row.%s (\\row -> { row | %s })", t.Name, t.IDField, strings.Join(sets, ", "))
+	upd := fmt.Sprintf("let _ <- Db.update %s row.%s (\\r -> { r | %s })", t.Name, t.IDField, strings.Join(sets, ", "))
 	if len(sets) == 0 {
-		upd = fmt.Sprintf("let _ <- Db.update %s model.row.%s (\\row -> row)", t.Name, t.IDField)
+		upd = fmt.Sprintf("let _ <- Db.update %s row.%s (\\r -> r)", t.Name, t.IDField)
 	}
 
 	var b strings.Builder
-	decls, finder, arms := g.finders(at, at.page("Edit"), true)
-	editParams := at.params(mod, imports, append([]string{"id: " + types.StringIn(t.IDType, mod)}, g.findParams(at)...))
-	fmt.Fprintf(&b, "page %s { %s }%s\n\n", pathLit(at.path+"/{id}/edit"), strings.Join(editParams, ", "), at.requires())
+	path := at.path + "/{id}/edit"
+	idParam := "id: " + types.StringIn(t.IDType, mod)
+	routes, decls, finder := g.finders(at, mod, path, imports, true)
+	routes = append([]string{
+		routeLine("Edit", "GET", path, g.keepWires(mod, at.params(mod, imports, append([]string{idParam}, g.findParams(at)...))), "", at.requires()),
+		routeLine("Save", "PUT", writePath(path, "Save"), at.params(mod, imports, []string{idParam}), at.formName(), at.requires()),
+	}, routes...)
+	b.WriteString(regionAt("", "routes", routes) + "\n\n")
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n" + regionAt("  ", "model", model) + "\n}\n\n")
-	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
+	b.WriteString(g.load("Edit", regionAt("  ", "load", wrapAll(loads))))
 	b.WriteString(regionAt("", "form", form) + "\n\n")
 	b.WriteString(regionAt("", "search", decls) + "\n\n")
-	fmt.Fprintf(&b, "msg Save form %s\n\n", at.formName())
-	b.WriteString("update : Msg -> Model -> Session -> Task Nav\nupdate msg model session = match msg {\n" + regionAt("  ", "finds", arms) + "\n  Save p -> {\n")
-	save := g.unique(at, "model.row."+t.IDField, []string{upd, fmt.Sprintf("Task.succeed (Redirect (%s { id: model.row.%s }))", at.page("Show"), t.IDField)})
+	save := g.unique(at, "row."+t.IDField, []string{upd, fmt.Sprintf("Task.succeed (Response.redirect (%s { id: row.%s }))", at.route("Show"), t.IDField)})
 	role := g.ownRole(at)
 	if role != nil { // the signed-in user's own role is not changed: an Admin would lock themselves out
 		save = append([]string{
-			fmt.Sprintf("if %s && p.form.%s != model.row.%s then", g.isMe("model.row."+t.IDField), role.Name, role.Name),
-			"  Task.succeed (Reject " + quote(roleText) + ")",
+			fmt.Sprintf("if %s && params.form.%s != row.%s then", g.isMe("row."+t.IDField), role.Name, role.Name),
+			"  Task.succeed (Response.invalid " + quote(roleText) + ")",
 			"else {",
 		}, append(indentAll(save, "  "), "}")...)
 	}
-	b.WriteString(regionAt("    ", "update", wrapAll(save)) + "\n  },\n}\n\n")
-	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
-	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n%s\n      <form submit={Save}>\n%s\n", open, UpperFirst(title), regionAt("      ", "finder", finder), regionAt("        ", "inputs", inputs))
+	b.WriteString("-- Save writes the form over the row (a row deleted since is not found) and goes to its page.\n")
+	b.WriteString(g.update("Save", "  let found <- Db.get "+t.Name+" params.id\n  match found {\n    Just row -> {\n"+
+		regionAt("      ", "update", wrapAll(save))+"\n    },\n    Nothing -> Task.notFound,\n  }"))
+	b.WriteString(viewHead("Edit"))
+	fmt.Fprintf(&b, "  %s\n    <h1>%s</h1>\n\n    <al-card>\n%s\n      <form submit={Save { id: model.row.%s }}>\n%s\n", open, UpperFirst(title), regionAt("      ", "finder", finder), t.IDField, regionAt("        ", "inputs", inputs))
 	b.WriteString("        <al-alert variant=\"destructive\"><Errors form /></al-alert>\n        <al-button type=\"submit\">Save</al-button>\n      </form>\n    </al-card>\n")
-	fmt.Fprintf(&b, "    <a href={%s { id: model.row.%s }}>Back</a>\n", at.page("Show"), t.IDField)
+	fmt.Fprintf(&b, "    <a href={%s { id: model.row.%s }}>Back</a>\n", at.route("Show"), t.IDField)
 	fmt.Fprintf(&b, "  %s\n", close)
 
 	// the tests: every field changed, each to a value it did not have
@@ -2043,11 +2200,11 @@ func (g *adminGen) edit(at *adminTable) {
 		got = append(got, c.Name+": row."+c.Name)
 		want = append(want, c.Name+": "+v)
 	}
-	tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"id: " + target}))
-	tb.let("let r <- Test.submit %s { %s }", at.formName(), strings.Join(values, ", "))
+	tb.let("let page <- Test.get (%s)", pageLit("Edit", []string{"id: " + target}))
+	tb.let("let r <- Test.submit %s { %s }", at.formRoute(true, target), strings.Join(values, ", "))
 	tb.let("let after <- Db.get %s %s", t.Name, target)
 	lhs := []string{"answer: r.answer", "row: Maybe.map (\\row -> { " + strings.Join(got, ", ") + " }) after"}
-	rhs := []string{fmt.Sprintf("answer: Redirected (%s { id: %s })", at.page("Show"), target), "row: Just { " + strings.Join(want, ", ") + " }"}
+	rhs := []string{fmt.Sprintf("answer: Redirected (%s { id: %s })", at.route("Show"), target), "row: Just { " + strings.Join(want, ", ") + " }"}
 	if len(at.editable) == 0 {
 		lhs, rhs = lhs[:1], rhs[:1]
 	}
@@ -2060,9 +2217,23 @@ func (g *adminGen) edit(at *adminTable) {
 	}
 	tests = append(tests, g.notOffered(at, mod, imports, true)...)
 	tests = append(tests, g.findTests(at, mod, imports, true)...)
-	tests = append(tests, g.missingTest(at, mod, imports))
+	tests = append(tests, g.writeGate(mod, imports, "save "+article(at.noun), len(at.refs) > 0, func(tb *testBuilder) (string, string, func() (string, string)) {
+		target := tb.insertRow(t, "", nil, false)
+		g.optionRows(tb, at)
+		k := tb.counts[t.Module]
+		var values []string
+		for _, c := range at.editable {
+			values = append(values, c.Name+": "+g.changedValue(tb, at, c, k+1))
+		}
+		tb.let("let before <- Db.get %s %s", t.Name, target)
+		return pageLit("Edit", []string{"id: " + target}), fmt.Sprintf("Test.submit %s { %s }", at.formRoute(true, target), strings.Join(values, ", ")), func() (string, string) {
+			tb.let("let after <- Db.get %s %s", t.Name, target)
+			return "row: after", "row: before"
+		}
+	})...)
+	tests = append(tests, g.missingTest(at, mod, "Edit", imports))
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
-		return pageLit(mod, []string{"id: " + tb.insertRow(t, "", nil, false)})
+		return pageLit("Edit", []string{"id: " + tb.insertRow(t, "", nil, false)})
 	})...)
 	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
@@ -2107,8 +2278,8 @@ func (g *adminGen) ownRoleTests(at *adminTable, mod string, imports *importSet, 
 	me := tb.user()
 	g.optionRows(tb, at)
 	tb.let("let before <- Db.get %s %s", t.Name, me)
-	tb.let("let _ <- Test.get (%s)", pageLit(mod, []string{"id: " + me}))
-	tb.let("let r <- Test.submit %s { %s }", at.formName(), values(tb, other))
+	tb.let("let _ <- Test.get (%s)", pageLit("Edit", []string{"id: " + me}))
+	tb.let("let r <- Test.submit %s { %s }", at.formRoute(true, me), values(tb, other))
 	tb.let("let after <- Db.get %s %s", t.Name, me)
 	tests = append(tests, TestData{Name: quote("an Admin cannot change their own role"), Lines: tb.lines,
 		Result: fmt.Sprintf("{ answer: r.answer, row: after } == { answer: FormRejected [{ field: \"\", message: %s }], row: before }", quote(roleText))})
@@ -2116,9 +2287,9 @@ func (g *adminGen) ownRoleTests(at *adminTable, mod string, imports *importSet, 
 	tb = g.tb(mod, imports, true)
 	me = tb.user()
 	g.optionRows(tb, at)
-	tb.let("let _ <- Test.get (%s)", pageLit(mod, []string{"id: " + me}))
+	tb.let("let _ <- Test.get (%s)", pageLit("Edit", []string{"id: " + me}))
 	vs := values(tb, "Admin")
-	tb.let("let r <- Test.submit %s { %s }", at.formName(), vs)
+	tb.let("let r <- Test.submit %s { %s }", at.formRoute(true, me), vs)
 	tb.let("let after <- Db.get %s %s", t.Name, me)
 	var got, want []string
 	for _, c := range at.editable {
@@ -2127,18 +2298,18 @@ func (g *adminGen) ownRoleTests(at *adminTable, mod string, imports *importSet, 
 	}
 	tests = append(tests, TestData{Name: quote("an Admin saves their own account, the role unchanged"), Lines: tb.lines,
 		Result: fmt.Sprintf("{ answer: r.answer, row: Maybe.map (\\row -> { %s }) after } == { answer: Redirected (%s { id: %s }), row: Just { %s } }",
-			strings.Join(got, ", "), at.page("Show"), me, strings.Join(want, ", "))})
+			strings.Join(got, ", "), at.route("Show"), me, strings.Join(want, ", "))})
 
 	tb = g.tb(mod, imports, true)
 	tb.user()
 	admin := tb.insertRow(t, "admin", map[string]string{role.Name: maybeJust(role, "Admin")}, false)
 	g.optionRows(tb, at)
-	tb.let("let _ <- Test.get (%s)", pageLit(mod, []string{"id: " + admin}))
-	tb.let("let r <- Test.submit %s { %s }", at.formName(), values(tb, other))
+	tb.let("let _ <- Test.get (%s)", pageLit("Edit", []string{"id: " + admin}))
+	tb.let("let r <- Test.submit %s { %s }", at.formRoute(true, admin), values(tb, other))
 	tb.let("let after <- Db.get %s %s", t.Name, admin)
 	tests = append(tests, TestData{Name: quote("an Admin demotes another Admin"), Lines: tb.lines,
 		Result: fmt.Sprintf("{ answer: r.answer, %s: Maybe.map (\\row -> row.%s) after } == { answer: Redirected (%s { id: %s }), %s: Just %s }",
-			role.Name, role.Name, at.page("Show"), admin, role.Name, maybeJust(role, other))})
+			role.Name, role.Name, at.route("Show"), admin, role.Name, maybeJust(role, other))})
 	return tests
 }
 
@@ -2185,10 +2356,10 @@ func (g *adminGen) changedValue(tb *testBuilder, at *adminTable, c *Column, n in
 }
 
 // delPlan is what deleting a row of at involves, which the Delete page and the Show page's
-// dialog both show and do: the model's counts of the rows that refer to it (and, for the user
-// table, whether it is the signed-in user's own), the loads that count them, the functions that
-// sum the rows keeping it (region `blockers`), the Remove arm (region `remove`), the counts'
-// markup and the button (or the reasons there is none).
+// dialog both show, and the Delete page's Destroy does: the model's counts of the rows that refer
+// to it, the loads that count them, the functions that sum the rows keeping it (region
+// `blockers`), Destroy's body (region `remove`), the counts' markup and the button (or the
+// reasons there is none; for the user table, also the signed-in user's own row).
 type delPlan struct {
 	model, loads, fields, counts, block, remove []string
 	button                                      string
@@ -2197,7 +2368,7 @@ type delPlan struct {
 	own                                         bool
 }
 
-func (g *adminGen) deletePlan(at *adminTable, imports *importSet) *delPlan {
+func (g *adminGen) deletePlan(at *adminTable, imports *importSet, id string) *delPlan {
 	t := at.t
 	var model, loads, counts, blockers, children []string
 	var fields []string
@@ -2206,7 +2377,7 @@ func (g *adminGen) deletePlan(at *adminTable, imports *importSet) *delPlan {
 	for _, n := range walk(nodes) {
 		imports.add(n.t.Module)
 		model = append(model, n.field+": Int,")
-		cond := eqID(n.t, n.col, "params.id")
+		cond := eqID(n.t, n.col, id)
 		if n.parent != nil { // the rows that refer to the rows its parent deletes
 			ids := "List.map (\\row -> row." + n.parent.t.IDField + ") " + n.parent.field + "Rows"
 			if n.col.Maybe {
@@ -2251,11 +2422,7 @@ func (g *adminGen) deletePlan(at *adminTable, imports *importSet) *delPlan {
 			}
 		}
 	}
-	own := g.isUserTable(at)
-	if own { // the signed-in user's own row is not deleted
-		model = append([]string{"own: Bool,"}, model...)
-		fields = append([]string{"own: " + g.isMe("row."+t.IDField)}, fields...)
-	}
+	own := g.isUserTable(at) // the signed-in user's own row is not deleted
 	block := []string{
 		"-- blockers counts the rows that keep this one from being deleted, which the database would",
 		"-- refuse the delete for: the `@restrict` references to it, or to a row deleted with it.",
@@ -2275,8 +2442,8 @@ func (g *adminGen) deletePlan(at *adminTable, imports *importSet) *delPlan {
 			"children model = "+strings.Join(children, " + "))
 	}
 	remove := []string{
-		"let _ <- Db.delete " + t.Name + " model.row." + t.IDField,
-		"Task.succeed (Redirect (" + at.page("Index") + " {}))",
+		"let _ <- Db.delete " + t.Name + " params.id",
+		"Task.succeed (Response.redirect (" + at.route("Index") + " {}) |> Response.success " + quote(deletedText) + ")",
 	}
 	if len(blockers) > 0 || len(children) > 0 || own { // refused while rows refer to it: the database would refuse with an error
 		var guard []string
@@ -2287,13 +2454,13 @@ func (g *adminGen) deletePlan(at *adminTable, imports *importSet) *delPlan {
 			return "if"
 		}
 		if own {
-			guard = append(guard, "if model.own then", "  Task.succeed (Reject "+quote(ownText)+")")
+			guard = append(guard, "if "+g.isMe("params.id")+" then", "  Task.succeed (Response.invalid "+quote(ownText)+")")
 		}
 		if len(children) > 0 {
-			guard = append(guard, lead()+" children model > 0 then", "  Task.succeed (Reject "+quote(childrenText)+")")
+			guard = append(guard, lead()+" children model > 0 then", "  Task.succeed (Response.invalid "+quote(childrenText)+")")
 		}
 		if len(blockers) > 0 {
-			guard = append(guard, lead()+" blockers model > 0 then", "  Task.succeed (Reject "+quote(rejectText(at))+")")
+			guard = append(guard, lead()+" blockers model > 0 then", "  Task.succeed (Response.invalid "+quote(rejectText(at))+")")
 		}
 		remove = append(append(guard, "else {"), append(indentAll(remove, "  "), "}")...)
 	}
@@ -2301,7 +2468,7 @@ func (g *adminGen) deletePlan(at *adminTable, imports *importSet) *delPlan {
 	if len(children) > 0 || own { // one line per reason
 		var arms []string
 		if own {
-			arms = append(arms, "model.own then <p>"+ownText+"</p>")
+			arms = append(arms, g.isMe("model.row."+t.IDField)+" then <p>"+ownText+"</p>")
 		}
 		if len(children) > 0 {
 			arms = append(arms, "children model > 0 then <p>"+childrenText+"</p>")
@@ -2316,61 +2483,79 @@ func (g *adminGen) deletePlan(at *adminTable, imports *importSet) *delPlan {
 func (g *adminGen) delete(at *adminTable) {
 	t := at.t
 	mod := at.page("Delete")
+	g.names[mod] = []string{"Delete", "Destroy"}
 	imports := newImports(mod, g.p.Std)
 	imports.add(t.Module)
 	importTypes(imports, t.IDType)
 	title := "Delete " + at.noun
 	open, close := g.layoutOpen(UpperFirst(title), imports)
+	idT := types.StringIn(t.IDType, mod)
 
-	pl := g.deletePlan(at, imports)
-	loads := append([]string{"let found <- Db.get " + t.Name + " params.id"}, pl.loads...)
+	pl := g.deletePlan(at, imports, "id")
+	loads := append([]string{"let found <- Db.get " + t.Name + " id"}, pl.loads...)
 	loads = append(loads, "match found {", "  Just row -> Query.succeed { "+strings.Join(append([]string{"row: row"}, pl.fields...), ", ")+" },", "  Nothing -> Query.notFound,", "}")
 	labelRow := "<p>{" + textOf(at.label, "model.row."+at.label.Name) + "}</p>"
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "page %s { %s }%s\n\n", pathLit(at.path+"/{id}/delete"), strings.Join(at.params(mod, imports, []string{"id: " + types.StringIn(t.IDType, mod)}), ", "), at.requires())
+	path := at.path + "/{id}/delete"
+	params := at.params(mod, imports, []string{"id: " + idT})
+	b.WriteString(regionAt("", "routes", []string{
+		routeLine("Delete", "GET", path, g.keepWires(mod, params), "", at.requires()),
+		routeLine("Destroy", "DELETE", writePath(path, "Destroy"), params, "Confirm", at.requires()),
+	}) + "\n\n")
 	b.WriteString("-- The row, and how many rows of each table refer to it.\n")
 	b.WriteString("type Model = {\n  row: " + t.Name + ",\n" + regionAt("  ", "model", pl.model) + "\n}\n\n")
-	b.WriteString(g.load(regionAt("  ", "load", wrapAll(loads))))
+	b.WriteString("-- counted is the row id names (none is not found) and how many rows of each table refer to it:\n")
+	b.WriteString("-- the page shows them, and Destroy counts them again before it deletes.\n")
+	fmt.Fprintf(&b, "counted : %s -> Query Model\ncounted id = {\n%s\n}\n\n", idT, regionAt("  ", "load", wrapAll(loads)))
+	b.WriteString(g.load("Delete", "  counted params.id"))
 	b.WriteString(regionAt("", "blockers", pl.block) + "\n\n")
-	b.WriteString("-- Delete takes no input: the form is the button, and the place a refusal is shown.\nform Confirm = { }\n\nmsg Remove form Confirm\n\n")
-	b.WriteString(`-- Remove deletes the row, unless rows refer to it that keep it (load counted them, as it does
--- before every message): the database would refuse the delete with an error, and the page says
--- why instead.
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Remove p -> {
-` + regionAt("    ", "remove", wrapAll(pl.remove)) + `
-  },
-}
-
+	b.WriteString("-- Destroy takes no input: the form is the button, and the place a refusal is shown.\nform Confirm = { }\n\n")
+	b.WriteString(`-- Destroy deletes the row, unless rows refer to it that keep it (counted again, as the page
+-- counted them): the database would refuse the delete with an error, and the page says why
+-- instead. The Show page's dialog posts it too.
 `)
-	b.WriteString("view : Model -> Session -> Html Msg\nview model session =\n")
+	b.WriteString(g.update("Destroy", "  let model <- counted params.id\n"+regionAt("  ", "remove", wrapAll(pl.remove))))
+	b.WriteString(viewHead("Delete"))
 	fmt.Fprintf(&b, "  %s\n    <h1>Delete this %s?</h1>\n\n    <al-card>\n%s\n      <dl>\n%s\n      </dl>\n", open, at.noun, regionAt("      ", "row", []string{labelRow}), regionAt("        ", "counts", pl.counts))
-	fmt.Fprintf(&b, `      <form id="delete" submit={Remove}>
+	fmt.Fprintf(&b, `      <form id="delete" submit={Destroy { id: model.row.%s }}>
         <al-alert variant="destructive"><Errors form /></al-alert>
         `+pl.button+`
       </form>
     </al-card>
     <a href={%s { id: model.row.%s }}>Back</a>
-`, at.page("Show"), t.IDField)
+`, t.IDField, at.route("Show"), t.IDField)
 	fmt.Fprintf(&b, "  %s\n", close)
 
-	tests := g.deleteTests(at, mod, imports, pl)
-	tests = append(tests, g.missingTest(at, mod, imports))
+	tests := g.deleteTests(at, mod, "Delete", imports, pl)
+	tests = append(tests, g.writeGate(mod, imports, "delete "+article(at.noun), false, func(tb *testBuilder) (string, string, func() (string, string)) {
+		target := tb.insertRow(t, "", nil, false)
+		return pageLit("Delete", []string{"id: " + target}), fmt.Sprintf("Test.submit (Destroy { id: %s }) { }", target), func() (string, string) {
+			tb.let("let kept <- Db.get %s %s", t.Name, target)
+			return "kept: Maybe.map (\\row -> row." + t.IDField + ") kept", "kept: Just " + target
+		}
+	})...)
+	tests = append(tests, g.missingTest(at, mod, "Delete", imports))
 	tests = append(tests, g.gateTests(mod, imports, func(tb *testBuilder) string {
-		return pageLit(mod, []string{"id: " + tb.insertRow(t, "", nil, false)})
+		return pageLit("Delete", []string{"id: " + tb.insertRow(t, "", nil, false)})
 	})...)
 	b.WriteString(g.testsIn(mod, tests))
 	g.file(mod, imports, b.String())
 }
 
-// deleteTests are the tests of the Remove message of page mod (the Delete page, or the Show
-// page's dialog): a row nothing refers to is deleted, the rows that go with it are counted, each
-// @restrict reference (and one down a @cascade) refuses, a row with children is refused, and the
-// signed-in user's own row is.
-func (g *adminGen) deleteTests(at *adminTable, mod string, imports *importSet, pl *delPlan) []TestData {
+// deleteTests are the tests of Destroy pressed on the page of GET route get of module mod (the
+// Delete page, or the Show page's dialog): a row nothing refers to is deleted, the rows that go
+// with it are counted, each @restrict reference (and one down a @cascade) refuses, a row with
+// children is refused, and the signed-in user's own row is.
+func (g *adminGen) deleteTests(at *adminTable, mod, get string, imports *importSet, pl *delPlan) []TestData {
 	t := at.t
+	destroy := at.destroy()
+	if get == "Delete" {
+		destroy = "Destroy"
+	}
+	press := func(tb *testBuilder, v, row string) {
+		tb.let("let %s <- Test.submit (%s { id: %s }) { }", v, destroy, row)
+	}
 	nodes, chains, own := pl.nodes, pl.chains, pl.own
 	var tests []TestData
 	// a row nothing refers to is deleted; another row, with rows of every table referring to
@@ -2382,11 +2567,12 @@ func (g *adminGen) deleteTests(at *adminTable, mod string, imports *importSet, p
 		other = tb.insertRow(t, "", nil, true)
 		g.referrers(tb, at, other)
 	}
-	tb.let("let _ <- Test.get (%s)", pageLit(mod, []string{"id: " + target}))
-	tb.let("let r <- Test.submit Confirm { }")
+	tb.let("let page <- Test.get (%s)", pageLit(get, []string{"id: " + target}))
+	press(tb, "r", target)
 	tb.let("let gone <- Db.get %s %s", t.Name, target)
-	lhs := []string{"answer: r.answer", "gone: Maybe.map (\\row -> row." + t.IDField + ") gone"}
-	rhs := []string{"answer: Redirected (" + at.page("Index") + " {})", "gone: Nothing"}
+	// the page offers the button: the rows that refer to the other row are not counted for this one
+	lhs := []string{"button: Test.count \"#delete al-button\" page.doc", "answer: r.answer", "gone: Maybe.map (\\row -> row." + t.IDField + ") gone"}
+	rhs := []string{"button: 1", "answer: Redirected (" + at.route("Index") + " {})", "gone: Nothing"}
 	if other != "" {
 		tb.let("let kept <- Db.get %s %s", t.Name, other)
 		lhs = append(lhs, "kept: Maybe.map (\\row -> row."+t.IDField+") kept")
@@ -2412,7 +2598,7 @@ func (g *adminGen) deleteTests(at *adminTable, mod string, imports *importSet, p
 		for _, r := range going {
 			tb.insertRow(r.t, "_", map[string]string{r.col.Name: maybeJust(r.col, other)}, false)
 		}
-		tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"id: " + target}))
+		tb.let("let page <- Test.get (%s)", pageLit(get, []string{"id: " + target}))
 		var l, rr []string
 		for _, r := range going {
 			l = append(l, fmt.Sprintf("%s: Test.text \"#%s\" page.doc", r.field, r.field))
@@ -2429,8 +2615,8 @@ func (g *adminGen) deleteTests(at *adminTable, mod string, imports *importSet, p
 		tb = g.tb(mod, imports, true)
 		target := tb.insertRow(t, "", nil, true)
 		tb.insertRow(r.t, "_", map[string]string{r.col.Name: maybeJust(r.col, target)}, false)
-		tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"id: " + target}))
-		tb.let("let r <- Test.submit Confirm { }")
+		tb.let("let page <- Test.get (%s)", pageLit(get, []string{"id: " + target}))
+		press(tb, "r", target)
 		tb.let("let kept <- Db.get %s %s", t.Name, target)
 		tests = append(tests, TestData{Name: quote(article(at.noun) + " that " + Plural(strings.ToLower(Humanize(r.t.Name))) + " refer to is not deleted"), Lines: tb.lines,
 			Result: fmt.Sprintf("{ count: Test.text \"#%s\" page.doc, buttons: Test.count \"#delete button\" page.doc, answer: r.answer, kept: Maybe.map (\\row -> row.%s) kept } == { count: Just \"1\", buttons: 0, answer: FormRejected [{ field: \"\", message: %s }], kept: Just %s }",
@@ -2456,8 +2642,8 @@ func (g *adminGen) deleteTests(at *adminTable, mod string, imports *importSet, p
 			}
 		}
 		tb.insertRow(c.t, "_", map[string]string{c.col.Name: maybeJust(c.col, row)}, false)
-		tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"id: " + target}))
-		tb.let("let r <- Test.submit Confirm { }")
+		tb.let("let page <- Test.get (%s)", pageLit(get, []string{"id: " + target}))
+		press(tb, "r", target)
 		tb.let("let kept <- Db.get %s %s", t.Name, target)
 		lhs := fmt.Sprintf("count: Test.text \"#%s\" page.doc, ", c.field)
 		rhs := "count: Just \"1\", "
@@ -2488,14 +2674,14 @@ func (g *adminGen) deleteTests(at *adminTable, mod string, imports *importSet, p
 		if hold != nil {
 			tb.insertRow(hold.t, "_", map[string]string{hold.col.Name: maybeJust(hold.col, leaf)}, false)
 		}
-		tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"id: " + top}))
-		tb.let("let r <- Test.submit Confirm { }")
+		tb.let("let page <- Test.get (%s)", pageLit(get, []string{"id: " + top}))
+		press(tb, "r", top)
 		lhs := "says: Test.texts \"#delete p\" page.doc, buttons: Test.count \"#delete button\" page.doc, answer: r.answer"
 		rhs := fmt.Sprintf("says: [%s], buttons: 0, answer: FormRejected [{ field: \"\", message: %s }]", quote(childrenText), quote(childrenText))
 		name := "deleting " + article(at.noun) + " with children is refused"
 		if hold != nil {
-			tb.let("let _ <- Test.get (%s)", pageLit(mod, []string{"id: " + leaf}))
-			tb.let("let leaf <- Test.submit Confirm { }")
+			tb.let("let _ <- Test.get (%s)", pageLit(get, []string{"id: " + leaf}))
+			press(tb, "leaf", leaf)
 			lhs += ", leaf: leaf.answer"
 			rhs += fmt.Sprintf(", leaf: FormRejected [{ field: \"\", message: %s }]", quote(rejectText(at)))
 			name += ", and a childless one " + Plural(strings.ToLower(Humanize(hold.t.Name))) + " refer to"
@@ -2508,8 +2694,8 @@ func (g *adminGen) deleteTests(at *adminTable, mod string, imports *importSet, p
 	if own { // the signed-in Admin's own row: the page says why there is no button, Remove refuses
 		tb = g.tb(mod, imports, true)
 		me := tb.user()
-		tb.let("let page <- Test.get (%s)", pageLit(mod, []string{"id: " + me}))
-		tb.let("let r <- Test.submit Confirm { }")
+		tb.let("let page <- Test.get (%s)", pageLit(get, []string{"id: " + me}))
+		press(tb, "r", me)
 		tb.let("let kept <- Db.get %s %s", t.Name, me)
 		tests = append(tests, TestData{Name: quote("an Admin cannot delete their own account"), Lines: tb.lines,
 			Result: fmt.Sprintf("{ says: Test.texts \"#delete p\" page.doc, buttons: Test.count \"#delete button\" page.doc, answer: r.answer, kept: Maybe.map (\\row -> row.%s) kept } == { says: [%s], buttons: 0, answer: FormRejected [{ field: \"\", message: %s }], kept: Just %s }",
@@ -2538,6 +2724,9 @@ func (g *adminGen) isMe(expr string) string { return "session.user == " + expr }
 
 // childrenText is the Delete page's refusal of a row with children (node.stop).
 const childrenText = "Delete its children first."
+
+// deletedText is Destroy's toast.
+const deletedText = "Deleted"
 
 // indentAll is lines, each with prefix.
 func indentAll(lines []string, prefix string) []string {

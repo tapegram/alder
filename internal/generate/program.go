@@ -1,4 +1,4 @@
-// Package generate holds the code generators behind `alder new page|table|form|msg|capability`,
+// Package generate holds the code generators behind `alder new route|table|form|msg|capability`,
 // `alder edit table` and `alder fill` (book chapter 15): the facts a generator reads from the
 // checked app (Program), the field syntax of their command lines (ParseField), the templates
 // they write from (templates/), and the copy-check-write pipeline every command ends in (Apply):
@@ -28,6 +28,7 @@ type Program struct {
 	Order   []string           // module names, sorted
 	Tables  []*Table           // sorted by module name
 	Pages   []*Page            // sorted by module name
+	Routes  []*Route           // every route of every module, by module name, then declaration order
 	Session *Session           // App's session; nil without an App module
 	Login   string             // the page App's `login` names ("Auth.Login"), "" for none
 	// Layout is whether module Layout has a component Page (`Layout.Page`): generated pages
@@ -173,6 +174,34 @@ type Page struct {
 	Decl  *syntax.PageDecl
 }
 
+// Route is one `route NAME = METHOD "path" { params } …` of a module (#160).
+type Route struct {
+	Module string
+	File   string
+	Name   string // the route's name, "Index"
+	Method string // GET, POST, PUT, PATCH or DELETE
+	Path   string
+	Params []*Param // the route's parameters (a `form F` route's `form` field left out)
+	Form   string   // "" for none
+	IsFile bool     // a GET route whose `view` returns File
+	Keys   []string // every field of the route's `requires`
+	Roles  []string
+	Silo   string
+	Decl   *syntax.RouteDecl
+}
+
+// Write reports whether the route is a write route (anything but GET).
+func (r *Route) Write() bool { return r.Method != "GET" }
+
+// Ref is the route as the module's own code writes it (its name) or another module's
+// (`Module.Name`).
+func (r *Route) Ref(from string) string {
+	if from == r.Module {
+		return r.Name
+	}
+	return r.Module + "." + r.Name
+}
+
 // Param is one page parameter.
 type Param struct {
 	Name       string
@@ -277,6 +306,9 @@ func newProgram(dir string, prog *names.Program, res *check.Result, diags []diag
 		}
 		if pd := prog.Pages[name]; pd != nil {
 			p.Pages = append(p.Pages, p.page(m, pd))
+		}
+		for _, ri := range res.Routes[name] {
+			p.Routes = append(p.Routes, p.route(m, ri))
 		}
 	}
 	p.Session = p.session()
@@ -383,6 +415,58 @@ func (p *Program) page(m *Module, d *syntax.PageDecl) *Page {
 		}
 	}
 	return pg
+}
+
+// route reads route ri of module m.
+func (p *Program) route(m *Module, ri *check.RouteInfo) *Route {
+	d := ri.Decl
+	r := &Route{Module: m.Name, File: m.File, Name: ri.Name, Method: ri.Method, Path: ri.Path, Form: d.Form, IsFile: ri.File,
+		Keys: d.Requires, Roles: d.Roles, Silo: d.Silo, Decl: d}
+	if ri.Params != nil {
+		for i, f := range ri.Params.Fields {
+			if f.Name == "form" && d.Form != "" {
+				continue
+			}
+			par := &Param{Name: f.Name, Type: f.Type, HasDefault: f.HasDefault}
+			if d.Params != nil && i < len(d.Params.Fields) {
+				par.HasDefault = par.HasDefault || d.Params.Fields[i].Default != nil
+				par.Wire = d.Params.Fields[i].Wire
+			}
+			r.Params = append(r.Params, par)
+		}
+	}
+	return r
+}
+
+// RoutesOf are module's routes, in declaration order.
+func (p *Program) RoutesOf(module string) []*Route {
+	var out []*Route
+	for _, r := range p.Routes {
+		if r.Module == module {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// RouteModule is the GET route of route module name that a generator works on: the one named
+// after the module's last segment, else its first GET route; nil when the module has no GET
+// route (or no route).
+func (p *Program) RouteModule(name string) *Route {
+	var first *Route
+	last := name[strings.LastIndex(name, ".")+1:]
+	for _, r := range p.RoutesOf(name) {
+		if r.Write() {
+			continue
+		}
+		if r.Name == last {
+			return r
+		}
+		if first == nil {
+			first = r
+		}
+	}
+	return first
 }
 
 // session reads App's session.

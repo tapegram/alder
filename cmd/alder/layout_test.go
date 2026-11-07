@@ -66,18 +66,19 @@ func TestLayout_EditDeclAddProp(t *testing.T) {
 func TestLayout_EditPageAddParam(t *testing.T) {
 	t.Parallel()
 	dir := genApp(t, "scaffold")
-	layoutStep(t, dir, "", "new", "page", "Search", "/search")
+	layoutStep(t, dir, "", "new", "route", "Search", "/search")
 	for _, p := range []string{"query:Text=\"\"", "pageNumber:Int=1", "sortOrder:Text=\"asc\"", "size:Int=20", "dense:Bool=False"} {
-		layoutStep(t, dir, "", "edit", "page", "Search", "add-param", p)
+		layoutStep(t, dir, "", "edit", "route", "Search", "add-param", p)
 	}
 	if s := readApp(t, dir, "app/Search.alder"); !strings.Contains(s, "dense: Bool = False") {
 		t.Fatalf("no param dense:\n%s", s)
 	}
 }
 
-// TestLayout_EditSessionAddField: the Logout test's session literal is vertical once it has three
-// fields; each later field is added to it too, and the app checks after every step (it used to
-// be skipped, leaving an app that does not check).
+// TestLayout_EditSessionAddField: fields added one by one to the session of an app with a login
+// (whose Logout test signs in with `Test.login`, no session literal since routes, #160): the
+// session is laid out over several lines and the app checks after every step (it used to be
+// skipped, leaving an app that does not check).
 func TestLayout_EditSessionAddField(t *testing.T) {
 	t.Parallel()
 	dir := genApp(t, "scaffold")
@@ -85,8 +86,8 @@ func TestLayout_EditSessionAddField(t *testing.T) {
 	for _, f := range []string{`theme:Text="light"`, `lang:Text="en"`, `tz:Text="UTC"`, `dense:Bool=False`} {
 		layoutStep(t, dir, "", "edit", "session", "add-field", f)
 	}
-	if s := readApp(t, dir, "app/App.alder"); strings.Count(s, `dense: False`) == 0 {
-		t.Fatalf("no literal completed with dense:\n%s", s)
+	if s := readApp(t, dir, "app/App.alder"); !strings.Contains(s, "  dense: Bool = False,\n}") {
+		t.Fatalf("no field dense:\n%s", s)
 	}
 }
 
@@ -122,7 +123,7 @@ func TestLayout_EditTable(t *testing.T) {
 // several lines, and whose button it broke over several lines.
 func TestLayout_FormOnMsg(t *testing.T) {
 	t.Parallel()
-	dir := genApp(t, "scaffold")
+	dir := genApp(t, "scaffold-page")
 	layoutStep(t, dir, "", "new", "msg", "Home", "Pick", "first:Entry.EntryId", "second:Entry.EntryId", "third:Entry.EntryId")
 	if s := readApp(t, dir, "app/Home.alder"); !strings.Contains(s, "msg Pick {\n") {
 		t.Fatalf("the message is not over several lines:\n%s", s)

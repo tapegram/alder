@@ -413,7 +413,7 @@ func TestExample_Workspace(t *testing.T) {
 		`ok   Admin.Projects.Index "an Admin who is no member of the org lists its projects, and only its"`,
 		`ok   Admin.Projects.Index "a Member gets no page, even one made Admin since logging in"`,
 		`ok   Admin.Projects.Bulk "a bulk action stays inside one org"`,
-		"307 passed, 0 failed\n",
+		"332 passed, 0 failed\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("alder test examples/workspace lacks %q:\n%s", want, out)

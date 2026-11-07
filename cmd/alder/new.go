@@ -17,7 +17,7 @@ import (
 )
 
 // newUsage is the usage line of `alder new`.
-const newUsage = "usage: alder new <name> [--bare] [--theme <name>]  (or a path ending in the name: alder new apps/<name>), or alder new page|table|form|msg|capability|admin|auth|type|decl|test|silo … (a generator)"
+const newUsage = "usage: alder new <name> [--bare] [--theme <name>]  (or a path ending in the name: alder new apps/<name>), or alder new route|table|form|msg|capability|admin|auth|type|decl|test|silo … (a generator)"
 
 // runNewTo is `alder new <dir>`: it writes the scaffold (internal/scaffold, the book's
 // guestbook) into dir, whose last element is the app's name, then runs the migration generator
@@ -38,6 +38,7 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 	}()
 	if len(args) > 0 {
 		if s := newGenerator(args[0]); s != nil {
+			aliasNote(stderr, s, "new "+args[0])
 			return runSpec(s, args[1:], specUsage[s.ID], stdout, stderr)
 		}
 	}
@@ -161,7 +162,7 @@ func runNewTo(args []string, stdout, stderr io.Writer) (code int) {
 	if bare {
 		fmt.Fprintf(stdout, "\n%s\n  cd %s\n", st.Bold("next:"), dir)
 		fmt.Fprintln(stdout, "  alder new table …      # the app's tables (chapter 15)")
-		fmt.Fprintln(stdout, "  alder new page …       # its pages")
+		fmt.Fprintln(stdout, "  alder new route …      # its routes")
 		fmt.Fprintln(stdout, "  alder new auth         # a login")
 		fmt.Fprintln(stdout, "  alder check            # type-check the app")
 		return 0

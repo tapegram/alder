@@ -9,11 +9,12 @@ import Table.Org
 import Table.User
 -- @admin end
 
-page "/admin/membership/{id}/edit" {
-  id: Membership.MembershipId,
-  findUser: Text = "",
-  findOrg: Text = "",
-} requires user, role Admin
+-- @admin begin routes
+route Edit       = GET  "/admin/membership/{id}/edit"              { id: Membership.MembershipId, findUser: Text = "", findOrg: Text = "" } requires user, role Admin
+route Save       = PUT  "/admin/membership/{id}/edit/_/Save"       { id: Membership.MembershipId } form MembershipForm                      requires user, role Admin
+route SearchUser = POST "/admin/membership/{id}/edit/_/SearchUser" { id: Membership.MembershipId } form FindUser                            requires user, role Admin
+route SearchOrg  = POST "/admin/membership/{id}/edit/_/SearchOrg"  { id: Membership.MembershipId } form FindOrg                             requires user, role Admin
+-- @admin end
 
 type Model = {
   row: Membership,
@@ -25,69 +26,66 @@ type Model = {
   -- @admin end
 }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    let found <- Db.get Membership params.id
-    match found {
-      Just row -> {
-        let findUser = Text.slice 0 200 params.findUser
-        let usersTotal <- Db.from User |> Db.count
-        let usersOwn <-
-          if usersTotal > 200 then
-            Db.from User
-              |> Db.where (User.id.eq row.user)
-              |> Db.all
-          else
-            Query.succeed []
-        let usersFound <-
+Edit.load : Edit.Params -> Session -> Query Model
+Edit.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin load
+  let found <- Db.get Membership params.id
+  match found {
+    Just row -> {
+      let findUser = Text.slice 0 200 params.findUser
+      let usersTotal <- Db.from User |> Db.count
+      let usersOwn <-
+        if usersTotal > 200 then
           Db.from User
-            |> Db.orderBy User.email.asc
-            |> Db.where (
-              if usersTotal > 200 then
-                Db.and [User.email.contains findUser, User.id.ne row.user]
-              else
-                Db.and []
-            )
-            |> Db.limit (if usersTotal > 200 then 50 else 200)
+            |> Db.where (User.id.eq row.user)
             |> Db.all
-        let users = usersOwn ++ usersFound
-        let findOrg = Text.slice 0 200 params.findOrg
-        let orgsTotal <- Db.from Org |> Db.count
-        let orgsOwn <-
-          if orgsTotal > 200 then
-            Db.from Org
-              |> Db.where (Org.id.eq row.org)
-              |> Db.all
-          else
-            Query.succeed []
-        let orgsFound <-
+        else
+          Query.succeed []
+      let usersFound <-
+        Db.from User
+          |> Db.orderBy User.email.asc
+          |> Db.where (
+            if usersTotal > 200 then
+              Db.and [User.email.contains findUser, User.id.ne row.user]
+            else
+              Db.and []
+          )
+          |> Db.limit (if usersTotal > 200 then 50 else 200)
+          |> Db.all
+      let users = usersOwn ++ usersFound
+      let findOrg = Text.slice 0 200 params.findOrg
+      let orgsTotal <- Db.from Org |> Db.count
+      let orgsOwn <-
+        if orgsTotal > 200 then
           Db.from Org
-            |> Db.orderBy Org.name.asc
-            |> Db.where (
-              if orgsTotal > 200 then
-                Db.and [Org.name.contains findOrg, Org.id.ne row.org]
-              else
-                Db.and []
-            )
-            |> Db.limit (if orgsTotal > 200 then 50 else 200)
+            |> Db.where (Org.id.eq row.org)
             |> Db.all
-        let orgs = orgsOwn ++ orgsFound
-        Query.succeed {
-          row: row,
-          users: users,
-          usersTotal: usersTotal,
-          orgs: orgs,
-          orgsTotal: orgsTotal,
-        }
-      },
-      Nothing -> Query.notFound,
-    }
-    -- @admin end
-  } else
-    Query.notFound
+        else
+          Query.succeed []
+      let orgsFound <-
+        Db.from Org
+          |> Db.orderBy Org.name.asc
+          |> Db.where (
+            if orgsTotal > 200 then
+              Db.and [Org.name.contains findOrg, Org.id.ne row.org]
+            else
+              Db.and []
+          )
+          |> Db.limit (if orgsTotal > 200 then 50 else 200)
+          |> Db.all
+      let orgs = orgsOwn ++ orgsFound
+      Query.succeed {
+        row: row,
+        users: users,
+        usersTotal: usersTotal,
+        orgs: orgs,
+        orgsTotal: orgsTotal,
+      }
+    },
+    Nothing -> Query.notFound,
+  }
+  -- @admin end
 }
 
 -- @admin begin form
@@ -97,62 +95,64 @@ form MembershipForm = { user: User.UserId, org: Org.OrgId }
 -- @admin begin search
 form FindUser = { q: Text }
 
-msg SearchUser form FindUser
+-- SearchUser answers the page again at the text.
+SearchUser.update : SearchUser.Params -> Session -> Task Response
+SearchUser.update params session =
+  Task.succeed (
+    Response.redirect (Edit { id: params.id, findUser: Text.slice 0 200 params.form.q })
+  )
 
 form FindOrg = { q: Text }
 
-msg SearchOrg form FindOrg
+-- SearchOrg answers the page again at the text.
+SearchOrg.update : SearchOrg.Params -> Session -> Task Response
+SearchOrg.update params session =
+  Task.succeed (Response.redirect (Edit { id: params.id, findOrg: Text.slice 0 200 params.form.q }))
 
 -- @admin end
 
-msg Save form MembershipForm
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  -- @admin begin finds
-  SearchUser p ->
-    Task.succeed (
-      Redirect (Admin.Memberships.Edit { id: model.row.id, findUser: Text.slice 0 200 p.form.q })
-    ),
-  SearchOrg p ->
-    Task.succeed (
-      Redirect (Admin.Memberships.Edit { id: model.row.id, findOrg: Text.slice 0 200 p.form.q })
-    ),
-  -- @admin end
-  Save p -> {
-    -- @admin begin update
-    let _ <- Db.update Membership model.row.id (\row -> { row |
-      user: p.form.user,
-      org: p.form.org
-    })
-    Task.succeed (Redirect (Admin.Memberships.Show { id: model.row.id }))
-    -- @admin end
-  },
+-- Save writes the form over the row (a row deleted since is not found) and goes to its page.
+Save.update : Save.Params -> Session -> Task Response
+Save.update params session = {
+  let _ <- Layout.adminOnly session.user
+  let found <- Db.get Membership params.id
+  match found {
+    Just row -> {
+      -- @admin begin update
+      let _ <- Db.update Membership row.id (\r -> { r |
+        user: params.form.user,
+        org: params.form.org
+      })
+      Task.succeed (Response.redirect (Admin.Memberships.Show.Show { id: row.id }))
+      -- @admin end
+    },
+    Nothing -> Task.notFound,
+  }
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Edit.view : Model -> Session -> Html
+Edit.view model session =
   <Layout.Page title="Edit membership">
     <h1>Edit membership</h1>
 
     <al-card>
       -- @admin begin finder
       {if model.usersTotal > 200 then
-        <form submit={SearchUser}>
+        <form submit={SearchUser { id: model.row.id }}>
           <al-input field="q" label="Find user" />
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
         Html.none}
       {if model.orgsTotal > 200 then
-        <form submit={SearchOrg}>
+        <form submit={SearchOrg { id: model.row.id }}>
           <al-input field="q" label="Find org" />
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
         Html.none}
       -- @admin end
-      <form submit={Save}>
+      <form submit={Save { id: model.row.id }}>
         -- @admin begin inputs
         <al-select
           field="user"
@@ -169,7 +169,7 @@ view model session =
         <al-button type="submit">Save</al-button>
       </form>
     </al-card>
-    <a href={Admin.Memberships.Show { id: model.row.id }}>Back</a>
+    <a href={Admin.Memberships.Show.Show { id: model.row.id }}>Back</a>
   </Layout.Page>
 
 -- @admin begin tests
@@ -193,8 +193,8 @@ test "saving changes every field" = {
     passwordHash: "passwordhash-2",
   }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
-  let page <- Test.get (Admin.Memberships.Edit { id: membership1 })
-  let r <- Test.submit MembershipForm { user: user2, org: org2 }
+  let page <- Test.get (Edit { id: membership1 })
+  let r <- Test.submit (Save { id: membership1 }) { user: user2, org: org2 }
   let after <- Db.get Membership membership1
   Task.succeed (
     {
@@ -203,7 +203,7 @@ test "saving changes every field" = {
       users: Test.texts "select[name=user] option" page.doc,
       orgs: Test.texts "select[name=org] option" page.doc,
     } == {
-      answer: Redirected (Admin.Memberships.Show { id: membership1 }),
+      answer: Redirected (Admin.Memberships.Show.Show { id: membership1 }),
       row: Just { user: user2, org: org2 },
       users: ["email-1@example.com", "email-2@example.com"],
       orgs: ["name-1", "name-2"],
@@ -231,9 +231,9 @@ test "a user not offered is refused" = {
     passwordHash: "passwordhash-2",
   }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
-  let page <- Test.get (Admin.Memberships.Edit { id: membership1 })
+  let page <- Test.get (Edit { id: membership1 })
   let orgId = Maybe.withDefault "" (Test.attr "value" "select[name=org] option" page.doc)
-  let r <- Test.submitRaw MembershipForm [
+  let r <- Test.submitRaw (Save { id: membership1 }) [
     { name: "user", value: "missing" },
     { name: "org", value: orgId },
   ]
@@ -267,9 +267,9 @@ test "an org not offered is refused" = {
     passwordHash: "passwordhash-2",
   }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
-  let page <- Test.get (Admin.Memberships.Edit { id: membership1 })
+  let page <- Test.get (Edit { id: membership1 })
   let userId = Maybe.withDefault "" (Test.attr "value" "select[name=user] option" page.doc)
-  let r <- Test.submitRaw MembershipForm [
+  let r <- Test.submitRaw (Save { id: membership1 }) [
     { name: "user", value: userId },
     { name: "org", value: "missing" },
   ]
@@ -311,7 +311,7 @@ test "a list of 200 users is offered whole" = {
         passwordHash: "passwordhash-" ++ Text.fromInt n,
       }) (List.range 3 200)
     )
-  let page <- Test.get (Admin.Memberships.Edit { id: membership1 })
+  let page <- Test.get (Edit { id: membership1 })
   Task.succeed (List.length page.model.users == 200)
 }
 
@@ -343,10 +343,9 @@ test "a long list of users offers 50, and the search narrows it" = {
         passwordHash: "passwordhash-" ++ Text.fromInt n,
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Memberships.Edit { id: membership1 })
-  let found <-
-    Test.get (Admin.Memberships.Edit { id: membership1, findUser: "email-203@example.com" })
-  let r <- Test.submit FindUser { q: "zz" }
+  let all <- Test.get (Edit { id: membership1 })
+  let found <- Test.get (Edit { id: membership1, findUser: "email-203@example.com" })
+  let r <- Test.submit (SearchUser { id: membership1 }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.users,
@@ -357,7 +356,7 @@ test "a long list of users offers 50, and the search narrows it" = {
       shown: 51,
       total: 203,
       found: True,
-      answer: Redirected (Admin.Memberships.Edit { id: membership1, findUser: "zz" }),
+      answer: Redirected (Edit { id: membership1, findUser: "zz" }),
     }
   )
 }
@@ -389,8 +388,11 @@ test "the row's own user is offered first when it sorts past the 50" = {
         passwordHash: "passwordhash-" ++ Text.fromInt n,
       }) (List.range 3 203)
     )
-  let page <- Test.get (Admin.Memberships.Edit { id: membership1 })
-  let r <- Test.submit MembershipForm { user: page.model.row.user, org: page.model.row.org }
+  let page <- Test.get (Edit { id: membership1 })
+  let r <- Test.submit (Save { id: membership1 }) {
+    user: page.model.row.user,
+    org: page.model.row.org,
+  }
   let after <- Db.get Membership membership1
   Task.succeed (
     {
@@ -400,7 +402,7 @@ test "the row's own user is offered first when it sorts past the 50" = {
       once: List.length (List.filter (\o -> o.id == user2) page.model.users),
       shown: List.length page.model.users,
     } == {
-      answer: Redirected (Admin.Memberships.Show { id: membership1 }),
+      answer: Redirected (Admin.Memberships.Show.Show { id: membership1 }),
       kept: Just user2,
       first: Just user2,
       once: 1,
@@ -435,7 +437,7 @@ test "a list of 200 orgs is offered whole" = {
         List.range 3 200
       )
     )
-  let page <- Test.get (Admin.Memberships.Edit { id: membership1 })
+  let page <- Test.get (Edit { id: membership1 })
   Task.succeed (List.length page.model.orgs == 200)
 }
 
@@ -465,9 +467,9 @@ test "a long list of orgs offers 50, and the search narrows it" = {
         List.range 3 203
       )
     )
-  let all <- Test.get (Admin.Memberships.Edit { id: membership1 })
-  let found <- Test.get (Admin.Memberships.Edit { id: membership1, findOrg: "name-203" })
-  let r <- Test.submit FindOrg { q: "zz" }
+  let all <- Test.get (Edit { id: membership1 })
+  let found <- Test.get (Edit { id: membership1, findOrg: "name-203" })
+  let r <- Test.submit (SearchOrg { id: membership1 }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.orgs,
@@ -478,7 +480,7 @@ test "a long list of orgs offers 50, and the search narrows it" = {
       shown: 51,
       total: 203,
       found: True,
-      answer: Redirected (Admin.Memberships.Edit { id: membership1, findOrg: "zz" }),
+      answer: Redirected (Edit { id: membership1, findOrg: "zz" }),
     }
   )
 }
@@ -503,8 +505,11 @@ test "the row's own org is offered first when it sorts past the 50" = {
         List.range 2 202
       )
     )
-  let page <- Test.get (Admin.Memberships.Edit { id: membership1 })
-  let r <- Test.submit MembershipForm { user: page.model.row.user, org: page.model.row.org }
+  let page <- Test.get (Edit { id: membership1 })
+  let r <- Test.submit (Save { id: membership1 }) {
+    user: page.model.row.user,
+    org: page.model.row.org,
+  }
   let after <- Db.get Membership membership1
   Task.succeed (
     {
@@ -514,12 +519,42 @@ test "the row's own org is offered first when it sorts past the 50" = {
       once: List.length (List.filter (\o -> o.id == org1) page.model.orgs),
       shown: List.length page.model.orgs,
     } == {
-      answer: Redirected (Admin.Memberships.Show { id: membership1 }),
+      answer: Redirected (Admin.Memberships.Show.Show { id: membership1 }),
       kept: Just org1,
       first: Just org1,
       once: 1,
       shown: 51,
     }
+  )
+}
+
+test "a demoted Admin cannot save a membership" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
+  let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let membership1 <- Db.insert Membership { user: me, org: org1 }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
+  let before <- Db.get Membership membership1
+  let _ <- Test.get (Edit { id: membership1 })
+  let _ <- Db.update User me (\u -> { u | role: Member })
+  let r <- Test.submit (Save { id: membership1 }) { user: user2, org: org2 }
+  let after <- Db.get Membership membership1
+  Task.succeed (
+    { answer: r.answer, row: after } == { answer: RequestFailed "400 bad request", row: before }
   )
 }
 
@@ -535,7 +570,7 @@ test "a missing row is not found" = {
     org: Nothing,
     role: Admin,
   }
-  let r <- Test.open (Admin.Memberships.Edit { id: Membership.MembershipId "missing" })
+  let r <- Test.open (Edit { id: Membership.MembershipId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -547,7 +582,7 @@ test "a visitor is sent to log in" = {
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let membership1 <- Db.insert Membership { user: me, org: org1 }
-  let r <- Test.open (Admin.Memberships.Edit { id: membership1 })
+  let r <- Test.open (Edit { id: membership1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -565,7 +600,7 @@ test "a Member gets no page, even one made Admin since logging in" = {
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let membership1 <- Db.insert Membership { user: me, org: org1 }
-  let r <- Test.open (Admin.Memberships.Edit { id: membership1 })
+  let r <- Test.open (Edit { id: membership1 })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -583,7 +618,7 @@ test "a demoted Admin is refused at once" = {
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let membership1 <- Db.insert Membership { user: me, org: org1 }
-  let r <- Test.open (Admin.Memberships.Edit { id: membership1 })
+  let r <- Test.open (Edit { id: membership1 })
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

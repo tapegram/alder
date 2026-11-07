@@ -125,7 +125,7 @@ func TestCodeAction_HereGenerators(t *testing.T) {
 		}
 	}
 	joined := strings.Join(ids, ",")
-	for _, want := range []string{"new msg", "new form", "edit page", "remove page", "edit decl", "new decl", "new test"} {
+	for _, want := range []string{"new msg", "new form", "edit route", "remove route", "edit decl", "new decl", "new test"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("no %s in %v", want, ids)
 		}

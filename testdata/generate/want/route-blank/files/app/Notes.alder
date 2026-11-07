@@ -1,0 +1,11 @@
+module Notes
+
+route Notes = GET "/notes" { }
+
+type Model = { }
+
+Notes.load : Notes.Params -> Session -> Query Model
+Notes.load params session = ?load
+
+Notes.view : Model -> Session -> Html
+Notes.view model session = ?view

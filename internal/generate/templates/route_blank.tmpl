@@ -1,0 +1,10 @@
+[[- template "header" .]]
+
+type Model = { }
+
+[[.Route]].load : [[.Route]].Params -> Session -> Query Model
+[[.Route]].load params session = ?load
+
+[[.Route]].view : Model -> Session -> Html
+[[.Route]].view model session = ?view
+[[template "tests" .]]

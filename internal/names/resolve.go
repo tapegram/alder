@@ -321,8 +321,8 @@ func (r *resolver) module() {
 			r.fake(d)
 		case *syntax.SessionDecl:
 			r.fields(d.Fields)
-		case *syntax.LoginDecl:
-			if !r.p.IsPageModule(d.Page) {
+		case *syntax.LoginDecl: // a page module, or a route written `Module.Route` (#160)
+			if !r.p.IsPageModule(d.Page) && r.p.RouteAt(d.Page) == nil {
 				r.bag.Error(diag.UnknownName, d.Span, "unknown page `%s`", d.Page)
 			}
 		case *syntax.ChooseDecl: // a page module, or a route written `Module.Route`

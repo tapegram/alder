@@ -8,15 +8,17 @@ import Table.Todo
 import Table.User
 -- @admin end
 
-page "/admin" { } requires user, role Admin
+-- @admin begin routes
+route Index = GET "/admin" { } requires user, role Admin
+-- @admin end
 
 -- A card of the dashboard: a table's count and its newest rows, each linking to its page.
 type Card = {
   key: Text,
   title: Text,
-  href: Page,
+  href: Route,
   count: Int,
-  rows: List { label: Text, href: Page },
+  rows: List { label: Text, href: Route },
 }
 
 type Model = { cards: List Card }
@@ -25,54 +27,51 @@ type Model = { cards: List Card }
 recent : Int
 recent = 5
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin cards
-    let todos <-
-      Db.from Todo
-        |> Db.orderBy Todo.created.desc
-        |> Db.limit recent
-        |> Db.all
-    let todoCount <- Db.from Todo |> Db.count
-    let users <-
-      Db.from User
-        |> Db.orderBy User.created.desc
-        |> Db.limit recent
-        |> Db.all
-    let userCount <- Db.from User |> Db.count
-    Query.succeed {
-      cards: [
-        {
-          key: "todos",
-          title: "Todos",
-          href: Admin.Todos.Index {},
-          count: todoCount,
-          rows: List.map (\row -> {
-            label: row.title,
-            href: Admin.Todos.Show { id: row.id },
-          }) todos,
-        },
-        {
-          key: "users",
-          title: "Users",
-          href: Admin.Users.Index {},
-          count: userCount,
-          rows: List.map (\row -> {
-            label: row.email,
-            href: Admin.Users.Show { id: row.id },
-          }) users,
-        },
-      ],
-    }
-    -- @admin end
-  } else
-    Query.notFound
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin cards
+  let todos <-
+    Db.from Todo
+      |> Db.orderBy Todo.created.desc
+      |> Db.limit recent
+      |> Db.all
+  let todoCount <- Db.from Todo |> Db.count
+  let users <-
+    Db.from User
+      |> Db.orderBy User.created.desc
+      |> Db.limit recent
+      |> Db.all
+  let userCount <- Db.from User |> Db.count
+  Query.succeed {
+    cards: [
+      {
+        key: "todos",
+        title: "Todos",
+        href: Admin.Todos.Index.Index {},
+        count: todoCount,
+        rows: List.map (\row -> {
+          label: row.title,
+          href: Admin.Todos.Show.Show { id: row.id },
+        }) todos,
+      },
+      {
+        key: "users",
+        title: "Users",
+        href: Admin.Users.Index.Index {},
+        count: userCount,
+        rows: List.map (\row -> {
+          label: row.email,
+          href: Admin.Users.Show.Show { id: row.id },
+        }) users,
+      },
+    ],
+  }
+  -- @admin end
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <Layout.Page title="Dashboard">
     <h1>Admin</h1>
 
@@ -106,7 +105,7 @@ test "the dashboard counts the todos and lists the newest five" = {
         owner: me,
       }) (List.range 1 6)
     )
-  let page <- Test.get (Admin.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (
     { count: Test.text "#todos al-badge" page.doc, rows: Test.texts "#todos li" page.doc }
       == { count: Just "6", rows: ["title-6", "title-5", "title-4", "title-3", "title-2"] }
@@ -129,7 +128,7 @@ test "the dashboard counts the users and lists the newest five" = {
         passwordHash: "passwordhash-" ++ Text.fromInt n,
       }) (List.range 2 7)
     )
-  let page <- Test.get (Admin.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (
     { count: Test.text "#users al-badge" page.doc, rows: Test.texts "#users li" page.doc }
       == {
@@ -146,7 +145,7 @@ test "the dashboard counts the users and lists the newest five" = {
 }
 
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Admin.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -158,7 +157,7 @@ test "a Member gets no page, even one made Admin since logging in" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Member }
-  let r <- Test.open (Admin.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -170,7 +169,7 @@ test "a demoted Admin is refused at once" = {
     role: Member,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end
