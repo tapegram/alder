@@ -470,7 +470,7 @@ The form's name, `NewReply`, must not be the table's: a form declares a
 type, and a form named `Reply` would hide the table's type `Reply` in
 this module (the copy would not check, so nothing would be written).
 
-The generator wrote four things into the module. The `form` declaration
+The generator wrote these into the module. The `form` declaration
 and a write route that takes it: `route SubmitNewReply = POST
 "/replies/_/SubmitNewReply" { } form NewReply` (the `form` clause of a
 route line names the form it decodes). Its `SubmitNewReply.update`, a
@@ -489,7 +489,7 @@ False`); the other submits an empty `message` and expects the decoder's
 The `update` inserts a `Reply`, because every field of the form is a field of
 `Reply` with the same name and type, and the form names every field an
 insert must have. That is the rule: when the fields fit one table, the
-arm is that table's insert; `--into T` names the table when two would
+`update` is that table's insert; `--into T` names the table when two would
 fit. When they fit none, the `update`'s body is a **hole**, `?answer`, of type `Task Response`.
 
 ## A page for a row, and a message: `--show` and `alder new msg`
@@ -699,7 +699,7 @@ lists, to be filled next.
 The body now redirects instead of refreshing, so the generated test fails
 (`Redirected` is not `Refreshed`), and it is rewritten, whole, with `--decl`
 too. It opens the page again after the click: `Test.open`, unlike `Test.get`,
-does not fail when the page is gone, and a message may delete the very row its
+does not fail when the page is gone, and a write route may delete the very row its
 page shows, as this one does, so `after.answer` is `PageMissing`. The last line is a reminder, not an error: a rewritten test is checked by `alder test --mutate`:
 
 ```text command=guestbook
@@ -902,7 +902,10 @@ after logging in, sends the write route, and expects the refusal. The files
 quoted below are the blog's, written when `alder new admin` still wrote
 `page` modules with `load`, `update` and `msg`; the blog example has not been
 regenerated, and the todos example's `app/Admin/` has the route form. The
-structure of the files is the same.
+quoted prose describes the page version, and so does what it says of `load`
+running before every message and of messages being page-local; the route
+version differs there as described above (the gate and the checks are in each
+write route's `update`), and in the file layout (route lines, qualified members).
 
 `--module` and `--path` put the admin elsewhere (`--module Back.Office
 --path /back`). An admin that exists is not written again: `alder new
@@ -962,9 +965,13 @@ one read at login, and the cookie keeps it until logout or its 30 days
 (chapter 6, "Rules"); an Admin demoted, or deleted, since would keep the
 admin all that time. So every page's `load` begins by asking `isAdmin`,
 which reads the user's row again, and answers `Query.notFound` when the
-row is gone or no longer says `Admin`; `load` runs before every message
-too, so a form posted by a demoted Admin is refused the same way. This
-is chapter 6's re-read idiom, generated. When the user table has no
+row is gone or no longer says `Admin`. (This is the page version, which the blog
+quoted here still is: its `load` runs before every message too, so a form
+posted by a demoted Admin is refused the same way. In the route version
+no `load` runs before a write: each write route's `update` begins with
+`Layout.adminOnly session.user`, which asks `isAdmin` and answers 404
+when it fails, and that is what the "a demoted Admin cannot …" tests check.)
+This is chapter 6's re-read idiom, generated. When the user table has no
 column holding the role, there is nothing to read again: `isAdmin` is
 `Query.succeed True`, the `page` line's role is the whole check, and the
 dashboard's test says that the cookie's role lasts until logout or its
@@ -1984,9 +1991,11 @@ type, `User.UserId`. The browser shows the emails and posts the id.
 A request can be crafted by hand, so the list in the browser is no
 guarantee: someone could post the id of a user who is not in it, or of a
 row of another table, or a text that names no row. So **a submitted
-value must be one of the options**. When the form is posted, `load` runs
-first, as it does before every message (chapter 6), and the generated Go
-computes the `options` expression again from that model; a value that
+value must be one of the options**. When the form is posted, the generated Go
+computes the `options` expression again (in the page version, from the
+model that `load` ran first to build, as it does before every message,
+chapter 6; in the route version no `load` runs before a write, and the write route
+checks it itself); a value that
 is not one of them is the field error "must be one of the options", and
 `update` does not run. That is the **select membership rule**, and it
 belongs to `<Select options>` everywhere, not only to the admin. It is
@@ -2280,9 +2289,10 @@ the referenced table in `load` (`authorsTotal`) and takes the
   chapter 8). At 200 rows or fewer it holds every row, as before, and
   the search form is not drawn.
 - The text is a page parameter of the form (`findAuthor`, in the
-  `page` line), so `load` reads it again before every message. That is
-  what lets the narrowing survive: `load` runs first, the select's
-  options are computed from the text, and the select's membership rule
+  `page` line), so, in the page version, `load` reads it again before every message
+  (in the route version the search is a `GET` route parameter of the page, and the
+  write routes check membership against the options they compute themselves). That is
+  what lets the narrowing survive: the options are computed from the text, and the select's membership rule
   (above) is checked against the options just rendered. The admin
   cannot pick, or be tricked into posting, a user the select did not
   offer.
@@ -2290,7 +2300,7 @@ the referenced table in `load` (`authorsTotal`) and takes the
   `SearchAuthor`, sends the text. Its arm answers `Redirect (Admin.Posts.New
   { findAuthor: Text.slice 0 200 p.form.q })`, not `Rerender`: a rerender
   would show the select narrowed by the *old* text, since the options come
-  from `load`, which ran before the message. The redirect loads the page
+  from `load`, which ran before the message (in the page version). The redirect loads the page
   again with the new text in the address (cut to 200 characters, as
   `load` cuts it), and `load` narrows by it. The regions are `search` (the
   form and the message), `finds` (its arm) and `finder` (where the form is
@@ -2432,7 +2442,7 @@ update msg model session = match msg {
 `load` counts the posts that refer to the user, and `blockers` adds up
 every count that keeps the row. When it is more than zero, the `view`
 shows no button and says why, and the `Remove` arm refuses too, with a
-`Reject`. The arm's check matters even though the button is gone: a
+`Reject` (the route version answers `Response.invalid`). The arm's check matters even though the button is gone: a
 `POST` can be sent without the page, and the arm is the last place that
 can turn it away before the database does it with an error.
 
@@ -3373,9 +3383,9 @@ command is refused by the check.
 ## From nothing, with a task's names: `--bare` and the commands that keep them
 
 A task often fixes its names: the tables and their exact columns, the
-session, the pages and their messages (E9's tasks do). The commands so
+session, the routes and their write routes (E9's tasks do). The commands so
 far add things of their own: the guestbook, a `created`/`updated` pair
-on every table, a message named `SubmitNewNote`. These keep the task's
+on every table, a write route named `SubmitNewNote`. These keep the task's
 names instead.
 
 `alder new notes --bare` writes an app without the guestbook: `App`
