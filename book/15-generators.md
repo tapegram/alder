@@ -3,19 +3,20 @@
 Every Alder app is made of the same few things. There are **users**: a
 `User` table, and a session whose `user` field says who is logged in
 (chapter 6). There are **tables**, each in its own module, with their
-migrations (chapter 8). There are **pages**: a path, a `Model`, a
-`load`, a `view`, and an `update` for the page's **forms** and
-**messages** (chapters 5 and 6). There are **capabilities**, the Go
+migrations (chapter 8). There are **routes**: a `route` line with
+a method, a path and parameters; a `Model`, a `load` and a `view` for a
+`GET` route; and for a write route an `update` that answers with a
+`Response`, for the page's **forms** and **messages** (chapters 5 and 6). There are **capabilities**, the Go
 behind the app (chapter 7). And there are **rules**: `requires user`,
-`role R`, `@owner` (chapter 6, "Rules"). Every page has its tests
+`role R`, `@owner` (chapter 6, "Rules"). Every route has its tests
 (chapter 10).
 
 This chapter is about writing those pieces with commands instead of by
-hand. `alder new page`, `alder new table`, `alder new form`, `alder new
+hand. `alder new route`, `alder new table`, `alder new form`, `alder new
 msg`, `alder new capability`, `alder new type`, `alder new decl` and
 `alder new test` each write one piece, and `alder new auth` the login.
 `alder edit table` changes a table and writes its migration, `alder edit
-page` a page's parameters. `alder fill` fills a gap the others leave.
+route` a route's parameters. `alder fill` fills a gap the others leave.
 `alder theme import` is a different kind of generator: it turns a shadcn or tweakcn CSS export into the app's `theme` declaration (Appendix C, "Importing a theme"), by the same copy, check, write.
 `alder theme use` writes one of the five starting themes the same way, and `alder new <name> --theme` starts an app with one (Appendix C, "Starting from a theme").
 `alder new admin` writes all of the pieces for every table at once: a complete admin, with a list, a page, a form and a delete page
@@ -77,36 +78,36 @@ write` and `would edit` lines, the diffs (a new file as a diff from
 `/dev/null`) and `dry run: nothing written`. `--dir` names the app's
 directory (the current one by default).
 
-## A page: `alder new page`
+## A route: `alder new route`
 
 The guestbook of chapter 2, as `alder new guestbook` writes it, has one
-page, `Home`, and one table, `Entry`. In its directory:
+page, the route `Home` (and its write route `Submit`), and one table, `Entry`. In its directory:
 
 ```text command=guestbook
-$ alder new page About /about
+$ alder new route About /about
 wrote app/About.alder
 ```
 
 The first argument is the module, the second its path. A dotted module name is
-a nested module, one directory per dot: `alder new page Sites.Clarity.Index
+a nested module, one directory per dot: `alder new route Sites.Clarity.Index
 /sites/clarity` writes `app/Sites/Clarity/Index.alder` (a name without dots,
-like `About`, writes `app/About.alder`). `alder new page --help` says so, and
-`alder routes` (chapter 11) lists where every page ended up. The file:
+like `About`, writes `app/About.alder`). `alder new route --help` says so, and
+`alder routes` (chapter 11) lists where every route ended up. (`alder new page` is the old name of the command; it still works, and prints "`alder new page` is now `alder new route`" after doing what `new route` does.) The file:
 
 ```alder written=guestbook/app/About.alder
 module About
 
 import Layout
 
-page "/about" { }
+route About = GET "/about" { }
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed {}
+About.load : About.Params -> Session -> Query Model
+About.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Msg
-view model session = <Layout.Page title="About"><h1>About</h1></Layout.Page>
+About.view : Model -> Session -> Html
+About.view model session = <Layout.Page title="About"><h1>About</h1></Layout.Page>
 
 test "the page is shown" = {
   let r <- Test.open (About {})
@@ -116,15 +117,19 @@ test "the page is shown" = {
 }
 ```
 
-It is the smallest page there is (chapter 6): no parameters, an empty
+It is the smallest page there is (chapter 6). The line `route About = GET
+"/about" { }` declares the route: its name, its method, its path and its
+parameters, none here. Its members are written with the route's name,
+`About.load` and `About.view`, because a module can hold several routes
+(a page and the write routes it sends). There is an empty
 `Model`, a `view` in the app's layout, and one test, written as chapter
 10 writes them, which opens the page through the test browser and checks
 the answer and the heading. The page is yours from here: the generator
 never touches it again.
 
-A newcomer can ask for more than the empty page: `alder new page About /about --example`
+A newcomer can ask for more than the empty page: `alder new route About /about --example`
 adds a small, working example of how a page keeps state — a `count` parameter, a
-`msg Bump { by: Int }`, an `update` arm that redirects to the same page with the new count,
+write route `Bump` (`POST "/about/_/Bump"`), whose `Bump.update` redirects to the same page with the new count,
 and a view with a button that sends it. Every part is marked `-- example:` and is meant to
 be deleted once read. The editor's generator form starts with the example on; the command
 line starts with it off, so a program driving the CLI gets the minimal page.
@@ -143,7 +148,7 @@ wrote migrations/0002_create_reply.sql
   create table Reply
   add index on Reply.entry
 edited migrations/schema.json
-next: alder new page /replies --list Reply
+next: alder new route /replies --list Reply
 ```
 
 `entry:Entry.EntryId@ref=Entry@cascade` is a reference to an entry,
@@ -202,22 +207,22 @@ checker's own message, and a table name that is taken, with a sentence.
 
 ## A list of rows: `--list`
 
-`alder new page` with `--list T` writes a page that lists a table's
+`alder new route` with `--list T` writes a route that lists a table's
 rows:
 
 ```text command=guestbook
-$ alder new page Replies /replies --list Reply
+$ alder new route Replies /replies --list Reply
 wrote app/Replies.alder
 ```
 
 The module is the name you give, `Replies`, at `app/Replies.alder`: a
-page's module is its name, and nothing is added to it (`Replies.Index`
+route's module is its name, and nothing is added to it (`Replies.Index`
 would be `app/Replies/Index.alder`, if you prefer that).
 Leave the module out and the generator derives it from the table: `alder new
-page /replies --list Reply` writes `Replies.Index` (and `--show Reply` writes
+route /replies --list Reply` writes `Replies.Index` (and `--show Reply` writes
 `Replies.Show`, `--from Reply` `Replies.New`), in the plural folder of
 chapter 2's "Where files go". `alder new table` prints that command as its
-last line, `next: alder new page /replies --list Reply`.
+last line, `next: alder new route /replies --list Reply`.
 
 ```alder written=guestbook/app/Replies.alder
 module Replies
@@ -226,7 +231,7 @@ import Layout
 import Table.Entry
 import Table.Reply
 
-page "/replies" { page: Int = 1 }
+route Replies = GET "/replies" { page: Int = 1 }
 
 type Model = {
   rows: List Reply,
@@ -241,9 +246,9 @@ perPage = 20
 lastPage : Int
 lastPage = 1000000
 
--- load reads one page of the rows, newest first, and how many pages there are.
-load : Params -> Session -> Query Model
-load params session = {
+-- Replies.load reads one page of the rows, newest first, and how many pages there are.
+Replies.load : Replies.Params -> Session -> Query Model
+Replies.load params session = {
   let page = Int.clamp { min: 1, max: lastPage } params.page
   let rows <-
     Db.from Reply
@@ -259,8 +264,8 @@ load params session = {
   }
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Replies.view : Model -> Session -> Html
+Replies.view model session =
   <Layout.Page title="Replies">
     <h1>Replies</h1>
 
@@ -354,24 +359,24 @@ fails it. The second inserts 21 rows and checks that the first page has
 generated test is written that way: for what the code next to it could
 get wrong.
 
-The other options of `alder new page`:
+The other options of `alder new route`:
 
 - `--show T` writes a page for one row, at `<path>/{id}` (below).
 - `--from T U …` loads every row of each table and shows each in a card,
   a skeleton for a page that brings several tables together, which you
   then design.
-- `--requires user` adds `requires user` to the page, and a test that a
+- `--requires user` adds `requires user` to the route line, and a test that a
   visitor is sent to log in. With `--list T` on a table with an `@owner`
   column, the page reads `Db.mine T`, the user's own rows (chapter 6),
   and its test inserts another user's row to check that it is not
   shown. With `--show T`, it reads `Db.getMine`.
 - `--role R` adds `, role R`, and a test that a user of another role
-  gets no page. It implies `--requires user`, and is refused when the
+  gets no page. (`route Notes = GET "/notes" { } requires user, role Admin`.) It implies `--requires user`, and is refused when the
   session has no `role` with a constructor `R`.
 
 ## A form: `alder new form`
 
-A form is added to a page that exists. Its fields are written like a
+A form is added to a route module that exists. Its fields are written like a
 table's:
 
 ```text command=guestbook
@@ -379,26 +384,17 @@ $ alder new form Replies NewReply entry:Entry.EntryId message:Text.NonEmpty
 edited app/Replies.alder
 --- a/app/Replies.alder
 +++ b/app/Replies.alder
-@@ -37,6 +37,18 @@
-   }
- }
+@@ -4,7 +4,8 @@
+ import Table.Entry
+ import Table.Reply
  
-+form NewReply = { entry: Entry.EntryId, message: Text.NonEmpty }
-+
-+msg SubmitNewReply form NewReply
-+
-+update : Msg -> Model -> Session -> Task Nav
-+update msg model session = match msg {
-+  SubmitNewReply p -> {
-+    let _ <- Db.insert Reply { entry: p.form.entry, message: p.form.message }
-+    Task.succeed (Redirect (Replies {}))
-+  },
-+}
-+
- view : Model -> Session -> Html Msg
- view model session =
-   <Layout.Page title="Replies">
-@@ -82,6 +94,16 @@
+-route Replies = GET "/replies" { page: Int = 1 }
++route Replies        = GET  "/replies"                  { page: Int = 1 }
++route SubmitNewReply = POST "/replies/_/SubmitNewReply" { } form NewReply
+ 
+ type Model = {
+   rows: List Reply,
+@@ -82,8 +83,26 @@
        else
          <span slot="next" aria-disabled="true">Next</span>}
      </al-pagination>
@@ -414,8 +410,18 @@ edited app/Replies.alder
 +    </al-card>
    </Layout.Page>
  
++form NewReply = { entry: Entry.EntryId, message: Text.NonEmpty }
++
++SubmitNewReply.update : SubmitNewReply.Params -> Session -> Task Response
++SubmitNewReply.update params session = {
++  let _ <- Db.insert Reply { entry: params.form.entry, message: params.form.message }
++  Task.succeed (Response.redirect (Replies {}) |> Response.success "Saved")
++}
++
  test "the list shows the rows, newest first" = {
-@@ -115,3 +137,39 @@
+   let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
+   let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
+@@ -115,3 +134,42 @@
      }
    )
  }
@@ -423,7 +429,7 @@ edited app/Replies.alder
 +test "submitting NewReply adds a row" = {
 +  let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
 +  let _ <- Test.get (Replies {})
-+  let r <- Test.submit NewReply { entry: entry1, message: Text.NonEmpty "message-1" }
++  let r <- Test.submit SubmitNewReply { entry: entry1, message: Text.NonEmpty "message-1" }
 +  let rows <- Db.from Reply |> Db.all
 +  Task.succeed (
 +    {
@@ -448,7 +454,10 @@ edited app/Replies.alder
 +
 +test "NewReply refuses an empty message" = {
 +  let _ <- Test.get (Replies {})
-+  let r <- Test.submitRaw NewReply [{ name: "entry", value: "x" }, { name: "message", value: "" }]
++  let r <- Test.submitRaw SubmitNewReply [
++    { name: "entry", value: "x" },
++    { name: "message", value: "" },
++  ]
 +  let rows <- Db.from Reply |> Db.count
 +  Task.succeed (
 +    { answer: r.answer, rows: rows }
@@ -461,9 +470,13 @@ The form's name, `NewReply`, must not be the table's: a form declares a
 type, and a form named `Reply` would hide the table's type `Reply` in
 this module (the copy would not check, so nothing would be written).
 
-The generator wrote four things into the page. The `form` declaration
-and its message, `msg SubmitNewReply form NewReply`. An `update` with
-the message's arm, since the page had none. The form itself, in `view`:
+The generator wrote four things into the module. The `form` declaration
+and a write route that takes it: `route SubmitNewReply = POST
+"/replies/_/SubmitNewReply" { } form NewReply` (the `form` clause of a
+route line names the form it decodes). Its `SubmitNewReply.update`, a
+member qualified with the route's name, which inserts the row and
+answers `Response.redirect (Replies {}) |> Response.success "Saved"`: back
+to the list, with a message. The form itself, in `view`:
 in a new `al-card` at the end of the page (in the page's last `al-card`
 if it has one), with an input per field (`al-textarea` for a `Text`
 field named `body`, `message` or `description`, `al-select` for a union,
@@ -473,18 +486,18 @@ the defaults of the fields the form leaves out included (`hidden:
 False`); the other submits an empty `message` and expects the decoder's
 `FormRejected`.
 
-The arm inserts a `Reply`, because every field of the form is a field of
+The `update` inserts a `Reply`, because every field of the form is a field of
 `Reply` with the same name and type, and the form names every field an
 insert must have. That is the rule: when the fields fit one table, the
 arm is that table's insert; `--into T` names the table when two would
-fit. When they fit none, the arm is a **hole**.
+fit. When they fit none, the `update`'s body is a **hole**, `?answer`, of type `Task Response`.
 
 ## A page for a row, and a message: `--show` and `alder new msg`
 
-A page for one reply:
+A route for one reply:
 
 ```text command=guestbook
-$ alder new page Replies.Show /replies --show Reply
+$ alder new route Replies.Show /replies --show Reply
 wrote app/Replies/Show.alder
 ```
 
@@ -493,90 +506,86 @@ the row with `Db.get` and answers `Query.notFound` when there is none,
 and its tests check both: the page shows the row's fields, and a missing
 id is `PageMissing`.
 
-Now a button that deletes the reply. `alder new msg` adds a message to a
-page, and a button that sends it:
+Now a button that deletes the reply. `alder new msg` adds a **write
+route** to a route module, and a button that sends it:
 
 ```text command=guestbook
 $ alder new msg Replies.Show Delete
 edited app/Replies/Show.alder
 --- a/app/Replies/Show.alder
 +++ b/app/Replies/Show.alder
-@@ -17,6 +17,13 @@
-   }
- }
+@@ -4,7 +4,8 @@
+ import Table.Entry
+ import Table.Reply
  
-+msg Delete
-+
-+update : Msg -> Model -> Session -> Task Nav
-+update msg model session = match msg {
-+  Delete p -> ?delete,
-+}
-+
- view : Model -> Session -> Html Msg
- view model session =
-   <Layout.Page title="Reply">
-@@ -43,6 +50,8 @@
+-route Show = GET "/replies/{id}" { id: Reply.ReplyId }
++route Show   = GET  "/replies/{id}"          { id: Reply.ReplyId }
++route Delete = POST "/replies/{id}/_/Delete" { id: Reply.ReplyId }
+ 
+ type Model = { row: Reply }
+ 
+@@ -43,8 +44,13 @@
          <dd>{Time.format "Jan 2, 2006" model.row.updated}</dd>
        </dl>
      </al-card>
 +
-+    <al-button click={Delete}>Delete</al-button>
++    <al-button click={Delete { id: ?deleteId }}>Delete</al-button>
    </Layout.Page>
  
++Delete.update : Delete.Params -> Session -> Task Response
++Delete.update params session = Task.succeed Response.refresh
++
  test "the page shows the row" = {
-@@ -59,3 +68,17 @@
-   let r <- Test.open (Replies.Show { id: Reply.ReplyId "missing" })
+   let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
+   let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
+@@ -59,3 +65,11 @@
+   let r <- Test.open (Show { id: Reply.ReplyId "missing" })
    Task.succeed (r.answer == PageMissing)
  }
 +
-+-- Fill ?expected with what pressing Delete must do, so that a test fails when the arm
-+-- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
-+-- changed (`after`: the page opened again, `after.answer` Shown, or PageMissing when the arm
-+-- deleted the page's row, and `after.doc` its HTML), as
-+-- `{ answer: r.answer, … } == { answer: Rerendered, … }`.
 +test "pressing Delete" = {
 +  let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
 +  let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
-+  let _ <- Test.get (Replies.Show { id: reply1 })
-+  let r <- Test.click Delete
-+  let after <- Test.open (Replies.Show { id: reply1 })
-+  Task.succeed ?expected
++  let _ <- Test.get (Show { id: reply1 })
++  let r <- Test.click (Delete { id: reply1 })
++  Task.succeed (r.answer == Refreshed)
 +}
-app/Replies/Show.alder:24:15: warning[W0002]: hole ?delete has type Task Nav
-    Delete p -> ?delete,
-                ^^^^^^^
-app/Replies/Show.alder:83:16: warning[W0002]: hole ?expected has type Bool
-    Task.succeed ?expected
-                 ^^^^^^^^^
+app/Replies/Show.alder:48:36: warning[W0002]: hole ?deleteId has type Reply.ReplyId
+      <al-button click={Delete { id: ?deleteId }}>Delete</al-button>
+                                     ^^^^^^^^^
+`alder new msg` is now `alder new route --method POST`: on a route module it adds a write route
 ```
 
-This time the generator does not know what the message should do, so
-it does not guess. The arm is the hole `?delete`, of type `Task Nav`: an
-`update` arm is a task that ends with what the browser does next
-(chapter 7). The test is written in full, except for its verdict: the
-hole `?expected`, of type `Bool`. Its comment says what to put there.
-After the click the test opens the page again with `Test.open`, which,
-unlike `Test.get`, does not fail when the page is gone: a message may
-delete the very row its page shows, as this one will, and then
-`after.answer` is `PageMissing`.
+The last line of the output is a notice: on a route module, `alder new msg` is
+`alder new route --method POST`, a write route. The new route is `route Delete = POST "/replies/{id}/_/Delete" { id:
+Reply.ReplyId }`. A write route's path is its module's route path with `/_/`
+and its name on the end (the `<path>/_/<Msg>` convention), and it takes the
+parameters of the route it was added to. Its `Delete.update` answers with a
+`Response` (chapter 6), and starts as `Response.refresh`, the answer that shows
+the same page again. The button sends the route, `Delete { id: … }`. The test
+is written in full, and since `Response.refresh` is a real answer, it passes
+as it stands.
+
+What the generator cannot know is which reply the button is for. The route
+needs an `id`, and the view is where the page has the row, but the generator
+does not guess how: it leaves the hole `?deleteId`, of type `Reply.ReplyId`,
+in the button. The checker reports it as a warning, and the diff above shows
+the rest.
 
 ## Holes, and filling them: `alder fill`
 
 A **hole** is a name with a `?` in front, written where an expression
 goes (chapter 11, "Holes"). The checker infers the type the expression must have
-and reports it as the warning W0002: `hole ?delete has type Task Nav`. A
+and reports it as the warning W0002: `hole ?deleteId has type Reply.ReplyId`. A
 hole is not an error, so the app checks, and the generator wrote it.
 But it cannot run:
 
 ```text command=guestbook
 $ alder test
-app/Replies/Show.alder:24:15: warning[W0002]: hole ?delete has type Task Nav
-    Delete p -> ?delete,
-                ^^^^^^^
-app/Replies/Show.alder:83:16: warning[W0002]: hole ?expected has type Bool
-    Task.succeed ?expected
-                 ^^^^^^^^^
-alder test: no tests ran (fill the hole): ?delete : Task Nav, ?expected : Bool
+app/Replies/Show.alder:48:36: warning[W0002]: hole ?deleteId has type Reply.ReplyId
+      <al-button click={Delete { id: ?deleteId }}>Delete</al-button>
+                                     ^^^^^^^^^
+alder test: no tests ran (fill the hole): ?deleteId : Reply.ReplyId
 ```
 
 A test program with a hole in it would have nothing to run where the
@@ -586,62 +595,82 @@ therefore **new, fill, test**: generate, fill each hole, then run the
 tests.
 
 `alder fill --list` lists the holes of the app, each with its module,
-its declaration (an arm is `update.<Message>`, a test is its name in
+its declaration (a route's members are written with the route's name:
+`Show.view`, `Archive.load`, `SubmitNewReply.update`; a test is its name in
 quotes) and the type it must have:
 
 ```text command=guestbook
 $ alder fill --list
-Replies.Show update.Delete ?delete : Task Nav
-Replies.Show "pressing Delete" ?expected : Bool
+Replies.Show Show.view ?deleteId : Reply.ReplyId
 ```
 
 `alder fill <address> -` reads one expression from standard input and
 puts it where the hole is, then checks the copy, and writes only if it
-checks. Here the arm only deletes the row and forgets to say what the
-browser does next, so its type is `Task Unit`, not `Task Nav`:
+checks. The address is the module and the declaration: `Replies.Show.Show.view`
+is the member `Show.view` of the module `Replies.Show`. The id is the id of
+the row the page shows:
 
 ```text command=guestbook
-$ alder fill Replies.Show.update.Delete - <<'EOF'
-Db.delete Reply model.row.id
+$ alder fill Replies.Show.Show.view - <<'EOF'
+model.row.id
 EOF
-app/Replies/Show.alder:24:15: error[E0003]: expected Task Nav, got Task Unit
-    Delete p -> Db.delete Reply model.row.id,
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Replies/Show.alder:83:16: warning[W0002]: hole ?expected has type Bool
-    Task.succeed ?expected
-                 ^^^^^^^^^
+edited app/Replies/Show.alder
+--- a/app/Replies/Show.alder
++++ b/app/Replies/Show.alder
+@@ -45,7 +45,7 @@
+       </dl>
+     </al-card>
+ 
+-    <al-button click={Delete { id: ?deleteId }}>Delete</al-button>
++    <al-button click={Delete { id: model.row.id }}>Delete</al-button>
+   </Layout.Page>
+ 
+ Delete.update : Delete.Params -> Session -> Task Response
+```
+
+The button now sends `Delete { id: model.row.id }`. The route's `update` has
+no hole, so there is nothing for that command to replace; `alder fill --decl
+<address> -` rewrites a declaration's whole body with one expression. Here the
+body only deletes the row and forgets to answer, so its type is `Task Unit`,
+not `Task Response`:
+
+```text command=guestbook
+$ alder fill --decl Replies.Show.Delete.update - <<'EOF'
+Db.delete Reply params.id
+EOF
+app/Replies/Show.alder:52:32: error[E0003]: expected Task Response, got Task Unit
+  Delete.update params session = Db.delete Reply params.id
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^
 alder fill: the result does not check (the errors above): nothing was written
 ```
 
-Nothing was written. The checker's message is the whole explanation, and
-the other hole is still listed among the warnings. The right
-expression is a block, which is one expression too:
+Nothing was written. The checker's message is the whole explanation. The right
+expression is a block, which is one expression too, and it answers with a
+redirect to the list. `Replies.Replies` is the route `Replies` of the module
+`Replies`, and `fill` adds the import:
 
 ```text command=guestbook
-$ alder fill Replies.Show.update.Delete - <<'EOF'
+$ alder fill --decl Replies.Show.Delete.update - <<'EOF'
 {
-  let _ <- Db.delete Reply model.row.id
-  Task.succeed (Redirect (Replies {}))
+  let _ <- Db.delete Reply params.id
+  Task.succeed (Response.redirect (Replies.Replies {}))
 }
 EOF
 edited app/Replies/Show.alder
 --- a/app/Replies/Show.alder
 +++ b/app/Replies/Show.alder
-@@ -21,7 +21,10 @@
+@@ -49,7 +49,10 @@
+   </Layout.Page>
  
- update : Msg -> Model -> Session -> Task Nav
- update msg model session = match msg {
--  Delete p -> ?delete,
-+  Delete p -> {
-+    let _ <- Db.delete Reply model.row.id
-+    Task.succeed (Redirect (Replies {}))
-+  },
- }
+ Delete.update : Delete.Params -> Session -> Task Response
+-Delete.update params session = Task.succeed Response.refresh
++Delete.update params session = {
++  let _ <- Db.delete Reply params.id
++  Task.succeed (Response.redirect (Replies.Replies {}))
++}
  
- view : Model -> Session -> Html Msg
-app/Replies/Show.alder:86:16: warning[W0002]: hole ?expected has type Bool
-    Task.succeed ?expected
-                 ^^^^^^^^^
+ test "the page shows the row" = {
+   let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
 ```
 
 `fill` indents the expression to fit where it goes. When the expression
@@ -660,44 +689,47 @@ canonical `as` where the qualifier differs from the last segment
 (`import Admin.Layout as AdminLayout`), and writes the type `Todo` of
 `import Table.Todo` as `Todo`. When a new import changes the canonical
 qualifier of one already in the file, the generator rewrites that import
-line and its uses in the same edit. An address names one declaration: an
-arm (`Replies.Show.update.Delete`), a test (`Replies.Show."pressing
-Delete"`) or any other top-level name (`Replies.perPage`). When the
-declaration has more than one hole, `--hole ?name` picks one. The
-expression may contain holes of its own, which `fill` lists, to be
-filled next.
+line and its uses in the same edit. An address names one declaration: a
+route's member (`Replies.Show.Show.view`, `Replies.Show.Delete.update`), a
+test (`Replies.Show."pressing Delete"`) or any other top-level name
+(`Replies.perPage`). When the declaration has more than one hole, `--hole
+?name` picks one. The expression may contain holes of its own, which `fill`
+lists, to be filled next.
 
-The test's verdict (the comment that said what to put there goes with
-the hole):
+The body now redirects instead of refreshing, so the generated test fails
+(`Redirected` is not `Refreshed`), and it is rewritten, whole, with `--decl`
+too. It opens the page again after the click: `Test.open`, unlike `Test.get`,
+does not fail when the page is gone, and a message may delete the very row its
+page shows, as this one does, so `after.answer` is `PageMissing`. The last line is a reminder, not an error: a rewritten test is checked by `alder test --mutate`:
 
 ```text command=guestbook
-$ alder fill 'Replies.Show."pressing Delete"' - <<'EOF'
-{ answer: r.answer, after: after.answer } == { answer: Redirected (Replies {}), after: PageMissing }
+$ alder fill --decl 'Replies.Show."pressing Delete"' - <<'EOF'
+{
+  let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
+  let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
+  let _ <- Test.get (Show { id: reply1 })
+  let r <- Test.click (Delete { id: reply1 })
+  let after <- Test.open (Show { id: reply1 })
+  Task.succeed (
+    { answer: r.answer, after: after.answer } == { answer: Redirected (Replies.Replies {}), after: PageMissing }
+  )
+}
 EOF
 edited app/Replies/Show.alder
 --- a/app/Replies/Show.alder
 +++ b/app/Replies/Show.alder
-@@ -72,16 +72,14 @@
-   Task.succeed (r.answer == PageMissing)
- }
- 
---- Fill ?expected with what pressing Delete must do, so that a test fails when the arm
---- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
---- changed (`after`: the page opened again, `after.answer` Shown, or PageMissing when the arm
---- deleted the page's row, and `after.doc` its HTML), as
---- `{ answer: r.answer, … } == { answer: Rerendered, … }`.
- test "pressing Delete" = {
-   let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
+@@ -74,5 +74,9 @@
    let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
-   let _ <- Test.get (Replies.Show { id: reply1 })
-   let r <- Test.click Delete
-   let after <- Test.open (Replies.Show { id: reply1 })
--  Task.succeed ?expected
+   let _ <- Test.get (Show { id: reply1 })
+   let r <- Test.click (Delete { id: reply1 })
+-  Task.succeed (r.answer == Refreshed)
++  let after <- Test.open (Show { id: reply1 })
 +  Task.succeed (
 +    { answer: r.answer, after: after.answer }
-+      == { answer: Redirected (Replies {}), after: PageMissing }
++      == { answer: Redirected (Replies.Replies {}), after: PageMissing }
 +  )
  }
+rewriting a test: `alder test --mutate` is the check that it still tests something
 ```
 
 And the tests run:
@@ -726,19 +758,23 @@ error, after any diagnostics; the exit code is 1, and nothing is
 written. A module that exists:
 
 ```text command=guestbook
-$ alder new page About /about
-alder new page: module `About` exists (`app/About.alder`): a generator never overwrites a file; choose another module name
+$ alder new route About /about
+alder new route: module `About` exists (`app/About.alder`): a generator never overwrites a file; choose another module name
 ```
 
 A result that does not check. `--into Reply` asks for a form that
 inserts a `Reply`, but the form has no `entry`, and an insert must have
-one:
+one (the warning above the error is the new form's own hole, the id its route
+needs, which is not what stops the command):
 
 ```text command=guestbook
 $ alder new form Replies.Show Note message:Text.NonEmpty --into Reply
-app/Replies/Show.alder:33:30: error[E0003]: record `Reply.Insert Reply` is missing field(s): entry
-      let _ <- Db.insert Reply { message: p.form.message }
-                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/Replies/Show.alder:47:38: warning[W0002]: hole ?submitNoteId has type Reply.ReplyId
+        <form submit={SubmitNote { id: ?submitNoteId }}>
+                                       ^^^^^^^^^^^^^
+app/Replies/Show.alder:67:28: error[E0003]: record `Reply.Insert Reply` is missing field(s): entry
+    let _ <- Db.insert Reply { message: params.form.message }
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 alder new form: the result does not check (the errors above): nothing was written
 ```
 
@@ -756,14 +792,14 @@ With `--json`, a command prints one JSON object on one line instead of
 its text:
 
 ```text command=guestbook
-$ alder new page Contact /contact --json
+$ alder new route Contact /contact --json
 {"files":[{"path":"app/Contact.alder","action":"created"}],"diff":"","diagnostics":[],"holes":[],"written":true}
 ```
 
 `files` lists the files written, each `created` or `edited`; `diff` is
 the unified diff of the edited ones; `diagnostics` are the copy's, in
 the form `alder check --json` prints them (chapter 11); `holes` lists
-each hole with its module, declaration, arm, name, type and position;
+each hole with its module, declaration, name, type and position;
 `written` says whether anything was written. A table's command adds
 `migration`, the migration's steps, and a refusal adds `error`, its
 sentence. This object is the contract for programs that drive the
@@ -848,6 +884,25 @@ plural so that `Admin.Posts` never reads as the table `Post`):
 | `Admin.Ts.Edit` | `/admin/t/{id}/edit` | the form that changes a row |
 | `Admin.Ts.Delete` | `/admin/t/{id}/delete` | what goes with the row, and the button, or why there is none |
 | `Admin.Ts.Bulk` | `/admin/t/bulk?ids=…` | the rows chosen on the list, and what to do with them all at once (only for a table with an action; "Bulk actions", below) |
+
+Each module declares its **routes**, and the writes are routes too. In the
+generated admin, `Index`, `Show`, `New` and `Edit` are `GET` routes, and the
+forms on them are write routes: `Create` (`POST`, on `New`), `Save` (`PUT`, on
+`Edit`), and `SearchAuthor`, which narrows a long list of choices. A write route
+has the form it decodes, `route Save = PUT "/admin/post/{id}/edit/_/Save" { id:
+Post.PostId } form PostForm requires user, role Admin`, and a path that ends in
+`/_/` and its name. `Delete` is a `GET` route, the confirm page that says what goes with the row, and a
+`DELETE` route, `Destroy`, that the button sends. `Bulk` is a `GET` route that shows the chosen rows
+and a `POST` route for each action (`BulkDelete`, `BulkSetStatus` …). Every
+route has `requires user, role Admin`, and an `update` answers with a
+`Response`: `Response.redirect` to the list after a save or a delete,
+`Response.invalid` for a refusal. Every write route has a test whose
+name starts "a demoted Admin cannot …": it demotes the Admin in the table
+after logging in, sends the write route, and expects the refusal. The files
+quoted below are the blog's, written when `alder new admin` still wrote
+`page` modules with `load`, `update` and `msg`; the blog example has not been
+regenerated, and the todos example's `app/Admin/` has the route form. The
+structure of the files is the same.
 
 `--module` and `--path` put the admin elsewhere (`--module Back.Office
 --path /back`). An admin that exists is not written again: `alder new
@@ -2658,17 +2713,17 @@ with its row, "Choose hello-world", for a screen reader.)
   listed with "(kept: other rows refer to it)" and left, and the rest
   are deleted. On the user table, the admin's own row is refused too,
   listed with "(kept: your own account)". The
-  answer is `Notice.success "Deleted 2 of 3"` on a redirect to the list, so
+  answer is `Response.refresh |> Response.success "Deleted 2 of 3"`, so
   the person sees a toast (chapter 6, "Notices and in-flight"). As with
-  every message, `load` runs first and reads the rows again, so what is
+  every write route, the gate runs first and the route reads the rows again, so what is
   deleted is what the database holds now, not what the list showed.
 - **Set** a `Bool` column, or a column of a union with no payloads: one
   form per such column (`BulkSetPublished`, `BulkSetDone`), which updates
-  every chosen row and answers `Notice.success "Updated 3"`.
+  every chosen row and answers `Response.refresh |> Response.success "Updated 3"`.
 
 An action takes at most one page of the list, 25 rows (`maxRows`, the
 list's `perPage`): the page reads the first 25 ids it is given, says so
-when it was given more, and every action then answers `Reject "Choose at
+when it was given more, and every action then answers `Response.invalid "Choose at
 most 25 rows at a time."`. The checkboxes and "all rows on this page"
 never send more; a longer address is made by hand.
 
@@ -2682,7 +2737,7 @@ chosen rows directly; a reference that blocks the delete further down
 would not be seen for many rows at once, and the delete would fail in the
 database as an error page. Such a table keeps its single delete page and
 any set action. The bulk modules have the regions `bulk` (the form types
-and messages) and `actions` (the forms in the view), so `alder regen
+and write routes) and `actions` (the forms in the view), so `alder regen
 admin` rewrites them as the columns change, and their generated tests
 include a row that is refused.
 
@@ -2708,7 +2763,7 @@ admin is committed as it wrote it) gives each silo three things instead.
   chapter 6:
 
   ```alder fragment
-  page "/admin/orgs/{org}/project/{id}" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
+  route Show = GET "/admin/orgs/{org}/project/{id}" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
   ```
 
   `org` is the page's first parameter, and the role check, not `via`,
@@ -2756,9 +2811,9 @@ a reference, which has nothing to sort by.
 It reads and writes every row with the unscoped operations (`Db.from`,
 `Db.get`, `Db.insert`, …), because the role is the rule there: an Admin
 acts on everyone's rows (chapter 6, "When to use the unscoped forms").
-It writes no check of ownership: the page's `requires user, role Admin`
-checks the role, in the route, before `load` runs, for the page and for
-every message, and `isAdmin` reads it again in `load`.
+It writes no check of ownership: the route's `requires user, role Admin`
+checks the role before anything else runs, for the page and for
+every write route, and `isAdmin` reads it again in `load`.
 
 It never shows or edits a secret. A column is a secret when its type is
 `Text.Secret`, or when its name, in any case, begins with `password`,
@@ -2794,7 +2849,7 @@ wrote migrations/0003_create_user.sql
 edited migrations/schema.json
 --- a/app/App.alder
 +++ b/app/App.alder
-@@ -1,9 +1,22 @@
+@@ -1,9 +1,14 @@
  module App
  
  import Layout
@@ -2803,42 +2858,50 @@ edited migrations/schema.json
 -session { }
 +session { user: Maybe User.UserId }
  
-+login = Auth.Login
++login = Auth.Login.Login
 +
-+msg Logout
-+
-+update : Msg -> Session -> Task Nav
-+update msg session = match msg {
-+  Logout p -> {
-+    let _ <- Session.put (\s -> { s | user: Nothing })
-+    Task.succeed (Redirect (Auth.Login {}))
-+  },
-+}
++route Logout = POST "/_/Logout" { }
 +
  error : Error -> Html Never
  error err =
    <Layout.Page title="Error">
-@@ -13,3 +26,13 @@
+@@ -13,3 +18,28 @@
  
  notFound : Html Never
  notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 +
-+-- Every Log out button is on a page that requires a user, so a browser test cannot tell this
-+-- Redirect from a Rerender (book 10, "The logout redirect"): the test calls update itself.
++-- Logout empties the session's user and goes to log in: a `POST`, sent by a button
++-- (`click={App.Logout}`), a form without JavaScript.
++Logout.update : Logout.Params -> Session -> Task Response
++Logout.update params session = {
++  let _ <- Session.put (\s -> { s | user: Nothing })
++  Task.succeed (Response.redirect (Auth.Login.Login {}))
++}
++
++-- Logging out from the login page, which a visitor may open: the answer is the redirect,
++-- not the page shown again.
 +test "Logout clears the user and goes to log in" = {
-+  let r <- Test.run (update Logout { user: Just (User.UserId "me") })
++  let me <- Db.insert User {
++    email: Text.Email "email-1@example.com",
++    name: Text.NonEmpty "name-1",
++    passwordHash: Text.Secret "passwordhash-1",
++  }
++  let _ <- Test.login { user: Just me }
++  let _ <- Test.get (Auth.Login.Login {})
++  let r <- Test.click Logout
 +  Task.succeed (
-+    { value: r.value, trace: r.trace }
-+      == { value: Ok (Redirect (Auth.Login {})), trace: ["Session.put"] }
++    { answer: r.answer, user: r.session.user }
++      == { answer: Redirected (Auth.Login.Login {}), user: Nothing }
 +  )
 +}
 ```
 
 `App` is edited in four fixed places, and nothing else in it moves: the
-session gains `user` after the fields it has; `login = Auth.Login`
-follows the session; `msg Logout` and its arm go into `App`'s `update`
-(a new arm before its closing brace, or, as here, a new `update` after
-`login`); and a test of Logout goes at the end. The user module is
+session gains `user` after the fields it has; `login = Auth.Login.Login`
+follows the session, naming the route that is the login page; `route Logout = POST
+"/_/Logout" { }` is the write route that logs out, with its `Logout.update`
+(a `POST`, so that a link cannot log anyone out), which empties the user and answers
+`Response.redirect` to the login; and a test of Logout goes at the end. The user module is
 imported in its sorted place. The command is refused when the session
 already has a `user`, when a module `Auth` or `Auth.…` exists, and when
 `App` has a `login`.
@@ -2876,7 +2939,12 @@ $ alder new auth --role Role
 (on an app without a user table: the table it creates then has
 `role: Role = Member`). That is what `alder new admin` asks for.
 
-The login page is shaped like the blog's (chapter 14); what differs is
+The login is two routes in `Auth.Login`: `route Login = GET "/login" { }`, the page, and `route
+SignIn = POST "/login/_/SignIn" { } form Credentials`, the write route that
+takes the form `Credentials` (an email and a `Text.Secret` password). `SignIn.update` asks
+the capability; a match puts the user in the session and answers `Response.redirect`, anything
+else answers `Response.invalid "Email or password is incorrect."`, the same
+sentence for an unknown email and a wrong password. The module is shaped like the blog's (chapter 14); what differs is
 its `Password` capability, which has two entries, and whose adapter is
 real:
 
@@ -2901,7 +2969,7 @@ so the command adds none. In a page's `view`:
 <al-button variant="outline" click={App.Logout}>Log out</al-button>
 ```
 
-A login goes to the page at `/`; `--to <Page>` names another.
+A login goes to the route at `/`; `--to <Route>` names another.
 
 ### The password adapter
 
@@ -3031,11 +3099,19 @@ signature and a hole for its body:
 ```text command=guestbook
 $ alder new decl Home perPage Int
 edited app/Home.alder
-…
+--- a/app/Home.alder
++++ b/app/Home.alder
+@@ -44,6 +44,9 @@
+   Task.succeed (Response.redirect (Home {}) |> Response.success "Signed")
+ }
+ 
 +perPage : Int
 +perPage = ?perPage
-…
-app/Home.alder:51:11: warning[W0002]: hole ?perPage has type Int
++
+ test "signing adds an entry" = {
+   let _ <- Test.get (Home {})
+   let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
+app/Home.alder:48:11: warning[W0002]: hole ?perPage has type Int
   perPage = ?perPage
             ^^^^^^^^
 ```
@@ -3079,22 +3155,22 @@ edited app/Home.alder
 
 Each refuses a name the module has.
 
-## Blank pages and whole bodies: `--blank` and `fill --decl`
+## Blank routes and whole bodies: `--blank` and `fill --decl`
 
-`alder new page … --blank` writes a page whose `Model` is `{ }` and
-whose `load` and `view` are holes, for an author who knows what the page
+`alder new route … --blank` writes a route whose `Model` is `{ }` and
+whose `Stats.load` and `Stats.view` are holes, for an author who knows what the page
 shows but no template fits it (with `--show T`, the page keeps
 `/{id}` and its `id` parameter, and nothing else of `--show`):
 
 ```text command=guestbook
-$ alder new page Stats /stats --blank
+$ alder new route Stats /stats --blank
 wrote app/Stats.alder
-app/Stats.alder:8:23: warning[W0002]: hole ?load has type Query Model
-  load params session = ?load
-                        ^^^^^
-app/Stats.alder:11:22: warning[W0002]: hole ?view has type Html Msg
-  view model session = ?view
-                       ^^^^^
+app/Stats.alder:8:29: warning[W0002]: hole ?load has type Query Model
+  Stats.load params session = ?load
+                              ^^^^^
+app/Stats.alder:11:28: warning[W0002]: hole ?view has type Html Route
+  Stats.view model session = ?view
+                             ^^^^^
 ```
 
 `Model` is a type, and a type cannot be a hole. So the one command that
@@ -3113,14 +3189,19 @@ edited app/Stats.alder
 +++ b/app/Stats.alder
 @@ -2,7 +2,7 @@
  
- page "/stats" { }
+ route Stats = GET "/stats" { }
  
 -type Model = { }
 +type Model = { entries: Int }
  
- load : Params -> Session -> Query Model
- load params session = ?load
-…
+ Stats.load : Stats.Params -> Session -> Query Model
+ Stats.load params session = ?load
+app/Stats.alder:8:29: warning[W0002]: hole ?load has type Query Model
+  Stats.load params session = ?load
+                              ^^^^^
+app/Stats.alder:11:28: warning[W0002]: hole ?view has type Html Route
+  Stats.view model session = ?view
+                             ^^^^^
 ```
 
 That checked because `load` and `view` are holes, whose types follow
@@ -3148,13 +3229,25 @@ $ alder fill --decl Stats.view - <<'EOF'
 </Layout.Page>
 EOF
 edited app/Stats.alder
-…
-+view model session =
+--- a/app/Stats.alder
++++ b/app/Stats.alder
+@@ -1,5 +1,6 @@
+ module Stats
+ 
++import Layout
+ import Table.Entry
+ 
+ route Stats = GET "/stats" { }
+@@ -13,4 +14,8 @@
+ }
+ 
+ Stats.view : Model -> Session -> Html
+-Stats.view model session = ?view
++Stats.view model session =
 +  <Layout.Page title="Stats">
 +    <h1>Stats</h1>
 +    <p id="entries">{Text.fromInt model.entries} entries</p>
 +  </Layout.Page>
-…
 added import Layout to app/Stats.alder
 ```
 
@@ -3165,21 +3258,20 @@ line after `view model session =`, two spaces in, as views are written.
 When to prefer a hole: whenever there is one. A hole's type is the
 checker's statement of what is missing, and a fill cannot disturb the
 code around it. `--decl` rewrites a whole body, so it can drop what a
-hole fill cannot: an `update` that loses an arm, a view that loses the
-form a test submits. The checker refuses the first (the view still
-sends the message: a `match` must be exhaustive), and the tests catch
-the second. Use it for what has no hole: a `Model`, a body a template
+hole fill cannot: an `update` that loses its `Response.invalid`, a view that loses the
+form a test submits. The checker refuses neither (a write route's `update` is any
+`Task Response`), and the tests catch them, if there are tests to catch them. Use it for what has no hole: a `Model`, a body a template
 wrote that does not fit, a generated test whose setup does not fit the
 page's rules. A test rewritten whole is checked for its types only, not
 for what it asserts, and `fill --decl` says so, naming `alder test
 --mutate` as the check that it still tests something.
 
-## Buttons in a list, and page parameters
+## Buttons in a list, and route parameters
 
 `alder new msg` puts its button at the end of the view. A button that
 acts on one row of a list belongs in the list, inside the `for` that
 shows the row: `--in-for <binder>` puts it at the end of the loop body's
-element, and fills the message's fields from the binder where it can (a
+element, and fills the route's parameters from the binder where it can (a
 field of the binder with the same name and type, `user: m.user`; for a
 field of a table's id type, the binder's id when the binder is a row of
 that table, `id: e.id`), with holes for the rest. `--when <expression>`
@@ -3188,7 +3280,20 @@ shows it only when the expression holds:
 ```text command=guestbook
 $ alder new msg Home Hide id:Entry.EntryId --in-for e --when "List.length model.entries > 1"
 edited app/Home.alder
-…
+--- a/app/Home.alder
++++ b/app/Home.alder
+@@ -5,6 +5,7 @@
+ 
+ route Home   = GET  "/"         { }
+ route Submit = POST "/_/Submit" { } form Sign
++route Hide   = POST "/_/Hide"   { id: Entry.EntryId }
+ 
+ type Model = { entries: List Entry }
+ 
+@@ -32,7 +33,14 @@
+     </al-card>
+ 
+     <ul id="entries">
 -      {for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}
 +      {for e in model.entries ->
 +        <li>
@@ -3198,13 +3303,44 @@ edited app/Home.alder
 +          else
 +            Html.none}
 +        </li>}
-…
+     </ul>
+   </Layout.Page>
+ 
+@@ -47,6 +55,9 @@
+ perPage : Int
+ perPage = 20
+ 
++Hide.update : Hide.Params -> Session -> Task Response
++Hide.update params session = Task.succeed Response.refresh
++
+ test "signing adds an entry" = {
+   let _ <- Test.get (Home {})
+   let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
+@@ -69,3 +80,14 @@
+   let n = perPage
+   Task.succeed (n == 20)
+ }
++
++-- The button is in the view's `{for e in model.entries …}`: insert rows so that the
++-- signed-in user sees the row this clicks, and fill ?hideId with that row's values.
++-- The button is shown only when `List.length model.entries > 1`: insert the rows that make it hold
++-- on the page this test opens, or the click finds no button.
++test "pressing Hide" = {
++  let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
++  let _ <- Test.get (Home {})
++  let r <- Test.click (Hide { id: ?hideId })
++  Task.succeed (r.answer == Refreshed)
++}
+app/Home.alder:91:35: warning[W0002]: hole ?hideId has type Entry.EntryId
+    let r <- Test.click (Hide { id: ?hideId })
+                                    ^^^^^^^
+`alder new msg` is now `alder new route --method POST`: on a route module it adds a write route
 ```
 
-A button in a loop has its message's name as its class (`hide`), so a
+A button in a loop has its route's name as its class (`hide`), so a
 test can count the rows' buttons (`Test.count "#entries .hide"
-page.doc`). Its arm and test verdict are holes, as for any message, and
-so is the row the test clicks (`Hide { id: ?hideId }`): which rows the
+page.doc`). The new route `Hide` is POST "/_/Hide" with the `id` it takes, its
+`Hide.update` starts as `Response.refresh`, and the row the test clicks is a hole (`Hide { id: ?hideId }`): which rows the
 loop shows is the page's logic (a team's members, but not its owner;
 the invites to the user's email that wait), which the generator cannot
 know. A comment above the test names the loop's list (`model.entries`)
@@ -3212,11 +3348,11 @@ and says what to do: insert rows so that the signed-in user sees the
 row it clicks, and fill the hole with that row's values. `fill` drops
 the generator's comments once their holes are filled.
 
-`alder edit page <Page> add-param <name>:<Type>[=default]` adds a
-parameter to a page: a query parameter, such as a search box's `q`:
+`alder edit route <Route> add-param <name>:<Type>[=default]` adds a
+parameter to a route (`alder edit page` is the old name, and prints that it is now `alder edit route`): a query parameter, such as a search box's `q`:
 
 ```text command=guestbook
-$ alder edit page Stats add-param "q:Text=\"\""
+$ alder edit route Stats add-param "q:Text=\"\""
 edited app/Stats.alder
 --- a/app/Stats.alder
 +++ b/app/Stats.alder
@@ -3224,8 +3360,8 @@ edited app/Stats.alder
  import Layout
  import Table.Entry
  
--page "/stats" { }
-+page "/stats" { q: Text = "" }
+-route Stats = GET "/stats" { }
++route Stats = GET "/stats" { q: Text = "" }
  
  type Model = { entries: Int }
  
@@ -3255,12 +3391,12 @@ wrote app/Table/User.alder
 wrote migrations/0001_initial.sql
   create table User
 wrote migrations/schema.json
-next: alder new page /users --list User
+next: alder new route /users --list User
 ```
 
 The login comes before the pages, because a page that `requires user`
 needs it. With no page at `/` and no `--to`, where a login goes is the
-typed hole `?afterLogin`, in `Submit`'s arm and in its test:
+typed hole `?afterLogin`, in `SignIn.update` and in its test:
 
 ```text command=notes
 $ alder new auth
@@ -3271,34 +3407,62 @@ wrote app/Auth/Login.alder
 …
 ```
 
-Now the page at `/` (no guestbook has it), and the hole filled with
-it. An arm's address fills that arm's hole:
+Now the route at `/` (no guestbook has it), and the hole filled with
+it. A route's member has an address of its own, here `Auth.Login.SignIn.update`:
 
 ```text command=notes
-$ alder new page Notes.Index / --blank --requires user
+$ alder new route Notes.Index / --blank --requires user
 wrote app/Notes/Index.alder
-…
+app/Notes/Index.alder:8:29: warning[W0002]: hole ?load has type Query Model
+  Index.load params session = ?load
+                              ^^^^^
+app/Notes/Index.alder:11:28: warning[W0002]: hole ?view has type Html Route
+  Index.view model session = ?view
+                             ^^^^^
 ```
 
 ```text command=notes
-$ alder fill Auth.Login.update.Submit - <<'EOF'
-Notes.Index {}
+$ alder fill Auth.Login.SignIn.update - <<'EOF'
+Notes.Index.Index {}
 EOF
 edited app/Auth/Login.alder
-…
+--- a/app/Auth/Login.alder
++++ b/app/Auth/Login.alder
+@@ -45,7 +45,7 @@
+   match found {
+     Just id -> {
+       let _ <- Session.put (\s -> { s | user: Just id })
+-      Task.succeed (Response.redirect ?afterLogin)
++      Task.succeed (Response.redirect (Notes.Index.Index {}))
+     },
+     Nothing -> Task.succeed (Response.invalid "Email or password is incorrect."),
+   }
+app/Auth/Login.alder:100:72: warning[W0002]: hole ?afterLogin has type Route
+      { answer: r.answer, user: r.session.user } == { answer: Redirected ?afterLogin, user: Just me }
+                                                                         ^^^^^^^^^^^
 ```
 
 ```text command=notes
 $ alder fill 'Auth.Login."logging in through the form"' - <<'EOF'
-Notes.Index {}
+Notes.Index.Index {}
 EOF
 edited app/Auth/Login.alder
-…
+--- a/app/Auth/Login.alder
++++ b/app/Auth/Login.alder
+@@ -97,6 +97,7 @@
+   let _ <- Test.get (Login {})
+   let r <- Test.submit SignIn { email: Text.Email "me@example.com", password: Text.Secret "secret" }
+   Task.succeed (
+-    { answer: r.answer, user: r.session.user } == { answer: Redirected ?afterLogin, user: Just me }
++    { answer: r.answer, user: r.session.user }
++      == { answer: Redirected (Notes.Index.Index {}), user: Just me }
+   )
+ }
 ```
 
-A form goes in the page's `view`, so a `view` that is still a hole is
-refused (fill it first); and `--msg` names the message that posts the
-form, as a task does (`msg Add form NewNote`):
+A form goes in the route's `view`, so a `view` that is still a hole is
+refused (fill it first); and `--msg` names the write route that posts the
+form, as a task does (`route Add = POST "/_/Add" { } form NewNote`):
 
 ```text command=notes
 $ alder new form Notes.Index NewNote title:Text.NonEmpty --msg Add
@@ -3326,18 +3490,87 @@ edited app/Notes/Index.alder
 ```text command=notes
 $ alder new form Notes.Index NewNote title:Text.NonEmpty --msg Add
 edited app/Notes/Index.alder
-…
-+msg Add form NewNote
-…
+--- a/app/Notes/Index.alder
++++ b/app/Notes/Index.alder
+@@ -1,8 +1,10 @@
+ module Notes.Index
+ 
+ import Layout
++import Table.User
+ 
+-route Index = GET "/" { } requires user
++route Index = GET  "/"      { }              requires user
++route Add   = POST "/_/Add" { } form NewNote requires user
+ 
+ type Model = { }
+ 
+@@ -10,9 +12,50 @@
+ Index.load params session = Query.succeed {}
+ 
+ Index.view : Model -> Session -> Html
+-Index.view model session = <Layout.Page title="Notes"><h1>Notes</h1></Layout.Page>
++Index.view model session =
++  <Layout.Page title="Notes">
++    <h1>Notes</h1>
+ 
++    <al-card>
++      <h2 slot="header">New note</h2>
++      <form submit={Add}>
++        <al-input field="title" label="Title" />
++        <al-alert variant="destructive"><Errors form /></al-alert>
++        <al-button type="submit">New note</al-button>
++      </form>
++    </al-card>
++  </Layout.Page>
++
++form NewNote = { title: Text.NonEmpty }
++
++Add.update : Add.Params -> Session -> Task Response
++Add.update params session = ?answer
++
+ test "a visitor is sent to log in" = {
+   let r <- Test.open (Index {})
+   Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
+ }
++
++test "submitting NewNote" = {
++  let me <- Db.insert User {
++    email: Text.Email "email-1@example.com",
++    name: Text.NonEmpty "name-1",
++    passwordHash: "passwordhash-1",
++  }
++  let _ <- Test.login { user: Just me }
++  let _ <- Test.get (Index {})
++  let r <- Test.submit Add { title: Text.NonEmpty "title-1" }
++  Task.succeed (r.answer == ?expected)
++}
++
++test "NewNote refuses an empty title" = {
++  let me <- Db.insert User {
++    email: Text.Email "email-1@example.com",
++    name: Text.NonEmpty "name-1",
++    passwordHash: "passwordhash-1",
++  }
++  let _ <- Test.login { user: Just me }
++  let _ <- Test.get (Index {})
++  let r <- Test.submitRaw Add [{ name: "title", value: "" }]
++  Task.succeed (r.answer == FormRejected [{ field: "title", message: "must not be empty" }])
++}
+app/Notes/Index.alder:32:29: warning[W0002]: hole ?answer has type Task Response
+  Add.update params session = ?answer
+                              ^^^^^^^
+app/Notes/Index.alder:48:29: warning[W0002]: hole ?expected has type Answer
+    Task.succeed (r.answer == ?expected)
+                              ^^^^^^^^^
 ```
 
 `--msg` works the same on any form. `alder new msg … --id <id>` gives
-the message's button an `id` (`<al-button id="cancel" …>`), as a task's
+the route's button an `id` (`<al-button id="cancel" …>`), as a task's
 selectors may need.
 
 **Path parameters.** A path with a `{name}` segment takes `--param
 name:Type` for each; the page's parameter record is written from them
-in the path's order, and its `load` is the hole `?load`, since what the
+in the path's order, and its `Show.load` is the hole `?load`, since what the
 parameters name is the page's logic. `--show T --by <column>` reads the
 row by a `@unique` column of `T` rather than by its id, the path's last
 segment:
@@ -3354,7 +3587,7 @@ edited app/Table/Note.alder
 ```
 
 ```text command=notes
-$ alder new page Notes.Show /notes --show Note --by slug --requires user
+$ alder new route Notes.Show /notes --show Note --by slug --requires user
 wrote app/Notes/Show.alder
 ```
 
@@ -3365,12 +3598,12 @@ import Layout
 import Table.Note
 import Table.User
 
-page "/notes/{slug}" { slug: Note.Slug } requires user
+route Show = GET "/notes/{slug}" { slug: Note.Slug } requires user
 
 type Model = { row: Note }
 
-load : Params -> Session -> Query Model
-load params session = {
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
   let found <-
     Db.from Note
       |> Db.where (Note.slug.eq params.slug)
@@ -3381,8 +3614,8 @@ load params session = {
   }
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Show.view : Model -> Session -> Html
+Show.view model session =
   <Layout.Page title="Note">
     <h1>Note</h1>
 
@@ -3414,7 +3647,7 @@ test "the page shows the row" = {
     title: Text.NonEmpty "title-1",
     owner: me,
   }
-  let r <- Test.open (Notes.Show { slug: Note.Slug "slug-1" })
+  let r <- Test.open (Show { slug: Note.Slug "slug-1" })
   Task.succeed (
     { answer: r.answer, slug: List.member "slug-1" (Test.texts "dd" r.doc) }
       == { answer: Shown, slug: True }
@@ -3428,7 +3661,7 @@ test "a missing row is not found" = {
     passwordHash: "passwordhash-1",
   }
   let _ <- Test.login { user: Just me }
-  let r <- Test.open (Notes.Show { slug: Note.Slug "slug-999" })
+  let r <- Test.open (Show { slug: Note.Slug "slug-999" })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -3443,21 +3676,23 @@ test "a visitor is sent to log in" = {
     title: Text.NonEmpty "title-1",
     owner: me,
   }
-  let r <- Test.open (Notes.Show { slug: Note.Slug "slug-1" })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  let r <- Test.open (Show { slug: Note.Slug "slug-1" })
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 ```
 
 ```text command=notes
-$ alder new page Tags.Show /tags/{name} --param name:Text --requires user
+$ alder new route Tags.Show /tags/{name} --param name:Text --requires user
 wrote app/Tags/Show.alder
-…
+app/Tags/Show.alder:11:28: warning[W0002]: hole ?load has type Query Model
+  Show.load params session = ?load
+                             ^^^^^
 ```
 
 **The session.** `alder edit session add-field` adds a field at the end
 of `App`'s `session`. A default is required: a new visitor's session,
 and every cookie stored before the field existed, take it. A session
-record written elsewhere (a test's `update X model { user: me }`), on
+record written elsewhere (a test's `Test.login { user: me }`), on
 one line or over several, gets the field with its default too:
 
 ```text command=notes
@@ -3472,17 +3707,8 @@ edited app/App.alder
 -session { user: Maybe User.UserId }
 +session { user: Maybe User.UserId, theme: Text = "light" }
  
- login = Auth.Login
+ login = Auth.Login.Login
  
-@@ -30,7 +30,7 @@
- -- Every Log out button is on a page that requires a user, so a browser test cannot tell this
- -- Redirect from a Rerender (book 10, "The logout redirect"): the test calls update itself.
- test "Logout clears the user and goes to log in" = {
--  let r <- Test.run (update Logout { user: Just (User.UserId "me") })
-+  let r <- Test.run (update Logout { user: Just (User.UserId "me"), theme: "light" })
-   Task.succeed (
-     { value: r.value, trace: r.trace }
-       == { value: Ok (Redirect (Auth.Login {})), trace: ["Session.put"] }
 ```
 
 A session built some other way lacks the field, and shows in the check
@@ -3492,7 +3718,7 @@ breakage elsewhere: a type that does not exist, or a default of another
 type (`bad:Theme=Nope`, `n:Int="x"`), refuses the edit with the
 checker's errors, and nothing is written.
 
-**Removing.** `alder remove page <Module>` removes the page's file;
+**Removing.** `alder remove route <Module>` removes the route module's file (`alder remove page` is the old name);
 `alder remove table <T>` removes the table's declaration, its id type
 and its module's tests (the whole file, when the module holds nothing
 else), and writes the migration that drops the table, marked `DROPS
@@ -3500,7 +3726,7 @@ DATA`. Each is refused while something else names what it removes:
 the errors of the app without it say where.
 
 ```text command=notes
-$ alder remove page Tags.Show
+$ alder remove route Tags.Show
 removed app/Tags/Show.alder
 ```
 
@@ -3511,12 +3737,12 @@ alder remove table: table `Note` is still used (the errors above): remove those 
 ```
 
 A table the generated admin shows is used by the admin's pages: remove
-those (`alder remove page Admin.Notes.Index` and the others), then
+those (`alder remove route Admin.Notes.Index` and the others), then
 `alder regen admin`, which does not bring back a page of a table that
 is gone.
 
 Every command takes `--help`, which prints its usage line (`alder new
-page --help`).
+route --help`).
 
 ## An app from the command line
 
@@ -3532,12 +3758,12 @@ task's exact names, tables and fields. The script below is the whole of
 it, every command and every expression filled. `cmd/alder/drill_test.go`
 replays it from `testdata/drill/t10-teams/script.txt` (and checks that
 the blocks of this section are that file); then it checks the app's
-tables, columns, session, pages, messages and forms against the task's
-Names block, runs the app's own 25 tests, adds the 8 hidden acceptance
+tables, columns, session, routes and forms against the task's
+Names block, runs the app's own 24 tests, adds the 8 hidden acceptance
 tests E9 kept from its models as the E9 harness adds them (all pass),
-and runs `alder test --mutate`, which kills all 46 of its mutants. A
+and runs `alder test --mutate`, which kills all 33 of its mutants. A
 second drill, `testdata/drill/t9-bookings/script.txt` (T9: booking
-rooms, 52 commands; 20 tests, the 7 hidden ones pass, 41 of 41
+rooms, 54 commands; 19 tests, the 7 hidden ones pass, 32 of 33
 mutants killed), runs in the same test.
 
 `--bare` leaves out the guestbook: the app starts as `App`, `Layout`,
@@ -3610,8 +3836,9 @@ alder new route Invites.Index /invites --blank --requires user
 
 The login's page is there now. `new auth` ran before any page (the pages
 `requires user`, which needs the login), so where a login goes was the
-hole `?afterLogin`, in `Submit`'s arm and in its test; both are filled
-with the page:
+hole `?afterLogin`, in `SignIn.update` and in its test; both are filled
+with the route `Teams.Index.Index`, the qualified name that a route of another
+module has:
 
 ```text
 # where a login goes, now that the page is there (`alder new auth` left the hole ?afterLogin)
@@ -3626,8 +3853,9 @@ EOF
 `/teams`. `Model` first, by `--decl` (a type has no hole), then `load`
 by its hole, then the view by `--decl` (to put the markup on its own
 lines). The form `new form` adds fits no table (a `Team` needs an
-`owner` the form does not have), so its arm is a hole, filled with the
-insert; `--msg Create` names its message as the task does (the default
+`owner` the form does not have), so the body of its `update` is a hole,
+filled with the insert and a `Response.redirect` to the new team's page;
+`--msg Create` names its write route as the task does (the default
 would be `SubmitNewTeam`); its generated test cannot know the new team's
 id, so it is rewritten with `--decl`:
 
@@ -3697,8 +3925,9 @@ EOF
 
 `/teams/{id}`. The Remove button goes into the members' loop with
 `--in-for u`, its `user` filled from the binder (`u.id`) and shown only
-to the owner (`--when model.isOwner`). Each arm checks `model.isOwner`
-itself: a member may hold the owner's page, and post its Remove. The
+to the owner (`--when model.isOwner`). The route's `update` checks the owner
+itself (`owned`, below): a write route can be posted without the page, and a
+member may hold the owner's page and post its Remove. The
 generated test of Remove presses it for the signed-in owner, who has no
 button, so it is rewritten as the reference app's test:
 
@@ -3844,7 +4073,7 @@ EOF
 `/invites`. `Row` is a record type, so `new type` declares it. The
 binder `r` of the invites' loop is a `Row`, which has no `id`, so
 `--in-for r` leaves the hole `?acceptId`, filled with `r.invite.id`
-(the second fill names no hole: one is left). In the generated test,
+(the first fill names the hole, the second has one left). In the generated test,
 which row to click is a hole too (`?acceptId` again, in the test), since
 which rows the loop shows is the page's logic: the test inserted an
 invite to the signed-in user's email, `invite1`:
@@ -4016,11 +4245,11 @@ no command). It needed `--when` too: the hidden tests count the Remove
 buttons a member sees, which must be none. A second agent's drill (T9)
 found the rest, added in M13's last round: `--bare`, `--no-timestamps`,
 `--msg` and `--id` (to have the task's names, not the generators'),
-`alder remove page|table`, path parameters (`--param`, `--show T --by
+`alder remove route|table`, path parameters (`--param`, `--show T --by
 <column>`) and `alder edit session add-field`.
 
-What no command does yet: a page's `page` line (its `requires`, or a
-path changed after the page exists) and a module's imports are written
+What no command does yet: a route's line (its `requires`, or a
+path changed after the route exists) and a module's imports are written
 only by the generators that create them (a fill imports what its
 expression names); a table or page is renamed by `remove` and a new
 command, not in place. Everything else an app has, these commands write.
@@ -4032,8 +4261,8 @@ commands of their own, so an app with orgs is built like any other.
 `testdata/drill/t11-workspace/script.txt` is the proof: the task T11
 (`experiments/tasks/t11-workspace.md`: orgs, members, and each org's
 projects and to-dos in a database of its own), built from `alder new ws
---bare` in 52 commands; `TestDrill` replays it, checks the task's names
-(and its `silo`, `via` and `choose`), runs its 26 tests (37 of 37
+--bare` in 55 commands; `TestDrill` replays it, checks the task's names
+(and its `silo`, `via` and `choose`), runs its 25 tests (34 of 34
 mutants killed) and the task's 9 hidden tests. Its declarations, in
 order:
 
@@ -4052,9 +4281,9 @@ alder new page Projects.Show /projects --show Project --blank --requires org
 **`alder edit session add-field org:Org.OrgId via Membership`** writes
 the key, `org: Maybe Org.OrgId via Membership` (the `Maybe` is added:
 a session starts without an org, and a key takes no default), and with
-`--choose Orgs.Index` the line `choose org = Orgs.Index` after the
-session. Session records written elsewhere get `org:
-Nothing`. The page it names must exist first, hence `Orgs.Index` before
+`--choose Orgs.Index` the line `choose org = Orgs.Index.Index` after the
+session (the route `Index` of the module `Orgs.Index`). Session records written elsewhere get `org:
+Nothing`. The route it names must exist first, hence `Orgs.Index` before
 it; the `Membership` table too, with one `@ref` to the user table and
 one to `Org`. A second `via` field is refused ("the session's `org` is
 `via Membership` already: one `via` field per session (for now)").
@@ -4108,12 +4337,12 @@ database with data for `--allow-data-loss` (a first deploy has none to
 lose). In a deployed app it is the reason `alder migrate` refuses the
 same change made by hand (chapter 8, "Moving a table into a silo").
 
-**`alder new page … --requires org`** writes `requires user, org` (a
-`via` key needs the user first), and its list, row and `--from` pages
+**`alder new route … --requires org`** writes `requires user, org` (a
+`via` key needs the user first), and its list, row and `--from` routes
 read a table partitioned by the key with `Db.scoped` and `Db.getScoped`:
 
 ```alder fragment
-page "/projects" { page: Int = 1 } requires user, org
+route Index = GET "/projects" { page: Int = 1 } requires user, org
 …
   let rows <-
     Db.scoped Project
@@ -4125,36 +4354,22 @@ another org first and expects it left out ("the list shows this org's
 rows, newest first"); and a session without an org is sent to `choose
 org`'s page ("without an org the page sends you to choose one"). A form
 whose fields fit such a table inserts with `Db.insertScoped` (the
-partition column is the page's), and the tests of `alder new form` and
-`alder new msg` on the page sign in with the key the same way.
+partition column is the route's), and the tests of `alder new form` and
+`alder new msg` on the route sign in with the key the same way.
 
-## Four gaps: a message in `App`, a prop, a form on a message, a login's page
+## Four gaps: a button in `App`, a prop, a form with parameters, a login's route
 
-E11 (below) found four things the commands could not do. `alder new msg
-App <Name> [fields]` declares a message in `App`, for a button that is on
-every page (`click={App.ToggleTheme}`): the constructor, an arm of
-`App.update` whose body is the hole `?toggleTheme` (the `update` is
-created when `App` has none, as `new auth` does for `Logout`), and a test
-that calls `update` itself, ending in the hole `?expected`:
+E11 (below) found four things the commands could not do. The first was a
+button that is on every page (`click={App.Logout}` is one): `alder new msg
+App <Name> [fields]` declared a message in `App` for it. On routes, `App`
+holds write routes like any module: `route Logout = POST "/_/Logout"` is
+one, written by `alder new auth`. But `alder new msg App` is refused in
+an app whose `App` already has routes, as this one does since the login, and
+with a sentence that says less than it should:
 
 ```text command=guestbook
 $ alder new msg App ToggleTheme dark:Bool
-edited app/App.alder
---- a/app/App.alder
-+++ b/app/App.alder
-@@ -9,12 +9,15 @@
- 
- msg Logout
- 
-+msg ToggleTheme { dark: Bool }
-+
- update : Msg -> Session -> Task Nav
- update msg session = match msg {
-   Logout p -> {
-…
-+  ToggleTheme p -> ?toggleTheme,
- }
-…
+alder new msg: `update` handles no message yet, and its body is not a hole: write it as `match msg { … }` yourself
 ```
 
 `alder edit decl Layout.Page add-prop <name>:<Type>=<default>` adds a
@@ -4177,19 +4392,25 @@ edited app/Layout.alder
      <head>
 ```
 
-A form posted by a message that has parameters is two commands:
-`alder new msg Home Feature id:Entry.EntryId`, then `alder new form Home
-Reason why:Text.NonEmpty --msg Feature`. The message exists without a
-form, so the second command rewrites it as `msg Feature { id: … } form
-Reason`, puts the form in the view with the message's parameters as holes,
-and replaces the message's own button and its test (`Test.click` cannot
-post a form) with a test of `Test.submit (Feature { id: … }) { why: … }`.
-A comment above the form says that the arm reads the fields as `p.form`.
-A message that has a form already is refused.
+The way to such a button is a route of its own, with the state it sends as
+parameters: `alder new route Theme /theme --method POST --param dark:Bool`
+writes `app/Theme.alder` with `route Theme = POST "/theme" { dark: Bool }`
+and a `Theme.update` that answers `Response.refresh`, and any page's view
+sends it with `click={Theme.Theme { dark: … }}`.
 
-Last, `alder new auth` in an app with no page yet leaves the hole
-`?afterLogin`, in `Submit`'s redirect and in the login's test. Once the
-page exists, `alder edit auth --to <Page>` fills both, and refuses when
+A form on a route that takes parameters posts them too. `alder new form
+Replies.Show Note message:Text.NonEmpty` adds the write route `SubmitNote`
+with the parameters of `Replies.Show` (`{ id: Reply.ReplyId }`), and the
+form in the view sends `SubmitNote { id: ?submitNoteId }`: the id is a
+hole, as a button's is, because the generator cannot know where on the page
+it comes from. A name the module already declares is refused, so the form
+and its route come from one command (`--msg` names the route), and a form is
+not added to a route that exists. The form's fields are read as
+`params.form`, and a comment above the form says so.
+
+Last, `alder new auth` in an app with no route at `/` yet leaves the hole
+`?afterLogin`, in `SignIn.update`'s redirect and in the login's test. Once the
+route exists, `alder edit auth --to <Route>` fills both, and refuses when
 there is no such hole. `alder fill` takes the lambda `\params session ->
 …` for a declaration that binds `params` and `session` already as a
 mistake and says so: send the body without it.
@@ -4227,22 +4448,22 @@ edited migrations/schema.json
  }
  
  test "deleting its entry deletes a Reply" = {
-app/Replies.alder:47:30: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
-      let _ <- Db.insert Reply { entry: p.form.entry, message: p.form.message }
-                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Replies.alder:111:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
+app/Replies.alder:102:28: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
+    let _ <- Db.insert Reply { entry: params.form.entry, message: params.form.message }
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/Replies.alder:108:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
     let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Replies.alder:112:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
+app/Replies.alder:109:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
     let reply2 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-2" }
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Replies.alder:121:39: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
+app/Replies.alder:118:39: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
         List.map (\n -> Db.insert Reply {
                                         ^
-app/Replies/Show.alder:62:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
+app/Replies/Show.alder:59:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
     let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-app/Replies/Show.alder:77:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
+app/Replies/Show.alder:74:33: error[E0003]: record `Reply.Insert Reply` is missing field(s): note
     let reply1 <- Db.insert Reply { entry: entry1, message: Text.NonEmpty "message-1" }
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 app/Table/Reply.alder:19:28: error[E0003]: record `Insert Reply` is missing field(s): note
@@ -4287,172 +4508,98 @@ lines inside each region with the same region's lines from the new
 version. Everything outside the regions is left byte for byte: a heading
 you reworded, a column you added after the `cells` region, a test you
 wrote after the `tests` region. The regions are named (`imports`,
-`params`, `filters`, `nav`, `cards`, `search`, `sorts`, `labels`,
+`routes`, `filters`, `nav`, `cards`, `search`, `sorts`, `labels`,
 `headers`, `cells`, `fields`, `model`, `load`, `form`, `inputs`,
-`insert`, `update`, `blockers`, `remove`, `row`, `counts`, `tests`), so
-a region is matched by its name, not by its place. `params` holds a list
-page's whole `page` line, its path, query parameters and `requires`
+`insert`, `update`, `blockers`, `remove`, `row`, `counts`, `bulk`, `actions`,
+`access`, `tests`), so
+a region is matched by its name, not by its place. `routes` holds a module's
+`route` lines, their paths, parameters and `requires`
 included: a change made there by hand goes at the next `regen`.
 
-Here the blog's comments gain a flag:
+Here the to-do app's users gain a flag:
 
-```text command=blog
-$ alder edit table Comment add-field approved:Bool=True
-edited app/Table/Comment.alder
-wrote migrations/0003_add_approved.sql
-  rebuild table Comment: Comment.approved: new column filled with 1
+```text command=todos
+$ alder edit table User add-field active:Bool=True
+edited app/Table/User.alder
+wrote migrations/0003_add_active.sql
+  rebuild table User: User.active: new column filled with 1
 edited migrations/schema.json
---- a/app/Table/Comment.alder
-+++ b/app/Table/Comment.alder
-@@ -18,6 +18,7 @@
-   author: Name,
-   body: Body,
+--- a/app/Table/User.alder
++++ b/app/Table/User.alder
+@@ -14,4 +14,5 @@
+   passwordHash: Text,
    created: Time @created,
-+  approved: Bool = True,
+   role: Role = Member,
++  active: Bool = True,
  }
- 
- -- fits is whether s has text other than spaces and at most n characters.
 ```
 
 The field has a default, so no insert breaks, and the app checks. The
 admin catches up:
 
-```text command=blog
+```text command=todos
 $ alder regen admin
-edited app/Admin/Comments/Bulk.alder
-edited app/Admin/Comments/Edit.alder
-edited app/Admin/Comments/Index.alder
-edited app/Admin/Comments/New.alder
-edited app/Admin/Comments/Show.alder
-…
---- a/app/Admin/Comments/Index.alder
-+++ b/app/Admin/Comments/Index.alder
-@@ -12,6 +12,7 @@
- -- @admin begin params
- page "/admin/comment" {
-   q: Text = "",
-+  approved: Text = "",
-   sort: Text = "created",
-   dir: Text = "desc",
-   page: Int = 1,
-@@ -54,26 +55,51 @@
- 
- -- @admin begin filters
- -- Filters are the option each filter has chosen in the address ("" for any): a select for each
---- Bool and union column: this table has none.
--type Filters = { }
-+-- Bool and union column.
-+type Filters = { approved: Text }
- 
- -- chosen is the filters' options in params.
- chosen : Params -> Filters
--chosen params = {}
-+chosen params = { approved: params.approved }
- 
- -- filters are the list's filters, each with the option f has chosen.
- filters : Filters -> List Filter
--filters f = []
-+filters f = [
-+  {
-+    name: "approved",
-+    label: "Approved",
-+    value: f.approved,
-+    options: [
-+      {
-+        value: "yes",
-+        label: "yes",
-+        rows: Comment.approved.eq True,
-+      },
-+      {
-+        value: "no",
-+        label: "no",
-+        rows: Comment.approved.eq False,
-+      },
-+    ],
-+  },
-+]
- 
- -- filtered is the rows that the option each filter has chosen selects (every row for "", or for
- -- a value that is no option's).
- filtered : List Filter -> Condition Comment
--filtered fs = Db.and []
-+filtered fs =
-+  Db.and (
-+    List.map (\f -> match List.find (\o -> o.value == f.value) f.options {
-+      Just o -> o.rows,
-+      Nothing -> Db.and [],
-+    }) fs
-+  )
- 
- -- listAt is this list with the model's search and filters, sorted by sort and dir, at page n.
- listAt : Model -> Text -> Text -> Int -> Page
- listAt model sort dir n = Admin.Comments.Index {
-   q: model.q,
-+  approved: model.filters.approved,
-   sort: sort,
-   dir: dir,
-   page: n,
-@@ -108,6 +134,11 @@
-     asc: Comment.created.asc,
-     desc: Comment.created.desc,
-   },
-+  {
-+    name: "approved",
-+    asc: Comment.approved.asc,
-+    desc: Comment.approved.desc,
-+  },
- ]
+edited app/Admin/Users/Bulk.alder
+edited app/Admin/Users/Edit.alder
+edited app/Admin/Users/Index.alder
+edited app/Admin/Users/New.alder
+edited app/Admin/Users/Show.alder
+--- a/app/Admin/Users/Bulk.alder
++++ b/app/Admin/Users/Bulk.alder
+@@ -9,8 +9,9 @@
  -- @admin end
  
-@@ -224,6 +255,7 @@
-             <th><a href={listAt model "author" (toggle model "author") 1}>Author</a></th>
-             <th><a href={listAt model "body" (toggle model "body") 1}>Body</a></th>
-             <th><a href={listAt model "created" (toggle model "created") 1}>Created</a></th>
-+            <th><a href={listAt model "approved" (toggle model "approved") 1}>Approved</a></th>
-             -- @admin end
-           </tr>
-         </thead>
-@@ -245,6 +277,12 @@
-               <td><a href={Admin.Comments.Show { id: row.id }}>{row.author}</a></td>
-               <td>{row.body}</td>
-               <td>{Time.format "Jan 2, 2006" row.created}</td>
-+              <td>
-+                {if row.approved then
-+                  <al-badge>Yes</al-badge>
-+                else
-+                  <al-badge variant="secondary">No</al-badge>}
-+              </td>
-               -- @admin end
-             </tr>}
-         </tbody>
+ -- @admin begin routes
+-route Bulk       = GET  "/admin/user/bulk"              { ids: List User.UserId }              requires user, role Admin
+-route BulkDelete = POST "/admin/user/bulk/_/BulkDelete" { ids: List User.UserId } form Confirm requires user, role Admin
++route Bulk          = GET  "/admin/user/bulk"                 { ids: List User.UserId }                requires user, role Admin
++route BulkDelete    = POST "/admin/user/bulk/_/BulkDelete"    { ids: List User.UserId } form Confirm   requires user, role Admin
++route BulkSetActive = POST "/admin/user/bulk/_/BulkSetActive" { ids: List User.UserId } form SetActive requires user, role Admin
+ -- @admin end
+ 
+ -- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep
+@@ -92,6 +93,29 @@
+     )
+   }
+ }
++
++form SetActive = { value: Bool }
++
++BulkSetActive.update : BulkSetActive.Params -> Session -> Task Response
++BulkSetActive.update params session = {
++  let _ <- Layout.adminOnly session.user
++  let model <- selected params.ids
++  if tooMany model then
++    Task.succeed (
++      Response.invalid ("Choose at most " ++ Text.fromInt maxRows ++ " rows at a time.")
++    )
++  else {
++    let _ <-
++      Task.all (
++        List.map (\row -> Db.update User row.id (\r -> { r |
++          active: params.form.value
++        })) model.rows
++      )
++    Task.succeed (
++      Response.refresh |> Response.success ("Updated " ++ Text.fromInt (List.length model.rows))
++    )
++  }
++}
+ -- @admin end
+ 
+ Bulk.view : Model -> Session -> Html
 …
---- a/app/Admin/Comments/Show.alder
-+++ b/app/Admin/Comments/Show.alder
-@@ -106,6 +106,13 @@
-         <dd>{model.row.body}</dd>
-         <dt>Created</dt>
-         <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
-+        <dt>Approved</dt>
-+        <dd>
-+          {if model.row.approved then
-+            <al-badge>Yes</al-badge>
-+          else
-+            <al-badge variant="secondary">No</al-badge>}
-+        </dd>
-         -- @admin end
-       </dl>
-       <div slot="actions">
 ```
 
-Only lines inside regions changed: the page's parameters and the
-filters (the list of comments can now be filtered by `approved`), the
-sort, header and column of the list, the field of the row's page, the
-form's field, input and insert, and the tests, which now set and compare
-`approved` too, and filter by it. (The text above leaves out the diffs
-of the two forms and of the list's tests, where `…` stands; `Edit.alder`
-changes as `New.alder` does.) A second run has nothing to do:
+Only lines inside regions changed: the route lines (`routes` holds a module's
+route declarations, so the bulk module gains a write route, `BulkSetActive`,
+beside `BulkDelete`), the filters (the list of users can now be filtered by
+`active`), the sort, header and column of the list, the field of the row's
+page, the form's field, input and insert, and the tests, which now set and
+compare `active` too. (The text above leaves out the diffs of the other files,
+where `…` stands.) A second run has nothing to do:
 
-```text command=blog
+```text command=todos
 $ alder regen admin
 nothing to do: the admin is up to date
 ```
@@ -4489,7 +4636,7 @@ With `--json`, `regen` adds `"skipped"` (the pages not written again)
 and `"upToDate"` (whether there was nothing to do).
 
 Why regions only for the admin? Because only the admin is regenerated.
-A page from `alder new page` is a starting point: from its first edit,
+A route from `alder new route` is a starting point: from its first edit,
 it says what you want, and no command could know which of its lines
 still follow the table. The admin is the opposite case: a projection of
 the tables, which you mostly leave as it is, and touch here and there.
@@ -4500,19 +4647,19 @@ visible in the file itself, and `regen` respects it.
 
 Look again at what the commands leave to their user. Every declaration
 is a command's: a module, a table and its migration, a type, a page and
-its path and rules, a form, a message, a value's name and signature, a
+its path and rules, a form, a write route, a value's name and signature, a
 test's name. So is every structure that ties them together: the
-`update`'s arms, the forms in the view, the session, the login, the
-imports. What is left open is bodies. A hole is the smallest:
-`?hide : Task Nav`, `?expected : Bool`, a type the checker computed.
+write routes and their `update`s, the forms in the view, the session, the
+login, the imports. What is left open is bodies. A hole is the smallest:
+`?answer : Task Response`, `?expected : Bool`, a type the checker computed.
 `--blank` and `fill --decl` hand over larger ones, a whole `load`, a
 whole view, a whole test. Each is still **one expression** (or one
 type), read from standard input, checked with the whole app, and written
 only if it checks.
 
-The drill above shows the proportions. Of the 733 lines of the teams
-app's `app/` (643 without the guestbook it started as), 246 came from
-standard input, 128 of them in tests; the largest body is 18 lines (a
+The drill above shows the proportions. Of the 947 lines of the teams
+app's `app/`, 274 came from
+standard input, 144 of them in tests; the largest body is 18 lines (a
 test's block), and no body holds a declaration: none can, since a body
 is an expression. The other lines, every declaration and every
 connection between them, the commands wrote.
@@ -4522,7 +4669,7 @@ expression that does one stated thing, and bad at keeping a large
 structure consistent over many edits. So the structure comes from the
 generators, deterministic and tested, and the model writes bodies, each
 with a type that says what is wanted. The consequence: a **structural**
-error (a page without its route, an arm without its message, a form the
+error (a route without its `update`, a write route the view never sends, a form the
 view does not post, a table without its migration, an import missing)
 cannot be made, because no command writes one and the agent writes
 nothing else; a **logic** error (a wrong condition, a wrong row) is
