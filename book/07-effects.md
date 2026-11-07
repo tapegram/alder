@@ -5,20 +5,20 @@ and the runtime carries them out. There are two kinds.
 
 | Type | May | Used by |
 |---|---|---|
-| `Query a` | read | `load` |
-| `Task a` | read and write | `update` |
+| `Query a` | read | `R.load`, of a GET route |
+| `Task a` | read and write | `R.update`, of a write route |
 
 A `Query` cannot write. A `Task` can do anything a `Query` can, plus writes.
-`load` returns a `Query`, so a page can never change anything by being
-viewed.
+`load` returns a `Query`, so a GET route can never change anything by being
+viewed. `update` returns a `Task Response`: the writes, and what to send back.
 
 ## Building effects
 
 Effects are built in effect blocks with `let x <- e`:
 
 ```alder fragment
-load : Params -> Session -> Query Model
-load params session = {
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
   let post <- Db.get Post params.id
   let comments <- Db.from Comment |> Db.where (Comment.post.eq params.id) |> Db.all
   Query.succeed { post: post, comments: comments }
@@ -32,18 +32,15 @@ plain value.
 The same shape works for `Task`:
 
 ```alder fragment
-update msg model session = match msg {
-  Submit p -> {
-    let id <- Db.insertMine Todo { title: p.form.title, due: p.form.due }
-    Task.succeed (Redirect (Todos.Show { id: id }))
-  },
-  Toggle p -> {
-    let todo <- Db.getMine Todo p.id  -- the user's todo, or a 404 (chapter 6, "Rules")
-    let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })
-    Task.succeed Rerender
-  },
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = {
+  let todo <- Db.getMine Todo p.id  -- the user's todo, or a 404 (chapter 6, "Rules")
+  let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })
+  Task.succeed Response.refresh
 }
 ```
+
+The block's last expression is the `Response` the route sends back.
 
 A `Query` can be run inside a `Task` block with `let x <-`. That is the
 only place a `Query` stands for a `Task`: as the block's last expression,
@@ -78,7 +75,7 @@ Query.succeed : a -> Query a
 Query.map     : (a -> b) -> Query a -> Query b
 Query.all     : List (Query a) -> Query (List a)
 Query.notFound : Query a            -- stop: respond 404 with App.notFound
-Query.redirect : Page -> Query a    -- stop: respond 303 to a page
+Query.redirect : Route -> Query a   -- stop: respond 303 to a route
 
 Task.succeed  : a -> Task a
 Task.fail     : Text -> Task a
@@ -96,33 +93,34 @@ fail on its own (database down, email rejected). A failed task stops
 `update`, undoes everything it did (its database writes and its
 `Session.put` changes), and the runtime renders `App.error`.
 `Task.notFound` fails the same way but answers 404 with `App.notFound`:
-use it when a message names something that is not there, or not the
+use it when a request names something that is not there, or not the
 user's. The scoped operations of chapter 6, "Rules" (`Db.getMine`,
 `Db.updateMine`, `Db.deleteMine`) fail this way by themselves when the
 row is missing or someone else's. A task that
-ends in `Reject` has not failed: its writes and session changes are kept
-(chapter 6). There is no `try`/`catch`:
+ends in `Response.invalid` has not failed: it produced a result, so its
+writes and session changes are **kept** (chapter 6, "`Response`"). To refuse
+without changing anything, decide before writing. There is no `try`/`catch`:
 if a failure should be handled, the capability returns a `Result` instead
 of failing.
 
 A `Query` cannot fail. A missing row is `Nothing`; a database outage is
 an `App.error` page. It can stop: `Query.notFound` answers 404, and
-`Query.redirect p` answers a 303 to the page value `p`, written as an
-`href={p}` or a `Redirect p` is (`Url.external` included). A page's
-`load` uses it to send the browser on without showing anything:
+`Query.redirect r` answers a 303 to the route value `r`, written as an
+`href={r}` or a `Response.redirect r` is (`Url.external` included). A GET
+route's `load` uses it to send the browser on without showing anything:
 
 ```alder fragment
-load params session =
+Start.load params session =
   if params.go == "builder" then Query.redirect (Builder { seed: params.seed })
   else Query.succeed { seed: params.seed }
 ```
 
 Nothing after it runs, and `view` is not called. A `Query` bound in a
-`Task` block stops the `Task` the same way: `let _ <- Query.redirect p`
+`Task` block stops the `Task` the same way: `let _ <- Query.redirect r`
 in `update` is a failure, its writes and `Session.put` changes undone,
 and the request is answered with the 303 (in `Test.run`, chapter 10, it is
 `Err "redirected to /builder/7"`). To write and then go, end the
-`Task` with `Redirect p` instead (chapter 6).
+`Task` with `Response.redirect r` instead (chapter 6).
 
 ## Capabilities
 
@@ -178,7 +176,7 @@ or a token. Log ids and outcomes, not the values people typed.
 
 The same goes for tokens in URLs. A reset or magic link carries a token
 the app made with `Random.id`; the log masks it only when its
-parameter's name says it is a secret, so write `page "/reset/{token}"`
+parameter's name says it is a secret, so write `route Reset = GET "/reset/{token}" { … }`
 or `?token=…`, not `/reset/{t}` or `?t=…` (chapter 16, "What is never
 logged").
 
@@ -211,8 +209,8 @@ capability Markdown {
 ```
 
 `Posts.Show`'s `load` writes `let body <- Markdown.render post.body` and
-keeps the result in its Model. `Html Never` is markup that sends no
-message, so the page's `view` can embed it in its own `Html Msg`
+keeps the result in its Model. `Html Never` is markup that links and
+sends nothing, so the route's `view` can embed it in its own `Html`
 (chapter 5). The capability has the same name as its module. From
 another module, `Markdown.render` therefore names the capability's
 entry, because the module `Markdown` has no value called `render`. A
@@ -250,7 +248,7 @@ Go's standard library.
 A capability entry can return `Bytes`, the type of a body that is not
 text: a zip, an image, a spreadsheet file. Bytes have no operations in
 Alder beyond `Bytes.length` and `Bytes.toText` (chapter 9); the Go adapter
-builds them, and the page only passes them on. A capability that builds
+builds them, and the route only passes them on. A capability that builds
 an archive of an election's detail files looks like this, with a fake that
 answers a small value for tests:
 
@@ -281,7 +279,7 @@ func (zip) Detail(ctx context.Context, args Args__Zip__Zip__Detail) ([]byte, err
 }
 ```
 
-A page then wraps the bytes in a file (chapter 6, "File pages"). `load`
+A GET route then wraps the bytes in a file (chapter 6, "File pages"). `load`
 asks the capability, and `view` hands the result to `File.bytes`:
 
 ```alder
@@ -289,18 +287,18 @@ module Todos.Archive
 
 import Zip
 
-page "/archive/{id}/detail.zip" { id: Text }
+route Archive = GET "/archive/{id}/detail.zip" { id: Text }
 
 type Model = { zip: Bytes }
 
-load : Params -> Session -> Query Model
-load params session = {
+Archive.load : Archive.Params -> Session -> Query Model
+Archive.load params session = {
   let zip <- Zip.detail { election: params.id }
   Query.succeed { zip: zip }
 }
 
-view : Model -> Session -> File
-view model session =
+Archive.view : Model -> Session -> File
+Archive.view model session =
   File.bytes { contentType: "application/zip", body: model.zip }
     |> File.withHeader { name: "Content-Disposition", value: "attachment; filename=detail.zip" }
 ```
@@ -347,9 +345,9 @@ the block. `call` is one step that touches the outside world: a `Db.*`
 operation, a capability, `Time.now`, `Log.info`. It carries a name for the
 log, whether it writes, and the Go function that does the work. `fail` is
 `Task.fail` (and a `@unique` violation, chapter 8); `notFound` is
-`Query.notFound` or `Task.notFound`; `redirect` is `Query.redirect p`,
-carrying `p`'s URL (`rt.PageURL`), which `Run` returns as
-`*eff.ErrRedirect` for the route to answer with a 303. Building a tree
+`Query.notFound` or `Task.notFound`; `redirect` is `Query.redirect r`,
+carrying `r`'s URL (`rt.PageURL`), which `Run` returns as
+`*eff.ErrRedirect` for the router to answer with a 303. Building a tree
 does nothing. Only `eff.Run` does.
 
 **Run is eager.** `eff.Run` (`rt/eff/run.go`) walks the tree node by node:
@@ -357,22 +355,22 @@ at a `call` it runs the step right away, at a `bind` it remembers the
 **continuation** (the function that builds the rest of the block once it
 is given the bound value), and when a value comes out it passes the value
 on. The
-`Toggle` arm of the to-do page,
+`Toggle.update` of the to-do app, written in two steps,
 
 ```alder fragment
-Toggle p -> {
+Toggle.update p session = {
   let todo <- Db.getMine Todo p.id
   let _ <- Db.update Todo todo.id (\t -> { t | done: not t.done })
-  Task.succeed Rerender
-},
+  Task.succeed Response.refresh
+}
 ```
 
 is a `bind` whose first part is the `call` named `Db.getMine Todo`
 (which ends in the todo, or in `notFound` when it is missing or someone
 else's) and whose continuation is a second `bind`: the `call` named
-`Db.update Todo`, then `pure Rerender`. `Run` performs the read, then the
-update, then returns `Rerender`; when the read ends in `notFound`, it
-stops there and nothing is written. (The to-do app writes this arm as
+`Db.update Todo`, then `pure Response.refresh`. `Run` performs the read, then
+the update, then returns the `Response`; when the read ends in `notFound`, it
+stops there and nothing is written. (The to-do app writes this update as
 one step, `Db.updateMine`, which reads and writes with the owner in the
 statement: chapter 13 shows it. The two-step form is here to show a
 continuation.) Nothing is batched,
@@ -398,8 +396,9 @@ nothing is not a failure: it produces `Nothing`. Either every write of an
 **The session is part of the same promise.** `Run` remembers the session
 a `Task` starts with. If the task fails, `Run` puts that session back, so
 a `Session.put` before a `Task.fail` is undone like a write. A task that
-succeeds keeps its session changes, and so does one producing `Reject`
-(chapter 6): it is a successful result.
+succeeds keeps its session changes, and so does one producing
+`Response.invalid` (chapter 6): it is a successful result, and the
+transaction commits.
 
 **A `Query` has no transaction and cannot write.** `Run` runs a `Query`
 directly against the database. A step marked as a write (`Db.insert`,
@@ -407,18 +406,18 @@ directly against the database. A step marked as a write (`Db.insert`,
 `Db.updateMine` and `Db.deleteMine`, `Session.put`, a capability entry that returns a
 `Task`) is refused with an internal error if a `Query` ever reaches it.
 The checker already makes that impossible (E0401); the runtime checks
-again so that a compiler bug can't turn a page view into a write.
+again so that a compiler bug can't turn a GET route into a write.
 
 **Every step is traced.** Before it runs a `call`, `Run` appends the
 step's name to `Env.Trace` and logs it at level `effect` (written as a
-`debug:` line, so only under `ALDER_LOG=debug`). The `Toggle`
+`debug:` line, so only under `ALDER_LOG=debug`). The `Toggle.update`
 above leaves the trace `["Db.getMine Todo", "Db.update Todo"]`: the
 scoped read, then the update. A scoped operation is traced as written
 (`Db.updateMine Todo`), and `Db.mine Todo` adds its own name before the
 step that runs it: `Db.mine Todo |> Db.all` traces `["Db.mine Todo",
-"Db.all Todo"]`. The `Add` arm of
-`testdata/golden/gen_effects/app/Index.alder`, which inserts a row and
-then logs at three levels, leaves `["Db.insert Todo" "Log.info"
+"Db.all Todo"]`. An `update` that
+inserts a row with `Db.insert` and then logs at three levels
+(`Log.info`, `Log.debug`, `Log.error`) leaves `["Db.insert Todo" "Log.info"
 "Log.debug" "Log.error"]`. The trace is the dev
 log of what a request did, and what a test can compare (chapter 10).
 
@@ -544,7 +543,7 @@ fails the task too.
 ### Waiting: `Query.delay` and `Task.sleep`
 
 `Query.delay : Int -> Query Unit` and `Task.sleep : Int -> Task Unit`
-wait that many milliseconds and then go on. They exist for a page that
+wait that many milliseconds and then go on. They exist for a route that
 should answer slowly on purpose (a rate limit, a demonstration, a copy of
 a service that is slow too).
 
@@ -565,20 +564,20 @@ a service that is slow too).
 ```alder
 module Todos.Pause
 
-page "/pause" { }
+route Pause = GET "/pause" { }
 
 type Model = { waited: Int }
 
-load : Params -> Session -> Query Model
-load params session = {
+Pause.load : Pause.Params -> Session -> Query Model
+Pause.load params session = {
   let before <- Time.now
   let _ <- Query.delay 2000
   let after <- Time.now
   Query.succeed { waited: Time.diffMillis before after }
 }
 
-view : Model -> Session -> File
-view model session = File.json (Json.int model.waited)
+Pause.view : Model -> Session -> File
+Pause.view model session = File.json (Json.int model.waited)
 ```
 
 ## Implementing a capability
@@ -793,7 +792,7 @@ holds, so a query made through `db.StoreFrom(ctx)` outside that
 transaction waits for it forever.
 
 When a method returns an error, the step fails with it, named after the
-call: `Password.verify: <the error>`. A page answers it like any other
+call: `Password.verify: <the error>`. A route answers it like any other
 failure, with a 500; inside a test, `Test.run` gives it back as
 `Err "Password.verify: <the error>"` (chapter 10). A capability's error is
 a failure the test can observe.

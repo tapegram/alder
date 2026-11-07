@@ -209,6 +209,30 @@ TRIMS = {
            ("`File.html` is the way to answer a web page, byte for byte.", "`File.status`, `File.contentType` and `File.body` read",
             "`File.html` answers a web page byte for byte. Markup in a `view` has one root element and\n"
             "no doctype, so to start with `<!doctype html>` use `Html.fragment [Html.unsafe \"<!doctype html>\\n\", <html>…</html>]`.\n\n")],
+    "07": [("The four `Log` functions write a line to the app's log at their level.", "The same goes for tokens in URLs.",
+            "The four `Log` functions write a line at their level; `ALDER_LOG` (default `info`) chooses what is\n"
+            "kept, and `Log.debug` is dropped by default. A log line outlives the request and is read by\n"
+            "others: log ids and outcomes, not the values people typed; the runtime masks secrets in URLs,\n"
+            "not in a `Log` text.\n\n"),
+           ("`Http.HttpError` is the stdlib's type for a failed request:", "`Random.int` is a fresh number",
+            "A type of a standard module other than the Prelude is written qualified (`Http.HttpError`; a bare\n"
+            "`HttpError` is E0202).\n\n"),
+           ("`Random.int` is a fresh number on every run.", "Nothing else in the language touches",
+            "`Random.int` is a fresh number on every run; for the same numbers every run use the pure,\n"
+            "seeded `Random.step` (chapter 9, \"Random\"), which is no effect.\n\n"),
+           ("Chapter 10 (\"Faking a capability\") teaches fakes:", "Two commands write a capability for you",
+            ""),
+           ("Two commands write a capability for you (chapter 15):", "### A capability returning bytes",
+            ""),
+           ("Formats live behind the capability:", "## How effects run", ""),
+           ("The adapter returns a plain Go `[]byte`:", "A GET route then wraps the bytes in a file",
+            "The adapter returns a plain Go `[]byte` and an error.\n\n"),
+           ("- The wait belongs to the request.", "```alder\nmodule Todos.Pause",
+            "- A cancelled request stops waiting at once. The number is clamped to 0..60000, and the trace\n"
+            "  shows the clamped value (`Query.delay 20000ms`).\n"
+            "- A `Query` delay holds no transaction. A `Task` begins its transaction at its first database\n"
+            "  step, so a `Task.sleep` after a write holds it open: sleep first.\n"
+            "- In a test the wait is virtual: the clock moves at once and nothing sleeps.\n\n")],
     "08": [("## Silos\n\nA partition keeps", "### One store per `Task`",
             "## Silos\n\n`silo org { Project, Todo }` in `App` keeps those tables in a database per org; the\n"
             "rest are in the shared database. Each listed table is `@partition org`; a table is in one silo;\n"
@@ -224,9 +248,23 @@ TRIMS = {
             "and capabilities do not count.\n\n"),
            ("A table with an `@owner` column (above) also has five **scoped**\n", "## How tables are stored",
             "A table with an `@owner` column (above) also has five **scoped**\noperations, `Db.mine`, "
-            "`Db.getMine`, `Db.updateMine`, `Db.deleteMine` and\n`Db.insertMine`, for the pages of a signed-in "
+            "`Db.getMine`, `Db.updateMine`, `Db.deleteMine` and\n`Db.insertMine`, for the routes of a signed-in "
             "user: chapter 6, \"Rules\",\nexplains them, and chapter 9 lists their types.\n\n")],
-    "09": [("`Float.sqrt`, `Float.exp`, `Float.log` and `Float.pow` are", "\n## Bool",
+    "09": [("`Url.external` keeps a URL only when it is", "`Url.absolute r` is the route's full URL",
+            "`Url.external` keeps only an absolute `http:`/`https:` URL, a path of this site (not `//host` or\n"
+            "`/\\host`) or a fragment (`#top`); anything else (`javascript:`, `data:`, `mailto:`, relative\n"
+            "paths, control characters) becomes `#`, and a redirect to one is a 500. A link or\n"
+            "`Response.redirect` built from user input can never run script.\n\n"
+            "A `Route` compares by its address: a defaulted parameter is left out of the URL.\n\n"),
+           ("A write route's `update` is `Params -> Session -> Task Response`", "```alder\nResponse.redirect",
+            "`Response` and `Route` are Prelude types (chapter 6, \"`Response`\"). An `update` builds its\n"
+            "`Response` with:\n\n"),
+           ("A toast is a one-line notice shown once,", "## Test\n",
+            "`redirect` and `render` take a GET route (E0045 otherwise). `invalid` is a successful result: its\n"
+            "`Task` commits. `Response.status`, `header`, `json`, `file`, `remove`, `patch` and `stream` do not\n"
+            "exist yet. `Route` and `Response` compare with `==`. `Notice.with`, `success`, `warning` and\n"
+            "`error` are the deprecated old names of the toast builders, on a `Nav`.\n\n"),
+           ("`Float.sqrt`, `Float.exp`, `Float.log` and `Float.pow` are", "\n## Bool",
             "IEEE rules: `Float.sqrt (-1.0)` is NaN, `Float.log 0.0` -infinity; no failures.\n"),
            ("\n`Time.toMillis` counts milliseconds", "\n## File, Bytes", "\n"),
            ("A file page's `view` returns a `File`", "```alder\nFile.text ",
@@ -236,7 +274,7 @@ TRIMS = {
            ("- `Test.member : u -> k -> Task Unit` (M15)", "\n### Browser steps and queries",
             "- `Test.member ann acme : Task Unit` inserts the `via` table's row making the user a member\n"
             "  of the key (other columns `Nothing` or their default; E0003 if one is required).\n"
-            "- `Test.fetch : Page -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }`\n"
+            "- `Test.fetch : Route -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }`\n"
             "  requests a file page: the raw answer, redirects not followed, headers sorted by name.\n"),
            ("\nRun without the key (a test whose session has no `org`)", "`Query.notFound` and `Task.notFound`",
             "\nWithout the key they fail (\"Db.insertScoped Project: the session has no org\"). On a siloed\n"

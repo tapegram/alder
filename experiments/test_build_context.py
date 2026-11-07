@@ -368,6 +368,8 @@ class BuildContextTests(unittest.TestCase):
         # #160 (routes), book chapter 6 (PR 8): raised it to 66k: `route`, qualified declarations, names, the state
         # rule, `Response` and the render/refresh rule, and the patterns table (chapter 6 grew by ~3k tokens in the
         # reference; its "Delivery" section is a human section); the other chapters follow in PR 8's later tasks.
+        # Chapters 7-9 (PR 8): the Response section and the route wording stayed within 66k by trimming the
+        # logs, the Http/Random asides, the bytes adapter and the waiting bullets (TRIMS in build_context.py).
         bc.HUMAN_SECTIONS, bc.KEEP_SUBSECTIONS = self.saved, self.saved_keep
         bc.DROP_SUBSECTIONS, bc.TRIMS = self.saved_drop, self.saved_trims
         code, out, _ = self.run_main("--reference", "--chapters", ",".join(bc.DEFAULT_CHAPTERS), "--book", str(bc.BOOK),
