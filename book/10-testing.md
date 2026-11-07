@@ -47,8 +47,8 @@ Two rules are particular to tests:
 - A test has no name you can call. It is not a value; only `alder test`
   runs it.
 
-Because `load`, `view` and `update` are functions that return
-descriptions, much of a page can be tested this way. `view` returns HTML,
+Because a route's `load`, `view` and `update` are functions that return
+descriptions, much of a route can be tested this way. `view` returns HTML,
 and two HTML values are equal when they render to the same markup:
 
 ```alder eval=True
@@ -68,16 +68,16 @@ same text.
 ## 2. Running the tests
 
 `alder test` checks the app, compiles it with its tests, runs every test
-and prints one line per test. In the repository, the to-do app has 76:
-its own 22, and the 54 of the admin that `alder new admin` generated for
+and prints one line per test. In the repository, the to-do app has 126:
+its own 23, and the 103 of the admin that `alder new admin` generated for
 it (chapter 15). `-run` (section 7) picks out the app's own, by module:
 
 ```text
-$ alder test examples/todos -run '^(App|Auth|Todo)'
-ok   Todo "countOpen ignores done todos"
-ok   Todo "Active keeps only open todos"
-ok   Todo "each filter has its label"
-ok   Todo "a user with todos cannot be deleted"
+$ alder test examples/todos -run '^(App|Auth|Table\.Todo|Todos)'
+ok   Table.Todo "countOpen ignores done todos"
+ok   Table.Todo "Active keeps only open todos"
+ok   Table.Todo "each filter has its label"
+ok   Table.Todo "a user with todos cannot be deleted"
 ok   App "Logout clears the user and goes to log in"
 ok   App "Logout makes the role Member"
 ok   Auth.Login "an unknown email is rejected"
@@ -96,7 +96,8 @@ ok   Todos.Index "Db.mine is what Me sees"
 ok   Todos.Show "a visitor is sent to log in from a todo"
 ok   Todos.Show "saving changes the title and the due date"
 ok   Todos.Show "deleting from the todo's page"
-22 passed, 0 failed
+ok   Todos.Show "saving or deleting another user's todo is not found"
+23 passed, 0 failed
 ```
 
 Each line names the module and the test, and is printed as soon as that
@@ -108,36 +109,36 @@ so a script or CI job can use it directly. Two tests of one module may
 not have the same name (E0009).
 
 Here is the same app with two wrong tests added: one at the end of
-`Todo`,
+`Table.Todo`,
 
 ```alder
 test "an empty list has one open todo" = Todo.countOpen [] == 1
 ```
 
-and one at the end of `Todos.Index` that expects `Toggle` to read the
-todo and then write it, in two steps (sections 3 to 6 explain effect
-tests and traces):
+and one at the end of `Todos.Index` that expects the `Toggle` route's
+`update` to read the todo and then write it, in two steps (sections 3 to 6
+explain effect tests and traces):
 
 ```alder
 test "Toggle reads, then writes" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
-  let r <- Test.run (Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me, role: Member })
+  let r <- Test.run (Index.Toggle.update { id: id } { user: me, role: Member })
   Task.succeed (r.trace == ["Db.get Todo", "Db.update Todo"])
 }
 ```
 
-In their modules they are written without the `Todo.` and `Todos.Index.`
-prefixes. Both compile; both are wrong:
+In their modules they are written without the `Todo.` and `Index.`
+prefixes (`Toggle.update`). Both compile; both are wrong:
 
 ```text
-$ alder test examples/todos -run '^(App|Auth|Todo)'
-ok   Todo "countOpen ignores done todos"
-ok   Todo "Active keeps only open todos"
-ok   Todo "each filter has its label"
-ok   Todo "a user with todos cannot be deleted"
-FAIL Todo "an empty list has one open todo"
+$ alder test examples/todos -run '^(App|Auth|Table\.Todo|Todos)'
+ok   Table.Todo "countOpen ignores done todos"
+ok   Table.Todo "Active keeps only open todos"
+ok   Table.Todo "each filter has its label"
+ok   Table.Todo "a user with todos cannot be deleted"
+FAIL Table.Todo "an empty list has one open todo"
   left:  0
   right: 1
 ok   App "Logout clears the user and goes to log in"
@@ -162,7 +163,8 @@ FAIL Todos.Index "Toggle reads, then writes"
 ok   Todos.Show "a visitor is sent to log in from a todo"
 ok   Todos.Show "saving changes the title and the due date"
 ok   Todos.Show "deleting from the todo's page"
-22 passed, 2 failed
+ok   Todos.Show "saving or deleting another user's todo is not found"
+23 passed, 2 failed
 ```
 
 A failing test is `FAIL`, followed by indented lines that say why:
@@ -242,16 +244,17 @@ any `Task` (chapter 7), and it ends with `Task.succeed` of the verdict. A
 block that ends in a plain `Bool` is an error; the compiler's hint says
 to end it with `Task.succeed (…)`.
 
-The to-do page's tests are the last thing in `app/Todos/Index.alder`
+The to-do list's tests are the last thing in `app/Todos/Index.alder`
 (chapter 2 shows them in place). Written in another module, as the
-blocks of this chapter are, the page's names are qualified:
+blocks of this chapter are, the route module's declarations are named
+through its import (`Index.Toggle.update`; chapter 6, "Names"):
 
 ```alder
 test "Toggle flips done" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
-  let r <- Test.run (Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: me, role: Member })
+  let r <- Test.run (Index.Toggle.update { id: id } { user: me, role: Member })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed ({ trace: r.trace, done: done } == { trace: ["Db.updateMine Todo"], done: Just True })
@@ -272,17 +275,18 @@ Line by line:
    `Test.login` sets that session (and the browser's cookie, section 9).
    Without this line the step would fail with `Db.updateMine Todo: no
    signed-in user`.
-4. Run `update` under `Test.run` (section 4) and call the outcome `r`.
-   `update` takes the message (`Toggle` for that todo), the page's model
-   (`load` is not called; `update` only needs a value of the type), and
-   the session. `Todos.Index` `requires user`, so its `Session` is a type
-   of its own whose `user` is a `UserId`, not a `Maybe` (chapter 6). The
-   record literal `{ user: me, role: Member }` names every field, the
-   role too (a literal gets no defaults: chapter 6, "Rules"), and is that
-   type because it is written where `update` expects one. Bound to a name first by a `let`
-   without an annotation, it would be a plain record, which `update`
+4. Run the `Toggle` route's `update` under `Test.run` (section 4) and
+   call the outcome `r`. `Toggle.update` takes the route's parameters
+   (`{ id: id }`, a `Toggle.Params`, the id the URL would carry) and the
+   session; no `load` runs before it, and no form is decoded. The `Toggle`
+   route `requires user`, so its `Session` is a type of its own whose
+   `user` is a `UserId`, not a `Maybe` (chapter 6). The record literal
+   `{ user: me, role: Member }` names every field, the role too (a
+   literal gets no defaults: chapter 6, "Rules"), and is that type because
+   it is written where `update` expects one. Bound to a name first by a
+   `let` without an annotation, it would be a plain record, which `update`
    does not accept. This record is `update`'s `session` argument, which
-   the page's own code may read; the scoped operations do not read it
+   the route's own code may read; the scoped operations do not read it
    (step 3, and "Tests that use the rules", below).
 5. Read the todo again, and take its `done` (`after` is a `Maybe Todo`:
    `Nothing` if the row were gone).
@@ -293,8 +297,8 @@ Line by line:
 
 The second test is the ownership rule of chapter 6, "Rules": a user who
 posts `Toggle` with someone else's todo id gets a 404 and changes
-nothing. The example tests it through the browser (section 9, "Who may
-toggle a todo"); here it is through `update` itself, the stranger signed
+nothing. The example tests it through the browser (section 9, "A
+stranger's todo"); here it is through `update` itself, the stranger signed
 in with `Test.login`:
 
 ```alder
@@ -303,7 +307,7 @@ test "Toggle by a stranger is not found" = {
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let stranger = User.UserId "someone-else"
   let _ <- Test.login { user: Just stranger }
-  let r <- Test.run (Index.update (Toggle { id: id }) { filter: All, todos: [] } { user: stranger, role: Member })
+  let r <- Test.run (Index.Toggle.update { id: id } { user: stranger, role: Member })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed ({ value: r.value, trace: r.trace, done: done } == { value: Err "not found", trace: ["Db.updateMine Todo"], done: Just False })
@@ -319,7 +323,7 @@ no todo with that id whose owner is `stranger`, and stops with
 ```text
 $ alder test examples/todos -run 'by a stranger'
 FAIL Todos.Index "Toggle by a stranger is not found"
-  left:  { value: Ok Rerender, trace: ["Db.update Todo"], done: Just True }
+  left:  { value: Ok Response.refresh, trace: ["Db.update Todo"], done: Just True }
   right: { value: Err "not found", trace: ["Db.updateMine Todo"], done: Just False }
   trace: ["Db.insert User", "Db.insert Todo", "Test.login", "Test.run", "Db.update Todo", "Db.get Todo"]
 0 passed, 1 failed
@@ -339,12 +343,12 @@ to a function. What sets that session:
 - **`Session.put`**, in the test or inside an `update` it runs, changes
   it for every later step: a scoped operation after it acts for the
   new user.
-- **A login through the login page's form** (`Test.submit` of its
-  `Credentials`) signs the user into the **browser** only: the page's
+- **A login through the login route's form** (`Test.submit` of its
+  `Credentials`) signs the user into the **browser** only: the route's
   `Session.put` ran in the request, and the router stored the result in
   the cookie. The browser's next requests act for that user; the test's
-  own steps (a `Test.run (update …)`, a `Db.mine` in the test body) do
-  not.
+  own steps (a `Test.run (Toggle.update …)`, a `Db.mine` in the test body)
+  do not.
 
 The route checks `requires` and the role (chapter 6); a test of them
 goes through the browser (`Test.open`, `Test.click`, section 9); a
@@ -352,23 +356,23 @@ direct `update` call is not checked.
 
 So a test that calls `update` or `load` itself, with a session record,
 signs in with `Test.login` first; the record is still `update`'s
-argument, and must have the page's `Session` type, but it does not choose
+argument, and must have the route's `Session` type, but it does not choose
 the user. Without a signed-in user a scoped step fails, and says why.
 Here is "Toggle flips done" without its `Test.login` line, expecting
-`Ok Rerender`:
+`Ok Response.refresh`:
 
 ```text
 $ alder test examples/todos -run 'without a login'
 FAIL Todos.Index "Toggle without a login"
   left:  { value: Err "Db.updateMine Todo: no signed-in user", trace: ["Db.updateMine Todo"] }
-  right: { value: Ok Rerender, trace: ["Db.updateMine Todo"] }
+  right: { value: Ok Response.refresh, trace: ["Db.updateMine Todo"] }
   trace: ["Db.insert User", "Db.insert Todo", "Test.run", "Db.updateMine Todo"]
 0 passed, 1 failed
 ```
 
 It never answers as if the user had no rows.
 
-A test may also use the scoped operations itself. The to-do page's last
+A test may also use the scoped operations itself. The to-do list's last
 test counts what `Me` sees:
 
 ```alder
@@ -402,21 +406,21 @@ request's cookie would hold it, and a key `via Membership` must pass the
 same check a `Session.put` does: the user must have a membership row for
 it first. `Test.member user org` inserts that row (the user and key
 columns set, the others `Nothing` or their default; chapter 9). A test
-of the workspace's projects page (`examples/workspace/app/Projects/Index.alder`)
+of the workspace's project list (`examples/workspace/app/Projects/Index.alder`)
 with two orgs, Ann a member of Acme, Bob of Globex, and Cy of both:
 
 ```alder fragment
 test "a project is created in the org's database, and another org does not see it" = {
   …
   let _ <- Test.login { user: Just s.cy, org: Just s.acme }
-  let _ <- Test.get (Projects.Index {})
-  let r <- Test.submit NewProject { name: Text.NonEmpty "Zephyr" }
+  let _ <- Test.get (Projects.Index.Index {})
+  let r <- Test.submit Projects.Index.Create { name: Text.NonEmpty "Zephyr" }
   let inAcme <- Db.scoped Project |> Db.where (Project.name.eq (Text.NonEmpty "Zephyr")) |> Db.all
-  let acme <- Test.get (Projects.Index {})
+  let acme <- Test.get (Projects.Index.Index {})
   let _ <- Test.login { user: Just s.cy, org: Just s.globex }
-  let globex <- Test.get (Projects.Index {})
+  let globex <- Test.get (Projects.Index.Index {})
   let inGlobex <- Db.scoped Project |> Db.where (Project.name.eq (Text.NonEmpty "Zephyr")) |> Db.count
-  Task.succeed ({ answer: List.map (\p -> Redirected (Projects.Show { id: p.id })) inAcme, acme: Test.texts "#projects .name" acme.doc, globex: Test.texts "#projects .name" globex.doc, inGlobex: inGlobex } == { answer: [r.answer], acme: ["Rocket", "Zephyr"], globex: ["Widget"], inGlobex: 0 })
+  Task.succeed ({ answer: List.map (\p -> Redirected (Projects.Show.Show { id: p.id })) inAcme, acme: Test.texts "#projects .name" acme.doc, globex: Test.texts "#projects .name" globex.doc, inGlobex: inGlobex } == { answer: [r.answer], acme: ["Rocket", "Zephyr"], globex: ["Widget"], inGlobex: 0 })
 }
 ```
 
@@ -437,27 +441,26 @@ like the page's. Things to know:
   Nothing`, as the generated admin's tests do, whose pages take the org
   from their parameter.
 - **A switch refused.** A request crafted by hand is a direct `update`
-  call (the page offers no such button): `Test.run (update (Open { org:
-  globex }) { orgs: [] } { user: ann, org: Nothing, role: Member })`
-  gives `Err "Session.put org: no Membership for this user and org"`
+  call (the page offers no such button): `Test.run (Open.update { org:
+  globex } { user: ann, org: Nothing, role: Member })` gives `Err
+  "Session.put org: no Membership for this user and org"`
   (`Orgs.Index "a non-member's switch is refused"`). `Test.login` itself
   is refused the same way for an org the user is no member of. Through
-  the browser the same refusal is an answer, not an error: a form that
-  sends it is `FormRejected [{ field: "", message: "You are not a member
-  of that workspace." }]`, and a message without a form is the
-  not-found page (a 404 in production, not a 500).
+  the browser the same refusal is an answer, not an error: the route
+  answers the not-found page (a 404 in production, not a 500), which a
+  test sees as `PageMissing`.
 - **One store per `Test.run`.** A `Test.run` runs its `Task` as a request
   runs one, on one store: the first one it writes, or for `Test.run
-  (update msg model session)` of a page the store of `msg`'s arm, as the
-  request's route binds it. A `Test.run` whose `Task` writes the shared
+  (Create.update p session)` the store the route's `update` is bound to,
+  as the request's route binds it. A `Test.run` whose `Task` writes the shared
   database and a silo fails the test with the internal error production
   answers 500 with ("Db.insert Project writes silo org in a Task on the
   shared store (one store per Task)"). The test's own body is not one
   request: it may set up rows in the shared database and in several
   orgs' databases.
 - **The re-read.** Deleting the membership in the test body, then
-  `Test.open`ing the page, shows the re-read idiom at work: the cookie
-  still has the org, and the page answers `PageMissing` (`Projects.Index
+  `Test.open`ing the route, shows the re-read idiom at work: the cookie
+  still has the org, and the route answers `PageMissing` (`Projects.Index
   "a member removed from the org loses access at once"`).
 
 **Where an effect test runs.** Every effect test gets a world of its own:
@@ -500,7 +503,7 @@ like the page's. Things to know:
   session with every field at its default (here `{ user: Nothing }`).
   `Test.login` and `Session.put` change it; it is the session the
   scoped operations act for (above). A test of `update` also passes a
-  session record as `update`'s argument, which the page's own code
+  session record as `update`'s argument, which the route's own code
   reads.
 - **A browser.** A page held and a session cookie, both empty at the
   start, for the steps of section 9.
@@ -510,8 +513,8 @@ evaluated once.
 
 ## 4. `Test.run`: running a task that may fail
 
-`update` for another user's todo ends in `Task.notFound`. If the test
-simply wrote `let nav <- Todos.Index.update …`, that failure would be the
+`Toggle.update` for another user's todo ends in `Task.notFound`. If the
+test simply wrote `let response <- Index.Toggle.update …`, that failure would be the
 test's failure, as a failing step is any task's failure, and the test
 could never check that the 404 happened. `Test.run` catches it. Its type,
 from the standard module `Test` (`stdlib/Test.alder`), is
@@ -524,8 +527,9 @@ a record:
   failed: `msg` is the text of a `Task.fail msg`, `"not found"` for
   `Task.notFound` (and `Query.notFound`) — the failures that become a 404
   page in the running app — or, when a capability's Go code returned an
-  error, the call and the error: `"Password.verify: connection refused"`. `update`'s `value` is a `Result Text Nav`, and
-  `Nav` values compare with `==`, so `r.value == Ok Rerender` works too.
+  error, the call and the error: `"Password.verify: connection refused"`.
+  A write route's `update` gives a `Result Text Response`, and `Response`
+  values compare with `==`, so `r.value == Ok Response.refresh` works too.
 - `trace` is the list of steps `t` performed (section 6).
 
 When `t` fails, what it did is undone, and only that: its writes are
@@ -568,7 +572,7 @@ test "a failed run is undone" = {
 }
 ```
 
-Like the page's tests, this one ends with one `==` between two records.
+Like the route's tests, this one ends with one `==` between two records.
 
 ## 5. `Test.trace`: the steps so far
 
@@ -593,9 +597,9 @@ steps : Task (List Text)
 steps = Test.trace
 ```
 
-Where no test can reach (a page's `load`, `view` or `update`, `App`,
+Where no test can reach (a route's `load`, `view` or `update`, `App`,
 a fake's entry, a brand's check, a field's default) it is E0040, so no
-page can depend on them:
+route can depend on them:
 
 ```alder error=E0040 "`Test.trace` is only available in a `test` or a test helper: a field default is not a helper"
 type Probe = { steps: Task (List Text) = Test.trace }
@@ -616,9 +620,10 @@ before it runs (chapter 7, "Every step is traced"). The names:
   module writes them: `"Password.verify"`;
 - `Test.run` is a step itself, `"Test.run"`, in the test's trace;
 - a browser step is its name and what it names: `"Test.login"`,
-  `"Test.get Todos.Index"`, `"Test.submit NewTodo"`,
-  `"Test.click Todos.Index.Toggle"`, followed by the steps of the
-  requests it made (section 9).
+  `"Test.get Todos.Index.Index"` (the route's full path),
+  `"Test.submit NewTodo"` (the form's name),
+  `"Test.click Todos.Index.Toggle"` and `"Test.refresh"`, followed by the
+  steps of the requests it made (section 9).
 
 The steps inside a `Test.run` appear twice: in `r.trace`, which holds
 only them, and in the test's own trace, after `"Test.run"`, even when
@@ -982,17 +987,19 @@ shows the generated Go.)
 
 A test can also use the app the way a user does: open a page, fill in and
 post its form, click its buttons, and read what the page then shows and
-what the session then holds, through a browser that runs in memory.
+what the session then holds, through a browser that runs in memory. Each
+step names a route (chapter 6), as a link, a form or a button does.
 
 ### Why through the browser
 
 The tests so far call `load` and `update` directly. That leaves out what
-happens between them in the running app: the route that reads `/todos/x`
-into a page value, the decoding of a submitted form, `requires` sending a
-visitor to the login page, the session a login stores, the page a
-`Redirect` leads to, the buttons a page actually shows. Most of the bugs a
-server-rendered app ships live at those seams, and they show only across
-one request and the next.
+happens between them in the running app: the router that reads `/todos/x`
+into a route's parameters, the decoding of a submitted form, `requires`
+sending a visitor to the login page, the session a login stores, the page
+a `Response.redirect` leads to, the regions a `Response.refresh` patches,
+the buttons a page actually shows. Most of the bugs a server-rendered app
+ships live at those seams, and they show only across one request and the
+next.
 
 So a test can also go through those seams. No browser program runs. The test drives the
 app's real routes in memory, inside the test's own transaction, and each
@@ -1010,30 +1017,38 @@ and **a cookie**, the signed cookie that carries the session (chapter 6),
 sent back with every request. Before the first step there is no cookie,
 so the session is `App`'s default, `{ user: Nothing }`.
 
-Seven steps act through it. Each is a `Task` (a step of the test's block,
-written with `let x <-`), and each works only inside a `test`:
+Eight steps act through it. Each is a `Task` (a step of the test's block,
+written with `let x <-`), and each works only inside a `test`. `r` is a
+route value written in place, with its parameters (`Todos.Index.Index {}`,
+`Todos.Index.Toggle { id: id }`):
 
 | Step | What it does | It gives |
 |---|---|---|
 | `Test.login s` | puts the session `s` in the cookie, as a login would | `Unit` |
-| `Test.get p` | requests the page `p`; the test fails unless the page is shown | `{ model: Model, session: Session, doc: Doc }` |
-| `Test.open p` | requests the page `p`, whatever the answer | `{ answer: Answer, session: Session, doc: Doc }` |
-| `Test.fetch p` | requests the file page `p`; the raw answer, redirects not followed, headers sorted by name | `{ status: Int, contentType: Text, body: Bytes, headers: … }` |
-| `Test.submit F r` | posts the record `r` through the page's form `F` | `{ answer: Answer, session: Session, doc: Doc }` |
-| `Test.submitRaw F fields` | posts text fields through the page's form `F` | `{ answer: Answer, session: Session, doc: Doc }` |
-| `Test.click m` | presses the page's button that sends the message `m` | `{ answer: Answer, session: Session, doc: Doc }` |
+| `Test.get r` | requests the GET route `r`; the test fails unless its page is shown | `{ model: Model, session: Session, doc: Doc, url: Text, status: Int }` |
+| `Test.open r` | requests the GET route `r`, whatever the answer | `{ answer: Answer, session: Session, doc: Doc, url: Text, status: Int }` |
+| `Test.fetch r` | requests the file route `r`; the raw answer, redirects not followed, headers sorted by name | `{ status: Int, contentType: Text, body: Bytes, headers: … }` |
+| `Test.submit r f` | posts the record `f` through the form of the write route `r` | `{ answer: Answer, session: Session, doc: Doc, url: Text, status: Int }` |
+| `Test.submitRaw r fields` | posts text fields through the form of the write route `r` | the same |
+| `Test.click r` | presses the page's button for the route `r`: a write route is sent, a GET route is fetched into the page | the same |
+| `Test.refresh` | loads the page held again, and fails unless it is the page held | the same |
 
-In the results, `model` is the page's `Model`, exactly the one its
-`view` was given, and typed (`page.model.todos` is a `List Todo`);
+In the results, `model` is what the route's `load` gave, exactly the one
+its `view` was given, and typed (`page.model.todos` is a `List Todo`);
 `answer` says what the request came to (`Answer`, below); `session` is
 `App`'s session after the step, what the cookie now carries
-(`r.session.user == Just me`); and `doc` is the page the browser now
-holds, a `Doc`: a parsed HTML document, read with the queries below and
-compared with `==`.
+(`r.session.user == Just me`); `doc` is the page the browser now holds, a
+`Doc`: a parsed HTML document, read with the queries below and compared
+with `==`; `url` is the address of that page, path and query
+(`"/?filter=Active"`); and `status` is the code of the step's last
+response. After `Response.invalid` it is 422, after a missing page 404,
+and after a redirect it is the status of the page the browser then
+fetched (200). `Test.fetch` holds no page, so its result has no `session`,
+`doc` or `url`; its `status` is the raw answer's.
 
 ### A first browser test
 
-The to-do page's tests end with three through the browser (chapter 2
+The to-do list's tests end with three through the browser (chapter 2
 shows them in place). The first adds a todo by its form and reads the
 summary line the page shows:
 
@@ -1041,15 +1056,16 @@ summary line the page shows:
 test "adding a todo through the page" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
-  let added <- Test.submit Todos.Index.NewTodo { title: Text.NonEmpty "Milk", due: Nothing }
-  let page <- Test.get (Todos.Index {})
-  Task.succeed ({ answer: added.answer, todos: List.map (\t -> t.title) page.model.todos, summary: Test.text "#summary" page.doc } == { answer: Redirected (Todos.Index {}), todos: [Text.NonEmpty "Milk"], summary: Just "1 open" })
+  let _ <- Test.get (Todos.Index.Index {})
+  let added <- Test.submit (Todos.Index.Submit {}) { title: Text.NonEmpty "Milk", due: Nothing }
+  let page <- Test.get (Todos.Index.Index {})
+  Task.succeed ({ answer: added.answer, todos: List.map (\t -> t.title) page.model.todos, summary: Test.text "#summary" page.doc } == { answer: Redirected (Todos.Index.Index {}), todos: [Text.NonEmpty "Milk"], summary: Just "1 open" })
 }
 ```
 
-In `app/Todos/Index.alder` the form is written `NewTodo`; from another
-module, as here, it is `Todos.Index.NewTodo` (no import is needed for it).
+In `app/Todos/Index.alder` the routes are written `Index` and `Submit`;
+from another module, as here, a route value keeps its full path,
+`Todos.Index.Index {}` (no import is needed for it; chapter 6, "Names").
 
 ### Step by step
 
@@ -1059,21 +1075,21 @@ Line by line:
 2. `Test.login { user: Just me }` puts that session in the browser's
    cookie. The record is `App`'s session, so its `user` is a
    `Maybe UserId`: `Just me`, not `me`. Nothing is requested.
-3. `Test.get (Todos.Index {})` requests `/` with the cookie. The page
-   `requires user`, and the session has one, so `load` runs, `view`
+3. `Test.get (Todos.Index.Index {})` requests `/` with the cookie. The
+   route `requires user`, and the session has one, so `load` runs, `view`
    renders, and the browser now holds the page. Its result is not needed
    here (`let _ <-`).
-4. `Test.submit Todos.Index.NewTodo { … }` fills the page's `NewTodo`
-   form with the record and posts it. A page's forms and messages are
-   global addresses, like its page value, so another module writes them
-   with the page's full path. Even when the test file imports
-   `Todos.Index`, the short `Index.NewTodo` is an error, and its fix
-   writes `Todos.Index.NewTodo`. The page must show that form: the
-   browser posts only what a user could. The page's `update` inserts the
-   todo and answers `Redirect (Todos.Index { filter: model.filter })`; the
-   browser follows the redirect, as a real one does, and now holds the
-   new page. `added.answer` is `Redirected (Todos.Index {})`.
-5. `Test.get` again, for the page's model: `page.model.todos` is the list
+4. `Test.submit (Todos.Index.Submit {}) { … }` fills in the form of the
+   `Submit` route with the record and posts it. A route value is a global
+   address, so another module writes it with the full path. Even when
+   the test file imports `Todos.Index`, the short `Index.Submit` is an
+   error (E0205), and its fix writes `Todos.Index.Submit`. The page held
+   must show that form: the browser posts only what a user could. The
+   route's `update` inserts the todo and answers `Response.redirect
+   (Index { filter: p.filter })`; the browser follows the redirect, as a
+   real one does, and now holds the new page. `added.answer` is
+   `Redirected (Todos.Index.Index {})`.
+5. `Test.get` again, for the route's model: `page.model.todos` is the list
    `view` was given.
 6. The verdict: the answer, the titles in the model, and the text of
    `<p id="summary">`, which `Test.text "#summary"` finds.
@@ -1086,24 +1102,29 @@ $ alder test examples/todos -run "adding a todo"
 FAIL Todos.Index "adding a todo through the page"
   left:  { answer: Redirected /, todos: ["Milk"], summary: Just "1 open" }
   right: { answer: Redirected /, todos: ["Milk"], summary: Just "2 open" }
-  trace: ["Db.insert User", "Test.login", "Test.get Todos.Index", "Db.mine Todo", "Db.all Todo", "Test.submit NewTodo", "Db.mine Todo", "Db.all Todo", "Db.insertMine Todo", "Db.mine Todo", "Db.all Todo", "Test.get Todos.Index", "Db.mine Todo", "Db.all Todo"]
+  trace: ["Db.insert User", "Test.login", "Test.get Todos.Index.Index", "Db.mine Todo", "Db.all Todo", "Test.submit NewTodo", "Db.insertMine Todo", "Db.mine Todo", "Db.all Todo", "Test.get Todos.Index.Index", "Db.mine Todo", "Db.all Todo"]
 0 passed, 1 failed
 ```
 
-A page value prints as its address: `Redirected /` is
-`Redirected (Todos.Index {})`, whose `filter` is the default and so not
-in the URL. Two page values are equal when their addresses are. The
-trace is each step's name, then the effects of the requests it made
-(section 10 explains why `Db.all Todo` comes before the insert; each
-`Db.mine Todo` is the note `load`'s scoped read leaves before its
-`Db.all`, section 3).
+A route value prints as its address: `Redirected /` is
+`Redirected (Todos.Index.Index {})`, whose `filter` is the default and so
+not in the URL. Two route values are equal when their addresses are. The
+trace is each step's name (`Test.submit` names the form), then the effects
+of the requests it made. The submit made one request, the `Submit` route's
+`update`, whose `Db.insertMine Todo` is its only write, and then fetched
+the page the redirect led to (`Db.mine Todo`, `Db.all Todo`): a `redirect`
+renders no page before the write, so nothing is read ahead of the insert
+(section 10). Each `Db.mine Todo` is the note `load`'s scoped read leaves
+before its `Db.all` (section 3).
 
 ### `Test.get` and `Test.open`: requesting a page
 
-`Test.get p` and `Test.open p` take a page value, written in place:
-`Todos.Index {}`, `Todos.Index { filter: Active }`,
-`Todos.Show { id: id }`. A variable holding a page is not accepted.
-Each sends a plain `GET` of the page's address with the cookie.
+`Test.get r` and `Test.open r` take a GET route value, written in place:
+`Todos.Index.Index {}`, `Todos.Index.Index { filter: Active }`,
+`Todos.Show.Show { id: id }`. A variable holding a route is not accepted,
+and neither is a write route (E0045: a write route is sent with
+`Test.click` or `Test.submit`). Each sends a plain `GET` of the route's
+address with the cookie.
 
 `Test.get` is for a page the test expects to see. When the page is not
 shown, the test fails and says why, with the address requested. Here,
@@ -1113,13 +1134,14 @@ in:
 ```text
 FAIL Todos.Index "a visitor's list"
   error: GET /: redirected to /login (requires user)
-  trace: ["Test.get Todos.Index"]
+  trace: ["Test.get Todos.Index.Index"]
 ```
 
-The other two reasons are a 404 (here `Todos.Show`'s `load` found no
-todo `x` and said `Query.notFound`) and a failed request, a 500. Because
-it fails otherwise, `Test.get` can give the page's `model`, typed: the
-`Model` of the page module requested.
+The other two reasons are a 404 (the route's `load` found nothing and
+said `Query.notFound`, as `Todos.Show.Show { id: … }` does for a todo
+that is not the user's) and a failed request, a 500. Because it fails
+otherwise, `Test.get` can give the route's `model`, typed: what its
+`load` returned, a record.
 
 `Test.open` is the same request, but it never fails the test on the
 answer: its result's `answer` says what happened, and the test checks it.
@@ -1127,14 +1149,15 @@ This is how a test checks a redirect or a 404:
 
 ```alder
 test "a visitor is sent to the login page" = {
-  let r <- Test.open (Todos.Index {})
-  Task.succeed ({ answer: r.answer, heading: Test.text "h1" r.doc, user: r.session.user } == { answer: Redirected (Auth.Login {}), heading: Just "Log in", user: Nothing })
+  let r <- Test.open (Todos.Index.Index {})
+  Task.succeed ({ answer: r.answer, heading: Test.text "h1" r.doc, user: r.session.user, url: r.url } == { answer: Redirected (Auth.Login.Login {}), heading: Just "Log in", user: Nothing, url: "/login" })
 }
 ```
 
-After `Redirected p` the browser already holds `p`, so the test goes on
-from there without asking for it. (It could not write `Test.open p` with
-the `p` it matched anyway: a step takes a page value written in place.)
+After `Redirected r` the browser already holds `r`, so the test goes on
+from there without asking for it; `r.url` says where it is. (It could
+not write `Test.open r` with the `r` it matched anyway: a step takes a
+route value written in place.)
 
 ### `Answer`: what a request came to
 
@@ -1143,7 +1166,9 @@ the `p` it matched anyway: a step takes a page value written in place.)
 ```text
 type Answer = Shown
             | Rerendered
-            | Redirected Page
+            | Rendered Route
+            | Refreshed
+            | Redirected Route
             | FormRejected (List { field: Text, message: Text })
             | PageMissing
             | RequestFailed Text
@@ -1152,11 +1177,19 @@ type Answer = Shown
 | Answer | When | The page the browser then holds |
 |---|---|---|
 | `Shown` | `get`/`open`: the page was shown | that page |
-| `Rerendered` | `submit`/`click`: `update` answered `Rerender`; or `Reject` when the re-rendered page shows no errors (its form has no `<Errors form />`, or the page no longer draws that form) | the page re-rendered, with the new data |
-| `Redirected p` | a `Redirect p`, a `load` ending in `Query.redirect p`, or a `requires` sending a visitor to the login page | `p`, which the browser requested in turn |
-| `FormRejected errors` | `submit`: the form did not decode, or `update` answered `Reject` and the re-rendered form shows the text in its `<Errors form />` | the page with the form re-rendered: the values typed and the errors |
-| `PageMissing` | a 404: `Query.notFound`, `Task.notFound`, no such page | `App.notFound` |
-| `RequestFailed text` | the request failed (a `Task.fail`, a Go panic): a 500 | `App.error` |
+| `Rendered r` | `click` of the GET route `r`, or of a write route whose `update` answered `Response.render r` | the page it held, with `r`'s view patched in as the element with the view's root `id` |
+| `Refreshed` | `click`/`submit` of a write route whose `update` answered `Response.refresh`; or `Test.refresh`, when the page loaded again is the page held | after a write, the page re-rendered, the regions the server changed patched in; after `Test.refresh`, the page loaded again |
+| `Redirected r` | a `Response.redirect r`, a `load` ending in `Query.redirect r`, or a `requires` sending a visitor to the login page | `r`, which the browser requested in turn |
+| `FormRejected errors` | `submit`/`click`: the form did not decode, or `update` answered `Response.invalid t` | the page with the form re-rendered: the values typed and the errors (status 422) |
+| `PageMissing` | a 404: `Query.notFound`, `Task.notFound`, no such route | `App.notFound` (when only an element was asked for, a `Response.render` or a click on a GET route: the page it held, with an error toast) |
+| `RequestFailed text` | the request failed (a `Task.fail`, a Go panic): a 500 | `App.error` (for an element, as above: the page it held, with an error toast) |
+
+`Rendered` and `Refreshed` are the names of `Response.render` and
+`Response.refresh` as the browser sees them: the first patches one
+element, the second the regions that changed (section 10). `Rerendered`
+is the older name of a re-render, kept in the union until the old
+page-and-message syntax is removed; a route's answer is one of the other
+seven, and a new test never writes it.
 
 A redirect to another site (`Url.external`, chapter 6) is reported,
 `Redirected` with that address, but not followed: the browser keeps the
@@ -1165,27 +1198,27 @@ page it had. A redirect to a page that is then a 404 is `PageMissing`.
 `Task.fail "nope"`, `"panic: …"` for a Go panic.
 
 The 404 answer is `PageMissing`, not `NotFound`, so that an app keeps the
-name `NotFound` for a constructor of its own. The six names are kept for
-`Answer` everywhere: a union or `msg` of the app may not use one
-(E0012), nor may a type be named `Doc` or `Answer`.
+name `NotFound` for a constructor of its own. The eight names are kept for
+`Answer` everywhere: a union of the app may not use one (E0012), nor may
+a type be named `Doc` or `Answer`.
 
 ### `Test.fetch`: requesting a file
 
 A file page (chapter 6, "File pages") answers a file, not a document, so
-there is no page for the browser to hold. `Test.fetch p` takes a page
+there is no page for the browser to hold. `Test.fetch r` takes a GET route
 value written in place, like `Test.get`, sends the same plain `GET` with
 the cookie, and gives the answer as the server would send it:
 
 ```text
-Test.fetch : Page -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }
+Test.fetch : Route -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }
 ```
 
 `status` is the status number, `contentType` the label of the body (both
 explained in chapter 6), `body` the bytes, and `headers` every header of
-the answer, `Content-Type` included, sorted by name. It does not follow a redirect: a page that
+the answer, `Content-Type` included, sorted by name. It does not follow a redirect: a route that
 `requires` a user the cookie lacks answers `status: 303` and a
-`Location` header, and the test reads that; so does a page whose `load`
-ends in `Query.redirect p` (chapter 7), with `p`'s address:
+`Location` header, and the test reads that; so does a route whose `load`
+ends in `Query.redirect r` (chapter 7), with `r`'s address:
 
 ```alder fragment
 test "start sends the builder its seed" = {
@@ -1204,30 +1237,30 @@ bytes are valid UTF-8, and compares the `Maybe`:
 ```alder
 module Todos.Slow
 
-page "/slow" { }
+route Slow = GET "/slow" { }
 
 type Model = { waited: Int }
 
-load : Params -> Session -> Query Model
-load params session = {
+Slow.load : Slow.Params -> Session -> Query Model
+Slow.load params session = {
   let before <- Time.now
   let _ <- Query.delay 20000
   let after <- Time.now
   Query.succeed { waited: Time.diffMillis before after }
 }
 
-view : Model -> Session -> File
-view model session = File.json (Json.int model.waited)
+Slow.view : Model -> Session -> File
+Slow.view model session = File.json (Json.int model.waited)
 
 -- The test clock moves one second at each Time.now reading, and the delay moves it 20 s
 -- without waiting, so the two readings are 21000 ms apart.
 test "slow waits twenty virtual seconds" = {
-  let r <- Test.fetch (Todos.Slow {})
+  let r <- Test.fetch (Slow {})
   Task.succeed ({ status: r.status, type: r.contentType, body: Bytes.toText r.body } == { status: 200, type: "application/json", body: Just "21000" })
 }
 
 test "the delay is on the trace" = {
-  let _ <- Test.fetch (Todos.Slow {})
+  let _ <- Test.fetch (Slow {})
   let trace <- Test.trace
   Task.succeed (List.member "Query.delay 20000ms" trace)
 }
@@ -1238,26 +1271,26 @@ seconds. The test's clock moves forward by the delay at once, so a
 `Time.now` after it shows the time that passed, and the test stays fast.
 The trace names the step with its clamped number (`Query.delay 20000ms`).
 
-`Test.open` and `Test.get` on a file page are errors, because their result
-is a page to read: the checker refuses them (E0003, "`Todos.Slow` is a file page:
-use `Test.fetch`"). This is a check of the page's type, so it covers a
-`File.html` page too. As a second guard, a `Test.open` whose answer at run
+`Test.open` and `Test.get` on a file route are errors, because their result
+is a page to read: the checker refuses them (E0003, "`Slow` is a file route:
+use `Test.fetch`"). This is a check of the `view`'s type, so it covers a
+`File.html` route too. As a second guard, a `Test.open` whose answer at run
 time is not HTML fails with `RequestFailed` and the same advice.
 
-A page that shows its own full URL (`Url.absolute`, chapter 9) sees the
+A route that shows its own full URL (`Url.absolute`, chapter 9) sees the
 same address in every test: `http://localhost:8080`. The test runner never
 reads `ALDER_PUBLIC_URL`, so a test can compare the text exactly and passes
-on every machine and in CI: `Url.absolute (Todos.Index {}) ==
+on every machine and in CI: `Url.absolute (Todos.Index.Index {}) ==
 "http://localhost:8080/"`. The requests `Test.get` and `Test.fetch` send
 are unchanged; only the text `Url.absolute` gives is fixed.
 
 ### Setting the clock
 
-`Todos.Slow` above works out its answer from the ticking clock: 20000 ms
+`Slow` above works out its answer from the ticking clock: 20000 ms
 of delay plus the one second the second reading adds. That is fine for
-one page, but a page whose output depends on the time (a countdown, a
+one route, but a route whose output depends on the time (a countdown, a
 "closes in 3 hours", today's schedule) would make every expectation a
-sum of ticks, and one more `Time.now` on the page's path would shift them
+sum of ticks, and one more `Time.now` on the route's path would shift them
 all by a second. Two steps let a test say what time it is and when time
 passes:
 
@@ -1277,7 +1310,7 @@ Test.advance  : Int -> Task Unit
   there rather than wrapping into the past). A clock that ticks keeps ticking after an advance,
   and a set one stays still.
 - A `Query.delay` or `Task.sleep` still moves the clock by its delay,
-  set or not, and the pages a test requests through the browser read the
+  set or not, and the routes a test requests through the browser read the
   same clock, so a set applies to them too.
 - `@created` reads the clock as well, so rows inserted after a set all
   get the same time. A test that sets the clock and then wants a list in
@@ -1297,25 +1330,25 @@ fetches again:
 ```alder
 module Todos.Today
 
-page "/today" { }
+route Today = GET "/today" { }
 
 type Model = { today: Date }
 
-load : Params -> Session -> Query Model
-load params session = {
+Today.load : Today.Params -> Session -> Query Model
+Today.load params session = {
   let today <- Date.today
   Query.succeed { today: today }
 }
 
-view : Model -> Session -> File
-view model session = File.text { contentType: "text/plain", body: Date.toText model.today }
+Today.view : Model -> Session -> File
+Today.view model session = File.text { contentType: "text/plain", body: Date.toText model.today }
 
 -- 1772582400000 is 2026-03-04T00:00:00Z.
 test "today follows the test's clock" = {
   let _ <- Test.setClock (Time.fromMillis 1772582400000)
-  let before <- Test.fetch (Todos.Today {})
+  let before <- Test.fetch (Today {})
   let _ <- Test.advance (24 * 60 * 60 * 1000)
-  let after <- Test.fetch (Todos.Today {})
+  let after <- Test.fetch (Today {})
   Task.succeed ({ before: Bytes.toText before.body, after: Bytes.toText after.body } == { before: Just "2026-03-04", after: Just "2026-03-05" })
 }
 ```
@@ -1332,42 +1365,44 @@ cookie's value, so a field with a default may be left out: with
 `Test.login { user: Just me }` stores `visits: 0`.
 
 `Test.login` is the short way in, for a test about something else. A
-test about logging in itself goes through the login page with its real
-form. That page calls the `Password` capability, whose adapter is Go; a
+test about logging in itself goes through the login route with its real
+form. That route calls the `Password` capability, whose adapter is Go; a
 test replaces it with the fake `app/Auth/Login.alder` declares beside it
 (section 8), which accepts any user who has a row, whatever the
 password. The test file imports `Auth.Login`, so the capability is
-written through that import's qualifier, `Login.Password`; the page
-itself is a page value, written with its full path, `Auth.Login {}`, and
-so is its form, `Auth.Login.Credentials`:
+written through that import's qualifier, `Login.Password`; the routes
+are route values, written with their full paths, `Auth.Login.Login {}`
+for the page and `Auth.Login.Submit` for the one that posts its form:
 
 ```alder
 test "logging in through the form" = {
   let _ <- Test.fake Login.Password
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
-  let _ <- Test.get (Auth.Login {})
-  let r <- Test.submit Auth.Login.Credentials { email: Text.Email "me@example.com", password: Text.Secret "secret" }
-  Task.succeed ({ answer: r.answer, user: r.session.user, title: Test.text "h1" r.doc } == { answer: Redirected (Todos.Index {}), user: Just me, title: Just "Todos" })
+  let _ <- Test.get (Auth.Login.Login {})
+  let r <- Test.submit Auth.Login.Submit { email: Text.Email "me@example.com", password: Text.Secret "secret" }
+  Task.succeed ({ answer: r.answer, user: r.session.user, title: Test.text "h1" r.doc } == { answer: Redirected (Todos.Index.Index {}), user: Just me, title: Just "Todos" })
 }
 ```
 
-The page's `update` called the fake and `Session.put`; the browser kept
-the cookie, followed the redirect with it, and holds the list. (That
-login is the browser's: the test's own session is still the one it
-started with, so a `Db.mine` in the test body would have no user.) With an
-email that has no row the fake answers `Nothing`, `update` answers
-`Reject "Email or password is incorrect."`, and the answer is
-`FormRejected [{ field: "", message: "Email or password is incorrect." }]`.
-`Test.click App.Logout` presses the list's "Log out" button: the answer
-is `Redirected (Auth.Login {})` and `session.user` is `Nothing`.
+The `Submit` route's `update` called the fake and `Session.put`; the
+browser kept the cookie, followed the redirect with it, and holds the
+list. (That login is the browser's: the test's own session is still the
+one it started with, so a `Db.mine` in the test body would have no
+user.) With an email that has no row the fake answers `Nothing`, `update`
+answers `Response.invalid "Email or password is incorrect."`, and the
+answer is `FormRejected [{ field: "", message: "Email or password is
+incorrect." }]`, with `status` 422. `Test.click App.Logout` presses the
+list's "Log out" button: the answer is `Redirected (Auth.Login.Login {})`
+and `session.user` is `Nothing`.
 
 ### `Test.submit`: posting a form
 
-`Test.submit F r` posts the form `F` with the record `r`. `F` is a form a
-page or `App` declares: `NewTodo` in its own module, `Todos.Index.NewTodo`
-from any other. `r` is checked as the form's record (a field with a
-default may be left out). The browser sends it as the page's inputs
-would:
+`Test.submit r f` posts the form of the write route `r` with the record
+`f`. `r` is a route with `form F`, written in place with its parameters
+if it has any: `Todos.Index.Submit {}` here, `Todos.Show.Save { id: id }`
+for the route that saves one todo. `f` is checked as the form's record (a
+field with a default may be left out). The browser sends it as the page's
+inputs would:
 
 | The field's type | Sent as |
 |---|---|
@@ -1379,31 +1414,35 @@ would:
 | a union without payloads | the constructor's name: `Active` |
 | `Maybe a` | blank for `Nothing` (an empty input); `a`'s text for `Just` |
 
-Decoding it gives back `r`, except that a `Maybe Text` that is
+Decoding it gives back `f`, except that a `Maybe Text` that is
 `Just ""` is sent blank and decodes as `Nothing`: neither a test nor a
 user can send `Just ""`.
 
-The form must be on the page the browser holds. The browser posts it to
-the address it posts to, with the page's parameters (a page opened as
-`Todos.Index { filter: Active }` posts with its filter), and sends only
-the fields the form has an input for (an `<Input>`, `<Select>` or
+The form must be on the page the browser holds, and the route the test
+writes must be the route that form posts to, parameters included. The
+browser sends it to the address the form carries, and sends only the
+fields the form has an input for (an `<Input>`, `<Select>` or
 `<Textarea>` with the field's name), as a real browser does. A field
 without one fails the step, "the page's form NewTodo has no input
 `due`", unless its value is what the page makes of a field that is not
 sent: `Nothing` for a `Maybe` without a default, the default for a field
-that has one, `False` for a `Bool`; those are left out, and the page
+that has one, `False` for a `Bool`; those are left out, and the route
 decodes the same record.
+
+A page opened as `Todos.Index.Index { filter: Active }` renders its form
+as `Submit { filter: Active }`, whose address is `/_/Submit?filter=Active`;
+that is the route to write. `Submit {}` is `/_/Submit`, another address,
+and the step fails "the page /?filter=Active has no form NewTodo
+(Todos.Index.Submit)". A form that each row renders
+(`<form submit={Rename { id: n.id }}>` in a loop) is told apart the same
+way: the test writes the route with the row's parameters,
+`Test.submit (Rename { id: b }) { title: Text.NonEmpty "B2" }`, which
+posts the form of row `b`.
 
 A `Date` in a test record: `Date.fromText "2026-03-01"` is a
 `Maybe Date`, the type of a `due: Maybe Date` field. For a `Date` field,
 take one from the test's clock: `let today <- Date.today` gives
 `2026-01-01`, `Date.addDays 3 today` a later day.
-
-**A form each row renders** (`<form submit={Rename { id: n.id }}>` in a
-loop), or one that two messages post: the test writes the message with
-its parameters instead of the form's name,
-`Test.submit (Rename { id: b }) { title: Text.NonEmpty "B2" }`, which
-posts the form of row `b`.
 
 ### More forms
 
@@ -1413,100 +1452,69 @@ Here is a todo with a due date, sent through the form:
 test "a todo with a due date" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
-  let r <- Test.submit Todos.Index.NewTodo { title: Text.NonEmpty "Milk", due: Date.fromText "2026-03-01" }
-  Task.succeed ({ answer: r.answer, due: Test.text "span.due" r.doc } == { answer: Redirected (Todos.Index {}), due: Just "Mar 1" })
+  let _ <- Test.get (Todos.Index.Index {})
+  let r <- Test.submit (Todos.Index.Submit {}) { title: Text.NonEmpty "Milk", due: Date.fromText "2026-03-01" }
+  Task.succeed ({ answer: r.answer, due: Test.text ".due" r.doc } == { answer: Redirected (Todos.Index.Index {}), due: Just "Mar 1" })
 }
 ```
 
-When two messages post the same form, the form's name cannot say which message is
-meant, so the compiler asks for the message:
+A route posts a form; the form's name does not say which route. The
+compiler asks for the route:
 
-```alder error=E0003 "`Title` is posted by `Save` and `Draft`: write `Test.submit (Save { id: … }) { … }`"
-module Drafts
-
-page "/drafts" { }
-
-type Model = { ids: List Text }
-
-load : Params -> Session -> Query Model
-load params session = Query.succeed { ids: ["a", "b"] }
-
-form Title = {
-  title: Text,
-}
-
-msg Save { id: Text } form Title
-msg Draft { id: Text } form Title
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = Task.succeed Rerender
-
-view : Model -> Session -> Html Msg
-view model session =
-  <html>
-    <body>
-      <ul>
-        {for id in model.ids ->
-          <li>
-            <form submit={Save { id: id }}><Errors form /><Input field="title" label="Title" /><button>Save</button></form>
-            <form submit={Draft { id: id }}><Errors form /><Input field="title" label="Title" /><button>Keep as draft</button></form>
-          </li>}
-      </ul>
-    </body>
-  </html>
-
-test "renaming one draft" = {
-  let _ <- Test.get (Drafts {})
-  let r <- Test.submit Title { title: "x" }
-  Task.succeed (r.answer == Rerendered)
+```alder error=E0003 "`Test.submit` names the route that posts a form: write `Test.submit (Submit { filter: … }) …`"
+test "naming the form" = {
+  let _ <- Test.get (Todos.Index.Index {})
+  let r <- Test.submit Todos.Index.NewTodo { title: Text.NonEmpty "Milk", due: Nothing }
+  Task.succeed (r.answer == Shown)
 }
 ```
 
-Written `Test.submit (Save { id: "b" }) { title: "x" }`, the test
-compiles, and posts row `b`'s Save form. A test that opens the login
-page and then submits `NewTodo` gets:
+and it refuses a route that cannot be posted or fetched that way, with
+E0045: `Test.submit` of a route without a `form` ("`Test.submit` posts a
+route's form; `Toggle` has no `form`: use `Test.click (Toggle { id: … })`")
+or of a GET route ("… `Index` is GET: use `Test.get`").
+A test that opens the login page and then submits `Submit` gets:
 
 ```text
 FAIL Todos.Index "posting a form the page lacks"
   error: the page /login has no form NewTodo (Todos.Index.Submit)
-  trace: ["Db.insert User", "Test.login", "Test.get Auth.Login", "Test.submit NewTodo"]
+  trace: ["Db.insert User", "Test.get Auth.Login.Login", "Test.submit NewTodo"]
 ```
 
 ### `Test.submitRaw`: input the types forbid
 
 `Test.submit`'s record can only hold valid values: a `Text.NonEmpty` is
 never empty, a `Date` is always a date. A user's browser has no such
-rule, and the page must answer bad input with the form and its errors.
-`Test.submitRaw F fields` posts text, field by field, as typed:
-`Test.submitRaw NewTodo [{ name: "title", value: "" }]`. A field not
-sent is a field left out of the form. Every name sent must be a field of
-the form and have an input on the page.
+rule, and the route must answer bad input with the form and its errors.
+`Test.submitRaw r fields` posts text, field by field, as typed:
+`Test.submitRaw (Todos.Index.Submit {}) [{ name: "title", value: "" }]`. A
+field not sent is a field left out of the form. Every name sent must be a
+field of the form and have an input on the page.
 
 **`FormRejected errors`** is the answer when the page shows its form again
 with errors: the form did not decode (chapter 6: `update` never ran), or
-`update` answered `Reject "…"`. The browser holds the page re-rendered,
-with what was typed back in each input (except a `Text.Secret`, which is
-never sent back) and each error in its `<Errors>` list. `errors` is what
-those lists show:
+`update` answered `Response.invalid "…"`. The status is 422. The browser
+holds the page re-rendered, with what was typed back in each input
+(except a `Text.Secret`, which is never sent back) and each error in its
+`<Errors>` list. `errors` is what those lists show:
 
 - in the order the lists come in the page (the order of the form's
   `<Errors field="…">`, usually its fields' order);
 - `field` is the field's name, and `""` for the form's own list,
-  `<Errors form />`, which holds `Reject`'s text;
+  `<Errors form />`, which holds `invalid`'s text;
 - a field error the form has no `<Errors field>` for is shown in
-  `<Errors form />`, after `Reject`'s text, prefixed with the field's
+  `<Errors form />`, after `invalid`'s text, prefixed with the field's
   name, so it comes back as `{ field: "", message: "title must not be
   empty" }`;
-- a form with no `<Errors form />` shows no `Reject` text at all; the
-  page looks unchanged, and the answer is `Rerendered`. The compiler
-  warns about such a form when its message's arm of `update` can answer
-  `Reject` (W0005).
-- a form the re-rendered page no longer draws shows no `Reject` text
+- a form with no `<Errors form />` shows no `invalid` text at all, and
+  `errors` is `[]`: the answer to an `invalid` is still `FormRejected` and
+  the status 422, but a user sees the page unchanged. The compiler warns about such a form
+  when the `update` of its route can answer `Response.invalid` (W0005).
+- a form the re-rendered page no longer draws shows no `invalid` text
   either. A page held while an order was Open, the order paid meanwhile,
-  and its add-line form posted: `update` answers `Reject`, but the Paid
+  and its add-line form posted: `update` answers `invalid`, but the Paid
   order's page has no add-line form, so the text has nowhere to go; the
-  answer is `Rerendered`, and a user sees the page change with no
+  answer is `FormRejected []`, and a user sees the page change with no
   message. W0005 cannot see this (it depends on the data). When such a
   refusal must be visible, answer `Task.notFound` or `Task.fail` instead.
 
@@ -1523,25 +1531,31 @@ The to-do form with an empty title and a date that is not one:
 test "an empty title is rejected" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
-  let r <- Test.submitRaw Todos.Index.NewTodo [{ name: "title", value: "" }, { name: "due", value: "tomorrow" }]
+  let _ <- Test.get (Todos.Index.Index {})
+  let r <- Test.submitRaw (Todos.Index.Submit {}) [{ name: "title", value: "" }, { name: "due", value: "tomorrow" }]
   let rows <- Db.from Todo |> Db.count
-  Task.succeed ({ answer: r.answer, due: Test.attr "value" "input[name=due]" r.doc, rows: rows } == { answer: FormRejected [{ field: "title", message: "must not be empty" }, { field: "due", message: "must be a date (YYYY-MM-DD)" }], due: Just "tomorrow", rows: 0 })
+  Task.succeed ({ answer: r.answer, due: Test.attr "value" "input[name=due]" r.doc, rows: rows, status: r.status } == { answer: FormRejected [{ field: "title", message: "must not be empty" }, { field: "due", message: "must be a date (YYYY-MM-DD)" }], due: Just "tomorrow", rows: 0, status: 422 })
 }
 ```
 
 The title and the date come back as typed (`Test.attr "value"` reads
-the input), with their errors, and no row was written.
+the input), with their errors, and no row was written. `update` never
+ran: the form did not decode.
 
 ### `Test.click`: pressing a button
 
-`Test.click m` sends the message `m` as the page's button for it would:
-`Test.click (Toggle { id: id })`, `Test.click App.Logout`. `m` is a
-message of a page or of `App`, with its parameters, written as in a
-`click={…}`. A message that carries a form is posted with `Test.submit`,
-not clicked; a link is followed with `Test.get` or `Test.open`.
+`Test.click r` sends the route `r` as the page's button for it would:
+`Test.click (Todos.Index.Toggle { id: id })`, `Test.click App.Logout`. `r`
+is a route without a `form`, with its parameters, written as in a
+`click={…}`. A write route is sent, with the headers the page's script
+sends (`Alder-Page`, the address the browser holds, and `Alder-Build`;
+chapter 6, "Delivery, decided by the request"). A GET route is fetched
+the way a button fetches an element, and its view is patched into the page
+held as the element with the view's root `id`. A route that carries a
+form is posted with `Test.submit`; a link is followed with `Test.get` or
+`Test.open`.
 
-The page must show a button (or form) that sends exactly that message,
+The page must show a button (or form) that sends exactly that route,
 with the same parameters: a test can only do what the user it is logged
 in as can see to do. The second to-do test through the page:
 
@@ -1550,26 +1564,118 @@ test "toggling a todo through the page" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
-  let r <- Test.click (Toggle { id: id })
-  Task.succeed ({ answer: r.answer, done: Test.has "li.done" r.doc, summary: Test.text "#summary" r.doc } == { answer: Rerendered, done: True, summary: Just "0 open" })
+  let _ <- Test.get (Todos.Index.Index {})
+  let r <- Test.click (Todos.Index.Toggle { id: id })
+  Task.succeed ({ answer: r.answer, done: Test.has "li.done" r.doc, summary: Test.text "#summary" r.doc } == { answer: Refreshed, done: True, summary: Just "0 open" })
 }
 ```
 
-`update` answered `Rerender`, so the browser holds the page rendered
-again: the item now has `class="done"`, and nothing is open.
+`Toggle.update` answered `Response.refresh`, so the browser loaded the
+page again and patched in the regions that changed: the item now has
+`class="done"`, and nothing is open. The answer is `Refreshed`. Had the
+route answered `Response.render (Row { id: id })`, the answer would be
+`Rendered` with the address of `Row`, and only that one item would have
+changed (chapter 6, "`Response`").
 
 ### Clicks that fail
 
-The compiler refuses a click of a message that carries a form:
+The compiler refuses a click of a route that carries a form (E0045):
 
-```alder error=E0003 "`Submit` carries form `NewTodo`: use `Test.submit`"
-test "clicking a form's message" = {
-  let _ <- Test.get (Todos.Index {})
-  let r <- Test.click (Todos.Index.Submit { form: { title: Text.NonEmpty "Milk", due: Nothing } })
-  Task.succeed (r.answer == Rerendered)
+```alder error=E0045 "`Test.click` sends a route without a form; `Submit` posts form `NewTodo`: use `Test.submit (Submit { filter: … }) { … }`"
+test "clicking a form's route" = {
+  let _ <- Test.get (Todos.Index.Index {})
+  let r <- Test.click (Todos.Index.Submit {})
+  Task.succeed (r.answer == Shown)
 }
 ```
+
+### What the browser checks on every step
+
+A click or a submit changes the page the browser holds by patching it, as
+the page's script does. Two checks run on what was patched, and a patch
+with nowhere to go is refused. A step that fails one fails the test.
+Section 10 shows how each is made.
+
+- **The region check.** After a `refresh`, an `invalid` or a followed
+  `redirect` the server rendered the page, and the browser compares each
+  region the answer patched with the same region of the full render. A
+  difference fails the step: "POST /_/Toggle: the patched page differs
+  from a full render at" the path of the first element that differs (named
+  as a failed `Doc` comparison names it, below), with both markups, as the
+  browser's parser builds them. A region the answer did not send is not
+  compared. A difference means the page the user holds is not the page the
+  server rendered.
+- **The element check.** After `Rendered r`, the browser asks for `r` again
+  on its own, as a button does, and the element it holds must equal the
+  view that answers. It is the same `load` and `view`, so they are equal
+  unless the view shows something that changes from one request to the
+  next. The step fails: "the answer patched #todo-1 unlike
+  Todos.Index.Row's view rendered on its own (GET /rows/…) at li#todo-1".
+  The second request runs in a savepoint that is undone, and is not a step
+  of the trace.
+- **A patch with nowhere to go.** A `render` whose root `id` the held page
+  lacks patches nothing in a real browser, silently. The test fails the
+  step: "POST /_/Toggle: the answer patched `#todo-9`, which the page does
+  not have". A view with no root `id` is not patched either: the answer is
+  `RequestFailed` ("route GET /rows/\{id} answered an element fetch with a
+  view whose first root element has no id").
+
+A `render` patches one element, and a page can have other places that
+should have changed: these checks do not see that. `Test.refresh` does.
+
+### `Test.refresh`: is the page the one a fresh load would give?
+
+`Test.refresh` loads the address the browser holds again, with a plain
+`GET` as a reload does (a redirect followed), and fails unless the body
+of the page it gets is the body of the page the browser held. It then
+holds the new page, and the answer is `Refreshed`. The `<al-toasts>`
+region is left out of the comparison, since a reload may fill it from a
+notice that the step's toasts already delivered. A test of a toggle ends
+with it:
+
+```alder
+test "a toggle leaves the page as a fresh load would" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Index.Index {})
+  let clicked <- Test.click (Todos.Index.Toggle { id: id })
+  let again <- Test.refresh
+  Task.succeed ({ clicked: clicked.answer, again: again.answer, url: again.url } == { clicked: Refreshed, again: Refreshed, url: "/" })
+}
+```
+
+`Toggle` answers `refresh`, which patches the regions that changed, so
+the page after the click is the page a fresh load gives, and this
+passes. `Test.refresh` is the developer's check, not part of every step,
+because some pages are right without it. A test of "load more", of a draft
+preview, or of an inline edit that is open leaves the page different from a
+fresh load on purpose: do not end those with `Test.refresh`.
+
+### When `Test.refresh` fails
+
+The test earns its place when a route answers with less than it
+should. Here is the same app with `Toggle` changed as chapter 6 does
+(`Row` is a GET route for one item, and `Toggle` answers
+`Response.render (Row { id: p.id })`). The click passes both checks above,
+since the item it patched is right, and `Test.refresh` fails:
+
+```text
+FAIL Todos.Index "toggling, then refreshing"
+  error: Test.refresh: GET /: the page held differs from the page loaded again at body > al-page > main > al-stack > p#summary: child 1: left text "1 open", right text "0 open"
+      held:   <p id="summary">1 open</p>
+      loaded: <p id="summary">0 open</p>
+  trace: ["Db.insert User", "Db.insert Todo", "Test.login", "Test.get Todos.Index.Index", "Db.mine Todo", "Db.all Todo", "Test.click Todos.Index.Toggle", "Db.updateMine Todo", "Db.getMine Todo", "Test.refresh", "Db.mine Todo", "Db.all Todo"]
+0 passed, 1 failed
+```
+
+The item changed and the count of open todos below the list did not: the
+toggle should have been a `refresh`. The trace shows the other price of
+`render`: one `Db.getMine Todo` for the item, where `refresh` loads the
+whole list. The failure names where the two bodies first differ and shows
+each side. The other failures are "Test.refresh: GET /rows/x: not found",
+when the address is no longer shown (the text of `Test.get`'s failure for
+that address), and "Test.refresh: the browser holds no page yet".
 
 ### A stranger's todo
 
@@ -1581,16 +1687,14 @@ id: id }` expecting `PageMissing` does not get that far):
 
 ```text
 FAIL Todos.Index "a stranger clicks my todo"
-  error: the page / has no button or form for Todos.Index.Toggle { id: "vTJh-0JAjgrsF9WiOyhe" }
-  trace: ["Db.insert User", "Db.insert Todo", "Test.login", "Test.get Todos.Index", "Db.mine Todo", "Db.all Todo", "Test.click Todos.Index.Toggle"]
+  error: the page / has no button or form for Todos.Index.Toggle { id: "Q7QLW1cLZ2muCysr_EhO" }
+  trace: ["Db.insert User", "Db.insert Todo", "Test.login", "Test.get Todos.Index.Index", "Db.mine Todo", "Db.all Todo", "Test.click Todos.Index.Toggle"]
 ```
 
 The stranger's list shows only the stranger's todos, so there is no
 Toggle button for mine to press; the browser sends nothing, and the test
-fails. (The id is random, and differs on each run. Had the stranger's
-list shown todos of their own, the text would end with the ones it
-offers: " (the page has Toggle for id: …)".) That is the right answer:
-the page does not offer the action.
+fails. (The id is random, and differs on each run.) That is the right
+answer: the page does not offer the action.
 
 But a page can be out of date. My list is open in the browser; then
 someone else logs in on it (the cookie changes, the page held does not)
@@ -1601,7 +1705,7 @@ test "Toggle by another user is not found" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.get (Todos.Index.Index {})
   let _ <- Test.login { user: Just (User.UserId "someone-else") }
   let r <- Test.click (Todos.Index.Toggle { id: id })
   let after <- Db.get Todo id
@@ -1610,7 +1714,8 @@ test "Toggle by another user is not found" = {
 ```
 
 The click posts my page's Toggle button with the stranger's cookie. The
-request runs `load` for the stranger, then `update`, where
+router renders the page the stranger is on first (the before-view of a
+route that can answer `refresh`; section 10), then runs `update`, where
 `Db.updateMine` finds no todo of the stranger's with that id:
 `PageMissing`, and the todo is not done. "Delete by another user is not
 found" does the same with the Delete button. Section 3's "Toggle by a
@@ -1624,14 +1729,14 @@ test "a stranger cannot see my todo" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just (User.UserId "someone-else") }
-  let page <- Test.get (Todos.Index {})
-  let show <- Test.open (Todos.Show { id: id })
+  let page <- Test.get (Todos.Index.Index {})
+  let show <- Test.open (Todos.Show.Show { id: id })
   Task.succeed ({ items: Test.count "li" page.doc, show: show.answer } == { items: 0, show: PageMissing })
 }
 ```
 
 The stranger's list has no `<li>` (`Db.mine Todo` has none of mine), and
-`Todos.Show`'s `load` reads the todo with `Db.getMine`, which answers
+`Todos.Show.Show`'s `load` reads the todo with `Db.getMine`, which answers
 not found for a todo that is someone else's: `PageMissing`.
 
 ### Reading the page: queries
@@ -1684,9 +1789,7 @@ wanted, `Test.texts "#todos a"`, not the whole item.
 the way the page renders it and parses it, so a test can compare the
 page the browser holds with what `view` makes of the model it was given.
 Two `Doc`s are equal when they are the same tree of elements, attributes
-and text, leaving out the page's parameters the router adds to each
-message's address (`?_p.filter=Active`, section 10), which `view` alone
-does not know. `Test.doc` renders without a request, so a form in it has
+and text. `Test.doc` renders without a request, so a form in it has
 no typed values and no errors: compare a `FormRejected` page by its queries,
 not with `Test.doc`.
 
@@ -1697,7 +1800,7 @@ there is no element `x`:
 
 ```alder error=E0023 "`#sumary x` is not a selector: unexpected `x` after `#sumary`; `x` is not an HTML element (a custom element has a hyphen)"
 test "a misspelt selector" = {
-  let page <- Test.get (Todos.Index {})
+  let page <- Test.get (Todos.Index.Index {})
   Task.succeed (Test.text "#sumary x" page.doc == Nothing)
 }
 ```
@@ -1712,8 +1815,8 @@ test "the page and its view agree" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let _ <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
-  let page <- Test.get (Todos.Index { filter: Active })
-  Task.succeed ({ same: page.doc == Test.doc (Index.view page.model { user: me, role: Member }), links: Test.texts "nav a" page.doc, titles: Test.texts "#todos a" page.doc, items: Test.count "#todos > li" page.doc } == { same: True, links: ["All", "Active", "Completed"], titles: ["Milk"], items: 1 })
+  let page <- Test.get (Todos.Index.Index { filter: Active })
+  Task.succeed ({ same: page.doc == Test.doc (Index.Index.view page.model { user: me, role: Member }), links: Test.texts "nav a" page.doc, titles: Test.texts "#todos a" page.doc, items: Test.count "#todos > li" page.doc } == { same: True, links: ["All", "Active", "Completed"], titles: ["Milk"], items: 1 })
 }
 ```
 
@@ -1721,15 +1824,15 @@ When a test's last `==` compares two `Doc`s that differ, the report does
 not print the two documents. It names the first element whose content
 differs, its path from the body, and shows that element on each side.
 Had the test compared the page with a view of an empty model,
-`page.doc == Test.doc (Index.view { page.model | todos: [] } { user: me, role: Member })`,
+`page.doc == Test.doc (Index.Index.view { page.model | todos: [] } { user: me, role: Member })`,
 it would print:
 
 ```text
 FAIL Todos.Index "the page and an empty view"
-  left:  <ul id="todos"><li class=""><form method="post" action="/_m/Todos.Index/Toggle?id=ZjFUNWta6zynlqJZb2jc" class="_alder-c…
+  left:  <ul id="todos"><li class=""><form method="post" action="/_/Toggle?id=gt7bDOoKtnkV0adE5DOj" class="_alder-click" data-on…
   right: <ul id="todos"></ul>
-  note:  the documents differ at body > main > ul#todos: left 1 child <li>, right 0
-  trace: ["Db.insert User", "Db.insert Todo", "Test.login", "Test.get Todos.Index", "Db.mine Todo", "Db.all Todo"]
+  note:  the documents differ at body > al-page > main > al-stack > ul#todos: left 1 child <li>, right 0
+  trace: ["Db.insert User", "Db.insert Todo", "Test.login", "Test.get Todos.Index.Index", "Db.mine Todo", "Db.all Todo"]
 ```
 
 Each side is cut to 120 characters. The path names each element by its
@@ -1749,40 +1852,46 @@ these texts, and nothing is sent:
 - `GET /: redirected to /login (requires user)`, `GET /todos/x: not
   found`, `GET /: failed: <message>`: `Test.get` of a page not shown.
 - "the page /login has no form NewTodo (Todos.Index.Submit)": the held
-  page renders no form for that message.
-- "the page / has no button or form for Todos.Index.Toggle { id: "x" }",
-  followed by " (the page has Toggle for id: a, b)" when the page
-  renders the message with other parameters.
+  page renders no form for that route, with those parameters.
+- "the page / has no button or form for Todos.Index.Toggle { id: "x" }":
+  the held page renders no control for that route, with those
+  parameters.
 - "the page's form NewTodo has no input `due`": a field the form renders
   no input for (`Test.submit`, `Test.submitRaw`).
-- "the page has 2 forms for Notes.Index.Rename: write the message with
-  its parameters".
 - "no page is open: `Test.get` one first".
 - "form NewTodo has no field `colour`": a `Test.submitRaw` name the form
   does not declare.
+- "POST /_/Toggle: the patched page differs from a full render at …",
+  "… the answer patched #todo-1 unlike Todos.Index.Row's view rendered on
+  its own …" and "… the answer patched `#todo-9`, which the page does not
+  have": the checks of "What the browser checks on every step".
+- "Test.refresh: GET /: the page held differs from the page loaded again
+  at …", "Test.refresh: GET /rows/x: not found" and "Test.refresh: the
+  browser holds no page yet": `Test.refresh`.
 
 And when the test compiles (E0003 unless named):
 
 - E0040 "`Test.get` is only available in a `test` or a test helper:
-  `update` is the page's update, not a helper"; "`Test.get` needs an
-  `App` module: the browser requests the app's routes, which an app
-  without `App` does not serve".
+  `Toggle.update` is the route's update, not a helper"; "`Test.get`
+  needs an `App` module: the browser requests the app's routes, which an
+  app without `App` does not serve".
 - "`Test.submit` takes its arguments directly, not through `|>`: …";
   E0008 "`Test.submit` takes 2 arguments, got 1: …".
-- "`Test.get` wants a page value such as `Todos.Index {}`, got `p`";
-  "`Test.get` needs a record `Model`: … use `Test.open`".
+- "`Test.get` wants a page value such as `Todos.Index {}`, got `p`" (a
+  route held in a variable: write the route in place, `Todos.Index.Index
+  {}`); "`Test.get` needs a record `Model`: … use `Test.open`".
 - "`Test.login` wants the app's session `{ user: Maybe User.UserId }`:
   expected Maybe User.UserId, got User.UserId".
-- E0002 "`NewTodo` is a form of `Todos.Index`: write
-  `Todos.Index.NewTodo`"; "`Test.submit` wants a form declared by a
-  page: `Contact` is a form of `Shared`, which is not a page";
-  "`Test.submit` wants a form a message posts: no `msg … form Orphan` in
-  `Todos.Index`"; "`Title` is posted by `Save` and `Draft`: write
-  `Test.submit (Save { id: … }) { … }`"; "`Toggle` posts no form: use
-  `Test.click`".
-- "`Submit` carries form `NewTodo`: use `Test.submit`"; "`Test.click`
-  wants a message of a page or of `App`, got `Todos.Index {}` of type
-  `Page`: follow a link with `Test.get` or `Test.open`".
+- E0045, a route of the wrong kind for the step: "`Test.get` requests a
+  GET route; `Toggle` is POST: use `Test.click`"; "`Test.submit` posts a
+  route's form; `Toggle` has no `form`: use `Test.click (Toggle { id: … })`";
+  "`Test.submit` posts a route's form; `Index` is GET: use `Test.get`";
+  "`Test.click` sends a route without a form; `Submit` posts form
+  `NewTodo`: use `Test.submit (Submit { filter: … }) { … }`".
+- E0003 "`Test.submit` names the route that posts a form: write
+  `Test.submit (Submit { filter: … }) …`"; E0002 "`NewTodo` is a form of
+  `Todos.Index`: write `Todos.Index.NewTodo`" and "write
+  `Todos.Index.Submit`: a route is written with its module's full path".
 - E0002 "unknown constructor `NotFound`; the browser's 404 answer is
   `PageMissing`"; E0012 "`PageMissing` is a constructor of the Prelude's test
   type `Answer`; …"; in a type declaration, "`Doc` is a test type: it
@@ -1791,8 +1900,8 @@ And when the test compiles (E0003 unless named):
   `x` is not an HTML element (a custom element has a hyphen)"; its other
   hints are "tags are lower case: `h1`" and "quote the value:
   `[href="/x"]`".
-- W0005 "`Submit` can answer `Reject`, but this form has no
-  `<Errors form />`: the user never sees the rejection text".
+- W0005 "`Submit` can answer `Response.invalid`, but this form has no
+  `<Errors form />`: the user never sees its text".
 
 ### The rules
 
@@ -1800,9 +1909,8 @@ And when the test compiles (E0003 unless named):
   applied directly to all its arguments (not piped into, not passed as a value); all but
   `Test.login` need an `App` module.
 - **Only what the page shows.** `Test.submit` and `Test.click` act on a
-  form or button the held page renders, posting it exactly as rendered
-  (the page's parameters included), and a submit sends only the fields
-  the form has inputs for.
+  form or button the held page renders, posting it exactly as rendered,
+  and a submit sends only the fields the form has inputs for.
 - **One transaction.** Every request runs inside the test's own
   transaction, its `update` under a savepoint of its own: a page sees
   the rows the test inserted, the test sees the rows a page wrote, and a
@@ -1814,10 +1922,10 @@ And when the test compiles (E0003 unless named):
 - **One browser per test.** Each test starts with no page and no
   cookie; nothing of one test's browser reaches the next.
 - **Traces.** A step is a step of the trace, named `Test.login`,
-  `Test.get Todos.Index`, `Test.open Todos.Show`,
+  `Test.get Todos.Index.Index`, `Test.open Todos.Show.Show`,
   `Test.submit NewTodo`, `Test.submitRaw NewTodo`,
-  `Test.click Todos.Index.Toggle` or `Test.click App.Logout`, and the
-  effects of the requests it made follow it.
+  `Test.click Todos.Index.Toggle`, `Test.click App.Logout` or
+  `Test.refresh`, and the effects of the requests it made follow it.
 - **What it does not test.** No CSS, no layout, no JavaScript: whether a
   button is visible, whether a web component works, how the page looks.
   The browser is Datastar's client (section 10), so the path of a
@@ -1825,14 +1933,14 @@ And when the test compiles (E0003 unless named):
   redirect, is not tested either (section 13).
 
 A step's result also has `notices`, the list of toast texts the answer showed
-(`Notice.with "Saved" Rerender` gives `["Saved"]`), empty when there were none:
+(`Response.toast "Saved" Response.refresh` gives `["Saved"]`), empty when there were none:
 
-    { answer: r.answer, notices: r.notices } == { answer: Rerendered, notices: ["Saved"] }
+    { answer: r.answer, notices: r.notices } == { answer: Refreshed, notices: ["Saved"] }
 
 It also has `toasts`, the same toasts in the same order with their kind
 (`"info"`, `"success"`, `"warning"` or `"error"`, chapter 6), for a test
-that checks which kind the answer showed. `Notice.success "Saved" (Redirect
-(Todos.Index {}))` gives:
+that checks which kind the answer showed. `Response.success "Saved"
+Response.refresh` gives:
 
     r.toasts == [{ kind: "success", text: "Saved" }]
 
@@ -1848,7 +1956,7 @@ fetchText : Text -> Task { status: Int, body: Text }
 fetchText cfg = {
   let _ <- Test.fake Gate
   let _ <- Test.fake MnSos
-  let r <- Test.fetch (Sites.MnSos { cfg: cfg })
+  let r <- Test.fetch (Sites.MnSos.MnSos { cfg: cfg })
   Task.succeed { status: r.status, body: Bytes.toText r.body ?? "" }
 }
 
@@ -1871,7 +1979,7 @@ signature or body uses something only a test may use:
 
 A `test`, or another test helper, in any module, may use one. Production
 code may not, and some values can never be helpers, because the compiler
-or the runtime calls them: a page's `load`, `view` and `update`, every
+or the runtime calls them: a route's `load`, `view` and `update`, every
 value of `App`, a fake's entries, a brand's `where` check and a field's
 default. A reference from one of those to a helper is E0040, naming the
 helper and the first thing that makes it one:
@@ -1881,14 +1989,14 @@ helper and the first thing that makes it one:
 and along a chain, `` `at400` is a test helper (it uses `fetchText`, a
 test helper) ``. Using a test-only thing directly in one of them is E0040
 at the use: "`Test.fetch` is only available in a `test` or a test
-helper: `view` is the page's view, not a helper" (likewise "a fake's
+helper: `Index.view` is the route's view, not a helper" (likewise "a fake's
 entry is not a helper", "a field default is not a helper", "a brand
 check is not a helper", "`App.update` is not a helper").
 
 `alder build` leaves every test helper out of the program, and `alder
 test --mutate` makes no mutant in one (section 11). The browser's rules
-still hold inside a helper: `Test.fetch (Sites.MnSos { cfg: cfg })` is a
-page written in place with the helper's parameter inside it, while
+still hold inside a helper: `Test.fetch (Sites.MnSos.MnSos { cfg: cfg })` is a
+route written in place with the helper's parameter inside it, while
 `Test.fetch p`, with `p` a parameter, is refused as in a test. A fake is
 still declared in its capability's module (E0020); a helper shares the
 `Test.fake` call, not the fake. The editor's hover on a helper says
@@ -1905,7 +2013,7 @@ app's routes, the same list the app's binary serves, and the same router
 (`rt/web`). A step does not open a network connection: it builds an HTTP
 request in memory and hands it to the router, which calls the route's
 handler and writes the response into memory, where the browser reads it.
-Everything between, from reading `/todos/x` into a page value to
+Everything between, from reading `/todos/x` into a route's parameters to
 decoding the form, checking `requires`, running `load` and `update`,
 rendering and setting the cookie, is the code that runs in production.
 
@@ -1928,8 +2036,7 @@ test "adding a todo through the page"   (a fresh database in memory)
   │ Test.login                             the cookie; no request
   │ Test.get                               GET /
   │   Db.mine Todo, Db.all Todo            load reads in the test's transaction
-  │ Test.submit                            POST /_m/Todos.Index/Submit
-  │   Db.mine Todo, Db.all Todo            load, for update's model
+  │ Test.submit                            POST /_/Submit
   │   SAVEPOINT alder_t1                   update is a Task
   │   │ Db.insertMine Todo
   │   └ RELEASE alder_t1                   it succeeded: the insert is the test's now
@@ -1940,10 +2047,19 @@ test "adding a todo through the page"   (a fresh database in memory)
 ```
 
 When an `update` fails, its savepoint is rolled back (`ROLLBACK TO`),
-so its writes are gone and the test's are not. This is also why the
-trace shows `Db.all Todo` before `Db.insertMine Todo`: a message's request
-runs the page's `load` first, to give `update` its model (chapter 6,
-"How a request runs").
+so its writes are gone and the test's are not.
+
+**The before-view.** `Submit` answers `redirect`, so its request reads
+nothing before the insert: there is no `Db.all Todo` ahead of
+`Db.insertMine Todo` in the trace above. A write route whose `update` can
+answer `Response.refresh` or `Response.invalid` is different. The router
+renders the page the browser is on first (the address in the `Alder-Page`
+header, run as a `GET` of its route), so that after the `update` it can
+compare the two renders and send only the regions that changed (chapter
+6, "A write's response, with JavaScript"). A click on `Toggle`, which
+answers `refresh`, shows it in the trace: the page's `Db.mine Todo` and
+`Db.all Todo` come before `Db.updateMine Todo`, and again after it. A
+route that only `redirect`s or `render`s reads nothing it does not need.
 
 **The model.** `Test.get`'s `model` is not computed again: the page's
 route stores the model it rendered on the request (production does too;
@@ -1959,29 +2075,59 @@ applies the events as Datastar would:
 
 - a patch of the page's `<body>` replaces the body it holds (Datastar
   merges the new body into the old one; the result is the same page).
-  `Rerender` and `Reject` come back this way. The browser then looks at
-  the page: an `<Errors>` list with items makes it `FormRejected`; a 404 or
-  a 500, which come back as a patch too (with the status in a header,
-  `Alder-Status`), are `PageMissing` and `RequestFailed`; anything else is
-  `Rerendered`. A page whose `view` has no `<body>` (every page built
-  on a layout such as `Layout.Page` has one) cannot be patched, and the
-  step fails "the held page has no <body> to patch".
+  A `refresh` or `invalid` that the router cannot cut into regions
+  safely comes back this way, and so does a followed redirect. A page
+  whose `view` has no `<body>` (every page built on a layout such as
+  `Layout.Page` has one) cannot be patched, and the step fails "the held
+  page has no <body> to patch".
+- a patch of one element, selected by its `id` (mode outer), replaces
+  that element in the page held. These are the regions of a `refresh` or
+  an `invalid`, and the one element of a `render` or of an element fetch.
+  The held page without an element of that id cannot take it, and the
+  step fails ("… which the page does not have").
+- a toast is appended to the page's `<al-toasts>` and read into the
+  step's `notices` and `toasts`.
 - an instruction to go to another address is a `Redirect`: the browser
   requests that page with a plain `GET`, as Datastar has the real
   browser do, and the answer is `Redirected`. An address on another site
   is not requested.
 
+Which answer a step gives is read from the route's `Response`, as the
+router handed it to the browser: a `render r` is `Rendered r` (once the
+element check has passed), a `refresh` is `Refreshed`, an `invalid` is
+`FormRejected` with the errors the page now shows in its `<Errors>`
+lists. A 404 or a 500, which come back as a patch too (with the status
+in a header, `Alder-Status`), are `PageMissing` and `RequestFailed`.
+`Rerendered` is what the old page-and-message form's re-render came to.
+
 `Test.get` and `Test.open` are plain `GET`s, like typing an address. A
 `303` answer, such as `requires` sending a visitor to `/login`, is
 followed (at most ten in a row).
 
-**Controls.** The page's buttons and forms post to message addresses,
-`/_m/<Module>/<Msg>` with the message's parameters and the page's own
-(`/_m/Todos.Index/Toggle?id=…&_p.filter=Active`: chapter 6). Before it
-posts, the browser looks through the held page for a form or button
-whose address names the same message with the same parameters, ignoring
-the page's `_p.` ones, and posts that control's own address, so the
-page's parameters go with it as they would from a real page.
+**Controls.** The page's buttons and forms request routes by the
+routes' own addresses (`/_/Toggle?id=…`, `/_/Submit?filter=Active`:
+chapter 6). Before it sends anything, the browser looks through the held
+page for a form or button whose method and address name the same route
+with the same parameters, and sends that control's request, with the
+headers the page's script adds: `Alder-Page`, the address of the page held
+(the `url` of the last step), which `refresh` and `invalid` need to know which page to
+render again; `Alder-Build`; `Alder-Fetch: 1` for a GET route fetched
+into the page, and for a write the `Alder-Shown` hash of the body held. A
+form sends the fields the held form has, as a browser would; a button
+that is not in a form sends an empty payload.
+
+**The checks.** The router hands the browser the full render it made of
+the page to answer a request (`refresh`, `invalid`, a followed redirect).
+After applying the patches, the browser parses that render the way its
+HTML parser builds a page and compares it with the page it now holds: the
+whole body when the answer replaced the body, else only the regions the
+answer patched, each by its `id`. That is the region check. For a
+`render` or an element fetch it asks the router for the route's own
+address once more, as an element fetch, inside a savepoint that it rolls
+back, and compares the element in the page held with the element that
+comes back. That is the element check. `Test.refresh` sends a plain `GET`
+for the address held, as a reload does, and compares the body it gets
+with the body held, leaving out `<al-toasts>`.
 
 **The document.** The router's HTML is parsed into a tree, and the
 browser holds that, without the `<!doctype html>` line and the Datastar
@@ -2006,11 +2152,11 @@ program's lines that ran while the tests ran. In Alder that number says
 almost nothing. The checker already makes every `match` complete and
 every function total, and one browser test that opens a page runs all of
 its `load` and its `view`. A line can run and still go unchecked: "a
-stranger cannot see my todo" runs `Todos.Index.load`, `Db.orderBy`
+stranger cannot see my todo" runs `Index.load` of `Todos.Index`, `Db.orderBy`
 included, and nothing in it notices if the order is backwards.
 
 A **mutant** is a copy of the app with one small, deliberate bug: a
-`requires` removed, a write that does nothing, an order reversed, a
+check removed, a write that does nothing, an order reversed, a
 scoped operation made unscoped. If some
 test fails when it runs against the mutant, the mutant is **killed**.
 If every test still passes, it **survived**, and that is a bug the tests
@@ -2031,33 +2177,36 @@ alder test --mutate [--min R] [--json] [-run re] [-timeout d] [dir]
 
 It runs the tests as `alder test` does; if one fails, it stops with
 `tests fail: fix them before measuring mutants`. Otherwise it runs them
-again once per mutant. The to-do app before the tests this section adds
-(its eleven `ok` lines and `11 passed, 0 failed` first):
+again once per mutant. Here is the to-do app's own code (the generated
+admin of chapter 15 adds 94 mutants of its own) with the eleven tests it
+had before this section's work, the others left out with `-run`:
 
 ```text
-32 mutants: 18 killed, 14 survived  (score 0.56)
+11 passed, 0 failed
+30 mutants: 16 killed, 14 survived  (score 0.53)
 survived:
-  App           update:16        redirect → rerender    Redirect (Auth.Login {}) → Rerender
-  Todo          Todo:16          cascade ↔ restrict     owner @ref User @restrict → owner @ref User @cascade
-  Todo          matches:21       arm swapped            match filter { All ->… → the Active and Completed bodies swapped
-  Todo          matches:23       not dropped            not todo.done → todo.done
-  Todo          filterLabel:28   arm swapped            match filter { All -> "All"… → the All and Active bodies swapped
-  Todo          filterLabel:28   arm swapped            match filter { All ->… → the Active and Completed bodies swapped
-  Todos.Index   load:18          orderBy reversed       Db.orderBy Todo.created.desc → Db.orderBy Todo.created.asc
-  Todos.Show    requires:7       requires dropped       requires user → served without user (user = User.UserId "mutant")
-  Todos.Show    update:32        write replaced         let _ <- Db.updateMine Todo model.todo.id … → let _ <- Task.succeed ()
-  Todos.Show    update:32        update field dropped   { t | title: p.form.title, due: p.form.due } → { t | due: p.form.due }
-  Todos.Show    update:32        update field dropped   { t | title: p.form.title, due: p.form.due } → { t | title: p.form.title }
-  Todos.Show    update:33        redirect → rerender    Redirect (Todos.Index {}) → Rerender
-  Todos.Show    update:36        write replaced         let _ <- Db.deleteMine Todo model.todo.id → let _ <- Task.succeed ()
-  Todos.Show    update:37        redirect → rerender    Redirect (Todos.Index {}) → Rerender
+  App           Logout.update:16   update field dropped   { s | user: Nothing, role: Member } → { s | user: Nothing }
+  Auth.Login    Submit.update:42   update field dropped   { s | user: Just id, role: role } → { s | user: Just id }
+  Table.Todo    Todo:16            cascade ↔ restrict     owner @ref User @restrict → owner @ref User @cascade
+  Table.Todo    matches:21         arm swapped            match filter { All -> True, Active -> not todo.done, Complete…
+  Table.Todo    matches:23         not dropped            not todo.done → todo.done
+  Table.Todo    filterLabel:28     arm swapped            match filter { All -> "Al… → the All and Active bodies swapped
+  Table.Todo    filterLabel:28     arm swapped            match filter { All -> "All", Active -> "Active", Completed ->…
+  Todos.Index   Index.load:18      orderBy reversed       Db.orderBy Todo.created.desc → Db.orderBy Todo.created.asc
+  Todos.Show    Save.update:27     write replaced         let _ <- Db.updateMine Todo p.id … → let _ <- Task.succeed ()
+  Todos.Show    Save.update:27     scope dropped          Db.updateMine Todo p.id (\t -> { t | title: p.form.title, due: p.form.due }) → Db.update Todo p.id …, not found when missing
+  Todos.Show    Save.update:27     update field dropped   { t | title: p.form.title, due: p.form.due } → { t | due: p.form.due }
+  Todos.Show    Save.update:27     update field dropped   { t | title: p.form.title, due: p.form.due } → { t | title: p.form.title }
+  Todos.Show    Delete.update:33   write replaced         let _ <- Db.deleteMine Todo p.id → let _ <- Task.succeed ()
+  Todos.Show    Delete.update:33   scope dropped          Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing
 ```
 
-A test failed for 18 of the 32 mutants: the score is 18 / 32. A
-survivor's line gives its module; `declaration:line` (`load:18` is line
-18 of `app/Todos/Index.alder`; `load:30:17` adds the column when the
-line has mutants of that kind in two places); the operator; and the code
-before `→` after, shortened with `…` (an arm swap names its arms).
+A test failed for 16 of the 30 mutants: the score is 16 / 30. A
+survivor's line gives its module; `declaration:line` (`Index.load:18` is
+line 18 of `app/Todos/Index.alder`; a route's members are named as in the
+source, `Save.update:27`; a column is added, `load:33:17`, when the line
+has two mutants of that kind); the operator; and the code before `→`
+after, shortened with `…` (an arm swap names its arms).
 
 ### The operators
 
@@ -2066,8 +2215,8 @@ breaks, in five classes; every mutant is well-typed:
 
 | Class | Operator | What it changes |
 |---|---|---|
-| authorization | `requires dropped` | A page's `requires user` no longer redirects a visitor, who is served as `User.UserId "mutant"` (for a field that is a brand over `Text`) |
-| authorization | `role dropped` | `requires user, role R` becomes `requires user` |
+| authorization | `requires dropped` | A page's `requires user` no longer redirects a visitor, who is served as `User.UserId "mutant"` (for a field that is a brand over `Text`); old `page` form only |
+| authorization | `role dropped` | `requires user, role R` becomes `requires user`; old `page` form only |
 | authorization | `scope dropped` | `Db.mine T` becomes `Db.from T`; the other scoped operations act on anyone's row; likewise `Db.scoped` and its family (not on a siloed table) |
 | authorization | `membership dropped` | A key's `via M` check removed: a `Session.put` of any org succeeds |
 | authorization | `guard dropped` | An `if` or `match` with one arm ending in `Task.notFound`, `Query.notFound` or `Task.fail` becomes its other arm: the check is gone |
@@ -2078,8 +2227,8 @@ breaks, in five classes; every mutant is well-typed:
 | data | `write replaced` | A `let … <-` insert, update or delete becomes `Task.succeed` of a placeholder (`()`, or an id `"mutant"`) |
 | data | `update field dropped` | One field of a record update `{ t \| a: …, b: … }` that sets two or more left out, wherever it is |
 | data | `session put dropped` | A `Session.put` step becomes `Task.succeed ()` |
-| flow | `redirect → rerender` | `Redirect page` becomes `Rerender` |
-| flow | `reject → rerender` | `Reject "message"` becomes `Rerender` |
+| flow | `redirect → rerender` | `Redirect page` becomes `Rerender`; old `Nav` only |
+| flow | `reject → rerender` | `Reject "message"` becomes `Rerender`; old `Nav` only |
 | flow | `arm swapped` | Two neighbouring arms of a `match` trade bodies (one mutant per pair) |
 | logic | `condition negated` | `if c` becomes `if not c` |
 | logic | `operator flipped` | `==`↔`!=`, `<`↔`<=`, `>`↔`>=`, `&&`↔`\|\|` |
@@ -2087,6 +2236,11 @@ breaks, in five classes; every mutant is well-typed:
 | logic | `not dropped` | `not e` becomes `e` |
 | schema | `default changed` | A table field's default: `False`↔`True`, a number → one more, `""`→`"x"`, a union's constructor → the next one |
 | schema | `cascade ↔ restrict` | A reference's delete rule, `@cascade`↔`@restrict` |
+
+Four operators change what chapter 6 replaced, a page's `requires` and
+the `Nav` values. A route's `requires` and `Response` are not mutated yet,
+so the browser tests alone hold them (section 9): a visitor sent to log
+in, the wrong role, the answer a click comes to.
 
 **The partition mutants.** `scope dropped` is made for every key: in
 the workspace, `Db.scoped Activity` → `Db.from Activity` is killed by
@@ -2098,7 +2252,7 @@ report's equivalence line says "the silo's database holds this org's
 rows only"). The one mutant of a `via` field reads
 
 ```text
-  App                      session:11      membership dropped     Session.put org → Session.put org without the Membership check
+  App                      session:13      membership dropped     Session.put org → Session.put org without the Membership check
 ```
 
 and is killed only by a test that tries a key the user is no member of:
@@ -2107,139 +2261,139 @@ whose tests never try is told so by its score.
 
 ### The rules' mutants in a report
 
-The two operators for the declared rules of chapter 6 ("Rules") read
-like this in a report. From `alder test --mutate -run '^Todo '
-examples/todos`, whose four tests open no page, the to-do app's four
-`scope dropped` survivors:
+The two operators for the declared rules of chapter 6 ("Rules") that a
+route has are `scope dropped` and `membership dropped`. `scope dropped`
+reads like this in a report. From `alder test --mutate -run
+'^Table\.Todo ' examples/todos`, whose four tests open no page, the to-do
+app's six:
 
 ```text
-  Todos.Index         load:17         scope dropped          Db.mine Todo → Db.from Todo
-  Todos.Index         update:42       scope dropped          Db.updateMine Todo p.id (\t -> { t | done: not t.done }) → Db.update Todo p.id (\t -> { t | done: not t.done }), not found when missing
-  Todos.Index         update:46       scope dropped          Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing
-  Todos.Show          load:13         scope dropped          Db.getMine Todo params.id → Db.get Todo params.id, not found when missing
-```
-
-and from the blog's (chapter 14), with only `Post`'s tests run, its
-author pages' two (the report has the same line, `role Admin`, for each
-page of its generated admin, chapter 15):
-
-```text
-  Write                  requires:12      role dropped           requires user, role Author → requires user
-  Write.Edit             requires:10      role dropped           requires user, role Author → requires user
+  Todos.Index   Index.load:17      scope dropped          Db.mine Todo → Db.from Todo
+  Todos.Index   Toggle.update:37   scope dropped          Db.updateMine Todo p.id (\t -> { t | done: not t.done }) → Db.update Todo p.id (\t -> { t | done: not t.done }), not found when missing
+  Todos.Index   Delete.update:43   scope dropped          Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing
+  Todos.Show    Show.load:19       scope dropped          Db.getMine Todo params.id → Db.get Todo params.id, not found when missing
+  Todos.Show    Save.update:27     scope dropped          Db.updateMine Todo p.id (\t -> { t | title: p.form.title, due: p.form.due }) → Db.update Todo p.id …, not found when missing
+  Todos.Show    Delete.update:33   scope dropped          Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing
 ```
 
 "Not found when missing" is the replacement's whole behaviour: the
 mutant still answers 404 for an id that names no row, so only a test
 with someone else's row tells it from the app. `Db.insertMine` gets no
 `scope dropped` mutant (it is skipped, "the owner comes from the session
-either way"), but its write can be replaced. Each of these is killed by
-a test that acts as a stranger or as the wrong role: in the to-do app,
-"a stranger cannot see my todo" (the list and the todo's page),
-"Toggle by another user is not found" and "Delete by another user is not
-found"; in the blog, "a promoted reader logs in again first" and "a
-promoted reader logs in again before editing" (the row says Author, the
-cookie still Reader: the pages also re-read the row, so only the role
-check turns them away), "the admin page lists the author's own posts,
-newest first" and "another author's post is not found".
+either way"), but its write can be replaced. Each of the six is killed by
+a test that acts as a stranger: "a stranger cannot see my todo" (the
+list's `Db.mine` and `Todos.Show`'s `Db.getMine`), "Toggle by another
+user is not found" and "Delete by another user is not found" (a stranger
+presses my todo's button on a page still open in the browser), and
+"saving or deleting another user's todo is not found" (the same for the
+todo's own page). Of the first two, "Toggle flips done" kills the
+`Toggle` mutant before them, since its trace says `Db.updateMine Todo`.
 
 ### A surviving mutant is a test you have not written
 
 Each survivor is a behaviour no test checks: write the test that would
-notice. `Todos.Show requires:7` says the todo page could be served to a
-visitor; nothing opened it as one. The test, in `app/Todos/Show.alder`:
-
-```alder
-test "a visitor is sent to log in from a todo" = {
-  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
-  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
-  let visitor <- Test.open (Todos.Show { id: id })
-  Task.succeed (visitor.answer == Redirected (Auth.Login {}))
-}
-```
-
-`Todos.Show update:32` and `update:33` say saving could store nothing,
-drop a field, or stay on the page. One test that saves the form and
-checks all three kills all four:
+notice. `Todos.Show Save.update:27` has four of them in the report above:
+the save could store nothing, drop the title, drop the due date, or touch
+anyone's todo. One test that saves the form and reads the row back kills
+the first three:
 
 ```alder
 test "saving changes the title and the due date" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Show { id: id })
-  let r <- Test.submit Todos.Show.EditTodo { title: Text.NonEmpty "Bread", due: Date.fromText "2026-10-12" }
+  let _ <- Test.get (Todos.Show.Show { id: id })
+  let r <- Test.submit (Todos.Show.Save { id: id }) { title: Text.NonEmpty "Bread", due: Date.fromText "2026-10-12" }
   let after <- Db.get Todo id
-  Task.succeed ({ answer: r.answer, title: Maybe.map (\t -> t.title) after, due: Maybe.andThen (\t -> t.due) after } == { answer: Redirected (Todos.Index {}), title: Just (Text.NonEmpty "Bread"), due: Date.fromText "2026-10-12" })
+  Task.succeed ({ answer: r.answer, title: Maybe.map (\t -> t.title) after, due: Maybe.andThen (\t -> t.due) after } == { answer: Redirected (Todos.Index.Index {}), title: Just (Text.NonEmpty "Bread"), due: Date.fromText "2026-10-12" })
 }
 ```
 
-Nine tests, now in the example, kill all fourteen: the report then ends
-`32 mutants: 32 killed, 0 survived  (score 1.00)`.
+Nine tests of this kind kill all fourteen: the app's own code then ends
+`30 mutants: 30 killed, 0 survived  (score 1.00)`.
+
+### The mutant that needs a stranger
+
+The fourth, `scope dropped`, needs a stranger. A write route takes its id
+from the request and no `load` runs before it, so the check that the todo
+is the user's is `Db.updateMine`'s alone. The test keeps my page open, logs
+in as someone else, and saves and deletes my todo:
+
+```alder
+test "saving or deleting another user's todo is not found" = {
+  let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
+  let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Show.Show { id: id })
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let saved <- Test.submit (Todos.Show.Save { id: id }) { title: Text.NonEmpty "Bread", due: Nothing }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Todos.Show.Show { id: id })
+  let _ <- Test.login { user: Just (User.UserId "someone-else") }
+  let deleted <- Test.click (Todos.Show.Delete { id: id })
+  let after <- Db.get Todo id
+  Task.succeed ({ saved: saved.answer, deleted: deleted.answer, todo: Maybe.map (\t -> t.title) after } == { saved: PageMissing, deleted: PageMissing, todo: Just (Text.NonEmpty "Milk") })
+}
+```
 
 ### How the two tests kill them
 
-Against the app the visitor is `Redirected (Auth.Login {})`. Against the
-`requires dropped` mutant the page is served as the user `"mutant"`,
-`load`'s `Db.getMine` finds no todo of that user's with the id, and the
-answer is `PageMissing`: the test fails, and the mutant is killed.
-`Todos.Index` has the same `requires`, and its mutant was killed
-already, by "a visitor is sent to log in, and can log out".
-
 The second test reads the row back with `Db.get`, so a save that wrote
 nothing, or left a field out, shows in `title` or `due`; and it checks
-the answer, so a `Rerender` shows too. (`Date.fromText` gives a `Maybe
-Date`, which is the field's type.) In the module the form is written
-`EditTodo`; this chapter's blocks are checked as a module of their own,
-so it is qualified here.
+the answer, so a redirect that stayed on the page shows too. (`Date.fromText`
+gives a `Maybe Date`, which is the field's type.) In the module the form is
+written `EditTodo` and the routes `Show` and `Save`; this chapter's blocks
+are checked as a module of their own, so they are qualified here.
+
+The stranger's test kills the `scope dropped` mutant by what it does to
+the answer. Against the app, `Db.updateMine` finds no todo of the
+stranger's with that id and the save ends in `Task.notFound`: the answer
+is `PageMissing` and the todo is as it was. Against the mutant, `Db.update`
+finds my todo, writes it, and the answer is a redirect: the test fails, and
+the mutant is killed. The same test kills `Delete`'s `scope dropped` and
+its `write replaced`.
 
 ### All fourteen, and one killed by luck
 
-`examples/todos/README.md` lists each of the nine tests with the
-survivors it kills. Two are worth a word. `Todo countOpen:35 not
-dropped` (`not t.done → t.done`) was killed even before, but only by
-luck: the old "countOpen ignores done todos" counted one open todo and
-one done one, so counting the done ones instead also gave 1; only
-"adding a todo through the page", whose `#summary` must say `"1 open"`,
-noticed. The test now has two open todos and one done, so the mutant
-gives 1 where the test wants 2. And the `App` survivor, the logout's
-redirect, is the subject of "The logout redirect" below. After the nine
-tests:
+Nine tests kill the fourteen. "Logout makes the role Member" and
+"logging in copies the role from the user's row" kill the two `update
+field dropped` of the role; "a user with todos cannot be deleted" the
+`cascade ↔ restrict`; "Active keeps only open todos" and "each filter has
+its label" the swapped arms and the dropped `not` of `matches` and
+`filterLabel`; "the newest todo is listed first" the reversed
+`orderBy`; and the three of `Todos.Show` above. `examples/todos/README.md`
+lists the example's tests with what each kills. The report had no
+`requires dropped` or `redirect → rerender` line, because a route has
+neither mutant, so "a visitor is sent to log in from a todo" and "Logout
+clears the user and goes to log in" are in the example for the rules
+they check (section 9, and "The logout redirect" below), not because a
+survivor asked for them.
+
+One kill is worth a word. `Table.Todo countOpen:37 not dropped` (`not
+t.done → t.done`) counts the done todos instead of the open ones. A test
+with one open todo and one done one gives 1 either way and notices
+nothing; "countOpen ignores done todos" has two open todos and one done,
+so the mutant gives 1 where the test wants 2. After the tests, the whole
+example, admin included, reads:
 
 ```text
 $ alder test --mutate examples/todos
-ok   App "Logout clears the user and goes to log in"
-ok   Auth.Login "an unknown email is rejected"
-ok   Auth.Login "logging in through the form"
-ok   Auth.Login "a visitor is sent to log in, and can log out"
-ok   Todo "countOpen ignores done todos"
-ok   Todo "Active keeps only open todos"
-ok   Todo "each filter has its label"
-ok   Todo "a user with todos cannot be deleted"
-ok   Todos.Index "Toggle flips done"
-ok   Todos.Index "Toggle by another user is not found"
-ok   Todos.Index "Delete by another user is not found"
-ok   Todos.Index "adding a todo through the page"
-ok   Todos.Index "toggling a todo through the page"
-ok   Todos.Index "a stranger cannot see my todo"
-ok   Todos.Index "Delete removes the todo"
-ok   Todos.Index "the newest todo is listed first"
-ok   Todos.Index "Db.mine is what Me sees"
-ok   Todos.Show "a visitor is sent to log in from a todo"
-ok   Todos.Show "saving changes the title and the due date"
-ok   Todos.Show "deleting from the todo's page"
-20 passed, 0 failed
-32 mutants: 32 killed, 0 survived  (score 1.00)
+…
+126 passed, 0 failed
+124 mutants: 122 killed, 2 survived  (score 0.98)
+survived:
+  Admin.Todos.New    New.load:33   operator flipped   ownersTotal > 200 → ownersTotal >= 200
+  Admin.Users.Bulk   selected:44   where dropped      Db.where (Todo.owner.in taken) → the condition dropped
 ```
 
-That was the app at the end of this section's work. M12 then gave its
-session a `role` and generated an admin for it (chapter 15). The role
-added four mutants to the app's own code: two survived the twenty
-tests, the `update field dropped` of `role` in logout's and login's
-`Session.put`, and two more tests kill them, `App "Logout makes the role
-Member"` and `Auth.Login "logging in copies the role from the user's
-row"`. The admin brought 118 mutants and 70 tests of its own, which kill
-every one. The whole run now ends `154 mutants: 154 killed, 0 survived
-(score 1.00)`.
+(`…` stands for the 126 `ok` lines.) The app's own code has 30 mutants
+and all are killed by its 23 tests. Two of the nine exist for the
+session's `role`, which the admin of chapter 15 needed: `App "Logout makes
+the role Member"` and `Auth.Login "logging in copies the role from the
+user's row"` kill the `update field dropped` of `role` in logout's and
+login's `Session.put`. The generated admin brings 94 mutants and 103 tests
+of its own, which kill all but two. Those two are equivalent mutants
+(below), and the example's README says why.
 
 ### What is never a mutant
 
@@ -2258,34 +2412,30 @@ are reported apart, in `--json`'s last object (below):
   flipped` whose two sides are the same expression; and a `default
   changed` on a field that no record of the app's code leaves out (no
   `Db.insert` row, no `Insert T` a helper builds), so the default never
-  applies (the blog's `User.role`, which only tests rely on); and a
-  `scope dropped` of a `Db.updateMine` or `Db.deleteMine` in a page's
-  `update` whose id is `model.f.id`, where the page's `load` filled `f`
-  with a row of the same table read by `Db.getMine` ("load fetched it
-  with getMine": every message runs `load` first, so the id is always
-  the user's own row; not in an `update` that calls `Session.put`,
-  which could change the user in between).
+  applies (the blog's `User.role`, which only tests rely on); and, in
+  the page-and-message form, a `scope dropped` of a `Db.updateMine` or
+  `Db.deleteMine` in a page's `update` whose id is `model.f.id`, where
+  the page's `load` filled `f` with a row of the same table read by
+  `Db.getMine` ("load fetched it with getMine": every message runs
+  `load` first, so the id is always the user's own row). A write route
+  has no such `load`: its id comes from the request, and its `scope
+  dropped` mutants are never suppressed (the six of the report above).
 - **Skipped** (`skipped`): the operator does not apply, or another
   operator already makes the same program. A `condition negated` of `if
   a == b` (or `!=`) is skipped, because `operator flipped` already makes
   `if a != b`; so is one of `if not e`, which `not dropped` makes. (An
   ordering condition is negated: `<` flips to `<=`, while its negation is
   `>=`.) A `guard dropped` or an `arm swapped` is skipped where an arm
-  uses what its pattern binds (in `Todos.Index.update`, the `Toggle p`
-  arm uses `p`, so it cannot trade bodies with the `Delete p` arm, whose
-  `p` is another record); a `requires` on a field that is not a brand
+  uses what its pattern binds (a `match` on a `Maybe` whose `Just x` arm
+  uses `x` cannot trade bodies with the `Nothing` arm); a `requires` on a field that is not a brand
   over `Text`, a `Maybe` default and an `@setNull` rule have no
   well-typed change; and `Db.insertMine` has no `scope dropped`, since
   the owner comes from the session either way.
 
-The to-do app has 3 suppressed (the `scope dropped` of `Todos.Show`'s
-`Db.updateMine` and `Db.deleteMine` of `model.todo.id`, and `User.role`'s
-default, which no row of the app's code leaves out) and 25 skipped (in
-its own code, 4 arm swaps of `msg` and `found` matches whose arms use
-what they bind, and the `scope dropped` of `Db.insertMine`; 20 in its
-generated admin); the blog 5 (`User.role`'s
-default, and `Write.Edit`'s four writes of `model.post.id`) and 33 (3 in
-its own pages, 30 in its generated admin).
+The to-do app has 1 suppressed (`User.role`'s default, which no row of
+the app's code leaves out) and 27 skipped (2 in its own code, the `scope
+dropped` of `Db.insertMine` among them, and 25 in its generated admin);
+the blog 1 (the same) and 41.
 
 ### Survivors that are not gaps
 
@@ -2295,55 +2445,64 @@ survivor: it stays until a test kills it or the code changes.
 
 ### The logout redirect
 
-Before the new tests, `App update:16 redirect → rerender` survived, although "a visitor is sent to log in,
-and can log out" clicks Log out and checks that the answer is
-`Redirected (Auth.Login {})`. Every Log out button of the to-do app is
-on a page that `requires user`. Under the mutant the click answers
-`Rerender`: the browser asks for the same page again, with the user now
-gone from the session, and `requires user` redirects it to the login
-page. Either way the user ends up there, so no browser test can tell
-`Redirect` from `Rerender` here. A test of `App.update` itself can,
-since it sees the `Nav` value before any browser follows it. The example
-has one. It must be in `app/App.alder`: `App.update` is called by the
+Every Log out button of the to-do app is on a page that `requires user`.
+"a visitor is sent to log in, and can log out" clicks it and checks that
+the answer is `Redirected (Auth.Login.Login {})`. The logout would end at
+the login page even if `Logout.update` answered `Response.refresh`: the
+browser asks for the same page again, with the user now gone from the
+session, and `requires user` redirects it to the login page. Either way
+the user ends up there, so no browser test can tell `redirect` from
+`refresh` here. A test of `Logout.update` itself can, since it sees the
+`Response` before any browser follows it. (With the page-and-message
+form this was a survivor, `redirect → rerender`; a route has no such
+mutant, but the test still checks something a browser cannot.) The example
+has one. It must be in `app/App.alder`: `Logout.update` is called by the
 runtime, and a test anywhere else that calls it is E0002. (This block is
 not checked on its own, since it belongs in that module; it is the
 file's own text.)
 
 ```alder fragment
 test "Logout clears the user and goes to log in" = {
-  let r <- Test.run (update Logout { user: Just (User.UserId "me") })
-  Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok (Redirect (Auth.Login {})), trace: ["Session.put"] })
+  let r <- Test.run (Logout.update {} { user: Just (User.UserId "me"), role: Admin })
+  Task.succeed ({ value: r.value, trace: r.trace } == { value: Ok (Response.redirect (Auth.Login.Login {})), trace: ["Session.put"] })
 }
 ```
 
 (The blog has a Log out button on its front page, which a visitor may
-open, so there a browser test kills the same mutant.)
+open, so there a browser test tells the two apart.)
 
 ### Mutants that are the same program
 
-After its ten new tests (and those of its rules), the blog keeps three
-survivors (here and below, `…` stands for the 42 `ok` lines):
+With all its tests (those of its rules, and those of its generated admin),
+the blog keeps six survivors (here and below, `…` stands for the 196 `ok`
+lines):
 
 ```text
 $ alder test --mutate examples/blog
 …
-42 passed, 0 failed
-63 mutants: 60 killed, 3 survived  (score 0.95)
+196 passed, 0 failed
+202 mutants: 196 killed, 6 survived  (score 0.97)
 survived:
-  Posts.Index   load:30:17   operator flipped   params.page < 1 → params.page <= 1
-  Posts.Index   load:30:48   operator flipped   params.page > lastPage → params.page >= lastPage
-  Posts.Index   load:39      limit dropped      Db.limit (perPage + 1) → no limit
+  Admin.Comments.New   New.load:34        operator flipped   postsTotal > 200 → postsTotal >= 200
+  Admin.Posts.New      New.load:33        operator flipped   authorsTotal > 200 → authorsTotal >= 200
+  Admin.Users.Bulk     selected:44        where dropped      Db.where (Post.author.in taken) → the condition dropped
+  Posts.Index          Index.load:33:17   operator flipped   params.page < 1 → params.page <= 1
+  Posts.Index          Index.load:33:48   operator flipped   params.page > lastPage → params.page >= lastPage
+  Posts.Index          Index.load:42      limit dropped      Db.limit (perPage + 1) → no limit
 ```
 
-The first line of `Posts.Index.load` clamps the page number:
+The first three are the generated admin's, equivalent as the to-do
+admin's two are (the blog's README says why). The other three are in
+the blog's own code. The first line of `Posts.Index`'s `load` clamps the
+page number:
 
 ```alder fragment
   let page = if params.page < 1 then 1 else if params.page > lastPage then lastPage else params.page
 ```
 
 Two `operator flipped` mutants sit on this line, so their lines carry
-the column: `load:30:17` is `params.page < 1`, `load:30:48` is `params.page
-> lastPage`. `<` and `<=` differ only when `params.page` is 1, and then
+the column: `Index.load:33:17` is `params.page < 1`, `Index.load:33:48` is
+`params.page > lastPage`. `<` and `<=` differ only when `params.page` is 1, and then
 both branches give 1; `>` and `>=` differ only at `lastPage`, where both
 give `lastPage`. No input tells the mutant from the app. (The line's two
 `condition negated` mutants, `if not (params.page < 1)` and `if not
@@ -2375,50 +2534,53 @@ app's behaviour and gets no mutants.
 ### The exact score
 
 With no survivor the report ends at the score line. The comparison
-uses the exact score, not the two decimals printed: the blog's is 60 /
-63 = 0.952…, printed as 0.95, so
+uses the exact score, not the two decimals printed: the blog's is 196 /
+202 = 0.9703…, printed as 0.97, so
 
 ```text
-$ alder test --mutate --min 0.953 examples/blog
+$ alder test --mutate --min 0.971 examples/blog
 …
-42 passed, 0 failed
-63 mutants: 60 killed, 3 survived  (score 0.95)
+196 passed, 0 failed
+202 mutants: 196 killed, 6 survived  (score 0.97)
 survived:
-  Posts.Index   load:30:17   operator flipped   params.page < 1 → params.page <= 1
-  Posts.Index   load:30:48   operator flipped   params.page > lastPage → params.page >= lastPage
-  Posts.Index   load:39      limit dropped      Db.limit (perPage + 1) → no limit
+  Admin.Comments.New   New.load:34        operator flipped   postsTotal > 200 → postsTotal >= 200
+  Admin.Posts.New      New.load:33        operator flipped   authorsTotal > 200 → authorsTotal >= 200
+  Admin.Users.Bulk     selected:44        where dropped      Db.where (Post.author.in taken) → the condition dropped
+  Posts.Index          Index.load:33:17   operator flipped   params.page < 1 → params.page <= 1
+  Posts.Index          Index.load:33:48   operator flipped   params.page > lastPage → params.page >= lastPage
+  Posts.Index          Index.load:42      limit dropped      Db.limit (perPage + 1) → no limit
 $ echo $?
 1
 ```
 
-while `--min 0.95` passes. A CI job runs `alder test --mutate --min R`
+while `--min 0.97` passes. A CI job runs `alder test --mutate --min R`
 with `R` at the score the app has reached, so a change that lets a
 mutant survive fails the build. The examples do this in the Go test
 suite: `TestExample_TodosMutation` and `TestExample_Blog` require at
-least 1.00 and 0.95, and the number of mutants their READMEs record.
+least 0.98 and 0.97, and the number of mutants their READMEs record.
 Without `--min`, the exit code is the tests'.
 
 ### `-run`, `-timeout` and `--json`
 
 `-run re` selects tests as it does without `--mutate`, and the mutants
-are judged by the selected tests only. With only `Todo`'s four tests,
+are judged by the selected tests only. With only `Table.Todo`'s four tests,
 most mutants survive:
 
 ```text
-$ alder test --mutate -run '^Todo ' examples/todos
-ok   Todo "countOpen ignores done todos"
-ok   Todo "Active keeps only open todos"
-ok   Todo "each filter has its label"
-ok   Todo "a user with todos cannot be deleted"
+$ alder test --mutate -run '^Table\.Todo ' examples/todos
+ok   Table.Todo "countOpen ignores done todos"
+ok   Table.Todo "Active keeps only open todos"
+ok   Table.Todo "each filter has its label"
+ok   Table.Todo "a user with todos cannot be deleted"
 4 passed, 0 failed
-154 mutants: 7 killed, 147 survived  (score 0.05)
+124 mutants: 7 killed, 117 survived  (score 0.06)
 survived:
 …
 ```
 
-(147 survivor lines follow: the four `scope dropped` of "The operators"
-among them, and all 118 of the generated admin's, which only its own
-tests kill.) This is useful while writing the tests of
+(117 survivor lines follow: the six `scope dropped` of "The rules' mutants
+in a report" among them, and all 94 of the generated admin's, which only
+its own tests kill.) This is useful while writing the tests of
 one module, but the score that counts is the whole suite's.
 
 `-timeout d` bounds each run of the tests: the plain run first, then each
@@ -2437,7 +2599,7 @@ mutant. If the plain run itself runs out of time, the message says
 `(--mutate's default 10s; raise it with -timeout)`. A `-run` that
 selects no test ends with `no test matches -run: nothing can kill a
 mutant`. Mutants run one after another, each with a fresh database
-per test; the to-do app's 154 take a few seconds once the build is made,
+per test; the to-do app's 124 take a few seconds once the build is made,
 because each mutant stops at the first test that fails, and the tests of
 the mutant's own module run first, where the killing test almost always is.
 
@@ -2446,20 +2608,20 @@ every mutant, then one with the totals. A mutant's object has its `id`,
 `module`, `file`, `decl`, `line`, `col` (the column), `kind`, `before`,
 `after`, whether it was `killed`, `by` which test (the first that
 failed), and a `note` (`"crashed"`, `"timed out"`, or empty). From the
-to-do app's run, two of the 154:
+to-do app's run, two of the 124:
 
 ```text
-{"id":138,"module":"Todos.Index","file":"app/Todos/Index.alder","decl":"load","line":18,"col":10,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
-{"id":3,"module":"Table.Todo","file":"app/Table/Todo.alder","decl":"Todo","line":16,"col":3,"kind":"cascade ↔ restrict","before":"owner @ref User @restrict","after":"owner @ref User @cascade","killed":true,"by":"Todo \"a user with todos cannot be deleted\"","note":"","tables":"ensure"}
+{"id":110,"module":"Todos.Index","file":"app/Todos/Index.alder","decl":"Index.load","line":18,"col":10,"kind":"orderBy reversed","before":"Db.orderBy Todo.created.desc","after":"Db.orderBy Todo.created.asc","killed":true,"by":"Todos.Index \"the newest todo is listed first\"","note":""}
+{"id":5,"module":"Table.Todo","file":"app/Table/Todo.alder","decl":"Todo","line":16,"col":3,"kind":"cascade ↔ restrict","before":"owner @ref User @restrict","after":"owner @ref User @cascade","killed":true,"by":"Table.Todo \"a user with todos cannot be deleted\"","note":"","tables":"ensure"}
 ```
 
 and the last line:
 
 ```text
-{"score":1,"killed":154,"survived":0,"suppressed":3,"skipped":25}
+{"score":0.9838709677419355,"killed":122,"survived":2,"suppressed":1,"skipped":27}
 ```
 
-`score` is exact here (1 when every mutant was killed). `"tables":
+`score` is exact here (122 / 124). `"tables":
 "ensure"` marks a **schema mutant** (`default changed`, `cascade ↔
 restrict`): its tests run on tables made from the mutated table
 declarations by `Ensure`, as for an app without `migrations/`
@@ -2470,23 +2632,15 @@ exists for it.
 ### Ids and lines change with the code
 
 Mutants are numbered in a fixed order: module by module, and within a
-module its page's `requires`, then its tables field by field, then its
-declarations in order, each from the outside in. The same source always
-gives the same numbers, so two runs can be compared. An edit renumbers
-every mutant after it, and moves the lines. Modules come in import order
-(a module after those it imports, otherwise alphabetical), so adding an
-import can move a whole module and renumber mutants in code the edit
-never touched. When the to-do app's `Todos.Show` gained `import User`
-for its new tests, its mutants kept their ids (then 25 to 33), since
-`Todos.Show` already came after `User`, but each moved down one line:
-`requires:6` became `requires:7`, `update:32` became `update:33`. When
-the app later adopted the rules of chapter 6, the edits to `Todos.Index`
-renumbered everything after them again: `Todos.Show`'s mutants became
-25 to 32. M12's role and generated admin come before it in import
-order, so they are now 147 to 154 (127 to 134 before M13's admin gained
-its filters and its guard). Ids
-and lines are for reading one report; to compare runs, compare what
-survived.
+module its tables field by field, then its declarations in order, each
+from the outside in. The same source always gives the same numbers, so
+two runs can be compared. An edit renumbers every mutant after it, and
+moves the lines. Modules come in import order (a module after those it
+imports, otherwise alphabetical), so adding an import can move a whole
+module and renumber mutants in code the edit never touched. The generated
+admin's modules come before `Todos.Index` in that order, so a mutant
+of the to-do list's `load` is number 110 here. Ids and lines are for
+reading one report; to compare runs, compare what survived.
 
 ## 12. Properties
 
@@ -2551,7 +2705,7 @@ a stream of random choices. Every ordinary type has one:
 - A brand draws its base type and, when it has a `where` predicate,
   keeps the value only if the predicate holds. Below.
 
-Some types have no generator: `Html`, `Page`, a function, a `Task`, a
+Some types have no generator: `Html`, `Route`, a function, a `Task`, a
 `Query`, a capability, a `Form`. A property over one is E0038 (below),
 and you write the generator yourself with `Fuzz.forAll`.
 

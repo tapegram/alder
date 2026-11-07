@@ -90,12 +90,13 @@ DROP_SUBSECTIONS = {
            "How effects run": ["Waiting: `Query.delay` and `Task.sleep`"]},
     "08": {"Migrations": ["When the app starts", "Statements you add"]},
     "09": {"Test": ["Browser steps and queries"]},
-    "10": {"11. Mutation testing": ["Why a mutation score", "The rules' mutants in a report", "How the two tests kill them", "All fourteen, and one killed by luck", "What is never a mutant",
+    "10": {"11. Mutation testing": ["Why a mutation score", "The rules' mutants in a report", "The mutant that needs a stranger", "How the two tests kill them", "All fourteen, and one killed by luck", "What is never a mutant",
                                     "The logout redirect", "Mutants that are the same program", "The exact score",
                                     "`-run`, `-timeout` and `--json`", "Ids and lines change with the code"],
            "9. Testing through the browser": ["Why through the browser", "Step by step", "`Test.get` and `Test.open`: requesting a page",
                                               "More forms", "Bad input, an example", "Clicks that fail", "A selector the compiler refuses",
-                                              "Comparing a page with its view", "`Test.fetch`: requesting a file"],
+                                              "Comparing a page with its view", "`Test.fetch`: requesting a file",
+                                              "When `Test.refresh` fails"],
            "12. Properties": ["Keeping the case", "How the shrinking works, and why you do not write it",
                               "Properties and `--mutate`"]},
 }
@@ -288,7 +289,7 @@ TRIMS = {
             "needs the membership first, as `Session.put` does: `Test.member ann acme` inserts it. Each org a\n"
             "test touches has its own in-memory database (a silo); insert another org's siloed rows before\n"
             "`Test.login`, as production refuses them in a request of this org. A crafted switch is a direct\n"
-            "call: `Test.run (update (Open { org: globex }) model session)` is `Err \"Session.put org: no\n"
+            "call: `Test.run (Open.update { org: globex } session)` is `Err \"Session.put org: no\n"
             "Membership for this user and org\"`, which kills the mutant `membership dropped`.\n\n"),
            ("**Where an effect test runs.** Every effect test gets a world of its own:", "A pure test (section 1) touches none of this",
             "**Where an effect test runs.** Each effect test gets a fresh, empty\nin-memory SQLite database with the "

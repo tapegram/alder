@@ -296,21 +296,24 @@ class BuildContextTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("\n## 11. Mutation testing\n", out)
         for kept in ("alder test --mutate [--min R] [--json] [-run re] [-timeout d] [dir]",
-                     "32 mutants: 18 killed, 14 survived  (score 0.56)", "| `requires dropped` |",
-                     "### A surviving mutant is a test you have not written", "test \"a visitor is sent to log in from a todo\"",
+                     "30 mutants: 16 killed, 14 survived  (score 0.53)", "| `requires dropped` |",
+                     "### A surviving mutant is a test you have not written", "test \"saving changes the title and the due date\"",
                      "### Survivors that are not gaps", "### `--min` in CI"):
             self.assertIn(kept, out)
         for gone in ("### Why a mutation score", "### What is never a mutant", "line coverage", '"tables":"ensure"',
+                     "### The mutant that needs a stranger", "test \"saving or deleting another user's todo is not found\"",
                      "### Ids and lines change with the code", "### All fourteen, and one killed by luck",
                      "### The logout redirect", "### Mutants that are the same program", "### The exact score",
                      "ok   Todo \"countOpen ignores done todos\""):
             self.assertNotIn(gone, out)
-        self.assertIn("32 mutants: 32 killed, 0 survived  (score 1.00)", out)   # the run after: its score line only
+        self.assertIn("30 mutants: 30 killed, 0 survived  (score 1.00)", out)   # the run after: its score line only
         section = out[out.index("\n## 11. Mutation testing\n"):].split("\n## 12. Properties\n")[0].rstrip("\n")   # chapter 10's next section starts here
         # 6.5k until M11, whose two operators (`role dropped`, `scope dropped`) are two more rows; M15's
         # `membership dropped` is one more, with a sentence on the partition mutants; the operators table
-        # has since grown to twenty-one operators (7.2k measured, found when #22's heading change let the test run again)
-        self.assertLessEqual(len(section), 7300, "the reference keeps at most 7.3k characters of chapter 10's section 11")
+        # has since grown to twenty-one operators (7.2k measured, found when #22's heading change let the test run again);
+        # chapter 10 on routes (#160, PR 8) is 7.5k: the report has the routes' longer survivor lines and a sentence on
+        # the four operators a route does not have
+        self.assertLessEqual(len(section), 7500, "the reference keeps at most 7.5k characters of chapter 10's section 11")
 
     def test_real_reference_keeps_browser_steps(self):
         # agents write browser tests: chapter 10's "Testing through the browser" (the step table,
@@ -321,7 +324,7 @@ class BuildContextTests(unittest.TestCase):
         code, out, _ = self.run_main("--reference", "--chapters", "09,10", "--book", str(bc.BOOK))
         self.assertEqual(code, 0)
         self.assertIn("\n## 9. Testing through the browser\n", out)
-        self.assertIn("| `Test.submit F r` |", out)
+        self.assertIn("| `Test.submit r f` |", out)
         self.assertNotIn("\n## 10. How the browser works\n", out)
         # §9 keeps the table, one example, the encoding, every failure text and the rules; it
         # drops the walkthrough, the further examples and chapter 9's repeated signatures
@@ -370,12 +373,14 @@ class BuildContextTests(unittest.TestCase):
         # reference; its "Delivery" section is a human section); the other chapters follow in PR 8's later tasks.
         # Chapters 7-9 (PR 8): the Response section and the route wording stayed within 66k by trimming the
         # logs, the Http/Random asides, the bytes adapter and the waiting bullets (TRIMS in build_context.py).
+        # Chapter 10 (PR 8, task 8.2c) raised it to 68k: the browser steps on routes (the table's `Test.refresh` and
+        # `url`/`status`, `Answer`'s `Rendered` and `Refreshed`, the checks of every step) and the mutation report.
         bc.HUMAN_SECTIONS, bc.KEEP_SUBSECTIONS = self.saved, self.saved_keep
         bc.DROP_SUBSECTIONS, bc.TRIMS = self.saved_drop, self.saved_trims
         code, out, _ = self.run_main("--reference", "--chapters", ",".join(bc.DEFAULT_CHAPTERS), "--book", str(bc.BOOK),
                                      "--example", str(bc.EXAMPLE))
         self.assertEqual(code, 0)
-        self.assertLessEqual(len(out) // 4, 66000, "the reference is at most 66k tokens (len/4)")
+        self.assertLessEqual(len(out) // 4, 68000, "the reference is at most 68k tokens (len/4)")
         # M17 (file pages) raised from 48000; see the M17 plan
         # M15: the partition rules, `via`, `silo`, the one-store rule and the commands are in; the
         # silo files, the open-time check and moving a table into a silo (the inside) are not
@@ -392,7 +397,7 @@ class BuildContextTests(unittest.TestCase):
             self.assertIn(added, out)
         for cut in ("### Statements you add", "### Example: a theme switch"):
             self.assertNotIn(cut, out)
-        for kept in ("**`Test.login s`** sets it to `s`", "**`Session.put`**, in the test", "A login through the login page's form",
+        for kept in ("**`Test.login s`** sets it to `s`", "**`Session.put`**, in the test", "A login through the login route's form",
                      "So a test that calls `update` or `load` itself", "Db.updateMine Todo: no signed-in user",
                      "`update` call is not checked", "error[E0026]: `Db.mine` needs a route that `requires user`: `Index` does not",
                      "isAuthor : UserId -> Query Bool", "`2026-01-01T00:00:00Z`", "chapter 6, \"Rules\",\nexplains them",

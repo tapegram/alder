@@ -704,8 +704,8 @@ reach, such as a route's `view`, each is E0040 "… is only available in a
 
 The browser steps (chapter 10, section 9) are special forms too: each is
 applied directly to all its arguments, never passed as a value or piped
-into, and `get`, `open`, `fetch`, `submit`, `submitRaw` and `click` need an `App`
-module. `Session` here is `App`'s session record.
+into, and `get`, `open`, `fetch`, `submit`, `submitRaw`, `click` and
+`refresh` need an `App` module. `Session` here is `App`'s session record.
 
 ```text
 Test.login     : Session -> Task Unit
@@ -714,6 +714,7 @@ Test.open      : Route -> Task { answer: Answer, session: Session, doc: Doc, url
 Test.submit    : Route -> record -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
 Test.submitRaw : Route -> List { name: Text, value: Text } -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
 Test.click     : Route -> Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
+Test.refresh   : Task { answer: Answer, session: Session, doc: Doc, url: Text, status: Int }
 Test.fetch     : Route -> Task { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } }
 ```
 
@@ -732,6 +733,13 @@ Test.fetch     : Route -> Task { status: Int, contentType: Text, body: Bytes, he
 - `Test.click r` takes a route without a `form`, with its parameters:
   `Toggle { id: id }`, `App.Logout`. A write route is sent; a GET route
   is fetched and patched into the page held.
+- `Test.refresh` loads the address the browser holds again, with a plain
+  `GET`, and fails unless the body of the page it gets is the body the
+  browser held (the page's `<al-toasts>` region left out); its answer is
+  `Refreshed`. A toggle's test ends with it: it is the check that what the
+  steps patched in is what a fresh load gives (chapter 10, "`Test.refresh`:
+  is the page the one a fresh load would give?"). It fails with no page
+  held.
 - `Test.fetch r` takes a GET route value written in place, like `Test.get`,
   and gives the raw answer: its `status`, `contentType`, `body` as
   `Bytes` and `headers` (sorted by name). It does not follow a redirect,
@@ -748,7 +756,9 @@ type Answer = Shown | Rerendered | Rendered Route | Refreshed | Redirected Route
 ```
 
 Their names, and `Answer`'s eight constructors, are taken in every module
-(E0012). The queries are ordinary functions on a `Doc`, available only
+(E0012). `Rerendered` is the old name of a re-render, kept until the old
+page-and-message syntax is removed; a route's answers are the other seven
+(chapter 10, "`Answer`: what a request came to"). The queries are ordinary functions on a `Doc`, available only
 in tests like the rest of `Test`:
 
 ```text

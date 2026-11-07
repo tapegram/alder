@@ -54,7 +54,7 @@ var (
 // and the example app their other blocks are checked in are the apps under examples/, which are
 // on routes, while every other chapter still quotes the pre-routes copies in testdata/fix.
 // Temporary: a chapter is added when it moves; the set is deleted with the last move (#160, 8.3c).
-var onRoutes = map[string]bool{"02-tour.md": true, "03-syntax.md": true, "05-html.md": true, "06-routes.md": true, "07-effects.md": true, "08-database.md": true, "09-stdlib.md": true}
+var onRoutes = map[string]bool{"02-tour.md": true, "03-syntax.md": true, "05-html.md": true, "06-routes.md": true, "07-effects.md": true, "08-database.md": true, "09-stdlib.md": true, "10-testing.md": true, "11-tooling.md": true}
 
 // BareExample is the state name of chapter 15's transcripts on a bare app (`alder new notes
 // --bare`): like ScaffoldExample, the built binary's output, not a directory under examples/.

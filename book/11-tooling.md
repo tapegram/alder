@@ -16,7 +16,10 @@ only `alder` and Go, `alder version` says which alder you have, and
 page|table|form|msg|capability`, `alder edit table` and `alder fill`
 generate the app's code; as of M13, `alder new auth|type|decl|test`,
 `alder edit page` and `alder fill --decl` complete them, so that an app
-can be built from the command line alone (chapter 15).
+can be built from the command line alone (chapter 15). With routes
+(chapter 6) the generators write `route` lines (`alder new route`), and
+`alder fix --routes` rewrites an app written with `page` and `msg`
+(below, "`alder fix`").
 `alder fmt` formats the app's files (below, "Formatting"). Holes beyond W0002 and `query` are planned.
 
 ## Project layout
@@ -27,8 +30,8 @@ myapp/
     App.alder         -- session, error pages, login page
     Todo.alder        -- table Todo, TodoId, helpers
     Todos/
-      Index.alder     -- page "/"
-      Show.alder      -- page "/todos/{id}"
+      Index.alder     -- route Index = GET "/", and the writes of that page
+      Show.alder      -- route Show = GET "/todos/{id}", and its writes
     Layout.alder      -- shared components
   adapters/           -- Go implementations of capabilities, one package per module
     auth/
@@ -244,6 +247,12 @@ prints them (`wrote app/About.alder`, `edited app/Home.alder`), the
 unified diff of every edited one, and the copy's diagnostics, its typed
 holes (W0002) with their types among them.
 
+`alder new page` and `alder new msg` are now `alder new route` and `alder
+new route --method POST`; the old names still work, and print a note
+that says so. The table lists the commands as they were built, with the
+page and message words of that time; chapter 15 gives what each one
+writes on routes.
+
 | Command | What it writes |
 |---|---|
 | `alder new page [<Module>] <path>` | `app/<Module>.alder`: the page, its `Model`, `load` and `view` in the app's layout, and a browser test. `--list T`: a table of `T`'s rows (`al-table`, badges for Bool and unions), 20 to a page with `al-pagination`; `--show T`: one row, at `<path>/{id}`, and a test of a missing one; `--from T …`: every row of each table, a card each; `--requires user` and `--role R` add the clause, and `--list` reads an `@owner` table with `Db.mine`; `--file [--type T]`: a file page (chapter 6, "File pages"), not an HTML page: its `view` returns `File.text` with the content type `T` (default `text/plain`) and a typed hole for the body, in no layout, and a test that fetches it with `Test.fetch` and checks the status is 200; it does not combine with `--list`, `--show`, `--from`, `--blank` or `--example`. The module is optional with `--list T`, `--show T` or `--from T`: it is derived from the table's plural, in the concern's folder (`Todos.Index`, `Todos.Show`, `Todos.New`; `Activity` gives `Activities`), and written as given when you name one |
@@ -321,37 +330,151 @@ refuses them as app names.
 
 ### `alder routes`
 
-`alder routes [dir] [--json]` lists every route of the app: its pages (GET) and
-its messages (POST), sorted by path. Nested modules make a page's file easy to
-lose (`Sites.Clarity.Index` is `app/Sites/Clarity/Index.alder`); this answers
-"where is the page at this URL" without reading the tree.
+`alder routes [dir] [--json]` lists every route of the app, one per line,
+with its method. Nested modules make a route's file easy to lose
+(`Sites.Clarity.Index` is `app/Sites/Clarity/Index.alder`); this answers
+"where is the route at this URL" without reading the tree.
 
 ```text
 $ alder routes examples/blog
-KIND  PATH                                  MODULE.decl                       FILE:LINE
-page  /                                     Posts.Index.page                  app/Posts/Index.alder:7
-msg   /_m/Admin.Comments.Bulk/BulkDelete    Admin.Comments.Bulk.BulkDelete    app/Admin/Comments/Bulk.alder:53
+METHOD  PATH                                   MODULE.decl                        FILE:LINE
+GET     /admin/comment/bulk                    Admin.Comments.Bulk.Bulk           app/Admin/Comments/Bulk.alder:13
+POST    /admin/comment/bulk/_/BulkDelete       Admin.Comments.Bulk.BulkDelete     app/Admin/Comments/Bulk.alder:14
 …
-page  /posts/{slug}                         Posts.Show.page                   app/Posts/Show.alder:9
+DELETE  /admin/comment/{id}/delete/_/Destroy   Admin.Comments.Delete.Destroy      app/Admin/Comments/Delete.alder:14
+…
+POST    /_/Logout                              App.Logout                         app/App.alder:13
+GET     /login                                 Auth.Login.Login                   app/Auth/Login.alder:23
+POST    /login/_/Submit                        Auth.Login.Submit                  app/Auth/Login.alder:24
+…
+GET     /                                      Posts.Index.Index                  app/Posts/Index.alder:7
+POST    /_/Search                              Posts.Index.Search                 app/Posts/Index.alder:10
+GET     /posts/{slug}                          Posts.Show.Show                    app/Posts/Show.alder:9
+POST    /posts/{slug}/_/AddComment             Posts.Show.AddComment              app/Posts/Show.alder:12
+…
 ```
 
-A page's path is the one its `page` declaration gives. A message has no path of
-its own: the table shows the URL it is posted to, `/_m/<Module>/<Msg>`, which is
-what the generated route table serves. The last column is the declaration's file
-(relative to the app directory) and line. The routes come from the checked
-program, the same one the generated route table is built from, so a program
-that does not check prints its diagnostics, as `alder check` does, and exits 1.
+The first column is the route's method and the second its path, as the
+`route` line declares it: a write route's own path (`/posts/{slug}/_/AddComment`),
+not a path of its page. The third is the module and the route's name, the
+way the source writes them (`Posts.Show.AddComment` is the route
+`AddComment` of `Posts.Show`). The last column is the file (relative to the
+app directory) and line of the `route` line. The routes come in program
+order: module by module (a module after the modules it imports, otherwise
+alphabetical), and within a module in the order they are declared. The
+routes of a module still written with `page` and `msg` come first, sorted
+by path, with a message listed as the `POST` of `/_m/<Module>/<Msg>`, the
+address that form serves. The routes come from the checked program, the
+same one the generated route table is built from, so a program that does
+not check prints its diagnostics, as `alder check` does, and exits 1.
 
 `--json` prints one array instead, for tools:
 
 ```text
-[{"kind":"page","path":"/posts/{slug}","module":"Posts.Show","name":"page","file":"app/Posts/Show.alder","line":9,"col":1}, …]
+[{"kind":"page","method":"GET","path":"/posts/{slug}","module":"Posts.Show","name":"Show","file":"app/Posts/Show.alder","line":9,"col":1}, …]
 ```
 
-`name` is `page` for a page and the message's name for a message; `line` and
-`col` are 1-based. The language server answers the same list as the request
-`alder/routes` (below, "Editor support"), with a file URI and a 0-based range in
-place of `file`, `line` and `col`; alder.nvim uses it for its route picker.
+`method` is the route's method; `name` is the route's name (`page` for a
+page of the old form); `line` and `col` are 1-based. `kind` is `"page"`
+for a GET and `"msg"` for any other method, as it was before routes, so
+that an editor plugin written for pages and messages keeps working until
+the old syntax is removed. The language server answers the same list as
+the request `alder/routes` (below, "Editor support"), with a file URI and a
+0-based range in place of `file`, `line` and `col`; alder.nvim uses it for
+its route picker.
+
+### `alder fix`
+
+`alder fix --routes [--name N] [--dry-run] [--dir <project dir>] [file…]`
+rewrites an app written with `page` and `msg` into routes (chapter 6).
+Without files it rewrites every module of the app in `--dir` (the current
+directory by default); with files it rewrites only those, though it still
+reads the rest of the app so that references resolve. Only the app's
+`.alder` files change, and the rewrite keeps comments and layout outside
+the code it rewrites. It runs on an app that checks; one that does not is
+refused first (see exit 2, below).
+
+What it writes, for a module with `page "/x" { … }` and its `msg`s:
+
+- The page becomes the GET route named after the module's last segment
+  (`Todos.Index` gets `route Index = GET "/" { … }`); `--name N` names the
+  GET route `N` in every module the run rewrites, which is the way out
+  when a module already uses its last segment for something else (exit 2,
+  below). `load` and `view` become `Index.load` and `Index.view` (chapter 6,
+  "Qualified declarations"), and `Html Msg` becomes `Html`.
+- Each `msg M` becomes a write route `M`, `POST "<the page's path>/_/M"`
+  (`/_/M` for the page `/`), with the page's path parameters first and
+  then the message's own, and `form F` when the message had one. Its arm
+  of `update` becomes `M.update`. `Rerender` becomes `Response.refresh`,
+  `Redirect p` `Response.redirect p`, `Reject t` `Response.invalid t`,
+  and `Notice.with t n` becomes `n |> Response.toast t` (likewise
+  `success`, `warning` and `error`). The messages of `App` become routes
+  `POST "/_/M"` in `App`.
+- A reference to another page, `Todos.Show {…}`, becomes
+  `Todos.Show.Show {…}`: a route value keeps its full path, and the
+  module's route takes the module's last segment (chapter 6, "Names").
+  Tests are rewritten with the code: `update (Toggle p) model session`
+  becomes `Toggle.update p session`, `Test.submit F` names the route that
+  posts the form, `Rerendered` becomes `Refreshed`.
+
+Three things the rewrite cannot settle, and says so:
+
+- **A typed hole.** An arm of `update` that read the page's `model` has no
+  model now (a write route is not given one). Each such read becomes a hole
+  `?model`, the arm gets the comment `-- the page's model is gone: render,
+  refresh or query (#160)`, and a message route that gained a path parameter
+  gets a hole for it where the module names it. Fill them (`render` for a
+  one-row change, `refresh` otherwise), then run `alder check`.
+- **An access note.** A write route from a page with a `load` gets a
+  comment above its `update`: the route does not run the page's `load`
+  first, which may have checked access (a 404 for another user's row, a
+  role re-read), so repeat the check in the `update` and delete the
+  comment.
+- **A page that `alder new admin` wrote** (it has `@admin` regions) is
+  left on pages: only its `load` gates its writes, which a route would not
+  run, and its route lines would fall outside its regions. Regenerate the
+  admin instead: move `app/Admin` aside, run `alder new admin`, which
+  writes routes, and carry your own changes over.
+
+A run on the to-do app as it was before routes (its `app/Admin` left
+out), with the notes and holes it prints:
+
+```text
+$ alder fix --routes
+rewrote app/App.alder
+rewrote app/Auth/Login.alder
+rewrote app/Todos/Index.alder
+rewrote app/Todos/Show.alder
+app/Auth/Login.alder:33: access: `Submit` no longer runs `Login.load` first (the page's message did): repeat in `Submit.update` any access check it makes (#160)
+app/Todos/Index.alder:26: access: `Submit` no longer runs `Index.load` first (the page's message did): repeat in `Submit.update` any access check it makes (#160)
+app/Todos/Index.alder:30: hole: `model.filter`: the page's model is gone: render, refresh or query, checking access as load did (#160)
+app/Todos/Index.alder:36: access: `Toggle` no longer runs `Index.load` first (the page's message did): repeat in `Toggle.update` any access check it makes (#160)
+…
+alder fix: 7 typed holes left: fill them (render for a one-row change, refresh otherwise), then run alder check
+alder fix: 6 write routes no longer run their page's load first: repeat in each update any access check its load made (a 404 for another user's row, a role re-read), then delete the comment above it
+$ echo $?
+1
+```
+
+(`…` stands for the lines for `Todos.Show`.) One line is printed per file
+rewritten (`would rewrite app/App.alder` and its unified diff with
+`--dry-run`, which writes nothing), one per hole (`file:line: hole: …`) and
+one per access note (`file:line: access: …`); the summaries go to
+standard error. The exit status says whether anything is left to do:
+
+| Exit | Meaning |
+|---|---|
+| 0 | the app is on routes and nothing is left: no hole, no note, no admin page, no error in the rewritten app |
+| 1 | something is left to do: typed holes (from this run or an earlier one), access notes (printed by the run that wrote the route; a later run does not repeat them), errors in the rewritten app, or an admin page left on pages. A second run says `nothing to rewrite: no page or msg left`, lists the holes still unfilled and exits 1 until none is |
+| 2 | refused, with nothing written: a usage error; the app does not check (`alder check` fails; fix its errors first, then run `alder fix --routes` again); the route's name is taken in a module (choose another with `--name`); a message has a field named like one of its page's path parameters, which its route would put in the path parameter's place (rename the field); or a file could not be read or written |
+
+Old code that uses the words `page`, `msg`, `Nav` and `Notice` is accepted
+until the old syntax is removed, so the rewrite can be done one module at a
+time: name the files, and a module that still has a page keeps working
+beside the routes. Naming files rewrites them only when the app still
+checks with just them rewritten; a reference from another module to a page
+that became a route is a reference to a route now, and the run that
+names too few files says so and writes nothing.
 
 ### `alder build`
 
@@ -401,10 +524,11 @@ part of `dir` once it is made absolute (so `alder build .` inside
    page load never waits on the network to paint. A tab left open across
    a deploy keeps its old `<head>` (boosted links never replace it) until
    its next boosted click: every page carries `<meta name="alder-build">`,
-   the SHA-256 of the server's binary (16 hex digits), the boost sends it
-   with each link's `GET` as the header `Alder-Build`, and a server of
-   another build answers with a real navigation, so the tab loads the
-   page once, with the new build's `<head>`. Datastar's script,
+   the SHA-256 of the server's binary (16 hex digits), the page's script sends
+   it with every Datastar request (a boosted link, an element fetch, a
+   write) as the header `Alder-Build`, and a server of another build
+   answers with a real navigation, so the tab loads the page once, with
+   the new build's `<head>`. Datastar's script,
    whose address carries its version, is the one file cached for good;
    the app's own files get no cache header.
 4. Write `build/<app>/cmd/main.go`, the program's `main`, which imports
@@ -907,10 +1031,12 @@ requests to `/_dev/requests` and `/_dev/map.json` are never recorded, so
 looking does not change what you see.
 
 **The map of the app: `/_dev/map.json`.** `GET /_dev/map.json` is the page at
-`/_dev`, as data. The compiler knows the app's pages, tables and silos, and
-writes them into the program as one JSON text; the running app adds what only
-it knows: the build id, the migrations applied, which capabilities have a real
-adapter and which a fake, and the routes. A tool that wants to show your
+`/_dev`, as data. The compiler knows the app's tables and silos (and the
+pages of a module still written with `page`; a module on routes has none, so
+`pages` is empty for it), and writes them into the program as one JSON text;
+the running app adds what only it knows: the build id, the migrations
+applied, which capabilities have a real adapter and which a fake, and the
+routes, each with its `method` and `pat` (its path pattern). A tool that wants to show your
 tables, such as the TUI's Data screen, reads this and never your source.
 
 ```text
@@ -918,7 +1044,7 @@ $ curl localhost:8080/_dev/map.json
 {"build":"afcb2a7d","map":{"pages":[…],"tables":[{"name":"Todo.Todo","sql":"Todo__Todo","columns":["id: Text","title: Text","done: Bool"],"cols":[{"name":"id","type":"Text","sql":"id","sqlType":"TEXT"},{"name":"done","type":"Bool","sql":"done","sqlType":"INTEGER"}],"id":"id"}],"session":[]},"caps":[{"name":"Auth.Login.Password","kind":"adapter"}],"migrations":["0001_init"],"routes":[{"method":"GET","pat":"/"}]}
 ```
 
-(Trimmed; a real map has every page, table and column.)
+(Trimmed; a real map has every route, table and column.)
 
 A table has two names. `name` is the Alder name, `Module.Name`; `sql` is the
 SQL table it is stored in, the same with `__` for the dot, which is what you
@@ -1011,10 +1137,10 @@ key of the current screen.
   it ends, and `enter` and `m` do nothing until it is over. The footer names
   the command that made the list.
 - **Routes** lists the routes from `alder routes --json`: whether each is a
-  page or a message, its path, the declaration that handles it, where that is
-  in your source, and how many requests it has answered since the TUI started.
-  `enter` shows those requests in Requests, and `o` opens a page that takes no
-  parameter in the browser.
+  page (a GET route) or a message (a write route), its path, the declaration
+  that handles it, where that is in your source, and how many requests it has
+  answered since the TUI started. `enter` shows those requests in Requests,
+  and `o` opens a GET route that takes no parameter in the browser.
 
 Everywhere, `p` shows the problems (the last build's diagnostics, or how the
 app exited), `R` restarts the app, `o` opens it in the browser, and `q`
@@ -1289,9 +1415,14 @@ Every click and submit a test makes also checks the runtime's partial
 updates (chapter 5, "Partial updates"): the test's browser applies the
 answer as a browser would, region by region, and then compares the page
 it holds with a full render of the same page. A difference fails the
-step, naming where: `POST /_m/Todos.Index/Toggle: the patched page
-differs from a full render at body > main > ul#todos: …`. Your tests do
-not mention it; every suite proves the patches on its own pages.
+step, naming where: `POST /_/Toggle: the patched page differs from a full
+render at body > main > ul#todos: …`. After a `Response.render` or a click
+on a GET route it makes a second check, that the element patched in is the
+view of its route rendered on its own, and a `render` of an element the
+page does not have fails the step. Your tests do not mention any of it;
+every suite proves the patches on its own pages. `Test.refresh` adds the
+check of the whole page (chapter 10, "What the browser checks on every
+step").
 
 - `-run re` runs only the tests whose `Module "name"` matches the
   regular expression `re` (Go's syntax). A pattern that matches nothing
@@ -1393,7 +1524,7 @@ app's own tests as the scenarios. It builds the same test program as
 `alder test` (into `build/<app>/scratch/test/`), runs it with the
 environment variable `ALDER_TEST_BENCH=1`, and the program then measures
 every browser step a test takes (`Test.get`, `Test.open`, `Test.click`,
-`Test.submit`, `Test.submitRaw`, `Test.fetch`, chapter 10): what the
+`Test.submit`, `Test.submitRaw`, `Test.fetch`, `Test.refresh`, chapter 10): what the
 server spent on the requests the step made. There is no new language and no
 second main: a scenario is a test, written with the app's types, fakes
 and steps, and `-run`, `--json`, `--build-dir`, `-timeout` and the exit
@@ -1409,17 +1540,25 @@ request:
 ```
 ok   Rows.Bench "toggle 1000"
   step                                      ms     bytes               alloc  req loads steps   sql  n+1
-  GET /                                   5.25  811.3 kB    12.32 MB / 57.8k    1     1     1     1
-  POST /_m/Rows.Index/Toggle              6.67  808.4 kB    12.70 MB / 66.7k    1     2     3     4
+  GET /                                   4.78  973.8 kB    14.89 MB / 60.8k    1     1     1     1
+  PATCH /rows/HvSc18PGlt_cmLI3zMB7        0.13    1.1 kB       26.6 kB / 321    2     1     2     3
+ok   Rows.Bench "add 1000"
+  step                                      ms     bytes               alloc  req loads steps   sql  n+1
+  GET /                                   4.62  973.8 kB    14.89 MB / 60.8k    1     1     1     1
+  POST /rows                             10.53  971.0 kB   25.55 MB / 125.9k    3     2     5     3
 ```
+
+(`/rows/HvSc18PGlt_cmLI3zMB7` is the row's id, which differs on each run.
+The fixture's `Toggle` answers `Response.render` of the row's route; its
+`Add` answers `Response.refresh`.)
 
 | column | what it counts |
 |---|---|
 | `ms` | the wall time the router took to serve the step's requests (summed) |
 | `bytes` | the answers' bodies: the document of a GET, the event stream of a Datastar answer (the regions patched, or the body, title, history) |
 | `alloc` | bytes and objects the Go runtime allocated while the router served them (`runtime.MemStats`: `TotalAlloc` and `Mallocs` read just before and just after each request) |
-| `req` | requests the router served: 1, 2 when it followed a `Redirect` itself (chapter 6), more for each 303 the browser followed |
-| `loads` | how many times a page's `load` ran: a `Rerender` runs it twice (before `update`, to give it the model, and after, to render), and so does a followed `Redirect` (the message's page, then the target) |
+| `req` | requests the router served for the step: the one the browser sent, and each GET route it ran in-process to answer it (the page it renders before the write, the element or page it renders after, a followed `redirect`'s target; chapter 6, "Delivery, decided by the request"), more for each 303 the browser followed |
+| `loads` | how many times a GET route's `load` ran: a `refresh` or an `invalid` runs the page's twice (before the `update`, to have something to compare, and after, to render), a `render` runs the route's it shows once, and a followed `redirect` runs its target's |
 | `steps` | the effect steps the requests ran (their trace) |
 | `sql` | the SQL statements they ran |
 | `n+1` | the statements run in a loop (below): count and distinct argument sets |
@@ -1434,7 +1573,7 @@ How the numbers are taken, so you know what they mean: a test's browser
 calls the app's real router in-process (chapter 10), so there is no
 network; each request's `Env` gets a recorder (`eff.Recorder`) that times
 every effect step and every statement, and the runtime counts each Query
-it runs on that `Env` (a page's `load` is the only Query a request runs).
+it runs on that `Env` (a route's `load` is the only Query a request runs).
 Just before and just after the router serves each request the program
 reads the clock and the Go runtime's memory statistics, so the test
 browser's own work (parsing the answer into a document, applying a
@@ -1449,7 +1588,7 @@ code can call the router with `httptest` against a file database and run
 under `go test -bench . -cpuprofile`.
 
 The repository's fixture `testdata/bench/rows` (a page of N rows, a
-click, a form, a redirect, an N+1 page) is what the runtime's own baselines
+click, a form, a redirect, an N+1 route) is what the runtime's own baselines
 are measured on (`docs/perf/`); `go test ./cmd/alder` runs it once to check
 the columns' shape, never their times.
 
@@ -1903,8 +2042,8 @@ its `alder version` prints `devel+<commit>`.
 
 `alder run` serves the app in developer mode (`ALDER_DEV=1`). Every page then
 carries a panel, `<al-devpanel>`, a one-line bar along the bottom: the
-request's method and path, how it was answered, the time and the number of SQL
-statements. A tab opens it. Only developer mode has the panel, and the strip
+request's method and path (`GET /`, `POST /_/Toggle`), how it was answered,
+the time and the number of SQL statements. A tab opens it. Only developer mode has the panel, and the strip
 and the Errors tab below: a production build contains none of their markup,
 script or style. The panel is rendered after the page's body, in an
 element the body's morph leaves alone, and filled by its own patch on every
@@ -1937,14 +2076,15 @@ remembers the tab chosen last, so the next answer opens on it again. Its tabs:
   `x3 (bulk)` instead; a select per row outside a `Task.all` is still the
   flagged kind. Statements are counted per answer: the session's user
   selected by a message and again by the page it redirects to is not a
-  duplicate. Five or more runs of one statement in one run of a page's
+  duplicate. Five or more runs of one statement in one run of a route's
   `load` (or in what `update` itself ran) are an N+1, marked `N+1 x100`
   instead of `duplicate` (a red badge, like the Errors tab's), and the bar
   then shows `N+1` after the SQL count; the server's log gets a `warn` line
   naming the request (`GET /slow: N+1: …`, the same text as below). Each
-  `load` run is counted on its own because a `Rerender` runs `load` twice in
-  one request: a page whose `load` selects the same thing three times is
-  not an N+1 when a click re-renders it, though the answer then holds six.
+  `load` run is counted on its own because a `refresh` runs the page's `load`
+  twice in one request (before the `update` and after it): a page whose
+  `load` selects the same thing three times is not an N+1 when a click
+  refreshes it, though the answer then holds six.
   The rule (`eff.RepeatsCut`: the recorder marks where each `load` began and
   ended, as it marks a redirect's hop) groups the statements by their text
   (the arguments are bound with `?`, so the text is the statement's shape;
@@ -1965,11 +2105,22 @@ remembers the tab chosen last, so the next answer opens on it again. Its tabs:
 
   The same rule runs in `alder test` (a `warn:` line under the test,
   chapter 10) and in `alder bench`'s `n+1` column.
-- Answer: page, rerender, redirect, not found, or an error with its text.
-- Patches: the events the answer sent: each region a message's answer
-  patched (`#todo-7`) and `shown` (the page's new hash), or `body` when
-  the whole body was morphed, or `none` when nothing changed; then title,
-  history, toast and panel (chapter 5, "Partial updates").
+- Answer: how the route answered. `page` for a document; `redirect /` with
+  where it went; `refresh` or `invalid`, a write that answered with the page
+  again; `element #todo-7`, a view patched in by its root `id` (an element
+  fetch, or the route a `render` shows); `not found`, `method not allowed`,
+  `bad request`; `file 200 text/csv 120B` for a file route; or an error with
+  its text. When a `render` or an element fetch finds nothing to patch, the
+  answer says so (`render: not found, no element patched`, or
+  `element fetch: error, no element patched`) and an error toast follows. A
+  view whose root has no `id` says `no element patched: the view's root has
+  no id`, and the server logs an error.
+- Patches: the events the answer sent: each region a `refresh` or an
+  `invalid` patched (`#todo-7`) and `shown` (the page's new hash), or `body`
+  when the whole body was morphed, or `none` when nothing changed; one
+  `#todo-7` for an element; then title, history, toast and panel (chapter 5,
+  "Partial updates"). The first patch after a write is named for the answer
+  that caused it: `#todo-7 (render Row)`, `body (redirect Index)`.
 - History: the last 20 requests of this browser tab, newest first. The panel
   keeps them in the browser (`sessionStorage`, so a full page load keeps them
   too and another tab has its own); click one to read its Request, Trace, SQL,
@@ -1991,20 +2142,21 @@ The panel is yours to arrange, like the Django debug toolbar:
   morphed). When the browser refuses storage (a private window, say), the panel
   works as ever and simply forgets on reload.
 
-A message that answers `Redirect` to a page of the app is answered with that
-page in the same response (chapter 6), and the panel shows both: the
-message's request, its steps and statements, then a line "then GET /…" and
-the page's own, and in the bar both answers ("redirect /admin/user, then
-page"). So the panel after a delete shows the `DELETE`s that ran, not only the
-list that followed.
+A write route that answers `Response.redirect` to a GET route of the app is
+answered with that route's page in the same response (chapter 6), and the
+panel shows both: the write's request, its steps and statements, then a line
+"then GET /…" and the page's own, and in the bar both answers ("redirect
+/admin/user, then page"). So the panel after a delete shows the `DELETE`s that
+ran, not only the list that followed.
 
 `/_dev` is the map of the running app, built from what the compiler knows and
-what the server knows: the pages (path, `requires`, roles, parameters, and the
-messages each declares, with links to those that need no parameter), the
-tables (columns, the id, `@created`/`@updated`, unique columns, references and
-what deleting does to them, the owner), the capabilities and whether an
-adapter or a fake is wired, the session's fields, the migrations the database
-has, the routes and the build id. `ALDER_DEV_PANEL=0` turns the panel off.
+what the server knows: the routes the router serves, each with its method and
+path (a link when it is a GET route that needs no parameter), the tables
+(columns, the id, `@created`/`@updated`, unique columns, references and what
+deleting does to them, the owner), the capabilities and whether an adapter or
+a fake is wired, the session's fields, the migrations the database has and
+the build id; for a module still written with `page` and `msg`, also its
+page, with `requires`, roles, parameters and the messages it declares. `ALDER_DEV_PANEL=0` turns the panel off.
 None of this is served without `ALDER_DEV=1`: no panel, no trace is recorded,
 and `/_dev` is a 404.
 
@@ -2032,7 +2184,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | Code | Meaning | Fix offered |
 |---|---|---|
 | E0001 | parse error (also: an identifier with `__` in it, a module name segment ending in `_`) | — |
-| E0002 | unknown name | — (in a test step, a form of another page written unqualified, or a page's form or message written through its import's qualifier, `Login.Credentials`, gets its full path, `Auth.Login.Credentials`) |
+| E0002 | unknown name | — (a route value written through its import's qualifier, `Index.Submit`, in a link, a `Response.redirect` or a test step gets its full path, `Todos.Index.Submit`: "a route is written with its module's full path") |
 | E0003 | type mismatch (also: a `Db.insertMine` row that names the owner column ("`owner` is set by `Db.insertMine`") or is not a record literal in the call ("`Db.insertMine` takes its row as a record literal: write the record literal in the `Db.insertMine` call (its row is `Insert Todo` without `owner`)"), `==` or a `Dict` key on a function or an effect value, a column method on a column held in a variable, `.contains` or `.startsWith` on a column that is not `Text`, `@setNull` on a field that is not a `Maybe`, a `Db` function over a type parameter, a `fake` that lacks an entry of its capability or defines one it does not have, `Test.fake` outside a `test`, on an expression, or on a capability without a `fake`, `Session` in a fake's entry; a browser step outside a `test`, on something not written in place (`Test.get p`), piped into or not applied, its argument of the wrong kind ("`Submit` carries form `NewTodo`: use `Test.submit`", "`Toggle` posts no form: use `Test.click`", "`Rename` is posted by `Save` and `Draft`: write `Test.submit (Save { id: … }) { … }`", "`Test.get` needs a record `Model`: …"), `Test.login` with a record that is not the app's session; `Doc`, `Answer` or one of its constructors outside a `test`, chapter 10, section 9); a hint with the parenthesized form, written with your own expressions, for the two precedence traps: `a && m ?? d`, which is `(a && m) ?? d`, and `x |> f == y`, which is `x |> (f == y)` | conversion such as `Text.fromInt (…)` where one exists |
 | E0004 | non-exhaustive `match` | arm skeleton |
 | E0005 | module name does not match its file path | — |
@@ -2040,7 +2192,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0007 | top-level value without a type signature | signature line |
 | E0008 | wrong number of parameters or arguments, or of type arguments (`Box Int Text` for `type Box a`) | — |
 | E0009 | duplicate definition (two tests of one module with the same name too, two `fake`s of one capability), a constructor declared in two imported modules, or a value named like an entry of the capability named like its module (`render` beside `capability Markdown { render … }` in module `Markdown`) | — |
-| E0010 | required declaration missing (page `load`/`view`/`update`, `App` `error`/`notFound`/`login`/`session`) | — |
+| E0010 | required declaration missing (page `load`/`view`/`update`, `App` `error`/`notFound`/`login`/`session`; a route's missing members are E0043) | — |
 | E0011 | invalid declaration (unstorable table field, unusable page or form field, bad `@id`, brand constructor used outside its module, a record that contains itself by value, a delete rule such as `@cascade` on a field without `@ref`, before `@ref T`, or two on one field, a `@renamed "old"` whose old name is not a name, is the field's or table's own, or is still a field of the table) | — |
 | E0012 | a type, table, form or component in a page module or `App` named like a generated type: `Params`, `Msg`, `Session`, or `<Msg>Params` for a declared `msg`; in any module, a type, table, form or union named like a Prelude type a program writes (`Query`, `Task`, `Html`, `Maybe`, `Result`, `Nav`, `List`, `Dict`, `Int`, `Float`, `Text`, `Bool`, `Unit`, `Date`, `Time`, `Never` and `Error`; not Db's `Order`, `Page`, `Form`, `Table`, `Id`, `Insert`, `Select`, `Condition`, `Column`) or like the Prelude's test types `Doc` and `Answer`, whose module's other errors wait for the rename; in any module, a constructor or `msg` named like one of `Answer`'s (`Shown`, `Rerendered`, `Redirected`, `FormRejected`, `PageMissing`, `RequestFailed`: "`PageMissing` is a constructor of the Prelude's test type `Answer`; name the constructor differently (for example `MissingLookup`)") | — |
 | E0014 | two module names that differ only in case (`Ab` and `AB`): their files would be one on a case-insensitive file system | — |
@@ -2054,6 +2206,9 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | E0040 | something only tests may use (`Test.*`, `Doc`, `Answer`, a fake's table, a test helper) where no test helper can be: a page's `load`/`view`/`update`, `App`'s values, a fake's entry, a brand check, a field default. "`fetchText` is a test helper (it uses `Test.fetch`): only a `test` or another test helper may use it"; "`Test.fetch` is only available in a `test` or a test helper: `view` is the page's view, not a helper" (chapter 10, "Test helpers") | — |
 | E0041 | a union constructor or brand (in its module and the modules importing it) named like a one-segment page module, where some module in that scope writes `Status { … }` and the constructor takes no record: "constructor `Status` (of `Types.Code`) shadows page `Status` in `Types` and the modules importing it: there `Status { … }` is the constructor, so the page cannot be linked or fetched; rename the constructor or the page module (for example `module StatusPage`)", reported at the constructor (W0011 when nothing breaks; a `msg` is always W0011) | — |
 | E0042 | a `theme` declaration the rules refuse (Appendix C, "Changing a token"): outside `App` or declared twice; a field twice in one record; `light` or `dark` not a record; a name that is not an alder-ui token ("`primray` is not a token of alder-ui v0.4.2; did you mean `primary` (`--primary`)?") or a removed `--al-*` one ("`alFontMono` was removed in alder-ui v0.4: write `fontMono`"); a colour at the top level or a theme-wide token under `light`/`dark`; a value of the wrong shape for its kind, a negative length, a `var()` of anything but a colour token, or colours whose `var()`s lead back to themselves | — |
+| E0043 | a `route` declaration the rules refuse (chapter 6): a GET route needs exactly `R.load` and `R.view`, a write route exactly `R.update : R.Params -> Session -> Task Response`; `form F` on a GET route; a `{segment}` that names no parameter; two routes with one method and path; a module with both a `page` and a `route` | — |
+| E0044 | a route name that cannot be told apart from a module, an import's qualifier, a standard-library module, a constructor, brand or table in scope, or another route of the module (chapter 6, "Names"); or a qualified declaration (`Row.view`) that names no route | — |
+| E0045 | a route requested the way its method refuses (chapter 6, 10): `href` to a write route, `submit` to a GET route, `Test.get`, `Test.open` or `Test.fetch` of a write route, `Response.redirect` or `Response.render` of a write route, `Test.submit` of a route without `form`, `Test.click` of a route with one | — |
 | E0019 | `migrations/` is behind the app or disagrees with itself, reported at `migrations/schema.json:1:1` by every command but `alder migrate`: the tables changed since the last migration (``the schema changed since migration 0003 (table Post: column body): run `alder migrate` ``); a storage format change (``the storage format changed (v1 → v2): this needs a rebuild migration of every table, which this `alder migrate` cannot write yet (`alder migrate --format` is planned); build with the compiler that wrote migrations/ until then``); `.sql` files but no `schema.json`; a `schema.json` or migration file that does not read; a malformed file (``migration 0002_x: line 6: a statement must end in `;` ``, a wrong first line, a header without `-- from` or `-- to`); two files with one number (``two migrations are numbered 0005 (likely two branches: 0005_a.sql, 0005_b.sql): keep the one already merged or deployed, delete the other, restore schema.json to its result, run `alder migrate` ``); a file that does not start where the one before it ends (``migration 0003_sub does not follow 0001_initial: a file is missing or edited; restore migrations/ from version control (`git checkout migrations/`)``); a last file that does not end at the snapshot (``migration 0003_sub does not lead to migrations/schema.json: a file is missing or edited; restore migrations/ from version control (`git checkout migrations/`)``) | — |
 | E0020 | a `fake` declared outside the module of its capability: "`fake Stripe` must be declared in the module that declares `capability Stripe`" (chapter 10, "Faking a capability") | — |
 | E0021 | a fake's table used outside a `test`, a test helper and the fake's own entries (a page's `load`, another fake's entry, a type declaration, an app table's `@ref`): "`Charge` is a fake's table: only tests and `fake Stripe` may use it" | — |
@@ -2096,7 +2251,7 @@ A fix replaces the half-open span from `line:col` to `endLine:endCol` with `repl
 | W0002 | typed hole (`?name`) with its expected type | — |
 | W0003 | a form field whose decoding errors no `<Errors field>` and no `<Errors form />` of its form would show | — |
 | W0004 | a default on a field of a declared `type R = {…}` (``field `loud`: a default on a plain record type never applies; remove it``): a literal of a declared record names every field, so the default could never apply | — |
-| W0005 | a form posting a page's message whose arm of `update` can answer `Reject`, but without `<Errors form />` to show the text: "`Submit` can answer `Reject`, but this form has no `<Errors form />`: the user never sees the rejection text" (chapter 10, "`Test.submitRaw`: input the types forbid") | — |
+| W0005 | a form posting a write route whose `update` can answer `Response.invalid` (a page's message whose arm can answer `Reject`), but without `<Errors form />` to show the text: "`Submit` can answer `Response.invalid`, but this form has no `<Errors form />`: the user never sees its text" (chapter 10, "`Test.submitRaw`: input the types forbid") | — |
 | W0006 | an adapter package reads (through `os.Getenv` or `os.LookupEnv` with a literal name) an environment variable that `deploy.requires` does not name (chapter 16): "adapter `auth` reads `SMTP_URL`, which `deploy.requires` does not name"; the runtime's own `ALDER_…` variables are never reported, and a name in `requires` that no adapter reads is fine | name it in `requires` |
 | W0007 | the language server's warning on line 1 of an open scratch file when the app has errors, so the file does not run (this chapter, "Scratch files in the editor"): "the app has errors; fix them and save"; the errors themselves are on the app's files | fix the app's errors and save |
 | W0008 | a GET `<form>` (`method="get"` or none, no `submit`) whose literal `action` is a page's path holds a plain `<input>`, `<select>` or `<textarea>` with a literal `name` that is one of the page's parameters declared with another wire name (chapter 6): "page `Wood` reads its parameter `electionId` from the query key `ElectionId`, so `name="electionId"` in this GET form sets nothing; use the wire name: `name="ElectionId"`" | the wire name as the `name` |
@@ -2178,9 +2333,10 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   the element's attributes, such as `variant`, hover shows that attribute's
   line alone. A component such as `<Layout.Page` is a function, not an
   element, so hover shows its signature as for any other declaration. On a
-  page's `load`, `view` or `update`, hover also says what the
-  hook does and what it must return; on the `page` line it shows the route, the
-  parameter record and the `requires` clauses.
+  `load`, `view` or `update` of a module written with `page`, hover also says
+  what the hook does and what it must return; on the `page` line it shows the
+  route, the parameter record and the `requires` clauses. The members of a
+  `route` (`Toggle.update`) show their signature as any declaration does.
 - **Go to definition.** On a use of `lastPage` it jumps to `lastPage : Int`;
   on a local, to the `let` or the parameter that binds it; on the `title` of
   `post.title` to the field in `app/Table/Post.alder`. Neovim's own key for it is
@@ -2213,11 +2369,13 @@ The examples use the blog (`examples/blog`), file `app/Posts/Index.alder`.
   module `Post` is not imported`` (the same fix that `alder check --json`
   carries, "Diagnostics" above), and then the generators that apply where
   the cursor is. A fix that is the one obvious repair comes first and is
-  marked preferred: on a page hook with the wrong signature, ``Change
-  signature to `Params -> Session -> Query Model` ``. The generators are
-  refactor actions, after every fix. On `Posts.Index`, a page, those are `new form`, `new msg`,
-  `new decl`, `new test`, `edit page` and `remove page`, each with the page
-  already filled in: `new msg (page = Posts.Index)`. Choosing one asks for
+  marked preferred: on a route member with the wrong signature, ``Change
+  signature to `Toggle.Params -> Session -> Task Response` ``; on a route
+  that lacks members, ``Insert Row.load, Row.view for route Row``. The
+  generators are refactor actions, after every fix. On `Posts.Index`, a
+  route module, those are `new form`, `new msg`, `new decl`, `new test`,
+  `edit route` and `remove route`, each with the route module already
+  filled in: `new msg (page = Posts.Index)`. Choosing one asks for
   the rest of its fields (a name, say), shows the diff it would make, and
   applies it when you press `<CR>`. Choosing a generator opens the generator
   modal (below) with its fields filled from the cursor.
@@ -2243,7 +2401,7 @@ The server answers one more custom request, `alder/routes`, with params `{}`: th
 array `alder routes --json` prints, from the last build that type-checked, with
 `uri` (a `file://` URI) and `range` (an LSP range, 0-based, over the declaration)
 in place of `file`, `line` and `col`. The other fields are the same (`kind`,
-`path`, `module`, `name`). The list is empty before the first good build.
+`method`, `path`, `module`, `name`). The list is empty before the first good build.
 
 ### Generators in the editor
 
@@ -2281,13 +2439,13 @@ names whose type fits come first), and type the expression. The server
 shows the hole as a hint until the line checks.
 
 Or let a model write it. On a hole, the code-action menu (`gra` in Neovim)
-offers `Fill ?delete with AI (Task Nav)`, first, before the generators. It
+offers `Fill ?delete with AI (Task Response)`, first, before the generators. It
 runs the loop of `alder fill --ai` in the server, on your buffers: the
 model's expression is checked on a copy of the app, retried with the
 checker's errors up to three times, and only an expression that checks
 comes back. It arrives as one edit to the buffer, which `u` undoes in one
 step; nothing is saved. While it runs, the status line shows `alder:
-filling ?delete : Task Nav` and each retry (`attempt 2 of 3: E0003 …`). If
+filling ?delete : Task Response` and each retry (`attempt 2 of 3: E0003 …`). If
 you edit the buffer meanwhile, the server sends no edit and shows the
 expression instead, for you to paste. When no answer checks, a warning
 shows the errors and the model's last expression. One fill runs at a time.
@@ -2299,7 +2457,7 @@ in the editor, the cursor is on the first hole it left, so the fill is one
 
 A model's expression never lands unseen. Each applied fill is shown in a
 message, `alder fill ?delete: …`. The hole's type says what the expression
-returns, not what it does on the way: `Task Nav` admits deleting any row.
+returns, not what it does on the way: `Task Response` admits deleting any row.
 So an expression that calls a capability (host Go, which can do anything),
 makes an HTTP request, changes the session, writes raw HTML, pauses, or
 writes rows not scoped to the session (`Db.insert`, `Db.update`,
