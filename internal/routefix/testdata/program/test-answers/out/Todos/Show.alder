@@ -15,6 +15,7 @@ Show.load params session = {
 
 form EditTodo = { title: Text }
 
+-- this route does not run Show.load first: repeat here any access check it makes (#160)
 Save.update : Save.Params -> Session -> Task Response
 Save.update p session = Task.succeed Response.refresh
 

@@ -14,12 +14,14 @@ Index.load params session = {
   Query.succeed { todos: todos }
 }
 
+-- this route does not run Index.load first: repeat here any access check it makes (#160)
 Toggle.update : Toggle.Params -> Session -> Task Response
 Toggle.update p session = {
   let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
   Task.succeed Response.refresh
 }
 
+-- this route does not run Index.load first: repeat here any access check it makes (#160)
 Clear.update : Clear.Params -> Session -> Task Response
 Clear.update params session = Task.succeed (Response.redirect (Index {}))
 

@@ -222,9 +222,10 @@ func TestFix_Usage(t *testing.T) {
 	}
 }
 
-// TestFix_RoutesOldAdmin: a page that `alder new admin` wrote is rewritten like any other, but its
-// `@admin` regions no longer line up with the route lines, so the command says to regenerate the
-// admin instead.
+// TestFix_RoutesOldAdmin: a page that `alder new admin` wrote (with `@admin` regions) is not
+// rewritten: its writes are gated only by its `load`, which a route would not run, and its
+// regions would not line up with the route lines. It stays a page, the command says to
+// regenerate the admin, and exits 1.
 func TestFix_RoutesOldAdmin(t *testing.T) {
 	t.Parallel()
 	dir := todosOnPages(t)
@@ -251,15 +252,29 @@ update msg model session = match msg {
 view : Model -> Session -> Html Msg
 view model session = <button click={Go}>Go</button>
 `
-	if err := os.WriteFile(filepath.Join(dir, "app/Admin/Old.alder"), []byte(old), 0o644); err != nil {
+	f := filepath.Join(dir, "app/Admin/Old.alder")
+	if err := os.WriteFile(f, []byte(old), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	code, out, errs := runFix("--routes", "--dir", dir)
-	if code != 1 || !strings.Contains(out, "rewrote app/Admin/Old.alder") {
+	if code != 1 || strings.Contains(out, "rewrote app/Admin/Old.alder") || !strings.Contains(out, "rewrote app/Todos/Index.alder") {
 		t.Fatalf("code %d\n%s%s", code, out, errs)
 	}
-	if !strings.Contains(errs, "1 page (app/Admin/Old.alder…) written by alder new admin") || !strings.Contains(errs, "alder new admin") {
+	if b, _ := os.ReadFile(f); string(b) != old {
+		t.Errorf("the admin page was rewritten:\n%s", b)
+	}
+	if !strings.Contains(errs, "1 page (app/Admin/Old.alder…) written by alder new admin") || !strings.Contains(errs, "left on pages") ||
+		!strings.Contains(errs, "regenerate the admin") {
 		t.Errorf("no advice to regenerate the admin:\n%s", errs)
+	}
+
+	// named alone, it is left too
+	code, out, errs = runFix("--routes", "--dir", dir, f)
+	if code != 1 || strings.Contains(out, "rewrote") || !strings.Contains(errs, "written by alder new admin") {
+		t.Errorf("named alone: code %d\n%s%s", code, out, errs)
+	}
+	if b, _ := os.ReadFile(f); string(b) != old {
+		t.Errorf("the admin page was rewritten:\n%s", b)
 	}
 }
 
@@ -305,5 +320,73 @@ func TestFix_RoutesParamClash(t *testing.T) {
 	}
 	if after, _ := os.ReadFile(show); !bytes.Equal(before, after) {
 		t.Error("a refused run wrote the file")
+	}
+}
+
+// TestFix_RoutesLoadCheck: before routes every message ran its page's `load` first, so a `load`
+// that checked access (here `Db.getMine`: anyone else's todo is a 404) gated every write. A route
+// does not run it: the rewrite puts a comment above each write route's `update` saying so, prints
+// a line per such route and exits 1, though `Wipe`'s arm does not read the model and leaves no
+// typed hole. The note is the first run's: a second run has nothing to rewrite and exits 0.
+func TestFix_RoutesLoadCheck(t *testing.T) {
+	t.Parallel()
+	dir := todosOnPages(t)
+	tidy := `module Todos.Tidy
+
+import Table.Todo
+
+page "/tidy/{id}" { id: Todo.TodoId } requires user
+
+type Model = { todo: Todo }
+
+-- only the todo's owner may open this page: anyone else's is a 404
+load : Params -> Session -> Query Model
+load params session = {
+  let todo <- Db.getMine Todo params.id
+  Query.succeed { todo: todo }
+}
+
+msg Wipe { other: Todo.TodoId }
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Wipe p -> {
+    let _ <- Db.delete Todo p.other
+    Task.succeed Rerender
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session = <h1>{model.todo.title}</h1>
+`
+	f := filepath.Join(dir, "app/Todos/Tidy.alder")
+	if err := os.WriteFile(f, []byte(tidy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errs := runFix("--routes", "--dir", dir, f)
+	if code != 1 || !strings.Contains(out, "rewrote app/Todos/Tidy.alder\n") || strings.Contains(out, ": hole: ") {
+		t.Fatalf("code %d (want 1, no typed hole)\nstdout:\n%s\nstderr:\n%s", code, out, errs)
+	}
+	m := regexp.MustCompile(`(?m)^app/Todos/Tidy\.alder:(\d+): access: (.+)$`).FindAllStringSubmatch(out, -1)
+	if len(m) != 1 || !strings.Contains(m[0][2], "Wipe") || !strings.Contains(m[0][2], "Tidy.load") {
+		t.Fatalf("want one access line for Wipe:\n%s", out)
+	}
+	for _, bad := range []string{"p.id", "path", "payload"} {
+		if strings.Contains(m[0][2], bad) {
+			t.Errorf("the access line steers to %q: %s", bad, m[0][2])
+		}
+	}
+	b, _ := os.ReadFile(f)
+	lines := strings.Split(string(b), "\n")
+	n, _ := strconv.Atoi(m[0][1])
+	if n < 1 || n >= len(lines) || !strings.HasPrefix(lines[n-1], "-- ") || !strings.Contains(lines[n-1], "Tidy.load") ||
+		!strings.Contains(lines[n-1], "#160") || !strings.HasPrefix(lines[n], "Wipe.update :") {
+		t.Errorf("line %d is not the comment directly above Wipe.update:\n%s", n, b)
+	}
+	if !strings.Contains(errs, "1 write route") {
+		t.Errorf("stderr does not count the write routes:\n%s", errs)
+	}
+	if code, out, errs := runFix("--routes", "--dir", dir, f); code != 0 || !strings.Contains(out, "nothing to rewrite") {
+		t.Errorf("second run: code %d\n%s%s", code, out, errs)
 	}
 }

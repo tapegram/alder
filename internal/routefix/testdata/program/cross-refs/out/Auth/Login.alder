@@ -12,6 +12,7 @@ Login.load params session = Query.succeed {}
 
 form Credentials = { name: Text }
 
+-- this route does not run Login.load first: repeat here any access check it makes (#160)
 Submit.update : Submit.Params -> Session -> Task Response
 Submit.update p session = {
   let _ <- Session.put (\s -> { s | user: Just p.form.name })

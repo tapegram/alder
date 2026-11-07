@@ -14,7 +14,11 @@
 //     `Todos.Show.Show {…}` (plan call 14);
 //   - an arm that read the page's model gets a `?model` hole for each read and the comment
 //     `-- the page's model is gone: render, refresh or query (#160)`; a message whose route gained
-//     the page's path parameters gets a hole for each of them where the module names it.
+//     the page's path parameters gets a hole for each of them where the module names it;
+//   - each write route of a page with a `load` gets a comment above its `update` saying that it
+//     no longer runs the page's `load` first (accessNote), reported as a Hole with Access;
+//   - Program leaves a page `alder new admin` wrote (AdminPage) as it is, and refuses a message
+//     with a field named like one of its page's path parameters (ErrParamClash).
 //
 // Tests are rewritten the same way, and their old forms with them: `update (M p) model session`
 // → `M.update p session`, `Test.submit F …` → `Test.submit M …` (M the route posting form F),
@@ -152,7 +156,7 @@ func Program(files map[string][]byte, opts Options) (map[string][]byte, []Hole, 
 		if !slices.ContainsFunc(m.Decls, func(d syntax.Decl) bool { _, ok := d.(*syntax.PageDecl); return ok }) {
 			continue
 		}
-		if opts.Only != nil && !opts.Only[f] {
+		if opts.Only != nil && !opts.Only[f] || AdminPage(files[f]) {
 			continue
 		}
 		name := m.Name[strings.LastIndex(m.Name, ".")+1:]
@@ -169,11 +173,17 @@ func Program(files map[string][]byte, opts Options) (map[string][]byte, []Hole, 
 		pages[m.Name] = true
 	}
 	for _, f := range paths {
-		prog.add(mods[f])
+		if !AdminPage(files[f]) {
+			prog.add(mods[f])
+		}
 	}
 	out := map[string][]byte{}
 	var hs []Hole
 	for _, f := range paths {
+		if AdminPage(files[f]) {
+			out[f] = files[f]
+			continue
+		}
 		o, h, err := Module(files[f], f, Options{Name: prog.routes[mods[f].Name], Pages: pages, prog: prog})
 		if err != nil {
 			return nil, nil, err
@@ -184,12 +194,26 @@ func Program(files map[string][]byte, opts Options) (map[string][]byte, []Hole, 
 	return out, hs, nil
 }
 
-// Hole is a typed hole the rewrite left, on line Line of the output (1-based), and why.
+// Hole is a typed hole the rewrite left, on line Line of the output (1-based), and why. With
+// Access it is instead the comment above a write route's `update` saying that the route no
+// longer runs its page's `load` first (accessNote): before routes every message ran it, so a
+// `load` that checked access (a 404 for another user's row, a role re-read) gated every write.
 type Hole struct {
-	File string
-	Line int
-	Why  string
+	File   string
+	Line   int
+	Why    string
+	Access bool
 }
+
+// AdminPage reports whether src is a page module `alder new admin` wrote before routes (it has
+// `@admin` regions). Program leaves it as it is: its writes are gated only by its `load`, which a
+// route would not run, and the route lines would fall outside its regions, which `alder regen
+// admin` then refuses. Regenerating the admin (its generator writes routes) is its rewrite.
+func AdminPage(src []byte) bool {
+	return strings.Contains(string(src), "-- @admin begin") && pageLine.Match(src)
+}
+
+var pageLine = regexp.MustCompile(`(?m)^page `)
 
 // ErrNameCollision is the rewrite's refusal when the route's name is taken in the module (a
 // message, a type, a constructor, a form, a table, a component or an import's qualifier):
@@ -235,9 +259,23 @@ func paramClash(m *syntax.Module) error {
 	return nil
 }
 
-// modelGone is the comment above an `update` whose arm read the page's model, and the end of
-// its holes' reason.
-const modelGone = "the page's model is gone: render, refresh or query (#160)"
+// modelGone is the comment above an `update` whose arm read the page's model; modelGoneWhy is
+// the end of its holes' reason. An id the model held is not to be taken from the route's
+// parameters without checking access as `load` did (the path's id is the request's).
+const (
+	modelGone    = "the page's model is gone: render, refresh or query (#160)"
+	modelGoneWhy = "the page's model is gone: render, refresh or query, checking access as load did (#160)"
+)
+
+// accessNote is the comment above the `update` of each write route of a page that had a `load`
+// (route its GET route), and accessWhy the reason reported for it.
+func accessNote(route string) string {
+	return fmt.Sprintf("this route does not run %s.load first: repeat here any access check it makes (#160)", route)
+}
+
+func accessWhy(msg, route string) string {
+	return fmt.Sprintf("`%s` no longer runs `%s.load` first (the page's message did): repeat in `%s.update` any access check it makes (#160)", msg, route, msg)
+}
 
 // Module rewrites one module's source (file names it in errors): a page module to routes, App's
 // messages to routes, and in any module the references to pages (of opts.Pages) and the tests'
@@ -340,7 +378,9 @@ type rewriter struct {
 	matches map[*syntax.Match]*msgMatch
 	params  map[string]string
 	whys    []string // each hole's reason, by the number in its temporary name
-	err     error
+	// access are the messages whose `update` got accessNote, in order
+	access []string
+	err    error
 }
 
 func (r *rewriter) off(p diag.Pos) int {
@@ -482,7 +522,7 @@ func (r *rewriter) replace(n syntax.Spanned) (string, bool) {
 			}
 		}
 		if n.Module == "" && r.modelVar != "" && n.Name == r.modelVar {
-			return r.hole("model", "`"+r.raw(n.Span)+"`: "+modelGone), true
+			return r.hole("model", "`"+r.raw(n.Span)+"`: "+modelGoneWhy), true
 		}
 		if n.Module == "" && (n.Name == "load" || n.Name == "view") && r.kind == kindPage {
 			return r.route + "." + n.Name, true
@@ -492,7 +532,7 @@ func (r *rewriter) replace(n syntax.Spanned) (string, bool) {
 		}
 	case *syntax.Access:
 		if r.modelVar != "" && readsModel(n, r.modelVar) {
-			return r.hole("model", "`"+r.raw(n.Span)+"`: "+modelGone), true
+			return r.hole("model", "`"+r.raw(n.Span)+"`: "+modelGoneWhy), true
 		}
 	case *syntax.App:
 		return r.app(n)
@@ -997,10 +1037,14 @@ func (r *rewriter) updates(v *syntax.ValueDecl) string {
 			b.WriteString(c + "\n")
 		}
 		for _, w := range r.whys[before:] {
-			if strings.HasSuffix(w, modelGone) {
+			if strings.HasSuffix(w, modelGoneWhy) {
 				b.WriteString("-- " + modelGone + "\n")
 				break
 			}
+		}
+		if r.kind == kindPage && r.hasLoad() {
+			b.WriteString("-- " + accessNote(r.route) + "\n")
+			r.access = append(r.access, name)
 		}
 		fmt.Fprintf(&b, "%s.update : %s.Params -> Session -> Task Response\n", name, name)
 		fmt.Fprintf(&b, "%s.update %s %s = %s", name, param, session, body)
@@ -1014,6 +1058,14 @@ func (r *rewriter) updates(v *syntax.ValueDecl) string {
 		text += "\n\n" + strings.Join(last, "\n")
 	}
 	return text
+}
+
+// hasLoad reports whether the module declares `load`.
+func (r *rewriter) hasLoad() bool {
+	return slices.ContainsFunc(r.m.Decls, func(d syntax.Decl) bool {
+		v, ok := d.(*syntax.ValueDecl)
+		return ok && v.Name == "load" && v.Route == ""
+	})
 }
 
 // matchesInOrder are the matches on the message, in source order.
@@ -1209,6 +1261,17 @@ func (r *rewriter) finish(file, pre string) ([]byte, []Hole, error) {
 			hs = append(hs, Hole{File: file, Line: h.Span.Start.Line, Why: r.whys[mine[k]]})
 		}
 	}
+	// each accessNote is the line above its `M.update` signature
+	lines := strings.Split(string(out), "\n")
+	for _, msg := range r.access {
+		for i := 1; i < len(lines); i++ {
+			if strings.HasPrefix(lines[i], msg+".update :") && lines[i-1] == "-- "+accessNote(r.route) {
+				hs = append(hs, Hole{File: file, Line: i, Why: accessWhy(msg, r.route), Access: true})
+				break
+			}
+		}
+	}
+	slices.SortStableFunc(hs, func(a, b Hole) int { return a.Line - b.Line })
 	return out, hs, nil
 }
 

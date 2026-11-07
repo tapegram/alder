@@ -58,6 +58,7 @@ form SetPublished = { value: Bool }
 -- too many first
 -- delete what can be
 -- the page's model is gone: render, refresh or query (#160)
+-- this route does not run Bulk.load first: repeat here any access check it makes (#160)
 BulkDelete.update : BulkDelete.Params -> Session -> Task Response
 BulkDelete.update p session =
   if ?model > maxRows then
@@ -81,6 +82,7 @@ BulkDelete.update p session =
     }
 
 -- the page's model is gone: render, refresh or query (#160)
+-- this route does not run Bulk.load first: repeat here any access check it makes (#160)
 BulkSetPublished.update : BulkSetPublished.Params -> Session -> Task Response
 BulkSetPublished.update p session =
   if ?model > maxRows then

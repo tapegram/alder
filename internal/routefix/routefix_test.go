@@ -52,7 +52,7 @@ func TestModule(t *testing.T) {
 			}
 			var got []string
 			for _, h := range holes {
-				got = append(got, fmt.Sprintf("%d: %s", h.Line, h.Why))
+				got = append(got, fmt.Sprintf("%d: %s%s", h.Line, kind(h), h.Why))
 			}
 			want := strings.TrimSpace(read(t, filepath.Join(dir, "holes")))
 			if g := strings.Join(got, "\n"); g != want {
@@ -114,7 +114,7 @@ func TestProgram(t *testing.T) {
 			}
 			var got []string
 			for _, h := range holes {
-				got = append(got, fmt.Sprintf("%s:%d: %s", h.File, h.Line, h.Why))
+				got = append(got, fmt.Sprintf("%s:%d: %s%s", h.File, h.Line, kind(h), h.Why))
 			}
 			if g, w := strings.Join(got, "\n"), strings.TrimSpace(read(t, filepath.Join(dir, "holes"))); g != w {
 				t.Errorf("holes:\n%s\nwant:\n%s", g, w)
@@ -134,6 +134,15 @@ func TestProgram(t *testing.T) {
 			}
 		})
 	}
+}
+
+// kind is "access: " for a write route's note that it no longer runs its page's load, "" for a
+// typed hole.
+func kind(h Hole) string {
+	if h.Access {
+		return "access: "
+	}
+	return ""
 }
 
 // wantClash fails unless err is an ErrParamClash naming want: "<page module> <message> <field>".

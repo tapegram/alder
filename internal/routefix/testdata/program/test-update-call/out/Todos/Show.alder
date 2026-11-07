@@ -14,6 +14,7 @@ Show.load params session = {
 }
 
 -- the page's model is gone: render, refresh or query (#160)
+-- this route does not run Show.load first: repeat here any access check it makes (#160)
 Delete.update : Delete.Params -> Session -> Task Response
 Delete.update params session = {
   let _ <- Db.deleteMine Todo ?model

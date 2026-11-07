@@ -1,0 +1,3 @@
+20: access: `Up` no longer runs `Counter.load` first (the page's message did): repeat in `Up.update` any access check it makes (#160)
+25: access: `Down` no longer runs `Counter.load` first (the page's message did): repeat in `Down.update` any access check it makes (#160)
+33: access: `Reset` no longer runs `Counter.load` first (the page's message did): repeat in `Reset.update` any access check it makes (#160)

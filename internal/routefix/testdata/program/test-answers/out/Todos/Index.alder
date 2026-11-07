@@ -19,18 +19,21 @@ form NewTodo = { title: Text }
 
 form Pick = { list: Text }
 
+-- this route does not run Index.load first: repeat here any access check it makes (#160)
 Submit.update : Submit.Params -> Session -> Task Response
 Submit.update p session = {
   let _ <- Db.insertMine Todo { title: p.form.title, done: False }
   Task.succeed (Response.redirect (Index {}))
 }
 
+-- this route does not run Index.load first: repeat here any access check it makes (#160)
 Toggle.update : Toggle.Params -> Session -> Task Response
 Toggle.update p session = {
   let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
   Task.succeed Response.refresh
 }
 
+-- this route does not run Index.load first: repeat here any access check it makes (#160)
 Move.update : Move.Params -> Session -> Task Response
 Move.update p session = Task.succeed Response.refresh
 

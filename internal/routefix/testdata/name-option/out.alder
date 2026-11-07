@@ -9,6 +9,7 @@ type Model = { }
 Feed.load : Feed.Params -> Session -> Query Model
 Feed.load params session = Query.succeed {}
 
+-- this route does not run Feed.load first: repeat here any access check it makes (#160)
 Index.update : Index.Params -> Session -> Task Response
 Index.update params session = Task.succeed Response.refresh
 

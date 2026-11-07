@@ -23,6 +23,7 @@ Index.load params session = {
 form NewTodo = { title: Text.NonEmpty, due: Maybe Date }
 
 -- the page's model is gone: render, refresh or query (#160)
+-- this route does not run Index.load first: repeat here any access check it makes (#160)
 Submit.update : Submit.Params -> Session -> Task Response
 Submit.update p session = {
   let _ <- Db.insertMine Todo { title: p.form.title, due: p.form.due }
@@ -32,12 +33,14 @@ Submit.update p session = {
 -- A message's id comes from the request: anyone can post `Toggle` with another user's id.
 -- `Db.updateMine` and `Db.deleteMine` change the row only when it is the session's user's;
 -- any other id, like a missing one, is a 404 (book 06, "Rules").
+-- this route does not run Index.load first: repeat here any access check it makes (#160)
 Toggle.update : Toggle.Params -> Session -> Task Response
 Toggle.update p session = {
   let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
   Task.succeed Response.refresh
 }
 
+-- this route does not run Index.load first: repeat here any access check it makes (#160)
 Delete.update : Delete.Params -> Session -> Task Response
 Delete.update p session = {
   let _ <- Db.deleteMine Todo p.id

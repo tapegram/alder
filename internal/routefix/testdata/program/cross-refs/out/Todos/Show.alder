@@ -10,6 +10,7 @@ type Model = { id: Text }
 Show.load : Show.Params -> Session -> Query Model
 Show.load params session = Query.succeed { id: params.id }
 
+-- this route does not run Show.load first: repeat here any access check it makes (#160)
 Delete.update : Delete.Params -> Session -> Task Response
 Delete.update params session = Task.succeed (Response.redirect (Todos.Index.Index {}))
 

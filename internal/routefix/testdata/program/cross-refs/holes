@@ -1,2 +1,4 @@
+Auth/Login.alder:15: access: `Submit` no longer runs `Login.load` first (the page's message did): repeat in `Submit.update` any access check it makes (#160)
 Reports.alder:22: `Todos.Show.Delete` takes the page's path parameter `id`: pass the one the test means (#160)
-Todos/Show.alder:18: `Delete` takes the page's path parameter `id`: pass it from the model (#160)
+Todos/Show.alder:13: access: `Delete` no longer runs `Show.load` first (the page's message did): repeat in `Delete.update` any access check it makes (#160)
+Todos/Show.alder:19: `Delete` takes the page's path parameter `id`: pass it from the model (#160)

@@ -12,6 +12,7 @@ Edit.load params session = Query.succeed { id: params.id }
 
 form EditNote = { title: Text }
 
+-- this route does not run Edit.load first: repeat here any access check it makes (#160)
 Save.update : Save.Params -> Session -> Task Response
 Save.update p session =
   if p.form.title == "" then
@@ -19,9 +20,11 @@ Save.update p session =
   else
     Task.succeed (Response.redirect (Edit { id: 1 }) |> Response.success "Saved")
 
+-- this route does not run Edit.load first: repeat here any access check it makes (#160)
 Archive.update : Archive.Params -> Session -> Task Response
 Archive.update p session = Task.succeed (Response.refresh |> Response.toast ("Archived: " ++ p.why))
 
+-- this route does not run Edit.load first: repeat here any access check it makes (#160)
 Ping.update : Ping.Params -> Session -> Task Response
 Ping.update p session = Task.succeed (Response.refresh |> Response.warning "Pong")
 

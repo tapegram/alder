@@ -8,7 +8,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -20,16 +19,15 @@ import (
 	"alder/internal/style"
 )
 
-// pageDeclRe finds a `page` declaration.
-var pageDeclRe = regexp.MustCompile(`(?m)^page `)
-
 const fixUsage = "usage: alder fix --routes [--name N] [--dry-run] [--dir app] [file…]"
 
 // runFixTo is `alder fix --routes`: it rewrites an app written with `page` and `msg` into routes
 // (#160; internal/routefix). With no files it rewrites the whole app under --dir (the current
 // directory by default); with files, only those (the rest of the app is still read, so references
-// resolve). It prints a line per file changed and per typed hole left, and exits 1 while holes
-// remain or the rewritten app has errors (which it prints), 0 when none do, 2 for usage errors,
+// resolve). It prints a line per file changed, per typed hole left and per write route whose page's
+// `load` (which may have checked access) no longer runs first, and exits 1 while holes remain,
+// on the run that wrote such a route, when it left a page `alder new admin` wrote on pages, or
+// when the rewritten app has errors (which it prints); 0 when none of these, 2 for usage errors,
 // a refusal (the app does not check, a route name collides, or a message's field shares a path
 // parameter's name) and IO errors. --dry-run prints each change as a diff and writes nothing.
 func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
@@ -165,17 +163,18 @@ func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
 		}
 	}
 
-	// A page `alder new admin` wrote has `@admin` regions around its messages; the route lines
-	// are grouped at the top, out of those regions, which `alder regen admin` then refuses.
-	// The admin's generator writes routes now, so regenerating it is the better rewrite.
+	// A page `alder new admin` wrote is left on pages (routefix.AdminPage): only its `load`
+	// gates its writes, which a route would not run, and its route lines would fall outside its
+	// `@admin` regions, which `alder regen admin` then refuses. The admin's generator writes
+	// routes now, so regenerating it is the rewrite; until then the run exits 1.
 	var admin []string
-	for _, f := range paths {
-		if strings.Contains(string(files[f]), "-- @admin begin") && pageDeclRe.Match(files[f]) {
+	for _, f := range slices.Sorted(maps.Keys(files)) {
+		if routefix.AdminPage(files[f]) && (len(want) == 0 || want[f]) {
 			admin = append(admin, f)
 		}
 	}
 	if len(admin) > 0 {
-		fmt.Fprintf(stderr, "alder fix: %s (%s…) written by alder new admin: their @admin regions will not match the route lines; regenerate the admin instead (move app/Admin aside, run alder new admin, then carry over your own changes)\n",
+		fmt.Fprintf(stderr, "alder fix: %s (%s…) written by alder new admin left on pages: a route would not run the load that gates their writes, and their @admin regions would not match the route lines; regenerate the admin instead (move app/Admin aside, run alder new admin, which writes routes, then carry over your own changes)\n",
 			plural(len(admin), "page", "pages"), admin[0])
 	}
 
@@ -191,13 +190,18 @@ func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
 		}
 		fmt.Fprintf(stdout, "rewrote %s\n", f)
 	}
-	if len(changes) == 0 {
+	if len(changes) == 0 && len(admin) == 0 {
 		fmt.Fprintln(stdout, "nothing to rewrite: no page or msg left")
 	}
-	left := 0
+	left, access := 0, 0
 	seen := map[string]bool{}
 	for _, h := range holes {
 		if _, ok := changes[h.File]; !ok {
+			continue
+		}
+		if h.Access { // the comment above a write route's update: its page's load no longer runs first
+			access++
+			fmt.Fprintf(stdout, "%s:%d: access: %s\n", h.File, h.Line, h.Why)
 			continue
 		}
 		left++
@@ -234,7 +238,11 @@ func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
 		fmt.Fprintf(stderr, "alder fix: %s left: fill them (render for a one-row change, refresh otherwise), then run alder check\n",
 			plural(left, "typed hole", "typed holes"))
 	}
-	if left > 0 || errs > 0 {
+	if access > 0 {
+		fmt.Fprintf(stderr, "alder fix: %s no longer run their page's load first: repeat in each update any access check its load made (a 404 for another user's row, a role re-read), then delete the comment above it\n",
+			plural(access, "write route", "write routes"))
+	}
+	if left > 0 || errs > 0 || access > 0 || len(admin) > 0 {
 		return 1
 	}
 	return 0

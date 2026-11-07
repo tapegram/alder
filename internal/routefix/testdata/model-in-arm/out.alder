@@ -23,6 +23,7 @@ Show.load params session = {
 form EditTodo = { title: Text.NonEmpty, due: Maybe Date }
 
 -- the page's model is gone: render, refresh or query (#160)
+-- this route does not run Show.load first: repeat here any access check it makes (#160)
 Save.update : Save.Params -> Session -> Task Response
 Save.update p session = {
   let _ <- Db.updateMine Todo ?model (\t -> { t | title: p.form.title, due: p.form.due })
@@ -30,6 +31,7 @@ Save.update p session = {
 }
 
 -- the page's model is gone: render, refresh or query (#160)
+-- this route does not run Show.load first: repeat here any access check it makes (#160)
 Delete.update : Delete.Params -> Session -> Task Response
 Delete.update p session = {
   let _ <- Db.deleteMine Todo ?model

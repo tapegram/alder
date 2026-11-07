@@ -14,6 +14,7 @@ Cart.load params session = Query.succeed { items: 2, coupon: params.coupon }
 coupon : Cart.Params -> Text
 coupon params = params.coupon
 
+-- this route does not run Cart.load first: repeat here any access check it makes (#160)
 Add.update : Add.Params -> Session -> Task Response
 Add.update params session = match params {
   { n: n } ->
@@ -22,10 +23,12 @@ Add.update params session = match params {
     ),
 } -- one or more
 
+-- this route does not run Cart.load first: repeat here any access check it makes (#160)
 Empty.update : Empty.Params -> Session -> Task Response
 Empty.update params session = Task.succeed (Response.refresh |> Response.error "Emptied")
 
 -- the page's model is gone: render, refresh or query (#160)
+-- this route does not run Cart.load first: repeat here any access check it makes (#160)
 Apply.update : Apply.Params -> Session -> Task Response
 Apply.update p session =
   if p.code == ?model then

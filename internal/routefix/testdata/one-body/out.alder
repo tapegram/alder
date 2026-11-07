@@ -10,9 +10,11 @@ Start.load : Start.Params -> Session -> Query Model
 Start.load params session = Query.succeed {}
 
 -- every message answers the same
+-- this route does not run Start.load first: repeat here any access check it makes (#160)
 Ping.update : Ping.Params -> Session -> Task Response
 Ping.update params session = Task.succeed (Response.redirect (Start {}))
 
+-- this route does not run Start.load first: repeat here any access check it makes (#160)
 Pong.update : Pong.Params -> Session -> Task Response
 Pong.update params session = Task.succeed (Response.redirect (Start {}))
 

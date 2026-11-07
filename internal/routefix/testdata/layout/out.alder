@@ -8,6 +8,7 @@ type Model = { notes: List Text }
 Index.load : Index.Params -> Session -> Query Model
 Index.load params session = Query.succeed { notes: ["a", "b"] }
 
+-- this route does not run Index.load first: repeat here any access check it makes (#160)
 Clear.update : Clear.Params -> Session -> Task Response
 Clear.update params session = done
 
