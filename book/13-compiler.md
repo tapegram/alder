@@ -303,7 +303,10 @@ Three things keep it to one:
 
 - The resolver reports each missing module once per module. It keeps a
   `reported` set (`notImported` in `internal/names/resolve.go`) and skips
-  any module already in it.
+  any module already in it. (This is not exact for a nested module such as
+  `Table.Todo`: some uses are keyed by the written qualifier, so one missing
+  import can be reported more than once,
+  [#192](https://github.com/tapegram/alder/issues/192).)
 - Every unresolved reference gets the **poison type**, `types.Err` in
   `internal/types/types.go`. Poison unifies with every type without
   complaint (`unify` in `unify.go` returns early when either side is

@@ -1988,10 +1988,12 @@ navigation signal, shared with boosted links ("Links and navigation" below):
 a new post or click aborts the request still in flight, so a slow answer
 never lands over a newer page. A `click` button's request carries its
 parameters in the URL, and its body is ignored. A `PUT` or `PATCH` route is
-sent with its own method (`@put`, `@patch`); a `click` button for a `DELETE`
-route sends `@delete`, while a form that sends a `DELETE` is posted with
-`_method=DELETE` in the body, because Datastar puts the fields of a `DELETE`
-in its query, where the router never reads `_method`. A `click` on a GET
+sent with its own method (`@put`, `@patch`). A `DELETE` is posted (`@post`)
+with `_method=DELETE` in the body whenever it sends a form: a form, and a
+`click` button outside a form, which is rendered in a form of its own. Only a
+`click` button inside another form (or another element with `click`) sends
+`@delete`, because Datastar puts the fields of a `DELETE` in its query, where
+the router never reads `_method`. A `click` on a GET
 route is not a post at all: it is a Datastar `GET` with `Alder-Fetch: 1`
 (`window._alderF`), and the answer is the route's view as one element.
 
