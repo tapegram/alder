@@ -19,8 +19,10 @@
 // Tests are rewritten the same way, and their old forms with them: `update (M p) model session`
 // → `M.update p session`, `Test.submit F …` → `Test.submit M …` (M the route posting form F),
 // `Rerendered` → `Refreshed` (plan call 15). App's messages become routes `POST "/_/M"` in App
-// (plan call 13). Every other module (a layout, a module already on routes, App without
-// messages) only has its references rewritten: a page value `Todos.Index {}` → `Todos.Index.Index
+// (plan call 13). Every other module (a layout, a helper, a module already on routes, App without
+// messages) has its answers rewritten as above (`Nav` and `Rerender`, `Redirect`, `Reject`,
+// `Notice.*`: a helper may build a write's answer; `Html a` is kept, plan call 2) and its
+// references: a page value `Todos.Index {}` → `Todos.Index.Index
 // {}`, `login = Auth.Login` → `login = Auth.Login.Login`, `choose k = Orgs` → `choose k =
 // Orgs.Orgs` (plan call 14), and a test's answers and steps as above. Program runs the rewrite
 // over a whole app, so each module knows the others' pages, messages and forms.
@@ -250,6 +252,10 @@ func Module(src []byte, file string, opts Options) ([]byte, []Hole, error) {
 	if r.kind == kindOther && pre == string(src) {
 		return src, nil, nil
 	}
+	// `Notice.*` became `Response.*`: an import of Notice that nothing uses any more goes too
+	if !strings.Contains(pre, "Notice.") {
+		pre = noticeImport.ReplaceAllString(pre, "")
+	}
 	return r.finish(file, pre)
 }
 
@@ -394,6 +400,9 @@ func (r *rewriter) replace(n syntax.Spanned) (string, bool) {
 		if n.Module != "" {
 			return r.member(n.Module, n.Name, n.Name == "Params" && len(n.Args) == 0)
 		}
+		if n.Name == "Nav" && len(n.Args) == 0 && !r.local[n.Name] { // in any module: a helper's answer
+			return "Response", true
+		}
 		if r.kind == kindOther {
 			return "", false
 		}
@@ -404,8 +413,6 @@ func (r *rewriter) replace(n syntax.Spanned) (string, bool) {
 			// outside a route's own declarations `Session` is App's; in a page it was the page's
 			// (plan call 4)
 			return r.route + ".Session", true
-		case n.Name == "Nav" && len(n.Args) == 0:
-			return "Response", true
 		case n.Name == "Msg" && len(n.Args) == 0:
 			return "Route", true
 		case n.Name == "Html" && len(n.Args) == 1:
@@ -421,7 +428,7 @@ func (r *rewriter) replace(n syntax.Spanned) (string, bool) {
 	case *syntax.CtorRef:
 		return r.ctor(n)
 	case *syntax.Var:
-		if n.Module == "Notice" && r.kind != kindOther {
+		if n.Module == "Notice" {
 			if b, ok := noticeBuilder(n.Name); ok {
 				return b, true
 			}
@@ -486,7 +493,7 @@ func (r *rewriter) ctor(n *syntax.CtorRef) (string, bool) {
 		if n.Name == "Rerendered" && !r.local[n.Name] { // a test's answer (plan call 15)
 			return "Refreshed", true
 		}
-		if r.kind != kindOther {
+		if !r.local[n.Name] { // in any module: a helper may build an answer
 			switch n.Name {
 			case "Rerender":
 				return "Response.refresh", true
@@ -623,7 +630,7 @@ func (r *rewriter) app(n *syntax.App) (string, bool) {
 			return r.updateCall(n)
 		}
 		b, ok := noticeBuilder(fn.Name)
-		if fn.Module != "Notice" || !ok || len(n.Args) != 2 || r.kind == kindOther {
+		if fn.Module != "Notice" || !ok || len(n.Args) != 2 {
 			return "", false
 		}
 		return paren(n.Args[1], r.text(n.Args[1])) + " |> " + b + " " + paren(n.Args[0], r.text(n.Args[0])), true
@@ -1112,6 +1119,9 @@ func taken(m *syntax.Module, imports bool) map[string]bool {
 	}
 	return t
 }
+
+// noticeImport is a line `import Notice`.
+var noticeImport = regexp.MustCompile(`(?m)^import Notice[ \t]*\n`)
 
 var tempHole = regexp.MustCompile(`(\?[A-Za-z0-9_]*?)__rf[0-9]+`)
 

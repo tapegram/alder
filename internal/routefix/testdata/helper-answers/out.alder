@@ -1,0 +1,19 @@
+module Shop
+
+-- Helpers of a write's answer, in a module that is neither a page nor App (#160, 7.3).
+after : Response -> Response
+after nav = nav
+
+refuse : Text -> Task Response
+refuse why = Task.succeed (Response.invalid why)
+
+again : Task Response
+again = Task.succeed (Response.refresh |> Response.warning "Again")
+
+home : Task Response
+home =
+  Task.succeed (Response.redirect (Url.external "https://example.com") |> Response.toast "Back")
+
+-- Html a stays: a component of both worlds (plan call 2)
+Box : { children: List (Html a) } -> Html a
+Box props = <div>{props.children}</div>
