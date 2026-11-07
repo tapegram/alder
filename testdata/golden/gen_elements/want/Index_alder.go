@@ -43,31 +43,15 @@ type Index__NewPost struct {
 	Reviewer rt.Maybe[string]
 }
 
-type Index__Params struct{}
+type Index__Index__Params struct{}
 
-type Index__SubmitParams struct {
+type Index__Submit__Params struct {
 	Form Index__NewPost
 }
 
-type Index__Msg struct {
-	Tag    tag__Index__Msg
-	Submit *Index__SubmitParams
-}
+type Index__Clear__Params struct{}
 
-type tag__Index__Msg uint8
-
-const (
-	is__Index__Msg__Submit tag__Index__Msg = 0
-	is__Index__Msg__Clear  tag__Index__Msg = 1
-)
-
-func Index__Msg__Submit__(v Index__SubmitParams) Index__Msg {
-	return Index__Msg{Tag: is__Index__Msg__Submit, Submit: &v}
-}
-
-var Index__Msg__Clear__ = Index__Msg{Tag: is__Index__Msg__Clear}
-
-func Index__load(params Index__Params, session App__Session) eff.Query[Index__Model] {
+func Index__Index__load(params Index__Index__Params, session App__Session) eff.Query[Index__Model] {
 	return eff.Q(eff.Pure(Index__Model{Saving: false, Page: 1, Label: rt.Nothing[string](), People: []struct {
 		Value string
 		Label string
@@ -80,17 +64,15 @@ func Index__load(params Index__Params, session App__Session) eff.Query[Index__Mo
 	}{Value: "bob", Label: "Bob"}}}))
 }
 
-func Index__update(msg Index__Msg, model Index__Model, session App__Session) eff.Task[rt.Nav] {
-	switch msg.Tag {
-	case is__Index__Msg__Submit:
-		return eff.Pure(rt.Rerender())
-	case is__Index__Msg__Clear:
-		return eff.Pure(rt.Rerender())
-	}
-	panic("unreachable")
+func Index__Submit__update(p Index__Submit__Params, session App__Session) eff.Task[rt.Response] {
+	return eff.Pure(std.ResponseRefresh())
 }
 
-func Index__view(model Index__Model, session App__Session) html.Node {
+func Index__Clear__update(p Index__Clear__Params, session App__Session) eff.Task[rt.Response] {
+	return eff.Pure(std.ResponseRefresh())
+}
+
+func Index__Index__view(model Index__Model, session App__Session) html.Node {
 	return html.El("al-page", []html.Attr{html.A("width", "narrow"), html.A("id", "main"), html.A("class", "x"), html.A("data-test", "page"), html.A("aria-label", "Posts")}, html.El("al-stack", []html.Attr{html.A("gap", "md"), html.A("direction", "column")},
 		html.El("al-alert", []html.Attr{html.A("variant", "info"), html.A("heading", "Hello"), html.B("dismissible", true), html.A("role", "status")}, html.Text("Welcome")),
 		html.El("al-alert", []html.Attr{html.A("variant", "destructive"), html.A("heading", "Oops"), html.A("role", "alert")}, html.Text("Failed")),
@@ -100,7 +82,7 @@ func Index__view(model Index__Model, session App__Session) html.Node {
 				html.Text("New post "),
 				html.El("al-badge", []html.Attr{html.A("variant", "secondary")}, html.Text("draft")),
 			),
-			html.FormTo(rt.MsgRef{Module: "Index", Msg: "Submit"}, nil,
+			html.FormToRoute(rt.Route{Name: "Index.Submit", Method: "POST", Path: "/_/Submit"}, nil,
 				html.Input(html.Control{Kind: "errors", Form: "Index.NewPost"}),
 				html.Input(html.Control{Kind: "input", Form: "Index.NewPost", Name: "title", Type: "text", Label: "Title", Required: true, Wrap: "al-input", WrapAttrs: []html.Attr{html.A("placeholder", "A title"), html.A("help", "Short is good"), html.B("disabled", model.Saving)}}),
 				html.Input(html.Control{Kind: "textarea", Form: "Index.NewPost", Name: "body", Label: "Body", Wrap: "al-textarea", WrapAttrs: []html.Attr{html.A("placeholder", "Say it")}}),
@@ -132,16 +114,16 @@ func Index__view(model Index__Model, session App__Session) html.Node {
 				html.El("al-button", []html.Attr{html.A("type", "submit"), html.A("variant", "primary"), html.A("size", "lg"), html.B("disabled", model.Saving)}, html.El("button", []html.Attr{html.A("type", "submit"), html.B("disabled", model.Saving)}, html.Text("Save"))),
 			),
 			html.El("div", []html.Attr{html.A("slot", "actions")},
-				html.El("al-button", []html.Attr{html.A("variant", "ghost"), html.B("disabled", true)}, html.El("button", []html.Attr{html.A("type", "button"), html.MsgAttr("data-on:click", rt.MsgRef{Module: "Index", Msg: "Clear"}), html.B("disabled", true)}, html.Text("Clear"))),
-				html.El("al-button", []html.Attr{html.A("variant", "outline")}, html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Page{Path: "/"}))}, html.Text("Home"))),
+				html.El("al-button", []html.Attr{html.A("variant", "ghost"), html.B("disabled", true)}, html.El("button", []html.Attr{html.A("type", "button"), html.RouteAttr("data-on:click", rt.Route{Name: "Index.Clear", Method: "POST", Path: "/_/Clear"}), html.B("disabled", true)}, html.Text("Clear"))),
+				html.El("al-button", []html.Attr{html.A("variant", "outline")}, html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "Index.Index", Method: "GET", Path: "/"}))}, html.Text("Home"))),
 				html.El("al-button", []html.Attr{html.B("disabled", true)}, html.El("a", []html.Attr{html.A("aria-disabled", "true")}, html.Text("Gone"))),
 				html.El("al-button", []html.Attr{html.B("disabled", model.Saving)}, func() html.Node {
 					if model.Saving {
 						return html.El("a", []html.Attr{html.A("aria-disabled", "true")}, html.Text("Maybe"))
 					}
-					return html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Page{Path: "/"}))}, html.Text("Maybe"))
+					return html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "Index.Index", Method: "GET", Path: "/"}))}, html.Text("Maybe"))
 				}()),
-				html.El("al-button", []html.Attr{html.A("variant", "secondary")}, html.El("button", []html.Attr{html.A("type", "button"), html.MsgAttr("data-on:click", rt.MsgRef{Module: "Index", Msg: "Clear"})}, html.Text("Own"))),
+				html.El("al-button", []html.Attr{html.A("variant", "secondary")}, html.El("button", []html.Attr{html.A("type", "button"), html.RouteAttr("data-on:click", rt.Route{Name: "Index.Clear", Method: "POST", Path: "/_/Clear"})}, html.Text("Own"))),
 				html.El("al-button", []html.Attr{html.A("variant", "ghost")}, html.Text("Presentational")),
 				html.El("wa-button", []html.Attr{html.A("variant", "brand"), html.B("loading", model.Saving), html.A("title", "Third party")},
 					html.El("span", []html.Attr{html.A("slot", "start")}, html.Text("*")),
@@ -157,8 +139,8 @@ func Index__view(model Index__Model, session App__Session) html.Node {
 		),
 		html.El("al-table", []html.Attr{html.B("striped", true), html.B("dense", model.Saving), html.A("style", "width: 100%")}, html.El("table", nil, html.El("tr", nil, html.El("td", nil, html.Text("1"))))),
 		html.El("al-pagination", []html.Attr{html.A("page", "1"), html.A("pages", "3"), html.A("lang", "en"), html.A("dir", "ltr"), html.A("tabindex", "0"), html.B("hidden", false)},
-			html.El("a", []html.Attr{html.A("slot", "prev"), html.A("href", rt.PageURL(rt.Page{Path: "/"}))}, html.Text("Previous")),
-			html.El("a", []html.Attr{html.A("slot", "next"), html.A("href", rt.PageURL(rt.Page{Path: "/"}))}, html.Text("Next")),
+			html.El("a", []html.Attr{html.A("slot", "prev"), html.A("href", rt.PageURL(rt.Route{Name: "Index.Index", Method: "GET", Path: "/"}))}, html.Text("Previous")),
+			html.El("a", []html.Attr{html.A("slot", "next"), html.A("href", rt.PageURL(rt.Route{Name: "Index.Index", Method: "GET", Path: "/"}))}, html.Text("Next")),
 		),
 		html.El("al-input", []html.Attr{html.M("label", model.Label)}, html.El("input", []html.Attr{html.A("name", "q")})),
 		html.El("al-button", []html.Attr{html.A("variant", "outline")}, html.El("button", []html.Attr{html.A("type", "button"), html.A("commandfor", "sure"), html.A("command", "show-modal")}, html.Text("Delete"))),
@@ -166,7 +148,7 @@ func Index__view(model Index__Model, session App__Session) html.Node {
 			html.El("form", []html.Attr{html.A("method", "dialog")}, html.El("button", []html.Attr{html.A("type", "submit"), html.A("aria-label", "Close Delete it?")}, html.Text("×"))),
 			html.El("h2", []html.Attr{html.A("slot", "header"), html.A("id", "sure-heading")}, html.Text("Delete it?")),
 			html.El("p", nil, html.Text("This cannot be undone.")),
-			html.El("div", []html.Attr{html.A("slot", "actions")}, html.El("al-button", nil, html.El("button", []html.Attr{html.A("type", "button"), html.MsgAttr("data-on:click", rt.MsgRef{Module: "Index", Msg: "Clear"})}, html.Text("Delete")))),
+			html.El("div", []html.Attr{html.A("slot", "actions")}, html.El("al-button", nil, html.El("button", []html.Attr{html.A("type", "button"), html.RouteAttr("data-on:click", rt.Route{Name: "Index.Clear", Method: "POST", Path: "/_/Clear"})}, html.Text("Delete")))),
 		)),
 		html.El("al-dialog", []html.Attr{html.A("heading", "Kept"), html.B("dismissible", false)}, html.El("dialog", []html.Attr{html.A("aria-label", "Kept"), html.A("data-preserve-attr", "open")},
 			html.El("h2", []html.Attr{html.A("slot", "header")}, html.Text("Kept")),
@@ -194,8 +176,8 @@ func Index__view(model Index__Model, session App__Session) html.Node {
 		html.El("al-button", []html.Attr{html.A("variant", "outline")}, html.El("button", []html.Attr{html.A("type", "button"), html.A("popovertarget", "who"), html.A("popovertargetaction", "toggle")}, html.Text("Who?"))),
 		html.El("al-popover", []html.Attr{html.A("id", "who"), html.B("popover", true), html.A("placement", "bottom")}, html.Text("Only people with the link.")),
 		html.El("al-menu", []html.Attr{html.A("id", "more"), html.B("popover", true)},
-			html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Page{Path: "/"}))}, html.Text("Home")),
-			html.El("button", []html.Attr{html.A("type", "button"), html.MsgAttr("data-on:click", rt.MsgRef{Module: "Index", Msg: "Clear"})}, html.Text("Clear")),
+			html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "Index.Index", Method: "GET", Path: "/"}))}, html.Text("Home")),
+			html.El("button", []html.Attr{html.A("type", "button"), html.RouteAttr("data-on:click", rt.Route{Name: "Index.Clear", Method: "POST", Path: "/_/Clear"})}, html.Text("Clear")),
 		),
 		html.El("al-toasts", []html.Attr{html.A("popover", "manual"), html.A("position", "top-right")}),
 		html.El("al-tabs", nil,

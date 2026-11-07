@@ -18,9 +18,9 @@ import (
 // write routes, in declaration order), then every message of the pages and of App (POST), in module
 // order.
 var Routes = []web.Route{
-	Route__Auth__Login__page(),
 	Route__About__Show(),
 	Route__Admin__Stats(),
+	Route__Auth__Login__Login(),
 	Route__Todos__Index(),
 	Route__Todos__Row(),
 	Route__Todos__Toggle(),
@@ -28,50 +28,6 @@ var Routes = []web.Route{
 	Route__Todos__Delete(),
 	Route__Todos__Move(),
 	Route__Todos__Export(),
-}
-
-// decode__Auth__Login__Params decodes page Auth.Login's parameters: the path's from params, the
-// others from q. A parameter that does not decode is an error (the route answers 404).
-func decode__Auth__Login__Params(_ map[string]string, _ url.Values) (r Auth__Login__Params, errs []web.FieldError) {
-	return r, errs
-}
-
-// page__Auth__Login runs page Auth.Login for rq up to its model: load (with params and the session
-// of rq.Env). It returns the model and the session view and update take, or the response that ends
-// the request, which stores keep (the session a successful update left, or nil).
-func page__Auth__Login(rq *web.Request, params Auth__Login__Params, keep any) (Auth__Login__Model, App__Session, *web.Response) {
-	session := rq.Env.Session.(App__Session)
-	model, err := eff.RunQuery(rq.Env, Auth__Login__load(params, session))
-	if err != nil {
-		r := route__fail(err)
-		r.Session = keep
-		return model, session, &r
-	}
-	return model, session, nil
-}
-
-// params__Auth__Login are page Auth.Login's parameters as text for its message URLs
-// (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
-func params__Auth__Login(_ Auth__Login__Params) []rt.KV {
-	return nil
-}
-
-// Route__Auth__Login__page serves page Auth.Login, GET /login (book 06): decode the parameters (404
-// when they do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view
-// (the model also in rq.Model, which a test's browser reads).
-func Route__Auth__Login__page() web.Route {
-	return web.Route{Method: "GET", Pattern: "/login", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Auth__Login__Params(rq.Params, rq.Query)
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		model, session, stop := page__Auth__Login(rq, params, nil)
-		if stop != nil {
-			return *stop
-		}
-		rq.Model = model
-		return web.PageResponse(Auth__Login__view(model, session), &html.FormState{PageParams: params__Auth__Login(params)}, rq.Session, false)
-	}}
 }
 
 // decode__About__Show__Params decodes route About.Show's parameters: the path's from params, the
@@ -179,6 +135,51 @@ func Route__Admin__Stats() web.Route {
 		}
 		rq.Model = model
 		return web.PageResponse(Admin__Stats__view(model, session), web.WithPageParams(rq.FormState, params__Admin__Stats(params)), rq.Session, false)
+	}}
+}
+
+// decode__Auth__Login__Login__Params decodes route Auth.Login.Login's parameters: the path's from
+// params, the others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Auth__Login__Login__Params(_ map[string]string, _ url.Values) (r Auth__Login__Login__Params, errs []web.FieldError) {
+	return r, errs
+}
+
+// page__Auth__Login__Login runs route Auth.Login.Login for rq up to its model: load (with params
+// and the session of rq.Env). It returns the model and the session view and update take, or the
+// response that ends the request, which stores keep (the session a successful update left, or nil).
+func page__Auth__Login__Login(rq *web.Request, params Auth__Login__Login__Params, keep any) (Auth__Login__Model, App__Session, *web.Response) {
+	session := rq.Env.Session.(App__Session)
+	model, err := eff.RunQuery(rq.Env, Auth__Login__Login__load(params, session))
+	if err != nil {
+		r := route__fail(err)
+		r.Session = keep
+		return model, session, &r
+	}
+	return model, session, nil
+}
+
+// params__Auth__Login__Login are route Auth.Login.Login's parameters as text
+// (html.FormState.PageParams), for the posted form's state its view renders with when a write
+// renders it again.
+func params__Auth__Login__Login(_ Auth__Login__Login__Params) []rt.KV {
+	return nil
+}
+
+// Route__Auth__Login__Login serves route Auth.Login.Login, GET /login: decode the parameters (404
+// when they do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view
+// (the model also in rq.Model, which a test's browser reads).
+func Route__Auth__Login__Login() web.Route {
+	return web.Route{Method: "GET", Pattern: "/login", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Auth__Login__Login__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		model, session, stop := page__Auth__Login__Login(rq, params, nil)
+		if stop != nil {
+			return *stop
+		}
+		rq.Model = model
+		return web.PageResponse(Auth__Login__Login__view(model, session), web.WithPageParams(rq.FormState, params__Auth__Login__Login(params)), rq.Session, false)
 	}}
 }
 

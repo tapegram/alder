@@ -13,16 +13,17 @@ import (
 	"strings"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every message of the
-// pages and of App (POST), in module order.
+// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
+// write routes, in declaration order), then every message of the pages and of App (POST), in module
+// order.
 var Routes = []web.Route{
-	Route__Wood__page(),
+	Route__Wood__Wood(),
 	Route__Wood__Bump(),
 }
 
-// decode__Wood__Params decodes page Wood's parameters: the path's from params, the others from q. A
-// parameter that does not decode is an error (the route answers 404).
-func decode__Wood__Params(params map[string]string, q url.Values) (r Wood__Params, errs []web.FieldError) {
+// decode__Wood__Wood__Params decodes route Wood.Wood's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Wood__Wood__Params(params map[string]string, q url.Values) (r Wood__Wood__Params, errs []web.FieldError) {
 	pv := url.Values{}
 	for k, v := range params {
 		pv[k] = []string{v}
@@ -47,12 +48,12 @@ func decode__Wood__Params(params map[string]string, q url.Values) (r Wood__Param
 	return r, errs
 }
 
-// page__Wood runs page Wood for rq up to its model: load (with params and the session of rq.Env).
-// It returns the model and the session view and update take, or the response that ends the request,
-// which stores keep (the session a successful update left, or nil).
-func page__Wood(rq *web.Request, params Wood__Params, keep any) (Wood__Model, App__Session, *web.Response) {
+// page__Wood__Wood runs route Wood.Wood for rq up to its model: load (with params and the session
+// of rq.Env). It returns the model and the session view and update take, or the response that ends
+// the request, which stores keep (the session a successful update left, or nil).
+func page__Wood__Wood(rq *web.Request, params Wood__Wood__Params, keep any) (Wood__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
-	model, err := eff.RunQuery(rq.Env, Wood__load(params, session))
+	model, err := eff.RunQuery(rq.Env, Wood__Wood__load(params, session))
 	if err != nil {
 		r := route__fail(err)
 		r.Session = keep
@@ -61,76 +62,65 @@ func page__Wood(rq *web.Request, params Wood__Params, keep any) (Wood__Model, Ap
 	return model, session, nil
 }
 
-// params__Wood are page Wood's parameters as text for its message URLs (html.FormState.PageParams):
-// each message route decodes them back from the URL's _p. keys.
-func params__Wood(p Wood__Params) []rt.KV {
+// params__Wood__Wood are route Wood.Wood's parameters as text (html.FormState.PageParams), for the
+// posted form's state its view renders with when a write renders it again.
+func params__Wood__Wood(p Wood__Wood__Params) []rt.KV {
 	return []rt.KV{{Key: "cfg", Value: p.Cfg}, rt.QueryKV("ElectionId", p.ElectionId, ""), rt.QueryKV("ContestId", rt.MaybeText(p.ContestId, std.TextFromInt), "")}
 }
 
-// update__Wood runs page Wood's update for msg and answers its Nav (book 06): load, update (a Task,
-// whose session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on a form
-// (st, the state of the form that sent the message; nil for a message without one) load and view
-// again with t on the form (patched into the page under Datastar); for Rerender (and a Reject
-// without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh
-// does not post again). A failed Task changes nothing: 500 (App.error), 404 for Query.notFound or
-// Task.notFound, or a 303 for Query.redirect.
-func update__Wood(rq *web.Request, params Wood__Params, msg Wood__Msg, st *html.FormState) web.Response {
-	model, session, stop := page__Wood(rq, params, nil)
-	if stop != nil {
-		return *stop
-	}
-	model0, session0 := model, session // the page the client shows: Before
-	nav, err := eff.Run(rq.Env, eff.KTask, Wood__update(msg, model, session))
-	if err != nil {
-		return route__fail(err)
-	}
-	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
-	switch {
-	case nav.Tag == rt.NavRedirect:
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	case nav.Tag == rt.NavReject && st != nil:
-		st.FormError = nav.Text
-	case !rq.Datastar:
-		return web.RedirectResponse(rt.PageAt("/r/{cfg}/wood/Results", params__Wood(params)), rq.Env.Session)
-	default:
-		st = &html.FormState{}
-	}
-	st.PageParams = params__Wood(params)
-	model, session, stop = page__Wood(rq, params, rq.Env.Session)
-	if stop != nil {
-		return *stop
-	}
-	return web.PageResponse(Wood__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Wood__view(model0, session0) })
-}
-
-// Route__Wood__page serves page Wood, GET /r/{cfg}/wood/Results (book 06): decode the parameters
-// (404 when they do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure),
-// view (the model also in rq.Model, which a test's browser reads).
-func Route__Wood__page() web.Route {
+// Route__Wood__Wood serves route Wood.Wood, GET /r/{cfg}/wood/Results: decode the parameters (404
+// when they do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view
+// (the model also in rq.Model, which a test's browser reads).
+func Route__Wood__Wood() web.Route {
 	return web.Route{Method: "GET", Pattern: "/r/{cfg}/wood/Results", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Wood__Params(rq.Params, rq.Query)
+		params, errs := decode__Wood__Wood__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Wood(rq, params, nil)
+		model, session, stop := page__Wood__Wood(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Wood__view(model, session), &html.FormState{PageParams: params__Wood(params)}, rq.Session, false)
+		return web.PageResponse(Wood__Wood__view(model, session), web.WithPageParams(rq.FormState, params__Wood__Wood(params)), rq.Session, false)
 	}}
 }
 
-// Route__Wood__Bump serves message Bump of page Wood, POST /_m/Wood/Bump (book 06): decode the
-// page's parameters (the message URL's _p. keys, which the rendered page put there): 404 when they
-// do not decode; then update__Wood.
+// decode__Wood__Bump__Params decodes route Wood.Bump's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Wood__Bump__Params(params map[string]string, q url.Values) (r Wood__Bump__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, ok := web.Text(pv, "cfg", false); !ok {
+		errs = append(errs, web.Missing("cfg"))
+	} else {
+		r.Cfg = s
+	}
+	if s, ok := web.Text(q, "ElectionId", false); !ok {
+		r.ElectionId = ""
+	} else {
+		r.ElectionId = s
+	}
+	return r, errs
+}
+
+// Route__Wood__Bump serves route Wood.Bump, POST /r/{cfg}/wood/Results/_/Bump: decode the
+// parameters (404 when they do not); run the update and answer its Response (a failed Task: 500,
+// 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Wood__Bump() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Wood/Bump", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Wood__Params(rt.PageParams(rq.Query))
+	return web.Route{Method: "POST", Pattern: "/r/{cfg}/wood/Results/_/Bump", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Wood__Bump__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		return update__Wood(rq, params, Wood__Msg__Bump__, nil)
+		session := rq.Env.Session.(App__Session)
+		resp, err := eff.Run(rq.Env, eff.KTask, Wood__Bump__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		return web.AnswerResponse(resp, nil, rq.Env.Session)
 	}}
 }
 

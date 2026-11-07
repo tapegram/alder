@@ -4,16 +4,14 @@ import Todo
 
 session { user: Maybe Todo.UserId, theme: Text = "light" }
 
-login = Index
+login = Login.Login
 
-msg Logout
+route Logout = POST "/_/Logout" { }
 
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  Logout p -> {
-    let _ <- Session.put (\s -> { s | user: Nothing })
-    Task.succeed Rerender
-  },
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing })
+  Task.succeed Response.refresh
 }
 
 error : Error -> Html Never

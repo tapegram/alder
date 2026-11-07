@@ -44,14 +44,14 @@ _arms1:
 		panic("unreachable")
 	}
 	switch Mutant {
-	case 8:
+	case 6:
 		switch _arm1 {
 		case 1:
 			_arm1 = 2
 		case 2:
 			_arm1 = 1
 		}
-	case 9:
+	case 7:
 		switch _arm1 {
 		case 2:
 			_arm1 = 3
@@ -75,7 +75,7 @@ func Rank__checked(m rt.Maybe[int64]) eff.Task[int64] {
 _arms1:
 	switch {
 	default:
-		if Mutant == 10 {
+		if Mutant == 8 {
 			_arm1 = 2
 			break _arms1
 		}
@@ -87,7 +87,7 @@ _arms1:
 		break _arms1
 	}
 	switch Mutant {
-	case 11:
+	case 9:
 		switch _arm1 {
 		case 1:
 			_arm1 = 2
@@ -108,7 +108,7 @@ func Rank__both(a int64, b int64) bool {
 	_h1 := func() bool {
 		_h2 := func() bool {
 			switch Mutant {
-			case 14:
+			case 12:
 				return a >= 0
 			}
 			return a > 0
@@ -116,21 +116,21 @@ func Rank__both(a int64, b int64) bool {
 		_ = _h2
 		_h3 := func() bool {
 			switch Mutant {
-			case 15:
+			case 13:
 				return b >= 0
 			}
 			return b > 0
 		}
 		_ = _h3
 		switch Mutant {
-		case 13:
+		case 11:
 			return _h2 || _h3()
 		}
 		return _h2 && _h3()
 	}()
 	_ = _h1
 	switch Mutant {
-	case 12:
+	case 10:
 		return _h1
 	}
 	return !_h1

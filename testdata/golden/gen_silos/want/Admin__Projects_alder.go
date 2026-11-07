@@ -12,74 +12,56 @@ import (
 )
 
 type Admin__Projects__Model struct {
+	Org      string
 	Projects []Project__Project
 }
 
-type Admin__Projects__Params struct {
+type Admin__Projects__Projects__Params struct {
 	Org string
 }
 
-type Admin__Projects__RemoveParams struct {
-	Id string
+type Admin__Projects__Remove__Params struct {
+	Org string
+	Id  string
 }
 
-type Admin__Projects__Msg struct {
-	Tag    tag__Admin__Projects__Msg
-	Remove *Admin__Projects__RemoveParams
-}
-
-type tag__Admin__Projects__Msg uint8
-
-const (
-	is__Admin__Projects__Msg__Remove tag__Admin__Projects__Msg = 0
-)
-
-func Admin__Projects__Msg__Remove__(v Admin__Projects__RemoveParams) Admin__Projects__Msg {
-	return Admin__Projects__Msg{Tag: is__Admin__Projects__Msg__Remove, Remove: &v}
-}
-
-type Admin__Projects__Session struct {
+type Admin__Projects__Projects__Session struct {
 	User string
 	Org  string
 	Role User__Role
 }
 
-func widen__Admin__Projects__Session(s Admin__Projects__Session) App__Session {
+func widen__Admin__Projects__Projects__Session(s Admin__Projects__Projects__Session) App__Session {
 	return App__Session{User: rt.Just(s.User), Org: rt.Just(s.Org), Role: s.Role}
 }
 
-func Admin__Projects__load(params Admin__Projects__Params, session Admin__Projects__Session) eff.Query[Admin__Projects__Model] {
+func Admin__Projects__Projects__load(params Admin__Projects__Projects__Params, session Admin__Projects__Projects__Session) eff.Query[Admin__Projects__Model] {
 	return eff.Q(eff.Bind(eff.Call("Db.all Project", false, func(_e1 *eff.Env) ([]Project__Project, error) {
 		return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.From(table__Project__Project))
 	}), func(projects []Project__Project) eff.Task[Admin__Projects__Model] {
-		return eff.Pure(Admin__Projects__Model{Projects: projects})
+		return eff.Pure(Admin__Projects__Model{Org: params.Org, Projects: projects})
 	}))
 }
 
-func Admin__Projects__update(msg Admin__Projects__Msg, model Admin__Projects__Model, session Admin__Projects__Session) eff.Task[rt.Nav] {
-	switch msg.Tag {
-	case is__Admin__Projects__Msg__Remove:
-		p := *msg.Remove
-		return eff.Bind(func() eff.Task[struct{}] {
-			switch Mutant {
-			case 3:
-				return eff.Pure(struct{}{})
-			}
-			return eff.Call("Db.delete Project", true, func(_e1 *eff.Env) (struct{}, error) {
-				return struct{}{}, db.DeleteRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Project__Project, p.Id)
-			})
-		}(), func(_ struct{}) eff.Task[rt.Nav] {
-			return eff.Pure(rt.Rerender())
+func Admin__Projects__Remove__update(p Admin__Projects__Remove__Params, session Admin__Projects__Projects__Session) eff.Task[rt.Response] {
+	return eff.Bind(func() eff.Task[struct{}] {
+		switch Mutant {
+		case 1:
+			return eff.Pure(struct{}{})
+		}
+		return eff.Call("Db.delete Project", true, func(_e1 *eff.Env) (struct{}, error) {
+			return struct{}{}, db.DeleteRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Project__Project, p.Id)
 		})
-	}
-	panic("unreachable")
+	}(), func(_ struct{}) eff.Task[rt.Response] {
+		return eff.Pure(std.ResponseRefresh())
+	})
 }
 
-func Admin__Projects__view(model Admin__Projects__Model, session Admin__Projects__Session) html.Node {
+func Admin__Projects__Projects__view(model Admin__Projects__Model, session Admin__Projects__Projects__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil, html.El("ul", nil, html.Nodes(std.ListMap(func(p Project__Project) html.Node {
 		return html.El("li", nil,
 			html.El("span", nil, html.Text(p.Name)),
-			html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Admin.Projects", Msg: "Remove", Params: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("remove")),
+			html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Admin.Projects.Remove", Method: "POST", Path: rt.Concat("/admin/orgs/", rt.PathSegment(model.Org), "/projects/_/Remove"), Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("remove")),
 		)
 	}, model.Projects)...))))
 }
@@ -107,7 +89,7 @@ func test__Admin__Projects__1() eff.Task[bool] {
 					}
 					return struct{}{}, nil
 				}), func(_ struct{}) eff.Task[bool] {
-					return eff.Bind(eff.Call("Test.get Admin.Projects", true, func(_e8 *eff.Env) (struct {
+					return eff.Bind(eff.Call("Test.get Admin.Projects.Projects", true, func(_e8 *eff.Env) (struct {
 						Model   Admin__Projects__Model
 						Session App__Session
 						Doc     rtesting.Doc
@@ -119,8 +101,8 @@ func test__Admin__Projects__1() eff.Task[bool] {
 						Url    string
 						Status int64
 					}, error) {
-						var _p9 Admin__Projects__Params = Admin__Projects__Params{Org: b}
-						_u10 := rt.PageURL(rt.Page{Path: rt.Concat("/admin/orgs/", rt.PathSegment(_p9.Org), "/projects")})
+						_m9 := Admin__Projects__Projects__Params{Org: b}
+						_u10 := rt.RouteURL(rt.Route{Name: "Admin.Projects.Projects", Method: "GET", Path: rt.Concat("/admin/orgs/", rt.PathSegment(_m9.Org), "/projects")})
 						_b11 := rtesting.BrowserOf(_e8)
 						_r12, _err13 := _b11.GetPage(_u10, "user")
 						if _err13 != nil {
@@ -205,8 +187,8 @@ func test__Admin__Projects__1() eff.Task[bool] {
 									Url    string
 									Status int64
 								}, error) {
-									_m18 := Admin__Projects__RemoveParams{Id: id}
-									_r19, _err20 := rtesting.BrowserOf(_e17).ClickMsg(rt.MsgRef{Module: "Admin.Projects", Msg: "Remove", Params: []rt.KV{{Key: "id", Value: _m18.Id}}}.URL(nil), rtesting.MsgName("Admin.Projects.Remove", _m18))
+									_m18 := Admin__Projects__Remove__Params{Org: b, Id: id}
+									_r19, _err20 := rtesting.BrowserOf(_e17).ClickRoute(rt.Route{Name: "Admin.Projects.Remove", Method: "POST", Path: rt.Concat("/admin/orgs/", rt.PathSegment(_m18.Org), "/projects/_/Remove"), Query: []rt.KV{{Key: "id", Value: _m18.Id}}}, rtesting.MsgName("Admin.Projects.Remove", _m18))
 									if _err20 != nil {
 										var _z21 struct {
 											Answer  rtesting.Answer
@@ -247,7 +229,7 @@ func test__Admin__Projects__1() eff.Task[bool] {
 								Url    string
 								Status int64
 							}) eff.Task[bool] {
-								return eff.Bind(eff.Call("Test.get Admin.Projects", true, func(_e22 *eff.Env) (struct {
+								return eff.Bind(eff.Call("Test.get Admin.Projects.Projects", true, func(_e22 *eff.Env) (struct {
 									Model   Admin__Projects__Model
 									Session App__Session
 									Doc     rtesting.Doc
@@ -259,8 +241,8 @@ func test__Admin__Projects__1() eff.Task[bool] {
 									Url    string
 									Status int64
 								}, error) {
-									var _p23 Admin__Projects__Params = Admin__Projects__Params{Org: b}
-									_u24 := rt.PageURL(rt.Page{Path: rt.Concat("/admin/orgs/", rt.PathSegment(_p23.Org), "/projects")})
+									_m23 := Admin__Projects__Projects__Params{Org: b}
+									_u24 := rt.RouteURL(rt.Route{Name: "Admin.Projects.Projects", Method: "GET", Path: rt.Concat("/admin/orgs/", rt.PathSegment(_m23.Org), "/projects")})
 									_b25 := rtesting.BrowserOf(_e22)
 									_r26, _err27 := _b25.GetPage(_u24, "user")
 									if _err27 != nil {
@@ -357,7 +339,7 @@ func test__Admin__Projects__2() eff.Task[bool] {
 				}
 				return struct{}{}, nil
 			}), func(_ struct{}) eff.Task[bool] {
-				return eff.Bind(eff.Call("Test.open Admin.Projects", true, func(_e7 *eff.Env) (struct {
+				return eff.Bind(eff.Call("Test.open Admin.Projects.Projects", true, func(_e7 *eff.Env) (struct {
 					Answer  rtesting.Answer
 					Session App__Session
 					Doc     rtesting.Doc
@@ -369,8 +351,8 @@ func test__Admin__Projects__2() eff.Task[bool] {
 					Url    string
 					Status int64
 				}, error) {
-					var _p8 Admin__Projects__Params = Admin__Projects__Params{Org: b}
-					_u9 := rt.PageURL(rt.Page{Path: rt.Concat("/admin/orgs/", rt.PathSegment(_p8.Org), "/projects")})
+					_m8 := Admin__Projects__Projects__Params{Org: b}
+					_u9 := rt.RouteURL(rt.Route{Name: "Admin.Projects.Projects", Method: "GET", Path: rt.Concat("/admin/orgs/", rt.PathSegment(_m8.Org), "/projects")})
 					_b10 := rtesting.BrowserOf(_e7)
 					_r11, _err12 := _b10.Open(_u9)
 					if _err12 != nil {
@@ -424,7 +406,7 @@ func test__Admin__Projects__3() eff.Task[bool] {
 	return eff.Bind(eff.Call("Db.insert Org", true, func(_e1 *eff.Env) (string, error) {
 		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Org__Org, insertvals__Org__Org(insert__Org__Org{Name: "B"}), _e1.Now())
 	}), func(b string) eff.Task[bool] {
-		return eff.Bind(eff.Call("Test.open Admin.Projects", true, func(_e2 *eff.Env) (struct {
+		return eff.Bind(eff.Call("Test.open Admin.Projects.Projects", true, func(_e2 *eff.Env) (struct {
 			Answer  rtesting.Answer
 			Session App__Session
 			Doc     rtesting.Doc
@@ -436,8 +418,8 @@ func test__Admin__Projects__3() eff.Task[bool] {
 			Url    string
 			Status int64
 		}, error) {
-			var _p3 Admin__Projects__Params = Admin__Projects__Params{Org: b}
-			_u4 := rt.PageURL(rt.Page{Path: rt.Concat("/admin/orgs/", rt.PathSegment(_p3.Org), "/projects")})
+			_m3 := Admin__Projects__Projects__Params{Org: b}
+			_u4 := rt.RouteURL(rt.Route{Name: "Admin.Projects.Projects", Method: "GET", Path: rt.Concat("/admin/orgs/", rt.PathSegment(_m3.Org), "/projects")})
 			_b5 := rtesting.BrowserOf(_e2)
 			_r6, _err7 := _b5.Open(_u4)
 			if _err7 != nil {
@@ -479,7 +461,7 @@ func test__Admin__Projects__3() eff.Task[bool] {
 			Url    string
 			Status int64
 		}) eff.Task[bool] {
-			return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}))
+			return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Route{Name: "Login.Login", Method: "GET", Path: "/login"}}))
 		})
 	})
 }

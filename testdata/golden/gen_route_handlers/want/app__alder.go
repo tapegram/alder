@@ -62,7 +62,6 @@ func init() {
 	rt.RegisterUnion(reflect.TypeOf(tag__Table__User__Role(0)), []string{"Reader", "Admin"})
 	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
 	rt.RegisterUnion(reflect.TypeOf(tag__Table__Todo__Filter(0)), []string{"All", "Done"})
-	rt.RegisterUnion(reflect.TypeOf(tag__Auth__Login__Msg(0)), []string{})
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that
@@ -174,7 +173,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/login",
-		DevMap:      "{\"pages\":[{\"module\":\"Auth.Login\",\"path\":\"/login\"}],\"tables\":[{\"name\":\"Table.User.User\",\"sql\":\"Table__User__User\",\"columns\":[\"id: Text\",\"email: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"email\",\"type\":\"Text\",\"sql\":\"email\",\"sqlType\":\"TEXT\"}],\"id\":\"id\"},{\"name\":\"Table.Todo.Todo\",\"sql\":\"Table__Todo__Todo\",\"columns\":[\"id: Text\",\"title: Text\",\"done: Bool\",\"due: Maybe Date\",\"owner: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"title\",\"type\":\"Text\",\"sql\":\"title\",\"sqlType\":\"TEXT\"},{\"name\":\"done\",\"type\":\"Bool\",\"sql\":\"done\",\"sqlType\":\"INTEGER\"},{\"name\":\"due\",\"type\":\"Maybe Date\",\"sql\":\"due\",\"sqlType\":\"TEXT\"},{\"name\":\"owner\",\"type\":\"Text\",\"sql\":\"owner\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"owner\":\"Table.User.User\"},\"owner\":\"owner\"}],\"caps\":[],\"session\":[\"user: Maybe Text\",\"theme: Text\",\"role: Table.User.Role\"]}",
+		DevMap:      "{\"pages\":[],\"tables\":[{\"name\":\"Table.User.User\",\"sql\":\"Table__User__User\",\"columns\":[\"id: Text\",\"email: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"email\",\"type\":\"Text\",\"sql\":\"email\",\"sqlType\":\"TEXT\"}],\"id\":\"id\"},{\"name\":\"Table.Todo.Todo\",\"sql\":\"Table__Todo__Todo\",\"columns\":[\"id: Text\",\"title: Text\",\"done: Bool\",\"due: Maybe Date\",\"owner: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"title\",\"type\":\"Text\",\"sql\":\"title\",\"sqlType\":\"TEXT\"},{\"name\":\"done\",\"type\":\"Bool\",\"sql\":\"done\",\"sqlType\":\"INTEGER\"},{\"name\":\"due\",\"type\":\"Maybe Date\",\"sql\":\"due\",\"sqlType\":\"TEXT\"},{\"name\":\"owner\",\"type\":\"Text\",\"sql\":\"owner\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"owner\":\"Table.User.User\"},\"owner\":\"owner\"}],\"caps\":[],\"session\":[\"user: Maybe Text\",\"theme: Text\",\"role: Table.User.Role\"]}",
 	}
 }
 

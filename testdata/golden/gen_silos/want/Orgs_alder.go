@@ -19,51 +19,30 @@ type Orgs__SwitchOrg struct {
 	Org string
 }
 
-type Orgs__Params struct{}
+type Orgs__Orgs__Params struct{}
 
-type Orgs__PickParams struct {
+type Orgs__Pick__Params struct {
 	Org string
 }
 
-type Orgs__SwitchParams struct {
+type Orgs__Switch__Params struct {
 	Form Orgs__SwitchOrg
 }
 
-type Orgs__Msg struct {
-	Tag    tag__Orgs__Msg
-	Pick   *Orgs__PickParams
-	Switch *Orgs__SwitchParams
-}
-
-type tag__Orgs__Msg uint8
-
-const (
-	is__Orgs__Msg__Pick   tag__Orgs__Msg = 0
-	is__Orgs__Msg__Switch tag__Orgs__Msg = 1
-)
-
-func Orgs__Msg__Pick__(v Orgs__PickParams) Orgs__Msg {
-	return Orgs__Msg{Tag: is__Orgs__Msg__Pick, Pick: &v}
-}
-
-func Orgs__Msg__Switch__(v Orgs__SwitchParams) Orgs__Msg {
-	return Orgs__Msg{Tag: is__Orgs__Msg__Switch, Switch: &v}
-}
-
-type Orgs__Session struct {
+type Orgs__Orgs__Session struct {
 	User string
 	Org  rt.Maybe[string]
 	Role User__Role
 }
 
-func widen__Orgs__Session(s Orgs__Session) App__Session {
+func widen__Orgs__Orgs__Session(s Orgs__Orgs__Session) App__Session {
 	return App__Session{User: rt.Just(s.User), Org: s.Org, Role: s.Role}
 }
 
-func Orgs__load(params Orgs__Params, session Orgs__Session) eff.Query[Orgs__Model] {
+func Orgs__Orgs__load(params Orgs__Orgs__Params, session Orgs__Orgs__Session) eff.Query[Orgs__Model] {
 	return eff.Q(eff.Bind(func() eff.Task[[]Membership__Membership] {
 		switch Mutant {
-		case 14:
+		case 9:
 			return eff.Call("Db.all Membership", false, func(_e1 *eff.Env) ([]Membership__Membership, error) {
 				return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.From(table__Membership__Membership))
 			})
@@ -76,61 +55,45 @@ func Orgs__load(params Orgs__Params, session Orgs__Session) eff.Query[Orgs__Mode
 	}))
 }
 
-func Orgs__update(msg Orgs__Msg, model Orgs__Model, session Orgs__Session) eff.Task[rt.Nav] {
-	switch msg.Tag {
-	case is__Orgs__Msg__Pick:
-		p := *msg.Pick
-		return eff.Bind(func() eff.Task[struct{}] {
-			switch Mutant {
-			case 15:
-				return eff.Pure(struct{}{})
-			}
-			return std.SessionPut(func(s App__Session) App__Session {
-				return App__Session{User: s.User, Org: rt.Just[string](p.Org), Role: s.Role}
-			})
-		}(), func(_ struct{}) eff.Task[rt.Nav] {
-			return eff.Pure(func() rt.Nav {
-				switch Mutant {
-				case 16:
-					return rt.Rerender()
-				}
-				return rt.Redirect(rt.Page{Path: "/projects"})
-			}())
+func Orgs__Pick__update(p Orgs__Pick__Params, session Orgs__Orgs__Session) eff.Task[rt.Response] {
+	return eff.Bind(func() eff.Task[struct{}] {
+		switch Mutant {
+		case 10:
+			return eff.Pure(struct{}{})
+		}
+		return std.SessionPut(func(s App__Session) App__Session {
+			return App__Session{User: s.User, Org: rt.Just[string](p.Org), Role: s.Role}
 		})
-	case is__Orgs__Msg__Switch:
-		p := *msg.Switch
-		return eff.Bind(func() eff.Task[struct{}] {
-			switch Mutant {
-			case 17:
-				return eff.Pure(struct{}{})
-			}
-			return std.SessionPut(func(s App__Session) App__Session {
-				return App__Session{User: s.User, Org: rt.Just[string](p.Form.Org), Role: s.Role}
-			})
-		}(), func(_ struct{}) eff.Task[rt.Nav] {
-			return eff.Pure(func() rt.Nav {
-				switch Mutant {
-				case 18:
-					return rt.Rerender()
-				}
-				return rt.Redirect(rt.Page{Path: "/projects"})
-			}())
-		})
-	}
-	panic("unreachable")
+	}(), func(_ struct{}) eff.Task[rt.Response] {
+		return eff.Pure(std.ResponseRedirect(rt.Route{Name: "Projects.Index.Index", Method: "GET", Path: "/projects"}))
+	})
 }
 
-func Orgs__view(model Orgs__Model, session Orgs__Session) html.Node {
+func Orgs__Switch__update(p Orgs__Switch__Params, session Orgs__Orgs__Session) eff.Task[rt.Response] {
+	return eff.Bind(func() eff.Task[struct{}] {
+		switch Mutant {
+		case 11:
+			return eff.Pure(struct{}{})
+		}
+		return std.SessionPut(func(s App__Session) App__Session {
+			return App__Session{User: s.User, Org: rt.Just[string](p.Form.Org), Role: s.Role}
+		})
+	}(), func(_ struct{}) eff.Task[rt.Response] {
+		return eff.Pure(std.ResponseRedirect(rt.Route{Name: "Projects.Index.Index", Method: "GET", Path: "/projects"}))
+	})
+}
+
+func Orgs__Orgs__view(model Orgs__Model, session Orgs__Orgs__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("ul", nil, html.Nodes(std.ListMap(func(m Membership__Membership) html.Node {
-			return html.El("li", nil, html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Orgs", Msg: "Pick", Params: []rt.KV{{Key: "org", Value: m.Org}}})}, html.Text("pick")))
+			return html.El("li", nil, html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Orgs.Pick", Method: "POST", Path: "/orgs/_/Pick", Query: []rt.KV{{Key: "org", Value: m.Org}}})}, html.Text("pick")))
 		}, model.Mine)...)),
-		html.FormTo(rt.MsgRef{Module: "Orgs", Msg: "Switch"}, nil,
+		html.FormToRoute(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/_/Switch"}, nil,
 			html.Input(html.Control{Kind: "input", Form: "Orgs.SwitchOrg", Name: "org", Type: "text", Label: "Org"}),
 			html.Input(html.Control{Kind: "errors", Form: "Orgs.SwitchOrg"}),
 			html.El("button", nil, html.Text("switch")),
 		),
-		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "App", Msg: "Leave"})}, html.Text("leave")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "App.Leave", Method: "POST", Path: "/_/Leave"})}, html.Text("leave")),
 	))
 }
 
@@ -158,7 +121,7 @@ func test__Orgs__1() eff.Task[bool] {
 					}
 					return struct{}{}, nil
 				}), func(_ struct{}) eff.Task[bool] {
-					return eff.Bind(eff.Call("Test.get Orgs", true, func(_e7 *eff.Env) (struct {
+					return eff.Bind(eff.Call("Test.get Orgs.Orgs", true, func(_e7 *eff.Env) (struct {
 						Model   Orgs__Model
 						Session App__Session
 						Doc     rtesting.Doc
@@ -170,11 +133,11 @@ func test__Orgs__1() eff.Task[bool] {
 						Url    string
 						Status int64
 					}, error) {
-						_u9 := rt.PageURL(rt.Page{Path: "/orgs"})
-						_b10 := rtesting.BrowserOf(_e7)
-						_r11, _err12 := _b10.GetPage(_u9, "user")
-						if _err12 != nil {
-							var _z13 struct {
+						_u8 := rt.RouteURL(rt.Route{Name: "Orgs.Orgs", Method: "GET", Path: "/orgs"})
+						_b9 := rtesting.BrowserOf(_e7)
+						_r10, _err11 := _b9.GetPage(_u8, "user")
+						if _err11 != nil {
+							var _z12 struct {
 								Model   Orgs__Model
 								Session App__Session
 								Doc     rtesting.Doc
@@ -186,11 +149,11 @@ func test__Orgs__1() eff.Task[bool] {
 								Url    string
 								Status int64
 							}
-							return _z13, _err12
+							return _z12, _err11
 						}
-						_m14, _err12 := rtesting.ModelOf[Orgs__Model](_u9, _r11)
-						if _err12 != nil {
-							var _z15 struct {
+						_m13, _err11 := rtesting.ModelOf[Orgs__Model](_u8, _r10)
+						if _err11 != nil {
+							var _z14 struct {
 								Model   Orgs__Model
 								Session App__Session
 								Doc     rtesting.Doc
@@ -202,7 +165,7 @@ func test__Orgs__1() eff.Task[bool] {
 								Url    string
 								Status int64
 							}
-							return _z15, _err12
+							return _z14, _err11
 						}
 						return struct {
 							Model   Orgs__Model
@@ -215,7 +178,7 @@ func test__Orgs__1() eff.Task[bool] {
 							}
 							Url    string
 							Status int64
-						}{Model: _m14, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc), Notices: _r11.Notices, Toasts: _r11.Toasts, Url: _r11.URL, Status: _r11.Status}, nil
+						}{Model: _m13, Session: rtesting.SessionOf[App__Session](_r10.Session), Doc: rtesting.DocOf(_r10.Doc), Notices: _r10.Notices, Toasts: _r10.Toasts, Url: _r10.URL, Status: _r10.Status}, nil
 					}), func(_ struct {
 						Model   Orgs__Model
 						Session App__Session
@@ -228,7 +191,7 @@ func test__Orgs__1() eff.Task[bool] {
 						Url    string
 						Status int64
 					}) eff.Task[bool] {
-						return eff.Bind(eff.Call("Test.click Orgs.Pick", true, func(_e16 *eff.Env) (struct {
+						return eff.Bind(eff.Call("Test.click Orgs.Pick", true, func(_e15 *eff.Env) (struct {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
@@ -240,10 +203,10 @@ func test__Orgs__1() eff.Task[bool] {
 							Url    string
 							Status int64
 						}, error) {
-							_m17 := Orgs__PickParams{Org: a}
-							_r18, _err19 := rtesting.BrowserOf(_e16).ClickMsg(rt.MsgRef{Module: "Orgs", Msg: "Pick", Params: []rt.KV{{Key: "org", Value: _m17.Org}}}.URL(nil), rtesting.MsgName("Orgs.Pick", _m17))
-							if _err19 != nil {
-								var _z20 struct {
+							_m16 := Orgs__Pick__Params{Org: a}
+							_r17, _err18 := rtesting.BrowserOf(_e15).ClickRoute(rt.Route{Name: "Orgs.Pick", Method: "POST", Path: "/orgs/_/Pick", Query: []rt.KV{{Key: "org", Value: _m16.Org}}}, rtesting.MsgName("Orgs.Pick", _m16))
+							if _err18 != nil {
+								var _z19 struct {
 									Answer  rtesting.Answer
 									Session App__Session
 									Doc     rtesting.Doc
@@ -255,7 +218,7 @@ func test__Orgs__1() eff.Task[bool] {
 									Url    string
 									Status int64
 								}
-								return _z20, _err19
+								return _z19, _err18
 							}
 							return struct {
 								Answer  rtesting.Answer
@@ -268,7 +231,7 @@ func test__Orgs__1() eff.Task[bool] {
 								}
 								Url    string
 								Status int64
-							}{Answer: _r18.Answer, Session: rtesting.SessionOf[App__Session](_r18.Session), Doc: rtesting.DocOf(_r18.Doc), Notices: _r18.Notices, Toasts: _r18.Toasts, Url: _r18.URL, Status: _r18.Status}, nil
+							}{Answer: _r17.Answer, Session: rtesting.SessionOf[App__Session](_r17.Session), Doc: rtesting.DocOf(_r17.Doc), Notices: _r17.Notices, Toasts: _r17.Toasts, Url: _r17.URL, Status: _r17.Status}, nil
 						}), func(r struct {
 							Answer  rtesting.Answer
 							Session App__Session
@@ -281,7 +244,7 @@ func test__Orgs__1() eff.Task[bool] {
 							Url    string
 							Status int64
 						}) eff.Task[bool] {
-							return eff.Pure(rt.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/projects"}}) && rt.Eq(r.Session.Org, rt.Just[string](a)))
+							return eff.Pure(rt.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Route{Name: "Projects.Index.Index", Method: "GET", Path: "/projects"}}) && rt.Eq(r.Session.Org, rt.Just[string](a)))
 						})
 					})
 				})
@@ -318,67 +281,66 @@ func test__Orgs__2() eff.Task[bool] {
 						return struct{}{}, nil
 					}), func(_ struct{}) eff.Task[bool] {
 						return eff.Bind(eff.Call("Test.run", true, func(_e8 *eff.Env) (struct {
-							Value rt.Result[string, rt.Nav]
+							Value rt.Result[string, rt.Response]
 							Trace []string
 						}, error) {
-							_m9 := Orgs__Msg__Pick__(Orgs__PickParams{Org: b})
-							_v10, _msg11, _ok12, _tr13, _err14 := rtesting.InnerOn(_e8, store__Orgs(_m9), Orgs__update(_m9, Orgs__Model{Mine: []Membership__Membership{}}, Orgs__Session{User: me, Org: rt.Just[string](a), Role: User__Role__Reader__}))
-							if _err14 != nil {
-								var _z16 struct {
-									Value rt.Result[string, rt.Nav]
+							_v9, _msg10, _ok11, _tr12, _err13 := rtesting.Inner(_e8, Orgs__Pick__update(Orgs__Pick__Params{Org: b}, Orgs__Orgs__Session{User: me, Org: rt.Just[string](a), Role: User__Role__Reader__}))
+							if _err13 != nil {
+								var _z15 struct {
+									Value rt.Result[string, rt.Response]
 									Trace []string
 								}
-								return _z16, _err14
+								return _z15, _err13
 							}
-							_r15 := struct {
-								Value rt.Result[string, rt.Nav]
+							_r14 := struct {
+								Value rt.Result[string, rt.Response]
 								Trace []string
-							}{Trace: _tr13}
-							if _ok12 {
-								_r15.Value = rt.Ok[string, rt.Nav](_v10)
+							}{Trace: _tr12}
+							if _ok11 {
+								_r14.Value = rt.Ok[string, rt.Response](_v9)
 							} else {
-								_r15.Value = rt.Err[string, rt.Nav](_msg11)
+								_r14.Value = rt.Err[string, rt.Response](_msg10)
 							}
-							return _r15, nil
+							return _r14, nil
 						}), func(r struct {
-							Value rt.Result[string, rt.Nav]
+							Value rt.Result[string, rt.Response]
 							Trace []string
 						}) eff.Task[bool] {
-							return eff.Bind(eff.Call("Test.run", true, func(_e17 *eff.Env) (struct {
+							return eff.Bind(eff.Call("Test.run", true, func(_e16 *eff.Env) (struct {
 								Value rt.Result[string, struct{}]
 								Trace []string
 							}, error) {
-								_v18, _msg19, _ok20, _tr21, _err22 := rtesting.Inner(_e17, std.SessionPut(func(s App__Session) App__Session {
+								_v17, _msg18, _ok19, _tr20, _err21 := rtesting.Inner(_e16, std.SessionPut(func(s App__Session) App__Session {
 									return App__Session{User: s.User, Org: rt.Just[string](b), Role: s.Role}
 								}))
-								if _err22 != nil {
-									var _z24 struct {
+								if _err21 != nil {
+									var _z23 struct {
 										Value rt.Result[string, struct{}]
 										Trace []string
 									}
-									return _z24, _err22
+									return _z23, _err21
 								}
-								_r23 := struct {
+								_r22 := struct {
 									Value rt.Result[string, struct{}]
 									Trace []string
-								}{Trace: _tr21}
-								if _ok20 {
-									_r23.Value = rt.Ok[string, struct{}](_v18)
+								}{Trace: _tr20}
+								if _ok19 {
+									_r22.Value = rt.Ok[string, struct{}](_v17)
 								} else {
-									_r23.Value = rt.Err[string, struct{}](_msg19)
+									_r22.Value = rt.Err[string, struct{}](_msg18)
 								}
-								return _r23, nil
+								return _r22, nil
 							}), func(put struct {
 								Value rt.Result[string, struct{}]
 								Trace []string
 							}) eff.Task[bool] {
 								return eff.Pure(rtesting.Eq(struct {
-									R   rt.Result[string, rt.Nav]
+									R   rt.Result[string, rt.Response]
 									Put rt.Result[string, struct{}]
 								}{R: r.Value, Put: put.Value}, struct {
-									R   rt.Result[string, rt.Nav]
+									R   rt.Result[string, rt.Response]
 									Put rt.Result[string, struct{}]
-								}{R: rt.Err[string, rt.Nav]("Session.put org: no Membership for this user and org"), Put: rt.Err[string, struct{}]("Session.put org: no Membership for this user and org")}))
+								}{R: rt.Err[string, rt.Response]("Session.put org: no Membership for this user and org"), Put: rt.Err[string, struct{}]("Session.put org: no Membership for this user and org")}))
 							})
 						})
 					})
@@ -415,7 +377,7 @@ func test__Orgs__3() eff.Task[bool] {
 						}
 						return struct{}{}, nil
 					}), func(_ struct{}) eff.Task[bool] {
-						return eff.Bind(eff.Call("Test.get Orgs", true, func(_e8 *eff.Env) (struct {
+						return eff.Bind(eff.Call("Test.get Orgs.Orgs", true, func(_e8 *eff.Env) (struct {
 							Model   Orgs__Model
 							Session App__Session
 							Doc     rtesting.Doc
@@ -427,11 +389,11 @@ func test__Orgs__3() eff.Task[bool] {
 							Url    string
 							Status int64
 						}, error) {
-							_u10 := rt.PageURL(rt.Page{Path: "/orgs"})
-							_b11 := rtesting.BrowserOf(_e8)
-							_r12, _err13 := _b11.GetPage(_u10, "user")
-							if _err13 != nil {
-								var _z14 struct {
+							_u9 := rt.RouteURL(rt.Route{Name: "Orgs.Orgs", Method: "GET", Path: "/orgs"})
+							_b10 := rtesting.BrowserOf(_e8)
+							_r11, _err12 := _b10.GetPage(_u9, "user")
+							if _err12 != nil {
+								var _z13 struct {
 									Model   Orgs__Model
 									Session App__Session
 									Doc     rtesting.Doc
@@ -443,11 +405,11 @@ func test__Orgs__3() eff.Task[bool] {
 									Url    string
 									Status int64
 								}
-								return _z14, _err13
+								return _z13, _err12
 							}
-							_m15, _err13 := rtesting.ModelOf[Orgs__Model](_u10, _r12)
-							if _err13 != nil {
-								var _z16 struct {
+							_m14, _err12 := rtesting.ModelOf[Orgs__Model](_u9, _r11)
+							if _err12 != nil {
+								var _z15 struct {
 									Model   Orgs__Model
 									Session App__Session
 									Doc     rtesting.Doc
@@ -459,7 +421,7 @@ func test__Orgs__3() eff.Task[bool] {
 									Url    string
 									Status int64
 								}
-								return _z16, _err13
+								return _z15, _err12
 							}
 							return struct {
 								Model   Orgs__Model
@@ -472,7 +434,7 @@ func test__Orgs__3() eff.Task[bool] {
 								}
 								Url    string
 								Status int64
-							}{Model: _m15, Session: rtesting.SessionOf[App__Session](_r12.Session), Doc: rtesting.DocOf(_r12.Doc), Notices: _r12.Notices, Toasts: _r12.Toasts, Url: _r12.URL, Status: _r12.Status}, nil
+							}{Model: _m14, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc), Notices: _r11.Notices, Toasts: _r11.Toasts, Url: _r11.URL, Status: _r11.Status}, nil
 						}), func(_ struct {
 							Model   Orgs__Model
 							Session App__Session
@@ -485,7 +447,7 @@ func test__Orgs__3() eff.Task[bool] {
 							Url    string
 							Status int64
 						}) eff.Task[bool] {
-							return eff.Bind(eff.Call("Test.submit SwitchOrg", true, func(_e17 *eff.Env) (struct {
+							return eff.Bind(eff.Call("Test.submit SwitchOrg", true, func(_e16 *eff.Env) (struct {
 								Answer  rtesting.Answer
 								Session App__Session
 								Doc     rtesting.Doc
@@ -497,9 +459,9 @@ func test__Orgs__3() eff.Task[bool] {
 								Url    string
 								Status int64
 							}, error) {
-								_r18, _err19 := rtesting.BrowserOf(_e17).SubmitForm("/_m/Orgs/Switch", "SwitchOrg", encode__Orgs__SwitchOrg(Orgs__SwitchOrg{Org: b}))
-								if _err19 != nil {
-									var _z20 struct {
+								_r17, _err18 := rtesting.BrowserOf(_e16).SubmitRoute(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/_/Switch"}, "SwitchOrg", encode__Orgs__SwitchOrg(Orgs__SwitchOrg{Org: b}))
+								if _err18 != nil {
+									var _z19 struct {
 										Answer  rtesting.Answer
 										Session App__Session
 										Doc     rtesting.Doc
@@ -511,7 +473,7 @@ func test__Orgs__3() eff.Task[bool] {
 										Url    string
 										Status int64
 									}
-									return _z20, _err19
+									return _z19, _err18
 								}
 								return struct {
 									Answer  rtesting.Answer
@@ -524,7 +486,7 @@ func test__Orgs__3() eff.Task[bool] {
 									}
 									Url    string
 									Status int64
-								}{Answer: _r18.Answer, Session: rtesting.SessionOf[App__Session](_r18.Session), Doc: rtesting.DocOf(_r18.Doc), Notices: _r18.Notices, Toasts: _r18.Toasts, Url: _r18.URL, Status: _r18.Status}, nil
+								}{Answer: _r17.Answer, Session: rtesting.SessionOf[App__Session](_r17.Session), Doc: rtesting.DocOf(_r17.Doc), Notices: _r17.Notices, Toasts: _r17.Toasts, Url: _r17.URL, Status: _r17.Status}, nil
 							}), func(r struct {
 								Answer  rtesting.Answer
 								Session App__Session
@@ -537,7 +499,7 @@ func test__Orgs__3() eff.Task[bool] {
 								Url    string
 								Status int64
 							}) eff.Task[bool] {
-								return eff.Bind(eff.Call("Test.submit SwitchOrg", true, func(_e21 *eff.Env) (struct {
+								return eff.Bind(eff.Call("Test.submit SwitchOrg", true, func(_e20 *eff.Env) (struct {
 									Answer  rtesting.Answer
 									Session App__Session
 									Doc     rtesting.Doc
@@ -549,9 +511,9 @@ func test__Orgs__3() eff.Task[bool] {
 									Url    string
 									Status int64
 								}, error) {
-									_r22, _err23 := rtesting.BrowserOf(_e21).SubmitForm("/_m/Orgs/Switch", "SwitchOrg", encode__Orgs__SwitchOrg(Orgs__SwitchOrg{Org: a}))
-									if _err23 != nil {
-										var _z24 struct {
+									_r21, _err22 := rtesting.BrowserOf(_e20).SubmitRoute(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/_/Switch"}, "SwitchOrg", encode__Orgs__SwitchOrg(Orgs__SwitchOrg{Org: a}))
+									if _err22 != nil {
+										var _z23 struct {
 											Answer  rtesting.Answer
 											Session App__Session
 											Doc     rtesting.Doc
@@ -563,7 +525,7 @@ func test__Orgs__3() eff.Task[bool] {
 											Url    string
 											Status int64
 										}
-										return _z24, _err23
+										return _z23, _err22
 									}
 									return struct {
 										Answer  rtesting.Answer
@@ -576,7 +538,7 @@ func test__Orgs__3() eff.Task[bool] {
 										}
 										Url    string
 										Status int64
-									}{Answer: _r22.Answer, Session: rtesting.SessionOf[App__Session](_r22.Session), Doc: rtesting.DocOf(_r22.Doc), Notices: _r22.Notices, Toasts: _r22.Toasts, Url: _r22.URL, Status: _r22.Status}, nil
+									}{Answer: _r21.Answer, Session: rtesting.SessionOf[App__Session](_r21.Session), Doc: rtesting.DocOf(_r21.Doc), Notices: _r21.Notices, Toasts: _r21.Toasts, Url: _r21.URL, Status: _r21.Status}, nil
 								}), func(ok struct {
 									Answer  rtesting.Answer
 									Session App__Session
@@ -603,7 +565,7 @@ func test__Orgs__3() eff.Task[bool] {
 									}{struct {
 										Field   string
 										Message string
-									}{Field: "", Message: "You are not a member of that workspace."}}), Org: rt.Just[string](a), Ok: rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/projects"}}}))
+									}{Field: "", Message: "You are not a member of that workspace."}}), Org: rt.Just[string](a), Ok: rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Route{Name: "Projects.Index.Index", Method: "GET", Path: "/projects"}}}))
 								})
 							})
 						})
@@ -701,7 +663,7 @@ func test__Orgs__5() eff.Task[bool] {
 					}
 					return struct{}{}, nil
 				}), func(_ struct{}) eff.Task[bool] {
-					return eff.Bind(eff.Call("Test.get Orgs", true, func(_e7 *eff.Env) (struct {
+					return eff.Bind(eff.Call("Test.get Orgs.Orgs", true, func(_e7 *eff.Env) (struct {
 						Model   Orgs__Model
 						Session App__Session
 						Doc     rtesting.Doc
@@ -713,11 +675,11 @@ func test__Orgs__5() eff.Task[bool] {
 						Url    string
 						Status int64
 					}, error) {
-						_u9 := rt.PageURL(rt.Page{Path: "/orgs"})
-						_b10 := rtesting.BrowserOf(_e7)
-						_r11, _err12 := _b10.GetPage(_u9, "user")
-						if _err12 != nil {
-							var _z13 struct {
+						_u8 := rt.RouteURL(rt.Route{Name: "Orgs.Orgs", Method: "GET", Path: "/orgs"})
+						_b9 := rtesting.BrowserOf(_e7)
+						_r10, _err11 := _b9.GetPage(_u8, "user")
+						if _err11 != nil {
+							var _z12 struct {
 								Model   Orgs__Model
 								Session App__Session
 								Doc     rtesting.Doc
@@ -729,11 +691,11 @@ func test__Orgs__5() eff.Task[bool] {
 								Url    string
 								Status int64
 							}
-							return _z13, _err12
+							return _z12, _err11
 						}
-						_m14, _err12 := rtesting.ModelOf[Orgs__Model](_u9, _r11)
-						if _err12 != nil {
-							var _z15 struct {
+						_m13, _err11 := rtesting.ModelOf[Orgs__Model](_u8, _r10)
+						if _err11 != nil {
+							var _z14 struct {
 								Model   Orgs__Model
 								Session App__Session
 								Doc     rtesting.Doc
@@ -745,7 +707,7 @@ func test__Orgs__5() eff.Task[bool] {
 								Url    string
 								Status int64
 							}
-							return _z15, _err12
+							return _z14, _err11
 						}
 						return struct {
 							Model   Orgs__Model
@@ -758,7 +720,7 @@ func test__Orgs__5() eff.Task[bool] {
 							}
 							Url    string
 							Status int64
-						}{Model: _m14, Session: rtesting.SessionOf[App__Session](_r11.Session), Doc: rtesting.DocOf(_r11.Doc), Notices: _r11.Notices, Toasts: _r11.Toasts, Url: _r11.URL, Status: _r11.Status}, nil
+						}{Model: _m13, Session: rtesting.SessionOf[App__Session](_r10.Session), Doc: rtesting.DocOf(_r10.Doc), Notices: _r10.Notices, Toasts: _r10.Toasts, Url: _r10.URL, Status: _r10.Status}, nil
 					}), func(_ struct {
 						Model   Orgs__Model
 						Session App__Session
@@ -771,7 +733,7 @@ func test__Orgs__5() eff.Task[bool] {
 						Url    string
 						Status int64
 					}) eff.Task[bool] {
-						return eff.Bind(eff.Call("Test.click App.Leave", true, func(_e16 *eff.Env) (struct {
+						return eff.Bind(eff.Call("Test.click App.Leave", true, func(_e15 *eff.Env) (struct {
 							Answer  rtesting.Answer
 							Session App__Session
 							Doc     rtesting.Doc
@@ -783,9 +745,9 @@ func test__Orgs__5() eff.Task[bool] {
 							Url    string
 							Status int64
 						}, error) {
-							_r17, _err18 := rtesting.BrowserOf(_e16).ClickMsg(rt.MsgURL("App", "Leave"), rtesting.MsgName("App.Leave", nil))
-							if _err18 != nil {
-								var _z19 struct {
+							_r16, _err17 := rtesting.BrowserOf(_e15).ClickRoute(rt.Route{Name: "App.Leave", Method: "POST", Path: "/_/Leave"}, rtesting.MsgName("App.Leave", nil))
+							if _err17 != nil {
+								var _z18 struct {
 									Answer  rtesting.Answer
 									Session App__Session
 									Doc     rtesting.Doc
@@ -797,7 +759,7 @@ func test__Orgs__5() eff.Task[bool] {
 									Url    string
 									Status int64
 								}
-								return _z19, _err18
+								return _z18, _err17
 							}
 							return struct {
 								Answer  rtesting.Answer
@@ -810,7 +772,7 @@ func test__Orgs__5() eff.Task[bool] {
 								}
 								Url    string
 								Status int64
-							}{Answer: _r17.Answer, Session: rtesting.SessionOf[App__Session](_r17.Session), Doc: rtesting.DocOf(_r17.Doc), Notices: _r17.Notices, Toasts: _r17.Toasts, Url: _r17.URL, Status: _r17.Status}, nil
+							}{Answer: _r16.Answer, Session: rtesting.SessionOf[App__Session](_r16.Session), Doc: rtesting.DocOf(_r16.Doc), Notices: _r16.Notices, Toasts: _r16.Toasts, Url: _r16.URL, Status: _r16.Status}, nil
 						}), func(r struct {
 							Answer  rtesting.Answer
 							Session App__Session
@@ -823,7 +785,7 @@ func test__Orgs__5() eff.Task[bool] {
 							Url    string
 							Status int64
 						}) eff.Task[bool] {
-							return eff.Pure(rt.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/orgs"}}) && rt.Eq(r.Session.Org, rt.Nothing[string]()))
+							return eff.Pure(rt.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Route{Name: "Orgs.Orgs", Method: "GET", Path: "/orgs"}}) && rt.Eq(r.Session.Org, rt.Nothing[string]()))
 						})
 					})
 				})
@@ -866,7 +828,7 @@ func test__Orgs__6() eff.Task[bool] {
 								}
 								return struct{}{}, nil
 							}), func(_ struct{}) eff.Task[bool] {
-								return eff.Bind(eff.Call("Test.get Orgs", true, func(_e9 *eff.Env) (struct {
+								return eff.Bind(eff.Call("Test.get Orgs.Orgs", true, func(_e9 *eff.Env) (struct {
 									Model   Orgs__Model
 									Session App__Session
 									Doc     rtesting.Doc
@@ -878,11 +840,11 @@ func test__Orgs__6() eff.Task[bool] {
 									Url    string
 									Status int64
 								}, error) {
-									_u11 := rt.PageURL(rt.Page{Path: "/orgs"})
-									_b12 := rtesting.BrowserOf(_e9)
-									_r13, _err14 := _b12.GetPage(_u11, "user")
-									if _err14 != nil {
-										var _z15 struct {
+									_u10 := rt.RouteURL(rt.Route{Name: "Orgs.Orgs", Method: "GET", Path: "/orgs"})
+									_b11 := rtesting.BrowserOf(_e9)
+									_r12, _err13 := _b11.GetPage(_u10, "user")
+									if _err13 != nil {
+										var _z14 struct {
 											Model   Orgs__Model
 											Session App__Session
 											Doc     rtesting.Doc
@@ -894,11 +856,11 @@ func test__Orgs__6() eff.Task[bool] {
 											Url    string
 											Status int64
 										}
-										return _z15, _err14
+										return _z14, _err13
 									}
-									_m16, _err14 := rtesting.ModelOf[Orgs__Model](_u11, _r13)
-									if _err14 != nil {
-										var _z17 struct {
+									_m15, _err13 := rtesting.ModelOf[Orgs__Model](_u10, _r12)
+									if _err13 != nil {
+										var _z16 struct {
 											Model   Orgs__Model
 											Session App__Session
 											Doc     rtesting.Doc
@@ -910,7 +872,7 @@ func test__Orgs__6() eff.Task[bool] {
 											Url    string
 											Status int64
 										}
-										return _z17, _err14
+										return _z16, _err13
 									}
 									return struct {
 										Model   Orgs__Model
@@ -923,7 +885,7 @@ func test__Orgs__6() eff.Task[bool] {
 										}
 										Url    string
 										Status int64
-									}{Model: _m16, Session: rtesting.SessionOf[App__Session](_r13.Session), Doc: rtesting.DocOf(_r13.Doc), Notices: _r13.Notices, Toasts: _r13.Toasts, Url: _r13.URL, Status: _r13.Status}, nil
+									}{Model: _m15, Session: rtesting.SessionOf[App__Session](_r12.Session), Doc: rtesting.DocOf(_r12.Doc), Notices: _r12.Notices, Toasts: _r12.Toasts, Url: _r12.URL, Status: _r12.Status}, nil
 								}), func(page struct {
 									Model   Orgs__Model
 									Session App__Session
@@ -951,7 +913,7 @@ func test__Orgs__6() eff.Task[bool] {
 
 // test__Orgs__7 is test "a visitor is sent to log in" of module Orgs.
 func test__Orgs__7() eff.Task[bool] {
-	return eff.Bind(eff.Call("Test.open Orgs", true, func(_e1 *eff.Env) (struct {
+	return eff.Bind(eff.Call("Test.open Orgs.Orgs", true, func(_e1 *eff.Env) (struct {
 		Answer  rtesting.Answer
 		Session App__Session
 		Doc     rtesting.Doc
@@ -963,11 +925,11 @@ func test__Orgs__7() eff.Task[bool] {
 		Url    string
 		Status int64
 	}, error) {
-		_u3 := rt.PageURL(rt.Page{Path: "/orgs"})
-		_b4 := rtesting.BrowserOf(_e1)
-		_r5, _err6 := _b4.Open(_u3)
-		if _err6 != nil {
-			var _z7 struct {
+		_u2 := rt.RouteURL(rt.Route{Name: "Orgs.Orgs", Method: "GET", Path: "/orgs"})
+		_b3 := rtesting.BrowserOf(_e1)
+		_r4, _err5 := _b3.Open(_u2)
+		if _err5 != nil {
+			var _z6 struct {
 				Answer  rtesting.Answer
 				Session App__Session
 				Doc     rtesting.Doc
@@ -979,7 +941,7 @@ func test__Orgs__7() eff.Task[bool] {
 				Url    string
 				Status int64
 			}
-			return _z7, _err6
+			return _z6, _err5
 		}
 		return struct {
 			Answer  rtesting.Answer
@@ -992,7 +954,7 @@ func test__Orgs__7() eff.Task[bool] {
 			}
 			Url    string
 			Status int64
-		}{Answer: _r5.Answer, Session: rtesting.SessionOf[App__Session](_r5.Session), Doc: rtesting.DocOf(_r5.Doc), Notices: _r5.Notices, Toasts: _r5.Toasts, Url: _r5.URL, Status: _r5.Status}, nil
+		}{Answer: _r4.Answer, Session: rtesting.SessionOf[App__Session](_r4.Session), Doc: rtesting.DocOf(_r4.Doc), Notices: _r4.Notices, Toasts: _r4.Toasts, Url: _r4.URL, Status: _r4.Status}, nil
 	}), func(r struct {
 		Answer  rtesting.Answer
 		Session App__Session
@@ -1005,7 +967,7 @@ func test__Orgs__7() eff.Task[bool] {
 		Url    string
 		Status int64
 	}) eff.Task[bool] {
-		return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Page{Path: "/login"}}))
+		return eff.Pure(rtesting.Eq(r.Answer, rtesting.Answer{Tag: rtesting.Redirected, Page: rt.Route{Name: "Login.Login", Method: "GET", Path: "/login"}}))
 	})
 }
 

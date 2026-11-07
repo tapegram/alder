@@ -9,41 +9,41 @@ capability Password {
 -- A fake that knows one password, so the login form can be tested through the browser.
 fake Password {
   verify args = {
-    let found <- Db.from User |> Db.where (User.email.eq args.email) |> Db.first
-    if args.password == "secret" then Task.succeed (Maybe.map (\u -> u.id) found) else Task.succeed Nothing
+    let found <-
+      Db.from User
+        |> Db.where (User.email.eq args.email)
+        |> Db.first
+    if args.password == "secret" then
+      Task.succeed (Maybe.map (\u -> u.id) found)
+    else
+      Task.succeed Nothing
   }
 }
 
-page "/login" { }
+route Login  = GET  "/login"          { }
+route Submit = POST "/login/_/Submit" { } form Credentials
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Login.load : Login.Params -> Session -> Query Model
+Login.load params session = Query.succeed {}
 
-form Credentials = {
-  email: Text.Email,
-  password: Text.Secret,
+form Credentials = { email: Text.Email, password: Text.Secret }
+
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update p session = {
+  let found <- Password.verify { email: p.form.email, password: p.form.password }
+  match found {
+    Just id -> {
+      let _ <- Session.put (\s -> { s | user: Just id })
+      Task.succeed (Response.redirect (Notes.Index.Index {}))
+    },
+    Nothing -> Task.succeed (Response.invalid "Email or password is incorrect."),
+  }
 }
 
-msg Submit form Credentials
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Submit p -> {
-    let found <- Password.verify { email: p.form.email, password: p.form.password }
-    match found {
-      Just id -> {
-        let _ <- Session.put (\s -> { s | user: Just id })
-        Task.succeed (Redirect (Notes.Index {}))
-      },
-      Nothing -> Task.succeed (Reject "Email or password is incorrect."),
-    }
-  },
-}
-
-view : Model -> Session -> Html Msg
-view model session =
+Login.view : Model -> Session -> Html
+Login.view model session =
   <html>
     <body>
       <h1>Log in</h1>
@@ -60,8 +60,18 @@ view model session =
 
 -- RF4: a page that requires a user redirects to the login page, which the browser then holds.
 test "a page that requires a user redirects to the login page" = {
-  let r <- Test.open (Notes.Index {})
-  Task.succeed ({ answer: r.answer, title: Test.text "h1" r.doc, user: r.session.user } == { answer: Redirected (Auth.Login {}), title: Just "Log in", user: Nothing })
+  let r <- Test.open (Notes.Index.Index {})
+  Task.succeed (
+    {
+      answer: r.answer,
+      title: Test.text "h1" r.doc,
+      user: r.session.user,
+    } == {
+      answer: Redirected (Login {}),
+      title: Just "Log in",
+      user: Nothing,
+    }
+  )
 }
 
 -- RF4: logging in through the form with the fake: a wrong password is FormRejected with the
@@ -69,17 +79,47 @@ test "a page that requires a user redirects to the login page" = {
 test "logging in through the form" = {
   let _ <- Test.fake Password
   let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
-  let _ <- Test.get (Auth.Login {})
-  let wrong <- Test.submit Credentials { email: Text.Email "me@example.com", password: Text.Secret "nope" }
-  let right <- Test.submit Credentials { email: Text.Email "me@example.com", password: Text.Secret "secret" }
-  Task.succeed ({ wrong: wrong.answer, wrongUser: wrong.session.user, right: right.answer, user: right.session.user, title: Test.text "h1" right.doc } == { wrong: FormRejected [{ field: "", message: "Email or password is incorrect." }], wrongUser: Nothing, right: Redirected (Notes.Index {}), user: Just me, title: Just "Notes" })
+  let _ <- Test.get (Login {})
+  let wrong <- Test.submit Submit {
+    email: Text.Email "me@example.com",
+    password: Text.Secret "nope",
+  }
+  let right <- Test.submit Submit {
+    email: Text.Email "me@example.com",
+    password: Text.Secret "secret",
+  }
+  Task.succeed (
+    {
+      wrong: wrong.answer,
+      wrongUser: wrong.session.user,
+      right: right.answer,
+      user: right.session.user,
+      title: Test.text "h1" right.doc,
+    } == {
+      wrong: FormRejected [{ field: "", message: "Email or password is incorrect." }],
+      wrongUser: Nothing,
+      right: Redirected (Notes.Index.Index {}),
+      user: Just me,
+      title: Just "Notes",
+    }
+  )
 }
 
 -- RF4: after Test.login the page is shown; App.Logout's button logs out.
 test "Test.login, then log out through the button" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
   let _ <- Test.login { user: Just me }
-  let shown <- Test.open (Notes.Index {})
+  let shown <- Test.open (Notes.Index.Index {})
   let out <- Test.click App.Logout
-  Task.succeed ({ shown: shown.answer, out: out.answer, user: out.session.user } == { shown: Shown, out: Redirected (Auth.Login {}), user: Nothing })
+  Task.succeed (
+    {
+      shown: shown.answer,
+      out: out.answer,
+      user: out.session.user,
+    } == {
+      shown: Shown,
+      out: Redirected (Login {}),
+      user: Nothing,
+    }
+  )
 }

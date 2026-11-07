@@ -69,7 +69,6 @@ var Fakes = map[string]func() any{
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {
 	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
-	rt.RegisterUnion(reflect.TypeOf(tag__Sites__MnSos__Msg(0)), []string{})
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that
@@ -183,7 +182,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/",
-		DevMap:      "{\"pages\":[{\"module\":\"Sites.MnSos\",\"path\":\"/mnsos\",\"params\":[\"cfg: Text\"]}],\"tables\":[],\"caps\":[\"Gate.Gate\"],\"session\":null}",
+		DevMap:      "{\"pages\":[],\"tables\":[],\"caps\":[\"Gate.Gate\"],\"session\":null}",
 	}
 }
 

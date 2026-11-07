@@ -48,29 +48,29 @@ func (Caps) Registry() map[string]any {
 
 // Tests are the app's `test` declarations in module order then declaration order, for alder test (rtesting.Main).
 var Tests = []rtesting.Case{
-	{Module: "Admin.Projects", Name: "an Admin who is no member manages an org's projects", File: "app/Admin/Projects.alder", Line: 35, Col: 1, Task: test__Admin__Projects__1},
-	{Module: "Admin.Projects", Name: "a Reader gets no admin page", File: "app/Admin/Projects.alder", Line: 47, Col: 1, Task: test__Admin__Projects__2},
-	{Module: "Admin.Projects", Name: "a visitor is sent to log in", File: "app/Admin/Projects.alder", Line: 55, Col: 1, Task: test__Admin__Projects__3},
+	{Module: "Admin.Projects", Name: "an Admin who is no member manages an org's projects", File: "app/Admin/Projects.alder", Line: 40, Col: 1, Task: test__Admin__Projects__1},
+	{Module: "Admin.Projects", Name: "a Reader gets no admin page", File: "app/Admin/Projects.alder", Line: 59, Col: 1, Task: test__Admin__Projects__2},
+	{Module: "Admin.Projects", Name: "a visitor is sent to log in", File: "app/Admin/Projects.alder", Line: 67, Col: 1, Task: test__Admin__Projects__3},
 	{Module: "Membership", Name: "deleting a user or an org deletes their memberships, not their notes or labels", File: "app/Membership.alder", Line: 17, Col: 1, Task: test__Membership__1},
-	{Module: "Notes.Index", Name: "each user sees their own notes", File: "app/Notes/Index.alder", Line: 35, Col: 1, Task: test__Notes__Index__1},
-	{Module: "Notes.Index", Name: "leaving the org from any page goes to the org picker", File: "app/Notes/Index.alder", Line: 45, Col: 1, Task: test__Notes__Index__2},
-	{Module: "Notes.Index", Name: "a visitor is sent to log in", File: "app/Notes/Index.alder", Line: 53, Col: 1, Task: test__Notes__Index__3},
-	{Module: "Orgs", Name: "a member picks an org", File: "app/Orgs.alder", Line: 52, Col: 1, Task: test__Orgs__1},
-	{Module: "Orgs", Name: "a non-member's switch is refused", File: "app/Orgs.alder", Line: 62, Col: 1, Task: test__Orgs__2},
-	{Module: "Orgs", Name: "a non-member's switch from the form is the form's error", File: "app/Orgs.alder", Line: 74, Col: 1, Task: test__Orgs__3},
-	{Module: "Orgs", Name: "a membership deleted earlier in the same Task counts as gone", File: "app/Orgs.alder", Line: 86, Col: 1, Task: test__Orgs__4},
-	{Module: "Orgs", Name: "leaving the org clears it", File: "app/Orgs.alder", Line: 98, Col: 1, Task: test__Orgs__5},
-	{Module: "Orgs", Name: "the picker lists the user's own memberships", File: "app/Orgs.alder", Line: 108, Col: 1, Task: test__Orgs__6},
-	{Module: "Orgs", Name: "a visitor is sent to log in", File: "app/Orgs.alder", Line: 120, Col: 1, Task: test__Orgs__7},
-	{Module: "Orgs", Name: "logging out clears the org", File: "app/Orgs.alder", Line: 125, Col: 1, Task: test__Orgs__8},
-	{Module: "Projects.Index", Name: "a member sees only their org's projects", File: "app/Projects/Index.alder", Line: 106, Col: 1, Task: test__Projects__Index__1},
-	{Module: "Projects.Index", Name: "rename and remove act on the org's own projects", File: "app/Projects/Index.alder", Line: 115, Col: 1, Task: test__Projects__Index__2},
-	{Module: "Projects.Index", Name: "another org's project is not found", File: "app/Projects/Index.alder", Line: 129, Col: 1, Task: test__Projects__Index__3},
-	{Module: "Projects.Index", Name: "seeding is one Task in one silo", File: "app/Projects/Index.alder", Line: 144, Col: 1, Task: test__Projects__Index__4},
-	{Module: "Projects.Index", Name: "labels are scoped by org in the shared store", File: "app/Projects/Index.alder", Line: 153, Col: 1, Task: test__Projects__Index__5},
-	{Module: "Projects.Index", Name: "Test.run of Tag writes the shared store, of Seed the org's", File: "app/Projects/Index.alder", Line: 164, Col: 1, Task: test__Projects__Index__6},
-	{Module: "Projects.Index", Name: "without an org the page sends you to pick one", File: "app/Projects/Index.alder", Line: 175, Col: 1, Task: test__Projects__Index__7},
-	{Module: "Projects.Index", Name: "a visitor is sent to log in", File: "app/Projects/Index.alder", Line: 182, Col: 1, Task: test__Projects__Index__8},
+	{Module: "Notes.Index", Name: "each user sees their own notes", File: "app/Notes/Index.alder", Line: 36, Col: 1, Task: test__Notes__Index__1},
+	{Module: "Notes.Index", Name: "leaving the org from any page goes to the org picker", File: "app/Notes/Index.alder", Line: 46, Col: 1, Task: test__Notes__Index__2},
+	{Module: "Notes.Index", Name: "a visitor is sent to log in", File: "app/Notes/Index.alder", Line: 54, Col: 1, Task: test__Notes__Index__3},
+	{Module: "Orgs", Name: "a member picks an org", File: "app/Orgs.alder", Line: 56, Col: 1, Task: test__Orgs__1},
+	{Module: "Orgs", Name: "a non-member's switch is refused", File: "app/Orgs.alder", Line: 66, Col: 1, Task: test__Orgs__2},
+	{Module: "Orgs", Name: "a non-member's switch from the form is the form's error", File: "app/Orgs.alder", Line: 89, Col: 1, Task: test__Orgs__3},
+	{Module: "Orgs", Name: "a membership deleted earlier in the same Task counts as gone", File: "app/Orgs.alder", Line: 111, Col: 1, Task: test__Orgs__4},
+	{Module: "Orgs", Name: "leaving the org clears it", File: "app/Orgs.alder", Line: 123, Col: 1, Task: test__Orgs__5},
+	{Module: "Orgs", Name: "the picker lists the user's own memberships", File: "app/Orgs.alder", Line: 133, Col: 1, Task: test__Orgs__6},
+	{Module: "Orgs", Name: "a visitor is sent to log in", File: "app/Orgs.alder", Line: 145, Col: 1, Task: test__Orgs__7},
+	{Module: "Orgs", Name: "logging out clears the org", File: "app/Orgs.alder", Line: 150, Col: 1, Task: test__Orgs__8},
+	{Module: "Projects.Index", Name: "a member sees only their org's projects", File: "app/Projects/Index.alder", Line: 134, Col: 1, Task: test__Projects__Index__1},
+	{Module: "Projects.Index", Name: "rename and remove act on the org's own projects", File: "app/Projects/Index.alder", Line: 146, Col: 1, Task: test__Projects__Index__2},
+	{Module: "Projects.Index", Name: "another org's project is not found", File: "app/Projects/Index.alder", Line: 163, Col: 1, Task: test__Projects__Index__3},
+	{Module: "Projects.Index", Name: "seeding is one Task in one silo", File: "app/Projects/Index.alder", Line: 196, Col: 1, Task: test__Projects__Index__4},
+	{Module: "Projects.Index", Name: "labels are scoped by org in the shared store", File: "app/Projects/Index.alder", Line: 205, Col: 1, Task: test__Projects__Index__5},
+	{Module: "Projects.Index", Name: "Test.run of Tag writes the shared store, of Seed the org's", File: "app/Projects/Index.alder", Line: 216, Col: 1, Task: test__Projects__Index__6},
+	{Module: "Projects.Index", Name: "without an org the page sends you to pick one", File: "app/Projects/Index.alder", Line: 247, Col: 1, Task: test__Projects__Index__7},
+	{Module: "Projects.Index", Name: "a visitor is sent to log in", File: "app/Projects/Index.alder", Line: 254, Col: 1, Task: test__Projects__Index__8},
 }
 
 // TestSession is the session a test runs with: App's session with every field at its default (nil without an App module).
@@ -91,54 +91,41 @@ var Mutant int
 
 // Mutants are the app's mutants in id order (mutate.Collect); a schema mutant's Tables are the app's tables with its change, created by db.Ensure.
 var Mutants = []rtesting.Mutant{
-	{ID: 1, Module: "Admin.Projects", Decl: "requires", Kind: "requires dropped", File: "app/Admin/Projects.alder", Line: 9, Col: 54, Before: "requires user", After: "served without user (user = User.UserId \"mutant\")"},
-	{ID: 2, Module: "Admin.Projects", Decl: "requires", Kind: "role dropped", File: "app/Admin/Projects.alder", Line: 9, Col: 69, Before: "requires user, role Admin", After: "requires user"},
-	{ID: 3, Module: "Admin.Projects", Decl: "update", Kind: "write replaced", File: "app/Admin/Projects.alder", Line: 24, Col: 5, Before: "let _ <- Db.delete Project p.id", After: "let _ <- Task.succeed ()"},
-	{ID: 4, Module: "App", Decl: "update", Kind: "session put dropped", File: "app/App.alder", Line: 21, Col: 5, Before: "let _ <- Session.put (\\s -> { s | org: Nothing })", After: "let _ <- Task.succeed ()"},
-	{ID: 5, Module: "App", Decl: "update", Kind: "redirect → rerender", File: "app/App.alder", Line: 22, Col: 19, Before: "Redirect (Orgs {})", After: "Rerender"},
-	{ID: 6, Module: "Label", Decl: "Label", Kind: "cascade ↔ restrict", File: "app/Label.alder", Line: 11, Col: 3, Before: "org @ref Org @restrict", After: "org @ref Org @cascade", Tables: []db.TableDesc{table__Org__Org.Desc(), table__Project__Project.Desc(), table__User__User.Desc(), {Name: "Label.Label", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "name", Type: db.CText}, {Name: "org", Type: db.CText, Ref: "Org.Org", OnDelete: db.Cascade}}, ID: "id"}, table__Note__Note.Desc(), table__Membership__Membership.Desc()}},
-	{ID: 7, Module: "Note", Decl: "Note", Kind: "cascade ↔ restrict", File: "app/Note.alder", Line: 11, Col: 3, Before: "owner @ref User @restrict", After: "owner @ref User @cascade", Tables: []db.TableDesc{table__Org__Org.Desc(), table__Project__Project.Desc(), table__User__User.Desc(), table__Label__Label.Desc(), {Name: "Note.Note", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "text", Type: db.CText}, {Name: "owner", Type: db.CText, Ref: "User.User", OnDelete: db.Cascade}}, ID: "id"}, table__Membership__Membership.Desc()}},
-	{ID: 8, Module: "Membership", Decl: "Membership", Kind: "cascade ↔ restrict", File: "app/Membership.alder", Line: 13, Col: 3, Before: "user @ref User @cascade", After: "user @ref User @restrict", Tables: []db.TableDesc{table__Org__Org.Desc(), table__Project__Project.Desc(), table__User__User.Desc(), table__Label__Label.Desc(), table__Note__Note.Desc(), {Name: "Membership.Membership", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "user", Type: db.CText, Ref: "User.User"}, {Name: "org", Type: db.CText, Ref: "Org.Org", OnDelete: db.Cascade}}, ID: "id"}}},
-	{ID: 9, Module: "Membership", Decl: "Membership", Kind: "cascade ↔ restrict", File: "app/Membership.alder", Line: 14, Col: 3, Before: "org @ref Org @cascade", After: "org @ref Org @restrict", Tables: []db.TableDesc{table__Org__Org.Desc(), table__Project__Project.Desc(), table__User__User.Desc(), table__Label__Label.Desc(), table__Note__Note.Desc(), {Name: "Membership.Membership", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "user", Type: db.CText, Ref: "User.User", OnDelete: db.Cascade}, {Name: "org", Type: db.CText, Ref: "Org.Org"}}, ID: "id"}}},
-	{ID: 10, Module: "Notes.Index", Decl: "requires", Kind: "requires dropped", File: "app/Notes/Index.alder", Line: 7, Col: 19, Before: "requires user", After: "served without user (user = User.UserId \"mutant\")"},
-	{ID: 11, Module: "Notes.Index", Decl: "load", Kind: "scope dropped", File: "app/Notes/Index.alder", Line: 13, Col: 16, Before: "Db.mine Note", After: "Db.from Note"},
-	{ID: 12, Module: "Notes.Index", Decl: "update", Kind: "write replaced", File: "app/Notes/Index.alder", Line: 22, Col: 5, Before: "let _ <- Db.insertMine Note { text: \"a\" }", After: "let _ <- Task.succeed (Note.NoteId \"mutant\")"},
-	{ID: 13, Module: "Orgs", Decl: "requires", Kind: "requires dropped", File: "app/Orgs.alder", Line: 9, Col: 18, Before: "requires user", After: "served without user (user = User.UserId \"mutant\")"},
-	{ID: 14, Module: "Orgs", Decl: "load", Kind: "where dropped", File: "app/Orgs.alder", Line: 15, Col: 37, Before: "Db.where (Membership.user.eq session.user)", After: "the condition dropped"},
-	{ID: 15, Module: "Orgs", Decl: "update", Kind: "session put dropped", File: "app/Orgs.alder", Line: 30, Col: 5, Before: "let _ <- Session.put (\\s -> { s | org: Just p.org })", After: "let _ <- Task.succeed ()"},
-	{ID: 16, Module: "Orgs", Decl: "update", Kind: "redirect → rerender", File: "app/Orgs.alder", Line: 31, Col: 19, Before: "Redirect (Projects.Index {})", After: "Rerender"},
-	{ID: 17, Module: "Orgs", Decl: "update", Kind: "session put dropped", File: "app/Orgs.alder", Line: 35, Col: 5, Before: "let _ <- Session.put (\\s -> { s | org: Just p.form.org })", After: "let _ <- Task.succeed ()"},
-	{ID: 18, Module: "Orgs", Decl: "update", Kind: "redirect → rerender", File: "app/Orgs.alder", Line: 36, Col: 19, Before: "Redirect (Projects.Index {})", After: "Rerender"},
-	{ID: 19, Module: "Projects.Index", Decl: "seed", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 16, Col: 3, Before: "let _ <- Db.insertScoped Project { name: name }", After: "let _ <- Task.succeed (Project.ProjectId \"mutant\")"},
-	{ID: 20, Module: "Projects.Index", Decl: "load", Kind: "orderBy reversed", File: "app/Projects/Index.alder", Line: 24, Col: 40, Before: "Db.orderBy Project.name.asc", After: "Db.orderBy Project.name.desc"},
-	{ID: 21, Module: "Projects.Index", Decl: "load", Kind: "scope dropped", File: "app/Projects/Index.alder", Line: 25, Col: 17, Before: "Db.scoped Label", After: "Db.from Label"},
-	{ID: 22, Module: "Projects.Index", Decl: "update", Kind: "arm swapped", File: "app/Projects/Index.alder", Line: 40, Col: 28, Before: "match msg { Add _ -> …, Rename _ -> …, Remove _ -> …, Tag _ -> …, _ -> … }", After: "the Tag _ and _ bodies swapped"},
-	{ID: 23, Module: "Projects.Index", Decl: "update", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 44, Col: 5, Before: "let _ <- Db.insertScoped Project {…}", After: "let _ <- Task.succeed (Project.ProjectId \"mutant\")"},
-	{ID: 24, Module: "Projects.Index", Decl: "update", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 48, Col: 5, Before: "let _ <- Db.updateScoped Project p.id (\\x -> { x | name: \"renamed\" })", After: "let _ <- Task.succeed ()"},
-	{ID: 25, Module: "Projects.Index", Decl: "update", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 52, Col: 5, Before: "let _ <- Db.deleteScoped Project p.id", After: "let _ <- Task.succeed ()"},
-	{ID: 26, Module: "Projects.Index", Decl: "update", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 58, Col: 5, Before: "let _ <- Db.insertScoped Label { name: \"new\" }", After: "let _ <- Task.succeed (Label.LabelId \"mutant\")"},
-	{ID: 27, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 93, Col: 3, Before: "let me <- Db.insert User { name: \"Me\" }", After: "let me <- Task.succeed (User.UserId \"mutant\")"},
-	{ID: 28, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 94, Col: 3, Before: "let them <- Db.insert User { name: \"Them\" }", After: "let them <- Task.succeed (User.UserId \"mutant\")"},
-	{ID: 29, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 95, Col: 3, Before: "let a <- Db.insert Org { name: \"A\" }", After: "let a <- Task.succeed (Org.OrgId \"mutant\")"},
-	{ID: 30, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 96, Col: 3, Before: "let b <- Db.insert Org { name: \"B\" }", After: "let b <- Task.succeed (Org.OrgId \"mutant\")"},
-	{ID: 31, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 97, Col: 3, Before: "let _ <- Db.insert Membership { user: me, org: a }", After: "let _ <- Task.succeed (Membership.MembershipId \"mutant\")"},
-	{ID: 32, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 98, Col: 3, Before: "let _ <- Db.insert Membership { user: them, org: b }", After: "let _ <- Task.succeed (Membership.MembershipId \"mutant\")"},
-	{ID: 33, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 99, Col: 3, Before: "let _ <- Db.insert Project { name: \"theirs\", org: b }", After: "let _ <- Task.succeed (Project.ProjectId \"mutant\")"},
-	{ID: 34, Module: "App", Decl: "session", Kind: "membership dropped", File: "app/App.alder", Line: 8, Col: 36, Before: "Session.put org", After: "Session.put org without the Membership check"},
+	{ID: 1, Module: "Admin.Projects", Decl: "Remove.update", Kind: "write replaced", File: "app/Admin/Projects.alder", Line: 22, Col: 3, Before: "let _ <- Db.delete Project p.id", After: "let _ <- Task.succeed ()"},
+	{ID: 2, Module: "App", Decl: "Leave.update", Kind: "session put dropped", File: "app/App.alder", Line: 24, Col: 3, Before: "let _ <- Session.put (\\s -> { s | org: Nothing })", After: "let _ <- Task.succeed ()"},
+	{ID: 3, Module: "Label", Decl: "Label", Kind: "cascade ↔ restrict", File: "app/Label.alder", Line: 11, Col: 3, Before: "org @ref Org @restrict", After: "org @ref Org @cascade", Tables: []db.TableDesc{table__Org__Org.Desc(), table__Project__Project.Desc(), table__User__User.Desc(), {Name: "Label.Label", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "name", Type: db.CText}, {Name: "org", Type: db.CText, Ref: "Org.Org", OnDelete: db.Cascade}}, ID: "id"}, table__Note__Note.Desc(), table__Membership__Membership.Desc()}},
+	{ID: 4, Module: "Note", Decl: "Note", Kind: "cascade ↔ restrict", File: "app/Note.alder", Line: 11, Col: 3, Before: "owner @ref User @restrict", After: "owner @ref User @cascade", Tables: []db.TableDesc{table__Org__Org.Desc(), table__Project__Project.Desc(), table__User__User.Desc(), table__Label__Label.Desc(), {Name: "Note.Note", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "text", Type: db.CText}, {Name: "owner", Type: db.CText, Ref: "User.User", OnDelete: db.Cascade}}, ID: "id"}, table__Membership__Membership.Desc()}},
+	{ID: 5, Module: "Membership", Decl: "Membership", Kind: "cascade ↔ restrict", File: "app/Membership.alder", Line: 13, Col: 3, Before: "user @ref User @cascade", After: "user @ref User @restrict", Tables: []db.TableDesc{table__Org__Org.Desc(), table__Project__Project.Desc(), table__User__User.Desc(), table__Label__Label.Desc(), table__Note__Note.Desc(), {Name: "Membership.Membership", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "user", Type: db.CText, Ref: "User.User"}, {Name: "org", Type: db.CText, Ref: "Org.Org", OnDelete: db.Cascade}}, ID: "id"}}},
+	{ID: 6, Module: "Membership", Decl: "Membership", Kind: "cascade ↔ restrict", File: "app/Membership.alder", Line: 14, Col: 3, Before: "org @ref Org @cascade", After: "org @ref Org @restrict", Tables: []db.TableDesc{table__Org__Org.Desc(), table__Project__Project.Desc(), table__User__User.Desc(), table__Label__Label.Desc(), table__Note__Note.Desc(), {Name: "Membership.Membership", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "user", Type: db.CText, Ref: "User.User", OnDelete: db.Cascade}, {Name: "org", Type: db.CText, Ref: "Org.Org"}}, ID: "id"}}},
+	{ID: 7, Module: "Notes.Index", Decl: "Index.load", Kind: "scope dropped", File: "app/Notes/Index.alder", Line: 14, Col: 16, Before: "Db.mine Note", After: "Db.from Note"},
+	{ID: 8, Module: "Notes.Index", Decl: "Add.update", Kind: "write replaced", File: "app/Notes/Index.alder", Line: 20, Col: 3, Before: "let _ <- Db.insertMine Note { text: \"a\" }", After: "let _ <- Task.succeed (Note.NoteId \"mutant\")"},
+	{ID: 9, Module: "Orgs", Decl: "Orgs.load", Kind: "where dropped", File: "app/Orgs.alder", Line: 19, Col: 10, Before: "Db.where (Membership.user.eq session.user)", After: "the condition dropped"},
+	{ID: 10, Module: "Orgs", Decl: "Pick.update", Kind: "session put dropped", File: "app/Orgs.alder", Line: 29, Col: 3, Before: "let _ <- Session.put (\\s -> { s | org: Just p.org })", After: "let _ <- Task.succeed ()"},
+	{ID: 11, Module: "Orgs", Decl: "Switch.update", Kind: "session put dropped", File: "app/Orgs.alder", Line: 36, Col: 3, Before: "let _ <- Session.put (\\s -> { s | org: Just p.form.org })", After: "let _ <- Task.succeed ()"},
+	{ID: 12, Module: "Projects.Index", Decl: "seed", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 25, Col: 3, Before: "let _ <- Db.insertScoped Project { name: name }", After: "let _ <- Task.succeed (Project.ProjectId \"mutant\")"},
+	{ID: 13, Module: "Projects.Index", Decl: "Index.load", Kind: "orderBy reversed", File: "app/Projects/Index.alder", Line: 35, Col: 10, Before: "Db.orderBy Project.name.asc", After: "Db.orderBy Project.name.desc"},
+	{ID: 14, Module: "Projects.Index", Decl: "Index.load", Kind: "scope dropped", File: "app/Projects/Index.alder", Line: 37, Col: 17, Before: "Db.scoped Label", After: "Db.from Label"},
+	{ID: 15, Module: "Projects.Index", Decl: "Add.update", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 51, Col: 3, Before: "let _ <- Db.insertScoped Project {…}", After: "let _ <- Task.succeed (Project.ProjectId \"mutant\")"},
+	{ID: 16, Module: "Projects.Index", Decl: "Rename.update", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 59, Col: 3, Before: "let _ <- Db.updateScoped Project p.id (\\x -> { x | name: \"renamed\" })", After: "let _ <- Task.succeed ()"},
+	{ID: 17, Module: "Projects.Index", Decl: "Remove.update", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 65, Col: 3, Before: "let _ <- Db.deleteScoped Project p.id", After: "let _ <- Task.succeed ()"},
+	{ID: 18, Module: "Projects.Index", Decl: "Tag.update", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 73, Col: 3, Before: "let _ <- Db.insertScoped Label { name: \"new\" }", After: "let _ <- Task.succeed (Label.LabelId \"mutant\")"},
+	{ID: 19, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 116, Col: 3, Before: "let me <- Db.insert User { name: \"Me\" }", After: "let me <- Task.succeed (User.UserId \"mutant\")"},
+	{ID: 20, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 117, Col: 3, Before: "let them <- Db.insert User { name: \"Them\" }", After: "let them <- Task.succeed (User.UserId \"mutant\")"},
+	{ID: 21, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 118, Col: 3, Before: "let a <- Db.insert Org { name: \"A\" }", After: "let a <- Task.succeed (Org.OrgId \"mutant\")"},
+	{ID: 22, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 119, Col: 3, Before: "let b <- Db.insert Org { name: \"B\" }", After: "let b <- Task.succeed (Org.OrgId \"mutant\")"},
+	{ID: 23, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 120, Col: 3, Before: "let _ <- Db.insert Membership { user: me, org: a }", After: "let _ <- Task.succeed (Membership.MembershipId \"mutant\")"},
+	{ID: 24, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 121, Col: 3, Before: "let _ <- Db.insert Membership { user: them, org: b }", After: "let _ <- Task.succeed (Membership.MembershipId \"mutant\")"},
+	{ID: 25, Module: "Projects.Index", Decl: "setup", Kind: "write replaced", File: "app/Projects/Index.alder", Line: 122, Col: 3, Before: "let _ <- Db.insert Project { name: \"theirs\", org: b }", After: "let _ <- Task.succeed (Project.ProjectId \"mutant\")"},
+	{ID: 26, Module: "App", Decl: "session", Kind: "membership dropped", File: "app/App.alder", Line: 10, Col: 3, Before: "Session.put org", After: "Session.put org without the Membership check"},
 }
 
 // MutantsSuppressed and MutantsSkipped count the mutants refused as equivalent and as not applicable.
-var MutantsSuppressed, MutantsSkipped = 7, 6
+var MutantsSuppressed, MutantsSkipped = 6, 2
 
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {
 	rt.RegisterUnion(reflect.TypeOf(tag__User__Role(0)), []string{"Reader", "Admin"})
-	rt.RegisterUnion(reflect.TypeOf(tag__Admin__Projects__Msg(0)), []string{"Remove"})
-	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{"Leave"})
-	rt.RegisterUnion(reflect.TypeOf(tag__Login__Msg(0)), []string{})
-	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Index__Msg(0)), []string{"Add"})
-	rt.RegisterUnion(reflect.TypeOf(tag__Orgs__Msg(0)), []string{"Pick", "Switch"})
-	rt.RegisterUnion(reflect.TypeOf(tag__Projects__Index__Msg(0)), []string{"Add", "Rename", "Remove", "Seed", "Tag"})
+	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that
@@ -263,7 +250,7 @@ func Web() web.Options {
 		ErrorDoc:       App__error,
 		NotFoundDoc:    App__notFound,
 		Login:          "/login",
-		DevMap:         "{\"pages\":[{\"module\":\"Admin.Projects\",\"path\":\"/admin/orgs/{org}/projects\",\"requires\":\"user\",\"roles\":[\"Admin\"],\"params\":[\"org: Text\"],\"msgs\":[\"Remove\"]},{\"module\":\"Login\",\"path\":\"/login\"},{\"module\":\"Notes.Index\",\"path\":\"/notes\",\"requires\":\"user\",\"msgs\":[\"Add\"]},{\"module\":\"Orgs\",\"path\":\"/orgs\",\"requires\":\"user\",\"msgs\":[\"Pick\",\"Switch\"]},{\"module\":\"Projects.Index\",\"path\":\"/projects\",\"requires\":\"user, org\",\"msgs\":[\"Add\",\"Rename\",\"Remove\",\"Seed\",\"Tag\"]}],\"tables\":[{\"name\":\"Org.Org\",\"sql\":\"Org__Org\",\"columns\":[\"id: Text\",\"name: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"}],\"id\":\"id\"},{\"name\":\"Project.Project\",\"sql\":\"Project__Project\",\"columns\":[\"id: Text\",\"name: Text\",\"org: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"},{\"name\":\"org\",\"type\":\"Text\",\"sql\":\"org\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\"},\"silo\":\"org\"},{\"name\":\"User.User\",\"sql\":\"User__User\",\"columns\":[\"id: Text\",\"name: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"}],\"id\":\"id\"},{\"name\":\"Label.Label\",\"sql\":\"Label__Label\",\"columns\":[\"id: Text\",\"name: Text\",\"org: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"},{\"name\":\"org\",\"type\":\"Text\",\"sql\":\"org\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\"}},{\"name\":\"Note.Note\",\"sql\":\"Note__Note\",\"columns\":[\"id: Text\",\"text: Text\",\"owner: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"text\",\"type\":\"Text\",\"sql\":\"text\",\"sqlType\":\"TEXT\"},{\"name\":\"owner\",\"type\":\"Text\",\"sql\":\"owner\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"},\"owner\":\"owner\"},{\"name\":\"Membership.Membership\",\"sql\":\"Membership__Membership\",\"columns\":[\"id: Text\",\"user: Text\",\"org: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"user\",\"type\":\"Text\",\"sql\":\"user\",\"sqlType\":\"TEXT\"},{\"name\":\"org\",\"type\":\"Text\",\"sql\":\"org\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\",\"user\":\"User.User\"},\"onDelete\":{\"org\":\"cascade\",\"user\":\"cascade\"}}],\"caps\":[],\"session\":[\"user: Maybe Text\",\"org: Maybe Text\",\"role: User.Role\"],\"appMsgs\":[\"Leave\"],\"silos\":[{\"key\":\"org\",\"ref\":\"Org.Org\",\"tables\":[\"Project.Project\"],\"path\":\"silos/org/{value}.db\"}]}",
+		DevMap:         "{\"pages\":[],\"tables\":[{\"name\":\"Org.Org\",\"sql\":\"Org__Org\",\"columns\":[\"id: Text\",\"name: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"}],\"id\":\"id\"},{\"name\":\"Project.Project\",\"sql\":\"Project__Project\",\"columns\":[\"id: Text\",\"name: Text\",\"org: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"},{\"name\":\"org\",\"type\":\"Text\",\"sql\":\"org\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\"},\"silo\":\"org\"},{\"name\":\"User.User\",\"sql\":\"User__User\",\"columns\":[\"id: Text\",\"name: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"}],\"id\":\"id\"},{\"name\":\"Label.Label\",\"sql\":\"Label__Label\",\"columns\":[\"id: Text\",\"name: Text\",\"org: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"},{\"name\":\"org\",\"type\":\"Text\",\"sql\":\"org\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\"}},{\"name\":\"Note.Note\",\"sql\":\"Note__Note\",\"columns\":[\"id: Text\",\"text: Text\",\"owner: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"text\",\"type\":\"Text\",\"sql\":\"text\",\"sqlType\":\"TEXT\"},{\"name\":\"owner\",\"type\":\"Text\",\"sql\":\"owner\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"},\"owner\":\"owner\"},{\"name\":\"Membership.Membership\",\"sql\":\"Membership__Membership\",\"columns\":[\"id: Text\",\"user: Text\",\"org: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"user\",\"type\":\"Text\",\"sql\":\"user\",\"sqlType\":\"TEXT\"},{\"name\":\"org\",\"type\":\"Text\",\"sql\":\"org\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"org\":\"Org.Org\",\"user\":\"User.User\"},\"onDelete\":{\"org\":\"cascade\",\"user\":\"cascade\"}}],\"caps\":[],\"session\":[\"user: Maybe Text\",\"org: Maybe Text\",\"role: User.Role\"],\"silos\":[{\"key\":\"org\",\"ref\":\"Org.Org\",\"tables\":[\"Project.Project\"],\"path\":\"silos/org/{value}.db\"}]}",
 		Silos:          Silos,
 		MaintenanceDoc: App__maintenance,
 		SessionCheck:   session__via,
@@ -347,7 +334,7 @@ func session__via(e *eff.Env, o, n any) (any, error) {
 		b.Org = rt.Maybe[string]{}
 	}
 	if b.Org.Ok && (!a.Org.Ok || a.Org.Val != b.Org.Val || a.User != b.User) {
-		if Mutant != 34 {
+		if Mutant != 26 {
 			ok, err := db.Member(e.Ctx, e.Store.(db.Store), db.TxOf(e), table__Membership__Membership, "user", b.User.Val, "org", b.Org.Val)
 			if err != nil {
 				return nil, err

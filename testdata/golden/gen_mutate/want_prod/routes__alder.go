@@ -11,26 +11,27 @@ import (
 	"net/url"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every message of the
-// pages and of App (POST), in module order.
+// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
+// write routes, in declaration order), then every message of the pages and of App (POST), in module
+// order.
 var Routes = []web.Route{
-	Route__Login__page(),
-	Route__Notes__page(),
+	Route__Login__Login(),
+	Route__Notes__Notes(),
 	Route__Notes__Add(),
 }
 
-// decode__Login__Params decodes page Login's parameters: the path's from params, the others from q.
-// A parameter that does not decode is an error (the route answers 404).
-func decode__Login__Params(_ map[string]string, _ url.Values) (r Login__Params, errs []web.FieldError) {
+// decode__Login__Login__Params decodes route Login.Login's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Login__Login__Params(_ map[string]string, _ url.Values) (r Login__Login__Params, errs []web.FieldError) {
 	return r, errs
 }
 
-// page__Login runs page Login for rq up to its model: load (with params and the session of rq.Env).
-// It returns the model and the session view and update take, or the response that ends the request,
-// which stores keep (the session a successful update left, or nil).
-func page__Login(rq *web.Request, params Login__Params, keep any) (Login__Model, App__Session, *web.Response) {
+// page__Login__Login runs route Login.Login for rq up to its model: load (with params and the
+// session of rq.Env). It returns the model and the session view and update take, or the response
+// that ends the request, which stores keep (the session a successful update left, or nil).
+func page__Login__Login(rq *web.Request, params Login__Login__Params, keep any) (Login__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
-	model, err := eff.RunQuery(rq.Env, Login__load(params, session))
+	model, err := eff.RunQuery(rq.Env, Login__Login__load(params, session))
 	if err != nil {
 		r := route__fail(err)
 		r.Session = keep
@@ -39,34 +40,97 @@ func page__Login(rq *web.Request, params Login__Params, keep any) (Login__Model,
 	return model, session, nil
 }
 
-// params__Login are page Login's parameters as text for its message URLs
-// (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
-func params__Login(_ Login__Params) []rt.KV {
+// params__Login__Login are route Login.Login's parameters as text (html.FormState.PageParams), for
+// the posted form's state its view renders with when a write renders it again.
+func params__Login__Login(_ Login__Login__Params) []rt.KV {
 	return nil
 }
 
-// Route__Login__page serves page Login, GET /login (book 06): decode the parameters (404 when they
-// do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model
-// also in rq.Model, which a test's browser reads).
-func Route__Login__page() web.Route {
+// Route__Login__Login serves route Login.Login, GET /login: decode the parameters (404 when they do
+// not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
+// in rq.Model, which a test's browser reads).
+func Route__Login__Login() web.Route {
 	return web.Route{Method: "GET", Pattern: "/login", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Login__Params(rq.Params, rq.Query)
+		params, errs := decode__Login__Login__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Login(rq, params, nil)
+		model, session, stop := page__Login__Login(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Login__view(model, session), &html.FormState{PageParams: params__Login(params)}, rq.Session, false)
+		return web.PageResponse(Login__Login__view(model, session), web.WithPageParams(rq.FormState, params__Login__Login(params)), rq.Session, false)
 	}}
 }
 
-// decode__Notes__Params decodes page Notes's parameters: the path's from params, the others from q.
-// A parameter that does not decode is an error (the route answers 404).
-func decode__Notes__Params(_ map[string]string, _ url.Values) (r Notes__Params, errs []web.FieldError) {
+// decode__Notes__Notes__Params decodes route Notes.Notes's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Notes__Notes__Params(_ map[string]string, _ url.Values) (r Notes__Notes__Params, errs []web.FieldError) {
 	return r, errs
+}
+
+// page__Notes__Notes runs route Notes.Notes for rq up to its model: `requires user` (a 303 to
+// App.login, storing keep, when the session's user is Nothing), then load (with params and the
+// narrowed session). It returns the model and the session view and update take, or the response
+// that ends the request, which stores keep (the session a successful update left, or nil).
+func page__Notes__Notes(rq *web.Request, params Notes__Notes__Params, keep any) (Notes__Model, Notes__Notes__Session, *web.Response) {
+	var model Notes__Model
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, keep)
+		return model, Notes__Notes__Session{}, &r
+	}
+	session := Notes__Notes__Session{User: app.User.Val}
+	model, err := eff.RunQuery(rq.Env, Notes__Notes__load(params, session))
+	if err != nil {
+		r := route__fail(err)
+		r.Session = keep
+		return model, session, &r
+	}
+	return model, session, nil
+}
+
+// params__Notes__Notes are route Notes.Notes's parameters as text (html.FormState.PageParams), for
+// the posted form's state its view renders with when a write renders it again.
+func params__Notes__Notes(_ Notes__Notes__Params) []rt.KV {
+	return nil
+}
+
+// Route__Notes__Notes serves route Notes.Notes, GET /notes: decode the parameters (404 when they do
+// not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect, 500 on a
+// failure), view (the model also in rq.Model, which a test's browser reads).
+func Route__Notes__Notes() web.Route {
+	return web.Route{Method: "GET", Pattern: "/notes", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Notes__Notes__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		model, session, stop := page__Notes__Notes(rq, params, nil)
+		if stop != nil {
+			return *stop
+		}
+		rq.Model = model
+		return web.PageResponse(Notes__Notes__view(model, session), web.WithPageParams(rq.FormState, params__Notes__Notes(params)), rq.Session, false)
+	}}
+}
+
+// decode__Notes__Add__Params decodes route Notes.Add's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Notes__Add__Params(_ map[string]string, _ url.Values) (r Notes__Add__Params, errs []web.FieldError) {
+	return r, errs
+}
+
+// guard__Notes__Add runs the guard of route Notes.Add for rq: `requires user` (a 303 to App.login
+// when the session's user is Nothing). It returns the session the route's update takes, or the
+// response that ends the request.
+func guard__Notes__Add(rq *web.Request, params Notes__Add__Params) (Notes__Notes__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Notes__Notes__Session{}, &r
+	}
+	return Notes__Notes__Session{User: app.User.Val}, nil
 }
 
 // decode__Notes__NewNote decodes form NewNote from a request body v. Its errors are shown on the
@@ -80,110 +144,41 @@ func decode__Notes__NewNote(v url.Values) (r Notes__NewNote, errs []web.FieldErr
 	return r, errs
 }
 
-// page__Notes runs page Notes for rq up to its model: `requires user` (a 303 to App.login, storing
-// keep, when the session's user is Nothing), then load (with params and the narrowed session). It
-// returns the model and the session view and update take, or the response that ends the request,
-// which stores keep (the session a successful update left, or nil).
-func page__Notes(rq *web.Request, params Notes__Params, keep any) (Notes__Model, Notes__Session, *web.Response) {
-	var model Notes__Model
-	app := rq.Env.Session.(App__Session)
-	if !app.User.Ok {
-		r := web.RedirectResponse(rq.Login, keep)
-		return model, Notes__Session{}, &r
-	}
-	session := Notes__Session{User: app.User.Val}
-	model, err := eff.RunQuery(rq.Env, Notes__load(params, session))
-	if err != nil {
-		r := route__fail(err)
-		r.Session = keep
-		return model, session, &r
-	}
-	return model, session, nil
-}
-
-// params__Notes are page Notes's parameters as text for its message URLs
-// (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
-func params__Notes(_ Notes__Params) []rt.KV {
-	return nil
-}
-
-// update__Notes runs page Notes's update for msg and answers its Nav (book 06): load, update (a
-// Task, whose session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on
-// a form (st, the state of the form that sent the message; nil for a message without one) load and
-// view again with t on the form (patched into the page under Datastar); for Rerender (and a Reject
-// without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh
-// does not post again). A failed Task changes nothing: 500 (App.error), 404 for Query.notFound or
-// Task.notFound, or a 303 for Query.redirect.
-func update__Notes(rq *web.Request, params Notes__Params, msg Notes__Msg, st *html.FormState) web.Response {
-	model, session, stop := page__Notes(rq, params, nil)
-	if stop != nil {
-		return *stop
-	}
-	model0, session0 := model, session // the page the client shows: Before
-	nav, err := eff.Run(rq.Env, eff.KTask, Notes__update(msg, model, session))
-	if err != nil {
-		return route__fail(err)
-	}
-	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
-	switch {
-	case nav.Tag == rt.NavRedirect:
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	case nav.Tag == rt.NavReject && st != nil:
-		st.FormError = nav.Text
-	case !rq.Datastar:
-		return web.RedirectResponse(rt.PageAt("/notes", params__Notes(params)), rq.Env.Session)
-	default:
-		st = &html.FormState{}
-	}
-	st.PageParams = params__Notes(params)
-	model, session, stop = page__Notes(rq, params, rq.Env.Session)
-	if stop != nil {
-		return *stop
-	}
-	return web.PageResponse(Notes__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Notes__view(model0, session0) })
-}
-
-// Route__Notes__page serves page Notes, GET /notes (book 06): decode the parameters (404 when they
-// do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect, 500
-// on a failure), view (the model also in rq.Model, which a test's browser reads).
-func Route__Notes__page() web.Route {
-	return web.Route{Method: "GET", Pattern: "/notes", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Notes__Params(rq.Params, rq.Query)
+// Route__Notes__Add serves route Notes.Add, POST /notes/_/Add: decode the parameters (404 when they
+// do not); `requires` (303 to App.login); decode form NewNote from the body (when it does not: 422,
+// the page the browser is on rendered again with the submitted values, no Text.Secret field, and
+// the errors, without calling update); run the update and answer its Response (a failed Task: 500,
+// 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+func Route__Notes__Add() web.Route {
+	return web.Route{Method: "POST", Pattern: "/notes/_/Add", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Notes__Add__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Notes(rq, params, nil)
+		session, stop := guard__Notes__Add(rq, params)
 		if stop != nil {
 			return *stop
 		}
-		rq.Model = model
-		return web.PageResponse(Notes__view(model, session), &html.FormState{PageParams: params__Notes(params)}, rq.Session, false)
-	}}
-}
-
-// Route__Notes__Add serves message Add of page Notes, POST /_m/Notes/Add (book 06): decode the
-// page's parameters (the message URL's _p. keys, which the rendered page put there): 404 when they
-// do not decode; decode form NewNote from the body: when it does not, re-render the page with the
-// submitted values (no Text.Secret field) and the errors, without calling update; then
-// update__Notes.
-func Route__Notes__Add() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Notes/Add", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Notes__Params(rt.PageParams(rq.Query))
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		p := Notes__AddParams{}
+		key := rt.RouteKey(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes/_/Add"})
 		values := route__values(rq.Form)
 		form, errs := decode__Notes__NewNote(rq.Form)
 		if errs != nil {
-			model, session, stop := page__Notes(rq, params, nil)
-			if stop != nil {
-				return *stop
+			resp := web.InvalidResponse(&html.FormState{Form: "Notes.NewNote", Msg: key, Values: values, Errors: route__errors(errs)}, nil)
+			if rq.Datastar {
+				resp.Shown, _ = rq.RenderShown(nil)
 			}
-			return web.PageResponse(Notes__view(model, session), &html.FormState{Form: "Notes.NewNote", Msg: rt.MsgKey("/_m/Notes/Add", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Notes(params)}, nil, true).WithBefore(func() html.Node { return Notes__view(model, session) })
+			return resp
 		}
-		p.Form = form
-		return update__Notes(rq, params, Notes__Msg__Add__(p), &html.FormState{Form: "Notes.NewNote", Msg: rt.MsgKey("/_m/Notes/Add", rq.Query), Values: values})
+		params.Form = form
+		resp, err := eff.Run(rq.Env, eff.KTask, Notes__Add__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		ans := web.AnswerResponse(resp, nil, rq.Env.Session)
+		if resp.Kind == rt.RespInvalid {
+			ans.State = &html.FormState{Form: "Notes.NewNote", Msg: key, Values: values}
+		}
+		return ans
 	}}
 }
 

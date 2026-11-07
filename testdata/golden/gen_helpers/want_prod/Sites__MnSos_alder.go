@@ -12,21 +12,15 @@ type Sites__MnSos__Model struct {
 	Cfg string
 }
 
-type Sites__MnSos__Params struct {
+type Sites__MnSos__MnSos__Params struct {
 	Cfg string
 }
 
-type Sites__MnSos__Msg struct {
-	Tag tag__Sites__MnSos__Msg
-}
-
-type tag__Sites__MnSos__Msg uint8
-
-func Sites__MnSos__load(params Sites__MnSos__Params, session App__Session) eff.Query[Sites__MnSos__Model] {
+func Sites__MnSos__MnSos__load(params Sites__MnSos__MnSos__Params, session App__Session) eff.Query[Sites__MnSos__Model] {
 	return eff.Q(eff.Pure(Sites__MnSos__Model{Cfg: params.Cfg}))
 }
 
-func Sites__MnSos__view(model Sites__MnSos__Model, session App__Session) rt.File {
+func Sites__MnSos__MnSos__view(model Sites__MnSos__Model, session App__Session) rt.File {
 	return std.FileText(struct {
 		ContentType string
 		Body        string

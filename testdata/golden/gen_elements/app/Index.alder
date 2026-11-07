@@ -1,13 +1,25 @@
 module Index
 
-page "/" { }
+route Index  = GET  "/"         { }
+route Submit = POST "/_/Submit" { } form NewPost
+route Clear  = POST "/_/Clear"  { }
 
 type Kind = Note | Task
 
-type Model = { saving: Bool, page: Int, label: Maybe Text, people: List { value: Text, label: Text } }
+type Model = {
+  saving: Bool,
+  page: Int,
+  label: Maybe Text,
+  people: List { value: Text, label: Text },
+}
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { saving: False, page: 1, label: Nothing, people: [{ value: "ann", label: "Ann" }, { value: "bob", label: "Bob" }] }
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed {
+  saving: False,
+  page: 1,
+  label: Nothing,
+  people: [{ value: "ann", label: "Ann" }, { value: "bob", label: "Bob" }],
+}
 
 form NewPost = {
   title: Text.NonEmpty,
@@ -18,17 +30,14 @@ form NewPost = {
   reviewer: Maybe Text,
 }
 
-msg Submit form NewPost
-msg Clear
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update p session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Submit p -> Task.succeed Rerender,
-  Clear p -> Task.succeed Rerender,
-}
+Clear.update : Clear.Params -> Session -> Task Response
+Clear.update p session = Task.succeed Response.refresh
 
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <al-page width="narrow" id="main" class="x" data-test="page" aria-label="Posts">
     <al-stack gap="md" direction="column">
       <al-alert variant="info" heading="Hello" dismissible role="status">Welcome</al-alert>
@@ -38,20 +47,32 @@ view model session =
         <h2 slot="header">New post <al-badge variant="secondary">draft</al-badge></h2>
         <form submit={Submit}>
           <Errors form />
-          <al-input field="title" label="Title" placeholder="A title" help="Short is good" disabled={model.saving} />
+          <al-input
+            field="title"
+            label="Title"
+            placeholder="A title"
+            help="Short is good"
+            disabled={model.saving} />
           <al-textarea field="body" label="Body" placeholder="Say it" />
           <al-select field="kind" label="Kind" />
           <al-checkbox field="done" label="Done" />
           <al-select field="owner" label="Owner" options={model.people} value={"bob"} />
-          <al-select field="reviewer" label="Reviewer" options={List.map (\p -> { label: p.label, value: p.value }) model.people} />
-          <al-button type="submit" variant="primary" size="lg" disabled={model.saving}>Save</al-button>
+          <al-select
+            field="reviewer"
+            label="Reviewer"
+            options={List.map (\p -> { label: p.label, value: p.value }) model.people} />
+          <al-button type="submit" variant="primary" size="lg" disabled={model.saving}>
+            Save
+          </al-button>
         </form>
         <div slot="actions">
           <al-button variant="ghost" click={Clear} disabled>Clear</al-button>
           <al-button href={Index {}} variant="outline">Home</al-button>
           <al-button href={Index {}} disabled>Gone</al-button>
           <al-button href={Index {}} disabled={model.saving}>Maybe</al-button>
-          <al-button variant="secondary"><button type="button" click={Clear}>Own</button></al-button>
+          <al-button variant="secondary">
+            <button type="button" click={Clear}>Own</button>
+          </al-button>
           <al-button variant="ghost">Presentational</al-button>
           <wa-button variant="brand" loading={model.saving} title="Third party">
             <span slot="start">*</span>
@@ -60,27 +81,49 @@ view model session =
         </div>
         {if model.saving then <p slot="footer">Saving…</p> else <p slot="footer">Ready</p>}
       </al-card>
-      <al-table striped dense={model.saving} style="width: 100%"><table><tr><td>1</td></tr></table></al-table>
+      <al-table striped dense={model.saving} style="width: 100%">
+        <table><tr><td>1</td></tr></table>
+      </al-table>
       <al-pagination page="1" pages="3" lang="en" dir="ltr" tabindex="0" hidden={False}>
         <a slot="prev" href={Index {}}>Previous</a>
         <a slot="next" href={Index {}}>Next</a>
       </al-pagination>
       <al-input label={model.label}><input name="q" /></al-input>
-      <al-button variant="outline"><button type="button" commandfor="sure" command="show-modal">Delete</button></al-button>
+      <al-button variant="outline">
+        <button type="button" commandfor="sure" command="show-modal">Delete</button>
+      </al-button>
       <al-dialog id="sure" heading="Delete it?" dismissible>
         <p>This cannot be undone.</p>
         <div slot="actions"><al-button click={Clear}>Delete</al-button></div>
       </al-dialog>
       <al-dialog heading="Kept" dismissible={False}><p>No close button.</p></al-dialog>
-      <al-dialog id="maybe" heading="Maybe" dismissible={model.saving}><p>A close button while saving.</p></al-dialog>
-      <al-dialog size="sm"><dialog id="own" closedby="any"><h2 slot="header">Own</h2><p>The author's dialog.</p></dialog></al-dialog>
-      <al-button variant="outline"><button type="button" popovertarget="who" popovertargetaction="toggle">Who?</button></al-button>
+      <al-dialog id="maybe" heading="Maybe" dismissible={model.saving}>
+        <p>A close button while saving.</p>
+      </al-dialog>
+      <al-dialog size="sm">
+        <dialog id="own" closedby="any">
+          <h2 slot="header">Own</h2>
+          <p>The author's dialog.</p>
+        </dialog>
+      </al-dialog>
+      <al-button variant="outline">
+        <button type="button" popovertarget="who" popovertargetaction="toggle">Who?</button>
+      </al-button>
       <al-popover id="who" popover placement="bottom">Only people with the link.</al-popover>
-      <al-menu id="more" popover><a href={Index {}}>Home</a><button type="button" click={Clear}>Clear</button></al-menu>
+      <al-menu id="more" popover>
+        <a href={Index {}}>Home</a>
+        <button type="button" click={Clear}>Clear</button>
+      </al-menu>
       <al-toasts popover="manual" position="top-right"></al-toasts>
       <al-tabs>
-        <al-tab name="view" selected><label><input type="radio" name="view" checked /> Details</label><al-panel>Fields</al-panel></al-tab>
-        <al-tab name="view"><label><input type="radio" name="view" /> Comments</label><al-panel>Comments</al-panel></al-tab>
+        <al-tab name="view" selected>
+          <label><input type="radio" name="view" checked /> Details</label>
+          <al-panel>Fields</al-panel>
+        </al-tab>
+        <al-tab name="view">
+          <label><input type="radio" name="view" /> Comments</label>
+          <al-panel>Comments</al-panel>
+        </al-tab>
       </al-tabs>
       <al-tooltip for="save-help">Saves a draft</al-tooltip>
     </al-stack>

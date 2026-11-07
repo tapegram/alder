@@ -10,18 +10,12 @@ import (
 
 type Auth__Login__Model struct{}
 
-type Auth__Login__Params struct{}
+type Auth__Login__Login__Params struct{}
 
-type Auth__Login__Msg struct {
-	Tag tag__Auth__Login__Msg
-}
-
-type tag__Auth__Login__Msg uint8
-
-func Auth__Login__load(params Auth__Login__Params, session App__Session) eff.Query[Auth__Login__Model] {
+func Auth__Login__Login__load(params Auth__Login__Login__Params, session App__Session) eff.Query[Auth__Login__Model] {
 	return eff.Q(eff.Pure(Auth__Login__Model{}))
 }
 
-func Auth__Login__view(model Auth__Login__Model, session App__Session) html.Node {
+func Auth__Login__Login__view(model Auth__Login__Model, session App__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil, html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "Todos.Index", Method: "GET", Path: "/", Query: []rt.KV{rt.QueryKV("filter", "All", "All")}}))}, html.Text("Todos"))))
 }

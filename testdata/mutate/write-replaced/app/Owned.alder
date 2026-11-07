@@ -2,12 +2,12 @@ module Owned
 
 import Own
 
-page "/owned" { } requires user
+route Owned = GET "/owned" { } requires user
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Owned.load : Owned.Params -> Session -> Query Model
+Owned.load params session = Query.succeed {}
 
 -- A mutant per scoped write step too (M11).
 churnMine : Text -> Task Own.OwnId
@@ -18,5 +18,5 @@ churnMine t = {
   Task.succeed id
 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>Owned</p>
+Owned.view : Model -> Session -> Html
+Owned.view model session = <p>Owned</p>

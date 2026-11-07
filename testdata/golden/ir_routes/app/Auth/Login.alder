@@ -2,12 +2,12 @@ module Auth.Login
 
 import Table.Todo
 
-page "/login" { }
+route Login = GET "/login" { }
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Login.load : Login.Params -> Session -> Query Model
+Login.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Msg
-view model session = <html><body><a href={Todos.Index { filter: All }}>Todos</a></body></html>
+Login.view : Model -> Session -> Html
+Login.view model session = <html><body><a href={Todos.Index { filter: All }}>Todos</a></body></html>

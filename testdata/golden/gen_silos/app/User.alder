@@ -4,7 +4,4 @@ type UserId = brand Text
 
 type Role = Reader | Admin
 
-table User {
-  id: UserId @id,
-  name: Text,
-}
+table User { id: UserId @id, name: Text }

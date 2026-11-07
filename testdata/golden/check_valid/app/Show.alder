@@ -2,22 +2,19 @@ module Show
 
 import Todo
 
-page "/todos/{id}" { id: Todo.TodoId }
+route Show   = GET  "/todos/{id}"          { id: Todo.TodoId }
+route Delete = POST "/todos/{id}/_/Delete" { id: Todo.TodoId }
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = Query.succeed {}
 
-msg Delete { id: Todo.TodoId }
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Delete p -> {
-    let _ <- p.id |> Db.delete Todo
-    Task.succeed Rerender
-  },
+Delete.update : Delete.Params -> Session -> Task Response
+Delete.update p session = {
+  let _ <- p.id |> Db.delete Todo
+  Task.succeed Response.refresh
 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>x</p>
+Show.view : Model -> Session -> Html
+Show.view model session = <p>x</p>

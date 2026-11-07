@@ -44,11 +44,11 @@ func (Caps) Registry() map[string]any {
 var Tests = []rtesting.Case{
 	{Module: "Note", Name: "a pinned note is labelled pinned", File: "app/Note.alder", Line: 20, Col: 1, Pure: test__Note__1},
 	{Module: "Note", Name: "deleting a user deletes their notes", File: "app/Note.alder", Line: 23, Col: 1, Task: test__Note__2},
-	{Module: "Notes", Name: "a visitor is sent to log in", File: "app/Notes.alder", Line: 42, Col: 1, Task: test__Notes__1},
-	{Module: "Notes", Name: "I see only my notes", File: "app/Notes.alder", Line: 47, Col: 1, Task: test__Notes__2},
-	{Module: "Notes", Name: "adding a note stores it", File: "app/Notes.alder", Line: 57, Col: 1, Task: test__Notes__3},
-	{Module: "Notes", Name: "adding a note goes back to the list", File: "app/Notes.alder", Line: 66, Col: 1, Task: test__Notes__4},
-	{Module: "Notes", Name: "a new note is not pinned", File: "app/Notes.alder", Line: 74, Col: 1, Task: test__Notes__5},
+	{Module: "Notes", Name: "a visitor is sent to log in", File: "app/Notes.alder", Line: 44, Col: 1, Task: test__Notes__1},
+	{Module: "Notes", Name: "I see only my notes", File: "app/Notes.alder", Line: 49, Col: 1, Task: test__Notes__2},
+	{Module: "Notes", Name: "adding a note stores it", File: "app/Notes.alder", Line: 59, Col: 1, Task: test__Notes__3},
+	{Module: "Notes", Name: "adding a note goes back to the list", File: "app/Notes.alder", Line: 68, Col: 1, Task: test__Notes__4},
+	{Module: "Notes", Name: "a new note is not pinned", File: "app/Notes.alder", Line: 76, Col: 1, Task: test__Notes__5},
 }
 
 // TestSession is the session a test runs with: App's session with every field at its default (nil without an App module).
@@ -72,18 +72,16 @@ var Mutants = []rtesting.Mutant{
 	{ID: 1, Module: "Note", Decl: "Note", Kind: "default changed", File: "app/Note.alder", Line: 13, Col: 3, Before: "pinned = False", After: "pinned = True", Tables: []db.TableDesc{table__User__User.Desc(), {Name: "Note.Note", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "title", Type: db.CText}, {Name: "pinned", Type: db.CBool}, {Name: "owner", Type: db.CText, Ref: "User.User", OnDelete: db.Cascade}}, ID: "id"}}},
 	{ID: 2, Module: "Note", Decl: "Note", Kind: "cascade ↔ restrict", File: "app/Note.alder", Line: 14, Col: 3, Before: "owner @ref User @cascade", After: "owner @ref User @restrict", Tables: []db.TableDesc{table__User__User.Desc(), {Name: "Note.Note", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "title", Type: db.CText}, {Name: "pinned", Type: db.CBool}, {Name: "owner", Type: db.CText, Ref: "User.User"}}, ID: "id"}}},
 	{ID: 3, Module: "Note", Decl: "label", Kind: "condition negated", File: "app/Note.alder", Line: 18, Col: 14, Before: "if note.pinned", After: "if not note.pinned"},
-	{ID: 4, Module: "Notes", Decl: "requires", Kind: "requires dropped", File: "app/Notes.alder", Line: 6, Col: 19, Before: "requires user", After: "served without user (user = User.UserId \"mutant\")"},
-	{ID: 5, Module: "Notes", Decl: "load", Kind: "where dropped", File: "app/Notes.alder", Line: 12, Col: 32, Before: "Db.where (Note.owner.eq session.user)", After: "the condition dropped"},
-	{ID: 6, Module: "Notes", Decl: "update", Kind: "write replaced", File: "app/Notes.alder", Line: 25, Col: 5, Before: "let _ <- Db.insert Note { title: p.form.title, owner: session.user }", After: "let _ <- Task.succeed (Note.NoteId \"mutant\")"},
-	{ID: 7, Module: "Notes", Decl: "update", Kind: "redirect → rerender", File: "app/Notes.alder", Line: 26, Col: 19, Before: "Redirect (Notes {})", After: "Rerender"},
-	{ID: 8, Module: "Rank", Decl: "rank", Kind: "arm swapped", File: "app/Rank.alder", Line: 9, Col: 10, Before: "match s { Small -> 1, Medium -> 2, Large -> 3 }", After: "the Small and Medium bodies swapped"},
-	{ID: 9, Module: "Rank", Decl: "rank", Kind: "arm swapped", File: "app/Rank.alder", Line: 9, Col: 10, Before: "match s { Small -> 1, Medium -> 2, Large -> 3 }", After: "the Medium and Large bodies swapped"},
-	{ID: 10, Module: "Rank", Decl: "checked", Kind: "guard dropped", File: "app/Rank.alder", Line: 16, Col: 13, Before: "match m { Nothing -> Task.fail \"none\", Just _ -> Task.succeed 1 }", After: "the fail arm dropped"},
-	{ID: 11, Module: "Rank", Decl: "checked", Kind: "arm swapped", File: "app/Rank.alder", Line: 16, Col: 13, Before: "match m { Nothing -> Task.fail \"none\", Just _ -> Task.succeed 1 }", After: "the Nothing and Just _ bodies swapped"},
-	{ID: 12, Module: "Rank", Decl: "both", Kind: "not dropped", File: "app/Rank.alder", Line: 22, Col: 12, Before: "not ((a > 0) && (b > 0))", After: "(a > 0) && (b > 0)"},
-	{ID: 13, Module: "Rank", Decl: "both", Kind: "operator flipped", File: "app/Rank.alder", Line: 22, Col: 17, Before: "(a > 0) && (b > 0)", After: "(a > 0) || (b > 0)"},
-	{ID: 14, Module: "Rank", Decl: "both", Kind: "operator flipped", File: "app/Rank.alder", Line: 22, Col: 17, Before: "a > 0", After: "a >= 0"},
-	{ID: 15, Module: "Rank", Decl: "both", Kind: "operator flipped", File: "app/Rank.alder", Line: 22, Col: 26, Before: "b > 0", After: "b >= 0"},
+	{ID: 4, Module: "Notes", Decl: "Notes.load", Kind: "where dropped", File: "app/Notes.alder", Line: 15, Col: 10, Before: "Db.where (Note.owner.eq session.user)", After: "the condition dropped"},
+	{ID: 5, Module: "Notes", Decl: "Add.update", Kind: "write replaced", File: "app/Notes.alder", Line: 24, Col: 3, Before: "let _ <- Db.insert Note { title: p.form.title, owner: session.user }", After: "let _ <- Task.succeed (Note.NoteId \"mutant\")"},
+	{ID: 6, Module: "Rank", Decl: "rank", Kind: "arm swapped", File: "app/Rank.alder", Line: 9, Col: 10, Before: "match s { Small -> 1, Medium -> 2, Large -> 3 }", After: "the Small and Medium bodies swapped"},
+	{ID: 7, Module: "Rank", Decl: "rank", Kind: "arm swapped", File: "app/Rank.alder", Line: 9, Col: 10, Before: "match s { Small -> 1, Medium -> 2, Large -> 3 }", After: "the Medium and Large bodies swapped"},
+	{ID: 8, Module: "Rank", Decl: "checked", Kind: "guard dropped", File: "app/Rank.alder", Line: 16, Col: 13, Before: "match m { Nothing -> Task.fail \"none\", Just _ -> Task.succeed 1 }", After: "the fail arm dropped"},
+	{ID: 9, Module: "Rank", Decl: "checked", Kind: "arm swapped", File: "app/Rank.alder", Line: 16, Col: 13, Before: "match m { Nothing -> Task.fail \"none\", Just _ -> Task.succeed 1 }", After: "the Nothing and Just _ bodies swapped"},
+	{ID: 10, Module: "Rank", Decl: "both", Kind: "not dropped", File: "app/Rank.alder", Line: 22, Col: 12, Before: "not ((a > 0) && (b > 0))", After: "(a > 0) && (b > 0)"},
+	{ID: 11, Module: "Rank", Decl: "both", Kind: "operator flipped", File: "app/Rank.alder", Line: 22, Col: 17, Before: "(a > 0) && (b > 0)", After: "(a > 0) || (b > 0)"},
+	{ID: 12, Module: "Rank", Decl: "both", Kind: "operator flipped", File: "app/Rank.alder", Line: 22, Col: 17, Before: "a > 0", After: "a >= 0"},
+	{ID: 13, Module: "Rank", Decl: "both", Kind: "operator flipped", File: "app/Rank.alder", Line: 22, Col: 26, Before: "b > 0", After: "b >= 0"},
 }
 
 // MutantsSuppressed and MutantsSkipped count the mutants refused as equivalent and as not applicable.
@@ -92,8 +90,6 @@ var MutantsSuppressed, MutantsSkipped = 0, 0
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {
 	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
-	rt.RegisterUnion(reflect.TypeOf(tag__Login__Msg(0)), []string{})
-	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Msg(0)), []string{"Add"})
 	rt.RegisterUnion(reflect.TypeOf(tag__Rank__Size(0)), []string{"Small", "Medium", "Large"})
 }
 
@@ -206,7 +202,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: App__notFound,
 		Login:       "/login",
-		DevMap:      "{\"pages\":[{\"module\":\"Login\",\"path\":\"/login\"},{\"module\":\"Notes\",\"path\":\"/notes\",\"requires\":\"user\",\"msgs\":[\"Add\"]}],\"tables\":[{\"name\":\"User.User\",\"sql\":\"User__User\",\"columns\":[\"id: Text\",\"name: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"}],\"id\":\"id\"},{\"name\":\"Note.Note\",\"sql\":\"Note__Note\",\"columns\":[\"id: Text\",\"title: Text\",\"pinned: Bool\",\"owner: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"title\",\"type\":\"Text\",\"sql\":\"title\",\"sqlType\":\"TEXT\"},{\"name\":\"pinned\",\"type\":\"Bool\",\"sql\":\"pinned\",\"sqlType\":\"INTEGER\"},{\"name\":\"owner\",\"type\":\"Text\",\"sql\":\"owner\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"},\"onDelete\":{\"owner\":\"cascade\"}}],\"caps\":[],\"session\":[\"user: Maybe Text\"]}",
+		DevMap:      "{\"pages\":[],\"tables\":[{\"name\":\"User.User\",\"sql\":\"User__User\",\"columns\":[\"id: Text\",\"name: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"}],\"id\":\"id\"},{\"name\":\"Note.Note\",\"sql\":\"Note__Note\",\"columns\":[\"id: Text\",\"title: Text\",\"pinned: Bool\",\"owner: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"title\",\"type\":\"Text\",\"sql\":\"title\",\"sqlType\":\"TEXT\"},{\"name\":\"pinned\",\"type\":\"Bool\",\"sql\":\"pinned\",\"sqlType\":\"INTEGER\"},{\"name\":\"owner\",\"type\":\"Text\",\"sql\":\"owner\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"},\"onDelete\":{\"owner\":\"cascade\"}}],\"caps\":[],\"session\":[\"user: Maybe Text\"]}",
 	}
 }
 

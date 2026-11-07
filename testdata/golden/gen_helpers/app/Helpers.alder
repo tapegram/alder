@@ -7,7 +7,7 @@ import Gate
 fetchText : Text -> Task { status: Int, body: Text }
 fetchText cfg = {
   let _ <- Test.fake Gate
-  let r <- Test.fetch (Sites.MnSos { cfg: cfg })
+  let r <- Test.fetch (Sites.MnSos.MnSos { cfg: cfg })
   Task.succeed { status: r.status, body: Bytes.toText r.body ?? "" }
 }
 

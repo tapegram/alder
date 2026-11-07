@@ -3,40 +3,46 @@
 package app
 
 import (
-	"alder/rt"
 	"alder/rt/eff"
 	"alder/rt/html"
 	"alder/rt/web"
 	"errors"
+	"net/url"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every message of the
-// pages and of App (POST), in module order.
+// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
+// write routes, in declaration order), then every message of the pages and of App (POST), in module
+// order.
 var Routes = []web.Route{
 	Route__App__Logout(),
 }
 
-// update__App runs App's update for msg and answers its Nav: Redirect p is a 303 to p; Rerender and
-// Reject t are a 303 back to the page that sent the message (the Referer, else /), as App has no
-// page of its own to render (a Reject's text is not shown). The session the Task leaves is stored;
-// a failed Task changes nothing: 500 (App.error), 404 for Query.notFound or Task.notFound, or a 303
-// for Query.redirect.
-func update__App(rq *web.Request, msg App__Msg) web.Response {
-	nav, err := eff.Run(rq.Env, eff.KTask, App__update(msg, rq.Env.Session.(App__Session)))
-	if err != nil {
-		return route__fail(err)
-	}
-	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
-	if nav.Tag == rt.NavRedirect {
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	}
-	return web.RedirectResponse(rt.BackURL(rq.HTTP.Referer()), rq.Env.Session)
+// decode__App__Logout__Params decodes route App.Logout's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__App__Logout__Params(_ map[string]string, _ url.Values) (r App__Logout__Params, errs []web.FieldError) {
+	return r, errs
 }
 
-// Route__App__Logout serves App's message Logout, POST /_m/App/Logout: update__App.
+// Route__App__Logout serves route App.Logout, POST /_/Logout: decode the parameters (404 when they
+// do not); render the page the browser is on before the update (refresh and invalid are diffed
+// against it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound
+// or Task.notFound, 303 for Query.redirect).
 func Route__App__Logout() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/App/Logout", Handle: func(rq *web.Request) web.Response {
-		return update__App(rq, App__Msg__Logout__)
+	return web.Route{Method: "POST", Pattern: "/_/Logout", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__App__Logout__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		session := rq.Env.Session.(App__Session)
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, App__Logout__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		return web.AnswerResponse(resp, before, rq.Env.Session)
 	}}
 }
 

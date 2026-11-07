@@ -42,11 +42,9 @@ func (Caps) Registry() map[string]any {
 
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {
-	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{"Logout"})
+	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
 	rt.RegisterUnion(reflect.TypeOf(tag__M__Color(0)), []string{"Red", "Green"})
 	rt.RegisterUnion(reflect.TypeOf(tag__M__Shape(0)), []string{"Circle", "Square"})
-	rt.RegisterUnion(reflect.TypeOf(tag__M__Msg(0)), []string{"Save", "Pick", "Ping"})
-	rt.RegisterUnion(reflect.TypeOf(tag__Other__Msg(0)), []string{})
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that
@@ -158,7 +156,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/",
-		DevMap:      "{\"pages\":[{\"module\":\"M\",\"path\":\"/m/{id}\",\"params\":[\"id: Int\"],\"msgs\":[\"Save\",\"Pick\",\"Ping\"]},{\"module\":\"Other\",\"path\":\"/other\"}],\"tables\":[],\"caps\":[],\"session\":[\"visits: Int\"],\"appMsgs\":[\"Logout\"]}",
+		DevMap:      "{\"pages\":[],\"tables\":[],\"caps\":[],\"session\":[\"visits: Int\"]}",
 	}
 }
 

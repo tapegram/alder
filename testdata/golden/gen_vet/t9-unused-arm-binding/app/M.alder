@@ -5,24 +5,23 @@ module M
 
 type Shape = Circle Float | Rect { w: Float, h: Float }
 
-msg Pick { id: Text, n: Int }
-msg Clear
-
-page "/m" { }
+route Pick  = POST "/m/_/Pick"  { id: Text, n: Int }
+route Clear = POST "/m/_/Clear" { }
+route M     = GET  "/m"         { }
 
 type Model = { n: Int }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { n: 1 }
+M.load : M.Params -> Session -> Query Model
+M.load params session = Query.succeed { n: 1 }
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Pick p -> {
-    let unused = p.id
-    Task.succeed Rerender
-  },
-  Clear _ -> Task.succeed Rerender,
+Pick.update : Pick.Params -> Session -> Task Response
+Pick.update p session = {
+  let unused = p.id
+  Task.succeed Response.refresh
 }
+
+Clear.update : Clear.Params -> Session -> Task Response
+Clear.update params session = Task.succeed Response.refresh
 
 label : Maybe Int -> Text
 label m = match m {
@@ -47,5 +46,5 @@ area s = match s {
   },
 }
 
-view : Model -> Session -> Html Msg
-view model session = <button click={Clear}>{label (Just model.n)}</button>
+M.view : Model -> Session -> Html
+M.view model session = <button click={Clear}>{label (Just model.n)}</button>

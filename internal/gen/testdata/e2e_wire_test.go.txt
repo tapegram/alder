@@ -49,13 +49,13 @@ func TestE2E_WireNames(t *testing.T) {
 	if !strings.Contains(body, `href="/r/c/wood/Results?ElectionId=18&amp;ContestId=5"`) {
 		t.Errorf("the link does not carry the wire keys:\n%s", body)
 	}
-	m := regexp.MustCompile(`/_m/Wood/Bump[^"']*`).FindString(body)
+	m := regexp.MustCompile(`/r/c/wood/Results/_/Bump[^"']*`).FindString(body)
 	if m == "" {
-		t.Fatalf("no message URL for Bump:\n%s", body)
+		t.Fatalf("no route URL for Bump:\n%s", body)
 	}
 	m = html.UnescapeString(m)
-	if !strings.Contains(m, "_p.ElectionId=17") || !strings.Contains(m, "_p.ContestId=5") || strings.Contains(m, "electionId") {
-		t.Errorf("message URL %q does not carry the wire keys", m)
+	if !strings.Contains(m, "ElectionId=17") || strings.Contains(m, "electionId") {
+		t.Errorf("Bump's URL %q does not carry the wire key", m)
 	}
 	res, body = do("POST", m)
 	if loc := res.Header.Get("Location"); res.StatusCode != 303 || loc != "/r/c/wood/Results?ElectionId=17&ContestId=9" {
