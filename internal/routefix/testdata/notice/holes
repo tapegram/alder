@@ -1,0 +1,3 @@
+31: `Save` takes the page's path parameter `id`: pass it from the model (#160)
+35: `Archive` takes the page's path parameter `id`: pass it from the model (#160)
+36: `Ping` takes the page's path parameter `id`: pass it from the model (#160)

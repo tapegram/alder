@@ -1,0 +1,16 @@
+module Feed.Index
+
+route Feed  = GET  "/feed"         { }
+-- a message named like the module's last segment: the route `Index` would take its name
+route Index = POST "/feed/_/Index" { }
+
+type Model = { }
+
+Feed.load : Feed.Params -> Session -> Query Model
+Feed.load params session = Query.succeed {}
+
+Index.update : Index.Params -> Session -> Task Response
+Index.update params session = Task.succeed Response.refresh
+
+Feed.view : Model -> Session -> Html
+Feed.view model session = <main><button click={Index}>Index</button></main>

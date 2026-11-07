@@ -1,0 +1,24 @@
+module Home
+
+route Start = GET  "/"       { }
+route Ping  = POST "/_/Ping" { }
+route Pong  = POST "/_/Pong" { }
+
+type Model = { }
+
+Start.load : Start.Params -> Session -> Query Model
+Start.load params session = Query.succeed {}
+
+-- every message answers the same
+Ping.update : Ping.Params -> Session -> Task Response
+Ping.update params session = Task.succeed (Response.redirect (Start {}))
+
+Pong.update : Pong.Params -> Session -> Task Response
+Pong.update params session = Task.succeed (Response.redirect (Start {}))
+
+Start.view : Model -> Session -> Html
+Start.view model session =
+  <main>
+    <a href={Start {}}>Home</a>
+    <button click={Ping}>Ping</button>
+  </main>

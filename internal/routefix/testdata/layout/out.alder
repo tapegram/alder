@@ -1,0 +1,30 @@
+module Notes.Index
+
+route Index = GET  "/notes"         { }
+route Clear = POST "/notes/_/Clear" { }
+
+type Model = { notes: List Text }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed { notes: ["a", "b"] }
+
+Clear.update : Clear.Params -> Session -> Task Response
+Clear.update params session = done
+
+-- a helper that answers like an arm
+done : Task Response
+done = Task.succeed Response.refresh
+
+-- a page's own layout, written for any message type
+Shell : { title: Text, children: List Html } -> Html
+Shell props = <main><h1>{props.title}</h1>{props.children}</main>
+
+note : Text -> Html
+note t = <li>{t}</li>
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Shell title="Notes">
+    <ul>{for n in model.notes -> note n}</ul>
+    <button click={Clear}>Clear</button>
+  </Shell>

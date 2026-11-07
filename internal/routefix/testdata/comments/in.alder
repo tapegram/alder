@@ -1,0 +1,53 @@
+module Counter
+
+-- The counter page.
+page "/counter" { n: Int = 0 }
+
+type Model = { n: Int }
+
+load : Params -> Session -> Query Model
+-- load reads n from the address
+load params session = Query.succeed { n: params.n }
+
+-- Up adds one.
+msg Up
+
+-- Down takes one away;
+-- it never goes below zero.
+msg Down
+
+msg Reset -- trailing on a msg line
+
+-- The answers: each message moves the counter.
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  -- up first
+  Up _ -> Task.succeed (Redirect (Counter { n: 1 })),
+  -- then down
+  Down _ -> {
+    -- never below zero
+    Task.succeed (Redirect (Counter { n: 0 }))
+  },
+  -- everything else starts over
+  _ -> Task.succeed Rerender,
+  -- no more arms
+}
+
+-- the view
+view : Model -> Session -> Html Msg
+view model session =
+  <main>
+    -- the count
+    <p>{Text.fromInt model.n}</p>
+    <button click={Up}>+</button>
+    <button click={Down}>-</button>
+    <button click={Reset}>0</button>
+  </main>
+
+-- tests keep their comments
+test "counter opens" = {
+  -- open it
+  let r <- Test.open (Counter {})
+  -- and look
+  Task.succeed (Test.text "p" r.doc == Just "0")
+}
