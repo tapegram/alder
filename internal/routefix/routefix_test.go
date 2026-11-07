@@ -280,11 +280,9 @@ func TestProgram_RepoApps(t *testing.T) {
 // not `Todos.Index.Index {}`), and a page outside Only is not counted as a route.
 func TestProgram_Only(t *testing.T) {
 	files := tree(t, "../../testdata/fix/todos/app")
-	var show string
-	for f := range files {
-		if strings.HasSuffix(f, "Todos/Show.alder") {
-			show = f
-		}
+	const show = "Todos/Show.alder" // tree's key; not Admin/Todos/Show.alder
+	if files[show] == nil {
+		t.Fatalf("no %s", show)
 	}
 	out, _, err := Program(files, Options{Only: map[string]bool{show: true}})
 	if err != nil {
