@@ -31,9 +31,11 @@ var (
 	buildOnce sync.Once
 	alderBin  string
 	buildErr  error
-	// todosApp is examples/todos, absolute; exampleModules are its modules except App and the
-	// generated admin's.
-	todosApp, _    = filepath.Abs("../examples/todos")
+	// todosApp is examples/todos as the book quotes it, absolute; exampleModules are its modules
+	// except App and the generated admin's. Until the book moves to routes (#160, PR 8), it
+	// quotes the examples as they were before `alder fix --routes`: testdata/fix holds those
+	// copies, and examples/ the apps on routes.
+	todosApp, _    = filepath.Abs("../testdata/fix/todos")
 	exampleModules []string
 	// scaffoldApp is the app `alder new guestbook` wrote with the built binary (the example
 	// ScaffoldExample), and newOutput what it printed.
@@ -54,8 +56,8 @@ const BareExample = "notes"
 // generator cannot drift apart (TestBook_Scaffold).
 const ScaffoldExample = "guestbook"
 
-// exampleApp is the directory of the example app named ex (a directory under examples/),
-// absolute.
+// exampleApp is the directory of the example app named ex (a directory under examples/, read
+// from its copy under testdata/fix until PR 8 of #160: see todosApp), absolute.
 func exampleApp(ex string) string {
 	if ex == ScaffoldExample {
 		return scaffoldApp

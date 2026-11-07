@@ -1,0 +1,283 @@
+module Write
+
+import Layout
+import Table.Post
+import Table.User
+
+-- Only an Author is let in: `role Author` is checked against the session before `load` runs,
+-- and a Reader who is logged in gets the same 404 as a page that does not exist. Every message
+-- of the page is checked the same way, so `update` needs no check of its own. The session's role
+-- is the one read at login, and lasts until logout (or the session's 30 days), so `load` also
+-- re-reads the user's row (User.isAuthor): an author made a Reader gets the 404 at once.
+page "/write" { } requires user, role Author
+
+type Model = { posts: List Post }
+
+-- load lists the signed-in author's own posts: `Db.mine Post` is the posts whose `author` (the
+-- table's `@owner`) is the session's user.
+load : Params -> Session -> Query Model
+load params session = {
+  let author <- User.isAuthor session.user
+  if author then {
+    let posts <-
+      Db.mine Post
+        |> Db.orderBy Post.created.desc
+        |> Db.all
+    Query.succeed { posts: posts }
+  } else
+    Query.notFound
+}
+
+form NewPost = {
+  slug: Post.Slug,
+  title: Text.NonEmpty,
+  body: Text,
+}
+
+msg Create form NewPost
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Create p -> {
+    let taken <- Post.bySlug p.form.slug
+    match taken {
+      Just _ -> Task.succeed (Reject "Another post has that slug."),
+      Nothing -> {
+        let id <- Db.insertMine Post {
+          slug: p.form.slug,
+          title: p.form.title,
+          body: p.form.body,
+        }
+        Task.succeed (Redirect (Write.Edit { id: id }))
+      },
+    }
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Your posts">
+    <h1>Your posts</h1>
+
+    <al-table>
+      <table>
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {for post in model.posts ->
+            <tr>
+              <td><a href={Write.Edit { id: post.id }}>{post.title}</a></td>
+              <td>
+                {if post.published then
+                  <al-badge>Published</al-badge>
+                else
+                  <al-badge variant="secondary">Draft</al-badge>}
+              </td>
+            </tr>}
+        </tbody>
+      </table>
+    </al-table>
+
+    <al-card>
+      <h2 slot="header">New post</h2>
+      <form submit={Create}>
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-input field="slug" label="Slug" help="Lowercase letters, digits and hyphens" />
+        <al-input field="title" label="Title" />
+        <al-textarea field="body" label="Body (Markdown)" />
+        <al-button type="submit">Create draft</al-button>
+      </form>
+    </al-card>
+
+    <al-button variant="outline" click={App.Logout}>Log out</al-button>
+  </Layout.Page>
+
+-- The role is the session's: `Test.login` gives it, as logging in does from the user's row.
+test "a Reader cannot open the write page" = {
+  let reader <- Db.insert User {
+    email: Text.Email "reader@example.com",
+    name: Text.NonEmpty "Reader",
+    passwordHash: "",
+  }
+  let author <- Db.insert User {
+    email: Text.Email "author@example.com",
+    name: Text.NonEmpty "Author",
+    passwordHash: "",
+    role: Author,
+  }
+  let _ <- Test.login { user: Just reader, role: Reader }
+  let asReader <- Test.open (Write {})
+  let _ <- Test.login { user: Just author, role: Author }
+  let asAuthor <- Test.open (Write {})
+  Task.succeed (
+    { reader: asReader.answer, author: asAuthor.answer } == { reader: PageMissing, author: Shown }
+  )
+}
+
+test "creating a post redirects to its edit page" = {
+  let author <- Db.insert User {
+    email: Text.Email "author@example.com",
+    name: Text.NonEmpty "Author",
+    passwordHash: "",
+    role: Author,
+  }
+  let _ <- Test.login { user: Just author, role: Author }
+  let model <- load {} { user: author, role: Author }
+  let r <-
+    Test.run (update (Create {
+      form: {
+        slug: Post.Slug "hello",
+        title: Text.NonEmpty "Hello",
+        body: "Hi.",
+      },
+    }) model { user: author, role: Author })
+  let created <- Post.bySlug (Post.Slug "hello")
+  match created {
+    Just post ->
+      Task.succeed (
+        { value: r.value, published: post.published }
+          == { value: Ok (Redirect (Write.Edit { id: post.id })), published: False }
+      ),
+    Nothing -> Task.fail "no post has the slug hello",
+  }
+}
+
+test "a taken slug is refused" = {
+  let author <- Db.insert User {
+    email: Text.Email "author@example.com",
+    name: Text.NonEmpty "Author",
+    passwordHash: "",
+    role: Author,
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "hello",
+    title: Text.NonEmpty "Hello",
+    body: "",
+    author: author,
+  }
+  let _ <- Test.login { user: Just author, role: Author }
+  let model <- load {} { user: author, role: Author }
+  let r <-
+    Test.run (update (Create {
+      form: {
+        slug: Post.Slug "hello",
+        title: Text.NonEmpty "Again",
+        body: "",
+      },
+    }) model { user: author, role: Author })
+  let posts <- Db.from Post |> Db.count
+  Task.succeed (
+    { value: r.value, posts: posts }
+      == { value: Ok (Reject "Another post has that slug."), posts: 1 }
+  )
+}
+
+-- The write page through the browser: a visitor is sent to log in; a Reader who is logged in
+-- gets the 404; an Author gets the page, and can log out from it.
+test "the write page needs an Author" = {
+  let reader <- Db.insert User {
+    email: Text.Email "reader@example.com",
+    name: Text.NonEmpty "Reader",
+    passwordHash: "",
+  }
+  let visitor <- Test.open (Write {})
+  let _ <- Test.login { user: Just reader }
+  let asReader <- Test.open (Write {})
+  Task.succeed (
+    { visitor: visitor.answer, reader: asReader.answer }
+      == { visitor: Redirected (Auth.Login {}), reader: PageMissing }
+  )
+}
+
+-- The cookie still says Author, but the row has been made a Reader: the re-read turns them away.
+test "a demoted author cannot open the write page" = {
+  let author <- Db.insert User {
+    email: Text.Email "author@example.com",
+    name: Text.NonEmpty "Author",
+    passwordHash: "",
+    role: Author,
+  }
+  let _ <- Test.login { user: Just author, role: Author }
+  let _ <- Db.update User author (\u -> { u | role: Reader })
+  let r <- Test.open (Write {})
+  Task.succeed (r.answer == PageMissing)
+}
+
+-- The other way round: the row says Author, but the cookie still says Reader. The role check
+-- reads the cookie, so they log in again first.
+test "a promoted reader logs in again first" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+    role: Author,
+  }
+  let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.open (Write {})
+  Task.succeed (r.answer == PageMissing)
+}
+
+test "an Author logs out from the write page" = {
+  let author <- Db.insert User {
+    email: Text.Email "author@example.com",
+    name: Text.NonEmpty "Author",
+    passwordHash: "",
+    role: Author,
+  }
+  let _ <- Test.login { user: Just author, role: Author }
+  let page <- Test.get (Write {})
+  let out <- Test.click App.Logout
+  Task.succeed (
+    {
+      heading: Test.text "h1" page.doc,
+      out: out.answer,
+      user: out.session.user,
+    } == {
+      heading: Just "Your posts",
+      out: Redirected (Auth.Login {}),
+      user: Nothing,
+    }
+  )
+}
+
+test "the write page lists the author's own posts, newest first" = {
+  let author <- Db.insert User {
+    email: Text.Email "author@example.com",
+    name: Text.NonEmpty "Author",
+    passwordHash: "",
+    role: Author,
+  }
+  let other <- Db.insert User {
+    email: Text.Email "other@example.com",
+    name: Text.NonEmpty "Other",
+    passwordHash: "",
+    role: Author,
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "first",
+    title: Text.NonEmpty "First",
+    body: "",
+    author: author,
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "theirs",
+    title: Text.NonEmpty "Theirs",
+    body: "",
+    author: other,
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "second",
+    title: Text.NonEmpty "Second",
+    body: "",
+    author: author,
+  }
+  let _ <- Test.login { user: Just author, role: Author }
+  let model <- load {} { user: author, role: Author }
+  Task.succeed (
+    List.map (\p -> p.title) model.posts == [Text.NonEmpty "Second", Text.NonEmpty "First"]
+  )
+}

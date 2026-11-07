@@ -1,0 +1,70 @@
+module Table.Membership
+
+import Table.Org
+import Table.User
+
+type MembershipId = brand Text
+
+-- The session's `org` is `via Membership`: a user may work in an org they have a row here for.
+table Membership {
+  id: MembershipId @id,
+  user: User.UserId @ref User @cascade,
+  org: Org.OrgId @ref Org @cascade,
+  created: Time @created,
+}
+
+-- isMember is the re-read idiom (book 06, "Partitions"): whether the user has a Membership row
+-- for the org now, not when the session's `org` was set. The cookie keeps `org` as it was put;
+-- a page that calls this in its `load` turns away a member removed since, at once.
+isMember : User.UserId -> Org.OrgId -> Query Bool
+isMember user org = {
+  let n <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq user)
+      |> Db.where (Membership.org.eq org)
+      |> Db.count
+  Query.succeed (n > 0)
+}
+
+test "isMember is whether the user has a row for that org" = {
+  let ann <- Db.insert User.User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User.User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org.Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org.Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Membership { user: ann, org: acme }
+  let _ <- Db.insert Membership { user: bob, org: globex }
+  let a <- isMember ann acme
+  let b <- isMember ann globex
+  let c <- isMember bob acme
+  Task.succeed ([a, b, c] == [True, False, False])
+}
+
+test "deleting a user or an org deletes their memberships" = {
+  let ann <- Db.insert User.User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let bob <- Db.insert User.User {
+    email: Text.Email "bob@example.com",
+    name: Text.NonEmpty "Bob",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org.Org { name: Text.NonEmpty "Acme" }
+  let globex <- Db.insert Org.Org { name: Text.NonEmpty "Globex" }
+  let _ <- Db.insert Membership { user: ann, org: globex }
+  let _ <- Db.insert Membership { user: bob, org: acme }
+  let _ <- Db.insert Membership { user: bob, org: globex }
+  let _ <- Db.delete User.User ann
+  let _ <- Db.delete Org.Org acme
+  let left <- Db.from Membership |> Db.count
+  Task.succeed (left == 1)
+}

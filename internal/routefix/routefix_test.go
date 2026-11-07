@@ -182,11 +182,12 @@ func lineDiff(want, got string) string {
 	return "(equal lines, different bytes)"
 }
 
-// TestModule_RepoPages rewrites every page module of the repo's examples and corpus that parses:
-// none is refused (but for a name collision) and each output formats to itself.
+// TestModule_RepoPages rewrites every page module of the repo's examples as they were before
+// routes (testdata/fix, which the command's tests and the book use) and of the corpus that
+// parses: none is refused (but for a name collision) and each output formats to itself.
 func TestModule_RepoPages(t *testing.T) {
 	var files []string
-	for _, g := range []string{"../../examples/*/app/*.alder", "../../examples/*/app/*/*.alder", "../../examples/*/app/*/*/*.alder",
+	for _, g := range []string{"../../testdata/fix/*/app/*.alder", "../../testdata/fix/*/app/*/*.alder", "../../testdata/fix/*/app/*/*/*.alder",
 		"../../testdata/corpus/*-ok/app/*.alder", "../../testdata/corpus/*-ok/app/*/*.alder"} {
 		fs, _ := filepath.Glob(g)
 		files = append(files, fs...)
@@ -219,12 +220,12 @@ func TestModule_RepoPages(t *testing.T) {
 	}
 }
 
-// TestProgram_RepoApps rewrites every app of the repo's examples and of the corpus's `-ok` cases
-// with a page or a message: none is refused (but for a name collision), each output formats to
+// TestProgram_RepoApps rewrites every app of the repo's examples as they were before routes
+// (testdata/fix) and of the corpus's `-ok` cases with a page or a message: none is refused (but for a name collision), each output formats to
 // itself, and a second run changes nothing.
 func TestProgram_RepoApps(t *testing.T) {
 	var apps []string
-	for _, g := range []string{"../../examples/*/app", "../../testdata/corpus/*-ok/app"} {
+	for _, g := range []string{"../../testdata/fix/*/app", "../../testdata/corpus/*-ok/app"} {
 		ds, _ := filepath.Glob(g)
 		apps = append(apps, ds...)
 	}
