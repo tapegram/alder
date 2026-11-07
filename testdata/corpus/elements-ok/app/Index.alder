@@ -1,13 +1,23 @@
 module Index
 
-page "/" { }
+route Index  = GET  "/"         { }
+route Submit = POST "/_/Submit" { } form NewPost
+route Clear  = POST "/_/Clear"  { }
 
 type Kind = Note | Task
 
-type Model = { saving: Bool, page: Int, label: Maybe Text }
+type Model = {
+  saving: Bool,
+  page: Int,
+  label: Maybe Text,
+}
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { saving: False, page: 1, label: Nothing }
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed {
+  saving: False,
+  page: 1,
+  label: Nothing,
+}
 
 form NewPost = {
   title: Text.NonEmpty,
@@ -16,17 +26,14 @@ form NewPost = {
   done: Bool,
 }
 
-msg Submit form NewPost
-msg Clear
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update p session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Submit p -> Task.succeed Rerender,
-  Clear p -> Task.succeed Rerender,
-}
+Clear.update : Clear.Params -> Session -> Task Response
+Clear.update p session = Task.succeed Response.refresh
 
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <al-page width="narrow" id="main" class="x" data-test="page" aria-label="Posts">
     <al-stack gap="md" direction="column">
       <al-alert variant="info" heading="Hello" dismissible role="status">Welcome</al-alert>
@@ -36,18 +43,27 @@ view model session =
         <h2 slot="header">New post <al-badge variant="secondary">draft</al-badge></h2>
         <form submit={Submit}>
           <Errors form />
-          <al-input field="title" label="Title" placeholder="A title" help="Short is good" disabled={model.saving} />
+          <al-input
+            field="title"
+            label="Title"
+            placeholder="A title"
+            help="Short is good"
+            disabled={model.saving} />
           <al-textarea field="body" label="Body" placeholder="Say it" />
           <al-select field="kind" label="Kind" />
           <al-checkbox field="done" label="Done" />
-          <al-button type="submit" variant="primary" size="lg" disabled={model.saving}>Save</al-button>
+          <al-button type="submit" variant="primary" size="lg" disabled={model.saving}>
+            Save
+          </al-button>
         </form>
         <div slot="actions">
           <al-button variant="ghost" click={Clear} disabled>Clear</al-button>
           <al-button href={Index {}} variant="outline">Home</al-button>
           <al-button href={Index {}} disabled>Gone</al-button>
           <al-button href={Index {}} disabled={model.saving}>Maybe</al-button>
-          <al-button variant="secondary"><button type="button" click={Clear}>Own</button></al-button>
+          <al-button variant="secondary">
+            <button type="button" click={Clear}>Own</button>
+          </al-button>
           <al-button variant="ghost">Presentational</al-button>
           <wa-button variant="brand" loading={model.saving} title="Third party">
             <span slot="start">*</span>
@@ -56,7 +72,9 @@ view model session =
         </div>
         {if model.saving then <p slot="footer">Saving…</p> else <p slot="footer">Ready</p>}
       </al-card>
-      <al-table striped dense={model.saving} style="width: 100%"><table><tr><td>1</td></tr></table></al-table>
+      <al-table striped dense={model.saving} style="width: 100%">
+        <table><tr><td>1</td></tr></table>
+      </al-table>
       <al-pagination page="1" pages="3" lang="en" dir="ltr" tabindex="0" hidden={False}>
         <a slot="prev" href={Index {}}>Previous</a>
         <a slot="next" href={Index {}}>Next</a>

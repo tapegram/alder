@@ -2,52 +2,56 @@ module Orgs
 
 import Membership
 import Org
-import User
 import Project
+import User
 
 -- `choose org`'s page: it requires the user, not the org, and sets the org.
-page "/orgs" { } requires user
+route Orgs   = GET  "/orgs"          { }                requires user
+route Pick   = POST "/orgs/_/Pick"   { org: Org.OrgId } requires user
+route Switch = POST "/orgs/_/Switch" { } form SwitchOrg requires user
 
 type Model = { mine: List Membership }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let mine <- Db.from Membership |> Db.where (Membership.user.eq session.user) |> Db.all
+Orgs.load : Orgs.Params -> Session -> Query Model
+Orgs.load params session = {
+  let mine <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq session.user)
+      |> Db.all
   Query.succeed { mine: mine }
 }
 
-form SwitchOrg = {
-  org: Org.OrgId,
+form SwitchOrg = { org: Org.OrgId }
+
+-- `via Membership`: the runtime refuses an org the user is not a member of
+Pick.update : Pick.Params -> Session -> Task Response
+Pick.update p session = {
+  let _ <- Session.put (\s -> { s | org: Just p.org })
+  Task.succeed (Response.redirect (Projects.Index.Index {}))
 }
 
-msg Pick { org: Org.OrgId }
-msg Switch form SwitchOrg
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  -- `via Membership`: the runtime refuses an org the user is not a member of
-  Pick p -> {
-    let _ <- Session.put (\s -> { s | org: Just p.org })
-    Task.succeed (Redirect (Projects.Index {}))
-  },
-  -- the same from a form: a non-member's switch is the form's error (the route's Reject)
-  Switch p -> {
-    let _ <- Session.put (\s -> { s | org: Just p.form.org })
-    Task.succeed (Redirect (Projects.Index {}))
-  },
+-- the same from a form: a non-member's switch is the form's error (the route's Reject)
+Switch.update : Switch.Params -> Session -> Task Response
+Switch.update p session = {
+  let _ <- Session.put (\s -> { s | org: Just p.form.org })
+  Task.succeed (Response.redirect (Projects.Index.Index {}))
 }
 
-view : Model -> Session -> Html Msg
-view model session =
-  <html><body>
-    <ul>{for m in model.mine -> <li><button click={Pick { org: m.org }}>{"pick"}</button></li>}</ul>
-    <form submit={Switch}>
-      <Input field="org" label="Org" />
-      <Errors form />
-      <button>switch</button>
-    </form>
-    <button click={App.Leave}>leave</button>
-  </body></html>
+Orgs.view : Model -> Session -> Html
+Orgs.view model session =
+  <html>
+    <body>
+      <ul>
+        {for m in model.mine -> <li><button click={Pick { org: m.org }}>{"pick"}</button></li>}
+      </ul>
+      <form submit={Switch}>
+        <Input field="org" label="Org" />
+        <Errors form />
+        <button>switch</button>
+      </form>
+      <button click={App.Leave}>leave</button>
+    </body>
+  </html>
 
 test "a member picks an org" = {
   let me <- Db.insert User { name: "Me" }
@@ -56,7 +60,7 @@ test "a member picks an org" = {
   let _ <- Test.login { user: Just me, org: Nothing }
   let _ <- Test.get (Orgs {})
   let r <- Test.click (Pick { org: a })
-  Task.succeed (r.answer == Redirected (Projects.Index {}) && r.session.org == Just a)
+  Task.succeed (r.answer == Redirected (Projects.Index.Index {}) && r.session.org == Just a)
 }
 
 test "a non-member's switch is refused" = {
@@ -66,9 +70,20 @@ test "a non-member's switch is refused" = {
   let _ <- Test.member me a
   let _ <- Test.login { user: Just me, org: Just a }
   -- a crafted request: the page offers no such button, the update is run as it would be
-  let r <- Test.run (update (Pick { org: b }) { mine: [] } { user: me, org: Just a, role: Reader })
+  let r <-
+    Test.run (Pick.update { org: b } {
+      user: me,
+      org: Just a,
+      role: Reader,
+    })
   let put <- Test.run (Session.put (\s -> { s | org: Just b }))
-  Task.succeed ({ r: r.value, put: put.value } == { r: Err "Session.put org: no Membership for this user and org", put: Err "Session.put org: no Membership for this user and org" })
+  Task.succeed (
+    { r: r.value, put: put.value }
+      == {
+        r: Err "Session.put org: no Membership for this user and org",
+        put: Err "Session.put org: no Membership for this user and org",
+      }
+  )
 }
 
 test "a non-member's switch from the form is the form's error" = {
@@ -78,9 +93,19 @@ test "a non-member's switch from the form is the form's error" = {
   let _ <- Test.member me a
   let _ <- Test.login { user: Just me, org: Just a }
   let _ <- Test.get (Orgs {})
-  let r <- Test.submit SwitchOrg { org: b }
-  let ok <- Test.submit SwitchOrg { org: a }
-  Task.succeed ({ answer: r.answer, org: r.session.org, ok: ok.answer } == { answer: FormRejected [{ field: "", message: "You are not a member of that workspace." }], org: Just a, ok: Redirected (Projects.Index {}) })
+  let r <- Test.submit Switch { org: b }
+  let ok <- Test.submit Switch { org: a }
+  Task.succeed (
+    {
+      answer: r.answer,
+      org: r.session.org,
+      ok: ok.answer,
+    } == {
+      answer: FormRejected [{ field: "", message: "You are not a member of that workspace." }],
+      org: Just a,
+      ok: Redirected (Projects.Index.Index {}),
+    }
+  )
 }
 
 test "a membership deleted earlier in the same Task counts as gone" = {
@@ -119,7 +144,7 @@ test "the picker lists the user's own memberships" = {
 
 test "a visitor is sent to log in" = {
   let r <- Test.open (Orgs {})
-  Task.succeed (r.answer == Redirected (Login {}))
+  Task.succeed (r.answer == Redirected (Login.Login {}))
 }
 
 test "logging out clears the org" = {
@@ -130,5 +155,15 @@ test "logging out clears the org" = {
   let r <- Test.run (Session.put (\s -> { s | user: Nothing }))
   let back <- Test.run (Session.put (\s -> { s | user: Just me }))
   let insert <- Test.run (Db.insertScoped Project.Project { name: "x" })
-  Task.succeed ({ out: r.value, back: back.value, insert: Result.map (\x -> ()) insert.value } == { out: Ok (), back: Ok (), insert: Err "Db.insertScoped Project: the session has no org" })
+  Task.succeed (
+    {
+      out: r.value,
+      back: back.value,
+      insert: Result.map (\x -> ()) insert.value,
+    } == {
+      out: Ok (),
+      back: Ok (),
+      insert: Err "Db.insertScoped Project: the session has no org",
+    }
+  )
 }

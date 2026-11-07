@@ -2,15 +2,15 @@ module Page
 
 import Markdown
 
-page "/" { }
+route Page = GET "/" { }
 
 type Model = { body: Html Never }
 
-load : Params -> Session -> Query Model
-load params session = {
+Page.load : Page.Params -> Session -> Query Model
+Page.load params session = {
   let body <- Markdown.render "*hi*"
   Query.succeed { body: body }
 }
 
-view : Model -> Session -> Html Msg
-view model session = <div>{model.body}</div>
+Page.view : Model -> Session -> Html
+Page.view model session = <div>{model.body}</div>

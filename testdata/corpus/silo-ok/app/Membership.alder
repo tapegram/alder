@@ -1,9 +1,9 @@
 module Membership
 
-import User
-import Org
-import Note
 import Label
+import Note
+import Org
+import User
 
 type MembershipId = brand Text
 
@@ -29,5 +29,19 @@ test "deleting a user or an org deletes their memberships, not their notes or la
   let them1 <- Test.run (Db.delete User them)
   let b1 <- Test.run (Db.delete Org b)
   let left <- Db.from Membership |> Db.count
-  Task.succeed ({ me: me1.value, them: them1.value == Ok (), a: a1.value, b: b1.value == Ok (), left: left } == { me: Ok (), them: False, a: Ok (), b: False, left: 1 })
+  Task.succeed (
+    {
+      me: me1.value,
+      them: them1.value == Ok (),
+      a: a1.value,
+      b: b1.value == Ok (),
+      left: left,
+    } == {
+      me: Ok (),
+      them: False,
+      a: Ok (),
+      b: False,
+      left: 1,
+    }
+  )
 }

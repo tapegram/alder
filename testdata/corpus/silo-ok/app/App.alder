@@ -1,26 +1,28 @@
 module App
 
-import User
 import Org
+import User
 
 -- A silo per org: Project lives in one database per org. Membership, Org, Label and Note are
 -- shared (Label is partitioned by org, Note by the user: a predicate in the shared store).
-session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Reader }
+session {
+  user: Maybe User.UserId,
+  org: Maybe Org.OrgId via Membership,
+  role: User.Role = Reader,
+}
 
-login = Login
+login = Login.Login
 
-choose org = Orgs
+choose org = Orgs.Orgs
 
 silo org { Project }
 
-msg Leave
+route Leave = POST "/_/Leave" { }
 
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  Leave _ -> {
-    let _ <- Session.put (\s -> { s | org: Nothing })
-    Task.succeed (Redirect (Orgs {}))
-  },
+Leave.update : Leave.Params -> Session -> Task Response
+Leave.update params session = {
+  let _ <- Session.put (\s -> { s | org: Nothing })
+  Task.succeed (Response.redirect (Orgs.Orgs {}))
 }
 
 error : Error -> Html Never

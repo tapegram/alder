@@ -5,7 +5,7 @@ import User
 -- The declared rules (M11): the session carries the user and their role, set at login.
 session { user: Maybe User.UserId, role: User.Role = Reader }
 
-login = Login
+login = Login.Login
 
 error : Error -> Html Never
 error err = <html><body><h1>error</h1></body></html>

@@ -4,24 +4,21 @@ import User
 
 session { user: Maybe User.UserId, visits: Int = 0 }
 
-login = Auth.Login
+login = Auth.Login.Login
 
-msg Logout
+route Logout = POST "/_/Logout" { }
+route Send   = POST "/_/Send"   { } form Feedback
 
-form Feedback = {
-  text: Text,
+form Feedback = { text: Text }
+
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
 
-msg Send form Feedback
-
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  Logout p -> {
-    let _ <- Session.put (\s -> { s | user: Nothing })
-    Task.succeed (Redirect (Auth.Login {}))
-  },
-  Send p -> Task.succeed Rerender,
-}
+Send.update : Send.Params -> Session -> Task Response
+Send.update p session = Task.succeed Response.refresh
 
 error : Error -> Html Never
 error err = <html><body><h1>Something went wrong</h1></body></html>

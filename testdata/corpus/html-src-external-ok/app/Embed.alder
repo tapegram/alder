@@ -1,15 +1,15 @@
 module Embed
 
-page "/embed" { }
+route Embed = GET "/embed" { }
 
 type Model = { cdn: Text }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { cdn: "https://cdn.example.com" }
+Embed.load : Embed.Params -> Session -> Query Model
+Embed.load params session = Query.succeed { cdn: "https://cdn.example.com" }
 
 -- `src` takes Text or a page value: `Url.external "…"` for another site.
-view : Model -> Session -> Html Msg
-view model session =
+Embed.view : Model -> Session -> Html
+Embed.view model session =
   <main>
     <script type="module" src={Url.external "https://cdn.example.com/x.js"}></script>
     <img src={Url.external (model.cdn ++ "/a.png")} alt="a" />

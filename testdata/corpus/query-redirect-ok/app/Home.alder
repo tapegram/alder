@@ -2,34 +2,38 @@ module Home
 
 import Note
 
-page "/" { }
+route Home = GET  "/"       { }
+route Save = POST "/_/Save" { }
 
 type Model = { notes: Int }
 
-load : Params -> Session -> Query Model
-load params session = {
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = {
   let n <- Db.from Note |> Db.count
   Query.succeed { notes: n }
 }
 
 -- A Task that binds Query.redirect fails: its write is undone, and the request is answered
 -- with the 303.
-saveThenGo : Task Nav
+saveThenGo : Task Response
 saveThenGo = {
   let _ <- Db.insert Note { title: "kept?" }
-  let _ <- Query.redirect (Builder { seed: "5", tab: "main" })
-  Task.succeed Rerender
+  let _ <- Query.redirect (Builder.Builder { seed: "5", tab: "main" })
+  Task.succeed Response.refresh
 }
 
-msg Save
+Save.update : Save.Params -> Session -> Task Response
+Save.update p session = saveThenGo
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Save p -> saveThenGo,
-}
-
-view : Model -> Session -> Html Msg
-view model session = <html><body><h1 id="home">Home</h1><p id="notes">{Text.fromInt model.notes}</p><button click={Save}>Save</button></body></html>
+Home.view : Model -> Session -> Html
+Home.view model session =
+  <html>
+    <body>
+      <h1 id="home">Home</h1>
+      <p id="notes">{Text.fromInt model.notes}</p>
+      <button click={Save}>Save</button>
+    </body>
+  </html>
 
 test "Test.run of a Task that redirects is Err, its write undone" = {
   let r <- Test.run saveThenGo
@@ -41,5 +45,5 @@ test "a message whose update redirects answers the 303" = {
   let _ <- Test.get (Home {})
   let r <- Test.click Save
   let n <- Db.from Note |> Db.count
-  Task.succeed (r.answer == Redirected (Builder { seed: "5", tab: "main" }) && n == 0)
+  Task.succeed (r.answer == Redirected (Builder.Builder { seed: "5", tab: "main" }) && n == 0)
 }

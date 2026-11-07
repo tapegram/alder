@@ -2,7 +2,7 @@ module App
 
 session { n: Int = 0 }
 
-login = Home
+login = Home.Home
 
 error : Error -> Html Never
 error err = <p>error</p>
