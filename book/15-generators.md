@@ -553,11 +553,12 @@ edited app/Replies/Show.alder
 app/Replies/Show.alder:48:36: warning[W0002]: hole ?deleteId has type Reply.ReplyId
       <al-button click={Delete { id: ?deleteId }}>Delete</al-button>
                                      ^^^^^^^^^
-`alder new msg` is now `alder new route --method POST`: on a route module it adds a write route
+`alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`
 ```
 
-The last line of the output is a notice: on a route module, `alder new msg` is
-`alder new route --method POST`, a write route. The new route is `route Delete = POST "/replies/{id}/_/Delete" { id:
+The last line of the output is a notice: on a route module, `alder new msg` adds
+a write route, and a write route in a module of its own (one with no page and no
+button) is made with `alder new route … --method POST` instead. The new route is `route Delete = POST "/replies/{id}/_/Delete" { id:
 Reply.ReplyId }`. A write route's path is its module's route path with `/_/`
 and its name on the end (the `<path>/_/<Msg>` convention), and it takes the
 parameters of the route it was added to. Its `Delete.update` answers with a
@@ -1994,8 +1995,9 @@ row of another table, or a text that names no row. So **a submitted
 value must be one of the options**. When the form is posted, the generated Go
 computes the `options` expression again (in the page version, from the
 model that `load` ran first to build, as it does before every message,
-chapter 6; in the route version no `load` runs before a write, and the write route
-checks it itself); a value that
+chapter 6; in the route version no `load` runs before a write: the runtime checks the
+value against the options of the page the form was posted from, and answers
+`400` if it was posted from elsewhere); a value that
 is not one of them is the field error "must be one of the options", and
 `update` does not run. That is the **select membership rule**, and it
 belongs to `<Select options>` everywhere, not only to the admin. It is
@@ -2290,8 +2292,9 @@ the referenced table in `load` (`authorsTotal`) and takes the
   the search form is not drawn.
 - The text is a page parameter of the form (`findAuthor`, in the
   `page` line), so, in the page version, `load` reads it again before every message
-  (in the route version the search is a `GET` route parameter of the page, and the
-  write routes check membership against the options they compute themselves). That is
+  (in the route version the search is a `GET` route parameter of the page, and
+  no `load` runs before a write: the runtime checks the value against the options of the
+  page the form was posted from, and answers `400` if it was posted from elsewhere). That is
   what lets the narrowing survive: the options are computed from the text, and the select's membership rule
   (above) is checked against the options just rendered. The admin
   cannot pick, or be tricked into posting, a user the select did not
@@ -3178,7 +3181,7 @@ wrote app/Stats.alder
 app/Stats.alder:8:29: warning[W0002]: hole ?load has type Query Model
   Stats.load params session = ?load
                               ^^^^^
-app/Stats.alder:11:28: warning[W0002]: hole ?view has type Html Route
+app/Stats.alder:11:28: warning[W0002]: hole ?view has type Html
   Stats.view model session = ?view
                              ^^^^^
 ```
@@ -3209,7 +3212,7 @@ edited app/Stats.alder
 app/Stats.alder:8:29: warning[W0002]: hole ?load has type Query Model
   Stats.load params session = ?load
                               ^^^^^
-app/Stats.alder:11:28: warning[W0002]: hole ?view has type Html Route
+app/Stats.alder:11:28: warning[W0002]: hole ?view has type Html
   Stats.view model session = ?view
                              ^^^^^
 ```
@@ -3344,7 +3347,7 @@ edited app/Home.alder
 app/Home.alder:91:35: warning[W0002]: hole ?hideId has type Entry.EntryId
     let r <- Test.click (Hide { id: ?hideId })
                                     ^^^^^^^
-`alder new msg` is now `alder new route --method POST`: on a route module it adds a write route
+`alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`
 ```
 
 A button in a loop has its route's name as its class (`hide`), so a
@@ -3426,7 +3429,7 @@ wrote app/Notes/Index.alder
 app/Notes/Index.alder:8:29: warning[W0002]: hole ?load has type Query Model
   Index.load params session = ?load
                               ^^^^^
-app/Notes/Index.alder:11:28: warning[W0002]: hole ?view has type Html Route
+app/Notes/Index.alder:11:28: warning[W0002]: hole ?view has type Html
   Index.view model session = ?view
                              ^^^^^
 ```
@@ -4373,14 +4376,61 @@ E11 (below) found four things the commands could not do. The first was a
 button that is on every page (`click={App.Logout}` is one): `alder new msg
 App <Name> [fields]` declared a message in `App` for it. On routes, `App`
 holds write routes like any module: `route Logout = POST "/_/Logout"` is
-one, written by `alder new auth`. But `alder new msg App` is refused in
-an app whose `App` already has routes, as this one does since the login, and
-with a sentence that says less than it should:
+one, written by `alder new auth`. So `alder new msg App <Name>` writes a
+route there too, `route <Name> = POST "/_/<Name>"` with the fields as its
+payload, after the last route of `App`, together with its `update`
+(answering `Response.refresh`, which the author then replaces) and a test:
 
 ```text command=guestbook
 $ alder new msg App ToggleTheme dark:Bool
-alder new msg: `update` handles no message yet, and its body is not a hole: write it as `match msg { … }` yourself
+edited app/App.alder
+--- a/app/App.alder
++++ b/app/App.alder
+@@ -7,7 +7,8 @@
+ 
+ login = Auth.Login.Login
+ 
+-route Logout = POST "/_/Logout" { }
++route Logout      = POST "/_/Logout"      { }
++route ToggleTheme = POST "/_/ToggleTheme" { dark: Bool }
+ 
+ error : Error -> Html Never
+ error err =
+@@ -27,6 +28,9 @@
+   Task.succeed (Response.redirect (Auth.Login.Login {}))
+ }
+ 
++ToggleTheme.update : ToggleTheme.Params -> Session -> Task Response
++ToggleTheme.update params session = Task.succeed Response.refresh
++
+ -- Logging out from the login page, which a visitor may open: the answer is the redirect,
+ -- not the page shown again.
+ test "Logout clears the user and goes to log in" = {
+@@ -43,3 +47,11 @@
+       == { answer: Redirected (Auth.Login.Login {}), user: Nothing }
+   )
+ }
++
++-- ToggleTheme is sent from any page (`click={App.ToggleTheme}`): put an `al-button` with it in the view of
++-- the page this test opens, or open the page that has it. Until a page does, the click finds no control.
++test "pressing ToggleTheme" = {
++  let _ <- Test.get (About.About {})
++  let r <- Test.click (ToggleTheme { dark: ?toggleThemeDark })
++  Task.succeed (r.answer == Refreshed)
++}
+app/App.alder:55:44: warning[W0002]: hole ?toggleThemeDark has type Bool
+    let r <- Test.click (ToggleTheme { dark: ?toggleThemeDark })
+                                             ^^^^^^^^^^^^^^^^
+`alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`
 ```
+
+No page's view is touched: a route of `App` is sent by a button on any
+page (`click={App.ToggleTheme { dark: True }}`), and which page has the
+button is for you to say. The test opens the first plain page of the app
+and presses the route, so it fails ("the click finds no control") until
+that page has the button, as the comment above it says. An `App` written
+before routes, with a `msg` and an `update` of its own, keeps the old
+form of the command until it is moved to routes.
 
 `alder edit decl Layout.Page add-prop <name>:<Type>=<default>` adds a
 property to a component's props record. The default is required (it is
