@@ -74,7 +74,7 @@ type Result struct {
 	// (Formatted's warning).
 	Warnings []string
 	// Notices are for standard error too, as they are: a command that was named by an older name
-	// ("`alder new msg` is now `alder new route --method POST`").
+	// ("`alder new page` is now `alder new route`").
 	Notices []string
 	// Next is the command to run next (`alder new table`'s page that lists the table), printed
 	// last as `next: …`; "" for none.

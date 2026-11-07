@@ -12,6 +12,9 @@ import (
 // test, `login = …`): the check of the app without it lists those uses, and nothing is removed
 // until they are gone.
 func RemovePage(p *Program, module string) ([]Edit, error) {
+	if module == "App" {
+		return nil, Refusef("`App` is not a route module: it holds the app's session, its `login` and its own write routes such as `Logout`, and cannot be removed; edit `app/App.alder` by hand")
+	}
 	if rs := p.RoutesOf(module); len(rs) > 0 {
 		edits := []Edit{{Path: rs[0].File, Delete: true}}
 		return edits, stillNamed(p, edits, "`"+module+"`", rs[0].File)

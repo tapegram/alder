@@ -46,6 +46,9 @@ func NewMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions) ([]
 		if o.InFor != "" || o.When != "" || o.ID != "" {
 			return nil, Refusef("`alder new msg App` adds a message without a button: --in-for, --when and --id belong to a page")
 		}
+		if app := p.Modules["App"]; app != nil && !appHasLegacyMsg(app.Syntax) {
+			return newAppRouteMsg(p, name, fields)
+		}
 		return newAppMsg(p, name, fields)
 	}
 	if len(p.RoutesOf(page)) > 0 {

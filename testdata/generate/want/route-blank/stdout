@@ -2,6 +2,6 @@ wrote app/Notes.alder
 app/Notes.alder:8:29: warning[W0002]: hole ?load has type Query Model
   Notes.load params session = ?load
                               ^^^^^
-app/Notes.alder:11:28: warning[W0002]: hole ?view has type Html Route
+app/Notes.alder:11:28: warning[W0002]: hole ?view has type Html
   Notes.view model session = ?view
                              ^^^^^

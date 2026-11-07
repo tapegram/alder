@@ -6,6 +6,9 @@ package generate
 // page is named (`Teams.Index {}`), so such an edit is refused by the check unless nothing names
 // the page yet. It refuses a name the page's parameters have.
 func EditPage(p *Program, page, op string, args []string) ([]Edit, error) {
+	if page == "App" {
+		return nil, Refusef("`App` is not a route module: its routes (such as `Logout`) are write routes with no page, so there is no route to add a parameter to; edit `app/App.alder` by hand")
+	}
 	if len(p.RoutesOf(page)) > 0 {
 		return editRoute(p, page, op, args)
 	}

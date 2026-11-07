@@ -1,0 +1,57 @@
+module App
+
+import Layout
+import Table.User
+
+session { user: Maybe User.UserId }
+
+login = Auth.Login.Login
+
+route Logout = POST "/_/Logout" { }
+route Ping   = POST "/_/Ping"   { }
+
+error : Error -> Html Never
+error err =
+  <Layout.Page title="Error">
+    <h1>Something went wrong</h1>
+    <p>Please try again.</p>
+  </Layout.Page>
+
+notFound : Html Never
+notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
+
+-- Logout empties the session's user and goes to log in: a `POST`, sent by a button
+-- (`click={App.Logout}`), a form without JavaScript.
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update params session = {
+  let _ <- Session.put (\s -> { s | user: Nothing })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
+}
+
+Ping.update : Ping.Params -> Session -> Task Response
+Ping.update params session = Task.succeed Response.refresh
+
+-- Logging out from the login page, which a visitor may open: the answer is the redirect,
+-- not the page shown again.
+test "Logout clears the user and goes to log in" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: Text.Secret "passwordhash-1",
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Auth.Login.Login {})
+  let r <- Test.click Logout
+  Task.succeed (
+    { answer: r.answer, user: r.session.user }
+      == { answer: Redirected (Auth.Login.Login {}), user: Nothing }
+  )
+}
+
+-- Ping is sent from any page (`click={App.Ping}`): put an `al-button` with it in the view of
+-- the page this test opens, or open the page that has it. Until a page does, the click finds no control.
+test "pressing Ping" = {
+  let _ <- Test.get (Auth.Login.Login {})
+  let r <- Test.click Ping
+  Task.succeed (r.answer == Refreshed)
+}

@@ -1,0 +1,81 @@
+module Home
+
+import Layout
+import Table.Entry
+
+route Home   = GET  "/"         { }
+route Submit = POST "/_/Submit" { } form Sign
+route Clear  = POST "/_/Clear"  { } form Reason
+
+type Model = { entries: List Entry }
+
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = {
+  let entries <-
+    Db.from Entry
+      |> Db.orderBy Entry.created.desc
+      |> Db.all
+  Query.succeed { entries: entries }
+}
+
+Home.view : Model -> Session -> Html
+Home.view model session =
+  <Layout.Page title="Guestbook">
+    <h1>Guestbook</h1>
+
+    <al-card>
+      <h2 slot="header">Sign the guestbook</h2>
+      <form submit={Submit}>
+        <al-input field="name" label="Your name" />
+        <al-input field="message" label="Message" />
+        <al-button type="submit">Sign</al-button>
+      </form>
+      <form submit={Clear}>
+        <al-input field="why" label="Why" />
+        <al-alert variant="destructive"><Errors form /></al-alert>
+        <al-button type="submit">Reason</al-button>
+      </form>
+    </al-card>
+
+    <ul id="entries">
+      {for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}
+    </ul>
+  </Layout.Page>
+
+form Sign = { name: Text.NonEmpty, message: Text.NonEmpty }
+
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update params session = {
+  let _ <- Db.insert Entry { name: params.form.name, message: params.form.message }
+  Task.succeed (Response.redirect (Home {}) |> Response.success "Signed")
+}
+
+Clear.update : Clear.Params -> Session -> Task Response
+Clear.update params session = Task.succeed Response.refresh
+
+-- Clear.update reads the posted fields as params.form (params.form : Reason, such as params.form.why)
+form Reason = { why: Text.NonEmpty }
+
+test "signing adds an entry" = {
+  let _ <- Test.get (Home {})
+  let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
+  let page <- Test.get (Home {})
+  Task.succeed (
+    { answer: signed.answer, entries: Test.count "#entries li" page.doc }
+      == { answer: Redirected (Home {}), entries: 1 }
+  )
+}
+
+test "entries are listed newest first" = {
+  let _ <- Test.get (Home {})
+  let _ <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "First" }
+  let _ <- Test.submit Submit { name: Text.NonEmpty "Grace", message: Text.NonEmpty "Second" }
+  let page <- Test.get (Home {})
+  Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
+}
+
+test "submitting Reason" = {
+  let _ <- Test.get (Home {})
+  let r <- Test.submit Clear { why: Text.NonEmpty "why-1" }
+  Task.succeed (r.answer == ?expected)
+}

@@ -187,6 +187,9 @@ func choices(f Field, p *Program) []string {
 			out = append(out, pg.Module)
 		}
 		for _, r := range p.Routes {
+			if r.Module == "App" && !f.AppOK {
+				continue
+			}
 			if len(out) == 0 || out[len(out)-1] != r.Module {
 				out = append(out, r.Module)
 			}

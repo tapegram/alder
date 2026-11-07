@@ -155,7 +155,7 @@ func newSpecs() []*Spec {
 			},
 		},
 		{
-			ID: "new form", Summary: "a form with its msg, handler and view",
+			ID: "new form", Summary: "a form with its write route, `update` and view",
 			Args: []Field{
 				{Name: "page", Kind: ArgPage, Required: true, Value: "<Route module>", Help: "the route module the form goes on", Example: "Posts.Index"},
 				{Name: "name", Kind: ArgText, Required: true, Value: "<Name>", Help: "the form's name, a capitalised word", Example: "NewComment"},
@@ -163,7 +163,7 @@ func newSpecs() []*Spec {
 			},
 			Flags: []Field{
 				{Name: "into", Kind: ArgTable, Value: "T", Summary: "insert the submitted form into table T", Example: "Comment"},
-				{Name: "msg", Kind: ArgText, Value: "Msg", Summary: "the msg's name (on a route module, the route's name, the form's by default)", Example: "Submit", Agent: true},
+				{Name: "msg", Kind: ArgText, Value: "Route", Summary: "the write route's name (Submit<Name> by default); an existing write route of the module without a form gets this form", Example: "Submit", Agent: true},
 				{Name: "hole", Kind: ArgBool, Summary: "leave the route's `update` body a hole (?answer) instead of inserting into a table"},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
@@ -176,11 +176,11 @@ func newSpecs() []*Spec {
 			},
 		},
 		{
-			ID: "new msg", Summary: "a msg (on a route module, a write route) with its button and test",
+			ID: "new msg", Summary: "a write route with its button and test (a msg, in a page module written before routes)",
 			Args: []Field{
-				{Name: "page", Kind: ArgPage, Required: true, Value: "<Page module>", Help: "the page the message belongs to", Example: "Posts.Index"},
-				{Name: "name", Kind: ArgText, Required: true, Value: "<Name>", Help: "the message's name, a capitalised word", Example: "Archive"},
-				{Name: "fields", Kind: ArgFieldList, Variadic: true, Value: "<field>:<Type>…", Help: "the values the message carries, as name:Type words (none is fine)", Example: "note:Text"},
+				{Name: "page", Kind: ArgPage, Required: true, AppOK: true, Value: "<Route module>", Help: "the route module the write route goes with, or App for a button on any page", Example: "Posts.Index"},
+				{Name: "name", Kind: ArgText, Required: true, Value: "<Name>", Help: "the write route's name, a capitalised word", Example: "Archive"},
+				{Name: "fields", Kind: ArgFieldList, Variadic: true, Value: "<field>:<Type>…", Help: "the values the route carries, as name:Type words (none is fine)", Example: "note:Text"},
 			},
 			Flags: []Field{
 				{Name: "in-for", Kind: ArgText, Value: "binder", Summary: "the button goes inside this for loop", Example: "post", Agent: true},
@@ -198,7 +198,7 @@ func newSpecs() []*Spec {
 					return NewMsg(p, s.One("page"), s.One("name"), fields, MsgOptions{InFor: s.One("in-for"), When: s.One("when"), ID: s.One("id")})
 				})
 				if res != nil && onRoute {
-					res.Notices = append(res.Notices, "`alder new msg` is now `alder new route --method POST`: on a route module it adds a write route")
+					res.Notices = append(res.Notices, "`alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`")
 				}
 				return res, err
 			},

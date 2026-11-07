@@ -5,6 +5,9 @@ import "strings"
 // afterLoginComment is the comment `new auth` writes in an app with no page yet.
 const afterLoginComment = "the page ?afterLogin names (fill it, here and in SignIn.update, once the page exists)"
 
+// afterLoginCommentPage is the comment an app made before routes has (PR 6 reworded it).
+const afterLoginCommentPage = "the page ?afterLogin names (fill it, here and in Submit's arm, once the page exists)"
+
 // EditAuth generates `alder edit auth --to <Page>`: the hole ?afterLogin of `Auth.Login`
 // (`SignIn.update`'s redirect and the test that logs in, which `new auth` leaves in an app with
 // no page yet) replaced by the page (a route module's GET route, a GET route `Module.Route`, or
@@ -26,6 +29,7 @@ func EditAuth(p *Program, to string) ([]Edit, error) {
 		return nil, Refusef("`Auth.Login` has no hole ?afterLogin: the login goes to a page already (change `SignIn.update`'s redirect with `alder fill --decl Auth.Login.SignIn.update -`)")
 	}
 	body := strings.ReplaceAll(m.Source, afterLoginComment, lit)
+	body = strings.ReplaceAll(body, afterLoginCommentPage, lit)
 	// the hole is an argument (`Response.redirect ?afterLogin`, as the formatter writes it): the
 	// route literal, an application, takes parentheses there
 	body = strings.ReplaceAll(body, "?afterLogin", "("+lit+")")

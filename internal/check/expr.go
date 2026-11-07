@@ -370,7 +370,12 @@ func (mc *modCtx) missingSig(d *syntax.ValueDecl, sig string) {
 func (mc *modCtx) reportHoles() {
 	for _, h := range mc.holes {
 		mc.c.res.Holes++
-		mc.c.bag.Warn("W0002", h.span, "hole ?%s has type %s", h.name, mc.ts(mc.c.u.Apply(h.t)))
+		// a route's `view` is written `Html`, which means `Html Route`: the hole says what the signature says
+		ty := mc.ts(mc.c.u.Apply(h.t))
+		if ty == "Html Route" {
+			ty = "Html"
+		}
+		mc.c.bag.Warn("W0002", h.span, "hole ?%s has type %s", h.name, ty)
 	}
 	mc.holes = nil
 	mc.c.checkDbTables()

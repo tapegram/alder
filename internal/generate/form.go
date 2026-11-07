@@ -190,34 +190,7 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 	if attach != nil {
 		e.insertAt(attach.Span.End.Line, attach.Span.End.Col, " form "+o.Name) // after its parameters, on one line or several
 		e.insertBefore(attach.Span.Start.Line, "-- "+msg+"'s arm reads the posted fields as p.form (p.form : "+o.Name+", such as p.form."+o.Fields[0].Name+")\n"+snippet("form_decl", d)+"\n")
-		// the message's own button and its "pressing" test (Test.click cannot post a form) give way to the form
-		for n := 1; n <= len(m.Syntax.Lines); n++ { // on one line, or over several (`alder fmt` breaks a long one)
-			if !strings.HasPrefix(strings.TrimSpace(m.Syntax.Lines[n-1]), "<al-button") {
-				continue
-			}
-			end, text := n, strings.TrimSpace(m.Syntax.Lines[n-1])
-			for !strings.HasSuffix(strings.TrimSpace(m.Syntax.Lines[end-1]), "</al-button>") && end < len(m.Syntax.Lines) {
-				end++
-				text += " " + strings.TrimSpace(m.Syntax.Lines[end-1])
-			}
-			if strings.HasSuffix(text, "</al-button>") && strings.Count(text, "<al-button") == 1 && strings.Contains(text, "click={"+msg+" ") {
-				for k := n; k <= end; k++ {
-					e.deleteLine(k)
-				}
-				n = end
-			}
-		}
-		for _, dc := range m.Syntax.Decls {
-			if t, ok := dc.(*syntax.TestDecl); ok && t.Name == "pressing "+msg {
-				first := declStart(e, t)
-				if first > 1 && strings.TrimSpace(e.line(first-1)) == "" {
-					first--
-				}
-				for n := first; n <= t.Span.End.Line; n++ {
-					e.deleteLine(n)
-				}
-			}
-		}
+		dropMsgControls(e, m, msg)
 		if attach.Params != nil {
 			var holes []string
 			for _, f := range attach.Params.Fields {
@@ -254,6 +227,38 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 	}
 	addImports(e, p, m.Syntax, imports.list())
 	return []Edit{{Path: m.File, Body: e.result()}}, nil
+}
+
+// dropMsgControls deletes msg's own button in the view of m and its "pressing <msg>" test from e:
+// Test.click cannot post a form, so they give way to the form that replaces them.
+func dropMsgControls(e *srcEdit, m *Module, msg string) {
+	for n := 1; n <= len(m.Syntax.Lines); n++ { // on one line, or over several (`alder fmt` breaks a long one)
+		if !strings.HasPrefix(strings.TrimSpace(m.Syntax.Lines[n-1]), "<al-button") {
+			continue
+		}
+		end, text := n, strings.TrimSpace(m.Syntax.Lines[n-1])
+		for !strings.HasSuffix(strings.TrimSpace(m.Syntax.Lines[end-1]), "</al-button>") && end < len(m.Syntax.Lines) {
+			end++
+			text += " " + strings.TrimSpace(m.Syntax.Lines[end-1])
+		}
+		if strings.HasSuffix(text, "</al-button>") && strings.Count(text, "<al-button") == 1 && (strings.Contains(text, "click={"+msg+" ") || strings.Contains(text, "click={"+msg+"}")) {
+			for k := n; k <= end; k++ {
+				e.deleteLine(k)
+			}
+			n = end
+		}
+	}
+	for _, dc := range m.Syntax.Decls {
+		if t, ok := dc.(*syntax.TestDecl); ok && t.Name == "pressing "+msg {
+			first := declStart(e, t)
+			if first > 1 && strings.TrimSpace(e.line(first-1)) == "" {
+				first--
+			}
+			for n := first; n <= t.Span.End.Line; n++ {
+				e.deleteLine(n)
+			}
+		}
+	}
 }
 
 // pageModule is page module name, refused when it is not one of the app's pages.

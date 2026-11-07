@@ -45,7 +45,25 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 		}
 		route = o.Msg
 	}
+	// --msg M naming a write route of the module without a form: the form is attached to it
+	var attach *syntax.RouteDecl
+	if o.Msg != "" {
+		if rd := routeDecl(m.Syntax, o.Msg); rd != nil && rd.Method != "GET" {
+			if rd.Form != "" {
+				return nil, Refusef("`%s` is posted with the form `%s` already: a route has one form; choose another route name", o.Msg, rd.Form)
+			}
+			attach = rd
+		} else if rd != nil {
+			return nil, Refusef("`--msg %s` is a GET route of `%s`: a form is posted to a write route; choose another route name, or one of its write routes", o.Msg, o.Page)
+		}
+	}
+	if attach != nil && (o.Into != "" || o.Hole) {
+		return nil, Refusef("`%s` has its `update` already: --into and --hole belong to a new route", route)
+	}
 	for _, n := range []string{o.Name, route} {
+		if n == route && attach != nil {
+			continue
+		}
 		if declared(m.Syntax, n) {
 			return nil, Refusef("`%s` already declares `%s`: choose another name", o.Page, n)
 		}
@@ -100,7 +118,7 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 	// the table the update inserts into
 	var into *Table
 	switch {
-	case o.Hole:
+	case o.Hole, attach != nil:
 	case o.Into != "":
 		if into = p.TableNamed(o.Into); into == nil {
 			return nil, Refusef("`--into %s`: `%s` is not a table of this app (its tables: %s)", o.Into, o.Into, tableNames(p))
@@ -136,6 +154,18 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 	ps := "{ }"
 	if len(params) > 0 {
 		ps = "{ " + strings.Join(params, ", ") + " }"
+	}
+	if attach != nil { // the route's own parameters: its button's and the test's values
+		holes, params = nil, nil
+		if attach.Params != nil {
+			for _, f := range attach.Params.Fields {
+				holes = append(holes, f.Name+": ?"+LowerFirst(route)+UpperFirst(f.Name))
+			}
+		}
+		d.Msg = route
+		if len(holes) > 0 {
+			d.Msg = route + " { " + strings.Join(holes, ", ") + " }"
+		}
 	}
 	line := fmt.Sprintf("route %s = POST \"%s\" %s form %s%s", route, path, ps, o.Name, guardText(r))
 
@@ -178,8 +208,16 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 	if err := addToView(e, m, o.Page, snippet("form_markup", d), d.Label); err != nil {
 		return nil, err
 	}
-	e.insertBefore(lastRoute.GetSpan().End.Line+1, line+"\n")
 	decls := snippet("form_decl", d) + "\n\n" + update + "\n"
+	if attach != nil {
+		if err := attachForm(e, attach, o.Name); err != nil {
+			return nil, err
+		}
+		dropMsgControls(e, m, route)
+		decls = "-- " + route + ".update reads the posted fields as params.form (params.form : " + o.Name + ", such as params.form." + o.Fields[0].Name + ")\n" + snippet("form_decl", d) + "\n"
+	} else {
+		e.insertBefore(lastRoute.GetSpan().End.Line+1, line+"\n")
+	}
 	if firstTest != nil {
 		e.insertBefore(declStart(e, firstTest), decls+"\n")
 	} else {
@@ -214,14 +252,43 @@ func newRouteForm(p *Program, o FormOptions) ([]Edit, error) {
 		answer = "Redirected (" + pageLit(r.Ref(o.Page), backArgs) + ")"
 	}
 	post := route
+	if attach != nil && attach.Params != nil {
+		var vals []string
+		for _, f := range attach.Params.Fields {
+			v := "?" + LowerFirst(route) + UpperFirst(f.Name)
+			if pv, ok := pathValue[f.Name]; ok {
+				v = pv
+			}
+			vals = append(vals, f.Name+": "+v)
+		}
+		submitted = vals
+	}
 	if len(submitted) > 0 {
 		post = "(" + route + " { " + strings.Join(submitted, ", ") + " })"
 	}
 	tests := formTests(formTestSpec{Form: o.Name, Page: o.Page, Open: page, Submit: post, Raw: post, Answer: answer,
-		Fields: rec.Fields, Types: ftypes, Into: into}, tb, imports)
+		Fields: rec.Fields, Types: ftypes, Into: into, NoEmpty: attach != nil}, tb, imports)
 	if err := addTests(e, m, tests); err != nil {
 		return nil, err
 	}
 	addImports(e, p, m.Syntax, imports.list())
 	return []Edit{{Path: m.File, Body: e.result()}}, nil
+}
+
+// attachForm adds ` form <name>` to the route line of r, after its parameters (or its path, when
+// it has none) and before its `requires`.
+func attachForm(e *srcEdit, r *syntax.RouteDecl, name string) error {
+	if r.Params != nil {
+		sp := r.Params.GetSpan()
+		e.insertAt(sp.End.Line, sp.End.Col, " form "+name)
+		return nil
+	}
+	l := e.line(r.Span.Start.Line)
+	q := strings.Index(l, `"`+r.Path+`"`)
+	if q < 0 {
+		return Refusef("`%s`'s route line is not one `route %s = %s \"%s\"` line: add ` form %s` to it yourself", r.Name, r.Name, r.Method, r.Path, name)
+	}
+	at := q + len(r.Path) + 2
+	e.insertAt(r.Span.Start.Line, at+1, " form "+name)
+	return nil
 }

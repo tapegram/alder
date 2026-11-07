@@ -364,7 +364,9 @@ var genCases = []genCase{
 	{name: "form-msg", base: "scaffold", args: []string{"new", "form", "Home", "Quick", "name:Text.NonEmpty", "message:Text.NonEmpty", "--msg", "Sign2"}, test: true},
 	// E11 fixes: the four commands
 	{name: "app-msg", base: "scaffold", args: []string{"new", "msg", "App", "ToggleTheme", "dark:Bool"}, test: true,
-		fills: [][2]string{{"App.update.ToggleTheme", "Task.succeed Rerender"}, {`App."pressing ToggleTheme" --hole ?toggleThemeDark`, "True"}, {`App."pressing ToggleTheme"`, "{ value: r.value, trace: r.trace } == { value: Ok Rerender, trace: [] }"}}},
+		fills: [][2]string{{"--decl Home.Home.view", "<Layout.Page title=\"Guestbook\">\n  <al-card>\n    <form submit={Submit}>\n      <al-input field=\"name\" label=\"Your name\" />\n      <al-input field=\"message\" label=\"Message\" />\n      <al-button type=\"submit\">Sign</al-button>\n    </form>\n  </al-card>\n  <al-button click={App.ToggleTheme { dark: True }}>Dark</al-button>\n  <ul id=\"entries\">{for e in model.entries -> <li><b>{e.name}</b>: {e.message}</li>}</ul>\n</Layout.Page>"}, {`App."pressing ToggleTheme" --hole ?toggleThemeDark`, "True"}}},
+	// #160: an App that holds `route Logout` takes a route too
+	{name: "app-msg-auth", base: "scaffold", pre: [][]string{{"new", "auth"}}, args: []string{"new", "msg", "App", "Ping"}},
 	{name: "fixture-app-msg-hole", base: "fixture", args: []string{"new", "msg", "App", "Ping"}},
 	{name: "edit-decl-add-prop", base: "scaffold", args: []string{"edit", "decl", "Layout.Page", "add-prop", "dark:Bool=False"}, test: true},
 	{name: "msg-id", base: "scaffold", args: []string{"new", "msg", "Home", "Clear", "--id", "clear"}, test: true},
@@ -584,7 +586,7 @@ func TestGenerate_Refusals(t *testing.T) {
 		{"scaffold", []string{"new", "route", "Tags.Show", "/tags/{name}", "--param", "name:Text", "--param", "x:Int"}, "", "alder new route: --param x: `/tags/{name}` has no `{x}` segment"},
 		{"scaffold", []string{"new", "route", "Entries.Show", "/entries", "--show", "Entry", "--by", "name"}, "", "alder new route: `--by name`: `name` is not a `@unique` column of `Entry`"},
 		{"scaffold", []string{"new", "route", "Entries.Show", "/entries", "--by", "name"}, "", "alder new route: --by names the column --show T reads its row by: give --show T too"},
-		{"scaffold", []string{"new", "form", "Home", "Quick", "name:Text", "--msg", "Submit"}, "", "alder new form: `Home` already declares `Submit`: choose another name"},
+		{"scaffold", []string{"new", "form", "Home", "Quick", "name:Text", "--msg", "Submit"}, "", "alder new form: `Submit` is posted with the form `Sign` already: a route has one form; choose another route name"},
 		{"scaffold", []string{"new", "msg", "Home", "Clear", "--id", "1x"}, "", "alder new msg: `--id 1x` is not an id"},
 		{"scaffold", []string{"new", "table", "Tag", "created:Time@created"}, "", "alder new table: field `created`: the generator writes `created: Time @created` and `updated: Time @updated`; leave them out, or give --no-timestamps"},
 		{"scaffold", []string{"edit", "session", "add-field", "theme:Text"}, "", "alder edit session: session field `theme` needs a default"},
@@ -1070,6 +1072,38 @@ func TestGenerate_E11Commands(t *testing.T) {
 			t.Errorf("a second form on the message: exit %d: %s", code, errs)
 		}
 	})
+	// #160: the same on a route module: `--msg M` naming a write route attaches the form to it
+	for _, c := range []struct {
+		name, base string
+		pre        [][]string
+		args       []string
+	}{
+		{"form-on-route", "scaffold", [][]string{{"new", "msg", "Home", "Clear"}}, []string{"new", "form", "Home", "Reason", "why:Text.NonEmpty", "--msg", "Clear"}},
+		{"form-on-route-show", "fixture", [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}, {"new", "msg", "Posts.Show", "Feature", "note:Text"}},
+			[]string{"new", "form", "Posts.Show", "Reason", "why:Text.NonEmpty", "--msg", "Feature"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := genApp(t, c.base)
+			for _, pre := range c.pre {
+				if code, _, errs := alderIn(t, dir, "", pre...); code != 0 {
+					t.Fatalf("%v: %s", pre, errs)
+				}
+			}
+			before := appFiles(t, dir)
+			code, out, errs := alderIn(t, dir, "", c.args...)
+			if code != 0 {
+				t.Fatalf("new form --msg: exit %d\n%s%s", code, out, errs)
+			}
+			golden(t, c.name, out, changedFiles(before, appFiles(t, dir)))
+			if code, out, errs := alderIn(t, dir, "", "check"); code != 0 || out != "" {
+				t.Fatalf("alder check after it: exit %d\n%s%s", code, out, errs)
+			}
+			mod, route := c.args[2], c.args[len(c.args)-1]
+			if code, _, errs := alderIn(t, dir, "", "new", "form", mod, "Other", "why:Text", "--msg", route); code != 1 || !strings.Contains(errs, "is posted with the form `Reason` already") {
+				t.Errorf("a second form on the route: exit %d: %s", code, errs)
+			}
+		})
+	}
 	t.Run("edit-auth", func(t *testing.T) {
 		dir := genApp(t, "fixture")
 		if code, _, errs := alderIn(t, dir, "", "edit", "auth", "--to", "Home"); code != 1 || !strings.Contains(errs, "no hole ?afterLogin") {
@@ -1463,7 +1497,7 @@ func TestGenerate_AliasNotes(t *testing.T) {
 	}{
 		{[]string{"edit", "page", "About", "add-param", `q:Text=""`}, "`alder edit page` is now `alder edit route`\n"},
 		{[]string{"edit", "route", "About", "add-param", `r:Text=""`}, ""},
-		{[]string{"new", "msg", "About", "Clear"}, "`alder new msg` is now `alder new route --method POST`: on a route module it adds a write route\n"},
+		{[]string{"new", "msg", "About", "Clear"}, "`alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`\n"},
 		{[]string{"new", "msg", "Home", "Clear"}, ""},
 		{[]string{"remove", "page", "About"}, "`alder remove page` is now `alder remove route`\n"},
 	} {
@@ -1512,5 +1546,71 @@ func TestGenerate_RouteMsgRefusals(t *testing.T) {
 		if ch := changedFiles(before, appFiles(t, dir)); len(ch) != 0 {
 			t.Errorf("alder %s wrote %v", strings.Join(c.args, " "), slices.Sorted(maps.Keys(ch)))
 		}
+	}
+}
+
+// TestGenerate_AppIsNoRouteModule: `remove route App` and `edit route App` refuse App with one
+// sentence, in an App that holds `route Logout`, and write nothing.
+func TestGenerate_AppIsNoRouteModule(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	dir := genApp(t, "scaffold")
+	if code, _, errs := alderIn(t, dir, "", "new", "auth"); code != 0 {
+		t.Fatalf("new auth: %s", errs)
+	}
+	before := appFiles(t, dir)
+	for _, args := range [][]string{
+		{"remove", "route", "App"},
+		{"edit", "route", "App", "add-param", "x:Int"},
+	} {
+		code, out, errs := alderIn(t, dir, "", args...)
+		if code != 1 || out != "" || !strings.Contains(errs, "`App` is not a route module") || strings.Count(errs, "\n") > 1 {
+			t.Errorf("alder %s: exit %d, stdout %q, stderr %q", strings.Join(args, " "), code, out, errs)
+		}
+	}
+	if after := appFiles(t, dir); !maps.Equal(before, after) {
+		t.Errorf("a refusal changed files: %v", changedFiles(before, after))
+	}
+}
+
+// TestGenerate_EditAuthPrePR: `edit auth --to` on an app whose login was written before routes
+// (its comment names "Submit's arm") replaces that comment too, leaving no prose of the hole.
+func TestGenerate_EditAuthPrePR(t *testing.T) {
+	t.Parallel()
+	needGoTool(t)
+	bare := filepath.Join(t.TempDir(), "app")
+	var o, e bytes.Buffer
+	if code := runNewTo([]string{bare, "--bare"}, &o, &e); code != 0 {
+		t.Fatalf("new --bare: %s", e.String())
+	}
+	for _, args := range [][]string{{"new", "auth"}, {"new", "route", "Notes", "/notes", "--blank", "--requires", "user"}} {
+		if code, _, errs := alderIn(t, bare, "", args...); code != 0 {
+			t.Fatalf("%v: %s", args, errs)
+		}
+	}
+	file := filepath.Join(bare, "app", "Auth", "Login.alder")
+	src, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const now = "the page ?afterLogin names (fill it, here and in SignIn.update, once the page exists)"
+	if !strings.Contains(string(src), now) {
+		t.Fatalf("the login has no comment %q", now)
+	}
+	old := strings.Replace(string(src), now, "the page ?afterLogin names (fill it, here and in Submit's arm, once the page exists)", 1)
+	if err := os.WriteFile(file, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, errs := alderIn(t, bare, "", "edit", "auth", "--to", "Notes"); code != 0 {
+		t.Fatalf("edit auth: %s", errs)
+	}
+	got, _ := os.ReadFile(file)
+	for _, bad := range []string{"Submit's arm", "?afterLogin", "(fill it"} {
+		if strings.Contains(string(got), bad) {
+			t.Errorf("the login still has %q:\n%s", bad, got)
+		}
+	}
+	if !strings.Contains(string(got), "goes to Notes.Notes {}.") {
+		t.Errorf("the comment does not name the page:\n%s", got)
 	}
 }
