@@ -7,11 +7,15 @@ import (
 	"alder/internal/syntax"
 )
 
-// RemovePage generates `alder remove page <Module>`: the page module's file removed. It refuses
-// a module that is not a page, and a page something else still names (a link, a Redirect, a
+// RemovePage generates `alder remove route <Module>`: the route or page module's file removed.
+// It refuses a module that is neither, and a page something else still names (a link, a Redirect, a
 // test, `login = …`): the check of the app without it lists those uses, and nothing is removed
 // until they are gone.
 func RemovePage(p *Program, module string) ([]Edit, error) {
+	if rs := p.RoutesOf(module); len(rs) > 0 {
+		edits := []Edit{{Path: rs[0].File, Delete: true}}
+		return edits, stillNamed(p, edits, "`"+module+"`", rs[0].File)
+	}
 	pg, m, err := pageModule(p, module)
 	if err != nil {
 		return nil, err

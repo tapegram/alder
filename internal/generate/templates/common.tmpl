@@ -3,7 +3,10 @@ module [[.Module]]
 
 [[range .Imports]]import [[.]]
 [[end]]
-page "[[.Path]]" [[.Params]][[.Requires]]
+route [[.Route]] = [[.Method]] "[[.Path]]" [[.Params]][[.Form]][[.Requires]]
+[[- if .Example]]
+route Bump = POST "[[.BumpPath]]" { count: Int, by: Int }[[.Requires]]
+[[- end]]
 [[- end]]
 
 [[- define "tests" -]]

@@ -1,0 +1,12 @@
+edited app/About.alder
+--- a/app/About.alder
++++ b/app/About.alder
+@@ -2,7 +2,7 @@
+ 
+ import Layout
+ 
+-route About = GET "/about" { }
++route About = GET "/about" { q: Text = "" }
+ 
+ type Model = { }
+ 

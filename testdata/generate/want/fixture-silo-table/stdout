@@ -72,4 +72,4 @@ edited migrations/schema.json
 +    }
 +  )
  }
-next: alder new page /notes --list Note
+next: alder new route /notes --list Note

@@ -40,7 +40,7 @@ func TestNewTableWritesTableFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if txt := res.RenderText(false); !strings.HasSuffix(txt, "next: alder new page /todos --list Todo\n") {
+	if txt := res.RenderText(false); !strings.HasSuffix(txt, "next: alder new route /todos --list Todo\n") {
 		t.Errorf("text:\n%s", txt)
 	}
 }
@@ -235,20 +235,20 @@ func TestNewPageAliasedTable(t *testing.T) {
 	for _, c := range []struct {
 		name string
 		dir  func(*testing.T) string
-		opts PageOptions
+		opts RouteOptions
 		file string
 		want []string
 	}{
-		{"list in a module ending in Post", twoPostsDir, PageOptions{Module: "Admin.Post", Path: "/admin/posts", List: "Post"}, "app/Admin/Post.alder",
+		{"list in a module ending in Post", twoPostsDir, RouteOptions{Module: "Admin.Post", Path: "/admin/posts", List: "Post"}, "app/Admin/Post.alder",
 			[]string{"\nimport Table.Post as TablePost\n", "List TablePost", "Db.from TablePost", "TablePost.id.desc", "Db.insert TablePost {"}},
-		{"show in a module ending in Post", twoPostsDir, PageOptions{Module: "Admin.Post", Path: "/admin/posts", Show: "Post"}, "app/Admin/Post.alder",
+		{"show in a module ending in Post", twoPostsDir, RouteOptions{Module: "Admin.Post", Path: "/admin/posts", Show: "Post"}, "app/Admin/Post.alder",
 			[]string{"\nimport Table.Post as TablePost\n", "row: TablePost", "Db.get TablePost params.id", "Db.insert TablePost {"}},
-		{"from in a module ending in Post", twoPostsDir, PageOptions{Module: "Admin.Post", Path: "/admin/posts", From: []string{"Post"}}, "app/Admin/Post.alder",
+		{"from in a module ending in Post", twoPostsDir, RouteOptions{Module: "Admin.Post", Path: "/admin/posts", From: []string{"Post"}}, "app/Admin/Post.alder",
 			[]string{"\nimport Table.Post as TablePost\n", "List TablePost", "Db.from TablePost", "Db.insert TablePost {"}},
-		{"list with a union column from another Post module", unionDir, PageOptions{Module: "Posts.Index", Path: "/posts", List: "Post"}, "app/Posts/Index.alder",
+		{"list with a union column from another Post module", unionDir, RouteOptions{Module: "Posts.Index", Path: "/posts", List: "Post"}, "app/Posts/Index.alder",
 			[]string{"\nimport Blog.Post as BlogPost\n", "\nimport Table.Post as TablePost\n", "List TablePost", "Db.from TablePost", "Db.insert TablePost {"}},
 		// only the tests' rows (the referenced author's sample) import the other Post module, after the body was written
-		{"list whose test rows import another Post module", refDir, PageOptions{Module: "Posts.Index", Path: "/posts", List: "Post"}, "app/Posts/Index.alder",
+		{"list whose test rows import another Post module", refDir, RouteOptions{Module: "Posts.Index", Path: "/posts", List: "Post"}, "app/Posts/Index.alder",
 			[]string{"\nimport Blog.Post as BlogPost\n", "\nimport Table.Post as TablePost\n", "List TablePost", "Db.from TablePost", "TablePost.id.desc", "Db.insert TablePost {", "Db.insert Author {"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -257,7 +257,7 @@ func TestNewPageAliasedTable(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			edits, err := NewPage(p, c.opts)
+			edits, err := NewRoute(p, c.opts)
 			if err != nil {
 				t.Fatal(err)
 			}

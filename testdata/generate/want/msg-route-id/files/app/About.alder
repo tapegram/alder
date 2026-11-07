@@ -1,0 +1,35 @@
+module About
+
+import Layout
+
+route About = GET  "/about"         { }
+route Clear = POST "/about/_/Clear" { }
+
+type Model = { }
+
+About.load : About.Params -> Session -> Query Model
+About.load params session = Query.succeed {}
+
+About.view : Model -> Session -> Html
+About.view model session =
+  <Layout.Page title="About">
+    <h1>About</h1>
+
+    <al-button id="clear" click={Clear}>Clear</al-button>
+  </Layout.Page>
+
+Clear.update : Clear.Params -> Session -> Task Response
+Clear.update params session = Task.succeed Response.refresh
+
+test "the page is shown" = {
+  let r <- Test.open (About {})
+  Task.succeed (
+    { answer: r.answer, heading: Test.text "h1" r.doc } == { answer: Shown, heading: Just "About" }
+  )
+}
+
+test "pressing Clear" = {
+  let _ <- Test.get (About {})
+  let r <- Test.click Clear
+  Task.succeed (r.answer == Refreshed)
+}

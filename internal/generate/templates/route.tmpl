@@ -1,0 +1,42 @@
+[[- template "header" .]]
+[[if .Example]]
+-- example: a route keeps state in its parameters (or the session, or a table), never in Model
+-- between requests: `[[.Route]].load` rebuilds Model on every request. Delete every part marked
+-- `example` when you have seen how they fit together, and the `count` parameter and the
+-- `route Bump` line above; what is left is the plain route.
+
+-- example: delete the field `count: Int`, leaving `type Model = { }`.
+type Model = { count: Int }
+
+-- example: in `[[.Route]].load`, delete `count: params.count`, leaving `Query.succeed {}`.
+[[.Route]].load : [[.Route]].Params -> Session -> Query Model
+[[.Route]].load params session = Query.succeed { count: params.count }
+
+-- example: a write route has an `update` and no `load` or `view`; delete `Bump.update` whole.
+-- It answers with a Response: redirect to the same route with the new count (`Response.refresh`
+-- would load the page again with the old parameters), or `Response.invalid` with an error.
+Bump.update : Bump.Params -> Session -> Task Response
+Bump.update params session = Task.succeed (Response.redirect ([[.Route]] { count: params.count + params.by }))
+
+-- example: in `[[.Route]].view`, delete the `<p id="count">` and `<al-button>` lines: they show
+-- the state and send the Bump route from a button.
+[[.Route]].view : Model -> Session -> Html
+[[.Route]].view model session =
+  [[.Open]]
+    <h1>[[.Title]]</h1>
+    <p id="count">Count: {Text.fromInt model.count}</p>
+    <al-button click={Bump { count: model.count, by: 1 }}>Bump</al-button>
+  [[.Close]]
+[[else]]
+type Model = { }
+
+[[.Route]].load : [[.Route]].Params -> Session -> Query Model
+[[.Route]].load params session = [[if .LoadHole]]?load[[else]]Query.succeed {}[[end]]
+
+[[.Route]].view : Model -> Session -> Html
+[[.Route]].view model session =
+  [[.Open]]
+    <h1>[[.Title]]</h1>
+  [[.Close]]
+[[end]]
+[[- template "tests" .]]

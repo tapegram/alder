@@ -134,7 +134,7 @@ func TestHelpJSON_Output(t *testing.T) {
 		t.Fatalf("args and flags must be arrays, never null:\n%s", out.String())
 	}
 	if !strings.Contains(out.String(), `"name":"--list","value":"T"`) {
-		t.Fatalf("`new page --list T` missing:\n%s", out.String())
+		t.Fatalf("`new route --list T` missing:\n%s", out.String())
 	}
 }
 

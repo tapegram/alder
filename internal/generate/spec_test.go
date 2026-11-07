@@ -7,7 +7,7 @@ import (
 )
 
 var testPage = &Spec{
-	ID:   "new page",
+	ID:   "new route",
 	Args: []Field{{Name: "module", Kind: ArgModule, Required: true}, {Name: "path", Kind: ArgRoute, Required: true}},
 	Flags: []Field{
 		{Name: "show", Kind: ArgTable}, {Name: "from", Kind: ArgTable, Greedy: true},

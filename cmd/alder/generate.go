@@ -152,6 +152,9 @@ func genReport(cmd string, g genArgs, res *generate.Result, err error, extra fun
 		for _, w := range res.Warnings {
 			fmt.Fprintf(stderr, "%s: warning: %s\n", cmd, w)
 		}
+		for _, n := range res.Notices {
+			fmt.Fprintln(stderr, n)
+		}
 	}
 	if g.json {
 		out := genJSON{Files: []generate.FileChange{}, Diagnostics: []json.RawMessage{}, Holes: []generate.Hole{}}
@@ -264,7 +267,7 @@ func genUsage(stderr io.Writer, usage string, err error) int {
 	return 2
 }
 
-const newPageUsage = "usage: alder new page [<Module>] <path> [--list T | --show T [--by <unique column>] | --from T …] [--blank] [--file [--type T]] [--example] [--param <name>:<Type> …] [--requires user] [--role R] [--dir app] [--json] [--dry-run]"
+const newRouteUsage = "usage: alder new route [<Module>] <path> [--method GET|POST|PUT|PATCH|DELETE [--form F]] [--list T | --show T [--by <unique column>] | --from T …] [--blank] [--file [--type T]] [--example] [--param <name>:<Type> …] [--requires user] [--role R] [--dir app] [--json] [--dry-run]"
 
 const newTableUsage = "usage: alder new table <Name> <field>:<Type>[=default][@attr[=arg]…] … [--no-timestamps] [--silo] [--dir app] [--json] [--dry-run]"
 
@@ -288,7 +291,7 @@ const newSiloUsage = "usage: alder new silo <key> <Table> … [--empty] [--dir a
 
 // specUsage is each generator's usage line (the text `--help` prints and an argument error shows).
 var specUsage = map[string]string{
-	"new page": newPageUsage, "new table": newTableUsage, "new form": newFormUsage, "new msg": newMsgUsage,
+	"new route": newRouteUsage, "new table": newTableUsage, "new form": newFormUsage, "new msg": newMsgUsage,
 	"new capability": newCapabilityUsage, "new admin": newAdminUsage, "new auth": newAuthUsage,
 	"new type": newTypeUsage, "new decl": newDeclUsage, "new test": newTestUsage, "new silo": newSiloUsage,
 }
@@ -313,8 +316,8 @@ func runSpecWith(s *generate.Spec, argv []string, usage string, seen func(*gener
 	if err != nil {
 		return genUsage(stderr, usage, err)
 	}
-	if s.ID == "new page" && countTrue(sets.Has("list"), sets.Has("show"), sets.Has("from")) > 1 {
-		return genUsage(stderr, usage, errors.New("alder new page: choose one of --list, --show and --from: a page generated with --list shows one table's rows, --show one row, --from several tables"))
+	if s.ID == "new route" && countTrue(sets.Has("list"), sets.Has("show"), sets.Has("from")) > 1 {
+		return genUsage(stderr, usage, errors.New("alder new route: choose one of --list, --show and --from: a route generated with --list shows one table's rows, --show one row, --from several tables"))
 	}
 	if s.ID == "theme use" && sets.One("name") == "" {
 		if cli.JSON {
@@ -396,6 +399,14 @@ func countTrue(bs ...bool) (n int) {
 
 // newGenerator is the Spec of `alder new <kind>`, or nil when kind is an app name.
 func newGenerator(kind string) *generate.Spec { return generate.SpecByID("new " + kind) }
+
+// aliasNote prints, on standard error, that the command was typed with an older name of its
+// generator (`alder new page` for `alder new route`); nothing when it was typed with its own.
+func aliasNote(stderr io.Writer, s *generate.Spec, used string) {
+	if note := generate.AliasNote(s, used); note != "" {
+		fmt.Fprintln(stderr, note)
+	}
+}
 
 // themeImportExtra is `alder theme import`'s --json fields: file (the one written, "" when
 // none), theme, unplaced and skipped, present even when nothing was imported.

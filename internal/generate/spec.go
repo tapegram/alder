@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 )
 
@@ -105,6 +106,9 @@ type App struct {
 // how to run it.
 type Spec struct {
 	ID, Summary string
+	// Aliases are older names the command answers to, with a note (AliasNote): "new page" for
+	// "new route" until the page syntax is gone (#160).
+	Aliases     []string
 	Args, Flags []Field
 	Here        func(HereCtx) *Match // nil: never "here"
 	Run         func(sets Sets, app App, dryRun bool) (*Result, error)
@@ -241,16 +245,23 @@ func ParseArgs(s *Spec, argv []string) (Sets, CLIFlags, error) {
 // Select picks the subcommand of a group (`edit`, `remove`, `regen`): the first word of argv
 // that, after group, is a Spec's ID. It returns the Spec and argv without that word.
 func Select(group string, argv []string, specs []*Spec) (*Spec, []string) {
+	s, rest, _ := SelectNamed(group, argv, specs)
+	return s, rest
+}
+
+// SelectNamed is Select that also says the ID the word named ("remove page", an alias of
+// "remove route"), for AliasNote.
+func SelectNamed(group string, argv []string, specs []*Spec) (*Spec, []string, string) {
 	for i, a := range argv {
 		if strings.HasPrefix(a, "-") {
 			continue
 		}
 		for _, s := range specs {
-			if s.ID == group+" "+a {
+			if s.ID == group+" "+a || slices.Contains(s.Aliases, group+" "+a) {
 				rest := append(append([]string{}, argv[:i]...), argv[i+1:]...)
-				return s, rest
+				return s, rest, group + " " + a
 			}
 		}
 	}
-	return nil, argv
+	return nil, argv, ""
 }

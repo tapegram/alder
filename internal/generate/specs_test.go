@@ -7,7 +7,7 @@ import (
 )
 
 func TestSpecs_IDsAndShape(t *testing.T) {
-	want := []string{"new page", "new table", "new form", "new msg", "new capability", "new admin", "new auth", "new type", "new decl", "new test", "new silo"}
+	want := []string{"new route", "new table", "new form", "new msg", "new capability", "new admin", "new auth", "new type", "new decl", "new test", "new silo"}
 	var got []string
 	for _, s := range Specs() {
 		if strings.HasPrefix(s.ID, "new ") {
@@ -53,8 +53,8 @@ func TestSpecs_FieldParseErrorIsRefusal(t *testing.T) {
 }
 
 func TestSpecs_AllIDs(t *testing.T) {
-	want := "new page,new table,new form,new msg,new capability,new admin,new auth,new type,new decl,new test,new silo," +
-		"edit table,edit page,edit decl,edit auth,edit session,remove page,remove table,regen admin,theme import,theme use"
+	want := "new route,new table,new form,new msg,new capability,new admin,new auth,new type,new decl,new test,new silo," +
+		"edit table,edit route,edit decl,edit auth,edit session,remove route,remove table,regen admin,theme import,theme use"
 	var ids []string
 	for _, s := range Specs() {
 		ids = append(ids, s.ID)
@@ -79,7 +79,7 @@ func TestSpecs_EditTableSlug(t *testing.T) {
 
 func TestSpecs_NewPageFileTypeIsQuoted(t *testing.T) {
 	dir := scaffoldApp(t, nil)
-	res, err := SpecByID("new page").Run(Sets{"module": {"Reports.Csv"}, "path": {"/reports.csv"}, "file": {"true"}, "type": {`text/csv"`}}, App{Dir: dir}, true)
+	res, err := SpecByID("new route").Run(Sets{"module": {"Reports.Csv"}, "path": {"/reports.csv"}, "file": {"true"}, "type": {`text/csv"`}}, App{Dir: dir}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,17 +97,17 @@ func TestSpecs_NewPageFileTypeIsQuoted(t *testing.T) {
 func TestNewPageDerivesModule(t *testing.T) {
 	for _, c := range []struct {
 		app, file, module, path string
-		opts                    PageOptions
+		opts                    RouteOptions
 	}{
-		{"fixture", "app/Posts/Index.alder", "Posts.Index", "/posts", PageOptions{Path: "/posts", List: "Post"}},
-		{"fixture-silo", "app/Activities/Show.alder", "Activities.Show", "/activities", PageOptions{Path: "/activities", Show: "Activity"}},
-		{"fixture", "app/Posts/New.alder", "Posts.New", "/new", PageOptions{Path: "/new", From: []string{"Post", "Tag"}}},
+		{"fixture", "app/Posts/Index.alder", "Posts.Index", "/posts", RouteOptions{Path: "/posts", List: "Post"}},
+		{"fixture-silo", "app/Activities/Show.alder", "Activities.Show", "/activities", RouteOptions{Path: "/activities", Show: "Activity"}},
+		{"fixture", "app/Posts/New.alder", "Posts.New", "/new", RouteOptions{Path: "/new", From: []string{"Post", "Tag"}}},
 	} {
 		p, err := Load("../../testdata/generate/" + c.app)
 		if err != nil {
 			t.Fatal(err)
 		}
-		edits, err := NewPage(p, c.opts)
+		edits, err := NewRoute(p, c.opts)
 		if err != nil {
 			t.Fatalf("%v: %v", c.opts, err)
 		}
@@ -117,7 +117,7 @@ func TestNewPageDerivesModule(t *testing.T) {
 				body = e.Body
 			}
 		}
-		if body == "" || !strings.Contains(body, "module "+c.module+"\n") || !strings.Contains(body, `page "`+c.path) {
+		if body == "" || !strings.Contains(body, "module "+c.module+"\n") || !strings.Contains(body, ` = GET "`+c.path) {
 			t.Errorf("%v: no %s declaring module %s and page %s in %+v", c.opts, c.file, c.module, c.path, edits)
 		}
 	}
@@ -128,18 +128,18 @@ func TestNewPageNoModuleNoTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = NewPage(p, PageOptions{Path: "/x", Blank: true})
-	want := "a page needs a module: `alder new page <Module> <path>`, or give --list/--show/--from T to name it Ts.Index/Ts.Show/Ts.New"
+	_, err = NewRoute(p, RouteOptions{Path: "/x", Blank: true})
+	want := "a route needs a module: `alder new route <Module> <path>`, or give --list/--show/--from T to name it Ts.Index/Ts.Show/Ts.New"
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("err = %v, want %q", err, want)
 	}
-	if _, err = NewPage(p, PageOptions{Path: "/x", List: "Nope"}); err == nil || !strings.Contains(err.Error(), "not a table") {
+	if _, err = NewRoute(p, RouteOptions{Path: "/x", List: "Nope"}); err == nil || !strings.Contains(err.Error(), "not a table") {
 		t.Fatalf("unknown table: %v", err)
 	}
 }
 
 func TestNewPageMissingPath(t *testing.T) {
-	spec := SpecByID("new page")
+	spec := SpecByID("new route")
 	// the one word is the path (the module is optional), so a module name is refused as a path
 	sets, _, err := ParseArgs(spec, []string{"Todos.Index"})
 	if err != nil || sets.One("path") != "Todos.Index" || sets.One("module") != "" {
@@ -149,11 +149,11 @@ func TestNewPageMissingPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hint := "`Todos.Index` is not a path: a page needs a path, `alder new page Todos.Index /todos`"
-	if _, err := NewPage(p, PageOptions{Module: sets.One("module"), Path: sets.One("path")}); err == nil || !strings.Contains(err.Error(), hint) {
+	hint := "`Todos.Index` is not a path: a route needs a path, `alder new route Todos.Index /todos`"
+	if _, err := NewRoute(p, RouteOptions{Module: sets.One("module"), Path: sets.One("path")}); err == nil || !strings.Contains(err.Error(), hint) {
 		t.Fatalf("err = %v", err)
 	}
-	if _, err := NewPage(p, PageOptions{Path: "Todos.Index", List: "Todo"}); err == nil || !strings.Contains(err.Error(), hint) {
+	if _, err := NewRoute(p, RouteOptions{Path: "Todos.Index", List: "Todo"}); err == nil || !strings.Contains(err.Error(), hint) {
 		t.Fatalf("with --list: err = %v", err)
 	}
 	if _, _, err := ParseArgs(spec, nil); !errors.Is(err, ErrArity) {

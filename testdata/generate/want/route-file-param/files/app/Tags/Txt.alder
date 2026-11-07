@@ -1,0 +1,16 @@
+module Tags.Txt
+
+route Txt = GET "/tags/{name}" { name: Text }
+
+type Model = { }
+
+Txt.load : Txt.Params -> Session -> Query Model
+Txt.load params session = ?load
+
+Txt.view : Model -> Session -> File
+Txt.view model session = File.text { contentType: "text/plain", body: ?body }
+
+test "the file is served" = {
+  let r <- Test.fetch (Txt { name: "name-1" })
+  Task.succeed (r.status == 200)
+}

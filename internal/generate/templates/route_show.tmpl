@@ -1,0 +1,39 @@
+[[- template "header" .]]
+
+type Model = { row: [[.T]] }
+
+[[.Route]].load : [[.Route]].Params -> Session -> Query Model
+[[.Route]].load params session = {
+[[- if .By]]
+  let found <- [[.Select]] |> Db.where ([[.T]].[[.By]].eq params.[[.By]]) |> Db.first
+  match found {
+    Just row -> Query.succeed { row: row },
+    Nothing -> Query.notFound,
+  }
+[[- else if .Mine]]
+  let row <- [[.Get]] [[.T]] params.id
+  Query.succeed { row: row }
+[[- else]]
+  let found <- Db.get [[.T]] params.id
+  match found {
+    Just row -> Query.succeed { row: row },
+    Nothing -> Query.notFound,
+  }
+[[- end]]
+}
+
+[[.Route]].view : Model -> Session -> Html
+[[.Route]].view model session =
+  [[.Open]]
+    <h1>[[.Title]]</h1>
+
+    <al-card>
+      <dl>
+[[- range .Cols]]
+        <dt>[[.Label]]</dt>
+        <dd>[[.Cell]]</dd>
+[[- end]]
+      </dl>
+    </al-card>
+  [[.Close]]
+[[template "tests" .]]

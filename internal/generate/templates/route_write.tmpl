@@ -1,0 +1,8 @@
+[[- template "header" .]]
+[[if .FormName]]
+form [[.FormName]] = { }
+[[end]]
+-- Press [[.Route]] from a page that has its [[if .FormName]]form[[else]]button[[end]] to test it: `Test.get` that page, then
+-- [[if .FormName]]`Test.submit [[.Route]] {}`[[else]]`Test.click ([[.Route]] { … })`[[end]], and `r.answer` is Refreshed until `update` says otherwise.
+[[.Route]].update : [[.Route]].Params -> Session -> Task Response
+[[.Route]].update params session = Task.succeed Response.refresh

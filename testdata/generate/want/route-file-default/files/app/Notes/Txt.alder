@@ -1,0 +1,16 @@
+module Notes.Txt
+
+route Txt = GET "/notes.txt" { }
+
+type Model = { }
+
+Txt.load : Txt.Params -> Session -> Query Model
+Txt.load params session = Query.succeed {}
+
+Txt.view : Model -> Session -> File
+Txt.view model session = File.text { contentType: "text/plain", body: ?body }
+
+test "the file is served" = {
+  let r <- Test.fetch (Txt {})
+  Task.succeed (r.status == 200)
+}

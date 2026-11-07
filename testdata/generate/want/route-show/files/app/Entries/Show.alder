@@ -1,0 +1,50 @@
+module Entries.Show
+
+import Layout
+import Table.Entry
+
+route Show = GET "/entries/{id}" { id: Entry.EntryId }
+
+type Model = { row: Entry }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let found <- Db.get Entry params.id
+  match found {
+    Just row -> Query.succeed { row: row },
+    Nothing -> Query.notFound,
+  }
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title="Entry">
+    <h1>Entry</h1>
+
+    <al-card>
+      <dl>
+        <dt>Id</dt>
+        <dd>{model.row.id}</dd>
+        <dt>Name</dt>
+        <dd>{model.row.name}</dd>
+        <dt>Message</dt>
+        <dd>{model.row.message}</dd>
+        <dt>Created</dt>
+        <dd>{Time.format "Jan 2, 2006" model.row.created}</dd>
+      </dl>
+    </al-card>
+  </Layout.Page>
+
+test "the page shows the row" = {
+  let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
+  let r <- Test.open (Show { id: entry1 })
+  Task.succeed (
+    { answer: r.answer, name: List.member "name-1" (Test.texts "dd" r.doc) }
+      == { answer: Shown, name: True }
+  )
+}
+
+test "a missing row is not found" = {
+  let r <- Test.open (Show { id: Entry.EntryId "missing" })
+  Task.succeed (r.answer == PageMissing)
+}

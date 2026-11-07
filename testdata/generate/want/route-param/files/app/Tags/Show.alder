@@ -1,0 +1,20 @@
+module Tags.Show
+
+import Layout
+
+route Show = GET "/tags/{name}" { name: Text }
+
+type Model = { }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = ?load
+
+Show.view : Model -> Session -> Html
+Show.view model session = <Layout.Page title="Show"><h1>Show</h1></Layout.Page>
+
+test "the page is shown" = {
+  let r <- Test.open (Show { name: "name-1" })
+  Task.succeed (
+    { answer: r.answer, heading: Test.text "h1" r.doc } == { answer: Shown, heading: Just "Show" }
+  )
+}

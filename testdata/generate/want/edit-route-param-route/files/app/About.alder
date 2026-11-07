@@ -1,0 +1,20 @@
+module About
+
+import Layout
+
+route About = GET "/about" { q: Text = "" }
+
+type Model = { }
+
+About.load : About.Params -> Session -> Query Model
+About.load params session = Query.succeed {}
+
+About.view : Model -> Session -> Html
+About.view model session = <Layout.Page title="About"><h1>About</h1></Layout.Page>
+
+test "the page is shown" = {
+  let r <- Test.open (About {})
+  Task.succeed (
+    { answer: r.answer, heading: Test.text "h1" r.doc } == { answer: Shown, heading: Just "About" }
+  )
+}

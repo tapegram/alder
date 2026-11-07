@@ -66,9 +66,9 @@ func TestLayout_EditDeclAddProp(t *testing.T) {
 func TestLayout_EditPageAddParam(t *testing.T) {
 	t.Parallel()
 	dir := genApp(t, "scaffold")
-	layoutStep(t, dir, "", "new", "page", "Search", "/search")
+	layoutStep(t, dir, "", "new", "route", "Search", "/search")
 	for _, p := range []string{"query:Text=\"\"", "pageNumber:Int=1", "sortOrder:Text=\"asc\"", "size:Int=20", "dense:Bool=False"} {
-		layoutStep(t, dir, "", "edit", "page", "Search", "add-param", p)
+		layoutStep(t, dir, "", "edit", "route", "Search", "add-param", p)
 	}
 	if s := readApp(t, dir, "app/Search.alder"); !strings.Contains(s, "dense: Bool = False") {
 		t.Fatalf("no param dense:\n%s", s)

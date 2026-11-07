@@ -1,0 +1,10 @@
+module Contact
+
+route Contact = POST "/contact" { } form Message
+
+form Message = { }
+
+-- Press Contact from a page that has its form to test it: `Test.get` that page, then
+-- `Test.submit Contact {}`, and `r.answer` is Refreshed until `update` says otherwise.
+Contact.update : Contact.Params -> Session -> Task Response
+Contact.update params session = Task.succeed Response.refresh

@@ -3,6 +3,7 @@ package generate
 import (
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"alder/internal/theme"
@@ -61,14 +62,25 @@ var specs []*Spec
 // Specs is every generator, in `help --json` order.
 func Specs() []*Spec { return specs }
 
-// SpecByID is the Spec with the given ID ("new page"), or nil.
+// SpecByID is the Spec with the given ID ("new route"), or the one that keeps id as an alias
+// ("new page"); nil when there is none.
 func SpecByID(id string) *Spec {
 	for _, s := range specs {
-		if s.ID == id {
+		if s.ID == id || slices.Contains(s.Aliases, id) {
 			return s
 		}
 	}
 	return nil
+}
+
+// AliasNote is the line a command prints when it was named by an alias of its generator
+// ("new page" for "new route"): "`alder new page` is now `alder new route`"; "" when id is the
+// generator's own name.
+func AliasNote(s *Spec, id string) string {
+	if s == nil || s.ID == id {
+		return ""
+	}
+	return "`alder " + id + "` is now `alder " + s.ID + "`"
 }
 
 func init() {
@@ -78,7 +90,7 @@ func init() {
 	specs = append(specs, regenSpecs()...)
 	specs = append(specs, themeSpecs()...)
 	for id, h := range map[string]func(HereCtx) *Match{
-		"new msg": inPage, "new form": inPage, "edit page": inPage, "remove page": inPage,
+		"new msg": inPage, "new form": inPage, "edit route": inPage, "remove route": inPage,
 		"edit table": onTable, "remove table": onTable,
 		"edit decl": onDecl,
 		"new decl":  inModule, "new test": inModule,
@@ -90,29 +102,31 @@ func init() {
 func newSpecs() []*Spec {
 	return []*Spec{
 		{
-			ID: "new page", Summary: "a page module",
+			ID: "new route", Aliases: []string{"new page"}, Summary: "a route module",
 			Args: []Field{
-				{Name: "module", Kind: ArgModule, Value: "<Module>", Default: "Archive", DefaultUnless: []string{"list", "show", "from"}, Help: "the page's module; may be left empty with --list, --show or --from, which name it", Example: "Archive"},
-				{Name: "path", Kind: ArgRoute, Required: true, Value: "<path>", Help: "the URL path the page answers, starting with / (`:name` segments are parameters)", Example: "/archive"},
+				{Name: "module", Kind: ArgModule, Value: "<Module>", Default: "Archive", DefaultUnless: []string{"list", "show", "from"}, Help: "the route's module; its route is named after the module's last word; may be left empty with --list, --show or --from, which name it", Example: "Archive"},
+				{Name: "path", Kind: ArgRoute, Required: true, Value: "<path>", Help: "the URL path the route answers, starting with / (`{name}` segments are parameters)", Example: "/archive"},
 			},
 			Flags: []Field{
 				{Name: "list", Kind: ArgTable, Value: "T", Summary: "a page listing the rows of table T", Example: "Post"},
 				{Name: "show", Kind: ArgTable, Value: "T", Summary: "a page showing one row of table T", Example: "Post"},
 				{Name: "by", Kind: ArgText, Value: "column", Summary: "with --show, the unique column in the path", Example: "slug"},
 				{Name: "from", Kind: ArgTable, Greedy: true, Value: "T…", Summary: "a card of every row of each table T; takes several tables up to the next flag (--from A B)", Example: "Post Comment"},
-				{Name: "blank", Kind: ArgBool, Summary: "an empty page with typed holes", Agent: true},
+				{Name: "method", Kind: ArgChoice, Choices: []string{"GET", "POST", "PUT", "PATCH", "DELETE"}, Value: "GET|POST|PUT|PATCH|DELETE", Summary: "the route's method: GET has load and view (the default); a write method has only update, answering Response.refresh", Example: "POST"},
+				{Name: "form", Kind: ArgText, Value: "F", Summary: "with a write method, the form the route posts (declared empty; add its fields)", Example: "Contact"},
+				{Name: "blank", Kind: ArgBool, Summary: "an empty route with typed holes", Agent: true},
 				{Name: "file", Kind: ArgBool, Summary: "a file page: view returns File (text, CSV, JSON, a zip) instead of HTML"},
 				{Name: "type", Kind: ArgText, Value: "T", Summary: "with --file, the content type (default text/plain)", Example: "text/csv"},
-				{Name: "example", Kind: ArgBool, Default: "true", DefaultUnless: []string{"blank", "file", "list", "show", "from", "param"}, Summary: "a working example — state in a page parameter, a message, an update arm and a view that uses them — to delete once read"},
-				{Name: "param", Kind: ArgText, Variadic: true, Value: "name:Type", Summary: "a page parameter (repeatable)", Example: "q:Text"},
+				{Name: "example", Kind: ArgBool, Default: "true", DefaultUnless: []string{"blank", "file", "list", "show", "from", "param", "method"}, Summary: "a working example — state in a URL parameter, a write route that changes it and a view that uses them — to delete once read"},
+				{Name: "param", Kind: ArgText, Variadic: true, Value: "name:Type", Summary: "a route parameter (repeatable)", Example: "q:Text"},
 				{Name: "requires", Kind: ArgText, Value: "user", Summary: "require a signed-in user", Example: "user"},
 				{Name: "role", Kind: ArgText, Value: "R", Summary: "require role R", Example: "Admin"},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
-				o := PageOptions{Module: s.One("module"), Path: s.One("path"), List: s.One("list"), Show: s.One("show"), From: s.All("from"),
+				o := RouteOptions{Module: s.One("module"), Path: s.One("path"), Method: s.One("method"), Form: s.One("form"), List: s.One("list"), Show: s.One("show"), From: s.All("from"),
 					Requires: s.One("requires"), Role: s.One("role"), Blank: s.Has("blank"), Example: s.Has("example"), Params: s.All("param"), By: s.One("by"),
 					File: s.Has("file"), ContentType: s.One("type")}
-				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return NewPage(p, o) })
+				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return NewRoute(p, o) })
 			},
 		},
 		{
@@ -161,7 +175,7 @@ func newSpecs() []*Spec {
 			},
 		},
 		{
-			ID: "new msg", Summary: "a msg with its arm, button and test",
+			ID: "new msg", Summary: "a msg (on a route module, a write route) with its button and test",
 			Args: []Field{
 				{Name: "page", Kind: ArgPage, Required: true, Value: "<Page module>", Help: "the page the message belongs to", Example: "Posts.Index"},
 				{Name: "name", Kind: ArgText, Required: true, Value: "<Name>", Help: "the message's name, a capitalised word", Example: "Archive"},
@@ -177,9 +191,15 @@ func newSpecs() []*Spec {
 				if err != nil {
 					return nil, err
 				}
-				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) {
+				onRoute := false
+				res, err := runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) {
+					onRoute = len(p.RoutesOf(s.One("page"))) > 0
 					return NewMsg(p, s.One("page"), s.One("name"), fields, MsgOptions{InFor: s.One("in-for"), When: s.One("when"), ID: s.One("id")})
 				})
+				if res != nil && onRoute {
+					res.Notices = append(res.Notices, "`alder new msg` is now `alder new route --method POST`: on a route module it adds a write route")
+				}
+				return res, err
 			},
 		},
 		{
@@ -313,10 +333,10 @@ func editSpecs() []*Spec {
 			},
 		},
 		{
-			ID: "edit page", Summary: "add a page parameter",
+			ID: "edit route", Aliases: []string{"edit page"}, Summary: "add a route parameter",
 			Args: []Field{
-				{Name: "page", Kind: ArgPage, Required: true, Value: "<Page module>", Help: "the page to change", Example: "Posts.Index"},
-				{Name: "op", Kind: ArgChoice, Required: true, Choices: []string{"add-param"}, Value: "add-param", Help: "what to do to the page", Example: "add-param"},
+				{Name: "page", Kind: ArgPage, Required: true, Value: "<Route module>", Help: "the route's module", Example: "Posts.Index"},
+				{Name: "op", Kind: ArgChoice, Required: true, Choices: []string{"add-param"}, Value: "add-param", Help: "what to do to the route", Example: "add-param"},
 				{Name: "field", Kind: ArgFieldList, Required: true, Value: "<name>:<Type>[=default]", Help: "the parameter as name:Type; =default keeps old links working", Example: "sort:Text=\"new\""},
 			},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
@@ -365,8 +385,8 @@ func editSpecs() []*Spec {
 func removeSpecs() []*Spec {
 	return []*Spec{
 		{
-			ID: "remove page", Summary: "remove a page module",
-			Args: []Field{{Name: "page", Kind: ArgPage, Required: true, Value: "<Page module>", Help: "the page to remove, with its module file", Example: "Posts.Index"}},
+			ID: "remove route", Aliases: []string{"remove page"}, Summary: "remove a route module",
+			Args: []Field{{Name: "page", Kind: ArgPage, Required: true, Value: "<Route module>", Help: "the route's module to remove, with its file", Example: "Posts.Index"}},
 			Run: func(s Sets, app App, dry bool) (*Result, error) {
 				return runEdits(app, dry, Options{}, nil, func(p *Program) ([]Edit, error) { return RemovePage(p, s.One("page")) })
 			},

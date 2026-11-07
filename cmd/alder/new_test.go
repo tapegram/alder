@@ -394,12 +394,16 @@ func TestNew_Bare(t *testing.T) {
 		{"", []string{"new", "table", "User", "email:Text.Email@unique", "name:Text.NonEmpty", "passwordHash:Text", "created:Time@created", "--no-timestamps"}},
 		{"", []string{"new", "table", "Note", "title:Text.NonEmpty", "body:Text", "owner:User.UserId@ref=User", "created:Time@created", "--no-timestamps"}},
 		{"", []string{"new", "auth"}},
-		{"", []string{"new", "page", "Notes.Index", "/", "--blank", "--requires", "user"}},
+		{"", nil}, // the page of the login (a page module, written by hand: `new page` writes routes)
 		{"Notes.Index {}", []string{"fill", "Auth.Login.update.Submit", "-"}},
 		{"Notes.Index {}", []string{"fill", `Auth.Login."logging in through the form"`, "-"}},
 		{"Query.succeed { }", []string{"fill", "Notes.Index.load", "-"}},
 		{`<Layout.Page title="Notes"><h1>Notes</h1></Layout.Page>`, []string{"fill", "Notes.Index.view", "-"}},
 	} {
+		if st.args == nil {
+			oldPage(t, dir, "Notes.Index", "/", " requires user")
+			continue
+		}
 		if code, out, errs := alderIn(t, dir, st.stdin, st.args...); code != 0 {
 			t.Fatalf("alder %s: exit %d\n%s%s", strings.Join(st.args, " "), code, out, errs)
 		}
