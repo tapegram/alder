@@ -15,6 +15,7 @@ import (
 	"alder/internal/buildkit"
 	"alder/internal/diag"
 	"alder/internal/generate"
+	"alder/internal/names"
 	"alder/internal/routefix"
 	"alder/internal/style"
 )
@@ -77,12 +78,7 @@ func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
 		return 2
 	}
 	if bag.HasErrors() {
-		sources := buildkit.Sources(prog)
-		for _, d := range bag.Items {
-			if d.Severity == "error" {
-				fmt.Fprint(stderr, diag.RenderTextStyled(d, sources[d.Span.File], style.For(stderr)))
-			}
-		}
+		printErrors(prog, bag, stderr)
 		fmt.Fprintln(stderr, "alder fix: `alder check` fails; fix its errors first, then run alder fix --routes again")
 		return 2
 	}
@@ -127,7 +123,13 @@ func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
 		want[key] = true
 	}
 
-	out, holes, err := routefix.Program(files, routefix.Options{Name: name})
+	// With files named, only their page modules become routes: a reference from one of them to
+	// a page that stays a page is left as written (routefix.Options.Only).
+	opts := routefix.Options{Name: name}
+	if len(want) > 0 {
+		opts.Only = want
+	}
+	out, holes, err := routefix.Program(files, opts)
 	if err != nil {
 		var nc *routefix.ErrNameCollision
 		if errors.As(err, &nc) {
@@ -137,75 +139,123 @@ func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
 		}
 		return 2
 	}
-
-	changed := 0
-	for _, f := range slices.Sorted(maps.Keys(out)) {
-		if string(out[f]) == string(files[f]) || len(want) > 0 && !want[f] {
-			continue
+	changes := map[string][]byte{} // the files this run rewrites, by key
+	for f, b := range out {
+		if string(b) != string(files[f]) && (len(want) == 0 || want[f]) {
+			changes[f] = b
 		}
-		changed++
+	}
+	paths := slices.Sorted(maps.Keys(changes))
+
+	// Files named are rewritten only when the app still checks with just them rewritten (holes
+	// aside): the rest of the app may name their pages, which are routes now (`Todos.Index {}`
+	// is `Todos.Index.Index {}`), and only a whole-app run rewrites those references.
+	if len(want) > 0 && !dry && len(changes) > 0 {
+		prog, _, bag, ioErrs := buildkit.LoadCheckedOverlay(dir, changes)
+		if reportLoadErrs("alder fix", ioErrs, stderr) {
+			return 2
+		}
+		if n := printErrors(prog, bag, stderr); n > 0 {
+			fmt.Fprintf(stderr, "alder fix: rewriting only the files named leaves the app with %s: nothing written; name the files that refer to their pages too, or run alder fix --routes on the whole app\n",
+				plural(n, "error", "errors"))
+			return 2
+		}
+	}
+
+	// A page `alder new admin` wrote has `@admin` regions around its messages; the route lines
+	// are grouped at the top, out of those regions, which `alder regen admin` then refuses.
+	// The admin's generator writes routes now, so regenerating it is the better rewrite.
+	var admin []string
+	for _, f := range paths {
+		if strings.Contains(string(files[f]), "-- @admin begin") && pageDeclRe.Match(files[f]) {
+			admin = append(admin, f)
+		}
+	}
+	if len(admin) > 0 {
+		fmt.Fprintf(stderr, "alder fix: %s (%s…) written by alder new admin: their @admin regions will not match the route lines; regenerate the admin instead (move app/Admin aside, run alder new admin, then carry over your own changes)\n",
+			plural(len(admin), "page", "pages"), admin[0])
+	}
+
+	for _, f := range paths {
 		if dry {
 			fmt.Fprintf(stdout, "would rewrite %s\n", f)
-			fmt.Fprint(stdout, generate.UnifiedDiff(f, string(files[f]), string(out[f])))
+			fmt.Fprint(stdout, generate.UnifiedDiff(f, string(files[f]), string(changes[f])))
 			continue
 		}
-		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(f)), out[f], 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(f)), changes[f], 0o644); err != nil {
 			fmt.Fprintf(stderr, "alder fix: %v\n", err)
 			return 2
 		}
 		fmt.Fprintf(stdout, "rewrote %s\n", f)
 	}
-	// A page `alder new admin` wrote has `@admin` regions around its messages; the route lines
-	// are grouped at the top, out of those regions, which `alder regen admin` then refuses.
-	// The admin's generator writes routes now, so regenerating it is the better rewrite.
-	for _, f := range slices.Sorted(maps.Keys(out)) {
-		if string(out[f]) == string(files[f]) || len(want) > 0 && !want[f] {
-			continue
-		}
-		if strings.Contains(string(files[f]), "-- @admin begin") && pageDeclRe.Match(files[f]) {
-			fmt.Fprintf(stderr, "alder fix: %s: written by alder new admin, and its @admin regions no longer match the route lines: regenerate the admin instead (move app/Admin aside, run alder new admin, then carry over your own changes)\n", f)
-		}
+	if len(changes) == 0 {
+		fmt.Fprintln(stdout, "nothing to rewrite: no page or msg left")
 	}
 	left := 0
+	seen := map[string]bool{}
 	for _, h := range holes {
-		if len(want) > 0 && !want[h.File] {
+		if _, ok := changes[h.File]; !ok {
 			continue
 		}
 		left++
+		seen[fmt.Sprintf("%s:%d", h.File, h.Line)] = true
 		fmt.Fprintf(stdout, "%s:%d: hole: %s\n", h.File, h.Line, h.Why)
 	}
-	if changed == 0 {
-		fmt.Fprintln(stdout, "nothing to rewrite: no page or msg left")
-	}
-	// What the rewrite cannot settle shows as errors of the rewritten app: a login page that
-	// `requires user` (which a page allowed and a route does not), or a lambda over a hole whose
-	// type is unknown until it is filled.
+
+	// The app as it is now: the holes an earlier run left and nobody filled (so a second run, as
+	// in CI, still fails), and the errors the rewrite cannot settle: a login page that `requires
+	// user` (which a page allowed and a route does not), or a lambda over a hole whose type is
+	// unknown until it is filled.
 	errs := 0
-	if !dry && changed > 0 {
+	if !dry {
 		prog, _, bag, ioErrs := checkedApp(dir)
 		if reportLoadErrs("alder fix", ioErrs, stderr) {
 			return 2
 		}
-		sources := buildkit.Sources(prog)
 		for _, d := range bag.Items {
-			if d.Severity == "error" {
-				errs++
-				fmt.Fprint(stderr, diag.RenderTextStyled(d, sources[d.Span.File], style.For(stderr)))
+			at := fmt.Sprintf("%s:%d", d.Span.File, d.Span.Start.Line)
+			if d.Code != "W0002" || seen[at] || len(want) > 0 && !want[d.Span.File] {
+				continue
 			}
+			seen[at] = true
+			left++
+			fmt.Fprintf(stdout, "%s: hole: %s\n", at, d.Message)
 		}
+		errs = printErrors(prog, bag, stderr)
 	}
 	if errs > 0 {
-		fmt.Fprintf(stderr, "alder fix: alder check finds %d %s after the rewrite: fix %s by hand (filling the holes may clear some)\n",
-			errs, map[bool]string{true: "error", false: "errors"}[errs == 1], map[bool]string{true: "it", false: "them"}[errs == 1])
+		fmt.Fprintf(stderr, "alder fix: alder check finds %s after the rewrite: fix them by hand (filling the holes may clear some)\n",
+			plural(errs, "error", "errors"))
+	}
+	if left > 0 {
+		fmt.Fprintf(stderr, "alder fix: %s left: fill them (render for a one-row change, refresh otherwise), then run alder check\n",
+			plural(left, "typed hole", "typed holes"))
 	}
 	if left > 0 || errs > 0 {
-		if left > 0 {
-			fmt.Fprintf(stderr, "alder fix: %d typed %s left: fill %s (render for a one-row change, refresh otherwise), then run alder check\n",
-				left, map[bool]string{true: "hole", false: "holes"}[left == 1], map[bool]string{true: "it", false: "them"}[left == 1])
-		}
 		return 1
 	}
 	return 0
+}
+
+// printErrors prints the errors of bag (not its warnings) and returns how many there were.
+func printErrors(prog *names.Program, bag *diag.Bag, w io.Writer) int {
+	sources := buildkit.Sources(prog)
+	n := 0
+	for _, d := range bag.Items {
+		if d.Severity == "error" {
+			n++
+			fmt.Fprint(w, diag.RenderTextStyled(d, sources[d.Span.File], style.For(w)))
+		}
+	}
+	return n
+}
+
+// plural is "1 hole" or "3 holes".
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }
 
 func cmpErr(errs ...error) error {

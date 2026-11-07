@@ -89,10 +89,16 @@ func TestFix_Routes(t *testing.T) {
 		t.Errorf("check's holes %v, fix reported %v\nfix:\n%s", got, holes, out)
 	}
 
-	// a second run has nothing left to rewrite
+	// a second run has nothing left to rewrite, but lists the holes still unfilled and exits 1,
+	// so a CI step that runs it keeps failing until they are filled
 	code, out, errs = runFix("--routes", "--dir", dir)
-	if code != 0 || strings.Contains(out, "rewrote") {
-		t.Errorf("second run: code %d\n%s%s", code, out, errs)
+	var again []string
+	for _, m := range holeLine.FindAllStringSubmatch(out, -1) {
+		again = append(again, m[1]+":"+m[2])
+	}
+	slices.Sort(again)
+	if code != 1 || strings.Contains(out, "rewrote") || !strings.Contains(out, "nothing to rewrite") || !slices.Equal(again, holes) {
+		t.Errorf("second run: code %d, holes %v, want %v\n%s%s", code, again, holes, out, errs)
 	}
 }
 
@@ -116,17 +122,73 @@ func TestFix_RoutesDryRun(t *testing.T) {
 	}
 }
 
-// TestFix_RoutesFiles rewrites only the files named.
+// TestFix_RoutesFiles: files named are rewritten only when the app still checks with just them
+// rewritten (holes aside). Todos/Index alone does not: App, Auth.Login and Todos.Show name its
+// page, which would be a route. A page nothing else names migrates alone; the rest of the app
+// is left as it was, and `alder check` lists only the holes.
 func TestFix_RoutesFiles(t *testing.T) {
 	t.Parallel()
 	dir := todosOnPages(t)
+	index := filepath.Join(dir, "app/Todos/Index.alder")
+	before, _ := os.ReadFile(index)
+	code, out, errs := runFix("--routes", "--dir", dir, index)
+	if code != 2 || strings.Contains(out, "rewrote") || !strings.Contains(errs, "E0002") ||
+		!strings.Contains(errs, "rewriting only the files named leaves the app with") {
+		t.Fatalf("Todos/Index alone: code %d\n%s%s", code, out, errs)
+	}
+	if after, _ := os.ReadFile(index); !bytes.Equal(before, after) {
+		t.Error("a refused run wrote the file")
+	}
+
+	about := `module About
+
+import Table.User
+
+page "/about/{n}" { n: Int } requires user
+
+type Model = { n: Int, seen: Int }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let users <- Db.from User |> Db.count
+  Query.succeed { n: params.n, seen: users }
+}
+
+msg Bump
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Bump _ -> Task.succeed (Redirect (About { n: model.n + 1 })),
+}
+
+view : Model -> Session -> Html Msg
+view model session = <p>{Text.fromInt model.n} <button click={Bump}>bump</button></p>
+`
+	if err := os.WriteFile(filepath.Join(dir, "app/About.alder"), []byte(about), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	app, _ := os.ReadFile(filepath.Join(dir, "app/App.alder"))
-	code, out, errs := runFix("--routes", "--dir", dir, filepath.Join(dir, "app/Todos/Index.alder"))
-	if code != 1 || !strings.Contains(out, "rewrote app/Todos/Index.alder") || strings.Contains(out, "rewrote app/App.alder") {
-		t.Fatalf("code %d\n%s%s", code, out, errs)
+	code, out, errs = runFix("--routes", "--dir", dir, filepath.Join(dir, "app/About.alder"))
+	if code != 1 || out == "" || !strings.HasPrefix(out, "rewrote app/About.alder\n") || strings.Contains(out, "rewrote app/App.alder") {
+		t.Fatalf("About: code %d\n%s%s", code, out, errs)
 	}
 	if again, _ := os.ReadFile(filepath.Join(dir, "app/App.alder")); !bytes.Equal(app, again) {
 		t.Error("a file not named was written")
+	}
+	var cout, cerr bytes.Buffer
+	runCheckTo([]string{dir, "--json"}, &cout, &cerr)
+	n := 0
+	for _, line := range strings.Split(strings.TrimSpace(cout.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		n++
+		if !strings.Contains(line, `"code":"W0002"`) || !strings.Contains(line, `"file":"app/About.alder"`) {
+			t.Errorf("after a file-scoped run, check lists more than its holes: %s", line)
+		}
+	}
+	if holes := strings.Count(out, ": hole: "); n == 0 || n != holes {
+		t.Errorf("check lists %d holes, fix reported %d\n%s", n, holes, out)
 	}
 }
 
@@ -196,7 +258,7 @@ view model session = <button click={Go}>Go</button>
 	if code != 1 || !strings.Contains(out, "rewrote app/Admin/Old.alder") {
 		t.Fatalf("code %d\n%s%s", code, out, errs)
 	}
-	if !strings.Contains(errs, "app/Admin/Old.alder: written by alder new admin") || !strings.Contains(errs, "alder new admin") {
+	if !strings.Contains(errs, "1 page (app/Admin/Old.alder…) written by alder new admin") || !strings.Contains(errs, "alder new admin") {
 		t.Errorf("no advice to regenerate the admin:\n%s", errs)
 	}
 }

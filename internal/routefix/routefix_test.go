@@ -274,3 +274,24 @@ func TestProgram_RepoApps(t *testing.T) {
 		t.Fatal("no apps found")
 	}
 }
+
+// TestProgram_Only: with Options.Only, only the page modules of the files named become routes.
+// A reference from one of them to a page that stays a page is left as written (`Todos.Index {}`,
+// not `Todos.Index.Index {}`), and a page outside Only is not counted as a route.
+func TestProgram_Only(t *testing.T) {
+	files := tree(t, "../../testdata/fix/todos/app")
+	var show string
+	for f := range files {
+		if strings.HasSuffix(f, "Todos/Show.alder") {
+			show = f
+		}
+	}
+	out, _, err := Program(files, Options{Only: map[string]bool{show: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(out[show])
+	if !strings.Contains(got, "route Show ") || !strings.Contains(got, "Response.redirect (Todos.Index {})") || strings.Contains(got, "Todos.Index.Index") {
+		t.Errorf("Todos/Show.alder with Only:\n%s", got)
+	}
+}

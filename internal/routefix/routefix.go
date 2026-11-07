@@ -56,6 +56,10 @@ type Options struct {
 	// module's last segment: a reference to one becomes `Todos.Show.Show` (plan call 14). Nil
 	// leaves references to other modules as they are. Program fills it.
 	Pages map[string]bool
+	// Only, when set, are the files (keys of Program's files) whose page modules become routes
+	// (`alder fix --routes file…`): a page module of another file is not counted as a route, so a
+	// reference to it is left as written. Nil: every page module.
+	Only map[string]bool
 
 	prog *program // what Program knows of the other modules; nil: only this one
 }
@@ -146,6 +150,9 @@ func Program(files map[string][]byte, opts Options) (map[string][]byte, []Hole, 
 	for _, f := range paths {
 		m := mods[f]
 		if !slices.ContainsFunc(m.Decls, func(d syntax.Decl) bool { _, ok := d.(*syntax.PageDecl); return ok }) {
+			continue
+		}
+		if opts.Only != nil && !opts.Only[f] {
 			continue
 		}
 		name := m.Name[strings.LastIndex(m.Name, ".")+1:]
