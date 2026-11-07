@@ -200,3 +200,24 @@ view model session = <button click={Go}>Go</button>
 		t.Errorf("no advice to regenerate the admin:\n%s", errs)
 	}
 }
+
+// TestFix_RoutesReportsErrorsAfter: a rewrite that leaves an error besides the holes says so and
+// exits 1. Here App's login page `requires user`, which a page could and a route cannot (E0011).
+func TestFix_RoutesReportsErrorsAfter(t *testing.T) {
+	t.Parallel()
+	dir := todosOnPages(t)
+	f := filepath.Join(dir, "app/App.alder")
+	src, _ := os.ReadFile(f)
+	src = bytes.Replace(src, []byte("login = Auth.Login\n"), []byte("login = Todos.Index\n"), 1)
+	if err := os.WriteFile(f, src, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, errs := run(t, dir); code != 0 {
+		t.Fatalf("the app on pages does not check:\n%s", errs)
+	}
+	code, out, errs := runFix("--routes", "--dir", dir)
+	if code != 1 || !strings.Contains(out, "rewrote app/App.alder") ||
+		!strings.Contains(errs, "E0011") || !strings.Contains(errs, "alder fix: alder check finds 1 error after the rewrite") {
+		t.Fatalf("code %d\nstdout:\n%s\nstderr:\n%s", code, out, errs)
+	}
+}

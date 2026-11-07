@@ -28,8 +28,9 @@ const fixUsage = "usage: alder fix --routes [--name N] [--dry-run] [--dir app] [
 // (#160; internal/routefix). With no files it rewrites the whole app under --dir (the current
 // directory by default); with files, only those (the rest of the app is still read, so references
 // resolve). It prints a line per file changed and per typed hole left, and exits 1 while holes
-// remain, 0 when none do, 2 for usage errors, a refusal (the app does not check, or a route name
-// collides) and IO errors. --dry-run prints each change as a diff and writes nothing.
+// remain or the rewritten app has errors (which it prints), 0 when none do, 2 for usage errors,
+// a refusal (the app does not check, or a route name collides) and IO errors. --dry-run prints
+// each change as a diff and writes nothing.
 func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -176,9 +177,32 @@ func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
 	if changed == 0 {
 		fmt.Fprintln(stdout, "nothing to rewrite: no page or msg left")
 	}
-	if left > 0 {
-		fmt.Fprintf(stderr, "alder fix: %d typed %s left: fill %s (render for a one-row change, refresh otherwise), then run alder check\n",
-			left, map[bool]string{true: "hole", false: "holes"}[left == 1], map[bool]string{true: "it", false: "them"}[left == 1])
+	// What the rewrite cannot settle shows as errors of the rewritten app: a login page that
+	// `requires user` (which a page allowed and a route does not), or a lambda over a hole whose
+	// type is unknown until it is filled.
+	errs := 0
+	if !dry && changed > 0 {
+		prog, _, bag, ioErrs := checkedApp(dir)
+		if reportLoadErrs("alder fix", ioErrs, stderr) {
+			return 2
+		}
+		sources := buildkit.Sources(prog)
+		for _, d := range bag.Items {
+			if d.Severity == "error" {
+				errs++
+				fmt.Fprint(stderr, diag.RenderTextStyled(d, sources[d.Span.File], style.For(stderr)))
+			}
+		}
+	}
+	if errs > 0 {
+		fmt.Fprintf(stderr, "alder fix: alder check finds %d %s after the rewrite: fix %s by hand (filling the holes may clear some)\n",
+			errs, map[bool]string{true: "error", false: "errors"}[errs == 1], map[bool]string{true: "it", false: "them"}[errs == 1])
+	}
+	if left > 0 || errs > 0 {
+		if left > 0 {
+			fmt.Fprintf(stderr, "alder fix: %d typed %s left: fill %s (render for a one-row change, refresh otherwise), then run alder check\n",
+				left, map[bool]string{true: "hole", false: "holes"}[left == 1], map[bool]string{true: "it", false: "them"}[left == 1])
+		}
 		return 1
 	}
 	return 0
