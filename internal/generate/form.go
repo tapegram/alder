@@ -239,15 +239,6 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 		tb.login(roleOf(pg))
 	}
 	page := tb.pageValue(pg)
-	setup := tb.lines
-	rowsBefore := 0
-	if into != nil {
-		rowsBefore = tb.counts[into.Module]
-	}
-	var values []string
-	for _, f := range rec.Fields {
-		values = append(values, f.Name+": "+tb.sample(f.Type, f.Name, 1))
-	}
 	submitted := o.Name
 	if attach != nil && attach.Params != nil {
 		var holes []string
@@ -256,64 +247,8 @@ func NewForm(p *Program, o FormOptions) ([]Edit, error) {
 		}
 		submitted = "(" + msg + " { " + strings.Join(holes, ", ") + " })"
 	}
-	valid := append(append([]string{}, tb.lines...), "let _ <- Test.get ("+page+")", fmt.Sprintf("let r <- Test.submit %s { %s }", submitted, strings.Join(values, ", ")))
-	tests := []TestData{}
-	switch {
-	case into != nil && rowsBefore == 0:
-		// the row as inserted: each field's value, and the defaults of the columns the form leaves out
-		var got, want []string
-		for i, f := range rec.Fields {
-			if into.Column(f.Name) != nil {
-				got = append(got, f.Name+": row."+f.Name)
-				want = append(want, values[i])
-			}
-		}
-		for _, c := range into.Columns {
-			if c.HasDefault && !c.ID && !c.Created && !c.Updated && ftypes[c.Name] == nil {
-				if c.Union != nil {
-					imports.add(c.Union.Module)
-				}
-				got = append(got, c.Name+": row."+c.Name)
-				want = append(want, c.Name+": "+c.Default)
-			}
-		}
-		valid = append(valid, "let rows <- Db.from "+recordName(into, o.Page)+" |> Db.all")
-		tests = append(tests, TestData{Name: quote("submitting " + o.Name + " adds a row"), Lines: valid,
-			Result: fmt.Sprintf("{ answer: r.answer, rows: List.map (\\row -> { %s }) rows } == { answer: %s, rows: [{ %s }] }", strings.Join(got, ", "), answer, strings.Join(want, ", "))})
-	case into != nil:
-		valid = append(valid, "let rows <- Db.from "+recordName(into, o.Page)+" |> Db.count")
-		tests = append(tests, TestData{Name: quote("submitting " + o.Name + " adds a row"), Lines: valid,
-			Result: fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", answer, rowsBefore+1)})
-	default:
-		tests = append(tests, TestData{Name: quote("submitting " + o.Name), Lines: valid, Result: "r.answer == ?expected"})
-	}
-	// an empty required field
-	for _, f := range rec.Fields {
-		if attach != nil {
-			break
-		}
-		msgText := emptyMessage(f.Type)
-		if msgText == "" {
-			continue
-		}
-		var raw []string
-		for _, g := range rec.Fields {
-			v := rawSample(g.Type)
-			if g.Name == f.Name {
-				v = ""
-			}
-			raw = append(raw, fmt.Sprintf("{ name: %s, value: %s }", quote(g.Name), quote(v)))
-		}
-		lines := append(append([]string{}, setup...), "let _ <- Test.get ("+page+")", fmt.Sprintf("let r <- Test.submitRaw %s [%s]", o.Name, strings.Join(raw, ", ")))
-		rejected := fmt.Sprintf("FormRejected [{ field: %s, message: %s }]", quote(f.Name), quote(msgText))
-		res := "r.answer == " + rejected
-		if into != nil {
-			lines = append(lines, "let rows <- Db.from "+recordName(into, o.Page)+" |> Db.count")
-			res = fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", rejected, rowsBefore)
-		}
-		tests = append(tests, TestData{Name: quote(o.Name + " refuses an empty " + f.Name), Lines: lines, Result: res})
-		break
-	}
+	tests := formTests(formTestSpec{Form: o.Name, Page: o.Page, Open: page, Submit: submitted, Raw: o.Name, Answer: answer,
+		Fields: rec.Fields, Types: ftypes, Into: into, NoEmpty: attach != nil}, tb, imports)
 	if err := addTests(e, m, tests); err != nil {
 		return nil, err
 	}
@@ -504,4 +439,92 @@ func addTests(e *srcEdit, m *Module, tests []TestData) error {
 		e.appendText("\n" + snippet("test", t))
 	}
 	return nil
+}
+
+// formTestSpec is what formTests needs to know of the form it tests.
+type formTestSpec struct {
+	Form    string        // the form's name
+	Page    string        // the module, for record names
+	Open    string        // the page value the test opens
+	Submit  string        // what `Test.submit` posts to: the form, or a route with its parameters
+	Raw     string        // the same for `Test.submitRaw`
+	Answer  string        // the answer of a valid submission
+	Fields  []types.Field // the form's fields
+	Types   map[string]types.Type
+	Into    *Table // the table the update inserts into, or nil
+	NoEmpty bool   // no test of an empty required field
+}
+
+// formTests are the tests of a form: a valid submission (its answer, and the row inserted into
+// s.Into, or the hole ?expected without a table) and an empty required field (FormRejected,
+// nothing inserted). tb has logged in and made the setup of the page s.Open.
+func formTests(s formTestSpec, tb *testBuilder, imports *importSet) []TestData {
+	setup := tb.lines
+	into, answer := s.Into, s.Answer
+	rowsBefore := 0
+	if into != nil {
+		rowsBefore = tb.counts[into.Module]
+	}
+	var values []string
+	for _, f := range s.Fields {
+		values = append(values, f.Name+": "+tb.sample(f.Type, f.Name, 1))
+	}
+	valid := append(append([]string{}, tb.lines...), "let _ <- Test.get ("+s.Open+")", fmt.Sprintf("let r <- Test.submit %s { %s }", s.Submit, strings.Join(values, ", ")))
+	tests := []TestData{}
+	switch {
+	case into != nil && rowsBefore == 0:
+		// the row as inserted: each field's value, and the defaults of the columns the form leaves out
+		var got, want []string
+		for i, f := range s.Fields {
+			if into.Column(f.Name) != nil {
+				got = append(got, f.Name+": row."+f.Name)
+				want = append(want, values[i])
+			}
+		}
+		for _, c := range into.Columns {
+			if c.HasDefault && !c.ID && !c.Created && !c.Updated && s.Types[c.Name] == nil {
+				if c.Union != nil {
+					imports.add(c.Union.Module)
+				}
+				got = append(got, c.Name+": row."+c.Name)
+				want = append(want, c.Name+": "+c.Default)
+			}
+		}
+		valid = append(valid, "let rows <- Db.from "+recordName(into, s.Page)+" |> Db.all")
+		tests = append(tests, TestData{Name: quote("submitting " + s.Form + " adds a row"), Lines: valid,
+			Result: fmt.Sprintf("{ answer: r.answer, rows: List.map (\\row -> { %s }) rows } == { answer: %s, rows: [{ %s }] }", strings.Join(got, ", "), answer, strings.Join(want, ", "))})
+	case into != nil:
+		valid = append(valid, "let rows <- Db.from "+recordName(into, s.Page)+" |> Db.count")
+		tests = append(tests, TestData{Name: quote("submitting " + s.Form + " adds a row"), Lines: valid,
+			Result: fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", answer, rowsBefore+1)})
+	default:
+		tests = append(tests, TestData{Name: quote("submitting " + s.Form), Lines: valid, Result: "r.answer == ?expected"})
+	}
+	if s.NoEmpty {
+		return tests
+	}
+	for _, f := range s.Fields { // the first required field, empty
+		msgText := emptyMessage(f.Type)
+		if msgText == "" {
+			continue
+		}
+		var raw []string
+		for _, g := range s.Fields {
+			v := rawSample(g.Type)
+			if g.Name == f.Name {
+				v = ""
+			}
+			raw = append(raw, fmt.Sprintf("{ name: %s, value: %s }", quote(g.Name), quote(v)))
+		}
+		lines := append(append([]string{}, setup...), "let _ <- Test.get ("+s.Open+")", fmt.Sprintf("let r <- Test.submitRaw %s [%s]", s.Raw, strings.Join(raw, ", ")))
+		rejected := fmt.Sprintf("FormRejected [{ field: %s, message: %s }]", quote(f.Name), quote(msgText))
+		res := "r.answer == " + rejected
+		if into != nil {
+			lines = append(lines, "let rows <- Db.from "+recordName(into, s.Page)+" |> Db.count")
+			res = fmt.Sprintf("{ answer: r.answer, rows: rows } == { answer: %s, rows: %d }", rejected, rowsBefore)
+		}
+		tests = append(tests, TestData{Name: quote(s.Form + " refuses an empty " + f.Name), Lines: lines, Result: res})
+		break
+	}
+	return tests
 }
