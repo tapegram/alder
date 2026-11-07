@@ -633,7 +633,7 @@ send the form twice. The filter the page shows is a parameter of `Submit`
 too, so the redirect can go back to the same list.
 
 ```alder part=Todos.Index
--- A message's id comes from the request: anyone can post `Toggle` with another user's id.
+-- A write's id comes from the request: anyone can post `Toggle` with another user's id.
 -- `Db.updateMine` and `Db.deleteMine` change the row only when it is the session's user's;
 -- any other id, like a missing one, is a 404 (book 06, "Rules").
 Toggle.update : Toggle.Params -> Session -> Task Response
@@ -761,7 +761,7 @@ test "Toggle flips done" = {
   )
 }
 
--- A stranger's own page lists none of my todos, but a message's id comes from the request.
+-- A stranger's own page lists none of my todos, but a write's id comes from the request.
 -- Here my page is still open in the browser when a stranger logs in on it and presses my todo's
 -- Toggle: `Db.updateMine` finds no todo of the stranger's with that id, so the answer is a 404
 -- and nothing changes.

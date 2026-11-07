@@ -211,9 +211,13 @@ another module you reach the route through its module:
 ```alder fragment
 import Todos.Index
 
-Todos.Index.Row.view todo session   -- a member: needs the import
-Todos.Index.Row { id: todo.id }     -- the route value: no import needed
+Index.Row.view todo session         -- a member: needs the import, named by its qualifier
+Todos.Index.Row { id: todo.id }     -- the route value: no import needed, the full path
 ```
+
+An imported module is named by its qualifier (chapter 3), so the member is
+`Index.Row.view`; the full path in a member's name is E0205. A route value is
+global and keeps its full path.
 
 A dotted name is read as the longest module path the program knows, then a
 route of that module, then a member. That is why a route's module and its
