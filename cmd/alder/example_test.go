@@ -40,15 +40,15 @@ func TestExample_SkeletonStandsAlone(t *testing.T) {
 
 import Layout
 
-page "/" { } requires user
+route Index = GET "/" { } requires user
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed { }
 
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <Layout.Page title="Home">
     <button click={App.Logout}>Log out</button>
   </Layout.Page>
@@ -171,7 +171,7 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Posts.Show "commenting through the form"`,
 		`ok   Auth.Login "an unknown email is rejected"`,
 		`ok   Auth.Login "logging in through the form"`,
-		// the generated admin (`alder new admin`, book 15), a few of its 103 tests
+		// the generated admin (`alder new admin`, book 15), a few of its 154 tests
 		`ok   Admin.Index "the dashboard counts the posts and lists the newest five"`,
 		`ok   Admin.Index "a Reader gets no page, even one made Admin since logging in"`,
 		`ok   Admin.Index "a demoted Admin is refused at once"`,
@@ -183,7 +183,7 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Admin.Users.Index "filtering by role lists the rows with that value"`,
 		`ok   Admin.Users.Edit "an Admin cannot change their own role"`,
 		`ok   Admin.Users.Edit "an Admin demotes another Admin"`,
-		"183 passed, 0 failed\n",
+		"196 passed, 0 failed\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("alder test examples/blog lacks %q:\n%s", want, out)
@@ -193,17 +193,17 @@ func TestExample_Blog(t *testing.T) {
 }
 
 // The mutation scores examples/todos/README.md and examples/blog/README.md record (`alder test
-// --mutate`, rounded down to two decimals: the blog's is 317 / 323 = 0.981) and their numbers of
+// --mutate`, rounded down to two decimals: the blog's is 196 / 202 = 0.970) and their numbers of
 // mutants: a change to an example that lets a mutant survive which its tests used to kill, or
 // that changes the mutants made of it, fails TestExample_*, when the mutation quality gates run
 // (nightly in CI, or with ALDER_MUTATION_GATES=1: see gates_test.go).
 const (
-	todosMutationScore     = 0.99
-	blogMutationScore      = 0.98
-	workspaceMutationScore = 0.97
-	todosMutants           = 208
-	blogMutants            = 323
-	workspaceMutants       = 522
+	todosMutationScore     = 0.98
+	blogMutationScore      = 0.97
+	workspaceMutationScore = 0.96
+	todosMutants           = 124
+	blogMutants            = 202
+	workspaceMutants       = 300
 )
 
 // mutationAtLeast runs `alder test --mutate --json dir` and fails t when the score is below min
@@ -292,15 +292,15 @@ func TestExample_BlogSkeletonStandsAlone(t *testing.T) {
 
 import Layout
 
-page "/" { }
+route Index = GET "/" { }
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed { }
 
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <Layout.Page title="Home">
     <button click={App.Logout}>Log out</button>
   </Layout.Page>
@@ -413,7 +413,7 @@ func TestExample_Workspace(t *testing.T) {
 		`ok   Admin.Projects.Index "an Admin who is no member of the org lists its projects, and only its"`,
 		`ok   Admin.Projects.Index "a Member gets no page, even one made Admin since logging in"`,
 		`ok   Admin.Projects.Bulk "a bulk action stays inside one org"`,
-		"332 passed, 0 failed\n",
+		"333 passed, 0 failed\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("alder test examples/workspace lacks %q:\n%s", want, out)

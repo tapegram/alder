@@ -614,13 +614,13 @@ func TestRepl_InWithModuleIsUsage(t *testing.T) {
 func TestRepl_InNestedModule(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
-	code, out := runRepl(t, ":type update\n", todosDir(t), "--in", "Todos.Index")
+	code, out := runRepl(t, ":type Toggle.update\n", todosDir(t), "--in", "Todos.Index")
 	if code != 0 {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	wantIn(t, out, "alder repl: todos, in Todos.Index", "update : ")
-	_, out = runRepl(t, ":in Todos.Index\n:type update\n:in todo\n", todosDir(t))
-	wantIn(t, out, "in Todos.Index\n", "update : ", ":in wants an app module name")
+	wantIn(t, out, "alder repl: todos, in Todos.Index", "Toggle.update : ")
+	_, out = runRepl(t, ":in Todos.Index\n:type Toggle.update\n:in todo\n", todosDir(t))
+	wantIn(t, out, "in Todos.Index\n", "Toggle.update : ", ":in wants an app module name")
 }
 
 // A broken declaration of the module itself is the app's error, named in app/Table/Todo.alder, under

@@ -22,47 +22,44 @@ fake Password {
   }
 }
 
-page "/login" { }
+route Login  = GET  "/login"          { }
+route Submit = POST "/login/_/Submit" { } form Credentials
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed {}
+Login.load : Login.Params -> Session -> Query Model
+Login.load params session = Query.succeed {}
 
 form Credentials = { email: Text.Email, password: Text.Secret }
 
-msg Submit form Credentials
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Submit p -> {
-    let found <- Password.verify { email: p.form.email, password: p.form.password }
-    match found {
-      -- The session keeps the user, their role as the row has it now, and the org they joined
-      -- first: the Session.put of `org` passes `via Membership`'s check, since the row is there.
-      -- A user in no org has none, and the projects page sends them to choose (or make) one.
-      Just id -> {
-        let me <- Db.get User id
-        let first <-
-          Db.from Membership
-            |> Db.where (Membership.user.eq id)
-            |> Db.orderBy Membership.created.asc
-            |> Db.first
-        let role = Maybe.withDefault Member (Maybe.map (\u -> u.role) me)
-        let _ <- Session.put (\s -> { s |
-          user: Just id,
-          org: Maybe.map (\m -> m.org) first,
-          role: role
-        })
-        Task.succeed (Redirect (Projects.Index {}))
-      },
-      Nothing -> Task.succeed (Reject "Email or password is incorrect."),
-    }
-  },
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update p session = {
+  let found <- Password.verify { email: p.form.email, password: p.form.password }
+  match found {
+    -- The session keeps the user, their role as the row has it now, and the org they joined
+    -- first: the Session.put of `org` passes `via Membership`'s check, since the row is there.
+    -- A user in no org has none, and the projects page sends them to choose (or make) one.
+    Just id -> {
+      let me <- Db.get User id
+      let first <-
+        Db.from Membership
+          |> Db.where (Membership.user.eq id)
+          |> Db.orderBy Membership.created.asc
+          |> Db.first
+      let role = Maybe.withDefault Member (Maybe.map (\u -> u.role) me)
+      let _ <- Session.put (\s -> { s |
+        user: Just id,
+        org: Maybe.map (\m -> m.org) first,
+        role: role
+      })
+      Task.succeed (Response.redirect (Projects.Index.Index {}))
+    },
+    Nothing -> Task.succeed (Response.invalid "Email or password is incorrect."),
+  }
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Login.view : Model -> Session -> Html
+Login.view model session =
   <Layout.Page title="Log in">
     <h1>Log in</h1>
     <al-card>
@@ -77,8 +74,8 @@ view model session =
 
 test "an unknown email is rejected" = {
   let _ <- Test.fake Password
-  let _ <- Test.get (Auth.Login {})
-  let r <- Test.submit Credentials {
+  let _ <- Test.get (Login {})
+  let r <- Test.submit Submit {
     email: Text.Email "nobody@example.com",
     password: Text.Secret "secret",
   }
@@ -109,8 +106,8 @@ test "logging in opens the org the user joined first, with their role" = {
   let _ <- Db.insert Membership { user: bob, org: acme }
   let _ <- Db.insert Membership { user: ann, org: globex }
   let _ <- Db.insert Membership { user: ann, org: acme }
-  let _ <- Test.get (Auth.Login {})
-  let r <- Test.submit Credentials {
+  let _ <- Test.get (Login {})
+  let r <- Test.submit Submit {
     email: Text.Email "ann@example.com",
     password: Text.Secret "secret",
   }
@@ -121,7 +118,7 @@ test "logging in opens the org the user joined first, with their role" = {
       org: r.session.org,
       role: r.session.role,
     } == {
-      answer: Redirected (Projects.Index {}),
+      answer: Redirected (Projects.Index.Index {}),
       user: Just ann,
       org: Just globex,
       role: Admin,
@@ -136,8 +133,8 @@ test "a user in no org logs in without one" = {
     name: Text.NonEmpty "Bob",
     passwordHash: "",
   }
-  let _ <- Test.get (Auth.Login {})
-  let r <- Test.submit Credentials {
+  let _ <- Test.get (Login {})
+  let r <- Test.submit Submit {
     email: Text.Email "bob@example.com",
     password: Text.Secret "secret",
   }

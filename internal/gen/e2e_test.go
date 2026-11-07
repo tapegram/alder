@@ -20,7 +20,7 @@ import (
 // pages), App messages, Datastar redirects as navigation events; and
 // TestE2E_RequiresUnderDatastar.
 func TestE2E_Todos(t *testing.T) {
-	runE2E(t, "../../examples/todos", "testdata/e2e_todos_test.go.txt", "TestE2E_Todos", "TestE2E_RequiresUnderDatastar")
+	runE2E(t, "../../testdata/fix/todos", "testdata/e2e_todos_test.go.txt", "TestE2E_Todos", "TestE2E_RequiresUnderDatastar")
 }
 
 // TestE2E_RejectKeepsWrites runs gen_vet/m3c-reject (an update that inserts a row, stores the

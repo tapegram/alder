@@ -85,16 +85,16 @@ func TestBuildEmit_Todos(t *testing.T) {
 		t.Fatal(err)
 	}
 	src2 := string(b)
-	if !strings.Contains(src2, "func Todos__Index__view(") {
+	if !strings.Contains(src2, "func Todos__Index__Index__view(") {
 		t.Errorf("Todos__Index_alder.go lacks the view:\n%s", src2)
 	}
-	for _, want := range []string{"func Todos__Index__load(", "func Todos__Index__update("} {
+	for _, want := range []string{"func Todos__Index__Index__load(", "func Todos__Index__Submit__update("} {
 		if !strings.Contains(src2, want) {
 			t.Errorf("Todos__Index_alder.go lacks %s", want)
 		}
 	}
-	if b, err := os.ReadFile(filepath.Join(out, "App_alder.go")); err != nil || !strings.Contains(string(b), "func App__update(") {
-		t.Errorf("App_alder.go lacks App__update (%v)", err)
+	if b, err := os.ReadFile(filepath.Join(out, "App_alder.go")); err != nil || !strings.Contains(string(b), "func App__Logout__update(") {
+		t.Errorf("App_alder.go lacks App__Logout__update (%v)", err)
 	}
 	if b, err := os.ReadFile(filepath.Join(out, "app__alder.go")); err != nil || !strings.Contains(string(b), "var Tables = []db.TableDesc{table__Table__User__User.Desc(), table__Table__Todo__Todo.Desc()}") {
 		t.Errorf("app__alder.go: %v\n%s", err, b)

@@ -8,16 +8,14 @@ import Table.User
 -- "Rules"). A visitor, and anyone who logs out, is a Reader.
 session { user: Maybe User.UserId, role: User.Role = Reader }
 
-login = Auth.Login
+login = Auth.Login.Login
 
-msg Logout
+route Logout = POST "/_/Logout" { }
 
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  Logout p -> {
-    let _ <- Session.put (\s -> { s | user: Nothing, role: Reader })
-    Task.succeed (Redirect (Auth.Login {}))
-  },
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing, role: Reader })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
 
 error : Error -> Html Never

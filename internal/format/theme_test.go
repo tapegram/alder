@@ -24,7 +24,7 @@ func themeFields(t *testing.T, src []byte) []*syntax.DeployField {
 }
 
 func TestTheme_BlogByteForByte(t *testing.T) {
-	src, err := os.ReadFile("../../examples/blog/app/App.alder")
+	src, err := os.ReadFile("../../testdata/fix/blog/app/App.alder")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,16 +7,14 @@ import Table.User
 -- `requires user, role Admin` read it from here (book 06, "Rules"). Logging out makes it Member.
 session { user: Maybe User.UserId, role: User.Role = Member }
 
-login = Auth.Login
+login = Auth.Login.Login
 
-msg Logout
+route Logout = POST "/_/Logout" { }
 
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  Logout p -> {
-    let _ <- Session.put (\s -> { s | user: Nothing, role: Member })
-    Task.succeed (Redirect (Auth.Login {}))
-  },
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing, role: Member })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
 }
 
 error : Error -> Html Never
@@ -29,13 +27,14 @@ error err =
 notFound : Html Never
 notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 
--- Logging out from a page that `requires user` ends at the login page either way: a Rerender of
--- that page redirects there too. Only a test of `update` itself tells Redirect from Rerender.
+-- Logging out from a page that `requires user` ends at the login page either way: a refresh of
+-- that page redirects there too. Only a test of `Logout.update` itself tells a redirect from a
+-- refresh.
 test "Logout clears the user and goes to log in" = {
-  let r <- Test.run (update Logout { user: Just (User.UserId "me"), role: Admin })
+  let r <- Test.run (Logout.update {} { user: Just (User.UserId "me"), role: Admin })
   Task.succeed (
     { value: r.value, trace: r.trace }
-      == { value: Ok (Redirect (Auth.Login {})), trace: ["Session.put"] }
+      == { value: Ok (Response.redirect (Auth.Login.Login {})), trace: ["Session.put"] }
   )
 }
 
@@ -48,10 +47,11 @@ test "Logout makes the role Member" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.get (Todos.Index.Index {})
   let out <- Test.click Logout
   Task.succeed (
-    { out: out.answer, role: out.session.role } == { out: Redirected (Auth.Login {}), role: Member }
+    { out: out.answer, role: out.session.role }
+      == { out: Redirected (Auth.Login.Login {}), role: Member }
   )
 }
 

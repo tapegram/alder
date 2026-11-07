@@ -5,18 +5,20 @@ import Table.Post
 import Table.User
 
 -- Only an Author is let in: `role Author` is checked against the session before `load` runs,
--- and a Reader who is logged in gets the same 404 as a page that does not exist. Every message
--- of the page is checked the same way, so `update` needs no check of its own. The session's role
--- is the one read at login, and lasts until logout (or the session's 30 days), so `load` also
--- re-reads the user's row (User.isAuthor): an author made a Reader gets the 404 at once.
-page "/write" { } requires user, role Author
+-- and a Reader who is logged in gets the same 404 as a page that does not exist. The write route
+-- Create is checked the same way. The session's role is the one read at login, and lasts until
+-- logout (or the session's 30 days), so `load` also re-reads the user's row (User.isAuthor), and
+-- Create, which runs no `load`, begins with User.authorOnly: an author made a Reader gets the 404
+-- at once.
+route Write  = GET  "/write"          { }              requires user, role Author
+route Create = POST "/write/_/Create" { } form NewPost requires user, role Author
 
 type Model = { posts: List Post }
 
 -- load lists the signed-in author's own posts: `Db.mine Post` is the posts whose `author` (the
 -- table's `@owner`) is the session's user.
-load : Params -> Session -> Query Model
-load params session = {
+Write.load : Write.Params -> Session -> Query Model
+Write.load params session = {
   let author <- User.isAuthor session.user
   if author then {
     let posts <-
@@ -34,28 +36,25 @@ form NewPost = {
   body: Text,
 }
 
-msg Create form NewPost
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Create p -> {
-    let taken <- Post.bySlug p.form.slug
-    match taken {
-      Just _ -> Task.succeed (Reject "Another post has that slug."),
-      Nothing -> {
-        let id <- Db.insertMine Post {
-          slug: p.form.slug,
-          title: p.form.title,
-          body: p.form.body,
-        }
-        Task.succeed (Redirect (Write.Edit { id: id }))
-      },
-    }
-  },
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
+  let _ <- User.authorOnly session.user
+  let taken <- Post.bySlug p.form.slug
+  match taken {
+    Just _ -> Task.succeed (Response.invalid "Another post has that slug."),
+    Nothing -> {
+      let id <- Db.insertMine Post {
+        slug: p.form.slug,
+        title: p.form.title,
+        body: p.form.body,
+      }
+      Task.succeed (Response.redirect (Write.Edit.Edit { id: id }))
+    },
+  }
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Write.view : Model -> Session -> Html
+Write.view model session =
   <Layout.Page title="Your posts">
     <h1>Your posts</h1>
 
@@ -70,7 +69,7 @@ view model session =
         <tbody>
           {for post in model.posts ->
             <tr>
-              <td><a href={Write.Edit { id: post.id }}>{post.title}</a></td>
+              <td><a href={Write.Edit.Edit { id: post.id }}>{post.title}</a></td>
               <td>
                 {if post.published then
                   <al-badge>Published</al-badge>
@@ -126,21 +125,21 @@ test "creating a post redirects to its edit page" = {
     role: Author,
   }
   let _ <- Test.login { user: Just author, role: Author }
-  let model <- load {} { user: author, role: Author }
+  let model <- Write.load {} { user: author, role: Author }
   let r <-
-    Test.run (update (Create {
+    Test.run (Create.update {
       form: {
         slug: Post.Slug "hello",
         title: Text.NonEmpty "Hello",
         body: "Hi.",
       },
-    }) model { user: author, role: Author })
+    } { user: author, role: Author })
   let created <- Post.bySlug (Post.Slug "hello")
   match created {
     Just post ->
       Task.succeed (
         { value: r.value, published: post.published }
-          == { value: Ok (Redirect (Write.Edit { id: post.id })), published: False }
+          == { value: Ok (Response.redirect (Write.Edit.Edit { id: post.id })), published: False }
       ),
     Nothing -> Task.fail "no post has the slug hello",
   }
@@ -160,19 +159,19 @@ test "a taken slug is refused" = {
     author: author,
   }
   let _ <- Test.login { user: Just author, role: Author }
-  let model <- load {} { user: author, role: Author }
+  let model <- Write.load {} { user: author, role: Author }
   let r <-
-    Test.run (update (Create {
+    Test.run (Create.update {
       form: {
         slug: Post.Slug "hello",
         title: Text.NonEmpty "Again",
         body: "",
       },
-    }) model { user: author, role: Author })
+    } { user: author, role: Author })
   let posts <- Db.from Post |> Db.count
   Task.succeed (
     { value: r.value, posts: posts }
-      == { value: Ok (Reject "Another post has that slug."), posts: 1 }
+      == { value: Ok (Response.invalid "Another post has that slug."), posts: 1 }
   )
 }
 
@@ -189,7 +188,7 @@ test "the write page needs an Author" = {
   let asReader <- Test.open (Write {})
   Task.succeed (
     { visitor: visitor.answer, reader: asReader.answer }
-      == { visitor: Redirected (Auth.Login {}), reader: PageMissing }
+      == { visitor: Redirected (Auth.Login.Login {}), reader: PageMissing }
   )
 }
 
@@ -238,7 +237,7 @@ test "an Author logs out from the write page" = {
       user: out.session.user,
     } == {
       heading: Just "Your posts",
-      out: Redirected (Auth.Login {}),
+      out: Redirected (Auth.Login.Login {}),
       user: Nothing,
     }
   )
@@ -276,7 +275,7 @@ test "the write page lists the author's own posts, newest first" = {
     author: author,
   }
   let _ <- Test.login { user: Just author, role: Author }
-  let model <- load {} { user: author, role: Author }
+  let model <- Write.load {} { user: author, role: Author }
   Task.succeed (
     List.map (\p -> p.title) model.posts == [Text.NonEmpty "Second", Text.NonEmpty "First"]
   )

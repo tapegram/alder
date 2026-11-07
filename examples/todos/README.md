@@ -36,12 +36,12 @@ deploy production`; `alder ci init` writes the GitHub workflow that does it on e
 
 ## Mutation score
 
-`alder test --mutate examples/todos` (book 10, "Mutation testing"): 208 mutants, 116 tests, 206
-killed, 2 survived (score 0.99). `TestExample_TodosMutation` fails if the score drops below
-0.99 or the number of mutants is not 208.
+`alder test --mutate examples/todos` (book 10, "Mutation testing"): 124 mutants, 126 tests, 122
+killed, 2 survived (score 0.98). `TestExample_TodosMutation` fails if the score drops below
+0.98 or the number of mutants is not 124.
 
-- The app's own code: 36 mutants, all killed by its 22 tests (score 1.00).
-- The generated admin (`app/Admin/`, "Replaying the admin" below): 172 mutants, 170 killed by
+- The app's own code: 30 mutants, all killed by its 23 tests (score 1.00).
+- The generated admin (`app/Admin/`, "Replaying the admin" below): 94 mutants, 92 killed by
   its generated tests, kept as `alder new admin` wrote them. The two survivors are equivalent:
   `ownersTotal > 200` flipped to `>= 200` in the `where` of the New page's owner list, where a
   search of "" matches every row anyway, and `Todo.owner.in ids` dropped from the user bulk
@@ -65,7 +65,10 @@ ownership tests among the eleven: `Todos.Index "a stranger cannot see my todo"` 
 `Db.mine` and `Todos.Show`'s `Db.getMine`), `Todos.Index "Toggle by another user is not found"`
 and `Todos.Index "Delete by another user is not found"` (a stranger presses my todo's button on
 a page still open in the browser). `Db.insertMine` has no `scope dropped` mutant: the owner
-comes from the session either way.
+comes from the session either way. On routes (#160) no `load` runs before a write, so the
+`scope dropped` of `Todos.Show`'s Save and Delete (`Db.updateMine` and `Db.deleteMine` of the
+id in their path) are no longer equivalent: `Todos.Show "saving or deleting another user's todo
+is not found"` kills them.
 
 The nine tests that closed the gaps, each named for what it kills:
 
@@ -84,11 +87,9 @@ The nine tests that closed the gaps, each named for what it kills:
   field dropped, and the redirect after it.
 - `Todos.Show "deleting from the todo's page"`: that page's delete, and its redirect.
 
-No mutant survives. The run also refuses 3 mutants as provably equivalent (the `scope dropped`
-of `Todos.Show`'s `Db.updateMine` and `Db.deleteMine` of `model.todo.id`, which its `load` read
-with `Db.getMine`, and `User.role`'s default, which no row of the app's code leaves out) and
-skips 25 that do not apply (5 in the app's own code, 20 in the admin); neither count is part of
-the score.
+No mutant of the app's own code survives. The run also refuses 1 mutant as provably equivalent
+(`User.role`'s default, which no row of the app's code leaves out) and skips 27 that do not
+apply; neither count is part of the score.
 
 ## Replaying the admin
 

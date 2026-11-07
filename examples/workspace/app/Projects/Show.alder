@@ -9,12 +9,14 @@ import Table.User
 
 -- One project of the org and its to-dos. `Db.getScoped Project` answers 404 for an id that is
 -- not in the org's database (another org's project included).
-page "/projects/{id}" { id: Project.ProjectId } requires user, org
+route Show   = GET  "/projects/{id}"       { id: Project.ProjectId }              requires user, org
+route Add    = POST "/projects/{id}/_/Add" { id: Project.ProjectId } form NewTodo requires user, org
+route Toggle = POST "/projects/_/Toggle"   { id: Todo.TodoId }                    requires user, org
 
 type Model = { project: Project, todos: List Todo }
 
-load : Params -> Session -> Query Model
-load params session = {
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
   let member <- Membership.isMember session.user session.org
   if member then {
     let project <- Db.getScoped Project params.id
@@ -30,24 +32,25 @@ load params session = {
 
 form NewTodo = { title: Text.NonEmpty }
 
-msg Add form NewTodo
-
-msg Toggle { id: Todo.TodoId }
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Add p -> {
-    let _ <- Db.insertScoped Todo { title: p.form.title, project: model.project.id }
-    Task.succeed Rerender
-  },
-  Toggle p -> {
-    let _ <- Db.updateScoped Todo p.id (\t -> { t | done: not t.done })
-    Task.succeed Rerender
-  },
+-- No `load` runs before a write route: each re-reads the membership, and Add the project, which
+-- is a 404 when it is not the org's.
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let project <- Db.getScoped Project p.id
+  let _ <- Db.insertScoped Todo { title: p.form.title, project: project.id }
+  Task.succeed Response.refresh
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let _ <- Db.updateScoped Todo p.id (\t -> { t | done: not t.done })
+  Task.succeed Response.refresh
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session =
   <Layout.Page title={model.project.name}>
     <h1>{model.project.name}</h1>
     <ul id="todos">
@@ -60,13 +63,13 @@ view model session =
         </li>}
     </ul>
     <al-card>
-      <form submit={Add}>
+      <form submit={Add { id: model.project.id }}>
         <al-alert variant="destructive"><Errors form /></al-alert>
         <al-input field="title" label="To do" />
         <al-button type="submit">Add</al-button>
       </form>
     </al-card>
-    <a href={Projects.Index {}}>All projects</a>
+    <a href={Projects.Index.Index {}}>All projects</a>
   </Layout.Page>
 
 test "the project's to-dos, oldest first, and adding one" = {
@@ -106,8 +109,8 @@ test "the project's to-dos, oldest first, and adding one" = {
     org: s.acme,
   }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
-  let page <- Test.get (Projects.Show { id: s.rocket })
-  let r <- Test.submit NewTodo { title: Text.NonEmpty "Launch" }
+  let page <- Test.get (Show { id: s.rocket })
+  let r <- Test.submit (Add { id: s.rocket }) { title: Text.NonEmpty "Launch" }
   Task.succeed (
     {
       name: Test.text "h1" page.doc,
@@ -152,7 +155,7 @@ test "Done marks a to-do done, and Reopen opens it again" = {
     org: s.acme,
   }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
-  let _ <- Test.get (Projects.Show { id: s.rocket })
+  let _ <- Test.get (Show { id: s.rocket })
   let done <- Test.click (Toggle { id: fuel })
   let open <- Test.click (Toggle { id: fuel })
   Task.succeed (
@@ -190,7 +193,7 @@ test "another org's project is not found" = {
     widget: widget,
   }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
-  let r <- Test.open (Projects.Show { id: s.widget })
+  let r <- Test.open (Show { id: s.widget })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -225,7 +228,7 @@ test "a member removed from the org loses access at once" = {
       |> Db.where (Membership.user.eq s.ann)
       |> Db.all
   let _ <- Task.all (List.map (\m -> Db.delete Membership m.id) rows)
-  let r <- Test.open (Projects.Show { id: s.rocket })
+  let r <- Test.open (Show { id: s.rocket })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -290,6 +293,6 @@ test "a visitor is sent to log in" = {
     rocket: rocket,
     widget: widget,
   }
-  let r <- Test.open (Projects.Show { id: s.rocket })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  let r <- Test.open (Show { id: s.rocket })
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }

@@ -633,7 +633,7 @@ func TestGoName(t *testing.T) {
 // The IR goldens and the todos example exercise every match kind, partial application, holes,
 // pages and (stubbed) HTML: their emitted Go must vet.
 func TestGen_VetIRGoldens(t *testing.T) {
-	for _, dir := range []string{"ir_patterns", "ir_page", "../../examples/todos"} {
+	for _, dir := range []string{"ir_patterns", "ir_page", "../../testdata/fix/todos"} {
 		if !strings.Contains(dir, "/") {
 			dir = "../../testdata/golden/" + dir
 		}
@@ -1923,7 +1923,7 @@ func TestServeMigrates(t *testing.T) {
 // built as effect trees, run with eff.Run against an in-memory SQLite store created from the
 // generated table descriptors, with a stub for the Auth.Login.Password capability.
 func TestGen_RunTodos(t *testing.T) {
-	dir := emitApp(t, "../../examples/todos")
+	dir := emitApp(t, "../../testdata/fix/todos")
 	if err := os.WriteFile(filepath.Join(dir, "zz_run_test.go"), []byte(runTodosTest+runTodosShowTest), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -2977,7 +2977,7 @@ func TestShow(t *testing.T) {
 	}
 }
 `)
-	todos := emit(t, "../../examples/todos")
+	todos := emit(t, "../../testdata/fix/todos")
 	contains(t, todos[appFile],
 		`rt.RegisterUnion(reflect.TypeOf(tag__Todos__Index__Msg(0)), []string{"Submit", "Toggle", "Delete"})`,
 		`rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{`)

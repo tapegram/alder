@@ -37,18 +37,18 @@ deploy production`; `alder ci init` writes the GitHub workflow that does it on e
 
 ## Mutation score
 
-`alder test --mutate examples/blog` (book 10, "Mutation testing"): 323 mutants, 183 tests, 317
-killed, 6 survived (score 0.98). `TestExample_Blog` fails if the score drops below 0.98, the
-exact 0.981 rounded down, or the number of mutants is not 323.
+`alder test --mutate examples/blog` (book 10, "Mutation testing"): 202 mutants, 196 tests, 196
+killed, 6 survived (score 0.97). `TestExample_Blog` fails if the score drops below 0.97, the
+exact 0.970 rounded down, or the number of mutants is not 202.
 
-- The generated admin (`app/Admin/`, "Replaying the admin" below): 260 mutants, 257 killed
+- The generated admin (`app/Admin/`, "Replaying the admin" below): 147 mutants, 144 killed
   by its generated tests, kept as `alder new admin` wrote them. The three survivors are equivalent:
   `postsTotal > 200` and `authorsTotal > 200` flipped to `>= 200` in the `where` of the Comment
   and Post New pages' lists (a search of "" matches every row), and `Post.author.in ids` dropped
   from the user bulk page's load (`refused` is only asked of the chosen rows). The Edit pages'
   lists have no such survivor: the row's own value is read by itself and comes first, the search
   leaves it out, and the generated test of exactly 200 rows tells `>` from `>=`.
-- The rest of the blog: 63 mutants, 60 killed, 3 survived, as before the admin (below).
+- The rest of the blog: 55 mutants, 52 killed, 3 survived, as before the admin (below).
 
 The history of the rest:
 
@@ -66,7 +66,9 @@ Author, the cookie still Reader: only the role check turns them away); the re-re
 demoted author cannot open the write page"` and `Write.Edit "a demoted author is turned away at
 once"`; the two `scope dropped` (`Db.mine Post`, `Db.getMine Post`)
 by `Write "the write page lists the author's own posts, newest first"` and `Write.Edit "another
-author's post is not found"`; the dropped `role` of the login's and the logout's `Session.put` by
+author's post is not found"`, which since routes (#160) also kills the `scope dropped` of
+`Write.Edit`'s write routes (no `load` runs before them, so their `Db.updateMine` and
+`Db.deleteMine` are the check); the dropped `role` of the login's and the logout's `Session.put` by
 `Auth.Login "logging in through the form"` and `Posts.Index "logging out from the front page
 goes to log in"`.
 
@@ -93,20 +95,18 @@ The ten tests that closed the gaps:
 The three survivors are legitimate: no test can kill them, because each mutant behaves exactly
 like the original program.
 
-- `Posts.Index load:30:17 operator flipped params.page < 1 → params.page <= 1`: at the one
+- `Posts.Index Index.load:33:17 operator flipped params.page < 1 → params.page <= 1`: at the one
   value that tells the two apart, page 1, both branches give 1.
-- `Posts.Index load:30:48 operator flipped params.page > lastPage → params.page >= lastPage`: at
+- `Posts.Index Index.load:33:48 operator flipped params.page > lastPage → params.page >= lastPage`: at
   `lastPage`, both branches give `lastPage`. (The same line's two `condition negated` mutants
   are killed.)
-- `Posts.Index load:39 limit dropped Db.limit (perPage + 1) → no limit`: `load` keeps only
+- `Posts.Index Index.load:42 limit dropped Db.limit (perPage + 1) → no limit`: `load` keeps only
   `List.take perPage` of what it reads, and `hasMore` only asks whether there are more than
   `perPage`. Without the limit the query reads every matching post, which is slower, but the
   page is the same.
 
-The run also refuses 5 mutants it can prove equivalent (`User.role`'s default, which no row
-leaves out, and the `scope dropped` of `Write.Edit`'s four scoped writes of `model.post.id`,
-which its `load` read with `Db.getMine`) and skips 3 that do not apply; neither count is part
-of the score.
+The run also refuses 1 mutant it can prove equivalent (`User.role`'s default, which no row
+leaves out) and skips 41 that do not apply; neither count is part of the score.
 
 ## Replaying the admin
 

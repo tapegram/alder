@@ -13,11 +13,11 @@ Page props =
   <Layout.Page title={props.title ++ " · Admin"}>
     <nav aria-label="Admin">
       <al-stack direction="row" gap="sm">
-        <a href={Admin.Index {}}>Dashboard</a>
+        <a href={Admin.Index.Index {}}>Dashboard</a>
         -- @admin begin nav
-        <a href={Admin.Comments.Index {}}>Comments</a>
-        <a href={Admin.Posts.Index {}}>Posts</a>
-        <a href={Admin.Users.Index {}}>Users</a>
+        <a href={Admin.Comments.Index.Index {}}>Comments</a>
+        <a href={Admin.Posts.Index.Index {}}>Posts</a>
+        <a href={Admin.Users.Index.Index {}}>Users</a>
         -- @admin end
       </al-stack>
     </nav>
@@ -25,13 +25,20 @@ Page props =
   </Layout.Page>
 
 -- @admin begin access
--- isAdmin is whether the signed-in user may use the admin, which every page's load asks (it runs
--- before every message too). The session's role is the one read at login, and lasts until
--- logout or the cookie's 30 days (chapter 6, "Rules"): the user table holds the role, so it is
--- read again, and a user demoted or deleted since gets a 404 at once.
+-- isAdmin is whether the signed-in user may use the admin, which every route's load and update
+-- asks (adminOnly). The session's role is the one read at login, and lasts until logout or the
+-- cookie's 30 days (chapter 6, "Rules"): the user table holds the role, so it is read again,
+-- and a user demoted or deleted since gets a 404 at once.
 isAdmin : User.UserId -> Query Bool
 isAdmin id = {
   let me <- Db.get User id
   Query.succeed (Maybe.map (\u -> u.role) me == Just Admin)
 }
 -- @admin end
+
+-- adminOnly stops a route with a 404 unless isAdmin: every route's load and update begins with it.
+adminOnly : User.UserId -> Query Unit
+adminOnly id = {
+  let admin <- isAdmin id
+  if admin then Query.succeed () else Query.notFound
+}

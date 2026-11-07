@@ -86,11 +86,11 @@ func TestIRGolden(t *testing.T) {
 	}
 }
 
-// todosWithoutAdmin copies examples/todos without its generated admin (app/Admin/) and build/
+// todosWithoutAdmin copies examples/todos as it was before routes (testdata/fix) without its generated admin (app/Admin/) and build/
 // into a temporary directory and returns it.
 func todosWithoutAdmin(t *testing.T) string {
 	dir := t.TempDir()
-	src := "../../examples/todos"
+	src := "../../testdata/fix/todos"
 	err := filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -152,7 +152,7 @@ func TestIR_Todos(t *testing.T) {
 func TestIR_NoSkipped(t *testing.T) {
 	dirs, _ := filepath.Glob("../../testdata/golden/ir_*")
 	vet, _ := filepath.Glob("../../testdata/golden/gen_vet/*")
-	dirs = append(append(dirs, vet...), "../../examples/todos")
+	dirs = append(append(dirs, vet...), "../../testdata/fix/todos")
 	for _, dir := range dirs {
 		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 			continue
@@ -178,7 +178,7 @@ func TestIR_NoSkipped(t *testing.T) {
 // none survives.
 func TestIR_NoBrands(t *testing.T) {
 	dirs, _ := filepath.Glob("../../testdata/golden/ir_*")
-	dirs = append(dirs, "../../examples/todos")
+	dirs = append(dirs, "../../testdata/fix/todos")
 	for _, dir := range dirs {
 		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 			continue
@@ -547,7 +547,7 @@ func walkTestFakes(e Expr, out *[]*TestFake) {
 // (the todos example's scoped operations and plain writes, the blog's conditions), and the insert
 // row's omitted default is the table field's own Default node.
 func TestPositions(t *testing.T) {
-	p := lowerDir(t, "../../examples/todos")
+	p := lowerDir(t, "../../testdata/fix/todos")
 	module := func(p *Program, name string) *Module {
 		for _, m := range p.Modules {
 			if m.Name == name {
@@ -681,7 +681,7 @@ func TestPositions(t *testing.T) {
 	}
 
 	// the blog's front page: its `where` steps and conditions, its `if`s and operators
-	blog := lowerDir(t, "../../examples/blog")
+	blog := lowerDir(t, "../../testdata/fix/blog")
 	got = map[string][]Pos{}
 	visit(value(module(blog, "Posts.Index"), "load").Body)
 	want = map[string][]Pos{

@@ -77,7 +77,7 @@ func TestTest_Todos(t *testing.T) {
 		`ok   Admin.Todos.Index "a demoted Admin is refused at once"`,
 		`ok   Admin.Todos.Index "filtering by done lists the rows with that value"`,
 		`ok   Admin.Users.Delete "an Admin cannot delete their own account"`,
-		"125 passed, 0 failed\n",
+		"126 passed, 0 failed\n",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
@@ -93,7 +93,7 @@ func TestTest_Failing(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	for _, want := range []string{"FAIL Table.Todo \"wrong\"\n  left:  0\n  right: 1\n", "125 passed, 1 failed\n"} {
+	for _, want := range []string{"FAIL Table.Todo \"wrong\"\n  left:  0\n  right: 1\n", "126 passed, 1 failed\n"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
 		}
@@ -110,7 +110,7 @@ func TestTest_Property(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit %d, want 1\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
-	for _, want := range []string{"FAIL Table.Todo \"rev\"  (failed on run ", "  seed: ", "125 passed, 1 failed\n"} {
+	for _, want := range []string{"FAIL Table.Todo \"rev\"  (failed on run ", "  seed: ", "126 passed, 1 failed\n"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
 		}
@@ -201,7 +201,7 @@ func TestTest_JSON(t *testing.T) {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
-	if len(lines) != 125 {
+	if len(lines) != 126 {
 		t.Fatalf("want one line per test, got %d:\n%s", len(lines), stdout)
 	}
 	for _, l := range lines {
@@ -225,7 +225,7 @@ func TestTest_JSON(t *testing.T) {
 	if toggle < 0 || !strings.Contains(lines[toggle], `"trace":["Db.insert User","Db.insert Todo","Test.login","Test.run","Db.updateMine Todo","Db.get Todo"]`) {
 		t.Errorf("the effect test's line lacks its trace (line %d):\n%s", toggle, stdout)
 	}
-	if stderr != "125 passed, 0 failed\n" {
+	if stderr != "126 passed, 0 failed\n" {
 		t.Errorf("stderr %q, want the summary", stderr)
 	}
 }
@@ -1306,8 +1306,8 @@ func TestTest_MutateCrashAndHang(t *testing.T) {
 	}
 }
 
-// TestTest_StepURLAndStatus (#160, plan call 15): every step's result of an old page's test
-// carries the URL the browser holds after it and the code of its last response. Test.refresh
+// TestTest_StepURLAndStatus (#160, plan call 15): every step's result of a test (here in
+// examples/todos, migrated from a page by alder fix --routes) carries the URL the browser holds after it and the code of its last response. Test.refresh
 // (Task 4.3) loads the held page again and passes when its body is the one held (Refreshed, the
 // URL kept); before any page it fails the step.
 func TestTest_StepURLAndStatus(t *testing.T) {
@@ -1318,9 +1318,9 @@ test "a step's url and status" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
-  let page <- Test.get (Todos.Index { filter: Active })
+  let page <- Test.get (Index { filter: Active })
   let r <- Test.click (Toggle { id: id })
-  let added <- Test.submit NewTodo { title: Text.NonEmpty "Bread", due: Nothing }
+  let added <- Test.submit (Submit { filter: Active }) { title: Text.NonEmpty "Bread", due: Nothing }
   Task.succeed ({ getUrl: page.url, getStatus: page.status, clickUrl: r.url, clickStatus: r.status, addedUrl: added.url, addedStatus: added.status }
     == { getUrl: "/?filter=Active", getStatus: 200, clickUrl: "/?filter=Active", clickStatus: 200, addedUrl: "/?filter=Active", addedStatus: 200 })
 }
@@ -1329,7 +1329,7 @@ test "a refresh after a toggle shows the same page" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: Text.NonEmpty "Me", passwordHash: "" }
   let id <- Db.insert Todo { title: Text.NonEmpty "Milk", due: Nothing, owner: me }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index { filter: All })
+  let _ <- Test.get (Index { filter: All })
   let _ <- Test.click (Toggle { id: id })
   let r <- Test.refresh
   Task.succeed ({ answer: r.answer, url: r.url, status: r.status } == { answer: Refreshed, url: "/", status: 200 })

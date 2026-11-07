@@ -17,7 +17,7 @@ const appFile = "app/App.alder"
 func blogCopy(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	if err := copyApp("../../examples/blog", dir, nil); err != nil {
+	if err := copyApp("../../testdata/fix/blog", dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	return dir

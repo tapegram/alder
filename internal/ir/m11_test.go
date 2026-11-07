@@ -28,7 +28,7 @@ import (
 func TestIR_M11Unchanged(t *testing.T) {
 	for _, c := range []struct{ name, dir string }{
 		{"todos", ""}, // TestIR_Todos's copy, without the generated admin
-		{"blog", "../../examples/blog"},
+		{"blog", "../../testdata/fix/blog"},
 		{"rules-ok", "../../testdata/corpus/rules-ok"},
 	} {
 		t.Run(c.name, func(t *testing.T) {

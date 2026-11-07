@@ -65,16 +65,16 @@ The tables (Activity, Membership, Org, Project, Todo and User) live under `app/T
 
 ## Mutation score
 
-`alder test --mutate examples/workspace` (book 10, "Mutation testing"): 522 mutants, 307 tests,
-511 killed, 11 survived (score 0.979). `TestExample_Workspace` fails if the score drops below
-0.97, the exact 0.979 rounded down, or the number of mutants is not 522.
+`alder test --mutate examples/workspace` (book 10, "Mutation testing"): 300 mutants, 333 tests,
+289 killed, 11 survived (score 0.963). `TestExample_Workspace` fails if the score drops below
+0.96, the exact 0.963 rounded down, or the number of mutants is not 300.
 
-- The app's own code (34 tests): every mutant killed, `membership dropped` (the `via` check
+- The app's own code (35 tests): every mutant killed, `membership dropped` (the `via` check
   removed) by `Orgs.Index "a non-member's switch is refused"`, and `scope dropped` of
   `Db.scoped Activity` by `Members.Index "the members, by name, and the activity of this org
   only"`. The `scope dropped` of the siloed tables' scoped operations is not made: the org's
   database holds that org's rows only, so the mutant is equivalent, and the run says so.
-- The generated admin (273 tests, `app/Admin/`, kept as `alder new admin` wrote them): the 11
+- The generated admin (298 tests, `app/Admin/`, kept as `alder new admin` wrote them): the 11
   survivors. Five are `> 200` flipped to `>= 200` in the New pages' searches (`orgsTotal`,
   `usersTotal`, `projectsTotal`): a search of "" matches every row, as in the blog. Six are in
   Membership's list, whose columns are all references (and its `created`): no column has a sample

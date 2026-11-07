@@ -9,15 +9,17 @@ import Table.Post
 import Table.User
 -- @admin end
 
-page "/admin" { } requires user, role Admin
+-- @admin begin routes
+route Index = GET "/admin" { } requires user, role Admin
+-- @admin end
 
 -- A card of the dashboard: a table's count and its newest rows, each linking to its page.
 type Card = {
   key: Text,
   title: Text,
-  href: Page,
+  href: Route,
   count: Int,
-  rows: List { label: Text, href: Page },
+  rows: List { label: Text, href: Route },
 }
 
 type Model = { cards: List Card }
@@ -26,67 +28,67 @@ type Model = { cards: List Card }
 recent : Int
 recent = 5
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin cards
-    let comments <-
-      Db.from Comment
-        |> Db.orderBy Comment.created.desc
-        |> Db.limit recent
-        |> Db.all
-    let commentCount <- Db.from Comment |> Db.count
-    let posts <-
-      Db.from Post
-        |> Db.orderBy Post.created.desc
-        |> Db.limit recent
-        |> Db.all
-    let postCount <- Db.from Post |> Db.count
-    let users <-
-      Db.from User
-        |> Db.orderBy User.created.desc
-        |> Db.limit recent
-        |> Db.all
-    let userCount <- Db.from User |> Db.count
-    Query.succeed {
-      cards: [
-        {
-          key: "comments",
-          title: "Comments",
-          href: Admin.Comments.Index {},
-          count: commentCount,
-          rows: List.map (\row -> {
-            label: row.author,
-            href: Admin.Comments.Show { id: row.id },
-          }) comments,
-        },
-        {
-          key: "posts",
-          title: "Posts",
-          href: Admin.Posts.Index {},
-          count: postCount,
-          rows: List.map (\row -> { label: row.slug, href: Admin.Posts.Show { id: row.id } }) posts,
-        },
-        {
-          key: "users",
-          title: "Users",
-          href: Admin.Users.Index {},
-          count: userCount,
-          rows: List.map (\row -> {
-            label: row.email,
-            href: Admin.Users.Show { id: row.id },
-          }) users,
-        },
-      ],
-    }
-    -- @admin end
-  } else
-    Query.notFound
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin cards
+  let comments <-
+    Db.from Comment
+      |> Db.orderBy Comment.created.desc
+      |> Db.limit recent
+      |> Db.all
+  let commentCount <- Db.from Comment |> Db.count
+  let posts <-
+    Db.from Post
+      |> Db.orderBy Post.created.desc
+      |> Db.limit recent
+      |> Db.all
+  let postCount <- Db.from Post |> Db.count
+  let users <-
+    Db.from User
+      |> Db.orderBy User.created.desc
+      |> Db.limit recent
+      |> Db.all
+  let userCount <- Db.from User |> Db.count
+  Query.succeed {
+    cards: [
+      {
+        key: "comments",
+        title: "Comments",
+        href: Admin.Comments.Index.Index {},
+        count: commentCount,
+        rows: List.map (\row -> {
+          label: row.author,
+          href: Admin.Comments.Show.Show { id: row.id },
+        }) comments,
+      },
+      {
+        key: "posts",
+        title: "Posts",
+        href: Admin.Posts.Index.Index {},
+        count: postCount,
+        rows: List.map (\row -> {
+          label: row.slug,
+          href: Admin.Posts.Show.Show { id: row.id },
+        }) posts,
+      },
+      {
+        key: "users",
+        title: "Users",
+        href: Admin.Users.Index.Index {},
+        count: userCount,
+        rows: List.map (\row -> {
+          label: row.email,
+          href: Admin.Users.Show.Show { id: row.id },
+        }) users,
+      },
+    ],
+  }
+  -- @admin end
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <Layout.Page title="Dashboard">
     <h1>Admin</h1>
 
@@ -126,7 +128,7 @@ test "the dashboard counts the comments and lists the newest five" = {
         body: Comment.Body ("body-" ++ Text.fromInt n),
       }) (List.range 1 6)
     )
-  let page <- Test.get (Admin.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (
     { count: Test.text "#comments al-badge" page.doc, rows: Test.texts "#comments li" page.doc }
       == { count: Just "6", rows: ["author-6", "author-5", "author-4", "author-3", "author-2"] }
@@ -150,7 +152,7 @@ test "the dashboard counts the posts and lists the newest five" = {
         author: me,
       }) (List.range 1 6)
     )
-  let page <- Test.get (Admin.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (
     { count: Test.text "#posts al-badge" page.doc, rows: Test.texts "#posts li" page.doc }
       == { count: Just "6", rows: ["slug-6", "slug-5", "slug-4", "slug-3", "slug-2"] }
@@ -173,7 +175,7 @@ test "the dashboard counts the users and lists the newest five" = {
         passwordHash: "passwordhash-" ++ Text.fromInt n,
       }) (List.range 2 7)
     )
-  let page <- Test.get (Admin.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (
     { count: Test.text "#users al-badge" page.doc, rows: Test.texts "#users li" page.doc }
       == {
@@ -190,8 +192,8 @@ test "the dashboard counts the users and lists the newest five" = {
 }
 
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Admin.Index {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  let r <- Test.open (Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Reader gets no page, even one made Admin since logging in" = {
@@ -202,7 +204,7 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
-  let r <- Test.open (Admin.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -214,7 +216,7 @@ test "a demoted Admin is refused at once" = {
     role: Reader,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end
