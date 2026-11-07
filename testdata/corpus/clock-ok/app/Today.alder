@@ -1,27 +1,46 @@
 module Today
 
-page "/today" { }
+route Today = GET "/today" { }
 
-type Model = { first: Int, second: Int, today: Date }
+type Model = {
+  first: Int,
+  second: Int,
+  today: Date,
+}
 
 -- Two readings of the clock and today's date.
-load : Params -> Session -> Query Model
-load params session = {
+Today.load : Today.Params -> Session -> Query Model
+Today.load params session = {
   let first <- Time.now
   let second <- Time.now
   let today <- Date.today
-  Query.succeed { first: Time.toMillis first, second: Time.toMillis second, today: today }
+  Query.succeed {
+    first: Time.toMillis first,
+    second: Time.toMillis second,
+    today: today,
+  }
 }
 
-view : Model -> Session -> File
-view model session =
-  File.text { contentType: "text/plain", body: Text.fromInt model.first ++ " " ++ Text.fromInt model.second ++ " " ++ Date.toText model.today }
+Today.view : Model -> Session -> File
+Today.view model session = File.text {
+  contentType: "text/plain",
+  body: Text.fromInt model.first
+    ++ " "
+    ++ Text.fromInt model.second
+    ++ " "
+    ++ Date.toText model.today,
+}
 
 -- 2026-03-04T05:06:07Z
 march : Time
 march = Time.fromMillis 1772600767000
 
-body : { status: Int, contentType: Text, body: Bytes, headers: List { name: Text, value: Text } } -> Text
+body : {
+  status: Int,
+  contentType: Text,
+  body: Bytes,
+  headers: List { name: Text, value: Text },
+} -> Text
 body r = Maybe.withDefault "" (Bytes.toText r.body)
 
 test "a set clock stands still" = {
@@ -35,7 +54,10 @@ test "advancing a day moves today" = {
   let before <- Test.fetch (Today {})
   let _ <- Test.advance (24 * 60 * 60 * 1000)
   let after <- Test.fetch (Today {})
-  Task.succeed (body before == "1772600767000 1772600767000 2026-03-04" && body after == "1772687167000 1772687167000 2026-03-05")
+  Task.succeed (
+    body before == "1772600767000 1772600767000 2026-03-04"
+      && body after == "1772687167000 1772687167000 2026-03-05"
+  )
 }
 
 test "a second set moves the clock back" = {
@@ -51,8 +73,17 @@ test "an advance on a ticking clock keeps the tick" = {
   let r <- Test.fetch (Today {})
   let _ <- Test.advance 60000
   let s <- Test.fetch (Today {})
-  let ms = \t -> Text.split " " (body t) |> List.head |> Maybe.andThen Text.toInt |> Maybe.withDefault 0
-  let second = \t -> Text.split " " (body t) |> List.drop 1 |> List.head |> Maybe.andThen Text.toInt |> Maybe.withDefault 0
+  let ms = \t ->
+    Text.split " " (body t)
+      |> List.head
+      |> Maybe.andThen Text.toInt
+      |> Maybe.withDefault 0
+  let second = \t ->
+    Text.split " " (body t)
+      |> List.drop 1
+      |> List.head
+      |> Maybe.andThen Text.toInt
+      |> Maybe.withDefault 0
   Task.succeed (second r - ms r == 1000 && second s - ms s == 1000 && ms s - ms r >= 61000)
 }
 
@@ -68,5 +99,7 @@ test "the set and the advances are on the trace" = {
   let _ <- Test.advance (0 - 5)
   let _ <- Test.advance 6000
   let trace <- Test.trace
-  Task.succeed (trace == ["Test.setClock 2026-03-04T05:06:07Z", "Test.advance 0ms", "Test.advance 6000ms"])
+  Task.succeed (
+    trace == ["Test.setClock 2026-03-04T05:06:07Z", "Test.advance 0ms", "Test.advance 6000ms"]
+  )
 }

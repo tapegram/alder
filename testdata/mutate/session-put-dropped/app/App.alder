@@ -4,15 +4,13 @@ import User
 
 session { user: Maybe User.UserId }
 
-msg Logout
+route Logout = POST "/_/Logout" { }
 
 -- A mutant: logging out no longer clears the user.
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  Logout p -> {
-    let _ <- Session.put (\s -> { s | user: Nothing })
-    Task.succeed (Redirect (Home {}))
-  },
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing })
+  Task.succeed (Response.redirect (Home.Home {}))
 }
 
 error : Error -> Html Never

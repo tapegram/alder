@@ -84,7 +84,7 @@ func (s *siloClient) do(method, path string, sess siloSession, form url.Values) 
 // add adds project name in org's silo as user me.
 func (s *siloClient) add(org, name string) {
 	s.t.Helper()
-	if code, body := s.do("POST", "/_m/Projects.Index/Add", siloSession{"me", org}, url.Values{"name": {name}}); code != http.StatusSeeOther {
+	if code, body := s.do("POST", "/projects/_/Add", siloSession{"me", org}, url.Values{"name": {name}}); code != http.StatusSeeOther {
 		s.t.Fatalf("add %s in %s: %d\n%s", name, org, code, body)
 	}
 }

@@ -1,0 +1,40 @@
+module Notes.Edit
+
+route Edit    = GET  "/notes/{id}/edit"           { id: Int }
+route Save    = POST "/notes/{id}/edit/_/Save"    { id: Int } form EditNote
+route Archive = POST "/notes/{id}/edit/_/Archive" { id: Int, why: Text }
+route Ping    = POST "/notes/{id}/edit/_/Ping"    { id: Int }
+
+type Model = { id: Int }
+
+Edit.load : Edit.Params -> Session -> Query Model
+Edit.load params session = Query.succeed { id: params.id }
+
+form EditNote = { title: Text }
+
+-- this route does not run Edit.load first: repeat here any access check it makes (#160)
+Save.update : Save.Params -> Session -> Task Response
+Save.update p session =
+  if p.form.title == "" then
+    Task.succeed (Response.invalid "A note needs a title")
+  else
+    Task.succeed (Response.redirect (Edit { id: 1 }) |> Response.success "Saved")
+
+-- this route does not run Edit.load first: repeat here any access check it makes (#160)
+Archive.update : Archive.Params -> Session -> Task Response
+Archive.update p session = Task.succeed (Response.refresh |> Response.toast ("Archived: " ++ p.why))
+
+-- this route does not run Edit.load first: repeat here any access check it makes (#160)
+Ping.update : Ping.Params -> Session -> Task Response
+Ping.update p session = Task.succeed (Response.refresh |> Response.warning "Pong")
+
+Edit.view : Model -> Session -> Html
+Edit.view model session =
+  <main>
+    <form submit={Save { id: ?id }}>
+      <Errors form />
+      <button>Save</button>
+    </form>
+    <button click={Archive { why: "old", id: ?id }}>Archive</button>
+    <button click={Ping { id: ?id }}>Ping</button>
+  </main>

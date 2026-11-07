@@ -43,7 +43,6 @@ func (Caps) Registry() map[string]any {
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {
 	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
-	rt.RegisterUnion(reflect.TypeOf(tag__Wood__Msg(0)), []string{"Bump"})
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that
@@ -155,7 +154,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/",
-		DevMap:      "{\"pages\":[{\"module\":\"Wood\",\"path\":\"/r/{cfg}/wood/Results\",\"params\":[\"cfg: Text\",\"electionId: Text as \\\"ElectionId\\\"\",\"contestId: Maybe Int as \\\"ContestId\\\"\"],\"msgs\":[\"Bump\"]}],\"tables\":[],\"caps\":[],\"session\":[\"visits: Int\"]}",
+		DevMap:      "{\"pages\":[],\"tables\":[],\"caps\":[],\"session\":[\"visits: Int\"]}",
 	}
 }
 

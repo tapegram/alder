@@ -23,7 +23,7 @@ func TestRoutes_Table(t *testing.T) {
 	if len(lines) < 3 || strings.Fields(lines[0])[0] != "METHOD" {
 		t.Fatalf("no header:\n%s", out)
 	}
-	for _, w := range []string{"GET     /posts/{slug}", "Posts.Show.page", "app/Posts/Show.alder:9", "POST    /_m/Posts.Show/AddComment", "Posts.Show.AddComment", "app/Posts/Show.alder:46"} {
+	for _, w := range []string{"GET     /posts/{slug}", "Posts.Show.Show", "app/Posts/Show.alder:9", "POST    /posts/{slug}/_/AddComment", "Posts.Show.AddComment", "app/Posts/Show.alder:12"} {
 		if !strings.Contains(out, w) {
 			t.Errorf("table lacks %q:\n%s", w, out)
 		}
@@ -48,7 +48,7 @@ func TestRoutes_JSON(t *testing.T) {
 		if r.Kind == "page" && r.Path == "/posts/{slug}" && r.Module == "Posts.Show" && r.File == "app/Posts/Show.alder" && r.Line == 9 && r.Col == 1 {
 			page = true
 		}
-		if r.Kind == "msg" && r.Module == "Posts.Show" && r.Name == "AddComment" && r.File == "app/Posts/Show.alder" && r.Line == 46 {
+		if r.Kind == "msg" && r.Module == "Posts.Show" && r.Name == "AddComment" && r.File == "app/Posts/Show.alder" && r.Line == 12 {
 			msg = true
 		}
 	}

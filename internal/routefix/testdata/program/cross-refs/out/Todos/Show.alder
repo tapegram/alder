@@ -1,0 +1,28 @@
+module Todos.Show
+
+import Layout
+
+route Show   = GET  "/todos/{id}"          { id: Text } requires user
+route Delete = POST "/todos/{id}/_/Delete" { id: Text } requires user
+
+type Model = { id: Text }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = Query.succeed { id: params.id }
+
+-- this route does not run Show.load first: repeat here any access check it makes (#160)
+Delete.update : Delete.Params -> Session -> Task Response
+Delete.update params session = Task.succeed (Response.redirect (Todos.Index.Index {}))
+
+Show.view : Model -> Session -> Html
+Show.view model session =
+  <Layout.Page title={model.id}><button click={Delete { id: ?id }}>Delete</button></Layout.Page>
+
+-- `Session` outside the page's own declarations was the page's session: now the route's.
+mine : Model -> Show.Session -> Bool
+mine model session = session.user == Just model.id
+
+test "a todo is mine" = {
+  let s : Show.Session = { user: Just "1", org: Nothing }
+  Task.succeed (mine { id: "1" } s)
+}

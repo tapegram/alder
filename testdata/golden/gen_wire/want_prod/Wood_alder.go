@@ -6,6 +6,7 @@ import (
 	"alder/rt"
 	"alder/rt/eff"
 	"alder/rt/html"
+	"alder/rt/std"
 )
 
 type Wood__Model struct {
@@ -14,40 +15,29 @@ type Wood__Model struct {
 	Contest  rt.Maybe[int64]
 }
 
-type Wood__Params struct {
+type Wood__Wood__Params struct {
 	Cfg        string
 	ElectionId string
 	ContestId  rt.Maybe[int64]
 }
 
-type Wood__Msg struct {
-	Tag tag__Wood__Msg
+type Wood__Bump__Params struct {
+	Cfg        string
+	ElectionId string
 }
 
-type tag__Wood__Msg uint8
-
-const (
-	is__Wood__Msg__Bump tag__Wood__Msg = 0
-)
-
-var Wood__Msg__Bump__ = Wood__Msg{Tag: is__Wood__Msg__Bump}
-
-func Wood__load(params Wood__Params, session App__Session) eff.Query[Wood__Model] {
+func Wood__Wood__load(params Wood__Wood__Params, session App__Session) eff.Query[Wood__Model] {
 	return eff.Q(eff.Pure(Wood__Model{Cfg: params.Cfg, Election: params.ElectionId, Contest: params.ContestId}))
 }
 
-func Wood__update(msg Wood__Msg, model Wood__Model, session App__Session) eff.Task[rt.Nav] {
-	switch msg.Tag {
-	case is__Wood__Msg__Bump:
-		return eff.Pure(rt.Redirect(rt.Page{Path: rt.Concat("/r/", rt.PathSegment(model.Cfg), "/wood/Results"), Query: []rt.KV{rt.QueryKV("ElectionId", model.Election, ""), rt.QueryKV("ContestId", "9", "")}}))
-	}
-	panic("unreachable")
+func Wood__Bump__update(p Wood__Bump__Params, session App__Session) eff.Task[rt.Response] {
+	return eff.Pure(std.ResponseRedirect(rt.Route{Name: "Wood.Wood", Method: "GET", Path: rt.Concat("/r/", rt.PathSegment(p.Cfg), "/wood/Results"), Query: []rt.KV{rt.QueryKV("ElectionId", p.ElectionId, ""), rt.QueryKV("ContestId", "9", "")}}))
 }
 
-func Wood__view(model Wood__Model, session App__Session) html.Node {
+func Wood__Wood__view(model Wood__Model, session App__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("p", []html.Attr{html.A("id", "election")}, html.Text(model.Election)),
-		html.El("a", []html.Attr{html.A("id", "next"), html.A("href", rt.PageURL(rt.Page{Path: rt.Concat("/r/", rt.PathSegment(model.Cfg), "/wood/Results"), Query: []rt.KV{rt.QueryKV("ElectionId", "18", ""), rt.QueryKV("ContestId", "5", "")}}))}, html.Text("next")),
-		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Wood", Msg: "Bump"})}, html.Text("bump")),
+		html.El("a", []html.Attr{html.A("id", "next"), html.A("href", rt.PageURL(rt.Route{Name: "Wood.Wood", Method: "GET", Path: rt.Concat("/r/", rt.PathSegment(model.Cfg), "/wood/Results"), Query: []rt.KV{rt.QueryKV("ElectionId", "18", ""), rt.QueryKV("ContestId", "5", "")}}))}, html.Text("next")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Wood.Bump", Method: "POST", Path: rt.Concat("/r/", rt.PathSegment(model.Cfg), "/wood/Results/_/Bump"), Query: []rt.KV{rt.QueryKV("ElectionId", model.Election, "")}})}, html.Text("bump")),
 	))
 }

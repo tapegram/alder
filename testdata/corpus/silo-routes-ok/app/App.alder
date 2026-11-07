@@ -1,13 +1,17 @@
 module App
 
-import User
 import Org
+import User
 
 -- Routes with silos (#160): `choose org` names a GET route, Project lives in one database per
 -- org, and the admin routes read the org from their parameter (`silo org`).
-session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Reader }
+session {
+  user: Maybe User.UserId,
+  org: Maybe Org.OrgId via Membership,
+  role: User.Role = Reader,
+}
 
-login = Login
+login = Login.Login
 
 choose org = Orgs.Pick
 

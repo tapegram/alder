@@ -13,20 +13,50 @@ import (
 	"strings"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every message of the
-// pages and of App (POST), in module order.
+// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
+// write routes, in declaration order), then every message of the pages and of App (POST), in module
+// order.
 var Routes = []web.Route{
-	Route__M__page(),
-	Route__Other__page(),
+	Route__App__Logout(),
+	Route__M__M(),
 	Route__M__Save(),
 	Route__M__Pick(),
 	Route__M__Ping(),
-	Route__App__Logout(),
+	Route__Other__Other(),
 }
 
-// decode__M__Params decodes page M's parameters: the path's from params, the others from q. A
+// decode__App__Logout__Params decodes route App.Logout's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__App__Logout__Params(_ map[string]string, _ url.Values) (r App__Logout__Params, errs []web.FieldError) {
+	return r, errs
+}
+
+// Route__App__Logout serves route App.Logout, POST /_/Logout: decode the parameters (404 when they
+// do not); render the page the browser is on before the update (refresh and invalid are diffed
+// against it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound
+// or Task.notFound, 303 for Query.redirect).
+func Route__App__Logout() web.Route {
+	return web.Route{Method: "POST", Pattern: "/_/Logout", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__App__Logout__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		session := rq.Env.Session.(App__Session)
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, App__Logout__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		return web.AnswerResponse(resp, before, rq.Env.Session)
+	}}
+}
+
+// decode__M__M__Params decodes route M.M's parameters: the path's from params, the others from q. A
 // parameter that does not decode is an error (the route answers 404).
-func decode__M__Params(params map[string]string, _ url.Values) (r M__Params, errs []web.FieldError) {
+func decode__M__M__Params(params map[string]string, _ url.Values) (r M__M__Params, errs []web.FieldError) {
 	pv := url.Values{}
 	for k, v := range params {
 		pv[k] = []string{v}
@@ -41,12 +71,54 @@ func decode__M__Params(params map[string]string, _ url.Values) (r M__Params, err
 	return r, errs
 }
 
-// decode__M__SaveParams decodes the parameters of message Save from its URL's query q; the form is
-// decoded apart. A parameter that does not decode is an error (the route answers 404).
-func decode__M__SaveParams(q url.Values) (r M__SaveParams, errs []web.FieldError) {
-	if s, _ := web.Text(q, "id", false); strings.TrimSpace(s) == "" {
+// page__M__M runs route M.M for rq up to its model: load (with params and the session of rq.Env).
+// It returns the model and the session view and update take, or the response that ends the request,
+// which stores keep (the session a successful update left, or nil).
+func page__M__M(rq *web.Request, params M__M__Params, keep any) (M__Model, App__Session, *web.Response) {
+	session := rq.Env.Session.(App__Session)
+	model, err := eff.RunQuery(rq.Env, M__M__load(params, session))
+	if err != nil {
+		r := route__fail(err)
+		r.Session = keep
+		return model, session, &r
+	}
+	return model, session, nil
+}
+
+// params__M__M are route M.M's parameters as text (html.FormState.PageParams), for the posted
+// form's state its view renders with when a write renders it again.
+func params__M__M(p M__M__Params) []rt.KV {
+	return []rt.KV{{Key: "id", Value: std.TextFromInt(p.Id)}}
+}
+
+// Route__M__M serves route M.M, GET /m/{id}: decode the parameters (404 when they do not), load
+// (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also in
+// rq.Model, which a test's browser reads).
+func Route__M__M() web.Route {
+	return web.Route{Method: "GET", Pattern: "/m/{id}", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__M__M__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		model, session, stop := page__M__M(rq, params, nil)
+		if stop != nil {
+			return *stop
+		}
+		rq.Model = model
+		return web.PageResponse(M__M__view(model, session), web.WithPageParams(rq.FormState, params__M__M(params)), rq.Session, false)
+	}}
+}
+
+// decode__M__Save__Params decodes route M.Save's parameters: the path's from params, the others
+// from q. A parameter that does not decode is an error (the route answers 404).
+func decode__M__Save__Params(params map[string]string, _ url.Values) (r M__Save__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, _ := web.Text(pv, "id", false); strings.TrimSpace(s) == "" {
 		errs = append(errs, web.Missing("id"))
-	} else if x, msg := web.Int(q, "id"); msg != "" {
+	} else if x, msg := web.Int(pv, "id"); msg != "" {
 		errs = append(errs, web.FieldError{Field: "id", Message: msg})
 	} else {
 		r.Id = x
@@ -115,9 +187,60 @@ func decode__M__Note(v url.Values) (r M__Note, errs []web.FieldError) {
 	return r, errs
 }
 
-// decode__M__PickParams decodes the parameters of message Pick from its URL's query q; the form is
-// decoded apart. A parameter that does not decode is an error (the route answers 404).
-func decode__M__PickParams(q url.Values) (r M__PickParams, errs []web.FieldError) {
+// Route__M__Save serves route M.Save, POST /m/{id}/_/Save: decode the parameters (404 when they do
+// not); decode form Note from the body (when it does not: 422, the page the browser is on rendered
+// again with the submitted values, no Text.Secret field, and the errors, without calling update);
+// render the page the browser is on before the update (refresh and invalid are diffed against it);
+// run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
+// Task.notFound, 303 for Query.redirect).
+func Route__M__Save() web.Route {
+	return web.Route{Method: "POST", Pattern: "/m/{id}/_/Save", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__M__Save__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		session := rq.Env.Session.(App__Session)
+		key := rt.RouteKey(rt.Route{Name: "M.Save", Method: "POST", Path: rt.Concat("/m/", rt.PathSegment(std.TextFromInt(params.Id)), "/_/Save")})
+		values := route__values(rq.Form)
+		form, errs := decode__M__Note(rq.Form)
+		if errs != nil {
+			resp := web.InvalidResponse(&html.FormState{Form: "M.Note", Msg: key, Values: values, Errors: route__errors(errs)}, nil)
+			if rq.Datastar {
+				resp.Shown, _ = rq.RenderShown(nil)
+			}
+			return resp
+		}
+		params.Form = form
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, M__Save__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		ans := web.AnswerResponse(resp, before, rq.Env.Session)
+		if resp.Kind == rt.RespInvalid {
+			ans.State = &html.FormState{Form: "M.Note", Msg: key, Values: values}
+		}
+		return ans
+	}}
+}
+
+// decode__M__Pick__Params decodes route M.Pick's parameters: the path's from params, the others
+// from q. A parameter that does not decode is an error (the route answers 404).
+func decode__M__Pick__Params(params map[string]string, q url.Values) (r M__Pick__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, _ := web.Text(pv, "id", false); strings.TrimSpace(s) == "" {
+		errs = append(errs, web.Missing("id"))
+	} else if x, msg := web.Int(pv, "id"); msg != "" {
+		errs = append(errs, web.FieldError{Field: "id", Message: msg})
+	} else {
+		r.Id = x
+	}
 	if s, ok := web.Text(q, "name", false); !ok {
 		errs = append(errs, web.Missing("name"))
 	} else {
@@ -133,151 +256,81 @@ func decode__M__PickParams(q url.Values) (r M__PickParams, errs []web.FieldError
 	return r, errs
 }
 
-// page__M runs page M for rq up to its model: load (with params and the session of rq.Env). It
-// returns the model and the session view and update take, or the response that ends the request,
-// which stores keep (the session a successful update left, or nil).
-func page__M(rq *web.Request, params M__Params, keep any) (M__Model, App__Session, *web.Response) {
-	session := rq.Env.Session.(App__Session)
-	model, err := eff.RunQuery(rq.Env, M__load(params, session))
-	if err != nil {
-		r := route__fail(err)
-		r.Session = keep
-		return model, session, &r
-	}
-	return model, session, nil
-}
-
-// params__M are page M's parameters as text for its message URLs (html.FormState.PageParams): each
-// message route decodes them back from the URL's _p. keys.
-func params__M(p M__Params) []rt.KV {
-	return []rt.KV{{Key: "id", Value: std.TextFromInt(p.Id)}}
-}
-
-// update__M runs page M's update for msg and answers its Nav (book 06): load, update (a Task, whose
-// session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on a form (st,
-// the state of the form that sent the message; nil for a message without one) load and view again
-// with t on the form (patched into the page under Datastar); for Rerender (and a Reject without a
-// form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh does not post
-// again). A failed Task changes nothing: 500 (App.error), 404 for Query.notFound or Task.notFound,
-// or a 303 for Query.redirect.
-func update__M(rq *web.Request, params M__Params, msg M__Msg, st *html.FormState) web.Response {
-	model, session, stop := page__M(rq, params, nil)
-	if stop != nil {
-		return *stop
-	}
-	model0, session0 := model, session // the page the client shows: Before
-	nav, err := eff.Run(rq.Env, eff.KTask, M__update(msg, model, session))
-	if err != nil {
-		return route__fail(err)
-	}
-	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
-	switch {
-	case nav.Tag == rt.NavRedirect:
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	case nav.Tag == rt.NavReject && st != nil:
-		st.FormError = nav.Text
-	case !rq.Datastar:
-		return web.RedirectResponse(rt.PageAt("/m/{id}", params__M(params)), rq.Env.Session)
-	default:
-		st = &html.FormState{}
-	}
-	st.PageParams = params__M(params)
-	model, session, stop = page__M(rq, params, rq.Env.Session)
-	if stop != nil {
-		return *stop
-	}
-	return web.PageResponse(M__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return M__view(model0, session0) })
-}
-
-// Route__M__page serves page M, GET /m/{id} (book 06): decode the parameters (404 when they do
-// not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
-// in rq.Model, which a test's browser reads).
-func Route__M__page() web.Route {
-	return web.Route{Method: "GET", Pattern: "/m/{id}", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__M__Params(rq.Params, rq.Query)
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		model, session, stop := page__M(rq, params, nil)
-		if stop != nil {
-			return *stop
-		}
-		rq.Model = model
-		return web.PageResponse(M__view(model, session), &html.FormState{PageParams: params__M(params)}, rq.Session, false)
-	}}
-}
-
-// Route__M__Save serves message Save of page M, POST /_m/M/Save (book 06): decode the page's
-// parameters (the message URL's _p. keys, which the rendered page put there) and the message's
-// (from the query): 404 when they do not decode; decode form Note from the body: when it does not,
-// re-render the page with the submitted values (no Text.Secret field) and the errors, without
-// calling update; then update__M.
-func Route__M__Save() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/M/Save", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__M__Params(rt.PageParams(rq.Query))
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		p, errs := decode__M__SaveParams(rq.Query)
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		values := route__values(rq.Form)
-		form, errs := decode__M__Note(rq.Form)
-		if errs != nil {
-			model, session, stop := page__M(rq, params, nil)
-			if stop != nil {
-				return *stop
-			}
-			return web.PageResponse(M__view(model, session), &html.FormState{Form: "M.Note", Msg: rt.MsgKey("/_m/M/Save", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__M(params)}, nil, true).WithBefore(func() html.Node { return M__view(model, session) })
-		}
-		p.Form = form
-		return update__M(rq, params, M__Msg__Save__(p), &html.FormState{Form: "M.Note", Msg: rt.MsgKey("/_m/M/Save", rq.Query), Values: values})
-	}}
-}
-
-// Route__M__Pick serves message Pick of page M, POST /_m/M/Pick (book 06): decode the page's
-// parameters (the message URL's _p. keys, which the rendered page put there) and the message's
-// (from the query): 404 when they do not decode; then update__M.
+// Route__M__Pick serves route M.Pick, POST /m/{id}/_/Pick: decode the parameters (404 when they do
+// not); render the page the browser is on before the update (refresh and invalid are diffed against
+// it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
+// Task.notFound, 303 for Query.redirect).
 func Route__M__Pick() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/M/Pick", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__M__Params(rt.PageParams(rq.Query))
+	return web.Route{Method: "POST", Pattern: "/m/{id}/_/Pick", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__M__Pick__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		p, errs := decode__M__PickParams(rq.Query)
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
+		session := rq.Env.Session.(App__Session)
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
 		}
-		return update__M(rq, params, M__Msg__Pick__(p), nil)
+		resp, err := eff.Run(rq.Env, eff.KTask, M__Pick__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		return web.AnswerResponse(resp, before, rq.Env.Session)
 	}}
 }
 
-// Route__M__Ping serves message Ping of page M, POST /_m/M/Ping (book 06): decode the page's
-// parameters (the message URL's _p. keys, which the rendered page put there): 404 when they do not
-// decode; then update__M.
-func Route__M__Ping() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/M/Ping", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__M__Params(rt.PageParams(rq.Query))
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		return update__M(rq, params, M__Msg__Ping__, nil)
-	}}
-}
-
-// decode__Other__Params decodes page Other's parameters: the path's from params, the others from q.
-// A parameter that does not decode is an error (the route answers 404).
-func decode__Other__Params(_ map[string]string, _ url.Values) (r Other__Params, errs []web.FieldError) {
+// decode__M__Ping__Params decodes route M.Ping's parameters: the path's from params, the others
+// from q. A parameter that does not decode is an error (the route answers 404).
+func decode__M__Ping__Params(params map[string]string, _ url.Values) (r M__Ping__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, _ := web.Text(pv, "id", false); strings.TrimSpace(s) == "" {
+		errs = append(errs, web.Missing("id"))
+	} else if x, msg := web.Int(pv, "id"); msg != "" {
+		errs = append(errs, web.FieldError{Field: "id", Message: msg})
+	} else {
+		r.Id = x
+	}
 	return r, errs
 }
 
-// page__Other runs page Other for rq up to its model: load (with params and the session of rq.Env).
-// It returns the model and the session view and update take, or the response that ends the request,
-// which stores keep (the session a successful update left, or nil).
-func page__Other(rq *web.Request, params Other__Params, keep any) (Other__Model, App__Session, *web.Response) {
+// Route__M__Ping serves route M.Ping, POST /m/{id}/_/Ping: decode the parameters (404 when they do
+// not); render the page the browser is on before the update (refresh and invalid are diffed against
+// it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
+// Task.notFound, 303 for Query.redirect).
+func Route__M__Ping() web.Route {
+	return web.Route{Method: "POST", Pattern: "/m/{id}/_/Ping", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__M__Ping__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		session := rq.Env.Session.(App__Session)
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, M__Ping__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		return web.AnswerResponse(resp, before, rq.Env.Session)
+	}}
+}
+
+// decode__Other__Other__Params decodes route Other.Other's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Other__Other__Params(_ map[string]string, _ url.Values) (r Other__Other__Params, errs []web.FieldError) {
+	return r, errs
+}
+
+// page__Other__Other runs route Other.Other for rq up to its model: load (with params and the
+// session of rq.Env). It returns the model and the session view and update take, or the response
+// that ends the request, which stores keep (the session a successful update left, or nil).
+func page__Other__Other(rq *web.Request, params Other__Other__Params, keep any) (Other__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
-	model, err := eff.RunQuery(rq.Env, Other__load(params, session))
+	model, err := eff.RunQuery(rq.Env, Other__Other__load(params, session))
 	if err != nil {
 		r := route__fail(err)
 		r.Session = keep
@@ -286,51 +339,27 @@ func page__Other(rq *web.Request, params Other__Params, keep any) (Other__Model,
 	return model, session, nil
 }
 
-// params__Other are page Other's parameters as text for its message URLs
-// (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
-func params__Other(_ Other__Params) []rt.KV {
+// params__Other__Other are route Other.Other's parameters as text (html.FormState.PageParams), for
+// the posted form's state its view renders with when a write renders it again.
+func params__Other__Other(_ Other__Other__Params) []rt.KV {
 	return nil
 }
 
-// Route__Other__page serves page Other, GET /other (book 06): decode the parameters (404 when they
-// do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model
-// also in rq.Model, which a test's browser reads).
-func Route__Other__page() web.Route {
+// Route__Other__Other serves route Other.Other, GET /other: decode the parameters (404 when they do
+// not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
+// in rq.Model, which a test's browser reads).
+func Route__Other__Other() web.Route {
 	return web.Route{Method: "GET", Pattern: "/other", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Other__Params(rq.Params, rq.Query)
+		params, errs := decode__Other__Other__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Other(rq, params, nil)
+		model, session, stop := page__Other__Other(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Other__view(model, session), &html.FormState{PageParams: params__Other(params)}, rq.Session, false)
-	}}
-}
-
-// update__App runs App's update for msg and answers its Nav: Redirect p is a 303 to p; Rerender and
-// Reject t are a 303 back to the page that sent the message (the Referer, else /), as App has no
-// page of its own to render (a Reject's text is not shown). The session the Task leaves is stored;
-// a failed Task changes nothing: 500 (App.error), 404 for Query.notFound or Task.notFound, or a 303
-// for Query.redirect.
-func update__App(rq *web.Request, msg App__Msg) web.Response {
-	nav, err := eff.Run(rq.Env, eff.KTask, App__update(msg, rq.Env.Session.(App__Session)))
-	if err != nil {
-		return route__fail(err)
-	}
-	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
-	if nav.Tag == rt.NavRedirect {
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	}
-	return web.RedirectResponse(rt.BackURL(rq.HTTP.Referer()), rq.Env.Session)
-}
-
-// Route__App__Logout serves App's message Logout, POST /_m/App/Logout: update__App.
-func Route__App__Logout() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/App/Logout", Handle: func(rq *web.Request) web.Response {
-		return update__App(rq, App__Msg__Logout__)
+		return web.PageResponse(Other__Other__view(model, session), web.WithPageParams(rq.FormState, params__Other__Other(params)), rq.Session, false)
 	}}
 }
 

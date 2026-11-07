@@ -73,53 +73,42 @@ type M__Note struct {
 	Size   int64
 }
 
-type M__Params struct {
+type M__M__Params struct {
 	Id int64
 }
 
-type M__SaveParams struct {
+type M__Save__Params struct {
 	Id   int64
 	Form M__Note
 }
 
-type M__PickParams struct {
+type M__Pick__Params struct {
+	Id   int64
 	Name string
 	N    int64
 }
 
-type M__Msg struct {
-	Tag  tag__M__Msg
-	Save *M__SaveParams
-	Pick *M__PickParams
+type M__Ping__Params struct {
+	Id int64
 }
 
-type tag__M__Msg uint8
-
-const (
-	is__M__Msg__Save tag__M__Msg = 0
-	is__M__Msg__Pick tag__M__Msg = 1
-	is__M__Msg__Ping tag__M__Msg = 2
-)
-
-func M__Msg__Save__(v M__SaveParams) M__Msg {
-	return M__Msg{Tag: is__M__Msg__Save, Save: &v}
-}
-
-func M__Msg__Pick__(v M__PickParams) M__Msg {
-	return M__Msg{Tag: is__M__Msg__Pick, Pick: &v}
-}
-
-var M__Msg__Ping__ = M__Msg{Tag: is__M__Msg__Ping}
-
-func M__load(params M__Params, session App__Session) eff.Query[M__Model] {
+func M__M__load(params M__M__Params, session App__Session) eff.Query[M__Model] {
 	return eff.Q(eff.Pure(M__Model{Id: params.Id, Busy: false, Current: rt.Nothing[string](), Items: []string{}, Shape: M__Shape__Circle__(1.0)}))
 }
 
-func M__update(msg M__Msg, model M__Model, session App__Session) eff.Task[rt.Nav] {
-	return eff.Pure(rt.Rerender())
+func M__Save__update(params M__Save__Params, session App__Session) eff.Task[rt.Response] {
+	return eff.Pure(std.ResponseRefresh())
 }
 
-func M__view(model M__Model, session App__Session) html.Node {
+func M__Pick__update(params M__Pick__Params, session App__Session) eff.Task[rt.Response] {
+	return eff.Pure(std.ResponseRefresh())
+}
+
+func M__Ping__update(params M__Ping__Params, session App__Session) eff.Task[rt.Response] {
+	return eff.Pure(std.ResponseRefresh())
+}
+
+func M__M__view(model M__Model, session App__Session) html.Node {
 	return Layout__Page(struct {
 		Title    string
 		Children []html.Node
@@ -131,12 +120,12 @@ func M__view(model M__Model, session App__Session) html.Node {
 			html.El("p", []html.Attr{html.A("class", "intro")}, html.Text("Tom & Jerry é")),
 			html.El("p", nil, html.Text("a < b")),
 		}}),
-		html.El("button", []html.Attr{html.A("class", "go"), html.B("disabled", model.Busy), html.M("aria-current", model.Current), html.MsgAttr("data-on:click", rt.MsgRef{Module: "M", Msg: "Ping"})}, html.Text("ping")),
-		html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Page{Path: "/other"}))}, html.Text("other")),
-		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "App", Msg: "Logout"})}, html.Text("log out")),
-		html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Page{Path: rt.Concat("/m/", rt.PathSegment(std.TextFromInt(model.Id+1)))}))}, html.Text("next")),
+		html.El("button", []html.Attr{html.A("class", "go"), html.B("disabled", model.Busy), html.M("aria-current", model.Current), html.RouteAttr("data-on:click", rt.Route{Name: "M.Ping", Method: "POST", Path: rt.Concat("/m/", rt.PathSegment(std.TextFromInt(model.Id)), "/_/Ping")})}, html.Text("ping")),
+		html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "Other.Other", Method: "GET", Path: "/other"}))}, html.Text("other")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "App.Logout", Method: "POST", Path: "/_/Logout"})}, html.Text("log out")),
+		html.El("a", []html.Attr{html.A("href", rt.PageURL(rt.Route{Name: "M.M", Method: "GET", Path: rt.Concat("/m/", rt.PathSegment(std.TextFromInt(model.Id+1)))}))}, html.Text("next")),
 		html.El("ul", nil, html.Nodes(std.ListMap(func(item string) html.Node {
-			return html.El("li", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "M", Msg: "Pick", Params: []rt.KV{{Key: "name", Value: item}, {Key: "n", Value: std.TextFromInt(model.Id)}}})}, html.Text(item))
+			return html.El("li", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "M.Pick", Method: "POST", Path: rt.Concat("/m/", rt.PathSegment(std.TextFromInt(model.Id)), "/_/Pick"), Query: []rt.KV{{Key: "name", Value: item}, {Key: "n", Value: std.TextFromInt(model.Id)}}})}, html.Text(item))
 		}, model.Items)...)),
 		func() html.Node {
 			if model.Busy {
@@ -157,7 +146,7 @@ func M__view(model M__Model, session App__Session) html.Node {
 			}
 			panic("unreachable")
 		}(),
-		html.FormTo(rt.MsgRef{Module: "M", Msg: "Save", Params: []rt.KV{{Key: "id", Value: std.TextFromInt(model.Id)}}}, []html.Attr{html.A("class", "note")},
+		html.FormToRoute(rt.Route{Name: "M.Save", Method: "POST", Path: rt.Concat("/m/", rt.PathSegment(std.TextFromInt(model.Id)), "/_/Save")}, []html.Attr{html.A("class", "note")},
 			html.Input(html.Control{Kind: "errors", Form: "M.Note"}),
 			html.Input(html.Control{Kind: "textarea", Form: "M.Note", Name: "body", Label: "Body"}),
 			html.Input(html.Control{Kind: "select", Form: "M.Note", Name: "color", Label: "Color " + std.TextFromInt(model.Id), Required: true, Value: "Red", Options: []string{"Red", "Green"}}),

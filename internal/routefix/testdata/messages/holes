@@ -1,0 +1,4 @@
+26: access: `Submit` no longer runs `Index.load` first (the page's message did): repeat in `Submit.update` any access check it makes (#160)
+30: `model.filter`: the page's model is gone: render, refresh or query, checking access as load did (#160)
+36: access: `Toggle` no longer runs `Index.load` first (the page's message did): repeat in `Toggle.update` any access check it makes (#160)
+43: access: `Delete` no longer runs `Index.load` first (the page's message did): repeat in `Delete.update` any access check it makes (#160)

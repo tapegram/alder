@@ -2,15 +2,15 @@ module Search
 
 -- #63: a GET form to a page whose parameter has a wire name sends its inputs' names as the
 -- query keys, so an input named after the field sets nothing.
-page "/search" { }
+route Search = GET "/search" { }
 
 type Model = { tags: List Text }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { tags: ["a"] }
+Search.load : Search.Params -> Session -> Query Model
+Search.load params session = Query.succeed { tags: ["a"] }
 
-view : Model -> Session -> Html Msg
-view model session =
+Search.view : Model -> Session -> Html
+Search.view model session =
   <html>
     <body>
       <form method="get" action="/r/abc/wood/Results">

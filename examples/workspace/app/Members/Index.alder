@@ -10,12 +10,14 @@ import Table.User
 -- partitioned (the page filters it by the org), Activity is partitioned by org (`Db.scoped
 -- Activity` adds the filter). Adding or removing a member writes Membership and Activity: one
 -- store, so one Task.
-page "/members" { } requires user, org
+route Index  = GET  "/members"          { }                   requires user, org
+route Add    = POST "/members/_/Add"    { } form Invite       requires user, org
+route Remove = POST "/members/_/Remove" { user: User.UserId } requires user, org
 
 type Model = { members: List User, activity: List Activity }
 
-load : Params -> Session -> Query Model
-load params session = {
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
   let member <- Membership.isMember session.user session.org
   if member then {
     let rows <-
@@ -39,43 +41,43 @@ load params session = {
 
 form Invite = { email: Text.Email }
 
-msg Add form Invite
-
-msg Remove { user: User.UserId }
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Add p -> {
-    let found <-
-      Db.from User
-        |> Db.where (User.email.eq p.form.email)
-        |> Db.first
-    match found {
-      Just u ->
-        if List.any (\m -> m.id == u.id) model.members then
-          Task.succeed (Reject "They are a member already.")
-        else {
-          let _ <- Db.insert Membership { user: u.id, org: session.org }
-          let _ <- Db.insertScoped Activity { text: u.name ++ " joined." }
-          Task.succeed Rerender
-        },
-      Nothing -> Task.succeed (Reject "No user has that email."),
-    }
-  },
-  Remove p -> {
-    let rows <-
-      Db.from Membership
-        |> Db.where (Membership.org.eq session.org)
-        |> Db.where (Membership.user.eq p.user)
-        |> Db.all
-    let _ <- Task.all (List.map (\m -> Db.delete Membership m.id) rows)
-    let _ <- Db.insertScoped Activity { text: "A member left." }
-    Task.succeed Rerender
-  },
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let found <-
+    Db.from User
+      |> Db.where (User.email.eq p.form.email)
+      |> Db.first
+  match found {
+    Just u -> {
+      let already <- Membership.isMember u.id session.org
+      if already then
+        Task.succeed (Response.invalid "They are a member already.")
+      else {
+        let _ <- Db.insert Membership { user: u.id, org: session.org }
+        let _ <- Db.insertScoped Activity { text: u.name ++ " joined." }
+        Task.succeed Response.refresh
+      }
+    },
+    Nothing -> Task.succeed (Response.invalid "No user has that email."),
+  }
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Remove.update : Remove.Params -> Session -> Task Response
+Remove.update p session = {
+  let _ <- Membership.memberOnly session.user session.org
+  let rows <-
+    Db.from Membership
+      |> Db.where (Membership.org.eq session.org)
+      |> Db.where (Membership.user.eq p.user)
+      |> Db.all
+  let _ <- Task.all (List.map (\m -> Db.delete Membership m.id) rows)
+  let _ <- Db.insertScoped Activity { text: "A member left." }
+  Task.succeed Response.refresh
+}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
   <Layout.Page title="Members">
     <h1>Members</h1>
     <ul id="members">
@@ -128,7 +130,7 @@ test "the members, by name, and the activity of this org only" = {
   }
   let _ <- Test.member cy s.acme
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
-  let page <- Test.get (Members.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (
     { members: Test.texts "#members .name" page.doc, activity: Test.texts "#activity li" page.doc }
       == { members: ["Ann", "Cy"], activity: ["Acme began."] }
@@ -159,10 +161,10 @@ test "adding a member by email lets them in, and logs it, newest first" = {
     globex: globex,
   }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
-  let _ <- Test.get (Members.Index {})
-  let r <- Test.submit Invite { email: Text.Email "bob@example.com" }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit Add { email: Text.Email "bob@example.com" }
   let _ <- Test.login { user: Just s.bob, org: Just s.acme }
-  let bob <- Test.open (Projects.Index {})
+  let bob <- Test.open (Projects.Index.Index {})
   Task.succeed (
     {
       answer: r.answer,
@@ -170,7 +172,7 @@ test "adding a member by email lets them in, and logs it, newest first" = {
       activity: Test.texts "#activity li" r.doc,
       bob: bob.answer,
     } == {
-      answer: Rerendered,
+      answer: Refreshed,
       members: ["Ann", "Bob"],
       activity: ["Bob joined.", "Acme began."],
       bob: Shown,
@@ -202,9 +204,9 @@ test "an unknown email, and a member already, are refused" = {
     globex: globex,
   }
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
-  let _ <- Test.get (Members.Index {})
-  let unknown <- Test.submit Invite { email: Text.Email "nobody@example.com" }
-  let again <- Test.submit Invite { email: Text.Email "ann@example.com" }
+  let _ <- Test.get (Index {})
+  let unknown <- Test.submit Add { email: Text.Email "nobody@example.com" }
+  let again <- Test.submit Add { email: Text.Email "ann@example.com" }
   let rows <- Db.from Membership |> Db.count
   Task.succeed (
     {
@@ -220,7 +222,7 @@ test "an unknown email, and a member already, are refused" = {
 }
 
 -- Ann removes Cy, then herself: her cookie still says Acme, and the re-read (Membership.isMember
--- in every page's load) turns her away at once.
+-- in every page's load, Membership.memberOnly in every write route) turns her away at once.
 test "removing a member logs it, and a removed member loses access at once" = {
   let ann <- Db.insert User {
     email: Text.Email "ann@example.com",
@@ -252,14 +254,14 @@ test "removing a member logs it, and a removed member loses access at once" = {
   let _ <- Test.member cy s.acme
   let _ <- Test.member cy s.globex
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
-  let _ <- Test.get (Members.Index {})
+  let _ <- Test.get (Index {})
   let r <- Test.click (Remove { user: cy })
   let cyLeft <-
     Db.from Membership
       |> Db.where (Membership.user.eq cy)
       |> Db.count
   let self <- Test.click (Remove { user: s.ann })
-  let after <- Test.open (Projects.Index {})
+  let after <- Test.open (Projects.Index.Index {})
   let log <-
     Db.from Activity
       |> Db.where (Activity.org.eq s.acme)
@@ -298,11 +300,11 @@ test "the activity shows the newest 20 lines" = {
       )
     )
   let _ <- Test.login { user: Just ann, org: Just acme }
-  let page <- Test.get (Members.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (Test.count "#activity li" page.doc == 20)
 }
 
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Members.Index {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  let r <- Test.open (Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }

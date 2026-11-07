@@ -8,7 +8,11 @@ import Table.Post
 import Table.User
 -- @admin end
 
-page "/admin/post/new" { findAuthor: Text = "" } requires user, role Admin
+-- @admin begin routes
+route New          = GET  "/admin/post/new"                { findAuthor: Text = "" } requires user, role Admin
+route Create       = POST "/admin/post/new/_/Create"       { } form PostForm         requires user, role Admin
+route SearchAuthor = POST "/admin/post/new/_/SearchAuthor" { } form FindAuthor       requires user, role Admin
+-- @admin end
 
 type Model = {
   -- @admin begin model
@@ -17,23 +21,20 @@ type Model = {
   -- @admin end
 }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    let findAuthor = Text.slice 0 200 params.findAuthor
-    let authorsTotal <- Db.from User |> Db.count
-    let authors <-
-      Db.from User
-        |> Db.orderBy User.email.asc
-        |> Db.where (if authorsTotal > 200 then User.email.contains findAuthor else Db.and [])
-        |> Db.limit (if authorsTotal > 200 then 50 else 200)
-        |> Db.all
-    Query.succeed { authors: authors, authorsTotal: authorsTotal }
-    -- @admin end
-  } else
-    Query.notFound
+New.load : New.Params -> Session -> Query Model
+New.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin load
+  let findAuthor = Text.slice 0 200 params.findAuthor
+  let authorsTotal <- Db.from User |> Db.count
+  let authors <-
+    Db.from User
+      |> Db.orderBy User.email.asc
+      |> Db.where (if authorsTotal > 200 then User.email.contains findAuthor else Db.and [])
+      |> Db.limit (if authorsTotal > 200 then 50 else 200)
+      |> Db.all
+  Query.succeed { authors: authors, authorsTotal: authorsTotal }
+  -- @admin end
 }
 
 -- @admin begin form
@@ -49,42 +50,39 @@ form PostForm = {
 -- @admin begin search
 form FindAuthor = { q: Text }
 
-msg SearchAuthor form FindAuthor
+-- SearchAuthor answers the page again at the text.
+SearchAuthor.update : SearchAuthor.Params -> Session -> Task Response
+SearchAuthor.update params session =
+  Task.succeed (Response.redirect (New { findAuthor: Text.slice 0 200 params.form.q }))
 
 -- @admin end
 
-msg Create form PostForm
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  -- @admin begin finds
-  SearchAuthor p ->
-    Task.succeed (Redirect (Admin.Posts.New { findAuthor: Text.slice 0 200 p.form.q })),
-  -- @admin end
-  Create p -> {
-    -- @admin begin insert
-    let slugTaken <-
-      Db.from Post
-        |> Db.where (Post.slug.eq p.form.slug)
-        |> Db.count
-    if slugTaken > 0 then
-      Task.succeed (Reject "A post with this slug exists.")
-    else {
-      let id <- Db.insert Post {
-        slug: p.form.slug,
-        title: p.form.title,
-        body: p.form.body,
-        published: p.form.published,
-        author: p.form.author,
-      }
-      Task.succeed (Redirect (Admin.Posts.Show { id: id }))
+-- Create adds the row and goes to its page.
+Create.update : Create.Params -> Session -> Task Response
+Create.update params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin insert
+  let slugTaken <-
+    Db.from Post
+      |> Db.where (Post.slug.eq params.form.slug)
+      |> Db.count
+  if slugTaken > 0 then
+    Task.succeed (Response.invalid "A post with this slug exists.")
+  else {
+    let id <- Db.insert Post {
+      slug: params.form.slug,
+      title: params.form.title,
+      body: params.form.body,
+      published: params.form.published,
+      author: params.form.author,
     }
-    -- @admin end
-  },
+    Task.succeed (Response.redirect (Admin.Posts.Show.Show { id: id }))
+  }
+  -- @admin end
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+New.view : Model -> Session -> Html
+New.view model session =
   <Layout.Page title="New post">
     <h1>New post</h1>
 
@@ -135,8 +133,8 @@ test "creating a post adds it, with the values submitted" = {
     body: "body-1",
     author: me,
   }
-  let page <- Test.get (Admin.Posts.New {})
-  let r <- Test.submit PostForm {
+  let page <- Test.get (New {})
+  let r <- Test.submit Create {
     slug: Post.Slug "slug-2",
     title: Text.NonEmpty "title-2",
     body: "body-2",
@@ -149,7 +147,7 @@ test "creating a post adds it, with the values submitted" = {
       |> Db.all
   Task.succeed (
     {
-      answers: List.map (\row -> Redirected (Admin.Posts.Show { id: row.id })) rows,
+      answers: List.map (\row -> Redirected (Admin.Posts.Show.Show { id: row.id })) rows,
       rows: List.map (\row -> {
         slug: row.slug,
         title: row.title,
@@ -193,8 +191,8 @@ test "a post with a slug that exists is refused" = {
     body: "body-1",
     author: me,
   }
-  let _ <- Test.get (Admin.Posts.New {})
-  let r <- Test.submit PostForm {
+  let _ <- Test.get (New {})
+  let r <- Test.submit Create {
     slug: Post.Slug "slug-1",
     title: Text.NonEmpty "title-2",
     body: "body-2",
@@ -221,8 +219,8 @@ test "an author not offered is refused" = {
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let page <- Test.get (Admin.Posts.New {})
-  let r <- Test.submitRaw PostForm [
+  let page <- Test.get (New {})
+  let r <- Test.submitRaw Create [
     { name: "slug", value: "x" },
     { name: "title", value: "x" },
     { name: "body", value: "x" },
@@ -260,7 +258,7 @@ test "a list of 200 users is offered whole" = {
         passwordHash: "passwordhash-" ++ Text.fromInt n,
       }) (List.range 3 200)
     )
-  let page <- Test.get (Admin.Posts.New {})
+  let page <- Test.get (New {})
   Task.succeed (List.length page.model.authors == 200)
 }
 
@@ -285,9 +283,9 @@ test "a long list of users offers 50, and the search narrows it" = {
         passwordHash: "passwordhash-" ++ Text.fromInt n,
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Posts.New {})
-  let found <- Test.get (Admin.Posts.New { findAuthor: "email-203@example.com" })
-  let r <- Test.submit FindAuthor { q: "zz" }
+  let all <- Test.get (New {})
+  let found <- Test.get (New { findAuthor: "email-203@example.com" })
+  let r <- Test.submit SearchAuthor { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.authors,
@@ -298,7 +296,7 @@ test "a long list of users offers 50, and the search narrows it" = {
       shown: 50,
       total: 203,
       found: True,
-      answer: Redirected (Admin.Posts.New { findAuthor: "zz" }),
+      answer: Redirected (New { findAuthor: "zz" }),
     }
   )
 }
@@ -324,12 +322,12 @@ test "an author outside the narrowed list is refused" = {
         passwordHash: "passwordhash-" ++ Text.fromInt n,
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Posts.New {})
-  let found <- Test.get (Admin.Posts.New { findAuthor: "email-203@example.com" })
-  let r <- Test.submit FindAuthor { q: "zz" }
+  let all <- Test.get (New {})
+  let found <- Test.get (New { findAuthor: "email-203@example.com" })
+  let r <- Test.submit SearchAuthor { q: "zz" }
   let pick = Maybe.withDefault "" (Test.attr "value" "select[name=author] option" found.doc)
-  let page <- Test.get (Admin.Posts.New {})
-  let sent <- Test.submitRaw PostForm [
+  let page <- Test.get (New {})
+  let sent <- Test.submitRaw Create [
     { name: "slug", value: "x" },
     { name: "title", value: "x" },
     { name: "body", value: "x" },
@@ -346,9 +344,43 @@ test "an author outside the narrowed list is refused" = {
   )
 }
 
+test "a demoted Admin cannot create a post" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "slug-1",
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let _ <- Test.get (New {})
+  let _ <- Db.update User me (\u -> { u | role: Reader })
+  let r <- Test.submit Create {
+    slug: Post.Slug "slug-2",
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    published: True,
+    author: user2,
+  }
+  let rows <- Db.from Post |> Db.count
+  Task.succeed (
+    { answer: r.answer, rows: rows } == { answer: RequestFailed "400 bad request", rows: 1 }
+  )
+}
+
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Admin.Posts.New {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  let r <- Test.open (New {})
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Reader gets no page, even one made Admin since logging in" = {
@@ -359,7 +391,7 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
-  let r <- Test.open (Admin.Posts.New {})
+  let r <- Test.open (New {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -371,7 +403,7 @@ test "a demoted Admin is refused at once" = {
     role: Reader,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Posts.New {})
+  let r <- Test.open (New {})
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

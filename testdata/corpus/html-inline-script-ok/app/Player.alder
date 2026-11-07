@@ -1,16 +1,16 @@
 module Player
 
-page "/player" { }
+route Player = GET "/player" { }
 
 type Model = { clip: Text }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { clip: "intro" }
+Player.load : Player.Params -> Session -> Query Model
+Player.load params session = Query.succeed { clip: "intro" }
 
 -- The bodies of <script> and <style> are raw text: `{`, `<`, `&&` and quotes are JavaScript
 -- and CSS, not Alder. Data reaches the script through a data-* attribute.
-view : Model -> Session -> Html Msg
-view model session =
+Player.view : Model -> Session -> Html
+Player.view model session =
   <main>
     <style>
       .player > video { width: 100%; } a[href^="/"]::after { content: "<→>"; }
@@ -23,7 +23,7 @@ view model session =
       -- not a comment: JavaScript's decrement
       const s = "{model.clip}" + `${clip}` + '<b>&amp;</b>';
     </script>
-    <script>window.ready = true;</Script>
-    <style>p { margin: 0 }</STYLE >
+    <script>window.ready = true;</script>
+    <style>p { margin: 0 }</style>
     <script type="application/json">{"a": 1, "b": [true]}</script>
   </main>

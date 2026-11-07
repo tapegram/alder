@@ -1,0 +1,67 @@
+module Todos.Index
+
+import Table.Todo
+
+page "/" { }
+
+type Model = { todos: List Todo }
+
+load : Params -> Session -> Query Model
+load params session = {
+  let todos <- Db.mine Todo |> Db.all
+  Query.succeed { todos: todos }
+}
+
+form NewTodo = { title: Text }
+
+form Pick = { list: Text }
+
+msg Submit form NewTodo
+
+msg Toggle { id: Todo.TodoId }
+
+msg Move { id: Todo.TodoId } form Pick
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Db.insertMine Todo { title: p.form.title, done: False }
+    Task.succeed (Redirect (Todos.Index {}))
+  },
+  Toggle p -> {
+    let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
+    Task.succeed Rerender
+  },
+  Move p -> Task.succeed Rerender,
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <ul>
+    {for t in model.todos ->
+      <li>
+        <button click={Toggle { id: t.id }}>{t.title}</button>
+        <form submit={Move { id: t.id }}><Input field="list" /></form>
+      </li>}
+    <form submit={Submit}><Input field="title" /></form>
+  </ul>
+
+-- Through the browser: the test names the form it fills, and reads the answer.
+test "adding and toggling a todo" = {
+  let _ <- Test.get (Todos.Index {})
+  let added <- Test.submit NewTodo { title: "Milk" }
+  let raw <- Test.submitRaw NewTodo [{ name: "title", value: "" }]
+  let page <- Test.get (Todos.Index {})
+  let moved <- Test.submit Pick { list: "home" }
+  Task.succeed (
+    {
+      added: added.answer,
+      moved: moved.answer,
+      raw: raw.answer,
+    } == {
+      added: Redirected (Todos.Index {}),
+      moved: Rerendered,
+      raw: Rerendered,
+    }
+  )
+}

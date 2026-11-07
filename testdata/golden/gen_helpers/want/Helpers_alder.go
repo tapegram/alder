@@ -23,7 +23,7 @@ func Helpers__fetchText(cfg string) eff.Task[struct {
 		Status int64
 		Body   string
 	}] {
-		return eff.Bind(eff.Call("Test.fetch Sites.MnSos", true, func(_e2 *eff.Env) (struct {
+		return eff.Bind(eff.Call("Test.fetch Sites.MnSos.MnSos", true, func(_e2 *eff.Env) (struct {
 			Status      int64
 			ContentType string
 			Body        []byte
@@ -32,8 +32,8 @@ func Helpers__fetchText(cfg string) eff.Task[struct {
 				Value string
 			}
 		}, error) {
-			var _p3 Sites__MnSos__Params = Sites__MnSos__Params{Cfg: cfg}
-			_u4 := rt.PageURL(rt.Page{Path: "/mnsos", Query: []rt.KV{{Key: "cfg", Value: _p3.Cfg}}})
+			_m3 := Sites__MnSos__MnSos__Params{Cfg: cfg}
+			_u4 := rt.RouteURL(rt.Route{Name: "Sites.MnSos.MnSos", Method: "GET", Path: "/mnsos", Query: []rt.KV{{Key: "cfg", Value: _m3.Cfg}}})
 			_b5 := rtesting.BrowserOf(_e2)
 			_r6, _err7 := _b5.Fetch(_u4)
 			if _err7 != nil {

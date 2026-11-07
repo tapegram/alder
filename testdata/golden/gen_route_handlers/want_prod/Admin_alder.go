@@ -3,6 +3,7 @@
 package app
 
 import (
+	"alder/rt"
 	"alder/rt/eff"
 	"alder/rt/html"
 	"alder/rt/std"
@@ -14,6 +15,10 @@ type Admin__Stats__Session struct {
 	User  string
 	Theme string
 	Role  Table__User__Role
+}
+
+func widen__Admin__Stats__Session(s Admin__Stats__Session) App__Session {
+	return App__Session{User: rt.Just(s.User), Theme: s.Theme, Role: s.Role}
 }
 
 func Admin__Stats__load(params Admin__Stats__Params, session Admin__Stats__Session) eff.Query[int64] {

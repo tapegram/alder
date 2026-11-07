@@ -1,0 +1,45 @@
+module App
+
+session { user: Maybe Text, visits: Int = 0 }
+
+login = Home.Home
+
+form Feedback = { text: Text }
+
+-- App's messages: any page's markup sends them as `App.Logout`.
+route Logout = POST "/_/Logout" { }
+route Send   = POST "/_/Send"   { } form Feedback
+route Forget = POST "/_/Forget" { id: Text }
+
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing })
+  Task.succeed (Response.redirect (Home.Home {}))
+}
+
+-- feedback is thrown away
+Send.update : Send.Params -> Session -> Task Response
+Send.update p session = Task.succeed (Response.refresh |> Response.success "Thanks")
+
+Forget.update : Forget.Params -> Session -> Task Response
+Forget.update p session = Task.succeed Response.refresh
+
+error : Error -> Html Never
+error err = <html><body><h1>Something went wrong</h1></body></html>
+
+notFound : Html Never
+notFound = <html><body><h1>Not found</h1></body></html>
+
+test "Logout forgets the user" = {
+  let r <- Test.run (Logout.update {} { user: Just "me", visits: 0 })
+  Task.succeed (r.value == Ok (Response.redirect (Home.Home {})))
+}
+
+test "feedback through the page" = {
+  let _ <- Test.login { user: Just "me" }
+  let _ <- Test.get (Home.Home {})
+  let r <- Test.submit Send { text: "Nice" }
+  let f <- Test.click (Forget { id: "1" })
+  let out <- Test.click Logout
+  Task.succeed (r.answer == Refreshed)
+}

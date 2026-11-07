@@ -5,36 +5,41 @@ module Home
 -- Member`) it is the table; where a `User.Role` is expected (a record field, `==` with a role,
 -- a list of roles, `Test.login`) it is the constructor.
 
-import User
 import Member
+import User
 
-page "/" { } requires user
+route Home = GET  "/"       { } requires user
+route Join = POST "/_/Join" { } requires user
 
-type Model = { n: Int, r: User.Role, member: Bool }
+type Model = {
+  n: Int,
+  r: User.Role,
+  member: Bool,
+}
 
 countOf : Table Member -> Query Int
 countOf t = Db.from t |> Db.count
 
-load : Params -> Session -> Query Model
-load params session = {
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = {
   let n <- Db.from Member |> Db.count
   let m <- countOf Member
   let roles = [Reader, Member]
-  Query.succeed { n: n + m, r: Member, member: session.role == Member && Member != session.role && List.length roles == 2 }
+  Query.succeed {
+    n: n + m,
+    r: Member,
+    member: session.role == Member && Member != session.role && List.length roles == 2,
+  }
 }
 
-msg Join
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Join p -> {
-    let _ <- Session.put (\s -> { s | role: Member })
-    Task.succeed Rerender
-  },
+Join.update : Join.Params -> Session -> Task Response
+Join.update p session = {
+  let _ <- Session.put (\s -> { s | role: Member })
+  Task.succeed Response.refresh
 }
 
-view : Model -> Session -> Html Msg
-view model session = <p>{Text.fromInt model.n}</p>
+Home.view : Model -> Session -> Html
+Home.view model session = <p>{Text.fromInt model.n}</p>
 
 test "a member" = {
   let me <- Db.insert User { name: "me", role: Member }

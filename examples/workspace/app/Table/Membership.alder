@@ -26,6 +26,15 @@ isMember user org = {
   Query.succeed (n > 0)
 }
 
+-- memberOnly stops a route with a 404 unless the user is a member of the org now (isMember). A
+-- write route runs no `load` before it, so each write of a page whose `load` asks isMember
+-- begins with this.
+memberOnly : User.UserId -> Org.OrgId -> Query Unit
+memberOnly user org = {
+  let member <- isMember user org
+  if member then Query.succeed () else Query.notFound
+}
+
 test "isMember is whether the user has a row for that org" = {
   let ann <- Db.insert User.User {
     email: Text.Email "ann@example.com",

@@ -20,60 +20,31 @@ type Projects__Index__NewProject struct {
 	Name string
 }
 
-type Projects__Index__Params struct{}
+type Projects__Index__Index__Params struct{}
 
-type Projects__Index__AddParams struct {
+type Projects__Index__Add__Params struct {
 	Form Projects__Index__NewProject
 }
 
-type Projects__Index__RenameParams struct {
+type Projects__Index__Rename__Params struct {
 	Id string
 }
 
-type Projects__Index__RemoveParams struct {
+type Projects__Index__Remove__Params struct {
 	Id string
 }
 
-type Projects__Index__Msg struct {
-	Tag    tag__Projects__Index__Msg
-	Add    *Projects__Index__AddParams
-	Rename *Projects__Index__RenameParams
-	Remove *Projects__Index__RemoveParams
-}
+type Projects__Index__Seed__Params struct{}
 
-type tag__Projects__Index__Msg uint8
+type Projects__Index__Tag__Params struct{}
 
-const (
-	is__Projects__Index__Msg__Add    tag__Projects__Index__Msg = 0
-	is__Projects__Index__Msg__Rename tag__Projects__Index__Msg = 1
-	is__Projects__Index__Msg__Remove tag__Projects__Index__Msg = 2
-	is__Projects__Index__Msg__Seed   tag__Projects__Index__Msg = 3
-	is__Projects__Index__Msg__Tag    tag__Projects__Index__Msg = 4
-)
-
-func Projects__Index__Msg__Add__(v Projects__Index__AddParams) Projects__Index__Msg {
-	return Projects__Index__Msg{Tag: is__Projects__Index__Msg__Add, Add: &v}
-}
-
-func Projects__Index__Msg__Rename__(v Projects__Index__RenameParams) Projects__Index__Msg {
-	return Projects__Index__Msg{Tag: is__Projects__Index__Msg__Rename, Rename: &v}
-}
-
-func Projects__Index__Msg__Remove__(v Projects__Index__RemoveParams) Projects__Index__Msg {
-	return Projects__Index__Msg{Tag: is__Projects__Index__Msg__Remove, Remove: &v}
-}
-
-var Projects__Index__Msg__Seed__ = Projects__Index__Msg{Tag: is__Projects__Index__Msg__Seed}
-
-var Projects__Index__Msg__Tag__ = Projects__Index__Msg{Tag: is__Projects__Index__Msg__Tag}
-
-type Projects__Index__Session struct {
+type Projects__Index__Index__Session struct {
 	User string
 	Org  string
 	Role User__Role
 }
 
-func widen__Projects__Index__Session(s Projects__Index__Session) App__Session {
+func widen__Projects__Index__Index__Session(s Projects__Index__Index__Session) App__Session {
 	return App__Session{User: rt.Just(s.User), Org: rt.Just(s.Org), Role: s.Role}
 }
 
@@ -85,7 +56,7 @@ func Projects__Index__seed(name string) eff.Task[struct{}] {
 	})
 }
 
-func Projects__Index__load(params Projects__Index__Params, session Projects__Index__Session) eff.Query[Projects__Index__Model] {
+func Projects__Index__Index__load(params Projects__Index__Index__Params, session Projects__Index__Index__Session) eff.Query[Projects__Index__Model] {
 	return eff.Q(eff.Bind(eff.Call("Db.get Org", false, func(_e1 *eff.Env) (rt.Maybe[Org__Org], error) {
 		return db.GetRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Org__Org, session.Org)
 	}), func(org rt.Maybe[Org__Org]) eff.Task[Projects__Index__Model] {
@@ -103,55 +74,57 @@ func Projects__Index__load(params Projects__Index__Params, session Projects__Ind
 	}))
 }
 
-func Projects__Index__update(msg Projects__Index__Msg, model Projects__Index__Model, session Projects__Index__Session) eff.Task[rt.Nav] {
-	switch msg.Tag {
-	case is__Projects__Index__Msg__Add:
-		p := *msg.Add
-		return eff.Bind(eff.Call("Db.get Org", false, func(_e1 *eff.Env) (rt.Maybe[Org__Org], error) {
-			return db.GetRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Org__Org, session.Org)
-		}), func(org rt.Maybe[Org__Org]) eff.Task[rt.Nav] {
-			return eff.Bind(eff.Call("Db.insertScoped Project", true, func(_e2 *eff.Env) (string, error) {
-				return db.InsertScopedRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Project__Project, insertminevals__Project__Project(insertmine__Project__Project{Name: std.MaybeWithDefault("", std.MaybeMap(func(o Org__Org) string {
-					return o.Name + ": "
-				}, org)) + p.Form.Name}), _e2.Now())
-			}), func(_ string) eff.Task[rt.Nav] {
-				return eff.Pure(rt.Rerender())
-			})
+func Projects__Index__Add__update(p Projects__Index__Add__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
+	return eff.Bind(eff.Call("Db.get Org", false, func(_e1 *eff.Env) (rt.Maybe[Org__Org], error) {
+		return db.GetRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Org__Org, session.Org)
+	}), func(org rt.Maybe[Org__Org]) eff.Task[rt.Response] {
+		return eff.Bind(eff.Call("Db.insertScoped Project", true, func(_e2 *eff.Env) (string, error) {
+			return db.InsertScopedRow(_e2.Ctx, _e2.Store.(db.Store), db.TxOf(_e2), table__Project__Project, insertminevals__Project__Project(insertmine__Project__Project{Name: std.MaybeWithDefault("", std.MaybeMap(func(o Org__Org) string {
+				return o.Name + ": "
+			}, org)) + p.Form.Name}), _e2.Now())
+		}), func(_ string) eff.Task[rt.Response] {
+			return eff.Pure(std.ResponseRefresh())
 		})
-	case is__Projects__Index__Msg__Rename:
-		p := *msg.Rename
-		return eff.Bind(eff.Call("Db.updateScoped Project", true, func(_e3 *eff.Env) (struct{}, error) {
-			return struct{}{}, db.UpdateScopedRow(_e3.Ctx, _e3.Store.(db.Store), db.TxOf(_e3), table__Project__Project, p.Id, func(x Project__Project) Project__Project {
-				return Project__Project{Id: x.Id, Name: "renamed", Org: x.Org}
-			}, _e3.Now())
-		}), func(_ struct{}) eff.Task[rt.Nav] {
-			return eff.Pure(rt.Rerender())
-		})
-	case is__Projects__Index__Msg__Remove:
-		p := *msg.Remove
-		return eff.Bind(eff.Call("Db.deleteScoped Project", true, func(_e4 *eff.Env) (struct{}, error) {
-			return struct{}{}, db.DeleteScopedRow(_e4.Ctx, _e4.Store.(db.Store), db.TxOf(_e4), table__Project__Project, p.Id)
-		}), func(_ struct{}) eff.Task[rt.Nav] {
-			return eff.Pure(rt.Rerender())
-		})
-	case is__Projects__Index__Msg__Tag:
-		return eff.Bind(eff.Call("Db.insertScoped Label", true, func(_e5 *eff.Env) (string, error) {
-			return db.InsertScopedRow(_e5.Ctx, _e5.Store.(db.Store), db.TxOf(_e5), table__Label__Label, insertminevals__Label__Label(insertmine__Label__Label{Name: "new"}), _e5.Now())
-		}), func(_ string) eff.Task[rt.Nav] {
-			return eff.Pure(rt.Rerender())
-		})
-	default:
-		return eff.Bind(eff.All(std.ListMap(Projects__Index__seed, []string{"x", "y"})), func(_ []struct{}) eff.Task[rt.Nav] {
-			return eff.Pure(rt.Rerender())
-		})
-	}
+	})
 }
 
-func Projects__Index__view(model Projects__Index__Model, session Projects__Index__Session) html.Node {
+func Projects__Index__Rename__update(p Projects__Index__Rename__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
+	return eff.Bind(eff.Call("Db.updateScoped Project", true, func(_e1 *eff.Env) (struct{}, error) {
+		return struct{}{}, db.UpdateScopedRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Project__Project, p.Id, func(x Project__Project) Project__Project {
+			return Project__Project{Id: x.Id, Name: "renamed", Org: x.Org}
+		}, _e1.Now())
+	}), func(_ struct{}) eff.Task[rt.Response] {
+		return eff.Pure(std.ResponseRefresh())
+	})
+}
+
+func Projects__Index__Remove__update(p Projects__Index__Remove__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
+	return eff.Bind(eff.Call("Db.deleteScoped Project", true, func(_e1 *eff.Env) (struct{}, error) {
+		return struct{}{}, db.DeleteScopedRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Project__Project, p.Id)
+	}), func(_ struct{}) eff.Task[rt.Response] {
+		return eff.Pure(std.ResponseRefresh())
+	})
+}
+
+func Projects__Index__Tag__update(params Projects__Index__Tag__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
+	return eff.Bind(eff.Call("Db.insertScoped Label", true, func(_e1 *eff.Env) (string, error) {
+		return db.InsertScopedRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Label__Label, insertminevals__Label__Label(insertmine__Label__Label{Name: "new"}), _e1.Now())
+	}), func(_ string) eff.Task[rt.Response] {
+		return eff.Pure(std.ResponseRefresh())
+	})
+}
+
+func Projects__Index__Seed__update(params Projects__Index__Seed__Params, session Projects__Index__Index__Session) eff.Task[rt.Response] {
+	return eff.Bind(eff.All(std.ListMap(Projects__Index__seed, []string{"x", "y"})), func(_ []struct{}) eff.Task[rt.Response] {
+		return eff.Pure(std.ResponseRefresh())
+	})
+}
+
+func Projects__Index__Index__view(model Projects__Index__Model, session Projects__Index__Index__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("h1", nil, html.Text(model.Org)),
 		html.El("p", []html.Attr{html.A("id", "labels")}, html.Text(std.TextFromInt(model.Labels))),
-		html.FormTo(rt.MsgRef{Module: "Projects.Index", Msg: "Add"}, nil,
+		html.FormToRoute(rt.Route{Name: "Projects.Index.Add", Method: "POST", Path: "/projects/_/Add"}, nil,
 			html.Input(html.Control{Kind: "input", Form: "Projects.Index.NewProject", Name: "name", Type: "text", Label: "Name"}),
 			html.Input(html.Control{Kind: "errors", Form: "Projects.Index.NewProject"}),
 			html.El("button", nil, html.Text("Add")),
@@ -159,12 +132,12 @@ func Projects__Index__view(model Projects__Index__Model, session Projects__Index
 		html.El("ul", nil, html.Nodes(std.ListMap(func(p Project__Project) html.Node {
 			return html.El("li", nil,
 				html.El("span", nil, html.Text(p.Name)),
-				html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Projects.Index", Msg: "Rename", Params: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("rename")),
-				html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Projects.Index", Msg: "Remove", Params: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("remove")),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Rename", Method: "POST", Path: "/projects/_/Rename", Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("rename")),
+				html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Remove", Method: "POST", Path: "/projects/_/Remove", Query: []rt.KV{{Key: "id", Value: p.Id}}})}, html.Text("remove")),
 			)
 		}, model.Projects)...)),
-		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Projects.Index", Msg: "Seed"})}, html.Text("seed")),
-		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Projects.Index", Msg: "Tag"})}, html.Text("tag")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Seed", Method: "POST", Path: "/projects/_/Seed"})}, html.Text("seed")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Projects.Index.Tag", Method: "POST", Path: "/projects/_/Tag"})}, html.Text("tag")),
 	))
 }
 

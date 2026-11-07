@@ -1,0 +1,28 @@
+module Shelves.Show
+
+import Table.Book
+import Table.Shelf
+
+route Show = GET  "/shelves/{id}"        { id: Shelf.ShelfId }                    requires user
+-- the arm does not read the model: before routes, `load` above still ran first and checked
+-- that the shelf was the user's
+route Wipe = POST "/shelves/{id}/_/Wipe" { id: Shelf.ShelfId, book: Book.BookId } requires user
+
+type Model = { shelf: Shelf }
+
+-- only the shelf's owner may open it: anyone else's is a 404
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let shelf <- Db.getMine Shelf params.id
+  Query.succeed { shelf: shelf }
+}
+
+-- this route does not run Show.load first: repeat here any access check it makes (#160)
+Wipe.update : Wipe.Params -> Session -> Task Response
+Wipe.update p session = {
+  let _ <- Db.delete Book p.book
+  Task.succeed Response.refresh
+}
+
+Show.view : Model -> Session -> Html
+Show.view model session = <main><h1>{model.shelf.name}</h1></main>

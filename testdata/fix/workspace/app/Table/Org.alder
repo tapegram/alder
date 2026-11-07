@@ -1,0 +1,11 @@
+module Table.Org
+
+type OrgId = brand Text
+
+-- An org is shared: the silo's key. Each org's projects and to-dos live in a database of its
+-- own, named after its id (book 08, "Silos").
+table Org {
+  id: OrgId @id,
+  name: Text.NonEmpty,
+  created: Time @created,
+}

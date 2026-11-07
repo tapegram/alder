@@ -14,31 +14,21 @@ type Notes__Index__Model struct {
 	Notes []Note__Note
 }
 
-type Notes__Index__Params struct{}
+type Notes__Index__Index__Params struct{}
 
-type Notes__Index__Msg struct {
-	Tag tag__Notes__Index__Msg
-}
+type Notes__Index__Add__Params struct{}
 
-type tag__Notes__Index__Msg uint8
-
-const (
-	is__Notes__Index__Msg__Add tag__Notes__Index__Msg = 0
-)
-
-var Notes__Index__Msg__Add__ = Notes__Index__Msg{Tag: is__Notes__Index__Msg__Add}
-
-type Notes__Index__Session struct {
+type Notes__Index__Index__Session struct {
 	User string
 	Org  rt.Maybe[string]
 	Role User__Role
 }
 
-func widen__Notes__Index__Session(s Notes__Index__Session) App__Session {
+func widen__Notes__Index__Index__Session(s Notes__Index__Index__Session) App__Session {
 	return App__Session{User: rt.Just(s.User), Org: s.Org, Role: s.Role}
 }
 
-func Notes__Index__load(params Notes__Index__Params, session Notes__Index__Session) eff.Query[Notes__Index__Model] {
+func Notes__Index__Index__load(params Notes__Index__Index__Params, session Notes__Index__Index__Session) eff.Query[Notes__Index__Model] {
 	return eff.Q(eff.Bind(eff.Call("Db.all Note", false, func(_e1 *eff.Env) ([]Note__Note, error) {
 		return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.Mine(table__Note__Note))
 	}), func(notes []Note__Note) eff.Task[Notes__Index__Model] {
@@ -46,24 +36,20 @@ func Notes__Index__load(params Notes__Index__Params, session Notes__Index__Sessi
 	}))
 }
 
-func Notes__Index__update(msg Notes__Index__Msg, model Notes__Index__Model, session Notes__Index__Session) eff.Task[rt.Nav] {
-	switch msg.Tag {
-	case is__Notes__Index__Msg__Add:
-		return eff.Bind(eff.Call("Db.insertMine Note", true, func(_e1 *eff.Env) (string, error) {
-			return db.InsertMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, insertminevals__Note__Note(insertmine__Note__Note{Text: "a"}), _e1.Now())
-		}), func(_ string) eff.Task[rt.Nav] {
-			return eff.Pure(rt.Rerender())
-		})
-	}
-	panic("unreachable")
+func Notes__Index__Add__update(params Notes__Index__Add__Params, session Notes__Index__Index__Session) eff.Task[rt.Response] {
+	return eff.Bind(eff.Call("Db.insertMine Note", true, func(_e1 *eff.Env) (string, error) {
+		return db.InsertMineRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, insertminevals__Note__Note(insertmine__Note__Note{Text: "a"}), _e1.Now())
+	}), func(_ string) eff.Task[rt.Response] {
+		return eff.Pure(std.ResponseRefresh())
+	})
 }
 
-func Notes__Index__view(model Notes__Index__Model, session Notes__Index__Session) html.Node {
+func Notes__Index__Index__view(model Notes__Index__Model, session Notes__Index__Index__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("ul", nil, html.Nodes(std.ListMap(func(n Note__Note) html.Node {
 			return html.El("li", nil, html.Text(n.Text))
 		}, model.Notes)...)),
-		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Notes.Index", Msg: "Add"})}, html.Text("add")),
-		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "App", Msg: "Leave"})}, html.Text("leave the org")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Notes.Index.Add", Method: "POST", Path: "/notes/_/Add"})}, html.Text("add")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "App.Leave", Method: "POST", Path: "/_/Leave"})}, html.Text("leave the org")),
 	))
 }

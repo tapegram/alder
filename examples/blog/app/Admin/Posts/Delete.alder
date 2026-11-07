@@ -9,7 +9,10 @@ import Table.Post
 import Table.User
 -- @admin end
 
-page "/admin/post/{id}/delete" { id: Post.PostId } requires user, role Admin
+-- @admin begin routes
+route Delete  = GET    "/admin/post/{id}/delete"           { id: Post.PostId }              requires user, role Admin
+route Destroy = DELETE "/admin/post/{id}/delete/_/Destroy" { id: Post.PostId } form Confirm requires user, role Admin
+-- @admin end
 
 -- The row, and how many rows of each table refer to it.
 type Model = {
@@ -19,23 +22,27 @@ type Model = {
   -- @admin end
 }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    let found <- Db.get Post params.id
-    let comments <-
-      Db.from Comment
-        |> Db.where (Comment.post.eq params.id)
-        |> Db.count
-    match found {
-      Just row -> Query.succeed { row: row, comments: comments },
-      Nothing -> Query.notFound,
-    }
-    -- @admin end
-  } else
-    Query.notFound
+-- counted is the row id names (none is not found) and how many rows of each table refer to it:
+-- the page shows them, and Destroy counts them again before it deletes.
+counted : Post.PostId -> Query Model
+counted id = {
+  -- @admin begin load
+  let found <- Db.get Post id
+  let comments <-
+    Db.from Comment
+      |> Db.where (Comment.post.eq id)
+      |> Db.count
+  match found {
+    Just row -> Query.succeed { row: row, comments: comments },
+    Nothing -> Query.notFound,
+  }
+  -- @admin end
+}
+
+Delete.load : Delete.Params -> Session -> Query Model
+Delete.load params session = {
+  let _ <- Layout.adminOnly session.user
+  counted params.id
 }
 
 -- @admin begin blockers
@@ -45,26 +52,24 @@ blockers : Model -> Int
 blockers model = 0
 -- @admin end
 
--- Delete takes no input: the form is the button, and the place a refusal is shown.
+-- Destroy takes no input: the form is the button, and the place a refusal is shown.
 form Confirm = { }
 
-msg Remove form Confirm
-
--- Remove deletes the row, unless rows refer to it that keep it (load counted them, as it does
--- before every message): the database would refuse the delete with an error, and the page says
--- why instead.
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Remove p -> {
-    -- @admin begin remove
-    let _ <- Db.delete Post model.row.id
-    Task.succeed (Redirect (Admin.Posts.Index {}))
-    -- @admin end
-  },
+-- Destroy deletes the row, unless rows refer to it that keep it (counted again, as the page
+-- counted them): the database would refuse the delete with an error, and the page says why
+-- instead. The Show page's dialog posts it too.
+Destroy.update : Destroy.Params -> Session -> Task Response
+Destroy.update params session = {
+  let _ <- Layout.adminOnly session.user
+  let model <- counted params.id
+  -- @admin begin remove
+  let _ <- Db.delete Post params.id
+  Task.succeed (Response.redirect (Admin.Posts.Index.Index {}) |> Response.success "Deleted")
+  -- @admin end
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Delete.view : Model -> Session -> Html
+Delete.view model session =
   <Layout.Page title="Delete post">
     <h1>Delete this post?</h1>
 
@@ -78,7 +83,7 @@ view model session =
         <dd id="comments">{Text.fromInt model.comments}</dd>
         -- @admin end
       </dl>
-      <form id="delete" submit={Remove}>
+      <form id="delete" submit={Destroy { id: model.row.id }}>
         <al-alert variant="destructive"><Errors form /></al-alert>
         {if blockers model > 0 then
           <p>It cannot be deleted while other rows refer to it.</p>
@@ -86,7 +91,7 @@ view model session =
           <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
     </al-card>
-    <a href={Admin.Posts.Show { id: model.row.id }}>Back</a>
+    <a href={Admin.Posts.Show.Show { id: model.row.id }}>Back</a>
   </Layout.Page>
 
 -- @admin begin tests
@@ -115,17 +120,19 @@ test "deleting a post nothing refers to" = {
     author: Comment.Name "author-1",
     body: Comment.Body "body-1",
   }
-  let _ <- Test.get (Admin.Posts.Delete { id: post1 })
-  let r <- Test.submit Confirm {}
+  let page <- Test.get (Delete { id: post1 })
+  let r <- Test.submit (Destroy { id: post1 }) {}
   let gone <- Db.get Post post1
   let kept <- Db.get Post post2
   Task.succeed (
     {
+      button: Test.count "#delete al-button" page.doc,
       answer: r.answer,
       gone: Maybe.map (\row -> row.id) gone,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-      answer: Redirected (Admin.Posts.Index {}),
+      button: 1,
+      answer: Redirected (Admin.Posts.Index.Index {}),
       gone: Nothing,
       kept: Just post2,
     }
@@ -162,8 +169,32 @@ test "the page counts the rows that go with it" = {
     author: Comment.Name "author-2",
     body: Comment.Body "body-2",
   }
-  let page <- Test.get (Admin.Posts.Delete { id: post1 })
+  let page <- Test.get (Delete { id: post1 })
   Task.succeed ({ comments: Test.text "#comments" page.doc } == { comments: Just "1" })
+}
+
+test "a demoted Admin cannot delete a post" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let post1 <- Db.insert Post {
+    slug: Post.Slug "slug-1",
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let _ <- Test.get (Delete { id: post1 })
+  let _ <- Db.update User me (\u -> { u | role: Reader })
+  let r <- Test.submit (Destroy { id: post1 }) {}
+  let kept <- Db.get Post post1
+  Task.succeed (
+    { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
+      == { answer: PageMissing, kept: Just post1 }
+  )
 }
 
 test "a missing row is not found" = {
@@ -174,7 +205,7 @@ test "a missing row is not found" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Posts.Delete { id: Post.PostId "missing" })
+  let r <- Test.open (Delete { id: Post.PostId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -190,8 +221,8 @@ test "a visitor is sent to log in" = {
     body: "body-1",
     author: me,
   }
-  let r <- Test.open (Admin.Posts.Delete { id: post1 })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  let r <- Test.open (Delete { id: post1 })
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Reader gets no page, even one made Admin since logging in" = {
@@ -208,7 +239,7 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     body: "body-1",
     author: me,
   }
-  let r <- Test.open (Admin.Posts.Delete { id: post1 })
+  let r <- Test.open (Delete { id: post1 })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -226,7 +257,7 @@ test "a demoted Admin is refused at once" = {
     body: "body-1",
     author: me,
   }
-  let r <- Test.open (Admin.Posts.Delete { id: post1 })
+  let r <- Test.open (Delete { id: post1 })
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

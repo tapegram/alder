@@ -1,31 +1,34 @@
 module Todos.Index
 
-page "/" { }
+route Index  = GET  "/"         { }
+route Submit = POST "/_/Submit" { } form NewTodo
+route Rename = POST "/_/Rename" { } form NewTodo
+route Toggle = POST "/_/Toggle" { id: Text }
 
 type Model = { n: Int }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { n: 0 }
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed { n: 0 }
 
-form NewTodo = {
-  title: Text,
-}
+form NewTodo = { title: Text }
 
-msg Submit form NewTodo
-msg Rename form NewTodo
-msg Toggle { id: Text }
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update p session =
+  if p.form.title == "x" then
+    Task.succeed (Response.invalid "No x, please.")
+  else
+    Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Submit p -> if p.form.title == "x" then Task.succeed (Reject "No x, please.") else Task.succeed Rerender,
-  Rename p -> Task.succeed Rerender,
-  Toggle p -> Task.succeed Rerender,
-}
+Rename.update : Rename.Params -> Session -> Task Response
+Rename.update p session = Task.succeed Response.refresh
+
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = Task.succeed Response.refresh
 
 -- Submit can answer Reject, and its form has no <Errors form />: the warning. Rename's form has
 -- none either, but Rename never rejects; the third form shows the text.
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <div>
     <form submit={Submit}>
       <Input field="title" label="Title" />

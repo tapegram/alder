@@ -1,1 +1,1 @@
-app/Todos/Index.alder:30:5 W0005 `Submit` can answer `Reject`, but this form has no `<Errors form />`: the user never sees the rejection text
+app/Todos/Index.alder:33:5 W0005 `Submit` can answer `Response.invalid`, but this form has no `<Errors form />`: the user never sees its text

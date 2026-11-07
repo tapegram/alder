@@ -10,27 +10,21 @@ import (
 
 type Admin__Model struct{}
 
-type Admin__Params struct{}
+type Admin__Admin__Params struct{}
 
-type Admin__Msg struct {
-	Tag tag__Admin__Msg
-}
-
-type tag__Admin__Msg uint8
-
-type Admin__Session struct {
+type Admin__Admin__Session struct {
 	User string
 	Role User__Role
 }
 
-func widen__Admin__Session(s Admin__Session) App__Session {
+func widen__Admin__Admin__Session(s Admin__Admin__Session) App__Session {
 	return App__Session{User: rt.Just(s.User), Role: s.Role}
 }
 
-func Admin__load(params Admin__Params, session Admin__Session) eff.Query[Admin__Model] {
+func Admin__Admin__load(params Admin__Admin__Params, session Admin__Admin__Session) eff.Query[Admin__Model] {
 	return eff.Q(eff.Pure(Admin__Model{}))
 }
 
-func Admin__view(model Admin__Model, session Admin__Session) html.Node {
+func Admin__Admin__view(model Admin__Model, session Admin__Admin__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil, html.El("h1", nil, html.Text("Admin"))))
 }

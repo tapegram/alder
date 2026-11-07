@@ -1,0 +1,28 @@
+/* The workspace's own rules, served at /static/app.css. The design system,
+   /static/al/al.css, styles the page, the cards, the fields and the buttons. */
+
+header nav {
+  display: flex;
+  gap: 1rem;
+}
+
+header a {
+  font-weight: bold;
+  text-decoration: none;
+}
+
+/* Not the form Alder wraps round a `click` button (so it works without
+   JavaScript): the design system gives that one display: contents. */
+form:not(._alder-click) {
+  display: grid;
+  gap: 1rem;
+}
+
+al-alert > ul.errors {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+li.done .title {
+  text-decoration: line-through;
+}

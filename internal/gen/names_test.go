@@ -80,7 +80,7 @@ func TestGoNameInjective(t *testing.T) {
 		for _, n := range append(append([]string{}, uppers...), lowers...) {
 			add(GoName(m, n), "decl "+m+"."+n)
 		}
-		add(widenName(m), "widen "+m)
+		add(widenName(m, "Session"), "widen "+m)
 		add(pageFunc(m), "page__ "+m)
 		add(updateFunc(m), "update__ "+m)
 		add(paramsFunc(m), "params__ "+m)

@@ -3,24 +3,24 @@ module Landing
 import User
 
 -- `requires` runs before load: a visitor goes to the login page, a user is sent on home.
-page "/landing" { } requires user
+route Landing = GET "/landing" { } requires user
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.redirect (Home {})
+Landing.load : Landing.Params -> Session -> Query Model
+Landing.load params session = Query.redirect (Home.Home {})
 
-view : Model -> Session -> Html Msg
-view model session = <html><body><p>never shown</p></body></html>
+Landing.view : Model -> Session -> Html
+Landing.view model session = <html><body><p>never shown</p></body></html>
 
 test "a visitor is sent to log in" = {
   let r <- Test.open (Landing {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a user is sent home" = {
   let me <- Db.insert User { name: "Me" }
   let _ <- Test.login { user: Just me }
   let r <- Test.open (Landing {})
-  Task.succeed (r.answer == Redirected (Home {}) && Test.has "#home" r.doc)
+  Task.succeed (r.answer == Redirected (Home.Home {}) && Test.has "#home" r.doc)
 }

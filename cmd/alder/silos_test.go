@@ -157,6 +157,8 @@ func TestSilos_Binary(t *testing.T) {
 		req, _ := http.NewRequest(method, "http://"+app.addr+path, strings.NewReader(form.Encode()))
 		if method == http.MethodPost {
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			// the page a form is posted from, without JavaScript: a write's `invalid` re-renders it
+			req.Header.Set("Referer", "http://"+app.addr+"/orgs")
 		}
 		req.AddCookie(&http.Cookie{Name: web.CookieName, Value: cookie})
 		res, err := c.Do(req)
@@ -168,7 +170,7 @@ func TestSilos_Binary(t *testing.T) {
 		return res, string(b)
 	}
 	me, them := siloSession{"me", "A"}, siloSession{"them", "B"}
-	if res, body := do("POST", "/_m/Projects.Index/Add", me, url.Values{"name": {"mine"}}); res.StatusCode != http.StatusSeeOther {
+	if res, body := do("POST", "/projects/_/Add", me, url.Values{"name": {"mine"}}); res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("add: %d\n%s", res.StatusCode, body)
 	}
 	if res, body := do("GET", "/projects", me, nil); res.StatusCode != 200 || !strings.Contains(body, "Org A: mine") {
@@ -186,26 +188,26 @@ func TestSilos_Binary(t *testing.T) {
 	if n := sqlCount(t, appDB, `SELECT COUNT(*) FROM "Project__Project"`); n != 0 {
 		t.Fatalf("the shared file holds %d projects", n)
 	}
-	// Tag, an explicit arm writing the shared store beside the `_` arm on the org's silo, runs on
-	// the shared store (C2: it does not inherit the `_` arm's); Seed (the `_` arm) on the org's
-	if res, body := do("POST", "/_m/Projects.Index/Tag", me, nil); res.StatusCode != http.StatusSeeOther {
+	// Tag, a write route writing the shared store, runs on the shared store; Seed, on the org's
+	// silo, on the org's
+	if res, body := do("POST", "/projects/_/Tag", me, nil); res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("tag: %d\n%s", res.StatusCode, body)
 	}
 	if n := sqlCount(t, appDB, `SELECT COUNT(*) FROM "Label__Label" WHERE "org" = 'A'`); n != 1 {
 		t.Fatalf("the shared file holds %d of A's labels", n)
 	}
-	if res, body := do("POST", "/_m/Projects.Index/Seed", me, nil); res.StatusCode != http.StatusSeeOther {
+	if res, body := do("POST", "/projects/_/Seed", me, nil); res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("seed: %d\n%s", res.StatusCode, body)
 	}
 	if n := sqlCount(t, filepath.Join(silos, db.SiloFileName("A")), `SELECT COUNT(*) FROM "Project__Project" WHERE "name" IN ('x', 'y')`); n != 2 {
 		t.Fatalf("A's file holds %d seeded projects", n)
 	}
 	// a crafted switch to an org me is no member of: refused, the session unchanged — not found
-	// from a message without a form, the form's error from one with
-	if res, _ := do("POST", "/_m/Orgs/Pick?org=B", me, nil); res.StatusCode != http.StatusNotFound || res.Header.Get("Set-Cookie") != "" {
+	// from a write route without a form, the form's error (422) from one with
+	if res, _ := do("POST", "/orgs/_/Pick?org=B", me, nil); res.StatusCode != http.StatusNotFound || res.Header.Get("Set-Cookie") != "" {
 		t.Fatalf("crafted switch: %d %q", res.StatusCode, res.Header.Get("Set-Cookie"))
 	}
-	if res, body := do("POST", "/_m/Orgs/Switch", me, url.Values{"org": {"B"}}); res.StatusCode != 200 || res.Header.Get("Set-Cookie") != "" || !strings.Contains(body, "You are not a member of that workspace.") {
+	if res, body := do("POST", "/orgs/_/Switch", me, url.Values{"org": {"B"}}); res.StatusCode != http.StatusUnprocessableEntity || res.Header.Get("Set-Cookie") != "" || !strings.Contains(body, "You are not a member of that workspace.") {
 		t.Fatalf("switch from the form: %d %q\n%s", res.StatusCode, res.Header.Get("Set-Cookie"), body)
 	}
 	// the stragglers: maintenance for those two orgs only; the one behind was migrated on open

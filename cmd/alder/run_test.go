@@ -347,12 +347,12 @@ func TestRun_ServesAndInjectsSubscriber(t *testing.T) {
 		t.Fatalf("GET / = %d %q, want 303 /login", res.StatusCode, res.Header.Get("Location"))
 	}
 	// (a page view stores no cookie; a Session.put, here App.Logout's, does)
-	if res, err = c.Post(r.base+"/_m/App/Logout", "application/x-www-form-urlencoded", nil); err != nil {
+	if res, err = c.Post(r.base+"/_/Logout", "application/x-www-form-urlencoded", nil); err != nil {
 		t.Fatal(err)
 	}
 	res.Body.Close()
 	if !strings.HasPrefix(res.Header.Get("Set-Cookie"), "alder_session=") {
-		t.Fatalf("POST /_m/App/Logout Set-Cookie %q", res.Header.Get("Set-Cookie"))
+		t.Fatalf("POST /_/Logout Set-Cookie %q", res.Header.Get("Set-Cookie"))
 	}
 	// the app's Datastar answers (server-sent events) stream through, with the overlay target
 	req, _ := http.NewRequest("GET", r.base+"/nope", nil)
@@ -414,19 +414,19 @@ func TestRun_BoostedNavigation(t *testing.T) {
 			t.Fatalf("boosted GET %s = %d %q:\n%s", c.path, res.StatusCode, res.Header.Get("Content-Type"), body)
 		}
 	}
-	req, _ := http.NewRequest("POST", r.base+"/_m/App/Logout", strings.NewReader(""))
+	req, _ := http.NewRequest("POST", r.base+"/_/Logout", strings.NewReader(""))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	res, body := dsDo(t, req)
 	if res.StatusCode != 200 || res.Header.Get("Location") != "" || !strings.HasPrefix(res.Header.Get("Set-Cookie"), "alder_session=") ||
 		!strings.Contains(body, `type="password"`) || !strings.Contains(body, push("/login")) {
-		t.Fatalf("Datastar POST /_m/App/Logout = %d %q:\n%s", res.StatusCode, res.Header.Get("Location"), body)
+		t.Fatalf("Datastar POST /_/Logout = %d %q:\n%s", res.StatusCode, res.Header.Get("Location"), body)
 	}
 	c := &http.Client{Timeout: 10 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	if res, err := c.Post(r.base+"/_m/App/Logout", "application/x-www-form-urlencoded", nil); err != nil {
+	if res, err := c.Post(r.base+"/_/Logout", "application/x-www-form-urlencoded", nil); err != nil {
 		t.Fatal(err)
 	} else if res.Body.Close(); res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/login" {
-		t.Fatalf("POST /_m/App/Logout = %d %q, want 303 /login", res.StatusCode, res.Header.Get("Location"))
+		t.Fatalf("POST /_/Logout = %d %q, want 303 /login", res.StatusCode, res.Header.Get("Location"))
 	}
 }
 

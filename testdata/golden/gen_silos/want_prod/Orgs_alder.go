@@ -18,48 +18,27 @@ type Orgs__SwitchOrg struct {
 	Org string
 }
 
-type Orgs__Params struct{}
+type Orgs__Orgs__Params struct{}
 
-type Orgs__PickParams struct {
+type Orgs__Pick__Params struct {
 	Org string
 }
 
-type Orgs__SwitchParams struct {
+type Orgs__Switch__Params struct {
 	Form Orgs__SwitchOrg
 }
 
-type Orgs__Msg struct {
-	Tag    tag__Orgs__Msg
-	Pick   *Orgs__PickParams
-	Switch *Orgs__SwitchParams
-}
-
-type tag__Orgs__Msg uint8
-
-const (
-	is__Orgs__Msg__Pick   tag__Orgs__Msg = 0
-	is__Orgs__Msg__Switch tag__Orgs__Msg = 1
-)
-
-func Orgs__Msg__Pick__(v Orgs__PickParams) Orgs__Msg {
-	return Orgs__Msg{Tag: is__Orgs__Msg__Pick, Pick: &v}
-}
-
-func Orgs__Msg__Switch__(v Orgs__SwitchParams) Orgs__Msg {
-	return Orgs__Msg{Tag: is__Orgs__Msg__Switch, Switch: &v}
-}
-
-type Orgs__Session struct {
+type Orgs__Orgs__Session struct {
 	User string
 	Org  rt.Maybe[string]
 	Role User__Role
 }
 
-func widen__Orgs__Session(s Orgs__Session) App__Session {
+func widen__Orgs__Orgs__Session(s Orgs__Orgs__Session) App__Session {
 	return App__Session{User: rt.Just(s.User), Org: s.Org, Role: s.Role}
 }
 
-func Orgs__load(params Orgs__Params, session Orgs__Session) eff.Query[Orgs__Model] {
+func Orgs__Orgs__load(params Orgs__Orgs__Params, session Orgs__Orgs__Session) eff.Query[Orgs__Model] {
 	return eff.Q(eff.Bind(eff.Call("Db.all Membership", false, func(_e1 *eff.Env) ([]Membership__Membership, error) {
 		return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.Where(db.CEq("user", session.User), db.From(table__Membership__Membership)))
 	}), func(mine []Membership__Membership) eff.Task[Orgs__Model] {
@@ -67,36 +46,32 @@ func Orgs__load(params Orgs__Params, session Orgs__Session) eff.Query[Orgs__Mode
 	}))
 }
 
-func Orgs__update(msg Orgs__Msg, model Orgs__Model, session Orgs__Session) eff.Task[rt.Nav] {
-	switch msg.Tag {
-	case is__Orgs__Msg__Pick:
-		p := *msg.Pick
-		return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
-			return App__Session{User: s.User, Org: rt.Just[string](p.Org), Role: s.Role}
-		}), func(_ struct{}) eff.Task[rt.Nav] {
-			return eff.Pure(rt.Redirect(rt.Page{Path: "/projects"}))
-		})
-	case is__Orgs__Msg__Switch:
-		p := *msg.Switch
-		return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
-			return App__Session{User: s.User, Org: rt.Just[string](p.Form.Org), Role: s.Role}
-		}), func(_ struct{}) eff.Task[rt.Nav] {
-			return eff.Pure(rt.Redirect(rt.Page{Path: "/projects"}))
-		})
-	}
-	panic("unreachable")
+func Orgs__Pick__update(p Orgs__Pick__Params, session Orgs__Orgs__Session) eff.Task[rt.Response] {
+	return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
+		return App__Session{User: s.User, Org: rt.Just[string](p.Org), Role: s.Role}
+	}), func(_ struct{}) eff.Task[rt.Response] {
+		return eff.Pure(std.ResponseRedirect(rt.Route{Name: "Projects.Index.Index", Method: "GET", Path: "/projects"}))
+	})
 }
 
-func Orgs__view(model Orgs__Model, session Orgs__Session) html.Node {
+func Orgs__Switch__update(p Orgs__Switch__Params, session Orgs__Orgs__Session) eff.Task[rt.Response] {
+	return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
+		return App__Session{User: s.User, Org: rt.Just[string](p.Form.Org), Role: s.Role}
+	}), func(_ struct{}) eff.Task[rt.Response] {
+		return eff.Pure(std.ResponseRedirect(rt.Route{Name: "Projects.Index.Index", Method: "GET", Path: "/projects"}))
+	})
+}
+
+func Orgs__Orgs__view(model Orgs__Model, session Orgs__Orgs__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("ul", nil, html.Nodes(std.ListMap(func(m Membership__Membership) html.Node {
-			return html.El("li", nil, html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "Orgs", Msg: "Pick", Params: []rt.KV{{Key: "org", Value: m.Org}}})}, html.Text("pick")))
+			return html.El("li", nil, html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "Orgs.Pick", Method: "POST", Path: "/orgs/_/Pick", Query: []rt.KV{{Key: "org", Value: m.Org}}})}, html.Text("pick")))
 		}, model.Mine)...)),
-		html.FormTo(rt.MsgRef{Module: "Orgs", Msg: "Switch"}, nil,
+		html.FormToRoute(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/_/Switch"}, nil,
 			html.Input(html.Control{Kind: "input", Form: "Orgs.SwitchOrg", Name: "org", Type: "text", Label: "Org"}),
 			html.Input(html.Control{Kind: "errors", Form: "Orgs.SwitchOrg"}),
 			html.El("button", nil, html.Text("switch")),
 		),
-		html.El("button", []html.Attr{html.MsgAttr("data-on:click", rt.MsgRef{Module: "App", Msg: "Leave"})}, html.Text("leave")),
+		html.El("button", []html.Attr{html.RouteAttr("data-on:click", rt.Route{Name: "App.Leave", Method: "POST", Path: "/_/Leave"})}, html.Text("leave")),
 	))
 }

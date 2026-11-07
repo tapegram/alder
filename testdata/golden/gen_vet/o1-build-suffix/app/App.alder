@@ -2,10 +2,10 @@ module App
 
 session { n: Int = 0 }
 
-msg Noop
+route Noop = POST "/_/Noop" { }
 
-update : Msg -> Session -> Task Nav
-update msg session = Task.succeed Rerender
+Noop.update : Noop.Params -> Session -> Task Response
+Noop.update params session = Task.succeed Response.refresh
 
 error : Error -> Html Never
 error err = <p>error</p>

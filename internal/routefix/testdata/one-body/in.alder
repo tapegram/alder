@@ -1,0 +1,19 @@
+module Home
+
+page "/" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed {}
+
+msg Ping
+
+msg Pong
+
+-- every message answers the same
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = Task.succeed (Redirect (Home {}))
+
+view : Model -> Session -> Html Msg
+view model session = <main><a href={Home {}}>Home</a><button click={Ping}>Ping</button></main>

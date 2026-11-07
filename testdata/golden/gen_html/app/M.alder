@@ -2,13 +2,22 @@ module M
 
 import Layout
 
-page "/m/{id}" { id: Int }
+route M    = GET  "/m/{id}"        { id: Int }
+route Save = POST "/m/{id}/_/Save" { id: Int } form Note
+route Pick = POST "/m/{id}/_/Pick" { id: Int, name: Text, n: Int }
+route Ping = POST "/m/{id}/_/Ping" { id: Int }
 
 type Color = Red | Green
 
 type Shape = Circle Float | Square Float
 
-type Model = { id: Int, busy: Bool, current: Maybe Text, items: List Text, shape: Shape }
+type Model = {
+  id: Int,
+  busy: Bool,
+  current: Maybe Text,
+  items: List Text,
+  shape: Shape,
+}
 
 form Note = {
   body: Text,
@@ -22,29 +31,51 @@ form Note = {
   size: Int = 3,
 }
 
-msg Save { id: Int } form Note
-msg Pick { name: Text, n: Int }
-msg Ping
+M.load : M.Params -> Session -> Query Model
+M.load params session = Query.succeed {
+  id: params.id,
+  busy: False,
+  current: Nothing,
+  items: [],
+  shape: Circle 1.0,
+}
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { id: params.id, busy: False, current: Nothing, items: [], shape: Circle 1.0 }
+Save.update : Save.Params -> Session -> Task Response
+Save.update params session = Task.succeed Response.refresh
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = Task.succeed Rerender
+Pick.update : Pick.Params -> Session -> Task Response
+Pick.update params session = Task.succeed Response.refresh
 
-view : Model -> Session -> Html Msg
-view model session =
+Ping.update : Ping.Params -> Session -> Task Response
+Ping.update params session = Task.succeed Response.refresh
+
+M.view : Model -> Session -> Html
+M.view model session =
   <Layout.Page title="M">
     <Layout.Card title={"Item " ++ Text.fromInt model.id}>
       <p class="intro">Tom & Jerry é</p>
       <p>{"a < b"}</p>
     </Layout.Card>
-    <button class="go" disabled={model.busy} aria-current={model.current} click={Ping}>ping</button>
-    <a href={Other}>other</a>
+    <button
+      class="go"
+      disabled={model.busy}
+      aria-current={model.current}
+      click={Ping { id: model.id }}>
+      ping
+    </button>
+    <a href={Other.Other}>other</a>
     <button click={App.Logout}>log out</button>
     <a href={M { id: model.id + 1 }}>next</a>
     <ul>
-      {for item in model.items -> <li click={Pick { name: item, n: model.id }}>{item}</li>}
+      {for item in model.items ->
+        <li
+          click={Pick {
+            name: item,
+            n: model.id,
+            id: model.id,
+          }}>
+          {item}
+        </li>}
     </ul>
     {if model.busy then <p>busy</p> else Html.none}
     {match model.shape {

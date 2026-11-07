@@ -1,0 +1,30 @@
+module Todos.Show
+
+import Table.Todo
+
+route Show = GET  "/todos/{id}"        { id: Todo.TodoId }
+route Save = POST "/todos/{id}/_/Save" { id: Todo.TodoId } form EditTodo
+
+type Model = { todo: Todo }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let todo <- Db.getMine Todo params.id
+  Query.succeed { todo: todo }
+}
+
+form EditTodo = { title: Text }
+
+-- this route does not run Show.load first: repeat here any access check it makes (#160)
+Save.update : Save.Params -> Session -> Task Response
+Save.update p session = Task.succeed Response.refresh
+
+Show.view : Model -> Session -> Html
+Show.view model session = <form submit={Save { id: ?id }}><Input field="title" /></form>
+
+test "saving a todo" = {
+  let id <- Db.insert Todo { title: "Milk", done: False }
+  let _ <- Test.get (Show { id: id })
+  let r <- Test.submit (Save { id: ?id }) { title: "Bread" }
+  Task.succeed (r.answer == Refreshed)
+}

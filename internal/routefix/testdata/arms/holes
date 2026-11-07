@@ -1,0 +1,4 @@
+17: access: `Add` no longer runs `Cart.load` first (the page's message did): repeat in `Add.update` any access check it makes (#160)
+26: access: `Empty` no longer runs `Cart.load` first (the page's message did): repeat in `Empty.update` any access check it makes (#160)
+31: access: `Apply` no longer runs `Cart.load` first (the page's message did): repeat in `Apply.update` any access check it makes (#160)
+34: `model.coupon`: the page's model is gone: render, refresh or query, checking access as load did (#160)

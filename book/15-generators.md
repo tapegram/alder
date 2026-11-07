@@ -900,10 +900,10 @@ route has `requires user, role Admin`, and an `update` answers with a
 `Response.invalid` for a refusal. Every write route has a test whose
 name starts "a demoted Admin cannot …": it demotes the Admin in the table
 after logging in, sends the write route, and expects the refusal. The files
-quoted below are the blog's, written when `alder new admin` still wrote
-`page` modules with `load`, `update` and `msg`; the blog example has not been
-regenerated, and the todos example's `app/Admin/` has the route form. The
-quoted prose describes the page version, and so does what it says of `load`
+quoted below are the blog's as it was before routes, written when `alder new
+admin` still wrote `page` modules with `load`, `update` and `msg`; the blog
+example's `app/Admin/` has since been regenerated, and like the todos example's
+it has the route form. The quoted prose describes the page version, and so does what it says of `load`
 running before every message and of messages being page-local; the route
 version differs there as described above (the gate and the checks are in each
 write route's `update`), and in the file layout (route lines, qualified members).
@@ -967,7 +967,7 @@ one read at login, and the cookie keeps it until logout or its 30 days
 admin all that time. So every page's `load` begins by asking `isAdmin`,
 which reads the user's row again, and answers `Query.notFound` when the
 row is gone or no longer says `Admin`. (This is the page version, which the blog
-quoted here still is: its `load` runs before every message too, so a form
+quoted here is: its `load` runs before every message too, so a form
 posted by a demoted Admin is refused the same way. In the route version
 no `load` runs before a write: each write route's `update` begins with
 `Layout.adminOnly session.user`, which asks `isAdmin` and answers 404

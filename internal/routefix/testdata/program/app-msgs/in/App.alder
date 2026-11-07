@@ -1,0 +1,45 @@
+module App
+
+session { user: Maybe Text, visits: Int = 0 }
+
+login = Home
+
+form Feedback = { text: Text }
+
+-- App's messages: any page's markup sends them as `App.Logout`.
+msg Logout
+
+msg Send form Feedback
+
+msg Forget { id: Text }
+
+update : Msg -> Session -> Task Nav
+update msg session = match msg {
+  Logout p -> {
+    let _ <- Session.put (\s -> { s | user: Nothing })
+    Task.succeed (Redirect (Home {}))
+  },
+  -- feedback is thrown away
+  Send p -> Task.succeed (Notice.success "Thanks" Rerender),
+  Forget p -> Task.succeed Rerender,
+}
+
+error : Error -> Html Never
+error err = <html><body><h1>Something went wrong</h1></body></html>
+
+notFound : Html Never
+notFound = <html><body><h1>Not found</h1></body></html>
+
+test "Logout forgets the user" = {
+  let r <- Test.run (update Logout { user: Just "me", visits: 0 })
+  Task.succeed (r.value == Ok (Redirect (Home {})))
+}
+
+test "feedback through the page" = {
+  let _ <- Test.login { user: Just "me" }
+  let _ <- Test.get (Home {})
+  let r <- Test.submit Feedback { text: "Nice" }
+  let f <- Test.click (Forget { id: "1" })
+  let out <- Test.click Logout
+  Task.succeed (r.answer == Rerendered)
+}

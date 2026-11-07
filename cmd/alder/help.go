@@ -21,6 +21,7 @@ var commandUsages = map[string]string{
 	"test":     testUsage,
 	"bench":    benchUsage,
 	"migrate":  migrateUsage,
+	"fix":      fixUsage,
 	"repl":     replUsage,
 	"new":      newUsage,
 	"edit":     editUsage,

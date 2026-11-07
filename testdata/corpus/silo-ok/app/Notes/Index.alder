@@ -4,40 +4,41 @@ import Note
 import User
 
 -- the user key: `@owner` and Db.mine, as in M11
-page "/notes" { } requires user
+route Index = GET  "/notes"       { } requires user
+route Add   = POST "/notes/_/Add" { } requires user
 
 type Model = { notes: List Note }
 
-load : Params -> Session -> Query Model
-load params session = {
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
   let notes <- Db.mine Note |> Db.all
   Query.succeed { notes: notes }
 }
 
-msg Add
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Add _ -> {
-    let _ <- Db.insertMine Note { text: "a" }
-    Task.succeed Rerender
-  },
+Add.update : Add.Params -> Session -> Task Response
+Add.update params session = {
+  let _ <- Db.insertMine Note { text: "a" }
+  Task.succeed Response.refresh
 }
 
-view : Model -> Session -> Html Msg
-view model session =
-  <html><body>
-    <ul>{for n in model.notes -> <li>{n.text}</li>}</ul>
-    <button click={Add}>add</button>
-    <button click={App.Leave}>leave the org</button>
-  </body></html>
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <html>
+    <body>
+      <ul>
+        {for n in model.notes -> <li>{n.text}</li>}
+      </ul>
+      <button click={Add}>add</button>
+      <button click={App.Leave}>leave the org</button>
+    </body>
+  </html>
 
 test "each user sees their own notes" = {
   let me <- Db.insert User { name: "Me" }
   let them <- Db.insert User { name: "Them" }
   let _ <- Db.insert Note { text: "theirs", owner: them }
   let _ <- Test.login { user: Just me, org: Nothing }
-  let _ <- Test.get (Notes.Index {})
+  let _ <- Test.get (Index {})
   let r <- Test.click Add
   Task.succeed (Test.texts "li" r.doc == ["a"])
 }
@@ -45,12 +46,12 @@ test "each user sees their own notes" = {
 test "leaving the org from any page goes to the org picker" = {
   let me <- Db.insert User { name: "Me" }
   let _ <- Test.login { user: Just me, org: Nothing }
-  let _ <- Test.get (Notes.Index {})
+  let _ <- Test.get (Index {})
   let r <- Test.click App.Leave
-  Task.succeed (r.answer == Redirected (Orgs {}))
+  Task.succeed (r.answer == Redirected (Orgs.Orgs {}))
 }
 
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Notes.Index {})
-  Task.succeed (r.answer == Redirected (Login {}))
+  let r <- Test.open (Index {})
+  Task.succeed (r.answer == Redirected (Login.Login {}))
 }

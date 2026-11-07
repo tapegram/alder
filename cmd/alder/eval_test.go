@@ -327,7 +327,7 @@ func TestEval_LetRecAndInlineLambda(t *testing.T) {
 func TestEval_BrandConstructors(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
-	evalOK(t, "/todos/x : Route\n", `Todos.Show { id: TodoId "x" }`)
+	evalOK(t, "Todos.Show.Show /todos/x : Route\n", `Todos.Show.Show { id: TodoId "x" }`)
 	evalOK(t, "\"x\" : Text.NonEmpty\n", `Text.NonEmpty "x"`)
 }
 
@@ -699,9 +699,9 @@ func TestEval_InModule(t *testing.T) {
 func TestEval_InNestedModule(t *testing.T) {
 	t.Parallel()
 	needGoTool(t)
-	// Todos.Index's own `update`, and Todo (which it imports) qualified
-	code, stdout, stderr := runEval(t, "", todosDir(t), "--in", "Todos.Index", "update")
-	if code != 0 || !strings.HasPrefix(stdout, "<function> : Todos.Index.Msg -> ") {
+	// Todos.Index's own route member `Toggle.update`, and Todo (which it imports) qualified
+	code, stdout, stderr := runEval(t, "", todosDir(t), "--in", "Todos.Index", "Toggle.update")
+	if code != 0 || !strings.HasPrefix(stdout, "<function> : Todos.Index.Toggle.Params -> ") {
 		t.Errorf("exit %d, stdout %q\nstderr: %s", code, stdout, stderr)
 	}
 	evalOK(t, "0 : Int\n", "--in=Todos.Index", "Todo.countOpen []")

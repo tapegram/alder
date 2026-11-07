@@ -28,7 +28,7 @@ import (
 func TestIR_M11Unchanged(t *testing.T) {
 	for _, c := range []struct{ name, dir string }{
 		{"todos", ""}, // TestIR_Todos's copy, without the generated admin
-		{"blog", "../../examples/blog"},
+		{"blog", "../../testdata/fix/blog"},
 		{"rules-ok", "../../testdata/corpus/rules-ok"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -174,6 +174,7 @@ func TestIR_RouteSilos(t *testing.T) {
 		got[r.Module+"."+r.Name] = fmt.Sprintf("%s %s silo=%q session=%s", r.Method, r.Store, r.Silo, r.Session.Name)
 	}
 	want := map[string]string{
+		"Login.Login":           `GET shared silo="" session=Session`,
 		"Orgs.Pick":             `GET shared silo="" session=Pick.Session`,
 		"Projects.Index":        `GET shared silo="" session=Index.Session`,
 		"Projects.Add":          `POST silo org silo="" session=Index.Session`,

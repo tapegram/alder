@@ -1,0 +1,13 @@
+module Layout
+
+Page : { title: Text, children: List (Html a) } -> Html a
+Page props =
+  <html>
+    <head><title>{props.title}</title></head>
+    <body>
+      <nav>
+        <a href={Todos.Index {}}>Todos</a> <a href={Orgs {}}>Orgs</a>
+      </nav>
+      {props.children}
+    </body>
+  </html>

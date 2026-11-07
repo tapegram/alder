@@ -12,7 +12,7 @@ import (
 )
 
 func TestResult_RecordsTypes(t *testing.T) {
-	res, bag := runDirResult(t, "../../examples/todos")
+	res, bag := runDirResult(t, "../../testdata/fix/todos")
 	if bag.HasErrors() {
 		t.Fatal(render(bag))
 	}

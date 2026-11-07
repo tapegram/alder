@@ -1,0 +1,6 @@
+Todos/Index.alder:17: access: `Toggle` no longer runs `Index.load` first (the page's message did): repeat in `Toggle.update` any access check it makes (#160)
+Todos/Index.alder:24: access: `Clear` no longer runs `Index.load` first (the page's message did): repeat in `Clear.update` any access check it makes (#160)
+Todos/Show.alder:17: access: `Delete` no longer runs `Show.load` first (the page's message did): repeat in `Delete.update` any access check it makes (#160)
+Todos/Show.alder:20: `model.todo.id`: the page's model is gone: render, refresh or query, checking access as load did (#160)
+Todos/Show.alder:25: `Delete` takes the page's path parameter `id`: pass it from the model (#160)
+Todos/Show.alder:30: `Delete` takes the page's path parameter `id`: pass the one the test means (#160)

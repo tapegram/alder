@@ -6,24 +6,68 @@ import (
 	"alder/rt"
 	"alder/rt/eff"
 	"alder/rt/html"
-	"alder/rt/std"
 	"alder/rt/web"
 	"errors"
 	"net/url"
 	"strings"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every message of the
-// pages and of App (POST), in module order.
+// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
+// write routes, in declaration order), then every message of the pages and of App (POST), in module
+// order.
 var Routes = []web.Route{
-	Route__Index__page(),
+	Route__Index__Index(),
 	Route__Index__Submit(),
 	Route__Index__Clear(),
 }
 
-// decode__Index__Params decodes page Index's parameters: the path's from params, the others from q.
-// A parameter that does not decode is an error (the route answers 404).
-func decode__Index__Params(_ map[string]string, _ url.Values) (r Index__Params, errs []web.FieldError) {
+// decode__Index__Index__Params decodes route Index.Index's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Index__Index__Params(_ map[string]string, _ url.Values) (r Index__Index__Params, errs []web.FieldError) {
+	return r, errs
+}
+
+// page__Index__Index runs route Index.Index for rq up to its model: load (with params and the
+// session of rq.Env). It returns the model and the session view and update take, or the response
+// that ends the request, which stores keep (the session a successful update left, or nil).
+func page__Index__Index(rq *web.Request, params Index__Index__Params, keep any) (Index__Model, App__Session, *web.Response) {
+	session := rq.Env.Session.(App__Session)
+	model, err := eff.RunQuery(rq.Env, Index__Index__load(params, session))
+	if err != nil {
+		r := route__fail(err)
+		r.Session = keep
+		return model, session, &r
+	}
+	return model, session, nil
+}
+
+// params__Index__Index are route Index.Index's parameters as text (html.FormState.PageParams), for
+// the posted form's state its view renders with when a write renders it again.
+func params__Index__Index(_ Index__Index__Params) []rt.KV {
+	return nil
+}
+
+// Route__Index__Index serves route Index.Index, GET /: decode the parameters (404 when they do
+// not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
+// in rq.Model, which a test's browser reads).
+func Route__Index__Index() web.Route {
+	return web.Route{Method: "GET", Pattern: "/", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Index__Index__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		model, session, stop := page__Index__Index(rq, params, nil)
+		if stop != nil {
+			return *stop
+		}
+		rq.Model = model
+		return web.PageResponse(Index__Index__view(model, session), web.WithPageParams(rq.FormState, params__Index__Index(params)), rq.Session, false)
+	}}
+}
+
+// decode__Index__Submit__Params decodes route Index.Submit's parameters: the path's from params,
+// the others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Index__Submit__Params(_ map[string]string, _ url.Values) (r Index__Submit__Params, errs []web.FieldError) {
 	return r, errs
 }
 
@@ -61,178 +105,78 @@ func decode__Index__NewPost(v url.Values) (r Index__NewPost, errs []web.FieldErr
 	return r, errs
 }
 
-// page__Index runs page Index for rq up to its model: load (with params and the session of rq.Env).
-// It returns the model and the session view and update take, or the response that ends the request,
-// which stores keep (the session a successful update left, or nil).
-func page__Index(rq *web.Request, params Index__Params, keep any) (Index__Model, App__Session, *web.Response) {
-	session := rq.Env.Session.(App__Session)
-	model, err := eff.RunQuery(rq.Env, Index__load(params, session))
-	if err != nil {
-		r := route__fail(err)
-		r.Session = keep
-		return model, session, &r
-	}
-	return model, session, nil
-}
-
-// choices__Index__NewPost__Owner computes again the options page Index's view offers for field
-// owner of form Index.NewPost, to check a posted value (chapter 5).
-func choices__Index__NewPost__Owner(model Index__Model, session App__Session) []struct {
-	Value string
-	Label string
-} {
-	return model.People
-}
-
-// choices__Index__NewPost__Reviewer computes again the options page Index's view offers for field
-// reviewer of form Index.NewPost, to check a posted value (chapter 5).
-func choices__Index__NewPost__Reviewer(model Index__Model, session App__Session) []struct {
-	Value string
-	Label string
-} {
-	return std.ListMap(func(p struct {
-		Value string
-		Label string
-	}) struct {
-		Value string
-		Label string
-	} {
-		return struct {
-			Value string
-			Label string
-		}{Value: p.Value, Label: p.Label}
-	}, model.People)
-}
-
-// options__Index are the field errors of values posted on form (a page Index form) that its
-// `options={…}` selects did not offer: "must be one of the options" (chapter 5). The options are
-// computed again from the model, loaded for the message as for the page.
-func options__Index(form string, values map[string]string, model Index__Model, session App__Session) []web.FieldError {
-	var errs []web.FieldError
-	switch form {
-	case "Index.NewPost":
-		if !html.Offered(values["owner"], html.Choices(choices__Index__NewPost__Owner(model, session), func(_o struct {
-			Value string
-			Label string
-		}) html.Choice {
-			return html.Choice{Value: _o.Value, Label: _o.Label}
-		}), false) {
-			errs = append(errs, web.FieldError{Field: "owner", Message: web.MsgOption})
-		}
-		if !html.Offered(values["reviewer"], html.Choices(choices__Index__NewPost__Reviewer(model, session), func(_o struct {
-			Value string
-			Label string
-		}) html.Choice {
-			return html.Choice{Value: _o.Value, Label: _o.Label}
-		}), true) {
-			errs = append(errs, web.FieldError{Field: "reviewer", Message: web.MsgOption})
-		}
-	}
-	return errs
-}
-
-// params__Index are page Index's parameters as text for its message URLs
-// (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
-func params__Index(_ Index__Params) []rt.KV {
-	return nil
-}
-
-// update__Index runs page Index's update for msg and answers its Nav (book 06): load, update (a
-// Task, whose session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on
-// a form (st, the state of the form that sent the message; nil for a message without one) load and
-// view again with t on the form (patched into the page under Datastar); for Rerender (and a Reject
-// without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh
-// does not post again). A failed Task changes nothing: 500 (App.error), 404 for Query.notFound or
-// Task.notFound, or a 303 for Query.redirect.
-func update__Index(rq *web.Request, params Index__Params, msg Index__Msg, st *html.FormState) web.Response {
-	model, session, stop := page__Index(rq, params, nil)
-	if stop != nil {
-		return *stop
-	}
-	model0, session0 := model, session // the page the client shows: Before
-	if st != nil {
-		if errs := options__Index(st.Form, st.Values, model, session); errs != nil {
-			st.Errors, st.PageParams = route__errors(errs), params__Index(params)
-			return web.PageResponse(Index__view(model, session), st, nil, true).WithBefore(func() html.Node { return Index__view(model, session) })
-		}
-	}
-	nav, err := eff.Run(rq.Env, eff.KTask, Index__update(msg, model, session))
-	if err != nil {
-		return route__fail(err)
-	}
-	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
-	switch {
-	case nav.Tag == rt.NavRedirect:
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	case nav.Tag == rt.NavReject && st != nil:
-		st.FormError = nav.Text
-	case !rq.Datastar:
-		return web.RedirectResponse(rt.PageAt("/", params__Index(params)), rq.Env.Session)
-	default:
-		st = &html.FormState{}
-	}
-	st.PageParams = params__Index(params)
-	model, session, stop = page__Index(rq, params, rq.Env.Session)
-	if stop != nil {
-		return *stop
-	}
-	return web.PageResponse(Index__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Index__view(model0, session0) })
-}
-
-// Route__Index__page serves page Index, GET / (book 06): decode the parameters (404 when they do
-// not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
-// in rq.Model, which a test's browser reads).
-func Route__Index__page() web.Route {
-	return web.Route{Method: "GET", Pattern: "/", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Index__Params(rq.Params, rq.Query)
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		model, session, stop := page__Index(rq, params, nil)
-		if stop != nil {
-			return *stop
-		}
-		rq.Model = model
-		return web.PageResponse(Index__view(model, session), &html.FormState{PageParams: params__Index(params)}, rq.Session, false)
-	}}
-}
-
-// Route__Index__Submit serves message Submit of page Index, POST /_m/Index/Submit (book 06): decode
-// the page's parameters (the message URL's _p. keys, which the rendered page put there): 404 when
-// they do not decode; decode form NewPost from the body: when it does not, re-render the page with
-// the submitted values (no Text.Secret field) and the errors, without calling update; then
-// update__Index.
+// Route__Index__Submit serves route Index.Submit, POST /_/Submit: decode the parameters (404 when
+// they do not); decode form NewPost from the body (when it does not: 422, the page the browser is
+// on rendered again with the submitted values, no Text.Secret field, and the errors, without
+// calling update); check its options against the page it was posted from (a value that page did not
+// offer: as a form that does not decode; posted from another page: 400); render the page the
+// browser is on before the update (refresh and invalid are diffed against it); run the update and
+// answer its Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for
+// Query.redirect).
 func Route__Index__Submit() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Index/Submit", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Index__Params(rt.PageParams(rq.Query))
+	return web.Route{Method: "POST", Pattern: "/_/Submit", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Index__Submit__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		p := Index__SubmitParams{}
+		session := rq.Env.Session.(App__Session)
+		key := rt.RouteKey(rt.Route{Name: "Index.Submit", Method: "POST", Path: "/_/Submit"})
 		values := route__values(rq.Form)
 		form, errs := decode__Index__NewPost(rq.Form)
 		if errs != nil {
-			model, session, stop := page__Index(rq, params, nil)
-			if stop != nil {
-				return *stop
+			resp := web.InvalidResponse(&html.FormState{Form: "Index.NewPost", Msg: key, Values: values, Errors: route__errors(errs)}, nil)
+			if rq.Datastar {
+				resp.Shown, _ = rq.RenderShown(nil)
 			}
-			return web.PageResponse(Index__view(model, session), &html.FormState{Form: "Index.NewPost", Msg: rt.MsgKey("/_m/Index/Submit", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Index(params)}, nil, true).WithBefore(func() html.Node { return Index__view(model, session) })
+			return resp
 		}
-		p.Form = form
-		return update__Index(rq, params, Index__Msg__Submit__(p), &html.FormState{Form: "Index.NewPost", Msg: rt.MsgKey("/_m/Index/Submit", rq.Query), Values: values})
+		params.Form = form
+		shown, _ := rq.RenderShown(nil)
+		if errs, bad := rq.CheckOptions(shown, []string{"/"}, "Index.NewPost", key, values); bad != nil {
+			return *bad
+		} else if errs != nil {
+			resp := web.InvalidResponse(&html.FormState{Form: "Index.NewPost", Msg: key, Values: values, Errors: route__errors(errs)}, nil)
+			resp.Shown = shown
+			return resp
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Index__Submit__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		ans := web.AnswerResponse(resp, shown, rq.Env.Session)
+		if resp.Kind == rt.RespInvalid {
+			ans.State = &html.FormState{Form: "Index.NewPost", Msg: key, Values: values}
+		}
+		return ans
 	}}
 }
 
-// Route__Index__Clear serves message Clear of page Index, POST /_m/Index/Clear (book 06): decode
-// the page's parameters (the message URL's _p. keys, which the rendered page put there): 404 when
-// they do not decode; then update__Index.
+// decode__Index__Clear__Params decodes route Index.Clear's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Index__Clear__Params(_ map[string]string, _ url.Values) (r Index__Clear__Params, errs []web.FieldError) {
+	return r, errs
+}
+
+// Route__Index__Clear serves route Index.Clear, POST /_/Clear: decode the parameters (404 when they
+// do not); render the page the browser is on before the update (refresh and invalid are diffed
+// against it); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound
+// or Task.notFound, 303 for Query.redirect).
 func Route__Index__Clear() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Index/Clear", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Index__Params(rt.PageParams(rq.Query))
+	return web.Route{Method: "POST", Pattern: "/_/Clear", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Index__Clear__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		return update__Index(rq, params, Index__Msg__Clear__, nil)
+		session := rq.Env.Session.(App__Session)
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Index__Clear__update(params, session))
+		if err != nil {
+			return route__fail(err)
+		}
+		return web.AnswerResponse(resp, before, rq.Env.Session)
 	}}
 }
 

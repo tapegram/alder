@@ -1,0 +1,56 @@
+module Counter
+
+-- The counter page.
+route Counter = GET  "/counter"         { n: Int = 0 }
+-- Up adds one.
+route Up      = POST "/counter/_/Up"    { }
+-- Down takes one away;
+-- it never goes below zero.
+route Down    = POST "/counter/_/Down"  { }
+route Reset   = POST "/counter/_/Reset" { } -- trailing on a msg line
+
+type Model = { n: Int }
+
+Counter.load : Counter.Params -> Session -> Query Model
+-- load reads n from the address
+Counter.load params session = Query.succeed { n: params.n }
+
+-- The answers: each message moves the counter.
+-- up first
+-- this route does not run Counter.load first: repeat here any access check it makes (#160)
+Up.update : Up.Params -> Session -> Task Response
+Up.update params session = Task.succeed (Response.redirect (Counter { n: 1 }))
+
+-- then down
+-- this route does not run Counter.load first: repeat here any access check it makes (#160)
+Down.update : Down.Params -> Session -> Task Response
+Down.update params session = {
+  -- never below zero
+  Task.succeed (Response.redirect (Counter { n: 0 }))
+}
+
+-- everything else starts over
+-- this route does not run Counter.load first: repeat here any access check it makes (#160)
+Reset.update : Reset.Params -> Session -> Task Response
+Reset.update params session = Task.succeed Response.refresh
+
+-- no more arms
+
+-- the view
+Counter.view : Model -> Session -> Html
+Counter.view model session =
+  <main>
+    -- the count
+    <p>{Text.fromInt model.n}</p>
+    <button click={Up}>+</button>
+    <button click={Down}>-</button>
+    <button click={Reset}>0</button>
+  </main>
+
+-- tests keep their comments
+test "counter opens" = {
+  -- open it
+  let r <- Test.open (Counter {})
+  -- and look
+  Task.succeed (Test.text "p" r.doc == Just "0")
+}

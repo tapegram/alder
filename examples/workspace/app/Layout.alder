@@ -15,9 +15,9 @@ Page props =
       <al-page>
         <header>
           <nav>
-            <a href={Projects.Index {}}>Projects</a>
-            <a href={Members.Index {}}>Members</a>
-            <a href={Orgs.Index {}}>Orgs</a>
+            <a href={Projects.Index.Index {}}>Projects</a>
+            <a href={Members.Index.Index {}}>Members</a>
+            <a href={Orgs.Index.Index {}}>Orgs</a>
           </nav>
         </header>
         <main><al-stack gap="lg">{props.children}</al-stack></main>

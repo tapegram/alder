@@ -12,29 +12,31 @@ import (
 	"net/url"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every message of the
-// pages and of App (POST), in module order.
+// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
+// write routes, in declaration order), then every message of the pages and of App (POST), in module
+// order.
 var Routes = []web.Route{
-	Route__Admin__Projects__page(),
-	Route__Login__page(),
-	Route__Notes__Index__page(),
-	Route__Orgs__page(),
-	Route__Projects__Index__page(),
+	Route__Admin__Projects__Projects(),
 	Route__Admin__Projects__Remove(),
+	Route__App__Leave(),
+	Route__Login__Login(),
+	Route__Notes__Index__Index(),
 	Route__Notes__Index__Add(),
+	Route__Orgs__Orgs(),
 	Route__Orgs__Pick(),
 	Route__Orgs__Switch(),
+	Route__Projects__Index__Index(),
 	Route__Projects__Index__Add(),
 	Route__Projects__Index__Rename(),
 	Route__Projects__Index__Remove(),
 	Route__Projects__Index__Seed(),
 	Route__Projects__Index__Tag(),
-	Route__App__Leave(),
 }
 
-// decode__Admin__Projects__Params decodes page Admin.Projects's parameters: the path's from params,
-// the others from q. A parameter that does not decode is an error (the route answers 404).
-func decode__Admin__Projects__Params(params map[string]string, _ url.Values) (r Admin__Projects__Params, errs []web.FieldError) {
+// decode__Admin__Projects__Projects__Params decodes route Admin.Projects.Projects's parameters: the
+// path's from params, the others from q. A parameter that does not decode is an error (the route
+// answers 404).
+func decode__Admin__Projects__Projects__Params(params map[string]string, _ url.Values) (r Admin__Projects__Projects__Params, errs []web.FieldError) {
 	pv := url.Values{}
 	for k, v := range params {
 		pv[k] = []string{v}
@@ -47,10 +49,74 @@ func decode__Admin__Projects__Params(params map[string]string, _ url.Values) (r 
 	return r, errs
 }
 
-// decode__Admin__Projects__RemoveParams decodes the parameters of message Remove from its URL's
-// query q; the form is decoded apart. A parameter that does not decode is an error (the route
+// page__Admin__Projects__Projects runs route Admin.Projects.Projects for rq up to its model:
+// `requires user` (a 303 to App.login, storing keep, when the session's user is Nothing), then
+// `role Admin` (404, App.notFound, as for a missing row, when the session's role is not one of
+// them: a cookie check, read when the user logged in), then load (with params and the narrowed
+// session). It returns the model and the session view and update take, or the response that ends
+// the request, which stores keep (the session a successful update left, or nil).
+func page__Admin__Projects__Projects(rq *web.Request, params Admin__Projects__Projects__Params, keep any) (Admin__Projects__Model, Admin__Projects__Projects__Session, *web.Response) {
+	var model Admin__Projects__Model
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, keep)
+		return model, Admin__Projects__Projects__Session{}, &r
+	}
+	if app.Role.Tag != is__User__Role__Admin {
+		r := web.NotFoundResponse(html.None())
+		r.Session = keep
+		return model, Admin__Projects__Projects__Session{}, &r
+	}
+	db.Narrow(rq.Env, "org", params.Org)
+	session := Admin__Projects__Projects__Session{User: app.User.Val, Org: params.Org, Role: app.Role}
+	model, err := eff.RunQuery(rq.Env, Admin__Projects__Projects__load(params, session))
+	if err != nil {
+		r := route__fail(err)
+		r.Session = keep
+		return model, session, &r
+	}
+	return model, session, nil
+}
+
+// params__Admin__Projects__Projects are route Admin.Projects.Projects's parameters as text
+// (html.FormState.PageParams), for the posted form's state its view renders with when a write
+// renders it again.
+func params__Admin__Projects__Projects(p Admin__Projects__Projects__Params) []rt.KV {
+	return []rt.KV{{Key: "org", Value: p.Org}}
+}
+
+// Route__Admin__Projects__Projects serves route Admin.Projects.Projects, GET
+// /admin/orgs/{org}/projects: decode the parameters (404 when they do not), `requires` (303 to
+// App.login), the role (404), load (404 on Query.notFound, 303 on Query.redirect, 500 on a
+// failure), view (the model also in rq.Model, which a test's browser reads).
+func Route__Admin__Projects__Projects() web.Route {
+	return web.Route{Method: "GET", Pattern: "/admin/orgs/{org}/projects", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Admin__Projects__Projects__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		model, session, stop := page__Admin__Projects__Projects(rq, params, nil)
+		if stop != nil {
+			return *stop
+		}
+		rq.Model = model
+		return web.PageResponse(Admin__Projects__Projects__view(model, session), web.WithPageParams(rq.FormState, params__Admin__Projects__Projects(params)), rq.Session, false)
+	}}
+}
+
+// decode__Admin__Projects__Remove__Params decodes route Admin.Projects.Remove's parameters: the
+// path's from params, the others from q. A parameter that does not decode is an error (the route
 // answers 404).
-func decode__Admin__Projects__RemoveParams(q url.Values) (r Admin__Projects__RemoveParams, errs []web.FieldError) {
+func decode__Admin__Projects__Remove__Params(params map[string]string, q url.Values) (r Admin__Projects__Remove__Params, errs []web.FieldError) {
+	pv := url.Values{}
+	for k, v := range params {
+		pv[k] = []string{v}
+	}
+	if s, ok := web.Text(pv, "org", false); !ok {
+		errs = append(errs, web.Missing("org"))
+	} else {
+		r.Org = s
+	}
 	if s, ok := web.Text(q, "id", false); !ok {
 		errs = append(errs, web.Missing("id"))
 	} else {
@@ -59,146 +125,101 @@ func decode__Admin__Projects__RemoveParams(q url.Values) (r Admin__Projects__Rem
 	return r, errs
 }
 
-// page__Admin__Projects runs page Admin.Projects for rq up to its model: `requires user` (a 303 to
-// App.login, storing keep, when the session's user is Nothing), then `role Admin` (404,
-// App.notFound, as for a missing row, when the session's role is not one of them: a cookie check,
-// read when the user logged in), then load (with params and the narrowed session). It returns the
-// model and the session view and update take, or the response that ends the request, which stores
-// keep (the session a successful update left, or nil).
-func page__Admin__Projects(rq *web.Request, params Admin__Projects__Params, keep any) (Admin__Projects__Model, Admin__Projects__Session, *web.Response) {
-	var model Admin__Projects__Model
+// guard__Admin__Projects__Remove runs the guard of route Admin.Projects.Remove for rq: `requires
+// user` (a 303 to App.login when the session's user is Nothing), then `role Admin` (404 when the
+// session's role is not one of them). It returns the session the route's update takes, or the
+// response that ends the request.
+func guard__Admin__Projects__Remove(rq *web.Request, params Admin__Projects__Remove__Params) (Admin__Projects__Projects__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
-		r := web.RedirectResponse(rq.Login, keep)
-		return model, Admin__Projects__Session{}, &r
+		r := web.RedirectResponse(rq.Login, nil)
+		return Admin__Projects__Projects__Session{}, &r
 	}
 	if app.Role.Tag != is__User__Role__Admin {
 		r := web.NotFoundResponse(html.None())
-		r.Session = keep
-		return model, Admin__Projects__Session{}, &r
+		return Admin__Projects__Projects__Session{}, &r
 	}
 	db.Narrow(rq.Env, "org", params.Org)
-	session := Admin__Projects__Session{User: app.User.Val, Org: params.Org, Role: app.Role}
-	model, err := eff.RunQuery(rq.Env, Admin__Projects__load(params, session))
-	if err != nil {
-		r := route__fail(err)
-		r.Session = keep
-		return model, session, &r
-	}
-	return model, session, nil
+	return Admin__Projects__Projects__Session{User: app.User.Val, Org: params.Org, Role: app.Role}, nil
 }
 
-// params__Admin__Projects are page Admin.Projects's parameters as text for its message URLs
-// (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
-func params__Admin__Projects(p Admin__Projects__Params) []rt.KV {
-	return []rt.KV{{Key: "org", Value: p.Org}}
-}
-
-// store__Admin__Projects is the store the Task of page Admin.Projects's update for msg writes to
-// (the checker's one-store rule): the silo key, "" for the shared store.
-func store__Admin__Projects(msg Admin__Projects__Msg) string {
-	switch msg.Tag {
-	case is__Admin__Projects__Msg__Remove:
-		return "org"
-	}
-	return ""
-}
-
-// update__Admin__Projects runs page Admin.Projects's update for msg and answers its Nav (book 06):
-// load, update (a Task, whose session is stored when it succeeds), then for Redirect p a 303 to p;
-// for Reject t on a form (st, the state of the form that sent the message; nil for a message
-// without one) load and view again with t on the form (patched into the page under Datastar); for
-// Rerender (and a Reject without a form) the same under Datastar, else a 303 to the page
-// (Post/Redirect/Get: a refresh does not post again). A failed Task changes nothing: 500
-// (App.error), 404 for Query.notFound or Task.notFound, or a 303 for Query.redirect.
-func update__Admin__Projects(rq *web.Request, params Admin__Projects__Params, msg Admin__Projects__Msg, st *html.FormState) web.Response {
-	model, session, stop := page__Admin__Projects(rq, params, nil)
-	if stop != nil {
-		return *stop
-	}
-	model0, session0 := model, session // the page the client shows: Before
-	if err := db.Enter(rq.Env, store__Admin__Projects(msg)); err != nil {
-		return route__fail(err)
-	}
-	nav, err := eff.Run(rq.Env, eff.KTask, Admin__Projects__update(msg, model, session))
-	if err != nil {
-		var nm *eff.ErrFail
-		switch {
-		case !errors.As(err, &nm) || !nm.NotMember:
-			return route__fail(err)
-		case st == nil:
-			return web.NotFoundResponse(html.None())
-		}
-		nav = rt.Reject("You are not a member of that workspace.")
-	}
-	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
-	switch {
-	case nav.Tag == rt.NavRedirect:
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	case nav.Tag == rt.NavReject && st != nil:
-		st.FormError = nav.Text
-	case !rq.Datastar:
-		return web.RedirectResponse(rt.PageAt("/admin/orgs/{org}/projects", params__Admin__Projects(params)), rq.Env.Session)
-	default:
-		st = &html.FormState{}
-	}
-	st.PageParams = params__Admin__Projects(params)
-	model, session, stop = page__Admin__Projects(rq, params, rq.Env.Session)
-	if stop != nil {
-		return *stop
-	}
-	return web.PageResponse(Admin__Projects__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Admin__Projects__view(model0, session0) })
-}
-
-// Route__Admin__Projects__page serves page Admin.Projects, GET /admin/orgs/{org}/projects (book
-// 06): decode the parameters (404 when they do not), `requires` (303 to App.login), the role (404),
-// load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also in
-// rq.Model, which a test's browser reads).
-func Route__Admin__Projects__page() web.Route {
-	return web.Route{Method: "GET", Pattern: "/admin/orgs/{org}/projects", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Admin__Projects__Params(rq.Params, rq.Query)
+// Route__Admin__Projects__Remove serves route Admin.Projects.Remove, POST
+// /admin/orgs/{org}/projects/_/Remove: decode the parameters (404 when they do not); `requires`
+// (303 to App.login); the role (404); render the page the browser is on before the update (refresh
+// and invalid are diffed against it); run the update and answer its Response (a failed Task: 500,
+// 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+func Route__Admin__Projects__Remove() web.Route {
+	return web.Route{Method: "POST", Pattern: "/admin/orgs/{org}/projects/_/Remove", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Admin__Projects__Remove__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Admin__Projects(rq, params, nil)
+		session, stop := guard__Admin__Projects__Remove(rq, params)
 		if stop != nil {
 			return *stop
 		}
-		rq.Model = model
-		return web.PageResponse(Admin__Projects__view(model, session), &html.FormState{PageParams: params__Admin__Projects(params)}, rq.Session, false)
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		if err := db.Enter(rq.Env, "org"); err != nil {
+			return route__fail(err)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Admin__Projects__Remove__update(params, session))
+		if err != nil {
+			var nm *eff.ErrFail
+			if !errors.As(err, &nm) || !nm.NotMember {
+				return route__fail(err)
+			}
+			return web.NotFoundResponse(html.None())
+		}
+		return web.AnswerResponse(resp, before, rq.Env.Session)
 	}}
 }
 
-// Route__Admin__Projects__Remove serves message Remove of page Admin.Projects, POST
-// /_m/Admin.Projects/Remove (book 06): decode the page's parameters (the message URL's _p. keys,
-// which the rendered page put there) and the message's (from the query): 404 when they do not
-// decode; then update__Admin__Projects.
-func Route__Admin__Projects__Remove() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Admin.Projects/Remove", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Admin__Projects__Params(rt.PageParams(rq.Query))
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		p, errs := decode__Admin__Projects__RemoveParams(rq.Query)
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		return update__Admin__Projects(rq, params, Admin__Projects__Msg__Remove__(p), nil)
-	}}
-}
-
-// decode__Login__Params decodes page Login's parameters: the path's from params, the others from q.
-// A parameter that does not decode is an error (the route answers 404).
-func decode__Login__Params(_ map[string]string, _ url.Values) (r Login__Params, errs []web.FieldError) {
+// decode__App__Leave__Params decodes route App.Leave's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__App__Leave__Params(_ map[string]string, _ url.Values) (r App__Leave__Params, errs []web.FieldError) {
 	return r, errs
 }
 
-// page__Login runs page Login for rq up to its model: load (with params and the session of rq.Env).
-// It returns the model and the session view and update take, or the response that ends the request,
-// which stores keep (the session a successful update left, or nil).
-func page__Login(rq *web.Request, params Login__Params, keep any) (Login__Model, App__Session, *web.Response) {
+// Route__App__Leave serves route App.Leave, POST /_/Leave: decode the parameters (404 when they do
+// not); run the update and answer its Response (a failed Task: 500, 404 for Query.notFound or
+// Task.notFound, 303 for Query.redirect).
+func Route__App__Leave() web.Route {
+	return web.Route{Method: "POST", Pattern: "/_/Leave", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__App__Leave__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		session := rq.Env.Session.(App__Session)
+		if err := db.Enter(rq.Env, ""); err != nil {
+			return route__fail(err)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, App__Leave__update(params, session))
+		if err != nil {
+			var nm *eff.ErrFail
+			if !errors.As(err, &nm) || !nm.NotMember {
+				return route__fail(err)
+			}
+			return web.NotFoundResponse(html.None())
+		}
+		return web.AnswerResponse(resp, nil, rq.Env.Session)
+	}}
+}
+
+// decode__Login__Login__Params decodes route Login.Login's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Login__Login__Params(_ map[string]string, _ url.Values) (r Login__Login__Params, errs []web.FieldError) {
+	return r, errs
+}
+
+// page__Login__Login runs route Login.Login for rq up to its model: load (with params and the
+// session of rq.Env). It returns the model and the session view and update take, or the response
+// that ends the request, which stores keep (the session a successful update left, or nil).
+func page__Login__Login(rq *web.Request, params Login__Login__Params, keep any) (Login__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
-	model, err := eff.RunQuery(rq.Env, Login__load(params, session))
+	model, err := eff.RunQuery(rq.Env, Login__Login__load(params, session))
 	if err != nil {
 		r := route__fail(err)
 		r.Session = keep
@@ -207,49 +228,49 @@ func page__Login(rq *web.Request, params Login__Params, keep any) (Login__Model,
 	return model, session, nil
 }
 
-// params__Login are page Login's parameters as text for its message URLs
-// (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
-func params__Login(_ Login__Params) []rt.KV {
+// params__Login__Login are route Login.Login's parameters as text (html.FormState.PageParams), for
+// the posted form's state its view renders with when a write renders it again.
+func params__Login__Login(_ Login__Login__Params) []rt.KV {
 	return nil
 }
 
-// Route__Login__page serves page Login, GET /login (book 06): decode the parameters (404 when they
-// do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model
-// also in rq.Model, which a test's browser reads).
-func Route__Login__page() web.Route {
+// Route__Login__Login serves route Login.Login, GET /login: decode the parameters (404 when they do
+// not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view (the model also
+// in rq.Model, which a test's browser reads).
+func Route__Login__Login() web.Route {
 	return web.Route{Method: "GET", Pattern: "/login", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Login__Params(rq.Params, rq.Query)
+		params, errs := decode__Login__Login__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Login(rq, params, nil)
+		model, session, stop := page__Login__Login(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Login__view(model, session), &html.FormState{PageParams: params__Login(params)}, rq.Session, false)
+		return web.PageResponse(Login__Login__view(model, session), web.WithPageParams(rq.FormState, params__Login__Login(params)), rq.Session, false)
 	}}
 }
 
-// decode__Notes__Index__Params decodes page Notes.Index's parameters: the path's from params, the
-// others from q. A parameter that does not decode is an error (the route answers 404).
-func decode__Notes__Index__Params(_ map[string]string, _ url.Values) (r Notes__Index__Params, errs []web.FieldError) {
+// decode__Notes__Index__Index__Params decodes route Notes.Index.Index's parameters: the path's from
+// params, the others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Notes__Index__Index__Params(_ map[string]string, _ url.Values) (r Notes__Index__Index__Params, errs []web.FieldError) {
 	return r, errs
 }
 
-// page__Notes__Index runs page Notes.Index for rq up to its model: `requires user` (a 303 to
-// App.login, storing keep, when the session's user is Nothing), then load (with params and the
-// narrowed session). It returns the model and the session view and update take, or the response
+// page__Notes__Index__Index runs route Notes.Index.Index for rq up to its model: `requires user` (a
+// 303 to App.login, storing keep, when the session's user is Nothing), then load (with params and
+// the narrowed session). It returns the model and the session view and update take, or the response
 // that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Notes__Index(rq *web.Request, params Notes__Index__Params, keep any) (Notes__Index__Model, Notes__Index__Session, *web.Response) {
+func page__Notes__Index__Index(rq *web.Request, params Notes__Index__Index__Params, keep any) (Notes__Index__Model, Notes__Index__Index__Session, *web.Response) {
 	var model Notes__Index__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
 		r := web.RedirectResponse(rq.Login, keep)
-		return model, Notes__Index__Session{}, &r
+		return model, Notes__Index__Index__Session{}, &r
 	}
-	session := Notes__Index__Session{User: app.User.Val, Org: app.Org, Role: app.Role}
-	model, err := eff.RunQuery(rq.Env, Notes__Index__load(params, session))
+	session := Notes__Index__Index__Session{User: app.User.Val, Org: app.Org, Role: app.Role}
+	model, err := eff.RunQuery(rq.Env, Notes__Index__Index__load(params, session))
 	if err != nil {
 		r := route__fail(err)
 		r.Session = keep
@@ -258,111 +279,201 @@ func page__Notes__Index(rq *web.Request, params Notes__Index__Params, keep any) 
 	return model, session, nil
 }
 
-// params__Notes__Index are page Notes.Index's parameters as text for its message URLs
-// (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
-func params__Notes__Index(_ Notes__Index__Params) []rt.KV {
+// params__Notes__Index__Index are route Notes.Index.Index's parameters as text
+// (html.FormState.PageParams), for the posted form's state its view renders with when a write
+// renders it again.
+func params__Notes__Index__Index(_ Notes__Index__Index__Params) []rt.KV {
 	return nil
 }
 
-// store__Notes__Index is the store the Task of page Notes.Index's update for msg writes to (the
-// checker's one-store rule): the silo key, "" for the shared store.
-func store__Notes__Index(_ Notes__Index__Msg) string {
-	return ""
-}
-
-// update__Notes__Index runs page Notes.Index's update for msg and answers its Nav (book 06): load,
-// update (a Task, whose session is stored when it succeeds), then for Redirect p a 303 to p; for
-// Reject t on a form (st, the state of the form that sent the message; nil for a message without
-// one) load and view again with t on the form (patched into the page under Datastar); for Rerender
-// (and a Reject without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get:
-// a refresh does not post again). A failed Task changes nothing: 500 (App.error), 404 for
-// Query.notFound or Task.notFound, or a 303 for Query.redirect.
-func update__Notes__Index(rq *web.Request, params Notes__Index__Params, msg Notes__Index__Msg, st *html.FormState) web.Response {
-	model, session, stop := page__Notes__Index(rq, params, nil)
-	if stop != nil {
-		return *stop
-	}
-	model0, session0 := model, session // the page the client shows: Before
-	if err := db.Enter(rq.Env, store__Notes__Index(msg)); err != nil {
-		return route__fail(err)
-	}
-	nav, err := eff.Run(rq.Env, eff.KTask, Notes__Index__update(msg, model, session))
-	if err != nil {
-		var nm *eff.ErrFail
-		switch {
-		case !errors.As(err, &nm) || !nm.NotMember:
-			return route__fail(err)
-		case st == nil:
-			return web.NotFoundResponse(html.None())
-		}
-		nav = rt.Reject("You are not a member of that workspace.")
-	}
-	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
-	switch {
-	case nav.Tag == rt.NavRedirect:
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	case nav.Tag == rt.NavReject && st != nil:
-		st.FormError = nav.Text
-	case !rq.Datastar:
-		return web.RedirectResponse(rt.PageAt("/notes", params__Notes__Index(params)), rq.Env.Session)
-	default:
-		st = &html.FormState{}
-	}
-	st.PageParams = params__Notes__Index(params)
-	model, session, stop = page__Notes__Index(rq, params, rq.Env.Session)
-	if stop != nil {
-		return *stop
-	}
-	return web.PageResponse(Notes__Index__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Notes__Index__view(model0, session0) })
-}
-
-// Route__Notes__Index__page serves page Notes.Index, GET /notes (book 06): decode the parameters
-// (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on
+// Route__Notes__Index__Index serves route Notes.Index.Index, GET /notes: decode the parameters (404
+// when they do not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on
 // Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's browser
 // reads).
-func Route__Notes__Index__page() web.Route {
+func Route__Notes__Index__Index() web.Route {
 	return web.Route{Method: "GET", Pattern: "/notes", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Notes__Index__Params(rq.Params, rq.Query)
+		params, errs := decode__Notes__Index__Index__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Notes__Index(rq, params, nil)
+		model, session, stop := page__Notes__Index__Index(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Notes__Index__view(model, session), &html.FormState{PageParams: params__Notes__Index(params)}, rq.Session, false)
+		return web.PageResponse(Notes__Index__Index__view(model, session), web.WithPageParams(rq.FormState, params__Notes__Index__Index(params)), rq.Session, false)
 	}}
 }
 
-// Route__Notes__Index__Add serves message Add of page Notes.Index, POST /_m/Notes.Index/Add (book
-// 06): decode the page's parameters (the message URL's _p. keys, which the rendered page put
-// there): 404 when they do not decode; then update__Notes__Index.
-func Route__Notes__Index__Add() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Notes.Index/Add", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Notes__Index__Params(rt.PageParams(rq.Query))
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		return update__Notes__Index(rq, params, Notes__Index__Msg__Add__, nil)
-	}}
-}
-
-// decode__Orgs__Params decodes page Orgs's parameters: the path's from params, the others from q. A
-// parameter that does not decode is an error (the route answers 404).
-func decode__Orgs__Params(_ map[string]string, _ url.Values) (r Orgs__Params, errs []web.FieldError) {
+// decode__Notes__Index__Add__Params decodes route Notes.Index.Add's parameters: the path's from
+// params, the others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Notes__Index__Add__Params(_ map[string]string, _ url.Values) (r Notes__Index__Add__Params, errs []web.FieldError) {
 	return r, errs
 }
 
-// decode__Orgs__PickParams decodes the parameters of message Pick from its URL's query q; the form
-// is decoded apart. A parameter that does not decode is an error (the route answers 404).
-func decode__Orgs__PickParams(q url.Values) (r Orgs__PickParams, errs []web.FieldError) {
+// guard__Notes__Index__Add runs the guard of route Notes.Index.Add for rq: `requires user` (a 303
+// to App.login when the session's user is Nothing). It returns the session the route's update
+// takes, or the response that ends the request.
+func guard__Notes__Index__Add(rq *web.Request, params Notes__Index__Add__Params) (Notes__Index__Index__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Notes__Index__Index__Session{}, &r
+	}
+	return Notes__Index__Index__Session{User: app.User.Val, Org: app.Org, Role: app.Role}, nil
+}
+
+// Route__Notes__Index__Add serves route Notes.Index.Add, POST /notes/_/Add: decode the parameters
+// (404 when they do not); `requires` (303 to App.login); render the page the browser is on before
+// the update (refresh and invalid are diffed against it); run the update and answer its Response (a
+// failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+func Route__Notes__Index__Add() web.Route {
+	return web.Route{Method: "POST", Pattern: "/notes/_/Add", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Notes__Index__Add__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		session, stop := guard__Notes__Index__Add(rq, params)
+		if stop != nil {
+			return *stop
+		}
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		if err := db.Enter(rq.Env, ""); err != nil {
+			return route__fail(err)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Notes__Index__Add__update(params, session))
+		if err != nil {
+			var nm *eff.ErrFail
+			if !errors.As(err, &nm) || !nm.NotMember {
+				return route__fail(err)
+			}
+			return web.NotFoundResponse(html.None())
+		}
+		return web.AnswerResponse(resp, before, rq.Env.Session)
+	}}
+}
+
+// decode__Orgs__Orgs__Params decodes route Orgs.Orgs's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Orgs__Orgs__Params(_ map[string]string, _ url.Values) (r Orgs__Orgs__Params, errs []web.FieldError) {
+	return r, errs
+}
+
+// page__Orgs__Orgs runs route Orgs.Orgs for rq up to its model: `requires user` (a 303 to
+// App.login, storing keep, when the session's user is Nothing), then load (with params and the
+// narrowed session). It returns the model and the session view and update take, or the response
+// that ends the request, which stores keep (the session a successful update left, or nil).
+func page__Orgs__Orgs(rq *web.Request, params Orgs__Orgs__Params, keep any) (Orgs__Model, Orgs__Orgs__Session, *web.Response) {
+	var model Orgs__Model
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, keep)
+		return model, Orgs__Orgs__Session{}, &r
+	}
+	session := Orgs__Orgs__Session{User: app.User.Val, Org: app.Org, Role: app.Role}
+	model, err := eff.RunQuery(rq.Env, Orgs__Orgs__load(params, session))
+	if err != nil {
+		r := route__fail(err)
+		r.Session = keep
+		return model, session, &r
+	}
+	return model, session, nil
+}
+
+// params__Orgs__Orgs are route Orgs.Orgs's parameters as text (html.FormState.PageParams), for the
+// posted form's state its view renders with when a write renders it again.
+func params__Orgs__Orgs(_ Orgs__Orgs__Params) []rt.KV {
+	return nil
+}
+
+// Route__Orgs__Orgs serves route Orgs.Orgs, GET /orgs: decode the parameters (404 when they do
+// not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect, 500 on a
+// failure), view (the model also in rq.Model, which a test's browser reads).
+func Route__Orgs__Orgs() web.Route {
+	return web.Route{Method: "GET", Pattern: "/orgs", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Orgs__Orgs__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		model, session, stop := page__Orgs__Orgs(rq, params, nil)
+		if stop != nil {
+			return *stop
+		}
+		rq.Model = model
+		return web.PageResponse(Orgs__Orgs__view(model, session), web.WithPageParams(rq.FormState, params__Orgs__Orgs(params)), rq.Session, false)
+	}}
+}
+
+// decode__Orgs__Pick__Params decodes route Orgs.Pick's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Orgs__Pick__Params(_ map[string]string, q url.Values) (r Orgs__Pick__Params, errs []web.FieldError) {
 	if s, ok := web.Text(q, "org", false); !ok {
 		errs = append(errs, web.Missing("org"))
 	} else {
 		r.Org = s
 	}
 	return r, errs
+}
+
+// guard__Orgs__Pick runs the guard of route Orgs.Pick for rq: `requires user` (a 303 to App.login
+// when the session's user is Nothing). It returns the session the route's update takes, or the
+// response that ends the request.
+func guard__Orgs__Pick(rq *web.Request, params Orgs__Pick__Params) (Orgs__Orgs__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Orgs__Orgs__Session{}, &r
+	}
+	return Orgs__Orgs__Session{User: app.User.Val, Org: app.Org, Role: app.Role}, nil
+}
+
+// Route__Orgs__Pick serves route Orgs.Pick, POST /orgs/_/Pick: decode the parameters (404 when they
+// do not); `requires` (303 to App.login); run the update and answer its Response (a failed Task:
+// 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+func Route__Orgs__Pick() web.Route {
+	return web.Route{Method: "POST", Pattern: "/orgs/_/Pick", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Orgs__Pick__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		session, stop := guard__Orgs__Pick(rq, params)
+		if stop != nil {
+			return *stop
+		}
+		if err := db.Enter(rq.Env, ""); err != nil {
+			return route__fail(err)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Orgs__Pick__update(params, session))
+		if err != nil {
+			var nm *eff.ErrFail
+			if !errors.As(err, &nm) || !nm.NotMember {
+				return route__fail(err)
+			}
+			return web.NotFoundResponse(html.None())
+		}
+		return web.AnswerResponse(resp, nil, rq.Env.Session)
+	}}
+}
+
+// decode__Orgs__Switch__Params decodes route Orgs.Switch's parameters: the path's from params, the
+// others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Orgs__Switch__Params(_ map[string]string, _ url.Values) (r Orgs__Switch__Params, errs []web.FieldError) {
+	return r, errs
+}
+
+// guard__Orgs__Switch runs the guard of route Orgs.Switch for rq: `requires user` (a 303 to
+// App.login when the session's user is Nothing). It returns the session the route's update takes,
+// or the response that ends the request.
+func guard__Orgs__Switch(rq *web.Request, params Orgs__Switch__Params) (Orgs__Orgs__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Orgs__Orgs__Session{}, &r
+	}
+	return Orgs__Orgs__Session{User: app.User.Val, Org: app.Org, Role: app.Role}, nil
 }
 
 // decode__Orgs__SwitchOrg decodes form SwitchOrg from a request body v. Its errors are shown on the
@@ -376,19 +487,77 @@ func decode__Orgs__SwitchOrg(v url.Values) (r Orgs__SwitchOrg, errs []web.FieldE
 	return r, errs
 }
 
-// page__Orgs runs page Orgs for rq up to its model: `requires user` (a 303 to App.login, storing
-// keep, when the session's user is Nothing), then load (with params and the narrowed session). It
-// returns the model and the session view and update take, or the response that ends the request,
-// which stores keep (the session a successful update left, or nil).
-func page__Orgs(rq *web.Request, params Orgs__Params, keep any) (Orgs__Model, Orgs__Session, *web.Response) {
-	var model Orgs__Model
+// Route__Orgs__Switch serves route Orgs.Switch, POST /orgs/_/Switch: decode the parameters (404
+// when they do not); `requires` (303 to App.login); decode form SwitchOrg from the body (when it
+// does not: 422, the page the browser is on rendered again with the submitted values, no
+// Text.Secret field, and the errors, without calling update); run the update and answer its
+// Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+func Route__Orgs__Switch() web.Route {
+	return web.Route{Method: "POST", Pattern: "/orgs/_/Switch", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Orgs__Switch__Params(rq.Params, rq.Query)
+		if errs != nil {
+			return web.NotFoundResponse(html.None())
+		}
+		session, stop := guard__Orgs__Switch(rq, params)
+		if stop != nil {
+			return *stop
+		}
+		key := rt.RouteKey(rt.Route{Name: "Orgs.Switch", Method: "POST", Path: "/orgs/_/Switch"})
+		values := route__values(rq.Form)
+		form, errs := decode__Orgs__SwitchOrg(rq.Form)
+		if errs != nil {
+			resp := web.InvalidResponse(&html.FormState{Form: "Orgs.SwitchOrg", Msg: key, Values: values, Errors: route__errors(errs)}, nil)
+			if rq.Datastar {
+				resp.Shown, _ = rq.RenderShown(nil)
+			}
+			return resp
+		}
+		params.Form = form
+		if err := db.Enter(rq.Env, ""); err != nil {
+			return route__fail(err)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Orgs__Switch__update(params, session))
+		if err != nil {
+			var nm *eff.ErrFail
+			if !errors.As(err, &nm) || !nm.NotMember {
+				return route__fail(err)
+			}
+			resp = rt.Invalid("You are not a member of that workspace.")
+		}
+		ans := web.AnswerResponse(resp, nil, rq.Env.Session)
+		if resp.Kind == rt.RespInvalid {
+			ans.State = &html.FormState{Form: "Orgs.SwitchOrg", Msg: key, Values: values}
+		}
+		return ans
+	}}
+}
+
+// decode__Projects__Index__Index__Params decodes route Projects.Index.Index's parameters: the
+// path's from params, the others from q. A parameter that does not decode is an error (the route
+// answers 404).
+func decode__Projects__Index__Index__Params(_ map[string]string, _ url.Values) (r Projects__Index__Index__Params, errs []web.FieldError) {
+	return r, errs
+}
+
+// page__Projects__Index__Index runs route Projects.Index.Index for rq up to its model: `requires
+// user, org` (a 303 to App.login, storing keep, when the session's user or org is Nothing), then
+// load (with params and the narrowed session). It returns the model and the session view and update
+// take, or the response that ends the request, which stores keep (the session a successful update
+// left, or nil).
+func page__Projects__Index__Index(rq *web.Request, params Projects__Index__Index__Params, keep any) (Projects__Index__Model, Projects__Index__Index__Session, *web.Response) {
+	var model Projects__Index__Model
 	app := rq.Env.Session.(App__Session)
 	if !app.User.Ok {
 		r := web.RedirectResponse(rq.Login, keep)
-		return model, Orgs__Session{}, &r
+		return model, Projects__Index__Index__Session{}, &r
 	}
-	session := Orgs__Session{User: app.User.Val, Org: app.Org, Role: app.Role}
-	model, err := eff.RunQuery(rq.Env, Orgs__load(params, session))
+	if !app.Org.Ok {
+		r := web.RedirectResponse("/orgs", keep)
+		return model, Projects__Index__Index__Session{}, &r
+	}
+	db.Narrow(rq.Env, "org", app.Org.Val)
+	session := Projects__Index__Index__Session{User: app.User.Val, Org: app.Org.Val, Role: app.Role}
+	model, err := eff.RunQuery(rq.Env, Projects__Index__Index__load(params, session))
 	if err != nil {
 		r := route__fail(err)
 		r.Session = keep
@@ -397,129 +566,54 @@ func page__Orgs(rq *web.Request, params Orgs__Params, keep any) (Orgs__Model, Or
 	return model, session, nil
 }
 
-// params__Orgs are page Orgs's parameters as text for its message URLs (html.FormState.PageParams):
-// each message route decodes them back from the URL's _p. keys.
-func params__Orgs(_ Orgs__Params) []rt.KV {
+// params__Projects__Index__Index are route Projects.Index.Index's parameters as text
+// (html.FormState.PageParams), for the posted form's state its view renders with when a write
+// renders it again.
+func params__Projects__Index__Index(_ Projects__Index__Index__Params) []rt.KV {
 	return nil
 }
 
-// store__Orgs is the store the Task of page Orgs's update for msg writes to (the checker's
-// one-store rule): the silo key, "" for the shared store.
-func store__Orgs(_ Orgs__Msg) string {
-	return ""
-}
-
-// update__Orgs runs page Orgs's update for msg and answers its Nav (book 06): load, update (a Task,
-// whose session is stored when it succeeds), then for Redirect p a 303 to p; for Reject t on a form
-// (st, the state of the form that sent the message; nil for a message without one) load and view
-// again with t on the form (patched into the page under Datastar); for Rerender (and a Reject
-// without a form) the same under Datastar, else a 303 to the page (Post/Redirect/Get: a refresh
-// does not post again). A failed Task changes nothing: 500 (App.error), 404 for Query.notFound or
-// Task.notFound, or a 303 for Query.redirect.
-func update__Orgs(rq *web.Request, params Orgs__Params, msg Orgs__Msg, st *html.FormState) web.Response {
-	model, session, stop := page__Orgs(rq, params, nil)
-	if stop != nil {
-		return *stop
-	}
-	model0, session0 := model, session // the page the client shows: Before
-	if err := db.Enter(rq.Env, store__Orgs(msg)); err != nil {
-		return route__fail(err)
-	}
-	nav, err := eff.Run(rq.Env, eff.KTask, Orgs__update(msg, model, session))
-	if err != nil {
-		var nm *eff.ErrFail
-		switch {
-		case !errors.As(err, &nm) || !nm.NotMember:
-			return route__fail(err)
-		case st == nil:
-			return web.NotFoundResponse(html.None())
-		}
-		nav = rt.Reject("You are not a member of that workspace.")
-	}
-	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
-	switch {
-	case nav.Tag == rt.NavRedirect:
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	case nav.Tag == rt.NavReject && st != nil:
-		st.FormError = nav.Text
-	case !rq.Datastar:
-		return web.RedirectResponse(rt.PageAt("/orgs", params__Orgs(params)), rq.Env.Session)
-	default:
-		st = &html.FormState{}
-	}
-	st.PageParams = params__Orgs(params)
-	model, session, stop = page__Orgs(rq, params, rq.Env.Session)
-	if stop != nil {
-		return *stop
-	}
-	return web.PageResponse(Orgs__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Orgs__view(model0, session0) })
-}
-
-// Route__Orgs__page serves page Orgs, GET /orgs (book 06): decode the parameters (404 when they do
-// not), `requires` (303 to App.login), load (404 on Query.notFound, 303 on Query.redirect, 500 on a
-// failure), view (the model also in rq.Model, which a test's browser reads).
-func Route__Orgs__page() web.Route {
-	return web.Route{Method: "GET", Pattern: "/orgs", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Orgs__Params(rq.Params, rq.Query)
+// Route__Projects__Index__Index serves route Projects.Index.Index, GET /projects: decode the
+// parameters (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound,
+// 303 on Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's
+// browser reads).
+func Route__Projects__Index__Index() web.Route {
+	return web.Route{Method: "GET", Pattern: "/projects", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Projects__Index__Index__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Orgs(rq, params, nil)
+		model, session, stop := page__Projects__Index__Index(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
 		rq.Model = model
-		return web.PageResponse(Orgs__view(model, session), &html.FormState{PageParams: params__Orgs(params)}, rq.Session, false)
+		return web.PageResponse(Projects__Index__Index__view(model, session), web.WithPageParams(rq.FormState, params__Projects__Index__Index(params)), rq.Session, false)
 	}}
 }
 
-// Route__Orgs__Pick serves message Pick of page Orgs, POST /_m/Orgs/Pick (book 06): decode the
-// page's parameters (the message URL's _p. keys, which the rendered page put there) and the
-// message's (from the query): 404 when they do not decode; then update__Orgs.
-func Route__Orgs__Pick() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Orgs/Pick", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Orgs__Params(rt.PageParams(rq.Query))
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		p, errs := decode__Orgs__PickParams(rq.Query)
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		return update__Orgs(rq, params, Orgs__Msg__Pick__(p), nil)
-	}}
-}
-
-// Route__Orgs__Switch serves message Switch of page Orgs, POST /_m/Orgs/Switch (book 06): decode
-// the page's parameters (the message URL's _p. keys, which the rendered page put there): 404 when
-// they do not decode; decode form SwitchOrg from the body: when it does not, re-render the page
-// with the submitted values (no Text.Secret field) and the errors, without calling update; then
-// update__Orgs.
-func Route__Orgs__Switch() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Orgs/Switch", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Orgs__Params(rt.PageParams(rq.Query))
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		p := Orgs__SwitchParams{}
-		values := route__values(rq.Form)
-		form, errs := decode__Orgs__SwitchOrg(rq.Form)
-		if errs != nil {
-			model, session, stop := page__Orgs(rq, params, nil)
-			if stop != nil {
-				return *stop
-			}
-			return web.PageResponse(Orgs__view(model, session), &html.FormState{Form: "Orgs.SwitchOrg", Msg: rt.MsgKey("/_m/Orgs/Switch", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Orgs(params)}, nil, true).WithBefore(func() html.Node { return Orgs__view(model, session) })
-		}
-		p.Form = form
-		return update__Orgs(rq, params, Orgs__Msg__Switch__(p), &html.FormState{Form: "Orgs.SwitchOrg", Msg: rt.MsgKey("/_m/Orgs/Switch", rq.Query), Values: values})
-	}}
-}
-
-// decode__Projects__Index__Params decodes page Projects.Index's parameters: the path's from params,
-// the others from q. A parameter that does not decode is an error (the route answers 404).
-func decode__Projects__Index__Params(_ map[string]string, _ url.Values) (r Projects__Index__Params, errs []web.FieldError) {
+// decode__Projects__Index__Add__Params decodes route Projects.Index.Add's parameters: the path's
+// from params, the others from q. A parameter that does not decode is an error (the route answers
+// 404).
+func decode__Projects__Index__Add__Params(_ map[string]string, _ url.Values) (r Projects__Index__Add__Params, errs []web.FieldError) {
 	return r, errs
+}
+
+// guard__Projects__Index__Add runs the guard of route Projects.Index.Add for rq: `requires user,
+// org` (a 303 to App.login when the session's user or org is Nothing). It returns the session the
+// route's update takes, or the response that ends the request.
+func guard__Projects__Index__Add(rq *web.Request, params Projects__Index__Add__Params) (Projects__Index__Index__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Projects__Index__Index__Session{}, &r
+	}
+	if !app.Org.Ok {
+		r := web.RedirectResponse("/orgs", nil)
+		return Projects__Index__Index__Session{}, &r
+	}
+	db.Narrow(rq.Env, "org", app.Org.Val)
+	return Projects__Index__Index__Session{User: app.User.Val, Org: app.Org.Val, Role: app.Role}, nil
 }
 
 // decode__Projects__Index__NewProject decodes form NewProject from a request body v. Its errors are
@@ -533,247 +627,293 @@ func decode__Projects__Index__NewProject(v url.Values) (r Projects__Index__NewPr
 	return r, errs
 }
 
-// decode__Projects__Index__RenameParams decodes the parameters of message Rename from its URL's
-// query q; the form is decoded apart. A parameter that does not decode is an error (the route
-// answers 404).
-func decode__Projects__Index__RenameParams(q url.Values) (r Projects__Index__RenameParams, errs []web.FieldError) {
-	if s, ok := web.Text(q, "id", false); !ok {
-		errs = append(errs, web.Missing("id"))
-	} else {
-		r.Id = s
-	}
-	return r, errs
-}
-
-// decode__Projects__Index__RemoveParams decodes the parameters of message Remove from its URL's
-// query q; the form is decoded apart. A parameter that does not decode is an error (the route
-// answers 404).
-func decode__Projects__Index__RemoveParams(q url.Values) (r Projects__Index__RemoveParams, errs []web.FieldError) {
-	if s, ok := web.Text(q, "id", false); !ok {
-		errs = append(errs, web.Missing("id"))
-	} else {
-		r.Id = s
-	}
-	return r, errs
-}
-
-// page__Projects__Index runs page Projects.Index for rq up to its model: `requires user, org` (a
-// 303 to App.login, storing keep, when the session's user or org is Nothing), then load (with
-// params and the narrowed session). It returns the model and the session view and update take, or
-// the response that ends the request, which stores keep (the session a successful update left, or
-// nil).
-func page__Projects__Index(rq *web.Request, params Projects__Index__Params, keep any) (Projects__Index__Model, Projects__Index__Session, *web.Response) {
-	var model Projects__Index__Model
-	app := rq.Env.Session.(App__Session)
-	if !app.User.Ok {
-		r := web.RedirectResponse(rq.Login, keep)
-		return model, Projects__Index__Session{}, &r
-	}
-	if !app.Org.Ok {
-		r := web.RedirectResponse("/orgs", keep)
-		return model, Projects__Index__Session{}, &r
-	}
-	db.Narrow(rq.Env, "org", app.Org.Val)
-	session := Projects__Index__Session{User: app.User.Val, Org: app.Org.Val, Role: app.Role}
-	model, err := eff.RunQuery(rq.Env, Projects__Index__load(params, session))
-	if err != nil {
-		r := route__fail(err)
-		r.Session = keep
-		return model, session, &r
-	}
-	return model, session, nil
-}
-
-// params__Projects__Index are page Projects.Index's parameters as text for its message URLs
-// (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
-func params__Projects__Index(_ Projects__Index__Params) []rt.KV {
-	return nil
-}
-
-// store__Projects__Index is the store the Task of page Projects.Index's update for msg writes to
-// (the checker's one-store rule): the silo key, "" for the shared store.
-func store__Projects__Index(msg Projects__Index__Msg) string {
-	switch msg.Tag {
-	case is__Projects__Index__Msg__Tag:
-		return ""
-	}
-	return "org"
-}
-
-// update__Projects__Index runs page Projects.Index's update for msg and answers its Nav (book 06):
-// load, update (a Task, whose session is stored when it succeeds), then for Redirect p a 303 to p;
-// for Reject t on a form (st, the state of the form that sent the message; nil for a message
-// without one) load and view again with t on the form (patched into the page under Datastar); for
-// Rerender (and a Reject without a form) the same under Datastar, else a 303 to the page
-// (Post/Redirect/Get: a refresh does not post again). A failed Task changes nothing: 500
-// (App.error), 404 for Query.notFound or Task.notFound, or a 303 for Query.redirect.
-func update__Projects__Index(rq *web.Request, params Projects__Index__Params, msg Projects__Index__Msg, st *html.FormState) web.Response {
-	model, session, stop := page__Projects__Index(rq, params, nil)
-	if stop != nil {
-		return *stop
-	}
-	model0, session0 := model, session // the page the client shows: Before
-	if err := db.Enter(rq.Env, store__Projects__Index(msg)); err != nil {
-		return route__fail(err)
-	}
-	nav, err := eff.Run(rq.Env, eff.KTask, Projects__Index__update(msg, model, session))
-	if err != nil {
-		var nm *eff.ErrFail
-		switch {
-		case !errors.As(err, &nm) || !nm.NotMember:
-			return route__fail(err)
-		case st == nil:
-			return web.NotFoundResponse(html.None())
-		}
-		nav = rt.Reject("You are not a member of that workspace.")
-	}
-	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
-	switch {
-	case nav.Tag == rt.NavRedirect:
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	case nav.Tag == rt.NavReject && st != nil:
-		st.FormError = nav.Text
-	case !rq.Datastar:
-		return web.RedirectResponse(rt.PageAt("/projects", params__Projects__Index(params)), rq.Env.Session)
-	default:
-		st = &html.FormState{}
-	}
-	st.PageParams = params__Projects__Index(params)
-	model, session, stop = page__Projects__Index(rq, params, rq.Env.Session)
-	if stop != nil {
-		return *stop
-	}
-	return web.PageResponse(Projects__Index__view(model, session), st, rq.Env.Session, true).WithBefore(func() html.Node { return Projects__Index__view(model0, session0) })
-}
-
-// Route__Projects__Index__page serves page Projects.Index, GET /projects (book 06): decode the
-// parameters (404 when they do not), `requires` (303 to App.login), load (404 on Query.notFound,
-// 303 on Query.redirect, 500 on a failure), view (the model also in rq.Model, which a test's
-// browser reads).
-func Route__Projects__Index__page() web.Route {
-	return web.Route{Method: "GET", Pattern: "/projects", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Projects__Index__Params(rq.Params, rq.Query)
+// Route__Projects__Index__Add serves route Projects.Index.Add, POST /projects/_/Add: decode the
+// parameters (404 when they do not); `requires` (303 to App.login); decode form NewProject from the
+// body (when it does not: 422, the page the browser is on rendered again with the submitted values,
+// no Text.Secret field, and the errors, without calling update); render the page the browser is on
+// before the update (refresh and invalid are diffed against it); run the update and answer its
+// Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
+func Route__Projects__Index__Add() web.Route {
+	return web.Route{Method: "POST", Pattern: "/projects/_/Add", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Projects__Index__Add__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Projects__Index(rq, params, nil)
+		session, stop := guard__Projects__Index__Add(rq, params)
 		if stop != nil {
 			return *stop
 		}
-		rq.Model = model
-		return web.PageResponse(Projects__Index__view(model, session), &html.FormState{PageParams: params__Projects__Index(params)}, rq.Session, false)
-	}}
-}
-
-// Route__Projects__Index__Add serves message Add of page Projects.Index, POST
-// /_m/Projects.Index/Add (book 06): decode the page's parameters (the message URL's _p. keys, which
-// the rendered page put there): 404 when they do not decode; decode form NewProject from the body:
-// when it does not, re-render the page with the submitted values (no Text.Secret field) and the
-// errors, without calling update; then update__Projects__Index.
-func Route__Projects__Index__Add() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Projects.Index/Add", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Projects__Index__Params(rt.PageParams(rq.Query))
-		if errs != nil {
-			return web.NotFoundResponse(html.None())
-		}
-		p := Projects__Index__AddParams{}
+		key := rt.RouteKey(rt.Route{Name: "Projects.Index.Add", Method: "POST", Path: "/projects/_/Add"})
 		values := route__values(rq.Form)
 		form, errs := decode__Projects__Index__NewProject(rq.Form)
 		if errs != nil {
-			model, session, stop := page__Projects__Index(rq, params, nil)
-			if stop != nil {
-				return *stop
+			resp := web.InvalidResponse(&html.FormState{Form: "Projects.Index.NewProject", Msg: key, Values: values, Errors: route__errors(errs)}, nil)
+			if rq.Datastar {
+				resp.Shown, _ = rq.RenderShown(nil)
 			}
-			return web.PageResponse(Projects__Index__view(model, session), &html.FormState{Form: "Projects.Index.NewProject", Msg: rt.MsgKey("/_m/Projects.Index/Add", rq.Query), Values: values, Errors: route__errors(errs), PageParams: params__Projects__Index(params)}, nil, true).WithBefore(func() html.Node { return Projects__Index__view(model, session) })
+			return resp
 		}
-		p.Form = form
-		return update__Projects__Index(rq, params, Projects__Index__Msg__Add__(p), &html.FormState{Form: "Projects.Index.NewProject", Msg: rt.MsgKey("/_m/Projects.Index/Add", rq.Query), Values: values})
+		params.Form = form
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		if err := db.Enter(rq.Env, "org"); err != nil {
+			return route__fail(err)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Add__update(params, session))
+		if err != nil {
+			var nm *eff.ErrFail
+			if !errors.As(err, &nm) || !nm.NotMember {
+				return route__fail(err)
+			}
+			resp = rt.Invalid("You are not a member of that workspace.")
+		}
+		ans := web.AnswerResponse(resp, before, rq.Env.Session)
+		if resp.Kind == rt.RespInvalid {
+			ans.State = &html.FormState{Form: "Projects.Index.NewProject", Msg: key, Values: values}
+		}
+		return ans
 	}}
 }
 
-// Route__Projects__Index__Rename serves message Rename of page Projects.Index, POST
-// /_m/Projects.Index/Rename (book 06): decode the page's parameters (the message URL's _p. keys,
-// which the rendered page put there) and the message's (from the query): 404 when they do not
-// decode; then update__Projects__Index.
+// decode__Projects__Index__Rename__Params decodes route Projects.Index.Rename's parameters: the
+// path's from params, the others from q. A parameter that does not decode is an error (the route
+// answers 404).
+func decode__Projects__Index__Rename__Params(_ map[string]string, q url.Values) (r Projects__Index__Rename__Params, errs []web.FieldError) {
+	if s, ok := web.Text(q, "id", false); !ok {
+		errs = append(errs, web.Missing("id"))
+	} else {
+		r.Id = s
+	}
+	return r, errs
+}
+
+// guard__Projects__Index__Rename runs the guard of route Projects.Index.Rename for rq: `requires
+// user, org` (a 303 to App.login when the session's user or org is Nothing). It returns the session
+// the route's update takes, or the response that ends the request.
+func guard__Projects__Index__Rename(rq *web.Request, params Projects__Index__Rename__Params) (Projects__Index__Index__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Projects__Index__Index__Session{}, &r
+	}
+	if !app.Org.Ok {
+		r := web.RedirectResponse("/orgs", nil)
+		return Projects__Index__Index__Session{}, &r
+	}
+	db.Narrow(rq.Env, "org", app.Org.Val)
+	return Projects__Index__Index__Session{User: app.User.Val, Org: app.Org.Val, Role: app.Role}, nil
+}
+
+// Route__Projects__Index__Rename serves route Projects.Index.Rename, POST /projects/_/Rename:
+// decode the parameters (404 when they do not); `requires` (303 to App.login); render the page the
+// browser is on before the update (refresh and invalid are diffed against it); run the update and
+// answer its Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for
+// Query.redirect).
 func Route__Projects__Index__Rename() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Projects.Index/Rename", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Projects__Index__Params(rt.PageParams(rq.Query))
+	return web.Route{Method: "POST", Pattern: "/projects/_/Rename", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Projects__Index__Rename__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		p, errs := decode__Projects__Index__RenameParams(rq.Query)
-		if errs != nil {
+		session, stop := guard__Projects__Index__Rename(rq, params)
+		if stop != nil {
+			return *stop
+		}
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		if err := db.Enter(rq.Env, "org"); err != nil {
+			return route__fail(err)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Rename__update(params, session))
+		if err != nil {
+			var nm *eff.ErrFail
+			if !errors.As(err, &nm) || !nm.NotMember {
+				return route__fail(err)
+			}
 			return web.NotFoundResponse(html.None())
 		}
-		return update__Projects__Index(rq, params, Projects__Index__Msg__Rename__(p), nil)
+		return web.AnswerResponse(resp, before, rq.Env.Session)
 	}}
 }
 
-// Route__Projects__Index__Remove serves message Remove of page Projects.Index, POST
-// /_m/Projects.Index/Remove (book 06): decode the page's parameters (the message URL's _p. keys,
-// which the rendered page put there) and the message's (from the query): 404 when they do not
-// decode; then update__Projects__Index.
+// decode__Projects__Index__Remove__Params decodes route Projects.Index.Remove's parameters: the
+// path's from params, the others from q. A parameter that does not decode is an error (the route
+// answers 404).
+func decode__Projects__Index__Remove__Params(_ map[string]string, q url.Values) (r Projects__Index__Remove__Params, errs []web.FieldError) {
+	if s, ok := web.Text(q, "id", false); !ok {
+		errs = append(errs, web.Missing("id"))
+	} else {
+		r.Id = s
+	}
+	return r, errs
+}
+
+// guard__Projects__Index__Remove runs the guard of route Projects.Index.Remove for rq: `requires
+// user, org` (a 303 to App.login when the session's user or org is Nothing). It returns the session
+// the route's update takes, or the response that ends the request.
+func guard__Projects__Index__Remove(rq *web.Request, params Projects__Index__Remove__Params) (Projects__Index__Index__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Projects__Index__Index__Session{}, &r
+	}
+	if !app.Org.Ok {
+		r := web.RedirectResponse("/orgs", nil)
+		return Projects__Index__Index__Session{}, &r
+	}
+	db.Narrow(rq.Env, "org", app.Org.Val)
+	return Projects__Index__Index__Session{User: app.User.Val, Org: app.Org.Val, Role: app.Role}, nil
+}
+
+// Route__Projects__Index__Remove serves route Projects.Index.Remove, POST /projects/_/Remove:
+// decode the parameters (404 when they do not); `requires` (303 to App.login); render the page the
+// browser is on before the update (refresh and invalid are diffed against it); run the update and
+// answer its Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for
+// Query.redirect).
 func Route__Projects__Index__Remove() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Projects.Index/Remove", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Projects__Index__Params(rt.PageParams(rq.Query))
+	return web.Route{Method: "POST", Pattern: "/projects/_/Remove", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Projects__Index__Remove__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		p, errs := decode__Projects__Index__RemoveParams(rq.Query)
-		if errs != nil {
+		session, stop := guard__Projects__Index__Remove(rq, params)
+		if stop != nil {
+			return *stop
+		}
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		if err := db.Enter(rq.Env, "org"); err != nil {
+			return route__fail(err)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Remove__update(params, session))
+		if err != nil {
+			var nm *eff.ErrFail
+			if !errors.As(err, &nm) || !nm.NotMember {
+				return route__fail(err)
+			}
 			return web.NotFoundResponse(html.None())
 		}
-		return update__Projects__Index(rq, params, Projects__Index__Msg__Remove__(p), nil)
+		return web.AnswerResponse(resp, before, rq.Env.Session)
 	}}
 }
 
-// Route__Projects__Index__Seed serves message Seed of page Projects.Index, POST
-// /_m/Projects.Index/Seed (book 06): decode the page's parameters (the message URL's _p. keys,
-// which the rendered page put there): 404 when they do not decode; then update__Projects__Index.
+// decode__Projects__Index__Seed__Params decodes route Projects.Index.Seed's parameters: the path's
+// from params, the others from q. A parameter that does not decode is an error (the route answers
+// 404).
+func decode__Projects__Index__Seed__Params(_ map[string]string, _ url.Values) (r Projects__Index__Seed__Params, errs []web.FieldError) {
+	return r, errs
+}
+
+// guard__Projects__Index__Seed runs the guard of route Projects.Index.Seed for rq: `requires user,
+// org` (a 303 to App.login when the session's user or org is Nothing). It returns the session the
+// route's update takes, or the response that ends the request.
+func guard__Projects__Index__Seed(rq *web.Request, params Projects__Index__Seed__Params) (Projects__Index__Index__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Projects__Index__Index__Session{}, &r
+	}
+	if !app.Org.Ok {
+		r := web.RedirectResponse("/orgs", nil)
+		return Projects__Index__Index__Session{}, &r
+	}
+	db.Narrow(rq.Env, "org", app.Org.Val)
+	return Projects__Index__Index__Session{User: app.User.Val, Org: app.Org.Val, Role: app.Role}, nil
+}
+
+// Route__Projects__Index__Seed serves route Projects.Index.Seed, POST /projects/_/Seed: decode the
+// parameters (404 when they do not); `requires` (303 to App.login); render the page the browser is
+// on before the update (refresh and invalid are diffed against it); run the update and answer its
+// Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Projects__Index__Seed() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Projects.Index/Seed", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Projects__Index__Params(rt.PageParams(rq.Query))
+	return web.Route{Method: "POST", Pattern: "/projects/_/Seed", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Projects__Index__Seed__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		return update__Projects__Index(rq, params, Projects__Index__Msg__Seed__, nil)
+		session, stop := guard__Projects__Index__Seed(rq, params)
+		if stop != nil {
+			return *stop
+		}
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		if err := db.Enter(rq.Env, "org"); err != nil {
+			return route__fail(err)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Seed__update(params, session))
+		if err != nil {
+			var nm *eff.ErrFail
+			if !errors.As(err, &nm) || !nm.NotMember {
+				return route__fail(err)
+			}
+			return web.NotFoundResponse(html.None())
+		}
+		return web.AnswerResponse(resp, before, rq.Env.Session)
 	}}
 }
 
-// Route__Projects__Index__Tag serves message Tag of page Projects.Index, POST
-// /_m/Projects.Index/Tag (book 06): decode the page's parameters (the message URL's _p. keys, which
-// the rendered page put there): 404 when they do not decode; then update__Projects__Index.
+// decode__Projects__Index__Tag__Params decodes route Projects.Index.Tag's parameters: the path's
+// from params, the others from q. A parameter that does not decode is an error (the route answers
+// 404).
+func decode__Projects__Index__Tag__Params(_ map[string]string, _ url.Values) (r Projects__Index__Tag__Params, errs []web.FieldError) {
+	return r, errs
+}
+
+// guard__Projects__Index__Tag runs the guard of route Projects.Index.Tag for rq: `requires user,
+// org` (a 303 to App.login when the session's user or org is Nothing). It returns the session the
+// route's update takes, or the response that ends the request.
+func guard__Projects__Index__Tag(rq *web.Request, params Projects__Index__Tag__Params) (Projects__Index__Index__Session, *web.Response) {
+	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok {
+		r := web.RedirectResponse(rq.Login, nil)
+		return Projects__Index__Index__Session{}, &r
+	}
+	if !app.Org.Ok {
+		r := web.RedirectResponse("/orgs", nil)
+		return Projects__Index__Index__Session{}, &r
+	}
+	db.Narrow(rq.Env, "org", app.Org.Val)
+	return Projects__Index__Index__Session{User: app.User.Val, Org: app.Org.Val, Role: app.Role}, nil
+}
+
+// Route__Projects__Index__Tag serves route Projects.Index.Tag, POST /projects/_/Tag: decode the
+// parameters (404 when they do not); `requires` (303 to App.login); render the page the browser is
+// on before the update (refresh and invalid are diffed against it); run the update and answer its
+// Response (a failed Task: 500, 404 for Query.notFound or Task.notFound, 303 for Query.redirect).
 func Route__Projects__Index__Tag() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/Projects.Index/Tag", Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Projects__Index__Params(rt.PageParams(rq.Query))
+	return web.Route{Method: "POST", Pattern: "/projects/_/Tag", Handle: func(rq *web.Request) web.Response {
+		params, errs := decode__Projects__Index__Tag__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		return update__Projects__Index(rq, params, Projects__Index__Msg__Tag__, nil)
-	}}
-}
-
-// update__App runs App's update for msg and answers its Nav: Redirect p is a 303 to p; Rerender and
-// Reject t are a 303 back to the page that sent the message (the Referer, else /), as App has no
-// page of its own to render (a Reject's text is not shown). The session the Task leaves is stored;
-// a failed Task changes nothing: 500 (App.error), 404 for Query.notFound or Task.notFound, or a 303
-// for Query.redirect.
-func update__App(rq *web.Request, msg App__Msg) web.Response {
-	nav, err := eff.Run(rq.Env, eff.KTask, App__update(msg, rq.Env.Session.(App__Session)))
-	if err != nil {
-		return route__fail(err)
-	}
-	nav, rq.Notice, rq.NoticeKind = nav.Unnotice()
-	if nav.Tag == rt.NavRedirect {
-		return web.RedirectResponse(rt.PageURL(nav.Page), rq.Env.Session)
-	}
-	return web.RedirectResponse(rt.BackURL(rq.HTTP.Referer()), rq.Env.Session)
-}
-
-// Route__App__Leave serves App's message Leave, POST /_m/App/Leave: update__App.
-func Route__App__Leave() web.Route {
-	return web.Route{Method: "POST", Pattern: "/_m/App/Leave", Handle: func(rq *web.Request) web.Response {
-		return update__App(rq, App__Msg__Leave__)
+		session, stop := guard__Projects__Index__Tag(rq, params)
+		if stop != nil {
+			return *stop
+		}
+		var before *web.Shown
+		if rq.Datastar {
+			before, _ = rq.RenderShown(nil)
+		}
+		if err := db.Enter(rq.Env, ""); err != nil {
+			return route__fail(err)
+		}
+		resp, err := eff.Run(rq.Env, eff.KTask, Projects__Index__Tag__update(params, session))
+		if err != nil {
+			var nm *eff.ErrFail
+			if !errors.As(err, &nm) || !nm.NotMember {
+				return route__fail(err)
+			}
+			return web.NotFoundResponse(html.None())
+		}
+		return web.AnswerResponse(resp, before, rq.Env.Session)
 	}}
 }
 

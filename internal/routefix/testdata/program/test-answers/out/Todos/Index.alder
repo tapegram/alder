@@ -1,0 +1,69 @@
+module Todos.Index
+
+import Table.Todo
+
+route Index  = GET  "/"         { }
+route Submit = POST "/_/Submit" { } form NewTodo
+route Toggle = POST "/_/Toggle" { id: Todo.TodoId }
+route Move   = POST "/_/Move"   { id: Todo.TodoId } form Pick
+
+type Model = { todos: List Todo }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let todos <- Db.mine Todo |> Db.all
+  Query.succeed { todos: todos }
+}
+
+form NewTodo = { title: Text }
+
+form Pick = { list: Text }
+
+-- this route does not run Index.load first: repeat here any access check it makes (#160)
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update p session = {
+  let _ <- Db.insertMine Todo { title: p.form.title, done: False }
+  Task.succeed (Response.redirect (Index {}))
+}
+
+-- this route does not run Index.load first: repeat here any access check it makes (#160)
+Toggle.update : Toggle.Params -> Session -> Task Response
+Toggle.update p session = {
+  let _ <- Db.updateMine Todo p.id (\t -> { t | done: not t.done })
+  Task.succeed Response.refresh
+}
+
+-- this route does not run Index.load first: repeat here any access check it makes (#160)
+Move.update : Move.Params -> Session -> Task Response
+Move.update p session = Task.succeed Response.refresh
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <ul>
+    {for t in model.todos ->
+      <li>
+        <button click={Toggle { id: t.id }}>{t.title}</button>
+        <form submit={Move { id: t.id }}><Input field="list" /></form>
+      </li>}
+    <form submit={Submit}><Input field="title" /></form>
+  </ul>
+
+-- Through the browser: the test names the form it fills, and reads the answer.
+test "adding and toggling a todo" = {
+  let _ <- Test.get (Index {})
+  let added <- Test.submit Submit { title: "Milk" }
+  let raw <- Test.submitRaw Submit [{ name: "title", value: "" }]
+  let page <- Test.get (Index {})
+  let moved <- Test.submit (Move { id: ?id }) { list: "home" }
+  Task.succeed (
+    {
+      added: added.answer,
+      moved: moved.answer,
+      raw: raw.answer,
+    } == {
+      added: Redirected (Index {}),
+      moved: Refreshed,
+      raw: Refreshed,
+    }
+  )
+}

@@ -146,7 +146,7 @@ test "the dashboard counts the users and lists the newest five" = {
 
 test "a visitor is sent to log in" = {
   let r <- Test.open (Index {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Member gets no page, even one made Admin since logging in" = {

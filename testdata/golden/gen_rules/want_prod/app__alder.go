@@ -42,11 +42,8 @@ func (Caps) Registry() map[string]any {
 
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {
-	rt.RegisterUnion(reflect.TypeOf(tag__Admin__Msg(0)), []string{})
 	rt.RegisterUnion(reflect.TypeOf(tag__User__Role(0)), []string{"Reader", "Author", "Admin"})
 	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
-	rt.RegisterUnion(reflect.TypeOf(tag__Login__Msg(0)), []string{})
-	rt.RegisterUnion(reflect.TypeOf(tag__Notes__Msg(0)), []string{"Add", "Pin", "Remove"})
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that
@@ -158,7 +155,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/login",
-		DevMap:      "{\"pages\":[{\"module\":\"Admin\",\"path\":\"/admin\",\"requires\":\"user\",\"roles\":[\"Author\",\"Admin\"]},{\"module\":\"Login\",\"path\":\"/login\"},{\"module\":\"Notes\",\"path\":\"/notes\",\"requires\":\"user\",\"msgs\":[\"Add\",\"Pin\",\"Remove\"]}],\"tables\":[{\"name\":\"User.User\",\"sql\":\"User__User\",\"columns\":[\"id: Text\",\"name: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"}],\"id\":\"id\"},{\"name\":\"Note.Note\",\"sql\":\"Note__Note\",\"columns\":[\"id: Text\",\"title: Text\",\"pinned: Bool\",\"owner: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"title\",\"type\":\"Text\",\"sql\":\"title\",\"sqlType\":\"TEXT\"},{\"name\":\"pinned\",\"type\":\"Bool\",\"sql\":\"pinned\",\"sqlType\":\"INTEGER\"},{\"name\":\"owner\",\"type\":\"Text\",\"sql\":\"owner\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"},\"owner\":\"owner\"}],\"caps\":[],\"session\":[\"user: Maybe Text\",\"role: User.Role\"]}",
+		DevMap:      "{\"pages\":[],\"tables\":[{\"name\":\"User.User\",\"sql\":\"User__User\",\"columns\":[\"id: Text\",\"name: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"name\",\"type\":\"Text\",\"sql\":\"name\",\"sqlType\":\"TEXT\"}],\"id\":\"id\"},{\"name\":\"Note.Note\",\"sql\":\"Note__Note\",\"columns\":[\"id: Text\",\"title: Text\",\"pinned: Bool\",\"owner: Text\"],\"cols\":[{\"name\":\"id\",\"type\":\"Text\",\"sql\":\"id\",\"sqlType\":\"TEXT\"},{\"name\":\"title\",\"type\":\"Text\",\"sql\":\"title\",\"sqlType\":\"TEXT\"},{\"name\":\"pinned\",\"type\":\"Bool\",\"sql\":\"pinned\",\"sqlType\":\"INTEGER\"},{\"name\":\"owner\",\"type\":\"Text\",\"sql\":\"owner\",\"sqlType\":\"TEXT\"}],\"id\":\"id\",\"refs\":{\"owner\":\"User.User\"},\"owner\":\"owner\"}],\"caps\":[],\"session\":[\"user: Maybe Text\",\"role: User.Role\"]}",
 	}
 }
 

@@ -3,13 +3,7 @@ module Wood
 -- #63: `as` is an ordinary name outside a page parameter's top-level default, and a wire name
 -- may start the line after the default or the type.
 -- Deliberately not `alder fmt`-clean: fmt joins the `as` lines this case tests.
-page "/wood" {
-  a: Int = inc (twice as) as "A",
-  b: Text = ""
-    as "B",
-  c: Maybe Int
-    as "C",
-}
+route Wood = GET "/wood" { a: Int = inc (twice as) as "A", b: Text = "" as "B", c: Maybe Int as "C" }
 
 as : Int
 as = 1
@@ -31,8 +25,8 @@ listed = [as, twice as]
 
 type Model = { a: Int, b: Text }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { a: params.a, b: params.b }
+Wood.load : Wood.Params -> Session -> Query Model
+Wood.load params session = Query.succeed { a: params.a, b: params.b }
 
-view : Model -> Session -> Html Msg
-view model session = <html><body><p>{Text.fromInt model.a} {model.b}</p></body></html>
+Wood.view : Model -> Session -> Html
+Wood.view model session = <html><body><p>{Text.fromInt model.a} {model.b}</p></body></html>

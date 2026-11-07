@@ -3,15 +3,15 @@ module Precincts
 import Results
 
 -- An HTML page that links to a file page: the link reloads the document (no Datastar morph).
-page "/" { }
+route Precincts = GET "/" { }
 
 type Model = { }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { }
+Precincts.load : Precincts.Params -> Session -> Query Model
+Precincts.load params session = Query.succeed {}
 
-view : Model -> Session -> Html Msg
-view model session = <html><body><a href={Results {}}>results</a></body></html>
+Precincts.view : Model -> Session -> Html
+Precincts.view model session = <html><body><a href={Results.Results {}}>results</a></body></html>
 
 test "the precincts page links to the results file" = {
   let r <- Test.get (Precincts {})

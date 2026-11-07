@@ -21,11 +21,10 @@
     (case Done (cond eq (col Table.Todo.Todo done) True))))
 (module Auth.Login)
 (record Auth.Login.Model)
-(record Auth.Login.Params)
-(union Auth.Login.Msg)
-(value Auth.Login.load : Params -> App.Session -> Query Model (params session)
+(record Auth.Login.Login.Params)
+(value Auth.Login.Login.load : Login.Params -> App.Session -> Query Model (params session)
   (pure query (record Model)))
-(value Auth.Login.view : Model -> App.Session -> Html Msg (model session)
+(value Auth.Login.Login.view : Model -> App.Session -> Html Route (model session)
   (elem html
     (elem body
       (elem a
@@ -242,11 +241,11 @@
   (insert title done due owner))
 (form Todos.NewTodo)
 (form Todos.MoveTo)
-(page Auth.Login "/login"
-  (params Params)
+(route Auth.Login.Login GET "/login"
+  (params Login.Params)
   (model Model)
-  (view Auth.Login.view)
-  (load Auth.Login.load))
+  (load Auth.Login.Login.load)
+  (view Auth.Login.Login.view))
 (route Todos.Index GET "/"
   (params Index.Params)
   (requires user)

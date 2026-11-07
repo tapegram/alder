@@ -21,22 +21,14 @@ type App__Msg struct {
 
 type tag__App__Msg uint8
 
-const (
-	is__App__Msg__Leave tag__App__Msg = 0
-)
+type App__Leave__Params struct{}
 
-var App__Msg__Leave__ = App__Msg{Tag: is__App__Msg__Leave}
-
-func App__update(msg App__Msg, session App__Session) eff.Task[rt.Nav] {
-	switch msg.Tag {
-	case is__App__Msg__Leave:
-		return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
-			return App__Session{User: s.User, Org: rt.Nothing[string](), Role: s.Role}
-		}), func(_ struct{}) eff.Task[rt.Nav] {
-			return eff.Pure(rt.Redirect(rt.Page{Path: "/orgs"}))
-		})
-	}
-	panic("unreachable")
+func App__Leave__update(params App__Leave__Params, session App__Session) eff.Task[rt.Response] {
+	return eff.Bind(std.SessionPut(func(s App__Session) App__Session {
+		return App__Session{User: s.User, Org: rt.Nothing[string](), Role: s.Role}
+	}), func(_ struct{}) eff.Task[rt.Response] {
+		return eff.Pure(std.ResponseRedirect(rt.Route{Name: "Orgs.Orgs", Method: "GET", Path: "/orgs"}))
+	})
 }
 
 func App__error(err error) html.Node {

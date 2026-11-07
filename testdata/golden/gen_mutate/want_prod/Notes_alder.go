@@ -18,36 +18,21 @@ type Notes__NewNote struct {
 	Title string
 }
 
-type Notes__Params struct{}
+type Notes__Notes__Params struct{}
 
-type Notes__AddParams struct {
+type Notes__Add__Params struct {
 	Form Notes__NewNote
 }
 
-type Notes__Msg struct {
-	Tag tag__Notes__Msg
-	Add *Notes__AddParams
-}
-
-type tag__Notes__Msg uint8
-
-const (
-	is__Notes__Msg__Add tag__Notes__Msg = 0
-)
-
-func Notes__Msg__Add__(v Notes__AddParams) Notes__Msg {
-	return Notes__Msg{Tag: is__Notes__Msg__Add, Add: &v}
-}
-
-type Notes__Session struct {
+type Notes__Notes__Session struct {
 	User string
 }
 
-func widen__Notes__Session(s Notes__Session) App__Session {
+func widen__Notes__Notes__Session(s Notes__Notes__Session) App__Session {
 	return App__Session{User: rt.Just(s.User)}
 }
 
-func Notes__load(params Notes__Params, session Notes__Session) eff.Query[Notes__Model] {
+func Notes__Notes__load(params Notes__Notes__Params, session Notes__Notes__Session) eff.Query[Notes__Model] {
 	return eff.Q(eff.Bind(eff.Call("Db.all Note", false, func(_e1 *eff.Env) ([]Note__Note, error) {
 		return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.Where(db.CEq("owner", session.User), db.From(table__Note__Note)))
 	}), func(notes []Note__Note) eff.Task[Notes__Model] {
@@ -55,23 +40,18 @@ func Notes__load(params Notes__Params, session Notes__Session) eff.Query[Notes__
 	}))
 }
 
-func Notes__update(msg Notes__Msg, model Notes__Model, session Notes__Session) eff.Task[rt.Nav] {
-	switch msg.Tag {
-	case is__Notes__Msg__Add:
-		p := *msg.Add
-		return eff.Bind(eff.Call("Db.insert Note", true, func(_e1 *eff.Env) (string, error) {
-			return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, insertvals__Note__Note(insert__Note__Note{Title: p.Form.Title, Pinned: false, Owner: session.User}), _e1.Now())
-		}), func(_ string) eff.Task[rt.Nav] {
-			return eff.Pure(rt.Redirect(rt.Page{Path: "/notes"}))
-		})
-	}
-	panic("unreachable")
+func Notes__Add__update(p Notes__Add__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
+	return eff.Bind(eff.Call("Db.insert Note", true, func(_e1 *eff.Env) (string, error) {
+		return db.InsertRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Note__Note, insertvals__Note__Note(insert__Note__Note{Title: p.Form.Title, Pinned: false, Owner: session.User}), _e1.Now())
+	}), func(_ string) eff.Task[rt.Response] {
+		return eff.Pure(std.ResponseRedirect(rt.Route{Name: "Notes.Notes", Method: "GET", Path: "/notes"}))
+	})
 }
 
-func Notes__view(model Notes__Model, session Notes__Session) html.Node {
+func Notes__Notes__view(model Notes__Model, session Notes__Notes__Session) html.Node {
 	return html.El("html", nil, html.El("body", nil,
 		html.El("h1", nil, html.Text("Notes")),
-		html.FormTo(rt.MsgRef{Module: "Notes", Msg: "Add"}, nil,
+		html.FormToRoute(rt.Route{Name: "Notes.Add", Method: "POST", Path: "/notes/_/Add"}, nil,
 			html.Input(html.Control{Kind: "input", Form: "Notes.NewNote", Name: "title", Type: "text", Label: "Title"}),
 			html.Input(html.Control{Kind: "errors", Form: "Notes.NewNote"}),
 			html.El("button", nil, html.Text("Add")),

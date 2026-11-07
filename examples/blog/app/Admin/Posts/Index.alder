@@ -8,14 +8,8 @@ import Table.Post
 import Table.User
 -- @admin end
 
--- @admin begin params
-page "/admin/post" {
-  q: Text = "",
-  published: Text = "",
-  sort: Text = "created",
-  dir: Text = "desc",
-  page: Int = 1,
-} requires user, role Admin
+-- @admin begin routes
+route Index = GET "/admin/post" { q: Text = "", published: Text = "", sort: Text = "created", dir: Text = "desc", page: Int = 1 } requires user, role Admin
 -- @admin end
 
 type Model = {
@@ -58,7 +52,7 @@ type Filter = {
 type Filters = { published: Text }
 
 -- chosen is the filters' options in params.
-chosen : Params -> Filters
+chosen : Index.Params -> Filters
 chosen params = { published: params.published }
 
 -- filters are the list's filters, each with the option f has chosen.
@@ -95,8 +89,8 @@ filtered fs =
   )
 
 -- listAt is this list with the model's search and filters, sorted by sort and dir, at page n.
-listAt : Model -> Text -> Text -> Int -> Page
-listAt model sort dir n = Admin.Posts.Index {
+listAt : Model -> Text -> Text -> Int -> Route
+listAt model sort dir n = Index {
   q: model.q,
   published: model.filters.published,
   sort: sort,
@@ -159,42 +153,39 @@ order sort dir = match List.find (\s -> s.name == sort) sorts {
 toggle : Model -> Text -> Text
 toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else "asc"
 
--- load reads how many rows match the search and the filters, and one page of them (the last, for
--- a page past it), in the order asked for. The search text is cut to 200 characters (Text.slice):
+-- Index.load reads how many rows match the search and the filters, and one page of them (the last,
+-- for a page past it), in the order asked for. The search text is cut to 200 characters (Text.slice):
 -- a text over 10,000 bytes would fail the query (chapter 8, "Search").
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    let q = Text.slice 0 200 params.q
-    let f = chosen params
-    let count <-
-      Db.from Post
-        |> Db.where (Db.and [search q, filtered (filters f)])
-        |> Db.count
-    let pages = Int.max 1 ((count + perPage - 1) / perPage)
-    let page = Int.clamp { min: 1, max: pages } params.page
-    let rows <-
-      Db.from Post
-        |> Db.where (Db.and [search q, filtered (filters f)])
-        |> Db.orderBy (order params.sort params.dir)
-        |> Db.limit perPage
-        |> Db.offset ((page - 1) * perPage)
-        |> Db.all
-    let labels <- labelsOf rows
-    Query.succeed {
-      rows: rows,
-      labels: labels,
-      q: q,
-      filters: f,
-      sort: params.sort,
-      dir: params.dir,
-      page: page,
-      pages: pages,
-      count: count,
-    }
-  } else
-    Query.notFound
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let _ <- Layout.adminOnly session.user
+  let q = Text.slice 0 200 params.q
+  let f = chosen params
+  let count <-
+    Db.from Post
+      |> Db.where (Db.and [search q, filtered (filters f)])
+      |> Db.count
+  let pages = Int.max 1 ((count + perPage - 1) / perPage)
+  let page = Int.clamp { min: 1, max: pages } params.page
+  let rows <-
+    Db.from Post
+      |> Db.where (Db.and [search q, filtered (filters f)])
+      |> Db.orderBy (order params.sort params.dir)
+      |> Db.limit perPage
+      |> Db.offset ((page - 1) * perPage)
+      |> Db.all
+  let labels <- labelsOf rows
+  Query.succeed {
+    rows: rows,
+    labels: labels,
+    q: q,
+    filters: f,
+    sort: params.sort,
+    dir: params.dir,
+    page: page,
+    pages: pages,
+    count: count,
+  }
 }
 
 -- @admin begin labels
@@ -219,8 +210,8 @@ authorLabel labels id = match List.find (\r -> r.id == id) labels.authors {
 }
 -- @admin end
 
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <Layout.Page title="Posts">
     <h1>Posts</h1>
 
@@ -244,7 +235,7 @@ view model session =
           <al-button type="submit" variant="secondary">Search</al-button>
         </al-stack>
       </form>
-      <al-button href={Admin.Posts.New {}}>New post</al-button>
+      <al-button href={Admin.Posts.New.New {}}>New post</al-button>
     </al-stack>
 
     <p id="count">{if model.count == 1 then "1 row" else Text.fromInt model.count ++ " rows"}</p>
@@ -276,7 +267,7 @@ view model session =
                   value={row.id}
                   aria-label={"Choose " ++ row.slug} />
               </td>
-              <td><a href={Admin.Posts.Show { id: row.id }}>{row.slug}</a></td>
+              <td><a href={Admin.Posts.Show.Show { id: row.id }}>{row.slug}</a></td>
               <td>{row.title}</td>
               <td>{row.body}</td>
               <td>
@@ -286,7 +277,7 @@ view model session =
                   <al-badge variant="secondary">No</al-badge>}
               </td>
               <td>
-                <a href={Admin.Users.Show { id: row.author }}>
+                <a href={Admin.Users.Show.Show { id: row.author }}>
                   {authorLabel model.labels row.author}
                 </a>
               </td>
@@ -348,7 +339,7 @@ test "the list shows every row, newest first, and the labels of the rows they re
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let page <- Test.get (Admin.Posts.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (
     {
       rows: List.map (\row -> row.id) page.model.rows,
@@ -382,8 +373,8 @@ test "sorting by slug goes both ways" = {
     body: "body-2",
     author: me,
   }
-  let up <- Test.get (Admin.Posts.Index { sort: "slug", dir: "asc" })
-  let down <- Test.get (Admin.Posts.Index { sort: "slug" })
+  let up <- Test.get (Index { sort: "slug", dir: "asc" })
+  let down <- Test.get (Index { sort: "slug" })
   Task.succeed (
     {
       up: List.map (\row -> row.id) up.model.rows,
@@ -417,7 +408,7 @@ test "searching finds the rows that contain the text" = {
     body: "body-2",
     author: me,
   }
-  let page <- Test.get (Admin.Posts.Index { q: "slug-2" })
+  let page <- Test.get (Index { q: "slug-2" })
   Task.succeed (
     { rows: List.map (\row -> row.id) page.model.rows, count: Test.text "#count" page.doc }
       == { rows: [post2], count: Just "1 row" }
@@ -446,8 +437,8 @@ test "filtering by published lists the rows with that value" = {
     published: False,
     author: me,
   }
-  let yes <- Test.get (Admin.Posts.Index { published: "yes" })
-  let no <- Test.get (Admin.Posts.Index { published: "no" })
+  let yes <- Test.get (Index { published: "yes" })
+  let no <- Test.get (Index { published: "no" })
   Task.succeed (
     {
       yes: List.map (\id -> List.member id (List.map (\row -> row.id) yes.model.rows)) [
@@ -475,7 +466,7 @@ test "a search text of 20,000 characters is cut to 200" = {
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let long = Text.join "" (List.map (\n -> "z") (List.range 1 20000))
-  let page <- Test.get (Admin.Posts.Index { q: long })
+  let page <- Test.get (Index { q: long })
   Task.succeed (
     { q: Text.length page.model.q, rows: List.length page.model.rows } == { q: 200, rows: 0 }
   )
@@ -498,9 +489,9 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
         author: me,
       }) (List.range 1 26)
     )
-  let first <- Test.get (Admin.Posts.Index {})
-  let second <- Test.get (Admin.Posts.Index { page: 2 })
-  let past <- Test.get (Admin.Posts.Index { page: 9 })
+  let first <- Test.get (Index {})
+  let second <- Test.get (Index { page: 2 })
+  let past <- Test.get (Index { page: 9 })
   Task.succeed (
     {
       first: List.length first.model.rows,
@@ -519,8 +510,8 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
 }
 
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Admin.Posts.Index {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  let r <- Test.open (Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Reader gets no page, even one made Admin since logging in" = {
@@ -531,7 +522,7 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
-  let r <- Test.open (Admin.Posts.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -543,7 +534,7 @@ test "a demoted Admin is refused at once" = {
     role: Reader,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Posts.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

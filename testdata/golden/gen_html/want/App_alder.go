@@ -6,6 +6,7 @@ import (
 	"alder/rt"
 	"alder/rt/eff"
 	"alder/rt/html"
+	"alder/rt/std"
 )
 
 type App__Session struct {
@@ -18,14 +19,10 @@ type App__Msg struct {
 
 type tag__App__Msg uint8
 
-const (
-	is__App__Msg__Logout tag__App__Msg = 0
-)
+type App__Logout__Params struct{}
 
-var App__Msg__Logout__ = App__Msg{Tag: is__App__Msg__Logout}
-
-func App__update(msg App__Msg, session App__Session) eff.Task[rt.Nav] {
-	return eff.Pure(rt.Rerender())
+func App__Logout__update(params App__Logout__Params, session App__Session) eff.Task[rt.Response] {
+	return eff.Pure(std.ResponseRefresh())
 }
 
 func App__error(err error) html.Node {

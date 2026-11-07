@@ -57,6 +57,10 @@ type Todos__Index__Session struct {
 	Role  Table__User__Role
 }
 
+func widen__Todos__Index__Session(s Todos__Index__Session) App__Session {
+	return App__Session{User: rt.Just(s.User), Theme: s.Theme, Role: s.Role}
+}
+
 func Todos__Index__load(params Todos__Index__Params, session Todos__Index__Session) eff.Query[Todos__TodoList] {
 	return eff.Q(eff.Bind(eff.Call("Db.all Todo", false, func(_e1 *eff.Env) ([]Table__Todo__Todo, error) {
 		return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.Where(Table__Todo__matches(params.Filter), db.Mine(table__Table__Todo__Todo)))

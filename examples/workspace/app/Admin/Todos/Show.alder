@@ -228,7 +228,7 @@ test "a visitor is sent to log in" = {
     org: org,
   }
   let r <- Test.open (Show { org: org, id: todo1 })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Member gets no page, even one made Admin since logging in" = {

@@ -16,25 +16,25 @@ fake Clock {
 helper : Int -> Bool
 helper n = n > 1
 
-page "/" { }
+route Home = GET "/" { }
 
 type Model = { n: Int }
 
-load : Params -> Session -> Query Model
-load params session = Query.succeed { n: if helper 2 then 1 else 0 }
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = Query.succeed { n: if helper 2 then 1 else 0 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Home.view : Model -> Session -> Html
+Home.view model session =
   <div>
     {if model.n == 1 && True then "one" else "other"}
     <Badge on={model.n > 0} />
     {row (model.n >= 2)}
   </div>
 
-Badge : { on: Bool } -> Html m
+Badge : { on: Bool } -> Html
 Badge props = <span>{if props.on == True then "on" else "off"}</span>
 
-row : Bool -> Html m
+row : Bool -> Html
 row b = match b {
   True -> <p>yes</p>,
   False -> <p>no</p>,

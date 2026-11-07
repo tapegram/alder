@@ -44,7 +44,6 @@ func (Caps) Registry() map[string]any {
 func init() {
 	rt.RegisterUnion(reflect.TypeOf(tag__App__Msg(0)), []string{})
 	rt.RegisterUnion(reflect.TypeOf(tag__Index__Kind(0)), []string{"Note", "Task"})
-	rt.RegisterUnion(reflect.TypeOf(tag__Index__Msg(0)), []string{"Submit", "Clear"})
 }
 
 // capAdapters name the adapter constructor of each capability, for Serve's refusal of one that
@@ -156,7 +155,7 @@ func Web() web.Options {
 		ErrorDoc:    App__error,
 		NotFoundDoc: func() html.Node { return App__notFound },
 		Login:       "/",
-		DevMap:      "{\"pages\":[{\"module\":\"Index\",\"path\":\"/\",\"msgs\":[\"Submit\",\"Clear\"]}],\"tables\":[],\"caps\":[],\"session\":null}",
+		DevMap:      "{\"pages\":[],\"tables\":[],\"caps\":[],\"session\":null}",
 	}
 }
 

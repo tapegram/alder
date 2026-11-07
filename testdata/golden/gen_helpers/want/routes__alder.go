@@ -3,7 +3,6 @@
 package app
 
 import (
-	"alder/rt"
 	"alder/rt/eff"
 	"alder/rt/html"
 	"alder/rt/web"
@@ -11,15 +10,16 @@ import (
 	"net/url"
 )
 
-// Routes are the app's endpoints for web.NewRouter: every page (GET), then every message of the
-// pages and of App (POST), in module order.
+// Routes are the app's endpoints for web.NewRouter: every page (GET), then every route (GET and
+// write routes, in declaration order), then every message of the pages and of App (POST), in module
+// order.
 var Routes = []web.Route{
-	Route__Sites__MnSos__page(),
+	Route__Sites__MnSos__MnSos(),
 }
 
-// decode__Sites__MnSos__Params decodes page Sites.MnSos's parameters: the path's from params, the
-// others from q. A parameter that does not decode is an error (the route answers 404).
-func decode__Sites__MnSos__Params(_ map[string]string, q url.Values) (r Sites__MnSos__Params, errs []web.FieldError) {
+// decode__Sites__MnSos__MnSos__Params decodes route Sites.MnSos.MnSos's parameters: the path's from
+// params, the others from q. A parameter that does not decode is an error (the route answers 404).
+func decode__Sites__MnSos__MnSos__Params(_ map[string]string, q url.Values) (r Sites__MnSos__MnSos__Params, errs []web.FieldError) {
 	if s, ok := web.Text(q, "cfg", false); !ok {
 		errs = append(errs, web.Missing("cfg"))
 	} else {
@@ -28,12 +28,12 @@ func decode__Sites__MnSos__Params(_ map[string]string, q url.Values) (r Sites__M
 	return r, errs
 }
 
-// page__Sites__MnSos runs page Sites.MnSos for rq up to its model: load (with params and the
-// session of rq.Env). It returns the model and the session view and update take, or the response
-// that ends the request, which stores keep (the session a successful update left, or nil).
-func page__Sites__MnSos(rq *web.Request, params Sites__MnSos__Params, keep any) (Sites__MnSos__Model, App__Session, *web.Response) {
+// page__Sites__MnSos__MnSos runs route Sites.MnSos.MnSos for rq up to its model: load (with params
+// and the session of rq.Env). It returns the model and the session view and update take, or the
+// response that ends the request, which stores keep (the session a successful update left, or nil).
+func page__Sites__MnSos__MnSos(rq *web.Request, params Sites__MnSos__MnSos__Params, keep any) (Sites__MnSos__Model, App__Session, *web.Response) {
 	session := rq.Env.Session.(App__Session)
-	model, err := eff.RunQuery(rq.Env, Sites__MnSos__load(params, session))
+	model, err := eff.RunQuery(rq.Env, Sites__MnSos__MnSos__load(params, session))
 	if err != nil {
 		r := route__fail(err)
 		r.Session = keep
@@ -42,27 +42,21 @@ func page__Sites__MnSos(rq *web.Request, params Sites__MnSos__Params, keep any) 
 	return model, session, nil
 }
 
-// params__Sites__MnSos are page Sites.MnSos's parameters as text for its message URLs
-// (html.FormState.PageParams): each message route decodes them back from the URL's _p. keys.
-func params__Sites__MnSos(p Sites__MnSos__Params) []rt.KV {
-	return []rt.KV{{Key: "cfg", Value: p.Cfg}}
-}
-
-// Route__Sites__MnSos__page serves page Sites.MnSos, GET /mnsos (book 06): decode the parameters
-// (404 when they do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure),
-// view (its File written raw; the model also in rq.Model, which a test's browser reads).
-func Route__Sites__MnSos__page() web.Route {
+// Route__Sites__MnSos__MnSos serves route Sites.MnSos.MnSos, GET /mnsos: decode the parameters (404
+// when they do not), load (404 on Query.notFound, 303 on Query.redirect, 500 on a failure), view
+// (its File written raw; the model also in rq.Model, which a test's browser reads).
+func Route__Sites__MnSos__MnSos() web.Route {
 	return web.Route{Method: "GET", Pattern: "/mnsos", File: true, Handle: func(rq *web.Request) web.Response {
-		params, errs := decode__Sites__MnSos__Params(rq.Params, rq.Query)
+		params, errs := decode__Sites__MnSos__MnSos__Params(rq.Params, rq.Query)
 		if errs != nil {
 			return web.NotFoundResponse(html.None())
 		}
-		model, session, stop := page__Sites__MnSos(rq, params, nil)
+		model, session, stop := page__Sites__MnSos__MnSos(rq, params, nil)
 		if stop != nil {
 			return *stop
 		}
 		rq.Model = model
-		return web.FileResponse(Sites__MnSos__view(model, session), rq.Session)
+		return web.FileResponse(Sites__MnSos__MnSos__view(model, session), rq.Session)
 	}}
 }
 

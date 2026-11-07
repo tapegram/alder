@@ -1,0 +1,22 @@
+module Home
+
+page "/" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed {}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <main>
+    <button click={App.Logout}>Log out</button>
+    <form submit={App.Send}><Input field="text" /></form>
+  </main>
+
+test "logging out from the page" = {
+  let _ <- Test.login { user: Just "me" }
+  let _ <- Test.get (Home {})
+  let r <- Test.click App.Logout
+  Task.succeed (r.answer == Redirected (Home {}))
+}

@@ -3,45 +3,47 @@ module Notes
 import Note
 import User
 
-page "/notes" { } requires user
+route Notes = GET  "/notes"       { }              requires user
+route Add   = POST "/notes/_/Add" { } form NewNote requires user
 
 type Model = { notes: List Note }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let notes <- Db.from Note |> Db.where (Note.owner.eq session.user) |> Db.all
+Notes.load : Notes.Params -> Session -> Query Model
+Notes.load params session = {
+  let notes <-
+    Db.from Note
+      |> Db.where (Note.owner.eq session.user)
+      |> Db.all
   Query.succeed { notes: notes }
 }
 
-form NewNote = {
-  title: Text,
+form NewNote = { title: Text }
+
+Add.update : Add.Params -> Session -> Task Response
+Add.update p session = {
+  let _ <- Db.insert Note { title: p.form.title, owner: session.user }
+  Task.succeed (Response.redirect (Notes {}))
 }
 
-msg Add form NewNote
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Add p -> {
-    let _ <- Db.insert Note { title: p.form.title, owner: session.user }
-    Task.succeed (Redirect (Notes {}))
-  },
-}
-
-view : Model -> Session -> Html Msg
-view model session =
-  <html><body>
-    <h1>Notes</h1>
-    <form submit={Add}>
-      <Input field="title" label="Title" />
-      <Errors form />
-      <button>Add</button>
-    </form>
-    <ul>{for n in model.notes -> <li>{n.title}</li>}</ul>
-  </body></html>
+Notes.view : Model -> Session -> Html
+Notes.view model session =
+  <html>
+    <body>
+      <h1>Notes</h1>
+      <form submit={Add}>
+        <Input field="title" label="Title" />
+        <Errors form />
+        <button>Add</button>
+      </form>
+      <ul>
+        {for n in model.notes -> <li>{n.title}</li>}
+      </ul>
+    </body>
+  </html>
 
 test "a visitor is sent to log in" = {
   let r <- Test.open (Notes {})
-  Task.succeed (r.answer == Redirected (Login {}))
+  Task.succeed (r.answer == Redirected (Login.Login {}))
 }
 
 test "I see only my notes" = {
@@ -58,7 +60,7 @@ test "adding a note stores it" = {
   let me <- Db.insert User { name: "Me" }
   let _ <- Test.login { user: Just me }
   let _ <- Test.get (Notes {})
-  let _ <- Test.submit NewNote { title: "Milk" }
+  let _ <- Test.submit Add { title: "Milk" }
   let page <- Test.get (Notes {})
   Task.succeed (List.map (\n -> n.title) page.model.notes == ["Milk"])
 }
@@ -67,7 +69,7 @@ test "adding a note goes back to the list" = {
   let me <- Db.insert User { name: "Me" }
   let _ <- Test.login { user: Just me }
   let _ <- Test.get (Notes {})
-  let added <- Test.submit NewNote { title: "Milk" }
+  let added <- Test.submit Add { title: "Milk" }
   Task.succeed (added.answer == Redirected (Notes {}))
 }
 
@@ -75,7 +77,7 @@ test "a new note is not pinned" = {
   let me <- Db.insert User { name: "Me" }
   let _ <- Test.login { user: Just me }
   let _ <- Test.get (Notes {})
-  let _ <- Test.submit NewNote { title: "Milk" }
+  let _ <- Test.submit Add { title: "Milk" }
   let page <- Test.get (Notes {})
   Task.succeed (List.map (\n -> n.pinned) page.model.notes == [False])
 }
