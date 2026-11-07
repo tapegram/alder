@@ -178,6 +178,14 @@ var commandTree = []cmdSpec{
 				Flags: []flagSpec{hostFlagSpec,
 					{Name: "--allow-data-loss", Summary: "apply a migration that drops data"}}},
 		}},
+	{Name: "fix", Summary: "rewrite an app written with page and msg into routes", Usage: commandUsages["fix"],
+		Args: []string{"[file…]"},
+		Flags: []flagSpec{
+			{Name: "--routes", Summary: "pages and messages to routes (#160); exits 1 while typed holes remain"},
+			{Name: "--name", Value: "N", Summary: "the route's name when the module's last segment is taken"},
+			{Name: "--dry-run", Summary: "print the changes as a diff; write nothing"},
+			{Name: "--dir", Value: "app", Summary: "the app root, the directory holding app/ (default: the current directory)"},
+		}},
 	{Name: "repl", Summary: "an interactive session in the app (deprecated: use alder scratch)", Usage: commandUsages["repl"],
 		Args: []string{"[dir]"},
 		Flags: []flagSpec{

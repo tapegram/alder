@@ -1,0 +1,55 @@
+/* The to-do app's own rules, served at /static/app.css. The design system,
+   /static/al/al.css, styles the page, the cards, the fields, the buttons and
+   the badges; these place them. */
+
+/* Not the form Alder wraps round a `click` button (so it works without
+   JavaScript): the design system gives that one display: contents. */
+form:not(._alder-click) {
+  display: grid;
+  gap: 1rem;
+}
+
+nav {
+  display: flex;
+  gap: 0.75rem;
+}
+
+nav a[aria-current="page"] {
+  font-weight: bold;
+}
+
+ul#todos {
+  list-style: none;
+  margin-left: 0;
+  padding: 0;
+}
+
+/* No list when there are no to-dos: an empty <ul> would still keep the
+   design system's margins, a blank band between the filters and the count. */
+ul#todos:not(:has(li)) {
+  display: none;
+}
+
+ul#todos li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+li.done a {
+  text-decoration: line-through;
+  color: var(--muted-foreground);
+}
+
+/* The form-level list (`<Errors form />`); a field's list is the design
+   system's. */
+ul.errors[data-errors="form"] {
+  color: var(--destructive);
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+ul.errors:empty {
+  display: none;
+}
