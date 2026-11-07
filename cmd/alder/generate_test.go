@@ -285,7 +285,8 @@ var genCases = []genCase{
 	{name: "msg-route", base: "scaffold", pre: [][]string{{"new", "route", "About", "/about"}}, args: []string{"new", "msg", "About", "Clear"}, test: true},
 	{name: "msg-route-id", base: "scaffold", pre: [][]string{{"new", "route", "About", "/about"}}, args: []string{"new", "msg", "About", "Clear", "--id", "clear"}, test: true},
 	{name: "fixture-msg-route-params", base: "fixture", pre: [][]string{{"new", "route", "Posts.Show", "/posts", "--show", "Post"}}, args: []string{"new", "msg", "Posts.Show", "Feature", "note:Text"}},
-	{name: "fixture-msg-route-loop", base: "fixture", pre: [][]string{{"new", "route", "Posts.Index", "/posts", "--list", "Post"}}, args: []string{"new", "msg", "Posts.Index", "Pin", "id:Post.PostId", "--in-for", "row"}},
+	{name: "fixture-msg-route-loop", base: "fixture", pre: [][]string{{"new", "route", "Posts.Index", "/posts", "--list", "Post"}}, args: []string{"new", "msg", "Posts.Index", "Pin", "id:Post.PostId", "--in-for", "row"}, test: true,
+		fills: [][2]string{{`Posts.Index."pressing Pin" --hole ?pinId`, "post1"}}},
 	{name: "edit-route-param-route", base: "scaffold", pre: [][]string{{"new", "route", "About", "/about"}}, args: []string{"edit", "route", "About", "add-param", `q:Text=""`}, test: true},
 	{name: "remove-route-route", base: "scaffold", pre: [][]string{{"new", "route", "About", "/about"}}, args: []string{"remove", "route", "About"}, test: true},
 	{name: "table", base: "scaffold", args: []string{"new", "table", "Tag", "name:Text.NonEmpty@unique", "entry:Entry.EntryId@ref=Entry@cascade", "note:Maybe Text", "pinned:Bool=False"}, test: true},
@@ -346,7 +347,7 @@ var genCases = []genCase{
 	{name: "fixture-route-blank-show", base: "fixture", args: []string{"new", "route", "Posts.Edit", "/posts/edit", "--show", "Post", "--blank", "--requires", "user"}, test: true,
 		fills: [][2]string{{"Posts.Edit.load", "Query.succeed { }"}, {"Posts.Edit.view", "<al-page><h1>Edit</h1></al-page>"}}},
 	{name: "msg-in-for", base: "scaffold", args: []string{"new", "msg", "Home", "Hide", "id:Entry.EntryId", "--in-for", "e", "--when", "List.length model.entries > 0"}, test: true,
-		fills: [][2]string{{`--decl Home."pressing Hide"`, "{\n  let entry1 <- Db.insert Entry { name: Text.NonEmpty \"name-1\", message: Text.NonEmpty \"message-1\" }\n  let _ <- Test.get (Home {})\n  let r <- Test.click (Hide { id: entry1 })\n  Task.succeed (r.answer == Refreshed)\n}"}}},
+		fills: [][2]string{{`Home."pressing Hide" --hole ?hideId`, "entry1"}}},
 	{name: "edit-route-param", base: "scaffold", args: []string{"edit", "route", "Home", "add-param", `q:Text=""`}, test: true},
 
 	// M13 final: the commands E11 lacked

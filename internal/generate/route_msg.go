@@ -180,14 +180,15 @@ func newRouteMsg(p *Program, page, name string, fields []FieldSpec, o MsgOptions
 	}
 	for _, f := range fields {
 		v := holeOf(f.Name)
-		if loop == nil { // in a loop, which row the button belongs to is the page's logic: the author's
-			for _, t := range p.Tables {
-				if f.Type == typeText(p, t.IDType, page) {
-					if v = tb.ids[t.Module]; v == "" { // the page's row, when it shows one
-						v = tb.insert(t, true)
-					}
+		for _, t := range p.Tables {
+			if f.Type == typeText(p, t.IDType, page) {
+				if v = tb.ids[t.Module]; v == "" { // the page's row, when it shows one
+					v = tb.insert(t, true)
 				}
 			}
+		}
+		if loop != nil { // the row is inserted, but which row the loop shows is the page's logic: the author's to say
+			v = holeOf(f.Name)
 		}
 		pressed = append(pressed, f.Name+": "+v)
 	}

@@ -78,6 +78,7 @@ test "entries are listed newest first" = {
 -- The button is shown only when `List.length model.entries > 0`: insert the rows that make it hold
 -- on the page this test opens, or the click finds no button.
 test "pressing Hide" = {
+  let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
   let _ <- Test.get (Home {})
   let r <- Test.click (Hide { id: ?hideId })
   Task.succeed (r.answer == Refreshed)
