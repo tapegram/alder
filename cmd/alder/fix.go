@@ -30,8 +30,8 @@ const fixUsage = "usage: alder fix --routes [--name N] [--dry-run] [--dir app] [
 // directory by default); with files, only those (the rest of the app is still read, so references
 // resolve). It prints a line per file changed and per typed hole left, and exits 1 while holes
 // remain or the rewritten app has errors (which it prints), 0 when none do, 2 for usage errors,
-// a refusal (the app does not check, or a route name collides) and IO errors. --dry-run prints
-// each change as a diff and writes nothing.
+// a refusal (the app does not check, a route name collides, or a message's field shares a path
+// parameter's name) and IO errors. --dry-run prints each change as a diff and writes nothing.
 func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -132,8 +132,11 @@ func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
 	out, holes, err := routefix.Program(files, opts)
 	if err != nil {
 		var nc *routefix.ErrNameCollision
+		var pc *routefix.ErrParamClash
 		if errors.As(err, &nc) {
 			fmt.Fprintf(stderr, "alder fix: %s: %v\n", nc.Module, err)
+		} else if errors.As(err, &pc) {
+			fmt.Fprintf(stderr, "alder fix: nothing written: %v\n", err)
 		} else {
 			fmt.Fprintf(stderr, "alder fix: %v\n", err)
 		}

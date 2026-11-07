@@ -162,6 +162,9 @@ func Program(files map[string][]byte, opts Options) (map[string][]byte, []Hole, 
 			}
 			name = opts.Name
 		}
+		if err := paramClash(m); err != nil {
+			return nil, nil, err
+		}
 		prog.routes[m.Name] = name
 		pages[m.Name] = true
 	}
@@ -195,6 +198,41 @@ type ErrNameCollision struct{ Name, Module string }
 
 func (e *ErrNameCollision) Error() string {
 	return fmt.Sprintf("the route would be named `%s`, which the module already uses: choose another name with --name", e.Name)
+}
+
+// ErrParamClash is the rewrite's refusal when a message of a page has a payload field named like
+// one of the page's path parameters: its route takes the page's path parameters and its payload
+// as one record, so the field would take the path parameter's place in the URL (a todo's id where
+// the project's was), and whatever reads the path parameter (a `requires`, a link) would read the
+// field. `alder fix --routes` asks to rename the field.
+type ErrParamClash struct{ Module, Path, Msg, Field string }
+
+func (e *ErrParamClash) Error() string {
+	return fmt.Sprintf("page %s (%q): message `%s` has a field `%s`, which is also the page's path parameter {%s}: its route would put the field in the path parameter's place; rename the field (in the message and where it is used), then run alder fix --routes again",
+		e.Module, e.Path, e.Msg, e.Field, e.Field)
+}
+
+// paramClash is ErrParamClash for the first message of page module m with a payload field named
+// like a path parameter of the page, nil for none.
+func paramClash(m *syntax.Module) error {
+	var page *syntax.PageDecl
+	for _, d := range m.Decls {
+		if p, ok := d.(*syntax.PageDecl); ok {
+			page = p
+		}
+	}
+	for _, d := range m.Decls {
+		md, ok := d.(*syntax.MsgDecl)
+		if !ok {
+			continue
+		}
+		for _, f := range pathParams(page) {
+			if hasField(md.Params, f.Name) {
+				return &ErrParamClash{Module: m.Name, Path: page.Path, Msg: md.Name, Field: f.Name}
+			}
+		}
+	}
+	return nil
 }
 
 // modelGone is the comment above an `update` whose arm read the page's model, and the end of
@@ -233,6 +271,9 @@ func Module(src []byte, file string, opts Options) ([]byte, []Hole, error) {
 		}
 		if taken(m, true)[r.route] {
 			return nil, nil, &ErrNameCollision{Name: r.route, Module: m.Name}
+		}
+		if err := paramClash(m); err != nil {
+			return nil, nil, err
 		}
 	case m.Name == "App" && len(r.msgs) > 0:
 		r.kind = kindApp

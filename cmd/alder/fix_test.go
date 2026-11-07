@@ -283,3 +283,27 @@ func TestFix_RoutesReportsErrorsAfter(t *testing.T) {
 		t.Fatalf("code %d\nstdout:\n%s\nstderr:\n%s", code, out, errs)
 	}
 }
+
+// TestFix_RoutesParamClash: a message whose payload has a field named like one of its page's
+// path parameters is refused (its route would carry the field where the path parameter was):
+// the command names the page, the message and the field, says to rename the field, exits 2 and
+// writes nothing. testdata/fix/workspace's Projects.Show has `msg Toggle { id: Todo.TodoId }`.
+func TestFix_RoutesParamClash(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "workspace")
+	copyDir(t, "../../testdata/fix/workspace", dir)
+	show := filepath.Join(dir, "app/Projects/Show.alder")
+	before, _ := os.ReadFile(show)
+	code, out, errs := runFix("--routes", "--dir", dir)
+	if code != 2 || strings.Contains(out, "rewrote") {
+		t.Fatalf("code %d\nstdout:\n%s\nstderr:\n%s", code, out, errs)
+	}
+	for _, w := range []string{"Projects.Show", "`Toggle`", "`id`", "rename"} {
+		if !strings.Contains(errs, w) {
+			t.Errorf("stderr lacks %q:\n%s", w, errs)
+		}
+	}
+	if after, _ := os.ReadFile(show); !bytes.Equal(before, after) {
+		t.Error("a refused run wrote the file")
+	}
+}

@@ -40,6 +40,10 @@ func TestModule(t *testing.T) {
 				}
 				return
 			}
+			if want := strings.TrimSpace(read(t, filepath.Join(dir, "clash"))); want != "" {
+				wantClash(t, err, want)
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -132,6 +136,27 @@ func TestProgram(t *testing.T) {
 	}
 }
 
+// wantClash fails unless err is an ErrParamClash naming want: "<page module> <message> <field>".
+func wantClash(t *testing.T, err error, want string) {
+	t.Helper()
+	var pc *ErrParamClash
+	if !errors.As(err, &pc) || pc.Module+" "+pc.Msg+" "+pc.Field != want {
+		t.Fatalf("want ErrParamClash{%s}, got %v", want, err)
+	}
+	for _, w := range strings.Fields(want) {
+		if !strings.Contains(pc.Error(), w) {
+			t.Errorf("the message does not name %s: %s", w, pc.Error())
+		}
+	}
+}
+
+// TestProgram_ParamClash: Program refuses an app with a page whose message has a field named
+// like one of the page's path parameters (testdata/fix/workspace's Projects.Show: `Toggle { id }`).
+func TestProgram_ParamClash(t *testing.T) {
+	_, _, err := Program(tree(t, "../../testdata/fix/workspace/app"), Options{})
+	wantClash(t, err, "Projects.Show Toggle id")
+}
+
 // tree is every .alder file under root, by its path relative to root.
 func tree(t *testing.T, root string) map[string][]byte {
 	t.Helper()
@@ -184,7 +209,7 @@ func lineDiff(want, got string) string {
 
 // TestModule_RepoPages rewrites every page module of the repo's examples as they were before
 // routes (testdata/fix, which the command's tests and the book use) and of the corpus that
-// parses: none is refused (but for a name collision) and each output formats to itself.
+// parses: none is refused (but for a name collision or a path/payload clash) and each output formats to itself.
 func TestModule_RepoPages(t *testing.T) {
 	var files []string
 	for _, g := range []string{"../../testdata/fix/*/app/*.alder", "../../testdata/fix/*/app/*/*.alder", "../../testdata/fix/*/app/*/*/*.alder",
@@ -204,7 +229,8 @@ func TestModule_RepoPages(t *testing.T) {
 		n++
 		out, _, err := Module([]byte(src), f, Options{})
 		var nc *ErrNameCollision
-		if errors.As(err, &nc) {
+		var pc *ErrParamClash
+		if errors.As(err, &nc) || errors.As(err, &pc) {
 			continue
 		}
 		if err != nil {
@@ -221,7 +247,7 @@ func TestModule_RepoPages(t *testing.T) {
 }
 
 // TestProgram_RepoApps rewrites every app of the repo's examples as they were before routes
-// (testdata/fix) and of the corpus's `-ok` cases with a page or a message: none is refused (but for a name collision), each output formats to
+// (testdata/fix) and of the corpus's `-ok` cases with a page or a message: none is refused (but for a name collision or a path/payload clash), each output formats to
 // itself, and a second run changes nothing.
 func TestProgram_RepoApps(t *testing.T) {
 	var apps []string
@@ -244,7 +270,8 @@ func TestProgram_RepoApps(t *testing.T) {
 		n++
 		out, _, err := Program(files, Options{})
 		var nc *ErrNameCollision
-		if errors.As(err, &nc) {
+		var pc *ErrParamClash
+		if errors.As(err, &nc) || errors.As(err, &pc) {
 			continue
 		}
 		if err != nil {
