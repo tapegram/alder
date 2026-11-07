@@ -33,7 +33,7 @@ DEFAULT_CHAPTERS = ["03", "04", "05", "06", "07", "08", "09", "10"]
 # the browser" (the step table, the rules and the failure texts an agent's tests meet); its
 # "10. How the browser works" is the inside, for a human reader.
 HUMAN_SECTIONS = {
-    "06": ["How a request runs"],
+    "06": ["Delivery, decided by the request", "How a request runs"],
     "07": ["How effects run", "Implementing a capability"],
     "08": ["How tables are stored"],
     "10": ["2. Running the tests", "6. What a trace says",
@@ -84,7 +84,7 @@ KEEP_SUBSECTIONS = {
 # the shrinker's internals and the `--mutate` interplay, reading for a person.
 DROP_SUBSECTIONS = {
     "06": {"Rules": ["The rules and a replicated database"],
-           "App-level messages": ["Example: a theme switch"],
+           "App-level routes": ["Example: a theme switch"],
            "File pages": ["Status and headers", "Links and the boost", "What stays HTML"]},
     "07": {"Capabilities": ["A capability returning bytes"],
            "How effects run": ["Waiting: `Query.delay` and `Task.sleep`"]},
@@ -128,15 +128,16 @@ TRIMS = {
             "In a `<form submit>`, `<al-input field=\"f\" />` is `<Input>` (E0304 rules),\n`al-textarea` `<Textarea>`, "
             "`al-select` `<Select>`, `al-checkbox` `<Input>`\non a `Bool`; each renders its `help` and its own error list\n"
             "(an `<Errors field>` for it is E0028).\n\n")],
-    "06": [("and, in `Write.Edit`,\n\n```alder fragment\nload params session = {\n  let author <- User.isAuthor", "Every message of the page runs `load` first",
-            "which each Write page's `load` calls first, answering `Query.notFound`\nwhen it is `False`. "),
-           ("A row `load` already found with `Db.getMine` is not one of the cases:", "### The rules and a replicated database",
-            "A row `load` already found with `Db.getMine` is not one of the cases:\nwrite the scoped form; it costs "
-            "nothing (`Todos.Show` writes\n`Db.updateMine Todo model.todo.id …`, and the mutation tool counts it\nas "
-            "the same program as the unscoped one there).\n\n"),
-           ("**Generated pages say the same.**", "**A role is read at login.**",
+    "06": [("A GET route asks in its `load`, as the blog's `Write.Edit` does,", "That is the blog's test",
+            "A GET route's `load` calls `isAuthor` first, answering `Query.notFound`\nwhen it is `False`; a write route, "
+            "which runs no `load`, begins with `authorOnly`.\n\n"),
+           ("A row a page has already shown is not one of the cases either:", "### The rules and a replicated database",
+            "A row a page has already shown is not one of the cases either:\nwrite the scoped form; it costs "
+            "nothing (a write route takes its id from its path\nand runs no `load`, so the scoped write is what makes the "
+            "id safe: `Todos.Show`\nwrites `Db.updateMine Todo p.id …`).\n\n"),
+           ("**Generated routes say the same.**", "**A role is read at login.**",
             ""),
-           ("### Partitions\n\n`@owner` says", "## The request lifecycle",
+           ("### Partitions\n\n`@owner` says", "## Delivery, decided by the request",
             "### Partitions\n\n`@partition k` generalises `@owner` (which is `@partition user`) to any session\n"
             "key, here `org` (`examples/workspace`):\n\n```alder fragment\n"
             "session { user: Maybe User.UserId, org: Maybe Org.OrgId via Membership, role: User.Role = Member }\n"
@@ -148,7 +149,7 @@ TRIMS = {
             "  (never changes `org`), `Db.deleteScoped T id` and `Db.insertScoped T { … }` (a literal\n"
             "  without `org`) keep to the session's org; another org's row is not found. `Db.mine` on an\n"
             "  org table is E0025 (\"… write `Db.scoped Project`\").\n"
-            "- They need a page that `requires user, org` (E0026); a `via` key comes after `user`\n"
+            "- They need a route that `requires user, org` (E0026); a `via` key comes after `user`\n"
             "  (E0027). There `session.org : Org.OrgId`. A visitor is sent to log in, a user without an\n"
             "  org to `choose org`'s page (required for a `via` key, E0032; that page must not require\n"
             "  the key); a key with no `choose` answers 404.\n"
@@ -158,26 +159,27 @@ TRIMS = {
             "  counts; one deleted counts as gone). `Nothing` is always allowed, and a session that loses\n"
             "  its user loses its org. The membership table has exactly one `@ref` to the user table and\n"
             "  one to the key's (E0032); one `via` field per session. Picking an org:\n\n"
-            "```alder fragment\nOpen p -> {\n  let _ <- Session.put (\\s -> { s | org: Just p.org })\n"
-            "  Task.succeed (Redirect (Projects.Index {}))\n},\n```\n\n"
+            "```alder fragment\nOpen.update p session = {\n  let _ <- Session.put (\\s -> { s | org: Just p.org })\n"
+            "  Task.succeed (Response.redirect (Projects.Index.Index {}))\n}\n```\n\n"
             "  A crafted `Open` of an org the user is no member of is refused; a test calls `update`\n"
             "  directly to send it.\n"
-            "- The cookie keeps `org`; it is not checked again per request. A page that must notice a\n"
-            "  removed member at once re-reads the membership in `load` (the re-read idiom):\n\n"
+            "- The cookie keeps `org`; it is not checked again per request. A route that must notice a\n"
+            "  removed member at once re-reads the membership (the re-read idiom):\n\n"
             "```alder fragment\nisMember : User.UserId -> Org.OrgId -> Query Bool\nisMember user org = {\n"
             "  let n <- Db.from Membership |> Db.where (Membership.user.eq user) |> Db.where (Membership.org.eq org) |> Db.count\n"
             "  Query.succeed (n > 0)\n}\n```\n\n"
             "  `load` begins `let member <- Membership.isMember session.user session.org` and answers\n"
-            "  `Query.notFound` when it is `False`.\n"
-            "- The admin form `requires user, role Admin, silo org` takes `org` from the page's\n"
+            "  `Query.notFound` when it is `False`; a write route, which runs no `load`, begins with\n"
+            "  `Membership.memberOnly session.user session.org`.\n"
+            "- The admin form `requires user, role Admin, silo org` takes `org` from the route's\n"
             "  parameter `{ org: Org.OrgId, … }`, guarded by the role, not `via` (E0033).\n"
             "- Not in a fake or `App` (E0026); an org's name stays unscoped (`Db.get Org session.org`).\n"
             "- With `silo org { Project, Todo }` (chapter 8, \"Silos\") each org's rows are in its own\n"
             "  database, and a `Task` writes to one store (E0031).\n\n"),
-           ("The to-do list's page uses four of them\n", "Why `update` needs them as much as `load` does",
-            "The to-do list's page uses four of them, and `Todos.Show` reads its todo with the fifth\n"
+           ("The to-do list uses four of them\n", "Why a write route needs them as much as a `load` does",
+            "The to-do list uses four of them, and `Todos.Show` reads its todo with the fifth\n"
             "(`examples/todos/app/Todos/Index.alder` and `Todos/Show.alder`, in the example app below).\n\n"),
-           ("Two small ideas first, because a file has to say both.", "The compiler decides a page is a file page",
+           ("Two small ideas first, because a file has to say both.", "The compiler decides a route is a file page",
             "A `File` carries a content type (`text/csv`), a status (`200`, `404`, `503`), a body and extra headers.\n\n"),
            ("`File.text` answers `200` with the text", "`File.html` is the way to answer a web page",
             "`File.withHeader` sets a header: `Content-Disposition: attachment; filename=todos.csv` saves the answer\n"

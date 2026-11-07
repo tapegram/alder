@@ -59,7 +59,7 @@ class BuildContextTests(unittest.TestCase):
         self.tmp = pathlib.Path(tempfile.mkdtemp())
         self.book = self.tmp / "book"
         self.book.mkdir()
-        (self.book / "06-pages.md").write_text(CH06)
+        (self.book / "06-routes.md").write_text(CH06)
         (self.book / "07-effects.md").write_text(CH07)
         self.example = self.tmp / "ex" / "app"
         self.example.mkdir(parents=True)
@@ -174,7 +174,7 @@ class BuildContextTests(unittest.TestCase):
 
     def test_reference_renders_module_error_blocks(self):
         # an `error=` block of a whole module becomes its error text; an expression's stays
-        (self.book / "06-pages.md").write_text(CH06 + '\nRefused:\n\n```alder error=E0026 "`Db.mine` needs a page"\nmodule Public\n\nx = 1\n```\n\n'
+        (self.book / "06-routes.md").write_text(CH06 + '\nRefused:\n\n```alder error=E0026 "`Db.mine` needs a page"\nmodule Public\n\nx = 1\n```\n\n'
                                               '```alder error=E0003 "same type"\n1 == "a"\n```\n')
         code, out, _ = self.run_main("--reference", "--chapters", "06")
         self.assertEqual(code, 0)
@@ -195,7 +195,7 @@ class BuildContextTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(out, "")
         self.assertIn('"## Schema changes"', err)
-        self.assertIn("06-pages.md", err)
+        self.assertIn("06-routes.md", err)
 
     def test_size_prints_chars_and_estimate(self):
         _, full, _ = self.run_main()
@@ -365,12 +365,15 @@ class BuildContextTests(unittest.TestCase):
         # lines and their one-sentence notes in chapter 9 (57.4k after #6). The 2026-10-30 roadmap batch
         # (#1 Json, #5 clock, #7 Random, #8 Query.redirect, #9 absolute URLs, #56 logs, #38 theme, ...)
         # raised it to 64k: each adds its own stdlib and book lines.
+        # #160 (routes), book chapter 6 (PR 8): raised it to 66k: `route`, qualified declarations, names, the state
+        # rule, `Response` and the render/refresh rule, and the patterns table (chapter 6 grew by ~3k tokens in the
+        # reference; its "Delivery" section is a human section); the other chapters follow in PR 8's later tasks.
         bc.HUMAN_SECTIONS, bc.KEEP_SUBSECTIONS = self.saved, self.saved_keep
         bc.DROP_SUBSECTIONS, bc.TRIMS = self.saved_drop, self.saved_trims
         code, out, _ = self.run_main("--reference", "--chapters", ",".join(bc.DEFAULT_CHAPTERS), "--book", str(bc.BOOK),
                                      "--example", str(bc.EXAMPLE))
         self.assertEqual(code, 0)
-        self.assertLessEqual(len(out) // 4, 64000, "the reference is at most 64k tokens (len/4)")
+        self.assertLessEqual(len(out) // 4, 66000, "the reference is at most 66k tokens (len/4)")
         # M17 (file pages) raised from 48000; see the M17 plan
         # M15: the partition rules, `via`, `silo`, the one-store rule and the commands are in; the
         # silo files, the open-time check and moving a table into a silo (the inside) are not
@@ -389,7 +392,7 @@ class BuildContextTests(unittest.TestCase):
             self.assertNotIn(cut, out)
         for kept in ("**`Test.login s`** sets it to `s`", "**`Session.put`**, in the test", "A login through the login page's form",
                      "So a test that calls `update` or `load` itself", "Db.updateMine Todo: no signed-in user",
-                     "`update` call is not checked", "error[E0026]: `Db.mine` needs a page that `requires user`: `Public` does not",
+                     "`update` call is not checked", "error[E0026]: `Db.mine` needs a route that `requires user`: `Index` does not",
                      "isAuthor : UserId -> Query Bool", "`2026-01-01T00:00:00Z`", "chapter 6, \"Rules\",\nexplains them",
                      "write the scoped form; it costs ", "`elements/custom-elements.json`", "`data-*`, `aria-*`, `click`", "`submit` on any custom element", "a literal outside an attribute's quoted values",
                      "`slot` on\na child of a plain element", "takes `href` or `click`, not both",

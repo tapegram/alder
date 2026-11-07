@@ -17,7 +17,7 @@ changes, this book changes first.
 | [3. Syntax](03-syntax.md) | Modules, declarations, expressions, blocks |
 | [4. Types](04-types.md) | Records, unions, brands, refinements |
 | [5. HTML](05-html.md) | Markup, components, attributes, events |
-| [6. Pages, messages, forms](06-pages.md) | Routes, the request lifecycle, and the declared rules: who owns a row (`@owner`, the scoped `Db` operations), which role a page needs, and partitions by any session key (`@partition org`, `via Membership`, `requires user, org`, `choose`) |
+| [6. Routes, responses, forms](06-routes.md) | `route` (a URL with a method), qualified declarations (`Index.load`, `Toggle.update`) and names across modules, the rule for where state lives, `Response` (`redirect`, `render`, `refresh`, `invalid`, `toast`) and when to use which, forms, how a response is delivered with and without JavaScript, the request lifecycle, and the declared rules: who owns a row (`@owner`, the scoped `Db` operations), which role a route needs, and partitions by any session key (`@partition org`, `via Membership`, `requires user, org`, `choose`) |
 | [7. Effects](07-effects.md) | `Query`, `Task`, capabilities |
 | [8. Database](08-database.md) | Tables, reads, writes, how tables are stored, migrations, and silos: a database per org (`silo org { … }`), one store per `Task`, the open-time check |
 | [9. Standard library](09-stdlib.md) | Module-by-module reference |
