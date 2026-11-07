@@ -6,7 +6,7 @@ Every Alder app is made of the same few things. There are **users**: a
 migrations (chapter 8). There are **routes**: a `route` line with
 a method, a path and parameters; a `Model`, a `load` and a `view` for a
 `GET` route; and for a write route an `update` that answers with a
-`Response`, for the page's **forms** and **messages** (chapters 5 and 6). There are **capabilities**, the Go
+`Response`, for the page's **forms** and **buttons** (chapters 5 and 6). There are **capabilities**, the Go
 behind the app (chapter 7). And there are **rules**: `requires user`,
 `role R`, `@owner` (chapter 6, "Rules"). Every route has its tests
 (chapter 10).
@@ -492,7 +492,7 @@ insert must have. That is the rule: when the fields fit one table, the
 `update` is that table's insert; `--into T` names the table when two would
 fit. When they fit none, the `update`'s body is a **hole**, `?answer`, of type `Task Response`.
 
-## A page for a row, and a message: `--show` and `alder new msg`
+## A page for a row, and a write route: `--show` and `alder new msg`
 
 A route for one reply:
 
@@ -816,7 +816,7 @@ plain Alder files, with tests, which you can read and change.
 
 ### What it needs
 
-Every page of the admin `requires user, role Admin` (chapter 6,
+Every route of the admin `requires user, role Admin` (chapter 6,
 "Rules"), so the app needs a logged-in user and a role. The guestbook
 has neither:
 
@@ -842,12 +842,12 @@ without a login, `alder new type User "Role = Member | Admin"` and
 Both examples do this. The to-do app's roles are `Member | Admin`; the
 blog's are `Reader | Author | Admin`, where an Author writes posts on
 the blog's own `Write` pages and an Admin manages everything through the
-generated admin. In the blog (this transcript is the blog's history, from
-before `app/Admin/` existed, so the book's test does not run it; the
+generated admin. In the blog (the book's test does not run this one; the
 blog's README replays it, file for file):
 
 ```text
 $ alder new admin
+wrote app/Admin/Comments/Bulk.alder
 wrote app/Admin/Comments/Delete.alder
 wrote app/Admin/Comments/Edit.alder
 wrote app/Admin/Comments/Index.alder
@@ -855,11 +855,13 @@ wrote app/Admin/Comments/New.alder
 wrote app/Admin/Comments/Show.alder
 wrote app/Admin/Index.alder
 wrote app/Admin/Layout.alder
+wrote app/Admin/Posts/Bulk.alder
 wrote app/Admin/Posts/Delete.alder
 wrote app/Admin/Posts/Edit.alder
 wrote app/Admin/Posts/Index.alder
 wrote app/Admin/Posts/New.alder
 wrote app/Admin/Posts/Show.alder
+wrote app/Admin/Users/Bulk.alder
 wrote app/Admin/Users/Delete.alder
 wrote app/Admin/Users/Edit.alder
 wrote app/Admin/Users/Index.alder
@@ -869,8 +871,8 @@ wrote app/Admin/Users/Show.alder
 
 `examples/blog/app/Admin/` holds exactly these files, as the command
 wrote them; nobody has edited them, and the blog's README says how to
-check that by running it again. Its tests pass, and they kill 226 of
-the admin's 231 mutants, the five survivors being equivalent (chapter 10;
+check that by running it again. Its 154 tests pass, and they kill 144 of
+the admin's 147 mutants, the three survivors being equivalent (chapter 10;
 the blog's README lists them). For each table `T`, with `t` its
 name in lower case and `Ts` its plural (`Posts`, `Activities`; the folder is
 plural so that `Admin.Posts` never reads as the table `Post`):
@@ -899,14 +901,11 @@ route has `requires user, role Admin`, and an `update` answers with a
 `Response`: `Response.redirect` to the list after a save or a delete,
 `Response.invalid` for a refusal. Every write route has a test whose
 name starts "a demoted Admin cannot …": it demotes the Admin in the table
-after logging in, sends the write route, and expects the refusal. The files
-quoted below are the blog's as it was before routes, written when `alder new
-admin` still wrote `page` modules with `load`, `update` and `msg`; the blog
-example's `app/Admin/` has since been regenerated, and like the todos example's
-it has the route form. The quoted prose describes the page version, and so does what it says of `load`
-running before every message and of messages being page-local; the route
-version differs there as described above (the gate and the checks are in each
-write route's `update`), and in the file layout (route lines, qualified members).
+after logging in, sends the write route, and expects the refusal. No
+`load` runs before a write route, so the gate and the checks are in each
+write route's `update`, and the files below show them there. Their
+members are written with the route's name, `Index.load` and `Save.update`
+(chapter 6, "Qualified declarations").
 
 `--module` and `--path` put the admin elsewhere (`--module Back.Office
 --path /back`). An admin that exists is not written again: `alder new
@@ -933,11 +932,11 @@ Page props =
   <Layout.Page title={props.title ++ " · Admin"}>
     <nav aria-label="Admin">
       <al-stack direction="row" gap="sm">
-        <a href={Admin.Index {}}>Dashboard</a>
+        <a href={Admin.Index.Index {}}>Dashboard</a>
         -- @admin begin nav
-        <a href={Admin.Comments.Index {}}>Comments</a>
-        <a href={Admin.Posts.Index {}}>Posts</a>
-        <a href={Admin.Users.Index {}}>Users</a>
+        <a href={Admin.Comments.Index.Index {}}>Comments</a>
+        <a href={Admin.Posts.Index.Index {}}>Posts</a>
+        <a href={Admin.Users.Index.Index {}}>Users</a>
         -- @admin end
       </al-stack>
     </nav>
@@ -945,16 +944,23 @@ Page props =
   </Layout.Page>
 
 -- @admin begin access
--- isAdmin is whether the signed-in user may use the admin, which every page's load asks (it runs
--- before every message too). The session's role is the one read at login, and lasts until
--- logout or the cookie's 30 days (chapter 6, "Rules"): the user table holds the role, so it is
--- read again, and a user demoted or deleted since gets a 404 at once.
+-- isAdmin is whether the signed-in user may use the admin, which every route's load and update
+-- asks (adminOnly). The session's role is the one read at login, and lasts until logout or the
+-- cookie's 30 days (chapter 6, "Rules"): the user table holds the role, so it is read again,
+-- and a user demoted or deleted since gets a 404 at once.
 isAdmin : User.UserId -> Query Bool
 isAdmin id = {
   let me <- Db.get User id
   Query.succeed (Maybe.map (\u -> u.role) me == Just Admin)
 }
 -- @admin end
+
+-- adminOnly stops a route with a 404 unless isAdmin: every route's load and update begins with it.
+adminOnly : User.UserId -> Query Unit
+adminOnly id = {
+  let admin <- isAdmin id
+  if admin then Query.succeed () else Query.notFound
+}
 ```
 
 The first two lines say where the file came from, and every file of the
@@ -964,17 +970,15 @@ files from any build of `alder`.
 The region `access` is the admin's own check. The session's role is the
 one read at login, and the cookie keeps it until logout or its 30 days
 (chapter 6, "Rules"); an Admin demoted, or deleted, since would keep the
-admin all that time. So every page's `load` begins by asking `isAdmin`,
-which reads the user's row again, and answers `Query.notFound` when the
-row is gone or no longer says `Admin`. (This is the page version, which the blog
-quoted here is: its `load` runs before every message too, so a form
-posted by a demoted Admin is refused the same way. In the route version
-no `load` runs before a write: each write route's `update` begins with
-`Layout.adminOnly session.user`, which asks `isAdmin` and answers 404
-when it fails, and that is what the "a demoted Admin cannot …" tests check.)
+admin all that time. So every route begins by asking `isAdmin`, which reads the user's row
+again, and answers `Query.notFound` when the row is gone or no longer says
+`Admin`: a `GET` route's `load` begins with `Layout.adminOnly session.user`,
+and since no `load` runs before a write, so does each write route's
+`update`. A form posted by a demoted Admin is refused the same way, and
+that is what the "a demoted Admin cannot …" tests check.
 This is chapter 6's re-read idiom, generated. When the user table has no
 column holding the role, there is nothing to read again: `isAdmin` is
-`Query.succeed True`, the `page` line's role is the whole check, and the
+`Query.succeed True`, the route lines' role is the whole check, and the
 dashboard's test says that the cookie's role lasts until logout or its
 30 days. The lines between `-- @admin begin <name>` and `-- @admin
 end` are **owned regions**: the parts that follow the tables, which
@@ -997,15 +1001,17 @@ import Table.Post
 import Table.User
 -- @admin end
 
-page "/admin" { } requires user, role Admin
+-- @admin begin routes
+route Index = GET "/admin" { } requires user, role Admin
+-- @admin end
 
 -- A card of the dashboard: a table's count and its newest rows, each linking to its page.
 type Card = {
   key: Text,
   title: Text,
-  href: Page,
+  href: Route,
   count: Int,
-  rows: List { label: Text, href: Page },
+  rows: List { label: Text, href: Route },
 }
 
 type Model = { cards: List Card }
@@ -1014,63 +1020,63 @@ type Model = { cards: List Card }
 recent : Int
 recent = 5
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin cards
-    let comments <-
-      Db.from Comment
-        |> Db.orderBy Comment.created.desc
-        |> Db.limit recent
-        |> Db.all
-    let commentCount <- Db.from Comment |> Db.count
-    let posts <-
-      Db.from Post
-        |> Db.orderBy Post.created.desc
-        |> Db.limit recent
-        |> Db.all
-    let postCount <- Db.from Post |> Db.count
-    let users <-
-      Db.from User
-        |> Db.orderBy User.created.desc
-        |> Db.limit recent
-        |> Db.all
-    let userCount <- Db.from User |> Db.count
-    Query.succeed {
-      cards: [
-        {
-          key: "comments",
-          title: "Comments",
-          href: Admin.Comments.Index {},
-          count: commentCount,
-          rows: List.map (\row -> {
-            label: row.author,
-            href: Admin.Comments.Show { id: row.id },
-          }) comments,
-        },
-        {
-          key: "posts",
-          title: "Posts",
-          href: Admin.Posts.Index {},
-          count: postCount,
-          rows: List.map (\row -> { label: row.slug, href: Admin.Posts.Show { id: row.id } }) posts,
-        },
-        {
-          key: "users",
-          title: "Users",
-          href: Admin.Users.Index {},
-          count: userCount,
-          rows: List.map (\row -> {
-            label: row.email,
-            href: Admin.Users.Show { id: row.id },
-          }) users,
-        },
-      ],
-    }
-    -- @admin end
-  } else
-    Query.notFound
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin cards
+  let comments <-
+    Db.from Comment
+      |> Db.orderBy Comment.created.desc
+      |> Db.limit recent
+      |> Db.all
+  let commentCount <- Db.from Comment |> Db.count
+  let posts <-
+    Db.from Post
+      |> Db.orderBy Post.created.desc
+      |> Db.limit recent
+      |> Db.all
+  let postCount <- Db.from Post |> Db.count
+  let users <-
+    Db.from User
+      |> Db.orderBy User.created.desc
+      |> Db.limit recent
+      |> Db.all
+  let userCount <- Db.from User |> Db.count
+  Query.succeed {
+    cards: [
+      {
+        key: "comments",
+        title: "Comments",
+        href: Admin.Comments.Index.Index {},
+        count: commentCount,
+        rows: List.map (\row -> {
+          label: row.author,
+          href: Admin.Comments.Show.Show { id: row.id },
+        }) comments,
+      },
+      {
+        key: "posts",
+        title: "Posts",
+        href: Admin.Posts.Index.Index {},
+        count: postCount,
+        rows: List.map (\row -> {
+          label: row.slug,
+          href: Admin.Posts.Show.Show { id: row.id },
+        }) posts,
+      },
+      {
+        key: "users",
+        title: "Users",
+        href: Admin.Users.Index.Index {},
+        count: userCount,
+        rows: List.map (\row -> {
+          label: row.email,
+          href: Admin.Users.Show.Show { id: row.id },
+        }) users,
+      },
+    ],
+  }
+  -- @admin end
 }
 ```
 
@@ -1079,8 +1085,8 @@ a card. The `view` is not: it draws whatever cards `load` gives it, and
 its headings and layout are yours to change.
 
 ```alder part=blog/Admin.Index
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <Layout.Page title="Dashboard">
     <h1>Admin</h1>
 
@@ -1105,7 +1111,7 @@ than it shows, so that the count, the order and the limit of five are
 each checked;
 then come the rules: a visitor is sent to log in; a Reader gets
 `PageMissing`, even one whose row says Admin since, because the cookie's
-role, the one read at login, is what the `page` line checks (chapter 6,
+role, the one read at login, is what the route lines check (chapter 6,
 "A role is read at login"); and a demoted Admin, whose cookie still says
 Admin, is refused at once.
 
@@ -1133,7 +1139,7 @@ test "the dashboard counts the comments and lists the newest five" = {
         body: Comment.Body ("body-" ++ Text.fromInt n),
       }) (List.range 1 6)
     )
-  let page <- Test.get (Admin.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (
     { count: Test.text "#comments al-badge" page.doc, rows: Test.texts "#comments li" page.doc }
       == { count: Just "6", rows: ["author-6", "author-5", "author-4", "author-3", "author-2"] }
@@ -1157,7 +1163,7 @@ test "the dashboard counts the posts and lists the newest five" = {
         author: me,
       }) (List.range 1 6)
     )
-  let page <- Test.get (Admin.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (
     { count: Test.text "#posts al-badge" page.doc, rows: Test.texts "#posts li" page.doc }
       == { count: Just "6", rows: ["slug-6", "slug-5", "slug-4", "slug-3", "slug-2"] }
@@ -1180,7 +1186,7 @@ test "the dashboard counts the users and lists the newest five" = {
         passwordHash: "passwordhash-" ++ Text.fromInt n,
       }) (List.range 2 7)
     )
-  let page <- Test.get (Admin.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (
     { count: Test.text "#users al-badge" page.doc, rows: Test.texts "#users li" page.doc }
       == {
@@ -1197,8 +1203,8 @@ test "the dashboard counts the users and lists the newest five" = {
 }
 
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Admin.Index {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  let r <- Test.open (Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Reader gets no page, even one made Admin since logging in" = {
@@ -1209,7 +1215,7 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
-  let r <- Test.open (Admin.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -1221,7 +1227,7 @@ test "a demoted Admin is refused at once" = {
     role: Reader,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end
@@ -1244,14 +1250,8 @@ import Table.Post
 import Table.User
 -- @admin end
 
--- @admin begin params
-page "/admin/post" {
-  q: Text = "",
-  published: Text = "",
-  sort: Text = "created",
-  dir: Text = "desc",
-  page: Int = 1,
-} requires user, role Admin
+-- @admin begin routes
+route Index = GET "/admin/post" { q: Text = "", published: Text = "", sort: Text = "created", dir: Text = "desc", page: Int = 1 } requires user, role Admin
 -- @admin end
 
 type Model = {
@@ -1276,8 +1276,8 @@ search q = Db.or [Post.slug.contains q, Post.title.contains q, Post.body.contain
 -- @admin end
 ```
 
-The `page` line is a region, `params`, since a column added later brings
-a filter, and its filter a parameter. `search` is a `Db.or` of
+The `route` line is in the region `routes`, since a column added later
+brings a filter, and its filter a parameter. `search` is a `Db.or` of
 `.contains` over every `Text` column that is not an id or a reference
 (chapter 8, "Search": case-insensitive, and `%` and `_` match
 themselves).
@@ -1302,7 +1302,7 @@ type Filter = {
 type Filters = { published: Text }
 
 -- chosen is the filters' options in params.
-chosen : Params -> Filters
+chosen : Index.Params -> Filters
 chosen params = { published: params.published }
 
 -- filters are the list's filters, each with the option f has chosen.
@@ -1339,8 +1339,8 @@ filtered fs =
   )
 
 -- listAt is this list with the model's search and filters, sorted by sort and dir, at page n.
-listAt : Model -> Text -> Text -> Int -> Page
-listAt model sort dir n = Admin.Posts.Index {
+listAt : Model -> Text -> Text -> Int -> Route
+listAt model sort dir n = Index {
   q: model.q,
   published: model.filters.published,
   sort: sort,
@@ -1421,8 +1421,8 @@ order sort dir = match List.find (\s -> s.name == sort) sorts {
 toggle : Model -> Text -> Text
 toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else "asc"
 
--- load reads how many rows match the search and the filters, and one page of them (the last, for
--- a page past it), in the order asked for. The search text is cut to 200 characters (Text.slice):
+-- Index.load reads how many rows match the search and the filters, and one page of them (the last,
+-- for a page past it), in the order asked for. The search text is cut to 200 characters (Text.slice):
 -- a text over 10,000 bytes would fail the query (chapter 8, "Search").
 ```
 
@@ -1433,39 +1433,36 @@ direction a header's link asks for: the other way round when the list is
 already sorted by that column ascending.
 
 ```alder part=blog/Admin.Posts.Index
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    let q = Text.slice 0 200 params.q
-    let f = chosen params
-    let count <-
-      Db.from Post
-        |> Db.where (Db.and [search q, filtered (filters f)])
-        |> Db.count
-    let pages = Int.max 1 ((count + perPage - 1) / perPage)
-    let page = Int.clamp { min: 1, max: pages } params.page
-    let rows <-
-      Db.from Post
-        |> Db.where (Db.and [search q, filtered (filters f)])
-        |> Db.orderBy (order params.sort params.dir)
-        |> Db.limit perPage
-        |> Db.offset ((page - 1) * perPage)
-        |> Db.all
-    let labels <- labelsOf rows
-    Query.succeed {
-      rows: rows,
-      labels: labels,
-      q: q,
-      filters: f,
-      sort: params.sort,
-      dir: params.dir,
-      page: page,
-      pages: pages,
-      count: count,
-    }
-  } else
-    Query.notFound
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let _ <- Layout.adminOnly session.user
+  let q = Text.slice 0 200 params.q
+  let f = chosen params
+  let count <-
+    Db.from Post
+      |> Db.where (Db.and [search q, filtered (filters f)])
+      |> Db.count
+  let pages = Int.max 1 ((count + perPage - 1) / perPage)
+  let page = Int.clamp { min: 1, max: pages } params.page
+  let rows <-
+    Db.from Post
+      |> Db.where (Db.and [search q, filtered (filters f)])
+      |> Db.orderBy (order params.sort params.dir)
+      |> Db.limit perPage
+      |> Db.offset ((page - 1) * perPage)
+      |> Db.all
+  let labels <- labelsOf rows
+  Query.succeed {
+    rows: rows,
+    labels: labels,
+    q: q,
+    filters: f,
+    sort: params.sort,
+    dir: params.dir,
+    page: page,
+    pages: pages,
+    count: count,
+  }
 }
 
 -- @admin begin labels
@@ -1500,8 +1497,8 @@ reads only the users the page's rows refer to, with one query
 (`.in`), not one per row.
 
 ```alder part=blog/Admin.Posts.Index
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <Layout.Page title="Posts">
     <h1>Posts</h1>
 
@@ -1525,7 +1522,7 @@ view model session =
           <al-button type="submit" variant="secondary">Search</al-button>
         </al-stack>
       </form>
-      <al-button href={Admin.Posts.New {}}>New post</al-button>
+      <al-button href={Admin.Posts.New.New {}}>New post</al-button>
     </al-stack>
 
     <p id="count">{if model.count == 1 then "1 row" else Text.fromInt model.count ++ " rows"}</p>
@@ -1557,7 +1554,7 @@ view model session =
                   value={row.id}
                   aria-label={"Choose " ++ row.slug} />
               </td>
-              <td><a href={Admin.Posts.Show { id: row.id }}>{row.slug}</a></td>
+              <td><a href={Admin.Posts.Show.Show { id: row.id }}>{row.slug}</a></td>
               <td>{row.title}</td>
               <td>{row.body}</td>
               <td>
@@ -1567,7 +1564,7 @@ view model session =
                   <al-badge variant="secondary">No</al-badge>}
               </td>
               <td>
-                <a href={Admin.Users.Show { id: row.author }}>
+                <a href={Admin.Users.Show.Show { id: row.author }}>
                   {authorLabel model.labels row.author}
                 </a>
               </td>
@@ -1651,7 +1648,7 @@ test "the list shows every row, newest first, and the labels of the rows they re
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let page <- Test.get (Admin.Posts.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (
     {
       rows: List.map (\row -> row.id) page.model.rows,
@@ -1685,8 +1682,8 @@ test "sorting by slug goes both ways" = {
     body: "body-2",
     author: me,
   }
-  let up <- Test.get (Admin.Posts.Index { sort: "slug", dir: "asc" })
-  let down <- Test.get (Admin.Posts.Index { sort: "slug" })
+  let up <- Test.get (Index { sort: "slug", dir: "asc" })
+  let down <- Test.get (Index { sort: "slug" })
   Task.succeed (
     {
       up: List.map (\row -> row.id) up.model.rows,
@@ -1720,7 +1717,7 @@ test "searching finds the rows that contain the text" = {
     body: "body-2",
     author: me,
   }
-  let page <- Test.get (Admin.Posts.Index { q: "slug-2" })
+  let page <- Test.get (Index { q: "slug-2" })
   Task.succeed (
     { rows: List.map (\row -> row.id) page.model.rows, count: Test.text "#count" page.doc }
       == { rows: [post2], count: Just "1 row" }
@@ -1749,8 +1746,8 @@ test "filtering by published lists the rows with that value" = {
     published: False,
     author: me,
   }
-  let yes <- Test.get (Admin.Posts.Index { published: "yes" })
-  let no <- Test.get (Admin.Posts.Index { published: "no" })
+  let yes <- Test.get (Index { published: "yes" })
+  let no <- Test.get (Index { published: "no" })
   Task.succeed (
     {
       yes: List.map (\id -> List.member id (List.map (\row -> row.id) yes.model.rows)) [
@@ -1778,7 +1775,7 @@ test "a search text of 20,000 characters is cut to 200" = {
   }
   let _ <- Test.login { user: Just me, role: Admin }
   let long = Text.join "" (List.map (\n -> "z") (List.range 1 20000))
-  let page <- Test.get (Admin.Posts.Index { q: long })
+  let page <- Test.get (Index { q: long })
   Task.succeed (
     { q: Text.length page.model.q, rows: List.length page.model.rows } == { q: 200, rows: 0 }
   )
@@ -1801,9 +1798,9 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
         author: me,
       }) (List.range 1 26)
     )
-  let first <- Test.get (Admin.Posts.Index {})
-  let second <- Test.get (Admin.Posts.Index { page: 2 })
-  let past <- Test.get (Admin.Posts.Index { page: 9 })
+  let first <- Test.get (Index {})
+  let second <- Test.get (Index { page: 2 })
+  let past <- Test.get (Index { page: 9 })
   Task.succeed (
     {
       first: List.length first.model.rows,
@@ -1822,8 +1819,8 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
 }
 
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Admin.Posts.Index {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  let r <- Test.open (Index {})
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Reader gets no page, even one made Admin since logging in" = {
@@ -1834,7 +1831,7 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
-  let r <- Test.open (Admin.Posts.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -1846,7 +1843,7 @@ test "a demoted Admin is refused at once" = {
     role: Reader,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Posts.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end
@@ -1868,7 +1865,11 @@ import Table.Post
 import Table.User
 -- @admin end
 
-page "/admin/post/new" { findAuthor: Text = "" } requires user, role Admin
+-- @admin begin routes
+route New          = GET  "/admin/post/new"                { findAuthor: Text = "" } requires user, role Admin
+route Create       = POST "/admin/post/new/_/Create"       { } form PostForm         requires user, role Admin
+route SearchAuthor = POST "/admin/post/new/_/SearchAuthor" { } form FindAuthor       requires user, role Admin
+-- @admin end
 
 type Model = {
   -- @admin begin model
@@ -1877,23 +1878,20 @@ type Model = {
   -- @admin end
 }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    let findAuthor = Text.slice 0 200 params.findAuthor
-    let authorsTotal <- Db.from User |> Db.count
-    let authors <-
-      Db.from User
-        |> Db.orderBy User.email.asc
-        |> Db.where (if authorsTotal > 200 then User.email.contains findAuthor else Db.and [])
-        |> Db.limit (if authorsTotal > 200 then 50 else 200)
-        |> Db.all
-    Query.succeed { authors: authors, authorsTotal: authorsTotal }
-    -- @admin end
-  } else
-    Query.notFound
+New.load : New.Params -> Session -> Query Model
+New.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin load
+  let findAuthor = Text.slice 0 200 params.findAuthor
+  let authorsTotal <- Db.from User |> Db.count
+  let authors <-
+    Db.from User
+      |> Db.orderBy User.email.asc
+      |> Db.where (if authorsTotal > 200 then User.email.contains findAuthor else Db.and [])
+      |> Db.limit (if authorsTotal > 200 then 50 else 200)
+      |> Db.all
+  Query.succeed { authors: authors, authorsTotal: authorsTotal }
+  -- @admin end
 }
 
 -- @admin begin form
@@ -1909,51 +1907,48 @@ form PostForm = {
 -- @admin begin search
 form FindAuthor = { q: Text }
 
-msg SearchAuthor form FindAuthor
+-- SearchAuthor answers the page again at the text.
+SearchAuthor.update : SearchAuthor.Params -> Session -> Task Response
+SearchAuthor.update params session =
+  Task.succeed (Response.redirect (New { findAuthor: Text.slice 0 200 params.form.q }))
 
 -- @admin end
 
-msg Create form PostForm
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  -- @admin begin finds
-  SearchAuthor p ->
-    Task.succeed (Redirect (Admin.Posts.New { findAuthor: Text.slice 0 200 p.form.q })),
-  -- @admin end
-  Create p -> {
-    -- @admin begin insert
-    let slugTaken <-
-      Db.from Post
-        |> Db.where (Post.slug.eq p.form.slug)
-        |> Db.count
-    if slugTaken > 0 then
-      Task.succeed (Reject "A post with this slug exists.")
-    else {
-      let id <- Db.insert Post {
-        slug: p.form.slug,
-        title: p.form.title,
-        body: p.form.body,
-        published: p.form.published,
-        author: p.form.author,
-      }
-      Task.succeed (Redirect (Admin.Posts.Show { id: id }))
+-- Create adds the row and goes to its page.
+Create.update : Create.Params -> Session -> Task Response
+Create.update params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin insert
+  let slugTaken <-
+    Db.from Post
+      |> Db.where (Post.slug.eq params.form.slug)
+      |> Db.count
+  if slugTaken > 0 then
+    Task.succeed (Response.invalid "A post with this slug exists.")
+  else {
+    let id <- Db.insert Post {
+      slug: params.form.slug,
+      title: params.form.title,
+      body: params.form.body,
+      published: params.form.published,
+      author: params.form.author,
     }
-    -- @admin end
-  },
+    Task.succeed (Response.redirect (Admin.Posts.Show.Show { id: id }))
+  }
+  -- @admin end
 }
 ```
 
 Two things in it were not in `alder new form`'s forms. `slug` is
 `@unique`, and inserting a second post with a slug that exists would
 fail in the database, which a user would see as an error page; so the
-arm counts the posts with that slug first, and answers `Reject` with a
-sentence when there is one. And `author` refers to a user, so `load`
+`Create` counts the posts with that slug first, and answers
+`Response.invalid` with a sentence when there is one. And `author` refers to a user, so `load`
 reads the users to choose from, ordered by their label.
 
 ```alder part=blog/Admin.Posts.New
-view : Model -> Session -> Html Msg
-view model session =
+New.view : Model -> Session -> Html
+New.view model session =
   <Layout.Page title="New post">
     <h1>New post</h1>
 
@@ -1992,12 +1987,10 @@ type, `User.UserId`. The browser shows the emails and posts the id.
 A request can be crafted by hand, so the list in the browser is no
 guarantee: someone could post the id of a user who is not in it, or of a
 row of another table, or a text that names no row. So **a submitted
-value must be one of the options**. When the form is posted, the generated Go
-computes the `options` expression again (in the page version, from the
-model that `load` ran first to build, as it does before every message,
-chapter 6; in the route version no `load` runs before a write: the runtime checks the
-value against the options of the page the form was posted from, and answers
-`400` if it was posted from elsewhere); a value that
+value must be one of the options**. When the form is posted, the runtime draws the
+page it was posted from again (`Alder-Page`, else the `Referer`: chapter 6,
+"Delivery") and reads the options its select offered; if the form was
+posted from a page that offers none, the answer is `400`. A value that
 is not one of them is the field error "must be one of the options", and
 `update` does not run. That is the **select membership rule**, and it
 belongs to `<Select options>` everywhere, not only to the admin. It is
@@ -2029,8 +2022,8 @@ test "creating a post adds it, with the values submitted" = {
     body: "body-1",
     author: me,
   }
-  let page <- Test.get (Admin.Posts.New {})
-  let r <- Test.submit PostForm {
+  let page <- Test.get (New {})
+  let r <- Test.submit Create {
     slug: Post.Slug "slug-2",
     title: Text.NonEmpty "title-2",
     body: "body-2",
@@ -2043,7 +2036,7 @@ test "creating a post adds it, with the values submitted" = {
       |> Db.all
   Task.succeed (
     {
-      answers: List.map (\row -> Redirected (Admin.Posts.Show { id: row.id })) rows,
+      answers: List.map (\row -> Redirected (Admin.Posts.Show.Show { id: row.id })) rows,
       rows: List.map (\row -> {
         slug: row.slug,
         title: row.title,
@@ -2087,8 +2080,8 @@ test "a post with a slug that exists is refused" = {
     body: "body-1",
     author: me,
   }
-  let _ <- Test.get (Admin.Posts.New {})
-  let r <- Test.submit PostForm {
+  let _ <- Test.get (New {})
+  let r <- Test.submit Create {
     slug: Post.Slug "slug-1",
     title: Text.NonEmpty "title-2",
     body: "body-2",
@@ -2117,8 +2110,8 @@ test "an author not offered is refused" = {
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let page <- Test.get (Admin.Posts.New {})
-  let r <- Test.submitRaw PostForm [
+  let page <- Test.get (New {})
+  let r <- Test.submitRaw Create [
     { name: "slug", value: "x" },
     { name: "title", value: "x" },
     { name: "body", value: "x" },
@@ -2156,7 +2149,7 @@ test "a list of 200 users is offered whole" = {
         passwordHash: "passwordhash-" ++ Text.fromInt n,
       }) (List.range 3 200)
     )
-  let page <- Test.get (Admin.Posts.New {})
+  let page <- Test.get (New {})
   Task.succeed (List.length page.model.authors == 200)
 }
 
@@ -2181,9 +2174,9 @@ test "a long list of users offers 50, and the search narrows it" = {
         passwordHash: "passwordhash-" ++ Text.fromInt n,
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Posts.New {})
-  let found <- Test.get (Admin.Posts.New { findAuthor: "email-203@example.com" })
-  let r <- Test.submit FindAuthor { q: "zz" }
+  let all <- Test.get (New {})
+  let found <- Test.get (New { findAuthor: "email-203@example.com" })
+  let r <- Test.submit SearchAuthor { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.authors,
@@ -2194,7 +2187,7 @@ test "a long list of users offers 50, and the search narrows it" = {
       shown: 50,
       total: 203,
       found: True,
-      answer: Redirected (Admin.Posts.New { findAuthor: "zz" }),
+      answer: Redirected (New { findAuthor: "zz" }),
     }
   )
 }
@@ -2220,12 +2213,12 @@ test "an author outside the narrowed list is refused" = {
         passwordHash: "passwordhash-" ++ Text.fromInt n,
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Posts.New {})
-  let found <- Test.get (Admin.Posts.New { findAuthor: "email-203@example.com" })
-  let r <- Test.submit FindAuthor { q: "zz" }
+  let all <- Test.get (New {})
+  let found <- Test.get (New { findAuthor: "email-203@example.com" })
+  let r <- Test.submit SearchAuthor { q: "zz" }
   let pick = Maybe.withDefault "" (Test.attr "value" "select[name=author] option" found.doc)
-  let page <- Test.get (Admin.Posts.New {})
-  let sent <- Test.submitRaw PostForm [
+  let page <- Test.get (New {})
+  let sent <- Test.submitRaw Create [
     { name: "slug", value: "x" },
     { name: "title", value: "x" },
     { name: "body", value: "x" },
@@ -2242,9 +2235,43 @@ test "an author outside the narrowed list is refused" = {
   )
 }
 
+test "a demoted Admin cannot create a post" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "slug-1",
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let _ <- Test.get (New {})
+  let _ <- Db.update User me (\u -> { u | role: Reader })
+  let r <- Test.submit Create {
+    slug: Post.Slug "slug-2",
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    published: True,
+    author: user2,
+  }
+  let rows <- Db.from Post |> Db.count
+  Task.succeed (
+    { answer: r.answer, rows: rows } == { answer: RequestFailed "400 bad request", rows: 1 }
+  )
+}
+
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Admin.Posts.New {})
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  let r <- Test.open (New {})
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Reader gets no page, even one made Admin since logging in" = {
@@ -2255,7 +2282,7 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
-  let r <- Test.open (Admin.Posts.New {})
+  let r <- Test.open (New {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -2267,7 +2294,7 @@ test "a demoted Admin is refused at once" = {
     role: Reader,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Posts.New {})
+  let r <- Test.open (New {})
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end
@@ -2290,24 +2317,22 @@ the referenced table in `load` (`authorsTotal`) and takes the
   findAuthor`, the same case-insensitive match as the list's search,
   chapter 8). At 200 rows or fewer it holds every row, as before, and
   the search form is not drawn.
-- The text is a page parameter of the form (`findAuthor`, in the
-  `page` line), so, in the page version, `load` reads it again before every message
-  (in the route version the search is a `GET` route parameter of the page, and
-  no `load` runs before a write: the runtime checks the value against the options of the
-  page the form was posted from, and answers `400` if it was posted from elsewhere). That is
-  what lets the narrowing survive: the options are computed from the text, and the select's membership rule
-  (above) is checked against the options just rendered. The admin
+- The text is a parameter of the `GET` route (`findAuthor`, in the
+  `route New` line), so `load` reads it on every request. That is what
+  lets the narrowing survive: the options are computed from the text, and
+  the select's membership rule (above) is checked against the options just
+  rendered, because the form is posted from the narrowed page. The admin
   cannot pick, or be tricked into posting, a user the select did not
   offer.
-- A small form of its own, `FindAuthor { q: Text }`, with the message
-  `SearchAuthor`, sends the text. Its arm answers `Redirect (Admin.Posts.New
-  { findAuthor: Text.slice 0 200 p.form.q })`, not `Rerender`: a rerender
-  would show the select narrowed by the *old* text, since the options come
-  from `load`, which ran before the message (in the page version). The redirect loads the page
-  again with the new text in the address (cut to 200 characters, as
-  `load` cuts it), and `load` narrows by it. The regions are `search` (the
-  form and the message), `finds` (its arm) and `finder` (where the form is
-  drawn).
+- A small form of its own, `FindAuthor { q: Text }`, with a write route,
+  `SearchAuthor`, sends the text. Its `update` answers
+  `Response.redirect (New { findAuthor: Text.slice 0 200 params.form.q })`,
+  not `Response.refresh`: a refresh draws the page at the address it is on,
+  with the *old* text, so the select would still be narrowed by the old
+  text. The redirect loads the page again with the new text in the address
+  (cut to 200 characters, as `load` cuts it), and `load` narrows by it. The
+  regions are `search` (the form type and the route's `update`) and
+  `finder` (where the form is drawn).
 - On the Edit page the select also keeps the row's own value, whatever the
   search and wherever it sorts. `load` reads that row by itself
   (`authorsOwn`, `User.id.eq row.author`) and puts it **first**, then the
@@ -2334,13 +2359,14 @@ A row's own page (`Admin.Ts.Show`) has a Delete button. It opens an
 delete page shows before anything is deleted: how many rows go with the
 row (its `@cascade` references), how many lose a reference (`@setNull`)
 and how many keep it from being deleted (`@restrict`), then the button,
-or the reason there is none. The button posts `Remove`, and it is the
-Show page's own `Remove`: messages are page-local (chapter 6), so the
-Show page declares the same `Confirm` form and `Remove` message as the
-delete page, with the same `load` counts and the same refusals (a row
-other rows keep, a row with children, the signed-in Admin's own account),
-in the same regions (`model`, `load`, `blockers`, `remove`, `counts`). A
-refusal is shown in the dialog, which stays open across the update.
+or the reason there is none. The button posts the delete module's write route,
+`Admin.Posts.Delete.Destroy { id: … }`: a route is a URL like any other,
+so the dialog needs no copy of it, and the refusals (a row other rows
+keep, a row with children, the signed-in Admin's own account) are made
+once, in `Destroy`. The Show module counts what the dialog shows with the
+same `load` counts, in the regions `model`, `load`, `blockers` and
+`counts`. A refusal is `Response.invalid`; it is shown in the dialog,
+which stays open across the update.
 
 The dialog ends with a link, "See the details", to the delete page,
 `Admin.Ts.Delete`, which stays: it is the same confirmation as a page of
@@ -2352,8 +2378,8 @@ JavaScript at all in Chromium 135 and later, Safari 26 and Firefox 140;
 in an older browser `al.js`'s shim adds them. The dialog itself is the
 platform's: Escape and the close button dismiss it, focus stays inside it
 while it is open and returns to the button, and it stays open if a
-Datastar update re-renders the page behind it. The generated Show page's
-tests are the delete page's tests, run against the dialog's `Remove`.
+Datastar update redraws the page behind it. The generated Show page's
+tests post `Destroy` from the Show page, as the dialog does.
 
 ### The delete page
 
@@ -2376,38 +2402,40 @@ import Table.Post
 import Table.User
 -- @admin end
 
-page "/admin/user/{id}/delete" { id: User.UserId } requires user, role Admin
+-- @admin begin routes
+route Delete  = GET    "/admin/user/{id}/delete"           { id: User.UserId }              requires user, role Admin
+route Destroy = DELETE "/admin/user/{id}/delete/_/Destroy" { id: User.UserId } form Confirm requires user, role Admin
+-- @admin end
 
 -- The row, and how many rows of each table refer to it.
 type Model = {
   row: User,
   -- @admin begin model
-  own: Bool,
   posts: Int,
   -- @admin end
 }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    let found <- Db.get User params.id
-    let posts <-
-      Db.from Post
-        |> Db.where (Post.author.eq params.id)
-        |> Db.count
-    match found {
-      Just row -> Query.succeed {
-        row: row,
-        own: session.user == row.id,
-        posts: posts,
-      },
-      Nothing -> Query.notFound,
-    }
-    -- @admin end
-  } else
-    Query.notFound
+-- counted is the row id names (none is not found) and how many rows of each table refer to it:
+-- the page shows them, and Destroy counts them again before it deletes.
+counted : User.UserId -> Query Model
+counted id = {
+  -- @admin begin load
+  let found <- Db.get User id
+  let posts <-
+    Db.from Post
+      |> Db.where (Post.author.eq id)
+      |> Db.count
+  match found {
+    Just row -> Query.succeed { row: row, posts: posts },
+    Nothing -> Query.notFound,
+  }
+  -- @admin end
+}
+
+Delete.load : Delete.Params -> Session -> Query Model
+Delete.load params session = {
+  let _ <- Layout.adminOnly session.user
+  counted params.id
 }
 
 -- @admin begin blockers
@@ -2417,49 +2445,48 @@ blockers : Model -> Int
 blockers model = model.posts
 -- @admin end
 
--- Delete takes no input: the form is the button, and the place a refusal is shown.
+-- Destroy takes no input: the form is the button, and the place a refusal is shown.
 form Confirm = { }
 
-msg Remove form Confirm
-
--- Remove deletes the row, unless rows refer to it that keep it (load counted them, as it does
--- before every message): the database would refuse the delete with an error, and the page says
--- why instead.
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Remove p -> {
-    -- @admin begin remove
-    if model.own then
-      Task.succeed (Reject "You cannot delete your own account.")
-    else if blockers model > 0 then
-      Task.succeed (Reject "This user cannot be deleted while other rows refer to it.")
-    else {
-      let _ <- Db.delete User model.row.id
-      Task.succeed (Redirect (Admin.Users.Index {}))
-    }
-    -- @admin end
-  },
+-- Destroy deletes the row, unless rows refer to it that keep it (counted again, as the page
+-- counted them): the database would refuse the delete with an error, and the page says why
+-- instead. The Show page's dialog posts it too.
+Destroy.update : Destroy.Params -> Session -> Task Response
+Destroy.update params session = {
+  let _ <- Layout.adminOnly session.user
+  let model <- counted params.id
+  -- @admin begin remove
+  if session.user == params.id then
+    Task.succeed (Response.invalid "You cannot delete your own account.")
+  else if blockers model > 0 then
+    Task.succeed (Response.invalid "This user cannot be deleted while other rows refer to it.")
+  else {
+    let _ <- Db.delete User params.id
+    Task.succeed (Response.redirect (Admin.Users.Index.Index {}) |> Response.success "Deleted")
+  }
+  -- @admin end
 }
 ```
 
 `load` counts the posts that refer to the user, and `blockers` adds up
 every count that keeps the row. When it is more than zero, the `view`
-shows no button and says why, and the `Remove` arm refuses too, with a
-`Reject` (the route version answers `Response.invalid`). The arm's check matters even though the button is gone: a
-`POST` can be sent without the page, and the arm is the last place that
-can turn it away before the database does it with an error.
+shows no button and says why, and `Destroy` refuses too, with
+`Response.invalid`. The check in `Destroy` matters even though the button
+is gone: a `DELETE` can be sent without the page, and `Destroy` is the
+last place that can turn it away before the database does it with an
+error.
 
 `User` is the table of the session's user, so its delete page has one
 more check, `own`: whether the row is the signed-in user's own. An Admin
 who deleted their own account would be locked out of the admin they are
 using, and if they were the only Admin, nobody could get back in. So
 the `view` says "You cannot delete your own account." where the button
-would be, and `Remove` answers `Reject` with the same sentence, first,
-before the counts. The other tables' delete pages have no `own`.
+would be, and `Destroy` answers `Response.invalid` with the same
+sentence, first, before the blockers. The other tables' delete pages have no `own`.
 
 ```alder part=blog/Admin.Users.Delete
-view : Model -> Session -> Html Msg
-view model session =
+Delete.view : Model -> Session -> Html
+Delete.view model session =
   <Layout.Page title="Delete user">
     <h1>Delete this user?</h1>
 
@@ -2473,9 +2500,9 @@ view model session =
         <dd id="posts">{Text.fromInt model.posts}</dd>
         -- @admin end
       </dl>
-      <form id="delete" submit={Remove}>
+      <form id="delete" submit={Destroy { id: model.row.id }}>
         <al-alert variant="destructive"><Errors form /></al-alert>
-        {if model.own then
+        {if session.user == model.row.id then
           <p>You cannot delete your own account.</p>
         else if blockers model > 0 then
           <p>It cannot be deleted while other rows refer to it.</p>
@@ -2483,7 +2510,7 @@ view model session =
           <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
     </al-card>
-    <a href={Admin.Users.Show { id: model.row.id }}>Back</a>
+    <a href={Admin.Users.Show.Show { id: model.row.id }}>Back</a>
   </Layout.Page>
 ```
 
@@ -2519,17 +2546,19 @@ test "deleting a user nothing refers to" = {
     body: "body-1",
     author: user3,
   }
-  let _ <- Test.get (Admin.Users.Delete { id: user2 })
-  let r <- Test.submit Confirm {}
+  let page <- Test.get (Delete { id: user2 })
+  let r <- Test.submit (Destroy { id: user2 }) {}
   let gone <- Db.get User user2
   let kept <- Db.get User user3
   Task.succeed (
     {
+      button: Test.count "#delete al-button" page.doc,
       answer: r.answer,
       gone: Maybe.map (\row -> row.id) gone,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-      answer: Redirected (Admin.Users.Index {}),
+      button: 1,
+      answer: Redirected (Admin.Users.Index.Index {}),
       gone: Nothing,
       kept: Just user3,
     }
@@ -2555,8 +2584,8 @@ test "a user that posts refer to is not deleted" = {
     body: "body-1",
     author: user2,
   }
-  let page <- Test.get (Admin.Users.Delete { id: user2 })
-  let r <- Test.submit Confirm {}
+  let page <- Test.get (Delete { id: user2 })
+  let r <- Test.submit (Destroy { id: user2 }) {}
   let kept <- Db.get User user2
   Task.succeed (
     {
@@ -2583,8 +2612,8 @@ test "an Admin cannot delete their own account" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let page <- Test.get (Admin.Users.Delete { id: me })
-  let r <- Test.submit Confirm {}
+  let page <- Test.get (Delete { id: me })
+  let r <- Test.submit (Destroy { id: me }) {}
   let kept <- Db.get User me
   Task.succeed (
     {
@@ -2601,6 +2630,29 @@ test "an Admin cannot delete their own account" = {
   )
 }
 
+test "a demoted Admin cannot delete a user" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Test.get (Delete { id: user2 })
+  let _ <- Db.update User me (\u -> { u | role: Reader })
+  let r <- Test.submit (Destroy { id: user2 }) {}
+  let kept <- Db.get User user2
+  Task.succeed (
+    { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
+      == { answer: PageMissing, kept: Just user2 }
+  )
+}
+
 test "a missing row is not found" = {
   let me <- Db.insert User {
     email: Text.Email "email-1@example.com",
@@ -2609,7 +2661,7 @@ test "a missing row is not found" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Users.Delete { id: User.UserId "missing" })
+  let r <- Test.open (Delete { id: User.UserId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -2619,8 +2671,8 @@ test "a visitor is sent to log in" = {
     name: Text.NonEmpty "name-1",
     passwordHash: "passwordhash-1",
   }
-  let r <- Test.open (Admin.Users.Delete { id: user1 })
-  Task.succeed (r.answer == Redirected (Auth.Login {}))
+  let r <- Test.open (Delete { id: user1 })
+  Task.succeed (r.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "a Reader gets no page, even one made Admin since logging in" = {
@@ -2636,7 +2688,7 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let r <- Test.open (Admin.Users.Delete { id: user2 })
+  let r <- Test.open (Delete { id: user2 })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -2653,7 +2705,7 @@ test "a demoted Admin is refused at once" = {
     name: Text.NonEmpty "name-2",
     passwordHash: "passwordhash-2",
   }
-  let r <- Test.open (Admin.Users.Delete { id: user2 })
+  let r <- Test.open (Delete { id: user2 })
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end
@@ -2667,15 +2719,15 @@ Admin's included. The check is the first line of `Save`'s region
 `update` in `Admin.Users.Edit`:
 
 ```alder fragment
-if session.user == model.row.id && p.form.role != model.row.role then
-  Task.succeed (Reject "You cannot change your own role.")
+if session.user == row.id && params.form.role != row.role then
+  Task.succeed (Response.invalid "You cannot change your own role.")
 else {
   …
 }
 ```
 
 and three generated tests say it: "an Admin cannot change their own
-role" (the answer is the `Reject`, the row as it was), "an Admin saves
+role" (the answer is `FormRejected`, the row as it was), "an Admin saves
 their own account, the role unchanged", and "an Admin demotes another
 Admin". The guard is per request and per row: two Admins who demote
 each other at the same moment both succeed, and an app whose only two
@@ -2696,8 +2748,8 @@ down. When such a delete can reach a `@restrict` reference (one to the
 table, or to a table its cascades reach), the delete page counts only the
 row's own children (the function `children`, in the region `blockers`),
 and deletes only a row without them: with children, it shows "Delete its
-children first." and no button, and `Remove` answers `Reject` with the
-same sentence. A row without children takes the usual path, its own
+children first." and no button, and `Destroy` answers `Response.invalid`
+with the same sentence. A row without children takes the usual path, its own
 `@restrict` references counted. So of a chain a → b → c whose last row a
 `@restrict` reference holds, a and b are refused for their children, c
 for the reference, and a childless row nothing refers to is deleted; the
@@ -2716,8 +2768,8 @@ belong to a form of the page (`form="bulk"`), so a row's checkbox is
 submitted with it wherever it sits in the table. Two buttons below the
 table take the choice to the table's bulk page: "Act on the chosen rows"
 and, for no-script use, "Act on all rows on this page" (a second form of
-hidden ids). Both are `GET` forms to `Admin.Ts.Bulk`, whose page parameter
-is a list of the table's ids, so the chosen rows are in the address. The bulk page
+hidden ids). Both are `GET` forms to `Admin.Ts.Bulk`, whose route parameter
+`ids` is a list of the table's ids, so the chosen rows are in the address. The bulk page
 lists the rows and offers the table's actions. (Each checkbox is labelled
 with its row, "Choose hello-world", for a screen reader.)
 
@@ -2750,7 +2802,7 @@ chosen rows directly; a reference that blocks the delete further down
 would not be seen for many rows at once, and the delete would fail in the
 database as an error page. Such a table keeps its single delete page and
 any set action. The bulk modules have the regions `bulk` (the form types
-and write routes) and `actions` (the forms in the view), so `alder regen
+and the write routes' `update`s) and `actions` (the forms in the view), so `alder regen
 admin` rewrites them as the columns change, and their generated tests
 include a row that is refused.
 
@@ -2783,7 +2835,7 @@ admin is committed as it wrote it) gives each silo three things instead.
   guards it: an Admin manages an org's rows without being a member.
   Inside, `session.org` is that parameter, so every read and write goes
   to the org's database; every link to a page of the silo carries it
-  (`Admin.Projects.Show { org: session.org, id: row.id }`), as do the
+  (`Admin.Projects.Show.Show { org: session.org, id: row.id }`), as do the
   list's search and bulk forms, whose `action` is built around it. The
   partition column is the page's parameter, so no list, row page or
   form shows or edits it: a new row takes `org: session.org`.
@@ -2814,10 +2866,11 @@ org and use the pages alone:
 A Member is refused every page of it (a 404), as on any admin page.
 `alder regen admin` treats a siloed table as new when the org's
 dashboard does not link to its list. On the fixture of the generators'
-tests with a silo (`testdata/generate/fixture-silo`) its tests kill 489
-of the 502 mutants (0.97), the survivors being the shared admin's known
-ones (chapter 10's equivalent `> 200`) and a list whose every column is
-a reference, which has nothing to sort by.
+tests with a silo (`testdata/generate/fixture-silo`) its tests kill 275
+of the 288 mutants (0.95), the survivors being the shared admin's known
+ones (chapter 10's equivalent `> 200`), a list whose every column is
+a reference, which has nothing to sort by, and the redirect of the
+fixture's own `Logout`, which is written in the old form and left alone.
 
 ### What the admin does not do
 
@@ -2826,7 +2879,8 @@ It reads and writes every row with the unscoped operations (`Db.from`,
 acts on everyone's rows (chapter 6, "When to use the unscoped forms").
 It writes no check of ownership: the route's `requires user, role Admin`
 checks the role before anything else runs, for the page and for
-every write route, and `isAdmin` reads it again in `load`.
+every write route, and `isAdmin` reads it again in `load` and at the
+head of each write route's `update`.
 
 It never shows or edits a secret. A column is a secret when its type is
 `Text.Secret`, or when its name, in any case, begins with `password`,
@@ -4282,13 +4336,13 @@ order:
 ```text
 alder new table Org name:Text.NonEmpty --no-timestamps
 alder new table Membership user:User.UserId@ref=User org:Org.OrgId@ref=Org --no-timestamps
-alder new page Orgs.Index /orgs --blank --requires user
+alder new route Orgs.Index /orgs --blank --requires user
 alder edit session add-field org:Org.OrgId via Membership --choose Orgs.Index
 alder new table Project name:Text.NonEmpty org:Org.OrgId@ref=Org@partition=org --no-timestamps
 alder new table Todo title:Text.NonEmpty done:Bool=False project:Project.ProjectId@ref=Project@cascade org:Org.OrgId@ref=Org@partition=org --no-timestamps
 alder new silo org Project Todo --empty
-alder new page Projects.Index /projects --blank --requires org
-alder new page Projects.Show /projects --show Project --blank --requires org
+alder new route Projects.Index /projects --blank --requires org
+alder new route Projects.Show /projects --show Project --blank --requires org
 ```
 
 **`alder edit session add-field org:Org.OrgId via Membership`** writes
@@ -4674,7 +4728,7 @@ The rules of `regen`:
   links to it as well (the Delete button of the table's `Show` page),
   or the app no longer checks and `regen` refuses.
 - **It adds what is new.** A table added since the admin was generated
-  (one the nav's region does not link to yet) gets its five pages, and
+  (one the nav's region does not link to yet) gets its pages, and
   its card and its link appear in the dashboard's and the nav's regions.
 - **It refuses a broken marker.** A begin marker without its end, an end
   without its begin, a region that begins twice: the command names the

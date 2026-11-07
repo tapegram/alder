@@ -70,7 +70,7 @@ The other fields are settings of every environment.
 | `keep: 5` | how many builds a target keeps (default 5) |
 | `proxy: None` | an `Ssh` target serves the app itself on a port instead of behind Caddy (default `Caddy`) |
 
-The declaration is **data**. It adds no route, no page, no code to the
+The declaration is **data**. It adds no route, no code to the
 running program; `alder build` produces the same executable with or
 without it. Only the `alder deploy`, `status`, `rollback`, `logs`,
 `restore` and `ci init` commands read it.
@@ -173,6 +173,15 @@ still answering on the same machine: it asks for `/` until the answer
 is a 200 whose page names the new id. The status counts too: a build
 that finds its database ahead of it serves its maintenance page, which
 carries its id like every page, with 503.
+
+The id also tells the new build which browser tabs are its own. A tab
+opened on the old build sends that build's id as `Alder-Build` with every
+Datastar request it makes. The new build, seeing another id, does not
+patch the tab: it answers a full reload (chapter 6, "Delivery"). A write
+from such a tab still runs, since its decoders guard it; only the answer
+differs: a `Response.redirect` navigates as it would, and anything else
+reloads the page the write came from (`Alder-Page`), with a toast shown
+there.
 
 ### A transcript
 
@@ -816,9 +825,9 @@ its secrets replaced by `••••` (the dev panel's mask):
 - the value of a query pair that does not parse (a bad `%` escape, a raw
   `;`): the runtime cannot tell what it holds, so it hides it. The pair
   is kept, never dropped, so the line still shows the URL's shape;
-- the value of a page's path parameter whose name contains one of the
-  words above, whatever the value looks like: for `page "/reset/{token}"`
-  the line shows `/reset/••••`. This matters for the tokens an app makes
+- the value of a route's path parameter whose name contains one of the
+  words above, whatever the value looks like: for `route Reset = GET
+  "/reset/{token}" { token: Text }` the line shows `/reset/••••`. This matters for the tokens an app makes
   itself: `Random.id` gives 20 characters, too short to look like a
   secret, so a reset or magic-link token is masked only because its
   parameter is named `token` (or `code`, `key`, `otp`…). Name it so,
@@ -884,12 +893,12 @@ milliseconds or more a `warn` line, with where the time went appended:
 2026/10/30 12:00:00 warn: GET /todos/3 200 812.4ms 4821B rid=5f3a2c1e slow route=/todos/{id} steps=12 db=9/640.1ms
 ```
 
-`route=` is the page's pattern, so every slow `/todos/…` reads the
+`route=` is the route's pattern, so every slow `/todos/…` reads the
 same; `steps=` is how many effect steps the request ran (whatever the
 level), and `db=` how many database statements those steps sent and
 the time spent in them: 9 statements, 640.1 ms. Here the database is
 most of the 812 ms; a slow line with a small `db=` points at something
-else (a capability's call, a `Task.sleep`, the page's own work). A
+else (a capability's call, a `Task.sleep`, the route's own work). A
 statement is counted from the moment it is sent until the driver
 answers, reading the rows of a query included only as far as the
 driver reads them in that call.
@@ -968,16 +977,16 @@ a Fly app with a token like any other.
 | `alder_build_info` | gauge, always 1 | `build`: the build id |
 
 Every label comes from a set the program fixes, never from a request:
-`route` is the matched page's pattern (`/todos/{id}`, not `/todos/3`),
+`route` is the matched route's pattern (`/todos/{id}`, not `/todos/3`),
 or `/static/` (a static file), `/_alder/` (a runtime file), `/_dev`, or
 `(none)` (nothing matched); `method` is `GET`, `POST`, `HEAD` or
-`other`; `status` is the class, `2xx` to `5xx` (a request the handler
+`other` (a `PUT`, `PATCH` or `DELETE` route counts as `other`); `status` is the class, `2xx` to `5xx` (a request the handler
 aborted before writing anything counts as `5xx`; one that wrote nothing
 otherwise, as `2xx`); a step's name is a Call
 name from the generated code (a `Task.sleep`'s milliseconds are left
 out). This is the cardinality rule: a counter per URL, per user or per
 query value would let anyone who sends requests grow the app's memory
-and the metrics store's bill without bound, so none exists. Per-page
+and the metrics store's bill without bound, so none exists. Per-route
 latency is the histogram by `route`; an error rate is the `5xx` share
 of `alder_http_requests_total`.
 
@@ -1038,7 +1047,7 @@ what a platform needs to decide whether to route to it. It does not say
 the app is being used: the access lines do.
 
 The access lines answer "is it alive?"; the counters behind "how many,
-how slow, which page" are `ALDER_METRICS`'s ("Metrics", above), off
+how slow, which route" are `ALDER_METRICS`'s ("Metrics", above), off
 unless you turn them on. Nothing is pushed anywhere: a scraper you run
 reads them.
 

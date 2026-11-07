@@ -4,10 +4,11 @@ The to-do app of chapter 2 has one table that matters and one kind of
 user. `examples/blog` adds what a to-do list never needed: two tables
 joined by a reference, two kinds of user, a capability that `load`
 calls, pages of results, and a search. This chapter covers only what is
-new; the rules are in chapters 6 to 10.
+new; the rules are in chapters 6 to 10, and every module here is written
+in routes (chapter 6).
 
 The blog has eleven modules of its own in `examples/blog/app/`, and
-the seventeen of a site admin that `alder new admin` generated in
+the twenty of a site admin that `alder new admin` generated in
 `app/Admin/` (chapter 15 tours them):
 
 | Module | What it is |
@@ -16,10 +17,10 @@ the seventeen of a site admin that `alder new admin` generated in
 | `User` | The user table, with a `role` column |
 | `Post`, `Comment` | The two tables, and the functions about posts |
 | `Markdown` | A capability that turns a post's body into HTML |
-| `Posts.Index` | `/`: the published posts, a page at a time, and a search |
-| `Posts.Show` | `/posts/{slug}`: one post, its comments, a comment form |
-| `Write` | `/write`: an author's own posts, and a form for a new one |
-| `Write.Edit` | `/write/{id}`: edit, publish, unpublish or delete a post |
+| `Posts.Index` | `/`: the published posts, a page at a time, and a search (`POST /_/Search`) |
+| `Posts.Show` | `/posts/{slug}`: one post, its comments, a comment form (`POST /posts/{slug}/_/AddComment`) |
+| `Write` | `/write`: an author's own posts, and a form for a new one (`POST /write/_/Create`) |
+| `Write.Edit` | `/write/{id}`: edit, publish, unpublish or delete a post (four `POST` routes under `/write/{id}/_/`) |
 | `Admin.…` | `/admin`: every table's rows, to list, search, create, edit and delete, for an Admin; generated (chapter 15) |
 
 Four modules are shown in full, piece by piece: `go test ./book` checks
@@ -69,7 +70,7 @@ row, and inserting a comment for a missing post fails (chapter 8,
 "Writing"). `@cascade` is the field's **delete rule**: deleting a post
 deletes its comments. The default, `@restrict`, would refuse to delete a
 post that has comments, and `@setNull` needs a `Maybe` field. The rule
-sits on the referring field, so this file says what any page's deletion
+sits on the referring field, so this file says what any route's deletion
 of a post does to its comments.
 
 Anyone may comment without logging in, so the name and the text are
@@ -109,8 +110,8 @@ the slug is a second, `@unique` column. `Slug` is a refined brand too: a
 form field of type `Post.Slug` reports an error before `update` runs,
 and a route parameter that breaks the rule, `/posts/Bad%20Slug`, is a 404.
 `author` is the post's owner, and `@owner` says so to the compiler: the
-pages where an author manages their posts read and write them through
-`Db`'s scoped operations (chapter 6, "Rules"). The public pages, which
+routes where an author manages their posts read and write them through
+`Db`'s scoped operations (chapter 6, "Rules"). The public routes, which
 show anyone's published posts, use `Db.from` as before.
 
 ```alder part=blog/Table.Post
@@ -222,14 +223,14 @@ test "an author with posts cannot be deleted" = {
 `User` declares `type Role = Reader | Author | Admin` and a column
 `role: Role = Reader`. (`Admin` is the generated admin's role, chapter
 15; the author's pages are `Write`, at `/write`, so that the admin can
-have `/admin`.) The role a page asks for is the one in the
+have `/admin`.) The role a route asks for is the one in the
 session: `App` declares the session with a `role` field beside `user`,
 
 ```alder fragment
 session { user: Maybe User.UserId, role: User.Role = Reader }
 ```
 
-and the login page copies the user's role from their row when it stores
+and the login route copies the user's role from their row when it stores
 them in the session:
 
 ```alder fragment
@@ -237,32 +238,34 @@ them in the session:
         let found <- Db.get User id
         let role = Maybe.withDefault Reader (Maybe.map (\u -> u.role) found)
         let _ <- Session.put (\s -> { s | user: Just id, role: role })
-        Task.succeed (Redirect (Posts.Index {}))
+        Task.succeed (Response.redirect (Posts.Index.Index {}))
       },
 ```
 
 `App.Logout` sets it back to `Reader` with the user (`{ s | user:
-Nothing, role: Reader }`). Both Write pages declare
+Nothing, role: Reader }`). Every route of `Write` and `Write.Edit`, the write routes too, declares
 
 ```alder fragment
-page "/write" { } requires user, role Author
+route Write = GET "/write" { } requires user, role Author
 ```
 
 `requires user` sends a visitor to log in, as before; `role Author` then
 answers a 404 to a logged-in Reader, the same 404 as a page that does not
-exist, before `load` runs. The check reads the cookie and nothing else,
-so it costs no query. It is the role at login, and the cookie keeps it
-until logout or the session's 30 days: a user demoted since still passes
-it. So both pages also re-read the user's row in `load` (chapter 6,
-"Rules"; a test below shows it). Every message of the page goes through the same check, so
-`update` needs none of its own.
+exist, before `load` or `update` runs. The check reads the cookie and
+nothing else, so it costs no query. It is the role at login, and the
+cookie keeps it until logout or the session's 30 days: a user demoted
+since still passes it. So the GET routes re-read the user's row in `load`
+(chapter 6, "Rules"; a test below shows it). No `load` runs before a
+write route, so each write route's `update` begins with
+`User.authorOnly session.user`, the same re-read as a `Query` that is a
+404 for anyone who is no author now.
 
 `Write`'s `load` lists the author's own posts with `Db.mine Post |>
-Db.orderBy Post.created.desc |> Db.all`, and its message `Create` stores
+Db.orderBy Post.created.desc |> Db.all`, and its route `Create` stores
 a new one with `Db.insertMine Post { slug: …, title: …, body: … }`, which
 fills `author` from the session. `Create` first looks the slug up with
-`Post.bySlug` and answers `Reject` if it is taken, where the insert would
-fail on `@unique` with a 500 page. The edit page, in full:
+`Post.bySlug` and answers `Response.invalid` if it is taken, where the
+insert would fail on `@unique` with a 500 page. The edit module, in full:
 
 ```alder part=blog/Write.Edit
 module Write.Edit
@@ -274,18 +277,22 @@ import Table.Comment
 import Table.Post
 import Table.User
 
-page "/write/{id}" { id: Post.PostId } requires user, role Author
+route Edit      = GET  "/write/{id}"             { id: Post.PostId }               requires user, role Author
+route Save      = POST "/write/{id}/_/Save"      { id: Post.PostId } form EditPost requires user, role Author
+route Publish   = POST "/write/{id}/_/Publish"   { id: Post.PostId }               requires user, role Author
+route Unpublish = POST "/write/{id}/_/Unpublish" { id: Post.PostId }               requires user, role Author
+route Delete    = POST "/write/{id}/_/Delete"    { id: Post.PostId }               requires user, role Author
 
 type Model = { post: Post }
 
 -- load finds the post when the session's user wrote it: `Db.getMine` answers anyone else's
 -- post, like a missing one, with a 404. The page `requires user, role Author`, the same gate as
 -- the Write page, and re-reads the user's row as it does (User.isAuthor), so an author made a
--- Reader is turned away at once. The messages carry no id: they act on `model.post`, which this
--- `load` has found (as the to-do example's Todos.Show does), and every message runs it first; the
--- writes are the scoped forms all the same, which cost nothing.
-load : Params -> Session -> Query Model
-load params session = {
+-- Reader is turned away at once. The write routes take the id from their path, as the page does,
+-- and run no `load`: each begins with User.authorOnly, the same re-read, and writes with the
+-- scoped forms, so another author's post is a 404 there too.
+Edit.load : Edit.Params -> Session -> Query Model
+Edit.load params session = {
   let author <- User.isAuthor session.user
   if author then {
     let post <- Db.getMine Post params.id
@@ -295,8 +302,8 @@ load params session = {
 }
 ```
 
-`load` first re-reads the user's row with `User.isAuthor`, the re-read
-idiom of chapter 6, whose body is
+`Edit.load` first re-reads the user's row with `User.isAuthor`, the
+re-read idiom of chapter 6, whose body is
 
 ```alder fragment
 isAuthor : UserId -> Query Bool
@@ -317,57 +324,59 @@ for a test below, which logs in through its form.)
 ```alder part=blog/Write.Edit
 form EditPost = { title: Text.NonEmpty, body: Text }
 
-msg Save form EditPost
+Save.update : Save.Params -> Session -> Task Response
+Save.update p session = {
+  let _ <- User.authorOnly session.user
+  let _ <- Db.updateMine Post p.id (\post -> { post | title: p.form.title, body: p.form.body })
+  Task.succeed (Response.refresh |> Response.toast "Saved")
+}
 
-msg Publish
+Publish.update : Publish.Params -> Session -> Task Response
+Publish.update p session = {
+  let _ <- User.authorOnly session.user
+  let _ <- Db.updateMine Post p.id (\post -> { post | published: True })
+  Task.succeed Response.refresh
+}
 
-msg Unpublish
+Unpublish.update : Unpublish.Params -> Session -> Task Response
+Unpublish.update p session = {
+  let _ <- User.authorOnly session.user
+  let _ <- Db.updateMine Post p.id (\post -> { post | published: False })
+  Task.succeed Response.refresh
+}
 
-msg Delete
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Save p -> {
-    let _ <- Db.updateMine Post model.post.id (\post -> { post |
-      title: p.form.title,
-      body: p.form.body
-    })
-    Task.succeed (Notice.with "Saved" Rerender)
-  },
-  Publish p -> {
-    let _ <- Db.updateMine Post model.post.id (\post -> { post | published: True })
-    Task.succeed Rerender
-  },
-  Unpublish p -> {
-    let _ <- Db.updateMine Post model.post.id (\post -> { post | published: False })
-    Task.succeed Rerender
-  },
-  -- The post's comments go with it: Comment.post is `@ref Post @cascade`.
-  Delete p -> {
-    let _ <- Db.deleteMine Post model.post.id
-    Task.succeed (Redirect (Write {}))
-  },
+-- The post's comments go with it: Comment.post is `@ref Post @cascade`.
+Delete.update : Delete.Params -> Session -> Task Response
+Delete.update p session = {
+  let _ <- User.authorOnly session.user
+  let _ <- Db.deleteMine Post p.id
+  Task.succeed (Response.redirect (Write.Write {}))
 }
 ```
 
-No message carries an id: each acts on `model.post`, which `load` has
-found with `Db.getMine`, so no request can name another post. The writes
-are still the scoped `Db.updateMine` and `Db.deleteMine`: they cost
-nothing, and `alder test --mutate` counts them as the same program as
-the plain ones here, so they ask for no extra test (chapter 6, "Rules").
-`Delete` makes one write, and `@cascade` deletes the comments.
+The four write routes take the post's id from their path, as `Edit`
+does (`POST /write/{id}/_/Save`), and `Save` also decodes the form
+`EditPost`: its fields reach `update` as `p.form`. A request can name any
+id, and no `load` runs first to find the post, so each `update` begins
+with `User.authorOnly` and then writes with the scoped `Db.updateMine`
+and `Db.deleteMine`, which find no row for a post of another author: that
+is a 404, as it is on the page (chapter 6, "Rules"). `Save` answers
+`Response.refresh` with a toast, so the page is shown again with the new
+values; `Publish` and `Unpublish` refresh it; `Delete` makes one write,
+`@cascade` deletes the comments, and the answer is a redirect to the
+list, because the page it came from is gone.
 
 ```alder part=blog/Write.Edit
-view : Model -> Session -> Html Msg
-view model session =
+Edit.view : Model -> Session -> Html
+Edit.view model session =
   <Layout.Page title={"Edit: " ++ model.post.title}>
     <h1>{model.post.title}</h1>
     <p>
-      {if model.post.published then <al-badge>Published</al-badge> else <al-badge variant="secondary">Draft</al-badge>} · <a href={Posts.Show { slug: model.post.slug }}>View</a>
+      {if model.post.published then <al-badge>Published</al-badge> else <al-badge variant="secondary">Draft</al-badge>} · <a href={Posts.Show.Show { slug: model.post.slug }}>View</a>
     </p>
 
     <al-card>
-      <form submit={Save}>
+      <form submit={Save { id: model.post.id }}>
         <al-alert variant="destructive"><Errors form /></al-alert>
         <al-input field="title" label="Title" value={model.post.title} />
         <al-textarea field="body" label="Body (Markdown)" value={model.post.body} />
@@ -375,19 +384,21 @@ view model session =
       </form>
       <div slot="actions">
         {if model.post.published then
-          <al-button variant="secondary" click={Unpublish}>Unpublish</al-button>
+          <al-button variant="secondary" click={Unpublish { id: model.post.id }}>
+            Unpublish
+          </al-button>
         else
-          <al-button variant="secondary" click={Publish}>Publish</al-button>}
-        <al-button variant="destructive" click={Delete}>Delete</al-button>
+          <al-button variant="secondary" click={Publish { id: model.post.id }}>Publish</al-button>}
+        <al-button variant="destructive" click={Delete { id: model.post.id }}>Delete</al-button>
       </div>
     </al-card>
-    <a href={Write {}}>All your posts</a>
+    <a href={Write.Write {}}>All your posts</a>
   </Layout.Page>
 ```
 
 The page is built from the design system's elements (Appendix C): the
 status is an `<al-badge>`, the form sits in an `<al-card>` whose
-`actions` slot holds the buttons, and the form's own error (a `Reject`)
+`actions` slot holds the buttons, and the form's own error (a `Response.invalid`)
 appears in an `<al-alert variant="destructive">`, which Alder gives
 `role="alert"` so a screen reader announces it. The design system hides
 that alert while its list is empty (`al-alert:has(> ul.errors:empty)
@@ -419,8 +430,7 @@ test "deleting a post deletes its comments" = {
     body: Comment.Body "Second.",
   }
   let _ <- Test.login { user: Just author, role: Author }
-  let model <- load { id: id } { user: author, role: Author }
-  let r <- Test.run (update Delete model { user: author, role: Author })
+  let r <- Test.run (Delete.update { id: id } { user: author, role: Author })
   let posts <- Db.from Post |> Db.count
   let comments <- Db.from Comment |> Db.count
   Task.succeed (
@@ -430,8 +440,8 @@ test "deleting a post deletes its comments" = {
       posts: posts,
       comments: comments,
     } == {
-      value: Ok (Redirect (Write {})),
-      trace: ["Db.deleteMine Post"],
+      value: Ok (Response.redirect (Write.Write {})),
+      trace: ["Db.get User", "Db.deleteMine Post"],
       posts: 0,
       comments: 0,
     }
@@ -439,7 +449,7 @@ test "deleting a post deletes its comments" = {
 }
 
 -- Another author is let through the role check, but `Db.getMine` finds no post of theirs with
--- this id.
+-- this id; nor do the write routes' `Db.updateMine` and `Db.deleteMine`, run with no `load`.
 test "another author's post is not found" = {
   let author <- Db.insert User {
     email: Text.Email "author@example.com",
@@ -460,14 +470,31 @@ test "another author's post is not found" = {
     author: author,
   }
   let _ <- Test.login { user: Just other, role: Author }
-  let r <- Test.open (Write.Edit { id: id })
-  Task.succeed (r.answer == PageMissing)
+  let r <- Test.open (Edit { id: id })
+  let as = { user: other, role: Author }
+  let saved <- Test.run (Save.update { id: id, form: { title: Text.NonEmpty "Mine", body: "" } } as)
+  let published <- Test.run (Publish.update { id: id } as)
+  let unpublished <- Test.run (Unpublish.update { id: id } as)
+  let deleted <- Test.run (Delete.update { id: id } as)
+  let after <- Db.get Post id
+  Task.succeed (
+    {
+      answer: r.answer,
+      writes: [saved.value, published.value, unpublished.value, deleted.value],
+      post: Maybe.map (\p -> { title: p.title, published: p.published }) after,
+    } == {
+      answer: PageMissing,
+      writes: [Err "not found", Err "not found", Err "not found", Err "not found"],
+      post: Just { title: Text.NonEmpty "Hello", published: False },
+    }
+  )
 }
 
 -- The role is the one the session got at login, and the cookie keeps it until logout (or the
 -- session's 30 days). An author made a Reader since then still passes `requires user, role
 -- Author`, but `load` re-reads their row (User.isAuthor): the page is a 404 at once, and so is
--- every message, since each runs `load` first. After a new login the cookie says Reader too.
+-- every write route, since each begins with User.authorOnly. After a new login the cookie says
+-- Reader too.
 test "a demoted author is turned away at once" = {
   let _ <- Test.fake Login.Password
   let author <- Db.insert User {
@@ -482,28 +509,32 @@ test "a demoted author is turned away at once" = {
     body: "",
     author: author,
   }
-  let _ <- Test.get (Auth.Login {})
-  let _ <- Test.submit Auth.Login.Credentials {
+  let _ <- Test.get (Auth.Login.Login {})
+  let _ <- Test.submit Auth.Login.Submit {
     email: Text.Email "author@example.com",
     password: Text.Secret "secret",
   }
-  let before <- Test.open (Write.Edit { id: id })
+  let before <- Test.open (Edit { id: id })
   let _ <- Db.update User author (\u -> { u | role: Reader })
-  let stale <- Test.open (Write.Edit { id: id })
-  let _ <- Test.get (Auth.Login {})
-  let _ <- Test.submit Auth.Login.Credentials {
+  let stale <- Test.open (Edit { id: id })
+  let _ <- Test.login { user: Just author, role: Author }
+  let write <- Test.run (Publish.update { id: id } { user: author, role: Author })
+  let _ <- Test.get (Auth.Login.Login {})
+  let _ <- Test.submit Auth.Login.Submit {
     email: Text.Email "author@example.com",
     password: Text.Secret "secret",
   }
-  let fresh <- Test.open (Write.Edit { id: id })
+  let fresh <- Test.open (Edit { id: id })
   Task.succeed (
     {
       before: before.answer,
       stale: stale.answer,
+      write: write.value,
       fresh: fresh.answer,
     } == {
       before: Shown,
       stale: PageMissing,
+      write: Err "not found",
       fresh: PageMissing,
     }
   )
@@ -523,7 +554,7 @@ test "a promoted reader logs in again before editing" = {
     author: me,
   }
   let _ <- Test.login { user: Just me, role: Reader }
-  let r <- Test.open (Write.Edit { id: id })
+  let r <- Test.open (Edit { id: id })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -541,12 +572,10 @@ test "Publish shows the post on the front page; Unpublish hides it" = {
     author: author,
   }
   let _ <- Test.login { user: Just author, role: Author }
-  let draft <- load { id: id } { user: author, role: Author }
-  let _ <- update Publish draft { user: author, role: Author }
-  let published <- Index.load { page: 1, q: "" } { user: Nothing, role: Reader }
-  let shown <- load { id: id } { user: author, role: Author }
-  let _ <- update Unpublish shown { user: author, role: Author }
-  let unpublished <- Index.load { page: 1, q: "" } { user: Nothing, role: Reader }
+  let _ <- Publish.update { id: id } { user: author, role: Author }
+  let published <- Index.Index.load { page: 1, q: "" } { user: Nothing, role: Reader }
+  let _ <- Unpublish.update { id: id } { user: author, role: Author }
+  let unpublished <- Index.Index.load { page: 1, q: "" } { user: Nothing, role: Reader }
   Task.succeed (
     { published: List.length published.posts, unpublished: List.length unpublished.posts }
       == { published: 1, unpublished: 0 }
@@ -554,40 +583,50 @@ test "Publish shows the post on the front page; Unpublish hides it" = {
 }
 ```
 
-The first test deletes a post with two comments through `update`. Its
-trace has one step, `Db.deleteMine Post`, since SQLite deletes the comments
-in that statement (chapter 8, "Writing"). It calls `load` and `update`
-directly, with a session record, but `Db.getMine` in `load` acts for the
-test's own session, the one `Test.login` set, not for that record
-(chapter 6, "Rules"); so the test logs in first. The second opens
-another author's post as that author: the role check passes, and
-`Db.getMine` answers `PageMissing`.
+The first test deletes a post with two comments through `Delete.update`.
+Its trace has two steps: the `Db.get User` of `User.authorOnly`, and
+`Db.deleteMine Post`, since SQLite deletes the comments in that statement
+(chapter 8, "Writing"). It calls `update` directly, with a session record,
+but the scoped operations act for the test's own session, the one
+`Test.login` set, not for that record (chapter 6, "Rules"); so the test
+logs in first. The second opens another author's post as that author: the
+role check passes, and `Db.getMine` answers `PageMissing`. It then runs
+the four write routes' `update` as that author, with no `load` before
+them: each answers `Err "not found"` and the post is unchanged, so it is
+`Db.updateMine` and `Db.deleteMine` that keep the writes in the author's
+own rows.
 
 The third is the stale role. The author logs in through the login form
 (with `Auth.Login`'s `fake Password`, chapter 10), which stores their
 role, `Author`, in the session, and the edit page opens. Then their row
 is changed to `Reader`. The cookie still says Author, so the role check
 passes, but `load` re-reads the row and the page is a 404 (`stale` is
-`PageMissing`) at once. After a second login the session holds the row's
-role too. The fourth is the other way round: a row made Author whose
-cookie still says Reader is turned away by the role check, until they
-log in again (without it, the re-read alone would let them in, and
-`alder test --mutate` reports the `role dropped` mutant as surviving).
-The last test reads the front page through `Index.load`, which a
-test may call once its module imports `Posts.Index`.
+`PageMissing`) at once; a write route run with the same stale session
+is `Err "not found"` as well, since `User.authorOnly` re-reads the row.
+After a second login the session holds the row's role too. The fourth is
+the other way round: a row made Author whose cookie still says Reader is
+turned away by the role check, until they log in again (the re-read
+alone would let them in, so this test is the one that pins the check).
+The last test reads the front page through `Index.Index.load`, which a
+test may call once its module imports `Posts.Index`: after the import the
+module is `Index`, and the route's member `Index.Index.load`.
 
 Two more go through the page, and were added after `alder test --mutate`
 showed what nothing checked: that a visitor who opens an edit page is
 sent to log in (with `requires user` deleted, the page would be served to
 them), and that Save stores both fields. The second posts the form and
-reads the page it re-renders: the heading and the text area now hold
-what was saved, and the post's status is still the `<al-badge>` reading
-Draft (a re-render replaces the page's `<body>`, custom elements and
-all).
+reads the page `Response.refresh` shows again: the heading and the text
+area now hold what was saved, the answer is `Refreshed`, the toast is in
+`notices`, and the post's status is still the `<al-badge>` reading Draft
+(a refresh replaces the page's `<body>`, custom elements and all; the
+`<head>` is not updated yet, alder#189). The mutation operators for
+`requires` and `role` exist only for the old page form (alder#187), so
+on routes these two tests, not a mutant, are what notices a dropped
+`requires`.
 
 ```alder part=blog/Write.Edit
 -- The page through the browser: a visitor is sent to log in; the author saves the form, and the
--- page rerenders with its design-system elements (the status is an <al-badge>).
+-- page is shown again with its design-system elements (the status is an <al-badge>).
 test "a visitor is sent to log in" = {
   let author <- Db.insert User {
     email: Text.Email "author@example.com",
@@ -601,8 +640,8 @@ test "a visitor is sent to log in" = {
     body: "",
     author: author,
   }
-  let visitor <- Test.open (Write.Edit { id: id })
-  Task.succeed (visitor.answer == Redirected (Auth.Login {}))
+  let visitor <- Test.open (Edit { id: id })
+  Task.succeed (visitor.answer == Redirected (Auth.Login.Login {}))
 }
 
 test "saving changes the title and the body" = {
@@ -619,8 +658,8 @@ test "saving changes the title and the body" = {
     author: author,
   }
   let _ <- Test.login { user: Just author, role: Author }
-  let _ <- Test.get (Write.Edit { id: id })
-  let r <- Test.submit EditPost { title: Text.NonEmpty "Hello again", body: "More." }
+  let _ <- Test.get (Edit { id: id })
+  let r <- Test.submit (Save { id: id }) { title: Text.NonEmpty "Hello again", body: "More." }
   Task.succeed (
     {
       answer: r.answer,
@@ -629,7 +668,7 @@ test "saving changes the title and the body" = {
       status: Test.text "al-badge" r.doc,
       notices: r.notices,
     } == {
-      answer: Rerendered,
+      answer: Refreshed,
       heading: Just "Hello again",
       body: Just "More.",
       status: Just "Draft",
@@ -657,10 +696,12 @@ generated `caps` package that wires it).
 `app/Markdown.alder` also has a `fake Markdown`, which one `Posts.Show`
 test uses in the adapter's place (chapter 10, "Faking a capability").
 
-The comment form's message, `msg AddComment form NewComment`, carries no
-post id either. A draft's page is a 404 for everyone but its author, so
-no one else can post its form, and `update` refuses a comment on a draft
-anyway, with `Task.notFound`.
+The comment form's route, `AddComment`, takes the post's slug from its
+path (`POST /posts/{slug}/_/AddComment`) and decodes the form
+`NewComment`. No `load` runs before a write route, so its `update` finds
+the post again with `Post.bySlug` and refuses a comment on a draft, or on
+a slug never used, with `Task.notFound`; otherwise it inserts the comment
+and redirects to the post.
 
 ## Pages and a search: `Posts.Index`
 
@@ -671,7 +712,10 @@ import Layout
 import Table.Post
 import Table.User
 
-page "/" { page: Int = 1, q: Text = "" }
+route Index  = GET  "/"         { page: Int = 1, q: Text = "" }
+-- A search posts its form to a write route like any other: `update` redirects to the first page
+-- of the results, whose address (/?q=…) can be bookmarked and shared.
+route Search = POST "/_/Search" { } form SearchForm
 
 type Model = {
   page: Int,
@@ -690,15 +734,17 @@ lastPage = 1000000
 ```
 
 Both query parameters have defaults, so `/`, `/?page=2` and
-`/?q=soup&page=2` reach this page (chapter 6); `/?page=abc` is a 404.
+`/?q=soup&page=2` reach this route (chapter 6); `/?page=abc` is a 404.
+The second route, `Search`, is a `POST` whose path, `/_/Search`, has no
+segment: it carries no parameters, only the form.
 
 ```alder part=blog/Posts.Index
 -- load reads one page of published posts, newest first, matching `q` when it is not blank; `q`
 -- is cut to 100 characters. It asks for one post more than a page holds: if that one comes back
 -- there is a next page (`hasMore`), and it is dropped from the list. `canWrite` shows the link
 -- to the Write page to an Author only.
-load : Params -> Session -> Query Model
-load params session = {
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
   let page = if params.page < 1 then 1 else if params.page > lastPage then lastPage else params.page
   let q = Text.slice 0 100 (Text.trim params.q)
   let matching =
@@ -734,18 +780,13 @@ Write link, and a Reader never sees a link to a 404.
 ```alder part=blog/Posts.Index
 form SearchForm = { q: Text }
 
--- A search is a message like any form: `update` answers with the first page of the results,
--- whose address (/?q=…) can be bookmarked and shared.
-msg Search form SearchForm
+Search.update : Search.Params -> Session -> Task Response
+Search.update p session = Task.succeed (Response.redirect (Index { page: 1, q: p.form.q }))
 
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Search p -> Task.succeed (Redirect (Posts.Index { page: 1, q: p.form.q })),
-}
 ```
 
-The search form's message redirects to the first page of results, so
-`/?q=soup` can be bookmarked. The form is `SearchForm`, not `Query`: a
+The search form posts to `Search`, which redirects to the first page of
+results, so `/?q=soup` can be bookmarked. The form is `SearchForm`, not `Query`: a
 `form` declares a type, and one named like a Prelude type would hide it
 in its module, so the compiler refuses the name:
 
@@ -764,8 +805,8 @@ count = Query.succeed 0
 a module's other errors wait until the name is changed.
 
 ```alder part=blog/Posts.Index
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <Layout.Page title="Blog">
     <h1>Blog</h1>
 
@@ -783,19 +824,19 @@ view model session =
       <ul class="posts">
         {for post in model.posts ->
           <li>
-            <a href={Posts.Show { slug: post.slug }}>{post.title}</a>
+            <a href={Posts.Show.Show { slug: post.slug }}>{post.title}</a>
             <span class="date">{Time.format "Jan 2, 2006" post.created}</span>
           </li>}
       </ul>}
 
     <al-pagination role="navigation" aria-label="Pages">
       {if model.page > 1 then
-        <a slot="prev" href={Posts.Index { page: model.page - 1, q: model.q }} rel="prev">Newer</a>
+        <a slot="prev" href={Index { page: model.page - 1, q: model.q }} rel="prev">Newer</a>
       else
         <span slot="prev" aria-disabled="true">Newer</span>}
       <span>Page {Text.fromInt model.page}</span>
       {if model.hasMore then
-        <a slot="next" href={Posts.Index { page: model.page + 1, q: model.q }} rel="next">Older</a>
+        <a slot="next" href={Index { page: model.page + 1, q: model.q }} rel="next">Older</a>
       else
         <span slot="next" aria-disabled="true">Older</span>}
     </al-pagination>
@@ -803,9 +844,9 @@ view model session =
     {match session.user {
       Just _ ->
         <div class="account">
-          {if model.canWrite then <a href={Write {}}>Write</a> else Html.none} <al-button variant="outline" size="sm" click={App.Logout}>Log out</al-button>
+          {if model.canWrite then <a href={Write.Write {}}>Write</a> else Html.none} <al-button variant="outline" size="sm" click={App.Logout}>Log out</al-button>
         </div>,
-      Nothing -> <p><a href={Auth.Login {}}>Log in</a></p>,
+      Nothing -> <p><a href={Auth.Login.Login {}}>Log in</a></p>,
     }}
   </Layout.Page>
 ```
@@ -818,17 +859,17 @@ otherwise draw from its `page` and `pages` attributes).
 
 ## Its tests
 
-`alder test examples/blog` runs 145 tests: the 103 of the generated
+`alder test examples/blog` runs 196 tests: the 154 of the generated
 admin (chapter 15), and forty-two in seven modules, which `-run` picks
 out (it matches each test's `Module "name"`):
 
 ```text
-$ alder test examples/blog -run '^(Post|Comment|Auth|Posts|Write)[. ]'
-ok   Post "a slug is lowercase letters, digits and hyphens"
-ok   Post "a draft is not visible"
-ok   Post "bySlug finds the post with that slug"
-ok   Post "an author with posts cannot be deleted"
-ok   Comment "a name or comment has text and a bound"
+$ alder test examples/blog -run '^(Table\.(Post|Comment)|Auth|Posts|Write)[. ]'
+ok   Table.Post "a slug is lowercase letters, digits and hyphens"
+ok   Table.Post "a draft is not visible"
+ok   Table.Post "bySlug finds the post with that slug"
+ok   Table.Post "an author with posts cannot be deleted"
+ok   Table.Comment "a name or comment has text and a bound"
 ok   Auth.Login "an unknown email is rejected"
 ok   Auth.Login "logging in through the form"
 ok   Posts.Index "the front page lists only published posts, newest first"
@@ -902,7 +943,7 @@ test "the front page lists only published posts, newest first" = {
     published: True,
     author: author,
   }
-  let model <- load { page: 1, q: "" } { user: Nothing, role: Reader }
+  let model <- Index.load { page: 1, q: "" } { user: Nothing, role: Reader }
   Task.succeed (
     List.map (\p -> p.title) model.posts == [Text.NonEmpty "Second", Text.NonEmpty "First"]
   )
@@ -936,7 +977,7 @@ test "search matches title or body" = {
     published: True,
     author: author,
   }
-  let model <- load { page: 1, q: "TOMATO" } { user: Nothing, role: Reader }
+  let model <- Index.load { page: 1, q: "TOMATO" } { user: Nothing, role: Reader }
   let titles = List.map (\p -> p.title) model.posts
   Task.succeed (
     {
@@ -972,7 +1013,7 @@ test "a `%` in the query is literal" = {
     published: True,
     author: author,
   }
-  let model <- load { page: 1, q: "100%" } { user: Nothing, role: Reader }
+  let model <- Index.load { page: 1, q: "100%" } { user: Nothing, role: Reader }
   Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "100% done"])
 }
 
@@ -994,7 +1035,7 @@ test "page 99 is empty" = {
       }) (List.range 1 11)
     )
   let pages <-
-    Query.all (List.map (\n -> load { page: n, q: "" } { user: Nothing, role: Reader }) [
+    Query.all (List.map (\n -> Index.load { page: n, q: "" } { user: Nothing, role: Reader }) [
       1,
       2,
       99,
@@ -1033,7 +1074,7 @@ test "page 99 is empty" = {
 }
 
 test "a negative page is page 1" = {
-  let model <- load { page: -3, q: "" } { user: Nothing, role: Reader }
+  let model <- Index.load { page: -3, q: "" } { user: Nothing, role: Reader }
   Task.succeed (model.page == 1)
 }
 
@@ -1058,7 +1099,7 @@ test "a `_` in the query is literal" = {
     published: True,
     author: author,
   }
-  let model <- load { page: 1, q: "e_c" } { user: Nothing, role: Reader }
+  let model <- Index.load { page: 1, q: "e_c" } { user: Nothing, role: Reader }
   Task.succeed (List.map (\p -> p.title) model.posts == [Text.NonEmpty "snake_case"])
 }
 
@@ -1066,14 +1107,14 @@ test "a `_` in the query is literal" = {
 -- that a search costs the length of every post times the length of the query.
 test "a long query is cut" = {
   let long = Text.join "" (List.map (\n -> "tomato ") (List.range 1 100))
-  let model <- load { page: 1, q: long } { user: Nothing, role: Reader }
+  let model <- Index.load { page: 1, q: long } { user: Nothing, role: Reader }
   Task.succeed (model.q == Text.slice 0 100 long)
 }
 
 test "a search answers with the first page of its results" = {
-  let model <- load { page: 3, q: "" } { user: Nothing, role: Reader }
-  let nav <- update (Search { form: { q: "soup" } }) model { user: Nothing, role: Reader }
-  Task.succeed (nav == Redirect (Posts.Index { page: 1, q: "soup" }))
+  let model <- Index.load { page: 3, q: "" } { user: Nothing, role: Reader }
+  let nav <- Search.update { form: { q: "soup" } } { user: Nothing, role: Reader }
+  Task.succeed (nav == Response.redirect (Index { page: 1, q: "soup" }))
 }
 
 test "only an Author sees the Write link" = {
@@ -1089,9 +1130,9 @@ test "only an Author sees the Write link" = {
     role: Author,
   }
   let pages <- Query.all [
-    load { page: 1, q: "" } { user: Nothing, role: Reader },
-    load { page: 1, q: "" } { user: Just reader, role: Reader },
-    load { page: 1, q: "" } { user: Just author, role: Author },
+    Index.load { page: 1, q: "" } { user: Nothing, role: Reader },
+    Index.load { page: 1, q: "" } { user: Just reader, role: Reader },
+    Index.load { page: 1, q: "" } { user: Just author, role: Author },
   ]
   Task.succeed (List.map (\m -> m.canWrite) pages == [False, False, True])
 }
@@ -1126,8 +1167,8 @@ test "the second page links back to the first" = {
         author: author,
       }) (List.range 1 11)
     )
-  let first <- Test.get (Posts.Index {})
-  let second <- Test.get (Posts.Index { page: 2 })
+  let first <- Test.get (Index {})
+  let second <- Test.get (Index { page: 2 })
   Task.succeed (
     {
       firstPosts: Test.count "ul.posts li" first.doc,
@@ -1166,15 +1207,15 @@ test "a search through the form" = {
     published: True,
     author: author,
   }
-  let _ <- Test.get (Posts.Index {})
-  let r <- Test.submit SearchForm { q: "tomato" }
+  let _ <- Test.get (Index {})
+  let r <- Test.submit Search { q: "tomato" }
   Task.succeed (
     {
       answer: r.answer,
       titles: Test.texts "ul.posts a" r.doc,
       query: Test.attr "value" "input[name=q]" r.doc,
     } == {
-      answer: Redirected (Posts.Index { page: 1, q: "tomato" }),
+      answer: Redirected (Index { page: 1, q: "tomato" }),
       titles: ["Soup"],
       query: Just "tomato",
     }
@@ -1189,7 +1230,7 @@ this test, and flipping it in `Posts.Show` fails "a comment is listed
 oldest first".
 
 Three more tests go through the browser. `Write`'s "the write page needs
-an Author" opens `/write` as a visitor (`Redirected (Auth.Login {})`:
+an Author" opens `/write` as a visitor (`Redirected (Auth.Login.Login {})`:
 `requires user` sends them to log in) and as a logged-in Reader
 (`PageMissing`: the role check's 404); "an Author logs out from the
 write page" clicks the page's `App.Logout` button and finds the
@@ -1206,24 +1247,28 @@ be empty").
 Ten tests were written after `alder test --mutate` (chapter 10, "Mutation
 testing") ran on the blog: before them, 17 of its 58 mutants survived;
 after, 3 do, and those three cannot be killed (chapter 10 explains why).
-The generated admin, which came later, adds 175 mutants, and its own
-tests kill every one (chapter 15).
+The generated admin, which came later, adds 147 mutants, and its own
+tests kill 144 of them; the three that survive are equivalent mutants
+(`examples/blog/README.md` names them). Since the move to routes the
+mutator has no operators for `requires`, `role` or the `Response`
+answers (alder#187), so the whole blog is 202 mutants, fewer than the
+page form had.
 `Post`'s two and `Write.Edit`'s two are above. `Write`'s "the write page
 lists the author's own posts, newest first" inserts another author's post
 between two of the author's own. `Posts.Show`'s "commenting through the
 form" checks that a comment redirects back to the post. `Auth.Login`
 gained the to-do app's `fake Password` and its two login tests, which
 check the session's `user` (and now its `role`) after a login and the
-form's message after a wrong one. `Posts.Index` gained the last two:
+form's error after a wrong one. `Posts.Index` gained the last two:
 
 With exactly ten posts,
 one full page, there is no next page; `hasMore` written with `>=` would
 say there is, and only a test with exactly `perPage` posts tells `>`
 from `>=`. The front page is the one page with a Log out button that a
 visitor may also open, so logging out from it shows whether `App.Logout`
-redirects: a `Rerender` would show the front page again, where every
-other Log out button sits on a page that sends a visitor to log in
-anyway. It logs in as an Author and checks that the role is `Reader`
+redirects: a `Logout` that answered `Response.refresh` would show the
+front page again, where every other Log out button sits on a page that
+sends a visitor to log in anyway. It logs in as an Author and checks that the role is `Reader`
 again afterwards.
 
 ```alder part=blog/Posts.Index
@@ -1244,14 +1289,14 @@ test "a page that is exactly full has no next page" = {
         author: author,
       }) (List.range 1 10)
     )
-  let model <- load { page: 1, q: "" } { user: Nothing, role: Reader }
+  let model <- Index.load { page: 1, q: "" } { user: Nothing, role: Reader }
   Task.succeed (
     { posts: List.length model.posts, hasMore: model.hasMore } == { posts: 10, hasMore: False }
   )
 }
 
 -- The front page is the one page with a Log out button that a visitor may also see, so logging
--- out from it shows whether `App.Logout` redirects: a Rerender would show the front page again.
+-- out from it shows whether `App.Logout` redirects: a refresh would show the front page again.
 -- Logging out also leaves the session's role at Reader.
 test "logging out from the front page goes to log in" = {
   let author <- Db.insert User {
@@ -1261,7 +1306,7 @@ test "logging out from the front page goes to log in" = {
     role: Author,
   }
   let _ <- Test.login { user: Just author, role: Author }
-  let _ <- Test.get (Posts.Index {})
+  let _ <- Test.get (Index {})
   let out <- Test.click App.Logout
   Task.succeed (
     {
@@ -1269,7 +1314,7 @@ test "logging out from the front page goes to log in" = {
       user: out.session.user,
       role: out.session.role,
     } == {
-      out: Redirected (Auth.Login {}),
+      out: Redirected (Auth.Login.Login {}),
       user: Nothing,
       role: Reader,
     }
@@ -1319,13 +1364,13 @@ wrote (chapter 15, "The admin of a silo"):
 | `Project`, `Todo` | The siloed tables, partitioned by `org` |
 | `Activity` | The org's log: partitioned by `org`, but shared |
 | `Auth.Login`, `Layout` | As in the blog; the login also puts the user's first org in the session |
-| `Orgs.Index` | `/orgs`: the user's orgs, to open one, and a form for a new one (`choose org`'s page) |
-| `Projects.Index`, `Projects.Show` | `/projects`, `/projects/{id}`: the org's projects and their to-dos |
+| `Orgs.Index` | `/orgs`: the user's orgs, to open one (`POST /orgs/_/Open`), and a form for a new one (`POST /orgs/_/Create`); `choose org`'s page |
+| `Projects.Index`, `Projects.Show` | `/projects`, `/projects/{id}`: the org's projects and their to-dos, and the write routes that change them |
 | `Members.Index` | `/members`: the org's members, adding and removing them, and its activity |
 
 ### The session and the silo: `App`
 
-`App` declares the key, the page that picks it, and the silo, each with
+`App` declares the key, the route that picks it, and the silo, each with
 a comment saying what it does:
 
 ```alder part=workspace/App
@@ -1352,10 +1397,10 @@ id. `via Membership` is its rule: a `Session.put` that sets it needs a
 (chapter 6, "Partitions").
 
 ```alder part=workspace/App
-login = Auth.Login
+login = Auth.Login.Login
 
 -- where a page that `requires org` sends a session without one: the user's orgs, to pick one
-choose org = Orgs.Index
+choose org = Orgs.Index.Index
 
 -- Projects and their to-dos live in a database per org (book 08, "Silos"): one org's rows are
 -- not in another's file at all. User, Org, Membership and Activity are shared; Activity is
@@ -1363,27 +1408,26 @@ choose org = Orgs.Index
 silo org { Project, Todo }
 ```
 
-`choose org` is where a page that `requires user, org` sends a session
+`choose org` is where a route that `requires user, org` sends a session
 without one. `silo org` puts the two tables in a database per org; the
 four others are shared.
 
 ```alder part=workspace/App
-msg Logout
+route Logout = POST "/_/Logout" { }
+route Leave  = POST "/_/Leave"  { }
 
-msg Leave
+-- logging out clears the user; a `via` key goes with it (the runtime clears `org`)
+Logout.update : Logout.Params -> Session -> Task Response
+Logout.update p session = {
+  let _ <- Session.put (\s -> { s | user: Nothing, role: Member })
+  Task.succeed (Response.redirect (Auth.Login.Login {}))
+}
 
-update : Msg -> Session -> Task Nav
-update msg session = match msg {
-  -- logging out clears the user; a `via` key goes with it (the runtime clears `org`)
-  Logout p -> {
-    let _ <- Session.put (\s -> { s | user: Nothing, role: Member })
-    Task.succeed (Redirect (Auth.Login {}))
-  },
-  -- back to the list of orgs, to pick another
-  Leave p -> {
-    let _ <- Session.put (\s -> { s | org: Nothing })
-    Task.succeed (Redirect (Orgs.Index {}))
-  },
+-- back to the list of orgs, to pick another
+Leave.update : Leave.Params -> Session -> Task Response
+Leave.update p session = {
+  let _ <- Session.put (\s -> { s | org: Nothing })
+  Task.succeed (Response.redirect (Orgs.Index.Index {}))
 }
 ```
 
@@ -1421,18 +1465,21 @@ open-time check"). Every other org is served meanwhile.
 
 ```alder part=workspace/App
 -- Both answers end where a browser would be sent anyway (the login page, `choose org`'s page),
--- so only a test of `update` itself tells a Redirect from a Rerender (book 10).
+-- so only a test of each `update` itself tells a redirect from a refresh (book 10).
 test "Logout and Leave say where to go" = {
   let me : Session = {
     user: Just (User.UserId "me"),
     org: Nothing,
     role: Member,
   }
-  let out <- Test.run (update Logout me)
-  let leave <- Test.run (update Leave me)
+  let out <- Test.run (Logout.update {} me)
+  let leave <- Test.run (Leave.update {} me)
   Task.succeed (
     { out: out.value, leave: leave.value }
-      == { out: Ok (Redirect (Auth.Login {})), leave: Ok (Redirect (Orgs.Index {})) }
+      == {
+        out: Ok (Response.redirect (Auth.Login.Login {})),
+        leave: Ok (Response.redirect (Orgs.Index.Index {})),
+      }
   )
 }
 ```
@@ -1465,34 +1512,44 @@ table may not refer to either (E0033).
 ### Choosing an org: `Orgs.Index`
 
 `/orgs` requires the user but not the org: it is where a user without
-one is sent. Its two messages are the two ways an org gets into a
+one is sent. Its two write routes are the two ways an org gets into a
 session:
 
 ```alder fragment
-Open p -> {
+route Open   = POST "/orgs/_/Open"   { org: Org.OrgId } requires user
+route Create = POST "/orgs/_/Create" { } form NewOrg    requires user
+
+Open.update : Open.Params -> Session -> Task Response
+Open.update p session = {
   let _ <- Session.put (\s -> { s | org: Just p.org })
-  Task.succeed (Redirect (Projects.Index {}))
-},
-Create p -> {
+  Task.succeed (Response.redirect (Projects.Index.Index {}))
+}
+
+Create.update : Create.Params -> Session -> Task Response
+Create.update p session = {
   let org <- Db.insert Org { name: p.form.name }
   let _ <- Db.insert Membership { user: session.user, org: org }
   let _ <- Db.insert Activity { text: "The org was created.", org: org }
   let _ <- Session.put (\s -> { s | org: Just org })
-  Task.succeed (Redirect (Projects.Index {}))
-},
+  Task.succeed (Response.redirect (Projects.Index.Index {}))
+}
 ```
 
-`Open` trusts nothing about the org it is given: the `via` check does
-the work, and a test sends the `Open` of an org the user is no member of
-by calling `update` itself (the page offers no such button):
+`Open` trusts nothing about the org it is given, and its id rides in the
+query string, where anyone can type another: the `via` check does the
+work, and a test runs the `Open.update` of an org the user is no member
+of by calling it itself (the page offers no such button):
 
 ```alder fragment
 test "a non-member's switch is refused" = {
   …
   let _ <- Test.login { user: Just s.ann, org: Just s.acme }
-  let r <- Test.run (update (Open { org: s.globex }) { orgs: [] } { user: s.ann, org: Nothing, role: Member })
-  let page <- Test.get (Orgs.Index {})
-  Task.succeed ({ value: r.value, org: page.session.org } == { value: Err "Session.put org: no Membership for this user and org", org: Just s.acme })
+  let r <- Test.run (Open.update { org: s.globex } { user: s.ann, org: Nothing, role: Member })
+  let page <- Test.get (Index {})
+  Task.succeed (
+    { value: r.value, org: page.session.org }
+      == { value: Err "Session.put org: no Membership for this user and org", org: Just s.acme }
+  )
 }
 ```
 
@@ -1509,7 +1566,7 @@ transaction.
 `Org.OrgId`. Its `load` does three things:
 
 ```alder fragment
-load params session = {
+Index.load params session = {
   let member <- Membership.isMember session.user session.org
   if member then {
     let org <- Db.get Org session.org
@@ -1521,15 +1578,17 @@ load params session = {
 
 - `Membership.isMember` reads the membership again (the re-read idiom):
   a member removed since the org was put in their cookie gets a 404 at
-  once, here and on every message of the page.
+  once. No `load` runs before a write route, so `Create` and `Remove`
+  begin with `Membership.memberOnly`, the same check as a `Query` that
+  is a 404 for a non-member.
 - `Db.get Org session.org` reads the shared database: the org's name.
 - `Db.scoped Project` reads the org's own database. Both in one `load`:
   a read of the other store goes through a read-only connection, so the
   rule "one store per `Task`" does not limit reads (chapter 8).
 
-Its messages write the org's database only, with `Db.insertScoped`
-(which fills `org` in) and `Db.deleteScoped` (which finds nothing of
-another org). `Projects.Show` reads one project with `Db.getScoped`: a
+Its write routes, `Create` and `Remove`, write the org's database only,
+with `Db.insertScoped` (which fills `org` in) and `Db.deleteScoped`
+(which finds nothing of another org). `Projects.Show` reads one project with `Db.getScoped`: a
 project of another org is a 404, the test "another org's project is not
 found".
 
@@ -1541,12 +1600,14 @@ session's org's (`WHERE "org" = ?`). It is written beside the
 membership it is about, in one `Task`:
 
 ```alder fragment
-Remove p -> {
+Remove.update : Remove.Params -> Session -> Task Response
+Remove.update p session = {
+  let _ <- Membership.memberOnly session.user session.org
   let rows <- Db.from Membership |> Db.where (Membership.org.eq session.org) |> Db.where (Membership.user.eq p.user) |> Db.all
   let _ <- Task.all (List.map (\m -> Db.delete Membership m.id) rows)
   let _ <- Db.insertScoped Activity { text: "A member left." }
-  Task.succeed Rerender
-},
+  Task.succeed Response.refresh
+}
 ```
 
 Had the log been in the silo, this `Task` would write two stores; had
@@ -1555,14 +1616,16 @@ table lives follows from what writes it.
 
 ### Its tests and its score
 
-The app's own 34 tests cover what the rules promise, with two orgs:
+The app's own 35 tests cover what the rules promise, with two orgs:
 `Projects.Index "a member sees the org's name and only its projects, by
 name"`, `"a project is created in the org's database, and another org
 does not see it"`, `Orgs.Index "a non-member's switch is refused"`, `"a
 membership deleted earlier in the same Task counts as gone"`, and the
 re-read tests "a member removed from the org loses access at once". The
-generated admin brings 273 more. `alder test --mutate examples/workspace`
-scores 0.979 (511 of 522 mutants killed); the 11 survivors are in the
+generated admin brings 298 more (333 in all). `alder test --mutate
+examples/workspace` scores 0.963 (289 of 300 mutants killed; the page
+form had 522, before the mutator lost its `requires` and `role`
+operators on routes, alder#187); the 11 survivors are in the
 generated admin, and `examples/workspace/README.md` says why each is
 not a gap.
 
