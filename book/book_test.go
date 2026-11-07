@@ -36,6 +36,8 @@ var (
 	// quotes the examples as they were before `alder fix --routes`: testdata/fix holds those
 	// copies, and examples/ the apps on routes. The chapters already on routes (onRoutes) quote
 	// examples/ instead. (Temporary: deleted when the last chapter has moved, Task 8.3c.)
+	// exampleModules and exampleImports (the imports Decls blocks get, the cycle check) still
+	// read testdata/fix for every chapter, onRoutes ones included.
 	todosApp, _       = filepath.Abs("../testdata/fix/todos")
 	routesExamples, _ = filepath.Abs("../examples")
 	exampleModules    []string

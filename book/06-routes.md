@@ -167,7 +167,8 @@ Todos.Index.Index {} == Todos.Index.Index { filter: All }
 ```
 
 A GET route may also be asked for by `click`, which fetches it and puts the
-answer where the route's root `id` stands ("Delivery", below). `href` to a
+answer where the route's root `id` stands ("Delivery", below): its view needs a
+root element with an `id`, or nothing is patched. `href` to a
 write route, and `submit` to a GET route, are errors (E0045).
 
 ## Qualified declarations
@@ -298,7 +299,8 @@ so that a browser refresh does not send the form twice. It goes to `r` even if
 
 **`render r`** shows the GET route `r` again, in place: the runtime runs
 `r`'s `load`, renders its `view`, and sends that one element, which replaces the
-element with the same `id` on the page. Nothing else on the page is loaded or
+element with the same `id` on the page (so that view needs a root element with
+an `id`, or nothing is patched). Nothing else on the page is loaded or
 sent.
 
 **`refresh`** loads the page the browser is on again, and sends the regions of
@@ -486,6 +488,12 @@ SwitchTheme.update p session = {
 cookie from before the field existed, get `Light` ("The session cookie",
 below). `Response.refresh` loads the page the button was on again, with the new
 session.
+
+A `refresh` or a `redirect` under Datastar updates only the page's `<body>`: a
+class on `<html>`, such as `dark` here, shows after the next full page load, and
+at once only without JavaScript (the `303` loads the whole page). That is a
+known gap ([#189](https://github.com/tapegram/alder/issues/189)); the example
+is still the way to keep the choice in the session.
 
 The layout cannot read the session; it takes the theme as a prop, sets a
 class on `<html>` for the stylesheet, and shows the button. Also an
@@ -1040,8 +1048,8 @@ writes the clause, and `--role R` adds `, role R` (and implies
 `--requires user`), each with its test (chapter 15). Every route of
 `alder new admin`'s admin `requires user, role Admin`: so it needs a
 session `role` with an `Admin` constructor; and when the user table
-holds the role, each of its pages also re-reads the user's row in
-`load`, the idiom below, so a demoted Admin is turned away at once
+holds the role, each of its routes also re-reads the user's row (in `load`,
+and at the start of each write route), the idiom below, so a demoted Admin is turned away at once
 (chapter 15, "The dashboard and the layout").
 
 **A role is read at login.** The check reads the session cookie and
@@ -1444,7 +1452,8 @@ Three request headers carry what the server does not remember:
   a link loads its address, an element fetch reloads the page it was made
   from, and a write still runs (its decoders guard it) and then reloads:
   `redirect r` goes to `r`, anything else reloads `Alder-Page`.
-- **`Alder-Shown`** is the hash of the body the page last received whole. A write
+- **`Alder-Shown`** is the hash of the body as the server last rendered it for this page
+  (the whole body, or the hash sent after region patches). A write
   sent without it (before the page's script ran) is answered with the whole
   body. The server compares its own render before the `update` with the one
   after it: when they are equal, no element event is sent.
@@ -1516,7 +1525,7 @@ uses. Each is a few lines of routes and uses nothing else:
 | inline edit | `EditRow = GET`, asked for by `click`; `Save = PUT` answering `render (Row …)`; cancel is `click={Row …}` | the row becomes a form and back, in place | 1 row each |
 | modal form | `NewDialog = GET`, asked for by `click` into `#dialog`; `Create` answering `redirect (Index {})` | the dialog, then the page | 1 |
 | wizard | `Step2 = GET { name }`; `Next1 = POST` answering `redirect (Step2 { name: … })` | one URL per step; Back works | 1 |
-| login, logout, theme | a `POST` that runs `Session.put` and answers `redirect` or `refresh` | as above | 1 or 2 |
+| login, logout, theme | a `POST` that runs `Session.put` and answers `redirect` or `refresh` | as above (a class on `<html>` changes only on a full load, [#189](https://github.com/tapegram/alder/issues/189)) | 1 or 2 |
 | CSV export | `Export = GET "/export.csv"` whose view returns a `File` | the file ("File pages", above) | 1 |
 
 ("Loads" counts the `load`s of GET routes a click costs; `refresh`
@@ -1679,7 +1688,7 @@ request it does these things, in order:
 2. `GET /static/<file>` is answered with that file from your app's
    `static/` directory. Directories are never listed, and a path with `..`
    in it is refused.
-3. For a `POST`, the body is read (every method but `GET` has one): a
+3. For a `POST`, the body is read (for a write: every method but `GET` and `HEAD`): a
    url-encoded form is parsed (at most 1 MiB, else status 413), a multipart
    body is refused (415), and any other body is an empty form. Datastar
    sends a button's request with a JSON body, which Alder ignores. A `POST`
@@ -1975,7 +1984,8 @@ navigation signal, shared with boosted links ("Links and navigation" below):
 a new post or click aborts the request still in flight, so a slow answer
 never lands over a newer page. A `click` button's request carries its
 parameters in the URL, and its body is ignored. A `PUT` or `PATCH` route is
-sent with its own method (`@put`, `@patch`); a `DELETE` is posted with
+sent with its own method (`@put`, `@patch`); a `click` button for a `DELETE`
+route sends `@delete`, while a form that sends a `DELETE` is posted with
 `_method=DELETE` in the body, because Datastar puts the fields of a `DELETE`
 in its query, where the router never reads `_method`. A `click` on a GET
 route is not a post at all: it is a Datastar `GET` with `Alder-Fetch: 1`
@@ -2034,8 +2044,10 @@ goes to its route; a `refresh` reloads the page the button was on, with the
 new session. Clicking "Log out" on `/?filter=Active` answers a cookie whose
 `User` is `Nothing` and a redirect to `/login`. With the theme switch of
 "App-level routes" (its `update` answers `refresh`), clicking "Dark mode"
-there answers a cookie whose `Theme` is `"Dark"` and, under Datastar, what
-changed on the list page (without it, `303 /?filter=Active`).
+there answers a cookie whose `Theme` is `"Dark"` and, under Datastar, the
+`<body>` changes that the theme causes, but not the class on `<html>` (it
+arrives with the next full load, [#189](https://github.com/tapegram/alder/issues/189));
+without JavaScript it answers `303 /?filter=Active`, which loads the whole page.
 
 ### Links and navigation
 
