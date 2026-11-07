@@ -45,7 +45,7 @@ Bulk.load params session = {
 }
 
 -- refused says whether a row is kept from being deleted: rows refer to it with a `@restrict`.
-refused : Model -> Session -> Post -> Bool
+refused : Model -> Bulk.Session -> Post -> Bool
 refused model session row = List.member row.id model.held
 
 -- @admin begin bulk

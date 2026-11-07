@@ -66,7 +66,7 @@ test "a visitor is sent to log in from a todo" = {
     due: Nothing,
     owner: me,
   }
-  let visitor <- Test.open (Todos.Show { id: id })
+  let visitor <- Test.open (Show { id: id })
   Task.succeed (visitor.answer == Redirected (Auth.Login {}))
 }
 
@@ -82,8 +82,11 @@ test "saving changes the title and the due date" = {
     owner: me,
   }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Show { id: id })
-  let r <- Test.submit EditTodo { title: Text.NonEmpty "Bread", due: Date.fromText "2026-10-12" }
+  let _ <- Test.get (Show { id: id })
+  let r <- Test.submit (Save { id: ?id }) {
+    title: Text.NonEmpty "Bread",
+    due: Date.fromText "2026-10-12",
+  }
   let after <- Db.get Todo id
   Task.succeed (
     {
@@ -91,7 +94,7 @@ test "saving changes the title and the due date" = {
       title: Maybe.map (\t -> t.title) after,
       due: Maybe.andThen (\t -> t.due) after,
     } == {
-      answer: Redirected (Todos.Index {}),
+      answer: Redirected (Todos.Index.Index {}),
       title: Just (Text.NonEmpty "Bread"),
       due: Date.fromText "2026-10-12",
     }
@@ -110,11 +113,11 @@ test "deleting from the todo's page" = {
     owner: me,
   }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Show { id: id })
-  let r <- Test.click Delete
+  let _ <- Test.get (Show { id: id })
+  let r <- Test.click (Delete { id: ?id })
   let after <- Db.get Todo id
   Task.succeed (
     { answer: r.answer, todo: Maybe.map (\t -> t.title) after }
-      == { answer: Redirected (Todos.Index {}), todo: Nothing }
+      == { answer: Redirected (Todos.Index.Index {}), todo: Nothing }
   )
 }

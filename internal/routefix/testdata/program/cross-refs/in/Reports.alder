@@ -1,0 +1,38 @@
+module Reports
+
+import Layout
+import Todos.Index
+
+-- Already on routes: only its references to pages change.
+route Weekly = GET  "/reports"       { } requires user
+route Reset  = POST "/reports/reset" { } requires user
+
+Weekly.load : Weekly.Params -> Session -> Query Text
+Weekly.load params session = Query.succeed "none"
+
+Weekly.view : Text -> Session -> Html
+Weekly.view text session =
+  <Layout.Page title="Reports"><a href={Todos.Index {}}>{text}</a></Layout.Page>
+
+Reset.update : Reset.Params -> Session -> Task Response
+Reset.update params session = Task.succeed (Response.redirect (Todos.Index {}))
+
+test "deleting from a report" = {
+  let _ <- Test.get (Todos.Show { id: "1" })
+  let r <- Test.click Todos.Show.Delete
+  let orgs <- Test.open (Orgs {})
+  Task.succeed (r.answer == Redirected (Todos.Index {}))
+}
+
+-- A page's members, from another module: through an import's qualifier, or the whole path.
+test "the list and a todo, loaded" = {
+  let list <- Index.load {} { user: Just "me", org: Nothing }
+  let one <- Todos.Show.load { id: "1" } { user: Just "me", org: Nothing }
+  let p : Todos.Show.Params = { id: "1" }
+  Task.succeed (one.id == p.id)
+}
+
+test "logging in from a report" = {
+  let r <- Test.submit Auth.Login.Credentials { name: "me" }
+  Task.succeed (r.answer == Redirected (Todos.Index {}))
+}

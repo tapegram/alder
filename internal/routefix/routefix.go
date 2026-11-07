@@ -16,13 +16,24 @@
 //     `-- the page's model is gone: render, refresh or query (#160)`; a message whose route gained
 //     the page's path parameters gets a hole for each of them where the module names it.
 //
-// Tests are left as they are written (Task 7.2 rewrites them). The edits splice the source
-// along the syntax tree's spans, so comments and layout outside the rewritten nodes are kept;
-// `format.Source` then lays the result out as `alder fmt` does (route lines grouped).
+// Tests are rewritten the same way, and their old forms with them: `update (M p) model session`
+// → `M.update p session`, `Test.submit F …` → `Test.submit M …` (M the route posting form F),
+// `Rerendered` → `Refreshed` (plan call 15). App's messages become routes `POST "/_/M"` in App
+// (plan call 13). Every other module (a layout, a module already on routes, App without
+// messages) only has its references rewritten: a page value `Todos.Index {}` → `Todos.Index.Index
+// {}`, `login = Auth.Login` → `login = Auth.Login.Login`, `choose k = Orgs` → `choose k =
+// Orgs.Orgs` (plan call 14), and a test's answers and steps as above. Program runs the rewrite
+// over a whole app, so each module knows the others' pages, messages and forms.
+//
+// The edits splice the source along the syntax tree's spans, so comments and layout outside the
+// rewritten nodes are kept; `format.Source` then lays the result out as `alder fmt` does (route
+// lines grouped). A module the rewrite does not change is returned as it is.
 package routefix
 
 import (
+	"cmp"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"sort"
@@ -41,12 +52,129 @@ type Options struct {
 	Name string
 	// Pages are the page modules of the app, by path (`Todos.Show`), whose routes take their
 	// module's last segment: a reference to one becomes `Todos.Show.Show` (plan call 14). Nil
-	// leaves references to other modules as they are.
+	// leaves references to other modules as they are. Program fills it.
 	Pages map[string]bool
+
+	prog *program // what Program knows of the other modules; nil: only this one
+}
+
+// program is what the rewrite of one module needs to know of the app's others.
+type program struct {
+	routes map[string]string                     // page module → its GET route's name
+	extras map[string]map[string][]*syntax.Field // module → message → the page's path parameters its route gains
+	posts  map[string]map[string]*syntax.MsgDecl // module → form → the message that posts it (nil: more than one)
+}
+
+func newProgram() *program {
+	return &program{routes: map[string]string{}, extras: map[string]map[string][]*syntax.Field{}, posts: map[string]map[string]*syntax.MsgDecl{}}
+}
+
+// add reads module m's messages: the path parameters each gains, the form each posts.
+func (p *program) add(m *syntax.Module) {
+	var page *syntax.PageDecl
+	var msgs []*syntax.MsgDecl
+	for _, d := range m.Decls {
+		switch d := d.(type) {
+		case *syntax.PageDecl:
+			page = d
+		case *syntax.MsgDecl:
+			msgs = append(msgs, d)
+		}
+	}
+	if page == nil && m.Name != "App" {
+		return
+	}
+	p.extras[m.Name] = map[string][]*syntax.Field{}
+	p.posts[m.Name] = map[string]*syntax.MsgDecl{}
+	for _, md := range msgs {
+		for _, f := range pathParams(page) {
+			if !hasField(md.Params, f.Name) {
+				p.extras[m.Name][md.Name] = append(p.extras[m.Name][md.Name], f)
+			}
+		}
+		if md.Form == "" {
+			continue
+		}
+		if _, two := p.posts[m.Name][md.Form]; two {
+			p.posts[m.Name][md.Form] = nil
+		} else {
+			p.posts[m.Name][md.Form] = md
+		}
+	}
+}
+
+// pathParams are the parameters of page that its path names, nil for no page.
+func pathParams(page *syntax.PageDecl) []*syntax.Field {
+	if page == nil {
+		return nil
+	}
+	inPath := map[string]bool{}
+	for _, seg := range regexp.MustCompile(`\{([A-Za-z0-9_]+)\}`).FindAllStringSubmatch(page.Path, -1) {
+		inPath[seg[1]] = true
+	}
+	var out []*syntax.Field
+	for _, f := range page.Params.Fields {
+		if inPath[f.Name] {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// Program rewrites every module of an app, files by path: each page module (Module), App's
+// messages, and every module's references to pages, messages and forms. It returns every file,
+// rewritten or as it was, and the holes of all, by file and line. A page module whose route
+// would take a name the module uses is refused with ErrNameCollision, unless opts.Name is set:
+// then that route takes opts.Name instead (`alder fix --routes --name N`).
+func Program(files map[string][]byte, opts Options) (map[string][]byte, []Hole, error) {
+	paths := slices.Sorted(maps.Keys(files))
+	mods := map[string]*syntax.Module{}
+	for _, f := range paths {
+		m, diags := syntax.ParseFile(f, files[f])
+		if len(diags) > 0 {
+			return nil, nil, fmt.Errorf("%s does not parse: %s", f, diags[0].Message)
+		}
+		mods[f] = m
+	}
+	prog := newProgram()
+	pages := maps.Clone(opts.Pages)
+	if pages == nil {
+		pages = map[string]bool{}
+	}
+	for _, f := range paths {
+		m := mods[f]
+		if !slices.ContainsFunc(m.Decls, func(d syntax.Decl) bool { _, ok := d.(*syntax.PageDecl); return ok }) {
+			continue
+		}
+		name := m.Name[strings.LastIndex(m.Name, ".")+1:]
+		if t := taken(m, true); t[name] {
+			if opts.Name == "" || t[opts.Name] {
+				return nil, nil, &ErrNameCollision{Name: cmp.Or(opts.Name, name), Module: m.Name}
+			}
+			name = opts.Name
+		}
+		prog.routes[m.Name] = name
+		pages[m.Name] = true
+	}
+	for _, f := range paths {
+		prog.add(mods[f])
+	}
+	out := map[string][]byte{}
+	var hs []Hole
+	for _, f := range paths {
+		o, h, err := Module(files[f], f, Options{Name: prog.routes[mods[f].Name], Pages: pages, prog: prog})
+		if err != nil {
+			return nil, nil, err
+		}
+		out[f] = o
+		hs = append(hs, h...)
+	}
+	return out, hs, nil
 }
 
 // Hole is a typed hole the rewrite left, on line Line of the output (1-based), and why.
 type Hole struct {
+	File string
 	Line int
 	Why  string
 }
@@ -54,7 +182,7 @@ type Hole struct {
 // ErrNameCollision is the rewrite's refusal when the route's name is taken in the module (a
 // message, a type, a constructor, a form, a table, a component or an import's qualifier):
 // `alder fix --routes` then asks for `--name`.
-type ErrNameCollision struct{ Name string }
+type ErrNameCollision struct{ Name, Module string }
 
 func (e *ErrNameCollision) Error() string {
 	return fmt.Sprintf("the route would be named `%s`, which the module already uses: choose another name with --name", e.Name)
@@ -64,14 +192,16 @@ func (e *ErrNameCollision) Error() string {
 // its holes' reason.
 const modelGone = "the page's model is gone: render, refresh or query (#160)"
 
-// Module rewrites one module's source (file names it in errors). A module with no `page` is
-// returned as it is, with no holes.
+// Module rewrites one module's source (file names it in errors): a page module to routes, App's
+// messages to routes, and in any module the references to pages (of opts.Pages) and the tests'
+// old forms. A module the rewrite does not change is returned as it is, with no holes. Alone it
+// knows only this module's messages and forms; Program tells it the others'.
 func Module(src []byte, file string, opts Options) ([]byte, []Hole, error) {
 	m, diags := syntax.ParseFile(file, src)
 	if len(diags) > 0 {
 		return nil, nil, fmt.Errorf("%s does not parse: %s", file, diags[0].Message)
 	}
-	r := &rewriter{src: src, m: m, opts: opts, extra: map[string][]*syntax.Field{}}
+	r := &rewriter{src: src, m: m, opts: opts}
 	for _, d := range m.Decls {
 		switch d := d.(type) {
 		case *syntax.PageDecl:
@@ -80,48 +210,62 @@ func Module(src []byte, file string, opts Options) ([]byte, []Hole, error) {
 			r.msgs = append(r.msgs, d)
 		}
 	}
-	if r.page == nil {
-		return src, nil, nil
-	}
-	r.route = opts.Name
-	if r.route == "" {
-		r.route = m.Name[strings.LastIndex(m.Name, ".")+1:]
-	}
 	r.local = taken(m, false)
-	if taken(m, true)[r.route] {
-		return nil, nil, &ErrNameCollision{Name: r.route}
+	r.imports = map[string]string{}
+	for _, im := range m.Imports {
+		r.imports[cmp.Or(im.Alias, im.Module[strings.LastIndex(im.Module, ".")+1:])] = im.Module
 	}
+	switch {
+	case r.page != nil:
+		r.kind = kindPage
+		r.route = opts.Name
+		if r.route == "" {
+			r.route = m.Name[strings.LastIndex(m.Name, ".")+1:]
+		}
+		if taken(m, true)[r.route] {
+			return nil, nil, &ErrNameCollision{Name: r.route, Module: m.Name}
+		}
+	case m.Name == "App" && len(r.msgs) > 0:
+		r.kind = kindApp
+	}
+	if r.opts.prog == nil {
+		r.opts.prog = newProgram()
+		if r.page != nil {
+			r.opts.prog.routes[m.Name] = r.route
+		}
+		r.opts.prog.add(m)
+	}
+	r.extra = r.opts.prog.extras[m.Name]
+	r.pathParams = pathParams(r.page)
 	r.lineOff = []int{0}
 	for i, c := range src {
 		if c == '\n' {
 			r.lineOff = append(r.lineOff, i+1)
 		}
 	}
-	inPath := map[string]bool{}
-	for _, seg := range regexp.MustCompile(`\{([A-Za-z0-9_]+)\}`).FindAllStringSubmatch(r.page.Path, -1) {
-		inPath[seg[1]] = true
-	}
-	for _, f := range r.page.Params.Fields {
-		if inPath[f.Name] {
-			r.pathParams = append(r.pathParams, f)
-		}
-	}
-	for _, md := range r.msgs {
-		for _, f := range r.pathParams {
-			if !hasField(md.Params, f.Name) {
-				r.extra[md.Name] = append(r.extra[md.Name], f)
-			}
-		}
-	}
 	pre := r.splice(0, len(src), declNodes(m.Decls))
 	if r.err != nil {
 		return nil, nil, r.err
 	}
+	if r.kind == kindOther && pre == string(src) {
+		return src, nil, nil
+	}
 	return r.finish(file, pre)
 }
 
+// The kinds of module: a page, App with messages, any other (its references only).
+const (
+	kindOther = iota
+	kindPage
+	kindApp
+)
+
 // rewriter holds one module's rewrite.
 type rewriter struct {
+	kind       int
+	inTest     bool              // a test is being written
+	inMember   bool              // a route's `load`, `view` or `update` is being written
+	imports    map[string]string // each import's qualifier → its module
 	src        []byte
 	lineOff    []int // the byte offset of each line's start
 	m          *syntax.Module
@@ -131,8 +275,8 @@ type rewriter struct {
 	msgs       []*syntax.MsgDecl
 	local      map[string]bool // the names the module declares
 	pathParams []*syntax.Field
-	// extra are, per message, the page's path parameters its route gains that its payload does
-	// not have: a reference to the message must now pass them.
+	// extra are, per message of this module, the page's path parameters its route gains that
+	// its payload does not have: a reference to the message must now pass them.
 	extra map[string][]*syntax.Field
 	// modelVar is the name of `update`'s model parameter while an arm is written, else "".
 	modelVar string
@@ -162,6 +306,14 @@ type insertion struct {
 
 func (i *insertion) GetSpan() diag.Span { return diag.Span{Start: i.at, End: i.at} }
 
+// fixed is a node's span with the text that replaces it, spliced in place of the node.
+type fixed struct {
+	span diag.Span
+	text string
+}
+
+func (f *fixed) GetSpan() diag.Span { return f.span }
+
 // splice is the source from start to end with each of kids (in source order, inside the range)
 // replaced by its rewritten text.
 func (r *rewriter) splice(start, end int, kids []syntax.Spanned) string {
@@ -183,7 +335,11 @@ func (r *rewriter) splice(start, end int, kids []syntax.Spanned) string {
 			continue
 		}
 		b.Write(r.src[at:ks])
-		b.WriteString(r.text(k))
+		if f, ok := k.(*fixed); ok {
+			b.WriteString(f.text)
+		} else {
+			b.WriteString(r.text(k))
+		}
 		at = ke
 	}
 	b.Write(r.src[at:end])
@@ -209,28 +365,45 @@ func (r *rewriter) hole(name, why string) string {
 func (r *rewriter) replace(n syntax.Spanned) (string, bool) {
 	switch n := n.(type) {
 	case *syntax.TestDecl:
-		return r.raw(n.Span), true // Task 7.2 rewrites tests
+		r.inTest = true
+		s := r.splice(r.off(n.Span.Start), r.off(n.Span.End), syntax.Children(n))
+		r.inTest = false
+		return s, true
+	case *syntax.LoginDecl:
+		return r.pageName(n.Span, n.Page)
+	case *syntax.ChooseDecl:
+		return r.pageName(n.Span, n.Page)
 	case *syntax.PageDecl:
 		return "route " + r.route + " = GET" + r.raw(n.Span)[len("page"):], true
 	case *syntax.MsgDecl:
-		return r.msgRoute(n), true
-	case *syntax.ValueDecl:
-		if n.Route != "" {
+		if r.kind == kindOther {
 			return "", false
 		}
-		switch n.Name {
-		case "update":
+		return r.msgRoute(n), true
+	case *syntax.ValueDecl:
+		if n.Route != "" || r.kind == kindOther {
+			return "", false
+		}
+		switch {
+		case n.Name == "update":
 			return r.updates(n), true
-		case "load", "view":
+		case (n.Name == "load" || n.Name == "view") && r.kind == kindPage:
 			return r.qualify(n), true
 		}
 	case *syntax.TypeName:
 		if n.Module != "" {
+			return r.member(n.Module, n.Name, n.Name == "Params" && len(n.Args) == 0)
+		}
+		if r.kind == kindOther {
 			return "", false
 		}
 		switch {
-		case n.Name == "Params" && len(n.Args) == 0:
+		case n.Name == "Params" && len(n.Args) == 0 && r.kind == kindPage:
 			return r.route + ".Params", true
+		case n.Name == "Session" && len(n.Args) == 0 && r.kind == kindPage && !r.inMember:
+			// outside a route's own declarations `Session` is App's; in a page it was the page's
+			// (plan call 4)
+			return r.route + ".Session", true
 		case n.Name == "Nav" && len(n.Args) == 0:
 			return "Response", true
 		case n.Name == "Msg" && len(n.Args) == 0:
@@ -248,7 +421,7 @@ func (r *rewriter) replace(n syntax.Spanned) (string, bool) {
 	case *syntax.CtorRef:
 		return r.ctor(n)
 	case *syntax.Var:
-		if n.Module == "Notice" {
+		if n.Module == "Notice" && r.kind != kindOther {
 			if b, ok := noticeBuilder(n.Name); ok {
 				return b, true
 			}
@@ -256,8 +429,11 @@ func (r *rewriter) replace(n syntax.Spanned) (string, bool) {
 		if n.Module == "" && r.modelVar != "" && n.Name == r.modelVar {
 			return r.hole("model", "`"+r.raw(n.Span)+"`: "+modelGone), true
 		}
-		if n.Module == "" && (n.Name == "load" || n.Name == "view") {
+		if n.Module == "" && (n.Name == "load" || n.Name == "view") && r.kind == kindPage {
 			return r.route + "." + n.Name, true
+		}
+		if n.Module != "" {
+			return r.member(n.Module, n.Name, n.Name == "load" || n.Name == "view")
 		}
 	case *syntax.Access:
 		if r.modelVar != "" && readsModel(n, r.modelVar) {
@@ -302,34 +478,100 @@ func noticeBuilder(name string) (string, bool) {
 // ctor rewrites a constructor: the answers of `update`, a page value, a message that must now
 // pass the page's path parameters.
 func (r *rewriter) ctor(n *syntax.CtorRef) (string, bool) {
+	if fs := r.extraOf(n); len(fs) > 0 { // in parentheses: it may be an argument (`Test.click Delete`)
+		name := r.raw(n.Span)
+		return "(" + name + " " + r.withPathParams(name, "{ }", fs) + ")", true
+	}
 	if n.Module == "" {
-		switch n.Name {
-		case "Rerender":
-			return "Response.refresh", true
-		case "Redirect":
-			return "Response.redirect", true
-		case "Reject":
-			return "Response.invalid", true
+		if n.Name == "Rerendered" && !r.local[n.Name] { // a test's answer (plan call 15)
+			return "Refreshed", true
 		}
-		if fs := r.extra[n.Name]; len(fs) > 0 {
-			return n.Name + " " + r.withPathParams(n.Name, "{ }", fs), true
+		if r.kind != kindOther {
+			switch n.Name {
+			case "Rerender":
+				return "Response.refresh", true
+			case "Redirect":
+				return "Response.redirect", true
+			case "Reject":
+				return "Response.invalid", true
+			}
 		}
-		if n.Name == r.m.Name && n.Name != r.route && !r.isMsg(n.Name) {
+		if r.kind == kindPage && n.Name == r.m.Name && n.Name != r.route && !r.isMsg(n.Name) {
 			return r.route, true
 		}
-		if r.opts.Pages[n.Name] && n.Name != r.m.Name && !r.local[n.Name] { // a page module of one segment
-			return n.Name + "." + n.Name, true
+		if r.isPage(n.Name) && n.Name != r.m.Name && !r.local[n.Name] { // a page module of one segment
+			return n.Name + "." + r.routeOf(n.Name), true
 		}
 		return "", false
 	}
 	path := n.Module + "." + n.Name
-	if path == r.m.Name {
+	if r.kind == kindPage && path == r.m.Name {
 		return r.route, true
 	}
-	if r.opts.Pages[path] {
-		return path + "." + n.Name, true
+	if r.isPage(path) {
+		return path + "." + r.routeOf(path), true
 	}
 	return "", false
+}
+
+// member is a page's member written qualified, `q.name` (q a module or an import's qualifier),
+// when is says name is a member (`load`, `view`, `Params`): `q.Route.name` for another page,
+// `Route.name` for this one.
+func (r *rewriter) member(q, name string, is bool) (string, bool) {
+	if !is {
+		return "", false
+	}
+	mod := q
+	if m := r.imports[q]; m != "" {
+		mod = m
+	}
+	if r.kind == kindPage && mod == r.m.Name {
+		return r.route + "." + name, true
+	}
+	if r.isPage(mod) {
+		return q + "." + r.routeOf(mod) + "." + name, true
+	}
+	return "", false
+}
+
+// isPage reports whether module mod is a page module the rewrite turns into routes.
+func (r *rewriter) isPage(mod string) bool {
+	_, ok := r.opts.prog.routes[mod]
+	return ok || r.opts.Pages[mod]
+}
+
+// routeOf is the name of page module mod's GET route.
+func (r *rewriter) routeOf(mod string) string {
+	if name := r.opts.prog.routes[mod]; name != "" {
+		return name
+	}
+	return mod[strings.LastIndex(mod, ".")+1:]
+}
+
+// extraOf are the page's path parameters the route of message n (this module's, or another's
+// written qualified) gains.
+func (r *rewriter) extraOf(n *syntax.CtorRef) []*syntax.Field {
+	if n.Module == "" {
+		if r.local[n.Name] && !r.isMsg(n.Name) {
+			return nil
+		}
+		return r.extra[n.Name]
+	}
+	return r.opts.prog.extras[n.Module][n.Name]
+}
+
+// pageName is the declaration at span (`login = Auth.Login`, `choose org = Orgs`) with its page
+// mod named as its route (`Auth.Login.Login`).
+func (r *rewriter) pageName(span diag.Span, mod string) (string, bool) {
+	if !r.isPage(mod) {
+		return "", false
+	}
+	s := r.raw(span)
+	i := strings.LastIndex(s, mod)
+	if i < 0 {
+		return "", false
+	}
+	return s[:i] + mod + "." + r.routeOf(mod) + s[i+len(mod):], true
 }
 
 func (r *rewriter) isMsg(name string) bool {
@@ -342,9 +584,12 @@ func (r *rewriter) withPathParams(msg, rec string, fs []*syntax.Field) string {
 	body = strings.TrimSpace(strings.TrimSuffix(body, "}"))
 	body = strings.TrimSuffix(body, ",")
 	empty := strings.TrimSpace(strings.TrimPrefix(body, "{")) == ""
+	if len(fs) == 0 {
+		return rec
+	}
 	var add []string
 	for _, f := range fs {
-		add = append(add, f.Name+": "+r.hole(f.Name, fmt.Sprintf("`%s` takes the page's path parameter `%s`: pass it from the model (#160)", msg, f.Name)))
+		add = append(add, f.Name+": "+r.hole(f.Name, r.paramWhy(msg, f.Name, true)))
 	}
 	if empty {
 		return "{ " + strings.Join(add, ", ") + " }"
@@ -352,28 +597,129 @@ func (r *rewriter) withPathParams(msg, rec string, fs []*syntax.Field) string {
 	return body + ", " + strings.Join(add, ", ") + " }"
 }
 
+// paramWhy is the reason of a hole for parameter param of route msg: one the route gained from
+// the page's path, or (in a test) one of its own the test must now pass.
+func (r *rewriter) paramWhy(msg, param string, path bool) string {
+	what := "`" + param + "`"
+	if path {
+		what = "the page's path parameter " + what
+	}
+	pass := "pass it from the model"
+	if r.inTest {
+		pass = "pass the one the test means"
+	}
+	return fmt.Sprintf("`%s` takes %s: %s (#160)", msg, what, pass)
+}
+
 // app rewrites an application: `Notice.with t n` (and the variants) → `n |> Response.toast t`;
 // a message applied to its payload, when its route gained the page's path parameters.
 func (r *rewriter) app(n *syntax.App) (string, bool) {
 	switch fn := n.Fn.(type) {
 	case *syntax.Var:
+		if fn.Module == "Test" && (fn.Name == "submit" || fn.Name == "submitRaw") && len(n.Args) == 2 {
+			return r.testSubmit(n)
+		}
+		if r.inTest && fn.Module == "" && fn.Name == "update" {
+			return r.updateCall(n)
+		}
 		b, ok := noticeBuilder(fn.Name)
-		if fn.Module != "Notice" || !ok || len(n.Args) != 2 {
+		if fn.Module != "Notice" || !ok || len(n.Args) != 2 || r.kind == kindOther {
 			return "", false
 		}
 		return paren(n.Args[1], r.text(n.Args[1])) + " |> " + b + " " + paren(n.Args[0], r.text(n.Args[0])), true
 	case *syntax.CtorRef:
-		fs := r.extra[fn.Name]
-		if fn.Module != "" || len(fs) == 0 || len(n.Args) != 1 {
+		fs := r.extraOf(fn)
+		if len(fs) == 0 || len(n.Args) != 1 {
 			return "", false
 		}
 		rec, ok := n.Args[0].(*syntax.RecordLit)
 		if !ok { // a payload passed whole: left for the checker to point at
 			return r.raw(n.Span), true
 		}
-		return fn.Name + " " + r.withPathParams(fn.Name, r.text(rec), fs), true
+		name := r.raw(fn.Span)
+		return name + " " + r.withPathParams(name, r.text(rec), fs), true
 	}
 	return "", false
+}
+
+// testSubmit rewrites `Test.submit F v` (and submitRaw), F a form a message posts, to name that
+// message's route: `Test.submit M v`, or `Test.submit (M { a: ?a }) v` when the route takes
+// parameters (the page's path parameters, the message's payload), which the old step read from
+// the held page.
+func (r *rewriter) testSubmit(n *syntax.App) (string, bool) {
+	ct, ok := n.Args[0].(*syntax.CtorRef)
+	if !ok {
+		return "", false
+	}
+	mod := cmp.Or(ct.Module, r.m.Name)
+	md := r.opts.prog.posts[mod][ct.Name]
+	if md == nil || (ct.Module == "" && !r.local[ct.Name]) {
+		return "", false
+	}
+	name := md.Name
+	if ct.Module != "" {
+		name = ct.Module + "." + md.Name
+	}
+	var fs []string
+	for _, f := range r.opts.prog.extras[mod][md.Name] {
+		fs = append(fs, f.Name+": "+r.hole(f.Name, r.paramWhy(name, f.Name, true)))
+	}
+	if md.Params != nil {
+		for _, f := range md.Params.Fields {
+			fs = append(fs, f.Name+": "+r.hole(f.Name, r.paramWhy(name, f.Name, false)))
+		}
+	}
+	if len(fs) > 0 {
+		name = "(" + name + " { " + strings.Join(fs, ", ") + " })"
+	}
+	kids := syntax.Children(n)
+	for i, k := range kids {
+		if k == syntax.Spanned(ct) {
+			kids[i] = &fixed{span: ct.Span, text: name}
+		}
+	}
+	return r.splice(r.off(n.Span.Start), r.off(n.Span.End), kids), true
+}
+
+// updateCall rewrites a test's call of the module's `update` on message M — `update (M p) model
+// session` in a page, `update (M p) session` in App — to `M.update p session`: the route's
+// parameters (a record, with the path parameters it gained as holes) and the session.
+func (r *rewriter) updateCall(n *syntax.App) (string, bool) {
+	want := 3
+	if r.kind == kindApp {
+		want = 2
+	} else if r.kind != kindPage {
+		return "", false
+	}
+	if len(n.Args) != want {
+		return "", false
+	}
+	var ct *syntax.CtorRef
+	var arg syntax.Expr
+	switch a := n.Args[0].(type) {
+	case *syntax.CtorRef:
+		ct = a
+	case *syntax.App:
+		if c, ok := a.Fn.(*syntax.CtorRef); ok && len(a.Args) == 1 {
+			ct, arg = c, a.Args[0]
+		}
+	}
+	if ct == nil || ct.Module != "" || !r.isMsg(ct.Name) {
+		return "", false
+	}
+	params := "{}"
+	if fs := r.extra[ct.Name]; len(fs) > 0 {
+		params = r.withPathParams(ct.Name, "{ }", fs)
+	}
+	if arg != nil {
+		if rec, ok := arg.(*syntax.RecordLit); ok {
+			params = r.withPathParams(ct.Name, r.text(rec), r.extra[ct.Name])
+		} else {
+			params = paren(arg, r.text(arg)) // a payload passed whole: left for the checker
+		}
+	}
+	session := n.Args[want-1]
+	return ct.Name + ".update " + params + " " + paren(session, r.text(session)), true
 }
 
 // paren is text (e's rewrite) in parentheses unless e is atomic; `alder fmt` drops the ones the
@@ -389,7 +735,10 @@ func paren(e syntax.Expr, text string) string {
 
 // msgRoute is the route line of message md.
 func (r *rewriter) msgRoute(md *syntax.MsgDecl) string {
-	path := strings.TrimSuffix(r.page.Path, "/") + "/_/" + md.Name
+	path := "/_/" + md.Name // App's (plan call 13)
+	if r.page != nil {
+		path = strings.TrimSuffix(r.page.Path, "/") + "/_/" + md.Name
+	}
 	var fields []string
 	for _, f := range r.pathParams {
 		if !hasField(md.Params, f.Name) {
@@ -418,6 +767,9 @@ func (r *rewriter) msgRoute(md *syntax.MsgDecl) string {
 
 // guard is the page's `requires …` clause as written, "" for none.
 func (r *rewriter) guard() string {
+	if r.page == nil {
+		return ""
+	}
 	return strings.TrimSpace(string(r.src[r.off(r.page.Params.Span.End):r.off(r.page.Span.End)]))
 }
 
@@ -449,7 +801,9 @@ func (r *rewriter) qualify(v *syntax.ValueDecl) string {
 			i += nl + 1
 		}
 	}
+	r.inMember = true
 	s := r.splice(r.off(v.Span.Start), r.off(v.Span.End), kids)
+	r.inMember = false
 	return r.route + "." + s
 }
 
@@ -476,11 +830,18 @@ type msgMatch struct {
 // checks something before matching (a generated bulk action) keeps it in every message's route.
 // The comments between the arms lead the `M.update` of the arm after them.
 func (r *rewriter) updates(v *syntax.ValueDecl) string {
-	if len(v.Params) != 3 {
-		r.err = fmt.Errorf("`update` takes %d parameters, not a message, the model and the session: rewrite it by hand", len(v.Params))
+	want, what := 3, "a message, the model and the session"
+	if r.kind == kindApp {
+		want, what = 2, "a message and the session"
+	}
+	if len(v.Params) != want {
+		r.err = fmt.Errorf("`update` takes %d parameters, not %s: rewrite it by hand", len(v.Params), what)
 		return r.raw(v.Span)
 	}
-	msgVar, model, session := v.Params[0].Name, v.Params[1].Name, v.Params[2].Name
+	msgVar, session, model := v.Params[0].Name, v.Params[want-1].Name, ""
+	if want == 3 {
+		model = v.Params[1].Name
+	}
 	r.matches = map[*syntax.Match]*msgMatch{}
 	var order []string
 	var stray *syntax.Var
@@ -524,8 +885,12 @@ func (r *rewriter) updates(v *syntax.ValueDecl) string {
 	}
 	// the name each message's parameters take: what its first arm binds them to
 	r.params = map[string]string{}
-	for _, mm := range r.matches {
-		for name, a := range mm.arms {
+	for _, mm := range r.matchesInOrder() {
+		for _, name := range mm.order {
+			a := mm.arms[name]
+			if a == nil {
+				continue
+			}
 			if c, ok := a.Pat.(*syntax.PCtor); ok {
 				if pv, ok := c.Arg.(*syntax.PVar); ok && r.params[name] == "" {
 					r.params[name] = pv.Name
@@ -569,9 +934,9 @@ func (r *rewriter) updates(v *syntax.ValueDecl) string {
 			}
 		}
 		before := len(r.whys)
-		r.msg, r.modelVar = name, model
+		r.msg, r.modelVar, r.inMember = name, model, true
 		body := r.text(v.Body)
-		r.msg, r.modelVar = "", ""
+		r.msg, r.modelVar, r.inMember = "", "", false
 		var b strings.Builder
 		for _, c := range lead {
 			b.WriteString(c + "\n")
@@ -783,7 +1148,7 @@ func (r *rewriter) finish(file, pre string) ([]byte, []Hole, error) {
 	var hs []Hole
 	for k, h := range got {
 		if mine[k] >= 0 {
-			hs = append(hs, Hole{Line: h.Span.Start.Line, Why: r.whys[mine[k]]})
+			hs = append(hs, Hole{File: file, Line: h.Span.Start.Line, Why: r.whys[mine[k]]})
 		}
 	}
 	return out, hs, nil

@@ -17,11 +17,12 @@ import (
 // out.alder, and the holes with `holes` ("line: why" a line, none when the file is missing). A
 // case with an `error` file expects ErrNameCollision naming what the file holds.
 func TestModule(t *testing.T) {
-	dirs, _ := filepath.Glob("testdata/*")
-	if len(dirs) == 0 {
+	ins, _ := filepath.Glob("testdata/*/in.alder")
+	if len(ins) == 0 {
 		t.Fatal("no cases")
 	}
-	for _, dir := range dirs {
+	for _, in := range ins {
+		dir := filepath.Dir(in)
 		t.Run(filepath.Base(dir), func(t *testing.T) {
 			src := read(t, filepath.Join(dir, "in.alder"))
 			opts := Options{Name: strings.TrimSpace(read(t, filepath.Join(dir, "name")))}
@@ -71,6 +72,83 @@ func TestModule_Idempotent(t *testing.T) {
 			t.Errorf("%s: out.alder is not formatted (%v)", c, err)
 		}
 	}
+}
+
+// TestProgram runs every case under testdata/program: the files under in/ (keyed by their path
+// there) go through Program, and each output is compared with the file of the same path under
+// out/; the holes with `holes` ("file:line: why" a line). A case with an `error` file expects
+// ErrNameCollision naming what the file holds; `name` is Options.Name.
+func TestProgram(t *testing.T) {
+	dirs, _ := filepath.Glob("testdata/program/*")
+	if len(dirs) == 0 {
+		t.Fatal("no cases")
+	}
+	for _, dir := range dirs {
+		t.Run(filepath.Base(dir), func(t *testing.T) {
+			in := tree(t, filepath.Join(dir, "in"))
+			out, holes, err := Program(in, Options{Name: strings.TrimSpace(read(t, filepath.Join(dir, "name")))})
+			if want := strings.TrimSpace(read(t, filepath.Join(dir, "error"))); want != "" {
+				var nc *ErrNameCollision
+				if !errors.As(err, &nc) || nc.Name != want {
+					t.Fatalf("want ErrNameCollision{%s}, got %v", want, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := tree(t, filepath.Join(dir, "out"))
+			for f, w := range want {
+				if string(out[f]) != string(w) {
+					t.Errorf("%s differs:\n%s", f, lineDiff(string(w), string(out[f])))
+				}
+			}
+			for f := range out {
+				if want[f] == nil {
+					t.Errorf("%s: an output with no out/ file", f)
+				}
+			}
+			var got []string
+			for _, h := range holes {
+				got = append(got, fmt.Sprintf("%s:%d: %s", h.File, h.Line, h.Why))
+			}
+			if g, w := strings.Join(got, "\n"), strings.TrimSpace(read(t, filepath.Join(dir, "holes"))); g != w {
+				t.Errorf("holes:\n%s\nwant:\n%s", g, w)
+			}
+			// a second run changes nothing
+			again, more, err := Program(out, Options{})
+			if err != nil {
+				t.Fatalf("second run: %v", err)
+			}
+			for f := range out {
+				if string(again[f]) != string(out[f]) {
+					t.Errorf("%s: a second run changed it:\n%s", f, lineDiff(string(out[f]), string(again[f])))
+				}
+			}
+			if len(more) != 0 {
+				t.Errorf("a second run left %d holes", len(more))
+			}
+		})
+	}
+}
+
+// tree is every .alder file under root, by its path relative to root.
+func tree(t *testing.T, root string) map[string][]byte {
+	t.Helper()
+	files := map[string][]byte{}
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Ext(path) != ".alder" {
+			return err
+		}
+		b, err := os.ReadFile(path)
+		rel, _ := filepath.Rel(root, path)
+		files[filepath.ToSlash(rel)] = b
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
 }
 
 // read is the file's content, "" when it does not exist.
@@ -138,5 +216,60 @@ func TestModule_RepoPages(t *testing.T) {
 	}
 	if n == 0 {
 		t.Fatal("no page modules found")
+	}
+}
+
+// TestProgram_RepoApps rewrites every app of the repo's examples and of the corpus's `-ok` cases
+// with a page or a message: none is refused (but for a name collision), each output formats to
+// itself, and a second run changes nothing.
+func TestProgram_RepoApps(t *testing.T) {
+	var apps []string
+	for _, g := range []string{"../../examples/*/app", "../../testdata/corpus/*-ok/app"} {
+		ds, _ := filepath.Glob(g)
+		apps = append(apps, ds...)
+	}
+	n := 0
+	for _, app := range apps {
+		files := tree(t, app)
+		old := false
+		for _, src := range files {
+			if strings.Contains("\n"+string(src), "\npage ") || strings.Contains("\n"+string(src), "\nmsg ") {
+				old = true
+			}
+		}
+		if !old {
+			continue
+		}
+		n++
+		out, _, err := Program(files, Options{})
+		var nc *ErrNameCollision
+		if errors.As(err, &nc) {
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s: %v", app, err)
+			continue
+		}
+		for f, b := range out {
+			if string(b) == string(files[f]) {
+				continue
+			}
+			if again, _, err := format.Source(f, b); err != nil || string(again) != string(b) {
+				t.Errorf("%s/%s: the output does not format to itself (%v)", app, f, err)
+			}
+		}
+		again, _, err := Program(out, Options{})
+		if err != nil {
+			t.Errorf("%s: second run: %v", app, err)
+			continue
+		}
+		for f := range out {
+			if string(again[f]) != string(out[f]) {
+				t.Errorf("%s/%s: a second run changed it", app, f)
+			}
+		}
+	}
+	if n == 0 {
+		t.Fatal("no apps found")
 	}
 }

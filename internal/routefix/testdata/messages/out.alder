@@ -101,8 +101,7 @@ test "Toggle flips done" = {
     owner: me,
   }
   let _ <- Test.login { user: Just me }
-  let r <-
-    Test.run (update (Toggle { id: id }) { filter: All, todos: [] } { user: me, role: Member })
+  let r <- Test.run (Toggle.update { id: id } { user: me, role: Member })
   let after <- Db.get Todo id
   let done = Maybe.map (\t -> t.done) after
   Task.succeed (
@@ -126,7 +125,7 @@ test "Toggle by another user is not found" = {
     owner: me,
   }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.get (Index {})
   let _ <- Test.login { user: Just (User.UserId "someone-else") }
   let r <- Test.click (Toggle { id: id })
   let after <- Db.get Todo id
@@ -148,7 +147,7 @@ test "Delete by another user is not found" = {
     owner: me,
   }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.get (Index {})
   let _ <- Test.login { user: Just (User.UserId "someone-else") }
   let r <- Test.click (Delete { id: id })
   let after <- Db.get Todo id
@@ -167,16 +166,16 @@ test "adding a todo through the page" = {
     passwordHash: "",
   }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
-  let added <- Test.submit NewTodo { title: Text.NonEmpty "Milk", due: Nothing }
-  let page <- Test.get (Todos.Index {})
+  let _ <- Test.get (Index {})
+  let added <- Test.submit Submit { title: Text.NonEmpty "Milk", due: Nothing }
+  let page <- Test.get (Index {})
   Task.succeed (
     {
       answer: added.answer,
       todos: List.map (\t -> t.title) page.model.todos,
       summary: Test.text "#summary" page.doc,
     } == {
-      answer: Redirected (Todos.Index {}),
+      answer: Redirected (Index {}),
       todos: [Text.NonEmpty "Milk"],
       summary: Just "1 open",
     }
@@ -195,7 +194,7 @@ test "toggling a todo through the page" = {
     owner: me,
   }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Todos.Index {})
+  let _ <- Test.get (Index {})
   let r <- Test.click (Toggle { id: id })
   Task.succeed (
     {
@@ -203,7 +202,7 @@ test "toggling a todo through the page" = {
       done: Test.has "li.done" r.doc,
       summary: Test.text "#summary" r.doc,
     } == {
-      answer: Rerendered,
+      answer: Refreshed,
       done: True,
       summary: Just "0 open",
     }
@@ -224,8 +223,8 @@ test "a stranger cannot see my todo" = {
     owner: me,
   }
   let _ <- Test.login { user: Just (User.UserId "someone-else") }
-  let page <- Test.get (Todos.Index {})
-  let show <- Test.open (Todos.Show { id: id })
+  let page <- Test.get (Index {})
+  let show <- Test.open (Todos.Show.Show { id: id })
   Task.succeed (
     { items: Test.count "li" page.doc, show: show.answer } == { items: 0, show: PageMissing }
   )
@@ -243,12 +242,11 @@ test "Delete removes the todo" = {
     owner: me,
   }
   let _ <- Test.login { user: Just me }
-  let r <-
-    Test.run (update (Delete { id: id }) { filter: All, todos: [] } { user: me, role: Member })
+  let r <- Test.run (Delete.update { id: id } { user: me, role: Member })
   let after <- Db.get Todo id
   Task.succeed (
     { value: r.value, todo: Maybe.map (\t -> t.title) after }
-      == { value: Ok Rerender, todo: Nothing }
+      == { value: Ok Response.refresh, todo: Nothing }
   )
 }
 
@@ -269,7 +267,7 @@ test "the newest todo is listed first" = {
     owner: me,
   }
   let _ <- Test.login { user: Just me }
-  let page <- Test.get (Todos.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (Test.texts "li a" page.doc == ["Second", "First"])
 }
 

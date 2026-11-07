@@ -1,0 +1,26 @@
+module Auth.Login
+
+import Layout
+
+page "/login" { }
+
+type Model = { }
+
+load : Params -> Session -> Query Model
+load params session = Query.succeed {}
+
+form Credentials = { name: Text }
+
+msg Submit form Credentials
+
+update : Msg -> Model -> Session -> Task Nav
+update msg model session = match msg {
+  Submit p -> {
+    let _ <- Session.put (\s -> { s | user: Just p.form.name })
+    Task.succeed (Redirect (Todos.Index {}))
+  },
+}
+
+view : Model -> Session -> Html Msg
+view model session =
+  <Layout.Page title="Log in"><form submit={Submit}><Input field="name" /></form></Layout.Page>

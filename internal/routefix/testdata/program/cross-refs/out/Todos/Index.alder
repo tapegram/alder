@@ -1,0 +1,14 @@
+module Todos.Index
+
+import Layout
+
+route Index = GET "/" { } requires user
+
+type Model = { }
+
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = Query.succeed {}
+
+Index.view : Model -> Session -> Html
+Index.view model session =
+  <Layout.Page title="Todos"><a href={Todos.Show.Show { id: "1" }}>One</a></Layout.Page>

@@ -1,0 +1,3 @@
+Todos/Show.alder:19: `model.todo.id`: the page's model is gone: render, refresh or query (#160)
+Todos/Show.alder:24: `Delete` takes the page's path parameter `id`: pass it from the model (#160)
+Todos/Show.alder:29: `Delete` takes the page's path parameter `id`: pass the one the test means (#160)

@@ -1,0 +1,23 @@
+module Auth.Login
+
+import Layout
+
+route Login  = GET  "/login"          { }
+route Submit = POST "/login/_/Submit" { } form Credentials
+
+type Model = { }
+
+Login.load : Login.Params -> Session -> Query Model
+Login.load params session = Query.succeed {}
+
+form Credentials = { name: Text }
+
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update p session = {
+  let _ <- Session.put (\s -> { s | user: Just p.form.name })
+  Task.succeed (Response.redirect (Todos.Index.Index {}))
+}
+
+Login.view : Model -> Session -> Html
+Login.view model session =
+  <Layout.Page title="Log in"><form submit={Submit}><Input field="name" /></form></Layout.Page>

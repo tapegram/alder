@@ -1,0 +1,3 @@
+Todos/Index.alder:54: `Move` takes `id`: pass the one the test means (#160)
+Todos/Show.alder:22: `Save` takes the page's path parameter `id`: pass it from the model (#160)
+Todos/Show.alder:27: `Save` takes the page's path parameter `id`: pass the one the test means (#160)
