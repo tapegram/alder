@@ -8,7 +8,10 @@ import Table.Todo
 import Table.User
 -- @admin end
 
-page "/admin/todo/{id}/delete" { id: Todo.TodoId } requires user, role Admin
+-- @admin begin routes
+route Delete  = GET    "/admin/todo/{id}/delete"           { id: Todo.TodoId }              requires user, role Admin
+route Destroy = DELETE "/admin/todo/{id}/delete/_/Destroy" { id: Todo.TodoId } form Confirm requires user, role Admin
+-- @admin end
 
 -- The row, and how many rows of each table refer to it.
 type Model = {
@@ -17,19 +20,23 @@ type Model = {
   -- @admin end
 }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    let found <- Db.get Todo params.id
-    match found {
-      Just row -> Query.succeed { row: row },
-      Nothing -> Query.notFound,
-    }
-    -- @admin end
-  } else
-    Query.notFound
+-- counted is the row id names (none is not found) and how many rows of each table refer to it:
+-- the page shows them, and Destroy counts them again before it deletes.
+counted : Todo.TodoId -> Query Model
+counted id = {
+  -- @admin begin load
+  let found <- Db.get Todo id
+  match found {
+    Just row -> Query.succeed { row: row },
+    Nothing -> Query.notFound,
+  }
+  -- @admin end
+}
+
+Delete.load : Delete.Params -> Session -> Query Model
+Delete.load params session = {
+  let _ <- Layout.adminOnly session.user
+  counted params.id
 }
 
 -- @admin begin blockers
@@ -39,26 +46,24 @@ blockers : Model -> Int
 blockers model = 0
 -- @admin end
 
--- Delete takes no input: the form is the button, and the place a refusal is shown.
+-- Destroy takes no input: the form is the button, and the place a refusal is shown.
 form Confirm = { }
 
-msg Remove form Confirm
-
--- Remove deletes the row, unless rows refer to it that keep it (load counted them, as it does
--- before every message): the database would refuse the delete with an error, and the page says
--- why instead.
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Remove p -> {
-    -- @admin begin remove
-    let _ <- Db.delete Todo model.row.id
-    Task.succeed (Redirect (Admin.Todos.Index {}))
-    -- @admin end
-  },
+-- Destroy deletes the row, unless rows refer to it that keep it (counted again, as the page
+-- counted them): the database would refuse the delete with an error, and the page says why
+-- instead. The Show page's dialog posts it too.
+Destroy.update : Destroy.Params -> Session -> Task Response
+Destroy.update params session = {
+  let _ <- Layout.adminOnly session.user
+  let model <- counted params.id
+  -- @admin begin remove
+  let _ <- Db.delete Todo params.id
+  Task.succeed (Response.redirect (Admin.Todos.Index.Index {}) |> Response.success "Deleted")
+  -- @admin end
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Delete.view : Model -> Session -> Html
+Delete.view model session =
   <Layout.Page title="Delete todo">
     <h1>Delete this todo?</h1>
 
@@ -70,7 +75,7 @@ view model session =
         -- @admin begin counts
         -- @admin end
       </dl>
-      <form id="delete" submit={Remove}>
+      <form id="delete" submit={Destroy { id: model.row.id }}>
         <al-alert variant="destructive"><Errors form /></al-alert>
         {if blockers model > 0 then
           <p>It cannot be deleted while other rows refer to it.</p>
@@ -78,7 +83,7 @@ view model session =
           <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
     </al-card>
-    <a href={Admin.Todos.Show { id: model.row.id }}>Back</a>
+    <a href={Admin.Todos.Show.Show { id: model.row.id }}>Back</a>
   </Layout.Page>
 
 -- @admin begin tests
@@ -95,12 +100,19 @@ test "deleting a todo nothing refers to" = {
     due: Nothing,
     owner: me,
   }
-  let _ <- Test.get (Admin.Todos.Delete { id: todo1 })
-  let r <- Test.submit Confirm {}
+  let page <- Test.get (Delete { id: todo1 })
+  let r <- Test.submit (Destroy { id: todo1 }) {}
   let gone <- Db.get Todo todo1
   Task.succeed (
-    { answer: r.answer, gone: Maybe.map (\row -> row.id) gone }
-      == { answer: Redirected (Admin.Todos.Index {}), gone: Nothing }
+    {
+      button: Test.count "#delete al-button" page.doc,
+      answer: r.answer,
+      gone: Maybe.map (\row -> row.id) gone,
+    } == {
+      button: 1,
+      answer: Redirected (Admin.Todos.Index.Index {}),
+      gone: Nothing,
+    }
   )
 }
 
@@ -112,7 +124,7 @@ test "a missing row is not found" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Todos.Delete { id: Todo.TodoId "missing" })
+  let r <- Test.open (Delete { id: Todo.TodoId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -127,7 +139,7 @@ test "a visitor is sent to log in" = {
     due: Nothing,
     owner: me,
   }
-  let r <- Test.open (Admin.Todos.Delete { id: todo1 })
+  let r <- Test.open (Delete { id: todo1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -144,7 +156,7 @@ test "a Member gets no page, even one made Admin since logging in" = {
     due: Nothing,
     owner: me,
   }
-  let r <- Test.open (Admin.Todos.Delete { id: todo1 })
+  let r <- Test.open (Delete { id: todo1 })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -161,7 +173,7 @@ test "a demoted Admin is refused at once" = {
     due: Nothing,
     owner: me,
   }
-  let r <- Test.open (Admin.Todos.Delete { id: todo1 })
+  let r <- Test.open (Delete { id: todo1 })
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

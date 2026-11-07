@@ -10,16 +10,18 @@ import Table.Todo
 import Table.User
 -- @admin end
 
-page "/admin/orgs/{org}" { org: Org.OrgId } requires user, role Admin, silo org
+-- @admin begin routes
+route Dashboard = GET "/admin/orgs/{org}" { org: Org.OrgId } requires user, role Admin, silo org
+-- @admin end
 
 -- The org of the page's parameter: each table in `silo org`, counted in its database. The role
 -- check guards the page (`silo org` takes the org from the parameter): an Admin need not be a member.
 type Card = {
   key: Text,
   title: Text,
-  href: Page,
+  href: Route,
   count: Int,
-  rows: List { label: Text, href: Page },
+  rows: List { label: Text, href: Route },
 }
 
 type Model = { name: Text, cards: List Card }
@@ -28,61 +30,58 @@ type Model = { name: Text, cards: List Card }
 recent : Int
 recent = 5
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin cards
-    let found <- Db.get Org params.org
-    match found {
-      Just row -> {
-        let projects <-
-          Db.from Project
-            |> Db.orderBy Project.created.desc
-            |> Db.limit recent
-            |> Db.all
-        let projectCount <- Db.from Project |> Db.count
-        let todos <-
-          Db.from Todo
-            |> Db.orderBy Todo.created.desc
-            |> Db.limit recent
-            |> Db.all
-        let todoCount <- Db.from Todo |> Db.count
-        Query.succeed {
-          name: row.name,
-          cards: [
-            {
-              key: "projects",
-              title: "Projects",
-              href: Admin.Projects.Index { org: params.org },
-              count: projectCount,
-              rows: List.map (\row -> {
-                label: row.name,
-                href: Admin.Projects.Show { org: params.org, id: row.id },
-              }) projects,
-            },
-            {
-              key: "todos",
-              title: "Todos",
-              href: Admin.Todos.Index { org: params.org },
-              count: todoCount,
-              rows: List.map (\row -> {
-                label: row.title,
-                href: Admin.Todos.Show { org: params.org, id: row.id },
-              }) todos,
-            },
-          ],
-        }
-      },
-      Nothing -> Query.notFound,
-    }
-    -- @admin end
-  } else
-    Query.notFound
+Dashboard.load : Dashboard.Params -> Session -> Query Model
+Dashboard.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin cards
+  let found <- Db.get Org params.org
+  match found {
+    Just row -> {
+      let projects <-
+        Db.from Project
+          |> Db.orderBy Project.created.desc
+          |> Db.limit recent
+          |> Db.all
+      let projectCount <- Db.from Project |> Db.count
+      let todos <-
+        Db.from Todo
+          |> Db.orderBy Todo.created.desc
+          |> Db.limit recent
+          |> Db.all
+      let todoCount <- Db.from Todo |> Db.count
+      Query.succeed {
+        name: row.name,
+        cards: [
+          {
+            key: "projects",
+            title: "Projects",
+            href: Admin.Projects.Index.Index { org: params.org },
+            count: projectCount,
+            rows: List.map (\row -> {
+              label: row.name,
+              href: Admin.Projects.Show.Show { org: params.org, id: row.id },
+            }) projects,
+          },
+          {
+            key: "todos",
+            title: "Todos",
+            href: Admin.Todos.Index.Index { org: params.org },
+            count: todoCount,
+            rows: List.map (\row -> {
+              label: row.title,
+              href: Admin.Todos.Show.Show { org: params.org, id: row.id },
+            }) todos,
+          },
+        ],
+      }
+    },
+    Nothing -> Query.notFound,
+  }
+  -- @admin end
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Dashboard.view : Model -> Session -> Html
+Dashboard.view model session =
   <Layout.Page title="Org">
     <h1>{model.name}</h1>
 
@@ -97,7 +96,7 @@ view model session =
           </ul>
         </al-card>}
     </al-stack>
-    <a href={Admin.Orgs.Pick {}}>Another org</a>
+    <a href={Admin.Orgs.Pick.Pick {}}>Another org</a>
   </Layout.Page>
 
 -- @admin begin tests
@@ -124,7 +123,7 @@ test "the org's dashboard counts its projects, not another org's, and lists the 
     )
   let other <- Db.insert Org { name: Text.NonEmpty "name-2" }
   let _ <- Db.insert Project { name: Text.NonEmpty "name-7", org: other }
-  let page <- Test.get (Admin.Orgs.Dashboard { org: org })
+  let page <- Test.get (Dashboard { org: org })
   Task.succeed (
     {
       name: Test.text "h1" page.doc,
@@ -168,7 +167,7 @@ test "the org's dashboard counts its todos, not another org's, and lists the new
     project: project2,
     org: other,
   }
-  let page <- Test.get (Admin.Orgs.Dashboard { org: org })
+  let page <- Test.get (Dashboard { org: org })
   Task.succeed (
     {
       name: Test.text "h1" page.doc,
@@ -195,13 +194,13 @@ test "a missing org is not found" = {
     org: Nothing,
     role: Admin,
   }
-  let r <- Test.open (Admin.Orgs.Dashboard { org: Org.OrgId "missing" })
+  let r <- Test.open (Dashboard { org: Org.OrgId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
 
 test "a visitor is sent to log in" = {
   let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
-  let r <- Test.open (Admin.Orgs.Dashboard { org: org })
+  let r <- Test.open (Dashboard { org: org })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -218,7 +217,7 @@ test "a Member gets no page, even one made Admin since logging in" = {
     org: Nothing,
     role: Member,
   }
-  let r <- Test.open (Admin.Orgs.Dashboard { org: org })
+  let r <- Test.open (Dashboard { org: org })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -235,7 +234,7 @@ test "a demoted Admin is refused at once" = {
     org: Nothing,
     role: Admin,
   }
-  let r <- Test.open (Admin.Orgs.Dashboard { org: org })
+  let r <- Test.open (Dashboard { org: org })
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

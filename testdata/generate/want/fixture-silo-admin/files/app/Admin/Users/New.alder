@@ -7,22 +7,22 @@ import Admin.Layout
 import User
 -- @admin end
 
-page "/admin/user/new" { } requires user, role Admin
+-- @admin begin routes
+route New    = GET  "/admin/user/new"          { }               requires user, role Admin
+route Create = POST "/admin/user/new/_/Create" { } form UserForm requires user, role Admin
+-- @admin end
 
 type Model = {
   -- @admin begin model
   -- @admin end
 }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    Query.succeed {}
-    -- @admin end
-  } else
-    Query.notFound
+New.load : New.Params -> Session -> Query Model
+New.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin load
+  Query.succeed {}
+  -- @admin end
 }
 
 -- @admin begin form
@@ -36,34 +36,30 @@ form UserForm = {
 -- @admin begin search
 -- @admin end
 
-msg Create form UserForm
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  -- @admin begin finds
-  -- @admin end
-  Create p -> {
-    -- @admin begin insert
-    let emailTaken <-
-      Db.from User
-        |> Db.where (User.email.eq p.form.email)
-        |> Db.count
-    if emailTaken > 0 then
-      Task.succeed (Reject "A user with this email exists.")
-    else {
-      let id <- Db.insert User {
-        email: p.form.email,
-        name: p.form.name,
-        role: p.form.role,
-      }
-      Task.succeed (Redirect (Admin.Users.Show { id: id }))
+-- Create adds the row and goes to its page.
+Create.update : Create.Params -> Session -> Task Response
+Create.update params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin insert
+  let emailTaken <-
+    Db.from User
+      |> Db.where (User.email.eq params.form.email)
+      |> Db.count
+  if emailTaken > 0 then
+    Task.succeed (Response.invalid "A user with this email exists.")
+  else {
+    let id <- Db.insert User {
+      email: params.form.email,
+      name: params.form.name,
+      role: params.form.role,
     }
-    -- @admin end
-  },
+    Task.succeed (Response.redirect (Admin.Users.Show.Show { id: id }))
+  }
+  -- @admin end
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+New.view : Model -> Session -> Html
+New.view model session =
   <Layout.Page title="New user">
     <h1>New user</h1>
 
@@ -94,8 +90,8 @@ test "creating a user adds it, with the values submitted" = {
     org: Nothing,
     role: Admin,
   }
-  let page <- Test.get (Admin.Users.New {})
-  let r <- Test.submit UserForm {
+  let page <- Test.get (New {})
+  let r <- Test.submit Create {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
     role: Admin,
@@ -106,7 +102,7 @@ test "creating a user adds it, with the values submitted" = {
       |> Db.all
   Task.succeed (
     {
-      answers: List.map (\row -> Redirected (Admin.Users.Show { id: row.id })) rows,
+      answers: List.map (\row -> Redirected (Admin.Users.Show.Show { id: row.id })) rows,
       rows: List.map (\row -> {
         email: row.email,
         name: row.name,
@@ -137,8 +133,8 @@ test "a user with an email that exists is refused" = {
     role: Admin,
   }
   let _ <- Db.insert User { email: Text.Email "email-2@example.com", name: Text.NonEmpty "name-2" }
-  let _ <- Test.get (Admin.Users.New {})
-  let r <- Test.submit UserForm {
+  let _ <- Test.get (New {})
+  let r <- Test.submit Create {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-3",
     role: Admin,
@@ -154,7 +150,7 @@ test "a user with an email that exists is refused" = {
 }
 
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Admin.Users.New {})
+  let r <- Test.open (New {})
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -169,7 +165,7 @@ test "a Member gets no page, even one made Admin since logging in" = {
     org: Nothing,
     role: Member,
   }
-  let r <- Test.open (Admin.Users.New {})
+  let r <- Test.open (New {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -184,7 +180,7 @@ test "a demoted Admin is refused at once" = {
     org: Nothing,
     role: Admin,
   }
-  let r <- Test.open (Admin.Users.New {})
+  let r <- Test.open (New {})
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

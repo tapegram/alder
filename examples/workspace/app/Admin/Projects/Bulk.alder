@@ -9,79 +9,94 @@ import Table.Project
 import Table.User
 -- @admin end
 
-page "/admin/orgs/{org}/project/bulk" {
-  org: Org.OrgId,
-  ids: List Project.ProjectId,
-} requires user, role Admin, silo org
+-- @admin begin routes
+route Bulk       = GET  "/admin/orgs/{org}/project/bulk"              { org: Org.OrgId, ids: List Project.ProjectId }              requires user, role Admin, silo org
+route BulkDelete = POST "/admin/orgs/{org}/project/bulk/_/BulkDelete" { org: Org.OrgId, ids: List Project.ProjectId } form Confirm requires user, role Admin, silo org
+-- @admin end
 
 -- The rows chosen on the list (at most maxRows of them), the ids of those that other rows keep
--- from being deleted, and how many ids the page was given.
+-- from being deleted, how many ids the page was given, and the ids, which each action takes.
 type Model = {
   rows: List Project,
   held: List Project.ProjectId,
   chosen: Int,
+  ids: List Project.ProjectId,
 }
 
 -- maxRows is how many rows one action takes: a page of the list. More are refused.
 maxRows : Int
 maxRows = 25
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    let ids = List.take maxRows params.ids
-    let rows <-
-      Db.from Project
-        |> Db.where (Project.id.in ids)
-        |> Db.all
-    Query.succeed {
-      rows: rows,
-      held: [],
-      chosen: List.length params.ids,
-    }
-    -- @admin end
-  } else
-    Query.notFound
+-- tooMany says whether the page was given more ids than an action takes.
+tooMany : Model -> Bool
+tooMany model = model.chosen > maxRows
+
+-- selected is the rows of ids: the page shows them, and each action reads them again.
+selected : List Project.ProjectId -> Query Model
+selected ids = {
+  -- @admin begin load
+  let taken = List.take maxRows ids
+  let rows <-
+    Db.from Project
+      |> Db.where (Project.id.in taken)
+      |> Db.all
+  Query.succeed {
+    rows: rows,
+    held: [],
+    chosen: List.length ids,
+    ids: ids,
+  }
+  -- @admin end
+}
+
+Bulk.load : Bulk.Params -> Session -> Query Model
+Bulk.load params session = {
+  let _ <- Layout.adminOnly session.user
+  selected params.ids
 }
 
 -- refused says whether a row is kept from being deleted: rows refer to it with a `@restrict`.
-refused : Model -> Session -> Project -> Bool
-refused model session row = List.member row.id model.held
+refused : Model -> Project -> Bool
+refused model row = List.member row.id model.held
 
 -- @admin begin bulk
+-- Each action reads the rows again and answers with the page again and a toast; none takes
+-- more than maxRows rows.
+
+-- BulkDelete takes no input: the form is the button, and the place a refusal is shown.
 form Confirm = { }
 
-msg BulkDelete form Confirm
-
--- Each action reads the rows again (load runs before every message) and answers with a notice;
--- none takes more than maxRows rows.
-update : Msg -> Model -> Session -> Task Nav
-update msg model session =
-  if model.chosen > maxRows then
-    Task.succeed (Reject ("Choose at most " ++ Text.fromInt maxRows ++ " rows at a time."))
-  else
-    match msg {
-      BulkDelete p -> {
-        let allowed = List.filter (\row -> refused model session row == False) model.rows
-        let _ <- Task.all (List.map (\row -> Db.delete Project row.id) allowed)
-        Task.succeed (
-          Notice.success ("Deleted " ++ Text.fromInt (List.length allowed) ++ " of " ++ Text.fromInt (List.length model.rows)) (
-            Redirect (Admin.Projects.Index { org: session.org })
-          )
+BulkDelete.update : BulkDelete.Params -> Session -> Task Response
+BulkDelete.update params session = {
+  let _ <- Layout.adminOnly session.user
+  let model <- selected params.ids
+  if tooMany model then
+    Task.succeed (
+      Response.invalid ("Choose at most " ++ Text.fromInt maxRows ++ " rows at a time.")
+    )
+  else {
+    let allowed = List.filter (\row -> refused model row == False) model.rows
+    let _ <- Task.all (List.map (\row -> Db.delete Project row.id) allowed)
+    Task.succeed (
+      Response.refresh
+        |> Response.success (
+          "Deleted "
+            ++ Text.fromInt (List.length allowed)
+            ++ " of "
+            ++ Text.fromInt (List.length model.rows)
         )
-      },
-    }
+    )
+  }
+}
 -- @admin end
 
-view : Model -> Session -> Html Msg
-view model session =
+Bulk.view : Model -> Session -> Html
+Bulk.view model session =
   <Layout.Page title="Selected projects">
     <h1>{Text.fromInt (List.length model.rows)} selected</h1>
 
     <al-card>
-      {if model.chosen > maxRows then
+      {if tooMany model then
         <al-alert id="too-many" variant="warning">
           {"Choose at most " ++ Text.fromInt maxRows ++ " rows at a time."}
         </al-alert>
@@ -91,14 +106,14 @@ view model session =
         {for row in model.rows ->
           <li>
             {row.name}
-            {if refused model session row then
+            {if refused model row then
               <small> (kept: other rows refer to it)</small>
             else
               <span></span>}
           </li>}
       </ul>
       -- @admin begin actions
-      <form id="bulk-delete" submit={BulkDelete}>
+      <form id="bulk-delete" submit={BulkDelete { org: session.org, ids: model.ids }}>
         <al-alert variant="destructive"><Errors form /></al-alert>
         <al-button variant="destructive" type="submit">
           Delete the rows that can be deleted
@@ -106,7 +121,7 @@ view model session =
       </form>
       -- @admin end
     </al-card>
-    <a href={Admin.Projects.Index { org: session.org }}>Back to the list</a>
+    <a href={Admin.Projects.Index.Index { org: session.org }}>Back to the list</a>
   </Layout.Page>
 
 -- @admin begin tests
@@ -126,8 +141,8 @@ test "deleting the chosen rows" = {
   }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
   let project2 <- Db.insert Project { name: Text.NonEmpty "name-2", org: org }
-  let _ <- Test.get (Admin.Projects.Bulk { org: org, ids: [project1] })
-  let r <- Test.submit Confirm {}
+  let _ <- Test.get (Bulk { org: org, ids: [project1] })
+  let r <- Test.submit (BulkDelete { org: org, ids: [project1] }) {}
   let gone <- Db.get Project project1
   let left <- Db.get Project project2
   Task.succeed (
@@ -136,7 +151,7 @@ test "deleting the chosen rows" = {
       gone: Maybe.map (\row -> row.id) gone,
       left: Maybe.map (\row -> row.id) left,
     } == {
-      answer: Redirected (Admin.Projects.Index { org: org }),
+      answer: Refreshed,
       gone: Nothing,
       left: Just project2,
     }
@@ -158,13 +173,10 @@ test "25 chosen ids are taken" = {
     role: Admin,
   }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let page <-
-    Test.get (Admin.Projects.Bulk {
-      org: org,
-      ids: [project1]
-        ++ List.map (\n -> Project.ProjectId ("none-" ++ Text.fromInt n)) (List.range 1 24),
-    })
-  let r <- Test.submit Confirm {}
+  let chosen =
+    [project1] ++ List.map (\n -> Project.ProjectId ("none-" ++ Text.fromInt n)) (List.range 1 24)
+  let page <- Test.get (Bulk { org: org, ids: chosen })
+  let r <- Test.submit (BulkDelete { org: org, ids: chosen }) {}
   let after <- Db.get Project project1
   Task.succeed (
     {
@@ -172,7 +184,7 @@ test "25 chosen ids are taken" = {
       kept: Maybe.map (\row -> row.id) after,
       warned: Test.count "#too-many" page.doc,
     } == {
-      answer: Redirected (Admin.Projects.Index { org: org }),
+      answer: Refreshed,
       kept: Nothing,
       warned: 0,
     }
@@ -194,13 +206,10 @@ test "26 chosen ids are refused" = {
     role: Admin,
   }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let page <-
-    Test.get (Admin.Projects.Bulk {
-      org: org,
-      ids: [project1]
-        ++ List.map (\n -> Project.ProjectId ("none-" ++ Text.fromInt n)) (List.range 1 25),
-    })
-  let r <- Test.submit Confirm {}
+  let chosen =
+    [project1] ++ List.map (\n -> Project.ProjectId ("none-" ++ Text.fromInt n)) (List.range 1 25)
+  let page <- Test.get (Bulk { org: org, ids: chosen })
+  let r <- Test.submit (BulkDelete { org: org, ids: chosen }) {}
   let after <- Db.get Project project1
   Task.succeed (
     {
@@ -231,10 +240,10 @@ test "a bulk action stays inside one org" = {
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
   let other <- Db.insert Org { name: Text.NonEmpty "name-2" }
   let project2 <- Db.insert Project { name: Text.NonEmpty "name-2", org: other }
-  let page <- Test.get (Admin.Projects.Bulk { org: org, ids: [project1, project2] })
-  let _ <- Test.submit Confirm {}
-  let mineAfter <- Test.get (Admin.Projects.Index { org: org })
-  let theirsAfter <- Test.get (Admin.Projects.Index { org: other })
+  let page <- Test.get (Bulk { org: org, ids: [project1, project2] })
+  let _ <- Test.submit (BulkDelete { org: org, ids: [project1, project2] }) {}
+  let mineAfter <- Test.get (Admin.Projects.Index.Index { org: org })
+  let theirsAfter <- Test.get (Admin.Projects.Index.Index { org: other })
   Task.succeed (
     {
       chosen: List.map (\row -> row.id) page.model.rows,
@@ -251,7 +260,7 @@ test "a bulk action stays inside one org" = {
 test "a visitor is sent to log in" = {
   let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let r <- Test.open (Admin.Projects.Bulk { org: org, ids: [project1] })
+  let r <- Test.open (Bulk { org: org, ids: [project1] })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -269,7 +278,7 @@ test "a Member gets no page, even one made Admin since logging in" = {
     role: Member,
   }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let r <- Test.open (Admin.Projects.Bulk { org: org, ids: [project1] })
+  let r <- Test.open (Bulk { org: org, ids: [project1] })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -288,7 +297,7 @@ test "a demoted Admin is refused at once" = {
     role: Admin,
   }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let r <- Test.open (Admin.Projects.Bulk { org: org, ids: [project1] })
+  let r <- Test.open (Bulk { org: org, ids: [project1] })
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

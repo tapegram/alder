@@ -9,7 +9,9 @@ import Table.Post
 import Table.User
 -- @admin end
 
-page "/admin/comment/{id}" { id: Comment.CommentId } requires user, role Admin
+-- @admin begin routes
+route Show = GET "/admin/comment/{id}" { id: Comment.CommentId } requires user, role Admin
+-- @admin end
 
 -- The row, the labels of the rows it refers to, and (for the delete dialog) how many rows of
 -- each table refer to it.
@@ -20,22 +22,19 @@ type Model = {
   -- @admin end
 }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    let found <- Db.get Comment params.id
-    match found {
-      Just row -> {
-        let labels <- labelsOf [row]
-        Query.succeed { row: row, labels: labels }
-      },
-      Nothing -> Query.notFound,
-    }
-    -- @admin end
-  } else
-    Query.notFound
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin load
+  let found <- Db.get Comment params.id
+  match found {
+    Just row -> {
+      let labels <- labelsOf [row]
+      Query.succeed { row: row, labels: labels }
+    },
+    Nothing -> Query.notFound,
+  }
+  -- @admin end
 }
 
 -- @admin begin labels
@@ -78,25 +77,8 @@ blockers : Model -> Int
 blockers model = 0
 -- @admin end
 
--- The delete dialog's form: no input, the button and the place a refusal is shown.
-form Confirm = { }
-
-msg Remove form Confirm
-
--- Remove deletes the row, unless rows refer to it that keep it (load counted them, as it does
--- before every message), as the Delete page does.
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Remove p -> {
-    -- @admin begin remove
-    let _ <- Db.delete Comment model.row.id
-    Task.succeed (Redirect (Admin.Comments.Index {}))
-    -- @admin end
-  },
-}
-
-view : Model -> Session -> Html Msg
-view model session =
+Show.view : Model -> Session -> Html
+Show.view model session =
   <Layout.Page title="Comment">
     <h1>Comment</h1>
 
@@ -107,13 +89,13 @@ view model session =
         <dd>{model.row.id}</dd>
         <dt>Post</dt>
         <dd>
-          <a href={Admin.Posts.Show { id: model.row.post }}>
+          <a href={Admin.Posts.Show.Show { id: model.row.post }}>
             {postLabel model.labels model.row.post}
           </a>
         </dd>
         <dt>Author</dt>
         <dd>
-          <a href={Admin.Users.Show { id: model.row.author }}>
+          <a href={Admin.Users.Show.Show { id: model.row.author }}>
             {authorLabel model.labels model.row.author}
           </a>
         </dd>
@@ -124,7 +106,7 @@ view model session =
         -- @admin end
       </dl>
       <div slot="actions">
-        <al-button href={Admin.Comments.Edit { id: model.row.id }}>Edit</al-button>
+        <al-button href={Admin.Comments.Edit.Edit { id: model.row.id }}>Edit</al-button>
         <al-button variant="destructive">
           <button type="button" commandfor="delete-dialog" command="show-modal">Delete</button>
         </al-button>
@@ -135,7 +117,7 @@ view model session =
         -- @admin begin counts
         -- @admin end
       </dl>
-      <form id="delete" submit={Remove}>
+      <form id="delete" submit={Admin.Comments.Delete.Destroy { id: model.row.id }}>
         <al-alert variant="destructive"><Errors form /></al-alert>
         {if blockers model > 0 then
           <p>It cannot be deleted while other rows refer to it.</p>
@@ -143,10 +125,10 @@ view model session =
           <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
       <div slot="actions">
-        <a href={Admin.Comments.Delete { id: model.row.id }}>See the details</a>
+        <a href={Admin.Comments.Delete.Delete { id: model.row.id }}>See the details</a>
       </div>
     </al-dialog>
-    <a href={Admin.Comments.Index {}}>All comments</a>
+    <a href={Admin.Comments.Index.Index {}}>All comments</a>
   </Layout.Page>
 
 -- @admin begin tests
@@ -176,8 +158,8 @@ test "the page shows the row" = {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let r <- Test.open (Admin.Comments.Show { id: comment1 })
-  let page <- Test.get (Admin.Comments.Show { id: comment1 })
+  let r <- Test.open (Show { id: comment1 })
+  let page <- Test.get (Show { id: comment1 })
   Task.succeed (
     {
       answer: r.answer,
@@ -214,12 +196,19 @@ test "deleting a comment nothing refers to" = {
     author: me,
     body: Text.NonEmpty "body-1",
   }
-  let _ <- Test.get (Admin.Comments.Show { id: comment1 })
-  let r <- Test.submit Confirm {}
+  let page <- Test.get (Show { id: comment1 })
+  let r <- Test.submit (Admin.Comments.Delete.Destroy { id: comment1 }) {}
   let gone <- Db.get Comment comment1
   Task.succeed (
-    { answer: r.answer, gone: Maybe.map (\row -> row.id) gone }
-      == { answer: Redirected (Admin.Comments.Index {}), gone: Nothing }
+    {
+      button: Test.count "#delete al-button" page.doc,
+      answer: r.answer,
+      gone: Maybe.map (\row -> row.id) gone,
+    } == {
+      button: 1,
+      answer: Redirected (Admin.Comments.Index.Index {}),
+      gone: Nothing,
+    }
   )
 }
 
@@ -230,7 +219,7 @@ test "a missing row is not found" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Comments.Show { id: Comment.CommentId "missing" })
+  let r <- Test.open (Show { id: Comment.CommentId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -246,7 +235,7 @@ test "a visitor is sent to log in" = {
     author: me,
     body: Text.NonEmpty "body-1",
   }
-  let r <- Test.open (Admin.Comments.Show { id: comment1 })
+  let r <- Test.open (Show { id: comment1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -267,7 +256,7 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     author: me,
     body: Text.NonEmpty "body-1",
   }
-  let r <- Test.open (Admin.Comments.Show { id: comment1 })
+  let r <- Test.open (Show { id: comment1 })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -288,7 +277,7 @@ test "a demoted Admin is refused at once" = {
     author: me,
     body: Text.NonEmpty "body-1",
   }
-  let r <- Test.open (Admin.Comments.Show { id: comment1 })
+  let r <- Test.open (Show { id: comment1 })
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

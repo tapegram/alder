@@ -9,10 +9,10 @@ import Project
 import User
 -- @admin end
 
-page "/admin/orgs/{org}/project/{id}/edit" {
-  org: Org.OrgId,
-  id: Project.ProjectId,
-} requires user, role Admin, silo org
+-- @admin begin routes
+route Edit = GET "/admin/orgs/{org}/project/{id}/edit"        { org: Org.OrgId, id: Project.ProjectId }                  requires user, role Admin, silo org
+route Save = PUT "/admin/orgs/{org}/project/{id}/edit/_/Save" { org: Org.OrgId, id: Project.ProjectId } form ProjectForm requires user, role Admin, silo org
+-- @admin end
 
 type Model = {
   row: Project,
@@ -20,19 +20,16 @@ type Model = {
   -- @admin end
 }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    let found <- Db.get Project params.id
-    match found {
-      Just row -> { Query.succeed { row: row } },
-      Nothing -> Query.notFound,
-    }
-    -- @admin end
-  } else
-    Query.notFound
+Edit.load : Edit.Params -> Session -> Query Model
+Edit.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin load
+  let found <- Db.get Project params.id
+  match found {
+    Just row -> { Query.succeed { row: row } },
+    Nothing -> Query.notFound,
+  }
+  -- @admin end
 }
 
 -- @admin begin form
@@ -42,32 +39,34 @@ form ProjectForm = { name: Text.NonEmpty, archived: Bool }
 -- @admin begin search
 -- @admin end
 
-msg Save form ProjectForm
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  -- @admin begin finds
-  -- @admin end
-  Save p -> {
-    -- @admin begin update
-    let _ <- Db.update Project model.row.id (\row -> { row |
-      name: p.form.name,
-      archived: p.form.archived
-    })
-    Task.succeed (Redirect (Admin.Projects.Show { org: session.org, id: model.row.id }))
-    -- @admin end
-  },
+-- Save writes the form over the row (a row deleted since is not found) and goes to its page.
+Save.update : Save.Params -> Session -> Task Response
+Save.update params session = {
+  let _ <- Layout.adminOnly session.user
+  let found <- Db.get Project params.id
+  match found {
+    Just row -> {
+      -- @admin begin update
+      let _ <- Db.update Project row.id (\r -> { r |
+        name: params.form.name,
+        archived: params.form.archived
+      })
+      Task.succeed (Response.redirect (Admin.Projects.Show.Show { org: session.org, id: row.id }))
+      -- @admin end
+    },
+    Nothing -> Task.notFound,
+  }
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Edit.view : Model -> Session -> Html
+Edit.view model session =
   <Layout.Page title="Edit project">
     <h1>Edit project</h1>
 
     <al-card>
       -- @admin begin finder
       -- @admin end
-      <form submit={Save}>
+      <form submit={Save { org: session.org, id: model.row.id }}>
         -- @admin begin inputs
         <al-input field="name" label="Name" value={model.row.name} />
         <al-checkbox field="archived" label="Archived" value={model.row.archived} />
@@ -76,7 +75,7 @@ view model session =
         <al-button type="submit">Save</al-button>
       </form>
     </al-card>
-    <a href={Admin.Projects.Show { org: session.org, id: model.row.id }}>Back</a>
+    <a href={Admin.Projects.Show.Show { org: session.org, id: model.row.id }}>Back</a>
   </Layout.Page>
 
 -- @admin begin tests
@@ -94,13 +93,16 @@ test "saving changes every field" = {
     role: Admin,
   }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let page <- Test.get (Admin.Projects.Edit { org: org, id: project1 })
-  let r <- Test.submit ProjectForm { name: Text.NonEmpty "name-2", archived: True }
+  let page <- Test.get (Edit { org: org, id: project1 })
+  let r <- Test.submit (Save { org: org, id: project1 }) {
+    name: Text.NonEmpty "name-2",
+    archived: True,
+  }
   let after <- Db.get Project project1
   Task.succeed (
     { answer: r.answer, row: Maybe.map (\row -> { name: row.name, archived: row.archived }) after }
       == {
-        answer: Redirected (Admin.Projects.Show { org: org, id: project1 }),
+        answer: Redirected (Admin.Projects.Show.Show { org: org, id: project1 }),
         row: Just { name: Text.NonEmpty "name-2", archived: True },
       }
   )
@@ -119,14 +121,14 @@ test "a missing row is not found" = {
     org: Just org,
     role: Admin,
   }
-  let r <- Test.open (Admin.Projects.Edit { org: org, id: Project.ProjectId "missing" })
+  let r <- Test.open (Edit { org: org, id: Project.ProjectId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
 
 test "a visitor is sent to log in" = {
   let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let r <- Test.open (Admin.Projects.Edit { org: org, id: project1 })
+  let r <- Test.open (Edit { org: org, id: project1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -143,7 +145,7 @@ test "a Member gets no page, even one made Admin since logging in" = {
     role: Member,
   }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let r <- Test.open (Admin.Projects.Edit { org: org, id: project1 })
+  let r <- Test.open (Edit { org: org, id: project1 })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -161,7 +163,7 @@ test "a demoted Admin is refused at once" = {
     role: Admin,
   }
   let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
-  let r <- Test.open (Admin.Projects.Edit { org: org, id: project1 })
+  let r <- Test.open (Edit { org: org, id: project1 })
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

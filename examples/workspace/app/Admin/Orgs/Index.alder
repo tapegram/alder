@@ -8,13 +8,8 @@ import Table.Org
 import Table.User
 -- @admin end
 
--- @admin begin params
-page "/admin/org" {
-  q: Text = "",
-  sort: Text = "created",
-  dir: Text = "desc",
-  page: Int = 1,
-} requires user, role Admin
+-- @admin begin routes
+route Index = GET "/admin/org" { q: Text = "", sort: Text = "created", dir: Text = "desc", page: Int = 1 } requires user, role Admin
 -- @admin end
 
 type Model = {
@@ -57,7 +52,7 @@ type Filter = {
 type Filters = { }
 
 -- chosen is the filters' options in params.
-chosen : Params -> Filters
+chosen : Index.Params -> Filters
 chosen params = {}
 
 -- filters are the list's filters, each with the option f has chosen.
@@ -70,8 +65,8 @@ filtered : List Filter -> Condition Org
 filtered fs = Db.and []
 
 -- listAt is this list with the model's search and filters, sorted by sort and dir, at page n.
-listAt : Model -> Text -> Text -> Int -> Page
-listAt model sort dir n = Admin.Orgs.Index {
+listAt : Model -> Text -> Text -> Int -> Route
+listAt model sort dir n = Index {
   q: model.q,
   sort: sort,
   dir: dir,
@@ -113,42 +108,39 @@ order sort dir = match List.find (\s -> s.name == sort) sorts {
 toggle : Model -> Text -> Text
 toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else "asc"
 
--- load reads how many rows match the search and the filters, and one page of them (the last, for
--- a page past it), in the order asked for. The search text is cut to 200 characters (Text.slice):
+-- Index.load reads how many rows match the search and the filters, and one page of them (the last,
+-- for a page past it), in the order asked for. The search text is cut to 200 characters (Text.slice):
 -- a text over 10,000 bytes would fail the query (chapter 8, "Search").
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    let q = Text.slice 0 200 params.q
-    let f = chosen params
-    let count <-
-      Db.from Org
-        |> Db.where (Db.and [search q, filtered (filters f)])
-        |> Db.count
-    let pages = Int.max 1 ((count + perPage - 1) / perPage)
-    let page = Int.clamp { min: 1, max: pages } params.page
-    let rows <-
-      Db.from Org
-        |> Db.where (Db.and [search q, filtered (filters f)])
-        |> Db.orderBy (order params.sort params.dir)
-        |> Db.limit perPage
-        |> Db.offset ((page - 1) * perPage)
-        |> Db.all
-    let labels <- labelsOf rows
-    Query.succeed {
-      rows: rows,
-      labels: labels,
-      q: q,
-      filters: f,
-      sort: params.sort,
-      dir: params.dir,
-      page: page,
-      pages: pages,
-      count: count,
-    }
-  } else
-    Query.notFound
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let _ <- Layout.adminOnly session.user
+  let q = Text.slice 0 200 params.q
+  let f = chosen params
+  let count <-
+    Db.from Org
+      |> Db.where (Db.and [search q, filtered (filters f)])
+      |> Db.count
+  let pages = Int.max 1 ((count + perPage - 1) / perPage)
+  let page = Int.clamp { min: 1, max: pages } params.page
+  let rows <-
+    Db.from Org
+      |> Db.where (Db.and [search q, filtered (filters f)])
+      |> Db.orderBy (order params.sort params.dir)
+      |> Db.limit perPage
+      |> Db.offset ((page - 1) * perPage)
+      |> Db.all
+  let labels <- labelsOf rows
+  Query.succeed {
+    rows: rows,
+    labels: labels,
+    q: q,
+    filters: f,
+    sort: params.sort,
+    dir: params.dir,
+    page: page,
+    pages: pages,
+    count: count,
+  }
 }
 
 -- @admin begin labels
@@ -159,8 +151,8 @@ labelsOf : List Org -> Query Labels
 labelsOf rows = Query.succeed {}
 -- @admin end
 
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <Layout.Page title="Orgs">
     <h1>Orgs</h1>
 
@@ -184,7 +176,7 @@ view model session =
           <al-button type="submit" variant="secondary">Search</al-button>
         </al-stack>
       </form>
-      <al-button href={Admin.Orgs.New {}}>New org</al-button>
+      <al-button href={Admin.Orgs.New.New {}}>New org</al-button>
     </al-stack>
 
     <p id="count">{if model.count == 1 then "1 row" else Text.fromInt model.count ++ " rows"}</p>
@@ -212,7 +204,7 @@ view model session =
                   value={row.id}
                   aria-label={"Choose " ++ row.name} />
               </td>
-              <td><a href={Admin.Orgs.Show { id: row.id }}>{row.name}</a></td>
+              <td><a href={Admin.Orgs.Show.Show { id: row.id }}>{row.name}</a></td>
               <td>{Time.format "Jan 2, 2006" row.created}</td>
               -- @admin end
             </tr>}
@@ -260,7 +252,7 @@ test "the list shows every row, newest first" = {
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
-  let page <- Test.get (Admin.Orgs.Index {})
+  let page <- Test.get (Index {})
   Task.succeed ({ rows: List.map (\row -> row.id) page.model.rows } == { rows: [org2, org1] })
 }
 
@@ -278,8 +270,8 @@ test "sorting by name goes both ways" = {
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-2" }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-1" }
-  let up <- Test.get (Admin.Orgs.Index { sort: "name", dir: "asc" })
-  let down <- Test.get (Admin.Orgs.Index { sort: "name" })
+  let up <- Test.get (Index { sort: "name", dir: "asc" })
+  let down <- Test.get (Index { sort: "name" })
   Task.succeed (
     {
       up: List.map (\row -> row.id) up.model.rows,
@@ -307,7 +299,7 @@ test "searching finds the rows that contain the text" = {
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
-  let page <- Test.get (Admin.Orgs.Index { q: "name-2" })
+  let page <- Test.get (Index { q: "name-2" })
   Task.succeed (
     { rows: List.map (\row -> row.id) page.model.rows, count: Test.text "#count" page.doc }
       == { rows: [org2], count: Just "1 row" }
@@ -327,7 +319,7 @@ test "a search text of 20,000 characters is cut to 200" = {
     role: Admin,
   }
   let long = Text.join "" (List.map (\n -> "z") (List.range 1 20000))
-  let page <- Test.get (Admin.Orgs.Index { q: long })
+  let page <- Test.get (Index { q: long })
   Task.succeed (
     { q: Text.length page.model.q, rows: List.length page.model.rows } == { q: 200, rows: 0 }
   )
@@ -351,9 +343,9 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
         List.range 1 26
       )
     )
-  let first <- Test.get (Admin.Orgs.Index {})
-  let second <- Test.get (Admin.Orgs.Index { page: 2 })
-  let past <- Test.get (Admin.Orgs.Index { page: 9 })
+  let first <- Test.get (Index {})
+  let second <- Test.get (Index { page: 2 })
+  let past <- Test.get (Index { page: 9 })
   Task.succeed (
     {
       first: List.length first.model.rows,
@@ -372,7 +364,7 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
 }
 
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Admin.Orgs.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -388,7 +380,7 @@ test "a Member gets no page, even one made Admin since logging in" = {
     org: Nothing,
     role: Member,
   }
-  let r <- Test.open (Admin.Orgs.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -404,7 +396,7 @@ test "a demoted Admin is refused at once" = {
     org: Nothing,
     role: Admin,
   }
-  let r <- Test.open (Admin.Orgs.Index {})
+  let r <- Test.open (Index {})
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

@@ -9,7 +9,11 @@ import Table.Tag
 import Table.User
 -- @admin end
 
-page "/admin/tag/new" { findPost: Text = "" } requires user, role Admin
+-- @admin begin routes
+route New        = GET  "/admin/tag/new"              { findPost: Text = "" } requires user, role Admin
+route Create     = POST "/admin/tag/new/_/Create"     { } form TagForm        requires user, role Admin
+route SearchPost = POST "/admin/tag/new/_/SearchPost" { } form FindPost       requires user, role Admin
+-- @admin end
 
 type Model = {
   -- @admin begin model
@@ -18,23 +22,20 @@ type Model = {
   -- @admin end
 }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    let findPost = Text.slice 0 200 params.findPost
-    let postsTotal <- Db.from Post |> Db.count
-    let posts <-
-      Db.from Post
-        |> Db.orderBy Post.title.asc
-        |> Db.where (if postsTotal > 200 then Post.title.contains findPost else Db.and [])
-        |> Db.limit (if postsTotal > 200 then 50 else 200)
-        |> Db.all
-    Query.succeed { posts: posts, postsTotal: postsTotal }
-    -- @admin end
-  } else
-    Query.notFound
+New.load : New.Params -> Session -> Query Model
+New.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin load
+  let findPost = Text.slice 0 200 params.findPost
+  let postsTotal <- Db.from Post |> Db.count
+  let posts <-
+    Db.from Post
+      |> Db.orderBy Post.title.asc
+      |> Db.where (if postsTotal > 200 then Post.title.contains findPost else Db.and [])
+      |> Db.limit (if postsTotal > 200 then 50 else 200)
+      |> Db.all
+  Query.succeed { posts: posts, postsTotal: postsTotal }
+  -- @admin end
 }
 
 -- @admin begin form
@@ -44,35 +45,33 @@ form TagForm = { name: Text.NonEmpty, post: Post.PostId }
 -- @admin begin search
 form FindPost = { q: Text }
 
-msg SearchPost form FindPost
+-- SearchPost answers the page again at the text.
+SearchPost.update : SearchPost.Params -> Session -> Task Response
+SearchPost.update params session =
+  Task.succeed (Response.redirect (New { findPost: Text.slice 0 200 params.form.q }))
 
 -- @admin end
 
-msg Create form TagForm
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  -- @admin begin finds
-  SearchPost p -> Task.succeed (Redirect (Admin.Tags.New { findPost: Text.slice 0 200 p.form.q })),
+-- Create adds the row and goes to its page.
+Create.update : Create.Params -> Session -> Task Response
+Create.update params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin insert
+  let nameTaken <-
+    Db.from Tag
+      |> Db.where (Tag.name.eq params.form.name)
+      |> Db.count
+  if nameTaken > 0 then
+    Task.succeed (Response.invalid "A tag with this name exists.")
+  else {
+    let id <- Db.insert Tag { name: params.form.name, post: params.form.post }
+    Task.succeed (Response.redirect (Admin.Tags.Show.Show { id: id }))
+  }
   -- @admin end
-  Create p -> {
-    -- @admin begin insert
-    let nameTaken <-
-      Db.from Tag
-        |> Db.where (Tag.name.eq p.form.name)
-        |> Db.count
-    if nameTaken > 0 then
-      Task.succeed (Reject "A tag with this name exists.")
-    else {
-      let id <- Db.insert Tag { name: p.form.name, post: p.form.post }
-      Task.succeed (Redirect (Admin.Tags.Show { id: id }))
-    }
-    -- @admin end
-  },
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+New.view : Model -> Session -> Html
+New.view model session =
   <Layout.Page title="New tag">
     <h1>New tag</h1>
 
@@ -119,15 +118,15 @@ test "creating a tag adds it, with the values submitted" = {
     author: me,
   }
   let _ <- Db.insert Tag { name: Text.NonEmpty "name-1", post: post1 }
-  let page <- Test.get (Admin.Tags.New {})
-  let r <- Test.submit TagForm { name: Text.NonEmpty "name-2", post: post2 }
+  let page <- Test.get (New {})
+  let r <- Test.submit Create { name: Text.NonEmpty "name-2", post: post2 }
   let rows <-
     Db.from Tag
       |> Db.where (Tag.name.eq (Text.NonEmpty "name-2"))
       |> Db.all
   Task.succeed (
     {
-      answers: List.map (\row -> Redirected (Admin.Tags.Show { id: row.id })) rows,
+      answers: List.map (\row -> Redirected (Admin.Tags.Show.Show { id: row.id })) rows,
       rows: List.map (\row -> { name: row.name, post: row.post }) rows,
       posts: Test.texts "select[name=post] option" page.doc,
     } == {
@@ -156,8 +155,8 @@ test "a tag with a name that exists is refused" = {
     author: me,
   }
   let _ <- Db.insert Tag { name: Text.NonEmpty "name-1", post: post1 }
-  let _ <- Test.get (Admin.Tags.New {})
-  let r <- Test.submit TagForm { name: Text.NonEmpty "name-1", post: post2 }
+  let _ <- Test.get (New {})
+  let r <- Test.submit Create { name: Text.NonEmpty "name-1", post: post2 }
   let rows <- Db.from Tag |> Db.count
   Task.succeed (
     { answer: r.answer, rows: rows }
@@ -182,8 +181,8 @@ test "a post not offered is refused" = {
     body: "body-2",
     author: me,
   }
-  let page <- Test.get (Admin.Tags.New {})
-  let r <- Test.submitRaw TagForm [{ name: "name", value: "x" }, { name: "post", value: "missing" }]
+  let page <- Test.get (New {})
+  let r <- Test.submitRaw Create [{ name: "name", value: "x" }, { name: "post", value: "missing" }]
   let rows <- Db.from Tag |> Db.count
   Task.succeed (
     { answer: r.answer, rows: rows }
@@ -219,7 +218,7 @@ test "a list of 200 posts is offered whole" = {
         author: me,
       }) (List.range 3 200)
     )
-  let page <- Test.get (Admin.Tags.New {})
+  let page <- Test.get (New {})
   Task.succeed (List.length page.model.posts == 200)
 }
 
@@ -248,9 +247,9 @@ test "a long list of posts offers 50, and the search narrows it" = {
         author: me,
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Tags.New {})
-  let found <- Test.get (Admin.Tags.New { findPost: "title-203" })
-  let r <- Test.submit FindPost { q: "zz" }
+  let all <- Test.get (New {})
+  let found <- Test.get (New { findPost: "title-203" })
+  let r <- Test.submit SearchPost { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.posts,
@@ -261,7 +260,7 @@ test "a long list of posts offers 50, and the search narrows it" = {
       shown: 50,
       total: 203,
       found: True,
-      answer: Redirected (Admin.Tags.New { findPost: "zz" }),
+      answer: Redirected (New { findPost: "zz" }),
     }
   )
 }
@@ -291,12 +290,12 @@ test "a post outside the narrowed list is refused" = {
         author: me,
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Tags.New {})
-  let found <- Test.get (Admin.Tags.New { findPost: "title-203" })
-  let r <- Test.submit FindPost { q: "zz" }
+  let all <- Test.get (New {})
+  let found <- Test.get (New { findPost: "title-203" })
+  let r <- Test.submit SearchPost { q: "zz" }
   let pick = Maybe.withDefault "" (Test.attr "value" "select[name=post] option" found.doc)
-  let page <- Test.get (Admin.Tags.New {})
-  let sent <- Test.submitRaw TagForm [{ name: "name", value: "x" }, { name: "post", value: pick }]
+  let page <- Test.get (New {})
+  let sent <- Test.submitRaw Create [{ name: "name", value: "x" }, { name: "post", value: pick }]
   let rows <- Db.from Tag |> Db.count
   Task.succeed (
     { answer: sent.answer, rows: rows }
@@ -308,7 +307,7 @@ test "a post outside the narrowed list is refused" = {
 }
 
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Admin.Tags.New {})
+  let r <- Test.open (New {})
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -319,7 +318,7 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
-  let r <- Test.open (Admin.Tags.New {})
+  let r <- Test.open (New {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -330,7 +329,7 @@ test "a demoted Admin is refused at once" = {
     role: Reader,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Tags.New {})
+  let r <- Test.open (New {})
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

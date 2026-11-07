@@ -9,7 +9,12 @@ import Table.Post
 import Table.User
 -- @admin end
 
-page "/admin/comment/new" { findPost: Text = "", findAuthor: Text = "" } requires user, role Admin
+-- @admin begin routes
+route New          = GET  "/admin/comment/new"                { findPost: Text = "", findAuthor: Text = "" } requires user, role Admin
+route Create       = POST "/admin/comment/new/_/Create"       { } form CommentForm                           requires user, role Admin
+route SearchPost   = POST "/admin/comment/new/_/SearchPost"   { } form FindPost                              requires user, role Admin
+route SearchAuthor = POST "/admin/comment/new/_/SearchAuthor" { } form FindAuthor                            requires user, role Admin
+-- @admin end
 
 type Model = {
   -- @admin begin model
@@ -20,36 +25,33 @@ type Model = {
   -- @admin end
 }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    let findPost = Text.slice 0 200 params.findPost
-    let postsTotal <- Db.from Post |> Db.count
-    let posts <-
-      Db.from Post
-        |> Db.orderBy Post.title.asc
-        |> Db.where (if postsTotal > 200 then Post.title.contains findPost else Db.and [])
-        |> Db.limit (if postsTotal > 200 then 50 else 200)
-        |> Db.all
-    let findAuthor = Text.slice 0 200 params.findAuthor
-    let authorsTotal <- Db.from User |> Db.count
-    let authors <-
-      Db.from User
-        |> Db.orderBy User.email.asc
-        |> Db.where (if authorsTotal > 200 then User.email.contains findAuthor else Db.and [])
-        |> Db.limit (if authorsTotal > 200 then 50 else 200)
-        |> Db.all
-    Query.succeed {
-      posts: posts,
-      postsTotal: postsTotal,
-      authors: authors,
-      authorsTotal: authorsTotal,
-    }
-    -- @admin end
-  } else
-    Query.notFound
+New.load : New.Params -> Session -> Query Model
+New.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin load
+  let findPost = Text.slice 0 200 params.findPost
+  let postsTotal <- Db.from Post |> Db.count
+  let posts <-
+    Db.from Post
+      |> Db.orderBy Post.title.asc
+      |> Db.where (if postsTotal > 200 then Post.title.contains findPost else Db.and [])
+      |> Db.limit (if postsTotal > 200 then 50 else 200)
+      |> Db.all
+  let findAuthor = Text.slice 0 200 params.findAuthor
+  let authorsTotal <- Db.from User |> Db.count
+  let authors <-
+    Db.from User
+      |> Db.orderBy User.email.asc
+      |> Db.where (if authorsTotal > 200 then User.email.contains findAuthor else Db.and [])
+      |> Db.limit (if authorsTotal > 200 then 50 else 200)
+      |> Db.all
+  Query.succeed {
+    posts: posts,
+    postsTotal: postsTotal,
+    authors: authors,
+    authorsTotal: authorsTotal,
+  }
+  -- @admin end
 }
 
 -- @admin begin form
@@ -63,38 +65,36 @@ form CommentForm = {
 -- @admin begin search
 form FindPost = { q: Text }
 
-msg SearchPost form FindPost
+-- SearchPost answers the page again at the text.
+SearchPost.update : SearchPost.Params -> Session -> Task Response
+SearchPost.update params session =
+  Task.succeed (Response.redirect (New { findPost: Text.slice 0 200 params.form.q }))
 
 form FindAuthor = { q: Text }
 
-msg SearchAuthor form FindAuthor
+-- SearchAuthor answers the page again at the text.
+SearchAuthor.update : SearchAuthor.Params -> Session -> Task Response
+SearchAuthor.update params session =
+  Task.succeed (Response.redirect (New { findAuthor: Text.slice 0 200 params.form.q }))
 
 -- @admin end
 
-msg Create form CommentForm
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  -- @admin begin finds
-  SearchPost p ->
-    Task.succeed (Redirect (Admin.Comments.New { findPost: Text.slice 0 200 p.form.q })),
-  SearchAuthor p ->
-    Task.succeed (Redirect (Admin.Comments.New { findAuthor: Text.slice 0 200 p.form.q })),
+-- Create adds the row and goes to its page.
+Create.update : Create.Params -> Session -> Task Response
+Create.update params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin insert
+  let id <- Db.insert Comment {
+    post: params.form.post,
+    author: params.form.author,
+    body: params.form.body,
+  }
+  Task.succeed (Response.redirect (Admin.Comments.Show.Show { id: id }))
   -- @admin end
-  Create p -> {
-    -- @admin begin insert
-    let id <- Db.insert Comment {
-      post: p.form.post,
-      author: p.form.author,
-      body: p.form.body,
-    }
-    Task.succeed (Redirect (Admin.Comments.Show { id: id }))
-    -- @admin end
-  },
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+New.view : Model -> Session -> Html
+New.view model session =
   <Layout.Page title="New comment">
     <h1>New comment</h1>
 
@@ -155,8 +155,8 @@ test "creating a comment adds it, with the values submitted" = {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let page <- Test.get (Admin.Comments.New {})
-  let r <- Test.submit CommentForm {
+  let page <- Test.get (New {})
+  let r <- Test.submit Create {
     post: post2,
     author: user2,
     body: Text.NonEmpty "body-1",
@@ -164,7 +164,7 @@ test "creating a comment adds it, with the values submitted" = {
   let rows <- Db.from Comment |> Db.all
   Task.succeed (
     {
-      answers: List.map (\row -> Redirected (Admin.Comments.Show { id: row.id })) rows,
+      answers: List.map (\row -> Redirected (Admin.Comments.Show.Show { id: row.id })) rows,
       rows: List.map (\row -> {
         post: row.post,
         author: row.author,
@@ -208,9 +208,9 @@ test "a post not offered is refused" = {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let page <- Test.get (Admin.Comments.New {})
+  let page <- Test.get (New {})
   let authorId = Maybe.withDefault "" (Test.attr "value" "select[name=author] option" page.doc)
-  let r <- Test.submitRaw CommentForm [
+  let r <- Test.submitRaw Create [
     { name: "post", value: "missing" },
     { name: "author", value: authorId },
     { name: "body", value: "x" },
@@ -246,9 +246,9 @@ test "an author not offered is refused" = {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let page <- Test.get (Admin.Comments.New {})
+  let page <- Test.get (New {})
   let postId = Maybe.withDefault "" (Test.attr "value" "select[name=post] option" page.doc)
-  let r <- Test.submitRaw CommentForm [
+  let r <- Test.submitRaw Create [
     { name: "post", value: postId },
     { name: "author", value: "missing" },
     { name: "body", value: "x" },
@@ -292,7 +292,7 @@ test "a list of 200 posts is offered whole" = {
         author: me,
       }) (List.range 3 200)
     )
-  let page <- Test.get (Admin.Comments.New {})
+  let page <- Test.get (New {})
   Task.succeed (List.length page.model.posts == 200)
 }
 
@@ -325,9 +325,9 @@ test "a long list of posts offers 50, and the search narrows it" = {
         author: me,
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Comments.New {})
-  let found <- Test.get (Admin.Comments.New { findPost: "title-203" })
-  let r <- Test.submit FindPost { q: "zz" }
+  let all <- Test.get (New {})
+  let found <- Test.get (New { findPost: "title-203" })
+  let r <- Test.submit SearchPost { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.posts,
@@ -338,7 +338,7 @@ test "a long list of posts offers 50, and the search narrows it" = {
       shown: 50,
       total: 203,
       found: True,
-      answer: Redirected (Admin.Comments.New { findPost: "zz" }),
+      answer: Redirected (New { findPost: "zz" }),
     }
   )
 }
@@ -372,13 +372,13 @@ test "a post outside the narrowed list is refused" = {
         author: me,
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Comments.New {})
-  let found <- Test.get (Admin.Comments.New { findPost: "title-203" })
-  let r <- Test.submit FindPost { q: "zz" }
+  let all <- Test.get (New {})
+  let found <- Test.get (New { findPost: "title-203" })
+  let r <- Test.submit SearchPost { q: "zz" }
   let pick = Maybe.withDefault "" (Test.attr "value" "select[name=post] option" found.doc)
-  let page <- Test.get (Admin.Comments.New {})
+  let page <- Test.get (New {})
   let authorId = Maybe.withDefault "" (Test.attr "value" "select[name=author] option" page.doc)
-  let sent <- Test.submitRaw CommentForm [
+  let sent <- Test.submitRaw Create [
     { name: "post", value: pick },
     { name: "author", value: authorId },
     { name: "body", value: "x" },
@@ -421,7 +421,7 @@ test "a list of 200 users is offered whole" = {
         name: Text.NonEmpty ("name-" ++ Text.fromInt n),
       }) (List.range 3 200)
     )
-  let page <- Test.get (Admin.Comments.New {})
+  let page <- Test.get (New {})
   Task.succeed (List.length page.model.authors == 200)
 }
 
@@ -453,9 +453,9 @@ test "a long list of users offers 50, and the search narrows it" = {
         name: Text.NonEmpty ("name-" ++ Text.fromInt n),
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Comments.New {})
-  let found <- Test.get (Admin.Comments.New { findAuthor: "email-203@example.com" })
-  let r <- Test.submit FindAuthor { q: "zz" }
+  let all <- Test.get (New {})
+  let found <- Test.get (New { findAuthor: "email-203@example.com" })
+  let r <- Test.submit SearchAuthor { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.authors,
@@ -466,7 +466,7 @@ test "a long list of users offers 50, and the search narrows it" = {
       shown: 50,
       total: 203,
       found: True,
-      answer: Redirected (Admin.Comments.New { findAuthor: "zz" }),
+      answer: Redirected (New { findAuthor: "zz" }),
     }
   )
 }
@@ -499,13 +499,13 @@ test "an author outside the narrowed list is refused" = {
         name: Text.NonEmpty ("name-" ++ Text.fromInt n),
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Comments.New {})
-  let found <- Test.get (Admin.Comments.New { findAuthor: "email-203@example.com" })
-  let r <- Test.submit FindAuthor { q: "zz" }
+  let all <- Test.get (New {})
+  let found <- Test.get (New { findAuthor: "email-203@example.com" })
+  let r <- Test.submit SearchAuthor { q: "zz" }
   let pick = Maybe.withDefault "" (Test.attr "value" "select[name=author] option" found.doc)
-  let page <- Test.get (Admin.Comments.New {})
+  let page <- Test.get (New {})
   let postId = Maybe.withDefault "" (Test.attr "value" "select[name=post] option" page.doc)
-  let sent <- Test.submitRaw CommentForm [
+  let sent <- Test.submitRaw Create [
     { name: "post", value: postId },
     { name: "author", value: pick },
     { name: "body", value: "x" },
@@ -521,7 +521,7 @@ test "an author outside the narrowed list is refused" = {
 }
 
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Admin.Comments.New {})
+  let r <- Test.open (New {})
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -532,7 +532,7 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Reader }
-  let r <- Test.open (Admin.Comments.New {})
+  let r <- Test.open (New {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -543,7 +543,7 @@ test "a demoted Admin is refused at once" = {
     role: Reader,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Comments.New {})
+  let r <- Test.open (New {})
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

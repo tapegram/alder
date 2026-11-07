@@ -10,15 +10,8 @@ import Table.Todo
 import Table.User
 -- @admin end
 
--- @admin begin params
-page "/admin/orgs/{org}/todo" {
-  org: Org.OrgId,
-  q: Text = "",
-  done: Text = "",
-  sort: Text = "created",
-  dir: Text = "desc",
-  page: Int = 1,
-} requires user, role Admin, silo org
+-- @admin begin routes
+route Index = GET "/admin/orgs/{org}/todo" { org: Org.OrgId, q: Text = "", done: Text = "", sort: Text = "created", dir: Text = "desc", page: Int = 1 } requires user, role Admin, silo org
 -- @admin end
 
 type Model = {
@@ -62,7 +55,7 @@ type Filter = {
 type Filters = { done: Text }
 
 -- chosen is the filters' options in params.
-chosen : Params -> Filters
+chosen : Index.Params -> Filters
 chosen params = { done: params.done }
 
 -- filters are the list's filters, each with the option f has chosen.
@@ -99,8 +92,8 @@ filtered fs =
   )
 
 -- listAt is this list with the model's search and filters, sorted by sort and dir, at page n.
-listAt : Model -> Text -> Text -> Int -> Page
-listAt model sort dir n = Admin.Todos.Index {
+listAt : Model -> Text -> Text -> Int -> Route
+listAt model sort dir n = Index {
   org: model.org,
   q: model.q,
   done: model.filters.done,
@@ -154,43 +147,40 @@ order sort dir = match List.find (\s -> s.name == sort) sorts {
 toggle : Model -> Text -> Text
 toggle model sort = if model.sort == sort && model.dir == "asc" then "desc" else "asc"
 
--- load reads how many rows match the search and the filters, and one page of them (the last, for
--- a page past it), in the order asked for. The search text is cut to 200 characters (Text.slice):
+-- Index.load reads how many rows match the search and the filters, and one page of them (the last,
+-- for a page past it), in the order asked for. The search text is cut to 200 characters (Text.slice):
 -- a text over 10,000 bytes would fail the query (chapter 8, "Search").
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    let q = Text.slice 0 200 params.q
-    let f = chosen params
-    let count <-
-      Db.from Todo
-        |> Db.where (Db.and [search q, filtered (filters f)])
-        |> Db.count
-    let pages = Int.max 1 ((count + perPage - 1) / perPage)
-    let page = Int.clamp { min: 1, max: pages } params.page
-    let rows <-
-      Db.from Todo
-        |> Db.where (Db.and [search q, filtered (filters f)])
-        |> Db.orderBy (order params.sort params.dir)
-        |> Db.limit perPage
-        |> Db.offset ((page - 1) * perPage)
-        |> Db.all
-    let labels <- labelsOf rows
-    Query.succeed {
-      org: session.org,
-      rows: rows,
-      labels: labels,
-      q: q,
-      filters: f,
-      sort: params.sort,
-      dir: params.dir,
-      page: page,
-      pages: pages,
-      count: count,
-    }
-  } else
-    Query.notFound
+Index.load : Index.Params -> Session -> Query Model
+Index.load params session = {
+  let _ <- Layout.adminOnly session.user
+  let q = Text.slice 0 200 params.q
+  let f = chosen params
+  let count <-
+    Db.from Todo
+      |> Db.where (Db.and [search q, filtered (filters f)])
+      |> Db.count
+  let pages = Int.max 1 ((count + perPage - 1) / perPage)
+  let page = Int.clamp { min: 1, max: pages } params.page
+  let rows <-
+    Db.from Todo
+      |> Db.where (Db.and [search q, filtered (filters f)])
+      |> Db.orderBy (order params.sort params.dir)
+      |> Db.limit perPage
+      |> Db.offset ((page - 1) * perPage)
+      |> Db.all
+  let labels <- labelsOf rows
+  Query.succeed {
+    org: session.org,
+    rows: rows,
+    labels: labels,
+    q: q,
+    filters: f,
+    sort: params.sort,
+    dir: params.dir,
+    page: page,
+    pages: pages,
+    count: count,
+  }
 }
 
 -- @admin begin labels
@@ -215,8 +205,8 @@ projectLabel labels id = match List.find (\r -> r.id == id) labels.projects {
 }
 -- @admin end
 
-view : Model -> Session -> Html Msg
-view model session =
+Index.view : Model -> Session -> Html
+Index.view model session =
   <Layout.Page title="Todos">
     <h1>Todos</h1>
 
@@ -240,7 +230,7 @@ view model session =
           <al-button type="submit" variant="secondary">Search</al-button>
         </al-stack>
       </form>
-      <al-button href={Admin.Todos.New { org: session.org }}>New todo</al-button>
+      <al-button href={Admin.Todos.New.New { org: session.org }}>New todo</al-button>
     </al-stack>
 
     <p id="count">{if model.count == 1 then "1 row" else Text.fromInt model.count ++ " rows"}</p>
@@ -270,7 +260,9 @@ view model session =
                   value={row.id}
                   aria-label={"Choose " ++ row.title} />
               </td>
-              <td><a href={Admin.Todos.Show { org: session.org, id: row.id }}>{row.title}</a></td>
+              <td>
+                <a href={Admin.Todos.Show.Show { org: session.org, id: row.id }}>{row.title}</a>
+              </td>
               <td>
                 {if row.done then
                   <al-badge>Yes</al-badge>
@@ -278,7 +270,7 @@ view model session =
                   <al-badge variant="secondary">No</al-badge>}
               </td>
               <td>
-                <a href={Admin.Projects.Show { org: session.org, id: row.project }}>
+                <a href={Admin.Projects.Show.Show { org: session.org, id: row.project }}>
                   {projectLabel model.labels row.project}
                 </a>
               </td>
@@ -341,7 +333,7 @@ test "the list shows every row, newest first, and the labels of the rows they re
     org: org,
   }
   let project2 <- Db.insert Project { name: Text.NonEmpty "name-2", org: org }
-  let page <- Test.get (Admin.Todos.Index { org: org })
+  let page <- Test.get (Index { org: org })
   Task.succeed (
     {
       rows: List.map (\row -> row.id) page.model.rows,
@@ -381,12 +373,12 @@ test "sorting by title goes both ways" = {
     org: org,
   }
   let up <-
-    Test.get (Admin.Todos.Index {
+    Test.get (Index {
       org: org,
       sort: "title",
       dir: "asc",
     })
-  let down <- Test.get (Admin.Todos.Index { org: org, sort: "title" })
+  let down <- Test.get (Index { org: org, sort: "title" })
   Task.succeed (
     {
       up: List.map (\row -> row.id) up.model.rows,
@@ -425,7 +417,7 @@ test "searching finds the rows that contain the text" = {
     project: project1,
     org: org,
   }
-  let page <- Test.get (Admin.Todos.Index { org: org, q: "title-2" })
+  let page <- Test.get (Index { org: org, q: "title-2" })
   Task.succeed (
     { rows: List.map (\row -> row.id) page.model.rows, count: Test.text "#count" page.doc }
       == { rows: [todo2], count: Just "1 row" }
@@ -459,8 +451,8 @@ test "filtering by done lists the rows with that value" = {
     project: project1,
     org: org,
   }
-  let yes <- Test.get (Admin.Todos.Index { org: org, done: "yes" })
-  let no <- Test.get (Admin.Todos.Index { org: org, done: "no" })
+  let yes <- Test.get (Index { org: org, done: "yes" })
+  let no <- Test.get (Index { org: org, done: "no" })
   Task.succeed (
     {
       yes: List.map (\id -> List.member id (List.map (\row -> row.id) yes.model.rows)) [
@@ -494,7 +486,7 @@ test "a search text of 20,000 characters is cut to 200" = {
     role: Admin,
   }
   let long = Text.join "" (List.map (\n -> "z") (List.range 1 20000))
-  let page <- Test.get (Admin.Todos.Index { org: org, q: long })
+  let page <- Test.get (Index { org: org, q: long })
   Task.succeed (
     { q: Text.length page.model.q, rows: List.length page.model.rows } == { q: 200, rows: 0 }
   )
@@ -523,9 +515,9 @@ test "the list has 25 rows a page, and a page past the last is the last" = {
         org: org,
       }) (List.range 1 26)
     )
-  let first <- Test.get (Admin.Todos.Index { org: org })
-  let second <- Test.get (Admin.Todos.Index { org: org, page: 2 })
-  let past <- Test.get (Admin.Todos.Index { org: org, page: 9 })
+  let first <- Test.get (Index { org: org })
+  let second <- Test.get (Index { org: org, page: 2 })
+  let past <- Test.get (Index { org: org, page: 9 })
   Task.succeed (
     {
       first: List.length first.model.rows,
@@ -570,8 +562,8 @@ test "an Admin who is no member of the org lists its todos, and only its" = {
     project: project2,
     org: other,
   }
-  let page <- Test.get (Admin.Todos.Index { org: org })
-  let them <- Test.get (Admin.Todos.Index { org: other })
+  let page <- Test.get (Index { org: org })
+  let them <- Test.get (Index { org: other })
   Task.succeed (
     {
       mine: List.map (\row -> row.id) page.model.rows,
@@ -583,7 +575,7 @@ test "an Admin who is no member of the org lists its todos, and only its" = {
 
 test "a visitor is sent to log in" = {
   let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
-  let r <- Test.open (Admin.Todos.Index { org: org })
+  let r <- Test.open (Index { org: org })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -600,7 +592,7 @@ test "a Member gets no page, even one made Admin since logging in" = {
     org: Nothing,
     role: Member,
   }
-  let r <- Test.open (Admin.Todos.Index { org: org })
+  let r <- Test.open (Index { org: org })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -618,7 +610,7 @@ test "a demoted Admin is refused at once" = {
     org: Just org,
     role: Admin,
   }
-  let r <- Test.open (Admin.Todos.Index { org: org })
+  let r <- Test.open (Index { org: org })
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

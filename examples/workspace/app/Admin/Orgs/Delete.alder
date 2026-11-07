@@ -10,7 +10,10 @@ import Table.Org
 import Table.User
 -- @admin end
 
-page "/admin/org/{id}/delete" { id: Org.OrgId } requires user, role Admin
+-- @admin begin routes
+route Delete  = GET    "/admin/org/{id}/delete"           { id: Org.OrgId }              requires user, role Admin
+route Destroy = DELETE "/admin/org/{id}/delete/_/Destroy" { id: Org.OrgId } form Confirm requires user, role Admin
+-- @admin end
 
 -- The row, and how many rows of each table refer to it.
 type Model = {
@@ -21,31 +24,35 @@ type Model = {
   -- @admin end
 }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    let found <- Db.get Org params.id
-    let activities <-
-      Db.from Activity
-        |> Db.where (Activity.org.eq params.id)
-        |> Db.count
-    let memberships <-
-      Db.from Membership
-        |> Db.where (Membership.org.eq params.id)
-        |> Db.count
-    match found {
-      Just row -> Query.succeed {
-        row: row,
-        activities: activities,
-        memberships: memberships,
-      },
-      Nothing -> Query.notFound,
-    }
-    -- @admin end
-  } else
-    Query.notFound
+-- counted is the row id names (none is not found) and how many rows of each table refer to it:
+-- the page shows them, and Destroy counts them again before it deletes.
+counted : Org.OrgId -> Query Model
+counted id = {
+  -- @admin begin load
+  let found <- Db.get Org id
+  let activities <-
+    Db.from Activity
+      |> Db.where (Activity.org.eq id)
+      |> Db.count
+  let memberships <-
+    Db.from Membership
+      |> Db.where (Membership.org.eq id)
+      |> Db.count
+  match found {
+    Just row -> Query.succeed {
+      row: row,
+      activities: activities,
+      memberships: memberships,
+    },
+    Nothing -> Query.notFound,
+  }
+  -- @admin end
+}
+
+Delete.load : Delete.Params -> Session -> Query Model
+Delete.load params session = {
+  let _ <- Layout.adminOnly session.user
+  counted params.id
 }
 
 -- @admin begin blockers
@@ -55,26 +62,24 @@ blockers : Model -> Int
 blockers model = 0
 -- @admin end
 
--- Delete takes no input: the form is the button, and the place a refusal is shown.
+-- Destroy takes no input: the form is the button, and the place a refusal is shown.
 form Confirm = { }
 
-msg Remove form Confirm
-
--- Remove deletes the row, unless rows refer to it that keep it (load counted them, as it does
--- before every message): the database would refuse the delete with an error, and the page says
--- why instead.
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Remove p -> {
-    -- @admin begin remove
-    let _ <- Db.delete Org model.row.id
-    Task.succeed (Redirect (Admin.Orgs.Index {}))
-    -- @admin end
-  },
+-- Destroy deletes the row, unless rows refer to it that keep it (counted again, as the page
+-- counted them): the database would refuse the delete with an error, and the page says why
+-- instead. The Show page's dialog posts it too.
+Destroy.update : Destroy.Params -> Session -> Task Response
+Destroy.update params session = {
+  let _ <- Layout.adminOnly session.user
+  let model <- counted params.id
+  -- @admin begin remove
+  let _ <- Db.delete Org params.id
+  Task.succeed (Response.redirect (Admin.Orgs.Index.Index {}) |> Response.success "Deleted")
+  -- @admin end
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Delete.view : Model -> Session -> Html
+Delete.view model session =
   <Layout.Page title="Delete org">
     <h1>Delete this org?</h1>
 
@@ -90,7 +95,7 @@ view model session =
         <dd id="memberships">{Text.fromInt model.memberships}</dd>
         -- @admin end
       </dl>
-      <form id="delete" submit={Remove}>
+      <form id="delete" submit={Destroy { id: model.row.id }}>
         <al-alert variant="destructive"><Errors form /></al-alert>
         {if blockers model > 0 then
           <p>It cannot be deleted while other rows refer to it.</p>
@@ -98,7 +103,7 @@ view model session =
           <al-button variant="destructive" type="submit">Delete</al-button>}
       </form>
     </al-card>
-    <a href={Admin.Orgs.Show { id: model.row.id }}>Back</a>
+    <a href={Admin.Orgs.Show.Show { id: model.row.id }}>Back</a>
   </Layout.Page>
 
 -- @admin begin tests
@@ -118,17 +123,19 @@ test "deleting an org nothing refers to" = {
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
   let _ <- Db.insert Activity { text: "text-1", org: org2 }
   let _ <- Db.insert Membership { user: me, org: org2 }
-  let _ <- Test.get (Admin.Orgs.Delete { id: org1 })
-  let r <- Test.submit Confirm {}
+  let page <- Test.get (Delete { id: org1 })
+  let r <- Test.submit (Destroy { id: org1 }) {}
   let gone <- Db.get Org org1
   let kept <- Db.get Org org2
   Task.succeed (
     {
+      button: Test.count "#delete al-button" page.doc,
       answer: r.answer,
       gone: Maybe.map (\row -> row.id) gone,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
-      answer: Redirected (Admin.Orgs.Index {}),
+      button: 1,
+      answer: Redirected (Admin.Orgs.Index.Index {}),
       gone: Nothing,
       kept: Just org2,
     }
@@ -153,7 +160,7 @@ test "the page counts the rows that go with it" = {
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-2" }
   let _ <- Db.insert Activity { text: "text-2", org: org2 }
   let _ <- Db.insert Membership { user: me, org: org2 }
-  let page <- Test.get (Admin.Orgs.Delete { id: org1 })
+  let page <- Test.get (Delete { id: org1 })
   Task.succeed (
     { activities: Test.text "#activities" page.doc, memberships: Test.text "#memberships" page.doc }
       == { activities: Just "1", memberships: Just "1" }
@@ -172,13 +179,13 @@ test "a missing row is not found" = {
     org: Nothing,
     role: Admin,
   }
-  let r <- Test.open (Admin.Orgs.Delete { id: Org.OrgId "missing" })
+  let r <- Test.open (Delete { id: Org.OrgId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
 
 test "a visitor is sent to log in" = {
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
-  let r <- Test.open (Admin.Orgs.Delete { id: org1 })
+  let r <- Test.open (Delete { id: org1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -195,7 +202,7 @@ test "a Member gets no page, even one made Admin since logging in" = {
     role: Member,
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
-  let r <- Test.open (Admin.Orgs.Delete { id: org1 })
+  let r <- Test.open (Delete { id: org1 })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -212,7 +219,7 @@ test "a demoted Admin is refused at once" = {
     role: Admin,
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-1" }
-  let r <- Test.open (Admin.Orgs.Delete { id: org1 })
+  let r <- Test.open (Delete { id: org1 })
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

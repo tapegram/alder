@@ -63,6 +63,16 @@ func TestAdmin_Refusals(t *testing.T) {
 		t.Fatal("Tag's list has no region `filters` before `sorts`")
 	}
 	os.WriteFile(p, []byte(string(b)[:begin]+string(b)[end:]), 0o644)
+	// an admin written with pages, before routes (#160): its route line made a page line
+	paged := genApp(t, "fixture")
+	alderIn(t, paged, "", "new", "admin")
+	p = filepath.Join(paged, "app", "Admin", "Tags", "Show.alder")
+	b, _ = os.ReadFile(p)
+	src = strings.Replace(string(b), "route Show = GET \"/admin/tag/{id}\"", "page \"/admin/tag/{id}\"", 1)
+	if src == string(b) {
+		t.Fatal("Tag's show page has no route line")
+	}
+	os.WriteFile(p, []byte(src), 0o644)
 
 	for _, c := range []struct {
 		dir  string
@@ -72,7 +82,8 @@ func TestAdmin_Refusals(t *testing.T) {
 		{genApp(t, "scaffold"), []string{"new", "admin"}, "alder new admin: " + generate.AdminNeeds + ": this app's session has no `user`; add a user table, a login that sets `user`, and a `role` (chapter 6, \"Rules\" and \"Roles\")"},
 		{withAdmin, []string{"new", "admin"}, "alder new admin: `app/Admin/` exists: `alder regen admin` updates the admin in it; to generate another, choose another `--module`"},
 		{genApp(t, "fixture"), []string{"regen", "admin"}, "alder regen admin: there is no admin in `app/Admin/`: `alder new admin` generates one (name another with --module)"},
-		{broken, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Posts/Index.alder`: region `cells` has no end marker (region `tests` begins at line 357, inside it)"},
+		{broken, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Posts/Index.alder`: region `cells` has no end marker (region `tests` begins at line 347, inside it)"},
+		{paged, []string{"regen", "admin"}, "alder regen admin: admin is written with pages (`app/Admin/Tags/Show.alder` has a `page` line): it is written with routes now. Delete app/Admin and run `alder new admin` again; move any code you added outside `-- @admin` regions first"},
 		{older, []string{"regen", "admin"}, "alder regen admin: `app/Admin/Tags/Index.alder` has no region `filters`, which its list now needs (it was generated before the filters): delete it and run `alder regen admin --all` to write it again, then carry over your changes"},
 		{genApp(t, "fixture"), []string{"new", "admin", "--module", "admin"}, "alder new admin: `--module admin` is not a module name: write capitalised names joined by dots, such as `Admin`"},
 		{genApp(t, "fixture"), []string{"new", "admin", "--path", "/admin/{id}"}, "alder new admin: `--path /admin/{id}` is not a path without parameters, such as `/admin`"},
@@ -101,7 +112,7 @@ func TestAdmin_Relocated(t *testing.T) {
 		t.Fatalf("exit %d\n%s%s", code, out, errs)
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "app", "Back", "Office", "Posts", "Index.alder"))
-	for _, want := range []string{"module Back.Office.Posts.Index\n", `page "/back/post" {`, "<Layout.Page title=\"Posts\">", "<al-button href={Back.Office.Posts.New {}}>New post</al-button>"} {
+	for _, want := range []string{"module Back.Office.Posts.Index\n", `route Index = GET "/back/post" {`, "<Layout.Page title=\"Posts\">", "<al-button href={Back.Office.Posts.New.New {}}>New post</al-button>"} {
 		if !strings.Contains(string(b), want) {
 			t.Errorf("Back.Office.Posts.Index lacks %q:\n%s", want, b)
 		}
@@ -161,8 +172,8 @@ func TestAdmin_DryRunJSON(t *testing.T) {
 //
 // fixture-silo (M15) is an app whose org key has `via Membership`, with Project and Issue in
 // `silo org` and Activity partitioned by org in the shared database: its admin has the picker,
-// the dashboard of one org and the siloed tables' pages under `silo org`. Its survivors (0.97,
-// 13 of 502) are justified: the five `> 200` flipped to `>= 200` in the New pages' searches (a
+// the dashboard of one org and the siloed tables' pages under `silo org`. Its survivors (0.95,
+// 13 of 288 since the admin is on routes, #160) are justified: the five `> 200` flipped to `>= 200` in the New pages' searches (a
 // search of "" matches every row, as in the blog), Membership's list, whose columns are all
 // references and its `created`, so no column has a sample order to sort by (the sort test is
 // left out: `order` and `toggle` survive) and its search and filters are `Db.and []` (the two
@@ -230,14 +241,16 @@ func TestAdmin_Silo(t *testing.T) {
 		return string(b)
 	}
 	for rel, wants := range map[string][]string{
-		"app/Admin/Layout.alder":           {"<a href={Admin.Activities.Index {}}>Activities</a>", "<a href={Admin.Orgs.Pick {}}>Issues and projects, by org</a>"},
-		"app/Admin/Index.alder":            {`key: "silo-org",`, "href: Admin.Orgs.Dashboard { org: row.id },\n"},
-		"app/Admin/Orgs/Pick.alder":        {`page "/admin/orgs" { } requires user, role Admin`, "<a href={Admin.Orgs.Dashboard { org: row.id }}>{row.name}</a>"},
-		"app/Admin/Orgs/Dashboard.alder":   {`page "/admin/orgs/{org}" { org: Org.OrgId } requires user, role Admin, silo org`, "href: Admin.Projects.Index { org: params.org },"},
-		"app/Admin/Projects/Index.alder":   {`page "/admin/orgs/{org}/project" {`, "  org: Org.OrgId,\n  q: Text = \"\",", "} requires user, role Admin, silo org", `action={"/admin/orgs/" ++ session.org ++ "/project"}`, "listAt model sort dir n = Admin.Projects.Index {\n  org: model.org,", "<a href={Admin.Projects.Show { org: session.org, id: row.id }}>"},
-		"app/Admin/Projects/New.alder":     {`page "/admin/orgs/{org}/project/new" { org: Org.OrgId } requires user, role Admin, silo org`, "      org: session.org,\n", "Task.succeed (Redirect (Admin.Projects.Show { org: session.org, id: id }))"},
-		"app/Admin/Issues/Show.alder":      {"<a href={Admin.Projects.Show { org: session.org, id: model.row.project }}>", "<a href={Admin.Users.Show { id: v }}>"},
-		"app/Admin/Activities/Index.alder": {`page "/admin/activity" {`},
+		"app/Admin/Layout.alder":           {"<a href={Admin.Activities.Index.Index {}}>Activities</a>", "<a href={Admin.Orgs.Pick.Pick {}}>Issues and projects, by org</a>"},
+		"app/Admin/Index.alder":            {`key: "silo-org",`, "href: Admin.Orgs.Dashboard.Dashboard { org: row.id },\n"},
+		"app/Admin/Orgs/Pick.alder":        {`route Pick = GET "/admin/orgs" { } requires user, role Admin`, "<a href={Admin.Orgs.Dashboard.Dashboard { org: row.id }}>{row.name}</a>"},
+		"app/Admin/Orgs/Dashboard.alder":   {`route Dashboard = GET "/admin/orgs/{org}" { org: Org.OrgId } requires user, role Admin, silo org`, "href: Admin.Projects.Index.Index { org: params.org },"},
+		"app/Admin/Projects/Index.alder":   {`route Index = GET "/admin/orgs/{org}/project" { org: Org.OrgId, q: Text = "",`, "} requires user, role Admin, silo org\n", `action={"/admin/orgs/" ++ session.org ++ "/project"}`, "listAt model sort dir n = Index {\n  org: model.org,", "<a href={Admin.Projects.Show.Show { org: session.org, id: row.id }}>"},
+		"app/Admin/Projects/New.alder":     {`route New    = GET  "/admin/orgs/{org}/project/new"          { org: Org.OrgId }                  requires user, role Admin, silo org`, "route Create = POST \"/admin/orgs/{org}/project/new/_/Create\" { org: Org.OrgId } form ProjectForm requires user, role Admin, silo org", "    org: session.org,\n", "Task.succeed (Response.redirect (Admin.Projects.Show.Show { org: session.org, id: id }))", "<form submit={Create { org: session.org }}>"},
+		"app/Admin/Projects/Show.alder":    {"submit={Admin.Projects.Delete.Destroy { org: session.org, id: model.row.id }}"},
+		"app/Admin/Projects/Bulk.alder":    {"<form id=\"bulk-delete\" submit={BulkDelete { org: session.org, ids: model.ids }}>"},
+		"app/Admin/Issues/Show.alder":      {"<a href={Admin.Projects.Show.Show { org: session.org, id: model.row.project }}>", "<a href={Admin.Users.Show.Show { id: v }}>"},
+		"app/Admin/Activities/Index.alder": {`route Index = GET "/admin/activity" {`},
 	} {
 		s := file(rel)
 		for _, w := range wants {
@@ -249,7 +262,7 @@ func TestAdmin_Silo(t *testing.T) {
 	// the partition column is the page's parameter: no form, list or show page has it
 	for _, page := range []string{"Index", "Show", "New", "Edit"} {
 		code, _, _ := strings.Cut(file("app/Admin/Projects/"+page+".alder"), "-- @admin begin tests")
-		if strings.Contains(code, "row.org") || strings.Contains(code, "p.form.org") {
+		if strings.Contains(code, "row.org") || strings.Contains(code, "params.form.org") {
 			t.Errorf("Admin.Project.%s shows or edits the partition column:\n%s", page, code)
 		}
 	}
@@ -281,15 +294,15 @@ func TestAdmin_Silo(t *testing.T) {
 	if code, out, _ := alderIn(t, dir, "", "regen", "admin"); code != 0 || out != "nothing to do: the admin is up to date\n" {
 		t.Errorf("regen after new: exit %d\n%s", code, out)
 	}
-	os.Remove(filepath.Join(dir, "app", "Admin", "Issues", "Bulk.alder")) // nothing links to it by a page value
+	os.Remove(filepath.Join(dir, "app", "Admin", "Issues", "Bulk.alder")) // nothing links to it by a route value
 	if code, out, errs := alderIn(t, dir, "", "regen", "admin"); code != 0 || !strings.Contains(out, "not recreated app/Admin/Issues/Bulk.alder") {
 		t.Errorf("regen with a siloed table's pages deleted: exit %d\n%s%s", code, out, errs)
 	}
 }
 
 // TestAdmin_SelfGuard (Review Focus 4 of M13): on the user table's admin, the signed-in Admin
-// cannot delete their own row (the Delete page says why and has no button; Remove is
-// rejected) nor change their own role (Save is rejected); saving their own row with the role
+// cannot delete their own row (the Delete page says why and has no button; Destroy answers
+// invalid) nor change their own role (Save answers invalid); saving their own row with the role
 // unchanged, and demoting another Admin, are allowed. The generated tests say so, and pass.
 func TestAdmin_SelfGuard(t *testing.T) {
 	t.Parallel()
@@ -300,16 +313,16 @@ func TestAdmin_SelfGuard(t *testing.T) {
 	}
 	del, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Users", "Delete.alder"))
 	edit, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Users", "Edit.alder"))
-	for _, w := range []string{"own: session.user == row.id,", "if model.own then\n      Task.succeed (Reject \"You cannot delete your own account.\")", "{if model.own then\n          <p>You cannot delete your own account.</p>"} {
+	for _, w := range []string{"if session.user == params.id then\n    Task.succeed (Response.invalid \"You cannot delete your own account.\")", "{if session.user == model.row.id then\n          <p>You cannot delete your own account.</p>"} {
 		if !strings.Contains(string(del), w) {
 			t.Errorf("Admin.Users.Delete lacks %q:\n%s", w, del)
 		}
 	}
-	if w := "if session.user == model.row.id && p.form.role != model.row.role then\n      Task.succeed (Reject \"You cannot change your own role.\")"; !strings.Contains(string(edit), w) {
+	if w := "if session.user == row.id && params.form.role != row.role then\n        Task.succeed (Response.invalid \"You cannot change your own role.\")"; !strings.Contains(string(edit), w) {
 		t.Errorf("Admin.Users.Edit lacks %q:\n%s", w, edit)
 	}
 	// only the user table is guarded
-	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Posts", "Delete.alder")); strings.Contains(string(b), "model.own") {
+	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Posts", "Delete.alder")); strings.Contains(string(b), "session.user ==") {
 		t.Errorf("Admin.Posts.Delete has the user table's guard:\n%s", b)
 	}
 	code, out, errs := alderIn(t, dir, "", "test")
@@ -407,13 +420,12 @@ test "the list counts each post's words" = {
     body: "one two three",
     author: me,
   }
-  let page <- Test.get (Admin.Posts.Index {})
+  let page <- Test.get (Index {})
   Task.succeed (Test.texts "td.words" page.doc == ["3"])
 }
 `)
-	// a page the author does without: Tag's Delete page, and the dialog's link to it
-	replace("app/Admin/Tags/Show.alder", "<div slot=\"actions\"><a href={Admin.Tags.Delete { id: model.row.id }}>See the details</a></div>\n", "<div slot=\"actions\"></div>\n")
-	os.Remove(filepath.Join(dir, "app", "Admin", "Tags", "Delete.alder"))
+	// a page the author does without: Tag's bulk page (the list's forms to it post to a path)
+	os.Remove(filepath.Join(dir, "app", "Admin", "Tags", "Bulk.alder"))
 	if code, out, errs := alderIn(t, dir, "", "check"); code != 0 || strings.Contains(out, "error") {
 		t.Fatalf("the customised admin does not check: exit %d\n%s%s", code, out, errs)
 	}
@@ -441,11 +453,11 @@ test "the list counts each post's words" = {
 	if code != 0 {
 		t.Fatalf("alder regen admin: exit %d\n%s%s", code, out, errs)
 	}
-	if !strings.Contains(out, "not recreated app/Admin/Tags/Delete.alder (deleted; --all writes it again)\n") || !strings.Contains(out, "wrote app/Admin/Likes/Index.alder\n") || !strings.Contains(out, "edited app/Admin/Posts/Index.alder\n") {
+	if !strings.Contains(out, "not recreated app/Admin/Tags/Bulk.alder (deleted; --all writes it again)\n") || !strings.Contains(out, "wrote app/Admin/Likes/Index.alder\n") || !strings.Contains(out, "edited app/Admin/Posts/Index.alder\n") {
 		t.Errorf("regen printed:\n%s", out)
 	}
 	after := appFiles(t, dir)
-	if _, ok := after["app/Admin/Tags/Delete.alder"]; ok {
+	if _, ok := after["app/Admin/Tags/Bulk.alder"]; ok {
 		t.Errorf("regen recreated the deleted page")
 	}
 
@@ -459,12 +471,12 @@ test "the list counts each post's words" = {
 	}
 	// the new field, in the list, the show page and both forms; the new table, in the nav and the dashboard
 	for p, wants := range map[string][]string{
-		index:                          {"<h1>Every post</h1>", "<th>Words</th>", "  pinned: Text = \"\",", "    name: \"pinned\",\n    label: \"Pinned\",\n    value: f.pinned,\n    options: [", `test "filtering by featured lists the rows with that value"`, "    name: \"views\",\n    asc: Post.views.asc,\n    desc: Post.views.desc,\n  },", ">Views</a></th>", "<td>{Text.fromInt row.views}</td>", "test \"the list counts each post's words\""},
+		index:                          {"<h1>Every post</h1>", "<th>Words</th>", " pinned: Text = \"\", ", "    name: \"pinned\",\n    label: \"Pinned\",\n    value: f.pinned,\n    options: [", `test "filtering by featured lists the rows with that value"`, "    name: \"views\",\n    asc: Post.views.asc,\n    desc: Post.views.desc,\n  },", ">Views</a></th>", "<td>{Text.fromInt row.views}</td>", "test \"the list counts each post's words\""},
 		"app/Admin/Posts/Show.alder":   {"<dt>Views</dt>"},
-		"app/Admin/Posts/New.alder":    {"  views: Int,", `<al-input field="views" label="Views" value={0} />`, "views: p.form.views"},
-		"app/Admin/Posts/Edit.alder":   {"  views: Int,", `<al-input field="views" label="Views" value={model.row.views} />`, "views: p.form.views"},
+		"app/Admin/Posts/New.alder":    {"  views: Int,", `<al-input field="views" label="Views" value={0} />`, "views: params.form.views"},
+		"app/Admin/Posts/Edit.alder":   {"  views: Int,", `<al-input field="views" label="Views" value={model.row.views} />`, "views: params.form.views"},
 		"app/Admin/Posts/Delete.alder": {"likes: Int,", `<dd id="likes">`},
-		"app/Admin/Layout.alder":       {"<a href={Admin.Likes.Index {}}>Likes</a>"},
+		"app/Admin/Layout.alder":       {"<a href={Admin.Likes.Index.Index {}}>Likes</a>"},
 		"app/Admin/Index.alder":        {`key: "likes",`, `title: "Likes",`},
 	} {
 		for _, w := range wants {
@@ -483,23 +495,23 @@ test "the list counts each post's words" = {
 		t.Fatalf("alder test after regen: exit %d\n%s%s", code, out, errs)
 	}
 	// idempotent: nothing to do, nothing written
-	if code, out, _ := alderIn(t, dir, "", "regen", "admin"); code != 0 || out != "not recreated app/Admin/Tags/Delete.alder (deleted; --all writes it again)\nnothing to do: the admin is up to date\n" {
+	if code, out, _ := alderIn(t, dir, "", "regen", "admin"); code != 0 || out != "not recreated app/Admin/Tags/Bulk.alder (deleted; --all writes it again)\nnothing to do: the admin is up to date\n" {
 		t.Errorf("a second regen: exit %d\n%s", code, out)
 	}
 	if ch := changedFiles(after, appFiles(t, dir)); len(ch) != 0 {
 		t.Errorf("a second regen wrote %v", slices.Sorted(maps.Keys(ch)))
 	}
-	if code, out, _ := alderIn(t, dir, "", "regen", "admin", "--json"); code != 0 || !strings.Contains(out, `"skipped":["app/Admin/Tags/Delete.alder"],"upToDate":true}`) {
+	if code, out, _ := alderIn(t, dir, "", "regen", "admin", "--json"); code != 0 || !strings.Contains(out, `"skipped":["app/Admin/Tags/Bulk.alder"],"upToDate":true}`) {
 		t.Errorf("a second regen --json: exit %d\n%s", code, out)
 	}
 	// --dry-run, then --all writes the deleted page again
-	if code, out, _ := alderIn(t, dir, "", "regen", "admin", "--all", "--dry-run"); code != 0 || !strings.HasPrefix(out, "would write app/Admin/Tags/Delete.alder\n") || !strings.HasSuffix(out, "dry run: nothing written\n") {
+	if code, out, _ := alderIn(t, dir, "", "regen", "admin", "--all", "--dry-run"); code != 0 || !strings.HasPrefix(out, "would write app/Admin/Tags/Bulk.alder\n") || !strings.HasSuffix(out, "dry run: nothing written\n") {
 		t.Errorf("regen --all --dry-run: exit %d\n%s", code, out)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "app", "Admin", "Tags", "Delete.alder")); err == nil {
+	if _, err := os.Stat(filepath.Join(dir, "app", "Admin", "Tags", "Bulk.alder")); err == nil {
 		t.Errorf("--dry-run wrote the page")
 	}
-	if code, out, errs := alderIn(t, dir, "", "regen", "admin", "--all"); code != 0 || out != "wrote app/Admin/Tags/Delete.alder\n" {
+	if code, out, errs := alderIn(t, dir, "", "regen", "admin", "--all"); code != 0 || out != "wrote app/Admin/Tags/Bulk.alder\n" {
 		t.Errorf("regen --all: exit %d\n%s%s", code, out, errs)
 	}
 
@@ -563,10 +575,10 @@ func TestAdmin_Columns(t *testing.T) {
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Posts", "Delete.alder"))
 	for _, want := range []string{
-		"let flagsOfComments <-\n      Db.from Flag\n        |> Db.where (Flag.comment.in (List.map (\\row -> row.id) commentsRows))\n        |> Db.count",
-		"let events <-\n      Db.from Event\n        |> Db.where (Event.post.eq (Just params.id))\n        |> Db.count",
-		"let repliesOfCommentsRows <-\n      Db.from Reply\n        |> Db.where (Reply.comment.in (List.map (\\row -> row.id) commentsRows))\n        |> Db.all",
-		"let reportsOfRepliesOfComments <-\n      Db.from Report\n        |> Db.where (Report.reply.in (List.map (\\row -> row.id) repliesOfCommentsRows))\n        |> Db.count",
+		"let flagsOfComments <-\n    Db.from Flag\n      |> Db.where (Flag.comment.in (List.map (\\row -> row.id) commentsRows))\n      |> Db.count",
+		"let events <-\n    Db.from Event\n      |> Db.where (Event.post.eq (Just id))\n      |> Db.count",
+		"let repliesOfCommentsRows <-\n    Db.from Reply\n      |> Db.where (Reply.comment.in (List.map (\\row -> row.id) commentsRows))\n      |> Db.all",
+		"let reportsOfRepliesOfComments <-\n    Db.from Report\n      |> Db.where (Report.reply.in (List.map (\\row -> row.id) repliesOfCommentsRows))\n      |> Db.count",
 		"blockers model =\n  model.flagsOfComments\n    + model.reportsOfRepliesOfComments\n    + model.nodesOfNodes\n    + model.pinsOfNodes\n    + model.tags",
 		"<dt>Replies of those comments deleted with it</dt>",
 		"<dt>Reports of those replies that keep it from being deleted</dt>",
@@ -585,7 +597,7 @@ func TestAdmin_Columns(t *testing.T) {
 	b, _ = os.ReadFile(filepath.Join(dir, "app", "Admin", "Nodes", "Delete.alder"))
 	for _, want := range []string{
 		"children model = model.nodes",
-		"if children model > 0 then\n      Task.succeed (Reject \"Delete its children first.\")\n    else if blockers model > 0 then",
+		"if children model > 0 then\n    Task.succeed (Response.invalid \"Delete its children first.\")\n  else if blockers model > 0 then",
 		"{if children model > 0 then\n          <p>Delete its children first.</p>",
 		`test "deleting a node with children is refused, and a childless one pins refer to"`,
 		`test "deleting a node nothing refers to"`,
@@ -597,7 +609,7 @@ func TestAdmin_Columns(t *testing.T) {
 	}
 	b, _ = os.ReadFile(filepath.Join(dir, "app", "Admin", "Posts", "Delete.alder"))
 	for _, want := range []string{
-		"let nodesOfNodes <-\n      Db.from Node\n        |> Db.where (Node.parent.in (List.map (\\row -> Just row.id) nodesRows))\n        |> Db.count",
+		"let nodesOfNodes <-\n    Db.from Node\n      |> Db.where (Node.parent.in (List.map (\\row -> Just row.id) nodesRows))\n      |> Db.count",
 		"<dt>Nodes under those nodes, to delete first</dt>",
 		`test "a post with nodes that nodes refer to is not deleted"`,
 	} {
@@ -620,7 +632,7 @@ func TestAdmin_Columns(t *testing.T) {
 			}
 		}
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Keys", "New.alder")); !strings.Contains(string(b), "Db.insert Key {\n      name: p.form.name,\n      passwordHash: \"\",\n      clientSecret: Nothing,\n    }") {
+	if b, _ := os.ReadFile(filepath.Join(dir, "app", "Admin", "Keys", "New.alder")); !strings.Contains(string(b), "Db.insert Key {\n    name: params.form.name,\n    passwordHash: \"\",\n    clientSecret: Nothing,\n  }") {
 		t.Errorf("Admin.Key.New's insert:\n%s", b)
 	}
 	b, _ = os.ReadFile(filepath.Join(dir, "app", "Admin", "Events", "New.alder"))
@@ -835,7 +847,7 @@ func TestAdmin_NoLayoutThemeScript(t *testing.T) {
 }
 
 // TestAdmin_RegenWireNames (#63): the author gives the list's `status` filter and the bulk
-// page's `ids` wire names (`as "Status"`, `as "Ids"`). Regen keeps the list's `as` (its page line
+// page's `ids` wire names (`as "Status"`, `as "Ids"`). Regen keeps the list's `as` (its route line
 // is a region) and writes the keys into the regions that name those inputs: the filter select,
 // the rows' checkboxes and the filter test's selector. The bulk-page form outside the regions is
 // the author's, still `name="ids"`: `alder check` warns about it (W0008). The tests pass.
@@ -863,14 +875,14 @@ func TestAdmin_RegenWireNames(t *testing.T) {
 		}
 	}
 	index, bulk := "app/Admin/Posts/Index.alder", "app/Admin/Posts/Bulk.alder"
-	replace(index, "  status: Text = \"\",\n", "  status: Text = \"\" as \"Status\",\n")
-	replace(bulk, "{ ids: List Post.PostId }", "{ ids: List Post.PostId as \"Ids\" }")
+	replace(index, " status: Text = \"\", ", " status: Text = \"\" as \"Status\", ")
+	replace(bulk, "route Bulk            = GET  \"/admin/post/bulk\"                   { ids: List Post.PostId }", "route Bulk            = GET  \"/admin/post/bulk\"                   { ids: List Post.PostId as \"Ids\" }")
 	code, out, errs := alderIn(t, dir, "", "regen", "admin")
 	if code != 0 || !strings.Contains(out, "edited "+index+"\n") {
 		t.Fatalf("alder regen admin: exit %d\n%s%s", code, out, errs)
 	}
 	s := file(index)
-	for _, want := range []string{`status: Text = "" as "Status",`, `name: "Status",`, `name="Ids"`, `select[name='Status'] option[selected]`} {
+	for _, want := range []string{`status: Text = "" as "Status", `, `name: "Status",`, `name="Ids"`, `select[name='Status'] option[selected]`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("%s lacks %q after regen:\n%s", index, want, s)
 		}

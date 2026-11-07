@@ -8,36 +8,35 @@ import Table.Org
 import Table.User
 -- @admin end
 
-page "/admin/orgs" { } requires user, role Admin
+-- @admin begin routes
+route Pick = GET "/admin/orgs" { } requires user, role Admin
+-- @admin end
 
 -- The orgs: projects and todos live in a database per org (`silo org`), so they are
 -- listed one org at a time, from its dashboard.
 type Model = { rows: List Org }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    let rows <-
-      Db.from Org
-        |> Db.orderBy Org.name.asc
-        |> Db.all
-    Query.succeed { rows: rows }
-    -- @admin end
-  } else
-    Query.notFound
+Pick.load : Pick.Params -> Session -> Query Model
+Pick.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin load
+  let rows <-
+    Db.from Org
+      |> Db.orderBy Org.name.asc
+      |> Db.all
+  Query.succeed { rows: rows }
+  -- @admin end
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Pick.view : Model -> Session -> Html
+Pick.view model session =
   <Layout.Page title="Choose an org">
     <h1>Choose an org</h1>
 
     <p>Projects and todos live in a database per org: choose one.</p>
     <ul id="orgs">
       {for row in model.rows ->
-        <li><a href={Admin.Orgs.Dashboard { org: row.id }}>{row.name}</a></li>}
+        <li><a href={Admin.Orgs.Dashboard.Dashboard { org: row.id }}>{row.name}</a></li>}
     </ul>
   </Layout.Page>
 
@@ -56,7 +55,7 @@ test "the picker lists every org, by name, each opening its dashboard" = {
   }
   let org1 <- Db.insert Org { name: Text.NonEmpty "name-2" }
   let org2 <- Db.insert Org { name: Text.NonEmpty "name-1" }
-  let page <- Test.get (Admin.Orgs.Pick {})
+  let page <- Test.get (Pick {})
   Task.succeed (
     { rows: List.map (\row -> row.id) page.model.rows, first: Test.text "#orgs li" page.doc }
       == { rows: [org2, org1], first: Just "name-1" }
@@ -64,7 +63,7 @@ test "the picker lists every org, by name, each opening its dashboard" = {
 }
 
 test "a visitor is sent to log in" = {
-  let r <- Test.open (Admin.Orgs.Pick {})
+  let r <- Test.open (Pick {})
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -80,7 +79,7 @@ test "a Member gets no page, even one made Admin since logging in" = {
     org: Nothing,
     role: Member,
   }
-  let r <- Test.open (Admin.Orgs.Pick {})
+  let r <- Test.open (Pick {})
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -96,7 +95,7 @@ test "a demoted Admin is refused at once" = {
     org: Nothing,
     role: Admin,
   }
-  let r <- Test.open (Admin.Orgs.Pick {})
+  let r <- Test.open (Pick {})
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end

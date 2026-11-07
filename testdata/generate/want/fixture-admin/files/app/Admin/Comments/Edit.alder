@@ -9,11 +9,12 @@ import Table.Post
 import Table.User
 -- @admin end
 
-page "/admin/comment/{id}/edit" {
-  id: Comment.CommentId,
-  findPost: Text = "",
-  findAuthor: Text = "",
-} requires user, role Admin
+-- @admin begin routes
+route Edit         = GET  "/admin/comment/{id}/edit"                { id: Comment.CommentId, findPost: Text = "", findAuthor: Text = "" } requires user, role Admin
+route Save         = PUT  "/admin/comment/{id}/edit/_/Save"         { id: Comment.CommentId } form CommentForm                            requires user, role Admin
+route SearchPost   = POST "/admin/comment/{id}/edit/_/SearchPost"   { id: Comment.CommentId } form FindPost                               requires user, role Admin
+route SearchAuthor = POST "/admin/comment/{id}/edit/_/SearchAuthor" { id: Comment.CommentId } form FindAuthor                             requires user, role Admin
+-- @admin end
 
 type Model = {
   row: Comment,
@@ -25,69 +26,66 @@ type Model = {
   -- @admin end
 }
 
-load : Params -> Session -> Query Model
-load params session = {
-  let admin <- Layout.isAdmin session.user
-  if admin then {
-    -- @admin begin load
-    let found <- Db.get Comment params.id
-    match found {
-      Just row -> {
-        let findPost = Text.slice 0 200 params.findPost
-        let postsTotal <- Db.from Post |> Db.count
-        let postsOwn <-
-          if postsTotal > 200 then
-            Db.from Post
-              |> Db.where (Post.id.eq row.post)
-              |> Db.all
-          else
-            Query.succeed []
-        let postsFound <-
+Edit.load : Edit.Params -> Session -> Query Model
+Edit.load params session = {
+  let _ <- Layout.adminOnly session.user
+  -- @admin begin load
+  let found <- Db.get Comment params.id
+  match found {
+    Just row -> {
+      let findPost = Text.slice 0 200 params.findPost
+      let postsTotal <- Db.from Post |> Db.count
+      let postsOwn <-
+        if postsTotal > 200 then
           Db.from Post
-            |> Db.orderBy Post.title.asc
-            |> Db.where (
-              if postsTotal > 200 then
-                Db.and [Post.title.contains findPost, Post.id.ne row.post]
-              else
-                Db.and []
-            )
-            |> Db.limit (if postsTotal > 200 then 50 else 200)
+            |> Db.where (Post.id.eq row.post)
             |> Db.all
-        let posts = postsOwn ++ postsFound
-        let findAuthor = Text.slice 0 200 params.findAuthor
-        let authorsTotal <- Db.from User |> Db.count
-        let authorsOwn <-
-          if authorsTotal > 200 then
-            Db.from User
-              |> Db.where (User.id.eq row.author)
-              |> Db.all
-          else
-            Query.succeed []
-        let authorsFound <-
+        else
+          Query.succeed []
+      let postsFound <-
+        Db.from Post
+          |> Db.orderBy Post.title.asc
+          |> Db.where (
+            if postsTotal > 200 then
+              Db.and [Post.title.contains findPost, Post.id.ne row.post]
+            else
+              Db.and []
+          )
+          |> Db.limit (if postsTotal > 200 then 50 else 200)
+          |> Db.all
+      let posts = postsOwn ++ postsFound
+      let findAuthor = Text.slice 0 200 params.findAuthor
+      let authorsTotal <- Db.from User |> Db.count
+      let authorsOwn <-
+        if authorsTotal > 200 then
           Db.from User
-            |> Db.orderBy User.email.asc
-            |> Db.where (
-              if authorsTotal > 200 then
-                Db.and [User.email.contains findAuthor, User.id.ne row.author]
-              else
-                Db.and []
-            )
-            |> Db.limit (if authorsTotal > 200 then 50 else 200)
+            |> Db.where (User.id.eq row.author)
             |> Db.all
-        let authors = authorsOwn ++ authorsFound
-        Query.succeed {
-          row: row,
-          posts: posts,
-          postsTotal: postsTotal,
-          authors: authors,
-          authorsTotal: authorsTotal,
-        }
-      },
-      Nothing -> Query.notFound,
-    }
-    -- @admin end
-  } else
-    Query.notFound
+        else
+          Query.succeed []
+      let authorsFound <-
+        Db.from User
+          |> Db.orderBy User.email.asc
+          |> Db.where (
+            if authorsTotal > 200 then
+              Db.and [User.email.contains findAuthor, User.id.ne row.author]
+            else
+              Db.and []
+          )
+          |> Db.limit (if authorsTotal > 200 then 50 else 200)
+          |> Db.all
+      let authors = authorsOwn ++ authorsFound
+      Query.succeed {
+        row: row,
+        posts: posts,
+        postsTotal: postsTotal,
+        authors: authors,
+        authorsTotal: authorsTotal,
+      }
+    },
+    Nothing -> Query.notFound,
+  }
+  -- @admin end
 }
 
 -- @admin begin form
@@ -101,63 +99,67 @@ form CommentForm = {
 -- @admin begin search
 form FindPost = { q: Text }
 
-msg SearchPost form FindPost
+-- SearchPost answers the page again at the text.
+SearchPost.update : SearchPost.Params -> Session -> Task Response
+SearchPost.update params session =
+  Task.succeed (
+    Response.redirect (Edit { id: params.id, findPost: Text.slice 0 200 params.form.q })
+  )
 
 form FindAuthor = { q: Text }
 
-msg SearchAuthor form FindAuthor
+-- SearchAuthor answers the page again at the text.
+SearchAuthor.update : SearchAuthor.Params -> Session -> Task Response
+SearchAuthor.update params session =
+  Task.succeed (
+    Response.redirect (Edit { id: params.id, findAuthor: Text.slice 0 200 params.form.q })
+  )
 
 -- @admin end
 
-msg Save form CommentForm
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  -- @admin begin finds
-  SearchPost p ->
-    Task.succeed (
-      Redirect (Admin.Comments.Edit { id: model.row.id, findPost: Text.slice 0 200 p.form.q })
-    ),
-  SearchAuthor p ->
-    Task.succeed (
-      Redirect (Admin.Comments.Edit { id: model.row.id, findAuthor: Text.slice 0 200 p.form.q })
-    ),
-  -- @admin end
-  Save p -> {
-    -- @admin begin update
-    let _ <- Db.update Comment model.row.id (\row -> { row |
-      post: p.form.post,
-      author: p.form.author,
-      body: p.form.body
-    })
-    Task.succeed (Redirect (Admin.Comments.Show { id: model.row.id }))
-    -- @admin end
-  },
+-- Save writes the form over the row (a row deleted since is not found) and goes to its page.
+Save.update : Save.Params -> Session -> Task Response
+Save.update params session = {
+  let _ <- Layout.adminOnly session.user
+  let found <- Db.get Comment params.id
+  match found {
+    Just row -> {
+      -- @admin begin update
+      let _ <- Db.update Comment row.id (\r -> { r |
+        post: params.form.post,
+        author: params.form.author,
+        body: params.form.body
+      })
+      Task.succeed (Response.redirect (Admin.Comments.Show.Show { id: row.id }))
+      -- @admin end
+    },
+    Nothing -> Task.notFound,
+  }
 }
 
-view : Model -> Session -> Html Msg
-view model session =
+Edit.view : Model -> Session -> Html
+Edit.view model session =
   <Layout.Page title="Edit comment">
     <h1>Edit comment</h1>
 
     <al-card>
       -- @admin begin finder
       {if model.postsTotal > 200 then
-        <form submit={SearchPost}>
+        <form submit={SearchPost { id: model.row.id }}>
           <al-input field="q" label="Find post" />
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
         Html.none}
       {if model.authorsTotal > 200 then
-        <form submit={SearchAuthor}>
+        <form submit={SearchAuthor { id: model.row.id }}>
           <al-input field="q" label="Find author" />
           <al-button type="submit" variant="secondary">Find</al-button>
         </form>
       else
         Html.none}
       -- @admin end
-      <form submit={Save}>
+      <form submit={Save { id: model.row.id }}>
         -- @admin begin inputs
         <al-select
           field="post"
@@ -175,7 +177,7 @@ view model session =
         <al-button type="submit">Save</al-button>
       </form>
     </al-card>
-    <a href={Admin.Comments.Show { id: model.row.id }}>Back</a>
+    <a href={Admin.Comments.Show.Show { id: model.row.id }}>Back</a>
   </Layout.Page>
 
 -- @admin begin tests
@@ -205,8 +207,8 @@ test "saving changes every field" = {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let page <- Test.get (Admin.Comments.Edit { id: comment1 })
-  let r <- Test.submit CommentForm {
+  let page <- Test.get (Edit { id: comment1 })
+  let r <- Test.submit (Save { id: comment1 }) {
     post: post2,
     author: user2,
     body: Text.NonEmpty "body-2",
@@ -223,7 +225,7 @@ test "saving changes every field" = {
       posts: Test.texts "select[name=post] option" page.doc,
       authors: Test.texts "select[name=author] option" page.doc,
     } == {
-      answer: Redirected (Admin.Comments.Show { id: comment1 }),
+      answer: Redirected (Admin.Comments.Show.Show { id: comment1 }),
       row: Just {
         post: post2,
         author: user2,
@@ -261,9 +263,9 @@ test "a post not offered is refused" = {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let page <- Test.get (Admin.Comments.Edit { id: comment1 })
+  let page <- Test.get (Edit { id: comment1 })
   let authorId = Maybe.withDefault "" (Test.attr "value" "select[name=author] option" page.doc)
-  let r <- Test.submitRaw CommentForm [
+  let r <- Test.submitRaw (Save { id: comment1 }) [
     { name: "post", value: "missing" },
     { name: "author", value: authorId },
     { name: "body", value: "x" },
@@ -304,9 +306,9 @@ test "an author not offered is refused" = {
     email: Text.Email "email-2@example.com",
     name: Text.NonEmpty "name-2",
   }
-  let page <- Test.get (Admin.Comments.Edit { id: comment1 })
+  let page <- Test.get (Edit { id: comment1 })
   let postId = Maybe.withDefault "" (Test.attr "value" "select[name=post] option" page.doc)
-  let r <- Test.submitRaw CommentForm [
+  let r <- Test.submitRaw (Save { id: comment1 }) [
     { name: "post", value: postId },
     { name: "author", value: "missing" },
     { name: "body", value: "x" },
@@ -355,7 +357,7 @@ test "a list of 200 posts is offered whole" = {
         author: me,
       }) (List.range 3 200)
     )
-  let page <- Test.get (Admin.Comments.Edit { id: comment1 })
+  let page <- Test.get (Edit { id: comment1 })
   Task.succeed (List.length page.model.posts == 200)
 }
 
@@ -393,9 +395,9 @@ test "a long list of posts offers 50, and the search narrows it" = {
         author: me,
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Comments.Edit { id: comment1 })
-  let found <- Test.get (Admin.Comments.Edit { id: comment1, findPost: "title-203" })
-  let r <- Test.submit FindPost { q: "zz" }
+  let all <- Test.get (Edit { id: comment1 })
+  let found <- Test.get (Edit { id: comment1, findPost: "title-203" })
+  let r <- Test.submit (SearchPost { id: comment1 }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.posts,
@@ -406,7 +408,7 @@ test "a long list of posts offers 50, and the search narrows it" = {
       shown: 51,
       total: 203,
       found: True,
-      answer: Redirected (Admin.Comments.Edit { id: comment1, findPost: "zz" }),
+      answer: Redirected (Edit { id: comment1, findPost: "zz" }),
     }
   )
 }
@@ -436,8 +438,8 @@ test "the row's own post is offered first when it sorts past the 50" = {
         author: me,
       }) (List.range 2 202)
     )
-  let page <- Test.get (Admin.Comments.Edit { id: comment1 })
-  let r <- Test.submit CommentForm {
+  let page <- Test.get (Edit { id: comment1 })
+  let r <- Test.submit (Save { id: comment1 }) {
     post: page.model.row.post,
     author: page.model.row.author,
     body: page.model.row.body,
@@ -451,7 +453,7 @@ test "the row's own post is offered first when it sorts past the 50" = {
       once: List.length (List.filter (\o -> o.id == post1) page.model.posts),
       shown: List.length page.model.posts,
     } == {
-      answer: Redirected (Admin.Comments.Show { id: comment1 }),
+      answer: Redirected (Admin.Comments.Show.Show { id: comment1 }),
       kept: Just post1,
       first: Just post1,
       once: 1,
@@ -493,7 +495,7 @@ test "a list of 200 users is offered whole" = {
         name: Text.NonEmpty ("name-" ++ Text.fromInt n),
       }) (List.range 3 200)
     )
-  let page <- Test.get (Admin.Comments.Edit { id: comment1 })
+  let page <- Test.get (Edit { id: comment1 })
   Task.succeed (List.length page.model.authors == 200)
 }
 
@@ -530,9 +532,9 @@ test "a long list of users offers 50, and the search narrows it" = {
         name: Text.NonEmpty ("name-" ++ Text.fromInt n),
       }) (List.range 3 203)
     )
-  let all <- Test.get (Admin.Comments.Edit { id: comment1 })
-  let found <- Test.get (Admin.Comments.Edit { id: comment1, findAuthor: "email-203@example.com" })
-  let r <- Test.submit FindAuthor { q: "zz" }
+  let all <- Test.get (Edit { id: comment1 })
+  let found <- Test.get (Edit { id: comment1, findAuthor: "email-203@example.com" })
+  let r <- Test.submit (SearchAuthor { id: comment1 }) { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.authors,
@@ -543,7 +545,7 @@ test "a long list of users offers 50, and the search narrows it" = {
       shown: 51,
       total: 203,
       found: True,
-      answer: Redirected (Admin.Comments.Edit { id: comment1, findAuthor: "zz" }),
+      answer: Redirected (Edit { id: comment1, findAuthor: "zz" }),
     }
   )
 }
@@ -573,8 +575,8 @@ test "the row's own author is offered first when it sorts past the 50" = {
         name: Text.NonEmpty ("name-" ++ Text.fromInt n),
       }) (List.range 3 203)
     )
-  let page <- Test.get (Admin.Comments.Edit { id: comment1 })
-  let r <- Test.submit CommentForm {
+  let page <- Test.get (Edit { id: comment1 })
+  let r <- Test.submit (Save { id: comment1 }) {
     post: page.model.row.post,
     author: page.model.row.author,
     body: page.model.row.body,
@@ -588,7 +590,7 @@ test "the row's own author is offered first when it sorts past the 50" = {
       once: List.length (List.filter (\o -> o.id == user2) page.model.authors),
       shown: List.length page.model.authors,
     } == {
-      answer: Redirected (Admin.Comments.Show { id: comment1 }),
+      answer: Redirected (Admin.Comments.Show.Show { id: comment1 }),
       kept: Just user2,
       first: Just user2,
       once: 1,
@@ -604,7 +606,7 @@ test "a missing row is not found" = {
     role: Admin,
   }
   let _ <- Test.login { user: Just me, role: Admin }
-  let r <- Test.open (Admin.Comments.Edit { id: Comment.CommentId "missing" })
+  let r <- Test.open (Edit { id: Comment.CommentId "missing" })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -620,7 +622,7 @@ test "a visitor is sent to log in" = {
     author: me,
     body: Text.NonEmpty "body-1",
   }
-  let r <- Test.open (Admin.Comments.Edit { id: comment1 })
+  let r <- Test.open (Edit { id: comment1 })
   Task.succeed (r.answer == Redirected (Auth.Login {}))
 }
 
@@ -641,7 +643,7 @@ test "a Reader gets no page, even one made Admin since logging in" = {
     author: me,
     body: Text.NonEmpty "body-1",
   }
-  let r <- Test.open (Admin.Comments.Edit { id: comment1 })
+  let r <- Test.open (Edit { id: comment1 })
   Task.succeed (r.answer == PageMissing)
 }
 
@@ -662,7 +664,7 @@ test "a demoted Admin is refused at once" = {
     author: me,
     body: Text.NonEmpty "body-1",
   }
-  let r <- Test.open (Admin.Comments.Edit { id: comment1 })
+  let r <- Test.open (Edit { id: comment1 })
   Task.succeed (r.answer == PageMissing)
 }
 -- @admin end
