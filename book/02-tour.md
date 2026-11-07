@@ -95,19 +95,23 @@ module Home
 import Layout
 import Table.Entry
 
-page "/" { }
+route Home   = GET  "/"         { }
+route Submit = POST "/_/Submit" { } form Sign
 ```
 
 `import` makes another module's names available: `Layout` for the HTML
 around the page, `Table.Entry` for the table (written `Entry` from here
-on). `page "/" { }` makes this module a page, served at `/`; the braces
-would list the address's parameters, and this page has none.
+on). The two **routes** are the module's table of contents: each is a
+name, an HTTP method, an address and its parameters (the braces, empty
+here). `Home` is a `GET` of `/`, the page; `Submit` is a `POST` the page's
+form sends, carrying a `Sign`. A route is also a value: `Home {}` is the
+address `/`, written so that the compiler checks it.
 
 ```alder part=guestbook/Home
 type Model = { entries: List Entry }
 
-load : Params -> Session -> Query Model
-load params session = {
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = {
   let entries <-
     Db.from Entry
       |> Db.orderBy Entry.created.desc
@@ -116,45 +120,17 @@ load params session = {
 }
 ```
 
-`Model` is what the page shows. `load` builds it for every request: it
-reads every entry, newest first (`Entry.created.desc`), and succeeds with
-them. It returns a `Query`, a description of reads that the runtime
-carries out, so `load` cannot write anything. `let entries <- …` names
-the result of a read. (`params` would be the page's parameters and
-`session` the visitor's session; this page uses neither.)
+What belongs to a route is named after it. `Model` is what the page
+shows; `Home.load` builds it for every request: it reads every entry,
+newest first (`Entry.created.desc`), and succeeds with them. It returns a
+`Query`, a description of reads that the runtime carries out, so `load`
+cannot write anything. `let entries <- …` names the result of a read.
+(`params` would be the route's parameters and `session` the visitor's
+session; this page uses neither.)
 
 ```alder part=guestbook/Home
-form Sign = { name: Text.NonEmpty, message: Text.NonEmpty }
-
-msg Submit form Sign
-```
-
-`form Sign` is the form's fields and their types. `msg Submit form Sign`
-declares a **message**: a POST that this page's HTML can send, carrying a
-`Sign`. Before `Submit` reaches any of your code, the runtime checks the
-posted fields against the types: an empty name sends the page back with
-the error next to the field.
-
-```alder part=guestbook/Home
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Submit p -> {
-    let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
-    Task.succeed (Notice.with "Signed" (Redirect (Home {})))
-  },
-}
-```
-
-`update` handles each message. It returns a `Task`, a description of
-writes ending in where the browser goes next. `Submit` inserts the entry
-(`id` and `created` are filled in, so they are not written here) and
-redirects to the page itself, `Home {}`, so that reloading the page does
-not post the form twice. The `match` must handle every message of the
-page, or the module does not compile.
-
-```alder part=guestbook/Home
-view : Model -> Session -> Html Msg
-view model session =
+Home.view : Model -> Session -> Html
+Home.view model session =
   <Layout.Page title="Guestbook">
     <h1>Guestbook</h1>
 
@@ -173,8 +149,8 @@ view model session =
   </Layout.Page>
 ```
 
-`view` turns the model into HTML, with expressions in braces.
-`<form submit={Submit}>` ties the form to its message; `<al-input
+`Home.view` turns the model into HTML, with expressions in braces.
+`<form submit={Submit}>` posts the form to the route `Submit`; `<al-input
 field="name">` draws the labelled input for the field `name` of `Sign`
 (a field the form does not have is a compile error), with the list where
 its error appears. `<al-card>`, `<al-input>` and `<al-button>` are
@@ -186,9 +162,29 @@ entry. `<Layout.Page title="Guestbook">` is a component from `Layout`:
 everything inside it becomes its `children`.
 
 ```alder part=guestbook/Home
+form Sign = { name: Text.NonEmpty, message: Text.NonEmpty }
+
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update params session = {
+  let _ <- Db.insert Entry { name: params.form.name, message: params.form.message }
+  Task.succeed (Response.redirect (Home {}) |> Response.success "Signed")
+}
+```
+
+`form Sign` is the form's fields and their types. Before `Submit`
+reaches any of your code, the runtime checks the posted fields against
+them: an empty name sends the page back with the error next to the
+field. `Submit.update` handles the post, the form in `params.form`. It
+returns a `Task`, a description of writes ending in a `Response`: it
+inserts the entry (`id` and `created` are filled in, so they are not
+written here), then redirects to the page, `Home {}`, so that reloading
+the page does not post the form twice, with a toast that says
+"Signed".
+
+```alder part=guestbook/Home
 test "signing adds an entry" = {
   let _ <- Test.get (Home {})
-  let signed <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
+  let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
   let page <- Test.get (Home {})
   Task.succeed (
     { answer: signed.answer, entries: Test.count "#entries li" page.doc }
@@ -199,7 +195,7 @@ test "signing adds an entry" = {
 
 The page ends with its two tests. The first goes through the page the way a person
 would, in an in-memory browser: it opens `/` (`Test.get`), fills in and
-posts the form (`Test.submit Sign { … }`), and opens the page again. The
+posts the form (`Test.submit Submit { … }`), and opens the page again. The
 answer to the post must be the redirect `update` makes, and the page must
 then list one entry: `Test.count "#entries li"` counts the `<li>` inside
 `<ul id="entries">`. Each test runs against a fresh, empty database, so
@@ -209,8 +205,8 @@ the one entry is the one the test signed. Chapter 10 explains every
 ```alder part=guestbook/Home
 test "entries are listed newest first" = {
   let _ <- Test.get (Home {})
-  let _ <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "First" }
-  let _ <- Test.submit Sign { name: Text.NonEmpty "Grace", message: Text.NonEmpty "Second" }
+  let _ <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "First" }
+  let _ <- Test.submit Submit { name: Text.NonEmpty "Grace", message: Text.NonEmpty "Second" }
   let page <- Test.get (Home {})
   Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
 }
@@ -250,8 +246,8 @@ Page props =
 
 `children` is the HTML written between `<Layout.Page …>` and
 `</Layout.Page>`. `Url.external` marks a link that is not one of the
-app's pages: a link to a page is a page value (`Home {}`), checked by the
-compiler, never a string. The `<script>` line before the stylesheets is
+app's pages: a link to a page is a route value (`Home.Home {}` from
+another module), checked by the compiler, never a string. The `<script>` line before the stylesheets is
 the theme script: it turns the dark theme on (a `dark` class on `<html>`)
 when the visitor chose it or their system prefers it, before the page is
 painted (Appendix C, "Light and dark"). The first stylesheet is the design system's,
@@ -427,16 +423,16 @@ alder check`. An editor can format on save through `alder lsp`.
 Then grow it from the command line. Each of these writes plain Alder with its tests, and only
 if the app still checks (chapter 15):
 
-    alder new page About /about                    # a page
+    alder new route About /about                   # a page
     alder new table Reply entry:Entry.EntryId@ref=Entry@cascade message:Text.NonEmpty
-    alder new page Replies /replies --list Reply   # a page of a table's rows
+    alder new route Replies /replies --list Reply  # a page of a table's rows
     alder new admin                                # an admin of every table, at /admin
 
 `alder new admin` needs someone to let in: a session with a logged-in `user` and a `role` whose
 type has an `Admin` constructor (`role: User.Role = Member`, with `type Role = Member | Admin`),
 set at login. The guestbook has no login yet; chapter 6, "Rules", shows what to add.
 
-- `app/`: the Alder modules, one per file (`Home` is the page at `/`; its table `Entry` is in `app/Table/Entry.alder`, module `Table.Entry`, written `Entry` after `import Table.Entry`).
+- `app/`: the Alder modules, one per file (`Home` is the route at `/`; its table `Entry` is in `app/Table/Entry.alder`, module `Table.Entry`, written `Entry` after `import Table.Entry`).
 - `migrations/`: the database's migrations, written by `alder migrate` after a change to a table.
 - `static/`: files served as they are, at `/static/…`.
 - `adapters/`: the Go behind the app's capabilities (none yet).
@@ -464,8 +460,7 @@ after that it takes a second or two.
 
 `alder test --mutate` measures the tests. It makes small changes to the
 program, called **mutants**, each one a plausible mistake (here: the
-insert replaced by nothing, the redirect turned into a re-render, the
-order reversed), and runs the
+insert replaced by nothing and the order reversed), and runs the
 tests against each. A mutant the tests notice is killed; one they do not
 notice survived, and each survivor names a test that is missing:
 
@@ -474,12 +469,12 @@ $ alder test --mutate
 ok   Home "signing adds an entry"
 ok   Home "entries are listed newest first"
 2 passed, 0 failed
-3 mutants: 3 killed, 0 survived  (score 1.00)
+2 mutants: 2 killed, 0 survived  (score 1.00)
 ```
 
 Without the second test, the order reversed (`Entry.created.desc`
-changed to `.asc`) would survive, and the run would end `3 mutants: 2
-killed, 1 survived  (score 0.67)` with that survivor named under
+changed to `.asc`) would survive, and the run would end `2 mutants: 1
+killed, 1 survived  (score 0.50)` with that survivor named under
 `survived:`. Chapter 10, "Mutation testing", explains the rest.
 
 `alder build` writes the server, one executable with SQLite inside it, and
@@ -500,9 +495,9 @@ dev server on 127.0.0.1:8080 → app on 127.0.0.1:56970
 here.) The first start applies `0001_initial` to the development database,
 `build/guestbook/dev.db`. Sign the guestbook in the browser and the log
 shows each effect the requests ran: `Db.all Entry` for the page; for the
-post, `Db.all Entry` again (the runtime loads the page's model before it
-calls `update`) and `Db.insert Entry`; then `Db.all Entry` for the page
-the post redirects to. Chapter 11 explains each command; the warning is about
+post, `Db.insert Entry` alone (a write route has no model, so nothing is
+read before `update`); then `Db.all Entry` for the page the post
+redirects to. Chapter 11 explains each command; the warning is about
 production, where `ALDER_SECRET` must be set (chapter 6).
 
 ## The to-do app

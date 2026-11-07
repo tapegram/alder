@@ -21,12 +21,15 @@ import (
 // builds an E9 app from `alder new <app> --bare` with `alder new`, `alder edit` and `alder
 // fill` only, no file edited by hand — T10 (teams), T9 (bookings) and, since M15, T11 (orgs
 // with a database per org: `alder new silo`, `@partition=org`, `--requires org`, `alder edit
-// session add-field … via …`; its hidden tests are e9-feedback/hidden/t11-workspace), each with its task's
-// exact names, tables and fields (experiments/tasks/, the Names block). TestDrill replays both;
-// each app has the task's names (drillNames), its own tests pass, the E9 hidden tests pass once
-// added to the app as the E9 harness adds them (experiments/e9-feedback/verify.sh:
-// app/Hidden.alder, `alder test -run '^Hidden '`), and its tests score at least 0.90 under
-// `alder test --mutate`.
+// session add-field … via …`), each with its task's exact names, tables and fields
+// (experiments/tasks/, the Names block; since #160 the pages are route modules, so a page is a
+// module's GET route and a message a write route). TestDrill replays them; each app has the
+// task's names (drillNames), its own tests pass, the E9 hidden tests pass once added to the app
+// as the E9 harness adds them (experiments/e9-feedback/verify.sh: app/Hidden.alder, `alder test
+// -run '^Hidden '`), and its tests score at least 0.90 under `alder test --mutate`. The hidden
+// tests are testdata/drill/<task>/Hidden.alder: experiments/e9-feedback/hidden/<task>'s, written
+// for routes (route values `Rooms.Show.Show { id }`, a form posted to its route); the
+// experiments' own copies are left as the E9 runs used them.
 
 const drillScript = "../../testdata/drill/t10-teams/script.txt"
 
@@ -38,7 +41,9 @@ type drill struct {
 
 // drillNames are the names a task's Names block fixes: the tables and their columns
 // (`name: Type`, the type as written in the table's module), exactly; the session's fields,
-// exactly; the pages (module → path), exactly; each page's messages and forms, exactly, with each form's fields and each message's parameters.
+// exactly; the pages (module → its GET route's path), exactly; each module's write routes (its
+// messages) and forms, exactly, with each form's fields and each write route's parameters
+// (those not in its path).
 type drillNames struct {
 	tables  map[string][]string
 	session []string
@@ -66,7 +71,7 @@ var drills = []drill{
 		},
 		session: []string{"user: Maybe User.UserId"},
 		pages:   map[string]string{"Teams.Index": "/teams", "Teams.Show": "/teams/{id}", "Invites.Index": "/invites", "Auth.Login": "/login"},
-		msgs:    map[string][]string{"Teams.Index": {"Create"}, "Teams.Show": {"Remove", "SendInvite"}, "Invites.Index": {"Accept", "Decline"}, "Auth.Login": {"Submit"}},
+		msgs:    map[string][]string{"Teams.Index": {"Create"}, "Teams.Show": {"Remove", "SendInvite"}, "Invites.Index": {"Accept", "Decline"}, "Auth.Login": {"SignIn"}, "App": {"Logout"}},
 		forms:   map[string][]string{"Teams.Index": {"NewTeam"}, "Teams.Show": {"NewInvite"}, "Auth.Login": {"Credentials"}},
 		formFields: map[string][]string{"Teams.Index.NewTeam": {"name: Text.NonEmpty"}, "Teams.Show.NewInvite": {"email: Text.Email"},
 			"Auth.Login.Credentials": {"email: Text.Email", "password: Text.Secret"}},
@@ -80,7 +85,7 @@ var drills = []drill{
 		},
 		session:    []string{"user: Maybe User.UserId"},
 		pages:      map[string]string{"Rooms.Index": "/rooms", "Rooms.Show": "/rooms/{id}", "Bookings.Index": "/bookings", "Bookings.Show": "/bookings/{id}", "Auth.Login": "/login"},
-		msgs:       map[string][]string{"Rooms.Show": {"Book"}, "Bookings.Show": {"Cancel"}, "Auth.Login": {"Submit"}},
+		msgs:       map[string][]string{"Rooms.Show": {"Book"}, "Bookings.Show": {"Cancel"}, "Auth.Login": {"SignIn"}, "App": {"Logout"}},
 		forms:      map[string][]string{"Rooms.Show": {"NewBooking"}, "Auth.Login": {"Credentials"}},
 		formFields: map[string][]string{"Rooms.Show.NewBooking": {"from: Date", "to: Date"}, "Auth.Login.Credentials": {"email: Text.Email", "password: Text.Secret"}},
 		msgParams:  map[string][]string{},
@@ -95,14 +100,14 @@ var drills = []drill{
 		},
 		session: []string{"user: Maybe User.UserId", "org: Maybe Org.OrgId"},
 		pages:   map[string]string{"Orgs.Index": "/orgs", "Projects.Index": "/projects", "Projects.Show": "/projects/{id}", "Auth.Login": "/login"},
-		msgs:    map[string][]string{"Orgs.Index": {"Open", "Create"}, "Projects.Index": {"Create"}, "Projects.Show": {"Toggle", "Add"}, "Auth.Login": {"Submit"}},
+		msgs:    map[string][]string{"Orgs.Index": {"Open", "Create"}, "Projects.Index": {"Create"}, "Projects.Show": {"Toggle", "Add"}, "Auth.Login": {"SignIn"}, "App": {"Logout"}},
 		forms:   map[string][]string{"Orgs.Index": {"NewOrg"}, "Projects.Index": {"NewProject"}, "Projects.Show": {"NewTodo"}, "Auth.Login": {"Credentials"}},
 		formFields: map[string][]string{"Orgs.Index.NewOrg": {"name: Text.NonEmpty"}, "Projects.Index.NewProject": {"name: Text.NonEmpty"},
 			"Projects.Show.NewTodo": {"title: Text.NonEmpty"}, "Auth.Login.Credentials": {"email: Text.Email", "password: Text.Secret"}},
-		msgParams: map[string][]string{"Orgs.Index.Open": {"org: Org.OrgId"}, "Projects.Show.Toggle": {"id: Todo.TodoId"}},
+		msgParams: map[string][]string{"Orgs.Index.Open": {"org: Org.OrgId"}, "Projects.Show.Toggle": {"todo: Todo.TodoId"}},
 		silos:     map[string][]string{"org": {"Project", "Todo"}},
 		via:       map[string]string{"org": "Membership"},
-		choose:    map[string]string{"org": "Orgs.Index"},
+		choose:    map[string]string{"org": "Orgs.Index.Index"},
 	}},
 }
 
@@ -126,33 +131,37 @@ func checkNames(t *testing.T, dir string, want drillNames) {
 	for _, f := range p.Session.Fields {
 		session = append(session, f.Name+": "+asWritten(types.String(f.Type)))
 	}
-	if !slices.Equal(session, want.session) || p.Login != "Auth.Login" {
-		t.Errorf("session %v, login %q; want %v, Auth.Login", session, p.Login, want.session)
+	if !slices.Equal(session, want.session) || p.Login != "Auth.Login.Login" {
+		t.Errorf("session %v, login %q; want %v, Auth.Login.Login", session, p.Login, want.session)
 	}
+	// #160: a page is a module's GET route, its messages its write routes (their parameters
+	// those not in the path, the form left out), its forms the module's `form`s
 	pages, msgs, forms := map[string]string{}, map[string][]string{}, map[string][]string{}
-	for _, pg := range p.Pages {
-		pages[pg.Module] = pg.Path
-		if len(pg.Msgs) > 0 {
-			msgs[pg.Module] = pg.Msgs
-		}
-		if len(pg.Forms) > 0 {
-			forms[pg.Module] = pg.Forms
-		}
-	}
 	formFields, msgParams := map[string][]string{}, map[string][]string{}
-	for _, pg := range p.Pages {
-		m := p.Modules[pg.Module]
-		for _, d := range m.Syntax.Decls {
-			switch d := d.(type) {
-			case *syntax.FormDecl:
-				for _, f := range d.Fields {
-					formFields[pg.Module+"."+d.Name] = append(formFields[pg.Module+"."+d.Name], f.Name+": "+drillSpan(m.Syntax.Lines, f.Type.GetSpan()))
-				}
-			case *syntax.MsgDecl:
-				if d.Params != nil {
-					for _, f := range d.Params.Fields {
-						msgParams[pg.Module+"."+d.Name] = append(msgParams[pg.Module+"."+d.Name], f.Name+": "+drillSpan(m.Syntax.Lines, f.Type.GetSpan()))
+	seen := map[string]bool{}
+	for _, r := range p.Routes {
+		m := p.Modules[r.Module]
+		if !r.Write() {
+			pages[r.Module] = r.Path
+		} else {
+			msgs[r.Module] = append(msgs[r.Module], r.Name)
+			if r.Decl.Params != nil {
+				for _, f := range r.Decl.Params.Fields {
+					if !strings.Contains(r.Path, "{"+f.Name+"}") {
+						msgParams[r.Module+"."+r.Name] = append(msgParams[r.Module+"."+r.Name], f.Name+": "+drillSpan(m.Syntax.Lines, f.Type.GetSpan()))
 					}
+				}
+			}
+		}
+		if seen[r.Module] {
+			continue
+		}
+		seen[r.Module] = true
+		for _, d := range m.Syntax.Decls {
+			if d, ok := d.(*syntax.FormDecl); ok {
+				forms[r.Module] = append(forms[r.Module], d.Name)
+				for _, f := range d.Fields {
+					formFields[r.Module+"."+d.Name] = append(formFields[r.Module+"."+d.Name], f.Name+": "+drillSpan(m.Syntax.Lines, f.Type.GetSpan()))
 				}
 			}
 		}
@@ -339,7 +348,7 @@ func TestDrill(t *testing.T) {
 			}
 
 			// the hidden tests, as the E9 harness runs them
-			hidden, err := os.ReadFile("../../experiments/e9-feedback/hidden/" + d.task + "/Hidden.alder")
+			hidden, err := os.ReadFile("../../testdata/drill/" + d.task + "/Hidden.alder")
 			if err != nil {
 				t.Fatal(err)
 			}
