@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -17,6 +18,9 @@ import (
 	"alder/internal/routefix"
 	"alder/internal/style"
 )
+
+// pageDeclRe finds a `page` declaration.
+var pageDeclRe = regexp.MustCompile(`(?m)^page `)
 
 const fixUsage = "usage: alder fix --routes [--name N] [--dry-run] [--dir app] [file…]"
 
@@ -149,6 +153,17 @@ func runFixTo(args []string, stdout, stderr io.Writer) (code int) {
 			return 2
 		}
 		fmt.Fprintf(stdout, "rewrote %s\n", f)
+	}
+	// A page `alder new admin` wrote has `@admin` regions around its messages; the route lines
+	// are grouped at the top, out of those regions, which `alder regen admin` then refuses.
+	// The admin's generator writes routes now, so regenerating it is the better rewrite.
+	for _, f := range slices.Sorted(maps.Keys(out)) {
+		if string(out[f]) == string(files[f]) || len(want) > 0 && !want[f] {
+			continue
+		}
+		if strings.Contains(string(files[f]), "-- @admin begin") && pageDeclRe.Match(files[f]) {
+			fmt.Fprintf(stderr, "alder fix: %s: written by alder new admin, and its @admin regions no longer match the route lines: regenerate the admin instead (move app/Admin aside, run alder new admin, then carry over your own changes)\n", f)
+		}
 	}
 	left := 0
 	for _, h := range holes {
