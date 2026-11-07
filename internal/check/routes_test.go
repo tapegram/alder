@@ -343,3 +343,24 @@ func TestRoutes_StepParams(t *testing.T) {
 		t.Errorf("%d steps recorded, want 3", n)
 	}
 }
+
+// TestRoutes_Login (#160): App's `login` may name a GET route `Module.Route` a visitor can open;
+// a write route, a route with `requires`, or one with a parameter without a default is refused.
+func TestRoutes_Login(t *testing.T) {
+	for _, c := range []struct{ route, want string }{
+		{"route In = GET \"/in\" { next: Text = \"\" }\n\n" + getRoute("In", "<p>in</p>"), ""},
+		{"route In = POST \"/in\" { }\n\nIn.update : In.Params -> Session -> Task Response\nIn.update params session = Task.succeed Response.refresh\n", "is a POST route"},
+		{"route In = GET \"/in\" { } requires user\n\n" + getRoute("In", "<p>in</p>"), "has `requires user`"},
+		{"route In = GET \"/in/{id}\" { id: Text }\n\n" + getRoute("In", "<p>in</p>"), "its parameter `id` has no default"},
+	} {
+		files := routeApp("module Todos\n\nroute Mine = GET \"/mine\" { } requires user\n\n" + getRoute("Mine", "<p>mine</p>") + c.route)
+		files["App.alder"] = strings.Replace(files["App.alder"], "login = Login", "login = Todos.In", 1)
+		_, errs := checkFiles(t, files)
+		switch {
+		case c.want == "" && len(errs) != 0:
+			t.Errorf("%s: errors = %q", c.route, errs)
+		case c.want != "" && (len(errs) != 1 || !hasError(errs, "E0011", c.want)):
+			t.Errorf("%s: errors = %q, want %q", c.route, errs, c.want)
+		}
+	}
+}

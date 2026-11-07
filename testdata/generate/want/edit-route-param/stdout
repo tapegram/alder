@@ -5,8 +5,8 @@ edited app/Home.alder
  import Layout
  import Table.Entry
  
--page "/" { }
-+page "/" { q: Text = "" }
+-route Home   = GET  "/"         { }
++route Home   = GET  "/"         { q: Text = "" }
+ route Submit = POST "/_/Submit" { } form Sign
  
  type Model = { entries: List Entry }
- 

@@ -208,7 +208,7 @@ func TestDeploy_ScriptScaffold(t *testing.T) {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errs)
 	}
 	for _, want := range []string{"alder deploy local → Script ./scripts/record.sh\n", "gate\n", "  check    ok\n", "  build    ok\n",
-		"  test     ok  2 passed\n", "  mutate   ok  score 1.00 ≥ floor 0.00 (none yet; 3 mutants, 0 survived)\n",
+		"  test     ok  2 passed\n", "  mutate   ok  score 1.00 ≥ floor 0.00 (none yet; 2 mutants, 0 survived)\n",
 		"plan\n", "  0001_initial\n", "    create table Entry\n", "script ./scripts/record.sh " + filepath.Join(testBuildDir(t), "demo", "deploy") + "/"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)

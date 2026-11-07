@@ -3,12 +3,14 @@ module Home
 import Layout
 import Table.Entry
 
-page "/" { }
+route Home   = GET  "/"         { }
+route Submit = POST "/_/Submit" { } form Sign
+route Clear  = POST "/_/Clear"  { }
 
 type Model = { entries: List Entry }
 
-load : Params -> Session -> Query Model
-load params session = {
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = {
   let entries <-
     Db.from Entry
       |> Db.orderBy Entry.created.desc
@@ -16,23 +18,8 @@ load params session = {
   Query.succeed { entries: entries }
 }
 
-form Sign = { name: Text.NonEmpty, message: Text.NonEmpty }
-
-msg Submit form Sign
-
-msg Clear
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Submit p -> {
-    let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
-    Task.succeed (Notice.with "Signed" (Redirect (Home {})))
-  },
-  Clear p -> ?clear,
-}
-
-view : Model -> Session -> Html Msg
-view model session =
+Home.view : Model -> Session -> Html
+Home.view model session =
   <Layout.Page title="Guestbook">
     <h1>Guestbook</h1>
 
@@ -52,9 +39,20 @@ view model session =
     <al-button click={Clear}>Clear</al-button>
   </Layout.Page>
 
+form Sign = { name: Text.NonEmpty, message: Text.NonEmpty }
+
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update params session = {
+  let _ <- Db.insert Entry { name: params.form.name, message: params.form.message }
+  Task.succeed (Response.redirect (Home {}) |> Response.success "Signed")
+}
+
+Clear.update : Clear.Params -> Session -> Task Response
+Clear.update params session = Task.succeed Response.refresh
+
 test "signing adds an entry" = {
   let _ <- Test.get (Home {})
-  let signed <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
+  let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
   let page <- Test.get (Home {})
   Task.succeed (
     { answer: signed.answer, entries: Test.count "#entries li" page.doc }
@@ -64,20 +62,14 @@ test "signing adds an entry" = {
 
 test "entries are listed newest first" = {
   let _ <- Test.get (Home {})
-  let _ <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "First" }
-  let _ <- Test.submit Sign { name: Text.NonEmpty "Grace", message: Text.NonEmpty "Second" }
+  let _ <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "First" }
+  let _ <- Test.submit Submit { name: Text.NonEmpty "Grace", message: Text.NonEmpty "Second" }
   let page <- Test.get (Home {})
   Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
 }
 
--- Fill ?expected with what pressing Clear must do, so that a test fails when the arm
--- does something else: its answer (`r.answer`: Rerendered, Redirected …) and what it
--- changed (`after`: the page opened again, `after.answer` Shown, or PageMissing when the arm
--- deleted the page's row, and `after.doc` its HTML), as
--- `{ answer: r.answer, … } == { answer: Rerendered, … }`.
 test "pressing Clear" = {
   let _ <- Test.get (Home {})
   let r <- Test.click Clear
-  let after <- Test.open (Home {})
-  Task.succeed ?expected
+  Task.succeed (r.answer == Refreshed)
 }

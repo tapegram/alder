@@ -8,7 +8,7 @@ wrote migrations/0002_create_user.sql
 edited migrations/schema.json
 --- a/app/App.alder
 +++ b/app/App.alder
-@@ -1,9 +1,22 @@
+@@ -1,9 +1,14 @@
  module App
  
  import Layout
@@ -17,32 +17,39 @@ edited migrations/schema.json
 -session { }
 +session { user: Maybe User.UserId }
  
-+login = Auth.Login
++login = Auth.Login.Login
 +
-+msg Logout
-+
-+update : Msg -> Session -> Task Nav
-+update msg session = match msg {
-+  Logout p -> {
-+    let _ <- Session.put (\s -> { s | user: Nothing })
-+    Task.succeed (Redirect (Auth.Login {}))
-+  },
-+}
++route Logout = POST "/_/Logout" { }
 +
  error : Error -> Html Never
  error err =
    <Layout.Page title="Error">
-@@ -13,3 +26,13 @@
+@@ -13,3 +18,28 @@
  
  notFound : Html Never
  notFound = <Layout.Page title="Not found"><h1>Not found</h1></Layout.Page>
 +
-+-- Every Log out button is on a page that requires a user, so a browser test cannot tell this
-+-- Redirect from a Rerender (book 10, "The logout redirect"): the test calls update itself.
++-- Logout empties the session's user and goes to log in: a `POST`, sent by a button
++-- (`click={App.Logout}`), a form without JavaScript.
++Logout.update : Logout.Params -> Session -> Task Response
++Logout.update params session = {
++  let _ <- Session.put (\s -> { s | user: Nothing })
++  Task.succeed (Response.redirect (Auth.Login.Login {}))
++}
++
++-- Logging out from the login page, which a visitor may open: the answer is the redirect,
++-- not the page shown again.
 +test "Logout clears the user and goes to log in" = {
-+  let r <- Test.run (update Logout { user: Just (User.UserId "me") })
++  let me <- Db.insert User {
++    email: Text.Email "email-1@example.com",
++    name: Text.NonEmpty "name-1",
++    passwordHash: Text.Secret "passwordhash-1",
++  }
++  let _ <- Test.login { user: Just me }
++  let _ <- Test.get (Auth.Login.Login {})
++  let r <- Test.click Logout
 +  Task.succeed (
-+    { value: r.value, trace: r.trace }
-+      == { value: Ok (Redirect (Auth.Login {})), trace: ["Session.put"] }
++    { answer: r.answer, user: r.session.user }
++      == { answer: Redirected (Auth.Login.Login {}), user: Nothing }
 +  )
 +}

@@ -153,6 +153,7 @@ func (mc *modCtx) checkApp() {
 			}
 		case *syntax.LoginDecl:
 			hasLogin = true
+			mc.checkLoginRoute(d)
 		case *syntax.SessionDecl:
 			hasSession = true
 		}
@@ -203,5 +204,30 @@ func (mc *modCtx) checkApp() {
 	}
 	if c.usesSessionPut && !hasSession {
 		c.errorf(diag.MissingDecl, mc.m.Span, "`Session.put` is used, but `App` has no `session`")
+	}
+}
+
+// checkLoginRoute: `login = Module.Route` (#160) names a GET route that a visitor can open: no
+// `requires` (a 303 to it would loop) and no parameter without a default (the runtime sends a
+// visitor to its path as written).
+func (mc *modCtx) checkLoginRoute(d *syntax.LoginDecl) {
+	i := strings.LastIndexByte(d.Page, '.')
+	if i < 0 || mc.c.pages[d.Page] != nil {
+		return
+	}
+	r := mc.c.route(d.Page[:i], d.Page[i+1:])
+	switch {
+	case r == nil: // names reported it
+	case isWrite(r.Method):
+		mc.c.errorf(diag.InvalidDecl, d.Span, "`login = %s`: `%s` is a %s route; a visitor is sent to log in with a GET", d.Page, d.Page, r.Method)
+	case len(r.Requires) > 0:
+		mc.c.errorf(diag.InvalidDecl, d.Span, "`login = %s`: `%s` has `requires %s`; a visitor sent to log in could not open it", d.Page, d.Page, strings.Join(r.Requires, ", "))
+	case r.Params != nil:
+		for _, f := range r.Params.Fields {
+			if !f.HasDefault {
+				mc.c.errorf(diag.InvalidDecl, d.Span, "`login = %s`: its parameter `%s` has no default; a visitor is sent to log in without one", d.Page, f.Name)
+				return
+			}
+		}
 	}
 }

@@ -82,3 +82,54 @@ func TestFill_ShortQualifierSkipsPages(t *testing.T) {
 		t.Fatalf("imports %v err %v", imports, err)
 	}
 }
+
+// twoRoutes is a route module with two write routes, each `update` a hole, and a GET route whose
+// view is one: `Module.Route.member` names one route's member (#160).
+const twoRoutes = `module Notes
+
+route Notes = GET  "/notes"         { }
+route Clear = POST "/notes/_/Clear" { }
+route Pin   = POST "/notes/_/Pin"   { }
+
+Notes.load : Notes.Params -> Session -> Query Int
+Notes.load params session = Query.succeed 1
+
+Notes.view : Int -> Session -> Html
+Notes.view n session = ?view
+
+Clear.update : Clear.Params -> Session -> Task Response
+Clear.update params session = ?clear
+
+Pin.update : Pin.Params -> Session -> Task Response
+Pin.update params session = ?pin
+`
+
+// TestFill_RouteMember (#160): a hole in a route member is addressed `Module.Route.member`, which
+// `alder fill --list` prints; the bare member (`Notes.update`) is refused when several routes
+// have it, naming them, and taken when one does (`Notes.view`). --decl takes the same address.
+func TestFill_RouteMember(t *testing.T) {
+	p := fillApp(t, map[string]string{"app/Notes.alder": twoRoutes})
+	var got []string
+	for _, h := range HoleIndex(p.Prog, p.Diags) {
+		if h.Module == "Notes" {
+			got = append(got, h.Address())
+		}
+	}
+	if want := []string{"Notes.Notes.view", "Notes.Clear.update", "Notes.Pin.update"}; !slices.Equal(got, want) {
+		t.Errorf("addresses %q, want %q", got, want)
+	}
+	edits, h, _, err := Fill(p, "Notes.Pin.update", "", "Task.succeed Response.refresh")
+	if err != nil || h.Name != "pin" || !strings.Contains(edits[0].Body, "Pin.update params session = (Task.succeed Response.refresh)\n") || !strings.Contains(edits[0].Body, "= ?clear\n") {
+		t.Fatalf("Fill Notes.Pin.update: %v\n%v", err, edits)
+	}
+	if _, _, _, err := Fill(p, "Notes.update", "", "Task.succeed Response.refresh"); err == nil || !strings.Contains(err.Error(), "`Notes.Clear.update`, `Notes.Pin.update`") {
+		t.Errorf("Fill Notes.update: %v, want the routes named", err)
+	}
+	if _, h, _, err := Fill(p, "Notes.view", "", "<p>n</p>"); err != nil || h.Name != "view" {
+		t.Errorf("Fill Notes.view: %v", err)
+	}
+	edits, _, err = FillDecl(p, "Notes.Clear.update", "Task.succeed Response.refresh")
+	if err != nil || !strings.Contains(edits[0].Body, "Clear.update params session = Task.succeed Response.refresh\n") || !strings.Contains(edits[0].Body, "= ?pin\n") {
+		t.Fatalf("FillDecl Notes.Clear.update: %v\n%v", err, edits)
+	}
+}

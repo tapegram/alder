@@ -205,8 +205,8 @@ func choices(f Field, p *Program) []string {
 				continue
 			}
 			for _, d := range m.Syntax.Decls {
-				if vd, ok := d.(*syntax.ValueDecl); ok {
-					out = append(out, name+"."+vd.Name)
+				if vd, ok := d.(*syntax.ValueDecl); ok { // a route's member by its full name
+					out = append(out, name+"."+vd.FullName())
 				}
 			}
 		}

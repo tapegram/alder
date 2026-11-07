@@ -93,7 +93,7 @@ func (b *sshBox) write(t *testing.T, rel, content string) {
 // post posts an entry to the scaffold's form at the box's public port (curl at the box).
 func (b *sshBox) post(t *testing.T, name string) {
 	t.Helper()
-	b.sh(t, fmt.Sprintf("curl -s -o /dev/null -X POST -H 'Origin: http://127.0.0.1:%d' -d 'name=%s&message=hello' http://127.0.0.1:%d/_m/Home/Submit", b.port, name, b.port))
+	b.sh(t, fmt.Sprintf("curl -s -o /dev/null -X POST -H 'Origin: http://127.0.0.1:%d' -d 'name=%s&message=hello' http://127.0.0.1:%d/_/Submit", b.port, name, b.port))
 }
 
 // names is the entries the page at the box's public port lists, newest first.
@@ -667,7 +667,7 @@ func TestDeploySsh_BackupRestore(t *testing.T) {
 	}
 	post := func(name string) {
 		t.Helper()
-		box.sh(t, fmt.Sprintf("curl -s -o /dev/null -X POST -H 'Origin: http://127.0.0.1:%d' -d 'name=%s&message=hello' http://127.0.0.1:%d/_m/Home/Submit", box.port, name, box.port))
+		box.sh(t, fmt.Sprintf("curl -s -o /dev/null -X POST -H 'Origin: http://127.0.0.1:%d' -d 'name=%s&message=hello' http://127.0.0.1:%d/_/Submit", box.port, name, box.port))
 	}
 	entries := func() int {
 		t.Helper()
@@ -908,7 +908,7 @@ func TestDeploySsh_RestoreBackup(t *testing.T) {
 	box.sh(t, fmt.Sprintf("printf 'ALDER_SECRET=%s\\nSMTP_URL=smtp://mail\\n' > %s/env", strings.Repeat("s", 32), box.qr()))
 	post := func(name string) {
 		t.Helper()
-		box.sh(t, fmt.Sprintf("curl -s -o /dev/null -X POST -H 'Origin: http://127.0.0.1:%d' -d 'name=%s&message=hello' http://127.0.0.1:%d/_m/Home/Submit", box.port, name, box.port))
+		box.sh(t, fmt.Sprintf("curl -s -o /dev/null -X POST -H 'Origin: http://127.0.0.1:%d' -d 'name=%s&message=hello' http://127.0.0.1:%d/_/Submit", box.port, name, box.port))
 	}
 	names := func() string {
 		t.Helper()

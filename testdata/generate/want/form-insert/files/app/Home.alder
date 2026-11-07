@@ -3,12 +3,14 @@ module Home
 import Layout
 import Table.Entry
 
-page "/" { }
+route Home        = GET  "/"              { }
+route Submit      = POST "/_/Submit"      { } form Sign
+route SubmitQuick = POST "/_/SubmitQuick" { } form Quick
 
 type Model = { entries: List Entry }
 
-load : Params -> Session -> Query Model
-load params session = {
+Home.load : Home.Params -> Session -> Query Model
+Home.load params session = {
   let entries <-
     Db.from Entry
       |> Db.orderBy Entry.created.desc
@@ -16,28 +18,8 @@ load params session = {
   Query.succeed { entries: entries }
 }
 
-form Sign = { name: Text.NonEmpty, message: Text.NonEmpty }
-
-msg Submit form Sign
-
-form Quick = { name: Text.NonEmpty, message: Text.NonEmpty }
-
-msg SubmitQuick form Quick
-
-update : Msg -> Model -> Session -> Task Nav
-update msg model session = match msg {
-  Submit p -> {
-    let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
-    Task.succeed (Notice.with "Signed" (Redirect (Home {})))
-  },
-  SubmitQuick p -> {
-    let _ <- Db.insert Entry { name: p.form.name, message: p.form.message }
-    Task.succeed (Redirect (Home {}))
-  },
-}
-
-view : Model -> Session -> Html Msg
-view model session =
+Home.view : Model -> Session -> Html
+Home.view model session =
   <Layout.Page title="Guestbook">
     <h1>Guestbook</h1>
 
@@ -61,9 +43,25 @@ view model session =
     </ul>
   </Layout.Page>
 
+form Sign = { name: Text.NonEmpty, message: Text.NonEmpty }
+
+Submit.update : Submit.Params -> Session -> Task Response
+Submit.update params session = {
+  let _ <- Db.insert Entry { name: params.form.name, message: params.form.message }
+  Task.succeed (Response.redirect (Home {}) |> Response.success "Signed")
+}
+
+form Quick = { name: Text.NonEmpty, message: Text.NonEmpty }
+
+SubmitQuick.update : SubmitQuick.Params -> Session -> Task Response
+SubmitQuick.update params session = {
+  let _ <- Db.insert Entry { name: params.form.name, message: params.form.message }
+  Task.succeed (Response.redirect (Home {}) |> Response.success "Saved")
+}
+
 test "signing adds an entry" = {
   let _ <- Test.get (Home {})
-  let signed <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
+  let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
   let page <- Test.get (Home {})
   Task.succeed (
     { answer: signed.answer, entries: Test.count "#entries li" page.doc }
@@ -73,15 +71,18 @@ test "signing adds an entry" = {
 
 test "entries are listed newest first" = {
   let _ <- Test.get (Home {})
-  let _ <- Test.submit Sign { name: Text.NonEmpty "Ada", message: Text.NonEmpty "First" }
-  let _ <- Test.submit Sign { name: Text.NonEmpty "Grace", message: Text.NonEmpty "Second" }
+  let _ <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "First" }
+  let _ <- Test.submit Submit { name: Text.NonEmpty "Grace", message: Text.NonEmpty "Second" }
   let page <- Test.get (Home {})
   Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
 }
 
 test "submitting Quick adds a row" = {
   let _ <- Test.get (Home {})
-  let r <- Test.submit Quick { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
+  let r <- Test.submit SubmitQuick {
+    name: Text.NonEmpty "name-1",
+    message: Text.NonEmpty "message-1",
+  }
   let rows <- Db.from Entry |> Db.all
   Task.succeed (
     { answer: r.answer, rows: List.map (\row -> { name: row.name, message: row.message }) rows }
@@ -94,7 +95,7 @@ test "submitting Quick adds a row" = {
 
 test "Quick refuses an empty name" = {
   let _ <- Test.get (Home {})
-  let r <- Test.submitRaw Quick [{ name: "name", value: "" }, { name: "message", value: "x" }]
+  let r <- Test.submitRaw SubmitQuick [{ name: "name", value: "" }, { name: "message", value: "x" }]
   let rows <- Db.from Entry |> Db.count
   Task.succeed (
     { answer: r.answer, rows: rows }
