@@ -112,9 +112,30 @@ DROP_SUBSECTIONS = {
 # and says how `load` uses it. Chapter 5's "Custom elements" (M7a) keeps its rules in one
 # paragraph, and the input elements in another, without the manifest's story and the examples;
 # its click-button paragraph keeps the fact, not the markup. Chapter 6's paragraph on generated
-# pages goes (COMMANDS lists the generators).
+# pages goes (COMMANDS lists the generators). Chapter 3's route declarations (#160, PR 8) are a summary
+# of chapter 6's table; chapter 5's options check and its long-list pattern are shortened to their rules.
 TRIMS = {
-    "05": [("A `<button click={…}>` works with and without JavaScript.", "`data-*` and `aria-*` attributes take `Text`.",
+    "03": [("A page, and every action it sends, is a **route**", "## Literals",
+            "A page, and every action it sends, is a **route**: a `route` line\n"
+            "(`route NAME = METHOD \"path\" { params }`, then an optional `form F` and `requires …`) and\n"
+            "the declarations written `Route.name` (`R.load`, `R.view`, `R.update`, with the signatures of\n"
+            "chapter 6); an unqualified declaration belongs to the module. A qualifier that is no route of\n"
+            "the module is E0044.\n\n")],
+    "05": [("A request can be crafted by hand, so the browser's list is not a", "**A list too long to render.**",
+            "A request can be crafted by hand, so the runtime checks a posted value against the options of\n"
+            "the page the form was posted from (`Alder-Page`, else `Referer`), drawn again. A value that is\n"
+            "not one of them is the field error \"must be one of the options\": `422`, the page again, no\n"
+            "`update`; an empty value passes only when the select offers the empty option; a post from a\n"
+            "page that does not offer the options is `400`. `options` may use only the view's parameters\n"
+            "(`model`, `session`) and names it binds itself, and the select must be in a `GET` route's\n"
+            "`view`, not in a `for`, a `let` or `match` binding, or a component (E0304).\n\n"),
+           ("**A list too long to render.**", "A `<form submit={R}>` where the write route",
+            "**A list too long to render.** Keep the narrowing text as a parameter of the page's route\n"
+            "(`findAuthor: Text = \"\"`), have `load` fetch at most 50 rows that contain it, and add a second\n"
+            "form with its own write route whose `update` answers `Response.redirect` to the page with\n"
+            "`findAuthor` set (a `refresh` would keep the old text). The select is checked against the\n"
+            "narrowed page it is posted from.\n\n"),
+           ("A `<button click={…}>` works with and without JavaScript.", "`data-*` and `aria-*` attributes take `Text`.",
             "A `<button click={…}>` works with and without JavaScript (chapter 6); a\n`click` on any other element needs JavaScript.\n\n"),
            ("## Custom elements\n", "## Partial updates",
             "## Custom elements\n\nA tag with a hyphen is a custom element, declared by the built-in\n"

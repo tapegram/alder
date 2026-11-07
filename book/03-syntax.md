@@ -92,8 +92,9 @@ imported module where its qualifier belongs is E0205: `Table.Todo.find`
 for `import Table.Todo` must be `Todo.find`, and `<Admin.Layout.Page>`
 must be `<AdminLayout.Page>`. The compiler still understands the name, so
 that one error is the only one, and its fix is the qualified spelling. The
-same holds for the members of an imported page module: with `import
-Todos.Index`, its helper is `Index.helper`, not `Todos.Index.helper`.
+same holds for the members of an imported module, those of its routes
+included: with `import Todos.Index`, its helper is `Index.helper` and a member
+of its route `Row` is `Index.Row.view`, not `Todos.Index.Row.view`.
 `alder fmt` applies the E0204 and E0205 fixes for a file of an app project
 (chapter 11), so one run migrates an older project.
 
@@ -105,15 +106,18 @@ Table.Todo` that is `Todo` for the `type Todo` in `app/Table/Todo.alder`,
 and with `import Table.Todo as TableTodo` the same type is `TableTodo`.
 
 **Addresses in prose.** When the book or a compiler message names a
-declaration of a page by where it lives, it writes the whole address,
-`Todos.Index.load` or `Todos.Index.recent`. That is a name for the reader,
-not code to type: in a file you write `Index.recent` after `import
+declaration by where it lives, it writes the whole address:
+`Todos.Index.Index.load` (the module `Todos.Index`, its route `Index`, the
+member `load`) or `Todos.Index.recent`. That is a name for the reader, not
+code to type: in a file you write `Index.recent` after `import
 Todos.Index`.
 
-**Pages and app-level messages are global.** A page value (`Todos.Show { id:
-id }`), an app-level message (`App.Logout`), and their type `App.Msg` can be
-used from any module without an import. Everything else a module uses must
-be imported, and imports may not form a cycle.
+**Route values are global.** A route value (`Todos.Show.Show { id: id }`: the
+module `Todos.Show`, its route `Show`, the parameters) and an app-level route
+(`App.Logout`) can be used from any module without an import. Everything else
+a module uses, a route's members (`Index.Row.view`) included, must be
+imported, and imports may not form a cycle. Chapter 6, "Names", says how a
+dotted name is read.
 
 **Constructors are never qualified.** If `Todo` defines `type Priority = Low
 | Normal | High`, a module that imports `Todo` writes `Normal`, not
@@ -132,24 +136,17 @@ both a constructor of `User.Role` and a table: write `Member` for the
 constructor only where a `User.Role` is expected, or qualify the table
 `Member.Member`".
 
-Two other names can hide each other, because of the order in which a name
-is looked up. An unqualified constructor is looked up before a page, so a
-constructor `Status` (of `type Code = Status Int | Down`) hides the page
-module `Status` wherever the constructor is in scope: its own module and
-every module importing it (a `msg Status` only in its own module, a Prelude
-constructor such as `Ok` everywhere). There the page has no other spelling,
-and `Status { cfg: "pa" }` builds the constructor. The compiler reports the
-clash at the constructor: an error (E0041) when some module in its scope
-writes `Status { … }` for the page and the constructor takes no record, a
-warning (W0011) otherwise (always, for a `msg`, which takes a record).
-Rename one of them, for example `module StatusPage`. Likewise a qualifier is
-looked up before a capability, so `import Clarity` beside a module whose
-`capability Clarity` has the entry `latest` makes `Clarity.latest` a name in
-module `Clarity`. The capability is still reached through its own module's
-qualifier (`Feeds.Clarity.latest`, or `DataClarity.final` for a capability
-named like its module). A call that module `Clarity` lacks is an error
-whose fix is that spelling; a call it has compiles to the module's value,
-and the import gets a warning (W0010) that says so.
+A route may not take the name of a constructor, brand or table in scope in
+its module (E0044, chapter 6, "Names"): `Active { … }` could not mean both.
+Another pair of names can hide each other, because of the order in which a
+name is looked up: a qualifier is looked up before a capability, so `import
+Clarity` beside a module whose `capability Clarity` has the entry `latest`
+makes `Clarity.latest` a name in module `Clarity`. The capability is still
+reached through its own module's qualifier (`Feeds.Clarity.latest`, or
+`DataClarity.final` for a capability named like its module). A call that
+module `Clarity` lacks is an error whose fix is that spelling; a call it has
+compiles to the module's value, and the import gets a warning (W0010) that
+says so.
 
 Everything a module defines is visible to other modules, with one exception:
 a brand's constructor (see chapter 4). There is no `export` list.
@@ -164,17 +161,17 @@ a module name segment may not end with `_`: the compiler joins the parts of
 the Go names it generates with `__` (chapter 13), so these are the names it
 keeps for itself.
 
-In a page module and in `App`, the compiler also generates the types
-`Params`, `Msg`, `Session` and, for each `msg Pick`, `PickParams`. A type,
-table, form or component of yours may not take one of those names (E0012).
-Nor may a type, table, form or union of any module take the name of a
-Prelude type that programs write (`Query`, `Task`, `Html`, `Maybe`,
-`Result`, `Nav`, `List`, `Dict`, `Int`, `Float`, `Text`, `Bool`, `Unit`,
-`Date`, `Time`, `Never`, `Error`), which every module uses unqualified
-(E0012 too). Nor may one take `Doc` or `Answer`, the Prelude's types
-for tests (chapter 10), and no constructor or `msg` may be named like
-one of `Answer`'s: `Shown`, `Rerendered`, `Redirected`, `FormRejected`,
-`PageMissing`, `RequestFailed`. Db's own types, such as `Order` and `Page`, stay
+For each route the compiler also generates types named after it:
+`Index.Params`, the route's parameter record, and `Index.Session`, its session
+(chapter 6, "Qualified declarations"). They are qualified by the route, so
+they never meet a type of your own. A type, table, form or union of any
+module may not take the name of a Prelude type that programs write (`Query`,
+`Task`, `Html`, `Maybe`, `Result`, `Response`, `Route`, `File`, `List`,
+`Dict`, `Int`, `Float`, `Text`, `Bool`, `Unit`, `Date`, `Time`, `Never`,
+`Error`), which every module uses unqualified (E0012). Nor may one take `Doc`
+or `Answer`, the Prelude's types for tests (chapter 10), and no constructor
+may be named like one of `Answer`'s: `Shown`, `Rendered`, `Refreshed`,
+`Redirected`, `FormRejected`, `PageMissing`, `RequestFailed`. Db's own types, such as `Order` and `Page`, stay
 free: `table Order` is fine.
 
 ## Comments
@@ -200,12 +197,55 @@ add a b = a + b
 -- Type (chapter 4)
 type Filter = All | Active | Completed
 
--- Page, msg, form, table, capability, test (later chapters)
+-- Route, form, table, capability, test (later chapters)
 ```
 
 Names of values and functions start with a lowercase letter. Names of types,
 constructors, modules, and components start with an uppercase letter.
 Multi-word names are `camelCase` or `PascalCase`.
+
+### Route declarations
+
+A page, and every action it sends, is a **route**: a `route` line, and the
+declarations that belong to it. A declaration that belongs to a route is
+written with the route's name before it, `Route.name`, and a declaration
+without one belongs to the module. The order of declarations is free here as
+everywhere. Here is a module with a page and a write; chapter 6 explains each
+line:
+
+```alder
+module Tally
+
+route Tally = GET  "/tally"      { start: Int = 0 }
+route Bump  = POST "/tally/bump" { by: Int = 1 }
+
+type Model = { count: Int }
+
+Tally.load : Tally.Params -> Session -> Query Model
+Tally.load params session = Query.succeed { count: params.start }
+
+Tally.view : Model -> Session -> Html
+Tally.view model session = <p id="count">{Text.fromInt model.count}</p>
+
+Bump.update : Bump.Params -> Session -> Task Response
+Bump.update params session = Task.succeed (Response.redirect (Tally { start: params.by }))
+```
+
+The `route` line is `route NAME = METHOD "path" { params }`, with an optional
+`form F` and `requires …` after the parameters. The members are fixed, and
+their signatures written out, as everywhere in Alder:
+
+| declaration | on | type |
+|---|---|---|
+| `R.load` | a `GET` route | `R.Params -> Session -> Query m` |
+| `R.view` | a `GET` route | `m -> Session -> Html` |
+| `R.update` | a write route (`POST`, `PUT`, `PATCH`, `DELETE`) | `R.Params -> Session -> Task Response` |
+
+`R.Params` is the parameter record, generated from the `route` line. A name
+before the dot that is no route of the module is E0044. Inside the module a
+route's value is its name applied to its parameters (`Tally { start: params.by }`);
+from another module it is `Tally.Tally { start: 3 }` (the module, then the
+route). The rules for routes are in chapter 6.
 
 ## Literals
 
@@ -482,10 +522,12 @@ rules, so that the first draft already matches:
   declarations, a signature directly above its value. Lines break at 100
   columns where no rule below decides.
 - Imports are sorted, one per line.
-- A record, record type, form, table, page-params list, `session`,
-  `deploy` or `theme` (and each record inside it) with 3 or more fields is
-  always vertical, one field per line
-  with a trailing comma; with 1 or 2 it stays on one line if it fits. The
+- A record, record type, form, table, `session`, `deploy` or `theme` (and
+  each record inside it) with 3 or more fields is always vertical, one field
+  per line with a trailing comma; with 1 or 2 it stays on one line if it
+  fits. A `route` line is never wrapped, and the `route` lines that follow
+  each other are aligned in columns: name, method, path, parameters, then
+  `form` and `requires`. The
   record type of a function's signature, a capability or a fake breaks
   only when too wide. An empty record expression or pattern is `{}`; an
   empty record type, form or declaration body is `{ }`.
@@ -551,11 +593,14 @@ reset r = { r |
 ## Reserved words
 
 ```
-module import type brand where page msg form table capability fake session
-login test let match if then else for in requires
+module import type brand where route page msg form table capability fake
+session login test let match if then else for in requires
 ```
 
-The declaration-head words (`module import type page msg form table
+(`page` and `msg` are the old form of a route and stay reserved while the
+compiler still reads it; `alder fix --routes` rewrites it, chapter 6.)
+
+The declaration-head words (`module import type route page msg form table
 capability fake session login test`) are reserved only at the start of a line
 (column 1). Elsewhere they are ordinary names, so `load params session = …`
 and `{ form: 1 }` are valid. The remaining words are reserved everywhere.
