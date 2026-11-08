@@ -170,12 +170,13 @@ func (g *adminGen) bulk(at *adminTable) {
 		free := tb.insertRow(t, "", nil, keep == "")
 		unchosen := tb.insertRow(t, "", nil, false)
 		sel := []string{free}
-		lhs := "answer: r.answer, gone: Maybe.map (\\row -> row." + id + ") gone, left: Maybe.map (\\row -> row." + id + ") left"
-		rhs := "answer: Refreshed, gone: Nothing, left: Just " + unchosen
+		lhs := "answer: r.answer, notices: r.notices, gone: Maybe.map (\\row -> row." + id + ") gone, left: Maybe.map (\\row -> row." + id + ") left"
+		rhs := "answer: Refreshed, notices: [\"Deleted 1 of 1\"], gone: Nothing, left: Just " + unchosen
 		name := "deleting the chosen rows"
 		if keep != "" {
 			sel = []string{keep, free}
 			name = "deleting the chosen rows leaves the ones other rows refer to"
+			rhs = strings.Replace(rhs, "Deleted 1 of 1", "Deleted 1 of 2", 1)
 		}
 		tb.let("let _ <- Test.get (%s)", pageLit("Bulk", []string{ids(sel...)}))
 		tb.let("let r <- Test.submit (%s) { }", pageLit("BulkDelete", []string{ids(sel...)}))
@@ -207,7 +208,7 @@ func (g *adminGen) bulk(at *adminTable) {
 		tb.let("let one <- Db.get %s %s", t.Name, a)
 		tb.let("let other <- Db.get %s %s", t.Name, o)
 		tests = append(tests, TestData{Name: quote("setting " + strings.ToLower(Humanize(c.Name)) + " changes the chosen rows only"), Lines: tb.lines,
-			Result: fmt.Sprintf("{ answer: r.answer, one: Maybe.map (\\row -> row.%s == %s) one, other: Maybe.map (\\row -> row.%s == %s) other } == { answer: Refreshed, one: Just True, other: Just False }",
+			Result: fmt.Sprintf("{ answer: r.answer, notices: r.notices, one: Maybe.map (\\row -> row.%s == %s) one, other: Maybe.map (\\row -> row.%s == %s) other } == { answer: Refreshed, notices: [\"Updated 1\"], one: Just True, other: Just False }",
 				c.Name, v, c.Name, v)})
 	}
 	// at most maxRows ids: maxRows are taken, one more is refused (the others are ids of no row)
@@ -240,6 +241,20 @@ func (g *adminGen) bulk(at *adminTable) {
 		}
 		tests = append(tests, TestData{Name: quote(name), Lines: tb.lines,
 			Result: fmt.Sprintf("{ answer: r.answer, %s, warned: Test.count \"#too-many\" page.doc } == { answer: %s, %s, warned: %s }", lhs, answer, rhs, warned)})
+	}
+	// the tests above send BulkDelete when there is one: each setting refuses too many rows too
+	if at.bulkDel {
+		for _, c := range at.bulkSet {
+			tb := g.tb(mod, imports, true)
+			one := tb.insertRow(t, "", nil, false)
+			tb.let("let chosen = [%s] ++ List.map (\\n -> %s (\"none-\" ++ Text.fromInt n)) (List.range 1 %d)", one, tb.brandCtor(t.IDType.(*types.Brand)), bulkMax)
+			tb.let("let _ <- Test.get (%s)", pageLit("Bulk", []string{"ids: chosen"}))
+			v := g.changedValue(tb, at, c, 1)
+			tb.let("let r <- Test.submit (%s) { value: %s }", pageLit("BulkSet"+UpperFirst(c.Name), []string{"ids: chosen"}), v)
+			tb.let("let after <- Db.get %s %s", t.Name, one)
+			tests = append(tests, TestData{Name: quote(fmt.Sprintf("setting %s on %d chosen ids is refused", strings.ToLower(Humanize(c.Name)), bulkMax+1)), Lines: tb.lines,
+				Result: fmt.Sprintf("{ answer: r.answer, set: Maybe.map (\\row -> row.%s == %s) after } == { answer: FormRejected [{ field: \"\", message: \"Choose at most %d rows at a time.\" }], set: Just False }", c.Name, v, bulkMax)})
+		}
 	}
 	// each action refuses an Admin demoted since the page was opened
 	if at.bulkDel {

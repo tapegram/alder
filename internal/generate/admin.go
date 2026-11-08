@@ -886,36 +886,76 @@ func (g *adminGen) gateTests(mod string, imports *importSet, pageOf func(tb *tes
 	return tests
 }
 
-// writeGate is the test that a write route refuses an Admin demoted since the page holding its
-// form was opened (the cookie still says Admin, the row no longer does): its update's adminOnly
-// answers 404 and nothing is written. A form with a select of a table's rows (refs) is refused
-// before that, 400: the runtime checks the options against the page it was posted from (Plan call
-// 11), whose load adminOnly refuses too. build inserts the rows and returns the page to open, the
-// step that sends the write, and check, which reads what must not have changed (the left and right
-// sides' fields). None without a role column to read again (the cookie's role is the check).
+// writeGate are the tests that a write route guards itself, each sending the write from the page
+// holding its form, opened by an Admin, after the session changed (#187: a write route runs no
+// `load`, so its own `requires` and adminOnly are all that stop it):
+//   - the session ended (a visitor): its `requires user` sends them to log in;
+//   - the cookie's role is no longer Admin (with a role column, the row still says Admin): its
+//     `role Admin` answers 404, before the form is decoded;
+//   - an Admin demoted since (the cookie still says Admin, the row no longer does; with a role
+//     column only): its update's adminOnly answers 404. A form with a select of a table's rows
+//     (refs) is refused before that, 400: the runtime checks the options against the page it was
+//     posted from (Plan call 11), whose load adminOnly refuses too.
+//
+// Nothing is written. build inserts the rows and returns the page to open, the step that sends
+// the write, and check, which reads what must not have changed (the left and right sides'
+// fields).
 func (g *adminGen) writeGate(mod string, imports *importSet, what string, refs bool, build func(tb *testBuilder) (get, send string, check func() (string, string))) []TestData {
-	if g.role == nil {
-		return nil
+	var tests []TestData
+	refused := func(name, answer string, change func(tb *testBuilder)) {
+		tb := g.tb(mod, imports, true)
+		get, send, check := build(tb)
+		tb.let("let _ <- Test.get (%s)", get)
+		admin := ""
+		for _, line := range tb.lines {
+			if strings.HasPrefix(line, "let _ <- Test.login ") {
+				admin = line
+			}
+		}
+		change(tb)
+		relogged := strings.HasPrefix(tb.lines[len(tb.lines)-1], "let _ <- Test.login ")
+		tb.let("let r <- %s", send)
+		if tb.silo != nil && tb.silo.member && relogged {
+			tb.let("%s", admin) // the Admin's session again: the test's own reads go to the silo by its key
+		}
+		l, r := check()
+		tests = append(tests, TestData{Name: quote(name), Lines: tb.lines,
+			Result: "{ answer: r.answer, " + l + " } == { answer: " + answer + ", " + r + " }"})
 	}
-	tb := g.tb(mod, imports, true)
-	get, send, check := build(tb)
-	tb.let("let _ <- Test.get (%s)", get)
-	ut := g.p.TableNamed(g.p.Session.UserTable)
+	if g.p.Login != "" {
+		refused("a visitor cannot "+what, "Redirected ("+pageLit(g.p.Login, nil)+")", func(tb *testBuilder) { tb.logout() })
+	}
 	other := ""
-	for _, c := range g.role.Ctors {
+	for _, c := range g.p.Session.Role.Ctors {
 		if c != "Admin" && other == "" {
 			other = c
 		}
 	}
-	tb.let("let _ <- Db.update %s %s (\\u -> { u | %s: %s })", ut.Name, tb.user(), g.role.Name, maybeJust(g.role, other))
-	tb.let("let r <- %s", send)
-	l, r := check()
+	if other != "" {
+		name := article(other) + " cannot " + what
+		if g.role != nil { // the row says Admin (the login inserted it so), the cookie does not
+			name += ", even one made Admin since logging in"
+		}
+		refused(name, "PageMissing", func(tb *testBuilder) { tb.login(other) })
+	}
+	if g.role == nil {
+		return tests
+	}
 	answer := "PageMissing"
 	if refs {
 		answer = `RequestFailed "400 bad request"`
 	}
-	return []TestData{{Name: quote("a demoted Admin cannot " + what), Lines: tb.lines,
-		Result: "{ answer: r.answer, " + l + " } == { answer: " + answer + ", " + r + " }"}}
+	refused("a demoted Admin cannot "+what, answer, func(tb *testBuilder) {
+		ut := g.p.TableNamed(g.p.Session.UserTable)
+		demoted := ""
+		for _, c := range g.role.Ctors {
+			if c != "Admin" && demoted == "" {
+				demoted = c
+			}
+		}
+		tb.let("let _ <- Db.update %s %s (\\u -> { u | %s: %s })", ut.Name, tb.user(), g.role.Name, maybeJust(g.role, demoted))
+	})
+	return tests
 }
 
 // testsText renders the generated tests, in the region `tests` at the end of the file: regen
@@ -2571,8 +2611,8 @@ func (g *adminGen) deleteTests(at *adminTable, mod, get string, imports *importS
 	press(tb, "r", target)
 	tb.let("let gone <- Db.get %s %s", t.Name, target)
 	// the page offers the button: the rows that refer to the other row are not counted for this one
-	lhs := []string{"button: Test.count \"#delete al-button\" page.doc", "answer: r.answer", "gone: Maybe.map (\\row -> row." + t.IDField + ") gone"}
-	rhs := []string{"button: 1", "answer: Redirected (" + at.route("Index") + " {})", "gone: Nothing"}
+	lhs := []string{"button: Test.count \"#delete al-button\" page.doc", "answer: r.answer", "notices: r.notices", "gone: Maybe.map (\\row -> row." + t.IDField + ") gone"}
+	rhs := []string{"button: 1", "answer: Redirected (" + at.route("Index") + " {})", "notices: [" + quote(deletedText) + "]", "gone: Nothing"}
 	if other != "" {
 		tb.let("let kept <- Db.get %s %s", t.Name, other)
 		lhs = append(lhs, "kept: Maybe.map (\\row -> row."+t.IDField+") kept")

@@ -170,10 +170,12 @@ test "deleting a tag nothing refers to" = {
     {
       button: Test.count "#delete al-button" page.doc,
       answer: r.answer,
+      notices: r.notices,
       gone: Maybe.map (\row -> row.id) gone,
     } == {
       button: 1,
       answer: Redirected (Admin.Tags.Index.Index {}),
+      notices: ["Deleted"],
       gone: Nothing,
     }
   )

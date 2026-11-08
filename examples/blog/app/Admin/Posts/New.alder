@@ -344,6 +344,72 @@ test "an author outside the narrowed list is refused" = {
   )
 }
 
+test "a visitor cannot create a post" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "slug-1",
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let _ <- Test.get (New {})
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.submit Create {
+    slug: Post.Slug "slug-2",
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    published: True,
+    author: user2,
+  }
+  let rows <- Db.from Post |> Db.count
+  Task.succeed (
+    { answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login.Login {}), rows: 1 }
+  )
+}
+
+test "a Reader cannot create a post, even one made Admin since logging in" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "slug-1",
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let _ <- Test.get (New {})
+  let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.submit Create {
+    slug: Post.Slug "slug-2",
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    published: True,
+    author: user2,
+  }
+  let rows <- Db.from Post |> Db.count
+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: PageMissing, rows: 1 })
+}
+
 test "a demoted Admin cannot create a post" = {
   let me <- Db.insert User {
     email: Text.Email "email-1@example.com",

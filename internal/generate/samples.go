@@ -156,6 +156,24 @@ func (b *testBuilder) login(role string) {
 	b.let("let _ <- Test.login { %s }", strings.Join(fields, ", "))
 }
 
+// logout ends the session (Test.login of a session without a user, every other `Maybe` field
+// without a default Nothing, a role without a default its first constructor): a page opened
+// before is still held, so a test can send its write as a visitor.
+func (b *testBuilder) logout() {
+	fields := []string{"user: Nothing"}
+	for _, f := range b.p.Session.Fields {
+		switch _, isMaybe := unMaybe(f.Type); {
+		case f.HasDefault || f.Name == "user":
+		case f.Name == "role" && b.p.Session.Role != nil && len(b.p.Session.Role.Ctors) > 0:
+			b.typeRef(b.p.Session.Role.Type)
+			fields = append(fields, "role: "+b.p.Session.Role.Ctors[0])
+		case isMaybe:
+			fields = append(fields, f.Name+": Nothing")
+		}
+	}
+	b.let("let _ <- Test.login { %s }", strings.Join(fields, ", "))
+}
+
 // insert inserts a row of t with sample values, after the rows it refers to, and returns the
 // variable holding its id ("_" when not named). The owner column is the signed-in user.
 func (b *testBuilder) insert(t *Table, named bool) string {

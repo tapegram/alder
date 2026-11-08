@@ -85,6 +85,46 @@ test "creating an org adds it, with the values submitted" = {
   )
 }
 
+test "a visitor cannot create an org" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
+  let _ <- Test.get (New {})
+  let _ <- Test.login { user: Nothing, org: Nothing }
+  let r <- Test.submit Create { name: Text.NonEmpty "name-1" }
+  let rows <- Db.from Org |> Db.count
+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login {}), rows: 0 })
+}
+
+test "a Member cannot create an org, even one made Admin since logging in" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Admin,
+  }
+  let _ <- Test.get (New {})
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
+  let r <- Test.submit Create { name: Text.NonEmpty "name-1" }
+  let rows <- Db.from Org |> Db.count
+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: PageMissing, rows: 0 })
+}
+
 test "a demoted Admin cannot create an org" = {
   let me <- Db.insert User {
     email: Text.Email "email-1@example.com",
