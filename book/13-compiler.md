@@ -790,7 +790,7 @@ The emitter (`internal/gen`) walks the IR and prints Go, formatted with
 Every snippet below is from `testdata/golden/gen_basic/want/M_alder.go`, which is
 byte-for-byte what `alder build --emit` writes for `gen_basic`.
 
-#### `Shape`
+### `Shape`
 
 Go has no sum types: there is no way to say "a value that is
 either a `Circle` with a float or a `Rect` with two". So a union becomes a
@@ -857,7 +857,7 @@ declarations start with a lowercase word saying what they are: `tag__` for
 the tag type, `is__` for a tag constant, `payload__` for a payload struct.
 Section 9 lists the whole scheme and why no two names can clash.
 
-#### `area`
+### `area`
 
 The IR's `match union` becomes a `switch` on the tag:
 
@@ -887,7 +887,7 @@ that message if it ever runs. It never does, because the checker proved
 the match exhaustive, but Go requires a function that returns a value to
 end in a `return` or a `panic`.
 
-#### `shift`
+### `shift`
 
 A record update builds a new struct, copying every field
 except the one you replaced. `p.X` reads field `X` of `p`:
@@ -898,7 +898,7 @@ func M__shift(p M__Point) M__Point {
 }
 ```
 
-#### `names`
+### `names`
 
 Stdlib calls become calls into `rt/std`, one Go function per
 Alder function, chosen from the table in `internal/gen/stdcall.go`.
@@ -912,7 +912,7 @@ func M__names(xs []string) string {
 }
 ```
 
-#### `label`
+### `label`
 
 `Maybe Int` is `rt.Maybe[int64]`, `??` is `rt.OrElse`, and
 interpolation is `rt.Concat`. `rt.Maybe` is defined in `rt/core.go`:
@@ -938,7 +938,7 @@ func M__label(m rt.Maybe[int64]) string {
 }
 ```
 
-#### Recursive records
+### Recursive records
 
 Because `Maybe` holds its value directly, a record that refers to itself
 through `Maybe` would be a struct that contains itself, which Go rejects
@@ -965,7 +965,7 @@ never change, so the pointer is never nil and two records may share it. A
 `List Node` field needs no pointer: a Go slice already holds its elements
 elsewhere, and so does a union's payload.
 
-#### Partial application
+### Partial application
 
 `gen_basic` has none, because the pipes in
 `names` became full calls. Write `adder 1` where a function is expected,
@@ -998,7 +998,7 @@ else in scope uses, and calls `P__adder` with the `1`
 it already has. A function literal that uses values from around it is
 called a closure.
 
-#### Equality and ordering
+### Equality and ordering
 
 Go's `==` doesn't work on every struct, and wouldn't mean the right thing
 if it did (two `Dict`s with the same entries inserted in different orders
@@ -1032,7 +1032,7 @@ func F__greet(id string) string {
 `F__greet` takes a `string`: that is the erased `UserId` brand from
 section 6.
 
-#### `Card`
+### `Card`
 
 A component becomes a function from its props to an
 `html.Node`, and markup becomes calls to the `rt/html` builder. The props
@@ -1407,12 +1407,14 @@ stops with `alder: capability "Index.Mailer" is not wired`.
 
 ### What `Run` does
 
-Calling `Index__Index__load(params, session)` performs nothing. It returns the
-tree. The caller (a request handler, as the last part of this section
-shows, or a test) hands it to `eff.RunQuery(env, …)`, which calls `eff.Run` with kind `KQuery`. Here is
-what happens, following `interpret` in `rt/eff/run.go`. `interpret` is a
-loop holding the current node and a stack of continuations: the "rest of
-the block" functions it has yet to call.
+Calling `Index__Index__load(params, session)` performs nothing. It returns
+the tree. The caller (a request handler, as the last part of this section
+shows, or a test) hands it to `eff.RunQuery(env, …)`, which calls
+`eff.Run` with kind `KQuery`.
+
+Here is what happens, following `interpret` in `rt/eff/run.go`.
+`interpret` is a loop holding the current node and a stack of
+continuations: the "rest of the block" functions it has yet to call.
 
 1. A `Query` gets no transaction: `env.Tx` is `nil`, and `db.TxOf` gives
    `nil` too. `Run` also puts `env` itself in `env.Ctx` for as long as it
@@ -6350,7 +6352,7 @@ parts are always joined by a double underscore, `__`:
 | `title` → `Title`, `_at` → `U__at` | a record field, exported (a capital first letter, or `U__` for a leading `_`) so that adapters, and the runtime's `Show`, `Eq` and `Key`, see it | |
 | `type` → `type__` | a local whose name Go reserves, or that names `rt`, `html`, `std` | |
 
-#### Why `__`
+### Why `__`
 
 Your names may not contain it: the compiler rejects `max__len` (E0001),
 and a module name segment may not end with `_`. So `__` can only be a
@@ -6385,7 +6387,7 @@ the last `__` never starts with `_`.
 > qualifiers and the constructors in scope by E0044. A generated name can
 > never be a Go keyword or clash with `rt`, `html` or `std`.
 
-#### The build, in order
+### The build, in order
 
 The build runs in these steps (`runBuildTo` in `cmd/alder/build.go`):
 
@@ -7705,9 +7707,12 @@ expression and the same warning on the command line.
 
 What leaves the machine is exactly the prompt: one module's source (its
 comments and string literals too), names and types, the standard library's
-signatures (the core modules List, Maybe, Result, Text, Int, Float, Dict, Bool, Task and Prelude always, any other module the hole's type or the source names) and, on retries, the errors, which quote lines of that module. `alder fill <address> --prompt` prints
-it. With `ALDER_LSP_LOG` set, the server also writes each request body and
-each answer to the log, never a header, so never the key.
+signatures (the core modules List, Maybe, Result, Text, Int, Float, Dict,
+Bool, Task and Prelude always, any other module the hole's type or the
+source names) and, on retries, the errors, which quote lines of that
+module. `alder fill <address> --prompt` prints it. With `ALDER_LSP_LOG`
+set, the server also writes each request body and each answer to the log,
+never a header, so never the key.
 
 ### Highlighting from the server
 
