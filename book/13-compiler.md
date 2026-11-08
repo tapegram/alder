@@ -4607,24 +4607,27 @@ app `shop`.
 
 #### Parsing, names and checking
 
-`fake` is a declaration keyword, like
-`capability` (column 1 only). The parser reads `fake Stripe { … }` into
-a `FakeDecl` holding its `TableDecl`s and its entries, each a
-`ValueDecl` with no signature (`internal/syntax`). Names
-(`internal/names/resolve.go`) resolve `Stripe` to the capability, which
-must be in scope, and register the fake's tables as tables of the
-module, so `Payments.Charge` and, from another module,
-`Payments.Charge.cents` resolve as an app table's would. The checker
-(`internal/check/fakes.go`) reports E0020 when the capability is in
-another module, then checks each entry as a value whose signature is
-the entry's type in the capability (a missing or extra entry is E0003).
-It records which tables belong to a fake, and E0021 is a check on every
-use of such a table, its type or a column: allowed inside a `test`, or
-inside the fake's own entries, and nowhere else. `Test.fake Stripe` is
-typed by the checker itself, not by its signature in
-`stdlib/Test.alder` (`fake : Capability -> Task Unit`, where
-`Capability` is a name only that file may write): the argument must be
-a capability with a fake, and the result is `Task Unit`.
+`fake` is a declaration keyword, like `capability` (column 1 only). The parser
+reads `fake Stripe { … }` into a `FakeDecl` holding its `TableDecl`s and its
+entries, each a `ValueDecl` with no signature (`internal/syntax`).
+
+Names (`internal/names/resolve.go`) resolve `Stripe` to the capability, which
+must be in scope, and register the fake's tables as tables of the module, so
+`Payments.Charge` and, from another module, `Payments.Charge.cents` resolve as
+an app table's would.
+
+The checker (`internal/check/fakes.go`) reports E0020 when the capability is
+in another module, then checks each entry as a value whose signature is the
+entry's type in the capability (a missing or extra entry is E0003).
+
+It records which tables belong to a fake, and E0021 is a check on every use of
+such a table, its type or a column: allowed inside a `test`, or inside the
+fake's own entries, and nowhere else.
+
+`Test.fake Stripe` is typed by the checker itself, not by its signature in
+`stdlib/Test.alder` (`fake : Capability -> Task Unit`, where `Capability` is a
+name only that file may write): the argument must be a capability with a fake,
+and the result is `Task Unit`.
 
 #### The IR
 
@@ -4664,13 +4667,16 @@ func (fake__Payments__Stripe) Charge(ctx context.Context, args Args__Payments__S
 }
 ```
 
-`Refund` is the same with its own types. The struct has no fields: a
-fake's state is in its tables, not in Go. It has one method per entry,
-with the signature of the capability's interface,
+`Refund` is the same with its own types. The struct has no fields: a fake's
+state is in its tables, not in Go.
+
+It has one method per entry, with the signature of the capability's interface,
 `Cap__Payments__Stripe`, so to the rest of the program it is one more
-implementation of that interface, like the adapter's. Each entry's body
-is emitted as an ordinary function returning an effect (an entry with
-no parameters, such as a `balance : Query Int`, is a package `var`):
+implementation of that interface, like the adapter's.
+
+Each entry's body is emitted as an ordinary function returning an effect (an
+entry with no parameters, such as a `balance : Query Int`, is a package
+`var`):
 
 ```go
 func fakeentry__Payments__Stripe__Charge(args struct{ Cents int64 }) eff.Task[rt.Result[string, string]] {
@@ -4685,20 +4691,25 @@ func fakeentry__Payments__Stripe__Charge(args struct{ Cents int64 }) eff.Task[rt
 }
 ```
 
-The method is how the Go world (a capability call) gets back into the
-Alder world (an effect to interpret). A capability call's `Call`
-passes `_e.Ctx` to the method, and `eff.Run` put the running `Env` in
-that context, so `eff.EnvFrom(ctx)` finds it. `eff.RunInner(env, t)`
-(`rt/eff/run.go`) then interprets the entry's effect inside the effect
-that is already running, under its kind: the same transaction, the same
-trace, the same session. This is why the trace shows `Stripe.charge`
-(the capability call's own step) followed by `Db.insert Charge` (the
-entry's step), why the insert is part of the test's transaction, and
-why a `Test.run` savepoint around the call undoes it. A failure, such
-as `eff.Fail` with `"card declined"`, comes back out of `RunInner` as
-the method's error. `CapError` leaves an `*eff.ErrFail` as it is, so the
-test sees `card declined`, not `Stripe.charge: card declined`. Called
-from a `Query`, the entry runs as a `Query`, and a write it reaches is
+The method is how the Go world (a capability call) gets back into the Alder
+world (an effect to interpret). A capability call's `Call` passes `_e.Ctx` to
+the method, and `eff.Run` put the running `Env` in that context, so
+`eff.EnvFrom(ctx)` finds it.
+
+`eff.RunInner(env, t)` (`rt/eff/run.go`) then interprets the entry's effect
+inside the effect that is already running, under its kind: the same
+transaction, the same trace, the same session.
+
+This is why the trace shows `Stripe.charge` (the capability call's own step)
+followed by `Db.insert Charge` (the entry's step), why the insert is part of
+the test's transaction, and why a `Test.run` savepoint around the call undoes
+it.
+
+A failure, such as `eff.Fail` with `"card declined"`, comes back out of
+`RunInner` as the method's error. `CapError` leaves an `*eff.ErrFail` as it
+is, so the test sees `card declined`, not `Stripe.charge: card declined`.
+
+Called from a `Query`, the entry runs as a `Query`, and a write it reaches is
 the usual internal error.
 
 `app__alder.go` gets two variables:
@@ -4737,35 +4748,38 @@ fake installed inside a failing run stays installed.
 
 #### The fakes' tables in a test's database
 
-`rtesting.Main` passes
-`FakeTables` on as `Options.TestTables`. For each case, after the app's
-tables exist (by `Migrate` or `Ensure`), `ensure` calls
-`store.CreateTables(ctx, o.TestTables, o.Tables)` (`rt/db/sqlite.go`):
-in one transaction it runs a plain `CREATE TABLE` for each fake table,
-resolving its `@ref`s against both lists, and its indexes. It records
-nothing in `_alder_meta`, where `Ensure` and `Migrate` keep the app's
-schema hash. The order matters: `Migrate` ends by checking that the
-live tables are exactly the app's, so it runs before the fakes' tables
-exist, never after.
+`rtesting.Main` passes `FakeTables` on as `Options.TestTables`. For each case,
+after the app's tables exist (by `Migrate` or `Ensure`), `ensure` calls
+`store.CreateTables(ctx, o.TestTables, o.Tables)` (`rt/db/sqlite.go`): in one
+transaction it runs a plain `CREATE TABLE` for each fake table, resolving its
+`@ref`s against both lists, and its indexes.
+
+It records nothing in `_alder_meta`, where `Ensure` and `Migrate` keep the
+app's schema hash.
+
+The order matters: `Migrate` ends by checking that the live tables are exactly
+the app's, so it runs before the fakes' tables exist, never after.
 
 #### Production
 
-Without `Options.Tests` (`alder build` and `alder
-run`) none of this is emitted: no fake struct, no entry functions, no
-fake table, no `FakeTables` or `Fakes`. Nor are the tests (section 8,
-"Running tests"): no `test__` functions, no `Tests`, no `TestSession`,
-so nothing in a production build uses a fake, a fake's table or
-`Test.fake`, and nothing imports `alder/rt/testing`. The `Test` nodes
-(`ir.TestRun`, `ir.TestTrace`, `ir.TestFake` and a test's recorded `==`,
-`ir.TestEq`) occur only in `test` bodies and test helpers, and a
-production build omits every test helper (`ir.Value.TestOnly`, from the
-checker's `Result.TestOnly`, which `internal/check/helpers.go` computes
-from the values' references after every body is checked; it has refused,
-with E0040, each reference to a helper from code that runs in
-production). So the emitter treats a test node reaching it in a
-production build as a bug in the compiler: `testNode` in
-`internal/gen/effects.go` panics, and `Emit` returns that as its
-internal error instead of writing Go.
+Without `Options.Tests` (`alder build` and `alder run`) none of this is
+emitted: no fake struct, no entry functions, no fake table, no `FakeTables` or
+`Fakes`.
+
+Nor are the tests (section 8, "Running tests"): no `test__` functions, no
+`Tests`, no `TestSession`, so nothing in a production build uses a fake, a
+fake's table or `Test.fake`, and nothing imports `alder/rt/testing`.
+
+The `Test` nodes (`ir.TestRun`, `ir.TestTrace`, `ir.TestFake` and a test's
+recorded `==`, `ir.TestEq`) occur only in `test` bodies and test helpers, and
+a production build omits every test helper (`ir.Value.TestOnly`, from the
+checker's `Result.TestOnly`, which `internal/check/helpers.go` computes from
+the values' references after every body is checked; it has refused, with
+E0040, each reference to a helper from code that runs in production).
+
+So the emitter treats a test node reaching it in a production build as a bug
+in the compiler: `testNode` in `internal/gen/effects.go` panics, and `Emit`
+returns that as its internal error instead of writing Go.
 
 ### The browser
 
@@ -4777,32 +4791,41 @@ compiles).
 
 #### Checking
 
-The browser steps are special forms, like `Test.fake`: the
-checker types them itself (`internal/check/browser.go`), and their lines
-in `stdlib/Test.alder` are documentation. `Test.get r` and `Test.open r`
-need `r` written as a route value in place (a route's name applied to its
-parameters' record, `Todos.Index.Index {}`), so the checker knows which
-route it is (`routeTarget`) and can give `Test.get`'s `model` that route's
-model, what its `load` returns (`routeModel`, read from `load`'s
-signature). A write route there is E0045 ("use `Test.click`" or, with a
-form, "`Test.submit`"), a file route needs `Test.fetch`, and a model that
-is a union cannot be named in the result (use `Test.open`).
-`Test.fetch r` is the one step that may take a file route, and `Test.refresh`
-takes no argument at all.
-`Test.submit r f` needs a write route with a `form F`: it checks `f`
-against the form's record the way a form value is checked, defaults
-included; a route without `form` is E0045 ("use `Test.click`"), and so is a
-GET route. `Test.click r` needs a route that has no form (a form is
-`Test.submit`'s), a GET route or a write route. `Test.login s` checks `s`
-against `App`'s session. Each result is the record type chapter 10 gives, which `stepResult` builds as
-`{ answer, session, doc, notices, toasts, url, status }` (`notices` and
-`toasts` are the toasts the step's requests showed), with `Session`
-being `App`'s session type and `Doc` and `Answer` types of the Prelude that
-the checker lets only a test name (E0003 elsewhere). The queries are
-ordinary functions of `stdlib/Test.alder`, with one extra check: a selector
-argument written as a literal is parsed with the runtime's own selector
-parser (`rt/selector`, shared by the checker and `rt/html`), and a text
-that does not parse is E0023, at the literal.
+The browser steps are special forms, like `Test.fake`: the checker types
+them itself (`internal/check/browser.go`), and their lines in
+`stdlib/Test.alder` are documentation.
+
+`Test.get r` and `Test.open r` need `r` written as a route value in place
+(a route's name applied to its parameters' record, `Todos.Index.Index {}`),
+so the checker knows which route it is (`routeTarget`) and can give
+`Test.get`'s `model` that route's model, what its `load` returns
+(`routeModel`, read from `load`'s signature). A write route there is E0045
+("use `Test.click`" or, with a form, "`Test.submit`"), a file route needs
+`Test.fetch`, and a model that is a union cannot be named in the result
+(use `Test.open`).
+
+The other steps have rules of their own:
+
+- `Test.fetch r` is the one step that may take a file route.
+- `Test.refresh` takes no argument at all.
+- `Test.submit r f` needs a write route with a `form F`: it checks `f`
+  against the form's record the way a form value is checked, defaults
+  included; a route without `form` is E0045 ("use `Test.click`"), and so
+  is a GET route.
+- `Test.click r` needs a route that has no form (a form is
+  `Test.submit`'s), a GET route or a write route.
+- `Test.login s` checks `s` against `App`'s session.
+
+Each result is the record type chapter 10 gives, which `stepResult` builds
+as `{ answer, session, doc, notices, toasts, url, status }` (`notices` and
+`toasts` are the toasts the step's requests showed), with `Session` being
+`App`'s session type and `Doc` and `Answer` types of the Prelude that the
+checker lets only a test name (E0003 elsewhere).
+
+The queries are ordinary functions of `stdlib/Test.alder`, with one extra
+check: a selector argument written as a literal is parsed with the
+runtime's own selector parser (`rt/selector`, shared by the checker and
+`rt/html`), and a text that does not parse is E0023, at the literal.
 
 #### The IR
 
