@@ -170,7 +170,7 @@ func (c *Checker) checkWriteSets() {
 	}
 	for _, fe := range fakes {
 		if groups := c.storeGroups(writesOf(fe.d.Body)); len(groups) > 1 {
-			c.errorf(diag.WriteStores, fe.d.Span, "in `fake %s`'s `%s`: %s", fe.fake, fe.d.Name, c.mixMessage("`"+fe.d.Name+"`", "message", groups))
+			c.errorf(diag.WriteStores, fe.d.Span, "in `fake %s`'s `%s`: %s", fe.fake, fe.d.Name, c.mixMessage("`"+fe.d.Name+"`", "entry", groups))
 		}
 	}
 }
@@ -209,7 +209,7 @@ func (c *Checker) storeGroups(writes map[string]bool) []storeGroup {
 
 // mixMessage is E0031's text for arm name writing groups (two or more): "`Create` writes
 // `Project` (silo `org`) and `AuditLog` (shared): a Task writes to one store. …"; the hint
-// sends a write from its own `from` ("message", or "route" for a write route's update).
+// sends a write from its own `from` ("entry" for a fake, "route" for a write route).
 func (c *Checker) mixMessage(name, from string, groups []storeGroup) string {
 	parts := make([]string, len(groups))
 	shared := ""
