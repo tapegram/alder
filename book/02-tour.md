@@ -10,12 +10,7 @@ pieces fit.
 ## The guestbook
 
 A visitor signs the guestbook with a name and a message, and the page
-lists every entry, newest first. `alder new guestbook` writes these files
-(the book's verifier runs `alder new` and compares each file with this
-chapter, so what you read here is exactly what you get; `alder new
-<name> --bare` writes the same app without the guestbook's page, table
-and README, for an app built from nothing with the generators of
-chapter 15):
+lists every entry, newest first. `alder new guestbook` writes these files:
 
 ```
 guestbook/
@@ -31,6 +26,13 @@ guestbook/
   static/app.css                the stylesheet
 ```
 
+The book's verifier runs `alder new` and compares each file with this
+chapter, so what you read here is exactly what you get.
+
+`alder new <name> --bare` writes the same app without the guestbook's page,
+table and README, for an app built from nothing with the generators of
+chapter 15.
+
 An Alder app is a directory like this one: `app/` holds the program, one
 module per file, and the module `Home` is the file `app/Home.alder`
 (`Todos.Index` would be `app/Todos/Index.alder`).
@@ -42,20 +44,25 @@ and `Home`. Everything else goes in a folder, by what it is:
 
 - **Tables** go in `Table/`: `app/Table/Todo.alder` is the module
   `Table.Todo`, and other modules write `import Table.Todo` and then just
-  `Todo`. A table is state shared by every part of the app (the pages, the
-  admin, the tests all read the same rows), so it belongs to none of them;
-  keeping every schema in one folder means you can read the app's whole data
-  model by listing it.
+  `Todo`.
+
+  A table is state shared by every part of the app (the pages, the admin,
+  the tests all read the same rows), so it belongs to none of them. Keeping
+  every schema in one folder means you can read the app's whole data model
+  by listing it.
+
 - **The routes of a concern** go in a plural folder, one module for each
-  page and the writes it sends: `Todos/Index`, `Todos/Show`, `Todos/New`. A capability the concern needs goes beside
-  them, in `Todos/Data`.
+  page and the writes it sends: `Todos/Index`, `Todos/Show`, `Todos/New`.
+  A capability the concern needs goes beside them, in `Todos/Data`.
+
 - **Views shared by several pages** go in `Ui/`.
 
 These are conventions, and the generators of chapter 15 follow them so you
-do not have to remember. The compiler enforces one rule only: a table's
-module must end in the table's name (the table `Invoice` may live in
-`Invoice`, `Table.Invoice` or `Table.Billing.Invoice`), and a module holds
-one table.
+do not have to remember.
+
+The compiler enforces one rule only: a table's module must end in the
+table's name (the table `Invoice` may live in `Invoice`, `Table.Invoice` or
+`Table.Billing.Invoice`), and a module holds one table.
 
 ### The table
 
@@ -101,11 +108,16 @@ route Submit = POST "/_/Submit" { } form Sign
 
 `import` makes another module's names available: `Layout` for the HTML
 around the page, `Table.Entry` for the table (written `Entry` from here
-on). The two **routes** are the module's table of contents: each is a
-name, an HTTP method, an address and its parameters (the braces, empty
-here). `Home` is a `GET` of `/`, the page; `Submit` is a `POST` the page's
-form sends, carrying a `Sign`. A route is also a value: `Home {}` is the
-address `/`, written so that the compiler checks it.
+on).
+
+The two **routes** are the module's table of contents: each is a name, an
+HTTP method, an address and its parameters (the braces, empty here).
+
+- `Home` is a `GET` of `/`, the page.
+- `Submit` is a `POST` the page's form sends, carrying a `Sign`.
+
+A route is also a value: `Home {}` is the address `/`, written so that the
+compiler checks it.
 
 ```alder part=guestbook/Home
 type Model = { entries: List Entry }
@@ -122,11 +134,14 @@ Home.load params session = {
 
 What belongs to a route is named after it. `Model` is what the page
 shows; `Home.load` builds it for every request: it reads every entry,
-newest first (`Entry.created.desc`), and succeeds with them. It returns a
-`Query`, a description of reads that the runtime carries out, so `load`
-cannot write anything. `let entries <- …` names the result of a read.
-(`params` would be the route's parameters and `session` the visitor's
-session; this page uses neither.)
+newest first (`Entry.created.desc`), and succeeds with them.
+
+It returns a `Query`, a description of reads that the runtime carries out,
+so `load` cannot write anything. `let entries <- …` names the result of a
+read.
+
+> **Unused arguments.** `params` would be the route's parameters and
+> `session` the visitor's session; this page uses neither.
 
 ```alder part=guestbook/Home
 Home.view : Model -> Session -> Html
@@ -150,16 +165,19 @@ Home.view model session =
 ```
 
 `Home.view` turns the model into HTML, with expressions in braces.
-`<form submit={Submit}>` posts the form to the route `Submit`; `<al-input
-field="name">` draws the labelled input for the field `name` of `Sign`
-(a field the form does not have is a compile error), with the list where
-its error appears. `<al-card>`, `<al-input>` and `<al-button>` are
-elements of `alder-ui`, the design system every Alder app has (Appendix
-C): a card with a header, a field, and a button, which Alder renders as a
-real `<button type="submit">` inside the element, so the form posts
-without JavaScript. `{for e in model.entries -> …}` makes one `<li>` per
-entry. `<Layout.Page title="Guestbook">` is a component from `Layout`:
-everything inside it becomes its `children`.
+
+- `<form submit={Submit}>` posts the form to the route `Submit`.
+- `<al-input field="name">` draws the labelled input for the field `name`
+  of `Sign` (a field the form does not have is a compile error), with the
+  list where its error appears.
+- `<al-card>`, `<al-input>` and `<al-button>` are elements of `alder-ui`,
+  the design system every Alder app has (Appendix C): a card with a header,
+  a field, and a button, which Alder renders as a real
+  `<button type="submit">` inside the element, so the form posts without
+  JavaScript.
+- `{for e in model.entries -> …}` makes one `<li>` per entry.
+- `<Layout.Page title="Guestbook">` is a component from `Layout`:
+  everything inside it becomes its `children`.
 
 ```alder part=guestbook/Home
 form Sign = { name: Text.NonEmpty, message: Text.NonEmpty }
@@ -173,13 +191,15 @@ Submit.update params session = {
 
 `form Sign` is the form's fields and their types. Before `Submit`
 reaches any of your code, the runtime checks the posted fields against
-them: an empty name sends the page back with the error next to the
-field. `Submit.update` handles the post, the form in `params.form`. It
-returns a `Task`, a description of writes ending in a `Response`: it
-inserts the entry (`id` and `created` are filled in, so they are not
-written here), then redirects to the page, `Home {}`, so that reloading
-the page does not post the form twice, with a toast that says
-"Signed".
+them: an empty name sends the page back with the error next to the field.
+
+`Submit.update` handles the post, the form in `params.form`. It returns a
+`Task`, a description of writes ending in a `Response`:
+
+1. It inserts the entry (`id` and `created` are filled in, so they are not
+   written here).
+2. It redirects to the page, `Home {}`, so that reloading the page does not
+   post the form twice, with a toast that says "Signed".
 
 ```alder part=guestbook/Home
 test "signing adds an entry" = {
@@ -200,14 +220,17 @@ test "signing adds an entry" = {
 }
 ```
 
-The page ends with its two tests. The first goes through the page the way a person
-would, in an in-memory browser: it opens `/` (`Test.get`), fills in and
-posts the form (`Test.submit Submit { … }`), and opens the page again. The
-answer to the post must be the redirect `update` makes, with its toast
-in `notices`, and the page must then list one entry: `Test.count "#entries li"` counts the `<li>` inside
-`<ul id="entries">`. Each test runs against a fresh, empty database, so
-the one entry is the one the test signed. Chapter 10 explains every
-`Test.` function.
+The page ends with its two tests. The first goes through the page the way a
+person would, in an in-memory browser: it opens `/` (`Test.get`), fills in
+and posts the form (`Test.submit Submit { … }`), and opens the page again.
+
+The answer to the post must be the redirect `update` makes, with its toast
+in `notices`, and the page
+must then list one entry: `Test.count "#entries li"` counts the `<li>`
+inside `<ul id="entries">`.
+
+Each test runs against a fresh, empty database, so the one entry is the one
+the test signed. Chapter 10 explains every `Test.` function.
 
 ```alder part=guestbook/Home
 test "entries are listed newest first" = {
@@ -254,13 +277,17 @@ Page props =
 `children` is the HTML written between `<Layout.Page …>` and
 `</Layout.Page>`. `Url.external` marks a link that is not one of the
 app's pages: a link to a page is a route value (`Home.Home {}` from
-another module), checked by the compiler, never a string. The `<script>` line before the stylesheets is
-the theme script: it turns the dark theme on (a `dark` class on `<html>`)
-when the visitor chose it or their system prefers it, before the page is
-painted (Appendix C, "Light and dark"). The first stylesheet is the design system's,
-which every build serves at `/static/al/al.css`; `<al-page
-width="narrow">` is its centred column. The `<al-stack gap="lg">` inside `<main>` spaces whatever a page puts
-in `children` (Appendix C, "Spacing").
+another module), checked by the compiler, never a string.
+
+The `<script>` line before the stylesheets is the theme script: it turns
+the dark theme on (a `dark` class on `<html>`) when the visitor chose it or
+their system prefers it, before the page is painted (Appendix C, "Light and
+dark").
+
+The first stylesheet is the design system's, which every build serves at
+`/static/al/al.css`; `<al-page width="narrow">` is its centred column. The
+`<al-stack gap="lg">` inside `<main>` spaces whatever a page puts in
+`children` (Appendix C, "Spacing").
 
 `app/App.alder` is the one module every app has: it declares the session,
 what the server keeps for a visitor between requests (this app keeps
@@ -500,14 +527,22 @@ warn: ALDER_SECRET is not set (or shorter than 16 bytes); dev mode signs session
 dev server on 127.0.0.1:8080 → app on 127.0.0.1:56970
 ```
 
-(The server's log lines also carry the date and time; they are left out
-here.) The first start applies `0001_initial` to the development database,
-`build/guestbook/dev.db`. Sign the guestbook in the browser and the log
-shows each effect the requests ran: `Db.all Entry` for the page; for the
-post, `Db.insert Entry` alone (a write route has no model, so nothing is
-read before `update`); then `Db.all Entry` for the page the post
-redirects to. Chapter 11 explains each command; the warning is about
-production, where `ALDER_SECRET` must be set (chapter 6).
+The first start applies `0001_initial` to the development database,
+`build/guestbook/dev.db`.
+
+> **Log lines.** The server's log lines also carry the date and time; they
+> are left out here.
+
+Sign the guestbook in the browser and the log shows each effect the
+requests ran:
+
+1. `Db.all Entry` for the page.
+2. For the post, `Db.insert Entry` alone (a write route has no model, so
+   nothing is read before `update`).
+3. Then `Db.all Entry` for the page the post redirects to.
+
+Chapter 11 explains each command; the warning is about production, where
+`ALDER_SECRET` must be set (chapter 6).
 
 ## The to-do app
 
@@ -559,15 +594,18 @@ countOpen todos = todos |> List.filter (\t -> not t.done) |> List.length
 
 (The file ends with a test of `countOpen`; chapter 10.)
 
-`TodoId` is a brand: at runtime it is a `Text`, and it can be used as one,
-but only this module can make one from a plain `Text`. Everywhere else, a
-`TodoId` comes from a route, a form, or a database row, so it is always a
-real id. `title: Text.NonEmpty` means an empty title can't exist in the
-table, and the form that creates todos will refuse one before any code runs.
-`owner: User.UserId @ref User` says each todo belongs to a user, and
-`@owner` makes that the rule of the table: the pages read and write todos
-through `Db`'s scoped operations, which act only on the signed-in user's
-rows (below; chapter 6, "Rules").
+- **`TodoId`** is a brand: at runtime it is a `Text`, and it can be used as
+  one, but only this module can make one from a plain `Text`. Everywhere
+  else, a `TodoId` comes from a route, a form, or a database row, so it is
+  always a real id.
+
+- **`title: Text.NonEmpty`** means an empty title can't exist in the table,
+  and the form that creates todos will refuse one before any code runs.
+
+- **`owner: User.UserId @ref User`** says each todo belongs to a user, and
+  `@owner` makes that the rule of the table: the pages read and write todos
+  through `Db`'s scoped operations, which act only on the signed-in user's
+  rows (below; chapter 6, "Rules").
 
 ### The page
 
@@ -587,13 +625,18 @@ route Delete = POST "/_/Delete" { id: Todo.TodoId }                        requi
 ```
 
 `User` is imported for the tests at the end of the module. The module has
-four **routes**. `Index` is a `GET`: the page. `filter` is a query
-parameter with a default, so both `/` and `/?filter=Active` work and
-`filter` is never missing. The other three are `POST`s that the page sends:
-`Submit` carries a form, `NewTodo`, and `Toggle` and `Delete` carry an id.
+four **routes**:
+
+- `Index` is a `GET`: the page. `filter` is a query parameter with a
+  default, so both `/` and `/?filter=Active` work and `filter` is never
+  missing.
+- The other three are `POST`s that the page sends: `Submit` carries a form,
+  `NewTodo`, and `Toggle` and `Delete` carry an id.
+
 A route's parameters that are not in its path travel in the query string,
 so `Toggle { id: … }` posts to `/_/Toggle?id=…`; `/_/` is the convention
 for a write that has no address of its own (chapter 6).
+
 `requires user` means the `user` field of the session must be `Just`;
 otherwise the runtime sends the visitor to the login page, and inside this
 module `session.user` is a `UserId`, not a `Maybe UserId`.
@@ -614,10 +657,13 @@ Index.load params session = {
 `Model` is what the page shows. `Index.load` builds it for one request. It
 returns a `Query`: a description of reads that the runtime performs.
 `let todos <- ...` binds the result of a read. Because it is a `Query`,
-nothing in `load` can write. `Db.mine Todo` is the todos whose `owner` is
-the session's user, newest first here: the page can only ever list the
-user's own. The route's other member is its `view`, below; a route that is
-a `GET` has exactly these two, and the model is whatever `load` returns.
+nothing in `load` can write.
+
+`Db.mine Todo` is the todos whose `owner` is the session's user, newest
+first here: the page can only ever list the user's own.
+
+The route's other member is its `view`, below; a route that is a `GET` has
+exactly these two, and the model is whatever `load` returns.
 
 ```alder part=Todos.Index
 form NewTodo = { title: Text.NonEmpty, due: Maybe Date }
@@ -632,13 +678,17 @@ Submit.update p session = {
 
 `form NewTodo` is the form's fields and their types. Before `Submit.update`
 runs, the runtime checks the posted fields against them, and the decoded
-form is `p.form`. `Submit.update` returns a `Task`: a description of writes,
-ending in a `Response`, which says what to send back. `Db.insertMine`
-stores the new todo with the session's user as its `owner` (the record does
-not name `owner`; it may not). `Response.redirect` is a real HTTP redirect
-(a `303`) to a `GET` route, used after a create so that a refresh does not
-send the form twice. The filter the page shows is a parameter of `Submit`
-too, so the redirect can go back to the same list.
+form is `p.form`.
+
+`Submit.update` returns a `Task`: a description of writes, ending in a
+`Response`, which says what to send back.
+
+- `Db.insertMine` stores the new todo with the session's user as its
+  `owner` (the record does not name `owner`; it may not).
+- `Response.redirect` is a real HTTP redirect (a `303`) to a `GET` route,
+  used after a create so that a refresh does not send the form twice.
+- The filter the page shows is a parameter of `Submit` too, so the redirect
+  can go back to the same list.
 
 ```alder part=Todos.Index
 -- A write's id comes from the request: anyone can post `Toggle` with another user's id.
@@ -661,11 +711,14 @@ Delete.update p session = {
 on again, and send only the parts of it that changed (the row that flipped
 and the count of open todos; the `<ul>` after a delete). The page's address
 travels with every write, so a write route does not need to know which page
-sent it. `refresh` is for changes that make things appear or disappear or
-touch more than one place; for one element that is already there,
-`Response.render` sends just that element (chapter 6, "`Response`"). A
-route's `update` is its only member, and it needs no `match`: each write is
-a route of its own.
+sent it.
+
+`refresh` is for changes that make things appear or disappear or touch more
+than one place; for one element that is already there, `Response.render`
+sends just that element (chapter 6, "`Response`").
+
+A route's `update` is its only member, and it needs no `match`: each write
+is a route of its own.
 
 A write's id comes from the request: anyone can post `Toggle` with another
 user's id. `Db.updateMine` and `Db.deleteMine` act on the todo only when it
@@ -707,15 +760,19 @@ Index.view model session =
 
 `Index.view` is HTML with expressions in braces. It also receives the
 session, which this page does not need (a page that shows a per-user
-setting kept in the session would; chapter 6's theme is one). `href`
-takes a route value of a `GET` route, never a string, so a link to a page
-that does not exist, or with the wrong parameters, is a compile error.
-`submit={Submit { filter: model.filter }}` ties the form to its route, and
-`<al-input field="title">` is checked against `NewTodo`. If the submitted
-form is invalid, the runtime answers with this page again, with the errors
-in place, and `update` is never called. `App.Logout` is an app-level write
-route, which any page may send (chapter 6). The `al-` elements are the
-design system's, as in the guestbook (Appendix C).
+setting kept in the session would; chapter 6's theme is one).
+
+- `href` takes a route value of a `GET` route, never a string, so a link to
+  a page that does not exist, or with the wrong parameters, is a compile
+  error.
+- `submit={Submit { filter: model.filter }}` ties the form to its route, and
+  `<al-input field="title">` is checked against `NewTodo`. If the submitted
+  form is invalid, the runtime answers with this page again, with the
+  errors in place, and `update` is never called.
+- `App.Logout` is an app-level write route, which any page may send
+  (chapter 6).
+- The `al-` elements are the design system's, as in the guestbook
+  (Appendix C).
 
 ```alder part=Todos.Index
 Item : { todo: Todo } -> Html
@@ -735,18 +792,22 @@ Item props =
 
 `Item` is a component: a function from a record to HTML. A todo without a
 due date shows nothing there: `Html.none` renders nothing; one with a date
-shows it in an `<al-badge>`. `click={Toggle { id: ... }}` sends a route: it
-compiles to a `POST` (and, with Datastar, a patch of the page in place;
-chapter 6, "How a request runs"). On an `<al-button>` it is a real
-`<button>` inside the element, which posts without JavaScript too.
+shows it in an `<al-badge>`.
+
+`click={Toggle { id: ... }}` sends a route: it compiles to a `POST` (and,
+with Datastar, a patch of the page in place; chapter 6, "How a request
+runs"). On an `<al-button>` it is a real `<button>` inside the element,
+which posts without JavaScript too.
 
 The module ends with its tests. The first inserts a user and a todo into
-a fresh, empty database, logs in as that user, calls `Toggle.update` with the
-todo's id, and checks what happened: the trace is the one scoped write, and
-the todo is done. The next two are a stranger's attempt: my list is still
-open in the browser when a stranger logs in on it and presses my todo's
-buttons. Each answer is a 404 (`PageMissing`), and the todo is as it was.
-Chapter 10 explains them line by line.
+a fresh, empty database, logs in as that user, calls `Toggle.update` with
+the todo's id, and checks what happened: the trace is the one scoped write,
+and the todo is done.
+
+The next two are a stranger's attempt: my list is still open in the browser
+when a stranger logs in on it and presses my todo's buttons. Each answer is
+a 404 (`PageMissing`), and the todo is as it was. Chapter 10 explains them
+line by line.
 
 ```alder part=Todos.Index
 test "Toggle flips done" = {
@@ -820,15 +881,19 @@ test "Delete by another user is not found" = {
 
 The next four tests go through the page itself, as a user would: they log
 in, open the page, post its form, click its buttons, and read what the page
-shows (`#summary` is the `<p id="summary">` above). The form posted by
-`Test.submit (Submit {})` and the button clicked by `Test.click (Toggle { id:
-id })` must be on the page the test holds, so a stranger who opens the list
-afresh, whose page lists none of my todos, has nothing to click; the todo's
-own page is a 404 for them (`PageMissing`). The answer to the click is
-`Refreshed`, the test's name for `Response.refresh`. Each write route has
-its own `requires user`, since no `load` runs before it: the third test
-keeps the page open, logs out (`Test.login { user: Nothing }`), and sends
-each write from it, which must send the visitor to log in and change
+shows (`#summary` is the `<p id="summary">` above).
+
+The form posted by `Test.submit (Submit {})` and the button clicked by
+`Test.click (Toggle { id: id })` must be on the page the test holds. So a
+stranger who opens the list afresh, whose page lists none of my todos, has
+nothing to click; the todo's own page is a 404 for them (`PageMissing`).
+
+The answer to the click is `Refreshed`, the test's name for
+`Response.refresh`.
+
+Each write route has its own `requires user`, since no `load` runs before it:
+the third test keeps the page open, logs out (`Test.login { user: Nothing }`),
+and sends each write from it, which must send the visitor to log in and change
 nothing. Chapter 10, "Testing through the browser", explains each step.
 
 ```alder part=Todos.Index
@@ -951,6 +1016,7 @@ The next two were written after `alder test --mutate` (chapter 10,
 "Mutation testing") showed that nothing checked them: that `Delete`
 really deletes, and that the newest todo comes first. `Test.texts "li a"`
 is the text of every link inside a list item, in page order: the titles.
+
 The last shows the scoped read on its own: a test may use `Db.mine` too,
 and it acts for the user `Test.login` signed in, so it counts Me's two
 todos and not the other user's one.
@@ -1038,14 +1104,22 @@ test "Db.mine is what Me sees" = {
 
 ### What the compiler checked
 
-Reading this module, the compiler verified that: every `href` points at a
-real `GET` route with the right parameters; every `click` and `submit`
-names a route that can be sent (`submit` a write route); every route has its members, each with the signature its
-kind requires (a `GET` its `load` and `view`, a write its `update`); the
-form's fields match the `NewTodo` type; `load` performs no writes;
-`session.user` is always present; `title` is never empty; every `match` is
-complete; and the scoped operations are used only on a table with an
-`@owner`, in a route that `requires user`. None of that needed a test.
+Reading this module, the compiler verified that:
+
+- every `href` points at a real `GET` route with the right parameters;
+- every `click` and `submit` names a route that can be sent (`submit` a
+  write route);
+- every route has its members, each with the signature its kind requires
+  (a `GET` its `load` and `view`, a write its `update`);
+- the form's fields match the `NewTodo` type;
+- `load` performs no writes;
+- `session.user` is always present;
+- `title` is never empty;
+- every `match` is complete;
+- the scoped operations are used only on a table with an `@owner`, in a
+  route that `requires user`.
+
+None of that needed a test.
 
 ### The rest of the app
 
@@ -1055,18 +1129,22 @@ complete; and the scoped operations are used only on a table with an
   `Db.getMine`, which answers 404 when the todo doesn't exist or belongs
   to someone else. Its tests send a visitor to log in, save the form and
   delete the todo through the page.
+
 - `app/Auth/Login.alder`: the login page. It declares a `Password`
   capability, implemented in Go, and uses `Session.put` to sign the user
   in, with the role their row has. A wrong password answers
-  `Response.invalid`, which shows the form again with a message. Beside the capability is a
-  `fake Password` for tests, and four tests that log in and out through
-  the form and the button.
+  `Response.invalid`, which shows the form again with a message. Beside the
+  capability is a `fake Password` for tests, and four tests that log in and
+  out through the form and the button.
+
 - `app/App.alder`: the session record (the user, and their role: a
   `Member`, or an `Admin`), the error pages, and the app-level `Logout`
   write route, which any page can send with `click={App.Logout}`, with two
   tests of it.
-- `app/Table/User.alder`, `app/Layout.alder`: the user table, with its `role`
-  column, and a page layout component.
+
+- `app/Table/User.alder`, `app/Layout.alder`: the user table, with its
+  `role` column, and a page layout component.
+
 - `app/Admin/`: an admin for every table, for a user whose role is
   `Admin`, which one command wrote: `alder new admin` (chapter 15).
 

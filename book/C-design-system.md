@@ -43,22 +43,33 @@ the library's stylesheet, scripts (`al.js`) and manifest at that tag (`rt/al/VER
 
 Every build writes the library's two files into the build's static
 directory, next to the copy of your app's `static/`: `al/al.css` (the
-stylesheet) and `al/custom-elements.json` (the manifest, below). So the
+stylesheet) and `al/custom-elements.json` (the manifest, below).
+
+So the
 server `alder build` makes, and the one `alder run` starts, serve them at
-`/static/al/al.css` and `/static/al/custom-elements.json`. You do not
+`/static/al/al.css` and `/static/al/custom-elements.json`.
+
+You do not
 copy them into your `static/` directory; Alder writes them, from the
 copy inside the compiler (a file of yours at `static/al/al.css` would be
-replaced). Their address stays the same when you upgrade Alder, so they
+replaced).
+
+Their address stays the same when you upgrade Alder, so they
 are not cached for good: both are served with
 `Cache-Control: public, max-age=300, stale-while-revalidate=86400` and an
 `ETag`, a hash of their content (under `alder run`, `al.css` is sent with
 `no-cache` instead, so a change to the app's `theme` shows on the next
-load: "Changing a token", below). The browser uses its copy for five
+load: "Changing a token", below).
+
+The browser uses its copy for five
 minutes without asking, then keeps using it (for up to a day) while it
 asks in the background whether it is still current, and the server
 answers `304 Not Modified` (no body) until a new compiler ships a new
-stylesheet. Not asking before every page is what keeps a page load from
+stylesheet.
+
+Not asking before every page is what keeps a page load from
 waiting on the network before it paints (chapter 11 has the trade).
+
 Datastar's script is different: its address carries its version
 (`/_alder/datastar-v1.0.0.js`), so it is cached for a year without
 asking.
@@ -102,12 +113,23 @@ The stylesheet starts with the tokens. The colour tokens come from shadcn/ui, an
 Beyond the colours, the sheet defines the scales every element draws from:
 
 - **Corners.** `--radius` is `0.625rem`; `--radius-sm`, `--radius-md`, `--radius-lg` and `--radius-xl` are computed from it (0.6, 0.8, 1 and 1.4 times), so changing `--radius` rounds everything.
+
 - **Shadows.** `--shadow-xs`, `--shadow-sm`, `--shadow-md` and `--shadow-lg`.
-- **Fonts.** `--font-sans` and `--font-mono` name Geist and Geist Mono, then the system fonts as fallbacks. The two font files are bundled with Alder (they are variable fonts, so one file covers every weight, and they are licensed under the SIL Open Font License, OFL), and every build writes them to `/static/al/fonts/`, next to `al.css`, which loads them with `@font-face` and a relative `url("fonts/…")`. They come from your own server, so there is no request to a font CDN. Until a font arrives the browser shows the fallback and then swaps (`font-display: swap`).
+
+- **Fonts.** `--font-sans` and `--font-mono` name Geist and Geist Mono, then the system fonts as fallbacks.
+
+  The two font files are bundled with Alder (they are variable fonts, so one file covers every weight, and they are licensed under the SIL Open Font License, OFL), and every build writes them to `/static/al/fonts/`, next to `al.css`, which loads them with `@font-face` and a relative `url("fonts/…")`.
+
+  They come from your own server, so there is no request to a font CDN. Until a font arrives the browser shows the fallback and then swaps (`font-display: swap`).
+
 - **Page widths.** `--al-width-narrow`, `--al-width-normal` and `--al-width-wide`, the three widths of `al-page`. They are the only tokens still starting with `--al-`; the old ones are listed, with what replaced them, under "Migrating from v0.3.x" below.
 - **White and black.** `--color-white` and `--color-black`, for the text on a destructive button and the dimmed backdrop behind a dialog.
 
-Every text pairing the elements draw (a foreground on its background) meets WCAG AA contrast, 4.5:1, in both themes; the library's tests compute the ratios from the token values. Borders are different. shadcn's own `--border`, `--input` and `--ring` are pale on purpose and fall below the 3:1 that WCAG asks of the edge of a control, so a field's outline is hard to see for some people. alder-ui keeps shadcn's values so the look is the one you expect, and reports the shortfall as a warning. If you want the strict reading, set the two border tokens in your app's `theme` (see "Changing a token", below):
+Every text pairing the elements draw (a foreground on its background) meets WCAG AA contrast, 4.5:1, in both themes; the library's tests compute the ratios from the token values.
+
+Borders are different. shadcn's own `--border`, `--input` and `--ring` are pale on purpose and fall below the 3:1 that WCAG asks of the edge of a control, so a field's outline is hard to see for some people. alder-ui keeps shadcn's values so the look is the one you expect, and reports the shortfall as a warning.
+
+If you want the strict reading, set the two border tokens in your app's `theme` (see "Changing a token", below):
 
 ```alder fragment
 theme {
@@ -118,7 +140,11 @@ theme {
 
 ### Light and dark
 
-There is one switch, and it is a class. A `dark` class on `<html>` turns the dark theme on for the whole page; without it the page is light. The same class on any other element darkens just that element's subtree (`<al-card class="dark">` is a dark card on a light page), and a `light` class inside a dark page turns that subtree light again. Nothing in the stylesheet looks at the operating system's setting by itself, and there is no `data-theme` attribute any more.
+There is one switch, and it is a class. A `dark` class on `<html>` turns the dark theme on for the whole page; without it the page is light.
+
+The same class on any other element darkens just that element's subtree (`<al-card class="dark">` is a dark card on a light page), and a `light` class inside a dark page turns that subtree light again.
+
+Nothing in the stylesheet looks at the operating system's setting by itself, and there is no `data-theme` attribute any more.
 
 Something has to set the class, and in Alder that is one line of JavaScript in the layout's `<head>`, before the stylesheet link:
 
@@ -126,9 +152,21 @@ Something has to set the class, and in Alder that is one line of JavaScript in t
 <script>try{document.documentElement.classList.toggle("dark",localStorage.theme==="dark"||(!("theme" in localStorage)&&matchMedia("(prefers-color-scheme: dark)").matches))}catch(e){}</script>
 ```
 
-Read it from the inside out. If the visitor has chosen a theme before, it is in `localStorage.theme` (`"dark"` or `"light"`), and that wins. If they never chose, the script asks the browser whether the operating system prefers dark (`matchMedia("(prefers-color-scheme: dark)")`). `classList.toggle("dark", yes)` then adds or removes the class. The `try … catch` is for browsers that refuse `localStorage` (a private window, blocked site data): the page stays light. The script runs in the `<head>`, before the body exists to be painted, so the first frame is already the right theme. `alder new` and the generators write this line into the layouts they emit. A toggle button of yours does the other half: flip the class and remember the choice, `var d=document.documentElement.classList.toggle("dark");try{localStorage.theme=d?"dark":"light"}catch(e){}`. With JavaScript off nothing sets the class and the page is light, which is the designed fallback.
+Read it from the inside out. If the visitor has chosen a theme before, it is in `localStorage.theme` (`"dark"` or `"light"`), and that wins. If they never chose, the script asks the browser whether the operating system prefers dark (`matchMedia("(prefers-color-scheme: dark)")`). `classList.toggle("dark", yes)` then adds or removes the class.
 
-A theme you paste in (shadcn/ui's theme page and tweakcn export one) is two blocks, a light one and a `.dark` one. Put them in your own stylesheet, which comes after `al.css`. The light block must be written `:root, .light { … }`, not just `:root { … }`: the library defines its own light values on `:root, .light` so that a `light` subtree inside a dark page gets light values back, and a pasted theme that only names `:root` would leave such a subtree with the dark page's colours (alder#21, item 4).
+The `try … catch` is for browsers that refuse `localStorage` (a private window, blocked site data): the page stays light. The script runs in the `<head>`, before the body exists to be painted, so the first frame is already the right theme.
+
+`alder new` and the generators write this line into the layouts they emit.
+
+A toggle button of yours does the other half: flip the class and remember the choice, `var d=document.documentElement.classList.toggle("dark");try{localStorage.theme=d?"dark":"light"}catch(e){}`.
+
+With JavaScript off nothing sets the class and the page is light, which is the designed fallback.
+
+A theme you paste in (shadcn/ui's theme page and tweakcn export one) is two blocks, a light one and a `.dark` one.
+
+Put them in your own stylesheet, which comes after `al.css`.
+
+The light block must be written `:root, .light { … }`, not just `:root { … }`: the library defines its own light values on `:root, .light` so that a `light` subtree inside a dark page gets light values back, and a pasted theme that only names `:root` would leave such a subtree with the dark page's colours (alder#21, item 4).
 
 ### Between pages: no white flash
 
@@ -150,7 +188,11 @@ Two more things keep the flash from happening between your own pages:
   }
   ```
 
-  which opts every page into *cross-document view transitions*: when the browser goes from one document of the site to another of the same origin (a link with `data-alder-reload`, a form that submits with `GET`, Back or Forward to a page that was loaded rather than boosted), it cross-fades from the old page to the new one. A first visit and a reload have no old page of the site to fade from, so they get no transition. (While a new document loads, the browser keeps showing the old one until the new one can paint; that is the browser's paint holding, which happens with or without the rule.) Chrome and Edge (126 and later) and Safari (18.2 and later) support it; other browsers ignore the rule.
+  which opts every page into *cross-document view transitions*: when the browser goes from one document of the site to another of the same origin (a link with `data-alder-reload`, a form that submits with `GET`, Back or Forward to a page that was loaded rather than boosted), it cross-fades from the old page to the new one. A first visit and a reload have no old page of the site to fade from, so they get no transition.
+
+  (While a new document loads, the browser keeps showing the old one until the new one can paint; that is the browser's paint holding, which happens with or without the rule.)
+
+  Chrome and Edge (126 and later) and Safari (18.2 and later) support it; other browsers ignore the rule.
 
 ### Starting from a theme
 
@@ -166,7 +208,9 @@ Declaring every token by hand is a lot of work for a first look, so alder-ui shi
 
 `zinc` is what alder-ui already looks like, so an app with no `theme` declaration is a `zinc` app; the other four change the colours, the corner radii, the shadows, the fonts and (through `borderWidth`) how thick the borders are.
 
-A starting theme is taken *by copy*. Nothing in your app refers to `paper` afterwards: the command writes the whole declaration of "Changing a token" into `app/App.alder`, as plain text you can read, and from then on the app owns it. Change a value, delete a field, or switch to another theme; a later release of alder-ui that tweaks `paper` does not move your app. It goes through the same copy, check and write as an import, so a theme the checker refuses is never written.
+A starting theme is taken *by copy*. Nothing in your app refers to `paper` afterwards: the command writes the whole declaration of "Changing a token" into `app/App.alder`, as plain text you can read, and from then on the app owns it. Change a value, delete a field, or switch to another theme; a later release of alder-ui that tweaks `paper` does not move your app.
+
+It goes through the same copy, check and write as an import, so a theme the checker refuses is never written.
 
 ```
 $ alder theme use
@@ -182,7 +226,15 @@ $ alder theme use paper
 theme: paper → app/App.alder  (light 32, dark 32, theme-wide 15; replaced the theme that was there)
 ```
 
-With no name the command lists the themes and writes nothing. With `--json` the list is `{"version":"v0.6.0","presets":[{"name","title","purpose"}]}`, for a script or an agent. With one it replaces the app's whole `theme` declaration, as `alder theme import` does: what was there before is gone, not merged, and `--dry-run` prints the diff without writing. The summary counts the colour tokens set under `light` and under `dark` (32 each: every colour token of the table below) and the theme-wide ones (radii, widths, fonts, shadows and the border width: 15). A name that is not one of the five is refused with the nearest, then the list, and nothing is written:
+With no name the command lists the themes and writes nothing.
+
+With `--json` the list is `{"version":"v0.6.0","presets":[{"name","title","purpose"}]}`, for a script or an agent.
+
+With one it replaces the app's whole `theme` declaration, as `alder theme import` does: what was there before is gone, not merged, and `--dry-run` prints the diff without writing.
+
+The summary counts the colour tokens set under `light` and under `dark` (32 each: every colour token of the table below) and the theme-wide ones (radii, widths, fonts, shadows and the border width: 15).
+
+A name that is not one of the five is refused with the nearest, then the list, and nothing is written:
 
 ```
 $ alder theme use papr
@@ -192,7 +244,11 @@ starting themes (alder-ui v0.6.0):
   …
 ```
 
-A new app can start with one: `alder new shelf --theme paper` creates the app and then does what `alder theme use paper` does, adding one line, `theme: paper`, to the list of what was created. An unknown name fails before anything is created. Without the flag nothing is written, and the app is `zinc` because alder-ui is; `--theme zinc` writes zinc's declaration out, for a person who wants the values in front of them.
+A new app can start with one: `alder new shelf --theme paper` creates the app and then does what `alder theme use paper` does, adding one line, `theme: paper`, to the list of what was created.
+
+An unknown name fails before anything is created.
+
+Without the flag nothing is written, and the app is `zinc` because alder-ui is; `--theme zinc` writes zinc's declaration out, for a person who wants the values in front of them.
 
 ### Changing a token
 
@@ -211,18 +267,54 @@ theme {
 }
 ```
 
-Each field is a token's CSS name without the `--` (and without the `al-` of the page widths), in lowerCamel: `--muted-foreground` is `mutedForeground`, `--chart-1` is `chart1`, `--al-width-narrow` is `widthNarrow`. Each value is text, written the way the CSS writes it, so a line copied from a stylesheet, `--primary: oklch(0.55 0.22 285);`, becomes `primary: "oklch(0.55 0.22 285)"`. The tokens come in four kinds, and the kind decides where a field goes and what its value may be:
+Each field is a token's CSS name without the `--` (and without the `al-` of the page widths), in lowerCamel: `--muted-foreground` is `mutedForeground`, `--chart-1` is `chart1`, `--al-width-narrow` is `widthNarrow`.
 
-| Kind | Fields | Value |
-|---|---|---|
-| colour, under `light` or `dark` | `background`, `foreground`, `card`, `cardForeground`, `popover`, `popoverForeground`, `primary`, `primaryForeground`, `secondary`, `secondaryForeground`, `muted`, `mutedForeground`, `accent`, `accentForeground`, `destructive`, `destructiveForeground`, `border`, `input`, `ring`, `chart1`, `chart2`, `chart3`, `chart4`, `chart5`, `sidebar`, `sidebarForeground`, `sidebarPrimary`, `sidebarPrimaryForeground`, `sidebarAccent`, `sidebarAccentForeground`, `sidebarBorder`, `sidebarRing` | `"#4f46e5"` (3, 4, 6 or 8 hex digits), `"transparent"`, `"currentColor"`, a colour function (`oklch`, `oklab`, `lch`, `lab`, `hsl`, `hwb`, `rgb`, `rgba`, `hsla`, `color`, `color-mix`, `light-dark`), or `"var(--accent)"` to reuse another colour token |
-| length, at the top | `radius`, `radiusSm`, `radiusMd`, `radiusLg`, `radiusXl`, `widthNarrow`, `widthNormal`, `widthWide`, `borderWidth` | `"0"`, or a non-negative number with a unit: `rem`, `em`, `px`, `%`, `vw`, `vh`, `ch`, `lh` |
-| font stack, at the top | `fontSans`, `fontMono` | a list of family names, `["Inter", "sans-serif"]`; the generic families (`sans-serif`, `monospace`, `system-ui`, …) stay unquoted in the CSS, every other name is quoted |
-| shadow, at the top | `shadowXs`, `shadowSm`, `shadowMd`, `shadowLg` | `"none"`, or the shadow as CSS writes it, `"0 1px 2px 0 rgb(0 0 0 / 0.05)"` |
+Each value is text, written the way the CSS writes it, so a line copied from a stylesheet, `--primary: oklch(0.55 0.22 285);`, becomes `primary: "oklch(0.55 0.22 285)"`. The tokens come in four kinds, and the kind decides where a field goes and what its value may be:
 
-`light` and `dark` are each optional: a colour set only under `light` keeps alder-ui's dark value, which suits an app that is only ever light. Shadows, radii, widths and fonts are the same in both schemes, as they are in shadcn/ui. `radius` alone is usually enough for the corners, because the other four radii are computed from it.
+#### Colour tokens
 
-The checker holds the declaration to the stylesheet (E0042). A name that is not a token is refused with the nearest one (`primray` is "did you mean `primary` (`--primary`)?"); one of the `--al-*` tokens of alder-ui v0.3, in lowerCamel, is answered with its replacement from "Removed tokens", below; a colour at the top level, a length under `light`, a value of the wrong shape, a negative length, a `var()` of anything but a colour token, and colours whose `var()`s lead back to themselves (`ring: "var(--ring)"`) are refused, each with an example of what to write. Because every value is checked against a fixed set of characters, nothing in a theme can end its CSS declaration early and write a rule of its own. The list of tokens is the one `al.css` declares, and the compiler's tests compare the two, so a release of alder-ui that adds or drops a token cannot leave the checker behind. In the editor, the language server completes the field names (the colour tokens inside `light` and `dark`, the others at the top) and shows a token's CSS name and alder-ui's own light and dark values on hover.
+- **Kind:** colour, under `light` or `dark`.
+- **Fields:** `background`, `foreground`, `card`, `cardForeground`, `popover`, `popoverForeground`, `primary`, `primaryForeground`, `secondary`, `secondaryForeground`, `muted`, `mutedForeground`, `accent`, `accentForeground`, `destructive`, `destructiveForeground`, `border`, `input`, `ring`, `chart1`, `chart2`, `chart3`, `chart4`, `chart5`, `sidebar`, `sidebarForeground`, `sidebarPrimary`, `sidebarPrimaryForeground`, `sidebarAccent`, `sidebarAccentForeground`, `sidebarBorder`, `sidebarRing`.
+- **Value:** `"#4f46e5"` (3, 4, 6 or 8 hex digits), `"transparent"`, `"currentColor"`, a colour function (`oklch`, `oklab`, `lch`, `lab`, `hsl`, `hwb`, `rgb`, `rgba`, `hsla`, `color`, `color-mix`, `light-dark`), or `"var(--accent)"` to reuse another colour token.
+
+#### Length tokens
+
+- **Kind:** length, at the top.
+- **Fields:** `radius`, `radiusSm`, `radiusMd`, `radiusLg`, `radiusXl`, `widthNarrow`, `widthNormal`, `widthWide`, `borderWidth`.
+- **Value:** `"0"`, or a non-negative number with a unit: `rem`, `em`, `px`, `%`, `vw`, `vh`, `ch`, `lh`.
+
+#### Font stack tokens
+
+- **Kind:** font stack, at the top.
+- **Fields:** `fontSans`, `fontMono`.
+- **Value:** a list of family names, `["Inter", "sans-serif"]`; the generic families (`sans-serif`, `monospace`, `system-ui`, …) stay unquoted in the CSS, every other name is quoted.
+
+#### Shadow tokens
+
+- **Kind:** shadow, at the top.
+- **Fields:** `shadowXs`, `shadowSm`, `shadowMd`, `shadowLg`.
+- **Value:** `"none"`, or the shadow as CSS writes it, `"0 1px 2px 0 rgb(0 0 0 / 0.05)"`.
+
+`light` and `dark` are each optional: a colour set only under `light` keeps alder-ui's dark value, which suits an app that is only ever light.
+
+Shadows, radii, widths and fonts are the same in both schemes, as they are in shadcn/ui.
+
+`radius` alone is usually enough for the corners, because the other four radii are computed from it.
+
+The checker holds the declaration to the stylesheet (E0042).
+
+The checker refuses these, each with an example of what to write:
+
+- A name that is not a token, with the nearest one (`primray` is "did you mean `primary` (`--primary`)?").
+- One of the `--al-*` tokens of alder-ui v0.3, in lowerCamel, which is answered with its replacement from "Removed tokens", below.
+- A colour at the top level, a length under `light`, a value of the wrong shape, or a negative length.
+- A `var()` of anything but a colour token, and colours whose `var()`s lead back to themselves (`ring: "var(--ring)"`).
+
+Because every value is checked against a fixed set of characters, nothing in a theme can end its CSS declaration early and write a rule of its own.
+
+The list of tokens is the one `al.css` declares, and the compiler's tests compare the two, so a release of alder-ui that adds or drops a token cannot leave the checker behind.
+
+In the editor, the language server completes the field names (the colour tokens inside `light` and `dark`, the others at the top) and shows a token's CSS name and alder-ui's own light and dark values on hover.
 
 The build turns the declaration into three CSS rules and appends them to the `al.css` it serves and writes, so nothing new is linked and the layout does not change. The example above becomes:
 
@@ -233,21 +325,51 @@ The build turns the declaration into three CSS rules and appends them to the `al
 .dark { --primary: oklch(0.72 0.16 285); --primary-foreground: oklch(0.145 0 0); }
 ```
 
-The rules list the tokens in the stylesheet's order, not the declaration's, so the file is the same however the fields are arranged; an empty block is left out, and `theme { }` adds nothing. The light rule's selector needs a word. It cannot be a plain `:root`: the theme's rules are outside alder-ui's layer (below), so on `<html class="dark">` an unlayered `:root` would beat alder-ui's own `.dark` values, and a colour set only under `light` would show up in dark mode. `:root:not(.dark)` matches the root only while it is light; `:where( … )` around it gives it no specificity of its own, so a `:root` rule in your own stylesheet still beats it; and `.light` is named too, so a `light` subtree inside a dark page gets the theme's light values. Under `alder run` the server tells the browser to revalidate `al.css` on every load (`Cache-Control: no-cache`), so a change to the theme shows on the next reload; a deployed app caches it as before, with an ETag of its own that changes when the theme does.
+The rules list the tokens in the stylesheet's order, not the declaration's, so the file is the same however the fields are arranged; an empty block is left out, and `theme { }` adds nothing.
 
-Your rules win without any `!important`, because the whole library sits in a *cascade layer*: `al.css` wraps everything in `@layer al { … }`, and CSS that is not in a layer always beats CSS that is, whatever the selectors. The theme's rules are outside the layer, so they beat alder-ui's values. Your own stylesheet, `static/app.css`, is linked after `al.css` and is outside the layer too, so at equal specificity it beats the theme: the order is alder-ui, then the theme, then `app.css`. That stylesheet stays the place for what a theme cannot say: a token alder-ui does not have (`--tracking-normal`, a `--brand-*` of your own), a one-off rule, or a whole theme pasted from shadcn/ui or tweakcn (two blocks, written `:root, .light { … }` and `.dark { … }`, as "Light and dark" explains), which then overrides the declaration. The trade-off of the layer is that a rule of yours cannot lose to the library by accident either: `button { padding: 0 }` in your stylesheet also removes the padding of the button inside every `<al-button>`. Write such rules with a narrower selector (`.toolbar button`), or put your own CSS in a layer declared after it (`@layer al, app;`).
+The light rule's selector needs a word. It cannot be a plain `:root`: the theme's rules are outside alder-ui's layer (below), so on `<html class="dark">` an unlayered `:root` would beat alder-ui's own `.dark` values, and a colour set only under `light` would show up in dark mode.
+
+`:root:not(.dark)` matches the root only while it is light; `:where( … )` around it gives it no specificity of its own, so a `:root` rule in your own stylesheet still beats it; and `.light` is named too, so a `light` subtree inside a dark page gets the theme's light values.
+
+Under `alder run` the server tells the browser to revalidate `al.css` on every load (`Cache-Control: no-cache`), so a change to the theme shows on the next reload; a deployed app caches it as before, with an ETag of its own that changes when the theme does.
+
+Your rules win without any `!important`, because the whole library sits in a *cascade layer*: `al.css` wraps everything in `@layer al { … }`, and CSS that is not in a layer always beats CSS that is, whatever the selectors.
+
+The theme's rules are outside the layer, so they beat alder-ui's values.
+
+Your own stylesheet, `static/app.css`, is linked after `al.css` and is outside the layer too, so at equal specificity it beats the theme: the order is alder-ui, then the theme, then `app.css`.
+
+That stylesheet stays the place for what a theme cannot say: a token alder-ui does not have (`--tracking-normal`, a `--brand-*` of your own), a one-off rule, or a whole theme pasted from shadcn/ui or tweakcn (two blocks, written `:root, .light { … }` and `.dark { … }`, as "Light and dark" explains), which then overrides the declaration.
+
+The trade-off of the layer is that a rule of yours cannot lose to the library by accident either: `button { padding: 0 }` in your stylesheet also removes the padding of the button inside every `<al-button>`.
+
+Write such rules with a narrower selector (`.toolbar button`), or put your own CSS in a layer declared after it (`@layer al, app;`).
 
 ### Trying a look: /_dev/theme
 
 Editing colour strings by hand is slow when the question is "what does this look like?". Under `alder run`, the address `/_dev/theme` (on the dev server's own port) is a page for trying a look and writing it into `App.alder` when you like it. It is a dev tool: a built or deployed app does not have it (chapter 11).
 
-The page has a panel and a preview. The panel has a Light/Dark switch, three buttons (Reset, Import…, Write to App.alder) and one control per token, laid out by the kinds of the table above. A colour is a text field with a swatch, a native colour picker and three sliders for its `oklch()` lightness, chroma and hue (the sliders appear only when the value is `oklch(L C H)` with plain numbers; any other notation gets the text field and the picker alone); a length is a number and a unit; a font stack is a comma-separated list; a shadow is text. The preview has two tabs, Gallery (every alder-ui element, in the scheme you chose) and App (your own app, in a frame). Moving a control changes the preview at once: the page sets the token as an inline custom property on the preview's `<html>`, so nothing is built and nothing is reloaded.
+The page has a panel and a preview. The panel has a Light/Dark switch, three buttons (Reset, Import…, Write to App.alder) and one control per token, laid out by the kinds of the table above.
+
+A colour is a text field with a swatch, a native colour picker and three sliders for its `oklch()` lightness, chroma and hue (the sliders appear only when the value is `oklch(L C H)` with plain numbers; any other notation gets the text field and the picker alone); a length is a number and a unit; a font stack is a comma-separated list; a shadow is text.
+
+The preview has two tabs, Gallery (every alder-ui element, in the scheme you chose) and App (your own app, in a frame).
+
+Moving a control changes the preview at once: the page sets the token as an inline custom property on the preview's `<html>`, so nothing is built and nothing is reloaded.
 
 The Start from select under the switch replaces the whole working theme with one of the starting themes (Zinc, Brutal, Catppuccin, Paper, Pebble; "Starting from a theme" above), shows five swatches of its light colours beside it, and goes back to "—" as soon as you change a token; like any control, it writes nothing until Write.
 
 Nothing is written until you press Write to App.alder. Until then the working state lives in the browser tab (`sessionStorage`), so a reload of the page keeps it, and Reset goes back to what `App.alder` holds. The panel itself is styled with a stylesheet of its own and never uses the theme's tokens, so a theme with white text on a white background does not make the controls unreadable.
 
-Write checks the declaration with the checker (E0042, the rules of "Changing a token"), and a declaration that fails is not written: the panel lists the errors instead. Otherwise it replaces the `theme` declaration in `app/App.alder` with the formatter's printing of the one on the page, and the watcher rebuilds the app. If the file has no declaration yet, the write inserts one (after `deploy`, `session` and the imports); if everything is cleared, it deletes the declaration. Because the declaration is printed again whole, a `--` comment *inside* `theme { … }` is dropped by a write; a comment above the declaration is kept. Write has no memory of how you laid the fields out either, so the file comes out the way `alder fmt` prints a theme (chapter 3).
+Write checks the declaration with the checker (E0042, the rules of "Changing a token"), and a declaration that fails is not written: the panel lists the errors instead.
+
+Otherwise it replaces the `theme` declaration in `app/App.alder` with the formatter's printing of the one on the page, and the watcher rebuilds the app.
+
+If the file has no declaration yet, the write inserts one (after `deploy`, `session` and the imports); if everything is cleared, it deletes the declaration.
+
+Because the declaration is printed again whole, a `--` comment *inside* `theme { … }` is dropped by a write; a comment above the declaration is kept.
+
+Write has no memory of how you laid the fields out either, so the file comes out the way `alder fmt` prints a theme (chapter 3).
 
 The write changes a file on your disk from a web page, so the dev server only answers this page's own routes to requests from its own address: a page on another site, or one that points its own name at 127.0.0.1, is refused.
 
@@ -271,11 +393,29 @@ theme: 59 tokens → app/App.alder  (light 32, dark 20, theme-wide 7; replaced t
 skipped 1 block (@theme inline)
 ```
 
-It reads the three shapes the exports come in: shadcn v4 (`oklch()` colours), shadcn v3 (bare HSL channels, `--primary: 222.2 47.4% 11.2%`, which the importer wraps in `hsl()`) and tweakcn's. The file is a `:root` block and a `.dark` block, or the same inside `@media (prefers-color-scheme: dark)`; `-` reads standard input, and `--dir` names the app. The import replaces the whole declaration: what was in `theme { … }` before is gone, not merged (the summary line says so), and `--dry-run` prints the diff without writing.
+It reads the three shapes the exports come in: shadcn v4 (`oklch()` colours), shadcn v3 (bare HSL channels, `--primary: 222.2 47.4% 11.2%`, which the importer wraps in `hsl()`) and tweakcn's.
 
-Not everything in an export is a token of alder-ui. Those lines come back as a block for `static/app.css`, each with the reason: a token alder-ui does not have (`--font-serif`, `--tracking-normal`), a value of the wrong shape, a theme-wide token whose dark value differs from the light one (alder-ui has one value for those), or a block that is not a scheme. At-rules that carry no theme (`@theme`, `@import "tailwindcss"`, `@custom-variant`) are counted, not listed. Paste the unplaced block into `app.css` if you want it: that stylesheet comes after the theme, as "Changing a token" explains. A file with no token of alder-ui in it is refused and nothing is written. In the page above, the Import… button takes the same CSS, shows the same unplaced lines with a Copy button, and fills the controls without writing.
+The file is a `:root` block and a `.dark` block, or the same inside `@media (prefers-color-scheme: dark)`; `-` reads standard input, and `--dir` names the app.
 
-The same command reads design tokens in the W3C DTCG format (`tokens.json`), which Figma, Tokens Studio and Style Dictionary export. The file's first character decides: a `{` is JSON, anything else is CSS, and `--format css` or `--format dtcg` overrides the guess. A DTCG theme is either one tokens file, whose top-level `light` and `dark` groups are the two schemes and whose other groups are theme-wide, or a resolver (`theme.resolver.json`) that names token files in its `sets` and picks the scheme with a modifier. Give a resolver's path and the files it refers to are read from beside it (never from outside that folder); `-` and the paste box take one self-contained file, because a resolver on standard input has no folder to find its files in. A token is placed by its path (`color.primary`, `radius`) when that is a token of alder-ui and its `$type` fits it; what is not placed comes back in the same block as above, with the reason (`no $type`, `` `radius` is a length; the file says `color` ``, `` `{color.brand.500}` is not a token ``).
+The import replaces the whole declaration: what was in `theme { … }` before is gone, not merged (the summary line says so), and `--dry-run` prints the diff without writing.
+
+Not everything in an export is a token of alder-ui. Those lines come back as a block for `static/app.css`, each with the reason: a token alder-ui does not have (`--font-serif`, `--tracking-normal`), a value of the wrong shape, a theme-wide token whose dark value differs from the light one (alder-ui has one value for those), or a block that is not a scheme.
+
+At-rules that carry no theme (`@theme`, `@import "tailwindcss"`, `@custom-variant`) are counted, not listed.
+
+Paste the unplaced block into `app.css` if you want it: that stylesheet comes after the theme, as "Changing a token" explains. A file with no token of alder-ui in it is refused and nothing is written.
+
+In the page above, the Import… button takes the same CSS, shows the same unplaced lines with a Copy button, and fills the controls without writing.
+
+The same command reads design tokens in the W3C DTCG format (`tokens.json`), which Figma, Tokens Studio and Style Dictionary export.
+
+The file's first character decides: a `{` is JSON, anything else is CSS, and `--format css` or `--format dtcg` overrides the guess.
+
+A DTCG theme is either one tokens file, whose top-level `light` and `dark` groups are the two schemes and whose other groups are theme-wide, or a resolver (`theme.resolver.json`) that names token files in its `sets` and picks the scheme with a modifier.
+
+Give a resolver's path and the files it refers to are read from beside it (never from outside that folder); `-` and the paste box take one self-contained file, because a resolver on standard input has no folder to find its files in.
+
+A token is placed by its path (`color.primary`, `radius`) when that is a token of alder-ui and its `$type` fits it; what is not placed comes back in the same block as above, with the reason (`no $type`, `` `radius` is a length; the file says `color` ``, `` `{color.brand.500}` is not a token ``).
 
 For an agent, `--print` writes the declaration to standard output and nothing to disk, so the agent can read it and adjust a value before it puts it in `App.alder` itself; the unplaced lines go to standard error. `--print` cannot be combined with `--json`, and `-` is accepted only on the command line.
 
@@ -283,7 +423,9 @@ For an agent, `--print` writes the declaration to standard output and nothing to
 
 Two groups of rules in `al.css` are not about any one element.
 
-**The base layer** is global. It is a version of Tailwind's *Preflight*, a reset that removes the browser's default styling so every browser starts from the same blank page: margins are zero, every element has `box-sizing: border-box` and a zero-width border, headings and lists lose their built-in size, bullets and indent, buttons and form controls inherit the page's font, and images and SVGs are blocks. It applies to the whole document, with or without an `<al-page>`, and it is also what sets the page's font to Geist.
+**The base layer** is global. It is a version of Tailwind's *Preflight*, a reset that removes the browser's default styling so every browser starts from the same blank page: margins are zero, every element has `box-sizing: border-box` and a zero-width border, headings and lists lose their built-in size, bullets and indent, buttons and form controls inherit the page's font, and images and SVGs are blocks.
+
+It applies to the whole document, with or without an `<al-page>`, and it is also what sets the page's font to Geist.
 
 **Typography** gives the plain HTML you write the shadcn/ui look: `h1` to `h4`, `p`, `ul`, `ol`, `blockquote`, `a`, `code`, `hr` and a bare `table`. It is scoped to `al-page:not([plain])`: it applies wherever *some* enclosing `al-page` does not have the `plain` attribute. Without it the base layer would leave a heading looking like body text.
 
@@ -330,10 +472,14 @@ Every element also takes the attributes any custom element takes: `id`,
 `class`, `style`, `slot`, `hidden`, `title`, `lang`, `dir`, `tabindex`,
 `role`, `data-*` and `aria-*`, and Alder's `click` and `href` (chapter 5,
 "Custom elements"); `submit` belongs on `<form>` and is refused on an
-element (E0028). A `boolean` attribute is written bare (`disabled`) or
+element (E0028).
+
+A `boolean` attribute is written bare (`disabled`) or
 with a `Bool` (`disabled={model.saving}`). An attribute whose type lists
 quoted values takes one of them: a literal outside the list, such as
-`variant="destuctive"`, is E0028, and the message lists the values. A
+`variant="destuctive"`, is E0028, and the message lists the values.
+
+A
 computed value (`variant={…}`) is not checked; an unknown one is simply
 not styled.
 
@@ -385,9 +531,13 @@ attributes and gives the control its look:
 With `href`, the attributes that describe the link move onto the `<a>`,
 next to `href`, where the browser and Alder's link handling read them:
 `target`, `rel`, `download`, `hreflang`, `referrerpolicy`, `ping` and
-`data-alder-reload` (see "Links and navigation" in chapter 6). The rest
+`data-alder-reload` (see "Links and navigation" in chapter 6).
+
+The rest
 stay on the element. Without `href` there is no link for them, and Alder
-reports an error. For example,
+reports an error.
+
+For example,
 `<al-button href={Report.Export {}} download="report.csv">Download</al-button>`
 renders `<a href="…" download="report.csv">` inside the button.
 
@@ -520,13 +670,18 @@ The name field renders as:
 ```
 
 The `<label>` holds the text and the input, so clicking the text focuses
-the input, and a screen reader names the input by it. The `label`
+the input, and a screen reader names the input by it.
+
+The `label`
 attribute repeats the text for other tools; the stylesheet does not draw
-it. The `help` text is a real element, `<small class="help"
+it.
+
+The `help` text is a real element, `<small class="help"
 id="help-<field>">`, after the label, and the input's `aria-describedby`
 names it, so a screen reader reads the hint with the field (text drawn
 by CSS alone would not be read). It is there only when you write `help`;
 the stylesheet then does not draw the attribute's text a second time.
+
 The `<ul class="errors">` is the field's error list, empty until a
 submission fails. When it does, the page is rendered again with the
 submitted value and the messages:
@@ -535,16 +690,23 @@ submitted value and the messages:
 <al-input label="Name" placeholder="Ada Lovelace" help="As it appears on your posts" invalid><label>Name<input name="name" type="text" required placeholder="Ada Lovelace" aria-invalid="true" aria-describedby="help-name errors-name" /></label><small class="help" id="help-name">As it appears on your posts</small><ul class="errors" data-errors="name" id="errors-name"><li>must not be empty</li></ul></al-input>
 ```
 
-Three things changed. The element has `invalid`, which the stylesheet
+Three things changed.
+
+The element has `invalid`, which the stylesheet
 uses to colour the field. The input has `aria-invalid="true"`, which
 tells a screen reader the value was refused. And the list has an `id`,
 `errors-<field>`, which the input's `aria-describedby` now names after
 the help, so the screen reader reads the messages along with the field.
+
 (The `id` is there only while the list has messages: a page with one
 form per row, such as a list of todos, repeats each field name, and an
-`id` must be unique.) An `id` or `aria-*` attribute you write on the
+`id` must be unique.)
+
+An `id` or `aria-*` attribute you write on the
 element stays on the element; it is not forwarded to the input, whose
-ids are derived from the field's name as above. Since the element shows
+ids are derived from the field's name as above.
+
+Since the element shows
 the field's errors, an `<Errors field="name" />` beside it is refused
 (E0028). The `ul.errors[data-errors=…]` list is the same one
 `<Errors field>` renders, so tests that look for it (chapter 10) find it
@@ -574,8 +736,10 @@ From the page above:
 
 A select, on a field whose type is a union of constructors without
 arguments (chapter 5, "Forms and inputs"): one option per constructor.
+
 On a field of `Text` or a brand of it, `options={…}` (a `List { value:
 …, label: Text }`) gives the options instead: a row's id and its label.
+
 A submitted value that is not one of them is refused with the field
 error "must be one of the options": the runtime computes the options
 again from the model when the form is posted (chapter 5).
@@ -715,9 +879,13 @@ box only after a failed submission (the blog's forms do this, chapter
 
 `dismissible` only makes room: the button that closes the alert comes
 from the library's optional script, `components/al-alert.js`, which
-Alder does not ship. Datastar's morph would remove a button a script
+Alder does not ship.
+
+Datastar's morph would remove a button a script
 added, so in an Alder page render your own: an `<al-button>` with a
-`click`. The model is not kept between requests (`load` builds it again
+`click`.
+
+The model is not kept between requests (`load` builds it again
 for every render), so a write route must record the dismissal where `load`
 will find it, in the session or in the database, and answer
 `Response.refresh`; `load` then leaves the alert out.
@@ -800,15 +968,25 @@ Slots: default.
 
 ## The interactive tier
 
-The twelve elements above are a stylesheet. The ten below (`al-dialog`,
+The twelve elements above are a stylesheet.
+
+The ten below (`al-dialog`,
 `al-popover`, `al-menu`, `al-tabs`, `al-tab`, `al-panel`, `al-toast`,
 `al-toasts`, `al-tooltip`, `al-devpanel`) are what v0.2 added, and they
-behave: they open, close, move focus and time out. The rule that shaped
-them is that **the platform does the work wherever it can**. A modal
+behave: they open, close, move focus and time out.
+
+The rule that shaped
+them is that **the platform does the work wherever it can**.
+
+A modal
 dialog is the browser's `<dialog>`, which already traps focus, makes the
 page behind it inert, closes on Escape and gives focus back to the button
-that opened it. A popover is the browser's Popover API, positioned with
-CSS anchor positioning. A group of tabs is a group of radio buttons. A
+that opened it.
+
+A popover is the browser's Popover API, positioned with
+CSS anchor positioning. A group of tabs is a group of radio buttons.
+
+A
 script (`al.js`, below) is added only where the platform has nothing: a
 toast's timer, the arrow keys of a menu, a polyfill for older browsers.
 
@@ -827,33 +1005,50 @@ to open and what to do with two attributes on any `<button>`:
 
 `commandfor` is the `id` of the element to act on and `command` is the
 action: `show-modal` (open a dialog as a modal), `close` (close it),
-`toggle-popover`, `show-popover` or `hide-popover` (for a popover). These
+`toggle-popover`, `show-popover` or `hide-popover` (for a popover).
+
+These
 are the platform's *invoker commands*; there is no `click` handler and no
-script of yours. In an Alder view write the `<button>` inside an
+script of yours.
+
+In an Alder view write the `<button>` inside an
 `<al-button>` (the button gets the element's look, as in `al-button`
 above); `commandfor` and `command` are plain attributes of the `<button>`.
+
 A button that only toggles a popover can also use the older pair,
 `popovertarget="id"`, which every browser with popovers understands.
 
 ### Without JavaScript, and in older browsers
 
 Each element says below what it does with no script, but the rule is
-short. Dialog, popover, menu and tabs work natively: invoker commands,
+short.
+
+Dialog, popover, menu and tabs work natively: invoker commands,
 popovers and dialogs are the browser's own, so in the browsers below a
-`commandfor` button opens its dialog or popover with JavaScript off. A tooltip is hidden,
-so put the same text in the trigger's `title`. A toast falls back to an
-`<al-alert>` rendered in the page. The rest of this section is the browser
+`commandfor` button opens its dialog or popover with JavaScript off.
+
+A tooltip is hidden,
+so put the same text in the trigger's `title`.
+
+A toast falls back to an
+`<al-alert>` rendered in the page.
+
+The rest of this section is the browser
 line.
 
 The full set needs invoker commands, `popover="hint"` and CSS anchor
-positioning: Chromium 135 and later (Chrome, Edge), Safari 26, Firefox
-140. `al.js` includes a shim (`al-shim.js`, 26 lines) that adds invoker
+positioning: Chromium 135 and later (Chrome, Edge), Safari 26,
+Firefox 140. `al.js` includes a shim (`al-shim.js`, 26 lines) that adds invoker
 commands to a browser without them (so `commandfor` / `command` open and
 close a dialog or popover on older versions), and it makes a tooltip a
-manual popover where `hint` is unknown. It does **not** add anchor
+manual popover where `hint` is unknown.
+
+It does **not** add anchor
 positioning: without it a popover, menu or tooltip shows at the browser's
 default position (still visible, still usable, just not beside its
-button), and a popover that would leave the screen is not flipped. The
+button), and a popover that would leave the screen is not flipped.
+
+The
 elements' `al-close` and `al-select` events (below) come from the same
 script.
 
@@ -879,7 +1074,9 @@ above; a script on another site can be written `src={Url.external
 
 A modal dialog around a native `<dialog>`: the browser traps focus, makes
 the rest of the page inert, closes it on Escape, and returns focus to the
-button that opened it. Open it with a button whose `commandfor` is the
+button that opened it.
+
+Open it with a button whose `commandfor` is the
 dialog's `id` and whose `command` is `show-modal`; close it with a
 `<button commandfor="id" command="close">` in the `actions` slot, with
 the close button `dismissible` adds, with Escape, or by a click on the
@@ -911,13 +1108,17 @@ dialog's exit motion plays on (alder#21, item 2).
 
 You write the element and its content; Alder's renderer writes the
 native `<dialog>` the library's stylesheet and the invoker commands act
-on. The element's `id` moves to the `<dialog>` (so `commandfor="delete-dialog"`
+on.
+
+The element's `id` moves to the `<dialog>` (so `commandfor="delete-dialog"`
 finds it), a `heading` becomes the header slot's `<h2>` (unless a child
 already has `slot="header"`) and names the dialog for a screen reader
 (`aria-labelledby` points at the `<h2>`, whose `id` is the dialog's plus
 `-heading`), and a `dismissible` dialog gets a close button, labelled
 "Close" and the heading, in a `<form method="dialog">` first, and closes
-on a click on the backdrop (`closedby="any"`). `dismissible={False}`
+on a click on the backdrop (`closedby="any"`).
+
+`dismissible={False}`
 adds neither:
 
 ```alder eval=<al-dialog heading="Sure?" dismissible><dialog id="sure" aria-labelledby="sure-heading" data-preserve-attr="open" closedby="any"><form method="dialog"><button type="submit" aria-label="Close Sure?">×</button></form><h2 slot="header" id="sure-heading">Sure?</h2><p>This cannot be undone.</p><div slot="actions"><al-button>Cancel</al-button></div></dialog></al-dialog>
@@ -929,7 +1130,9 @@ adds neither:
 
 **The contract.** `<al-dialog>` wraps a native `<dialog>` that someone
 writes: in Alder the renderer does, from the element above; in another
-stack the author does, by hand. The library's stylesheet styles both the
+stack the author does, by hand.
+
+The library's stylesheet styles both the
 bare `al-dialog > dialog` and the markup shown above (the close `<form
 method="dialog">` first, then `<h2 slot="header" id="…-heading">`, the
 `<dialog>`'s `aria-labelledby` naming that id), and the library's checker
@@ -954,12 +1157,18 @@ the `slot`s inside your `<dialog>` are the `<al-dialog>`'s:
 </al-dialog>
 ```
 
-Datastar's morph keeps a dialog open. The morph would remove the `open`
+Datastar's morph keeps a dialog open.
+
+The morph would remove the `open`
 attribute the browser wrote when the dialog was shown (the server never
 writes it), so the renderer also writes `data-preserve-attr="open"` on the
-`<dialog>`, which tells Datastar to leave that attribute alone. A body
+`<dialog>`, which tells Datastar to leave that attribute alone.
+
+A body
 update while the dialog is on screen then leaves it open and modal with
-focus inside it, as long as the element keeps its `id`. A form in the
+focus inside it, as long as the element keeps its `id`.
+
+A form in the
 dialog posts a write route: the form's `submit` names it, and a route
 belongs to the module that declares it (chapter 6), so the admin's Show
 module declares its own `Remove`, and its dialog shows the counts the
@@ -967,7 +1176,9 @@ confirmation page shows and posts it (chapter 15).
 
 Without JavaScript the button still opens the dialog, as a modal, in the
 browsers this tier supports (Chromium 135 and later, Safari 26, Firefox
-140): invoker commands are the browser's, not the script's. Only an older
+140): invoker commands are the browser's, not the script's.
+
+Only an older
 browser with the script off does nothing on the button; for it, a link to
 `href="#delete-dialog"` shows the dialog (not as a modal: it is shown by
 `:target`, and `#` hides it), or link to a page that does the same job, as
@@ -1082,7 +1293,9 @@ tab's `name` onto a radio without one, and fires `al-select`. Without
 the script, mark the open tab with `checked` on its radio.
 
 **The ARIA pattern.** With no script the radio group is what is exposed,
-and it works. `al-tabs.js` builds the real pattern from the same markup:
+and it works.
+
+`al-tabs.js` builds the real pattern from the same markup:
 a `<div role="tablist">` of `<button role="tab">` made from the labels' text
 and inserted before the panels, with `aria-selected` following the choice,
 `aria-controls` naming the panel and a roving `tabindex` (0 on the selected
@@ -1090,11 +1303,16 @@ tab, -1 on the others); the radio labels get `hidden`, so they leave the
 accessibility tree and the tab order, but the radios stay and still drive
 the CSS that shows the panel; each panel gets `role="tabpanel"`, an `id`
 (generated where you wrote none) and `aria-labelledby` naming its tab.
+
 A click, the arrow keys, Home and End (`al-tabs-keys.js`) check the
-hidden radio, so `al-select` fires as before. Every write of an Alder page
+hidden radio, so `al-select` fires as before.
+
+Every write of an Alder page
 that answers `Response.refresh` morphs the body, which would undo all of this (the server writes none of it),
 so the script watches the element and rebuilds the tab list, the hidden
-labels and the panels' roles after a patch, keeping the tab the reader chose. A screen reader announces it as a tab list
+labels and the panels' roles after a patch, keeping the tab the reader chose.
+
+A screen reader announces it as a tab list
 whose tabs are `Details` and `Comments`, the selected one marked, followed
 by the open tabpanel.
 
@@ -1184,9 +1402,13 @@ itself, marked `data-ignore-morph`, when the page has none).
 Slots: default.
 
 Event: `al-close`, fired on the region when a toast closes
-(`detail.toast` is the toast). A closing toast first plays its exit motion
+(`detail.toast` is the toast).
+
+A closing toast first plays its exit motion
 (150ms of fade and slide, during which it carries `data-closing`); the event
-fires after that, once the toast has been removed from the page. When the
+fires after that, once the toast has been removed from the page.
+
+When the
 visitor asks for reduced motion (`prefers-reduced-motion: reduce`) there is no
 exit motion, and the toast is removed and `al-close` fires at once.
 
@@ -1240,7 +1462,10 @@ open panel shows the Request section. Alder emits the panel only under
 alder-ui v0.4 changed the look to shadcn/ui's and removed the tokens of v0.3. An app written for v0.3.x needs these four steps:
 
 1. Re-vendor / rebuild with the Alder release that carries alder-ui `v0.4.2`.
-2. Replace every old token in your own CSS. The table under "Removed tokens", below, says what each became: radii and fonts and shadows lose the `--al-` prefix, the plain colour tokens (`--primary` and the rest) are unchanged, the scales for space, type, weight, control height and ring become literal rem values or Tailwind-scale equivalents, and the soft and border colours of alerts have no replacement (alerts no longer use them). Only `--al-width-narrow|normal|wide` survive. `grep -rn -e '--al-' static/ src/` finds them.
+2. Replace every old token in your own CSS. The table under "Removed tokens", below, says what each became: radii and fonts and shadows lose the `--al-` prefix, the plain colour tokens (`--primary` and the rest) are unchanged, the scales for space, type, weight, control height and ring become literal rem values or Tailwind-scale equivalents, and the soft and border colours of alerts have no replacement (alerts no longer use them).
+
+   Only `--al-width-narrow|normal|wide` survive. `grep -rn -e '--al-' static/ src/` finds them.
+
 3. Dark mode: add the theme script to the `<head>` of your Layout, before the stylesheet link (the exact line is under "Light and dark"). The CSS-only OS-dark block and `[data-theme="dark"]` are gone; `.dark` on `<html>` is the only switch.
 4. Rebuild, look at each page in light and dark, and delete any app CSS that fought the old look.
 
@@ -1282,16 +1507,24 @@ alder-ui is plain CSS, so any stack that writes HTML can use it: link
 `al.css` and write the elements, and keep the `fonts/` directory beside
 it (the stylesheet loads Geist from `fonts/Geist-Variable.woff2` and
 `fonts/GeistMono-Variable.woff2`, relative to itself; without them the
-page uses the system fonts). Add the theme script from "Light and dark"
-to the `<head>` if you want the dark theme. The one thing Alder does for you that
+page uses the system fonts).
+
+Add the theme script from "Light and dark"
+to the `<head>` if you want the dark theme.
+
+The one thing Alder does for you that
 you then do yourself is the native control inside `<al-button>`: write
 `<al-button variant="primary"><button type="submit">Save</button></al-button>`
 (or an `<a>` inside), and the button takes the element's look and works
-without JavaScript. The input elements expect the markup this appendix
+without JavaScript.
+
+The input elements expect the markup this appendix
 shows, a `<label>` around the control, then an optional
 `<small class="help">` (name its `id` in the control's
 `aria-describedby`) and an optional `<ul class="errors">`; a
-`<label for>` beside the control works too. Two rules are there for
+`<label for>` beside the control works too.
+
+Two rules are there for
 Alder's markup and match nothing else: `form._alder-click` (the click
 form, `display: contents`) and the empty-errors alert above.
 
@@ -1309,10 +1542,14 @@ release in `rt/al/` (`al.css`, `al.js`, `custom-elements.json`, `VERSION`, a
 `fonts/` directory with the two Geist files and their licence, and the
 licences of the library, of the lucide icons it draws and of the
 Catppuccin palette that the `catppuccin` starting theme uses), at `v0.6.0`,
-and embeds it, so a build never fetches anything. `scripts/vendor-al.sh
+and embeds it, so a build never fetches anything.
+
+`scripts/vendor-al.sh
 <tag>` refreshes the copy from the library's repository; a test checks
 that `VERSION`, the manifest's `version` and the stylesheet's banner
 name the same release, and another compares this appendix's tables with
-the manifest. Chapter 11 shows the files; chapter 13 shows how the
+the manifest.
+
+Chapter 11 shows the files; chapter 13 shows how the
 checker reads the manifest and how the renderer completes `al-button`,
 the input elements and `al-alert`.

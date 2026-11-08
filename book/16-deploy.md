@@ -16,20 +16,30 @@ $ alder deploy production
 
 That command runs the same gate every time (the checker, the build, the
 tests, the mutation score), makes one self-contained directory holding
-the build, asks the server what its database looks like, refuses
-anything that would lose data, copies the build over, backs the database
-up, applies the migrations, starts the new build beside the old one,
-checks that the new build really answers, and only then sends the
-traffic to it. A build that fails any step leaves the old one serving.
+the build, asks the server what its database looks like, and refuses
+anything that would lose data.
 
-This chapter is the whole story: the declaration, the command step by
-step (with a transcript `go test ./book` runs, and a recorded session
-against a real server), what the gate refuses and why, `status`,
-`rollback` and `logs`, backups and `restore`, the workflow `alder ci
-init` writes for GitHub, the preview environment of a pull request, the
-`Fly` and `Render` targets, the `Script` escape hatch, and what running SQLite in
-production means. Chapter 12 explains why it is designed this way;
-chapter 13 how the code does it.
+Then it copies the build over, backs the database up, applies the
+migrations, starts the new build beside the old one, checks that the new
+build really answers, and only then sends the traffic to it. A build
+that fails any step leaves the old one serving.
+
+This chapter is the whole story:
+
+- the declaration;
+- the command step by step (with a transcript `go test ./book` runs, and
+  a recorded session against a real server);
+- what the gate refuses and why;
+- `status`, `rollback` and `logs`;
+- backups and `restore`;
+- the workflow `alder ci init` writes for GitHub;
+- the preview environment of a pull request;
+- the `Fly` and `Render` targets;
+- the `Script` escape hatch;
+- and what running SQLite in production means.
+
+Chapter 12 explains why it is designed this way; chapter 13 how the code
+does it.
 
 ## The declaration
 
@@ -59,7 +69,7 @@ The other fields are settings of every environment.
 
 | Field | What it says |
 |---|---|
-| `<env>: Ssh "user@host" { domain, path, user?, port? }` | a Linux server reached with your SSH key; the app's state lives under `path`; `domain` is the name the proxy serves with automatic TLS; `user` and `port` override the SSH user and port (an `Int`) |
+| `<env>: Ssh "user@host" { domain, path, user?, port? }` | a Linux server reached with your SSH key (see "The `Ssh` fields", below) |
 | `<env>: Fly "region" { app }` | a Fly.io app in a region: one machine and a volume for the database (see "The Fly target") |
 | `<env>: Render "region" { service, database, instances?, plan? }` | a Render web service running an image alder pushes, its data in a Turso `database` (see "The Render target") |
 | `<env>: Script "./path"` | your own script, handed the finished build (see "The Script hatch") |
@@ -75,6 +85,12 @@ running program; `alder build` produces the same executable with or
 without it. Only the `alder deploy`, `status`, `rollback`, `logs`,
 `restore` and `ci init` commands read it.
 
+#### The `Ssh` fields
+
+- **`path`**: the app's state lives under it.
+- **`domain`**: the name the proxy serves with automatic TLS.
+- **`user` and `port`**: override the SSH user and port (an `Int`).
+
 ### What the checker refuses
 
 The checker reads the declaration like any other code, and reports
@@ -86,13 +102,20 @@ outside `App`. Chapter 11's table of codes has each message.
 
 The texts of a target reach `ssh`'s command line, shell scripts, a
 systemd unit and Fly's API, so each is held to the characters it can
-be: an `Ssh` host is letters, digits, `.`, `-`, `_`, `@` (and `:`, `[`,
-`]` for an address), a `user` letters, digits, `.`, `-`, `_`, a
-`domain` letters, digits, `.` and `-` (optionally starting `*.`), none
-of them beginning with `-`; a `path` is absolute, with no control
-character, `"`, `\`, `$`, `` ` ``, `%` or `..`; a `Fly` region is Fly's
-three-letter code and an `app` lowercase letters, digits and `-`. A
-`--host` given on the command line is held to the domain's set.
+be:
+
+- An `Ssh` **host** is letters, digits, `.`, `-`, `_`, `@` (and `:`, `[`,
+  `]` for an address).
+- A **`user`** is letters, digits, `.`, `-`, `_`.
+- A **`domain`** is letters, digits, `.` and `-` (optionally starting
+  `*.`).
+- None of these may begin with `-`.
+- A **`path`** is absolute, with no control character, `"`, `\`, `$`,
+  `` ` ``, `%` or `..`.
+- A **`Fly` region** is Fly's three-letter code and an **`app`**
+  lowercase letters, digits and `-`.
+
+A `--host` given on the command line is held to the domain's set.
 
 It also refuses a secret. The file goes into version control, so it must
 never hold one:
@@ -107,12 +130,16 @@ deploy {
 `alder check` points at the text: "a secret belongs in the environment,
 not in `App`: name it in `requires`" (`go test ./book` appends this
 fragment to an `App` too, and confirms that it is refused with that
-message: the `-- E0030` comment tells the test so). A text that looks like a token (it starts `sk_`, `ghp_`, `AKIA`, `xoxb-`,
+message: the `-- E0030` comment tells the test so).
+
+A text that looks like a token is refused wherever it appears in the
+declaration. That means one that starts `sk_`, `ghp_`, `AKIA`, `xoxb-`,
 `xoxp-` or `-----BEGIN`, or is 32 or more base64 or hex characters
-without a space) or a URL with a password in it (`smtp://user:pass@host`)
-is refused wherever it appears in the declaration. The message never
-echoes the value. A `requires` entry names the variable instead; where
-its value comes from depends on the target, as each section below says.
+without a space. So is a URL with a password in it
+(`smtp://user:pass@host`). The message never echoes the value.
+
+A `requires` entry names the variable instead; where its value comes
+from depends on the target, as each section below says.
 
 The checker also compares `requires` with the code. The build already
 scans the app's adapter packages (chapter 7), and when one of them reads
@@ -125,10 +152,13 @@ own `ALDER_…` variables are never reported.
 files `alder deploy init` writes) exists in the project and App.alder
 has no `deploy` block: "render.yaml deploys whatever is pushed, with no
 check, migration plan or backup: add a `deploy` block to App.alder
-(book chapter 16)". Those files make the platform deploy whatever is
-pushed; the declaration is what gives you the gate, the migration plan,
-the backup and rollback. A Dockerfile alone is not reported. `alder deploy init`
-ends with the same advice when App has no `deploy` block.
+(book chapter 16)".
+
+Those files make the platform deploy whatever is pushed; the declaration
+is what gives you the gate, the migration plan, the backup and rollback.
+
+A Dockerfile alone is not reported. `alder deploy init` ends with the
+same advice when App has no `deploy` block.
 
 ## The command, step by step
 
@@ -142,46 +172,64 @@ anything at the target changes:
 1. **Gate.** `alder check` (an error or a typed hole refuses), `alder
    build`, `alder test`, `alder test --mutate` against the floor, then
    each of `checks` in order.
-2. **Artifact.** The directory `build/<app>/deploy/<build id>/`: the
-   executable, built for the target's operating system and processor
-   (a static binary: the SQLite driver is pure Go, so cross-compiling
-   needs nothing but Go), the static files, the migrations, and
-   `alder-deploy.json`, a description of the build (its id, the alder
-   version, the git commit, the gate's results, the migration plan, the
-   `requires` names).
+
+2. **Artifact.** The directory `build/<app>/deploy/<build id>/`:
+
+   - the executable, built for the target's operating system and
+     processor (a static binary: the SQLite driver is pure Go, so
+     cross-compiling needs nothing but Go);
+   - the static files;
+   - the migrations;
+   - `alder-deploy.json`, a description of the build (its id, the alder
+     version, the git commit, the gate's results, the migration plan, the
+     `requires` names).
+
 3. **Target.** Connect; check that every `requires` name (and
    `ALDER_SECRET`, which the runtime itself needs) is set there; fetch
    the live database's schema; make the **plan**: which of the build's
    migrations the live database has not had. If one drops data and
    `--allow-data-loss` was not given, refuse. `--dry-run` stops here.
-4. **Ship.** Take the environment's lock (one deploy, rollback or
-   restore at a time); prepare what the build needs (the systemd unit,
-   Caddy); upload the artifact; copy the database into the build's
-   directory (`backup.db`); apply the migrations (`app --migrate-only`);
-   start the new build on a free port; check its health; switch the
-   traffic; stop the old build after its requests finish; prune old
-   builds.
+
+4. **Ship.** In order:
+
+   - take the environment's lock (one deploy, rollback or restore at a
+     time);
+   - prepare what the build needs (the systemd unit, Caddy);
+   - upload the artifact;
+   - copy the database into the build's directory (`backup.db`);
+   - apply the migrations (`app --migrate-only`);
+   - start the new build on a free port;
+   - check its health;
+   - switch the traffic;
+   - stop the old build after its requests finish;
+   - prune old builds.
+
 5. **Record.** Write `deployed.json` into the build's directory at the
    target: when, by whom, the gate's results, the plan, the flags.
+
+### The build id
 
 The **build id** is the first 16 hex digits of the SHA-256 of the
 executable. The runtime computes the same id for itself when it starts
 and puts it in every page it serves, as
-`<meta name="alder-build" content="…">` (chapter 13). That is how the
-health check knows it is talking to the new build and not to the old one
-still answering on the same machine: it asks for `/` until the answer
-is a 200 whose page names the new id. The status counts too: a build
-that finds its database ahead of it serves its maintenance page, which
-carries its id like every page, with 503.
+`<meta name="alder-build" content="…">` (chapter 13).
+
+That is how the health check knows it is talking to the new build and not
+to the old one still answering on the same machine: it asks for `/` until
+the answer is a 200 whose page names the new id.
+
+The status counts too: a build that finds its database ahead of it serves
+its maintenance page, which carries its id like every page, with 503.
 
 The id also tells the new build which browser tabs are its own. A tab
 opened on the old build sends that build's id as `Alder-Build` with every
 Datastar request it makes. The new build, seeing another id, does not
-patch the tab: it answers a full reload (chapter 6, "Delivery"). A write
-from such a tab still runs, since its decoders guard it; only the answer
-differs: a `Response.redirect` navigates as it would, and anything else
-reloads the page the write came from (`Alder-Page`), with a toast shown
-there.
+patch the tab: it answers a full reload (chapter 6, "Delivery").
+
+A write from such a tab still runs, since its decoders guard it; only the
+answer differs: a `Response.redirect` navigates as it would, and anything
+else reloads the page the write came from (`Alder-Page`), with a toast
+shown there.
 
 ### A transcript
 
@@ -227,17 +275,22 @@ Line by line:
 
 - The first line names the environment and its target as the
   declaration writes it.
+
 - `gate`: each fixed step and its result. The floor is `0.00 (none
   yet)`: the declaration has no `floor`, and a `Script` target keeps no
   record of the last deploy, so there is no earlier score to hold the
   build to. On an `Ssh` or `Fly` target the floor would be the score of
   the build serving now.
+
 - `artifact`: the directory just written. Its name is the build id.
+
 - `plan`: a `Script` target cannot be asked for its live schema, so
   every migration is listed and none is refused; the script is
   responsible for applying them (the executable's `--migrate-only` does
   it).
+
 - `script`: the command that ran, with its two arguments.
+
 - `deployed`: the script exited 0.
 
 The status of a `Script` environment is the script's business:
@@ -292,30 +345,39 @@ What happened, in order:
 - `floor 1.00 (last deploy)`: the build serving had a score of 1.00
   (its `deployed.json` says so), and with no declared `floor` that is
   the bar.
+
 - `target`: `ssh` ran one shell script at the box that checked the
   environment file for each name. It ran `grep` on the file; no value
   crossed the connection.
+
 - `plan`: the box's `db/schema.json` records the schema of the last
   migration its database took (`9b787a621da5` is the first 12 hex digits
   of its hash); the build's migrations are placed against it, and
   `0002_add_mood` is the one pending. Its step is a table rebuild
   (chapter 8, "How tables are stored").
+
 - `upload`: the artifact went over as a tar stream into
   `builds/<id>.part`, renamed to `builds/<id>/` once complete, so a
   build directory is never half written.
+
 - `backup`: the new build's executable copied the database with SQLite's
   `VACUUM INTO` while the old build kept serving it.
+
 - `migrate`: `builds/<id>/app --migrate-only` applied the migration and
   exited; a refusal here (chapter 8, "When the app starts") would have
   stopped the deploy with nothing switched.
+
 - `start`: the new build was started on a free port beside the old one.
+
 - `health`: `curl` at the box asked the new build for `/` until its page
   carried `46ea832c79966e56`.
+
 - `switch`: with `proxy: None` the app itself listens on the public port
   (`<path>/port`), so the old build was stopped and the new one started
   again on that port: a moment without a listener. With Caddy (the
   default), the switch is one call to Caddy's admin API that changes the
   route's upstream port, and no request is dropped.
+
 - `stop`: with `proxy: None` the switch has already stopped the old
   build, so there is nothing left to do. Behind Caddy the old build is
   still running at this point, and gets its drain time (30 seconds by
@@ -339,10 +401,11 @@ The state of the environment lives at the box, under `path`:
 
 Everything the deploy writes there is the deploy user's alone: every
 script runs under `umask 077`, `builds/` is mode 750, each `run` and
-`app` 700, each `backup.db` and the database 600. An environment file
-that sets `ALDER_DEV` is refused (development mode, with its public
-cookie key and errors shown to visitors, never runs at a target), and
-`run` unsets it anyway.
+`app` 700, each `backup.db` and the database 600.
+
+An environment file that sets `ALDER_DEV` is refused (development mode,
+with its public cookie key and errors shown to visitors, never runs at a
+target), and `run` unsets it anyway.
 
 Nothing about a deploy is kept on your laptop or in the repository. Two
 people (or a laptop and CI) deploying the same app see the same state,
@@ -361,11 +424,13 @@ The lock is held by an `ssh` session that lives as long as the run: a
 directory `<path>/deploy.lock.d` naming its holder. A run that dies
 releases it with its session; a directory left by a killed run is
 taken over by the next one, which says so (`warning: took over a stale
-deploy lock …`). One case needs a hand: a session that hangs without
-dying (a laptop that went to sleep mid-deploy) holds the lock until the
-box's `sshd` notices, which can take a while. When you are sure no run
-is going on, remove it: `ssh deploy@box.example.com rm -rf
-/srv/blog/deploy.lock /srv/blog/deploy.lock.d`.
+deploy lock …`).
+
+> **A hung session.** One case needs a hand: a session that hangs without
+> dying (a laptop that went to sleep mid-deploy) holds the lock until the
+> box's `sshd` notices, which can take a while. When you are sure no run
+> is going on, remove it: `ssh deploy@box.example.com rm -rf
+> /srv/blog/deploy.lock /srv/blog/deploy.lock.d`.
 
 Before the first deploy, write the environment file by hand, one
 `NAME=value` per line, as a shell would read it (the `run` wrapper
@@ -380,53 +445,66 @@ ALDER_SECRET=…16 bytes or more: the output of `openssl rand -hex 32` will do
 
 `alder deploy` warns when the file is readable by others.
 
-How a build runs at the box: when systemd runs there, each build is an
-instance of a template unit, `alder-<app>-<env>@<id>.service` (a
-template, so the old and the new build can run side by side during the
-switch); as `root` it is a system unit, otherwise a user unit with
-lingering enabled so it survives your logout; systemd restarts a build
-that crashes (`Restart=on-failure`), and the switch enables the current
-build's unit so it starts again at boot. Without systemd (a container,
-a Mac, or `ALDER_DEPLOY_SUPERVISOR=process`) the build is a background
-process with a pid file, and **nothing restarts it**: a build that
-crashes, or a box that reboots, stays down until the next deploy or
-rollback (`alder deploy` of the current build starts it again). Either
-way its output goes to `builds/<id>/log`, which `alder logs` reads, so
-no journal permissions are needed. The log grows while the build runs;
-when a build starts with more than 10 MB of it, it is trimmed to its
-last megabyte (a line says so). A build that runs for months with a
-chatty adapter wants `logrotate` with `copytruncate` on
-`<path>/builds/*/log`. With `proxy: Caddy`, Caddy
-is installed with `apt` on Debian and Ubuntu when it is missing (any
-other system is refused with a sentence: install Caddy yourself or use
-`proxy: None`), and the route for `domain` gets its certificate
-automatically. A wildcard domain (`*.preview.example.com`) needs a
-certificate by DNS challenge, which `alder deploy` does not set up:
-give Caddy a DNS provider, or use one name per preview.
+#### How a build runs at the box
+
+- **With systemd.** When systemd runs there, each build is an instance of
+  a template unit, `alder-<app>-<env>@<id>.service` (a template, so the
+  old and the new build can run side by side during the switch).
+
+  As `root` it is a system unit, otherwise a user unit with lingering
+  enabled so it survives your logout. systemd restarts a build that
+  crashes (`Restart=on-failure`), and the switch enables the current
+  build's unit so it starts again at boot.
+
+- **Without systemd** (a container, a Mac, or
+  `ALDER_DEPLOY_SUPERVISOR=process`) the build is a background process
+  with a pid file, and **nothing restarts it**: a build that crashes, or
+  a box that reboots, stays down until the next deploy or rollback
+  (`alder deploy` of the current build starts it again).
+
+- **The log.** Either way its output goes to `builds/<id>/log`, which
+  `alder logs` reads, so no journal permissions are needed. The log grows
+  while the build runs; when a build starts with more than 10 MB of it,
+  it is trimmed to its last megabyte (a line says so). A build that runs
+  for months with a chatty adapter wants `logrotate` with `copytruncate`
+  on `<path>/builds/*/log`.
+
+- **With `proxy: Caddy`,** Caddy is installed with `apt` on Debian and
+  Ubuntu when it is missing (any other system is refused with a sentence:
+  install Caddy yourself or use `proxy: None`), and the route for
+  `domain` gets its certificate automatically.
+
+- **A wildcard domain** (`*.preview.example.com`) needs a certificate by
+  DNS challenge, which `alder deploy` does not set up: give Caddy a DNS
+  provider, or use one name per preview.
 
 ### Caddy
 
 With `proxy: Caddy` the target talks to Caddy only through its admin
 API (`http://127.0.0.1:2019`; `ALDER_DEPLOY_CADDY_ADMIN` names another
 address): one route per environment, in a server named `alder` that
-listens on `:443`, its upstream changed at each switch. A Caddy whose
-admin API already answers is used as it is; one that is missing is
-installed. Three things follow, and they matter most for a box that
-already ran Caddy before alder came:
+listens on `:443`, its upstream changed at each switch.
+
+A Caddy whose admin API already answers is used as it is; one that is
+missing is installed. Three things follow, and they matter most for a box
+that already ran Caddy before alder came:
 
 - **The routes live in Caddy's running configuration**, not in a
   Caddyfile. When alder installs Caddy it adds a systemd drop-in
   (`/etc/systemd/system/caddy.service.d/alder.conf`) that starts Caddy
   with `--resume`, so a restart reloads the last configuration, routes
-  included. A Caddy alder did not install has no such drop-in: restarted
-  from its Caddyfile, it forgets alder's routes and the app is
-  unreachable until the next deploy or rollback sets the route again.
-  Add `--resume` to that Caddy's command line yourself, or deploy again
-  after each restart.
+  included.
+
+  A Caddy alder did not install has no such drop-in: restarted from its
+  Caddyfile, it forgets alder's routes and the app is unreachable until
+  the next deploy or rollback sets the route again. Add `--resume` to
+  that Caddy's command line yourself, or deploy again after each restart.
+
 - **A server of your own on `:443`** (a Caddyfile site with a domain is
   one) conflicts with the `alder` server: the switch fails, with Caddy's
   error, and the previous build keeps serving. Give the app its own box,
   or use `proxy: None` behind your proxy.
+
 - **The admin API answers every user of the box**: anyone who can run
   `curl` there can change Caddy's routes. That is Caddy's default; on a
   box shared with people you do not trust, put the admin API on a Unix
@@ -436,9 +514,10 @@ already ran Caddy before alder came:
 alder's own tests drive the Caddy path against a fake Caddy (the admin
 calls the target makes, and a proxy to the last route's upstream) with
 an availability monitor that asks the public address which build
-answers ten times a second; CI's `deploy-systemd` job runs the real
-thing, systemd units and a Caddy the target installs, on a GitHub
-runner.
+answers ten times a second.
+
+CI's `deploy-systemd` job runs the real thing, systemd units and a Caddy
+the target installs, on a GitHub runner.
 
 ## What the gate refuses, and why
 
@@ -458,20 +537,29 @@ and exits 1:
 | plan (Fly) | any pending migration on an existing database | "Fly target: migrations are not supported yet; …" ("The Fly target") |
 | health | the new build exits, or never answers with its id | its log; nothing was switched |
 
-Why each one: a typed hole is an unfinished program; the tests are the
-app's own definition of working; the mutation score is the measure of
-whether the tests would notice a broken build (chapter 10, "Mutation
-testing"), and holding it to the last deploy's score means a deploy can
-never quietly make the tests weaker. A health check by build id catches
-the failures no test can: a missing environment variable, an adapter
-that cannot reach its server, an `ALDER_SECRET` of the wrong length.
+Why each one:
+
+- A typed hole is an unfinished program.
+
+- The tests are the app's own definition of working.
+
+- The mutation score is the measure of whether the tests would notice a
+  broken build (chapter 10, "Mutation testing"), and holding it to the
+  last deploy's score means a deploy can never quietly make the tests
+  weaker.
+
+- A health check by build id catches the failures no test can: a missing
+  environment variable, an adapter that cannot reach its server, an
+  `ALDER_SECRET` of the wrong length.
 
 There is one way past the tests, named for what it is:
 `--unsafe-skip-tests` skips the tests, the mutation score and the
 checks (never `check` and `build`), prints `test SKIPPED`, and records
 `"unsafeSkipTests": true` in `deployed.json`, where `alder status`
-shows it. It exists for an emergency fix when the test suite itself is
-broken. It cannot be written in the file.
+shows it.
+
+It exists for an emergency fix when the test suite itself is broken. It
+cannot be written in the file.
 
 A build that fails its health check, recorded against the same box (an
 adapter that exits at start):
@@ -519,23 +607,26 @@ The rule is also enforced where the migration is applied, not only in
 the plan. The app's executable itself, at `--migrate-only` and when it
 starts, refuses a pending migration whose header says DROPS DATA on a
 database that already had migrations, unless the environment variable
-`ALDER_ALLOW_DATA_LOSS=1` is set (development mode aside). `alder
-deploy` sets that variable for the one `--migrate-only` it runs, and
-only with `--allow-data-loss`. So a `Script` target, whose plan cannot
-see the live schema and lists every migration ("DROPS DATA (if not
-applied yet)"), is covered too: the script's environment carries
-`ALDER_ALLOW_DATA_LOSS=1` only when the command line said so, and its
-`app --migrate-only` refuses otherwise.
+`ALDER_ALLOW_DATA_LOSS=1` is set (development mode aside).
+
+`alder deploy` sets that variable for the one `--migrate-only` it runs,
+and only with `--allow-data-loss`.
+
+So a `Script` target, whose plan cannot see the live schema and lists
+every migration ("DROPS DATA (if not applied yet)"), is covered too: the
+script's environment carries `ALDER_ALLOW_DATA_LOSS=1` only when the
+command line said so, and its `app --migrate-only` refuses otherwise.
 
 A first deploy (a target with no database yet) drops nothing, whatever
 its migrations say: every migration creates.
 
 A migration that **rebuilds** a table (a column whose type changes, a
 column added in the middle, chapter 8) copies the table under SQLite's
-write lock: while it runs, the old build's writes wait. For a large
-table that is a pause users notice, so run `--dry-run` first: it prints
-the plan, `rebuild table …` included, without changing anything, and
-you can choose a quiet moment.
+write lock: while it runs, the old build's writes wait.
+
+> **Large tables.** For a large table that is a pause users notice, so
+> run `--dry-run` first: it prints the plan, `rebuild table …` included,
+> without changing anything, and you can choose a quiet moment.
 
 ## Status, rollback and logs
 
@@ -562,10 +653,13 @@ backup   2026-10-17T05:18:45Z (builds/9395679f30b6bf05/backup.db)
 ```
 
 "By" is the SSH user at the box and the local `USER`: both, because a
-CI runner and a laptop may log in as the same deploy user. A build with
-no `deployed.json` is listed as "never switched to (failed or
-interrupted; kept for inspection)". When the app is told to stream its
-backup but nothing has arrived yet, the last line says so instead:
+CI runner and a laptop may log in as the same deploy user.
+
+A build with no `deployed.json` is listed as "never switched to (failed
+or interrupted; kept for inspection)".
+
+When the app is told to stream its backup but nothing has arrived yet,
+the last line says so instead:
 `backup   never shipped to s3://blog-backups/production: …` (the app's
 log says why, usually the bucket's credentials).
 
@@ -609,9 +703,11 @@ migrations take the schema where you want it. When that is not
 possible, `--restore-backup` goes back with the **data**: it puts back
 the copy of the database taken just before the build was replaced (the
 `backup.db` of the deploy that replaced it, whose `backup.of` names the
-build), and every write since is lost. That is a data-loss operation, so
-it asks first, on the terminal; `--yes` answers without one (a script,
-CI), and without either it changes nothing:
+build), and every write since is lost.
+
+That is a data-loss operation, so it asks first, on the terminal; `--yes`
+answers without one (a script, CI), and without either it changes
+nothing:
 
 ```text
 $ alder rollback production --restore-backup < /dev/null      (recorded)
@@ -627,16 +723,25 @@ warning: --restore-backup: the database is now builds/46ea832c79966e56/backup.db
 rolled back to 339250fe1b936905 with the data of 2026-10-17T08:34:02Z
 ```
 
-In order: **every** running build is stopped first (the current one,
-and a previous one still draining after a switch, its delayed stop
-cancelled: no process may keep the replaced file open and go on serving
-it); the database (with its `-wal` and `-shm`, `schema.json` and the
-migration list) is kept as `db/app.db.before-rollback-<time>`; the copy
-goes in place, mode 600, with the target build's schema records; the
-build is started fresh on it, health checked and switched to. If it
-fails its health check on the copy, everything is undone: the kept
-database goes back and the build that served before starts again. The
-rollback is recorded in the build's `deployed.json` (`rollback`,
+In order:
+
+1. **Every** running build is stopped first (the current one, and a
+   previous one still draining after a switch, its delayed stop
+   cancelled: no process may keep the replaced file open and go on
+   serving it).
+
+2. The database (with its `-wal` and `-shm`, `schema.json` and the
+   migration list) is kept as `db/app.db.before-rollback-<time>`.
+
+3. The copy goes in place, mode 600, with the target build's schema
+   records.
+
+4. The build is started fresh on it, health checked and switched to.
+
+If it fails its health check on the copy, everything is undone: the kept
+database goes back and the build that served before starts again.
+
+The rollback is recorded in the build's `deployed.json` (`rollback`,
 `restoredFrom`). `--restore-backup` works onto the current build too:
 that is the way back from a deploy that failed after its migrations.
 
@@ -645,10 +750,12 @@ that is the way back from a deploy that failed after its migrations.
 The migrations apply before the new build's health check (they must:
 the new build cannot start on the old schema). If the health check then
 fails, the previous build is still serving, now on the migrated
-database. For an additive migration (a new table, a new column with a
-default) the previous build does not notice; for anything else it
-would refuse to start again on that database, and the refusal says how
-to go back (the new build's id shortened here):
+database.
+
+For an additive migration (a new table, a new column with a default) the
+previous build does not notice; for anything else it would refuse to
+start again on that database, and the refusal says how to go back (the
+new build's id shortened here):
 
 ```text
 alder deploy: refused: build 3c7f… did not pass its health check: it was stopped and builds/3c7f…/ is kept for inspection; nothing was switched; build 46ea832c79966e56 still serves, but the database was migrated (0003_add_tag) and that build would refuse to start again on it. To go back: `alder rollback production 46ea832c79966e56 --restore-backup` (puts builds/3c7f…/backup.db, taken before the migration, in place)
@@ -693,19 +800,21 @@ file, if anything was written then.
 (`-n N` for another count), and `-f` follows it until you press Ctrl-C:
 it follows the **current** build, so after a deploy or rollback
 switches builds it goes on with the new current build's log (a line
-`--- alder logs: build <id> is current` marks the change). `--grep
-PATTERN` keeps only the lines a Go regular expression matches, on every
-target and with `-f` too, and `--since T` prints every line since a time
-instead of the last N; the next section says what is in a line and how
-to pick them out.
+`--- alder logs: build <id> is current` marks the change).
+
+`--grep PATTERN` keeps only the lines a Go regular expression matches, on
+every target and with `-f` too, and `--since T` prints every line since a
+time instead of the last N; the next section says what is in a line and
+how to pick them out.
 
 ## Operating an app
 
 A deployed app is a process nobody watches. What it writes to standard
 error is how you know it is alive, what it did, and why a request
 failed; the platform keeps it (`builds/<id>/log` at a box, Fly's and
-Render's log viewers) and `alder logs` reads it back. This section is
-what the app writes there, and why.
+Render's log viewers) and `alder logs` reads it back.
+
+This section is what the app writes there, and why.
 
 ### One line per request
 
@@ -719,10 +828,11 @@ In order: the time (UTC, to the second), the level, the method, the URL
 (masked, below), the status, how long the answer took (from the request
 arriving to the last byte handed to the connection, in milliseconds),
 the body's size in bytes, and the request's id. A status of `0` means
-the handler wrote nothing at all. This is the line that tells a healthy
-app from a dead one: a platform's log viewer that shows nothing for an
-hour of traffic means the app is not being reached, not that it is
-quiet.
+the handler wrote nothing at all.
+
+This is the line that tells a healthy app from a dead one: a platform's
+log viewer that shows nothing for an hour of traffic means the app is not
+being reached, not that it is quiet.
 
 Two kinds of request write no line at `info`:
 
@@ -730,6 +840,7 @@ Two kinds of request write no line at `info`:
   few seconds; a line per check would bury everything else. When the
   database stops answering, it writes one `warn` line, and one more when
   it answers again.
+
 - **Files that are fine**: the stylesheet, the fonts, the Datastar
   script (`/static/…`, `/_alder/…`) answered 200 or 304. They are
   `debug` lines. A missing file (404) is an `info` line like a page's,
@@ -757,21 +868,26 @@ the end of the first line of every error or warning about that request:
 
 Every line of an entry after its first (a stack, or a message with a
 line break in it) is indented by a tab, so only an entry's first line
-starts at the left margin with the time. A message carrying user text
-(`Log.info ("signup " ++ name)`, an adapter's error quoting what it was
-sent) cannot forge a line of its own: whatever follows a line break in
-it is indented, and any other control character is written escaped
-(`\x1b`). A message is cut at 8 KB, ending `…`.
+starts at the left margin with the time.
+
+A message carrying user text (`Log.info ("signup " ++ name)`, an
+adapter's error quoting what it was sent) cannot forge a line of its own:
+whatever follows a line break in it is indented, and any other control
+character is written escaped (`\x1b`). A message is cut at 8 KB, ending
+`…`.
 
 So `alder logs production --grep rid=0a0b0c0d` prints everything about
 one request, and a user who sends you the `X-Request-Id` their browser
 received (the network tab shows it) has told you which lines to read.
+
 When the request already carries an `X-Request-Id` of 1 to 64 letters,
 digits, `.`, `_` or `-` (Fly's proxy sets one), the app keeps it, so
 its lines and the platform's share an id; anything else is replaced,
-never echoed back. An inbound id is the client's word, though: anyone
-can send `X-Request-Id: 0a0b0c0d` and have their request's lines carry
-an id another request has. Use it to find lines, not to trust them.
+never echoed back.
+
+> **An inbound id is the client's word.** Anyone can send
+> `X-Request-Id: 0a0b0c0d` and have their request's lines carry an id
+> another request has. Use it to find lines, not to trust them.
 
 ### Levels
 
@@ -779,23 +895,55 @@ an id another request has. Use it to find lines, not to trust them.
 before it is formatted (and before its URL is masked), so a quiet
 production app pays nothing for the lines it does not write.
 
-| level | the runtime writes | the app writes |
-|---|---|---|
-| `error` | panics (with the stack), an answer that could not be written, a database the build cannot use at start | `Log.error` |
-| `warn` | a refused request (400 a query that does not parse, 413 a body over 1 MiB, 415 a multipart body), a 503 maintenance page, an oversized session cookie, the development key, a health check that starts or stops failing, a header a file page may not set, a slow request's access line (`ALDER_SLOW_MS`) | `Log.warn` |
-| `info` (default) | the access lines (pages, and files that fail), migrations as they run, the backup shipper, a database ahead of this build | `Log.info` |
-| `debug` | the access lines of healthy files, every effect step (`effect Db.all Todo`), and `steps=N` at the end of each access line: how many effect steps the request ran | `Log.debug` |
+#### `error`
+
+- **The runtime writes:** panics (with the stack), an answer that could
+  not be written, a database the build cannot use at start.
+- **The app writes:** `Log.error`.
+
+#### `warn`
+
+- **The runtime writes:**
+  - a refused request (400 a query that does not parse, 413 a body over
+    1 MiB, 415 a multipart body);
+  - a 503 maintenance page;
+  - an oversized session cookie;
+  - the development key;
+  - a health check that starts or stops failing;
+  - a header a file page may not set;
+  - a slow request's access line (`ALDER_SLOW_MS`).
+
+- **The app writes:** `Log.warn`.
+
+#### `info` (default)
+
+- **The runtime writes:** the access lines (pages, and files that fail),
+  migrations as they run, the backup shipper, a database ahead of this
+  build.
+
+- **The app writes:** `Log.info`.
+
+#### `debug`
+
+- **The runtime writes:** the access lines of healthy files, every effect
+  step (`effect Db.all Todo`), and `steps=N` at the end of each access
+  line: how many effect steps the request ran.
+
+- **The app writes:** `Log.debug`.
 
 Each level includes the ones above it. `ALDER_LOG=warn` is a quiet
-production app: only what needs a look. `ALDER_LOG=debug alder run` is a
-debugging session: every query and capability call, as the dev panel's
-Trace tab shows them, but in the terminal. The default is `info`
-everywhere, development mode included; the dev panel is the same at
-every level.
+production app: only what needs a look.
+
+`ALDER_LOG=debug alder run` is a debugging session: every query and
+capability call, as the dev panel's Trace tab shows them, but in the
+terminal. The default is `info` everywhere, development mode included;
+the dev panel is the same at every level.
 
 Set it where the app's environment is set: the environment file at a
 box, a Fly secret, the Render dashboard. `alder deploy` leaves both
-variables alone. An unknown value stops the app before it serves, with
+variables alone.
+
+An unknown value stops the app before it serves, with
 `alder: ALDER_LOG=verbose: want debug, info, warn or error`, as a bad
 `ALDER_PUBLIC_URL` does, so a typo shows at the deploy's health check
 rather than as a silent default.
@@ -806,32 +954,45 @@ A log is kept for a long time, copied to platforms, and read by people
 who would not be shown the app's data. So a URL goes into a line with
 its secrets replaced by `••••` (the dev panel's mask):
 
-- a query value whose parameter's name, in lowercase, contains `key`,
+- **A query value whose parameter's name** (in lowercase) contains `key`,
   `token`, `secret`, `pass`, `auth`, `sig`, `code`, `session`, `pw`,
   `jwt`, `otp`, `bearer` or `credential` (`?key=…`, `access_token`,
-  `Authorization`, `X-Amz-Signature`, an OAuth `code`, `pwd`);
-- a query value, a parameter name or a path segment that looks like a
-  secret whatever its name: a URL with a password in it
-  (`postgres://user:pass@…`), a known key prefix (`sk_`, `ghp_`, `AKIA`,
-  `xoxb-`, `xoxp-`, `-----BEGIN`), a JWT (`eyJ…` with two dots: a reset
-  link's `/reset/eyJ…`), 32 or more characters of base64 or hex (a
-  signed link's token in the path), or 32 or more URL-safe characters
-  (`-`, `_` and `.` too) mixing upper case, lower case and digits (a
-  base64url token). A UUID, a slug or a file name is none of these, so
-  `/u/550e8400-e29b-41d4-a716-446655440000/items/12345` stays readable;
-- inside a value that is itself a URL (`?next=https%3A%2F%2F…%3Fapi_key%3D…`),
-  the same rules applied to that URL's path, query and fragment: the
-  value keeps its shape, with its own secrets masked;
-- the value of a query pair that does not parse (a bad `%` escape, a raw
-  `;`): the runtime cannot tell what it holds, so it hides it. The pair
-  is kept, never dropped, so the line still shows the URL's shape;
-- the value of a route's path parameter whose name contains one of the
-  words above, whatever the value looks like: for `route Reset = GET
-  "/reset/{token}" { token: Text }` the line shows `/reset/••••`. This matters for the tokens an app makes
-  itself: `Random.id` gives 20 characters, too short to look like a
-  secret, so a reset or magic-link token is masked only because its
-  parameter is named `token` (or `code`, `key`, `otp`…). Name it so,
-  in the path and in the query alike (`?token=…`, not `?t=…`).
+  `Authorization`, `X-Amz-Signature`, an OAuth `code`, `pwd`).
+
+- **A query value, a parameter name or a path segment that looks like a
+  secret** whatever its name:
+
+  - a URL with a password in it (`postgres://user:pass@…`);
+  - a known key prefix (`sk_`, `ghp_`, `AKIA`, `xoxb-`, `xoxp-`,
+    `-----BEGIN`);
+  - a JWT (`eyJ…` with two dots: a reset link's `/reset/eyJ…`);
+  - 32 or more characters of base64 or hex (a signed link's token in the
+    path);
+  - or 32 or more URL-safe characters (`-`, `_` and `.` too) mixing
+    upper case, lower case and digits (a base64url token).
+
+  A UUID, a slug or a file name is none of these, so
+  `/u/550e8400-e29b-41d4-a716-446655440000/items/12345` stays readable.
+
+- **Inside a value that is itself a URL**
+  (`?next=https%3A%2F%2F…%3Fapi_key%3D…`), the same rules applied to that
+  URL's path, query and fragment: the value keeps its shape, with its own
+  secrets masked.
+
+- **The value of a query pair that does not parse** (a bad `%` escape, a
+  raw `;`): the runtime cannot tell what it holds, so it hides it. The
+  pair is kept, never dropped, so the line still shows the URL's shape.
+
+- **The value of a route's path parameter** whose name contains one of
+  the words above, whatever the value looks like: for
+  `route Reset = GET "/reset/{token}" { token: Text }` the line shows
+  `/reset/••••`.
+
+  This matters for the tokens an app makes itself: `Random.id` gives 20
+  characters, too short to look like a secret, so a reset or magic-link
+  token is masked only because its parameter is named `token` (or `code`,
+  `key`, `otp`…). Name it so, in the path and in the query alike
+  (`?token=…`, not `?t=…`).
 
 A byte that is not printable ASCII (a control character, or any byte of
 a non-ASCII character) is written `%`-escaped, so a request cannot put a
@@ -840,9 +1001,11 @@ terminal escape sequence into your log viewer, and a path is cut at
 
 The parameter names, their order and every other value stay as written:
 `?key=s3cret&seed=7` becomes `?key=••••&seed=7`, which is enough to tell
-which page and which inputs a request had. The rule errs towards
-hiding: a parameter named `postcode` is masked too. A harmless value
-hidden costs a little reading; a secret shown cannot be taken back.
+which page and which inputs a request had.
+
+The rule errs towards hiding: a parameter named `postcode` is masked too.
+A harmless value hidden costs a little reading; a secret shown cannot be
+taken back.
 
 Some things the runtime never hands to the log at all: request and
 response headers (`Authorization`, `Cookie`), cookies, request bodies,
@@ -853,10 +1016,11 @@ ids and outcomes, not what people typed (chapter 7).
 `requires` cannot name an `ALDER_` variable (E0030): those are the
 runtime's own, set by `alder deploy` or in the target's environment,
 and a deploy copies a required variable's value from your machine to
-the target (Render's service environment). A stale local
-`ALDER_PUBLIC_URL=http://localhost:8080`, or `ALDER_DEV=1`, would
-otherwise reach production. Render's deploy skips `ALDER_` names even if
-one gets past the checker.
+the target (Render's service environment).
+
+A stale local `ALDER_PUBLIC_URL=http://localhost:8080`, or `ALDER_DEV=1`,
+would otherwise reach production. Render's deploy skips `ALDER_` names
+even if one gets past the checker.
 
 ### JSON lines
 
@@ -870,19 +1034,23 @@ log platform that indexes fields:
 
 An access line has the fields of the text line as keys of their own
 (`steps` too at `debug`). At `debug`, once the app counts its database
-statements (see "Slow requests" below), the access line also has `db_stmts`
-and `db_ms`, and under `alder run`, where the dev panel is on, `repeats`: the
-number of groups of one statement run again and again in the request (the
-"N+1" pattern). Every other line is `time`, `level` and `msg`, with a
-panic's stack inside `msg`, so one line is always one event. A line written
-while a request is being answered (the app's `Log` calls, an effect step's
-line, the router's own error about the request) also has `rid`, the same
-request id as the access line's and the `X-Request-Id` header, in
-production too. Filter on it in your log platform and you have everything one
-request said, in order. The
-level names are upper case, as Go's `log/slog` writes them; the objects
-come from its JSON handler, which escapes correctly and reuses its
-buffers.
+statements (see "Slow requests" below), the access line also has
+`db_stmts` and `db_ms`, and under `alder run`, where the dev panel is on,
+`repeats`: the number of groups of one statement run again and again in
+the request (the "N+1" pattern).
+
+Every other line is `time`, `level` and `msg`, with a panic's stack
+inside `msg`, so one line is always one event.
+
+A line written while a request is being answered (the app's `Log` calls,
+an effect step's line, the router's own error about the request) also has
+`rid`, the same request id as the access line's and the `X-Request-Id`
+header, in production too. Filter on it in your log platform and you have
+everything one request said, in order.
+
+The level names are upper case, as Go's `log/slog` writes them; the
+objects come from its JSON handler, which escapes correctly and reuses
+its buffers.
 
 ### Slow requests
 
@@ -898,10 +1066,11 @@ same; `steps=` is how many effect steps the request ran (whatever the
 level), and `db=` how many database statements those steps sent and
 the time spent in them: 9 statements, 640.1 ms. Here the database is
 most of the 812 ms; a slow line with a small `db=` points at something
-else (a capability's call, a `Task.sleep`, the route's own work). A
-statement is counted from the moment it is sent until the driver
-answers, reading the rows of a query included only as far as the
-driver reads them in that call.
+else (a capability's call, a `Task.sleep`, the route's own work).
+
+A statement is counted from the moment it is sent until the driver
+answers, reading the rows of a query included only as far as the driver
+reads them in that call.
 
 Because it is a `warn` line, `ALDER_LOG=warn` keeps it while dropping
 every ordinary access line: a quiet production log that still names
@@ -911,8 +1080,9 @@ under the threshold is written exactly as before, without a route.
 
 Unset, empty or `0` is off, and then nothing is timed: the database
 statements are counted only when this, `ALDER_METRICS` or the dev panel
-(`alder run`) is on. A
-value that is not a whole number of milliseconds (`250ms`, `1.5`, `-1`)
+(`alder run`) is on.
+
+A value that is not a whole number of milliseconds (`250ms`, `1.5`, `-1`)
 stops the app before it serves, like a bad `ALDER_LOG`. The health
 check is never slow: it has no access line.
 
@@ -928,13 +1098,16 @@ The endpoint is served on the app's one port, the same one its pages
 are on, so on every deploy target it is as public as the site: Render
 serves that port to the internet, Fly's proxy answers
 `https://<app>.fly.dev/_alder/metrics`, and a box's Caddy forwards every
-path. What it answers is worth hiding: every route pattern, the admin
-pages nothing links to included; table names, through the steps
+path.
+
+What it answers is worth hiding: every route pattern, the admin pages
+nothing links to included; table names, through the steps
 (`Db.mine Secret`); the build id; and how much traffic and how many
 errors the app has. So:
 
-- On Render, Fly and a box `alder deploy` set up, use a **token** of at
-  least 16 characters. Only a scrape that sends it is answered:
+- **A token.** On Render, Fly and a box `alder deploy` set up, use a
+  token of at least 16 characters. Only a scrape that sends it is
+  answered:
 
   ```text
   curl -H 'Authorization: Bearer 7f1c…e09a' https://blog.example.com/_alder/metrics
@@ -942,22 +1115,28 @@ errors the app has. So:
 
   Make one with `openssl rand -hex 24` and set it like any secret
   (Render's dashboard, `fly secrets set`, the box's environment file).
+
   Anything else gets a 401 with `WWW-Authenticate: Bearer
   realm="alder"`, and an access line: a probe is worth seeing, so the
   first in a minute is an `info` line and the rest of that minute
   `debug` lines, which a scanner hammering the path cannot turn into a
-  flood. The token is compared in constant time and never written
-  anywhere: not in a log line, not in the answer, not in the error a
-  short token gets (`alder: ALDER_METRICS: want "open" or a token of at
-  least 16 characters`, which stops the app before it serves).
-- `ALDER_METRICS=open` answers anyone, with no token. It is only for a
-  scraper on the same host or a private network you control, with the
+  flood.
+
+  The token is compared in constant time and never written anywhere: not
+  in a log line, not in the answer, not in the error a short token gets
+  (`alder: ALDER_METRICS: want "open" or a token of at least 16
+  characters`, which stops the app before it serves).
+
+- **`ALDER_METRICS=open`** answers anyone, with no token. It is only for
+  a scraper on the same host or a private network you control, with the
   app's port not reachable from anywhere else: an app you run by hand
-  behind your own firewall. The app refuses it, and stops before it
-  serves, where it can tell the port is public: on Render (`RENDER` is
-  set), on Fly (`FLY_APP_NAME`) and on a box `alder deploy` set up (its
-  run script sets `ALDER_DEPLOY_TARGET=ssh`). Anywhere else it starts
-  with a `warn` line saying the endpoint is unauthenticated.
+  behind your own firewall.
+
+  The app refuses it, and stops before it serves, where it can tell the
+  port is public: on Render (`RENDER` is set), on Fly (`FLY_APP_NAME`)
+  and on a box `alder deploy` set up (its run script sets
+  `ALDER_DEPLOY_TARGET=ssh`). Anywhere else it starts with a `warn` line
+  saying the endpoint is unauthenticated.
 
 Fly's own metrics scraper reads a `[metrics]` port and path from
 `fly.toml` and sends no token; it needs the endpoint on a separate,
@@ -977,25 +1156,35 @@ a Fly app with a token like any other.
 | `alder_build_info` | gauge, always 1 | `build`: the build id |
 
 Every label comes from a set the program fixes, never from a request:
-`route` is the matched route's pattern (`/todos/{id}`, not `/todos/3`),
-or `/static/` (a static file), `/_alder/` (a runtime file), `/_dev`, or
-`(none)` (nothing matched); `method` is `GET`, `POST`, `HEAD` or
-`other` (a `PUT`, `PATCH` or `DELETE` route counts as `other`); `status` is the class, `2xx` to `5xx` (a request the handler
-aborted before writing anything counts as `5xx`; one that wrote nothing
-otherwise, as `2xx`); a step's name is a Call
-name from the generated code (a `Task.sleep`'s milliseconds are left
-out). This is the cardinality rule: a counter per URL, per user or per
-query value would let anyone who sends requests grow the app's memory
-and the metrics store's bill without bound, so none exists. Per-route
-latency is the histogram by `route`; an error rate is the `5xx` share
-of `alder_http_requests_total`.
+
+- **`route`** is the matched route's pattern (`/todos/{id}`, not
+  `/todos/3`), or `/static/` (a static file), `/_alder/` (a runtime
+  file), `/_dev`, or `(none)` (nothing matched).
+
+- **`method`** is `GET`, `POST`, `HEAD` or `other` (a `PUT`, `PATCH` or
+  `DELETE` route counts as `other`).
+
+- **`status`** is the class, `2xx` to `5xx` (a request the handler
+  aborted before writing anything counts as `5xx`; one that wrote
+  nothing otherwise, as `2xx`).
+
+- **A step's name** is a Call name from the generated code (a
+  `Task.sleep`'s milliseconds are left out).
+
+This is the cardinality rule: a counter per URL, per user or per query
+value would let anyone who sends requests grow the app's memory and the
+metrics store's bill without bound, so none exists.
+
+Per-route latency is the histogram by `route`; an error rate is the
+`5xx` share of `alder_http_requests_total`.
 
 A 200 scrape is answered like the health check: before anything else,
 with no session read or cookie set, no CSRF check, nothing in the dev
-panel, no access line, and it is not counted. With `ALDER_METRICS` and
-`ALDER_SLOW_MS` both unset, nothing is counted or timed and nothing is
-allocated per request: an app that sets neither knob serves exactly as
-it would without them.
+panel, no access line, and it is not counted.
+
+With `ALDER_METRICS` and `ALDER_SLOW_MS` both unset, nothing is counted
+or timed and nothing is allocated per request: an app that sets neither
+knob serves exactly as it would without them.
 
 ### Reading them back
 
@@ -1008,37 +1197,57 @@ alder logs production --since 2h               every line of the last two hours
 alder logs production --since 2026-10-30 -f    since midnight UTC, then follow
 ```
 
+#### `-n`
+
 `-n` is the target's: a box runs `tail -n N` on the build's log,
 Render's API returns at most 100 lines at once (so `-n` above 100
 prints 100), and `flyctl logs` has no count, so `alder logs` keeps the
 last N of what it prints (`alder logs` says so on stderr when `-n` asks
-Render for more). `--grep` is applied by `alder logs` itself to each
-line, whatever the target, before it reaches your terminal. It matches
-lines, not entries: a panic's stack is several lines, and only its first
-(the one with the `rid=`) matches `--grep rid=…`. A pattern also
-matches inside longer text: `--grep rid=abc` finds `rid=abc`,
-`rid=abcd` and `rid=abc-2` alike (an id a client sent can be any
-length). `--grep 'rid=abc\b'` (`\b`, a word boundary) rules out
+Render for more).
+
+#### `--grep`
+
+`--grep` is applied by `alder logs` itself to each line, whatever the
+target, before it reaches your terminal. It matches lines, not entries: a
+panic's stack is several lines, and only its first (the one with the
+`rid=`) matches `--grep rid=…`.
+
+A pattern also matches inside longer text: `--grep rid=abc` finds
+`rid=abc`, `rid=abcd` and `rid=abc-2` alike (an id a client sent can be
+any length). `--grep 'rid=abc\b'` (`\b`, a word boundary) rules out
 `rid=abcd`; since an id is followed by a space or ends the line,
 `--grep 'rid=abc( |$)'` matches that id and no other.
+
+#### `--since`
 
 `--since T` prints every line from T on instead of the last N: `T` is a
 duration ago (`30m`, `2h`, `48h`), an RFC 3339 time
 (`2026-10-30T09:00:00-04:00`) or a date (`2026-10-30`, midnight UTC).
+
 It does not combine with `-n` (it prints everything since T, so a count
 would contradict it); `-f` follows on after it, and `--grep` applies to
-what it keeps. How far back it reaches is the target's: Render's log
-API reads a time range, forward from T a page at a time (up to 2,000
-lines: past that `alder logs` says the rest is cut and to use a later
-`--since`), and with `-f` the live stream takes over where the read
-ends, so a line logged at that moment can be missing or printed twice;
-a box keeps the build's log, which `alder logs` reads in full (a
-build that starts with more than 10 MB of it trims it to the last MB,
-and `-f` then goes on from the trimmed file's start); Fly keeps only recent lines, and `flyctl logs` has no time
-flag, so `alder logs` gets what Fly still has. For a box and Fly,
-`alder logs` keeps a line by its stamp (the app's text or JSON stamp,
-or flyctl's), to the second; a line without one (a stack's
+what it keeps.
+
+How far back it reaches is the target's:
+
+- **Render's** log API reads a time range, forward from T a page at a
+  time (up to 2,000 lines: past that `alder logs` says the rest is cut
+  and to use a later `--since`), and with `-f` the live stream takes over
+  where the read ends, so a line logged at that moment can be missing or
+  printed twice.
+
+- **A box** keeps the build's log, which `alder logs` reads in full (a
+  build that starts with more than 10 MB of it trims it to the last MB,
+  and `-f` then goes on from the trimmed file's start).
+
+- **Fly** keeps only recent lines, and `flyctl logs` has no time flag, so
+  `alder logs` gets what Fly still has.
+
+For a box and Fly, `alder logs` keeps a line by its stamp (the app's text
+or JSON stamp, or flyctl's), to the second; a line without one (a stack's
 continuation, `listening on`) goes with the line before it.
+
+#### The health endpoint
 
 `GET /_alder/health` answers `{"build":"<id>","db":"ok"}` when the
 build is serving and its database answers a `SELECT 1` within five
@@ -1067,12 +1276,18 @@ deploy {
 ```
 
 `alder deploy` sets `ALDER_BACKUP_URL` for the app (through the `run`
-wrapper), and the app ships its database there: when it begins a
-generation (below), a **snapshot** of the database file; then every ten seconds
-(`ALDER_BACKUP_INTERVAL`), the new pages SQLite has written to its
-write-ahead log since the last upload, as a **WAL segment**; once more
-when it shuts down. It is the design of Litestream, cut to what one app
-needs:
+wrapper), and the app ships its database there:
+
+- when it begins a generation (below), a **snapshot** of the database
+  file;
+
+- then every ten seconds (`ALDER_BACKUP_INTERVAL`), the new pages SQLite
+  has written to its write-ahead log since the last upload, as a **WAL
+  segment**;
+
+- once more when it shuts down.
+
+It is the design of Litestream, cut to what one app needs:
 
 ```text
 s3://blog-backups/production/
@@ -1087,9 +1302,10 @@ it. To keep the log unbroken, the runtime turns off SQLite's automatic
 checkpoint while it ships, and checkpoints itself right after copying
 each segment. Anything that breaks the chain (a restart it cannot
 continue from, another process checkpointing the file) starts a new
-generation with a fresh snapshot. One build ships at a time (a lock
-beside the database: during a switch the new build's shipper waits for
-the old one's to finish).
+generation with a fresh snapshot.
+
+One build ships at a time (a lock beside the database: during a switch
+the new build's shipper waits for the old one's to finish).
 
 When the bucket fails, the copied segments wait on the box's disk and
 are retried in order, the waits doubling up to five minutes; the WAL
@@ -1098,26 +1314,32 @@ waiting segments they are dropped, and a new generation begins when the
 bucket answers again. The snapshot never counts toward that limit: a
 database larger than it is shipped like any other.
 
-Three edges are worth knowing. The snapshot is a plain copy of the
-database file, which is safe because only the shipper checkpoints; a
-process that checkpoints the file meanwhile (an `sqlite3` you opened on
-the box, with its default automatic checkpoint) can tear that copy, and
-the restore's integrity check then refuses it: the next generation is
-whole again. A segment still waiting when a build stops is not
-uploaded: its frames are in the database file by then, and the next
-build's first snapshot holds them, so no data is missing from the
-bucket, only those points in time. And `status` says `never shipped`
-while nothing has arrived.
+Three edges are worth knowing:
+
+- **The snapshot** is a plain copy of the database file, which is safe
+  because only the shipper checkpoints; a process that checkpoints the
+  file meanwhile (an `sqlite3` you opened on the box, with its default
+  automatic checkpoint) can tear that copy, and the restore's integrity
+  check then refuses it: the next generation is whole again.
+
+- **A segment still waiting when a build stops** is not uploaded: its
+  frames are in the database file by then, and the next build's first
+  snapshot holds them, so no data is missing from the bucket, only those
+  points in time.
+
+- **`status`** says `never shipped` while nothing has arrived.
 
 The bucket's credentials are environment variables like any other
 secret (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and
 `AWS_ENDPOINT_URL` for an S3-compatible service other than AWS), so
 they belong in `requires`; `alder deploy` warns when they are missing
-from it. Without a `backup` (in the declaration or the environment
-file), every deploy warns once that only the pre-migration copies
-exist. The declaration takes only `S3` locations; for a directory (a
-mounted disk), set `ALDER_BACKUP_URL=/mnt/backups/blog` in the box's
-environment file instead (the deploy then does not warn).
+from it.
+
+Without a `backup` (in the declaration or the environment file), every
+deploy warns once that only the pre-migration copies exist. The
+declaration takes only `S3` locations; for a directory (a mounted disk),
+set `ALDER_BACKUP_URL=/mnt/backups/blog` in the box's environment file
+instead (the deploy then does not warn).
 
 `alder restore` rebuilds a database from the bucket:
 
@@ -1129,15 +1351,23 @@ It downloads the newest snapshot at or before `--to` (a UTC time such as
 `2026-10-17T10:00:00Z`; default: the latest), applies the segments up to
 that time through SQLite itself, checks the result's page count
 against the last commit, and refuses a file that fails SQLite's
-`PRAGMA integrity_check`. With `--out` it writes the file locally (mode
-600) and stops there. Without it, it puts the database in place at the
-target, after asking on the terminal (`--yes` answers without one;
-without either nothing is replaced). At the target, every running build
-is stopped (as for `--restore-backup`, a draining one included), the
-old database is kept beside it as `app.db.before-restore-<time>`, the
-file goes in place with mode 600, and the current build is started
-again, health checked, and routed (Caddy's upstream moves to its new
-port). The command names the kept file:
+`PRAGMA integrity_check`.
+
+With `--out` it writes the file locally (mode 600) and stops there.
+Without it, it puts the database in place at the target, after asking on
+the terminal (`--yes` answers without one; without either nothing is
+replaced).
+
+At the target:
+
+- every running build is stopped (as for `--restore-backup`, a draining
+  one included);
+- the old database is kept beside it as `app.db.before-restore-<time>`;
+- the file goes in place with mode 600;
+- the current build is started again, health checked, and routed
+  (Caddy's upstream moves to its new port).
+
+The command names the kept file:
 
 ```text
 replaced the database at Ssh deploy@box.example.com:/srv/blog (the previous one is kept beside it as db/app.db.before-restore-20261017T101800Z)
@@ -1321,18 +1551,26 @@ of:
   puts it on the `PATH`; a development build of alder writes a file that
   installs the latest release instead. Go comes from `actions/setup-go`,
   because `alder build` generates Go and compiles it.
+
 - **The floor.** `--min 0.95` is the declared `floor`. Without one, the
   `check` job runs `alder test --mutate` without `--min`, and the deploy
   holds the score to the last deploy's, which only the target knows.
+
 - **Secrets.** The header names every repository secret the jobs read,
-  and what each is. For an `Ssh` environment that is the SSH key and the
-  box's host key; the app's own secrets stay in the box's environment
-  file, so they never pass through CI at all. For a `Fly` or `Script`
-  environment the values are read from the runner's environment, so each
-  `requires` name (and `ALDER_SECRET`, and `FLY_API_TOKEN`) is a
-  repository secret, passed to the deploy step by name.
+  and what each is.
+
+  For an `Ssh` environment that is the SSH key and the box's host key;
+  the app's own secrets stay in the box's environment file, so they never
+  pass through CI at all.
+
+  For a `Fly` or `Script` environment the values are read from the
+  runner's environment, so each `requires` name (and `ALDER_SECRET`, and
+  `FLY_API_TOKEN`) is a repository secret, passed to the deploy step by
+  name.
+
 - **Forks.** GitHub gives a pull request from a fork no secrets, so the
   `preview` job runs only for branches of the repository itself.
+
 - **One deploy at a time.** Each environment is a `concurrency` group,
   so two pushes to `main` deploy one after the other, never interleaved.
 
@@ -1360,36 +1598,47 @@ alder deploy preview --host 42.preview.example.com
 
 `--host` overrides the environment's `domain` for that one run. The
 host must match a wildcard domain (`42.other.example.com` is refused).
+
 For an `Ssh` target, each host gets its own state: the build lives under
 `<path>/<host>` (`/srv/blog-preview/42.preview.example.com/`), with its
 own database, its own systemd unit and its own Caddy route, as the
-environment `preview-42.preview.example.com`. So two open pull requests
-never replace each other, and a second push to the same pull request is
-an ordinary deploy to that host: the new build replaces the old one,
-the gate and the plan and the health check included, and the workflow
-edits its earlier comment instead of adding another. `alder status`,
-`logs` and `rollback` take the same `--host` to reach that copy. A
-`Script` target gets the host in `ALDER_HOST`; a `Fly` environment
-refuses `--host` (its address is its app's, `<app>.fly.dev`), so a Fly
-preview is one app that every pull request deploys to, the last push
-winning.
+environment `preview-42.preview.example.com`.
+
+So two open pull requests never replace each other, and a second push to
+the same pull request is an ordinary deploy to that host: the new build
+replaces the old one, the gate and the plan and the health check
+included, and the workflow edits its earlier comment instead of adding
+another. `alder status`, `logs` and `rollback` take the same `--host` to
+reach that copy.
+
+The other targets differ:
+
+- **A `Script` target** gets the host in `ALDER_HOST`.
+
+- **A `Fly` environment** refuses `--host` (its address is its app's,
+  `<app>.fly.dev`), so a Fly preview is one app that every pull request
+  deploys to, the last push winning.
 
 A preview's database starts empty: its first deploy creates it from the
-migrations. And when the pull request is closed, the preview **stays
-up**: nothing removes `<path>/<host>`, its unit or its route yet. Remove
-them by hand for now (`systemctl stop` the unit, delete the directory,
-and the route goes when Caddy reloads its configuration); cleaning up
-on close is planned.
+migrations.
+
+> **Not yet:** when the pull request is closed, the preview **stays up**:
+> nothing removes `<path>/<host>`, its unit or its route yet. Remove them
+> by hand for now (`systemctl stop` the unit, delete the directory, and
+> the route goes when Caddy reloads its configuration); cleaning up on
+> close is planned.
 
 ## The Fly target
 
 **Experimental.** The `Fly` target has run only against a fake of Fly's
 API in alder's own tests; it has never run against Fly itself. Every Fly
 deploy says so (`warning: the Fly target is experimental: it has never
-run against the real Fly API`), and until it is finished it **refuses
-any deploy that would apply a migration to an existing database** (for
-data that outgrows one box, the production answer is the `Turso`
-database of an `Ssh` environment, below):
+run against the real Fly API`).
+
+Until it is finished it **refuses any deploy that would apply a
+migration to an existing database** (for data that outgrows one box, the
+production answer is the `Turso` database of an `Ssh` environment,
+below):
 
 ```text
 alder deploy: refused: Fly target: migrations are not supported yet; deploy a build with no pending migrations, or use Ssh (pending: 0002_add_mood; nothing was shipped)
@@ -1397,86 +1646,131 @@ alder deploy: refused: Fly target: migrations are not supported yet; deploy a bu
 
 The reason is at the end of this section. A first deploy, which creates
 the database from the migrations, is allowed: there is no data to lose
-and no earlier build to go back to. Nor does the Fly target have the
-`Ssh` target's deploy lock or `rollback --restore-backup` yet.
+and no earlier build to go back to.
+
+Nor does the Fly target have the `Ssh` target's deploy lock or
+`rollback --restore-backup` yet.
 
 `Fly "ord" { app: "blog-staging" }` deploys to [Fly.io](https://fly.io),
 which runs **OCI images** (container images) on its own machines close to
 a region. The target turns the artifact into one:
 
-- **The image.** The artifact's executable, static files and migrations
-  on a small Alpine base, in the shape of the Dockerfile alder itself
-  ships (chapter 11, "Cutting a release": a base image, the binary
-  copied in, a command). An app needs no Go at run time, so the base is
-  Alpine, which adds a shell and the CA certificates the adapters' TLS
-  needs. The target writes the Dockerfile, a start script and a
-  `fly.toml` beside a copy of the artifact, and runs `flyctl deploy
-  --build-only --push --image-label <build id>`: Fly's remote builder
-  builds the image and pushes it to `registry.fly.io/<app>:<build id>`.
-  No Docker is needed on your machine; `flyctl` is. Without it the
-  deploy refuses: "the Fly target builds and pushes the build's image
-  with `flyctl`, which is not on PATH: install it".
-- **The machine and the volume.** Everything else goes through Fly's
-  Machines API over HTTP (`https://api.machines.dev/v1`), authenticated
-  with `FLY_API_TOKEN`. A deploy token belongs to an app, so either
-  create the app first (`fly apps create blog-staging`, then `fly tokens
-  create deploy -a blog-staging`), or use an organization token (`fly
-  tokens create org`) and let the first deploy create the app (in the
-  organization `FLY_ORG`, default `personal`). It gives the app public addresses (`flyctl ips
-  allocate-v4 --shared` and `allocate-v6`), and creates a 1 GB volume
-  named `alder_data`, and one machine with the volume mounted at
-  `/data`, serving ports 80 and 443 of `https://<app>.fly.dev`. The
-  machine's environment sets `ALDER_PUBLIC_URL=https://<app>.fly.dev`,
-  so `Url.absolute` (chapter 9) gives that address; for a domain of your
-  own, set a Fly secret of the same name, which wins.
-- **Secrets.** Each `requires` name and `ALDER_SECRET` are read from
-  **your** environment at deploy time (or the CI runner's) and set as Fly
-  secrets with `flyctl secrets import`, the values on its standard input:
-  never in a file, an argument, the image or the output. A name neither
-  your environment nor the Fly app has is refused before anything is
-  pushed; a name the Fly app already has is fine.
-- **State.** The volume holds the same layout as an `Ssh` target's
-  `path` (`/data/builds/<id>/`, `/data/current`, `/data/db/app.db`), so
-  `status`, the plan and the rollback checks read it the same way, by
-  running small shell commands in the machine through the API.
+### The image
+
+The artifact's executable, static files and migrations on a small Alpine
+base, in the shape of the Dockerfile alder itself ships (chapter 11,
+"Cutting a release": a base image, the binary copied in, a command).
+
+An app needs no Go at run time, so the base is Alpine, which adds a shell
+and the CA certificates the adapters' TLS needs.
+
+The target writes the Dockerfile, a start script and a `fly.toml` beside
+a copy of the artifact, and runs `flyctl deploy --build-only --push
+--image-label <build id>`: Fly's remote builder builds the image and
+pushes it to `registry.fly.io/<app>:<build id>`.
+
+No Docker is needed on your machine; `flyctl` is. Without it the deploy
+refuses: "the Fly target builds and pushes the build's image with
+`flyctl`, which is not on PATH: install it".
+
+### The machine and the volume
+
+Everything else goes through Fly's Machines API over HTTP
+(`https://api.machines.dev/v1`), authenticated with `FLY_API_TOKEN`.
+
+A deploy token belongs to an app, so either create the app first
+(`fly apps create blog-staging`, then `fly tokens create deploy -a
+blog-staging`), or use an organization token (`fly tokens create org`)
+and let the first deploy create the app (in the organization `FLY_ORG`,
+default `personal`).
+
+The target then:
+
+- gives the app public addresses (`flyctl ips allocate-v4 --shared` and
+  `allocate-v6`);
+- creates a 1 GB volume named `alder_data`;
+- and creates one machine with the volume mounted at `/data`, serving
+  ports 80 and 443 of `https://<app>.fly.dev`.
+
+The machine's environment sets `ALDER_PUBLIC_URL=https://<app>.fly.dev`,
+so `Url.absolute` (chapter 9) gives that address; for a domain of your
+own, set a Fly secret of the same name, which wins.
+
+### Fly secrets
+
+Each `requires` name and `ALDER_SECRET` are read from **your**
+environment at deploy time (or the CI runner's) and set as Fly secrets
+with `flyctl secrets import`, the values on its standard input: never in
+a file, an argument, the image or the output.
+
+A name neither your environment nor the Fly app has is refused before
+anything is pushed; a name the Fly app already has is fine.
+
+### Fly state
+
+The volume holds the same layout as an `Ssh` target's `path`
+(`/data/builds/<id>/`, `/data/current`, `/data/db/app.db`), so `status`,
+the plan and the rollback checks read it the same way, by running small
+shell commands in the machine through the API.
+
+### One machine, replaced in place
 
 One thing works differently, and it follows from SQLite. A Fly volume
 attaches to one machine, and the database wants one writer, so a Fly
 environment is one machine, and a new build **replaces** the old one in
 place: the target swaps the machine's image, and Fly restarts it. The
 image's start script applies the migrations (`--migrate-only`) and then
-serves. There is a pause of a few seconds while the machine restarts
-(whether Fly's proxy holds the requests meanwhile or answers with an
-error is unverified: the target has not run against Fly), and there is
-no moment when both builds run. The guarantees are kept the other way
-round: when no migration was pending (the only case the target accepts
-on an existing database), a build that fails its health check (asked
-through the public address, `https://<app>.fly.dev/`, until the page
-names the build id) is replaced by the previous image again, and the refusal
-says the previous build still serves. A rollback is the same swap to an
-older image. `alder logs` is `flyctl logs` (of which it keeps the last
-`-n` lines itself); `alder restore` sends the
-database into the volume through the API and restarts the machine,
-whose start script puts it in place. Old images stay in Fly's registry:
-pruning removes only their directories on the volume.
+serves.
 
-Why migrations are refused for now: on Fly the migrations run in the new
-image's start script, on the one machine. If the new build then fails
-its health check, the target puts the previous image back, and that
-image's start script runs the runtime's start-up check on a database
-that has had a migration the previous build does not know: it refuses
-(chapter 8, "When the app starts"), and the machine stops. The site would
-be down until someone restored the copy by hand. The `Ssh` target avoids
-that because the old build keeps running beside the new one and the copy
-can be put back (`rollback --restore-backup`, and automatically after a
-deploy whose migrations dropped data). The Fly target will get the same
-when its start script can put `builds/<id>/backup.db` back on a revert
-and it has a lock and `--restore-backup`. Three more things a first real
-run must check: a large database's copy (`VACUUM INTO`) and `alder
-restore`'s upload (in pieces of 48 kB) both run through the Machines
-API's `exec`, which times out after 60 seconds; and the
-`--allow-data-loss` flag never reaches a Fly machine (no deploy that
-could use it gets that far).
+There is a pause of a few seconds while the machine restarts (whether
+Fly's proxy holds the requests meanwhile or answers with an error is
+unverified: the target has not run against Fly), and there is no moment
+when both builds run.
+
+The guarantees are kept the other way round:
+
+- When no migration was pending (the only case the target accepts on an
+  existing database), a build that fails its health check (asked through
+  the public address, `https://<app>.fly.dev/`, until the page names the
+  build id) is replaced by the previous image again, and the refusal says
+  the previous build still serves.
+
+- A rollback is the same swap to an older image.
+
+- `alder logs` is `flyctl logs` (of which it keeps the last `-n` lines
+  itself).
+
+- `alder restore` sends the database into the volume through the API and
+  restarts the machine, whose start script puts it in place.
+
+- Old images stay in Fly's registry: pruning removes only their
+  directories on the volume.
+
+### Why migrations are refused for now
+
+On Fly the migrations run in the new image's start script, on the one
+machine. If the new build then fails its health check, the target puts
+the previous image back, and that image's start script runs the runtime's
+start-up check on a database that has had a migration the previous build
+does not know: it refuses (chapter 8, "When the app starts"), and the
+machine stops.
+
+The site would be down until someone restored the copy by hand.
+
+The `Ssh` target avoids that because the old build keeps running beside
+the new one and the copy can be put back (`rollback --restore-backup`,
+and automatically after a deploy whose migrations dropped data). The Fly
+target will get the same when its start script can put
+`builds/<id>/backup.db` back on a revert and it has a lock and
+`--restore-backup`.
+
+Three more things a first real run must check:
+
+- A large database's copy (`VACUUM INTO`) runs through the Machines
+  API's `exec`, which times out after 60 seconds.
+- So does `alder restore`'s upload (in pieces of 48 kB).
+- The `--allow-data-loss` flag never reaches a Fly machine (no deploy
+  that could use it gets that far).
 
 The target's unit tests run against a fake Machines API. A real deploy
 is a manual test, because it needs an account and costs a little:
@@ -1519,21 +1813,32 @@ deploy {
 }
 ```
 
-`Render "oregon"` is one of Render's regions (`oregon`, `ohio`,
-`virginia`, `frankfurt`, `singapore`). `service` is the name of the
-service in your Render workspace; the first deploy creates it.
-`database` is required (E0030 says so: "a Render service keeps nothing
-between deploys"), and two environments that share an `app` share data,
-so the preview has its own. `instances` is how many copies run (default
-1), `plan` is passed to Render as given (`starter`, `standard`,
-`1c-2g`, …; unset leaves Render's default). `image` is the registry path
-every Render environment pushes to, tagged with the build id, without a
-tag or a credential in it. Left out, it is `ghcr.io/<owner>/<repo>` from
-the `origin` remote of the git repository above the app (a GitHub
-remote); with no such remote the command refuses with E0030 and says
-what to write. `backup: S3` does not apply to a Render environment,
-since Turso's point-in-time recovery is its backup, and `--host` is
-refused: the address is the service's.
+The fields:
+
+- **`Render "oregon"`** is one of Render's regions (`oregon`, `ohio`,
+  `virginia`, `frankfurt`, `singapore`).
+
+- **`service`** is the name of the service in your Render workspace; the
+  first deploy creates it.
+
+- **`database`** is required (E0030 says so: "a Render service keeps
+  nothing between deploys"), and two environments that share an `app`
+  share data, so the preview has its own.
+
+- **`instances`** is how many copies run (default 1).
+
+- **`plan`** is passed to Render as given (`starter`, `standard`,
+  `1c-2g`, …; unset leaves Render's default).
+
+- **`image`** is the registry path every Render environment pushes to,
+  tagged with the build id, without a tag or a credential in it. Left
+  out, it is `ghcr.io/<owner>/<repo>` from the `origin` remote of the git
+  repository above the app (a GitHub remote); with no such remote the
+  command refuses with E0030 and says what to write.
+
+`backup: S3` does not apply to a Render environment, since Turso's
+point-in-time recovery is its backup, and `--host` is refused: the
+address is the service's.
 
 ### What the command reads
 
@@ -1543,25 +1848,36 @@ never in `App`:
 | Variable | Used for |
 |---|---|
 | `RENDER_API_KEY` | Render's REST API |
-| `TURSO_API_TOKEN` | Turso's platform API, the migrations and the lock, as for an `Ssh` environment with a `Turso` database; the running service gets it too, to mint each silo's token |
+| `TURSO_API_TOKEN` | Turso's platform API, the migrations and the lock (see below) |
 | `ALDER_REGISTRY_TOKEN` (and `ALDER_REGISTRY_USER`, default the first part of `image`) | the image push, and Render's credential to pull it |
-| the `requires` names, and `ALDER_SECRET` | set as the service's environment variables; `ALDER_SECRET` is made once and kept on the service |
+| the `requires` names, and `ALDER_SECRET` | set as the service's environment variables (see below) |
+
+The `TURSO_API_TOKEN` is used as for an `Ssh` environment with a `Turso`
+database; the running service gets it too, to mint each silo's token.
+`ALDER_SECRET` is made once and kept on the service.
 
 The rule of the chapter holds: none of them is in `App`, in the image,
-in a record, in `--json` or in an error. The service's environment
-variables are **merged**, not replaced (Render's call replaces the whole
-set): a variable you set in the dashboard stays, a `requires` name unset
-here but already at the service counts as set, and the values are never
-printed. `ALDER_PUBLIC_URL` (the base of `Url.absolute`, chapter 9) is
-added as the service's address when the service does not have it; a value
-set in the dashboard (for a custom domain) is kept. A new service gets the
-address it is expected to have, `https://<service>.onrender.com`; when
+in a record, in `--json` or in an error.
+
+The service's environment variables are **merged**, not replaced
+(Render's call replaces the whole set): a variable you set in the
+dashboard stays, a `requires` name unset here but already at the service
+counts as set, and the values are never printed.
+
+`ALDER_PUBLIC_URL` (the base of `Url.absolute`, chapter 9) is added as
+the service's address when the service does not have it; a value set in
+the dashboard (for a custom domain) is kept.
+
+A new service gets the address it is expected to have,
+`https://<service>.onrender.com`; when
 Render names it otherwise (a suffix, because the name was taken), the
 first deploy corrects the variable once the service is live and rolls the
 same image again (`ALDER_PUBLIC_URL of blog set to the service's address
-(…); deploying again`). The variables and the
-instance count are set just before the roll, so a refusal earlier (a missing name, a migration the gate stops)
-has changed nothing at Render.
+(…); deploying again`).
+
+The variables and the instance count are set just before the roll, so a
+refusal earlier (a missing name, a migration the gate stops) has changed
+nothing at Render.
 
 ### A transcript
 
@@ -1618,41 +1934,48 @@ health: 1/1 instances serve e010d2cf9e89376f
 deployed e010d2cf9e89376f to production
 ```
 
-(`address` is the service's URL as Render reports it, since Render adds
+`address` is the service's URL as Render reports it, since Render adds
 a suffix to a name that is taken; before the service exists, as in a
 `--dry-run`, it is `https://<service>.onrender.com (expected)`. The
 `--json` record carries it as `address`, for every target that has
-one. With `--dry-run` a Render environment stops after the plan: nothing
-is created or changed at Render or in the registry.)
+one.
+
+With `--dry-run` a Render environment stops after the plan: nothing is
+created or changed at Render or in the registry.
 
 ### Zero downtime, and what it asks of migrations
 
 Render does the roll. It starts the new instances beside the old, asks
 them `/_alder/health` until they are healthy, switches the traffic and
-sends the old ones SIGTERM (with 30 seconds to finish). The `switch` and
-`stop` lines above are alder's bookkeeping; the engine's health check
-then asks the public address until `instances` consecutive answers name
-the new build, so every instance has rolled before the build is
-recorded as current. The roll waits up to 10 minutes and that check up to
-60 seconds, the engine's default; `ALDER_DEPLOY_HEALTH_TIMEOUT` (a Go
-duration, such as `10m`) sets both.
+sends the old ones SIGTERM (with 30 seconds to finish).
+
+The `switch` and `stop` lines above are alder's bookkeeping; the engine's
+health check then asks the public address until `instances` consecutive
+answers name the new build, so every instance has rolled before the build
+is recorded as current.
+
+The roll waits up to 10 minutes and that check up to 60 seconds, the
+engine's default; `ALDER_DEPLOY_HEALTH_TIMEOUT` (a Go duration, such as
+`10m`) sets both.
 
 `/_alder/health`, which every build serves, answers `{"build":"<id>",
 "db":"ok"}`, or 503 when `db` is not `ok`: `unreachable`, or `ahead: …`
-for a database migrated past this build. A build never migrates a
-remote database when it starts (several instances would race). Behind
-the database, it exits with "the database is behind this build: run
+for a database migrated past this build.
+
+A build never migrates a remote database when it starts (several
+instances would race). Behind the database, it exits with "the database is behind this build: run
 `alder deploy`", which fails Render's deploy while the old instances
 keep serving; ahead of it, it serves the maintenance page.
 
 What that asks of migrations: the migrations run **first**, from the
 deploying machine, and the old build keeps serving **on the new schema**
-until the roll completes. That is why the gate's DROPS DATA rule
-(above, "Migrations and the data-loss rule") is the guard, and why it is
-not optional here: a migration that renames or drops a column the old
-build still reads makes the old instances fail for as long as the roll
-takes. Add the new column in one deploy, and drop the old one in the
-next.
+until the roll completes.
+
+That is why the gate's DROPS DATA rule (above, "Migrations and the
+data-loss rule") is the guard, and why it is not optional here: a
+migration that renames or drops a column the old build still reads makes
+the old instances fail for as long as the roll takes. Add the new column
+in one deploy, and drop the old one in the next.
 
 ### Instances, rollback and restore
 
@@ -1665,22 +1988,30 @@ State lives where the data does: the builds, their records, the pointer
 to the current build and the lock are rows of the shared Turso database
 (`_alder_deploy_builds`, `_alder_deploy_current` and `_alder_lock`), so a
 laptop and a CI runner agree, and a runner that never had the old
-artifact can still plan and roll back from the stored schema. Nothing is
-recorded as current until Render reports the deploy `live` and the
-health check has seen the build.
+artifact can still plan and roll back from the stored schema.
 
-`alder status` adds the service's URL, its instances, the live deploy and
-its age. `alder rollback <env> [id]` deploys the older image by its tag
-and polls, under the same schema rule as any rollback; `--restore-backup`
-copies the database as it was at the time recorded for the next build,
-and sets the new `ALDER_DB` in one call before the roll. `alder restore
-<env> --to <time>` (with `--silo` for one org) is the Turso restore
-above, with that call in place of `turso.env`. All of them are rolls, so
-none takes the site down. `alder logs <env>` prints the service's last
-lines (at most 100: Render's API returns no more at once),
-`[instance] message`; with `-f` it streams, over Render's log
-websocket (a small RFC 6455 client in alder, no dependency), until you
-stop it.
+Nothing is recorded as current until Render reports the deploy `live` and
+the health check has seen the build.
+
+The commands on a Render environment:
+
+- **`alder status`** adds the service's URL, its instances, the live
+  deploy and its age.
+
+- **`alder rollback <env> [id]`** deploys the older image by its tag and
+  polls, under the same schema rule as any rollback; `--restore-backup`
+  copies the database as it was at the time recorded for the next build,
+  and sets the new `ALDER_DB` in one call before the roll.
+
+- **`alder restore <env> --to <time>`** (with `--silo` for one org) is
+  the Turso restore above, with that call in place of `turso.env`.
+
+All of them are rolls, so none takes the site down.
+
+`alder logs <env>` prints the service's last lines (at most 100: Render's
+API returns no more at once), `[instance] message`; with `-f` it
+streams, over Render's log websocket (a small RFC 6455 client in alder,
+no dependency), until you stop it.
 
 ### The registry, and the one token
 
@@ -1689,25 +2020,33 @@ The artifact becomes a one-layer OCI image on `scratch`: the executable,
 shell and no package. alder builds and pushes it itself, with the
 registry's HTTP API and no Docker, so the same artifact always gives the
 same image digest. Render runs `linux/amd64`, and the artifact is
-cross-built for it. Two things a bare image lacks are supplied: a CA
-bundle (Mozilla's, vendored in alder) at `/etc/ssl/certs/ca-certificates.crt`
-for the adapters' TLS, and the time zone database, compiled into the
-executable of a deploy build. (alder takes no module beyond the
-standard library and the SQLite driver, so the image carries the bundle
-rather than a Go package of roots.)
+cross-built for it.
+
+Two things a bare image lacks are supplied: a CA bundle (Mozilla's,
+vendored in alder) at `/etc/ssl/certs/ca-certificates.crt` for the
+adapters' TLS, and the time zone database, compiled into the executable
+of a deploy build. (alder takes no module beyond the standard library
+and the SQLite driver, so the image carries the bundle rather than a Go
+package of roots.)
 
 One token does two jobs: `ALDER_REGISTRY_TOKEN` pushes the image and is
-also what Render stores as its **registry credential**, made by name
-on the first deploy (`alder-<image path>`; the registry kind comes
-from the host: `ghcr.io`, Docker Hub, GitLab, Google Artifact Registry
-and ECR are known) and, on every later deploy, found by that name and
-updated with the deploy's token (`registry credential … updated`), so
-a new or rotated token reaches Render before the deploy it pulls for.
-Render pulls with it for as long as the service lives, so it must be a long-lived personal access token (for GHCR, a
-classic token with `read:packages` and `write:packages`), not a
-per-run one. With no token set the push is anonymous and no credential
-is made: that works only for a public image. Images stay in the
-registry (pruning removes only the records `keep` counts).
+also what Render stores as its **registry credential**.
+
+- It is made by name on the first deploy (`alder-<image path>`; the
+  registry kind comes from the host: `ghcr.io`, Docker Hub, GitLab,
+  Google Artifact Registry and ECR are known).
+
+- On every later deploy it is found by that name and updated with the
+  deploy's token (`registry credential … updated`), so a new or rotated
+  token reaches Render before the deploy it pulls for.
+
+Render pulls with it for as long as the service lives, so it must be a
+long-lived personal access token (for GHCR, a classic token with
+`read:packages` and `write:packages`), not a per-run one.
+
+With no token set the push is anonymous and no credential is made: that
+works only for a public image. Images stay in the registry (pruning
+removes only the records `keep` counts).
 
 ### CI
 
@@ -1716,13 +2055,17 @@ with no SSH step. The header comment lists the repository secrets
 (`RENDER_API_KEY`, `TURSO_API_TOKEN`, `ALDER_REGISTRY_TOKEN` and the
 `requires` names), the job has `permissions: packages: write`, and the
 deploy step reads `ALDER_REGISTRY_TOKEN` from the secret alone, with no
-fallback to the run's `github.token`. The run token could push a GHCR
-image, but alder stores the token as Render's credential, and Render
-pulls with it on every deploy and every restart, long after the run and
-its token have ended. So the header comment asks for a personal access
-token with `read:packages` and `write:packages`: set it once as the
-`ALDER_REGISTRY_TOKEN` secret before the first deploy. The pull request's preview runs `alder deploy preview --json`
-and comments the `address` from it (no `--host`), and every pull request
+fallback to the run's `github.token`.
+
+The run token could push a GHCR image, but alder stores the token as
+Render's credential, and Render pulls with it on every deploy and every
+restart, long after the run and its token have ended. So the header
+comment asks for a personal access token with `read:packages` and
+`write:packages`: set it once as the `ALDER_REGISTRY_TOKEN` secret before
+the first deploy.
+
+The pull request's preview runs `alder deploy preview --json` and
+comments the `address` from it (no `--host`), and every pull request
 deploys to the one preview service, so the last push wins. The first
 deploy creates the Render service; the dashboard is for looking.
 
@@ -1769,31 +2112,38 @@ next: commit these files, push, and connect the repo in Render (New > Blueprint)
 ```
 
 `render` writes `Dockerfile`, `.dockerignore` and `render.yaml`; `fly` writes
-the same first two and `fly.toml`. The Dockerfile has two stages. The first
-builds alder from source at a pinned git ref and runs `alder build` on your
-app; the second copies the one binary and its `static/` directory onto a
-distroless image (no shell, no package manager, a few megabytes). Alder
-names the binary after the directory, so the app is named after yours.
+the same first two and `fly.toml`.
+
+The Dockerfile has two stages. The first builds alder from source at a
+pinned git ref and runs `alder build` on your app; the second copies the
+one binary and its `static/` directory onto a distroless image (no shell,
+no package manager, a few megabytes). Alder names the binary after the
+directory, so the app is named after yours.
 
 - **The pin.** The ref is the compiler's own version: the release tag of a
   released `alder`, the full commit of one built from a checkout. A compiler
   that records neither gets a placeholder, `REPLACE_WITH_ALDER_REF`, with a
   comment above it, and the command says so. To upgrade alder, change
   `ALDER_REF` and push.
+
 - **The disk.** An app with tables keeps a SQLite file, so `render.yaml`
   mounts a 1 GB disk at `/data` and `fly.toml` mounts a volume there, with
   `ALDER_DB=/data/app.db`. An app with no tables gets neither. A Render disk
   costs what "Why no disk mode" above says: one instance, and a short pause on
   each deploy. For zero downtime on Render use the `Render` target with Turso.
+
 - **The health check.** Both files point the platform's check at
   `/_alder/health`, which every Alder app serves.
+
 - **Secrets.** `render.yaml` has Render generate `ALDER_SECRET`; on Fly you set
   it with `fly secrets set` (the command prints it as the next step).
+
 - **The address.** `render.yaml` sets `ALDER_PUBLIC_URL` to
   `https://<app>.onrender.com`, and `fly.toml` to `https://<app>.fly.dev`, the
   base `Url.absolute` puts in front of a page's URL (chapter 9). Without it
   the app would use the address it listens on (`http://localhost:10000` on
   Render, `http://localhost:8080` on Fly).
+
   Render may give the service another name when yours is taken; the line in
   `render.yaml` says to change it then.
 
@@ -1803,12 +2153,14 @@ cannot be deployed by name; pick another name for it.
 If the compiler was built from a checkout with uncommitted changes, no ref
 builds it, so the Dockerfile gets the placeholder and the command warns. If
 it was built from a commit with no release tag, the commit is pinned and the
-command reminds you to make sure it is pushed to the alder remote. A silo-only
-app (no shared tables) still gets the disk or volume, because each silo's
-SQLite file lives under the database's directory.
+command reminds you to make sure it is pushed to the alder remote.
+
+A silo-only app (no shared tables) still gets the disk or volume, because
+each silo's SQLite file lives under the database's directory.
 
 The command never replaces a file. When any of the files exists it writes
 none of them, lists the ones in the way, and exits 1; `--force` replaces them.
+
 `--dry-run` prints every file and writes nothing. The files come from the
 same templates the `Fly` target uses for its image build, so the two do not
 drift.
@@ -1823,12 +2175,15 @@ backups. When you want those, declare a `deploy` block and use `alder deploy
 a platform with its own CLI, a Kubernetes cluster, a box behind a
 bastion. The gate and the artifact are the same as for any target;
 then the script runs from the app's root with two arguments, the
-artifact directory (absolute) and the environment's name, and the
-`requires` names, comma-separated, in `ALDER_REQUIRES` (`ALDER_SECRET`
-included; the host in `ALDER_HOST` when `--host` was given;
-`ALDER_ALLOW_DATA_LOSS=1` only with `--allow-data-loss`, never
-otherwise, even when your shell had it set). Its exit code is the deploy's
-result. The examples' script is the smallest possible one:
+artifact directory (absolute) and the environment's name.
+
+The `requires` names, comma-separated, arrive in `ALDER_REQUIRES`
+(`ALDER_SECRET` included; the host in `ALDER_HOST` when `--host` was
+given; `ALDER_ALLOW_DATA_LOSS=1` only with `--allow-data-loss`, never
+otherwise, even when your shell had it set).
+
+Its exit code is the deploy's result. The examples' script is the
+smallest possible one:
 
 ```text
 #!/bin/sh
@@ -1846,13 +2201,16 @@ env="$2"
 A real one copies `$artifact/app` and its `static/` and `migrations/`
 somewhere, runs `app --migrate-only` there, and starts `app` with
 `ALDER_DB`, `ALDER_ADDR`, `ALDER_STATIC` and `ALDER_SECRET` set (chapter
-11, "alder build"). Since the command cannot see what the script did,
-`status`, `rollback`, `logs` and `restore` (without `--out`) say they are
-not available for a `Script` target. Its plan lists every migration (it
-cannot see which the target applied), and the plan itself refuses none;
-applying one is another matter: the app's `--migrate-only` refuses a
-DROPS DATA migration on a database with data unless
-`ALDER_ALLOW_DATA_LOSS=1`, which the script gets only with
+11, "alder build").
+
+Since the command cannot see what the script did, `status`, `rollback`,
+`logs` and `restore` (without `--out`) say they are not available for a
+`Script` target.
+
+Its plan lists every migration (it cannot see which the target applied),
+and the plan itself refuses none; applying one is another matter: the
+app's `--migrate-only` refuses a DROPS DATA migration on a database with
+data unless `ALDER_ALLOW_DATA_LOSS=1`, which the script gets only with
 `--allow-data-loss`.
 
 ## SQLite in production
@@ -1861,13 +2219,35 @@ Every Alder app stores its data in one SQLite file (chapter 8). That
 choice shapes what deploying means, and the facts are worth knowing
 before the first user arrives:
 
-| Fact | What it means |
-|---|---|
-| One writer at a time | SQLite serializes writes; reads go on in parallel (WAL mode). A small app's writes take microseconds, so this is rarely felt, but a long write transaction makes every other write wait. |
-| One box | The database is a file on one machine's disk; there is no second server to fail over to. A busier app grows by a bigger machine, not more of them. |
-| The disk is the risk | Lose the disk and you lose the data since the last backup. The pre-migration copies live on the same disk; the streamed backup (`backup:`) is what survives it, within ten seconds. |
-| A rebuild takes the lock | A migration that rebuilds a table copies it under the write lock; `--dry-run` shows it so you can choose when. |
-| Zero downtime on one box | Two processes can open the file: the new build migrates and starts while the old one drains, which is how the `Ssh` target switches behind Caddy without dropping requests (`proxy: None` has a moment without a listener; Fly a pause of seconds). |
+#### One writer at a time
+
+SQLite serializes writes; reads go on in parallel (WAL mode). A small
+app's writes take microseconds, so this is rarely felt, but a long write
+transaction makes every other write wait.
+
+#### One box
+
+The database is a file on one machine's disk; there is no second server
+to fail over to. A busier app grows by a bigger machine, not more of
+them.
+
+#### The disk is the risk
+
+Lose the disk and you lose the data since the last backup. The
+pre-migration copies live on the same disk; the streamed backup
+(`backup:`) is what survives it, within ten seconds.
+
+#### A rebuild takes the lock
+
+A migration that rebuilds a table copies it under the write lock;
+`--dry-run` shows it so you can choose when.
+
+#### Zero downtime on one box
+
+Two processes can open the file: the new build migrates and starts while
+the old one drains, which is how the `Ssh` target switches behind Caddy
+without dropping requests (`proxy: None` has a moment without a
+listener; Fly a pause of seconds).
 
 When the app outgrows one box's disk (many tenants, each with a
 database of its own, or more data than one machine should hold), the
@@ -1887,28 +2267,54 @@ database, each silo is a file next to the shared one:
 
 `<name>` is the org's id written in a file-safe alphabet (lowercase
 base32hex): ids are case-sensitive, and some file systems are not, so
-the id's own text is never the file name. A silo file is created the
-first time a request needs it, and checked every time a process opens
-it: the `_alder_schema` row inside it says which build last migrated it
-(chapter 13 explains the check). Four commands look after the silos of
-a deployed app, each running the current build's executable at the box
-(the same executable that serves, with a maintenance flag):
+the id's own text is never the file name.
 
-| Command | What it does |
-|---|---|
-| `alder status <env>` | adds the silo table: per key, how many silos are `ok`, `migrating`, `pending (data loss)`, `ahead`, `failed` and `orphaned`, then each one that is not `ok` with the reason (the build's `--silo-status`) |
-| `alder migrate silos <env> [--allow-data-loss]` | migrates every silo file now (`--migrate-silos`); a silo behind by a migration that drops data needs `--allow-data-loss`, exactly as the shared database does at deploy |
-| `alder silos prune <env> [--yes]` | lists the orphaned silos (their org's row was deleted, so nothing can reach them), asks, and removes their files (`--prune-silos`, which checks each again first) |
-| `alder restore <env> --silo org:<id> --to <time>` | rebuilds that one silo from its own backup stream and puts it in place; the file it replaces is kept beside it (`….before-restore-<time>`), and the build is restarted so no process keeps what it read |
+A silo file is created the first time a request needs it, and checked
+every time a process opens it: the `_alder_schema` row inside it says
+which build last migrated it (chapter 13 explains the check).
+
+Four commands look after the silos of a deployed app, each running the
+current build's executable at the box (the same executable that serves,
+with a maintenance flag):
+
+#### `alder status <env>`
+
+- Adds the silo table: per key, how many silos are `ok`, `migrating`,
+  `pending (data loss)`, `ahead`, `failed` and `orphaned`, then each one
+  that is not `ok` with the reason (the build's `--silo-status`).
+
+#### `alder migrate silos <env> [--allow-data-loss]`
+
+- Migrates every silo file now (`--migrate-silos`).
+- A silo behind by a migration that drops data needs `--allow-data-loss`,
+  exactly as the shared database does at deploy.
+
+#### `alder silos prune <env> [--yes]`
+
+- Lists the orphaned silos (their org's row was deleted, so nothing can
+  reach them), asks, and removes their files (`--prune-silos`, which
+  checks each again first).
+
+#### `alder restore <env> --silo org:<id> --to <time>`
+
+- Rebuilds that one silo from its own backup stream and puts it in place.
+- The file it replaces is kept beside it (`….before-restore-<time>`), and
+  the build is restarted so no process keeps what it read.
+
+#### The data-loss flag and silos
 
 `--allow-data-loss` on `alder deploy` covers the shared database only.
 So a deploy whose plan drops data, in an app with a silo, says where the
-rest goes before it asks for the flag: "hint: the app has silos:
---allow-data-loss covers the shared database; a silo whose tables a
-pending migration drops data of waits in maintenance when it is opened,
-until `alder migrate silos production --allow-data-loss` (take a backup
-first; `alder status production` lists them)". A typical session after
-a deploy whose migration dropped a column of a siloed table:
+rest goes before it asks for the flag:
+
+> hint: the app has silos: --allow-data-loss covers the shared database;
+> a silo whose tables a pending migration drops data of waits in
+> maintenance when it is opened, until `alder migrate silos production
+> --allow-data-loss` (take a backup first; `alder status production`
+> lists them)
+
+A typical session after a deploy whose migration dropped a column of a
+siloed table:
 
 ```text
 $ alder status production
@@ -1929,25 +2335,29 @@ process) sees it at once.
 With `backup:` (or `ALDER_BACKUP_URL` in the environment file) the
 runtime streams every silo file as it streams the shared database, each
 under its own prefix of the bucket (`silos/org/<name>/…`), so one silo
-can be restored without touching the others. Each stream is a shipper
-with a lock file and two connections, so there is a limit: **200 silo
-files**. Past it, the runtime ships none of the silos (the log says so,
-once) and `alder deploy` refuses with a sentence pointing here. Two
-hundred tenants in files on one disk is where the `Turso` database
-starts to pay for itself.
+can be restored without touching the others.
+
+Each stream is a shipper with a lock file and two connections, so there
+is a limit: **200 silo files**. Past it, the runtime ships none of the
+silos (the log says so, once) and `alder deploy` refuses with a sentence
+pointing here. Two hundred tenants in files on one disk is where the
+`Turso` database starts to pay for itself.
 
 ## The Turso database
 
 [Turso](https://turso.tech) runs SQLite's engine (libSQL) as a
 service: each database lives there, is reached over HTTPS, and is
 backed up continuously with *point-in-time recovery*: you can ask for a
-copy of any database as it was at any second of the last days. A
-Turso organization can hold thousands of small databases, so a silo
+copy of any database as it was at any second of the last days.
+
+A Turso organization can hold thousands of small databases, so a silo
 there is what it is at a box, a database per org, only no longer a file
-on your disk. (Turso also has *schema databases*, whose changes it
-passes on to many databases at once; it marks them deprecated for new
-organizations, and alder does not use them. Each silo database is
-migrated the way a silo file is.)
+on your disk.
+
+> **Schema databases.** Turso also has *schema databases*, whose changes
+> it passes on to many databases at once; it marks them deprecated for
+> new organizations, and alder does not use them. Each silo database is
+> migrated the way a silo file is.
 
 An environment keeps its box (the executable still runs there, behind
 Caddy) and moves its data:
@@ -1962,73 +2372,113 @@ deploy {
 }
 ```
 
-`Turso "acme"` is the organization; `group` the Turso group the
-databases are created in (default `"default"`); `app` the name the
-databases get; `sample` how many of the largest silos a deploy tries
-its migrations on first (default 5). The names Turso ends up holding:
+The fields:
 
-| Database | What it is |
-|---|---|
-| `workspace` | the shared database (`ALDER_DB=libsql://…` for the app) |
-| `workspace-org-<id>` | one org's silo, its id written as the silo file's name is (so it must fit Turso's 64 characters: a deploy refuses a name that would not, with a sentence) |
+- **`Turso "acme"`** is the organization.
+- **`group`** is the Turso group the databases are created in (default
+  `"default"`).
+- **`app`** is the name the databases get.
+- **`sample`** is how many of the largest silos a deploy tries its
+  migrations on first (default 5).
 
-The token: create one with `turso auth api-tokens mint alder` and put
-it in two places. On the machine that deploys, as `TURSO_API_TOKEN` in
-the environment (the deploy creates databases and runs migrations from
-there). At the box, as `TURSO_API_TOKEN=…` in the environment file (the
-running app creates each org's database the first time that org is
-used, and asks Turso for a token per database, which it keeps in
-memory). `alder deploy` checks both before anything changes.
+The names Turso ends up holding:
+
+- **`workspace`** is the shared database (`ALDER_DB=libsql://…` for the
+  app).
+
+- **`workspace-org-<id>`** is one org's silo, its id written as the silo
+  file's name is (so it must fit Turso's 64 characters: a deploy refuses
+  a name that would not, with a sentence).
+
+#### The Turso token
+
+Create one with `turso auth api-tokens mint alder` and put it in two
+places:
+
+- On the machine that deploys, as `TURSO_API_TOKEN` in the environment
+  (the deploy creates databases and runs migrations from there).
+
+- At the box, as `TURSO_API_TOKEN=…` in the environment file (the running
+  app creates each org's database the first time that org is used, and
+  asks Turso for a token per database, which it keeps in memory).
+
+`alder deploy` checks both before anything changes.
 
 ### What a deploy does with it
 
 The gate, the artifact and the plan are as for any `Ssh` environment.
+
 Then, before anything is uploaded, the preflight checks the token here,
 that the group exists, that every database name fits Turso's rules (at
 most 64 characters: keep `app` short), and creates the shared database
 if this is the first deploy, writing its address to
 `<path>/db/turso.env` at the box (the build's run script reads it).
+
 After the upload:
 
 1. **The backup is a point in time.** Nothing is copied: the deploy
    records the next whole second in `builds/<id>/backup.pitr` and waits
    for it to pass, so every write before the deploy is at or before that
    time and every change the migrations make is after it.
+
 2. **The plan is tried on the largest silos.** The deploy runs the new
    build's executable *on this machine* (built for it when the box is
-   another platform) with `--verify-silos 5`: it lists the silo
-   databases through Turso's API, asks for each one's size (when Turso
-   gives none, it takes the first five by name), and on each of the
-   five largest begins a transaction, runs the pending migrations'
-   statements, checks foreign keys and that the tables come out as the
-   new build's (a database changed by hand fails here), and rolls
-   everything back. One failure refuses the deploy, naming the database,
-   and nothing has been migrated: the shared database is as it was, the
-   old build serves.
+   another platform) with `--verify-silos 5`:
+
+   - it lists the silo databases through Turso's API;
+   - it asks for each one's size (when Turso gives none, it takes the
+     first five by name);
+   - on each of the five largest it begins a transaction, runs the
+     pending migrations' statements, checks foreign keys and that the
+     tables come out as the new build's (a database changed by hand fails
+     here), and rolls everything back.
+
+   One failure refuses the deploy, naming the database, and nothing has
+   been migrated: the shared database is as it was, the old build serves.
+
 3. **The shared database is migrated** with `--migrate-only`, from
    here, over HTTPS: the same migrations, the same DROPS DATA rule, as
    for a file.
+
 4. Start, health check, switch, as always.
 
 The silo databases are not migrated by the deploy: each is migrated
 when the new build first opens it, exactly as a silo file is (chapter
-13): behind by migrations that drop no data, it is migrated there and
-then and served; behind by one that drops data, it answers the org's
-maintenance page and `alder status` lists it `pending (data loss)`;
-until something opens it, `alder status` lists it `migrating`. To
-migrate them all at once instead of one by one as orgs come back, run
+13):
+
+- Behind by migrations that drop no data, it is migrated there and then
+  and served.
+- Behind by one that drops data, it answers the org's maintenance page
+  and `alder status` lists it `pending (data loss)`.
+- Until something opens it, `alder status` lists it `migrating`.
+
+To migrate them all at once instead of one by one as orgs come back, run
 `alder migrate silos <env>` (with `--allow-data-loss` for a migration
 that drops data): the build's `--migrate-silos` lists the silo
 databases through Turso's API and migrates each, a line per database.
 
 ### Restoring, rolling back, locking
 
-| Command | On a Turso database |
-|---|---|
-| `alder restore <env> --to <time>` | asks Turso for a copy of the shared database as it was at that time, makes it the app's (`db/turso.env` names it), and restarts the build on it; the replaced database stays at Turso |
-| `alder restore <env> --silo org:<id> --to <time>` | puts one org's database back as it was: Turso cannot restore a database in place, so the deploy copies it at that time, keeps a copy of it as it is now, and creates the org's database again from the first copy |
-| `alder rollback <env> <id> --restore-backup` | the same copy of the shared database, at the time the next deploy recorded in `backup.pitr` |
-| `alder silos prune <env>` | deletes the orphaned orgs' databases at Turso |
+#### `alder restore <env> --to <time>`
+
+Asks Turso for a copy of the shared database as it was at that time,
+makes it the app's (`db/turso.env` names it), and restarts the build on
+it; the replaced database stays at Turso.
+
+#### `alder restore <env> --silo org:<id> --to <time>`
+
+Puts one org's database back as it was. Turso cannot restore a database
+in place, so the deploy copies it at that time, keeps a copy of it as it
+is now, and creates the org's database again from the first copy.
+
+#### `alder rollback <env> <id> --restore-backup`
+
+The same copy of the shared database, at the time the next deploy
+recorded in `backup.pitr`.
+
+#### `alder silos prune <env>`
+
+Deletes the orphaned orgs' databases at Turso.
 
 `--from` and `--out` do not apply: there is no stream and no file. A
 rollback puts back the shared database only; the silos stay at the
@@ -2043,78 +2493,146 @@ block the next one forever).
 ### What alder speaks to Turso
 
 No Turso library: the runtime and the deploy use Go's `net/http`, and
-exactly these requests. Of the platform API (`api.turso.tech`): read a
-group; list the group's databases (the silos are those whose names
-begin `<app>-<key>-`); read, create (empty, or seeded from another
-database at a time) and delete a database; read a database's storage
-size; mint a database's token. Of
-the database protocol (Hrana over HTTP, `POST /v2/pipeline`): `execute`
-with positional arguments and `close`, on a stream carried from request
-to request by its *baton*; a transaction is `BEGIN IMMEDIATE` …
-`COMMIT` on one stream, so the Task's own code runs between its
-statements as it does on a file. alder's tests run all of it against a
-fake Turso (`internal/tursofake`). The fake is not Turso, so before the
-first production deploy run the same calls against the real service:
+exactly these requests:
+
+- **Of the platform API** (`api.turso.tech`): read a group; list the
+  group's databases (the silos are those whose names begin
+  `<app>-<key>-`); read, create (empty, or seeded from another database
+  at a time) and delete a database; read a database's storage size; mint
+  a database's token.
+
+- **Of the database protocol** (Hrana over HTTP, `POST /v2/pipeline`):
+  `execute` with positional arguments and `close`, on a stream carried
+  from request to request by its *baton*; a transaction is
+  `BEGIN IMMEDIATE` … `COMMIT` on one stream, so the Task's own code runs
+  between its statements as it does on a file.
+
+alder's tests run all of it against a fake Turso (`internal/tursofake`).
+The fake is not Turso, so before the first production deploy run the same
+calls against the real service:
 
 ```text
 $ TURSO_API_TOKEN=… ALDER_TURSO_ORG=acme go test -tags turso ./rt/db -run TestTursoReal -v
 ```
 
 It creates and deletes databases named `alder-t-<random>`, and checks
-what the fake stands in for: that a database is created and listed as
-alder names it, that `BEGIN IMMEDIATE`, savepoints and DDL inside a
-transaction work over the protocol, that SQLite's refusal texts (`UNIQUE
-constraint failed`) come through, that the usage call gives
-`storage_bytes`, and that a copy seeded at a whole second holds what was
-committed before it.
+what the fake stands in for:
+
+- that a database is created and listed as alder names it;
+- that `BEGIN IMMEDIATE`, savepoints and DDL inside a transaction work
+  over the protocol;
+- that SQLite's refusal texts (`UNIQUE constraint failed`) come through;
+- that the usage call gives `storage_bytes`;
+- and that a copy seeded at a whole second holds what was committed
+  before it.
 
 ## The knobs
 
 A few environment variables change how the commands behave, for tests
 and for unusual setups:
 
-| Variable | Effect |
-|---|---|
-| `ALDER_SSH_CONFIG` | an `ssh_config` file every `ssh` reads (`ssh -F`): an identity, a jump host, a known-hosts file |
-| `ALDER_DEPLOY_DRAIN` | how long the old build drains after the switch (default `30s`; `0` stops it at once) |
-| `ALDER_DEPLOY_HEALTH_TIMEOUT` | how long a new build has to pass its health check (default `60s`; for a Render roll, `10m` and then `60s` for the health check; a Go duration, which sets both) |
-| `ALDER_DEPLOY_SUPERVISOR` | `process` runs builds as background processes even where systemd runs |
-| `ALDER_DEPLOY_CADDY_ADMIN` | the `host:port` of Caddy's admin API at the box (default `127.0.0.1:2019`) |
-| `ALDER_BACKUP_URL` | at the box (the environment file): stream the database to a directory or bucket without a `backup` in the declaration |
-| `ALDER_BACKUP_INTERVAL` | how often the runtime ships the database (default `10s`) |
-| `ALDER_PUBLIC_URL` | read by the app's executable: the site's address for `Url.absolute` (chapter 11). Each target sets it to the address it serves (`Ssh`: `https://<domain>`; `Fly`: `https://<app>.fly.dev`; `Render`: the service's address); set it yourself (the environment file, a Fly secret, Render's dashboard) to override |
-| `ALDER_LOG` | read by the app's executable: the least level it writes, `debug`, `info` (default), `warn` or `error` ("Operating an app"); `alder deploy` leaves it as the environment sets it |
-| `ALDER_LOG_FORMAT` | read by the app's executable: `text` (default) or `json` lines |
-| `ALDER_SLOW_MS` | read by the app's executable: a request that takes this many milliseconds or more is a `warn` line with its breakdown ("Slow requests"; unset or `0`: off); `alder deploy` leaves it as the environment sets it |
-| `ALDER_METRICS` | read by the app's executable: a bearer token of at least 16 characters turns on `GET /_alder/metrics` ("Metrics"; unset: no endpoint); `open` (no token) is refused on Render, Fly and a box `alder deploy` set up, whose port is public; `alder deploy` leaves it as the environment sets it |
-| `ALDER_ALLOW_DATA_LOSS` | read by the app's executable, never set by you: `1` lets `--migrate-only` apply a DROPS DATA migration; `alder deploy` sets it for one run with `--allow-data-loss` |
-| `RENDER_API_KEY` | the Render target's API key (the Render REST API) |
-| `ALDER_REGISTRY_TOKEN`, `ALDER_REGISTRY_USER` | the Render target's registry token (the image push and Render's pull credential) and user (default the first part of `image`) |
-| `ALDER_RENDER_API` | Render's API address (default `https://api.render.com/v1`; alder's tests point it at the fake) |
-| `FLY_API_TOKEN`, `FLY_ORG` | the Fly target's token, and the organization a new Fly app is created in |
-| `TURSO_API_TOKEN` | here and at the box: the Turso platform API's token (a `database: Turso` environment) |
-| `ALDER_TURSO_API` | the platform API's address (default `https://api.turso.tech`; alder's tests point it at the fake, whose databases are then reached over plain HTTP) |
-| `ALDER_TURSO_ORG`, `ALDER_TURSO_GROUP`, `ALDER_TURSO_APP`, `ALDER_TURSO_DB` | read by the app's executable, set by the run script from the declaration and `db/turso.env`: where its databases are |
-| `ALDER_DB_TOKEN` | read by the app's executable: a token for `ALDER_DB=libsql://…` itself, instead of one minted with `TURSO_API_TOKEN` (an app run by hand against a Turso database) |
+- `ALDER_SSH_CONFIG`: an `ssh_config` file every `ssh` reads (`ssh -F`): an
+  identity, a jump host, a known-hosts file
 
-And for alder's own tests of the targets: `ALDER_DEPLOY_LOCAL=1` runs
-the `Ssh` tests against a private `sshd` on this machine;
-`ALDER_DEPLOY_REQUIRE_DOCKER=1` makes `-tags deploy` fail instead of
-skipping when Docker does not answer (CI's `deploy` job);
-`ALDER_DEPLOY_SYSTEMD=1` runs the systemd and Caddy test on a box that
-has them (CI's `deploy-systemd` job); `ALDER_SILO_RECHECK` (a duration, read
-by the app's executable) shortens the minute after which an app opens
-again a silo it found not servable.
+- `ALDER_DEPLOY_DRAIN`: how long the old build drains after the switch
+  (default `30s`; `0` stops it at once)
+
+- `ALDER_DEPLOY_HEALTH_TIMEOUT`: how long a new build has to pass its health
+  check (default `60s`; for a Render roll, `10m` and then `60s` for the health
+  check; a Go duration, which sets both)
+
+- `ALDER_DEPLOY_SUPERVISOR`: `process` runs builds as background processes
+  even where systemd runs
+
+- `ALDER_DEPLOY_CADDY_ADMIN`: the `host:port` of Caddy's admin API at the box
+  (default `127.0.0.1:2019`)
+
+- `ALDER_BACKUP_URL`: at the box (the environment file): stream the database
+  to a directory or bucket without a `backup` in the declaration
+
+- `ALDER_BACKUP_INTERVAL`: how often the runtime ships the database (default
+  `10s`)
+
+- `ALDER_PUBLIC_URL`: read by the app's executable: the site's address for
+  `Url.absolute` (chapter 11). Each target sets it to the address it serves
+  (`Ssh`: `https://<domain>`; `Fly`: `https://<app>.fly.dev`; `Render`: the
+  service's address); set it yourself (the environment file, a Fly secret,
+  Render's dashboard) to override
+
+- `ALDER_LOG`: read by the app's executable: the least level it writes,
+  `debug`, `info` (default), `warn` or `error` ("Operating an app"); `alder
+  deploy` leaves it as the environment sets it
+
+- `ALDER_LOG_FORMAT`: read by the app's executable: `text` (default) or `json`
+  lines
+
+- `ALDER_SLOW_MS`: read by the app's executable: a request that takes this
+  many milliseconds or more is a `warn` line with its breakdown ("Slow
+  requests"; unset or `0`: off); `alder deploy` leaves it as the environment
+  sets it
+
+- `ALDER_METRICS`: read by the app's executable: a bearer token of at least 16
+  characters turns on `GET /_alder/metrics` ("Metrics"; unset: no endpoint);
+  `open` (no token) is refused on Render, Fly and a box `alder deploy` set up,
+  whose port is public; `alder deploy` leaves it as the environment sets it
+
+- `ALDER_ALLOW_DATA_LOSS`: read by the app's executable, never set by you: `1`
+  lets `--migrate-only` apply a DROPS DATA migration; `alder deploy` sets it
+  for one run with `--allow-data-loss`
+
+- `RENDER_API_KEY`: the Render target's API key (the Render REST API)
+
+- `ALDER_REGISTRY_TOKEN`, `ALDER_REGISTRY_USER`: the Render target's registry
+  token (the image push and Render's pull credential) and user (default the
+  first part of `image`)
+
+- `ALDER_RENDER_API`: Render's API address (default
+  `https://api.render.com/v1`; alder's tests point it at the fake)
+
+- `FLY_API_TOKEN`, `FLY_ORG`: the Fly target's token, and the organization a
+  new Fly app is created in
+
+- `TURSO_API_TOKEN`: here and at the box: the Turso platform API's token (a
+  `database: Turso` environment)
+
+- `ALDER_TURSO_API`: the platform API's address (default
+  `https://api.turso.tech`; alder's tests point it at the fake, whose
+  databases are then reached over plain HTTP)
+
+- `ALDER_TURSO_ORG`, `ALDER_TURSO_GROUP`, `ALDER_TURSO_APP`, `ALDER_TURSO_DB`:
+  read by the app's executable, set by the run script from the declaration and
+  `db/turso.env`: where its databases are
+
+- `ALDER_DB_TOKEN`: read by the app's executable: a token for
+  `ALDER_DB=libsql://…` itself, instead of one minted with `TURSO_API_TOKEN`
+  (an app run by hand against a Turso database)
+
+And for alder's own tests of the targets:
+
+- `ALDER_DEPLOY_LOCAL=1` runs the `Ssh` tests against a private `sshd` on
+  this machine.
+
+- `ALDER_DEPLOY_REQUIRE_DOCKER=1` makes `-tags deploy` fail instead of
+  skipping when Docker does not answer (CI's `deploy` job).
+
+- `ALDER_DEPLOY_SYSTEMD=1` runs the systemd and Caddy test on a box that
+  has them (CI's `deploy-systemd` job).
+
+- `ALDER_SILO_RECHECK` (a duration, read by the app's executable)
+  shortens the minute after which an app opens again a silo it found not
+  servable.
 
 ## What is not there yet
 
-The `Fly` target is experimental: it refuses migrating deploys and has
-no lock and no `--restore-backup`. The `Render` target is experimental too:
-it has run only against fakes until the manual `-tags render` round. A preview is not
-removed when its pull request closes. Wildcard certificates need a DNS
-challenge alder does not configure. A build run as a plain process
-(no systemd) is not restarted when it crashes. Only GitHub Actions has
-a workflow. A Turso database's rollback puts back the shared
-database but not the silos, and the run against the real service is
-manual (`-tags turso`). The file database's silos
-stream at most 200 files.
+- The `Fly` target is experimental: it refuses migrating deploys and has
+  no lock and no `--restore-backup`.
+- The `Render` target is experimental too: it has run only against fakes
+  until the manual `-tags render` round.
+- A preview is not removed when its pull request closes.
+- Wildcard certificates need a DNS challenge alder does not configure.
+- A build run as a plain process (no systemd) is not restarted when it
+  crashes.
+- Only GitHub Actions has a workflow.
+- A Turso database's rollback puts back the shared database but not the
+  silos, and the run against the real service is manual (`-tags turso`).
+- The file database's silos stream at most 200 files.

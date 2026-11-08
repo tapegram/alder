@@ -2,14 +2,19 @@
 
 A test is a piece of the program that checks another piece and says yes or
 no. In Alder a test is a declaration, written in the module it tests, after
-the code, and `alder test` runs every test in the app. This chapter starts
-with the simplest kind, a test of a pure function, then reads the report
-`alder test` prints, then tests code that reads and writes the database,
-replaces a capability with a fake written in Alder, drives the app
-through an in-memory browser as a user would, measures the tests with
-mutants (`alder test --mutate`), checks statements about all inputs
-instead of examples (properties, section 12), and ends with what cannot
-be tested yet.
+the code, and `alder test` runs every test in the app.
+
+This chapter goes in this order:
+
+- the simplest kind, a test of a pure function;
+- the report `alder test` prints;
+- tests of code that reads and writes the database;
+- replacing a capability with a fake written in Alder;
+- driving the app through an in-memory browser as a user would;
+- measuring the tests with mutants (`alder test --mutate`);
+- checking statements about all inputs instead of examples (properties,
+  section 12);
+- what cannot be tested yet.
 
 ## 1. A test is a `Bool`
 
@@ -30,9 +35,10 @@ test "countOpen ignores done todos" =
 Inside `Todo` the names are written unqualified (`countOpen`,
 `TodoId "a"`), and that is how the file has them; the blocks of this
 chapter are checked as a module of their own, so they qualify them as any
-other module must. A test of another function looks the same. This one,
-not in the example, checks that the `Active` filter leaves out a done
-todo:
+other module must.
+
+A test of another function looks the same. This one, not in the example,
+checks that the `Active` filter leaves out a done todo:
 
 ```alder
 test "matches Active excludes done" =
@@ -68,8 +74,8 @@ same text.
 ## 2. Running the tests
 
 `alder test` checks the app, compiles it with its tests, runs every test
-and prints one line per test. In the repository, the to-do app has 126:
-its own 23, and the 103 of the admin that `alder new admin` generated for
+and prints one line per test. In the repository, the to-do app has 147:
+its own 25, and the 122 of the admin that `alder new admin` generated for
 it (chapter 15). `-run` (section 7) picks out the app's own, by module:
 
 ```text
@@ -101,9 +107,11 @@ ok   Todos.Show "saving or deleting another user's todo is not found"
 ```
 
 Each line names the module and the test, and is printed as soon as that
-test finishes, so a slow test shows which tests ran before it. Tests run
-in module order (a module after the modules it imports), and within a
-module in the order they are written. The last line counts them.
+test finishes, so a slow test shows which tests ran before it.
+
+Tests run in module order (a module after the modules it imports), and
+within a module in the order they are written. The last line counts them.
+
 `alder test` exits with 0 when every test passed and 1 when one failed,
 so a script or CI job can use it directly. Two tests of one module may
 not have the same name (E0009).
@@ -172,23 +180,29 @@ A failing test is `FAIL`, followed by indented lines that say why:
 - `left:` and `right:` are the two sides of the test's `==`, written as
   Alder values (as `alder eval` writes them). They appear when the test's
   body is an `==`, or, for a block (section 3), when the value its final
-  `Task.succeed` returns is an `==`. A body such as `a == b && c == d`
-  has no single `==` to show, so its failure has no sides: when you
-  want the sides, end a test with one `==`, comparing records if there
-  is more than one thing to check.
+  `Task.succeed` returns is an `==`.
+
+  A body such as `a == b && c == d` has no single `==` to show, so its
+  failure has no sides: when you want the sides, end a test with one `==`,
+  comparing records if there is more than one thing to check.
+
 - `note:` appears under the sides when they print the same text but
   `==` still said `False`: `the sides print the same but are different
   values`. A `Float` that is not a number (`0.0 / 0.0` prints as `NaN`
   and is not equal to itself) is one way to get there.
+
 - `error:` is why the test stopped before it produced `True` or `False`:
   a task that failed, a capability with no implementation, a Go panic.
   Two more stop the whole run at that test, which then fails with the
-  reason and no later test runs (exit 1): a test that ran past the time
-  limit (`error: timed out after 5m0s`; `-timeout`, section 7), and a
-  test that crashed the program, such as a function that recurses
-  forever and overflows the stack: the error is the first lines of the
-  crash, `fatal error: stack overflow` and the Go function and line it
-  happened in, not the whole Go trace.
+  reason and no later test runs (exit 1):
+
+  - a test that ran past the time limit (`error: timed out after 5m0s`;
+    `-timeout`, section 7);
+  - a test that crashed the program, such as a function that recurses
+    forever and overflows the stack: the error is the first lines of the
+    crash, `fatal error: stack overflow` and the Go function and line it
+    happened in, not the whole Go trace.
+
 - `trace:` is, for a block test, every step it performed (section 6).
 
 A test that passes or fails can be followed by `warn:` lines, which never
@@ -204,25 +218,31 @@ ok   Rows.Bench "slow 100"
 
 On a file database the loop is cheap; on a remote one (Turso, chapter 15)
 every statement is a round trip over the network, so the page that answers
-in a millisecond here takes a second there. The rule is the one the
-developer panel's SQL tab applies (chapter 11, "Developer mode", says how
-it is decided), run over each request a browser step made; the request
-line in front names which. With `--json` the test's object carries
-`"warnings": […]`. A warning is not a failure because the page may be
-right as it is (a handful of rows, a lookup you accept); the line is there
-so the cost is seen before it is paid in production.
+in a millisecond here takes a second there.
+
+The rule is the one the developer panel's SQL tab applies (chapter 11,
+"Developer mode", says how it is decided), run over each request a browser
+step made; the request line in front names which. With `--json` the test's
+object carries `"warnings": […]`.
+
+A warning is not a failure because the page may be right as it is (a
+handful of rows, a lookup you accept); the line is there so the cost is
+seen before it is paid in production.
 
 A test that runs for ten seconds is announced on standard error,
 `still running Todo "slow" (10s)`, and again every ten seconds, so a
 test that hangs is not mistaken for a quiet one.
 
 If the app does not compile, no test runs: `alder test` prints the
-diagnostics as `alder check` does and exits 1. A typed hole (`?todo`,
-chapter 11) compiles to nothing that can run either: its warning W0002 is
-followed by `alder test: no tests ran (fill the hole)` and the holes with their types, exit 1. Here the app has gained a
-module `Probe` that declares `count : Int` as `count = "none"` and
-`test "one" = { Task.succeed 1 }`, a block whose verdict is not a
-`Bool`:
+diagnostics as `alder check` does and exits 1.
+
+A typed hole (`?todo`, chapter 11) compiles to nothing that can run either:
+its warning W0002 is followed by `alder test: no tests ran (fill the hole)`
+and the holes with their types, exit 1.
+
+Here the app has gained a module `Probe` that declares `count : Int` as
+`count = "none"` and `test "one" = { Task.succeed 1 }`, a block whose
+verdict is not a `Bool`:
 
 ```text
 $ alder test examples/todos
@@ -238,11 +258,13 @@ app/Probe.alder:6:29: error[E0003]: expected Bool, got Int
 
 A `Task` cannot be compared with `==` (section 13 says why), so a test of
 `update` cannot just compare its result. Instead it runs the task and
-looks at what happened. A test whose body is a block, `{ … }`, is an
-**effect test**: the block is a `Task Bool`, with `let x <-` lines like
-any `Task` (chapter 7), and it ends with `Task.succeed` of the verdict. A
-block that ends in a plain `Bool` is an error; the compiler's hint says
-to end it with `Task.succeed (…)`.
+looks at what happened.
+
+A test whose body is a block, `{ … }`, is an **effect test**: the block is
+a `Task Bool`, with `let x <-` lines like any `Task` (chapter 7), and it
+ends with `Task.succeed` of the verdict. A block that ends in a plain
+`Bool` is an error; the compiler's hint says to end it with
+`Task.succeed (…)`.
 
 The to-do list's tests are the last thing in `app/Todos/Index.alder`
 (chapter 2 shows them in place). Written in another module, as the
@@ -269,27 +291,35 @@ Line by line:
    `error: Todo.owner: no User with that id`. A test builds every row it
    needs, the rows they refer to included. `Db.insert` returns the new
    row's id, `me`.
+
 2. Insert a todo owned by `me`; its id is `id`.
+
 3. Sign `me` in. `Toggle` uses `Db.updateMine` (chapter 6, "Rules"),
    which acts for the user of the session the test is running with, and
    `Test.login` sets that session (and the browser's cookie, section 9).
    Without this line the step would fail with `Db.updateMine Todo: no
    signed-in user`.
+
 4. Run the `Toggle` route's `update` under `Test.run` (section 4) and
    call the outcome `r`. `Toggle.update` takes the route's parameters
    (`{ id: id }`, a `Toggle.Params`, the id the URL would carry) and the
-   session; no `load` runs before it, and no form is decoded. The `Toggle`
-   route `requires user`, so its `Session` is a type of its own whose
-   `user` is a `UserId`, not a `Maybe` (chapter 6). The record literal
-   `{ user: me, role: Member }` names every field, the role too (a
+   session; no `load` runs before it, and no form is decoded.
+
+   The `Toggle` route `requires user`, so its `Session` is a type of its
+   own whose `user` is a `UserId`, not a `Maybe` (chapter 6). The record
+   literal `{ user: me, role: Member }` names every field, the role too (a
    literal gets no defaults: chapter 6, "Rules"), and is that type because
    it is written where `update` expects one. Bound to a name first by a
    `let` without an annotation, it would be a plain record, which `update`
-   does not accept. This record is `update`'s `session` argument, which
-   the route's own code may read; the scoped operations do not read it
-   (step 3, and "Tests that use the rules", below).
+   does not accept.
+
+   This record is `update`'s `session` argument, which the route's own
+   code may read; the scoped operations do not read it (step 3, and "Tests
+   that use the rules", below).
+
 5. Read the todo again, and take its `done` (`after` is a `Maybe Todo`:
    `Nothing` if the row were gone).
+
 6. The verdict, as one `==` between two records: `update` made one
    step, the scoped write, and the stored todo is now done. Putting everything
    the test checks into one record, rather than joining several `==`
@@ -340,9 +370,11 @@ to a function. What sets that session:
 
 - **`Test.login s`** sets it to `s`, as well as the browser's cookie
   (section 9). This is the way to choose the user.
+
 - **`Session.put`**, in the test or inside an `update` it runs, changes
   it for every later step: a scoped operation after it acts for the
   new user.
+
 - **A login through the login route's form** (`Test.submit` of its
   `Credentials`) signs the user into the **browser** only: the route's
   `Session.put` ran in the request, and the router stored the result in
@@ -357,7 +389,9 @@ direct `update` call is not checked.
 So a test that calls `update` or `load` itself, with a session record,
 signs in with `Test.login` first; the record is still `update`'s
 argument, and must have the route's `Session` type, but it does not choose
-the user. Without a signed-in user a scoped step fails, and says why.
+the user.
+
+Without a signed-in user a scoped step fails, and says why.
 Here is "Toggle flips done" without its `Test.login` line, expecting
 `Ok Response.refresh`:
 
@@ -404,7 +438,9 @@ A partition by another key (chapter 6, "Partitions") is tested the same
 way, with the key in the session. `Test.login` takes it as a served
 request's cookie would hold it, and a key `via Membership` must pass the
 same check a `Session.put` does: the user must have a membership row for
-it first. `Test.member user org` inserts that row (the user and key
+it first.
+
+`Test.member user org` inserts that row (the user and key
 columns set, the others `Nothing` or their default; chapter 9). A test
 of the workspace's project list (`examples/workspace/app/Projects/Index.alder`)
 with two orgs, Ann a member of Acme, Bob of Globex, and Cy of both:
@@ -431,33 +467,43 @@ like the page's. Things to know:
   test touches has its own database in memory, made when the test first
   reads or writes it, and thrown away with the test. A row inserted with
   `Db.insert Project { …, org: acme }` goes to Acme's, whatever the
-  session says. The test's savepoints (`Test.run`, each browser request)
+  session says.
+
+  The test's savepoints (`Test.run`, each browser request)
   cover every one of them, so a failed `Test.run` undoes its writes in
   each.
+
 - **Setup before the login.** A test whose session has an org may not
   insert a siloed row of another org ("Db.insert Project: the row's org
   is not this request's"): production refuses the same write. Insert the
   rows of both orgs first, then `Test.login`; or log in with `org:
   Nothing`, as the generated admin's tests do, whose pages take the org
   from their parameter.
+
 - **A switch refused.** A request crafted by hand is a direct `update`
   call (the page offers no such button): `Test.run (Open.update { org:
   globex } { user: ann, org: Nothing, role: Member })` gives `Err
   "Session.put org: no Membership for this user and org"`
-  (`Orgs.Index "a non-member's switch is refused"`). `Test.login` itself
+  (`Orgs.Index "a non-member's switch is refused"`).
+
+  `Test.login` itself
   is refused the same way for an org the user is no member of. Through
   the browser the same refusal is an answer, not an error: the route
   answers the not-found page (a 404 in production, not a 500), which a
   test sees as `PageMissing`.
+
 - **One store per `Test.run`.** A `Test.run` runs its `Task` as a request
   runs one, on one store: the first one it writes, and for `Test.run
   (Create.update p session)` the route's store, bound first as its request's
-  is, so a `Test.run` fails where the request would. A `Test.run` whose `Task` writes the shared
+  is, so a `Test.run` fails where the request would.
+
+  A `Test.run` whose `Task` writes the shared
   database and a silo fails the test with the internal error production
   answers 500 with ("Db.insert Project writes silo org in a Task on the
   shared store (one store per Task)"). The test's own body is not one
   request: it may set up rows in the shared database and in several
   orgs' databases.
+
 - **The re-read.** Deleting the membership in the test body, then
   `Test.open`ing the route, shows the re-read idiom at work: the cookie
   still has the org, and the route answers `PageMissing` (`Projects.Index
@@ -469,25 +515,30 @@ like the page's. Things to know:
   app's tables and nothing in them. Each test has its own, so no test
   sees another's rows, and the order tests run in never matters. When the
   test ends, the database is thrown away.
+
 - **One transaction.** The block runs as one `Task` (chapter 7, "How
   effects run"): its first database step begins a transaction, every
   later step uses it, and the block's own reads see its own writes.
+
 - **A ticking clock.** `Time.now`, and the `@created` column a
   `Db.insert` fills, read a clock that starts at `2026-01-01T00:00:00Z`
   and advances one second each time it is read, so rows created in a
   test are ordered, and a test gets the same times on every run, until
-  the test sets it: `Test.setClock`, section 9 ("Setting the clock"). Time is
-  not transactional: a `Test.run` that fails rolls back its writes, but
-  the clock keeps the ticks that run read.
+  the test sets it: `Test.setClock`, section 9 ("Setting the clock").
+
+  Time is not transactional: a `Test.run` that fails rolls back its
+  writes, but the clock keeps the ticks that run read.
+
 - **The app's capabilities.** When the app has adapters (Go under
   `adapters/`, chapter 7, "Implementing a capability"), they are wired as
   in `alder build`, by the generated `caps` package, so a test calls the
   real Go. A capability's error is a failure the test can observe: under
   `Test.run` (section 4) it is `Err "Password.verify: …"`. A test can
-  replace a capability with a fake instead (section 8). A capability
-  whose adapter is missing is not wired: `alder test` prints the list
-  `alder build` would refuse, as a warning (`warning: 1 capability
-  without an adapter runs unwired in tests:`, then one line per
+  replace a capability with a fake instead (section 8).
+
+  A capability whose adapter is missing is not wired: `alder test` prints
+  the list `alder build` would refuse, as a warning (`warning: 1
+  capability without an adapter runs unwired in tests:`, then one line per
   capability), and runs the tests anyway, so you can test with fakes
   before writing any Go. When the app has no `adapters/` at all, no
   capability is wired. Either way, a call to an unwired capability that
@@ -505,6 +556,7 @@ like the page's. Things to know:
   scoped operations act for (above). A test of `update` also passes a
   session record as `update`'s argument, which the route's own code
   reads.
+
 - **A browser.** A page held and a session cookie, both empty at the
   start, for the steps of section 9.
 
@@ -514,9 +566,11 @@ evaluated once.
 ## 4. `Test.run`: running a task that may fail
 
 `Toggle.update` for another user's todo ends in `Task.notFound`. If the
-test simply wrote `let response <- Index.Toggle.update …`, that failure would be the
-test's failure, as a failing step is any task's failure, and the test
-could never check that the 404 happened. `Test.run` catches it. Its type,
+test simply wrote `let response <- Index.Toggle.update …`, that failure
+would be the test's failure, as a failing step is any task's failure, and
+the test could never check that the 404 happened.
+
+`Test.run` catches it. Its type,
 from the standard module `Test` (`stdlib/Test.alder`), is
 `Test.run : Task a -> Task { value: Result Text a, trace: List Text }`.
 
@@ -528,18 +582,23 @@ a record:
   `Task.notFound` (and `Query.notFound`) — the failures that become a 404
   page in the running app — or, when a capability's Go code returned an
   error, the call and the error: `"Password.verify: connection refused"`.
+
   A write route's `update` gives a `Result Text Response`, and `Response`
   values compare with `==`, so `r.value == Ok Response.refresh` works too.
+
 - `trace` is the list of steps `t` performed (section 6).
 
 When `t` fails, what it did is undone, and only that: its writes are
 rolled back and the session is put back as it was before `Test.run`; the
-writes the test made before it stay. The database can do this because of
+writes the test made before it stay.
+
+The database can do this because of
 a **savepoint**: a named mark inside the open transaction. `Test.run`
 sets one before `t` starts; on failure `ROLLBACK TO` the mark undoes
 exactly the writes after it, and on success `RELEASE` forgets the mark,
-and `t`'s writes become part of the test's. Here is the second test as
-the database sees it:
+and `t`'s writes become part of the test's.
+
+Here is the second test as the database sees it:
 
 ```text
 test "Toggle by a stranger is not found"   (a fresh database in memory)
@@ -616,9 +675,12 @@ before it runs (chapter 7, "Every step is traced"). The names:
   `"Db.count Todo"`, and the scoped ones as written,
   `"Db.updateMine Todo"`; `Db.mine Todo`, which is not a step, is noted
   as `"Db.mine Todo"` just before the step that runs it;
+
 - a capability call is the capability and its function, as the calling
   module writes them: `"Password.verify"`;
+
 - `Test.run` is a step itself, `"Test.run"`, in the test's trace;
+
 - a browser step is its name and what it names: `"Test.login"`,
   `"Test.get Todos.Index.Index"` (the route's full path),
   `"Test.submit NewTodo"` (the form's name),
@@ -627,7 +689,9 @@ before it runs (chapter 7, "Every step is traced"). The names:
 
 The steps inside a `Test.run` appear twice: in `r.trace`, which holds
 only them, and in the test's own trace, after `"Test.run"`, even when
-the run failed and its writes were undone. That is why the report of
+the run failed and its writes were undone.
+
+That is why the report of
 "Toggle reads, then writes" above has the trace
 `["Db.insert User", "Db.insert Todo", "Test.login", "Test.run", "Db.updateMine Todo"]`
 while its `r.trace` was `["Db.updateMine Todo"]`. Compare
@@ -656,7 +720,9 @@ A pattern that matches nothing runs nothing and passes:
 `-timeout` bounds the whole run (default `5m`; any Go duration, such as
 `30s` or `2m`). When the time is up, the test running then fails with
 `error: timed out after 30s`, the summary counts the tests that ran, and
-`alder test` exits 1. The test program also stops if `alder test` itself
+`alder test` exits 1.
+
+The test program also stops if `alder test` itself
 is killed, even with `kill -9`: it reads its standard input, which
 `alder test` holds open, and exits when that closes.
 
@@ -672,15 +738,22 @@ $ alder test examples/todos --json -run countOpen
 
 Each object has `module`, `name`, `file`, `line` and `col` (where the
 test's `test` keyword is, so an editor can jump to it), `ok`, `trace`
-(empty for a pure test) and `ms`, the time it took in milliseconds (it differs from run to run);
-and `left`, `right`, `note` and `error` when they have something to say.
+(empty for a pure test) and `ms`, the time it took in milliseconds (it
+differs from run to run); and `left`, `right`, `note` and `error` when
+they have something to say.
+
 Unlike the text report, it gives the sides of a passing test's `==` too.
 A test that crashed the program or timed out is an object like any
-failing test's, with the reason in `error`. If the app does not compile,
-the output is one object, `{"diagnostics":[…]}`, holding what
-`alder check --json` would print; any other problem after the arguments
-are read (a build failure, a bad `-run` pattern) is one object
-`{"error":"…"}`. So a program always gets JSON, except for a usage
+failing test's, with the reason in `error`.
+
+The output is JSON in every case but one:
+
+- If the app does not compile, the output is one object,
+  `{"diagnostics":[…]}`, holding what `alder check --json` would print.
+- Any other problem after the arguments are read (a build failure, a bad
+  `-run` pattern) is one object `{"error":"…"}`.
+
+So a program always gets JSON, except for a usage
 error such as an unknown flag, which prints the usage line. Chapter 11
 lists the exit codes.
 
@@ -688,8 +761,9 @@ lists the exit codes.
 
 A capability's adapter is Go code that reaches outside the program
 (chapter 7). A test of a checkout should not charge a real card, and a
-test of a page should not depend on how Markdown is rendered. For
-those, a module can declare a **fake**: a second implementation of a
+test of a page should not depend on how Markdown is rendered.
+
+For those, a module can declare a **fake**: a second implementation of a
 capability, written in Alder beside the capability, that only tests
 use. It answers every entry of the capability, and it can keep state in
 tables of its own, so a charge and then its refund behave as they would
@@ -723,7 +797,9 @@ the entry's, so `text` is a `Text` and the body a `Query (Html Never)`.
 A test installs the fake with a step, `let _ <- Test.fake Markdown`.
 From then until the test ends, every call of `Markdown.render` (in
 `load`, in a function it calls, anywhere) runs the fake instead of the
-adapter. These two tests call the entry with the fake and without it:
+adapter.
+
+These two tests call the entry with the fake and without it:
 
 ```alder
 module Preview
@@ -745,14 +821,19 @@ test "the adapter renders the Markdown" = {
 ```
 
 Added to a copy of the blog, both pass. Their traces show the shape of
-every faked trace: installing is a step, `"Test.fake Markdown"`; each
-call is traced by the entry's usual name, as a call to the adapter is;
-and the steps a fake takes inside an entry follow that entry's step.
+every faked trace:
+
+- installing is a step, `"Test.fake Markdown"`;
+- each call is traced by the entry's usual name, as a call to the adapter
+  is;
+- the steps a fake takes inside an entry follow that entry's step.
 
 The blog's `Posts.Show` has one test of each kind: one through the real
 adapter, so the wiring is tested; one with the fake, checking that
 `load` puts the body in its Model and that `"Markdown.render"` is in its
-trace. The rendering itself is tested in Go. That is the usual split:
+trace. The rendering itself is tested in Go.
+
+That is the usual split:
 fake a capability in the tests of the code that uses it, and keep one
 test through the real adapter.
 
@@ -817,7 +898,9 @@ test "a refunded charge is marked refunded" = {
 ```
 
 `table Charge { … }` is a table like any other (chapter 8), the record
-type `Payments.Charge`, used with `Db`. The entries are ordinary Alder
+type `Payments.Charge`, used with `Db`.
+
+The entries are ordinary Alder
 typed by the capability (`args` is `{ cents: Int.Positive }` in
 `charge`); `charge` inserts before it decides, so the insert is there to
 be undone when it fails. The test's trace is
@@ -858,16 +941,22 @@ test "a declined charge leaves no row" = {
 ```
 
 From `Checkout` the table is `Payments.Charge`, its columns
-`Payments.Charge.cents`. The second test charges 500000: `charge`
+`Payments.Charge.cents`.
+
+The second test charges 500000: `charge`
 inserts, then `Task.fail "card declined"`, which under `Test.run`
 (section 4) is `Err "card declined"`; the savepoint undid the insert, so
-one row is left. (A `Result` `Err` is an answer `pay` handles;
-`Task.fail` imitates a processor that does not answer.) All three tests
+one row is left.
+
+> **`Err` and `Task.fail`.** A `Result` `Err` is an answer `pay` handles;
+> `Task.fail` imitates a processor that does not answer.
+
+All three tests
 pass. Outside `Test.run`, that charge fails the test.
 
 ### The rules
 
-**The declaration.**
+#### The declaration
 
 - A fake is declared in the module that declares its capability. A fake
   elsewhere is E0020. The to-do app's login tests (section 9) use a
@@ -888,6 +977,7 @@ fake Password {
   declared at line 7" (the line of the first). Inside a fake, a second
   definition of one entry is E0009 too: "`charge` is already defined in
   `fake Stripe` at line 8" (the first definition's line).
+
 - It defines every entry of the capability, and nothing else. A missing
   entry is E0003, at the fake, with the type it must have; an entry the
   capability does not have is E0003 "`fake Stripe` defines `cancel`,
@@ -910,74 +1000,96 @@ fake Stripe {
   signature inside a fake is a parse error): its type is the entry's.
   Every error inside an entry is named after it: "in `fake Stripe`'s
   `charge`: expected Result Text Payments.ChargeId, got Text".
+
 - A fake holds only `table` declarations and entry definitions, in any
   order. Types the fake needs (`ChargeId`) are declared in the module.
   A top-level value cannot be named `fake`: E0001 "`fake` starts a fake
   declaration at column 1: rename the value".
+
 - Entry bodies are ordinary Alder: `Db` on the fake's tables and the
   app's, values of their module and its imports, and the capability's
   other entries (inside `fake Stripe`, `Stripe.refund` is the fake's,
   never the adapter's; an entry that calls itself unconditionally
-  recurses until the run stops with `fatal error: stack overflow`). Not
-  `Session`, which an adapter does not have: E0003 "in `fake Stripe`'s
+  recurses until the run stops with `fatal error: stack overflow`).
+
+  Not `Session`, which an adapter does not have: E0003 "in `fake Stripe`'s
   `charge`: a fake cannot use `Session`: an adapter has no session".
 
-**The fake's tables.**
+#### The fake's tables
 
 - A table of `fake Stripe` in module `Payments` is the record type
   `Payments.Charge`, as an app table of that module would be. It is
   exempt from E0018 (a table in a module named after it).
+
 - Only a `test`, in any module, a test helper (section 9, "Test
   helpers") and the fake's own entries may use it, its type or its
   columns. A value `charges = Db.from Payments.Charge |> Db.count` in
-  `Checkout` becomes a test helper. Anywhere else (a page's `load`,
+  `Checkout` becomes a test helper.
+
+  Anywhere else (a page's `load`,
   another fake's entry, a type declaration, an app table's `@ref`) it is
   E0021: "`Charge` is a fake's table: only tests and `fake Stripe` may use
   it".
 
 - In another module, the table and its columns carry the module's name,
   `Payments.Charge` and `Payments.Charge.cents`, and that module must
-  import `Payments`. Written bare, `Charge.cents.eq 250` is E0002
+  import `Payments`.
+
+  Written bare, `Charge.cents.eq 250` is E0002
   "`Charge` is a table of `fake Stripe` in module `Payments`: write
   `Payments.Charge.cents`"; in a module without `import Payments`,
   `Payments.Charge` is E0002 "`Charge` is a table of `fake Stripe` in
   module `Payments`: add `import Payments`, then write `Payments.Charge`
   (columns: `Payments.Charge.column`)", with the import as its fix.
+
 - A fake's table may `@ref` an app table (`user: User.UserId @ref User`):
-  a fake can keep, say, which user each charge was for. Give that ref
+  a fake can keep, say, which user each charge was for.
+
+  Give that ref
   `@cascade` (or `@setNull`), so the app's deletes behave as they do in
   production, where the fake's table does not exist: with the default
   `@restrict`, deleting a user with a charge fails with
   ``User … is referenced by a row of Charge (`Charge.user`)``. An app
   table may not `@ref` a fake's (E0021).
+
 - The tables exist only in test databases, created beside the app's
   tables (section 3). They are never in `migrations/schema.json` or a
   migration, so adding or changing a fake's table needs no migration.
 
-**`Test.fake`.**
+#### `Test.fake`
 
 - `Test.fake Stripe` is a `Task Unit`, available only in a `test` or a
   test helper like the rest of `Test` (section 9, "Test helpers"; in a
   fake's entry, E0040 "`Test.fake` is only available in a `test` or a
-  test helper: a fake's entry is not a helper"). Its argument is a capability's name, `Stripe` or
+  test helper: a fake's entry is not a helper").
+
+  Its argument is a capability's name, `Stripe` or
   `Payments.Stripe`, not an expression (E0003 "`Test.fake` wants a
   capability name, got an expression"), and the capability must have a
   fake (E0003 "`Test.fake` wants a capability with a `fake`: `Stripe` has
-  none"). When two imported modules both declare `Clock`, the bare name
+  none").
+
+  When two imported modules both declare `Clock`, the bare name
   is E0002 "`Clock` is a capability of both `A` and `B`: write `A.Clock`
   or `B.Clock`", here and in a call (`A.Clock.now`).
+
 - It replaces the capability for the rest of the test, in every module.
   Installed inside a `Test.run`, it stays after the run, even a failed
   one (installing is not a database write). Installing again gives a
   new copy of the fake; the rows in its tables stay.
+
 - Without it, a test calls the app's adapter, if any (section 3).
+
 - Its trace has the shape shown with `Markdown` above. A failing entry
   is a failing step: under `Test.run` it is `Err` with the entry's
   message, its writes undone; outside it, the test fails.
+
 - Each test starts with a fresh database and its own capabilities, so a
   fake installed in one test, and its rows, are never seen by the next.
 
-**Where fakes exist.** `alder test` compiles them, and so do `alder eval`
+#### Where fakes exist
+
+`alder test` compiles them, and so do `alder eval`
 and `alder repl`, whose builds are test builds too (chapter 11). A
 production build (`alder build`, `alder run`) contains no tests at all:
 no `test`, no fake, no fake's table and no test runner. (Chapter 13
@@ -997,16 +1109,18 @@ happens between them in the running app: the router that reads `/todos/x`
 into a route's parameters, the decoding of a submitted form, `requires`
 sending a visitor to the login page, the session a login stores, the page
 a `Response.redirect` leads to, the regions a `Response.refresh` patches,
-the buttons a page actually shows. Most of the bugs a server-rendered app
+the buttons a page actually shows.
+
+Most of the bugs a server-rendered app
 ships live at those seams, and they show only across one request and the
 next.
 
-So a test can also go through those seams. No browser program runs. The test drives the
-app's real routes in memory, inside the test's own transaction, and each
-step takes a fraction of a millisecond, so an app can have hundreds of
-these tests and they give the same answer on every run. (Chapter 12,
-"Tests drive the app in memory", says why this and not a real browser;
-section 10 below shows how it works inside.)
+So a test can also go through those seams. No browser program runs. The
+test drives the app's real routes in memory, inside the test's own
+transaction, and each step takes a fraction of a millisecond, so an app
+can have hundreds of these tests and they give the same answer on every
+run. (Chapter 12, "Tests drive the app in memory", says why this and not a
+real browser; section 10 below shows how it works inside.)
 
 ### The browser a test holds
 
@@ -1014,7 +1128,9 @@ Every effect test (section 3) has, beside its fresh database, its clock
 and its capabilities, a **browser** of its own. It holds **the page**,
 the document of the last page it was given (none before the first step),
 and **a cookie**, the signed cookie that carries the session (chapter 6),
-sent back with every request. Before the first step there is no cookie,
+sent back with every request.
+
+Before the first step there is no cookie,
 so the session is `App`'s default, `{ user: Nothing }`.
 
 Eight steps act through it. Each is a `Task` (a step of the test's block,
@@ -1033,17 +1149,21 @@ route value written in place, with its parameters (`Todos.Index.Index {}`,
 | `Test.click r` | presses the page's button for the route `r`: a write route is sent, a GET route is fetched into the page | the same |
 | `Test.refresh` | loads the page held again, and fails unless it is the page held | the same |
 
-In the results, `model` is what the route's `load` gave, exactly the one
-its `view` was given, and typed (`page.model.todos` is a `List Todo`);
-`answer` says what the request came to (`Answer`, below); `session` is
-`App`'s session after the step, what the cookie now carries
-(`r.session.user == Just me`); `doc` is the page the browser now holds, a
-`Doc`: a parsed HTML document, read with the queries below and compared
-with `==`; `url` is the address of that page, path and query
-(`"/?filter=Active"`); and `status` is the code of the step's last
-response. After `Response.invalid` it is 422, after a missing page 404,
-and after a redirect it is the status of the page the browser then
-fetched (200). `Test.fetch` holds no page, so its result has no `session`,
+In the results:
+
+- `model` is what the route's `load` gave, exactly the one its `view` was
+  given, and typed (`page.model.todos` is a `List Todo`);
+- `answer` says what the request came to (`Answer`, below);
+- `session` is `App`'s session after the step, what the cookie now carries
+  (`r.session.user == Just me`);
+- `doc` is the page the browser now holds, a `Doc`: a parsed HTML
+  document, read with the queries below and compared with `==`;
+- `url` is the address of that page, path and query (`"/?filter=Active"`);
+- `status` is the code of the step's last response. After
+  `Response.invalid` it is 422, after a missing page 404, and after a
+  redirect it is the status of the page the browser then fetched (200).
+
+`Test.fetch` holds no page, so its result has no `session`,
 `doc` or `url`; its `status` is the raw answer's.
 
 ### A first browser test
@@ -1072,25 +1192,31 @@ from another module, as here, a route value keeps its full path,
 Line by line:
 
 1. Insert a user, as any effect test does.
+
 2. `Test.login { user: Just me }` puts that session in the browser's
    cookie. The record is `App`'s session, so its `user` is a
    `Maybe UserId`: `Just me`, not `me`. Nothing is requested.
+
 3. `Test.get (Todos.Index.Index {})` requests `/` with the cookie. The
    route `requires user`, and the session has one, so `load` runs, `view`
    renders, and the browser now holds the page. Its result is not needed
    here (`let _ <-`).
+
 4. `Test.submit (Todos.Index.Submit {}) { … }` fills in the form of the
    `Submit` route with the record and posts it. A route value is a global
    address, so another module writes it with the full path. Even when
    the test file imports `Todos.Index`, the short `Index.Submit` is an
    error (E0002), and its fix writes `Todos.Index.Submit`. The page held
-   must show that form: the browser posts only what a user could. The
-   route's `update` inserts the todo and answers `Response.redirect
+   must show that form: the browser posts only what a user could.
+
+   The route's `update` inserts the todo and answers `Response.redirect
    (Index { filter: p.filter })`; the browser follows the redirect, as a
    real one does, and now holds the new page. `added.answer` is
    `Redirected (Todos.Index.Index {})`.
+
 5. `Test.get` again, for the route's model: `page.model.todos` is the list
    `view` was given.
+
 6. The verdict: the answer, the titles in the model, and the text of
    `<p id="summary">`, which `Test.text "#summary"` finds.
 
@@ -1108,7 +1234,9 @@ FAIL Todos.Index "adding a todo through the page"
 
 A route value prints as its address: `Redirected /` is
 `Redirected (Todos.Index.Index {})`, whose `filter` is the default and so
-not in the URL. Two route values are equal when their addresses are. The
+not in the URL. Two route values are equal when their addresses are.
+
+The
 trace is each step's name (`Test.submit` names the form), then the effects
 of the requests it made. The submit made one request, the `Submit` route's
 `update`, whose `Db.insertMine Todo` is its only write, and then fetched
@@ -1121,7 +1249,9 @@ before its `Db.all` (section 3).
 
 `Test.get r` and `Test.open r` take a GET route value, written in place:
 `Todos.Index.Index {}`, `Todos.Index.Index { filter: Active }`,
-`Todos.Show.Show { id: id }`. A variable holding a route is not accepted,
+`Todos.Show.Show { id: id }`.
+
+A variable holding a route is not accepted,
 and neither is a write route (E0045: a write route is sent with
 `Test.click` or `Test.submit`). Each sends a plain `GET` of the route's
 address with the cookie.
@@ -1139,8 +1269,9 @@ FAIL Todos.Index "a visitor's list"
 
 The other two reasons are a 404 (the route's `load` found nothing and
 said `Query.notFound`, as `Todos.Show.Show { id: … }` does for a todo
-that is not the user's) and a failed request, a 500. Because it fails
-otherwise, `Test.get` can give the route's `model`, typed: what its
+that is not the user's) and a failed request, a 500.
+
+Because it fails otherwise, `Test.get` can give the route's `model`, typed: what its
 `load` returned, a record.
 
 `Test.open` is the same request, but it never fails the test on the
@@ -1186,7 +1317,9 @@ type Answer = Shown
 
 `Rendered` and `Refreshed` are the names of `Response.render` and
 `Response.refresh` as the browser sees them: the first patches one
-element, the second the regions that changed (section 10). `Rerendered`
+element, the second the regions that changed (section 10).
+
+`Rerendered`
 is the older name of a re-render, kept in the union until the old
 page-and-message syntax is removed; a route's answer is one of the other
 seven, and a new test never writes it.
@@ -1194,6 +1327,7 @@ seven, and a new test never writes it.
 A redirect to another site (`Url.external`, chapter 6) is reported,
 `Redirected` with that address, but not followed: the browser keeps the
 page it had. A redirect to a page that is then a 404 is `PageMissing`.
+
 `RequestFailed`'s text is the failure's message: `"nope"` for a
 `Task.fail "nope"`, `"panic: …"` for a Go panic.
 
@@ -1215,7 +1349,9 @@ Test.fetch : Route -> Task { status: Int, contentType: Text, body: Bytes, header
 
 `status` is the status number, `contentType` the label of the body (both
 explained in chapter 6), `body` the bytes, and `headers` every header of
-the answer, `Content-Type` included, sorted by name. It does not follow a redirect: a route that
+the answer, `Content-Type` included, sorted by name.
+
+It does not follow a redirect: a route that
 `requires` a user the cookie lacks answers `status: 303` and a
 `Location` header, and the test reads that; so does a route whose `load`
 ends in `Query.redirect r` (chapter 7), with `r`'s address:
@@ -1278,7 +1414,9 @@ use `Test.fetch`"). This is a check of the `view`'s type, so it covers a
 time is not HTML fails with `RequestFailed` and the same advice.
 
 A route that shows its own full URL (`Url.absolute`, chapter 9) sees the
-same address in every test: `http://localhost:8080`. The test runner never
+same address in every test: `http://localhost:8080`.
+
+The test runner never
 reads `ALDER_PUBLIC_URL`, so a test can compare the text exactly and passes
 on every machine and in CI: `Url.absolute (Todos.Index.Index {}) ==
 "http://localhost:8080/"`. The requests `Test.get` and `Test.fetch` send
@@ -1291,7 +1429,9 @@ of delay plus the one second the second reading adds. That is fine for
 one route, but a route whose output depends on the time (a countdown, a
 "closes in 3 hours", today's schedule) would make every expectation a
 sum of ticks, and one more `Time.now` on the route's path would shift them
-all by a second. Two steps let a test say what time it is and when time
+all by a second.
+
+Two steps let a test say what time it is and when time
 passes:
 
 ```text
@@ -1303,21 +1443,26 @@ Test.advance  : Int -> Task Unit
   clock **stands still**: every `Time.now` and `Date.today` reads `t`
   (the one-second tick is off for the rest of the test). A second
   `setClock` moves it again, backwards too; the clock is the test's.
+
 - `Test.advance ms` moves the clock `ms` milliseconds forward, the unit
   of `Time.toMillis` and `Query.delay`. A negative `ms` counts as 0 (to
   go back, set the clock again), and there is no practical upper limit
   (advancing a day is the point; anything past about 292 years stops
-  there rather than wrapping into the past). A clock that ticks keeps ticking after an advance,
-  and a set one stays still.
+  there rather than wrapping into the past). A clock that ticks keeps
+  ticking after an advance, and a set one stays still.
+
 - A `Query.delay` or `Task.sleep` still moves the clock by its delay,
   set or not, and the routes a test requests through the browser read the
   same clock, so a set applies to them too.
+
 - `@created` reads the clock as well, so rows inserted after a set all
   get the same time. A test that sets the clock and then wants a list in
   creation order calls `Test.advance 1000` between the inserts, or
   inserts its rows before the set.
+
 - The session cookie's own clock does not move: a test that logged in
   stays logged in however far it advances time.
+
 - Like the tick, a set or an advance is not undone by a `Test.run` that
   fails. Both are on the trace, as `Test.setClock 2026-03-04T00:00:00Z`
   (the time in UTC) and `Test.advance 86400000ms`.
@@ -1358,7 +1503,9 @@ test "today follows the test's clock" = {
 `Test.login s` signs `s` into the browser's cookie, as the router would
 after a `Session.put`, and makes `s` the test's own session too, the one
 the scoped operations of chapter 6 act for (section 3, "Tests that use
-the rules"); `s` is checked against `App`'s `session` record
+the rules").
+
+`s` is checked against `App`'s `session` record
 when the test compiles (`{ }` in an app without a session). It is the
 cookie's value, so a field with a default may be left out: with
 `session { user: Maybe UserId, visits: Int = 0 }`,
@@ -1366,10 +1513,14 @@ cookie's value, so a field with a default may be left out: with
 
 `Test.login` is the short way in, for a test about something else. A
 test about logging in itself goes through the login route with its real
-form. That route calls the `Password` capability, whose adapter is Go; a
+form.
+
+That route calls the `Password` capability, whose adapter is Go; a
 test replaces it with the fake `app/Auth/Login.alder` declares beside it
 (section 8), which accepts any user who has a row, whatever the
-password. The test file imports `Auth.Login`, so the capability is
+password.
+
+The test file imports `Auth.Login`, so the capability is
 written through that import's qualifier, `Login.Password`; the routes
 are route values, written with their full paths, `Auth.Login.Login {}`
 for the page and `Auth.Login.Submit` for the one that posts its form:
@@ -1386,12 +1537,18 @@ test "logging in through the form" = {
 
 The `Submit` route's `update` called the fake and `Session.put`; the
 browser kept the cookie, followed the redirect with it, and holds the
-list. (That login is the browser's: the test's own session is still the
-one it started with, so a `Db.mine` in the test body would have no
-user.) With an email that has no row the fake answers `Nothing`, `update`
+list.
+
+> **The browser's login.** That login is the browser's: the test's own
+> session is still the one it started with, so a `Db.mine` in the test
+> body would have no user.
+
+With an email that has no row the fake answers `Nothing`, `update`
 answers `Response.invalid "Email or password is incorrect."`, and the
 answer is `FormRejected [{ field: "", message: "Email or password is
-incorrect." }]`, with `status` 422. `Test.click App.Logout` presses the
+incorrect." }]`, with `status` 422.
+
+`Test.click App.Logout` presses the
 list's "Log out" button: the answer is `Redirected (Auth.Login.Login {})`
 and `session.user` is `Nothing`.
 
@@ -1422,7 +1579,9 @@ The form must be on the page the browser holds, and the route the test
 writes must be the route that form posts to, parameters included. The
 browser sends it to the address the form carries, and sends only the
 fields the form has an input for (an `<Input>`, `<Select>` or
-`<Textarea>` with the field's name), as a real browser does. A field
+`<Textarea>` with the field's name), as a real browser does.
+
+A field
 without one fails the step, "the page's form NewTodo has no input
 `due`", unless its value is what the page makes of a field that is not
 sent: `Nothing` for a `Maybe` without a default, the default for a field
@@ -1433,7 +1592,9 @@ A page opened as `Todos.Index.Index { filter: Active }` renders its form
 as `Submit { filter: Active }`, whose address is `/_/Submit?filter=Active`;
 that is the route to write. `Submit {}` is `/_/Submit`, another address,
 and the step fails "the page /?filter=Active has no form NewTodo
-(Todos.Index.Submit)". A form that each row renders
+(Todos.Index.Submit)".
+
+A form that each row renders
 (`<form submit={Rename { id: n.id }}>` in a loop) is told apart the same
 way: the test writes the route with the row's parameters,
 `Test.submit (Rename { id: b }) { title: Text.NonEmpty "B2" }`, which
@@ -1486,6 +1647,7 @@ FAIL Todos.Index "posting a form the page lacks"
 `Test.submit`'s record can only hold valid values: a `Text.NonEmpty` is
 never empty, a `Date` is always a date. A user's browser has no such
 rule, and the route must answer bad input with the form and its errors.
+
 `Test.submitRaw r fields` posts text, field by field, as typed:
 `Test.submitRaw (Todos.Index.Submit {}) [{ name: "title", value: "" }]`. A
 field not sent is a field left out of the form. Every name sent must be a
@@ -1500,22 +1662,30 @@ holds the page re-rendered, with what was typed back in each input
 
 - in the order the lists come in the page (the order of the form's
   `<Errors field="…">`, usually its fields' order);
+
 - `field` is the field's name, and `""` for the form's own list,
   `<Errors form />`, which holds `invalid`'s text;
+
 - a field error the form has no `<Errors field>` for is shown in
   `<Errors form />`, after `invalid`'s text, prefixed with the field's
   name, so it comes back as `{ field: "", message: "title must not be
   empty" }`;
+
 - a form with no `<Errors form />` shows no `invalid` text at all, and
   `errors` is `[]`: the answer to an `invalid` is still `FormRejected` and
-  the status 422, but a user sees the page unchanged. The compiler warns about such a form
+  the status 422, but a user sees the page unchanged.
+
+  The compiler warns about such a form
   when the `update` of its route can answer `Response.invalid` (W0005).
+
 - a form the re-rendered page no longer draws shows no `invalid` text
   either. A page held while an order was Open, the order paid meanwhile,
   and its add-line form posted: `update` answers `invalid`, but the Paid
   order's page has no add-line form, so the text has nowhere to go; the
   answer is `FormRejected []`, and a user sees the page change with no
-  message. W0005 cannot see this (it depends on the data). When such a
+  message.
+
+  W0005 cannot see this (it depends on the data). When such a
   refusal must be visible, answer `Task.notFound` or `Task.fail` instead.
 
 The messages are the decoders' (chapter 6): "must not be empty" for a
@@ -1547,13 +1717,16 @@ ran: the form did not decode.
 `Test.click r` sends the route `r` as the page's button for it would:
 `Test.click (Todos.Index.Toggle { id: id })`, `Test.click App.Logout`. `r`
 is a route without a `form`, with its parameters, written as in a
-`click={…}`. A write route is sent, with the headers the page's script
-sends (`Alder-Page`, the address the browser holds, and `Alder-Build`;
-chapter 6, "Delivery, decided by the request"). A GET route is fetched
-the way a button fetches an element, and its view is patched into the page
-held as the element with the view's root `id`. A route that carries a
-form is posted with `Test.submit`; a link is followed with `Test.get` or
-`Test.open`.
+`click={…}`. What is sent depends on the route:
+
+- A write route is sent, with the headers the page's script
+  sends (`Alder-Page`, the address the browser holds, and `Alder-Build`;
+  chapter 6, "Delivery, decided by the request").
+- A GET route is fetched
+  the way a button fetches an element, and its view is patched into the page
+  held as the element with the view's root `id`.
+- A route that carries a form is posted with `Test.submit`; a link is followed with `Test.get` or
+  `Test.open`.
 
 The page must show a button (or form) that sends exactly that route,
 with the same parameters: a test can only do what the user it is logged
@@ -1572,7 +1745,9 @@ test "toggling a todo through the page" = {
 
 `Toggle.update` answered `Response.refresh`, so the browser loaded the
 page again and patched in the regions that changed: the item now has
-`class="done"`, and nothing is open. The answer is `Refreshed`. Had the
+`class="done"`, and nothing is open. The answer is `Refreshed`.
+
+Had the
 route answered `Response.render (Row { id: id })`, the answer would be
 `Rendered` with the address of `Row`, and only that one item would have
 changed (chapter 6, "`Response`").
@@ -1598,25 +1773,32 @@ Section 10 shows how each is made.
 
 - **The region check.** After a `refresh`, an `invalid` or a followed
   `redirect` the server rendered the page, and the browser compares each
-  region the answer patched with the same region of the full render. A
-  difference fails the step: "POST /_/Toggle: the patched page differs
+  region the answer patched with the same region of the full render.
+
+  A difference fails the step: "POST /_/Toggle: the patched page differs
   from a full render at" the path of the first element that differs (named
   as a failed `Doc` comparison names it, below), with both markups, as the
   browser's parser builds them. A region the answer did not send is not
   compared. A difference means the page the user holds is not the page the
   server rendered.
+
 - **The element check.** After `Rendered r`, the browser asks for `r` again
   on its own, as a button does, and the element it holds must equal the
   view that answers. It is the same `load` and `view`, so they are equal
   unless the view shows something that changes from one request to the
-  next. The step fails: "the answer patched #todo-1 unlike
+  next.
+
+  The step fails: "the answer patched #todo-1 unlike
   Todos.Index.Row's view rendered on its own (GET /rows/…) at li#todo-1".
   The second request runs in a savepoint that is undone, and is not a step
   of the trace.
+
 - **A patch with nowhere to go.** A `render` whose root `id` the held page
   lacks patches nothing in a real browser, silently. The test fails the
   step: "POST /_/Toggle: the answer patched `#todo-9`, which the page does
-  not have". A view with no root `id` is not patched either: the answer is
+  not have".
+
+  A view with no root `id` is not patched either: the answer is
   `RequestFailed` ("route GET /rows/\{id} answered an element fetch with a
   view whose first root element has no id").
 
@@ -1628,7 +1810,9 @@ should have changed: these checks do not see that. `Test.refresh` does.
 `Test.refresh` loads the address the browser holds again, with a plain
 `GET` as a reload does (a redirect followed), and fails unless the body
 of the page it gets is the body of the page the browser held. It then
-holds the new page, and the answer is `Refreshed`. The `<al-toasts>`
+holds the new page, and the answer is `Refreshed`.
+
+The `<al-toasts>`
 region is left out of the comparison, since a reload may fill it from a
 notice that the step's toasts already delivered. A test of a toggle ends
 with it:
@@ -1648,9 +1832,11 @@ test "a toggle leaves the page as a fresh load would" = {
 `Toggle` answers `refresh`, which patches the regions that changed, so
 the page after the click is the page a fresh load gives, and this
 passes. `Test.refresh` is the developer's check, not part of every step,
-because some pages are right without it. A test of "load more", of a draft
-preview, or of an inline edit that is open leaves the page different from a
-fresh load on purpose: do not end those with `Test.refresh`.
+because some pages are right without it.
+
+> **Pages that differ on purpose.** A test of "load more", of a draft
+> preview, or of an inline edit that is open leaves the page different from a
+> fresh load on purpose: do not end those with `Test.refresh`.
 
 ### When `Test.refresh` fails
 
@@ -1670,9 +1856,13 @@ FAIL Todos.Index "toggling, then refreshing"
 ```
 
 The item changed and the count of open todos below the list did not: the
-toggle should have been a `refresh`. The trace shows the other price of
+toggle should have been a `refresh`.
+
+The trace shows the other price of
 `render`: one `Db.getMine Todo` for the item, where `refresh` loads the
-whole list. The failure names where the two bodies first differ and shows
+whole list.
+
+The failure names where the two bodies first differ and shows
 each side. The other failures are "Test.refresh: GET /rows/x: not found",
 when the address is no longer shown (the text of `Test.get`'s failure for
 that address), and "Test.refresh: the browser holds no page yet".
@@ -1717,7 +1907,9 @@ The click posts my page's Toggle button with the stranger's cookie. The
 router renders the page the stranger is on first (the before-view of a
 route that can answer `refresh`; section 10), then runs `update`, where
 `Db.updateMine` finds no todo of the stranger's with that id:
-`PageMissing`, and the todo is not done. "Delete by another user is not
+`PageMissing`, and the todo is not done.
+
+"Delete by another user is not
 found" does the same with the Delete button. Section 3's "Toggle by a
 stranger is not found" asks the same question of `update` directly.
 
@@ -1771,7 +1963,9 @@ CSS's selectors:
 
 A tag is an HTML element's name in lower case, or a custom element's (a
 name with a hyphen). Nothing else is accepted (no `*`, `:first-child`
-or `,`). A selector written as a literal is checked when the test
+or `,`).
+
+A selector written as a literal is checked when the test
 compiles (E0023). A selector that is not a literal (in a variable, or
 built with `++`) is read when the test runs, and if it is not a selector
 it matches nothing: `Nothing`, `[]`, `False`, `0`. A wrong one then
@@ -1780,12 +1974,16 @@ literals.
 
 An element's text is the text inside it (not counting a `<script>` or
 `<style>`), with every run of spaces and line breaks made one space and
-none at either end. No space is put between elements: the to-do item
+none at either end.
+
+No space is put between elements: the to-do item
 `<li><button>Done</button><a …>Milk</a><button>Delete</button></li>` has
 the text `"DoneMilkDelete"`. Select the element that holds just the text
 wanted, `Test.texts "#todos a"`, not the whole item.
 
-**`Test.doc` and `view`.** `Test.doc (view model session)` renders a view
+#### `Test.doc` and `view`
+
+`Test.doc (view model session)` renders a view
 the way the page renders it and parses it, so a test can compare the
 page the browser holds with what `view` makes of the model it was given.
 Two `Doc`s are equal when they are the same tree of elements, attributes
@@ -1851,20 +2049,27 @@ these texts, and nothing is sent:
 
 - `GET /: redirected to /login (requires user)`, `GET /todos/x: not
   found`, `GET /: failed: <message>`: `Test.get` of a page not shown.
+
 - "the page /login has no form NewTodo (Todos.Index.Submit)": the held
   page renders no form for that route, with those parameters.
+
 - "the page / has no button or form for Todos.Index.Toggle { id: "x" }":
   the held page renders no control for that route, with those
   parameters.
+
 - "the page's form NewTodo has no input `due`": a field the form renders
   no input for (`Test.submit`, `Test.submitRaw`).
+
 - "no page is open: `Test.get` one first".
+
 - "form NewTodo has no field `colour`": a `Test.submitRaw` name the form
   does not declare.
+
 - "POST /_/Toggle: the patched page differs from a full render at …",
   "… the answer patched #todo-1 unlike Todos.Index.Row's view rendered on
   its own …" and "… the answer patched `#todo-9`, which the page does not
   have": the checks of "What the browser checks on every step".
+
 - "Test.refresh: GET /: the page held differs from the page loaded again
   at …", "Test.refresh: GET /rows/x: not found" and "Test.refresh: the
   browser holds no page yet": `Test.refresh`.
@@ -1875,31 +2080,39 @@ And when the test compiles (E0003 unless named):
   `Toggle.update` is the route's update, not a helper"; "`Test.get`
   needs an `App` module: the browser requests the app's routes, which an
   app without `App` does not serve".
+
 - "`Test.submit` takes its arguments directly, not through `|>`: …";
   E0008 "`Test.submit` takes 2 arguments, got 1: …".
+
 - "`Test.get` wants a page value such as `Todos.Index {}`, got `p`" (a
   route held in a variable: write the route in place, `Todos.Index.Index
   {}`); "`Test.get` needs a record `Model`: … use `Test.open`".
+
 - "`Test.login` wants the app's session `{ user: Maybe User.UserId }`:
   expected Maybe User.UserId, got User.UserId".
+
 - E0045, a route of the wrong kind for the step: "`Test.get` requests a
   GET route; `Toggle` is POST: use `Test.click`"; "`Test.submit` posts a
   route's form; `Toggle` has no `form`: use `Test.click (Toggle { id: … })`";
   "`Test.submit` posts a route's form; `Index` is GET: use `Test.get`";
   "`Test.click` sends a route without a form; `Submit` posts form
   `NewTodo`: use `Test.submit (Submit { filter: … }) { … }`".
+
 - E0003 "`Test.submit` names the route that posts a form: write
   `Test.submit (Submit { filter: … }) …`"; E0002 "`NewTodo` is a form of
   `Todos.Index`: write `Todos.Index.NewTodo`" and "write
   `Todos.Index.Submit`: a route is written with its module's full path".
+
 - E0002 "unknown constructor `NotFound`; the browser's 404 answer is
   `PageMissing`"; E0012 "`PageMissing` is a constructor of the Prelude's test
   type `Answer`; …"; in a type declaration, "`Doc` is a test type: it
   exists only inside a `test`".
+
 - E0023 "`#sumary x` is not a selector: unexpected `x` after `#sumary`;
   `x` is not an HTML element (a custom element has a hyphen)"; its other
   hints are "tags are lower case: `h1`" and "quote the value:
   `[href="/x"]`".
+
 - W0005 "`Submit` can answer `Response.invalid`, but this form has no
   `<Errors form />`: the user never sees its text".
 
@@ -1908,24 +2121,30 @@ And when the test compiles (E0003 unless named):
 - The steps exist only inside a `test` or a test helper (below), each
   applied directly to all its arguments (not piped into, not passed as a value); all but
   `Test.login` need an `App` module.
+
 - **Only what the page shows.** `Test.submit` and `Test.click` act on a
   form or button the held page renders, posting it exactly as rendered,
   and a submit sends only the fields the form has inputs for.
+
 - **One transaction.** Every request runs inside the test's own
   transaction, its `update` under a savepoint of its own: a page sees
   the rows the test inserted, the test sees the rows a page wrote, and a
   request that fails (`RequestFailed`, `PageMissing`) undoes only its own writes.
+
 - **The browser is not rolled back.** A `Test.run` that fails undoes
   its database writes, the writes of the steps inside it included, but
   not what happened to the browser: the cookie and the page held stay as
   the run left them. Steps inside `Test.run` work as anywhere else.
+
 - **One browser per test.** Each test starts with no page and no
   cookie; nothing of one test's browser reaches the next.
+
 - **Traces.** A step is a step of the trace, named `Test.login`,
   `Test.get Todos.Index.Index`, `Test.open Todos.Show.Show`,
   `Test.submit NewTodo`, `Test.submitRaw NewTodo`,
   `Test.click Todos.Index.Toggle`, `Test.click App.Logout` or
   `Test.refresh`, and the effects of the requests it made follow it.
+
 - **What it does not test.** No CSS, no layout, no JavaScript: whether a
   button is visible, whether a web component works, how the page looks.
   The browser is Datastar's client (section 10), so the path of a
@@ -1978,7 +2197,9 @@ signature or body uses something only a test may use:
 - another test helper.
 
 A `test`, or another test helper, in any module, may use one. Production
-code may not, and some values can never be helpers, because the compiler
+code may not.
+
+Some values can never be helpers, because the compiler
 or the runtime calls them: a route's `load`, `view` and `update`, every
 value of `App`, a fake's entries, a brand's `where` check and a field's
 default. A reference from one of those to a helper is E0040, naming the
@@ -1994,10 +2215,14 @@ entry is not a helper", "a field default is not a helper", "a brand
 check is not a helper", "`App.update` is not a helper").
 
 `alder build` leaves every test helper out of the program, and `alder
-test --mutate` makes no mutant in one (section 11). The browser's rules
+test --mutate` makes no mutant in one (section 11).
+
+The browser's rules
 still hold inside a helper: `Test.fetch (Sites.MnSos.MnSos { cfg: cfg })` is a
 route written in place with the helper's parameter inside it, while
-`Test.fetch p`, with `p` a parameter, is refused as in a test. A fake is
+`Test.fetch p`, with `p` a parameter, is refused as in a test.
+
+A fake is
 still declared in its capability's module (E0020); a helper shares the
 `Test.fake` call, not the fake. The editor's hover on a helper says
 which it is: "test helper (uses `Test.fetch`)".
@@ -2008,19 +2233,26 @@ Section 9 can be used without this one. This section explains what
 happens when a step runs, so that a surprising trace or answer can be
 read.
 
-**The real routes, in memory.** The test program is built with the
+#### The real routes, in memory
+
+The test program is built with the
 app's routes, the same list the app's binary serves, and the same router
 (`rt/web`). A step does not open a network connection: it builds an HTTP
 request in memory and hands it to the router, which calls the route's
 handler and writes the response into memory, where the browser reads it.
+
 Everything between, from reading `/todos/x` into a route's parameters to
 decoding the form, checking `requires`, running `load` and `update`,
 rendering and setting the cookie, is the code that runs in production.
 
-**Inside the test's transaction.** A test's database exists in memory,
+#### Inside the test's transaction
+
+A test's database exists in memory,
 with one connection; the test's block holds a transaction on it from its
 first database step (section 3). In the running app, each request begins
-a transaction of its own. In a test, that would wait for ever for the
+a transaction of its own.
+
+In a test, that would wait for ever for the
 one connection, and would not see the test's uncommitted rows anyway. So
 the browser gives the router each request's environment itself, one that
 runs inside the test's transaction. A `load` is a `Query`, which cannot
@@ -2049,25 +2281,35 @@ test "adding a todo through the page"   (a fresh database in memory)
 When an `update` fails, its savepoint is rolled back (`ROLLBACK TO`),
 so its writes are gone and the test's are not.
 
-**The before-view.** `Submit` answers `redirect`, so its request reads
+#### The before-view
+
+`Submit` answers `redirect`, so its request reads
 nothing before the insert: there is no `Db.all Todo` ahead of
-`Db.insertMine Todo` in the trace above. A write route whose `update` can
+`Db.insertMine Todo` in the trace above.
+
+A write route whose `update` can
 answer `Response.refresh` or `Response.invalid` is different. The router
 renders the page the browser is on first (the address in the `Alder-Page`
 header, run as a `GET` of its route), so that after the `update` it can
 compare the two renders and send only the regions that changed (chapter
-6, "A write's response, with JavaScript"). A click on `Toggle`, which
+6, "A write's response, with JavaScript").
+
+A click on `Toggle`, which
 answers `refresh`, shows it in the trace: the page's `Db.mine Todo` and
 `Db.all Todo` come before `Db.updateMine Todo`, and again after it. A
 route that only `redirect`s or `render`s reads nothing it does not need.
 
-**The model.** `Test.get`'s `model` is not computed again: the page's
+#### The model
+
+`Test.get`'s `model` is not computed again: the page's
 route stores the model it rendered on the request (production does too;
 nothing reads it there), and the router hands each answered request to
 the browser, which keeps that model. So `model` is exactly what `view`
 was given, even when `load` read the clock.
 
-**A Datastar client.** In the running app, a click or a form post is
+#### A Datastar client
+
+In the running app, a click or a form post is
 sent by Datastar (chapter 6), which marks the request with a
 `Datastar-Request: true` header and gets back events instead of a page.
 The browser sends `Test.submit` and `Test.click` the same way and
@@ -2075,18 +2317,22 @@ applies the events as Datastar would:
 
 - a patch of the page's `<body>` replaces the body it holds (Datastar
   merges the new body into the old one; the result is the same page).
+
   A `refresh` or `invalid` that the router cannot cut into regions
   safely comes back this way, and so does a followed redirect. A page
   whose `view` has no `<body>` (every page built on a layout such as
   `Layout.Page` has one) cannot be patched, and the step fails "the held
   page has no <body> to patch".
+
 - a patch of one element, selected by its `id` (mode outer), replaces
   that element in the page held. These are the regions of a `refresh` or
   an `invalid`, and the one element of a `render` or of an element fetch.
   The held page without an element of that id cannot take it, and the
   step fails ("… which the page does not have").
+
 - a toast is appended to the page's `<al-toasts>` and read into the
   step's `notices` and `toasts`.
+
 - an instruction to go to another address is a `Redirect`: the browser
   requests that page with a plain `GET`, as Datastar has the real
   browser do, and the answer is `Redirected`. An address on another site
@@ -2096,7 +2342,9 @@ Which answer a step gives is read from the route's `Response`, as the
 router handed it to the browser: a `render r` is `Rendered r` (once the
 element check has passed), a `refresh` is `Refreshed`, an `invalid` is
 `FormRejected` with the errors the page now shows in its `<Errors>`
-lists. A 404 or a 500, which come back as a patch too (with the status
+lists.
+
+A 404 or a 500, which come back as a patch too (with the status
 in a header, `Alder-Status`), are `PageMissing` and `RequestFailed`.
 `Rerendered` is what the old page-and-message form's re-render came to.
 
@@ -2104,37 +2352,54 @@ in a header, `Alder-Status`), are `PageMissing` and `RequestFailed`.
 `303` answer, such as `requires` sending a visitor to `/login`, is
 followed (at most ten in a row).
 
-**Controls.** The page's buttons and forms request routes by the
+#### Controls
+
+The page's buttons and forms request routes by the
 routes' own addresses (`/_/Toggle?id=…`, `/_/Submit?filter=Active`:
 chapter 6). Before it sends anything, the browser looks through the held
 page for a form or button whose method and address name the same route
 with the same parameters, and sends that control's request, with the
-headers the page's script adds: `Alder-Page`, the address of the page held
-(the `url` of the last step), which `refresh` and `invalid` need to know which page to
-render again; `Alder-Build`; `Alder-Fetch: 1` for a GET route fetched
-into the page, and for a write the `Alder-Shown` hash of the body held. A
-form sends the fields the held form has, as a browser would; a button
+headers the page's script adds:
+
+- `Alder-Page`, the address of the page held (the `url` of the last
+  step), which `refresh` and `invalid` need to know which page to render
+  again;
+- `Alder-Build`;
+- `Alder-Fetch: 1` for a GET route fetched into the page, and for a write
+  the `Alder-Shown` hash of the body held.
+
+A form sends the fields the held form has, as a browser would; a button
 that is not in a form sends an empty payload.
 
-**The checks.** The router hands the browser the full render it made of
+#### The checks
+
+The router hands the browser the full render it made of
 the page to answer a request (`refresh`, `invalid`, a followed redirect).
 After applying the patches, the browser parses that render the way its
 HTML parser builds a page and compares it with the page it now holds: the
 whole body when the answer replaced the body, else only the regions the
-answer patched, each by its `id`. That is the region check. For a
+answer patched, each by its `id`. That is the region check.
+
+For a
 `render` or an element fetch it asks the router for the route's own
 address once more, as an element fetch, inside a savepoint that it rolls
 back, and compares the element in the page held with the element that
-comes back. That is the element check. `Test.refresh` sends a plain `GET`
+comes back. That is the element check.
+
+`Test.refresh` sends a plain `GET`
 for the address held, as a reload does, and compares the body it gets
 with the body held, leaving out `<al-toasts>`.
 
-**The document.** The router's HTML is parsed into a tree, and the
+#### The document
+
+The router's HTML is parsed into a tree, and the
 browser holds that, without the `<!doctype html>` line and the Datastar
 `<script>` tag the router adds to every page, so the `Doc` is the page as
 `view` renders it. The queries walk that tree.
 
-**The cookie.** The browser keeps the session cookie the router sets and
+#### The cookie
+
+The browser keeps the session cookie the router sets and
 sends it back with each request; `Test.login` writes the cookie itself,
 signed with the router's key. A cookie the router clears (a logout)
 is dropped. The cookie's clock stands still, so it never expires
@@ -2151,13 +2416,17 @@ Many languages measure tests by **line coverage**: the share of the
 program's lines that ran while the tests ran. In Alder that number says
 almost nothing. The checker already makes every `match` complete and
 every function total, and one browser test that opens a page runs all of
-its `load` and its `view`. A line can run and still go unchecked: "a
+its `load` and its `view`.
+
+A line can run and still go unchecked: "a
 stranger cannot see my todo" runs `Index.load` of `Todos.Index`, `Db.orderBy`
 included, and nothing in it notices if the order is backwards.
 
 A **mutant** is a copy of the app with one small, deliberate bug: a
 check removed, a write that does nothing, an order reversed, a
-scoped operation made unscoped. If some
+scoped operation made unscoped.
+
+If some
 test fails when it runs against the mutant, the mutant is **killed**.
 If every test still passes, it **survived**, and that is a bug the tests
 would have let through. The **mutation score** is the share of mutants
@@ -2212,11 +2481,16 @@ survived:
 ```
 
 A test failed for 21 of the 45 mutants: the score is 21 / 45. A
-survivor's line gives its module; `declaration:line` (`Index.load:18` is
-line 18 of `app/Todos/Index.alder`; a route's members are named as in the
-source, `Save.update:27`; a column is added, `load:33:17`, when the line
-has two mutants of that kind); the operator; and the code before `→`
-after, shortened with `…` (an arm swap names its arms).
+survivor's line gives:
+
+- its module;
+- `declaration:line` (`Index.load:18` is
+  line 18 of `app/Todos/Index.alder`; a route's members are named as in the
+  source, `Save.update:27`; a column is added, `load:33:17`, when the line
+  has two mutants of that kind);
+- the operator;
+- the code before `→`
+  after, shortened with `…` (an arm swap names its arms).
 
 ### The operators
 
@@ -2255,6 +2529,7 @@ breaks, in five classes; every mutant is well-typed:
 
 Two operators are for what chapter 6 replaced, the old `Nav`; `requires
 dropped` and `role dropped` mutate an old `page`'s clause as a route's.
+
 A write route runs no `load` (chapter 6), so its own `requires`, its role
 and the access check its `update` begins with are all that stop a
 request: each is a mutant, and a test that sends the write from a page
@@ -2264,11 +2539,15 @@ role is no longer the one required, a row demoted since; section 9).
 **The partition mutants.** `scope dropped` is made for every key: in
 the workspace, `Db.scoped Activity` → `Db.from Activity` is killed by
 `Members.Index "the members, by name, and the activity of this org
-only"`, whose page would show both orgs' lines. On a table in a `silo`
+only"`, whose page would show both orgs' lines.
+
+On a table in a `silo`
 the run does not make it: the org's database holds that org's rows only,
 so `Db.from Project` reads the same rows as `Db.scoped Project` (the
 report's equivalence line says "the silo's database holds this org's
-rows only"). The one mutant of a `via` field reads
+rows only").
+
+The one mutant of a `via` field reads
 
 ```text
   App                      session:13      membership dropped     Session.put org → Session.put org without the Membership check
@@ -2298,13 +2577,20 @@ app's six:
 mutant still answers 404 for an id that names no row, so only a test
 with someone else's row tells it from the app. `Db.insertMine` gets no
 `scope dropped` mutant (it is skipped, "the owner comes from the session
-either way"), but its write can be replaced. Each of the six is killed by
-a test that acts as a stranger: "a stranger cannot see my todo" (the
-list's `Db.mine` and `Todos.Show`'s `Db.getMine`), "Toggle by another
-user is not found" and "Delete by another user is not found" (a stranger
-presses my todo's button on a page still open in the browser), and
-"saving or deleting another user's todo is not found" (the same for the
-todo's own page). Of the first two, "Toggle flips done" kills the
+either way"), but its write can be replaced.
+
+Each of the six is killed by
+a test that acts as a stranger:
+
+- "a stranger cannot see my todo" (the
+  list's `Db.mine` and `Todos.Show`'s `Db.getMine`);
+- "Toggle by another
+  user is not found" and "Delete by another user is not found" (a stranger
+  presses my todo's button on a page still open in the browser);
+- "saving or deleting another user's todo is not found" (the same for the
+  todo's own page).
+
+Of the first two, "Toggle flips done" kills the
 `Toggle` mutant before them, since its trace says `Db.updateMine Todo`.
 
 ### A surviving mutant is a test you have not written
@@ -2328,8 +2614,8 @@ test "saving changes the title and the due date" = {
 ```
 
 Nine tests of this kind kill those fourteen, and the tests of the route
-operators kill the ten others (below): the app's own code then ends `45
-mutants: 45 killed, 0 survived  (score 1.00)`.
+operators kill the ten others (below): the app's own code then ends
+`45 mutants: 45 killed, 0 survived  (score 1.00)`.
 
 ### The mutant that needs a stranger
 
@@ -2360,28 +2646,42 @@ test "saving or deleting another user's todo is not found" = {
 The second test reads the row back with `Db.get`, so a save that wrote
 nothing, or left a field out, shows in `title` or `due`; and it checks
 the answer, so a redirect that stayed on the page shows too. (`Date.fromText`
-gives a `Maybe Date`, which is the field's type.) In the module the form is
+gives a `Maybe Date`, which is the field's type.)
+
+In the module the form is
 written `EditTodo` and the routes `Show` and `Save`; this chapter's blocks
 are checked as a module of their own, so they are qualified here.
 
 The stranger's test kills the `scope dropped` mutant by what it does to
 the answer. Against the app, `Db.updateMine` finds no todo of the
 stranger's with that id and the save ends in `Task.notFound`: the answer
-is `PageMissing` and the todo is as it was. Against the mutant, `Db.update`
+is `PageMissing` and the todo is as it was.
+
+Against the mutant, `Db.update`
 finds my todo, writes it, and the answer is a redirect: the test fails, and
 the mutant is killed. The same test kills `Delete`'s `scope dropped` and
 its `write replaced`.
 
 ### All fourteen, and one killed by luck
 
-Nine tests kill the fourteen. "Logout makes the role Member" and
-"logging in copies the role from the user's row" kill the two `update
-field dropped` of the role; "a user with todos cannot be deleted" the
-`cascade ↔ restrict`; "Active keeps only open todos" and "each filter has
-its label" the swapped arms and the dropped `not` of `matches` and
-`filterLabel`; "the newest todo is listed first" the reversed
-`orderBy`; and the three of `Todos.Show` above. `examples/todos/README.md`
-lists the example's tests with what each kills. The report's ten other
+Nine tests kill the fourteen:
+
+- "Logout makes the role Member" and
+  "logging in copies the role from the user's row" kill the two `update
+  field dropped` of the role;
+- "a user with todos cannot be deleted" the
+  `cascade ↔ restrict`;
+- "Active keeps only open todos" and "each filter has
+  its label" the swapped arms and the dropped `not` of `matches` and
+  `filterLabel`;
+- "the newest todo is listed first" the reversed
+  `orderBy`;
+- and the three of `Todos.Show` above.
+
+`examples/todos/README.md`
+lists the example's tests with what each kills.
+
+The report's ten other
 lines are the route operators'. Six are `requires dropped`, one per
 route: "a visitor is sent to log in from a todo" kills `Todos.Show`'s
 GET route's, and two tests kill the five write routes': "a write after
@@ -2390,7 +2690,9 @@ is sent to log in" open the page, log out (`Test.login { user: Nothing
 }`) and send each write from the page still held, which must answer
 `Redirected (Auth.Login.Login {})` and change nothing. Against the
 mutant the write runs as the placeholder user, and its answer is a 404 or
-a failure, never the login page. The four answers (`redirect → refresh`
+a failure, never the login page.
+
+The four answers (`redirect → refresh`
 of Logout and of `Todos.Show`'s Save and Delete, `refresh → invalid` of
 `Todos.Index`'s Delete) are killed by the tests that
 check what a write answers: "Logout clears the user and goes to log in"
@@ -2422,15 +2724,26 @@ survived:
 and all are killed by its 25 tests: the nine above; the four of the route
 operators ("Logout clears the user…", "a visitor is sent to log in from a
 todo" and the two that send a write after logging out); and twelve older
-ones (`Todos.Index`'s eight, `Auth.Login`'s three, "countOpen…"). Two of the nine exist for the
+ones (`Todos.Index`'s eight, `Auth.Login`'s three, "countOpen…").
+
+Two of the nine exist for the
 session's `role`, which the admin of chapter 15 needed: `App "Logout makes
 the role Member"` and `Auth.Login "logging in copies the role from the
 user's row"` kill the `update field dropped` of `role` in logout's and
-login's `Session.put`. The generated admin brings 191 mutants and 122 tests
+login's `Session.put`.
+
+The generated admin brings 191 mutants and 122 tests
 of its own, which kill all but six. The README of the example says why
-each survives: the `role dropped` of its `Search` routes (another role's search is redirected to the page it was posted from, or, not decoding, renders that page again, and that page's own role check answers the 404 the search's would), the two `adminOnly` steps that the
-options check answers first (a demoted Admin's form is refused before the
-step runs), and two equivalent mutants (below).
+each survives:
+
+- the `role dropped` of its `Search` routes (another role's search is
+  redirected to the page it was posted from, or, not decoding, renders that
+  page again, and that page's own role check answers the 404 the search's
+  would);
+- the two `adminOnly` steps that the
+  options check answers first (a demoted Admin's form is refused before the
+  step runs);
+- and two equivalent mutants (below).
 
 ### What is never a mutant
 
@@ -2443,44 +2756,53 @@ Some changes are never made, and are not counted in the score. Two kinds
 are reported apart, in `--json`'s last object (below):
 
 - **Suppressed** (`suppressed`): the compiler can prove the mutant is
-  the same program as the original. The rules: an `arm swapped` of two
-  identical bodies; an `orderBy reversed` under `Db.first` on a query by
-  id; a `condition negated` of a literal `True` or `False`; an `operator
-  flipped` whose two sides are the same expression; a `step dropped` of
-  a step that is already `Task.succeed`; a write route's `requires
-  dropped` or `role dropped` when the route has no form, is in no silo,
-  and its `update` only redirects to a `GET` route whose guard refuses the
-  same requests in the same order (for `requires dropped`: the route
-  requires that one field and no role, and the target requires it first;
-  for `role dropped`: the target requires nothing the route does not, and
-  allows no role the route refuses), so nothing runs between the clause
-  and the redirect and the request ends where the clause would have sent
-  it; and a `default
-  changed` on a field that no record of the app's code leaves out (no
-  `Db.insert` row, no `Insert T` a helper builds), so the default never
-  applies (the blog's `User.role`, which only tests rely on); and, in
-  the page-and-message form, a `scope dropped` of a `Db.updateMine` or
-  `Db.deleteMine` in a page's `update` whose id is `model.f.id`, where
-  the page's `load` filled `f` with a row of the same table read by
-  `Db.getMine` ("load fetched it with getMine": every message runs
-  `load` first, so the id is always the user's own row). A write route
-  has no such `load`: its id comes from the request, and its `scope
-  dropped` mutants are never suppressed (the six of the report above).
+  the same program as the original. The rules:
+
+  - an `arm swapped` of two identical bodies;
+  - an `orderBy reversed` under `Db.first` on a query by id;
+  - a `condition negated` of a literal `True` or `False`;
+  - an `operator flipped` whose two sides are the same expression;
+  - a `step dropped` of a step that is already `Task.succeed`;
+  - a write route's `requires dropped` or `role dropped` when the route
+    has no form, is in no silo, and its `update` only redirects to a `GET`
+    route whose guard refuses the same requests in the same order (for
+    `requires dropped`: the route requires that one field and no role, and
+    the target requires it first; for `role dropped`: the target requires
+    nothing the route does not, and allows no role the route refuses), so
+    nothing runs between the clause and the redirect and the request ends
+    where the clause would have sent it;
+  - a `default changed` on a field that no record of the app's code leaves
+    out (no `Db.insert` row, no `Insert T` a helper builds), so the default
+    never applies (the blog's `User.role`, which only tests rely on);
+  - and, in the page-and-message form, a `scope dropped` of a
+    `Db.updateMine` or `Db.deleteMine` in a page's `update` whose id is
+    `model.f.id`, where the page's `load` filled `f` with a row of the same
+    table read by `Db.getMine` ("load fetched it with getMine": every
+    message runs `load` first, so the id is always the user's own row).
+
+  A write route has no such `load`: its id comes from the request, and its
+  `scope dropped` mutants are never suppressed (the six of the report
+  above).
+
 - **Skipped** (`skipped`): the operator does not apply, or another
-  operator already makes the same program. A `condition negated` of `if
-  a == b` (or `!=`) is skipped, because `operator flipped` already makes
-  `if a != b`; so is one of `if not e`, which `not dropped` makes. (An
-  ordering condition is negated: `<` flips to `<=`, while its negation is
-  `>=`.) A `step dropped` of an update, a delete or a `Session.put` is
-  skipped, because `write replaced` and `session put dropped` make it; so
-  is one of an `if` or a `match` whose `guard dropped` leaves `succeed
-  ()`, and one of a step whose result is neither `Unit` nor a `List` of
-  it (an insert's id: there is no value to succeed with). A `guard dropped` or an `arm swapped` is skipped where an arm
-  uses what its pattern binds (a `match` on a `Maybe` whose `Just x` arm
-  uses `x` cannot trade bodies with the `Nothing` arm); a `requires` on a field that is not a brand
-  over `Text`, a `Maybe` default and an `@setNull` rule have no
-  well-typed change; and `Db.insertMine` has no `scope dropped`, since
-  the owner comes from the session either way.
+  operator already makes the same program.
+
+  - A `condition negated` of `if a == b` (or `!=`) is skipped, because
+    `operator flipped` already makes `if a != b`; so is one of `if not e`,
+    which `not dropped` makes. (An ordering condition is negated: `<` flips
+    to `<=`, while its negation is `>=`.)
+  - A `step dropped` of an update, a delete or a `Session.put` is skipped,
+    because `write replaced` and `session put dropped` make it; so is one
+    of an `if` or a `match` whose `guard dropped` leaves `succeed ()`, and
+    one of a step whose result is neither `Unit` nor a `List` of it (an
+    insert's id: there is no value to succeed with).
+  - A `guard dropped` or an `arm swapped` is skipped where an arm uses what
+    its pattern binds (a `match` on a `Maybe` whose `Just x` arm uses `x`
+    cannot trade bodies with the `Nothing` arm);
+  - a `requires` on a field that is not a brand over `Text`, a `Maybe`
+    default and an `@setNull` rule have no well-typed change;
+  - and `Db.insertMine` has no `scope dropped`, since the owner comes from
+    the session either way.
 
 The to-do app has 1 suppressed (`User.role`'s default, which no row of
 the app's code leaves out) and 38 skipped (9 in its own code, the `scope
@@ -2503,10 +2825,14 @@ the login page even if `Logout.update` answered `Response.refresh`: the
 browser asks for the same page again, with the user now gone from the
 session, and `requires user` redirects it to the login page. Either way
 the user ends up there, so no browser test can tell `redirect` from
-`refresh` here. A test of `Logout.update` itself can, since it sees the
+`refresh` here.
+
+A test of `Logout.update` itself can, since it sees the
 `Response` before any browser follows it: the `redirect → refresh`
 mutant of `Logout.update` survives every browser test, and this one kills
-it. The example has one. It must be in `app/App.alder`: `Logout.update` is called by the
+it.
+
+The example has one. It must be in `app/App.alder`: `Logout.update` is called by the
 runtime, and a test anywhere else that calls it is E0002. (This block is
 not checked on its own, since it belongs in that module; it is the
 file's own text.)
@@ -2552,7 +2878,9 @@ survived:
 The first eleven are the generated admin's, as the to-do admin's six
 are (the blog's README says why each survives: the `role dropped` of its
 four `Search` routes, the four `adminOnly` steps that the options check
-answers first, and three equivalent mutants). The
+answers first, and three equivalent mutants).
+
+The
 other three are in the blog's own code. The first line of `Posts.Index`'s `load` clamps the
 page number:
 
@@ -2562,17 +2890,25 @@ page number:
 
 Two `operator flipped` mutants sit on this line, so their lines carry
 the column: `Index.load:33:17` is `params.page < 1`, `Index.load:33:48` is
-`params.page > lastPage`. `<` and `<=` differ only when `params.page` is 1, and then
+`params.page > lastPage`.
+
+`<` and `<=` differ only when `params.page` is 1, and then
 both branches give 1; `>` and `>=` differ only at `lastPage`, where both
-give `lastPage`. No input tells the mutant from the app. (The line's two
-`condition negated` mutants, `if not (params.page < 1)` and `if not
-(params.page > lastPage)`, are killed: negating either clamp sends an
-ordinary page number to the wrong branch, and "page 99 is empty" and
-the front page's test notice.) The third is `limit
+give `lastPage`. No input tells the mutant from the app.
+
+> **The negated conditions.** The line's two
+> `condition negated` mutants, `if not (params.page < 1)` and `if not
+> (params.page > lastPage)`, are killed: negating either clamp sends an
+> ordinary page number to the wrong branch, and "page 99 is empty" and
+> the front page's test notice.
+
+The third is `limit
 dropped`: `load` asks for `perPage + 1` posts, keeps `List.take perPage`
 of them, and sets `hasMore` when more than `perPage` came back. Without
 the limit, the query reads every matching post and the page is the same,
-only slower. These three are **equivalent mutants**: the compiler cannot
+only slower.
+
+These three are **equivalent mutants**: the compiler cannot
 prove them equivalent with its few structural rules, so it makes them,
 and they survive honestly. `examples/blog/README.md` records them with
 the reason for each.
@@ -2623,7 +2959,9 @@ $ echo $?
 
 while `--min 0.96` passes. A CI job runs `alder test --mutate --min R`
 with `R` at the score the app has reached, so a change that lets a
-mutant survive fails the build. The examples do this in the Go test
+mutant survive fails the build.
+
+The examples do this in the Go test
 suite: `TestExample_TodosMutation` and `TestExample_Blog` require at
 least 0.97 and 0.96, and the number of mutants their READMEs record.
 Without `--min`, the exit code is the tests'.
@@ -2653,21 +2991,29 @@ one module, but the score that counts is the whole suite's.
 
 `-timeout d` bounds each run of the tests: the plain run first, then each
 mutant's (default 10 s with `--mutate`, rather than 5 m, since it applies
-once per mutant). A mutant's run gets at least three times as long as
+once per mutant).
+
+A mutant's run gets at least three times as long as
 the plain run took, so a suite that takes 7 s under the default 10 s
 gives each mutant 21 s, and a mutant is not killed by a slow moment of
 the machine; when the plain run takes more than half of `d`, a line on
 standard error says so (`alder test: the tests took 7.2s, over half the
--timeout 10s: each mutant gets 21.6s (3 × the tests' time)`). A mutant
+-timeout 10s: each mutant gets 21.6s (3 × the tests' time)`).
+
+A mutant
 that makes a test loop for ever is killed when its time is up (`timed
 out`; the score line then says `K killed (of which T timed out)`), and
 one that crashes the test program, a stack overflow say, is killed too
 (`crashed`): `alder test` starts the program again from the next
-mutant. If the plain run itself runs out of time, the message says
+mutant.
+
+If the plain run itself runs out of time, the message says
 `(--mutate's default 10s; raise it with -timeout)`. A `-run` that
 selects no test ends with `no test matches -run: nothing can kill a
-mutant`. Mutants run one after another, each with a fresh database
-per test; the to-do app's 124 take a few seconds once the build is made,
+mutant`.
+
+Mutants run one after another, each with a fresh database
+per test; the to-do app's 236 take a few seconds once the build is made,
 because each mutant stops at the first test that fails, and the tests of
 the mutant's own module run first, where the killing test almost always is.
 
@@ -2689,8 +3035,9 @@ and the last line:
 {"score":0.9745762711864406,"killed":230,"survived":6,"suppressed":1,"skipped":38}
 ```
 
-`score` is exact here (230 / 236). `"tables":
-"ensure"` marks a **schema mutant** (`default changed`, `cascade ↔
+`score` is exact here (230 / 236).
+
+`"tables": "ensure"` marks a **schema mutant** (`default changed`, `cascade ↔
 restrict`): its tests run on tables made from the mutated table
 declarations by `Ensure`, as for an app without `migrations/`
 (chapter 8, "Migrations"), not from the app's migrations, since the question is
@@ -2703,17 +3050,21 @@ Mutants are numbered in a fixed order: module by module, and within a
 module its tables field by field, then its declarations in order, each
 from the outside in. The same source always gives the same numbers, so
 two runs can be compared. An edit renumbers every mutant after it, and
-moves the lines. Modules come in import order (a module after those it
+moves the lines.
+
+Modules come in import order (a module after those it
 imports, otherwise alphabetical), so adding an import can move a whole
 module and renumber mutants in code the edit never touched. The generated
 admin's modules come before `Todos.Index` in that order, so a mutant
-of the to-do list's `load` is number 110 here. Ids and lines are for
+of the to-do list's `load` is number 214 here. Ids and lines are for
 reading one report; to compare runs, compare what survived.
 
 ## 12. Properties
 
 A test checks one example: `countOpen` of three todos is 2. It passes,
-and says nothing about four todos, or none, or a thousand. A **property**
+and says nothing about four todos, or none, or a thousand.
+
+A **property**
 is a statement that should hold for every input of some type, and a
 property test checks it against many inputs the tool makes up. You write
 the statement; `alder test` writes the examples, a hundred of them by
@@ -2739,7 +3090,9 @@ test "rotate twice" = \xs -> rotate (rotate xs) == xs
 written with its type, in parentheses; a bare `\xs ->` is the same
 without the type. There is no new declaration and no library: the
 property is a `test`, it is listed in the report like any other, and
-`-run` (section 7) picks it by name. The first one passes. The second is
+`-run` (section 7) picks it by name.
+
+The first one passes. The second is
 wrong, as the report below will show: rotating a list twice gives it
 back only when it has at most two elements.
 
@@ -2752,24 +3105,35 @@ type, a **generator**: a function that builds one value of the type from
 a stream of random choices. Every ordinary type has one:
 
 - `Int`, `Float`, `Bool`, `Text`, `Unit`, `Bytes`, `Date` and `Time`.
-  The distributions are chosen to find bugs, not to be uniform: an `Int`
-  is mostly small (over half the draws are 0 to 10), sometimes up to a
-  thousand, sometimes large, and now and then a boundary such as 255,
-  2^31 - 1 or the largest `Int`; a `Float` is finite (no `NaN`, no
-  infinity) and includes 0, tiny and huge values; a `Text` is mostly
-  short ASCII, sometimes Unicode, sometimes empty, and made only of
-  printable characters and `\n`, `\t` and `\r`, so that every value can
-  be written back as a literal; a `Date` or `Time` is within a few years
-  of the epoch or of 2026.
+  The distributions are chosen to find bugs, not to be uniform:
+
+  - an `Int`
+    is mostly small (over half the draws are 0 to 10), sometimes up to a
+    thousand, sometimes large, and now and then a boundary such as 255,
+    2^31 - 1 or the largest `Int`;
+  - a `Float` is finite (no `NaN`, no
+    infinity) and includes 0, tiny and huge values;
+  - a `Text` is mostly
+    short ASCII, sometimes Unicode, sometimes empty, and made only of
+    printable characters and `\n`, `\t` and `\r`, so that every value can
+    be written back as a literal;
+  - a `Date` or `Time` is within a few years
+    of the epoch or of 2026.
+
 - `Maybe a`, `Result e a`, `List a` and `Dict k v` are built from the
   generators of their parts, and a list is short most of the time.
+
 - A record is each field's generator in turn.
+
 - A union is a choice of one constructor, then a generator for its
-  payload. A union that contains itself (a tree) has a depth budget of four
+  payload.
+
+  A union that contains itself (a tree) has a depth budget of four
   levels: each level down halves the chance of a constructor that
   recurses, and once the budget is spent only the others are drawn, so the
   values are finite. (A union whose every constructor needs the union
   again has no value to stop at: E0038, below.)
+
 - A brand draws its base type and, when it has a `where` predicate,
   keeps the value only if the predicate holds. Below.
 
@@ -2781,7 +3145,9 @@ and you write the generator yourself with `Fuzz.forAll`.
 
 In `\xs -> rotate (rotate xs) == xs` nothing says what the elements are:
 `rotate` works on a list of anything, and `==` on anything comparable, so
-the type of `xs` is `List a` for an `a` that nothing decides. Rather than
+the type of `xs` is `List a` for an `a` that nothing decides.
+
+Rather than
 refuse, the checker **defaults** a type variable that is left open in a
 property's parameter to `Int`, and the report says so (below), so that
 the choice is not hidden. `Int` is the simplest type that shows most
@@ -2808,7 +3174,9 @@ test "ages are under 100" = \(a : Age) -> a < 100
 ```
 
 The generator for `Age` draws an `Int` and throws away the ones the
-predicate refuses. For this brand that wastes few draws. For a brand like
+predicate refuses. For this brand that wastes few draws.
+
+For a brand like
 `Slug = brand Text where Text.matches "^[a-z0-9-]+$"` it wastes nearly
 all of them: a random `Text` is almost never a slug. A generator that
 rejected 94% of its draws would run the property on a handful of values,
@@ -2822,7 +3190,9 @@ FAIL Probe "a slug is trimmed"
 ```
 
 The check looks after the first 50 attempts: more than 90% rejected is a
-failure. The six brands of the standard library (`Text.NonEmpty`,
+failure.
+
+The six brands of the standard library (`Text.NonEmpty`,
 `Text.Email`, `Text.Url`, `Text.Secret`, `Int.Positive`,
 `Int.NonNegative`) are not made by filtering; each has a generator that
 draws values of its own shape directly, so they never trip it. For your
@@ -2835,7 +3205,9 @@ property, `gen` is a `Fuzzer a` that you build, and `f` takes one `a`.
 The `Fuzz` module (chapter 9) has the pieces: `Fuzz.int`,
 `Fuzz.intRange { min: 0, max: 5 }`, `Fuzz.text`, `Fuzz.list`,
 `Fuzz.listOf { min: 1, max: 5 }`, `Fuzz.maybe`, `Fuzz.oneOfValues`,
-`Fuzz.map`, `Fuzz.filter` and the rest. A `Fuzzer` is a value like any
+`Fuzz.map`, `Fuzz.filter` and the rest.
+
+A `Fuzzer` is a value like any
 other and may be a top-level declaration of any module, typed by a
 signature, so a generator is written once and shared by many tests:
 
@@ -2851,7 +3223,9 @@ test "a slug is not empty" = Fuzz.forAll slugs (\s -> Text.length s > 0)
 `Fuzz.map Slug` is allowed because the brand's constructor is: the
 module that declares a brand, and any test, may call it. A property over
 several inputs takes `Fuzz.pair` or `Fuzz.map2` into a record, or nests
-two `forAll`s; there is no `forAll2`. `Fuzz.any : Fuzzer a` is the
+two `forAll`s; there is no `forAll2`.
+
+`Fuzz.any : Fuzzer a` is the
 generator that the function form derives from the type, as a value, so
 the two forms mix: `Fuzz.pair slugs Fuzz.any` is a record of a slug and a derived
 value of whatever type the context asks for. Its type must be known where
@@ -2905,15 +3279,19 @@ Line by line:
   many attempts the shrinker spent getting from that case to this one.
   The first failing list was longer and noisier; this one is the
   smallest the shrinker could find.
+
 - `xs:` is the shrunk argument, one line for each, named as in the
   lambda and written as an Alder literal that you could paste into code:
   brands are spelled out (`Text.NonEmpty "a"`), a `Time` is
   `Time.fromMillis 0`. When the type was a defaulted one, the line ends
   with the type the checker chose, `(xs : List Int)`, so a missing
   annotation shows. An annotated argument has no such suffix.
+
 - `left:` and `right:` are the sides of the body's `==`, as in section 2
   (a body that is not an `==` has none).
+
 - `seed:` is what to give `--seed` to draw the same cases.
+
 - `to keep this case:` is the failing case as a **plain test**.
 
 ### Keeping the case
@@ -2946,18 +3324,26 @@ section 6 does.) Two things to know before you paste.
 
 - A literal may name a module the test's module does not import. The
   test is printed with names as the test's own module would write them,
-  but the *value* can reach into types the module never mentions. A
+  but the *value* can reach into types the module never mentions.
+
+  A
   property over `Box.Box`, whose `id` is an `Ids.Id`, prints
   `{ id: Ids.Id "", size: 10 }`, and a module that imports `Box` and not
   `Ids` needs an `import Ids` (chapter 3) before the pasted test
   compiles. Add the import.
+
 - Sometimes there is no test to paste, and the report says `paste the
-  values above into a plain test`: when the case is longer than 20 lines,
-  when a value has no Alder literal (a `Text` with non-printing
-  characters, or the value of a `Fuzz.forAll` generator whose type has no
-  printer), or when a parameter is used inside text interpolation or
-  markup (`"n is {Text.fromInt n}"`), where a literal cannot be put in
-  without changing what it means. The argument lines are still printed,
+  values above into a plain test`:
+
+  - when the case is longer than 20 lines,
+  - when a value has no Alder literal (a `Text` with non-printing
+    characters, or the value of a `Fuzz.forAll` generator whose type has no
+    printer),
+  - or when a parameter is used inside text interpolation or
+    markup (`"n is {Text.fromInt n}"`), where a literal cannot be put in
+    without changing what it means.
+
+  The argument lines are still printed,
   and you write the test from them:
 
 ```text
@@ -2984,12 +3370,16 @@ Finding a bug and fixing it take two different runs, and the next fresh
 run may not draw the same case. So a failing case is **saved**: `alder
 test` keeps the shrunk choices in `build/<app>/fuzz/<Module>/<hash>`,
 the hash being that of the test's name, and replays them before it draws
-anything new. The saved case fails again until the bug is fixed; the
+anything new.
+
+The saved case fails again until the bug is fixed; the
 first run in which the property passes all its cases deletes the file.
 `--seed` does not override a saved failure: the saved case is replayed
 first whatever the seed. When it is the saved case that fails, the report
 says so (`failed on the saved case`) and gives no seed, since the seed did
-not find it; the case is in the report and in the file. `build/` is not source (`.gitignore` keeps it
+not find it; the case is in the report and in the file.
+
+`build/` is not source (`.gitignore` keeps it
 out of git, chapter 2), so this is a local memory and not a record: the
 permanent record of a bug is the plain test that the report printed. A
 saved case is also lost if its test is renamed, which is another reason
@@ -3003,10 +3393,12 @@ instead:
 
 - **A filter or brand that is too tight.** More than 90% of the first 50
   attempts rejected by a `Fuzz.filter` or a brand's predicate (above).
+
 - **An attempt that is too slow.** One case took over 5 seconds. The
   report says `stopped on run K` and keeps the case like a failure, so the
   next run tries it first; the shrinker gives up on a case that is slow
   as well.
+
 - **A generator that draws too much.** One case needed more than 8192
   random choices (a `Fuzz.andThen` that builds lists of lists of lists
   with no bound): the report says `stopped before run K`, because that
@@ -3029,18 +3421,24 @@ Every generator builds its value out of **choices**: numbers drawn from a
 random stream, each recorded in order. A list draws, for each element,
 one choice that says "another element" or "stop", and then the element's
 own choices; an `Int` draws a magnitude and then a sign; a union draws a
-constructor number. All generators are written so that a **smaller choice
+constructor number.
+
+All generators are written so that a **smaller choice
 means a simpler value**: zero is the empty list, the first constructor,
 the number 0.
 
 The shrinker never sees a list. It sees the recorded sequence of choices
 of the failing case, and tries smaller sequences: delete a block of
 choices, set a block to zero, lower a choice by binary search, sort
-neighbours, move a value from one choice onto the next. Each candidate is
+neighbours, move a value from one choice onto the next.
+
+Each candidate is
 *replayed*: the same generator runs, reading its choices from the
 candidate instead of the random stream, so what it builds is always a
 value the generator could have drawn, and the property runs on it. A
-candidate that still fails and is smaller replaces the sequence. The
+candidate that still fails and is smaller replaces the sequence.
+
+The
 shrinker goes on until a full round changes nothing or it has spent its
 **1000 attempts**, so it cannot hang. That is how a bug in a record of a
 union of lists shrinks to a short list in the first constructor, without
@@ -3050,7 +3448,9 @@ This is the design of Hypothesis, of its small model `minithesis`, and of
 elm-test 2.0 (the test library of Elm, the language Alder's syntax is
 closest to). It is *internal* shrinking, as against QuickCheck's, where
 each type has a separate `shrink` function that the programmer writes
-beside its generator. The two must agree, and nothing makes them: a
+beside its generator.
+
+The two must agree, and nothing makes them: a
 shrinker that produces a value its generator never could, such as an
 `Age` of 200, reports a counterexample that cannot happen. With choices
 there is no second function to get wrong. That is why Alder has no way to
@@ -3074,7 +3474,9 @@ A function type, an effect type (`Task`, `Query`), a type parameter and a
 value only the runtime can make have no generator, and neither has a
 union whose every constructor holds the union again (`type S = S { next:
 S }`: nothing ends the recursion; let one constructor hold a `Maybe` or a
-`List` of it, or nothing). Annotate with a type
+`List` of it, or nothing).
+
+Annotate with a type
 that has one, or write the generator with the `Fuzz` functions and give
 it to `Fuzz.forAll`.
 
@@ -3097,6 +3499,7 @@ tested. What it does not run is a browser's own machinery:
   an element is visible, where it is, how it looks, and what the
   JavaScript of a web component does with it are not modelled. A small
   suite in a real browser, planned for later, will cover them.
+
 - **The page without JavaScript.** The browser is Datastar's client, as
   every visitor's browser is when its JavaScript runs. With JavaScript
   off, a form is a plain `POST` answered by a `303` redirect (chapter 6);

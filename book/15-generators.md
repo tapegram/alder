@@ -1,36 +1,56 @@
 # 15. Generators and the admin
 
-Every Alder app is made of the same few things. There are **users**: a
-`User` table, and a session whose `user` field says who is logged in
-(chapter 6). There are **tables**, each in its own module, with their
-migrations (chapter 8). There are **routes**: a `route` line with
-a method, a path and parameters; a `Model`, a `load` and a `view` for a
-`GET` route; and for a write route an `update` that answers with a
-`Response`, for the page's **forms** and **buttons** (chapters 5 and 6). There are **capabilities**, the Go
-behind the app (chapter 7). And there are **rules**: `requires user`,
-`role R`, `@owner` (chapter 6, "Rules"). Every route has its tests
-(chapter 10).
+Every Alder app is made of the same few things:
+
+- **Users**: a `User` table, and a session whose `user` field says who is
+  logged in (chapter 6).
+
+- **Tables**, each in its own module, with their migrations (chapter 8).
+
+- **Routes**: a `route` line with a method, a path and parameters; a
+  `Model`, a `load` and a `view` for a `GET` route; and for a write route an
+  `update` that answers with a `Response`, for the page's **forms** and
+  **buttons** (chapters 5 and 6).
+
+- **Capabilities**, the Go behind the app (chapter 7).
+
+- **Rules**: `requires user`, `role R`, `@owner` (chapter 6, "Rules").
+
+Every route has its tests (chapter 10).
 
 This chapter is about writing those pieces with commands instead of by
-hand. `alder new route`, `alder new table`, `alder new form`, `alder new
-msg`, `alder new capability`, `alder new type`, `alder new decl` and
-`alder new test` each write one piece, and `alder new auth` the login.
-`alder edit table` changes a table and writes its migration, `alder edit
-route` a route's parameters. `alder fill` fills a gap the others leave.
-`alder theme import` is a different kind of generator: it turns a shadcn or tweakcn CSS export into the app's `theme` declaration (Appendix C, "Importing a theme"), by the same copy, check, write.
-`alder theme use` writes one of the five starting themes the same way, and `alder new <name> --theme` starts an app with one (Appendix C, "Starting from a theme").
-`alder new admin` writes all of the pieces for every table at once: a complete admin, with a list, a page, a form and a delete page
-per table, and `alder regen admin` keeps that admin up to date as the
-tables change.
+hand.
+
+- `alder new route`, `alder new table`, `alder new form`, `alder new msg`,
+  `alder new capability`, `alder new type`, `alder new decl` and
+  `alder new test` each write one piece, and `alder new auth` the login.
+
+- `alder edit table` changes a table and writes its migration, `alder edit
+  route` a route's parameters.
+
+- `alder fill` fills a gap the others leave.
+
+- `alder theme import` is a different kind of generator: it turns a shadcn
+  or tweakcn CSS export into the app's `theme` declaration (Appendix C,
+  "Importing a theme"), by the same copy, check, write.
+
+- `alder theme use` writes one of the five starting themes the same way,
+  and `alder new <name> --theme` starts an app with one (Appendix C,
+  "Starting from a theme").
+
+- `alder new admin` writes all of the pieces for every table at once: a
+  complete admin, with a list, a page, a form and a delete page per table,
+  and `alder regen admin` keeps that admin up to date as the tables change.
 
 There are two readers in mind. One is you, starting an app: a generated
-page is a correct, tested starting point that you then edit. The other
-is an agent (an AI model) building an app from the command line. For an
-agent the commands are the interface: it asks for a page or a table by
-name and type, and gets back code that already checks and already has
-tests. The only free text it writes is one typed expression at a time,
-a body, through `alder fill`. The last section, "AI only in typed,
-checked bodies", explains why.
+page is a correct, tested starting point that you then edit.
+
+The other is an agent (an AI model) building an app from the command line.
+For an agent the commands are the interface: it asks for a page or a table
+by name and type, and gets back code that already checks and already has
+tests. The only free text it writes is one typed expression at a time, a
+body, through `alder fill`. The last section, "AI only in typed, checked
+bodies", explains why.
 
 Everything a generator writes is ordinary Alder. There is no hidden
 framework: you can open each file, read it, and change it, and the
@@ -47,31 +67,39 @@ Every command does the same five things, in this order:
    resolve the names and type-check it (chapter 13). An app that already
    has errors is refused (except by `alder edit table`, below), because
    nothing generated into it could be checked.
+
 2. **Compute the change**: the files to create, and the edits to make to
    files that exist. The generators are Go code in the compiler's
    repository (`internal/generate/`); the small generators fill
    templates that are built into the `alder` binary, and the admin
    builds its files in Go.
+
 3. **Apply it to a copy.** The app is copied to a temporary directory,
    and the change is made there, never in your app.
+
 4. **Check the copy**, with the same checker. If the copy has an error,
    the command stops: it prints the copy's errors and the sentence `the
    result does not check (the errors above): nothing was written`, and
    exits with 1.
+
 5. **Write**: only now are the files written into the app. The command
    prints each one (`wrote` for a new file, `edited` for a changed one),
    the unified diff of each edited file, and the copy's diagnostics,
    among them its **holes** (warning W0002, below).
 
 This is called **copy, check, write**. It means that a generator never
-leaves your app in a state that does not check, with one exception by
-design: `alder edit table` writes a table change that breaks code
-elsewhere, and prints the list of places to fix ("Changing a table",
-below; `--strict` refuses instead). A generator also never overwrites
-anything: when the file or the name it would write exists, it refuses
-with one sentence and writes nothing; and when a file it is about to
-write changed since the command read the app, it writes nothing and says
-so.
+leaves your app in a state that does not check.
+
+> **The one exception, by design.** `alder edit table` writes a table change
+> that breaks code elsewhere, and prints the list of places to fix
+> ("Changing a table", below; `--strict` refuses instead).
+
+A generator also never overwrites anything:
+
+- When the file or the name it would write exists, it refuses with one
+  sentence and writes nothing.
+- When a file it is about to write changed since the command read the app,
+  it writes nothing and says so.
 
 `--dry-run` does steps 1 to 4 and prints what it would write: `would
 write` and `would edit` lines, the diffs (a new file as a diff from
@@ -92,7 +120,13 @@ The first argument is the module, the second its path. A dotted module name is
 a nested module, one directory per dot: `alder new route Sites.Clarity.Index
 /sites/clarity` writes `app/Sites/Clarity/Index.alder` (a name without dots,
 like `About`, writes `app/About.alder`). `alder new route --help` says so, and
-`alder routes` (chapter 11) lists where every route ended up. (`alder new page` is the old name of the command; it still works, and prints "`alder new page` is now `alder new route`" after doing what `new route` does.) The file:
+`alder routes` (chapter 11) lists where every route ended up.
+
+> **The old name.** `alder new page` is the old name of the command; it still
+> works, and prints "`alder new page` is now `alder new route`" after doing
+> what `new route` does.
+
+The file:
 
 ```alder written=guestbook/app/About.alder
 module About
@@ -117,22 +151,35 @@ test "the page is shown" = {
 }
 ```
 
-It is the smallest page there is (chapter 6). The line `route About = GET
-"/about" { }` declares the route: its name, its method, its path and its
-parameters, none here. Its members are written with the route's name,
-`About.load` and `About.view`, because a module can hold several routes
-(a page and the write routes it sends). There is an empty
-`Model`, a `view` in the app's layout, and one test, written as chapter
-10 writes them, which opens the page through the test browser and checks
-the answer and the heading. The page is yours from here: the generator
-never touches it again.
+It is the smallest page there is (chapter 6).
 
-A newcomer can ask for more than the empty page: `alder new route About /about --example`
-adds a small, working example of how a page keeps state — a `count` parameter, a
-write route `Bump` (`POST "/about/_/Bump"`), whose `Bump.update` redirects to the same page with the new count,
-and a view with a button that sends it. Every part is marked `-- example:` and is meant to
-be deleted once read. The editor's generator form starts with the example on; the command
-line starts with it off, so a program driving the CLI gets the minimal page.
+- **The route line** `route About = GET "/about" { }` declares the route: its
+  name, its method, its path and its parameters, none here.
+
+- **Its members** are written with the route's name, `About.load` and
+  `About.view`, because a module can hold several routes (a page and the
+  write routes it sends).
+
+- **The rest** is an empty `Model`, a `view` in the app's layout, and one
+  test, written as chapter 10 writes them, which opens the page through the
+  test browser and checks the answer and the heading.
+
+The page is yours from here: the generator never touches it again.
+
+### The example: `--example`
+
+A newcomer can ask for more than the empty page. `alder new route About
+/about --example` adds a small, working example of how a page keeps state:
+
+- a `count` parameter;
+- a write route `Bump` (`POST "/about/_/Bump"`), whose `Bump.update`
+  redirects to the same page with the new count;
+- a view with a button that sends it.
+
+Every part is marked `-- example:` and is meant to be deleted once read.
+
+The editor's generator form starts with the example on; the command line
+starts with it off, so a program driving the CLI gets the minimal page.
 
 ## A table: `alder new table`
 
@@ -151,10 +198,14 @@ edited migrations/schema.json
 next: alder new route /replies --list Reply
 ```
 
-`entry:Entry.EntryId@ref=Entry@cascade` is a reference to an entry,
-deleted with it (`@ref Entry @cascade`, chapter 8). `hidden:Bool=False`
-has a default. The generator adds the id (`id: ReplyId @id`, with its
-brand), `created` and `updated`:
+Two of the fields in the command:
+
+- `entry:Entry.EntryId@ref=Entry@cascade` is a reference to an entry,
+  deleted with it (`@ref Entry @cascade`, chapter 8).
+- `hidden:Bool=False` has a default.
+
+The generator adds the id (`id: ReplyId @id`, with its brand), `created`
+and `updated`:
 
 ```alder written=guestbook/app/Table/Reply.alder
 module Table.Reply
@@ -184,9 +235,12 @@ test "deleting its entry deletes a Reply" = {
 The test is there because of the `@cascade`: a test that deletes an
 entry and counts the replies left. If the generator left it out, `alder
 test --mutate` (chapter 10) would turn `@cascade` into `@restrict` and
-no test would notice. Every reference with a delete rule gets such a
-test: "deleting its X deletes a Y" for `@cascade`, "a Y keeps its X from
-being deleted" for `@restrict`.
+no test would notice.
+
+Every reference with a delete rule gets such a test:
+
+- "deleting its X deletes a Y" for `@cascade`;
+- "a Y keeps its X from being deleted" for `@restrict`.
 
 The table's migration is written in the same step, by the same code as
 `alder migrate` (chapter 8), and `migrations/schema.json` is updated:
@@ -218,11 +272,16 @@ wrote app/Replies.alder
 The module is the name you give, `Replies`, at `app/Replies.alder`: a
 route's module is its name, and nothing is added to it (`Replies.Index`
 would be `app/Replies/Index.alder`, if you prefer that).
-Leave the module out and the generator derives it from the table: `alder new
-route /replies --list Reply` writes `Replies.Index` (and `--show Reply` writes
-`Replies.Show`, `--from Reply` `Replies.New`), in the plural folder of
-chapter 2's "Where files go". `alder new table` prints that command as its
-last line, `next: alder new route /replies --list Reply`.
+
+Leave the module out and the generator derives it from the table:
+
+- `alder new route /replies --list Reply` writes `Replies.Index`;
+- `--show Reply` writes `Replies.Show`;
+- `--from Reply` writes `Replies.New`.
+
+They go in the plural folder of chapter 2's "Where files go". `alder new
+table` prints that command as its last line, `next: alder new route
+/replies --list Reply`.
 
 ```alder written=guestbook/app/Replies.alder
 module Replies
@@ -344,35 +403,53 @@ test "the list has 20 rows a page" = {
 }
 ```
 
-Read it as chapter 6 reads a page. The parameter `page` says which page
-of rows to show, 20 to a page, newest first; `load` clamps it, reads one
-page with `Db.limit` and `Db.offset`, and counts the rows for the
-number of pages. The `view` is an `al-table` (Appendix C) with a column
-per field except the id: a `Bool` or a union would be an `al-badge`, a
-`Time` is formatted, and a reference shows the id it holds. The
-`al-pagination` links to the pages before and after.
+### Reading the list page
 
-The two tests are there to kill the page's mutants (chapter 10). The
-first inserts two rows and checks their order, so a reversed `orderBy`
-fails it. The second inserts 21 rows and checks that the first page has
-20 and the second 1, so a dropped `limit` or `offset` fails it. Every
-generated test is written that way: for what the code next to it could
-get wrong.
+Read it as chapter 6 reads a page.
 
-The other options of `alder new route`:
+- **The parameter** `page` says which page of rows to show, 20 to a page,
+  newest first.
 
-- `--show T` writes a page for one row, at `<path>/{id}` (below).
-- `--from T U …` loads every row of each table and shows each in a card,
+- **`load`** clamps it, reads one page with `Db.limit` and `Db.offset`, and
+  counts the rows for the number of pages.
+
+- **The `view`** is an `al-table` (Appendix C) with a column per field
+  except the id: a `Bool` or a union would be an `al-badge`, a `Time` is
+  formatted, and a reference shows the id it holds.
+
+- **The `al-pagination`** links to the pages before and after.
+
+The two tests are there to kill the page's mutants (chapter 10):
+
+- The first inserts two rows and checks their order, so a reversed
+  `orderBy` fails it.
+- The second inserts 21 rows and checks that the first page has 20 and the
+  second 1, so a dropped `limit` or `offset` fails it.
+
+Every generated test is written that way: for what the code next to it
+could get wrong.
+
+### The other options of `alder new route`
+
+- **`--show T`** writes a page for one row, at `<path>/{id}` (below).
+
+- **`--from T U …`** loads every row of each table and shows each in a card,
   a skeleton for a page that brings several tables together, which you
   then design.
-- `--requires user` adds `requires user` to the route line, and a test that a
-  visitor is sent to log in. With `--list T` on a table with an `@owner`
-  column, the page reads `Db.mine T`, the user's own rows (chapter 6),
-  and its test inserts another user's row to check that it is not
-  shown. With `--show T`, it reads `Db.getMine`.
-- `--role R` adds `, role R`, and a test that a user of another role
-  gets no page. (`route Notes = GET "/notes" { } requires user, role Admin`.) It implies `--requires user`, and is refused when the
-  session has no `role` with a constructor `R`.
+
+- **`--requires user`** adds `requires user` to the route line, and a test
+  that a visitor is sent to log in.
+
+  With `--list T` on a table with an `@owner` column, the page reads
+  `Db.mine T`, the user's own rows (chapter 6), and its test inserts another
+  user's row to check that it is not shown. With `--show T`, it reads
+  `Db.getMine`.
+
+- **`--role R`** adds `, role R`, and a test that a user of another role
+  gets no page: `route Notes = GET "/notes" { } requires user, role Admin`.
+
+  It implies `--requires user`, and is refused when the session has no
+  `role` with a constructor `R`.
 
 ## A form: `alder new form`
 
@@ -470,27 +547,42 @@ The form's name, `NewReply`, must not be the table's: a form declares a
 type, and a form named `Reply` would hide the table's type `Reply` in
 this module (the copy would not check, so nothing would be written).
 
-The generator wrote these into the module. The `form` declaration
-and a write route that takes it: `route SubmitNewReply = POST
-"/replies/_/SubmitNewReply" { } form NewReply` (the `form` clause of a
-route line names the form it decodes). Its `SubmitNewReply.update`, a
-member qualified with the route's name, which inserts the row and
-answers `Response.redirect (Replies {}) |> Response.success "Saved"`: back
-to the list, with a message. The form itself, in `view`:
-in a new `al-card` at the end of the page (in the page's last `al-card`
-if it has one), with an input per field (`al-textarea` for a `Text`
-field named `body`, `message` or `description`, `al-select` for a union,
-`al-checkbox` for a `Bool`), the form's errors in an `al-alert`, and the
-button. And two tests: one submits the form and compares the stored row,
-the defaults of the fields the form leaves out included (`hidden:
-False`); the other submits an empty `message` and expects the decoder's
-`FormRejected`.
+### What the generator wrote
+
+The generator wrote these into the module:
+
+- **The `form` declaration** and a write route that takes it: `route
+  SubmitNewReply = POST "/replies/_/SubmitNewReply" { } form NewReply` (the
+  `form` clause of a route line names the form it decodes).
+
+- **Its `SubmitNewReply.update`**, a member qualified with the route's name,
+  which inserts the row and answers `Response.redirect (Replies {}) |>
+  Response.success "Saved"`: back to the list, with a message.
+
+- **The form itself**, in `view`: in a new `al-card` at the end of the page
+  (in the page's last `al-card` if it has one), with an input per field, the
+  form's errors in an `al-alert`, and the button.
+
+- **Two tests**: one submits the form and compares the stored row, the
+  defaults of the fields the form leaves out included (`hidden: False`); the
+  other submits an empty `message` and expects the decoder's `FormRejected`.
+
+The input for a field depends on its type:
+
+- `al-textarea` for a `Text` field named `body`, `message` or `description`;
+- `al-select` for a union;
+- `al-checkbox` for a `Bool`.
+
+### Which table the `update` inserts into
 
 The `update` inserts a `Reply`, because every field of the form is a field of
 `Reply` with the same name and type, and the form names every field an
-insert must have. That is the rule: when the fields fit one table, the
-`update` is that table's insert; `--into T` names the table when two would
-fit. When they fit none, the `update`'s body is a **hole**, `?answer`, of type `Task Response`.
+insert must have. That is the rule:
+
+- When the fields fit one table, the `update` is that table's insert.
+- `--into T` names the table when two would fit.
+- When they fit none, the `update`'s body is a **hole**, `?answer`, of type
+  `Task Response`.
 
 ## A page for a row, and a write route: `--show` and `alder new msg`
 
@@ -556,16 +648,28 @@ app/Replies/Show.alder:48:36: warning[W0002]: hole ?deleteId has type Reply.Repl
 `alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`
 ```
 
-The last line of the output is a notice: on a route module, `alder new msg` adds
-a write route, and a write route in a module of its own (one with no page and no
-button) is made with `alder new route … --method POST` instead. The new route is `route Delete = POST "/replies/{id}/_/Delete" { id:
-Reply.ReplyId }`. A write route's path is its module's route path with `/_/`
-and its name on the end (the `<path>/_/<Msg>` convention), and it takes the
-parameters of the route it was added to. Its `Delete.update` answers with a
-`Response` (chapter 6), and starts as `Response.refresh`, the answer that shows
-the same page again. The button sends the route, `Delete { id: … }`. The test
-is written in full, and since `Response.refresh` is a real answer, it passes
-as it stands.
+The last line of the output is a notice: on a route module, `alder new msg`
+adds a write route, and a write route in a module of its own (one with no
+page and no button) is made with `alder new route … --method POST` instead.
+
+### The new write route
+
+- **The route** is `route Delete = POST "/replies/{id}/_/Delete" { id:
+  Reply.ReplyId }`.
+
+- **Its path** is its module's route path with `/_/` and its name on the end
+  (the `<path>/_/<Msg>` convention), and it takes the parameters of the route
+  it was added to.
+
+- **Its `Delete.update`** answers with a `Response` (chapter 6), and starts as
+  `Response.refresh`, the answer that shows the same page again.
+
+- **The button** sends the route, `Delete { id: … }`.
+
+- **The test** is written in full, and since `Response.refresh` is a real
+  answer, it passes as it stands.
+
+### The hole the generator leaves
 
 What the generator cannot know is which reply the button is for. The route
 needs an `id`, and the view is where the page has the row, but the generator
@@ -576,10 +680,12 @@ the rest.
 ## Holes, and filling them: `alder fill`
 
 A **hole** is a name with a `?` in front, written where an expression
-goes (chapter 11, "Holes"). The checker infers the type the expression must have
-and reports it as the warning W0002: `hole ?deleteId has type Reply.ReplyId`. A
-hole is not an error, so the app checks, and the generator wrote it.
-But it cannot run:
+goes (chapter 11, "Holes"). The checker infers the type the expression must
+have and reports it as the warning W0002: `hole ?deleteId has type
+Reply.ReplyId`.
+
+A hole is not an error, so the app checks, and the generator wrote it. But
+it cannot run:
 
 ```text command=guestbook
 $ alder test
@@ -605,9 +711,13 @@ $ alder fill --list
 Replies.Show Show.view ?deleteId : Reply.ReplyId
 ```
 
+### Filling a hole
+
 `alder fill <address> -` reads one expression from standard input and
 puts it where the hole is, then checks the copy, and writes only if it
-checks. The address is the module and the declaration: `Replies.Show.Show.view`
+checks.
+
+The address is the module and the declaration: `Replies.Show.Show.view`
 is the member `Show.view` of the module `Replies.Show`. The id is the id of
 the row the page shows:
 
@@ -629,11 +739,14 @@ edited app/Replies/Show.alder
  Delete.update : Delete.Params -> Session -> Task Response
 ```
 
-The button now sends `Delete { id: model.row.id }`. The route's `update` has
-no hole, so there is nothing for that command to replace; `alder fill --decl
-<address> -` rewrites a declaration's whole body with one expression. Here the
-body only deletes the row and forgets to answer, so its type is `Task Unit`,
-not `Task Response`:
+The button now sends `Delete { id: model.row.id }`.
+
+### Rewriting a body: `--decl`
+
+The route's `update` has no hole, so there is nothing for that command to
+replace; `alder fill --decl <address> -` rewrites a declaration's whole body
+with one expression. Here the body only deletes the row and forgets to
+answer, so its type is `Task Unit`, not `Task Response`:
 
 ```text command=guestbook
 $ alder fill --decl Replies.Show.Delete.update - <<'EOF'
@@ -674,34 +787,56 @@ edited app/Replies/Show.alder
    let entry1 <- Db.insert Entry { name: Text.NonEmpty "name-1", message: Text.NonEmpty "message-1" }
 ```
 
+### Imports
+
 `fill` indents the expression to fit where it goes. When the expression
 names a module of the app qualified, such as `Member.isAdmin`, and the
 page does not import it, `fill` adds the import and says so: `added
 import Member to app/Replies/Show.alder` (with `--json`, `"imports":
-["Member"]`). A short qualifier works too, when it is unambiguous: with
-no import of either, `Index.helper` imports `Todos.Index` if that is the
-only module that would get the qualifier `Index` beside the page's
-imports. When several would (`Todos.Index` and `Reports.Index`), `fill`
-refuses and lists them, and you write the import you mean first. A
-standard library module needs no import, and a name that is not a
-module's is the checker's to report. What a generator writes is always
-canonical (chapter 3, "Files and modules"): it imports a module with its
-canonical `as` where the qualifier differs from the last segment
-(`import Admin.Layout as AdminLayout`), and writes the type `Todo` of
-`import Table.Todo` as `Todo`. When a new import changes the canonical
-qualifier of one already in the file, the generator rewrites that import
-line and its uses in the same edit. An address names one declaration: a
-route's member (`Replies.Show.Show.view`, `Replies.Show.Delete.update`), a
-test (`Replies.Show."pressing Delete"`) or any other top-level name
-(`Replies.perPage`). When the declaration has more than one hole, `--hole
-?name` picks one. The expression may contain holes of its own, which `fill`
-lists, to be filled next.
+["Member"]`).
+
+A short qualifier works too, when it is unambiguous:
+
+- With no import of either, `Index.helper` imports `Todos.Index` if that is
+  the only module that would get the qualifier `Index` beside the page's
+  imports.
+
+- When several would (`Todos.Index` and `Reports.Index`), `fill` refuses and
+  lists them, and you write the import you mean first.
+
+- A standard library module needs no import, and a name that is not a
+  module's is the checker's to report.
+
+What a generator writes is always canonical (chapter 3, "Files and
+modules"): it imports a module with its canonical `as` where the qualifier
+differs from the last segment (`import Admin.Layout as AdminLayout`), and
+writes the type `Todo` of `import Table.Todo` as `Todo`. When a new import
+changes the canonical qualifier of one already in the file, the generator
+rewrites that import line and its uses in the same edit.
+
+### Addresses and holes
+
+An address names one declaration:
+
+- a route's member (`Replies.Show.Show.view`, `Replies.Show.Delete.update`);
+- a test (`Replies.Show."pressing Delete"`);
+- any other top-level name (`Replies.perPage`).
+
+When the declaration has more than one hole, `--hole ?name` picks one. The
+expression may contain holes of its own, which `fill` lists, to be filled
+next.
+
+### Rewriting a test
 
 The body now redirects instead of refreshing, so the generated test fails
 (`Redirected` is not `Refreshed`), and it is rewritten, whole, with `--decl`
-too. It opens the page again after the click: `Test.open`, unlike `Test.get`,
-does not fail when the page is gone, and a write route may delete the very row its
-page shows, as this one does, so `after.answer` is `PageMissing`. The last line is a reminder, not an error: a rewritten test is checked by `alder test --mutate`:
+too. It opens the page again after the click: `Test.open`, unlike
+`Test.get`, does not fail when the page is gone, and a write route may
+delete the very row its page shows, as this one does, so `after.answer` is
+`PageMissing`.
+
+The last line is a reminder, not an error: a rewritten test is checked by
+`alder test --mutate`:
 
 ```text command=guestbook
 $ alder fill --decl 'Replies.Show."pressing Delete"' - <<'EOF'
@@ -756,17 +891,21 @@ ok   Replies.Show "pressing Delete"
 A generator refuses rather than overwrite, and rather than write
 something that does not check. A refusal is one sentence on standard
 error, after any diagnostics; the exit code is 1, and nothing is
-written. A module that exists:
+written.
+
+### A module that exists
 
 ```text command=guestbook
 $ alder new route About /about
 alder new route: module `About` exists (`app/About.alder`): a generator never overwrites a file; choose another module name
 ```
 
-A result that does not check. `--into Reply` asks for a form that
-inserts a `Reply`, but the form has no `entry`, and an insert must have
-one (the warning above the error is the new form's own hole, the id its route
-needs, which is not what stops the command):
+### A result that does not check
+
+`--into Reply` asks for a form that inserts a `Reply`, but the form has no
+`entry`, and an insert must have one (the warning above the error is the new
+form's own hole, the id its route needs, which is not what stops the
+command):
 
 ```text command=guestbook
 $ alder new form Replies.Show Note message:Text.NonEmpty --into Reply
@@ -779,13 +918,18 @@ app/Replies/Show.alder:67:28: error[E0003]: record `Reply.Insert Reply` is missi
 alder new form: the result does not check (the errors above): nothing was written
 ```
 
+### Why refuse
+
 Why refuse instead of overwrite, or instead of writing and letting you
-fix it? A file you wrote may hold work, and a generator cannot know
-which of its lines matter: overwriting is the one mistake it must never
-make. And code that does not check is a problem handed to the next
-person, or the next agent, without the context of the command that made
-it. The refusal keeps the app where it was and says why, while the
-command and its arguments are still in front of you.
+fix it?
+
+- A file you wrote may hold work, and a generator cannot know which of its
+  lines matter: overwriting is the one mistake it must never make.
+- Code that does not check is a problem handed to the next person, or the
+  next agent, without the context of the command that made it.
+
+The refusal keeps the app where it was and says why, while the command and
+its arguments are still in front of you.
 
 ## Output for programs: `--json`
 
@@ -797,14 +941,21 @@ $ alder new route Contact /contact --json
 {"files":[{"path":"app/Contact.alder","action":"created"}],"diff":"","diagnostics":[],"holes":[],"written":true}
 ```
 
-`files` lists the files written, each `created` or `edited`; `diff` is
-the unified diff of the edited ones; `diagnostics` are the copy's, in
-the form `alder check --json` prints them (chapter 11); `holes` lists
-each hole with its module, declaration, name, type and position;
-`written` says whether anything was written. A table's command adds
-`migration`, the migration's steps, and a refusal adds `error`, its
-sentence. This object is the contract for programs that drive the
-generators, such as an agent's harness (E11, below).
+The fields:
+
+- `files` lists the files written, each `created` or `edited`.
+- `diff` is the unified diff of the edited ones.
+- `diagnostics` are the copy's, in the form `alder check --json` prints them
+  (chapter 11).
+- `holes` lists each hole with its module, declaration, name, type and
+  position.
+- `written` says whether anything was written.
+
+A table's command adds `migration`, the migration's steps, and a refusal
+adds `error`, its sentence.
+
+This object is the contract for programs that drive the generators, such as
+an agent's harness (E11, below).
 
 ## The admin: `alder new admin`
 
@@ -827,23 +978,32 @@ alder new admin: `alder new admin` needs a session with a `role` whose type has 
 
 The sentence says what to add, and the generator does not add it for
 you: it never edits `App` or the login. Who is an admin is a decision
-about your app's users, not a detail to generate. To meet it (on an app
-without a login, `alder new type User "Role = Member | Admin"` and
-`alder new auth --role Role` do all three: "Logging in", below):
+about your app's users, not a detail to generate. To meet it:
 
 1. Give the user table a role: `type Role = Member | Admin` (any
    constructors, one of them `Admin`) and a column `role: Role =
    Member`.
+
 2. Put the role in the session: `session { user: Maybe User.UserId,
    role: User.Role = Member }`.
+
 3. Set it at login from the user's row, and put the default back at
    logout (chapter 6, "Roles", shows both).
 
-Both examples do this. The to-do app's roles are `Member | Admin`; the
-blog's are `Reader | Author | Admin`, where an Author writes posts on
-the blog's own `Write` pages and an Admin manages everything through the
-generated admin. In the blog (the book's test does not run this one; the
-blog's README replays it, file for file):
+> **Shortcut.** On an app without a login, `alder new type User "Role =
+> Member | Admin"` and `alder new auth --role Role` do all three ("Logging
+> in", below).
+
+Both examples do this:
+
+- The to-do app's roles are `Member | Admin`.
+
+- The blog's are `Reader | Author | Admin`, where an Author writes posts on
+  the blog's own `Write` pages and an Admin manages everything through the
+  generated admin.
+
+In the blog (the book's test does not run this one; the blog's README
+replays it, file for file):
 
 ```text
 $ alder new admin
@@ -871,11 +1031,16 @@ wrote app/Admin/Users/Show.alder
 
 `examples/blog/app/Admin/` holds exactly these files, as the command
 wrote them; nobody has edited them, and the blog's README says how to
-check that by running it again. Its 181 tests pass, and they kill 279 of
-the admin's 290 mutants (chapter 10; the blog's README says why each of
-the eleven survivors is not a gap). For each table `T`, with `t` its
-name in lower case and `Ts` its plural (`Posts`, `Activities`; the folder is
-plural so that `Admin.Posts` never reads as the table `Post`):
+check that by running it again.
+
+Its 181 tests pass, and they kill 279 of the admin's 290 mutants (chapter 10;
+the blog's README says why each of the eleven survivors is not a gap).
+
+### The modules for each table
+
+For each table `T`, with `t` its name in lower case and `Ts` its plural
+(`Posts`, `Activities`; the folder is plural so that `Admin.Posts` never
+reads as the table `Post`):
 
 | Module | Path | What it is |
 |---|---|---|
@@ -888,29 +1053,47 @@ plural so that `Admin.Posts` never reads as the table `Post`):
 | `Admin.Ts.Delete` | `/admin/t/{id}/delete` | what goes with the row, and the button, or why there is none |
 | `Admin.Ts.Bulk` | `/admin/t/bulk?ids=…` | the rows chosen on the list, and what to do with them all at once (only for a table with an action; "Bulk actions", below) |
 
+### The routes
+
 Each module declares its **routes**, and the writes are routes too. In the
-generated admin, `Index`, `Show`, `New` and `Edit` are `GET` routes, and the
-forms on them are write routes: `Create` (`POST`, on `New`), `Save` (`PUT`, on
-`Edit`), and `SearchAuthor`, which narrows a long list of choices. A write route
-has the form it decodes, `route Save = PUT "/admin/post/{id}/edit/_/Save" { id:
-Post.PostId } form PostForm requires user, role Admin`, and a path that ends in
-`/_/` and its name. `Delete` is a `GET` route, the confirm page that says what goes with the row, and a
-`DELETE` route, `Destroy`, that the button sends. `Bulk` is a `GET` route that shows the chosen rows
-and a `POST` route for each action (`BulkDelete`, `BulkSetStatus` …). Every
-route has `requires user, role Admin`, and an `update` answers with a
-`Response`: `Response.redirect` to the row after a save and to the list after a delete,
-`Response.invalid` for a refusal. No `load` runs before a write route, so
-each guards itself, and each has three tests that open the page holding
-its form as an Admin, change the session, and send the write from the page
-still held: "a visitor cannot …" logs out first and expects the login page
-(the route's `requires user`); "a Reader cannot …, even one made Admin
-since logging in" logs in again as a Reader whose row still says Admin
-and expects a 404 (the route's `role Admin`); "a demoted Admin cannot …"
-demotes the Admin in the table and expects the refusal (the `update`'s
-`adminOnly`). Nothing is written in any of them. The gate and the checks
-are in each write route's `update`, and the files below show them there. Their
-members are written with the route's name, `Index.load` and `Save.update`
-(chapter 6, "Qualified declarations").
+generated admin:
+
+- **`Index`, `Show`, `New` and `Edit`** are `GET` routes, and the forms on
+  them are write routes: `Create` (`POST`, on `New`), `Save` (`PUT`, on
+  `Edit`), and `SearchAuthor`, which narrows a long list of choices.
+
+- **`Delete`** is a `GET` route, the confirm page that says what goes with
+  the row, and a `DELETE` route, `Destroy`, that the button sends.
+
+- **`Bulk`** is a `GET` route that shows the chosen rows and a `POST` route
+  for each action (`BulkDelete`, `BulkSetStatus` …).
+
+A write route has the form it decodes, `route Save = PUT
+"/admin/post/{id}/edit/_/Save" { id: Post.PostId } form PostForm requires
+user, role Admin`, and a path that ends in `/_/` and its name.
+
+Every route has `requires user, role Admin`, and an `update` answers with a
+`Response`: `Response.redirect` to the row after a save and to the list
+after a delete, `Response.invalid` for a refusal.
+
+No `load` runs before a write route, so each guards itself, and each has three
+tests that open the page holding its form as an Admin, change the session, and
+send the write from the page still held:
+
+- "a visitor cannot …" logs out first and expects the login page (the route's
+  `requires user`);
+- "a Reader cannot …, even one made Admin since logging in" logs in again as a
+  Reader whose row still says Admin and expects a 404 (the route's
+  `role Admin`);
+- "a demoted Admin cannot …" demotes the Admin in the table and expects the
+  refusal (the `update`'s `adminOnly`).
+
+Nothing is written in any of them. The gate and the checks are in each write
+route's `update`, and the files below show them there. Their members are
+written with the route's name, `Index.load` and `Save.update` (chapter 6,
+"Qualified declarations").
+
+### Placing the admin
 
 `--module` and `--path` put the admin elsewhere (`--module Back.Office
 --path /back`). An admin that exists is not written again: `alder new
@@ -972,23 +1155,36 @@ The first two lines say where the file came from, and every file of the
 admin has them. They name no version, so the same app gives the same
 files from any build of `alder`.
 
+#### The `access` region
+
 The region `access` is the admin's own check. The session's role is the
 one read at login, and the cookie keeps it until logout or its 30 days
 (chapter 6, "Rules"); an Admin demoted, or deleted, since would keep the
-admin all that time. So every route begins by asking `isAdmin`, which reads the user's row
+admin all that time.
+
+So every route begins by asking `isAdmin`, which reads the user's row
 again, and answers `Query.notFound` when the row is gone or no longer says
-`Admin`: a `GET` route's `load` begins with `Layout.adminOnly session.user`,
-and since no `load` runs before a write, so does each write route's
-`update`. A form posted by a demoted Admin is refused the same way, and
-that is what the "a demoted Admin cannot …" tests check.
-This is chapter 6's re-read idiom, generated. When the user table has no
-column holding the role, there is nothing to read again: `isAdmin` is
-`Query.succeed True`, the route lines' role is the whole check, and the
-dashboard's test says that the cookie's role lasts until logout or its
-30 days. The lines between `-- @admin begin <name>` and `-- @admin
-end` are **owned regions**: the parts that follow the tables, which
-`alder regen admin` rewrites when the tables change ("Owned regions",
-below). Everything else is yours.
+`Admin`:
+
+- A `GET` route's `load` begins with `Layout.adminOnly session.user`.
+- No `load` runs before a write, so each write route's `update` begins with
+  it too.
+- A form posted by a demoted Admin is refused the same way, and that is what
+  the "a demoted Admin cannot …" tests check.
+
+This is chapter 6's re-read idiom, generated.
+
+> **No role column.** When the user table has no column holding the role,
+> there is nothing to read again: `isAdmin` is `Query.succeed True`, the
+> route lines' role is the whole check, and the dashboard's test says that
+> the cookie's role lasts until logout or its 30 days.
+
+#### Owned regions
+
+The lines between `-- @admin begin <name>` and `-- @admin end` are **owned
+regions**: the parts that follow the tables, which `alder regen admin`
+rewrites when the tables change ("Owned regions", below). Everything else
+is yours.
 
 The dashboard reads, for each table, its count and its five newest rows
 (by `@created`, else by id), each labelled by its first `Text` field and
@@ -1111,14 +1307,18 @@ Index.view model session =
 
 Then its tests, in the region `tests`. A test that kills a mutant of the
 generated code is part of what the generator writes, so the tests follow
-the tables like the code does. Each table's card is tested with more rows
-than it shows, so that the count, the order and the limit of five are
-each checked;
-then come the rules: a visitor is sent to log in; a Reader gets
-`PageMissing`, even one whose row says Admin since, because the cookie's
-role, the one read at login, is what the route lines check (chapter 6,
-"A role is read at login"); and a demoted Admin, whose cookie still says
-Admin, is refused at once.
+the tables like the code does.
+
+- Each table's card is tested with more rows than it shows, so that the
+  count, the order and the limit of five are each checked.
+
+- Then come the rules. A visitor is sent to log in.
+
+- A Reader gets `PageMissing`, even one whose row says Admin since, because
+  the cookie's role, the one read at login, is what the route lines check
+  (chapter 6, "A role is read at login").
+
+- A demoted Admin, whose cookie still says Admin, is refused at once.
 
 ```alder part=blog/Admin.Index
 -- @admin begin tests
@@ -1355,21 +1555,29 @@ listAt model sort dir n = Index {
 -- @admin end
 ```
 
-The filters are data. `filters` lists, for each `Bool` and union
-column, its name, its label, the option the address has chosen, and its
-options: a union's constructors, a `Bool`'s `yes` and `no` (and, for a
-`Maybe` column, `none`), each with the rows it selects, a `Condition`
-(chapter 8). The `view` draws a select from each, and `load` asks
-`filtered` for the rows they select: for each filter, the option whose
-value is the one chosen, and every row for `""` ("any") or for a value
-that is no option's, so a hand-typed address cannot fail the query. The
-address carries the choice as text (`/admin/post?published=yes`), like
-the search, so a filtered list can be bookmarked; `chosen` reads the
-filters from the parameters, and `listAt` builds a link to this list
-that keeps the search and the filters, which the headers and the pages
-use. All of it follows the columns, so it is the region `filters`; a
-table with neither kind of column has the same declarations, with no
-filter, so a column added later only rewrites the region.
+The filters are data. `filters` lists, for each `Bool` and union column:
+
+- its name and its label;
+
+- the option the address has chosen;
+
+- its options: a union's constructors, a `Bool`'s `yes` and `no` (and, for
+  a `Maybe` column, `none`), each with the rows it selects, a `Condition`
+  (chapter 8).
+
+The `view` draws a select from each, and `load` asks `filtered` for the
+rows they select: for each filter, the option whose value is the one
+chosen, and every row for `""` ("any") or for a value that is no option's,
+so a hand-typed address cannot fail the query.
+
+The address carries the choice as text (`/admin/post?published=yes`), like
+the search, so a filtered list can be bookmarked. `chosen` reads the
+filters from the parameters, and `listAt` builds a link to this list that
+keeps the search and the filters, which the headers and the pages use.
+
+All of it follows the columns, so it is the region `filters`. A table with
+neither kind of column has the same declarations, with no filter, so a
+column added later only rewrites the region.
 
 ```alder part=blog/Admin.Posts.Index
 -- @admin begin sorts
@@ -1495,11 +1703,12 @@ authorLabel labels id = match List.find (\r -> r.id == id) labels.authors {
 
 `load` cuts the search text to 200 characters before it reaches the
 query: a search text of more than 10,000 bytes fails the query (chapter
-8, "Search"), and the address is anyone's to type. It counts first, so that a page past
-the last is clamped to the last. A reference (here a post's `author`) is
-shown by its label, the user's email, rather than by its id: `labelsOf`
-reads only the users the page's rows refer to, with one query
-(`.in`), not one per row.
+8, "Search"), and the address is anyone's to type. It counts first, so that
+a page past the last is clamped to the last.
+
+A reference (here a post's `author`) is shown by its label, the user's
+email, rather than by its id: `labelsOf` reads only the users the page's
+rows refer to, with one query (`.in`), not one per row.
 
 ```alder part=blog/Admin.Posts.Index
 Index.view : Model -> Session -> Html
@@ -1608,23 +1817,34 @@ Index.view model session =
 
 The form is a plain `GET` form (chapter 5), so submitting it loads the
 same page with the search text and each select's value in the address:
-`/admin/post?q=intro&published=yes`. Each filter is an `al-select`
-element around a plain `<select>` with an `any` option first; the
-element only styles it here, since a `GET` form has no form type to bind
-it to (Appendix C). The headers link to the same list sorted by that
-column, the other way round when it already is, and they and the pages
-link through `listAt`, so the search and the filters stay as you sort
-and page. The cells render each column by its type: a `Bool` as a
-badge, a `Time` formatted, a reference as a link to its row's admin
-page, and the first column as a link to the row's own page.
+`/admin/post?q=intro&published=yes`.
 
-The tests below check each part of `load`. The sort test also asks
-`toggle` which way each header points; the filter test inserts a
-published post and a draft and opens the list with `published` at `yes`
-and at `no`, so each option must select its own rows and only them, and
-checks that the count agrees with the rows and that the select shows the
-option chosen. A table with a union column gets a second filter test
-(the blog's users, by `role`); a table with neither gets none.
+Each filter is an `al-select` element around a plain `<select>` with an
+`any` option first; the element only styles it here, since a `GET` form has
+no form type to bind it to (Appendix C).
+
+The headers link to the same list sorted by that column, the other way
+round when it already is, and they and the pages link through `listAt`, so
+the search and the filters stay as you sort and page.
+
+The cells render each column by its type:
+
+- a `Bool` as a badge;
+- a `Time` formatted;
+- a reference as a link to its row's admin page;
+- the first column as a link to the row's own page.
+
+The tests below check each part of `load`.
+
+- The sort test also asks `toggle` which way each header points.
+
+- The filter test inserts a published post and a draft and opens the list
+  with `published` at `yes` and at `no`, so each option must select its own
+  rows and only them, and checks that the count agrees with the rows and
+  that the select shows the option chosen.
+
+- A table with a union column gets a second filter test (the blog's users,
+  by `role`); a table with neither gets none.
 
 ```alder part=blog/Admin.Posts.Index
 -- @admin begin tests
@@ -1944,12 +2164,15 @@ Create.update params session = {
 }
 ```
 
-Two things in it were not in `alder new form`'s forms. `slug` is
-`@unique`, and inserting a second post with a slug that exists would
-fail in the database, which a user would see as an error page; so the
-`Create` counts the posts with that slug first, and answers
-`Response.invalid` with a sentence when there is one. And `author` refers to a user, so `load`
-reads the users to choose from, ordered by their label.
+Two things in it were not in `alder new form`'s forms:
+
+- **`slug` is `@unique`**, and inserting a second post with a slug that
+  exists would fail in the database, which a user would see as an error
+  page; so the `Create` counts the posts with that slug first, and answers
+  `Response.invalid` with a sentence when there is one.
+
+- **`author` refers to a user**, so `load` reads the users to choose from,
+  ordered by their label.
 
 ```alder part=blog/Admin.Posts.New
 New.view : Model -> Session -> Html
@@ -1989,17 +2212,25 @@ The author is an `al-select` with `options={…}` (chapter 5): a list of
 `{ value, label }` records, one per user, whose values have the field's
 type, `User.UserId`. The browser shows the emails and posts the id.
 
+#### The select membership rule
+
 A request can be crafted by hand, so the list in the browser is no
 guarantee: someone could post the id of a user who is not in it, or of a
 row of another table, or a text that names no row. So **a submitted
-value must be one of the options**. When the form is posted, the runtime draws the
-page it was posted from again (`Alder-Page`, else the `Referer`: chapter 6,
-"Delivery") and reads the options its select offered; if the form was
-posted from a page that offers none, the answer is `400`. A value that
-is not one of them is the field error "must be one of the options", and
-`update` does not run. That is the **select membership rule**, and it
-belongs to `<Select options>` everywhere, not only to the admin. It is
-also why `options` may use only the model and the session, never a
+value must be one of the options**.
+
+When the form is posted, the runtime draws the page it was posted from
+again (`Alder-Page`, else the `Referer`: chapter 6, "Delivery") and reads
+the options its select offered.
+
+- If the form was posted from a page that offers none, the answer is `400`.
+- A value that is not one of the options is the field error "must be one of
+  the options", and `update` does not run.
+
+That is the **select membership rule**, and it belongs to `<Select
+options>` everywhere, not only to the admin.
+
+It is also why `options` may use only the model and the session, never a
 variable of a `for` or a `let` of the view: the runtime must be able to
 compute the options again from the model alone (chapter 5).
 
@@ -2385,88 +2616,125 @@ The select of `Admin.Posts.New` holds one `<option>` per user. That is fine
 for a few hundred rows and not for a hundred thousand: the page would
 load them all, and the browser would draw them all. So the admin counts
 the referenced table in `load` (`authorsTotal`) and takes the
-**long-reference pattern** when the count is more than 200:
+**long-reference pattern** when the count is more than 200.
 
-- The select holds only 50 rows, narrowed by what the admin typed: the
-  rows whose label **contains** the search text (`User.email.contains
-  findAuthor`, the same case-insensitive match as the list's search,
-  chapter 8). At 200 rows or fewer it holds every row, as before, and
-  the search form is not drawn.
-- The text is a parameter of the `GET` route (`findAuthor`, in the
-  `route New` line), so `load` reads it on every request. That is what
-  lets the narrowing survive: the options are computed from the text, and
-  the select's membership rule (above) is checked against the options just
-  rendered, because the form is posted from the narrowed page. The admin
-  cannot pick, or be tricked into posting, a user the select did not
-  offer.
-- A small form of its own, `FindAuthor { q: Text }`, with a write route,
-  `SearchAuthor`, sends the text. Its `update` answers
-  `Response.redirect (New { findAuthor: Text.slice 0 200 params.form.q })`,
-  not `Response.refresh`: a refresh draws the page at the address it is on,
-  with the *old* text, so the select would still be narrowed by the old
-  text. The redirect loads the page again with the new text in the address
-  (cut to 200 characters, as `load` cuts it), and `load` narrows by it. The
-  regions are `search` (the form type and the route's `update`) and
-  `finder` (where the form is drawn).
-- On the Edit page the select also keeps the row's own value, whatever the
-  search and wherever it sorts. `load` reads that row by itself
-  (`authorsOwn`, `User.id.eq row.author`) and puts it **first**, then the
-  50 the search finds, which leave it out (`User.id.ne row.author`), so it
-  is neither lost past the 50 nor offered twice. Without this, a post
-  whose author sorts after the first 50 would render a select without its
-  value, the browser would show the first option as chosen, and saving
-  the form unchanged would quietly give the post another author.
+#### The narrowed select
+
+The select holds only 50 rows, narrowed by what the admin typed: the rows
+whose label **contains** the search text (`User.email.contains findAuthor`,
+the same case-insensitive match as the list's search, chapter 8).
+
+At 200 rows or fewer it holds every row, as before, and the search form is
+not drawn.
+
+#### The search text
+
+The text is a parameter of the `GET` route (`findAuthor`, in the `route
+New` line), so `load` reads it on every request. That is what lets the
+narrowing survive: the options are computed from the text, and the select's
+membership rule (above) is checked against the options just rendered,
+because the form is posted from the narrowed page. The admin cannot pick,
+or be tricked into posting, a user the select did not offer.
+
+#### The search form
+
+A small form of its own, `FindAuthor { q: Text }`, with a write route,
+`SearchAuthor`, sends the text. Its `update` answers
+`Response.redirect (New { findAuthor: Text.slice 0 200 params.form.q })`,
+not `Response.refresh`.
+
+A refresh draws the page at the address it is on, with the *old* text, so
+the select would still be narrowed by the old text. The redirect loads the
+page again with the new text in the address (cut to 200 characters, as
+`load` cuts it), and `load` narrows by it.
+
+The regions are `search` (the form type and the route's `update`) and
+`finder` (where the form is drawn).
+
+#### The row's own value on the Edit page
+
+On the Edit page the select also keeps the row's own value, whatever the
+search and wherever it sorts. `load` reads that row by itself
+(`authorsOwn`, `User.id.eq row.author`) and puts it **first**, then the 50
+the search finds, which leave it out (`User.id.ne row.author`), so it is
+neither lost past the 50 nor offered twice.
+
+Without this, a post whose author sorts after the first 50 would render a
+select without its value, the browser would show the first option as
+chosen, and saving the form unchanged would quietly give the post another
+author.
+
+#### No autocomplete
 
 There is no `al-autocomplete` element: the library has none (Appendix C),
 so the control stays an `al-select` and a search form beside it, which
-works with no JavaScript. The generated tests check the edge: with
-exactly 200 rows the select holds them all; with 201 it holds 50 (51 on
-the Edit page, the row's own first) and the search narrows them, while a
-visitor's search, sent from the same page after logging out, goes to log
-in (the search route's own `requires user`); on the
-Edit page, a row whose own user sorts after every other is offered first
-and once, and saving the form unchanged keeps it; a crafted post of an id
-outside the rendered options is refused with "must be one of the
-options".
+works with no JavaScript.
+
+The generated tests check the edge:
+
+- with exactly 200 rows the select holds them all;
+- with 201 it holds 50 (51 on the Edit page, the row's own first) and the
+  search narrows them, while a visitor's search, sent from the same page after
+  logging out, goes to log in (the search route's own `requires user`);
+- on the Edit page, a row whose own user sorts after every other is offered
+  first and once, and saving the form unchanged keeps it;
+- a crafted post of an id outside the rendered options is refused with
+  "must be one of the options".
 
 ### The Delete button: a dialog, and the page behind it
 
 A row's own page (`Admin.Ts.Show`) has a Delete button. It opens an
 `al-dialog` (Appendix C), "Delete this comment?", which shows what the
-delete page shows before anything is deleted: how many rows go with the
-row (its `@cascade` references), how many lose a reference (`@setNull`)
-and how many keep it from being deleted (`@restrict`), then the button,
-or the reason there is none. The button posts the delete module's write route,
-`Admin.Posts.Delete.Destroy { id: … }`: a route is a URL like any other,
-so the dialog needs no copy of it, and the refusals (a row other rows
-keep, a row with children, the signed-in Admin's own account) are made
-once, in `Destroy`. The Show module counts what the dialog shows with the
-same `load` counts, in the regions `model`, `load`, `blockers` and
-`counts`. A refusal is `Response.invalid`; it is shown in the dialog,
-which stays open across the update.
+delete page shows before anything is deleted:
+
+- how many rows go with the row (its `@cascade` references);
+- how many lose a reference (`@setNull`);
+- how many keep it from being deleted (`@restrict`);
+- then the button, or the reason there is none.
+
+The button posts the delete module's write route, `Admin.Posts.Delete.Destroy
+{ id: … }`: a route is a URL like any other, so the dialog needs no copy of
+it, and the refusals (a row other rows keep, a row with children, the
+signed-in Admin's own account) are made once, in `Destroy`.
+
+The Show module counts what the dialog shows with the same `load` counts,
+in the regions `model`, `load`, `blockers` and `counts`. A refusal is
+`Response.invalid`; it is shown in the dialog, which stays open across the
+update.
+
+#### The link to the delete page
 
 The dialog ends with a link, "See the details", to the delete page,
 `Admin.Ts.Delete`, which stays: it is the same confirmation as a page of
 its own, with the row's label, and an app may link to it from anywhere.
+
+#### The dialog in the browser
+
 The button that opens the dialog is the library's documented shape, a
 `<button commandfor="delete-dialog" command="show-modal">`. Invoker
-commands are the browser's own, so it opens the dialog with no
-JavaScript at all in Chromium 135 and later, Safari 26 and Firefox 140;
-in an older browser `al.js`'s shim adds them. The dialog itself is the
-platform's: Escape and the close button dismiss it, focus stays inside it
-while it is open and returns to the button, and it stays open if a
-Datastar update redraws the page behind it. The generated Show page's
-tests post `Destroy` from the Show page, as the dialog does.
+commands are the browser's own, so it opens the dialog with no JavaScript
+at all in Chromium 135 and later, Safari 26 and Firefox 140; in an older
+browser `al.js`'s shim adds them.
+
+The dialog itself is the platform's: Escape and the close button dismiss
+it, focus stays inside it while it is open and returns to the button, and
+it stays open if a Datastar update redraws the page behind it.
+
+The generated Show page's tests post `Destroy` from the Show page, as the
+dialog does.
 
 ### The delete page
 
 Deleting a row is where a database's rules show (chapter 8, "Writing").
-A row that a `@restrict` reference points at cannot be deleted: the
-database refuses, the task fails, and a request whose task fails is an
-error page. A row with `@cascade` references takes the rows that refer
-to it along with it, which the person deleting it should know. So the
-delete page counts both, before anyone presses anything. A user is the
-author of posts, and `Post.author` is `@restrict`:
+
+- A row that a `@restrict` reference points at cannot be deleted: the
+  database refuses, the task fails, and a request whose task fails is an
+  error page.
+- A row with `@cascade` references takes the rows that refer to it along
+  with it, which the person deleting it should know.
+
+So the delete page counts both, before anyone presses anything. A user is
+the author of posts, and `Post.author` is `@restrict`:
 
 ```alder part=blog/Admin.Users.Delete
 -- generated by `alder new admin`; regions between
@@ -2548,18 +2816,22 @@ Destroy.update params session = {
 `load` counts the posts that refer to the user, and `blockers` adds up
 every count that keeps the row. When it is more than zero, the `view`
 shows no button and says why, and `Destroy` refuses too, with
-`Response.invalid`. The check in `Destroy` matters even though the button
-is gone: a `DELETE` can be sent without the page, and `Destroy` is the
-last place that can turn it away before the database does it with an
-error.
+`Response.invalid`.
 
-`User` is the table of the session's user, so its delete page has one
-more check, `own`: whether the row is the signed-in user's own. An Admin
-who deleted their own account would be locked out of the admin they are
-using, and if they were the only Admin, nobody could get back in. So
-the `view` says "You cannot delete your own account." where the button
-would be, and `Destroy` answers `Response.invalid` with the same
-sentence, first, before the blockers. The other tables' delete pages have no `own`.
+The check in `Destroy` matters even though the button is gone: a `DELETE`
+can be sent without the page, and `Destroy` is the last place that can turn
+it away before the database does it with an error.
+
+#### The user's own account
+
+`User` is the table of the session's user, so its delete page has one more
+check, `own`: whether the row is the signed-in user's own. An Admin who
+deleted their own account would be locked out of the admin they are using,
+and if they were the only Admin, nobody could get back in.
+
+So the `view` says "You cannot delete your own account." where the button
+would be, and `Destroy` answers `Response.invalid` with the same sentence,
+first, before the blockers. The other tables' delete pages have no `own`.
 
 ```alder part=blog/Admin.Users.Delete
 Delete.view : Model -> Session -> Html
@@ -2838,9 +3110,10 @@ test "a demoted Admin is refused at once" = {
 
 The user table's edit page guards the role the same way. Saving one's
 own row with another role is refused, since an Admin who made themselves
-a Reader would lose the admin at the next request; anything else on
-one's own row may change, and so may another user's role, another
-Admin's included. The check is the first line of `Save`'s region
+a Reader would lose the admin at the next request.
+
+Anything else on one's own row may change, and so may another user's role,
+another Admin's included. The check is the first line of `Save`'s region
 `update` in `Admin.Users.Edit`:
 
 ```alder fragment
@@ -2851,13 +3124,20 @@ else {
 }
 ```
 
-and three generated tests say it: "an Admin cannot change their own
-role" (the answer is `FormRejected`, the row as it was), "an Admin saves
-their own account, the role unchanged", and "an Admin demotes another
-Admin". The guard is per request and per row: two Admins who demote
-each other at the same moment both succeed, and an app whose only two
-Admins do that has none left (give one the role back in the database). `requires user` makes `session.user` the user's id, not a
-`Maybe` (chapter 6), so it compares with the row's id directly.
+Three generated tests say it:
+
+- "an Admin cannot change their own role" (the answer is `FormRejected`, the
+  row as it was);
+- "an Admin saves their own account, the role unchanged";
+- "an Admin demotes another Admin".
+
+> **Per request and per row.** The guard is per request and per row: two
+> Admins who demote each other at the same moment both succeed, and an app
+> whose only two Admins do that has none left (give one the role back in the
+> database).
+
+`requires user` makes `session.user` the user's id, not a `Maybe` (chapter
+6), so it compares with the row's id directly.
 
 The post's delete page counts the other way: `Comment.post` is
 `@cascade`, so it lists "Comments deleted with it", and keeps its
@@ -2865,69 +3145,100 @@ button. A `@restrict` reference further down a cascade (a comment that a
 third table's row would keep) is counted too, at every level, and
 blocks the delete like a direct one.
 
-**A tree.** A table that refers to itself with `@cascade` (a reply to a
-reply, a folder in a folder) is a tree: deleting a row deletes its
-children, theirs, and so on to any depth, which no query can follow, so
-the page cannot count every row a `@restrict` reference might hold far
-down. When such a delete can reach a `@restrict` reference (one to the
-table, or to a table its cascades reach), the delete page counts only the
-row's own children (the function `children`, in the region `blockers`),
-and deletes only a row without them: with children, it shows "Delete its
-children first." and no button, and `Destroy` answers `Response.invalid`
-with the same sentence. A row without children takes the usual path, its own
-`@restrict` references counted. So of a chain a → b → c whose last row a
-`@restrict` reference holds, a and b are refused for their children, c
-for the reference, and a childless row nothing refers to is deleted; the
-generated test checks the first and the last. A tree below another table
-(a post's nodes, which have nodes of their own) is counted the same way:
-the post is refused while its nodes have children. Only a table can refer
-to itself: a cycle through two tables would need each module to import
-the other, an import cycle (E0006). Without a `@restrict` in reach the
-database cascades the whole tree, and the page deletes as usual. Neither
-example has a tree.
+#### A tree
+
+A table that refers to itself with `@cascade` (a reply to a reply, a folder
+in a folder) is a tree: deleting a row deletes its children, theirs, and so
+on to any depth, which no query can follow, so the page cannot count every
+row a `@restrict` reference might hold far down.
+
+When such a delete can reach a `@restrict` reference (one to the table, or
+to a table its cascades reach), the delete page counts only the row's own
+children (the function `children`, in the region `blockers`), and deletes
+only a row without them:
+
+- With children, it shows "Delete its children first." and no button, and
+  `Destroy` answers `Response.invalid` with the same sentence.
+- A row without children takes the usual path, its own `@restrict`
+  references counted.
+
+So of a chain a → b → c whose last row a `@restrict` reference holds, a and
+b are refused for their children, c for the reference, and a childless row
+nothing refers to is deleted; the generated test checks the first and the
+last.
+
+A tree below another table (a post's nodes, which have nodes of their own)
+is counted the same way: the post is refused while its nodes have
+children.
+
+> **Only a table can refer to itself.** A cycle through two tables would
+> need each module to import the other, an import cycle (E0006).
+
+Without a `@restrict` in reach the database cascades the whole tree, and
+the page deletes as usual. Neither example has a tree.
 
 ### Bulk actions
 
 The list has a checkbox in the first column of every row. The checkboxes
 belong to a form of the page (`form="bulk"`), so a row's checkbox is
-submitted with it wherever it sits in the table. Two buttons below the
-table take the choice to the table's bulk page: "Act on the chosen rows"
-and, for no-script use, "Act on all rows on this page" (a second form of
-hidden ids). Both are `GET` forms to `Admin.Ts.Bulk`, whose route parameter
-`ids` is a list of the table's ids, so the chosen rows are in the address. The bulk page
-lists the rows and offers the table's actions. (Each checkbox is labelled
+submitted with it wherever it sits in the table. (Each checkbox is labelled
 with its row, "Choose hello-world", for a screen reader.)
+
+Two buttons below the table take the choice to the table's bulk page:
+
+- "Act on the chosen rows";
+- for no-script use, "Act on all rows on this page" (a second form of
+  hidden ids).
+
+Both are `GET` forms to `Admin.Ts.Bulk`, whose route parameter `ids` is a
+list of the table's ids, so the chosen rows are in the address. The bulk
+page lists the rows and offers the table's actions:
 
 - **Delete** the chosen rows, with the same care as the single delete
   page. A row that a `@restrict` reference holds is **refused**: it is
   listed with "(kept: other rows refer to it)" and left, and the rest
   are deleted. On the user table, the admin's own row is refused too,
-  listed with "(kept: your own account)". The
-  answer is `Response.refresh |> Response.success "Deleted 2 of 3"`, so
+  listed with "(kept: your own account)".
+
+  The answer is `Response.refresh |> Response.success "Deleted 2 of 3"`, so
   the person sees a toast (chapter 6, "Notices and in-flight"). As with
-  every write route, the gate runs first and the route reads the rows again, so what is
-  deleted is what the database holds now, not what the list showed.
+  every write route, the gate runs first and the route reads the rows again,
+  so what is deleted is what the database holds now, not what the list
+  showed.
+
 - **Set** a `Bool` column, or a column of a union with no payloads: one
   form per such column (`BulkSetPublished`, `BulkSetDone`), which updates
-  every chosen row and answers `Response.refresh |> Response.success "Updated 3"`.
+  every chosen row and answers
+  `Response.refresh |> Response.success "Updated 3"`.
+
+#### The size limit
 
 An action takes at most one page of the list, 25 rows (`maxRows`, the
 list's `perPage`): the page reads the first 25 ids it is given, says so
-when it was given more, and every action then answers `Response.invalid "Choose at
-most 25 rows at a time."`. The checkboxes and "all rows on this page"
-never send more; a longer address is made by hand.
+when it was given more, and every action then answers
+`Response.invalid "Choose at most 25 rows at a time."`. The checkboxes and
+"all rows on this page" never send more; a longer address is made by hand.
 
-A table with neither a delete nor a set action gets no bulk page. The **delete is not generated for a table**
-whose deletion can meet a `@restrict` below a `@cascade`, or in a tree of
-the table's own (the cases the single delete page counts level by level or
-refuses by children, above). A `@cascade` below a `@cascade` is no reason
-by itself: the database deletes those rows too. The refusal of a row is decided by one query
-over the chosen ids, which follows only the references that point at the
-chosen rows directly; a reference that blocks the delete further down
-would not be seen for many rows at once, and the delete would fail in the
-database as an error page. Such a table keeps its single delete page and
-any set action. The bulk modules have the regions `bulk` (the form types
-and the write routes' `update`s) and `actions` (the forms in the view), so `alder regen
+#### When there is no bulk page
+
+A table with neither a delete nor a set action gets no bulk page.
+
+The **delete is not generated for a table** whose deletion can meet a
+`@restrict` below a `@cascade`, or in a tree of the table's own (the cases
+the single delete page counts level by level or refuses by children,
+above). A `@cascade` below a `@cascade` is no reason by itself: the
+database deletes those rows too.
+
+The refusal of a row is decided by one query over the chosen ids, which
+follows only the references that point at the chosen rows directly; a
+reference that blocks the delete further down would not be seen for many
+rows at once, and the delete would fail in the database as an error page.
+Such a table keeps its single delete page and any set action.
+
+#### Regions
+
+The bulk modules have the regions `bulk` (the form types and the write
+routes' `update`s) and `actions` (the forms in the view), so `alder regen
 admin` rewrites them as the columns change, and their generated tests
 include a row that is refused.
 
@@ -2938,39 +3249,55 @@ database per org, so the admin has no page of every org's projects: no
 query could read them. `alder new admin` (`examples/workspace`, whose
 admin is committed as it wrote it) gives each silo three things instead.
 
-- **A picker**, `Admin.Orgs.Pick` at `/admin/orgs`: every row of the
-  key's table, by its label, each a link to that org's dashboard. The
-  layout's nav links to it ("Projects and todos, by org") where it would
-  link to the siloed tables' lists, and the dashboard has a card for it
-  (the newest orgs, each opening its dashboard) where their cards would
-  be.
-- **The dashboard of one org**, `Admin.Orgs.Dashboard` at
-  `/admin/orgs/{org}`: the org's name, and a card per siloed table, its
-  count and newest rows, read from that org's database when the page is
-  opened, never for every org at once.
-- **The tables' pages**, the usual six per table, at
-  `/admin/orgs/{org}/project…`. Each is declared with the admin form of
-  chapter 6:
+#### The picker
 
-  ```alder fragment
-  route Show = GET "/admin/orgs/{org}/project/{id}" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
-  ```
+`Admin.Orgs.Pick` at `/admin/orgs`: every row of the key's table, by its
+label, each a link to that org's dashboard.
 
-  `org` is the page's first parameter, and the role check, not `via`,
-  guards it: an Admin manages an org's rows without being a member.
-  Inside, `session.org` is that parameter, so every read and write goes
-  to the org's database; every link to a page of the silo carries it
+- The layout's nav links to it ("Projects and todos, by org") where it would
+  link to the siloed tables' lists.
+- The dashboard has a card for it (the newest orgs, each opening its
+  dashboard) where their cards would be.
+
+#### The dashboard of one org
+
+`Admin.Orgs.Dashboard` at `/admin/orgs/{org}`: the org's name, and a card
+per siloed table, its count and newest rows, read from that org's database
+when the page is opened, never for every org at once.
+
+#### The tables' pages
+
+The usual six per table, at `/admin/orgs/{org}/project…`. Each is declared
+with the admin form of chapter 6:
+
+```alder fragment
+route Show = GET "/admin/orgs/{org}/project/{id}" { org: Org.OrgId, id: Project.ProjectId } requires user, role Admin, silo org
+```
+
+`org` is the page's first parameter, and the role check, not `via`, guards
+it: an Admin manages an org's rows without being a member.
+
+- Inside, `session.org` is that parameter, so every read and write goes to
+  the org's database.
+
+- Every link to a page of the silo carries it
   (`Admin.Projects.Show.Show { org: session.org, id: row.id }`), as do the
-  list's search and bulk forms, whose `action` is built around it. The
-  partition column is the page's parameter, so no list, row page or
-  form shows or edits it: a new row takes `org: session.org`.
+  list's search and bulk forms, whose `action` is built around it.
+
+- The partition column is the page's parameter, so no list, row page or form
+  shows or edits it: a new row takes `org: session.org`.
+
+#### Shared and unsiloed tables
 
 A shared table's admin is as before, and a table partitioned by a key
 but in no silo (the workspace's `Activity`) keeps the ordinary pages,
-unscoped like every admin page. A shared table's delete page does not
-count rows in a silo (they are in other databases, and a delete there
-is not this delete's): deleting an org leaves its silo an orphan, which
-`alder silos prune` removes (chapter 11).
+unscoped like every admin page.
+
+A shared table's delete page does not count rows in a silo (they are in
+other databases, and a delete there is not this delete's): deleting an org
+leaves its silo an orphan, which `alder silos prune` removes (chapter 11).
+
+#### Tests
 
 Its generated tests are the usual ones, and four more. Most of a siloed
 page's tests sign the Admin in as a member of the test's org, so that
@@ -2981,46 +3308,66 @@ org and use the pages alone:
 - `Admin.Projects.Index "an Admin who is no member of the org lists its
   projects, and only its"`: two orgs, a project in each; the list of one
   org shows its project only.
+
 - `Admin.Projects.Bulk "a bulk action stays inside one org"`: the bulk
   page of one org, given both projects' ids, takes only its own, and a
   delete leaves the other org's project where it was.
+
 - `Admin.Orgs.Pick "the picker lists every org, by name, each opening
   its dashboard"`, and `Admin.Orgs.Dashboard "the org's dashboard counts its
   projects, not another org's, and lists the newest five"`.
 
 A Member is refused every page of it (a 404), as on any admin page.
-`alder regen admin` treats a siloed table as new when the org's
-dashboard does not link to its list. On the fixture of the generators'
-tests with a silo (`testdata/generate/fixture-silo`) its tests kill 275
-of the 288 mutants (0.95), the survivors being the shared admin's known
-ones (chapter 10's equivalent `> 200`), a list whose every column is
-a reference, which has nothing to sort by, and the redirect of the
-fixture's own `Logout`, which is written in the old form and left alone.
+
+`alder regen admin` treats a siloed table as new when the org's dashboard
+does not link to its list.
+
+On the fixture of the generators' tests with a silo
+(`testdata/generate/fixture-silo`) its tests kill 275 of the 288 mutants
+(0.95). The survivors are:
+
+- the shared admin's known ones (chapter 10's equivalent `> 200`);
+- a list whose every column is a reference, which has nothing to sort by;
+- the redirect of the fixture's own `Logout`, which is written in the old
+  form and left alone.
 
 ### What the admin does not do
+
+### Unscoped reads and writes
 
 It reads and writes every row with the unscoped operations (`Db.from`,
 `Db.get`, `Db.insert`, …), because the role is the rule there: an Admin
 acts on everyone's rows (chapter 6, "When to use the unscoped forms").
+
 It writes no check of ownership: the route's `requires user, role Admin`
-checks the role before anything else runs, for the page and for
-every write route, and `isAdmin` reads it again in `load` and at the
-head of each write route's `update`.
+checks the role before anything else runs, for the page and for every
+write route, and `isAdmin` reads it again in `load` and at the head of each
+write route's `update`.
+
+### Secrets
 
 It never shows or edits a secret. A column is a secret when its type is
-`Text.Secret`, or when its name, in any case, begins with `password`,
-ends in `hash`, or holds `token` or `secret` (`passwordHash`,
-`apiToken`, `clientSecret`): it is left out of the list, its search and
-its sorts, the row's page and both forms, and it never labels a row. An
-insert that must name one writes it empty (`""`, or `Nothing` for a
-`Maybe`), so a user the admin creates has no password until the app
-sets one; a secret of another type that an insert must name is refused,
-with a sentence asking for a default or a `Maybe`. The blog's
-`User.passwordHash` is such a column. It loads every row of a
-referenced table for a select up to 200 rows, and narrows by a search
-beyond that ("A long table behind a reference"); it has no
-autocomplete element, no bulk action across pages, and no permissions
-finer than one role.
+`Text.Secret`, or when its name, in any case, begins with `password`, ends
+in `hash`, or holds `token` or `secret` (`passwordHash`, `apiToken`,
+`clientSecret`). A secret is:
+
+- left out of the list, its search and its sorts, the row's page and both
+  forms;
+- never used to label a row.
+
+An insert that must name one writes it empty (`""`, or `Nothing` for a
+`Maybe`), so a user the admin creates has no password until the app sets
+one. A secret of another type that an insert must name is refused, with a
+sentence asking for a default or a `Maybe`. The blog's `User.passwordHash`
+is such a column.
+
+### Limits
+
+- It loads every row of a referenced table for a select up to 200 rows, and
+  narrows by a search beyond that ("A long table behind a reference").
+- It has no autocomplete element.
+- It has no bulk action across pages.
+- It has no permissions finer than one role.
 
 ## Logging in: `alder new auth`
 
@@ -3088,15 +3435,27 @@ edited migrations/schema.json
 +}
 ```
 
-`App` is edited in four fixed places, and nothing else in it moves: the
-session gains `user` after the fields it has; `login = Auth.Login.Login`
-follows the session, naming the route that is the login page; `route Logout = POST
-"/_/Logout" { }` is the write route that logs out, with its `Logout.update`
-(a `POST`, so that a link cannot log anyone out), which empties the user and answers
-`Response.redirect` to the login; and a test of Logout goes at the end. The user module is
-imported in its sorted place. The command is refused when the session
-already has a `user`, when a module `Auth` or `Auth.…` exists, and when
-`App` has a `login`.
+`App` is edited in four fixed places, and nothing else in it moves:
+
+1. The session gains `user` after the fields it has.
+
+2. `login = Auth.Login.Login` follows the session, naming the route that is
+   the login page.
+
+3. `route Logout = POST "/_/Logout" { }` is the write route that logs out,
+   with its `Logout.update` (a `POST`, so that a link cannot log anyone
+   out), which empties the user and answers `Response.redirect` to the
+   login.
+
+4. A test of Logout goes at the end.
+
+The user module is imported in its sorted place.
+
+The command is refused when:
+
+- the session already has a `user`;
+- a module `Auth` or `Auth.…` exists;
+- `App` has a `login`.
 
 The table it created:
 
@@ -3115,13 +3474,18 @@ table User {
 ```
 
 `passwordHash` is a `Text.Secret`: the admin never shows it, and a
-form never echoes it (chapter 9). `--users T` names another table; when
-`T` exists, it must have `email: Text.Email` and a `passwordHash` of
-`Text` or `Text.Secret`, and it is used as it is. `--role R` also puts
-a role in the session, copied from the user's row at login and set back
-to the first constructor at logout. The role is a decision about the
-app's users, so the command does not invent one: `R` must be a union of
-the user module, and the command that makes one comes first.
+form never echoes it (chapter 9).
+
+- **`--users T`** names another table; when `T` exists, it must have
+  `email: Text.Email` and a `passwordHash` of `Text` or `Text.Secret`, and
+  it is used as it is.
+
+- **`--role R`** also puts a role in the session, copied from the user's row
+  at login and set back to the first constructor at logout.
+
+The role is a decision about the app's users, so the command does not
+invent one: `R` must be a union of the user module, and the command that
+makes one comes first.
 
 ```text
 $ alder new type Table.User "Role = Member | Admin"
@@ -3131,14 +3495,21 @@ $ alder new auth --role Role
 (on an app without a user table: the table it creates then has
 `role: Role = Member`). That is what `alder new admin` asks for.
 
-The login is two routes in `Auth.Login`: `route Login = GET "/login" { }`, the page, and `route
-SignIn = POST "/login/_/SignIn" { } form Credentials`, the write route that
-takes the form `Credentials` (an email and a `Text.Secret` password). `SignIn.update` asks
-the capability; a match puts the user in the session and answers `Response.redirect`, anything
-else answers `Response.invalid "Email or password is incorrect."`, the same
-sentence for an unknown email and a wrong password. The module is shaped like the blog's (chapter 14); what differs is
-its `Password` capability, which has two entries, and whose adapter is
-real:
+The login is two routes in `Auth.Login`:
+
+- `route Login = GET "/login" { }`, the page;
+
+- `route SignIn = POST "/login/_/SignIn" { } form Credentials`, the write
+  route that takes the form `Credentials` (an email and a `Text.Secret`
+  password).
+
+`SignIn.update` asks the capability. A match puts the user in the session
+and answers `Response.redirect`; anything else answers
+`Response.invalid "Email or password is incorrect."`, the same sentence for
+an unknown email and a wrong password.
+
+The module is shaped like the blog's (chapter 14); what differs is its
+`Password` capability, which has two entries, and whose adapter is real:
 
 ```alder fragment
 capability Password {
@@ -3150,12 +3521,18 @@ capability Password {
 `verify` answers the user whose email and password these are, or
 `Nothing`. `hash` turns a password into the text to store in
 `passwordHash`: a registration page, or a "change your password" page,
-calls it. In tests, the fake stands in for both (any user with a row
-logs in, whatever the password; `hash` returns its input), and the
-generated tests log in through the form, reject an unknown email, and
-log out from the login page, which shows a Log out button to a signed-in
-user. Where to put the other Log out buttons is the app's own decision,
-so the command adds none. In a page's `view`:
+calls it.
+
+In tests, the fake stands in for both (any user with a row logs in,
+whatever the password; `hash` returns its input), and the generated tests:
+
+- log in through the form;
+- reject an unknown email;
+- log out from the login page, which shows a Log out button to a signed-in
+  user.
+
+Where to put the other Log out buttons is the app's own decision, so the
+command adds none. In a page's `view`:
 
 ```alder fragment
 <al-button variant="outline" click={App.Logout}>Log out</al-button>
@@ -3168,30 +3545,51 @@ A login goes to the route at `/`; `--to <Route>` names another.
 The adapter, `adapters/auth/login_password.go`, is plain Go, using only
 the standard library. A password is never stored. What is stored is the
 result of a **key derivation function**: a slow, one-way function of
-the password and a random **salt**. PBKDF2 with SHA-256 (Go's
-`crypto/pbkdf2`) runs HMAC-SHA-256 600,000 times; the count makes each
-guess of an attacker who has stolen the table cost as much as a login,
-and the salt, 16 random bytes per password, makes two users with the
-same password have different hashes, so one guess cannot be tried
-against every row at once. The stored text says how it was made:
+the password and a random **salt**.
+
+PBKDF2 with SHA-256 (Go's `crypto/pbkdf2`) runs HMAC-SHA-256 600,000
+times:
+
+- The count makes each guess of an attacker who has stolen the table cost
+  as much as a login.
+
+- The salt, 16 random bytes per password, makes two users with the same
+  password have different hashes, so one guess cannot be tried against
+  every row at once.
+
+The stored text says how it was made:
 
 ```text
 pbkdf2-sha256$600000$<salt>$<hash>
 ```
 
-with the salt and the 32-byte hash in unpadded base64. To check a
-password, the adapter reads the row by email, splits the stored text,
-derives the key again with the stored salt and the **stored** count (so
-hashes made before a change of the count keep working), and compares
-the two keys with `crypto/subtle.ConstantTimeCompare`, which takes the
-same time wherever they differ: an ordinary comparison stops at the
-first different byte, and its timing would tell an attacker how much of
-a guess was right. An unknown email is `Nothing` too, after a
-derivation all the same, so that the answer's timing does not say which
-emails have accounts. A stored text that is not of this form is an
-error, never a login, and is answered as slowly as a real one (the
-dummy derivation runs first); an empty one is a user without a password,
-who cannot log in. The core of it:
+with the salt and the 32-byte hash in unpadded base64.
+
+#### Checking a password
+
+To check a password, the adapter:
+
+1. reads the row by email;
+
+2. splits the stored text;
+
+3. derives the key again with the stored salt and the **stored** count (so
+   hashes made before a change of the count keep working);
+
+4. compares the two keys with `crypto/subtle.ConstantTimeCompare`, which
+   takes the same time wherever they differ: an ordinary comparison stops
+   at the first different byte, and its timing would tell an attacker how
+   much of a guess was right.
+
+#### Edge cases
+
+- An unknown email is `Nothing` too, after a derivation all the same, so
+  that the answer's timing does not say which emails have accounts.
+- A stored text that is not of this form is an error, never a login, and is
+  answered as slowly as a real one (the dummy derivation runs first).
+- An empty one is a user without a password, who cannot log in.
+
+The core of it:
 
 ```go
 // Check reports whether password is the one stored was derived from, comparing in constant
@@ -3240,27 +3638,47 @@ func parse(stored string) (parsed, error) {
 ```
 
 A stored key shorter than 16 bytes is malformed too: a truncated hash
-would make guessing cheap. `Verify` finds the row the way the blog's
-development stub does (chapter 14): it reads the `User` table through
-the store in the running task's context, in the task's transaction.
-When a login verifies against a hash made with fewer iterations than
-the adapter's count now, it stores a new hash, made with the current
-count, in the same transaction: raising `iterations` upgrades every
-user at their next login. When storing it fails (a locked database, say)
-the login still succeeds with the old hash, which the next login
-upgrades; the failure is logged at `warn` through the request's log (the
-standard logger when there is none), with the user's id and never the
-password. Its tests, `login_password_test.go`, run with
-`go test ./adapters/...` in the built app (chapter 7): a round trip, a
-wrong password, an unknown email (which derives against the dummy hash
-all the same), the upgrade of an old hash and a failed one, another iteration count, a
-changed key and ten malformed texts.
+would make guessing cheap.
+
+#### Finding the row
+
+`Verify` finds the row the way the blog's development stub does (chapter
+14): it reads the `User` table through the store in the running task's
+context, in the task's transaction.
+
+#### Upgrading a hash
+
+When a login verifies against a hash made with fewer iterations than the
+adapter's count now, it stores a new hash, made with the current count, in
+the same transaction: raising `iterations` upgrades every user at their
+next login.
+
+When storing it fails (a locked database, say) the login still succeeds
+with the old hash, which the next login upgrades; the failure is logged at
+`warn` through the request's log (the standard logger when there is none),
+with the user's id and never the password.
+
+#### Its tests
+
+`login_password_test.go` runs with `go test ./adapters/...` in the built app
+(chapter 7). It covers:
+
+- a round trip;
+- a wrong password;
+- an unknown email (which derives against the dummy hash all the same);
+- the upgrade of an old hash and a failed one;
+- another iteration count;
+- a changed key;
+- ten malformed texts.
+
+#### The cost of slowness
 
 The slowness is the point, and it has a cost: each attempt takes about
 60 ms of CPU, so a server that lets anyone post `/login` as fast as they
-like lets them use its CPU too. Put a rate limit in front of `/login`
-(per address and per email) in the proxy or load balancer the app runs
-behind.
+like lets them use its CPU too.
+
+> **Rate-limit `/login`.** Put a rate limit in front of it (per address and
+> per email) in the proxy or load balancer the app runs behind.
 
 ## Types, values and tests: `alder new type`, `decl`, `test`
 
@@ -3350,8 +3768,8 @@ Each refuses a name the module has.
 ## Blank routes and whole bodies: `--blank` and `fill --decl`
 
 `alder new route … --blank` writes a route whose `Model` is `{ }` and
-whose `Stats.load` and `Stats.view` are holes, for an author who knows what the page
-shows but no template fits it (with `--show T`, the page keeps
+whose `Stats.load` and `Stats.view` are holes, for an author who knows what
+the page shows but no template fits it (with `--show T`, the page keeps
 `/{id}` and its `id` parameter, and nothing else of `--show`):
 
 ```text command=guestbook
@@ -3367,9 +3785,14 @@ app/Stats.alder:11:28: warning[W0002]: hole ?view has type Html
 
 `Model` is a type, and a type cannot be a hole. So the one command that
 replaces more than a hole is `alder fill --decl <Module>.<decl> -`: it
-replaces the **whole body** of one declaration (a value's body, a test's
-block, or a type's right-hand side) with what standard input holds, one
-expression or one type, keeping the declaration's name and signature.
+replaces the **whole body** of one declaration with what standard input
+holds, one expression or one type, keeping the declaration's name and
+signature. The body is one of:
+
+- a value's body;
+- a test's block;
+- a type's right-hand side.
+
 As with every fill, the copy must check:
 
 ```text command=guestbook
@@ -3447,27 +3870,40 @@ added import Layout to app/Stats.alder
 type, and `Layout` because it names `Layout.Page`. Markup is put on the
 line after `view model session =`, two spaces in, as views are written.
 
-When to prefer a hole: whenever there is one. A hole's type is the
-checker's statement of what is missing, and a fill cannot disturb the
-code around it. `--decl` rewrites a whole body, so it can drop what a
-hole fill cannot: an `update` that loses its `Response.invalid`, a view that loses the
-form a test submits. The checker refuses neither (a write route's `update` is any
-`Task Response`), and the tests catch them, if there are tests to catch them. Use it for what has no hole: a `Model`, a body a template
-wrote that does not fit, a generated test whose setup does not fit the
-page's rules. A test rewritten whole is checked for its types only, not
-for what it asserts, and `fill --decl` says so, naming `alder test
---mutate` as the check that it still tests something.
+### When to prefer a hole
+
+Prefer a hole whenever there is one. A hole's type is the checker's
+statement of what is missing, and a fill cannot disturb the code around it.
+
+`--decl` rewrites a whole body, so it can drop what a hole fill cannot: an
+`update` that loses its `Response.invalid`, a view that loses the form a
+test submits. The checker refuses neither (a write route's `update` is any
+`Task Response`), and the tests catch them, if there are tests to catch
+them.
+
+Use `--decl` for what has no hole:
+
+- a `Model`;
+- a body a template wrote that does not fit;
+- a generated test whose setup does not fit the page's rules.
+
+> **A rewritten test is checked for its types only**, not for what it
+> asserts, and `fill --decl` says so, naming `alder test --mutate` as the
+> check that it still tests something.
 
 ## Buttons in a list, and route parameters
 
-`alder new msg` puts its button at the end of the view. A button that
-acts on one row of a list belongs in the list, inside the `for` that
-shows the row: `--in-for <binder>` puts it at the end of the loop body's
-element, and fills the route's parameters from the binder where it can (a
-field of the binder with the same name and type, `user: m.user`; for a
-field of a table's id type, the binder's id when the binder is a row of
-that table, `id: e.id`), with holes for the rest. `--when <expression>`
-shows it only when the expression holds:
+`alder new msg` puts its button at the end of the view. A button that acts
+on one row of a list belongs in the list, inside the `for` that shows the
+row: `--in-for <binder>` puts it at the end of the loop body's element, and
+fills the route's parameters from the binder where it can:
+
+- a field of the binder with the same name and type (`user: m.user`);
+- for a field of a table's id type, the binder's id when the binder is a row
+  of that table (`id: e.id`);
+- holes for the rest.
+
+`--when <expression>` shows it only when the expression holds:
 
 ```text command=guestbook
 $ alder new msg Home Hide id:Entry.EntryId --in-for e --when "List.length model.entries > 1"
@@ -3531,17 +3967,30 @@ app/Home.alder:98:35: warning[W0002]: hole ?hideId has type Entry.EntryId
 
 A button in a loop has its route's name as its class (`hide`), so a
 test can count the rows' buttons (`Test.count "#entries .hide"
-page.doc`). The new route `Hide` is POST "/_/Hide" with the `id` it takes, its
-`Hide.update` starts as `Response.refresh`, and the row the test clicks is a hole (`Hide { id: ?hideId }`): which rows the
-loop shows is the page's logic (a team's members, but not its owner;
-the invites to the user's email that wait), which the generator cannot
-know. A comment above the test names the loop's list (`model.entries`)
-and says what to do: insert rows so that the signed-in user sees the
-row it clicks, and fill the hole with that row's values. `fill` drops
-the generator's comments once their holes are filled.
+page.doc`).
+
+- The new route `Hide` is POST "/_/Hide" with the `id` it takes.
+
+- Its `Hide.update` starts as `Response.refresh`.
+
+- The row the test clicks is a hole (`Hide { id: ?hideId }`): which rows the
+  loop shows is the page's logic (a team's members, but not its owner; the
+  invites to the user's email that wait), which the generator cannot know.
+
+A comment above the test names the loop's list (`model.entries`) and says
+what to do: insert rows so that the signed-in user sees the row it clicks,
+and fill the hole with that row's values. `fill` drops the generator's
+comments once their holes are filled.
+
+### Adding a parameter
 
 `alder edit route <Route> add-param <name>:<Type>[=default]` adds a
-parameter to a route (`alder edit page` is the old name, and prints that it is now `alder edit route`): a query parameter, such as a search box's `q`:
+parameter to a route: a query parameter, such as a search box's `q`.
+
+> **The old name.** `alder edit page` is the old name, and prints that it is
+> now `alder edit route`.
+
+The command:
 
 ```text command=guestbook
 $ alder edit route Stats add-param "q:Text=\"\""
@@ -3570,12 +4019,13 @@ far add things of their own: the guestbook, a `created`/`updated` pair
 on every table, a write route named `SubmitNewNote`. These keep the task's
 names instead.
 
-`alder new notes --bare` writes an app without the guestbook: `App`
-(its session empty, the error and not-found pages), `Layout`, the
-stylesheet and `adapters/`; no page, no table, no migration. The
-transcripts below run in such an app. A table with exactly the columns
-a task names: `--no-timestamps` leaves out the `created`/`updated`
-pair, and a field may then be `@created` itself:
+`alder new notes --bare` writes an app without the guestbook: `App` (its
+session empty, the error and not-found pages), `Layout`, the stylesheet and
+`adapters/`; no page, no table, no migration. The transcripts below run in
+such an app.
+
+A table with exactly the columns a task names: `--no-timestamps` leaves out
+the `created`/`updated` pair, and a field may then be `@created` itself:
 
 ```text command=notes
 $ alder new table User email:Text.Email@unique name:Text.NonEmpty passwordHash:Text created:Time@created --no-timestamps
@@ -3760,12 +4210,13 @@ app/Notes/Index.alder:48:29: warning[W0002]: hole ?expected has type Answer
 the route's button an `id` (`<al-button id="cancel" …>`), as a task's
 selectors may need.
 
-**Path parameters.** A path with a `{name}` segment takes `--param
-name:Type` for each; the page's parameter record is written from them
-in the path's order, and its `Show.load` is the hole `?load`, since what the
-parameters name is the page's logic. `--show T --by <column>` reads the
-row by a `@unique` column of `T` rather than by its id, the path's last
-segment:
+### Path parameters
+
+A path with a `{name}` segment takes `--param name:Type` for each; the
+page's parameter record is written from them in the path's order, and its
+`Show.load` is the hole `?load`, since what the parameters name is the
+page's logic. `--show T --by <column>` reads the row by a `@unique` column
+of `T` rather than by its id, the path's last segment:
 
 ```text command=notes
 $ alder new type Table.Note "Slug = brand Text"
@@ -3881,11 +4332,13 @@ app/Tags/Show.alder:11:28: warning[W0002]: hole ?load has type Query Model
                              ^^^^^
 ```
 
-**The session.** `alder edit session add-field` adds a field at the end
-of `App`'s `session`. A default is required: a new visitor's session,
-and every cookie stored before the field existed, take it. A session
-record written elsewhere (a test's `Test.login { user: me }`), on
-one line or over several, gets the field with its default too:
+### The session
+
+`alder edit session add-field` adds a field at the end of `App`'s
+`session`. A default is required: a new visitor's session, and every cookie
+stored before the field existed, take it. A session record written
+elsewhere (a test's `Test.login { user: me }`), on one line or over
+several, gets the field with its default too:
 
 ```text command=notes
 $ alder edit session add-field 'theme:Text="light"'
@@ -3904,18 +4357,23 @@ edited app/App.alder
 ```
 
 A session built some other way lacks the field, and shows in the check
-after the edit, which is written all the same (as `alder edit table`'s
-are; `--strict` refuses instead). An error in the session itself is not
-breakage elsewhere: a type that does not exist, or a default of another
-type (`bad:Theme=Nope`, `n:Int="x"`), refuses the edit with the
-checker's errors, and nothing is written.
+after the edit, which is written all the same (as `alder edit table`'s are;
+`--strict` refuses instead).
 
-**Removing.** `alder remove route <Module>` removes the route module's file (`alder remove page` is the old name);
-`alder remove table <T>` removes the table's declaration, its id type
-and its module's tests (the whole file, when the module holds nothing
-else), and writes the migration that drops the table, marked `DROPS
-DATA`. Each is refused while something else names what it removes:
-the errors of the app without it say where.
+An error in the session itself is not breakage elsewhere: a type that does
+not exist, or a default of another type (`bad:Theme=Nope`, `n:Int="x"`),
+refuses the edit with the checker's errors, and nothing is written.
+
+### Removing
+
+`alder remove route <Module>` removes the route module's file (`alder
+remove page` is the old name). `alder remove table <T>` removes the
+table's declaration, its id type and its module's tests (the whole file,
+when the module holds nothing else), and writes the migration that drops
+the table, marked `DROPS DATA`.
+
+Each is refused while something else names what it removes: the errors of
+the app without it say where.
 
 ```text command=notes
 $ alder remove route Tags.Show
@@ -3928,10 +4386,10 @@ $ alder remove table Note
 alder remove table: table `Note` is still used (the errors above): remove those uses first; nothing was removed
 ```
 
-A table the generated admin shows is used by the admin's pages: remove
-those (`alder remove route Admin.Notes.Index` and the others), then
-`alder regen admin`, which does not bring back a page of a table that
-is gone.
+> **The generated admin.** A table the generated admin shows is used by the
+> admin's pages: remove those (`alder remove route Admin.Notes.Index` and
+> the others), then `alder regen admin`, which does not bring back a page of
+> a table that is gone.
 
 Every command takes `--help`, which prints its usage line (`alder new
 route --help`).
@@ -3941,32 +4399,42 @@ route --help`).
 The commands above build an app without opening a file: every
 declaration's place, name and signature comes from a command, and every
 body is one checked expression given to `alder fill` (the exact count is
-at the end of this section). The proof is a drill: the teams app of the
-experiment E9 (task T10: users own teams, invite people by email, and an
-invited user accepts or declines; only the owner and the members see a
-team, and only the owner changes it), built from `alder new teams
---bare` with `alder new`, `alder edit` and `alder fill` alone, with the
-task's exact names, tables and fields. The script below is the whole of
-it, every command and every expression filled. `cmd/alder/drill_test.go`
-replays it from `testdata/drill/t10-teams/script.txt` (and checks that
-the blocks of this section are that file); then it checks the app's
-tables, columns, session, routes and forms against the task's
-Names block, runs the app's own 24 tests, adds the 8 hidden acceptance
-tests E9 kept from its models as the E9 harness adds them (all pass),
-and runs `alder test --mutate`, which kills all 33 of its mutants. A
-second drill, `testdata/drill/t9-bookings/script.txt` (T9: booking
-rooms, 54 commands; 19 tests, the 7 hidden ones pass, 32 of 33
-mutants killed), runs in the same test.
+at the end of this section).
 
-`--bare` leaves out the guestbook: the app starts as `App`, `Layout`,
-the stylesheet and `adapters/`, with no page and no table, so nothing
-the task does not name is left in it. The users first, with exactly the
-task's columns: `--no-timestamps` drops the `created`/`updated` pair
-`new table` adds by default, and `created:Time@created` puts back the one
-the task has. The table is made rather than left to `new auth` (which
-would make `passwordHash: Text.Secret`), because the task, and E9's
-tests, have `passwordHash: Text`; `new auth` uses a table that exists as
-it is:
+### The drill
+
+The proof is a drill: the teams app of the experiment E9 (task T10: users
+own teams, invite people by email, and an invited user accepts or declines;
+only the owner and the members see a team, and only the owner changes it),
+built from `alder new teams --bare` with `alder new`, `alder edit` and
+`alder fill` alone, with the task's exact names, tables and fields. The
+script below is the whole of it, every command and every expression filled.
+
+`cmd/alder/drill_test.go` replays it from
+`testdata/drill/t10-teams/script.txt` (and checks that the blocks of this
+section are that file). Then it:
+
+- checks the app's tables, columns, session, routes and forms against the
+  task's Names block;
+- runs the app's own 24 tests;
+- adds the 8 hidden acceptance tests E9 kept from its models as the E9
+  harness adds them (all pass);
+- runs `alder test --mutate`, which kills all 33 of its mutants.
+
+A second drill, `testdata/drill/t9-bookings/script.txt` (T9: booking
+rooms, 54 commands; 19 tests, the 7 hidden ones pass, 32 of 33 mutants
+killed), runs in the same test.
+
+`--bare` leaves out the guestbook: the app starts as `App`, `Layout`, the
+stylesheet and `adapters/`, with no page and no table, so nothing the task
+does not name is left in it.
+
+The users first, with exactly the task's columns: `--no-timestamps` drops
+the `created`/`updated` pair `new table` adds by default, and
+`created:Time@created` puts back the one the task has. The table is made
+rather than left to `new auth` (which would make `passwordHash:
+Text.Secret`), because the task, and E9's tests, have `passwordHash: Text`;
+`new auth` uses a table that exists as it is:
 
 ```text
 # the users, and logging in
@@ -4042,14 +4510,15 @@ Teams.Index.Index {}
 EOF
 ```
 
-`/teams`. `Model` first, by `--decl` (a type has no hole), then `load`
-by its hole, then the view by `--decl` (to put the markup on its own
-lines). The form `new form` adds fits no table (a `Team` needs an
-`owner` the form does not have), so the body of its `update` is a hole,
-filled with the insert and a `Response.redirect` to the new team's page;
-`--msg Create` names its write route as the task does (the default
-would be `SubmitNewTeam`); its generated test cannot know the new team's
-id, so it is rewritten with `--decl`:
+`/teams`. `Model` first, by `--decl` (a type has no hole), then `load` by
+its hole, then the view by `--decl` (to put the markup on its own lines).
+
+The form `new form` adds fits no table (a `Team` needs an `owner` the form
+does not have), so the body of its `update` is a hole, filled with the
+insert and a `Response.redirect` to the new team's page. `--msg Create`
+names its write route as the task does (the default would be
+`SubmitNewTeam`). Its generated test cannot know the new team's id, so it
+is rewritten with `--decl`:
 
 ```text
 # /teams: the teams a user owns or is a member of, by name, and a form for a new one
@@ -4116,11 +4585,14 @@ EOF
 ```
 
 `/teams/{id}`. The Remove button goes into the members' loop with
-`--in-for u`, its `user` filled from the binder (`u.id`) and shown only
-to the owner (`--when model.isOwner`). The route's `update` checks the owner
-itself (`owned`, below): a write route can be posted without the page, and a
-member may hold the owner's page and post its Remove. The
-generated test of Remove presses it for the signed-in owner, who has no
+`--in-for u`, its `user` filled from the binder (`u.id`) and shown only to
+the owner (`--when model.isOwner`).
+
+The route's `update` checks the owner itself (`owned`, below): a write route
+can be posted without the page, and a member may hold the owner's page and
+post its Remove.
+
+The generated test of Remove presses it for the signed-in owner, who has no
 button, so it is rewritten as the reference app's test:
 
 ```text
@@ -4262,13 +4734,14 @@ alder fill 'Teams.Show."only the owner changes the team, and the owner cannot le
 EOF
 ```
 
-`/invites`. `Row` is a record type, so `new type` declares it. The
-binder `r` of the invites' loop is a `Row`, which has no `id`, so
-`--in-for r` leaves the hole `?acceptId`, filled with `r.invite.id`
-(the first fill names the hole, the second has one left). In the generated test,
-which row to click is a hole too (`?acceptId` again, in the test), since
-which rows the loop shows is the page's logic: the test inserted an
-invite to the signed-in user's email, `invite1`:
+`/invites`. `Row` is a record type, so `new type` declares it. The binder
+`r` of the invites' loop is a `Row`, which has no `id`, so `--in-for r`
+leaves the hole `?acceptId`, filled with `r.invite.id` (the first fill names
+the hole, the second has one left).
+
+In the generated test, which row to click is a hole too (`?acceptId` again,
+in the test), since which rows the loop shows is the page's logic: the test
+inserted an invite to the signed-in user's email, `invite1`:
 
 ```text
 # /invites: the invites to the user's email that wait for an answer, to accept or decline
@@ -4429,34 +4902,44 @@ alder check
 alder test
 ```
 
-The drill needed three things beyond M12's commands, each added to them
-as a finding: `new auth` (no app with users could be built), `--blank`
-with `fill --decl` (no `Model` could change), and `new type`, `new
-decl`, `new test` with `--in-for` (a helper, a test, a row's button had
-no command). It needed `--when` too: the hidden tests count the Remove
-buttons a member sees, which must be none. A second agent's drill (T9)
-found the rest, added in M13's last round: `--bare`, `--no-timestamps`,
-`--msg` and `--id` (to have the task's names, not the generators'),
-`alder remove route|table`, path parameters (`--param`, `--show T --by
-<column>`) and `alder edit session add-field`.
+### What the drill needed
 
-What no command does yet: a route's line (its `requires`, or a
-path changed after the route exists) and a module's imports are written
-only by the generators that create them (a fill imports what its
-expression names); a table or page is renamed by `remove` and a new
-command, not in place. Everything else an app has, these commands write.
+The drill needed three things beyond M12's commands, each added to them as
+a finding:
+
+- `new auth` (no app with users could be built);
+- `--blank` with `fill --decl` (no `Model` could change);
+- `new type`, `new decl`, `new test` with `--in-for` (a helper, a test, a
+  row's button had no command).
+
+It needed `--when` too: the hidden tests count the Remove buttons a member
+sees, which must be none.
+
+A second agent's drill (T9) found the rest, added in M13's last round:
+
+- `--bare`, `--no-timestamps`, `--msg` and `--id` (to have the task's names,
+  not the generators');
+- `alder remove route|table`;
+- path parameters (`--param`, `--show T --by <column>`);
+- `alder edit session add-field`.
+
+> **Not yet:** what no command does yet: a route's line (its `requires`, or
+> a path changed after the route exists) and a module's imports are written
+> only by the generators that create them (a fill imports what its
+> expression names); a table or page is renamed by `remove` and a new
+> command, not in place. Everything else an app has, these commands write.
 
 ## Orgs and a database per org: `@partition`, `alder new silo`, `--requires org`, `via`
 
 M15's declarations (chapter 6, "Partitions"; chapter 8, "Silos") have
 commands of their own, so an app with orgs is built like any other.
+
 `testdata/drill/t11-workspace/script.txt` is the proof: the task T11
 (`experiments/tasks/t11-workspace.md`: orgs, members, and each org's
 projects and to-dos in a database of its own), built from `alder new ws
---bare` in 55 commands; `TestDrill` replays it, checks the task's names
-(and its `silo`, `via` and `choose`), runs its 25 tests (34 of 34
-mutants killed) and the task's 9 hidden tests. Its declarations, in
-order:
+--bare` in 55 commands. `TestDrill` replays it, checks the task's names
+(and its `silo`, `via` and `choose`), runs its 25 tests (34 of 34 mutants
+killed) and the task's 9 hidden tests. Its declarations, in order:
 
 ```text
 alder new table Org name:Text.NonEmpty --no-timestamps
@@ -4470,15 +4953,21 @@ alder new route Projects.Index /projects --blank --requires org
 alder new route Projects.Show /projects --show Project --blank --requires org
 ```
 
-**`alder edit session add-field org:Org.OrgId via Membership`** writes
-the key, `org: Maybe Org.OrgId via Membership` (the `Maybe` is added:
-a session starts without an org, and a key takes no default), and with
-`--choose Orgs.Index` the line `choose org = Orgs.Index.Index` after the
-session (the route `Index` of the module `Orgs.Index`). Session records written elsewhere get `org:
-Nothing`. The route it names must exist first, hence `Orgs.Index` before
-it; the `Membership` table too, with one `@ref` to the user table and
-one to `Org`. A second `via` field is refused ("the session's `org` is
-`via Membership` already: one `via` field per session (for now)").
+### `alder edit session add-field`
+
+`alder edit session add-field org:Org.OrgId via Membership` writes the key,
+`org: Maybe Org.OrgId via Membership` (the `Maybe` is added: a session
+starts without an org, and a key takes no default), and with `--choose
+Orgs.Index` the line `choose org = Orgs.Index.Index` after the session (the
+route `Index` of the module `Orgs.Index`). Session records written
+elsewhere get `org: Nothing`.
+
+The route it names must exist first, hence `Orgs.Index` before it; the
+`Membership` table too, with one `@ref` to the user table and one to `Org`.
+A second `via` field is refused ("the session's `org` is `via Membership`
+already: one `via` field per session (for now)").
+
+### `@partition=org`
 
 **`@partition=org`** in a field of `alder new table` writes `@partition
 org`. The table's delete-rule tests sign in a member of an org, so they
@@ -4503,20 +4992,26 @@ row is in another database). `--silo` puts the new table in its key's
 silo at once; a table that refers to a siloed one must be created that
 way, since a shared table cannot point into a silo (E0033).
 
-**`alder new silo org Project Todo`** writes `silo org { Project, Todo
-}` in `App` after the session (or adds the tables to the declaration
-there is). A table that is not partitioned by the key is refused, the
-sentence naming the fix: "`Membership` is not partitioned by `org`: mark
-its column `org` `@partition org` (`org: Org.OrgId @ref Org @partition
-org`), then run this again". The tables here have migrations already (each
-`alder new table` wrote one), so a database may hold their rows, and
-without `--empty` the command refuses: "Project and Todo: migrations/
-create them in the shared database, so a database may hold rows of
-them: `silo org` would leave them there, unread (…). If no database
-holds rows of them yet, run this again with --empty". In a new app
-nothing holds rows yet, so `--empty` is true: the command marks the
-tables in `migrations/schema.json`, writes the migration of the move,
-and prints what that means:
+### `alder new silo`
+
+`alder new silo org Project Todo` writes `silo org { Project, Todo }` in
+`App` after the session (or adds the tables to the declaration there is).
+
+A table that is not partitioned by the key is refused, the sentence naming
+the fix: "`Membership` is not partitioned by `org`: mark its column `org`
+`@partition org` (`org: Org.OrgId @ref Org @partition org`), then run this
+again".
+
+The tables here have migrations already (each `alder new table` wrote
+one), so a database may hold their rows, and without `--empty` the command
+refuses: "Project and Todo: migrations/ create them in the shared database,
+so a database may hold rows of them: `silo org` would leave them there,
+unread (…). If no database holds rows of them yet, run this again with
+--empty".
+
+In a new app nothing holds rows yet, so `--empty` is true: the command
+marks the tables in `migrations/schema.json`, writes the migration of the
+move, and prints what that means:
 
 ```text
 wrote migrations/0006_silo_org.sql
@@ -4526,8 +5021,10 @@ wrote migrations/0006_silo_org.sql
 The migration changes no table; it creates the tables in any silo made
 before it, and its `DROPS DATA` line asks a deploy that applies it to a
 database with data for `--allow-data-loss` (a first deploy has none to
-lose). In a deployed app it is the reason `alder migrate` refuses the
-same change made by hand (chapter 8, "Moving a table into a silo").
+lose).
+
+In a deployed app it is the reason `alder migrate` refuses the same change
+made by hand (chapter 8, "Moving a table into a silo").
 
 **`alder new route … --requires org`** writes `requires user, org` (a
 `via` key needs the user first), and its list, row and `--from` routes
@@ -4541,24 +5038,32 @@ route Index = GET "/projects" { page: Int = 1 } requires user, org
       |> Db.orderBy Project.created.desc
 ```
 
-Its tests sign in a member of an org; the list's test inserts a row of
-another org first and expects it left out ("the list shows this org's
-rows, newest first"); and a session without an org is sent to `choose
-org`'s page ("without an org the page sends you to choose one"). A form
-whose fields fit such a table inserts with `Db.insertScoped` (the
+Its tests sign in a member of an org:
+
+- the list's test inserts a row of another org first and expects it left out
+  ("the list shows this org's rows, newest first");
+- a session without an org is sent to `choose org`'s page ("without an org
+  the page sends you to choose one").
+
+A form whose fields fit such a table inserts with `Db.insertScoped` (the
 partition column is the route's), and the tests of `alder new form` and
 `alder new msg` on the route sign in with the key the same way.
 
 ## Four gaps: a button in `App`, a prop, a form with parameters, a login's route
 
-E11 (below) found four things the commands could not do. The first was a
-button that is on every page (`click={App.Logout}` is one): `alder new msg
-App <Name> [fields]` declared a message in `App` for it. On routes, `App`
-holds write routes like any module: `route Logout = POST "/_/Logout"` is
-one, written by `alder new auth`. So `alder new msg App <Name>` writes a
-route there too, `route <Name> = POST "/_/<Name>"` with the fields as its
-payload, after the last route of `App`, together with its `update`
-(answering `Response.refresh`, which the author then replaces) and a test:
+E11 (below) found four things the commands could not do.
+
+### A button in `App`
+
+The first was a button that is on every page (`click={App.Logout}` is one):
+`alder new msg App <Name> [fields]` declared a message in `App` for it. On
+routes, `App` holds write routes like any module: `route Logout = POST
+"/_/Logout"` is one, written by `alder new auth`.
+
+So `alder new msg App <Name>` writes a route there too, `route <Name> =
+POST "/_/<Name>"` with the fields as its payload, after the last route of
+`App`, together with its `update` (answering `Response.refresh`, which the
+author then replaces) and a test:
 
 ```text command=guestbook
 $ alder new msg App ToggleTheme dark:Bool
@@ -4607,9 +5112,13 @@ No page's view is touched: a route of `App` is sent by a button on any
 page (`click={App.ToggleTheme { dark: True }}`), and which page has the
 button is for you to say. The test opens the first plain page of the app
 and presses the route, so it fails ("the click finds no control") until
-that page has the button, as the comment above it says. An `App` written
-before routes, with a `msg` and an `update` of its own, keeps the old
-form of the command until it is moved to routes.
+that page has the button, as the comment above it says.
+
+> **An older `App`.** An `App` written before routes, with a `msg` and an
+> `update` of its own, keeps the old form of the command until it is moved
+> to routes.
+
+### A prop
 
 `alder edit decl Layout.Page add-prop <name>:<Type>=<default>` adds a
 property to a component's props record. The default is required (it is
@@ -4631,28 +5140,38 @@ edited app/Layout.alder
      <head>
 ```
 
+### A button with state
+
 The way to such a button is a route of its own, with the state it sends as
 parameters: `alder new route Theme /theme --method POST --param dark:Bool`
 writes `app/Theme.alder` with `route Theme = POST "/theme" { dark: Bool }`
 and a `Theme.update` that answers `Response.refresh`, and any page's view
 sends it with `click={Theme.Theme { dark: … }}`.
 
+### A form with parameters
+
 A form on a route that takes parameters posts them too. `alder new form
 Replies.Show Note message:Text.NonEmpty` adds the write route `SubmitNote`
 with the parameters of `Replies.Show` (`{ id: Reply.ReplyId }`), and the
 form in the view sends `SubmitNote { id: ?submitNoteId }`: the id is a
 hole, as a button's is, because the generator cannot know where on the page
-it comes from. A name the module already declares is refused, so the form
-and its route come from one command (`--msg` names the route), and a form is
-not added to a route that exists. The form's fields are read as
-`params.form`, and a comment above the form says so.
+it comes from.
+
+A name the module already declares is refused, so the form and its route
+come from one command (`--msg` names the route), and a form is not added to
+a route that exists. The form's fields are read as `params.form`, and a
+comment above the form says so.
+
+### A login's route
 
 Last, `alder new auth` in an app with no route at `/` yet leaves the hole
-`?afterLogin`, in `SignIn.update`'s redirect and in the login's test. Once the
-route exists, `alder edit auth --to <Route>` fills both, and refuses when
-there is no such hole. `alder fill` takes the lambda `\params session ->
-…` for a declaration that binds `params` and `session` already as a
-mistake and says so: send the body without it.
+`?afterLogin`, in `SignIn.update`'s redirect and in the login's test. Once
+the route exists, `alder edit auth --to <Route>` fills both, and refuses
+when there is no such hole.
+
+> **A lambda over `params` and `session`.** `alder fill` takes the lambda
+> `\params session -> …` for a declaration that binds `params` and
+> `session` already as a mistake and says so: send the body without it.
 
 ## Changing a table: `alder edit table`
 
@@ -4666,10 +5185,12 @@ A change to a table breaks the code that uses it. A field added without
 a default must be named by every insert, and a field dropped must not
 be used anywhere. So `alder edit table` writes the change anyway, and
 prints what is broken, as a list of errors with their files and lines:
-the to-do list for whoever made the change. That is for breakage in
-other code only: an error in the table itself (the new field's type
-does not exist, its default is not of its type) refuses the edit with
-the checker's errors, and nothing is written. A note on each reply:
+the to-do list for whoever made the change.
+
+That is for breakage in other code only: an error in the table itself (the
+new field's type does not exist, its default is not of its type) refuses
+the edit with the checker's errors, and nothing is written. A note on each
+reply:
 
 ```text command=guestbook
 $ alder edit table Reply add-field "note:Maybe Text"
@@ -4713,9 +5234,10 @@ app/Table/Reply.alder:19:28: error[E0003]: record `Insert Reply` is missing fiel
 The table and its migration are written, and the app now has seven
 errors, one per insert of a `Reply`: the form's arm, and six inserts in
 five tests. Each needs `note: Nothing`, or a value
-(`note:Maybe Text=Nothing` would have needed no change at all). `alder
-edit table` is the one command that runs on an app with errors, so that
-a second change can follow the first before the list is done; every
+(`note:Maybe Text=Nothing` would have needed no change at all).
+
+`alder edit table` is the one command that runs on an app with errors, so
+that a second change can follow the first before the list is done; every
 other command waits until `alder check` is clean. With `--strict`, it
 refuses instead, and writes nothing, when the change breaks anything.
 
@@ -4744,16 +5266,21 @@ begin marker and an end marker, two comments:
 `alder regen admin` generates every file of the admin again, in memory,
 from the app as it is now, and then, in each file on disk, replaces the
 lines inside each region with the same region's lines from the new
-version. Everything outside the regions is left byte for byte: a heading
-you reworded, a column you added after the `cells` region, a test you
-wrote after the `tests` region. The regions are named (`imports`,
-`routes`, `filters`, `nav`, `cards`, `search`, `sorts`, `labels`,
-`headers`, `cells`, `fields`, `model`, `load`, `form`, `inputs`,
-`insert`, `update`, `blockers`, `remove`, `row`, `counts`, `bulk`, `actions`,
-`access`, `tests`), so
-a region is matched by its name, not by its place. `routes` holds a module's
-`route` lines, their paths, parameters and `requires`
-included: a change made there by hand goes at the next `regen`.
+version.
+
+Everything outside the regions is left byte for byte: a heading you
+reworded, a column you added after the `cells` region, a test you wrote
+after the `tests` region.
+
+The regions are named (`imports`, `routes`, `filters`, `nav`, `cards`,
+`search`, `sorts`, `labels`, `headers`, `cells`, `fields`, `model`, `load`,
+`form`, `inputs`, `insert`, `update`, `blockers`, `remove`, `row`,
+`counts`, `bulk`, `actions`, `access`, `tests`), so a region is matched by
+its name, not by its place.
+
+> **`routes` is owned.** It holds a module's `route` lines, their paths,
+> parameters and `requires` included: a change made there by hand goes at
+> the next `regen`.
 
 Here the to-do app's users gain a flag:
 
@@ -4830,13 +5357,18 @@ edited app/Admin/Users/Show.alder
 …
 ```
 
-Only lines inside regions changed: the route lines (`routes` holds a module's
-route declarations, so the bulk module gains a write route, `BulkSetActive`,
-beside `BulkDelete`), the filters (the list of users can now be filtered by
-`active`), the sort, header and column of the list, the field of the row's
-page, the form's field, input and insert, and the tests, which now set and
-compare `active` too. (The text above leaves out the diffs of the other files,
-where `…` stands.) A second run has nothing to do:
+Only lines inside regions changed:
+
+- the route lines (`routes` holds a module's route declarations, so the
+  bulk module gains a write route, `BulkSetActive`, beside `BulkDelete`);
+- the filters (the list of users can now be filtered by `active`);
+- the sort, header and column of the list;
+- the field of the row's page;
+- the form's field, input and insert;
+- the tests, which now set and compare `active` too.
+
+(The text above leaves out the diffs of the other files, where `…` stands.)
+A second run has nothing to do:
 
 ```text command=todos
 $ alder regen admin
@@ -4847,24 +5379,29 @@ The rules of `regen`:
 
 - **It is idempotent.** Run twice, the second run changes nothing and
   writes nothing.
+
 - **It does not bring back what you deleted.** A page you removed (say,
   a table's delete page) is listed as `not recreated app/Admin/Comments/Delete.alder
   (deleted; --all writes it again)`; `--all` writes it again. Remove the
   links to it as well (the Delete button of the table's `Show` page),
   or the app no longer checks and `regen` refuses.
+
 - **It adds what is new.** A table added since the admin was generated
   (one the nav's region does not link to yet) gets its pages, and
   its card and its link appear in the dashboard's and the nav's regions.
+
 - **It refuses a broken marker.** A begin marker without its end, an end
   without its begin, a region that begins twice: the command names the
   file and the region (`` `app/Admin/Posts/Index.alder`: region `cells`
   has no end marker ``) and writes nothing.
+
 - **It refuses a list older than its filters.** A list page generated
   before the filters existed has no region `filters`, and its other
   regions now use what that region declares, so `regen` cannot bring it
   up to date around your changes; it names the file and says to delete
   it and run `alder regen admin --all`, which writes it again, so you can
   carry your changes over.
+
 - **It checks what it writes.** A field renamed or dropped breaks the
   admin's own files, inside the regions it is about to rewrite, so
   errors in the admin's files do not stop it. Errors elsewhere in the
@@ -4874,13 +5411,16 @@ The rules of `regen`:
 With `--json`, `regen` adds `"skipped"` (the pages not written again)
 and `"upToDate"` (whether there was nothing to do).
 
-Why regions only for the admin? Because only the admin is regenerated.
-A route from `alder new route` is a starting point: from its first edit,
-it says what you want, and no command could know which of its lines
-still follow the table. The admin is the opposite case: a projection of
-the tables, which you mostly leave as it is, and touch here and there.
-Regions make the boundary between the generator's lines and yours
-visible in the file itself, and `regen` respects it.
+### Why regions only for the admin
+
+Only the admin is regenerated. A route from `alder new route` is a starting
+point: from its first edit, it says what you want, and no command could
+know which of its lines still follow the table.
+
+The admin is the opposite case: a projection of the tables, which you
+mostly leave as it is, and touch here and there. Regions make the boundary
+between the generator's lines and yours visible in the file itself, and
+`regen` respects it.
 
 ## AI only in typed, checked bodies
 
@@ -4889,12 +5429,13 @@ is a command's: a module, a table and its migration, a type, a page and
 its path and rules, a form, a write route, a value's name and signature, a
 test's name. So is every structure that ties them together: the
 write routes and their `update`s, the forms in the view, the session, the
-login, the imports. What is left open is bodies. A hole is the smallest:
-`?answer : Task Response`, `?expected : Bool`, a type the checker computed.
-`--blank` and `fill --decl` hand over larger ones, a whole `load`, a
-whole view, a whole test. Each is still **one expression** (or one
-type), read from standard input, checked with the whole app, and written
-only if it checks.
+login, the imports.
+
+What is left open is bodies. A hole is the smallest: `?answer : Task
+Response`, `?expected : Bool`, a type the checker computed. `--blank` and
+`fill --decl` hand over larger ones, a whole `load`, a whole view, a whole
+test. Each is still **one expression** (or one type), read from standard
+input, checked with the whole app, and written only if it checks.
 
 The drill above shows the proportions. Of the 947 lines of the teams
 app's `app/`, 274 came from
@@ -4907,57 +5448,93 @@ That is the design for an agent. A language model is good at writing an
 expression that does one stated thing, and bad at keeping a large
 structure consistent over many edits. So the structure comes from the
 generators, deterministic and tested, and the model writes bodies, each
-with a type that says what is wanted. The consequence: a **structural**
-error (a route without its `update`, a write route the view never sends, a form the
-view does not post, a table without its migration, an import missing)
-cannot be made, because no command writes one and the agent writes
-nothing else; a **logic** error (a wrong condition, a wrong row) is
-the checker's, the tests' and `alder test --mutate`'s to catch. A wrong
-body costs one refusal with the checker's message, not a broken app.
-The experiment E11, "CLI-only development", measures this: an agent
-builds apps with these commands alone, reading their `--json` output,
-and never edits a file directly.
+with a type that says what is wanted.
+
+The consequence:
+
+- A **structural** error (a route without its `update`, a write route the
+  view never sends, a form the view does not post, a table without its
+  migration, an import missing) cannot be made, because no command writes
+  one and the agent writes nothing else.
+
+- A **logic** error (a wrong condition, a wrong row) is the checker's, the
+  tests' and `alder test --mutate`'s to catch.
+
+A wrong body costs one refusal with the checker's message, not a broken app.
+
+The experiment E11, "CLI-only development", measures this: an agent builds
+apps with these commands alone, reading their `--json` output, and never
+edits a file directly.
 
 The model need not be an agent driving the commands. `alder fill
 <address> --ai`, and the editor's code action `Fill ?name with AI` on a
-hole, run one loop: the model is shown the hole's type, its module, the
-names in scope and the standard library's signatures, it answers one
-expression, and the expression is placed and checked exactly as standard
-input's would be. A refused answer goes back with the checker's errors,
-three attempts in all, and only one that checks is written (chapter 11,
-"Generators in the editor"; chapter 13, "Filling a hole with a model").
+hole, run one loop:
+
+1. The model is shown the hole's type, its module, the names in scope and
+   the standard library's signatures.
+
+2. It answers one expression, and the expression is placed and checked
+   exactly as standard input's would be.
+
+3. A refused answer goes back with the checker's errors, three attempts in
+   all, and only one that checks is written (chapter 11, "Generators in the
+   editor"; chapter 13, "Filling a hole with a model").
+
 The model writes a body and nothing else, which is the design of this
 section, now one keystroke from the hole a generator left.
 
 Its first run (Haiku and Sonnet, the eight canonical tasks, one sample,
 each round's answer one script of commands;
-`experiments/e11-cli/findings.md`) confirms the first half and
-qualifies the rest. All 82
-rounds left an app that type-checked, where the same models writing
-files failed `alder check` in round 0 in 7 of 16 cells. But the
-mistakes did not vanish, they moved: 13 of the 640 commands run were
-refused for a structural slip (a type from a module not imported, a page
-named before the command that makes it, a name taken), and a refusal
-ends the round's script. So the commands passed 12 tasks of 16 in four
-to six rounds, the files 16 of 16 in one or two, and the hidden tests
-passed 60 of 94 against 88. Of the 64 refusals, 49 were commands
-misused, 13 of those one pattern (a lambda over the parameters a page's
-`load` or `view` already binds); 6 were commands that do not exist yet:
-a message in `App`, a prop on `Layout.Page`, a form posted by a message
-with its own parameters. The models never used `--json`: in a script,
-the output arrives a round late.
+`experiments/e11-cli/findings.md`) confirms the first half and qualifies
+the rest:
 
-A second run (`experiments/e11-cli/findings-run2.md`: the same models and Opus, after the four gaps above and the
-refusals that name the fix) found the missing commands working and most rounds still ending in a refusal. The two commands
-the models had already tried by name were used the first time a script reached them and never refused: `alder new msg
-App` in all three T4 cells, `alder new form … --msg` on a message with parameters in all three T6 cells, so the
-refusals for "command missing" went from 6 of 55 to 0 of 66 (T2 aside). The other two (`edit decl … add-prop`, `edit auth --to`) were
-used by nobody: the system prompt had not been regenerated, so the models never read their names. Haiku passed 2
-tasks of 8, Sonnet 7 (one of them with the hidden tests at 0 of 8) and Opus 7, with all 47 of its hidden tests, in 2 to 6
-rounds where its file-writing runs took 1 to 3. The lambda refusal, now with a message that names the fix, still
-occurred 12 times, and five rounds ended on an `alder test` refused for a hole the generators leave (`?expected`,
-`?afterLogin`). The three T2 cells are void: the example app given as the base did not pass `alder check` under the run's
-binary, and no command repairs an app that does not check.
+- **Every round type-checked.** All 82 rounds left an app that type-checked,
+  where the same models writing files failed `alder check` in round 0 in 7
+  of 16 cells.
+
+- **The mistakes moved.** They did not vanish: 13 of the 640 commands run
+  were refused for a structural slip (a type from a module not imported, a
+  page named before the command that makes it, a name taken), and a refusal
+  ends the round's script.
+
+- **The outcome.** The commands passed 12 tasks of 16 in four to six
+  rounds, the files 16 of 16 in one or two, and the hidden tests passed 60
+  of 94 against 88.
+
+- **The refusals.** Of the 64 refusals, 49 were commands misused, 13 of
+  those one pattern (a lambda over the parameters a page's `load` or `view`
+  already binds); 6 were commands that do not exist yet: a message in `App`,
+  a prop on `Layout.Page`, a form posted by a message with its own
+  parameters.
+
+- **`--json`.** The models never used it: in a script, the output arrives a
+  round late.
+
+A second run (`experiments/e11-cli/findings-run2.md`: the same models and
+Opus, after the four gaps above and the refusals that name the fix) found
+the missing commands working and most rounds still ending in a refusal:
+
+- **The commands now exist.** The two commands the models had already tried
+  by name were used the first time a script reached them and never refused:
+  `alder new msg App` in all three T4 cells, `alder new form … --msg` on a
+  message with parameters in all three T6 cells, so the refusals for
+  "command missing" went from 6 of 55 to 0 of 66 (T2 aside).
+
+- **Two commands went unused.** The other two (`edit decl … add-prop`,
+  `edit auth --to`) were used by nobody: the system prompt had not been
+  regenerated, so the models never read their names.
+
+- **Passes.** Haiku passed 2 tasks of 8, Sonnet 7 (one of them with the
+  hidden tests at 0 of 8) and Opus 7, with all 47 of its hidden tests, in 2
+  to 6 rounds where its file-writing runs took 1 to 3.
+
+- **Still refused.** The lambda refusal, now with a message that names the
+  fix, still occurred 12 times, and five rounds ended on an `alder test`
+  refused for a hole the generators leave (`?expected`, `?afterLogin`).
+
+- **Void cells.** The three T2 cells are void: the example app given as the
+  base did not pass `alder check` under the run's binary, and no command
+  repairs an app that does not check.
 
 The same commands are what another tool would wrap. Olifant, a generator
 engine, can drive Alder through a thin pack of its own: each Olifant

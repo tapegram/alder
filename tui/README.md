@@ -25,26 +25,41 @@ command that prints the same data (`F` focuses it, then `y` copies it).
 - **Requests** (`1`): the last minute's rate, p50, p95 and error share, and a table of the
   answered requests, newest at the bottom, with `n+1` and `slow` marks. The cursor follows the
   newest row until you move up.
+
 - **Request detail** (`enter` on a request, in Requests or in Logs): its steps, its SQL (the
   statements of an N+1 folded into one row) and the lines it logged, from
   `GET /_dev/requests/<rid>`. Below 80 columns the sections stack.
+
 - **Logs** (`2`): the app's log as `alder run` prints it, at a level you choose, filtered by a
   request id (from Requests' `l`) and a regexp; the strip under the status bar shows the
   filters in force.
+
 - **Data** (`3`): the app's tables, by their Alder names, each with its row count, and the
   migrations applied, on the left; the selected table's rows on the right, a page of 100 at a
-  time. The tables come from `GET /_dev/map.json` and the rows from the database file under
-  `build/<app>/`, opened read-only for each read. An app with silos has one database per silo
-  value, and `d` switches between them. `:` takes a statement (one that reads: it must begin
+  time.
+
+  The tables come from `GET /_dev/map.json` and the rows from the database file under
+  `build/<app>/`, opened read-only for each read.
+
+  An app with silos has one database per silo
+  value, and `d` switches between them.
+
+  `:` takes a statement (one that reads: it must begin
   with `SELECT`, `WITH` or `EXPLAIN`) and shows its rows in place of the table's. The footer
   names `sqlite3 build/<app>/dev.db`, with the statement when there is one.
+
 - **Tests** (`4`): runs `alder test --json` when the tab is first opened and shows a summary
-  line and a row per test (module, name, time, `ok` or `FAIL`). `enter` on a failure unfolds
+  line and a row per test (module, name, time, `ok` or `FAIL`).
+
+  `enter` on a failure unfolds
   its sides, note, error and trace; `enter` on the unfolded failure runs that test alone. `w`
   watches the app's files and reruns the suite on a change; `m` runs the mutation tests
-  (`--mutate`) and adds the score and the surviving mutants. A run is never killed: `r` or a
+  (`--mutate`) and adds the score and the surviving mutants.
+
+  A run is never killed: `r` or a
   change during one queues a rerun for when it ends. The footer names the command of the last
   run.
+
 - **Routes** (`5`): the app's routes from `alder routes --json`, one row each (page or msg, path,
   `module.name`, `file:line`, and how many requests it answered this session). `enter` shows
   that route's requests in Requests; `o` opens a page with no parameter in the browser. The
@@ -133,11 +148,17 @@ Build and test from this directory: `go build ./cmd/alder-tui`, `go test ./...`.
 
 `TestLive_HelloAndFirstRequest` and `TestLive_Screens` (`integration_test.go`) run a real
 `alder run` on a copy of `testdata/shelf`, a small app whose `/books/{id}` looks up each book's
-loan on its own (an N+1 on purpose). The first checks the feed and the dev endpoints against it;
+loan on its own (an N+1 on purpose).
+
+The first checks the feed and the dev endpoints against it;
 the second checks what the Tests, Routes and Data screens read: `alder test --json` has a passing
 test, `alder routes --json` lists `/books/{id}`, and the SQL name the map gives the `Book` table
-is in the database file. It runs when `alder` is on
-`PATH` or `ALDER_BIN` names it, and is skipped under `-short`. Build `alder` from the same
+is in the database file.
+
+It runs when `alder` is on
+`PATH` or `ALDER_BIN` names it, and is skipped under `-short`.
+
+Build `alder` from the same
 commit, since the test needs its dev feed:
 
 ```bash

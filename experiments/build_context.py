@@ -201,7 +201,7 @@ TRIMS = {
            ("The to-do list uses four of them\n", "Why a write route needs them as much as a `load` does",
             "The to-do list uses four of them, and `Todos.Show` reads its todo with the fifth\n"
             "(`examples/todos/app/Todos/Index.alder` and `Todos/Show.alder`, in the example app below).\n\n"),
-           ("Two small ideas first, because a file has to say both.", "The compiler decides a route is a file page",
+           ("Two small ideas first, because a file has to say both:", "The compiler decides a route is a file page",
             "A `File` carries a content type (`text/csv`), a status (`200`, `404`, `503`), a body and extra headers.\n\n"),
            ("`File.text` answers `200` with the text", "`File.html` is the way to answer a web page",
             "`File.withHeader` sets a header: `Content-Disposition: attachment; filename=todos.csv` saves the answer\n"
@@ -256,7 +256,9 @@ TRIMS = {
             "`/\\host`) or a fragment (`#top`); anything else (`javascript:`, `data:`, `mailto:`, relative\n"
             "paths, control characters) becomes `#`, and a redirect to one is a 500. A link or\n"
             "`Response.redirect` built from user input can never run script.\n\n"
-            "A `Route` compares by its address: a defaulted parameter is left out of the URL.\n\n"),
+            "#### Comparing routes\n\n"
+            "A `Route` compares by its address: a defaulted parameter is left out of the URL.\n\n"
+            "#### `Url.absolute`\n\n"),
            ("A write route's `update` is `Params -> Session -> Task Response`", "```alder\nResponse.redirect",
             "`Response` and `Route` are Prelude types (chapter 6, \"`Response`\"). An `update` builds its\n"
             "`Response` with:\n\n"),
