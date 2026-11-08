@@ -125,7 +125,7 @@ func Plural(w string) string {
 	return w + "s"
 }
 
-// Title is the heading of a page module: its last segment, or for `….Index` the one before,
+// Title is the heading of a route module: its last segment, or for `….Index` the one before,
 // in words ("Posts.Index" → "Posts", "Admin.UserList" → "User list").
 func Title(module string) string {
 	segs := strings.Split(module, ".")

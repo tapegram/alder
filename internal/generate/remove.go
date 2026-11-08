@@ -26,8 +26,8 @@ func RemovePage(p *Program, module string) ([]Edit, error) {
 // brand (`type TId = brand Text`) and the module's tests, or, when the module holds nothing
 // else, the module's file; the migration that drops the table (its DROPS DATA line: the rows
 // are lost) is the caller's (Options.Migrate). It refuses a name that is not a table of the app,
-// and a table something else still names (a reference `@ref T`, a page, a query, a test, the
-// admin's pages: remove those first — for the admin, `alder remove page` its pages of the table,
+// and a table something else still names (a reference `@ref T`, a route, a query, a test, the
+// admin's routes: remove those first — for the admin, `alder remove route` its routes of the table,
 // then `alder regen admin`): the check of the app without it lists those uses.
 func RemoveTable(p *Program, name string) ([]Edit, error) {
 	t := p.TableNamed(name)

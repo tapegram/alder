@@ -654,7 +654,7 @@ func (r *resolver) importedScope(q string) (string, *moduleScope, bool) {
 // the source; an element's closing tag is a second place), with a fix writing the qualifier in
 // the path's place, and returns the name as the qualifier writes it and the module's path; the
 // caller resolves that short name, so nothing else is reported. Only the longest prefix that is
-// a module counts. A page value's full path is never E0205: callers resolve page values (design
+// a module counts. A route value's full path is never E0205: callers resolve route values (design
 // rule 6) before calling it.
 func (r *resolver) fullPath(written string, starts ...diag.Pos) (short, path string, ok bool) {
 	for _, im := range r.m.Imports {

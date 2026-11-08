@@ -347,7 +347,7 @@ func (c *Checker) checkChoose() {
 		case twice:
 			c.errorf(diag.PartitionDecl, cd.KeySpan, "`choose %s` is declared twice", cd.Key)
 		case cd.Key == "user":
-			c.errorf(diag.PartitionDecl, cd.KeySpan, "`choose user`: the signed-in user is chosen by `login`; `choose` names the page for another key")
+			c.errorf(diag.PartitionDecl, cd.KeySpan, "`choose user`: the signed-in user is chosen by `login`; `choose` names the GET route for another key")
 		case !has:
 			c.errorf(diag.PartitionDecl, cd.KeySpan, "`choose %s`: the session has no field `%s`", cd.Key, cd.Key)
 		case !known: // names reported the unknown route
@@ -387,7 +387,7 @@ func (c *Checker) checkChoose() {
 			if !slices.Contains(requires[name], f.Name) {
 				continue
 			}
-			c.errorf(diag.PartitionDecl, f.ViaSpan, "`%s` is `via %s` and `%s` `requires %s`: `App` needs `choose %s = Page`, the page a request without `%s` is sent to (it picks one)", f.Name, f.Via, name, f.Name, f.Name, f.Name)
+			c.errorf(diag.PartitionDecl, f.ViaSpan, "`%s` is `via %s` and `%s` `requires %s`: `App` needs `choose %s = Module.Route`, the GET route a request without `%s` is sent to (it picks one)", f.Name, f.Via, name, f.Name, f.Name, f.Name)
 			break
 		}
 	}

@@ -678,7 +678,7 @@ func chain(cs []clause, final string) string {
 }
 
 // field is the code decoding record field f from the url.Values named src into r: src[f.Key()],
-// the wire name of a page parameter declared `as "Key"`.
+// the wire name of a route parameter declared `as "Key"`.
 func (d *decoder) field(f ir.FieldT, src string) string {
 	def := ""
 	if f.Default != nil {

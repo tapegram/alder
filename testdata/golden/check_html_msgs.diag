@@ -1,3 +1,3 @@
 app/Index.alder:24:47 E0304 `<form submit={Toggle …}>` has no form type; `<Input>` needs a route declared with `form F`
-app/Index.alder:25:12 E0303 `href` takes a page value, not a string; write `href={Module.Page { … }}` or `Url.external "…"`
-app/Index.alder:26:12 E0303 `href` takes a page value, not a string; write `href={Module.Page { … }}` or `Url.external "…"`
+app/Index.alder:25:12 E0303 `href` takes a GET route applied to its parameters, not a string; write `href={Index { … }}` or `Url.external "…"`
+app/Index.alder:26:12 E0303 `href` takes a GET route applied to its parameters, not a string; write `href={Index { … }}` or `Url.external "…"`

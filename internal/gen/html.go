@@ -205,7 +205,7 @@ func (f *fn) kvList(items []kvItem, s *scope) string {
 	return "rt.Queries(" + strings.Join(groups, ", ") + ")"
 }
 
-// text is e as a Go string: a message parameter or a form control's value. Literals and
+// text is e as a Go string: a route parameter or a form control's value. Literals and
 // constructors written in place are converted statically.
 func (f *fn) text(e ir.Expr, s *scope) string {
 	switch x := e.(type) {

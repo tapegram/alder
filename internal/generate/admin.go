@@ -848,7 +848,7 @@ func (g *adminGen) tb(mod string, imports *importSet, admin bool) *testBuilder {
 }
 
 // gateTests are the tests of who may not see an admin page: a visitor is sent to log in, and
-// a signed-in user whose role is not Admin gets a 404. pageOf is the page value a test opens.
+// a signed-in user whose role is not Admin gets a 404. pageOf is the route value a test opens.
 func (g *adminGen) gateTests(mod string, imports *importSet, pageOf func(tb *testBuilder) string) []TestData {
 	var tests []TestData
 	if g.p.Login != "" {
@@ -1686,7 +1686,7 @@ func (at *adminTable) formRoute(edit bool, target string) string {
 func optionsField(c *Column) string { return Plural(c.Name) }
 
 // totalField is the model field counting the rows of the table a reference refers to, and
-// findParam the page parameter narrowing a long list of them (the search's text).
+// findParam the route parameter narrowing a long list of them (the search's text).
 func totalField(c *Column) string { return optionsField(c) + "Total" }
 func findParam(c *Column) string  { return "find" + UpperFirst(c.Name) }
 
@@ -1698,7 +1698,7 @@ func (g *adminGen) finds(c *Column) bool {
 	return !l.ID && l.Kind == KindText && !l.Maybe && !l.Secret()
 }
 
-// findParams are the page parameters that narrow at's long selects.
+// findParams are the route parameters that narrow at's long selects.
 func (g *adminGen) findParams(at *adminTable) []string {
 	var out []string
 	for _, c := range at.refs {

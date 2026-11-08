@@ -175,7 +175,7 @@ type RecordType struct {
 // when the field has none; Lower already fills defaults into record literals that omit them.
 // Brand is the brand the field's declared type is, or the brand of its Maybe's or List's
 // element (`email: Maybe Text.Email`), nil for none; it is set on the fields of nominal records
-// (forms, page and message parameters, the session, tables, records).
+// (forms, route parameters, the session, tables, records).
 //
 // On a table's fields only: DefaultLit is the default as an SQL literal ("0", "1", "'Reader'",
 // "NULL"; see SQLLiteral), nil when the field has no default; RenamedFrom is the field's old

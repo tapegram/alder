@@ -14,7 +14,7 @@ type ArgKind int
 const (
 	ArgText      ArgKind = iota
 	ArgModule            // a module name, new or existing
-	ArgPage              // an existing page module
+	ArgPage              // an existing route module
 	ArgTable             // an existing table
 	ArgDecl              // Module.name of an existing declaration
 	ArgFieldList         // name:Type[=default][@attr…] words

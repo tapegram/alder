@@ -269,7 +269,7 @@ func (mc *modCtx) attribute(a *syntax.HtmlAttr, m types.Type, env *env, eff effe
 	switch {
 	case a.Name == "href":
 		hrefText := func() {
-			c.errorf("E0303", a.Span, "`href` takes a page value, not a string; write `href={Module.Page { … }}` or `Url.external \"…\"`")
+			c.errorf("E0303", a.Span, "`href` takes a GET route applied to its parameters, not a string; write `href={Index { … }}` or `Url.external \"…\"`")
 		}
 		if _, isStr := a.Value.(*syntax.StrLit); isStr {
 			hrefText()
@@ -490,11 +490,7 @@ func (mc *modCtx) formControl(x *syntax.Element, kind string, attrs []*syntax.Ht
 			// the options are the values the field may take, each with its label; a submitted value
 			// that is not one of them is refused, so the runtime computes them again on submit
 			if !mc.inShownView() {
-				where := "the page's `view`"
-				if mc.c.routes[mc.m.Name] != nil {
-					where = "a GET route's `view`"
-				}
-				c.errorf("E0304", options.GetSpan(), "`options` must be written in %s, which the runtime runs again from the model to check a submitted value; `<%s>` is in `%s`", where, x.Tag, map[bool]string{true: mc.value, false: "a component"}[mc.value != ""])
+				c.errorf("E0304", options.GetSpan(), "`options` must be written in a GET route's `view`, which the runtime renders again from the model to check a submitted value; `<%s>` is in `%s`", x.Tag, map[bool]string{true: mc.value, false: "a component"}[mc.value != ""])
 			} else {
 				mc.recordOptions(mc.form.route)
 			}

@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// Route is one route as `alder routes --json` prints it: a page (kind "page", answered to GET)
-// or a message (kind "msg", answered to POST), its path pattern, the module and declaration that
+// Route is one route as `alder routes --json` prints it: a route (kind "route", answered to the
+// method it declares), its path pattern, the module and declaration that
 // handle it and where that is.
 type Route struct {
 	Kind   string `json:"kind"`
@@ -47,7 +47,7 @@ func Match(routes []Route, path string) (int, bool) {
 }
 
 // MethodOf is the HTTP method the route answers: its Method, or for a list from an older
-// `alder routes` (no method) GET for a page and POST for a message.
+// `alder routes` (kinds "page" and "msg", no method) GET for "page" and POST for "msg".
 func (r Route) MethodOf() string {
 	switch {
 	case r.Method != "":

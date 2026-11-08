@@ -168,8 +168,8 @@ var pathParam = regexp.MustCompile(`\{([^/{}]*)\}`)
 // and its `load` is the hole ?load; --show T --by <column> reads the row by a `@unique`
 // column, the path's last segment. It refuses an existing module, a path parameter without its
 // --param (and a --param without its segment), a table that is not one of the app's, a --by
-// column that is not unique, and a role the session does not have; a path another page has is
-// the checker's E0016, surfaced by Apply.
+// column that is not unique, and a role the session does not have; a path another route has is
+// the checker's E0043, surfaced by Apply.
 func NewRoute(p *Program, o RouteOptions) ([]Edit, error) {
 	if o.Module == "" && !strings.HasPrefix(o.Path, "/") && IsModuleName(o.Path) {
 		return nil, notAPath(o.Path)
@@ -372,7 +372,7 @@ func NewRoute(p *Program, o RouteOptions) ([]Edit, error) {
 	scoped := func(t *Table) bool { return t.PartKey != "" && slices.Contains(keys, t.PartKey) }
 	heading := fmt.Sprintf("Test.text \"h1\" r.doc } == { answer: Shown, heading: Just %s }", quote(d.Title))
 	tmpl := "route.tmpl"
-	var pageOf func(tb *testBuilder) string // the page value a test opens
+	var pageOf func(tb *testBuilder) string // the route value a test opens
 	switch {
 	case o.File:
 		tmpl = "route_file.tmpl"
@@ -494,7 +494,7 @@ func NewRoute(p *Program, o RouteOptions) ([]Edit, error) {
 		for _, c := range t.Columns {
 			d.Cols = append(d.Cols, ColData{Humanize(c.Name), cell(c, "model.row."+c.Name, imports)})
 		}
-		// the page value of the row a test inserted last: by its id, or by its --by column
+		// the route value of the row a test inserted last: by its id, or by its --by column
 		param := func(tb *testBuilder, row string) string { return "id: " + row }
 		var by *Column
 		if o.By != "" {

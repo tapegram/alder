@@ -141,7 +141,7 @@ func (mc *modCtx) checkFileArg(name string, args []syntax.Expr) {
 				text.WriteString(p.Text)
 			}
 			if _, ok := rtpkg.FileHeaderAllowed(text.String()); !ok {
-				mc.c.errorf(diag.FileHeader, lit.Span, "`%s` cannot be set from a page; the headers a file may set are `Content-Disposition`, `Cache-Control`, `ETag`, `Last-Modified`, `Retry-After`, `Content-Language` and `X-…` names", text.String())
+				mc.c.errorf(diag.FileHeader, lit.Span, "`%s` cannot be set from a file route; the headers a file may set are `Content-Disposition`, `Cache-Control`, `ETag`, `Last-Modified`, `Retry-After`, `Content-Language` and `X-…` names", text.String())
 			}
 		}
 	}

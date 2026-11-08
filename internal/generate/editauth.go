@@ -11,7 +11,7 @@ const afterLoginCommentPage = "the page ?afterLogin names (fill it, here and in 
 // EditAuth generates `alder edit auth --to <Route>`: the hole ?afterLogin of `Auth.Login`
 // (`SignIn.update`'s redirect and the test that logs in, which `new auth` leaves in an app with
 // no page yet) replaced by the page (a route module's GET route, a GET route `Module.Route`, or
-// a page module written before routes), and the comment that names the hole. It refuses a name
+// a route module written before routes), and the comment that names the hole. It refuses a name
 // that is none of these, a page with parameters, and an app whose login has no such hole.
 func EditAuth(p *Program, to string) ([]Edit, error) {
 	if to == "" {

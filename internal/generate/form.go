@@ -29,7 +29,7 @@ func snippet(name string, data any) string {
 
 // FormOptions are the options of `alder new form`.
 type FormOptions struct {
-	Page   string // the page module
+	Page   string // the route module
 	Name   string
 	Fields []FieldSpec
 	Into   string // --into T: the table the arm inserts into
@@ -133,7 +133,7 @@ func noticesWant(notice string) string {
 type formTestSpec struct {
 	Form    string        // the form's name
 	Page    string        // the module, for record names
-	Open    string        // the page value the test opens
+	Open    string        // the route value the test opens
 	Submit  string        // what `Test.submit` posts to: the form, or a route with its parameters
 	Raw     string        // the same for `Test.submitRaw`
 	Answer  string        // the answer of a valid submission

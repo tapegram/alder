@@ -560,7 +560,7 @@ func TestGoType(t *testing.T) {
 		{types.Unit, "struct{}"},
 		{types.Date, "rt.Date"},
 		{types.Time, "time.Time"},
-		{types.Page, "rt.Route"}, // Page is Route until PR 9 of #160
+		{types.Route, "rt.Route"},
 		{types.Bytes, "[]byte"},
 		{types.File, "rt.File"},
 		{list(maybe(types.Int)), "[]rt.Maybe[int64]"},
@@ -3080,9 +3080,9 @@ func TestGen_Browser(t *testing.T) {
 	runGo(t, files, string(prog))
 }
 
-// TestGen_Wire (#55): a test build of the gen_wire golden, whose page names its query keys
+// TestGen_Wire (#55): a test build of the gen_wire golden, whose route names its query keys
 // (`electionId: Text = "" as "ElectionId"`), decodes the wire keys and emits them in every URL
-// of the page: a link, the page's message URLs (_p.<key>), a redirect and a test's visit
+// of the route: a link, a redirect and a test's visit
 // (testdata/e2e_wire_test.go.txt).
 func TestGen_Wire(t *testing.T) {
 	files := emitWith(t, "../../testdata/golden/gen_wire", true)

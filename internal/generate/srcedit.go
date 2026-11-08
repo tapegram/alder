@@ -150,7 +150,7 @@ func indentOf(l string) string { return l[:len(l)-len(strings.TrimLeft(l, " "))]
 // or `import P as Q` when Q is not P's last segment. An addition that changes an existing
 // import's qualifier rewrites that import's line, and its references in the file, to the new
 // one; text the generator wrote with a module's full path (`Admin.Layout.isAdmin`) comes out
-// with its qualifier (`Layout.isAdmin`), a page value (`Admin.Layout {}`) as it is. It returns
+// with its qualifier (`Layout.isAdmin`), a route value (`Admin.Layout {}`) as it is. It returns
 // the qualifier of every import of m, after the additions.
 func addImports(e *srcEdit, p *Program, m *syntax.Module, want []string) map[string]string {
 	return retarget(e, p, m, want, false)
@@ -201,7 +201,7 @@ func retarget(e *srcEdit, p *Program, m *syntax.Module, want []string, force boo
 		q := quals[im.Module]
 		if was[im.Module] != q {
 			rename[was[im.Module]] = q
-			if was[im.Module] != im.Module { // a proper suffix of the path, so no page value
+			if was[im.Module] != im.Module { // a proper suffix of the path, so no route value
 				bare[was[im.Module]] = q
 			}
 			e.replaceLine(im.Span.Start.Line, importLine(im.Module, q))
@@ -215,8 +215,8 @@ func retarget(e *srcEdit, p *Program, m *syntax.Module, want []string, force boo
 		}
 	}
 	// a table written as its module's path and its name (recordName): the module's qualifier.
-	// (A page value of a module `Table.Post.Post` under the table's would be rewritten too: a
-	// table's module holds no page modules.)
+	// (A route value of a module `Table.Post.Post` under the table's would be rewritten too: a
+	// table's module holds no route modules.)
 	tables := map[string]string{}
 	for path, q := range quals {
 		if t := p.TableNamed(path[strings.LastIndex(path, ".")+1:]); t != nil && t.Module == path {

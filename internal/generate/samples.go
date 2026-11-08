@@ -8,7 +8,7 @@ import (
 )
 
 // testBuilder writes the setup of a generated test in module home: the rows it inserts (each
-// with sample values, and the rows they refer to first), the login, the page value it opens.
+// with sample values, and the rows they refer to first), the login, the route value it opens.
 // Its lines are the test block's statements, in order.
 type testBuilder struct {
 	p       *Program
@@ -490,7 +490,7 @@ func (b *testBuilder) valueOf(name string, params []*Param) string {
 	return pageLit(name, fields)
 }
 
-// pageLit is a page value: `M {}` or `M { a: x, b: y }`.
+// pageLit is a route value: `M {}` or `M { a: x, b: y }`.
 func pageLit(module string, fields []string) string {
 	if len(fields) == 0 {
 		return module + " {}"

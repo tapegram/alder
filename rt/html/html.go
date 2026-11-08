@@ -48,7 +48,7 @@ type Attr struct {
 
 // RouteAttr is an attribute requesting route r (#160). Its value is, by name: "data-on:click"
 // → RouteClick(r), "data-on:submit" → RouteSubmit(r), anything else (such as "href" or
-// "action") → rt.RouteURL(r). A route's URL carries no page parameters: its request names the
+// "action") → rt.RouteURL(r). A route's URL carries no route parameters: its request names the
 // page in a header (PageHeader). A <button> with a "data-on:click" RouteAttr renders as a click
 // button (RenderWith).
 func RouteAttr(name string, r rt.Route) Attr { return Attr{Name: name, route: &r} }

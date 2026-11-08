@@ -184,7 +184,7 @@ func (r *Route) Ref(from string) string {
 	return r.Module + "." + r.Name
 }
 
-// Param is one page parameter.
+// Param is one route parameter.
 type Param struct {
 	Name       string
 	Type       types.Type

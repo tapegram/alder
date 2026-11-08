@@ -897,7 +897,7 @@ func (cx *completion) patterns() ([]completionItem, bool) {
 }
 
 // otherwise: the locals in scope, the module's declarations, the imported modules (by their
-// qualifiers, and an imported page also by its full path for its page value), the standard
+// qualifiers, and an imported page also by its full path for its route value), the standard
 // library's modules and the keywords. Nothing right after a `.`, where none of them
 // can follow.
 func (cx *completion) otherwise() []completionItem {

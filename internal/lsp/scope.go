@@ -418,7 +418,7 @@ func qualifiedModule(a *analysis, m *syntax.Module, q string) string {
 }
 
 // moduleNamed is the module a written name q means in m: an import's qualifier (design rule 1),
-// else a module's full path (a page value's, or a full path the resolver reports as E0205), else
+// else a module's full path (a route value's, or a full path the resolver reports as E0205), else
 // a standard-library module; nil when it is none. m may be nil, which leaves the qualifiers out.
 func moduleNamed(a *analysis, m *syntax.Module, q string) *syntax.Module {
 	if m != nil {
