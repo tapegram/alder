@@ -52,7 +52,7 @@ func TestDump_Partitions(t *testing.T) {
 		t.Fatalf("code %d\nerr %s\nout %s", code, errs, out)
 	}
 	code, out, errs = runDump("../../testdata/corpus/partitions-ok/app/App.alder")
-	for _, w := range []string{"(field org (Maybe Org.OrgId) via Membership)", "(choose org Orgs.Index)", "(silo org Project Issue)", "(val maintenance : (Html Never)"} {
+	for _, w := range []string{"(field org (Maybe Org.OrgId) via Membership)", "(choose org Orgs.Index.Index)", "(silo org Project Issue)", "(val maintenance : (Html Never)"} {
 		if code != 0 || !strings.Contains(out, w) {
 			t.Errorf("AST dump lacks %s: code %d err %s\n%s", w, code, errs, out)
 		}

@@ -4,25 +4,20 @@
 (record Project.Project (id Text) (name Text) (org Text))
 (module Admin.Projects)
 (record Admin.Projects.Model (projects List Project) (n Int))
-(record Admin.Projects.Params (org Text))
-(record Admin.Projects.RemoveParams (id Text))
-(union Admin.Projects.Msg (Remove RemoveParams))
-(record Admin.Projects.Session (user Text) (org Text) (role User.Role))
-(value Admin.Projects.load : Params -> Session -> Query Model (params session)
+(record Admin.Projects.Projects.Params (org Text))
+(record Admin.Projects.Remove.Params (org Text) (id Text))
+(record Admin.Projects.Projects.Session (user Text) (org Text) (role User.Role))
+(value Admin.Projects.Projects.load : Projects.Params -> Projects.Session -> Query Model (params session)
   (bind query projects : List Project
     (db-select Project.Project all)
     (bind query n : Int
       (db-run count (db-scoped Db.scoped org Project.Project))
       (pure query (record Model (projects (var projects)) (n (var n)))))))
-(value Admin.Projects.update : Msg -> Model -> Session -> Task Nav (msg model session)
-  (match union (var msg)
-    (case Remove (bind _m1 : RemoveParams)
-      (let p : RemoveParams
-        (var _m1)
-        (bind task _
-          (db-delete Project.Project (field id (var p)))
-          (pure task (ctor Prelude.Nav.Rerender)))))))
-(value Admin.Projects.view : Model -> Session -> Html Msg (model session)
+(value Admin.Projects.Remove.update : Remove.Params -> Projects.Session -> Task Response (p session)
+  (bind task _
+    (db-delete Project.Project (field id (var p)))
+    (pure task (std Response.refresh))))
+(value Admin.Projects.Projects.view : Model -> Projects.Session -> Html Route (model session)
   (elem html
     (elem body
       (elem p (hexpr text (call (std Text.fromInt) (field n (var model))))))))
@@ -34,17 +29,15 @@
   (user Maybe Text)
   (org Maybe Text)
   (role User.Role = (ctor User.Role.Reader)))
-(union App.Msg (Leave))
-(value App.update : Msg -> Session -> Task Nav (msg session)
-  (match union (var msg)
-    (case Leave
-      (bind task _
-        (call (std Session.put)
-          (lambda (s : Session)
-            (update (var s) (org (ctor Prelude.Maybe.Nothing)))))
-        (pure task
-          (ctor Prelude.Nav.Redirect
-            (record (value (page-ref Orgs.Index (record Orgs.Index.Params))))))))))
+(union App.Msg)
+(record App.Leave.Params)
+(value App.Leave.update : Leave.Params -> Session -> Task Response (params session)
+  (bind task _
+    (call (std Session.put)
+      (lambda (s : Session) (update (var s) (org (ctor Prelude.Maybe.Nothing)))))
+    (pure task
+      (call (std Response.redirect)
+        (route-ref Orgs.Index.Index (record Orgs.Index.Index.Params))))))
 (value App.error : Error -> Html Never (err)
   (elem html (elem body (elem h1 (htext "error")))))
 (value App.notFound : Html Never ()
@@ -57,11 +50,10 @@
 (record Label.Label (id Text) (name Text) (org Text))
 (module Login)
 (record Login.Model)
-(record Login.Params)
-(union Login.Msg)
-(value Login.load : Params -> App.Session -> Query Model (params session)
+(record Login.Login.Params)
+(value Login.Login.load : Login.Params -> App.Session -> Query Model (params session)
   (pure query (record Model)))
-(value Login.view : Model -> App.Session -> Html Msg (model session)
+(value Login.Login.view : Model -> App.Session -> Html Route (model session)
   (elem html (elem body (elem h1 (htext "log in")))))
 (module Membership)
 (record Membership.Membership (id Text) (user Text) (org Text))
@@ -69,60 +61,51 @@
 (record Note.Note (id Text) (text Text) (owner Text))
 (module Notes.Index)
 (record Notes.Index.Model (notes List Note) (n Int))
-(record Notes.Index.Params)
-(union Notes.Index.Msg (Add))
-(record Notes.Index.Session (user Text) (org Maybe Text) (role User.Role))
-(value Notes.Index.load : Params -> Session -> Query Model (params session)
+(record Notes.Index.Index.Params)
+(record Notes.Index.Add.Params)
+(record Notes.Index.Index.Session (user Text) (org Maybe Text) (role User.Role))
+(value Notes.Index.Index.load : Index.Params -> Index.Session -> Query Model (params session)
   (bind query notes : List Note
     (db-run all (db-scoped Db.mine user Note.Note))
     (bind query n : Int
       (db-run count (db-scoped Db.scoped user Note.Note))
       (pure query (record Model (notes (var notes)) (n (var n)))))))
-(value Notes.Index.update : Msg -> Model -> Session -> Task Nav (msg model session)
-  (match union (var msg)
-    (case Add
+(value Notes.Index.Add.update : Add.Params -> Index.Session -> Task Response (params session)
+  (bind task _
+    (db-insert-scoped Db.insertMine user Note.Note (record (text "a")))
+    (bind task _
+      (db-insert-scoped Db.insertScoped user Note.Note (record (text "b")))
       (bind task _
-        (db-insert-scoped Db.insertMine user Note.Note (record (text "a")))
-        (bind task _
-          (db-insert-scoped Db.insertScoped user Note.Note (record (text "b")))
-          (bind task _
-            (call (std Session.put)
-              (lambda (s : App.Session)
-                (update (var s) (org (ctor Prelude.Maybe.Nothing)))))
-            (pure task (ctor Prelude.Nav.Rerender))))))))
-(value Notes.Index.view : Model -> Session -> Html Msg (model session)
+        (call (std Session.put)
+          (lambda (s : App.Session)
+            (update (var s) (org (ctor Prelude.Maybe.Nothing)))))
+        (pure task (std Response.refresh))))))
+(value Notes.Index.Index.view : Model -> Index.Session -> Html Route (model session)
   (elem html
     (elem body
-      (elem button (attr click click (ctor Notes.Index.Msg.Add)) (htext "add")))))
+      (elem button (attr click click (route-ref Notes.Index.Add)) (htext "add")))))
 (module Orgs.Index)
 (record Orgs.Index.Model (mine List Membership))
-(record Orgs.Index.Params)
-(record Orgs.Index.PickParams (org Text))
-(union Orgs.Index.Msg (Pick PickParams))
-(record Orgs.Index.Session (user Text) (org Maybe Text) (role User.Role))
-(value Orgs.Index.load : Params -> Session -> Query Model (params session)
+(record Orgs.Index.Index.Params)
+(record Orgs.Index.Pick.Params (org Text))
+(record Orgs.Index.Index.Session (user Text) (org Maybe Text) (role User.Role))
+(value Orgs.Index.Index.load : Index.Params -> Index.Session -> Query Model (params session)
   (bind query mine : List Membership
     (db-select Membership.Membership
       (where
         (cond eq (col Membership.Membership user) (field user (var session))))
       all)
     (pure query (record Model (mine (var mine))))))
-(value Orgs.Index.update : Msg -> Model -> Session -> Task Nav (msg model session)
-  (match union (var msg)
-    (case Pick (bind _m1 : PickParams)
-      (let p : PickParams
-        (var _m1)
-        (bind task _
-          (call (std Session.put)
-            (lambda (s : App.Session)
-              (update (var s)
-                (org
-                  (ctor Prelude.Maybe.Just (record (value (field org (var p)))))))))
-          (pure task
-            (ctor Prelude.Nav.Redirect
-              (record
-                (value (page-ref Projects.Index (record Projects.Index.Params)))))))))))
-(value Orgs.Index.view : Model -> Session -> Html Msg (model session)
+(value Orgs.Index.Pick.update : Pick.Params -> Index.Session -> Task Response (p session)
+  (bind task _
+    (call (std Session.put)
+      (lambda (s : App.Session)
+        (update (var s)
+          (org (ctor Prelude.Maybe.Just (record (value (field org (var p)))))))))
+    (pure task
+      (call (std Response.redirect)
+        (route-ref Projects.Index.Index (record Projects.Index.Index.Params))))))
+(value Orgs.Index.Index.view : Model -> Index.Session -> Html Route (model session)
   (elem html
     (elem body
       (elem ul
@@ -131,25 +114,20 @@
           (elem li
             (elem button
               (attr click click
-                (ctor Orgs.Index.Msg.Pick
-                  (record PickParams (org (field org (var m))))))
+                (route-ref Orgs.Index.Pick
+                  (record Pick.Params (org (field org (var m))))))
               (htext "pick"))))))))
 (module Projects.Index)
 (record Projects.Index.Model (org Text) (projects List Project) (labels Int))
 (record Projects.Index.NewProject (name Text))
-(record Projects.Index.Params)
-(record Projects.Index.AddParams (form NewProject))
-(record Projects.Index.RenameParams (id Text))
-(record Projects.Index.RemoveParams (id Text))
-(record Projects.Index.BothParams (id Text))
-(union Projects.Index.Msg
-  (Add AddParams)
-  (Rename RenameParams)
-  (Remove RemoveParams)
-  (Seed)
-  (Both BothParams)
-  (Tag))
-(record Projects.Index.Session (user Text) (org Text) (role User.Role))
+(record Projects.Index.Index.Params)
+(record Projects.Index.Add.Params (form NewProject))
+(record Projects.Index.Rename.Params (id Text))
+(record Projects.Index.Remove.Params (id Text))
+(record Projects.Index.Seed.Params)
+(record Projects.Index.Both.Params (id Text))
+(record Projects.Index.Tag.Params)
+(record Projects.Index.Index.Session (user Text) (org Text) (role User.Role))
 (value Projects.Index.recent : Select Project ()
   (db-select Project.Project
     (base (db-scoped Db.scoped org Project.Project))
@@ -163,7 +141,7 @@
       (db-insert-scoped Db.insertScoped org Issue.Issue
         (record (title "first") (project (var id))))
       (pure task ()))))
-(value Projects.Index.load : Params -> Session -> Query Model (params session)
+(value Projects.Index.Index.load : Index.Params -> Index.Session -> Query Model (params session)
   (bind query org : Maybe Org
     (db-get Org.Org (field org (var session)))
     (bind query projects : List Project
@@ -180,60 +158,48 @@
                   (var org))))
             (projects (var projects))
             (labels (var labels))))))))
-(value Projects.Index.update : Msg -> Model -> Session -> Task Nav (msg model session)
-  (match union (var msg)
-    (case Add (bind _m1 : AddParams)
-      (let p : AddParams
-        (var _m1)
-        (bind task _
-          (db-insert-scoped Db.insertScoped org Project.Project
-            (record (name (field name (field form (var p))))))
-          (pure task (ctor Prelude.Nav.Rerender)))))
-    (case Rename (bind _m2 : RenameParams)
-      (let p : RenameParams
-        (var _m2)
-        (bind task pr : Project
-          (db-get-scoped Db.getScoped org Project.Project (field id (var p)))
-          (bind task _
-            (db-update-scoped Db.updateScoped org Project.Project
-              (field id (var pr))
-              (lambda (x : Project) (update (var x) (name "renamed"))))
-            (pure task (ctor Prelude.Nav.Rerender))))))
-    (case Remove (bind _m3 : RemoveParams)
-      (let p : RemoveParams
-        (var _m3)
-        (bind task _
-          (db-delete-scoped Db.deleteScoped org Project.Project
-            (field id (var p)))
-          (pure task (ctor Prelude.Nav.Rerender)))))
-    (case Seed
+(value Projects.Index.Add.update : Add.Params -> Index.Session -> Task Response (p session)
+  (bind task _
+    (db-insert-scoped Db.insertScoped org Project.Project
+      (record (name (field name (field form (var p))))))
+    (pure task (std Response.refresh))))
+(value Projects.Index.Rename.update : Rename.Params -> Index.Session -> Task Response (p session)
+  (bind task pr : Project
+    (db-get-scoped Db.getScoped org Project.Project (field id (var p)))
+    (bind task _
+      (db-update-scoped Db.updateScoped org Project.Project
+        (field id (var pr))
+        (lambda (x : Project) (update (var x) (name "renamed"))))
+      (pure task (std Response.refresh)))))
+(value Projects.Index.Remove.update : Remove.Params -> Index.Session -> Task Response (p session)
+  (bind task _
+    (db-delete-scoped Db.deleteScoped org Project.Project (field id (var p)))
+    (pure task (std Response.refresh))))
+(value Projects.Index.Seed.update : Seed.Params -> Index.Session -> Task Response (params session)
+  (bind task _
+    (all task (call (std List.map) (global Projects.Index.seed) (list "a" "b")))
+    (pure task (std Response.refresh))))
+(value Projects.Index.Both.update : Both.Params -> Index.Session -> Task Response (p session)
+  (bind task _
+    (db-get Org.Org (field org (var session)))
+    (bind task n : Int
+      (db-select Membership.Membership count)
       (bind task _
-        (all task
-          (call (std List.map) (global Projects.Index.seed) (list "a" "b")))
-        (pure task (ctor Prelude.Nav.Rerender))))
-    (case Both (bind _m4 : BothParams)
-      (let p : BothParams
-        (var _m4)
-        (bind task _
-          (db-get Org.Org (field org (var session)))
-          (bind task n : Int
-            (db-select Membership.Membership count)
-            (bind task _
-              (db-update-scoped Db.updateScoped org Project.Project
-                (field id (var p))
-                (lambda (x : Project)
-                  (update (var x) (name (call (std Text.fromInt) (var n))))))
-              (pure task (ctor Prelude.Nav.Rerender)))))))
-    (case Tag
-      (bind task _
-        (db-insert-scoped Db.insertScoped org Label.Label (record (name "new")))
-        (pure task (ctor Prelude.Nav.Rerender))))))
-(value Projects.Index.view : Model -> Session -> Html Msg (model session)
+        (db-update-scoped Db.updateScoped org Project.Project
+          (field id (var p))
+          (lambda (x : Project)
+            (update (var x) (name (call (std Text.fromInt) (var n))))))
+        (pure task (std Response.refresh))))))
+(value Projects.Index.Tag.update : Tag.Params -> Index.Session -> Task Response (params session)
+  (bind task _
+    (db-insert-scoped Db.insertScoped org Label.Label (record (name "new")))
+    (pure task (std Response.refresh))))
+(value Projects.Index.Index.view : Model -> Index.Session -> Html Route (model session)
   (elem html
     (elem body
       (elem h1 (hexpr text (field org (var model))))
-      (form-el Projects.Index.Add
-        (attr submit submit (ctor Projects.Index.Msg.Add (record AddParams)))
+      (form-el (route Projects.Index.Add)
+        (attr submit submit (route-ref Projects.Index.Add))
         (input Input NewProject field=name label="Name")
         (input Errors NewProject form)
         (elem button (htext "Add")))
@@ -244,22 +210,22 @@
             (elem span (hexpr text (field name (var p))))
             (elem button
               (attr click click
-                (ctor Projects.Index.Msg.Rename
-                  (record RenameParams (id (field id (var p))))))
+                (route-ref Projects.Index.Rename
+                  (record Rename.Params (id (field id (var p))))))
               (htext "rename"))
             (elem button
               (attr click click
-                (ctor Projects.Index.Msg.Remove
-                  (record RemoveParams (id (field id (var p))))))
+                (route-ref Projects.Index.Remove
+                  (record Remove.Params (id (field id (var p))))))
               (htext "remove"))
             (elem button
               (attr click click
-                (ctor Projects.Index.Msg.Both
-                  (record BothParams (id (field id (var p))))))
+                (route-ref Projects.Index.Both
+                  (record Both.Params (id (field id (var p))))))
               (htext "both")))))
-      (elem button (attr click click (ctor Projects.Index.Msg.Seed))
+      (elem button (attr click click (route-ref Projects.Index.Seed))
         (htext "seed"))
-      (elem button (attr click click (ctor Projects.Index.Msg.Tag))
+      (elem button (attr click click (route-ref Projects.Index.Tag))
         (htext "tag")))))
 (test "an org's member sees its projects" task
   (bind task me : Text
@@ -277,7 +243,7 @@
                 (org (ctor Prelude.Maybe.Just (record (value (var o)))))
                 (role (ctor User.Role.Reader))))
             (bind task page : { model: Model, session: App.Session, doc: Doc, notices: List Text, toasts: List { kind: Text, text: Text }, url: Text, status: Int }
-              (test-get Projects.Index (record Params))
+              (test-get (route Projects.Index.Index) (record Index.Params))
               (pure task
                 (test-eq
                   (call (std List.length)
@@ -285,16 +251,15 @@
                   1)))))))))
 (module Projects.Show)
 (record Projects.Show.Model (project Project) (others List Project))
-(record Projects.Show.Params (id Text))
-(union Projects.Show.Msg)
-(record Projects.Show.Session (user Text) (org Text) (role User.Role))
-(value Projects.Show.load : Params -> Session -> Query Model (params session)
+(record Projects.Show.Show.Params (id Text))
+(record Projects.Show.Show.Session (user Text) (org Text) (role User.Role))
+(value Projects.Show.Show.load : Show.Params -> Show.Session -> Query Model (params session)
   (bind query project : Project
     (db-get-scoped Db.getScoped org Project.Project (field id (var params)))
     (bind query others : List Project
       (db-run all (global Projects.Index.recent))
       (pure query (record Model (project (var project)) (others (var others)))))))
-(value Projects.Show.view : Model -> Session -> Html Msg (model session)
+(value Projects.Show.Show.view : Model -> Show.Session -> Html Route (model session)
   (elem html
     (elem body (elem h1 (hexpr text (field name (field project (var model))))))))
 (table Org.Org (id id) (insert name))
@@ -326,75 +291,120 @@
   (ref owner User.User)
   (insert text owner))
 (form Projects.Index.NewProject)
-(page Admin.Projects "/admin/orgs/{org}/projects"
-  (params Params)
+(route Admin.Projects.Projects GET "/admin/orgs/{org}/projects"
+  (params Projects.Params)
   (requires user)
   (roles Admin)
   (silo org)
-  (session Session)
+  (session Projects.Session)
   (model Model)
-  (msg Remove (params RemoveParams))
-  (view Admin.Projects.view)
-  (load Admin.Projects.load)
-  (update Admin.Projects.update)
-  (arms (Remove silo org)))
-(page Login "/login"
-  (params Params)
-  (model Model)
-  (view Login.view)
-  (load Login.load))
-(page Notes.Index "/notes"
-  (params Params)
+  (load Admin.Projects.Projects.load)
+  (view Admin.Projects.Projects.view))
+(route Admin.Projects.Remove POST "/admin/orgs/{org}/projects/_/Remove"
+  (params Remove.Params)
   (requires user)
-  (session Session)
+  (roles Admin)
+  (silo org)
+  (session Projects.Session)
+  (update Admin.Projects.Remove.update)
+  (store silo org)
+  (needs-shown))
+(route App.Leave POST "/_/Leave"
+  (params Leave.Params)
+  (update App.Leave.update)
+  (store shared))
+(route Login.Login GET "/login"
+  (params Login.Params)
   (model Model)
-  (msg Add)
-  (view Notes.Index.view)
-  (load Notes.Index.load)
-  (update Notes.Index.update)
-  (arms (Add shared)))
-(page Orgs.Index "/orgs"
-  (params Params)
+  (load Login.Login.load)
+  (view Login.Login.view))
+(route Notes.Index.Index GET "/notes"
+  (params Index.Params)
   (requires user)
-  (session Session)
+  (session Index.Session)
   (model Model)
-  (msg Pick (params PickParams))
-  (view Orgs.Index.view)
-  (load Orgs.Index.load)
-  (update Orgs.Index.update)
-  (arms (Pick shared)))
-(page Projects.Index "/projects"
-  (params Params)
+  (load Notes.Index.Index.load)
+  (view Notes.Index.Index.view))
+(route Notes.Index.Add POST "/notes/_/Add"
+  (params Add.Params)
+  (requires user)
+  (session Index.Session)
+  (update Notes.Index.Add.update)
+  (store shared)
+  (needs-shown))
+(route Orgs.Index.Index GET "/orgs"
+  (params Index.Params)
+  (requires user)
+  (session Index.Session)
+  (model Model)
+  (load Orgs.Index.Index.load)
+  (view Orgs.Index.Index.view))
+(route Orgs.Index.Pick POST "/orgs/_/Pick"
+  (params Pick.Params)
+  (requires user)
+  (session Index.Session)
+  (update Orgs.Index.Pick.update)
+  (store shared))
+(route Projects.Index.Index GET "/projects"
+  (params Index.Params)
   (requires user org)
-  (session Session)
+  (session Index.Session)
   (model Model)
-  (msg Add (params AddParams) (form NewProject))
-  (msg Rename (params RenameParams))
-  (msg Remove (params RemoveParams))
-  (msg Seed)
-  (msg Both (params BothParams))
-  (msg Tag)
-  (view Projects.Index.view)
-  (load Projects.Index.load)
-  (update Projects.Index.update)
-  (arms
-    (Add silo org)
-    (Rename silo org)
-    (Remove silo org)
-    (Seed silo org)
-    (Both silo org)
-    (Tag shared)))
-(page Projects.Show "/projects/{id}"
-  (params Params)
+  (load Projects.Index.Index.load)
+  (view Projects.Index.Index.view))
+(route Projects.Index.Add POST "/projects/_/Add"
+  (params Add.Params)
+  (form NewProject)
   (requires user org)
-  (session Session)
+  (session Index.Session)
+  (update Projects.Index.Add.update)
+  (store silo org)
+  (needs-shown))
+(route Projects.Index.Rename POST "/projects/_/Rename"
+  (params Rename.Params)
+  (requires user org)
+  (session Index.Session)
+  (update Projects.Index.Rename.update)
+  (store silo org)
+  (needs-shown))
+(route Projects.Index.Remove POST "/projects/_/Remove"
+  (params Remove.Params)
+  (requires user org)
+  (session Index.Session)
+  (update Projects.Index.Remove.update)
+  (store silo org)
+  (needs-shown))
+(route Projects.Index.Seed POST "/projects/_/Seed"
+  (params Seed.Params)
+  (requires user org)
+  (session Index.Session)
+  (update Projects.Index.Seed.update)
+  (store silo org)
+  (needs-shown))
+(route Projects.Index.Both POST "/projects/_/Both"
+  (params Both.Params)
+  (requires user org)
+  (session Index.Session)
+  (update Projects.Index.Both.update)
+  (store silo org)
+  (needs-shown))
+(route Projects.Index.Tag POST "/projects/_/Tag"
+  (params Tag.Params)
+  (requires user org)
+  (session Index.Session)
+  (update Projects.Index.Tag.update)
+  (store shared)
+  (needs-shown))
+(route Projects.Show.Show GET "/projects/{id}"
+  (params Show.Params)
+  (requires user org)
+  (session Show.Session)
   (model Model)
-  (view Projects.Show.view)
-  (load Projects.Show.load))
-(app-msg Leave)
-(app-update App.update)
+  (load Projects.Show.Show.load)
+  (view Projects.Show.Show.view))
+(app-update App.Leave.update)
 (session App.Session)
 (via org Membership.Membership)
 (silo org Project.Project Issue.Issue)
-(choose org Orgs.Index)
+(choose org Orgs.Index.Index)
 (app-arms (Leave shared))

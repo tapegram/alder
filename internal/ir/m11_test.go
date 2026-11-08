@@ -29,7 +29,6 @@ func TestIR_M11Unchanged(t *testing.T) {
 	for _, c := range []struct{ name, dir string }{
 		{"todos", ""}, // TestIR_Todos's copy, without the generated admin
 		{"blog", "../../testdata/fix/blog"},
-		{"rules-ok", "../../testdata/corpus/rules-ok"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := c.dir
@@ -108,16 +107,16 @@ func TestIR_Partitions(t *testing.T) {
 	if strings.Join(silo, " ") != "Project Issue" || len(p.Silos) != 1 {
 		t.Errorf("silos: %v", p.Silos)
 	}
-	if pg, ok := p.Choose["org"].(*Page); !ok || pg.Module != "Orgs.Index" {
+	if r, ok := p.Choose["org"].(*Route); !ok || r.Module != "Orgs.Index" {
 		t.Errorf("choose: %v", p.Choose)
 	}
 	stores := map[string]string{}
-	for _, pg := range p.Pages {
-		if pg.Module == "Admin.Projects" && (pg.Silo != "org" || strings.Join(pg.Requires, ",") != "user") {
-			t.Errorf("admin form: requires %v silo %q", pg.Requires, pg.Silo)
+	for _, r := range p.Routes {
+		if r.Module == "Admin.Projects" && (r.Silo != "org" || strings.Join(r.Requires, ",") != "user") {
+			t.Errorf("admin form: requires %v silo %q", r.Requires, r.Silo)
 		}
-		for _, a := range pg.Arms {
-			stores[pg.Module+"."+a.Msg] = a.Store.String()
+		if r.Method != "GET" {
+			stores[r.Module+"."+r.Name] = r.Store.String()
 		}
 	}
 	want := map[string]string{"Projects.Index.Add": "silo org", "Projects.Index.Seed": "silo org", "Projects.Index.Both": "silo org",
@@ -127,8 +126,8 @@ func TestIR_Partitions(t *testing.T) {
 			t.Errorf("arm %s: store %q, want %q", k, stores[k], w)
 		}
 	}
-	if len(p.AppArms) != 1 || p.AppArms[0].Msg != "Leave" || p.AppArms[0].Store != StoreShared {
-		t.Errorf("App arms: %+v", p.AppArms)
+	if stores["App.Leave"] != "shared" {
+		t.Errorf("App.Leave: store %q", stores["App.Leave"])
 	}
 	seen := map[string]int{}
 	for _, m := range p.Modules {

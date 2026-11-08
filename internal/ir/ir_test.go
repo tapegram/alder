@@ -700,7 +700,7 @@ func TestPositions(t *testing.T) {
 }
 
 // TestIR_Rules (M11): the corpus app rules-ok lowers its `@owner` column to Table.Owner, its
-// role pages to Page.Roles, and the five scoped operations to their nodes: Db.mine a Select
+// role routes to Route.Roles, and the five scoped operations to their nodes: Db.mine a Select
 // value (a DbSelect's Base, or a DbRun's Select through a helper), Db.insertMine's row without
 // the owner column. Its dump is reviewed by hand in testdata/golden/ir_rules.ir.
 func TestIR_Rules(t *testing.T) {
@@ -713,10 +713,13 @@ func TestIR_Rules(t *testing.T) {
 		}
 	}
 	roles := map[string]string{}
-	for _, pg := range p.Pages {
-		roles[pg.Module] = strings.Join(pg.Roles, "|")
-		if len(pg.Roles) > 0 && (strings.Join(pg.Requires, ",") != "user" || pg.RolesPos.Line == 0) {
-			t.Errorf("page %s: requires %q, roles at %+v", pg.Module, pg.Requires, pg.RolesPos)
+	for _, r := range p.Routes {
+		if r.Method != "GET" {
+			continue
+		}
+		roles[r.Module] = strings.Join(r.Roles, "|")
+		if len(r.Roles) > 0 && (strings.Join(r.Requires, ",") != "user" || r.RolesPos.Line == 0) {
+			t.Errorf("route %s.%s: requires %q, roles at %+v", r.Module, r.Name, r.Requires, r.RolesPos)
 		}
 	}
 	if roles["Admin.Index"] != "Author|Admin" || roles["Admin.Users"] != "Admin" || roles["Todos.Index"] != "" {

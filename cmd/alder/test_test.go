@@ -561,16 +561,6 @@ func TestTest_Browser(t *testing.T) {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
 	failing := `
-test "submit a form every row renders, by its name" = {
-  let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
-  let _ <- Db.insert Note { title: Text.NonEmpty "A", owner: me }
-  let _ <- Db.insert Note { title: Text.NonEmpty "B", owner: me }
-  let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Notes.Index {})
-  let _ <- Test.submit Title { title: Text.NonEmpty "x" }
-  Task.succeed True
-}
-
 test "click with no page open" = {
   let _ <- Test.click Boom
   Task.succeed True
@@ -579,35 +569,35 @@ test "click with no page open" = {
 test "submit to a row the page does not render" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Notes.Index {})
+  let _ <- Test.get (Index {})
   let _ <- Test.submit (Rename { id: Note.NoteId "zzz" }) { title: Text.NonEmpty "x" }
   Task.succeed True
 }
 
 test "get a page that requires a user" = {
-  let _ <- Test.get (Notes.Index {})
+  let _ <- Test.get (Index {})
   Task.succeed True
 }
 
 test "click a message the page does not render" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Notes.Index {})
+  let _ <- Test.get (Index {})
   let _ <- Test.click (Toggle { id: Note.NoteId "zzz" })
   Task.succeed True
 }
 
 test "submit a form the page does not render" = {
-  let _ <- Test.get (Auth.Login {})
-  let _ <- Test.submit NewNote { title: Text.NonEmpty "Milk", due: Nothing, urgent: False, contact: Nothing }
+  let _ <- Test.get (Auth.Login.Login {})
+  let _ <- Test.submit Submit { title: Text.NonEmpty "Milk", due: Nothing, urgent: False, contact: Nothing }
   Task.succeed True
 }
 
 test "submit a field the form does not declare" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Notes.Index {})
-  let _ <- Test.submitRaw NewNote [{ name: "colour", value: "red" }]
+  let _ <- Test.get (Index {})
+  let _ <- Test.submitRaw Submit [{ name: "colour", value: "red" }]
   Task.succeed True
 }
 
@@ -615,7 +605,7 @@ test "click another row's toggle" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
   let _ <- Db.insert Note { title: Text.NonEmpty "A", owner: me }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Notes.Index {})
+  let _ <- Test.get (Index {})
   let _ <- Test.click (Toggle { id: Note.NoteId "zzz" })
   Task.succeed True
 }
@@ -623,39 +613,39 @@ test "click another row's toggle" = {
 test "a set field the form has no input for" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Notes.Index {})
-  let _ <- Test.submit NewNote { title: Text.NonEmpty "Milk", due: Nothing, urgent: False, weight: 2.5, contact: Nothing }
+  let _ <- Test.get (Index {})
+  let _ <- Test.submit Submit { title: Text.NonEmpty "Milk", due: Nothing, urgent: False, weight: 2.5, contact: Nothing }
   Task.succeed True
 }
 
 test "a ticked box the form has no input for" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Notes.Index {})
-  let _ <- Test.submit NewNote { title: Text.NonEmpty "Milk", due: Nothing, urgent: True, contact: Nothing }
+  let _ <- Test.get (Index {})
+  let _ <- Test.submit Submit { title: Text.NonEmpty "Milk", due: Nothing, urgent: True, contact: Nothing }
   Task.succeed True
 }
 
 test "a raw field the form has no input for" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Notes.Index {})
-  let _ <- Test.submitRaw NewNote [{ name: "title", value: "Milk" }, { name: "weight", value: "1.5" }]
+  let _ <- Test.get (Index {})
+  let _ <- Test.submitRaw Submit [{ name: "title", value: "Milk" }, { name: "weight", value: "1.5" }]
   Task.succeed True
 }
 
 test "a defaulted field and an unticked box need no input" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Notes.Index {})
-  let r <- Test.submit NewNote { title: Text.NonEmpty "Milk", due: Nothing, urgent: False, weight: 1.5, contact: Nothing }
-  Task.succeed (r.answer == Redirected (Notes.Index {}))
+  let _ <- Test.get (Index {})
+  let r <- Test.submit Submit { title: Text.NonEmpty "Milk", due: Nothing, urgent: False, weight: 1.5, contact: Nothing }
+  Task.succeed (r.answer == Redirected (Index {}))
 }
 
 test "get a page that is not found" = {
   let me <- Db.insert User { email: Text.Email "me@example.com", name: "Me" }
   let _ <- Test.login { user: Just me }
-  let _ <- Test.get (Notes.Show { id: Note.NoteId "nope" })
+  let _ <- Test.get (Notes.Show.Show { id: Note.NoteId "nope" })
   Task.succeed True
 }
 `
@@ -676,7 +666,7 @@ test "get a page that is not found" = {
 	for _, want := range []string{
 		"FAIL Notes.Index \"get a page that requires a user\"\n  error: GET /: redirected to /login (requires user)\n",
 		"FAIL Notes.Index \"click a message the page does not render\"\n  error: the page / has no button or form for Notes.Index.Toggle { id: \"zzz\" }\n",
-		"FAIL Notes.Index \"click another row's toggle\"\n  error: the page / has no button or form for Notes.Index.Toggle { id: \"zzz\" } (the page has Toggle for id: ",
+		"FAIL Notes.Index \"click another row's toggle\"\n  error: the page / has no button or form for Notes.Index.Toggle { id: \"zzz\" }\n",
 		"FAIL Notes.Index \"a set field the form has no input for\"\n  error: the page's form NewNote has no input `weight`\n",
 		"FAIL Notes.Index \"a raw field the form has no input for\"\n  error: the page's form NewNote has no input `weight`\n",
 		"FAIL Notes.Index \"a ticked box the form has no input for\"\n  error: the page's form NewNote has no input `urgent`\n",
@@ -684,11 +674,10 @@ test "get a page that is not found" = {
 		"FAIL Notes.Index \"submit a form the page does not render\"\n  error: the page /login has no form NewNote (Notes.Index.Submit)\n",
 		"FAIL Notes.Index \"submit a field the form does not declare\"\n  error: form NewNote has no field `colour`\n",
 		"FAIL Notes.Index \"get a page that is not found\"\n  error: GET /notes/nope: not found\n",
-		"FAIL Notes.Index \"submit a form every row renders, by its name\"\n  error: the page has 2 forms for Notes.Index.Rename: write the message with its parameters\n",
 		"FAIL Notes.Index \"click with no page open\"\n  error: no page is open: `Test.get` one first\n",
-		"FAIL Notes.Index \"submit to a row the page does not render\"\n  error: the page / has no form Title (Notes.Index.Rename { id: \"zzz\" })\n",
-		`trace: ["Db.insert User", "Test.login", "Test.get Notes.Index", "Db.all Note", "Time.now", "Test.click Notes.Index.Toggle"]`,
-		"13 passed, 12 failed\n",
+		"FAIL Notes.Index \"submit to a row the page does not render\"\n  error: the page / has no form Title (Notes.Index.Rename)\n",
+		`trace: ["Db.insert User", "Test.login", "Test.get Notes.Index.Index", "Db.all Note", "Time.now", "Test.click Notes.Index.Toggle"]`,
+		"13 passed, 11 failed\n",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("missing %q in\n%s\nstderr: %s", want, stdout, stderr)
@@ -727,7 +716,7 @@ func TestTest_Rules(t *testing.T) {
 		"ok   Todos.Index \"a scoped helper needs a signed-in user\"\n",
 		"ok   Admin.Index \"a demoted admin still passes the cookie check\"\n",
 		"ok   Todos.Index \"updateMine never gives a todo away\"\n",
-		"27 passed, 0 failed\n",
+		"28 passed, 0 failed\n",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("missing %q in\n%s\nstderr: %s", want, stdout, stderr)
@@ -738,18 +727,19 @@ func TestTest_Rules(t *testing.T) {
 	}
 
 	code, stdout, stderr = runTest(t, dir, "--mutate")
-	if code != 0 || !strings.HasSuffix(stdout, "27 passed, 0 failed\n31 mutants: 31 killed, 0 survived  (score 1.00)\n") {
+	if code != 0 || !strings.HasSuffix(stdout, "28 passed, 0 failed\n41 mutants: 41 killed, 0 survived  (score 1.00)\n") {
 		t.Fatalf("--mutate: exit %d\n%s\n%s", code, stdout, stderr)
 	}
 	// without the tests that look at a stranger or a role, exactly those mutants survive
-	code, stdout, _ = runTest(t, dir, "--mutate", "-run", `^(?:User|Todo |Admin\.Index "(an author|a visitor)|Admin\.Users "(an admin|a visitor)|Todos\.Index "(a visitor|adding|toggling|renaming|removing|duplicating)|Todos\.Show "(the owner|a visitor))`)
+	code, stdout, _ = runTest(t, dir, "--mutate", "-run", `^(?:User|Todo |Admin\.Index "(an author|a visitor|a demoted)|Admin\.Users "(an admin|a visitor)|Todos\.Index "(recent|the open count|a visitor|adding|toggling|renaming|removing|duplicating)|Todos\.Show "(the owner|a visitor))`)
 	for _, want := range []string{
-		"  Admin.Index   requires:6   role dropped       requires user, role Author | Admin → requires user\n",
-		"  Admin.Users   requires:7   role dropped       requires user, role Admin → requires user\n",
-		"  Todos.Index   update:39    scope dropped      Db.updateMine Todo p.id (\\t -> { t | done: not t.done }) → Db.update Todo p.id (\\t -> { t | done: not t.done }), not found when missing\n",
-		"  Todos.Index   update:43    scope dropped      Db.getMine Todo p.id → Db.get Todo p.id, not found when missing\n",
-		"  Todos.Index   update:48    scope dropped      Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing\n",
-		"  Todos.Show    load:12      scope dropped      Db.getMine Todo params.id → Db.get Todo params.id, not found when missing\n",
+		"  Admin.Index   Index:6               role dropped    requires user, role Author | Admin → requires user\n",
+		"  Admin.Users   Users:7               role dropped    requires user, role Admin → requires user\n",
+		"  Todos.Index   Toggle.update:43      scope dropped   Db.updateMine Todo p.id (\\t -> { t | done: not t.done }) → Db.update Todo p.id (\\t -> { t | done: not t.done }), not found when missing\n",
+		"  Todos.Index   Rename.update:49      scope dropped   Db.getMine Todo p.id → Db.get Todo p.id, not found when missing\n",
+		"  Todos.Index   Remove.update:56      scope dropped   Db.deleteMine Todo p.id → Db.delete Todo p.id, not found when missing\n",
+		"  Todos.Index   Duplicate.update:64   scope dropped   Db.updateMine Todo p.id (\\t -> { t | done: True }) → Db.update Todo p.id (\\t -> { t | done: True }), not found when missing\n",
+		"  Todos.Show    Show.load:12          scope dropped   Db.getMine Todo params.id → Db.get Todo params.id, not found when missing\n",
 	} {
 		if code != 0 || !strings.Contains(stdout, want) {
 			t.Errorf("exit %d: missing survivor %q in\n%s", code, want, stdout)
@@ -1139,6 +1129,7 @@ var mutateOKTests = []string{
 	`Notes "adding a note stores it"`,
 	`Notes "adding a note goes back to the list"`,
 	`Notes "a new note is not pinned"`,
+	`Notes "a visitor cannot add a note"`,
 }
 
 // TestTest_Mutate: `alder test --mutate` on an app with one test per behaviour kills every
@@ -1156,8 +1147,9 @@ ok   Notes "I see only my notes"
 ok   Notes "adding a note stores it"
 ok   Notes "adding a note goes back to the list"
 ok   Notes "a new note is not pinned"
-7 passed, 0 failed
-7 mutants: 7 killed, 0 survived  (score 1.00)
+ok   Notes "a visitor cannot add a note"
+8 passed, 0 failed
+8 mutants: 8 killed, 0 survived  (score 1.00)
 `
 	if code != 0 || stdout != want {
 		t.Fatalf("exit %d\nstdout:\n%s\nwant:\n%s\nstderr: %s", code, stdout, want, stderr)
@@ -1173,15 +1165,15 @@ ok   Notes "a new note is not pinned"
 		return "^(" + strings.Join(keep, "|") + ")$"
 	}
 	for _, c := range []struct{ class, left, survivor string }{
-		{"authorization", `Notes "a visitor is sent to log in"`, `  Notes   requires:6   requires dropped   requires user → served without user (user = User.UserId "mutant")`},
-		{"data", `Notes "I see only my notes"`, `  Notes   load:12   where dropped   Db.where (Note.owner.eq session.user) → the condition dropped`},
-		{"flow", `Notes "adding a note goes back to the list"`, `  Notes   update:26   redirect → rerender   Redirect (Notes {}) → Rerender`},
+		{"authorization", `Notes "a visitor is sent to log in"`, `  Notes   Notes:6   requires dropped   requires user → served without user (user = User.UserId "mutant")`},
+		{"data", `Notes "I see only my notes"`, `  Notes   Notes.load:15   where dropped   Db.where (Note.owner.eq session.user) → the condition dropped`},
+		{"flow", `Notes "adding a note goes back to the list"`, `  Notes   Add.update:25   redirect → refresh   Response.redirect (Notes {}) → Response.refresh`},
 		{"logic", `Note "a pinned note is labelled pinned"`, `  Note   label:18   condition negated   if note.pinned → if not note.pinned`},
 		{"schema", `Notes "a new note is not pinned"`, `  Note   Note:13   default changed   pinned = False → pinned = True`},
 	} {
 		t.Run(c.class, func(t *testing.T) {
 			code, stdout, stderr := runTest(t, dir, "--mutate", "-run", without(c.left))
-			want := "6 passed, 0 failed\n7 mutants: 6 killed, 1 survived  (score 0.86)\nsurvived:\n" + c.survivor + "\n"
+			want := "7 passed, 0 failed\n8 mutants: 7 killed, 1 survived  (score 0.88)\nsurvived:\n" + c.survivor + "\n"
 			if code != 0 || !strings.HasSuffix(stdout, want) {
 				t.Fatalf("exit %d\nstdout:\n%s\nwant suffix:\n%s\nstderr: %s", code, stdout, want, stderr)
 			}
@@ -1190,7 +1182,7 @@ ok   Notes "a new note is not pinned"
 
 	// --min: below the score exits 1 with the same report; at or above it 0
 	run := without(`Notes "a new note is not pinned"`)
-	if code, stdout, _ := runTest(t, dir, "--mutate", "--min", "0.9", "-run", run); code != 1 || !strings.Contains(stdout, "(score 0.86)\nsurvived:\n") {
+	if code, stdout, _ := runTest(t, dir, "--mutate", "--min", "0.9", "-run", run); code != 1 || !strings.Contains(stdout, "(score 0.88)\nsurvived:\n") {
 		t.Fatalf("--min 0.9: exit %d\n%s", code, stdout)
 	}
 	if code, _, _ := runTest(t, dir, "--mutate", "--min=0.85", "-run", run); code != 0 {
@@ -1203,7 +1195,7 @@ ok   Notes "a new note is not pinned"
 	// --json: the tests' objects, the mutants, the score
 	code, stdout, stderr = runTest(t, dir, "--mutate", "--json", "-run", run)
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
-	if code != 0 || len(lines) != 8 {
+	if code != 0 || len(lines) != 9 {
 		t.Fatalf("--json: exit %d\n%s\n%s", code, stdout, stderr)
 	}
 	var ms struct {
@@ -1217,7 +1209,7 @@ ok   Notes "a new note is not pinned"
 			Tables       string
 		}
 	}
-	if err := json.Unmarshal([]byte(lines[6]), &ms); err != nil || len(ms.Mutants) != 7 {
+	if err := json.Unmarshal([]byte(lines[7]), &ms); err != nil || len(ms.Mutants) != 8 {
 		t.Fatalf("mutants object %q: %v", lines[6], err)
 	}
 	if m := ms.Mutants[0]; m.Kind != "default changed" || m.Killed || m.By != "" || m.Tables != "ensure" {
@@ -1226,7 +1218,7 @@ ok   Notes "a new note is not pinned"
 	if m := ms.Mutants[3]; m.Kind != "requires dropped" || !m.Killed || m.By != `Notes "a visitor is sent to log in"` || m.Tables != "" {
 		t.Fatalf("mutant 4: %+v", m)
 	}
-	if lines[7] != `{"score":0.8571428571428571,"killed":6,"survived":1,"suppressed":0,"skipped":1}` {
+	if lines[8] != `{"score":0.875,"killed":7,"survived":1,"suppressed":0,"skipped":1}` {
 		t.Fatalf("score object %s", lines[7])
 	}
 
@@ -1246,7 +1238,7 @@ func TestTest_MutateFailingSuite(t *testing.T) {
 	needGoTool(t)
 	dir := mutateOK(t, "\ntest \"broken\" = label { id: NoteId \"a\", title: \"x\", pinned: False, owner: User.UserId \"u\" } == \"pinned\"\n")
 	code, stdout, stderr := runTest(t, dir, "--mutate")
-	if code != 1 || !strings.Contains(stdout, "FAIL Note \"broken\"\n") || !strings.HasSuffix(stdout, "7 passed, 1 failed\ntests fail: fix them before measuring mutants\n") {
+	if code != 1 || !strings.Contains(stdout, "FAIL Note \"broken\"\n") || !strings.HasSuffix(stdout, "8 passed, 1 failed\ntests fail: fix them before measuring mutants\n") {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr: %s", code, stdout, stderr)
 	}
 }
