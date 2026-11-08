@@ -176,10 +176,12 @@ test "deleting the chosen rows" = {
   Task.succeed (
     {
       answer: r.answer,
+      notices: r.notices,
       gone: Maybe.map (\row -> row.id) gone,
       left: Maybe.map (\row -> row.id) left,
     } == {
       answer: Refreshed,
+      notices: ["Deleted 1 of 1"],
       gone: Nothing,
       left: Just project2,
     }
@@ -208,10 +210,12 @@ test "setting archived changes the chosen rows only" = {
   Task.succeed (
     {
       answer: r.answer,
+      notices: r.notices,
       one: Maybe.map (\row -> row.archived == True) one,
       other: Maybe.map (\row -> row.archived == True) other,
     } == {
       answer: Refreshed,
+      notices: ["Updated 1"],
       one: Just True,
       other: Just False,
     }
@@ -282,6 +286,96 @@ test "26 chosen ids are refused" = {
   )
 }
 
+test "setting archived on 26 chosen ids is refused" = {
+  let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.member me org
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
+  let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
+  let chosen =
+    [project1] ++ List.map (\n -> Project.ProjectId ("none-" ++ Text.fromInt n)) (List.range 1 25)
+  let _ <- Test.get (Bulk { org: org, ids: chosen })
+  let r <- Test.submit (BulkSetArchived { org: org, ids: chosen }) { value: True }
+  let after <- Db.get Project project1
+  Task.succeed (
+    { answer: r.answer, set: Maybe.map (\row -> row.archived == True) after }
+      == {
+        answer: FormRejected [{ field: "", message: "Choose at most 25 rows at a time." }],
+        set: Just False,
+      }
+  )
+}
+
+test "a visitor cannot delete the chosen rows" = {
+  let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.member me org
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
+  let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
+  let _ <- Test.get (Bulk { org: org, ids: [project1] })
+  let _ <- Test.login { user: Nothing, org: Nothing }
+  let r <- Test.submit (BulkDelete { org: org, ids: [project1] }) {}
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
+  let kept <- Db.get Project project1
+  Task.succeed (
+    { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
+      == { answer: Redirected (Auth.Login {}), kept: Just project1 }
+  )
+}
+
+test "a Member cannot delete the chosen rows, even one made Admin since logging in" = {
+  let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.member me org
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
+  let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
+  let _ <- Test.get (Bulk { org: org, ids: [project1] })
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
+  let r <- Test.submit (BulkDelete { org: org, ids: [project1] }) {}
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
+  let kept <- Db.get Project project1
+  Task.succeed (
+    { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
+      == { answer: PageMissing, kept: Just project1 }
+  )
+}
+
 test "a demoted Admin cannot delete the chosen rows" = {
   let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
   let me <- Db.insert User {
@@ -304,6 +398,66 @@ test "a demoted Admin cannot delete the chosen rows" = {
     { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
       == { answer: PageMissing, kept: Just project1 }
   )
+}
+
+test "a visitor cannot set archived on the chosen rows" = {
+  let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.member me org
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
+  let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
+  let before <- Db.get Project project1
+  let _ <- Test.get (Bulk { org: org, ids: [project1] })
+  let _ <- Test.login { user: Nothing, org: Nothing }
+  let r <- Test.submit (BulkSetArchived { org: org, ids: [project1] }) { value: True }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
+  let after <- Db.get Project project1
+  Task.succeed (
+    { answer: r.answer, row: after } == { answer: Redirected (Auth.Login {}), row: before }
+  )
+}
+
+test "a Member cannot set archived on the chosen rows, even one made Admin since logging in" = {
+  let org <- Db.insert Org { name: Text.NonEmpty "name-1" }
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    role: Admin,
+  }
+  let _ <- Test.member me org
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
+  let project1 <- Db.insert Project { name: Text.NonEmpty "name-1", org: org }
+  let before <- Db.get Project project1
+  let _ <- Test.get (Bulk { org: org, ids: [project1] })
+  let _ <- Test.login {
+    user: Just me,
+    org: Nothing,
+    role: Member,
+  }
+  let r <- Test.submit (BulkSetArchived { org: org, ids: [project1] }) { value: True }
+  let _ <- Test.login {
+    user: Just me,
+    org: Just org,
+    role: Admin,
+  }
+  let after <- Db.get Project project1
+  Task.succeed ({ answer: r.answer, row: after } == { answer: PageMissing, row: before })
 }
 
 test "a demoted Admin cannot set archived on the chosen rows" = {

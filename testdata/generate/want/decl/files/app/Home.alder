@@ -52,8 +52,15 @@ test "signing adds an entry" = {
   let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
   let page <- Test.get (Home {})
   Task.succeed (
-    { answer: signed.answer, entries: Test.count "#entries li" page.doc }
-      == { answer: Redirected (Home {}), entries: 1 }
+    {
+      answer: signed.answer,
+      notices: signed.notices,
+      entries: Test.count "#entries li" page.doc,
+    } == {
+      answer: Redirected (Home {}),
+      notices: ["Signed"],
+      entries: 1,
+    }
   )
 }
 

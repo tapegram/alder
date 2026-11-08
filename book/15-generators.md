@@ -871,9 +871,9 @@ wrote app/Admin/Users/Show.alder
 
 `examples/blog/app/Admin/` holds exactly these files, as the command
 wrote them; nobody has edited them, and the blog's README says how to
-check that by running it again. Its 154 tests pass, and they kill 144 of
-the admin's 147 mutants, the three survivors being equivalent (chapter 10;
-the blog's README lists them). For each table `T`, with `t` its
+check that by running it again. Its 181 tests pass, and they kill 279 of
+the admin's 290 mutants (chapter 10; the blog's README says why each of
+the eleven survivors is not a gap). For each table `T`, with `t` its
 name in lower case and `Ts` its plural (`Posts`, `Activities`; the folder is
 plural so that `Admin.Posts` never reads as the table `Post`):
 
@@ -899,11 +899,16 @@ Post.PostId } form PostForm requires user, role Admin`, and a path that ends in
 and a `POST` route for each action (`BulkDelete`, `BulkSetStatus` …). Every
 route has `requires user, role Admin`, and an `update` answers with a
 `Response`: `Response.redirect` to the row after a save and to the list after a delete,
-`Response.invalid` for a refusal. Every write route has a test whose
-name starts "a demoted Admin cannot …": it demotes the Admin in the table
-after logging in, sends the write route, and expects the refusal. No
-`load` runs before a write route, so the gate and the checks are in each
-write route's `update`, and the files below show them there. Their
+`Response.invalid` for a refusal. No `load` runs before a write route, so
+each guards itself, and each has three tests that open the page holding
+its form as an Admin, change the session, and send the write from the page
+still held: "a visitor cannot …" logs out first and expects the login page
+(the route's `requires user`); "a Reader cannot …, even one made Admin
+since logging in" logs in again as a Reader whose row still says Admin
+and expects a 404 (the route's `role Admin`); "a demoted Admin cannot …"
+demotes the Admin in the table and expects the refusal (the `update`'s
+`adminOnly`). Nothing is written in any of them. The gate and the checks
+are in each write route's `update`, and the files below show them there. Their
 members are written with the route's name, `Index.load` and `Save.update`
 (chapter 6, "Qualified declarations").
 
@@ -2177,17 +2182,21 @@ test "a long list of users offers 50, and the search narrows it" = {
   let all <- Test.get (New {})
   let found <- Test.get (New { findAuthor: "email-203@example.com" })
   let r <- Test.submit SearchAuthor { q: "zz" }
+  let _ <- Test.login { user: Nothing }
+  let visitor <- Test.submit SearchAuthor { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.authors,
       total: all.model.authorsTotal,
       found: Test.texts "select[name=author] option" found.doc == ["email-203@example.com"],
       answer: r.answer,
+      visitor: visitor.answer,
     } == {
       shown: 50,
       total: 203,
       found: True,
       answer: Redirected (New { findAuthor: "zz" }),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }
@@ -2233,6 +2242,72 @@ test "an author outside the narrowed list is refused" = {
         rows: 0,
       }
   )
+}
+
+test "a visitor cannot create a post" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "slug-1",
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let _ <- Test.get (New {})
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.submit Create {
+    slug: Post.Slug "slug-2",
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    published: True,
+    author: user2,
+  }
+  let rows <- Db.from Post |> Db.count
+  Task.succeed (
+    { answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login.Login {}), rows: 1 }
+  )
+}
+
+test "a Reader cannot create a post, even one made Admin since logging in" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Db.insert Post {
+    slug: Post.Slug "slug-1",
+    title: Text.NonEmpty "title-1",
+    body: "body-1",
+    author: me,
+  }
+  let _ <- Test.get (New {})
+  let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.submit Create {
+    slug: Post.Slug "slug-2",
+    title: Text.NonEmpty "title-2",
+    body: "body-2",
+    published: True,
+    author: user2,
+  }
+  let rows <- Db.from Post |> Db.count
+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: PageMissing, rows: 1 })
 }
 
 test "a demoted Admin cannot create a post" = {
@@ -2346,7 +2421,9 @@ There is no `al-autocomplete` element: the library has none (Appendix C),
 so the control stays an `al-select` and a search form beside it, which
 works with no JavaScript. The generated tests check the edge: with
 exactly 200 rows the select holds them all; with 201 it holds 50 (51 on
-the Edit page, the row's own first) and the search narrows them; on the
+the Edit page, the row's own first) and the search narrows them, while a
+visitor's search, sent from the same page after logging out, goes to log
+in (the search route's own `requires user`); on the
 Edit page, a row whose own user sorts after every other is offered first
 and once, and saving the form unchanged keeps it; a crafted post of an id
 outside the rendered options is refused with "must be one of the
@@ -2554,11 +2631,13 @@ test "deleting a user nothing refers to" = {
     {
       button: Test.count "#delete al-button" page.doc,
       answer: r.answer,
+      notices: r.notices,
       gone: Maybe.map (\row -> row.id) gone,
       kept: Maybe.map (\row -> row.id) kept,
     } == {
       button: 1,
       answer: Redirected (Admin.Users.Index.Index {}),
+      notices: ["Deleted"],
       gone: Nothing,
       kept: Just user3,
     }
@@ -2627,6 +2706,52 @@ test "an Admin cannot delete their own account" = {
       answer: FormRejected [{ field: "", message: "You cannot delete your own account." }],
       kept: Just me,
     }
+  )
+}
+
+test "a visitor cannot delete a user" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Test.get (Delete { id: user2 })
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.submit (Destroy { id: user2 }) {}
+  let kept <- Db.get User user2
+  Task.succeed (
+    { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
+      == { answer: Redirected (Auth.Login.Login {}), kept: Just user2 }
+  )
+}
+
+test "a Reader cannot delete a user, even one made Admin since logging in" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Test.get (Delete { id: user2 })
+  let _ <- Test.login { user: Just me, role: Reader }
+  let r <- Test.submit (Destroy { id: user2 }) {}
+  let kept <- Db.get User user2
+  Task.succeed (
+    { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
+      == { answer: PageMissing, kept: Just user2 }
   )
 }
 
@@ -3383,7 +3508,7 @@ edited app/Home.alder
  test "signing adds an entry" = {
    let _ <- Test.get (Home {})
    let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
-@@ -69,3 +80,14 @@
+@@ -76,3 +87,14 @@
    let n = perPage
    Task.succeed (n == 20)
  }
@@ -3398,7 +3523,7 @@ edited app/Home.alder
 +  let r <- Test.click (Hide { id: ?hideId })
 +  Task.succeed (r.answer == Refreshed)
 +}
-app/Home.alder:91:35: warning[W0002]: hole ?hideId has type Entry.EntryId
+app/Home.alder:98:35: warning[W0002]: hole ?hideId has type Entry.EntryId
     let r <- Test.click (Hide { id: ?hideId })
                                     ^^^^^^^
 `alder new msg` on a route module adds a write route; a write route in a module of its own is `alder new route <Module> /path --method POST`

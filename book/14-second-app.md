@@ -540,6 +540,181 @@ test "a demoted author is turned away at once" = {
   )
 }
 
+-- Each write route, posted from the edit page still open in the browser, is guarded on its own.
+-- A visitor (the session ended) is sent to log in by its `requires user`; a Reader (the cookie now
+-- says Reader, though the row says Author) gets a 404 from its `role Author`. Neither changes the
+-- posts: the draft has the Publish button, the published post the Unpublish one.
+test "the write routes refuse a visitor and a Reader" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+    role: Author,
+  }
+  let draft <- Db.insert Post {
+    slug: Post.Slug "draft",
+    title: Text.NonEmpty "Draft",
+    body: "",
+    author: me,
+  }
+  let live <- Db.insert Post {
+    slug: Post.Slug "live",
+    title: Text.NonEmpty "Live",
+    body: "",
+    published: True,
+    author: me,
+  }
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Test.login { user: Nothing, role: Reader }
+  let visitorSave <- Test.submit (Save { id: draft }) { title: Text.NonEmpty "Changed", body: "" }
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Test.login { user: Nothing, role: Reader }
+  let visitorPublish <- Test.click (Publish { id: draft })
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: live })
+  let _ <- Test.login { user: Nothing, role: Reader }
+  let visitorUnpublish <- Test.click (Unpublish { id: live })
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Test.login { user: Nothing, role: Reader }
+  let visitorDelete <- Test.click (Delete { id: draft })
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Test.login { user: Just me, role: Reader }
+  let readerSave <- Test.submit (Save { id: draft }) { title: Text.NonEmpty "Changed", body: "" }
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Test.login { user: Just me, role: Reader }
+  let readerPublish <- Test.click (Publish { id: draft })
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: live })
+  let _ <- Test.login { user: Just me, role: Reader }
+  let readerUnpublish <- Test.click (Unpublish { id: live })
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Test.login { user: Just me, role: Reader }
+  let readerDelete <- Test.click (Delete { id: draft })
+  let posts <-
+    Db.from Post
+      |> Db.orderBy Post.slug.asc
+      |> Db.all
+  Task.succeed (
+    {
+      visitor: [
+        visitorSave.answer,
+        visitorPublish.answer,
+        visitorUnpublish.answer,
+        visitorDelete.answer,
+      ],
+      reader: [
+        readerSave.answer,
+        readerPublish.answer,
+        readerUnpublish.answer,
+        readerDelete.answer,
+      ],
+      posts: List.map (\p -> { title: p.title, published: p.published }) posts,
+    } == {
+      visitor: List.repeat 4 (Redirected (Auth.Login.Login {})),
+      reader: List.repeat 4 PageMissing,
+      posts: [
+        { title: Text.NonEmpty "Draft", published: False },
+        { title: Text.NonEmpty "Live", published: True },
+      ],
+    }
+  )
+}
+
+-- An author made a Reader since logging in still passes the role check (the cookie says Author),
+-- but each write route begins with User.authorOnly, which re-reads the row: Save, Publish,
+-- Unpublish and Delete are each a 404, and the posts are left as they were.
+test "the write routes turn a demoted author away" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+    role: Author,
+  }
+  let draft <- Db.insert Post {
+    slug: Post.Slug "draft",
+    title: Text.NonEmpty "Draft",
+    body: "",
+    author: me,
+  }
+  let live <- Db.insert Post {
+    slug: Post.Slug "live",
+    title: Text.NonEmpty "Live",
+    body: "",
+    published: True,
+    author: me,
+  }
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Db.update User me (\u -> { u | role: Reader })
+  let saved <- Test.submit (Save { id: draft }) { title: Text.NonEmpty "Changed", body: "" }
+  let _ <- Db.update User me (\u -> { u | role: Author })
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Db.update User me (\u -> { u | role: Reader })
+  let published <- Test.click (Publish { id: draft })
+  let _ <- Db.update User me (\u -> { u | role: Author })
+  let _ <- Test.get (Edit { id: live })
+  let _ <- Db.update User me (\u -> { u | role: Reader })
+  let unpublished <- Test.click (Unpublish { id: live })
+  let _ <- Db.update User me (\u -> { u | role: Author })
+  let _ <- Test.get (Edit { id: draft })
+  let _ <- Db.update User me (\u -> { u | role: Reader })
+  let deleted <- Test.click (Delete { id: draft })
+  let posts <-
+    Db.from Post
+      |> Db.orderBy Post.slug.asc
+      |> Db.all
+  Task.succeed (
+    {
+      answers: [saved.answer, published.answer, unpublished.answer, deleted.answer],
+      posts: List.map (\p -> { title: p.title, published: p.published }) posts,
+    }
+      == {
+        answers: List.repeat 4 PageMissing,
+        posts: [
+          { title: Text.NonEmpty "Draft", published: False },
+          { title: Text.NonEmpty "Live", published: True },
+        ],
+      }
+  )
+}
+
+-- Publish and Unpublish through the page: each answers with the page again (Refreshed), its
+-- badge and button turned over.
+test "publishing and unpublishing through the page" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+    role: Author,
+  }
+  let id <- Db.insert Post {
+    slug: Post.Slug "hello",
+    title: Text.NonEmpty "Hello",
+    body: "",
+    author: me,
+  }
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Edit { id: id })
+  let published <- Test.click (Publish { id: id })
+  let unpublished <- Test.click (Unpublish { id: id })
+  Task.succeed (
+    {
+      published: { answer: published.answer, status: Test.text "al-badge" published.doc },
+      unpublished: { answer: unpublished.answer, status: Test.text "al-badge" unpublished.doc },
+    }
+      == {
+        published: { answer: Refreshed, status: Just "Published" },
+        unpublished: { answer: Refreshed, status: Just "Draft" },
+      }
+  )
+}
+
 test "a promoted reader logs in again before editing" = {
   let me <- Db.insert User {
     email: Text.Email "me@example.com",
@@ -603,11 +778,27 @@ is changed to `Reader`. The cookie still says Author, so the role check
 passes, but `load` re-reads the row and the page is a 404 (`stale` is
 `PageMissing`) at once; a write route run with the same stale session
 is `Err "not found"` as well, since `User.authorOnly` re-reads the row.
-After a second login the session holds the row's role too. The fourth is
-the other way round: a row made Author whose cookie still says Reader is
-turned away by the role check, until they log in again (the re-read
-alone would let them in, so this test is the one that pins the check).
-The last test reads the front page through `Index.Index.load`, which a
+After a second login the session holds the row's role too.
+
+The next three were added when `alder test --mutate` gained the route
+operators (alder#187): a write route runs no `load`, so its own `requires
+user`, its `role Author` and its `User.authorOnly` are each a mutant, and
+only a write sent through the page tells them apart. Each test opens the
+edit page as the author, changes the session, and sends Save, Publish
+(from a draft's page), Unpublish (from a published post's) and Delete
+from the page still held. A visitor (`Test.login { user: Nothing, role:
+Reader }`, the session ended) is sent to log in; a Reader whose row still
+says Author (the cookie changed) gets the role check's 404; an author
+whose row was made Reader since (the cookie still says Author) gets
+`authorOnly`'s 404. Neither post changes. The last of the three clicks
+Publish and Unpublish as the author and checks that each answers
+`Refreshed` with the badge turned over: the `refresh → invalid` mutant
+answers 422 instead.
+
+The seventh is the other way round from the stale role: a row made Author
+whose cookie still says Reader is turned away by the role check, until
+they log in again (the re-read alone would let them in, so this test is
+the one that pins the check). The last test reads the front page through `Index.Index.load`, which a
 test may call once its module imports `Posts.Index`: after the import the
 module is `Index`, and the route's member `Index.Index.load`.
 
@@ -619,10 +810,9 @@ reads the page `Response.refresh` shows again: the heading and the text
 area now hold what was saved, the answer is `Refreshed`, the toast is in
 `notices`, and the post's status is still the `<al-badge>` reading Draft
 (a refresh replaces the page's `<body>`, custom elements and all; the
-`<head>` is not updated yet, alder#189). The mutation operators for
-`requires` and `role` exist only for the old page form (alder#187), so
-on routes these two tests, not a mutant, are what notices a dropped
-`requires`.
+`<head>` is not updated yet, alder#189). The first kills the GET route's
+`requires dropped` mutant, the second the `write replaced` and `update
+field dropped` of Save and its `toast dropped`.
 
 ```alder part=blog/Write.Edit
 -- The page through the browser: a visitor is sent to log in; the author saves the form, and the
@@ -859,8 +1049,8 @@ otherwise draw from its `page` and `pages` attributes).
 
 ## Its tests
 
-`alder test examples/blog` runs 196 tests: the 154 of the generated
-admin (chapter 15), and forty-two in seven modules, which `-run` picks
+`alder test examples/blog` runs 227 tests: the 181 of the generated
+admin (chapter 15), and forty-six in seven modules, which `-run` picks
 out (it matches each test's `Module "name"`):
 
 ```text
@@ -898,16 +1088,20 @@ ok   Write "a taken slug is refused"
 ok   Write "the write page needs an Author"
 ok   Write "a demoted author cannot open the write page"
 ok   Write "a promoted reader logs in again first"
+ok   Write "Create is refused to a visitor, a Reader and a demoted author"
 ok   Write "an Author logs out from the write page"
 ok   Write "the write page lists the author's own posts, newest first"
 ok   Write.Edit "deleting a post deletes its comments"
 ok   Write.Edit "another author's post is not found"
 ok   Write.Edit "a demoted author is turned away at once"
+ok   Write.Edit "the write routes refuse a visitor and a Reader"
+ok   Write.Edit "the write routes turn a demoted author away"
+ok   Write.Edit "publishing and unpublishing through the page"
 ok   Write.Edit "a promoted reader logs in again before editing"
 ok   Write.Edit "Publish shows the post on the front page; Unpublish hides it"
 ok   Write.Edit "a visitor is sent to log in"
 ok   Write.Edit "saving changes the title and the body"
-42 passed, 0 failed
+46 passed, 0 failed
 ```
 
 The `Posts.Index` tests call `load` the way the runtime does, with
@@ -1247,12 +1441,13 @@ be empty").
 Ten tests were written after `alder test --mutate` (chapter 10, "Mutation
 testing") ran on the blog: before them, 17 of its 58 mutants survived;
 after, 3 do, and those three cannot be killed (chapter 10 explains why).
-The generated admin, which came later, adds 147 mutants, and its own
-tests kill 144 of them; the three that survive are equivalent mutants
-(`examples/blog/README.md` names them). Since the move to routes the
-mutator has no operators for `requires`, `role` or the `Response`
-answers (alder#187), so the whole blog is 202 mutants, fewer than the
-page form had.
+The generated admin, which came later, adds 290 mutants, and its own
+tests kill 279 of them (`examples/blog/README.md` says why each of the
+eleven others survives). The route operators (alder#187: a route's
+`requires` and role, its `Response` answers, a `let _ <-` step) bring the
+whole blog to 376 mutants; the four tests above that send a write after
+the session changed, and the answer checked in "publishing and
+unpublishing through the page", were written for them.
 `Post`'s two and `Write.Edit`'s two are above. `Write`'s "the write page
 lists the author's own posts, newest first" inserts another author's post
 between two of the author's own. `Posts.Show`'s "commenting through the
@@ -1616,18 +1811,20 @@ table lives follows from what writes it.
 
 ### Its tests and its score
 
-The app's own 35 tests cover what the rules promise, with two orgs:
+The app's own 39 tests cover what the rules promise, with two orgs:
 `Projects.Index "a member sees the org's name and only its projects, by
 name"`, `"a project is created in the org's database, and another org
 does not see it"`, `Orgs.Index "a non-member's switch is refused"`, `"a
 membership deleted earlier in the same Task counts as gone"`, and the
-re-read tests "a member removed from the org loses access at once". The
-generated admin brings 298 more (333 in all). `alder test --mutate
-examples/workspace` scores 0.963 (289 of 300 mutants killed; the page
-form had 522, before the mutator lost its `requires` and `role`
-operators on routes, alder#187); the 11 survivors are in the
-generated admin, and `examples/workspace/README.md` says why each is
-not a gap.
+re-read tests "a member removed from the org loses access at once" and
+"a removed member cannot … from a page shown before", which send each
+write route from a page opened before the membership was deleted (no
+`load` runs before a write, so its `Membership.memberOnly` step is the
+check). The generated admin brings 349 more (388 in all). `alder test
+--mutate examples/workspace` scores 0.956 (570 of 596 mutants killed);
+25 of the 26 survivors are in the generated admin, the last is the
+`requires dropped` of `Orgs.Index`'s Open, an equivalent mutant, and
+`examples/workspace/README.md` says why each is not a gap.
 
 ### Run it
 

@@ -420,7 +420,7 @@ type Fake struct {
 // ---- Expressions
 
 // Pos is a source position (1-based line and column) of the expression a node was lowered from.
-// The node kinds a mutant can target carry one (If, Match, Op, Lit, Update, Ctor, Call, EffBind,
+// The node kinds a mutant can target carry one (If, Match, Op, Lit, Update, Ctor, Call, a stdlib Var, EffBind,
 // DbSelect, DbInsert, DbUpdate, DbDelete, the scoped Db*Scoped nodes, Cond, Ord); it is the zero Pos for a node Lower made
 // up (a default filled into a literal keeps its declaration's). Dump never prints it.
 type Pos struct{ Line, Col int }
@@ -462,9 +462,11 @@ const (
 	VarStd                   // stdlib value, named as in its stdlib file: Module "List", Name "map"; `not` is Prelude.not
 )
 
-// Var is a reference to a named value.
+// Var is a reference to a named value. Pos is set for a stdlib value written in the source (a
+// mutant can target `Response.refresh`), else the zero Pos.
 type Var struct {
 	Typed
+	Pos          Pos
 	Kind         VarKind
 	Module, Name string
 }

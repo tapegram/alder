@@ -424,3 +424,25 @@ test "a removed member cannot create a project from a page shown before" = {
   let projects <- Db.from Project |> Db.count
   Task.succeed ({ answer: r.answer, projects: projects } == { answer: PageMissing, projects: 0 })
 }
+
+-- Remove, too, begins with Membership.memberOnly: the project stays.
+test "a removed member cannot remove a project from a page shown before" = {
+  let ann <- Db.insert User {
+    email: Text.Email "ann@example.com",
+    name: Text.NonEmpty "Ann",
+    passwordHash: "",
+  }
+  let acme <- Db.insert Org { name: Text.NonEmpty "Acme" }
+  let _ <- Test.member ann acme
+  let rocket <- Db.insert Project { name: Text.NonEmpty "Rocket", org: acme }
+  let _ <- Test.login { user: Just ann, org: Just acme }
+  let _ <- Test.get (Index {})
+  let rows <-
+    Db.from Membership
+      |> Db.where (Membership.user.eq ann)
+      |> Db.all
+  let _ <- Task.all (List.map (\m -> Db.delete Membership m.id) rows)
+  let r <- Test.click (Remove { id: rocket })
+  let projects <- Db.from Project |> Db.count
+  Task.succeed ({ answer: r.answer, projects: projects } == { answer: PageMissing, projects: 1 })
+}

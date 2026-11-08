@@ -1,5 +1,24 @@
-1  Admin  requires:4  requires dropped  requires user → served without user (user = User.UserId "mutant")
-2  Admin  requires:4  role dropped      requires user, role Admin → requires user
-3  Home   requires:4  requires dropped  requires user → served without user (user = User.UserId "mutant")
-4  Staff  requires:4  requires dropped  requires user → served without user (user = User.UserId "mutant")
-5  Staff  requires:4  role dropped      requires user, role Author | Admin → requires user
+1   Admin   requires:4      requires dropped    requires user → served without user (user = User.UserId "mutant")
+2   Admin   requires:4      role dropped        requires user, role Admin → requires user
+3   Home    requires:4      requires dropped    requires user → served without user (user = User.UserId "mutant")
+4   Routes  Show:7          requires dropped    requires user → served without user (user = User.UserId "mutant")
+5   Routes  Show:7          role dropped        requires user, role Admin → requires user
+6   Routes  Home:8          requires dropped    requires user → served without user (user = User.UserId "mutant")
+7   Routes  Save:9          requires dropped    requires user → served without user (user = User.UserId "mutant")
+8   Routes  Save:9          role dropped        requires user, role Author | Admin → requires user
+9   Routes  Open:10         requires dropped    requires user → served without user (user = User.UserId "mutant")
+10  Routes  Find:11         requires dropped    requires user → served without user (user = User.UserId "mutant")
+11  Routes  Back:12         requires dropped    requires user → served without user (user = User.UserId "mutant")
+12  Routes  Back:12         role dropped        requires user, role Admin → requires user
+13  Routes  Teams:13        requires dropped    requires user → served without user (user = User.UserId "mutant")
+14  Routes  Teams:13        role dropped        requires user, team, role Admin → requires user, team
+15  Routes  Pick:14         requires dropped    requires user → served without user (user = User.UserId "mutant")
+16  Routes  Pick:14         role dropped        requires user, role Admin → requires user
+17  Routes  Save.update:28  refresh → invalid   Response.refresh → Response.invalid "mutant"
+18  Routes  Open.update:31  refresh → invalid   Response.refresh → Response.invalid "mutant"
+19  Routes  Find.update:34  redirect → refresh  Response.redirect (Show {}) → Response.refresh
+20  Routes  Back.update:37  redirect → refresh  Response.redirect (Home {}) → Response.refresh
+21  Routes  Pick.update:40  redirect → refresh  Response.redirect (Teams {}) → Response.refresh
+22  Staff   requires:4      requires dropped    requires user → served without user (user = User.UserId "mutant")
+23  Staff   requires:4      role dropped        requires user, role Author | Admin → requires user
+-   Routes  Find:11         role dropped        equivalent: the update only redirects to Show, whose role check refuses every other role too

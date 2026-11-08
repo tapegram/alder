@@ -107,12 +107,60 @@ test "deleting a todo nothing refers to" = {
     {
       button: Test.count "#delete al-button" page.doc,
       answer: r.answer,
+      notices: r.notices,
       gone: Maybe.map (\row -> row.id) gone,
     } == {
       button: 1,
       answer: Redirected (Admin.Todos.Index.Index {}),
+      notices: ["Deleted"],
       gone: Nothing,
     }
+  )
+}
+
+test "a visitor cannot delete a todo" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.get (Delete { id: todo1 })
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.submit (Destroy { id: todo1 }) {}
+  let kept <- Db.get Todo todo1
+  Task.succeed (
+    { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
+      == { answer: Redirected (Auth.Login.Login {}), kept: Just todo1 }
+  )
+}
+
+test "a Member cannot delete a todo, even one made Admin since logging in" = {
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let todo1 <- Db.insert Todo {
+    title: Text.NonEmpty "title-1",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.get (Delete { id: todo1 })
+  let _ <- Test.login { user: Just me, role: Member }
+  let r <- Test.submit (Destroy { id: todo1 }) {}
+  let kept <- Db.get Todo todo1
+  Task.succeed (
+    { answer: r.answer, kept: Maybe.map (\row -> row.id) kept }
+      == { answer: PageMissing, kept: Just todo1 }
   )
 }
 

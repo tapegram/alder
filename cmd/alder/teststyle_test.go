@@ -106,7 +106,7 @@ func TestTest_StyledReport(t *testing.T) {
 	for _, want := range []string{
 		st.BoldRed("FAIL") + " " + st.Bold("Table.Todo \"wrong\""),
 		st.Green("ok") + "   ",
-		st.BoldRed("126 passed, 2 failed") + "\n  " + st.BoldRed("FAIL") + " Table.Todo \"wrong\"\n  " + st.BoldRed("FAIL") + " Table.Todo \"also wrong\"\n",
+		st.BoldRed("147 passed, 2 failed") + "\n  " + st.BoldRed("FAIL") + " Table.Todo \"wrong\"\n  " + st.BoldRed("FAIL") + " Table.Todo \"also wrong\"\n",
 	} {
 		if !strings.Contains(styled, want) {
 			t.Errorf("styled report lacks %q:\n%s", want, styled)

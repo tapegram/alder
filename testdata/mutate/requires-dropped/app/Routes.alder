@@ -1,0 +1,40 @@
+module Routes
+
+import User
+
+-- A route's `requires`, as a page's: one mutant per route, the GET route's and the write
+-- route's; Count's refused, `visits` being an Int; Find's equivalent, its update only redirecting
+-- to Show, which requires the same. Not equivalent though redirect-only: Team (its `team` check
+-- still runs after the placeholder user: a 404, not the login page) and Look (a post whose form
+-- does not decode is a 422).
+route Show  = GET  "/routes"         { q: Text = "" } requires user
+route Save  = POST "/routes/_/Save"  { }              requires user
+route Count = POST "/routes/_/Count" { }              requires visits
+route Find  = POST "/routes/_/Find"  { }              requires user
+route Team  = POST "/routes/_/Team"  { }              requires user, team
+route Look  = POST "/routes/_/Look"  { } form LookForm requires user
+
+type Model = { user: User.UserId }
+
+form LookForm = { q: Text }
+
+Show.load : Show.Params -> Session -> Query Model
+Show.load params session = Query.succeed { user: session.user }
+
+Save.update : Save.Params -> Session -> Task Response
+Save.update p session = Task.succeed Response.refresh
+
+Count.update : Count.Params -> Session -> Task Response
+Count.update p session = Task.succeed Response.refresh
+
+Find.update : Find.Params -> Session -> Task Response
+Find.update p session = Task.succeed (Response.redirect (Show { q: "x" }))
+
+Team.update : Team.Params -> Session -> Task Response
+Team.update p session = Task.succeed (Response.redirect (Show { q: "x" }))
+
+Look.update : Look.Params -> Session -> Task Response
+Look.update p session = Task.succeed (Response.redirect (Show { q: "x" }))
+
+Show.view : Model -> Session -> Html
+Show.view model session = <p>Routes</p>

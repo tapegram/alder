@@ -543,13 +543,14 @@ nine tests close 14 of 32: chapter 10.)
 **A curated set of operators, not every possible edit.** Generic
 mutation tools change any operator or constant anywhere, and produce
 thousands of mutants, many of them programs that do not compile, crash
-at once, or mean nothing in particular. Alder's twenty-one operators are
+at once, or mean nothing in particular. Alder's twenty-seven operators are
 each a bug that a server-rendered app can have and a user would notice:
 a `requires` missing, an ownership check dropped, a role or an
 ownership rule dropped (`role dropped`, `scope dropped`, M11), a
-membership check dropped (`membership dropped`, M15), a write that does
-nothing, a filter or an order wrong, a redirect that is a re-render, a
-delete rule changed. Each works on the typed IR and makes a well-typed
+membership check dropped (`membership dropped`, M15), an access-check
+step dropped (`step dropped`, alder#187), a write that does nothing, a
+filter or an order wrong, a redirect that is a refresh, a refusal
+answered as a success, a notice left out, a delete rule changed. Each works on the typed IR and makes a well-typed
 mutant by construction, so all of them compile into one test build.
 Each is named for what it breaks, so a survivor's line reads as a
 sentence about the app. The to-do app has 32, the blog 58; once the

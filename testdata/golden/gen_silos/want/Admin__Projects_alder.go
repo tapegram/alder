@@ -46,14 +46,20 @@ func Admin__Projects__Projects__load(params Admin__Projects__Projects__Params, s
 func Admin__Projects__Remove__update(p Admin__Projects__Remove__Params, session Admin__Projects__Projects__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[struct{}] {
 		switch Mutant {
-		case 1:
+		case 5:
 			return eff.Pure(struct{}{})
 		}
 		return eff.Call("Db.delete Project", true, func(_e1 *eff.Env) (struct{}, error) {
 			return struct{}{}, db.DeleteRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Project__Project, p.Id)
 		})
 	}(), func(_ struct{}) eff.Task[rt.Response] {
-		return eff.Pure(std.ResponseRefresh())
+		return eff.Pure(func() rt.Response {
+			switch Mutant {
+			case 6:
+				return std.ResponseInvalid("mutant")
+			}
+			return std.ResponseRefresh()
+		}())
 	})
 }
 

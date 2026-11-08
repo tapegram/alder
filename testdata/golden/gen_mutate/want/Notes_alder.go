@@ -36,7 +36,7 @@ func widen__Notes__Notes__Session(s Notes__Notes__Session) App__Session {
 func Notes__Notes__load(params Notes__Notes__Params, session Notes__Notes__Session) eff.Query[Notes__Model] {
 	return eff.Q(eff.Bind(func() eff.Task[[]Note__Note] {
 		switch Mutant {
-		case 4:
+		case 6:
 			return eff.Call("Db.all Note", false, func(_e1 *eff.Env) ([]Note__Note, error) {
 				return db.All(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), db.From(table__Note__Note))
 			})
@@ -52,7 +52,7 @@ func Notes__Notes__load(params Notes__Notes__Params, session Notes__Notes__Sessi
 func Notes__Add__update(p Notes__Add__Params, session Notes__Notes__Session) eff.Task[rt.Response] {
 	return eff.Bind(func() eff.Task[string] {
 		switch Mutant {
-		case 5:
+		case 7:
 			return eff.Pure("mutant")
 		}
 		return eff.Call("Db.insert Note", true, func(_e1 *eff.Env) (string, error) {
@@ -65,7 +65,13 @@ func Notes__Add__update(p Notes__Add__Params, session Notes__Notes__Session) eff
 			}(), Owner: session.User}), _e1.Now())
 		})
 	}(), func(_ string) eff.Task[rt.Response] {
-		return eff.Pure(std.ResponseRedirect(rt.Route{Name: "Notes.Notes", Method: "GET", Path: "/notes"}))
+		return eff.Pure(func() rt.Response {
+			switch Mutant {
+			case 8:
+				return std.ResponseRefresh()
+			}
+			return std.ResponseRedirect(rt.Route{Name: "Notes.Notes", Method: "GET", Path: "/notes"})
+		}())
 	})
 }
 

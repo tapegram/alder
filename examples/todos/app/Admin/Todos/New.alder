@@ -229,17 +229,21 @@ test "a long list of users offers 50, and the search narrows it" = {
   let all <- Test.get (New {})
   let found <- Test.get (New { findOwner: "email-203@example.com" })
   let r <- Test.submit SearchOwner { q: "zz" }
+  let _ <- Test.login { user: Nothing }
+  let visitor <- Test.submit SearchOwner { q: "zz" }
   Task.succeed (
     {
       shown: List.length all.model.owners,
       total: all.model.ownersTotal,
       found: Test.texts "select[name=owner] option" found.doc == ["email-203@example.com"],
       answer: r.answer,
+      visitor: visitor.answer,
     } == {
       shown: 50,
       total: 203,
       found: True,
       answer: Redirected (New { findOwner: "zz" }),
+      visitor: Redirected (Auth.Login.Login {}),
     }
   )
 }
@@ -284,6 +288,60 @@ test "an owner outside the narrowed list is refused" = {
         rows: 0,
       }
   )
+}
+
+test "a visitor cannot create a todo" = {
+  let today <- Date.today
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Test.get (New {})
+  let _ <- Test.login { user: Nothing }
+  let r <- Test.submit Create {
+    title: Text.NonEmpty "title-1",
+    done: True,
+    due: Just today,
+    owner: user2,
+  }
+  let rows <- Db.from Todo |> Db.count
+  Task.succeed (
+    { answer: r.answer, rows: rows } == { answer: Redirected (Auth.Login.Login {}), rows: 0 }
+  )
+}
+
+test "a Member cannot create a todo, even one made Admin since logging in" = {
+  let today <- Date.today
+  let me <- Db.insert User {
+    email: Text.Email "email-1@example.com",
+    name: Text.NonEmpty "name-1",
+    passwordHash: "passwordhash-1",
+    role: Admin,
+  }
+  let _ <- Test.login { user: Just me, role: Admin }
+  let user2 <- Db.insert User {
+    email: Text.Email "email-2@example.com",
+    name: Text.NonEmpty "name-2",
+    passwordHash: "passwordhash-2",
+  }
+  let _ <- Test.get (New {})
+  let _ <- Test.login { user: Just me, role: Member }
+  let r <- Test.submit Create {
+    title: Text.NonEmpty "title-1",
+    done: True,
+    due: Just today,
+    owner: user2,
+  }
+  let rows <- Db.from Todo |> Db.count
+  Task.succeed ({ answer: r.answer, rows: rows } == { answer: PageMissing, rows: 0 })
 }
 
 test "a demoted Admin cannot create a todo" = {

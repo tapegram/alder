@@ -1,0 +1,16 @@
+module User
+
+type UserId = brand Text
+
+table User {
+  id: UserId @id,
+  name: Text,
+}
+
+-- adminOnly stops the request with a 404 unless the user is "admin".
+adminOnly : Maybe UserId -> Query Unit
+adminOnly id = if id == Just (UserId "admin") then Query.succeed () else Query.notFound
+
+-- audit writes nothing here; a step of the Task kind. A mutant: its step in Save.update dropped.
+audit : Text -> Task Unit
+audit what = Task.succeed ()

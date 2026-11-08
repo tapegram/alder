@@ -1,0 +1,5 @@
+1  Home  Notify.update:19  toast dropped      Response.error "Oops" … → the error dropped
+2  Home  Notify.update:18  toast dropped      Response.warning "Careful" … → the warning dropped
+3  Home  Notify.update:17  toast dropped      Response.success "Done" (Response.toast "Saved" Response.refresh) → the success dropped
+4  Home  Notify.update:16  toast dropped      Response.toast "Saved" Response.refresh → the toast dropped
+5  Home  Notify.update:15  refresh → invalid  Response.refresh → Response.invalid "mutant"

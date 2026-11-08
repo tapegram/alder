@@ -3196,7 +3196,7 @@ var Tests = []rtesting.Case{
 	{Module: "Table.Todo", Name: "Active keeps only open todos", File: "app/Table/Todo.alder", Line: 68, Col: 1, Pure: test__Table__Todo__2},
 	{Module: "Table.Todo", Name: "each filter has its label", File: "app/Table/Todo.alder", Line: 88, Col: 1, Pure: test__Table__Todo__3},
 	{Module: "Table.Todo", Name: "a user with todos cannot be deleted", File: "app/Table/Todo.alder", Line: 93, Col: 1, Task: test__Table__Todo__4},
-	// … the 103 tests of the generated admin …
+	// … the 122 tests of the generated admin …
 	{Module: "App", Name: "Logout clears the user and goes to log in", File: "app/App.alder", Line: 33, Col: 1, Task: test__App__1},
 	{Module: "App", Name: "Logout makes the role Member", File: "app/App.alder", Line: 42, Col: 1, Task: test__App__2},
 	{Module: "Auth.Login", Name: "an unknown email is rejected", File: "app/Auth/Login.alder", Line: 65, Col: 1, Task: test__Auth__Login__1},
@@ -4582,33 +4582,33 @@ every record literal that leaves the field out, tests' literals
 included, which is what makes a `default changed` mutant reach every
 insert.
 
-`requires dropped` and `role dropped` are not in a function body, but
-they exist only for the older `page` form, and not for routes. The mutator
-reads them from `ir.Page` (`Collect` loops over `p.Pages`), a list route
-modules are not in, so a route's `requires user, role Author` has no mutant,
-and nothing in the score says whether a test would notice the clause
-dropped ([alder#187](https://github.com/tapegram/alder/issues/187)). The
-same is true of the older redirect and reject operators. For a `page`
-module, the `requires` mutant is a line in the page's function
-(`page__Todos__Index` of the pre-routes to-do app, `testdata/fix/todos`)
-before the check that sends a visitor to log in:
+`requires dropped` and `role dropped` are not in a function body. The
+mutator reads them from each `ir.Route` (and each older `ir.Page`), one
+mutant per route, named by the route (`Save`), and the emitter keys them
+by the guard they belong to (the route's `Module.Name`). The `requires`
+mutant is a line in the route's guard before the check that sends a
+visitor to log in: `page__M__R` for a `GET` route, `guard__M__R` for a
+write route (here the blog's `Write.Edit`'s Save):
 
 ```go
 	app := rq.Env.Session.(App__Session)
-	if !app.User.Ok && Mutant == 113 {
+	if !app.User.Ok && Mutant == 345 {
 		app.User = rt.Just("mutant")
 	}
 	if !app.User.Ok {
-		r := web.RedirectResponse(rq.Login, keep)
-		return model, Todos__Index__Session{}, &r
+		r := web.RedirectResponse(rq.Login, nil)
+		return Write__Edit__Edit__Session{}, &r
 	}
 ```
 
-so under mutant 113 a session without a user gets the placeholder user
+so under mutant 345 a session without a user gets the placeholder user
 `"mutant"`, and the check that follows lets the request through. `role
-dropped` is the same for the role check that follows it. The tests of a
-route that must refuse a visitor or a wrong role (chapter 10, "Tests that
-use the rules") are the only guard for the clause today.
+dropped` is the same for the role check that follows it: `Mutant != 346
+&& app.Role.Tag != …` lets every role through under its id. A write route
+runs no `load` before its `update`, so these two lines, and the access
+check its `update` begins with (`step dropped`), are all that stop a
+request; the tests that kill them send the write from a page still open
+after the session changed (chapter 10, "The operators").
 
 `scope dropped` replaces
 a scoped node with the unscoped one, built from existing IR nodes so it
@@ -4616,13 +4616,13 @@ has the same type: `Db.mine T` becomes `Db.from T`, and
 `Db.updateMine T id f` becomes a `Db.get`, then a `match` on its result
 that runs `Db.update T id f` for `Just _` and `Task.notFound` for
 `Nothing`, so the mutant is "not found" only for a missing row. The
-to-do app's `Toggle.update`, mutant 114, in the mutate build:
+to-do app's `Toggle.update`, mutant 219, in the mutate build:
 
 ```go
 		switch Mutant {
-		case 113:
+		case 218:
 			return eff.Pure(struct{}{})
-		case 114:
+		case 219:
 			return eff.Bind(eff.Call("Db.get Todo", false, func(_e1 *eff.Env) (rt.Maybe[Table__Todo__Todo], error) {
 				return db.GetRow(_e1.Ctx, _e1.Store.(db.Store), db.TxOf(_e1), table__Table__Todo__Todo, p.Id)
 			}), func(found rt.Maybe[Table__Todo__Todo]) eff.Task[struct{}] {
@@ -4639,8 +4639,8 @@ to-do app's `Toggle.update`, mutant 114, in the mutate build:
 		return eff.Call("Db.updateMine Todo", true, func(_e3 *eff.Env) (struct{}, error) {
 ```
 
-(113 is `write replaced` on the same step; `…` is the record the function
-builds, with mutant 115's `not dropped` inside it.) The names `found` and
+(218 is `write replaced` on the same step; `…` is the record the function
+builds, with mutant 220's `not dropped` inside it.) The names `found` and
 `row` the replacements bind are made fresh when the wrapped code already
 uses them. `Db.getMine` becomes a `Db.get` whose `Nothing` is
 `Query.notFound`, and `Db.deleteMine` a `Db.get` then `Db.delete`;

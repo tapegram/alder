@@ -1,0 +1,21 @@
+1   User  adminOnly:12     guard dropped        if id == Just "admin" then Query.succeed () else Query.notFound → the notFound arm dropped
+2   User  adminOnly:12     operator flipped     id == Just "admin" → id != Just "admin"
+3   Home  Save.update:21   step dropped         let _ <- User.adminOnly session.user → let _ <- Query.succeed ()
+4   Home  Save.update:22   step dropped         let _ <- User.audit "save" → let _ <- Task.succeed ()
+5   Home  Save.update:23   write replaced       let id <- Db.insert User { name: "U" } → let id <- Task.succeed (User.UserId "mutant")
+6   Home  Save.update:24   write replaced       let _ <- Db.insert User { name: "V" } → let _ <- Task.succeed (User.UserId "mutant")
+7   Home  Save.update:27   step dropped         let _ <- Task.all (List.map (\n -> User.audit n) ["a", "b"]) → let _ <- Task.succeed []
+8   Home  Save.update:28   write replaced       let _ <- Db.delete User id → let _ <- Task.succeed ()
+9   Home  Save.update:29   guard dropped        if session.user == Nothing then Task.notFound else Task.succeed () → the notFound arm dropped
+10  Home  Save.update:29   operator flipped     session.user == Nothing → session.user != Nothing
+11  Home  Save.update:30   refresh → invalid    Response.refresh → Response.invalid "mutant"
+12  Home  Login.update:36  session put dropped  let _ <- Session.put (\s -> { s | user: Just p.id }) → let _ <- Task.succeed ()
+13  Home  Login.update:37  refresh → invalid    Response.refresh → Response.invalid "mutant"
+-   User  adminOnly:12     condition negated    skipped: operator flipped makes the same program
+-   Home  Save.update:24   step dropped         skipped: the step's result is neither Unit nor a List of Unit
+-   Home  Save.update:25   step dropped         equivalent: the step does nothing
+-   Home  Save.update:26   step dropped         skipped: the step's result is neither Unit nor a List of Unit
+-   Home  Save.update:28   step dropped         skipped: write replaced makes the same program
+-   Home  Save.update:29   step dropped         skipped: guard dropped makes the same program
+-   Home  Save.update:29   condition negated    skipped: operator flipped makes the same program
+-   Home  Login.update:36  step dropped         skipped: session put dropped makes the same program

@@ -209,6 +209,47 @@ test "toggling a todo through the page" = {
   )
 }
 
+-- Each write route has its own `requires user`: a visitor who adds, toggles or deletes from a
+-- page still open after the session ended is sent to log in, and nothing changes.
+test "a write after logging out is sent to log in" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+  }
+  let id <- Db.insert Todo {
+    title: Text.NonEmpty "Milk",
+    due: Nothing,
+    owner: me,
+  }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let added <- Test.submit (Submit {}) { title: Text.NonEmpty "Eggs", due: Nothing }
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let toggled <- Test.click (Toggle { id: id })
+  let _ <- Test.login { user: Just me }
+  let _ <- Test.get (Index {})
+  let _ <- Test.login { user: Nothing }
+  let deleted <- Test.click (Delete { id: id })
+  let todos <- Db.from Todo |> Db.all
+  Task.succeed (
+    {
+      added: added.answer,
+      toggled: toggled.answer,
+      deleted: deleted.answer,
+      todos: List.map (\t -> { title: t.title, done: t.done }) todos,
+    } == {
+      added: Redirected (Auth.Login.Login {}),
+      toggled: Redirected (Auth.Login.Login {}),
+      deleted: Redirected (Auth.Login.Login {}),
+      todos: [{ title: Text.NonEmpty "Milk", done: False }],
+    }
+  )
+}
+
 -- A stranger's page lists none of my todos, so it has no Toggle button to click for them; the
 -- todo's own page is a 404 for the stranger.
 test "a stranger cannot see my todo" = {

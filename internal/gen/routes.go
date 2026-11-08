@@ -793,11 +793,12 @@ func (g *gen) paramsKVList(module, name string, rec *ir.RecordType) (kvs, p stri
 	return kvs, p
 }
 
-// guarded is what page__X (pageFunc) runs for: a page, or a GET route (#160). key names the
-// function ("Todos" for page Todos, "Todos.Row" for route Row of module Todos: a module Todos.Row
-// and that route cannot both exist), what names it in comments.
+// guarded is what page__X (pageFunc) runs for: a page, or a GET route (#160); and what a write
+// route's guard__M__R runs. key names the function ("Todos" for page Todos, "Todos.Row" for
+// route Row of module Todos: a module Todos.Row and that route cannot both exist) and keys a
+// mutate build's requires dropped and role dropped mutants (mutation.go); what names it in
+// comments.
 type guarded struct {
-	page            *ir.Page // the page; nil for a route (keys a mutate build's mutants: pages only)
 	key, what       string
 	params, model   string // Go types
 	session         *ir.RecordType
@@ -809,7 +810,7 @@ type guarded struct {
 // pageGuard is page pg as guarded.
 func pageGuard(pg *ir.Page) guarded {
 	m := pg.Module
-	return guarded{page: pg, key: m, what: "page " + m, params: GoName(m, "Params"), model: GoName(m, "Model"),
+	return guarded{key: m, what: "page " + m, params: GoName(m, "Params"), model: GoName(m, "Model"),
 		session: pg.Session, load: GoName(m, "load"), requires: pg.Requires, roles: pg.Roles, silo: pg.Silo}
 }
 
@@ -853,9 +854,6 @@ func (g *gen) pageFunc(b *strings.Builder, p *ir.Program, gd guarded) {
 	var model %[3]s
 	app := rq.Env.Session.(%[5]s)
 `, fnName, gd.params, model, session, app)
-	if gd.page != nil {
-		g.requiresPlaceholder(b, gd.page, "app") // a mutate build's requires dropped (mutation.go)
-	}
 	g.requiresChecks(b, p, gd, "model, ", "keep")
 	fmt.Fprintf(b, `	session := %[1]s{%[2]s}
 	model, err := eff.RunQuery(rq.Env, %[3]s(params, session))
@@ -889,14 +887,17 @@ func sessionFields(p *ir.Program, gd guarded) []string {
 
 // requiresChecks writes gd's `requires` checks on App's session app (each key: a 303 to App.login
 // for user, to its `choose` target for another, else 404), its role check (404) and its
-// db.Narrow calls. ret is what each stopping return gives before the session ("model, " in
-// page__X), keep the session the stopping response stores ("nil": none).
+// db.Narrow calls, after a mutate build's `requires dropped` placeholders (mutation.go). ret is
+// what each stopping return gives before the session ("model, " in page__X), keep the session
+// the stopping response stores ("nil": none).
 func (g *gen) requiresChecks(b *strings.Builder, p *ir.Program, gd guarded, ret, keep string) {
 	session := GoName(gd.session.Module, gd.session.Name)
 	stored := "\t\tr.Session = " + keep + "\n" // a 404 stores keep (a redirect takes it as an argument)
 	if keep == "nil" {
 		stored = ""
 	}
+	// a mutate build's requires dropped (mutation.go)
+	g.requiresPlaceholder(b, gd, "app")
 	for _, req := range gd.requires { // M15: a key other than user goes to its `choose` page (none: 404)
 		switch ch := p.Choose[req]; {
 		case req == "user":
@@ -1015,9 +1016,9 @@ func (g *gen) partitionKey(k string) bool {
 	return false
 }
 
-// roleRefused is the Go condition under which gd's (a page's or a GET route's) `requires user,
-// role R | …` refuses the App session app: its role is none of gd's roles. In a mutate build each
-// `role dropped` mutant of a page lets every role through under its id (mutation.go).
+// roleRefused is the Go condition under which gd's (a page's or a route's) `requires user, role
+// R | …` refuses the App session app: its role is none of gd's roles. In a mutate build each
+// `role dropped` mutant of gd lets every role through under its id (mutation.go).
 func (g *gen) roleRefused(p *ir.Program, gd guarded, app string) string {
 	var u *types.Union
 	for _, f := range p.Session.Fields {
@@ -1036,10 +1037,7 @@ func (g *gen) roleRefused(p *ir.Program, gd guarded, app string) string {
 	if len(is) == 1 {
 		cond = app + ".Role.Tag != " + tagConst(u.Module, u.Name, gd.roles[0])
 	}
-	if gd.page == nil {
-		return cond
-	}
-	return g.roleDropped(gd.page) + cond
+	return g.roleDropped(gd) + cond
 }
 
 // appRoutes writes the decoders and routes of App's messages, and update__App.

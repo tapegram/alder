@@ -39,11 +39,14 @@ func decode__Admin__Admin__Params(_ map[string]string, _ url.Values) (r Admin__A
 func page__Admin__Admin(rq *web.Request, params Admin__Admin__Params, keep any) (Admin__Model, Admin__Admin__Session, *web.Response) {
 	var model Admin__Model
 	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok && Mutant == 1 {
+		app.User = rt.Just("mutant")
+	}
 	if !app.User.Ok {
 		r := web.RedirectResponse(rq.Login, keep)
 		return model, Admin__Admin__Session{}, &r
 	}
-	if !(app.Role.Tag == is__User__Role__Author || app.Role.Tag == is__User__Role__Admin) {
+	if Mutant != 2 && !(app.Role.Tag == is__User__Role__Author || app.Role.Tag == is__User__Role__Admin) {
 		r := web.NotFoundResponse(html.None())
 		r.Session = keep
 		return model, Admin__Admin__Session{}, &r
@@ -140,6 +143,9 @@ func decode__Notes__Notes__Params(_ map[string]string, _ url.Values) (r Notes__N
 func page__Notes__Notes(rq *web.Request, params Notes__Notes__Params, keep any) (Notes__Model, Notes__Notes__Session, *web.Response) {
 	var model Notes__Model
 	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok && Mutant == 5 {
+		app.User = rt.Just("mutant")
+	}
 	if !app.User.Ok {
 		r := web.RedirectResponse(rq.Login, keep)
 		return model, Notes__Notes__Session{}, &r
@@ -189,6 +195,9 @@ func decode__Notes__Add__Params(_ map[string]string, _ url.Values) (r Notes__Add
 // response that ends the request.
 func guard__Notes__Add(rq *web.Request, params Notes__Add__Params) (Notes__Notes__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok && Mutant == 6 {
+		app.User = rt.Just("mutant")
+	}
 	if !app.User.Ok {
 		r := web.RedirectResponse(rq.Login, nil)
 		return Notes__Notes__Session{}, &r
@@ -266,6 +275,9 @@ func decode__Notes__Pin__Params(_ map[string]string, q url.Values) (r Notes__Pin
 // response that ends the request.
 func guard__Notes__Pin(rq *web.Request, params Notes__Pin__Params) (Notes__Notes__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok && Mutant == 7 {
+		app.User = rt.Just("mutant")
+	}
 	if !app.User.Ok {
 		r := web.RedirectResponse(rq.Login, nil)
 		return Notes__Notes__Session{}, &r
@@ -315,6 +327,9 @@ func decode__Notes__Remove__Params(_ map[string]string, q url.Values) (r Notes__
 // or the response that ends the request.
 func guard__Notes__Remove(rq *web.Request, params Notes__Remove__Params) (Notes__Notes__Session, *web.Response) {
 	app := rq.Env.Session.(App__Session)
+	if !app.User.Ok && Mutant == 8 {
+		app.User = rt.Just("mutant")
+	}
 	if !app.User.Ok {
 		r := web.RedirectResponse(rq.Login, nil)
 		return Notes__Notes__Session{}, &r

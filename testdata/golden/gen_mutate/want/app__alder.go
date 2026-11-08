@@ -72,20 +72,23 @@ var Mutants = []rtesting.Mutant{
 	{ID: 1, Module: "Note", Decl: "Note", Kind: "default changed", File: "app/Note.alder", Line: 13, Col: 3, Before: "pinned = False", After: "pinned = True", Tables: []db.TableDesc{table__User__User.Desc(), {Name: "Note.Note", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "title", Type: db.CText}, {Name: "pinned", Type: db.CBool}, {Name: "owner", Type: db.CText, Ref: "User.User", OnDelete: db.Cascade}}, ID: "id"}}},
 	{ID: 2, Module: "Note", Decl: "Note", Kind: "cascade ↔ restrict", File: "app/Note.alder", Line: 14, Col: 3, Before: "owner @ref User @cascade", After: "owner @ref User @restrict", Tables: []db.TableDesc{table__User__User.Desc(), {Name: "Note.Note", Columns: []db.Column{{Name: "id", Type: db.CText}, {Name: "title", Type: db.CText}, {Name: "pinned", Type: db.CBool}, {Name: "owner", Type: db.CText, Ref: "User.User"}}, ID: "id"}}},
 	{ID: 3, Module: "Note", Decl: "label", Kind: "condition negated", File: "app/Note.alder", Line: 18, Col: 14, Before: "if note.pinned", After: "if not note.pinned"},
-	{ID: 4, Module: "Notes", Decl: "Notes.load", Kind: "where dropped", File: "app/Notes.alder", Line: 15, Col: 10, Before: "Db.where (Note.owner.eq session.user)", After: "the condition dropped"},
-	{ID: 5, Module: "Notes", Decl: "Add.update", Kind: "write replaced", File: "app/Notes.alder", Line: 24, Col: 3, Before: "let _ <- Db.insert Note { title: p.form.title, owner: session.user }", After: "let _ <- Task.succeed (Note.NoteId \"mutant\")"},
-	{ID: 6, Module: "Rank", Decl: "rank", Kind: "arm swapped", File: "app/Rank.alder", Line: 9, Col: 10, Before: "match s { Small -> 1, Medium -> 2, Large -> 3 }", After: "the Small and Medium bodies swapped"},
-	{ID: 7, Module: "Rank", Decl: "rank", Kind: "arm swapped", File: "app/Rank.alder", Line: 9, Col: 10, Before: "match s { Small -> 1, Medium -> 2, Large -> 3 }", After: "the Medium and Large bodies swapped"},
-	{ID: 8, Module: "Rank", Decl: "checked", Kind: "guard dropped", File: "app/Rank.alder", Line: 16, Col: 13, Before: "match m { Nothing -> Task.fail \"none\", Just _ -> Task.succeed 1 }", After: "the fail arm dropped"},
-	{ID: 9, Module: "Rank", Decl: "checked", Kind: "arm swapped", File: "app/Rank.alder", Line: 16, Col: 13, Before: "match m { Nothing -> Task.fail \"none\", Just _ -> Task.succeed 1 }", After: "the Nothing and Just _ bodies swapped"},
-	{ID: 10, Module: "Rank", Decl: "both", Kind: "not dropped", File: "app/Rank.alder", Line: 22, Col: 12, Before: "not ((a > 0) && (b > 0))", After: "(a > 0) && (b > 0)"},
-	{ID: 11, Module: "Rank", Decl: "both", Kind: "operator flipped", File: "app/Rank.alder", Line: 22, Col: 17, Before: "(a > 0) && (b > 0)", After: "(a > 0) || (b > 0)"},
-	{ID: 12, Module: "Rank", Decl: "both", Kind: "operator flipped", File: "app/Rank.alder", Line: 22, Col: 17, Before: "a > 0", After: "a >= 0"},
-	{ID: 13, Module: "Rank", Decl: "both", Kind: "operator flipped", File: "app/Rank.alder", Line: 22, Col: 26, Before: "b > 0", After: "b >= 0"},
+	{ID: 4, Module: "Notes", Decl: "Notes", Kind: "requires dropped", File: "app/Notes.alder", Line: 6, Col: 52, Before: "requires user", After: "served without user (user = User.UserId \"mutant\")"},
+	{ID: 5, Module: "Notes", Decl: "Add", Kind: "requires dropped", File: "app/Notes.alder", Line: 7, Col: 52, Before: "requires user", After: "served without user (user = User.UserId \"mutant\")"},
+	{ID: 6, Module: "Notes", Decl: "Notes.load", Kind: "where dropped", File: "app/Notes.alder", Line: 15, Col: 10, Before: "Db.where (Note.owner.eq session.user)", After: "the condition dropped"},
+	{ID: 7, Module: "Notes", Decl: "Add.update", Kind: "write replaced", File: "app/Notes.alder", Line: 24, Col: 3, Before: "let _ <- Db.insert Note { title: p.form.title, owner: session.user }", After: "let _ <- Task.succeed (Note.NoteId \"mutant\")"},
+	{ID: 8, Module: "Notes", Decl: "Add.update", Kind: "redirect → refresh", File: "app/Notes.alder", Line: 25, Col: 17, Before: "Response.redirect (Notes {})", After: "Response.refresh"},
+	{ID: 9, Module: "Rank", Decl: "rank", Kind: "arm swapped", File: "app/Rank.alder", Line: 9, Col: 10, Before: "match s { Small -> 1, Medium -> 2, Large -> 3 }", After: "the Small and Medium bodies swapped"},
+	{ID: 10, Module: "Rank", Decl: "rank", Kind: "arm swapped", File: "app/Rank.alder", Line: 9, Col: 10, Before: "match s { Small -> 1, Medium -> 2, Large -> 3 }", After: "the Medium and Large bodies swapped"},
+	{ID: 11, Module: "Rank", Decl: "checked", Kind: "guard dropped", File: "app/Rank.alder", Line: 16, Col: 13, Before: "match m { Nothing -> Task.fail \"none\", Just _ -> Task.succeed 1 }", After: "the fail arm dropped"},
+	{ID: 12, Module: "Rank", Decl: "checked", Kind: "arm swapped", File: "app/Rank.alder", Line: 16, Col: 13, Before: "match m { Nothing -> Task.fail \"none\", Just _ -> Task.succeed 1 }", After: "the Nothing and Just _ bodies swapped"},
+	{ID: 13, Module: "Rank", Decl: "both", Kind: "not dropped", File: "app/Rank.alder", Line: 22, Col: 12, Before: "not ((a > 0) && (b > 0))", After: "(a > 0) && (b > 0)"},
+	{ID: 14, Module: "Rank", Decl: "both", Kind: "operator flipped", File: "app/Rank.alder", Line: 22, Col: 17, Before: "(a > 0) && (b > 0)", After: "(a > 0) || (b > 0)"},
+	{ID: 15, Module: "Rank", Decl: "both", Kind: "operator flipped", File: "app/Rank.alder", Line: 22, Col: 17, Before: "a > 0", After: "a >= 0"},
+	{ID: 16, Module: "Rank", Decl: "both", Kind: "operator flipped", File: "app/Rank.alder", Line: 22, Col: 26, Before: "b > 0", After: "b >= 0"},
 }
 
 // MutantsSuppressed and MutantsSkipped count the mutants refused as equivalent and as not applicable.
-var MutantsSuppressed, MutantsSkipped = 0, 0
+var MutantsSuppressed, MutantsSkipped = 0, 1
 
 // init registers the constructor names of every union of the app, for rt.Show.
 func init() {

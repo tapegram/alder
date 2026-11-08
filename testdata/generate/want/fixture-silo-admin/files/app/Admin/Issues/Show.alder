@@ -221,10 +221,12 @@ test "deleting an issue nothing refers to" = {
     {
       button: Test.count "#delete al-button" page.doc,
       answer: r.answer,
+      notices: r.notices,
       gone: Maybe.map (\row -> row.id) gone,
     } == {
       button: 1,
       answer: Redirected (Admin.Issues.Index.Index { org: org }),
+      notices: ["Deleted"],
       gone: Nothing,
     }
   )

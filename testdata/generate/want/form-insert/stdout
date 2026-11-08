@@ -41,7 +41,7 @@ edited app/Home.alder
  test "signing adds an entry" = {
    let _ <- Test.get (Home {})
    let signed <- Test.submit Submit { name: Text.NonEmpty "Ada", message: Text.NonEmpty "Hello" }
-@@ -61,3 +76,29 @@
+@@ -68,3 +83,29 @@
    let page <- Test.get (Home {})
    Task.succeed (Test.texts "#entries b" page.doc == ["Grace", "Ada"])
  }

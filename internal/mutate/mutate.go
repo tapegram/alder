@@ -20,6 +20,7 @@
 package mutate
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -51,6 +52,12 @@ const (
 	ScopeDropped       = "scope dropped"
 	RoleDropped        = "role dropped"
 	MembershipDropped  = "membership dropped"
+	RedirectRefresh    = "redirect → refresh"
+	RenderRedirect     = "render → redirect"
+	InvalidRefresh     = "invalid → refresh"
+	RefreshInvalid     = "refresh → invalid"
+	ToastDropped       = "toast dropped"
+	StepDropped        = "step dropped"
 )
 
 // Mutant is one mutation point. Module and Decl name where it is (Decl is the value's name,
@@ -65,11 +72,16 @@ const (
 //     of the same type built only from existing IR node kinds. Replacement never contains Node
 //     itself; it may share Node's subexpressions (which may carry mutants of their own). A Node
 //     may occur in several places of the IR (a shared default): every occurrence is replaced.
-//   - requires dropped: Page is the page and Field its `requires` field (a brand over Text);
-//     Node is nil and Replacement is the placeholder the field gets when the session lacks it
-//     (a Text Lit "mutant", the brand being erased).
-//   - role dropped: Page is the page whose `requires user, role R | …` is dropped to `requires
-//     user` (any signed-in user is served); Node and Replacement are nil.
+//   - requires dropped: Page is the page, or Route the route (#160), and Field its `requires`
+//     field (a brand over Text); Node is nil and Replacement is the placeholder the field gets
+//     when the session lacks it (a Text Lit "mutant", the brand being erased). A route's Decl
+//     is its name.
+//   - role dropped: Page is the page, or Route the route, whose `requires user, role R | …` is
+//     dropped to `requires user` (any signed-in user is served); Node and Replacement are nil.
+//     Either is suppressed for a write route without a form whose update only redirects to a
+//     GET route whose own guard refuses the same requests, in the same order (redirectOnly).
+//   - step dropped: Node is the Effect of a `let _ <- e` step and Replacement `Task.succeed ()`
+//     (`Query.succeed ()` for a Query step).
 //   - scope dropped: Node is a scoped Db node and Replacement its unscoped twin: `Db.mine T` →
 //     `Db.from T` (a DbSelect); `Db.getMine T id` → `Db.get T id` bound and matched, Nothing →
 //     Query.notFound; `Db.updateMine`/`Db.deleteMine` → `Db.get T id`, then on Just the unscoped
@@ -97,6 +109,7 @@ type Mutant struct {
 	Node               ir.Expr
 	Replacement        ir.Expr
 	Page               *ir.Page
+	Route              *ir.Route
 	Table              *ir.Table
 	Field              string
 	// Arms, for a Match's arm swapped, are the indices of the swapped arms (i, i+1); for a
@@ -134,9 +147,19 @@ func Collect(p *ir.Program) ([]Mutant, []Suppressed) {
 	for _, m := range p.Modules {
 		c.module = m.Name
 		if pg := pages[m.Name]; pg != nil && len(pg.Requires) > 0 {
-			c.requires(pg)
+			g := guard{page: pg, decl: "requires", requires: pg.Requires, roles: pg.Roles, requiresPos: pg.RequiresPos, rolesPos: pg.RolesPos}
+			c.requires(g)
 			if pg.Roles != nil {
-				c.roles(pg)
+				c.roles(g)
+			}
+		}
+		for _, r := range p.Routes {
+			if r.Module == m.Name && len(r.Requires) > 0 {
+				g := guard{route: r, decl: r.Name, requires: r.Requires, roles: r.Roles, requiresPos: r.RequiresPos, rolesPos: r.RolesPos}
+				c.requires(g)
+				if r.Roles != nil {
+					c.roles(g)
+				}
 			}
 		}
 		for _, t := range p.Tables {
@@ -202,16 +225,37 @@ func wrapped(prefix, suffix string) func(string) string {
 
 // ---- requires and the schema
 
-// requires drops the first field of a page's `requires` (M15: Task 2 covers the others).
-func (c *collector) requires(pg *ir.Page) {
-	c.decl = "requires"
-	line := pg.RequiresPos.Line
-	req := pg.Requires[0]
-	for _, k := range pg.Requires[1:] {
+// guard is the `requires` (and role) clause of a page or of a route (#160), which requires
+// dropped and role dropped drop. decl names it in the mutant table: "requires" for a page, the
+// route's name for a route (a module declares several routes, each with its own clause).
+type guard struct {
+	page                  *ir.Page
+	route                 *ir.Route
+	decl                  string
+	requires, roles       []string
+	requiresPos, rolesPos ir.Pos
+}
+
+// requires drops the first field of g's `requires` (M15: Task 2 covers the others).
+func (c *collector) requires(g guard) {
+	c.decl = g.decl
+	line := g.requiresPos.Line
+	req := g.requires[0]
+	what := "page"
+	if g.route != nil {
+		what = "route"
+	}
+	for _, k := range g.requires[1:] {
 		if req == "user" && c.p.Via[k] != nil {
-			c.suppress(RequiresDropped, line, "the page also requires "+k+", which is `via`: no session has it without a user")
+			c.suppress(RequiresDropped, line, "the "+what+" also requires "+k+", which is `via`: no session has it without a user")
 			return
 		}
+	}
+	// redirect-only (redirectOnly): without a role and another field (which would still run
+	// after the placeholder), the target's first check is this very field's
+	if t := redirectOnly(g.route); t != nil && g.roles == nil && len(g.requires) == 1 && len(t.Requires) > 0 && t.Requires[0] == req {
+		c.suppress(RequiresDropped, line, "the update only redirects to "+t.Name+", which requires "+req+" too")
+		return
 	}
 	var field *ir.FieldT
 	if c.p.Session != nil {
@@ -229,11 +273,36 @@ func (c *collector) requires(pg *ir.Page) {
 	if field.Brand.Module != c.module {
 		placeholder = field.Brand.Module + "." + placeholder
 	}
-	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: RequiresDropped, Line: line, Col: pg.RequiresPos.Col,
+	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: RequiresDropped, Line: line, Col: g.requiresPos.Col,
 		Before: "requires " + req,
 		After:  "served without " + req + " (" + req + " = " + placeholder + ")",
-		Page:   pg, Field: req,
+		Page:   g.page, Route: g.route, Field: req,
 		Replacement: &ir.Lit{Typed: ir.Typed{Ty: types.Text}, Kind: ir.LitText, Text: "mutant"}})
+}
+
+// redirectOnly is, for a write route whose update does nothing but answer `Response.redirect`
+// to a GET route (`Task.succeed (Response.redirect (Show { … }))`), that GET route; nil otherwise.
+// Its guard runs on the redirect: when it refuses whom r's own clause would, in the same order
+// (requires dropped, roles: the callers' conditions), dropping r's clause ends a request where the
+// clause did, at the login page or a 404. Only when nothing runs between r's guard and its update
+// that could answer otherwise: r has no form (a post that does not decode is a 422, and the
+// options check a 400) and is not in a silo (db.Enter may answer the maintenance page).
+func redirectOnly(r *ir.Route) *ir.Route {
+	if r == nil || r.Method == "GET" || r.Update == nil || r.Form != nil || r.Silo != "" || r.Store.Silo != "" {
+		return nil
+	}
+	pure, ok := r.Update.Body.(*ir.EffPure)
+	if !ok {
+		return nil
+	}
+	call, ok := pure.Value.(*ir.Call)
+	if !ok || !isStd(call.Fn, "Response", "redirect") || len(call.Args) != 1 {
+		return nil
+	}
+	if ref, ok := call.Args[0].(*ir.RouteRef); ok && ref.Route != nil && ref.Route.Method == "GET" {
+		return ref.Route
+	}
+	return nil
 }
 
 // memberships drops each `via` field's membership check (M15): under the mutant Session.put
@@ -253,12 +322,20 @@ func (c *collector) memberships() {
 	}
 }
 
-// roles drops a page's `role R | …`: the page serves any signed-in user.
-func (c *collector) roles(pg *ir.Page) {
-	c.decl = "requires"
-	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: RoleDropped, Line: pg.RolesPos.Line, Col: pg.RolesPos.Col,
-		Before: "requires " + strings.Join(pg.Requires, ", ") + ", role " + strings.Join(pg.Roles, " | "),
-		After:  "requires " + strings.Join(pg.Requires, ", "), Page: pg})
+// roles drops g's `role R | …`: the page or route serves any signed-in user.
+func (c *collector) roles(g guard) {
+	c.decl = g.decl
+	// redirect-only (redirectOnly): the target requires nothing the route does not (a field it
+	// lacks would answer otherwise, its `choose` page say), and refuses every role the route does
+	if t := redirectOnly(g.route); t != nil && t.Roles != nil && slices.Contains(t.Requires, "user") &&
+		!slices.ContainsFunc(t.Requires, func(f string) bool { return !slices.Contains(g.requires, f) }) &&
+		!slices.ContainsFunc(t.Roles, func(r string) bool { return !slices.Contains(g.roles, r) }) {
+		c.suppress(RoleDropped, g.rolesPos.Line, "the update only redirects to "+t.Name+", whose role check refuses every other role too")
+		return
+	}
+	c.out = append(c.out, Mutant{Module: c.module, Decl: c.decl, Kind: RoleDropped, Line: g.rolesPos.Line, Col: g.rolesPos.Col,
+		Before: "requires " + strings.Join(g.requires, ", ") + ", role " + strings.Join(g.roles, " | "),
+		After:  "requires " + strings.Join(g.requires, ", "), Page: g.page, Route: g.route})
 }
 
 func (c *collector) table(t *ir.Table) {
@@ -485,8 +562,12 @@ func (c *collector) walk(e ir.Expr) {
 	case *ir.EffBind:
 		c.write(x)
 		c.sessionPut(x)
+		c.step(x)
 	case *ir.Call:
 		c.notDropped(x)
+		c.answer(x)
+	case *ir.Var:
+		c.refresh(x)
 	case *ir.Update:
 		c.updateFields(x)
 	case *ir.Ctor:
@@ -1151,11 +1232,148 @@ func (c *collector) nav(x *ir.Ctor) {
 	c.add(kind, x.Pos, x, r, c.show(x), "Rerender")
 }
 
+// ---- a route's Response (#160)
+
+// responseStd is the stdlib value Response.name, of type ty.
+func responseStd(ty types.Type, name string) *ir.Var {
+	return &ir.Var{Typed: ir.Typed{Ty: ty}, Kind: ir.VarStd, Module: "Response", Name: name}
+}
+
+// answer swaps a write's answer for another of type Response, as nav does a Nav's: `redirect
+// r` → refresh (the write stays on the page it was sent from), `render r` → `redirect r` (the
+// same route, but a 303 to it), `invalid t` → refresh (a refused write answered as a done one);
+// and drops a notice (`toast`, `success`, `warning`, `error`), leaving the Response it decorates.
+func (c *collector) answer(x *ir.Call) {
+	v, ok := x.Fn.(*ir.Var)
+	if !ok || v.Kind != ir.VarStd || v.Module != "Response" {
+		return
+	}
+	refresh := responseStd(x.Ty, "refresh")
+	switch {
+	case v.Name == "redirect" && len(x.Args) == 1:
+		c.add(RedirectRefresh, x.Pos, x, refresh, c.show(x), "Response.refresh")
+	case v.Name == "render" && len(x.Args) == 1:
+		r := &ir.Call{Typed: x.Typed, Pos: x.Pos, Fn: responseStd(v.Ty, "redirect"), Args: x.Args}
+		c.add(RenderRedirect, x.Pos, x, r, c.show(x), c.show(r))
+	case v.Name == "invalid" && len(x.Args) == 1:
+		c.add(InvalidRefresh, x.Pos, x, refresh, c.show(x), "Response.refresh")
+	case (v.Name == "toast" || v.Name == "success" || v.Name == "warning" || v.Name == "error") && len(x.Args) == 2:
+		c.add(ToastDropped, x.Pos, x, x.Args[1], c.show(x), "the "+v.Name+" dropped")
+	}
+}
+
+// refresh answers `Response.refresh` with `Response.invalid "mutant"`: a done write answered
+// as a refused one.
+func (c *collector) refresh(x *ir.Var) {
+	if x.Kind != ir.VarStd || x.Module != "Response" || x.Name != "refresh" {
+		return
+	}
+	invalid := &ir.Var{Typed: ir.Typed{Ty: &types.Fun{Params: []types.Type{types.Text}, Result: x.Ty}},
+		Kind: ir.VarStd, Module: "Response", Name: "invalid"}
+	r := &ir.Call{Typed: x.Typed, Pos: x.Pos, Fn: invalid,
+		Args: []ir.Expr{&ir.Lit{Typed: ir.Typed{Ty: types.Text}, Kind: ir.LitText, Text: "mutant"}}}
+	c.add(RefreshInvalid, x.Pos, x, r, "Response.refresh", c.show(r))
+}
+
+// step drops a `let _ <- e` step of a block, e being replaced by Task.succeed () (or
+// Query.succeed (), as e's kind; `succeed []` for a step whose result is a List of Unit, the
+// `Task.all (List.map … Db.delete …)` of a bulk action): the access check `let _ <- Layout.adminOnly
+// …` that begins a write route's update, an audit, a mail. Not dropped: a step whose result is
+// neither (an insert's id: no value to succeed with), a Db update or delete or a Session.put (write
+// replaced and session put dropped make the same program), an `if` or `match` whose guard dropped
+// leaves a succeed (the same program again), a step that is already a succeed (equivalent).
+func (c *collector) step(x *ir.EffBind) {
+	if x.Param != nil {
+		return
+	}
+	if _, ok := x.Effect.(*ir.EffPure); ok {
+		c.suppress(StepDropped, x.Pos.Line, "the step does nothing")
+		return
+	}
+	app, ok := x.Effect.Type().(*types.App)
+	if !ok || len(app.Args) != 1 {
+		c.skip(StepDropped, x.Pos.Line, "the step's result is neither Unit nor a List of Unit")
+		return
+	}
+	var value ir.Expr
+	shown := "()"
+	switch r := app.Args[0]; {
+	case isUnit(r):
+		value = &ir.Lit{Typed: ir.Typed{Ty: types.Unit}, Kind: ir.LitUnit}
+	case isListOf(r, isUnit):
+		value, shown = &ir.List{Typed: ir.Typed{Ty: r}}, "[]"
+	default:
+		c.skip(StepDropped, x.Pos.Line, "the step's result is neither Unit nor a List of Unit")
+		return
+	}
+	switch e := x.Effect.(type) {
+	case *ir.DbUpdate, *ir.DbDelete, *ir.DbUpdateScoped, *ir.DbDeleteScoped:
+		c.skip(StepDropped, x.Pos.Line, "write replaced makes the same program")
+		return
+	case *ir.Call:
+		if isStd(e.Fn, "Session", "put") {
+			c.skip(StepDropped, x.Pos.Line, "session put dropped makes the same program")
+			return
+		}
+	case *ir.If, *ir.Match:
+		if guardLeavesSucceed(e) {
+			c.skip(StepDropped, x.Pos.Line, "guard dropped makes the same program")
+			return
+		}
+	}
+	kind, verb := ir.EffTask, "Task.succeed "
+	if app.Con == "Query" {
+		kind, verb = ir.EffQuery, "Query.succeed "
+	}
+	repl := &ir.EffPure{Typed: ir.Typed{Ty: app}, Kind: kind, Value: value}
+	c.add(StepDropped, x.Pos, x.Effect, repl, line(c.module, x.Effect, wrapped("let _ <- ", "")), "let _ <- "+verb+shown)
+}
+
+// guardLeavesSucceed reports whether e, an If or a two-arm Match, has one guard arm (guard
+// dropped mutates it) and a plain succeed as its other arm: guard dropped then makes the program
+// step dropped would make.
+func guardLeavesSucceed(e ir.Expr) bool {
+	var bodies []ir.Expr
+	switch x := e.(type) {
+	case *ir.If:
+		bodies = []ir.Expr{x.Then, x.Else}
+	case *ir.Match:
+		for _, a := range arms(x) {
+			bodies = append(bodies, a.body)
+		}
+	}
+	if len(bodies) != 2 {
+		return false
+	}
+	_, g0 := isGuard(bodies[0])
+	_, g1 := isGuard(bodies[1])
+	if g0 == g1 {
+		return false
+	}
+	other := bodies[1]
+	if g1 {
+		other = bodies[0]
+	}
+	_, pure := other.(*ir.EffPure)
+	return pure
+}
+
 // ---- helpers
 
 func isText(t types.Type) bool {
 	con, ok := t.(*types.Con)
 	return ok && con.Name == "Text"
+}
+
+func isUnit(t types.Type) bool {
+	con, ok := t.(*types.Con)
+	return ok && con.Name == "Unit"
+}
+
+// isListOf reports whether t is a List whose element satisfies elem.
+func isListOf(t types.Type, elem func(types.Type) bool) bool {
+	app, ok := t.(*types.App)
+	return ok && app.Con == "List" && len(app.Args) == 1 && elem(app.Args[0])
 }
 
 // isHtml reports whether a value's final result type contains Html anywhere (`Html m`,

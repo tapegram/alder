@@ -3500,12 +3500,12 @@ func TestGen_Mutate(t *testing.T) {
 				t.Fatalf("Mutants has %d entries, want %d", got, len(ms))
 			}
 			for _, m := range ms {
-				if m.Node == nil && m.Page == nil {
+				if m.Node == nil && m.Page == nil && m.Route == nil {
 					continue
 				}
 				// a switch's case, or an If's or a Match's test of Mutant (mutatedIf, mutatedMatch)
 				needles := []string{fmt.Sprintf("case %d:\n", m.ID), fmt.Sprintf("Mutant == %d ", m.ID), fmt.Sprintf("Mutant != %d ", m.ID), fmt.Sprintf("(Mutant == %d)", m.ID)}
-				if m.Page != nil {
+				if m.Page != nil || m.Route != nil {
 					needles = []string{fmt.Sprintf("Mutant == %d {", m.ID), fmt.Sprintf("Mutant != %d && ", m.ID)} // requires, role dropped
 				}
 				found := false

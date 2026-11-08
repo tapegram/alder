@@ -112,10 +112,13 @@ func TestGolden(t *testing.T) {
 		"default-changed": DefaultChanged, "cascade-restrict": CascadeRestrict,
 		"not-dropped": NotDropped, "session-put-dropped": SessionPutDropped,
 		"scope-dropped": ScopeDropped, "role-dropped": RoleDropped,
+		"redirect-refresh": RedirectRefresh, "render-redirect": RenderRedirect, "invalid-refresh": InvalidRefresh,
+		"refresh-invalid": RefreshInvalid, "toast-dropped": ToastDropped, "step-dropped": StepDropped,
 	}
 	// the kinds the spec gives a suppression rule (plus the rulings': requires, cascade's setNull)
-	refusable := map[string]bool{RequiresDropped: true, GuardDropped: true, ArmSwapped: true, OrderByReversed: true,
-		ConditionNegated: true, OperatorFlipped: true, DefaultChanged: true, CascadeRestrict: true, ScopeDropped: true}
+	refusable := map[string]bool{RequiresDropped: true, RoleDropped: true, GuardDropped: true, ArmSwapped: true, OrderByReversed: true,
+		ConditionNegated: true, OperatorFlipped: true, DefaultChanged: true, CascadeRestrict: true, ScopeDropped: true,
+		StepDropped: true}
 	covered := map[string]bool{}
 	for _, dir := range dirs {
 		name := filepath.Base(dir)

@@ -220,6 +220,50 @@ test "a promoted reader logs in again first" = {
   Task.succeed (r.answer == PageMissing)
 }
 
+-- Create, posted from the write page still open in the browser, is guarded on its own: by its
+-- `requires user` (the session ended: log in), by its `role Author` (the cookie now says Reader,
+-- though the row says Author) and by User.authorOnly (the row now says Reader, though the cookie
+-- says Author). No post is created.
+test "Create is refused to a visitor, a Reader and a demoted author" = {
+  let me <- Db.insert User {
+    email: Text.Email "me@example.com",
+    name: Text.NonEmpty "Me",
+    passwordHash: "",
+    role: Author,
+  }
+  let post = {
+    slug: Post.Slug "hello",
+    title: Text.NonEmpty "Hello",
+    body: "",
+  }
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Write {})
+  let _ <- Test.login { user: Nothing, role: Reader }
+  let visitor <- Test.submit Create post
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Write {})
+  let _ <- Test.login { user: Just me, role: Reader }
+  let reader <- Test.submit Create post
+  let _ <- Test.login { user: Just me, role: Author }
+  let _ <- Test.get (Write {})
+  let _ <- Db.update User me (\u -> { u | role: Reader })
+  let demoted <- Test.submit Create post
+  let posts <- Db.from Post |> Db.count
+  Task.succeed (
+    {
+      visitor: visitor.answer,
+      reader: reader.answer,
+      demoted: demoted.answer,
+      posts: posts,
+    } == {
+      visitor: Redirected (Auth.Login.Login {}),
+      reader: PageMissing,
+      demoted: PageMissing,
+      posts: 0,
+    }
+  )
+}
+
 test "an Author logs out from the write page" = {
   let author <- Db.insert User {
     email: Text.Email "author@example.com",

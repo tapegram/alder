@@ -183,7 +183,7 @@ func TestExample_Blog(t *testing.T) {
 		`ok   Admin.Users.Index "filtering by role lists the rows with that value"`,
 		`ok   Admin.Users.Edit "an Admin cannot change their own role"`,
 		`ok   Admin.Users.Edit "an Admin demotes another Admin"`,
-		"196 passed, 0 failed\n",
+		"227 passed, 0 failed\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("alder test examples/blog lacks %q:\n%s", want, out)
@@ -193,17 +193,17 @@ func TestExample_Blog(t *testing.T) {
 }
 
 // The mutation scores examples/todos/README.md and examples/blog/README.md record (`alder test
-// --mutate`, rounded down to two decimals: the blog's is 196 / 202 = 0.970) and their numbers of
+// --mutate`, rounded down to two decimals: the blog's is 362 / 376 = 0.963) and their numbers of
 // mutants: a change to an example that lets a mutant survive which its tests used to kill, or
 // that changes the mutants made of it, fails TestExample_*, when the mutation quality gates run
 // (nightly in CI, or with ALDER_MUTATION_GATES=1: see gates_test.go).
 const (
-	todosMutationScore     = 0.98
-	blogMutationScore      = 0.97
-	workspaceMutationScore = 0.96
-	todosMutants           = 124
-	blogMutants            = 202
-	workspaceMutants       = 300
+	todosMutationScore     = 0.97
+	blogMutationScore      = 0.96
+	workspaceMutationScore = 0.95
+	todosMutants           = 236
+	blogMutants            = 376
+	workspaceMutants       = 596
 )
 
 // mutationAtLeast runs `alder test --mutate --json dir` and fails t when the score is below min
@@ -413,7 +413,7 @@ func TestExample_Workspace(t *testing.T) {
 		`ok   Admin.Projects.Index "an Admin who is no member of the org lists its projects, and only its"`,
 		`ok   Admin.Projects.Index "a Member gets no page, even one made Admin since logging in"`,
 		`ok   Admin.Projects.Bulk "a bulk action stays inside one org"`,
-		"333 passed, 0 failed\n",
+		"388 passed, 0 failed\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("alder test examples/workspace lacks %q:\n%s", want, out)
