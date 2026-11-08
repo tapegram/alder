@@ -3849,56 +3849,72 @@ app's one fake, `Password`'s, has none, so its test build has
 `var FakeTables = []db.TableDesc{}`), and `app.Routes` and `app.Web()`
 the app's routes and router options, for the browser ("The browser",
 below).
-(The local `caps` takes the package's name from that line on, which Go
-allows: `caps.Caps()` on the right is still the package.) A capability
-whose adapter is missing has no line in the test build's `caps` package
-(`gen.Options.Unwired`), so its field is `nil`, and `alder test` prints
-the warning `Build.Warning` holds before running the tests. Without
-adapters the main does not import `app/caps` and the capabilities are
-`app.Caps{}.Registry()`: every
-capability's key is there with no implementation, and a call to one
-fails with "capability … is not wired", which the report turns into
-"… is not wired in tests". `alder test` runs the program with
-`scratch.RunStream`, which, unlike eval's `RunTethered`, hands the
-program's output over as it is written instead of collecting it, so each
-test's line appears as the test finishes. The runner passes an
-environment, not arguments, so `alder test` hands its settings over as
-variables, which `rtesting.Main` reads:
 
-- `ALDER_TEST_RUN` and `ALDER_TEST_JSON=1`: `-run` and `--json`, as its
-  flags' defaults.
-- `ALDER_TEST_DEADLINE` (an RFC 3339 time) and `ALDER_TEST_TIMEOUT`:
-  `-timeout` (default `5m`) as a moment, and the duration for the
-  message. `Main` runs each case in a goroutine of its own and waits for
-  it, for the deadline, or for a ten-second tick (which prints
-  `still running M "name" (10s)` on standard error). At the deadline it
-  reports the running case as `timed out after 5m0s`, prints the summary
-  and returns 1 without waiting: `os.Exit` in the main then stops the
-  goroutine. A task case's `context` carries the deadline too, 100 ms later, so a
-  database step waiting on something stops then, and `Main`'s timer,
-  not the step's error, reports the timeout.
-- `ALDER_TEST_STATUS`: a file. Before each case `Main` writes
-  `Module<tab>Name` to it, and it empties it when it returns. A Go panic
-  in a test is recovered and fails that test, but some failures cannot
-  be recovered: a stack overflow is a fatal error that ends the process
-  with exit code 2 and a long dump on standard error. When the program
-  exits with anything but 0 or 1, `alder test` reads the file to learn
-  which test was running, prints a `FAIL` for it (an object under
-  `--json`) whose `error:` is the first lines of the dump (the
-  `fatal error:` line and the top frame of the running goroutine), then
-  the summary line the program never printed (it counts the results it
-  passed through, and this failure), and exits 1. It passes the program's standard error through line by line
-  until a line that starts a Go crash report (`fatal error:`, `panic:`,
-  `runtime:`, `goroutine …`), and keeps the rest, so the dump is never
-  printed.
-- `ALDER_TEST_STDIN_EOF=1`: the program's standard input is the read end
-  of a pipe whose write end only `alder test` holds. `Main` reads it in
-  a goroutine and exits when it reaches end of file. The program runs
-  in a process group of its own (so a terminal's Ctrl-C reaches
-  `alder test` alone, which then kills the group), which means a
-  `kill -9` of `alder test` would not reach it; but the kernel closes a
-  dead process's files, the pipe's write end among them, so the program
-  sees end of file and exits too.
+> **The local `caps`.** The local `caps` takes the package's name from that
+> line on, which Go allows: `caps.Caps()` on the right is still the
+> package.
+
+A capability whose adapter is missing has no line in the test build's
+`caps` package (`gen.Options.Unwired`), so its field is `nil`, and
+`alder test` prints the warning `Build.Warning` holds before running the
+tests. Without adapters the main does not import `app/caps` and the
+capabilities are `app.Caps{}.Registry()`: every capability's key is there
+with no implementation, and a call to one fails with "capability … is not
+wired", which the report turns into "… is not wired in tests".
+
+`alder test` runs the program with `scratch.RunStream`, which, unlike
+eval's `RunTethered`, hands the program's output over as it is written
+instead of collecting it, so each test's line appears as the test
+finishes. The runner passes an environment, not arguments, so `alder test`
+hands its settings over as variables, which `rtesting.Main` reads:
+
+##### `ALDER_TEST_RUN` and `ALDER_TEST_JSON=1`
+
+These are `-run` and `--json`, as its flags' defaults.
+
+##### `ALDER_TEST_DEADLINE` and `ALDER_TEST_TIMEOUT`
+
+These are `-timeout` (default `5m`) as a moment (an RFC 3339 time), and the
+duration for the message. `Main` runs each case in a goroutine of its own
+and waits for it, for the deadline, or for a ten-second tick (which prints
+`still running M "name" (10s)` on standard error).
+
+At the deadline it reports the running case as `timed out after 5m0s`,
+prints the summary and returns 1 without waiting: `os.Exit` in the main
+then stops the goroutine. A task case's `context` carries the deadline too,
+100 ms later, so a database step waiting on something stops then, and
+`Main`'s timer, not the step's error, reports the timeout.
+
+##### `ALDER_TEST_STATUS`
+
+This is a file. Before each case `Main` writes `Module<tab>Name` to it, and
+it empties it when it returns.
+
+A Go panic in a test is recovered and fails that test, but some failures
+cannot be recovered: a stack overflow is a fatal error that ends the
+process with exit code 2 and a long dump on standard error. When the
+program exits with anything but 0 or 1, `alder test` reads the file to
+learn which test was running, prints a `FAIL` for it (an object under
+`--json`) whose `error:` is the first lines of the dump (the `fatal error:`
+line and the top frame of the running goroutine), then the summary line
+the program never printed (it counts the results it passed through, and
+this failure), and exits 1.
+
+It passes the program's standard error through line by line until a line
+that starts a Go crash report (`fatal error:`, `panic:`, `runtime:`,
+`goroutine …`), and keeps the rest, so the dump is never printed.
+
+##### `ALDER_TEST_STDIN_EOF=1`
+
+With this, the program's standard input is the read end of a pipe whose
+write end only `alder test` holds. `Main` reads it in a goroutine and exits
+when it reaches end of file.
+
+The program runs in a process group of its own (so a terminal's Ctrl-C
+reaches `alder test` alone, which then kills the group), which means a
+`kill -9` of `alder test` would not reach it; but the kernel closes a dead
+process's files, the pipe's write end among them, so the program sees end
+of file and exits too.
 
 `alder test` waits five seconds past the deadline (`testGrace`) before
 it kills a program that has not stopped by itself, and then reports the
@@ -3906,20 +3922,24 @@ running test as timed out.
 
 #### One world per test
 
-`rtesting.Run` (`rt/testing/testing.go`) runs
-the cases one after another (`Main` does the same, one goroutine per
-case, as above). A pure case is called, with a `recover` so
-a Go panic fails that test and the next one still runs. A task case
-gets its own environment: `db.OpenSQLite(":memory:")`, a database that
-exists only in this process; the app's tables, made by `store.Migrate`
-with the app's migrations when it has them and by `store.Ensure` with
-its `Tables` when it has none; then the fakes' tables
-(`store.CreateTables`, "Fakes", below); and an `eff.Env` with a copy of
-the capabilities (`maps.Clone`, so a `Test.fake` changes only this
-test's), the session from
-`TestSession()`, and a clock that starts at `2026-01-01T00:00:00Z` and
-moves one second on each read (`rtesting.Ticking`), so rows a test
-inserts get distinct, ordered `created` times.
+`rtesting.Run` (`rt/testing/testing.go`) runs the cases one after another
+(`Main` does the same, one goroutine per case, as above). A pure case is
+called, with a `recover` so a Go panic fails that test and the next one
+still runs.
+
+A task case gets its own environment:
+
+1. `db.OpenSQLite(":memory:")`, a database that exists only in this
+   process;
+2. the app's tables, made by `store.Migrate` with the app's migrations when
+   it has them and by `store.Ensure` with its `Tables` when it has none;
+3. then the fakes' tables (`store.CreateTables`, "Fakes", below);
+4. and an `eff.Env` with a copy of the capabilities (`maps.Clone`, so a
+   `Test.fake` changes only this test's), the session from `TestSession()`,
+   and a clock that starts at `2026-01-01T00:00:00Z` and moves one second
+   on each read (`rtesting.Ticking`), so rows a test inserts get distinct,
+   ordered `created` times.
+
 Then `eff.Run(env, eff.KTask, c.Task())` runs it exactly as the server
 runs an `update` (section 8, "What `Run` does"): one transaction, begun
 by the first database step, committed when the task succeeds. The
@@ -3995,27 +4015,29 @@ because the emitter wraps it: a capability `Call`'s function ends
 are and wraps any other error with the call's name; the router answers
 it like any other error, with a 500.
 
-`eff.RunInner` (`rt/eff/run.go`) runs `t` with the same `Env`, inside
-the running task: same transaction, same trace (which is why the inner
-steps also appear in the test's trace, after `"Test.run"`). `Inner`
-copies the part of the trace added since it started; that is `r.trace`.
-The savepoint itself is three SQL statements on the open transaction,
-in `rt/db/sqlite.go`: `SAVEPOINT alder_t1` before `t`, then
-`RELEASE alder_t1` when `t` succeeded, or `ROLLBACK TO alder_t1` and
-`RELEASE alder_t1` when it failed (`ROLLBACK TO` undoes the writes but
-keeps the mark open, so it is released too). Each `Inner` takes the next
-number from a counter, so nested and successive savepoints never share a
-name. `Test.trace` is a smaller `Call` whose function returns
-`rtesting.Trace(env)`: the trace so far without its own step.
+`eff.RunInner` (`rt/eff/run.go`) runs `t` with the same `Env`, inside the
+running task: same transaction, same trace (which is why the inner steps also
+appear in the test's trace, after `"Test.run"`). `Inner` copies the part of
+the trace added since it started; that is `r.trace`.
+
+The savepoint itself is three SQL statements on the open transaction, in
+`rt/db/sqlite.go`: `SAVEPOINT alder_t1` before `t`, then `RELEASE alder_t1`
+when `t` succeeded, or `ROLLBACK TO alder_t1` and `RELEASE alder_t1` when it
+failed (`ROLLBACK TO` undoes the writes but keeps the mark open, so it is
+released too). Each `Inner` takes the next number from a counter, so nested
+and successive savepoints never share a name. `Test.trace` is a smaller `Call`
+whose function returns `rtesting.Trace(env)`: the trace so far without its own
+step.
 
 ### The REPL
 
-`alder repl` (chapter 11) is the scratch runner kept open. `alder eval`
-builds one scratch module from its input and throws it away; the REPL
-keeps a list of the `let`s you typed and builds a new scratch module
-from that list every time you type a line. The code is
-`cmd/alder/repl.go`, and nothing in it is new compiler machinery: it
-calls the same `parseItems`, `assemble`, `scratch.Check`,
+`alder repl` (chapter 11) is the scratch runner kept open. `alder eval` builds
+one scratch module from its input and throws it away; the REPL keeps a list of
+the `let`s you typed and builds a new scratch module from that list every time
+you type a line.
+
+The code is `cmd/alder/repl.go`, and nothing in it is new compiler machinery:
+it calls the same `parseItems`, `assemble`, `scratch.Check`,
 `scratch.CompileCheckedWith`, `scratch.RunTethered` and `classifyRun` as
 `alder eval`.
 
@@ -4038,18 +4060,20 @@ it = total * 2
 
 `scratch.Check` puts `module Scratch` and an `import` of every app module
 above that, and checks it with the app, exactly as for `alder eval`. The
-signatures are inferred (no `let` needs one), and the type of `it` is
-the type the REPL prints. A `let` is checked the same way, as the kept
-`let`s plus the new one, with no `it`. Only when that check is clean
-does the new `let` join the list, so the list always checks. Defining a
-name again replaces the old item where it stands, so the `let`s after
-it that use the name now use the new definition: a `let` is a
-top-level definition, not a snapshot of a value. That is also why `let
-x = x + 1` does not mean "one more than the old `x`": it is a
-definition of `x` in terms of itself, which the checker refuses (E0007),
-and the old `x` stays. A redefinition that a later `let` no longer
-checks with is refused the same way, and the message names that `let`:
-`a not redefined: let b (line 2) uses it: …`.
+signatures are inferred (no `let` needs one), and the type of `it` is the type
+the REPL prints. A `let` is checked the same way, as the kept `let`s plus the
+new one, with no `it`. Only when that check is clean does the new `let` join
+the list, so the list always checks.
+
+Defining a name again replaces the old item where it stands, so the `let`s
+after it that use the name now use the new definition: a `let` is a top-level
+definition, not a snapshot of a value.
+
+That is also why `let x = x + 1` does not mean "one more than the old `x`": it
+is a definition of `x` in terms of itself, which the checker refuses (E0007),
+and the old `x` stays. A redefinition that a later `let` no longer checks with
+is refused the same way, and the message names that `let`: `a not redefined:
+let b (line 2) uses it: …`.
 
 One entry is always one item. `parseItems` would start a new item at a
 continuation line that begins at column 1 (`+ 10` typed after `let total
@@ -4069,20 +4093,22 @@ session as it is now, so nothing can go stale.
 
 #### Mapping a diagnostic back
 
-A diagnostic of the scratch module names
-a line of the joined source, after `scratch.Check` inserted its import
-lines. `Checked.MapDiag` undoes the inserted lines, which leaves a line
-of the joined items. The REPL walks the items' lengths to find which
-item it falls in: an item's `InLine` numbers count from the start of the
-entry it came from, so they cannot say which item a line is in. It then
-subtracts where that item starts, and hands the diagnostic to
-`evalDiags`, the printer `alder eval` uses, with the item's own text as
-the source to show and underline. `evalDiags` labels the position
-`input:L:C`, and the REPL rewrites that label: `expr:L:C` for the
-expression, `let total (line 10)` for a `let` (its REPL line plus the
-line within it). Errors are printed wherever they are, but warnings only
-for the line just typed: an old `let`'s warning would otherwise repeat on
-every line.
+A diagnostic of the scratch module names a line of the joined source, after
+`scratch.Check` inserted its import lines. `Checked.MapDiag` undoes the
+inserted lines, which leaves a line of the joined items.
+
+The REPL walks the items' lengths to find which item it falls in: an item's
+`InLine` numbers count from the start of the entry it came from, so they
+cannot say which item a line is in. It then subtracts where that item starts,
+and hands the diagnostic to `evalDiags`, the printer `alder eval` uses, with
+the item's own text as the source to show and underline.
+
+`evalDiags` labels the position `input:L:C`, and the REPL rewrites that label:
+`expr:L:C` for the expression, `let total (line 10)` for a `let` (its REPL
+line plus the line within it).
+
+Errors are printed wherever they are, but warnings only for the line just
+typed: an old `let`'s warning would otherwise repeat on every line.
 
 #### Evaluating
 
@@ -4091,35 +4117,41 @@ When the check is clean, the type of `it` decides. A
 asked to run it (`:run` a `Query`, `:run!` a `Task`). Anything else is
 built with the pure main, which prints `rt.Show(it)`.
 
-The module that is built holds only the `let`s the expression uses.
-Every `let` is a top-level value, which Go computes as a package
-variable when the program starts, used or not; a session with a `let`
-that fails (`let boom = loop 0`, with a `loop` that calls itself
-forever) or takes a minute would make every
-later line fail or take a minute. So `reachable` scans the expression's
-text for identifiers that are names of `let`s, then the text of those
-`let`s, and so on until nothing new turns up, and the REPL checks and
-builds the session with just those (in their order). The scan is
-textual, so it can take a `let` that is not really used (its name
-inside a string, or a record field of the same name), which costs a
-little time, but never misses one. When the run fails, the message ends
-with the `let`s it computed (`(the lets it uses — loop, boom — are
-computed with it)`), since the failure may be theirs.
+The module that is built holds only the `let`s the expression uses. Every
+`let` is a top-level value, which Go computes as a package variable when the
+program starts, used or not; a session with a `let` that fails (`let boom =
+loop 0`, with a `loop` that calls itself forever) or takes a minute would make
+every later line fail or take a minute.
 
-The build goes into `build/<app>/scratch/repl-<pid>/`, a directory of
-this REPL's own (`<pid>` is its process id), under its lock, held until
-the program has finished. With one shared directory a second REPL on the
-same app would wait on the lock for as long as the first one's
-evaluation ran; with one each, nothing waits, and Go's build cache,
-which is shared, keeps the first build in a new directory about as fast
-as any other. The REPL removes its directory when it ends, on `:quit`,
-end of input, SIGTERM or SIGHUP. A REPL killed with SIGKILL cannot, so
-`alder repl` starts by removing every `repl-<pid>` directory whose
-process no longer exists (`kill(pid, 0)`, signal 0, which only asks
-whether the process is there). `:run` and `:run!` use the effect mains of "The scratch
-runner": a `Task` main runs `eff.Run`, which commits the transaction when
-the task succeeds and rolls it back when it fails, so a failed `:run!`
-leaves the database as it was.
+So `reachable` scans the expression's text for identifiers that are names of
+`let`s, then the text of those `let`s, and so on until nothing new turns up,
+and the REPL checks and builds the session with just those (in their order).
+
+The scan is textual, so it can take a `let` that is not really used (its name
+inside a string, or a record field of the same name), which costs a little
+time, but never misses one.
+
+When the run fails, the message ends with the `let`s it computed (`(the lets
+it uses — loop, boom — are computed with it)`), since the failure may be
+theirs.
+
+The build goes into `build/<app>/scratch/repl-<pid>/`, a directory of this
+REPL's own (`<pid>` is its process id), under its lock, held until the program
+has finished.
+
+With one shared directory a second REPL on the same app would wait on the lock
+for as long as the first one's evaluation ran; with one each, nothing waits,
+and Go's build cache, which is shared, keeps the first build in a new
+directory about as fast as any other.
+
+The REPL removes its directory when it ends, on `:quit`, end of input, SIGTERM
+or SIGHUP. A REPL killed with SIGKILL cannot, so `alder repl` starts by
+removing every `repl-<pid>` directory whose process no longer exists
+(`kill(pid, 0)`, signal 0, which only asks whether the process is there).
+
+`:run` and `:run!` use the effect mains of "The scratch runner": a `Task` main
+runs `eff.Run`, which commits the transaction when the task succeeds and rolls
+it back when it fails, so a failed `:run!` leaves the database as it was.
 
 #### The no-vet build
 
@@ -4135,29 +4167,35 @@ again.
 
 #### `:reload`
 
-The app's files may have changed since the `let`s were
-checked. `:reload` checks the app alone first; if that has errors, they
-are printed and the session is left as it is. The REPL remembers the
-app's errors it last printed and, while they stay the same, says only
-that the app has errors on later lines, instead of the whole block each
-time. Otherwise it rebuilds the
-list: each `let` in order is checked with the ones kept so far and kept
-if clean, else dropped with the first error (`dropped let greeting:
-error[E0002]: …`). A `let` that used a dropped one is dropped too: it is
-checked after it, without it, and fails with `unknown name`. It also
-marks the next build to be vetted.
+The app's files may have changed since the `let`s were checked. `:reload`
+checks the app alone first; if that has errors, they are printed and the
+session is left as it is.
+
+The REPL remembers the app's errors it last printed and, while they stay the
+same, says only that the app has errors on later lines, instead of the whole
+block each time.
+
+Otherwise it rebuilds the list: each `let` in order is checked with the ones
+kept so far and kept if clean, else dropped with the first error (`dropped let
+greeting: error[E0002]: …`). A `let` that used a dropped one is dropped too:
+it is checked after it, without it, and fails with `unknown name`.
+
+It also marks the next build to be vetted.
 
 #### The loop
 
-Reading a line from the terminal blocks, but the REPL also
-has to notice an edited file or a Ctrl-C while it waits. So a goroutine
-reads standard input with a `bufio.Reader` and sends each line on a
-channel. A line longer than 1 MB is read to its end and dropped, and the
-REPL says `line too long (limit 1 MB); ignored` and reads on; any other
-read error is printed, and the REPL exits 1. A second goroutine runs `watch`, the polling
-loop of `alder run` ("The dev server"), which sends on another channel
-when `app/` or `adapters/` change. The main loop prints the prompt and
-`select`s on the two channels and the interrupt channel:
+Reading a line from the terminal blocks, but the REPL also has to notice an
+edited file or a Ctrl-C while it waits. So a goroutine reads standard input
+with a `bufio.Reader` and sends each line on a channel.
+
+A line longer than 1 MB is read to its end and dropped, and the REPL says
+`line too long (limit 1 MB); ignored` and reads on; any other read error is
+printed, and the REPL exits 1.
+
+A second goroutine runs `watch`, the polling loop of `alder run` ("The dev
+server"), which sends on another channel when `app/` or `adapters/` change.
+The main loop prints the prompt and `select`s on the two channels and the
+interrupt channel:
 
 - a line is handled;
 - a change runs `:reload` (`app changed: session re-checked`);
@@ -4166,44 +4204,51 @@ when `app/` or `adapters/` change. The main loop prints the prompt and
 A change that arrives during an evaluation waits in its channel and is
 handled before the next prompt.
 
-Ctrl-C arrives as a signal. `main.go` asks for it with
-`signal.Notify(…, os.Interrupt)`, so it no longer kills `alder`; each
-one becomes a value on the interrupt channel. During an evaluation a
-goroutine waits on that channel and cancels the evaluation's context. As
-for `alder eval`, the program runs in its own process group, out of the
-terminal's reach, and `RunTethered` kills the group when the context is
-cancelled. A Ctrl-C during the build cancels the same context, which
-kills `go build`. The REPL prints `alder repl: interrupted` and keeps the
-session. SIGTERM and SIGHUP close a second channel, `terminate`: the
-evaluation is cancelled the same way, and the REPL exits 1.
+Ctrl-C arrives as a signal. `main.go` asks for it with `signal.Notify(…,
+os.Interrupt)`, so it no longer kills `alder`; each one becomes a value on the
+interrupt channel.
+
+During an evaluation a goroutine waits on that channel and cancels the
+evaluation's context. As for `alder eval`, the program runs in its own process
+group, out of the terminal's reach, and `RunTethered` kills the group when the
+context is cancelled. A Ctrl-C during the build cancels the same context,
+which kills `go build`.
+
+The REPL prints `alder repl: interrupted` and keeps the session. SIGTERM and
+SIGHUP close a second channel, `terminate`: the evaluation is cancelled the
+same way, and the REPL exits 1.
 
 A REPL killed with SIGKILL runs no code at all, so it cannot kill the
-program's group, and the program, in a group of its own, gets no
-signal either. So the program watches its parent another way. Its
-standard input is a pipe (`scratch.RunTethered`) whose write end only
-the REPL holds. When `ALDER_SCRATCH_STDIN_EOF=1`, the runtime package
-`alder/rt` starts a goroutine in its `init` (`rt/tether.go`) that reads
-standard input until end of file, then prints `alder: parent gone` and
-exits 2. When the REPL dies, the kernel closes its end of the pipe, the
-read returns, and the program exits. `init` clears the variable once it
-has read it, so a process the program starts does not inherit it (that
-process's standard input is not the tether). `alder eval` uses
-`RunTethered` too.
+program's group, and the program, in a group of its own, gets no signal
+either.
 
-Why in `rt`, and not in the scratch main? The generated package
-computes a plain value, such as `it = List.sum …` or a `let`, as a Go
-package variable, while the package initializes. Go initializes every
-package a program imports before the main package's `init` runs. A
-goroutine started in the main would therefore start only after a
-never-ending evaluation had finished, which is never. `rt` is
-initialized before the app's variables by a rule of the Go spec: a
-package's imports are initialized before the package itself. So the
-generated package imports `alder/rt` always. An app with a union already
-uses it (`rt.RegisterUnion`); for one that does not, `app__alder.go` has
-a blank import, which runs a package's `init` without naming anything in
-it (`testdata/golden/gen_generic/want/app__alder.go`, a production
-build, which imports nothing else; a test build adds
-`rtesting "alder/rt/testing"`):
+So the program watches its parent another way. Its standard input is a pipe
+(`scratch.RunTethered`) whose write end only the REPL holds.
+
+When `ALDER_SCRATCH_STDIN_EOF=1`, the runtime package `alder/rt` starts a
+goroutine in its `init` (`rt/tether.go`) that reads standard input until end
+of file, then prints `alder: parent gone` and exits 2.
+
+When the REPL dies, the kernel closes its end of the pipe, the read returns,
+and the program exits. `init` clears the variable once it has read it, so a
+process the program starts does not inherit it (that process's standard input
+is not the tether). `alder eval` uses `RunTethered` too.
+
+Why in `rt`, and not in the scratch main? The generated package computes a
+plain value, such as `it = List.sum …` or a `let`, as a Go package variable,
+while the package initializes. Go initializes every package a program imports
+before the main package's `init` runs. A goroutine started in the main would
+therefore start only after a never-ending evaluation had finished, which is
+never.
+
+`rt` is initialized before the app's variables by a rule of the Go spec: a
+package's imports are initialized before the package itself.
+
+So the generated package imports `alder/rt` always. An app with a union
+already uses it (`rt.RegisterUnion`); for one that does not, `app__alder.go`
+has a blank import, which runs a package's `init` without naming anything in
+it (`testdata/golden/gen_generic/want/app__alder.go`, a production build,
+which imports nothing else; a test build adds `rtesting "alder/rt/testing"`):
 
 ```go
 import (
@@ -4220,16 +4265,18 @@ into the executable, and `db.Migrate` in `rt/db/migrate.go` applies them.
 
 #### Writing one
 
-`alder migrate` (`cmd/alder/migrate.go`) checks the app
-and lowers it to the IR, as a build does. `migrate.FromProgram`
-(`internal/migrate/schema.go`) turns the IR's tables into a `Schema`: one
-`Table` per `table`, named `Post.Post` (module, then table), with its
-columns in declaration order and each column's type, `Maybe`-ness,
-constructors, `@unique`, `@ref`, delete rule and default as SQL text
-(`False` is `0`). `schema.json` is that value written as JSON with the
-tables sorted by name, and `Schema.Hash` is the same hash `Ensure`
-records: SHA-256 over the sorted `CREATE TABLE` statements. A file's
-`from` and `to` lines are the first 12 hex digits of the hashes on
+`alder migrate` (`cmd/alder/migrate.go`) checks the app and lowers it to the
+IR, as a build does. `migrate.FromProgram` (`internal/migrate/schema.go`)
+turns the IR's tables into a `Schema`: one `Table` per `table`, named
+`Post.Post` (module, then table), with its columns in declaration order and
+each column's type, `Maybe`-ness, constructors, `@unique`, `@ref`, delete rule
+and default as SQL text (`False` is `0`).
+
+`schema.json` is that value written as JSON with the tables sorted by name,
+and `Schema.Hash` is the same hash `Ensure` records: SHA-256 over the sorted
+`CREATE TABLE` statements.
+
+A file's `from` and `to` lines are the first 12 hex digits of the hashes on
 either side of it.
 
 `migrate.Diff(old, new)` (`internal/migrate/diff.go`) pairs the tables
@@ -4244,22 +4291,25 @@ steps in a fixed order, so the same change always gives the same file:
 5. rebuild the tables `ALTER TABLE` cannot change;
 6. drop, then create, `@ref` indexes.
 
-A table needs a rebuild when no `ALTER TABLE` gives it the new
-`CREATE TABLE` text byte for byte: SQLite stores that text, and the
-start-up check compares hashes of it. `ADD COLUMN` only appends a
-nullable column without `UNIQUE`; anything else (a new column that needs
-a default, a changed type, a reordered table) is a rebuild, which
-carries the table's renames, drops and additions in one step.
-`migrate.SQL` (`internal/migrate/sqlite.go`) writes each step's
-statements. A rebuild is SQLite's documented procedure: create
-`T__alder__new` with the new statement, `INSERT INTO … SELECT` one
-expression per new column (the default for an added column, the old name
-for a renamed one, a conversion such as `CAST("x" AS REAL)` for a changed
-type, with a `WHERE` that keeps only the rows the new column can hold),
-drop `T`, rename `T__alder__new` to `T`, and create its `@ref` indexes
-again. A conversion that loses values sets the step's `DropsData`.
-`migrate.Plan` is `Diff` plus `SQL` plus the hashes; `migrate.Render`
-writes the file, and `migrate.NextName` numbers it.
+A table needs a rebuild when no `ALTER TABLE` gives it the new `CREATE TABLE`
+text byte for byte: SQLite stores that text, and the start-up check compares
+hashes of it. `ADD COLUMN` only appends a nullable column without `UNIQUE`;
+anything else (a new column that needs a default, a changed type, a reordered
+table) is a rebuild, which carries the table's renames, drops and additions in
+one step.
+
+`migrate.SQL` (`internal/migrate/sqlite.go`) writes each step's statements.
+
+A rebuild is SQLite's documented procedure: create `T__alder__new` with the
+new statement, `INSERT INTO … SELECT` one expression per new column (the
+default for an added column, the old name for a renamed one, a conversion such
+as `CAST("x" AS REAL)` for a changed type, with a `WHERE` that keeps only the
+rows the new column can hold), drop `T`, rename `T__alder__new` to `T`, and
+create its `@ref` indexes again.
+
+A conversion that loses values sets the step's `DropsData`. `migrate.Plan` is
+`Diff` plus `SQL` plus the hashes; `migrate.Render` writes the file, and
+`migrate.NextName` numbers it.
 
 #### Building it in
 
@@ -4293,50 +4343,75 @@ hashes, and its statements (the header stripped). `Serve` passes them to
 (`database/sql` otherwise hands each statement whichever pooled
 connection is free, and a `PRAGMA` holds only for its own connection):
 
-1. It sets `PRAGMA foreign_keys = OFF`, outside any transaction (SQLite
-   ignores it inside one), and restores the old value when done. With
-   it on, a rebuild's `DROP TABLE "Post__Post"` would delete every
-   comment through `ON DELETE CASCADE`. `legacy_alter_table` stays off,
-   so `RENAME TO` also rewrites the `REFERENCES` of other tables.
-2. It opens one transaction for the read phase (`prepare`). On a file
-   database every transaction starts with `BEGIN IMMEDIATE` (the DSN's
-   `_txlock=immediate`), which takes the write lock at once, so two
-   processes starting together take turns, and each sees the other's
-   work whole: the recorded names, the tables and the recorded hash are
-   read in one snapshot, never between another process's file and its
-   record. (Read outside a transaction, a second process could see a
-   file's tables before its record, call that drift, and in dev mode
-   recreate a database full of rows.)
-3. Inside it: `_alder_migrations` (name, time applied) is read. A
-   database with app tables but no such table was made by `Ensure`: it
-   is adopted at the file whose `to` is its hash (the files up to it
-   recorded, in this same transaction), or refused (dev: recreated). A
-   recorded name with no file is refused (the newest recorded name past
-   every file means the executable is older than the database), and so
-   is a pending file numbered before a recorded one; the live hash is
-   compared with the one recorded after the last migration (drift); and
-   the chain is checked: the first pending file's `from` is the live
-   hash, each next `from` the previous `to`, the last `to` the app's
-   hash. Any refusal rolls the transaction back, adoption included, so
-   the database is as it was.
-4. The read phase commits, and each pending file runs in its own
-   transaction (`applyMigration`): it skips the file if another process
-   recorded it meanwhile; checks that the live hash is the file's `from`;
-   runs the statements; runs `PRAGMA foreign_key_check` (which lists
-   rows whose reference points at nothing, since nothing was enforced
-   during the statements); and checks that the live hash is now the
-   file's `to`. Only then the row in `_alder_migrations` and the live
-   schema and hash in `_alder_meta`, then `COMMIT`. A failure rolls that
-   file back. The `to` check is what catches a file whose statements were
-   edited after `alder migrate` wrote them (its header still chains, so
-   `alder check` cannot see it): `DROP COLUMN "views"` under a header
-   that says the column stays is rolled back with the rows intact, not
-   committed and discovered at the next start.
-5. Last (`finish`, in the transaction of the last applied file, or in
-   the preparation's own when nothing was pending), the live hash must equal
-   the app's, the app's schema is recorded, and `IndexStmts` creates
-   every `@ref` index that is missing (`CREATE INDEX IF NOT EXISTS`, not
-   part of the hash), so an adopted database gets its indexes too.
+##### Step 1: foreign keys off
+
+It sets `PRAGMA foreign_keys = OFF`, outside any transaction (SQLite
+ignores it inside one), and restores the old value when done. With it on,
+a rebuild's `DROP TABLE "Post__Post"` would delete every comment through
+`ON DELETE CASCADE`. `legacy_alter_table` stays off, so `RENAME TO` also
+rewrites the `REFERENCES` of other tables.
+
+##### Step 2: the read phase
+
+It opens one transaction for the read phase (`prepare`). On a file
+database every transaction starts with `BEGIN IMMEDIATE` (the DSN's
+`_txlock=immediate`), which takes the write lock at once, so two processes
+starting together take turns, and each sees the other's work whole: the
+recorded names, the tables and the recorded hash are read in one snapshot,
+never between another process's file and its record.
+
+> **Why a transaction.** Read outside a transaction, a second process could
+> see a file's tables before its record, call that drift, and in dev mode
+> recreate a database full of rows.
+
+##### Step 3: the checks
+
+Inside the read phase, `_alder_migrations` (name, time applied) is read. A
+database with app tables but no such table was made by `Ensure`: it is
+adopted at the file whose `to` is its hash (the files up to it recorded, in
+this same transaction), or refused (dev: recreated).
+
+Then these are checked:
+
+- A recorded name with no file is refused (the newest recorded name past
+  every file means the executable is older than the database), and so is a
+  pending file numbered before a recorded one.
+- The live hash is compared with the one recorded after the last migration
+  (drift).
+- The chain is checked: the first pending file's `from` is the live hash,
+  each next `from` the previous `to`, the last `to` the app's hash.
+
+Any refusal rolls the transaction back, adoption included, so the database
+is as it was.
+
+##### Step 4: each pending file
+
+The read phase commits, and each pending file runs in its own transaction
+(`applyMigration`). It:
+
+- skips the file if another process recorded it meanwhile;
+- checks that the live hash is the file's `from`;
+- runs the statements;
+- runs `PRAGMA foreign_key_check` (which lists rows whose reference points
+  at nothing, since nothing was enforced during the statements);
+- checks that the live hash is now the file's `to`.
+
+Only then the row in `_alder_migrations` and the live schema and hash in
+`_alder_meta`, then `COMMIT`. A failure rolls that file back.
+
+> **The `to` check.** The `to` check is what catches a file whose
+> statements were edited after `alder migrate` wrote them (its header still
+> chains, so `alder check` cannot see it): `DROP COLUMN "views"` under a
+> header that says the column stays is rolled back with the rows intact,
+> not committed and discovered at the next start.
+
+##### Step 5: finishing
+
+Last (`finish`, in the transaction of the last applied file, or in the
+preparation's own when nothing was pending), the live hash must equal the
+app's, the app's schema is recorded, and `IndexStmts` creates every `@ref`
+index that is missing (`CREATE INDEX IF NOT EXISTS`, not part of the
+hash), so an adopted database gets its indexes too.
 
 A start that finds the database locked for longer than `busy_timeout`
 (five seconds: another process is in a long rebuild) is refused with a
