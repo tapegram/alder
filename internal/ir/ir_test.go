@@ -86,11 +86,11 @@ func TestIRGolden(t *testing.T) {
 	}
 }
 
-// todosWithoutAdmin copies examples/todos as it was before routes (testdata/fix) without its generated admin (app/Admin/) and build/
+// todosWithoutAdmin copies examples/todos without its generated admin (app/Admin/) and build/
 // into a temporary directory and returns it.
 func todosWithoutAdmin(t *testing.T) string {
 	dir := t.TempDir()
-	src := "../../testdata/fix/todos"
+	src := "../../examples/todos"
 	err := filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -117,13 +117,14 @@ func todosWithoutAdmin(t *testing.T) string {
 // TestIR_Todos lowers the real example app: it must not panic (a missing recorded type is a
 // checker bug), and its dump is reviewed by hand in testdata/golden/ir_todos.ir. The admin
 // `alder new admin` generated in it (app/Admin/, book 15) is left out: it is the generator's
-// output, tested by its own goldens, and its pages have no update of their own.
+// output, tested by its own goldens.
 func TestIR_Todos(t *testing.T) {
 	p := lowerDir(t, todosWithoutAdmin(t))
 	got := Dump(p)
 	compareGolden(t, "../../testdata/golden/ir_todos.ir", got)
-	for _, want := range []string{"(value Todos.Index.view ", "(component Todos.Index.Item ", "(component Layout.Page ",
-		"(value Todos.Index.load ", "(value Todos.Index.update ", "(value App.update ", "(app-update App.update)"} {
+	for _, want := range []string{"(value Todos.Index.Index.view ", "(component Todos.Index.Item ", "(component Layout.Page ",
+		"(value Todos.Index.Index.load ", "(value Todos.Index.Submit.update ", "(value App.Logout.update ",
+		`(route Todos.Index.Index GET "/"`, `(route App.Logout POST "/_/Logout"`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("todos dump lacks %q", want)
 		}
@@ -131,19 +132,25 @@ func TestIR_Todos(t *testing.T) {
 	if strings.Contains(got, "(skipped-effect") {
 		t.Errorf("todos dump still skips an effect")
 	}
-	for _, pg := range p.Pages {
-		if pg.View == nil || pg.Load == nil || pg.Update == nil {
-			t.Errorf("page %s: view %v, load %v, update %v", pg.Module, pg.View != nil, pg.Load != nil, pg.Update != nil)
+	gets, writes := 0, 0
+	for _, r := range p.Routes {
+		if r.Method == "GET" {
+			gets++
+			if r.View == nil || r.Load == nil || r.Update != nil {
+				t.Errorf("GET route %s.%s: view %v, load %v, update %v", r.Module, r.Name, r.View != nil, r.Load != nil, r.Update != nil)
+			}
+			if r.Load != nil && (!r.Load.IsEffect || r.Load.Effect != EffQuery) {
+				t.Errorf("route %s.%s: load is not a Query effect", r.Module, r.Name)
+			}
+			continue
 		}
-		if pg.Load != nil && (!pg.Load.IsEffect || pg.Load.Effect != EffQuery) {
-			t.Errorf("page %s: load is not a Query effect", pg.Module)
-		}
-		if pg.Update != nil && (!pg.Update.IsEffect || pg.Update.Effect != EffTask) {
-			t.Errorf("page %s: update is not a Task effect", pg.Module)
+		writes++
+		if r.Update == nil || !r.Update.IsEffect || r.Update.Effect != EffTask {
+			t.Errorf("write route %s.%s: update is not a Task effect", r.Module, r.Name)
 		}
 	}
-	if p.AppUpdate == nil || !p.AppUpdate.IsEffect || p.AppUpdate.Effect != EffTask {
-		t.Errorf("App.update: %+v; want a Task effect", p.AppUpdate)
+	if gets != 3 || writes != 7 {
+		t.Errorf("routes: %d GET, %d writes; want 3, 7", gets, writes)
 	}
 }
 
@@ -152,7 +159,7 @@ func TestIR_Todos(t *testing.T) {
 func TestIR_NoSkipped(t *testing.T) {
 	dirs, _ := filepath.Glob("../../testdata/golden/ir_*")
 	vet, _ := filepath.Glob("../../testdata/golden/gen_vet/*")
-	dirs = append(append(dirs, vet...), "../../testdata/fix/todos")
+	dirs = append(append(dirs, vet...), "../../examples/todos")
 	for _, dir := range dirs {
 		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 			continue
@@ -178,7 +185,7 @@ func TestIR_NoSkipped(t *testing.T) {
 // none survives.
 func TestIR_NoBrands(t *testing.T) {
 	dirs, _ := filepath.Glob("../../testdata/golden/ir_*")
-	dirs = append(dirs, "../../testdata/fix/todos")
+	dirs = append(dirs, "../../examples/todos")
 	for _, dir := range dirs {
 		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 			continue
@@ -544,10 +551,10 @@ func walkTestFakes(e Expr, out *[]*TestFake) {
 }
 
 // TestPositions: the node kinds a mutant targets carry the line and column of their source
-// (the todos example's scoped operations and plain writes, the blog's conditions), and the insert
+// (the todos example's scoped operations, plain writes and route answers, the blog's conditions), and the insert
 // row's omitted default is the table field's own Default node.
 func TestPositions(t *testing.T) {
-	p := lowerDir(t, "../../testdata/fix/todos")
+	p := lowerDir(t, "../../examples/todos")
 	module := func(p *Program, name string) *Module {
 		for _, m := range p.Modules {
 			if m.Name == name {
@@ -630,37 +637,46 @@ func TestPositions(t *testing.T) {
 		case *Update:
 			got["record-update"] = append(got["record-update"], x.Pos)
 		case *EffPure:
-			if c, ok := x.Value.(*Ctor); ok {
-				got["ctor "+c.Name] = append(got["ctor "+c.Name], c.Pos)
+			// a write route's answer: Response.redirect r (a Call) or Response.refresh (a Var)
+			switch v := x.Value.(type) {
+			case *Call:
+				if f, ok := v.Fn.(*Var); ok && f.Kind == VarStd && f.Module == "Response" {
+					got["Response."+f.Name] = append(got["Response."+f.Name], v.Pos)
+				}
+			case *Var:
+				if v.Kind == VarStd && v.Module == "Response" {
+					got["Response."+v.Name] = append(got["Response."+v.Name], v.Pos)
+				}
 			}
 		}
 	}
-	visit(value(index, "load").Body)
-	visit(value(index, "update").Body)
-	visit(value(show, "load").Body)
-	visit(value(show, "update").Body)
+	for _, name := range []string{"Index.load", "Submit.update", "Toggle.update", "Delete.update"} {
+		visit(value(index, name).Body)
+	}
+	for _, name := range []string{"Show.load", "Save.update", "Delete.update"} {
+		visit(value(show, name).Body)
+	}
 	want := map[string][]Pos{
-		"bind":          {{13, 3}, {31, 5}, {38, 5}, {42, 5}, {13, 3}, {30, 5}, {34, 5}},
-		"match":         {{29, 28}, {28, 28}},
-		"select":        {{15, 10}}, // the step that extends the Base
-		"mine":          {{14, 5}},
-		"where-step":    nil,
-		"ord":           {{15, 21}},
-		"order-step":    {{15, 10}},
-		"insert-mine":   {{31, 14}},
-		"update-mine":   {{38, 14}, {30, 14}},
-		"record-update": {{38, 45}, {30, 54}},
-		"delete-mine":   {{42, 14}, {34, 14}},
-		"get-mine":      {{13, 15}},
-		"ctor Redirect": {{32, 19}, {31, 19}, {35, 19}},
-		"ctor Rerender": {{39, 18}, {43, 18}},
+		"bind":              {{16, 3}, {28, 3}, {37, 3}, {43, 3}, {19, 3}, {27, 3}, {33, 3}},
+		"select":            {{18, 10}}, // the step that extends the Base
+		"mine":              {{17, 5}},
+		"where-step":        nil,
+		"ord":               {{18, 21}},
+		"order-step":        {{18, 10}},
+		"insert-mine":       {{28, 12}},
+		"update-mine":       {{37, 12}, {27, 12}},
+		"record-update":     {{37, 43}, {27, 43}},
+		"delete-mine":       {{43, 12}, {33, 12}},
+		"get-mine":          {{19, 15}},
+		"Response.redirect": {{29, 17}, {28, 17}, {34, 17}},
+		"Response.refresh":  {{38, 16}, {44, 16}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("positions:\n got %v\nwant %v", got, want)
 	}
-	for _, pg := range p.Pages {
-		if pg.Module == "Todos.Index" && pg.RequiresPos != (Pos{7, 40}) {
-			t.Fatalf("RequiresPos = %v", pg.RequiresPos)
+	for _, r := range p.Routes {
+		if r.Module == "Todos.Index" && r.Name == "Index" && r.RequiresPos != (Pos{7, 76}) {
+			t.Fatalf("RequiresPos = %v", r.RequiresPos)
 		}
 	}
 	// the default of Todo.done: a Lit at its declaration, shared by the insert row that omits it
@@ -673,7 +689,7 @@ func TestPositions(t *testing.T) {
 	if lit, ok := done.Default.(*Lit); !ok || lit.Pos != (Pos{14, 16}) || done.Pos != (Pos{14, 3}) {
 		t.Fatalf("Todo.done: default %#v, field pos %v", done.Default, done.Pos)
 	}
-	ins := value(index, "update").Body.(*Match).Cases[0].Body.(*Let).Body.(*EffBind).Effect.(*DbInsertScoped)
+	ins := value(index, "Submit.update").Body.(*EffBind).Effect.(*DbInsertScoped)
 	for _, f := range ins.Row.(*Record).Fields {
 		if f.Name == "done" && f.Value != done.Default {
 			t.Fatalf("the insert row's done is %#v, not the table's default node", f.Value)
@@ -681,18 +697,18 @@ func TestPositions(t *testing.T) {
 	}
 
 	// the blog's front page: its `where` steps and conditions, its `if`s and operators
-	blog := lowerDir(t, "../../testdata/fix/blog")
+	blog := lowerDir(t, "../../examples/blog")
 	got = map[string][]Pos{}
-	visit(value(module(blog, "Posts.Index"), "load").Body)
+	visit(value(module(blog, "Posts.Index"), "Index.load").Body)
 	want = map[string][]Pos{
-		"bind":       {{34, 3}},
-		"if":         {{30, 14}, {30, 45}, {33, 5}},
-		"op":         {{30, 17}, {30, 48}, {42, 18}},
-		"select":     {{35, 5}},
-		"cond":       {{36, 20}}, // the second `Db.where` takes a variable, `matching`
-		"ord":        {{38, 21}},
-		"where-step": {{36, 10}, {37, 10}},
-		"order-step": {{38, 10}},
+		"bind":       {{37, 3}},
+		"if":         {{33, 14}, {33, 45}, {36, 5}},
+		"op":         {{33, 17}, {33, 48}, {45, 18}},
+		"select":     {{38, 5}},
+		"cond":       {{39, 20}}, // the second `Db.where` takes a variable, `matching`
+		"ord":        {{41, 21}},
+		"where-step": {{39, 10}, {40, 10}},
+		"order-step": {{41, 10}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("blog positions:\n got %v\nwant %v", got, want)
